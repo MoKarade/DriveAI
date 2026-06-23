@@ -34,8 +34,10 @@ clasp create --type standalone --title "DriveAI" --rootDir src
 ### 4. Pousser le code
 ```bash
 clasp push        # téléverse src/*.gs + appsscript.json
-clasp open        # ouvre l'éditeur Apps Script dans le navigateur
 ```
+Puis **ouvre l'éditeur** : copie-colle dans ton navigateur l'URL affichée par `clasp create`
+(`https://script.google.com/d/<scriptId>/edit`). *(La commande `clasp open` n'existe plus en
+clasp v3 ; selon ta version, `clasp open-script` peut aussi fonctionner.)*
 
 ### 5. Activer le service avancé Drive (pour l'OCR)
 Le manifeste le déclare déjà, mais vérifie : dans l'éditeur, panneau **Services** (＋) →
