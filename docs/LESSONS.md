@@ -19,3 +19,22 @@
 **Leçon.** Les leçons utiles sont celles qui changent une décision future : convention,
 piège de quota, format de prompt. Le bruit (« j'ai créé un fichier ») n'a pas sa place ici.
 **Règle durable ?** non — méta, sert juste de gabarit.
+
+## 2026-06-23 — `gmail.readonly` interdit toute écriture, labels compris
+**Contexte.** Phase 1 : la première version posait un label `DriveAI/traité` pour l'idempotence,
+avec le scope `gmail.readonly`. La revue d'agents (sécurité + code-reviewer) a vu que
+`thread.addLabel()`/`GmailApp.createLabel()` **lèvent une exception** sous `gmail.readonly` —
+l'idempotence aurait planté à l'exécution et le pipeline aurait retraité en boucle (coût LLM + doublons).
+**Leçon.** Tant que le garde-fou « Gmail lecture seule » tient, l'idempotence se porte **uniquement
+par l'Index** (clé `messageId|i|nom|taille`), jamais par un label Gmail. Et la clé d'idempotence doit
+inclure l'index de PJ, sinon deux PJ jumelles (même nom + taille) dans un mail s'écrasent (perte).
+**Règle durable ?** oui.
+
+## 2026-06-23 — Ordre des écritures d'état = idempotence
+**Contexte.** Phase 1, écriture Index/Revue + dépôt Drive.
+**Leçon.** L'inscription « c'est fini » (Index) se pose **en dernier**, après l'effet de bord
+(dépôt Drive) et après la ligne Revue. Une coupure laisse alors la PJ non-indexée → re-traitée,
+jamais un cas sensible perdu silencieusement. Sur un moteur Apps Script (coupure 6 min possible),
+prévoir aussi : `LockService` (anti-chevauchement), garde-temps, et lecture d'état mise en cache
+1×/run (pas une lecture Sheet par item).
+**Règle durable ?** oui.

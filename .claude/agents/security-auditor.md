@@ -15,8 +15,11 @@ Tu es l'**auditeur sécurité** de DriveAI. Tu fais respecter les garde-fous non
    tokens). La clé Anthropic doit être lue via `PropertiesService` (`DriveAI_ANTHROPIC_KEY`),
    jamais écrite dans le code, un commit, un log, ou la Sheet.
 2. **Moindre privilège.** `appsscript.json` → `oauthScopes` : Gmail **`gmail.readonly`**
-   uniquement. Drive RW. `script.external_request`, `spreadsheets`. Tasks/Calendar **seulement
-   en Phase 3**. Aucun scope plus large que nécessaire. Pas de scope d'envoi de mail tiers.
+   uniquement (aucune écriture Gmail). Drive RW. `script.external_request`, `spreadsheets`.
+   Tasks/Calendar **seulement en Phase 3**. Aucun scope plus large que nécessaire.
+   **Admis et documentés** (`docs/ARCHITECTURE.md`) car requis par la DoD Phase 1 :
+   `script.send_mail` (notif d'échec *as-self*, pas d'envoi tiers) et `script.scriptapp`
+   (installation du trigger). Tout autre scope d'écriture mail/Gmail est interdit.
 3. **Zone protégée** 🔒 : `04 · Immigration` + tout `sensible=true` (incl. fiscal) → **jamais**
    rangés auto, toujours `00 · À vérifier`. Vérifie que le routage applique cette règle **avant**
    toute autre, et que le défaut en cas de doute est `sensible=true`.

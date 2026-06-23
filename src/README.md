@@ -1,9 +1,18 @@
 # src/ — moteur Apps Script (Phase 1+)
 
-> **Vide pour l'instant.** La Phase 0 ne livre que l'automatisation et les docs. Le code du
-> moteur arrive en Phase 1 (voir `BACKLOG.md`).
+> **Phase 1 livrée.** Les 8 modules ci-dessous implémentent le cœur (Gmail → analyse → classement
+> domaine/catégorie, ou file de revue). Voir `PLAN.md` §5 et `BACKLOG.md`.
 
-Disposition prévue des modules Apps Script (Phase 1) :
+## Déploiement
+
+1. Crée un projet Apps Script (ou `clasp create`).
+2. Copie `.clasp.json.example` → `.clasp.json` et renseigne le `scriptId` (fichier gitignoré).
+3. `clasp push` (ou colle les fichiers dans l'éditeur).
+4. Dans **Project Settings → Script Properties**, ajoute `DriveAI_ANTHROPIC_KEY` (ta clé Anthropic).
+5. Exécute `installerTrigger()` une fois (autorise les scopes) → le scan tourne ensuite toutes les 15 min.
+6. La Google Sheet d'état est créée automatiquement au premier run (ID stocké dans `DriveAI_SHEET_ID`).
+
+## Modules
 
 | Fichier | Rôle |
 |---------|------|

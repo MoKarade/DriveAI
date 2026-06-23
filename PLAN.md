@@ -166,7 +166,8 @@ par entité ni le référentiel (→ Phase 2). Pas d'app web (→ Phase 4). Sour
 - [ ] Un mail test avec PJ PDF est rangé dans le bon domaine, renommé au format, en < 15 min.
 - [ ] Une PJ ambiguë part dans `00 · À vérifier` avec la suggestion lisible dans le nom.
 - [ ] Un doc « sensible » (ex. courrier IRCC) va **toujours** en revue, jamais rangé auto.
-- [ ] Le mail traité reçoit le label `DriveAI/traité` (pas de retraitement).
+- [ ] Pas de retraitement : idempotence via l'`Index` (clé `messageId|i|nom|taille`). *(Gmail
+      reste en lecture seule → pas de label de traitement ; cf. `docs/ARCHITECTURE.md`.)*
 - [ ] Un échec provoque une notif mail + une ligne dans `Journal`.
 - [ ] La clé API n'est nulle part en dur.
 - [ ] Coût LLM mesuré sur un échantillon réel et extrapolé (cible < 10 $/mois).
@@ -216,8 +217,9 @@ app web, recherche. Discipline de scope stricte.
 - Modèle LLM exact + chaîne de version à confirmer (Haiku courant).
 - Coût réel LLM par document → à mesurer en Phase 1 sur un échantillon.
 - Seuil de confiance (départ 0.80) à calibrer après observation.
-- Le vieux Drive « figé en archive » : dossier `_Archive 2025` à part, ou laissé tel quel hors
-  de la nouvelle racine.
+- ~~Le vieux Drive « figé en archive »~~ → **tranché : Option A.** L'ancien part dans un dossier
+  `_Archive 2025` à part, à côté de la nouvelle racine. DriveAI n'y touche jamais (déplacement
+  manuel par Marc, hors pipeline).
 - Mécanisme de revue en Phases 1–3 : suggestion encodée dans le nom (simple) vs onglet `Revue`
   de la Sheet (plus riche). Démarrer simple.
 
