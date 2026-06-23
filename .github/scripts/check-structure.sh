@@ -5,8 +5,8 @@ set -uo pipefail
 ROOT="${1:-.}"
 
 required=(
-  CLAUDE.md README.md PLAN.md BACKLOG.md
-  docs/ARCHITECTURE.md docs/TAXONOMY.md docs/NAMING.md docs/WORKFLOW.md docs/LESSONS.md
+  CLAUDE.md README.md PLAN.md BACKLOG.md HANDOVER.md
+  docs/ARCHITECTURE.md docs/TAXONOMY.md docs/NAMING.md docs/WORKFLOW.md docs/LESSONS.md docs/DEPLOIEMENT.md
   .claude/settings.json
   .claude/hooks/session-start.sh
   .claude/hooks/mark-code-changed.sh

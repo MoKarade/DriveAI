@@ -49,6 +49,9 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   travail vers les spécialistes. Lance `/review` pour passer un diff au crible.
 - **Boucle de leçons** : après chaque session qui touche du code, un hook `Stop` invite à
   consigner les leçons réutilisables. Utilise `/lesson "…"`. Voir `docs/WORKFLOW.md`.
+- **Documents vivants** (à tenir à jour à chaque session, comme FinanceAI) : `HANDOVER.md`
+  (état courant, `/handover`), `BACKLOG.md` (statuts), `docs/` (dont `DEPLOIEMENT.md`). Le hook
+  `Stop` le rappelle ; la CI vérifie leur présence. Ne jamais les laisser dériver de la réalité.
 
 | Agent | Rôle |
 |-------|------|
@@ -66,6 +69,7 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
 - `/phase <n>` — démarre une phase du backlog avec discipline de scope.
 - `/review` — passe le diff courant à la flotte d'agents via le `product-manager`.
 - `/lesson "<leçon>"` — consigne une leçon dans `docs/LESSONS.md` (+ règle durable ici).
+- `/handover` — régénère `HANDOVER.md` à partir de l'état courant.
 - `/ship` — commit (FR, préfixe ID), push `-u origin`, ouvre la PR draft.
 
 ## 6. État du projet

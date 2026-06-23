@@ -12,8 +12,10 @@ granulaire — automatiquement, avec une file de revue pour les cas incertains.
 
 | Fichier | Contenu |
 |---------|---------|
+| [`HANDOVER.md`](HANDOVER.md) | **État courant du projet** (tenu à jour à chaque session) — à lire en premier pour reprendre |
 | [`PLAN.md`](PLAN.md) | Le plan détaillé : objectif, décisions verrouillées, architecture, 4 phases, garde-fous |
-| [`BACKLOG.md`](BACKLOG.md) | Les épopées (phases 1–4) découpées en tâches avec IDs |
+| [`BACKLOG.md`](BACKLOG.md) | Les épopées (phases 1–4) découpées en tâches avec IDs et statuts |
+| [`docs/DEPLOIEMENT.md`](docs/DEPLOIEMENT.md) | Déploiement du moteur côté Google, étape par étape |
 | [`CLAUDE.md`](CLAUDE.md) | Mémoire de projet pour Claude Code (garde-fous, conventions, workflow) |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Choix techniques (Apps Script + Sheet + Vercel) |
 | [`docs/TAXONOMY.md`](docs/TAXONOMY.md) | L'arborescence cible, les IDs de dossiers, les schémas de sous-dossiers |
