@@ -90,3 +90,7 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   le dépôt Drive et après la ligne Revue — pour qu'une coupure rejoue au lieu de perdre un cas.
 - **Robustesse moteur Apps Script.** `LockService` (anti-chevauchement), garde-temps (coupure
   6 min), et lecture d'état mise en cache 1×/run (jamais une lecture Sheet par item).
+- **Git (squash-merge + branche réutilisée).** Avant chaque nouvelle tâche, repartir
+  d'`origin/main` (reset/merge). Si la branche distante `claude/**` diverge après merge,
+  refusionner son tip plutôt que force-push (ruleset). Un check requis doit gater le merge vers
+  `main`, pas le push des branches de travail.

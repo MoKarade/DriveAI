@@ -38,3 +38,18 @@ jamais un cas sensible perdu silencieusement. Sur un moteur Apps Script (coupure
 prévoir aussi : `LockService` (anti-chevauchement), garde-temps, et lecture d'état mise en cache
 1×/run (pas une lecture Sheet par item).
 **Règle durable ?** oui.
+
+## 2026-06-23 — Workflow git : squash-merge + branche `claude/**` réutilisée
+**Contexte.** Plusieurs PR successives depuis la même branche `claude/**`, sur un repo où les PR
+sont **squash-mergées** et protégées par un ruleset. J'ai trébuché deux fois.
+**Leçon.** Trois pièges et leurs parades :
+1. Après un squash-merge, la branche distante `claude/**` n'est pas toujours supprimée et son tip
+   **diverge** de `main`. **Ne pas force-push** (le ruleset le bloque) : refusionner l'ancien tip
+   distant (`git merge origin/claude/...`) pour que le push redevienne un fast-forward.
+2. Garder le diff de PR **propre** : avant chaque nouvelle unité de travail, repartir
+   d'`origin/main` (`git reset --hard origin/main` ou `git merge origin/main`), sinon la PR
+   ré-affiche tout le contenu déjà mergé.
+3. Un ruleset « Require status checks » appliqué au **push** d'une branche crée un blocage
+   œuf-poule (le check ne peut tourner qu'après le push). Ce check doit gater le **merge vers
+   main**, pas le push des branches de travail.
+**Règle durable ?** oui.
