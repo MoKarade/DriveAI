@@ -1,0 +1,50 @@
+name: Auto-merge
+
+# Quand la CI réussit sur une PR d'une branche claude/**, on la marque "ready" puis on la
+# merge en squash. Déclenché via workflow_run : ce workflow est lu depuis la branche par
+# défaut (main), il ne s'active donc qu'une fois présent sur main.
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request' &&
+      startsWith(github.event.workflow_run.head_branch, 'claude/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trouver et merger la PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+
+          number="$(gh pr list --repo "$REPO" --head "$HEAD_BRANCH" --state open \
+            --json number --jq '.[0].number // empty')"
+          if [ -z "$number" ]; then
+            echo "Aucune PR ouverte pour $HEAD_BRANCH — rien à faire."
+            exit 0
+          fi
+          echo "PR concernée : #$number"
+
+          labels="$(gh pr view "$number" --repo "$REPO" --json labels --jq '.labels[].name')"
+          if echo "$labels" | grep -qx 'do-not-merge'; then
+            echo "Label 'do-not-merge' présent → auto-merge ignoré."
+            exit 0
+          fi
+
+          # Sortir du mode draft si nécessaire (ignore l'erreur si déjà ready).
+          gh pr ready "$number" --repo "$REPO" || true
+
+          # Merge en squash + suppression de la branche.
+          gh pr merge "$number" --repo "$REPO" --squash --delete-branch

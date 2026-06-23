@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validation du scaffolding
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JSON parseable
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            if python3 -m json.tool "$f" > /dev/null 2>&1; then
+              echo "ok: $f"
+            else
+              echo "❌ JSON invalide: $f"; fail=1
+            fi
+          done < <(find . -path ./.git -prune -o -name '*.json' -print)
+          exit $fail
+
+      - name: Syntaxe des scripts shell
+        run: |
+          fail=0
+          while IFS= read -r f; do
+            if bash -n "$f"; then echo "ok: $f"; else echo "❌ Syntaxe: $f"; fail=1; fi
+          done < <(find . -path ./.git -prune -o -name '*.sh' -print)
+          exit $fail
+
+      - name: Scan de secrets
+        run: bash .github/scripts/secret-scan.sh .
+
+      - name: Fichiers de référence présents
+        run: bash .github/scripts/check-structure.sh .
+
+      - name: Frontmatter des agents
+        run: bash .github/scripts/check-agents.sh .

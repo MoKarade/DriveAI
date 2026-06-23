@@ -1,0 +1,25 @@
+# État local de la boucle de leçons (marqueurs de session)
+.claude/.state/
+
+# Identifiants clasp (Apps Script) — NE JAMAIS committer
+.clasprc.json
+.clasp.json
+
+# Secrets / environnement
+.env
+.env.*
+*.key
+*.pem
+
+# Node / app web (Phase 4)
+node_modules/
+dist/
+.vite/
+*.local
+
+# OS / éditeurs
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
