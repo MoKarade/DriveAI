@@ -19,7 +19,7 @@ esac
 if [ -f "$STATE/code-changed" ]; then
   touch "$STATE/lesson-prompted"
   rm -f "$STATE/code-changed"
-  echo "Du code a changé cette session. Avant de conclure : si tu as appris une règle réutilisable (convention, piège de quota Apps Script, format de prompt, garde-fou), consigne-la avec /lesson \"…\" pour mettre docs/LESSONS.md (et CLAUDE.md si durable) à jour. Sinon, indique brièvement « rien à consigner » puis termine." >&2
+  echo "Du code a changé cette session. Avant de conclure : (1) tiens à jour les DOCUMENTS VIVANTS — HANDOVER.md (état courant ; au besoin via /handover), BACKLOG.md (statuts), et la doc dans docs/ si le comportement a changé ; (2) si tu as appris une règle réutilisable (convention, piège de quota Apps Script, format de prompt, garde-fou), consigne-la avec /lesson \"…\" (docs/LESSONS.md + CLAUDE.md si durable). Sinon, indique brièvement « rien à consigner » puis termine." >&2
   exit 2
 fi
 

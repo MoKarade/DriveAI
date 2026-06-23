@@ -15,9 +15,11 @@
 | P0-04 | Hooks + boucle de leçons (`.claude/hooks/`, `settings.json`) | ✅ |
 | P0-05 | CI + auto-merge (`.github/workflows/`, scripts de validation) | ✅ |
 | P0-06 | Hygiène repo (`.gitignore`, `.editorconfig`, PR template) | ✅ |
+| P0-07 | Documents vivants (`HANDOVER.md`, `docs/DEPLOIEMENT.md`) + tenue à jour (hook + `/handover` + check CI) | ✅ |
 
 **DoD Phase 0 :** une PR `claude/**` se merge seule quand la CI est verte ; le `product-manager`
-peut répartir une tâche ; `/lesson` met `CLAUDE.md`/`LESSONS.md` à jour.
+peut répartir une tâche ; `/lesson` met `CLAUDE.md`/`LESSONS.md` à jour ; `HANDOVER.md` reflète
+l'état courant et la CI vérifie la présence des documents vivants.
 
 ---
 
