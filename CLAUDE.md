@@ -79,4 +79,10 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
 
 > Distillées depuis `docs/LESSONS.md`. N'ajouter ici que ce qui change la façon de coder.
 
-- _(vide pour l'instant — la boucle de leçons remplira cette section)_
+- **Gmail lecture seule = pas de label.** `gmail.readonly` interdit `addLabel`/`createLabel`
+  (exception à l'exécution). L'idempotence se porte **par l'Index** (clé `messageId|i|nom|taille`,
+  index de PJ inclus), jamais par un label Gmail.
+- **Ordre des écritures d'état.** L'inscription Index (« c'est fini ») se pose en dernier — après
+  le dépôt Drive et après la ligne Revue — pour qu'une coupure rejoue au lieu de perdre un cas.
+- **Robustesse moteur Apps Script.** `LockService` (anti-chevauchement), garde-temps (coupure
+  6 min), et lecture d'état mise en cache 1×/run (jamais une lecture Sheet par item).

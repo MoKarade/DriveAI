@@ -31,12 +31,20 @@
   Marc* (pas d'OAuth serveur à gérer) ; gratuit ; pas d'infra à héberger.
 - **Modules Phase 1** : `Config.gs`, `Gmail.gs`, `Ocr.gs`, `Llm.gs`, `Router.gs`,
   `Journal.gs`, `Main.gs`. Voir `BACKLOG.md`.
-- **Scopes** (`appsscript.json` → `oauthScopes`), moindre privilège :
-  - `https://www.googleapis.com/auth/gmail.readonly`
-  - `https://www.googleapis.com/auth/drive`
-  - `https://www.googleapis.com/auth/script.external_request` (UrlFetchApp)
-  - `https://www.googleapis.com/auth/spreadsheets`
+- **Scopes** (`appsscript.json` → `oauthScopes`), moindre privilège — chaque scope est justifié :
+  - `gmail.readonly` — lecture des mails + PJ. **Aucune écriture Gmail** (pas de label).
+  - `drive` — créer/déplacer dans Drive, OCR via conversion.
+  - `script.external_request` — `UrlFetchApp` vers l'API Anthropic.
+  - `spreadsheets` — état (Index/Journal/Revue/Entités).
+  - `script.send_mail` — **notifications d'échec à soi-même** (`MailApp`, envoi *as-self*, pas un
+    scope d'envoi tiers). Requis par la DoD Phase 1 (« notif mail immédiate »).
+  - `script.scriptapp` — installation du trigger 15 min (`ScriptApp.newTrigger`). Requis par la DoD.
   - *(Phase 3)* `.../auth/tasks`, `.../auth/calendar`
+- **Idempotence sans écriture Gmail** : `gmail.readonly` interdit la pose d'un label de
+  traitement. L'idempotence est donc portée **uniquement par l'`Index`** (clé
+  `messageId|i|nom|taille`). La fenêtre 30 jours est paginée pour ne pas affamer les anciens
+  fils. *(Alternative possible si Marc le souhaite : ajouter `gmail.labels` pour reposer le
+  label `DriveAI/traité` — léger assouplissement du « lecture seule ».)*
 - **Clé API** : Script Properties `DriveAI_ANTHROPIC_KEY`, lue via `PropertiesService`.
   Jamais en dur, jamais commitée.
 
