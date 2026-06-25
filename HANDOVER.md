@@ -4,8 +4,9 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **Dernière mise à jour : 2026-06-23** — Phase 1 **déployée et validée en réel** (Apps Script
-> chez Marc) ; recalibrage du flag `sensible` (immigration + fiscal seulement).
+> **Dernière mise à jour : 2026-06-25** — correctif **OCR en REST `UrlFetchApp`** mergé (PR #10) ;
+> reste à Marc : `git pull && clasp push` pour le déployer. Phase 1 déployée et validée en réel ;
+> recalibrage du flag `sensible` (immigration + fiscal seulement) acté.
 
 ---
 
@@ -74,6 +75,10 @@ Détail des tâches : `BACKLOG.md`.
 
 ## 7. Historique des sessions
 
+- **2026-06-25** — Correctif **OCR** : le 1er run réel échouait sur chaque doc
+  (`Drive is not defined`, service avancé inactif après `clasp push`). Réécriture de `src/Ocr.gs`
+  pour appeler l'**API Drive en REST via `UrlFetchApp`** (token OAuth, scope `drive` déjà accordé),
+  dégradation propre si échec. Mergé (PR #10). Reste à Marc : `git pull && clasp push`.
 - **2026-06-23 (suite)** — Phase 1 **déployée** par Marc (clasp) et **validée en réel** ;
   recalibrage du flag `sensible` (trop large → immigration + fiscal seulement) ; documents vivants
   (HANDOVER, DEPLOIEMENT) + tenue à jour automatique mis en place.
