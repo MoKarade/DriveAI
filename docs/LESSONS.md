@@ -66,3 +66,21 @@ devinés.
 pas seulement le faux négatif. Garder le défaut prudent uniquement pour les réponses *malformées*
 (parsing), pas comme posture de classement.
 **Règle durable ?** oui.
+
+## 2026-06-23 — Frontière : DriveAI tourne dans le compte Google de Marc
+**Contexte.** Marc voulait que « je fasse tout », déploiement (`clasp push`) et exécution du moteur compris.
+**Leçon.** DriveAI s'exécute dans le compte Google de Marc (Apps Script). La session Claude cloud
+n'a **pas** accès à son projet Apps Script : impossible de `clasp push` (auth Google locale à Marc)
+ni d'exécuter une fonction Apps Script à distance. Le connecteur MCP Google Drive est
+**lecture/copie/création seulement** (pas de déplacement, suppression, ni édition de Sheet). Donc :
+annoncer cette frontière **tôt**, ne jamais promettre de faire le déploiement/exécution à la place de
+l'utilisateur, et **minimiser sa part via du code** (fonctions « un clic » type `rejouerLaRevue`).
+C'est une protection (le moteur agit en tant que Marc), pas un manque d'outil contournable.
+**Règle durable ?** oui.
+
+## 2026-06-23 — `git push | tail` masque le code de sortie
+**Contexte.** Un `git push … 2>&1 | tail -2 && echo OK` a affiché « PUSH OK » alors que le push était
+**rejeté** : l'exit code d'un pipeline est celui du dernier maillon (`tail`), pas de `git push`.
+**Leçon.** Ne jamais enchaîner une action git critique avec `| tail` puis `&&` : vérifier le code de
+sortie sur la commande elle-même (`git push …; echo "exit=$?"`), ou `set -o pipefail`.
+**Règle durable ?** oui.
