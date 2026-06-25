@@ -103,3 +103,7 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   session Claude ne peut **pas** y déployer (`clasp push`) ni exécuter de fonction ; le MCP Drive
   est lecture/copie/création seulement. Annoncer cette frontière tôt et minimiser la part manuelle
   de Marc via du code (fonctions « un clic »), jamais promettre de déployer/exécuter à sa place.
+- **API Google via REST, pas service avancé.** Le service avancé Drive (`Drive.*`) déclaré dans
+  `appsscript.json` n'est pas fiable après `clasp push` (`Drive is not defined`). Appeler l'API
+  Drive en **REST via `UrlFetchApp`** (token `ScriptApp.getOAuthToken()`, scope `drive`) — robuste,
+  sans activation manuelle. Faire dégrader l'OCR proprement (texte vide) plutôt que planter.

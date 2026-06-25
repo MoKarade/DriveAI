@@ -84,3 +84,16 @@ C'est une protection (le moteur agit en tant que Marc), pas un manque d'outil co
 **Leçon.** Ne jamais enchaîner une action git critique avec `| tail` puis `&&` : vérifier le code de
 sortie sur la commande elle-même (`git push …; echo "exit=$?"`), ou `set -o pipefail`.
 **Règle durable ?** oui.
+
+## 2026-06-25 — Service avancé Drive non fiable via clasp → API REST
+**Contexte.** Premier run réel : l'OCR échouait sur CHAQUE document avec
+`ReferenceError: Drive is not defined` / `TypeError: Drive.Files.insert is not a function`.
+Le `enabledAdvancedServices` (Drive v2) déclaré dans `appsscript.json` n'était pas actif dans le
+projet de Marc après `clasp push` (le service avancé requiert souvent une activation manuelle dans
+l'éditeur, et la déclaration manifeste seule ne suffit pas).
+**Leçon.** Sur Apps Script, ne pas dépendre du symbole `Drive.*` (service avancé) pour du code qui
+doit « juste marcher » après un `clasp push`. Appeler l'API Drive **en REST via `UrlFetchApp`**
+(token `ScriptApp.getOAuthToken()`, scope `drive` déjà accordé — `DriveApp` fonctionne donc l'API
+est active) : robuste, sans activation manuelle. Toujours faire dégrader l'OCR proprement (texte
+vide → classement sur métadonnées) plutôt que planter.
+**Règle durable ?** oui.

@@ -2,11 +2,16 @@
  * Ocr.gs — Extraction du texte d'une pièce jointe.
  *
  * - text/*           : lu directement.
- * - image/* ou PDF   : OCR via conversion Drive (Google Doc temporaire → export → suppression).
+ * - image/* ou PDF   : OCR via l'API Drive (REST) appelée par UrlFetchApp —
+ *                      conversion en Google Doc temporaire (ocr=true) → export texte → suppression.
  * - autres types     : pas de texte (le LLM se rabat sur les métadonnées).
  *
- * Le Google Doc temporaire est créé PAR NOUS puis supprimé : c'est la seule
- * suppression autorisée par les garde-fous (jamais un fichier de l'utilisateur).
+ * On passe par l'API REST (et pas le « service avancé Drive ») pour éviter toute
+ * dépendance à une activation manuelle dans l'éditeur. Scopes utilisés : drive +
+ * script.external_request (déjà déclarés). Échec d'OCR = dégradation propre (texte vide).
+ *
+ * Le Google Doc temporaire est créé PAR NOUS puis supprimé : seule suppression
+ * autorisée par les garde-fous (jamais un fichier de l'utilisateur).
  */
 
 /**
@@ -29,32 +34,60 @@ function extraireTexte_(blob) {
 }
 
 /**
- * OCR via l'API Drive avancée (v2) : insert avec ocr=true, puis export texte.
+ * OCR via l'API Drive REST (v3) : upload multipart avec ocrLanguage, puis export texte.
  * @param {Blob} blob
  * @return {string}
  */
 function ocrViaDrive_(blob) {
-  var doc = Drive.Files.insert(
-    { title: 'DriveAI_OCR_temp', mimeType: 'application/vnd.google-apps.document' },
-    blob,
-    { ocr: true, ocrLanguage: 'fr' }
-  );
-  var id = doc.id;
-  try {
-    var resp = UrlFetchApp.fetch(
-      'https://www.googleapis.com/drive/v2/files/' + id + '/export?mimeType=text/plain',
-      {
-        headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() },
-        muteHttpExceptions: true
-      }
-    );
-    return resp.getResponseCode() === 200 ? resp.getContentText() : '';
-  } finally {
-    try {
-      Drive.Files.remove(id); // suppression de NOTRE doc temporaire uniquement
-    } catch (e) {
-      journalErreur_('OCR', 'Doc OCR temporaire non supprimé (' + id + ') : ' + e);
+  var token = ScriptApp.getOAuthToken();
+  var boundary = 'driveai' + Utilities.getUuid();
+  var metadata = JSON.stringify({
+    name: 'DriveAI_OCR_temp',
+    mimeType: 'application/vnd.google-apps.document'
+  });
+
+  // Corps multipart/related : 1) métadonnées JSON, 2) contenu binaire de la PJ.
+  var avant = '--' + boundary + '\r\n' +
+    'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+    metadata + '\r\n' +
+    '--' + boundary + '\r\n' +
+    'Content-Type: ' + (blob.getContentType() || 'application/octet-stream') + '\r\n\r\n';
+  var apres = '\r\n--' + boundary + '--';
+
+  var corps = Utilities.newBlob(avant).getBytes()
+    .concat(blob.getBytes())
+    .concat(Utilities.newBlob(apres).getBytes());
+
+  var insert = UrlFetchApp.fetch(
+    'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&ocrLanguage=fr&fields=id',
+    {
+      method: 'post',
+      contentType: 'multipart/related; boundary=' + boundary,
+      payload: corps,
+      headers: { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true
     }
+  );
+  if (insert.getResponseCode() !== 200) {
+    journalErreur_('OCR', 'Conversion HTTP ' + insert.getResponseCode() + ' : ' +
+      tronquer_(insert.getContentText(), 300));
+    return '';
+  }
+
+  var id = JSON.parse(insert.getContentText()).id;
+  try {
+    var exp = UrlFetchApp.fetch(
+      'https://www.googleapis.com/drive/v3/files/' + id + '/export?mimeType=text/plain',
+      { headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true }
+    );
+    return exp.getResponseCode() === 200 ? exp.getContentText() : '';
+  } finally {
+    // Supprime NOTRE Doc temporaire (jamais un fichier utilisateur).
+    UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + id, {
+      method: 'delete',
+      headers: { Authorization: 'Bearer ' + token },
+      muteHttpExceptions: true
+    });
   }
 }
 
