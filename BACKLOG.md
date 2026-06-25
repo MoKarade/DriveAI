@@ -43,16 +43,28 @@ l'état courant et la CI vérifie la présence des documents vivants.
 
 ---
 
-## Épopée Phase 2 — Dépôt manuel + référentiel d'entités  ⬜
+## Épopée Phase 2 — Dépôt manuel + référentiel d'entités  🟦
+
+> Source = Gmail **+** dépôt manuel `00·À trier` (déplacé, jamais copié). Routage à l'**entité**
+> via le référentiel curé `Entités` ; entité inconnue → proposition « en_attente » + revue ;
+> création des dossiers d'entité seulement après validation par Marc.
 
 | ID | Tâche | Statut |
 |----|-------|--------|
-| P2-01 | Scan de `00 · À trier` (réutilise le pipeline) | ⬜ |
-| P2-02 | Onglet `Entités` — référentiel + lecture/écriture | ⬜ |
-| P2-03 | Routage à l'entité ; entité inconnue → revue → validation | ⬜ |
-| P2-04 | Création auto des dossiers d'entité + sous-dossiers fixes | ⬜ |
-| P2-05 | Multi-entités (raccourci Drive) | ⬜ |
-| P2-06 | Détection & signalement des doublons (jamais d'effacement) | ⬜ |
+| P2-01 | Scan de `00 · À trier` (réutilise le pipeline, déplacement) | ✅ (`Intake.gs`, `Pipeline.gs`) |
+| P2-02 | Onglet `Entités` — référentiel + lecture/écriture (cache 1×/run) | ✅ (`Entites.gs`) |
+| P2-03 | Routage à l'entité ; entité inconnue → revue + proposition `en_attente` | ✅ (`Router.gs`) |
+| P2-04 | Création auto des dossiers d'entité + sous-dossiers fixes (après validation) | ✅ (`Entites.gs`) |
+| P2-05 | Multi-entités (raccourci Drive REST, jamais de copie) | ✅ (`DriveRest.gs`, `Pipeline.gs`) |
+| P2-06 | Détection & signalement des doublons (empreinte MD5, jamais d'effacement) | ✅ (`Journal.gs`, `Pipeline.gs`) |
+
+**Reste côté Marc :** `git pull && clasp push`, puis tester (déposer un fichier dans `00·À trier`,
+valider une entité en passant son `Statut` à « validée »). DoD : un fichier glissé finit au bon
+endroit ; une entité nouvelle ne crée un dossier qu'après validation.
+
+**Limites assumées (suivi) :** raccourcis multi-entités et copie Gmail non idempotents au rejeu
+(compromis « Index en dernier ») ; un document en échec LLM persistant est re-tenté à chaque tick
+(pas encore de quarantaine après N échecs).
 
 ---
 

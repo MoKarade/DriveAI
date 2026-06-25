@@ -97,3 +97,27 @@ doit « juste marcher » après un `clasp push`. Appeler l'API Drive **en REST v
 est active) : robuste, sans activation manuelle. Toujours faire dégrader l'OCR proprement (texte
 vide → classement sur métadonnées) plutôt que planter.
 **Règle durable ?** oui.
+
+## 2026-06-25 — Changer le cycle de vie d'un fichier casse les invariants des outils voisins
+**Contexte.** Phase 2 : le dépôt manuel **déplace** l'original (au lieu de le copier comme Gmail).
+La revue de sécurité a vu que `rejouerLaRevue` mettait à la corbeille TOUS les `[REVUE]` en supposant
+« ce sont nos copies, l'original est dans Gmail » — invariant vrai en Phase 1, **faux** dès qu'un
+dépôt déplacé devient l'unique exemplaire. Sans correctif, l'outil de maintenance aurait supprimé des
+originaux utilisateur (garde-fou « aucune suppression » violé).
+**Leçon.** Quand on introduit un nouveau cycle de vie de fichier (move vs copy, suppression, fusion),
+**auditer tout le code qui reposait sur l'ancien invariant** — surtout les outils de nettoyage/
+maintenance. Ici : distinguer la source via l'Index (`drive|…` vs Gmail) et ne jamais corbeiller un
+exemplaire unique (le renvoyer dans `00·À trier` pour rejeu). Un « déplacement » n'est pas une
+suppression, mais il rend l'original irremplaçable côté scan.
+**Règle durable ?** oui.
+
+## 2026-06-25 — Borner TOUT traitement par lot Drive par le garde-temps, pas seulement la boucle docs
+**Contexte.** Phase 2 : `creerDossiersEntitesValidees_` (création des dossiers d'entités validées)
+tournait en tête de tick, **hors** du garde-temps, et faisait ~7-8 appels Drive par entité. Si Marc
+valide 30-50 entités d'un coup, ce sont des centaines d'appels synchrones AVANT le moindre document
+— risque de couper les 6 min et de tout rejouer à chaque tick.
+**Leçon.** Sur Apps Script, **chaque** phase qui fait des appels Drive/Sheet en boucle (pas seulement
+la boucle principale de documents) doit être bornée par le garde-temps partagé ET un plafond par run ;
+le reste est repris au tick suivant. Idem : ne jamais hasher (`computeDigest`) un blob sans la même
+borne de taille que l'OCR (mémoire). Vérifier le coût d'un re-traitement sur échec (re-OCR + re-LLM).
+**Règle durable ?** oui.

@@ -48,8 +48,13 @@ Compte financier — <Banque>/     Diplôme — <Intitulé>/
 └─ Correspondance/               └─ Mémoire & travaux/
 ```
 
-Domaines à fort volume (Factures, Relevés, Impôts) : **sous-dossier par année** (`AAAA`)
-créé automatiquement.
+Domaines à fort volume : **sous-dossier par année** (`AAAA`) créé automatiquement. Deux
+mécanismes distincts dans le code :
+- **par sous-dossier d'entité** (`CONFIG.SOUS_DOSSIERS_PAR_ANNEE` = `Factures`, `Relevés`) —
+  ex. `…/Logement — X/Factures/2026/` ;
+- **par domaine transverse** (`CONFIG.DOMAINES_PAR_ANNEE` = `02 · Finances`) — ex. `Impôts/2025/`.
+  Le fiscal étant `sensible`, il part en revue avant d'être rangé ; le découpage Impôts/AAAA
+  relève donc du domaine `02 · Finances`, **pas** d'un schéma d'entité.
 
 ## Règles structurelles
 

@@ -3,9 +3,13 @@
  *
  * À lancer une fois à la main : installerTrigger().
  *
- * Idempotence : la clé Index (messageId|i|nom|taille) est posée APRÈS dépôt réussi.
- * Concurrence : un verrou empêche deux exécutions de se chevaucher. Coupure :
- * un garde-temps borne le run ; le reste est repris au tick suivant.
+ * Deux sources d'intake : PJ Gmail + dépôt manuel `00·À trier`. Chaque document
+ * passe par le pipeline partagé (Pipeline.gs). Avant le routage, on matérialise
+ * les entités fraîchement validées par Marc (création des dossiers).
+ *
+ * Idempotence : la clé Index est posée APRÈS placement réussi. Concurrence : un
+ * verrou empêche deux exécutions de se chevaucher. Coupure : un garde-temps borne
+ * le run ; le reste est repris au tick suivant.
  */
 
 /** Installe (idempotemment) le déclencheur temporel de 15 minutes. */
@@ -17,7 +21,7 @@ function installerTrigger() {
   journalInfo_('Setup', 'Trigger 15 min installé.');
 }
 
-/** Un passage du pipeline : mails Gmail non traités → classement / revue. */
+/** Un passage du pipeline : Gmail + dépôt manuel → classement / revue. */
 function tickDriveAI() {
   var verrou = LockService.getScriptLock();
   if (!verrou.tryLock(5000)) {
@@ -26,30 +30,46 @@ function tickDriveAI() {
   }
   try {
     reinitialiserIndexCache_();
+    reinitialiserEntitesCache_();
+
     var debut = Date.now();
-    var debutPage = 0;
+    var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
 
-    while (Date.now() - debut < CONFIG.BUDGET_MS) {
-      var fils;
-      try {
-        fils = pageFils_(debutPage);
-      } catch (e) {
-        notifierEchec_('Gmail', 'Recherche des mails impossible : ' + e);
-        return;
-      }
-      if (!fils.length) break; // fin de la fenêtre 30 jours
+    // Matérialise les entités validées par Marc (Statut = « validée ») avant le routage,
+    // mais bornée par le garde-temps (et un plafond par run) : pas de coupure des 6 min.
+    creerDossiersEntitesValidees_(estBudgetDepasse);
 
-      for (var i = 0; i < fils.length; i++) {
-        if (Date.now() - debut > CONFIG.BUDGET_MS) {
-          journalInfo_('Pipeline', 'Budget temps atteint — reprise au prochain tick.');
-          return;
-        }
-        traiterFil_(fils[i]);
-      }
-      debutPage += CONFIG.PAGE_FILS;
-    }
+    traiterGmail_(estBudgetDepasse);                       // source 1 : PJ Gmail
+    if (!estBudgetDepasse()) traiterDepots_(estBudgetDepasse); // source 2 : 00·À trier
   } finally {
     verrou.releaseLock();
+  }
+}
+
+/**
+ * Parcourt les fils Gmail récents avec PJ, paginés, dans le budget temps.
+ * @param {function():boolean} estBudgetDepasse
+ */
+function traiterGmail_(estBudgetDepasse) {
+  var debutPage = 0;
+  while (!estBudgetDepasse()) {
+    var fils;
+    try {
+      fils = pageFils_(debutPage);
+    } catch (e) {
+      notifierEchec_('Gmail', 'Recherche des mails impossible : ' + e);
+      return;
+    }
+    if (!fils.length) break; // fin de la fenêtre 30 jours
+
+    for (var i = 0; i < fils.length; i++) {
+      if (estBudgetDepasse()) {
+        journalInfo_('Pipeline', 'Budget temps atteint — reprise au prochain tick.');
+        return;
+      }
+      traiterFil_(fils[i]);
+    }
+    debutPage += CONFIG.PAGE_FILS;
   }
 }
 
@@ -59,40 +79,33 @@ function tickDriveAI() {
  */
 function traiterFil_(fil) {
   var messages = fil.getMessages();
-
   for (var m = 0; m < messages.length; m++) {
     var message = messages[m];
     var pjs = piecesJointes_(message);
-
     for (var p = 0; p < pjs.length; p++) {
-      var pj = pjs[p];
-      var cle = cleAttachement_(message, p, pj);
-
-      try {
-        if (indexContient_(cle)) continue; // déjà traité → idempotence
-
-        var blob = pj.copyBlob();
-        var extrait = pj.getSize() > CONFIG.OCR_TAILLE_MAX ? '' : extraireTexte_(blob);
-
-        var classif = classifier_({
-          nomFichier: blob.getName(),
-          expediteur: message.getFrom(),
-          sujet: message.getSubject(),
-          extrait: extrait
-        });
-
-        if (!classif) {
-          // On n'inscrit rien à l'Index → la PJ sera re-tentée au prochain tick.
-          notifierEchec_('Pipeline', 'Classification impossible pour « ' + blob.getName() + ' »');
-          continue;
-        }
-
-        var resultat = router_(blob, classif, message.getDate());
-        indexAjouter_(cle, resultat);
-        journalInfo_('Pipeline', resultat.statut + ' → ' + resultat.chemin + ' : ' + resultat.nom);
-      } catch (e) {
-        notifierEchec_('Pipeline', 'Échec sur « ' + pj.getName() + ' » : ' + e);
-      }
+      traiterPjGmail_(message, p, pjs[p]);
     }
   }
+}
+
+/**
+ * Construit le descripteur d'une PJ Gmail et le passe au pipeline.
+ * Source en lecture seule : on COPIE la PJ vers sa destination (l'original reste
+ * dans Gmail), à la différence d'un dépôt manuel qui est déplacé.
+ * @param {GmailMessage} message
+ * @param {number} indexPj
+ * @param {GmailAttachment} pj
+ */
+function traiterPjGmail_(message, indexPj, pj) {
+  traiterDocument_({
+    cle: cleAttachement_(message, indexPj, pj),
+    nom: pj.getName(),
+    taille: pj.getSize(),
+    expediteur: message.getFrom(),
+    sujet: message.getSubject(),
+    date: message.getDate(),
+    blob: function () { return pj.copyBlob(); },
+    placer: function (dossierId, nom) { return deposer_(pj.copyBlob(), dossierId, nom); },
+    placerRevue: function (nom) { return deposer_(pj.copyBlob(), CONFIG.DOSSIERS.A_VERIFIER, nom); }
+  });
 }

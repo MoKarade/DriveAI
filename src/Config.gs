@@ -49,7 +49,42 @@ var CONFIG = {
   DOMAINES_PAR_ANNEE: ['02 · Finances'],
 
   // Zone protégée : domaines jamais rangés auto (garde-fou non négociable).
-  DOMAINES_PROTEGES: ['04 · Immigration']
+  DOMAINES_PROTEGES: ['04 · Immigration'],
+
+  // --- Phase 2 : référentiel d'entités ---
+  // Dossier d'entrée scanné pour le dépôt manuel (réutilise A_TRIER ci-dessus).
+  INTAKE_PAGE: 50,                        // nb de fichiers de 00·À trier traités par run
+
+  // Schémas de sous-dossiers FIXES créés à la validation d'une entité (docs/TAXONOMY.md).
+  // Clé = Type d'entité ; valeur = liste ordonnée de sous-dossiers.
+  SCHEMAS_ENTITE: {
+    'Logement': ['Bail & contrat', 'Factures', 'Assurance', 'État des lieux & photos', 'Correspondance'],
+    'Véhicule': ['Achat & financement', 'Assurance', 'Entretien & réparations', 'Immatriculation (SAAQ)'],
+    'Compte financier': ['Relevés', 'Contrats & produits', 'Correspondance'],
+    'Diplôme': ['Diplôme & attestation', 'Relevés de notes', 'Mémoire & travaux']
+  },
+
+  // Sous-dossiers d'entité à découper PAR ANNÉE (fort volume).
+  SOUS_DOSSIERS_PAR_ANNEE: ['Factures', 'Relevés'],
+
+  // Aiguillage type_doc → sous-dossier d'entité (heuristique ; sinon racine d'entité).
+  // Clés en minuscules sans accents (cf. normaliserCle_).
+  SOUS_DOSSIER_PAR_TYPE: {
+    'facture': 'Factures',
+    'releve': 'Relevés',
+    'bail': 'Bail & contrat',
+    'contrat': 'Bail & contrat',
+    'assurance': 'Assurance',
+    'etat des lieux': 'État des lieux & photos',
+    'entretien': 'Entretien & réparations',
+    'reparation': 'Entretien & réparations',
+    'immatriculation': 'Immatriculation (SAAQ)',
+    'diplome': 'Diplôme & attestation',
+    'attestation': 'Diplôme & attestation',
+    'releve de notes': 'Relevés de notes',
+    'bulletin': 'Relevés de notes',
+    'memoire': 'Mémoire & travaux'
+  }
 };
 
 /** Liste des domaines autorisés (pour le prompt et la validation). */

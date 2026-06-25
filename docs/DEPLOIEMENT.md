@@ -93,12 +93,43 @@ la propriété `DriveAI_SHEET_ID`). Onglets : `Entités`, `Index`, `Journal`, `R
 
 ---
 
+## Phase 2 — dépôt manuel & référentiel d'entités
+
+> Déployée par le même `git pull && clasp push`. **Aucun nouveau scope** à autoriser.
+
+### Dépôt manuel (`00 · À trier`)
+Glisse n'importe quel fichier dans le dossier **`00 · À trier`**. Au tick suivant (ou via
+`tickDriveAI`), il est analysé comme une PJ Gmail puis **déplacé** (jamais copié, jamais effacé)
+vers son dossier de destination — ou vers `00 · À vérifier` s'il est ambigu/sensible.
+*(Les fichiers Google natifs — Docs/Sheets déposés — sont laissés en place : déposer des PDF/images.)*
+
+### Référentiel d'entités (onglet `Entités`)
+Pour ranger au niveau **entité** (un dossier par logement, banque, diplôme…), DriveAI s'appuie sur
+l'onglet **`Entités`** (colonnes auto-créées : `Entité | Domaine | Catégorie | Type | Statut |
+Dossier ID | Ajoutée le`).
+
+1. Quand DriveAI rencontre une **entité inconnue**, il ajoute une ligne **pré-remplie** avec
+   `Statut = en_attente` et envoie le document en revue (aucun dossier créé).
+2. Pour **valider** : passe le `Statut` de la ligne à **`validée`** (corrige le nom/type si besoin).
+   Types reconnus pour les sous-dossiers fixes : `Logement`, `Véhicule`, `Compte financier`, `Diplôme`.
+3. Au tick suivant, DriveAI **crée le dossier d'entité** + ses sous-dossiers fixes et y range les
+   documents de cette entité. (Pour re-router des documents déjà partis en revue, relance
+   `rejouerLaRevue`.)
+
+### Doublons & multi-entités
+- Un fichier dont le **contenu** est déjà présent (même empreinte) est **signalé** en revue
+  (`[REVUE] doublon (déjà présent) …`), **jamais effacé**.
+- Un document concernant **plusieurs entités connues** est rangé une fois (entité primaire) avec un
+  **raccourci Drive** dans les autres (jamais de copie).
+
+---
+
 ## Dépannage
 
 | Symptôme | Cause probable | Fix |
 |----------|----------------|-----|
 | `Clé API absente…` | `DriveAI_ANTHROPIC_KEY` non définie | Propriétés du script (§6) |
-| `Drive is not defined` | service avancé Drive non activé | Services → Drive API v2 (§5) |
+| `ERREUR OCR : HTTP 403` / `ERREUR Drive : HTTP 403` | API Drive du projet désactivée | panneau **Services** (＋) → ajoute **Drive API** une fois (§5) |
 | `HTTP 401` dans `Journal` | clé Anthropic invalide/révoquée | mets la nouvelle clé |
 | Rien ne se range | pas de PJ récente, ou tout part en revue | vérifie `Journal`/`Revue` ; baisse `SEUIL_CONFIANCE` après observation |
 | OCR vide sur un PDF | PDF non textuel + OCR Drive limité | normal ; le LLM classe sur les métadonnées |
