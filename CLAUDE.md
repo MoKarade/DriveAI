@@ -115,3 +115,8 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
 - **Garde-temps sur TOUT lot Drive.** Chaque phase qui boucle sur des appels Drive/Sheet (pas seulement
   la boucle de documents) doit être bornée par le garde-temps partagé + un plafond par run ; le reste
   est repris au tick suivant. Ne pas hasher un blob sans la même borne de taille que l'OCR (mémoire).
+- **Granularité = enrichissement, jamais frein.** Un niveau de classement plus fin (entité, sous-dossier)
+  doit **dégrader vers le niveau précédent** quand l'info manque (entité non validée → classé au domaine
+  + entité proposée), **jamais** envoyer le document en revue. Sinon, au premier run, tout part en revue
+  et l'auto-rangement est neutralisé (même piège que `sensible` trop large). Re-tester sur du réel :
+  « est-ce que ça range encore avant toute validation ? »

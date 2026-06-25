@@ -9,8 +9,10 @@
  *   1. zone protégée (immigration) / sensible=true        → 00·À vérifier
  *   2. confiance hors [seuil, 1] / domaine inconnu         → 00·À vérifier
  *   3. doublon de contenu déjà présent                     → 00·À vérifier (signalé, jamais effacé)
- *   4. entité inconnue / en attente de validation          → 00·À vérifier (+ proposition)
- * Sinon : entité connue → dossier d'entité ; entité null → dossier générique du domaine.
+ * Sinon on CLASSE : entité connue → dossier d'entité granulaire ; entité inconnue/en attente →
+ * dossier du domaine (+ proposition d'entité pour plus tard) ; entité null → dossier du domaine.
+ * Une entité non validée n'envoie JAMAIS le document en revue (sinon, au départ, tout part en
+ * revue → l'auto-rangement est neutralisé, cf. LESSONS « garde-fou étroit »).
  */
 
 /**
@@ -28,20 +30,21 @@ function deciderRoutage_(classif, dateReference, ext, motifForce) {
   var raison = motifDeRevue_(classif) || (motifForce || '');
   if (raison) return revue_(raison, classif, date, ext);
 
-  // 4) Granularité entité (Phase 2).
+  // 4) Granularité entité (Phase 2). L'entité est un ENRICHISSEMENT, jamais un frein :
+  //    - entité connue (validée)        → dossier d'entité granulaire ;
+  //    - entité inconnue / en attente    → on CLASSE au niveau domaine (comportement Phase 1)
+  //                                        et on PROPOSE l'entité (ligne « en_attente ») pour
+  //                                        plus tard — surtout pas le document en revue ;
+  //    - entité null (transverse)        → dossier générique du domaine.
+  // Anti-prolifération préservé : proposer une entité n'est pas créer un dossier.
   var ent = resoudreEntite_(classif);
-  if (ent.etat === 'inconnue' || ent.etat === 'en_attente') {
-    entiteEnAttenteAjouter_(classif); // proposition « en_attente » (pas de dossier créé)
-    return revue_('entité à valider', classif, date, ext);
-  }
-
-  // Classement automatique.
   var dossierId, chemin;
   if (ent.etat === 'connue') {
     var cible = dossierEntiteCible_(ent, classif, date);
     dossierId = cible.id;
     chemin = cible.chemin;
-  } else { // 'transverse' (entite = null) → comportement Phase 1
+  } else {
+    if (ent.etat === 'inconnue' || ent.etat === 'en_attente') entiteEnAttenteAjouter_(classif);
     dossierId = dossierCible_(classif, date);
     chemin = cheminLisible_(classif);
   }

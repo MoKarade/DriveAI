@@ -46,5 +46,6 @@ dans le nom** pour rester lisible sans app web. Format proposé (à figer en Pha
 
 Exemple : `[REVUE] confiance 0.62 — 02 · Finances/Relevés — 2026-04-01_Relevé_Banque?.pdf`.
 `raison` ∈ {`sensible`, `zone protégée`, `confiance <seuil>`, `domaine inconnu`,
-`entité à valider`, `doublon (déjà présent)`} — c'est l'inventaire réel produit par
-`Router.motifDeRevue_` et `Pipeline` (Phase 2).
+`doublon (déjà présent)`} — c'est l'inventaire réel produit par `Router.motifDeRevue_` et
+`Pipeline` (Phase 2). Note : une **entité inconnue n'envoie PAS** le document en revue — il est
+classé au domaine et l'entité est proposée (`en_attente`) dans l'onglet `Entités`.
