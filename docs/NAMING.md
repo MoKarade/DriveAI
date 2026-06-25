@@ -45,4 +45,6 @@ dans le nom** pour rester lisible sans app web. Format proposé (à figer en Pha
 ```
 
 Exemple : `[REVUE] confiance 0.62 — 02 · Finances/Relevés — 2026-04-01_Relevé_Banque?.pdf`.
-`raison` ∈ {`sensible`, `confiance <0.80`, `entité inconnue`, `doublon ?`}.
+`raison` ∈ {`sensible`, `zone protégée`, `confiance <seuil>`, `domaine inconnu`,
+`entité à valider`, `doublon (déjà présent)`} — c'est l'inventaire réel produit par
+`Router.motifDeRevue_` et `Pipeline` (Phase 2).

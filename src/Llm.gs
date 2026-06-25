@@ -16,6 +16,7 @@ var PROMPT_SYSTEME =
   '  "domaine": <un des domaines autorisés, exactement>,\n' +
   '  "categorie": <une des catégories connues ci-dessous, ou null>,\n' +
   '  "entite": <entité concernée (logement, véhicule, banque, diplôme...) ou null>,\n' +
+  '  "entites": <liste d\'entités SI le document en concerne plusieurs, sinon omets ce champ>,\n' +
   '  "type_doc": <type court: "Facture", "Relevé", "Contrat", "Attestation"...>,\n' +
   '  "date_doc": <date du document "AAAA-MM-JJ" ou null si absente>,\n' +
   '  "emetteur": <émetteur, ex "Hydro-Quebec", "Desjardins", "IRCC" ou null>,\n' +
@@ -165,5 +166,18 @@ function parserClassification_(texte) {
   }
   // Garde-fou : en l'absence d'info claire, on traite comme sensible.
   if (typeof obj.sensible !== 'boolean') obj.sensible = true;
+  // Multi-entités : `entites` n'est l'autorité que s'il liste ≥2 entités distinctes ;
+  // sinon `entite` (mono) fait foi. (La zone protégée reste pilotée par `sensible`,
+  // jamais par les entités, cf. motifDeRevue_.)
+  if (Array.isArray(obj.entites)) {
+    var vues = {}, propres = [];
+    for (var k = 0; k < obj.entites.length; k++) {
+      var e = obj.entites[k];
+      if (typeof e === 'string' && e.trim() && !vues[e]) { vues[e] = true; propres.push(e); }
+    }
+    if (propres.length >= 2) obj.entites = propres; else delete obj.entites;
+  } else if (obj.entites) {
+    delete obj.entites;
+  }
   return obj;
 }

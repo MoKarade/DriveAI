@@ -9,8 +9,8 @@
 
 /** Crée les onglets et leurs en-têtes si absents. */
 function initialiserSheet_(ss) {
-  creerOnglet_(ss, 'Entités', ['Entité', 'Domaine', 'Catégorie', 'Dossier ID', 'Ajoutée le']);
-  creerOnglet_(ss, 'Index', ['Clé', 'Traité le', 'Fichier', 'Domaine', 'Chemin', 'Statut']);
+  creerOnglet_(ss, 'Entités', COLONNES_ENTITES); // Entité|Domaine|Catégorie|Type|Statut|Dossier ID|Ajoutée le
+  creerOnglet_(ss, 'Index', ['Clé', 'Traité le', 'Fichier', 'Domaine', 'Chemin', 'Statut', 'Empreinte']);
   creerOnglet_(ss, 'Journal', ['Horodatage', 'Niveau', 'Source', 'Message']);
   creerOnglet_(ss, 'Revue', ['Détectée le', 'Fichier', 'Domaine', 'Suggestion']);
   var defaut = ss.getSheetByName('Feuille 1') || ss.getSheetByName('Sheet1');
@@ -73,19 +73,31 @@ function cleAttachement_(message, indexPj, pj) {
   return message.getId() + '|' + indexPj + '|' + pj.getName() + '|' + pj.getSize();
 }
 
-// Cache des clés déjà indexées, chargé une fois par run (évite une lecture Sheet par PJ).
+// Caches chargés une fois par run (évite une lecture Sheet par PJ) :
+//  _indexCache       : clés d'idempotence déjà traitées
+//  _empreintesCache  : empreintes de contenu déjà vues (détection de doublons)
 var _indexCache = null;
+var _empreintesCache = null;
 
-/** À appeler en tête de chaque run pour repartir d'un cache neuf. */
+/** À appeler en tête de chaque run pour repartir de caches neufs. */
 function reinitialiserIndexCache_() {
   _indexCache = null;
+  _empreintesCache = null;
 }
 
 function chargerIndexCache_() {
   _indexCache = {};
-  var valeurs = feuille_('Index').getRange('A2:A').getValues();
+  _empreintesCache = {};
+  var f = feuille_('Index');
+  // Auto-réparation : assure la colonne « Empreinte » (G) sur un Index existant.
+  if (f.getRange(1, 7).getValue() !== 'Empreinte') f.getRange(1, 7).setValue('Empreinte');
+
+  var dern = f.getLastRow();
+  if (dern < 2) return;
+  var valeurs = f.getRange(2, 1, dern - 1, 7).getValues(); // colonnes A..G
   for (var i = 0; i < valeurs.length; i++) {
     if (valeurs[i][0]) _indexCache[valeurs[i][0]] = true;
+    if (valeurs[i][6]) _empreintesCache[valeurs[i][6]] = true;
   }
 }
 
@@ -95,19 +107,28 @@ function indexContient_(cle) {
   return _indexCache[cle] === true;
 }
 
+/** @return {boolean} vrai si cette empreinte de contenu a déjà été vue (doublon). */
+function estDoublon_(empreinte) {
+  if (_empreintesCache === null) chargerIndexCache_();
+  return _empreintesCache[empreinte] === true;
+}
+
 /**
  * Enregistre un fichier traité. La ligne Revue est écrite AVANT la ligne Index :
  * si une coupure survient entre les deux, la PJ reste non-indexée donc re-traitée
  * (jamais un cas sensible perdu silencieusement).
  * @param {string} cle
  * @param {{statut:string, domaine:string, chemin:string, nom:string}} resultat
+ * @param {string} [empreinte]  empreinte MD5 du contenu (détection de doublons)
  */
-function indexAjouter_(cle, resultat) {
+function indexAjouter_(cle, resultat, empreinte) {
   if (resultat.statut === 'revue') {
     feuille_('Revue').appendRow([new Date(), resultat.nom, resultat.domaine || '', resultat.nom]);
   }
   feuille_('Index').appendRow([
-    cle, new Date(), resultat.nom, resultat.domaine || '', resultat.chemin || '', resultat.statut
+    cle, new Date(), resultat.nom, resultat.domaine || '', resultat.chemin || '',
+    resultat.statut, empreinte || ''
   ]);
   if (_indexCache !== null) _indexCache[cle] = true;
+  if (_empreintesCache !== null && empreinte) _empreintesCache[empreinte] = true;
 }

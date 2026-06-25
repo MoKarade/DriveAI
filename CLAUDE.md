@@ -107,3 +107,11 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   `appsscript.json` n'est pas fiable après `clasp push` (`Drive is not defined`). Appeler l'API
   Drive en **REST via `UrlFetchApp`** (token `ScriptApp.getOAuthToken()`, scope `drive`) — robuste,
   sans activation manuelle. Faire dégrader l'OCR proprement (texte vide) plutôt que planter.
+- **Nouveau cycle de vie d'un fichier ⇒ auditer les invariants voisins.** Introduire un move/delete/
+  fusion casse les hypothèses du code voisin (surtout les outils de maintenance). Ex. : le dépôt manuel
+  *déplace* l'original → `rejouerLaRevue` ne doit jamais corbeiller un exemplaire unique (distinguer la
+  source via l'Index `drive|…` vs Gmail). Un déplacement n'est pas une suppression, mais rend l'original
+  irremplaçable côté scan.
+- **Garde-temps sur TOUT lot Drive.** Chaque phase qui boucle sur des appels Drive/Sheet (pas seulement
+  la boucle de documents) doit être bornée par le garde-temps partagé + un plafond par run ; le reste
+  est repris au tick suivant. Ne pas hasher un blob sans la même borne de taille que l'OCR (mémoire).
