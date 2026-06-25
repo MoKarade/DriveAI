@@ -45,17 +45,14 @@ Détail des tâches : `BACKLOG.md`.
 - **Scopes** : `gmail.readonly`, `drive`, `script.external_request`, `spreadsheets`,
   `script.send_mail` (notif), `script.scriptapp` (trigger). Cf. `docs/ARCHITECTURE.md`.
 
-## 4. Ce qui reste à faire côté Marc (avant que ça tourne)
+## 4. Ce qui reste à faire côté Marc
 
-> Étapes détaillées : **`docs/DEPLOIEMENT.md`**.
+> Déploiement initial **fait** (clasp push + clé + trigger). Reste :
 
-1. **Déployer** `src/` dans un projet Apps Script (clasp `clasp push`, ou copier-coller).
-2. **Clé API** : Script Properties → `DriveAI_ANTHROPIC_KEY` = ta **nouvelle** clé Anthropic.
-3. **Activer le service avancé Drive** (API v2) dans l'éditeur (pour l'OCR).
-4. Exécuter **`installerTrigger()`** une fois (autorise les scopes) → scan toutes les 15 min.
-5. **Tester** avec un mail + PJ (voir `docs/DEPLOIEMENT.md` §Tester).
-6. 🔑 **Révoquer l'ancienne clé Anthropic** partagée dans le chat (compromise).
-7. *(Open point `P1-09`)* mesurer le coût LLM réel pour confirmer < 10 $/mois.
+1. **Re-déployer le correctif OCR** : `git pull && clasp push` (OCR désormais en REST `UrlFetchApp`,
+   plus de service avancé Drive à activer). Vérifier dans le `Journal` que les `ERREUR OCR` ont disparu.
+2. 🔑 **Révoquer l'ancienne clé Anthropic** partagée dans le chat (compromise), si pas déjà fait.
+3. *(Open point `P1-09`)* mesurer le coût LLM réel pour confirmer < 10 $/mois.
 
 ## 5. Blocages / risques connus
 
