@@ -6,6 +6,14 @@
  */
 
 var CONFIG = {
+  // Version du comportement de CLASSEMENT. À incrémenter UNIQUEMENT quand une
+  // évolution change la façon de ranger (prompt, routage, seuils, schémas) — PAS à
+  // chaque commit (sinon coût LLM/quota inutile). Au tick suivant un déploiement, si
+  // la version stockée diffère, le moteur renvoie automatiquement les DÉPÔTS partis
+  // en revue vers 00·À trier pour reclassement (cf. Main.appliquerRejeuSiNouvelleVersion_)
+  // — borné, réversible, sans toucher aux PJ Gmail ni aux docs déjà classés. Zéro clic.
+  VERSION: 'P2.1',
+
   // --- Seuils & modèle ---
   SEUIL_CONFIANCE: 0.80,                 // sous ce seuil → file de revue
   LLM_MODELE: 'claude-haiku-4-5',        // Haiku par défaut (le moins cher)
@@ -54,6 +62,7 @@ var CONFIG = {
   // --- Phase 2 : référentiel d'entités ---
   // Dossier d'entrée scanné pour le dépôt manuel (réutilise A_TRIER ci-dessus).
   INTAKE_PAGE: 50,                        // nb de fichiers de 00·À trier traités par run
+  REJEU_PAGE: 100,                        // nb de dépôts renvoyés par run lors d'un auto-rejeu
 
   // Schémas de sous-dossiers FIXES créés à la validation d'une entité (docs/TAXONOMY.md).
   // Clé = Type d'entité ; valeur = liste ordonnée de sous-dossiers.

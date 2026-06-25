@@ -135,3 +135,18 @@ Règle générale : un nouveau niveau de granularité doit **dégrader vers le n
 l'info manque, jamais envoyer en revue. Toujours re-tester sur du réel : « est-ce que ça range encore
 au premier run, avant toute validation ? »
 **Règle durable ?** oui.
+
+## 2026-06-25 — Automatiser une op de maintenance ⇒ retirer toute action irréversible du chemin auto
+**Contexte.** Pour aller « full auto », j'ai voulu déclencher `rejouerLaRevue` automatiquement sur
+changement de version. La flotte (sécurité + quotas) a bloqué : cette fonction met des copies à la
+**corbeille** et **vide tout l'Index**, en s'appuyant sur l'Index qu'elle détruit elle-même. En
+manuel (un clic supervisé) ça passe ; en **auto sous garde-temps**, une coupure laisse un état
+incohérent et un collapse de noms peut corbeiller un **exemplaire unique** (perte de fichier).
+**Leçon.** Quand on fait passer une opération de maintenance du **manuel** à l'**automatique** :
+(1) **aucune action irréversible** dans le chemin auto (déplacement réversible OK, jamais de
+corbeille/suppression — garder ça sur le chemin manuel explicite) ; (2) **borner** (garde-temps
+partagé + plafond/run) et rendre **reprenable** (ne marquer « fait » qu'une fois TOUT consommé,
+jamais avant) ; (3) raisonner par **identifiant stable** (`fileId`), pas par nom (le nom collisionne) ;
+(4) ne pas invalider l'idempotence de ce qui n'est pas concerné (ne vider que les lignes ciblées de
+l'Index, pas tout — sinon re-OCR/re-LLM inutile = coût). Faire **re-auditer** le diff par la flotte.
+**Règle durable ?** oui.

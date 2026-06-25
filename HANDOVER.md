@@ -4,9 +4,10 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **Dernière mise à jour : 2026-06-25** — **Phase 2 codée** (dépôt manuel `00·À trier` + référentiel
-> d'entités), revue par la flotte (correctifs appliqués). Phase 1 validée en réel ; correctif OCR REST
-> mergé (PR #10). Reste à Marc : `git pull && clasp push` pour déployer la Phase 2.
+> **Dernière mise à jour : 2026-06-25** — **Phase 2 + full auto**. Dépôt manuel + référentiel d'entités
+> (mergé), calibration P2.1 (entité = enrichissement), et **P2.2 full auto** : auto-déploiement
+> (`clasp push` sur merge) + auto-rejeu sur bump de version. Reste à Marc : **2 secrets GitHub une fois**
+> (`docs/DEPLOIEMENT.md`), puis plus aucune action manuelle.
 
 ---
 
@@ -25,9 +26,13 @@
   inconnue → ligne `en_attente` pré-remplie + revue, création des dossiers d'entité + sous-dossiers
   fixes après validation (Statut = « validée »), multi-entités en raccourcis Drive, doublons signalés
   (empreinte MD5). Modules ajoutés : `Entites.gs`, `Intake.gs`, `Pipeline.gs`, `DriveRest.gs`.
-- **Prochaine étape produit** : Marc déploie (`git pull && clasp push`), teste le dépôt manuel et la
-  validation d'entité, puis **Phase 3**. *(Rappel : ce conteneur n'a pas accès au projet Apps Script
-  de Marc — déploiement et exécution se font dans son compte Google.)*
+- **Full auto (P2.2)** : Action GitHub **Deploy** (`clasp push` auto sur merge `main`, via secrets
+  `CLASPRC_JSON`/`SCRIPT_ID`) + **auto-rejeu** sur bump de `CONFIG.VERSION` (renvoie les dépôts en
+  revue vers `00·À trier`, borné/réversible). Après le réglage unique des 2 secrets, Marc ne fait plus
+  ni `clasp push` ni `rejouerLaRevue`.
+- **Prochaine étape produit** : Marc configure l'auto-déploiement (2 secrets, cf. `docs/DEPLOIEMENT.md`),
+  puis **Phase 3**. *(Rappel : déploiement/exécution vivent dans le compte Google de Marc ; l'Action
+  GitHub y accède via l'identifiant clasp qu'il dépose une fois — ce conteneur n'y a jamais accès.)*
 
 ## 2. Avancement par phase
 
@@ -52,21 +57,20 @@ Détail des tâches : `BACKLOG.md`.
 
 ## 4. Ce qui reste à faire côté Marc
 
-> Déploiement initial **fait** (clasp push + clé + trigger). Reste :
+> Objectif **full auto** : après un réglage unique, plus aucun `clasp push` ni fonction à lancer.
 
-1. **Déployer la Phase 2 + le correctif P2.1** : `git pull && clasp push`. Aucun nouveau scope.
-   *(P2.1 : une entité non validée ne renvoie plus le document en revue — il est classé au
-   domaine et l'entité est proposée `en_attente`. Sans ça, au 1er run tout partait en revue.)*
-2. **Reclasser ce qui était parti en revue à tort** : lance **`rejouerLaRevue`** une fois. Les
-   dépôts manuels `[REVUE] entité à valider` sont **renvoyés** dans `00·À trier` puis re-classés
-   au domaine ; les copies Gmail sont rejouées. (Aucune suppression d'original.)
-3. **Tester le dépôt manuel** : glisser un fichier dans `00 · À trier`, lancer `tickDriveAI` →
-   il doit être **déplacé** (pas copié) vers son dossier domaine, ou vers `00·À vérifier` si sensible/ambigu.
-4. **Tester la validation d'entité** (optionnel) : pour une ligne `en_attente` de l'onglet
-   `Entités`, passer son `Statut` à `validée` → au tick suivant ses dossiers se créent et les docs
-   de cette entité s'y rangent (rangement plus fin).
-5. 🔑 **Révoquer l'ancienne clé Anthropic** partagée dans le chat (compromise), si pas déjà fait.
-6. *(Open point `P1-09`)* mesurer le coût LLM réel pour confirmer < 10 $/mois.
+1. **Configurer l'auto-déploiement (UNE fois, ~3 min)** — voir `docs/DEPLOIEMENT.md` § « Déploiement
+   100 % automatique » : déposer 2 secrets GitHub (`CLASPRC_JSON` = contenu de `~/.clasprc.json` ;
+   `SCRIPT_ID`). Ensuite chaque merge sur `main` se **déploie tout seul** (Action `Deploy` → `clasp push`).
+2. **Déclencher le 1er déploiement auto** : une fois les secrets posés, le prochain merge déploie ;
+   sinon clique « Run workflow » sur l'Action *Deploy*. Au tick suivant, l'**auto-rejeu** (`CONFIG.VERSION`)
+   renvoie les dépôts `[REVUE] entité à valider` dans `00·À trier` et les reclasse — **zéro clic**.
+3. 🔑 **Révoquer l'ancienne clé Anthropic** partagée dans le chat (compromise), si pas déjà fait.
+4. *(Open point `P1-09`)* mesurer le coût LLM réel pour confirmer < 10 $/mois.
+
+> Steady-state désormais **100 % automatique** : nouveaux mails + dépôts traités par le trigger 15 min ;
+> mes changements de code déployés par l'Action ; reclassement après recalibrage par l'auto-rejeu.
+> Le `rejouerLaRevue` manuel reste dispo (c'est le seul endroit qui met des copies Gmail à la corbeille).
 
 ## 5. Blocages / risques connus
 
@@ -94,6 +98,13 @@ Détail des tâches : `BACKLOG.md`.
 
 ## 7. Historique des sessions
 
+- **2026-06-25 (P2.2 — full auto)** — **Auto-déploiement** : Action `Deploy` (`.github/workflows/deploy.yml`,
+  `clasp push` sur merge `main`, secrets `CLASPRC_JSON`/`SCRIPT_ID`, inactive sans secrets). **Auto-rejeu** :
+  `CONFIG.VERSION` + `appliquerRejeuSiNouvelleVersion_`/`rejeuAutoDesDepots_` renvoient les dépôts partis
+  en revue vers `00·À trier` sur bump de version — chirurgical (dépôts `drive|…` seulement, par `fileId`),
+  réversible (aucune corbeille), borné (`REJEU_PAGE` + garde-temps), reprenable. Re-audité par la flotte
+  (sécurité + quotas) après un 1er design jugé dangereux (corbeille + vidage Index en auto) → corrigé.
+- **2026-06-25 (P2.1)** — Calibration : entité non validée → classée au domaine (pas en revue).
 - **2026-06-25 (Phase 2)** — Codé le **dépôt manuel** (`Intake.gs`, scan `00·À trier`, fichiers
   déplacés via Drive REST) et le **référentiel d'entités** (`Entites.gs` : cache 1×/run, résolution
   insensible casse/accents, lignes `en_attente` auto-remplies, création des dossiers d'entités
