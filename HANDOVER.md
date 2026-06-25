@@ -19,9 +19,10 @@
   (~25 docs traités : Gmail → OCR → LLM → routage → Index/Revue ; idempotence/nommage confirmés).
 - **Recalibrage appliqué** : le 1er run marquait presque tout `sensible` → tout en revue. Le
   prompt vise désormais la zone protégée stricte (immigration + fiscal) ; le reste s'auto-classe.
-- **Prochaine étape produit** : reclasser les ~25 docs déjà en revue avec le nouveau réglage
-  (vider l'onglet `Index` + supprimer les `[REVUE]` de `00 · À vérifier`, relancer `tickDriveAI`),
-  puis **Phase 2**.
+- **Prochaine étape produit** : Marc déploie le code recalibré (`git pull && clasp push`) puis
+  lance **une fois** la fonction `rejouerLaRevue()` (un clic — purge les copies `[REVUE]`, vide
+  Index/Revue, rejoue le pipeline). Ensuite **Phase 2**. *(Rappel : ce conteneur n'a pas accès
+  au projet Apps Script de Marc — déploiement et exécution se font dans son compte Google.)*
 
 ## 2. Avancement par phase
 
