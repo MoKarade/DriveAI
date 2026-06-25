@@ -22,9 +22,11 @@ var PROMPT_SYSTEME =
   '  "sensible": <booléen, voir règle ci-dessous>,\n' +
   '  "confiance": <nombre entre 0 et 1, honnête>\n' +
   '}\n' +
-  'RÈGLE DE SÉCURITÉ (prioritaire) : "sensible" vaut true PAR DÉFAUT. Ne mets false que si\n' +
-  'tu es certain que le document ne touche NI l\'immigration/le statut, NI la fiscalité, NI des\n' +
-  'données d\'identité sensibles.\n' +
+  'RÈGLE DE SÉCURITÉ (zone protégée) : "sensible"=true UNIQUEMENT si le document touche\n' +
+  'l\'immigration ou le statut (CSQ, IRCC, visa, passeport, permis de travail/séjour, résidence)\n' +
+  'OU la fiscalité (déclaration d\'impôts, avis de cotisation). En cas de doute SUR CES\n' +
+  'catégories, mets true. Pour TOUT le reste (paie, banque, factures, diplômes, logement,\n' +
+  'véhicule, correspondance...), mets false : ces documents se classent automatiquement.\n' +
   'Domaines autorisés : ' + domainesAutorises_().join(' | ') + '\n' +
   'Catégories connues : ' + categoriesConnues_().join(' | ') + ' (sinon null)';
 

@@ -4,7 +4,8 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **Dernière mise à jour : 2026-06-23** — fin Phase 1 (moteur mergé), avant déploiement Google.
+> **Dernière mise à jour : 2026-06-23** — Phase 1 **déployée et validée en réel** (Apps Script
+> chez Marc) ; recalibrage du flag `sensible` (immigration + fiscal seulement).
 
 ---
 
@@ -14,9 +15,13 @@
 - **Phase 1** (le cœur : Gmail → analyse → classement) : ✅ codée, revue par la flotte, mergée sur `main`.
 - **Automatisation live** : CI + auto-merge (PR `claude/**` verte → squash auto), `CLAUDE.md`
   auto-évolutif, 8 agents, boucle de leçons.
-- **Bloqueur actuel** : rien côté code. **DriveAI ne tourne pas encore** : il reste le
-  déploiement côté Google (voir §4 et `docs/DEPLOIEMENT.md`).
-- **Prochaine étape produit** : déployer la Phase 1, la valider en réel, puis **Phase 2**.
+- **DriveAI tourne** : déployé dans Apps Script chez Marc, validé end-to-end le 2026-06-23
+  (~25 docs traités : Gmail → OCR → LLM → routage → Index/Revue ; idempotence/nommage confirmés).
+- **Recalibrage appliqué** : le 1er run marquait presque tout `sensible` → tout en revue. Le
+  prompt vise désormais la zone protégée stricte (immigration + fiscal) ; le reste s'auto-classe.
+- **Prochaine étape produit** : reclasser les ~25 docs déjà en revue avec le nouveau réglage
+  (vider l'onglet `Index` + supprimer les `[REVUE]` de `00 · À vérifier`, relancer `tickDriveAI`),
+  puis **Phase 2**.
 
 ## 2. Avancement par phase
 
@@ -71,6 +76,9 @@ Détail des tâches : `BACKLOG.md`.
 
 ## 7. Historique des sessions
 
+- **2026-06-23 (suite)** — Phase 1 **déployée** par Marc (clasp) et **validée en réel** ;
+  recalibrage du flag `sensible` (trop large → immigration + fiscal seulement) ; documents vivants
+  (HANDOVER, DEPLOIEMENT) + tenue à jour automatique mis en place.
 - **2026-06-23** — Session initiale : scaffolding & automatisation (PR #1, mergée) ; Phase 1
   complète, revue par la flotte et corrigée (PR #2, mergée) ; mise en place des documents
   vivants (HANDOVER, déploiement) et de leur tenue à jour.

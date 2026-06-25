@@ -90,6 +90,10 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   le dépôt Drive et après la ligne Revue — pour qu'une coupure rejoue au lieu de perdre un cas.
 - **Robustesse moteur Apps Script.** `LockService` (anti-chevauchement), garde-temps (coupure
   6 min), et lecture d'état mise en cache 1×/run (jamais une lecture Sheet par item).
+- **Garde-fou étroit, calibré sur du réel.** Un flag de protection (ex. `sensible`) doit viser
+  des catégories précises (immigration + fiscal), pas « true par défaut » — sinon tout part en
+  revue et l'auto-rangement est neutralisé. Le défaut prudent ne sert que pour les réponses LLM
+  *malformées*, jamais comme posture de classement.
 - **Git (squash-merge + branche réutilisée).** Avant chaque nouvelle tâche, repartir
   d'`origin/main` (reset/merge). Si la branche distante `claude/**` diverge après merge,
   refusionner son tip plutôt que force-push (ruleset). Un check requis doit gater le merge vers
