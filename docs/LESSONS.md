@@ -53,3 +53,16 @@ sont **squash-mergées** et protégées par un ruleset. J'ai trébuché deux foi
    œuf-poule (le check ne peut tourner qu'après le push). Ce check doit gater le **merge vers
    main**, pas le push des branches de travail.
 **Règle durable ?** oui.
+
+## 2026-06-23 — Calibrer un garde-fou sur données réelles, pas « par défaut »
+**Contexte.** Premier run réel de la Phase 1 : ~25 docs, presque tous renvoyés en revue avec
+`[REVUE] sensible`. Le prompt disait « `sensible=true` PAR DÉFAUT, false seulement si aucune
+donnée d'identité ». Comme chaque document perso porte un nom, le LLM a tout marqué sensible →
+**rien ne s'auto-classait** (la fonction était neutralisée), alors que les domaines étaient bien
+devinés.
+**Leçon.** Un garde-fou conservateur doit rester **étroit et précis** (ici : immigration/statut
++ fiscalité), pas « tout est protégé sauf preuve du contraire ». Toujours **calibrer sur un
+échantillon réel** : un faux positif systématique a un coût (tout en revue = pas d'auto-rangement),
+pas seulement le faux négatif. Garder le défaut prudent uniquement pour les réponses *malformées*
+(parsing), pas comme posture de classement.
+**Règle durable ?** oui.
