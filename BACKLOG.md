@@ -57,10 +57,12 @@ l'état courant et la CI vérifie la présence des documents vivants.
 | P2-04 | Création auto des dossiers d'entité + sous-dossiers fixes (après validation) | ✅ (`Entites.gs`) |
 | P2-05 | Multi-entités (raccourci Drive REST, jamais de copie) | ✅ (`DriveRest.gs`, `Pipeline.gs`) |
 | P2-06 | Détection & signalement des doublons (empreinte MD5, jamais d'effacement) | ✅ (`Journal.gs`, `Pipeline.gs`) |
+| P2.1 | Calibration : entité non validée → classée au domaine (pas en revue) | ✅ (`Router.gs`) |
+| P2.2 | **Full auto** : auto-déploiement (`clasp push` sur merge) + auto-rejeu sur bump `CONFIG.VERSION` | ✅ (`deploy.yml`, `Main.gs`, `Config.gs`) |
 
-**Reste côté Marc :** `git pull && clasp push`, puis tester (déposer un fichier dans `00·À trier`,
-valider une entité en passant son `Statut` à « validée »). DoD : un fichier glissé finit au bon
-endroit ; une entité nouvelle ne crée un dossier qu'après validation.
+**Reste côté Marc :** **2 secrets GitHub une fois** (`CLASPRC_JSON`, `SCRIPT_ID` — cf.
+`docs/DEPLOIEMENT.md`) pour activer l'auto-déploiement. Ensuite, plus aucune action manuelle :
+nouveaux mails + dépôts traités par le trigger ; code déployé par l'Action ; reclassement par l'auto-rejeu.
 
 **Limites assumées (suivi) :** raccourcis multi-entités et copie Gmail non idempotents au rejeu
 (compromis « Index en dernier ») ; un document en échec LLM persistant est re-tenté à chaque tick

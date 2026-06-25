@@ -1,0 +1,69 @@
+name: Deploy
+
+# Déploie automatiquement le moteur (src/) dans le projet Apps Script de Marc à
+# chaque arrivée sur `main` (donc après l'auto-merge d'une PR verte). Plus aucun
+# `clasp push` manuel.
+#
+# Configuration UNIQUE côté Marc (3 min, une seule fois) — voir docs/DEPLOIEMENT.md :
+#   Settings → Secrets and variables → Actions → New repository secret :
+#     - CLASPRC_JSON : le contenu de ~/.clasprc.json (généré par `clasp login`)
+#     - SCRIPT_ID    : l'ID du projet Apps Script (depuis .clasp.json local)
+# Tant que ces secrets sont absents, le job se contente d'un message et réussit
+# (aucun échec rouge).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-appsscript
+  cancel-in-progress: false # ne jamais interrompre un clasp push en cours (état partiel)
+
+jobs:
+  deploy:
+    name: clasp push (Apps Script)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier la configuration de déploiement
+        id: guard
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ] || [ -z "$SCRIPT_ID" ]; then
+            echo "::notice::Déploiement auto non configuré (secrets CLASPRC_JSON / SCRIPT_ID absents). Voir docs/DEPLOIEMENT.md. On saute."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.guard.outputs.ready == 'true'
+        uses: actions/checkout@v4
+
+      - name: Node
+        if: steps.guard.outputs.ready == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Installer clasp
+        if: steps.guard.outputs.ready == 'true'
+        run: npm install -g @google/clasp
+
+      - name: Authentifier clasp + cibler le projet
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          SCRIPT_ID: ${{ secrets.SCRIPT_ID }}
+        run: |
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          printf '{ "scriptId": "%s", "rootDir": "src" }\n' "$SCRIPT_ID" > .clasp.json
+
+      - name: Pousser le code
+        if: steps.guard.outputs.ready == 'true'
+        run: clasp push --force

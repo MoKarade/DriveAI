@@ -3,6 +3,40 @@
 > Comment faire tourner le moteur (`src/`) dans ton compte Google. ~20 min la première fois.
 > Tenu à jour à chaque évolution du moteur.
 
+---
+
+## ⚡ Déploiement 100 % automatique (à configurer UNE fois, ~3 min)
+
+> Objectif : **plus jamais de `clasp push` ni de fonction à lancer à la main.** Après ce réglage
+> unique, chaque évolution mergée sur `main` est **déployée toute seule** chez toi (GitHub Action
+> `clasp push`), et le moteur **rejoue automatiquement** les dépôts partis en revue quand la logique
+> de classement change (`CONFIG.VERSION`). Le scan tourne déjà tout seul toutes les 15 min.
+
+**Pourquoi une config manuelle unique ?** Déployer dans *ton* compte Google exige un identifiant que
+toi seul peux générer — personne d'autre ne peut y accéder (c'est une protection). Tu le déposes une
+fois dans GitHub (chiffré), et c'est fini.
+
+1. **Génère l'identifiant clasp** (en local, une fois) :
+   ```bash
+   npm install -g @google/clasp
+   clasp login          # autorise avec TON compte Google
+   cat ~/.clasprc.json  # copie tout le contenu affiché
+   ```
+2. **Récupère l'ID du script** : ouvre `.clasp.json` (créé par `clasp create`/`clasp clone`) → champ
+   `scriptId`. *(Ou dans l'éditeur Apps Script : Paramètres du projet → « ID ».)*
+3. **Dépose-les comme secrets GitHub** : repo `DriveAI` → **Settings → Secrets and variables →
+   Actions → New repository secret** :
+   - `CLASPRC_JSON` = le contenu de `~/.clasprc.json` (étape 1) ;
+   - `SCRIPT_ID` = le `scriptId` (étape 2).
+4. **C'est tout.** À la prochaine PR mergée, l'Action **Deploy** pousse le code automatiquement.
+   *(Tant que les secrets sont absents, l'Action ne fait rien et reste verte — aucun échec.)*
+
+> ⚠️ Sécurité : `~/.clasprc.json` contient un jeton OAuth Google. Il vit **uniquement** dans les
+> secrets GitHub (chiffrés), jamais dans le code. Pour révoquer : `clasp logout` + retire le secret.
+
+Le reste de ce document (voies A/B manuelles) reste valable comme repli ou pour le tout premier
+déploiement (création du projet Apps Script, clé Anthropic, trigger).
+
 ## Prérequis
 
 - Ton compte Google (celui qui possède le Drive « Nouvelle structure 2026 »).
