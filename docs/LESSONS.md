@@ -121,3 +121,17 @@ la boucle principale de documents) doit être bornée par le garde-temps partag�
 le reste est repris au tick suivant. Idem : ne jamais hasher (`computeDigest`) un blob sans la même
 borne de taille que l'OCR (mémoire). Vérifier le coût d'un re-traitement sur échec (re-OCR + re-LLM).
 **Règle durable ?** oui.
+
+## 2026-06-25 — Une entité non validée ne doit pas bloquer le classement (re-piège « tout en revue »)
+**Contexte.** Premier run réel de la Phase 2 : **tous** les dépôts sont partis en revue avec
+`[REVUE] entité à valider`. Le PLAN disait « entité inconnue → 00·À vérifier (création via revue) » ;
+or au départ AUCUNE entité n'est validée, donc chaque doc portant une entité devinée (Robovic,
+IMERIR…) partait en revue → l'auto-rangement était **neutralisé**. Exactement le même piège que le
+flag `sensible` trop large.
+**Leçon.** L'entité est un **enrichissement opt-in**, jamais un frein. Entité inconnue/en attente →
+**classer au niveau domaine** (comportement Phase 1) **et** proposer l'entité (`en_attente`) pour
+plus tard ; la création de dossier d'entité, elle, attend la validation (anti-prolifération préservé).
+Règle générale : un nouveau niveau de granularité doit **dégrader vers le niveau précédent** quand
+l'info manque, jamais envoyer en revue. Toujours re-tester sur du réel : « est-ce que ça range encore
+au premier run, avant toute validation ? »
+**Règle durable ?** oui.

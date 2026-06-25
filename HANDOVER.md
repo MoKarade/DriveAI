@@ -54,15 +54,19 @@ Détail des tâches : `BACKLOG.md`.
 
 > Déploiement initial **fait** (clasp push + clé + trigger). Reste :
 
-1. **Déployer la Phase 2** : `git pull && clasp push`. Aucun nouveau scope à autoriser
-   (DriveRest réutilise `drive` + `script.external_request`).
-2. **Tester le dépôt manuel** : glisser un fichier dans `00 · À trier`, lancer `tickDriveAI` →
-   il doit être **déplacé** (pas copié) vers son dossier, ou vers `00·À vérifier` si revue.
-3. **Tester la validation d'entité** : pour une ligne `en_attente` de l'onglet `Entités`, passer
-   son `Statut` à `validée` (corriger le nom si besoin) → au tick suivant ses dossiers se créent
-   et les docs de cette entité s'y rangent.
-4. 🔑 **Révoquer l'ancienne clé Anthropic** partagée dans le chat (compromise), si pas déjà fait.
-5. *(Open point `P1-09`)* mesurer le coût LLM réel pour confirmer < 10 $/mois.
+1. **Déployer la Phase 2 + le correctif P2.1** : `git pull && clasp push`. Aucun nouveau scope.
+   *(P2.1 : une entité non validée ne renvoie plus le document en revue — il est classé au
+   domaine et l'entité est proposée `en_attente`. Sans ça, au 1er run tout partait en revue.)*
+2. **Reclasser ce qui était parti en revue à tort** : lance **`rejouerLaRevue`** une fois. Les
+   dépôts manuels `[REVUE] entité à valider` sont **renvoyés** dans `00·À trier` puis re-classés
+   au domaine ; les copies Gmail sont rejouées. (Aucune suppression d'original.)
+3. **Tester le dépôt manuel** : glisser un fichier dans `00 · À trier`, lancer `tickDriveAI` →
+   il doit être **déplacé** (pas copié) vers son dossier domaine, ou vers `00·À vérifier` si sensible/ambigu.
+4. **Tester la validation d'entité** (optionnel) : pour une ligne `en_attente` de l'onglet
+   `Entités`, passer son `Statut` à `validée` → au tick suivant ses dossiers se créent et les docs
+   de cette entité s'y rangent (rangement plus fin).
+5. 🔑 **Révoquer l'ancienne clé Anthropic** partagée dans le chat (compromise), si pas déjà fait.
+6. *(Open point `P1-09`)* mesurer le coût LLM réel pour confirmer < 10 $/mois.
 
 ## 5. Blocages / risques connus
 

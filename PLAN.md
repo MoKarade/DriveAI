@@ -116,9 +116,13 @@ Trigger 15 min
         │
         ├─ sensible == true ........................→ 00·À vérifier (zone protégée)
         ├─ confiance < 0.80 ........................→ 00·À vérifier
-        ├─ entité inconnue (absente du référentiel) →  00·À vérifier (création via revue)
-        └─ sinon → ranger dans Domaine/Catégorie/Entité/Sous-dossier
+        ├─ doublon de contenu déjà présent .........→ 00·À vérifier (signalé, jamais effacé)
+        ├─ entité connue (validée) → Domaine/Catégorie/Entité/Sous-dossier
+        ├─ entité inconnue/en attente → Domaine/Catégorie (classé) + entité proposée « en_attente »
+        └─ entité null (transverse) → dossier générique du Domaine
                    + renommer AAAA-MM-JJ_Type_Émetteur.ext
+        (Calibration P2.1 : une entité non validée NE bloque PAS le classement — le doc est rangé
+         au domaine et l'entité proposée ; la création de dossier d'entité attend la validation.)
         │
         ▼
   Mail → label DriveAI/traité   |   échec → notif mail immédiate + Journal
