@@ -125,3 +125,8 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   jamais de corbeille — garder ça sur le chemin manuel), borné + reprenable (marquer « fait » seulement
   une fois TOUT consommé), raisonner par `fileId` (pas par nom), ne pas casser l'idempotence du reste.
   Re-auditer par la flotte.
+- **Auto-déploiement (CI/CD) : 2 pièges.** (1) Un merge par le bot `GITHUB_TOKEN` (auto-merge) ne
+  déclenche PAS les workflows `on: push` (anti-récursion) → l'auto-merge doit **dispatcher** le déploiement
+  (`gh workflow run`, `actions: write`). (2) Épingler la version Node des outils CLI sensibles (clasp v3
+  → Node 20 ; Node 22 = « Premature close »). Toujours **vérifier qu'un déploiement auto a vraiment tourné
+  et réussi** (lire les runs), pas juste qu'il « devrait » se déclencher.
