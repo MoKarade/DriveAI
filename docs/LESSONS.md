@@ -150,3 +150,21 @@ jamais avant) ; (3) raisonner par **identifiant stable** (`fileId`), pas par nom
 (4) ne pas invalider l'idempotence de ce qui n'est pas concerné (ne vider que les lignes ciblées de
 l'Index, pas tout — sinon re-OCR/re-LLM inutile = coût). Faire **re-auditer** le diff par la flotte.
 **Règle durable ?** oui.
+
+## 2026-06-26 — Auto-déploiement : 2 pièges qui l'ont rendu muet
+**Contexte.** L'auto-déploiement (`deploy.yml` sur `push: main`) ne déployait JAMAIS après les
+auto-merges : pendant des heures, le moteur de Marc tournait sur du vieux code alors que `main` avait
+4 PR d'avance. Deux causes cumulées :
+1. **Un merge fait par le bot `GITHUB_TOKEN` (l'auto-merge) ne déclenche pas les workflows `on: push`**
+   (sécurité anti-récursion de GitHub Actions). Donc `deploy.yml` ne se lançait que sur le
+   `workflow_dispatch` manuel, jamais sur les merges automatiques.
+2. **`clasp push` (v3) échoue « Premature close » en Node 22** ; il fonctionne en Node 20. En passant
+   les actions en v5 j'avais aussi bougé `node-version` 20→22 → tous les déploiements suivants auraient
+   échoué même s'ils s'étaient déclenchés.
+**Leçon.** (a) Pour déclencher un workflow APRÈS un merge automatique, ne pas compter sur `on: push` :
+le workflow d'auto-merge doit **dispatcher explicitement** le déploiement (`gh workflow run deploy.yml`,
+permission `actions: write`), ou utiliser un PAT. (b) Épingler la version de Node testée pour les outils
+CLI sensibles (clasp v3 → Node 20) ; un bump « cosmétique » de version d'action peut entraîner un bump
+de runtime qui casse l'outil. (c) **Vérifier qu'un déploiement “automatique” a RÉELLEMENT tourné et
+réussi** (lire les runs de l'Action), pas seulement qu'il est « censé » se déclencher.
+**Règle durable ?** oui.

@@ -12,6 +12,7 @@ on:
 permissions:
   contents: write
   pull-requests: write
+  actions: write # pour dispatcher le workflow Deploy après le merge
 
 jobs:
   automerge:
@@ -48,3 +49,9 @@ jobs:
 
           # Merge en squash + suppression de la branche.
           gh pr merge "$number" --repo "$REPO" --squash --delete-branch
+
+          # IMPORTANT : un merge fait par le bot (GITHUB_TOKEN) NE déclenche PAS les workflows
+          # `on: push` (sécurité anti-récursion de GitHub Actions). On dispatche donc Deploy
+          # explicitement pour que chaque merge déploie le moteur dans le projet Apps Script.
+          gh workflow run deploy.yml --repo "$REPO" --ref main \
+            || echo "Dispatch de Deploy non effectué (workflow absent ou secrets manquants) — ignoré."

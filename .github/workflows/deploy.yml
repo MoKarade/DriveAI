@@ -49,7 +49,7 @@ jobs:
         if: steps.guard.outputs.ready == 'true'
         uses: actions/setup-node@v5
         with:
-          node-version: '22'
+          node-version: '20' # clasp v3 échoue « Premature close » en Node 22 ; 20 fonctionne
 
       - name: Installer clasp
         if: steps.guard.outputs.ready == 'true'
@@ -66,4 +66,4 @@ jobs:
 
       - name: Pousser le code
         if: steps.guard.outputs.ready == 'true'
-        run: clasp push --force
+        run: clasp push --force || (sleep 5 && clasp push --force) # retry léger (erreurs réseau transitoires)
