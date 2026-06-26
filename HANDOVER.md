@@ -35,6 +35,12 @@
   désormais aussi les `[REVUE] confiance …` (2e passe, déplacement seul). La zone protégée
   (`[REVUE] sensible`) n'est **jamais** reprise (garde-fou §1) : passeports/immigration/fiscal restent
   en revue par conception.
+- **P2.5 (escalade)** : la confiance basse n'envoie plus en revue — elle déclenche une **analyse
+  approfondie** (Sonnet ×3, consensus de domaine) puis le doc est **classé au meilleur endroit**.
+  Seuls restent en revue : zone protégée + domaine introuvable. Coût borné (plafond d'escalades/run,
+  fallback simple sur échec Haiku, docs sensibles non escaladés). Revue flotte 🟢 (sécurité + coût).
+- **fix CI/CD** : l'auto-déploiement était muet (merge bot ne déclenche pas `on: push` ; clasp casse en
+  Node 22). Réparé : auto-merge **dispatche** Deploy ; Node 20. **Vérifier les runs de l'Action Deploy.**
 - **Prochaine étape produit** : Marc configure l'auto-déploiement (2 secrets, cf. `docs/DEPLOIEMENT.md`),
   puis **Phase 3**. *(Rappel : déploiement/exécution vivent dans le compte Google de Marc ; l'Action
   GitHub y accède via l'identifiant clasp qu'il dépose une fois — ce conteneur n'y a jamais accès.)*

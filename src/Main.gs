@@ -64,6 +64,7 @@ function tickDriveAI() {
   try {
     reinitialiserIndexCache_();
     reinitialiserEntitesCache_();
+    reinitialiserEscalades_(); // plafond d'escalades LLM par run (anti-emballement de coût)
 
     // Applique un éventuel changement d'intervalle (CONFIG.TICK_MINUTES) sans action manuelle.
     // Secondaire : un échec ne doit JAMAIS bloquer l'intake (cf. audit quotas).

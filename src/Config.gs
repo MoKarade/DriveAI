@@ -12,7 +12,7 @@ var CONFIG = {
   // la version stockée diffère, le moteur renvoie automatiquement les DÉPÔTS partis
   // en revue vers 00·À trier pour reclassement (cf. Main.appliquerRejeuSiNouvelleVersion_)
   // — borné, réversible, sans toucher aux PJ Gmail ni aux docs déjà classés. Zéro clic.
-  VERSION: 'P2.3',
+  VERSION: 'P2.5',
 
   // --- Seuils & modèle ---
   SEUIL_CONFIANCE: 0.50,                 // sous ce seuil → file de revue (abaissé de 0.80 sur demande)
@@ -20,6 +20,12 @@ var CONFIG = {
   LLM_MODELE_FALLBACK: 'claude-sonnet-4-6', // fallback ponctuel si Haiku échoue
   LLM_MAX_TOKENS: 400,
   LLM_OCR_MAX_CARS: 4000,                // troncature de l'extrait envoyé au LLM (coût)
+  // Escalade : si Haiku rend une confiance < SEUIL (et doc NON sensible), on relance
+  // une analyse approfondie avec Sonnet, plusieurs passes, et on garde la meilleure (consensus
+  // de domaine puis confiance max). 3 passes (impair → vote utile). Borné pour le budget
+  // (< 10 $/mois) : ne concerne que les cas peu sûrs, et plafonné par run ci-dessous.
+  LLM_ESCALADE_PASSES: 3,
+  LLM_ESCALADE_MAX_PAR_RUN: 25,           // au-delà : on garde le résultat Haiku (dégradation propre)
 
   // Intervalle du déclencheur temporel (minutes). Valeurs Apps Script admises : 1, 5, 10, 15, 30.
   // Modifiable à chaud : au tick suivant un déploiement, le moteur réinstalle le déclencheur
