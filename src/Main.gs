@@ -70,12 +70,50 @@ function appliquerRejeuSiNouvelleVersion_(estBudgetDepasse) {
   var props = PropertiesService.getScriptProperties();
   if (props.getProperty('DriveAI_VERSION') === CONFIG.VERSION) return;
 
-  var reste = rejeuAutoDesDepots_(estBudgetDepasse);
-  if (!reste) {
+  // Deux passes, toutes deux en DÉPLACEMENT seul (réversible, aucune corbeille) :
+  //  1. dépôts manuels partis en revue (clé Index `drive|…`) ;
+  //  2. docs « [REVUE] confiance … » (confiance basse) — touchés par un changement de seuil.
+  // La zone protégée (« [REVUE] sensible … ») n'est JAMAIS reprise (garde-fou §1).
+  var reste1 = rejeuAutoDesDepots_(estBudgetDepasse);
+  var reste2 = rejeuAutoDesConfiances_(estBudgetDepasse);
+  if (!reste1 && !reste2) {
     // Rejeu entièrement consommé → on fige la version (anti-re-déclenchement).
     props.setProperty('DriveAI_VERSION', CONFIG.VERSION);
     journalInfo_('Maintenance', 'Rejeu auto terminé — version « ' + CONFIG.VERSION + ' » figée.');
   }
+}
+
+/**
+ * Renvoie les docs « [REVUE] confiance … » de `00·À vérifier` vers `00·À trier` pour
+ * reclassement avec le seuil courant. **Déplacement seul** (réversible) : aucune corbeille,
+ * aucune écriture d'Index. La copie déplacée se re-traite comme un dépôt (clé `drive|nouvelId`,
+ * non indexée) ; la PJ Gmail d'origine reste « faite » dans l'Index → pas de doublon. La zone
+ * protégée (« [REVUE] sensible … ») est ignorée (jamais reprise).
+ *
+ * @param {function():boolean} estBudgetDepasse
+ * @return {boolean} vrai s'il reste des docs à renvoyer (plafond/budget atteint).
+ */
+function rejeuAutoDesConfiances_(estBudgetDepasse) {
+  var dossier = DriveApp.getFolderById(CONFIG.DOSSIERS.A_VERIFIER);
+  var it = dossier.getFiles();
+  var ids = [];
+  while (it.hasNext()) {
+    var f = it.next();
+    if (f.getName().indexOf('[REVUE] confiance') === 0) ids.push(f.getId());
+  }
+  if (!ids.length) return false;
+
+  var n = 0;
+  for (var i = 0; i < ids.length; i++) {
+    if (n >= CONFIG.REJEU_PAGE || estBudgetDepasse()) break;
+    var fid = ids[i];
+    var nom = DriveApp.getFileById(fid).getName();
+    if (deplacerEtRenommer_(fid, CONFIG.DOSSIERS.A_TRIER, CONFIG.DOSSIERS.A_VERIFIER, nom)) n++;
+  }
+  if (n) {
+    journalInfo_('Maintenance', n + ' doc(s) « confiance basse » renvoyé(s) dans 00·À trier (rejeu auto).');
+  }
+  return ids.length > n;
 }
 
 /**

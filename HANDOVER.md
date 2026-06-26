@@ -29,7 +29,12 @@
 - **Full auto (P2.2)** : Action GitHub **Deploy** (`clasp push` auto sur merge `main`, via secrets
   `CLASPRC_JSON`/`SCRIPT_ID`) + **auto-rejeu** sur bump de `CONFIG.VERSION` (renvoie les dépôts en
   revue vers `00·À trier`, borné/réversible). Après le réglage unique des 2 secrets, Marc ne fait plus
-  ni `clasp push` ni `rejouerLaRevue`.
+  ni `clasp push` ni `rejouerLaRevue`. **Validé en réel le 2026-06-26** (auto-déploiement + auto-rejeu
+  ont reclassé 5 dépôts sans intervention).
+- **P2.3** : `SEUIL_CONFIANCE` abaissé **0.80 → 0.50** (sur demande de Marc) ; l'auto-rejeu reprend
+  désormais aussi les `[REVUE] confiance …` (2e passe, déplacement seul). La zone protégée
+  (`[REVUE] sensible`) n'est **jamais** reprise (garde-fou §1) : passeports/immigration/fiscal restent
+  en revue par conception.
 - **Prochaine étape produit** : Marc configure l'auto-déploiement (2 secrets, cf. `docs/DEPLOIEMENT.md`),
   puis **Phase 3**. *(Rappel : déploiement/exécution vivent dans le compte Google de Marc ; l'Action
   GitHub y accède via l'identifiant clasp qu'il dépose une fois — ce conteneur n'y a jamais accès.)*

@@ -12,10 +12,10 @@ var CONFIG = {
   // la version stockée diffère, le moteur renvoie automatiquement les DÉPÔTS partis
   // en revue vers 00·À trier pour reclassement (cf. Main.appliquerRejeuSiNouvelleVersion_)
   // — borné, réversible, sans toucher aux PJ Gmail ni aux docs déjà classés. Zéro clic.
-  VERSION: 'P2.1',
+  VERSION: 'P2.3',
 
   // --- Seuils & modèle ---
-  SEUIL_CONFIANCE: 0.80,                 // sous ce seuil → file de revue
+  SEUIL_CONFIANCE: 0.50,                 // sous ce seuil → file de revue (abaissé de 0.80 sur demande)
   LLM_MODELE: 'claude-haiku-4-5',        // Haiku par défaut (le moins cher)
   LLM_MODELE_FALLBACK: 'claude-sonnet-4-6', // fallback ponctuel si Haiku échoue
   LLM_MAX_TOKENS: 400,

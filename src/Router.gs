@@ -67,6 +67,11 @@ function revue_(raison, classif, date, ext) {
 /**
  * @param {Object} classif
  * @return {string} motif de revue, ou '' si classable automatiquement.
+ *
+ * INVARIANT DE SÛRETÉ — NE PAS RÉORDONNER : `sensible` et `zone protégée` doivent rester
+ * testés AVANT `confiance`. L'auto-rejeu (Main.rejeuAutoDesConfiances_) ne reprend que les
+ * `[REVUE] confiance …` ; si un doc immigration/fiscal à basse confiance recevait la raison
+ * « confiance » au lieu de « sensible », il sortirait de la zone protégée (garde-fou §1 violé).
  */
 function motifDeRevue_(classif) {
   if (classif.sensible === true) return 'sensible';
