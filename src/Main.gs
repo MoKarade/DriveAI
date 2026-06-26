@@ -1,5 +1,5 @@
 /**
- * Main.gs — Orchestration du pipeline et installation du trigger 15 min.
+ * Main.gs — Orchestration du pipeline et installation du déclencheur (CONFIG.TICK_MINUTES).
  *
  * À lancer une fois à la main : installerTrigger().
  *
@@ -12,13 +12,46 @@
  * le run ; le reste est repris au tick suivant.
  */
 
-/** Installe (idempotemment) le déclencheur temporel de 15 minutes. */
+/**
+ * Installe (idempotemment) le déclencheur temporel (CONFIG.TICK_MINUTES).
+ * Lancé À LA MAIN par Marc (hors d'un run déclenché) → l'ordre delete-then-create est sûr ici
+ * (le bref instant à 0 déclencheur est sans conséquence). L'ajustement AUTOMATIQUE en cours de
+ * run, lui, utilise l'ordre inverse (create-then-delete) — cf. assurerIntervalleTick_.
+ */
 function installerTrigger() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'tickDriveAI') ScriptApp.deleteTrigger(t);
   });
-  ScriptApp.newTrigger('tickDriveAI').timeBased().everyMinutes(15).create();
-  journalInfo_('Setup', 'Trigger 15 min installé.');
+  ScriptApp.newTrigger('tickDriveAI').timeBased().everyMinutes(CONFIG.TICK_MINUTES).create();
+  PropertiesService.getScriptProperties().setProperty('DriveAI_TICK_MINUTES', String(CONFIG.TICK_MINUTES));
+  journalInfo_('Setup', 'Déclencheur ' + CONFIG.TICK_MINUTES + ' min installé.');
+}
+
+/**
+ * Réinstalle le déclencheur si son intervalle (CONFIG.TICK_MINUTES) a changé depuis le
+ * dernier réglage (Script Property `DriveAI_TICK_MINUTES`). Permet de changer la fréquence
+ * par config seule, appliquée automatiquement au déploiement suivant — sans re-`installerTrigger`.
+ *
+ * Sûreté (audit quotas) :
+ *   1. on CRÉE le nouveau déclencheur d'ABORD → jamais 0 déclencheur (qui figerait le moteur) :
+ *      si la création échoue, l'ancien subsiste et on retentera au tick suivant ;
+ *   2. on pose la propriété JUSTE APRÈS la création réussie → empêche d'accumuler un nouveau
+ *      déclencheur à chaque tick si la purge échoue ensuite (anti-saturation du quota ~20) ;
+ *   3. on purge enfin les autres `tickDriveAI` (au pire un doublon résiduel, dédupliqué par le verrou).
+ * L'appelant enveloppe d'un try/catch : un échec d'ajustement ne doit jamais bloquer l'intake.
+ */
+function assurerIntervalleTick_() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DriveAI_TICK_MINUTES') === String(CONFIG.TICK_MINUTES)) return;
+
+  var nouveau = ScriptApp.newTrigger('tickDriveAI').timeBased().everyMinutes(CONFIG.TICK_MINUTES).create();
+  props.setProperty('DriveAI_TICK_MINUTES', String(CONFIG.TICK_MINUTES)); // marqué FAIT dès la création
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'tickDriveAI' && t.getUniqueId() !== nouveau.getUniqueId()) {
+      ScriptApp.deleteTrigger(t);
+    }
+  });
+  journalInfo_('Setup', 'Intervalle du déclencheur ajusté à ' + CONFIG.TICK_MINUTES + ' min.');
 }
 
 /** Un passage du pipeline : Gmail + dépôt manuel → classement / revue. */
@@ -31,6 +64,11 @@ function tickDriveAI() {
   try {
     reinitialiserIndexCache_();
     reinitialiserEntitesCache_();
+
+    // Applique un éventuel changement d'intervalle (CONFIG.TICK_MINUTES) sans action manuelle.
+    // Secondaire : un échec ne doit JAMAIS bloquer l'intake (cf. audit quotas).
+    try { assurerIntervalleTick_(); }
+    catch (e) { journalInfo_('Setup', 'Ajustement d\'intervalle différé : ' + e); }
 
     var debut = Date.now();
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };

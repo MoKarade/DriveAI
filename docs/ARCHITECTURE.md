@@ -5,7 +5,7 @@
 ## Vue d'ensemble
 
 ```
-┌─────────────┐   trigger 15 min   ┌──────────────────────┐
+┌─────────────┐   trigger 10 min   ┌──────────────────────┐
 │  Gmail (PJ) │ ─────────────────▶ │  Apps Script (moteur) │
 │ 00·À trier  │                    │  Gmail / Drive / Ocr  │
 └─────────────┘                    │  Llm / Router / Journal│
@@ -38,7 +38,7 @@
   - `spreadsheets` — état (Index/Journal/Revue/Entités).
   - `script.send_mail` — **notifications d'échec à soi-même** (`MailApp`, envoi *as-self*, pas un
     scope d'envoi tiers). Requis par la DoD Phase 1 (« notif mail immédiate »).
-  - `script.scriptapp` — installation du trigger 15 min (`ScriptApp.newTrigger`). Requis par la DoD.
+  - `script.scriptapp` — installation/ajustement du déclencheur (`ScriptApp.newTrigger`, `CONFIG.TICK_MINUTES`). Requis par la DoD.
   - *(Phase 3)* `.../auth/tasks`, `.../auth/calendar`
 - **Idempotence sans écriture Gmail** : `gmail.readonly` interdit la pose d'un label de
   traitement. L'idempotence est donc portée **uniquement par l'`Index`** (clé

@@ -21,6 +21,11 @@ var CONFIG = {
   LLM_MAX_TOKENS: 400,
   LLM_OCR_MAX_CARS: 4000,                // troncature de l'extrait envoyé au LLM (coût)
 
+  // Intervalle du déclencheur temporel (minutes). Valeurs Apps Script admises : 1, 5, 10, 15, 30.
+  // Modifiable à chaud : au tick suivant un déploiement, le moteur réinstalle le déclencheur
+  // au nouvel intervalle tout seul (cf. Main.assurerIntervalleTick_). Aucun re-installerTrigger manuel.
+  TICK_MINUTES: 10,
+
   // --- Gmail (lecture seule) & lots ---
   // Idempotence assurée par l'Index (clé messageId|i|nom|taille), PAS par un
   // label : le scope gmail.readonly interdit toute écriture dans la boîte.

@@ -40,7 +40,7 @@ tout d'un bloc. Cf. §5.
 | Doc transverse | **Dossier générique du domaine** | `entite = null` |
 | Doublon | **Signalé** dans la revue (jamais effacé auto) | |
 | Tri tâche/événement | **Le LLM décide au cas par cas** | heure précise → Calendar, action → Tasks |
-| Fréquence | **Scan toutes les 15 min** (trigger temporel) | |
+| Fréquence | **Scan toutes les 10 min** (trigger temporel ; `CONFIG.TICK_MINUTES`) | abaissé de 15→10 |
 | Incidents | **Notification mail immédiate** à chaque échec | grouper si ça spamme = réserve |
 | Nommage fichier | `AAAA-MM-JJ_Type_Émetteur.ext` | l'entité est dans le chemin |
 | Date si absente | **Date de réception du mail** | |
@@ -101,7 +101,7 @@ de sous-dossiers. Résumé :
 ## 4. Le flux de traitement (pipeline)
 
 ```
-Trigger 15 min
+Trigger 10 min
   → mails Gmail [has:attachment -label:DriveAI/traité newer_than:30d]
   → dossier 00·À trier (fichiers déposés à la main)
         │

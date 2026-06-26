@@ -73,7 +73,7 @@ Détail des tâches : `BACKLOG.md`.
 3. 🔑 **Révoquer l'ancienne clé Anthropic** partagée dans le chat (compromise), si pas déjà fait.
 4. *(Open point `P1-09`)* mesurer le coût LLM réel pour confirmer < 10 $/mois.
 
-> Steady-state désormais **100 % automatique** : nouveaux mails + dépôts traités par le trigger 15 min ;
+> Steady-state désormais **100 % automatique** : nouveaux mails + dépôts traités par le trigger 10 min ;
 > mes changements de code déployés par l'Action ; reclassement après recalibrage par l'auto-rejeu.
 > Le `rejouerLaRevue` manuel reste dispo (c'est le seul endroit qui met des copies Gmail à la corbeille).
 
@@ -86,6 +86,11 @@ Détail des tâches : `BACKLOG.md`.
 - **Phase 1, limites assumées** : volume très élevé (> ~une page de fils / 15 min) traité sur
   plusieurs ticks ; une classification en échec persistant est re-notifiée et n'est déposée nulle
   part (re-tentée tant que le mail est dans la fenêtre 30 j). À revisiter si gênant.
+- **Cadence 10 min & quota (audit)** : les comptes Gmail grand public ont ~90 min/jour de temps de
+  déclencheur. À 10 min (144 ticks/j), la plupart sont des no-op, mais ~20 runs « pleins » (jusqu'au
+  garde-temps `BUDGET_MS` 4.5 min) suffiraient à l'épuiser. Volume perso de Marc → marge large. Si une
+  journée chargée coupe les triggers, revenir à `TICK_MINUTES: 15` ou baisser `BUDGET_MS` (reprise au
+  tick suivant déjà en place). Le déclencheur se ré-installe seul au déploiement (création avant purge).
 - **Phase 2, limites assumées** (relevées par la flotte, non bloquantes) : (a) un document en échec
   LLM/placement persistant est re-OCRisé + re-classé à **chaque** tick (pas de quarantaine après N
   échecs → coût) ; (b) la **copie Gmail** et les **raccourcis multi-entités** ne sont pas idempotents
