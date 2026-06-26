@@ -10,7 +10,8 @@
 > Objectif : **plus jamais de `clasp push` ni de fonction à lancer à la main.** Après ce réglage
 > unique, chaque évolution mergée sur `main` est **déployée toute seule** chez toi (GitHub Action
 > `clasp push`), et le moteur **rejoue automatiquement** les dépôts partis en revue quand la logique
-> de classement change (`CONFIG.VERSION`). Le scan tourne déjà tout seul toutes les 15 min.
+> de classement change (`CONFIG.VERSION`). Le scan tourne déjà tout seul toutes les 10 min
+> (`CONFIG.TICK_MINUTES` ; l'intervalle se ré-applique seul au déploiement, sans re-`installerTrigger`).
 
 **Pourquoi une config manuelle unique ?** Déployer dans *ton* compte Google exige un identifiant que
 toi seul peux générer — personne d'autre ne peut y accéder (c'est une protection). Tu le déposes une
@@ -84,11 +85,13 @@ l'API Drive du projet est désactivée : panneau **Services** (＋) → ajoute *
 - Nom : `DriveAI_ANTHROPIC_KEY`
 - Valeur : *ta nouvelle clé Anthropic*
 
-### 7. Installer le déclencheur 15 min
+### 7. Installer le déclencheur (10 min)
 Dans l'éditeur, sélectionne la fonction **`installerTrigger`** dans la barre d'outils → **Exécuter**.
 - Google affiche un écran de **consentement** listant les autorisations (Gmail lecture seule,
   Drive, requêtes externes, Sheets, envoi de mail, gestion des déclencheurs). **Autorise.**
-- Vérifie : icône **Déclencheurs** (réveil) → un déclencheur `tickDriveAI` toutes les 15 min.
+- Vérifie : icône **Déclencheurs** (réveil) → un déclencheur `tickDriveAI` toutes les 10 min.
+- *(La fréquence vit dans `CONFIG.TICK_MINUTES` ; si tu la changes plus tard, le moteur réinstalle
+  le déclencheur tout seul au déploiement suivant — pas besoin de relancer `installerTrigger`.)*
 
 ### 8. C'est en route
 Au premier passage, DriveAI crée la Google Sheet **« DriveAI — État »** (son ID est stocké dans
@@ -111,7 +114,7 @@ la propriété `DriveAI_SHEET_ID`). Onglets : `Entités`, `Index`, `Journal`, `R
 
 ## Tester (recette de la DoD Phase 1)
 
-> Astuce : pour ne pas attendre 15 min, exécute **`tickDriveAI`** à la main dans l'éditeur.
+> Astuce : pour ne pas attendre 10 min, exécute **`tickDriveAI`** à la main dans l'éditeur.
 
 1. **Cas nominal** — envoie-toi un mail avec une **PJ PDF** (ex. une facture Hydro-Québec).
    Lance `tickDriveAI`. Attendu : un fichier `AAAA-MM-JJ_Facture_Hydro-Quebec.pdf` apparaît dans

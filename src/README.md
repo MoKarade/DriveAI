@@ -9,7 +9,7 @@
 2. Copie `.clasp.json.example` → `.clasp.json` et renseigne le `scriptId` (fichier gitignoré).
 3. `clasp push` (ou colle les fichiers dans l'éditeur).
 4. Dans **Project Settings → Script Properties**, ajoute `DriveAI_ANTHROPIC_KEY` (ta clé Anthropic).
-5. Exécute `installerTrigger()` une fois (autorise les scopes) → le scan tourne ensuite toutes les 15 min.
+5. Exécute `installerTrigger()` une fois (autorise les scopes) → le scan tourne ensuite toutes les `CONFIG.TICK_MINUTES` (10 min ; modifiable à chaud, appliqué au déploiement suivant).
 6. La Google Sheet d'état est créée automatiquement au premier run (ID stocké dans `DriveAI_SHEET_ID`).
 
 ## Modules
@@ -23,7 +23,7 @@
 | `Llm.gs` | Appel Anthropic (`UrlFetchApp`), prompt de classification, parsing JSON robuste |
 | `Router.gs` | Règles de routage (PLAN.md §4), renommage, déplacement, encodage de revue |
 | `Journal.gs` | Log dans la Sheet + notif mail immédiate en cas d'échec |
-| `Main.gs` | Orchestration + installation du trigger 15 min |
+| `Main.gs` | Orchestration + installation/ajustement auto du déclencheur (`CONFIG.TICK_MINUTES`) |
 
 Déploiement envisagé via [`clasp`](https://github.com/google/clasp). Les identifiants clasp
 (`.clasprc.json`, `.clasp.json`) sont **gitignorés** — ne jamais les committer.
