@@ -74,6 +74,12 @@ var CONFIG = {
   // Dossier d'entrée scanné pour le dépôt manuel (réutilise A_TRIER ci-dessus).
   INTAKE_PAGE: 50,                        // nb de fichiers de 00·À trier traités par run
   REJEU_PAGE: 100,                        // nb de dépôts renvoyés par run lors d'un auto-rejeu
+  RANGEMENT_MAX_PAR_RUN: 200,             // grand rangement : nb de fichiers renvoyés vers 00·À trier par run
+  // Grand rangement initial AUTO (zéro clic) : tant que le tag stocké (Script Property
+  // `DriveAI_RANGEMENT`) diffère de celui-ci, le moteur renvoie au fil des ticks TOUT le contenu
+  // « en vrac » des domaines vers 00·À trier pour reclassement/renommage (cf. Main.appliquerRangementInitial_).
+  // Borné/run, reprenable, déplacement seul (jamais de suppression). Bumper ce tag relance un rangement complet.
+  RANGEMENT_TAG: 'r1',
 
   // Schémas de sous-dossiers FIXES créés à la validation d'une entité (docs/TAXONOMY.md).
   // Clé = Type d'entité ; valeur = liste ordonnée de sous-dossiers.

@@ -168,3 +168,24 @@ CLI sensibles (clasp v3 → Node 20) ; un bump « cosmétique » de version d'ac
 de runtime qui casse l'outil. (c) **Vérifier qu'un déploiement “automatique” a RÉELLEMENT tourné et
 réussi** (lire les runs de l'Action), pas seulement qu'il est « censé » se déclencher.
 **Règle durable ?** oui.
+
+## 2026-06-27 — Reclassement de masse auto : convergence par prédicat de skip + garde zone protégée multi-parents
+**Contexte.** Marc voulait que **tout** son Drive existant soit reclassé/renommé/rangé, sans clic.
+Mécanique retenue (P2.6) : un rangement initial gated par `CONFIG.RANGEMENT_TAG` renvoie au fil des
+ticks le contenu « en vrac » (nom non `AAAA-MM-JJ_`) des domaines vers `00·À trier`, et le pipeline
+le reprend. Deux pièges relevés par la flotte avant merge :
+1. **Détachement de la zone protégée** (BLOQUANT sécurité) : déplacer un fichier en retirant *tous*
+   ses parents sauf la cible détache un fichier **multi-parents** de `04 · Immigration`. Le garde-fou
+   « ne pas parcourir le dossier protégé » ne suffit pas : le fichier est atteint via son AUTRE parent.
+2. **Boucle de coût** : si un fichier reclassé pouvait être re-collecté indéfiniment, on re-paie OCR+LLM
+   à chaque tick.
+**Leçon.** Pour un reclassement de masse **automatique** : (a) la convergence doit reposer sur un
+**prédicat de skip stable** que le pipeline produit lui-même — ici le renommage `AAAA-MM-JJ_` garantit
+qu'un fichier traité n'est **jamais** re-collecté (vérifier que le renommeur produit TOUJOURS ce format) ;
+ne figer le « fait » que lorsqu'une passe complète ne collecte **plus rien**. (b) Le garde de zone
+protégée doit **remonter toute la chaîne d'ancêtres** (multi-parents, profondeur bornée), pas tester
+l'appartenance directe — et s'appliquer **deux fois** : au filtre de collecte ET juste avant la mutation
+(défense en profondeur). (c) Toute op de maintenance auto reste **déplacement seul** (jamais corbeille),
+**bornée** (garde-temps + plafond/run) et **reprenable** ; ne pas enchaîner un sous-run (`tickDriveAI`)
+sans vérifier qu'il reste du budget (sinon dépassement de la limite dure 6 min). Re-auditer par la flotte.
+**Règle durable ?** oui.

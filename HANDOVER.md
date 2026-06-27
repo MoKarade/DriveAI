@@ -4,10 +4,12 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **Dernière mise à jour : 2026-06-25** — **Phase 2 + full auto**. Dépôt manuel + référentiel d'entités
-> (mergé), calibration P2.1 (entité = enrichissement), et **P2.2 full auto** : auto-déploiement
-> (`clasp push` sur merge) + auto-rejeu sur bump de version. Reste à Marc : **2 secrets GitHub une fois**
-> (`docs/DEPLOIEMENT.md`), puis plus aucune action manuelle.
+> **Dernière mise à jour : 2026-06-27** — **Phase 2 + full auto**. Dépôt manuel + référentiel d'entités,
+> P2.1 (entité = enrichissement), P2.2 full auto (auto-déploiement + auto-rejeu), P2.3 (seuil 0.50),
+> P2.4 (tick 10 min), **P2.5 escalade** (confiance basse → analyse approfondie Sonnet → classé, plus en
+> revue), et **P2.6 grand rangement auto** : tout le contenu « en vrac » des domaines est renvoyé au fil
+> des ticks vers `00·À trier` pour être reclassé/renommé — zéro clic, borné, reprenable, déplacement seul,
+> zone protégée écartée. Reste à Marc : **2 secrets GitHub une fois** (`docs/DEPLOIEMENT.md`).
 
 ---
 
@@ -41,6 +43,14 @@
   fallback simple sur échec Haiku, docs sensibles non escaladés). Revue flotte 🟢 (sécurité + coût).
 - **fix CI/CD** : l'auto-déploiement était muet (merge bot ne déclenche pas `on: push` ; clasp casse en
   Node 22). Réparé : auto-merge **dispatche** Deploy ; Node 20. **Vérifier les runs de l'Action Deploy.**
+- **P2.6 (grand rangement auto)** : sur demande de Marc (« tout mon Drive reclassé/renommé/au bon
+  endroit »), un rangement initial **zéro clic** gated par `CONFIG.RANGEMENT_TAG` renvoie au fil des ticks
+  tout le contenu « en vrac » (nom non `AAAA-MM-JJ_`) des domaines NON protégés vers `00·À trier` ; le
+  pipeline le reprend (OCR → analyse approfondie → renommage → classement, sous-dossiers créés au besoin).
+  Borné (`RANGEMENT_MAX_PAR_RUN` + garde-temps), reprenable (tag figé seulement quand une passe ne collecte
+  plus rien), **déplacement seul** (aucune corbeille), et **zone protégée écartée** même pour un fichier
+  multi-parents (garde un parent dans `04 · Immigration` ⇒ jamais détaché). Re-audité flotte 🟢 (sécurité
+  BLOQUANT levé + garde-temps). `_Archive 2025` non concernée. Lançable aussi à la main (`rangerToutLeDrive`).
 - **Prochaine étape produit** : Marc configure l'auto-déploiement (2 secrets, cf. `docs/DEPLOIEMENT.md`),
   puis **Phase 3**. *(Rappel : déploiement/exécution vivent dans le compte Google de Marc ; l'Action
   GitHub y accède via l'identifiant clasp qu'il dépose une fois — ce conteneur n'y a jamais accès.)*
@@ -114,6 +124,17 @@ Détail des tâches : `BACKLOG.md`.
 
 ## 7. Historique des sessions
 
+- **2026-06-27 (P2.5 escalade + P2.6 grand rangement)** — **P2.5** : la confiance basse ne part plus en
+  revue → `analyseApprofondie_` (Sonnet ×3, consensus de domaine puis confiance max), classé au meilleur
+  endroit ; fallback Sonnet simple sur échec Haiku total (anti-boucle de coût), plafond d'escalades/run,
+  docs sensibles jamais escaladés. **P2.6** : `rangerToutLeDrive`/`rangerUnePage_` + hook auto
+  `appliquerRangementInitial_` (gated `CONFIG.RANGEMENT_TAG`) renvoient au fil des ticks tout le « vrac »
+  des domaines vers `00·À trier`. Garde-fous re-audités par la flotte : **sécurité** — un fichier ayant un
+  parent dans (ou sous) `04 · Immigration` est écarté à la collecte ET re-vérifié avant tout déplacement
+  (`aParentProtege_`/`chaineMonteVersProtege_`), jamais détaché de la zone protégée (BLOQUANT initial levé) ;
+  **garde-temps** — collecte récursive bornée + try/catch → `notifierEchec_`, amorce `tickDriveAI()` seulement
+  s'il reste du budget (anti-dépassement des 6 min). Convergence garantie : le pipeline renomme toujours en
+  `AAAA-MM-JJ_` → jamais re-collecté (idempotent).
 - **2026-06-25 (P2.2 — full auto)** — **Auto-déploiement** : Action `Deploy` (`.github/workflows/deploy.yml`,
   `clasp push` sur merge `main`, secrets `CLASPRC_JSON`/`SCRIPT_ID`, inactive sans secrets). **Auto-rejeu** :
   `CONFIG.VERSION` + `appliquerRejeuSiNouvelleVersion_`/`rejeuAutoDesDepots_` renvoient les dépôts partis
