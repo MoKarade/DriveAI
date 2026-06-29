@@ -68,18 +68,14 @@ function revue_(raison, classif, date, ext) {
  * @param {Object} classif
  * @return {string} motif de revue, ou '' si classable automatiquement.
  *
- * INVARIANT DE SÛRETÉ — NE PAS RÉORDONNER : `sensible` et `zone protégée` doivent rester
- * testés AVANT `confiance`. L'auto-rejeu (Main.rejeuAutoDesConfiances_) ne reprend que les
- * `[REVUE] confiance …` ; si un doc immigration/fiscal à basse confiance recevait la raison
- * « confiance » au lieu de « sensible », il sortirait de la zone protégée (garde-fou §1 violé).
+ * La confiance basse n'envoie PLUS en revue : elle déclenche une analyse approfondie
+ * (cf. Llm.classifier_), après quoi le document est CLASSÉ à sa meilleure estimation.
+ * Ne restent en revue que : la zone protégée (sensible / immigration / fiscal — garde-fou
+ * §1, non négociable) et un domaine introuvable (dernier recours, vraiment inclassable).
  */
 function motifDeRevue_(classif) {
   if (classif.sensible === true) return 'sensible';
   if (CONFIG.DOMAINES_PROTEGES.indexOf(classif.domaine) !== -1) return 'zone protégée';
-  if (typeof classif.confiance !== 'number' ||
-      classif.confiance < CONFIG.SEUIL_CONFIANCE || classif.confiance > 1) {
-    return 'confiance ' + (classif.confiance != null ? classif.confiance : '?');
-  }
   if (!CONFIG.DOMAINES[classif.domaine]) return 'domaine inconnu';
   return '';
 }

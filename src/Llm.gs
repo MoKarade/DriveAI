@@ -31,26 +31,89 @@ var PROMPT_SYSTEME =
   'Domaines autorisés : ' + domainesAutorises_().join(' | ') + '\n' +
   'Catégories connues : ' + categoriesConnues_().join(' | ') + ' (sinon null)';
 
+// Prompt d'ESCALADE : pour les documents que Haiku a mal cernés. On pousse le modèle
+// à raisonner et à TOUJOURS proposer son meilleur domaine/catégorie (jamais « inconnu »),
+// tout en gardant la même règle de sécurité (sensible).
+var PROMPT_ESCALADE = PROMPT_SYSTEME + '\n\n' +
+  'CONTEXTE : ce document a été jugé difficile à classer. Analyse-le EN PROFONDEUR (émetteur, ' +
+  'type, contenu, indices du nom de fichier) et donne ta MEILLEURE estimation de domaine et de ' +
+  'catégorie, même si tu n\'es pas totalement certain — ne laisse jamais le domaine vide ou hors ' +
+  'liste. La règle de sécurité (sensible = immigration/statut ou fiscalité) reste prioritaire.';
+
 /**
- * Classe un document. Tente Haiku, puis Sonnet en secours.
+ * Classe un document. Haiku d'abord ; si échec ou confiance basse (et NON sensible),
+ * escalade vers une analyse approfondie (Sonnet, plusieurs passes) et garde la meilleure.
  * @param {{nomFichier:string, expediteur:string, sujet:string, extrait:string}} meta
  * @return {Object|null} la classification, ou null si échec total.
  */
 function classifier_(meta) {
   var classif = appelAnthropic_(CONFIG.LLM_MODELE, meta);
+
+  // Échec TOTAL de Haiku → fallback Sonnet SIMPLE (1 appel), comme en Phase 1. On n'escalade
+  // PAS en multi-passes sur un échec : sinon un doc qui fait systématiquement planter le parsing
+  // (jamais inscrit à l'Index) rejouerait Haiku + N×Sonnet à chaque tick → emballement de coût.
   if (!classif) {
-    journalInfo_('LLM', 'Haiku a échoué, tentative Sonnet pour « ' + meta.nomFichier + ' »');
-    classif = appelAnthropic_(CONFIG.LLM_MODELE_FALLBACK, meta);
+    journalInfo_('LLM', 'Haiku a échoué, fallback Sonnet pour « ' + meta.nomFichier + ' »');
+    return appelAnthropic_(CONFIG.LLM_MODELE_FALLBACK, meta);
+  }
+
+  // Confiance basse + doc NON sensible → analyse approfondie (multi-passes), bornée par run
+  // (un doc sensible part en revue de toute façon — inutile de dépenser du Sonnet).
+  if (classif.confiance < CONFIG.SEUIL_CONFIANCE && classif.sensible !== true && escaladeAutorisee_()) {
+    journalInfo_('LLM', 'Analyse approfondie (Sonnet ×' + CONFIG.LLM_ESCALADE_PASSES +
+      ') pour « ' + meta.nomFichier + ' »');
+    var approfondi = analyseApprofondie_(meta);
+    if (approfondi && approfondi.confiance >= classif.confiance) classif = approfondi;
   }
   return classif;
+}
+
+// Compteur d'escalades par run (plafond anti-emballement de coût). Remis à zéro au tick.
+var _escaladesCeRun = 0;
+function reinitialiserEscalades_() { _escaladesCeRun = 0; }
+function escaladeAutorisee_() { return _escaladesCeRun < CONFIG.LLM_ESCALADE_MAX_PAR_RUN; }
+
+/**
+ * Analyse approfondie : plusieurs passes Sonnet avec le prompt d'escalade ; renvoie la
+ * meilleure classification (domaine majoritaire, puis confiance la plus haute).
+ * @param {Object} meta
+ * @return {Object|null}
+ */
+function analyseApprofondie_(meta) {
+  _escaladesCeRun++;
+  var resultats = [];
+  for (var i = 0; i < CONFIG.LLM_ESCALADE_PASSES; i++) {
+    var r = appelAnthropic_(CONFIG.LLM_MODELE_FALLBACK, meta, PROMPT_ESCALADE);
+    if (r) resultats.push(r);
+  }
+  return resultats.length ? meilleureClassification_(resultats) : null;
+}
+
+/**
+ * Choisit la meilleure classification d'un lot : domaine le plus fréquent (consensus),
+ * puis, à égalité, la confiance la plus haute.
+ * @param {Object[]} resultats
+ * @return {Object}
+ */
+function meilleureClassification_(resultats) {
+  var freq = {};
+  resultats.forEach(function (r) { freq[r.domaine] = (freq[r.domaine] || 0) + 1; });
+  var meilleur = resultats[0];
+  for (var i = 1; i < resultats.length; i++) {
+    var r = resultats[i];
+    var fR = freq[r.domaine], fM = freq[meilleur.domaine];
+    if (fR > fM || (fR === fM && r.confiance > meilleur.confiance)) meilleur = r;
+  }
+  return meilleur;
 }
 
 /**
  * @param {string} modele
  * @param {Object} meta
+ * @param {string} [systeme]  prompt système (défaut : PROMPT_SYSTEME)
  * @return {Object|null}
  */
-function appelAnthropic_(modele, meta) {
+function appelAnthropic_(modele, meta, systeme) {
   var contenu =
     'Nom du fichier : ' + meta.nomFichier + '\n' +
     'Expéditeur : ' + meta.expediteur + '\n' +
@@ -67,7 +130,7 @@ function appelAnthropic_(modele, meta) {
     payload: JSON.stringify({
       model: modele,
       max_tokens: CONFIG.LLM_MAX_TOKENS,
-      system: PROMPT_SYSTEME,
+      system: systeme || PROMPT_SYSTEME,
       messages: [{ role: 'user', content: contenu }]
     }),
     muteHttpExceptions: true

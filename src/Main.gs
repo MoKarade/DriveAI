@@ -64,6 +64,7 @@ function tickDriveAI() {
   try {
     reinitialiserIndexCache_();
     reinitialiserEntitesCache_();
+    reinitialiserEscalades_(); // plafond d'escalades LLM par run (anti-emballement de coût)
 
     // Applique un éventuel changement d'intervalle (CONFIG.TICK_MINUTES) sans action manuelle.
     // Secondaire : un échec ne doit JAMAIS bloquer l'intake (cf. audit quotas).
@@ -76,6 +77,10 @@ function tickDriveAI() {
     // Auto-rejeu sur nouvelle version du classement : renvoie les DÉPÔTS partis en
     // revue vers 00·À trier pour reclassement (zéro action manuelle, zéro suppression).
     appliquerRejeuSiNouvelleVersion_(estBudgetDepasse);
+
+    // Grand rangement initial (zéro clic, une fois par `CONFIG.RANGEMENT_TAG`) : renvoie au fil
+    // des ticks tout le contenu « en vrac » des domaines vers 00·À trier (déplacement seul, borné).
+    appliquerRangementInitial_(estBudgetDepasse);
 
     // Matérialise les entités validées par Marc (Statut = « validée ») avant le routage,
     // mais bornée par le garde-temps (et un plafond par run) : pas de coupure des 6 min.
@@ -118,6 +123,38 @@ function appliquerRejeuSiNouvelleVersion_(estBudgetDepasse) {
     // Rejeu entièrement consommé → on fige la version (anti-re-déclenchement).
     props.setProperty('DriveAI_VERSION', CONFIG.VERSION);
     journalInfo_('Maintenance', 'Rejeu auto terminé — version « ' + CONFIG.VERSION + ' » figée.');
+  }
+}
+
+/**
+ * Grand rangement initial AUTOMATIQUE (zéro clic), gated par `CONFIG.RANGEMENT_TAG`.
+ *
+ * Tant que le tag stocké (`DriveAI_RANGEMENT`) diffère du tag courant, chaque tick renvoie UNE
+ * page (`rangerUnePage_`, bornée par le garde-temps + `RANGEMENT_MAX_PAR_RUN`) du contenu « en
+ * vrac » des domaines NON protégés vers 00·À trier. L'intake les reprend ensuite (OCR → analyse
+ * → renommage → classement). Le tag n'est figé QUE lorsqu'une passe complète ne collecte plus
+ * AUCUN fichier en vrac (tout le Drive est passé au format `AAAA-MM-JJ_` ou parti à l'intake) :
+ * l'opération est donc reprenable sur autant de ticks que nécessaire, sans jamais re-coûter sur
+ * les fichiers déjà normalisés (idempotent). Déplacement seul — aucune suppression (garde-fous §1/§2).
+ *
+ * Placé APRÈS le rejeu de version mais AVANT l'intake : les fichiers renvoyés ce tick sont repris
+ * dès `traiterDepots_` du même run s'il reste du budget.
+ *
+ * @param {function():boolean} estBudgetDepasse
+ */
+function appliquerRangementInitial_(estBudgetDepasse) {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DriveAI_RANGEMENT') === CONFIG.RANGEMENT_TAG) return; // déjà fait pour ce tag
+  if (estBudgetDepasse()) return; // pas de budget ce tick → repris au prochain
+
+  var r = rangerUnePage_(estBudgetDepasse, ensembleDomainesProteges_());
+  if (r.deplaces) {
+    journalInfo_('Rangement', r.deplaces + ' fichier(s) en vrac renvoyé(s) dans 00·À trier (rangement initial auto).');
+  }
+  // Terminé seulement quand une passe NON interrompue ne trouve plus aucun fichier en vrac.
+  if (!r.reste && r.collectes === 0) {
+    props.setProperty('DriveAI_RANGEMENT', CONFIG.RANGEMENT_TAG);
+    journalInfo_('Rangement', 'Rangement initial terminé — tout le Drive est passé au pipeline (tag « ' + CONFIG.RANGEMENT_TAG + ' »).');
   }
 }
 

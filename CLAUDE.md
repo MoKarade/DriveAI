@@ -130,3 +130,10 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   (`gh workflow run`, `actions: write`). (2) Épingler la version Node des outils CLI sensibles (clasp v3
   → Node 20 ; Node 22 = « Premature close »). Toujours **vérifier qu'un déploiement auto a vraiment tourné
   et réussi** (lire les runs), pas juste qu'il « devrait » se déclencher.
+- **Reclassement de masse auto ⇒ convergence + garde zone protégée multi-parents.** Un rangement
+  automatique de tout le Drive doit **converger** via un prédicat de skip stable que le pipeline produit
+  lui-même (renommage `AAAA-MM-JJ_` ⇒ jamais re-collecté ; vérifier que le renommeur produit TOUJOURS ce
+  format) et ne figer le « fait » que quand une passe ne collecte plus rien (sinon re-OCR/LLM en boucle).
+  Le garde zone protégée doit **remonter toute la chaîne d'ancêtres** (un fichier multi-parents avec un
+  parent sous `04 · Immigration` n'est JAMAIS détaché), appliqué au filtre de collecte ET avant la mutation.
+  Déplacement seul, borné, reprenable ; ne pas enchaîner un sous-run sans budget restant (limite dure 6 min).
