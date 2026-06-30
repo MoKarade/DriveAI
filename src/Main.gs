@@ -88,6 +88,11 @@ function tickDriveAI() {
 
     traiterGmail_(estBudgetDepasse);                       // source 1 : PJ Gmail
     if (!estBudgetDepasse()) traiterDepots_(estBudgetDepasse); // source 2 : 00·À trier
+
+    // Phase 3 : détection d'actions/rdv dans TOUS les mails récents → Tasks/Calendar.
+    // En dernier, budget restant seulement : le classement documentaire (déjà validé en
+    // prod) garde toujours la priorité sur ce nouveau flux.
+    if (!estBudgetDepasse()) traiterIntentionsMail_(estBudgetDepasse);
   } finally {
     verrou.releaseLock();
   }

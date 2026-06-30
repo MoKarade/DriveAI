@@ -161,6 +161,56 @@ Dossier ID | Ajoutée le`).
 
 ---
 
+## Phase 3 — tâches & agenda (remplace l'agent mail externe de Marc)
+
+> Déployée par le même `git pull && clasp push` automatique. **Nouveaux scopes** (Tasks +
+> Calendar) → **une seule ré-autorisation manuelle** est nécessaire (voir ci-dessous), c'est la
+> SEULE action que Marc doit faire pour cette phase.
+
+### Ce que ça fait
+DriveAI scanne désormais **tous les mails récents** (pas seulement ceux avec pièce jointe) pour
+détecter des **actions à faire** (« payer avant le 15 », « renvoyer le formulaire ») et des
+**rendez-vous datés** (« RDV le 3 juillet à 14h »), et crée automatiquement :
+- une **tâche Google Tasks** (liste par défaut) pour une action/échéance ;
+- un **événement Google Calendar** (agenda principal) pour un rendez-vous avec date ET heure.
+
+Création **100 % automatique**, zéro validation. Pré-filtre à 3 étages (mots-clés gratuits → zone
+protégée gratuite → mini-check Haiku peu coûteux) avant toute extraction complète, pour rester
+largement sous le budget de 10 $/mois (~1-4 $/mois estimé pour ce flux). Les mails immigration/
+fiscaux ne génèrent **jamais** de tâche/événement (garde-fou §1, indépendant du LLM) — ils restent
+gérés par le classement documentaire existant.
+
+### ⚠️ Action manuelle unique : ré-autoriser les nouveaux scopes
+
+L'ajout des scopes `tasks` et `calendar.events` au manifeste (`appsscript.json`) signifie que le
+**déclencheur existant** (`tickDriveAI`, toutes les 10 min) va se mettre à échouer avec une erreur
+d'autorisation dès que le nouveau code est déployé — Apps Script exige un consentement explicite
+pour toute nouvelle permission, et un déclencheur automatique ne peut pas le demander tout seul.
+
+**Pour réautoriser (30 secondes, une seule fois)** :
+1. Ouvre l'éditeur Apps Script du projet DriveAI.
+2. Dans la barre d'outils, sélectionne n'importe quelle fonction (ex. `installerTrigger`) → **Exécuter**.
+3. Google affiche l'écran de consentement avec les **2 nouvelles autorisations** (Tasks, Calendar) en
+   plus des précédentes. **Autorise.**
+4. C'est tout — le déclencheur existant reprend normalement au tick suivant, plus besoin de
+   relancer quoi que ce soit après cette étape unique.
+
+*(Tant que cette ré-autorisation n'est pas faite, le `Journal` affichera des erreurs sur le flux
+« Intentions » uniquement — le classement documentaire des Phases 1-2, lui, continue de tourner
+normalement : ce nouveau scope n'affecte pas les permissions déjà accordées.)*
+
+### Tester
+1. Envoie-toi un mail avec un objet du type « Rendez-vous chez le dentiste le 15 juillet à 14h ».
+   Lance `tickDriveAI`. Attendu : un événement apparaît dans Google Calendar (agenda principal).
+2. Envoie-toi un mail « Penser à renouveler le passeport avant fin août » — **attendu : RIEN n'est
+   créé** (zone protégée, mot-clé « passeport ») — vérifie une ligne `intention-zone-protegee`
+   dans l'onglet `Index`.
+3. Envoie-toi un mail anodin sans action (« Voici les photos des vacances ») — attendu : aucune
+   tâche/événement créé (`intention-aucune` dans `Index`).
+4. Relance `tickDriveAI` : aucun doublon de tâche/événement (vérifie Tasks/Calendar directement).
+
+---
+
 ## Dépannage
 
 | Symptôme | Cause probable | Fix |

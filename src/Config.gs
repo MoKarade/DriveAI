@@ -38,6 +38,39 @@ var CONFIG = {
   GMAIL_REQUETE: 'has:attachment newer_than:30d',
   PAGE_FILS: 20,                         // taille de page de la recherche Gmail
   BUDGET_MS: 4.5 * 60 * 1000,            // garde-temps (exécution Apps Script < 6 min)
+
+  // --- Phase 3 : tâches & agenda depuis TOUS les mails récents ---
+  // Requête séparée de GMAIL_REQUETE (PJ) : ici TOUS les mails, pas seulement ceux avec PJ
+  // (une action/un rdv peut être dans un mail sans pièce jointe). Toujours gmail.readonly.
+  GMAIL_REQUETE_ACTIONS: 'newer_than:30d',
+  PAGE_FILS_ACTIONS: 20,                  // taille de page de cette recherche
+  INTENTIONS_MAX_PAR_RUN: 200,            // plafond de messages ANALYSÉS (pré-filtre inclus) par run
+  CREATIONS_MAX_PAR_RUN: 30,              // plafond de tâches/événements CRÉÉS par run (pas de rafale)
+  LLM_MAX_TOKENS_MINICHECK: 10,           // mini-check binaire (expéditeur+sujet seuls, pas le corps)
+  LLM_MAX_TOKENS_INTENTIONS: 500,
+  EVENT_DUREE_MIN_DEFAUT: 60,             // durée par défaut d'un événement créé (minutes)
+  // Pré-filtre déterministe (avant tout appel LLM) : un expéditeur/sujet qui matche l'un de ces
+  // motifs (recherche insensible à la casse) est écarté sans coût — newsletters/notifs/pubs.
+  // Liste ÉTROITE et à haute confiance (faux positif = action manquée) ; le mini-check LLM
+  // rattrape les cas moins évidents. Cf. LESSONS « garde-fou étroit, calibré sur du réel ».
+  PREFILTRE_MOTIFS_REJET: [
+    'no-reply', 'noreply', 'donotreply', 'ne-pas-repondre',
+    'newsletter', 'unsubscribe', 'desabonner', 'désabonner',
+    'notifications@', 'notification@'
+  ],
+  LLM_CORPS_MAX_CARS: 3000,               // troncature du corps de mail envoyé au LLM (coût)
+  // Défense en profondeur (garde-fou §1, indépendante du jugement du LLM) : si l'expéditeur,
+  // le sujet OU le corps touche un de ces mots-clés, AUCUNE tâche/événement n'est créé pour ce
+  // mail, quoi que renvoie le LLM. Le mail reste géré par le classement documentaire existant.
+  // Motifs ≤ 4 caractères (arc, csq, cra...) sont reconnus en MOT ENTIER seulement
+  // (cf. Prefiltre.correspondMotif_) — jamais en sous-chaîne libre (« arc » dans « Marc »).
+  MOTS_CLES_PROTEGES_INTENTIONS: [
+    'ircc', 'csq', 'visa', 'passeport', 'arc', 'cra',
+    'résidence permanente', 'residence permanente', 'permis de travail', 'permis de séjour',
+    'permis de sejour', "statut d'immigration", 'statut immigration',
+    'impôt', 'impot', 'déclaration de revenus', 'declaration de revenus',
+    'avis de cotisation', 'revenu québec', 'revenu quebec', 'agence du revenu'
+  ],
   OCR_TAILLE_MAX: 20 * 1024 * 1024,      // au-delà : pas d'OCR (mémoire) → métadonnées seules
   // Sous ce nombre de caractères, l'extrait OCR est jugé NON exploitable (garde-fou §1, voir
   // Pipeline.traiterDocument_) : pour un DÉPÔT (manuel ou rangement, sans expéditeur/sujet réels),

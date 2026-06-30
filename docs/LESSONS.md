@@ -189,3 +189,27 @@ l'appartenance directe — et s'appliquer **deux fois** : au filtre de collecte 
 **bornée** (garde-temps + plafond/run) et **reprenable** ; ne pas enchaîner un sous-run (`tickDriveAI`)
 sans vérifier qu'il reste du budget (sinon dépassement de la limite dure 6 min). Re-auditer par la flotte.
 **Règle durable ?** oui.
+
+## 2026-06-30 — Pagination par offset sur une fenêtre Gmail MOUVANTE = stagnation silencieuse
+**Contexte.** Phase 3 (scan de tous les mails récents pour détecter tâches/rdv) reprenait le
+même schéma que le scan PJ existant : `debutPage = 0` réinitialisé à chaque tick, puis pagination
+par offset croissant. En volume réaliste (quelques centaines de mails sur 30 jours), un audit
+(apps-script-quota) a tracé un scénario concret et trouvé un BLOQUANT : `newer_than:30d` est une
+fenêtre de recherche MOUVANTE — un nouveau mail s'insère toujours en TÊTE (tri du plus récent au
+plus ancien) et décale tous les offsets suivants. Résultat : une fois les ~200 messages les plus
+récents indexés (1er tick), CHAQUE tick suivant repart de l'offset 0, retombe sur ces mêmes ~200
+messages déjà indexés (vérification rapide mais qui consomme quand même le plafond/run), et
+n'atteint JAMAIS le reste de l'historique au-delà — un **plateau stable**, pas une reprise
+normale au tick suivant. Le scan PJ existant (`traiterGmail_`) a la même structure mais y échappe
+en pratique car son volume (mails AVEC pièce jointe) reste sous le plafond/run — c'est l'élargissement
+de volume qui a rendu le piège réel.
+**Leçon.** Sur une recherche dont le jeu de résultats change entre deux appels (nouveaux éléments
+insérés en tête), un **offset numérique persisté ou réinitialisé ne garantit PAS la progression** :
+il faut soit (a) un curseur ancré sur une valeur ABSOLUE et stable (ici une date, via `before:`,
+persistée en Script Property, qui n'avance QUE vers le passé), combiné à (b) un scan séparé et
+borné depuis le début (offset 0) pour capter les nouveaux éléments, qui s'arrête tôt dès qu'il
+détecte un « mur » de contenu déjà traité (pas la peine d'aller plus loin, c'est le job du scan
+ancré). Un offset numérique seul ne fonctionne QUE sur un jeu de résultats stable entre les appels.
+Toujours **tracer un scénario concret à plusieurs ticks** (pas juste « ça semble boucler ») avant
+de valider une pagination — c'est ce traçage qui a révélé le plateau, pas une relecture superficielle.
+**Règle durable ?** oui.

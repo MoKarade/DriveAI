@@ -5,11 +5,11 @@
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
 > **Dernière mise à jour : 2026-06-30** — **Phase 2 terminée + full auto confirmé en prod** ; **Phase 3
-> en cours**. P2.1→P2.6 (entité, full auto, seuil 0.50, tick 10 min, escalade, grand rangement) +
-> **P2.7** : rangement étendu à l'ancien Drive (« Ancienne structure ») + garde-fou OCR vide (un dépôt
-> sans texte exploitable part en revue plutôt que d'être classé sur le seul nom de fichier). Les **2
-> secrets GitHub sont posés** (déploiement auto confirmé par des runs réels) — **plus rien à faire côté
-> secrets**. Phase 3 (remplacement de l'agent mail externe de Marc : tâches/agenda auto) en construction.
+> codée** (P3-01→P3-05, tâches & agenda — remplace l'agent mail externe de Marc). P2.1→P2.7 (entité,
+> full auto, seuil 0.50, tick 10 min, escalade, grand rangement + ancien Drive + garde-fou OCR vide).
+> Les **2 secrets GitHub sont posés** (déploiement auto confirmé par des runs réels) — plus rien à
+> faire côté secrets. **Reste côté Marc pour Phase 3 : une ré-autorisation Google unique** (nouveaux
+> scopes Tasks/Calendar) au prochain déploiement — cf. `docs/DEPLOIEMENT.md` § Phase 3.
 
 ---
 
@@ -63,14 +63,23 @@
 - **Secrets déploiement déjà posés.** Les 2 secrets GitHub (`CLASPRC_JSON`, `SCRIPT_ID`) sont **déjà
   configurés** côté Marc — confirmé par des runs `Deploy` réels (`clasp push` réussi, code visible en
   prod). Le tableau « reste à faire » ci-dessous est mis à jour en conséquence : **rien côté secrets**.
-- **Phase 3 démarrée** : remplacer l'agent externe de Marc (mails → PJ utiles → tri + tâches/agenda) par
-  DriveAI nativement. Décisions actées avec Marc : scan de **tous** les mails récents (pas seulement avec
-  PJ) avec **pré-filtre** (mots-clés + mini-check Haiku) pour le budget ; **filtre d'utilité** des PJ ;
-  **échéance → Google Tasks**, **rdv daté → Google Calendar** ; **création 100 % auto** (zéro validation) ;
-  liste Tasks par défaut + agenda principal. Plan détaillé (product-manager) : 5 PR ordonnées (scopes+REST
-  → pré-filtre/volume → extraction LLM+routage → idempotence Tasks/Calendar → docs). **Seule action
-  manuelle de Marc à venir : une ré-autorisation Google unique** (nouvel écran de consentement après
-  l'ajout des scopes Tasks/Calendar).
+- **Phase 3 codée** (remplace l'agent mail externe de Marc). Scan de **tous** les mails récents
+  (pas seulement avec PJ, `GMAIL_REQUETE_ACTIONS`) → pré-filtre 3 étages (mots-clés gratuit → zone
+  protégée gratuit, défense en profondeur indépendante du LLM → mini-check Haiku ~10 tokens) →
+  extraction d'intentions LLM (`PROMPT_INTENTIONS`) → routage **échéance → Google Tasks**, **rdv
+  daté → Google Calendar**, création **100 % auto** (zéro validation), liste Tasks par défaut +
+  agenda principal. Nouveaux fichiers : `GoogleApi.gs`, `Tasks.gs`, `Calendar.gs`, `Prefiltre.gs`,
+  `Intentions.gs`. Idempotence à 2 niveaux (message + intention) ; ID client Calendar déterministe
+  par `(messageId, contenu)` (rejeu après coupure → 409 = succès, jamais de doublon) ; risque
+  résiduel documenté sur les tâches (Tasks API sans ID client, même compromis que la copie Gmail).
+  **Re-audité par la flotte (4 spécialistes, 2 passes)** : sécurité 🟢, coût LLM 🟢 (~1-4 $/mois
+  estimé), idempotence 🟢, quotas — 1er passage **BLOQUANT** (pagination par offset numérique
+  stagnait au-delà de ~200 messages sur une fenêtre Gmail mouvante : un nouveau mail en tête décale
+  tous les offsets, donc redémarrer à 0 chaque tick ne progressait jamais dans l'historique), corrigé
+  par un scan à deux voies (avant : offset 0, capte le mail neuf ; arrière : date absolue persistée,
+  insensible aux décalages d'offset), 2e passage 🟢 CONFORME. **Seule action manuelle de Marc à
+  venir : une ré-autorisation Google unique** (nouvel écran de consentement après l'ajout des scopes
+  Tasks/Calendar) — cf. `docs/DEPLOIEMENT.md` § Phase 3.
 
 ## 2. Avancement par phase
 
@@ -79,7 +88,7 @@
 | 0 | Scaffolding & automatisation | ✅ mergée (PR #1) |
 | 1 | Moteur Apps Script (Gmail, OCR, LLM, routage domaine/catégorie, revue) | ✅ mergée (PR #2) |
 | 2 | Dépôt manuel `00 · À trier` + référentiel d'entités + dossiers granulaires | 🟦 codée (revue flotte), à déployer |
-| 3 | Tâches & agenda (Tasks/Calendar) | 🟦 en cours |
+| 3 | Tâches & agenda (Tasks/Calendar, remplace l'agent mail externe de Marc) | 🟦 codée (revue flotte 🟢), à déployer |
 | 4 | Recherche + dashboard (app web Vercel) | ⬜ à faire |
 
 Détail des tâches : `BACKLOG.md`.
@@ -94,7 +103,8 @@ Détail des tâches : `BACKLOG.md`.
 - **Merge** : auto-merge des PR `claude/**` dès que la CI est verte (pas de revue humaine bloquante).
 - **Modèles LLM** : Haiku par défaut (`claude-haiku-4-5`), Sonnet en fallback (`claude-sonnet-4-6`).
 - **Scopes** : `gmail.readonly`, `drive`, `script.external_request`, `spreadsheets`,
-  `script.send_mail` (notif), `script.scriptapp` (trigger). Cf. `docs/ARCHITECTURE.md`.
+  `script.send_mail` (notif), `script.scriptapp` (trigger), + Phase 3 : `tasks`, `calendar.events`
+  (création uniquement, jamais lecture/modification/suppression). Cf. `docs/ARCHITECTURE.md`.
 
 ## 4. Ce qui reste à faire côté Marc
 
@@ -143,7 +153,7 @@ Détail des tâches : `BACKLOG.md`.
 
 ## 7. Historique des sessions
 
-- **2026-06-30 (P2.7 ancien Drive + démarrage Phase 3)** — Diagnostiqué un blocage de pipeline CI/CD
+- **2026-06-30 (P2.7 ancien Drive + Phase 3 complète)** — Diagnostiqué un blocage de pipeline CI/CD
   (GitHub Actions muet 26-27/06, puis branche en conflit avec `main` bloquant la CI sur la PR) → résolu
   (fusion `-s ours`, conflits de docs/squash réconciliés), PR #19 (P2.5+P2.6) mergée et déployée en prod
   avec vérification run-par-run (pas seulement « ça devrait marcher »). **P2.7** : ancien Drive de Marc
@@ -151,9 +161,21 @@ Détail des tâches : `BACKLOG.md`.
   (`RANGEMENT_RACINES_SUP`, tag `r2`) ; audit sécurité a détecté un trou (OCR vide → `sensible=false`
   sans signal → classement auto d'un possible passeport/doc fiscal) → corrigé par un garde-fou dédié
   (dépôt + OCR non exploitable → revue forcée), re-audité 🟢 par security-auditor et file-checker (pas
-  de sur-blocage). **Démarrage Phase 3** : Marc veut remplacer son agent mail externe ; décisions actées
-  (scan tous mails + pré-filtre coût, filtre utilité PJ, Tasks vs Calendar, création 100 % auto) ; plan en
-  5 PR produit par le product-manager.
+  de sur-blocage). **Phase 3 codée** (remplace l'agent mail externe de Marc) : scopes Tasks/Calendar
+  + clients REST (`Tasks.gs`/`Calendar.gs`/`GoogleApi.gs`) ; pré-filtre 3 étages (`Prefiltre.gs`) ;
+  extraction d'intentions LLM + routage Tasks/Calendar (`Llm.gs`) ; orchestration + idempotence à 2
+  niveaux + ID client Calendar (`Intentions.gs`). Re-audité par 4 spécialistes en 2 passes : sécurité,
+  coût (~1-4 $/mois), idempotence 🟢 du premier coup ; apps-script-quota a trouvé un **vrai BLOQUANT**
+  (pagination par offset numérique sur une fenêtre Gmail mouvante → stagnation permanente au-delà de
+  ~200 messages, vérifié manuellement par traçage du scénario plutôt que pris pour argent comptant) →
+  corrigé par un scan à deux voies (offset pour le mail neuf + curseur de date absolue persisté pour le
+  rattrapage d'historique), re-vérifié 🟢. Repéré et corrigé seul, AVANT tout audit, un bug d'ID Calendar
+  non scopé par message (collision possible entre deux mails à intention identique) — leçon : toujours
+  relire son propre code avant de l'envoyer en revue. Repéré aussi qu'une suggestion d'audit (« ajoute
+  arc/cra aux mots-clés protégés ») aurait introduit un faux-positif massif (« arc » dans « Marc ») avec
+  l'implémentation substring existante → corrigé le matcher (mot entier pour les motifs courts) avant
+  d'appliquer la suggestion. **2 agents de la flotte ont halluciné un sujet sans rapport** (exemples
+  d'outils MCP non pertinents) lors d'un premier essai — relancés avec un prompt plus strict, succès.
 - **2026-06-27 (P2.5 escalade + P2.6 grand rangement)** — **P2.5** : la confiance basse ne part plus en
   revue → `analyseApprofondie_` (Sonnet ×3, consensus de domaine puis confiance max), classé au meilleur
   endroit ; fallback Sonnet simple sur échec Haiku total (anti-boucle de coût), plafond d'escalades/run,
