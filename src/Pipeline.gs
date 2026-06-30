@@ -43,7 +43,17 @@ function traiterDocument_(src) {
     var empreinte = src.taille > CONFIG.OCR_TAILLE_MAX ? '' : empreinteBlob_(blob);
     var motifForce = (empreinte && estDoublon_(empreinte)) ? 'doublon (déjà présent)' : '';
 
-    var decision = deciderRoutage_(classif, src.date, extension_(src.nom), motifForce);
+    // Garde-fou §1 (zone protégée), cas OCR vide : pour un DÉPÔT (manuel ou issu du grand
+    // rangement — Intake.gs ne fournit ni expéditeur ni sujet réel pour ces sources, juste
+    // « Dépôt manuel »), le LLM ne reçoit alors QUE le nom de fichier. Un passeport/doc fiscal
+    // au nom neutre (« IMG_2734.jpg ») peut alors recevoir `sensible=false` sans aucun signal
+    // fiable → la décision de sensibilité n'est pas étayée. Une PJ Gmail garde son expéditeur/
+    // sujet (signal déjà validé en prod) donc n'est PAS concernée par ce filet.
+    var ocrExploitable = !!(extrait && extrait.trim().length >= CONFIG.OCR_MIN_CARS_EXPLOITABLE);
+    var estDepot = src.sujet === 'Dépôt manuel';
+    var securiteIndeterminee = estDepot && !ocrExploitable;
+
+    var decision = deciderRoutage_(classif, src.date, extension_(src.nom), motifForce, securiteIndeterminee);
 
     var fileId = (decision.statut === 'revue')
       ? src.placerRevue(decision.nom)

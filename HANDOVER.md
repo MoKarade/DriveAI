@@ -4,12 +4,12 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **Dernière mise à jour : 2026-06-27** — **Phase 2 + full auto**. Dépôt manuel + référentiel d'entités,
-> P2.1 (entité = enrichissement), P2.2 full auto (auto-déploiement + auto-rejeu), P2.3 (seuil 0.50),
-> P2.4 (tick 10 min), **P2.5 escalade** (confiance basse → analyse approfondie Sonnet → classé, plus en
-> revue), et **P2.6 grand rangement auto** : tout le contenu « en vrac » des domaines est renvoyé au fil
-> des ticks vers `00·À trier` pour être reclassé/renommé — zéro clic, borné, reprenable, déplacement seul,
-> zone protégée écartée. Reste à Marc : **2 secrets GitHub une fois** (`docs/DEPLOIEMENT.md`).
+> **Dernière mise à jour : 2026-06-30** — **Phase 2 terminée + full auto confirmé en prod** ; **Phase 3
+> en cours**. P2.1→P2.6 (entité, full auto, seuil 0.50, tick 10 min, escalade, grand rangement) +
+> **P2.7** : rangement étendu à l'ancien Drive (« Ancienne structure ») + garde-fou OCR vide (un dépôt
+> sans texte exploitable part en revue plutôt que d'être classé sur le seul nom de fichier). Les **2
+> secrets GitHub sont posés** (déploiement auto confirmé par des runs réels) — **plus rien à faire côté
+> secrets**. Phase 3 (remplacement de l'agent mail externe de Marc : tâches/agenda auto) en construction.
 
 ---
 
@@ -51,9 +51,26 @@
   plus rien), **déplacement seul** (aucune corbeille), et **zone protégée écartée** même pour un fichier
   multi-parents (garde un parent dans `04 · Immigration` ⇒ jamais détaché). Re-audité flotte 🟢 (sécurité
   BLOQUANT levé + garde-temps). `_Archive 2025` non concernée. Lançable aussi à la main (`rangerToutLeDrive`).
-- **Prochaine étape produit** : Marc configure l'auto-déploiement (2 secrets, cf. `docs/DEPLOIEMENT.md`),
-  puis **Phase 3**. *(Rappel : déploiement/exécution vivent dans le compte Google de Marc ; l'Action
-  GitHub y accède via l'identifiant clasp qu'il dépose une fois — ce conteneur n'y a jamais accès.)*
+- **P2.7 (ancien Drive + garde-fou OCR vide)** : Marc a désigné son vrai « ancien Drive » — le dossier
+  racine **« Ancienne structure »** (pas `_Archive 2025`, qui n'existe pas chez lui). Branché sur le
+  grand rangement via `CONFIG.RANGEMENT_RACINES_SUP` (tag `r2`). Un audit sécurité a détecté un trou
+  réel : un vieux scan à nom neutre (`IMG_2734.jpg`) dont l'OCR échoue pouvait recevoir `sensible=false`
+  sans aucun signal et être classé auto — violation potentielle du garde-fou §1 sur un passeport/doc
+  fiscal. Corrigé : tout DÉPÔT (manuel ou rangement — jamais une PJ Gmail, qui garde expéditeur/sujet)
+  dont l'extrait OCR fait moins de `CONFIG.OCR_MIN_CARS_EXPLOITABLE` (20) caractères part en revue
+  (« sensibilité indéterminable (OCR vide) »), priorité la plus haute dans `motifDeRevue_`. Re-audité
+  flotte 🟢 (security-auditor CONFORME, file-checker : pas de sur-blocage, seuil raisonnable).
+- **Secrets déploiement déjà posés.** Les 2 secrets GitHub (`CLASPRC_JSON`, `SCRIPT_ID`) sont **déjà
+  configurés** côté Marc — confirmé par des runs `Deploy` réels (`clasp push` réussi, code visible en
+  prod). Le tableau « reste à faire » ci-dessous est mis à jour en conséquence : **rien côté secrets**.
+- **Phase 3 démarrée** : remplacer l'agent externe de Marc (mails → PJ utiles → tri + tâches/agenda) par
+  DriveAI nativement. Décisions actées avec Marc : scan de **tous** les mails récents (pas seulement avec
+  PJ) avec **pré-filtre** (mots-clés + mini-check Haiku) pour le budget ; **filtre d'utilité** des PJ ;
+  **échéance → Google Tasks**, **rdv daté → Google Calendar** ; **création 100 % auto** (zéro validation) ;
+  liste Tasks par défaut + agenda principal. Plan détaillé (product-manager) : 5 PR ordonnées (scopes+REST
+  → pré-filtre/volume → extraction LLM+routage → idempotence Tasks/Calendar → docs). **Seule action
+  manuelle de Marc à venir : une ré-autorisation Google unique** (nouvel écran de consentement après
+  l'ajout des scopes Tasks/Calendar).
 
 ## 2. Avancement par phase
 
@@ -62,14 +79,17 @@
 | 0 | Scaffolding & automatisation | ✅ mergée (PR #1) |
 | 1 | Moteur Apps Script (Gmail, OCR, LLM, routage domaine/catégorie, revue) | ✅ mergée (PR #2) |
 | 2 | Dépôt manuel `00 · À trier` + référentiel d'entités + dossiers granulaires | 🟦 codée (revue flotte), à déployer |
-| 3 | Tâches & agenda (Tasks/Calendar) | ⬜ à faire |
+| 3 | Tâches & agenda (Tasks/Calendar) | 🟦 en cours |
 | 4 | Recherche + dashboard (app web Vercel) | ⬜ à faire |
 
 Détail des tâches : `BACKLOG.md`.
 
 ## 3. Décisions actées (ne pas re-litiger)
 
-- **Legacy = Option A** : l'ancien Drive va dans un dossier `_Archive 2025` à part ; DriveAI n'y touche jamais.
+- **Legacy révisé (2026-06-30)** : la décision initiale « Option A » supposait un dossier `_Archive 2025`
+  qui n'existe pas chez Marc — son ancien Drive est en fait la racine **« Ancienne structure »**. Sur
+  demande explicite de Marc (« classe tout mon ancien drive »), elle est désormais INCLUSE dans le grand
+  rangement auto (`CONFIG.RANGEMENT_RACINES_SUP`), avec le garde-fou OCR-vide renforcé (cf. P2.7 ci-dessus).
 - **Gmail lecture seule** → idempotence portée par l'`Index` (clé `messageId|i|nom|taille`), **pas** de label Gmail.
 - **Merge** : auto-merge des PR `claude/**` dès que la CI est verte (pas de revue humaine bloquante).
 - **Modèles LLM** : Haiku par défaut (`claude-haiku-4-5`), Sonnet en fallback (`claude-sonnet-4-6`).
@@ -78,16 +98,15 @@ Détail des tâches : `BACKLOG.md`.
 
 ## 4. Ce qui reste à faire côté Marc
 
-> Objectif **full auto** : après un réglage unique, plus aucun `clasp push` ni fonction à lancer.
+> Objectif **full auto**. Les secrets de déploiement sont posés — il ne reste qu'une ré-autorisation
+> à venir (Phase 3) et deux rappels de fond.
 
-1. **Configurer l'auto-déploiement (UNE fois, ~3 min)** — voir `docs/DEPLOIEMENT.md` § « Déploiement
-   100 % automatique » : déposer 2 secrets GitHub (`CLASPRC_JSON` = contenu de `~/.clasprc.json` ;
-   `SCRIPT_ID`). Ensuite chaque merge sur `main` se **déploie tout seul** (Action `Deploy` → `clasp push`).
-2. **Déclencher le 1er déploiement auto** : une fois les secrets posés, le prochain merge déploie ;
-   sinon clique « Run workflow » sur l'Action *Deploy*. Au tick suivant, l'**auto-rejeu** (`CONFIG.VERSION`)
-   renvoie les dépôts `[REVUE] entité à valider` dans `00·À trier` et les reclasse — **zéro clic**.
-3. 🔑 **Révoquer l'ancienne clé Anthropic** partagée dans le chat (compromise), si pas déjà fait.
-4. *(Open point `P1-09`)* mesurer le coût LLM réel pour confirmer < 10 $/mois.
+1. **Phase 3 (à venir, une fois)** : l'ajout des scopes Google Tasks/Calendar va déclencher un **nouvel
+   écran de consentement Google** au prochain déploiement. Une seule ré-autorisation (un clic) sera
+   nécessaire — DriveAI ne peut pas le faire à sa place (frontière d'exécution). Sera annoncé clairement
+   le moment venu, avec une fonction « un clic » dédiée si possible.
+2. 🔑 **Révoquer l'ancienne clé Anthropic** partagée dans le chat (compromise), si pas déjà fait.
+3. *(Open point `P1-09`)* mesurer le coût LLM réel pour confirmer < 10 $/mois.
 
 > Steady-state désormais **100 % automatique** : nouveaux mails + dépôts traités par le trigger 10 min ;
 > mes changements de code déployés par l'Action ; reclassement après recalibrage par l'auto-rejeu.
@@ -124,6 +143,17 @@ Détail des tâches : `BACKLOG.md`.
 
 ## 7. Historique des sessions
 
+- **2026-06-30 (P2.7 ancien Drive + démarrage Phase 3)** — Diagnostiqué un blocage de pipeline CI/CD
+  (GitHub Actions muet 26-27/06, puis branche en conflit avec `main` bloquant la CI sur la PR) → résolu
+  (fusion `-s ours`, conflits de docs/squash réconciliés), PR #19 (P2.5+P2.6) mergée et déployée en prod
+  avec vérification run-par-run (pas seulement « ça devrait marcher »). **P2.7** : ancien Drive de Marc
+  identifié (« Ancienne structure », pas `_Archive 2025`) et branché sur le grand rangement
+  (`RANGEMENT_RACINES_SUP`, tag `r2`) ; audit sécurité a détecté un trou (OCR vide → `sensible=false`
+  sans signal → classement auto d'un possible passeport/doc fiscal) → corrigé par un garde-fou dédié
+  (dépôt + OCR non exploitable → revue forcée), re-audité 🟢 par security-auditor et file-checker (pas
+  de sur-blocage). **Démarrage Phase 3** : Marc veut remplacer son agent mail externe ; décisions actées
+  (scan tous mails + pré-filtre coût, filtre utilité PJ, Tasks vs Calendar, création 100 % auto) ; plan en
+  5 PR produit par le product-manager.
 - **2026-06-27 (P2.5 escalade + P2.6 grand rangement)** — **P2.5** : la confiance basse ne part plus en
   revue → `analyseApprofondie_` (Sonnet ×3, consensus de domaine puis confiance max), classé au meilleur
   endroit ; fallback Sonnet simple sur échec Haiku total (anti-boucle de coût), plafond d'escalades/run,

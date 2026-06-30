@@ -105,12 +105,15 @@ function viderOnglet_(nom) {
  *   - `04 · Immigration` (zone protégée) n'est JAMAIS parcourue ; et — garde-fou §1 —
  *     tout fichier ayant ne serait-ce qu'UN parent dans (ou sous) un domaine protégé est
  *     ÉCARTÉ : on ne le déplace pas, pour ne jamais le détacher de la zone protégée (cas
- *     d'un fichier multi-parents). Tout doc jugé `sensible` au re-traitement repart en revue ;
+ *     d'un fichier multi-parents). Tout doc jugé `sensible` au re-traitement repart en revue,
+ *     et un OCR vide sur un dépôt (sans signal expéditeur/sujet) part en revue plutôt que
+ *     d'être classé à l'aveugle sur son seul nom de fichier (cf. Pipeline.traiterDocument_) ;
  *   - fichiers déjà normalisés (`AAAA-MM-JJ_…`) et fichiers Google natifs : SAUTÉS
  *     (idempotent → relancer ne re-coûte rien, pas de churn) ;
  *   - borné par le garde-temps partagé (coupure 6 min) ET par run (`RANGEMENT_MAX_PAR_RUN`) :
  *     si la collecte est interrompue ou le plafond atteint, le Journal le dit → relancer
- *     `rangerToutLeDrive()`. L'archive `_Archive 2025` n'est pas concernée.
+ *     `rangerToutLeDrive()`. Couvre les 7 domaines + les racines `RANGEMENT_RACINES_SUP`
+ *     (ancien Drive « Ancienne structure »).
  *
  * Déclenché AUTOMATIQUEMENT (zéro clic) au déploiement via `CONFIG.RANGEMENT_TAG`
  * (cf. Main.appliquerRangementInitial_), et reste lançable À LA MAIN pour un re-run ponctuel.
@@ -152,6 +155,23 @@ function rangerUnePage_(estBudgetDepasse, proteges) {
     collecterAReclasser_(
       DriveApp.getFolderById(CONFIG.DOMAINES[dom]), ids, CONFIG.RANGEMENT_MAX_PAR_RUN, estBudgetDepasse, proteges);
   }
+
+  // Racines supplémentaires (ancien Drive « Ancienne structure ») : tout leur contenu « en vrac »
+  // est aussi reclassé. Mêmes garde-fous (zone protégée multi-parents, format normalisé sauté,
+  // garde-temps), PLUS un filet dédié (Pipeline.traiterDocument_, Router.motifDeRevue_) : un doc
+  // dont l'OCR échoue (texte vide) part en revue plutôt que d'être classé sur le seul nom de
+  // fichier — sinon un passeport/doc fiscal à nom neutre pourrait passer `sensible=false` à l'aveugle.
+  var racinesSup = CONFIG.RANGEMENT_RACINES_SUP || [];
+  for (var r = 0; r < racinesSup.length && ids.length < CONFIG.RANGEMENT_MAX_PAR_RUN; r++) {
+    if (estBudgetDepasse()) break;
+    try {
+      collecterAReclasser_(
+        DriveApp.getFolderById(racinesSup[r]), ids, CONFIG.RANGEMENT_MAX_PAR_RUN, estBudgetDepasse, proteges);
+    } catch (e) {
+      journalErreur_('Rangement', 'Racine supplémentaire inaccessible (' + racinesSup[r] + ') : ' + e);
+    }
+  }
+
   var collecteInterrompue = estBudgetDepasse();
 
   var n = 0;
