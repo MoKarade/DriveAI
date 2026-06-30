@@ -48,7 +48,7 @@ function fenetreLecture_(f) {
  *           mailsSansAction:number, autres:number, total:number}}
  */
 function statsSemaine_(jours) {
-  var s = { classe: 0, revue: 0, tache: 0, evenement: 0, mailsSansAction: 0, quarantaine: 0, autres: 0, total: 0 };
+  var s = { classe: 0, revue: 0, tache: 0, evenement: 0, mailsSansAction: 0, doublon: 0, quarantaine: 0, autres: 0, total: 0 };
   var f = feuille_('Index');
   var fen = fenetreLecture_(f);
   if (!fen) return s;
@@ -63,6 +63,7 @@ function statsSemaine_(jours) {
     else if (statut === 'revue') s.revue++;
     else if (statut === 'tache') s.tache++;
     else if (statut === 'evenement') s.evenement++;
+    else if (statut === 'doublon') s.doublon++;
     else if (statut === 'quarantaine') s.quarantaine++;
     else if (statut.indexOf('intention-') === 0) s.mailsSansAction++;
     else s.autres++;
@@ -98,6 +99,7 @@ function construireResume_(s, erreurs, cout, jours) {
     '✅ Tâches créées (Google Tasks) : ' + s.tache,
     '📅 Événements créés (Google Calendar) : ' + s.evenement,
     '✉️ Mails analysés sans action : ' + s.mailsSansAction,
+    '🔁 Doublons écartés (dossier _Doublons) : ' + s.doublon,
     '🚫 Mis en quarantaine (échecs répétés) : ' + s.quarantaine,
     '⚠️ Erreurs journalisées : ' + erreurs,
     '',

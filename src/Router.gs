@@ -29,9 +29,16 @@
 function deciderRoutage_(classif, dateReference, ext, motifForce, securiteIndeterminee) {
   var date = dateNormalisee_(classif.date_doc, dateReference); // AAAA-MM-JJ
 
-  // 0-1-2-3) Motifs de revue prioritaires (la sécurité prime sur le doublon).
-  var raison = motifDeRevue_(classif, securiteIndeterminee) || (motifForce || '');
-  if (raison) return revue_(raison, classif, date, ext);
+  // 0-1-2) Motifs de revue prioritaires : SÉCURITÉ d'abord (sensible / zone protégée / OCR vide /
+  // domaine inconnu) — ces cas vont toujours en revue, AVANT toute autre logique (garde-fou §1).
+  var raisonRevue = motifDeRevue_(classif, securiteIndeterminee);
+  if (raisonRevue) return revue_(raisonRevue, classif, date, ext);
+
+  // 3) Doublon (NON sensible, le cas sensible étant déjà parti en revue ci-dessus) : on l'ÉCARTE
+  // dans « _Doublons » plutôt que dans la file de revue — au volume du grand rangement, signaler
+  // chaque doublon en revue la sature. Déplacement seul, JAMAIS supprimé (garde-fou §2) ; l'original
+  // déjà classé reste en place. Marc peut vider « _Doublons » en bloc quand il veut.
+  if (motifForce) return doublon_(classif, date, ext);
 
   // 4) Granularité entité (Phase 2). L'entité est un ENRICHISSEMENT, jamais un frein :
   //    - entité connue (validée)        → dossier d'entité granulaire ;
@@ -56,6 +63,19 @@ function deciderRoutage_(classif, dateReference, ext, motifForce, securiteIndete
   return {
     statut: 'classé', domaine: classif.domaine, chemin: chemin, nom: nom,
     dossierId: dossierId, autresEntites: autresEntitesConnues_(classif, dossierId)
+  };
+}
+
+/**
+ * Construit une décision « doublon » : le fichier va dans « _Doublons », renommé au format normalisé
+ * (DÉPLACEMENT pour un dépôt manuel ; COPIE pour une PJ Gmail — l'original Gmail reste intact, lecture
+ * seule). Jamais de suppression (§2). N'est JAMAIS atteint pour un doc sensible (parti en revue avant).
+ */
+function doublon_(classif, date, ext) {
+  return {
+    statut: 'doublon', domaine: classif.domaine || '', chemin: '_Doublons',
+    nom: nomNormalise_(date, classif.type_doc, classif.emetteur, ext),
+    dossierId: dossierDoublons_().getId()
   };
 }
 
@@ -191,6 +211,27 @@ function deposer_(blob, dossierId, nom) {
 function sousDossier_(parent, nom) {
   var it = parent.getFoldersByName(nom);
   return it.hasNext() ? it.next() : parent.createFolder(nom);
+}
+
+/**
+ * Renvoie (ou crée) le dossier « _Doublons » où sont écartés les doublons (déplacement seul,
+ * jamais de suppression). Placé à côté de `00·À trier` (même parent = racine DriveAI). L'ID est
+ * mémorisé en Script Property pour éviter de le re-chercher à chaque doublon.
+ * @return {Folder}
+ */
+function dossierDoublons_() {
+  var props = PropertiesService.getScriptProperties();
+  var id = props.getProperty('DriveAI_DOUBLONS_ID');
+  if (id) {
+    try { return DriveApp.getFolderById(id); } catch (e) { /* supprimé → on recrée ci-dessous */ }
+  }
+  var aTrier = DriveApp.getFolderById(CONFIG.DOSSIERS.A_TRIER);
+  var parents = aTrier.getParents();
+  var racine = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
+  var it = racine.getFoldersByName('_Doublons');
+  var dossier = it.hasNext() ? it.next() : racine.createFolder('_Doublons');
+  props.setProperty('DriveAI_DOUBLONS_ID', dossier.getId());
+  return dossier;
 }
 
 /* ---------- Nommage (docs/NAMING.md) ---------- */

@@ -23,6 +23,13 @@
 | `06 · Études & diplômes` | `1PeeKG8XgZB6gJdZo03cO7F0s_iMgw6Ec` |
 | `07 · Perso & projets` | `19uwSc1A47d_q32Dd2YJ4Wi9StllvyLey` |
 
+**Hors domaines** (préfixe `_`, à la racine, triés en tête ; ni domaine ni racine de rangement) :
+
+| Dossier | Rôle |
+|---------|------|
+| `_Archive 2025` | ancien Drive figé — DriveAI n'y touche jamais (sauf via `RANGEMENT_RACINES_SUP` si configuré) |
+| `_Doublons` | doublons NON sensibles écartés (déplacement seul, jamais supprimé) — auto-créé, ID en Script Property `DriveAI_DOUBLONS_ID` |
+
 > ⚠️ Ces IDs sont des données de configuration, pas des secrets, mais ils ne doivent vivre que
 > dans `Config.gs` (Phase 1) et ici. Ne pas les disperser dans le code.
 
@@ -63,7 +70,9 @@ mécanismes distincts dans le code :
 - **Multi-entités** : un document concernant plusieurs entités → **raccourci Drive** dans
   chaque dossier concerné (jamais de copie physique).
 - **Document transverse** (`entite = null`) → dossier générique du domaine.
-- **Doublon** : signalé dans la revue, **jamais effacé** automatiquement.
+- **Doublon** (non sensible) : **déplacé** dans `_Doublons` (jamais effacé, jamais en revue — au volume
+  du grand rangement, signaler chaque doublon en revue la saturerait). Un doublon **sensible** part d'abord
+  en revue via le garde-fou §1 (la sécurité prime sur la détection de doublon).
 
 ## Zone protégée 🔒
 

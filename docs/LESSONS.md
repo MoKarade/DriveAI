@@ -213,3 +213,23 @@ ancré). Un offset numérique seul ne fonctionne QUE sur un jeu de résultats st
 Toujours **tracer un scénario concret à plusieurs ticks** (pas juste « ça semble boucler ») avant
 de valider une pagination — c'est ce traçage qui a révélé le plateau, pas une relecture superficielle.
 **Règle durable ?** oui.
+
+## 2026-06-30 — Vérifier la prod par un signal NON caché ; doublons signalés en masse = file de revue saturée
+**Contexte.** Après déploiement du grand rangement de l'ancien Drive (P2.7), impossible de lire l'état
+réel : l'outil de lecture de la Google Sheet servait obstinément un **cache figé** (≥7 lectures identiques,
+antérieures au déploiement), alors que `modifiedTime` avançait (moteur vivant). La vérif via la Sheet était
+donc aveugle. En recherchant directement dans **Drive** (fichiers récemment modifiés, contenu des dossiers
+`00·À trier` / `00·À vérifier` par `parentId`), un signal NON caché a montré : (a) le rangement marche (vieux
+fichiers déplacés, un doc renommé+classé) ; (b) la file de revue se **remplissait de dizaines de
+`[REVUE] doublon`** — l'ancien Drive contient beaucoup de copies (relevés de paie hebდo, docs scolaires).
+Le garde-fou « doublon signalé, jamais supprimé » envoyait CHAQUE doublon en revue → au volume du rangement,
+ça neutralise le bénéfice (énorme pile manuelle), même piège que « garde-fou trop large ».
+**Leçon.** (1) Quand un canal de lecture d'état est en cache/indisponible, **vérifier la prod par un autre
+signal indépendant** (ici la recherche Drive : `modifiedTime`, contenu de dossiers par `parentId`) plutôt que
+conclure « je ne peux pas voir » — ne jamais affirmer un résultat positif sans preuve, mais chercher la preuve
+ailleurs. (2) Un garde-fou « signaler en revue » qui était fin sur un flux normal devient **saturant** sur un
+traitement de masse. Router les doublons NON sensibles vers un dossier `_Doublons` dédié (déplacement seul,
+jamais supprimé — garde-fou §2 intact) garde la file de revue utilisable ; le cas SENSIBLE doit rester
+prioritaire (un doublon sensible va toujours en revue, jamais dans `_Doublons`). Re-tester sur du réel :
+« est-ce que la file de revue reste exploitable au volume du grand rangement ? »
+**Règle durable ?** oui.

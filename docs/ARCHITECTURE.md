@@ -64,7 +64,7 @@
 Base de données légère, lisible/éditable à la main, partagée entre Apps Script et l'app web.
 - `Entités` — référentiel (Phase 2).
 - `Index` — catalogue des docs classés + tags (sert la recherche Phase 4 + l'idempotence).
-  Statuts : `classé`, `revue`, `tache`/`evenement` + `intention-*` (Phase 3), `quarantaine`.
+  Statuts : `classé`, `revue`, `tache`/`evenement` + `intention-*` (Phase 3), `doublon`, `quarantaine`.
 - `Journal` — log d'exécution + erreurs.
 - `Revue` — file d'attente avec suggestions (option « riche » vs nom de fichier ; cf. `PLAN.md` §7).
 - `Échecs` — compteur d'échecs par document (quarantaine après `QUARANTAINE_MAX` essais ; n'est touché

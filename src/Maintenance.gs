@@ -118,6 +118,68 @@ function dequarantaine() {
 }
 
 /**
+ * Balaie les doublons DÉJÀ accumulés dans la file de revue (`[REVUE] doublon …`) vers « _Doublons ».
+ * À lancer À LA MAIN (un clic), une fois, pour nettoyer la file de revue après le passage au nouveau
+ * routage des doublons. Déplacement seul (jamais de corbeille), borné par le garde-temps + reprenable
+ * (relancer si « budget atteint »). Le nom est nettoyé du préfixe « [REVUE] doublon … — » → format normalisé.
+ */
+function nettoyerDoublonsRevue() {
+  try {
+    var debut = Date.now();
+    var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
+    var revue = DriveApp.getFolderById(CONFIG.DOSSIERS.A_VERIFIER);
+    var cibleId = dossierDoublons_().getId();
+
+    var it = revue.getFiles();
+    var ids = [];
+    while (it.hasNext()) {
+      var f = it.next();
+      if (f.getName().indexOf('[REVUE] doublon') === 0) ids.push(f.getId());
+    }
+
+    var n = 0, reste = false;
+    for (var i = 0; i < ids.length; i++) {
+      if (estBudgetDepasse()) { reste = true; break; }
+      if (deplacerVersDoublons_(ids[i], cibleId)) n++;
+    }
+    journalInfo_('Maintenance', n + ' doublon(s) déplacé(s) de la revue vers _Doublons' +
+      (reste ? ' (budget atteint — relance nettoyerDoublonsRevue()).' : '.'));
+  } catch (e) {
+    notifierEchec_('Maintenance', 'Nettoyage des doublons interrompu : ' + e);
+  }
+}
+
+/**
+ * Déplace un fichier vers « _Doublons » (déplacement seul) et le renomme au format normalisé
+ * en retirant le préfixe « [REVUE] doublon (déjà présent) — domaine — ».
+ * @param {string} fileId
+ * @param {string} cibleId
+ * @return {boolean}
+ */
+function deplacerVersDoublons_(fileId, cibleId) {
+  try {
+    var f = DriveApp.getFileById(fileId);
+    // Format : « [REVUE] <raison> — <domaine/catégorie> — <nom suggéré> ». La raison (constante) et
+    // le chemin lisible (n'utilise qu'un « / ») ne contiennent jamais « — » → on retire les DEUX
+    // premiers segments et on conserve TOUT le reste (le nom suggéré, même s'il contient « — »).
+    var segments = f.getName().split(' — ');
+    var nomPropre = segments.length >= 3 ? segments.slice(2).join(' — ') : f.getName();
+    var cible = DriveApp.getFolderById(cibleId);
+    cible.addFile(f); // ajoute la cible AVANT de retirer (jamais orphelin)
+    var parents = f.getParents();
+    while (parents.hasNext()) {
+      var p = parents.next();
+      if (p.getId() !== cibleId) p.removeFile(f);
+    }
+    f.setName(nomPropre);
+    return true;
+  } catch (e) {
+    journalErreur_('Maintenance', 'Déplacement doublon impossible (' + fileId + ') : ' + e);
+    return false;
+  }
+}
+
+/**
  * Vide les lignes de données d'un onglet (conserve la ligne d'en-tête).
  * @param {string} nom
  */
