@@ -125,9 +125,12 @@ Marc a demandé 4 chantiers d'amélioration ; ordre de livraison :
 1. **Visibilité + coût réel** (`P1-09`/`P1-10`) — ✅ codé, revue flotte 🟢 (quotas + code-reviewer) :
    `Cout.gs` (mesure des tokens) + `Resume.gs` (résumé hebdo auto par mail, déclencheur auto-installé
    `assurerTriggerResume_`, aucun nouveau scope).
-2. **Quarantaine après N échecs** — ⬜ à faire (un doc en échec LLM/placement persistant est aujourd'hui
-   re-tenté à chaque tick ; le mettre de côté après N essais + une alerte). Touche l'idempotence du cœur
-   → revue ciblée `file-checker`.
+2. **Quarantaine après N échecs** — ✅ codé (`Journal.gs` onglet `Échecs` + compteur cross-tick,
+   `Pipeline.gs` `gererEchec_`, `CONFIG.QUARANTAINE_MAX=3`). Un doc en échec persistant est compté ;
+   après 3 essais → Index `quarantaine` (plus jamais re-OCRisé) + 1 alerte. Échecs intermédiaires :
+   `journalErreur_` sans mail (anti-spam, au lieu d'un mail par tick). Compté aussi dans le résumé hebdo.
+   Récupération après panne transitoire : `dequarantaine()` (Maintenance.gs, un clic) re-traite les
+   docs quarantinés à tort. Revue flotte 🟢 (file-checker idempotence + apps-script-quota I/O, CONFORME).
 3. **Filtre d'utilité des PJ** — ⬜ à faire (écarter signatures/logos/pubs avant OCR/LLM).
 4. **Classement plus fin** — ⬜ à faire (enrichir catégories/sous-dossiers + entités ; prudent, dégrader
    jamais bloquer).

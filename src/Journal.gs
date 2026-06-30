@@ -13,6 +13,7 @@ function initialiserSheet_(ss) {
   creerOnglet_(ss, 'Index', ['Clé', 'Traité le', 'Fichier', 'Domaine', 'Chemin', 'Statut', 'Empreinte']);
   creerOnglet_(ss, 'Journal', ['Horodatage', 'Niveau', 'Source', 'Message']);
   creerOnglet_(ss, 'Revue', ['Détectée le', 'Fichier', 'Domaine', 'Suggestion']);
+  creerOnglet_(ss, 'Échecs', ['Clé', 'Tentatives', 'Dernière tentative']); // compteur de quarantaine
   var defaut = ss.getSheetByName('Feuille 1') || ss.getSheetByName('Sheet1');
   if (defaut && ss.getSheets().length > 1) ss.deleteSheet(defaut);
 }
@@ -76,13 +77,16 @@ function cleAttachement_(message, indexPj, pj) {
 // Caches chargés une fois par run (évite une lecture Sheet par PJ) :
 //  _indexCache       : clés d'idempotence déjà traitées
 //  _empreintesCache  : empreintes de contenu déjà vues (détection de doublons)
+//  _echecsCache      : clé → { tentatives, ligne } (compteur de quarantaine)
 var _indexCache = null;
 var _empreintesCache = null;
+var _echecsCache = null;
 
 /** À appeler en tête de chaque run pour repartir de caches neufs. */
 function reinitialiserIndexCache_() {
   _indexCache = null;
   _empreintesCache = null;
+  _echecsCache = null;
 }
 
 function chargerIndexCache_() {
@@ -132,3 +136,39 @@ function indexAjouter_(cle, resultat, empreinte) {
   if (_indexCache !== null) _indexCache[cle] = true;
   if (_empreintesCache !== null && empreinte) _empreintesCache[empreinte] = true;
 }
+
+/* ---------- Quarantaine (compteur d'échecs) ---------- */
+
+/** Charge l'onglet « Échecs » en cache (clé → {tentatives, ligne}) — 1× par run. */
+function chargerEchecsCache_() {
+  _echecsCache = {};
+  var f = feuille_('Échecs');
+  var dern = f.getLastRow();
+  if (dern < 2) return;
+  var v = f.getRange(2, 1, dern - 1, 2).getValues(); // A=Clé, B=Tentatives
+  for (var i = 0; i < v.length; i++) {
+    if (v[i][0]) _echecsCache[v[i][0]] = { tentatives: Number(v[i][1]) || 0, ligne: i + 2 };
+  }
+}
+
+/**
+ * Incrémente le compteur d'échecs d'une clé et renvoie le nouveau total. Crée la ligne si absente.
+ * @param {string} cle
+ * @return {number} nombre de tentatives échouées (incluant celle-ci).
+ */
+function incrementerEchec_(cle) {
+  if (_echecsCache === null) chargerEchecsCache_();
+  var f = feuille_('Échecs');
+  var e = _echecsCache[cle];
+  if (e) {
+    e.tentatives += 1;
+    f.getRange(e.ligne, 2, 1, 2).setValues([[e.tentatives, new Date()]]);
+    return e.tentatives;
+  }
+  f.appendRow([cle, 1, new Date()]);
+  _echecsCache[cle] = { tentatives: 1, ligne: f.getLastRow() };
+  return 1;
+}
+// (Pas d'effacement sur succès : un doc qui réussit est inscrit à l'Index avec un statut
+//  terminal → jamais re-traité, donc son compteur d'échecs devient mort. On évite ainsi de
+//  charger l'onglet « Échecs » sur le chemin nominal — il n'est touché que lors d'un échec.)

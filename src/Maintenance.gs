@@ -77,6 +77,47 @@ function sourceParNomRevue_() {
 }
 
 /**
+ * Sort de quarantaine TOUS les documents (statut Index « quarantaine ») : retire leur ligne
+ * d'Index ET leur ligne « Échecs », puis relance le pipeline pour les re-traiter. Utile après une
+ * panne transitoire (Gmail/Drive momentanément indisponible) ayant quarantiné à tort un doc sain.
+ *
+ * À lancer À LA MAIN (un clic). Aucune suppression de fichier : un dépôt quarantiné est resté dans
+ * `00·À trier` (re-collecté au prochain tick) ; une PJ Gmail est re-cherchée dans la fenêtre 30 j.
+ * On supprime les lignes en ordre DÉCROISSANT (pas de décalage). Tourne hors tick → pas de cache à
+ * invalider (le cache d'Index/Échecs est reconstruit au prochain `tickDriveAI`).
+ */
+function dequarantaine() {
+  var f = feuille_('Index');
+  var dern = f.getLastRow();
+  var cles = {}, lignes = [];
+  if (dern >= 2) {
+    var v = f.getRange(2, 1, dern - 1, 6).getValues(); // A=Clé … F=Statut
+    for (var i = 0; i < v.length; i++) {
+      if (v[i][5] === 'quarantaine') { cles[v[i][0]] = true; lignes.push(i + 2); }
+    }
+  }
+  if (!lignes.length) { journalInfo_('Maintenance', 'Aucun document en quarantaine.'); return; }
+
+  lignes.sort(function (a, b) { return b - a; });
+  for (var k = 0; k < lignes.length; k++) f.deleteRow(lignes[k]);
+
+  // Retire aussi les compteurs « Échecs » correspondants (sinon le doc repartirait avec un
+  // compteur déjà élevé et re-quarantinerait au 1er nouvel échec).
+  var fe = feuille_('Échecs');
+  var derE = fe.getLastRow();
+  if (derE >= 2) {
+    var ve = fe.getRange(2, 1, derE - 1, 1).getValues(); // A=Clé
+    var lignesE = [];
+    for (var j = 0; j < ve.length; j++) { if (cles[ve[j][0]]) lignesE.push(j + 2); }
+    lignesE.sort(function (a, b) { return b - a; });
+    for (var m = 0; m < lignesE.length; m++) fe.deleteRow(lignesE[m]);
+  }
+
+  journalInfo_('Maintenance', lignes.length + ' document(s) sortis de quarantaine — re-traités au prochain run.');
+  tickDriveAI();
+}
+
+/**
  * Vide les lignes de données d'un onglet (conserve la ligne d'en-tête).
  * @param {string} nom
  */

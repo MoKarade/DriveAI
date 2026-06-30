@@ -221,6 +221,7 @@ normalement : ce nouveau scope n'affecte pas les permissions déjà accordées.)
 | Rien ne se range | pas de PJ récente, ou tout part en revue | vérifie `Journal`/`Revue` ; baisse `SEUIL_CONFIANCE` après observation |
 | OCR vide sur un PDF | PDF non textuel + OCR Drive limité | normal ; le LLM classe sur les métadonnées |
 | Exécution coupée à ~6 min | volume élevé | normal : le reste est repris au tick suivant (garde-temps) |
+| Doc « mis en quarantaine » (mail d'alerte) | échec LLM/placement 3 fois de suite (souvent une panne transitoire) | il n'est plus re-tenté pour ne pas tourner en boucle ; pour le relancer, exécute **`dequarantaine`** dans l'éditeur (retire les quarantaines + relance le pipeline) |
 
 ---
 
