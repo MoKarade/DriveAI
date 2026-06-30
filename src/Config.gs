@@ -26,6 +26,16 @@ var CONFIG = {
   // (< 10 $/mois) : ne concerne que les cas peu sûrs, et plafonné par run ci-dessous.
   LLM_ESCALADE_PASSES: 3,
   LLM_ESCALADE_MAX_PAR_RUN: 25,           // au-delà : on garde le résultat Haiku (dégradation propre)
+  // Prix Anthropic par MILLION de tokens (input/output), pour MESURER le coût réel (Cout.gs, P1-09).
+  // À ajuster si la grille de prix change. Haiku 4.5 : 1$/5$ ; Sonnet 4.6 : 3$/15$.
+  LLM_PRIX: { haiku_in: 1, haiku_out: 5, sonnet_in: 3, sonnet_out: 15 },
+  // Résumé hebdomadaire automatique (mail récap à soi-même, scope script.send_mail existant).
+  RESUME_JOUR: 'MONDAY',                  // jour du déclencheur hebdo (WeekDay Apps Script)
+  RESUME_HEURE: 8,                        // heure locale d'envoi
+  RESUME_JOURS: 7,                        // fenêtre d'activité résumée (jours)
+  RESUME_MAX_LIGNES: 15000,               // ne lit que les N dernières lignes Index/Journal (le
+                                          // Journal grossit vite : borne la lecture hebdo, large
+                                          // marge devant une semaine d'un usage personnel)
 
   // Intervalle du déclencheur temporel (minutes). Valeurs Apps Script admises : 1, 5, 10, 15, 30.
   // Modifiable à chaud : au tick suivant un déploiement, le moteur réinstalle le déclencheur

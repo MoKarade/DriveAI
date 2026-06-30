@@ -25,6 +25,24 @@ function installerTrigger() {
   ScriptApp.newTrigger('tickDriveAI').timeBased().everyMinutes(CONFIG.TICK_MINUTES).create();
   PropertiesService.getScriptProperties().setProperty('DriveAI_TICK_MINUTES', String(CONFIG.TICK_MINUTES));
   journalInfo_('Setup', 'Déclencheur ' + CONFIG.TICK_MINUTES + ' min installé.');
+  assurerTriggerResume_(); // installe aussi le résumé hebdo (idempotent)
+}
+
+/**
+ * Installe (si absent) le déclencheur HEBDOMADAIRE du résumé (`resumeHebdo`). Idempotent :
+ * crée UNIQUEMENT s'il n'existe encore aucun déclencheur `resumeHebdo`, pour ne pas en
+ * accumuler à chaque tick (anti-saturation du quota ~20, cf. audit quotas). Jour/heure : CONFIG.
+ * Appelé en tête de tick, enveloppé d'un try/catch par l'appelant : un échec ne bloque pas l'intake.
+ */
+function assurerTriggerResume_() {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'resumeHebdo') return; // déjà installé
+  }
+  ScriptApp.newTrigger('resumeHebdo').timeBased()
+    .onWeekDay(ScriptApp.WeekDay[CONFIG.RESUME_JOUR]).atHour(CONFIG.RESUME_HEURE).create();
+  journalInfo_('Setup', 'Déclencheur du résumé hebdo installé (' +
+    CONFIG.RESUME_JOUR + ' ' + CONFIG.RESUME_HEURE + 'h).');
 }
 
 /**
@@ -65,11 +83,15 @@ function tickDriveAI() {
     reinitialiserIndexCache_();
     reinitialiserEntitesCache_();
     reinitialiserEscalades_(); // plafond d'escalades LLM par run (anti-emballement de coût)
+    reinitialiserUsage_();     // compteur de coût LLM du run (mesure réelle, P1-09)
 
-    // Applique un éventuel changement d'intervalle (CONFIG.TICK_MINUTES) sans action manuelle.
-    // Secondaire : un échec ne doit JAMAIS bloquer l'intake (cf. audit quotas).
+    // Applique un éventuel changement d'intervalle (CONFIG.TICK_MINUTES) sans action manuelle,
+    // et installe le déclencheur du résumé hebdo s'il manque. Secondaire : un échec ne doit
+    // JAMAIS bloquer l'intake (cf. audit quotas).
     try { assurerIntervalleTick_(); }
     catch (e) { journalInfo_('Setup', 'Ajustement d\'intervalle différé : ' + e); }
+    try { assurerTriggerResume_(); }
+    catch (e) { journalInfo_('Setup', 'Installation du résumé hebdo différée : ' + e); }
 
     var debut = Date.now();
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
@@ -94,6 +116,7 @@ function tickDriveAI() {
     // prod) garde toujours la priorité sur ce nouveau flux.
     if (!estBudgetDepasse()) traiterIntentionsMail_(estBudgetDepasse);
   } finally {
+    try { flushUsage_(); } catch (e) { journalErreur_('Cout', 'Flush usage impossible : ' + e); }
     verrou.releaseLock();
   }
 }

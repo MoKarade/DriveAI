@@ -37,7 +37,8 @@ l'état courant et la CI vérifie la présence des documents vivants.
 | P1-06 | `Router.gs` — règles de routage (§4), renommage, sous-dossiers année, encodage de suggestion pour la revue | ✅ |
 | P1-07 | `Journal.gs` — Index (idempotence) + log dans la Sheet + notif mail immédiate en cas d'échec | ✅ |
 | P1-08 | `Main.gs` — orchestration + installation du trigger 15 min | ✅ |
-| P1-09 | Mesure de coût LLM sur échantillon réel + extrapolation < 10 $/mois | ⬜ (à mesurer en prod) |
+| P1-09 | Mesure de coût LLM sur échantillon réel + extrapolation < 10 $/mois | ✅ (`Cout.gs` — tokens `usage` mesurés/agrégés par mois, affichés dans le résumé hebdo) |
+| P1-10 | **Visibilité** : résumé hebdomadaire automatique par mail (docs classés / en revue / tâches / événements / erreurs / coût mesuré du mois) — déclencheur auto-installé, aucun nouveau scope | ✅ (`Resume.gs`, `Cout.gs`, `Main.gs`) |
 
 **DoD Phase 1 :** voir `PLAN.md` §5.
 

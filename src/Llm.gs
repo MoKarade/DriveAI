@@ -159,6 +159,7 @@ function appelAnthropic_(modele, meta, systeme) {
     return null;
   }
 
+  enregistrerUsage_(modele, data.usage); // mesure de coût réel (P1-09)
   return parserClassification_(texteReponse_(data));
 }
 
@@ -338,6 +339,7 @@ function appelIntentions_(modele, meta) {
   }
   if (data.stop_reason === 'refusal') return null;
 
+  enregistrerUsage_(modele, data.usage); // mesure de coût réel (P1-09)
   return parserIntentions_(texteReponse_(data));
 }
 

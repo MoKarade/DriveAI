@@ -101,6 +101,7 @@ function miniVerifActionRdv_(expediteur, sujet) {
   } catch (e) {
     return true;
   }
+  enregistrerUsage_(CONFIG.LLM_MODELE, data.usage); // mesure de coût réel (P1-09)
   var texte = texteReponse_(data).toUpperCase();
   return texte.indexOf('NON') === -1; // tout ce qui n'est pas explicitement "NON" passe
 }
