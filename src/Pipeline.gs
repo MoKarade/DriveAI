@@ -34,8 +34,8 @@ function traiterDocument_(src) {
       extrait: extrait
     });
     if (!classif) {
-      // Rien à l'Index → la PJ sera re-tentée au prochain tick.
-      notifierEchec_('Pipeline', 'Classification impossible pour « ' + src.nom + ' »');
+      // Échec LLM : compté ; re-tenté au prochain tick, ou quarantaine après N échecs.
+      gererEchec_(src, 'classification impossible');
       return;
     }
 
@@ -60,8 +60,8 @@ function traiterDocument_(src) {
       : src.placer(decision.dossierId, decision.nom);
 
     if (!fileId) {
-      // Placement Drive échoué → on n'indexe pas : le fichier sera re-tenté.
-      notifierEchec_('Pipeline', 'Placement Drive échoué pour « ' + src.nom + ' »');
+      // Placement Drive échoué → on n'indexe pas : compté ; re-tenté, ou quarantaine après N échecs.
+      gererEchec_(src, 'placement Drive échoué');
       return;
     }
     if (decision.statut !== 'revue' && decision.autresEntites && decision.autresEntites.length) {
@@ -71,7 +71,30 @@ function traiterDocument_(src) {
     indexAjouter_(src.cle, decision, empreinte);
     journalInfo_('Pipeline', decision.statut + ' → ' + decision.chemin + ' : ' + decision.nom);
   } catch (e) {
-    notifierEchec_('Pipeline', 'Échec sur « ' + src.nom + ' » : ' + e);
+    // Erreur inattendue (OCR, blob, Sheet...) : comptée comme un échec → re-tentée, ou
+    // quarantaine après N échecs (évite un re-OCR/re-LLM en boucle sur un cas définitivement cassé).
+    try { gererEchec_(src, String(e)); }
+    catch (e2) { notifierEchec_('Pipeline', 'Échec sur « ' + src.nom + ' » : ' + e + ' / ' + e2); }
+  }
+}
+
+/**
+ * Gère un échec de traitement d'un document : compte les tentatives (onglet « Échecs ») et,
+ * au-delà de `CONFIG.QUARANTAINE_MAX`, met le document en QUARANTAINE — inscrit « quarantaine »
+ * à l'Index (donc plus jamais re-traité, plus de re-OCR/re-LLM coûteux) avec UNE seule alerte mail.
+ * En-deçà du seuil, on journalise seulement (pas de mail → anti-spam) et le doc sera re-tenté.
+ * @param {Object} src
+ * @param {string} message  cause de l'échec (pour le Journal / l'alerte)
+ */
+function gererEchec_(src, message) {
+  var n = incrementerEchec_(src.cle);
+  if (n >= CONFIG.QUARANTAINE_MAX) {
+    indexAjouter_(src.cle, { statut: 'quarantaine', domaine: '', chemin: '', nom: src.nom });
+    notifierEchec_('Quarantaine', 'Document mis en quarantaine après ' + n + ' échecs : ' +
+      src.nom + ' — ' + message);
+  } else {
+    journalErreur_('Pipeline', 'Échec ' + n + '/' + CONFIG.QUARANTAINE_MAX + ' pour « ' +
+      src.nom + ' » : ' + message);
   }
 }
 

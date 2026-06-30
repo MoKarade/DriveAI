@@ -42,6 +42,14 @@ var CONFIG = {
   // au nouvel intervalle tout seul (cf. Main.assurerIntervalleTick_). Aucun re-installerTrigger manuel.
   TICK_MINUTES: 10,
 
+  // Quarantaine : après ce nombre d'échecs CUMULÉS sur un même document (LLM ou placement) — le
+  // compteur n'est pas remis à zéro, mais un doc qui réussit quitte le scan donc la distinction
+  // avec « consécutifs » est sans effet — on cesse de le re-tenter à chaque tick (re-OCR/re-LLM =
+  // coût + spam mail). Il est marqué « quarantaine » dans l'Index (donc sauté) + UNE seule alerte
+  // mail. Les échecs intermédiaires ne journalisent qu'une ligne (pas de mail), anti-spam. Pour
+  // re-tenter un doc quarantiné à tort (panne transitoire), lancer `dequarantaine()` (Maintenance.gs).
+  QUARANTAINE_MAX: 3,
+
   // --- Gmail (lecture seule) & lots ---
   // Idempotence assurée par l'Index (clé messageId|i|nom|taille), PAS par un
   // label : le scope gmail.readonly interdit toute écriture dans la boîte.
