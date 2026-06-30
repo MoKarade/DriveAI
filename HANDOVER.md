@@ -135,6 +135,15 @@ Marc a demandé 4 chantiers d'amélioration ; ordre de livraison :
 4. **Classement plus fin** — ⬜ à faire (enrichir catégories/sous-dossiers + entités ; prudent, dégrader
    jamais bloquer).
 
+### Doublons → `_Doublons` (P1-12, décidé par Marc le 2026-06-30 en regardant la prod)
+La vérif prod (via recherche Drive directe, le cache de lecture Sheet étant figé) a montré que le grand
+rangement **marche** (vieux fichiers déplacés vers `00·À trier`, docs renommés+classés) MAIS que la file
+de revue se **saturait de `[REVUE] doublon`** (ancien Drive plein de copies : relevés Robovic, docs scolaires
+2018). Sur choix de Marc (option « dossier _Doublons + log »), les doublons NON sensibles vont maintenant
+dans `_Doublons` (déplacement seul, jamais supprimé) au lieu de la revue ; un doublon **sensible** reste en
+revue (§1 prioritaire dans `Router.deciderRoutage_`). `nettoyerDoublonsRevue()` (un clic) balaie les doublons
+déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker + structure-keeper).
+
 > Steady-state désormais **100 % automatique** : nouveaux mails + dépôts traités par le trigger 10 min ;
 > mes changements de code déployés par l'Action ; reclassement après recalibrage par l'auto-rejeu.
 > Le `rejouerLaRevue` manuel reste dispo (c'est le seul endroit qui met des copies Gmail à la corbeille).

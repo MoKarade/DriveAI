@@ -137,6 +137,12 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   Le garde zone protégée doit **remonter toute la chaîne d'ancêtres** (un fichier multi-parents avec un
   parent sous `04 · Immigration` n'est JAMAIS détaché), appliqué au filtre de collecte ET avant la mutation.
   Déplacement seul, borné, reprenable ; ne pas enchaîner un sous-run sans budget restant (limite dure 6 min).
+- **Vérifier la prod par un signal indépendant ; « signaler en revue » ne passe pas à l'échelle.** Si le
+  canal de lecture d'état est en cache/indisponible, vérifier la prod **autrement** (recherche Drive directe :
+  `modifiedTime`, contenu de dossiers par `parentId`) — jamais affirmer un résultat sans preuve, mais chercher
+  la preuve ailleurs. Et un garde-fou « signaler en revue » (doublon, incertain) fin sur un flux normal **sature**
+  la file de revue au volume d'un traitement de masse → router vers un dossier dédié (`_Doublons`, déplacement
+  seul, jamais supprimé), en gardant le cas **sensible** prioritaire (un doublon sensible va toujours en revue).
 - **Pagination sur une recherche MOUVANTE (Gmail) ⇒ pas d'offset numérique seul.** Si de nouveaux
   éléments s'insèrent en tête entre deux appels (tri du plus récent au plus ancien), un offset qui
   repart de 0 à chaque tick capte bien le neuf mais peut **stagner indéfiniment** sur le reste de
