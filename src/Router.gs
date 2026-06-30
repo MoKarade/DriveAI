@@ -6,6 +6,7 @@
  * déplacement pour un dépôt) est fait par l'appelant (cf. Pipeline.gs).
  *
  * Priorité des garde-fous (avant tout routage) :
+ *   0. dépôt à sensibilité INDÉTERMINABLE (OCR vide, pas de signal expéditeur/sujet) → 00·À vérifier
  *   1. zone protégée (immigration) / sensible=true        → 00·À vérifier
  *   2. confiance hors [seuil, 1] / domaine inconnu         → 00·À vérifier
  *   3. doublon de contenu déjà présent                     → 00·À vérifier (signalé, jamais effacé)
@@ -20,14 +21,16 @@
  * @param {Date} dateReference    date de réception (Gmail) ou de dépôt (intake), fallback de date
  * @param {string} ext            extension d'origine (".pdf"…)
  * @param {string} [motifForce]   motif de revue imposé par l'appelant (ex. doublon), ou ''
+ * @param {boolean} [securiteIndeterminee]  dépôt dont la sensibilité n'a pas pu être évaluée
+ *   (OCR vide, aucun signal expéditeur/sujet) — cf. Pipeline.traiterDocument_, garde-fou §1.
  * @return {{statut:string, domaine:string, chemin:string, nom:string,
  *           dossierId?:string, raison?:string, autresEntites?:string[]}}
  */
-function deciderRoutage_(classif, dateReference, ext, motifForce) {
+function deciderRoutage_(classif, dateReference, ext, motifForce, securiteIndeterminee) {
   var date = dateNormalisee_(classif.date_doc, dateReference); // AAAA-MM-JJ
 
-  // 1-2-3) Motifs de revue prioritaires (la sécurité prime sur le doublon).
-  var raison = motifDeRevue_(classif) || (motifForce || '');
+  // 0-1-2-3) Motifs de revue prioritaires (la sécurité prime sur le doublon).
+  var raison = motifDeRevue_(classif, securiteIndeterminee) || (motifForce || '');
   if (raison) return revue_(raison, classif, date, ext);
 
   // 4) Granularité entité (Phase 2). L'entité est un ENRICHISSEMENT, jamais un frein :
@@ -66,14 +69,18 @@ function revue_(raison, classif, date, ext) {
 
 /**
  * @param {Object} classif
+ * @param {boolean} [securiteIndeterminee]  cf. deciderRoutage_ — un dépôt sans contenu OCR ni
+ *   signal expéditeur/sujet ne permet pas d'évaluer `sensible` de façon fiable.
  * @return {string} motif de revue, ou '' si classable automatiquement.
  *
  * La confiance basse n'envoie PLUS en revue : elle déclenche une analyse approfondie
  * (cf. Llm.classifier_), après quoi le document est CLASSÉ à sa meilleure estimation.
- * Ne restent en revue que : la zone protégée (sensible / immigration / fiscal — garde-fou
- * §1, non négociable) et un domaine introuvable (dernier recours, vraiment inclassable).
+ * Ne restent en revue que : la sécurité indéterminable, la zone protégée (sensible /
+ * immigration / fiscal — garde-fou §1, non négociable) et un domaine introuvable (dernier
+ * recours, vraiment inclassable).
  */
-function motifDeRevue_(classif) {
+function motifDeRevue_(classif, securiteIndeterminee) {
+  if (securiteIndeterminee) return 'sensibilité indéterminable (OCR vide)';
   if (classif.sensible === true) return 'sensible';
   if (CONFIG.DOMAINES_PROTEGES.indexOf(classif.domaine) !== -1) return 'zone protégée';
   if (!CONFIG.DOMAINES[classif.domaine]) return 'domaine inconnu';

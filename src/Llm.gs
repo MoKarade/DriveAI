@@ -244,3 +244,145 @@ function parserClassification_(texte) {
   }
   return obj;
 }
+
+/* ============================================================================
+ * PHASE 3 — Extraction d'intentions (tâches / événements) depuis un mail.
+ * ==========================================================================*/
+
+// Prompt d'EXTRACTION D'INTENTIONS : distinct du prompt de classement documentaire ci-dessus.
+// La zone protégée s'applique ICI AUSSI (jamais d'intention sur un mail immigration/fiscal) —
+// en plus du filtre déterministe indépendant `toucheZoneProtegee_` (Prefiltre.gs, défense en
+// profondeur : on ne fait pas reposer le garde-fou sur le seul respect du prompt par le LLM).
+var PROMPT_INTENTIONS =
+  'Tu repères des ACTIONS À FAIRE et des RENDEZ-VOUS DATÉS dans un email personnel.\n' +
+  'Réponds UNIQUEMENT avec un objet JSON valide, sans aucun texte avant ou après, selon ce schéma :\n' +
+  '{\n' +
+  '  "intentions": [\n' +
+  '    {\n' +
+  '      "type": <"tache" ou "evenement">,\n' +
+  '      "titre": <court et actionnable, ex "Payer la facture Hydro-Québec">,\n' +
+  '      "date": <"AAAA-MM-JJ" ou null>,\n' +
+  '      "heure": <"HH:MM" (24h) ou null, UNIQUEMENT si une heure précise est donnée>,\n' +
+  '      "confiance": <nombre entre 0 et 1, honnête>\n' +
+  '    }\n' +
+  '  ]\n' +
+  '}\n' +
+  'Routage : date ET heure précises (rendez-vous, réunion, appel planifié) → "evenement". ' +
+  'Action/échéance sans heure précise (payer, renvoyer, répondre, renouveler...) → "tache", ' +
+  'même avec une date limite.\n' +
+  'RÈGLE DE SÉCURITÉ (zone protégée) : ne propose AUCUNE intention si le mail touche ' +
+  'l\'immigration ou le statut (CSQ, IRCC, visa, passeport, permis de travail/séjour, résidence) ' +
+  'OU la fiscalité (déclaration d\'impôts, avis de cotisation) — renvoie {"intentions": []} pour ' +
+  'ces mails (ils restent gérés par le classement documentaire existant, jamais ici).\n' +
+  'Si aucune action ni rendez-vous clair n\'est détecté, renvoie {"intentions": []}.';
+
+/**
+ * Extrait les intentions (tâches/événements) d'un mail. Haiku d'abord ; fallback Sonnet
+ * SIMPLE (1 appel) sur échec total — même politique anti-emballement que `classifier_`
+ * (pas d'escalade multi-passes ici, ce n'est pas une zone d'incertitude à arbitrer).
+ * @param {{expediteur:string, sujet:string, corps:string}} meta
+ * @return {Object[]|null}  liste d'intentions ([] si aucune), ou null si échec total.
+ */
+function extraireIntentions_(meta) {
+  var resultat = appelIntentions_(CONFIG.LLM_MODELE, meta);
+  if (!resultat) {
+    journalInfo_('LLM', 'Extraction d\'intentions : Haiku a échoué, fallback Sonnet pour « ' + meta.sujet + ' »');
+    resultat = appelIntentions_(CONFIG.LLM_MODELE_FALLBACK, meta);
+  }
+  return resultat ? resultat.intentions : null;
+}
+
+/**
+ * @param {string} modele
+ * @param {{expediteur:string, sujet:string, corps:string}} meta
+ * @return {{intentions:Object[]}|null}
+ */
+function appelIntentions_(modele, meta) {
+  var contenu =
+    'Expéditeur : ' + meta.expediteur + '\n' +
+    'Sujet : ' + meta.sujet + '\n' +
+    'Corps (extrait) :\n' + (meta.corps || '(vide)');
+
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'x-api-key': getCleAnthropic_(),
+      'anthropic-version': '2023-06-01'
+    },
+    payload: JSON.stringify({
+      model: modele,
+      max_tokens: CONFIG.LLM_MAX_TOKENS_INTENTIONS,
+      system: PROMPT_INTENTIONS,
+      messages: [{ role: 'user', content: contenu }]
+    }),
+    muteHttpExceptions: true
+  };
+
+  var reponse = fetchAvecRetry_('https://api.anthropic.com/v1/messages', options, modele);
+  if (!reponse) return null;
+
+  var code = reponse.getResponseCode();
+  if (code !== 200) {
+    journalErreur_('LLM', 'Intentions HTTP ' + code + ' (' + modele + ') : ' +
+      tronquer_(reponse.getContentText(), 500));
+    return null;
+  }
+
+  var data;
+  try {
+    data = JSON.parse(reponse.getContentText());
+  } catch (e) {
+    journalErreur_('LLM', 'Réponse intentions non-JSON (' + modele + ') : ' + e);
+    return null;
+  }
+  if (data.stop_reason === 'refusal') return null;
+
+  return parserIntentions_(texteReponse_(data));
+}
+
+/**
+ * Parse robuste de la réponse d'extraction d'intentions. Normalise et VALIDE chaque champ
+ * (jamais de confiance aveugle dans la sortie LLM) ; un type "evenement" sans date+heure
+ * valides est dégradé en "tache" plutôt que rejeté (l'info n'est jamais perdue).
+ * @param {string} texte
+ * @return {{intentions:Object[]}|null}
+ */
+function parserIntentions_(texte) {
+  if (!texte) return null;
+  var obj = null;
+  try {
+    obj = JSON.parse(texte);
+  } catch (e) {
+    var debut = texte.indexOf('{');
+    var fin = texte.lastIndexOf('}');
+    if (debut !== -1 && fin > debut) {
+      try {
+        obj = JSON.parse(texte.substring(debut, fin + 1));
+      } catch (e2) {
+        obj = null;
+      }
+    }
+  }
+  if (!obj || !Array.isArray(obj.intentions)) {
+    journalErreur_('LLM', 'JSON d\'intentions invalide : ' + tronquer_(texte, 300));
+    return null;
+  }
+
+  var propres = [];
+  for (var i = 0; i < obj.intentions.length; i++) {
+    var it = obj.intentions[i];
+    if (!it || typeof it.titre !== 'string' || !it.titre.trim()) continue;
+    var date = (typeof it.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(it.date)) ? it.date : null;
+    var heure = (typeof it.heure === 'string' && /^\d{2}:\d{2}$/.test(it.heure)) ? it.heure : null;
+    var type = (it.type === 'evenement' && date && heure) ? 'evenement' : 'tache';
+    propres.push({
+      type: type,
+      titre: it.titre.trim(),
+      date: date,
+      heure: heure,
+      confiance: typeof it.confiance === 'number' ? it.confiance : 0
+    });
+  }
+  return { intentions: propres };
+}

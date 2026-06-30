@@ -63,6 +63,7 @@ l'état courant et la CI vérifie la présence des documents vivants.
 | P2.4 | Déclencheur **15 → 10 min** (`CONFIG.TICK_MINUTES`) + ré-installation auto au déploiement (création avant suppression) | ✅ (`Config.gs`, `Main.gs`) |
 | P2.5 | **Escalade** : confiance basse (non sensible) → analyse approfondie Sonnet ×3 (consensus) → classé au meilleur endroit, plus en revue. Plafonné/run | ✅ (`Llm.gs`, `Router.gs`, `Config.gs`) |
 | P2.6 | **Grand rangement auto** : tout le contenu « en vrac » des domaines renvoyé au fil des ticks vers 00·À trier → reclassé/renommé par le pipeline. Zéro clic (gated `CONFIG.RANGEMENT_TAG`), borné/run, reprenable, déplacement seul, zone protégée écartée | ✅ (`Maintenance.gs`, `Main.gs`, `Config.gs`) |
+| P2.7 | **Rangement étendu à l'ancien Drive** (« Ancienne structure », `RANGEMENT_RACINES_SUP`) + garde-fou OCR vide : un dépôt (manuel ou rangement) sans texte OCR exploitable part en revue (« sensibilité indéterminable ») au lieu d'être classé sur le seul nom de fichier — ferme un trou réel sur les vieux scans (passeport/fiscal à nom neutre) | ✅ (`Config.gs`, `Maintenance.gs`, `Pipeline.gs`, `Router.gs`) |
 | fix-ci | Auto-déploiement : dispatch après auto-merge + Node 20 (clasp) | ✅ (`auto-merge.yml`, `deploy.yml`) |
 
 **Reste côté Marc :** **2 secrets GitHub une fois** (`CLASPRC_JSON`, `SCRIPT_ID` — cf.
@@ -75,13 +76,35 @@ nouveaux mails + dépôts traités par le trigger ; code déployé par l'Action 
 
 ---
 
-## Épopée Phase 3 — Tâches & agenda  ⬜
+## Épopée Phase 3 — Tâches & agenda (remplace l'agent mail externe de Marc)  🟦
+
+> Source = TOUS les mails récents (pas seulement ceux avec PJ). Pré-filtre 3 étages pour le budget
+> (mots-clés → zone protégée → mini-check Haiku). Création 100 % auto (zéro validation) : action/
+> échéance → Google Tasks, rdv daté → Google Calendar. Décisions actées avec Marc le 2026-06-30.
 
 | ID | Tâche | Statut |
 |----|-------|--------|
-| P3-01 | Détection d'actions/dates dans les mails (LLM) | ⬜ |
-| P3-02 | Routage Tasks vs Calendar (heuristique LLM) | ⬜ |
-| P3-03 | Scopes Tasks/Calendar écriture (mise à jour du manifest) | ⬜ |
+| P3-03 | Scopes `tasks`/`calendar.events` (manifest) + clients REST `Tasks.gs`/`Calendar.gs`/`GoogleApi.gs` (création uniquement, jamais lecture/suppression) | ✅ |
+| P3-04 | Pré-filtre 3 étages (`Prefiltre.gs`) : mots-clés rejet (gratuit) → zone protégée (gratuit, défense en profondeur indépendante du LLM) → mini-check Haiku (expéditeur+sujet seuls, ~10 tokens sortie) | ✅ |
+| P3-01 | Extraction d'intentions (LLM, `PROMPT_INTENTIONS`/`extraireIntentions_`) + routage Tasks vs Calendar (date+heure → événement, sinon tâche) | ✅ (`Llm.gs`) |
+| P3-02 | Scan élargi à tous les mails récents (`GMAIL_REQUETE_ACTIONS`) ; orchestration + idempotence à 2 niveaux (`intention\|messageId`, `tache\|…`/`event\|…`) ; ID client Calendar déterministe (rejeu → 409 = succès, jamais de doublon) | ✅ (`Intentions.gs`, `Gmail.gs`) |
+| P3-05 | Pagination robuste sur fenêtre mouvante : scan « avant » (nouveau mail) + scan « arrière » ancré sur date absolue persistée (rattrapage de l'historique, jamais d'offset numérique qui stagnerait) | ✅ (`Intentions.gs`) |
+
+**Re-audité par la flotte (4 spécialistes, 2 passes)** : security-auditor 🟢 (zone protégée en
+défense en profondeur, aucun autre chemin de création, scopes minimaux) ; llm-cost-optimizer 🟢
+(~1-4 $/mois estimé pour ce flux, largement sous la cible) ; file-checker 🟢 (idempotence saine,
+ID Calendar bien scopé par message) ; apps-script-quota — 1er passage BLOQUANT (l'offset de
+pagination repartait de 0 à chaque tick → stagnation au-delà des ~200 premiers messages sur un
+volume réaliste), corrigé (scan arrière à date absolue persistée), 2e passage 🟢 CONFORME.
+
+**Reste côté Marc :** **une ré-autorisation Google unique** (nouvel écran de consentement Tasks/
+Calendar — cf. `docs/DEPLOIEMENT.md` § Phase 3) après le prochain déploiement. Ensuite, zéro action
+manuelle récurrente, comme le reste du moteur.
+
+**Limites assumées (suivi)** : Google Tasks n'offre pas d'ID client idempotent (contrairement à
+Calendar) — une coupure pile entre la création d'une tâche et l'écriture Index pourrait créer un
+doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granularité jour du curseur
+`before:` du scan arrière (risque résiduel mineur, borné à un seul jour, une seule fois).
 
 ---
 

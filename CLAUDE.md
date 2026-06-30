@@ -137,3 +137,12 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   Le garde zone protégée doit **remonter toute la chaîne d'ancêtres** (un fichier multi-parents avec un
   parent sous `04 · Immigration` n'est JAMAIS détaché), appliqué au filtre de collecte ET avant la mutation.
   Déplacement seul, borné, reprenable ; ne pas enchaîner un sous-run sans budget restant (limite dure 6 min).
+- **Pagination sur une recherche MOUVANTE (Gmail) ⇒ pas d'offset numérique seul.** Si de nouveaux
+  éléments s'insèrent en tête entre deux appels (tri du plus récent au plus ancien), un offset qui
+  repart de 0 à chaque tick capte bien le neuf mais peut **stagner indéfiniment** sur le reste de
+  l'historique dès que le volume dépasse le plafond/run (chaque tick re-confirme le même mur de
+  contenu déjà traité au lieu de progresser). Il faut un scan ancré sur une valeur ABSOLUE et stable
+  (ex. une date via `before:`, persistée), qui n'avance que dans un sens, COMBINÉ à un scan séparé
+  depuis l'offset 0 (pour le neuf) qui s'arrête tôt dès qu'il détecte un mur déjà traité. Toujours
+  **tracer un scénario concret sur plusieurs ticks** avant de valider une pagination, pas une relecture
+  superficielle — c'est ce qui révèle un plateau silencieux.
