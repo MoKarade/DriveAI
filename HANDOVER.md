@@ -116,7 +116,21 @@ Détail des tâches : `BACKLOG.md`.
    nécessaire — DriveAI ne peut pas le faire à sa place (frontière d'exécution). Sera annoncé clairement
    le moment venu, avec une fonction « un clic » dédiée si possible.
 2. 🔑 **Révoquer l'ancienne clé Anthropic** partagée dans le chat (compromise), si pas déjà fait.
-3. *(Open point `P1-09`)* mesurer le coût LLM réel pour confirmer < 10 $/mois.
+3. *(`P1-09` — fait)* le coût LLM réel est désormais **mesuré** (`Cout.gs`, tokens `usage` agrégés
+   par mois) et **affiché chaque semaine** dans le résumé hebdo automatique (`Resume.gs`). Plus besoin
+   d'estimer : à observer sur le 1er mois réel pour confirmer < 10 $/mois.
+
+### Améliorations en cours (demandées par Marc le 2026-06-30, après la mise en prod de Phase 3)
+Marc a demandé 4 chantiers d'amélioration ; ordre de livraison :
+1. **Visibilité + coût réel** (`P1-09`/`P1-10`) — ✅ codé, revue flotte 🟢 (quotas + code-reviewer) :
+   `Cout.gs` (mesure des tokens) + `Resume.gs` (résumé hebdo auto par mail, déclencheur auto-installé
+   `assurerTriggerResume_`, aucun nouveau scope).
+2. **Quarantaine après N échecs** — ⬜ à faire (un doc en échec LLM/placement persistant est aujourd'hui
+   re-tenté à chaque tick ; le mettre de côté après N essais + une alerte). Touche l'idempotence du cœur
+   → revue ciblée `file-checker`.
+3. **Filtre d'utilité des PJ** — ⬜ à faire (écarter signatures/logos/pubs avant OCR/LLM).
+4. **Classement plus fin** — ⬜ à faire (enrichir catégories/sous-dossiers + entités ; prudent, dégrader
+   jamais bloquer).
 
 > Steady-state désormais **100 % automatique** : nouveaux mails + dépôts traités par le trigger 10 min ;
 > mes changements de code déployés par l'Action ; reclassement après recalibrage par l'auto-rejeu.

@@ -32,10 +32,14 @@
 - **Modules Phase 1–2** : `Config.gs`, `Gmail.gs`, `Ocr.gs`, `Llm.gs`, `Router.gs`,
   `Journal.gs`, `Main.gs`, `Pipeline.gs`, `Intake.gs`, `Entites.gs`, `DriveRest.gs`,
   `Maintenance.gs`. Voir `BACKLOG.md`.
-- **Modules Phase 3** (tâches & agenda, en cours) : `GoogleApi.gs` (jeton OAuth + retry partagés),
+- **Modules Phase 3** (tâches & agenda) : `GoogleApi.gs` (jeton OAuth + retry partagés),
   `Tasks.gs`/`Calendar.gs` (clients REST, création uniquement), `Prefiltre.gs` (pré-filtre 3
   étages : mots-clés → zone protégée → mini-check Haiku), `Intentions.gs` (orchestration : scan de
   tous les mails récents, extraction d'intentions, création idempotente Tasks/Calendar).
+- **Modules observabilité** : `Cout.gs` (mesure réelle du coût LLM — tokens `usage` agrégés par mois
+  dans une Script Property), `Resume.gs` (résumé hebdomadaire automatique par mail : docs classés / en
+  revue / tâches / événements / erreurs / coût mesuré du mois ; déclencheur hebdo auto-installé, scope
+  `script.send_mail` existant).
 - **Scopes** (`appsscript.json` → `oauthScopes`), moindre privilège — chaque scope est justifié :
   - `gmail.readonly` — lecture des mails + PJ. **Aucune écriture Gmail** (pas de label).
   - `drive` — créer/déplacer dans Drive, OCR via conversion.
