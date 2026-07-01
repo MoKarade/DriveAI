@@ -14,6 +14,32 @@
 
 ---
 
+## 2026-07-01 — Barre de progression sur un traitement de masse : recensement dans un tick DÉDIÉ, base re-basable, « terminé » sur le vrai signal
+**Contexte.** Marc : « je veux que ça classe tout, une petite barre de chargement pour voir ». Deux bugs
+étaient en jeu. (1) Le grand rangement de l'ancien Drive tournait EN DERNIER dans le tick → systématiquement
+affamé (budget déjà consommé par l'intake) → l'ancien Drive ne se vidait jamais. (2) Pour la barre, une
+1ʳᵉ implémentation faisait le RECENSEMENT complet (parcours récursif du Drive pour compter le total) DANS
+le même run qu'une page de rangement + l'intake : sur un gros Drive, ce recensement ne finissait jamais dans
+le budget → base jamais posée → aucune barre → et chaque tick re-parcourait tout pour rien (quota gaspillé).
+La revue quotas a aussi noté qu'une base FIGÉE (`base`) confrontée à un numérateur CUMULÉ (`traites`) ne
+converge pas : la barre pouvait afficher « ✅ terminé » alors qu'il restait des fichiers (ajoutés après le
+recensement), ou rester bloquée à 98 % (fichiers comptés puis normalisés par un autre chemin).
+**Leçon.** (1) **Drainer avant d'alimenter, sans affamer l'étape qui alimente.** Une étape qui ALIMENTE une
+file (rangement → `00·À trier`) doit tourner TÔT (sinon jamais de budget) MAIS gated sur une file BASSE
+(`< SEUIL`) — pas simplement « en dernier ». Tôt+gated = ni famine ni engorgement. (2) **Un recensement de
+masse (dénominateur d'une barre) se fait dans un tick DÉDIÉ**, pas en concurrence du traitement qu'il mesure :
+tant que la base n'est pas posée, ce tick NE traite pas et consacre son budget au comptage. Filet anti-blocage
+obligatoire : après N recensements incomplets (Drive énorme / plafond dur), accepter le compte PARTIEL comme
+base approximative — ne JAMAIS laisser le recensement bloquer le traitement. (3) **Barre honnête** : numérateur
+monotone (`traites` = déplacements réellement faits) ; base **re-basable** (si on sort plus que recensé, la base
+suit → jamais > 100 %) ; « 100 % / terminé » posé sur le **vrai signal de fin** que le pipeline produit déjà
+(une passe ne collecte plus rien), pas sur `traites >= base` qui ne converge pas ; pourcentage plafonné à 99 %
+tant que ce n'est pas fini. (4) **Tracer le scénario sur plusieurs ticks** (recensement → pages → drainage →
+fin) avant de valider — c'est ce qui révèle la non-convergence, pas une relecture. **Convergence** garantie par
+le prédicat de skip stable (renommage `AAAA-MM-JJ_` ⇒ jamais re-collecté) + `00·À trier`/`_Doublons`/revue hors
+des racines collectées.
+**Règle durable ?** oui.
+
 ## 2026-06-23 — Mise en place de la boucle de leçons
 **Contexte.** Scaffolding Phase 0 de DriveAI.
 **Leçon.** Les leçons utiles sont celles qui changent une décision future : convention,

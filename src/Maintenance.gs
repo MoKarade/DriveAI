@@ -230,6 +230,10 @@ function rangerToutLeDrive() {
     journalInfo_('Rangement', r.deplaces + ' fichier(s) en vrac renvoyé(s) dans 00·À trier pour reclassement' +
       (r.reste ? ' (interrompu/plafond — relance rangerToutLeDrive()).' : '.'));
 
+    // Avance la barre (best-effort) si une campagne auto a déjà posé la base ; sinon sans effet.
+    if (r.deplaces) { try { majProgression_(r.deplaces); } catch (e) {} }
+    if (!r.reste && r.collectes === 0) { try { finaliserProgression_(); } catch (e) {} }
+
     // Amorce le re-traitement SEULEMENT s'il reste du budget : tickDriveAI() repart sur son
     // propre budget de 4.5 min ; l'enchaîner après un rangement déjà long dépasserait la limite
     // dure de 6 min d'Apps Script. Sinon, les fichiers sont déjà dans 00·À trier → le trigger reprend.
@@ -250,20 +254,10 @@ function rangerToutLeDrive() {
  */
 function rangerUnePage_(estBudgetDepasse, proteges) {
   var ids = [];
-  var domaines = domainesAutorises_();
-  for (var d = 0; d < domaines.length && ids.length < CONFIG.RANGEMENT_MAX_PAR_RUN; d++) {
-    if (estBudgetDepasse()) break;
-    var dom = domaines[d];
-    if (CONFIG.DOMAINES_PROTEGES.indexOf(dom) !== -1) continue; // zone protégée : intouchée
-    collecterAReclasser_(
-      DriveApp.getFolderById(CONFIG.DOMAINES[dom]), ids, CONFIG.RANGEMENT_MAX_PAR_RUN, estBudgetDepasse, proteges);
-  }
 
-  // Racines supplémentaires (ancien Drive « Ancienne structure ») : tout leur contenu « en vrac »
-  // est aussi reclassé. Mêmes garde-fous (zone protégée multi-parents, format normalisé sauté,
-  // garde-temps), PLUS un filet dédié (Pipeline.traiterDocument_, Router.motifDeRevue_) : un doc
-  // dont l'OCR échoue (texte vide) part en revue plutôt que d'être classé sur le seul nom de
-  // fichier — sinon un passeport/doc fiscal à nom neutre pourrait passer `sensible=false` à l'aveugle.
+  // 1) Racines supplémentaires (ancien Drive « Ancienne structure ») EN PREMIER : c'est le gros du
+  // travail restant. On les attaque avant les 7 domaines (déjà rangés, quasi tous normalisés) pour
+  // que la collecte atteigne bien les dossiers profonds au lieu de s'épuiser à re-parcourir le neuf.
   var racinesSup = CONFIG.RANGEMENT_RACINES_SUP || [];
   for (var r = 0; r < racinesSup.length && ids.length < CONFIG.RANGEMENT_MAX_PAR_RUN; r++) {
     if (estBudgetDepasse()) break;
@@ -275,6 +269,17 @@ function rangerUnePage_(estBudgetDepasse, proteges) {
     }
   }
 
+  // 2) Les 7 domaines (contenu « en vrac » résiduel). Mêmes garde-fous (zone protégée multi-parents,
+  // format normalisé sauté, garde-temps).
+  var domaines = domainesAutorises_();
+  for (var d = 0; d < domaines.length && ids.length < CONFIG.RANGEMENT_MAX_PAR_RUN; d++) {
+    if (estBudgetDepasse()) break;
+    var dom = domaines[d];
+    if (CONFIG.DOMAINES_PROTEGES.indexOf(dom) !== -1) continue; // zone protégée : intouchée
+    collecterAReclasser_(
+      DriveApp.getFolderById(CONFIG.DOMAINES[dom]), ids, CONFIG.RANGEMENT_MAX_PAR_RUN, estBudgetDepasse, proteges);
+  }
+
   var collecteInterrompue = estBudgetDepasse();
 
   var n = 0;
@@ -282,11 +287,123 @@ function rangerUnePage_(estBudgetDepasse, proteges) {
     if (estBudgetDepasse()) { collecteInterrompue = true; break; }
     if (deplacerVersATrier_(ids[i], proteges)) n++;
   }
+
+  // NB : la barre de progression est orchestrée par l'appelant `appliquerRangementInitial_` (recensement
+  // dans un tick dédié + `majProgression_` après cette page), PAS ici — pour ne pas re-parcourir tout le
+  // Drive à chaque page (le recensement est one-shot). Le lancement MANUEL (`rangerToutLeDrive`) met la
+  // barre à jour lui-même, best-effort.
   return {
     deplaces: n,
     collectes: ids.length,
     reste: collecteInterrompue || ids.length >= CONFIG.RANGEMENT_MAX_PAR_RUN
   };
+}
+
+/**
+ * Met à jour la « barre de chargement » du rangement de l'ancien Drive (onglet `Progression`) après une
+ * page. La base (total « en vrac » recensé une fois) est posée par l'appelant `appliquerRangementInitial_` ;
+ * ici on ne fait que CUMULER les fichiers sortis (`TRAITES`) et re-baser au besoin. Best-effort.
+ *
+ * Re-base : si on sort PLUS que le total recensé (fichiers ajoutés / redevenus en vrac après le
+ * recensement), la base suit `traites` — la barre ne dépasse jamais 100 % ni n'affiche « terminé » à
+ * tort. Le vrai « terminé » (100 %) est posé par `finaliserProgression_` sur le signal de fin réel.
+ * @param {number} deplacesCeRun
+ */
+function majProgression_(deplacesCeRun) {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DriveAI_RANGEMENT_BASE') === null) return; // pas encore recensé → pas de barre
+  var base = Number(props.getProperty('DriveAI_RANGEMENT_BASE')) || 0;
+  var traites = (Number(props.getProperty('DriveAI_RANGEMENT_TRAITES')) || 0) + deplacesCeRun;
+  if (traites > base) base = traites;               // re-base : le total suit (jamais > 100 %)
+  props.setProperty('DriveAI_RANGEMENT_BASE', String(base));
+  props.setProperty('DriveAI_RANGEMENT_TRAITES', String(traites));
+  ecrireProgression_(traites, base, false);
+}
+
+/**
+ * Fige la barre à 100 % (« terminé ») sur le VRAI signal de fin du rangement (une passe ne collecte plus
+ * rien) — plutôt que sur `traites >= base`, qui ne converge pas exactement (base figée vs traites cumulé).
+ * Best-effort.
+ */
+function finaliserProgression_() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DriveAI_RANGEMENT_BASE') === null) return;
+  var base = Number(props.getProperty('DriveAI_RANGEMENT_BASE')) || 0;
+  var traites = Number(props.getProperty('DriveAI_RANGEMENT_TRAITES')) || 0;
+  if (traites > base) base = traites;
+  props.setProperty('DriveAI_RANGEMENT_BASE', String(base));
+  props.setProperty('DriveAI_RANGEMENT_TRAITES', String(base));
+  ecrireProgression_(base, base, true);
+}
+
+/**
+ * Recense (compte, sans rien déplacer) les fichiers « en vrac » restant dans les racines
+ * supplémentaires. Borné par le garde-temps et un plafond dur (anti-emballement mémoire/temps).
+ * @return {{n:number, complet:boolean}}
+ */
+function compterVracRacines_(estBudgetDepasse, proteges) {
+  var racinesSup = CONFIG.RANGEMENT_RACINES_SUP || [];
+  var etat = { n: 0, complet: true };
+  for (var r = 0; r < racinesSup.length; r++) {
+    if (estBudgetDepasse()) { etat.complet = false; break; }
+    try {
+      compterVracDossier_(DriveApp.getFolderById(racinesSup[r]), etat, estBudgetDepasse, proteges);
+    } catch (e) {
+      etat.complet = false; // racine illisible → recensement non fiable, on réessaiera
+    }
+  }
+  return etat;
+}
+
+/** Compte récursif des fichiers « à reclasser » d'un dossier (lecture seule, borné). */
+function compterVracDossier_(dossier, etat, estBudgetDepasse, proteges) {
+  if (etat.n > 20000) { etat.complet = false; return; } // plafond dur de sécurité
+  var fi = dossier.getFiles();
+  while (fi.hasNext()) {
+    if (estBudgetDepasse()) { etat.complet = false; return; }
+    if (estAReclasser_(fi.next(), proteges)) etat.n++;
+  }
+  var fo = dossier.getFolders();
+  while (fo.hasNext()) {
+    if (estBudgetDepasse()) { etat.complet = false; return; }
+    compterVracDossier_(fo.next(), etat, estBudgetDepasse, proteges);
+    if (!etat.complet) return;
+  }
+}
+
+/**
+ * Écrit la barre de chargement (texte) dans l'onglet `Progression`, cellules A2..A4.
+ * Tant que le rangement continue (`estFini` faux), le pourcentage est plafonné à 99 % : seul le vrai
+ * signal de fin (`finaliserProgression_`) affiche 100 % et « ✅ terminé » — jamais un « terminé » à tort.
+ * @param {number} traites
+ * @param {number} base
+ * @param {boolean} estFini
+ */
+function ecrireProgression_(traites, base, estFini) {
+  var pct = estFini ? 100 : (base > 0 ? Math.min(99, Math.round((traites / base) * 100)) : 0);
+  var pleins = Math.round(pct / 5);                 // barre de 20 caractères (1 = 5 %)
+  var barre = '[' + repeter_('█', pleins) + repeter_('░', 20 - pleins) + '] ' + pct + ' %';
+  var restant = estFini ? 0 : Math.max(0, base - traites);
+  var f = feuille_('Progression');
+  f.getRange('A2').setValue(barre);
+  f.getRange('A3').setValue(traites + ' classés / ' + base + '  ·  ' + restant + ' restant(s) dans « Ancienne structure »' +
+    (estFini ? '  ✅ terminé' : ''));
+  f.getRange('A4').setValue('Mis à jour : ' + new Date());
+}
+
+/** Répète un caractère n fois (n négatif → chaîne vide). */
+function repeter_(c, n) {
+  var s = '';
+  for (var i = 0; i < n; i++) s += c;
+  return s;
+}
+
+/** Nombre de fichiers dans `00·À trier`, compté jusqu'à `plafond` (au-delà on renvoie `plafond`). */
+function nbFichiersATrier_(plafond) {
+  var it = DriveApp.getFolderById(CONFIG.DOSSIERS.A_TRIER).getFiles();
+  var n = 0;
+  while (it.hasNext() && n < plafond) { it.next(); n++; }
+  return n;
 }
 
 /**

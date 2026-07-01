@@ -107,20 +107,23 @@ function tickDriveAI() {
     try { creerDossiersEntitesValidees_(estBudgetDepasse); }
     catch (e) { journalErreur_('Entités', 'Création des dossiers d\'entités différée : ' + e); }
 
-    // INTAKE PRIORITAIRE : on DRAINE d'abord ce qui est déjà en file (dépôts manuels + sortie du
-    // grand rangement) et les PJ Gmail. Le grand rangement (qui ALIMENTE 00·À trier) passe APRÈS et
-    // seulement s'il reste du budget — sinon il consomme le budget et affame le traitement de la file
-    // qu'il remplit (symptôme observé : dépôts jamais classés, file 00·À trier figée).
-    traiterGmail_(estBudgetDepasse);                       // source 1 : PJ Gmail
-    if (!estBudgetDepasse()) traiterDepots_(estBudgetDepasse); // source 2 : 00·À trier (draine la file)
-
-    // Grand rangement initial (zéro clic, une fois par `CONFIG.RANGEMENT_TAG`) : COLLECTE une page
-    // de l'ancien Drive vers 00·À trier pour les ticks suivants. Seulement s'il reste du budget après
-    // l'intake, et ENVELOPPÉ : une erreur de collecte (Drive) ne doit jamais geler le pipeline.
-    if (!estBudgetDepasse()) {
+    // Grand rangement (zéro clic, une fois par `CONFIG.RANGEMENT_TAG`) : COLLECTE une page de l'ancien
+    // Drive vers 00·À trier. Tourne TÔT pour ne pas être affamé par l'intake (sinon l'ancien Drive ne
+    // se vide jamais), MAIS uniquement si la file a de la place — DRAINER AVANT D'ALIMENTER : on ne
+    // collecte de nouveaux fichiers que si 00·À trier en compte moins que `RANGEMENT_SEUIL_FILE`, ce qui
+    // empêche à la fois l'engorgement de la file ET la famine du rangement. ENVELOPPÉ : une erreur de
+    // collecte Drive ne gèle jamais l'intake (le `try` du tick n'a qu'un `finally`).
+    // `rangementTermine_()` (1 Property, cheap) court-circuite le comptage Drive une fois le rangement
+    // fini — sinon on itérerait jusqu'à 40 fichiers de 00·À trier à chaque tick pour rien, à vie.
+    if (!estBudgetDepasse() && !rangementTermine_() &&
+        nbFichiersATrier_(CONFIG.RANGEMENT_SEUIL_FILE) < CONFIG.RANGEMENT_SEUIL_FILE) {
       try { appliquerRangementInitial_(estBudgetDepasse); }
       catch (e) { journalErreur_('Rangement', 'Grand rangement différé : ' + e); }
     }
+
+    // INTAKE : draine la file (dépôts manuels + sortie du grand rangement) et les PJ Gmail.
+    traiterGmail_(estBudgetDepasse);                       // source 1 : PJ Gmail
+    if (!estBudgetDepasse()) traiterDepots_(estBudgetDepasse); // source 2 : 00·À trier (draine la file)
 
     // Phase 3 : détection d'actions/rdv dans TOUS les mails récents → Tasks/Calendar.
     // En dernier, budget restant seulement : le classement documentaire (déjà validé en
@@ -176,9 +179,19 @@ function appliquerRejeuSiNouvelleVersion_(estBudgetDepasse) {
  * l'opération est donc reprenable sur autant de ticks que nécessaire, sans jamais re-coûter sur
  * les fichiers déjà normalisés (idempotent). Déplacement seul — aucune suppression (garde-fous §1/§2).
  *
- * Placé APRÈS l'intake (Gmail + dépôts) et seulement s'il reste du budget : on DRAINE la file avant
- * de l'ALIMENTER, sinon la collecte affame le traitement qu'elle nourrit (cf. incident file figée).
- * Les fichiers collectés ce tick sont donc repris au(x) tick(s) SUIVANT(s), pas dans le même run.
+ * Placé TÔT dans le tick (AVANT l'intake) pour ne jamais être affamé — sinon l'ancien Drive ne se
+ * vide jamais (cf. incident file figée : le rangement en dernier ne recevait plus de budget). Mais
+ * gated sur une file BASSE (`nbFichiersATrier_ < RANGEMENT_SEUIL_FILE`, cf. tickDriveAI) : on ne
+ * collecte de NOUVEAUX fichiers que si 00·À trier a de la place — on DRAINE avant d'ALIMENTER.
+ * L'intake du même tick (puis des suivants) reprend ensuite la file ; borné, reprenable.
+ *
+ * Barre de progression (onglet `Progression`) : le total « en vrac » est RECENSÉ dans un tick DÉDIÉ —
+ * tant que la base n'est pas posée, ce tick NE range PAS et consacre son budget au comptage — sinon,
+ * sur un gros Drive, un recensement lancé APRÈS une page de rangement ne finirait jamais et la barre
+ * n'apparaîtrait pas (cf. revue quotas). Filet anti-blocage : après `RANGEMENT_RECENS_ESSAIS_MAX`
+ * recensements incomplets, on accepte le compte PARTIEL comme base approximative — le rangement n'est
+ * JAMAIS bloqué par le recensement ; la re-base (`majProgression_`) et la finalisation sur le vrai
+ * signal de fin corrigent tout écart.
  *
  * @param {function():boolean} estBudgetDepasse
  */
@@ -187,15 +200,51 @@ function appliquerRangementInitial_(estBudgetDepasse) {
   if (props.getProperty('DriveAI_RANGEMENT') === CONFIG.RANGEMENT_TAG) return; // déjà fait pour ce tag
   if (estBudgetDepasse()) return; // pas de budget ce tick → repris au prochain
 
-  var r = rangerUnePage_(estBudgetDepasse, ensembleDomainesProteges_());
+  var proteges = ensembleDomainesProteges_();
+
+  // Nouveau tag = nouvelle campagne de rangement → on repart d'une barre VIERGE (re-recensement du
+  // total). Sinon la barre resterait figée sur le total de la campagne précédente.
+  if (props.getProperty('DriveAI_RANGEMENT_BARRE_TAG') !== CONFIG.RANGEMENT_TAG) {
+    props.deleteProperty('DriveAI_RANGEMENT_BASE');
+    props.deleteProperty('DriveAI_RANGEMENT_TRAITES');
+    props.deleteProperty('DriveAI_RANGEMENT_RECENS');
+    props.setProperty('DriveAI_RANGEMENT_BARRE_TAG', CONFIG.RANGEMENT_TAG);
+  }
+
+  // PHASE 1 — RECENSEMENT (tick dédié, une fois) : pose la base de la barre. Ce tick NE range pas.
+  if (props.getProperty('DriveAI_RANGEMENT_BASE') === null) {
+    var rec = compterVracRacines_(estBudgetDepasse, proteges);
+    var essais = (Number(props.getProperty('DriveAI_RANGEMENT_RECENS')) || 0) + 1;
+    if (!rec.complet && essais < CONFIG.RANGEMENT_RECENS_ESSAIS_MAX) {
+      props.setProperty('DriveAI_RANGEMENT_RECENS', String(essais)); // partiel → réessai au prochain tick
+      return;
+    }
+    props.setProperty('DriveAI_RANGEMENT_BASE', String(rec.n || 0)); // complet, ou partiel accepté (filet)
+    props.setProperty('DriveAI_RANGEMENT_TRAITES', '0');
+    try { ecrireProgression_(0, rec.n || 0, false); }
+    catch (e) { journalErreur_('Progression', 'Init barre impossible : ' + e); }
+    return; // barre initialisée ; le rangement démarre au tick suivant
+  }
+
+  // PHASE 2 — RANGEMENT : une page bornée, puis mise à jour de la barre (cumul des fichiers sortis).
+  var r = rangerUnePage_(estBudgetDepasse, proteges);
   if (r.deplaces) {
+    try { majProgression_(r.deplaces); }
+    catch (e) { journalErreur_('Progression', 'MàJ barre impossible : ' + e); }
     journalInfo_('Rangement', r.deplaces + ' fichier(s) en vrac renvoyé(s) dans 00·À trier (rangement initial auto).');
   }
-  // Terminé seulement quand une passe NON interrompue ne trouve plus aucun fichier en vrac.
+  // Terminé seulement quand une passe NON interrompue ne collecte plus aucun fichier en vrac.
   if (!r.reste && r.collectes === 0) {
+    try { finaliserProgression_(); } // vrai signal de fin → barre à 100 %
+    catch (e) { journalErreur_('Progression', 'Finalisation barre impossible : ' + e); }
     props.setProperty('DriveAI_RANGEMENT', CONFIG.RANGEMENT_TAG);
     journalInfo_('Rangement', 'Rangement initial terminé — tout le Drive est passé au pipeline (tag « ' + CONFIG.RANGEMENT_TAG + ' »).');
   }
+}
+
+/** Vrai si le grand rangement initial est déjà terminé pour le tag courant (lecture cheap, 1 Property). */
+function rangementTermine_() {
+  return PropertiesService.getScriptProperties().getProperty('DriveAI_RANGEMENT') === CONFIG.RANGEMENT_TAG;
 }
 
 /**
