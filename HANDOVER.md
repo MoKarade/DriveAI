@@ -241,6 +241,16 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-01 (nuit) — Chantier #3 (partie 1) : nommage par type de document (ADR-0002 §6).** **Modif du
+  MOTEUR** (le nom des documents classés change). `src/Router.gs` : `nomParType_` + `schemaNommage_` (règles
+  ordonnées de mots-clés → granularité de date jour/mois/année + libellé fixe `Relevé`/`Paie`/`CV`) +
+  `tronquerDate_`. `deciderRoutage_` et `doublon_` appellent `nomParType_` ; `nomNormalise_` (format
+  historique jour) conservé comme défaut → dégradation gracieuse (type inconnu = format historique, jamais
+  un blocage). Ex. : relevé → `2024-03_Relevé_Desjardins`, diplôme → `2021_Diplôme_IUT-ULCO`, facture →
+  `2024-03-05_Facture_Hydro-Québec`. `docs/NAMING.md` réécrit (table par type). **+9 tests → 69 au total.**
+  Pas de bump `VERSION` (nouveaux docs seulement ; renommage de l'existant = migration, chantier #8).
+  **Reste chantier #3** : deviner-du-nom (émetteur/date « Inconnu » → deviner depuis le nom d'origine) +
+  nouveaux dossiers `07·Santé`/`_Technique`. Prochain aussi possible : #4 (entités 1-clic + anti-variantes).
 - **2026-07-01 (nuit) — Chantier #2 : chien de garde (watchdog, ADR-0004).** **Modif du MOTEUR** (déployée).
   `src/Main.gs` : heartbeat `DriveAI_LAST_TICK` (finally du tick), 2ᵉ déclencheur `chienDeGarde` (30 min,
   `assurerTriggerChienDeGarde_` create-if-absent, posé aussi par `installerTrigger`), décision **pure**
