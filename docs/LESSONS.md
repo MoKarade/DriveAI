@@ -272,3 +272,24 @@ type Google cible en métadonnée et SANS `ocrLanguage`. (2) Un libellé de revu
 reprenable) — les fichiers mal étiquetés se re-classent, les sensibles re-partent en revue (zone protégée
 préservée). Toujours vérifier sur du réel (recherche Drive : où sont VRAIMENT allés les fichiers ?).
 **Règle durable ?** oui.
+
+## 2026-07-01 — Le propriétaire peut relâcher un garde-fou « non négociable » : informer, confirmer, mettre à jour la constitution, préserver l'irréversible
+**Contexte.** Le garde-fou §1 (immigration/fiscal/`sensible=true` → TOUJOURS en revue, jamais rangé auto)
+était marqué NON NÉGOCIABLE dans `CLAUDE.md`. Après que le lecteur Office a vidé la revue de tous les faux
+positifs, il n'y restait que les vrais documents sensibles (attestations immigration, 5 copies d'un passeport).
+Marc (propriétaire du Drive ET du projet) a explicitement demandé à les auto-classer aussi. Tension : une règle
+« non négociable » de SA propre constitution vs sa demande directe sur SES données.
+**Leçon.** Un garde-fou « non négociable » protège surtout contre des décisions non voulues/non informées — il
+n'est pas au-dessus du propriétaire qui le change en connaissance de cause. Procédure quand le propriétaire
+demande de relâcher un tel garde-fou : (1) **ne pas exécuter en silence** — expliquer clairement CE QUI change
+et le RISQUE concret (ici : un doc d'immigration mal classé pendant un process peut coûter cher), recommander
+l'option prudente, et demander UNE confirmation explicite (pas re-litiger dix fois). (2) Une fois confirmé,
+**exécuter pleinement** et **mettre à jour la constitution** (`CLAUDE.md` §-en-question) pour refléter la
+nouvelle politique — sinon la flotte re-bloquera au nom de l'ancienne règle et le code divergera de la doc.
+(3) **Préserver ce qui reste vraiment irréversible/dangereux** même dans le relâchement : ici on classe le
+sensible MAIS on garde « aucune suppression », « doublon → `_Doublons` (jamais effacé) » et « ne jamais
+détacher un fichier déjà sous 04·Immigration ». (4) **Re-auditer contre la NOUVELLE règle** (dire explicitement
+à la flotte que la politique a changé sur décision du propriétaire), pas contre l'ancienne. (5) Distiller quels
+docs distinguent vraiment un « garde-fou de sécurité » (protège l'utilisateur d'une erreur) d'un « garde-fou de
+préférence » (un défaut que le propriétaire peut changer) — seul le second se relâche sur simple demande.
+**Règle durable ?** oui.

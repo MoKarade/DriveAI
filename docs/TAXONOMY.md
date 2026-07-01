@@ -71,14 +71,17 @@ mécanismes distincts dans le code :
   chaque dossier concerné (jamais de copie physique).
 - **Document transverse** (`entite = null`) → dossier générique du domaine.
 - **Doublon** (non sensible) : **déplacé** dans `_Doublons` (jamais effacé, jamais en revue — au volume
-  du grand rangement, signaler chaque doublon en revue la saturerait). Un doublon **sensible** part d'abord
-  en revue via le garde-fou §1 (la sécurité prime sur la détection de doublon).
+  du grand rangement, signaler chaque doublon en revue la saturerait). S'applique **aussi** aux doublons
+  sensibles (1 exemplaire classé, les autres dans `_Doublons`) — cf. Zone protégée ci-dessous.
 
-## Zone protégée 🔒
+## Documents sensibles 🔒 *(politique révisée 2026-07-01)*
 
-`04 · Immigration` + **tout** document classé `sensible=true` (incl. fiscal dans
-`02 · Finances/Impôts`). Ces documents ne sont **JAMAIS** rangés automatiquement → toujours
-dirigés vers `00 · À vérifier`. En cas de doute, le LLM met `sensible=true` par défaut.
+Sur décision de Marc, les documents sensibles (**immigration, fiscal, passeport**) sont désormais
+**auto-classés dans leur domaine** (`04 · Immigration`, `01 · Administratif`, `02 · Finances`…),
+comme le reste — ils ne sont plus systématiquement dirigés vers `00 · À vérifier`. Ce qui reste
+**non négociable** sur ces documents : aucune suppression ; un doublon (même sensible) va dans
+`_Doublons` (jamais effacé) ; le grand rangement ne détache jamais un fichier déjà rangé sous
+`04 · Immigration`. Seul un **domaine introuvable** part encore en revue.
 
 ## Legacy
 

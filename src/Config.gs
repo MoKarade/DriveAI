@@ -12,7 +12,7 @@ var CONFIG = {
   // la version stockée diffère, le moteur renvoie automatiquement les DÉPÔTS partis
   // en revue vers 00·À trier pour reclassement (cf. Main.appliquerRejeuSiNouvelleVersion_)
   // — borné, réversible, sans toucher aux PJ Gmail ni aux docs déjà classés. Zéro clic.
-  VERSION: 'P2.8',
+  VERSION: 'P2.9',
 
   // --- Seuils & modèle ---
   SEUIL_CONFIANCE: 0.50,                 // sous ce seuil → file de revue (abaissé de 0.80 sur demande)
@@ -90,10 +90,6 @@ var CONFIG = {
     'avis de cotisation', 'revenu québec', 'revenu quebec', 'agence du revenu'
   ],
   OCR_TAILLE_MAX: 20 * 1024 * 1024,      // au-delà : pas d'OCR (mémoire) → métadonnées seules
-  // Sous ce nombre de caractères, l'extrait OCR est jugé NON exploitable (garde-fou §1, voir
-  // Pipeline.traiterDocument_) : pour un DÉPÔT (manuel ou rangement, sans expéditeur/sujet réels),
-  // un OCR vide ne permet pas d'évaluer `sensible` → revue forcée plutôt qu'un classement à l'aveugle.
-  OCR_MIN_CARS_EXPLOITABLE: 20,
 
   // --- Dossiers (IDs : docs/TAXONOMY.md) ---
   DOSSIERS: {
