@@ -4,12 +4,13 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **Dernière mise à jour : 2026-06-30** — **Phase 2 terminée + full auto confirmé en prod** ; **Phase 3
-> codée** (P3-01→P3-05, tâches & agenda — remplace l'agent mail externe de Marc). P2.1→P2.7 (entité,
-> full auto, seuil 0.50, tick 10 min, escalade, grand rangement + ancien Drive + garde-fou OCR vide).
-> Les **2 secrets GitHub sont posés** (déploiement auto confirmé par des runs réels) — plus rien à
-> faire côté secrets. **Reste côté Marc pour Phase 3 : une ré-autorisation Google unique** (nouveaux
-> scopes Tasks/Calendar) au prochain déploiement — cf. `docs/DEPLOIEMENT.md` § Phase 3.
+> **Dernière mise à jour : 2026-07-01** — **Documents sensibles auto-classés** (P1-14, décision Marc :
+> `sensible`/zone protégée ne routent plus en revue, seul `domaine inconnu` y reste) et **rangement fiable
+> de l'ancien Drive + barre de progression** (P1-15 : le grand rangement, jusque-là affamé car en dernier
+> dans le tick, tourne désormais TÔT mais gated file-basse ; onglet `Progression` barre `[███░░░] N %`,
+> `RANGEMENT_TAG` r1→r2). Antérieur : Phase 2 + full auto confirmés en prod, Phase 3 codée. Les **2 secrets
+> GitHub sont posés** (déploiement auto confirmé) — rien côté secrets. **Reste côté Marc pour Phase 3 : une
+> ré-autorisation Google unique** (scopes Tasks/Calendar) au prochain déploiement — cf. `docs/DEPLOIEMENT.md`.
 
 ---
 

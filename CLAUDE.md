@@ -154,10 +154,19 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   (rejeu de version, grand rangement, ajustement de déclencheur) doit être **enveloppée d'un try/catch** —
   « un échec ne doit JAMAIS bloquer l'intake ». Le `try` de `tickDriveAI` n'a qu'un `finally` : une exception
   non capturée dans une étape amont **gèle tout le pipeline** (Gmail + dépôts + intentions sautés à chaque
-  tick). Vérifier que TOUTES les étapes secondaires sont protégées, pas seulement certaines. Et une étape qui
-  ALIMENTE une file (rangement → `00·À trier`) passe APRÈS celle qui la DRAINE, `if (!estBudgetDepasse())`,
-  sinon elle s'affame. Symptôme « le moteur écrit son état mais ne traite plus rien » ⇒ plantage non capturé
-  ou famine de budget en amont ; diagnostiquer par le CODE + signaux Drive quand le Journal est illisible.
+  tick). Vérifier que TOUTES les étapes secondaires sont protégées, pas seulement certaines. Symptôme « le
+  moteur écrit son état mais ne traite plus rien » ⇒ plantage non capturé ou famine de budget en amont ;
+  diagnostiquer par le CODE + signaux Drive quand le Journal est illisible.
+- **Drainer avant d'alimenter, SANS affamer l'alimenteur : tôt + gated, pas « en dernier ».** Correction
+  d'une leçon antérieure. Mettre l'étape qui ALIMENTE une file (rangement → `00·À trier`) *après* le drainage
+  (`if (!estBudgetDepasse())`) la met EN DERNIER → elle ne reçoit jamais de budget → la file source ne se
+  vide jamais (l'ancien Drive stagnait). Le bon patron : l'alimenteur tourne **TÔT** (avant l'intake, pour
+  avoir du budget) mais **gated sur une file BASSE** (`nbFichiersATrier_ < SEUIL`) — on n'alimente que s'il
+  reste de la place. Tôt+gated = ni famine ni engorgement (contre-pression). Pour une **barre de progression**
+  sur un tel traitement de masse : recenser le total dans un tick DÉDIÉ (sinon le comptage ne finit jamais en
+  concurrence du traitement), avec filet « après N recensements incomplets, accepter le compte partiel » ;
+  numérateur monotone, base re-basable (jamais > 100 %), « terminé » sur le vrai signal de fin (passe qui ne
+  collecte plus rien), pas sur `traites >= base`. Toujours tracer le scénario sur plusieurs ticks.
 - **Pagination sur une recherche MOUVANTE (Gmail) ⇒ pas d'offset numérique seul.** Si de nouveaux
   éléments s'insèrent en tête entre deux appels (tri du plus récent au plus ancien), un offset qui
   repart de 0 à chaque tick capte bien le neuf mais peut **stagner indéfiniment** sur le reste de

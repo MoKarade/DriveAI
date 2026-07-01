@@ -126,6 +126,11 @@ var CONFIG = {
   INTAKE_PAGE: 50,                        // nb de fichiers de 00·À trier traités par run
   REJEU_PAGE: 100,                        // nb de dépôts renvoyés par run lors d'un auto-rejeu
   RANGEMENT_MAX_PAR_RUN: 200,             // grand rangement : nb de fichiers renvoyés vers 00·À trier par run
+  RANGEMENT_SEUIL_FILE: 40,               // ne collecte de NOUVEAUX fichiers que si 00·À trier en a moins
+                                          // (drainer avant d'alimenter, sans affamer ni déborder la file)
+  RANGEMENT_RECENS_ESSAIS_MAX: 3,         // barre de progression : nb de recensements incomplets tolérés
+                                          // avant d'accepter un compte PARTIEL comme base (anti-blocage
+                                          // sur un Drive énorme — la re-base/finalisation corrigent l'écart)
   // Grand rangement initial AUTO (zéro clic) : tant que le tag stocké (Script Property
   // `DriveAI_RANGEMENT`) diffère de celui-ci, le moteur renvoie au fil des ticks TOUT le contenu
   // « en vrac » des domaines vers 00·À trier pour reclassement/renommage (cf. Main.appliquerRangementInitial_).
