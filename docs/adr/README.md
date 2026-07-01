@@ -22,6 +22,7 @@ Statuts possibles : `Proposé` · `Accepté` · `Implémenté` · `Remplacé par
 | [0005](0005-sources-entree.md) | Sources d'entrée (fichiers partagés) | Accepté — à implémenter |
 | [0006](0006-architecture-qualite.md) | Architecture & qualité (tests, testabilité, état lisible) | Accepté — à implémenter · **FONDATION** |
 | [0007](0007-securite-vie-privee.md) | Sécurité & vie privée (LLM, rétention, scopes) | Accepté — majoritairement déjà en place |
+| [0008](0008-app-web-recherche-controle.md) | App web (Phase 4) : recherche, contrôle & tableau de bord | Accepté — à implémenter |
 
 Issu du **brainstorm produit du 2026-07-01** (Marc + Claude). Voir aussi `docs/ROADMAP.md` (ordre
 d'implémentation), `docs/RUNBOOK.md` (exploitation) et `docs/GUIDE.md` (usage).
