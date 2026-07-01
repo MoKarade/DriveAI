@@ -132,6 +132,17 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 > — plein texte **délégué à l'index natif de Drive** (pas d'OCR ré-indexé côté app), pour respecter ADR-0007
 > (métadonnées seulement).
 
+### Chantier #1 — Fondation testable (ADR-0006)  🟦
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C1-01 | Harness Node (`test/harness.js`) : charge les `.gs` en bac à sable `vm`, mocks Google déterministes, faux Drive (`getParents` qui peut lever) | ✅ |
+| C1-02 | Filet de tests de la logique de décision : routage/nommage (`champ_`, `nomNormalise_`, `extension_`, `cheminLisible_`), dates (`dateNormalisee_`), entités (`normaliserCle_`, `sousDossierPourType_`), prédicats de collecte | ✅ (37 tests) |
+| C1-03 | Tests du **garde-fou §1** (`aParentProtege_`/`chaineMonteVersProtege_`) : zone protégée jamais détachée — multi-parents, chaîne d'ancêtres, échoue-fermé (mutation) / ouvert (collecte), borne anti-cycle | ✅ |
+| C1-04 | Test **invariant vie privée** (ADR-0007) : `indexAjouter_` n'écrit que les 7 colonnes métadonnées, jamais le corps d'un document | ✅ |
+| C1-05 | Job CI « Tests unitaires (logique pure) » (`node --test test/*.test.js`, Node 20, **zéro dépendance**) | ✅ |
+| C1-06 | **Journal borné** (rotation/purge des N dernières lignes) + onglet **`Santé`** lisible | ⬜ à suivre (partie 2/2) |
+
 ---
 
 ## Épopée Phase 4 — Recherche + dashboard (Vercel)  ⬜

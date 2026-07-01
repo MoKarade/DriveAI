@@ -20,7 +20,7 @@ Statuts possibles : `Proposé` · `Accepté` · `Implémenté` · `Remplacé par
 | [0003](0003-controle-correction.md) | Contrôle & correction (et apprentissage) | Accepté — à implémenter |
 | [0004](0004-fiabilite.md) | Fiabilité totale (zéro babysitting) | Accepté — à implémenter |
 | [0005](0005-sources-entree.md) | Sources d'entrée (fichiers partagés) | Accepté — à implémenter |
-| [0006](0006-architecture-qualite.md) | Architecture & qualité (tests, testabilité, état lisible) | Accepté — à implémenter · **FONDATION** |
+| [0006](0006-architecture-qualite.md) | Architecture & qualité (tests, testabilité, état lisible) | Accepté — **en cours** (filet de tests livré) · **FONDATION** |
 | [0007](0007-securite-vie-privee.md) | Sécurité & vie privée (LLM, rétention, scopes) | Accepté — majoritairement déjà en place |
 | [0008](0008-app-web-recherche-controle.md) | App web (Phase 4) : recherche, contrôle & tableau de bord | Accepté — à implémenter |
 
