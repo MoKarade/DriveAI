@@ -22,7 +22,7 @@
 
 ### 🔴 « Le moteur n'écrit plus / ne range plus rien » (Sheet figée)
 1. **Vérifier l'activité Drive réelle** : des fichiers ont-ils été modifiés depuis le dernier déploiement ? Si **seul le code** a changé → le moteur ne produit rien.
-2. **Cause probable A — déclencheur désactivé** par Google (trop d'échecs). **Remède : script.google.com → projet DriveAI → exécuter `installerTrigger`** (ré-arme le déclencheur 5 min + le résumé hebdo). 🔜 Le *watchdog* (roadmap #1) automatisera ce ré-armage + alerte.
+2. **Cause probable A — déclencheur désactivé** par Google (trop d'échecs). **Auto-réparé** par le **chien de garde** (2ᵉ déclencheur `chienDeGarde`, toutes les 30 min, ADR-0004) : il détecte le silence (heartbeat `DriveAI_LAST_TICK` périmé > 45 min), **ré-installe seul** le déclencheur principal, et n'envoie un **mail d'alerte** (« exécuter `installerTrigger` ») que si l'auto-réparation ne suffit pas. Remède manuel (si alerté) inchangé : **script.google.com → projet DriveAI → exécuter `installerTrigger`**. Cas résiduel : si Google désactive *tous* les déclencheurs (watchdog inclus), le résumé hebdo sert de second filet, sinon un clic.
 3. **Cause probable B — état figé « terminé » à tort** : une collecte qui a échoué (exception attrapée) prise pour « 0 = fini ». Déverrouiller en **bumpant `CONFIG.RANGEMENT_TAG`** (ex. r3→r4) → nouvelle passe complète.
 4. Diagnostiquer par le **CODE + signaux Drive** quand le Journal est illisible (énorme/tronqué).
 

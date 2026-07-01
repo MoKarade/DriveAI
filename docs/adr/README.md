@@ -18,7 +18,7 @@ Statuts possibles : `Proposé` · `Accepté` · `Implémenté` · `Remplacé par
 | [0001](0001-cadrage-produit.md) | Cadrage produit (vision, priorités, contraintes) | Accepté |
 | [0002](0002-refonte-taxonomie-entites-nommage.md) | Refonte taxonomie, entités & nommage | Accepté — à implémenter |
 | [0003](0003-controle-correction.md) | Contrôle & correction (et apprentissage) | Accepté — à implémenter |
-| [0004](0004-fiabilite.md) | Fiabilité totale (zéro babysitting) | Accepté — à implémenter |
+| [0004](0004-fiabilite.md) | Fiabilité totale (zéro babysitting) | **Implémenté** (chien de garde) |
 | [0005](0005-sources-entree.md) | Sources d'entrée (fichiers partagés) | Accepté — à implémenter |
 | [0006](0006-architecture-qualite.md) | Architecture & qualité (tests, testabilité, état lisible) | Accepté — **en cours** (filet de tests livré) · **FONDATION** |
 | [0007](0007-securite-vie-privee.md) | Sécurité & vie privée (LLM, rétention, scopes) | Accepté — majoritairement déjà en place |

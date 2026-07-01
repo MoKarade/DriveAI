@@ -1,6 +1,10 @@
 # ADR-0004 — Fiabilité totale (zéro babysitting)
 
-- **Statut** : Accepté — **à implémenter** (roadmap #1)
+- **Statut** : Accepté — **Implémenté** (roadmap #2). Livré : 2ᵉ déclencheur `chienDeGarde`
+  (`assurerTriggerChienDeGarde_`, create-if-absent), heartbeat `DriveAI_LAST_TICK` (finally du tick),
+  décision pure `actionChienDeGarde_` (machine à 3 états détecter→réparer→alerter, dédupée par épisode),
+  auto-réparation (`installerTrigger`) puis alerte mail rassurante, et « État du système » (`etatSysteme_`)
+  dans le résumé hebdo. Tests : `test/watchdog.test.js`. (Le Journal borné/Santé — point 4 — est venu au #1.)
 - **Décideurs** : Marc, Claude · **Source** : brainstorm 2026-07-01, axe 3
 
 ## Contexte
