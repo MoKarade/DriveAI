@@ -12,7 +12,7 @@
  * Lecture mise en cache 1×/run (leçon : jamais une lecture Sheet par item).
  */
 
-var COLONNES_ENTITES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le'];
+var COLONNES_ENTITES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?'];
 
 var _entitesCache = null; // { lignes: [...], parCle: { normKey: ligne } }
 
@@ -40,6 +40,103 @@ function normaliserCle_(s) {
 /** Clé de matching d'une entité : domaine + nom (évite les collisions inter-domaines). */
 function cleEntite_(domaine, entite) {
   return normaliserCle_(domaine) + '|' + normaliserCle_(entite);
+}
+
+/* ---------- Garde anti-variantes (ADR-0002 §4) — logique PURE, testée ----------
+ * But : éviter la prolifération d'entités quasi-doublons (« Desjardins » vs « Caisse Desjardins »,
+ * « Hydro Quebec » vs « Hydro-Québec », fautes de frappe). On ne FUSIONNE jamais tout seul : on
+ * PROPOSE la variante la plus proche pour que Marc tranche en 1 clic. Combine 3 signaux : recouvrement
+ * de jetons (Jaccard), inclusion (un nom ⊆ l'autre), et distance d'édition (typos/ponctuation). */
+
+var STOPWORDS_ENTITE = ['de', 'du', 'des', 'la', 'le', 'les', 'l', 'd', 'et', 'a', 'au', 'aux', 'en',
+  'the', 'of', 'and', 'un', 'une'];
+
+/** Jetons SIGNIFICATIFS d'un libellé : normalisé, coupé sur séparateurs, mots-outils retirés. */
+function tokensEntite_(nom) {
+  return normaliserCle_(nom).split(/[\s\-_/.]+/).filter(function (t) {
+    return t && STOPWORDS_ENTITE.indexOf(t) === -1;
+  });
+}
+
+/** Similarité de Jaccard entre deux ensembles de jetons (0..1). */
+function jaccardTokens_(a, b) {
+  if (!a.length && !b.length) return 0;
+  var setB = {}, inter = 0, union = {};
+  for (var i = 0; i < b.length; i++) { setB[b[i]] = true; union[b[i]] = true; }
+  for (var j = 0; j < a.length; j++) {
+    union[a[j]] = true;
+    if (setB[a[j]]) { inter++; setB[a[j]] = false; } // compte chaque jeton une fois
+  }
+  var u = Object.keys(union).length;
+  return u ? inter / u : 0;
+}
+
+/** Distance d'édition de Levenshtein (itérative, O(n·m), bornée aux libellés courts). */
+function distanceLevenshtein_(a, b) {
+  a = String(a); b = String(b);
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  var prev = [], cur = [], i, j;
+  for (j = 0; j <= b.length; j++) prev[j] = j;
+  for (i = 1; i <= a.length; i++) {
+    cur[0] = i;
+    for (j = 1; j <= b.length; j++) {
+      var cout = a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1;
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cout);
+    }
+    for (j = 0; j <= b.length; j++) prev[j] = cur[j];
+  }
+  return prev[b.length];
+}
+
+/**
+ * Score de similarité entre deux libellés d'entité (0..1). Max de : Jaccard des jetons,
+ * inclusion (jetons du plus court tous dans le plus long → 0.9), et ratio de Levenshtein.
+ */
+function similariteEntite_(a, b) {
+  var na = normaliserCle_(a), nb = normaliserCle_(b);
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+  var ta = tokensEntite_(a), tb = tokensEntite_(b);
+  var jac = jaccardTokens_(ta, tb);
+  var court = ta.length <= tb.length ? ta : tb;
+  var lng = ta.length <= tb.length ? tb : ta;
+  var inclus = court.length > 0 && court.every(function (t) { return lng.indexOf(t) !== -1; });
+  // Levenshtein = détection de FAUTE DE FRAPPE : petite distance ABSOLUE (≤ 2) sur un libellé assez long
+  // (≥ 5). On évite ainsi les faux positifs sur acronymes courts (« EDF » ≈ « GDF ») et sur des libellés
+  // au préfixe commun mais distincts (« Ville de Paris » ≈ « Ville de Lyon », distance grande). Capte le
+  // typo même multi-mots (« Caisse Desjardin » ≈ « Caisse Desjardins »).
+  var maxl = Math.max(na.length, nb.length);
+  var typo = (maxl >= 5 && distanceLevenshtein_(na, nb) <= 2) ? 0.9 : 0;
+  return Math.max(jac, inclus ? 0.9 : 0, typo);
+}
+
+/**
+ * Cherche la meilleure VARIANTE possible de `nom` parmi `existants` (mêmes domaine, libellés).
+ * Ignore un libellé strictement identique (ce n'est pas une variante mais le même — géré ailleurs).
+ * @param {string} nom
+ * @param {string[]} existants
+ * @param {number} seuil  score minimal (0..1) pour proposer une variante
+ * @return {?{nom:string, score:number}} la meilleure au-dessus du seuil, ou null.
+ */
+function chercherVariante_(nom, existants, seuil) {
+  var meilleure = null, cible = normaliserCle_(nom);
+  for (var i = 0; i < (existants || []).length; i++) {
+    if (normaliserCle_(existants[i]) === cible) continue; // identique = pas une variante
+    var s = similariteEntite_(nom, existants[i]);
+    if (s >= seuil && (!meilleure || s > meilleure.score)) meilleure = { nom: existants[i], score: s };
+  }
+  return meilleure;
+}
+
+/** Libellés d'entités déjà connues DU MÊME DOMAINE (pour comparer une nouvelle proposition). */
+function entitesMemeDomaine_(cache, domaine) {
+  var d = normaliserCle_(domaine), noms = [];
+  for (var i = 0; i < cache.lignes.length; i++) {
+    if (normaliserCle_(cache.lignes[i].domaine) === d) noms.push(cache.lignes[i].entite);
+  }
+  return noms;
 }
 
 /** Indices de colonnes (0-based) par nom d'en-tête ; ajoute les colonnes manquantes. */
@@ -141,6 +238,10 @@ function entiteEnAttenteAjouter_(classif) {
   if (cache.parCle[cle]) return; // déjà proposée ou connue
 
   var type = typeEntiteDevine_(classif);
+  // Garde anti-variantes (ADR-0002 §4) : propose la plus proche entité EXISTANTE du même domaine —
+  // pour que Marc fusionne en 1 clic au lieu de créer un quasi-doublon. Suggestion seulement, jamais auto.
+  var variante = chercherVariante_(classif.entite, entitesMemeDomaine_(cache, classif.domaine), CONFIG.SEUIL_VARIANTE);
+
   var f = feuille_('Entités');
   var idx = colonnesEntites_();
   var ligne = [];
@@ -151,6 +252,9 @@ function entiteEnAttenteAjouter_(classif) {
   ligne[idx['Statut']] = 'en_attente';
   ligne[idx['Dossier ID']] = '';
   ligne[idx['Ajoutée le']] = new Date();
+  ligne[idx['Variante possible ?']] = variante
+    ? '→ ' + variante.nom + ' (' + Math.round(variante.score * 100) + ' %) ?'
+    : '';
   for (var i = 0; i < ligne.length; i++) if (ligne[i] === undefined) ligne[i] = '';
   f.appendRow(ligne);
 

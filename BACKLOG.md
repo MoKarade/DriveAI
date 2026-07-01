@@ -167,6 +167,14 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C3-02 | **Deviner le type depuis le nom d'origine** (`Router.devinerTypeDepuisNom_`/`enrichirClassifDepuisNom_`) quand le LLM ne rend pas de type — ex. `…_TP4_…` → « TP ». Appelé avant le routage, sans jamais écraser un type trouvé | ✅ (5 tests) |
 | C3-03 | Nouveaux dossiers **`07 · Santé`** (domaine auto-créé `dossierDomaineAuto_`, proposé au LLM) + **`_Technique`** (code/CAO par extension `EXT_TECHNIQUES` → routés sans OCR/LLM). Renumérotage **Perso 07 → 08** (self-healing `assurerNomsDomaines_`, renommage seul, réversible) | ✅ (6 tests) |
 
+### Chantier #4 — Entités : validation 1-clic + garde anti-variantes (ADR-0002 §4)  🟦
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C4-01 | **Moteur de similarité PUR** (`Entites.gs`) : `tokensEntite_`/`jaccardTokens_`/`distanceLevenshtein_`/`similariteEntite_`/`chercherVariante_` — Jaccard + inclusion + Levenshtein | ✅ (8 tests) |
+| C4-02 | **Garde anti-variantes** : à la proposition d'une entité (`entiteEnAttenteAjouter_`), signaler la plus proche existante du même domaine dans une colonne `Variante possible ?` (seuil `CONFIG.SEUIL_VARIANTE`). **Suggestion seule, jamais de fusion auto** | ✅ |
+| C4-03 | **Validation 1-clic** (mail hebdo → mini-formulaire ; fusion d'une variante ou création) | ⬜ à suivre (rejoint ADR-0003, chantiers #5-6) |
+
 ---
 
 ## Épopée Phase 4 — Recherche + dashboard (Vercel)  ⬜
