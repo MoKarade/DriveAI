@@ -150,6 +150,19 @@ Marc a demandé 4 chantiers d'amélioration ; ordre de livraison :
 4. **Classement plus fin** — ⬜ à faire (enrichir catégories/sous-dossiers + entités ; prudent, dégrader
    jamais bloquer).
 
+### Correctifs prod du 2026-07-01 (session marathon, après mise en prod Phase 3)
+- **Pipeline gelé (hotfix, #24)** : `appliquerRangementInitial_` tournait avant l'intake et sans try/catch
+  → une erreur de collecte gelait tout le tick (file `00·À trier` figée des heures). Corrigé : drainer avant
+  d'alimenter + maintenance auto enveloppée. Diagnostiqué par le CODE + signaux Drive (cache Sheet figé).
+- **Lecture Office (P1-13, #25)** : les `.docx/.ppt` partaient tous en revue « OCR vide » (extracteur limité
+  aux PDF/images) → conversion Google native ajoutée → CV/TP/présentations classés. Bump VERSION = re-tri auto.
+- **Sensibles auto-classés (P1-14)** : *décision Marc* — `sensible`/zone protégée ne routent plus en revue
+  (classés dans leur domaine ; doublon sensible → `_Doublons`, 1 exemplaire gardé). `CLAUDE.md` §1 réécrit.
+  Garde-fous conservés : aucune suppression, non-détachement de 04. Seul `domaine inconnu` reste en revue.
+- **Vérif prod** : le cache de lecture de la Sheet est resté figé toute la session → tout vérifié par
+  **recherche Drive directe** (contenu des dossiers par `parentId`, `modifiedTime`). Résultat confirmé :
+  CV → 05·Carrière, doublons → `_Doublons`, revue vidée du faux sensible.
+
 ### Hotfix « pipeline gelé » (2026-07-01, découvert en regardant le ménage en prod)
 La file `00·À trier` stagnait : ~20 vieux fichiers déplacés par le grand rangement y sont restés des heures
 sans être classés, et plus rien n'était traité (le moteur écrivait pourtant son état chaque tick). Cause :

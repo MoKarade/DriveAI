@@ -20,24 +20,21 @@
  * @param {Object} classif        sortie du LLM
  * @param {Date} dateReference    date de réception (Gmail) ou de dépôt (intake), fallback de date
  * @param {string} ext            extension d'origine (".pdf"…)
- * @param {string} [motifForce]   motif de revue imposé par l'appelant (ex. doublon), ou ''
- * @param {boolean} [securiteIndeterminee]  dépôt dont la sensibilité n'a pas pu être évaluée
- *   (OCR vide, aucun signal expéditeur/sujet) — cf. Pipeline.traiterDocument_, garde-fou §1.
+ * @param {string} [motifForce]   motif imposé par l'appelant (ex. doublon → `_Doublons`), ou ''
  * @return {{statut:string, domaine:string, chemin:string, nom:string,
  *           dossierId?:string, raison?:string, autresEntites?:string[]}}
  */
-function deciderRoutage_(classif, dateReference, ext, motifForce, securiteIndeterminee) {
+function deciderRoutage_(classif, dateReference, ext, motifForce) {
   var date = dateNormalisee_(classif.date_doc, dateReference); // AAAA-MM-JJ
 
-  // 0-1-2) Motifs de revue prioritaires : SÉCURITÉ d'abord (sensible / zone protégée / OCR vide /
-  // domaine inconnu) — ces cas vont toujours en revue, AVANT toute autre logique (garde-fou §1).
-  var raisonRevue = motifDeRevue_(classif, securiteIndeterminee);
+  // 1) Revue = dernier recours : domaine introuvable (vraiment inclassable). Les documents
+  // sensibles sont désormais classés comme le reste (décision Marc 2026-07-01, cf. motifDeRevue_).
+  var raisonRevue = motifDeRevue_(classif);
   if (raisonRevue) return revue_(raisonRevue, classif, date, ext);
 
-  // 3) Doublon (NON sensible, le cas sensible étant déjà parti en revue ci-dessus) : on l'ÉCARTE
-  // dans « _Doublons » plutôt que dans la file de revue — au volume du grand rangement, signaler
-  // chaque doublon en revue la sature. Déplacement seul, JAMAIS supprimé (garde-fou §2) ; l'original
-  // déjà classé reste en place. Marc peut vider « _Doublons » en bloc quand il veut.
+  // 2) Doublon (y compris sensible) : on l'ÉCARTE dans « _Doublons » plutôt que de garder N copies —
+  // au volume du grand rangement, signaler chaque doublon sature. Déplacement seul, JAMAIS supprimé
+  // (garde-fou §2) ; l'original déjà classé reste en place. Marc peut vider « _Doublons » quand il veut.
   if (motifForce) return doublon_(classif, date, ext);
 
   // 4) Granularité entité (Phase 2). L'entité est un ENRICHISSEMENT, jamais un frein :
@@ -69,7 +66,8 @@ function deciderRoutage_(classif, dateReference, ext, motifForce, securiteIndete
 /**
  * Construit une décision « doublon » : le fichier va dans « _Doublons », renommé au format normalisé
  * (DÉPLACEMENT pour un dépôt manuel ; COPIE pour une PJ Gmail — l'original Gmail reste intact, lecture
- * seule). Jamais de suppression (§2). N'est JAMAIS atteint pour un doc sensible (parti en revue avant).
+ * seule). Jamais de suppression (§2). S'applique aussi aux doublons SENSIBLES (5 copies d'un passeport
+ * → 1 classée, les autres ici) : l'original classé reste en place, rien n'est effacé.
  */
 function doublon_(classif, date, ext) {
   return {
@@ -89,20 +87,18 @@ function revue_(raison, classif, date, ext) {
 
 /**
  * @param {Object} classif
- * @param {boolean} [securiteIndeterminee]  cf. deciderRoutage_ — un dépôt sans contenu OCR ni
- *   signal expéditeur/sujet ne permet pas d'évaluer `sensible` de façon fiable.
  * @return {string} motif de revue, ou '' si classable automatiquement.
  *
- * La confiance basse n'envoie PLUS en revue : elle déclenche une analyse approfondie
- * (cf. Llm.classifier_), après quoi le document est CLASSÉ à sa meilleure estimation.
- * Ne restent en revue que : la sécurité indéterminable, la zone protégée (sensible /
- * immigration / fiscal — garde-fou §1, non négociable) et un domaine introuvable (dernier
- * recours, vraiment inclassable).
+ * [DÉCISION MARC 2026-07-01] Les documents SENSIBLES (immigration, fiscal, passeport) sont
+ * désormais AUTO-CLASSÉS dans leur domaine, comme le reste — plus de routage systématique en
+ * revue (ancien garde-fou §1, relâché sur demande explicite de Marc). La confiance basse
+ * n'envoie pas non plus en revue (analyse approfondie puis classement, cf. Llm.classifier_).
+ * NE RESTE en revue QUE le dernier recours : un domaine introuvable (document vraiment
+ * inclassable). Garde-fous CONSERVÉS : aucune suppression (§2) ; un doublon même sensible va
+ * dans « _Doublons » (jamais supprimé) ; le grand rangement ne détache jamais un fichier déjà
+ * rangé sous 04·Immigration (garde multi-parents).
  */
-function motifDeRevue_(classif, securiteIndeterminee) {
-  if (securiteIndeterminee) return 'sensibilité indéterminable (OCR vide)';
-  if (classif.sensible === true) return 'sensible';
-  if (CONFIG.DOMAINES_PROTEGES.indexOf(classif.domaine) !== -1) return 'zone protégée';
+function motifDeRevue_(classif) {
   if (!CONFIG.DOMAINES[classif.domaine]) return 'domaine inconnu';
   return '';
 }
