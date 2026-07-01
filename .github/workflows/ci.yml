@@ -54,6 +54,15 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Syntaxe des .gs (avant tout : un .gs cassé fige le déploiement clasp)
+        # `node --check` ignore l'extension .gs → on copie en .js. Ne vérifie QUE la syntaxe
+        # (pas les globals Google), ce qui suffit à attraper un déploiement cassé avant le merge.
+        run: |
+          tmp=$(mktemp -d); fail=0
+          for f in src/*.gs; do cp "$f" "$tmp/$(basename "$f" .gs).js"; done
+          for j in "$tmp"/*.js; do node --check "$j" || { echo "❌ Syntaxe: $(basename "$j" .js).gs"; fail=1; }; done
+          exit $fail
+
       - name: Filet de tests du moteur (node --test, zéro dépendance)
         # Charge les .gs Apps Script dans un bac à sable Node (mocks Google) et vérifie la
         # logique de décision : routage, nommage, dates, garde zone protégée §1, prédicats
