@@ -11,15 +11,19 @@ Outil **personnel**, qualité **pro**. Priorités : **① précision · ② cont
 
 | # | Chantier | Axe | Effort | ADR | Statut |
 |---|----------|-----|--------|-----|--------|
-| 1 | **Chien de garde + section santé** (heartbeat, ré-armage auto du déclencheur, alerte si échec) | Fiabilité | S-M | [0004](adr/0004-fiabilite.md) | ⬜ |
-| 2 | **Nommage par type de doc** + « deviner depuis le nom d'origine » + nouveaux dossiers `07 · Santé` et `_Technique` | Précision | M | [0002](adr/0002-refonte-taxonomie-entites-nommage.md) | ⬜ |
-| 3 | **Entités : validation 1 clic + garde anti-variantes** (« IUT ULCO » ≈ « IUT du Littoral ») | Précision | M | [0002](adr/0002-refonte-taxonomie-entites-nommage.md) | ⬜ |
-| 4 | **Boucle d'apprentissage** — onglet `Corrections` injecté en exemples few-shot | Contrôle | M | [0003](adr/0003-controle-correction.md) | ⬜ |
-| 5 | **Correction via mail → mini-formulaire** (cas « Inconnu » + entités à valider) | Contrôle | M-L | [0003](adr/0003-controle-correction.md) | ⬜ |
-| 6 | **Migration de l'existant** vers la nouvelle taxonomie (réutilise le grand rangement) | Précision | M | [0002](adr/0002-refonte-taxonomie-entites-nommage.md) | ⬜ |
+| 1 | **Fondation testable** — refactor logique pure ↔ effets de bord, filet de tests en CI (Node), **Journal borné + onglet `Santé`** | Qualité (socle) | M | [0006](adr/0006-architecture-qualite.md) | ⬜ |
+| 2 | **Chien de garde** (heartbeat, ré-armage auto du déclencheur, alerte si échec) — écrit dans l'onglet `Santé` du #1 | Fiabilité | S-M | [0004](adr/0004-fiabilite.md) | ⬜ |
+| 3 | **Nommage par type de doc** + « deviner depuis le nom d'origine » + nouveaux dossiers `07 · Santé` et `_Technique` | Précision | M | [0002](adr/0002-refonte-taxonomie-entites-nommage.md) | ⬜ |
+| 4 | **Entités : validation 1 clic + garde anti-variantes** (« IUT ULCO » ≈ « IUT du Littoral ») | Précision | M | [0002](adr/0002-refonte-taxonomie-entites-nommage.md) | ⬜ |
+| 5 | **Boucle d'apprentissage** — onglet `Corrections` injecté en exemples few-shot | Contrôle | M | [0003](adr/0003-controle-correction.md) | ⬜ |
+| 6 | **Correction via mail → mini-formulaire** (cas « Inconnu » + entités à valider) | Contrôle | M-L | [0003](adr/0003-controle-correction.md) | ⬜ |
+| 7 | **Sources d'entrée : fichiers partagés** (copie auto dans l'arbo, garde-fous type/dédup/storage) | Sources | M | [0005](adr/0005-sources-entree.md) | ⬜ |
+| 8 | **Migration de l'existant** vers la nouvelle taxonomie (réutilise le grand rangement) | Précision | M | [0002](adr/0002-refonte-taxonomie-entites-nommage.md) | ⬜ |
 
-**Rationale :** fiabilité en socle (petite, évite le babysitting) → gros gains de précision → contrôle/
-apprentissage (qui a besoin que le reste existe) → migration en dernier.
+**Rationale :** la **fondation testable** en socle (tests + logique pure isolée = on améliore le reste
+sans casser la prod, et le Journal borné/Santé règle le trou d'observabilité vécu le 2026-07-01) → chien
+de garde (s'appuie sur l'onglet Santé) → gros gains de précision → contrôle/apprentissage (qui a besoin
+que le reste existe) → sources d'entrée → migration en dernier.
 
 ## Déjà fait (avant le brainstorm)
 Phases 1–3 (moteur Gmail→classement, entités, tâches/agenda), grand rangement de l'ancien Drive,

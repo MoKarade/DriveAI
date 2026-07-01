@@ -19,6 +19,8 @@ Statuts possibles : `Proposé` · `Accepté` · `Implémenté` · `Remplacé par
 | [0002](0002-refonte-taxonomie-entites-nommage.md) | Refonte taxonomie, entités & nommage | Accepté — à implémenter |
 | [0003](0003-controle-correction.md) | Contrôle & correction (et apprentissage) | Accepté — à implémenter |
 | [0004](0004-fiabilite.md) | Fiabilité totale (zéro babysitting) | Accepté — à implémenter |
+| [0005](0005-sources-entree.md) | Sources d'entrée (fichiers partagés) | Accepté — à implémenter |
+| [0006](0006-architecture-qualite.md) | Architecture & qualité (tests, testabilité, état lisible) | Accepté — à implémenter · **FONDATION** |
 
 Issu du **brainstorm produit du 2026-07-01** (Marc + Claude). Voir aussi `docs/ROADMAP.md` (ordre
 d'implémentation), `docs/RUNBOOK.md` (exploitation) et `docs/GUIDE.md` (usage).
