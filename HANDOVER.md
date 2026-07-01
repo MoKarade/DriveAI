@@ -13,11 +13,16 @@
 > full auto en prod, Phase 3 codée. Les **2 secrets GitHub sont posés** — rien côté secrets. **Reste côté Marc
 > pour Phase 3 : une ré-autorisation Google unique** (scopes Tasks/Calendar) au prochain déploiement.
 >
-> ⚠️ **À vérifier en prod** : au moment du déploiement P1-16, la Sheet d'état n'avait pas été écrite depuis
-> ~25 min (seul l'Apps Script modifié à 15:07 par le déploiement). Hypothèse : le recensement de la barre
-> (ancienne version, `getParents`/fichier) tournait en boucle sans finir → aucune écriture. Le prédicat léger
-> de P1-16 doit régler ça. **Si après déploiement rien ne bouge encore** (aucun fichier Drive modifié, Sheet
-> figée sur plusieurs ticks) → soupçonner le déclencheur : demander à Marc de relancer `installerTrigger()`.
+> 🔴 **P1-17 (fix majeur, diagnostic prod)** : « le moteur ne range plus rien / est muet » n'était PAS le
+> déclencheur (il tournait, mais à vide). VRAIE cause : la collecte du rangement (`aParentProtege_`→`getParents()`)
+> LEVAIT une exception sur « Ancienne structure » (racine `0AKPYZ…`, Drive partagé) → 0 fichier collecté → le
+> code prenait `collectes===0` pour « TERMINÉ » et FIGEAIT le rangement (`DriveAI_RANGEMENT` posé) → tous les
+> ticks suivants sautaient le rangement. Fix : walk parent-protégé défensif (détection positive, jamais
+> d'exception propagée), collecte par-fichier enveloppée, une collecte en erreur ⇒ `reste=true` (jamais un
+> faux « terminé »), `RANGEMENT_TAG` r2→r3 (relance). **Après déploiement P1-17 : faire tourner 1 tick** (auto
+> ~10 min, ou `tickDriveAI` à la main pour l'immédiat) puis vérifier par signaux Drive que « Ancienne structure »
+> se vide et que les domaines se remplissent de `AAAA-MM-JJ_`. NB : le déclencheur EST sain (il firait à vide
+> car le rangement était figé « terminé ») — pas besoin de re-`installerTrigger`.
 
 ---
 

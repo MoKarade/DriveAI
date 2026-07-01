@@ -141,7 +141,8 @@ var CONFIG = {
   // `DriveAI_RANGEMENT`) diffère de celui-ci, le moteur renvoie au fil des ticks TOUT le contenu
   // « en vrac » des domaines vers 00·À trier pour reclassement/renommage (cf. Main.appliquerRangementInitial_).
   // Borné/run, reprenable, déplacement seul (jamais de suppression). Bumper ce tag relance un rangement complet.
-  RANGEMENT_TAG: 'r2',                    // r2 : inclut désormais l'ancien Drive (RANGEMENT_RACINES_SUP)
+  RANGEMENT_TAG: 'r3',                    // r3 : relance après le fix « collecte avortée → faux terminé »
+                                          // (r2 s'était figé « terminé » sans rien ranger — cf. P1-17)
   // Racines SUPPLÉMENTAIRES à reclasser en plus des 7 domaines (ancien Drive). Tout leur contenu
   // « en vrac » est renvoyé dans 00·À trier puis re-classé par le pipeline (mêmes garde-fous : zone
   // protégée multi-parents, format normalisé sauté, garde-temps). « Ancienne structure » = ancien Drive de Marc.

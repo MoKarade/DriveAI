@@ -14,6 +14,31 @@
 
 ---
 
+## 2026-07-01 — « 0 collecté » issu d'une EXCEPTION attrapée ≠ « terminé » ; un garde par-élément qui peut lever doit être défensif
+**Contexte.** Le grand rangement de « Ancienne structure » ne bougeait aucun fichier alors que le recensement
+en voyait 113. Le run était VERT (aucune erreur remontée à Marc). Cause en deux temps : (1) la collecte réelle
+appelait `estAReclasser_`→`aParentProtege_`→`getParents()` qui LEVAIT une exception (traversée d'une racine /
+Drive partagé `0AKPYZ…`), attrapée par le `try/catch` autour de `collecterAReclasser_` → la collecte de la
+racine était abandonnée → **0 id collecté**. Le recensement, lui, marchait car il utilisait un prédicat LÉGER
+SANS `getParents`. (2) Pire : `collectes === 0` (sans dépassement de budget) était interprété comme
+« plus rien à ranger = TERMINÉ » → le rangement se figeait (`DriveAI_RANGEMENT` posé), et TOUS les ticks
+suivants (auto ET manuels) sautaient le rangement → moteur « muet », Sheet figée. Diagnostic très retardé car
+l'erreur était dans le Journal (illisible : Sheet énorme + tronquée + cache Drive) : il a fallu raisonner par
+signaux Drive indépendants (parent de « Ancienne structure » = racine, PAS 04·Immigration) + relecture du code.
+**Leçon.** (1) **Un état terminal (« terminé », « fait ») ne doit JAMAIS être déduit d'un compteur à 0 sans
+distinguer « 0 parce que vraiment vide » de « 0 parce qu'une étape a échoué ».** Tracer les exceptions attrapées
+(`erreurCollecte=true`) et forcer « pas terminé » (`reste=true`) tant qu'un échec a pu masquer du travail — sinon
+un bug transitoire fige définitivement le pipeline. (2) **Un garde-fou appliqué PAR ÉLÉMENT et qui peut lever
+(ici `getParents`) doit être défensif** : envelopper au niveau de l'élément (un item bizarre est SAUTÉ, pas
+d'abandon du lot entier) ET à l'intérieur du garde (détection POSITIVE seulement : on ne « protège » que si on
+TROUVE réellement la preuve ; une branche illisible renvoie false sans propager). Sinon un seul élément
+pathologique neutralise tout le traitement. (3) **Symptôme « moteur muet + un état figé »** ⇒ suspecter un
+prédicat de skip/fin auto-produit qui s'est verrouillé sur une valeur erronée ; le déverrouiller par un
+bump de tag/version, PAS juste corriger le bug en amont (l'état figé persiste sinon). (4) Le prédicat de
+recensement (léger, sans appels Drive fragiles) DIVERGE du prédicat de collecte (avec garde `getParents`) :
+quand deux prédicats censés être équivalents donnent des comptes opposés (113 vs 0), l'écart EST le bug.
+**Règle durable ?** oui.
+
 ## 2026-07-01 — Une étape amont COÛTEUSE peut « manger » chaque tick sans rien écrire (churn invisible) ; séparer le comptage léger du garde-fou coûteux
 **Contexte.** Après déploiement de la barre (P1-15), Marc n'avait PAS d'onglet `Progression`. Diagnostic
 par signal Drive indépendant (le canal Sheet étant illisible/tronqué) : sur ~25 min post-déploiement, RIEN
