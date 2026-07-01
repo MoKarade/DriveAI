@@ -122,12 +122,28 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 
 ---
 
+## Conception produit (brainstorm 2026-07-01)  📐
+
+> Le **dossier de conception** vit dans `docs/adr/` (8 ADR : cadrage, taxonomie, contrôle, fiabilité,
+> sources, architecture/qualité, sécurité/vie privée, app web) et `docs/ROADMAP.md` (9 chantiers priorisés,
+> socle #1 = **fondation testable**). Ces ADR décrivent la **cible** — l'implémentation viendra en chantiers
+> dédiés. Le prochain pas concret est le **chantier #1 (fondation testable : logique pure isolée + filet de
+> tests CI + Journal borné/onglet `Santé`)**, cf. ADR-0006. NB : P4-04 ci-dessous est révisé par **ADR-0008**
+> — plein texte **délégué à l'index natif de Drive** (pas d'OCR ré-indexé côté app), pour respecter ADR-0007
+> (métadonnées seulement).
+
+---
+
 ## Épopée Phase 4 — Recherche + dashboard (Vercel)  ⬜
+
+> Cf. **ADR-0008** (`docs/adr/0008-app-web-recherche-controle.md`) : login Google, corrections appliquées
+> directement par l'app (garde-fous §1/§2 ré-implémentés + testés), recherche = filtres sur `Index` + plein
+> texte natif Drive.
 
 | ID | Tâche | Statut |
 |----|-------|--------|
 | P4-01 | Scaffolding app React/Vite/TS + déploiement Vercel | ⬜ |
-| P4-02 | Endpoint Apps Script `doGet`/`doPost` (ou API Sheets) | ⬜ |
-| P4-03 | Dashboard de revue (valider/corriger en un clic) | ⬜ |
-| P4-04 | Moteur de recherche (tags via `Index`, contenu via OCR indexé) | ⬜ |
+| P4-02 | Accès données via login Google (OAuth) — lecture état/Drive (ADR-0008) | ⬜ |
+| P4-03 | Dashboard santé/activité + file de corrections (valider/corriger en un clic) | ⬜ |
+| P4-04 | Recherche structurée (filtres via `Index`) + plein texte délégué à Drive (`fullText contains`) | ⬜ |
 | P4-05 | Bilingue FR/EN | ⬜ |
