@@ -252,3 +252,23 @@ traite plus rien » ⇒ suspecter un plantage NON capturé ou une famine de budg
 Quand le canal d'état (Journal) est illisible, diagnostiquer par le CODE (quelle étape n'est pas protégée ?) et
 par des signaux Drive directs (contenu des dossiers, `modifiedTime`), pas en attendant le Journal.
 **Règle durable ?** oui.
+
+## 2026-07-01 — Un garde-fou à fort taux de faux positifs = corriger la CAPACITÉ sous-jacente, pas (que) le garde-fou
+**Contexte.** Le garde-fou « OCR vide sur un dépôt → revue » (P2.7, posé pour ne jamais classer à l'aveugle
+un passeport scanné illisible) envoyait en réalité EN MASSE les fichiers Office de Marc (`.docx`, `.ppt` :
+CV, TP, présentations) en revue avec le libellé trompeur « sensibilité indéterminable (OCR vide) ». Cause :
+l'extracteur (`Ocr.gs`) ne traitait QUE `text/*`, PDF et images — un `.docx` tombait sur `return ''`, donc
+« OCR vide », donc revue. Marc : « ya des CV que tu as pas classés, tu devrais savoir faire » — à raison.
+Le garde-fou était correct ; c'est la CAPACITÉ (lecture du texte) qui avait un trou sur un type de fichier
+très courant, ce qui faisait déborder le garde-fou et neutralisait le classement de tout un pan du Drive.
+**Leçon.** (1) Quand un garde-fou « en cas de doute → revue » se met à router en revue une grande part d'un
+flux normal, ne pas élargir/relâcher le garde-fou : **regarder la CAPACITÉ qu'il protège** et vérifier
+qu'elle couvre les cas courants. Ici : Google Drive convertit nativement `.docx`→Docs, `.ppt`→Slides,
+`.xlsx`→Sheets (conversion, PAS OCR — le texte existe déjà) via le même upload REST que l'OCR, avec le
+type Google cible en métadonnée et SANS `ocrLanguage`. (2) Un libellé de revue doit décrire la VRAIE cause
+(« format non lu » ≠ « sensibilité indéterminable ») — un libellé trompeur a fait croire à Marc que ses CV
+étaient traités comme confidentiels. (3) Après avoir corrigé la capacité, **re-trier l'existant** : bumper
+`CONFIG.VERSION` renvoie automatiquement les dépôts partis en revue dans le circuit (déplacement seul, borné,
+reprenable) — les fichiers mal étiquetés se re-classent, les sensibles re-partent en revue (zone protégée
+préservée). Toujours vérifier sur du réel (recherche Drive : où sont VRAIMENT allés les fichiers ?).
+**Règle durable ?** oui.
