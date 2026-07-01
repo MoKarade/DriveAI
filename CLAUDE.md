@@ -143,6 +143,14 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   la preuve ailleurs. Et un garde-fou « signaler en revue » (doublon, incertain) fin sur un flux normal **sature**
   la file de revue au volume d'un traitement de masse → router vers un dossier dédié (`_Doublons`, déplacement
   seul, jamais supprimé), en gardant le cas **sensible** prioritaire (un doublon sensible va toujours en revue).
+- **Maintenance auto dans le tick : protéger l'intake, drainer avant d'alimenter.** Toute étape SECONDAIRE
+  (rejeu de version, grand rangement, ajustement de déclencheur) doit être **enveloppée d'un try/catch** —
+  « un échec ne doit JAMAIS bloquer l'intake ». Le `try` de `tickDriveAI` n'a qu'un `finally` : une exception
+  non capturée dans une étape amont **gèle tout le pipeline** (Gmail + dépôts + intentions sautés à chaque
+  tick). Vérifier que TOUTES les étapes secondaires sont protégées, pas seulement certaines. Et une étape qui
+  ALIMENTE une file (rangement → `00·À trier`) passe APRÈS celle qui la DRAINE, `if (!estBudgetDepasse())`,
+  sinon elle s'affame. Symptôme « le moteur écrit son état mais ne traite plus rien » ⇒ plantage non capturé
+  ou famine de budget en amont ; diagnostiquer par le CODE + signaux Drive quand le Journal est illisible.
 - **Pagination sur une recherche MOUVANTE (Gmail) ⇒ pas d'offset numérique seul.** Si de nouveaux
   éléments s'insèrent en tête entre deux appels (tri du plus récent au plus ancien), un offset qui
   repart de 0 à chaque tick capte bien le neuf mais peut **stagner indéfiniment** sur le reste de

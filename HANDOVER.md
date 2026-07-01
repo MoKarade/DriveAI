@@ -135,6 +135,17 @@ Marc a demandé 4 chantiers d'amélioration ; ordre de livraison :
 4. **Classement plus fin** — ⬜ à faire (enrichir catégories/sous-dossiers + entités ; prudent, dégrader
    jamais bloquer).
 
+### Hotfix « pipeline gelé » (2026-07-01, découvert en regardant le ménage en prod)
+La file `00·À trier` stagnait : ~20 vieux fichiers déplacés par le grand rangement y sont restés des heures
+sans être classés, et plus rien n'était traité (le moteur écrivait pourtant son état chaque tick). Cause :
+dans `tickDriveAI`, `appliquerRangementInitial_` tournait AVANT l'intake **et** n'était pas enveloppé de
+try/catch — le `try` de `tickDriveAI` n'a qu'un `finally`, donc une exception dans la collecte (walk de
+l'ancien Drive) **tuait tout le tick avant Gmail/dépôts/intentions**, à chaque tick. Correctif : (1) rejeu +
+rangement + `creerDossiersEntitesValidees_` enveloppés de try/catch (une erreur ne peut plus geler l'intake) ;
+(2) rangement déplacé APRÈS l'intake, `if (!estBudgetDepasse())` → **drainer avant d'alimenter** ; (3) scan
+Gmail durci par fil. Revue flotte 🟢 (apps-script-quota + code-reviewer). Diagnostic fait **par lecture du code
++ recherche Drive directe** (le cache de lecture de la Sheet étant figé toute la session). Leçon consignée.
+
 ### Doublons → `_Doublons` (P1-12, décidé par Marc le 2026-06-30 en regardant la prod)
 La vérif prod (via recherche Drive directe, le cache de lecture Sheet étant figé) a montré que le grand
 rangement **marche** (vieux fichiers déplacés vers `00·À trier`, docs renommés+classés) MAIS que la file

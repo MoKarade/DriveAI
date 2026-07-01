@@ -96,20 +96,31 @@ function tickDriveAI() {
     var debut = Date.now();
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
 
-    // Auto-rejeu sur nouvelle version du classement : renvoie les DÉPÔTS partis en
-    // revue vers 00·À trier pour reclassement (zéro action manuelle, zéro suppression).
-    appliquerRejeuSiNouvelleVersion_(estBudgetDepasse);
+    // Auto-rejeu sur nouvelle version du classement : renvoie les DÉPÔTS partis en revue vers
+    // 00·À trier pour reclassement. SECONDAIRE → enveloppé d'un try/catch : un échec ne doit
+    // JAMAIS bloquer l'intake (même principe que l'ajustement du déclencheur ci-dessus).
+    try { appliquerRejeuSiNouvelleVersion_(estBudgetDepasse); }
+    catch (e) { journalErreur_('Maintenance', 'Rejeu de version différé : ' + e); }
 
-    // Grand rangement initial (zéro clic, une fois par `CONFIG.RANGEMENT_TAG`) : renvoie au fil
-    // des ticks tout le contenu « en vrac » des domaines vers 00·À trier (déplacement seul, borné).
-    appliquerRangementInitial_(estBudgetDepasse);
+    // Matérialise les entités validées par Marc (Statut = « validée ») avant le routage, bornée par
+    // le garde-temps. SECONDAIRE → enveloppée : une erreur Drive/Sheet ne doit jamais geler l'intake.
+    try { creerDossiersEntitesValidees_(estBudgetDepasse); }
+    catch (e) { journalErreur_('Entités', 'Création des dossiers d\'entités différée : ' + e); }
 
-    // Matérialise les entités validées par Marc (Statut = « validée ») avant le routage,
-    // mais bornée par le garde-temps (et un plafond par run) : pas de coupure des 6 min.
-    creerDossiersEntitesValidees_(estBudgetDepasse);
-
+    // INTAKE PRIORITAIRE : on DRAINE d'abord ce qui est déjà en file (dépôts manuels + sortie du
+    // grand rangement) et les PJ Gmail. Le grand rangement (qui ALIMENTE 00·À trier) passe APRÈS et
+    // seulement s'il reste du budget — sinon il consomme le budget et affame le traitement de la file
+    // qu'il remplit (symptôme observé : dépôts jamais classés, file 00·À trier figée).
     traiterGmail_(estBudgetDepasse);                       // source 1 : PJ Gmail
-    if (!estBudgetDepasse()) traiterDepots_(estBudgetDepasse); // source 2 : 00·À trier
+    if (!estBudgetDepasse()) traiterDepots_(estBudgetDepasse); // source 2 : 00·À trier (draine la file)
+
+    // Grand rangement initial (zéro clic, une fois par `CONFIG.RANGEMENT_TAG`) : COLLECTE une page
+    // de l'ancien Drive vers 00·À trier pour les ticks suivants. Seulement s'il reste du budget après
+    // l'intake, et ENVELOPPÉ : une erreur de collecte (Drive) ne doit jamais geler le pipeline.
+    if (!estBudgetDepasse()) {
+      try { appliquerRangementInitial_(estBudgetDepasse); }
+      catch (e) { journalErreur_('Rangement', 'Grand rangement différé : ' + e); }
+    }
 
     // Phase 3 : détection d'actions/rdv dans TOUS les mails récents → Tasks/Calendar.
     // En dernier, budget restant seulement : le classement documentaire (déjà validé en
@@ -165,8 +176,9 @@ function appliquerRejeuSiNouvelleVersion_(estBudgetDepasse) {
  * l'opération est donc reprenable sur autant de ticks que nécessaire, sans jamais re-coûter sur
  * les fichiers déjà normalisés (idempotent). Déplacement seul — aucune suppression (garde-fous §1/§2).
  *
- * Placé APRÈS le rejeu de version mais AVANT l'intake : les fichiers renvoyés ce tick sont repris
- * dès `traiterDepots_` du même run s'il reste du budget.
+ * Placé APRÈS l'intake (Gmail + dépôts) et seulement s'il reste du budget : on DRAINE la file avant
+ * de l'ALIMENTER, sinon la collecte affame le traitement qu'elle nourrit (cf. incident file figée).
+ * Les fichiers collectés ce tick sont donc repris au(x) tick(s) SUIVANT(s), pas dans le même run.
  *
  * @param {function():boolean} estBudgetDepasse
  */
@@ -287,7 +299,10 @@ function traiterGmail_(estBudgetDepasse) {
         journalInfo_('Pipeline', 'Budget temps atteint — reprise au prochain tick.');
         return;
       }
-      traiterFil_(fils[i]);
+      // Erreur isolée par fil (ex. getMessages/piecesJointes) : on saute ce fil sans
+      // interrompre le scan Gmail — chaque PJ est déjà protégée dans traiterDocument_.
+      try { traiterFil_(fils[i]); }
+      catch (e) { journalErreur_('Gmail', 'Fil ignoré (erreur) : ' + e); }
     }
     debutPage += CONFIG.PAGE_FILS;
   }
