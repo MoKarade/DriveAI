@@ -135,7 +135,10 @@ var CONFIG = {
                                           // rangement de masse : chaque tick utilise tout son budget-temps
                                           // au lieu de s'arrêter à 50 — le garde-temps reste la vraie borne)
   REJEU_PAGE: 100,                        // nb de dépôts renvoyés par run lors d'un auto-rejeu
-  RANGEMENT_MAX_PAR_RUN: 200,             // grand rangement : nb de fichiers renvoyés vers 00·À trier par run
+  RANGEMENT_MAX_PAR_RUN: 60,              // grand rangement : nb de fichiers renvoyés vers 00·À trier par run
+                                          // (200→60 : la boucle de déplacement fait la re-vérif §1 stricte
+                                          // par fichier ; bornée à 60, elle laisse ~3 min de budget/tick à
+                                          // l'INTAKE — sinon le rangement affame le classement, cf. P1-19)
   RANGEMENT_SEUIL_FILE: 40,               // ne collecte de NOUVEAUX fichiers que si 00·À trier en a moins
                                           // (drainer avant d'alimenter, sans affamer ni déborder la file)
   RANGEMENT_RECENS_ESSAIS_MAX: 3,         // barre de progression : nb de recensements incomplets tolérés

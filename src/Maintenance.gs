@@ -451,23 +451,30 @@ function nbFichiersATrier_(plafond) {
 
 /**
  * Parcourt récursivement un dossier et collecte les IDs des fichiers à reclasser.
- * Lecture seule (aucun déplacement ici → pas d'invalidation d'itérateur). Borné par le
- * garde-temps : sur un gros Drive, la collecte s'arrête proprement et reprend au prochain run.
+ * Lecture seule (aucun déplacement ici → pas d'invalidation d'itérateur). Borné par le garde-temps.
+ *
+ * PERF (P1-19) : la collecte utilise le prédicat LÉGER (`estAReclasserLeger_`, nom + mime, SANS
+ * `getParents` par fichier) — le contrôle de zone protégée §1 par `getParents` coûtait un walk d'ancêtres
+ * PAR FICHIER, si lent sur un gros Drive qu'un tick entier ne collectait qu'une poignée de fichiers en
+ * affamant l'intake. Le garde §1 est intégralement assuré À LA MUTATION : `deplacerVersATrier_` fait la
+ * re-vérif STRICTE `aParentProtege_` juste avant de déplacer (abstention si sous 04) — donc un fichier
+ * protégé collecté ici n'est JAMAIS déplacé. (Le security-auditor a validé « collecte ouverte, mutation
+ * fermée » comme le bon endroit pour le garde-fou.)
  * @param {Folder} dossier
  * @param {string[]} ids  accumulateur
  * @param {number} max
  * @param {function():boolean} estBudgetDepasse
- * @param {Object} proteges  ensemble {idDossierProtégé: true}
+ * @param {Object} proteges  ensemble {idDossierProtégé: true} (utilisé à la mutation, pas ici)
  */
 function collecterAReclasser_(dossier, ids, max, estBudgetDepasse, proteges) {
   var fi = dossier.getFiles();
   while (fi.hasNext() && ids.length < max) {
     if (estBudgetDepasse()) return;
     var f = fi.next();
-    // Un fichier « bizarre » (métadonnée/parent illisible) ne doit JAMAIS avorter toute la collecte :
+    // Un fichier « bizarre » (métadonnée illisible) ne doit JAMAIS avorter toute la collecte :
     // on le saute, les autres continuent d'être collectés (cf. incident r2 : un seul échec figeait tout).
     try {
-      if (estAReclasser_(f, proteges)) ids.push(f.getId());
+      if (estAReclasserLeger_(f)) ids.push(f.getId());
     } catch (e) {
       journalErreur_('Rangement', 'Fichier ignoré à la collecte (' + e + ')');
     }
