@@ -5,15 +5,14 @@
  * (PJ Gmail et dépôt manuel `00·À trier`). Le placement (copie pour Gmail,
  * déplacement pour un dépôt) est fait par l'appelant (cf. Pipeline.gs).
  *
- * Priorité des garde-fous (avant tout routage) :
- *   0. dépôt à sensibilité INDÉTERMINABLE (OCR vide, pas de signal expéditeur/sujet) → 00·À vérifier
- *   1. zone protégée (immigration) / sensible=true        → 00·À vérifier
- *   2. confiance hors [seuil, 1] / domaine inconnu         → 00·À vérifier
- *   3. doublon de contenu déjà présent                     → 00·À vérifier (signalé, jamais effacé)
- * Sinon on CLASSE : entité connue → dossier d'entité granulaire ; entité inconnue/en attente →
- * dossier du domaine (+ proposition d'entité pour plus tard) ; entité null → dossier du domaine.
- * Une entité non validée n'envoie JAMAIS le document en revue (sinon, au départ, tout part en
- * revue → l'auto-rangement est neutralisé, cf. LESSONS « garde-fou étroit »).
+ * [DÉCISION MARC 2026-07-01] PLUS DE FILE DE REVUE : un seul dossier d'arrivée (`00·À trier`).
+ * TOUT document est CLASSÉ au mieux, avec son nom FINAL propre (`AAAA-MM-JJ_Type_Émetteur.ext`),
+ * jamais un nom encodé `[REVUE] …`. Un domaine introuvable (LLM hors-liste) n'est plus mis en
+ * limbo : il est rangé dans `CONFIG.DOMAINE_DEFAUT` (bucket générique). Seul aiguillage restant :
+ *   - doublon de contenu déjà présent → `_Doublons` (déplacement seul, jamais supprimé, §2) ;
+ *   - sinon on CLASSE : entité connue → dossier d'entité granulaire ; entité inconnue/en attente →
+ *     dossier du domaine (+ proposition d'entité pour plus tard) ; entité null → dossier du domaine.
+ * Une entité non validée n'est JAMAIS un frein (elle enrichit, cf. LESSONS « granularité »).
  */
 
 /**
@@ -27,10 +26,9 @@
 function deciderRoutage_(classif, dateReference, ext, motifForce) {
   var date = dateNormalisee_(classif.date_doc, dateReference); // AAAA-MM-JJ
 
-  // 1) Revue = dernier recours : domaine introuvable (vraiment inclassable). Les documents
-  // sensibles sont désormais classés comme le reste (décision Marc 2026-07-01, cf. motifDeRevue_).
-  var raisonRevue = motifDeRevue_(classif);
-  if (raisonRevue) return revue_(raisonRevue, classif, date, ext);
+  // 1) Domaine introuvable (LLM hors-liste/malformé) : plus de revue (décision Marc 2026-07-01) —
+  // on CLASSE au mieux dans le domaine par défaut, avec le nom final propre. Zéro fichier en limbo.
+  if (!CONFIG.DOMAINES[classif.domaine]) classif.domaine = CONFIG.DOMAINE_DEFAUT;
 
   // 2) Doublon (y compris sensible) : on l'ÉCARTE dans « _Doublons » plutôt que de garder N copies —
   // au volume du grand rangement, signaler chaque doublon sature. Déplacement seul, JAMAIS supprimé
@@ -75,32 +73,6 @@ function doublon_(classif, date, ext) {
     nom: nomNormalise_(date, classif.type_doc, classif.emetteur, ext),
     dossierId: dossierDoublons_().getId()
   };
-}
-
-/** Construit une décision « revue ». */
-function revue_(raison, classif, date, ext) {
-  return {
-    statut: 'revue', domaine: classif.domaine || '', chemin: '00 · À vérifier',
-    nom: nomRevue_(raison, classif, date, ext), raison: raison
-  };
-}
-
-/**
- * @param {Object} classif
- * @return {string} motif de revue, ou '' si classable automatiquement.
- *
- * [DÉCISION MARC 2026-07-01] Les documents SENSIBLES (immigration, fiscal, passeport) sont
- * désormais AUTO-CLASSÉS dans leur domaine, comme le reste — plus de routage systématique en
- * revue (ancien garde-fou §1, relâché sur demande explicite de Marc). La confiance basse
- * n'envoie pas non plus en revue (analyse approfondie puis classement, cf. Llm.classifier_).
- * NE RESTE en revue QUE le dernier recours : un domaine introuvable (document vraiment
- * inclassable). Garde-fous CONSERVÉS : aucune suppression (§2) ; un doublon même sensible va
- * dans « _Doublons » (jamais supprimé) ; le grand rangement ne détache jamais un fichier déjà
- * rangé sous 04·Immigration (garde multi-parents).
- */
-function motifDeRevue_(classif) {
-  if (!CONFIG.DOMAINES[classif.domaine]) return 'domaine inconnu';
-  return '';
 }
 
 /**
@@ -237,12 +209,6 @@ function nomNormalise_(date, type, emetteur, ext) {
   var t = champ_(type) || 'Document';
   var e = champ_(emetteur) || 'Inconnu';
   return date + '_' + t + '_' + e + ext;
-}
-
-/** `[REVUE] <raison> — <domaine/catégorie suggéré> — <nom suggéré>.ext` */
-function nomRevue_(raison, classif, date, ext) {
-  var suggestion = nomNormalise_(date, classif.type_doc, classif.emetteur, ext);
-  return '[REVUE] ' + raison + ' — ' + cheminLisible_(classif) + ' — ' + suggestion;
 }
 
 /** Chemin lisible « Domaine/Catégorie » (chaque segment nettoyé, le « / » préservé). */

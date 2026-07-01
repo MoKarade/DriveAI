@@ -4,13 +4,20 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **Dernière mise à jour : 2026-07-01** — **Documents sensibles auto-classés** (P1-14, décision Marc :
-> `sensible`/zone protégée ne routent plus en revue, seul `domaine inconnu` y reste) et **rangement fiable
-> de l'ancien Drive + barre de progression** (P1-15 : le grand rangement, jusque-là affamé car en dernier
-> dans le tick, tourne désormais TÔT mais gated file-basse ; onglet `Progression` barre `[███░░░] N %`,
-> `RANGEMENT_TAG` r1→r2). Antérieur : Phase 2 + full auto confirmés en prod, Phase 3 codée. Les **2 secrets
-> GitHub sont posés** (déploiement auto confirmé) — rien côté secrets. **Reste côté Marc pour Phase 3 : une
-> ré-autorisation Google unique** (scopes Tasks/Calendar) au prochain déploiement — cf. `docs/DEPLOIEMENT.md`.
+> **Dernière mise à jour : 2026-07-01** — **PLUS DE FILE DE REVUE : un seul dossier d'arrivée + nom final
+> direct** (P1-16, décision Marc « je veux juste un dossier ; le nom attribué doit être direct le dernier » :
+> `00 · À vérifier` supprimé du pipeline, TOUT classé au mieux avec nom propre, domaine introuvable →
+> `DOMAINE_DEFAUT` ; barre fiabilisée via recensement léger + « recensement en cours » visible dès le 1ᵉʳ tick ;
+> `VERSION` P3.0). Marc peut supprimer à la main le dossier vide `00 · À vérifier`. Antérieur : P1-14 (sensibles
+> auto-classés), P1-15 (rangement TÔT gated file-basse + barre `[███░░░] N %`, `RANGEMENT_TAG` r1→r2), Phase 2 +
+> full auto en prod, Phase 3 codée. Les **2 secrets GitHub sont posés** — rien côté secrets. **Reste côté Marc
+> pour Phase 3 : une ré-autorisation Google unique** (scopes Tasks/Calendar) au prochain déploiement.
+>
+> ⚠️ **À vérifier en prod** : au moment du déploiement P1-16, la Sheet d'état n'avait pas été écrite depuis
+> ~25 min (seul l'Apps Script modifié à 15:07 par le déploiement). Hypothèse : le recensement de la barre
+> (ancienne version, `getParents`/fichier) tournait en boucle sans finir → aucune écriture. Le prédicat léger
+> de P1-16 doit régler ça. **Si après déploiement rien ne bouge encore** (aucun fichier Drive modifié, Sheet
+> figée sur plusieurs ticks) → soupçonner le déclencheur : demander à Marc de relancer `installerTrigger()`.
 
 ---
 

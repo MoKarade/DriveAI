@@ -12,10 +12,11 @@ var CONFIG = {
   // la version stockée diffère, le moteur renvoie automatiquement les DÉPÔTS partis
   // en revue vers 00·À trier pour reclassement (cf. Main.appliquerRejeuSiNouvelleVersion_)
   // — borné, réversible, sans toucher aux PJ Gmail ni aux docs déjà classés. Zéro clic.
-  VERSION: 'P2.9',
+  VERSION: 'P3.0',
 
   // --- Seuils & modèle ---
-  SEUIL_CONFIANCE: 0.50,                 // sous ce seuil → file de revue (abaissé de 0.80 sur demande)
+  SEUIL_CONFIANCE: 0.50,                 // sous ce seuil → analyse approfondie (escalade Sonnet), puis
+                                         // classé au mieux — plus jamais de file de revue (décision Marc)
   LLM_MODELE: 'claude-haiku-4-5',        // Haiku par défaut (le moins cher)
   LLM_MODELE_FALLBACK: 'claude-sonnet-4-6', // fallback ponctuel si Haiku échoue
   LLM_MAX_TOKENS: 400,
@@ -120,6 +121,11 @@ var CONFIG = {
 
   // Zone protégée : domaines jamais rangés auto (garde-fou non négociable).
   DOMAINES_PROTEGES: ['04 · Immigration'],
+
+  // Domaine par défaut (catch-all) quand le LLM ne rend pas un domaine valide. Décision Marc
+  // 2026-07-01 : plus de file de revue — un document non classable est rangé AU MIEUX ici (avec
+  // son nom final propre), jamais laissé en limbo. « Administratif » = bucket générique le plus sûr.
+  DOMAINE_DEFAUT: '01 · Administratif & identité',
 
   // --- Phase 2 : référentiel d'entités ---
   // Dossier d'entrée scanné pour le dépôt manuel (réutilise A_TRIER ci-dessus).

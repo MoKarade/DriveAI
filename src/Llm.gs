@@ -231,8 +231,8 @@ function parserClassification_(texte) {
   // Garde-fou : en l'absence d'info claire, on traite comme sensible.
   if (typeof obj.sensible !== 'boolean') obj.sensible = true;
   // Multi-entités : `entites` n'est l'autorité que s'il liste ≥2 entités distinctes ;
-  // sinon `entite` (mono) fait foi. (La zone protégée reste pilotée par `sensible`,
-  // jamais par les entités, cf. motifDeRevue_.)
+  // sinon `entite` (mono) fait foi. (Le flag `sensible` reste produit mais ne route plus en
+  // revue — décision Marc 2026-07-01 : tout est classé au mieux, cf. Router.deciderRoutage_.)
   if (Array.isArray(obj.entites)) {
     var vues = {}, propres = [];
     for (var k = 0; k < obj.entites.length; k++) {
