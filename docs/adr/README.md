@@ -17,6 +17,8 @@ Statuts possibles : `Proposé` · `Accepté` · `Implémenté` · `Remplacé par
 |-----|-------|--------|
 | [0001](0001-cadrage-produit.md) | Cadrage produit (vision, priorités, contraintes) | Accepté |
 | [0002](0002-refonte-taxonomie-entites-nommage.md) | Refonte taxonomie, entités & nommage | Accepté — à implémenter |
+| [0003](0003-controle-correction.md) | Contrôle & correction (et apprentissage) | Accepté — à implémenter |
+| [0004](0004-fiabilite.md) | Fiabilité totale (zéro babysitting) | Accepté — à implémenter |
 
-Issu du **brainstorm produit du 2026-07-01** (Marc + Claude). D'autres ADR suivront pour les axes
-« Contrôle & correction » et « Fiabilité ».
+Issu du **brainstorm produit du 2026-07-01** (Marc + Claude). Voir aussi `docs/ROADMAP.md` (ordre
+d'implémentation), `docs/RUNBOOK.md` (exploitation) et `docs/GUIDE.md` (usage).

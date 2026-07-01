@@ -1,0 +1,43 @@
+# Runbook d'exploitation — DriveAI
+
+> Comment **déployer, surveiller et dépanner** le moteur. Public : Marc + tout repreneur.
+> (🔜 = prévu, pas encore implémenté — cf. `docs/ROADMAP.md`.)
+
+## 1. Architecture en 30 s
+- **Moteur** : Google Apps Script (`src/*.gs`) dans le compte Google de Marc, **déclencheur toutes les 5 min** (`tickDriveAI`).
+- **État** : Google Sheet « DriveAI — État » — onglets `Entités`, `Index` (idempotence + catalogue), `Journal`, `Revue`, `Échecs` (quarantaine), `Progression` (barre du grand rangement).
+- **LLM** : API Anthropic (Haiku par défaut, Sonnet en escalade) via `UrlFetchApp`. Clé dans Script Property `DriveAI_ANTHROPIC_KEY`.
+- **CI/CD** : push/merge sur `main` → GitHub Action `deploy.yml` fait `clasp push` (secrets `CLASPRC_JSON` + `SCRIPT_ID`, Node 20). L'auto-merge **dispatche** le déploiement (un merge par le bot ne déclenche pas `on: push`).
+
+## 2. Déployer
+- **Auto** : merge sur `main` → `clasp push` automatique. **Toujours vérifier le run « Deploy » (vert)** — ne pas supposer qu'il a tourné.
+- **Secours manuel** : `clasp push` en local (Node 20). ⚠️ La session Claude ne peut PAS déployer (frontière : le code tourne dans le compte de Marc).
+
+## 3. Surveiller
+- **Résumé hebdomadaire** par mail (docs classés / revue / tâches / événements / coût du mois / 🔜 santé).
+- Onglet **`Progression`** : barre du grand rangement.
+- **Signal indépendant** si la Sheet est illisible (cache/volume) : recherche Drive directe — `modifiedTime` sur tout le Drive, contenu d'un dossier par `parentId`. Ne jamais affirmer un résultat sans preuve.
+
+## 4. Incidents fréquents & remèdes
+
+### 🔴 « Le moteur n'écrit plus / ne range plus rien » (Sheet figée)
+1. **Vérifier l'activité Drive réelle** : des fichiers ont-ils été modifiés depuis le dernier déploiement ? Si **seul le code** a changé → le moteur ne produit rien.
+2. **Cause probable A — déclencheur désactivé** par Google (trop d'échecs). **Remède : script.google.com → projet DriveAI → exécuter `installerTrigger`** (ré-arme le déclencheur 5 min + le résumé hebdo). 🔜 Le *watchdog* (roadmap #1) automatisera ce ré-armage + alerte.
+3. **Cause probable B — état figé « terminé » à tort** : une collecte qui a échoué (exception attrapée) prise pour « 0 = fini ». Déverrouiller en **bumpant `CONFIG.RANGEMENT_TAG`** (ex. r3→r4) → nouvelle passe complète.
+4. Diagnostiquer par le **CODE + signaux Drive** quand le Journal est illisible (énorme/tronqué).
+
+### 🟠 Un fichier échoue en boucle
+- Après `QUARANTAINE_MAX` (3) essais, il est **quarantiné** (onglet `Échecs`, statut Index `quarantaine`) → plus re-tenté, une seule alerte. Pour le relancer après une panne transitoire : exécuter **`dequarantaine()`**.
+
+### 🟡 Quota quotidien atteint
+- Compte **gratuit** = ~90 min d'exécution/jour. Le moteur **reprend seul le lendemain**. Normal sur un traitement de masse (l'ancien Drive s'étale sur ~1-2 jours). Rien à faire.
+
+### 🔧 Relancer un grand rangement de zéro
+- Bumper **`CONFIG.RANGEMENT_TAG`** → re-parcours complet, **borné + reprenable**, déplacement seul.
+
+## 5. Garde-fous NON négociables (CLAUDE.md §2)
+- **Aucune suppression** auto (doublons → `_Doublons`). **Zone protégée `04 · Immigration` jamais détachée** (garde multi-parents, remonte toute la chaîne d'ancêtres). **Gmail lecture seule.** **Clé API jamais en dur** (Script Properties).
+
+## 6. La flotte d'agents (revue de code)
+`product-manager` répartit ; `security-auditor`, `apps-script-quota`, `code-reviewer`, `file-checker`,
+`structure-keeper`, `naming-validator`, `llm-cost-optimizer` relisent selon le diff. Lancer `/review`.
