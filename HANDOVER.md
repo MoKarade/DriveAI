@@ -241,6 +241,17 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-01 (nuit) — Chantier #3 (partie 3, C3-03) : dossiers `07 · Santé` + `_Technique` (ADR-0002 §3).**
+  **Modif du MOTEUR** + **change la taxonomie Drive**. `07 · Santé` = domaine **auto-créé** (`Config.DOMAINES_AUTO`,
+  `Router.dossierDomaineAuto_` find-or-create à côté des domaines) proposé au LLM (`domainesAutorises_`).
+  `_Technique` = fichiers **code/CAO** (par extension `CONFIG.EXT_TECHNIQUES`) routés vers `_Technique`
+  **sans OCR ni LLM** (`Pipeline` après le fast-path doublon ; économie de coût). **Renumérotage Perso 07→08**
+  (`CONFIG.DOMAINES` clé `08 · Perso & projets`, même ID) avec `Main.assurerNomsDomaines_` (gated
+  `NOMS_DOMAINES_TAG` = `s1`, renomme le dossier physique pour coller à la config — renommage seul,
+  réversible, zéro clic). `Router.dossierRacineParNom_` généralisé (`_Doublons`/`_Technique`). **+6 tests →
+  86.** `docs/TAXONOMY.md` mis à jour. Revue flotte en cours (structure-keeper, code-reviewer, security,
+  llm-cost). **Chantier #3 : terminé.** Prochain : #4 (entités systématiques + validation 1-clic + garde
+  anti-variantes, ADR-0002 §4).
 - **2026-07-01 (nuit) — Chantier #3 (partie 1) : nommage par type de document (ADR-0002 §6).** **Modif du
   MOTEUR** (le nom des documents classés change). `src/Router.gs` : `nomParType_` + `schemaNommage_` (règles
   ordonnées de mots-clés → granularité de date jour/mois/année + libellé fixe `Relevé`/`Paie`/`CV`) +
@@ -249,8 +260,12 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
   un blocage). Ex. : relevé → `2024-03_Relevé_Desjardins`, diplôme → `2021_Diplôme_IUT-ULCO`, facture →
   `2024-03-05_Facture_Hydro-Québec`. `docs/NAMING.md` réécrit (table par type). **+9 tests → 69 au total.**
   Pas de bump `VERSION` (nouveaux docs seulement ; renommage de l'existant = migration, chantier #8).
-  **Reste chantier #3** : deviner-du-nom (émetteur/date « Inconnu » → deviner depuis le nom d'origine) +
-  nouveaux dossiers `07·Santé`/`_Technique`. Prochain aussi possible : #4 (entités 1-clic + anti-variantes).
+  **C3-02 deviner-du-nom** (même session) : `Router.devinerTypeDepuisNom_` (pur ; séparateurs `_ - .` →
+  espaces, mots-clés/regex ancrés → type canonique, ex. `…_TP4_…` → « TP ») + `enrichirClassifDepuisNom_`
+  (complète `classif.type_doc` s'il est vide, sans écraser), appelé dans `Pipeline.traiterDocument_` avant
+  le routage. **+5 tests → 80 au total.** Revue 🟢 (file-checker CONFORME : idempotence/déterminisme intacts).
+  **Reste chantier #3** : nouveaux dossiers `07·Santé`/`_Technique`. Prochain aussi possible : #4 (entités
+  1-clic + anti-variantes, ADR-0002).
 - **2026-07-01 (nuit) — Chantier #2 : chien de garde (watchdog, ADR-0004).** **Modif du MOTEUR** (déployée).
   `src/Main.gs` : heartbeat `DriveAI_LAST_TICK` (finally du tick), 2ᵉ déclencheur `chienDeGarde` (30 min,
   `assurerTriggerChienDeGarde_` create-if-absent, posé aussi par `installerTrigger`), décision **pure**

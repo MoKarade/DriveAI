@@ -16,7 +16,7 @@ Statuts possibles : `Proposé` · `Accepté` · `Implémenté` · `Remplacé par
 | ADR | Titre | Statut |
 |-----|-------|--------|
 | [0001](0001-cadrage-produit.md) | Cadrage produit (vision, priorités, contraintes) | Accepté |
-| [0002](0002-refonte-taxonomie-entites-nommage.md) | Refonte taxonomie, entités & nommage | Accepté — à implémenter |
+| [0002](0002-refonte-taxonomie-entites-nommage.md) | Refonte taxonomie, entités & nommage | **Partiellement implémenté** (nommage, dossiers) |
 | [0003](0003-controle-correction.md) | Contrôle & correction (et apprentissage) | Accepté — à implémenter |
 | [0004](0004-fiabilite.md) | Fiabilité totale (zéro babysitting) | **Implémenté** (chien de garde) |
 | [0005](0005-sources-entree.md) | Sources d'entrée (fichiers partagés) | Accepté — à implémenter |

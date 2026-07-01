@@ -46,6 +46,29 @@ function assurerTriggerChienDeGarde_() {
   journalInfo_('Setup', 'Chien de garde installé (toutes les ' + CONFIG.WATCHDOG_MINUTES + ' min).');
 }
 
+/**
+ * Aligne le NOM des dossiers de domaine sur les clés de `CONFIG.DOMAINES` (source de vérité).
+ * Gated par `CONFIG.NOMS_DOMAINES_TAG` (Script Property) → ne parcourt les domaines qu'une fois par tag,
+ * pas à chaque tick. Sert notamment au renumérotage « 07 · Perso » → « 08 · Perso » (ADR-0002). Renommage
+ * seul (jamais de suppression/déplacement), réversible (bumper le tag + rétablir la clé rejoue). Enveloppé.
+ */
+function assurerNomsDomaines_() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DriveAI_NOMS_DOMAINES') === CONFIG.NOMS_DOMAINES_TAG) return; // déjà fait pour ce tag
+  var noms = Object.keys(CONFIG.DOMAINES);
+  var renommes = 0;
+  for (var i = 0; i < noms.length; i++) {
+    try {
+      var d = DriveApp.getFolderById(CONFIG.DOMAINES[noms[i]]);
+      if (d.getName() !== noms[i]) { d.setName(noms[i]); renommes++; }
+    } catch (e) {
+      journalErreur_('Setup', 'Renommage du domaine « ' + noms[i] + ' » impossible : ' + e);
+    }
+  }
+  props.setProperty('DriveAI_NOMS_DOMAINES', CONFIG.NOMS_DOMAINES_TAG);
+  if (renommes) journalInfo_('Setup', renommes + ' dossier(s) de domaine renommé(s) pour coller à la config.');
+}
+
 /* ---------- Chien de garde (watchdog, ADR-0004) ---------- */
 
 /**
@@ -212,6 +235,8 @@ function tickDriveAI() {
     catch (e) { journalInfo_('Setup', 'Installation du résumé hebdo différée : ' + e); }
     try { assurerTriggerChienDeGarde_(); }
     catch (e) { journalInfo_('Setup', 'Installation du chien de garde différée : ' + e); }
+    try { assurerNomsDomaines_(); }
+    catch (e) { journalErreur_('Setup', 'Sync des noms de domaines différée : ' + e); }
 
     var debut = Date.now();
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
