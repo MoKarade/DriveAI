@@ -26,7 +26,9 @@ var CONFIG = {
   // de domaine puis confiance max). 3 passes (impair → vote utile). Borné pour le budget
   // (< 10 $/mois) : ne concerne que les cas peu sûrs, et plafonné par run ci-dessous.
   LLM_ESCALADE_PASSES: 3,
-  LLM_ESCALADE_MAX_PAR_RUN: 25,           // au-delà : on garde le résultat Haiku (dégradation propre)
+  LLM_ESCALADE_MAX_PAR_RUN: 8,            // abaissé (25→8) pour ACCÉLÉRER le rangement de masse : l'escalade
+                                          // Sonnet ×3 est le plus gros coût-temps/tick ; au-delà on garde le
+                                          // résultat Haiku (« classer au mieux », décision Marc). Débit ↑.
   // Prix Anthropic par MILLION de tokens (input/output), pour MESURER le coût réel (Cout.gs, P1-09).
   // À ajuster si la grille de prix change. Haiku 4.5 : 1$/5$ ; Sonnet 4.6 : 3$/15$.
   LLM_PRIX: { haiku_in: 1, haiku_out: 5, sonnet_in: 3, sonnet_out: 15 },
@@ -41,7 +43,7 @@ var CONFIG = {
   // Intervalle du déclencheur temporel (minutes). Valeurs Apps Script admises : 1, 5, 10, 15, 30.
   // Modifiable à chaud : au tick suivant un déploiement, le moteur réinstalle le déclencheur
   // au nouvel intervalle tout seul (cf. Main.assurerIntervalleTick_). Aucun re-installerTrigger manuel.
-  TICK_MINUTES: 10,
+  TICK_MINUTES: 5,
 
   // Quarantaine : après ce nombre d'échecs CUMULÉS sur un même document (LLM ou placement) — le
   // compteur n'est pas remis à zéro, mais un doc qui réussit quitte le scan donc la distinction
@@ -129,7 +131,9 @@ var CONFIG = {
 
   // --- Phase 2 : référentiel d'entités ---
   // Dossier d'entrée scanné pour le dépôt manuel (réutilise A_TRIER ci-dessus).
-  INTAKE_PAGE: 50,                        // nb de fichiers de 00·À trier traités par run
+  INTAKE_PAGE: 150,                       // nb de fichiers de 00·À trier traités par run (50→150 pour le
+                                          // rangement de masse : chaque tick utilise tout son budget-temps
+                                          // au lieu de s'arrêter à 50 — le garde-temps reste la vraie borne)
   REJEU_PAGE: 100,                        // nb de dépôts renvoyés par run lors d'un auto-rejeu
   RANGEMENT_MAX_PAR_RUN: 200,             // grand rangement : nb de fichiers renvoyés vers 00·À trier par run
   RANGEMENT_SEUIL_FILE: 40,               // ne collecte de NOUVEAUX fichiers que si 00·À trier en a moins
