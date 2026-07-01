@@ -74,6 +74,9 @@ mécanismes distincts dans le code :
 - **Nouvelle entité** (plus de file de revue, décision Marc 2026-07-01) : le document est **classé au
   niveau du domaine** et l'entité est **proposée** (`en_attente`) dans l'onglet `Entités` — jamais un
   blocage. Le dossier d'entité n'est matérialisé qu'**après validation** de Marc (anti-prolifération).
+  **Garde anti-variantes** (ADR-0002 §4) : à la proposition, la colonne `Variante possible ?` signale la
+  plus proche entité existante du même domaine (« Caisse Desjardins » ≈ « Desjardins ») — Marc fusionne
+  en 1 clic au lieu de créer un quasi-doublon. Suggestion seulement, jamais de fusion automatique.
 - **Multi-entités** : un document concernant plusieurs entités → **raccourci Drive** dans
   chaque dossier concerné (jamais de copie physique).
 - **Document transverse** (`entite = null`) → dossier générique du domaine.

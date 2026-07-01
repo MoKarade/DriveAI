@@ -133,6 +133,11 @@ var CONFIG = {
   // Bumper ce tag rejoue le renommage (ex. après un renumérotage). Gated par une Script Property → ~1 fois.
   NOMS_DOMAINES_TAG: 's1',                // s1 : renumérote « 07 · Perso » → « 08 · Perso » (07 = Santé)
 
+  // Garde anti-variantes (ADR-0002 §4) : score de similarité minimal (0..1) au-delà duquel une nouvelle
+  // entité proposée est signalée comme VARIANTE possible d'une entité existante (« Desjardins » vs « Caisse
+  // Desjardins »), pour fusion en 1 clic par Marc. Suggestion seulement — jamais de fusion automatique.
+  SEUIL_VARIANTE: 0.6,
+
   // Sous-dossiers de catégorie connus (Phase 1 : seuls ceux de 03).
   CATEGORIES: {
     '03 · Logement & véhicule': {
