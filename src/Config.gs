@@ -54,6 +54,14 @@ var CONFIG = {
   // au nouvel intervalle tout seul (cf. Main.assurerIntervalleTick_). Aucun re-installerTrigger manuel.
   TICK_MINUTES: 5,
 
+  // Chien de garde (ADR-0004) : un 2ᵉ déclencheur léger et quasi-infaillible surveille le heartbeat
+  // du tick principal (`DriveAI_LAST_TICK`). Si le moteur est silencieux depuis > `WATCHDOG_SEUIL_MS`,
+  // il tente de RÉ-INSTALLER le déclencheur principal (auto-réparation) ; s'il ne peut pas (ou si la
+  // panne persiste après réparation), il envoie UNE alerte. Le seuil dépasse largement l'intervalle du
+  // tick (5 min) pour ne jamais alerter sur un simple retard/quota momentané. Valeurs everyMinutes : 30.
+  WATCHDOG_MINUTES: 30,                  // intervalle du déclencheur chien de garde
+  WATCHDOG_SEUIL_MS: 45 * 60 * 1000,     // moteur « silencieux » au-delà → auto-réparation puis alerte
+
   // Quarantaine : après ce nombre d'échecs CUMULÉS sur un même document (LLM ou placement) — le
   // compteur n'est pas remis à zéro, mais un doc qui réussit quitte le scan donc la distinction
   // avec « consécutifs » est sans effet — on cesse de le re-tenter à chaque tick (re-OCR/re-LLM =

@@ -241,6 +241,18 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-01 (nuit) — Chantier #2 : chien de garde (watchdog, ADR-0004).** **Modif du MOTEUR** (déployée).
+  `src/Main.gs` : heartbeat `DriveAI_LAST_TICK` (finally du tick), 2ᵉ déclencheur `chienDeGarde` (30 min,
+  `assurerTriggerChienDeGarde_` create-if-absent, posé aussi par `installerTrigger`), décision **pure**
+  `actionChienDeGarde_` (machine à 3 états détecter→réparer→alerter, dédupée par épisode = valeur du heartbeat
+  figé), auto-réparation (`installerTrigger` + re-vérif `presenceTriggerTick_` anti-fausse-alerte) puis alerte
+  mail rassurante (`alerterChienDeGarde_`, dédupée, à soi-même). `src/Resume.gs` : `etatSysteme_` + ligne
+  « État du système » au résumé hebdo. `src/Config.gs` : `WATCHDOG_MINUTES=30`, `WATCHDOG_SEUIL_MS=45min`.
+  **+10 tests** → **60 au total**. **Revue flotte 🟢** (security CONFORME, quota CONFORME — correctif A1
+  appliqué : ne pas fausse-alerter si un log échoue après une réparation réussie ; code-reviewer 🟢). RUNBOOK
+  à jour (l'incident « déclencheur désactivé » est désormais auto-réparé). Latence de détection assumée :
+  jusqu'à ~75-105 min (seuil 45 min + cycles watchdog 30 min) — « rassurer, pas réagir à la seconde ».
+  Prochain : chantier #3 (nommage par type + `07·Santé`/`_Technique`, ADR-0002).
 - **2026-07-01 (soir ter) — Chantier #1 (fondation testable) — partie 2/2 : Journal borné + onglet `Santé`.**
   **Modif du MOTEUR** (déployée). `src/Journal.gs` : `lignesJournalASupprimer_` (pure, hystérésis `max+marge`
   → purge en lot, ramène à `max`), `bornerJournal_` (`deleteRows` de LOG — jamais un document, §2 intact),

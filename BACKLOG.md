@@ -146,6 +146,19 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 > Reste ouvert (non bloquant, au fil des chantiers) : étendre la couverture de tests, poursuivre le refactor
 > pur↔effets de bord. Revue flotte 🟢 (security-auditor CONFORME, apps-script-quota CONFORME, code-reviewer 🟢).
 
+### Chantier #2 — Chien de garde (ADR-0004)  ✅
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C2-01 | **Heartbeat** `DriveAI_LAST_TICK` écrit dans le `finally` de `tickDriveAI` (1 Property, robuste) | ✅ |
+| C2-02 | **2ᵉ déclencheur** `chienDeGarde` (`assurerTriggerChienDeGarde_`, create-if-absent ; posé par `installerTrigger` + en tête de tick) | ✅ |
+| C2-03 | **Décision pure** `actionChienDeGarde_` — machine à 3 états (détecter → réparer → alerter), dédupée par épisode | ✅ (7 tests) |
+| C2-04 | **Auto-réparation** (`installerTrigger`, avec re-vérif `presenceTriggerTick_` pour ne pas fausse-alerter si un log échoue) puis **alerte** mail rassurante dédupée ; watchdog trivialement robuste | ✅ |
+| C2-05 | **État du système** au résumé hebdo (`etatSysteme_`, ADR-0004 point 4) | ✅ (3 tests) |
+
+> 60 tests au total. **Revue flotte 🟢** (security CONFORME, quota CONFORME — correctif A1 « pas de fausse
+> alerte si un log échoue après réparation » appliqué, code-reviewer 🟢 — commentaire `installerTrigger` rafraîchi).
+
 ---
 
 ## Épopée Phase 4 — Recherche + dashboard (Vercel)  ⬜

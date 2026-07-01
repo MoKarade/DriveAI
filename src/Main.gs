@@ -14,9 +14,11 @@
 
 /**
  * Installe (idempotemment) le déclencheur temporel (CONFIG.TICK_MINUTES).
- * Lancé À LA MAIN par Marc (hors d'un run déclenché) → l'ordre delete-then-create est sûr ici
- * (le bref instant à 0 déclencheur est sans conséquence). L'ajustement AUTOMATIQUE en cours de
- * run, lui, utilise l'ordre inverse (create-then-delete) — cf. assurerIntervalleTick_.
+ * Appelé (a) À LA MAIN par Marc et (b) AUTOMATIQUEMENT par le chien de garde (`chienDeGarde`) en
+ * auto-réparation. Dans les deux cas on est hors du run `tickDriveAI` lui-même (le watchdog est un
+ * déclencheur DISTINCT) → l'ordre delete-then-create est sûr (le bref instant à 0 déclencheur, ou un
+ * tick manqué, est sans conséquence — c'est justement l'état qu'on répare). L'ajustement AUTOMATIQUE
+ * en cours de run, lui, utilise l'ordre inverse (create-then-delete) — cf. assurerIntervalleTick_.
  */
 function installerTrigger() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
@@ -25,7 +27,123 @@ function installerTrigger() {
   ScriptApp.newTrigger('tickDriveAI').timeBased().everyMinutes(CONFIG.TICK_MINUTES).create();
   PropertiesService.getScriptProperties().setProperty('DriveAI_TICK_MINUTES', String(CONFIG.TICK_MINUTES));
   journalInfo_('Setup', 'Déclencheur ' + CONFIG.TICK_MINUTES + ' min installé.');
-  assurerTriggerResume_(); // installe aussi le résumé hebdo (idempotent)
+  assurerTriggerResume_();      // installe aussi le résumé hebdo (idempotent)
+  assurerTriggerChienDeGarde_(); // et le chien de garde (idempotent, ADR-0004)
+}
+
+/**
+ * Installe (si absent) le déclencheur du CHIEN DE GARDE (`chienDeGarde`, toutes les
+ * `CONFIG.WATCHDOG_MINUTES`). Idempotent (crée seulement s'il n'existe pas → anti-saturation du
+ * quota de déclencheurs ~20). Appelé par `installerTrigger` ET en tête de tick (enveloppé) pour
+ * s'auto-installer sur un déploiement existant sans re-`installerTrigger` manuel.
+ */
+function assurerTriggerChienDeGarde_() {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'chienDeGarde') return; // déjà installé
+  }
+  ScriptApp.newTrigger('chienDeGarde').timeBased().everyMinutes(CONFIG.WATCHDOG_MINUTES).create();
+  journalInfo_('Setup', 'Chien de garde installé (toutes les ' + CONFIG.WATCHDOG_MINUTES + ' min).');
+}
+
+/* ---------- Chien de garde (watchdog, ADR-0004) ---------- */
+
+/**
+ * Vrai s'il existe au moins un déclencheur `tickDriveAI`. Sert à confirmer qu'une auto-réparation a
+ * bien recréé le déclencheur même si un log annexe a levé ensuite (ne propage jamais d'exception).
+ * @return {boolean}
+ */
+function presenceTriggerTick_() {
+  try {
+    var t = ScriptApp.getProjectTriggers();
+    for (var i = 0; i < t.length; i++) {
+      if (t[i].getHandlerFunction() === 'tickDriveAI') return true;
+    }
+  } catch (e) { /* lecture des déclencheurs impossible → on ne peut pas confirmer */ }
+  return false;
+}
+
+/**
+ * Décision PURE du chien de garde (testée), machine à 3 états — détecter → réparer → (si toujours
+ * en panne) alerter UNE fois. Les clés `*Tick` identifient l'ÉPISODE de panne (= la valeur du
+ * heartbeat figé pendant la panne) pour ne réparer/alerter qu'une fois par épisode.
+ * @param {number} maintenant   ms (Date.now())
+ * @param {number} dernierTick  ms du dernier heartbeat (0 = jamais tourné)
+ * @param {number} seuil        ms de silence au-delà duquel on agit
+ * @param {number} repareTick   heartbeat pour lequel une réparation a déjà été tentée
+ * @param {number} alerteTick   heartbeat pour lequel une alerte a déjà été envoyée
+ * @return {'rien'|'reparer'|'alerter'}
+ */
+function actionChienDeGarde_(maintenant, dernierTick, seuil, repareTick, alerteTick) {
+  if (!dernierTick) return 'rien';                        // jamais tourné → rien à réparer (trigger assuré ailleurs)
+  if ((maintenant - dernierTick) <= seuil) return 'rien'; // le moteur tourne (heartbeat frais)
+  if (alerteTick === dernierTick) return 'rien';          // déjà alerté pour CET épisode → silence
+  if (repareTick === dernierTick) return 'alerter';       // réparation déjà tentée, toujours en panne → escalade
+  return 'reparer';                                        // première détection de l'épisode → auto-réparation
+}
+
+/**
+ * Chien de garde — 2ᵉ déclencheur, doit être TRIVIALEMENT robuste (jamais d'exception propagée,
+ * sinon Google le désactiverait lui aussi). Lit le heartbeat, décide, et au besoin ré-installe le
+ * déclencheur principal (auto-réparation) puis, si ça ne suffit pas, alerte UNE fois. Public (cible
+ * d'un déclencheur → pas de suffixe `_`).
+ */
+function chienDeGarde() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var dernierTick = Number(props.getProperty('DriveAI_LAST_TICK')) || 0;
+    var action = actionChienDeGarde_(
+      Date.now(), dernierTick, CONFIG.WATCHDOG_SEUIL_MS,
+      Number(props.getProperty('DriveAI_WATCHDOG_REPARE')) || 0,
+      Number(props.getProperty('DriveAI_WATCHDOG_ALERTE')) || 0
+    );
+    if (action === 'reparer') {
+      var repare = false;
+      try {
+        installerTrigger(); // delete+create du déclencheur principal (auto-réparation)
+        repare = true;
+      } catch (e) {
+        // `installerTrigger` a pu RECRÉER le déclencheur avant qu'un log annexe (Sheet HS, cause de panne
+        // corrélée) ne lève : on ne croit pas l'exception sur parole, on RE-VÉRIFIE la présence réelle du
+        // déclencheur. Un simple échec de log ne doit jamais requalifier une réparation réussie en alerte.
+        repare = presenceTriggerTick_();
+        if (!repare) { // réparation VRAIMENT impossible → on alerte tout de suite (marqué, non répété)
+          props.setProperty('DriveAI_WATCHDOG_ALERTE', String(dernierTick));
+          alerterChienDeGarde_(dernierTick, e);
+        }
+      }
+      if (repare) {
+        props.setProperty('DriveAI_WATCHDOG_REPARE', String(dernierTick));
+        try { journalInfo_('Chien de garde', 'Moteur silencieux → déclencheur principal ré-installé (auto-réparation).'); }
+        catch (e2) { /* log best-effort : ne doit pas défaire une réparation réussie */ }
+      }
+    } else if (action === 'alerter') {
+      props.setProperty('DriveAI_WATCHDOG_ALERTE', String(dernierTick));
+      alerterChienDeGarde_(dernierTick, null);
+    }
+  } catch (e) {
+    // Le chien de garde ne DOIT jamais planter (invariant ADR-0004). On avale tout en silence.
+  }
+}
+
+/**
+ * Envoie l'UNIQUE alerte de panne (mail rassurant : souvent le quota quotidien, sinon un clic).
+ * Ne propage jamais d'exception (appelé depuis le chien de garde).
+ * @param {number} dernierTick
+ * @param {*} err  cause d'échec de réparation, ou null (réparation tentée sans effet)
+ */
+function alerterChienDeGarde_(dernierTick, err) {
+  var quand = dernierTick
+    ? Utilities.formatDate(new Date(dernierTick), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm')
+    : 'inconnu';
+  var corps = 'DriveAI ne semble plus traiter depuis ' + quand + '.\n\n' +
+    'Souvent bénin : le quota quotidien du compte gratuit (~90 min/jour) est atteint — ça reprend seul demain.\n' +
+    'Si rien ne repart d\'ici demain, un seul geste : ouvrir le projet Apps Script « DriveAI » et exécuter installerTrigger.\n' +
+    (err ? '\n(Auto-réparation impossible : ' + err + ')' : '\n(Auto-réparation tentée, sans effet pour l\'instant.)');
+  try {
+    MailApp.sendEmail(Session.getEffectiveUser().getEmail(), '[DriveAI] Moteur silencieux — à vérifier', corps);
+  } catch (e) { /* mail impossible : le chien de garde ne plante pas pour autant */ }
+  journalErreur_('Chien de garde', 'Alerte « moteur silencieux » envoyée (dernier tick : ' + quand + ').');
 }
 
 /**
@@ -92,6 +210,8 @@ function tickDriveAI() {
     catch (e) { journalInfo_('Setup', 'Ajustement d\'intervalle différé : ' + e); }
     try { assurerTriggerResume_(); }
     catch (e) { journalInfo_('Setup', 'Installation du résumé hebdo différée : ' + e); }
+    try { assurerTriggerChienDeGarde_(); }
+    catch (e) { journalInfo_('Setup', 'Installation du chien de garde différée : ' + e); }
 
     var debut = Date.now();
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
@@ -134,6 +254,11 @@ function tickDriveAI() {
     // un `journalErreur_` d'un catch ci-dessous lève à son tour (panne Sheet) — sinon le verrou resterait
     // pris jusqu'à expiration (revue apps-script-quota).
     try {
+      // Heartbeat (ADR-0004) EN PREMIER dans le finally : « le moteur a exécuté un tick ». Écrit même si
+      // l'intake a partiellement échoué — c'est ce timestamp que le chien de garde surveille. Property
+      // unique, robuste ; un échec ici ne doit rien casser (enveloppé).
+      try { PropertiesService.getScriptProperties().setProperty('DriveAI_LAST_TICK', String(Date.now())); }
+      catch (e) { /* écriture Property impossible : rien de plus à faire */ }
       try { flushUsage_(); } catch (e) { journalErreur_('Cout', 'Flush usage impossible : ' + e); }
       // Observabilité (ADR-0006), SECONDAIRE et enveloppé : un échec ne doit jamais bloquer le tick.
       // Le heartbeat Santé s'écrit même si l'intake a partiellement échoué (d'où le finally).
