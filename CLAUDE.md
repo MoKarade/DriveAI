@@ -99,6 +99,11 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   le dépôt Drive et après la ligne Revue — pour qu'une coupure rejoue au lieu de perdre un cas.
 - **Robustesse moteur Apps Script.** `LockService` (anti-chevauchement), garde-temps (coupure
   6 min), et lecture d'état mise en cache 1×/run (jamais une lecture Sheet par item).
+- **Vie privée : métadonnées seulement dans l'état.** Ne JAMAIS persister le corps d'un document
+  (texte OCR, contenu) dans l'Index ni le Journal — uniquement des métadonnées (nom, date, chemin,
+  statut, **empreinte = hash**). Le texte des documents ne sort que vers l'API Anthropic pour le
+  classement (transit assumé, ADR-0007) ; il ne se stocke nulle part. Tout nouveau champ d'état ou
+  log doit respecter cet invariant (à verrouiller par un test, roadmap #1).
 - **Garde-fou étroit, calibré sur du réel.** Un flag de protection (ex. `sensible`) doit viser
   des catégories précises (immigration + fiscal), pas « true par défaut » — sinon tout part en
   revue et l'auto-rangement est neutralisé. Le défaut prudent ne sert que pour les réponses LLM
