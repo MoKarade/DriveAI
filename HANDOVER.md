@@ -63,6 +63,21 @@
 - **Secrets déploiement déjà posés.** Les 2 secrets GitHub (`CLASPRC_JSON`, `SCRIPT_ID`) sont **déjà
   configurés** côté Marc — confirmé par des runs `Deploy` réels (`clasp push` réussi, code visible en
   prod). Le tableau « reste à faire » ci-dessous est mis à jour en conséquence : **rien côté secrets**.
+- **fix-pipeline (file `00·À trier` gelée)** : `appliquerRangementInitial_` tournait AVANT l'intake et
+  SANS try/catch → un plantage de sa collecte gelait tout le tick (Gmail + dépôts + intentions sautés) →
+  ~20 fichiers stagnaient des heures dans `00·À trier`. Corrigé : maintenance auto (rejeu, rangement)
+  **enveloppée de try/catch**, et on **DRAINE (Gmail+dépôts) AVANT d'ALIMENTER** (rangement passe après,
+  si budget). Vérifié en prod par recherche Drive : la file s'est vidée après déploiement.
+- **P1-13 (lecture des fichiers Office)** : diagnostic prod (recherche Drive) — les `.docx`/`.ppt` de Marc
+  (CV, TP, présentations) partaient TOUS en revue « sensibilité indéterminable (OCR vide) » car `Ocr.gs` ne
+  lisait que text/PDF/images ; un `.docx` → texte vide → garde-fou OCR-vide → revue. Corrigé : `extraireTexte_`
+  convertit désormais Word/PowerPoint/Excel en Google natif (Docs/Slides/Sheets, conversion sans OCR) → vrai
+  texte → classés correctement. `VERSION` bumpée **P2.5 → P2.8** ⇒ re-tri auto de la revue existante (Office
+  classés, vieux `[REVUE] doublon` → `_Doublons`, sensibles re-détectés → revue). Re-audité flotte 🟢.
+- **Décision en attente (Marc, 2026-07-01) :** auto-classer AUSSI les docs **sensibles** (immigration/fiscal)
+  ? Marc l'a demandé, mais l'essentiel de sa frustration (CV/TP) venait du bug Office, pas du garde-fou §1.
+  Recommandation faite : garder le filet §1 sur immigration/fiscal uniquement. **En attente de sa confirmation**
+  avant de toucher au garde-fou NON NÉGOCIABLE §1.
 - **Phase 3 codée** (remplace l'agent mail externe de Marc). Scan de **tous** les mails récents
   (pas seulement avec PJ, `GMAIL_REQUETE_ACTIONS`) → pré-filtre 3 étages (mots-clés gratuit → zone
   protégée gratuit, défense en profondeur indépendante du LLM → mini-check Haiku ~10 tokens) →

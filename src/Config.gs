@@ -12,7 +12,7 @@ var CONFIG = {
   // la version stockée diffère, le moteur renvoie automatiquement les DÉPÔTS partis
   // en revue vers 00·À trier pour reclassement (cf. Main.appliquerRejeuSiNouvelleVersion_)
   // — borné, réversible, sans toucher aux PJ Gmail ni aux docs déjà classés. Zéro clic.
-  VERSION: 'P2.5',
+  VERSION: 'P2.8',
 
   // --- Seuils & modèle ---
   SEUIL_CONFIANCE: 0.50,                 // sous ce seuil → file de revue (abaissé de 0.80 sur demande)
