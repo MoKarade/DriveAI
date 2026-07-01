@@ -27,6 +27,14 @@ jobs:
           done < <(find . -path ./.git -prune -o -name '*.json' -print)
           exit $fail
 
+      - name: Workflows YAML valides
+        run: |
+          fail=0
+          for f in .github/workflows/*.yml; do
+            if python3 -c "import yaml,sys; yaml.safe_load(open('$f'))" 2>/dev/null; then echo "ok: $f"; else echo "YAML invalide: $f"; fail=1; fi
+          done
+          exit $fail
+
       - name: Syntaxe des scripts shell
         run: |
           fail=0
@@ -54,7 +62,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Syntaxe des .gs (avant tout : un .gs cassé fige le déploiement clasp)
+      - name: "Syntaxe des .gs (un .gs cassé fige le déploiement clasp)"
         # `node --check` ignore l'extension .gs → on copie en .js. Ne vérifie QUE la syntaxe
         # (pas les globals Google), ce qui suffit à attraper un déploiement cassé avant le merge.
         run: |
