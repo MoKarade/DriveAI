@@ -233,3 +233,22 @@ jamais supprimé — garde-fou §2 intact) garde la file de revue utilisable ; l
 prioritaire (un doublon sensible va toujours en revue, jamais dans `_Doublons`). Re-tester sur du réel :
 « est-ce que la file de revue reste exploitable au volume du grand rangement ? »
 **Règle durable ?** oui.
+
+## 2026-07-01 — Une op de maintenance auto qui tourne AVANT/SANS protéger l'intake gèle tout le pipeline
+**Contexte.** En prod, la file `00·À trier` s'est retrouvée GELÉE : ~20 fichiers déplacés par le grand
+rangement y stagnaient des heures, aucun classé, et plus rien n'était traité (ni PJ Gmail, ni intentions),
+alors que le moteur « tournait » (Sheet réécrite chaque tick). Diagnostic (sans pouvoir lire le Journal — cache
+de lecture figé — donc par lecture du CODE + signaux Drive directs) : dans `tickDriveAI`, `appliquerRangementInitial_`
+(a) tournait AVANT le traitement de la file qu'il alimente, et (b) n'était PAS enveloppé de try/catch. Le `try`
+de `tickDriveAI` n'a qu'un `finally` (pas de `catch`) → une exception dans la collecte du rangement (walk de
+l'ancien Drive) tuait tout le tick AVANT Gmail/dépôts/intentions, à chaque tick, indéfiniment.
+**Leçon.** (1) Toute opération SECONDAIRE (maintenance auto : rejeu de version, grand rangement, ajustement de
+déclencheur) doit être **enveloppée d'un try/catch** dans le tick — « un échec ne doit JAMAIS bloquer l'intake ».
+Si le code l'écrit déjà en commentaire pour CERTAINES étapes, vérifier que TOUTES le respectent (l'ajout d'une
+nouvelle étape non protégée juste avant l'intake est le piège). (2) Une étape qui ALIMENTE une file (rangement →
+`00·À trier`) doit passer APRÈS l'étape qui la DRAINE, et seulement s'il reste du budget — sinon elle s'affame
+elle-même et affame le traitement (drainer avant d'alimenter). (3) Symptôme « le moteur écrit son état mais ne
+traite plus rien » ⇒ suspecter un plantage NON capturé ou une famine de budget dans une étape AMONT du traitement.
+Quand le canal d'état (Journal) est illisible, diagnostiquer par le CODE (quelle étape n'est pas protégée ?) et
+par des signaux Drive directs (contenu des dossiers, `modifiedTime`), pas en attendant le Journal.
+**Règle durable ?** oui.
