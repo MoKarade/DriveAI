@@ -40,6 +40,15 @@ var CONFIG = {
                                           // Journal grossit vite : borne la lecture hebdo, large
                                           // marge devant une semaine d'un usage personnel)
 
+  // Journal borné (ADR-0006) : le Journal grossit sans fin → illisible (incident 2026-07-01, débogage
+  // gêné par une Sheet énorme + tronquée). Le Journal oscille entre `MAX` et `MAX + MARGE` lignes : la
+  // rotation ne se déclenche qu'au-delà de `MAX + MARGE` (purge en lot, pas ligne-à-ligne à chaque tick)
+  // et ramène à `MAX`. Le PLANCHER post-rotation (`MAX`) doit rester > `RESUME_MAX_LIGNES` pour que le
+  // résumé hebdo lise toujours une fenêtre complète (20000 > 15000 ✔). Purge de LOG (rotation
+  // d'historique), jamais de documents ni de l'Index (§2 intact).
+  JOURNAL_MAX_LIGNES: 20000,
+  JOURNAL_MARGE: 5000,
+
   // Intervalle du déclencheur temporel (minutes). Valeurs Apps Script admises : 1, 5, 10, 15, 30.
   // Modifiable à chaud : au tick suivant un déploiement, le moteur réinstalle le déclencheur
   // au nouvel intervalle tout seul (cf. Main.assurerIntervalleTick_). Aucun re-installerTrigger manuel.

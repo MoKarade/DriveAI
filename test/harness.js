@@ -73,7 +73,9 @@ function makeSandbox(overrides) {
         return String(fmt)
           .replace(/yyyy/g, date.getUTCFullYear())
           .replace(/MM/g, p2(date.getUTCMonth() + 1))
-          .replace(/dd/g, p2(date.getUTCDate()));
+          .replace(/dd/g, p2(date.getUTCDate()))
+          .replace(/HH/g, p2(date.getUTCHours()))
+          .replace(/mm/g, p2(date.getUTCMinutes()));
       },
     },
     Session: { getScriptTimeZone: () => 'UTC' },

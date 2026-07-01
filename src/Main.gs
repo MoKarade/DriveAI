@@ -130,8 +130,18 @@ function tickDriveAI() {
     // prod) garde toujours la priorité sur ce nouveau flux.
     if (!estBudgetDepasse()) traiterIntentionsMail_(estBudgetDepasse);
   } finally {
-    try { flushUsage_(); } catch (e) { journalErreur_('Cout', 'Flush usage impossible : ' + e); }
-    verrou.releaseLock();
+    // `releaseLock` DOIT toujours s'exécuter : un try/finally imbriqué garantit sa libération même si
+    // un `journalErreur_` d'un catch ci-dessous lève à son tour (panne Sheet) — sinon le verrou resterait
+    // pris jusqu'à expiration (revue apps-script-quota).
+    try {
+      try { flushUsage_(); } catch (e) { journalErreur_('Cout', 'Flush usage impossible : ' + e); }
+      // Observabilité (ADR-0006), SECONDAIRE et enveloppé : un échec ne doit jamais bloquer le tick.
+      // Le heartbeat Santé s'écrit même si l'intake a partiellement échoué (d'où le finally).
+      try { majSante_(); } catch (e) { journalErreur_('Santé', 'MàJ Santé impossible : ' + e); }
+      try { bornerJournal_(); } catch (e) { journalErreur_('Santé', 'Journal borné impossible : ' + e); }
+    } finally {
+      verrou.releaseLock();
+    }
   }
 }
 
