@@ -43,3 +43,19 @@ jobs:
 
       - name: Frontmatter des agents
         run: bash .github/scripts/check-agents.sh .
+
+  test:
+    name: Tests unitaires (logique pure)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Filet de tests du moteur (node --test, zéro dépendance)
+        # Charge les .gs Apps Script dans un bac à sable Node (mocks Google) et vérifie la
+        # logique de décision : routage, nommage, dates, garde zone protégée §1, prédicats
+        # de collecte, invariant vie privée (ADR-0006/0007). Aucun `npm install` (0 dépendance).
+        run: node --test test/*.test.js

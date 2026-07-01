@@ -11,7 +11,7 @@ Outil **personnel**, qualité **pro**. Priorités : **① précision · ② cont
 
 | # | Chantier | Axe | Effort | ADR | Statut |
 |---|----------|-----|--------|-----|--------|
-| 1 | **Fondation testable** — refactor logique pure ↔ effets de bord, filet de tests en CI (Node), **Journal borné + onglet `Santé`**, + test d'invariant vie privée « aucun corps de document dans l'état/les logs » ([0007](adr/0007-securite-vie-privee.md)) | Qualité (socle) | M | [0006](adr/0006-architecture-qualite.md) | ⬜ |
+| 1 | **Fondation testable** — refactor logique pure ↔ effets de bord, filet de tests en CI (Node), **Journal borné + onglet `Santé`**, + test d'invariant vie privée « aucun corps de document dans l'état/les logs » ([0007](adr/0007-securite-vie-privee.md)) | Qualité (socle) | M | [0006](adr/0006-architecture-qualite.md) | 🟦 filet de tests + harness ✅ (37 tests, job CI) · Journal borné/`Santé` à suivre |
 | 2 | **Chien de garde** (heartbeat, ré-armage auto du déclencheur, alerte si échec) — écrit dans l'onglet `Santé` du #1 | Fiabilité | S-M | [0004](adr/0004-fiabilite.md) | ⬜ |
 | 3 | **Nommage par type de doc** + « deviner depuis le nom d'origine » + nouveaux dossiers `07 · Santé` et `_Technique` | Précision | M | [0002](adr/0002-refonte-taxonomie-entites-nommage.md) | ⬜ |
 | 4 | **Entités : validation 1 clic + garde anti-variantes** (« IUT ULCO » ≈ « IUT du Littoral ») | Précision | M | [0002](adr/0002-refonte-taxonomie-entites-nommage.md) | ⬜ |

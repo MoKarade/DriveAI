@@ -1,6 +1,8 @@
 # ADR-0006 — Architecture & qualité (tests, testabilité, état lisible)
 
-- **Statut** : Accepté — **à implémenter** · **FONDATION** (roadmap #1)
+- **Statut** : Accepté — **en cours** · **FONDATION** (roadmap #1). Livré : **filet de tests + harness
+  Node** (`test/`, job CI « Tests unitaires », 37 tests couvrant routage/nommage/dates/garde §1/prédicats/
+  invariant vie privée). Reste : **Journal borné + onglet `Santé`** + extension progressive de la couverture.
 - **Décideurs** : Marc, Claude · **Source** : brainstorm 2026-07-01, axe « Architecture & qualité »
 
 ## Contexte
