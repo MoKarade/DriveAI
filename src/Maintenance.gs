@@ -341,13 +341,13 @@ function finaliserProgression_() {
  * supplémentaires. Borné par le garde-temps et un plafond dur (anti-emballement mémoire/temps).
  * @return {{n:number, complet:boolean}}
  */
-function compterVracRacines_(estBudgetDepasse, proteges) {
+function compterVracRacines_(estBudgetDepasse) {
   var racinesSup = CONFIG.RANGEMENT_RACINES_SUP || [];
   var etat = { n: 0, complet: true };
   for (var r = 0; r < racinesSup.length; r++) {
     if (estBudgetDepasse()) { etat.complet = false; break; }
     try {
-      compterVracDossier_(DriveApp.getFolderById(racinesSup[r]), etat, estBudgetDepasse, proteges);
+      compterVracDossier_(DriveApp.getFolderById(racinesSup[r]), etat, estBudgetDepasse);
     } catch (e) {
       etat.complet = false; // racine illisible → recensement non fiable, on réessaiera
     }
@@ -355,20 +355,52 @@ function compterVracRacines_(estBudgetDepasse, proteges) {
   return etat;
 }
 
-/** Compte récursif des fichiers « à reclasser » d'un dossier (lecture seule, borné). */
-function compterVracDossier_(dossier, etat, estBudgetDepasse, proteges) {
+/**
+ * Compte récursif des fichiers « à reclasser » d'un dossier (lecture seule, borné). Utilise le
+ * prédicat LÉGER `estAReclasserLeger_` (name + mime, SANS getParents par fichier) — sinon, sur un
+ * gros Drive, le recensement ne finirait jamais dans le budget d'un run.
+ */
+function compterVracDossier_(dossier, etat, estBudgetDepasse) {
   if (etat.n > 20000) { etat.complet = false; return; } // plafond dur de sécurité
   var fi = dossier.getFiles();
   while (fi.hasNext()) {
     if (estBudgetDepasse()) { etat.complet = false; return; }
-    if (estAReclasser_(fi.next(), proteges)) etat.n++;
+    if (estAReclasserLeger_(fi.next())) etat.n++;
   }
   var fo = dossier.getFolders();
   while (fo.hasNext()) {
     if (estBudgetDepasse()) { etat.complet = false; return; }
-    compterVracDossier_(fo.next(), etat, estBudgetDepasse, proteges);
+    compterVracDossier_(fo.next(), etat, estBudgetDepasse);
     if (!etat.complet) return;
   }
+}
+
+/**
+ * Prédicat LÉGER pour le RECENSEMENT de la barre : nom + mime seulement, SANS le contrôle de parent
+ * protégé (`getParents` par fichier = coûteux → recensement qui ne finit jamais sur un gros Drive).
+ * Sur « Ancienne structure » aucun fichier n'a pour ancêtre le dossier-domaine `04·Immigration`
+ * (dossier distinct), donc ce prédicat ≈ `estAReclasser_` ; l'écart éventuel n'affecte qu'une
+ * ESTIMATION (dénominateur), corrigée par la re-base et la finalisation sur le vrai signal de fin.
+ * La COLLECTE et le DÉPLACEMENT réels gardent, eux, le prédicat complet (garde zone protégée §1).
+ * @param {File} f
+ * @return {boolean}
+ */
+function estAReclasserLeger_(f) {
+  if (/^\d{4}-\d{2}-\d{2}_/.test(f.getName())) return false; // déjà rangé/renommé
+  var mime = f.getMimeType() || '';
+  if (mime.indexOf('application/vnd.google-apps') === 0) return false; // natif ou raccourci
+  return true;
+}
+
+/**
+ * Écrit une barre « recensement en cours » (onglet visible dès le 1er tick, avant même le comptage).
+ * @param {number} essaisFaits  nb de passes de recensement déjà tentées
+ */
+function ecrireRecensement_(essaisFaits) {
+  var f = feuille_('Progression');
+  f.getRange('A2').setValue('[░░░░░░░░░░░░░░░░░░░░] démarrage…');
+  f.getRange('A3').setValue('Recensement de « Ancienne structure » en cours (passe ' + (essaisFaits + 1) + ')…');
+  f.getRange('A4').setValue('Mis à jour : ' + new Date());
 }
 
 /**

@@ -213,8 +213,14 @@ function appliquerRangementInitial_(estBudgetDepasse) {
 
   // PHASE 1 — RECENSEMENT (tick dédié, une fois) : pose la base de la barre. Ce tick NE range pas.
   if (props.getProperty('DriveAI_RANGEMENT_BASE') === null) {
-    var rec = compterVracRacines_(estBudgetDepasse, proteges);
-    var essais = (Number(props.getProperty('DriveAI_RANGEMENT_RECENS')) || 0) + 1;
+    var essaisFaits = Number(props.getProperty('DriveAI_RANGEMENT_RECENS')) || 0;
+    // Onglet visible DÈS ce tick, même avant la fin du comptage (recensement léger = rapide, mais
+    // filet si un très gros Drive l'étale malgré tout sur plusieurs passes).
+    try { ecrireRecensement_(essaisFaits); }
+    catch (e) { journalErreur_('Progression', 'Init barre impossible : ' + e); }
+
+    var rec = compterVracRacines_(estBudgetDepasse);
+    var essais = essaisFaits + 1;
     if (!rec.complet && essais < CONFIG.RANGEMENT_RECENS_ESSAIS_MAX) {
       props.setProperty('DriveAI_RANGEMENT_RECENS', String(essais)); // partiel → réessai au prochain tick
       return;

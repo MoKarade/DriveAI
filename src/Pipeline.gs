@@ -3,17 +3,16 @@
  *
  * Les deux sources (PJ Gmail, dépôt manuel `00·À trier`) construisent un même
  * descripteur `src` et délèguent ici. Seul le PLACEMENT diffère (copie pour
- * Gmail, déplacement pour un dépôt) : il est fourni par `src.placer` /
- * `src.placerRevue`.
+ * Gmail, déplacement pour un dépôt) : il est fourni par `src.placer`.
+ * (Plus de file de revue depuis 2026-07-01 : `src.placerRevue` n'est plus utilisé.)
  *
- * Ordre d'écriture d'état (leçon durable) : placement → ligne Revue → ligne Index
- * (Index en dernier) : une coupure rejoue le cas au lieu de le perdre.
+ * Ordre d'écriture d'état (leçon durable) : placement → ligne Index (en dernier) :
+ * une coupure rejoue le cas au lieu de le perdre.
  *
  * Descripteur `src` :
  *   { cle, nom, taille, expediteur, sujet, date:Date,
  *     blob() -> Blob,
- *     placer(dossierId, nom) -> fileId,
- *     placerRevue(nom) -> fileId }
+ *     placer(dossierId, nom) -> fileId }
  */
 
 /**
@@ -45,16 +44,16 @@ function traiterDocument_(src) {
 
     var decision = deciderRoutage_(classif, src.date, extension_(src.nom), motifForce);
 
-    var fileId = (decision.statut === 'revue')
-      ? src.placerRevue(decision.nom)
-      : src.placer(decision.dossierId, decision.nom);
+    // Plus de file de revue (décision Marc 2026-07-01) : tout est CLASSÉ ('classé' ou 'doublon'),
+    // placé dans son dossier cible avec son nom final propre. Un seul chemin de placement.
+    var fileId = src.placer(decision.dossierId, decision.nom);
 
     if (!fileId) {
       // Placement Drive échoué → on n'indexe pas : compté ; re-tenté, ou quarantaine après N échecs.
       gererEchec_(src, 'placement Drive échoué');
       return;
     }
-    if (decision.statut !== 'revue' && decision.autresEntites && decision.autresEntites.length) {
+    if (decision.autresEntites && decision.autresEntites.length) {
       creerRaccourcisEntites_(fileId, decision.nom, decision.autresEntites);
     }
 

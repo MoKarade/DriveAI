@@ -119,15 +119,16 @@ function estDoublon_(empreinte) {
 }
 
 /**
- * Enregistre un fichier traité. La ligne Revue est écrite AVANT la ligne Index :
- * si une coupure survient entre les deux, la PJ reste non-indexée donc re-traitée
- * (jamais un cas sensible perdu silencieusement).
+ * Enregistre un fichier traité. L'inscription Index (« c'est fini ») est écrite en DERNIER :
+ * si une coupure survient avant, la PJ reste non-indexée donc re-traitée (jamais perdue).
+ * (Le statut 'revue' n'est plus produit par le pipeline depuis 2026-07-01 — la branche Revue
+ * ci-dessous ne sert que d'éventuelle compat de lignes historiques.)
  * @param {string} cle
  * @param {{statut:string, domaine:string, chemin:string, nom:string}} resultat
  * @param {string} [empreinte]  empreinte MD5 du contenu (détection de doublons)
  */
 function indexAjouter_(cle, resultat, empreinte) {
-  if (resultat.statut === 'revue') {
+  if (resultat.statut === 'revue') { // vestigial : le pipeline ne route plus en revue
     feuille_('Revue').appendRow([new Date(), resultat.nom, resultat.domaine || '', resultat.nom]);
   }
   feuille_('Index').appendRow([

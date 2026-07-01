@@ -14,6 +14,30 @@
 
 ---
 
+## 2026-07-01 — Une étape amont COÛTEUSE peut « manger » chaque tick sans rien écrire (churn invisible) ; séparer le comptage léger du garde-fou coûteux
+**Contexte.** Après déploiement de la barre (P1-15), Marc n'avait PAS d'onglet `Progression`. Diagnostic
+par signal Drive indépendant (le canal Sheet étant illisible/tronqué) : sur ~25 min post-déploiement, RIEN
+n'avait bougé dans le Drive (seul l'Apps Script modifié par le `clasp push`), et la Sheet d'état était figée.
+Piège de lecture : « la Sheet ne bouge pas » ≠ « le moteur est mort ». Le recensement de la barre parcourait
+« Ancienne structure » (grosse archive) en appelant `getParents()` par fichier (via `aParentProtege_`) → il
+ne finissait JAMAIS dans le budget (4.5 min), retournait « partiel » en n'écrivant qu'une Script Property
+(invisible côté Drive/Sheet), et re-partait de zéro au tick suivant. Résultat : le moteur tournait mais
+consommait tout son budget dans un comptage stérile, sans jamais produire la barre ni laisser de budget à
+l'intake — un **churn invisible**.
+**Leçon.** (1) **Symptôme « le moteur écrit son état mais plus rien ne bouge » ⇒ suspecter une étape AMONT
+qui consomme le budget sans écrire** (pas seulement un plantage). Diagnostiquer par un signal Drive
+indépendant : `modifiedTime` sur tout le Drive — si SEUL le fichier de code a changé depuis le déploiement,
+aucun tick n'a rien produit. (2) **Un COMPTAGE (dénominateur d'une barre, estimation) ne doit pas payer le
+prix d'un GARDE-FOU de mutation.** `getParents()` par fichier est là pour ne jamais DÉTACHER un fichier de la
+zone protégée — utile avant un déplacement RÉEL, inutile pour compter. Split : prédicat LÉGER
+(`estAReclasserLeger_` : nom + mime, aucun appel Drive supplémentaire) pour le recensement ; prédicat COMPLET
+(`estAReclasser_` avec `aParentProtege_`) pour la COLLECTE et le DÉPLACEMENT réels. L'écart d'estimation est
+absorbé par la re-base + la finalisation sur le vrai signal de fin. (3) **Rendre l'onglet visible dès le 1ᵉʳ
+tick** (écrire « recensement en cours… » avant même le comptage) : un utilisateur qui attend une barre ne doit
+jamais voir « rien » pendant 30 min. (4) Toujours **tracer le coût réel d'un parcours récursif** (1 appel
+Drive/fichier × milliers de fichiers = jamais dans le budget) avant de le mettre sur le chemin d'un tick.
+**Règle durable ?** oui.
+
 ## 2026-07-01 — Barre de progression sur un traitement de masse : recensement dans un tick DÉDIÉ, base re-basable, « terminé » sur le vrai signal
 **Contexte.** Marc : « je veux que ça classe tout, une petite barre de chargement pour voir ». Deux bugs
 étaient en jeu. (1) Le grand rangement de l'ancien Drive tournait EN DERNIER dans le tick → systématiquement
