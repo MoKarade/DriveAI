@@ -1,7 +1,7 @@
 # ADR-0006 — Architecture & qualité (tests, testabilité, état lisible)
 
 - **Statut** : Accepté — **socle implémenté** · **FONDATION** (roadmap #1). Livré : **filet de tests +
-  harness Node** (`test/`, job CI « Tests unitaires », 46 tests couvrant routage/nommage/dates/garde §1/
+  harness Node** (`test/`, job CI « Tests unitaires », 50 tests couvrant routage/nommage/dates/garde §1/
   prédicats/invariant vie privée/rotation Journal/coût), **Journal borné** (rotation en lot) et **onglet
   `Santé`** (heartbeat + métriques). Reste ouvert : extension progressive de la couverture de tests au fil
   des chantiers, et refactor pur↔effets de bord poursuivi au besoin.
