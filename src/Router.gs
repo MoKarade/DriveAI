@@ -76,6 +76,25 @@ function doublon_(classif, date, ext) {
 }
 
 /**
+ * Décision « doublon » RAPIDE (fast path P1-20) — SANS classification (ni OCR ni LLM) : on sait déjà,
+ * par l'empreinte, que ce contenu est déjà classé ailleurs. On l'écarte dans « _Doublons » en gardant
+ * son NOM D'ORIGINE (nettoyé, préfixé de la date) : un exemplaire redondant, le nom parfait importe peu.
+ * Déplacement/copie seul, jamais de suppression (§2).
+ * @param {string} nomOriginal
+ * @param {Date} dateRef
+ * @param {string} ext
+ */
+function doublonRapide_(nomOriginal, dateRef, ext) {
+  var date = Utilities.formatDate(dateRef, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var base = String(nomOriginal || '').replace(/\.[^.\/]+$/, ''); // retire l'extension d'origine
+  return {
+    statut: 'doublon', domaine: '', chemin: '_Doublons',
+    nom: date + '_' + (champ_(base) || 'Copie') + ext,
+    dossierId: dossierDoublons_().getId()
+  };
+}
+
+/**
  * Dossier de destination pour un doc TRANSVERSE (sans entité) — logique Phase 1.
  * @param {Object} classif
  * @param {string} date  AAAA-MM-JJ (pour le sous-dossier année)

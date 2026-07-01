@@ -16,7 +16,7 @@
  */
 
 /**
- * Traite un document : idempotence → OCR → LLM → doublon → routage → placement → Index.
+ * Traite un document : idempotence → DOUBLON (fast, sans lecture) → OCR → LLM → routage → placement → Index.
  * @param {Object} src
  */
 function traiterDocument_(src) {
@@ -24,6 +24,23 @@ function traiterDocument_(src) {
     if (indexContient_(src.cle)) return; // déjà traité → idempotence
 
     var blob = src.blob();
+    var ext = extension_(src.nom);
+
+    // FAST PATH doublon (P1-20) : l'empreinte MD5 (rapide, ne lit que les octets) suffit à savoir si ce
+    // CONTENU est déjà classé. Si oui → « _Doublons » SANS OCR ni LLM : sur un ancien Drive plein de
+    // copies déjà présentes dans le nouveau Drive, on économise l'essentiel du coût/temps (l'exemplaire
+    // canonique est déjà classé ailleurs). Même garde de taille que l'OCR (pas de hash des très gros).
+    var empreinte = src.taille > CONFIG.OCR_TAILLE_MAX ? '' : empreinteBlob_(blob);
+    if (empreinte && estDoublon_(empreinte)) {
+      var dec = doublonRapide_(src.nom, src.date, ext);
+      var idDup = src.placer(dec.dossierId, dec.nom);
+      if (!idDup) { gererEchec_(src, 'placement doublon échoué'); return; }
+      indexAjouter_(src.cle, dec, empreinte);
+      journalInfo_('Pipeline', 'doublon (sans lecture) → _Doublons : ' + dec.nom);
+      return;
+    }
+
+    // Contenu INÉDIT → lecture complète (OCR) puis classement (LLM).
     var extrait = src.taille > CONFIG.OCR_TAILLE_MAX ? '' : extraireTexte_(blob);
 
     var classif = classifier_({
@@ -38,14 +55,10 @@ function traiterDocument_(src) {
       return;
     }
 
-    // Même garde de taille que l'OCR : pas de hash en mémoire pour les très gros fichiers.
-    var empreinte = src.taille > CONFIG.OCR_TAILLE_MAX ? '' : empreinteBlob_(blob);
-    var motifForce = (empreinte && estDoublon_(empreinte)) ? 'doublon (déjà présent)' : '';
+    var decision = deciderRoutage_(classif, src.date, ext, '');
 
-    var decision = deciderRoutage_(classif, src.date, extension_(src.nom), motifForce);
-
-    // Plus de file de revue (décision Marc 2026-07-01) : tout est CLASSÉ ('classé' ou 'doublon'),
-    // placé dans son dossier cible avec son nom final propre. Un seul chemin de placement.
+    // Plus de file de revue (décision Marc 2026-07-01) : tout est CLASSÉ ('classé'), placé dans son
+    // dossier cible avec son nom final propre. Un seul chemin de placement.
     var fileId = src.placer(decision.dossierId, decision.nom);
 
     if (!fileId) {
