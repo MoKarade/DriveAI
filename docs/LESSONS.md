@@ -14,6 +14,30 @@
 
 ---
 
+## 2026-07-01 — Documenter une conception : vérifier les tensions entre les choix du propriétaire et les décisions déjà actées, et les surfacer AVANT de figer
+**Contexte.** Brainstorm produit « niveau pro » : je posais des questions à Marc et j'écrivais un ADR par axe.
+Deux fois, un choix qu'il venait de faire **contredisait une décision prise quelques minutes plus tôt dans la
+même session** : (1) « l'app web applique les corrections directement » ↔ les garde-fous NON négociables §1/§2
+(zone protégée jamais détachée, aucune suppression) que seul le moteur garantissait — appliquer côté app duplique
+ces garde-fous en deux endroits (le piège « invariants voisins ») ; (2) « ré-indexation plein texte » ↔ ADR-0007
+« métadonnées seulement », décidé 5 minutes avant — un index de contenu stocke le corps des documents, exactement
+ce qu'on venait d'interdire. La tentation était de documenter le choix tel quel (« le propriétaire a demandé »).
+**Leçon.** Documenter une décision n'est pas la transcrire : c'est vérifier qu'elle **tient avec le reste du
+dossier**. Quand un choix entre en tension avec une décision déjà actée (surtout récente), ne pas l'écrire en
+silence : **surfacer la tension, expliquer le risque concret, recommander la réconciliation, demander UNE
+confirmation** (même procédure que « le propriétaire relâche un garde-fou »). Puis, selon sa réponse : soit il
+adopte la voie réconciliée (ici : plein texte **délégué à l'index natif de Drive** → cherche dans le contenu
+SANS rien stocker, respecte ADR-0007) ; soit il maintient son choix brut, et on le documente **avec la contrainte
+non négociable attachée** (ici : app applique direct, MAIS garde-fous §1/§2 ré-implémentés + **couverts par le
+filet de tests**, idéalement en partageant la logique pure du moteur — « préserver l'irréversible »). Un dossier
+de conception « niveau pro » se reconnaît à ça : les décisions ne se marchent pas dessus, et chaque relâchement
+nomme ce qui reste, lui, non négociable. Corollaire process : garder l'ADR comme **cible** explicite (statut
+« à implémenter »), jamais confondu avec le code réel — et quand une décision peut se vérifier sur le code
+(« l'état ne stocke que des métadonnées »), la **vérifier** plutôt que l'affirmer (Index = nom/date/chemin/
+statut/hash → confirmé).
+**Règle durable ?** oui — ajoutée à `CLAUDE.md` §7 (invariant vie privée « métadonnées seulement ») ; le principe
+« surfacer les tensions avant de figer un ADR » rejoint la leçon existante sur le relâchement de garde-fou.
+
 ## 2026-07-01 — « 0 collecté » issu d'une EXCEPTION attrapée ≠ « terminé » ; un garde par-élément qui peut lever doit être défensif
 **Contexte.** Le grand rangement de « Ancienne structure » ne bougeait aucun fichier alors que le recensement
 en voyait 113. Le run était VERT (aucune erreur remontée à Marc). Cause en deux temps : (1) la collecte réelle
