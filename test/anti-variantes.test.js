@@ -44,6 +44,13 @@ test('similariteEntite_ : n\'appaire PAS deux entités distinctes', () => {
   assert.ok(ctx.similariteEntite_('IUT ULCO', 'IUT Nancy') < 0.6);
 });
 
+test('similariteEntite_ : le Levenshtein ne crée pas de faux positifs (acronymes courts, préfixe commun)', () => {
+  assert.ok(ctx.similariteEntite_('EDF', 'GDF') < 0.6, 'acronymes courts distincts');
+  assert.ok(ctx.similariteEntite_('Ville de Paris', 'Ville de Lyon') < 0.6, 'même préfixe, villes distinctes');
+  // ... mais une vraie faute de frappe, même multi-mots, reste détectée :
+  assert.ok(ctx.similariteEntite_('Caisse Desjardin', 'Caisse Desjardins') >= 0.6, 'typo multi-mots');
+});
+
 test('chercherVariante_ : renvoie la meilleure au-dessus du seuil, sinon null', () => {
   const existants = ['Desjardins', 'Hydro-Québec', 'IUT Nancy'];
   const v = ctx.chercherVariante_('Caisse Desjardins', existants, ctx.CONFIG.SEUIL_VARIANTE);

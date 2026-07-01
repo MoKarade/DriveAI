@@ -103,9 +103,13 @@ function similariteEntite_(a, b) {
   var court = ta.length <= tb.length ? ta : tb;
   var lng = ta.length <= tb.length ? tb : ta;
   var inclus = court.length > 0 && court.every(function (t) { return lng.indexOf(t) !== -1; });
+  // Levenshtein = détection de FAUTE DE FRAPPE : petite distance ABSOLUE (≤ 2) sur un libellé assez long
+  // (≥ 5). On évite ainsi les faux positifs sur acronymes courts (« EDF » ≈ « GDF ») et sur des libellés
+  // au préfixe commun mais distincts (« Ville de Paris » ≈ « Ville de Lyon », distance grande). Capte le
+  // typo même multi-mots (« Caisse Desjardin » ≈ « Caisse Desjardins »).
   var maxl = Math.max(na.length, nb.length);
-  var lev = maxl ? 1 - distanceLevenshtein_(na, nb) / maxl : 0;
-  return Math.max(jac, inclus ? 0.9 : 0, lev);
+  var typo = (maxl >= 5 && distanceLevenshtein_(na, nb) <= 2) ? 0.9 : 0;
+  return Math.max(jac, inclus ? 0.9 : 0, typo);
 }
 
 /**
