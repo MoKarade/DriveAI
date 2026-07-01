@@ -55,6 +55,10 @@ function traiterDocument_(src) {
       return;
     }
 
+    // Filet « deviner depuis le nom d'origine » (ADR-0002 §5) : si le LLM n'a pas rendu de type,
+    // on le complète depuis le nom du fichier (ex. …_TP4_… → « TP ») avant le routage/nommage.
+    enrichirClassifDepuisNom_(classif, src.nom);
+
     var decision = deciderRoutage_(classif, src.date, ext, '');
 
     // Plus de file de revue (décision Marc 2026-07-01) : tout est CLASSÉ ('classé'), placé dans son

@@ -286,6 +286,54 @@ function tronquerDate_(date, gran) {
   return s;
 }
 
+/**
+ * Devine le TYPE d'un document depuis son NOM d'origine (ADR-0002 §5) — filet quand le LLM ne rend
+ * pas de type. Ex. `MODE2D_TP4_MARC_RICHARD.pdf` → « TP ». Séparateurs (`_ - .`) traités comme des
+ * espaces avant matching (les noms de fichiers collent souvent les mots). Logique PURE (testée).
+ * @param {string} nom
+ * @return {string} type canonique deviné, ou '' si rien de sûr.
+ */
+function devinerTypeDepuisNom_(nom) {
+  var base = String(nom || '').replace(/\.[^.\/]+$/, '');    // retire l'extension
+  var t = normaliserCle_(base.replace(/[_\-.]+/g, ' '));     // séparateurs → espace, puis minuscule/sans accents
+  var regles = [
+    { re: /(^| )tp ?\d*( |$)/, type: 'TP' },                 // TP, TP4, TP 4…
+    { motifs: ['releve de note', 'bulletin de note'], type: 'Relevé de notes' },
+    { motifs: ['facture'], type: 'Facture' },
+    { re: /(^| )(paie|salaire)( |$)/, motifs: ['bulletin de paie', 'fiche de paie'], type: 'Bulletin de paie' },
+    { motifs: ['releve'], type: 'Relevé' },
+    { re: /(^| )cv( |$)/, motifs: ['curriculum'], type: 'CV' },
+    { motifs: ['contrat', 'bail'], type: 'Contrat' },
+    { motifs: ['diplome'], type: 'Diplôme' },
+    { motifs: ['ordonnance'], type: 'Ordonnance' },
+    { motifs: ['avis imposition', 'avis d imposition', 'impot', 'avis de cotisation'], type: 'Avis d\'imposition' },
+    { motifs: ['attestation'], type: 'Attestation' }
+  ];
+  for (var i = 0; i < regles.length; i++) {
+    var r = regles[i], hit = r.re ? r.re.test(t) : false;
+    for (var j = 0; !hit && r.motifs && j < r.motifs.length; j++) if (t.indexOf(r.motifs[j]) !== -1) hit = true;
+    if (hit) return r.type;
+  }
+  return '';
+}
+
+/**
+ * Enrichit la classification depuis le nom d'origine QUAND le LLM n'a pas fourni de type (Inconnu/vide) :
+ * on complète `type_doc` par un type deviné du nom (ADR-0002 §5). N'écrase JAMAIS un type déjà trouvé.
+ * @param {Object} classif
+ * @param {string} nom
+ * @return {Object} le classif (muté)
+ */
+function enrichirClassifDepuisNom_(classif, nom) {
+  if (!classif) return classif;
+  var t = normaliserCle_(classif.type_doc);
+  if (!t || t === 'inconnu') {
+    var devine = devinerTypeDepuisNom_(nom);
+    if (devine) classif.type_doc = devine;
+  }
+  return classif;
+}
+
 /** Chemin lisible « Domaine/Catégorie » (chaque segment nettoyé, le « / » préservé). */
 function cheminLisible_(classif) {
   var p = champ_(classif.domaine) || 'Domaine ?';

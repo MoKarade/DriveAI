@@ -164,7 +164,7 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | ID | Tâche | Statut |
 |----|-------|--------|
 | C3-01 | **Nommage par type** (`Router.nomParType_`/`schemaNommage_`/`tronquerDate_`) : granularité de date (jour/mois/année) + libellé fixe (`Relevé`/`Paie`/`CV`) par type, dégradation gracieuse vers le format historique | ✅ (9 tests, NAMING.md à jour) |
-| C3-02 | **Deviner depuis le nom d'origine** quand émetteur/date « Inconnu » + conserver le nom d'origine (filet de traçabilité) | ⬜ à suivre |
+| C3-02 | **Deviner le type depuis le nom d'origine** (`Router.devinerTypeDepuisNom_`/`enrichirClassifDepuisNom_`) quand le LLM ne rend pas de type — ex. `…_TP4_…` → « TP ». Appelé avant le routage, sans jamais écraser un type trouvé | ✅ (5 tests) |
 | C3-03 | Nouveaux dossiers **`07 · Santé`** + **`_Technique`** (création programmatique find-or-create, routage) | ⬜ à suivre |
 
 ---
