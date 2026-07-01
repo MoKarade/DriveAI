@@ -31,6 +31,9 @@ function normaliserCle_(s) {
   var t = String(s).toLowerCase();
   // Décompose puis retire les diacritiques combinants U+0300–U+036F (Apps Script V8).
   if (t.normalize) t = t.normalize('NFD').replace(/[̀-ͯ]/g, '');
+  // Apostrophes (droite U+0027, typographique U+2019, modificatrices) → espace : uniformise le matching
+  // de types (« avis d'imposition ») ET d'entités (« l'IUT »), quelle que soit la source (LLM/OCR/FR).
+  t = t.replace(/[’ʼ´']/g, ' ');
   return t.replace(/\s+/g, ' ').trim();
 }
 

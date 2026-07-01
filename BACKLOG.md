@@ -159,6 +159,14 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 > 60 tests au total. **Revue flotte 🟢** (security CONFORME, quota CONFORME — correctif A1 « pas de fausse
 > alerte si un log échoue après réparation » appliqué, code-reviewer 🟢 — commentaire `installerTrigger` rafraîchi).
 
+### Chantier #3 — Nommage par type + deviner-du-nom + `07·Santé`/`_Technique` (ADR-0002)  🟦
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C3-01 | **Nommage par type** (`Router.nomParType_`/`schemaNommage_`/`tronquerDate_`) : granularité de date (jour/mois/année) + libellé fixe (`Relevé`/`Paie`/`CV`) par type, dégradation gracieuse vers le format historique | ✅ (9 tests, NAMING.md à jour) |
+| C3-02 | **Deviner depuis le nom d'origine** quand émetteur/date « Inconnu » + conserver le nom d'origine (filet de traçabilité) | ⬜ à suivre |
+| C3-03 | Nouveaux dossiers **`07 · Santé`** + **`_Technique`** (création programmatique find-or-create, routage) | ⬜ à suivre |
+
 ---
 
 ## Épopée Phase 4 — Recherche + dashboard (Vercel)  ⬜

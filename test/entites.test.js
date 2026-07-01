@@ -18,6 +18,12 @@ test('normaliserCle_ : minuscules, sans accents, espaces compactés', () => {
   assert.strictEqual(ctx.normaliserCle_(null), '');
 });
 
+test('normaliserCle_ : apostrophes (droite ET typographique U+2019) → espace, matching uniforme', () => {
+  assert.strictEqual(ctx.normaliserCle_('Avis d’imposition'), 'avis d imposition'); // U+2019
+  assert.strictEqual(ctx.normaliserCle_("Avis d'imposition"), 'avis d imposition');  // U+0027
+  assert.strictEqual(ctx.normaliserCle_('l’IUT'), 'l iut');
+});
+
 test('cleEntite_ : domaine|entité normalisés (évite les collisions inter-domaines)', () => {
   assert.strictEqual(ctx.cleEntite_('05 · Carrière', 'IUT ULCO'), ctx.normaliserCle_('05 · Carrière') + '|' + 'iut ulco');
 });

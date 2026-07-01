@@ -54,7 +54,7 @@ function deciderRoutage_(classif, dateReference, ext, motifForce) {
     chemin = cheminLisible_(classif);
   }
 
-  var nom = nomNormalise_(date, classif.type_doc, classif.emetteur, ext);
+  var nom = nomParType_(date, classif.type_doc, classif.emetteur, ext);
   return {
     statut: 'classé', domaine: classif.domaine, chemin: chemin, nom: nom,
     dossierId: dossierId, autresEntites: autresEntitesConnues_(classif, dossierId)
@@ -70,7 +70,7 @@ function deciderRoutage_(classif, dateReference, ext, motifForce) {
 function doublon_(classif, date, ext) {
   return {
     statut: 'doublon', domaine: classif.domaine || '', chemin: '_Doublons',
-    nom: nomNormalise_(date, classif.type_doc, classif.emetteur, ext),
+    nom: nomParType_(date, classif.type_doc, classif.emetteur, ext),
     dossierId: dossierDoublons_().getId()
   };
 }
@@ -223,11 +223,67 @@ function dossierDoublons_() {
 
 /* ---------- Nommage (docs/NAMING.md) ---------- */
 
-/** `AAAA-MM-JJ_Type_Émetteur.ext` */
+/** `AAAA-MM-JJ_Type_Émetteur.ext` — format historique (granularité JOUR). */
 function nomNormalise_(date, type, emetteur, ext) {
   var t = champ_(type) || 'Document';
   var e = champ_(emetteur) || 'Inconnu';
   return date + '_' + t + '_' + e + ext;
+}
+
+/**
+ * Nommage PAR TYPE de document (ADR-0002 §6) : la granularité de date et le libellé s'adaptent au
+ * type. Ex. un relevé bancaire est mensuel (`AAAA-MM_Relevé_<Banque>`), un diplôme annuel
+ * (`AAAA_Diplôme_<Établissement>`), une facture au jour (défaut). Logique PURE (testée). Dégrade
+ * gracieusement : un type inconnu retombe sur le format historique `nomNormalise_` (jamais un blocage).
+ * @param {string} date  AAAA-MM-JJ (issu de dateNormalisee_)
+ * @param {string} type  type_doc du LLM
+ * @param {string} emetteur
+ * @param {string} ext
+ * @return {string}
+ */
+function nomParType_(date, type, emetteur, ext) {
+  var sc = schemaNommage_(type);
+  if (sc.gran === 'jour' && !sc.label) return nomNormalise_(date, type, emetteur, ext); // défaut historique
+  var d = tronquerDate_(date, sc.gran);
+  var label = champ_(sc.label || type) || 'Document';
+  var e = champ_(emetteur) || 'Inconnu';
+  return d + '_' + label + '_' + e + ext;
+}
+
+/**
+ * Schéma de nommage pour un type_doc : granularité de date + libellé fixe éventuel. Règles ORDONNÉES
+ * (le 1er motif trouvé gagne) — « relevé de notes » (annuel) doit passer AVANT « relevé » (mensuel).
+ * @param {string} typeDoc
+ * @return {{gran:('jour'|'mois'|'annee'), label?:string}}
+ */
+function schemaNommage_(typeDoc) {
+  var t = normaliserCle_(typeDoc); // minuscules, sans accents, apostrophes → espace
+  // Règles ORDONNÉES (1er match gagne). `motifs` = sous-chaînes ; `re` = motif ANCRÉ (mot entier)
+  // pour les jetons courts ambigus — « paie » ne doit pas matcher « paiement », « tp » pas « … ».
+  var regles = [
+    { motifs: ['releve de note', 'bulletin de note'], gran: 'annee' },                          // études (avant « releve »)
+    { motifs: ['bulletin de paie', 'fiche de paie', 'bulletin de salaire'], re: /(^| )(paie|salaire)( |$)/, gran: 'mois', label: 'Paie' },
+    { motifs: ['releve bancaire', 'releve de compte', 'releve'], gran: 'mois', label: 'Relevé' },
+    { motifs: ['diplome', 'attestation de reussite'], gran: 'annee' },
+    { motifs: ['avis d imposition', 'avis de cotisation', 'impot', 'declaration de revenus', 'feuillet'], gran: 'annee' },
+    { motifs: ['curriculum'], re: /(^| )cv( |$)/, gran: 'annee', label: 'CV' },
+    { motifs: ['travaux pratiques', 'devoir', 'examen', 'cours'], re: /(^| )tp\d*( |$|\d)/, gran: 'annee' } // études : TP, TP4…
+    // Tout le reste (facture, contrat, immigration, santé, attestation…) → JOUR, libellé = type nettoyé.
+  ];
+  for (var i = 0; i < regles.length; i++) {
+    var r = regles[i], hit = r.re ? r.re.test(t) : false;
+    for (var j = 0; !hit && j < r.motifs.length; j++) if (t.indexOf(r.motifs[j]) !== -1) hit = true;
+    if (hit) return { gran: r.gran, label: r.label };
+  }
+  return { gran: 'jour' };
+}
+
+/** Tronque une date AAAA-MM-JJ à la granularité voulue (annee → AAAA, mois → AAAA-MM, jour → complet). */
+function tronquerDate_(date, gran) {
+  var s = String(date || '');
+  if (gran === 'annee') return s.substring(0, 4);
+  if (gran === 'mois') return s.substring(0, 7);
+  return s;
 }
 
 /** Chemin lisible « Domaine/Catégorie » (chaque segment nettoyé, le « / » préservé). */
