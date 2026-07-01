@@ -254,6 +254,10 @@ function rangerToutLeDrive() {
  */
 function rangerUnePage_(estBudgetDepasse, proteges) {
   var ids = [];
+  // Une collecte qui ÉCHOUE (exception attrapée) ne doit JAMAIS ressembler à « 0 fichier = terminé » :
+  // sinon le rangement se fige « terminé » sans avoir rien rangé (incident r2, cf. P1-17). On trace donc
+  // l'erreur et on force `reste = true` (on réessaiera au prochain tick).
+  var erreurCollecte = false;
 
   // 1) Racines supplémentaires (ancien Drive « Ancienne structure ») EN PREMIER : c'est le gros du
   // travail restant. On les attaque avant les 7 domaines (déjà rangés, quasi tous normalisés) pour
@@ -265,19 +269,25 @@ function rangerUnePage_(estBudgetDepasse, proteges) {
       collecterAReclasser_(
         DriveApp.getFolderById(racinesSup[r]), ids, CONFIG.RANGEMENT_MAX_PAR_RUN, estBudgetDepasse, proteges);
     } catch (e) {
+      erreurCollecte = true;
       journalErreur_('Rangement', 'Racine supplémentaire inaccessible (' + racinesSup[r] + ') : ' + e);
     }
   }
 
   // 2) Les 7 domaines (contenu « en vrac » résiduel). Mêmes garde-fous (zone protégée multi-parents,
-  // format normalisé sauté, garde-temps).
+  // format normalisé sauté, garde-temps). Enveloppé aussi (un domaine illisible ne fige pas « terminé »).
   var domaines = domainesAutorises_();
   for (var d = 0; d < domaines.length && ids.length < CONFIG.RANGEMENT_MAX_PAR_RUN; d++) {
     if (estBudgetDepasse()) break;
     var dom = domaines[d];
     if (CONFIG.DOMAINES_PROTEGES.indexOf(dom) !== -1) continue; // zone protégée : intouchée
-    collecterAReclasser_(
-      DriveApp.getFolderById(CONFIG.DOMAINES[dom]), ids, CONFIG.RANGEMENT_MAX_PAR_RUN, estBudgetDepasse, proteges);
+    try {
+      collecterAReclasser_(
+        DriveApp.getFolderById(CONFIG.DOMAINES[dom]), ids, CONFIG.RANGEMENT_MAX_PAR_RUN, estBudgetDepasse, proteges);
+    } catch (e) {
+      erreurCollecte = true;
+      journalErreur_('Rangement', 'Domaine inaccessible (' + dom + ') : ' + e);
+    }
   }
 
   var collecteInterrompue = estBudgetDepasse();
@@ -295,7 +305,8 @@ function rangerUnePage_(estBudgetDepasse, proteges) {
   return {
     deplaces: n,
     collectes: ids.length,
-    reste: collecteInterrompue || ids.length >= CONFIG.RANGEMENT_MAX_PAR_RUN
+    // `erreurCollecte` ⇒ reste=true : une collecte incomplète (exception) n'est jamais un « terminé ».
+    reste: collecteInterrompue || erreurCollecte || ids.length >= CONFIG.RANGEMENT_MAX_PAR_RUN
   };
 }
 
@@ -453,7 +464,13 @@ function collecterAReclasser_(dossier, ids, max, estBudgetDepasse, proteges) {
   while (fi.hasNext() && ids.length < max) {
     if (estBudgetDepasse()) return;
     var f = fi.next();
-    if (estAReclasser_(f, proteges)) ids.push(f.getId());
+    // Un fichier « bizarre » (métadonnée/parent illisible) ne doit JAMAIS avorter toute la collecte :
+    // on le saute, les autres continuent d'être collectés (cf. incident r2 : un seul échec figeait tout).
+    try {
+      if (estAReclasser_(f, proteges)) ids.push(f.getId());
+    } catch (e) {
+      journalErreur_('Rangement', 'Fichier ignoré à la collecte (' + e + ')');
+    }
   }
   var fo = dossier.getFolders();
   while (fo.hasNext() && ids.length < max) {
@@ -493,7 +510,7 @@ function estAReclasser_(f, proteges) {
 function deplacerVersATrier_(fileId, proteges) {
   try {
     var f = DriveApp.getFileById(fileId);
-    if (aParentProtege_(f, proteges)) {
+    if (aParentProtege_(f, proteges, true)) { // STRICT : abstention si indéterminable (jamais détacher, §1)
       journalInfo_('Rangement', 'Fichier en zone protégée ignoré (non déplacé) : ' + fileId);
       return false;
     }
@@ -532,28 +549,47 @@ function ensembleDomainesProteges_() {
  * @param {Object} proteges  ensemble {idDossierProtégé: true}
  * @return {boolean}
  */
-function aParentProtege_(f, proteges) {
-  var parents = f.getParents();
-  while (parents.hasNext()) {
-    if (chaineMonteVersProtege_(parents.next(), proteges, 0)) return true;
+function aParentProtege_(f, proteges, strict) {
+  try {
+    var parents = f.getParents();
+    while (parents.hasNext()) {
+      if (chaineMonteVersProtege_(parents.next(), proteges, 0, strict)) return true;
+    }
+  } catch (e) {
+    // `getParents()` indisponible (ex. traversée de racine/Drive partagé). Deux régimes :
+    //  - STRICT (re-vérif juste AVANT de muter, `deplacerVersATrier_`) → échoue-FERMÉ : on renvoie true
+    //    (traité comme protégé → abstention), pour ne JAMAIS détacher un fichier de 04·Immigration (§1).
+    //  - non strict (COLLECTE) → false : le fichier est collecté pour que la passe PROGRESSE (il sera de
+    //    toute façon re-vérifié en mode strict avant tout déplacement). Détection POSITIVE seulement.
+    journalErreur_('Rangement', 'Contrôle « parent protégé » impossible (' + e + ')' +
+      (strict ? ' — abstention (prudence §1).' : ' — traité comme non protégé à la collecte.'));
+    return strict ? true : false;
   }
   return false;
 }
 
 /**
  * Remonte récursivement les parents d'un dossier jusqu'à trouver une racine protégée
- * (ou épuisement). Bornée à 50 niveaux (sécurité anti-cycle/profondeur).
+ * (ou épuisement). Bornée à 50 niveaux (sécurité anti-cycle/profondeur). Détection POSITIVE seulement :
+ * une branche illisible (`getParents` en erreur) renvoie `strict` (true en re-vérif de mutation = prudence ;
+ * false en collecte = laisse progresser), sans propager l'exception — un fichier n'est protégé que si on
+ * TROUVE réellement une racine 04 (ou, en strict, si une branche est illisible).
  * @param {Folder} dossier
  * @param {Object} proteges
  * @param {number} profondeur
+ * @param {boolean} [strict]  échoue-fermé sur erreur de lecture (pour la re-vérif avant mutation)
  * @return {boolean}
  */
-function chaineMonteVersProtege_(dossier, proteges, profondeur) {
+function chaineMonteVersProtege_(dossier, proteges, profondeur, strict) {
   if (!dossier || profondeur > 50) return false;
   if (proteges[dossier.getId()]) return true;
-  var ps = dossier.getParents();
-  while (ps.hasNext()) {
-    if (chaineMonteVersProtege_(ps.next(), proteges, profondeur + 1)) return true;
+  try {
+    var ps = dossier.getParents();
+    while (ps.hasNext()) {
+      if (chaineMonteVersProtege_(ps.next(), proteges, profondeur + 1, strict)) return true;
+    }
+  } catch (e) {
+    return strict ? true : false; // strict → branche illisible = prudence (protégé) ; sinon pas de preuve
   }
   return false;
 }
