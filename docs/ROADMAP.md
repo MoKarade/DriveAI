@@ -19,11 +19,13 @@ Outil **personnel**, qualité **pro**. Priorités : **① précision · ② cont
 | 6 | **Correction via mail → mini-formulaire** (cas « Inconnu » + entités à valider) | Contrôle | M-L | [0003](adr/0003-controle-correction.md) | ⬜ |
 | 7 | **Sources d'entrée : fichiers partagés** (copie auto dans l'arbo, garde-fous type/dédup/storage) | Sources | M | [0005](adr/0005-sources-entree.md) | ⬜ |
 | 8 | **Migration de l'existant** vers la nouvelle taxonomie (réutilise le grand rangement) | Précision | M | [0002](adr/0002-refonte-taxonomie-entites-nommage.md) | ⬜ |
+| 9 | **App web (Phase 4)** — recherche structurée (Index + plein texte natif Drive), tableau de bord santé, corrections (login Google) | Contrôle/Accès | L | [0008](adr/0008-app-web-recherche-controle.md) | ⬜ |
 
 **Rationale :** la **fondation testable** en socle (tests + logique pure isolée = on améliore le reste
 sans casser la prod, et le Journal borné/Santé règle le trou d'observabilité vécu le 2026-07-01) → chien
 de garde (s'appuie sur l'onglet Santé) → gros gains de précision → contrôle/apprentissage (qui a besoin
-que le reste existe) → sources d'entrée → migration en dernier.
+que le reste existe) → sources d'entrée → migration → **app web en Phase 4** (dernière, s'appuie sur tout
+le reste : Santé, Corrections, Index enrichi).
 
 ## Déjà fait (avant le brainstorm)
 Phases 1–3 (moteur Gmail→classement, entités, tâches/agenda), grand rangement de l'ancien Drive,
