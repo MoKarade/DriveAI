@@ -40,6 +40,19 @@ function traiterDocument_(src) {
       return;
     }
 
+    // FICHIER TECHNIQUE (code/CAO, ADR-0002 §3) : écarté du classement documentaire (ni OCR ni LLM —
+    // ce n'est pas un document à ranger par domaine) → `_Technique`, pour ne pas polluer les domaines.
+    // Détection par EXTENSION seulement (jamais PDF/Office/images). Placé APRÈS le fast-path doublon
+    // (un doublon technique va quand même dans `_Doublons`), AVANT tout OCR/LLM (économie de coût).
+    if (estTechnique_(src.nom)) {
+      var decT = routageTechnique_(src.nom, src.date, ext);
+      var idT = src.placer(decT.dossierId, decT.nom);
+      if (!idT) { gererEchec_(src, 'placement technique échoué'); return; }
+      indexAjouter_(src.cle, decT, empreinte);
+      journalInfo_('Pipeline', 'technique (sans lecture) → _Technique : ' + decT.nom);
+      return;
+    }
+
     // Contenu INÉDIT → lecture complète (OCR) puis classement (LLM).
     var extrait = src.taille > CONFIG.OCR_TAILLE_MAX ? '' : extraireTexte_(blob);
 

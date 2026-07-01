@@ -1,7 +1,9 @@
 # ADR-0002 — Refonte : taxonomie, entités & nommage
 
-- **Statut** : **Accepté — implémentation à planifier** (cf. roadmap). Le code applique encore
-  l'ancienne taxonomie ; ce document décrit la **cible**.
+- **Statut** : **Accepté — partiellement implémenté**. Livré (chantier #3) : **nommage par type** (§6),
+  **deviner-du-nom** (§5), **dossiers `07 · Santé` + `_Technique`** et **renumérotage Perso 07→08** (§2-§3).
+  Reste (roadmap) : **entités systématiques + validation 1-clic + garde anti-variantes** (§4, chantier #4) et
+  **migration de l'existant** vers la nouvelle taxonomie (chantier #8).
 - **Décideurs** : Marc, Claude
 - **Source** : brainstorm produit 2026-07-01, axe « Précision du classement »
 

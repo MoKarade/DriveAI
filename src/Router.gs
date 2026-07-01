@@ -28,7 +28,8 @@ function deciderRoutage_(classif, dateReference, ext, motifForce) {
 
   // 1) Domaine introuvable (LLM hors-liste/malformé) : plus de revue (décision Marc 2026-07-01) —
   // on CLASSE au mieux dans le domaine par défaut, avec le nom final propre. Zéro fichier en limbo.
-  if (!CONFIG.DOMAINES[classif.domaine]) classif.domaine = CONFIG.DOMAINE_DEFAUT;
+  // `domaineConnu_` accepte les 7 domaines fixes ET les domaines auto-créés (07 · Santé, ADR-0002).
+  if (!domaineConnu_(classif.domaine)) classif.domaine = CONFIG.DOMAINE_DEFAUT;
 
   // 2) Doublon (y compris sensible) : on l'ÉCARTE dans « _Doublons » plutôt que de garder N copies —
   // au volume du grand rangement, signaler chaque doublon sature. Déplacement seul, JAMAIS supprimé
@@ -101,8 +102,7 @@ function doublonRapide_(nomOriginal, dateRef, ext) {
  * @return {string} ID de dossier Drive
  */
 function dossierCible_(classif, date) {
-  var racineId = CONFIG.DOMAINES[classif.domaine];
-  var courant = DriveApp.getFolderById(racineId);
+  var courant = DriveApp.getFolderById(idDomaine_(classif.domaine));
 
   var cats = CONFIG.CATEGORIES[classif.domaine];
   if (cats && classif.categorie && cats[classif.categorie]) {
@@ -112,6 +112,39 @@ function dossierCible_(classif, date) {
     courant = sousDossier_(courant, date.substring(0, 4));
   }
   return courant.getId();
+}
+
+/** Vrai si `domaine` est un domaine reconnu : un des 7 fixes (ID en dur) OU un domaine auto-créé. */
+function domaineConnu_(domaine) {
+  return !!(CONFIG.DOMAINES[domaine]) || (CONFIG.DOMAINES_AUTO || []).indexOf(domaine) !== -1;
+}
+
+/** ID du dossier d'un domaine : ID fixe (CONFIG.DOMAINES) ou dossier auto-créé (find-or-create). */
+function idDomaine_(domaine) {
+  return CONFIG.DOMAINES[domaine] || dossierDomaineAuto_(domaine).getId();
+}
+
+/**
+ * Renvoie (ou crée) le dossier d'un domaine AUTO-créé (ex. « 07 · Santé »), placé À CÔTÉ des domaines
+ * existants (même parent que le domaine par défaut). ID mémorisé en Script Property. Zéro clic, jamais
+ * de suppression. Idempotent (réutilise le dossier s'il existe déjà par nom).
+ * @param {string} nom
+ * @return {Folder}
+ */
+function dossierDomaineAuto_(nom) {
+  var props = PropertiesService.getScriptProperties();
+  var cle = 'DriveAI_DOM_' + nom;
+  var id = props.getProperty(cle);
+  if (id) {
+    try { return DriveApp.getFolderById(id); } catch (e) { /* supprimé → on recrée */ }
+  }
+  var ref = DriveApp.getFolderById(CONFIG.DOMAINES[CONFIG.DOMAINE_DEFAUT]); // domaine de référence (01)
+  var parents = ref.getParents();
+  var racine = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
+  var it = racine.getFoldersByName(nom);
+  var dossier = it.hasNext() ? it.next() : racine.createFolder(nom);
+  props.setProperty(cle, dossier.getId());
+  return dossier;
 }
 
 /**
@@ -207,18 +240,58 @@ function sousDossier_(parent, nom) {
  * @return {Folder}
  */
 function dossierDoublons_() {
+  return dossierRacineParNom_('_Doublons', 'DriveAI_DOUBLONS_ID');
+}
+
+/** Renvoie (ou crée) le dossier `_Technique` (code/CAO écartés du classement), à côté de `_Doublons`. */
+function dossierTechnique_() {
+  return dossierRacineParNom_('_Technique', 'DriveAI_TECHNIQUE_ID');
+}
+
+/**
+ * Renvoie (ou crée) un dossier de service placé à la RACINE DriveAI (même parent que `00 · À trier`),
+ * hors domaines — ex. `_Doublons`, `_Technique`. ID mémorisé en Script Property. Déplacement seul,
+ * jamais de suppression. Idempotent (réutilise le dossier existant par nom).
+ * @param {string} nom
+ * @param {string} cleProp
+ * @return {Folder}
+ */
+function dossierRacineParNom_(nom, cleProp) {
   var props = PropertiesService.getScriptProperties();
-  var id = props.getProperty('DriveAI_DOUBLONS_ID');
+  var id = props.getProperty(cleProp);
   if (id) {
     try { return DriveApp.getFolderById(id); } catch (e) { /* supprimé → on recrée ci-dessous */ }
   }
   var aTrier = DriveApp.getFolderById(CONFIG.DOSSIERS.A_TRIER);
   var parents = aTrier.getParents();
   var racine = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
-  var it = racine.getFoldersByName('_Doublons');
-  var dossier = it.hasNext() ? it.next() : racine.createFolder('_Doublons');
-  props.setProperty('DriveAI_DOUBLONS_ID', dossier.getId());
+  var it = racine.getFoldersByName(nom);
+  var dossier = it.hasNext() ? it.next() : racine.createFolder(nom);
+  props.setProperty(cleProp, dossier.getId());
   return dossier;
+}
+
+/** Vrai si le fichier est TECHNIQUE (code/CAO) d'après son extension — écarté du classement documentaire. */
+function estTechnique_(nom) {
+  var ext = (extension_(nom) || '').toLowerCase();
+  return !!ext && CONFIG.EXT_TECHNIQUES.indexOf(ext) !== -1;
+}
+
+/**
+ * Décision de routage d'un fichier TECHNIQUE (ADR-0002 §3) : `_Technique`, nom = date + nom d'origine
+ * nettoyé (pas d'OCR/LLM, ce n'est pas un document à classer). Déplacement/copie seul, jamais supprimé.
+ * @param {string} nomOrigine
+ * @param {Date} dateRef
+ * @param {string} ext
+ */
+function routageTechnique_(nomOrigine, dateRef, ext) {
+  var date = Utilities.formatDate(dateRef, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var base = String(nomOrigine || '').replace(/\.[^.\/]+$/, '');
+  return {
+    statut: 'technique', domaine: '', chemin: '_Technique',
+    nom: date + '_' + (champ_(base) || 'Fichier') + ext,
+    dossierId: dossierTechnique_().getId()
+  };
 }
 
 /* ---------- Nommage (docs/NAMING.md) ---------- */

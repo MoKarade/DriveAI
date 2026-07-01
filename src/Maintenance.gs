@@ -274,9 +274,12 @@ function rangerUnePage_(estBudgetDepasse, proteges) {
     }
   }
 
-  // 2) Les 7 domaines (contenu « en vrac » résiduel). Mêmes garde-fous (zone protégée multi-parents,
-  // format normalisé sauté, garde-temps). Enveloppé aussi (un domaine illisible ne fige pas « terminé »).
-  var domaines = domainesAutorises_();
+  // 2) Les domaines FIXES (contenu « en vrac » résiduel). On itère `Object.keys(CONFIG.DOMAINES)` et NON
+  // `domainesAutorises_()` : les domaines AUTO-créés (07 · Santé) n'ont pas d'ID fixe (→ `getFolderById(undefined)`
+  // lèverait, `erreurCollecte=true` à chaque passe → faux « non-terminé », le rangement ne convergerait
+  // jamais, cf. leçon P1-17) et n'ont de toute façon pas de vrac à re-collecter (ils sont peuplés par le
+  // pipeline). Mêmes garde-fous (zone protégée multi-parents, format normalisé sauté, garde-temps).
+  var domaines = Object.keys(CONFIG.DOMAINES);
   for (var d = 0; d < domaines.length && ids.length < CONFIG.RANGEMENT_MAX_PAR_RUN; d++) {
     if (estBudgetDepasse()) break;
     var dom = domaines[d];

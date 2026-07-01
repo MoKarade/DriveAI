@@ -124,8 +124,14 @@ var CONFIG = {
     '04 · Immigration': '1VBK_4pkJmIeTsRyz-MWpMBYaOhKYNfRC',
     '05 · Carrière': '1BAg7k7RVrJ4ifoeh9U0XW5hKWXjRI1CC',
     '06 · Études & diplômes': '1PeeKG8XgZB6gJdZo03cO7F0s_iMgw6Ec',
-    '07 · Perso & projets': '19uwSc1A47d_q32Dd2YJ4Wi9StllvyLey'
+    // Perso renuméroté 07 → 08 (ADR-0002 : 07 est désormais « Santé »). MÊME dossier (ID inchangé) ;
+    // `assurerNomsDomaines_` renomme le dossier physique pour coller à cette clé (zéro clic, réversible).
+    '08 · Perso & projets': '19uwSc1A47d_q32Dd2YJ4Wi9StllvyLey'
   },
+
+  // Synchronisation des NOMS de dossiers de domaine avec les clés de DOMAINES ci-dessus (self-healing).
+  // Bumper ce tag rejoue le renommage (ex. après un renumérotage). Gated par une Script Property → ~1 fois.
+  NOMS_DOMAINES_TAG: 's1',                // s1 : renumérote « 07 · Perso » → « 08 · Perso » (07 = Santé)
 
   // Sous-dossiers de catégorie connus (Phase 1 : seuls ceux de 03).
   CATEGORIES: {
@@ -145,6 +151,21 @@ var CONFIG = {
   // 2026-07-01 : plus de file de revue — un document non classable est rangé AU MIEUX ici (avec
   // son nom final propre), jamais laissé en limbo. « Administratif » = bucket générique le plus sûr.
   DOMAINE_DEFAUT: '01 · Administratif & identité',
+
+  // Domaines AUTO-créés (ADR-0002 §3) : nouveaux domaines sans ID en dur — le dossier est trouvé/créé
+  // par le code À CÔTÉ des domaines existants (find-or-create, cf. Router.dossierDomaineAuto_), zéro clic.
+  // Ils sont autorisés dans le prompt LLM (domainesAutorises_) et routés comme les 7 domaines fixes.
+  DOMAINES_AUTO: ['07 · Santé'],
+
+  // Fichiers TECHNIQUES (ADR-0002 §3, `_Technique` hors domaines) : code, CAO — écartés du classement
+  // documentaire (ni OCR ni LLM : ce ne sont pas des documents à classer par domaine). Rangés dans
+  // `_Technique` (find-or-create à côté de `_Doublons`) pour ne pas polluer les domaines. Détection par
+  // EXTENSION uniquement (jamais PDF/Office/images/CSV, qui peuvent être de vrais documents).
+  EXT_TECHNIQUES: [
+    '.java', '.class', '.jar', '.py', '.c', '.cpp', '.h', '.hpp', '.cs', '.go', '.rs', '.rb', '.php',
+    '.sh', '.sql', '.m', '.ino', '.v', '.vhd',                         // code
+    '.step', '.stp', '.stl', '.igs', '.iges', '.dwg', '.dxf', '.obj', '.fbx', '.blend', '.sldprt', '.ipt' // CAO
+  ],
 
   // --- Phase 2 : référentiel d'entités ---
   // Dossier d'entrée scanné pour le dépôt manuel (réutilise A_TRIER ci-dessus).
@@ -204,9 +225,10 @@ var CONFIG = {
   }
 };
 
-/** Liste des domaines autorisés (pour le prompt et la validation). */
+/** Liste des domaines autorisés (pour le prompt et la validation) : les 7 fixes + les auto-créés.
+ *  Triée (préfixes `NN ·` → ordre 01→08) pour un prompt LLM lisible, même avec les domaines auto. */
 function domainesAutorises_() {
-  return Object.keys(CONFIG.DOMAINES);
+  return Object.keys(CONFIG.DOMAINES).concat(CONFIG.DOMAINES_AUTO || []).sort();
 }
 
 /** Catégories connues (Phase 1), pour borner la sortie du LLM. */

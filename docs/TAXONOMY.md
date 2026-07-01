@@ -21,7 +21,12 @@
 | `04 · Immigration` *(zone protégée)* | `1VBK_4pkJmIeTsRyz-MWpMBYaOhKYNfRC` |
 | `05 · Carrière` | `1BAg7k7RVrJ4ifoeh9U0XW5hKWXjRI1CC` |
 | `06 · Études & diplômes` | `1PeeKG8XgZB6gJdZo03cO7F0s_iMgw6Ec` |
-| `07 · Perso & projets` | `19uwSc1A47d_q32Dd2YJ4Wi9StllvyLey` |
+| `07 · Santé` 🆕 | auto-créé à côté des domaines (`Router.dossierDomaineAuto_`), ID en Script Property `DriveAI_DOM_07 · Santé` |
+| `08 · Perso & projets` *(ex-07, renuméroté ADR-0002)* | `19uwSc1A47d_q32Dd2YJ4Wi9StllvyLey` |
+
+> **Renumérotage 07→08** : « Perso & projets » passe de 07 à 08 (07 devient « Santé »). Le dossier physique
+> (ID inchangé) est renommé automatiquement par `Main.assurerNomsDomaines_` (gated `CONFIG.NOMS_DOMAINES_TAG`,
+> renommage seul, réversible). `07 · Santé` est créé au premier document de santé (find-or-create, zéro clic).
 
 **Hors domaines** (préfixe `_`, à la racine, triés en tête ; ni domaine ni racine de rangement) :
 
@@ -29,6 +34,7 @@
 |---------|------|
 | `_Archive 2025` | ancien Drive figé — DriveAI n'y touche jamais (sauf via `RANGEMENT_RACINES_SUP` si configuré) |
 | `_Doublons` | doublons NON sensibles écartés (déplacement seul, jamais supprimé) — auto-créé, ID en Script Property `DriveAI_DOUBLONS_ID` |
+| `_Technique` 🆕 | fichiers **code/CAO** (par extension `CONFIG.EXT_TECHNIQUES`) écartés du classement documentaire (ni OCR ni LLM) — auto-créé, ID en `DriveAI_TECHNIQUE_ID` |
 
 > ⚠️ Ces IDs sont des données de configuration, pas des secrets, mais ils ne doivent vivre que
 > dans `Config.gs` (Phase 1) et ici. Ne pas les disperser dans le code.
@@ -60,13 +66,14 @@ mécanismes distincts dans le code :
 - **par sous-dossier d'entité** (`CONFIG.SOUS_DOSSIERS_PAR_ANNEE` = `Factures`, `Relevés`) —
   ex. `…/Logement — X/Factures/2026/` ;
 - **par domaine transverse** (`CONFIG.DOMAINES_PAR_ANNEE` = `02 · Finances`) — ex. `Impôts/2025/`.
-  Le fiscal étant `sensible`, il part en revue avant d'être rangé ; le découpage Impôts/AAAA
-  relève donc du domaine `02 · Finances`, **pas** d'un schéma d'entité.
+  Le fiscal est désormais **auto-classé** dans `02 · Finances` (plus de file de revue, décision Marc
+  2026-07-01) ; le découpage Impôts/AAAA relève du domaine, **pas** d'un schéma d'entité.
 
 ## Règles structurelles
 
-- **Nouvelle entité** : passe par la file de revue (`00 · À vérifier`) avant création, pour
-  éviter la prolifération de doublons. Création des dossiers seulement après validation.
+- **Nouvelle entité** (plus de file de revue, décision Marc 2026-07-01) : le document est **classé au
+  niveau du domaine** et l'entité est **proposée** (`en_attente`) dans l'onglet `Entités` — jamais un
+  blocage. Le dossier d'entité n'est matérialisé qu'**après validation** de Marc (anti-prolifération).
 - **Multi-entités** : un document concernant plusieurs entités → **raccourci Drive** dans
   chaque dossier concerné (jamais de copie physique).
 - **Document transverse** (`entite = null`) → dossier générique du domaine.
