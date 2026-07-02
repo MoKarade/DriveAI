@@ -201,3 +201,8 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   merge, regrouper les nouveaux scopes en un seul merge, puis VÉRIFIER la reprise par signaux Drive
   indépendants (heartbeat Sheet, artefact attendu, file `00·À trier` qui se draine). Pour voir une création
   Drive fraîche : `list_recent_files` (recency), pas la recherche (index en retard).
+- **Retrait de code : frontières de fonctions + filet de SURFACE.** Jamais de regex multi-lignes pour
+  retirer une fonction (elle avale les voisines — vécu ×2, dont `deciderRoutage_` entière) : analyse de
+  frontières + assertions de présence des voisines. Les tests unitaires mockés ne voient PAS une fonction
+  inter-module disparue → `test/surface-moteur.test.js` charge tout le moteur et vérifie le contrat
+  interne ; y ajouter toute nouvelle fonction appelée en travers des modules.

@@ -40,11 +40,6 @@ export function detachementAutorise(ascendance: Ascendance, racinesProtegees: st
   return !ascendance.ids.some((id) => racinesProtegees.includes(id));
 }
 
-/** Une destination est TOUJOURS acceptable au regard de la zone protégée (y entrer = enrichir). */
-export function destinationAutorisee(): boolean {
-  return true;
-}
-
 /**
  * Miroir de `normaliserCle_` (Entites.gs) : minuscules, sans accents, apostrophes → espace,
  * espaces compactés. Sert au matching d'entités et de domaines côté app.

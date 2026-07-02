@@ -46,11 +46,12 @@ function fenetreLecture_(f) {
 /**
  * Compte les lignes d'Index des `jours` derniers jours, par statut.
  * @param {number} jours
- * @return {{classe:number, revue:number, tache:number, evenement:number,
- *           mailsSansAction:number, autres:number, total:number}}
+ * @return {{classe:number, tache:number, evenement:number, mailsSansAction:number,
+ *           mailsAvecAction:number, doublon:number, technique:number, media:number,
+ *           quarantaine:number, autres:number, total:number}}
  */
 function statsSemaine_(jours) {
-  var s = { classe: 0, revue: 0, tache: 0, evenement: 0, mailsSansAction: 0, doublon: 0, quarantaine: 0, autres: 0, total: 0 };
+  var s = { classe: 0, tache: 0, evenement: 0, mailsSansAction: 0, mailsAvecAction: 0, doublon: 0, technique: 0, media: 0, quarantaine: 0, autres: 0, total: 0 };
   var f = feuille_('Index');
   var fen = fenetreLecture_(f);
   if (!fen) return s;
@@ -62,13 +63,15 @@ function statsSemaine_(jours) {
     s.total++;
     var statut = String(v[i][4]);
     if (statut === 'classé') s.classe++;
-    else if (statut === 'revue') s.revue++;
     else if (statut === 'tache') s.tache++;
     else if (statut === 'evenement') s.evenement++;
     else if (statut === 'doublon') s.doublon++;
+    else if (statut === 'technique') s.technique++;
+    else if (statut === 'média') s.media++;
     else if (statut === 'quarantaine') s.quarantaine++;
+    else if (statut === 'intention-traitee') s.mailsAvecAction++; // mail AVEC action créée (≠ sans action)
     else if (statut.indexOf('intention-') === 0) s.mailsSansAction++;
-    else s.autres++;
+    else s.autres++; // zone protégée (migration), compat historiques
   }
   return s;
 }
@@ -113,18 +116,20 @@ function construireResume_(s, erreurs, cout, jours, etat, urlForm) {
     '🩺 État du système : ' + (etat || '—'),
     '',
     '📂 Documents classés automatiquement : ' + s.classe,
-    '🔎 Partis en revue (00 · À vérifier) : ' + s.revue,
     '✅ Tâches créées (Google Tasks) : ' + s.tache,
     '📅 Événements créés (Google Calendar) : ' + s.evenement,
-    '✉️ Mails analysés sans action : ' + s.mailsSansAction,
-    '🔁 Doublons écartés (dossier _Doublons) : ' + s.doublon,
+    '✉️ Mails analysés — avec action : ' + s.mailsAvecAction + ' · sans action : ' + s.mailsSansAction,
+    '🔁 Doublons écartés (_Doublons) : ' + s.doublon,
+    '🗂️ Fichiers techniques (_Technique) : ' + s.technique,
+    '📸 Médias personnels (_Médias) : ' + s.media,
     '🚫 Mis en quarantaine (échecs répétés) : ' + s.quarantaine,
+    '📦 Autres (zone protégée, historiques) : ' + s.autres,
     '⚠️ Erreurs journalisées : ' + erreurs,
     '',
     '💰 Coût LLM ce mois-ci : ~' + cout.dollars.toFixed(2) + ' $ (' +
       cout.appels + ' appels — cible < 10 $/mois)',
     '',
-    'Détail complet dans la Google Sheet « DriveAI — État » (onglets Index / Journal / Revue).'
+    'Détail complet dans la Google Sheet « DriveAI — État » (onglets Index / Journal / Entités / Santé).'
   ];
   // Lien vers le formulaire de correction (ADR-0003) : Marc apprend à DriveAI où ranger un émetteur.
   if (urlForm) {

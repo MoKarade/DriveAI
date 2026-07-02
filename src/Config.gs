@@ -9,8 +9,8 @@ var CONFIG = {
   // Version du comportement de CLASSEMENT. À incrémenter UNIQUEMENT quand une
   // évolution change la façon de ranger (prompt, routage, seuils, schémas) — PAS à
   // chaque commit (sinon coût LLM/quota inutile). Au tick suivant un déploiement, si
-  // la version stockée diffère, le moteur renvoie automatiquement les DÉPÔTS partis
-  // en revue vers 00·À trier pour reclassement (cf. Main.appliquerRejeuSiNouvelleVersion_)
+  // la version stockée diffère, le moteur renvoie automatiquement les copies LEGACY parties
+  // en revue (avant P1-16) vers 00·À trier pour reclassement (cf. Main.appliquerRejeuSiNouvelleVersion_)
   // — borné, réversible, sans toucher aux PJ Gmail ni aux docs déjà classés. Zéro clic.
   VERSION: 'P3.0',
 
@@ -338,7 +338,7 @@ function getCleAnthropic_() {
 }
 
 /**
- * Classeur d'état (Entités / Index / Journal / Revue).
+ * Classeur d'état (Entités / Corrections / Index / Journal / Échecs / Santé / Progression).
  * Auto-créé au premier run si DriveAI_SHEET_ID est absent.
  * @return {Spreadsheet}
  */

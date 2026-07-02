@@ -5,8 +5,7 @@
  * OCRisé, analysé et routé par le même pipeline (Pipeline.gs / Router.gs).
  *
  * Différence clé : un dépôt est explicitement là POUR être trié → on le DÉPLACE
- * (jamais de copie, jamais de suppression) vers sa destination ou vers
- * `00 · À vérifier`. Le déplacement préserve l'ID Drive, donc la clé d'idempotence
+ * (jamais de copie, jamais de suppression) vers sa destination finale. Le déplacement préserve l'ID Drive, donc la clé d'idempotence
  * `drive|fileId` reste valable et le fichier n'est pas re-traité.
  */
 
@@ -67,9 +66,6 @@ function traiterFichierDepose_(fileId) {
     blob: function () { return f.getBlob(); },
     placer: function (dossierId, nouveauNom) {
       return deplacerEtRenommer_(fileId, dossierId, aTrier, nouveauNom) ? fileId : '';
-    },
-    placerRevue: function (nouveauNom) {
-      return deplacerEtRenommer_(fileId, CONFIG.DOSSIERS.A_VERIFIER, aTrier, nouveauNom) ? fileId : '';
     }
   });
 }

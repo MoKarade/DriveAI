@@ -57,10 +57,3 @@ test('indexAjouter_ : empreinte absente → cellule vide (jamais de fuite de con
   assert.strictEqual(row[6], ''); // pas d'empreinte → '' (et surtout pas un extrait de contenu)
 });
 
-test('indexAjouter_ : branche « revue » vestigiale n\'écrit que des métadonnées', () => {
-  const { ctx, rows } = chargerAvecFeuilleMock();
-  ctx.indexAjouter_('m|2|x.pdf|5', { statut: 'revue', nom: '2026-01-02_Document_Inconnu.pdf', domaine: '01', chemin: '01', texteOCR: SECRET }, 'H2');
-  for (const r of rows) {
-    assert.ok(!JSON.stringify(r.row).includes(SECRET), 'ni Index ni Revue ne contiennent le corps du doc');
-  }
-});

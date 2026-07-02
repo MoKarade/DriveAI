@@ -113,7 +113,7 @@ function convertirEtExtraire_(blob, cibleMime, exportMime, ocr) {
       'https://www.googleapis.com/drive/v3/files/' + id + '/export?mimeType=' + encodeURIComponent(exportMime),
       { headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true }
     );
-    return exp.getResponseCode() === 200 ? exp.getContentText() : '';
+    return exp.getResponseCode() === 200 ? exp.getContentText() : null; // échec technique ≠ sans texte (contrat extraireTexte_)
   } finally {
     // Supprime NOTRE fichier temporaire (jamais un fichier utilisateur).
     UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + id, {

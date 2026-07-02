@@ -1,7 +1,7 @@
 /**
  * Journal.gs — État dans la Google Sheet + notifications d'échec.
  *
- * Onglets : Entités | Index | Journal | Revue (créés au premier run).
+ * Onglets : Entités | Corrections | Index | Journal | Échecs | Santé | Progression (créés au premier run).
  * - Index   : catalogue des fichiers traités (sert l'idempotence + la recherche Phase 4).
  * - Journal : log d'exécution + erreurs.
  * Une erreur déclenche TOUJOURS une notif mail immédiate + une ligne de Journal.
@@ -9,11 +9,10 @@
 
 /** Crée les onglets et leurs en-têtes si absents. */
 function initialiserSheet_(ss) {
-  creerOnglet_(ss, 'Entités', COLONNES_ENTITES); // Entité|Domaine|Catégorie|Type|Statut|Dossier ID|Ajoutée le
+  creerOnglet_(ss, 'Entités', COLONNES_ENTITES); // cf. COLONNES_ENTITES (9 colonnes, dont Variante possible ? et Vu N fois)
   creerOnglet_(ss, 'Corrections', COLONNES_CORRECTIONS); // apprentissage : doc corrigé → exemples few-shot (ADR-0003)
   creerOnglet_(ss, 'Index', ['Clé', 'Traité le', 'Fichier', 'Domaine', 'Chemin', 'Statut', 'Empreinte']);
   creerOnglet_(ss, 'Journal', ['Horodatage', 'Niveau', 'Source', 'Message']);
-  creerOnglet_(ss, 'Revue', ['Détectée le', 'Fichier', 'Domaine', 'Suggestion']);
   creerOnglet_(ss, 'Échecs', ['Clé', 'Tentatives', 'Dernière tentative']); // compteur de quarantaine
   creerOnglet_(ss, 'Progression', ['Rangement de l\'ancien Drive']);        // barre de chargement (cf. Maintenance)
   creerOnglet_(ss, 'Santé', ['Santé DriveAI']);                             // vue lisible (heartbeat + métriques, ADR-0006)
@@ -183,9 +182,6 @@ function estDoublon_(empreinte) {
  * @param {string} [empreinte]  empreinte MD5 du contenu (détection de doublons)
  */
 function indexAjouter_(cle, resultat, empreinte) {
-  if (resultat.statut === 'revue') { // vestigial : le pipeline ne route plus en revue
-    feuille_('Revue').appendRow([new Date(), resultat.nom, resultat.domaine || '', resultat.nom]);
-  }
   feuille_('Index').appendRow([
     cle, new Date(), resultat.nom, resultat.domaine || '', resultat.chemin || '',
     resultat.statut, empreinte || ''

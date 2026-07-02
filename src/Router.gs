@@ -1,82 +1,4 @@
 /**
- * Router.gs — Décide OÙ va un fichier et sous quel nom (sans le placer).
- *
- * `deciderRoutage_` est le point de décision partagé par les deux sources
- * (PJ Gmail et dépôt manuel `00·À trier`). Le placement (copie pour Gmail,
- * déplacement pour un dépôt) est fait par l'appelant (cf. Pipeline.gs).
- *
- * [DÉCISION MARC 2026-07-01] PLUS DE FILE DE REVUE : un seul dossier d'arrivée (`00·À trier`).
- * TOUT document est CLASSÉ au mieux, avec son nom FINAL propre (`AAAA-MM-JJ_Type_Émetteur.ext`),
- * jamais un nom encodé `[REVUE] …`. Un domaine introuvable (LLM hors-liste) n'est plus mis en
- * limbo : il est rangé dans `CONFIG.DOMAINE_DEFAUT` (bucket générique). Seul aiguillage restant :
- *   - doublon de contenu déjà présent → `_Doublons` (déplacement seul, jamais supprimé, §2) ;
- *   - sinon on CLASSE : entité connue → dossier d'entité granulaire ; entité inconnue/en attente →
- *     dossier du domaine (+ proposition d'entité pour plus tard) ; entité null → dossier du domaine.
- * Une entité non validée n'est JAMAIS un frein (elle enrichit, cf. LESSONS « granularité »).
- */
-
-/**
- * @param {Object} classif        sortie du LLM
- * @param {Date} dateReference    date de réception (Gmail) ou de dépôt (intake), fallback de date
- * @param {string} ext            extension d'origine (".pdf"…)
- * @param {string} [motifForce]   motif imposé par l'appelant (ex. doublon → `_Doublons`), ou ''
- * @return {{statut:string, domaine:string, chemin:string, nom:string,
- *           dossierId?:string, raison?:string, autresEntites?:string[]}}
- */
-function deciderRoutage_(classif, dateReference, ext, motifForce) {
-  var date = dateNormalisee_(classif.date_doc, dateReference); // AAAA-MM-JJ
-
-  // 1) Domaine introuvable (LLM hors-liste/malformé) : plus de revue (décision Marc 2026-07-01) —
-  // on CLASSE au mieux dans le domaine par défaut, avec le nom final propre. Zéro fichier en limbo.
-  // `domaineConnu_` accepte les 7 domaines fixes ET les domaines auto-créés (07 · Santé, ADR-0002).
-  if (!domaineConnu_(classif.domaine)) classif.domaine = CONFIG.DOMAINE_DEFAUT;
-
-  // 2) Doublon (y compris sensible) : on l'ÉCARTE dans « _Doublons » plutôt que de garder N copies —
-  // au volume du grand rangement, signaler chaque doublon sature. Déplacement seul, JAMAIS supprimé
-  // (garde-fou §2) ; l'original déjà classé reste en place. Marc peut vider « _Doublons » quand il veut.
-  if (motifForce) return doublon_(classif, date, ext);
-
-  // 4) Granularité entité (Phase 2). L'entité est un ENRICHISSEMENT, jamais un frein :
-  //    - entité connue (validée)        → dossier d'entité granulaire ;
-  //    - entité inconnue / en attente    → on CLASSE au niveau domaine (comportement Phase 1)
-  //                                        et on PROPOSE l'entité (ligne « en_attente ») pour
-  //                                        plus tard — surtout pas le document en revue ;
-  //    - entité null (transverse)        → dossier générique du domaine.
-  // Anti-prolifération préservé : proposer une entité n'est pas créer un dossier.
-  var ent = resoudreEntite_(classif);
-  var dossierId, chemin;
-  if (ent.etat === 'connue') {
-    var cible = dossierEntiteCible_(ent, classif, date);
-    dossierId = cible.id;
-    chemin = cible.chemin;
-  } else {
-    if (ent.etat === 'inconnue' || ent.etat === 'en_attente') entiteEnAttenteAjouter_(classif);
-    dossierId = dossierCible_(classif, date);
-    chemin = cheminLisible_(classif);
-  }
-
-  var nom = nomParType_(date, classif.type_doc, classif.emetteur, ext);
-  return {
-    statut: 'classé', domaine: classif.domaine, chemin: chemin, nom: nom,
-    dossierId: dossierId, autresEntites: autresEntitesConnues_(classif, dossierId)
-  };
-}
-
-/**
- * Construit une décision « doublon » : le fichier va dans « _Doublons », renommé au format normalisé
- * (DÉPLACEMENT pour un dépôt manuel ; COPIE pour une PJ Gmail — l'original Gmail reste intact, lecture
- * seule). Jamais de suppression (§2). S'applique aussi aux doublons SENSIBLES (5 copies d'un passeport
- * → 1 classée, les autres ici) : l'original classé reste en place, rien n'est effacé.
- */
-function doublon_(classif, date, ext) {
-  return {
-    statut: 'doublon', domaine: classif.domaine || '', chemin: '_Doublons',
-    nom: nomParType_(date, classif.type_doc, classif.emetteur, ext),
-    dossierId: dossierDoublons_().getId()
-  };
-}
-
-/**
  * Décision « doublon » RAPIDE (fast path P1-20) — SANS classification (ni OCR ni LLM) : on sait déjà,
  * par l'empreinte, que ce contenu est déjà classé ailleurs. On l'écarte dans « _Doublons » en gardant
  * son NOM D'ORIGINE (nettoyé, préfixé de la date) : un exemplaire redondant, le nom parfait importe peu.
@@ -354,6 +276,48 @@ function routageMedia_(nomOrigine) {
 }
 
 /* ---------- Nommage (docs/NAMING.md) ---------- */
+
+/**
+ * @param {Object} classif        sortie du LLM
+ * @param {Date} dateReference    date de réception (Gmail) ou de dépôt (intake), fallback de date
+ * @param {string} ext            extension d'origine (".pdf"…)
+ * @return {{statut:string, domaine:string, chemin:string, nom:string,
+ *           dossierId?:string, raison?:string, autresEntites?:string[]}}
+ */
+function deciderRoutage_(classif, dateReference, ext) {
+  var date = dateNormalisee_(classif.date_doc, dateReference); // AAAA-MM-JJ
+
+  // (Le cas DOUBLON vit en AMONT, au fast-path du Pipeline (P1-20) — plus jamais ici.)
+  // 1) Domaine introuvable (LLM hors-liste/malformé) : plus de revue (décision Marc 2026-07-01) —
+  // on CLASSE au mieux dans le domaine par défaut, avec le nom final propre. Zéro fichier en limbo.
+  // `domaineConnu_` accepte les 7 domaines fixes ET les domaines auto-créés (07 · Santé, ADR-0002).
+  if (!domaineConnu_(classif.domaine)) classif.domaine = CONFIG.DOMAINE_DEFAUT;
+
+  // 2) Granularité entité (Phase 2). L'entité est un ENRICHISSEMENT, jamais un frein :
+  //    - entité connue (validée)        → dossier d'entité granulaire ;
+  //    - entité inconnue / en attente    → on CLASSE au niveau domaine (comportement Phase 1)
+  //                                        et on PROPOSE l'entité (ligne « en_attente ») pour
+  //                                        plus tard — surtout pas le document en revue ;
+  //    - entité null (transverse)        → dossier générique du domaine.
+  // Anti-prolifération préservé : proposer une entité n'est pas créer un dossier.
+  var ent = resoudreEntite_(classif);
+  var dossierId, chemin;
+  if (ent.etat === 'connue') {
+    var cible = dossierEntiteCible_(ent, classif, date);
+    dossierId = cible.id;
+    chemin = cible.chemin;
+  } else {
+    if (ent.etat === 'inconnue' || ent.etat === 'en_attente') entiteEnAttenteAjouter_(classif);
+    dossierId = dossierCible_(classif, date);
+    chemin = cheminLisible_(classif);
+  }
+
+  var nom = nomParType_(date, classif.type_doc, classif.emetteur, ext);
+  return {
+    statut: 'classé', domaine: classif.domaine, chemin: chemin, nom: nom,
+    dossierId: dossierId, autresEntites: autresEntitesConnues_(classif, dossierId)
+  };
+}
 
 /** `AAAA-MM-JJ_Type_Émetteur.ext` — format historique (granularité JOUR). */
 function nomNormalise_(date, type, emetteur, ext) {

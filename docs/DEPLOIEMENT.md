@@ -150,12 +150,12 @@ Dossier ID | Ajoutée le`).
 2. Pour **valider** : passe le `Statut` de la ligne à **`validée`** (corrige le nom/type si besoin).
    Types reconnus pour les sous-dossiers fixes : `Logement`, `Véhicule`, `Compte financier`, `Diplôme`.
 3. Au tick suivant, DriveAI **crée le dossier d'entité** + ses sous-dossiers fixes et y range les
-   documents de cette entité. (Pour re-router des documents déjà partis en revue, relance
-   `rejouerLaRevue`.)
+   documents de cette entité. (Pour re-router un document déjà classé ailleurs : onglet
+   **Corrections** de l'app web — déplacement immédiat + apprentissage.)
 
 ### Doublons & multi-entités
-- Un fichier dont le **contenu** est déjà présent (même empreinte) est **signalé** en revue
-  (`[REVUE] doublon (déjà présent) …`), **jamais effacé**.
+- Un fichier dont le **contenu** est déjà présent (même empreinte) est **écarté dans `_Doublons`**
+  (déplacement seul, **jamais effacé**).
 - Un document concernant **plusieurs entités connues** est rangé une fois (entité primaire) avec un
   **raccourci Drive** dans les autres (jamais de copie).
 

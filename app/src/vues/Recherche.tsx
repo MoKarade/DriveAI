@@ -43,10 +43,11 @@ export function Recherche({ langue }: { langue: Langue }) {
   useEffect(() => {
     (async () => {
       try {
-        // Les clés `intention|…` (Phase 3) tracent des E-MAILS scannés (sujet en colonne
+        // Les clés `intention|`/`tache|`/`event|` (Phase 3) tracent des E-MAILS/actions (sujet en colonne
         // « fichier », domaine vide) — pas des documents : exclues de la recherche, sinon elles
         // domineraient la vue par défaut (une ligne par mail) et pollueraient le sélecteur de statuts.
-        setIndex(interpreterIndex(await lirePlage('Index', 'A2:F20000')).filter((l) => !l.cle.startsWith('intention|')));
+        setIndex(interpreterIndex(await lirePlage('Index', 'A2:F20000'))
+          .filter((l) => !/^(intention|tache|event)\|/.test(l.cle)));
       } catch (e) {
         setErreur(String(e));
       } finally {

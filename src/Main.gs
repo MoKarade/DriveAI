@@ -3,7 +3,8 @@
  *
  * À lancer une fois à la main : installerTrigger().
  *
- * Deux sources d'intake : PJ Gmail + dépôt manuel `00·À trier`. Chaque document
+ * Sources d'intake : PJ Gmail, dépôt manuel `00·À trier`, fichiers partagés (ADR-0005) —
+ * plus la migration (#8) qui re-passe l'existant. Chaque document
  * passe par le pipeline partagé (Pipeline.gs). Avant le routage, on matérialise
  * les entités fraîchement validées par Marc (création des dossiers).
  *
@@ -213,7 +214,7 @@ function assurerIntervalleTick_() {
   journalInfo_('Setup', 'Intervalle du déclencheur ajusté à ' + CONFIG.TICK_MINUTES + ' min.');
 }
 
-/** Un passage du pipeline : Gmail + dépôt manuel → classement / revue. */
+/** Un passage du pipeline : Gmail + dépôts + partagés (+ migration, intentions) → tout est CLASSÉ (plus de revue depuis 2026-07-01). */
 function tickDriveAI() {
   var verrou = LockService.getScriptLock();
   if (!verrou.tryLock(5000)) {
@@ -335,13 +336,13 @@ function tickDriveAI() {
  * Compare `CONFIG.VERSION` (figée dans le code déployé) à la dernière version vue
  * (Script Property `DriveAI_VERSION`). Si elles diffèrent — juste après un déploiement
  * qui change la logique — on RENVOIE les dépôts manuels partis en revue vers 00·À trier
- * pour qu'ils soient reclassés par le tick courant. Plus besoin de `rejouerLaRevue`.
+ * pour qu'ils soient reclassés par le tick courant (l'ancien outil manuel `rejouerLaRevue` a été retiré — audit 2026-07-02).
  *
  * Sûreté (audits flotte) : opération **réversible uniquement** (déplacement, jamais de
  * corbeille), **bornée** par le garde-temps + un plafond/run, et **reprenable** — la
- * version n'est posée QUE lorsque tout le rejeu est consommé. Ne touche PAS aux PJ Gmail
- * en revue (sensibles/peu sûres : elles ont vocation à y rester) ni aux docs déjà classés
- * (leur idempotence est préservée → pas de re-OCR/re-LLM inutile).
+ * version n'est posée QUE lorsque tout le rejeu est consommé. La passe 2 reprend AUSSI les
+ * copies legacy « [REVUE] confiance » d'origine Gmail (cf. sa docstring) ; les docs déjà
+ * classés ne sont jamais touchés (idempotence préservée → pas de re-OCR/re-LLM inutile).
  *
  * @param {function():boolean} estBudgetDepasse
  */
@@ -458,7 +459,12 @@ function rangementTermine_() {
  * @return {boolean} vrai s'il reste des docs à renvoyer (plafond/budget atteint).
  */
 function rejeuAutoDesConfiances_(estBudgetDepasse) {
-  var dossier = DriveApp.getFolderById(CONFIG.DOSSIERS.A_VERIFIER);
+  // Marc peut avoir SUPPRIMÉ le dossier `00·À vérifier` (vide depuis P1-16, on l'y a invité) : dans
+  // ce cas il n'y a rien à rejouer — sans ce garde, l'exception ferait échouer le rejeu À CHAQUE
+  // tick après un bump de VERSION (la Property ne se poserait jamais), pour toujours.
+  var dossier;
+  try { dossier = DriveApp.getFolderById(CONFIG.DOSSIERS.A_VERIFIER); }
+  catch (e) { return false; } // plus de dossier revue = plus de legacy à reprendre
   var it = dossier.getFiles();
   var ids = [];
   while (it.hasNext()) {
@@ -589,7 +595,6 @@ function traiterPjGmail_(message, indexPj, pj) {
     sujet: message.getSubject(),
     date: message.getDate(),
     blob: function () { return pj.copyBlob(); },
-    placer: function (dossierId, nom) { return deposer_(pj.copyBlob(), dossierId, nom); },
-    placerRevue: function (nom) { return deposer_(pj.copyBlob(), CONFIG.DOSSIERS.A_VERIFIER, nom); }
+    placer: function (dossierId, nom) { return deposer_(pj.copyBlob(), dossierId, nom); }
   });
 }

@@ -2,15 +2,6 @@
   "timeZone": "America/Toronto",
   "runtimeVersion": "V8",
   "exceptionLogging": "STACKDRIVER",
-  "dependencies": {
-    "enabledAdvancedServices": [
-      {
-        "userSymbol": "Drive",
-        "serviceId": "drive",
-        "version": "v2"
-      }
-    ]
-  },
   "oauthScopes": [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/drive",
