@@ -241,6 +241,15 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-02 — Chantier #11 : FAST-PATH MÉDIAS BRUTS (ADR-0009 §2).** Vidéo/audio/gif → `_Médias`
+  SANS OCR ni LLM ; photo → `_Médias` seulement si nom NON-documentaire (ID numérique ≥ 8 chiffres —
+  export Facebook —, IMG_/DSC/PXL, captures) **ET extrait OCR < 20 cars** — **l'OCR reste le juge (§1)** :
+  un scan de passeport nommé `IMG_2734.jpg` contient du texte → analyse complète (testé). Nom d'origine
+  CONSERVÉ (traçabilité), `_Médias` à la racine (jamais re-scanné), doublons de médias toujours dédupés
+  AVANT (empreinte calculée en amont). Accélère fortement le rangement Facebook en cours (~50 fichiers
+  en file → plus d'OCR+LLM+escalade Sonnet pièce par pièce). +8 tests → **151**. Revue flotte (sécurité §1
+  + file-checker) en cours.
+
 - **2026-07-02 — Chantier #10 : ENTITÉS PROPRES (ADR-0009 §1, 1ᵉʳ de la roadmap v2).** Cause racine
   trouvée : le PROMPT enseignait littéralement les génériques (« (logement, véhicule, banque,
   diplôme...) » — les 4 mots recrachés tels quels dans la file). Corrigé (« NOM PROPRE identifiable…

@@ -294,6 +294,57 @@ function routageTechnique_(nomOrigine, dateRef, ext) {
   };
 }
 
+/* ---------- Chantier #11 (ADR-0009 §2) : médias bruts → `_Médias` ---------- */
+
+/** Renvoie (ou crée) le dossier `_Médias` (hors domaines). ID mémorisé en Script Property. */
+function dossierMedias_() {
+  return dossierRacineParNom_('_Médias', 'DriveAI_MEDIAS_ID');
+}
+
+/** Vrai si l'extension est un média DIRECT (vidéo/audio/gif — jamais un document). PUR. */
+function estMediaDirect_(nom) {
+  var ext = extension_(nom).toLowerCase();
+  return !!ext && CONFIG.EXT_MEDIAS_DIRECT.indexOf(ext) !== -1;
+}
+
+/** Vrai si l'extension est une photo (candidate au fast-path SI nom non-documentaire ET OCR vide). PUR. */
+function estPhoto_(nom) {
+  var ext = extension_(nom).toLowerCase();
+  return !!ext && CONFIG.EXT_PHOTOS.indexOf(ext) !== -1;
+}
+
+/**
+ * Vrai si le NOM est manifestement non-documentaire : identifiant numérique d'export (Facebook :
+ * « 251319877474117.jpg »), compteur d'appareil (« IMG_2734 », « DSC_0042 », « PXL_2023… »),
+ * capture (« Screenshot… », « WhatsApp Image… »). Un nom PORTEUR DE SENS (« CV Marc.jpg »,
+ * « 2024-03-05_Facture_X.jpg ») renvoie false → le document garde son analyse complète. PUR.
+ * @param {string} nom
+ * @return {boolean}
+ */
+function estNomNonDocumentaire_(nom) {
+  var base = String(nom || '').replace(/\.[^.\/]+$/, '').trim();
+  if (!base) return false;
+  if (/^[\d\s_\-()]+$/.test(base) && (base.match(/\d/g) || []).length >= 8) return true; // ID numérique long
+  if (/^(img|dsc|dscn|dscf|pxl|mvimg|photo|video|vid|image)[ _\-]?\d/i.test(base)) return true; // compteur d'appareil
+  if (/^(screenshot|capture d.écran|capture|whatsapp (image|video)|signal-)/i.test(base)) return true; // captures
+  return false;
+}
+
+/**
+ * Décision de routage d'un MÉDIA BRUT : `_Médias`, nom d'ORIGINE conservé (traçabilité — les noms
+ * d'export sont leurs identifiants). Jamais re-collecté : `_Médias` est hors domaines (racine `_`),
+ * comme `_Doublons`/`_Technique`.
+ * @param {string} nomOrigine
+ * @return {{statut:string, domaine:string, chemin:string, nom:string, dossierId:string}}
+ */
+function routageMedia_(nomOrigine) {
+  return {
+    statut: 'média', domaine: '', chemin: '_Médias',
+    nom: String(nomOrigine || 'média'),
+    dossierId: dossierMedias_().getId()
+  };
+}
+
 /* ---------- Nommage (docs/NAMING.md) ---------- */
 
 /** `AAAA-MM-JJ_Type_Émetteur.ext` — format historique (granularité JOUR). */

@@ -222,6 +222,18 @@ var CONFIG = {
     '.step', '.stp', '.stl', '.igs', '.iges', '.dwg', '.dxf', '.obj', '.fbx', '.blend', '.sldprt', '.ipt' // CAO
   ],
 
+  // --- Chantier #11 : MÉDIAS BRUTS (ADR-0009 §2, `_Médias` hors domaines) ---
+  // Un média personnel manifeste est écarté SANS LLM : vidéo/audio/gif TOUJOURS (jamais un document) ;
+  // photo SEULEMENT si nom non-documentaire (export Facebook, IMG_…) ET OCR vide — l'OCR reste le juge :
+  // un scan de passeport nommé IMG_2734.jpg contient du texte → il garde son analyse complète (§1).
+  EXT_MEDIAS_DIRECT: [
+    '.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v', '.3gp', '.wmv',   // vidéo
+    '.mp3', '.wav', '.m4a', '.aac', '.ogg', '.flac',                    // audio
+    '.gif'                                                              // animation (jamais un scan)
+  ],
+  EXT_PHOTOS: ['.jpg', '.jpeg', '.png', '.heic', '.heif', '.webp', '.bmp', '.tif', '.tiff'],
+  MEDIAS_OCR_MAX_CARS: 20,               // extrait OCR sous ce seuil = « photo sans texte »
+
   // --- Phase 2 : référentiel d'entités ---
   // Dossier d'entrée scanné pour le dépôt manuel (réutilise A_TRIER ci-dessus).
   INTAKE_PAGE: 150,                       // nb de fichiers de 00·À trier traités par run (50→150 pour le

@@ -145,6 +145,8 @@ function ctxPipeline(ignorer) {
   ctx.doublonRapide_ = (nom) => ({ dossierId: 'DUP', nom: 'dup_' + nom, statut: 'doublon', domaine: '', chemin: '' });
   ctx.indexAjouter_ = () => {};
   ctx.estTechnique_ = () => false;
+  ctx.estMediaDirect_ = () => false;
+  ctx.estPhoto_ = () => false;
   ctx.extension_ = () => '.pdf';
   ctx.extraireTexte_ = () => '';
   ctx.classifier_ = () => null;                       // stoppe le pipeline après le fast-path (test ciblé)
