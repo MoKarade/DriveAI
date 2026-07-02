@@ -21,7 +21,7 @@ function resumeHebdo() {
     MailApp.sendEmail(
       Session.getEffectiveUser().getEmail(),
       '[DriveAI] Résumé de la semaine',
-      construireResume_(stats, erreurs, cout, jours, etat)
+      construireResume_(stats, erreurs, cout, jours, etat, urlFormulaireCorrection_())
     );
     journalInfo_('Résumé', 'Résumé hebdo envoyé.');
   } catch (e) {
@@ -106,8 +106,8 @@ function etatSysteme_(dernierTickMs, maintenant, seuil) {
 }
 
 /** Corps du mail récap. */
-function construireResume_(s, erreurs, cout, jours, etat) {
-  return [
+function construireResume_(s, erreurs, cout, jours, etat, urlForm) {
+  var lignes = [
     'Voici ce que DriveAI a fait cette semaine (' + jours + ' derniers jours).',
     '',
     '🩺 État du système : ' + (etat || '—'),
@@ -125,5 +125,10 @@ function construireResume_(s, erreurs, cout, jours, etat) {
       cout.appels + ' appels — cible < 10 $/mois)',
     '',
     'Détail complet dans la Google Sheet « DriveAI — État » (onglets Index / Journal / Revue).'
-  ].join('\n');
+  ];
+  // Lien vers le formulaire de correction (ADR-0003) : Marc apprend à DriveAI où ranger un émetteur.
+  if (urlForm) {
+    lignes.push('', '✏️ Corriger un classement (DriveAI apprend) : ' + urlForm);
+  }
+  return lignes.join('\n');
 }

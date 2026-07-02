@@ -241,6 +241,18 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-02 — Chantier #6 (partie 1) : correction via formulaire Google (ADR-0003 §1-2).** **Modif du
+  MOTEUR + NOUVEAU SCOPE.** Marc a choisi le canal **Google Forms** (vs édition directe de la Sheet). Nouveau
+  module `Formulaire.gs` : formulaire de correction find-or-create (`assurerFormulaireCorrection_`, ID en
+  Script Property), lu 1×/tick AVANT l'intake (`lireEtAppliquerCorrections_`) — les nouvelles réponses
+  (idempotence par horodatage) sont enregistrées via `enregistrerCorrection_` et nourrissent le few-shot du
+  #5. Parsing PUR testé (`reponseVersCorrection_`, `domainesPourFormulaire_`). Borné (`CORRECTIONS_MAX_PAR_RUN`
+  =20 + garde-temps), enveloppé try/catch (ne gèle jamais l'intake). Lien du formulaire ajouté au résumé
+  hebdo. +5 tests → **107**. **⚠️ Action Marc : nouveau scope `https://www.googleapis.com/auth/forms` dans
+  `appsscript.json` → ré-autorisation Google unique au prochain déploiement** (frontière d'exécution : la
+  session Claude ne peut ni créer le formulaire ni déployer). **Reste C6-04** : appliquer la correction au
+  FICHIER déjà classé (déplacer/renommer) + promouvoir l'entité corrigée en « validée ». Revue flotte
+  (sécurité/scope + correction + quota) en cours.
 - **2026-07-02 — Chantier #5 (partie 1) : boucle d'apprentissage (ADR-0003 §3).** **Modif du MOTEUR.**
   Nouvel onglet `Corrections` + module `Corrections.gs` : à chaque classement, les corrections passées du
   **même émetteur** sont injectées en **exemples few-shot** en tête du prompt LLM (`appelAnthropic_`), bornées
