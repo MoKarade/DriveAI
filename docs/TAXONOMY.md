@@ -84,6 +84,15 @@ mécanismes distincts dans le code :
   formulaire ne capte pas la **catégorie** : une entité de `03 · Logement & véhicule` validée par formulaire
   est créée à la **racine du domaine** (pas sous `Logement/`/`Véhicule/`) et sans schéma de sous-dossiers —
   dégradation propre (dossier créé, docs classables), le sous-classement s'affine ensuite au besoin.
+- **Statuts de ligne du référentiel `Entités`** (#10, ADR-0009) : `en_attente`, `validée`,
+  `refusée (générique)`, `variante de : X` — **seuls les deux premiers sont actifs** (file de
+  validation de l'app / routage). La colonne **« Vu N fois »** est un signal de priorisation
+  (la file de l'app trie dessus), jamais un critère de routage. **Règle de fusion** (proposition
+  ET curation) : INCLUSION de jetons seulement (« Desjardins » ⊆ « carte de crédit Desjardins »),
+  jamais la distance d'édition, et une **année excédentaire bloque** la fusion (« Honda Civic »
+  n'avale ni « Honda Civic 2014 » ni « 2017 » — deux véhicules réels). Jamais d'alias de routage :
+  un document dont l'entité est une variante non fusionnée reste classé au domaine tant que Marc
+  n'a pas fusionné explicitement.
 - **Multi-entités** : un document concernant plusieurs entités → **raccourci Drive** dans
   chaque dossier concerné (jamais de copie physique).
 - **Document transverse** (`entite = null`) → dossier générique du domaine.

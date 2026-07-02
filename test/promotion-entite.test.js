@@ -9,7 +9,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { load } = require('./harness');
 
-const ENTETES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?'];
+const ENTETES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?', 'Vu N fois'];
 
 function setup(lignes) {
   const ctx = load(['Config.gs', 'Entites.gs', 'Router.gs']);

@@ -220,6 +220,15 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 
 > Bumper `MIGRATION_TAG` (m2, m3…) relance une campagne complète — utile après une validation d'entités en masse (les docs rangés au domaine redescendent aux entités). Coût estimé par la flotte : ~3-5 $ one-shot pour quelques centaines de docs (Haiku + escalades plafonnées), campagne étalée sur 1-2 jours. Dédup intra-campagne des vrais doublons : optionnelle, à décider sur du réel (post-m1, si `_Doublons` le justifie).
 
+### Chantier #10 — Entités propres (ADR-0009 §1)  🟦
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C10-01 | **Prédicats PURS** : `jetonsQualite_` (ponctuation neutralisée, connecteurs ignorés), `estEntiteGenerique_` (générique ssi TOUS les jetons ∈ `LEXIQUE_GENERIQUE_ENTITE` — calibré sur la file réelle du 2026-07-02), `estFusionnableEntite_` (INCLUSION de jetons seulement — « Honda Civic 2014 » ≠ « 2017 », jamais Levenshtein) | ✅ (tests calibrés sur les vraies lignes) |
+| C10-02 | **Proposition filtrée + consolidée** (`entiteEnAttenteAjouter_`) : générique → jamais proposé ; fusionnable avec une ligne existante → incrément « Vu N fois » (nouvelle colonne, signal de fréquence) au lieu d'une n-ième ligne | ✅ |
+| C10-03 | **Prompt LLM corrigé** : l'ancien schéma ENSEIGNAIT les génériques (« (logement, véhicule, banque, diplôme...) » recrachés mot pour mot en prod) → « NOM PROPRE identifiable… sinon null », exemples positifs/négatifs | ✅ |
+| C10-04 | **Curation one-shot** (`appliquerCurationEntites_`, tag `c1`) : file existante — génériques → « refusée (générique) », doublons par inclusion → « variante de : X » (canonique = la plus courte, cumule les Vu). STATUTS seulement, réversible, borné, tag figé après passe complète. Câblée au tick (secondaire, enveloppée) | ✅ |
+
 ### Chantier #9 — App web Phase 4 (ADR-0008)  🟦
 
 | ID | Tâche | Statut |

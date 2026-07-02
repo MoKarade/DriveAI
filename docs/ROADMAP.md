@@ -36,7 +36,7 @@ Détail : `BACKLOG.md` (P1-01 → P1-20).
 
 | # | Chantier | Axe | Effort | ADR | Statut |
 |---|----------|-----|--------|-----|--------|
-| 10 | **Entités propres** — filtre anti-génériques + consolidation des variantes à la proposition + curation one-shot de la file existante (~160) | Moteur/Précision | M | [0009](adr/0009-qualite-entites-medias.md) | ⬜ |
+| 10 | **Entités propres** — filtre anti-génériques + consolidation des variantes à la proposition + curation one-shot de la file existante (~160) | Moteur/Précision | M | [0009](adr/0009-qualite-entites-medias.md) | 🟦 codé : lexique calibré sur la file réelle (`estEntiteGenerique_`), fusion par INCLUSION seule (`estFusionnableEntite_`), colonne « Vu N fois », prompt LLM corrigé (il enseignait les génériques !), curation gatée `c1` (statuts seuls, réversible) ✅ |
 | 11 | **Fast-path médias bruts** — vidéo/gif direct, photo « nom non-documentaire + OCR vide » → `_Médias`, sans LLM | Moteur/Coût | S-M | [0009](adr/0009-qualite-entites-medias.md) | ⬜ |
 | 12 | **Historique Gmail complet** — scan ancré rétrograde (`before:` persisté), toutes les vieilles PJ classées | Mails | M | [0010](adr/0010-mails-historique-visibilite.md) | ⬜ |
 | 13 | **Phase 3 visible** — « Actions & RDV détectés » au résumé hebdo + dans l'app | Mails | S | [0010](adr/0010-mails-historique-visibilite.md) | ⬜ |
