@@ -23,7 +23,10 @@ function traiterDocument_(src) {
   try {
     if (indexContient_(src.cle)) return; // déjà traité → idempotence
 
-    var blob = src.blob();
+    // P1 (revue intake) : blob PARESSEUX — au-delà de la borne OCR, il n'est jamais matérialisé
+    // (une vidéo de 300 Mo ferait lever getBlob → quarantaine, alors que le média-path n'a besoin
+    // ni du blob ni de l'empreinte — les deux seuls consommateurs sont gatés par la même borne).
+    var blob = src.taille > CONFIG.OCR_TAILLE_MAX ? null : src.blob();
     var ext = extension_(src.nom);
 
     // FAST PATH doublon (P1-20) : l'empreinte MD5 (rapide, ne lit que les octets) suffit à savoir si ce
@@ -56,14 +59,44 @@ function traiterDocument_(src) {
       return;
     }
 
+    // MÉDIA BRUT direct (vidéo/audio/gif — ADR-0009 §2) : jamais un document → `_Médias` SANS OCR
+    // ni LLM (l'OCR Drive ne lit pas une vidéo, le LLM n'a rien à classer). Nom d'origine conservé.
+    // Placé après le fast-path doublon (un doublon de vidéo va quand même dans `_Doublons`).
+    if (estMediaDirect_(src.nom)) {
+      var decM = routageMedia_(src.nom);
+      var idM = src.placer(decM.dossierId, decM.nom);
+      if (!idM) { gererEchec_(src, 'placement média échoué'); return; }
+      indexAjouter_(src.cle, decM, empreinte);
+      journalInfo_('Pipeline', 'média (sans lecture) → _Médias : ' + decM.nom);
+      return;
+    }
+
     // Contenu INÉDIT → lecture complète (OCR) puis classement (LLM).
     var extrait = src.taille > CONFIG.OCR_TAILLE_MAX ? '' : extraireTexte_(blob);
+
+    // FAST-PATH photo sans texte (ADR-0009 §2) : nom NON documentaire (export Facebook, IMG_…)
+    // ET extrait OCR vide → média personnel → `_Médias` sans LLM. L'OCR reste le JUGE (§1) : un scan
+    // de passeport nommé « IMG_2734.jpg » contient du texte → extrait non vide → analyse complète.
+    // R1 (revue sécurité) : le fast-path exige que l'OCR ait été TENTÉ (taille <= max) — sans ça,
+    // une photo > 20 Mo (scan à plat .tif) serait écartée sans que « le juge » ait siégé.
+    // P2 (revue intake) : `extrait === null` = l'OCR a ÉCHOUÉ (panne transitoire) — le juge n'a pas
+    // rendu de verdict → jamais de fast-path (le doc continue vers le LLM, comme avant #11).
+    if (src.taille <= CONFIG.OCR_TAILLE_MAX && extrait !== null &&
+        estPhoto_(src.nom) && estNomNonDocumentaire_(src.nom) &&
+        extrait.length < CONFIG.MEDIAS_OCR_MAX_CARS) {
+      var decP = routageMedia_(src.nom);
+      var idP = src.placer(decP.dossierId, decP.nom);
+      if (!idP) { gererEchec_(src, 'placement média échoué'); return; }
+      indexAjouter_(src.cle, decP, empreinte);
+      journalInfo_('Pipeline', 'photo sans texte → _Médias : ' + decP.nom);
+      return;
+    }
 
     var classif = classifier_({
       nomFichier: src.nom,
       expediteur: src.expediteur || '',
       sujet: src.sujet || '',
-      extrait: extrait
+      extrait: extrait || '' // null (échec OCR) → le LLM classe sur les métadonnées, comme avant
     });
     if (!classif) {
       // Échec LLM : compté ; re-tenté au prochain tick, ou quarantaine après N échecs.

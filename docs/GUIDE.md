@@ -17,7 +17,7 @@ rien supprimer**.
 - Dans les **domaines** (`01 · Administratif` … `08 · Perso`), sous l'**entité** (banque, école,
   employeur…), avec un **nom clair** (`AAAA-MM-JJ_Type_Émetteur`, adapté au type de doc).
 - Les **doublons** → dossier **`_Doublons`** (jamais supprimés — tu le vides d'un coup quand tu veux).
-- Le **code / CAO / médias bruts** → **`_Technique`** (pour ne pas polluer tes domaines).
+- Le **code / CAO** → **`_Technique`** ; les **médias personnels** (photos/vidéos sans texte, exports Facebook…) → **`_Médias`**, sans analyse IA (rapide et gratuit) (pour ne pas polluer tes domaines).
 - Les documents **sensibles** (immigration, fiscal) sont **classés** comme le reste (décision 2026-07-01),
   mais jamais supprimés ni détachés de `04 · Immigration`.
 

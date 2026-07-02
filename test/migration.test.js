@@ -145,6 +145,8 @@ function ctxPipeline(ignorer) {
   ctx.doublonRapide_ = (nom) => ({ dossierId: 'DUP', nom: 'dup_' + nom, statut: 'doublon', domaine: '', chemin: '' });
   ctx.indexAjouter_ = () => {};
   ctx.estTechnique_ = () => false;
+  ctx.estMediaDirect_ = () => false;
+  ctx.estPhoto_ = () => false;
   ctx.extension_ = () => '.pdf';
   ctx.extraireTexte_ = () => '';
   ctx.classifier_ = () => null;                       // stoppe le pipeline après le fast-path (test ciblé)
@@ -177,6 +179,7 @@ test('traiterDocument_ : AVEC ignorerDoublon (migration), le fast-path est saut�
 test('estAReclasserLeger_ : les noms produits par le nommage PAR TYPE sont « déjà rangés » (convergence)', () => {
   const ctx = load(['Config.gs', 'Maintenance.gs']);
   ctx.journalErreur_ = () => {};
+  ctx.indexContient_ = () => false; // Index vide (P3 testé dans predicates.test.js)
   const casRanges = [
     '2024-03-05_Facture_Hydro-Québec.pdf', // jour (historique)
     '2024-03_Relevé_Desjardins.pdf',       // mois (nouveau)
