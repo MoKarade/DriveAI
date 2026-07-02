@@ -32,7 +32,8 @@ const CONTRAT = [
   'creerDossiersEntitesValidees_', 'promouvoirEntiteValidee_', 'appliquerCurationEntites_',
   'estEntiteGenerique_', 'estFusionnableEntite_', 'incrementerVuEntite_',
   // sources & maintenance
-  'traiterGmail_', 'traiterDepots_', 'collecterPartages_', 'appliquerMigrationTaxonomie_',
+  'traiterGmail_', 'traiterGmailHistorique_', 'pageFilsHisto_', 'requeteHisto_', 'curseurSuivantHisto_', 'dateGmail_',
+  'traiterDepots_', 'collecterPartages_', 'appliquerMigrationTaxonomie_',
   'appliquerRangementInitial_', 'appliquerRejeuSiNouvelleVersion_', 'rangementTermine_',
   'appliquerRelancesQuarantaine_',
   'estAReclasserLeger_', 'collecterAReclasser_', 'deplacerVersATrier_',

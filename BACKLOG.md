@@ -240,6 +240,14 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C11-06 | **Revue intake intégrée** : P1 — blob PARESSEUX (une vidéo de 300 Mo ne lève plus getBlob → `_Médias` au lieu de quarantaine) ; P3 — un fichier déjà traité (clé `drive\|`) n'est jamais re-collecté par le rangement (un média ressorti de `_Médias` ne reste plus coincé dans `00·À trier`) | ✅ (testé) |
 | C11-03 | **`_Médias`** (racine `_`, find-or-create, ID en Script Property `DriveAI_MEDIAS_ID`) : nom d'ORIGINE conservé (traçabilité — les noms d'export sont leurs identifiants) ; jamais re-scanné (hors domaines, comme `_Doublons`/`_Technique`) | ✅ |
 
+### Chantier #12 — Historique Gmail complet (ADR-0010 §1)  🟦
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C12-01 | **Primitives PURES** (`Gmail.gs`) : `dateGmail_` (yyyy/MM/dd), `requeteHisto_` (`has:attachment before:<curseur>`), `curseurSuivantHisto_` (jour de la plus ANCIENNE date traitée + 1 — `before:` exclusif ⇒ le jour est RE-couvert en entier, l'idempotence Index rend la re-couverture gratuite : jamais de trou) | ✅ (tests) |
+| C12-02 | **Campagne** `traiterGmailHistorique_` (`Main.gs`) : curseur initialisé à −30 j (le vivant couvre le récent), une tranche de `GMAIL_HISTO_PAGE_FILS` fils/tick, terminaison figée quand une tranche est vide (Property — coût nul ensuite), budget partiel sûr (les fils restants sont plus anciens ⇒ toujours re-couverts), fil-poison SAUTÉ avec journal (convergence > complétude) | ✅ (5 tests d'orchestration) |
+| C12-03 | **Câblage** : après le flux vivant, avant migration/intentions ; enveloppé + budget-gaté ; surface au contrat | ✅ |
+
 ### Chantier #15 — App v2 : curation efficace & confort (ADR-0011)  🟦
 
 | ID | Tâche | Statut |

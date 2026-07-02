@@ -74,6 +74,14 @@ var CONFIG = {
   // Idempotence assurée par l'Index (clé messageId|i|nom|taille), PAS par un
   // label : le scope gmail.readonly interdit toute écriture dans la boîte.
   GMAIL_REQUETE: 'has:attachment newer_than:30d',
+  // --- Chantier #12 (ADR-0010 §1) : HISTORIQUE Gmail complet, scan ANCRÉ rétrograde ---
+  // Le scan récent ci-dessus ne voit que 30 j. Ce scan-ci remonte TOUT l'historique par tranches,
+  // du plus récent au plus ancien, ancré sur une date ABSOLUE persistée (`before:` — leçon durable
+  // « pagination sur recherche mouvante » : jamais un offset numérique seul). Terminé quand une
+  // recherche ne rend plus rien (Property `DriveAI_GMAIL_HISTO` figée) — coût nul ensuite.
+  GMAIL_REQUETE_HISTO_BASE: 'has:attachment',
+  GMAIL_HISTO_PAGE_FILS: 10,              // fils/run (les vieilles PJ passent OCR+LLM ou dédup MD5 —
+                                          // lourd par fil ; le flux VIVANT garde la priorité)
   PAGE_FILS: 20,                         // taille de page de la recherche Gmail
   BUDGET_MS: 4.5 * 60 * 1000,            // garde-temps (exécution Apps Script < 6 min)
 

@@ -303,6 +303,14 @@ function tickDriveAI() {
       catch (e) { journalErreur_('Partages', 'Collecte des fichiers partagés différée : ' + e); }
     }
 
+    // Campagne HISTORIQUE Gmail (#12, ADR-0010 §1) : remonte tout l'historique de PJ par tranches
+    // ancrées. APRÈS le flux vivant (priorité), AVANT migration/intentions. Coût nul une fois finie.
+    // SECONDAIRE → enveloppée : un échec Gmail ne bloque jamais la suite du tick.
+    if (!estBudgetDepasse()) {
+      try { traiterGmailHistorique_(estBudgetDepasse); }
+      catch (e) { journalErreur_('Gmail', 'Campagne historique différée : ' + e); }
+    }
+
     // Migration taxonomie (#8, ADR-0002) : re-classe l'EXISTANT (pré-refonte) vers la nouvelle
     // taxonomie, EN PLACE, une page par tick. APRÈS l'intake (le flux vivant garde la priorité),
     // AVANT les intentions (la précision documentaire prime, cap produit ADR-0001). Campagne finie
@@ -583,6 +591,62 @@ function traiterFil_(fil) {
       traiterPjGmail_(message, p, pjs[p]);
     }
   }
+}
+
+/**
+ * Chantier #12 (ADR-0010 §1) — HISTORIQUE Gmail complet, scan ANCRÉ rétrograde.
+ *
+ * Le scan vivant (`traiterGmail_`) ne voit que 30 j. Cette campagne remonte TOUT l'historique par
+ * tranches `before:<curseur>` (date ABSOLUE persistée — leçon durable : jamais un offset numérique
+ * sur une recherche mouvante), du plus récent au plus ancien. Le curseur ne va que vers le PASSÉ :
+ * jour de la plus ancienne date traitée + 1 (re-couvre le jour entier, l'idempotence de l'Index rend
+ * la re-couverture gratuite — aucun trou, aucun plateau). Terminé quand une tranche est vide
+ * (Property `DriveAI_GMAIL_HISTO` figée → coût nul ensuite). Un fil en erreur est SAUTÉ mais le
+ * curseur avance quand même (convergence > complétude, l'erreur reste journalisée).
+ * @param {function():boolean} estBudgetDepasse
+ */
+function traiterGmailHistorique_(estBudgetDepasse) {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DriveAI_GMAIL_HISTO') === 'terminé') return; // campagne finie (1 lecture)
+
+  var curseur = props.getProperty('DriveAI_GMAIL_HISTO_AVANT');
+  if (!curseur) {
+    // 1ᵉʳ run : ancre au début de la fenêtre du scan vivant — le récent est déjà couvert par lui.
+    var d = new Date();
+    d.setDate(d.getDate() - 30);
+    curseur = dateGmail_(d);
+    props.setProperty('DriveAI_GMAIL_HISTO_AVANT', curseur);
+  }
+
+  var fils;
+  try {
+    fils = pageFilsHisto_(curseur);
+  } catch (e) {
+    journalErreur_('Gmail', 'Recherche historique impossible : ' + e);
+    return; // re-tenté au tick suivant, curseur inchangé
+  }
+  if (!fils.length) {
+    props.setProperty('DriveAI_GMAIL_HISTO', 'terminé');
+    journalInfo_('Gmail', 'Campagne HISTORIQUE terminée : tout l\'historique de PJ est passé au pipeline (curseur ' + curseur + ').');
+    return;
+  }
+
+  var dates = [];
+  for (var i = 0; i < fils.length; i++) {
+    if (estBudgetDepasse()) break; // les fils restants sont plus ANCIENS → toujours < curseur suivant : aucun trou
+    try {
+      var messages = fils[i].getMessages();
+      for (var m = 0; m < messages.length; m++) {
+        var pjs = piecesJointes_(messages[m]);
+        for (var p = 0; p < pjs.length; p++) traiterPjGmail_(messages[m], p, pjs[p]);
+        dates.push(messages[m].getDate());
+      }
+    } catch (e) {
+      journalErreur_('Gmail', 'Fil historique SAUTÉ (il ne sera pas re-tenté — convergence) : ' + e);
+      try { dates.push(fils[i].getLastMessageDate()); } catch (e2) { /* date indisponible → n'ancre pas */ }
+    }
+  }
+  if (dates.length) props.setProperty('DriveAI_GMAIL_HISTO_AVANT', curseurSuivantHisto_(dates));
 }
 
 /**
