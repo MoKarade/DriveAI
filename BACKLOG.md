@@ -207,6 +207,19 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 
 > Aucun nouveau scope OAuth (`drive` couvre les partages). Convergence : petite fenêtre de récence + skip des déjà-copiés + cap sur les copiés → chaque tick progresse (pas de plateau, contrairement à l'historique Gmail).
 
+### Chantier #8 — Migration de l'existant vers la nouvelle taxonomie (ADR-0002)  🟦
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C8-01 | **Campagne gatée** (`Migration.gs`) : `appliquerMigrationTaxonomie_` (tag `MIGRATION_TAG`, attend la fin du grand rangement), `migrerUnePage_` (page bornée `MIGRATION_MAX_PAR_RUN` + garde-temps, anti-« faux terminé » P1-17), fin figée seulement quand une passe complète collecte 0 | ✅ |
+| C8-02 | **Re-traitement EN PLACE** : `migrerFichier_` — clé DÉDIÉE `migre\|tag\|fileId` (additive, l'idempotence Gmail/dépôts/partages intacte), `ignorerDoublon` (jamais « doublon de soi-même »), placement = `renommer_` (même dossier) ou `deplacerEtRenommer_` (move-only), blob mémoïsé, nom courant passé au LLM (signal deviner-du-nom) | ✅ |
+| C8-03 | **Zone protégée** : `04` exclue des racines + revérif STRICTE avant mutation ; refus inscrit `zone protégée` sous la clé migre\| (fichier NON touché, campagne convergente) | ✅ |
+| C8-04 | **Fix convergence rangement** : `estAReclasser_`/`estAReclasserLeger_` reconnaissent les 3 granularités du nommage par type (`AAAA_`, `AAAA-MM_`, `AAAA-MM-JJ_`) — sans quoi une future campagne de rangement re-collecterait les noms par type en boucle infinie | ✅ (testé) |
+
+| C8-05 | **Correctifs revue flotte** : quarantaine sur doc illisible pré-pipeline (sinon la campagne ne se fige jamais) + try par item (un doc empoisonné n'affame plus la page) + **sous-budget `MIGRATION_BUDGET_MS`** (2 min/tick — protège le quota JOURNALIER ~90 min/j des triggers : l'intake reste vivant toute la journée pendant la campagne) + `creerRaccourci_` idempotent (`raccourciExiste_` — un re-classement ne duplique plus les raccourcis multi-entités) | ✅ |
+
+> Bumper `MIGRATION_TAG` (m2, m3…) relance une campagne complète — utile après une validation d'entités en masse (les docs rangés au domaine redescendent aux entités). Coût estimé par la flotte : ~3-5 $ one-shot pour quelques centaines de docs (Haiku + escalades plafonnées), campagne étalée sur 1-2 jours. Dédup intra-campagne des vrais doublons : optionnelle, à décider sur du réel (post-m1, si `_Doublons` le justifie).
+
 ---
 
 ## Épopée Phase 4 — Recherche + dashboard (Vercel)  ⬜

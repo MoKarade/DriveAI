@@ -32,7 +32,8 @@
 - **Modules Phase 1–2** : `Config.gs`, `Gmail.gs`, `Ocr.gs`, `Llm.gs`, `Router.gs`,
   `Journal.gs`, `Main.gs`, `Pipeline.gs`, `Intake.gs`, `Partages.gs` (source #3 : fichiers
   partagés, ADR-0005), `Entites.gs`, `DriveRest.gs`,
-  `Maintenance.gs`. Voir `BACKLOG.md`.
+  `Maintenance.gs`, `Migration.gs` (chantier #8 : campagne de re-classement de l'existant vers
+  la taxonomie courante, gatée `MIGRATION_TAG`). Voir `BACKLOG.md`.
 - **Modules Phase 3** (tâches & agenda) : `GoogleApi.gs` (jeton OAuth + retry partagés),
   `Tasks.gs`/`Calendar.gs` (clients REST, création uniquement), `Prefiltre.gs` (pré-filtre 3
   étages : mots-clés → zone protégée → mini-check Haiku), `Intentions.gs` (orchestration : scan de

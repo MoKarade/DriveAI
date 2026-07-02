@@ -288,6 +288,15 @@ function tickDriveAI() {
       catch (e) { journalErreur_('Partages', 'Collecte des fichiers partagés différée : ' + e); }
     }
 
+    // Migration taxonomie (#8, ADR-0002) : re-classe l'EXISTANT (pré-refonte) vers la nouvelle
+    // taxonomie, EN PLACE, une page par tick. APRÈS l'intake (le flux vivant garde la priorité),
+    // AVANT les intentions (la précision documentaire prime, cap produit ADR-0001). Campagne finie
+    // → 1 Property lue, coût nul. ENVELOPPÉE : un échec ne doit jamais bloquer la suite du tick.
+    if (!estBudgetDepasse()) {
+      try { appliquerMigrationTaxonomie_(estBudgetDepasse); }
+      catch (e) { journalErreur_('Migration', 'Migration taxonomie différée : ' + e); }
+    }
+
     // Phase 3 : détection d'actions/rdv dans TOUS les mails récents → Tasks/Calendar.
     // En dernier, budget restant seulement : le classement documentaire (déjà validé en
     // prod) garde toujours la priorité sur ce nouveau flux.

@@ -189,3 +189,9 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   Logement/EDF), **jamais** le `type` de doc (un même émetteur envoie facture puis contrat) — sinon on
   enseigne une fausse régularité et on biaise la prédiction. Garder le few-shot borné (top-N + seuil) : le
   surcoût est alors négligeable et déjà capté par la mesure `usage`.
+- **Re-traiter un doc déjà classé (rejeu/migration) = lever 3 verrous du pipeline.** (1) Clé d'idempotence
+  DÉDIÉE par campagne (`migre|<tag>|fileId`), additive (ne jamais retirer les lignes des autres sources),
+  qui sert aussi de prédicat de convergence de la collecte ; (2) bypass EXPLICITE du fast-path doublon
+  (`src.ignorerDoublon`) — sinon « doublon de lui-même » et tout part en `_Doublons` ; (3) tout refus de
+  mutation (zone protégée) est INSCRIT sous la clé de campagne, sinon re-collecte à vie et jamais de
+  « terminé ». Et quand le renommeur change de format, ALIGNER tous les prédicats « déjà rangé ».

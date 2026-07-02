@@ -241,6 +241,27 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-02 — Chantier #8 : MIGRATION de l'existant vers la nouvelle taxonomie (ADR-0002).** **Nouveau
+  module `Migration.gs`.** Campagne gatée par `CONFIG.MIGRATION_TAG` (m1) : les documents classés AVANT la
+  refonte (#3-#6 : nommage par type, entités, 07·Santé, few-shot) sont re-passés au **pipeline complet EN
+  PLACE** (déplacement/renommage seul — jamais via `00·À trier`, où leur clé Index existante bloquerait le
+  re-traitement). 3 mécanismes décisifs : **clé dédiée `migre|tag|fileId`** (additive, idempotence des autres
+  sources intacte, convergence de la collecte) ; **`ignorerDoublon`** dans le pipeline (un doc classé a son
+  empreinte dans l'Index — sans bypass, tout le Drive migré partirait en `_Doublons` comme « doublon de
+  lui-même ») ; **zone protégée** exclue des racines + revérif STRICTE avant mutation (refus inscrit →
+  convergence, fichier non touché). Attend la fin du grand rangement ; APRÈS l'intake dans le tick (flux
+  vivant prioritaire) ; page de 12 docs/run (OCR+LLM lourds). **Bug latent corrigé au passage** : les
+  prédicats du rangement (`estAReclasser_`/`estAReclasserLeger_`) ne reconnaissaient que `AAAA-MM-JJ_` —
+  or le nommage PAR TYPE produit aussi `AAAA_`/`AAAA-MM_` → une future campagne de rangement aurait
+  re-collecté ces noms en boucle infinie. Regex élargie aux 3 granularités (testé). `renommer_` (PATCH nom
+  seul) ajouté à `DriveRest.gs` (destination = dossier courant). +8 tests → **128**. Relance : bumper
+  `MIGRATION_TAG` (m2…) — utile après validation d'entités en masse. **Revue flotte passée** :
+  security-auditor 🟢 CONFORME (aucun chemin de détachement de 04, `renommer_` sans champ parents par
+  construction) ; quotas + file-checker → correctifs appliqués : quarantaine sur doc illisible pré-pipeline
+  (sinon campagne jamais figée), try par item, **sous-budget `MIGRATION_BUDGET_MS` 2 min/tick** (protège le
+  quota journalier ~90 min/j — l'intake reste vivant toute la journée), `creerRaccourci_` idempotent
+  (`raccourciExiste_`). Coût estimé ~3-5 $ one-shot, campagne étalée 1-2 jours. +9 tests → **129**.
+  **Reste roadmap : #9 (app web), C6-05, validation 1-clic entités.**
 - **2026-07-02 — Chantier #7 : fichiers PARTAGÉS (source d'intake #3, ADR-0005).** **Nouveau module
   `Partages.gs`.** À parité avec les PJ Gmail : les fichiers récemment partagés avec Marc (`sharedWithMe`,
   REST `files.list` trié `sharedWithMeTime desc`) de type document (allowlist images + PDF/Office) sont
