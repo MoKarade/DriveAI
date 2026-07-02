@@ -229,7 +229,8 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C9-03 | **Tableau de bord** : onglet `Santé` + activité récente (Journal) + comptage par domaine (Index). Lecture seule | ✅ |
 | C9-04 | **Corrections** : **validation 1-clic des entités** (Statut→« validée », lu PAR EN-TÊTES réels — reste du chantier #4 ✅) + **reclassement immédiat** d'un document (recherche Drive par nom → déplacement/renommage via API sous verdict garde-fous → **journalisé dans `Corrections`** ⇒ few-shot ADR-0003) | ✅ |
 | C9-05 | **CI dédiée** (job `app` : npm ci, vitest, tsc+build) + doc de déploiement (`DEPLOIEMENT.md` §Phase 4 : client OAuth + Vercel, ~10 min côté Marc) | ✅ |
-| C9-06 | **Recherche structurée** (filtres Index + plein texte délégué à `fullText contains` Drive — ADR-0007 intact) | ⬜ à suivre (v1.1) |
+| C9-06 | **Correctifs revue flotte** — sécurité 🟢 (motifs anti-suppression renforcés `:clear`/`/trash`/méthode non littérale, backslash échappé, CSP) ; code 🟠→réglé : **journalisation Corrections COMPLÈTE** (émetteur pré-rempli du nom + domaine datalist Index + entité — sans quoi la ligne était MORTE pour le few-shot), écriture par en-têtes réels, **401 → rebascule connexion**, cible retirée de `removeParents` (déjà en place ⇒ renommage seul), recherche sans dossiers, plages larges (Z), **destination = lien Drive collable** + datalist des entités validées, bouton ⚙ Configuration | ✅ (42 tests) |
+| C9-07 | **Recherche structurée** (filtres Index + plein texte délégué à `fullText contains` Drive — ADR-0007 intact) | ⬜ à suivre (v1.1) |
 
 > ⚙️ **Côté Marc (une fois, ~10 min)** : créer le client OAuth (origines = URL Vercel) + importer le repo dans Vercel (Root Directory = `app`). Voir `docs/DEPLOIEMENT.md` §Phase 4.
 

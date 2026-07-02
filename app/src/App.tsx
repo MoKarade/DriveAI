@@ -2,9 +2,9 @@
  * App.tsx — coquille de l'app : configuration → connexion Google → onglets (dashboard, corrections).
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { configComplete, lireConfig, enregistrerConfig } from './config';
-import { seConnecter, estConnecte, seDeconnecter } from './google';
+import { seConnecter, estConnecte, seDeconnecter, abonnerSessionExpiree } from './google';
 import { Langue, langueCourante, changerLangue, t } from './i18n';
 import { TableauDeBord } from './vues/TableauDeBord';
 import { Corrections } from './vues/Corrections';
@@ -17,6 +17,11 @@ export function App() {
   const [connecte, setConnecte] = useState(estConnecte());
   const [onglet, setOnglet] = useState<Onglet>('dashboard');
   const [erreur, setErreur] = useState('');
+
+  // Jeton GIS expiré (~1 h) → rebascule sur l'écran de connexion au lieu de vues qui échouent en boucle.
+  useEffect(() => {
+    abonnerSessionExpiree(() => setConnecte(false));
+  }, []);
 
   function basculerLangue() {
     const l: Langue = langue === 'fr' ? 'en' : 'fr';
@@ -44,6 +49,9 @@ export function App() {
         <div className="header-actions">
           <button className="discret" onClick={basculerLangue}>
             {langue === 'fr' ? 'EN' : 'FR'}
+          </button>
+          <button className="discret" title={t('configuration', langue)} onClick={() => setConfigOk(false)}>
+            ⚙
           </button>
           {connecte && (
             <button

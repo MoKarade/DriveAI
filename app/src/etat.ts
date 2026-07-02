@@ -77,6 +77,7 @@ export interface LigneEntite {
   type: string;
   statut: string;
   variante: string;
+  dossierId: string; // dossier matérialisé (entité validée) — sert de destination de reclassement
 }
 
 export const COLONNES_ENTITES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?'];
@@ -103,6 +104,7 @@ export function interpreterEntites(brut: string[][]): { lignes: LigneEntite[]; c
       type: l[idx('Type')] ?? '',
       statut: normaliserCle(l[iStatut] ?? ''),
       variante: l[idx('Variante possible ?')] ?? '',
+      dossierId: l[idx('Dossier ID')] ?? '',
     });
   }
   return { lignes, colonneStatut: lettreColonne(iStatut) };
@@ -122,4 +124,41 @@ export function lettreColonne(index: number): string {
 
 export function entitesEnAttente(lignes: LigneEntite[]): LigneEntite[] {
   return lignes.filter((l) => l.statut === 'en attente' || l.statut === 'en_attente');
+}
+
+/** Entités validées AVEC dossier matérialisé — destinations proposées au reclassement. */
+export function entitesValidees(lignes: LigneEntite[]): LigneEntite[] {
+  return lignes.filter((l) => l.statut === 'validee' && l.dossierId);
+}
+
+/* ---------- Aides de saisie (pures, testées) ---------- */
+
+/**
+ * Extrait l'ÉMETTEUR du nom conventionnel `AAAA…_Type_Émetteur.ext` (3ᵉ segment, sans extension).
+ * '' si le nom ne suit pas la convention — le champ reste alors à saisir. Sert à pré-remplir la
+ * journalisation Corrections (le few-shot du moteur sélectionne PAR émetteur : sans lui, la
+ * correction serait une ligne morte).
+ */
+export function emetteurDepuisNom(nom: string): string {
+  const sansExt = nom.replace(/\.[^.]+$/, '');
+  const segments = sansExt.split('_');
+  if (segments.length < 3 || !/^\d{4}(-\d{2}){0,2}$/.test(segments[0])) return '';
+  return segments.slice(2).join('_');
+}
+
+/**
+ * Accepte un ID de dossier Drive OU une URL Drive collée telle quelle (« Obtenir le lien »)
+ * et renvoie l'ID. '' si rien d'exploitable.
+ */
+export function extraireIdDossier(texte: string): string {
+  const t = texte.trim();
+  const url = t.match(/\/folders\/([-\w]+)/);
+  if (url) return url[1];
+  if (/^[-\w]{20,}$/.test(t)) return t; // un ID Drive brut
+  return '';
+}
+
+/** Domaines distincts observés dans l'Index (pour la datalist du formulaire — zéro config dupliquée). */
+export function domainesDepuisIndex(lignes: LigneIndex[]): string[] {
+  return Array.from(new Set(lignes.map((l) => l.domaine).filter(Boolean))).sort();
 }

@@ -251,10 +251,16 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
   sous garde-fous, journalisé dans `Corrections` ⇒ few-shot). **Contrainte non négociable ADR-0008
   respectée** : garde-fous ré-implémentés en TS PUR (`garde-fous.ts`, miroir de `aParentProtege_`
   strict/`normaliserCle_`/prédicat 3 granularités) + **test de surface « aucune suppression »** (le
-  code de `src/` ne peut contenir DELETE/trashed/deleteRange sans casser la CI). 27 tests vitest, job
-  CI dédié (`app` : npm ci → vitest → tsc+build). UI bilingue FR/EN. **Côté Marc (une fois, ~10 min)** :
-  client OAuth Google Cloud + import Vercel (Root Directory=`app`) — `DEPLOIEMENT.md` §Phase 4.
-  **Reste : C9-06 recherche structurée (v1.1), C6-05.**
+  code de `src/` ne peut contenir DELETE/trashed/deleteRange sans casser la CI). **42 tests vitest**, job
+  CI dédié (`app` : npm ci → vitest → tsc+build). UI bilingue FR/EN. **Revue flotte passée** : sécurité 🟢
+  (recos appliquées : motifs anti-suppression renforcés `:clear`/`/trash`/méthode non littérale, backslash
+  échappé dans la recherche, CSP) ; code 🟠→réglé — dont les 2 requis : la **journalisation Corrections est
+  désormais COMPLÈTE** (émetteur pré-rempli depuis le nom + domaine en datalist Index + entité — une ligne
+  sans émetteur était MORTE pour le few-shot, `Corrections.gs` la saute) et le **401 rebascule sur l'écran
+  de connexion** (jeton GIS ~1 h). UX : destination = **lien Drive collé tel quel** (extraction d'ID) +
+  datalist des entités validées (leur Dossier ID est déjà dans la Sheet — zéro duplication de config).
+  **Côté Marc (une fois, ~10 min)** : client OAuth Google Cloud + import Vercel (Root Directory=`app`) —
+  `DEPLOIEMENT.md` §Phase 4. **Reste : C9-07 recherche structurée (v1.1), C6-05.**
 
 - **2026-07-02 — Chantier #8 : MIGRATION de l'existant vers la nouvelle taxonomie (ADR-0002).** **Nouveau
   module `Migration.gs`.** Campagne gatée par `CONFIG.MIGRATION_TAG` (m1) : les documents classés AVANT la

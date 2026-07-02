@@ -7,9 +7,13 @@ import { describe, it, expect } from 'vitest';
 import {
   interpreterEntites,
   entitesEnAttente,
+  entitesValidees,
   lettreColonne,
   interpreterIndex,
   compterParDomaine,
+  emetteurDepuisNom,
+  extraireIdDossier,
+  domainesDepuisIndex,
 } from '../src/etat';
 
 const ENTETES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?'];
@@ -60,6 +64,44 @@ describe('lettreColonne', () => {
   });
 });
 
+describe('entitesValidees (destinations de reclassement)', () => {
+  it('ne garde que les validées AVEC dossier matérialisé', () => {
+    const { lignes } = interpreterEntites([
+      ENTETES,
+      ['A', 'd', '', '', 'validée', 'DOSSIER_A', '', ''],
+      ['B', 'd', '', '', 'validée', '', '', ''], // validée mais pas encore matérialisée
+      ['C', 'd', '', '', 'en_attente', '', '', ''],
+    ]);
+    expect(entitesValidees(lignes).map((l) => l.entite)).toEqual(['A']);
+    expect(entitesValidees(lignes)[0].dossierId).toBe('DOSSIER_A');
+  });
+});
+
+describe('emetteurDepuisNom (pré-remplissage few-shot)', () => {
+  it.each([
+    ['2024-03-05_Facture_Hydro-Québec.pdf', 'Hydro-Québec'],
+    ['2024-03_Relevé_Desjardins.pdf', 'Desjardins'],
+    ['2021_Diplôme_IUT-ULCO.pdf', 'IUT-ULCO'],
+    ['2024-03-05_Attestation_Revenu_Québec.pdf', 'Revenu_Québec'], // segments multiples conservés
+    ['IMG_2734.jpg', ''],           // hors convention → à saisir
+    ['scan.pdf', ''],
+  ])('%s → %s', (nom, attendu) => {
+    expect(emetteurDepuisNom(nom)).toBe(attendu);
+  });
+});
+
+describe('extraireIdDossier (ID brut OU lien Drive collé)', () => {
+  it.each([
+    ['1VBK_4pkJmIeTsRyz-MWpMBYaOhKYNfRC', '1VBK_4pkJmIeTsRyz-MWpMBYaOhKYNfRC'],
+    ['https://drive.google.com/drive/folders/1VBK_4pkJmIeTsRyz-MWpMBYaOhKYNfRC?usp=sharing', '1VBK_4pkJmIeTsRyz-MWpMBYaOhKYNfRC'],
+    ['  https://drive.google.com/drive/u/0/folders/1B9jNRpAKrAWdUs6Gn5_ojle3ZH7JbFDW  ', '1B9jNRpAKrAWdUs6Gn5_ojle3ZH7JbFDW'],
+    ['pas un id', ''],
+    ['', ''],
+  ])('%s → %s', (texte, attendu) => {
+    expect(extraireIdDossier(texte)).toBe(attendu);
+  });
+});
+
 describe('interpreterIndex + compterParDomaine', () => {
   it('compte les documents par domaine', () => {
     const lignes = interpreterIndex([
@@ -72,5 +114,6 @@ describe('interpreterIndex + compterParDomaine', () => {
     const compte = compterParDomaine(lignes);
     expect(compte.get('02 · Finances')).toBe(2);
     expect(compte.get('03 · Logement & véhicule')).toBe(1);
+    expect(domainesDepuisIndex(lignes)).toEqual(['02 · Finances', '03 · Logement & véhicule']);
   });
 });

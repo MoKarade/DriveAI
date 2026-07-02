@@ -4,39 +4,51 @@
  *     dans l'onglet Entités ; le moteur matérialise le dossier au tick suivant.
  *  2. RECLASSEMENT IMMÉDIAT d'un document : déplacement/renommage via l'API Drive, SOUS les
  *     garde-fous miroir (zone protégée jamais détachée, nom conventionnel, jamais de suppression),
- *     puis journalisation dans l'onglet Corrections → le moteur APPREND (few-shot, ADR-0003).
+ *     puis journalisation COMPLÈTE (émetteur + domaine + entité) dans l'onglet Corrections —
+ *     sans émetteur/domaine la ligne serait MORTE pour le few-shot du moteur (ADR-0003).
  */
 
 import { useEffect, useState } from 'react';
-import { lirePlage, ecrireCellule, ajouterLigne, chercherParNom, reclasserFichier, FichierDrive } from '../google';
-import { LigneEntite, interpreterEntites, entitesEnAttente } from '../etat';
+import {
+  lirePlage,
+  ecrireCellule,
+  chercherParNom,
+  reclasserFichier,
+  journaliserCorrection,
+  FichierDrive,
+} from '../google';
+import {
+  LigneEntite,
+  interpreterEntites,
+  entitesEnAttente,
+  entitesValidees,
+  interpreterIndex,
+  domainesDepuisIndex,
+  emetteurDepuisNom,
+  extraireIdDossier,
+} from '../etat';
 import { Langue, t } from '../i18n';
 
 export function Corrections({ langue }: { langue: Langue }) {
-  return (
-    <div className="colonnes">
-      <ValidationEntites langue={langue} />
-      <ReclasserDocument langue={langue} />
-    </div>
-  );
-}
-
-/* ---------- 1. Validation 1-clic ---------- */
-
-function ValidationEntites({ langue }: { langue: Langue }) {
-  const [enAttente, setEnAttente] = useState<LigneEntite[]>([]);
+  // Lu UNE fois pour les deux sections : file « en attente » + destinations validées + domaines.
+  const [entites, setEntites] = useState<LigneEntite[]>([]);
   const [colonneStatut, setColonneStatut] = useState('');
-  const [validees, setValidees] = useState<Set<number>>(new Set());
+  const [domaines, setDomaines] = useState<string[]>([]);
   const [erreur, setErreur] = useState('');
   const [chargee, setChargee] = useState(false);
 
   useEffect(() => {
     (async () => {
       try {
-        const brut = await lirePlage('Entités', 'A1:H10000');
-        const { lignes, colonneStatut: col } = interpreterEntites(brut);
-        setEnAttente(entitesEnAttente(lignes));
+        // Plage large (Z) : si le moteur ajoute une colonne (auto-réparation), Statut reste visible.
+        const [brutEntites, brutIndex] = await Promise.all([
+          lirePlage('Entités', 'A1:Z10000'),
+          lirePlage('Index', 'A2:F20000'),
+        ]);
+        const { lignes, colonneStatut: col } = interpreterEntites(brutEntites);
+        setEntites(lignes);
         setColonneStatut(col);
+        setDomaines(domainesDepuisIndex(interpreterIndex(brutIndex)));
       } catch (e) {
         setErreur(String(e));
       } finally {
@@ -44,6 +56,36 @@ function ValidationEntites({ langue }: { langue: Langue }) {
       }
     })();
   }, []);
+
+  return (
+    <div className="colonnes">
+      {erreur && <p className="erreur">{t('erreur', langue)} : {erreur}</p>}
+      <ValidationEntites
+        langue={langue}
+        enAttente={entitesEnAttente(entites)}
+        colonneStatut={colonneStatut}
+        chargee={chargee}
+      />
+      <ReclasserDocument langue={langue} domaines={domaines} destinations={entitesValidees(entites)} />
+    </div>
+  );
+}
+
+/* ---------- 1. Validation 1-clic ---------- */
+
+function ValidationEntites({
+  langue,
+  enAttente,
+  colonneStatut,
+  chargee,
+}: {
+  langue: Langue;
+  enAttente: LigneEntite[];
+  colonneStatut: string;
+  chargee: boolean;
+}) {
+  const [validees, setValidees] = useState<Set<number>>(new Set());
+  const [erreur, setErreur] = useState('');
 
   async function valider(e: LigneEntite) {
     try {
@@ -87,12 +129,23 @@ function ValidationEntites({ langue }: { langue: Langue }) {
 
 /* ---------- 2. Reclassement immédiat (sous garde-fous) ---------- */
 
-function ReclasserDocument({ langue }: { langue: Langue }) {
+function ReclasserDocument({
+  langue,
+  domaines,
+  destinations,
+}: {
+  langue: Langue;
+  domaines: string[];
+  destinations: LigneEntite[];
+}) {
   const [recherche, setRecherche] = useState('');
   const [resultats, setResultats] = useState<FichierDrive[]>([]);
   const [choisi, setChoisi] = useState<FichierDrive | null>(null);
   const [nouveauNom, setNouveauNom] = useState('');
-  const [dossierCible, setDossierCible] = useState('');
+  const [emetteur, setEmetteur] = useState('');
+  const [domaine, setDomaine] = useState('');
+  const [entite, setEntite] = useState('');
+  const [destination, setDestination] = useState(''); // ID ou URL Drive collée
   const [message, setMessage] = useState<{ ok: boolean; texte: string } | null>(null);
   const [enCours, setEnCours] = useState(false);
 
@@ -106,15 +159,17 @@ function ReclasserDocument({ langue }: { langue: Langue }) {
     }
   }
 
+  const idDestination = extraireIdDossier(destination);
+
   async function appliquer() {
-    if (!choisi) return;
+    if (!choisi || !idDestination) return;
     setEnCours(true);
     setMessage(null);
     try {
-      await reclasserFichier({ fileId: choisi.id, nouveauParent: dossierCible, nouveauNom });
-      // Journalise la correction → boucle d'apprentissage few-shot du moteur (ADR-0003).
-      // Colonnes Corrections : Fichier | Émetteur | Domaine | Catégorie | Entité | Type | Corrigé le
-      await ajouterLigne('Corrections', [nouveauNom, '', '', '', '', '', new Date().toISOString()]);
+      await reclasserFichier({ fileId: choisi.id, nouveauParent: idDestination, nouveauNom });
+      // Journalisation COMPLÈTE → boucle d'apprentissage few-shot (ADR-0003). Émetteur + domaine
+      // obligatoires (bouton gaté) : sans eux, le moteur ignorerait la ligne.
+      await journaliserCorrection({ fichier: nouveauNom, emetteur, domaine, entite });
       setMessage({ ok: true, texte: t('correctionAppliquee', langue) });
       setChoisi(null);
       setResultats([]);
@@ -154,6 +209,7 @@ function ReclasserDocument({ langue }: { langue: Langue }) {
                   onChange={() => {
                     setChoisi(f);
                     setNouveauNom(f.name);
+                    setEmetteur(emetteurDepuisNom(f.name));
                   }}
                 />
                 {f.name}
@@ -166,15 +222,39 @@ function ReclasserDocument({ langue }: { langue: Langue }) {
         <div className="formulaire-reclassement">
           <input
             value={nouveauNom}
-            onChange={(e) => setNouveauNom(e.target.value)}
+            onChange={(e) => {
+              setNouveauNom(e.target.value);
+              if (!emetteur) setEmetteur(emetteurDepuisNom(e.target.value));
+            }}
             placeholder={t('nouveauNom', langue)}
           />
+          <input value={emetteur} onChange={(e) => setEmetteur(e.target.value)} placeholder={t('emetteur', langue)} />
           <input
-            value={dossierCible}
-            onChange={(e) => setDossierCible(e.target.value)}
-            placeholder={t('dossierCible', langue)}
+            value={domaine}
+            onChange={(e) => setDomaine(e.target.value)}
+            placeholder={t('domaine', langue)}
+            list="domaines-connus"
           />
-          <button onClick={appliquer} disabled={enCours || !nouveauNom || !dossierCible}>
+          <datalist id="domaines-connus">
+            {domaines.map((d) => (
+              <option key={d} value={d} />
+            ))}
+          </datalist>
+          <input value={entite} onChange={(e) => setEntite(e.target.value)} placeholder={t('entiteOptionnelle', langue)} />
+          <input
+            value={destination}
+            onChange={(e) => setDestination(e.target.value)}
+            placeholder={t('dossierCible', langue)}
+            list="destinations-validees"
+          />
+          <datalist id="destinations-validees">
+            {destinations.map((d) => (
+              <option key={d.dossierId} value={d.dossierId}>
+                {`${d.entite} (${d.domaine})`}
+              </option>
+            ))}
+          </datalist>
+          <button onClick={appliquer} disabled={enCours || !nouveauNom || !idDestination || !emetteur || !domaine}>
             {t('appliquer', langue)}
           </button>
         </div>

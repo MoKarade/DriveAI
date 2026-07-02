@@ -82,6 +82,13 @@ export function seDeconnecter(): void {
   jetonAcces = null; // le jeton n'est nulle part ailleurs
 }
 
+// Rappel global « session expirée » : l'UI s'y abonne pour rebasculer sur l'écran de connexion
+// (les jetons GIS expirent en ~1 h — sans ça, l'app resterait figée sur des vues qui échouent).
+let surSessionExpiree: (() => void) | null = null;
+export function abonnerSessionExpiree(cb: () => void): void {
+  surSessionExpiree = cb;
+}
+
 /* ---------- Appels HTTP (401 → jeton expiré) ---------- */
 
 async function api<T>(url: string, options?: RequestInit): Promise<T> {
@@ -96,6 +103,7 @@ async function api<T>(url: string, options?: RequestInit): Promise<T> {
   });
   if (rep.status === 401) {
     jetonAcces = null;
+    surSessionExpiree?.(); // l'UI rebascule sur l'écran de connexion
     throw new Error('Session expirée — reconnecte-toi');
   }
   if (!rep.ok) {
@@ -155,8 +163,9 @@ export async function lireFichier(fileId: string): Promise<FichierDrive> {
 export async function chercherParNom(nom: string): Promise<FichierDrive[]> {
   // Échappe le backslash AVANT l'apostrophe : sans ça, un nom contenant `\` réactiverait le `'`
   // fermant de la requête (injection de clause — lecture seule, mais autant fermer proprement).
+  // Exclut les DOSSIERS : on reclasse des documents, jamais un dossier entier par mégarde.
   const sain = nom.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-  const q = `name contains '${sain}' and trashed = false`;
+  const q = `name contains '${sain}' and trashed = false and mimeType != 'application/vnd.google-apps.folder'`;
   const r = await api<{ files?: FichierDrive[] }>(
     `${DRIVE}?q=${encodeURIComponent(q)}&fields=${encodeURIComponent('files(id,name,parents,webViewLink)')}&pageSize=20`,
   );
@@ -218,11 +227,46 @@ export async function reclasserFichier(args: {
     throw new Error(`Reclassement refusé (garde-fous) : ${violations.join(', ')}`);
   }
   const f = await lireFichier(args.fileId);
-  const anciens = (f.parents ?? []).join(',');
-  const params = new URLSearchParams({ addParents: args.nouveauParent, fields: 'id' });
+  // La cible est RETIRÉE de removeParents : déjà dans le bon dossier (ex. re-clic après un échec
+  // de journalisation) ⇒ renommage seul — jamais un add+remove ambigu du même parent.
+  const anciens = (f.parents ?? []).filter((p) => p !== args.nouveauParent).join(',');
+  const dejaEnPlace = (f.parents ?? []).includes(args.nouveauParent);
+  const params = new URLSearchParams({ fields: 'id' });
+  if (!dejaEnPlace) params.set('addParents', args.nouveauParent);
   if (anciens) params.set('removeParents', anciens);
   await api(`${DRIVE}/${args.fileId}?${params.toString()}`, {
     method: 'PATCH',
     body: JSON.stringify({ name: args.nouveauNom }),
   });
+}
+
+/**
+ * Journalise une correction dans l'onglet `Corrections` EN SUIVANT SES EN-TÊTES RÉELS (miroir de
+ * `colonnesCorrections_` du moteur — jamais un ordre supposé). L'ÉMETTEUR et le DOMAINE sont
+ * indispensables : le few-shot du moteur sélectionne par émetteur et saute les lignes sans
+ * domaine/entité — sans eux, la ligne serait morte.
+ */
+export async function journaliserCorrection(c: {
+  fichier: string;
+  emetteur: string;
+  domaine: string;
+  entite?: string;
+}): Promise<void> {
+  const ORDRE_DEFAUT = ['Fichier', 'Émetteur', 'Domaine', 'Catégorie', 'Entité', 'Type', 'Corrigé le'];
+  let entetes: string[] = [];
+  try {
+    entetes = (await lirePlage('Corrections', 'A1:Z1'))[0] ?? [];
+  } catch {
+    /* onglet illisible → ordre par défaut (celui que le moteur crée) */
+  }
+  if (entetes.length === 0) entetes = ORDRE_DEFAUT;
+  const valeurs: Record<string, string> = {
+    Fichier: c.fichier,
+    'Émetteur': c.emetteur,
+    Domaine: c.domaine,
+    'Entité': c.entite ?? '',
+    'Corrigé le': new Date().toISOString(),
+  };
+  const ligne = entetes.map((e) => valeurs[e] ?? '');
+  await ajouterLigne('Corrections', ligne);
 }
