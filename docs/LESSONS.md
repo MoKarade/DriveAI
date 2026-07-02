@@ -515,3 +515,22 @@ potentiellement glissant, garantir le chevauchement PAR CONSTRUCTION (ancre −2
 design de pagination ne se valide QUE par traçage de scénarios multi-ticks ET par contre-attaque
 adversariale indépendante — TROIS rondes ont chacune trouvé des pertes que l'auteur avait ratées.
 **Règle durable ?** oui.
+
+## 2026-07-02 — Nouvel effet de bord dans un pipeline gardé : TOUTES les gardes en amont, sur TOUS les chemins
+**Contexte.** Chantier #14 : pose d'un flag `important|<messageId>` dans `traiterMessagePourIntentions_`.
+Le pipeline avait déjà deux gardes zone protégée (expéditeur/sujet AVANT le mini-check, corps AVANT
+l'extraction). J'ai posé le flag entre les deux — et créé un chemin (« important sans action ») qui
+retournait avant même de lire le corps. Résultat démontrable trouvé par la revue flotte (BLOQUANT) :
+un mail immigration/fiscal aux expéditeur/sujet neutres mais au corps explicite (« votre demande de
+résidence permanente IRCC… ») serait apparu dans la section « À traiter » du résumé hebdo avec lien —
+la Phase 3 mettait en avant un mail protégé, en contradiction avec l'invariant écrit trois lignes plus
+haut dans le code. Fix : lire le corps et re-vérifier la garde dessus AVANT la pose du flag, sur les
+DEUX chemins (le chemin « rien vu » restant gratuit — corps jamais lu — verrouillé par test).
+**Leçon.** Insérer un nouvel EFFET DE BORD (flag, ligne d'état, notification) dans un pipeline gardé
+exige de vérifier que CHAQUE garde existante est en amont de l'effet sur CHAQUE chemin d'exécution —
+y compris les chemins de sortie anticipée que le nouvel effet CRÉE lui-même (ici « important sans
+action » court-circuitait la lecture du corps qui portait la garde). Réflexe : tracer tous les
+`return` entre les gardes et le nouvel effet, et poser un test par garde × chemin. Un commentaire
+« les gardes ci-dessus couvrent » n'est pas une preuve — c'est précisément là que la revue a trouvé
+le bloquant.
+**Règle durable ?** oui.
