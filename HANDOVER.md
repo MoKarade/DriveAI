@@ -241,6 +241,26 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-02 — Chantier #7 : fichiers PARTAGÉS (source d'intake #3, ADR-0005).** **Nouveau module
+  `Partages.gs`.** À parité avec les PJ Gmail : les fichiers récemment partagés avec Marc (`sharedWithMe`,
+  REST `files.list` trié `sharedWithMeTime desc`) de type document (allowlist images + PDF/Office) sont
+  **COPIÉS** dans son arbo (l'original reste chez la personne) et suivent le pipeline commun (dédup MD5 →
+  OCR → LLM → routage). Idempotence par l'Index (`shared|fileId`, posée par le pipeline). Borné
+  (`PARTAGES_MAX_PAR_RUN=15`/run + garde-temps), **storage-aware** (vérif lazy du quota `about.get` ;
+  au-delà de 95 % on SUSPEND la copie — jamais de suppression — + 1 alerte mail, reprise auto). Câblé dans
+  le tick comme source #3 (après Gmail+dépôts, avant intentions Phase 3), **budget-gatée + enveloppée
+  try/catch** (ne bloque jamais l'intake). Décisions pures testées (`estTypeDocumentPartage_`,
+  `classerRecencePartage_`, `stockagePresquePleinCalc_`), +6 tests → **120**. **Aucun nouveau scope OAuth**
+  (`drive` couvre les partages) → rien de neuf côté Marc. **Revue flotte passée** : security-auditor 🟢
+  CONFORME (parité stricte avec les PJ Gmail, aucun chemin destructif, vie privée OK) ; apps-script-quota
+  et file-checker → correctifs appliqués : (a) blob téléchargé 1× (mémoïsé) au lieu de 2 downloads/fichier ;
+  (b) récence TRI-ÉTAT (`classerRecencePartage_` : date absente ⇒ saut d'item, jamais un STOP global qui
+  gèlerait la collecte) ; (c) **garde de taille** `PARTAGES_TAILLE_MAX` (50 Mo — les partages ne sont pas
+  plafonnés comme les PJ Gmail ~25 Mo), skip journalisé ; (d) `placerRevue` mort supprimé + log de fin
+  toujours émis. Convergence assurée : petite fenêtre de récence + skip des déjà-copiés + cap sur les copiés
+  (pas le plateau de l'historique Gmail). **Reste roadmap : #8 (migration existant), #9 (app web), C6-05
+  (déplacement fichier corrigé).**
+
 - **2026-07-02 — Chantier #6 (partie 2, C6-04) : entité corrigée → « validée » (ADR-0003).** **Modif du
   MOTEUR.** Une correction du formulaire qui nomme une entité + son domaine la **promeut « validée »** dans
   le référentiel (`promouvoirEntiteValidee_`, `Entites.gs`) : find-or-create idempotent (no-op SANS I/O Sheet

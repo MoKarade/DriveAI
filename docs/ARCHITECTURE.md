@@ -5,10 +5,10 @@
 ## Vue d'ensemble
 
 ```
-┌─────────────┐   trigger 10 min   ┌──────────────────────┐
-│  Gmail (PJ) │ ─────────────────▶ │  Apps Script (moteur) │
-│ 00·À trier  │                    │  Gmail / Drive / Ocr  │
-└─────────────┘                    │  Llm / Router / Journal│
+┌──────────────┐  trigger 10 min   ┌──────────────────────┐
+│  Gmail (PJ)  │ ────────────────▶ │  Apps Script (moteur) │
+│ 00·À trier   │                   │  Gmail / Drive / Ocr  │
+│ Partagés (📎)│                   │  Llm / Router / Journal│
                                    └───────────┬───────────┘
                                                │ UrlFetchApp
                                                ▼
@@ -30,7 +30,8 @@
 - **Pourquoi** : triggers temporels natifs ; accès Gmail/Drive/Tasks/Calendar *en tant que
   Marc* (pas d'OAuth serveur à gérer) ; gratuit ; pas d'infra à héberger.
 - **Modules Phase 1–2** : `Config.gs`, `Gmail.gs`, `Ocr.gs`, `Llm.gs`, `Router.gs`,
-  `Journal.gs`, `Main.gs`, `Pipeline.gs`, `Intake.gs`, `Entites.gs`, `DriveRest.gs`,
+  `Journal.gs`, `Main.gs`, `Pipeline.gs`, `Intake.gs`, `Partages.gs` (source #3 : fichiers
+  partagés, ADR-0005), `Entites.gs`, `DriveRest.gs`,
   `Maintenance.gs`. Voir `BACKLOG.md`.
 - **Modules Phase 3** (tâches & agenda) : `GoogleApi.gs` (jeton OAuth + retry partagés),
   `Tasks.gs`/`Calendar.gs` (clients REST, création uniquement), `Prefiltre.gs` (pré-filtre 3

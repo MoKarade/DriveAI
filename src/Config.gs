@@ -111,6 +111,37 @@ var CONFIG = {
   ],
   OCR_TAILLE_MAX: 20 * 1024 * 1024,      // au-delà : pas d'OCR (mémoire) → métadonnées seules
 
+  // --- Chantier #7 : fichiers PARTAGÉS avec Marc (source d'intake #3, ADR-0005) ---
+  // Traitement automatique des partages RÉCENTS (fenêtre glissante, comme Gmail). Un fichier partagé
+  // n'appartient pas à Marc → DriveAI en fait une COPIE dans son arbo (l'original reste chez la personne).
+  // Aucun nouveau scope OAuth : `drive` couvre déjà la lecture des fichiers partagés.
+  PARTAGES_ACTIF: true,                   // interrupteur de la source (coupe la collecte sans retirer le code)
+  PARTAGES_FENETRE_JOURS: 30,             // fenêtre de récence (comme Gmail) — borne naturellement le scan
+  PARTAGES_MAX_PAR_RUN: 15,               // plafond de fichiers COPIÉS par run (pas de rafale ; storage-aware)
+  PARTAGES_PAGE: 100,                     // taille de page REST files.list
+  // Garde de TAILLE propre aux partages : contrairement aux PJ Gmail (plafonnées ~25 Mo), un fichier
+  // partagé n'a aucune borne. Au-delà de ce seuil on ne COPIE pas (téléchargement complet coûteux, storage) :
+  // on saute avec une ligne Journal (visibilité, jamais un silence). Large devant un vrai document.
+  PARTAGES_TAILLE_MAX: 50 * 1024 * 1024,  // 50 Mo
+
+  // ALLOWLIST stricte de types « document » (anti-bruit + anti-storage, ADR-0005 §Garde-fous) : PDF + Office.
+  // Les images (`image/*`) sont acceptées à part (scans). Tout le reste — vidéo, audio, Google natif
+  // collaboratif (Docs/Sheets/Slides), archives — est IGNORÉ (jamais copié).
+  PARTAGES_MIME_DOC: [
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',   // .docx
+    'application/msword',                                                         // .doc
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',          // .xlsx
+    'application/vnd.ms-excel',                                                   // .xls
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',  // .pptx
+    'application/vnd.ms-powerpoint',                                              // .ppt
+    'application/vnd.oasis.opendocument.text',                                    // .odt
+    'application/vnd.oasis.opendocument.spreadsheet',                             // .ods
+    'application/vnd.oasis.opendocument.presentation'                             // .odp
+  ],
+  STORAGE_SEUIL: 0.95,                    // ≥ 95 % du quota (compte gratuit = 15 Go) → on cesse de COPIER
+                                          // (jamais de suppression) + alerte unique ; reprise auto quand ça baisse
+
   // --- Dossiers (IDs : docs/TAXONOMY.md) ---
   DOSSIERS: {
     A_TRIER: '1zFTPL9iADzjJ83F4keX2zaZ9myXBPB-k',

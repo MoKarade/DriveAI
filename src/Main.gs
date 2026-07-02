@@ -280,6 +280,14 @@ function tickDriveAI() {
     traiterGmail_(estBudgetDepasse);                       // source 1 : PJ Gmail
     if (!estBudgetDepasse()) traiterDepots_(estBudgetDepasse); // source 2 : 00·À trier (draine la file)
 
+    // Source 3 : fichiers PARTAGÉS récents (ADR-0005). COPIE dans l'arbo (comme Gmail), pipeline commun.
+    // ENVELOPPÉE : un échec réseau (liste/quota Drive) ne doit jamais bloquer les intentions ci-dessous
+    // ni le reste du tick. Budget-gatée : ne démarre pas si l'intake documentaire a déjà épuisé le budget.
+    if (!estBudgetDepasse()) {
+      try { collecterPartages_(estBudgetDepasse); }
+      catch (e) { journalErreur_('Partages', 'Collecte des fichiers partagés différée : ' + e); }
+    }
+
     // Phase 3 : détection d'actions/rdv dans TOUS les mails récents → Tasks/Calendar.
     // En dernier, budget restant seulement : le classement documentaire (déjà validé en
     // prod) garde toujours la priorité sur ce nouveau flux.
