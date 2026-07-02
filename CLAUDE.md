@@ -18,15 +18,17 @@ Stack : **Google Apps Script** (moteur, Phases 1–3) + une **Google Sheet** (é
 
 Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer la revue.
 
-1. **Documents sensibles — classés, jamais supprimés ni détachés.** *(Décision Marc 2026-07-01,
-   révise l'ancienne règle « sensible → toujours en revue ».)* Les documents sensibles (immigration,
-   fiscal, passeport) sont **auto-classés dans leur domaine** comme le reste — Marc a explicitement
-   demandé à ne plus les voir s'empiler en revue. Ce qui reste **NON négociable** sur ces documents :
-   (a) **aucune suppression** (§2) ; (b) le grand rangement ne **détache jamais** un fichier déjà rangé
-   sous `04 · Immigration` (garde multi-parents, remonte toute la chaîne d'ancêtres) ; (c) un doublon,
-   **même sensible**, va dans `_Doublons` (déplacement seul), jamais effacé. Seul un **domaine
-   introuvable** part encore en revue (`00 · À vérifier`). Le flag `sensible` du LLM reste produit mais
-   ne route plus en revue. *(Réactiver l'ancien filet = re-router `sensible`/zone protégée dans `motifDeRevue_`.)*
+1. **Documents sensibles — classés, jamais supprimés ni détachés. PLUS DE FILE DE REVUE.**
+   *(Décisions Marc 2026-07-01 : révise l'ancienne règle « sensible → toujours en revue », puis
+   supprime la revue.)* Un **seul dossier d'arrivée** (`00 · À trier`). **TOUT** document est
+   **auto-classé** dans son domaine avec son **nom final propre** (`AAAA-MM-JJ_Type_Émetteur.ext`),
+   jamais un nom encodé `[REVUE] …`. Un **domaine introuvable** n'est plus mis en revue : il est rangé
+   dans `CONFIG.DOMAINE_DEFAUT` (bucket générique `01 · Administratif`). Le flag `sensible` du LLM reste
+   produit mais ne route plus rien. Ce qui reste **NON négociable** : (a) **aucune suppression** (§2) ;
+   (b) le grand rangement ne **détache jamais** un fichier déjà rangé sous `04 · Immigration` (garde
+   multi-parents `aParentProtege_`, remonte toute la chaîne d'ancêtres, appliquée à la collecte ET avant
+   chaque mutation) ; (c) un doublon, **même sensible**, va dans `_Doublons` (déplacement seul), jamais
+   effacé. *(Réactiver un filet de revue = re-router dans `Router.deciderRoutage_` + rétablir `revue_`.)*
 2. **Aucune suppression automatique.** Les doublons sont *écartés dans `_Doublons` (déplacement seul)*,
    jamais effacés.
 3. **Moindre privilège.** Gmail en **lecture seule**. Scopes déclarés explicitement dans
@@ -97,6 +99,11 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   le dépôt Drive et après la ligne Revue — pour qu'une coupure rejoue au lieu de perdre un cas.
 - **Robustesse moteur Apps Script.** `LockService` (anti-chevauchement), garde-temps (coupure
   6 min), et lecture d'état mise en cache 1×/run (jamais une lecture Sheet par item).
+- **Vie privée : métadonnées seulement dans l'état.** Ne JAMAIS persister le corps d'un document
+  (texte OCR, contenu) dans l'Index ni le Journal — uniquement des métadonnées (nom, date, chemin,
+  statut, **empreinte = hash**). Le texte des documents ne sort que vers l'API Anthropic pour le
+  classement (transit assumé, ADR-0007) ; il ne se stocke nulle part. Tout nouveau champ d'état ou
+  log doit respecter cet invariant (à verrouiller par un test, roadmap #1).
 - **Garde-fou étroit, calibré sur du réel.** Un flag de protection (ex. `sensible`) doit viser
   des catégories précises (immigration + fiscal), pas « true par défaut » — sinon tout part en
   revue et l'auto-rangement est neutralisé. Le défaut prudent ne sert que pour les réponses LLM
@@ -154,10 +161,19 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   (rejeu de version, grand rangement, ajustement de déclencheur) doit être **enveloppée d'un try/catch** —
   « un échec ne doit JAMAIS bloquer l'intake ». Le `try` de `tickDriveAI` n'a qu'un `finally` : une exception
   non capturée dans une étape amont **gèle tout le pipeline** (Gmail + dépôts + intentions sautés à chaque
-  tick). Vérifier que TOUTES les étapes secondaires sont protégées, pas seulement certaines. Et une étape qui
-  ALIMENTE une file (rangement → `00·À trier`) passe APRÈS celle qui la DRAINE, `if (!estBudgetDepasse())`,
-  sinon elle s'affame. Symptôme « le moteur écrit son état mais ne traite plus rien » ⇒ plantage non capturé
-  ou famine de budget en amont ; diagnostiquer par le CODE + signaux Drive quand le Journal est illisible.
+  tick). Vérifier que TOUTES les étapes secondaires sont protégées, pas seulement certaines. Symptôme « le
+  moteur écrit son état mais ne traite plus rien » ⇒ plantage non capturé ou famine de budget en amont ;
+  diagnostiquer par le CODE + signaux Drive quand le Journal est illisible.
+- **Drainer avant d'alimenter, SANS affamer l'alimenteur : tôt + gated, pas « en dernier ».** Correction
+  d'une leçon antérieure. Mettre l'étape qui ALIMENTE une file (rangement → `00·À trier`) *après* le drainage
+  (`if (!estBudgetDepasse())`) la met EN DERNIER → elle ne reçoit jamais de budget → la file source ne se
+  vide jamais (l'ancien Drive stagnait). Le bon patron : l'alimenteur tourne **TÔT** (avant l'intake, pour
+  avoir du budget) mais **gated sur une file BASSE** (`nbFichiersATrier_ < SEUIL`) — on n'alimente que s'il
+  reste de la place. Tôt+gated = ni famine ni engorgement (contre-pression). Pour une **barre de progression**
+  sur un tel traitement de masse : recenser le total dans un tick DÉDIÉ (sinon le comptage ne finit jamais en
+  concurrence du traitement), avec filet « après N recensements incomplets, accepter le compte partiel » ;
+  numérateur monotone, base re-basable (jamais > 100 %), « terminé » sur le vrai signal de fin (passe qui ne
+  collecte plus rien), pas sur `traites >= base`. Toujours tracer le scénario sur plusieurs ticks.
 - **Pagination sur une recherche MOUVANTE (Gmail) ⇒ pas d'offset numérique seul.** Si de nouveaux
   éléments s'insèrent en tête entre deux appels (tri du plus récent au plus ancien), un offset qui
   repart de 0 à chaque tick capte bien le neuf mais peut **stagner indéfiniment** sur le reste de

@@ -3,21 +3,20 @@
  *
  * Les deux sources (PJ Gmail, dépôt manuel `00·À trier`) construisent un même
  * descripteur `src` et délèguent ici. Seul le PLACEMENT diffère (copie pour
- * Gmail, déplacement pour un dépôt) : il est fourni par `src.placer` /
- * `src.placerRevue`.
+ * Gmail, déplacement pour un dépôt) : il est fourni par `src.placer`.
+ * (Plus de file de revue depuis 2026-07-01 : `src.placerRevue` n'est plus utilisé.)
  *
- * Ordre d'écriture d'état (leçon durable) : placement → ligne Revue → ligne Index
- * (Index en dernier) : une coupure rejoue le cas au lieu de le perdre.
+ * Ordre d'écriture d'état (leçon durable) : placement → ligne Index (en dernier) :
+ * une coupure rejoue le cas au lieu de le perdre.
  *
  * Descripteur `src` :
  *   { cle, nom, taille, expediteur, sujet, date:Date,
  *     blob() -> Blob,
- *     placer(dossierId, nom) -> fileId,
- *     placerRevue(nom) -> fileId }
+ *     placer(dossierId, nom) -> fileId }
  */
 
 /**
- * Traite un document : idempotence → OCR → LLM → doublon → routage → placement → Index.
+ * Traite un document : idempotence → DOUBLON (fast, sans lecture) → OCR → LLM → routage → placement → Index.
  * @param {Object} src
  */
 function traiterDocument_(src) {
@@ -25,6 +24,36 @@ function traiterDocument_(src) {
     if (indexContient_(src.cle)) return; // déjà traité → idempotence
 
     var blob = src.blob();
+    var ext = extension_(src.nom);
+
+    // FAST PATH doublon (P1-20) : l'empreinte MD5 (rapide, ne lit que les octets) suffit à savoir si ce
+    // CONTENU est déjà classé. Si oui → « _Doublons » SANS OCR ni LLM : sur un ancien Drive plein de
+    // copies déjà présentes dans le nouveau Drive, on économise l'essentiel du coût/temps (l'exemplaire
+    // canonique est déjà classé ailleurs). Même garde de taille que l'OCR (pas de hash des très gros).
+    var empreinte = src.taille > CONFIG.OCR_TAILLE_MAX ? '' : empreinteBlob_(blob);
+    if (empreinte && estDoublon_(empreinte)) {
+      var dec = doublonRapide_(src.nom, src.date, ext);
+      var idDup = src.placer(dec.dossierId, dec.nom);
+      if (!idDup) { gererEchec_(src, 'placement doublon échoué'); return; }
+      indexAjouter_(src.cle, dec, empreinte);
+      journalInfo_('Pipeline', 'doublon (sans lecture) → _Doublons : ' + dec.nom);
+      return;
+    }
+
+    // FICHIER TECHNIQUE (code/CAO, ADR-0002 §3) : écarté du classement documentaire (ni OCR ni LLM —
+    // ce n'est pas un document à ranger par domaine) → `_Technique`, pour ne pas polluer les domaines.
+    // Détection par EXTENSION seulement (jamais PDF/Office/images). Placé APRÈS le fast-path doublon
+    // (un doublon technique va quand même dans `_Doublons`), AVANT tout OCR/LLM (économie de coût).
+    if (estTechnique_(src.nom)) {
+      var decT = routageTechnique_(src.nom, src.date, ext);
+      var idT = src.placer(decT.dossierId, decT.nom);
+      if (!idT) { gererEchec_(src, 'placement technique échoué'); return; }
+      indexAjouter_(src.cle, decT, empreinte);
+      journalInfo_('Pipeline', 'technique (sans lecture) → _Technique : ' + decT.nom);
+      return;
+    }
+
+    // Contenu INÉDIT → lecture complète (OCR) puis classement (LLM).
     var extrait = src.taille > CONFIG.OCR_TAILLE_MAX ? '' : extraireTexte_(blob);
 
     var classif = classifier_({
@@ -39,22 +68,22 @@ function traiterDocument_(src) {
       return;
     }
 
-    // Même garde de taille que l'OCR : pas de hash en mémoire pour les très gros fichiers.
-    var empreinte = src.taille > CONFIG.OCR_TAILLE_MAX ? '' : empreinteBlob_(blob);
-    var motifForce = (empreinte && estDoublon_(empreinte)) ? 'doublon (déjà présent)' : '';
+    // Filet « deviner depuis le nom d'origine » (ADR-0002 §5) : si le LLM n'a pas rendu de type,
+    // on le complète depuis le nom du fichier (ex. …_TP4_… → « TP ») avant le routage/nommage.
+    enrichirClassifDepuisNom_(classif, src.nom);
 
-    var decision = deciderRoutage_(classif, src.date, extension_(src.nom), motifForce);
+    var decision = deciderRoutage_(classif, src.date, ext, '');
 
-    var fileId = (decision.statut === 'revue')
-      ? src.placerRevue(decision.nom)
-      : src.placer(decision.dossierId, decision.nom);
+    // Plus de file de revue (décision Marc 2026-07-01) : tout est CLASSÉ ('classé'), placé dans son
+    // dossier cible avec son nom final propre. Un seul chemin de placement.
+    var fileId = src.placer(decision.dossierId, decision.nom);
 
     if (!fileId) {
       // Placement Drive échoué → on n'indexe pas : compté ; re-tenté, ou quarantaine après N échecs.
       gererEchec_(src, 'placement Drive échoué');
       return;
     }
-    if (decision.statut !== 'revue' && decision.autresEntites && decision.autresEntites.length) {
+    if (decision.autresEntites && decision.autresEntites.length) {
       creerRaccourcisEntites_(fileId, decision.nom, decision.autresEntites);
     }
 

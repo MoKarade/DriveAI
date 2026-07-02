@@ -14,9 +14,11 @@
 
 /**
  * Installe (idempotemment) le déclencheur temporel (CONFIG.TICK_MINUTES).
- * Lancé À LA MAIN par Marc (hors d'un run déclenché) → l'ordre delete-then-create est sûr ici
- * (le bref instant à 0 déclencheur est sans conséquence). L'ajustement AUTOMATIQUE en cours de
- * run, lui, utilise l'ordre inverse (create-then-delete) — cf. assurerIntervalleTick_.
+ * Appelé (a) À LA MAIN par Marc et (b) AUTOMATIQUEMENT par le chien de garde (`chienDeGarde`) en
+ * auto-réparation. Dans les deux cas on est hors du run `tickDriveAI` lui-même (le watchdog est un
+ * déclencheur DISTINCT) → l'ordre delete-then-create est sûr (le bref instant à 0 déclencheur, ou un
+ * tick manqué, est sans conséquence — c'est justement l'état qu'on répare). L'ajustement AUTOMATIQUE
+ * en cours de run, lui, utilise l'ordre inverse (create-then-delete) — cf. assurerIntervalleTick_.
  */
 function installerTrigger() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
@@ -25,7 +27,146 @@ function installerTrigger() {
   ScriptApp.newTrigger('tickDriveAI').timeBased().everyMinutes(CONFIG.TICK_MINUTES).create();
   PropertiesService.getScriptProperties().setProperty('DriveAI_TICK_MINUTES', String(CONFIG.TICK_MINUTES));
   journalInfo_('Setup', 'Déclencheur ' + CONFIG.TICK_MINUTES + ' min installé.');
-  assurerTriggerResume_(); // installe aussi le résumé hebdo (idempotent)
+  assurerTriggerResume_();      // installe aussi le résumé hebdo (idempotent)
+  assurerTriggerChienDeGarde_(); // et le chien de garde (idempotent, ADR-0004)
+}
+
+/**
+ * Installe (si absent) le déclencheur du CHIEN DE GARDE (`chienDeGarde`, toutes les
+ * `CONFIG.WATCHDOG_MINUTES`). Idempotent (crée seulement s'il n'existe pas → anti-saturation du
+ * quota de déclencheurs ~20). Appelé par `installerTrigger` ET en tête de tick (enveloppé) pour
+ * s'auto-installer sur un déploiement existant sans re-`installerTrigger` manuel.
+ */
+function assurerTriggerChienDeGarde_() {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'chienDeGarde') return; // déjà installé
+  }
+  ScriptApp.newTrigger('chienDeGarde').timeBased().everyMinutes(CONFIG.WATCHDOG_MINUTES).create();
+  journalInfo_('Setup', 'Chien de garde installé (toutes les ' + CONFIG.WATCHDOG_MINUTES + ' min).');
+}
+
+/**
+ * Aligne le NOM des dossiers de domaine sur les clés de `CONFIG.DOMAINES` (source de vérité).
+ * Gated par `CONFIG.NOMS_DOMAINES_TAG` (Script Property) → ne parcourt les domaines qu'une fois par tag,
+ * pas à chaque tick. Sert notamment au renumérotage « 07 · Perso » → « 08 · Perso » (ADR-0002). Renommage
+ * seul (jamais de suppression/déplacement), réversible (bumper le tag + rétablir la clé rejoue). Enveloppé.
+ */
+function assurerNomsDomaines_() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DriveAI_NOMS_DOMAINES') === CONFIG.NOMS_DOMAINES_TAG) return; // déjà fait pour ce tag
+  var noms = Object.keys(CONFIG.DOMAINES);
+  var renommes = 0;
+  for (var i = 0; i < noms.length; i++) {
+    try {
+      var d = DriveApp.getFolderById(CONFIG.DOMAINES[noms[i]]);
+      if (d.getName() !== noms[i]) { d.setName(noms[i]); renommes++; }
+    } catch (e) {
+      journalErreur_('Setup', 'Renommage du domaine « ' + noms[i] + ' » impossible : ' + e);
+    }
+  }
+  props.setProperty('DriveAI_NOMS_DOMAINES', CONFIG.NOMS_DOMAINES_TAG);
+  if (renommes) journalInfo_('Setup', renommes + ' dossier(s) de domaine renommé(s) pour coller à la config.');
+}
+
+/* ---------- Chien de garde (watchdog, ADR-0004) ---------- */
+
+/**
+ * Vrai s'il existe au moins un déclencheur `tickDriveAI`. Sert à confirmer qu'une auto-réparation a
+ * bien recréé le déclencheur même si un log annexe a levé ensuite (ne propage jamais d'exception).
+ * @return {boolean}
+ */
+function presenceTriggerTick_() {
+  try {
+    var t = ScriptApp.getProjectTriggers();
+    for (var i = 0; i < t.length; i++) {
+      if (t[i].getHandlerFunction() === 'tickDriveAI') return true;
+    }
+  } catch (e) { /* lecture des déclencheurs impossible → on ne peut pas confirmer */ }
+  return false;
+}
+
+/**
+ * Décision PURE du chien de garde (testée), machine à 3 états — détecter → réparer → (si toujours
+ * en panne) alerter UNE fois. Les clés `*Tick` identifient l'ÉPISODE de panne (= la valeur du
+ * heartbeat figé pendant la panne) pour ne réparer/alerter qu'une fois par épisode.
+ * @param {number} maintenant   ms (Date.now())
+ * @param {number} dernierTick  ms du dernier heartbeat (0 = jamais tourné)
+ * @param {number} seuil        ms de silence au-delà duquel on agit
+ * @param {number} repareTick   heartbeat pour lequel une réparation a déjà été tentée
+ * @param {number} alerteTick   heartbeat pour lequel une alerte a déjà été envoyée
+ * @return {'rien'|'reparer'|'alerter'}
+ */
+function actionChienDeGarde_(maintenant, dernierTick, seuil, repareTick, alerteTick) {
+  if (!dernierTick) return 'rien';                        // jamais tourné → rien à réparer (trigger assuré ailleurs)
+  if ((maintenant - dernierTick) <= seuil) return 'rien'; // le moteur tourne (heartbeat frais)
+  if (alerteTick === dernierTick) return 'rien';          // déjà alerté pour CET épisode → silence
+  if (repareTick === dernierTick) return 'alerter';       // réparation déjà tentée, toujours en panne → escalade
+  return 'reparer';                                        // première détection de l'épisode → auto-réparation
+}
+
+/**
+ * Chien de garde — 2ᵉ déclencheur, doit être TRIVIALEMENT robuste (jamais d'exception propagée,
+ * sinon Google le désactiverait lui aussi). Lit le heartbeat, décide, et au besoin ré-installe le
+ * déclencheur principal (auto-réparation) puis, si ça ne suffit pas, alerte UNE fois. Public (cible
+ * d'un déclencheur → pas de suffixe `_`).
+ */
+function chienDeGarde() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var dernierTick = Number(props.getProperty('DriveAI_LAST_TICK')) || 0;
+    var action = actionChienDeGarde_(
+      Date.now(), dernierTick, CONFIG.WATCHDOG_SEUIL_MS,
+      Number(props.getProperty('DriveAI_WATCHDOG_REPARE')) || 0,
+      Number(props.getProperty('DriveAI_WATCHDOG_ALERTE')) || 0
+    );
+    if (action === 'reparer') {
+      var repare = false;
+      try {
+        installerTrigger(); // delete+create du déclencheur principal (auto-réparation)
+        repare = true;
+      } catch (e) {
+        // `installerTrigger` a pu RECRÉER le déclencheur avant qu'un log annexe (Sheet HS, cause de panne
+        // corrélée) ne lève : on ne croit pas l'exception sur parole, on RE-VÉRIFIE la présence réelle du
+        // déclencheur. Un simple échec de log ne doit jamais requalifier une réparation réussie en alerte.
+        repare = presenceTriggerTick_();
+        if (!repare) { // réparation VRAIMENT impossible → on alerte tout de suite (marqué, non répété)
+          props.setProperty('DriveAI_WATCHDOG_ALERTE', String(dernierTick));
+          alerterChienDeGarde_(dernierTick, e);
+        }
+      }
+      if (repare) {
+        props.setProperty('DriveAI_WATCHDOG_REPARE', String(dernierTick));
+        try { journalInfo_('Chien de garde', 'Moteur silencieux → déclencheur principal ré-installé (auto-réparation).'); }
+        catch (e2) { /* log best-effort : ne doit pas défaire une réparation réussie */ }
+      }
+    } else if (action === 'alerter') {
+      props.setProperty('DriveAI_WATCHDOG_ALERTE', String(dernierTick));
+      alerterChienDeGarde_(dernierTick, null);
+    }
+  } catch (e) {
+    // Le chien de garde ne DOIT jamais planter (invariant ADR-0004). On avale tout en silence.
+  }
+}
+
+/**
+ * Envoie l'UNIQUE alerte de panne (mail rassurant : souvent le quota quotidien, sinon un clic).
+ * Ne propage jamais d'exception (appelé depuis le chien de garde).
+ * @param {number} dernierTick
+ * @param {*} err  cause d'échec de réparation, ou null (réparation tentée sans effet)
+ */
+function alerterChienDeGarde_(dernierTick, err) {
+  var quand = dernierTick
+    ? Utilities.formatDate(new Date(dernierTick), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm')
+    : 'inconnu';
+  var corps = 'DriveAI ne semble plus traiter depuis ' + quand + '.\n\n' +
+    'Souvent bénin : le quota quotidien du compte gratuit (~90 min/jour) est atteint — ça reprend seul demain.\n' +
+    'Si rien ne repart d\'ici demain, un seul geste : ouvrir le projet Apps Script « DriveAI » et exécuter installerTrigger.\n' +
+    (err ? '\n(Auto-réparation impossible : ' + err + ')' : '\n(Auto-réparation tentée, sans effet pour l\'instant.)');
+  try {
+    MailApp.sendEmail(Session.getEffectiveUser().getEmail(), '[DriveAI] Moteur silencieux — à vérifier', corps);
+  } catch (e) { /* mail impossible : le chien de garde ne plante pas pour autant */ }
+  journalErreur_('Chien de garde', 'Alerte « moteur silencieux » envoyée (dernier tick : ' + quand + ').');
 }
 
 /**
@@ -82,6 +223,7 @@ function tickDriveAI() {
   try {
     reinitialiserIndexCache_();
     reinitialiserEntitesCache_();
+    reinitialiserCorrectionsCache_(); // référentiel d'apprentissage relu 1×/run (few-shot, ADR-0003)
     reinitialiserEscalades_(); // plafond d'escalades LLM par run (anti-emballement de coût)
     reinitialiserUsage_();     // compteur de coût LLM du run (mesure réelle, P1-09)
 
@@ -92,6 +234,10 @@ function tickDriveAI() {
     catch (e) { journalInfo_('Setup', 'Ajustement d\'intervalle différé : ' + e); }
     try { assurerTriggerResume_(); }
     catch (e) { journalInfo_('Setup', 'Installation du résumé hebdo différée : ' + e); }
+    try { assurerTriggerChienDeGarde_(); }
+    catch (e) { journalInfo_('Setup', 'Installation du chien de garde différée : ' + e); }
+    try { assurerNomsDomaines_(); }
+    catch (e) { journalErreur_('Setup', 'Sync des noms de domaines différée : ' + e); }
 
     var debut = Date.now();
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
@@ -107,28 +253,46 @@ function tickDriveAI() {
     try { creerDossiersEntitesValidees_(estBudgetDepasse); }
     catch (e) { journalErreur_('Entités', 'Création des dossiers d\'entités différée : ' + e); }
 
-    // INTAKE PRIORITAIRE : on DRAINE d'abord ce qui est déjà en file (dépôts manuels + sortie du
-    // grand rangement) et les PJ Gmail. Le grand rangement (qui ALIMENTE 00·À trier) passe APRÈS et
-    // seulement s'il reste du budget — sinon il consomme le budget et affame le traitement de la file
-    // qu'il remplit (symptôme observé : dépôts jamais classés, file 00·À trier figée).
-    traiterGmail_(estBudgetDepasse);                       // source 1 : PJ Gmail
-    if (!estBudgetDepasse()) traiterDepots_(estBudgetDepasse); // source 2 : 00·À trier (draine la file)
-
-    // Grand rangement initial (zéro clic, une fois par `CONFIG.RANGEMENT_TAG`) : COLLECTE une page
-    // de l'ancien Drive vers 00·À trier pour les ticks suivants. Seulement s'il reste du budget après
-    // l'intake, et ENVELOPPÉ : une erreur de collecte (Drive) ne doit jamais geler le pipeline.
-    if (!estBudgetDepasse()) {
+    // Grand rangement (zéro clic, une fois par `CONFIG.RANGEMENT_TAG`) : COLLECTE une page de l'ancien
+    // Drive vers 00·À trier. Tourne TÔT pour ne pas être affamé par l'intake (sinon l'ancien Drive ne
+    // se vide jamais), MAIS uniquement si la file a de la place — DRAINER AVANT D'ALIMENTER : on ne
+    // collecte de nouveaux fichiers que si 00·À trier en compte moins que `RANGEMENT_SEUIL_FILE`, ce qui
+    // empêche à la fois l'engorgement de la file ET la famine du rangement. ENVELOPPÉ : une erreur de
+    // collecte Drive ne gèle jamais l'intake (le `try` du tick n'a qu'un `finally`).
+    // `rangementTermine_()` (1 Property, cheap) court-circuite le comptage Drive une fois le rangement
+    // fini — sinon on itérerait jusqu'à 40 fichiers de 00·À trier à chaque tick pour rien, à vie.
+    if (!estBudgetDepasse() && !rangementTermine_() &&
+        nbFichiersATrier_(CONFIG.RANGEMENT_SEUIL_FILE) < CONFIG.RANGEMENT_SEUIL_FILE) {
       try { appliquerRangementInitial_(estBudgetDepasse); }
       catch (e) { journalErreur_('Rangement', 'Grand rangement différé : ' + e); }
     }
+
+    // INTAKE : draine la file (dépôts manuels + sortie du grand rangement) et les PJ Gmail.
+    traiterGmail_(estBudgetDepasse);                       // source 1 : PJ Gmail
+    if (!estBudgetDepasse()) traiterDepots_(estBudgetDepasse); // source 2 : 00·À trier (draine la file)
 
     // Phase 3 : détection d'actions/rdv dans TOUS les mails récents → Tasks/Calendar.
     // En dernier, budget restant seulement : le classement documentaire (déjà validé en
     // prod) garde toujours la priorité sur ce nouveau flux.
     if (!estBudgetDepasse()) traiterIntentionsMail_(estBudgetDepasse);
   } finally {
-    try { flushUsage_(); } catch (e) { journalErreur_('Cout', 'Flush usage impossible : ' + e); }
-    verrou.releaseLock();
+    // `releaseLock` DOIT toujours s'exécuter : un try/finally imbriqué garantit sa libération même si
+    // un `journalErreur_` d'un catch ci-dessous lève à son tour (panne Sheet) — sinon le verrou resterait
+    // pris jusqu'à expiration (revue apps-script-quota).
+    try {
+      // Heartbeat (ADR-0004) EN PREMIER dans le finally : « le moteur a exécuté un tick ». Écrit même si
+      // l'intake a partiellement échoué — c'est ce timestamp que le chien de garde surveille. Property
+      // unique, robuste ; un échec ici ne doit rien casser (enveloppé).
+      try { PropertiesService.getScriptProperties().setProperty('DriveAI_LAST_TICK', String(Date.now())); }
+      catch (e) { /* écriture Property impossible : rien de plus à faire */ }
+      try { flushUsage_(); } catch (e) { journalErreur_('Cout', 'Flush usage impossible : ' + e); }
+      // Observabilité (ADR-0006), SECONDAIRE et enveloppé : un échec ne doit jamais bloquer le tick.
+      // Le heartbeat Santé s'écrit même si l'intake a partiellement échoué (d'où le finally).
+      try { majSante_(); } catch (e) { journalErreur_('Santé', 'MàJ Santé impossible : ' + e); }
+      try { bornerJournal_(); } catch (e) { journalErreur_('Santé', 'Journal borné impossible : ' + e); }
+    } finally {
+      verrou.releaseLock();
+    }
   }
 }
 
@@ -176,9 +340,19 @@ function appliquerRejeuSiNouvelleVersion_(estBudgetDepasse) {
  * l'opération est donc reprenable sur autant de ticks que nécessaire, sans jamais re-coûter sur
  * les fichiers déjà normalisés (idempotent). Déplacement seul — aucune suppression (garde-fous §1/§2).
  *
- * Placé APRÈS l'intake (Gmail + dépôts) et seulement s'il reste du budget : on DRAINE la file avant
- * de l'ALIMENTER, sinon la collecte affame le traitement qu'elle nourrit (cf. incident file figée).
- * Les fichiers collectés ce tick sont donc repris au(x) tick(s) SUIVANT(s), pas dans le même run.
+ * Placé TÔT dans le tick (AVANT l'intake) pour ne jamais être affamé — sinon l'ancien Drive ne se
+ * vide jamais (cf. incident file figée : le rangement en dernier ne recevait plus de budget). Mais
+ * gated sur une file BASSE (`nbFichiersATrier_ < RANGEMENT_SEUIL_FILE`, cf. tickDriveAI) : on ne
+ * collecte de NOUVEAUX fichiers que si 00·À trier a de la place — on DRAINE avant d'ALIMENTER.
+ * L'intake du même tick (puis des suivants) reprend ensuite la file ; borné, reprenable.
+ *
+ * Barre de progression (onglet `Progression`) : le total « en vrac » est RECENSÉ dans un tick DÉDIÉ —
+ * tant que la base n'est pas posée, ce tick NE range PAS et consacre son budget au comptage — sinon,
+ * sur un gros Drive, un recensement lancé APRÈS une page de rangement ne finirait jamais et la barre
+ * n'apparaîtrait pas (cf. revue quotas). Filet anti-blocage : après `RANGEMENT_RECENS_ESSAIS_MAX`
+ * recensements incomplets, on accepte le compte PARTIEL comme base approximative — le rangement n'est
+ * JAMAIS bloqué par le recensement ; la re-base (`majProgression_`) et la finalisation sur le vrai
+ * signal de fin corrigent tout écart.
  *
  * @param {function():boolean} estBudgetDepasse
  */
@@ -187,15 +361,57 @@ function appliquerRangementInitial_(estBudgetDepasse) {
   if (props.getProperty('DriveAI_RANGEMENT') === CONFIG.RANGEMENT_TAG) return; // déjà fait pour ce tag
   if (estBudgetDepasse()) return; // pas de budget ce tick → repris au prochain
 
-  var r = rangerUnePage_(estBudgetDepasse, ensembleDomainesProteges_());
+  var proteges = ensembleDomainesProteges_();
+
+  // Nouveau tag = nouvelle campagne de rangement → on repart d'une barre VIERGE (re-recensement du
+  // total). Sinon la barre resterait figée sur le total de la campagne précédente.
+  if (props.getProperty('DriveAI_RANGEMENT_BARRE_TAG') !== CONFIG.RANGEMENT_TAG) {
+    props.deleteProperty('DriveAI_RANGEMENT_BASE');
+    props.deleteProperty('DriveAI_RANGEMENT_TRAITES');
+    props.deleteProperty('DriveAI_RANGEMENT_RECENS');
+    props.setProperty('DriveAI_RANGEMENT_BARRE_TAG', CONFIG.RANGEMENT_TAG);
+  }
+
+  // PHASE 1 — RECENSEMENT (tick dédié, une fois) : pose la base de la barre. Ce tick NE range pas.
+  if (props.getProperty('DriveAI_RANGEMENT_BASE') === null) {
+    var essaisFaits = Number(props.getProperty('DriveAI_RANGEMENT_RECENS')) || 0;
+    // Onglet visible DÈS ce tick, même avant la fin du comptage (recensement léger = rapide, mais
+    // filet si un très gros Drive l'étale malgré tout sur plusieurs passes).
+    try { ecrireRecensement_(essaisFaits); }
+    catch (e) { journalErreur_('Progression', 'Init barre impossible : ' + e); }
+
+    var rec = compterVracRacines_(estBudgetDepasse);
+    var essais = essaisFaits + 1;
+    if (!rec.complet && essais < CONFIG.RANGEMENT_RECENS_ESSAIS_MAX) {
+      props.setProperty('DriveAI_RANGEMENT_RECENS', String(essais)); // partiel → réessai au prochain tick
+      return;
+    }
+    props.setProperty('DriveAI_RANGEMENT_BASE', String(rec.n || 0)); // complet, ou partiel accepté (filet)
+    props.setProperty('DriveAI_RANGEMENT_TRAITES', '0');
+    try { ecrireProgression_(0, rec.n || 0, false); }
+    catch (e) { journalErreur_('Progression', 'Init barre impossible : ' + e); }
+    return; // barre initialisée ; le rangement démarre au tick suivant
+  }
+
+  // PHASE 2 — RANGEMENT : une page bornée, puis mise à jour de la barre (cumul des fichiers sortis).
+  var r = rangerUnePage_(estBudgetDepasse, proteges);
   if (r.deplaces) {
+    try { majProgression_(r.deplaces); }
+    catch (e) { journalErreur_('Progression', 'MàJ barre impossible : ' + e); }
     journalInfo_('Rangement', r.deplaces + ' fichier(s) en vrac renvoyé(s) dans 00·À trier (rangement initial auto).');
   }
-  // Terminé seulement quand une passe NON interrompue ne trouve plus aucun fichier en vrac.
+  // Terminé seulement quand une passe NON interrompue ne collecte plus aucun fichier en vrac.
   if (!r.reste && r.collectes === 0) {
+    try { finaliserProgression_(); } // vrai signal de fin → barre à 100 %
+    catch (e) { journalErreur_('Progression', 'Finalisation barre impossible : ' + e); }
     props.setProperty('DriveAI_RANGEMENT', CONFIG.RANGEMENT_TAG);
     journalInfo_('Rangement', 'Rangement initial terminé — tout le Drive est passé au pipeline (tag « ' + CONFIG.RANGEMENT_TAG + ' »).');
   }
+}
+
+/** Vrai si le grand rangement initial est déjà terminé pour le tag courant (lecture cheap, 1 Property). */
+function rangementTermine_() {
+  return PropertiesService.getScriptProperties().getProperty('DriveAI_RANGEMENT') === CONFIG.RANGEMENT_TAG;
 }
 
 /**

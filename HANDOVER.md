@@ -4,12 +4,35 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **Dernière mise à jour : 2026-06-30** — **Phase 2 terminée + full auto confirmé en prod** ; **Phase 3
-> codée** (P3-01→P3-05, tâches & agenda — remplace l'agent mail externe de Marc). P2.1→P2.7 (entité,
-> full auto, seuil 0.50, tick 10 min, escalade, grand rangement + ancien Drive + garde-fou OCR vide).
-> Les **2 secrets GitHub sont posés** (déploiement auto confirmé par des runs réels) — plus rien à
-> faire côté secrets. **Reste côté Marc pour Phase 3 : une ré-autorisation Google unique** (nouveaux
-> scopes Tasks/Calendar) au prochain déploiement — cf. `docs/DEPLOIEMENT.md` § Phase 3.
+> **Dernière mise à jour : 2026-07-01 (soir)** — **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
+> Session de conception « niveau pro » avec Marc : **8 ADR** (`docs/adr/0001`→`0008`), **roadmap priorisée à
+> 9 chantiers** (`docs/ROADMAP.md`), runbook (`docs/RUNBOOK.md`) et guide (`docs/GUIDE.md`). Socle #1 =
+> **fondation testable** (logique pure isolée des appels Google + filet de tests CI + Journal borné/onglet
+> `Santé`, ADR-0006). Décisions clés : sources = **fichiers partagés** (0005) ; vie privée = **métadonnées
+> seulement dans l'état** — *vérifié sur le code*, aucun corps de doc stocké (0007) ; app web Phase 4 =
+> recherche/dashboard/corrections, login Google, plein texte via l'index natif Drive (0008). **Prochain pas
+> concret : implémenter le chantier #1** (fondation testable). ⚠️ Rien de tout ça n'est encore CODÉ — les ADR
+> décrivent la CIBLE. **Le grand rangement de l'ancien Drive tourne toujours en fond** (vivant, vérifié par
+> signaux Drive : fichiers renommés/déplacés en continu). Antérieur ce jour : **PLUS DE FILE DE REVUE : un
+> seul dossier d'arrivée + nom final
+> direct** (P1-16, décision Marc « je veux juste un dossier ; le nom attribué doit être direct le dernier » :
+> `00 · À vérifier` supprimé du pipeline, TOUT classé au mieux avec nom propre, domaine introuvable →
+> `DOMAINE_DEFAUT` ; barre fiabilisée via recensement léger + « recensement en cours » visible dès le 1ᵉʳ tick ;
+> `VERSION` P3.0). Marc peut supprimer à la main le dossier vide `00 · À vérifier`. Antérieur : P1-14 (sensibles
+> auto-classés), P1-15 (rangement TÔT gated file-basse + barre `[███░░░] N %`, `RANGEMENT_TAG` r1→r2), Phase 2 +
+> full auto en prod, Phase 3 codée. Les **2 secrets GitHub sont posés** — rien côté secrets. **Reste côté Marc
+> pour Phase 3 : une ré-autorisation Google unique** (scopes Tasks/Calendar) au prochain déploiement.
+>
+> 🔴 **P1-17 (fix majeur, diagnostic prod)** : « le moteur ne range plus rien / est muet » n'était PAS le
+> déclencheur (il tournait, mais à vide). VRAIE cause : la collecte du rangement (`aParentProtege_`→`getParents()`)
+> LEVAIT une exception sur « Ancienne structure » (racine `0AKPYZ…`, Drive partagé) → 0 fichier collecté → le
+> code prenait `collectes===0` pour « TERMINÉ » et FIGEAIT le rangement (`DriveAI_RANGEMENT` posé) → tous les
+> ticks suivants sautaient le rangement. Fix : walk parent-protégé défensif (détection positive, jamais
+> d'exception propagée), collecte par-fichier enveloppée, une collecte en erreur ⇒ `reste=true` (jamais un
+> faux « terminé »), `RANGEMENT_TAG` r2→r3 (relance). **Après déploiement P1-17 : faire tourner 1 tick** (auto
+> ~10 min, ou `tickDriveAI` à la main pour l'immédiat) puis vérifier par signaux Drive que « Ancienne structure »
+> se vide et que les domaines se remplissent de `AAAA-MM-JJ_`. NB : le déclencheur EST sain (il firait à vide
+> car le rangement était figé « terminé ») — pas besoin de re-`installerTrigger`.
 
 ---
 
@@ -218,6 +241,103 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-02 — Chantier #5 (partie 1) : boucle d'apprentissage (ADR-0003 §3).** **Modif du MOTEUR.**
+  Nouvel onglet `Corrections` + module `Corrections.gs` : à chaque classement, les corrections passées du
+  **même émetteur** sont injectées en **exemples few-shot** en tête du prompt LLM (`appelAnthropic_`), bornées
+  (`FEWSHOT_MAX`=3, `FEWSHOT_SEUIL`=0.6) — prévisible sur le récurrent (mêmes fournisseurs/écoles), souple
+  ailleurs. Sélection PURE et testée : `scoreCorrection_` (pertinence par émetteur), `correctionsPertinentes_`
+  (top-N triés), `blocFewShot_` (formatage). Cache 1×/run (reset dans `tickDriveAI`), try/catch → dégrade à 0
+  exemple si l'onglet est illisible (n'empêche jamais de classer). Primitive `enregistrerCorrection_` (append
+  idempotent) prête pour le **canal de saisie = chantier #6** (mail → mini-formulaire). +6 tests → **101**.
+  Revue flotte (coût/correction/quota) en cours. ⚠️ **Récup git** : le conteneur avait redémarré sur un vieux
+  commit (P1-14) sans `test/` ; l'état complet (C1→C4, 95 tests) était **sauf sur le distant** — resynchronisé
+  par fast-forward vers `origin/claude/…` (92eed34). Rien perdu.
+- **2026-07-01 (nuit) — Chantier #4 (partie 1) : garde anti-variantes d'entités (ADR-0002 §4).** **Modif
+  du MOTEUR.** Moteur de similarité **pur** dans `Entites.gs` (`tokensEntite_`, `jaccardTokens_`,
+  `distanceLevenshtein_`, `similariteEntite_` = max de Jaccard/inclusion/Levenshtein, `chercherVariante_`).
+  À la proposition d'une entité (`entiteEnAttenteAjouter_`), on signale la plus proche existante **du même
+  domaine** dans une nouvelle colonne `Variante possible ?` (seuil `CONFIG.SEUIL_VARIANTE`=0.6) — pour
+  fusion **1-clic** par Marc, **jamais de fusion auto** (anti-prolifération renforcé, pas affaibli). +8
+  tests → **94**. Piège de test rencontré : `deepStrictEqual` échoue sur un tableau renvoyé par le bac à
+  sable vm (prototype d'un autre realm) → spread `[...x]` dans le test. Revue flotte en cours. **Reste
+  C4-03** : validation 1-clic (mail → formulaire, rejoint ADR-0003 / chantiers #5-6).
+- **2026-07-01 (nuit) — Chantier #3 (partie 3, C3-03) : dossiers `07 · Santé` + `_Technique` (ADR-0002 §3).**
+  **Modif du MOTEUR** + **change la taxonomie Drive**. `07 · Santé` = domaine **auto-créé** (`Config.DOMAINES_AUTO`,
+  `Router.dossierDomaineAuto_` find-or-create à côté des domaines) proposé au LLM (`domainesAutorises_`).
+  `_Technique` = fichiers **code/CAO** (par extension `CONFIG.EXT_TECHNIQUES`) routés vers `_Technique`
+  **sans OCR ni LLM** (`Pipeline` après le fast-path doublon ; économie de coût). **Renumérotage Perso 07→08**
+  (`CONFIG.DOMAINES` clé `08 · Perso & projets`, même ID) avec `Main.assurerNomsDomaines_` (gated
+  `NOMS_DOMAINES_TAG` = `s1`, renomme le dossier physique pour coller à la config — renommage seul,
+  réversible, zéro clic). `Router.dossierRacineParNom_` généralisé (`_Doublons`/`_Technique`). **+6 tests →
+  86.** `docs/TAXONOMY.md` mis à jour. Revue flotte en cours (structure-keeper, code-reviewer, security,
+  llm-cost). **Chantier #3 : terminé.** Prochain : #4 (entités systématiques + validation 1-clic + garde
+  anti-variantes, ADR-0002 §4).
+- **2026-07-01 (nuit) — Chantier #3 (partie 1) : nommage par type de document (ADR-0002 §6).** **Modif du
+  MOTEUR** (le nom des documents classés change). `src/Router.gs` : `nomParType_` + `schemaNommage_` (règles
+  ordonnées de mots-clés → granularité de date jour/mois/année + libellé fixe `Relevé`/`Paie`/`CV`) +
+  `tronquerDate_`. `deciderRoutage_` et `doublon_` appellent `nomParType_` ; `nomNormalise_` (format
+  historique jour) conservé comme défaut → dégradation gracieuse (type inconnu = format historique, jamais
+  un blocage). Ex. : relevé → `2024-03_Relevé_Desjardins`, diplôme → `2021_Diplôme_IUT-ULCO`, facture →
+  `2024-03-05_Facture_Hydro-Québec`. `docs/NAMING.md` réécrit (table par type). **+9 tests → 69 au total.**
+  Pas de bump `VERSION` (nouveaux docs seulement ; renommage de l'existant = migration, chantier #8).
+  **C3-02 deviner-du-nom** (même session) : `Router.devinerTypeDepuisNom_` (pur ; séparateurs `_ - .` →
+  espaces, mots-clés/regex ancrés → type canonique, ex. `…_TP4_…` → « TP ») + `enrichirClassifDepuisNom_`
+  (complète `classif.type_doc` s'il est vide, sans écraser), appelé dans `Pipeline.traiterDocument_` avant
+  le routage. **+5 tests → 80 au total.** Revue 🟢 (file-checker CONFORME : idempotence/déterminisme intacts).
+  **Reste chantier #3** : nouveaux dossiers `07·Santé`/`_Technique`. Prochain aussi possible : #4 (entités
+  1-clic + anti-variantes, ADR-0002).
+- **2026-07-01 (nuit) — Chantier #2 : chien de garde (watchdog, ADR-0004).** **Modif du MOTEUR** (déployée).
+  `src/Main.gs` : heartbeat `DriveAI_LAST_TICK` (finally du tick), 2ᵉ déclencheur `chienDeGarde` (30 min,
+  `assurerTriggerChienDeGarde_` create-if-absent, posé aussi par `installerTrigger`), décision **pure**
+  `actionChienDeGarde_` (machine à 3 états détecter→réparer→alerter, dédupée par épisode = valeur du heartbeat
+  figé), auto-réparation (`installerTrigger` + re-vérif `presenceTriggerTick_` anti-fausse-alerte) puis alerte
+  mail rassurante (`alerterChienDeGarde_`, dédupée, à soi-même). `src/Resume.gs` : `etatSysteme_` + ligne
+  « État du système » au résumé hebdo. `src/Config.gs` : `WATCHDOG_MINUTES=30`, `WATCHDOG_SEUIL_MS=45min`.
+  **+10 tests** → **60 au total**. **Revue flotte 🟢** (security CONFORME, quota CONFORME — correctif A1
+  appliqué : ne pas fausse-alerter si un log échoue après une réparation réussie ; code-reviewer 🟢). RUNBOOK
+  à jour (l'incident « déclencheur désactivé » est désormais auto-réparé). Latence de détection assumée :
+  jusqu'à ~75-105 min (seuil 45 min + cycles watchdog 30 min) — « rassurer, pas réagir à la seconde ».
+  Prochain : chantier #3 (nommage par type + `07·Santé`/`_Technique`, ADR-0002).
+- **2026-07-01 (soir ter) — Chantier #1 (fondation testable) — partie 2/2 : Journal borné + onglet `Santé`.**
+  **Modif du MOTEUR** (déployée). `src/Journal.gs` : `lignesJournalASupprimer_` (pure, hystérésis `max+marge`
+  → purge en lot, ramène à `max`), `bornerJournal_` (`deleteRows` de LOG — jamais un document, §2 intact),
+  `majSante_` (onglet `Santé` : heartbeat, catalogue Index, coût du mois, statut rangement — **métadonnées
+  seulement**, une seule `setValues`). `src/Main.gs` : les deux dans le `finally` de `tickDriveAI`, chacun
+  enveloppé, `releaseLock` durci (try/finally imbriqué → verrou toujours relâché). `src/Config.gs` :
+  `JOURNAL_MAX_LIGNES=20000` (> `RESUME_MAX_LIGNES=15000`), `JOURNAL_MARGE=5000`. **+13 tests** (rotation
+  Journal, coût pur, invariant Santé) → **50 tests** au total. **Revue flotte 🟢** (security CONFORME,
+  quota CONFORME — 2 points appliqués : commentaire précisé + `releaseLock` durci ; code-reviewer 🟢 — sa
+  suggestion de test invariant Santé appliquée). Chantier #1 : **socle posé**. Prochain : chantier #2 (chien
+  de garde, ADR-0004). Le grand rangement continue en fond.
+- **2026-07-01 (soir bis) — Chantier #1 (fondation testable) — partie 1/2.** Premier code post-brainstorm.
+  Posé un **harness Node** (`test/harness.js`) qui charge les `.gs` Apps Script dans un bac à sable `vm`
+  avec des **mocks Google déterministes** (Utilities.formatDate/Session/Date partagé, faux Drive dont un
+  `getParents()` qui peut lever comme le cas P1-17) — **sans modifier le code source** (le comportement testé
+  = celui déployé). **37 tests** (`node --test`, zéro dépendance) couvrant la logique de décision : nommage,
+  dates, entités/sous-dossiers hors schéma, prédicats de collecte, le **garde-fou §1** (zone protégée jamais
+  détachée : multi-parents, chaîne d'ancêtres, échoue-fermé/ouvert, borne anti-cycle), et l'**invariant vie
+  privée ADR-0007** (`indexAjouter_` n'écrit que des métadonnées). **Job CI** « Tests unitaires (logique pure) »
+  ajouté à `ci.yml` (Node 20). Piège rencontré (test, pas code) : un faux itérateur `getParents` *infini*
+  faisait boucler la garde (borne de profondeur ≠ borne de largeur) → corrigé en modélisant un vrai cycle
+  Drive (itérateurs finis) ; et `instanceof Date` échouait entre réalités vm/test → `Date` de l'hôte partagé
+  dans le sandbox. **Reste chantier #1 (partie 2/2)** : Journal borné + onglet `Santé`. Le grand rangement de
+  l'ancien Drive continue en fond.
+- **2026-07-01 (soir) — Brainstorm produit « niveau pro » + dossier de conception.** Après la session
+  marathon de correctifs (P1-13→P1-20) et le lancement du grand rangement, Marc a demandé un brainstorm
+  détaillé pour élever DriveAI au niveau pro avec bonne documentation. Produit un **dossier de conception
+  complet** par ADR (Architecture Decision Records) : **0001** cadrage (perso, qualité pro, précision >
+  contrôle > fiabilité, rester gratuit) ; **0002** taxonomie/entités/nommage ; **0003** contrôle &
+  correction (mail hebdo → formulaire 1-clic, `Corrections` few-shot) ; **0004** fiabilité (chien de garde) ;
+  **0005** sources = fichiers partagés ; **0006** ⭐ FONDATION (testabilité + filet de tests CI + Journal
+  borné/`Santé`) ; **0007** sécurité/vie privée (LLM = tout tel quel ; **état = métadonnées seulement**,
+  *vérifié sur le code* : Index = nom/date/chemin/statut/hash, aucun corps de doc → règle durable ajoutée
+  `CLAUDE.md` §7) ; **0008** app web Phase 4 (recherche/dashboard/corrections, login Google, plein texte via
+  index natif Drive pour respecter 0007). **Roadmap** (`docs/ROADMAP.md`) réordonnée à 9 chantiers, socle #1
+  = fondation testable. Runbook + guide écrits. **4 PR docs mergées** (#33-#36) via auto-merge. Fil rouge :
+  deux fois un choix de Marc contredisait une décision récente (app applique direct ↔ garde-fous §1/§2 ;
+  plein texte ↔ 0007 métadonnées) → **surfacé avant de figer**, réconcilié (recherche) ou documenté avec la
+  contrainte attachée (corrections : garde-fous ré-implémentés + testés). **Aucun code moteur touché** — que
+  de la doc. Le grand rangement a continué en autonomie tout du long. **Prochain pas : coder le chantier #1.**
 - **2026-06-30 (P2.7 ancien Drive + Phase 3 complète)** — Diagnostiqué un blocage de pipeline CI/CD
   (GitHub Actions muet 26-27/06, puis branche en conflit avec `main` bloquant la CI sur la PR) → résolu
   (fusion `-s ours`, conflits de docs/squash réconciliés), PR #19 (P2.5+P2.6) mergée et déployée en prod

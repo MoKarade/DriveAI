@@ -12,10 +12,11 @@ var CONFIG = {
   // la version stockée diffère, le moteur renvoie automatiquement les DÉPÔTS partis
   // en revue vers 00·À trier pour reclassement (cf. Main.appliquerRejeuSiNouvelleVersion_)
   // — borné, réversible, sans toucher aux PJ Gmail ni aux docs déjà classés. Zéro clic.
-  VERSION: 'P2.9',
+  VERSION: 'P3.0',
 
   // --- Seuils & modèle ---
-  SEUIL_CONFIANCE: 0.50,                 // sous ce seuil → file de revue (abaissé de 0.80 sur demande)
+  SEUIL_CONFIANCE: 0.50,                 // sous ce seuil → analyse approfondie (escalade Sonnet), puis
+                                         // classé au mieux — plus jamais de file de revue (décision Marc)
   LLM_MODELE: 'claude-haiku-4-5',        // Haiku par défaut (le moins cher)
   LLM_MODELE_FALLBACK: 'claude-sonnet-4-6', // fallback ponctuel si Haiku échoue
   LLM_MAX_TOKENS: 400,
@@ -25,7 +26,9 @@ var CONFIG = {
   // de domaine puis confiance max). 3 passes (impair → vote utile). Borné pour le budget
   // (< 10 $/mois) : ne concerne que les cas peu sûrs, et plafonné par run ci-dessous.
   LLM_ESCALADE_PASSES: 3,
-  LLM_ESCALADE_MAX_PAR_RUN: 25,           // au-delà : on garde le résultat Haiku (dégradation propre)
+  LLM_ESCALADE_MAX_PAR_RUN: 8,            // abaissé (25→8) pour ACCÉLÉRER le rangement de masse : l'escalade
+                                          // Sonnet ×3 est le plus gros coût-temps/tick ; au-delà on garde le
+                                          // résultat Haiku (« classer au mieux », décision Marc). Débit ↑.
   // Prix Anthropic par MILLION de tokens (input/output), pour MESURER le coût réel (Cout.gs, P1-09).
   // À ajuster si la grille de prix change. Haiku 4.5 : 1$/5$ ; Sonnet 4.6 : 3$/15$.
   LLM_PRIX: { haiku_in: 1, haiku_out: 5, sonnet_in: 3, sonnet_out: 15 },
@@ -37,10 +40,27 @@ var CONFIG = {
                                           // Journal grossit vite : borne la lecture hebdo, large
                                           // marge devant une semaine d'un usage personnel)
 
+  // Journal borné (ADR-0006) : le Journal grossit sans fin → illisible (incident 2026-07-01, débogage
+  // gêné par une Sheet énorme + tronquée). Le Journal oscille entre `MAX` et `MAX + MARGE` lignes : la
+  // rotation ne se déclenche qu'au-delà de `MAX + MARGE` (purge en lot, pas ligne-à-ligne à chaque tick)
+  // et ramène à `MAX`. Le PLANCHER post-rotation (`MAX`) doit rester > `RESUME_MAX_LIGNES` pour que le
+  // résumé hebdo lise toujours une fenêtre complète (20000 > 15000 ✔). Purge de LOG (rotation
+  // d'historique), jamais de documents ni de l'Index (§2 intact).
+  JOURNAL_MAX_LIGNES: 20000,
+  JOURNAL_MARGE: 5000,
+
   // Intervalle du déclencheur temporel (minutes). Valeurs Apps Script admises : 1, 5, 10, 15, 30.
   // Modifiable à chaud : au tick suivant un déploiement, le moteur réinstalle le déclencheur
   // au nouvel intervalle tout seul (cf. Main.assurerIntervalleTick_). Aucun re-installerTrigger manuel.
-  TICK_MINUTES: 10,
+  TICK_MINUTES: 5,
+
+  // Chien de garde (ADR-0004) : un 2ᵉ déclencheur léger et quasi-infaillible surveille le heartbeat
+  // du tick principal (`DriveAI_LAST_TICK`). Si le moteur est silencieux depuis > `WATCHDOG_SEUIL_MS`,
+  // il tente de RÉ-INSTALLER le déclencheur principal (auto-réparation) ; s'il ne peut pas (ou si la
+  // panne persiste après réparation), il envoie UNE alerte. Le seuil dépasse largement l'intervalle du
+  // tick (5 min) pour ne jamais alerter sur un simple retard/quota momentané. Valeurs everyMinutes : 30.
+  WATCHDOG_MINUTES: 30,                  // intervalle du déclencheur chien de garde
+  WATCHDOG_SEUIL_MS: 45 * 60 * 1000,     // moteur « silencieux » au-delà → auto-réparation puis alerte
 
   // Quarantaine : après ce nombre d'échecs CUMULÉS sur un même document (LLM ou placement) — le
   // compteur n'est pas remis à zéro, mais un doc qui réussit quitte le scan donc la distinction
@@ -104,8 +124,26 @@ var CONFIG = {
     '04 · Immigration': '1VBK_4pkJmIeTsRyz-MWpMBYaOhKYNfRC',
     '05 · Carrière': '1BAg7k7RVrJ4ifoeh9U0XW5hKWXjRI1CC',
     '06 · Études & diplômes': '1PeeKG8XgZB6gJdZo03cO7F0s_iMgw6Ec',
-    '07 · Perso & projets': '19uwSc1A47d_q32Dd2YJ4Wi9StllvyLey'
+    // Perso renuméroté 07 → 08 (ADR-0002 : 07 est désormais « Santé »). MÊME dossier (ID inchangé) ;
+    // `assurerNomsDomaines_` renomme le dossier physique pour coller à cette clé (zéro clic, réversible).
+    '08 · Perso & projets': '19uwSc1A47d_q32Dd2YJ4Wi9StllvyLey'
   },
+
+  // Synchronisation des NOMS de dossiers de domaine avec les clés de DOMAINES ci-dessus (self-healing).
+  // Bumper ce tag rejoue le renommage (ex. après un renumérotage). Gated par une Script Property → ~1 fois.
+  NOMS_DOMAINES_TAG: 's1',                // s1 : renumérote « 07 · Perso » → « 08 · Perso » (07 = Santé)
+
+  // Garde anti-variantes (ADR-0002 §4) : score de similarité minimal (0..1) au-delà duquel une nouvelle
+  // entité proposée est signalée comme VARIANTE possible d'une entité existante (« Desjardins » vs « Caisse
+  // Desjardins »), pour fusion en 1 clic par Marc. Suggestion seulement — jamais de fusion automatique.
+  SEUIL_VARIANTE: 0.6,
+
+  // Boucle d'apprentissage (ADR-0003 §3) : à chaque classement, on injecte dans le prompt les
+  // corrections passées les PLUS PROCHES (même émetteur) comme exemples few-shot. Borné pour le coût
+  // (< 10 $/mois) : au plus FEWSHOT_MAX exemples, et seulement au-dessus de FEWSHOT_SEUIL de pertinence
+  // (proportion des jetons d'émetteur retrouvés dans le doc) — pas de bruit sur des émetteurs sans rapport.
+  FEWSHOT_MAX: 3,
+  FEWSHOT_SEUIL: 0.6,
 
   // Sous-dossiers de catégorie connus (Phase 1 : seuls ceux de 03).
   CATEGORIES: {
@@ -121,16 +159,47 @@ var CONFIG = {
   // Zone protégée : domaines jamais rangés auto (garde-fou non négociable).
   DOMAINES_PROTEGES: ['04 · Immigration'],
 
+  // Domaine par défaut (catch-all) quand le LLM ne rend pas un domaine valide. Décision Marc
+  // 2026-07-01 : plus de file de revue — un document non classable est rangé AU MIEUX ici (avec
+  // son nom final propre), jamais laissé en limbo. « Administratif » = bucket générique le plus sûr.
+  DOMAINE_DEFAUT: '01 · Administratif & identité',
+
+  // Domaines AUTO-créés (ADR-0002 §3) : nouveaux domaines sans ID en dur — le dossier est trouvé/créé
+  // par le code À CÔTÉ des domaines existants (find-or-create, cf. Router.dossierDomaineAuto_), zéro clic.
+  // Ils sont autorisés dans le prompt LLM (domainesAutorises_) et routés comme les 7 domaines fixes.
+  DOMAINES_AUTO: ['07 · Santé'],
+
+  // Fichiers TECHNIQUES (ADR-0002 §3, `_Technique` hors domaines) : code, CAO — écartés du classement
+  // documentaire (ni OCR ni LLM : ce ne sont pas des documents à classer par domaine). Rangés dans
+  // `_Technique` (find-or-create à côté de `_Doublons`) pour ne pas polluer les domaines. Détection par
+  // EXTENSION uniquement (jamais PDF/Office/images/CSV, qui peuvent être de vrais documents).
+  EXT_TECHNIQUES: [
+    '.java', '.class', '.jar', '.py', '.c', '.cpp', '.h', '.hpp', '.cs', '.go', '.rs', '.rb', '.php',
+    '.sh', '.sql', '.m', '.ino', '.v', '.vhd',                         // code
+    '.step', '.stp', '.stl', '.igs', '.iges', '.dwg', '.dxf', '.obj', '.fbx', '.blend', '.sldprt', '.ipt' // CAO
+  ],
+
   // --- Phase 2 : référentiel d'entités ---
   // Dossier d'entrée scanné pour le dépôt manuel (réutilise A_TRIER ci-dessus).
-  INTAKE_PAGE: 50,                        // nb de fichiers de 00·À trier traités par run
+  INTAKE_PAGE: 150,                       // nb de fichiers de 00·À trier traités par run (50→150 pour le
+                                          // rangement de masse : chaque tick utilise tout son budget-temps
+                                          // au lieu de s'arrêter à 50 — le garde-temps reste la vraie borne)
   REJEU_PAGE: 100,                        // nb de dépôts renvoyés par run lors d'un auto-rejeu
-  RANGEMENT_MAX_PAR_RUN: 200,             // grand rangement : nb de fichiers renvoyés vers 00·À trier par run
+  RANGEMENT_MAX_PAR_RUN: 60,              // grand rangement : nb de fichiers renvoyés vers 00·À trier par run
+                                          // (200→60 : la boucle de déplacement fait la re-vérif §1 stricte
+                                          // par fichier ; bornée à 60, elle laisse ~3 min de budget/tick à
+                                          // l'INTAKE — sinon le rangement affame le classement, cf. P1-19)
+  RANGEMENT_SEUIL_FILE: 40,               // ne collecte de NOUVEAUX fichiers que si 00·À trier en a moins
+                                          // (drainer avant d'alimenter, sans affamer ni déborder la file)
+  RANGEMENT_RECENS_ESSAIS_MAX: 3,         // barre de progression : nb de recensements incomplets tolérés
+                                          // avant d'accepter un compte PARTIEL comme base (anti-blocage
+                                          // sur un Drive énorme — la re-base/finalisation corrigent l'écart)
   // Grand rangement initial AUTO (zéro clic) : tant que le tag stocké (Script Property
   // `DriveAI_RANGEMENT`) diffère de celui-ci, le moteur renvoie au fil des ticks TOUT le contenu
   // « en vrac » des domaines vers 00·À trier pour reclassement/renommage (cf. Main.appliquerRangementInitial_).
   // Borné/run, reprenable, déplacement seul (jamais de suppression). Bumper ce tag relance un rangement complet.
-  RANGEMENT_TAG: 'r2',                    // r2 : inclut désormais l'ancien Drive (RANGEMENT_RACINES_SUP)
+  RANGEMENT_TAG: 'r3',                    // r3 : relance après le fix « collecte avortée → faux terminé »
+                                          // (r2 s'était figé « terminé » sans rien ranger — cf. P1-17)
   // Racines SUPPLÉMENTAIRES à reclasser en plus des 7 domaines (ancien Drive). Tout leur contenu
   // « en vrac » est renvoyé dans 00·À trier puis re-classé par le pipeline (mêmes garde-fous : zone
   // protégée multi-parents, format normalisé sauté, garde-temps). « Ancienne structure » = ancien Drive de Marc.
@@ -168,9 +237,10 @@ var CONFIG = {
   }
 };
 
-/** Liste des domaines autorisés (pour le prompt et la validation). */
+/** Liste des domaines autorisés (pour le prompt et la validation) : les 7 fixes + les auto-créés.
+ *  Triée (préfixes `NN ·` → ordre 01→08) pour un prompt LLM lisible, même avec les domaines auto. */
 function domainesAutorises_() {
-  return Object.keys(CONFIG.DOMAINES);
+  return Object.keys(CONFIG.DOMAINES).concat(CONFIG.DOMAINES_AUTO || []).sort();
 }
 
 /** Catégories connues (Phase 1), pour borner la sortie du LLM. */

@@ -10,10 +10,13 @@
 /** Crée les onglets et leurs en-têtes si absents. */
 function initialiserSheet_(ss) {
   creerOnglet_(ss, 'Entités', COLONNES_ENTITES); // Entité|Domaine|Catégorie|Type|Statut|Dossier ID|Ajoutée le
+  creerOnglet_(ss, 'Corrections', COLONNES_CORRECTIONS); // apprentissage : doc corrigé → exemples few-shot (ADR-0003)
   creerOnglet_(ss, 'Index', ['Clé', 'Traité le', 'Fichier', 'Domaine', 'Chemin', 'Statut', 'Empreinte']);
   creerOnglet_(ss, 'Journal', ['Horodatage', 'Niveau', 'Source', 'Message']);
   creerOnglet_(ss, 'Revue', ['Détectée le', 'Fichier', 'Domaine', 'Suggestion']);
   creerOnglet_(ss, 'Échecs', ['Clé', 'Tentatives', 'Dernière tentative']); // compteur de quarantaine
+  creerOnglet_(ss, 'Progression', ['Rangement de l\'ancien Drive']);        // barre de chargement (cf. Maintenance)
+  creerOnglet_(ss, 'Santé', ['Santé DriveAI']);                             // vue lisible (heartbeat + métriques, ADR-0006)
   var defaut = ss.getSheetByName('Feuille 1') || ss.getSheetByName('Sheet1');
   if (defaut && ss.getSheets().length > 1) ss.deleteSheet(defaut);
 }
@@ -40,6 +43,59 @@ function journalInfo_(source, message) {
 
 function journalErreur_(source, message) {
   feuille_('Journal').appendRow([new Date(), 'ERREUR', source, message]);
+}
+
+/* ---------- Journal borné + onglet Santé (ADR-0006) ---------- */
+
+/**
+ * Nombre de lignes de données les plus VIEILLES à supprimer du Journal pour le borner.
+ * Logique PURE (testée) : ne déclenche la rotation qu'au-delà de `max + marge` (purge en lot,
+ * pas ligne-à-ligne à chaque tick), puis ramène à exactement `max`. En-tête (ligne 1) hors compte.
+ * @param {number} dernLigne  résultat de getLastRow() (en-tête inclus)
+ * @param {number} max        nb de lignes de données à conserver
+ * @param {number} marge      hystérésis : on ne purge que si données > max + marge
+ * @return {number} nb de lignes à supprimer à partir de la ligne 2 (0 = rien à faire)
+ */
+function lignesJournalASupprimer_(dernLigne, max, marge) {
+  var donnees = Math.max(0, (dernLigne || 0) - 1); // hors en-tête
+  if (donnees <= max + marge) return 0;            // sous le seuil de déclenchement
+  return donnees - max;                            // ramène à `max`
+}
+
+/**
+ * Borne le Journal : supprime en LOT les lignes de log les plus anciennes au-delà du plafond
+ * (rotation d'historique — jamais de documents, §2 intact). Enveloppé par l'appelant (secondaire :
+ * ne doit jamais bloquer l'intake). Cheap : la plupart des ticks ne font qu'un getLastRow().
+ */
+function bornerJournal_() {
+  var f = feuille_('Journal');
+  var aSupprimer = lignesJournalASupprimer_(f.getLastRow(), CONFIG.JOURNAL_MAX_LIGNES, CONFIG.JOURNAL_MARGE);
+  if (aSupprimer > 0) {
+    f.deleteRows(2, aSupprimer); // supprime les plus vieilles, juste après l'en-tête
+    journalInfo_('Santé', 'Journal borné : ' + aSupprimer + ' vieille(s) ligne(s) purgée(s) (max ' + CONFIG.JOURNAL_MAX_LIGNES + ').');
+  }
+}
+
+/**
+ * Met à jour l'onglet `Santé` — vue lisible de référence (heartbeat + métriques). Métadonnées
+ * seulement (ADR-0007) : horodatage, compteurs, coût, statut — jamais de contenu de document.
+ * Écrit après `flushUsage_` (le coût du mois inclut alors le run courant). Enveloppé par l'appelant.
+ */
+function majSante_() {
+  var f = feuille_('Santé');
+  var tz = Session.getScriptTimeZone();
+  var cout = syntheseCoutMois_();
+  var mois = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
+  var nbCatalogue = _indexCache ? Object.keys(_indexCache).length : '—';
+  var rangement = (typeof rangementTermine_ === 'function' && rangementTermine_()) ? 'terminé ✅' : 'en cours';
+  var lignes = [
+    ['Dernier passage OK : ' + Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd HH:mm')],
+    ['Documents au catalogue (Index) : ' + nbCatalogue],
+    ['Coût LLM ' + mois + ' : ' + cout.dollars.toFixed(2) + ' $  (' + cout.appels + ' appels)  ·  cible < 10 $/mois' + (cout.dollars >= 10 ? '  ⚠️ DÉPASSÉE' : '  ✅')],
+    ['Rangement ancien Drive : ' + rangement],
+    ['Mis à jour : ' + new Date()]
+  ];
+  f.getRange(2, 1, lignes.length, 1).setValues(lignes); // une seule écriture Sheet (I/O borné/tick)
 }
 
 /**
@@ -118,15 +174,16 @@ function estDoublon_(empreinte) {
 }
 
 /**
- * Enregistre un fichier traité. La ligne Revue est écrite AVANT la ligne Index :
- * si une coupure survient entre les deux, la PJ reste non-indexée donc re-traitée
- * (jamais un cas sensible perdu silencieusement).
+ * Enregistre un fichier traité. L'inscription Index (« c'est fini ») est écrite en DERNIER :
+ * si une coupure survient avant, la PJ reste non-indexée donc re-traitée (jamais perdue).
+ * (Le statut 'revue' n'est plus produit par le pipeline depuis 2026-07-01 — la branche Revue
+ * ci-dessous ne sert que d'éventuelle compat de lignes historiques.)
  * @param {string} cle
  * @param {{statut:string, domaine:string, chemin:string, nom:string}} resultat
  * @param {string} [empreinte]  empreinte MD5 du contenu (détection de doublons)
  */
 function indexAjouter_(cle, resultat, empreinte) {
-  if (resultat.statut === 'revue') {
+  if (resultat.statut === 'revue') { // vestigial : le pipeline ne route plus en revue
     feuille_('Revue').appendRow([new Date(), resultat.nom, resultat.domaine || '', resultat.nom]);
   }
   feuille_('Index').appendRow([

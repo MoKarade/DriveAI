@@ -69,6 +69,9 @@ Base de données légère, lisible/éditable à la main, partagée entre Apps Sc
 - `Revue` — file d'attente avec suggestions (option « riche » vs nom de fichier ; cf. `PLAN.md` §7).
 - `Échecs` — compteur d'échecs par document (quarantaine après `QUARANTAINE_MAX` essais ; n'est touché
   qu'en cas d'échec, jamais sur le chemin nominal).
+- `Progression` — barre de chargement (texte) du grand rangement de l'ancien Drive : `[███░░░] N %`,
+  « X classés / Total · reste ». Recensement une fois du total « en vrac », cumul des fichiers sortis ;
+  reset auto quand `RANGEMENT_TAG` change (cf. `Maintenance.majProgression_`).
 
 ### LLM — API Anthropic
 - **Haiku** par défaut (le moins cher). **Sonnet** en fallback ponctuel sur cas ambigu.

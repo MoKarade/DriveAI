@@ -16,10 +16,12 @@ function resumeHebdo() {
     var stats = statsSemaine_(jours);
     var erreurs = erreursSemaine_(jours);
     var cout = syntheseCoutMois_();
+    var dernierTick = Number(PropertiesService.getScriptProperties().getProperty('DriveAI_LAST_TICK')) || 0;
+    var etat = etatSysteme_(dernierTick, Date.now(), CONFIG.WATCHDOG_SEUIL_MS);
     MailApp.sendEmail(
       Session.getEffectiveUser().getEmail(),
       '[DriveAI] Résumé de la semaine',
-      construireResume_(stats, erreurs, cout, jours)
+      construireResume_(stats, erreurs, cout, jours, etat)
     );
     journalInfo_('Résumé', 'Résumé hebdo envoyé.');
   } catch (e) {
@@ -89,10 +91,26 @@ function erreursSemaine_(jours) {
   return n;
 }
 
+/**
+ * État du système pour le résumé hebdo (ADR-0004 point 4), dérivé du heartbeat. Logique PURE (testée).
+ * @param {number} dernierTickMs  heartbeat (0 = jamais écrit)
+ * @param {number} maintenant     ms
+ * @param {number} seuil          ms de silence au-delà duquel le moteur est « silencieux »
+ * @return {string}
+ */
+function etatSysteme_(dernierTickMs, maintenant, seuil) {
+  if (!dernierTickMs) return '❔ démarrage (heartbeat pas encore écrit)';
+  var minutes = Math.max(0, Math.round((maintenant - dernierTickMs) / 60000));
+  if ((maintenant - dernierTickMs) <= seuil) return '🟢 actif (dernier passage il y a ' + minutes + ' min)';
+  return '🔴 silencieux depuis ' + minutes + ' min — le chien de garde répare / t\'a alerté';
+}
+
 /** Corps du mail récap. */
-function construireResume_(s, erreurs, cout, jours) {
+function construireResume_(s, erreurs, cout, jours, etat) {
   return [
     'Voici ce que DriveAI a fait cette semaine (' + jours + ' derniers jours).',
+    '',
+    '🩺 État du système : ' + (etat || '—'),
     '',
     '📂 Documents classés automatiquement : ' + s.classe,
     '🔎 Partis en revue (00 · À vérifier) : ' + s.revue,

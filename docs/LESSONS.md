@@ -14,6 +14,105 @@
 
 ---
 
+## 2026-07-01 — Documenter une conception : vérifier les tensions entre les choix du propriétaire et les décisions déjà actées, et les surfacer AVANT de figer
+**Contexte.** Brainstorm produit « niveau pro » : je posais des questions à Marc et j'écrivais un ADR par axe.
+Deux fois, un choix qu'il venait de faire **contredisait une décision prise quelques minutes plus tôt dans la
+même session** : (1) « l'app web applique les corrections directement » ↔ les garde-fous NON négociables §1/§2
+(zone protégée jamais détachée, aucune suppression) que seul le moteur garantissait — appliquer côté app duplique
+ces garde-fous en deux endroits (le piège « invariants voisins ») ; (2) « ré-indexation plein texte » ↔ ADR-0007
+« métadonnées seulement », décidé 5 minutes avant — un index de contenu stocke le corps des documents, exactement
+ce qu'on venait d'interdire. La tentation était de documenter le choix tel quel (« le propriétaire a demandé »).
+**Leçon.** Documenter une décision n'est pas la transcrire : c'est vérifier qu'elle **tient avec le reste du
+dossier**. Quand un choix entre en tension avec une décision déjà actée (surtout récente), ne pas l'écrire en
+silence : **surfacer la tension, expliquer le risque concret, recommander la réconciliation, demander UNE
+confirmation** (même procédure que « le propriétaire relâche un garde-fou »). Puis, selon sa réponse : soit il
+adopte la voie réconciliée (ici : plein texte **délégué à l'index natif de Drive** → cherche dans le contenu
+SANS rien stocker, respecte ADR-0007) ; soit il maintient son choix brut, et on le documente **avec la contrainte
+non négociable attachée** (ici : app applique direct, MAIS garde-fous §1/§2 ré-implémentés + **couverts par le
+filet de tests**, idéalement en partageant la logique pure du moteur — « préserver l'irréversible »). Un dossier
+de conception « niveau pro » se reconnaît à ça : les décisions ne se marchent pas dessus, et chaque relâchement
+nomme ce qui reste, lui, non négociable. Corollaire process : garder l'ADR comme **cible** explicite (statut
+« à implémenter »), jamais confondu avec le code réel — et quand une décision peut se vérifier sur le code
+(« l'état ne stocke que des métadonnées »), la **vérifier** plutôt que l'affirmer (Index = nom/date/chemin/
+statut/hash → confirmé).
+**Règle durable ?** oui — ajoutée à `CLAUDE.md` §7 (invariant vie privée « métadonnées seulement ») ; le principe
+« surfacer les tensions avant de figer un ADR » rejoint la leçon existante sur le relâchement de garde-fou.
+
+## 2026-07-01 — « 0 collecté » issu d'une EXCEPTION attrapée ≠ « terminé » ; un garde par-élément qui peut lever doit être défensif
+**Contexte.** Le grand rangement de « Ancienne structure » ne bougeait aucun fichier alors que le recensement
+en voyait 113. Le run était VERT (aucune erreur remontée à Marc). Cause en deux temps : (1) la collecte réelle
+appelait `estAReclasser_`→`aParentProtege_`→`getParents()` qui LEVAIT une exception (traversée d'une racine /
+Drive partagé `0AKPYZ…`), attrapée par le `try/catch` autour de `collecterAReclasser_` → la collecte de la
+racine était abandonnée → **0 id collecté**. Le recensement, lui, marchait car il utilisait un prédicat LÉGER
+SANS `getParents`. (2) Pire : `collectes === 0` (sans dépassement de budget) était interprété comme
+« plus rien à ranger = TERMINÉ » → le rangement se figeait (`DriveAI_RANGEMENT` posé), et TOUS les ticks
+suivants (auto ET manuels) sautaient le rangement → moteur « muet », Sheet figée. Diagnostic très retardé car
+l'erreur était dans le Journal (illisible : Sheet énorme + tronquée + cache Drive) : il a fallu raisonner par
+signaux Drive indépendants (parent de « Ancienne structure » = racine, PAS 04·Immigration) + relecture du code.
+**Leçon.** (1) **Un état terminal (« terminé », « fait ») ne doit JAMAIS être déduit d'un compteur à 0 sans
+distinguer « 0 parce que vraiment vide » de « 0 parce qu'une étape a échoué ».** Tracer les exceptions attrapées
+(`erreurCollecte=true`) et forcer « pas terminé » (`reste=true`) tant qu'un échec a pu masquer du travail — sinon
+un bug transitoire fige définitivement le pipeline. (2) **Un garde-fou appliqué PAR ÉLÉMENT et qui peut lever
+(ici `getParents`) doit être défensif** : envelopper au niveau de l'élément (un item bizarre est SAUTÉ, pas
+d'abandon du lot entier) ET à l'intérieur du garde (détection POSITIVE seulement : on ne « protège » que si on
+TROUVE réellement la preuve ; une branche illisible renvoie false sans propager). Sinon un seul élément
+pathologique neutralise tout le traitement. (3) **Symptôme « moteur muet + un état figé »** ⇒ suspecter un
+prédicat de skip/fin auto-produit qui s'est verrouillé sur une valeur erronée ; le déverrouiller par un
+bump de tag/version, PAS juste corriger le bug en amont (l'état figé persiste sinon). (4) Le prédicat de
+recensement (léger, sans appels Drive fragiles) DIVERGE du prédicat de collecte (avec garde `getParents`) :
+quand deux prédicats censés être équivalents donnent des comptes opposés (113 vs 0), l'écart EST le bug.
+**Règle durable ?** oui.
+
+## 2026-07-01 — Une étape amont COÛTEUSE peut « manger » chaque tick sans rien écrire (churn invisible) ; séparer le comptage léger du garde-fou coûteux
+**Contexte.** Après déploiement de la barre (P1-15), Marc n'avait PAS d'onglet `Progression`. Diagnostic
+par signal Drive indépendant (le canal Sheet étant illisible/tronqué) : sur ~25 min post-déploiement, RIEN
+n'avait bougé dans le Drive (seul l'Apps Script modifié par le `clasp push`), et la Sheet d'état était figée.
+Piège de lecture : « la Sheet ne bouge pas » ≠ « le moteur est mort ». Le recensement de la barre parcourait
+« Ancienne structure » (grosse archive) en appelant `getParents()` par fichier (via `aParentProtege_`) → il
+ne finissait JAMAIS dans le budget (4.5 min), retournait « partiel » en n'écrivant qu'une Script Property
+(invisible côté Drive/Sheet), et re-partait de zéro au tick suivant. Résultat : le moteur tournait mais
+consommait tout son budget dans un comptage stérile, sans jamais produire la barre ni laisser de budget à
+l'intake — un **churn invisible**.
+**Leçon.** (1) **Symptôme « le moteur écrit son état mais plus rien ne bouge » ⇒ suspecter une étape AMONT
+qui consomme le budget sans écrire** (pas seulement un plantage). Diagnostiquer par un signal Drive
+indépendant : `modifiedTime` sur tout le Drive — si SEUL le fichier de code a changé depuis le déploiement,
+aucun tick n'a rien produit. (2) **Un COMPTAGE (dénominateur d'une barre, estimation) ne doit pas payer le
+prix d'un GARDE-FOU de mutation.** `getParents()` par fichier est là pour ne jamais DÉTACHER un fichier de la
+zone protégée — utile avant un déplacement RÉEL, inutile pour compter. Split : prédicat LÉGER
+(`estAReclasserLeger_` : nom + mime, aucun appel Drive supplémentaire) pour le recensement ; prédicat COMPLET
+(`estAReclasser_` avec `aParentProtege_`) pour la COLLECTE et le DÉPLACEMENT réels. L'écart d'estimation est
+absorbé par la re-base + la finalisation sur le vrai signal de fin. (3) **Rendre l'onglet visible dès le 1ᵉʳ
+tick** (écrire « recensement en cours… » avant même le comptage) : un utilisateur qui attend une barre ne doit
+jamais voir « rien » pendant 30 min. (4) Toujours **tracer le coût réel d'un parcours récursif** (1 appel
+Drive/fichier × milliers de fichiers = jamais dans le budget) avant de le mettre sur le chemin d'un tick.
+**Règle durable ?** oui.
+
+## 2026-07-01 — Barre de progression sur un traitement de masse : recensement dans un tick DÉDIÉ, base re-basable, « terminé » sur le vrai signal
+**Contexte.** Marc : « je veux que ça classe tout, une petite barre de chargement pour voir ». Deux bugs
+étaient en jeu. (1) Le grand rangement de l'ancien Drive tournait EN DERNIER dans le tick → systématiquement
+affamé (budget déjà consommé par l'intake) → l'ancien Drive ne se vidait jamais. (2) Pour la barre, une
+1ʳᵉ implémentation faisait le RECENSEMENT complet (parcours récursif du Drive pour compter le total) DANS
+le même run qu'une page de rangement + l'intake : sur un gros Drive, ce recensement ne finissait jamais dans
+le budget → base jamais posée → aucune barre → et chaque tick re-parcourait tout pour rien (quota gaspillé).
+La revue quotas a aussi noté qu'une base FIGÉE (`base`) confrontée à un numérateur CUMULÉ (`traites`) ne
+converge pas : la barre pouvait afficher « ✅ terminé » alors qu'il restait des fichiers (ajoutés après le
+recensement), ou rester bloquée à 98 % (fichiers comptés puis normalisés par un autre chemin).
+**Leçon.** (1) **Drainer avant d'alimenter, sans affamer l'étape qui alimente.** Une étape qui ALIMENTE une
+file (rangement → `00·À trier`) doit tourner TÔT (sinon jamais de budget) MAIS gated sur une file BASSE
+(`< SEUIL`) — pas simplement « en dernier ». Tôt+gated = ni famine ni engorgement. (2) **Un recensement de
+masse (dénominateur d'une barre) se fait dans un tick DÉDIÉ**, pas en concurrence du traitement qu'il mesure :
+tant que la base n'est pas posée, ce tick NE traite pas et consacre son budget au comptage. Filet anti-blocage
+obligatoire : après N recensements incomplets (Drive énorme / plafond dur), accepter le compte PARTIEL comme
+base approximative — ne JAMAIS laisser le recensement bloquer le traitement. (3) **Barre honnête** : numérateur
+monotone (`traites` = déplacements réellement faits) ; base **re-basable** (si on sort plus que recensé, la base
+suit → jamais > 100 %) ; « 100 % / terminé » posé sur le **vrai signal de fin** que le pipeline produit déjà
+(une passe ne collecte plus rien), pas sur `traites >= base` qui ne converge pas ; pourcentage plafonné à 99 %
+tant que ce n'est pas fini. (4) **Tracer le scénario sur plusieurs ticks** (recensement → pages → drainage →
+fin) avant de valider — c'est ce qui révèle la non-convergence, pas une relecture. **Convergence** garantie par
+le prédicat de skip stable (renommage `AAAA-MM-JJ_` ⇒ jamais re-collecté) + `00·À trier`/`_Doublons`/revue hors
+des racines collectées.
+**Règle durable ?** oui.
+
 ## 2026-06-23 — Mise en place de la boucle de leçons
 **Contexte.** Scaffolding Phase 0 de DriveAI.
 **Leçon.** Les leçons utiles sont celles qui changent une décision future : convention,

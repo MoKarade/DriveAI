@@ -5,15 +5,14 @@
  * (PJ Gmail et dépôt manuel `00·À trier`). Le placement (copie pour Gmail,
  * déplacement pour un dépôt) est fait par l'appelant (cf. Pipeline.gs).
  *
- * Priorité des garde-fous (avant tout routage) :
- *   0. dépôt à sensibilité INDÉTERMINABLE (OCR vide, pas de signal expéditeur/sujet) → 00·À vérifier
- *   1. zone protégée (immigration) / sensible=true        → 00·À vérifier
- *   2. confiance hors [seuil, 1] / domaine inconnu         → 00·À vérifier
- *   3. doublon de contenu déjà présent                     → 00·À vérifier (signalé, jamais effacé)
- * Sinon on CLASSE : entité connue → dossier d'entité granulaire ; entité inconnue/en attente →
- * dossier du domaine (+ proposition d'entité pour plus tard) ; entité null → dossier du domaine.
- * Une entité non validée n'envoie JAMAIS le document en revue (sinon, au départ, tout part en
- * revue → l'auto-rangement est neutralisé, cf. LESSONS « garde-fou étroit »).
+ * [DÉCISION MARC 2026-07-01] PLUS DE FILE DE REVUE : un seul dossier d'arrivée (`00·À trier`).
+ * TOUT document est CLASSÉ au mieux, avec son nom FINAL propre (`AAAA-MM-JJ_Type_Émetteur.ext`),
+ * jamais un nom encodé `[REVUE] …`. Un domaine introuvable (LLM hors-liste) n'est plus mis en
+ * limbo : il est rangé dans `CONFIG.DOMAINE_DEFAUT` (bucket générique). Seul aiguillage restant :
+ *   - doublon de contenu déjà présent → `_Doublons` (déplacement seul, jamais supprimé, §2) ;
+ *   - sinon on CLASSE : entité connue → dossier d'entité granulaire ; entité inconnue/en attente →
+ *     dossier du domaine (+ proposition d'entité pour plus tard) ; entité null → dossier du domaine.
+ * Une entité non validée n'est JAMAIS un frein (elle enrichit, cf. LESSONS « granularité »).
  */
 
 /**
@@ -27,10 +26,10 @@
 function deciderRoutage_(classif, dateReference, ext, motifForce) {
   var date = dateNormalisee_(classif.date_doc, dateReference); // AAAA-MM-JJ
 
-  // 1) Revue = dernier recours : domaine introuvable (vraiment inclassable). Les documents
-  // sensibles sont désormais classés comme le reste (décision Marc 2026-07-01, cf. motifDeRevue_).
-  var raisonRevue = motifDeRevue_(classif);
-  if (raisonRevue) return revue_(raisonRevue, classif, date, ext);
+  // 1) Domaine introuvable (LLM hors-liste/malformé) : plus de revue (décision Marc 2026-07-01) —
+  // on CLASSE au mieux dans le domaine par défaut, avec le nom final propre. Zéro fichier en limbo.
+  // `domaineConnu_` accepte les 7 domaines fixes ET les domaines auto-créés (07 · Santé, ADR-0002).
+  if (!domaineConnu_(classif.domaine)) classif.domaine = CONFIG.DOMAINE_DEFAUT;
 
   // 2) Doublon (y compris sensible) : on l'ÉCARTE dans « _Doublons » plutôt que de garder N copies —
   // au volume du grand rangement, signaler chaque doublon sature. Déplacement seul, JAMAIS supprimé
@@ -56,7 +55,7 @@ function deciderRoutage_(classif, dateReference, ext, motifForce) {
     chemin = cheminLisible_(classif);
   }
 
-  var nom = nomNormalise_(date, classif.type_doc, classif.emetteur, ext);
+  var nom = nomParType_(date, classif.type_doc, classif.emetteur, ext);
   return {
     statut: 'classé', domaine: classif.domaine, chemin: chemin, nom: nom,
     dossierId: dossierId, autresEntites: autresEntitesConnues_(classif, dossierId)
@@ -72,35 +71,28 @@ function deciderRoutage_(classif, dateReference, ext, motifForce) {
 function doublon_(classif, date, ext) {
   return {
     statut: 'doublon', domaine: classif.domaine || '', chemin: '_Doublons',
-    nom: nomNormalise_(date, classif.type_doc, classif.emetteur, ext),
+    nom: nomParType_(date, classif.type_doc, classif.emetteur, ext),
     dossierId: dossierDoublons_().getId()
   };
 }
 
-/** Construit une décision « revue ». */
-function revue_(raison, classif, date, ext) {
-  return {
-    statut: 'revue', domaine: classif.domaine || '', chemin: '00 · À vérifier',
-    nom: nomRevue_(raison, classif, date, ext), raison: raison
-  };
-}
-
 /**
- * @param {Object} classif
- * @return {string} motif de revue, ou '' si classable automatiquement.
- *
- * [DÉCISION MARC 2026-07-01] Les documents SENSIBLES (immigration, fiscal, passeport) sont
- * désormais AUTO-CLASSÉS dans leur domaine, comme le reste — plus de routage systématique en
- * revue (ancien garde-fou §1, relâché sur demande explicite de Marc). La confiance basse
- * n'envoie pas non plus en revue (analyse approfondie puis classement, cf. Llm.classifier_).
- * NE RESTE en revue QUE le dernier recours : un domaine introuvable (document vraiment
- * inclassable). Garde-fous CONSERVÉS : aucune suppression (§2) ; un doublon même sensible va
- * dans « _Doublons » (jamais supprimé) ; le grand rangement ne détache jamais un fichier déjà
- * rangé sous 04·Immigration (garde multi-parents).
+ * Décision « doublon » RAPIDE (fast path P1-20) — SANS classification (ni OCR ni LLM) : on sait déjà,
+ * par l'empreinte, que ce contenu est déjà classé ailleurs. On l'écarte dans « _Doublons » en gardant
+ * son NOM D'ORIGINE (nettoyé, préfixé de la date) : un exemplaire redondant, le nom parfait importe peu.
+ * Déplacement/copie seul, jamais de suppression (§2).
+ * @param {string} nomOriginal
+ * @param {Date} dateRef
+ * @param {string} ext
  */
-function motifDeRevue_(classif) {
-  if (!CONFIG.DOMAINES[classif.domaine]) return 'domaine inconnu';
-  return '';
+function doublonRapide_(nomOriginal, dateRef, ext) {
+  var date = Utilities.formatDate(dateRef, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var base = String(nomOriginal || '').replace(/\.[^.\/]+$/, ''); // retire l'extension d'origine
+  return {
+    statut: 'doublon', domaine: '', chemin: '_Doublons',
+    nom: date + '_' + (champ_(base) || 'Copie') + ext,
+    dossierId: dossierDoublons_().getId()
+  };
 }
 
 /**
@@ -110,8 +102,7 @@ function motifDeRevue_(classif) {
  * @return {string} ID de dossier Drive
  */
 function dossierCible_(classif, date) {
-  var racineId = CONFIG.DOMAINES[classif.domaine];
-  var courant = DriveApp.getFolderById(racineId);
+  var courant = DriveApp.getFolderById(idDomaine_(classif.domaine));
 
   var cats = CONFIG.CATEGORIES[classif.domaine];
   if (cats && classif.categorie && cats[classif.categorie]) {
@@ -121,6 +112,39 @@ function dossierCible_(classif, date) {
     courant = sousDossier_(courant, date.substring(0, 4));
   }
   return courant.getId();
+}
+
+/** Vrai si `domaine` est un domaine reconnu : un des 7 fixes (ID en dur) OU un domaine auto-créé. */
+function domaineConnu_(domaine) {
+  return !!(CONFIG.DOMAINES[domaine]) || (CONFIG.DOMAINES_AUTO || []).indexOf(domaine) !== -1;
+}
+
+/** ID du dossier d'un domaine : ID fixe (CONFIG.DOMAINES) ou dossier auto-créé (find-or-create). */
+function idDomaine_(domaine) {
+  return CONFIG.DOMAINES[domaine] || dossierDomaineAuto_(domaine).getId();
+}
+
+/**
+ * Renvoie (ou crée) le dossier d'un domaine AUTO-créé (ex. « 07 · Santé »), placé À CÔTÉ des domaines
+ * existants (même parent que le domaine par défaut). ID mémorisé en Script Property. Zéro clic, jamais
+ * de suppression. Idempotent (réutilise le dossier s'il existe déjà par nom).
+ * @param {string} nom
+ * @return {Folder}
+ */
+function dossierDomaineAuto_(nom) {
+  var props = PropertiesService.getScriptProperties();
+  var cle = 'DriveAI_DOM_' + nom;
+  var id = props.getProperty(cle);
+  if (id) {
+    try { return DriveApp.getFolderById(id); } catch (e) { /* supprimé → on recrée */ }
+  }
+  var ref = DriveApp.getFolderById(CONFIG.DOMAINES[CONFIG.DOMAINE_DEFAUT]); // domaine de référence (01)
+  var parents = ref.getParents();
+  var racine = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
+  var it = racine.getFoldersByName(nom);
+  var dossier = it.hasNext() ? it.next() : racine.createFolder(nom);
+  props.setProperty(cle, dossier.getId());
+  return dossier;
 }
 
 /**
@@ -216,33 +240,171 @@ function sousDossier_(parent, nom) {
  * @return {Folder}
  */
 function dossierDoublons_() {
+  return dossierRacineParNom_('_Doublons', 'DriveAI_DOUBLONS_ID');
+}
+
+/** Renvoie (ou crée) le dossier `_Technique` (code/CAO écartés du classement), à côté de `_Doublons`. */
+function dossierTechnique_() {
+  return dossierRacineParNom_('_Technique', 'DriveAI_TECHNIQUE_ID');
+}
+
+/**
+ * Renvoie (ou crée) un dossier de service placé à la RACINE DriveAI (même parent que `00 · À trier`),
+ * hors domaines — ex. `_Doublons`, `_Technique`. ID mémorisé en Script Property. Déplacement seul,
+ * jamais de suppression. Idempotent (réutilise le dossier existant par nom).
+ * @param {string} nom
+ * @param {string} cleProp
+ * @return {Folder}
+ */
+function dossierRacineParNom_(nom, cleProp) {
   var props = PropertiesService.getScriptProperties();
-  var id = props.getProperty('DriveAI_DOUBLONS_ID');
+  var id = props.getProperty(cleProp);
   if (id) {
     try { return DriveApp.getFolderById(id); } catch (e) { /* supprimé → on recrée ci-dessous */ }
   }
   var aTrier = DriveApp.getFolderById(CONFIG.DOSSIERS.A_TRIER);
   var parents = aTrier.getParents();
   var racine = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
-  var it = racine.getFoldersByName('_Doublons');
-  var dossier = it.hasNext() ? it.next() : racine.createFolder('_Doublons');
-  props.setProperty('DriveAI_DOUBLONS_ID', dossier.getId());
+  var it = racine.getFoldersByName(nom);
+  var dossier = it.hasNext() ? it.next() : racine.createFolder(nom);
+  props.setProperty(cleProp, dossier.getId());
   return dossier;
+}
+
+/** Vrai si le fichier est TECHNIQUE (code/CAO) d'après son extension — écarté du classement documentaire. */
+function estTechnique_(nom) {
+  var ext = (extension_(nom) || '').toLowerCase();
+  return !!ext && CONFIG.EXT_TECHNIQUES.indexOf(ext) !== -1;
+}
+
+/**
+ * Décision de routage d'un fichier TECHNIQUE (ADR-0002 §3) : `_Technique`, nom = date + nom d'origine
+ * nettoyé (pas d'OCR/LLM, ce n'est pas un document à classer). Déplacement/copie seul, jamais supprimé.
+ * @param {string} nomOrigine
+ * @param {Date} dateRef
+ * @param {string} ext
+ */
+function routageTechnique_(nomOrigine, dateRef, ext) {
+  var date = Utilities.formatDate(dateRef, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var base = String(nomOrigine || '').replace(/\.[^.\/]+$/, '');
+  return {
+    statut: 'technique', domaine: '', chemin: '_Technique',
+    nom: date + '_' + (champ_(base) || 'Fichier') + ext,
+    dossierId: dossierTechnique_().getId()
+  };
 }
 
 /* ---------- Nommage (docs/NAMING.md) ---------- */
 
-/** `AAAA-MM-JJ_Type_Émetteur.ext` */
+/** `AAAA-MM-JJ_Type_Émetteur.ext` — format historique (granularité JOUR). */
 function nomNormalise_(date, type, emetteur, ext) {
   var t = champ_(type) || 'Document';
   var e = champ_(emetteur) || 'Inconnu';
   return date + '_' + t + '_' + e + ext;
 }
 
-/** `[REVUE] <raison> — <domaine/catégorie suggéré> — <nom suggéré>.ext` */
-function nomRevue_(raison, classif, date, ext) {
-  var suggestion = nomNormalise_(date, classif.type_doc, classif.emetteur, ext);
-  return '[REVUE] ' + raison + ' — ' + cheminLisible_(classif) + ' — ' + suggestion;
+/**
+ * Nommage PAR TYPE de document (ADR-0002 §6) : la granularité de date et le libellé s'adaptent au
+ * type. Ex. un relevé bancaire est mensuel (`AAAA-MM_Relevé_<Banque>`), un diplôme annuel
+ * (`AAAA_Diplôme_<Établissement>`), une facture au jour (défaut). Logique PURE (testée). Dégrade
+ * gracieusement : un type inconnu retombe sur le format historique `nomNormalise_` (jamais un blocage).
+ * @param {string} date  AAAA-MM-JJ (issu de dateNormalisee_)
+ * @param {string} type  type_doc du LLM
+ * @param {string} emetteur
+ * @param {string} ext
+ * @return {string}
+ */
+function nomParType_(date, type, emetteur, ext) {
+  var sc = schemaNommage_(type);
+  if (sc.gran === 'jour' && !sc.label) return nomNormalise_(date, type, emetteur, ext); // défaut historique
+  var d = tronquerDate_(date, sc.gran);
+  var label = champ_(sc.label || type) || 'Document';
+  var e = champ_(emetteur) || 'Inconnu';
+  return d + '_' + label + '_' + e + ext;
+}
+
+/**
+ * Schéma de nommage pour un type_doc : granularité de date + libellé fixe éventuel. Règles ORDONNÉES
+ * (le 1er motif trouvé gagne) — « relevé de notes » (annuel) doit passer AVANT « relevé » (mensuel).
+ * @param {string} typeDoc
+ * @return {{gran:('jour'|'mois'|'annee'), label?:string}}
+ */
+function schemaNommage_(typeDoc) {
+  var t = normaliserCle_(typeDoc); // minuscules, sans accents, apostrophes → espace
+  // Règles ORDONNÉES (1er match gagne). `motifs` = sous-chaînes ; `re` = motif ANCRÉ (mot entier)
+  // pour les jetons courts ambigus — « paie » ne doit pas matcher « paiement », « tp » pas « … ».
+  var regles = [
+    { motifs: ['releve de note', 'bulletin de note'], gran: 'annee' },                          // études (avant « releve »)
+    { motifs: ['bulletin de paie', 'fiche de paie', 'bulletin de salaire'], re: /(^| )(paie|salaire)( |$)/, gran: 'mois', label: 'Paie' },
+    { motifs: ['releve bancaire', 'releve de compte', 'releve'], gran: 'mois', label: 'Relevé' },
+    { motifs: ['diplome', 'attestation de reussite'], gran: 'annee' },
+    { motifs: ['avis d imposition', 'avis de cotisation', 'impot', 'declaration de revenus', 'feuillet'], gran: 'annee' },
+    { motifs: ['curriculum'], re: /(^| )cv( |$)/, gran: 'annee', label: 'CV' },
+    { motifs: ['travaux pratiques', 'devoir', 'examen', 'cours'], re: /(^| )tp\d*( |$|\d)/, gran: 'annee' } // études : TP, TP4…
+    // Tout le reste (facture, contrat, immigration, santé, attestation…) → JOUR, libellé = type nettoyé.
+  ];
+  for (var i = 0; i < regles.length; i++) {
+    var r = regles[i], hit = r.re ? r.re.test(t) : false;
+    for (var j = 0; !hit && j < r.motifs.length; j++) if (t.indexOf(r.motifs[j]) !== -1) hit = true;
+    if (hit) return { gran: r.gran, label: r.label };
+  }
+  return { gran: 'jour' };
+}
+
+/** Tronque une date AAAA-MM-JJ à la granularité voulue (annee → AAAA, mois → AAAA-MM, jour → complet). */
+function tronquerDate_(date, gran) {
+  var s = String(date || '');
+  if (gran === 'annee') return s.substring(0, 4);
+  if (gran === 'mois') return s.substring(0, 7);
+  return s;
+}
+
+/**
+ * Devine le TYPE d'un document depuis son NOM d'origine (ADR-0002 §5) — filet quand le LLM ne rend
+ * pas de type. Ex. `MODE2D_TP4_MARC_RICHARD.pdf` → « TP ». Séparateurs (`_ - .`) traités comme des
+ * espaces avant matching (les noms de fichiers collent souvent les mots). Logique PURE (testée).
+ * @param {string} nom
+ * @return {string} type canonique deviné, ou '' si rien de sûr.
+ */
+function devinerTypeDepuisNom_(nom) {
+  var base = String(nom || '').replace(/\.[^.\/]+$/, '');    // retire l'extension
+  var t = normaliserCle_(base.replace(/[_\-.]+/g, ' '));     // séparateurs → espace, puis minuscule/sans accents
+  var regles = [
+    { re: /(^| )tp ?\d*( |$)/, type: 'TP' },                 // TP, TP4, TP 4…
+    { motifs: ['releve de note', 'bulletin de note'], type: 'Relevé de notes' },
+    { motifs: ['facture'], type: 'Facture' },
+    { re: /(^| )(paie|salaire)( |$)/, motifs: ['bulletin de paie', 'fiche de paie'], type: 'Bulletin de paie' },
+    { motifs: ['releve'], type: 'Relevé' },
+    { re: /(^| )cv( |$)/, motifs: ['curriculum'], type: 'CV' },
+    { motifs: ['contrat', 'bail'], type: 'Contrat' },
+    { motifs: ['diplome'], type: 'Diplôme' },
+    { motifs: ['ordonnance'], type: 'Ordonnance' },
+    { motifs: ['avis imposition', 'avis d imposition', 'impot', 'avis de cotisation'], type: 'Avis d\'imposition' },
+    { motifs: ['attestation'], type: 'Attestation' }
+  ];
+  for (var i = 0; i < regles.length; i++) {
+    var r = regles[i], hit = r.re ? r.re.test(t) : false;
+    for (var j = 0; !hit && r.motifs && j < r.motifs.length; j++) if (t.indexOf(r.motifs[j]) !== -1) hit = true;
+    if (hit) return r.type;
+  }
+  return '';
+}
+
+/**
+ * Enrichit la classification depuis le nom d'origine QUAND le LLM n'a pas fourni de type (Inconnu/vide) :
+ * on complète `type_doc` par un type deviné du nom (ADR-0002 §5). N'écrase JAMAIS un type déjà trouvé.
+ * @param {Object} classif
+ * @param {string} nom
+ * @return {Object} le classif (muté)
+ */
+function enrichirClassifDepuisNom_(classif, nom) {
+  if (!classif) return classif;
+  var t = normaliserCle_(classif.type_doc);
+  if (!t || t === 'inconnu') {
+    var devine = devinerTypeDepuisNom_(nom);
+    if (devine) classif.type_doc = devine;
+  }
+  return classif;
 }
 
 /** Chemin lisible « Domaine/Catégorie » (chaque segment nettoyé, le « / » préservé). */
