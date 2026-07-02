@@ -196,6 +196,17 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 
 > ⚠️ **Ré-autorisation Marc requise** : le scope `forms` (création/lecture du formulaire) s'ajoute au prochain déploiement — Marc doit ré-accorder l'accès Google une fois (frontière d'exécution : la session Claude ne peut pas le faire).
 
+### Chantier #7 — Sources d'entrée : fichiers partagés (ADR-0005)  🟦
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C7-01 | **Décisions PURES** (`Partages.gs`) : `estTypeDocumentPartage_` (allowlist images + PDF/Office), `partageRecent_` (fenêtre glissante, prudent si date absente), `stockagePresquePleinCalc_` (illimité/inconnu ne bloque jamais) | ✅ (7 tests) |
+| C7-02 | **Accès Drive REST** : `listerPartagesRecents_` (`files.list sharedWithMe`, tri `sharedWithMeTime desc`, paginé, retry), `quotaStockage_` (`about.get`) — via UrlFetchApp, aucun nouveau scope | ✅ |
+| C7-03 | **Collecteur** `collecterPartages_` : filtre type+récence (tri-état `classerRecencePartage_` : date absente ⇒ saut d'item, pas de STOP global), garde de taille (`PARTAGES_TAILLE_MAX`), saute déjà-indexés (`shared\|fileId`), COPIE via `traiterPartage_`→pipeline commun (dédup MD5, OCR, LLM, routage ; blob téléchargé 1× mémoïsé). Borné `PARTAGES_MAX_PAR_RUN` + garde-temps, storage-aware (vérif lazy + alerte unique) | ✅ |
+| C7-04 | **Câblage tick** : source #3 après Gmail+dépôts, AVANT intentions Phase 3 ; budget-gatée + enveloppée try/catch (ne bloque jamais l'intake) | ✅ |
+
+> Aucun nouveau scope OAuth (`drive` couvre les partages). Convergence : petite fenêtre de récence + skip des déjà-copiés + cap sur les copiés → chaque tick progresse (pas de plateau, contrairement à l'historique Gmail).
+
 ---
 
 ## Épopée Phase 4 — Recherche + dashboard (Vercel)  ⬜
