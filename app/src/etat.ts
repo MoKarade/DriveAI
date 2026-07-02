@@ -255,15 +255,18 @@ export interface JourActivite {
  * `maintenant` est injecté (déterminisme des tests). Jours sans activité inclus (barres à 0).
  */
 export function activiteParJour(lignes: LigneIndex[], jours: number, maintenant: Date): JourActivite[] {
+  // Clés en date LOCALE (pas UTC) : `traiteLe` vient de la Sheet en heure locale — un traitement du
+  // soir (UTC-4) doit tomber sur la barre du bon jour calendaire.
+  const cleLocale = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const compte = new Map<string, number>();
   for (let i = jours - 1; i >= 0; i--) {
-    const d = new Date(maintenant.getTime() - i * 24 * 60 * 60 * 1000);
-    compte.set(d.toISOString().slice(0, 10), 0);
+    compte.set(cleLocale(new Date(maintenant.getTime() - i * 24 * 60 * 60 * 1000)), 0);
   }
   for (const l of lignes) {
     const t = Date.parse(l.traiteLe);
     if (Number.isNaN(t)) continue;
-    const cle = new Date(t).toISOString().slice(0, 10);
+    const cle = cleLocale(new Date(t));
     if (compte.has(cle)) compte.set(cle, (compte.get(cle) ?? 0) + 1);
   }
   return Array.from(compte, ([jour, n]) => ({ jour, n }));

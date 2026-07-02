@@ -9,6 +9,10 @@ const assert = require('node:assert');
 const { load } = require('./harness');
 
 function ctxRelances(relances, index, echecs) {
+  return ctxRelancesComplet(relances, index, echecs).ctxCalls;
+}
+
+function ctxRelancesComplet(relances, index, echecs) {
   const c = load(['Config.gs', 'Maintenance.gs']);
   c.journalInfo_ = () => {};
   c.journalErreur_ = () => {};
@@ -32,7 +36,12 @@ function ctxRelances(relances, index, echecs) {
     },
   };
   c.feuille_ = (nom) => feuilles[nom];
-  return { c, calls };
+  calls.deplaces = [];
+  calls.journaux = [];
+  c.journalInfo_ = (s, msg) => calls.journaux.push(msg);
+  c.ensembleDomainesProteges_ = () => ({});
+  c.deplacerVersATrier_ = (fileId) => { calls.deplaces.push(fileId); return true; };
+  return { ctxCalls: { c, calls }, c, calls };
 }
 
 test('relance : ligne Index QUARANTAINE de la clé retirée + compteur Échecs + demande consommée', () => {
@@ -62,4 +71,37 @@ test('relance : onglet vide → no-op total', () => {
   const { c, calls } = ctxRelances([], [], []);
   c.appliquerRelancesQuarantaine_(() => false);
   assert.strictEqual(calls.deleteRows.length, 0);
+});
+
+
+test('relance migre| (campagne figée) → le fichier est RE-INJECTÉ dans 00·À trier (jamais un no-op)', () => {
+  const { c, calls } = ctxRelances(
+    [['migre|m1|FICHIER1']],
+    [['migre|m1|FICHIER1', '', 'doc.pdf', '', '', 'quarantaine']],
+    [],
+  );
+  c.appliquerRelancesQuarantaine_(() => false);
+  assert.deepStrictEqual(calls.deplaces, ['FICHIER1']);
+});
+
+test('relance migre| avec ligne drive| existante du même fichier → PAS de déplacement (pas de conflit de ledger)', () => {
+  const { c, calls } = ctxRelances(
+    [['migre|m1|FICHIER2']],
+    [['migre|m1|FICHIER2', '', 'doc.pdf', '', '', 'quarantaine']],
+    [],
+  );
+  c.indexContient_ = (cle) => cle === 'drive|FICHIER2';
+  c.appliquerRelancesQuarantaine_(() => false);
+  assert.deepStrictEqual(calls.deplaces, []);
+});
+
+test('relance messageId| (PJ Gmail) → journalise la limite de fenêtre (jamais silencieux)', () => {
+  const { c, calls } = ctxRelances(
+    [['msg123|0|a.pdf|99']],
+    [['msg123|0|a.pdf|99', '', 'a.pdf', '', '', 'quarantaine']],
+    [],
+  );
+  c.appliquerRelancesQuarantaine_(() => false);
+  assert.ok(calls.journaux.some((j) => j.includes('fenêtre')), 'avertissement fenêtre attendu');
+  assert.deepStrictEqual(calls.deplaces, []);
 });

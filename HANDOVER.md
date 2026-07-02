@@ -250,7 +250,11 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
   v2 : **Fusionner 1-clic** (statut « variante de : X »), **rejet en masse** (cases + bouton, cellule par
   cellule), **graphe d'activité 30 j**, **quarantaine avec Relancer** — l'app APPEND une demande (onglet
   `Relances`), le moteur consomme au tick (`appliquerRelancesQuarantaine_` — frontière d'exécution
-  respectée), **PWA** (manifest + SW passe-plat sans cache). Moteur **155 tests**, app **54**, build ok.
+  respectée), **PWA** (manifest + SW passe-plat sans cache). **Vérification adversariale (3 agents) intégrée** : la relance
+  n'est plus jamais un no-op silencieux (clé `migre|` figée ⇒ le fichier est RE-INJECTÉ dans 00·À trier
+  avec garde §1 ; PJ Gmail/partage hors fenêtre ⇒ limite journalisée) ; le dashboard ne tronque plus la
+  quarantaine ni l'activité (Index complet — seul le comptage par domaine se borne) ; compteur de sélection
+  purgé à valider/fusionner ; buckets d'activité en date LOCALE. Moteur **158 tests**, app **54**, build ok.
 
 - **2026-07-02 — Chantier #11 : FAST-PATH MÉDIAS BRUTS (ADR-0009 §2).** Vidéo/audio/gif → `_Médias`
   SANS OCR ni LLM ; photo → `_Médias` seulement si nom NON-documentaire (ID numérique ≥ 8 chiffres —

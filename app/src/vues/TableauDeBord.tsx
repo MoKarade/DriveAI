@@ -37,7 +37,8 @@ export function TableauDeBord({ langue }: { langue: Langue }) {
         ]);
         setSante(interpreterSante(s));
         setJournal(interpreterJournal(j).slice(-JOURNAL_RECENT).reverse());
-        setIndex(interpreterIndex(i).slice(-INDEX_RECENT));
+        setIndex(interpreterIndex(i)); // COMPLET : la quarantaine (état ancien par nature) et l'activité
+        // ne doivent jamais être tronquées ; seul le comptage par domaine se borne à l'affichage.
       } catch (e) {
         setErreur(String(e));
       }
@@ -47,7 +48,7 @@ export function TableauDeBord({ langue }: { langue: Langue }) {
   if (erreur) return <p className="erreur">{t('erreur', langue)} : {erreur}</p>;
   if (!sante) return <p>{t('chargement', langue)}</p>;
 
-  const parDomaine = Array.from(compterParDomaine(index)).sort((a, b) => b[1] - a[1]);
+  const parDomaine = Array.from(compterParDomaine(index.slice(-INDEX_RECENT))).sort((a, b) => b[1] - a[1]);
   const activite = activiteParJour(index, 30, new Date());
   const maxJour = Math.max(1, ...activite.map((a) => a.n));
   const quarantaine = lignesQuarantaine(index);

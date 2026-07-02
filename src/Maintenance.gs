@@ -479,8 +479,31 @@ function appliquerRelancesQuarantaine_(estBudgetDepasse) {
       if (cles[String(v[k][0])] && v[k][5] === 'quarantaine') lignes.push(k + 2);
     }
     lignes.sort(function (a, b) { return b - a; });
-    for (var l = 0; l < lignes.length; l++) fi.deleteRow(lignes[l]);
+    for (var l = 0; l < lignes.length; l++) {
+      if (estBudgetDepasse()) return; // demandes non purgées → rejouées idempotemment au tick suivant
+      fi.deleteRow(lignes[l]);
+    }
     retirees = lignes.length;
+  }
+
+  // RE-INJECTION réelle par TYPE de clé (revue flotte : « la source re-passera » est faux pour
+  // certaines clés — jamais un no-op silencieux présenté comme un succès) :
+  //  - `drive|…` : le dépôt est resté dans 00·À trier → l'intake le re-voit naturellement ;
+  //  - `migre|<tag>|<fileId>` : la campagne peut être FIGÉE → on DÉPLACE le fichier vers 00·À trier
+  //    (garde zone protégée stricte) pour qu'il re-passe comme dépôt (clé drive|fileId) ;
+  //  - `messageId|…` / `shared|…` : la copie n'a jamais été créée (l'échec est antérieur au placement) —
+  //    la source ne re-présente l'original que dans sa fenêtre (30 j) → on journalise la limite.
+  var proteges = ensembleDomainesProteges_();
+  for (var cle in cles) {
+    var mMigre = cle.match(/^migre\|[^|]+\|(.+)$/);
+    if (mMigre) {
+      // Ne pas déplacer si ce fichier a par ailleurs une ligne drive| NON-quarantaine (il serait déjà
+      // géré comme dépôt/classé sous cette clé — on ne crée pas de conflit de ledger).
+      if (!indexContient_('drive|' + mMigre[1])) deplacerVersATrier_(mMigre[1], proteges);
+    } else if (cle.indexOf('drive|') !== 0) {
+      journalInfo_('Maintenance', 'Relance « ' + cle + ' » : la source ne re-présentera ce document que ' +
+        'dans sa fenêtre de scan (30 j) — au-delà, re-transférer le mail ou re-partager le fichier.');
+    }
   }
 
   // Échecs : remet les compteurs des clés demandées à zéro (retrait de ligne).
@@ -491,7 +514,10 @@ function appliquerRelancesQuarantaine_(estBudgetDepasse) {
     var lignesE = [];
     for (var e = 0; e < ve.length; e++) { if (cles[String(ve[e][0])]) lignesE.push(e + 2); }
     lignesE.sort(function (a, b) { return b - a; });
-    for (var g = 0; g < lignesE.length; g++) fe.deleteRow(lignesE[g]);
+    for (var g = 0; g < lignesE.length; g++) {
+      if (estBudgetDepasse()) return; // idem : reprise idempotente
+      fe.deleteRow(lignesE[g]);
+    }
   }
 
   // Demandes consommées : on vide l'onglet (toutes les lignes de données, en une fois).

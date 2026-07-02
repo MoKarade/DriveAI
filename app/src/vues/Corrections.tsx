@@ -92,8 +92,10 @@ function ValidationEntites({
   const [enCours, setEnCours] = useState(false);
 
   async function ecrireStatut(e: LigneEntite, statut: string, libelle: string) {
+    if (!colonneStatut) throw new Error('Colonne Statut introuvable dans l\u2019onglet Entit\u00e9s');
     await ecrireCellule('Entités', `${colonneStatut}${e.ligneSheet}`, statut);
     setTraitees((m) => new Map(m).set(e.ligneSheet, libelle));
+    setSelection((s) => { const s2 = new Set(s); s2.delete(e.ligneSheet); return s2; }); // compteur juste
   }
 
   async function valider(e: LigneEntite) {
