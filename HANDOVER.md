@@ -251,9 +251,14 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
   Marc : jamais de notification immédiate, le résumé suffit). Un mail important (question directe,
   échéance, administration/officiel) → ligne Index `important|<messageId>` idempotente, posée AVANT
   le tri action/pas-action (une question ouverte sans action créable remonte quand même), jamais en
-  zone protégée (gardes amont), AUCUNE écriture Gmail. Section « 📌 À traiter » au hebdo (sujet +
-  lien Gmail `#all/`, plafond 10) et au dashboard. Les clés mail restent exclues de la Recherche
-  app. Moteur **186 tests**, app **57**, build ok. **Toute la roadmap v2 (#10-#15) est codée.**
+  zone protégée, AUCUNE écriture Gmail. Section « 📌 À traiter » au hebdo (sujet + lien Gmail
+  `#all/`, plafond 10) et au dashboard. Les clés mail restent exclues de la Recherche app. **Revue
+  flotte intégrée (1 BLOQUANT)** : le corps est désormais lu et la garde §1 re-vérifiée dessus
+  AVANT la pose du flag — y compris sur le chemin « important sans action » qui ne lisait jamais
+  le corps (un mail protégé détectable par son corps seul ne remonte JAMAIS dans « À traiter ») ;
+  critère `important` resserré (réponse/geste PERSONNEL attendu — jamais relevé/reçu/facture
+  récurrente, sinon saturation) ; dashboard : lignes « mail » exclues des agrégats documents.
+  Moteur **189 tests**, app **57**, build ok. **Toute la roadmap v2 (#10-#15) est codée.**
 
 - **2026-07-02 — Chantier #12 : HISTORIQUE GMAIL COMPLET (ADR-0010 §1) — design v2 après démolition
   adversariale.** Le design v1 (curseur rétrograde « jour le plus ancien traité + 1 », commit a8e9df4)

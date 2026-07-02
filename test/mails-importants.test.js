@@ -99,6 +99,39 @@ test('pas important → aucune ligne important| (anti-bruit)', () => {
   assert.strictEqual(calls.ajouts.some((a) => a.cle.startsWith('important|')), false);
 });
 
+test('CORPS en zone protégée + important → JAMAIS de ligne important| (bloquant revue sécurité)', () => {
+  // Expéditeur/sujet neutres (la garde amont ne voit rien), corps immigration/fiscal.
+  const { c, calls } = ctxIntentions({ action: false, important: true });
+  c.toucheZoneProtegee_ = (texte) => texte === 'corps'; // seul le CORPS déclenche
+  c.traiterMessagePourIntentions_(message('M5', 'Suivi de votre dossier'));
+  assert.strictEqual(calls.ajouts.some((a) => a.cle.startsWith('important|')), false);
+  const m = calls.ajouts.find((a) => a.cle === 'intention|M5');
+  assert.strictEqual(m.statut, 'intention-zone-protegee');
+});
+
+test('important SANS action → le corps est quand même LU (la garde §1 corps couvre ce chemin)', () => {
+  let corpsLu = 0;
+  const { c, calls } = ctxIntentions({ action: false, important: true });
+  const msg = {
+    getId: () => 'M6', getFrom: () => 'exp@exemple.com', getSubject: () => 'Question ?',
+    getPlainBody: () => { corpsLu++; return 'corps'; },
+  };
+  c.traiterMessagePourIntentions_(msg);
+  assert.strictEqual(corpsLu, 1);           // le chemin important-sans-action lit le corps
+  assert.ok(calls.index['important|M6']);   // corps sain → flag posé
+});
+
+test('rien vu par le mini-check → le corps n\'est PAS lu (chemin majoritaire gratuit)', () => {
+  let corpsLu = 0;
+  const { c } = ctxIntentions({ action: false, important: false });
+  const msg = {
+    getId: () => 'M7', getFrom: () => 'exp@exemple.com', getSubject: () => 'Newsletter',
+    getPlainBody: () => { corpsLu++; return 'corps'; },
+  };
+  c.traiterMessagePourIntentions_(msg);
+  assert.strictEqual(corpsLu, 0);
+});
+
 /* ---------- statsSemaine_ : collecte plafonnée + construireResume_ ---------- */
 
 function ctxResume(lignes) {

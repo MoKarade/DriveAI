@@ -88,9 +88,10 @@ function miniCheckMail_(expediteur, sujet) {
         'sans rien d\'autre. "action"=true si ce mail peut PLAUSIBLEMENT contenir une action à faire ' +
         '(échéance, paiement, formulaire) ou un rendez-vous daté ; false pour une newsletter, une ' +
         'notification automatique, une pub, ou tout mail clairement informatif. "important"=true ' +
-        'UNIQUEMENT si le mail demande l\'attention personnelle du destinataire : question directe ' +
-        'qui attend SA réponse, échéance ferme, courrier d\'une administration ou d\'un organisme ' +
-        'officiel. En cas de doute, "important"=false.',
+        'UNIQUEMENT si une réponse ou une action PERSONNELLE du destinataire est attendue : question ' +
+        'directe qui attend SA réponse, mise en demeure ou relance d\'une administration, échéance ' +
+        'qui exige un geste de SA part. JAMAIS pour un relevé disponible, une confirmation, un reçu, ' +
+        'une facture récurrente ou une offre commerciale. En cas de doute, "important"=false.',
       messages: [{ role: 'user', content: 'Expéditeur : ' + expediteur + '\nSujet : ' + sujet }]
     }),
     muteHttpExceptions: true

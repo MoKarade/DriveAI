@@ -52,8 +52,13 @@ export function TableauDeBord({ langue }: { langue: Langue }) {
   if (erreur) return <p className="erreur">{t('erreur', langue)} : {erreur}</p>;
   if (!sante) return <p>{t('chargement', langue)}</p>;
 
-  const parDomaine = Array.from(compterParDomaine(index.slice(-INDEX_RECENT))).sort((a, b) => b[1] - a[1]);
-  const activite = activiteParJour(index, 30, new Date());
+  // Les lignes qui tracent des E-MAILS (Phase 3 : intention|/tache|/event|/important|) ne sont pas
+  // des documents : les agrégats « documents » les excluent (même filtre que la Recherche) — sinon
+  // chaque mail important compterait double dans l'activité et gonflerait le bucket « — » des
+  // domaines. Elles ont leurs sections dédiées ci-dessous.
+  const docs = index.filter((l) => !/^(intention|tache|event|important)\|/.test(l.cle));
+  const parDomaine = Array.from(compterParDomaine(docs.slice(-INDEX_RECENT))).sort((a, b) => b[1] - a[1]);
+  const activite = activiteParJour(docs, 30, new Date());
   const maxJour = Math.max(1, ...activite.map((a) => a.n));
   const quarantaine = lignesQuarantaine(index);
   const actions = lignesActions(index).slice(0, ACTIONS_RECENTES);

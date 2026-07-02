@@ -169,26 +169,34 @@ function traiterMessagePourIntentions_(message) {
   }
   // Étage 3 (mini-check Haiku, peu coûteux) : deux signaux en un appel (#14).
   var check = miniCheckMail_(expediteur, sujet);
-  // Mail IMPORTANT (question directe, échéance, officiel) → ligne Index dédiée, consommée par le
-  // résumé hebdo (« À traiter »). AVANT le tri action/pas-action : un mail important sans action
-  // créable (question ouverte) doit quand même remonter. Jamais pour un mail en zone protégée
-  // (les gardes ci-dessus l'ont déjà écarté) ni pour un message déjà indexé `intention|` avant
-  // ce chantier (l'idempotence saute le mini-check — le flag ne vaut que pour l'avenir).
-  if (check.important) marquerMailImportant_(messageId, sujet);
-  if (!check.action) {
+  if (!check.action && !check.important) {
     indexAjouter_(cleMessage, { statut: 'intention-ecartee', nom: sujet });
-    return 0;
+    return 0; // rien vu → le corps n'est même pas lu (chemin majoritaire, gratuit)
   }
 
+  // Le mini-check a vu quelque chose (action OU important) → le CORPS est lu et la garde §1
+  // re-vérifiée dessus AVANT toute suite — pose du flag « important » INCLUSE (revue sécurité,
+  // bloquant : un mail protégé détectable par son corps SEUL — expéditeur/sujet neutres — ne
+  // doit jamais être mis en avant par la Phase 3, pas même dans « À traiter »).
   var corps;
   try {
     corps = tronquer_(message.getPlainBody(), CONFIG.LLM_CORPS_MAX_CARS);
   } catch (e) {
     corps = '';
   }
-  // Garde-fou §1, défense en profondeur : re-vérifie sur le corps complet avant extraction.
   if (toucheZoneProtegee_(corps)) {
     indexAjouter_(cleMessage, { statut: 'intention-zone-protegee', nom: sujet });
+    return 0;
+  }
+
+  // Mail IMPORTANT (réponse/geste personnel attendu) → ligne Index dédiée, consommée par le
+  // résumé hebdo (« À traiter »). AVANT le tri action/pas-action : un mail important sans action
+  // créable (question ouverte) doit quand même remonter. Les gardes zone protégée (expéditeur/
+  // sujet ET corps) sont TOUTES en amont. Un message déjà indexé `intention|` avant ce chantier
+  // saute le mini-check (le flag ne vaut que pour l'avenir).
+  if (check.important) marquerMailImportant_(messageId, sujet);
+  if (!check.action) {
+    indexAjouter_(cleMessage, { statut: 'intention-ecartee', nom: sujet });
     return 0;
   }
 
