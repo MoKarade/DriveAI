@@ -74,7 +74,10 @@ function traiterDocument_(src) {
     // FAST-PATH photo sans texte (ADR-0009 §2) : nom NON documentaire (export Facebook, IMG_…)
     // ET extrait OCR vide → média personnel → `_Médias` sans LLM. L'OCR reste le JUGE (§1) : un scan
     // de passeport nommé « IMG_2734.jpg » contient du texte → extrait non vide → analyse complète.
-    if (estPhoto_(src.nom) && estNomNonDocumentaire_(src.nom) &&
+    // R1 (revue sécurité) : le fast-path exige que l'OCR ait été TENTÉ (taille <= max) — sans ça,
+    // une photo > 20 Mo (scan à plat .tif) serait écartée sans que « le juge » ait siégé.
+    if (src.taille <= CONFIG.OCR_TAILLE_MAX &&
+        estPhoto_(src.nom) && estNomNonDocumentaire_(src.nom) &&
         extrait.length < CONFIG.MEDIAS_OCR_MAX_CARS) {
       var decP = routageMedia_(src.nom);
       var idP = src.placer(decP.dossierId, decP.nom);

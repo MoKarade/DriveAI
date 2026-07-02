@@ -324,6 +324,14 @@ function estPhoto_(nom) {
 function estNomNonDocumentaire_(nom) {
   var base = String(nom || '').replace(/\.[^.\/]+$/, '').trim();
   if (!base) return false;
+  // R3 (défense en profondeur, §1) : un mot-clé de la zone protégée dans le NOM rend le fichier
+  // documentaire quoi qu'il arrive (« Photo 2024 passeport.jpg » garde son analyse complète).
+  var minuscule = base.toLowerCase();
+  var proteges = CONFIG.MOTS_CLES_PROTEGES_INTENTIONS || [];
+  for (var i = 0; i < proteges.length; i++) {
+    if (proteges[i].length > 4 && minuscule.indexOf(proteges[i]) !== -1) return false;
+    if (proteges[i].length <= 4 && new RegExp('\\b' + proteges[i] + '\\b').test(minuscule)) return false;
+  }
   if (/^[\d\s_\-()]+$/.test(base) && (base.match(/\d/g) || []).length >= 8) return true; // ID numérique long
   if (/^(img|dsc|dscn|dscf|pxl|mvimg|photo|video|vid|image)[ _\-]?\d/i.test(base)) return true; // compteur d'appareil
   if (/^(screenshot|capture d.écran|capture|whatsapp (image|video)|signal-)/i.test(base)) return true; // captures

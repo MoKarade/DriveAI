@@ -46,6 +46,19 @@ test('estNomNonDocumentaire_ : un nom PORTEUR DE SENS → false (le doc garde so
   for (const n of doc) assert.strictEqual(ctx.estNomNonDocumentaire_(n), false, n);
 });
 
+test('estNomNonDocumentaire_ : mot-clé PROTÉGÉ dans le nom → documentaire (R3, défense en profondeur)', () => {
+  assert.strictEqual(ctx.estNomNonDocumentaire_('Photo 2024 passeport.jpg'), false);
+  assert.strictEqual(ctx.estNomNonDocumentaire_('IMG_2734 visa canada.jpg'), false);
+  assert.strictEqual(ctx.estNomNonDocumentaire_('Photo 123 vacances.jpg'), true); // sans mot protégé → média
+});
+
+test('pipeline : photo > OCR_TAILLE_MAX (OCR jamais TENTÉ) → analyse complète, jamais _Médias (R1)', () => {
+  const { c, calls, src } = ctxPipelineTaille('251319877474117.jpg', 25 * 1024 * 1024);
+  c.traiterDocument_(src);
+  assert.strictEqual(calls.classif, 1);       // le LLM est consulté (métadonnées seules)
+  assert.strictEqual(calls.places.length, 0); // pas parti en _Médias
+});
+
 test('routageMedia_ : `_Médias`, nom d\'ORIGINE conservé (traçabilité)', () => {
   ctx.dossierMedias_ = () => ({ getId: () => 'ID_MEDIAS' });
   const d = ctx.routageMedia_('251319877474117.jpg');
@@ -56,6 +69,12 @@ test('routageMedia_ : `_Médias`, nom d\'ORIGINE conservé (traçabilité)', () 
 });
 
 /* ---------- branches du pipeline ---------- */
+
+function ctxPipelineTaille(nom, taille) {
+  const base = ctxPipeline(nom, '');
+  base.src.taille = taille;
+  return base;
+}
 
 function ctxPipeline(nom, extrait) {
   const c = load(['Config.gs', 'Pipeline.gs', 'Router.gs']);

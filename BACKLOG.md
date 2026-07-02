@@ -235,6 +235,8 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 |----|-------|--------|
 | C11-01 | **Prédicats PURS** (`Router.gs`) : `estMediaDirect_` (vidéo/audio/gif — jamais un document), `estPhoto_`, `estNomNonDocumentaire_` (ID numérique ≥ 8 chiffres — export Facebook —, compteurs IMG_/DSC/PXL, captures) — calibrés sur les vrais noms en file | ✅ |
 | C11-02 | **Deux branches pipeline** : média direct → `_Médias` SANS OCR ni LLM (après le fast-path doublon : un doublon de vidéo va dans `_Doublons`) ; photo « nom non-doc ET extrait OCR < `MEDIAS_OCR_MAX_CARS` » → `_Médias` sans LLM — **l'OCR reste le juge** (§1) : un scan de passeport nommé `IMG_2734.jpg` contient du texte → analyse complète (testé) | ✅ |
+| C11-04 | **Revue sécurité intégrée** : R1 — le fast-path photo exige un OCR TENTÉ (taille ≤ max ; une photo > 20 Mo garde son analyse) ; R3 — un mot-clé protégé dans le NOM (« passeport », « visa »…) rend le fichier documentaire quoi qu'il arrive | ✅ (testé) |
+| C11-05 | R2 (suite optionnelle) : distinguer « OCR en ÉCHEC » (panne transitoire → re-tenter) de « OCR vide » (pas de texte → média) dans `extraireTexte_` — changement de contrat plus large | ⬜ à suivre |
 | C11-03 | **`_Médias`** (racine `_`, find-or-create, ID en Script Property `DriveAI_MEDIAS_ID`) : nom d'ORIGINE conservé (traçabilité — les noms d'export sont leurs identifiants) ; jamais re-scanné (hors domaines, comme `_Doublons`/`_Technique`) | ✅ |
 
 ### Chantier #9 — App web Phase 4 (ADR-0008)  🟦
