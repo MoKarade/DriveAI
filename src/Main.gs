@@ -253,6 +253,13 @@ function tickDriveAI() {
     try { creerDossiersEntitesValidees_(estBudgetDepasse); }
     catch (e) { journalErreur_('Entités', 'Création des dossiers d\'entités différée : ' + e); }
 
+    // Curation one-shot de la file d'entités (#10, ADR-0009) : génériques refusés, variantes
+    // regroupées — statuts seulement, gatée par tag. SECONDAIRE → enveloppée + budget-gatée.
+    if (!estBudgetDepasse()) {
+      try { appliquerCurationEntites_(estBudgetDepasse); }
+      catch (e) { journalErreur_('Entités', 'Curation de la file différée : ' + e); }
+    }
+
     // Lit les corrections soumises par Marc (formulaire Google) et les enregistre AVANT l'intake, pour
     // que les documents classés dans ce même tick profitent des règles fraîchement apprises (few-shot).
     // SECONDAIRE → enveloppée : un formulaire absent/illisible ne doit jamais geler l'intake. Budget-gatée

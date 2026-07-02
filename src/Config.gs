@@ -169,6 +169,12 @@ var CONFIG = {
   // Desjardins »), pour fusion en 1 clic par Marc. Suggestion seulement — jamais de fusion automatique.
   SEUIL_VARIANTE: 0.6,
 
+  // Curation one-shot de la file d'entités (#10, ADR-0009) : tant que le tag stocké
+  // (`DriveAI_CURATION_ENTITES`) diffère, chaque tick passe la file `en_attente` au filtre
+  // anti-génériques + au regroupement de variantes (statuts seulement — AUCUN document touché,
+  // 100 % réversible en rééditant le Statut). Bumper le tag rejoue une curation complète.
+  CURATION_ENTITES_TAG: 'c1',
+
   // Boucle d'apprentissage (ADR-0003 §3) : à chaque classement, on injecte dans le prompt les
   // corrections passées les PLUS PROCHES (même émetteur) comme exemples few-shot. Borné pour le coût
   // (< 10 $/mois) : au plus FEWSHOT_MAX exemples, et seulement au-dessus de FEWSHOT_SEUIL de pertinence

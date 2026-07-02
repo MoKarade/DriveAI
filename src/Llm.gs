@@ -15,7 +15,10 @@ var PROMPT_SYSTEME =
   '{\n' +
   '  "domaine": <un des domaines autorisés, exactement>,\n' +
   '  "categorie": <une des catégories connues ci-dessous, ou null>,\n' +
-  '  "entite": <entité concernée (logement, véhicule, banque, diplôme...) ou null>,\n' +
+  '  "entite": <NOM PROPRE identifiable concerné — entreprise, institution, établissement, personne,\n' +
+  '    adresse précise, modèle+immatriculation... ex "Desjardins", "IUT du Littoral", "3325 4e Avenue,\n' +
+  '    Québec". JAMAIS un terme générique ("banque", "cours", "véhicule", "logement", "diplôme",\n' +
+  '    "établissement scolaire"...) : si tu n\'as pas de nom propre, mets null>,\n' +
   '  "entites": <liste d\'entités SI le document en concerne plusieurs, sinon omets ce champ>,\n' +
   '  "type_doc": <type court: "Facture", "Relevé", "Contrat", "Attestation"...>,\n' +
   '  "date_doc": <date du document "AAAA-MM-JJ" ou null si absente>,\n' +

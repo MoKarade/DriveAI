@@ -12,7 +12,7 @@
  * Lecture mise en cache 1×/run (leçon : jamais une lecture Sheet par item).
  */
 
-var COLONNES_ENTITES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?'];
+var COLONNES_ENTITES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?', 'Vu N fois'];
 
 var _entitesCache = null; // { lignes: [...], parCle: { normKey: ligne } }
 
@@ -40,6 +40,106 @@ function normaliserCle_(s) {
 /** Clé de matching d'une entité : domaine + nom (évite les collisions inter-domaines). */
 function cleEntite_(domaine, entite) {
   return normaliserCle_(domaine) + '|' + normaliserCle_(entite);
+}
+
+/* ---------- Chantier #10 (ADR-0009 §1) : QUALITÉ des propositions d'entités — PURE, testée ----------
+ * Une entité digne d'être proposée porte un NOM PROPRE (entreprise, institution, personne, adresse,
+ * modèle). Le lexique ci-dessous liste des MOTS génériques (calibré sur la file réelle du 2026-07-02 :
+ * « banque », « cours de physique », « Banque/Service en ligne »…). Une proposition dont TOUS les
+ * jetons significatifs sont dans le lexique est générique ; UN seul jeton inconnu suffit à la garder
+ * (« lycée Thérèse d'Avila » : thérèse/avila inconnus → gardée). Filtre ÉTROIT (leçon durable :
+ * haute précision, jamais « générique par défaut ») — les chiffres (adresses, immatriculations)
+ * comptent comme identifiants, donc non génériques. */
+
+var LEXIQUE_GENERIQUE_ENTITE = [
+  // finance
+  'banque', 'banques', 'bancaire', 'compte', 'comptes', 'carte', 'credit', 'paiement', 'plateforme',
+  'institution', 'financier', 'financiere', 'ligne', 'service', 'services',
+  // études (matières et contenants)
+  'cours', 'devoir', 'devoirs', 'examen', 'examens', 'epreuve', 'epreuves', 'synthese', 'kholle',
+  'kholles', 'ds', 'tp', 'tpe', 'projet', 'projets', 'memoire', 'etude', 'etudes', 'classe',
+  'preparatoire', 'prepa', 'ptsi', 'etablissement', 'ecole', 'scolaire', 'scolaires', 'lycee',
+  'universite', 'universitaire', 'universitaires', 'secondaires', 'academique', 'concours',
+  'preparation', 'ecrit', 'oral', 'premiere', 'terminale', 'seconde', 'certification', 'certificat',
+  'anglais', 'francais', 'physique', 'mathematiques', 'maths', 'electronique', 'chimie',
+  'litterature', 'litteraire', 'analyse', 'algorithmique', 'programmation', 'informatique',
+  'mecanique', 'cinematique', 'analytique', 'python',
+  // types de documents (jamais des entités)
+  'diplome', 'attestation', 'releve', 'facture', 'contrat', 'document', 'fichier', 'scan',
+  'courrier', 'correspondance',
+  // logement / véhicule / divers
+  'logement', 'appartement', 'maison', 'adresse', 'vehicule', 'voiture', 'transport', 'transports',
+  'ferroviaire', 'assurance', 'sante', 'personnel', 'perso', 'administration', 'gouvernement',
+  'technique', 'techniques', 'officiel'
+];
+
+// Connecteurs supplémentaires ignorés par le tokenizer QUALITÉ (en plus de STOPWORDS_ENTITE).
+var CONNECTEURS_QUALITE = ['ou', 'sur', 'pour', 'par', 'avec', 'sans', 'ce', 'cette', 'fin'];
+
+/**
+ * Jetons pour le jugement de QUALITÉ : normalisés, PONCTUATION neutralisée (« — », parenthèses,
+ * virgules… → espace), stopwords + connecteurs retirés. Distinct de `tokensEntite_` (matching de
+ * variantes) pour ne pas changer le comportement de la garde anti-variantes existante. PUR.
+ * @param {string} nom
+ * @return {string[]}
+ */
+function jetonsQualite_(nom) {
+  var t = normaliserCle_(nom).replace(/[^a-z0-9]+/g, ' ');
+  return t.split(/\s+/).filter(function (j) {
+    return j && STOPWORDS_ENTITE.indexOf(j) === -1 && CONNECTEURS_QUALITE.indexOf(j) === -1;
+  });
+}
+
+/**
+ * Vrai si la proposition est un GÉNÉRIQUE (tous ses jetons significatifs sont du lexique) —
+ * elle ne mérite alors ni ligne dans le référentiel ni validation. PUR.
+ * @param {string} nom
+ * @return {boolean}
+ */
+function estEntiteGenerique_(nom) {
+  var jetons = jetonsQualite_(nom);
+  if (!jetons.length) return true; // rien de significatif → rien à proposer
+  for (var i = 0; i < jetons.length; i++) {
+    if (LEXIQUE_GENERIQUE_ENTITE.indexOf(jetons[i]) === -1) return false; // un identifiant suffit
+  }
+  return true;
+}
+
+/**
+ * Vrai si deux libellés désignent la MÊME entité par INCLUSION de jetons (tous les jetons du plus
+ * court sont dans le plus long) : « Desjardins » ⊆ « carte de crédit Desjardins », « 3325 4e avenue »
+ * ⊆ « 3325 4e Avenue, App. 5, Québec ». VOLONTAIREMENT restreint à l'inclusion — jamais la distance
+ * d'édition : « Honda Civic 2014 » vs « Honda Civic 2017 » sont deux entités distinctes (l'année
+ * diffère ⇒ pas d'inclusion ⇒ pas de fusion). PUR.
+ * @param {string} a
+ * @param {string} b
+ * @return {boolean}
+ */
+function estFusionnableEntite_(a, b) {
+  var ta = jetonsQualite_(a), tb = jetonsQualite_(b);
+  if (!ta.length || !tb.length) return false;
+  if (ta.length === tb.length && normaliserCle_(a) === normaliserCle_(b)) return true; // identiques
+  var court = ta.length <= tb.length ? ta : tb;
+  var long_ = ta.length <= tb.length ? tb : ta;
+  return court.every(function (t) { return long_.indexOf(t) !== -1; });
+}
+
+/**
+ * Cherche une ligne EXISTANTE du même domaine fusionnable par inclusion avec `nom`. PUR (sur cache).
+ * @param {string} nom
+ * @param {Object} cache
+ * @param {string} domaine
+ * @return {?Object} la ligne canonique, ou null.
+ */
+function chercherLigneFusionnable_(nom, cache, domaine) {
+  var d = normaliserCle_(domaine);
+  for (var i = 0; i < cache.lignes.length; i++) {
+    var l = cache.lignes[i];
+    if (normaliserCle_(l.domaine) !== d) continue;
+    if (l.statut.indexOf('refus') === 0 || l.statut.indexOf('variante') === 0) continue; // déjà écartée
+    if (estFusionnableEntite_(nom, l.entite)) return l;
+  }
+  return null;
 }
 
 /* ---------- Garde anti-variantes (ADR-0002 §4) — logique PURE, testée ----------
@@ -233,9 +333,21 @@ function typeEntiteDevine_(classif) {
  */
 function entiteEnAttenteAjouter_(classif) {
   if (!classif.entite) return;
+  // Filtre qualité (#10, ADR-0009) : un GÉNÉRIQUE (« banque », « cours de physique ») n'est jamais
+  // proposé — le document reste classé au domaine, la file de validation reste propre.
+  if (estEntiteGenerique_(classif.entite)) return;
   var cle = cleEntite_(classif.domaine, classif.entite);
   var cache = entitesCache_();
   if (cache.parCle[cle]) return; // déjà proposée ou connue
+
+  // Consolidation (#10) : si une ligne du même domaine désigne déjà la MÊME entité (inclusion de
+  // jetons), pas de n-ième ligne — on incrémente son « Vu N fois » (signal de fréquence pour Marc).
+  var canonique = chercherLigneFusionnable_(classif.entite, cache, classif.domaine);
+  if (canonique) {
+    incrementerVuEntite_(canonique);
+    cache.parCle[cle] = canonique; // la variante pointe la canonique pour le reste du run
+    return;
+  }
 
   var type = typeEntiteDevine_(classif);
   // Garde anti-variantes (ADR-0002 §4) : propose la plus proche entité EXISTANTE du même domaine —
@@ -255,6 +367,7 @@ function entiteEnAttenteAjouter_(classif) {
   ligne[idx['Variante possible ?']] = variante
     ? '→ ' + variante.nom + ' (' + Math.round(variante.score * 100) + ' %) ?'
     : '';
+  ligne[idx['Vu N fois']] = 1;
   for (var i = 0; i < ligne.length; i++) if (ligne[i] === undefined) ligne[i] = '';
   f.appendRow(ligne);
 
@@ -391,4 +504,88 @@ function creerDossiersEntitesValidees_(estBudgetDepasse) {
       (schema.length ? ' (+' + schema.length + ' sous-dossiers)' : ''));
   }
   if (creees) journalInfo_('Entités', creees + ' dossier(s) d\'entité créé(s).');
+}
+
+/* ---------- Chantier #10 : incrément de fréquence + curation one-shot ---------- */
+
+/**
+ * Incrémente « Vu N fois » d'une ligne du référentiel (signal de fréquence : Marc valide d'abord
+ * les entités les plus vues). Lecture + écriture d'UNE cellule — événement rare (consolidation).
+ * @param {{ligneSheet:number}} ligne
+ */
+function incrementerVuEntite_(ligne) {
+  var f = feuille_('Entités');
+  var col = colonnesEntites_()['Vu N fois'] + 1;
+  var actuel = Number(f.getRange(ligne.ligneSheet, col).getValue()) || 1;
+  f.getRange(ligne.ligneSheet, col).setValue(actuel + 1);
+}
+
+/**
+ * Curation ONE-SHOT de la file d'entités (#10, ADR-0009), gatée par `CONFIG.CURATION_ENTITES_TAG` :
+ * les `en_attente` génériques passent « refusée (générique) », les quasi-doublons par inclusion
+ * sont regroupés « variante de : <canonique> » (la forme la plus COURTE, généralement la plus propre,
+ * reste `en_attente` et cumule les « Vu N fois »). STATUTS SEULEMENT — aucun document déplacé,
+ * 100 % réversible en rééditant le Statut. Bornée par le garde-temps, reprenable (les lignes déjà
+ * requalifiées ne sont pas re-traitées) ; le tag n'est figé qu'après une passe COMPLÈTE.
+ * @param {function():boolean} estBudgetDepasse
+ */
+function appliquerCurationEntites_(estBudgetDepasse) {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DriveAI_CURATION_ENTITES') === CONFIG.CURATION_ENTITES_TAG) return;
+  if (estBudgetDepasse()) return;
+
+  var f = feuille_('Entités');
+  var idx = colonnesEntites_();
+  var cache = entitesCache_();
+  var colStatut = idx['Statut'] + 1;
+  var refusees = 0, regroupees = 0, interrompue = false;
+
+  // Passe 1 — génériques → « refusée (générique) ».
+  var enAttente = [];
+  for (var i = 0; i < cache.lignes.length; i++) {
+    var l = cache.lignes[i];
+    if (l.statut !== 'en_attente' && l.statut !== 'en attente') continue;
+    if (estBudgetDepasse()) { interrompue = true; break; }
+    if (estEntiteGenerique_(l.entite)) {
+      f.getRange(l.ligneSheet, colStatut).setValue('refusée (générique)');
+      l.statut = 'refusee (generique)';
+      refusees++;
+    } else {
+      enAttente.push(l);
+    }
+  }
+
+  // Passe 2 — regroupement par inclusion : la plus COURTE d'un groupe reste en_attente (canonique),
+  // les autres passent « variante de : X ». Tri par nb de jetons croissant → la canonique est vue
+  // en premier et les suivantes se rattachent à elle.
+  if (!interrompue) {
+    enAttente.sort(function (a, b) { return jetonsQualite_(a.entite).length - jetonsQualite_(b.entite).length; });
+    var gardees = [];
+    for (var j = 0; j < enAttente.length; j++) {
+      if (estBudgetDepasse()) { interrompue = true; break; }
+      var cand = enAttente[j];
+      var canonique = null;
+      for (var k = 0; k < gardees.length; k++) {
+        if (normaliserCle_(gardees[k].domaine) === normaliserCle_(cand.domaine) &&
+            estFusionnableEntite_(cand.entite, gardees[k].entite)) { canonique = gardees[k]; break; }
+      }
+      if (canonique) {
+        f.getRange(cand.ligneSheet, colStatut).setValue('variante de : ' + canonique.entite);
+        cand.statut = 'variante de : ' + normaliserCle_(canonique.entite);
+        incrementerVuEntite_(canonique);
+        regroupees++;
+      } else {
+        gardees.push(cand);
+      }
+    }
+  }
+
+  if (refusees || regroupees) {
+    journalInfo_('Entités', 'Curation : ' + refusees + ' générique(s) refusé(s), ' + regroupees +
+      ' variante(s) regroupée(s) (réversible — statuts seulement).');
+  }
+  if (!interrompue) {
+    props.setProperty('DriveAI_CURATION_ENTITES', CONFIG.CURATION_ENTITES_TAG);
+    journalInfo_('Entités', 'Curation de la file terminée (tag « ' + CONFIG.CURATION_ENTITES_TAG + ' »).');
+  }
 }

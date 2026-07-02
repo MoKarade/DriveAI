@@ -241,6 +241,16 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-02 — Chantier #10 : ENTITÉS PROPRES (ADR-0009 §1, 1ᵉʳ de la roadmap v2).** Cause racine
+  trouvée : le PROMPT enseignait littéralement les génériques (« (logement, véhicule, banque,
+  diplôme...) » — les 4 mots recrachés tels quels dans la file). Corrigé (« NOM PROPRE identifiable…
+  sinon null ») + double filet : `estEntiteGenerique_` (lexique calibré sur la file réelle — générique
+  ssi TOUS les jetons du lexique, un identifiant suffit à garder) et consolidation par INCLUSION de
+  jetons (`estFusionnableEntite_` — jamais Levenshtein : « Honda Civic 2014 » ≠ « 2017 ») avec compteur
+  « Vu N fois ». **Curation one-shot gatée `c1`** de la file (~160) : génériques → « refusée
+  (générique) », doublons → « variante de : X » (canonique = plus courte) — STATUTS seulement,
+  réversible, borné, reprenable. +11 tests → **140**. Revue flotte (structure + code + LLM) en cours.
+
 - **2026-07-02 — C9-07 : recherche structurée (dernière surface ADR-0008) → chantier #9 COMPLET, roadmap
   brainstorm soldée.** Nouvel onglet **Recherche** dans l'app : **filtres instantanés** sur l'Index
   (texte normalisé nom+chemin, domaine, statut, année du DOCUMENT — préfixe du nom conventionnel),
