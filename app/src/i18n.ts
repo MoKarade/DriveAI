@@ -60,7 +60,7 @@ const TEXTES = {
     tousStatuts: 'Tous les statuts',
     resultats: 'résultat(s)',
     affiches: 'affichés',
-    rechercheContenu: 'Chercher dans le contenu',
+    rechercheContenu: 'Recherche dans le contenu',
     rechercheContenuExplication:
       'Cherche DANS les documents via la recherche native de Drive — DriveAI ne stocke jamais leur contenu.',
     chercherDansContenu: 'Chercher dans le contenu',

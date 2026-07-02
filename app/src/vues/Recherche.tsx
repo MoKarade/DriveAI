@@ -43,7 +43,10 @@ export function Recherche({ langue }: { langue: Langue }) {
   useEffect(() => {
     (async () => {
       try {
-        setIndex(interpreterIndex(await lirePlage('Index', 'A2:F20000')));
+        // Les clés `intention|…` (Phase 3) tracent des E-MAILS scannés (sujet en colonne
+        // « fichier », domaine vide) — pas des documents : exclues de la recherche, sinon elles
+        // domineraient la vue par défaut (une ligne par mail) et pollueraient le sélecteur de statuts.
+        setIndex(interpreterIndex(await lirePlage('Index', 'A2:F20000')).filter((l) => !l.cle.startsWith('intention|')));
       } catch (e) {
         setErreur(String(e));
       } finally {
@@ -53,7 +56,7 @@ export function Recherche({ langue }: { langue: Langue }) {
   }, []);
 
   const resultats = useMemo(
-    () => filtrerIndex(index, { texte, domaine, statut, annee }).reverse(), // plus récents d'abord
+    () => filtrerIndex(index, { texte, domaine, statut, annee }).slice().reverse(), // plus récents d'abord (copie défensive)
     [index, texte, domaine, statut, annee],
   );
   const domaines = useMemo(() => domainesDepuisIndex(index), [index]);
