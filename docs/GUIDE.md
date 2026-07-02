@@ -49,7 +49,11 @@ Quatre façons, toutes soignées : **navigation** dans l'arbo · **nom** de fich
 et l'onglet **Recherche** de l'app web (filtres + plein texte).
 
 ## Suivre l'activité
-- **Résumé hebdomadaire** par mail : ce qui a été rangé, le coût du mois, l'état de santé du système.
+- **Résumé hebdomadaire** par mail : ce qui a été rangé, le coût du mois, l'état de santé du système,
+  **« 📌 À traiter »** (les mails importants de la semaine — question directe, échéance, courrier
+  officiel — avec lien direct) et **« 🗓️ Actions & RDV détectés »** (chaque tâche/rendez-vous que le
+  moteur a créé dans Tasks/Calendar, nommément). Ces deux listes sont aussi sur le tableau de bord
+  de l'app web.
 - Onglet **`Progression`** de la Sheet : avancement d'un grand rangement en cours.
 
 ## Si quelque chose cloche

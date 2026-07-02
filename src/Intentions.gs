@@ -167,8 +167,15 @@ function traiterMessagePourIntentions_(message) {
     indexAjouter_(cleMessage, { statut: 'intention-zone-protegee', nom: sujet });
     return 0;
   }
-  // Étage 3 (mini-check Haiku, peu coûteux) : écarte le reste avant le corps complet.
-  if (!miniVerifActionRdv_(expediteur, sujet)) {
+  // Étage 3 (mini-check Haiku, peu coûteux) : deux signaux en un appel (#14).
+  var check = miniCheckMail_(expediteur, sujet);
+  // Mail IMPORTANT (question directe, échéance, officiel) → ligne Index dédiée, consommée par le
+  // résumé hebdo (« À traiter »). AVANT le tri action/pas-action : un mail important sans action
+  // créable (question ouverte) doit quand même remonter. Jamais pour un mail en zone protégée
+  // (les gardes ci-dessus l'ont déjà écarté) ni pour un message déjà indexé `intention|` avant
+  // ce chantier (l'idempotence saute le mini-check — le flag ne vaut que pour l'avenir).
+  if (check.important) marquerMailImportant_(messageId, sujet);
+  if (!check.action) {
     indexAjouter_(cleMessage, { statut: 'intention-ecartee', nom: sujet });
     return 0;
   }
@@ -243,6 +250,20 @@ function creerIntentionIdempotente_(messageId, intention) {
 
   indexAjouter_(cle, { statut: intention.type, nom: intention.titre });
   return 'creee';
+}
+
+/**
+ * Marque un mail « important » (#14, ADR-0010 §3) : ligne Index `important|<messageId>`
+ * (statut `important`, nom = sujet — métadonnées seules, ADR-0007), idempotente. Le résumé
+ * hebdo la lit pour la section « À traiter » (lien Gmail reconstruit depuis la clé). AUCUNE
+ * écriture Gmail (lecture seule §3), aucune notification immédiate (anti-bruit, décision Marc).
+ * @param {string} messageId
+ * @param {string} sujet
+ */
+function marquerMailImportant_(messageId, sujet) {
+  var cle = 'important|' + messageId;
+  if (indexContient_(cle)) return; // déjà signalé (rejeu d'un message en reprise d'extraction)
+  indexAjouter_(cle, { statut: 'important', nom: sujet });
 }
 
 /**

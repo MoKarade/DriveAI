@@ -44,36 +44,68 @@ function fenetreLecture_(f) {
 }
 
 /**
- * Compte les lignes d'Index des `jours` derniers jours, par statut.
+ * Compte les lignes d'Index des `jours` derniers jours, par statut — et COLLECTE (chantiers
+ * #13-#14) les actions/RDV créés (`actions`, plafonnées à `RESUME_ACTIONS_MAX`) et les mails
+ * importants (`aTraiter`, plafonnés à `RESUME_IMPORTANTS_MAX`, lien Gmail reconstruit depuis la
+ * clé `important|<messageId>`). Les totaux (`actionsTotal`/`aTraiterTotal`) permettent au mail
+ * d'afficher « … et N de plus » sans jamais grossir sans borne.
  * @param {number} jours
  * @return {{classe:number, tache:number, evenement:number, mailsSansAction:number,
  *           mailsAvecAction:number, doublon:number, technique:number, media:number,
- *           quarantaine:number, autres:number, total:number}}
+ *           quarantaine:number, importants:number, autres:number, total:number,
+ *           actions:{type:string, titre:string}[], actionsTotal:number,
+ *           aTraiter:{sujet:string, messageId:string}[], aTraiterTotal:number}}
  */
 function statsSemaine_(jours) {
-  var s = { classe: 0, tache: 0, evenement: 0, mailsSansAction: 0, mailsAvecAction: 0, doublon: 0, technique: 0, media: 0, quarantaine: 0, autres: 0, total: 0 };
+  var s = {
+    classe: 0, tache: 0, evenement: 0, mailsSansAction: 0, mailsAvecAction: 0, doublon: 0,
+    technique: 0, media: 0, quarantaine: 0, importants: 0, autres: 0, total: 0,
+    actions: [], actionsTotal: 0, aTraiter: [], aTraiterTotal: 0
+  };
   var f = feuille_('Index');
   var fen = fenetreLecture_(f);
   if (!fen) return s;
   var seuil = Date.now() - jours * 24 * 60 * 60 * 1000;
-  var v = f.getRange(fen.debut, 2, fen.nb, 5).getValues(); // B..F : Traité le, Fichier, Domaine, Chemin, Statut
+  var v = f.getRange(fen.debut, 1, fen.nb, 6).getValues(); // A..F : Clé, Traité le, Fichier, Domaine, Chemin, Statut
   for (var i = 0; i < v.length; i++) {
-    var d = v[i][0];
+    var d = v[i][1];
     if (!(d instanceof Date) || d.getTime() < seuil) continue;
     s.total++;
-    var statut = String(v[i][4]);
+    var statut = String(v[i][5]);
     if (statut === 'classé') s.classe++;
-    else if (statut === 'tache') s.tache++;
-    else if (statut === 'evenement') s.evenement++;
+    else if (statut === 'tache' || statut === 'evenement') {
+      if (statut === 'tache') s.tache++; else s.evenement++;
+      s.actionsTotal++;
+      if (s.actions.length < CONFIG.RESUME_ACTIONS_MAX) {
+        s.actions.push({ type: statut, titre: String(v[i][2]) });
+      }
+    }
     else if (statut === 'doublon') s.doublon++;
     else if (statut === 'technique') s.technique++;
     else if (statut === 'média') s.media++;
     else if (statut === 'quarantaine') s.quarantaine++;
+    else if (statut === 'important') {
+      s.importants++;
+      s.aTraiterTotal++;
+      if (s.aTraiter.length < CONFIG.RESUME_IMPORTANTS_MAX) {
+        s.aTraiter.push({ sujet: String(v[i][2]), messageId: String(v[i][0]).split('|')[1] || '' });
+      }
+    }
     else if (statut === 'intention-traitee') s.mailsAvecAction++; // mail AVEC action créée (≠ sans action)
     else if (statut.indexOf('intention-') === 0) s.mailsSansAction++;
     else s.autres++; // zone protégée (migration), compat historiques
   }
   return s;
+}
+
+/**
+ * Lien Gmail d'un message (le résumé est lu dans le compte de Marc — `#all` couvre aussi
+ * les mails archivés). PUR.
+ * @param {string} messageId
+ * @return {string}
+ */
+function lienGmail_(messageId) {
+  return 'https://mail.google.com/mail/#all/' + messageId;
 }
 
 /**
@@ -124,13 +156,40 @@ function construireResume_(s, erreurs, cout, jours, etat, urlForm) {
     '📸 Médias personnels (_Médias) : ' + s.media,
     '🚫 Mis en quarantaine (échecs répétés) : ' + s.quarantaine,
     '📦 Autres (zone protégée, historiques) : ' + s.autres,
-    '⚠️ Erreurs journalisées : ' + erreurs,
+    '⚠️ Erreurs journalisées : ' + erreurs
+  ];
+
+  // Chantier #14 (ADR-0010 §3) — mails qui demandent l'attention de Marc, EN TÊTE des détails
+  // (c'est la seule section actionnable). Plafonnée (anti-bruit) ; lien direct vers le mail.
+  if (s.aTraiter && s.aTraiter.length) {
+    lignes.push('', '📌 À traiter — mails importants (question directe, échéance, officiel) :');
+    for (var i = 0; i < s.aTraiter.length; i++) {
+      lignes.push('   • ' + s.aTraiter[i].sujet + (s.aTraiter[i].messageId ?
+        ' — ' + lienGmail_(s.aTraiter[i].messageId) : ''));
+    }
+    if (s.aTraiterTotal > s.aTraiter.length) {
+      lignes.push('   … et ' + (s.aTraiterTotal - s.aTraiter.length) + ' de plus (onglet Index, statut « important »).');
+    }
+  }
+
+  // Chantier #13 (ADR-0010 §2) — la Phase 3 devient VISIBLE : ce qui a été créé, nommément.
+  if (s.actions && s.actions.length) {
+    lignes.push('', '🗓️ Actions & RDV détectés (créés dans Tasks/Calendar) :');
+    for (var k = 0; k < s.actions.length; k++) {
+      lignes.push('   ' + (s.actions[k].type === 'evenement' ? '📅' : '✅') + ' ' + s.actions[k].titre);
+    }
+    if (s.actionsTotal > s.actions.length) {
+      lignes.push('   … et ' + (s.actionsTotal - s.actions.length) + ' de plus.');
+    }
+  }
+
+  lignes.push(
     '',
     '💰 Coût LLM ce mois-ci : ~' + cout.dollars.toFixed(2) + ' $ (' +
       cout.appels + ' appels — cible < 10 $/mois)',
     '',
     'Détail complet dans la Google Sheet « DriveAI — État » (onglets Index / Journal / Entités / Santé).'
-  ];
+  );
   // Lien vers le formulaire de correction (ADR-0003) : Marc apprend à DriveAI où ranger un émetteur.
   if (urlForm) {
     lignes.push('', '✏️ Corriger un classement (DriveAI apprend) : ' + urlForm);

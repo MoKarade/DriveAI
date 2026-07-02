@@ -43,11 +43,12 @@ export function Recherche({ langue }: { langue: Langue }) {
   useEffect(() => {
     (async () => {
       try {
-        // Les clés `intention|`/`tache|`/`event|` (Phase 3) tracent des E-MAILS/actions (sujet en colonne
-        // « fichier », domaine vide) — pas des documents : exclues de la recherche, sinon elles
-        // domineraient la vue par défaut (une ligne par mail) et pollueraient le sélecteur de statuts.
+        // Les clés `intention|`/`tache|`/`event|`/`important|` (Phase 3) tracent des E-MAILS/actions
+        // (sujet en colonne « fichier », domaine vide) — pas des documents : exclues de la recherche,
+        // sinon elles domineraient la vue par défaut et pollueraient le sélecteur de statuts.
+        // (Elles ont leur section dédiée au tableau de bord — C13.)
         setIndex(interpreterIndex(await lirePlage('Index', 'A2:F20000'))
-          .filter((l) => !/^(intention|tache|event)\|/.test(l.cle)));
+          .filter((l) => !/^(intention|tache|event|important)\|/.test(l.cle)));
       } catch (e) {
         setErreur(String(e));
       } finally {

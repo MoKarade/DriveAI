@@ -241,6 +241,20 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-02 — Chantiers #13-#14 : PHASE 3 VISIBLE & MAILS IMPORTANTS (ADR-0010 §2-3) — roadmap v2
+  COMPLÈTE.** Dernier lot « mails » : (1) le résumé hebdo NOMME désormais chaque tâche/RDV créé
+  (section « 🗓️ Actions & RDV détectés », plafonnée avec « … et N de plus ») et le dashboard app
+  gagne la même section (lecture seule, lien vers le mail source) ; (2) le mini-check Haiku passe à
+  DEUX signaux en UN appel (JSON `{action, important}`, 24 tokens — `miniVerifActionRdv_` remplacé
+  par `miniCheckMail_` + parse pur `parserMiniCheck_`) avec dégradations ASYMÉTRIQUES voulues :
+  `action` ouverte sur échec (ne jamais rater une action), `important` fermé (anti-bruit — décision
+  Marc : jamais de notification immédiate, le résumé suffit). Un mail important (question directe,
+  échéance, administration/officiel) → ligne Index `important|<messageId>` idempotente, posée AVANT
+  le tri action/pas-action (une question ouverte sans action créable remonte quand même), jamais en
+  zone protégée (gardes amont), AUCUNE écriture Gmail. Section « 📌 À traiter » au hebdo (sujet +
+  lien Gmail `#all/`, plafond 10) et au dashboard. Les clés mail restent exclues de la Recherche
+  app. Moteur **186 tests**, app **57**, build ok. **Toute la roadmap v2 (#10-#15) est codée.**
+
 - **2026-07-02 — Chantier #12 : HISTORIQUE GMAIL COMPLET (ADR-0010 §1) — design v2 après démolition
   adversariale.** Le design v1 (curseur rétrograde « jour le plus ancien traité + 1 », commit a8e9df4)
   a été **démoli par 3 agents adversariaux** : (a) Gmail trie les fils par DERNIER message ⇒ un vieux
