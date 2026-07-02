@@ -303,6 +303,14 @@ function tickDriveAI() {
       catch (e) { journalErreur_('Partages', 'Collecte des fichiers partagés différée : ' + e); }
     }
 
+    // Campagne HISTORIQUE Gmail (#12, ADR-0010 §1) : remonte tout l'historique de PJ par tranches
+    // ancrées. APRÈS le flux vivant (priorité), AVANT migration/intentions. Coût nul une fois finie.
+    // SECONDAIRE → enveloppée : un échec Gmail ne bloque jamais la suite du tick.
+    if (!estBudgetDepasse()) {
+      try { traiterGmailHistorique_(estBudgetDepasse); }
+      catch (e) { journalErreur_('Gmail', 'Campagne historique différée : ' + e); }
+    }
+
     // Migration taxonomie (#8, ADR-0002) : re-classe l'EXISTANT (pré-refonte) vers la nouvelle
     // taxonomie, EN PLACE, une page par tick. APRÈS l'intake (le flux vivant garde la priorité),
     // AVANT les intentions (la précision documentaire prime, cap produit ADR-0001). Campagne finie
@@ -563,7 +571,7 @@ function traiterGmail_(estBudgetDepasse) {
       }
       // Erreur isolée par fil (ex. getMessages/piecesJointes) : on saute ce fil sans
       // interrompre le scan Gmail — chaque PJ est déjà protégée dans traiterDocument_.
-      try { traiterFil_(fils[i]); }
+      try { traiterFil_(fils[i], estBudgetDepasse); }
       catch (e) { journalErreur_('Gmail', 'Fil ignoré (erreur) : ' + e); }
     }
     debutPage += CONFIG.PAGE_FILS;
@@ -572,16 +580,188 @@ function traiterGmail_(estBudgetDepasse) {
 
 /**
  * Traite toutes les PJ d'un fil. Chaque PJ est indépendante (idempotence par clé).
+ * Garde-temps vérifié PAR PJ (revue C12) : un message dense (20 PJ inédites) ne doit pas crever
+ * le mur des 6 min — le fil interrompu est rejoué au tick suivant (offset 0, PJ indexées sautées).
  * @param {GmailThread} fil
+ * @param {function():boolean} estBudgetDepasse
  */
-function traiterFil_(fil) {
+function traiterFil_(fil, estBudgetDepasse) {
   var messages = fil.getMessages();
   for (var m = 0; m < messages.length; m++) {
-    var message = messages[m];
+    if (estBudgetDepasse()) return; // aussi PAR MESSAGE : un long fil sans PJ « réelles » ne doit
+    var message = messages[m];      // pas enchaîner les getAttachments après l'épuisement du budget
     var pjs = piecesJointes_(message);
     for (var p = 0; p < pjs.length; p++) {
+      if (estBudgetDepasse()) return;
       traiterPjGmail_(message, p, pjs[p]);
     }
+  }
+}
+
+/**
+ * Chantier #12 (ADR-0010 §1) — HISTORIQUE Gmail complet : ancre FIXE + pagination par OFFSET,
+ * terminée par une PASSE DE VÉRIFICATION propre.
+ *
+ * Le scan vivant ne voit que 30 j. Cette campagne parcourt tout l'historique de PJ : l'ancre
+ * (`before:<date>`) est posée au 1ᵉʳ run et NE BOUGE JAMAIS — l'ensemble de recherche est donc
+ * STABLE pour le courrier normal (le passé ne reçoit pas de nouveaux mails), ce qui rend l'offset
+ * persistant sûr (leçon « pagination mouvante » : le piège est l'insertion en tête, pas l'offset).
+ * MAIS l'ORDRE, lui, peut bouger (contre-vérification adversariale) : Gmail trie les fils par
+ * DERNIER message — un vieux fil qui reçoit un message SANS PJ se téléporte derrière l'offset sans
+ * jamais entrer dans le scan vivant ; une suppression en zone déjà scannée décale un fil innocent
+ * sous l'offset ; une erreur transitoire fait sauter un fil. Ces trois pertes silencieuses ont le
+ * MÊME antidote (leçon durable « ne figer le fait que quand une passe ne collecte plus rien ») :
+ * une page vide ne termine PAS la campagne — si la passe qui s'achève a eu la moindre activité
+ * (PJ inédite, fil sauté), l'offset repart à 0 pour une passe de VÉRIFICATION ; « terminé » ne se
+ * fige que sur une passe 100 % propre. Une passe de re-lecture est quasi gratuite (PJ indexées =
+ * métadonnées seules, cf. Pipeline) et la convergence est garantie : l'Index ne fait que croître.
+ *
+ * Discipline de quota (2ᵉ contre-vérification) : le quota RUNTIME des déclencheurs (~90 min/j) est
+ * LA borne, et un plafond PAR RUN ne la protège pas (288 ticks × 25 s = 2 h/j !). Deux étages :
+ * (1) budget QUOTIDIEN `GMAIL_HISTO_BUDGET_JOUR_MS` (ms réellement consommées, comptées par jour
+ * dans les Properties) — la campagne s'arrête pour la journée, le vivant garde son quota ;
+ * (2) par run, au plus `GMAIL_HISTO_MAX_PJ_INEDITES` PJ inédites, garde-temps et plafond vérifiés
+ * à CHAQUE niveau de boucle — fil, message, PJ (une page de fils bavards sans PJ « réelles » ne
+ * fait plus d'appels Gmail après le budget ; un message dense ne crève plus le mur des 6 min).
+ * L'offset n'avance que si la page a été entièrement parcourue : une page interrompue est rejouée
+ * (idempotente) et converge. Un fil en erreur n'est COMPTÉ (compteur d'Échecs `histo|fil|<id>`)
+ * qu'à la COMPLÉTION de la page — jamais sur un rejeu (sinon une erreur transitoire de 15 min
+ * brûlerait les 3 essais en 3 ticks) : une erreur qui guérit avant la complétion ne laisse AUCUNE
+ * trace, une erreur persistante donne un essai par PASSE, puis ABANDON définitif à
+ * `QUARANTAINE_MAX` (la terminaison n'est jamais bloquée — l'onglet Échecs garde la trace).
+ * Terminaison : il faut DEUX passes propres consécutives (une mutation d'ordre — suppression —
+ * peut masquer un fil pendant la passe de vérification elle-même ; la re-passe est quasi gratuite).
+ * @param {function():boolean} estBudgetDepasse
+ */
+function traiterGmailHistorique_(estBudgetDepasse) {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DriveAI_GMAIL_HISTO') === 'terminé') return; // campagne finie (1 lecture)
+
+  // Budget QUOTIDIEN : borne la JOURNÉE, pas seulement le run (quota runtime ~90 min/j).
+  var aujourdhui = dateGmail_(new Date());
+  var msJour = props.getProperty('DriveAI_GMAIL_HISTO_JOUR') === aujourdhui
+    ? Number(props.getProperty('DriveAI_GMAIL_HISTO_MS_JOUR')) || 0
+    : 0;
+  if (msJour >= CONFIG.GMAIL_HISTO_BUDGET_JOUR_MS) return; // repris demain (le vivant garde le quota)
+
+  var debutRunMs = Date.now();
+  try {
+    traiterPageHistorique_(props, estBudgetDepasse);
+  } finally {
+    // Comptage RÉEL (une passe de re-lecture, quasi gratuite, n'entame presque pas le budget).
+    props.setProperty('DriveAI_GMAIL_HISTO_JOUR', aujourdhui);
+    props.setProperty('DriveAI_GMAIL_HISTO_MS_JOUR', String(msJour + (Date.now() - debutRunMs)));
+  }
+}
+
+/**
+ * Un run de la campagne historique : une page de fils, sous plafonds. Voir traiterGmailHistorique_.
+ * @param {Properties} props
+ * @param {function():boolean} estBudgetDepasse
+ */
+function traiterPageHistorique_(props, estBudgetDepasse) {
+  var ancre = props.getProperty('DriveAI_GMAIL_HISTO_ANCRE');
+  if (!ancre) {
+    // 1ᵉʳ run : ancre posée UNE FOIS à −29 j — `before:` est EXCLUSIF et `newer_than:30d` peut être
+    // glissant (30×24 h) : −29 garantit un VRAI chevauchement d'un jour avec le scan vivant
+    // (idempotent par l'Index), quel que soit l'arrondi — jamais de trou entre les deux scans.
+    var d = new Date();
+    d.setDate(d.getDate() - 29);
+    ancre = dateGmail_(d);
+    props.setProperty('DriveAI_GMAIL_HISTO_ANCRE', ancre);
+  }
+  var offset = Number(props.getProperty('DriveAI_GMAIL_HISTO_OFFSET')) || 0;
+
+  var fils;
+  try {
+    fils = pageFilsHisto_(ancre, offset);
+  } catch (e) {
+    journalErreur_('Gmail', 'Recherche historique impossible : ' + e);
+    return; // re-tenté au tick suivant, offset inchangé
+  }
+  if (!fils.length) {
+    // Fin d'une PASSE — pas forcément de la campagne. Si la passe a eu de l'activité (inédite,
+    // fil sauté), un fil a PU être manqué par un décalage d'ordre : on re-vérifie depuis 0.
+    // Ordre des écritures VOULU (leçon « écritures d'état ») : l'offset d'abord, les marques
+    // ensuite — une coupure laisse au pire une passe de plus, jamais un « terminé » prématuré.
+    if (props.getProperty('DriveAI_GMAIL_HISTO_PASSE_SALE') === 'oui') {
+      props.setProperty('DriveAI_GMAIL_HISTO_OFFSET', '0');
+      props.deleteProperty('DriveAI_GMAIL_HISTO_PASSES_PROPRES');
+      props.deleteProperty('DriveAI_GMAIL_HISTO_PASSE_SALE');
+      journalInfo_('Gmail', 'Passe historique finie avec activité (' + offset + ' fils) — ' +
+        'passe de VÉRIFICATION relancée depuis l\'offset 0.');
+      return;
+    }
+    // Passe propre : il en faut DEUX consécutives (l'ordre peut avoir muté PENDANT la passe).
+    var propres = (Number(props.getProperty('DriveAI_GMAIL_HISTO_PASSES_PROPRES')) || 0) + 1;
+    if (propres >= 2) {
+      props.setProperty('DriveAI_GMAIL_HISTO', 'terminé');
+      journalInfo_('Gmail', 'Campagne HISTORIQUE terminée : ' + propres + ' passes complètes sans rien ' +
+        'collecter (' + offset + ' fils, ancre ' + ancre + ').');
+    } else {
+      props.setProperty('DriveAI_GMAIL_HISTO_OFFSET', '0');
+      props.setProperty('DriveAI_GMAIL_HISTO_PASSES_PROPRES', String(propres));
+      journalInfo_('Gmail', 'Passe historique propre (' + propres + '/2) — passe de confirmation relancée.');
+    }
+    return;
+  }
+
+  var inedites = 0;
+  var pageComplete = true;
+  var echecsRun = []; // fils en erreur de CE run — comptés seulement si la page se complète
+  var saleMarquee = props.getProperty('DriveAI_GMAIL_HISTO_PASSE_SALE') === 'oui';
+  var marquerSale = function () {
+    if (!saleMarquee) { props.setProperty('DriveAI_GMAIL_HISTO_PASSE_SALE', 'oui'); saleMarquee = true; }
+  };
+  // Garde-temps ET plafond à CHAQUE niveau (fil, message, PJ) : sans la garde au niveau fil/message,
+  // une page de vieux fils bavards SANS PJ « réelles » (inline seulement — `has:attachment` matche
+  // aussi l'inline) ferait des centaines d'appels Gmail APRÈS l'épuisement du budget.
+  var doitSarreter = function () {
+    return estBudgetDepasse() || inedites >= CONFIG.GMAIL_HISTO_MAX_PJ_INEDITES;
+  };
+  for (var i = 0; i < fils.length && pageComplete; i++) {
+    if (doitSarreter()) { pageComplete = false; break; }
+    var filId = 'offset ' + (offset + i); // repli si getId échoue aussi
+    try {
+      filId = fils[i].getId(); // clé STABLE du compteur d'échecs (la position ne l'est pas)
+      var messages = fils[i].getMessages();
+      for (var mi = 0; mi < messages.length && pageComplete; mi++) {
+        if (doitSarreter()) { pageComplete = false; break; }
+        var pjs = piecesJointes_(messages[mi]);
+        for (var p = 0; p < pjs.length; p++) {
+          // La page interrompue est rejouée au tick suivant (les PJ déjà traitées, inscrites à
+          // l'Index au fil de l'eau, seront gratuites) — l'offset n'avance pas.
+          if (doitSarreter()) { pageComplete = false; break; }
+          if (!indexContient_(cleAttachement_(messages[mi], p, pjs[p]))) {
+            inedites++;
+            marquerSale(); // la passe a collecté → une passe de vérification suivra
+          }
+          traiterPjGmail_(messages[mi], p, pjs[p]);
+        }
+      }
+    } catch (e) {
+      // Compté PLUS TARD, seulement si la page se complète : une page rejouée (plafond/budget) ne
+      // doit pas brûler les essais d'un fil toutes les 5 min — un essai par PASSE, pas par tick.
+      echecsRun.push({ filId: filId, erreur: String(e) });
+    }
+  }
+  if (pageComplete) {
+    for (var k = 0; k < echecsRun.length; k++) {
+      var essais = 0;
+      try { essais = incrementerEchec_('histo|fil|' + echecsRun[k].filId); } catch (e2) { /* compteur indisponible */ }
+      if (essais === CONFIG.QUARANTAINE_MAX) {
+        // Abandon DÉFINITIF (pas de marque « sale ») : un fil irrécupérable ne doit pas empêcher
+        // la campagne de se terminer — l'onglet Échecs garde la trace pour un rejeu manuel.
+        journalErreur_('Gmail', 'Fil historique ABANDONNÉ après ' + essais + ' essais (' +
+          echecsRun[k].filId + ') : ' + echecsRun[k].erreur);
+      } else if (essais < CONFIG.QUARANTAINE_MAX) {
+        marquerSale(); // le fil sera revisité par la passe de vérification
+        journalErreur_('Gmail', 'Fil historique sauté (' + echecsRun[k].filId + ', essai ' +
+          (essais || '?') + ') : ' + echecsRun[k].erreur);
+      }
+      // essais > QUARANTAINE_MAX : déjà annoncé abandonné — silencieux, pas de marque « sale ».
+    }
+    props.setProperty('DriveAI_GMAIL_HISTO_OFFSET', String(offset + fils.length));
   }
 }
 

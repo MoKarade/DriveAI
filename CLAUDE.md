@@ -183,6 +183,17 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   depuis l'offset 0 (pour le neuf) qui s'arrête tôt dès qu'il détecte un mur déjà traité. Toujours
   **tracer un scénario concret sur plusieurs ticks** avant de valider une pagination, pas une relecture
   superficielle — c'est ce qui révèle un plateau silencieux.
+- **Campagne Gmail : requête figée ⇒ appartenance stable, mais l'ORDRE bouge quand même** (tri par
+  DERNIER message, suppressions) — l'offset persistant sert à PROGRESSER, jamais à prouver la
+  COMPLÉTUDE. Celle-ci vient de « terminé quand DEUX passes complètes consécutives ne collectent
+  plus rien » (offset remis à 0 si la passe a eu de l'activité ; re-passe quasi gratuite par
+  l'Index), avec abandon tracé d'un fil en échec après N essais — comptés par PASSE (à la complétion
+  de page), jamais par rejeu (sinon 3 essais brûlés en 15 min sur une erreur transitoire). Les
+  plafonds/run se vérifient à l'unité de COÛT réelle (la PJ) et à CHAQUE niveau de boucle ; un
+  plafond par RUN ne borne pas la JOURNÉE (×288 ticks > quota runtime ~90 min/j) → toute campagne de
+  fond se budgète PAR JOUR (ms réelles persistées). Une complémentarité entre scans se vérifie au
+  niveau où Gmail MATCHE : par MESSAGE, pas par fil (un fil ravivé par un message sans PJ échappe à
+  `has:attachment newer_than:`) ; `before:` exclusif ⇒ chevauchement par construction (−29 j).
 - **Few-shot : n'injecter que les champs STABLES pour la clé de sélection.** Un bloc d'exemples sélectionné
   par une clé K ne doit contenir que les champs corrélés à K ; exclure tout champ qui VARIE à K constant.
   Ex. corrections sélectionnées par émetteur (ADR-0003) → injecter `domaine`/`entité` (stables : EDF →

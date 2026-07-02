@@ -36,3 +36,43 @@ function piecesJointes_(message) {
 function pageFilsActions_(debut) {
   return GmailApp.search(CONFIG.GMAIL_REQUETE_ACTIONS, debut, CONFIG.PAGE_FILS_ACTIONS);
 }
+
+/* ---------- Chantier #12 (ADR-0010 §1) : historique sur ANCRE FIXE + offset ---------- */
+
+/**
+ * Formate une date en `yyyy/MM/dd` pour l'opérateur Gmail `before:`. PUR.
+ * @param {Date} d
+ * @return {string}
+ */
+function dateGmail_(d) {
+  var m = d.getMonth() + 1, j = d.getDate();
+  return d.getFullYear() + '/' + (m < 10 ? '0' + m : m) + '/' + (j < 10 ? '0' + j : j);
+}
+
+/**
+ * Requête de la campagne historique. L'ANCRE est FIXE (posée une fois) : l'APPARTENANCE à
+ * l'ensemble `has:attachment before:<ancre>` est stable (le passé ne reçoit pas de nouveaux
+ * mails) — c'est ce qui rend la pagination par OFFSET sûre, contrairement au scan vivant (leçon
+ * « pagination mouvante » : le piège était l'insertion en TÊTE, impossible sur le passé).
+ * ATTENTION (contre-vérification) : l'ORDRE, lui, n'est PAS immuable — Gmail trie les fils par
+ * DERNIER message, donc un fil ravivé se téléporte en tête (et s'il est ravivé par un message
+ * SANS PJ, le scan vivant ne le voit pas : `has:attachment newer_than:30d` matche PAR MESSAGE) ;
+ * une suppression fait glisser les fils d'un cran. La complétude n'est donc PAS garantie par
+ * l'offset seul : c'est la PASSE DE VÉRIFICATION de `traiterGmailHistorique_` qui la porte
+ * (« terminé » seulement quand une passe complète ne collecte plus rien). PUR.
+ * @param {string} ancre  `yyyy/MM/dd`
+ * @return {string}
+ */
+function requeteHisto_(ancre) {
+  return CONFIG.GMAIL_REQUETE_HISTO_BASE + ' before:' + ancre;
+}
+
+/**
+ * Une page de fils AVEC PJ antérieurs à l'ancre, à partir d'un offset persistant.
+ * @param {string} ancre   `yyyy/MM/dd`
+ * @param {number} offset
+ * @return {GmailThread[]}
+ */
+function pageFilsHisto_(ancre, offset) {
+  return GmailApp.search(requeteHisto_(ancre), offset, CONFIG.GMAIL_HISTO_PAGE_FILS);
+}

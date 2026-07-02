@@ -240,6 +240,23 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C11-06 | **Revue intake intégrée** : P1 — blob PARESSEUX (une vidéo de 300 Mo ne lève plus getBlob → `_Médias` au lieu de quarantaine) ; P3 — un fichier déjà traité (clé `drive\|`) n'est jamais re-collecté par le rangement (un média ressorti de `_Médias` ne reste plus coincé dans `00·À trier`) | ✅ (testé) |
 | C11-03 | **`_Médias`** (racine `_`, find-or-create, ID en Script Property `DriveAI_MEDIAS_ID`) : nom d'ORIGINE conservé (traçabilité — les noms d'export sont leurs identifiants) ; jamais re-scanné (hors domaines, comme `_Doublons`/`_Technique`) | ✅ |
 
+### Chantier #12 — Historique Gmail complet (ADR-0010 §1)  🟦
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+> ⚠️ Premier design (curseur rétrograde « jour le plus ancien + 1 ») **démoli par la vérif adversariale** :
+> Gmail trie les fils par DERNIER message ⇒ un vieux fil ravivé téléportait le curseur (PJ perdues) ;
+> un jour à > 10 fils ⇒ plateau infini ; pas de sous-plafond ⇒ quota runtime épuisé en ~2 h. Réécrit,
+> puis une **2ᵉ contre-vérification** a durci la réécriture (C12-04). Design final :
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C12-01 | **Primitives PURES** (`Gmail.gs`) : `dateGmail_` (yyyy/MM/dd), `requeteHisto_` (`has:attachment before:<ancre>` — l'ancre est FIGÉE une fois pour toutes ⇒ l'APPARTENANCE à l'ensemble est stable, l'offset y est donc sûr — leçon « pagination mouvante » respectée : c'est le mouvant qui est interdit, pas l'offset ; l'ORDRE peut bouger, couvert par C12-04), `pageFilsHisto_(ancre, offset)` | ✅ (tests) |
+| C12-02 | **Campagne** `traiterGmailHistorique_` (`Main.gs`) : ancre posée UNE fois à −30 j (`DriveAI_GMAIL_HISTO_ANCRE`, le vivant couvre le récent), offset persistant (`…_OFFSET`) qui n'avance que si la page est COMPLÈTE (budget/plafond au milieu ⇒ rejeu de page, idempotence Index = gratuit, converge), plafond `GMAIL_HISTO_MAX_PJ_INEDITES`/run (2 — protège le quota runtime ~90 min/j : le vivant garde la priorité), PJ déjà indexées GRATUITES (ne comptent pas) | ✅ (tests d'orchestration) |
+| C12-03 | **Câblage** : après le flux vivant, avant migration/intentions ; enveloppé + budget-gaté ; surface au contrat (`pageFilsHisto_`, `requeteHisto_`, `dateGmail_`, `traiterGmailHistorique_`, `incrementerEchec_`) | ✅ |
+| C12-04 | **Durcissements de la 2ᵉ contre-vérification** : (P3, la clé) une page vide ne fige « terminé » que si la passe n'a RIEN collecté — sinon offset remis à 0, **passe de VÉRIFICATION** (guérit : fil ravivé par un message SANS PJ — invisible du vivant car Gmail matche PAR message —, fil glissé sous l'offset par une suppression, fil sauté sur erreur transitoire ; re-passe quasi gratuite, convergence garantie car l'Index ne fait que croître) ; (P4) garde-temps + plafond vérifiés **PAR PJ** (un message à 20 PJ ne crève plus le mur des 6 min), aussi appliqué au scan VIVANT (`traiterFil_`) ; (P5) fil en erreur : compteur d'Échecs `histo\|fil\|<id>`, revisité par la passe suivante, ABANDONNÉ après 3 essais (la terminaison n'est jamais bloquée, la trace reste) ; (P6) doc du plafond corrigée (un doublon MD5 COMPTE) ; (P7) limite « mail ancien arrivé tardivement » documentée dans l'ADR | ✅ (tests) |
+| C12-05 | **Durcissements de la 3ᵉ contre-vérification** (workflow 3 lentilles sur l'implémentation) : (a) **budget QUOTIDIEN** `GMAIL_HISTO_BUDGET_JOUR_MS` (20 min/j, ms réels persistés par jour) — le plafond par RUN ne borne pas la JOURNÉE : 288 ticks × 25 s = 2 h/j > quota runtime ~90 min/j, tous les déclencheurs (chien de garde inclus) auraient gelé chaque après-midi de campagne ; (b) échec de fil compté **à la COMPLÉTION de page seulement** — une page rejouée (plafond/budget) re-rencontrait le fil toutes les 5 min et brûlait les 3 essais en 15 min sur une erreur transitoire ; une erreur qui guérit avant complétion ne laisse AUCUNE trace ; (c) garde budget/plafond **à chaque niveau de boucle** (fil, message, PJ) — une page de fils bavards sans PJ « réelles » (inline) faisait ~1000 appels Gmail APRÈS le budget ; (d) ancre à **−29 j** (`before:` exclusif + `newer_than:30d` glissant = trou possible sur install fraîche) ; (e) terminaison à **DEUX passes propres consécutives** (une suppression PENDANT la passe de vérification peut masquer un fil) ; abandon annoncé UNE fois puis silencieux | ✅ (16 tests) |
+
 ### Chantier #15 — App v2 : curation efficace & confort (ADR-0011)  🟦
 
 | ID | Tâche | Statut |
