@@ -21,14 +21,32 @@ rien supprimer**.
 - Les documents **sensibles** (immigration, fiscal) sont **classés** comme le reste (décision 2026-07-01),
   mais jamais supprimés ni détachés de `04 · Immigration`.
 
-## Corriger une erreur 🔜
-- Chaque semaine, un **mail** te liste les cas incertains (émetteur/date « Inconnu ») + les **nouvelles
-  entités** à valider.
-- **Un clic** ouvre un **mini-formulaire** : tu choisis le bon dossier/entité → DriveAI applique
-  **et retient** pour la prochaine fois (il apprend de tes corrections).
+## Corriger une erreur
+Deux chemins, DriveAI **retient** dans les deux cas (il apprend de tes corrections) :
+- **Le formulaire** ([DriveAI — Corriger un classement](https://docs.google.com/forms/d/1gIftqqRwRs2XslhKbbmNMUTdFEqJ1AMB2H6Q0ahnc8A/viewform), lien aussi dans le résumé hebdo) :
+  tu nommes l'émetteur + le bon domaine (et l'entité si tu veux) → les **prochains** documents de cet
+  émetteur seront bien classés, et l'entité nommée est **validée** (son dossier se crée tout seul).
+- **L'app web, onglet Corrections** (immédiat) : tu retrouves le document, tu donnes son bon nom/dossier →
+  il est **déplacé sur-le-champ** (jamais supprimé) et la correction est apprise.
+
+## L'app web (Phase 4)
+Ton poste de pilotage, en 3 onglets (login Google, rien de public) :
+- **Tableau de bord** — santé du moteur, coût du mois, activité récente, nombre de documents par domaine.
+- **Corrections** — ① les **entités proposées** par DriveAI se valident **en 1 clic** (le dossier se crée
+  au tick suivant et les prochains documents s'y rangent) ; ② **reclasser un document** mal rangé :
+  recherche par nom → nouveau nom pré-rempli → destination = un **lien Drive collé tel quel** ou une
+  entité validée dans la liste → appliqué immédiatement + appris.
+- **Recherche** — filtres instantanés (nom, domaine, année du document, statut) sur tout le catalogue,
+  chaque résultat ouvre le fichier dans Drive ; bouton « chercher dans le contenu » = la recherche
+  plein-texte native de Drive (DriveAI ne stocke jamais le contenu de tes documents).
+
+Garde-fous embarqués : l'app **ne peut rien supprimer** (verrouillé par test), ne touche jamais à
+`04 · Immigration`, et journalise chaque geste. Mise en route (une fois, ~10 min) : `docs/DEPLOIEMENT.md`
+§Phase 4 — importe le repo dans Vercel (zéro config, `vercel.json` fourni) + crée le Client ID OAuth.
 
 ## Retrouver un document
-Quatre façons, toutes soignées : **navigation** dans l'arbo · **nom** de fichier · **date** · **émetteur**.
+Quatre façons, toutes soignées : **navigation** dans l'arbo · **nom** de fichier · **date** · **émetteur** ·
+et l'onglet **Recherche** de l'app web (filtres + plein texte).
 
 ## Suivre l'activité
 - **Résumé hebdomadaire** par mail : ce qui a été rangé, le coût du mois, 🔜 l'état de santé du système.
