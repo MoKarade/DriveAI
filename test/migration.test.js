@@ -119,6 +119,20 @@ test('migrerFichier_ : descripteur pipeline (clé migre|, ignorerDoublon) + plac
   assert.deepStrictEqual(calls.deplace, [{ id: 'F2', nouveau: 'AILLEURS', ancien: 'PARENT', nom: 'n2.pdf' }]);
 });
 
+test('migrerFichier_ : document illisible → quarantaine (gererEchec_), jamais un blocage de campagne', () => {
+  const ctx = load(['Config.gs', 'Migration.gs']);
+  const echecs = [];
+  ctx.journalInfo_ = () => {};
+  ctx.journalErreur_ = () => {};
+  ctx.gererEchec_ = (src, motif) => echecs.push({ cle: src.cle, motif });
+  ctx.traiterDocument_ = () => { throw new Error('ne doit pas être atteint'); };
+  ctx.aParentProtege_ = () => false;
+  ctx.DriveApp = { getFileById: () => { throw new Error('introuvable'); } };
+  assert.strictEqual(ctx.migrerFichier_('KO', {}), false);
+  assert.strictEqual(echecs.length, 1);                 // → compteur d'échecs → quarantaine après N
+  assert.strictEqual(echecs[0].cle, 'migre|m1|KO');     // sous la clé de campagne (convergence)
+});
+
 /* ---------- Pipeline : bypass du fast-path doublon ---------- */
 
 function ctxPipeline(ignorer) {

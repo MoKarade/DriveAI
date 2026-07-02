@@ -216,7 +216,9 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C8-03 | **Zone protégée** : `04` exclue des racines + revérif STRICTE avant mutation ; refus inscrit `zone protégée` sous la clé migre\| (fichier NON touché, campagne convergente) | ✅ |
 | C8-04 | **Fix convergence rangement** : `estAReclasser_`/`estAReclasserLeger_` reconnaissent les 3 granularités du nommage par type (`AAAA_`, `AAAA-MM_`, `AAAA-MM-JJ_`) — sans quoi une future campagne de rangement re-collecterait les noms par type en boucle infinie | ✅ (testé) |
 
-> Bumper `MIGRATION_TAG` (m2, m3…) relance une campagne complète — utile après une validation d'entités en masse (les docs rangés au domaine redescendent aux entités). Coût : 1 OCR+LLM par doc existant, une fois par campagne (Haiku, escalades plafonnées).
+| C8-05 | **Correctifs revue flotte** : quarantaine sur doc illisible pré-pipeline (sinon la campagne ne se fige jamais) + try par item (un doc empoisonné n'affame plus la page) + **sous-budget `MIGRATION_BUDGET_MS`** (2 min/tick — protège le quota JOURNALIER ~90 min/j des triggers : l'intake reste vivant toute la journée pendant la campagne) + `creerRaccourci_` idempotent (`raccourciExiste_` — un re-classement ne duplique plus les raccourcis multi-entités) | ✅ |
+
+> Bumper `MIGRATION_TAG` (m2, m3…) relance une campagne complète — utile après une validation d'entités en masse (les docs rangés au domaine redescendent aux entités). Coût estimé par la flotte : ~3-5 $ one-shot pour quelques centaines de docs (Haiku + escalades plafonnées), campagne étalée sur 1-2 jours. Dédup intra-campagne des vrais doublons : optionnelle, à décider sur du réel (post-m1, si `_Doublons` le justifie).
 
 ---
 

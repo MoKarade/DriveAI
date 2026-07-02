@@ -255,8 +255,13 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
   or le nommage PAR TYPE produit aussi `AAAA_`/`AAAA-MM_` → une future campagne de rangement aurait
   re-collecté ces noms en boucle infinie. Regex élargie aux 3 granularités (testé). `renommer_` (PATCH nom
   seul) ajouté à `DriveRest.gs` (destination = dossier courant). +8 tests → **128**. Relance : bumper
-  `MIGRATION_TAG` (m2…) — utile après validation d'entités en masse. Revue flotte (sécurité + quotas +
-  file-checker) en cours. **Reste roadmap : #9 (app web), C6-05, validation 1-clic entités.**
+  `MIGRATION_TAG` (m2…) — utile après validation d'entités en masse. **Revue flotte passée** :
+  security-auditor 🟢 CONFORME (aucun chemin de détachement de 04, `renommer_` sans champ parents par
+  construction) ; quotas + file-checker → correctifs appliqués : quarantaine sur doc illisible pré-pipeline
+  (sinon campagne jamais figée), try par item, **sous-budget `MIGRATION_BUDGET_MS` 2 min/tick** (protège le
+  quota journalier ~90 min/j — l'intake reste vivant toute la journée), `creerRaccourci_` idempotent
+  (`raccourciExiste_`). Coût estimé ~3-5 $ one-shot, campagne étalée 1-2 jours. +9 tests → **129**.
+  **Reste roadmap : #9 (app web), C6-05, validation 1-clic entités.**
 - **2026-07-02 — Chantier #7 : fichiers PARTAGÉS (source d'intake #3, ADR-0005).** **Nouveau module
   `Partages.gs`.** À parité avec les PJ Gmail : les fichiers récemment partagés avec Marc (`sharedWithMe`,
   REST `files.list` trié `sharedWithMeTime desc`) de type document (allowlist images + PDF/Office) sont

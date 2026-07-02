@@ -52,7 +52,16 @@ function appliquerMigrationTaxonomie_(estBudgetDepasse) {
   if (!rangementTermine_()) return; // le grand rangement d'abord (même famille d'arbres)
   if (estBudgetDepasse()) return;
 
-  var r = migrerUnePage_(estBudgetDepasse, ensembleDomainesProteges_());
+  // SOUS-budget propre à la migration (en plus du garde-temps du tick) : sans lui, chaque tick de
+  // campagne consommerait ~tout BUDGET_MS en OCR+LLM et le quota JOURNALIER d'exécution des triggers
+  // (~90 min/jour, compte gratuit) tomberait en quelques heures — plus d'intake le reste de la journée.
+  // Borné à MIGRATION_BUDGET_MS, la campagne s'étale mais l'intake vivant garde son quota quotidien.
+  var debutMigration = Date.now();
+  var garde = function () {
+    return estBudgetDepasse() || (Date.now() - debutMigration) > CONFIG.MIGRATION_BUDGET_MS;
+  };
+
+  var r = migrerUnePage_(garde, ensembleDomainesProteges_());
   if (r.traites) {
     journalInfo_('Migration', r.traites + ' document(s) re-classé(s) vers la nouvelle taxonomie (campagne « ' +
       CONFIG.MIGRATION_TAG + ' »).');
@@ -97,7 +106,13 @@ function migrerUnePage_(estBudgetDepasse, proteges) {
   var n = 0;
   for (var i = 0; i < ids.length; i++) {
     if (estBudgetDepasse()) { interrompue = true; break; }
-    if (migrerFichier_(ids[i], proteges)) n++;
+    // Try PAR ITEM (ceinture-bretelles) : un item empoisonné ne doit jamais avorter le reste de la
+    // page — sinon les fichiers collectés APRÈS lui sont affamés à chaque tick (même ordre de collecte).
+    try {
+      if (migrerFichier_(ids[i], proteges)) n++;
+    } catch (e) {
+      journalErreur_('Migration', 'Item sauté (' + ids[i] + ') : ' + e);
+    }
   }
 
   return {
@@ -147,7 +162,7 @@ function collecterAMigrer_(dossier, ids, max, estBudgetDepasse) {
  */
 function migrerFichier_(fileId, proteges) {
   var cle = 'migre|' + CONFIG.MIGRATION_TAG + '|' + fileId;
-  var f, nom, parentId;
+  var f, nom, parentId, taille, date;
   try {
     f = DriveApp.getFileById(fileId);
     nom = f.getName();
@@ -158,8 +173,15 @@ function migrerFichier_(fileId, proteges) {
     }
     var parents = f.getParents();
     parentId = parents.hasNext() ? parents.next().getId() : '';
+    // TOUTES les lectures de métadonnées restent DANS le try : un fichier devenu illisible entre la
+    // collecte et ici doit être sauté (journalisé), jamais avorter la page ni bloquer la campagne.
+    taille = f.getSize();
+    date = f.getLastUpdated();
   } catch (e) {
-    journalErreur_('Migration', 'Document illisible (' + fileId + ') : ' + e);
+    // Passe par la QUARANTAINE (compteur d'échecs) et non un simple log : un doc durablement
+    // illisible finirait sinon re-collecté à chaque passe, à vie — `collectes` ne retomberait
+    // jamais à 0 et la campagne ne se figerait JAMAIS (même filet que les échecs pipeline).
+    gererEchec_({ cle: cle, nom: nom || fileId }, 'document illisible (migration) : ' + e);
     return false;
   }
 
@@ -171,10 +193,10 @@ function migrerFichier_(fileId, proteges) {
   traiterDocument_({
     cle: cle,
     nom: nom,
-    taille: f.getSize(),
+    taille: taille,
     expediteur: '',
     sujet: 'Reclassement (migration taxonomie)',
-    date: f.getLastUpdated(),
+    date: date,
     ignorerDoublon: true, // son empreinte est déjà dans l'Index (il est classé) — pas « doublon de lui-même »
     blob: blobUneFois_,
     placer: function (dossierId, nouveauNom) {

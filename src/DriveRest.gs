@@ -92,6 +92,11 @@ function renommer_(fileId, nouveauNom) {
  * @return {boolean} vrai si le raccourci a été créé.
  */
 function creerRaccourci_(cibleId, parentId, nom) {
+  // Idempotent : si un raccourci vers la MÊME cible existe déjà dans ce dossier, ne rien recréer.
+  // Nécessaire depuis la migration (#8) : un doc re-classé re-crée ses raccourcis multi-entités —
+  // sans ce garde, chaque campagne (ou rejeu après coupure) dupliquerait les raccourcis. Best-effort :
+  // si la vérification échoue, on crée quand même (un doublon de raccourci est bénin, un manquant non).
+  if (raccourciExiste_(cibleId, parentId)) return true;
   var rep = fetchDriveAvecRetry_('https://www.googleapis.com/drive/v3/files?fields=id', {
     method: 'post',
     contentType: 'application/json',
@@ -107,5 +112,29 @@ function creerRaccourci_(cibleId, parentId, nom) {
   if (rep.getResponseCode() === 200) return true;
   journalErreur_('Drive', 'Raccourci HTTP ' + rep.getResponseCode() + ' : ' +
     tronquer_(rep.getContentText(), 300));
+  return false;
+}
+
+/**
+ * Vrai si le dossier contient déjà un raccourci pointant `cibleId`. L'API ne permet pas de filtrer
+ * `shortcutDetails.targetId` dans `q` → on liste les raccourcis du dossier (rarement plus de quelques-uns)
+ * et on compare côté client. Ne propage jamais d'exception (false au moindre doute → l'appelant crée).
+ * @param {string} cibleId
+ * @param {string} parentId
+ * @return {boolean}
+ */
+function raccourciExiste_(cibleId, parentId) {
+  try {
+    var q = "'" + parentId + "' in parents and mimeType = 'application/vnd.google-apps.shortcut' and trashed = false";
+    var rep = fetchDriveAvecRetry_('https://www.googleapis.com/drive/v3/files?q=' + encodeURIComponent(q) +
+      '&fields=' + encodeURIComponent('files(shortcutDetails/targetId)') + '&pageSize=100', {
+      method: 'get', headers: { Authorization: 'Bearer ' + jetonDrive_() }, muteHttpExceptions: true
+    });
+    if (rep.getResponseCode() !== 200) return false;
+    var fichiers = (JSON.parse(rep.getContentText()).files) || [];
+    for (var i = 0; i < fichiers.length; i++) {
+      if (fichiers[i].shortcutDetails && fichiers[i].shortcutDetails.targetId === cibleId) return true;
+    }
+  } catch (e) { /* au moindre doute : false → création (un doublon de raccourci est bénin) */ }
   return false;
 }

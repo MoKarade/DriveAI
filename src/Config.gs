@@ -253,6 +253,10 @@ var CONFIG = {
   MIGRATION_TAG: 'm1',                    // m1 : 1ʳᵉ migration (nommage par type + entités + 07·Santé + few-shot)
   MIGRATION_MAX_PAR_RUN: 12,              // docs re-traités (OCR+LLM complets, lourds) par run — le flux
                                           // VIVANT (intake) garde la priorité ; campagne finie en fond
+  MIGRATION_BUDGET_MS: 2 * 60 * 1000,     // sous-budget PAR TICK de la migration (< BUDGET_MS) : protège le
+                                          // quota JOURNALIER des triggers (~90 min/j, compte gratuit) — sans
+                                          // lui, la campagne épuiserait le quota en quelques heures et
+                                          // l'intake serait mort le reste de la journée
 
   // Schémas de sous-dossiers FIXES créés à la validation d'une entité (docs/TAXONOMY.md).
   // Clé = Type d'entité ; valeur = liste ordonnée de sous-dossiers.
