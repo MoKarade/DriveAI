@@ -191,7 +191,8 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C6-01 | **Formulaire de correction** (`Formulaire.gs`) : find-or-create (`assurerFormulaireCorrection_`, ID en Script Property), champs Émetteur (requis)/Domaine (liste)/Entité/Fichier. **Nouveau scope `forms`** dans `appsscript.json` | ✅ |
 | C6-02 | **Lecture + enregistrement** : `lireEtAppliquerCorrections_` (1×/tick, AVANT l'intake) lit les nouvelles réponses (idempotence par horodatage `PROP_FORM_DERNIER`), les enregistre via `enregistrerCorrection_` (⇒ few-shot #5). Borné `CORRECTIONS_MAX_PAR_RUN` + garde-temps, enveloppé try/catch | ✅ |
 | C6-03 | **Parsing PUR** `reponseVersCorrection_` + `domainesPourFormulaire_` + lien du formulaire au résumé hebdo | ✅ (5 tests) |
-| C6-04 | **Appliquer la correction au FICHIER** déjà classé (déplacer/renommer) + promouvoir l'entité corrigée en « validée » | ⬜ à suivre (partie 2) |
+| C6-04 | **Promouvoir l'entité corrigée en « validée »** (`promouvoirEntiteValidee_` : find-or-create validée, idempotent no-op sans I/O si déjà validée) → dossier matérialisé au tick suivant + routage l'utilise. Validation EXPLICITE de Marc = pas d'auto-prolifération | ✅ (test `correctionValideUneEntite_`) |
+| C6-05 | **Déplacer/renommer le FICHIER déjà classé** d'après la correction (champ « Fichier concerné ») | ⬜ à suivre (nommer un fichier en texte libre est fragile ; le few-shot corrige déjà le futur) |
 
 > ⚠️ **Ré-autorisation Marc requise** : le scope `forms` (création/lecture du formulaire) s'ajoute au prochain déploiement — Marc doit ré-accorder l'accès Google une fois (frontière d'exécution : la session Claude ne peut pas le faire).
 

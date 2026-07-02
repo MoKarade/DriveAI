@@ -241,6 +241,17 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-02 — Chantier #6 (partie 2, C6-04) : entité corrigée → « validée » (ADR-0003).** **Modif du
+  MOTEUR.** Une correction du formulaire qui nomme une entité + son domaine la **promeut « validée »** dans
+  le référentiel (`promouvoirEntiteValidee_`, `Entites.gs`) : find-or-create idempotent (no-op SANS I/O Sheet
+  si déjà validée ; `en_attente`→`validée` sinon ; inconnue → ajoutée validée). Câblé dans
+  `lireEtAppliquerCorrections_` après `enregistrerCorrection_`. Le dossier d'entité est matérialisé au tick
+  suivant (`creerDossiersEntitesValidees_`, déjà en place) et le routage l'utilise. **Validation EXPLICITE de
+  Marc via le formulaire = pas d'auto-prolifération** (garde-fou respecté). Prédicat pur `correctionValideUneEntite_`
+  testé. +1 test → **108**. Revue flotte (structure + code) en cours. **Reste C6-05** : déplacer/renommer le
+  FICHIER déjà classé (champ « Fichier concerné ») — différé (nommage texte libre fragile ; le few-shot corrige
+  déjà le futur). ⚠️ Toujours en attente : ré-autorisation du scope `forms` par Marc au prochain déploiement.
+
 - **2026-07-02 — Chantier #6 (partie 1) : correction via formulaire Google (ADR-0003 §1-2).** **Modif du
   MOTEUR + NOUVEAU SCOPE.** Marc a choisi le canal **Google Forms** (vs édition directe de la Sheet). Nouveau
   module `Formulaire.gs` : formulaire de correction find-or-create (`assurerFormulaireCorrection_`, ID en
