@@ -145,9 +145,10 @@ var CONFIG = {
   FEWSHOT_MAX: 3,
   FEWSHOT_SEUIL: 0.6,
 
-  // Canal de correction (ADR-0003 §1, chantier #6) : nombre max de réponses de formulaire traitées par
-  // run (le reste est repris au tick suivant — anti-rafale, borné comme les autres lots). Usage perso :
-  // largement suffisant, Marc soumet quelques corrections à la fois.
+  // Canal de correction (ADR-0003 §1, chantier #6) : nombre max de corrections APPLIQUÉES (écrites) par
+  // run (le reste est repris au tick suivant — anti-rafale, borné comme les autres lots ; les réponses
+  // en double/invalides ne comptent pas et sont bornées par le garde-temps). Usage perso : largement
+  // suffisant, Marc soumet quelques corrections à la fois.
   CORRECTIONS_MAX_PAR_RUN: 20,
 
   // Sous-dossiers de catégorie connus (Phase 1 : seuls ceux de 03).

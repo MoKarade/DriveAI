@@ -30,11 +30,10 @@ var PROP_FORM_DERNIER = 'DriveAI_FORM_CORR_DERNIER'; // horodatage (ms) de la de
 
 /* ---------- Logique PURE (testée) ---------- */
 
-/** Libellés de domaines proposés dans le formulaire (config + « 07 · Santé » auto-créé), triés. */
+/** Libellés de domaines proposés dans le formulaire = source de vérité unique `domainesAutorises_()`
+ *  (domaines fixes + auto-créés `CONFIG.DOMAINES_AUTO`) — pas de liste dupliquée qui dériverait. */
 function domainesPourFormulaire_() {
-  var noms = Object.keys(CONFIG.DOMAINES);
-  if (noms.indexOf('07 · Santé') === -1) noms.push('07 · Santé');
-  return noms.sort();
+  return domainesAutorises_();
 }
 
 /**
@@ -68,9 +67,11 @@ function urlFormulaireCorrection_() {
 function assurerFormulaireCorrection_() {
   var props = PropertiesService.getScriptProperties();
   var id = props.getProperty(PROP_FORM_ID);
-  if (id) {
-    try { return FormApp.openById(id); } catch (e) { /* introuvable/supprimé → on recrée */ }
-  }
+  // Si un ID est connu, on ouvre SANS filet : une erreur (panne transitoire OU formulaire supprimé) se
+  // propage → attrapée par le try/catch du tick, journalisée, retentée au tick suivant (auto-guérit le
+  // transitoire). On NE recrée PAS sur exception : sinon une panne momentanée fabriquerait un formulaire
+  // orphelin, l'URL de Marc pointerait vers un mort et ses réponses seraient perdues en silence.
+  if (id) return FormApp.openById(id);
   var form = FormApp.create(FORM_TITRE);
   form.setDescription('Apprends à DriveAI où ranger les documents d\'un émetteur. Les prochains documents '
     + 'du même émetteur seront classés en conséquence. Un seul champ obligatoire : l\'émetteur.');
@@ -93,7 +94,10 @@ function lireEtAppliquerCorrections_(estBudgetDepasse) {
   var props = PropertiesService.getScriptProperties();
   var form = assurerFormulaireCorrection_();
   var dernier = Number(props.getProperty(PROP_FORM_DERNIER) || 0);
-  var reponses = form.getResponses(); // ordre chronologique croissant
+  // Lecture BORNÉE : ne récupère que les réponses postérieures au curseur (pas tout l'historique à
+  // chaque tick) — aligné sur la discipline « lecture bornée » du projet. Le `ts <= dernier` plus bas
+  // reste comme garde défensif d'égalité de borne. `new Date(0)` au 1er run = toutes les réponses.
+  var reponses = form.getResponses(new Date(dernier)); // ordre chronologique croissant
   var traiteJusqua = dernier, applique = 0;
 
   for (var i = 0; i < reponses.length; i++) {
