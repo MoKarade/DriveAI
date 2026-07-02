@@ -53,6 +53,18 @@ const TEXTES = {
     gardeFous: 'Garde-fous actifs : aucune suppression · zone protégée 04 jamais détachée · corrections journalisées',
     violationZoneProtegee: 'Refusé : ce document touche la zone protégée (04 · Immigration) — il ne sera pas détaché.',
     violationNom: 'Refusé : le nom doit suivre la convention (AAAA_, AAAA-MM_ ou AAAA-MM-JJ_…).',
+    recherche: 'Recherche',
+    filtreTexte: 'Nom, chemin… (filtre instantané)',
+    tousDomaines: 'Tous les domaines',
+    toutesAnnees: 'Toutes les années',
+    tousStatuts: 'Tous les statuts',
+    resultats: 'résultat(s)',
+    affiches: 'affichés',
+    rechercheContenu: 'Recherche dans le contenu',
+    rechercheContenuExplication:
+      'Cherche DANS les documents via la recherche native de Drive — DriveAI ne stocke jamais leur contenu.',
+    chercherDansContenu: 'Chercher dans le contenu',
+    aucunResultat: 'Aucun résultat.',
   },
   en: {
     titre: 'DriveAI',
@@ -92,6 +104,18 @@ const TEXTES = {
     gardeFous: 'Active guardrails: no deletion · protected zone 04 never detached · corrections journaled',
     violationZoneProtegee: 'Refused: this document touches the protected zone (04 · Immigration) — it will not be detached.',
     violationNom: 'Refused: the name must follow the convention (YYYY_, YYYY-MM_ or YYYY-MM-DD_…).',
+    recherche: 'Search',
+    filtreTexte: 'Name, path… (instant filter)',
+    tousDomaines: 'All domains',
+    toutesAnnees: 'All years',
+    tousStatuts: 'All statuses',
+    resultats: 'result(s)',
+    affiches: 'shown',
+    rechercheContenu: 'Search inside documents',
+    rechercheContenuExplication:
+      'Searches INSIDE documents via Drive native search — DriveAI never stores their content.',
+    chercherDansContenu: 'Search inside content',
+    aucunResultat: 'No results.',
   },
 } as const;
 
