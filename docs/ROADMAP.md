@@ -32,6 +32,22 @@ Phases 1–3 (moteur Gmail→classement, entités, tâches/agenda), grand rangem
 dédup fast-path, documents sensibles auto-classés, un seul dossier d'arrivée + nom final direct, etc.
 Détail : `BACKLOG.md` (P1-01 → P1-20).
 
+## Roadmap v2 — brainstorm du 2026-07-02 (ordre validé par Marc : moteur → site → mails)
+
+| # | Chantier | Axe | Effort | ADR | Statut |
+|---|----------|-----|--------|-----|--------|
+| 10 | **Entités propres** — filtre anti-génériques + consolidation des variantes à la proposition + curation one-shot de la file existante (~160) | Moteur/Précision | M | [0009](adr/0009-qualite-entites-medias.md) | ⬜ |
+| 11 | **Fast-path médias bruts** — vidéo/gif direct, photo « nom non-documentaire + OCR vide » → `_Médias`, sans LLM | Moteur/Coût | S-M | [0009](adr/0009-qualite-entites-medias.md) | ⬜ |
+| 12 | **Historique Gmail complet** — scan ancré rétrograde (`before:` persisté), toutes les vieilles PJ classées | Mails | M | [0010](adr/0010-mails-historique-visibilite.md) | ⬜ |
+| 13 | **Phase 3 visible** — « Actions & RDV détectés » au résumé hebdo + dans l'app | Mails | S | [0010](adr/0010-mails-historique-visibilite.md) | ⬜ |
+| 14 | **Mails importants** — flag `important` (mini-check existant) → section « À traiter » du hebdo, plafonnée | Mails | S-M | [0010](adr/0010-mails-historique-visibilite.md) | ⬜ |
+| 15 | **App v2** — fusion 1-clic des variantes, rejet en masse, dashboard enrichi (coût/jour, quarantaine), PWA | Site | M-L | [0011](adr/0011-app-v2-curation.md) | ⬜ |
+
+**Rationale v2 :** moteur d'abord (choix Marc) — #10 assainit la source ET la file existante (la
+validation redevient courte avant même l'app v2), #11 accélère le rangement Facebook en cours.
+Puis #15 (les outils de curation profitent d'une file déjà propre), puis les mails (#12 volume,
+#13-#14 visibilité) — l'historique complet bénéficie du moteur assaini.
+
 ## Hors périmètre (ADR-0001)
 Produit/SaaS, multi-utilisateur, Google Workspace payant, sortie d'Apps Script — écartés (ré-évaluables
 plus tard).
