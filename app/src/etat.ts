@@ -78,6 +78,7 @@ export interface LigneEntite {
   statut: string;
   variante: string;
   dossierId: string; // dossier matérialisé (entité validée) — sert de destination de reclassement
+  vuNFois: number;   // fréquence d'observation (#10) — sert au tri de la file de validation
 }
 
 export const COLONNES_ENTITES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?'];
@@ -105,6 +106,7 @@ export function interpreterEntites(brut: string[][]): { lignes: LigneEntite[]; c
       statut: normaliserCle(l[iStatut] ?? ''),
       variante: l[idx('Variante possible ?')] ?? '',
       dossierId: l[idx('Dossier ID')] ?? '',
+      vuNFois: Number(l[idx('Vu N fois')] ?? '') || 1,
     });
   }
   return { lignes, colonneStatut: lettreColonne(iStatut) };
@@ -123,7 +125,11 @@ export function lettreColonne(index: number): string {
 }
 
 export function entitesEnAttente(lignes: LigneEntite[]): LigneEntite[] {
-  return lignes.filter((l) => l.statut === 'en attente' || l.statut === 'en_attente');
+  // Les plus VUES d'abord (#10) : Marc valide en priorité les entités les plus fréquentes.
+  return lignes
+    .filter((l) => l.statut === 'en attente' || l.statut === 'en_attente')
+    .slice()
+    .sort((a, b) => b.vuNFois - a.vuNFois);
 }
 
 /** Entités validées AVEC dossier matérialisé — destinations proposées au reclassement. */

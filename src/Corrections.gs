@@ -83,7 +83,10 @@ function blocFewShot_(corrections) {
     var parts = [];
     if (c.domaine) parts.push('domaine « ' + c.domaine + ' »');
     if (c.categorie) parts.push('catégorie « ' + c.categorie + ' »');
-    if (c.entite) parts.push('entité « ' + c.entite + ' »');
+    // #10 : un générique hérité (saisie libre du formulaire) n'est jamais INJECTÉ en exemple —
+  // sinon le few-shot enseignerait exactement ce que le prompt système interdit (et il gagnerait).
+  // La donnée brute reste dans l'onglet (réversible) ; seul l'exemple prompt est filtré.
+  if (c.entite && !estEntiteGenerique_(c.entite)) parts.push('entité « ' + c.entite + ' »');
     if (!parts.length) return; // aucune cible → aucun signal d'apprentissage : on saute (pas de slot gâché)
     lignes.push('- Émetteur « ' + c.emetteur + ' » → ' + parts.join(', ') + '.');
   });

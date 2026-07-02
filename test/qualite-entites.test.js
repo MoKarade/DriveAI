@@ -50,6 +50,13 @@ test('estEntiteGenerique_ : les VRAIS noms propres de la file réelle sont TOUS 
   }
 });
 
+test('estEntiteGenerique_ : pluriels couverts (jeton OU jeton sans « s » final)', () => {
+  assert.strictEqual(ctx.estEntiteGenerique_('Relevés bancaires'), true);
+  assert.strictEqual(ctx.estEntiteGenerique_('factures'), true);
+  assert.strictEqual(ctx.estEntiteGenerique_('diplômes'), true);
+  assert.strictEqual(ctx.estEntiteGenerique_('Desjardins'), false); // « desjardin » n'est pas du lexique
+});
+
 test('estEntiteGenerique_ : vide / null / que des stopwords → générique', () => {
   assert.strictEqual(ctx.estEntiteGenerique_(''), true);
   assert.strictEqual(ctx.estEntiteGenerique_(null), true);
@@ -62,12 +69,14 @@ test('estFusionnableEntite_ : inclusion → fusionnable (adresses, banque, casse
   assert.strictEqual(ctx.estFusionnableEntite_('Desjardins', 'carte de crédit Desjardins'), true);
   assert.strictEqual(ctx.estFusionnableEntite_('banque Desjardins', 'Desjardins'), true);
   assert.strictEqual(ctx.estFusionnableEntite_('3325 4e avenue', '3325 4e Avenue, App. 5, Québec'), true);
-  assert.strictEqual(ctx.estFusionnableEntite_('Honda Civic', 'Honda Civic 2014'), true);
   assert.strictEqual(ctx.estFusionnableEntite_('ROBOVIC Inc', 'Robovic Inc.'), true);
 });
 
 test('estFusionnableEntite_ : JAMAIS par simple proximité — années/villes distinctes', () => {
   assert.strictEqual(ctx.estFusionnableEntite_('Honda Civic 2014', 'Honda Civic 2017'), false);
+  // Garde anti-effondrement transitif (revue flotte) : une ANNÉE excédentaire = entité distincte.
+  assert.strictEqual(ctx.estFusionnableEntite_('Honda Civic', 'Honda Civic 2014'), false);
+  assert.strictEqual(ctx.estFusionnableEntite_('Ford Fiesta', 'Ford Fiesta 2011'), false);
   assert.strictEqual(ctx.estFusionnableEntite_('IUT de Lyon', 'IUT de Nantes'), false);
   assert.strictEqual(ctx.estFusionnableEntite_('Ford Fiesta 2011', 'Toyota Corolla 2014'), false);
   assert.strictEqual(ctx.estFusionnableEntite_('', 'Desjardins'), false);
@@ -111,6 +120,30 @@ test('entiteEnAttenteAjouter_ : FUSIONNABLE avec une ligne existante → incrém
   assert.strictEqual(calls.append.length, 0);
   assert.strictEqual(calls.setValue.length, 1); // Vu N fois incrémenté (1 → 2)
   assert.strictEqual(calls.setValue[0].v, 2);
+});
+
+test('entiteEnAttenteAjouter_ : canonique VALIDÉE → Vu incrémenté, AUCUN alias (pas de fusion de facto)', () => {
+  const validee = { ligneSheet: 2, entite: 'Desjardins', domaine: '02 · Finances', categorie: '', type: '', statut: 'validee', dossierId: 'DOSSIER' };
+  const { c, calls } = ctxProposition([validee]);
+  c.entiteEnAttenteAjouter_({ entite: 'banque Desjardins', domaine: '02 · Finances' });
+  assert.strictEqual(calls.append.length, 0);
+  assert.strictEqual(calls.setValue.length, 1); // Vu N fois
+  // PAS d'alias : la clé de la variante n'entre pas dans parCle → resoudreEntite_ ne routera JAMAIS
+  // « banque Desjardins » dans le dossier de « Desjardins » sans fusion explicite de Marc.
+  const cleVariante = c.cleEntite_('02 · Finances', 'banque Desjardins');
+  assert.strictEqual(c._entitesCache.parCle[cleVariante], undefined);
+});
+
+test('appliquerCurationEntites_ : PAS d\'effondrement transitif — « Honda Civic » n\'avale pas 2014/2017', () => {
+  const lignes = [
+    { ligneSheet: 2, entite: 'Honda Civic', domaine: '03 · Logement & véhicule', categorie: '', type: '', statut: 'en_attente', dossierId: '' },
+    { ligneSheet: 3, entite: 'Honda Civic 2014', domaine: '03 · Logement & véhicule', categorie: '', type: '', statut: 'en_attente', dossierId: '' },
+    { ligneSheet: 4, entite: 'Honda Civic 2017', domaine: '03 · Logement & véhicule', categorie: '', type: '', statut: 'en_attente', dossierId: '' },
+  ];
+  const { c, calls } = ctxCuration(lignes, false);
+  c.appliquerCurationEntites_(() => false);
+  const statuts = calls.statuts.filter((s) => typeof s.v === 'string' && s.v.indexOf('variante') === 0);
+  assert.strictEqual(statuts.length, 0, 'les trois Honda restent des lignes distinctes');
 });
 
 test('entiteEnAttenteAjouter_ : entité INÉDITE → append avec Vu N fois = 1', () => {

@@ -100,7 +100,10 @@ function estEntiteGenerique_(nom) {
   var jetons = jetonsQualite_(nom);
   if (!jetons.length) return true; // rien de significatif → rien à proposer
   for (var i = 0; i < jetons.length; i++) {
-    if (LEXIQUE_GENERIQUE_ENTITE.indexOf(jetons[i]) === -1) return false; // un identifiant suffit
+    var j = jetons[i];
+    var singulier = j.length > 3 && j.charAt(j.length - 1) === 's' ? j.slice(0, -1) : j;
+    if (LEXIQUE_GENERIQUE_ENTITE.indexOf(j) === -1 &&
+        LEXIQUE_GENERIQUE_ENTITE.indexOf(singulier) === -1) return false; // un identifiant suffit
   }
   return true;
 }
@@ -121,7 +124,14 @@ function estFusionnableEntite_(a, b) {
   if (ta.length === tb.length && normaliserCle_(a) === normaliserCle_(b)) return true; // identiques
   var court = ta.length <= tb.length ? ta : tb;
   var long_ = ta.length <= tb.length ? tb : ta;
-  return court.every(function (t) { return long_.indexOf(t) !== -1; });
+  if (!court.every(function (t) { return long_.indexOf(t) !== -1; })) return false;
+  // Garde anti-effondrement (revue flotte) : une ANNÉE excédentaire distingue deux entités réelles
+  // (« Honda Civic » n'avale ni « Honda Civic 2014 » ni « 2017 » — deux véhicules). Les autres jetons
+  // excédentaires (« app 5 québec » d'une adresse, « carte de crédit » d'une banque) restent fusionnables.
+  for (var i = 0; i < long_.length; i++) {
+    if (court.indexOf(long_[i]) === -1 && /^(19|20)\d{2}$/.test(long_[i])) return false;
+  }
+  return true;
 }
 
 /**
@@ -342,10 +352,14 @@ function entiteEnAttenteAjouter_(classif) {
 
   // Consolidation (#10) : si une ligne du même domaine désigne déjà la MÊME entité (inclusion de
   // jetons), pas de n-ième ligne — on incrémente son « Vu N fois » (signal de fréquence pour Marc).
+  // JAMAIS d'alias dans parCle (revue flotte) : aliaser vers une ligne VALIDÉE ferait router les
+  // documents suivants du run dans son dossier sous un autre libellé = fusion automatique de facto,
+  // interdite (TAXONOMY : « suggestion seulement »). Sans alias, chaque re-proposition re-scanne et
+  // re-incrémente — comptage de fréquence plus juste, et le document reste classé au domaine tant
+  // que Marc n'a pas fusionné/validé explicitement.
   var canonique = chercherLigneFusionnable_(classif.entite, cache, classif.domaine);
   if (canonique) {
     incrementerVuEntite_(canonique);
-    cache.parCle[cle] = canonique; // la variante pointe la canonique pour le reste du run
     return;
   }
 
@@ -406,7 +420,16 @@ function promouvoirEntiteValidee_(corr) {
 
   var idx = colonnesEntites_();
   var f = feuille_('Entités');
+  // Saisie EXPLICITE de Marc : jamais filtrée (le formulaire prime) — mais on AVERTIT si le libellé
+  // est générique (un dossier « banque/ » va être matérialisé) ou si la ligne avait été refusée.
+  if (estEntiteGenerique_(corr.entite)) {
+    journalInfo_('Entités', 'Avertissement : entité validée au libellé GÉNÉRIQUE « ' + corr.entite +
+      ' » (un dossier générique sera créé — renommer l\'entité dans la Sheet si besoin).');
+  }
   if (ligne) {
+    if (ligne.statut.indexOf('refus') === 0) {
+      journalInfo_('Entités', 'Note : « ' + ligne.entite + ' » avait été refusée par la curation — re-validée sur demande explicite.');
+    }
     // Entité déjà proposée (en_attente) → on la passe « validée » (déplacement seul de statut).
     f.getRange(ligne.ligneSheet, idx['Statut'] + 1).setValue('validée');
     ligne.statut = 'validee'; // maj cache (normalisé, cohérent avec chargerEntitesCache_)
