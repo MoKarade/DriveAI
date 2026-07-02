@@ -13,9 +13,10 @@
  * Idempotence : on retient l'horodatage de la dernière réponse traitée (Script Property) — une réponse
  * déjà appliquée ne l'est jamais deux fois. Bornée par run (`CORRECTIONS_MAX_PAR_RUN`) + garde-temps.
  *
- * NB (chantier #6, à suivre) : appliquer la correction au FICHIER déjà classé (le déplacer/renommer) et
- * promouvoir l'entité corrigée en « validée » dans le référentiel — la partie livrée ici enregistre la
- * correction (⇒ few-shot), cœur de l'apprentissage. Le déplacement du fichier nommé est différé.
+ * Une correction qui nomme une entité + son domaine la **promeut « validée »** dans le référentiel
+ * (`promouvoirEntiteValidee_`, C6-04) → son dossier est matérialisé au tick suivant et le routage
+ * l'utilise. NB (à suivre) : appliquer la correction au FICHIER déjà classé (le déplacer/renommer)
+ * reste différé — le nommer via un champ texte libre est fragile ; le few-shot corrige déjà le futur.
  */
 
 // Titres EXACTS des questions du formulaire (servent de clés au parsing des réponses — ne pas diverger).
@@ -109,7 +110,10 @@ function lireEtAppliquerCorrections_(estBudgetDepasse) {
     var champs = {};
     r.getItemResponses().forEach(function (ir) { champs[ir.getItem().getTitle()] = ir.getResponse(); });
     var corr = reponseVersCorrection_(champs);
-    if (corr && enregistrerCorrection_(corr)) applique++;
+    if (corr) {
+      if (enregistrerCorrection_(corr)) applique++;   // ⇒ few-shot (chantier #5)
+      promouvoirEntiteValidee_(corr);                 // ⇒ entité validée (C6-04, idempotent : no-op si déjà validée)
+    }
     traiteJusqua = ts; // avance le curseur au fil des réponses RÉELLEMENT parcourues (chronologique)
   }
 

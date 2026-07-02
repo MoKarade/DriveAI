@@ -77,6 +77,13 @@ mécanismes distincts dans le code :
   **Garde anti-variantes** (ADR-0002 §4) : à la proposition, la colonne `Variante possible ?` signale la
   plus proche entité existante du même domaine (« Caisse Desjardins » ≈ « Desjardins ») — Marc fusionne
   en 1 clic au lieu de créer un quasi-doublon. Suggestion seulement, jamais de fusion automatique.
+- **Entité validée par correction** (formulaire, ADR-0003, C6-04) : une correction qui nomme une entité +
+  son domaine la promeut directement « validée » (validation EXPLICITE de Marc — pas d'auto-prolifération).
+  Invariant : la matérialisation du dossier (`dossierParentEntite_`) doit supporter les **domaines AUTO**
+  (`07 · Santé`) autant que les 7 fixes — une entité peut être validée sous un domaine auto-créé. Le
+  formulaire ne capte pas la **catégorie** : une entité de `03 · Logement & véhicule` validée par formulaire
+  est créée à la **racine du domaine** (pas sous `Logement/`/`Véhicule/`) et sans schéma de sous-dossiers —
+  dégradation propre (dossier créé, docs classables), le sous-classement s'affine ensuite au besoin.
 - **Multi-entités** : un document concernant plusieurs entités → **raccourci Drive** dans
   chaque dossier concerné (jamais de copie physique).
 - **Document transverse** (`entite = null`) → dossier générique du domaine.

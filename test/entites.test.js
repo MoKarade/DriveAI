@@ -48,3 +48,12 @@ test('sousDossierPourType_ : type inconnu → null (racine d\'entité, pas de do
   assert.strictEqual(ctx.sousDossierPourType_('Truc bizarre', 'Logement'), null);
   assert.strictEqual(ctx.sousDossierPourType_('Facture', 'Type inexistant'), null);
 });
+
+test('correctionValideUneEntite_ (C6-04) : entité + domaine requis pour valider une entité', () => {
+  assert.strictEqual(ctx.correctionValideUneEntite_({ entite: 'EDF', domaine: '03 · Logement & véhicule' }), true);
+  assert.strictEqual(ctx.correctionValideUneEntite_({ entite: 'EDF', domaine: '' }), false); // domaine manquant → pas de routage
+  assert.strictEqual(ctx.correctionValideUneEntite_({ entite: '', domaine: '02 · Finances' }), false);
+  assert.strictEqual(ctx.correctionValideUneEntite_({ entite: '   ', domaine: '02 · Finances' }), false); // trim
+  assert.strictEqual(ctx.correctionValideUneEntite_({ entite: 'EDF' }), false); // domaine absent
+  assert.strictEqual(ctx.correctionValideUneEntite_(null), false);
+});

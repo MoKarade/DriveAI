@@ -267,13 +267,82 @@ function entiteEnAttenteAjouter_(classif) {
   cache.lignes.push(nouvelle);
 }
 
+/* ---------- C6-04 : promotion d'une entité par correction (ADR-0003) ---------- */
+
+/** Une correction VALIDE une entité si elle nomme À LA FOIS l'entité et son domaine (routage possible). */
+function correctionValideUneEntite_(corr) {
+  return !!(corr && String(corr.entite == null ? '' : corr.entite).trim()
+                 && String(corr.domaine == null ? '' : corr.domaine).trim());
+}
+
+/**
+ * Promeut l'entité d'une correction en « validée » dans le référentiel (find-or-create). C'est une
+ * validation EXPLICITE de Marc (via le formulaire de correction) — PAS une auto-prolifération : au
+ * prochain tick, `creerDossiersEntitesValidees_` matérialise le dossier et le routage l'utilise.
+ * Idempotent : aucune lecture/écriture Sheet si l'entité est déjà validée (no-op via le cache).
+ * @param {{domaine:string, entite:string}} corr  correction du formulaire (`categorie` n'arrive jamais
+ *   par ce chemin → le Type est deviné du seul domaine ; cf. dégradation `03` documentée dans TAXONOMY).
+ * @return {boolean} true si une entité a été créée ou promue.
+ */
+function promouvoirEntiteValidee_(corr) {
+  if (!correctionValideUneEntite_(corr)) return false;
+  var cache = entitesCache_();
+  var cle = cleEntite_(corr.domaine, corr.entite);
+  var ligne = cache.parCle[cle];
+  if (ligne && estValidee_(ligne.statut)) return false; // déjà validée → aucune I/O Sheet
+
+  var idx = colonnesEntites_();
+  var f = feuille_('Entités');
+  if (ligne) {
+    // Entité déjà proposée (en_attente) → on la passe « validée » (déplacement seul de statut).
+    f.getRange(ligne.ligneSheet, idx['Statut'] + 1).setValue('validée');
+    ligne.statut = 'validee'; // maj cache (normalisé, cohérent avec chargerEntitesCache_)
+    journalInfo_('Entités', 'Entité validée par correction : ' + ligne.entite);
+    return true;
+  }
+
+  // Entité inconnue → ajoutée directement validée (Marc l'a explicitement désignée). On ne fusionne/refuse
+  // JAMAIS tout seul (saisie explicite prime), mais on ne jette pas le signal anti-variantes (#4) : si un
+  // quasi-doublon validé existe déjà (« Desjardins » vs « Caisse Desjardins »), on le SIGNALE pour fusion
+  // 1-clic a posteriori, comme à la proposition (`entiteEnAttenteAjouter_`).
+  var type = typeEntiteDevine_({ domaine: corr.domaine, categorie: corr.categorie || '' });
+  var variante = chercherVariante_(corr.entite, entitesMemeDomaine_(cache, corr.domaine), CONFIG.SEUIL_VARIANTE);
+  var nouvelle = [];
+  nouvelle[idx['Entité']] = corr.entite;
+  nouvelle[idx['Domaine']] = corr.domaine;
+  nouvelle[idx['Catégorie']] = corr.categorie || '';
+  nouvelle[idx['Type']] = type;
+  nouvelle[idx['Statut']] = 'validée';
+  nouvelle[idx['Dossier ID']] = '';
+  nouvelle[idx['Ajoutée le']] = new Date();
+  nouvelle[idx['Variante possible ?']] = variante
+    ? '→ ' + variante.nom + ' (' + Math.round(variante.score * 100) + ' %) ?'
+    : '';
+  for (var i = 0; i < nouvelle.length; i++) if (nouvelle[i] === undefined) nouvelle[i] = '';
+  f.appendRow(nouvelle);
+
+  var enCache = {
+    ligneSheet: f.getLastRow(), entite: corr.entite, domaine: corr.domaine,
+    categorie: corr.categorie || '', type: type, statut: 'validee', dossierId: ''
+  };
+  cache.parCle[cle] = enCache;
+  cache.lignes.push(enCache);
+  journalInfo_('Entités', 'Entité créée et validée par correction : ' + corr.entite +
+    (variante ? ' (variante possible de « ' + variante.nom + ' » — à fusionner si besoin)' : ''));
+  return true;
+}
+
 /* ---------- P2-04 : création des dossiers d'entités validées ---------- */
 
-/** Dossier parent d'une entité : catégorie connue si dispo, sinon racine du domaine. */
+/** Dossier parent d'une entité : catégorie connue si dispo, sinon racine du domaine (fixe OU auto-créé). */
 function dossierParentEntite_(domaine, categorie) {
   var cats = CONFIG.CATEGORIES[domaine];
   if (cats && categorie && cats[categorie]) return DriveApp.getFolderById(cats[categorie]);
   if (CONFIG.DOMAINES[domaine]) return DriveApp.getFolderById(CONFIG.DOMAINES[domaine]);
+  // Domaine AUTO (ex. « 07 · Santé ») : le formulaire de correction le propose (domainesAutorises_) et
+  // le LLM peut le renvoyer → il DOIT être matérialisable, sinon l'entité validée boucle en « Domaine
+  // inconnu » à chaque tick (dossier jamais créé, entité jamais routable). find-or-create, zéro clic.
+  if (domaineConnu_(domaine)) return dossierDomaineAuto_(domaine);
   return null;
 }
 
