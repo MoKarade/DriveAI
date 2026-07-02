@@ -175,6 +175,15 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C4-02 | **Garde anti-variantes** : à la proposition d'une entité (`entiteEnAttenteAjouter_`), signaler la plus proche existante du même domaine dans une colonne `Variante possible ?` (seuil `CONFIG.SEUIL_VARIANTE`). **Suggestion seule, jamais de fusion auto** | ✅ |
 | C4-03 | **Validation 1-clic** (mail hebdo → mini-formulaire ; fusion d'une variante ou création) | ⬜ à suivre (rejoint ADR-0003, chantiers #5-6) |
 
+### Chantier #5 — Boucle d'apprentissage (ADR-0003 §3)  🟦
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C5-01 | **Onglet `Corrections`** (`Corrections.gs`) : `Fichier\|Émetteur\|Domaine\|Catégorie\|Entité\|Type\|Corrigé le`, lu en cache 1×/run ; primitive `enregistrerCorrection_` (append idempotent via `cleCorrection_`) | ✅ |
+| C5-02 | **Sélection few-shot PURE** : `scoreCorrection_` (pertinence par émetteur), `correctionsPertinentes_` (top-N ≥ seuil, tri stable), `blocFewShot_` (formatage) — bornée `FEWSHOT_MAX`/`FEWSHOT_SEUIL` | ✅ (6 tests) |
+| C5-03 | **Injection au prompt** : `appelAnthropic_` préfixe les corrections du même émetteur (try/catch → dégrade à 0 exemple si onglet illisible) | ✅ |
+| C5-04 | **Canal de saisie** (mail → mini-formulaire ; corrections d'entité → référentiel validé) | ⬜ = chantier #6 |
+
 ---
 
 ## Épopée Phase 4 — Recherche + dashboard (Vercel)  ⬜

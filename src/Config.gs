@@ -138,6 +138,13 @@ var CONFIG = {
   // Desjardins »), pour fusion en 1 clic par Marc. Suggestion seulement — jamais de fusion automatique.
   SEUIL_VARIANTE: 0.6,
 
+  // Boucle d'apprentissage (ADR-0003 §3) : à chaque classement, on injecte dans le prompt les
+  // corrections passées les PLUS PROCHES (même émetteur) comme exemples few-shot. Borné pour le coût
+  // (< 10 $/mois) : au plus FEWSHOT_MAX exemples, et seulement au-dessus de FEWSHOT_SEUIL de pertinence
+  // (proportion des jetons d'émetteur retrouvés dans le doc) — pas de bruit sur des émetteurs sans rapport.
+  FEWSHOT_MAX: 3,
+  FEWSHOT_SEUIL: 0.6,
+
   // Sous-dossiers de catégorie connus (Phase 1 : seuls ceux de 03).
   CATEGORIES: {
     '03 · Logement & véhicule': {

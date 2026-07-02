@@ -10,6 +10,7 @@
 /** Crée les onglets et leurs en-têtes si absents. */
 function initialiserSheet_(ss) {
   creerOnglet_(ss, 'Entités', COLONNES_ENTITES); // Entité|Domaine|Catégorie|Type|Statut|Dossier ID|Ajoutée le
+  creerOnglet_(ss, 'Corrections', COLONNES_CORRECTIONS); // apprentissage : doc corrigé → exemples few-shot (ADR-0003)
   creerOnglet_(ss, 'Index', ['Clé', 'Traité le', 'Fichier', 'Domaine', 'Chemin', 'Statut', 'Empreinte']);
   creerOnglet_(ss, 'Journal', ['Horodatage', 'Niveau', 'Source', 'Message']);
   creerOnglet_(ss, 'Revue', ['Détectée le', 'Fichier', 'Domaine', 'Suggestion']);

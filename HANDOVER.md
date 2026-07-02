@@ -241,6 +241,17 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-02 — Chantier #5 (partie 1) : boucle d'apprentissage (ADR-0003 §3).** **Modif du MOTEUR.**
+  Nouvel onglet `Corrections` + module `Corrections.gs` : à chaque classement, les corrections passées du
+  **même émetteur** sont injectées en **exemples few-shot** en tête du prompt LLM (`appelAnthropic_`), bornées
+  (`FEWSHOT_MAX`=3, `FEWSHOT_SEUIL`=0.6) — prévisible sur le récurrent (mêmes fournisseurs/écoles), souple
+  ailleurs. Sélection PURE et testée : `scoreCorrection_` (pertinence par émetteur), `correctionsPertinentes_`
+  (top-N triés), `blocFewShot_` (formatage). Cache 1×/run (reset dans `tickDriveAI`), try/catch → dégrade à 0
+  exemple si l'onglet est illisible (n'empêche jamais de classer). Primitive `enregistrerCorrection_` (append
+  idempotent) prête pour le **canal de saisie = chantier #6** (mail → mini-formulaire). +6 tests → **101**.
+  Revue flotte (coût/correction/quota) en cours. ⚠️ **Récup git** : le conteneur avait redémarré sur un vieux
+  commit (P1-14) sans `test/` ; l'état complet (C1→C4, 95 tests) était **sauf sur le distant** — resynchronisé
+  par fast-forward vers `origin/claude/…` (92eed34). Rien perdu.
 - **2026-07-01 (nuit) — Chantier #4 (partie 1) : garde anti-variantes d'entités (ADR-0002 §4).** **Modif
   du MOTEUR.** Moteur de similarité **pur** dans `Entites.gs` (`tokensEntite_`, `jaccardTokens_`,
   `distanceLevenshtein_`, `similariteEntite_` = max de Jaccard/inclusion/Levenshtein, `chercherVariante_`).

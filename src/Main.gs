@@ -223,6 +223,7 @@ function tickDriveAI() {
   try {
     reinitialiserIndexCache_();
     reinitialiserEntitesCache_();
+    reinitialiserCorrectionsCache_(); // référentiel d'apprentissage relu 1×/run (few-shot, ADR-0003)
     reinitialiserEscalades_(); // plafond d'escalades LLM par run (anti-emballement de coût)
     reinitialiserUsage_();     // compteur de coût LLM du run (mesure réelle, P1-09)
 
