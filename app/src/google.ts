@@ -173,6 +173,20 @@ export async function chercherParNom(nom: string): Promise<FichierDrive[]> {
 }
 
 /**
+ * Recherche PLEIN TEXTE déléguée à l'index natif de Drive (`fullText contains`) — on cherche DANS
+ * le contenu des documents sans que DriveAI ne stocke aucun corps (ADR-0007 : pas d'index plein
+ * texte propre à l'app). Lecture seule, dossiers exclus.
+ */
+export async function rechercheFullText(texte: string): Promise<FichierDrive[]> {
+  const sain = texte.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const q = `fullText contains '${sain}' and trashed = false and mimeType != 'application/vnd.google-apps.folder'`;
+  const r = await api<{ files?: FichierDrive[] }>(
+    `${DRIVE}?q=${encodeURIComponent(q)}&fields=${encodeURIComponent('files(id,name,webViewLink)')}&pageSize=25`,
+  );
+  return r.files ?? [];
+}
+
+/**
  * Remonte TOUTE la chaîne d'ancêtres d'un fichier (multi-parents, borné) — miroir du walk du
  * moteur. Une branche illisible ⇒ `complete: false` (le verdict refusera : échec fermé).
  */

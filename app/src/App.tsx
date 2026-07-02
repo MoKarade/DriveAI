@@ -1,5 +1,6 @@
 /**
- * App.tsx — coquille de l'app : configuration → connexion Google → onglets (dashboard, corrections).
+ * App.tsx — coquille de l'app : configuration → connexion Google → onglets
+ * (dashboard, corrections, recherche).
  */
 
 import { useEffect, useState } from 'react';
@@ -8,8 +9,9 @@ import { seConnecter, estConnecte, seDeconnecter, abonnerSessionExpiree } from '
 import { Langue, langueCourante, changerLangue, t } from './i18n';
 import { TableauDeBord } from './vues/TableauDeBord';
 import { Corrections } from './vues/Corrections';
+import { Recherche } from './vues/Recherche';
 
-type Onglet = 'dashboard' | 'corrections';
+type Onglet = 'dashboard' | 'corrections' | 'recherche';
 
 export function App() {
   const [langue, setLangue] = useState<Langue>(langueCourante());
@@ -87,8 +89,13 @@ export function App() {
             <button className={onglet === 'corrections' ? 'actif' : ''} onClick={() => setOnglet('corrections')}>
               {t('corrections', langue)}
             </button>
+            <button className={onglet === 'recherche' ? 'actif' : ''} onClick={() => setOnglet('recherche')}>
+              {t('recherche', langue)}
+            </button>
           </nav>
-          {onglet === 'dashboard' ? <TableauDeBord langue={langue} /> : <Corrections langue={langue} />}
+          {onglet === 'dashboard' && <TableauDeBord langue={langue} />}
+          {onglet === 'corrections' && <Corrections langue={langue} />}
+          {onglet === 'recherche' && <Recherche langue={langue} />}
         </>
       )}
 

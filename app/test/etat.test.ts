@@ -14,6 +14,11 @@ import {
   emetteurDepuisNom,
   extraireIdDossier,
   domainesDepuisIndex,
+  filtrerIndex,
+  statutsDepuisIndex,
+  anneesDepuisIndex,
+  fileIdDepuisCle,
+  lienDrivePourLigne,
 } from '../src/etat';
 
 const ENTETES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?'];
@@ -115,5 +120,55 @@ describe('interpreterIndex + compterParDomaine', () => {
     expect(compte.get('02 · Finances')).toBe(2);
     expect(compte.get('03 · Logement & véhicule')).toBe(1);
     expect(domainesDepuisIndex(lignes)).toEqual(['02 · Finances', '03 · Logement & véhicule']);
+  });
+});
+
+describe('recherche structurée (C9-07) — filtres purs sur l’Index', () => {
+  const LIGNES = interpreterIndex([
+    ['drive|F1', '2026-06-01', '2024-03-05_Facture_Hydro-Québec.pdf', '03 · Logement & véhicule', '03/Logement — X/Factures/2024', 'classé'],
+    ['msg|1|a|9', '2026-06-02', '2024-03_Relevé_Desjardins.pdf', '02 · Finances', '02/Desjardins/Relevés/2024', 'classé'],
+    ['migre|m1|F3', '2026-07-01', '2021_Diplôme_IUT-ULCO.pdf', '06 · Études & diplômes', '06/IUT', 'classé'],
+    ['drive|F4', '2026-07-02', '2024-04-01_Facture_Hydro-Québec.pdf', '03 · Logement & véhicule', '03/…', 'doublon'],
+  ]);
+
+  it('filtre par texte (nom OU chemin, insensible casse/accents)', () => {
+    expect(filtrerIndex(LIGNES, { texte: 'hydro-quebec' })).toHaveLength(2);
+    expect(filtrerIndex(LIGNES, { texte: 'RELEVES' }).map((l) => l.fichier)).toEqual(['2024-03_Relevé_Desjardins.pdf']); // via le chemin
+  });
+
+  it('filtre par domaine + statut + année (ET combiné)', () => {
+    expect(filtrerIndex(LIGNES, { domaine: '03 · Logement & véhicule', statut: 'classé' })).toHaveLength(1);
+    expect(filtrerIndex(LIGNES, { annee: '2024' })).toHaveLength(3);
+    expect(filtrerIndex(LIGNES, { annee: '2021' })).toHaveLength(1);
+  });
+
+  it('sans critère → tout', () => {
+    expect(filtrerIndex(LIGNES, {})).toHaveLength(4);
+  });
+
+  it('sélecteurs : domaines/statuts/années observés', () => {
+    expect(statutsDepuisIndex(LIGNES)).toEqual(['classé', 'doublon']);
+    expect(anneesDepuisIndex(LIGNES)).toEqual(['2024', '2021']); // récentes d'abord
+  });
+});
+
+describe('fileIdDepuisCle + lienDrivePourLigne', () => {
+  it.each([
+    ['drive|ABC123', 'ABC123'],
+    ['migre|m1|XYZ', 'XYZ'],
+    ['shared|ORIG', ''],       // l'ID est celui de l'ORIGINAL partagé, pas de la copie classée
+    ['msgid|0|a.pdf|99', ''],  // clé Gmail : pas de fileId
+  ])('%s → %s', (cle, attendu) => {
+    expect(fileIdDepuisCle(cle)).toBe(attendu);
+  });
+
+  it('lien direct quand la clé porte l’ID, recherche Drive sinon', () => {
+    const [directe, indirecte] = interpreterIndex([
+      ['drive|F1', '', 'a.pdf', '', '', 'classé'],
+      ['msg|1|b|9', '', '2024-03_Relevé_Desjardins.pdf', '', '', 'classé'],
+    ]);
+    expect(lienDrivePourLigne(directe)).toBe('https://drive.google.com/file/d/F1/view');
+    expect(lienDrivePourLigne(indirecte)).toContain('drive/search?q=');
+    expect(lienDrivePourLigne(indirecte)).toContain(encodeURIComponent('"2024-03_Relevé_Desjardins.pdf"'));
   });
 });

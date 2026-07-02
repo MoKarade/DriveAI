@@ -162,3 +162,65 @@ export function extraireIdDossier(texte: string): string {
 export function domainesDepuisIndex(lignes: LigneIndex[]): string[] {
   return Array.from(new Set(lignes.map((l) => l.domaine).filter(Boolean))).sort();
 }
+
+/* ---------- Recherche structurée (C9-07, ADR-0008 §3) — filtres PURS sur l'Index ---------- */
+
+export interface CriteresRecherche {
+  texte?: string;   // sous-chaîne (normalisée) du nom de fichier OU du chemin
+  domaine?: string; // égalité stricte
+  statut?: string;  // égalité stricte (classé, doublon, quarantaine…)
+  annee?: string;   // année du DOCUMENT (préfixe AAAA du nom conventionnel), pas du traitement
+}
+
+/**
+ * Filtre l'Index selon des critères combinés (ET). PUR — zéro appel réseau, zéro ré-indexation :
+ * l'Index existant EST la base de recherche (métadonnées seules, ADR-0007).
+ */
+export function filtrerIndex(lignes: LigneIndex[], criteres: CriteresRecherche): LigneIndex[] {
+  const texte = normaliserCle(criteres.texte ?? '');
+  return lignes.filter((l) => {
+    if (criteres.domaine && l.domaine !== criteres.domaine) return false;
+    if (criteres.statut && l.statut !== criteres.statut) return false;
+    if (criteres.annee && !l.fichier.startsWith(criteres.annee)) return false;
+    if (texte && !normaliserCle(l.fichier).includes(texte) && !normaliserCle(l.chemin).includes(texte)) return false;
+    return true;
+  });
+}
+
+/** Statuts distincts observés (pour le sélecteur). */
+export function statutsDepuisIndex(lignes: LigneIndex[]): string[] {
+  return Array.from(new Set(lignes.map((l) => l.statut).filter(Boolean))).sort();
+}
+
+/** Années de DOCUMENT observées (préfixe AAAA des noms conventionnels), plus récentes d'abord. */
+export function anneesDepuisIndex(lignes: LigneIndex[]): string[] {
+  const annees = new Set<string>();
+  for (const l of lignes) {
+    const m = l.fichier.match(/^(\d{4})(-\d{2}){0,2}_/);
+    if (m) annees.add(m[1]);
+  }
+  return Array.from(annees).sort().reverse();
+}
+
+/**
+ * Extrait le fileId Drive d'une clé d'Index quand elle en porte un : `drive|<id>`,
+ * `migre|<tag>|<id>` (le déplacement/renommage préserve l'ID). `shared|<id>` porte l'ID de
+ * l'ORIGINAL partagé (pas de la copie classée) et les clés Gmail n'en portent pas → ''.
+ */
+export function fileIdDepuisCle(cle: string): string {
+  const drive = cle.match(/^drive\|(.+)$/);
+  if (drive) return drive[1];
+  const migre = cle.match(/^migre\|[^|]+\|(.+)$/);
+  if (migre) return migre[1];
+  return '';
+}
+
+/**
+ * Lien Drive pour une ligne d'Index : le FICHIER lui-même quand la clé porte son ID, sinon une
+ * recherche Drive sur le nom exact (dégradation propre — le nom conventionnel est très discriminant).
+ */
+export function lienDrivePourLigne(l: LigneIndex): string {
+  const id = fileIdDepuisCle(l.cle);
+  if (id) return `https://drive.google.com/file/d/${id}/view`;
+  return `https://drive.google.com/drive/search?q=${encodeURIComponent(`"${l.fichier}"`)}`;
+}

@@ -241,6 +241,18 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-02 — C9-07 : recherche structurée (dernière surface ADR-0008) → chantier #9 COMPLET, roadmap
+  brainstorm soldée.** Nouvel onglet **Recherche** dans l'app : **filtres instantanés** sur l'Index
+  (texte normalisé nom+chemin, domaine, statut, année du DOCUMENT — préfixe du nom conventionnel),
+  plafond d'affichage 200, plus récents d'abord ; **plein texte délégué à la recherche native Drive**
+  (`fullText contains`, échappé, dossiers exclus — AUCUN index de contenu propre, ADR-0007 intact) ;
+  chaque résultat ouvre le document dans Drive (lien direct quand la clé d'Index porte le fileId —
+  `drive|`/`migre|` — sinon recherche Drive sur le nom exact, dégradation propre). Helpers PURS testés
+  (`filtrerIndex`, `fileIdDepuisCle`, `lienDrivePourLigne`…) : +9 tests → **51 vitest** (+129 moteur).
+  Lecture seule (la surface anti-suppression couvre le nouveau code par construction). **Les 9 chantiers
+  du brainstorm 2026-07-01 sont tous livrés.** Reste optionnel : C6-05 (déplacer le fichier déjà classé
+  depuis le formulaire mail — l'app web le fait déjà mieux, probablement à clore).
+
 - **2026-07-02 — Chantier #9 (v1) : APP WEB Phase 4 (ADR-0008).** **Nouveau dossier `app/`** — SPA
   React/Vite/TS **sans backend** : l'app parle directement aux API Google (Sheets + Drive) avec le jeton
   OAuth de l'utilisateur connecté (GIS token flow, jeton en mémoire jamais persisté ; rien de public,
