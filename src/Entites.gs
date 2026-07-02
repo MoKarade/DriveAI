@@ -121,7 +121,6 @@ function estEntiteGenerique_(nom) {
 function estFusionnableEntite_(a, b) {
   var ta = jetonsQualite_(a), tb = jetonsQualite_(b);
   if (!ta.length || !tb.length) return false;
-  if (ta.length === tb.length && normaliserCle_(a) === normaliserCle_(b)) return true; // identiques
   var court = ta.length <= tb.length ? ta : tb;
   var long_ = ta.length <= tb.length ? tb : ta;
   if (!court.every(function (t) { return long_.indexOf(t) !== -1; })) return false;
@@ -351,7 +350,8 @@ function entiteEnAttenteAjouter_(classif) {
   if (cache.parCle[cle]) return; // déjà proposée ou connue
 
   // Consolidation (#10) : si une ligne du même domaine désigne déjà la MÊME entité (inclusion de
-  // jetons), pas de n-ième ligne — on incrémente son « Vu N fois » (signal de fréquence pour Marc).
+  // jetons), pas de n-ième ligne — on incrémente son « Vu N fois » — signal de fréquence PARTIEL : seules les FORMES VARIANTES
+  // comptent (un hit de clé exacte sort plus haut sans I/O, discipline de lecture oblige).
   // JAMAIS d'alias dans parCle (revue flotte) : aliaser vers une ligne VALIDÉE ferait router les
   // documents suivants du run dans son dossier sous un autre libellé = fusion automatique de facto,
   // interdite (TAXONOMY : « suggestion seulement »). Sans alias, chaque re-proposition re-scanne et
@@ -536,9 +536,9 @@ function creerDossiersEntitesValidees_(estBudgetDepasse) {
  * les entités les plus vues). Lecture + écriture d'UNE cellule — événement rare (consolidation).
  * @param {{ligneSheet:number}} ligne
  */
-function incrementerVuEntite_(ligne) {
+function incrementerVuEntite_(ligne, colVu) {
   var f = feuille_('Entités');
-  var col = colonnesEntites_()['Vu N fois'] + 1;
+  var col = colVu || (colonnesEntites_()['Vu N fois'] + 1); // l'appelant peut fournir la colonne (curation)
   var actuel = Number(f.getRange(ligne.ligneSheet, col).getValue()) || 1;
   f.getRange(ligne.ligneSheet, col).setValue(actuel + 1);
 }
@@ -547,7 +547,7 @@ function incrementerVuEntite_(ligne) {
  * Curation ONE-SHOT de la file d'entités (#10, ADR-0009), gatée par `CONFIG.CURATION_ENTITES_TAG` :
  * les `en_attente` génériques passent « refusée (générique) », les quasi-doublons par inclusion
  * sont regroupés « variante de : <canonique> » (la forme la plus COURTE, généralement la plus propre,
- * reste `en_attente` et cumule les « Vu N fois »). STATUTS SEULEMENT — aucun document déplacé,
+ * reste `en_attente` ; chaque variante regroupée incrémente son « Vu N fois » de +1). STATUTS SEULEMENT — aucun document déplacé,
  * 100 % réversible en rééditant le Statut. Bornée par le garde-temps, reprenable (les lignes déjà
  * requalifiées ne sont pas re-traitées) ; le tag n'est figé qu'après une passe COMPLÈTE.
  * @param {function():boolean} estBudgetDepasse
@@ -595,7 +595,7 @@ function appliquerCurationEntites_(estBudgetDepasse) {
       if (canonique) {
         f.getRange(cand.ligneSheet, colStatut).setValue('variante de : ' + canonique.entite);
         cand.statut = 'variante de : ' + normaliserCle_(canonique.entite);
-        incrementerVuEntite_(canonique);
+        incrementerVuEntite_(canonique, idx['Vu N fois'] + 1);
         regroupees++;
       } else {
         gardees.push(cand);
