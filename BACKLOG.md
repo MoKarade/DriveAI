@@ -173,7 +173,7 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 |----|-------|--------|
 | C4-01 | **Moteur de similarité PUR** (`Entites.gs`) : `tokensEntite_`/`jaccardTokens_`/`distanceLevenshtein_`/`similariteEntite_`/`chercherVariante_` — Jaccard + inclusion + Levenshtein | ✅ (8 tests) |
 | C4-02 | **Garde anti-variantes** : à la proposition d'une entité (`entiteEnAttenteAjouter_`), signaler la plus proche existante du même domaine dans une colonne `Variante possible ?` (seuil `CONFIG.SEUIL_VARIANTE`). **Suggestion seule, jamais de fusion auto** | ✅ |
-| C4-03 | **Validation 1-clic** (mail hebdo → mini-formulaire ; fusion d'une variante ou création) | ⬜ à suivre (rejoint ADR-0003, chantiers #5-6) |
+| C4-03 | **Validation 1-clic** (mail hebdo → mini-formulaire ; fusion d'une variante ou création) | ✅ couvert par l'app web (#9, onglet Corrections : Statut→« validée » en 1 clic) |
 
 ### Chantier #5 — Boucle d'apprentissage (ADR-0003 §3)  🟦
 
@@ -192,7 +192,7 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C6-02 | **Lecture + enregistrement** : `lireEtAppliquerCorrections_` (1×/tick, AVANT l'intake) lit les nouvelles réponses (idempotence par horodatage `PROP_FORM_DERNIER`), les enregistre via `enregistrerCorrection_` (⇒ few-shot #5). Borné `CORRECTIONS_MAX_PAR_RUN` + garde-temps, enveloppé try/catch | ✅ |
 | C6-03 | **Parsing PUR** `reponseVersCorrection_` + `domainesPourFormulaire_` + lien du formulaire au résumé hebdo | ✅ (5 tests) |
 | C6-04 | **Promouvoir l'entité corrigée en « validée »** (`promouvoirEntiteValidee_` : find-or-create validée, idempotent no-op sans I/O si déjà validée) → dossier matérialisé au tick suivant + routage l'utilise. Validation EXPLICITE de Marc = pas d'auto-prolifération | ✅ (test `correctionValideUneEntite_`) |
-| C6-05 | **Déplacer/renommer le FICHIER déjà classé** d'après la correction (champ « Fichier concerné ») | ⬜ à suivre (nommer un fichier en texte libre est fragile ; le few-shot corrige déjà le futur) |
+| C6-05 | **Déplacer/renommer le FICHIER déjà classé** d'après la correction (champ « Fichier concerné ») | ✅ couvert par l'app web (#9, « Reclasser un document » : recherche → déplacement immédiat sous garde-fous + few-shot) |
 
 > ⚠️ **Ré-autorisation Marc requise** : le scope `forms` (création/lecture du formulaire) s'ajoute au prochain déploiement — Marc doit ré-accorder l'accès Google une fois (frontière d'exécution : la session Claude ne peut pas le faire).
 
@@ -236,7 +236,7 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 
 ---
 
-## Épopée Phase 4 — Recherche + dashboard (Vercel)  ⬜
+## Épopée Phase 4 — Recherche + dashboard (Vercel)  ✅ (réalisée par le chantier #9 — détail dans sa section)
 
 > Cf. **ADR-0008** (`docs/adr/0008-app-web-recherche-controle.md`) : login Google, corrections appliquées
 > directement par l'app (garde-fous §1/§2 ré-implémentés + testés), recherche = filtres sur `Index` + plein
@@ -244,8 +244,8 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 
 | ID | Tâche | Statut |
 |----|-------|--------|
-| P4-01 | Scaffolding app React/Vite/TS + déploiement Vercel | ⬜ |
-| P4-02 | Accès données via login Google (OAuth) — lecture état/Drive (ADR-0008) | ⬜ |
-| P4-03 | Dashboard santé/activité + file de corrections (valider/corriger en un clic) | ⬜ |
-| P4-04 | Recherche structurée (filtres via `Index`) + plein texte délégué à Drive (`fullText contains`) | ⬜ |
-| P4-05 | Bilingue FR/EN | ⬜ |
+| P4-01 | Scaffolding app React/Vite/TS + déploiement Vercel | ✅ (C9-01 + vercel.json ; déployée par Marc : driveai-ivory.vercel.app) |
+| P4-02 | Accès données via login Google (OAuth) — lecture état/Drive (ADR-0008) | ✅ (C9-01, GIS token flow) |
+| P4-03 | Dashboard santé/activité + file de corrections (valider/corriger en un clic) | ✅ (C9-03/04) |
+| P4-04 | Recherche structurée (filtres via `Index`) + plein texte délégué à Drive (`fullText contains`) | ✅ (C9-07) |
+| P4-05 | Bilingue FR/EN | ✅ (C9-01, i18n) |

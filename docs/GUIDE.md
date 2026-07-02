@@ -15,9 +15,9 @@ rien supprimer**.
 
 ## Où vont tes fichiers
 - Dans les **domaines** (`01 · Administratif` … `08 · Perso`), sous l'**entité** (banque, école,
-  employeur…), avec un **nom clair** (`AAAA-MM-JJ_Type_Émetteur`, adapté au type de doc 🔜).
+  employeur…), avec un **nom clair** (`AAAA-MM-JJ_Type_Émetteur`, adapté au type de doc).
 - Les **doublons** → dossier **`_Doublons`** (jamais supprimés — tu le vides d'un coup quand tu veux).
-- Le **code / CAO / médias bruts** → **`_Technique`** 🔜 (pour ne pas polluer tes domaines).
+- Le **code / CAO / médias bruts** → **`_Technique`** (pour ne pas polluer tes domaines).
 - Les documents **sensibles** (immigration, fiscal) sont **classés** comme le reste (décision 2026-07-01),
   mais jamais supprimés ni détachés de `04 · Immigration`.
 
@@ -49,7 +49,7 @@ Quatre façons, toutes soignées : **navigation** dans l'arbo · **nom** de fich
 et l'onglet **Recherche** de l'app web (filtres + plein texte).
 
 ## Suivre l'activité
-- **Résumé hebdomadaire** par mail : ce qui a été rangé, le coût du mois, 🔜 l'état de santé du système.
+- **Résumé hebdomadaire** par mail : ce qui a été rangé, le coût du mois, l'état de santé du système.
 - Onglet **`Progression`** de la Sheet : avancement d'un grand rangement en cours.
 
 ## Si quelque chose cloche
