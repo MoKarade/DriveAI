@@ -263,8 +263,17 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
   fil sauté sur erreur transitoire ; re-passe quasi gratuite, convergence garantie) ; (P4) garde-temps
   et plafond **PAR PJ** — un message à 20 PJ ne crève plus le mur des 6 min sans `finally` — appliqué
   aussi au scan VIVANT (`traiterFil_`) ; (P5) fil en erreur : compteur d'Échecs `histo|fil|<id>`,
-  abandonné après 3 essais (la terminaison n'est jamais bloquée). **12 tests d'orchestration** —
-  moteur **171 tests**.
+  abandonné après 3 essais (la terminaison n'est jamais bloquée). **Puis une 3ᵉ contre-vérification
+  (workflow 3 lentilles sur l'IMPLÉMENTATION) a trouvé 2 importants** (C12-05) : (a) le plafond par
+  RUN ne borne pas la JOURNÉE — 288 ticks × 25 s = 2 h/j > quota runtime ~90 min/j (tous les
+  déclencheurs, chien de garde inclus, gelés l'après-midi) → **budget QUOTIDIEN** 20 min/j (ms
+  réelles persistées, `GMAIL_HISTO_BUDGET_JOUR_MS`) ; (b) l'échec d'un fil se comptait par REJEU de
+  page (toutes les 5 min) et non par PASSE → 3 essais brûlés en 15 min sur une erreur transitoire →
+  compté **à la COMPLÉTION de page seulement** (une erreur qui guérit avant = aucune trace). Plus :
+  gardes à CHAQUE niveau de boucle (une page de fils bavards sans PJ réelles faisait ~1000 appels
+  Gmail après le budget), ancre **−29 j** (vrai chevauchement, `before:` exclusif), terminaison à
+  **2 passes propres consécutives**, abandon annoncé une seule fois. **16 tests d'orchestration** —
+  moteur **175 tests**.
 
 - **2026-07-02 — Chantier #15 : APP V2 (ADR-0011) + audit global (#58).** Audit « no dead code » :
   sain d'origine (0 fonction/config/CSS/i18n morte) mais `rejouerLaRevue` retiré (devenu DESTRUCTEUR :

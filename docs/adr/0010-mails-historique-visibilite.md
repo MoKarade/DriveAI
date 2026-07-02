@@ -16,21 +16,28 @@ attention**.
 - **Ancre FIXE + offset sur ensemble immuable** *(design v2 — le design initial « curseur rétrograde
   jour le plus ancien + 1 » a été démoli par la vérification adversariale : Gmail trie les fils par
   DERNIER message ⇒ un vieux fil ravivé téléportait le curseur en arrière et perdait des PJ ; un jour
-  à plus d'une page de fils ⇒ plateau infini)* : une date-ancre posée UNE seule fois (−30 j) fige la
-  requête `has:attachment before:<ancre>` ⇒ l'ensemble de résultats est **immuable**, donc une
+  à plus d'une page de fils ⇒ plateau infini)* : une date-ancre posée UNE seule fois (−29 j :
+  `before:` est exclusif et `newer_than:30d` peut être glissant — vrai chevauchement d'un jour) fige
+  la requête `has:attachment before:<ancre>` ⇒ l'APPARTENANCE à l'ensemble est stable, donc une
   pagination par offset persistant y est sûre (la leçon « pagination mouvante » interdit le mouvant,
-  pas l'offset). L'offset n'avance que sur page COMPLÈTE ; plafond de PJ inédites/run (quota runtime :
-  le flux vivant garde la priorité) ; fil-poison sauté avec journal ; terminaison figée sur page vide.
+  pas l'offset). L'offset n'avance que sur page COMPLÈTE ; plafond de PJ inédites/run + gardes à
+  chaque niveau de boucle (fil/message/PJ) ; fil en erreur sauté avec journal.
 - Le scan RÉCENT existant (offset 0, fenêtre 30 j) reste inchangé pour le flux vivant — et couvre le
   cas du vieux fil ravivé pendant la campagne (son nouveau message le fait entrer dans la fenêtre
   vivante, qui traite TOUTES les PJ du fil).
-- **Terminaison par passe de VÉRIFICATION** (2ᵉ contre-vérification) : trois pertes silencieuses
+- **Terminaison par passes de VÉRIFICATION** (2ᵉ contre-vérification) : trois pertes silencieuses
   résiduelles (fil ravivé par un message SANS PJ — invisible du vivant —, suppression en zone déjà
   scannée qui fait glisser un fil sous l'offset, erreur transitoire sur un fil) partagent le même
   antidote : une page vide ne termine pas la campagne — si la passe a eu la moindre activité,
-  l'offset repart à 0 ; « terminé » ne se fige que sur une passe 100 % propre (quasi gratuite :
-  PJ indexées = métadonnées seules). Fil en erreur : compteur d'Échecs, abandonné après 3 essais
-  (la terminaison n'est jamais bloquée ; la trace reste).
+  l'offset repart à 0 ; « terminé » exige DEUX passes 100 % propres consécutives (3ᵉ contre-vérif :
+  une suppression PENDANT la passe de vérification peut masquer un fil ; la re-passe est quasi
+  gratuite — PJ indexées = métadonnées seules). Fil en erreur : compteur d'Échecs incrémenté à la
+  COMPLÉTION de page seulement (un rejeu de page ne brûle pas les essais — un essai par PASSE),
+  abandonné après 3 essais (la terminaison n'est jamais bloquée ; la trace reste).
+- **Budget QUOTIDIEN** (3ᵉ contre-vérification) : le plafond de PJ inédites par run borne le PIC,
+  pas la JOURNÉE (288 ticks × 20-30 s = 96-144 min/j > quota runtime ~90 min/j → tous les
+  déclencheurs, chien de garde inclus, gelés chaque après-midi). La campagne compte ses ms réelles
+  par jour (Properties) et se plafonne à 20 min/j — le flux vivant et la Phase 3 gardent leur quota.
 - *Limite documentée (négligeable, compte perso)* : un mail dont la date interne est ancienne mais
   qui ARRIVE tardivement (import mbox, relève POP, redirection) peut tomber entre l'ancre et la
   fenêtre vivante après la fin de la campagne — hors périmètre.

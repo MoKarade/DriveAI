@@ -1,12 +1,13 @@
 'use strict';
 /**
  * Chantier #12 (ADR-0010 §1) — historique Gmail : ancre FIXE + pagination par OFFSET,
- * terminaison par PASSE DE VÉRIFICATION propre.
- * Design issu de DEUX vérifications adversariales : l'APPARTENANCE à `before:<ancre>` est stable
+ * terminaison par DEUX passes de VÉRIFICATION propres, budget QUOTIDIEN.
+ * Design issu de TROIS vérifications adversariales : l'APPARTENANCE à `before:<ancre>` est stable
  * → l'offset est sûr ; mais l'ORDRE peut bouger (fil ravivé sans PJ, suppression) → une page vide
- * ne termine la campagne que si la passe n'a RIEN collecté (sinon offset remis à 0 et on re-vérifie).
- * Garde-temps et plafond d'inédites vérifiés PAR PJ (message dense ≠ hard-kill 6 min) ; fil en
- * erreur sauté avec compteur d'Échecs (revisité, abandonné après QUARANTAINE_MAX essais).
+ * ne termine la campagne qu'après DEUX passes complètes consécutives sans rien collecter.
+ * Garde-temps et plafond d'inédites vérifiés à CHAQUE niveau (fil, message, PJ) ; fil en erreur
+ * compté seulement à la COMPLÉTION de page (un rejeu ne brûle pas les essais), abandonné après
+ * QUARANTAINE_MAX essais ; budget QUOTIDIEN en ms (le plafond par run ne borne pas la journée).
  */
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -49,25 +50,35 @@ function fil(pjsParMessage) {
   return { getId: () => id, getMessages: () => pjsParMessage.map((pjs) => ({ pjs })) };
 }
 
-test('historique : page vide sur passe PROPRE → campagne TERMINÉE, plus jamais de recherche', () => {
+/* ---------- terminaison : deux passes propres ---------- */
+
+test('historique : DEUX pages vides propres consécutives → TERMINÉE, plus jamais de recherche', () => {
   const { c, calls } = ctxHisto({ props: { DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02' }, page: () => [] });
   c.traiterGmailHistorique_(() => false);
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO, undefined);            // 1 passe propre ne suffit pas
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_PASSES_PROPRES, '1');
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_OFFSET, '0');
+  c.traiterGmailHistorique_(() => false);                                    // 2ᵉ passe propre (vide aussi)
   assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO, 'terminé');
   c.pageFilsHisto_ = () => { throw new Error('ne doit plus être appelé'); };
   c.traiterGmailHistorique_(() => false);
 });
 
-test('historique : page vide sur passe SALE → PAS terminé, offset remis à 0 (passe de vérification)', () => {
+test('historique : page vide sur passe SALE → PAS terminé, offset à 0 et compteur de passes propres remis', () => {
   const { c, calls } = ctxHisto({
-    props: { DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02', DriveAI_GMAIL_HISTO_OFFSET: '30', DriveAI_GMAIL_HISTO_PASSE_SALE: 'oui' },
+    props: {
+      DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02', DriveAI_GMAIL_HISTO_OFFSET: '30',
+      DriveAI_GMAIL_HISTO_PASSE_SALE: 'oui', DriveAI_GMAIL_HISTO_PASSES_PROPRES: '1',
+    },
     page: () => [],
   });
   c.traiterGmailHistorique_(() => false);
-  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO, undefined);         // pas terminé
-  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_OFFSET, '0');        // on re-vérifie depuis 0
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO, undefined);            // pas terminé
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_OFFSET, '0');           // on re-vérifie depuis 0
   assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_PASSE_SALE, undefined); // nouvelle passe = propre
-  // La passe de vérification ne collecte rien → page vide PROPRE → terminé.
-  c.traiterGmailHistorique_(() => false);
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_PASSES_PROPRES, undefined); // série remise à zéro
+  c.traiterGmailHistorique_(() => false); // passe de vérif 1 : vide, propre
+  c.traiterGmailHistorique_(() => false); // passe de vérif 2 : vide, propre → terminé
   assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO, 'terminé');
 });
 
@@ -80,7 +91,7 @@ test('historique : une PJ inédite marque la passe SALE (une vérification suivr
   assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_PASSE_SALE, 'oui');
 });
 
-test('historique : passe de re-lecture 100 % indexée → PROPRE (pas de marque, terminaison possible)', () => {
+test('historique : passe de re-lecture 100 % indexée → PROPRE (cycle complet jusqu\'à terminé)', () => {
   const { c, calls } = ctxHisto({
     props: { DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02' },
     page: (ancre, offset) => (offset === 0 ? [fil([['a'], ['b']])] : []),
@@ -88,15 +99,20 @@ test('historique : passe de re-lecture 100 % indexée → PROPRE (pas de marque,
   });
   c.traiterGmailHistorique_(() => false); // page re-passée, 0 inédite
   assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_PASSE_SALE, undefined);
-  c.traiterGmailHistorique_(() => false); // page vide → passe propre → terminé
+  c.traiterGmailHistorique_(() => false); // page vide → passe propre 1/2, offset 0
+  c.traiterGmailHistorique_(() => false); // page 0 re-lue (indexée, propre)
+  c.traiterGmailHistorique_(() => false); // page vide → passe propre 2/2 → terminé
   assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO, 'terminé');
 });
 
-test('historique : 1ᵉʳ run → ancre posée UNE FOIS, offset 0 ; l\'ancre ne bouge JAMAIS ensuite', () => {
+/* ---------- ancre & offset ---------- */
+
+test('historique : 1ᵉʳ run → ancre posée UNE FOIS à −29 j (vrai chevauchement avec le vivant), jamais bougée', () => {
   const { c, calls } = ctxHisto({ page: () => [fil([['a']])] });
+  const attendue = (() => { const d = new Date(); d.setDate(d.getDate() - 29); return ctxPur.dateGmail_(d); })();
   c.traiterGmailHistorique_(() => false);
   const ancre = calls.props.DriveAI_GMAIL_HISTO_ANCRE;
-  assert.match(ancre, /^\d{4}\/\d{2}\/\d{2}$/);
+  assert.strictEqual(ancre, attendue);
   c.traiterGmailHistorique_(() => false);
   assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_ANCRE, ancre); // fixe
   assert.deepStrictEqual(calls.pages.map((p) => p.ancre), [ancre, ancre]);
@@ -111,6 +127,8 @@ test('historique : page entièrement parcourue → offset += nb de fils', () => 
   assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_OFFSET, '22');
   assert.deepStrictEqual(calls.pj, ['a', 'b']);
 });
+
+/* ---------- plafonds par run ---------- */
 
 test('historique : plafond d\'INÉDITES atteint mi-page → offset INCHANGÉ (rejeu idempotent qui converge)', () => {
   // 3 messages à 1 PJ inédite chacun ; plafond = 2 → arrêt après 2, page rejouée.
@@ -154,7 +172,22 @@ test('historique : déjà-indexées GRATUITES (ne comptent pas dans le plafond)'
   assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_OFFSET, '1'); // page complète malgré le plafond
 });
 
-test('historique : fil en erreur → sauté avec Échec compté, offset AVANCE, passe marquée SALE (revisite)', () => {
+test('historique : budget épuisé → plus AUCUN appel Gmail sur les fils restants (garde au niveau fil)', () => {
+  let espionGetMessages = 0;
+  const espion = { getId: () => 'ESPION', getMessages: () => { espionGetMessages++; return []; } };
+  const { c, calls } = ctxHisto({
+    props: { DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02', DriveAI_GMAIL_HISTO_OFFSET: '10' },
+    page: () => [fil([['a']]), espion],
+  });
+  c.traiterGmailHistorique_(() => calls.pj.length >= 1); // budget « épuisé » dès la 1ʳᵉ PJ traitée
+  assert.deepStrictEqual(calls.pj, ['a']);
+  assert.strictEqual(espionGetMessages, 0);                          // jamais touché après le budget
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_OFFSET, '10');  // page rejouée
+});
+
+/* ---------- fils en erreur : un essai par PASSE, jamais par rejeu ---------- */
+
+test('historique : fil en erreur sur page COMPLÈTE → 1 Échec compté, offset avance, passe SALE (revisite)', () => {
   const poison = { getId: () => 'POISON', getMessages: () => { throw new Error('boom'); } };
   const { c, calls } = ctxHisto({
     props: { DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02', DriveAI_GMAIL_HISTO_OFFSET: '5' },
@@ -168,27 +201,86 @@ test('historique : fil en erreur → sauté avec Échec compté, offset AVANCE, 
   assert.deepStrictEqual(calls.pj, ['x']);
 });
 
-test('historique : fil-poison ABANDONNÉ au 3ᵉ essai (ne marque plus SALE — la campagne peut finir)', () => {
+test('historique : page REJOUÉE (plafond) avec fil en erreur → l\'Échec n\'est PAS compté (un essai par passe)', () => {
+  // Sans ce garde, une erreur transitoire co-pagée avec des inédites brûlerait 3 essais en 15 min.
+  const poison = { getId: () => 'POISON', getMessages: () => { throw new Error('transitoire'); } };
+  const { c, calls } = ctxHisto({
+    props: { DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02', DriveAI_GMAIL_HISTO_OFFSET: '0' },
+    page: () => [poison, fil([['a'], ['b'], ['c']])], // 3 inédites, plafond 2 → page interrompue
+  });
+  c.traiterGmailHistorique_(() => false);
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_OFFSET ?? '0', '0'); // rejouée
+  assert.strictEqual(calls.echecs['histo|fil|POISON'], undefined);        // PAS compté sur un rejeu
+  // rejeu : l'erreur a GUÉRI (1 PJ p1), a/b indexées → page complète, compteur vierge (aucune trace).
+  c.pageFilsHisto_ = () => [fil([['p1']]), fil([['a'], ['b'], ['c']])];
+  c.indexContient_ = (cle) => cle === 'k|a' || cle === 'k|b';
+  c.traiterGmailHistorique_(() => false);
+  assert.strictEqual(calls.echecs['histo|fil|POISON'], undefined);
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_OFFSET, '2');
+});
+
+test('historique : fil-poison ABANDONNÉ au 3ᵉ essai — annoncé UNE fois, puis silencieux, la campagne finit', () => {
   const poison = { getId: () => 'POISON', getMessages: () => { throw new Error('boom'); } };
   const { c, calls } = ctxHisto({
     props: { DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02' },
     echecs: { 'histo|fil|POISON': 2 }, // déjà sauté par 2 passes
     page: (ancre, offset) => (offset === 0 ? [poison] : []),
   });
-  c.traiterGmailHistorique_(() => false);
+  c.traiterGmailHistorique_(() => false); // page complète → essai 3 → ABANDONNÉ (pas de SALE)
   assert.strictEqual(calls.echecs['histo|fil|POISON'], 3);
-  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_PASSE_SALE, undefined); // abandon = pas de re-passe
-  assert.ok(calls.journaux.some((j) => j.includes('ABANDONNÉ')));
-  c.traiterGmailHistorique_(() => false); // page vide, passe restée propre → terminé
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_PASSE_SALE, undefined);
+  assert.strictEqual(calls.journaux.filter((j) => j.includes('ABANDONNÉ')).length, 1);
+  c.traiterGmailHistorique_(() => false); // page vide, passe propre 1/2 → offset 0
+  c.traiterGmailHistorique_(() => false); // poison re-rencontré : essai 4 → SILENCIEUX, pas de SALE
+  assert.strictEqual(calls.journaux.filter((j) => j.includes('ABANDONNÉ')).length, 1);
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_PASSE_SALE, undefined);
+  c.traiterGmailHistorique_(() => false); // page vide, passe propre 2/2 → terminé
   assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO, 'terminé');
 });
 
+/* ---------- budget quotidien ---------- */
+
+test('historique : budget QUOTIDIEN épuisé → aucun appel, repris le lendemain (compteur remis à zéro)', () => {
+  const auj = ctxPur.dateGmail_(new Date());
+  const { c, calls } = ctxHisto({
+    props: {
+      DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02',
+      DriveAI_GMAIL_HISTO_JOUR: auj,
+      DriveAI_GMAIL_HISTO_MS_JOUR: String(20 * 60 * 1000), // plafond atteint aujourd'hui
+    },
+    page: () => [fil([['a']])],
+  });
+  c.traiterGmailHistorique_(() => false);
+  assert.strictEqual(calls.pages.length, 0); // pas même une recherche
+  assert.deepStrictEqual(calls.pj, []);
+  // « Lendemain » : la Property JOUR ne matche plus → compteur reparti de zéro → la campagne tourne.
+  calls.props.DriveAI_GMAIL_HISTO_JOUR = '2020/01/01';
+  c.traiterGmailHistorique_(() => false);
+  assert.deepStrictEqual(calls.pj, ['a']);
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_JOUR, auj); // comptage re-daté
+  assert.ok(Number(calls.props.DriveAI_GMAIL_HISTO_MS_JOUR) >= 0);
+});
+
+test('historique : chaque run AJOUTE ses ms au compteur du jour', () => {
+  const auj = ctxPur.dateGmail_(new Date());
+  const { c, calls } = ctxHisto({
+    props: {
+      DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02',
+      DriveAI_GMAIL_HISTO_JOUR: auj,
+      DriveAI_GMAIL_HISTO_MS_JOUR: '500000',
+    },
+    page: () => [],
+  });
+  c.traiterGmailHistorique_(() => false);
+  assert.ok(Number(calls.props.DriveAI_GMAIL_HISTO_MS_JOUR) >= 500000); // cumul, jamais remis à zéro le même jour
+});
+
 test('historique : budget épuisé mi-page → offset inchangé (aucune perte, rejeu)', () => {
-  let appels = 0;
   const { c, calls } = ctxHisto({
     props: { DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02', DriveAI_GMAIL_HISTO_OFFSET: '10' },
     page: () => [fil([['a'], ['b']])],
   });
-  c.traiterGmailHistorique_(() => ++appels > 1);
+  c.traiterGmailHistorique_(() => calls.pj.length >= 1); // budget tombe après la 1ʳᵉ PJ
+  assert.deepStrictEqual(calls.pj, ['a']);
   assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_OFFSET, '10');
 });

@@ -497,10 +497,21 @@ suppressions) : l'offset persistant est un moyen de PROGRESSION, jamais une preu
 complétude vient de la règle « une passe qui ne collecte plus rien », appliquée à TOUTE campagne bornée
 (c'est la même règle que migration/rangement ; elle guérit d'un coup fils déplacés, suppressions et
 erreurs transitoires, pourvu qu'un fil en échec répété soit ABANDONNÉ avec trace après N essais pour ne
-pas bloquer la terminaison). (2) Les plafonds par run se vérifient à la granularité de l'UNITÉ DE COÛT
-réelle (la PJ, pas le message : un message à 20 PJ crève le mur des 6 min sans `finally`). (3) La
-complémentarité entre deux scans (« le vivant couvre ce cas ») doit être vérifiée au niveau où le moteur
-de recherche MATCHE (par message, pas par fil) — c'est là que se cachait le trou. (4) Un design de
-pagination ne se valide QUE par traçage de scénarios multi-ticks ET par contre-attaque adversariale
-indépendante — deux rondes ont trouvé des pertes que l'auteur avait ratées deux fois.
+pas bloquer la terminaison — et comme l'ordre peut muter PENDANT la passe de vérification elle-même,
+exiger DEUX passes propres consécutives, quasi gratuites). (2) Les plafonds par run se vérifient à la
+granularité de l'UNITÉ DE COÛT réelle (la PJ, pas le message : un message à 20 PJ crève le mur des
+6 min sans `finally`) et à CHAQUE niveau de boucle (une page de fils bavards sans PJ « réelles » fait
+des centaines d'appels Gmail après le budget si la garde n'est qu'au niveau PJ). (2bis) **Un plafond
+par RUN ne borne pas la JOURNÉE** : multiplié par 288 ticks, « 2 inédites ≈ 25 s » = 2 h/j, PLUS que le
+quota runtime (~90 min/j) — tous les déclencheurs (chien de garde inclus) gelés chaque après-midi. Une
+campagne de fond doit se BUDGÉTER PAR JOUR (ms réelles persistées dans une Property datée, plafond
+explicite qui laisse le vivant respirer). (2ter) Un compteur d'échecs sur une unité REJOUABLE (page)
+doit compter par PROGRÈS (complétion de page = une fois par passe), jamais par re-rencontre (rejeu
+toutes les 5 min = 3 essais brûlés en 15 min sur une erreur transitoire) ; bonus : une erreur qui
+guérit avant la complétion ne laisse aucune trace. (3) La complémentarité entre deux scans (« le
+vivant couvre ce cas ») doit être vérifiée au niveau où le moteur de recherche MATCHE (par message,
+pas par fil) — c'est là que se cachait le trou ; et `before:` étant exclusif face à un `newer_than:`
+potentiellement glissant, garantir le chevauchement PAR CONSTRUCTION (ancre −29 j, pas −30). (4) Un
+design de pagination ne se valide QUE par traçage de scénarios multi-ticks ET par contre-attaque
+adversariale indépendante — TROIS rondes ont chacune trouvé des pertes que l'auteur avait ratées.
 **Règle durable ?** oui.

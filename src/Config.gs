@@ -82,13 +82,16 @@ var CONFIG = {
   // passe de VÉRIFICATION propre (offset 0 → page vide sans rien collecter) — coût nul ensuite.
   GMAIL_REQUETE_HISTO_BASE: 'has:attachment',
   GMAIL_HISTO_PAGE_FILS: 10,              // fils par page de recherche
-  // Plafond de PJ INÉDITES traitées par run (revue quotas) : le quota RUNTIME des déclencheurs
-  // (~90 min/jour, compte gratuit) est LA contrainte — sans ce plafond, la campagne consommerait
-  // les 4,5 min de chaque tick et tuerait l'intake vivant pour la journée. « Inédite » = clé absente
-  // de l'Index — un doublon MD5 compte donc (copyBlob + hash + placement `_Doublons` : pas gratuit ;
-  // conservateur pour le quota). Seules les PJ déjà INDEXÉES sont gratuites (métadonnées seules).
-  // 2 inédites ≈ 20-30 s/tick → ~576/jour, campagne ~1 semaine (plus si l'historique est plein de copies).
+  // Plafond de PJ INÉDITES traitées par run : borne le PIC d'un run (mur des 6 min). « Inédite » =
+  // clé absente de l'Index — un doublon MD5 compte donc (copyBlob + hash + placement `_Doublons` :
+  // pas gratuit ; conservateur). Seules les PJ déjà INDEXÉES sont gratuites (métadonnées seules).
   GMAIL_HISTO_MAX_PJ_INEDITES: 2,
+  // Budget QUOTIDIEN de la campagne (2ᵉ contre-vérification) : le plafond par run ne borne PAS la
+  // journée — 288 ticks × 20-30 s = 96-144 min/j, soit PLUS que le quota runtime des déclencheurs
+  // (~90 min/j, compte gratuit) : tous les déclencheurs (chien de garde inclus) seraient gelés
+  // chaque après-midi de campagne. On compte les ms RÉELLEMENT consommées par jour (Properties) et
+  // on plafonne à 20 min/j : ~80-120 inédites/j, le vivant et la Phase 3 gardent ~70 min/j.
+  GMAIL_HISTO_BUDGET_JOUR_MS: 20 * 60 * 1000,
   PAGE_FILS: 20,                         // taille de page de la recherche Gmail
   BUDGET_MS: 4.5 * 60 * 1000,            // garde-temps (exécution Apps Script < 6 min)
 
