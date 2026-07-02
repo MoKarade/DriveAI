@@ -34,6 +34,7 @@ const CONTRAT = [
   // sources & maintenance
   'traiterGmail_', 'traiterDepots_', 'collecterPartages_', 'appliquerMigrationTaxonomie_',
   'appliquerRangementInitial_', 'appliquerRejeuSiNouvelleVersion_', 'rangementTermine_',
+  'appliquerRelancesQuarantaine_',
   'estAReclasserLeger_', 'collecterAReclasser_', 'deplacerVersATrier_',
   'aParentProtege_', 'ensembleDomainesProteges_', 'nbFichiersATrier_',
   // Drive REST

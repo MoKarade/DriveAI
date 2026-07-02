@@ -41,7 +41,7 @@ Détail : `BACKLOG.md` (P1-01 → P1-20).
 | 12 | **Historique Gmail complet** — scan ancré rétrograde (`before:` persisté), toutes les vieilles PJ classées | Mails | M | [0010](adr/0010-mails-historique-visibilite.md) | ⬜ |
 | 13 | **Phase 3 visible** — « Actions & RDV détectés » au résumé hebdo + dans l'app | Mails | S | [0010](adr/0010-mails-historique-visibilite.md) | ⬜ |
 | 14 | **Mails importants** — flag `important` (mini-check existant) → section « À traiter » du hebdo, plafonnée | Mails | S-M | [0010](adr/0010-mails-historique-visibilite.md) | ⬜ |
-| 15 | **App v2** — fusion 1-clic des variantes, rejet en masse, dashboard enrichi (coût/jour, quarantaine), PWA | Site | M-L | [0011](adr/0011-app-v2-curation.md) | ⬜ |
+| 15 | **App v2** — fusion 1-clic des variantes, rejet en masse, dashboard enrichi (activité 30 j, quarantaine + relance), PWA | Site | M-L | [0011](adr/0011-app-v2-curation.md) | 🟦 codé : Fusionner → « variante de : X », cases + « Refuser la sélection », graphe d'activité, relance de quarantaine pilotée par la Sheet (onglet `Relances`, le moteur consomme au tick), manifest+SW passe-plat ✅ |
 
 **Rationale v2 :** moteur d'abord (choix Marc) — #10 assainit la source ET la file existante (la
 validation redevient courte avant même l'app v2), #11 accélère le rangement Facebook en cours.

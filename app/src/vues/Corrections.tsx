@@ -26,6 +26,7 @@ import {
   domainesDepuisIndex,
   emetteurDepuisNom,
   extraireIdDossier,
+  cibleFusion,
 } from '../etat';
 import { Langue, t } from '../i18n';
 
@@ -84,39 +85,104 @@ function ValidationEntites({
   colonneStatut: string;
   chargee: boolean;
 }) {
-  const [validees, setValidees] = useState<Set<number>>(new Set());
+  // traitees : ligneSheet → libellé du geste appliqué (validée / fusionnée / refusée).
+  const [traitees, setTraitees] = useState<Map<number, string>>(new Map());
+  const [selection, setSelection] = useState<Set<number>>(new Set());
   const [erreur, setErreur] = useState('');
+  const [enCours, setEnCours] = useState(false);
+
+  async function ecrireStatut(e: LigneEntite, statut: string, libelle: string) {
+    if (!colonneStatut) throw new Error('Colonne Statut introuvable dans l\u2019onglet Entit\u00e9s');
+    await ecrireCellule('Entités', `${colonneStatut}${e.ligneSheet}`, statut);
+    setTraitees((m) => new Map(m).set(e.ligneSheet, libelle));
+    setSelection((s) => { const s2 = new Set(s); s2.delete(e.ligneSheet); return s2; }); // compteur juste
+  }
 
   async function valider(e: LigneEntite) {
     try {
-      // Écrit « validée » dans la cellule Statut de la ligne — même geste que Marc à la main ;
-      // le moteur (creerDossiersEntitesValidees_) matérialise le dossier au tick suivant.
-      await ecrireCellule('Entités', `${colonneStatut}${e.ligneSheet}`, 'validée');
-      setValidees((v) => new Set(v).add(e.ligneSheet));
+      // Même geste que Marc à la main ; le moteur matérialise le dossier au tick suivant.
+      await ecrireStatut(e, 'validée', t('valide', langue));
     } catch (err) {
       setErreur(String(err));
     }
   }
+
+  async function fusionner(e: LigneEntite) {
+    // Fusion 1-clic (ADR-0011) : la ligne devient « variante de : X » (statut INERTE — aucune
+    // suppression, réversible) ; la cible reste la seule forme active.
+    try {
+      await ecrireStatut(e, `variante de : ${cibleFusion(e.variante)}`, `→ ${cibleFusion(e.variante)}`);
+    } catch (err) {
+      setErreur(String(err));
+    }
+  }
+
+  async function refuserSelection() {
+    setEnCours(true);
+    try {
+      // Rejet en masse : cellule par cellule (jamais de batch destructif — garde-fous ADR-0008).
+      for (const e of enAttente.filter((l) => selection.has(l.ligneSheet) && !traitees.has(l.ligneSheet))) {
+        await ecrireStatut(e, 'refusée', t('refusee', langue));
+      }
+      setSelection(new Set());
+    } catch (err) {
+      setErreur(String(err));
+    } finally {
+      setEnCours(false);
+    }
+  }
+
+  const restantes = enAttente.filter((e) => !traitees.has(e.ligneSheet));
 
   return (
     <section className="carte large">
       <h2>{t('entitesAValider', langue)}</h2>
       <p className="explication">{t('validerExplication', langue)}</p>
       {erreur && <p className="erreur">{t('erreur', langue)} : {erreur}</p>}
-      {chargee && enAttente.length === 0 && <p>{t('aucuneEntite', langue)}</p>}
+      {chargee && restantes.length === 0 && <p>{t('aucuneEntite', langue)}</p>}
+      {restantes.length > 0 && (
+        <div className="ligne-formulaire">
+          <button onClick={refuserSelection} disabled={enCours || selection.size === 0}>
+            {t('refuserSelection', langue)} ({selection.size} {t('selection', langue)})
+          </button>
+        </div>
+      )}
       <table>
         <tbody>
           {enAttente.map((e) => (
             <tr key={e.ligneSheet}>
-              <td><strong>{e.entite}</strong></td>
+              <td>
+                {!traitees.has(e.ligneSheet) && (
+                  <input
+                    type="checkbox"
+                    checked={selection.has(e.ligneSheet)}
+                    onChange={(ev) => {
+                      setSelection((s) => {
+                        const s2 = new Set(s);
+                        if (ev.target.checked) s2.add(e.ligneSheet);
+                        else s2.delete(e.ligneSheet);
+                        return s2;
+                      });
+                    }}
+                  />
+                )}
+              </td>
+              <td><strong>{e.entite}</strong>{e.vuNFois > 1 && <span className="variante"> ×{e.vuNFois}</span>}</td>
               <td>{e.domaine}</td>
               <td>{e.type}</td>
               <td className="variante">{e.variante && `${t('variantePossible', langue)} : ${e.variante}`}</td>
-              <td>
-                {validees.has(e.ligneSheet) ? (
-                  <span className="ok">{t('valide', langue)}</span>
+              <td className="actions">
+                {traitees.has(e.ligneSheet) ? (
+                  <span className="ok">{traitees.get(e.ligneSheet)}</span>
                 ) : (
-                  <button onClick={() => valider(e)}>{t('valider', langue)}</button>
+                  <>
+                    <button onClick={() => valider(e)}>{t('valider', langue)}</button>
+                    {cibleFusion(e.variante) && (
+                      <button className="discret" onClick={() => fusionner(e)}>
+                        {t('fusionner', langue)} → {cibleFusion(e.variante)}
+                      </button>
+                    )}
+                  </>
                 )}
               </td>
             </tr>

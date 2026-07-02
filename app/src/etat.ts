@@ -228,3 +228,46 @@ export function lienDrivePourLigne(l: LigneIndex): string {
   if (id) return `https://drive.google.com/file/d/${id}/view`;
   return `https://drive.google.com/drive/search?q=${encodeURIComponent(`"${l.fichier}"`)}`;
 }
+
+/* ---------- App v2 (C15, ADR-0011) : fusion, quarantaine, activité ---------- */
+
+/**
+ * Extrait la CIBLE de fusion d'une suggestion de variante « → Desjardins (90 %) ? »
+ * (colonne « Variante possible ? » écrite par le moteur). '' si pas de suggestion exploitable.
+ */
+export function cibleFusion(variante: string): string {
+  const m = (variante ?? '').match(/^→ (.+) \(\d+ %\) \?$/);
+  return m ? m[1].trim() : '';
+}
+
+/** Lignes d'Index en QUARANTAINE (échecs répétés) — pour la liste « à relancer » du dashboard. */
+export function lignesQuarantaine(lignes: LigneIndex[]): LigneIndex[] {
+  return lignes.filter((l) => l.statut === 'quarantaine');
+}
+
+export interface JourActivite {
+  jour: string; // AAAA-MM-JJ
+  n: number;
+}
+
+/**
+ * Activité par JOUR sur les `jours` derniers jours (documents traités, toutes catégories).
+ * `maintenant` est injecté (déterminisme des tests). Jours sans activité inclus (barres à 0).
+ */
+export function activiteParJour(lignes: LigneIndex[], jours: number, maintenant: Date): JourActivite[] {
+  // Clés en date LOCALE (pas UTC) : `traiteLe` vient de la Sheet en heure locale — un traitement du
+  // soir (UTC-4) doit tomber sur la barre du bon jour calendaire.
+  const cleLocale = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const compte = new Map<string, number>();
+  for (let i = jours - 1; i >= 0; i--) {
+    compte.set(cleLocale(new Date(maintenant.getTime() - i * 24 * 60 * 60 * 1000)), 0);
+  }
+  for (const l of lignes) {
+    const t = Date.parse(l.traiteLe);
+    if (Number.isNaN(t)) continue;
+    const cle = cleLocale(new Date(t));
+    if (compte.has(cle)) compte.set(cle, (compte.get(cle) ?? 0) + 1);
+  }
+  return Array.from(compte, ([jour, n]) => ({ jour, n }));
+}
