@@ -36,6 +36,10 @@ var CONFIG = {
   RESUME_JOUR: 'MONDAY',                  // jour du déclencheur hebdo (WeekDay Apps Script)
   RESUME_HEURE: 8,                        // heure locale d'envoi
   RESUME_JOURS: 7,                        // fenêtre d'activité résumée (jours)
+  // Chantiers #13-#14 (ADR-0010 §2-3) : plafonds d'AFFICHAGE des nouvelles sections du résumé
+  // hebdo (anti-bruit, décision Marc : jamais de notification immédiate, le résumé suffit).
+  RESUME_ACTIONS_MAX: 15,                 // « Actions & RDV détectés » : lignes listées au maximum
+  RESUME_IMPORTANTS_MAX: 10,              // « À traiter » : mails importants listés au maximum
   RESUME_MAX_LIGNES: 15000,               // ne lit que les N dernières lignes Index/Journal (le
                                           // Journal grossit vite : borne la lecture hebdo, large
                                           // marge devant une semaine d'un usage personnel)
@@ -102,7 +106,7 @@ var CONFIG = {
   PAGE_FILS_ACTIONS: 20,                  // taille de page de cette recherche
   INTENTIONS_MAX_PAR_RUN: 200,            // plafond de messages ANALYSÉS (pré-filtre inclus) par run
   CREATIONS_MAX_PAR_RUN: 30,              // plafond de tâches/événements CRÉÉS par run (pas de rafale)
-  LLM_MAX_TOKENS_MINICHECK: 10,           // mini-check binaire (expéditeur+sujet seuls, pas le corps)
+  LLM_MAX_TOKENS_MINICHECK: 24,           // mini-check JSON {action, important} (expéditeur+sujet seuls)
   LLM_MAX_TOKENS_INTENTIONS: 500,
   EVENT_DUREE_MIN_DEFAUT: 60,             // durée par défaut d'un événement créé (minutes)
   // Pré-filtre déterministe (avant tout appel LLM) : un expéditeur/sujet qui matche l'un de ces

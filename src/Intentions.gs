@@ -167,21 +167,36 @@ function traiterMessagePourIntentions_(message) {
     indexAjouter_(cleMessage, { statut: 'intention-zone-protegee', nom: sujet });
     return 0;
   }
-  // Étage 3 (mini-check Haiku, peu coûteux) : écarte le reste avant le corps complet.
-  if (!miniVerifActionRdv_(expediteur, sujet)) {
+  // Étage 3 (mini-check Haiku, peu coûteux) : deux signaux en un appel (#14).
+  var check = miniCheckMail_(expediteur, sujet);
+  if (!check.action && !check.important) {
     indexAjouter_(cleMessage, { statut: 'intention-ecartee', nom: sujet });
-    return 0;
+    return 0; // rien vu → le corps n'est même pas lu (chemin majoritaire, gratuit)
   }
 
+  // Le mini-check a vu quelque chose (action OU important) → le CORPS est lu et la garde §1
+  // re-vérifiée dessus AVANT toute suite — pose du flag « important » INCLUSE (revue sécurité,
+  // bloquant : un mail protégé détectable par son corps SEUL — expéditeur/sujet neutres — ne
+  // doit jamais être mis en avant par la Phase 3, pas même dans « À traiter »).
   var corps;
   try {
     corps = tronquer_(message.getPlainBody(), CONFIG.LLM_CORPS_MAX_CARS);
   } catch (e) {
     corps = '';
   }
-  // Garde-fou §1, défense en profondeur : re-vérifie sur le corps complet avant extraction.
   if (toucheZoneProtegee_(corps)) {
     indexAjouter_(cleMessage, { statut: 'intention-zone-protegee', nom: sujet });
+    return 0;
+  }
+
+  // Mail IMPORTANT (réponse/geste personnel attendu) → ligne Index dédiée, consommée par le
+  // résumé hebdo (« À traiter »). AVANT le tri action/pas-action : un mail important sans action
+  // créable (question ouverte) doit quand même remonter. Les gardes zone protégée (expéditeur/
+  // sujet ET corps) sont TOUTES en amont. Un message déjà indexé `intention|` avant ce chantier
+  // saute le mini-check (le flag ne vaut que pour l'avenir).
+  if (check.important) marquerMailImportant_(messageId, sujet);
+  if (!check.action) {
+    indexAjouter_(cleMessage, { statut: 'intention-ecartee', nom: sujet });
     return 0;
   }
 
@@ -243,6 +258,20 @@ function creerIntentionIdempotente_(messageId, intention) {
 
   indexAjouter_(cle, { statut: intention.type, nom: intention.titre });
   return 'creee';
+}
+
+/**
+ * Marque un mail « important » (#14, ADR-0010 §3) : ligne Index `important|<messageId>`
+ * (statut `important`, nom = sujet — métadonnées seules, ADR-0007), idempotente. Le résumé
+ * hebdo la lit pour la section « À traiter » (lien Gmail reconstruit depuis la clé). AUCUNE
+ * écriture Gmail (lecture seule §3), aucune notification immédiate (anti-bruit, décision Marc).
+ * @param {string} messageId
+ * @param {string} sujet
+ */
+function marquerMailImportant_(messageId, sujet) {
+  var cle = 'important|' + messageId;
+  if (indexContient_(cle)) return; // déjà signalé (rejeu d'un message en reprise d'extraction)
+  indexAjouter_(cle, { statut: 'important', nom: sujet });
 }
 
 /**

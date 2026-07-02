@@ -74,6 +74,11 @@ const TEXTES = {
     relancer: 'Relancer',
     relance: 'Relance demandée ✅ (traitée au prochain passage)',
     refusee: 'Refusée',
+    actionsRdv: 'Actions & RDV détectés (Tasks / Calendar)',
+    aucuneAction: 'Aucune action ni rendez-vous détecté pour l’instant.',
+    aTraiter: 'À traiter — mails importants',
+    aucunATraiter: 'Aucun mail marqué important ✅',
+    ouvrirMail: 'Ouvrir le mail',
   },
   en: {
     titre: 'DriveAI',
@@ -134,6 +139,11 @@ const TEXTES = {
     relancer: 'Retry',
     relance: 'Retry requested ✅ (processed on next engine pass)',
     refusee: 'Rejected',
+    actionsRdv: 'Detected actions & appointments (Tasks / Calendar)',
+    aucuneAction: 'No action or appointment detected yet.',
+    aTraiter: 'Needs attention — important emails',
+    aucunATraiter: 'No email flagged important ✅',
+    ouvrirMail: 'Open email',
   },
 } as const;
 

@@ -22,6 +22,9 @@ import {
   anneesDepuisIndex,
   fileIdDepuisCle,
   lienDrivePourLigne,
+  lignesActions,
+  lignesImportants,
+  lienGmailPourLigne,
 } from '../src/etat';
 
 const ENTETES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?'];
@@ -207,5 +210,30 @@ describe('app v2 (C15) — fusion, quarantaine, activité', () => {
     expect(a[2]).toEqual({ jour: '2026-07-02', n: 2 });
     expect(a[1]).toEqual({ jour: '2026-07-01', n: 1 });
     expect(a[0]).toEqual({ jour: '2026-06-30', n: 0 });
+  });
+});
+
+describe('Phase 3 visible (C13) + mails importants (C14)', () => {
+  const lignes = interpreterIndex([
+    ['tache|MA|h1', '2026-07-01', 'Payer Hydro', '', '', 'tache'],
+    ['event|MB|h2', '2026-07-02', 'RDV garage', '', '', 'evenement'],
+    ['important|MC', '2026-07-02', 'Réponds-moi stp', '', '', 'important'],
+    ['intention|MD', '2026-07-02', 'Newsletter', '', '', 'intention-ecartee'],
+    ['drive|X', '2026-07-02', '2026-07-01_Facture_EDF.pdf', '02 · Finances', 'x', 'classé'],
+  ]);
+
+  it('lignesActions : tâches + événements, plus récents d’abord', () => {
+    expect(lignesActions(lignes).map((l) => l.fichier)).toEqual(['RDV garage', 'Payer Hydro']);
+  });
+
+  it('lignesImportants : seulement le statut important', () => {
+    expect(lignesImportants(lignes).map((l) => l.cle)).toEqual(['important|MC']);
+  });
+
+  it('lienGmailPourLigne : messageId extrait des clés mail — jamais pour un document', () => {
+    expect(lienGmailPourLigne(lignes[0])).toBe('https://mail.google.com/mail/#all/MA');
+    expect(lienGmailPourLigne(lignes[2])).toBe('https://mail.google.com/mail/#all/MC');
+    expect(lienGmailPourLigne(lignes[3])).toBe('https://mail.google.com/mail/#all/MD');
+    expect(lienGmailPourLigne(lignes[4])).toBe(''); // drive| : pas un mail
   });
 });

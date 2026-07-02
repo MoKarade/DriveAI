@@ -245,6 +245,30 @@ export function lignesQuarantaine(lignes: LigneIndex[]): LigneIndex[] {
   return lignes.filter((l) => l.statut === 'quarantaine');
 }
 
+/* ---------- Phase 3 visible (C13, ADR-0010 §2) : actions & RDV, mails importants ---------- */
+
+/**
+ * Actions & RDV créés par la Phase 3 (statuts `tache`/`evenement` — clés `tache|…`/`event|…`,
+ * `fichier` = titre de l'intention). Les plus récents d'abord.
+ */
+export function lignesActions(lignes: LigneIndex[]): LigneIndex[] {
+  return lignes.filter((l) => l.statut === 'tache' || l.statut === 'evenement').slice().reverse();
+}
+
+/** Mails marqués IMPORTANTS par le mini-check (#14) — clés `important|<messageId>`, `fichier` = sujet. */
+export function lignesImportants(lignes: LigneIndex[]): LigneIndex[] {
+  return lignes.filter((l) => l.statut === 'important').slice().reverse();
+}
+
+/**
+ * Lien Gmail d'une ligne dont la clé porte un messageId (`important|<id>`, `tache|<id>|<hash>`,
+ * `event|<id>|<hash>`, `intention|<id>`) — '' sinon. `#all` couvre aussi les mails archivés.
+ */
+export function lienGmailPourLigne(l: LigneIndex): string {
+  const m = l.cle.match(/^(?:important|intention|tache|event)\|([^|]+)/);
+  return m ? `https://mail.google.com/mail/#all/${m[1]}` : '';
+}
+
 export interface JourActivite {
   jour: string; // AAAA-MM-JJ
   n: number;

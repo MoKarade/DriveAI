@@ -14,12 +14,16 @@ import {
   interpreterIndex,
   compterParDomaine,
   lignesQuarantaine,
+  lignesActions,
+  lignesImportants,
+  lienGmailPourLigne,
   activiteParJour,
 } from '../etat';
 import { Langue, t } from '../i18n';
 
 const JOURNAL_RECENT = 15;
 const INDEX_RECENT = 500; // fenêtre du comptage par domaine (dernières lignes — pas toute la Sheet)
+const ACTIONS_RECENTES = 30; // « Actions & RDV » et « À traiter » : les N plus récentes (C13)
 
 export function TableauDeBord({ langue }: { langue: Langue }) {
   const [sante, setSante] = useState<Sante | null>(null);
@@ -48,10 +52,17 @@ export function TableauDeBord({ langue }: { langue: Langue }) {
   if (erreur) return <p className="erreur">{t('erreur', langue)} : {erreur}</p>;
   if (!sante) return <p>{t('chargement', langue)}</p>;
 
-  const parDomaine = Array.from(compterParDomaine(index.slice(-INDEX_RECENT))).sort((a, b) => b[1] - a[1]);
-  const activite = activiteParJour(index, 30, new Date());
+  // Les lignes qui tracent des E-MAILS (Phase 3 : intention|/tache|/event|/important|) ne sont pas
+  // des documents : les agrégats « documents » les excluent (même filtre que la Recherche) — sinon
+  // chaque mail important compterait double dans l'activité et gonflerait le bucket « — » des
+  // domaines. Elles ont leurs sections dédiées ci-dessous.
+  const docs = index.filter((l) => !/^(intention|tache|event|important)\|/.test(l.cle));
+  const parDomaine = Array.from(compterParDomaine(docs.slice(-INDEX_RECENT))).sort((a, b) => b[1] - a[1]);
+  const activite = activiteParJour(docs, 30, new Date());
   const maxJour = Math.max(1, ...activite.map((a) => a.n));
   const quarantaine = lignesQuarantaine(index);
+  const actions = lignesActions(index).slice(0, ACTIONS_RECENTES);
+  const importants = lignesImportants(index).slice(0, ACTIONS_RECENTES);
 
   return (
     <div className="colonnes">
@@ -90,6 +101,51 @@ export function TableauDeBord({ langue }: { langue: Langue }) {
             />
           ))}
         </div>
+      </section>
+
+      {/* C14 (ADR-0010 §3) : mails qui demandent l'attention de Marc — lien direct, lecture seule. */}
+      <section className="carte large">
+        <h2>📌 {t('aTraiter', langue)}</h2>
+        {importants.length === 0 && <p>{t('aucunATraiter', langue)}</p>}
+        <table>
+          <tbody>
+            {importants.map((l) => (
+              <tr key={l.cle}>
+                <td>{l.fichier}</td>
+                <td className="date">{l.traiteLe}</td>
+                <td>
+                  <a href={lienGmailPourLigne(l)} target="_blank" rel="noreferrer">
+                    {t('ouvrirMail', langue)}
+                  </a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      {/* C13 (ADR-0010 §2) : la Phase 3 devient visible — ce que le moteur a créé, nommément. */}
+      <section className="carte large">
+        <h2>🗓️ {t('actionsRdv', langue)}</h2>
+        {actions.length === 0 && <p>{t('aucuneAction', langue)}</p>}
+        <table>
+          <tbody>
+            {actions.map((l) => (
+              <tr key={l.cle}>
+                <td>{l.statut === 'evenement' ? '📅' : '✅'}</td>
+                <td>{l.fichier}</td>
+                <td className="date">{l.traiteLe}</td>
+                <td>
+                  {lienGmailPourLigne(l) && (
+                    <a href={lienGmailPourLigne(l)} target="_blank" rel="noreferrer">
+                      {t('ouvrirMail', langue)}
+                    </a>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </section>
 
       <QuarantaineSection langue={langue} lignes={quarantaine} />

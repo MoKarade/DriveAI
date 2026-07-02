@@ -44,8 +44,9 @@ const CONTRAT = [
   // corrections & formulaire
   'lireEtAppliquerCorrections_', 'enregistrerCorrection_', 'reinitialiserCorrectionsCache_',
   'blocFewShot_', 'assurerFormulaireCorrection_',
-  // intentions (Phase 3)
+  // intentions (Phase 3) & mails importants (#14)
   'traiterIntentionsMail_', 'reinitialiserEscalades_', 'reinitialiserUsage_', 'flushUsage_',
+  'miniCheckMail_', 'parserMiniCheck_', 'marquerMailImportant_', 'lienGmail_',
   // cibles publiques des déclencheurs / outils
   'tickDriveAI', 'installerTrigger', 'chienDeGarde', 'resumeHebdo', 'rangerToutLeDrive', 'dequarantaine',
 ];
@@ -57,7 +58,8 @@ test('surface du moteur : toutes les fonctions du contrat interne sont définies
 
 test('surface du moteur : les fonctions RETIRÉES par l\'audit ne reviennent pas par accident', () => {
   const retirees = ['rejouerLaRevue', 'sourceParNomRevue_', 'nettoyerDoublonsRevue',
-    'deplacerVersDoublons_', 'viderOnglet_', 'estAReclasser_', 'doublon_'];
+    'deplacerVersDoublons_', 'viderOnglet_', 'estAReclasser_', 'doublon_',
+    'curseurSuivantHisto_', 'miniVerifActionRdv_'];
   const revenues = retirees.filter((nom) => typeof ctx[nom] === 'function');
   assert.deepStrictEqual(revenues, [], `retirées mais présentes : ${revenues.join(', ')}`);
 });

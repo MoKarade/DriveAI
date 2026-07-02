@@ -6,8 +6,9 @@
  *   1. `ecarteParMotsCles_` — déterministe (expéditeur/sujet), gratuit.
  *   2. `toucheZoneProtegee_` — déterministe (expéditeur/sujet/corps), gratuit. Défense en
  *      profondeur du garde-fou §1 (immigration/fiscal), INDÉPENDANTE du jugement du LLM.
- *   3. `miniVerifActionRdv_` — mini-check Haiku (expéditeur+sujet SEULS, ~10 tokens de
- *      sortie), écarte le reste avant de payer le coût plus élevé de l'extraction complète.
+ *   3. `miniCheckMail_` — mini-check Haiku (expéditeur+sujet SEULS, ~20 tokens de sortie) :
+ *      écarte le reste avant de payer l'extraction complète, ET porte le flag `important`
+ *      du chantier #14 (deux signaux pour le prix d'un appel).
  */
 
 /**
@@ -58,15 +59,21 @@ function correspondMotif_(texteMinuscule, motifMinuscule) {
 }
 
 /**
- * Étage 3 — mini-check Haiku : question binaire, EXPÉDITEUR+SUJET seuls (jamais le corps,
- * pour rester très peu coûteux). Dégrade en LAISSANT PASSER (true) sur échec LLM : un
- * faux-négatif ici coûterait au pire un appel d'extraction complète en plus (qui répondra
- * probablement []), alors qu'un faux-positif raterait silencieusement une vraie action.
+ * Étage 3 — mini-check Haiku (chantier #14, ADR-0010 §3) : DEUX signaux en UN appel,
+ * EXPÉDITEUR+SUJET seuls (jamais le corps, pour rester très peu coûteux) :
+ *   - `action`    : le mail peut plausiblement contenir une action/un rendez-vous (comme avant) ;
+ *   - `important` : le mail demande l'ATTENTION de Marc (question directe, échéance,
+ *     administration/officiel) → section « À traiter » du résumé hebdo, rien d'autre
+ *     (aucune écriture Gmail — lecture seule §3 —, aucune notification immédiate).
+ * Dégradations ASYMÉTRIQUES voulues (cf. parserMiniCheck_) : `action` LAISSE PASSER sur échec
+ * (rater une vraie action coûte cher, un faux passage ne coûte qu'une extraction qui rendra []) ;
+ * `important` reste FERMÉ sur échec (un faux « important » spamme la section « À traiter » —
+ * anti-bruit, décision Marc).
  * @param {string} expediteur
  * @param {string} sujet
- * @return {boolean}
+ * @return {{action:boolean, important:boolean}}
  */
-function miniVerifActionRdv_(expediteur, sujet) {
+function miniCheckMail_(expediteur, sujet) {
   var options = {
     method: 'post',
     contentType: 'application/json',
@@ -77,10 +84,14 @@ function miniVerifActionRdv_(expediteur, sujet) {
     payload: JSON.stringify({
       model: CONFIG.LLM_MODELE,
       max_tokens: CONFIG.LLM_MAX_TOKENS_MINICHECK,
-      system: 'Réponds UNIQUEMENT par OUI ou NON, sans rien d\'autre. OUI si ce mail peut ' +
-        'PLAUSIBLEMENT contenir une action à faire (échéance, paiement, formulaire) ou un ' +
-        'rendez-vous daté. NON pour une newsletter, une notification automatique, une pub, ou ' +
-        'tout mail clairement informatif sans action attendue.',
+      system: 'Réponds UNIQUEMENT avec un objet JSON {"action": true|false, "important": true|false}, ' +
+        'sans rien d\'autre. "action"=true si ce mail peut PLAUSIBLEMENT contenir une action à faire ' +
+        '(échéance, paiement, formulaire) ou un rendez-vous daté ; false pour une newsletter, une ' +
+        'notification automatique, une pub, ou tout mail clairement informatif. "important"=true ' +
+        'UNIQUEMENT si une réponse ou une action PERSONNELLE du destinataire est attendue : question ' +
+        'directe qui attend SA réponse, mise en demeure ou relance d\'une administration, échéance ' +
+        'qui exige un geste de SA part. JAMAIS pour un relevé disponible, une confirmation, un reçu, ' +
+        'une facture récurrente ou une offre commerciale. En cas de doute, "important"=false.',
       messages: [{ role: 'user', content: 'Expéditeur : ' + expediteur + '\nSujet : ' + sujet }]
     }),
     muteHttpExceptions: true
@@ -91,17 +102,49 @@ function miniVerifActionRdv_(expediteur, sujet) {
     reponse = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', options);
   } catch (e) {
     journalErreur_('Prefiltre', 'Mini-check réseau échoué : ' + e);
-    return true; // dégradation : laisse passer plutôt que de risquer de rater une vraie action
+    return parserMiniCheck_(null); // dégradation asymétrique (action passe, important fermé)
   }
-  if (reponse.getResponseCode() !== 200) return true;
+  if (reponse.getResponseCode() !== 200) return parserMiniCheck_(null);
 
   var data;
   try {
     data = JSON.parse(reponse.getContentText());
   } catch (e) {
-    return true;
+    return parserMiniCheck_(null);
   }
   enregistrerUsage_(CONFIG.LLM_MODELE, data.usage); // mesure de coût réel (P1-09)
-  var texte = texteReponse_(data).toUpperCase();
-  return texte.indexOf('NON') === -1; // tout ce qui n'est pas explicitement "NON" passe
+  return parserMiniCheck_(texteReponse_(data));
+}
+
+/**
+ * Parse PUR (testé) de la réponse du mini-check. Jamais de confiance aveugle dans la sortie LLM :
+ * seul un booléen JSON explicite est pris tel quel. Défauts sur réponse absente/illisible :
+ * `action: true` (ouvert — ne jamais rater une vraie action pour une panne de mini-check),
+ * `important: false` (fermé — anti-bruit : la section « À traiter » ne se remplit que sur un
+ * signal explicite). Compat : une réponse texte contenant explicitement NON ferme `action`
+ * (ancien format binaire, au cas où le modèle répondrait hors JSON).
+ * @param {?string} texte
+ * @return {{action:boolean, important:boolean}}
+ */
+function parserMiniCheck_(texte) {
+  var defaut = { action: true, important: false };
+  if (!texte) return defaut;
+  var obj = null;
+  try {
+    obj = JSON.parse(texte);
+  } catch (e) {
+    var debut = texte.indexOf('{');
+    var fin = texte.lastIndexOf('}');
+    if (debut !== -1 && fin > debut) {
+      try { obj = JSON.parse(texte.substring(debut, fin + 1)); } catch (e2) { obj = null; }
+    }
+  }
+  if (!obj) {
+    // Hors JSON : seul un « NON » explicite ferme l'action (comportement de l'ancien mini-check).
+    return { action: texte.toUpperCase().indexOf('NON') === -1, important: false };
+  }
+  return {
+    action: typeof obj.action === 'boolean' ? obj.action : true,
+    important: obj.important === true
+  };
 }
