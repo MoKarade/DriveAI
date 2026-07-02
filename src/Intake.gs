@@ -5,8 +5,7 @@
  * OCRisé, analysé et routé par le même pipeline (Pipeline.gs / Router.gs).
  *
  * Différence clé : un dépôt est explicitement là POUR être trié → on le DÉPLACE
- * (jamais de copie, jamais de suppression) vers sa destination ou vers
- * `00 · À vérifier`. Le déplacement préserve l'ID Drive, donc la clé d'idempotence
+ * (jamais de copie, jamais de suppression) vers sa destination finale. Le déplacement préserve l'ID Drive, donc la clé d'idempotence
  * `drive|fileId` reste valable et le fichier n'est pas re-traité.
  */
 

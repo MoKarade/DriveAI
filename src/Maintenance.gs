@@ -1,80 +1,9 @@
 /**
  * Maintenance.gs — Utilitaires à exécuter À LA MAIN (pas dans le pipeline auto).
  *
- * Ces fonctions ne sont jamais appelées par le trigger : elles servent aux
- * opérations ponctuelles de maintenance (ex. rejouer la file de revue après un
- * recalibrage du classement).
+ * Outils ponctuels (ex. `dequarantaine`, `rangerToutLeDrive`) + la mécanique du GRAND RANGEMENT
+ * (collecte/progression) que le tick pilote via `appliquerRangementInitial_` (Main.gs).
  */
-
-/**
- * Rejoue les documents partis en revue avec les réglages COURANTS.
- *
- * À lancer une seule fois (clic « Exécuter ») après un recalibrage. Concrètement :
- *   1. pour chaque copie « [REVUE] … » du dossier 00·À vérifier, selon sa SOURCE
- *      (lue dans l'Index) :
- *        - PJ Gmail  → mise à la corbeille (réversible) ; l'ORIGINAL est dans Gmail ;
- *        - dépôt manuel → l'« original » a été DÉPLACÉ ici, donc on le RENVOIE dans
- *          00·À trier pour qu'il soit re-trié (jamais de corbeille → aucune perte) ;
- *        - source inconnue → laissé en place par prudence ;
- *   2. vide les onglets Index et Revue (garde les en-têtes) ;
- *   3. relance le pipeline, qui re-traite les PJ Gmail et les dépôts renvoyés.
- *
- * Garde-fou : on ne met JAMAIS à la corbeille un fichier dont l'unique exemplaire
- * est ici (dépôt manuel déplacé). Le pipeline automatique, lui, ne supprime jamais
- * de fichier utilisateur.
- */
-function rejouerLaRevue() {
-  var source = sourceParNomRevue_(); // nom de fichier « [REVUE] … » → 'gmail' | 'drive'
-
-  var dossier = DriveApp.getFolderById(CONFIG.DOSSIERS.A_VERIFIER);
-  var it = dossier.getFiles();
-  var corbeille = 0, renvoyes = 0, laisses = 0;
-  while (it.hasNext()) {
-    var f = it.next();
-    var nom = f.getName();
-    if (nom.indexOf('[REVUE]') !== 0) continue;
-
-    var s = source[nom];
-    if (s === 'gmail') {
-      f.setTrashed(true); // copie créée par nous, original dans Gmail → rejouable sans perte
-      corbeille++;
-    } else if (s === 'drive') {
-      // Original déposé manuellement (déplacé ici) : on le renvoie pour rejeu, jamais corbeille.
-      deplacerEtRenommer_(f.getId(), CONFIG.DOSSIERS.A_TRIER, CONFIG.DOSSIERS.A_VERIFIER, nom);
-      renvoyes++;
-    } else {
-      laisses++; // source inconnue → on ne touche à rien (prudence : pas de suppression)
-    }
-  }
-  journalInfo_('Maintenance', corbeille + ' copie(s) Gmail à la corbeille, ' +
-    renvoyes + ' dépôt(s) renvoyé(s) dans 00·À trier, ' + laisses + ' laissé(s) en place.');
-
-  viderOnglet_('Index');
-  viderOnglet_('Revue');
-  journalInfo_('Maintenance', 'Index et Revue vidés — rejeu du pipeline.');
-
-  tickDriveAI();
-}
-
-/**
- * Cartographie « nom de fichier en revue » → source, d'après l'Index.
- * La clé d'un dépôt manuel commence par « drive| » ; sinon c'est une PJ Gmail.
- * @return {Object} { nomFichier: 'gmail' | 'drive' }
- */
-function sourceParNomRevue_() {
-  var f = feuille_('Index');
-  var map = {};
-  var dern = f.getLastRow();
-  if (dern < 2) return map;
-  var v = f.getRange(2, 1, dern - 1, 6).getValues(); // A=Clé … C=Fichier … F=Statut
-  for (var i = 0; i < v.length; i++) {
-    var cle = v[i][0], fichier = v[i][2], statut = v[i][5];
-    if (statut !== 'revue' || !fichier) continue;
-    if (map[fichier] === 'drive') continue; // 'drive' (exemplaire unique) prime → jamais corbeille
-    map[fichier] = (String(cle).indexOf('drive|') === 0) ? 'drive' : 'gmail';
-  }
-  return map;
-}
 
 /**
  * Sort de quarantaine TOUS les documents (statut Index « quarantaine ») : retire leur ligne
@@ -115,81 +44,6 @@ function dequarantaine() {
 
   journalInfo_('Maintenance', lignes.length + ' document(s) sortis de quarantaine — re-traités au prochain run.');
   tickDriveAI();
-}
-
-/**
- * Balaie les doublons DÉJÀ accumulés dans la file de revue (`[REVUE] doublon …`) vers « _Doublons ».
- * À lancer À LA MAIN (un clic), une fois, pour nettoyer la file de revue après le passage au nouveau
- * routage des doublons. Déplacement seul (jamais de corbeille), borné par le garde-temps + reprenable
- * (relancer si « budget atteint »). Le nom est nettoyé du préfixe « [REVUE] doublon … — » → format normalisé.
- */
-function nettoyerDoublonsRevue() {
-  try {
-    var debut = Date.now();
-    var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
-    var revue = DriveApp.getFolderById(CONFIG.DOSSIERS.A_VERIFIER);
-    var cibleId = dossierDoublons_().getId();
-
-    var it = revue.getFiles();
-    var ids = [];
-    while (it.hasNext()) {
-      var f = it.next();
-      if (f.getName().indexOf('[REVUE] doublon') === 0) ids.push(f.getId());
-    }
-
-    var n = 0, reste = false;
-    for (var i = 0; i < ids.length; i++) {
-      if (estBudgetDepasse()) { reste = true; break; }
-      if (deplacerVersDoublons_(ids[i], cibleId)) n++;
-    }
-    journalInfo_('Maintenance', n + ' doublon(s) déplacé(s) de la revue vers _Doublons' +
-      (reste ? ' (budget atteint — relance nettoyerDoublonsRevue()).' : '.'));
-  } catch (e) {
-    notifierEchec_('Maintenance', 'Nettoyage des doublons interrompu : ' + e);
-  }
-}
-
-/**
- * Déplace un fichier vers « _Doublons » (déplacement seul) et le renomme au format normalisé
- * en retirant le préfixe « [REVUE] doublon (déjà présent) — domaine — ».
- * @param {string} fileId
- * @param {string} cibleId
- * @return {boolean}
- */
-function deplacerVersDoublons_(fileId, cibleId) {
-  try {
-    var f = DriveApp.getFileById(fileId);
-    // Format : « [REVUE] <raison> — <domaine/catégorie> — <nom suggéré> ». La raison (constante) et
-    // le chemin lisible (n'utilise qu'un « / ») ne contiennent jamais « — » → on retire les DEUX
-    // premiers segments et on conserve TOUT le reste (le nom suggéré, même s'il contient « — »).
-    var segments = f.getName().split(' — ');
-    var nomPropre = segments.length >= 3 ? segments.slice(2).join(' — ') : f.getName();
-    var cible = DriveApp.getFolderById(cibleId);
-    cible.addFile(f); // ajoute la cible AVANT de retirer (jamais orphelin)
-    var parents = f.getParents();
-    while (parents.hasNext()) {
-      var p = parents.next();
-      if (p.getId() !== cibleId) p.removeFile(f);
-    }
-    f.setName(nomPropre);
-    return true;
-  } catch (e) {
-    journalErreur_('Maintenance', 'Déplacement doublon impossible (' + fileId + ') : ' + e);
-    return false;
-  }
-}
-
-/**
- * Vide les lignes de données d'un onglet (conserve la ligne d'en-tête).
- * @param {string} nom
- */
-function viderOnglet_(nom) {
-  var f = feuille_(nom);
-  var dernLigne = f.getLastRow();
-  var dernCol = f.getLastColumn();
-  if (dernLigne > 1 && dernCol > 0) {
-    f.getRange(2, 1, dernLigne - 1, dernCol).clearContent();
-  }
 }
 
 /* ============================================================================
@@ -393,7 +247,7 @@ function compterVracDossier_(dossier, etat, estBudgetDepasse) {
  * Prédicat LÉGER pour le RECENSEMENT de la barre : nom + mime seulement, SANS le contrôle de parent
  * protégé (`getParents` par fichier = coûteux → recensement qui ne finit jamais sur un gros Drive).
  * Sur « Ancienne structure » aucun fichier n'a pour ancêtre le dossier-domaine `04·Immigration`
- * (dossier distinct), donc ce prédicat ≈ `estAReclasser_` ; l'écart éventuel n'affecte qu'une
+ * (dossier distinct), donc ce prédicat est LE prédicat de collecte (la garde §1 vit à la MUTATION, `aParentProtege_` strict) ; l'écart éventuel n'affecte qu'une
  * ESTIMATION (dénominateur), corrigée par la re-base et la finalisation sur le vrai signal de fin.
  * La COLLECTE et le DÉPLACEMENT réels gardent, eux, le prédicat complet (garde zone protégée §1).
  * @param {File} f
@@ -491,27 +345,6 @@ function collecterAReclasser_(dossier, ids, max, estBudgetDepasse, proteges) {
     if (estBudgetDepasse()) return;
     collecterAReclasser_(fo.next(), ids, max, estBudgetDepasse, proteges);
   }
-}
-
-/**
- * Un fichier est « à reclasser » s'il n'est PAS déjà au format normalisé, n'est pas un
- * fichier Google natif (Docs/Sheets/Slides — pas de blob exploitable) ni un raccourci, et
- * n'a AUCUN parent dans (ou sous) un domaine protégé (garde-fou §1 : ne jamais détacher de
- * la zone protégée un fichier multi-parents).
- * @param {File} f
- * @param {Object} proteges  ensemble {idDossierProtégé: true}
- * @return {boolean}
- */
-function estAReclasser_(f, proteges) {
-  if (/^\d{4}(-\d{2}){0,2}_/.test(f.getName())) return false; // déjà rangé/renommé (AAAA_, AAAA-MM_ ou AAAA-MM-JJ_ — le nommage PAR TYPE produit les 3 granularités, cf. Router.nomParType_)
-  // P3 (#11) : un fichier DÉJÀ TRAITÉ (clé drive| à l'Index — ex. un média sorti de _Médias à la main,
-  // nom d'origine sans préfixe date) n'est JAMAIS re-collecté : l'intake le sauterait (idempotence) et
-  // il resterait coincé dans 00·À trier à vie. Lookup O(1) sur le cache Index (chargé 1×/run).
-  if (indexContient_('drive|' + f.getId())) return false;
-  var mime = f.getMimeType() || '';
-  if (mime.indexOf('application/vnd.google-apps') === 0) return false; // natif ou raccourci
-  if (aParentProtege_(f, proteges)) return false; // un parent en zone protégée → on n'y touche pas
-  return true;
 }
 
 /**

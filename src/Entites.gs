@@ -4,10 +4,10 @@
  * L'onglet `Entités` est le référentiel CURÉ : une entité n'est routée vers son
  * dossier que si Marc l'a validée (Statut = « validée »). Une entité inconnue ne
  * crée JAMAIS de dossier automatiquement — elle est proposée en « en_attente » et
- * le document part en revue (anti-prolifération, garde-fou non négociable).
+ * le document est CLASSÉ AU DOMAINE en attendant (anti-prolifération, jamais un blocage).
  *
  * Colonnes (auto-réparées au besoin) :
- *   Entité | Domaine | Catégorie | Type | Statut | Dossier ID | Ajoutée le
+ *   Entité | Domaine | Catégorie | Type | Statut | Dossier ID | Ajoutée le | Variante possible ? | Vu N fois
  *
  * Lecture mise en cache 1×/run (leçon : jamais une lecture Sheet par item).
  */

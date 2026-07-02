@@ -1,8 +1,8 @@
 /**
  * Pipeline.gs — Traitement unifié d'un document, quelle que soit sa source.
  *
- * Les deux sources (PJ Gmail, dépôt manuel `00·À trier`) construisent un même
- * descripteur `src` et délèguent ici. Seul le PLACEMENT diffère (copie pour
+ * Toutes les sources (PJ Gmail, dépôt manuel `00·À trier`, fichiers partagés, migration)
+ * construisent un même descripteur `src` et délèguent ici. Seul le PLACEMENT diffère (copie pour
  * Gmail, déplacement pour un dépôt) : il est fourni par `src.placer`.
  * (Plus de file de revue depuis 2026-07-01 — les sources ne fournissent plus de `placerRevue`.)
  *
@@ -108,7 +108,7 @@ function traiterDocument_(src) {
     // on le complète depuis le nom du fichier (ex. …_TP4_… → « TP ») avant le routage/nommage.
     enrichirClassifDepuisNom_(classif, src.nom);
 
-    var decision = deciderRoutage_(classif, src.date, ext, '');
+    var decision = deciderRoutage_(classif, src.date, ext);
 
     // Plus de file de revue (décision Marc 2026-07-01) : tout est CLASSÉ ('classé'), placé dans son
     // dossier cible avec son nom final propre. Un seul chemin de placement.

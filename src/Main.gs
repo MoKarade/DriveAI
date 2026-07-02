@@ -3,7 +3,8 @@
  *
  * À lancer une fois à la main : installerTrigger().
  *
- * Deux sources d'intake : PJ Gmail + dépôt manuel `00·À trier`. Chaque document
+ * Sources d'intake : PJ Gmail, dépôt manuel `00·À trier`, fichiers partagés (ADR-0005) —
+ * plus la migration (#8) qui re-passe l'existant. Chaque document
  * passe par le pipeline partagé (Pipeline.gs). Avant le routage, on matérialise
  * les entités fraîchement validées par Marc (création des dossiers).
  *
@@ -335,13 +336,13 @@ function tickDriveAI() {
  * Compare `CONFIG.VERSION` (figée dans le code déployé) à la dernière version vue
  * (Script Property `DriveAI_VERSION`). Si elles diffèrent — juste après un déploiement
  * qui change la logique — on RENVOIE les dépôts manuels partis en revue vers 00·À trier
- * pour qu'ils soient reclassés par le tick courant. Plus besoin de `rejouerLaRevue`.
+ * pour qu'ils soient reclassés par le tick courant (l'ancien outil manuel `rejouerLaRevue` a été retiré — audit 2026-07-02).
  *
  * Sûreté (audits flotte) : opération **réversible uniquement** (déplacement, jamais de
  * corbeille), **bornée** par le garde-temps + un plafond/run, et **reprenable** — la
- * version n'est posée QUE lorsque tout le rejeu est consommé. Ne touche PAS aux PJ Gmail
- * en revue (sensibles/peu sûres : elles ont vocation à y rester) ni aux docs déjà classés
- * (leur idempotence est préservée → pas de re-OCR/re-LLM inutile).
+ * version n'est posée QUE lorsque tout le rejeu est consommé. La passe 2 reprend AUSSI les
+ * copies legacy « [REVUE] confiance » d'origine Gmail (cf. sa docstring) ; les docs déjà
+ * classés ne sont jamais touchés (idempotence préservée → pas de re-OCR/re-LLM inutile).
  *
  * @param {function():boolean} estBudgetDepasse
  */

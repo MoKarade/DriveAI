@@ -61,7 +61,9 @@ function classifier_(meta) {
   }
 
   // Confiance basse + doc NON sensible → analyse approfondie (multi-passes), bornée par run
-  // (un doc sensible part en revue de toute façon — inutile de dépenser du Sonnet).
+  // Un doc SENSIBLE n'est jamais escaladé (choix délibéré, à re-trancher si besoin) : il est
+  // auto-classé par Haiku (politique 2026-07-01) et l'escalade multiplierait par 3 les envois
+  // de son contenu au LLM pour un gain marginal — prudence + coût.
   if (classif.confiance < CONFIG.SEUIL_CONFIANCE && classif.sensible !== true && escaladeAutorisee_()) {
     journalInfo_('LLM', 'Analyse approfondie (Sonnet ×' + CONFIG.LLM_ESCALADE_PASSES +
       ') pour « ' + meta.nomFichier + ' »');
