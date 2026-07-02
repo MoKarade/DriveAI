@@ -179,6 +179,7 @@ test('traiterDocument_ : AVEC ignorerDoublon (migration), le fast-path est saut�
 test('estAReclasserLeger_ : les noms produits par le nommage PAR TYPE sont « déjà rangés » (convergence)', () => {
   const ctx = load(['Config.gs', 'Maintenance.gs']);
   ctx.journalErreur_ = () => {};
+  ctx.indexContient_ = () => false; // Index vide (P3 testé dans predicates.test.js)
   const casRanges = [
     '2024-03-05_Facture_Hydro-Québec.pdf', // jour (historique)
     '2024-03_Relevé_Desjardins.pdf',       // mois (nouveau)

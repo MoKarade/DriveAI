@@ -17,7 +17,8 @@
 
 /**
  * @param {Blob} blob
- * @return {string} texte extrait (tronqué), ou '' si indisponible.
+ * @return {?string} texte extrait (tronqué) ; '' si le fichier est SANS texte ; null si
+ *   l'extraction a ÉCHOUÉ (panne/quota — un échec n'est pas un verdict « vide », cf. P2 #11).
  */
 function extraireTexte_(blob) {
   var type = blob.getContentType() || '';
@@ -27,12 +28,15 @@ function extraireTexte_(blob) {
     }
     var conv = cibleConversion_(type, blob.getName());
     if (conv) {
-      return tronquer_(convertirEtExtraire_(blob, conv.cible, conv.exportMime, conv.ocr), CONFIG.LLM_OCR_MAX_CARS);
+      var texte = convertirEtExtraire_(blob, conv.cible, conv.exportMime, conv.ocr);
+      if (texte === null) return null; // échec technique ≠ document sans texte
+      return tronquer_(texte, CONFIG.LLM_OCR_MAX_CARS);
     }
   } catch (e) {
     journalErreur_('OCR', 'Extraction échouée pour « ' + blob.getName() + ' » : ' + e);
+    return null; // échec (panne transitoire) — jamais confondu avec « sans texte »
   }
-  return '';
+  return ''; // type sans texte extractible (pas un échec)
 }
 
 /**
@@ -100,7 +104,7 @@ function convertirEtExtraire_(blob, cibleMime, exportMime, ocr) {
   if (insert.getResponseCode() !== 200) {
     journalErreur_('OCR', 'Conversion HTTP ' + insert.getResponseCode() + ' (' + cibleMime + ') : ' +
       tronquer_(insert.getContentText(), 300));
-    return '';
+    return null; // échec technique (cf. contrat extraireTexte_)
   }
 
   var id = JSON.parse(insert.getContentText()).id;

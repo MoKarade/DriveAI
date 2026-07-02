@@ -247,8 +247,13 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
   un scan de passeport nommé `IMG_2734.jpg` contient du texte → analyse complète (testé). Nom d'origine
   CONSERVÉ (traçabilité), `_Médias` à la racine (jamais re-scanné), doublons de médias toujours dédupés
   AVANT (empreinte calculée en amont). Accélère fortement le rangement Facebook en cours (~50 fichiers
-  en file → plus d'OCR+LLM+escalade Sonnet pièce par pièce). +8 tests → **151**. Revue flotte (sécurité §1
-  + file-checker) en cours.
+  en file → plus d'OCR+LLM+escalade Sonnet pièce par pièce). **Revue flotte intégrée** — sécurité CONFORME (R1 : fast-path
+  photo seulement si l'OCR a été TENTÉ — une photo > 20 Mo garde son analyse ; R3 : mot-clé protégé
+  dans le nom = documentaire) ; intake « approuvé sous conditions » toutes traitées (P1 : blob paresseux —
+  une vidéo de 300 Mo va dans `_Médias` au lieu de quarantaine ; P2 : `extraireTexte_` rend **null sur
+  échec** ≠ '' sans texte — une panne OCR n'envoie plus un scan sensible en `_Médias` en silence ; P3 :
+  clé `drive|` à l'Index ⇒ jamais re-collecté par le rangement). Estimation file-checker : le lot Facebook
+  passe de ~10-15 min + ~74 appels LLM à ~1 tick et **0 appel LLM**. +11 tests → **154**.
 
 - **2026-07-02 — Chantier #10 : ENTITÉS PROPRES (ADR-0009 §1, 1ᵉʳ de la roadmap v2).** Cause racine
   trouvée : le PROMPT enseignait littéralement les génériques (« (logement, véhicule, banque,
