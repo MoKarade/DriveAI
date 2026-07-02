@@ -244,9 +244,17 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 
 | ID | Tâche | Statut |
 |----|-------|--------|
-| C12-01 | **Primitives PURES** (`Gmail.gs`) : `dateGmail_` (yyyy/MM/dd), `requeteHisto_` (`has:attachment before:<curseur>`), `curseurSuivantHisto_` (jour de la plus ANCIENNE date traitée + 1 — `before:` exclusif ⇒ le jour est RE-couvert en entier, l'idempotence Index rend la re-couverture gratuite : jamais de trou) | ✅ (tests) |
-| C12-02 | **Campagne** `traiterGmailHistorique_` (`Main.gs`) : curseur initialisé à −30 j (le vivant couvre le récent), une tranche de `GMAIL_HISTO_PAGE_FILS` fils/tick, terminaison figée quand une tranche est vide (Property — coût nul ensuite), budget partiel sûr (les fils restants sont plus anciens ⇒ toujours re-couverts), fil-poison SAUTÉ avec journal (convergence > complétude) | ✅ (5 tests d'orchestration) |
-| C12-03 | **Câblage** : après le flux vivant, avant migration/intentions ; enveloppé + budget-gaté ; surface au contrat | ✅ |
+> ⚠️ Premier design (curseur rétrograde « jour le plus ancien + 1 ») **démoli par la vérif adversariale** :
+> Gmail trie les fils par DERNIER message ⇒ un vieux fil ravivé téléportait le curseur (PJ perdues) ;
+> un jour à > 10 fils ⇒ plateau infini ; pas de sous-plafond ⇒ quota runtime épuisé en ~2 h. Réécrit,
+> puis une **2ᵉ contre-vérification** a durci la réécriture (C12-04). Design final :
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C12-01 | **Primitives PURES** (`Gmail.gs`) : `dateGmail_` (yyyy/MM/dd), `requeteHisto_` (`has:attachment before:<ancre>` — l'ancre est FIGÉE une fois pour toutes ⇒ l'APPARTENANCE à l'ensemble est stable, l'offset y est donc sûr — leçon « pagination mouvante » respectée : c'est le mouvant qui est interdit, pas l'offset ; l'ORDRE peut bouger, couvert par C12-04), `pageFilsHisto_(ancre, offset)` | ✅ (tests) |
+| C12-02 | **Campagne** `traiterGmailHistorique_` (`Main.gs`) : ancre posée UNE fois à −30 j (`DriveAI_GMAIL_HISTO_ANCRE`, le vivant couvre le récent), offset persistant (`…_OFFSET`) qui n'avance que si la page est COMPLÈTE (budget/plafond au milieu ⇒ rejeu de page, idempotence Index = gratuit, converge), plafond `GMAIL_HISTO_MAX_PJ_INEDITES`/run (2 — protège le quota runtime ~90 min/j : le vivant garde la priorité), PJ déjà indexées GRATUITES (ne comptent pas) | ✅ (tests d'orchestration) |
+| C12-03 | **Câblage** : après le flux vivant, avant migration/intentions ; enveloppé + budget-gaté ; surface au contrat (`pageFilsHisto_`, `requeteHisto_`, `dateGmail_`, `traiterGmailHistorique_`, `incrementerEchec_`) | ✅ |
+| C12-04 | **Durcissements de la 2ᵉ contre-vérification** : (P3, la clé) une page vide ne fige « terminé » que si la passe n'a RIEN collecté — sinon offset remis à 0, **passe de VÉRIFICATION** (guérit : fil ravivé par un message SANS PJ — invisible du vivant car Gmail matche PAR message —, fil glissé sous l'offset par une suppression, fil sauté sur erreur transitoire ; re-passe quasi gratuite, convergence garantie car l'Index ne fait que croître) ; (P4) garde-temps + plafond vérifiés **PAR PJ** (un message à 20 PJ ne crève plus le mur des 6 min), aussi appliqué au scan VIVANT (`traiterFil_`) ; (P5) fil en erreur : compteur d'Échecs `histo\|fil\|<id>`, revisité par la passe suivante, ABANDONNÉ après 3 essais (la terminaison n'est jamais bloquée, la trace reste) ; (P6) doc du plafond corrigée (un doublon MD5 COMPTE) ; (P7) limite « mail ancien arrivé tardivement » documentée dans l'ADR | ✅ (12 tests) |
 
 ### Chantier #15 — App v2 : curation efficace & confort (ADR-0011)  🟦
 

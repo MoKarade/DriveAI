@@ -37,10 +37,10 @@ function pageFilsActions_(debut) {
   return GmailApp.search(CONFIG.GMAIL_REQUETE_ACTIONS, debut, CONFIG.PAGE_FILS_ACTIONS);
 }
 
-/* ---------- Chantier #12 (ADR-0010 §1) : scan ANCRÉ rétrograde de l'historique ---------- */
+/* ---------- Chantier #12 (ADR-0010 §1) : historique sur ANCRE FIXE + offset ---------- */
 
 /**
- * Formate une date en `yyyy/MM/dd` pour l'opérateur Gmail `before:` (exclusif). PUR.
+ * Formate une date en `yyyy/MM/dd` pour l'opérateur Gmail `before:`. PUR.
  * @param {Date} d
  * @return {string}
  */
@@ -50,36 +50,29 @@ function dateGmail_(d) {
 }
 
 /**
- * Requête de la tranche historique courante. PUR.
- * @param {string} curseur  `yyyy/MM/dd` (borne EXCLUSIVE)
+ * Requête de la campagne historique. L'ANCRE est FIXE (posée une fois) : l'APPARTENANCE à
+ * l'ensemble `has:attachment before:<ancre>` est stable (le passé ne reçoit pas de nouveaux
+ * mails) — c'est ce qui rend la pagination par OFFSET sûre, contrairement au scan vivant (leçon
+ * « pagination mouvante » : le piège était l'insertion en TÊTE, impossible sur le passé).
+ * ATTENTION (contre-vérification) : l'ORDRE, lui, n'est PAS immuable — Gmail trie les fils par
+ * DERNIER message, donc un fil ravivé se téléporte en tête (et s'il est ravivé par un message
+ * SANS PJ, le scan vivant ne le voit pas : `has:attachment newer_than:30d` matche PAR MESSAGE) ;
+ * une suppression fait glisser les fils d'un cran. La complétude n'est donc PAS garantie par
+ * l'offset seul : c'est la PASSE DE VÉRIFICATION de `traiterGmailHistorique_` qui la porte
+ * (« terminé » seulement quand une passe complète ne collecte plus rien). PUR.
+ * @param {string} ancre  `yyyy/MM/dd`
  * @return {string}
  */
-function requeteHisto_(curseur) {
-  return CONFIG.GMAIL_REQUETE_HISTO_BASE + ' before:' + curseur;
+function requeteHisto_(ancre) {
+  return CONFIG.GMAIL_REQUETE_HISTO_BASE + ' before:' + ancre;
 }
 
 /**
- * Prochain curseur après une page : le JOUR de la plus ANCIENNE date vue + 1 jour — `before:` étant
- * exclusif, la tranche suivante RE-couvre ce jour entier (aucun trou possible si la page s'est arrêtée
- * au milieu d'un jour chargé) ; l'idempotence de l'Index rend la re-couverture gratuite. Le curseur ne
- * va que dans UN sens (vers le passé) : jamais de plateau (leçon durable). PUR.
- * @param {Date[]} datesVues  dates des messages traités dans la page (non vide)
- * @return {string} `yyyy/MM/dd`
- */
-function curseurSuivantHisto_(datesVues) {
-  var plusAncienne = datesVues[0];
-  for (var i = 1; i < datesVues.length; i++) {
-    if (datesVues[i] < plusAncienne) plusAncienne = datesVues[i];
-  }
-  var lendemain = new Date(plusAncienne.getFullYear(), plusAncienne.getMonth(), plusAncienne.getDate() + 1);
-  return dateGmail_(lendemain);
-}
-
-/**
- * Une page de fils AVEC PJ antérieurs au curseur (tri Gmail : du plus récent au plus ancien).
- * @param {string} curseur  `yyyy/MM/dd`
+ * Une page de fils AVEC PJ antérieurs à l'ancre, à partir d'un offset persistant.
+ * @param {string} ancre   `yyyy/MM/dd`
+ * @param {number} offset
  * @return {GmailThread[]}
  */
-function pageFilsHisto_(curseur) {
-  return GmailApp.search(requeteHisto_(curseur), 0, CONFIG.GMAIL_HISTO_PAGE_FILS);
+function pageFilsHisto_(ancre, offset) {
+  return GmailApp.search(requeteHisto_(ancre), offset, CONFIG.GMAIL_HISTO_PAGE_FILS);
 }

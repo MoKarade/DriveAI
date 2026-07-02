@@ -74,14 +74,21 @@ var CONFIG = {
   // Idempotence assurée par l'Index (clé messageId|i|nom|taille), PAS par un
   // label : le scope gmail.readonly interdit toute écriture dans la boîte.
   GMAIL_REQUETE: 'has:attachment newer_than:30d',
-  // --- Chantier #12 (ADR-0010 §1) : HISTORIQUE Gmail complet, scan ANCRÉ rétrograde ---
-  // Le scan récent ci-dessus ne voit que 30 j. Ce scan-ci remonte TOUT l'historique par tranches,
-  // du plus récent au plus ancien, ancré sur une date ABSOLUE persistée (`before:` — leçon durable
-  // « pagination sur recherche mouvante » : jamais un offset numérique seul). Terminé quand une
-  // recherche ne rend plus rien (Property `DriveAI_GMAIL_HISTO` figée) — coût nul ensuite.
+  // --- Chantier #12 (ADR-0010 §1) : HISTORIQUE Gmail complet, ancre FIXE + offset ---
+  // Le scan récent ci-dessus ne voit que 30 j. Ce scan-ci parcourt tout l'historique : une ancre
+  // posée UNE fois (`before:<ancre>`, Property) fige l'ensemble de recherche → l'offset persistant
+  // est sûr (leçon « pagination mouvante » : le mouvant est interdit, pas l'offset). L'ORDRE peut
+  // toutefois bouger (fil ravivé, suppression) : la campagne ne se fige « terminé » qu'après une
+  // passe de VÉRIFICATION propre (offset 0 → page vide sans rien collecter) — coût nul ensuite.
   GMAIL_REQUETE_HISTO_BASE: 'has:attachment',
-  GMAIL_HISTO_PAGE_FILS: 10,              // fils/run (les vieilles PJ passent OCR+LLM ou dédup MD5 —
-                                          // lourd par fil ; le flux VIVANT garde la priorité)
+  GMAIL_HISTO_PAGE_FILS: 10,              // fils par page de recherche
+  // Plafond de PJ INÉDITES traitées par run (revue quotas) : le quota RUNTIME des déclencheurs
+  // (~90 min/jour, compte gratuit) est LA contrainte — sans ce plafond, la campagne consommerait
+  // les 4,5 min de chaque tick et tuerait l'intake vivant pour la journée. « Inédite » = clé absente
+  // de l'Index — un doublon MD5 compte donc (copyBlob + hash + placement `_Doublons` : pas gratuit ;
+  // conservateur pour le quota). Seules les PJ déjà INDEXÉES sont gratuites (métadonnées seules).
+  // 2 inédites ≈ 20-30 s/tick → ~576/jour, campagne ~1 semaine (plus si l'historique est plein de copies).
+  GMAIL_HISTO_MAX_PJ_INEDITES: 2,
   PAGE_FILS: 20,                         // taille de page de la recherche Gmail
   BUDGET_MS: 4.5 * 60 * 1000,            // garde-temps (exécution Apps Script < 6 min)
 

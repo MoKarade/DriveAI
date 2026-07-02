@@ -183,6 +183,14 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   depuis l'offset 0 (pour le neuf) qui s'arrête tôt dès qu'il détecte un mur déjà traité. Toujours
   **tracer un scénario concret sur plusieurs ticks** avant de valider une pagination, pas une relecture
   superficielle — c'est ce qui révèle un plateau silencieux.
+- **Campagne Gmail : requête figée ⇒ appartenance stable, mais l'ORDRE bouge quand même** (tri par
+  DERNIER message, suppressions) — l'offset persistant sert à PROGRESSER, jamais à prouver la
+  COMPLÉTUDE. Celle-ci vient de la règle « terminé quand une passe complète ne collecte plus rien »
+  (offset remis à 0 si la passe a eu de l'activité ; re-passe quasi gratuite par l'Index), avec
+  abandon tracé d'un fil en échec après N essais (sinon la terminaison bloque). Les plafonds/run se
+  vérifient à l'unité de COÛT réelle (la PJ, pas le message), et une complémentarité entre scans se
+  vérifie au niveau où Gmail MATCHE : par MESSAGE, pas par fil (un fil ravivé par un message sans PJ
+  échappe à `has:attachment newer_than:`).
 - **Few-shot : n'injecter que les champs STABLES pour la clé de sélection.** Un bloc d'exemples sélectionné
   par une clé K ne doit contenir que les champs corrélés à K ; exclure tout champ qui VARIE à K constant.
   Ex. corrections sélectionnées par émetteur (ADR-0003) → injecter `domaine`/`entité` (stables : EDF →

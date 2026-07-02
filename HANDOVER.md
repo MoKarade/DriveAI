@@ -241,6 +241,31 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-02 — Chantier #12 : HISTORIQUE GMAIL COMPLET (ADR-0010 §1) — design v2 après démolition
+  adversariale.** Le design v1 (curseur rétrograde « jour le plus ancien traité + 1 », commit a8e9df4)
+  a été **démoli par 3 agents adversariaux** : (a) Gmail trie les fils par DERNIER message ⇒ un vieux
+  fil ravivé TÉLÉPORTAIT le curseur des mois en arrière (PJ des fils intermédiaires perdues à jamais) ;
+  (b) un jour à > `GMAIL_HISTO_PAGE_FILS` fils ⇒ la même page revenait toujours (plateau infini, jamais
+  « terminé ») ; (c) aucun sous-plafond ⇒ chaque tick consommait les 4,5 min ⇒ quota runtime (~90 min/j)
+  épuisé en ~2 h, intake vivant MORT le reste de la journée. **Réécrit (v2)** : ancre FIXE posée une
+  seule fois à −30 j (`DriveAI_GMAIL_HISTO_ANCRE`) ⇒ la requête `has:attachment before:<ancre>` porte
+  sur un ensemble **immuable** ⇒ pagination par offset persistant SÛRE (la leçon « pagination mouvante »
+  interdit le mouvant, pas l'offset) ; l'offset n'avance que sur page COMPLÈTE (coupure budget/plafond
+  ⇒ rejeu de page, gratuit par idempotence Index, converge car les déjà-indexées ne comptent plus) ;
+  plafond `GMAIL_HISTO_MAX_PJ_INEDITES: 2`/run (le vivant garde la priorité runtime) ; fil-poison sauté
+  AVEC avance d'offset (journalisé) ; terminaison figée sur page vide. Fil ravivé pendant la campagne
+  ⇒ couvert par le scan VIVANT (son nouveau message l'y fait entrer, toutes les PJ du fil traitées).
+  `curseurSuivantHisto_` supprimé (surface mise à jour). ROADMAP/BACKLOG/ADR-0010 réécrits (ils
+  décrivaient le v1). **Une 2ᵉ contre-vérification a ensuite durci la v2** (C12-04) : (P3) « terminé »
+  ne se fige plus sur la première page vide — si la passe a eu la moindre activité, l'offset repart à
+  0 pour une **passe de VÉRIFICATION** (guérit 3 pertes silencieuses : fil ravivé par un message SANS
+  PJ — invisible du vivant, Gmail matche PAR message —, fil glissé sous l'offset par une suppression,
+  fil sauté sur erreur transitoire ; re-passe quasi gratuite, convergence garantie) ; (P4) garde-temps
+  et plafond **PAR PJ** — un message à 20 PJ ne crève plus le mur des 6 min sans `finally` — appliqué
+  aussi au scan VIVANT (`traiterFil_`) ; (P5) fil en erreur : compteur d'Échecs `histo|fil|<id>`,
+  abandonné après 3 essais (la terminaison n'est jamais bloquée). **12 tests d'orchestration** —
+  moteur **171 tests**.
+
 - **2026-07-02 — Chantier #15 : APP V2 (ADR-0011) + audit global (#58).** Audit « no dead code » :
   sain d'origine (0 fonction/config/CSS/i18n morte) mais `rejouerLaRevue` retiré (devenu DESTRUCTEUR :
   il aurait vidé l'Index) + 7 morceaux morts + ~15 docstrings mensongères + résumé hebdo véridique. La

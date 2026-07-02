@@ -13,10 +13,27 @@ attention**.
 ## Décisions
 
 ### 1. Classer TOUT l'historique Gmail (chantier #12)
-- **Scan ancré rétrograde** (leçon « pagination sur recherche mouvante » — enfin appliquée aux PJ) :
-  un curseur ABSOLU persistant (`before:<date>`) remonte l'historique par tranches, du plus récent
-  au plus ancien, borné par run, jusqu'à épuisement (curseur figé « terminé »).
-- Le scan RÉCENT existant (offset 0, fenêtre 30 j) reste inchangé pour le flux vivant.
+- **Ancre FIXE + offset sur ensemble immuable** *(design v2 — le design initial « curseur rétrograde
+  jour le plus ancien + 1 » a été démoli par la vérification adversariale : Gmail trie les fils par
+  DERNIER message ⇒ un vieux fil ravivé téléportait le curseur en arrière et perdait des PJ ; un jour
+  à plus d'une page de fils ⇒ plateau infini)* : une date-ancre posée UNE seule fois (−30 j) fige la
+  requête `has:attachment before:<ancre>` ⇒ l'ensemble de résultats est **immuable**, donc une
+  pagination par offset persistant y est sûre (la leçon « pagination mouvante » interdit le mouvant,
+  pas l'offset). L'offset n'avance que sur page COMPLÈTE ; plafond de PJ inédites/run (quota runtime :
+  le flux vivant garde la priorité) ; fil-poison sauté avec journal ; terminaison figée sur page vide.
+- Le scan RÉCENT existant (offset 0, fenêtre 30 j) reste inchangé pour le flux vivant — et couvre le
+  cas du vieux fil ravivé pendant la campagne (son nouveau message le fait entrer dans la fenêtre
+  vivante, qui traite TOUTES les PJ du fil).
+- **Terminaison par passe de VÉRIFICATION** (2ᵉ contre-vérification) : trois pertes silencieuses
+  résiduelles (fil ravivé par un message SANS PJ — invisible du vivant —, suppression en zone déjà
+  scannée qui fait glisser un fil sous l'offset, erreur transitoire sur un fil) partagent le même
+  antidote : une page vide ne termine pas la campagne — si la passe a eu la moindre activité,
+  l'offset repart à 0 ; « terminé » ne se fige que sur une passe 100 % propre (quasi gratuite :
+  PJ indexées = métadonnées seules). Fil en erreur : compteur d'Échecs, abandonné après 3 essais
+  (la terminaison n'est jamais bloquée ; la trace reste).
+- *Limite documentée (négligeable, compte perso)* : un mail dont la date interne est ancienne mais
+  qui ARRIVE tardivement (import mbox, relève POP, redirection) peut tomber entre l'ancre et la
+  fenêtre vivante après la fin de la campagne — hors périmètre.
 - Idempotence inchangée (clé `messageId|i|nom|taille`) ; dédup MD5 inchangée (les vieilles PJ déjà
   présentes ailleurs partent en `_Doublons`). Budget : Haiku, plafonds/run, escalades cappées.
 
@@ -36,10 +53,12 @@ attention**.
 - **Labels Gmail « important »** — impossible et non voulu : `gmail.readonly` (§3).
 - **Notifications immédiates par mail** — risque de spam ; le résumé hebdo est le canal.
 - **Étendre la fenêtre à 90 j “et voir”** — ne converge jamais sur l'historique (leçon pagination) ;
-  le curseur ancré est la seule voie sûre.
+  seule une requête FIGÉE (ensemble immuable) rend la reprise sûre.
+- **Curseur rétrograde « jour le plus ancien traité + 1 »** — design v1, écarté après vérification
+  adversariale (téléportation du curseur par fil ravivé, plateau infini sur jour dense, quota runtime).
 
 ## Conséquences
-- `Gmail.gs`/`Main.gs` : second scan ancré (propriété curseur), garde-temps partagé, plafond/run.
+- `Gmail.gs`/`Main.gs` : second scan figé (Properties ancre + offset), garde-temps partagé, plafond/run.
 - `Resume.gs` : deux sections nouvelles (actions détectées, mails à traiter).
 - `Intentions.gs`/`Prefiltre.gs` : flag `important` dans le mini-check (tokens inchangés ou +N faible).
 - App : vue lecture seule des intentions (roadmap #15).

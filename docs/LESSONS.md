@@ -478,3 +478,29 @@ est définie (`test/surface-moteur.test.js`) — il attrape toute disparition ac
 (3) Après un lot de retraits, une vérification indépendante (relecture du diff par un agent qui
 inventorie les fonctions avant/après) vaut plus que la relecture de l'auteur.
 **Règle durable ?** oui.
+
+## 2026-07-02 — Campagne Gmail historique : un ensemble « figé » n'a pas un ORDRE figé ; la complétude vient d'une passe de vérification, pas du schéma de pagination
+**Contexte.** Chantier #12 (classer tout l'historique de PJ Gmail). Le design v1 — curseur rétrograde
+« jour le plus ancien traité + 1 » — semblait appliquer la leçon « pagination mouvante » ; la vérification
+adversariale (3 agents) l'a démoli : Gmail trie les fils par leur DERNIER message, donc un vieux fil
+ravivé téléportait le curseur des mois en arrière (PJ des fils intermédiaires perdues À JAMAIS), un jour
+à plus d'une page de fils créait un plateau infini, et l'absence de sous-plafond épuisait le quota runtime
+(~90 min/j) en 2 h. Le design v2 — ancre FIXE `before:<ancre>` posée une fois + offset persistant sur
+l'ensemble « immuable » — a été contre-attaqué à son tour : l'APPARTENANCE à l'ensemble est stable, mais
+l'ORDRE ne l'est pas (fil ravivé par un message SANS PJ = invisible du scan vivant car Gmail matche les
+opérateurs PAR MESSAGE ; suppression en zone déjà scannée = un fil innocent glisse sous l'offset ; erreur
+transitoire = fil sauté). Trois pertes silencieuses, UN antidote déjà connu du projet : « terminé »
+seulement quand une passe COMPLÈTE ne collecte plus rien (offset remis à 0 si la passe a eu de l'activité ;
+re-passe quasi gratuite car les PJ indexées ne coûtent que des métadonnées).
+**Leçon.** (1) Sur Gmail, une requête figée fige l'appartenance, PAS l'ordre (tri par dernier message,
+suppressions) : l'offset persistant est un moyen de PROGRESSION, jamais une preuve de COMPLÉTUDE — la
+complétude vient de la règle « une passe qui ne collecte plus rien », appliquée à TOUTE campagne bornée
+(c'est la même règle que migration/rangement ; elle guérit d'un coup fils déplacés, suppressions et
+erreurs transitoires, pourvu qu'un fil en échec répété soit ABANDONNÉ avec trace après N essais pour ne
+pas bloquer la terminaison). (2) Les plafonds par run se vérifient à la granularité de l'UNITÉ DE COÛT
+réelle (la PJ, pas le message : un message à 20 PJ crève le mur des 6 min sans `finally`). (3) La
+complémentarité entre deux scans (« le vivant couvre ce cas ») doit être vérifiée au niveau où le moteur
+de recherche MATCHE (par message, pas par fil) — c'est là que se cachait le trou. (4) Un design de
+pagination ne se valide QUE par traçage de scénarios multi-ticks ET par contre-attaque adversariale
+indépendante — deux rondes ont trouvé des pertes que l'auteur avait ratées deux fois.
+**Règle durable ?** oui.

@@ -26,13 +26,13 @@ const CONTRAT = [
   'enrichirClassifDepuisNom_', 'creerRaccourcisEntites_', 'deposer_',
   // état
   'indexContient_', 'indexAjouter_', 'estDoublon_', 'feuille_', 'journalInfo_', 'journalErreur_',
-  'initialiserSheet_', 'majSante_', 'notifierEchec_',
+  'initialiserSheet_', 'majSante_', 'notifierEchec_', 'incrementerEchec_',
   // entités
   'entitesCache_', 'reinitialiserEntitesCache_', 'resoudreEntite_', 'entiteEnAttenteAjouter_',
   'creerDossiersEntitesValidees_', 'promouvoirEntiteValidee_', 'appliquerCurationEntites_',
   'estEntiteGenerique_', 'estFusionnableEntite_', 'incrementerVuEntite_',
   // sources & maintenance
-  'traiterGmail_', 'traiterGmailHistorique_', 'pageFilsHisto_', 'requeteHisto_', 'curseurSuivantHisto_', 'dateGmail_',
+  'traiterGmail_', 'traiterGmailHistorique_', 'pageFilsHisto_', 'requeteHisto_', 'dateGmail_',
   'traiterDepots_', 'collecterPartages_', 'appliquerMigrationTaxonomie_',
   'appliquerRangementInitial_', 'appliquerRejeuSiNouvelleVersion_', 'rangementTermine_',
   'appliquerRelancesQuarantaine_',
