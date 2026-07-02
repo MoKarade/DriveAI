@@ -9,7 +9,7 @@
  *
  * Règles miroir :
  *  1. AUCUNE suppression — pas exprimée ici mais dans `google.ts` : la surface d'API n'expose
- *     AUCUNE méthode delete/trash (garde-fou par construction, vérifié par test).
+ *     AUCUNE méthode de suppression ni de mise à la corbeille (garde-fou par construction, vérifié par test).
  *  2. Zone protégée : un fichier dont la CHAÎNE D'ANCÊTRES touche `04 · Immigration` n'est JAMAIS
  *     détaché (multi-parents inclus) ; indéterminable = protégé (échec fermé, comme le mode strict
  *     du moteur). Déplacer VERS la zone protégée reste permis (enrichissement).

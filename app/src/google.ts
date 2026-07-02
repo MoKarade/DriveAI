@@ -153,7 +153,10 @@ export async function lireFichier(fileId: string): Promise<FichierDrive> {
 
 /** Recherche Drive par nom (contains). Sert à retrouver le fichier d'une ligne d'Index. */
 export async function chercherParNom(nom: string): Promise<FichierDrive[]> {
-  const q = `name contains '${nom.replace(/'/g, "\\'")}' and trashed = false`;
+  // Échappe le backslash AVANT l'apostrophe : sans ça, un nom contenant `\` réactiverait le `'`
+  // fermant de la requête (injection de clause — lecture seule, mais autant fermer proprement).
+  const sain = nom.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const q = `name contains '${sain}' and trashed = false`;
   const r = await api<{ files?: FichierDrive[] }>(
     `${DRIVE}?q=${encodeURIComponent(q)}&fields=${encodeURIComponent('files(id,name,parents,webViewLink)')}&pageSize=20`,
   );

@@ -24,9 +24,12 @@ function fichiersSources(dossier: string): string[] {
 
 const MOTIFS_INTERDITS: [string, RegExp][] = [
   ['méthode HTTP DELETE', /method:\s*['"`]DELETE['"`]/i],
+  ['méthode HTTP non littérale (contournerait ce test)', /method:\s*[a-zA-Z_$]/],
   ['mise à la corbeille (trashed: true)', /trashed['"`]?\s*:\s*true/],
   ['suppression de lignes Sheet (deleteDimension/deleteRange)', /delete(Dimension|Range)/],
-  ['batchUpdate Sheets (peut supprimer des lignes)', /spreadsheets[^'"`]*:batchUpdate/],
+  ['batchUpdate Sheets (peut supprimer des lignes)', /:batchUpdate/],
+  ['effacement de plages Sheets (:clear / :batchClear)', /:(batchC|c)lear/],
+  ['corbeille Drive v2 (/trash) ou vidage (emptyTrash)', /\/trash\b|emptyTrash/],
 ];
 
 describe('surface de code sans suppression (§2)', () => {
