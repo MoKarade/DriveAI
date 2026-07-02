@@ -240,6 +240,16 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C11-06 | **Revue intake intégrée** : P1 — blob PARESSEUX (une vidéo de 300 Mo ne lève plus getBlob → `_Médias` au lieu de quarantaine) ; P3 — un fichier déjà traité (clé `drive\|`) n'est jamais re-collecté par le rangement (un média ressorti de `_Médias` ne reste plus coincé dans `00·À trier`) | ✅ (testé) |
 | C11-03 | **`_Médias`** (racine `_`, find-or-create, ID en Script Property `DriveAI_MEDIAS_ID`) : nom d'ORIGINE conservé (traçabilité — les noms d'export sont leurs identifiants) ; jamais re-scanné (hors domaines, comme `_Doublons`/`_Technique`) | ✅ |
 
+### Chantier #15 — App v2 : curation efficace & confort (ADR-0011)  🟦
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C15-01 | **Fusion 1-clic** : la suggestion « → X (90 %) ? » devient un bouton — la ligne passe « variante de : X » (statut inerte, réversible, rien de supprimé) ; `cibleFusion` pur testé | ✅ |
+| C15-02 | **Rejet en masse** : cases à cocher + « Refuser la sélection » — écritures cellule par cellule (jamais de batch destructif) ; badge ×N (« Vu N fois ») affiché | ✅ |
+| C15-03 | **Dashboard enrichi** : graphe d'activité 30 jours (barres CSS, `activiteParJour` pur testé) + **liste de quarantaine avec « Relancer »** | ✅ |
+| C15-04 | **Relances pilotées par la Sheet** (frontière d'exécution) : l'app APPEND une demande (onglet `Relances`) ; le MOTEUR consomme au tick (`appliquerRelancesQuarantaine_` : retire la ligne Index « quarantaine » de la clé + son compteur Échecs — jamais une ligne d'un autre statut). Étape secondaire enveloppée + budget-gatée | ✅ (3 tests moteur) |
+| C15-05 | **PWA** : manifest + icône SVG + service worker PASSE-PLAT (zéro cache — fraîcheur des données), installable sur téléphone | ✅ |
+
 ### Chantier #9 — App web Phase 4 (ADR-0008)  🟦
 
 | ID | Tâche | Statut |

@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { lirePlage } from '../google';
+import { lirePlage, ajouterLigne } from '../google';
 import {
   Sante,
   LigneJournal,
@@ -13,6 +13,8 @@ import {
   interpreterJournal,
   interpreterIndex,
   compterParDomaine,
+  lignesQuarantaine,
+  activiteParJour,
 } from '../etat';
 import { Langue, t } from '../i18n';
 
@@ -46,6 +48,9 @@ export function TableauDeBord({ langue }: { langue: Langue }) {
   if (!sante) return <p>{t('chargement', langue)}</p>;
 
   const parDomaine = Array.from(compterParDomaine(index)).sort((a, b) => b[1] - a[1]);
+  const activite = activiteParJour(index, 30, new Date());
+  const maxJour = Math.max(1, ...activite.map((a) => a.n));
+  const quarantaine = lignesQuarantaine(index);
 
   return (
     <div className="colonnes">
@@ -73,6 +78,22 @@ export function TableauDeBord({ langue }: { langue: Langue }) {
       </section>
 
       <section className="carte large">
+        <h2>{t('activite30j', langue)}</h2>
+        <div className="barres" role="img" aria-label={t('activite30j', langue)}>
+          {activite.map((a) => (
+            <div
+              key={a.jour}
+              className="barre"
+              style={{ height: `${Math.round((a.n / maxJour) * 100)}%` }}
+              title={`${a.jour} : ${a.n}`}
+            />
+          ))}
+        </div>
+      </section>
+
+      <QuarantaineSection langue={langue} lignes={quarantaine} />
+
+      <section className="carte large">
         <h2>{t('activiteRecente', langue)}</h2>
         <table>
           <tbody>
@@ -87,5 +108,46 @@ export function TableauDeBord({ langue }: { langue: Langue }) {
         </table>
       </section>
     </div>
+  );
+}
+
+
+/** Quarantaine : liste + « Relancer » — l'app APPEND une demande (onglet Relances), le MOTEUR agit au tick. */
+function QuarantaineSection({ langue, lignes }: { langue: Langue; lignes: LigneIndex[] }) {
+  const [relances, setRelances] = useState<Set<string>>(new Set());
+  const [erreur, setErreur] = useState('');
+
+  async function relancer(l: LigneIndex) {
+    try {
+      await ajouterLigne('Relances', [l.cle, new Date().toISOString()]);
+      setRelances((s) => new Set(s).add(l.cle));
+    } catch (e) {
+      setErreur(String(e));
+    }
+  }
+
+  return (
+    <section className="carte large">
+      <h2>{t('quarantaine', langue)}</h2>
+      {erreur && <p className="erreur">{t('erreur', langue)} : {erreur}</p>}
+      {lignes.length === 0 && <p>{t('aucuneQuarantaine', langue)}</p>}
+      <table>
+        <tbody>
+          {lignes.map((l) => (
+            <tr key={l.cle}>
+              <td>{l.fichier}</td>
+              <td className="date">{l.traiteLe}</td>
+              <td>
+                {relances.has(l.cle) ? (
+                  <span className="ok">{t('relance', langue)}</span>
+                ) : (
+                  <button onClick={() => relancer(l)}>{t('relancer', langue)}</button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </section>
   );
 }

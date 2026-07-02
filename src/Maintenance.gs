@@ -444,3 +444,59 @@ function chaineMonteVersProtege_(dossier, proteges, profondeur, strict) {
   }
   return false;
 }
+
+/* ---------- Chantier #15 (ADR-0011) : relances de quarantaine pilotées par la Sheet ---------- */
+
+/**
+ * Consomme les demandes de RELANCE déposées par l'app web (onglet `Relances`, une clé par ligne) :
+ * pour chaque clé demandée, retire sa ligne Index « quarantaine » ET son compteur « Échecs »
+ * (sinon il re-quarantinerait au 1ᵉʳ échec), puis retire la demande. Le document est re-traité
+ * au prochain passage de sa source. L'app n'exécute JAMAIS de fonction moteur : elle ne fait
+ * qu'append une ligne ici — c'est le tick qui agit (frontière d'exécution). Borné + enveloppé
+ * par l'appelant ; idempotent (une clé sans ligne quarantaine est simplement purgée).
+ * @param {function():boolean} estBudgetDepasse
+ */
+function appliquerRelancesQuarantaine_(estBudgetDepasse) {
+  var fr = feuille_('Relances');
+  var dern = fr.getLastRow();
+  if (dern < 2) return; // aucune demande
+  var demandes = fr.getRange(2, 1, dern - 1, 1).getValues(); // A=Clé
+  var cles = {};
+  for (var i = 0; i < demandes.length; i++) {
+    if (demandes[i][0]) cles[String(demandes[i][0])] = true;
+  }
+  if (estBudgetDepasse()) return; // repris au tick suivant (les demandes restent en place)
+
+  // Index : retire les lignes « quarantaine » des clés demandées (jamais une ligne d'un autre statut —
+  // on ne touche pas au ledger d'idempotence des documents traités).
+  var fi = feuille_('Index');
+  var derI = fi.getLastRow();
+  var retirees = 0;
+  if (derI >= 2) {
+    var v = fi.getRange(2, 1, derI - 1, 6).getValues(); // A=Clé … F=Statut
+    var lignes = [];
+    for (var k = 0; k < v.length; k++) {
+      if (cles[String(v[k][0])] && v[k][5] === 'quarantaine') lignes.push(k + 2);
+    }
+    lignes.sort(function (a, b) { return b - a; });
+    for (var l = 0; l < lignes.length; l++) fi.deleteRow(lignes[l]);
+    retirees = lignes.length;
+  }
+
+  // Échecs : remet les compteurs des clés demandées à zéro (retrait de ligne).
+  var fe = feuille_('Échecs');
+  var derE = fe.getLastRow();
+  if (derE >= 2) {
+    var ve = fe.getRange(2, 1, derE - 1, 1).getValues();
+    var lignesE = [];
+    for (var e = 0; e < ve.length; e++) { if (cles[String(ve[e][0])]) lignesE.push(e + 2); }
+    lignesE.sort(function (a, b) { return b - a; });
+    for (var g = 0; g < lignesE.length; g++) fe.deleteRow(lignesE[g]);
+  }
+
+  // Demandes consommées : on vide l'onglet (toutes les lignes de données, en une fois).
+  fr.deleteRows(2, dern - 1);
+  if (retirees) {
+    journalInfo_('Maintenance', retirees + ' document(s) relancé(s) depuis l\'app (sortie de quarantaine) — re-traités au prochain passage.');
+  }
+}

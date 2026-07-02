@@ -261,6 +261,13 @@ function tickDriveAI() {
       catch (e) { journalErreur_('Entités', 'Curation de la file différée : ' + e); }
     }
 
+    // Relances de quarantaine demandées depuis l'app web (#15, ADR-0011) : le tick consomme
+    // l'onglet `Relances` (l'app n'exécute jamais de fonction moteur). SECONDAIRE → enveloppée.
+    if (!estBudgetDepasse()) {
+      try { appliquerRelancesQuarantaine_(estBudgetDepasse); }
+      catch (e) { journalErreur_('Maintenance', 'Relances de quarantaine différées : ' + e); }
+    }
+
     // Lit les corrections soumises par Marc (formulaire Google) et les enregistre AVANT l'intake, pour
     // que les documents classés dans ce même tick profitent des règles fraîchement apprises (few-shot).
     // SECONDAIRE → enveloppée : un formulaire absent/illisible ne doit jamais geler l'intake. Budget-gatée

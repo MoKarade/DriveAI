@@ -5,6 +5,9 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  cibleFusion,
+  lignesQuarantaine,
+  activiteParJour,
   interpreterEntites,
   entitesEnAttente,
   entitesValidees,
@@ -170,5 +173,39 @@ describe('fileIdDepuisCle + lienDrivePourLigne', () => {
     expect(lienDrivePourLigne(directe)).toBe('https://drive.google.com/file/d/F1/view');
     expect(lienDrivePourLigne(indirecte)).toContain('drive/search?q=');
     expect(lienDrivePourLigne(indirecte)).toContain(encodeURIComponent('"2024-03_Relevé_Desjardins.pdf"'));
+  });
+});
+
+
+describe('app v2 (C15) — fusion, quarantaine, activité', () => {
+  it('cibleFusion : extrait la cible de « → Desjardins (90 %) ? »', () => {
+    expect(cibleFusion('→ Desjardins (90 %) ?')).toBe('Desjardins');
+    expect(cibleFusion('→ IUT du Littoral Côte d\'Opale (85 %) ?')).toBe('IUT du Littoral Côte d\'Opale');
+    expect(cibleFusion('')).toBe('');
+    expect(cibleFusion('libellé générique ?')).toBe('');
+  });
+
+  it('lignesQuarantaine : filtre le statut quarantaine', () => {
+    const lignes = interpreterIndex([
+      ['k1', '2026-07-01', 'a.pdf', '', '', 'quarantaine'],
+      ['k2', '2026-07-01', 'b.pdf', '02 · Finances', 'x', 'classé'],
+    ]);
+    expect(lignesQuarantaine(lignes).map((l) => l.cle)).toEqual(['k1']);
+  });
+
+  it('activiteParJour : buckets des N derniers jours, zéros inclus, hors-fenêtre ignoré', () => {
+    const maintenant = new Date('2026-07-02T12:00:00Z');
+    const lignes = interpreterIndex([
+      ['k1', '2026-07-02T08:00:00Z', 'a.pdf', '', '', 'classé'],
+      ['k2', '2026-07-02T09:00:00Z', 'b.pdf', '', '', 'classé'],
+      ['k3', '2026-07-01T09:00:00Z', 'c.pdf', '', '', 'doublon'],
+      ['k4', '2026-05-01T09:00:00Z', 'vieux.pdf', '', '', 'classé'], // hors fenêtre
+      ['k5', 'pas une date', 'x.pdf', '', '', 'classé'],             // ignorée
+    ]);
+    const a = activiteParJour(lignes, 3, maintenant);
+    expect(a).toHaveLength(3);
+    expect(a[2]).toEqual({ jour: '2026-07-02', n: 2 });
+    expect(a[1]).toEqual({ jour: '2026-07-01', n: 1 });
+    expect(a[0]).toEqual({ jour: '2026-06-30', n: 0 });
   });
 });
