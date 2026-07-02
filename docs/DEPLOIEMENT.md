@@ -199,6 +199,15 @@ pour toute nouvelle permission, et un déclencheur automatique ne peut pas le de
 « Intentions » uniquement — le classement documentaire des Phases 1-2, lui, continue de tourner
 normalement : ce nouveau scope n'affecte pas les permissions déjà accordées.)*
 
+> **Chantier #6 (formulaire de correction) — même procédure, scope `forms`.** L'ajout de
+> `https://www.googleapis.com/auth/forms` (création + lecture du formulaire de correction, ADR-0003)
+> exige la **même ré-autorisation unique** que ci-dessus : au prochain déploiement, exécute une
+> fonction depuis l'éditeur Apps Script et **autorise** le nouvel accès Forms. Au premier tick après
+> autorisation, DriveAI **crée le formulaire tout seul** (find-or-create) et journalise son URL
+> (`Journal`, source « Corrections ») ; l'URL apparaît aussi dans le **résumé hebdo**. Tant que le
+> scope n'est pas accordé, seule la lecture des corrections échoue (enveloppée d'un try/catch) — le
+> classement continue normalement.
+
 ### Tester
 1. Envoie-toi un mail avec un objet du type « Rendez-vous chez le dentiste le 15 juillet à 14h ».
    Lance `tickDriveAI`. Attendu : un événement apparaît dans Google Calendar (agenda principal).

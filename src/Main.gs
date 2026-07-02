@@ -253,6 +253,15 @@ function tickDriveAI() {
     try { creerDossiersEntitesValidees_(estBudgetDepasse); }
     catch (e) { journalErreur_('Entités', 'Création des dossiers d\'entités différée : ' + e); }
 
+    // Lit les corrections soumises par Marc (formulaire Google) et les enregistre AVANT l'intake, pour
+    // que les documents classés dans ce même tick profitent des règles fraîchement apprises (few-shot).
+    // SECONDAIRE → enveloppée : un formulaire absent/illisible ne doit jamais geler l'intake. Budget-gatée
+    // comme ses pairs : si une étape amont a épuisé le budget, on ne lance pas la lecture (protège l'intake).
+    if (!estBudgetDepasse()) {
+      try { lireEtAppliquerCorrections_(estBudgetDepasse); }
+      catch (e) { journalErreur_('Corrections', 'Lecture des corrections différée : ' + e); }
+    }
+
     // Grand rangement (zéro clic, une fois par `CONFIG.RANGEMENT_TAG`) : COLLECTE une page de l'ancien
     // Drive vers 00·À trier. Tourne TÔT pour ne pas être affamé par l'intake (sinon l'ancien Drive ne
     // se vide jamais), MAIS uniquement si la file a de la place — DRAINER AVANT D'ALIMENTER : on ne

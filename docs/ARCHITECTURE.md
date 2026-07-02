@@ -52,6 +52,12 @@
     `.../auth/calendar.events` (créer des événements, **volontairement plus étroit** que
     `.../auth/calendar` complet — pas d'accès aux paramètres d'agenda). Création UNIQUEMENT,
     jamais de lecture/modification/suppression des tâches ou événements existants de Marc.
+  - *(Chantier #6, ADR-0003)* `.../auth/forms` — création + lecture du **mini-formulaire de correction**
+    (`FormApp.create` + `getResponses`). `forms.currentonly` est **inapplicable** ici (il ne couvre que
+    `getActiveForm()` d'un script *lié* à un formulaire, ni `create` ni `openById` en script standalone).
+    ⚠️ Portée : `forms` donne accès en lecture/écriture à **tous** les formulaires du compte — intrinsèque
+    à `FormApp`. Piste plus étroite (future) : API Forms REST via `UrlFetchApp` avec `forms.body` +
+    `forms.responses.readonly` (cf. leçon « API Google via REST »). Aucune suppression de formulaire.
 - **Idempotence sans écriture Gmail** : `gmail.readonly` interdit la pose d'un label de
   traitement. L'idempotence est donc portée **uniquement par l'`Index`** (clé
   `messageId|i|nom|taille`). La fenêtre 30 jours est paginée pour ne pas affamer les anciens

@@ -182,7 +182,18 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C5-01 | **Onglet `Corrections`** (`Corrections.gs`) : `Fichier\|Émetteur\|Domaine\|Catégorie\|Entité\|Type\|Corrigé le`, lu en cache 1×/run ; primitive `enregistrerCorrection_` (append idempotent via `cleCorrection_`) | ✅ |
 | C5-02 | **Sélection few-shot PURE** : `scoreCorrection_` (pertinence par émetteur), `correctionsPertinentes_` (top-N ≥ seuil, tri stable), `blocFewShot_` (formatage) — bornée `FEWSHOT_MAX`/`FEWSHOT_SEUIL` | ✅ (6 tests) |
 | C5-03 | **Injection au prompt** : `appelAnthropic_` préfixe les corrections du même émetteur (try/catch → dégrade à 0 exemple si onglet illisible) | ✅ |
-| C5-04 | **Canal de saisie** (mail → mini-formulaire ; corrections d'entité → référentiel validé) | ⬜ = chantier #6 |
+| C5-04 | **Canal de saisie** (mail → mini-formulaire ; corrections d'entité → référentiel validé) | ✅ (chantier #6, ci-dessous) |
+
+### Chantier #6 — Correction via formulaire Google (ADR-0003 §1-2)  🟦
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C6-01 | **Formulaire de correction** (`Formulaire.gs`) : find-or-create (`assurerFormulaireCorrection_`, ID en Script Property), champs Émetteur (requis)/Domaine (liste)/Entité/Fichier. **Nouveau scope `forms`** dans `appsscript.json` | ✅ |
+| C6-02 | **Lecture + enregistrement** : `lireEtAppliquerCorrections_` (1×/tick, AVANT l'intake) lit les nouvelles réponses (idempotence par horodatage `PROP_FORM_DERNIER`), les enregistre via `enregistrerCorrection_` (⇒ few-shot #5). Borné `CORRECTIONS_MAX_PAR_RUN` + garde-temps, enveloppé try/catch | ✅ |
+| C6-03 | **Parsing PUR** `reponseVersCorrection_` + `domainesPourFormulaire_` + lien du formulaire au résumé hebdo | ✅ (5 tests) |
+| C6-04 | **Appliquer la correction au FICHIER** déjà classé (déplacer/renommer) + promouvoir l'entité corrigée en « validée » | ⬜ à suivre (partie 2) |
+
+> ⚠️ **Ré-autorisation Marc requise** : le scope `forms` (création/lecture du formulaire) s'ajoute au prochain déploiement — Marc doit ré-accorder l'accès Google une fois (frontière d'exécution : la session Claude ne peut pas le faire).
 
 ---
 
