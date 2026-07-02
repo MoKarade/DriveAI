@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <!-- CSP (durcissement) : scripts self + GIS ; réseau limité aux API Google utilisées.
+         Les popups OAuth ne sont pas gouvernées par la CSP de l'ouvrant (flux GIS intact). -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' https://accounts.google.com; connect-src 'self' https://sheets.googleapis.com https://www.googleapis.com https://accounts.google.com; frame-src https://accounts.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'"
+    />
+    <title>DriveAI</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

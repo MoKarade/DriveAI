@@ -1,0 +1,99 @@
+/* DriveAI — styles sobres, sans framework (app perso, lisibilité d'abord). */
+
+:root {
+  --fond: #f6f7f9;
+  --carte: #ffffff;
+  --texte: #1a1d21;
+  --texte-doux: #5c6570;
+  --accent: #1f6feb;
+  --ok: #1a7f37;
+  --erreur: #cf222e;
+  --bord: #d9dee3;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--fond);
+  color: var(--texte);
+}
+
+.app { max-width: 1100px; margin: 0 auto; padding: 1rem 1.25rem 3rem; }
+
+header { display: flex; justify-content: space-between; align-items: start; padding: 0.5rem 0 1rem; }
+header h1 { margin: 0; font-size: 1.6rem; }
+.sous-titre { margin: 0.15rem 0 0; color: var(--texte-doux); }
+.header-actions { display: flex; gap: 0.5rem; }
+
+nav { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+nav button { border: 1px solid var(--bord); background: var(--carte); }
+nav button.actif { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+button {
+  padding: 0.45rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.92rem;
+}
+button:disabled { opacity: 0.5; cursor: default; }
+button.discret { background: transparent; color: var(--texte-doux); border-color: var(--bord); }
+button.principal { font-size: 1.05rem; padding: 0.7rem 1.4rem; }
+
+.colonnes { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.carte {
+  background: var(--carte);
+  border: 1px solid var(--bord);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+}
+.carte.large { grid-column: 1 / -1; }
+.carte h2 { margin: 0 0 0.6rem; font-size: 1.05rem; }
+
+.centre { text-align: center; padding: 2rem 0; }
+.formulaire-config { display: flex; flex-direction: column; gap: 0.6rem; max-width: 480px; margin: 0 auto; }
+
+input {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+  font-size: 0.92rem;
+  width: 100%;
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+td { padding: 0.35rem 0.5rem; border-top: 1px solid var(--bord); vertical-align: top; }
+.nombre { text-align: right; font-variant-numeric: tabular-nums; }
+.date { white-space: nowrap; color: var(--texte-doux); }
+.ligne-erreur td { color: var(--erreur); }
+.variante { color: var(--texte-doux); font-size: 0.85rem; }
+
+.sante { list-style: none; padding: 0; margin: 0; }
+.sante li { padding: 0.3rem 0; border-top: 1px solid var(--bord); }
+.sante li:first-child { border-top: none; }
+
+.explication { color: var(--texte-doux); font-size: 0.88rem; margin-top: 0; }
+.ligne-formulaire { display: flex; gap: 0.5rem; margin-bottom: 0.6rem; }
+.formulaire-reclassement { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.6rem; }
+.resultats { list-style: none; padding: 0; max-height: 200px; overflow-y: auto; }
+.resultats li { padding: 0.25rem 0; }
+
+.ok { color: var(--ok); }
+.erreur { color: var(--erreur); }
+
+footer {
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--bord);
+  color: var(--texte-doux);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .colonnes { grid-template-columns: 1fr; }
+}

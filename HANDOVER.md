@@ -241,6 +241,27 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-02 — Chantier #9 (v1) : APP WEB Phase 4 (ADR-0008).** **Nouveau dossier `app/`** — SPA
+  React/Vite/TS **sans backend** : l'app parle directement aux API Google (Sheets + Drive) avec le jeton
+  OAuth de l'utilisateur connecté (GIS token flow, jeton en mémoire jamais persisté ; rien de public,
+  aucun secret embarqué — le Client ID est un identifiant public par nature). Deux surfaces v1 :
+  **Tableau de bord** (Santé + activité Journal + comptage Index par domaine) et **Corrections** —
+  dont la **validation 1-clic des entités** (Statut→« validée » écrit dans la Sheet, lu par en-têtes
+  réels ; ferme le reste du chantier #4) et le **reclassement immédiat** (déplacement/renommage Drive
+  sous garde-fous, journalisé dans `Corrections` ⇒ few-shot). **Contrainte non négociable ADR-0008
+  respectée** : garde-fous ré-implémentés en TS PUR (`garde-fous.ts`, miroir de `aParentProtege_`
+  strict/`normaliserCle_`/prédicat 3 granularités) + **test de surface « aucune suppression »** (le
+  code de `src/` ne peut contenir DELETE/trashed/deleteRange sans casser la CI). **42 tests vitest**, job
+  CI dédié (`app` : npm ci → vitest → tsc+build). UI bilingue FR/EN. **Revue flotte passée** : sécurité 🟢
+  (recos appliquées : motifs anti-suppression renforcés `:clear`/`/trash`/méthode non littérale, backslash
+  échappé dans la recherche, CSP) ; code 🟠→réglé — dont les 2 requis : la **journalisation Corrections est
+  désormais COMPLÈTE** (émetteur pré-rempli depuis le nom + domaine en datalist Index + entité — une ligne
+  sans émetteur était MORTE pour le few-shot, `Corrections.gs` la saute) et le **401 rebascule sur l'écran
+  de connexion** (jeton GIS ~1 h). UX : destination = **lien Drive collé tel quel** (extraction d'ID) +
+  datalist des entités validées (leur Dossier ID est déjà dans la Sheet — zéro duplication de config).
+  **Côté Marc (une fois, ~10 min)** : client OAuth Google Cloud + import Vercel (Root Directory=`app`) —
+  `DEPLOIEMENT.md` §Phase 4. **Reste : C9-07 recherche structurée (v1.1), C6-05.**
+
 - **2026-07-02 — Chantier #8 : MIGRATION de l'existant vers la nouvelle taxonomie (ADR-0002).** **Nouveau
   module `Migration.gs`.** Campagne gatée par `CONFIG.MIGRATION_TAG` (m1) : les documents classés AVANT la
   refonte (#3-#6 : nommage par type, entités, 07·Santé, few-shot) sont re-passés au **pipeline complet EN
