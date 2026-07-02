@@ -220,6 +220,19 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 
 > Bumper `MIGRATION_TAG` (m2, m3…) relance une campagne complète — utile après une validation d'entités en masse (les docs rangés au domaine redescendent aux entités). Coût estimé par la flotte : ~3-5 $ one-shot pour quelques centaines de docs (Haiku + escalades plafonnées), campagne étalée sur 1-2 jours. Dédup intra-campagne des vrais doublons : optionnelle, à décider sur du réel (post-m1, si `_Doublons` le justifie).
 
+### Chantier #9 — App web Phase 4 (ADR-0008)  🟦
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C9-01 | **Scaffold** `app/` : SPA React/Vite/TS **sans backend** (l'app parle aux API Google avec le jeton de l'utilisateur, rien de public, aucun secret embarqué). Login Google (GIS token flow, jeton en mémoire jamais persisté), config par env Vite OU écran (localStorage), UI bilingue FR/EN | ✅ |
+| C9-02 | **Garde-fous MIROIR testés** (`garde-fous.ts`, contrainte non négociable ADR-0008) : `detachementAutorise` (chaîne d'ancêtres multi-parents, échec fermé), `verdictReclassement` (point de passage obligé avant toute mutation), `nomEstNormalise` (3 granularités), `normaliserCle`. + test « **surface de code sans suppression** » (aucun DELETE/trashed/deleteRange dans `src/` — verrouillé au niveau source) | ✅ (27 tests vitest) |
+| C9-03 | **Tableau de bord** : onglet `Santé` + activité récente (Journal) + comptage par domaine (Index). Lecture seule | ✅ |
+| C9-04 | **Corrections** : **validation 1-clic des entités** (Statut→« validée », lu PAR EN-TÊTES réels — reste du chantier #4 ✅) + **reclassement immédiat** d'un document (recherche Drive par nom → déplacement/renommage via API sous verdict garde-fous → **journalisé dans `Corrections`** ⇒ few-shot ADR-0003) | ✅ |
+| C9-05 | **CI dédiée** (job `app` : npm ci, vitest, tsc+build) + doc de déploiement (`DEPLOIEMENT.md` §Phase 4 : client OAuth + Vercel, ~10 min côté Marc) | ✅ |
+| C9-06 | **Recherche structurée** (filtres Index + plein texte délégué à `fullText contains` Drive — ADR-0007 intact) | ⬜ à suivre (v1.1) |
+
+> ⚙️ **Côté Marc (une fois, ~10 min)** : créer le client OAuth (origines = URL Vercel) + importer le repo dans Vercel (Root Directory = `app`). Voir `docs/DEPLOIEMENT.md` §Phase 4.
+
 ---
 
 ## Épopée Phase 4 — Recherche + dashboard (Vercel)  ⬜

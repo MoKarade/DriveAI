@@ -76,3 +76,27 @@ jobs:
         # logique de décision : routage, nommage, dates, garde zone protégée §1, prédicats
         # de collecte, invariant vie privée (ADR-0006/0007). Aucun `npm install` (0 dépendance).
         run: node --test test/*.test.js
+
+  app:
+    name: App web (garde-fous miroir + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Dépendances (npm ci, lockfile committé)
+        working-directory: app
+        run: npm ci
+
+      - name: "Tests vitest — dont le miroir des garde-fous §1/§2 (ADR-0008 : l'app mute Drive)"
+        working-directory: app
+        run: npm test
+
+      - name: Typecheck + build (tsc --noEmit && vite build)
+        working-directory: app
+        run: npm run build

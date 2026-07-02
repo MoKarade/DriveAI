@@ -220,6 +220,39 @@ normalement : ce nouveau scope n'affecte pas les permissions déjà accordées.)
 
 ---
 
+## Phase 4 — app web (tableau de bord + corrections, ADR-0008)
+
+L'app (`app/`, React/Vite/TS) est une **SPA statique sans backend** : elle parle directement aux
+API Google avec **ton** jeton (login Google), rien n'est public, aucun secret embarqué. Trois
+étapes uniques (~10 min), puis tout se déploie tout seul à chaque merge.
+
+### 1. Client OAuth (Google Cloud, une fois)
+1. Dans le **même projet Google Cloud** que le script Apps Script : **API et services → Identifiants
+   → Créer → ID client OAuth → Application Web**.
+2. **Origines JavaScript autorisées** : l'URL Vercel (ex. `https://driveai-<xxx>.vercel.app`) + `http://localhost:5173` (dev).
+   Pas d'URI de redirection (flux jeton GIS).
+3. **Écran de consentement** : type Externe, ajoute `marc.richard4@gmail.com` en **utilisateur test**
+   (l'app peut rester en mode « test » — usage perso).
+4. Active les API **Google Sheets** et **Google Drive** dans ce projet (probablement déjà fait).
+
+### 2. Projet Vercel (une fois)
+1. **Import du repo GitHub** → Framework « Vite », **Root Directory = `app`** (build `npm run build`,
+   sortie `dist` : détectés tout seuls).
+2. (Optionnel) Variables d'environnement `VITE_GOOGLE_CLIENT_ID` et `VITE_SPREADSHEET_ID` — sinon
+   l'app te les demande au premier lancement (écran Configuration, stockées dans TON navigateur).
+
+### 3. Se connecter
+Ouvre l'URL Vercel → « Se connecter avec Google » → consentement (Sheets + Drive). Le jeton vit **en
+mémoire** de l'onglet, jamais persisté.
+
+> **Garde-fous embarqués (miroir testé du moteur, CI)** : l'app ne peut **rien supprimer** (aucun
+> chemin DELETE dans le code — verrouillé par test), ne **détache jamais** un document de
+> `04 · Immigration` (remontée d'ancêtres multi-parents, échec fermé), n'applique un reclassement
+> que si le nom suit la convention, et **journalise chaque correction** dans l'onglet `Corrections`
+> (le moteur apprend, few-shot ADR-0003).
+
+---
+
 ## Dépannage
 
 | Symptôme | Cause probable | Fix |
