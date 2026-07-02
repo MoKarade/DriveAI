@@ -67,9 +67,6 @@ function traiterFichierDepose_(fileId) {
     blob: function () { return f.getBlob(); },
     placer: function (dossierId, nouveauNom) {
       return deplacerEtRenommer_(fileId, dossierId, aTrier, nouveauNom) ? fileId : '';
-    },
-    placerRevue: function (nouveauNom) {
-      return deplacerEtRenommer_(fileId, CONFIG.DOSSIERS.A_VERIFIER, aTrier, nouveauNom) ? fileId : '';
     }
   });
 }

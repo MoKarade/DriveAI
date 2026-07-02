@@ -81,8 +81,6 @@ export interface LigneEntite {
   vuNFois: number;   // fréquence d'observation (#10) — sert au tri de la file de validation
 }
 
-export const COLONNES_ENTITES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?'];
-
 /**
  * Interprète l'onglet Entités À PARTIR DE SES EN-TÊTES réels (1ʳᵉ ligne) — miroir de
  * `colonnesEntites_` : l'ordre des colonnes de la Sheet fait foi, jamais un index codé en dur.

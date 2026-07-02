@@ -4,7 +4,7 @@
  * Les deux sources (PJ Gmail, dépôt manuel `00·À trier`) construisent un même
  * descripteur `src` et délèguent ici. Seul le PLACEMENT diffère (copie pour
  * Gmail, déplacement pour un dépôt) : il est fourni par `src.placer`.
- * (Plus de file de revue depuis 2026-07-01 : `src.placerRevue` n'est plus utilisé.)
+ * (Plus de file de revue depuis 2026-07-01 — les sources ne fournissent plus de `placerRevue`.)
  *
  * Ordre d'écriture d'état (leçon durable) : placement → ligne Index (en dernier) :
  * une coupure rejoue le cas au lieu de le perdre.
