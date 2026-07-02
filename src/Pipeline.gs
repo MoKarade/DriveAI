@@ -30,8 +30,11 @@ function traiterDocument_(src) {
     // CONTENU est déjà classé. Si oui → « _Doublons » SANS OCR ni LLM : sur un ancien Drive plein de
     // copies déjà présentes dans le nouveau Drive, on économise l'essentiel du coût/temps (l'exemplaire
     // canonique est déjà classé ailleurs). Même garde de taille que l'OCR (pas de hash des très gros).
+    // `src.ignorerDoublon` (migration #8) : un fichier DÉJÀ CLASSÉ qu'on re-classe a son empreinte dans
+    // l'Index — sans ce bypass il serait « doublon de lui-même » et tout le Drive migré partirait en
+    // `_Doublons`. L'empreinte reste calculée et ré-inscrite (la détection future n'est pas affaiblie).
     var empreinte = src.taille > CONFIG.OCR_TAILLE_MAX ? '' : empreinteBlob_(blob);
-    if (empreinte && estDoublon_(empreinte)) {
+    if (empreinte && !src.ignorerDoublon && estDoublon_(empreinte)) {
       var dec = doublonRapide_(src.nom, src.date, ext);
       var idDup = src.placer(dec.dossierId, dec.nom);
       if (!idDup) { gererEchec_(src, 'placement doublon échoué'); return; }

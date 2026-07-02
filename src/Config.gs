@@ -242,6 +242,18 @@ var CONFIG = {
   // protégée multi-parents, format normalisé sauté, garde-temps). « Ancienne structure » = ancien Drive de Marc.
   RANGEMENT_RACINES_SUP: ['1W3b0KkKFfXa77YSynCy9-4lgwPSFft-L'],
 
+  // --- Chantier #8 : MIGRATION de l'existant vers la nouvelle taxonomie (ADR-0002) ---
+  // Re-classe les documents DÉJÀ CLASSÉS (avant le nommage par type, les entités, 07·Santé, le few-shot)
+  // en les repassant au pipeline complet, EN PLACE (déplacement/renommage seul — jamais via 00·À trier :
+  // leur clé Index `drive|`/`messageId|` existante y bloquerait le re-traitement). Idempotence et
+  // convergence par une clé DÉDIÉE `migre|<tag>|fileId` : chaque document est re-traité UNE fois par
+  // campagne ; la campagne se fige quand une passe complète ne collecte plus rien. Zone protégée (04)
+  // exclue de la collecte ET revérifiée avant mutation. Bumper le tag relance une campagne complète —
+  // utile après une validation d'entités en masse (les docs rangés au domaine redescendent aux entités).
+  MIGRATION_TAG: 'm1',                    // m1 : 1ʳᵉ migration (nommage par type + entités + 07·Santé + few-shot)
+  MIGRATION_MAX_PAR_RUN: 12,              // docs re-traités (OCR+LLM complets, lourds) par run — le flux
+                                          // VIVANT (intake) garde la priorité ; campagne finie en fond
+
   // Schémas de sous-dossiers FIXES créés à la validation d'une entité (docs/TAXONOMY.md).
   // Clé = Type d'entité ; valeur = liste ordonnée de sous-dossiers.
   SCHEMAS_ENTITE: {

@@ -426,3 +426,21 @@ prenant `--theirs` (origin/main = la vérité accumulée) sur TOUS les fichiers 
 branche redevient == `main`. Toujours re-vérifier par les tests (les marqueurs de conflit cassent la syntaxe
 `.gs` → chute brutale du nombre de tests = signal de marqueurs résiduels).
 **Règle durable ?** oui (opérationnel — l'essentiel du volet « coder » est déjà dans la puce Git de `CLAUDE.md`).
+
+## 2026-07-02 — Re-traiter un doc DÉJÀ CLASSÉ : 3 verrous posés par le pipeline lui-même
+**Contexte.** Chantier #8 (migration de l'existant vers la nouvelle taxonomie, ADR-0002). Première idée
+naïve : réutiliser le grand rangement (renvoyer les docs classés dans `00·À trier`). Analyse avant code :
+trois mécanismes du pipeline — conçus pour protéger le flux normal — auraient chacun neutralisé ou
+saboté la migration en silence.
+**Leçon.** Re-traiter un document DÉJÀ CLASSÉ (migration, rejeu) exige de lever 3 verrous que le pipeline
+pose lui-même : (1) sa clé d'idempotence existante (`drive|`/`messageId|`/`shared|`) bloque tout
+re-traitement — utiliser une clé DÉDIÉE par campagne (`migre|<tag>|fileId`), ADDITIVE (jamais supprimer
+les lignes d'Index des autres sources), qui sert AUSSI de prédicat de convergence de la collecte ;
+(2) son empreinte MD5 est déjà dans l'Index → le fast-path doublon en ferait un « doublon de lui-même »
+(tout le Drive migré partirait en `_Doublons`) — bypass EXPLICITE (`src.ignorerDoublon`) limité à ce
+chemin, l'empreinte restant ré-inscrite ; (3) un refus de mutation (zone protégée stricte) doit être
+INSCRIT sous la clé de campagne (fichier non touché) sinon il est re-collecté à chaque passe et la
+campagne ne converge jamais. Corollaire déjà vécu mais re-confirmé : quand le renommeur évolue
+(granularités `AAAA_`/`AAAA-MM_`), TOUS les prédicats « déjà rangé » (rangement, recensement) doivent
+suivre, sinon boucle infinie de collecte.
+**Règle durable ?** oui.

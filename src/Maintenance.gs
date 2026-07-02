@@ -400,7 +400,7 @@ function compterVracDossier_(dossier, etat, estBudgetDepasse) {
  * @return {boolean}
  */
 function estAReclasserLeger_(f) {
-  if (/^\d{4}-\d{2}-\d{2}_/.test(f.getName())) return false; // déjà rangé/renommé
+  if (/^\d{4}(-\d{2}){0,2}_/.test(f.getName())) return false; // déjà rangé/renommé (AAAA_, AAAA-MM_ ou AAAA-MM-JJ_ — le nommage PAR TYPE produit les 3 granularités, cf. Router.nomParType_)
   var mime = f.getMimeType() || '';
   if (mime.indexOf('application/vnd.google-apps') === 0) return false; // natif ou raccourci
   return true;
@@ -499,7 +499,7 @@ function collecterAReclasser_(dossier, ids, max, estBudgetDepasse, proteges) {
  * @return {boolean}
  */
 function estAReclasser_(f, proteges) {
-  if (/^\d{4}-\d{2}-\d{2}_/.test(f.getName())) return false; // déjà rangé/renommé
+  if (/^\d{4}(-\d{2}){0,2}_/.test(f.getName())) return false; // déjà rangé/renommé (AAAA_, AAAA-MM_ ou AAAA-MM-JJ_ — le nommage PAR TYPE produit les 3 granularités, cf. Router.nomParType_)
   var mime = f.getMimeType() || '';
   if (mime.indexOf('application/vnd.google-apps') === 0) return false; // natif ou raccourci
   if (aParentProtege_(f, proteges)) return false; // un parent en zone protégée → on n'y touche pas

@@ -1,9 +1,10 @@
 # ADR-0002 — Refonte : taxonomie, entités & nommage
 
-- **Statut** : **Accepté — partiellement implémenté**. Livré (chantier #3) : **nommage par type** (§6),
-  **deviner-du-nom** (§5), **dossiers `07 · Santé` + `_Technique`** et **renumérotage Perso 07→08** (§2-§3).
-  Reste (roadmap) : **entités systématiques + validation 1-clic + garde anti-variantes** (§4, chantier #4) et
-  **migration de l'existant** vers la nouvelle taxonomie (chantier #8).
+- **Statut** : **Accepté — implémenté** (hors validation 1-clic, à suivre). Livré : **nommage par type** (§6),
+  **deviner-du-nom** (§5), **dossiers `07 · Santé` + `_Technique`**, **renumérotage Perso 07→08** (§2-§3)
+  [chantier #3] ; **garde anti-variantes** (§4) [chantier #4] ; **migration de l'existant** [chantier #8,
+  `Migration.gs` : campagne gatée `MIGRATION_TAG`, re-passe l'existant au pipeline EN PLACE — relançable en
+  bumpant le tag, p. ex. après une validation d'entités en masse]. Reste : **validation 1-clic** (suite du #4).
 - **Décideurs** : Marc, Claude
 - **Source** : brainstorm produit 2026-07-01, axe « Précision du classement »
 

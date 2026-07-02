@@ -207,6 +207,17 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 
 > Aucun nouveau scope OAuth (`drive` couvre les partages). Convergence : petite fenêtre de récence + skip des déjà-copiés + cap sur les copiés → chaque tick progresse (pas de plateau, contrairement à l'historique Gmail).
 
+### Chantier #8 — Migration de l'existant vers la nouvelle taxonomie (ADR-0002)  🟦
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C8-01 | **Campagne gatée** (`Migration.gs`) : `appliquerMigrationTaxonomie_` (tag `MIGRATION_TAG`, attend la fin du grand rangement), `migrerUnePage_` (page bornée `MIGRATION_MAX_PAR_RUN` + garde-temps, anti-« faux terminé » P1-17), fin figée seulement quand une passe complète collecte 0 | ✅ |
+| C8-02 | **Re-traitement EN PLACE** : `migrerFichier_` — clé DÉDIÉE `migre\|tag\|fileId` (additive, l'idempotence Gmail/dépôts/partages intacte), `ignorerDoublon` (jamais « doublon de soi-même »), placement = `renommer_` (même dossier) ou `deplacerEtRenommer_` (move-only), blob mémoïsé, nom courant passé au LLM (signal deviner-du-nom) | ✅ |
+| C8-03 | **Zone protégée** : `04` exclue des racines + revérif STRICTE avant mutation ; refus inscrit `zone protégée` sous la clé migre\| (fichier NON touché, campagne convergente) | ✅ |
+| C8-04 | **Fix convergence rangement** : `estAReclasser_`/`estAReclasserLeger_` reconnaissent les 3 granularités du nommage par type (`AAAA_`, `AAAA-MM_`, `AAAA-MM-JJ_`) — sans quoi une future campagne de rangement re-collecterait les noms par type en boucle infinie | ✅ (testé) |
+
+> Bumper `MIGRATION_TAG` (m2, m3…) relance une campagne complète — utile après une validation d'entités en masse (les docs rangés au domaine redescendent aux entités). Coût : 1 OCR+LLM par doc existant, une fois par campagne (Haiku, escalades plafonnées).
+
 ---
 
 ## Épopée Phase 4 — Recherche + dashboard (Vercel)  ⬜

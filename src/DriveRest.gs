@@ -61,6 +61,28 @@ function deplacerEtRenommer_(fileId, nouveauParent, ancienParent, nouveauNom) {
 }
 
 /**
+ * Renomme un fichier SANS le déplacer (PATCH du nom seul). Sert à la migration (#8) quand la
+ * destination calculée est le dossier COURANT : passer le même ID en addParents ET removeParents
+ * serait ambigu côté API — ici on ne touche qu'au nom.
+ * @param {string} fileId
+ * @param {string} nouveauNom
+ * @return {boolean} vrai si le renommage a réussi.
+ */
+function renommer_(fileId, nouveauNom) {
+  var rep = fetchDriveAvecRetry_('https://www.googleapis.com/drive/v3/files/' + fileId + '?fields=id', {
+    method: 'patch',
+    contentType: 'application/json',
+    payload: JSON.stringify({ name: nouveauNom }),
+    headers: { Authorization: 'Bearer ' + jetonDrive_() },
+    muteHttpExceptions: true
+  });
+  if (rep.getResponseCode() === 200) return true;
+  journalErreur_('Drive', 'Renommage HTTP ' + rep.getResponseCode() + ' : ' +
+    tronquer_(rep.getContentText(), 300));
+  return false;
+}
+
+/**
  * Crée un raccourci Drive vers un fichier, dans un dossier donné.
  * Sert au multi-entités (jamais de copie physique).
  *
