@@ -114,7 +114,13 @@ function meilleureClassification_(resultats) {
  * @return {Object|null}
  */
 function appelAnthropic_(modele, meta, systeme) {
+  // Apprentissage (ADR-0003) : préfixe les corrections passées les plus proches (même émetteur) en
+  // exemples few-shot — borné (top-N), vide si aucune. Dégrade proprement si l'onglet est illisible.
+  var exemples = '';
+  try { exemples = exemplesFewShot_(meta); } catch (e) { exemples = ''; }
+
   var contenu =
+    (exemples ? exemples + '\n\n' : '') +
     'Nom du fichier : ' + meta.nomFichier + '\n' +
     'Expéditeur : ' + meta.expediteur + '\n' +
     'Sujet : ' + meta.sujet + '\n' +
