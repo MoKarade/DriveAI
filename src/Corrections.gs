@@ -75,14 +75,19 @@ function correctionsPertinentes_(meta, corrections, maxN, seuil) {
  */
 function blocFewShot_(corrections) {
   if (!corrections || !corrections.length) return '';
-  var lignes = corrections.map(function (c) {
+  // On n'injecte QUE les cibles stables par émetteur : domaine, catégorie, entité. PAS le `type` de
+  // document : un même émetteur (EDF…) envoie une facture puis un contrat — injecter un type passé
+  // biaiserait `type_doc` du document courant (le type se déduit du contenu, pas de l'émetteur).
+  var lignes = [];
+  corrections.forEach(function (c) {
     var parts = [];
     if (c.domaine) parts.push('domaine « ' + c.domaine + ' »');
     if (c.categorie) parts.push('catégorie « ' + c.categorie + ' »');
     if (c.entite) parts.push('entité « ' + c.entite + ' »');
-    if (c.type) parts.push('type « ' + c.type + ' »');
-    return '- Émetteur « ' + c.emetteur + ' » → ' + parts.join(', ') + '.';
+    if (!parts.length) return; // aucune cible → aucun signal d'apprentissage : on saute (pas de slot gâché)
+    lignes.push('- Émetteur « ' + c.emetteur + ' » → ' + parts.join(', ') + '.');
   });
+  if (!lignes.length) return '';
   return 'Classements déjà corrigés par l\'utilisateur pour des émetteurs similaires ' +
     '(fais-en ta référence si le document correspond) :\n' + lignes.join('\n');
 }
@@ -151,8 +156,9 @@ function cleCorrection_(c) {
 }
 
 /**
- * Enregistre une correction (append idempotent). Une correction d'ENTITÉ alimente aussi le
- * référentiel `Entités` (proposée validée) pour que le routage futur en tienne compte.
+ * Enregistre une correction (append idempotent) → alimente le référentiel few-shot.
+ * NB : le report d'une correction d'ENTITÉ vers le référentiel `Entités` validé (pour que le routage
+ * futur en tienne compte) relève du chantier #6, avec le canal de saisie — PAS fait ici.
  * @param {{fichier?:string, emetteur:string, domaine?:string, categorie?:string, entite?:string, type?:string}} corr
  * @return {boolean} true si une nouvelle ligne a été écrite
  */

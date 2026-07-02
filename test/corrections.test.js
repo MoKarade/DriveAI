@@ -37,13 +37,22 @@ test('correctionsPertinentes_ : ne garde que les pertinents, triés, bornés à 
   assert.strictEqual(r[0].emetteur, 'EDF');
 });
 
-test('correctionsPertinentes_ : maxN borne le nombre d\'exemples', () => {
-  const meta = { nomFichier: 'edf edf edf', expediteur: 'edf', sujet: 'edf' };
+test('correctionsPertinentes_ : maxN borne le nombre d\'exemples (borne de coût)', () => {
+  // 4 émetteurs DISTINCTS tous présents dans le doc → 4 pertinents (score 1). maxN=2 doit en couper 2.
+  const meta = { nomFichier: 'edf hydro desjardins videotron.pdf', expediteur: '', sujet: '' };
   const corrections = [
-    { emetteur: 'EDF', domaine: 'A' }, { emetteur: 'edf', domaine: 'B' }, { emetteur: 'E.D.F', domaine: 'C' }
+    { emetteur: 'EDF', domaine: 'A' }, { emetteur: 'Hydro', domaine: 'B' },
+    { emetteur: 'Desjardins', domaine: 'C' }, { emetteur: 'Videotron', domaine: 'D' }
   ];
   const r = ctx.correctionsPertinentes_(meta, corrections, 2, ctx.CONFIG.FEWSHOT_SEUIL);
-  assert.strictEqual(r.length, 2); // 3 candidats pertinents, mais borné à 2
+  assert.strictEqual(r.length, 2); // 4 candidats pertinents, mais borné à maxN=2
+});
+
+test('blocFewShot_ : saute une correction sans aucune cible (pas de ligne dégénérée)', () => {
+  assert.strictEqual(ctx.blocFewShot_([{ emetteur: 'EDF' }]), ''); // émetteur seul, rien à apprendre
+  const bloc = ctx.blocFewShot_([{ emetteur: 'Vide' }, { emetteur: 'EDF', domaine: '03 · Logement & véhicule' }]);
+  assert.ok(bloc.indexOf('Vide') === -1);          // la correction sans cible est écartée
+  assert.ok(bloc.indexOf('Émetteur « EDF »') !== -1);
 });
 
 test('blocFewShot_ : vide si aucune correction ; sinon liste lisible', () => {
