@@ -195,3 +195,9 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   (`src.ignorerDoublon`) — sinon « doublon de lui-même » et tout part en `_Doublons` ; (3) tout refus de
   mutation (zone protégée) est INSCRIT sous la clé de campagne, sinon re-collecte à vie et jamais de
   « terminé ». Et quand le renommeur change de format, ALIGNER tous les prédicats « déjà rangé ».
+- **Étendre `oauthScopes` = arrêt TOTAL du moteur (chien de garde inclus) jusqu'à ré-autorisation
+  manuelle.** Un déploiement qui ajoute un scope invalide l'autorisation → TOUS les déclencheurs échouent
+  en silence, y compris le watchdog (il meurt avec la panne qu'il devait signaler). Prévenir Marc AVANT le
+  merge, regrouper les nouveaux scopes en un seul merge, puis VÉRIFIER la reprise par signaux Drive
+  indépendants (heartbeat Sheet, artefact attendu, file `00·À trier` qui se draine). Pour voir une création
+  Drive fraîche : `list_recent_files` (recency), pas la recherche (index en retard).

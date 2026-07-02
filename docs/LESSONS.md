@@ -444,3 +444,20 @@ campagne ne converge jamais. Corollaire déjà vécu mais re-confirmé : quand l
 (granularités `AAAA_`/`AAAA-MM_`), TOUS les prédicats « déjà rangé » (rangement, recensement) doivent
 suivre, sinon boucle infinie de collecte.
 **Règle durable ?** oui.
+
+## 2026-07-02 — Ajouter un scope OAuth = arrêt TOTAL du moteur (chien de garde inclus) jusqu'à ré-autorisation
+**Contexte.** Le chantier #6 a ajouté le scope `forms` à `appsscript.json` ; le déploiement auto l'a poussé
+le matin. Constat en fin de journée par signaux Drive : moteur muet TOUTE la journée (fichiers déposés dans
+`00·À trier` à 01:04 encore intouchés à 18 h), AUCUNE alerte reçue, et reprise seulement après l'exécution
+manuelle de `tickDriveAI` par Marc (heartbeat repris, formulaire créé à 18:45). Cause : quand un déploiement
+étend `oauthScopes`, Google invalide l'autorisation du script → TOUS les déclencheurs échouent, Y COMPRIS le
+chien de garde (ADR-0004) qui meurt avec la panne qu'il devait signaler. Piège de diagnostic secondaire :
+la recherche Drive (`search_files`, index de recherche) ne voyait pas le formulaire fraîchement créé —
+`list_recent_files` (recency) l'a montré immédiatement.
+**Leçon.** (1) Tout merge qui étend `oauthScopes` doit prévenir Marc AVANT (le moteur s'arrêtera NET au
+déploiement, sans alerte possible) et regrouper les nouveaux scopes en un seul merge — jamais trois pannes
+pour trois scopes. (2) Après une ré-autorisation, VÉRIFIER la reprise par signaux Drive indépendants
+(heartbeat Sheet, artefact attendu — ex. le formulaire —, file `00·À trier` qui se draine) : le chien de
+garde ne peut PAS couvrir cette panne-là. (3) Pour vérifier une création Drive fraîche, utiliser
+`list_recent_files` (recency), pas la recherche (l'index de recherche a du retard).
+**Règle durable ?** oui.
