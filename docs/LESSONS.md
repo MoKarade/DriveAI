@@ -461,3 +461,20 @@ pour trois scopes. (2) Après une ré-autorisation, VÉRIFIER la reprise par sig
 garde ne peut PAS couvrir cette panne-là. (3) Pour vérifier une création Drive fraîche, utiliser
 `list_recent_files` (recency), pas la recherche (l'index de recherche a du retard).
 **Règle durable ?** oui.
+
+## 2026-07-02 — Retirer du code mort : jamais par regex multi-fonctions, et poser un filet de SURFACE
+**Contexte.** L'audit « no dead code » retirait ~8 fonctions mortes. Deux fois de suite, une regex
+`/\*\*.*?\*/\nfunction X.*?\n\}/s` a AVALÉ des fonctions voisines : 512 lignes de Maintenance.gs
+(dont `rangerToutLeDrive`, `dequarantaine`) puis `deciderRoutage_` entière dans Router.gs — le CŒUR
+du routage. Le pire : `node --check` passait (syntaxe seule) et les 150 tests unitaires passaient
+AUSSI (chaque test mocke ses dépendances → un appel inter-module vers une fonction disparue ne casse
+aucun test). Seule la passe de vérification ADVERSARIALE multi-agents (ultracode) l'a attrapé — en
+prod, chaque document serait parti en quarantaine après 3 ReferenceError.
+**Leçon.** (1) Retirer une fonction = analyse de FRONTIÈRES (remonter la docstring contiguë, descendre
+à la 1ʳᵉ `}` colonne 0), avec assertions de PRÉSENCE des voisines après coup — jamais une regex non
+ancrée multi-lignes. (2) Des tests unitaires mockés ne protègent PAS le contrat inter-modules : poser
+un test de SURFACE qui charge TOUT le moteur ensemble et vérifie que chaque fonction du contrat interne
+est définie (`test/surface-moteur.test.js`) — il attrape toute disparition accidentelle pour toujours.
+(3) Après un lot de retraits, une vérification indépendante (relecture du diff par un agent qui
+inventorie les fonctions avant/après) vaut plus que la relecture de l'auteur.
+**Règle durable ?** oui.

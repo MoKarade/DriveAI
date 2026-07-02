@@ -1,29 +1,31 @@
-# src/ — moteur Apps Script (Phase 1+)
+# `src/` — moteur Apps Script
 
-> **Phase 1 livrée.** Les 8 modules ci-dessous implémentent le cœur (Gmail → analyse → classement
-> domaine/catégorie, ou file de revue). Voir `PLAN.md` §5 et `BACKLOG.md`.
+> Poussé tel quel dans le projet Apps Script (via `clasp push`, déploiement auto sur merge).
+> Tout document est **classé** (plus de file de revue depuis le 2026-07-01) ; l'idempotence
+> vit dans l'**Index** de la Sheet d'état (jamais un label Gmail — scope `gmail.readonly`).
 
-## Déploiement
+| Module | Rôle |
+|--------|------|
+| `Config.gs` | Configuration centrale (aucun secret — la clé API vit en Script Properties) |
+| `Main.gs` | Orchestration du tick + déclencheurs + chien de garde + rejeu de version |
+| `Pipeline.gs` | Traitement unifié d'un document (doublon → technique → média → OCR → LLM → routage) |
+| `Gmail.gs` | Source 1 : PJ des mails récents (lecture seule) |
+| `Intake.gs` | Source 2 : dépôt manuel `00 · À trier` (déplacement) |
+| `Partages.gs` | Source 3 : fichiers partagés récents (copie, ADR-0005) |
+| `Migration.gs` | Campagne de re-classement de l'existant (#8, gatée par tag) |
+| `Ocr.gs` | Extraction de texte (conversion Drive + OCR, REST) |
+| `Llm.gs` | Classification (Haiku, escalade Sonnet bornée) + parsing strict |
+| `Router.gs` | Décision de routage/nommage + dossiers spéciaux (`_Doublons`, `_Technique`, `_Médias`) |
+| `Entites.gs` | Référentiel d'entités (proposition filtrée, consolidation, validation, curation) |
+| `Corrections.gs` | Apprentissage few-shot depuis l'onglet `Corrections` (ADR-0003) |
+| `Formulaire.gs` | Formulaire Google de correction (find-or-create + lecture des réponses) |
+| `Journal.gs` | État Sheet : Index (idempotence), Journal borné, Santé, quarantaine |
+| `Resume.gs` | Résumé hebdomadaire par mail |
+| `Cout.gs` | Mesure du coût LLM réel (cible < 10 $/mois) |
+| `Prefiltre.gs` | Pré-filtres déterministes Phase 3 (mots-clés, zone protégée) |
+| `Intentions.gs` | Phase 3 : actions/RDV détectés dans les mails → Tasks/Calendar |
+| `Tasks.gs` / `Calendar.gs` / `GoogleApi.gs` | Clients REST Google (création seule) |
+| `DriveRest.gs` | Opérations Drive REST (déplacement/renommage/raccourci — jamais de suppression) |
+| `Maintenance.gs` | Outils manuels (`dequarantaine`, `rangerToutLeDrive`) + mécanique du grand rangement |
 
-1. Crée un projet Apps Script (ou `clasp create`).
-2. Copie `.clasp.json.example` → `.clasp.json` et renseigne le `scriptId` (fichier gitignoré).
-3. `clasp push` (ou colle les fichiers dans l'éditeur).
-4. Dans **Project Settings → Script Properties**, ajoute `DriveAI_ANTHROPIC_KEY` (ta clé Anthropic).
-5. Exécute `installerTrigger()` une fois (autorise les scopes) → le scan tourne ensuite toutes les `CONFIG.TICK_MINUTES` (10 min ; modifiable à chaud, appliqué au déploiement suivant).
-6. La Google Sheet d'état est créée automatiquement au premier run (ID stocké dans `DriveAI_SHEET_ID`).
-
-## Modules
-
-| Fichier | Rôle |
-|---------|------|
-| `appsscript.json` | Manifest + `oauthScopes` minimaux |
-| `Config.gs` | IDs de dossiers (`docs/TAXONOMY.md`), seuil 0.80, modèle LLM, clé via `PropertiesService` |
-| `Gmail.gs` | Recherche des mails non traités, extraction des PJ, label `DriveAI/traité` |
-| `Ocr.gs` | OCR via conversion Drive (Google Doc temporaire → texte → suppression) |
-| `Llm.gs` | Appel Anthropic (`UrlFetchApp`), prompt de classification, parsing JSON robuste |
-| `Router.gs` | Règles de routage (PLAN.md §4), renommage, déplacement, encodage de revue |
-| `Journal.gs` | Log dans la Sheet + notif mail immédiate en cas d'échec |
-| `Main.gs` | Orchestration + installation/ajustement auto du déclencheur (`CONFIG.TICK_MINUTES`) |
-
-Déploiement envisagé via [`clasp`](https://github.com/google/clasp). Les identifiants clasp
-(`.clasprc.json`, `.clasp.json`) sont **gitignorés** — ne jamais les committer.
+Détails d'architecture : `docs/ARCHITECTURE.md` · garde-fous : `CLAUDE.md` §2.

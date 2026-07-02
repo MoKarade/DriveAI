@@ -33,7 +33,7 @@ Google (`DriveApp`, `SpreadsheetApp`, `Utilities`, `Session`…). Le *harness* l
 | `dates.test.js` | `dateNormalisee_` | Date valide passe telle quelle ; sinon fallback réception (jamais une date bancale) |
 | `entites.test.js` | `normaliserCle_`, `cleEntite_`, `sousDossierPourType_` | Matching insensible casse/accents ; **pas de sous-dossier hors schéma** |
 | `guardrail.test.js` | `aParentProtege_`, `chaineMonteVersProtege_` | **Garde-fou §1** : jamais détacher de `04·Immigration` (multi-parents, chaîne d'ancêtres, échoue-fermé en mutation / ouvert en collecte, borne anti-cycle) |
-| `predicates.test.js` | `estAReclasserLeger_`, `estAReclasser_` | Convergence du rangement (déjà renommé → non re-collecté) + garde §1 à la collecte |
+| `predicates.test.js` | `estAReclasserLeger_` | Convergence du rangement (déjà renommé → non re-collecté) + garde §1 à la collecte |
 | `privacy.test.js` | `indexAjouter_` | **Invariant vie privée (ADR-0007)** : l'Index n'écrit QUE des métadonnées, jamais le corps d'un document |
 
 ## Ajouter un test

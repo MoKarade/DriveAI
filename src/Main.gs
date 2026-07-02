@@ -214,7 +214,7 @@ function assurerIntervalleTick_() {
   journalInfo_('Setup', 'Intervalle du déclencheur ajusté à ' + CONFIG.TICK_MINUTES + ' min.');
 }
 
-/** Un passage du pipeline : Gmail + dépôt manuel → classement / revue. */
+/** Un passage du pipeline : Gmail + dépôts + partagés (+ migration, intentions) → tout est CLASSÉ (plus de revue depuis 2026-07-01). */
 function tickDriveAI() {
   var verrou = LockService.getScriptLock();
   if (!verrou.tryLock(5000)) {

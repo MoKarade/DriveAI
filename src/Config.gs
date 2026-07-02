@@ -338,7 +338,7 @@ function getCleAnthropic_() {
 }
 
 /**
- * Classeur d'état (Entités / Index / Journal / Revue).
+ * Classeur d'état (Entités / Corrections / Index / Journal / Échecs / Santé / Progression).
  * Auto-créé au premier run si DriveAI_SHEET_ID est absent.
  * @return {Spreadsheet}
  */

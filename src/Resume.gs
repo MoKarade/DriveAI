@@ -123,6 +123,7 @@ function construireResume_(s, erreurs, cout, jours, etat, urlForm) {
     '🗂️ Fichiers techniques (_Technique) : ' + s.technique,
     '📸 Médias personnels (_Médias) : ' + s.media,
     '🚫 Mis en quarantaine (échecs répétés) : ' + s.quarantaine,
+    '📦 Autres (zone protégée, historiques) : ' + s.autres,
     '⚠️ Erreurs journalisées : ' + erreurs,
     '',
     '💰 Coût LLM ce mois-ci : ~' + cout.dollars.toFixed(2) + ' $ (' +

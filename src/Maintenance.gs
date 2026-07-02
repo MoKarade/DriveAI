@@ -62,9 +62,9 @@ function dequarantaine() {
  *   - `04 · Immigration` (zone protégée) n'est JAMAIS parcourue ; et — garde-fou §1 —
  *     tout fichier ayant ne serait-ce qu'UN parent dans (ou sous) un domaine protégé est
  *     ÉCARTÉ : on ne le déplace pas, pour ne jamais le détacher de la zone protégée (cas
- *     d'un fichier multi-parents). Tout doc jugé `sensible` au re-traitement repart en revue,
- *     et un OCR vide sur un dépôt (sans signal expéditeur/sujet) part en revue plutôt que
- *     d'être classé à l'aveugle sur son seul nom de fichier (cf. Pipeline.traiterDocument_) ;
+ *     d'un fichier multi-parents). Plus de file de revue (décision Marc 2026-07-01) : tout doc
+ *     re-traité est CLASSÉ au mieux par le pipeline (sensible inclus) ; les médias sans texte
+ *     partent dans `_Médias` (ADR-0009 §2, cf. Pipeline.traiterDocument_) ;
  *   - fichiers déjà normalisés (`AAAA-MM-JJ_…`) et fichiers Google natifs : SAUTÉS
  *     (idempotent → relancer ne re-coûte rien, pas de churn) ;
  *   - borné par le garde-temps partagé (coupure 6 min) ET par run (`RANGEMENT_MAX_PAR_RUN`) :
