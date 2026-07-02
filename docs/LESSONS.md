@@ -392,3 +392,37 @@ détacher un fichier déjà sous 04·Immigration ». (4) **Re-auditer contre la 
 docs distinguent vraiment un « garde-fou de sécurité » (protège l'utilisateur d'une erreur) d'un « garde-fou de
 préférence » (un défaut que le propriétaire peut changer) — seul le second se relâche sur simple demande.
 **Règle durable ?** oui.
+
+## 2026-07-02 — Few-shot : n'injecter que les champs STABLES pour la clé de sélection
+**Contexte.** Chantier #5 (boucle d'apprentissage, ADR-0003) : à chaque classement, on sélectionne les
+corrections passées **du même émetteur** et on les injecte en exemples few-shot dans le prompt LLM. Le
+premier jet formatait chaque exemple avec `domaine`, `catégorie`, `entité` ET `type`.
+**Leçon.** Exemples few-shot : n'injecter que les champs STABLES pour la clé de sélection. La sélection se
+fait par ÉMETTEUR. Le domaine et l'entité sont stables par émetteur (EDF → toujours `03 · Logement`/EDF),
+mais le TYPE de document ne l'est PAS (un même émetteur envoie une facture, puis un contrat, puis une
+attestation). Injecter un `type` passé enseigne au modèle une fausse régularité et **biaise `type_doc`** du
+document courant (que le modèle devrait déduire du CONTENU, pas de l'émetteur). Règle générale : quand on
+construit un bloc few-shot sélectionné par une clé K, n'inclure que les champs corrélés à K ; exclure tout
+champ qui varie d'un item à l'autre à K constant. Détecté par le `llm-cost-optimizer` (bonus : moins de
+tokens). Corollaire coût : le few-shot borné (top-N, seuil de pertinence) reste négligeable (~+0,05 $/mois)
+et est déjà capté par la mesure `usage.input_tokens` — le vrai poste de coût reste l'OCR et l'escalade Sonnet.
+**Règle durable ?** oui.
+
+## 2026-07-02 — Redémarrage de conteneur : le travail est sauf sur le DISTANT, récupérer par fast-forward
+**Contexte.** En pleine session, le conteneur a redémarré et re-cloné le dépôt : le checkout local s'est
+retrouvé sur un VIEUX commit (`P1-14`), sans le dossier `test/`, sans tout le travail des chantiers #1→#5.
+Panique possible : « tout est perdu ». En réalité, tout était **poussé sur le distant** (branche à jour,
+`main` à jour via les merges #42/#43/#44).
+**Leçon.** (1) Un checkout local incohérent après reprise ≠ travail perdu. **Vérifier le distant d'abord** :
+`git fetch origin --prune` puis `git branch -r -v` — la branche `origin/claude/**` porte le vrai tip. (2)
+**Récupérer par fast-forward**, pas par reset : `git merge --ff-only origin/<branche>` restaure l'état sans
+rien détruire (le `git reset --hard` est refusé par le garde de sécurité, à raison — il détruirait un
+éventuel travail non commité). (3) **Prouver qu'on n'a rien perdu** : `git diff origin/main HEAD` doit être
+vide une fois resynchronisé (ou ne montrer que le travail non encore mergé). (4) **Piège récurrent
+squash-merge + branche réutilisée** : après plusieurs PR squashées, `git merge origin/main` reconflit
+toujours sur les mêmes fichiers (VERSION, docs de politique, moteur) car l'historique diverge (vrais commits
+vs squash) alors que le CONTENU est identique. Si la branche n'a AUCUN travail unique non mergé, résoudre en
+prenant `--theirs` (origin/main = la vérité accumulée) sur TOUS les fichiers en conflit → le contenu de la
+branche redevient == `main`. Toujours re-vérifier par les tests (les marqueurs de conflit cassent la syntaxe
+`.gs` → chute brutale du nombre de tests = signal de marqueurs résiduels).
+**Règle durable ?** oui (opérationnel — l'essentiel du volet « coder » est déjà dans la puce Git de `CLAUDE.md`).

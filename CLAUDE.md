@@ -183,3 +183,9 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   depuis l'offset 0 (pour le neuf) qui s'arrête tôt dès qu'il détecte un mur déjà traité. Toujours
   **tracer un scénario concret sur plusieurs ticks** avant de valider une pagination, pas une relecture
   superficielle — c'est ce qui révèle un plateau silencieux.
+- **Few-shot : n'injecter que les champs STABLES pour la clé de sélection.** Un bloc d'exemples sélectionné
+  par une clé K ne doit contenir que les champs corrélés à K ; exclure tout champ qui VARIE à K constant.
+  Ex. corrections sélectionnées par émetteur (ADR-0003) → injecter `domaine`/`entité` (stables : EDF →
+  Logement/EDF), **jamais** le `type` de doc (un même émetteur envoie facture puis contrat) — sinon on
+  enseigne une fausse régularité et on biaise la prédiction. Garder le few-shot borné (top-N + seuil) : le
+  surcoût est alors négligeable et déjà capté par la mesure `usage`.
