@@ -194,6 +194,12 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   fond se budgète PAR JOUR (ms réelles persistées). Une complémentarité entre scans se vérifie au
   niveau où Gmail MATCHE : par MESSAGE, pas par fil (un fil ravivé par un message sans PJ échappe à
   `has:attachment newer_than:`) ; `before:` exclusif ⇒ chevauchement par construction (−29 j).
+- **Nouvel effet de bord dans un pipeline gardé ⇒ toutes les gardes en amont, sur TOUS les chemins.**
+  Insérer un flag/une écriture d'état entre deux gardes existantes peut créer un chemin de sortie
+  anticipée qui court-circuite la garde aval (vécu : flag `important` posé avant la garde corps —
+  un mail protégé serait remonté « À traiter »). Tracer chaque `return` entre les gardes et l'effet,
+  poser un test par garde × chemin ; un commentaire « couvert par les gardes ci-dessus » n'est pas
+  une preuve.
 - **Few-shot : n'injecter que les champs STABLES pour la clé de sélection.** Un bloc d'exemples sélectionné
   par une clé K ne doit contenir que les champs corrélés à K ; exclure tout champ qui VARIE à K constant.
   Ex. corrections sélectionnées par émetteur (ADR-0003) → injecter `domaine`/`entité` (stables : EDF →
