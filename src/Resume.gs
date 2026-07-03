@@ -18,8 +18,10 @@ function resumeHebdo() {
     var cout = syntheseCoutMois_();
     var dernierTick = Number(PropertiesService.getScriptProperties().getProperty('DriveAI_LAST_TICK')) || 0;
     var etat = etatSysteme_(dernierTick, Date.now(), CONFIG.WATCHDOG_SEUIL_MS);
+    var dest = emailAlerte_();
+    if (!dest) throw new Error('aucun destinataire — pose la Script Property DriveAI_EMAIL');
     MailApp.sendEmail(
-      Session.getEffectiveUser().getEmail(),
+      dest,
       '[DriveAI] Résumé de la semaine',
       construireResume_(stats, erreurs, cout, jours, etat, urlFormulaireCorrection_())
     );

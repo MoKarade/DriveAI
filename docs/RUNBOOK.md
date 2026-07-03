@@ -29,6 +29,14 @@
 ### 🟠 Un fichier échoue en boucle
 - Après `QUARANTAINE_MAX` (3) essais, il est **quarantiné** (onglet `Échecs`, statut Index `quarantaine`) → plus re-tenté, une seule alerte. Pour le relancer après une panne transitoire : exécuter **`dequarantaine()`**.
 
+### 🔴 Crédit API Anthropic épuisé (Journal : « PANNE DE COMPTE API »)
+Le moteur tourne mais ne classe plus rien de nouveau ; le Journal montre UNE ligne « PANNE DE
+COMPTE API » par tick (plus jamais un déluge de HTTP 400). Aucun document n'est pénalisé : rien
+n'est compté en échec pendant la panne, tout reprend tout seul après recharge.
+1. Recharger : console.anthropic.com → **Plans & Billing** (penser à l'auto-recharge).
+2. Si des documents ont été quarantainés À TORT pendant une panne passée : un clic
+   **`dequarantaine()`** (éditeur Apps Script) les re-tente tous.
+
 ### 🟡 Quota quotidien atteint
 - Compte **gratuit** = ~90 min d'exécution/jour. Le moteur **reprend seul le lendemain**. Normal sur un traitement de masse (l'ancien Drive s'étale sur ~1-2 jours). Rien à faire.
 

@@ -57,6 +57,7 @@ function ctxIntentions(check) {
   c.tronquer_ = (s) => s;
   c.journalInfo_ = () => {};
   c.notifierEchec_ = () => {};
+  c.estPannePlateforme_ = () => false; // garde panne de compte (Llm.gs non chargé ici)
   return { c, calls };
 }
 

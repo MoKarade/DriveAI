@@ -78,6 +78,43 @@ var _escaladesCeRun = 0;
 function reinitialiserEscalades_() { _escaladesCeRun = 0; }
 function escaladeAutorisee_() { return _escaladesCeRun < CONFIG.LLM_ESCALADE_MAX_PAR_RUN; }
 
+/* ---------- Panne de PLATEFORME (compte API) — check-up 2026-07-03 ---------- */
+// Un crédit épuisé / une clé invalide n'est PAS un échec du document : sans ce garde, une panne
+// de compte brûle les 3 essais de CHAQUE document de la file et met TOUT en quarantaine à tort
+// (vécu : crédit épuisé le 2026-07-01 20:56 → 1330 échecs HTTP 400, ~89 docs quarantainés en
+// 2 jours, sans alerte). Une fois la panne détectée, les appels LLM restants du run échouent
+// VITE (sans réseau) et AUCUN échec n'est compté aux documents (cf. Pipeline.gererEchec_) ;
+// le tick suivant re-sonde naturellement (1ᵉʳ appel réel du run).
+var _pannePlateformeCeRun = false;
+function reinitialiserPannePlateforme_() { _pannePlateformeCeRun = false; }
+function estPannePlateforme_() { return _pannePlateformeCeRun; }
+
+/**
+ * Vrai si la réponse HTTP révèle une panne de COMPTE (crédit/clé), pas un problème du document. PUR.
+ * @param {number} code
+ * @param {string} corps
+ * @return {boolean}
+ */
+function detecterPannePlateforme_(code, corps) {
+  if (code === 401) return true; // clé invalide/révoquée
+  return code === 400 && !!corps && corps.indexOf('credit balance') !== -1;
+}
+
+/**
+ * Marque la panne (journal UNE fois par run) si la réponse la révèle.
+ * @return {boolean} vrai si une panne de plateforme a été détectée.
+ */
+function signalerPannePlateforme_(code, corps, modele) {
+  if (!detecterPannePlateforme_(code, corps)) return false;
+  if (!_pannePlateformeCeRun) {
+    journalErreur_('LLM', 'PANNE DE COMPTE API (HTTP ' + code + ', ' + modele + ') — appels LLM ' +
+      'suspendus pour ce run, aucun échec compté aux documents. Recharger le crédit Anthropic ' +
+      '(console.anthropic.com → Billing).');
+  }
+  _pannePlateformeCeRun = true;
+  return true;
+}
+
 /**
  * Analyse approfondie : plusieurs passes Sonnet avec le prompt d'escalade ; renvoie la
  * meilleure classification (domaine majoritaire, puis confiance la plus haute).
@@ -119,6 +156,8 @@ function meilleureClassification_(resultats) {
  * @return {Object|null}
  */
 function appelAnthropic_(modele, meta, systeme) {
+  if (estPannePlateforme_()) return null; // panne de compte détectée ce run → échec rapide, sans réseau
+
   // Apprentissage (ADR-0003) : préfixe les corrections passées les plus proches (même émetteur) en
   // exemples few-shot — borné (top-N), vide si aucune. Dégrade proprement si l'onglet est illisible.
   var exemples = '';
@@ -152,8 +191,11 @@ function appelAnthropic_(modele, meta, systeme) {
 
   var code = reponse.getResponseCode();
   if (code !== 200) {
-    journalErreur_('LLM', 'HTTP ' + code + ' (' + modele + ') : ' +
-      tronquer_(reponse.getContentText(), 500));
+    // Panne de COMPTE (crédit/clé) : journalisée UNE fois par run, jamais imputée aux documents.
+    if (!signalerPannePlateforme_(code, reponse.getContentText(), modele)) {
+      journalErreur_('LLM', 'HTTP ' + code + ' (' + modele + ') : ' +
+        tronquer_(reponse.getContentText(), 500));
+    }
     return null;
   }
 
@@ -310,6 +352,7 @@ function extraireIntentions_(meta) {
  * @return {{intentions:Object[]}|null}
  */
 function appelIntentions_(modele, meta) {
+  if (estPannePlateforme_()) return null; // panne de compte détectée ce run → échec rapide, sans réseau
   var contenu =
     'Expéditeur : ' + meta.expediteur + '\n' +
     'Sujet : ' + meta.sujet + '\n' +
@@ -336,8 +379,10 @@ function appelIntentions_(modele, meta) {
 
   var code = reponse.getResponseCode();
   if (code !== 200) {
-    journalErreur_('LLM', 'Intentions HTTP ' + code + ' (' + modele + ') : ' +
-      tronquer_(reponse.getContentText(), 500));
+    if (!signalerPannePlateforme_(code, reponse.getContentText(), modele)) {
+      journalErreur_('LLM', 'Intentions HTTP ' + code + ' (' + modele + ') : ' +
+        tronquer_(reponse.getContentText(), 500));
+    }
     return null;
   }
 

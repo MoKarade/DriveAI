@@ -241,6 +241,20 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-03 — GROS CHECK-UP (demande Marc) → Correctif R1.** Vérification par signaux indépendants
+  (fichiers récents Drive, contenu des dossiers par parentId, Sheet d'état exportée en xlsx et analysée
+  hors-ligne). Constats : moteur VIVANT (heartbeat 22:16), Index 2381 docs, entités saines, app déployée —
+  MAIS **crédit API Anthropic ÉPUISÉ depuis le 01-07 20:56** (1330 échecs HTTP 400 en 2 jours, coût
+  juillet 7,33 $ au compteur), **~89 docs quarantainés À TORT** (3 « essais » brûlés contre un mur de
+  plateforme ; ~64 photos Facebook physiquement coincées dans 00·À trier, sautées SUR PLACE par
+  l'idempotence), et **597 alertes mail TOUTES mortes en silence** (`Session.getEffectiveUser()` exige un
+  scope userinfo jamais présent : chien de garde, quarantaines et résumé hebdo n'ont JAMAIS envoyé un
+  mail). La campagne historique C12 tourne mais s'écrase sur le mur du crédit ; le « Rangement : 62 % »
+  est figé au 01-07 (à réévaluer après recharge). Correctif R1 livré : garde « panne de PLATEFORME »
+  (jamais imputée aux documents, appels suspendus par run, re-sonde auto) + canal d'alerte via Script
+  Property `DriveAI_EMAIL` (aucun nouveau scope = aucun gel). **RESTE CÔTÉ MARC (R1-03)** : recharger le
+  crédit Anthropic, poser `DriveAI_EMAIL`, puis UN clic `dequarantaine()`. Moteur **197 tests**.
+
 - **2026-07-02 — Chantiers #13-#14 : PHASE 3 VISIBLE & MAILS IMPORTANTS (ADR-0010 §2-3) — roadmap v2
   COMPLÈTE.** Dernier lot « mails » : (1) le résumé hebdo NOMME désormais chaque tâche/RDV créé
   (section « 🗓️ Actions & RDV détectés », plafonnée avec « … et N de plus ») et le dashboard app

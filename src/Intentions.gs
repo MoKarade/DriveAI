@@ -203,7 +203,9 @@ function traiterMessagePourIntentions_(message) {
   var intentions = extraireIntentions_({ expediteur: expediteur, sujet: sujet, corps: corps });
   if (intentions === null) {
     // Échec LLM total : on NE marque PAS le message fait → re-tenté au prochain tick.
-    notifierEchec_('Intentions', 'Extraction impossible pour « ' + sujet + ' »');
+    // Panne de COMPTE API : pas de notification par message (elle spammerait à chaque tick de
+    // panne — la panne est déjà journalisée une fois par run), le re-essai suffit.
+    if (!estPannePlateforme_()) notifierEchec_('Intentions', 'Extraction impossible pour « ' + sujet + ' »');
     return 0;
   }
   if (!intentions.length) {

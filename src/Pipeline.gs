@@ -23,6 +23,10 @@ function traiterDocument_(src) {
   try {
     if (indexContient_(src.cle)) return; // déjà traité → idempotence
 
+  // Panne de COMPTE API en cours (détectée plus tôt dans CE run) : on ne touche pas au document
+  // (pas d'OCR, pas de LLM, pas de mutation) — tout reprendra au tick où le compte répond.
+  if (estPannePlateforme_()) return;
+
     // P1 (revue intake) : blob PARESSEUX — au-delà de la borne OCR, il n'est jamais matérialisé
     // (une vidéo de 300 Mo ferait lever getBlob → quarantaine, alors que le média-path n'a besoin
     // ni du blob ni de l'empreinte — les deux seuls consommateurs sont gatés par la même borne).
@@ -142,6 +146,11 @@ function traiterDocument_(src) {
  * @param {string} message  cause de l'échec (pour le Journal / l'alerte)
  */
 function gererEchec_(src, message) {
+  // Panne de COMPTE API (crédit/clé) ≠ échec du document : ni compteur ni quarantaine — le doc
+  // reste non indexé et sera re-tenté tel quel quand le compte sera rétabli. (Sans ce garde, une
+  // panne de crédit a mis ~89 docs en quarantaine à tort — check-up 2026-07-03.) Silencieux : la
+  // panne elle-même est déjà journalisée une fois par run (Llm.signalerPannePlateforme_).
+  if (estPannePlateforme_()) return;
   var n = incrementerEchec_(src.cle);
   if (n >= CONFIG.QUARANTAINE_MAX) {
     indexAjouter_(src.cle, { statut: 'quarantaine', domaine: '', chemin: '', nom: src.nom });

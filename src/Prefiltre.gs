@@ -74,6 +74,9 @@ function correspondMotif_(texteMinuscule, motifMinuscule) {
  * @return {{action:boolean, important:boolean}}
  */
 function miniCheckMail_(expediteur, sujet) {
+  // Panne de compte API : réponse par défaut immédiate (action ouverte, important fermé) — le
+  // message n'est PAS marqué traité par l'appelant tant que l'extraction échoue, donc rien n'est perdu.
+  if (estPannePlateforme_()) return parserMiniCheck_(null);
   var options = {
     method: 'post',
     contentType: 'application/json',
@@ -104,7 +107,10 @@ function miniCheckMail_(expediteur, sujet) {
     journalErreur_('Prefiltre', 'Mini-check réseau échoué : ' + e);
     return parserMiniCheck_(null); // dégradation asymétrique (action passe, important fermé)
   }
-  if (reponse.getResponseCode() !== 200) return parserMiniCheck_(null);
+  if (reponse.getResponseCode() !== 200) {
+    signalerPannePlateforme_(reponse.getResponseCode(), reponse.getContentText(), CONFIG.LLM_MODELE);
+    return parserMiniCheck_(null);
+  }
 
   var data;
   try {
