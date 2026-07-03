@@ -46,6 +46,8 @@ const CONTRAT = [
   'blocFewShot_', 'assurerFormulaireCorrection_',
   // intentions (Phase 3) & mails importants (#14)
   'traiterIntentionsMail_', 'reinitialiserEscalades_', 'reinitialiserUsage_', 'flushUsage_',
+  'reinitialiserPannePlateforme_', 'estPannePlateforme_', 'detecterPannePlateforme_',
+  'signalerPannePlateforme_', 'emailAlerte_',
   'miniCheckMail_', 'parserMiniCheck_', 'marquerMailImportant_', 'lienGmail_',
   // cibles publiques des déclencheurs / outils
   'tickDriveAI', 'installerTrigger', 'chienDeGarde', 'resumeHebdo', 'rangerToutLeDrive', 'dequarantaine',

@@ -164,10 +164,13 @@ function alerterChienDeGarde_(dernierTick, err) {
     'Souvent bénin : le quota quotidien du compte gratuit (~90 min/jour) est atteint — ça reprend seul demain.\n' +
     'Si rien ne repart d\'ici demain, un seul geste : ouvrir le projet Apps Script « DriveAI » et exécuter installerTrigger.\n' +
     (err ? '\n(Auto-réparation impossible : ' + err + ')' : '\n(Auto-réparation tentée, sans effet pour l\'instant.)');
+  var dest = emailAlerte_();
   try {
-    MailApp.sendEmail(Session.getEffectiveUser().getEmail(), '[DriveAI] Moteur silencieux — à vérifier', corps);
+    if (dest) MailApp.sendEmail(dest, '[DriveAI] Moteur silencieux — à vérifier', corps);
   } catch (e) { /* mail impossible : le chien de garde ne plante pas pour autant */ }
-  journalErreur_('Chien de garde', 'Alerte « moteur silencieux » envoyée (dernier tick : ' + quand + ').');
+  journalErreur_('Chien de garde', dest
+    ? 'Alerte « moteur silencieux » envoyée (dernier tick : ' + quand + ').'
+    : 'Alerte « moteur silencieux » NON envoyée (pose la Script Property DriveAI_EMAIL) — dernier tick : ' + quand + '.');
 }
 
 /**
@@ -226,6 +229,7 @@ function tickDriveAI() {
     reinitialiserEntitesCache_();
     reinitialiserCorrectionsCache_(); // référentiel d'apprentissage relu 1×/run (few-shot, ADR-0003)
     reinitialiserEscalades_(); // plafond d'escalades LLM par run (anti-emballement de coût)
+    reinitialiserPannePlateforme_(); // re-sonde le compte API à chaque run (panne crédit/clé)
     reinitialiserUsage_();     // compteur de coût LLM du run (mesure réelle, P1-09)
 
     // Applique un éventuel changement d'intervalle (CONFIG.TICK_MINUTES) sans action manuelle,

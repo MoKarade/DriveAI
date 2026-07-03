@@ -105,15 +105,37 @@ function majSante_() {
  */
 function notifierEchec_(source, message) {
   journalErreur_(source, message);
+  var dest = emailAlerte_();
+  if (!dest) {
+    journalErreur_('Notif', 'Alerte NON envoyée (aucun destinataire — pose la Script Property DriveAI_EMAIL).');
+    return;
+  }
   try {
     MailApp.sendEmail(
-      Session.getEffectiveUser().getEmail(),
+      dest,
       '[DriveAI] Échec — ' + source,
       'DriveAI a rencontré une erreur.\n\nSource : ' + source + '\nDétail : ' + message
     );
   } catch (e) {
     journalErreur_('Notif', 'Envoi du mail d\'échec impossible : ' + e);
   }
+}
+
+/**
+ * Destinataire des alertes et mails du moteur — check-up 2026-07-03 : `Session.getEffectiveUser()`
+ * exige un scope (userinfo.email) ABSENT du manifeste → l'appel LÈVE et toutes les alertes
+ * échouaient en silence depuis le début (597 tentatives mortes constatées, résumé hebdo compris).
+ * On n'ajoute PAS le scope (leçon durable : tout nouveau scope FIGE les déclencheurs jusqu'à
+ * ré-autorisation manuelle de Marc) : l'adresse vit dans la Script Property `DriveAI_EMAIL`
+ * (posée une fois, comme la clé API), avec repli best-effort sur Session au cas où le scope
+ * existerait un jour. Ne lève JAMAIS.
+ * @return {string} adresse mail, ou '' si indisponible (l'appelant journalise sans envoyer).
+ */
+function emailAlerte_() {
+  var e = '';
+  try { e = PropertiesService.getScriptProperties().getProperty('DriveAI_EMAIL') || ''; } catch (err) { }
+  if (e) return e;
+  try { return Session.getEffectiveUser().getEmail(); } catch (err) { return ''; }
 }
 
 /* ---------- Index (idempotence) ---------- */

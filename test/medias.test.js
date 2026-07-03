@@ -80,6 +80,7 @@ function ctxPipeline(nom, extrait) {
   const c = load(['Config.gs', 'Pipeline.gs', 'Router.gs']);
   const calls = { places: [], classif: 0, ocr: 0 };
   c.journalInfo_ = () => {};
+  c.estPannePlateforme_ = () => false; // garde panne de compte (Llm.gs non chargé ici)
   c.indexContient_ = () => false;
   c.empreinteBlob_ = () => 'EMP';
   c.estDoublon_ = () => false;

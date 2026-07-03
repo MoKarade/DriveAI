@@ -194,6 +194,12 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   fond se budgète PAR JOUR (ms réelles persistées). Une complémentarité entre scans se vérifie au
   niveau où Gmail MATCHE : par MESSAGE, pas par fil (un fil ravivé par un message sans PJ échappe à
   `has:attachment newer_than:`) ; `before:` exclusif ⇒ chevauchement par construction (−29 j).
+- **Échecs LLM : classer par ORIGINE avant de compter.** Une erreur de PLATEFORME (HTTP 400
+  « credit balance », 401 — panne de COMPTE) n'est jamais imputée au document : détecter →
+  suspendre les appels du run (échec rapide) → ne rien compter → re-sonder au run suivant. Sinon
+  une panne de crédit met toute la file en quarantaine (vécu : ~89 docs en 2 jours). Et un canal
+  d'alerte n'existe que VÉRIFIÉ de bout en bout une fois — le destinataire vient de la Script
+  Property `DriveAI_EMAIL` (jamais d'un scope, jamais de gel).
 - **Nouvel effet de bord dans un pipeline gardé ⇒ toutes les gardes en amont, sur TOUS les chemins.**
   Insérer un flag/une écriture d'état entre deux gardes existantes peut créer un chemin de sortie
   anticipée qui court-circuite la garde aval (vécu : flag `important` posé avant la garde corps —

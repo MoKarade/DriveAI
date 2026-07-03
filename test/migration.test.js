@@ -139,6 +139,7 @@ function ctxPipeline(ignorer) {
   const ctx = load(['Config.gs', 'Pipeline.gs']);
   const calls = { placerDoublon: [], echecs: [] };
   ctx.journalInfo_ = () => {};
+  ctx.estPannePlateforme_ = () => false; // garde panne de compte (Llm.gs non chargé ici)
   ctx.indexContient_ = () => false;
   ctx.empreinteBlob_ = () => 'EMPREINTE';
   ctx.estDoublon_ = () => true;                       // le contenu EST déjà connu de l'Index

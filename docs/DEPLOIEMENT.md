@@ -84,6 +84,10 @@ l'API Drive du projet est désactivée : panneau **Services** (＋) → ajoute *
 **Ajouter une propriété** :
 - Nom : `DriveAI_ANTHROPIC_KEY`
 - Valeur : *ta nouvelle clé Anthropic*
+- Nom : `DriveAI_EMAIL` — **destinataire des alertes et du résumé hebdo** (check-up 2026-07-03 :
+  `Session.getEffectiveUser()` exige un scope absent du manifeste, donc sans cette propriété AUCUN
+  mail ne part — le Journal trace « pose la Script Property DriveAI_EMAIL »).
+  Valeur : ton adresse Gmail.
 
 ### 7. Installer le déclencheur (10 min)
 Dans l'éditeur, sélectionne la fonction **`installerTrigger`** dans la barre d'outils → **Exécuter**.

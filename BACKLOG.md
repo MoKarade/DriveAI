@@ -268,6 +268,14 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C14-03 | **Résumé hebdo : « À traiter »** — sujets + lien Gmail (`#all/<messageId>`, couvre l'archivé), plafonné `RESUME_IMPORTANTS_MAX`, section absente si vide ; même section au dashboard app (`lignesImportants`) ; statut `important` compté à part (ne pollue pas « Autres ») | ✅ (tests) |
 | C14-04 | **Revue flotte intégrée** (1 bloquant + 2) : (S1, bloquant) le CORPS est lu et la garde §1 re-vérifiée dessus AVANT la pose du flag — y compris sur le chemin « important sans action » qui ne lisait jamais le corps (un mail protégé détectable par son corps seul n'apparaît JAMAIS dans « À traiter ») ; le chemin « rien vu » reste gratuit (corps pas lu, testé) ; (C1) critère `important` RESSERRÉ : réponse/geste PERSONNEL attendu, jamais relevé/confirmation/reçu/facture récurrente/offre (leçon « garde-fou étroit » — sinon les relevés mensuels satureraient la section et relégueraient les vraies questions) ; (R1) le dashboard exclut les lignes « mail » des agrégats documents (plus de double compte d'activité ni de bucket « — ») | ✅ (tests) |
 
+### Correctif R1 — Panne de compte API & canal d'alerte (check-up 2026-07-03)  🟦
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| R1-01 | **Garde « panne de PLATEFORME »** (`Llm.gs`) : HTTP 400 « credit balance » / 401 ⇒ panne de COMPTE, jamais imputée aux documents — `gererEchec_` ne compte RIEN pendant la panne (incident réel : crédit épuisé le 01-07 20:56 → ~89 docs quarantainés à tort en 2 jours), le pipeline saute les docs (pas d'OCR/mutation), les appels LLM du run échouent VITE (sans réseau), journal UNE fois par run, re-sonde au run suivant | ✅ (tests) |
+| R1-02 | **Canal d'alerte réparé SANS nouveau scope** : `Session.getEffectiveUser()` exige un scope (userinfo) ABSENT du manifeste → 597 alertes mortes en silence depuis le début (chien de garde, quarantaines, résumé hebdo). `emailAlerte_()` lit la Script Property **`DriveAI_EMAIL`** (repli Session, ne lève jamais) ; sans destinataire → trace explicite au Journal. Câblé partout : notifierEchec_, chien de garde, alerte stockage, résumé hebdo | ✅ (tests) |
+| R1-03 | **Reste côté Marc** : (1) **recharger le crédit Anthropic** (console.anthropic.com → Billing — panne active depuis le 01-07 20:56) ; (2) poser la Script Property `DriveAI_EMAIL` = son adresse ; (3) après recharge, UN clic `dequarantaine()` (éditeur Apps Script) pour re-tenter les ~89 docs quarantainés à tort (les ~64 photos Facebook coincées dans 00·À trier passeront par le fast-path médias, quasi gratuit) | ⬜ |
+
 ### Chantier #15 — App v2 : curation efficace & confort (ADR-0011)  🟦
 
 | ID | Tâche | Statut |

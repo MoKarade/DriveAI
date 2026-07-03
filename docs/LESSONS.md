@@ -534,3 +534,30 @@ action » court-circuitait la lecture du corps qui portait la garde). Réflexe :
 « les gardes ci-dessus couvrent » n'est pas une preuve — c'est précisément là que la revue a trouvé
 le bloquant.
 **Règle durable ?** oui.
+
+## 2026-07-03 — Gros check-up : une panne de COMPTE API n'est pas un échec de document, et un canal d'alerte jamais testé n'existe pas
+**Contexte.** Check-up général demandé par Marc après la fin de la roadmap v2. Par signaux Drive
+indépendants (Sheet exportée en xlsx et analysée hors-ligne — la lecture d'état MCP ne montre que le
+1ᵉʳ onglet en CSV) : moteur vivant, MAIS crédit API Anthropic épuisé depuis le 01-07 20:56 (1330
+échecs HTTP 400 « credit balance too low » sur 2 jours), ~89 documents quarantainés À TORT (chacun a
+« brûlé ses 3 essais » contre un mur de plateforme — dont ~64 photos Facebook physiquement coincées
+dans 00·À trier, sautées SUR PLACE par l'idempotence à chaque tick), et 597 tentatives d'alerte mail
+TOUTES mortes en silence : `Session.getEffectiveUser()` exige un scope (userinfo) que le manifeste
+n'a jamais eu — le canal d'alerte (quarantaines, chien de garde, résumé hebdo) n'a JAMAIS fonctionné,
+et personne ne s'en était aperçu parce qu'aucun envoi n'avait été vérifié de bout en bout.
+**Leçon.** (1) **Classer les échecs par ORIGINE avant de les compter** : une erreur de PLATEFORME
+(crédit épuisé, clé invalide — détectable au code/corps HTTP) n'est jamais imputée au document, sinon
+une panne de compte transforme toute la file en quarantaine (3 essais brûlés par doc) et le rétablissement
+ne répare rien (l'idempotence saute les quarantainés SUR PLACE). Pattern : détecter → suspendre les
+appels du run (échec rapide sans réseau) → ne rien compter → re-sonder au run suivant. (2) **Un canal
+d'alerte n'existe que s'il a été vérifié de bout en bout au moins une fois** (un mail réellement reçu) —
+ici l'erreur (`getEffectiveUser` sans scope) vivait dans le `try/catch` même qui devait la signaler.
+Corollaire : ne jamais dépendre d'un scope pour trouver le DESTINATAIRE des alertes (adresse en Script
+Property `DriveAI_EMAIL`, jamais de nouveau scope = jamais de gel). (3) Un gros check-up se fait par
+signaux INDÉPENDANTS et croisés : fichiers récents Drive (recency), contenu réel des dossiers par
+parentId, et la Sheet d'état exportée entière (xlsx → analyse locale) — le Journal seul aurait montré
+la panne, mais pas les 64 fichiers coincés sur place ni le fait que les alertes n'étaient jamais parties.
+(4) Après un conteneur restauré, TOUJOURS `git fetch` avant de diagnostiquer : des refs distantes
+rassies font « disparaître » des fichiers et inventer des régressions (fausse alerte Phase 4 ⬜ vécue
+dans ce même check-up).
+**Règle durable ?** oui.
