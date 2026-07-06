@@ -377,11 +377,11 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 > mobile qui monte, cartes — le tout sous `prefers-reduced-motion`.
 > (Squelettes : écarté par Marc — le cache 60 s de #20 suffit.)
 
-### Chantier #18 — Auto-validation des entités fréquentes (décision Marc : seuil 3)  ⬜
+### Chantier #18 — Auto-validation des entités fréquentes (décision Marc : seuil 3)  ✅ (livré 2026-07-07)
 
 | ID | Tâche | Statut |
 |----|-------|--------|
-| C18-01 | Une entité `en_attente` NON générique et NON variante vue **≥ 3 fois** est **auto-validée** (dossier créé) au tick ; signalée dans le résumé hebdo (« entités auto-validées : … ») ; réversible (statut modifiable dans l'app, dossier jamais supprimé) ; garde : jamais en zone protégée sans validation manuelle | ⬜ |
+| C18-01 | `autoValiderEntitesFrequentes_` au tick (AVANT la matérialisation — dossier créé au même run, bornée 5/run + budget) : `en_attente` + vue ≥ `ENTITES_AUTO_SEUIL` (3) + sans variante + non générique + JAMAIS un domaine protégé (normalisé des deux côtés) + jamais re-validée après réédition de Marc (garde `dossierId`). Statut « validée (auto ≥N) » (seuil affiché = réel, round-trip normalisation testé), accepté par `estValidee_`, miroir app (`entitesValidees`). Annulation : Statut → « refusée » (un retour à en_attente serait re-validé — documenté partout). Signalées au résumé hebdo (section best-effort). Revue : sécurité ✅ + code ✅ (2 corrections intégrées) | ✅ |
 
 ### Correctif R1 — Panne de compte API & canal d'alerte (check-up 2026-07-03)  🟦
 

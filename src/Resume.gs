@@ -240,6 +240,21 @@ function construireResume_(s, erreurs, cout, jours, etat, urlForm, newsletters, 
     }
   }
 
+  // #18 — entités auto-validées (vues ≥ seuil) : visibles, réversibles (rééditer le Statut).
+  // Best-effort : une section ne casse JAMAIS le résumé (référentiel illisible → omise).
+  var autoEntites = { total: 0, exemples: [] };
+  try { autoEntites = entitesAutoValidees_(); } catch (e) { /* section omise */ }
+  if (autoEntites.total) {
+    lignes.push('', '🏷️ Entités auto-validées (vues ≥ ' + CONFIG.ENTITES_AUTO_SEUIL +
+      ' fois — pour annuler : Statut → « refusée », onglet Entités) :');
+    for (var ae = 0; ae < autoEntites.exemples.length; ae++) {
+      lignes.push('   • ' + autoEntites.exemples[ae]);
+    }
+    if (autoEntites.total > autoEntites.exemples.length) {
+      lignes.push('   … et ' + (autoEntites.total - autoEntites.exemples.length) + ' de plus.');
+    }
+  }
+
   lignes.push(
     '',
     '💰 Coût LLM ce mois-ci : ~' + cout.dollars.toFixed(2) + ' $ (' +

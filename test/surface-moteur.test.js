@@ -70,6 +70,8 @@ const CONTRAT = [
   'etapeReorg_', 'appliquerReorgValidee_', 'appliquerUneAction_', 'actionsValidees_',
   'partiesId_', 'dernierSegment_', 'ensembleIntouchables_', 'repointerEntites_', 'solderAction_',
   'estSegmentStructurel_',
+  // entités auto-validées (#18)
+  'autoValiderEntitesFrequentes_', 'estAutoValidable_', 'entitesAutoValidees_', 'estValidee_',
 ];
 
 test('surface du moteur : toutes les fonctions du contrat interne sont définies', () => {

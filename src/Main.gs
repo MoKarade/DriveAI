@@ -281,6 +281,12 @@ function tickDriveAI() {
     try { appliquerRejeuSiNouvelleVersion_(estBudgetDepasse); }
     catch (e) { journalErreur_('Maintenance', 'Rejeu de version différé : ' + e); }
 
+    // #18 (décision Marc : seuil 3) : auto-valide les entités en_attente vues ≥ 3 fois, AVANT la
+    // matérialisation (le dossier naît au même tick). Jamais une variante, jamais un générique,
+    // jamais la zone protégée. SECONDAIRE → enveloppée.
+    try { autoValiderEntitesFrequentes_(estBudgetDepasse); }
+    catch (e) { journalErreur_('Entités', 'Auto-validation différée : ' + e); }
+
     // Matérialise les entités validées par Marc (Statut = « validée ») avant le routage, bornée par
     // le garde-temps. SECONDAIRE → enveloppée : une erreur Drive/Sheet ne doit jamais geler l'intake.
     try { creerDossiersEntitesValidees_(estBudgetDepasse); }

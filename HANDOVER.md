@@ -89,7 +89,10 @@
 > fermés : promesse de verrou moteur non codée ; dossiers à ID fixe corbeillables). L'app offre
 > désormais : explorateur façon Drive (naviguer/chercher/IA/créer/glisser-déposer), réorg IA
 > (analyser → valider → le moteur applique → corbeille des vides au clic). ⚠ Marc : redéployer
-> la web app en nouvelle version (recherche IA) — DEPLOIEMENT.md. Reste : #18 (entités auto à 3).
+> la web app en nouvelle version (recherche IA) — DEPLOIEMENT.md. **#18 livré** : entités
+> en_attente vues ≥ 3 fois auto-validées au tick (dossier créé au même run), jamais en zone
+> protégée, jamais contre une réédition de Marc (garde dossierId) ; annulation = Statut →
+> « refusée » ; signalées au résumé hebdo. LE PLAN ACTÉ (#23 → #22 → #21 → #18) EST COMPLET.
 >
 > Antérieur — **2026-07-01 (soir)** : **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
 > Session de conception « niveau pro » avec Marc : **8 ADR** (`docs/adr/0001`→`0008`), **roadmap priorisée à

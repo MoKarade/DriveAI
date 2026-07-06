@@ -303,6 +303,10 @@ var CONFIG = {
   IA_RECHERCHE_MAX_JOUR: 50,              // plafond quotidien d'appels SERVIS (≈ 0,002 $/question Haiku pire cas — ~3 $/mois au plafond)
   LLM_MAX_TOKENS_RECHERCHE: 300,          // le plan JSON tient largement dedans
 
+  // --- Auto-validation des entités fréquentes (#18, décision Marc : seuil 3) ---
+  ENTITES_AUTO_SEUIL: 3,                  // vue ≥ N fois → auto-validée (dossier créé au même tick)
+  ENTITES_AUTO_MAX_PAR_RUN: 5,            // bornée par run (le reste au tick suivant)
+
   // --- Réorg IA (#21, C21-04) : proposition de réorganisation des DOSSIERS ---
   REORG_DOSSIERS_MAX: 250,                // inventaire borné (au-delà : abandon honnête, jamais un plan partiel)
   REORG_EXEMPLES_PAR_DOSSIER: 3,          // noms de fichiers donnés en exemple au LLM (métadonnées seules)
