@@ -229,7 +229,7 @@ function tickDriveAI() {
     reinitialiserEntitesCache_();
     reinitialiserCorrectionsCache_(); // référentiel d'apprentissage relu 1×/run (few-shot, ADR-0003)
     reinitialiserEscalades_(); // plafond d'escalades LLM par run (anti-emballement de coût)
-    reinitialiserPannePlateforme_(); // re-sonde le compte API à chaque run (panne crédit/clé)
+    chargerPannePlateforme_(); // panne de compte PERSISTÉE (R2) : suspend les sources, re-sonde ≤ 1×/h
     reinitialiserUsage_();     // compteur de coût LLM du run (mesure réelle, P1-09)
 
     // Applique un éventuel changement d'intervalle (CONFIG.TICK_MINUTES) sans action manuelle,
@@ -289,13 +289,18 @@ function tickDriveAI() {
     // collecte Drive ne gèle jamais l'intake (le `try` du tick n'a qu'un `finally`).
     // `rangementTermine_()` (1 Property, cheap) court-circuite le comptage Drive une fois le rangement
     // fini — sinon on itérerait jusqu'à 40 fichiers de 00·À trier à chaque tick pour rien, à vie.
-    if (!estBudgetDepasse() && !rangementTermine_() &&
+    if (!estBudgetDepasse() && !estPannePlateforme_() && !rangementTermine_() &&
         nbFichiersATrier_(CONFIG.RANGEMENT_SEUIL_FILE) < CONFIG.RANGEMENT_SEUIL_FILE) {
       try { appliquerRangementInitial_(estBudgetDepasse); }
       catch (e) { journalErreur_('Rangement', 'Grand rangement différé : ' + e); }
     }
 
     // INTAKE : draine la file (dépôts manuels + sortie du grand rangement) et les PJ Gmail.
+    // R2 : pendant une panne de COMPTE API persistée, TOUTES les sources sont suspendues — les
+    // scans ne produiraient rien (les docs sont sautés) et re-parcourir la fenêtre Gmail à chaque
+    // tick brûle le quota de lecture quotidien (vécu 07-06 : moteur re-bloqué 24 h APRÈS la
+    // recharge). La re-sonde (chargerPannePlateforme_) rouvre tout automatiquement, ≤ 1 h.
+    if (!estPannePlateforme_()) {
     traiterGmail_(estBudgetDepasse);                       // source 1 : PJ Gmail
     if (!estBudgetDepasse()) traiterDepots_(estBudgetDepasse); // source 2 : 00·À trier (draine la file)
 
@@ -328,6 +333,7 @@ function tickDriveAI() {
     // En dernier, budget restant seulement : le classement documentaire (déjà validé en
     // prod) garde toujours la priorité sur ce nouveau flux.
     if (!estBudgetDepasse()) traiterIntentionsMail_(estBudgetDepasse);
+    } // fin de la suspension R2 (panne de compte API)
   } finally {
     // `releaseLock` DOIT toujours s'exécuter : un try/finally imbriqué garantit sa libération même si
     // un `journalErreur_` d'un catch ci-dessous lève à son tour (panne Sheet) — sinon le verrou resterait
@@ -558,7 +564,9 @@ function rejeuAutoDesDepots_(estBudgetDepasse) {
  */
 function traiterGmail_(estBudgetDepasse) {
   var debutPage = 0;
-  while (!estBudgetDepasse()) {
+  // La panne de compte peut être détectée EN COURS de run (re-sonde qui échoue) : on sort tôt —
+  // continuer à lister des fils dont chaque document sera sauté ne ferait que brûler du quota Gmail.
+  while (!estBudgetDepasse() && !estPannePlateforme_()) {
     var fils;
     try {
       fils = pageFils_(debutPage);
@@ -573,6 +581,7 @@ function traiterGmail_(estBudgetDepasse) {
         journalInfo_('Pipeline', 'Budget temps atteint — reprise au prochain tick.');
         return;
       }
+      if (estPannePlateforme_()) return; // détectée en cours de run → stop (cf. ci-dessus)
       // Erreur isolée par fil (ex. getMessages/piecesJointes) : on saute ce fil sans
       // interrompre le scan Gmail — chaque PJ est déjà protégée dans traiterDocument_.
       try { traiterFil_(fils[i], estBudgetDepasse); }
@@ -721,7 +730,7 @@ function traiterPageHistorique_(props, estBudgetDepasse) {
   // une page de vieux fils bavards SANS PJ « réelles » (inline seulement — `has:attachment` matche
   // aussi l'inline) ferait des centaines d'appels Gmail APRÈS l'épuisement du budget.
   var doitSarreter = function () {
-    return estBudgetDepasse() || inedites >= CONFIG.GMAIL_HISTO_MAX_PJ_INEDITES;
+    return estBudgetDepasse() || estPannePlateforme_() || inedites >= CONFIG.GMAIL_HISTO_MAX_PJ_INEDITES;
   };
   for (var i = 0; i < fils.length && pageComplete; i++) {
     if (doitSarreter()) { pageComplete = false; break; }

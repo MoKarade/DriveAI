@@ -276,6 +276,19 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | R1-02 | **Canal d'alerte réparé SANS nouveau scope** : `Session.getEffectiveUser()` exige un scope (userinfo) ABSENT du manifeste → 597 alertes mortes en silence depuis le début (chien de garde, quarantaines, résumé hebdo). `emailAlerte_()` lit la Script Property **`DriveAI_EMAIL`** (repli Session, ne lève jamais) ; sans destinataire → trace explicite au Journal. Câblé partout : notifierEchec_, chien de garde, alerte stockage, résumé hebdo | ✅ (tests) |
 | R1-03 | **Reste côté Marc** : (1) **recharger le crédit Anthropic** (console.anthropic.com → Billing — panne active depuis le 01-07 20:56) ; (2) poser la Script Property `DriveAI_EMAIL` = son adresse ; (3) après recharge, UN clic `dequarantaine()` (éditeur Apps Script) pour re-tenter les ~89 docs quarantainés à tort (les ~64 photos Facebook coincées dans 00·À trier passeront par le fast-path médias, quasi gratuit) | ⬜ |
 
+### Correctif R2 — Panne persistée : sources suspendues, quota Gmail préservé (2026-07-06)  🟦
+
+> Suite directe de R1, découverte à la reprise : pendant les 4 jours de panne crédit, les scans
+> Gmail re-parcouraient TOUTE la fenêtre à chaque tick sans jamais rien marquer (rien ne s'indexe
+> pendant une panne) → des dizaines de milliers de lectures/jour → **quota Gmail quotidien épuisé**,
+> moteur re-bloqué 24 h APRÈS la recharge de Marc. R1 protégeait les documents ; R2 protège les quotas.
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| R2-01 | **Panne PERSISTÉE** (`DriveAI_LLM_PANNE`, posée par `signalerPannePlateforme_`) : en tête de run, `chargerPannePlateforme_` — panne fraîche (< `LLM_PANNE_RESONDE_MS` = 1 h) → le tick SUSPEND toutes ses sources (Gmail, dépôts, partages, campagnes, migration, intentions, rangement) ; fenêtre écoulée → run « re-sonde » normal dont le 1ᵉʳ appel LLM tranche (200 → `signalerRetablissement_` efface la Property + journal « RÉTABLI » ; échec → re-posée à neuf). Au plus UN scan complet par heure de panne | ✅ (tests) |
+| R2-02 | **Early-exit des scans** si la panne est détectée EN COURS de run (re-sonde qui échoue) : `traiterGmail_` (boucle + par fil), `plafondAtteint` des intentions, `doitSarreter` de la campagne historique — plus un seul parcours de fenêtre stérile | ✅ (tests) |
+| R2-03 | **Bruit maîtrisé** : un fichier Google natif laissé dans `00·À trier` n'est plus journalisé qu'UNE fois (`signalerNatifUneFois_`, Property bornée) — avant : 2 natifs = ~576 lignes/jour qui polluaient le diagnostic | ✅ (tests) |
+
 ### Chantier #15 — App v2 : curation efficace & confort (ADR-0011)  🟦
 
 | ID | Tâche | Statut |

@@ -40,7 +40,10 @@
 function traiterIntentionsMail_(estBudgetDepasse) {
   var etat = { analyses: 0, creations: 0 };
   var plafondAtteint = function () {
-    return estBudgetDepasse() || etat.analyses >= CONFIG.INTENTIONS_MAX_PAR_RUN ||
+    // `estPannePlateforme_` : pendant une panne de compte API, scanner ne produirait rien (aucun
+    // message ne peut être marqué traité) et re-parcourir la fenêtre brûle le quota Gmail (R2).
+    return estBudgetDepasse() || estPannePlateforme_() ||
+      etat.analyses >= CONFIG.INTENTIONS_MAX_PAR_RUN ||
       etat.creations >= CONFIG.CREATIONS_MAX_PAR_RUN;
   };
 

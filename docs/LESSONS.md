@@ -561,3 +561,23 @@ la panne, mais pas les 64 fichiers coincés sur place ni le fait que les alertes
 rassies font « disparaître » des fichiers et inventer des régressions (fausse alerte Phase 4 ⬜ vécue
 dans ce même check-up).
 **Règle durable ?** oui.
+
+## 2026-07-06 — Une panne d'une dépendance (LLM) se propage aux QUOTAS des autres (Gmail) si les scans tournent à vide
+**Contexte.** Reprise après la panne de crédit (R1). Le crédit rechargé, le moteur restait bloqué :
+`Service invoked too many times for one day: gmail` sur tous les scans. Cause : pendant 4 jours de
+panne LLM, RIEN ne s'indexait — or les scans Gmail s'arrêtent sur « page entièrement indexée » ou
+avancent par curseurs qui ne progressent que si les items sont marqués. Résultat : chaque tick
+re-parcourait TOUTE la fenêtre (getMessages/getAttachments en masse) pour zéro progrès → des dizaines
+de milliers de lectures Gmail/jour → quota quotidien épuisé → moteur re-bloqué 24 h APRÈS la recharge
+(le quota ne se réinitialise qu'à minuit heure du Pacifique).
+**Leçon.** (1) Quand une dépendance en aval (LLM) est en panne, il ne suffit pas de protéger les
+DONNÉES (R1 : aucun échec compté) — il faut suspendre les PRODUCTEURS en amont (scans, collectes) :
+un scan qui ne peut rien marquer est une boucle stérile qui consomme les quotas d'un AUTRE service et
+transforme une panne d'un jour en panne de deux. Pattern : panne PERSISTÉE (Script Property datée) →
+les runs suivants suspendent leurs sources sans un seul appel → re-sonde bornée (≤ 1 run normal par
+heure) → rétablissement auto au 1ᵉʳ appel réussi (Property effacée + journal). (2) Tout mécanisme
+d'arrêt de scan fondé sur « déjà vu/déjà indexé » doit être audité pour le cas « rien ne s'indexe » :
+c'est là que le coût par tick explose silencieusement. (3) Un log répétitif par tick (« fichier natif
+laissé en place ») doit être dédupliqué à la SOURCE (une fois par objet, Property bornée) — 576
+lignes/jour de bruit avaient enterré les vrais signaux pendant le diagnostic.
+**Règle durable ?** oui.

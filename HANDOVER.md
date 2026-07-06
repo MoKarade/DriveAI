@@ -241,6 +241,18 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-06 — Reprise après recharge (+20 $ Marc) → Correctif R2.** Constat à la reprise : la panne
+  crédit est FINIE (dernière ligne « PANNE DE COMPTE » à 08:21, garde R1 : 689 lignes en 4 j, zéro
+  nouvelle quarantaine) MAIS **le quota de lecture Gmail du jour était épuisé** — pendant la panne, les
+  scans re-parcouraient toute la fenêtre à chaque tick sans rien marquer (rien ne s'indexe) → moteur
+  re-bloqué côté Gmail jusqu'au reset quotidien (~3 h du matin, minuit heure du Pacifique). R2 livré :
+  panne PERSISTÉE (`DriveAI_LLM_PANNE`) → sources du tick suspendues pendant la panne, re-sonde bornée
+  (≤ 1 run normal/h, `LLM_PANNE_RESONDE_MS`), rétablissement auto journalisé au 1ᵉʳ appel 200 ;
+  early-exit des scans si la panne tombe en cours de run ; fichier Google natif signalé UNE fois
+  (fin des ~576 lignes/jour de bruit). Moteur **203 tests**. **Reste côté Marc** : poser
+  `DriveAI_EMAIL` (toujours absente — le résumé hebdo du lundi 6 n'a pas pu partir) et cliquer
+  `dequarantaine()` (les 64 photos ne dépendent pas de Gmail : effet immédiat).
+
 - **2026-07-03 — GROS CHECK-UP (demande Marc) → Correctif R1.** Vérification par signaux indépendants
   (fichiers récents Drive, contenu des dossiers par parentId, Sheet d'état exportée en xlsx et analysée
   hors-ligne). Constats : moteur VIVANT (heartbeat 22:16), Index 2381 docs, entités saines, app déployée —

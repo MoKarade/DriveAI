@@ -41,6 +41,7 @@ function ctxHisto(opts) {
   c.indexContient_ = opts.indexContient_ || (() => false);
   c.cleAttachement_ = (msg, i, pj) => `k|${pj}`;
   c.incrementerEchec_ = (cle) => { calls.echecs[cle] = (calls.echecs[cle] || 0) + 1; return calls.echecs[cle]; };
+  c.estPannePlateforme_ = () => false; // garde panne de compte (Llm.gs non chargé ici)
   return { c, calls };
 }
 
