@@ -27,16 +27,321 @@
  */
 
 /** Statuts d'une ligne d'action (machine à états — cf. BACKLOG #21). */
-var REORG_STATUTS = ['proposé', 'validé', 'écarté', 'appliqué', 'refusé (zone protégée)', 'vide-candidat', 'corbeillé'];
+var REORG_STATUTS = ['proposé', 'validé', 'écarté', 'appliqué', 'refusé (zone protégée)',
+  'refusé (structure)', 'échec', 'vide-candidat', 'corbeillé'];
 
 /**
- * Étape de tick : traite (au plus) UNE demande d'analyse. Coût quand il n'y a rien à faire :
- * une lecture de l'onglet `Réorg`.
+ * Étape de tick unique du chantier Réorg : UNE lecture de l'onglet, puis DRAINER (appliquer les
+ * actions VALIDÉES, C21-06) avant d'ALIMENTER (proposer un nouveau plan, C21-04). Tant que des
+ * actions validées restent à appliquer, aucune nouvelle analyse — un plan se termine avant que
+ * le suivant naisse (sinon plans contradictoires sur un Drive mouvant).
  * @param {function(): boolean} estBudgetDepasse
  */
-function appliquerReorgIA_(estBudgetDepasse) {
+function etapeReorg_(estBudgetDepasse) {
   var f = feuille_('Réorg');
   var lignes = f.getDataRange().getValues(); // en-têtes incluses — onglet petit (demandes + actions)
+  var reste = appliquerReorgValidee_(f, lignes, estBudgetDepasse);
+  if (!reste && !estBudgetDepasse()) appliquerReorgIA_(f, lignes, estBudgetDepasse);
+}
+
+/* ================= C21-06 : APPLICATION des actions validées ================= */
+
+/**
+ * Applique les actions au statut `validé` : déplacements/renommages/créations de DOSSIERS —
+ * JAMAIS de suppression. Par ID (jamais par chemin), re-vérification zone protégée AVANT CHAQUE
+ * mutation (ascendance stricte, échec fermé), racines de domaine et dossiers système intouchables
+ * (défense en profondeur — le parseur les a déjà bloqués). Ordre coupure-sûr : mutation Drive
+ * PUIS statut (un rejeu re-tente, moveTo/renommage déjà faits = no-op).
+ *
+ * Une fusion COLLECTE d'abord (lecture seule, itérateur jamais invalidé — patron Maintenance)
+ * puis déplace PAR ID, par lots bornés (REORG_FUSION_LOT/run), et ne conclut que sur une passe
+ * BLANCHE (plus rien à déplacer) ; les éléments protégés — par ASCENDANCE étrangère (multi-
+ * parents sous 04) ou par IDENTITÉ (un enfant qui EST une racine protégée/système) — sont
+ * LAISSÉS EN PLACE, jamais détachés ; s'il n'en reste que ça, l'action finit `refusé (zone
+ * protégée)`. Une fusion terminée re-pointe `Entités.Dossier ID` et inscrit la ligne
+ * `vide-candidat` (dédupliquée) AVANT le statut `appliqué` (« c'est fini » se pose en DERNIER —
+ * un rejeu refait des no-ops, jamais l'inverse). La corbeille = C21-07 (ADR-0014), jamais ici.
+ * Une exception laisse UNE seconde chance (marqueur suffixé au détail), puis `échec` — jamais
+ * une boucle à vie ; le marqueur est effacé dès que l'action progresse.
+ * @return {boolean} vrai s'il reste des actions validées à traiter (analyse différée)
+ */
+function appliquerReorgValidee_(f, lignes, estBudgetDepasse) {
+  var validees = actionsValidees_(lignes);
+  if (validees.length === 0) return false;
+  var proteges = ensembleDomainesProteges_();
+  var intouchables = ensembleIntouchables_();
+  var horodate = new Date().toISOString();
+  var resteEnValide = false;
+
+  for (var i = 0; i < validees.length; i++) {
+    if (estBudgetDepasse()) return true; // repris au tick suivant
+    var a = validees[i];
+    var detailPropre = a.detail.replace(/\s*\[tentative 1[\s\S]*$/, '');
+    var resultat;
+    try {
+      resultat = appliquerUneAction_(a, proteges, intouchables, estBudgetDepasse);
+    } catch (e) {
+      // Une 2e chance, puis échec inscrit — jamais un poison retenté à vie. Le marqueur est
+      // SUFFIXÉ (la raison LLM reste lisible dans l'app) et effacé si l'action progresse.
+      if (a.detail.indexOf('[tentative 1') !== -1) {
+        solderAction_(f, a.rang, 'échec', detailPropre + ' [tentative 2 : ' + String(e).slice(0, 120) + ']');
+      } else {
+        solderAction_(f, a.rang, 'validé', detailPropre + ' [tentative 1 : ' + String(e).slice(0, 120) + ']');
+        resteEnValide = true;
+      }
+      journalErreur_('Reorg', 'Action ' + a.cle + ' : ' + e);
+      continue;
+    }
+    if (resultat.enCours) {
+      // Fusion pas finie (lot/budget). Si elle a PROGRESSÉ, l'éventuel marqueur d'échec passé
+      // est rendu (leçon : les essais se comptent par échec réel, jamais par passe).
+      if (resultat.aProgresse && a.detail.indexOf('[tentative 1') !== -1) {
+        solderAction_(f, a.rang, 'validé', detailPropre);
+      }
+      return true;
+    }
+    // Effets AVANT le statut « c'est fini » (une coupure rejoue des no-ops, ne perd jamais le
+    // re-pointage). L'échec de repointerEntites_ REMONTE au catch → 2e chance standard.
+    if (resultat.statut === 'appliqué' && a.type === 'fusionner') {
+      try {
+        repointerEntites_(a.source, a.cible);
+        var cleVide = 'videcandidat|' + a.source;
+        var dejaInscrit = false;
+        for (var v = 1; v < lignes.length; v++) {
+          if (String(lignes[v][0]) === cleVide) { dejaInscrit = true; break; }
+        }
+        if (!dejaInscrit) {
+          f.appendRow([cleVide, 'dossier-vide', a.source, a.cheminActuel, '',
+            'vide-candidat', 'devenu vide par fusion', horodate]);
+        }
+      } catch (e2) {
+        if (a.detail.indexOf('[tentative 1') !== -1) {
+          solderAction_(f, a.rang, 'échec', detailPropre + ' [tentative 2 : ' + String(e2).slice(0, 120) + ']');
+        } else {
+          solderAction_(f, a.rang, 'validé', detailPropre + ' [tentative 1 : ' + String(e2).slice(0, 120) + ']');
+          resteEnValide = true;
+        }
+        journalErreur_('Reorg', 'Effets de fin de fusion ' + a.cle + ' : ' + e2);
+        continue;
+      }
+    }
+    solderAction_(f, a.rang, resultat.statut,
+      resultat.detail !== undefined ? resultat.detail : detailPropre);
+    journalInfo_('Reorg', 'Action ' + a.type + ' ' + a.cle + ' → ' + resultat.statut + '.');
+  }
+  return resteEnValide;
+}
+
+/** Statut (col 6) + détail (col 7) d'une ligne d'ACTION. */
+function solderAction_(f, rang, statut, detail) {
+  f.getRange(rang, 6).setValue(statut);
+  if (detail !== undefined) f.getRange(rang, 7).setValue(detail);
+}
+
+/**
+ * Les actions `validé` de l'onglet, prêtes à appliquer. PURE (testée).
+ * @return {Array<{rang, cle, type, source, cible, cheminActuel, cheminPropose, detail}>}
+ */
+function actionsValidees_(lignes) {
+  var res = [];
+  for (var i = 1; i < lignes.length; i++) {
+    var type = String(lignes[i][1]);
+    if (String(lignes[i][5]) !== 'validé') continue;
+    if (type !== 'deplacer' && type !== 'fusionner' && type !== 'creer' && type !== 'renommer') continue;
+    var ids = partiesId_(String(lignes[i][2]));
+    res.push({
+      rang: i + 1,
+      cle: String(lignes[i][0]),
+      type: type,
+      source: ids.source,
+      cible: ids.cible,
+      cheminActuel: String(lignes[i][3] || ''),
+      cheminPropose: String(lignes[i][4] || ''),
+      detail: String(lignes[i][6] || ''),
+    });
+  }
+  return res;
+}
+
+/** Colonne ID « source→cible » → {source, cible} (l'un ou l'autre peut être vide). PURE (testée). */
+function partiesId_(idCol) {
+  var parts = String(idCol).split('→');
+  return { source: (parts[0] || '').trim(), cible: (parts[1] || '').trim() };
+}
+
+/** Dernier segment d'un chemin proposé (nom du dossier à créer/renommer). PURE (testée). */
+function dernierSegment_(chemin) {
+  var parts = String(chemin).split('/');
+  return (parts[parts.length - 1] || '').trim();
+}
+
+/** Dossiers que l'application ne mute JAMAIS : domaines (fixes ET auto), files système. */
+function ensembleIntouchables_() {
+  var set = {};
+  Object.keys(CONFIG.DOMAINES).forEach(function (dom) { set[CONFIG.DOMAINES[dom]] = true; });
+  (CONFIG.DOMAINES_AUTO || []).forEach(function (dom) {
+    var id = PropertiesService.getScriptProperties().getProperty('DriveAI_DOM_' + dom);
+    if (id) set[id] = true;
+  });
+  set[CONFIG.DOSSIERS.A_TRIER] = true;
+  set[CONFIG.DOSSIERS.A_VERIFIER] = true;
+  return set;
+}
+
+/**
+ * Vrai si `nom` est un segment STRUCTUREL de la taxonomie : sous-dossier d'année « AAAA » ou
+ * nom de schéma d'entité (le router les find-or-create PAR NOM — les muter rend le plan non
+ * convergent : le router les re-créerait). PURE (testée).
+ */
+function estSegmentStructurel_(nom) {
+  var propre = String(nom).trim();
+  if (/^\d{4}$/.test(propre)) return true;
+  var schemas = CONFIG.SCHEMAS_ENTITE || {};
+  var types = Object.keys(schemas);
+  for (var i = 0; i < types.length; i++) {
+    if (schemas[types[i]].indexOf(propre) !== -1) return true;
+  }
+  return false;
+}
+
+/**
+ * Applique UNE action validée. @return {{statut, detail}|{enCours: true, aProgresse: boolean}}
+ * — `enCours` = fusion pas finie (lot/budget), à reprendre au tick suivant.
+ * Lève sur erreur inattendue (gérée par l'appelant : 2 tentatives puis échec).
+ */
+function appliquerUneAction_(a, proteges, intouchables, estBudgetDepasse) {
+  if (a.type === 'creer') {
+    if (!a.cible) return { statut: 'échec', detail: 'parent manquant' };
+    if (proteges[a.cible] || intouchables[a.cible]) {
+      return { statut: 'refusé (zone protégée)', detail: 'parent protégé ou système' };
+    }
+    var parent = DriveApp.getFolderById(a.cible);
+    if (parent.getName().charAt(0) === '_' || chaineMonteVersProtege_(parent, proteges, 0, true)) {
+      return { statut: 'refusé (zone protégée)', detail: 'parent protégé ou système' };
+    }
+    var nomCreer = dernierSegment_(a.cheminPropose);
+    if (!nomCreer) return { statut: 'échec', detail: 'nom manquant' };
+    // Idempotent au rejeu : réutilise un dossier homonyme déjà créé, jamais un doublon.
+    var existants = parent.getFoldersByName(nomCreer);
+    if (!existants.hasNext()) parent.createFolder(nomCreer);
+    return { statut: 'appliqué', detail: undefined };
+  }
+
+  if (!a.source) return { statut: 'échec', detail: 'source manquante' };
+  if (intouchables[a.source] || proteges[a.source]) {
+    return { statut: 'refusé (zone protégée)', detail: 'dossier système ou protégé' };
+  }
+  var source = DriveApp.getFolderById(a.source);
+  var nomSource = source.getName();
+  if (nomSource.charAt(0) === '_') {
+    return { statut: 'refusé (zone protégée)', detail: 'racine système' };
+  }
+  // Segments STRUCTURELS (années AAAA, schémas d'entité) : les muter rendrait le plan non
+  // convergent (le router les re-crée par nom). Défense en profondeur — le parseur les bloque déjà.
+  if (estSegmentStructurel_(nomSource)) {
+    return { statut: 'refusé (structure)', detail: 'sous-dossier structurel (' + nomSource + ')' };
+  }
+  // Re-vérification AVANT mutation (§2.1b, strict : illisible = protégé).
+  if (aParentProtege_(source, proteges, true)) {
+    return { statut: 'refusé (zone protégée)', detail: '' };
+  }
+
+  if (a.type === 'renommer') {
+    var nouveau = dernierSegment_(a.cheminPropose);
+    if (!nouveau) return { statut: 'échec', detail: 'nom manquant' };
+    if (nouveau.charAt(0) === '_' || /^\d{2} · /.test(nouveau)) {
+      return { statut: 'refusé (structure)', detail: 'nom réservé (racines système/domaines)' };
+    }
+    if (source.getName() !== nouveau) source.setName(nouveau); // rejeu = no-op
+    return { statut: 'appliqué', detail: undefined };
+  }
+
+  // deplacer / fusionner : la CIBLE reçoit les MÊMES gardes que la source (jamais muter VERS la
+  // zone protégée ni vers une file système — le plan n'a jamais vu ces dossiers, un id qui y
+  // mène est forcément anormal).
+  if (!a.cible) return { statut: 'échec', detail: 'cible manquante' };
+  if (proteges[a.cible] || intouchables[a.cible]) {
+    return { statut: 'refusé (zone protégée)', detail: 'cible protégée ou système' };
+  }
+  var cible = DriveApp.getFolderById(a.cible);
+  if (cible.getName().charAt(0) === '_' || chaineMonteVersProtege_(cible, proteges, 0, true)) {
+    return { statut: 'refusé (zone protégée)', detail: 'cible protégée ou système' };
+  }
+
+  if (a.type === 'deplacer') {
+    source.moveTo(cible); // déjà déplacé = no-op côté arbre (même parent)
+    return { statut: 'appliqué', detail: undefined };
+  }
+
+  // fusionner : COLLECTE (lecture seule — l'itérateur Drive saute des éléments si on mute
+  // pendant l'itération, patron Maintenance) puis déplacement PAR ID, borné. Laissés en place,
+  // jamais détachés : ascendance ÉTRANGÈRE protégée (multi-parents sous 04 — la branche source
+  // est déjà validée strict ci-dessus, on ne re-paye pas sa remontée) et, pour les sous-dossiers,
+  // IDENTITÉ protégée/système (un enfant multi-parents qui EST la racine 04 ou un domaine —
+  // moveTo retirerait TOUS ses parents : détachement interdit).
+  var aDeplacer = [];
+  var laissesProteges = 0;
+  var it = source.getFiles();
+  while (it.hasNext() && aDeplacer.length < CONFIG.REORG_FUSION_LOT && !estBudgetDepasse()) {
+    var fichier = it.next();
+    if (aParentEtrangerProtege_(fichier, a.source, proteges)) { laissesProteges++; continue; }
+    aDeplacer.push({ id: fichier.getId(), dossier: false });
+  }
+  var sous = source.getFolders();
+  while (sous.hasNext() && aDeplacer.length < CONFIG.REORG_FUSION_LOT && !estBudgetDepasse()) {
+    var d = sous.next();
+    var idD = d.getId();
+    if (proteges[idD] || intouchables[idD] || d.getName().charAt(0) === '_' ||
+        aParentEtrangerProtege_(d, a.source, proteges)) {
+      laissesProteges++;
+      continue;
+    }
+    aDeplacer.push({ id: idD, dossier: true });
+  }
+  var deplaces = 0;
+  for (var m = 0; m < aDeplacer.length; m++) {
+    if (estBudgetDepasse()) break;
+    if (aDeplacer[m].dossier) DriveApp.getFolderById(aDeplacer[m].id).moveTo(cible);
+    else DriveApp.getFileById(aDeplacer[m].id).moveTo(cible);
+    deplaces++;
+  }
+  // On ne conclut que sur une passe BLANCHE (rien déplacé, budget intact) : c'est la seule
+  // lecture fiable de « plus rien à fusionner » — jamais un `appliqué` sur itération douteuse.
+  if (deplaces > 0 || estBudgetDepasse()) return { enCours: true, aProgresse: deplaces > 0 };
+  if (laissesProteges > 0) {
+    return { statut: 'refusé (zone protégée)', detail: laissesProteges + ' élément(s) protégé(s) laissé(s) en place' };
+  }
+  return { statut: 'appliqué', detail: undefined };
+}
+
+/**
+ * Après une FUSION appliquée, les entités dont `Dossier ID` pointait le dossier vidé sont
+ * re-pointées vers la cible (sinon le routage classerait dans un dossier mort — contrat
+ * structure-keeper C21-04).
+ */
+function repointerEntites_(sourceId, cibleId) {
+  var f = feuille_('Entités');
+  var valeurs = f.getDataRange().getValues();
+  if (valeurs.length < 2) return;
+  var iDossier = valeurs[0].indexOf('Dossier ID');
+  if (iDossier === -1) return;
+  for (var i = 1; i < valeurs.length; i++) {
+    if (String(valeurs[i][iDossier]) === sourceId) {
+      f.getRange(i + 1, iDossier + 1).setValue(cibleId);
+      journalInfo_('Reorg', 'Entité re-pointée (fusion) : ' + String(valeurs[i][0] || ''));
+    }
+  }
+}
+
+/* ================= C21-04 : PROPOSITION (analyse à la demande) ================= */
+
+/**
+ * Traite (au plus) UNE demande d'analyse — appelée par etapeReorg_ avec la lecture déjà faite.
+ * @param {Sheet} f
+ * @param {Array} lignes  valeurs de l'onglet (en-têtes incluses)
+ * @param {function(): boolean} estBudgetDepasse
+ */
+function appliquerReorgIA_(f, lignes, estBudgetDepasse) {
   var demande = null;
   for (var i = lignes.length - 1; i >= 1; i--) {
     if (String(lignes[i][1]) === 'demande' && String(lignes[i][5]) === 'analyse demandée') {
@@ -327,6 +632,10 @@ function parserPropositionReorg_(texte, inventaire) {
   var descendDe = function (n, deN) {
     return inventaire[n - 1].chemin.indexOf(inventaire[deN - 1].chemin + '/') === 0;
   };
+  // Segments structurels (années AAAA, schémas d'entité) : le router les find-or-create par NOM
+  // — les muter rendrait le plan non convergent (re-créés au prochain classement).
+  var estStructurel = function (n) { return estSegmentStructurel_(dernierSegment_(inventaire[n - 1].chemin)); };
+  var nomReserve = function (nm) { return nm.charAt(0) === '_' || /^\d{2} · /.test(nm); };
   var actions = [];
   for (var i = 0; i < brut.actions.length && actions.length < CONFIG.REORG_ACTIONS_MAX; i++) {
     var a = brut.actions[i];
@@ -340,16 +649,18 @@ function parserPropositionReorg_(texte, inventaire) {
       if (dossier === null || vers === null || dossier === vers) continue;
       if (inventaire[dossier - 1].id === inventaire[vers - 1].id) continue; // même dossier, 2 chemins
       if (estRacine(dossier)) continue; // un domaine racine ne se déplace/fusionne jamais
+      if (estStructurel(dossier)) continue; // année/schéma : jamais déplacé ni fusionné
       if (descendDe(vers, dossier)) continue; // cycle : cible à l'intérieur du dossier muté
       actions.push({ type: a.type, dossier: dossier, vers: vers, raison: raison });
     } else if (a.type === 'creer') {
       var parent = index(a.parent);
-      if (parent === null || !nom) continue;
+      if (parent === null || !nom || nomReserve(nom)) continue;
       actions.push({ type: 'creer', parent: parent, nom: nom, raison: raison });
     } else if (a.type === 'renommer') {
       var cible = index(a.dossier);
-      if (cible === null || !nom) continue;
+      if (cible === null || !nom || nomReserve(nom)) continue;
       if (estRacine(cible)) continue; // les noms « NN · … » appartiennent au self-healing NOMS_DOMAINES_TAG
+      if (estStructurel(cible)) continue; // année/schéma : le nom EST le contrat de routage
       actions.push({ type: 'renommer', dossier: cible, nom: nom, raison: raison });
     }
   }
@@ -362,15 +673,15 @@ function parserPropositionReorg_(texte, inventaire) {
  * Ligne d'onglet pour une action (en-têtes : Clé | Type | ID | Chemin actuel | Chemin proposé |
  * Statut | Détail | Horodaté). PURE (testée) — les chemins affichés sont le contrat de lecture
  * de l'app (C21-05, relatifs à la PORTÉE de l'analyse) ; l'application (C21-06) raisonne par ID,
- * jamais par chemin. `fusionner` porte « idSource→idCible » en colonne ID (le séparateur « → »
- * n'apparaît jamais dans un fileId).
+ * jamais par chemin. Colonne ID = « source→cible » (séparateur « → », jamais dans un fileId) :
+ * deplacer/fusionner portent les deux, creer porte « →parent », renommer la source seule.
  */
 function lignePourAction_(tag, n, a, inventaire, horodate) {
   var cle = tag + '|' + n;
   var de = a.dossier ? inventaire[a.dossier - 1] : null;
   if (a.type === 'deplacer') {
     var vers = inventaire[a.vers - 1];
-    return [cle, 'deplacer', de.id, de.chemin, vers.chemin + '/' + de.chemin.split('/').pop(), 'proposé', a.raison, horodate];
+    return [cle, 'deplacer', de.id + '→' + vers.id, de.chemin, vers.chemin + '/' + de.chemin.split('/').pop(), 'proposé', a.raison, horodate];
   }
   if (a.type === 'fusionner') {
     var cibleF = inventaire[a.vers - 1];
@@ -378,7 +689,7 @@ function lignePourAction_(tag, n, a, inventaire, horodate) {
   }
   if (a.type === 'creer') {
     var parent = inventaire[a.parent - 1];
-    return [cle, 'creer', '', '', parent.chemin + '/' + a.nom, 'proposé', a.raison, horodate];
+    return [cle, 'creer', '→' + parent.id, '', parent.chemin + '/' + a.nom, 'proposé', a.raison, horodate];
   }
   // renommer
   var chemin = de.chemin.split('/');

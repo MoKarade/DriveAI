@@ -309,6 +309,7 @@ var CONFIG = {
   REORG_ACTIONS_MAX: 40,                  // un plan reste digeste — au-delà, tronqué
   REORG_ESSAIS_MAX: 3,                    // tentatives par demande (inventaire/LLM) avant « échec »
   REORG_MAX_JOUR: 5,                      // plafond quotidien d'appels LLM de réorg (borne une app boguée qui re-demanderait en boucle)
+  REORG_FUSION_LOT: 40,                   // éléments déplacés par run lors d'une FUSION (reprenable — garde-temps partagé)
   LLM_MAX_TOKENS_REORG: 3000,             // 40 actions pretty-printées + synthèse SANS troncature (analyse ≈ 0,02 $, à la demande seulement)
 
   // --- Phase 2 : référentiel d'entités ---

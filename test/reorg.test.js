@@ -104,16 +104,83 @@ test('parserPropositionReorg_ : illisible → null ; plafond REORG_ACTIONS_MAX r
   assert.strictEqual(p.actions.length, ctx.CONFIG.REORG_ACTIONS_MAX);
 });
 
-test('lignePourAction_ : contrat de colonnes (Clé|Type|ID|Chemins|Statut|Détail|Horodaté)', () => {
+test('lignePourAction_ : contrat de colonnes — ID = « source→cible » (contrat C21-06)', () => {
   const t = '2026-07-06T00:00:00Z';
   const dep = ctx.lignePourAction_('reorg|d|1', 1, { type: 'deplacer', dossier: 3, vers: 1, raison: 'r' }, INVENTAIRE, t);
-  assert.deepStrictEqual(plat(dep), ['reorg|d|1|1', 'deplacer', 'idC',
+  assert.deepStrictEqual(plat(dep), ['reorg|d|1|1', 'deplacer', 'idC→idA',
     '08 · Perso & projets/Vrac', '03 · Logement & véhicule/Vrac', 'proposé', 'r', t]);
   const fus = ctx.lignePourAction_('reorg|d|1', 2, { type: 'fusionner', dossier: 3, vers: 2, raison: '' }, INVENTAIRE, t);
   assert.strictEqual(fus[2], 'idC→idB');
   const cre = ctx.lignePourAction_('reorg|d|1', 3, { type: 'creer', parent: 1, nom: 'Assurances', raison: '' }, INVENTAIRE, t);
   assert.strictEqual(cre[4], '03 · Logement & véhicule/Assurances');
-  assert.strictEqual(cre[2], '');
+  assert.strictEqual(cre[2], '→idA');
   const ren = ctx.lignePourAction_('reorg|d|1', 4, { type: 'renommer', dossier: 2, nom: 'KIA Sportage', raison: '' }, INVENTAIRE, t);
   assert.strictEqual(ren[4], '03 · Logement & véhicule/KIA Sportage');
+  assert.strictEqual(ren[2], 'idB');
+});
+
+/* ---------- C21-06 : application — helpers PURS ---------- */
+
+test('estSegmentStructurel_ : années AAAA et noms de schéma d’entité (le router route par NOM)', () => {
+  assert.strictEqual(ctx.estSegmentStructurel_('2024'), true);
+  assert.strictEqual(ctx.estSegmentStructurel_('Factures'), true);
+  assert.strictEqual(ctx.estSegmentStructurel_('Bail & contrat'), true);
+  assert.strictEqual(ctx.estSegmentStructurel_('Relevés de notes'), true);
+  assert.strictEqual(ctx.estSegmentStructurel_('KIA'), false);
+  assert.strictEqual(ctx.estSegmentStructurel_('Vrac'), false);
+  assert.strictEqual(ctx.estSegmentStructurel_(''), false);
+});
+
+test('parserPropositionReorg_ : segments STRUCTURELS jamais mutés, noms réservés rejetés', () => {
+  const inv = [
+    { id: 'r', chemin: '02 · Finances', nbFichiers: 0, exemples: [] },
+    { id: 'f', chemin: '02 · Finances/Factures', nbFichiers: 5, exemples: [] },   // schéma
+    { id: 'a', chemin: '02 · Finances/Factures/2024', nbFichiers: 3, exemples: [] }, // année
+    { id: 'v', chemin: '02 · Finances/Vieux papiers', nbFichiers: 2, exemples: [] },
+  ];
+  const p = ctx.parserPropositionReorg_(JSON.stringify({
+    actions: [
+      { type: 'renommer', dossier: 2, nom: 'Mes factures' },     // schéma → rejeté
+      { type: 'fusionner', dossier: 3, vers: 4 },                // année → rejeté
+      { type: 'deplacer', dossier: 2, vers: 4 },                 // schéma → rejeté
+      { type: 'renommer', dossier: 4, nom: '_Archives' },        // nom réservé → rejeté
+      { type: 'creer', parent: 1, nom: '09 · Nouveau' },         // nom réservé → rejeté
+      { type: 'renommer', dossier: 4, nom: 'Archives papier' },  // valide
+    ],
+  }), inv);
+  assert.strictEqual(p.actions.length, 1);
+  assert.deepStrictEqual(plat(p.actions[0]), { type: 'renommer', dossier: 4, nom: 'Archives papier', raison: '' });
+});
+
+test('partiesId_ : « source→cible », côtés optionnels', () => {
+  assert.deepStrictEqual(plat(ctx.partiesId_('a→b')), { source: 'a', cible: 'b' });
+  assert.deepStrictEqual(plat(ctx.partiesId_('→p')), { source: '', cible: 'p' });
+  assert.deepStrictEqual(plat(ctx.partiesId_('seul')), { source: 'seul', cible: '' });
+  assert.deepStrictEqual(plat(ctx.partiesId_('')), { source: '', cible: '' });
+});
+
+test('dernierSegment_ : nom depuis le chemin proposé', () => {
+  assert.strictEqual(ctx.dernierSegment_('03 · Logement/KIA Sportage'), 'KIA Sportage');
+  assert.strictEqual(ctx.dernierSegment_('SansSlash'), 'SansSlash');
+  assert.strictEqual(ctx.dernierSegment_(''), '');
+});
+
+test('actionsValidees_ : ne prend QUE les actions « validé » des 4 types, avec ids découpés', () => {
+  const lignes = [
+    ['Clé', 'Type', 'ID', 'Chemin actuel', 'Chemin proposé', 'Statut', 'Détail', 'Horodaté'],
+    ['demande-1', 'demande', '', '', '', 'analyse demandée', 'tout', 'T'],          // pas une action
+    ['reorg|demande-1|1', 'deplacer', 'a→b', '08/Vrac', '03/Vrac', 'validé', '', 'T'],
+    ['reorg|demande-1|2', 'renommer', 'c', '03/KIA', '03/KIA Sportage', 'proposé', '', 'T'], // pas validé
+    ['reorg|demande-1|3', 'creer', '→p', '', '02/Assurances', 'validé', 'raison', 'T'],
+    ['videcandidat|x', 'dossier-vide', 'x', '08/Vieux', '', 'vide-candidat', '', 'T'],       // pas un type d'action
+    ['reorg|demande-1|4', 'fusionner', 'x→y', '08/Vieux', '02/Neuf', 'écarté', '', 'T'],     // écarté
+  ];
+  const v = ctx.actionsValidees_(lignes);
+  assert.strictEqual(v.length, 2);
+  assert.deepStrictEqual(plat(v[0]), {
+    rang: 3, cle: 'reorg|demande-1|1', type: 'deplacer', source: 'a', cible: 'b',
+    cheminActuel: '08/Vrac', cheminPropose: '03/Vrac', detail: '',
+  });
+  assert.strictEqual(v[1].rang, 5);
+  assert.strictEqual(v[1].cible, 'p');
 });
