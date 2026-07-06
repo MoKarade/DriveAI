@@ -15,7 +15,12 @@
 > lecture seule est levée, décision Marc). **Après le merge : ré-autorisation manuelle par Marc
 > (tickDriveAI) obligatoire — tous les déclencheurs sont gelés d'ici là** ; puis vérifier la reprise
 > par signaux Drive et les premiers libellés ; ensuite Marc supprime sa tâche Cowork. Suivi prod (vérifié par Journal exporté, 13h ET) :
-> 🔴 **la recharge de crédit API n'a JAMAIS pris effet** — 291 « PANNE DE COMPTE (400 credit balance) »
+> ✅ **Crédit API rétabli et VÉRIFIÉ de bout en bout le 6/7 13:35 ET** (sonde : fichier test déposé
+> dans 00·À trier → classé au 1ᵉʳ tick « 2026-07-06_Attestation_DriveAI.txt → 08·Perso », coût 7,33→7,34 $).
+> Découverte : **90 documents quarantainés à tort** pendant la panne du 2/7 (dont ~68 médias Messenger
+> coincés dans 00·À trier → file ≥ 40 → rangement AFFAMÉ depuis le 2/7) — `dequarantaine()` est LE geste
+> qui débloque : médias → _Médias (sans LLM), file < 40, le rangement (804 restants) reprend. Historique
+> de l'épisode : la recharge n'avait pas pris effet avant ~13h le 6/7 — — 291 « PANNE DE COMPTE (400 credit balance) »
 > depuis le 5/7 00:00, zéro « RÉTABLI » ; Marc doit vérifier console.anthropic.com → Billing (bon
 > workspace ? paiement passé ? crédits API ≠ abonnement Claude). Conséquence : quota Gmail du jour
 > re-épuisé à 07:25 par les runs stériles du matin (code pré-R2 encore déployé à ce moment-là) ;
