@@ -1,16 +1,22 @@
 /**
- * WebApp.gs — bouton « Vérifier maintenant » de l'app (#20, demande Marc 2026-07-06).
+ * WebApp.gs — pont HTTP entre l'app (SPA) et le moteur. Deux actions, secret OBLIGATOIRE
+ * (Script Property `DriveAI_WEBAPP_SECRET`, jamais dans le code) :
  *
- * L'app (SPA) ne peut PAS exécuter de fonction Apps Script (frontière d'exécution) : ce
- * doPost, déployé en APPLICATION WEB (« Exécuter en tant que : moi », accès « Tout le monde »),
- * est le pont. Sécurité : secret partagé OBLIGATOIRE (Script Property `DriveAI_WEBAPP_SECRET`,
- * jamais dans le code) + anti-rafale 60 s. Le pire abus possible = déclencher le tick normal
- * (idempotent, LockService, garde-temps) — aucune donnée n'est renvoyée ni lisible (l'app
- * appelle en no-cors).
+ *  - (défaut) « Vérifier maintenant » (#20) : déclencheur PONCTUEL du tick (idempotent,
+ *    LockService, garde-temps) — réponse non lue par l'app (no-cors).
+ *  - `action=recherche-ia` (C21-03) : traduit une question libre de Marc en PLAN de recherche
+ *    (filtres Index + mots-clés plein texte) via Haiku JSON strict. Le LLM ne voit QUE la
+ *    question et les noms de domaines (jamais un contenu de document — ADR-0007) ; l'app
+ *    exécute elle-même les recherches avec le jeton de Marc. La clé Anthropic reste dans les
+ *    Script Properties. L'app lit la réponse : elle POSTe en Content-Type text/plain (requête
+ *    « simple », pas de préflight) — Apps Script renvoie alors un CORS lisible (`*`).
  *
- * Un déclencheur PONCTUEL est créé (échéance ~1 min) plutôt que d'exécuter le tick dans la
- * requête (réponse immédiate, pas de double-run grâce au LockService). `tickPonctuel` nettoie
- * ses propres déclencheurs (quota ~20 déclencheurs).
+ * Garde-fous : anti-rafale par action, plafond QUOTIDIEN d'appels LLM (budget), question
+ * bornée, sortie whitelistée par un parseur strict (fonctions PURES testées).
+ *
+ * Pire abus si le secret fuit : déclencher le tick (idempotent) + brûler le plafond quotidien
+ * d'appels Haiku + lire les NOMS de domaines de la taxonomie (déjà publics dans ce repo) —
+ * JAMAIS un contenu de document, de mail ou de l'état (le LLM ne reçoit que question + taxonomie).
  */
 
 function doPost(e) {
@@ -20,25 +26,35 @@ function doPost(e) {
     var recu = e && e.parameter ? e.parameter.secret : '';
     if (!attendu || !recu || recu !== attendu) {
       reponse.erreur = 'refusé';
+    } else if (e && e.parameter && e.parameter.action === 'recherche-ia') {
+      reponse = actionRechercheIA_(e);
     } else {
-      var props = PropertiesService.getScriptProperties();
-      var dernier = Number(props.getProperty('DriveAI_DERNIER_PONCTUEL')) || 0;
-      if (Date.now() - dernier < 60 * 1000) {
-        reponse.ok = true;
-        reponse.message = 'déjà demandé il y a moins d’une minute';
-      } else {
-        props.setProperty('DriveAI_DERNIER_PONCTUEL', String(Date.now()));
-        ScriptApp.newTrigger('tickPonctuel').timeBased().after(1000).create();
-        journalInfo_('WebApp', 'Passage immédiat demandé depuis l’app.');
-        reponse.ok = true;
-        reponse.message = 'passage lancé';
-      }
+      reponse = actionTickPonctuel_();
     }
   } catch (err) {
     reponse.erreur = String(err);
   }
   return ContentService.createTextOutput(JSON.stringify(reponse))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/* ---------- Action par défaut : passage immédiat (#20) ---------- */
+
+function actionTickPonctuel_() {
+  var reponse = { ok: false };
+  var props = PropertiesService.getScriptProperties();
+  var dernier = Number(props.getProperty('DriveAI_DERNIER_PONCTUEL')) || 0;
+  if (Date.now() - dernier < 60 * 1000) {
+    reponse.ok = true;
+    reponse.message = 'déjà demandé il y a moins d’une minute';
+  } else {
+    props.setProperty('DriveAI_DERNIER_PONCTUEL', String(Date.now()));
+    ScriptApp.newTrigger('tickPonctuel').timeBased().after(1000).create();
+    journalInfo_('WebApp', 'Passage immédiat demandé depuis l’app.');
+    reponse.ok = true;
+    reponse.message = 'passage lancé';
+  }
+  return reponse;
 }
 
 /** Cible du déclencheur ponctuel : nettoie ses déclencheurs puis lance le tick normal. */
@@ -49,4 +65,142 @@ function tickPonctuel() {
     });
   } catch (e) { /* best-effort — le tick prime */ }
   tickDriveAI();
+}
+
+/* ---------- Recherche IA (C21-03) ---------- */
+
+/**
+ * Question libre → plan de recherche. La requête porte la question dans le CORPS
+ * (JSON `{question}` en text/plain) ; jamais dans l'URL (les URL finissent dans des logs).
+ */
+function actionRechercheIA_(e) {
+  var props = PropertiesService.getScriptProperties();
+
+  // Anti-rafale dédié (5 s) — indépendant de celui du tick. (Contrôlé ici, mais consommé
+  // seulement après validation : une question invalide ne coûte rien, elle ne bloque rien.)
+  var derniere = Number(props.getProperty('DriveAI_DERNIERE_RECHERCHE_IA')) || 0;
+  if (Date.now() - derniere < CONFIG.IA_RECHERCHE_MIN_INTERVALLE_MS) {
+    return { ok: false, erreur: 'trop de requêtes — réessaie dans quelques secondes' };
+  }
+
+  // Plafond QUOTIDIEN (budget LLM < 10 $/mois) : compteur `AAAA-MM-JJ|n`. Sans LockService
+  // exprès : le verrou du script est tenu jusqu'à 6 min par le tick — le prendre ici rendrait
+  // la recherche inutilisable. Une rafale concurrente peut dépasser marginalement le plafond,
+  // seulement si le secret a déjà fui (risque borné, quelques cents).
+  var jour = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var brut = String(props.getProperty('DriveAI_RECHERCHES_IA_JOUR') || '');
+  var compteur = brut.indexOf(jour + '|') === 0 ? Number(brut.split('|')[1]) || 0 : 0;
+  if (compteur >= CONFIG.IA_RECHERCHE_MAX_JOUR) {
+    return { ok: false, erreur: 'plafond quotidien de recherches IA atteint' };
+  }
+
+  var question = null;
+  try {
+    var corps = e && e.postData && e.postData.contents ? JSON.parse(e.postData.contents) : {};
+    question = validerQuestionIA_(corps.question);
+  } catch (err) {
+    question = null;
+  }
+  if (question === null) {
+    return { ok: false, erreur: 'question invalide (3 à 300 caractères)' };
+  }
+  props.setProperty('DriveAI_DERNIERE_RECHERCHE_IA', String(Date.now()));
+
+  // Contexte d'exécution web app ≠ tick : panne persistée chargée, compteur d'usage propre.
+  chargerPannePlateforme_();
+  if (estPannePlateforme_()) {
+    // Panne de compte API : échec rapide SANS consommer le plafond (leçon R1 : une panne de
+    // plateforme ne s'impute jamais au flux — sinon Marc reste bloqué après la recharge).
+    return { ok: false, erreur: 'IA momentanément indisponible (compte API en panne) — réessaie plus tard' };
+  }
+  reinitialiserUsage_();
+  var texte;
+  try {
+    texte = appelAnthropicTexte_(
+      CONFIG.LLM_MODELE,
+      promptRechercheIA_(),
+      'Question : ' + question,
+      CONFIG.LLM_MAX_TOKENS_RECHERCHE
+    );
+  } finally {
+    try { flushUsage_(); } catch (err) { /* mesure de coût perdue pour cet appel — accepté */ }
+  }
+  // Le plafond compte les appels SERVIS (texte reçu) — jamais les échecs réseau/panne.
+  if (texte !== null) {
+    props.setProperty('DriveAI_RECHERCHES_IA_JOUR', jour + '|' + (compteur + 1));
+  }
+
+  var plan = parserPlanIA_(texte, domainesAutorises_());
+  if (!plan) {
+    return { ok: false, erreur: 'recherche IA indisponible (LLM muet ou réponse illisible)' };
+  }
+  journalInfo_('WebApp', 'Recherche IA servie (' + (compteur + 1) + '/' + CONFIG.IA_RECHERCHE_MAX_JOUR + ' aujourd’hui).');
+  return { ok: true, plan: plan };
+}
+
+/** Prompt système : sortie JSON STRICTE, domaines bornés à la taxonomie réelle. */
+function promptRechercheIA_() {
+  return 'Tu traduis une question en langage naturel sur des documents personnels en un plan de ' +
+    'recherche JSON STRICT (aucun texte hors du JSON).\n' +
+    'Schéma : {"texte": string|null, "domaine": string|null, "annee": string|null, ' +
+    '"motsCles": string[], "explication": string}\n' +
+    '- "texte" : le terme le plus discriminant pour filtrer par NOM de fichier (null si aucun).\n' +
+    '- "domaine" : EXACTEMENT un de : ' + domainesAutorises_().join(' | ') + ' — ou null.\n' +
+    '- "annee" : "AAAA" si la question vise une année, sinon null.\n' +
+    '- "motsCles" : 1 à 5 mots-clés PLEIN TEXTE, tels qu\'ils apparaîtraient DANS le document, ' +
+    'sans mots vides (peu de mots précis > beaucoup de mots vagues).\n' +
+    '- "explication" : une phrase COURTE en français (≤ 15 mots), ce que tu as compris.\n' +
+    'Exemple — Question : « mes factures Hydro de l\'an dernier » → ' +
+    '{"texte":"hydro","domaine":"02 · Finances","annee":"2025","motsCles":["facture","Hydro-Québec"],' +
+    '"explication":"Factures Hydro-Québec de 2025."}\n' +
+    'Date du jour : ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd') + '.';
+}
+
+/**
+ * Valide la question (donnée UTILISATEUR via HTTP) : chaîne 3..300 caractères. PURE (testée).
+ * @param {*} q
+ * @return {?string} question nettoyée, ou null
+ */
+function validerQuestionIA_(q) {
+  if (typeof q !== 'string') return null;
+  var propre = q.replace(/\s+/g, ' ').trim();
+  if (propre.length < 3 || propre.length > 300) return null;
+  return propre;
+}
+
+/**
+ * Parse et WHITELISTE le plan renvoyé par le LLM (sortie LLM = donnée non fiable). PURE (testée).
+ * Champs inconnus jetés, types forcés, domaine borné à la taxonomie, année AAAA, ≤ 5 mots-clés.
+ * @param {?string} texte
+ * @param {string[]} domaines
+ * @return {?Object}
+ */
+function parserPlanIA_(texte, domaines) {
+  if (!texte) return null;
+  var brut = null;
+  try {
+    brut = JSON.parse(texte);
+  } catch (e) {
+    var m = String(texte).match(/\{[\s\S]*\}/);
+    if (!m) return null;
+    try { brut = JSON.parse(m[0]); } catch (e2) { return null; }
+  }
+  if (!brut || typeof brut !== 'object') return null;
+
+  var plan = {};
+  if (typeof brut.texte === 'string' && brut.texte.trim()) plan.texte = brut.texte.trim().slice(0, 100);
+  if (typeof brut.domaine === 'string' && domaines.indexOf(brut.domaine) !== -1) plan.domaine = brut.domaine;
+  if (typeof brut.annee === 'string' && /^\d{4}$/.test(brut.annee)) plan.annee = brut.annee;
+  var mots = [];
+  if (Array.isArray(brut.motsCles)) {
+    for (var i = 0; i < brut.motsCles.length && mots.length < 5; i++) {
+      if (typeof brut.motsCles[i] === 'string' && brut.motsCles[i].trim()) {
+        mots.push(brut.motsCles[i].trim().slice(0, 50));
+      }
+    }
+  }
+  plan.motsCles = mots;
+  if (typeof brut.explication === 'string') plan.explication = brut.explication.trim().slice(0, 200);
+  if (!plan.texte && !plan.domaine && !plan.annee && mots.length === 0) return null; // plan vide = inutilisable
+  return plan;
 }

@@ -624,3 +624,41 @@ export async function verifierMaintenant(): Promise<void> {
   if (!webappUrl || !webappSecret) throw new Error('Configurer l’URL de la web app et son secret (⚙)');
   await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}`, { method: 'POST', mode: 'no-cors' });
 }
+
+/* ---------- Recherche IA (C21-03) : question libre → plan de recherche ---------- */
+
+/** Plan renvoyé par le moteur — déjà WHITELISTÉ côté Apps Script (parserPlanIA_). */
+export interface PlanRechercheIA {
+  texte?: string;
+  domaine?: string;
+  annee?: string;
+  motsCles?: string[];
+  explication?: string;
+}
+
+/**
+ * Traduit une question libre en plan de recherche via le doPost du moteur (la clé Anthropic
+ * reste dans les Script Properties — l'app ne parle JAMAIS à l'API Anthropic). Contrairement à
+ * `verifierMaintenant`, la réponse est LUE : POST en Content-Type text/plain = requête
+ * « simple » (pas de préflight), à laquelle Apps Script répond avec un CORS lisible.
+ * La question voyage dans le CORPS (jamais l'URL — les URL finissent dans des logs).
+ */
+export async function rechercheIA(question: string): Promise<PlanRechercheIA> {
+  const { webappUrl, webappSecret } = lireConfig();
+  if (!webappUrl || !webappSecret) throw new Error('Configurer l’URL de la web app et son secret (⚙)');
+  const rep = await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}&action=recherche-ia`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ question }),
+  });
+  if (!rep.ok) throw new Error(`Web app ${rep.status}`);
+  let data: { ok: boolean; erreur?: string; plan?: PlanRechercheIA };
+  try {
+    data = await rep.json();
+  } catch {
+    // Une web app mal déployée renvoie une page HTML en 200 (piège de VERSION — DEPLOIEMENT.md).
+    throw new Error('Réponse illisible — la web app a-t-elle été redéployée en nouvelle version ?');
+  }
+  if (!data.ok || !data.plan) throw new Error(data.erreur || 'recherche IA indisponible');
+  return data.plan;
+}

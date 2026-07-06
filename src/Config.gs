@@ -298,6 +298,11 @@ var CONFIG = {
   // rétrogradée en média (un passeport à 0,6 reste classé dans son domaine).
   MEDIAS_CONFIANCE_MIN: 0.7,
 
+  // --- Recherche IA depuis l'app (C21-03, via doPost) : bornes de budget ---
+  IA_RECHERCHE_MIN_INTERVALLE_MS: 5000,   // anti-rafale dédié (5 s entre deux questions)
+  IA_RECHERCHE_MAX_JOUR: 50,              // plafond quotidien d'appels SERVIS (≈ 0,002 $/question Haiku pire cas — ~3 $/mois au plafond)
+  LLM_MAX_TOKENS_RECHERCHE: 300,          // le plan JSON tient largement dedans
+
   // --- Phase 2 : référentiel d'entités ---
   // Dossier d'entrée scanné pour le dépôt manuel (réutilise A_TRIER ci-dessus).
   INTAKE_PAGE: 150,                       // nb de fichiers de 00·À trier traités par run (50→150 pour le

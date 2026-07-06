@@ -60,6 +60,9 @@ const CONTRAT = [
   // cibles publiques des déclencheurs / outils
   'tickDriveAI', 'installerTrigger', 'chienDeGarde', 'resumeHebdo', 'rangerToutLeDrive', 'dequarantaine',
   'rattraperMediasMalClasses', 'doPost', 'tickPonctuel', 'fileIdDepuisCleMaintenance_',
+  // web app : recherche IA (C21-03)
+  'actionTickPonctuel_', 'actionRechercheIA_', 'promptRechercheIA_', 'validerQuestionIA_',
+  'parserPlanIA_', 'appelAnthropicTexte_', 'domainesAutorises_',
 ];
 
 test('surface du moteur : toutes les fonctions du contrat interne sont définies', () => {
