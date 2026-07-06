@@ -7,16 +7,29 @@
 
 import { useEffect, useState } from 'react';
 import { lirePlage, ecrireCellule, ecrireColonnePlage, ajouterLigne } from '../google';
+import { corbeillerDossierVide } from '../corbeille';
 import {
   LigneReorg,
   interpreterReorg,
   derniereDemandeReorg,
   actionsDuPlan,
+  lignesVideCandidat,
   plagesContigues,
 } from '../etat';
 import { Langue, t } from '../i18n';
 
 const TYPES: Record<string, string> = { deplacer: '→', fusionner: '⇒', creer: '+', renommer: '✎' };
+
+/** Traduit les codes de refus du verdict corbeille (ADR-0014) en message lisible. */
+function messageCorbeille(e: unknown, langue: Langue): string {
+  const brut = String(e);
+  if (brut.includes('non-vide')) return t('corbeilleNonVide', langue);
+  if (brut.includes('zone-protegee')) return t('corbeilleProtege', langue);
+  if (brut.includes('racine-systeme') || brut.includes('dossier-structurel') || brut.includes('pas-un-dossier')) {
+    return t('corbeilleStructurel', langue);
+  }
+  return brut;
+}
 
 function libelleType(type: string, langue: Langue): string {
   if (type === 'deplacer') return t('reorgDeplacer', langue);
@@ -95,6 +108,24 @@ export function ReorgVue({ langue }: { langue: Langue }) {
     }
   }
 
+  const [erreurCorbeille, setErreurCorbeille] = useState('');
+
+  /** ADR-0014 : corbeille d'un dossier VIDE — re-vérifié en direct au clic, jamais automatique. */
+  async function corbeiller(l: LigneReorg) {
+    if (enCours) return;
+    setEnCours(true);
+    setErreurCorbeille('');
+    try {
+      await corbeillerDossierVide(l.id);
+      await ecrireCellule('Réorg', `F${l.ligneSheet}`, 'corbeillé');
+      setLignes((xs) => xs.map((x) => (x.ligneSheet === l.ligneSheet ? { ...x, statut: 'corbeillé' } : x)));
+    } catch (e) {
+      setErreurCorbeille(messageCorbeille(e, langue));
+    } finally {
+      setEnCours(false);
+    }
+  }
+
   if (erreur && !charge) return <p className="erreur">{t('erreur', langue)} : {erreur}</p>;
   if (!charge) return <p>{t('chargement', langue)}</p>;
 
@@ -102,6 +133,7 @@ export function ReorgVue({ langue }: { langue: Langue }) {
   const actions = demande ? actionsDuPlan(lignes, demande.cle) : [];
   const proposees = actions.filter((a) => a.statut === 'proposé');
   const decidees = actions.filter((a) => a.statut !== 'proposé');
+  const videsCandidats = lignesVideCandidat(lignes);
 
   return (
     <div className="colonnes">
@@ -169,6 +201,29 @@ export function ReorgVue({ langue }: { langue: Langue }) {
         )}
         <p className="explication">{t('reorgNote', langue)}</p>
       </section>
+
+      {videsCandidats.length > 0 && (
+        <section className="carte large">
+          <h2>🗑 {t('dossiersVides', langue)}</h2>
+          <p className="explication">{t('dossiersVidesIntro', langue)}</p>
+          {erreurCorbeille && <p className="erreur">{erreurCorbeille}</p>}
+          <table>
+            <tbody>
+              {videsCandidats.map((l) => (
+                <tr key={l.cle}>
+                  <td>{l.cheminActuel}</td>
+                  <td className="nombre">
+                    <button className="discret" disabled={enCours} onClick={() => corbeiller(l)}>
+                      🗑 {t('corbeiller', langue)}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="explication">{t('corbeilleNote', langue)}</p>
+        </section>
+      )}
 
       {decidees.length > 0 && (
         <section className="carte large">

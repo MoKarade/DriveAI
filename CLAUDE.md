@@ -30,7 +30,13 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
    chaque mutation) ; (c) un doublon, **même sensible**, va dans `_Doublons` (déplacement seul), jamais
    effacé. *(Réactiver un filet de revue = re-router dans `Router.deciderRoutage_` + rétablir `revue_`.)*
 2. **Aucune suppression automatique.** Les doublons sont *écartés dans `_Doublons` (déplacement seul)*,
-   jamais effacés.
+   jamais effacés. **Unique exception, ÉTROITE (ADR-0014, décision Marc 2026-07-06)** : un **DOSSIER
+   devenu VIDE** après une réorg validée (#21) peut être mis à la **corbeille Drive** (récupérable 30 j)
+   — uniquement par l'**APP** (`app/src/corbeille.ts`, seul fichier autorisé à porter `trashed: true`,
+   verrouillé par tripwire CI), uniquement au **clic de validation de Marc**, avec re-vérification au
+   clic de la vacuité STRICTE (corbeillés inclus), du type et de l'ascendance (échec fermé). **Jamais un
+   fichier, jamais un dossier non vide, jamais la zone protégée, jamais une racine système, jamais le
+   moteur** (surface `.gs` sans suppression, inchangée et testée). `files.delete` reste interdit partout.
 3. **Moindre privilège.** Scopes déclarés explicitement dans `appsscript.json`. Gmail en
    **`gmail.modify`** *(décision Marc 2026-07-06, ADR-0012, chantier #16 — révise l'ancienne règle
    « lecture seule »)* : les SEULES écritures permises sont poser un libellé **existant** sur un fil
@@ -188,6 +194,12 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   Revue systématique : « quel changement d'état devrait re-déclencher l'action, est-il dans la
   clé ? » Et deux documents qui doivent bouger ensemble (manifeste ↔ constitution) se verrouillent
   par un tripwire CI, pas par la discipline.
+- **Promesse de verrou = verrou codé dans le même commit.** Écrire dans un document vivant « la
+  surface X est verrouillée par tests » exige de VÉRIFIER (grep + test) que le test couvre bien X —
+  un test voisin ne couvre pas par contagion (le verrou Gmail ne voyait pas les suppressions Drive).
+  Une exception à un garde-fou se livre ATOMIQUEMENT (ADR + constitution + code + tripwire
+  bidirectionnel + revue flotte), et son périmètre se définit aussi par IDENTITÉ (IDs fixes du
+  routage), pas seulement par nom/ascendance.
 - **Pagination sur une recherche MOUVANTE (Gmail) ⇒ pas d'offset numérique seul.** Si de nouveaux
   éléments s'insèrent en tête entre deux appels (tri du plus récent au plus ancien), un offset qui
   repart de 0 à chaque tick capte bien le neuf mais peut **stagner indéfiniment** sur le reste de

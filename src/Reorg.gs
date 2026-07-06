@@ -175,13 +175,22 @@ function dernierSegment_(chemin) {
   return (parts[parts.length - 1] || '').trim();
 }
 
-/** Dossiers que l'application ne mute JAMAIS : domaines (fixes ET auto), files système. */
+/**
+ * Dossiers que l'application ne mute JAMAIS : domaines (fixes ET auto), files système, et les
+ * dossiers de CATÉGORIE à ID FIXE (Logement/Véhicule — le router y route par ID en dur : les
+ * vider/corbeiller serait une perte réelle, aucune re-création automatique par nom).
+ */
 function ensembleIntouchables_() {
   var set = {};
   Object.keys(CONFIG.DOMAINES).forEach(function (dom) { set[CONFIG.DOMAINES[dom]] = true; });
   (CONFIG.DOMAINES_AUTO || []).forEach(function (dom) {
     var id = PropertiesService.getScriptProperties().getProperty('DriveAI_DOM_' + dom);
     if (id) set[id] = true;
+  });
+  Object.keys(CONFIG.CATEGORIES || {}).forEach(function (dom) {
+    Object.keys(CONFIG.CATEGORIES[dom]).forEach(function (cat) {
+      set[CONFIG.CATEGORIES[dom][cat]] = true;
+    });
   });
   set[CONFIG.DOSSIERS.A_TRIER] = true;
   set[CONFIG.DOSSIERS.A_VERIFIER] = true;
@@ -199,6 +208,7 @@ function estSegmentStructurel_(nom) {
   var schemas = CONFIG.SCHEMAS_ENTITE || {};
   var types = Object.keys(schemas);
   for (var i = 0; i < types.length; i++) {
+    if (types[i] === propre) return true; // clés = catégories (Logement, Véhicule, …)
     if (schemas[types[i]].indexOf(propre) !== -1) return true;
   }
   return false;

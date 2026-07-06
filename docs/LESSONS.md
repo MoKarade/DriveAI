@@ -624,3 +624,20 @@ n'héritent pas `color`.
 avant la capture locale). Un bug de rendu incompréhensible sur du CSS sain → vérifier le mode de
 rendu (quirks vs standard) avant de toucher au CSS.
 **Règle durable ?** non (piège d'outillage, consigné ici suffit).
+
+
+## 2026-07-06 — Réviser un garde-fou : la promesse de verrou se CODE avant de s'écrire
+**Contexte.** C21-07 (ADR-0014) : première exception au §2 « aucune suppression » — corbeille des
+dossiers VIDES validés. La revue flotte adversariale a trouvé DEUX trous que la rédaction seule
+n'aurait jamais vus : (1) CLAUDE.md et l'ADR promettaient « surface moteur verrouillée par tests »
+alors que le test de surface ne couvrait que Gmail — un `setTrashed` Drive dans le moteur serait
+passé en CI verte ; (2) les dossiers de catégorie à ID FIXE (Logement/Véhicule) étaient corbeillables
+alors que le router y route par ID en dur — perte réelle à 30 jours, aucune re-création par nom.
+**Leçon.** (1) Toute PROMESSE de verrou écrite dans un document vivant (constitution, ADR) doit être
+VÉRIFIÉE codée (grep + test de surface) AVANT d'être écrite — un test voisin ne couvre pas par
+contagion (Gmail ≠ Drive). (2) Une exception à un garde-fou se livre ATOMIQUEMENT : ADR + constitution
++ code + tripwire bidirectionnel (l'un sans l'autre casse la CI) + revue flotte bloquante — et le
+périmètre de l'exception se définit aussi par IDENTITÉ (IDs fixes du routage), pas seulement par nom
+ou ascendance. (3) La revue adversariale sur LA PR sensible n'est pas un luxe : les deux trous étaient
+invisibles aux tests existants.
+**Règle durable ?** oui.

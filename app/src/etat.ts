@@ -492,3 +492,8 @@ export function plagesContigues(lignesSheet: number[]): { debut: number; fin: nu
   }
   return plages;
 }
+
+/** Les dossiers devenus VIDES par fusion, en attente de la décision corbeille de Marc (ADR-0014). */
+export function lignesVideCandidat(lignes: LigneReorg[]): LigneReorg[] {
+  return lignes.filter((l) => l.type === 'dossier-vide' && l.statut === 'vide-candidat');
+}

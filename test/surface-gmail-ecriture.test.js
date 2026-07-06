@@ -116,3 +116,42 @@ test('tripwire constitution : le scope Gmail effectif et CLAUDE.md ne divergent 
       'scope gmail.readonly actif mais CLAUDE.md ne documente plus la lecture seule');
   }
 });
+
+/* ---------- Surface DRIVE sans suppression (ADR-0014 : le moteur reste ABSOLU) ---------- */
+
+test('surface Drive : AUCUNE suppression/corbeille dans le moteur (l\'exception ADR-0014 vit dans l\'APP seule)', () => {
+  // L'ADR-0014 ouvre une exception ÉTROITE côté app (corbeille d'un dossier vide validé).
+  // Le moteur, lui, garde une surface .gs SANS AUCUN chemin de suppression — c'est la moitié
+  // « moteur inchangé » de la promesse de CLAUDE.md §2.2, rendue testable ici.
+  const MOTIFS_DRIVE_INTERDITS = [
+    [/setTrashed/, 'mise à la corbeille DriveApp'],
+    [/emptyTrash/, 'vidage de corbeille'],
+    [/files\.delete|Files\.remove/, 'suppression définitive Drive'],
+    [/\/trash\b/, 'endpoint corbeille REST'],
+    [/method\s*:\s*['"`]delete['"`]/i, 'DELETE REST (Drive/Sheets)'],
+    [/trashed['"`]?\s*:\s*true/, 'corbeille par PATCH REST'],
+  ];
+  // UNIQUE exception préexistante, whitelistée NOMMÉMENT : Ocr.gs supprime SON fichier
+  // TEMPORAIRE de conversion (artefact créé par le moteur la seconde d'avant, jamais un
+  // fichier de Marc). Bornée à UNE occurrence — une deuxième casserait ce test.
+  const violations = [];
+  let deleteOcr = 0;
+  for (const chemin of fichiersSource_(SRC)) {
+    const nomFichier = path.relative(SRC, chemin);
+    const lignes = fs.readFileSync(chemin, 'utf-8').split('\n');
+    lignes.forEach((ligne, i) => {
+      for (const [motif, raison] of MOTIFS_DRIVE_INTERDITS) {
+        if (!motif.test(ligne)) continue;
+        if (nomFichier === 'Ocr.gs' && raison === 'DELETE REST (Drive/Sheets)') {
+          deleteOcr++;
+          continue;
+        }
+        violations.push(`${nomFichier}:${i + 1} (${raison}) → ${ligne.trim()}`);
+      }
+    });
+  }
+  assert.deepStrictEqual(violations, [],
+    `suppression Drive dans le MOTEUR (interdit — ADR-0014 n'autorise que l'app) :\n${violations.join('\n')}`);
+  assert.ok(deleteOcr <= 1,
+    `Ocr.gs porte ${deleteOcr} DELETE — seul le nettoyage du fichier temporaire d'OCR est admis (1 max)`);
+});

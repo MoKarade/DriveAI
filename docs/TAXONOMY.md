@@ -102,12 +102,17 @@ mécanismes distincts dans le code :
   sensibles (1 exemplaire classé, les autres dans `_Doublons`) — cf. Zone protégée ci-dessous.
 - **Réorg IA (#21, Reorg.gs)** : sont **immuables** pour la réorg — les domaines `NN · …` (deplacer/
   renommer/fusionner interdits ; le renommage de domaine appartient au self-healing `NOMS_DOMAINES_TAG`),
-  les files `00 ·` (À trier, À vérifier) et les racines `_…`, les sous-dossiers d'année `AAAA` et les
+  les files `00 ·` (À trier, À vérifier) et les racines `_…`, les **dossiers de catégorie à ID FIXE**
+  (`CONFIG.CATEGORIES` : `Logement`/`Véhicule` — routés par ID en dur, aucune re-création par nom),
+  les sous-dossiers d'année `AAAA` et les
   **noms** des sous-dossiers de schéma (l'aiguillage du router matche par nom — les fusionner/renommer
   rendrait le plan non convergent : le router les re-créerait). `creer` sert aux dossiers STRUCTURELS,
   jamais à inventer une entité (le référentiel `Entités` route par `Dossier ID`). **Fusionner un dossier
   d'entité impose de re-pointer `Entités.Dossier ID`** (contrat C21-06). Zone protégée exclue de
   l'inventaire par remontée d'ancêtres (multi-parents, échec fermé) dès la collecte.
+  **Dossier vidé par fusion** : inscrit `vide-candidat` ; sa mise à la **corbeille Drive** (récupérable
+  30 j) n'arrive QUE par l'app, au clic de Marc, après re-vérification live (vacuité stricte corbeillés
+  inclus, ascendance, racines système ET dossiers à ID fixe refusés) — jamais par le moteur (ADR-0014).
 
 ## Documents sensibles 🔒 *(politique révisée 2026-07-01)*
 
