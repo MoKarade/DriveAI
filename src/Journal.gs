@@ -20,6 +20,12 @@ function initialiserSheet_(ss) {
   creerOnglet_(ss, 'Échecs', ['Clé', 'Tentatives', 'Dernière tentative']); // compteur de quarantaine
   creerOnglet_(ss, 'Relances', ['Clé', 'Demandé le']); // demandes de relance de quarantaine (app web, ADR-0011)
   creerOnglet_(ss, 'TriAppris', ['Adresse', 'Libellé', 'Appris le']); // table adresse→libellé du tri Gmail (#16)
+  creerOnglet_(ss, 'Réglages', ['Clé', 'Valeur']); // réglages modifiables depuis l'app (#22)
+  // Seed du réglage #22 (position FIXE : A2/B2 — contrat avec l'app) — seulement si absent.
+  var fReg = ss.getSheetByName('Réglages');
+  if (fReg && String(fReg.getRange('A2').getValue()) === '') {
+    fReg.getRange('A2:B2').setValues([['TICK_MINUTES', CONFIG.TICK_MINUTES]]);
+  }
   creerOnglet_(ss, 'Progression', ['Rangement de l\'ancien Drive']);        // barre de chargement (cf. Maintenance)
   creerOnglet_(ss, 'Santé', ['Santé DriveAI']);                             // vue lisible (heartbeat + métriques, ADR-0006)
   var defaut = ss.getSheetByName('Feuille 1') || ss.getSheetByName('Sheet1');

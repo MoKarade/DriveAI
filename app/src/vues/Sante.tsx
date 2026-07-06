@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { lirePlage, ajouterLigne } from '../google';
+import { lirePlage, ajouterLigne, ecrireCellule } from '../google';
 import {
   Sante as ModeleSante,
   LigneJournal,
@@ -28,19 +28,23 @@ export function SanteVue({ langue }: { langue: Langue }) {
   const [sante, setSante] = useState<ModeleSante | null>(null);
   const [journal, setJournal] = useState<LigneJournal[]>([]);
   const [index, setIndex] = useState<LigneIndex[]>([]);
+  const [tickInitial, setTickInitial] = useState('');
   const [erreur, setErreur] = useState('');
 
   useEffect(() => {
     (async () => {
       try {
-        const [s, j, i] = await Promise.all([
+        const [s, j, i, r] = await Promise.all([
           lirePlage('Santé', 'A2:A10'),
           lirePlage('Journal', 'A2:D5000'),
           lirePlage('Index', 'A2:H20000'),
+          // Onglet créé par le moteur au premier tick après déploiement — absent = défaut, pas une erreur.
+          lirePlage('Réglages', 'A2:B2').catch(() => [] as string[][]),
         ]);
         setSante(interpreterSante(s));
         setJournal(interpreterJournal(j));
         setIndex(interpreterIndex(i));
+        setTickInitial(r?.[0]?.[1] ?? '');
       } catch (e) {
         setErreur(String(e));
       }
@@ -95,6 +99,8 @@ export function SanteVue({ langue }: { langue: Langue }) {
         </p>
       </section>
 
+      <ReglagesSection langue={langue} valeurInitiale={tickInitial} />
+
       <QuarantaineSection langue={langue} lignes={quarantaine} />
 
       <section className="carte large">
@@ -112,6 +118,50 @@ export function SanteVue({ langue }: { langue: Langue }) {
         </table>
       </section>
     </div>
+  );
+}
+
+/**
+ * Réglages (#22, choix Marc : UN réglage global) : fréquence des passages du moteur.
+ * L'app écrit `Réglages!A2:B2` (contrat de position fixe) ; le moteur relit au tick suivant
+ * et ré-installe son déclencheur (assurerIntervalleTick_). Whitelist 5/10/15/30 — les mêmes
+ * valeurs que le moteur accepte (validerTickMinutes_), jamais de saisie libre.
+ */
+const TICKS_MINUTES = [5, 10, 15, 30];
+
+function ReglagesSection({ langue, valeurInitiale }: { langue: Langue; valeurInitiale: string }) {
+  const initiale = TICKS_MINUTES.includes(Number(valeurInitiale)) ? String(Number(valeurInitiale)) : '5';
+  const [tick, setTick] = useState(initiale);
+  const [statut, setStatut] = useState('');
+
+  async function changer(v: string) {
+    setTick(v);
+    setStatut('');
+    try {
+      // A2 réécrit aussi (auto-réparation si la clé a été effacée à la main).
+      await ecrireCellule('Réglages', 'A2', 'TICK_MINUTES');
+      await ecrireCellule('Réglages', 'B2', v);
+      setStatut('ok');
+    } catch (e) {
+      setStatut(String(e));
+    }
+  }
+
+  return (
+    <section className="carte">
+      <h2>{t('reglages', langue)}</h2>
+      <p className="statut-quota">{t('frequenceTick', langue)}</p>
+      <div className="ligne-formulaire">
+        <select value={tick} onChange={(e) => changer(e.target.value)} aria-label={t('frequenceTick', langue)}>
+          {TICKS_MINUTES.map((m) => (
+            <option key={m} value={String(m)}>{t('toutesLes', langue)} {m} min</option>
+          ))}
+        </select>
+        {statut === 'ok' && <span className="ok">{t('reglageOk', langue)}</span>}
+      </div>
+      {statut && statut !== 'ok' && <p className="erreur">{statut}</p>}
+      <p className="explication">{t('reglageNote', langue)}</p>
+    </section>
   );
 }
 
