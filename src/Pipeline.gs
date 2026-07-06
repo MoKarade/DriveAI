@@ -113,6 +113,7 @@ function traiterDocument_(src) {
     enrichirClassifDepuisNom_(classif, src.nom);
 
     var decision = deciderRoutage_(classif, src.date, ext);
+    decision.confiance = typeof classif.confiance === 'number' ? classif.confiance : ''; // #17 → Index H
 
     // Plus de file de revue (décision Marc 2026-07-01) : tout est CLASSÉ ('classé'), placé dans son
     // dossier cible avec son nom final propre. Un seul chemin de placement.

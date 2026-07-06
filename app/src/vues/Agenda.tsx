@@ -50,7 +50,7 @@ export function Agenda({ langue }: { langue: Langue }) {
         const [evts, tks, idx] = await Promise.all([
           listerEvenements(debut.toISOString(), fin.toISOString()),
           listerTaches(),
-          lirePlage('Index', 'A2:F20000'),
+          lirePlage('Index', 'A2:H20000'),
         ]);
         const lignes = interpreterIndex(idx);
         const marques = titresDriveAI(lignes);

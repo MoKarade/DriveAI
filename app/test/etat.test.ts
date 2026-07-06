@@ -311,3 +311,20 @@ describe('TriAppris (C19-06)', () => {
     expect(lignes[1].libelle).toBe('05 · Carrière');
   });
 });
+
+describe('confiance (#17, C19-07)', () => {
+  it('interpreterIndex lit la colonne H ; estConfianceBasse < 0,5 (virgule tolérée, vide = jamais)', async () => {
+    const { estConfianceBasse } = await import('../src/etat');
+    const lignes = interpreterIndex([
+      ['drive|A', '2026-07-06', 'A.pdf', '02', '', 'classé', 'md5', '0.92'],
+      ['drive|B', '2026-07-06', 'B.pdf', '02', '', 'classé', 'md5', '0,44'],
+      ['drive|C', '2026-07-06', 'C.pdf', '02', '', 'classé', 'md5', ''],
+      ['drive|D', '2026-07-06', 'D.pdf', '02', '', 'classé'],
+    ]);
+    expect(lignes[0].confiance).toBe('0.92');
+    expect(estConfianceBasse(lignes[0])).toBe(false);
+    expect(estConfianceBasse(lignes[1])).toBe(true);
+    expect(estConfianceBasse(lignes[2])).toBe(false);
+    expect(estConfianceBasse(lignes[3])).toBe(false);
+  });
+});
