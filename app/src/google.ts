@@ -95,32 +95,63 @@ export function abonnerSessionExpiree(cb: () => void): void {
 
 async function api<T>(url: string, options?: RequestInit): Promise<T> {
   if (!jetonAcces) throw new Error('Non connecté');
-  const rep = await fetch(url, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${jetonAcces}`,
-      'Content-Type': 'application/json',
-      ...(options?.headers ?? {}),
-    },
-  });
-  if (rep.status === 401) {
-    jetonAcces = null;
-    surSessionExpiree?.(); // l'UI rebascule sur l'écran de connexion
-    throw new Error('Session expirée — reconnecte-toi');
+  // 429 (quota par minute PARTAGÉ avec le moteur — il écrit dans la même Sheet, en tant que Marc) :
+  // réessai avec repli progressif au lieu d'une erreur brute. Un 429 = requête NON exécutée → le
+  // réessai est sûr, y compris pour les écritures.
+  for (let essai = 0; ; essai++) {
+    const rep = await fetch(url, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${jetonAcces}`,
+        'Content-Type': 'application/json',
+        ...(options?.headers ?? {}),
+      },
+    });
+    if (rep.status === 401) {
+      jetonAcces = null;
+      surSessionExpiree?.(); // l'UI rebascule sur l'écran de connexion
+      throw new Error('Session expirée — reconnecte-toi');
+    }
+    if (rep.status === 429 && essai < 3) {
+      const attente = Number(rep.headers.get('Retry-After')) * 1000 || 1500 * 2 ** essai;
+      await new Promise((r) => setTimeout(r, attente + Math.random() * 400));
+      continue;
+    }
+    if (rep.status === 429) {
+      throw new Error('Google est momentanément saturé (quota par minute) — réessaie dans quelques secondes.');
+    }
+    if (!rep.ok) {
+      const corps = await rep.text();
+      throw new Error(`Google API ${rep.status} : ${corps.slice(0, 200)}`);
+    }
+    return rep.json() as Promise<T>;
   }
-  if (!rep.ok) {
-    const corps = await rep.text();
-    throw new Error(`Google API ${rep.status} : ${corps.slice(0, 200)}`);
-  }
-  return rep.json() as Promise<T>;
 }
 
 /* ---------- Sheets (état DriveAI) ---------- */
 
 const SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets';
 
+// Cache de LECTURE (60 s) : changer d'onglet ne recharge pas tout — les vues repartagent la même
+// photo de l'état (le moteur n'écrit que par ticks de 5 min ; les écritures de l'APP l'invalident).
+const cachePlages = new Map<string, { t: number; donnees: string[][] }>();
+const CACHE_MS = 60 * 1000;
+
+export function viderCachePlages(): void {
+  cachePlages.clear();
+}
+
 /** Lit une plage (valeurs brutes, lignes de tableaux). */
 export async function lirePlage(onglet: string, plage: string): Promise<string[][]> {
+  const cle = `${onglet}!${plage}`;
+  const memo = cachePlages.get(cle);
+  if (memo && Date.now() - memo.t < CACHE_MS) return memo.donnees;
+  const donnees = await lirePlageDirecte(onglet, plage);
+  cachePlages.set(cle, { t: Date.now(), donnees });
+  return donnees;
+}
+
+async function lirePlageDirecte(onglet: string, plage: string): Promise<string[][]> {
   const { spreadsheetId } = lireConfig();
   const r = await api<{ values?: string[][] }>(
     `${SHEETS}/${spreadsheetId}/values/${encodeURIComponent(`${onglet}!${plage}`)}`,
@@ -130,6 +161,7 @@ export async function lirePlage(onglet: string, plage: string): Promise<string[]
 
 /** Écrit UNE cellule (ex. Statut d'une entité → « validée »). */
 export async function ecrireCellule(onglet: string, cellule: string, valeur: string): Promise<void> {
+  viderCachePlages(); // l'état vient de changer — les vues doivent relire
   const { spreadsheetId } = lireConfig();
   await api(
     `${SHEETS}/${spreadsheetId}/values/${encodeURIComponent(`${onglet}!${cellule}`)}?valueInputOption=RAW`,
@@ -139,6 +171,7 @@ export async function ecrireCellule(onglet: string, cellule: string, valeur: str
 
 /** Ajoute une ligne en fin d'onglet (ex. Corrections → few-shot du moteur). */
 export async function ajouterLigne(onglet: string, ligne: (string | number)[]): Promise<void> {
+  viderCachePlages();
   const { spreadsheetId } = lireConfig();
   await api(
     `${SHEETS}/${spreadsheetId}/values/${encodeURIComponent(`${onglet}!A1`)}:append?valueInputOption=RAW`,
@@ -337,4 +370,17 @@ export async function cocherTache(id: string, faite: boolean): Promise<void> {
     method: 'PATCH',
     body: JSON.stringify({ status: faite ? 'completed' : 'needsAction' }),
   });
+}
+
+/* ---------- « Vérifier maintenant » (#20) : pont vers la web app Apps Script ---------- */
+
+/**
+ * Demande un passage IMMÉDIAT du moteur (doPost Apps Script, secret partagé). Appel en `no-cors` :
+ * la réponse est opaque (on ne lit rien) — le moteur journalise et l'anti-rafale (60 s) vit côté
+ * script. Lève seulement si la config manque ou si le réseau échoue.
+ */
+export async function verifierMaintenant(): Promise<void> {
+  const { webappUrl, webappSecret } = lireConfig();
+  if (!webappUrl || !webappSecret) throw new Error('Configurer l’URL de la web app et son secret (⚙)');
+  await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}`, { method: 'POST', mode: 'no-cors' });
 }

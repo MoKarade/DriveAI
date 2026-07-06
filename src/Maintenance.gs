@@ -526,3 +526,73 @@ function appliquerRelancesQuarantaine_(estBudgetDepasse) {
     journalInfo_('Maintenance', retirees + ' document(s) relancé(s) depuis l\'app (sortie de quarantaine) — re-traités au prochain passage.');
   }
 }
+
+/**
+ * RATTRAPAGE one-shot (incident « BACAR » 2026-07-06) : re-juge les IMAGES classées comme
+ * documents depuis `depuisISO` avec les gardes DURCIES (OCR < MEDIAS_OCR_MAX_CARS ⇒ média).
+ * À lancer À LA MAIN (un clic), borné par le garde-temps + plafond par run — relancer si le
+ * journal dit « reste à traiter ». Déplacement SEUL vers _Médias (jamais de suppression), le
+ * fichier garde son nom actuel (l'original n'est plus connu), la ligne d'Index passe à « média ».
+ * @param {string} [depuisISO]  défaut : 2026-07-02 (le lot Messenger dé-quarantainé)
+ */
+function rattraperMediasMalClasses(depuisISO) {
+  var depuis = new Date(depuisISO || '2026-07-02T00:00:00');
+  var debut = Date.now();
+  var PLAFOND = 25; // borne aussi le coût LLM du re-jugement
+  var f = feuille_('Index');
+  var dern = f.getLastRow();
+  if (dern < 2) { journalInfo_('Rattrapage', 'Index vide.'); return; }
+  var v = f.getRange(2, 1, dern - 1, 6).getValues(); // A=Clé, B=Traité le, C=Fichier, F=Statut
+  var vus = 0, demis = 0, restants = 0;
+  var medias = dossierMedias_().getId();
+  for (var i = 0; i < v.length; i++) {
+    if (v[i][5] !== 'classé') continue;
+    var cle = String(v[i][0]);
+    if (cle.indexOf('drive|') !== 0 && cle.indexOf('migre|') !== 0) continue;
+    var d = v[i][1];
+    if (!(d instanceof Date) || d.getTime() < depuis.getTime()) continue;
+    var nom = String(v[i][2]);
+    if (!estPhoto_(nom)) continue; // seules les images sont concernées
+    if (Date.now() - debut > CONFIG.BUDGET_MS || vus >= PLAFOND) { restants++; continue; }
+    vus++;
+    try {
+      var fileId = fileIdDepuisCleMaintenance_(cle);
+      if (!fileId) continue;
+      var fichier = DriveApp.getFileById(fileId);
+      var blob = fichier.getBlob();
+      if (fichier.getSize() > CONFIG.OCR_TAILLE_MAX) continue; // trop gros pour re-juger : laissé
+      var texte = extraireTexte_(blob);
+      if (texte === null) { restants++; continue; } // OCR en panne : re-jugé à la relance
+      if (texte.length >= CONFIG.MEDIAS_OCR_MAX_CARS) {
+        // Texte présent → re-juger par la CONFIANCE, avec un nom NEUTRE (le nom actuel est celui
+        // que le LLM a halluciné — le lui remontrer biaiserait le verdict). Zone protégée/sensible
+        // → laissé classé, comme au pipeline.
+        if (toucheZoneProtegee_(texte)) continue;
+        var verdict = classifier_({ nomFichier: '(photo sans nom)', expediteur: '', sujet: '', extrait: texte });
+        if (!verdict) { restants++; continue; } // LLM indisponible : re-jugé à la relance
+        if (verdict.sensible === true) continue;
+        if (typeof verdict.confiance === 'number' && verdict.confiance >= CONFIG.MEDIAS_CONFIANCE_MIN) continue;
+      }
+      var parent = fichier.getParents().hasNext() ? fichier.getParents().next().getId() : '';
+      if (parent === medias) continue; // déjà au bon endroit
+      if (!deplacerEtRenommer_(fileId, medias, parent, nom)) { restants++; continue; }
+      f.getRange(i + 2, 4, 1, 3).setValues([['', '_Médias', 'média']]); // D domaine, E chemin, F statut
+      demis++;
+      journalInfo_('Rattrapage', 'photo re-jugée média → _Médias : ' + nom);
+    } catch (e) {
+      restants++;
+      journalErreur_('Rattrapage', 'Re-jugement impossible (' + nom + ') : ' + e);
+    }
+  }
+  journalInfo_('Rattrapage', 'Terminé : ' + vus + ' image(s) re-jugée(s), ' + demis + ' → _Médias' +
+    (restants ? ', ' + restants + ' reste(nt) à traiter — RELANCE rattraperMediasMalClasses()' : '.'));
+}
+
+/** fileId d'une clé `drive|<id>` ou `migre|<tag>|<id>` (miroir app). */
+function fileIdDepuisCleMaintenance_(cle) {
+  var d = cle.match(/^drive\|(.+)$/);
+  if (d) return d[1];
+  var mg = cle.match(/^migre\|[^|]+\|(.+)$/);
+  if (mg) return mg[1];
+  return '';
+}

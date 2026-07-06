@@ -32,6 +32,7 @@ const SUSPECTS_MAX = 5;
 export function AujourdHui({ langue }: { langue: Langue }) {
   const [sante, setSante] = useState<Sante | null>(null);
   const [index, setIndex] = useState<LigneIndex[]>([]);
+  const [survol, setSurvol] = useState<{ jour: string; n: number } | null>(null);
   const [erreur, setErreur] = useState('');
 
   useEffect(() => {
@@ -119,14 +120,18 @@ export function AujourdHui({ langue }: { langue: Langue }) {
       )}
 
       <section className="carte large">
-        <h2>{t('activite30j', langue)}</h2>
-        <div className="barres" role="img" aria-label={t('activite30j', langue)}>
+        <h2>
+          {t('activite30j', langue)}
+          <span className="graphe-valeur">{survol ? `${survol.jour} — ${survol.n} ${t('docsCourt', langue)}` : ''}</span>
+        </h2>
+        <div className="barres" role="img" aria-label={t('activite30j', langue)} onPointerLeave={() => setSurvol(null)}>
           {activite.map((a) => (
             <div
               key={a.jour}
-              className="barre"
+              className={`barre ${survol?.jour === a.jour ? 'survol' : ''}`}
               style={{ height: `${Math.round((a.n / maxJour) * 100)}%` }}
-              title={`${a.jour} : ${a.n}`}
+              onPointerEnter={() => setSurvol(a)}
+              onPointerDown={() => setSurvol(a)}
             />
           ))}
         </div>

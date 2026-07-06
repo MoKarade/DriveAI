@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import { configComplete, lireConfig, enregistrerConfig } from './config';
-import { seConnecter, estConnecte, seDeconnecter, abonnerSessionExpiree } from './google';
+import { seConnecter, estConnecte, seDeconnecter, abonnerSessionExpiree, verifierMaintenant, viderCachePlages } from './google';
 import { Langue, langueCourante, changerLangue, t } from './i18n';
 import { basculerTheme, themeCourant } from './theme';
 import { AujourdHui } from './vues/AujourdHui';
@@ -32,6 +32,7 @@ export function App() {
   const [section, setSection] = useState<Section>('aujourdhui');
   const [plusOuvert, setPlusOuvert] = useState(false);
   const [, setTheme] = useState(themeCourant());
+  const [verif, setVerif] = useState<'' | 'encours' | 'ok'>('');
   const [erreur, setErreur] = useState('');
 
   // Jeton GIS expiré (~1 h) → rebascule sur l'écran de connexion au lieu de vues qui échouent en boucle.
@@ -60,8 +61,26 @@ export function App() {
     setPlusOuvert(false);
   }
 
+  async function verifier() {
+    setVerif('encours');
+    try {
+      await verifierMaintenant();
+      setVerif('ok');
+      // Le moteur passe dans la ~minute : on invalide le cache et on laisse le badge 90 s.
+      setTimeout(() => { viderCachePlages(); setVerif(''); }, 90 * 1000);
+    } catch (e) {
+      setVerif('');
+      setErreur(String(e));
+    }
+  }
+
   const reglages = (
     <>
+      {connecte && (
+        <button className="discret" onClick={verifier} disabled={verif === 'encours'} title={t('verifierTitre', langue)}>
+          {verif === 'ok' ? t('verifOk', langue) : `⟳ ${t('verifier', langue)}`}
+        </button>
+      )}
       <button className="discret" onClick={() => setTheme(basculerTheme())} title={t('theme', langue)}>◐</button>
       <button className="discret" onClick={basculerLangue}>{langue === 'fr' ? 'EN' : 'FR'}</button>
       <button className="discret" title={t('configuration', langue)} onClick={() => setConfigOk(false)}>⚙</button>
@@ -161,6 +180,8 @@ function Configuration({ langue, onFait }: { langue: Langue; onFait: () => void 
   const initiale = lireConfig();
   const [clientId, setClientId] = useState(initiale.clientId);
   const [spreadsheetId, setSpreadsheetId] = useState(initiale.spreadsheetId);
+  const [webappUrl, setWebappUrl] = useState(initiale.webappUrl);
+  const [webappSecret, setWebappSecret] = useState(initiale.webappSecret);
 
   return (
     <section className="carte centre">
@@ -172,11 +193,13 @@ function Configuration({ langue, onFait }: { langue: Langue; onFait: () => void 
           onChange={(e) => setSpreadsheetId(e.target.value)}
           placeholder={t('spreadsheetId', langue)}
         />
+        <input value={webappUrl} onChange={(e) => setWebappUrl(e.target.value)} placeholder={t('webappUrl', langue)} />
+        <input value={webappSecret} onChange={(e) => setWebappSecret(e.target.value)} placeholder={t('webappSecret', langue)} />
         <button
           className="principal"
           disabled={!clientId || !spreadsheetId}
           onClick={() => {
-            enregistrerConfig({ clientId, spreadsheetId });
+            enregistrerConfig({ clientId, spreadsheetId, webappUrl, webappSecret });
             onFait();
           }}
         >

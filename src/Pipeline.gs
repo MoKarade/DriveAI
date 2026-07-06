@@ -112,6 +112,21 @@ function traiterDocument_(src) {
     // on le complète depuis le nom du fichier (ex. …_TP4_… → « TP ») avant le routage/nommage.
     enrichirClassifDepuisNom_(classif, src.nom);
 
+    // Garde post-LLM (incident BACAR 2026-07-06) : une PHOTO au nom non-documentaire dont le
+    // classement n'est PAS sûr n'est JAMAIS « classée au mieux » — c'est un média personnel.
+    // (Un vrai reçu photographié sort avec une confiance élevée et passe.)
+    if (estPhoto_(src.nom) && estNomNonDocumentaire_(src.nom) &&
+        (typeof classif.confiance !== 'number' || classif.confiance < CONFIG.MEDIAS_CONFIANCE_MIN) &&
+        classif.sensible !== true && !toucheZoneProtegee_(src.nom + ' ' + (extrait || ''))) {
+      var decPh = routageMedia_(src.nom);
+      var idPh = src.placer(decPh.dossierId, decPh.nom);
+      if (!idPh) { gererEchec_(src, 'placement média échoué'); return; }
+      indexAjouter_(src.cle, decPh, empreinte);
+      journalInfo_('Pipeline', 'photo à classement incertain (' +
+        (typeof classif.confiance === 'number' ? classif.confiance : '?') + ') → _Médias : ' + decPh.nom);
+      return;
+    }
+
     var decision = deciderRoutage_(classif, src.date, ext);
     decision.confiance = typeof classif.confiance === 'number' ? classif.confiance : ''; // #17 → Index H
 

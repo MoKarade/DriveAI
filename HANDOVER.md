@@ -44,6 +44,12 @@
 > 8 colonnes) ; Santé (quota Gmail dérivé du Journal, quarantaine+relance). Verrou app durci :
 > jamais DELETE, jamais status:cancelled, jamais /clear. Chantier #18 (entités auto à 3) = prochain.
 >
+> **2026-07-06 (fin de soirée) — #20 livré** : incident « BACAR » corrigé (garde de confiance photo
+> + `rattraperMediasMalClasses()` à lancer par Marc), retry 429, cache lecture 60 s, tooltip graphe,
+> bouton « Vérifier maintenant » (web app à déployer — DEPLOIEMENT.md). Nouvelles demandes Marc à
+> cadrer : #21 explorateur Drive + réorg IA (⚠ suppression de dossiers ↔ §2), #22 fréquences
+> configurables, #23 peaufinage UI (Agenda façon Google Calendar). Questions posées.
+>
 > Antérieur — **2026-07-01 (soir)** : **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
 > Session de conception « niveau pro » avec Marc : **8 ADR** (`docs/adr/0001`→`0008`), **roadmap priorisée à
 > 9 chantiers** (`docs/ROADMAP.md`), runbook (`docs/RUNBOOK.md`) et guide (`docs/GUIDE.md`). Socle #1 =

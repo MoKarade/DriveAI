@@ -127,3 +127,38 @@ test('pipeline : photo au nom PORTEUR DE SENS + OCR vide → analyse complète q
   c.traiterDocument_(src);
   assert.strictEqual(calls.classif, 1); // nom documentaire → jamais fast-pathé
 });
+
+/* ---------- garde post-LLM (incident « BACAR », 2026-07-06) ---------- */
+
+function ctxPipelineConf(nom, extrait, classif) {
+  const base = ctxPipeline(nom, extrait);
+  base.c.classifier_ = () => { base.calls.classif++; return classif; };
+  base.c.toucheZoneProtegee_ = (t) => /passeport|ircc/i.test(t || '');
+  base.c.enrichirClassifDepuisNom_ = () => {}; // dépend de normaliserCle_ (module non chargé ici)
+  base.c.deciderRoutage_ = () => ({ statut: 'classé', domaine: '02', chemin: '02', nom: 'X.pdf', dossierId: 'ID_DOC' });
+  base.c.creerRaccourcisEntites_ = () => {};
+  base.c.journalInfo_ = () => {};
+  return base;
+}
+
+test('pipeline : photo non-doc, OCR d\'étiquettes, confiance BASSE → _Médias (jamais « au mieux »)', () => {
+  const { c, calls, src } = ctxPipelineConf('987654321.jpg', 'BACARDI — GORDON\'S LONDON DRY 33cl',
+    { domaine: '02', confiance: 0.4, sensible: false });
+  c.traiterDocument_(src);
+  assert.strictEqual(calls.classif, 1); // le juge a siégé
+  assert.deepStrictEqual(calls.places, [{ dossierId: 'ID_MEDIAS', n: '987654321.jpg' }]); // nom conservé
+});
+
+test('pipeline : photo non-doc, confiance HAUTE (vrai reçu photographié) → classée normalement', () => {
+  const { c, calls, src } = ctxPipelineConf('987654322.jpg', 'RECU DE PAIEMENT KIA STE-FOY TOTAL 500,00 $',
+    { domaine: '02', confiance: 0.92, sensible: false });
+  c.traiterDocument_(src);
+  assert.deepStrictEqual(calls.places, [{ dossierId: 'ID_DOC', n: 'X.pdf' }]);
+});
+
+test('pipeline : photo non-doc SENSIBLE à confiance basse → JAMAIS rétrogradée en média (§1)', () => {
+  const { c, calls, src } = ctxPipelineConf('987654323.jpg', 'quelques mots de passeport ici',
+    { domaine: '04', confiance: 0.5, sensible: true });
+  c.traiterDocument_(src);
+  assert.deepStrictEqual(calls.places, [{ dossierId: 'ID_DOC', n: 'X.pdf' }]); // reste un document
+});

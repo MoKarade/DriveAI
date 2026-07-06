@@ -197,6 +197,11 @@ footer {
 .actions { display: flex; gap: 0.35rem; flex-wrap: wrap; }
 .actions button { padding: 0.3rem 0.6rem; font-size: 0.85rem; }
 
+/* graphe : valeur au survol/toucher (#20) */
+.graphe-valeur { float: right; font-family: var(--mono); font-size: 0.78rem; color: var(--accent); text-transform: none; letter-spacing: 0; }
+.barre.survol { background: var(--accent); opacity: 1; }
+.barre { touch-action: none; }
+
 /* vue Aujourd'hui (C19-04) */
 .tuiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; grid-column: 1 / -1; }
 @media (max-width: 720px) { .tuiles { grid-template-columns: 1fr 1fr; } }
