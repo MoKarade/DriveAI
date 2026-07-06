@@ -50,6 +50,12 @@
 > cadrer : #21 explorateur Drive + réorg IA (⚠ suppression de dossiers ↔ §2), #22 fréquences
 > configurables, #23 peaufinage UI (Agenda façon Google Calendar). Questions posées.
 >
+> **Cadrage acté (réponses Marc, fin de session 06-07)** : #21 réorg IA = proposition → validation →
+> déplacements seuls + corbeille des dossiers VIDES validée (révision étroite §2, ADR-0014 à écrire) ;
+> #22 = un réglage global du tick via l'app/Sheet ; #23 = Agenda façon GCal + plus aéré + transitions.
+> Ordre conseillé : #23 → #22 → #21 → #18. Rappels Marc : lancer `rattraperMediasMalClasses` +
+> déployer la web app (DEPLOIEMENT.md) ; tri Gmail démarre seul ~03h.
+>
 > Antérieur — **2026-07-01 (soir)** : **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
 > Session de conception « niveau pro » avec Marc : **8 ADR** (`docs/adr/0001`→`0008`), **roadmap priorisée à
 > 9 chantiers** (`docs/ROADMAP.md`), runbook (`docs/RUNBOOK.md`) et guide (`docs/GUIDE.md`). Socle #1 =
