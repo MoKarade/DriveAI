@@ -427,3 +427,68 @@ export function erreursRecentes(journal: LigneJournal[], jours: number, maintena
     return !Number.isNaN(t) && t >= seuil;
   }).length;
 }
+
+/* ---------- Réorg IA (#21, C21-05) : plan proposé par le moteur, validé ici ---------- */
+
+export interface LigneReorg {
+  ligneSheet: number; // 1-based (en-tête = 1) — cible des écritures de Statut
+  cle: string;
+  type: string;       // 'demande' | 'deplacer' | 'fusionner' | 'creer' | 'renommer'
+  id: string;
+  cheminActuel: string;
+  cheminPropose: string;
+  statut: string;     // demande : 'analyse demandée'|'proposé'|'échec' ; action : machine à états Reorg.gs
+  detail: string;     // demande : portée puis synthèse ; action : raison du LLM
+  horodate: string;
+}
+
+/** Interprète l'onglet Réorg (Clé|Type|ID|Chemin actuel|Chemin proposé|Statut|Détail|Horodaté). */
+export function interpreterReorg(brut: string[][]): LigneReorg[] {
+  const lignes: LigneReorg[] = [];
+  for (let i = 0; i < brut.length; i++) {
+    const l = brut[i];
+    if (!l[0]) continue;
+    lignes.push({
+      ligneSheet: i + 2,
+      cle: l[0] ?? '',
+      type: l[1] ?? '',
+      id: l[2] ?? '',
+      cheminActuel: l[3] ?? '',
+      cheminPropose: l[4] ?? '',
+      statut: l[5] ?? '',
+      detail: l[6] ?? '',
+      horodate: l[7] ?? '',
+    });
+  }
+  return lignes;
+}
+
+/** La demande d'analyse la plus récente (le moteur ne traite que celle-là). */
+export function derniereDemandeReorg(lignes: LigneReorg[]): LigneReorg | null {
+  for (let i = lignes.length - 1; i >= 0; i--) {
+    if (lignes[i].type === 'demande') return lignes[i];
+  }
+  return null;
+}
+
+/** Les actions du plan d'une demande (préfixe de clé `reorg|<cléDemande>|`). */
+export function actionsDuPlan(lignes: LigneReorg[], cleDemande: string): LigneReorg[] {
+  const prefixe = `reorg|${cleDemande}|`;
+  return lignes.filter((l) => l.cle.startsWith(prefixe));
+}
+
+/**
+ * Regroupe des numéros de lignes Sheet en PLAGES CONTIGUËS (écriture par lot de la colonne
+ * Statut : une plage = un PUT — jamais un batchUpdate, jamais une ligne non sélectionnée
+ * écrasée). Entrée dédupliquée et triée ici (copie).
+ */
+export function plagesContigues(lignesSheet: number[]): { debut: number; fin: number }[] {
+  const tri = Array.from(new Set(lignesSheet)).sort((a, b) => a - b);
+  const plages: { debut: number; fin: number }[] = [];
+  for (const n of tri) {
+    const derniere = plages[plages.length - 1];
+    if (derniere && n === derniere.fin + 1) derniere.fin = n;
+    else plages.push({ debut: n, fin: n });
+  }
+  return plages;
+}

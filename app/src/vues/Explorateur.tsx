@@ -15,6 +15,7 @@ import {
   rechercherDrive,
   creerDossier,
   deplacerFichierManuel,
+  ajouterLigne,
   PageDrive,
 } from '../google';
 import {
@@ -46,9 +47,10 @@ export function Explorateur({ langue }: { langue: Langue }) {
   const [enCours, setEnCours] = useState(false);
   const [porteeTronquee, setPorteeTronquee] = useState(false);
 
-  // C21-02 : création de dossier + déplacement.
+  // C21-02 : création de dossier + déplacement. C21-05 : demande d'analyse IA.
   const [creation, setCreation] = useState<'' | 'ouvert' | 'encours'>('');
   const [nomDossier, setNomDossier] = useState('');
+  const [analyse, setAnalyse] = useState<'' | 'encours' | 'ok'>('');
   const [aDeplacer, setADeplacer] = useState<ElementDrive | null>(null); // mode « Déplacer → Déposer ici »
   const [survolDepot, setSurvolDepot] = useState(''); // id du dossier survolé pendant un drag
   const [statutDepot, setStatutDepot] = useState(''); // '' | 'ok' | message d'erreur
@@ -63,6 +65,7 @@ export function Explorateur({ langue }: { langue: Langue }) {
     setSuivant(undefined);
     setCharge(false);
     setErreur('');
+    setAnalyse(''); // chaque dossier a son propre bouton « Analyser » (sinon perdu pour la session)
     (async () => {
       try {
         const page = await listerEnfants(dossier.id);
@@ -128,6 +131,23 @@ export function Explorateur({ langue }: { langue: Langue }) {
       setAriane((a) => pousserEtape(a, { id: e.id, nom: e.name }));
     } else {
       window.open(e.webViewLink ?? `https://drive.google.com/file/d/${e.id}/view`, '_blank', 'noopener');
+    }
+  }
+
+  /** Dépose une demande d'analyse IA (onglet Réorg) — portée = dossier courant, racine = tout. */
+  async function analyserStructure() {
+    if (analyse === 'encours') return;
+    setAnalyse('encours');
+    setErreur('');
+    try {
+      await ajouterLigne('Réorg', [
+        `demande-${Date.now()}`, 'demande', '', '', '', 'analyse demandée',
+        dossier.id === 'root' ? 'tout' : dossier.id, new Date().toISOString(),
+      ]);
+      setAnalyse('ok');
+    } catch (e) {
+      setAnalyse('');
+      setErreur(String(e));
     }
   }
 
@@ -249,6 +269,13 @@ export function Explorateur({ langue }: { langue: Langue }) {
           {resultats && <b>{resultats.length} {t('resultats', langue)}</b>}
           {!resultats && !estDossierATrier(dossier.nom) && (
             <span className="ariane-actions">
+              {analyse === 'ok' ? (
+                <span className="ok">✨ {t('demandeEnvoyee', langue)}</span>
+              ) : (
+                <button className="discret" onClick={analyserStructure} disabled={analyse === 'encours'}>
+                  ✨ {analyse === 'encours' ? t('chargement', langue) : t('analyserStructure', langue)}
+                </button>
+              )}
               {creation === '' ? (
                 <button className="discret" onClick={() => setCreation('ouvert')}>+ {t('nouveauDossier', langue)}</button>
               ) : (
