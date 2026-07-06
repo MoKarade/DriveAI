@@ -20,6 +20,16 @@
 export const RACINES_PROTEGEES_DEFAUT = ['1VBK_4pkJmIeTsRyz-MWpMBYaOhKYNfRC'];
 
 /**
+ * IDs des dossiers STRUCTURELS à ID FIXE (miroir de `CONFIG.CATEGORIES` du moteur : le router
+ * y route par ID EN DUR — les corbeiller serait une perte réelle, aucune re-création par nom).
+ * Aujourd'hui : `03 · Logement & véhicule/Logement` et `/Véhicule`.
+ */
+export const IDS_STRUCTURELS_DEFAUT = [
+  '13ISBh6ZrwK9YHgmIM20tWTgWh4x9wI79', // Logement
+  '1Hqmg1eV4q28saCreUyrfUIfKLwV972Wc', // Véhicule
+];
+
+/**
  * Résultat d'une remontée d'ancêtres côté API : la liste des IDs rencontrés, et si la
  * remontée a pu être menée à terme (une branche illisible ⇒ incomplète).
  */

@@ -2,7 +2,8 @@
  * google.ts — Auth Google (GIS) + accès Sheets/Drive avec le jeton de l'utilisateur connecté.
  *
  * GARDE-FOU PAR CONSTRUCTION (§2, vérifié par test) : ce module n'expose AUCUNE méthode de
- * suppression (pas de files.delete, pas de trash, pas de deleteRow). Les seules mutations
+ * suppression (ni définitive, ni corbeille, ni deleteRow — l'unique exception ADR-0014 vit
+ * dans corbeille.ts, jamais ici). Les seules mutations
  * possibles : PATCH nom/parents d'un fichier (déplacement/renommage), écriture de cellules
  * (statut d'entité) et append de lignes (Corrections). Tout déplacement passe par
  * `reclasserFichier`, qui exige un verdict garde-fous VIDE avant d'appeler l'API.
@@ -103,7 +104,7 @@ export function abonnerSessionExpiree(cb: () => void): void {
 
 /* ---------- Appels HTTP (401 → jeton expiré) ---------- */
 
-async function api<T>(url: string, options?: RequestInit): Promise<T> {
+export async function api<T>(url: string, options?: RequestInit): Promise<T> {
   if (!jetonAcces) throw new Error('Non connecté');
   // 429 (quota par minute PARTAGÉ avec le moteur — il écrit dans la même Sheet, en tant que Marc) :
   // réessai avec repli progressif au lieu d'une erreur brute. Un 429 = requête NON exécutée → le
@@ -214,7 +215,7 @@ export async function ajouterLigne(onglet: string, ligne: (string | number)[]): 
 
 /* ---------- Drive (lecture + reclassement SOUS garde-fous) ---------- */
 
-const DRIVE = 'https://www.googleapis.com/drive/v3/files';
+export const DRIVE = 'https://www.googleapis.com/drive/v3/files';
 
 export interface FichierDrive {
   id: string;

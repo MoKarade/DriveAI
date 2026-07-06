@@ -83,9 +83,13 @@
 > contiguës), historique. **C21-06 livré** : le moteur APPLIQUE les actions validées
 > (deplacer/fusionner/creer/renommer de dossiers — jamais de suppression), re-vérif zone
 > protégée par mutation (identité + ascendance), fusion collecte-puis-mutation reprenable,
-> re-pointage Entités avant le « fini », vide-candidat inscrit. Reste : C21-07 (ADR-0014 +
-> CLAUDE.md §2 + corbeille.ts des dossiers VIDES validés — tripwire CI + revue flotte
-> bloquante, DANS LE MÊME COMMIT).
+> re-pointage Entités avant le « fini », vide-candidat inscrit. **C21-07 livré (CHANTIER #21
+> COMPLET)** : ADR-0014 + CLAUDE.md §2 révisé + corbeille.ts + tripwire bidirectionnel + verrou
+> de surface DRIVE ajouté au moteur, en UN commit — revue flotte bloquante passée (2 trous réels
+> fermés : promesse de verrou moteur non codée ; dossiers à ID fixe corbeillables). L'app offre
+> désormais : explorateur façon Drive (naviguer/chercher/IA/créer/glisser-déposer), réorg IA
+> (analyser → valider → le moteur applique → corbeille des vides au clic). ⚠ Marc : redéployer
+> la web app en nouvelle version (recherche IA) — DEPLOIEMENT.md. Reste : #18 (entités auto à 3).
 >
 > Antérieur — **2026-07-01 (soir)** : **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
 > Session de conception « niveau pro » avec Marc : **8 ADR** (`docs/adr/0001`→`0008`), **roadmap priorisée à
