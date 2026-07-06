@@ -86,8 +86,37 @@ function escaladeAutorisee_() { return _escaladesCeRun < CONFIG.LLM_ESCALADE_MAX
 // VITE (sans réseau) et AUCUN échec n'est compté aux documents (cf. Pipeline.gererEchec_) ;
 // le tick suivant re-sonde naturellement (1ᵉʳ appel réel du run).
 var _pannePlateformeCeRun = false;
-function reinitialiserPannePlateforme_() { _pannePlateformeCeRun = false; }
+var _retablissementVerifie = false;
+function reinitialiserPannePlateforme_() { _pannePlateformeCeRun = false; _retablissementVerifie = false; }
 function estPannePlateforme_() { return _pannePlateformeCeRun; }
+
+/**
+ * À appeler en tête de run (R2) : charge l'état de panne PERSISTÉ (`DriveAI_LLM_PANNE`).
+ * Panne fraîche (< LLM_PANNE_RESONDE_MS) → le run entier est suspendu côté sources (le tick saute
+ * Gmail/dépôts/campagnes : rien à y faire, et re-scanner brûlerait le quota Gmail — vécu 07-06).
+ * Fenêtre écoulée → run « re-sonde » : on tourne NORMALEMENT, le 1ᵉʳ appel LLM réel tranche
+ * (200 → `signalerRetablissement_` efface la Property ; échec compte → elle est re-posée à neuf).
+ */
+function chargerPannePlateforme_() {
+  _pannePlateformeCeRun = false;
+  _retablissementVerifie = false;
+  var t = 0;
+  try { t = Number(PropertiesService.getScriptProperties().getProperty('DriveAI_LLM_PANNE')) || 0; } catch (e) { }
+  if (t && Date.now() - t < CONFIG.LLM_PANNE_RESONDE_MS) _pannePlateformeCeRun = true;
+}
+
+/** Premier appel LLM réussi du run : efface la panne persistée (si posée) et le journalise. */
+function signalerRetablissement_() {
+  if (_retablissementVerifie) return; // 1 lecture de Property par run au maximum
+  _retablissementVerifie = true;
+  try {
+    var props = PropertiesService.getScriptProperties();
+    if (props.getProperty('DriveAI_LLM_PANNE')) {
+      props.deleteProperty('DriveAI_LLM_PANNE');
+      journalInfo_('LLM', 'Compte API RÉTABLI — reprise normale des sources au prochain tick.');
+    }
+  } catch (e) { /* best-effort : au pire une re-sonde de plus */ }
+}
 
 /**
  * Vrai si la réponse HTTP révèle une panne de COMPTE (crédit/clé), pas un problème du document. PUR.
@@ -107,11 +136,15 @@ function detecterPannePlateforme_(code, corps) {
 function signalerPannePlateforme_(code, corps, modele) {
   if (!detecterPannePlateforme_(code, corps)) return false;
   if (!_pannePlateformeCeRun) {
-    journalErreur_('LLM', 'PANNE DE COMPTE API (HTTP ' + code + ', ' + modele + ') — appels LLM ' +
-      'suspendus pour ce run, aucun échec compté aux documents. Recharger le crédit Anthropic ' +
-      '(console.anthropic.com → Billing).');
+    journalErreur_('LLM', 'PANNE DE COMPTE API (HTTP ' + code + ', ' + modele + ') — sources ' +
+      'suspendues (re-sonde auto dans ≤ ' + Math.round(CONFIG.LLM_PANNE_RESONDE_MS / 3600000) + ' h), ' +
+      'aucun échec compté aux documents. ' +
+      'Recharger le crédit Anthropic (console.anthropic.com → Billing).');
   }
   _pannePlateformeCeRun = true;
+  // R2 : panne PERSISTÉE — les ticks suivants suspendent leurs sources sans re-scanner Gmail,
+  // jusqu'à la prochaine fenêtre de re-sonde (LLM_PANNE_RESONDE_MS).
+  try { PropertiesService.getScriptProperties().setProperty('DriveAI_LLM_PANNE', String(Date.now())); } catch (e2) { }
   return true;
 }
 
@@ -212,6 +245,7 @@ function appelAnthropic_(modele, meta, systeme) {
     return null;
   }
 
+  signalerRetablissement_(); // efface une éventuelle panne persistée (le compte répond)
   enregistrerUsage_(modele, data.usage); // mesure de coût réel (P1-09)
   return parserClassification_(texteReponse_(data));
 }
@@ -395,6 +429,7 @@ function appelIntentions_(modele, meta) {
   }
   if (data.stop_reason === 'refusal') return null;
 
+  signalerRetablissement_(); // efface une éventuelle panne persistée (le compte répond)
   enregistrerUsage_(modele, data.usage); // mesure de coût réel (P1-09)
   return parserIntentions_(texteReponse_(data));
 }

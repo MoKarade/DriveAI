@@ -92,6 +92,102 @@ test('traiterDocument_ : pendant une panne de compte → document INTOUCHÉ (pas
   assert.deepStrictEqual(calls, { ocr: 0, index: 0 });
 });
 
+/* ---------- R2 : panne PERSISTÉE entre les runs, sources suspendues, re-sonde bornée ---------- */
+
+function ctxPersistance(props) {
+  const c = load(['Config.gs', 'Llm.gs']);
+  const calls = { props: { ...props }, journaux: [] };
+  c.journalErreur_ = (s2, m) => calls.journaux.push('ERR:' + m);
+  c.journalInfo_ = (s2, m) => calls.journaux.push(m);
+  c.PropertiesService = {
+    getScriptProperties: () => ({
+      getProperty: (k) => calls.props[k] ?? null,
+      setProperty: (k, v) => { calls.props[k] = v; },
+      deleteProperty: (k) => { delete calls.props[k]; },
+    }),
+  };
+  return { c, calls };
+}
+
+test('chargerPannePlateforme_ : panne FRAÎCHE persistée → run suspendu ; fenêtre écoulée → run de re-sonde', () => {
+  const fraiche = ctxPersistance({ DriveAI_LLM_PANNE: String(Date.now() - 5 * 60 * 1000) });
+  fraiche.c.chargerPannePlateforme_();
+  assert.strictEqual(fraiche.c.estPannePlateforme_(), true);   // < 1 h → suspendu
+
+  const vieille = ctxPersistance({ DriveAI_LLM_PANNE: String(Date.now() - 2 * 60 * 60 * 1000) });
+  vieille.c.chargerPannePlateforme_();
+  assert.strictEqual(vieille.c.estPannePlateforme_(), false);  // ≥ 1 h → re-sonde (run normal)
+  assert.ok(vieille.calls.props.DriveAI_LLM_PANNE);            // la Property reste : c'est l'APPEL qui tranche
+
+  const sans = ctxPersistance({});
+  sans.c.chargerPannePlateforme_();
+  assert.strictEqual(sans.c.estPannePlateforme_(), false);
+});
+
+test('signalerPannePlateforme_ : pose la Property (les ticks suivants suspendront leurs sources)', () => {
+  const { c, calls } = ctxPersistance({});
+  c.chargerPannePlateforme_();
+  c.signalerPannePlateforme_(400, 'Your credit balance is too low', 'claude-haiku-4-5');
+  assert.ok(Number(calls.props.DriveAI_LLM_PANNE) > 0);
+});
+
+test('signalerRetablissement_ : un appel 200 efface la panne persistée et le journalise (une fois par run)', () => {
+  const { c, calls } = ctxPersistance({ DriveAI_LLM_PANNE: String(Date.now() - 2 * 60 * 60 * 1000) });
+  c.chargerPannePlateforme_(); // fenêtre écoulée → run de re-sonde
+  c.exemplesFewShot_ = () => '';
+  c.getCleAnthropic_ = () => 'k';
+  c.enregistrerUsage_ = () => {};
+  c.tronquer_ = (t) => t;
+  c.UrlFetchApp = { fetch: () => ({
+    getResponseCode: () => 200,
+    getContentText: () => JSON.stringify({ content: [{ type: 'text', text: '{"domaine":"02 · Finances","confiance":0.9,"sensible":false}' }] }),
+  }) };
+  c.appelAnthropic_('claude-haiku-4-5', { nomFichier: 'a.pdf' });
+  assert.strictEqual(calls.props.DriveAI_LLM_PANNE, undefined); // effacée
+  assert.ok(calls.journaux.some((j) => j.includes('RÉTABLI')));
+});
+
+test('traiterIntentionsMail_ : panne active → AUCUNE recherche Gmail (le quota de lecture est préservé)', () => {
+  const c = load(['Config.gs', 'Intentions.gs']);
+  let recherches = 0;
+  c.estPannePlateforme_ = () => true;
+  c.pageFilsActions_ = () => { recherches++; return []; };
+  c.GmailApp = { search: () => { recherches++; return []; } };
+  c.PropertiesService = { getScriptProperties: () => ({ getProperty: () => null, setProperty: () => {} }) };
+  c.journalInfo_ = () => {};
+  c.notifierEchec_ = () => {};
+  c.traiterIntentionsMail_(() => false);
+  assert.strictEqual(recherches, 0);
+});
+
+test('traiterGmail_ : panne active → AUCUNE recherche Gmail', () => {
+  const c = load(['Config.gs', 'Main.gs']);
+  let recherches = 0;
+  c.estPannePlateforme_ = () => true;
+  c.pageFils_ = () => { recherches++; return []; };
+  c.journalInfo_ = () => {};
+  c.notifierEchec_ = () => {};
+  c.traiterGmail_(() => false);
+  assert.strictEqual(recherches, 0);
+});
+
+/* ---------- bruit : fichier Google natif signalé UNE fois ---------- */
+
+test('signalerNatifUneFois_ : 1 ligne de Journal par FICHIER, pas par tick', () => {
+  const c = load(['Config.gs', 'Intake.gs']);
+  const props = {};
+  const journaux = [];
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => props[k] ?? null,
+    setProperty: (k, v) => { props[k] = v; },
+  }) };
+  c.journalInfo_ = (s2, m) => journaux.push(m);
+  c.signalerNatifUneFois_('F1', 'releves_combines');
+  c.signalerNatifUneFois_('F1', 'releves_combines'); // tick suivant
+  c.signalerNatifUneFois_('F2', 'autre_natif');
+  assert.strictEqual(journaux.length, 2); // F1 une fois + F2 une fois
+});
+
 /* ---------- canal d'alerte : DriveAI_EMAIL, jamais un plantage ---------- */
 
 function ctxAlerte(props, sessionOk) {

@@ -118,6 +118,7 @@ function miniCheckMail_(expediteur, sujet) {
   } catch (e) {
     return parserMiniCheck_(null);
   }
+  signalerRetablissement_(); // efface une éventuelle panne persistée (le compte répond)
   enregistrerUsage_(CONFIG.LLM_MODELE, data.usage); // mesure de coût réel (P1-09)
   return parserMiniCheck_(texteReponse_(data));
 }

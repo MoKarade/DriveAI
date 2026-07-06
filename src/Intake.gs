@@ -51,7 +51,7 @@ function traiterFichierDepose_(fileId) {
   // Les fichiers Google natifs (Docs/Sheets/Slides déposés) n'ont pas de blob/octets
   // exploitables (getSize() = 0) → on les laisse en place plutôt que de mal les traiter.
   if (mime && mime.indexOf('application/vnd.google-apps') === 0) {
-    journalInfo_('Intake', 'Fichier Google natif laissé dans 00·À trier : ' + nom);
+    signalerNatifUneFois_(fileId, nom); // 1 ligne par FICHIER, pas par tick (2 natifs = 576 lignes/j sinon)
     return;
   }
 
@@ -68,4 +68,25 @@ function traiterFichierDepose_(fileId) {
       return deplacerEtRenommer_(fileId, dossierId, aTrier, nouveauNom) ? fileId : '';
     }
   });
+}
+
+/**
+ * Journalise UN fichier Google natif laissé en place UNE seule fois (Property mémoire, bornée) —
+ * avant R2, chaque tick re-journalisait chaque natif : 2 fichiers = ~576 lignes/jour de bruit
+ * (le Journal borné tournait pour rien et le diagnostic était pollué).
+ * @param {string} fileId
+ * @param {string} nom
+ */
+function signalerNatifUneFois_(fileId, nom) {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var ids;
+    try { ids = JSON.parse(props.getProperty('DriveAI_NATIFS_SIGNALES') || '[]'); } catch (e) { ids = []; }
+    if (!Array.isArray(ids)) ids = [];
+    if (ids.indexOf(fileId) !== -1) return; // déjà signalé
+    ids.push(fileId);
+    if (ids.length > 50) ids = ids.slice(-50); // borne (au pire, un vieux natif se re-signale)
+    props.setProperty('DriveAI_NATIFS_SIGNALES', JSON.stringify(ids));
+  } catch (e) { /* Property indisponible → on journalise quand même (au pire du bruit) */ }
+  journalInfo_('Intake', 'Fichier Google natif laissé dans 00·À trier (signalé une fois) : ' + nom);
 }

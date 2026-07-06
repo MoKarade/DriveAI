@@ -30,9 +30,9 @@
 - Après `QUARANTAINE_MAX` (3) essais, il est **quarantiné** (onglet `Échecs`, statut Index `quarantaine`) → plus re-tenté, une seule alerte. Pour le relancer après une panne transitoire : exécuter **`dequarantaine()`**.
 
 ### 🔴 Crédit API Anthropic épuisé (Journal : « PANNE DE COMPTE API »)
-Le moteur tourne mais ne classe plus rien de nouveau ; le Journal montre UNE ligne « PANNE DE
-COMPTE API » par tick (plus jamais un déluge de HTTP 400). Aucun document n'est pénalisé : rien
-n'est compté en échec pendant la panne, tout reprend tout seul après recharge.
+Le moteur tourne mais SUSPEND ses sources (Gmail, dépôts, campagnes) pendant la panne — il
+re-sonde le compte au plus une fois par heure (aucun quota Gmail brûlé, aucun document pénalisé).
+Après recharge, la reprise est automatique en ≤ 1 h (ligne Journal « Compte API RÉTABLI »).
 1. Recharger : console.anthropic.com → **Plans & Billing** (penser à l'auto-recharge).
 2. Si des documents ont été quarantainés À TORT pendant une panne passée : un clic
    **`dequarantaine()`** (éditeur Apps Script) les re-tente tous.

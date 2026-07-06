@@ -74,6 +74,13 @@ var CONFIG = {
   // re-tenter un doc quarantiné à tort (panne transitoire), lancer `dequarantaine()` (Maintenance.gs).
   QUARANTAINE_MAX: 3,
 
+  // Panne de COMPTE API persistée (R2, check-up 2026-07-06) : pendant une panne (crédit/clé), les
+  // SOURCES du tick sont suspendues (Gmail/dépôts/partages/campagnes/intentions) — sinon les scans
+  // re-parcourent toute la fenêtre à chaque tick SANS rien marquer et brûlent le quota de lecture
+  // Gmail quotidien (vécu : 4 j de panne crédit → quota Gmail épuisé, moteur re-bloqué 24 h de plus
+  // APRÈS la recharge). Re-sonde automatique : au plus un run « normal » par fenêtre ci-dessous.
+  LLM_PANNE_RESONDE_MS: 60 * 60 * 1000,
+
   // --- Gmail (lecture seule) & lots ---
   // Idempotence assurée par l'Index (clé messageId|i|nom|taille), PAS par un
   // label : le scope gmail.readonly interdit toute écriture dans la boîte.
