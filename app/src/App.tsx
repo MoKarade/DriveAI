@@ -14,6 +14,7 @@ import { TableauDeBord } from './vues/TableauDeBord';
 import { AujourdHui } from './vues/AujourdHui';
 import { Corrections } from './vues/Corrections';
 import { Recherche } from './vues/Recherche';
+import { Agenda } from './vues/Agenda';
 
 export type Section = 'aujourdhui' | 'agenda' | 'mails' | 'documents' | 'apprentissage' | 'sante';
 
@@ -113,7 +114,7 @@ export function App() {
             {section === 'aujourdhui' && <AujourdHui langue={langue} />}
             {section === 'documents' && <Recherche langue={langue} />}
             {section === 'apprentissage' && <Corrections langue={langue} />}
-            {section === 'agenda' && <EnConstruction langue={langue} etape="C19-05" />}
+            {section === 'agenda' && <Agenda langue={langue} />}
             {section === 'mails' && <EnConstruction langue={langue} etape="C19-06" />}
             {/* Santé v3 = C19-08 ; en attendant, le TableauDeBord v2 (santé, journal, quarantaine) vit ici — rien ne se perd. */}
             {section === 'sante' && <TableauDeBord langue={langue} />}
