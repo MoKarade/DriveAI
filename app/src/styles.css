@@ -1,71 +1,155 @@
-/* DriveAI — styles sobres, sans framework (app perso, lisibilité d'abord). */
+/* DriveAI — App v3 « Salle des machines » (ADR-0013).
+   Sombre d'abord ; bascule claire via [data-theme="light"]. Les NOMS de variables v2
+   (--fond, --carte, --texte…) sont conservés : les vues existantes adoptent le thème
+   sans réécriture — elles seront remplacées une à une (C19-04 → C19-09). */
 
 :root {
-  --fond: #f6f7f9;
+  /* tokens v3 (référence maquette) */
+  --fond: #10161f;
+  --fond-haut: #0c1118;
+  --carte: #18202c;
+  --carte-2: #141b25;
+  --bord: #232e3e;
+  --rang: #1f2937;
+  --texte: #e6ebf2;
+  --texte-doux: #8b98aa;
+  --accent: #e8a33a;      /* ambre — accent UI (v2 utilisait un bleu : remplacé partout) */
+  --donnee: #c97f1b;      /* marques de données (barres, graphes) */
+  --cat-fond: #26374d;    /* pastilles catégorie */
+  --cat-texte: #9fc1e8;
+  --ok: #3fb950;
+  --attention: #d29922;
+  --erreur: #e57373;
+  --erreur-fond: #2a1a1e;
+  --mono: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
+}
+
+[data-theme='light'] {
+  --fond: #f4f5f6;
+  --fond-haut: #ffffff;
   --carte: #ffffff;
-  --texte: #1a1d21;
-  --texte-doux: #5c6570;
-  --accent: #1f6feb;
+  --carte-2: #eef0f2;
+  --bord: #dde2e8;
+  --rang: #edf0f3;
+  --texte: #1f242b;
+  --texte-doux: #5c666e;
+  --accent: #a86a12;
+  --donnee: #b06f14;
+  --cat-fond: #e3ebf6;
+  --cat-texte: #274e7d;
   --ok: #1a7f37;
+  --attention: #96490c;
   --erreur: #cf222e;
-  --bord: #d9dee3;
+  --erreur-fond: #fbf1f0;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 15px;
   background: var(--fond);
   color: var(--texte);
 }
 
-.app { max-width: 1100px; margin: 0 auto; padding: 1rem 1.25rem 3rem; }
+.app { max-width: 1220px; margin: 0 auto; padding: 0 1rem 4.5rem; }
 
-header { display: flex; justify-content: space-between; align-items: start; padding: 0.5rem 0 1rem; }
-header h1 { margin: 0; font-size: 1.6rem; }
-.sous-titre { margin: 0.15rem 0 0; color: var(--texte-doux); }
-.header-actions { display: flex; gap: 0.5rem; }
+/* ---------- en-tête + navigation (v3) ---------- */
+.barre-haute {
+  display: flex; align-items: center; gap: 0.9rem;
+  padding: 0.7rem 0.2rem;
+  border-bottom: 1px solid var(--bord);
+}
+.logo {
+  font-family: var(--mono); font-weight: 600; font-size: 1.1rem;
+  letter-spacing: 0.04em; color: var(--accent); margin: 0;
+}
+.sous-titre { margin: 0; color: var(--texte-doux); font-size: 0.8rem; }
+.header-actions { display: flex; gap: 0.4rem; margin-left: auto; }
 
-nav { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
-nav button { border: 1px solid var(--bord); background: var(--carte); }
-nav button.actif { background: var(--accent); color: #fff; border-color: var(--accent); }
+nav.sections { display: flex; gap: 2px; border-bottom: 1px solid var(--bord); margin-bottom: 1rem; overflow-x: auto; }
+nav.sections button {
+  border: none; background: none; border-radius: 0;
+  font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.06em;
+  font-size: 0.72rem; color: var(--texte-doux);
+  padding: 0.75rem 0.85rem; white-space: nowrap;
+}
+nav.sections button.actif { color: var(--accent); box-shadow: 0 -2px 0 var(--accent) inset; background: none; }
+nav.sections button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
+/* barre basse (mobile) : Auj · Agenda · Mails · Docs · Plus */
+nav.barre-basse {
+  display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  background: var(--fond-haut); border-top: 1px solid var(--bord);
+  padding: 0.35rem 0.2rem calc(0.4rem + env(safe-area-inset-bottom));
+}
+nav.barre-basse button {
+  flex: 1; border: none; background: none; border-radius: 0;
+  font-family: var(--mono); font-size: 0.6rem; letter-spacing: 0.03em;
+  color: var(--texte-doux); line-height: 1.3; padding: 0.2rem 0;
+}
+nav.barre-basse button em { display: block; font-style: normal; font-size: 1rem; }
+nav.barre-basse button.actif { color: var(--accent); }
+
+.feuille-plus {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 30;
+  background: var(--carte); border-top: 1px solid var(--bord);
+  border-radius: 14px 14px 0 0; padding: 0.9rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  display: flex; flex-direction: column; gap: 0.5rem;
+  box-shadow: 0 -12px 34px rgba(0, 0, 0, 0.35);
+}
+.feuille-fond { position: fixed; inset: 0; z-index: 25; background: rgba(0, 0, 0, 0.45); border: none; }
+
+@media (max-width: 760px) {
+  nav.sections { display: none; }
+  nav.barre-basse { display: flex; }
+  .app { padding-bottom: 5.5rem; }
+}
+
+/* ---------- boutons & champs ---------- */
 button {
   padding: 0.45rem 0.9rem;
-  border-radius: 8px;
+  border-radius: 7px;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: #10161f;
   cursor: pointer;
   font-size: 0.92rem;
+  font-weight: 600;
 }
 button:disabled { opacity: 0.5; cursor: default; }
-button.discret { background: transparent; color: var(--texte-doux); border-color: var(--bord); }
+button.discret { background: transparent; color: var(--texte-doux); border-color: var(--bord); font-weight: 400; }
 button.principal { font-size: 1.05rem; padding: 0.7rem 1.4rem; }
-
-.colonnes { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-.carte {
-  background: var(--carte);
-  border: 1px solid var(--bord);
-  border-radius: 12px;
-  padding: 1rem 1.25rem;
-}
-.carte.large { grid-column: 1 / -1; }
-.carte h2 { margin: 0 0 0.6rem; font-size: 1.05rem; }
-
-.centre { text-align: center; padding: 2rem 0; }
-.formulaire-config { display: flex; flex-direction: column; gap: 0.6rem; max-width: 480px; margin: 0 auto; }
 
 input, select {
   padding: 0.5rem 0.7rem;
   border: 1px solid var(--bord);
-  border-radius: 8px;
+  border-radius: 7px;
   font-size: 0.92rem;
   width: 100%;
-  background: var(--carte);
+  background: var(--carte-2);
   color: var(--texte);
 }
+input::placeholder { color: var(--texte-doux); }
+
+/* ---------- cartes & tables ---------- */
+.colonnes { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+.carte {
+  background: var(--carte);
+  border: 1px solid var(--bord);
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+}
+.carte.large { grid-column: 1 / -1; }
+.carte h2 {
+  margin: 0 0 0.6rem;
+  font-family: var(--mono); font-size: 0.72rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.09em; color: var(--texte-doux);
+}
+
+.centre { text-align: center; padding: 2rem 0; }
+.formulaire-config { display: flex; flex-direction: column; gap: 0.6rem; max-width: 480px; margin: 0 auto; }
 
 .filtres { flex-wrap: wrap; }
 .filtres select { width: auto; min-width: 10rem; }
@@ -73,18 +157,18 @@ input, select {
 td a { color: var(--accent); text-decoration: none; }
 td a:hover { text-decoration: underline; }
 
-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-td { padding: 0.35rem 0.5rem; border-top: 1px solid var(--bord); vertical-align: top; }
-.nombre { text-align: right; font-variant-numeric: tabular-nums; }
-.date { white-space: nowrap; color: var(--texte-doux); }
+table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+td { padding: 0.4rem 0.5rem; border-top: 1px solid var(--rang); vertical-align: top; }
+.nombre { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 0.85rem; }
+.date { white-space: nowrap; color: var(--texte-doux); font-variant-numeric: tabular-nums; }
 .ligne-erreur td { color: var(--erreur); }
 .variante { color: var(--texte-doux); font-size: 0.85rem; }
 
 .sante { list-style: none; padding: 0; margin: 0; }
-.sante li { padding: 0.3rem 0; border-top: 1px solid var(--bord); }
+.sante li { padding: 0.3rem 0; border-top: 1px solid var(--rang); }
 .sante li:first-child { border-top: none; }
 
-.explication { color: var(--texte-doux); font-size: 0.88rem; margin-top: 0; }
+.explication { color: var(--texte-doux); font-size: 0.85rem; margin-top: 0; }
 .ligne-formulaire { display: flex; gap: 0.5rem; margin-bottom: 0.6rem; }
 .formulaire-reclassement { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.6rem; }
 .resultats { list-style: none; padding: 0; max-height: 200px; overflow-y: auto; }
@@ -98,7 +182,7 @@ footer {
   padding-top: 1rem;
   border-top: 1px solid var(--bord);
   color: var(--texte-doux);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   text-align: center;
 }
 
@@ -106,8 +190,18 @@ footer {
   .colonnes { grid-template-columns: 1fr; }
 }
 
-/* App v2 (#15) : mini-graphe d'activité + boutons d'action compacts */
+/* mini-graphe d'activité (v2, repris par la v3) */
 .barres { display: flex; align-items: flex-end; gap: 2px; height: 90px; }
-.barre { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; min-height: 2px; opacity: 0.85; }
+.barre { flex: 1; background: var(--donnee); border-radius: 3px 3px 0 0; min-height: 2px; opacity: 0.75; }
+.barre:last-child { opacity: 1; }
 .actions { display: flex; gap: 0.35rem; flex-wrap: wrap; }
 .actions button { padding: 0.3rem 0.6rem; font-size: 0.85rem; }
+
+/* section en construction (chantier v3 par étapes) */
+.en-construction { color: var(--texte-doux); }
+.en-construction .maquette { font-family: var(--mono); font-size: 0.8rem; color: var(--accent); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .vue-active { animation: pose 0.25s ease; }
+  @keyframes pose { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+}

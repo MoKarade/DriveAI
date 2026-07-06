@@ -313,7 +313,7 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 |----|-------|--------|
 | C19-01 | Choix de la direction visuelle sur maquette (A/B/C ou panachage) | ✅ **B « Salle des machines »** (choix Marc 2026-07-06) — sombre d'abord, dense, chiffres mono, accent ambre |
 | C19-02 | ADR + maquettes haute-fidélité des 5 sections dans la direction choisie | ✅ ADR-0013 + maquette haute-fidélité navigable (5 sections, desktop + mobile, artifact 2026-07-06) — source de vérité visuelle du chantier |
-| C19-03 | Socle v3 : tokens/design system, navigation 5 sections, responsive + PWA mobile | ⬜ |
+| C19-03 | Socle v3 : tokens/design system, navigation 6 sections, responsive + PWA mobile | ✅ (tokens B sombre+clair dans styles.css — les vues v2 adoptent le thème via les mêmes variables ; App.tsx 6 sections, v2 branchées sous Aujourd'hui/Documents/Apprentissage, Agenda/Mails/Santé « en construction » honnêtes ; barre basse mobile 4+Plus ; thème persisté + theme-color dynamique ; manifest PWA v3) |
 | C19-04 | Vue « Aujourd'hui » (stats, activité, suspects, derniers tris) | ⬜ |
 | C19-05 | Vue « Mails » : suspects, fils triés, table TriAppris corrigeable, newsletters | ⬜ |
 | C19-06 | Vue « Documents » : recherche filtrée (domaine/entité/type/date) + badge & filtre confiance (#17) | ⬜ |
