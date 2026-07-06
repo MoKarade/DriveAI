@@ -4,7 +4,7 @@
 > (🔜 = prévu, pas encore implémenté — cf. `docs/ROADMAP.md`.)
 
 ## 1. Architecture en 30 s
-- **Moteur** : Google Apps Script (`src/*.gs`) dans le compte Google de Marc, **déclencheur toutes les 5 min** (`tickDriveAI`).
+- **Moteur** : Google Apps Script (`src/*.gs`) dans le compte Google de Marc, **déclencheur toutes les 5 min** (`tickDriveAI`) — fréquence réglable depuis l'app (Santé → Réglages : 5/10/15/30 min → `Réglages!B2` de la Sheet, appliqué au tick suivant, #22).
 - **État** : Google Sheet « DriveAI — État » — onglets `Entités`, `Index` (idempotence + catalogue), `Journal`, `Revue`, `Échecs` (quarantaine), `Progression` (barre du grand rangement).
 - **LLM** : API Anthropic (Haiku par défaut, Sonnet en escalade) via `UrlFetchApp`. Clé dans Script Property `DriveAI_ANTHROPIC_KEY`.
 - **CI/CD** : push/merge sur `main` → GitHub Action `deploy.yml` fait `clasp push` (secrets `CLASPRC_JSON` + `SCRIPT_ID`, Node 20). L'auto-merge **dispatche** le déploiement (un merge par le bot ne déclenche pas `on: push`).
