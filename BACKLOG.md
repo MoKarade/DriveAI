@@ -349,12 +349,14 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 > Sheet → le moteur l'applique au tick suivant (`assurerIntervalleTick_` lit la Sheet, borne les
 > valeurs admises, jamais < 5 min). Zéro nouveau scope.
 
-### Chantier #23 — Peaufinage UI (CADRÉ — choix Marc)  ⬜
+### Chantier #23 — Peaufinage UI (choix Marc)  ✅ (livré 2026-07-06)
 
-> ① **Agenda façon Google Calendar** : grande grille pleine hauteur, style/densité GCal,
-> événements colorés, « aujourd'hui » marqué comme GCal ; ② **plus grand / plus aéré**
-> globalement ; ③ **transitions & micro-animations** (respect `prefers-reduced-motion`).
-> (Squelettes/chargements : écarté par Marc — le cache 60 s de #20 suffit pour l'instant.)
+> ① **Agenda façon Google Calendar** : grille pleine largeur, cases hautes (7,2 rem), en-têtes
+> centrés, pastille « aujourd'hui » pleine sur le numéro (comme GCal), bouton « Aujourd'hui »,
+> événements en barres colorées ; ② **plus aéré** : corps 15,5 px, cartes/espacements/tuiles
+> agrandis ; ③ **transitions** : boutons (hover/press), lignes cliquables, onglets, feuille
+> mobile qui monte, cartes — le tout sous `prefers-reduced-motion`.
+> (Squelettes : écarté par Marc — le cache 60 s de #20 suffit.)
 
 ### Chantier #18 — Auto-validation des entités fréquentes (décision Marc : seuil 3)  ⬜
 

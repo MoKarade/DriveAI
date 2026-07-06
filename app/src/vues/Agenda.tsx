@@ -83,10 +83,16 @@ export function Agenda({ langue }: { langue: Langue }) {
     <div className="colonnes agenda">
       <section className="carte cal-carte">
         <h2>
-          {MOIS[mois.getMonth()]} {mois.getFullYear()}
+          <span className="cal-titre">{MOIS[mois.getMonth()]} {mois.getFullYear()}</span>
           <span className="cal-nav">
             <button className="discret" aria-label="Mois précédent"
               onClick={() => setMois(new Date(mois.getFullYear(), mois.getMonth() - 1, 1))}>‹</button>
+            <button className="discret"
+              onClick={() => {
+                const auj = new Date();
+                setMois(new Date(auj.getFullYear(), auj.getMonth(), 1));
+                setDetail({ type: 'jour', jour: auj });
+              }}>{t('aujourdhui', langue)}</button>
             <button className="discret" aria-label="Mois suivant"
               onClick={() => setMois(new Date(mois.getFullYear(), mois.getMonth() + 1, 1))}>›</button>
           </span>
@@ -109,7 +115,7 @@ export function Agenda({ langue }: { langue: Langue }) {
                       className={`${j.horsMois ? 'hors' : ''} ${estAuj ? 'auj' : ''} ${sel ? 'sel' : ''}`}
                       onClick={() => setDetail({ type: 'jour', jour: j.date })}
                     >
-                      <span className="num">{j.date.getDate()}{estAuj ? ` · ${t('aujourdhuiCourt', langue)}` : ''}</span>
+                      <span className="num">{j.date.getDate()}</span>
                       {evts.map((e) => (
                         <span key={e.id} className={`ev ${e.parDriveAI ? 'ia' : ''}`}>
                           {heureEvenement(e) && `${heureEvenement(e)} `}{e.titre}

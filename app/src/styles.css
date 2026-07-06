@@ -48,12 +48,13 @@
 body {
   margin: 0;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  font-size: 15px;
+  font-size: 15.5px;
+  line-height: 1.55;
   background: var(--fond);
   color: var(--texte);
 }
 
-.app { max-width: 1220px; margin: 0 auto; padding: 0 1rem 4.5rem; }
+.app { max-width: 1280px; margin: 0 auto; padding: 0 1.1rem 4.5rem; }
 
 /* ---------- en-tête + navigation (v3) ---------- */
 .barre-haute {
@@ -72,8 +73,9 @@ nav.sections { display: flex; gap: 2px; border-bottom: 1px solid var(--bord); ma
 nav.sections button {
   border: none; background: none; border-radius: 0;
   font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.06em;
-  font-size: 0.72rem; color: var(--texte-doux);
-  padding: 0.75rem 0.85rem; white-space: nowrap;
+  font-size: 0.76rem; color: var(--texte-doux);
+  padding: 0.85rem 1rem; white-space: nowrap;
+  transition: color 0.15s ease, box-shadow 0.2s ease;
 }
 nav.sections button.actif { color: var(--accent); box-shadow: 0 -2px 0 var(--accent) inset; background: none; }
 nav.sections button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
@@ -117,7 +119,11 @@ button {
   cursor: pointer;
   font-size: 0.92rem;
   font-weight: 600;
+  transition: transform 0.12s ease, filter 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
+button:not(:disabled):hover { filter: brightness(1.08); }
+button:not(:disabled):active { transform: scale(0.97); }
+button.discret:hover { color: var(--texte); border-color: var(--texte-doux); filter: none; }
 button:disabled { opacity: 0.5; cursor: default; }
 button.discret { background: transparent; color: var(--texte-doux); border-color: var(--bord); font-weight: 400; }
 button.principal { font-size: 1.05rem; padding: 0.7rem 1.4rem; }
@@ -134,12 +140,12 @@ input, select {
 input::placeholder { color: var(--texte-doux); }
 
 /* ---------- cartes & tables ---------- */
-.colonnes { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; }
+.colonnes { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .carte {
   background: var(--carte);
   border: 1px solid var(--bord);
-  border-radius: 8px;
-  padding: 0.85rem 1rem;
+  border-radius: 10px;
+  padding: 1.05rem 1.2rem;
 }
 .carte.large { grid-column: 1 / -1; }
 .carte h2 {
@@ -158,7 +164,7 @@ td a { color: var(--accent); text-decoration: none; }
 td a:hover { text-decoration: underline; }
 
 table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-td { padding: 0.4rem 0.5rem; border-top: 1px solid var(--rang); vertical-align: top; }
+td { padding: 0.5rem 0.6rem; border-top: 1px solid var(--rang); vertical-align: top; }
 .nombre { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); font-size: 0.85rem; }
 .date { white-space: nowrap; color: var(--texte-doux); font-variant-numeric: tabular-nums; }
 .ligne-erreur td { color: var(--erreur); }
@@ -203,10 +209,10 @@ footer {
 .barre { touch-action: none; }
 
 /* vue Aujourd'hui (C19-04) */
-.tuiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; grid-column: 1 / -1; }
+.tuiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; grid-column: 1 / -1; }
 @media (max-width: 720px) { .tuiles { grid-template-columns: 1fr 1fr; } }
-.tuile { background: var(--carte); border: 1px solid var(--bord); border-radius: 8px; padding: 0.8rem 1rem; }
-.tuile .v { font-family: var(--mono); font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
+.tuile { background: var(--carte); border: 1px solid var(--bord); border-radius: 10px; padding: 1rem 1.2rem; }
+.tuile .v { font-family: var(--mono); font-size: 1.75rem; font-weight: 600; letter-spacing: -0.01em; }
 .tuile .v small { font-size: 0.85rem; color: var(--texte-doux); font-weight: 500; }
 .tuile .v.erreur { color: var(--erreur); }
 .tuile .l { font-size: 0.8rem; color: var(--texte-doux); margin-top: 1px; }
@@ -227,35 +233,41 @@ footer {
 .pastille.ok { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
 .pastille.douce { background: var(--rang); color: var(--texte-doux); }
 .pastille.crit { background: color-mix(in srgb, var(--erreur) 16%, transparent); color: var(--erreur); }
+.ligne-clic td { transition: background 0.15s ease; }
 .ligne-clic:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .lien-ligne { color: var(--texte); text-decoration: none; }
 .ligne-clic:hover .lien-ligne { color: var(--accent); }
 
-/* vue Agenda (C19-05) */
+/* vue Agenda (C19-05 → #23 : façon Google Calendar — grande grille, pastille « aujourd'hui ») */
 .agenda .cal-carte { grid-column: 1 / -1; }
-@media (min-width: 900px) { .agenda .cal-carte { grid-column: span 1; } .agenda { grid-template-columns: 2fr 1fr; } }
-.cal-nav { float: right; display: inline-flex; gap: 0.3rem; }
-.cal-nav button { padding: 0.05rem 0.55rem; font-size: 0.9rem; }
-table.cal { table-layout: fixed; }
-.cal th { font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.08em; color: var(--texte-doux);
-  text-align: left; font-weight: 600; padding: 0 0 0.35rem; }
-.cal td { border: 1px solid var(--rang); vertical-align: top; padding: 0.25rem 0.3rem; height: 4.2rem; cursor: pointer; }
+@media (min-width: 900px) { .agenda { grid-template-columns: repeat(3, 1fr); } .agenda .carte.large { grid-column: 1 / -1; } }
+.cal-titre { font-size: 1.05rem; letter-spacing: 0.02em; text-transform: capitalize; color: var(--texte); }
+.cal-nav { float: right; display: inline-flex; gap: 0.35rem; align-items: center; }
+.cal-nav button { padding: 0.15rem 0.7rem; font-size: 0.95rem; }
+table.cal { table-layout: fixed; border-collapse: collapse; }
+.cal th { font-family: var(--mono); font-size: 0.66rem; letter-spacing: 0.09em; color: var(--texte-doux);
+  text-align: center; font-weight: 600; padding: 0 0 0.5rem; }
+.cal td { border: 1px solid var(--rang); vertical-align: top; padding: 0.3rem 0.35rem;
+  height: 7.2rem; cursor: pointer; transition: background 0.15s ease; }
 .cal td:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
-.cal td.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
-.cal td.auj { background: color-mix(in srgb, var(--accent) 7%, transparent); }
-.cal td.auj .num { color: var(--accent); font-weight: 700; }
+.cal td.sel { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 2px; }
 .cal td.hors .num { opacity: 0.35; }
-.cal .num { font-family: var(--mono); font-size: 0.68rem; color: var(--texte-doux); display: block; }
-.ev { display: block; margin-top: 3px; font-size: 0.66rem; line-height: 1.3; border-radius: 4px;
-  padding: 1px 5px; background: var(--cat-fond); color: var(--cat-texte); }
-.ev.ia { background: color-mix(in srgb, var(--donnee) 20%, transparent); color: var(--accent); }
+.cal .num { font-family: var(--mono); font-size: 0.72rem; color: var(--texte-doux);
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 1.65rem; height: 1.65rem; border-radius: 50%; margin: 0 auto 2px; }
+.cal td { text-align: center; }
+.cal td .ev { text-align: left; }
+.cal td.auj .num { background: var(--accent); color: #10161f; font-weight: 700; }
+.ev { display: block; margin-top: 3px; font-size: 0.7rem; line-height: 1.35; border-radius: 4px;
+  padding: 2px 6px; background: var(--cat-fond); color: var(--cat-texte);
+  overflow: hidden; }
+.ev.ia { background: color-mix(in srgb, var(--donnee) 22%, transparent); color: var(--accent); }
 .ev.tache { background: transparent; border: 1px dashed color-mix(in srgb, var(--texte-doux) 50%, transparent); color: var(--texte-doux); }
 .legende .ev { display: inline; padding: 1px 6px; margin-right: 0.3rem; }
 @media (max-width: 720px) {
-  .cal td { height: 3rem; padding: 0.2rem; }
+  .cal td { height: 3.4rem; padding: 0.15rem; }
   .cal .ev { display: none; }
-  .cal td .num::after { content: ''; }
-  .cal td:has(.ev)::after { content: '•'; color: var(--donnee); font-size: 0.9rem; line-height: 0.5; display: block; }
+  .cal td:has(.ev)::after { content: '•'; color: var(--donnee); font-size: 1rem; line-height: 0.4; display: block; }
 }
 .det-ligne { display: flex; gap: 0.6rem; align-items: baseline; padding: 0.5rem 0; border-top: 1px solid var(--rang); font-size: 0.9rem; }
 .det-ligne:first-of-type { border-top: none; }
@@ -284,6 +296,10 @@ button.coche { border: 1px solid var(--bord); padding: 0.1rem 0.4rem; font-size:
 .en-construction .maquette { font-family: var(--mono); font-size: 0.8rem; color: var(--accent); }
 
 @media (prefers-reduced-motion: no-preference) {
-  .vue-active { animation: pose 0.25s ease; }
-  @keyframes pose { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .vue-active { animation: pose 0.28s cubic-bezier(0.2, 0.7, 0.3, 1); }
+  @keyframes pose { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .feuille-plus { animation: monte 0.25s cubic-bezier(0.2, 0.7, 0.3, 1); }
+  @keyframes monte { from { transform: translateY(60%); opacity: 0.4; } to { transform: none; opacity: 1; } }
+  .carte, .tuile { transition: border-color 0.2s ease; }
+  .carte:hover, .tuile:hover { border-color: color-mix(in srgb, var(--texte-doux) 45%, var(--bord)); }
 }
