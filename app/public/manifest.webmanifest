@@ -1,11 +1,11 @@
 {
   "name": "DriveAI",
   "short_name": "DriveAI",
-  "description": "Ton Drive, rangé tout seul — tableau de bord, corrections, recherche",
+  "description": "Ton Drive, rangé tout seul — aujourd’hui, agenda, mails, documents, apprentissage, santé",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f6f7f9",
-  "theme_color": "#1f6feb",
+  "background_color": "#10161f",
+  "theme_color": "#0c1118",
   "lang": "fr",
   "icons": [
     { "src": "/icone.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }

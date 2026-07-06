@@ -1,23 +1,35 @@
 /**
- * App.tsx — coquille de l'app : configuration → connexion Google → onglets
- * (dashboard, corrections, recherche).
+ * App.tsx — coquille v3 (ADR-0013) : configuration → connexion Google → 6 sections.
+ * Aujourd'hui / Documents / Apprentissage embarquent les vues v2 existantes tant que
+ * leur remplaçante v3 n'est pas livrée (C19-04 → C19-09) ; Agenda / Mails / Santé
+ * s'affichent « en construction ». Mobile : barre basse 5 entrées + feuille « Plus ».
  */
 
 import { useEffect, useState } from 'react';
 import { configComplete, lireConfig, enregistrerConfig } from './config';
 import { seConnecter, estConnecte, seDeconnecter, abonnerSessionExpiree } from './google';
 import { Langue, langueCourante, changerLangue, t } from './i18n';
+import { basculerTheme, themeCourant } from './theme';
 import { TableauDeBord } from './vues/TableauDeBord';
 import { Corrections } from './vues/Corrections';
 import { Recherche } from './vues/Recherche';
 
-type Onglet = 'dashboard' | 'corrections' | 'recherche';
+export type Section = 'aujourdhui' | 'agenda' | 'mails' | 'documents' | 'apprentissage' | 'sante';
+
+const SECTIONS: Section[] = ['aujourdhui', 'agenda', 'mails', 'documents', 'apprentissage', 'sante'];
+const ICONES: Record<Section, string> = {
+  aujourdhui: '◐', agenda: '▦', mails: '✉', documents: '▤', apprentissage: '✎', sante: '♥',
+};
+/** Barre basse mobile : 4 sections directes + « Plus » (Apprentissage/Santé + réglages). */
+const BARRE_BASSE: Section[] = ['aujourdhui', 'agenda', 'mails', 'documents'];
 
 export function App() {
   const [langue, setLangue] = useState<Langue>(langueCourante());
   const [configOk, setConfigOk] = useState(configComplete());
   const [connecte, setConnecte] = useState(estConnecte());
-  const [onglet, setOnglet] = useState<Onglet>('dashboard');
+  const [section, setSection] = useState<Section>('aujourdhui');
+  const [plusOuvert, setPlusOuvert] = useState(false);
+  const [, setTheme] = useState(themeCourant());
   const [erreur, setErreur] = useState('');
 
   // Jeton GIS expiré (~1 h) → rebascule sur l'écran de connexion au lieu de vues qui échouent en boucle.
@@ -41,32 +53,38 @@ export function App() {
     }
   }
 
+  function allerA(s: Section) {
+    setSection(s);
+    setPlusOuvert(false);
+  }
+
+  const reglages = (
+    <>
+      <button className="discret" onClick={() => setTheme(basculerTheme())} title={t('theme', langue)}>◐</button>
+      <button className="discret" onClick={basculerLangue}>{langue === 'fr' ? 'EN' : 'FR'}</button>
+      <button className="discret" title={t('configuration', langue)} onClick={() => setConfigOk(false)}>⚙</button>
+      {connecte && (
+        <button
+          className="discret"
+          onClick={() => {
+            seDeconnecter();
+            setConnecte(false);
+          }}
+        >
+          {t('deconnexion', langue)}
+        </button>
+      )}
+    </>
+  );
+
   return (
     <div className="app">
-      <header>
+      <header className="barre-haute">
         <div>
-          <h1>{t('titre', langue)}</h1>
+          <h1 className="logo">DriveAI</h1>
           <p className="sous-titre">{t('sousTitre', langue)}</p>
         </div>
-        <div className="header-actions">
-          <button className="discret" onClick={basculerLangue}>
-            {langue === 'fr' ? 'EN' : 'FR'}
-          </button>
-          <button className="discret" title={t('configuration', langue)} onClick={() => setConfigOk(false)}>
-            ⚙
-          </button>
-          {connecte && (
-            <button
-              className="discret"
-              onClick={() => {
-                seDeconnecter();
-                setConnecte(false);
-              }}
-            >
-              {t('deconnexion', langue)}
-            </button>
-          )}
-        </div>
+        <div className="header-actions">{reglages}</div>
       </header>
 
       {!configOk && <Configuration langue={langue} onFait={() => setConfigOk(true)} />}
@@ -82,25 +100,68 @@ export function App() {
 
       {configOk && connecte && (
         <>
-          <nav>
-            <button className={onglet === 'dashboard' ? 'actif' : ''} onClick={() => setOnglet('dashboard')}>
-              {t('tableauDeBord', langue)}
-            </button>
-            <button className={onglet === 'corrections' ? 'actif' : ''} onClick={() => setOnglet('corrections')}>
-              {t('corrections', langue)}
-            </button>
-            <button className={onglet === 'recherche' ? 'actif' : ''} onClick={() => setOnglet('recherche')}>
-              {t('recherche', langue)}
+          <nav className="sections" aria-label="Sections">
+            {SECTIONS.map((s) => (
+              <button key={s} className={section === s ? 'actif' : ''} onClick={() => allerA(s)}>
+                {t(s, langue)}
+              </button>
+            ))}
+          </nav>
+
+          <div className="vue-active" key={section}>
+            {section === 'aujourdhui' && <TableauDeBord langue={langue} />}
+            {section === 'documents' && <Recherche langue={langue} />}
+            {section === 'apprentissage' && <Corrections langue={langue} />}
+            {section === 'agenda' && <EnConstruction langue={langue} etape="C19-05" />}
+            {section === 'mails' && <EnConstruction langue={langue} etape="C19-06" />}
+            {section === 'sante' && <EnConstruction langue={langue} etape="C19-08" />}
+          </div>
+
+          <nav className="barre-basse" aria-label="Sections (mobile)">
+            {BARRE_BASSE.map((s) => (
+              <button key={s} className={section === s ? 'actif' : ''} onClick={() => allerA(s)}>
+                <em aria-hidden="true">{ICONES[s]}</em>
+                {t(s, langue)}
+              </button>
+            ))}
+            <button
+              className={section === 'apprentissage' || section === 'sante' ? 'actif' : ''}
+              onClick={() => setPlusOuvert(true)}
+            >
+              <em aria-hidden="true">⋯</em>
+              {t('plus', langue)}
             </button>
           </nav>
-          {onglet === 'dashboard' && <TableauDeBord langue={langue} />}
-          {onglet === 'corrections' && <Corrections langue={langue} />}
-          {onglet === 'recherche' && <Recherche langue={langue} />}
+
+          {plusOuvert && (
+            <>
+              <button className="feuille-fond" aria-label={t('fermer', langue)} onClick={() => setPlusOuvert(false)} />
+              <div className="feuille-plus" role="dialog" aria-label={t('plus', langue)}>
+                <button className="discret" onClick={() => allerA('apprentissage')}>
+                  {ICONES.apprentissage} {t('apprentissage', langue)}
+                </button>
+                <button className="discret" onClick={() => allerA('sante')}>
+                  {ICONES.sante} {t('sante', langue)}
+                </button>
+                <div className="header-actions" style={{ marginLeft: 0 }}>{reglages}</div>
+              </div>
+            </>
+          )}
         </>
       )}
 
       <footer>{t('gardeFous', langue)}</footer>
     </div>
+  );
+}
+
+/** Section v3 pas encore construite : on le dit, avec l'étape du chantier (aucun faux contenu). */
+function EnConstruction({ langue, etape }: { langue: Langue; etape: string }) {
+  return (
+    <section className="carte en-construction">
+      <p>{t('enConstruction', langue)}</p>
+      <p className="maquette">{etape} · ADR-0013</p>
+    </section>
   );
 }
 
