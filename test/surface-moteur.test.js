@@ -51,9 +51,11 @@ const CONTRAT = [
   'emailAlerte_', 'signalerNatifUneFois_',
   // tri Gmail (#16)
   'trierFilsGmail_', 'trierFil_', 'decisionTri_', 'heuristiquePhishing_', 'adresseExpediteur_',
-  'parserMiniCategorie_', 'miniCategorie_', 'triApprisCache_', 'apprendreTri_',
+  'normaliserLibelle_', 'parserMiniCategorie_', 'miniCategorie_', 'triApprisCache_', 'apprendreTri_',
   'reinitialiserTriApprisCache_', 'libellesUtilisateur_', 'reinitialiserLibellesCache_',
-  'newslettersJamaisLues_',
+  'estPromoGmail_', 'reinitialiserPromoSetCache_', 'signalerPanneEcriture_', 'reinitialiserPanneEcriture_',
+  'scanAvantTri_', 'scanArriereTri_',
+  'newslettersJamaisLues_', 'apprentissagesSemaine_',
   'miniCheckMail_', 'parserMiniCheck_', 'marquerMailImportant_', 'lienGmail_',
   // cibles publiques des déclencheurs / outils
   'tickDriveAI', 'installerTrigger', 'chienDeGarde', 'resumeHebdo', 'rangerToutLeDrive', 'dequarantaine',

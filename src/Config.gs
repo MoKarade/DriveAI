@@ -124,8 +124,15 @@ var CONFIG = {
   LLM_MAX_TOKENS_MINICAT: 64,             // mini-appel catégorie : JSON {categorie, suspect} — marge pour le plus long libellé + clôture markdown
   // Noms EXACTS des libellés spéciaux existants dans le Gmail de Marc (vérifiés le 2026-07-06).
   TRI_LIBELLES: { A_VERIFIER: 'À vérifier', SUSPECT: '⚠️ Suspect', A_TRAITER: '⏰ À traiter' },
-  // Heuristiques phishing DÉTERMINISTES, étroites (le signal LLM complète) :
-  TRI_PJ_RISQUEES: ['.exe', '.zip', '.html', '.htm', '.scr'],
+  // Heuristiques phishing DÉTERMINISTES, étroites (le signal LLM complète). Deux niveaux
+  // (revue flotte, ronde 2) : une PJ EXÉCUTABLE est suspecte SEULE (aucun envoi légitime attendu) ;
+  // une PJ DOUTEUSE (.zip d'un photographe, facture .html) ne l'est que COMBINÉE à un signal
+  // d'urgence ou de demande d'identifiants — sinon les vrais mails satureraient ⚠️ Suspect.
+  TRI_PJ_EXECUTABLES: ['.exe', '.scr'],
+  TRI_PJ_DOUTEUSES: ['.zip', '.html', '.htm'],
+  // Adresse de MARC : un fil dont le DERNIER message vient de lui n'apprend jamais dans TriAppris
+  // (anti auto-empoisonnement : ses propres réponses ne « votent » pas pour une catégorie).
+  PROPRIETAIRE_EMAIL: 'marc.richard4@gmail.com',
   TRI_MOTS_URGENCE: ['urgent', 'immédiat', 'dernier rappel', 'compte suspendu', 'sera suspendu'],
   TRI_MOTS_CREDENTIELS: ['mot de passe', 'password', 'identifiant', 'vérifiez votre compte',
     'confirmez votre identité', 'coordonnées bancaires', 'carte de crédit'],

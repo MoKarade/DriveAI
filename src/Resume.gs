@@ -18,6 +18,8 @@ function resumeHebdo() {
     var cout = syntheseCoutMois_();
     var newsletters = [];
     try { newsletters = newslettersJamaisLues_(); } catch (e) { /* section best-effort */ }
+    var apprentissages = null;
+    try { apprentissages = apprentissagesSemaine_(jours); } catch (e) { /* section best-effort */ }
     var dernierTick = Number(PropertiesService.getScriptProperties().getProperty('DriveAI_LAST_TICK')) || 0;
     var etat = etatSysteme_(dernierTick, Date.now(), CONFIG.WATCHDOG_SEUIL_MS);
     var dest = emailAlerte_();
@@ -25,7 +27,7 @@ function resumeHebdo() {
     MailApp.sendEmail(
       dest,
       '[DriveAI] Résumé de la semaine',
-      construireResume_(stats, erreurs, cout, jours, etat, urlFormulaireCorrection_(), newsletters)
+      construireResume_(stats, erreurs, cout, jours, etat, urlFormulaireCorrection_(), newsletters, apprentissages)
     );
     journalInfo_('Résumé', 'Résumé hebdo envoyé.');
   } catch (e) {
@@ -153,8 +155,12 @@ function etatSysteme_(dernierTickMs, maintenant, seuil) {
   return '🔴 silencieux depuis ' + minutes + ' min — le chien de garde répare / t\'a alerté';
 }
 
-/** Corps du mail récap. `newsletters` : expéditeurs promo jamais lus (#16), calculés par l'appelant. */
-function construireResume_(s, erreurs, cout, jours, etat, urlForm, newsletters) {
+/**
+ * Corps du mail récap. `newsletters` : expéditeurs promo jamais lus (#16), calculés par
+ * l'appelant. `apprentissages` : associations expéditeur→libellé apprises cette semaine
+ * (TriAppris, #16) — Marc voit ce que le tri a mémorisé et peut corriger la table dans la Sheet.
+ */
+function construireResume_(s, erreurs, cout, jours, etat, urlForm, newsletters, apprentissages) {
   var lignes = [
     'Voici ce que DriveAI a fait cette semaine (' + jours + ' derniers jours).',
     ''
@@ -221,6 +227,19 @@ function construireResume_(s, erreurs, cout, jours, etat, urlForm, newsletters) 
     }
   }
 
+  // #16 — ce que le tri a APPRIS cette semaine (table TriAppris) : visibilité sur la mémoire du
+  // moteur, corrigeable directement dans la Sheet (supprimer/éditer une ligne suffit).
+  if (apprentissages && apprentissages.total) {
+    lignes.push('', '🧠 Tri appris cette semaine (' + apprentissages.total + ' expéditeur' +
+      (apprentissages.total > 1 ? 's' : '') + ' — onglet TriAppris pour corriger) :');
+    for (var ap = 0; ap < apprentissages.exemples.length; ap++) {
+      lignes.push('   • ' + apprentissages.exemples[ap].adresse + ' → ' + apprentissages.exemples[ap].libelle);
+    }
+    if (apprentissages.total > apprentissages.exemples.length) {
+      lignes.push('   … et ' + (apprentissages.total - apprentissages.exemples.length) + ' de plus.');
+    }
+  }
+
   lignes.push(
     '',
     '💰 Coût LLM ce mois-ci : ~' + cout.dollars.toFixed(2) + ' $ (' +
@@ -238,6 +257,10 @@ function construireResume_(s, erreurs, cout, jours, etat, urlForm, newsletters) 
 /**
  * Expéditeurs « promo » dont AUCUN mail des 30 derniers jours n'a été lu (#16, ADR-0012) —
  * candidats au désabonnement, LISTE SEULE (aucun clic, aucun désabonnement automatique).
+ * « Jamais ouvertes » est VÉRIFIÉ (revue flotte, ronde 2) : compter les non-lus ne suffit pas —
+ * un expéditeur que Marc LIT parfois peut avoir ≥ seuil de non-lus (volume) ; une contre-recherche
+ * `is:read from:` par candidat l'exclut. Bornée : candidats déjà plafonnés à RESUME_NEWSLETTERS_MAX
+ * après tri, soit ≤ 10 recherches supplémentaires, 1×/semaine.
  * Lecture seule, appelée 1×/semaine par le résumé. Seuil : `TRI_NEWSLETTERS_SEUIL` fils non lus.
  * @return {{adresse:string, n:number}[]}
  */
@@ -251,10 +274,43 @@ function newslettersJamaisLues_() {
       if (adresse) parAdresse[adresse] = (parAdresse[adresse] || 0) + 1;
     } catch (e) { /* fil illisible → ignoré */ }
   }
-  var liste = [];
+  var candidats = [];
   for (var a in parAdresse) {
-    if (parAdresse[a] >= CONFIG.TRI_NEWSLETTERS_SEUIL) liste.push({ adresse: a, n: parAdresse[a] });
+    if (parAdresse[a] >= CONFIG.TRI_NEWSLETTERS_SEUIL) candidats.push({ adresse: a, n: parAdresse[a] });
   }
-  liste.sort(function (x, y) { return y.n - x.n; });
-  return liste.slice(0, CONFIG.RESUME_NEWSLETTERS_MAX);
+  candidats.sort(function (x, y) { return y.n - x.n; });
+  candidats = candidats.slice(0, CONFIG.RESUME_NEWSLETTERS_MAX);
+  var liste = [];
+  for (var c = 0; c < candidats.length; c++) {
+    try {
+      var lus = GmailApp.search('category:promotions newer_than:30d is:read from:' + candidats[c].adresse, 0, 1);
+      if (!lus.length) liste.push(candidats[c]); // vraiment JAMAIS lu → candidat confirmé
+    } catch (e) { /* contre-recherche échouée → prudence : ne pas lister */ }
+  }
+  return liste;
+}
+
+/**
+ * Associations expéditeur→libellé APPRISES par le tri (#16) sur les `jours` derniers jours —
+ * lecture bornée de l'onglet TriAppris (mêmes fenêtres que le reste du résumé). Best-effort :
+ * l'appelant enveloppe d'un try/catch, une erreur ne fait sauter que cette section.
+ * @param {number} jours
+ * @return {{total:number, exemples:{adresse:string, libelle:string}[]}}
+ */
+function apprentissagesSemaine_(jours) {
+  var r = { total: 0, exemples: [] };
+  var f = feuille_('TriAppris');
+  var fen = fenetreLecture_(f);
+  if (!fen) return r;
+  var seuil = Date.now() - jours * 24 * 60 * 60 * 1000;
+  var v = f.getRange(fen.debut, 1, fen.nb, 3).getValues(); // A..C : Adresse, Libellé, Appris le
+  for (var i = 0; i < v.length; i++) {
+    var d = v[i][2];
+    if (!(d instanceof Date) || d.getTime() < seuil) continue;
+    r.total++;
+    if (r.exemples.length < CONFIG.RESUME_NEWSLETTERS_MAX) {
+      r.exemples.push({ adresse: String(v[i][0]), libelle: String(v[i][1]) });
+    }
+  }
+  return r;
 }
