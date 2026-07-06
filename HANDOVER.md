@@ -29,6 +29,12 @@
 > Property `DriveAI_EMAIL` toujours à poser côté Marc (131 alertes perdues + résumé hebdo perdu le 6/7). Chantiers suivants
 > actés : #18 (entités auto-validées à 3 occurrences) puis #17 (confiance visible dans l'app).
 >
+> **Suite 2026-07-06 (fin de journée)** : `dequarantaine()` + `DriveAI_EMAIL` posés par Marc → drainage
+> VÉRIFIÉ en direct (68→47 fichiers en 10 min, reçus KIA photographiés OCR+classés) ; rangement reprend
+> dès que la file < 40. Tri Gmail : démarre seul au reset de quota (~03h ET). **Chantier #19 lancé —
+> App v3** (refonte complète, cadrage 4 réponses de Marc) : maquette « trois directions » livrée
+> (artifact), attente du choix A/B/C. Voir BACKLOG #19.
+>
 > Antérieur — **2026-07-01 (soir)** : **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
 > Session de conception « niveau pro » avec Marc : **8 ADR** (`docs/adr/0001`→`0008`), **roadmap priorisée à
 > 9 chantiers** (`docs/ROADMAP.md`), runbook (`docs/RUNBOOK.md`) et guide (`docs/GUIDE.md`). Socle #1 =
