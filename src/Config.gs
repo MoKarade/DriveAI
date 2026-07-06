@@ -101,8 +101,10 @@ var CONFIG = {
   // journée — 288 ticks × 20-30 s = 96-144 min/j, soit PLUS que le quota runtime des déclencheurs
   // (~90 min/j, compte gratuit) : tous les déclencheurs (chien de garde inclus) seraient gelés
   // chaque après-midi de campagne. On compte les ms RÉELLEMENT consommées par jour (Properties) et
-  // on plafonne à 20 min/j : ~80-120 inédites/j, le vivant et la Phase 3 gardent ~70 min/j.
-  GMAIL_HISTO_BUDGET_JOUR_MS: 20 * 60 * 1000,
+  // Calibrage Marc 2026-07-06 (« accélère beaucoup, ~100 min/j ») : 100 est IMPOSSIBLE — le quota
+  // dur des déclencheurs (~90 min/j, compte gratuit) couvre TOUT le moteur. 60 min/j est le max
+  // raisonnable : le vivant + la Phase 3 gardent ~25-30 min/j ; campagne finie en ~3-5 jours.
+  GMAIL_HISTO_BUDGET_JOUR_MS: 60 * 60 * 1000,
   PAGE_FILS: 20,                         // taille de page de la recherche Gmail
   BUDGET_MS: 4.5 * 60 * 1000,            // garde-temps (exécution Apps Script < 6 min)
 

@@ -212,16 +212,17 @@ test('emailAlerte_ : la Script Property DriveAI_EMAIL prime ; sans elle ni scope
   assert.strictEqual(ctxAlerte({}, false).c.emailAlerte_(), ''); // l'état RÉEL du manifeste (pas de scope)
 });
 
-test('notifierEchec_ : sans destinataire → PAS de plantage, trace « pose DriveAI_EMAIL » au Journal', () => {
-  const { c, calls } = ctxAlerte({}, false);
-  c.notifierEchec_('Test', 'boom');
-  assert.deepStrictEqual(calls.mails, []);
-  assert.ok(calls.journaux.some((m) => String(m).includes('DriveAI_EMAIL')));
+test('notifierEchec_ : JAMAIS de mail immédiat (décision Marc 2026-07-06) — journal seul, même avec DriveAI_EMAIL', () => {
+  const avec = ctxAlerte({ DriveAI_EMAIL: 'marc@exemple.com' }, false);
+  avec.c.notifierEchec_('Test', 'boom');
+  assert.deepStrictEqual(avec.calls.mails, []); // tout se découvre au résumé hebdo
+  assert.ok(avec.calls.journaux.some((m) => String(m).includes('boom')));
+  const sans = ctxAlerte({}, false);
+  sans.c.notifierEchec_('Test', 'boom'); // et jamais de plantage sans destinataire
+  assert.deepStrictEqual(sans.calls.mails, []);
 });
 
-test('notifierEchec_ : avec DriveAI_EMAIL posée → le mail part vers cette adresse', () => {
-  const { c, calls } = ctxAlerte({ DriveAI_EMAIL: 'marc@exemple.com' }, false);
-  c.notifierEchec_('Test', 'boom');
-  assert.strictEqual(calls.mails.length, 1);
-  assert.strictEqual(calls.mails[0].dest, 'marc@exemple.com');
+test('emailAlerte_ reste utilisée par le RÉSUMÉ HEBDO (seul mail restant du moteur)', () => {
+  const { c } = ctxAlerte({ DriveAI_EMAIL: 'marc@exemple.com' }, false);
+  assert.strictEqual(c.emailAlerte_(), 'marc@exemple.com');
 });

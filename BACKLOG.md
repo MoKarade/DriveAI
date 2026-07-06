@@ -268,6 +268,43 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C14-03 | **Résumé hebdo : « À traiter »** — sujets + lien Gmail (`#all/<messageId>`, couvre l'archivé), plafonné `RESUME_IMPORTANTS_MAX`, section absente si vide ; même section au dashboard app (`lignesImportants`) ; statut `important` compté à part (ne pollue pas « Autres ») | ✅ (tests) |
 | C14-04 | **Revue flotte intégrée** (1 bloquant + 2) : (S1, bloquant) le CORPS est lu et la garde §1 re-vérifiée dessus AVANT la pose du flag — y compris sur le chemin « important sans action » qui ne lisait jamais le corps (un mail protégé détectable par son corps seul n'apparaît JAMAIS dans « À traiter ») ; le chemin « rien vu » reste gratuit (corps pas lu, testé) ; (C1) critère `important` RESSERRÉ : réponse/geste PERSONNEL attendu, jamais relevé/confirmation/reçu/facture récurrente/offre (leçon « garde-fou étroit » — sinon les relevés mensuels satureraient la section et relégueraient les vraies questions) ; (R1) le dashboard exclut les lignes « mail » des agrégats documents (plus de double compte d'activité ni de bucket « — ») | ✅ (tests) |
 
+### Chantier #16 — Tri Gmail natif (ADR-0012) — remplace la tâche Cowork de Marc  ⬜
+
+> **Décision constitutionnelle actée le 2026-07-06** (réponses explicites de Marc) : levée du
+> garde-fou « Gmail lecture seule » → scope **`gmail.modify`** (JAMAIS de suppression — même pas
+> appelée par le code). ⚠️ **Séquencer le merge du scope avec Marc** (gel des déclencheurs jusqu'à
+> sa ré-autorisation — leçon durable). Une fois livré et vérifié : Marc supprime sa tâche Cowork.
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C16-01 | **Scope & garde-fous** : `gmail.readonly` → `gmail.modify` — PR avec label **`do-not-merge`** dès création, levé seulement sur accord TEMPS RÉEL de Marc (auto-merge sinon = moteur gelé sans lui) ; test de surface source **check CI REQUIS** avec motifs complets (`ToTrash`, `ToSpam`, `deleteLabel`, `batchDelete`, REST `/trash\|/spam\|/delete`, `TRASH`/`SPAM` dans `addLabelIds`) ; constitution + leçon §7 « pas de label » annotées ; `ARCHITECTURE.md` § scopes corrigée (`gmail.labels` ne pose PAS de libellé sur un fil) | ⬜ |
+| C16-02 | **Mini-check à 3 signaux** (`action`, `important`, `categorie`) — un seul appel, coût marginal ; table `expéditeur → libellé` apprise dans la Sheet (few-shot) ; doute → `À vérifier`, jamais « le plus probable » | ⬜ |
+| C16-03 | **Pose des libellés au fil de l'eau** : le plus précis parmi les libellés EXISTANTS (16 catégories + ~45 sous-libellés) ; jamais de création silencieuse ; `⏰ À traiter` posé sur les mails `important` (#14) ; idempotence par l'Index | ⬜ |
+| C16-04 | **Archivage prudent** (règles Marc, confirmées 2026-07-06) : mails LUS après libellé ; promos/newsletters même non lues MAIS qualification DÉTERMINISTE seulement (`List-Unsubscribe`, `CATEGORY_PROMOTIONS` — le LLM ne déclenche jamais un archivage non-lu) ; phishing évalué AVANT tout archivage (ordre testé) ; JAMAIS `À vérifier`/`⚠️ Suspect` ; Spam intouché ; zone protégée : comme les autres (libellé + archivage si LU) mais jamais via le chemin promo-non-lu ; `⏰ À traiter` jamais archivé par le moteur (todo de Marc) ; stock initial : toute la fenêtre 30 j, borné par run ; réversible (retrait INBOX seul) | ⬜ |
+| C16-05 | **Phishing** : heuristiques déterministes + LLM → `⚠️ Suspect` (reste en boîte), EN TÊTE du résumé hebdo ; jamais de clic/ouverture | ⬜ |
+| C16-06 | **Résumé hebdo** : sections « ⚠️ Suspects » (tête) et « Newsletters jamais ouvertes » (candidates désabonnement, liste seule). Écartés par Marc : documents manquants, registre des montants | ⬜ |
+
+### Calibrage 2026-07-06 (réponses explicites de Marc — 2 salves de questions)  🟦
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| CAL-01 | **Alertes : tout au résumé hebdo** (choix Marc, informé du risque) : plus AUCUN mail immédiat — `notifierEchec_` journalise seul, chien de garde = auto-réparation + journal (le hebdo montre l'état « silencieux »), alerte stockage = journal. `emailAlerte_`/`DriveAI_EMAIL` ne servent plus qu'au résumé hebdo. Réversible (commentaire dans le code) | ✅ |
+| CAL-02 | **Campagne historique ×3** : Marc voulait « ~100 min/j » — impossible (quota dur ~90 min/j pour TOUT le moteur) → `GMAIL_HISTO_BUDGET_JOUR_MS` 20 → **60 min/j** (max raisonnable, vivant garde ~25-30 min/j, campagne finie en ~3-5 j) | ✅ |
+| CAL-03 | Confiance basse : « voir dans l'APP seulement » → chantier #17 ; entités : « auto-valider à 3 occurrences » → chantier #18 | ✅ (routé) |
+
+### Chantier #17 — Confiance visible dans l'app  ⬜
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C17-01 | Colonne `Confiance` à l'Index (nombre seul — métadonnée, ADR-0007) écrite par le pipeline au classement ; compat lignes historiques (vide = inconnu) ; en-têtes réels côté app | ⬜ |
+| C17-02 | App/Recherche : filtre « confiance basse » (< SEUIL_CONFIANCE) pour repasser derrière les « classés au mieux » ; tri par confiance croissante | ⬜ |
+
+### Chantier #18 — Auto-validation des entités fréquentes (décision Marc : seuil 3)  ⬜
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C18-01 | Une entité `en_attente` NON générique et NON variante vue **≥ 3 fois** est **auto-validée** (dossier créé) au tick ; signalée dans le résumé hebdo (« entités auto-validées : … ») ; réversible (statut modifiable dans l'app, dossier jamais supprimé) ; garde : jamais en zone protégée sans validation manuelle | ⬜ |
+
 ### Correctif R1 — Panne de compte API & canal d'alerte (check-up 2026-07-03)  🟦
 
 | ID | Tâche | Statut |

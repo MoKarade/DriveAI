@@ -143,13 +143,8 @@ function alerterStockagePlein_() {
   var pct = Math.round(CONFIG.STORAGE_SEUIL * 100);
   journalErreur_('Partages', 'Stockage Drive ≥ ' + pct + ' % — copie des partages SUSPENDUE. ' +
     'Aucune suppression effectuée ; reprise automatique quand de la place se libère.');
-  try {
-    var dest = emailAlerte_();
-    if (dest) MailApp.sendEmail(dest, '[DriveAI] Stockage Drive presque plein',
-      'DriveAI a suspendu la copie des fichiers partagés : le stockage Drive est à ≥ ' + pct + ' %.\n' +
-      'Libère un peu d\'espace — la copie des partages reprendra toute seule au tick suivant.\n' +
-      '(Aucun fichier n\'a été supprimé.)');
-  } catch (e) { /* alerte best-effort : ne doit jamais faire échouer le tick */ }
+  // Décision Marc 2026-07-06 : plus de mail immédiat — la ligne d'erreur ci-dessus suffit
+  // (compteur d'erreurs du résumé hebdo) et la copie reprend toute seule quand la place revient.
 }
 
 /* ---------- Collecteur (source d'intake #3) ---------- */

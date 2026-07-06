@@ -164,13 +164,10 @@ function alerterChienDeGarde_(dernierTick, err) {
     'Souvent bénin : le quota quotidien du compte gratuit (~90 min/jour) est atteint — ça reprend seul demain.\n' +
     'Si rien ne repart d\'ici demain, un seul geste : ouvrir le projet Apps Script « DriveAI » et exécuter installerTrigger.\n' +
     (err ? '\n(Auto-réparation impossible : ' + err + ')' : '\n(Auto-réparation tentée, sans effet pour l\'instant.)');
-  var dest = emailAlerte_();
-  try {
-    if (dest) MailApp.sendEmail(dest, '[DriveAI] Moteur silencieux — à vérifier', corps);
-  } catch (e) { /* mail impossible : le chien de garde ne plante pas pour autant */ }
-  journalErreur_('Chien de garde', dest
-    ? 'Alerte « moteur silencieux » envoyée (dernier tick : ' + quand + ').'
-    : 'Alerte « moteur silencieux » NON envoyée (pose la Script Property DriveAI_EMAIL) — dernier tick : ' + quand + '.');
+  // Décision Marc 2026-07-06 : plus de mail immédiat — l'épisode est journalisé et l'état
+  // « silencieux » apparaît dans le résumé hebdo (etatSysteme_). L'AUTO-RÉPARATION, elle, a déjà
+  // été tentée avant d'arriver ici et reste le vrai filet.
+  journalErreur_('Chien de garde', 'Moteur silencieux (dernier tick : ' + quand + ') — ' + corps.split('\n')[0]);
 }
 
 /**
