@@ -15,6 +15,16 @@
 - **`Émetteur`** — émetteur (`emetteur`) : `Hydro-Quebec`, `Desjardins`, `IRCC`…
 - **`.ext`** — extension d'origine préservée (`.pdf`, `.jpg`, `.docx`, `.xlsx`…).
 
+## Périmètre
+
+La convention s'applique aux **fichiers nommés par le pipeline** (classement moteur, reclassement
+avec renommage dans l'app). Elle ne s'applique **ni aux dossiers** (domaines `NN · Nom`, entités,
+sous-dossiers thématiques, années — cf. `TAXONOMY.md`), **ni à un déplacement manuel** dans
+l'explorateur de l'app (C21-02) : le nom existant est conservé tel quel, même non conforme.
+Le placement manuel est entériné par une ligne Index `drive|fileId` (statut `manuel`) — le grand
+rangement ne re-collecte donc pas le fichier, mais son nom reste hors convention jusqu'à un
+éventuel reclassement explicite.
+
 ## Nommage par type (ADR-0002 §6) — `Router.nomParType_`
 
 La **granularité de date** et le **libellé** s'adaptent au type de document. Un type **inconnu** retombe

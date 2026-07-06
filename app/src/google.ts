@@ -14,13 +14,16 @@
 import {
   Ascendance,
   verdictReclassement,
+  RACINES_PROTEGEES_DEFAUT,
 } from './garde-fous';
 import {
   ElementDrive,
+  MIME_DOSSIER,
   qEnfants,
   qRecherche,
   qSousDossiers,
   decouperEnLots,
+  estDossierATrier,
 } from './explorateur';
 import { lireConfig } from './config';
 
@@ -195,12 +198,23 @@ const DRIVE = 'https://www.googleapis.com/drive/v3/files';
 export interface FichierDrive {
   id: string;
   name: string;
+  mimeType?: string;
   parents?: string[];
   webViewLink?: string;
 }
 
 export async function lireFichier(fileId: string): Promise<FichierDrive> {
-  return api<FichierDrive>(`${DRIVE}/${fileId}?fields=${encodeURIComponent('id,name,parents,webViewLink')}`);
+  return api<FichierDrive>(`${DRIVE}/${fileId}?fields=${encodeURIComponent('id,name,mimeType,parents,webViewLink')}`);
+}
+
+// L'alias `'root'` n'apparaît JAMAIS dans `parents` (l'API y met l'ID réel) : résolu une fois
+// pour que les comparaisons/PATCH de déplacement soient justes (sinon add+remove du même dossier).
+let idRacineReel: string | null = null;
+async function resoudreRacine(): Promise<string> {
+  if (idRacineReel) return idRacineReel;
+  const r = await api<{ id: string }>(`${DRIVE}/root?fields=id`);
+  idRacineReel = r.id;
+  return r.id;
 }
 
 /** Recherche Drive par nom (contains). Sert à retrouver le fichier d'une ligne d'Index. */
@@ -481,6 +495,121 @@ export async function rechercherDrive(texte: string, portee?: string[]): Promise
     for (const f of r.files ?? []) vus.set(f.id, f);
   }
   return Array.from(vus.values());
+}
+
+/* ---------- Explorateur (C21-02) : création de dossier + déplacement MANUEL ---------- */
+
+/**
+ * Crée un dossier (création seule — l'inverse, la suppression, n'existe pas dans cette app ;
+ * la corbeille des dossiers VIDES validée arrive en C21-07 sous ADR-0014). Nom libre : les
+ * dossiers (entités, sous-dossiers) ne suivent pas la convention datée des fichiers.
+ */
+export async function creerDossier(nom: string, parentId: string): Promise<ElementDrive> {
+  const propre = nom.trim();
+  if (!propre) throw new Error('Nom de dossier vide');
+  viderCachePlages();
+  return api<ElementDrive>(`${DRIVE}?fields=${encodeURIComponent(CHAMPS_ELEMENT)}`, {
+    method: 'POST',
+    body: JSON.stringify({
+      name: propre,
+      mimeType: 'application/vnd.google-apps.folder',
+      parents: [parentId],
+    }),
+  });
+}
+
+/** L'Index (colonne Clé) contient-il cette clé ? Lecture d'une colonne, cache 60 s. */
+export async function indexContientCle(cle: string): Promise<boolean> {
+  const colonne = await lirePlage('Index', 'A2:A30000');
+  return colonne.some((l) => (l[0] ?? '') === cle);
+}
+
+/**
+ * Déplacement MANUEL d'un FICHIER (drag-and-drop de Marc, C21-02) : nom CONSERVÉ — le verdict
+ * garde-fous tourne en mode `deplacementSeul` (la règle de nom ne s'applique pas ; la zone
+ * protégée reste inconditionnelle : jamais détaché de 04 · Immigration, échec fermé si
+ * l'ascendance est illisible). Les DOSSIERS ne se déplacent JAMAIS ici (réorg de masse =
+ * moteur) — refus par mimeType, défense en profondeur contre un payload de drag forgé.
+ *
+ * Parades intake (revue file-checker) : REdéposer dans `00 · À trier` un fichier déjà traité
+ * est refusé (il s'y enliserait en silence — l'idempotence du moteur l'ignore) ; un placement
+ * manuel ailleurs est ENTÉRINÉ par une ligne Index `drive|fileId` statut `manuel` (le grand
+ * rangement ne re-collectera pas le fichier — même skip que pour un média sorti de `_Médias`).
+ *
+ * @param nomCible nom du dossier cible (détection « À trier » — l'app n'a pas son ID)
+ * @returns true si un déplacement a eu lieu, false si le fichier était déjà en place.
+ * @throws si le verdict n'est pas vide (l'appelant affiche les violations).
+ */
+export async function deplacerFichierManuel(args: {
+  fileId: string;
+  nouveauParent: string;
+  nomCible?: string;
+  racinesProtegees?: string[];
+}): Promise<boolean> {
+  const f = await lireFichier(args.fileId);
+  const proteges = args.racinesProtegees ?? RACINES_PROTEGEES_DEFAUT;
+  if (f.mimeType === MIME_DOSSIER || proteges.includes(args.fileId)) {
+    throw new Error('Déplacement refusé : seuls les FICHIERS se déplacent ici (dossiers : réorg à venir)');
+  }
+  const ascendance = await remonterAscendance(args.fileId);
+  const violations = verdictReclassement({
+    ascendanceActuelle: ascendance,
+    deplacementSeul: true,
+    racinesProtegees: args.racinesProtegees,
+  });
+  if (violations.length > 0) {
+    throw new Error(`Déplacement refusé (garde-fous) : ${violations.join(', ')}`);
+  }
+  const cleIndex = `drive|${args.fileId}`;
+  const dejaIndexe = await indexContientCle(cleIndex).catch(() => false);
+  const cibleATrier = estDossierATrier(args.nomCible ?? '');
+  if (cibleATrier && dejaIndexe) {
+    throw new Error('Déjà traité par DriveAI — redéposer dans « À trier » n’aurait aucun effet. Passe par Apprentissage → Reclasser.');
+  }
+  // `'root'` est un alias : jamais présent dans f.parents — résolu avant toute comparaison.
+  const cible = args.nouveauParent === 'root' ? await resoudreRacine() : args.nouveauParent;
+  // Même logique anti-ambiguïté que reclasserFichier : cible retirée de removeParents.
+  const anciens = (f.parents ?? []).filter((p) => p !== cible).join(',');
+  const dejaEnPlace = (f.parents ?? []).includes(cible);
+  if (dejaEnPlace && !anciens) return false; // déjà exactement là — no-op
+  viderCachePlages();
+  const params = new URLSearchParams({ fields: 'id' });
+  if (!dejaEnPlace) params.set('addParents', cible);
+  if (anciens) params.set('removeParents', anciens);
+  await api(`${DRIVE}/${args.fileId}?${params.toString()}`, { method: 'PATCH', body: '{}' });
+  // Entérine le geste dans l'Index (sauf vers À trier : là, le fichier DOIT être traité).
+  if (!cibleATrier && !dejaIndexe) {
+    try {
+      await ajouterLigneIndexManuelle_(cleIndex, f.name);
+    } catch { /* best-effort — le rangement pourra re-collecter, jamais pire qu'avant */ }
+  }
+  // Trace best-effort au Journal (le moteur y écrit pareil) — l'échec n'annule pas le geste.
+  try {
+    await ajouterLigne('Journal', [
+      new Date().toISOString(),
+      'INFO',
+      'App',
+      `Déplacement manuel : « ${f.name} » (${args.fileId})`,
+    ]);
+  } catch { /* trace seulement */ }
+  return true;
+}
+
+/** Ligne Index d'un placement manuel — EN SUIVANT LES EN-TÊTES RÉELS (miroir de Journal.gs). */
+async function ajouterLigneIndexManuelle_(cle: string, nom: string): Promise<void> {
+  const ORDRE_DEFAUT = ['Clé', 'Traité le', 'Fichier', 'Domaine', 'Chemin', 'Statut', 'Empreinte', 'Confiance'];
+  let entetes: string[] = [];
+  try {
+    entetes = (await lirePlage('Index', 'A1:H1'))[0] ?? [];
+  } catch { /* onglet illisible → ordre par défaut (celui que le moteur crée) */ }
+  if (entetes.length === 0) entetes = ORDRE_DEFAUT;
+  const valeurs: Record<string, string> = {
+    'Clé': cle,
+    'Traité le': new Date().toISOString(),
+    Fichier: nom,
+    Statut: 'manuel',
+  };
+  await ajouterLigne('Index', entetes.map((e) => valeurs[e] ?? ''));
 }
 
 /* ---------- « Vérifier maintenant » (#20) : pont vers la web app Apps Script ---------- */

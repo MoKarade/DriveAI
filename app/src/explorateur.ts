@@ -107,6 +107,16 @@ export function formaterTaille(size?: string): string {
   return `${(n / (1024 * 1024 * 1024)).toFixed(1)} Go`;
 }
 
+/**
+ * Le dossier d'arrivée du moteur (`00 · À trier`) — reconnu par NOM normalisé (l'app ne connaît
+ * pas son ID). Sert aux parades intake C21-02 : pas de création de dossier dedans (trou noir,
+ * l'intake ne descend pas), refus d'y REdéposer un fichier déjà traité (il s'y enliserait).
+ */
+export function estDossierATrier(nom: string): boolean {
+  const n = nom.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return n.includes('a trier');
+}
+
 /** Date courte (jour) depuis un ISO Drive ; illisible → « — ». */
 export function formaterDateCourte(iso?: string, locale = 'fr-CA'): string {
   if (!iso) return '—';
