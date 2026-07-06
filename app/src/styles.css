@@ -197,6 +197,35 @@ footer {
 .actions { display: flex; gap: 0.35rem; flex-wrap: wrap; }
 .actions button { padding: 0.3rem 0.6rem; font-size: 0.85rem; }
 
+/* vue Aujourd'hui (C19-04) */
+.tuiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; grid-column: 1 / -1; }
+@media (max-width: 720px) { .tuiles { grid-template-columns: 1fr 1fr; } }
+.tuile { background: var(--carte); border: 1px solid var(--bord); border-radius: 8px; padding: 0.8rem 1rem; }
+.tuile .v { font-family: var(--mono); font-size: 1.5rem; font-weight: 600; letter-spacing: -0.01em; }
+.tuile .v small { font-size: 0.85rem; color: var(--texte-doux); font-weight: 500; }
+.tuile .v.erreur { color: var(--erreur); }
+.tuile .l { font-size: 0.8rem; color: var(--texte-doux); margin-top: 1px; }
+.tuile .d { font-size: 0.76rem; margin-top: 0.35rem; color: var(--texte-doux); }
+.tuile .d.ok { color: var(--ok); }
+.jauge { height: 5px; border-radius: 99px; background: var(--rang); margin-top: 0.5rem; overflow: hidden; }
+.jauge i { display: block; height: 100%; border-radius: 99px; background: var(--attention); }
+.statut-moteur { grid-column: 1 / -1; margin: 0; color: var(--texte-doux); font-size: 0.82rem; }
+.point-ok { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); margin-right: 0.35rem; }
+.alerte-suspect { display: flex; gap: 0.6rem; align-items: baseline; padding: 0.55rem 0.65rem;
+  border-radius: 8px; background: var(--erreur-fond); border: 1px solid color-mix(in srgb, var(--erreur) 35%, transparent);
+  margin-bottom: 0.5rem; color: var(--texte); text-decoration: none; }
+.alerte-suspect:hover { border-color: var(--erreur); }
+.alerte-suspect .ic { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 6px; background: var(--erreur);
+  color: #fff; text-align: center; font-weight: 700; font-size: 0.8rem; line-height: 20px; }
+.pastille { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; font-family: var(--sys, inherit); }
+.pastille.ok { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.pastille.douce { background: var(--rang); color: var(--texte-doux); }
+.pastille.crit { background: color-mix(in srgb, var(--erreur) 16%, transparent); color: var(--erreur); }
+.ligne-clic:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.lien-ligne { color: var(--texte); text-decoration: none; }
+.ligne-clic:hover .lien-ligne { color: var(--accent); }
+
 /* section en construction (chantier v3 par étapes) */
 .en-construction { color: var(--texte-doux); }
 .en-construction .maquette { font-family: var(--mono); font-size: 0.8rem; color: var(--accent); }
