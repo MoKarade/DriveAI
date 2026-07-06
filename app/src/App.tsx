@@ -1,7 +1,7 @@
 /**
  * App.tsx — coquille v3 (ADR-0013) : configuration → connexion Google → 6 sections.
- * Documents / Apprentissage / Santé embarquent les vues v2 existantes tant que
- * leur remplaçante v3 n'est pas livrée (C19-04 → C19-09). Mobile : barre basse 5 entrées + feuille « Plus ».
+ * Documents (Recherche) et Apprentissage (Corrections) embarquent les vues v2 — déjà
+ * fusionnées et thémées ; le reste est v3 (ADR-0013). Mobile : barre basse 5 entrées + feuille « Plus ».
  */
 
 import { useEffect, useState } from 'react';
@@ -9,8 +9,8 @@ import { configComplete, lireConfig, enregistrerConfig } from './config';
 import { seConnecter, estConnecte, seDeconnecter, abonnerSessionExpiree } from './google';
 import { Langue, langueCourante, changerLangue, t } from './i18n';
 import { basculerTheme, themeCourant } from './theme';
-import { TableauDeBord } from './vues/TableauDeBord';
 import { AujourdHui } from './vues/AujourdHui';
+import { SanteVue } from './vues/Sante';
 import { Corrections } from './vues/Corrections';
 import { Recherche } from './vues/Recherche';
 import { Agenda } from './vues/Agenda';
@@ -116,8 +116,7 @@ export function App() {
             {section === 'apprentissage' && <Corrections langue={langue} />}
             {section === 'agenda' && <Agenda langue={langue} />}
             {section === 'mails' && <Mails langue={langue} />}
-            {/* Santé v3 = C19-08 ; en attendant, le TableauDeBord v2 (santé, journal, quarantaine) vit ici — rien ne se perd. */}
-            {section === 'sante' && <TableauDeBord langue={langue} />}
+            {section === 'sante' && <SanteVue langue={langue} />}
           </div>
 
           <nav className="barre-basse" aria-label="Sections (mobile)">

@@ -35,6 +35,15 @@
 > App v3** (refonte complète, cadrage 4 réponses de Marc) : maquette « trois directions » livrée
 > (artifact), attente du choix A/B/C. Voir BACKLOG #19.
 >
+> **2026-07-06 (nuit) — CHANTIER #19 LIVRÉ : App v3 « Salle des machines » complète** (PR #73→#78,
+> une PR par étape, app utilisable à chaque merge) : socle tokens sombre/clair + 6 sections + mobile ;
+> Aujourd'hui (tuiles, suspects/tris cliquables → Gmail) ; Agenda (grille mois réelle, tâches Google
+> cochables, création directe — scopes APP tasks+calendar.events, consentement navigateur au prochain
+> login) ; Mails (tri #16 visible, TriAppris corrigeable par vidage de cellules) ; Documents +
+> **confiance #17** (colonne H Index côté moteur, badge + filtre côté app, verrou vie-privée à
+> 8 colonnes) ; Santé (quota Gmail dérivé du Journal, quarantaine+relance). Verrou app durci :
+> jamais DELETE, jamais status:cancelled, jamais /clear. Chantier #18 (entités auto à 3) = prochain.
+>
 > Antérieur — **2026-07-01 (soir)** : **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
 > Session de conception « niveau pro » avec Marc : **8 ADR** (`docs/adr/0001`→`0008`), **roadmap priorisée à
 > 9 chantiers** (`docs/ROADMAP.md`), runbook (`docs/RUNBOOK.md`) et guide (`docs/GUIDE.md`). Socle #1 =
