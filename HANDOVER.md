@@ -62,6 +62,13 @@
 > whitelist `validerTickMinutes_` (jamais < 5 min, invalide → CONFIG). Restent : #21 (ADR-0014 +
 > constitution même commit + revue flotte) puis #18.
 >
+> **Chantier #21 lancé** — plan product-manager en 7 PR consigné au BACKLOG (état dans un onglet
+> `Réorg`, corbeille des dossiers vides côté APP au clic validé, réorg de masse côté moteur).
+> **C21-01 livré** : explorateur Drive lecture seule (sous-onglets Documents = Drive | Recherche
+> DriveAI, fil d'Ariane, recherche nom+plein texte, portée « dans ce dossier » bornée et honnête).
+> Revue flotte passée (sécurité + code, correctifs intégrés). Prochain : C21-02 (création de
+> dossiers + drag-and-drop via reclasserFichier en mode « déplacement sans renommage »).
+>
 > Antérieur — **2026-07-01 (soir)** : **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
 > Session de conception « niveau pro » avec Marc : **8 ADR** (`docs/adr/0001`→`0008`), **roadmap priorisée à
 > 9 chantiers** (`docs/ROADMAP.md`), runbook (`docs/RUNBOOK.md`) et guide (`docs/GUIDE.md`). Socle #1 =

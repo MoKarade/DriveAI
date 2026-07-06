@@ -303,3 +303,21 @@ button.coche { border: 1px solid var(--bord); padding: 0.1rem 0.4rem; font-size:
   .carte, .tuile { transition: border-color 0.2s ease; }
   .carte:hover, .tuile:hover { border-color: color-mix(in srgb, var(--texte-doux) 45%, var(--bord)); }
 }
+
+/* explorateur Drive (C21-01, chantier #21) */
+nav.sous-onglets { display: flex; gap: 2px; margin-bottom: 0.9rem; }
+nav.sous-onglets button {
+  border: 1px solid var(--bord); background: none; border-radius: 999px;
+  font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.05em;
+  font-size: 0.72rem; color: var(--texte-doux); padding: 0.35rem 0.9rem;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+nav.sous-onglets button.actif { color: var(--accent); border-color: var(--accent); }
+.explorateur .expl-recherche input:not([type]) { flex: 1 1 240px; }
+.ariane { margin: 0.2rem 0 0.7rem; font-size: 0.9rem; color: var(--texte-doux);
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.1rem; }
+.ariane button { padding: 0.15rem 0.4rem; font-size: 0.9rem; }
+.ariane b { color: var(--texte); font-weight: 600; padding: 0 0.4rem; }
+.ariane-sep { padding: 0 0.15rem; }
+table.expl-table td { padding-top: 0.55rem; padding-bottom: 0.55rem; }
+.expl-ic { width: 1.6rem; font-size: 1rem; }

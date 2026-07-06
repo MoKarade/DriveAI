@@ -1,7 +1,7 @@
 /**
  * App.tsx — coquille v3 (ADR-0013) : configuration → connexion Google → 6 sections.
- * Documents (Recherche) et Apprentissage (Corrections) embarquent les vues v2 — déjà
- * fusionnées et thémées ; le reste est v3 (ADR-0013). Mobile : barre basse 5 entrées + feuille « Plus ».
+ * Documents = explorateur Drive (C21-01) + Recherche sur l'Index ; Apprentissage embarque
+ * Corrections (v2 thémée). Mobile : barre basse 5 entrées + feuille « Plus ».
  */
 
 import { useEffect, useState } from 'react';
@@ -12,7 +12,7 @@ import { basculerTheme, themeCourant } from './theme';
 import { AujourdHui } from './vues/AujourdHui';
 import { SanteVue } from './vues/Sante';
 import { Corrections } from './vues/Corrections';
-import { Recherche } from './vues/Recherche';
+import { Documents } from './vues/Documents';
 import { Agenda } from './vues/Agenda';
 import { Mails } from './vues/Mails';
 
@@ -131,7 +131,7 @@ export function App() {
 
           <div className="vue-active" key={section}>
             {section === 'aujourdhui' && <AujourdHui langue={langue} />}
-            {section === 'documents' && <Recherche langue={langue} />}
+            {section === 'documents' && <Documents langue={langue} />}
             {section === 'apprentissage' && <Corrections langue={langue} />}
             {section === 'agenda' && <Agenda langue={langue} />}
             {section === 'mails' && <Mails langue={langue} />}
