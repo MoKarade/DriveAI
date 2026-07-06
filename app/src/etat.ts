@@ -265,7 +265,7 @@ export function lignesImportants(lignes: LigneIndex[]): LigneIndex[] {
  * `event|<id>|<hash>`, `intention|<id>`) — '' sinon. `#all` couvre aussi les mails archivés.
  */
 export function lienGmailPourLigne(l: LigneIndex): string {
-  const m = l.cle.match(/^(?:important|intention|tache|event)\|([^|]+)/);
+  const m = l.cle.match(/^(?:important|intention|tache|event|tri)\|([^|]+)/);
   return m ? `https://mail.google.com/mail/#all/${m[1]}` : '';
 }
 
@@ -294,4 +294,74 @@ export function activiteParJour(lignes: LigneIndex[], jours: number, maintenant:
     if (compte.has(cle)) compte.set(cle, (compte.get(cle) ?? 0) + 1);
   }
   return Array.from(compte, ([jour, n]) => ({ jour, n }));
+}
+
+/* ---------- App v3 (C19-04, ADR-0013) : tri Gmail visible + tuiles « Aujourd'hui » ---------- */
+
+/** Fils Gmail TRIÉS par le moteur (#16) — statuts `trié`/`tri-a-verifier`/`suspect`, récents d'abord. */
+export function lignesTri(lignes: LigneIndex[]): LigneIndex[] {
+  return lignes
+    .filter((l) => l.statut === 'trié' || l.statut === 'tri-a-verifier' || l.statut === 'suspect')
+    .slice()
+    .reverse();
+}
+
+/** Fils suspects (⚠ phishing possible) — laissés en boîte par le moteur, récents d'abord. */
+export function lignesSuspects(lignes: LigneIndex[]): LigneIndex[] {
+  return lignes.filter((l) => l.statut === 'suspect').slice().reverse();
+}
+
+export interface StatsTri {
+  tries: number;      // total trié + à vérifier (fils passés par le tri)
+  aVerifier: number;
+  suspects: number;
+}
+
+/** Compte le tri des `jours` derniers jours (fenêtre glissante, `maintenant` injecté — testable). */
+export function statsTri(lignes: LigneIndex[], jours: number, maintenant: Date): StatsTri {
+  const seuil = maintenant.getTime() - jours * 24 * 60 * 60 * 1000;
+  const s: StatsTri = { tries: 0, aVerifier: 0, suspects: 0 };
+  for (const l of lignes) {
+    const t = Date.parse(l.traiteLe);
+    if (Number.isNaN(t) || t < seuil) continue;
+    if (l.statut === 'trié') s.tries++;
+    else if (l.statut === 'tri-a-verifier') { s.tries++; s.aVerifier++; }
+    else if (l.statut === 'suspect') s.suspects++;
+  }
+  return s;
+}
+
+/** Documents (hors lignes mail) traités un JOUR calendaire local donné. */
+export function traitesLeJour(lignes: LigneIndex[], jour: Date): number {
+  const cle = `${jour.getFullYear()}-${String(jour.getMonth() + 1).padStart(2, '0')}-${String(jour.getDate()).padStart(2, '0')}`;
+  let n = 0;
+  for (const l of lignes) {
+    const t = Date.parse(l.traiteLe);
+    if (Number.isNaN(t)) continue;
+    const d = new Date(t);
+    const c = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (c === cle) n++;
+  }
+  return n;
+}
+
+/**
+ * Coût LLM du mois depuis l'onglet Santé (ligne « Coût LLM 2026-07 : 7.34 $  (2296 appels) … »).
+ * null si la ligne manque — la tuile se dégrade proprement (jamais un faux 0 $).
+ */
+export function coutDepuisSante(lignesSante: string[]): { dollars: number; appels: number } | null {
+  for (const l of lignesSante) {
+    const m = l.match(/Coût LLM [^:]*: ([\d.,]+) \$\s*\((\d+) appels?\)/);
+    if (m) return { dollars: Number(m[1].replace(',', '.')), appels: Number(m[2]) };
+  }
+  return null;
+}
+
+/** « Dernier passage OK : … » depuis l'onglet Santé — '' si absent. */
+export function dernierPassageDepuisSante(lignesSante: string[]): string {
+  for (const l of lignesSante) {
+    const m = l.match(/Dernier passage OK\s*:\s*(.+)$/);
+    if (m) return m[1].trim();
+  }
+  return '';
 }

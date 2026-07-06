@@ -237,3 +237,63 @@ describe('Phase 3 visible (C13) + mails importants (C14)', () => {
     expect(lienGmailPourLigne(lignes[4])).toBe(''); // drive| : pas un mail
   });
 });
+
+/* ---------- App v3 (C19-04) : tri visible + tuiles Aujourd'hui ---------- */
+
+import {
+  lignesTri,
+  lignesSuspects,
+  statsTri,
+  traitesLeJour,
+  coutDepuisSante,
+  dernierPassageDepuisSante,
+} from '../src/etat';
+
+describe('tri Gmail visible (C19-04)', () => {
+  const brut = [
+    ['tri|F1|100|lu', '2026-07-06 14:32', 'Relevé juin — Hydro-Québec', '', '', 'trié'],
+    ['tri|F2|200|nonlu', '2026-07-06 14:31', 'Soldes — MEC', '', '', 'trié'],
+    ['tri|F3|300|lu', '2026-07-05 09:00', 'Confirmation — Clinique', '', '', 'tri-a-verifier'],
+    ['tri|F4|400|nonlu', '2026-06-20 08:00', 'Vieux fil', '', '', 'trié'],
+    ['tri|F5|500|nonlu', '2026-07-06 12:00', '« Compte suspendu »', '', '', 'suspect'],
+    ['drive|X', '2026-07-06 13:35', '2026-07-06_Attestation_DriveAI.txt', '08 · Perso & projets', '', 'classé'],
+  ];
+  const lignes = interpreterIndex(brut);
+  const maintenant = new Date('2026-07-06T18:00:00');
+
+  it('lignesTri : trié + à vérifier + suspect, récents d\'abord', () => {
+    const t = lignesTri(lignes);
+    expect(t.map((l) => l.cle)).toEqual(['tri|F5|500|nonlu', 'tri|F4|400|nonlu', 'tri|F3|300|lu', 'tri|F2|200|nonlu', 'tri|F1|100|lu']);
+  });
+
+  it('lignesSuspects : seulement les ⚠, récents d\'abord', () => {
+    expect(lignesSuspects(lignes).map((l) => l.fichier)).toEqual(['« Compte suspendu »']);
+  });
+
+  it('statsTri : fenêtre glissante 7 j — le vieux fil est exclu, l\'à-vérifier compte dans triés', () => {
+    expect(statsTri(lignes, 7, maintenant)).toEqual({ tries: 3, aVerifier: 1, suspects: 1 });
+  });
+
+  it('lienGmailPourLigne couvre les clés tri| (threadId, jamais le ts)', () => {
+    expect(lienGmailPourLigne(lignes[0])).toBe('https://mail.google.com/mail/#all/F1');
+  });
+
+  it('traitesLeJour : jour calendaire LOCAL', () => {
+    expect(traitesLeJour(lignes, new Date('2026-07-06T23:00:00'))).toBe(4);
+    expect(traitesLeJour(lignes, new Date('2026-07-05T01:00:00'))).toBe(1);
+  });
+});
+
+describe('tuiles Santé (C19-04)', () => {
+  it('coutDepuisSante : parse « 7.34 $ (2296 appels) », virgule tolérée, null si absent', () => {
+    expect(coutDepuisSante(['Santé DriveAI', 'Coût LLM 2026-07 : 7.34 $  (2296 appels)  ·  cible < 10 $/mois  ✅']))
+      .toEqual({ dollars: 7.34, appels: 2296 });
+    expect(coutDepuisSante(['Coût LLM 2026-07 : 7,34 $ (12 appels)'])).toEqual({ dollars: 7.34, appels: 12 });
+    expect(coutDepuisSante(['rien ici'])).toBeNull();
+  });
+
+  it('dernierPassageDepuisSante : extrait la date, \'\' si absent', () => {
+    expect(dernierPassageDepuisSante(['Dernier passage OK : 2026-07-06 13:01'])).toBe('2026-07-06 13:01');
+    expect(dernierPassageDepuisSante(['autre'])).toBe('');
+  });
+});
