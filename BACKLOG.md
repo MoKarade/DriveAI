@@ -342,6 +342,23 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 > devenus **VIDES** sont listés → validation de Marc → **corbeille Drive** (récupérable 30 j) —
 > jamais de purge, jamais un dossier non vide, jamais la zone protégée. Exige un **ADR-0014** +
 > constitution mise à jour DANS le même commit (tripwire pattern) + revue flotte avant merge.
+>
+> **Découpage (plan product-manager 2026-07-06, une PR par étape)** — état de la proposition dans
+> un onglet `Réorg` (en-têtes réels, machine à états `analyse demandée → proposé → validé/écarté →
+> appliqué/refusé → vide-candidat → corbeillé`, aucune ligne supprimée). La corbeille des dossiers
+> vides est exécutée par l'**APP** au clic de validation (le moteur garde son verrou « aucune
+> suppression » ABSOLU) ; la réorg de masse par le **MOTEUR** au tick ; le drag-and-drop par
+> l'app via `reclasserFichier` (geste manuel).
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C21-01 | **Explorateur lecture seule** (app) : navigation par dossiers (fil d'Ariane, tri dossiers d'abord, pagination), recherche nom+plein texte, portée « dans ce dossier » (collecte bornée des sous-dossiers, troncature annoncée) — sous-onglets Documents = Drive \| Recherche DriveAI. Revue flotte : sécurité ✅ (aucune mutation, injection `q` fermée), code ✅ (pageToken purgé entre dossiers, troncature honnête sur page pleine, portée mémoïsée 60 s, clavier) | ✅ |
+| C21-02 | **Création de dossiers + drag-and-drop** (app) : `creerDossier` ; déplacement via `reclasserFichier` en mode « déplacement manuel sans renommage » (zone protégée JAMAIS relâchée) ; geste journalisé dans `Corrections` | ⬜ |
+| C21-03 | **Recherche IA** (app + pont web app `doPost`) : Haiku traduit la question en plan de requêtes (filtres Index + `fullText`), l'app exécute ; clé API côté Script Properties ; risque CORS à lever d'abord | ⬜ |
+| C21-04 | **Moteur — inventaire + proposition** (`Reorg.gs`, onglet `Réorg`) : campagne bornée métadonnées seules, LLM par lots, étape secondaire try/catch + budget | ⬜ |
+| C21-05 | **App — vue « Plan de réorg »** : diff avant/après, Valider/Écarter (plages contiguës), « Demander une analyse » | ⬜ |
+| C21-06 | **Moteur — application du plan validé** : déplacements seuls par fileId, re-vérif zone protégée (chaîne complète) avant CHAQUE mutation, refus inscrit, clé `reorg\|tag\|fileId`, borné/reprenable → dossiers vides recensés `vide-candidat` | ⬜ |
+| C21-07 | **ADR-0014 + CLAUDE.md §2 + corbeille des dossiers vides** (app, `corbeille.ts`) DANS LE MÊME COMMIT : re-vérif vide strict + ascendance au clic, `trashed:true` permis UNIQUEMENT là, tripwire CI, revue flotte bloquante | ⬜ |
 
 ### Chantier #22 — Fréquence d'analyse configurable (choix Marc : UN réglage global)  ✅ (livré 2026-07-06)
 

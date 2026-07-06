@@ -15,6 +15,13 @@ import {
   Ascendance,
   verdictReclassement,
 } from './garde-fous';
+import {
+  ElementDrive,
+  qEnfants,
+  qRecherche,
+  qSousDossiers,
+  decouperEnLots,
+} from './explorateur';
 import { lireConfig } from './config';
 
 /* ---------- Auth (Google Identity Services) ---------- */
@@ -139,6 +146,8 @@ const CACHE_MS = 60 * 1000;
 
 export function viderCachePlages(): void {
   cachePlages.clear();
+  cacheDossiers.clear(); // les listages Drive suivent le même cycle de vie (C21-01)
+  cachePortee.clear();
 }
 
 /** Lit une plage (valeurs brutes, lignes de tableaux). */
@@ -370,6 +379,108 @@ export async function cocherTache(id: string, faite: boolean): Promise<void> {
     method: 'PATCH',
     body: JSON.stringify({ status: faite ? 'completed' : 'needsAction' }),
   });
+}
+
+/* ---------- Explorateur Drive (C21-01) : navigation + recherche scopée — LECTURE SEULE ---------- */
+
+const CHAMPS_ELEMENT = 'id,name,mimeType,modifiedTime,size,webViewLink';
+
+export interface PageDrive {
+  elements: ElementDrive[];
+  suivant?: string; // nextPageToken — présent s'il reste des éléments
+}
+
+// Cache 60 s des listages de dossiers (même logique que cachePlages : navigation fluide,
+// invalidé par toute écriture de l'app via viderCachePlages).
+const cacheDossiers = new Map<string, { t: number; page: PageDrive }>();
+
+/** Enfants directs d'un dossier (`'root'` = racine Mon Drive), triés dossiers d'abord côté API. */
+export async function listerEnfants(dossierId: string, pageToken?: string): Promise<PageDrive> {
+  const cle = `${dossierId}|${pageToken ?? ''}`;
+  const memo = cacheDossiers.get(cle);
+  if (memo && Date.now() - memo.t < CACHE_MS) return memo.page;
+  const params = new URLSearchParams({
+    q: qEnfants(dossierId),
+    orderBy: 'folder,name',
+    pageSize: '100',
+    fields: `nextPageToken,files(${CHAMPS_ELEMENT})`,
+  });
+  if (pageToken) params.set('pageToken', pageToken);
+  const r = await api<{ files?: ElementDrive[]; nextPageToken?: string }>(`${DRIVE}?${params.toString()}`);
+  const page = { elements: r.files ?? [], suivant: r.nextPageToken };
+  cacheDossiers.set(cle, { t: Date.now(), page });
+  return page;
+}
+
+/**
+ * Collecte BORNÉE des sous-dossiers d'une racine (BFS, multi-parents dédoublonnés) — la portée
+ * « dans ce dossier » de la recherche : `in parents` ne voit que les enfants DIRECTS, il faut
+ * donc énumérer les descendants. Plafond dur (quota + taille de `q`) ; `tronque` le signale
+ * honnêtement à l'UI au lieu de laisser croire à une couverture complète.
+ */
+const cachePortee = new Map<string, { t: number; portee: { ids: string[]; tronque: boolean } }>();
+
+export async function collecterSousDossiers(
+  racineId: string,
+  plafond = 80,
+): Promise<{ ids: string[]; tronque: boolean }> {
+  // Mémoïsée 60 s : chaque Enter dans le même dossier ne re-paye pas la collecte (jusqu'à
+  // ~plafond appels au pire sur une arborescence très profonde).
+  const memo = cachePortee.get(racineId);
+  if (memo && Date.now() - memo.t < CACHE_MS) return memo.portee;
+  const ids = [racineId];
+  let front = [racineId];
+  let tronque = false;
+  while (front.length > 0 && !tronque) {
+    const decouverts: string[] = [];
+    for (const lot of decouperEnLots(front, 10)) {
+      const params = new URLSearchParams({
+        q: qSousDossiers(lot),
+        fields: 'files(id)',
+        pageSize: '100',
+      });
+      const r = await api<{ files?: { id: string }[] }>(`${DRIVE}?${params.toString()}`);
+      const fichiers = r.files ?? [];
+      // Page PLEINE sans lire nextPageToken = couverture non garantie → dit honnêtement.
+      if (fichiers.length >= 100) tronque = true;
+      for (const f of fichiers) decouverts.push(f.id);
+    }
+    const ajoutes: string[] = [];
+    for (const id of decouverts) {
+      if (ids.length >= plafond) {
+        tronque = true;
+        break;
+      }
+      if (!ids.includes(id)) {
+        ids.push(id);
+        ajoutes.push(id);
+      }
+    }
+    front = ajoutes;
+  }
+  const portee = { ids, tronque };
+  cachePortee.set(racineId, { t: Date.now(), portee });
+  return portee;
+}
+
+/**
+ * Recherche façon barre Google Drive (nom OU plein texte natif). `portee` (liste de dossiers,
+ * cf. `collecterSousDossiers`) découpe en lots — fusion dédoublonnée par id.
+ */
+export async function rechercherDrive(texte: string, portee?: string[]): Promise<ElementDrive[]> {
+  const lots: (string[] | undefined)[] =
+    portee && portee.length > 0 ? decouperEnLots(portee, 10) : [undefined];
+  const vus = new Map<string, ElementDrive>();
+  for (const lot of lots) {
+    const params = new URLSearchParams({
+      q: qRecherche(texte, lot),
+      fields: `files(${CHAMPS_ELEMENT})`,
+      pageSize: '50',
+    });
+    const r = await api<{ files?: ElementDrive[] }>(`${DRIVE}?${params.toString()}`);
+    for (const f of r.files ?? []) vus.set(f.id, f);
+  }
+  return Array.from(vus.values());
 }
 
 /* ---------- « Vérifier maintenant » (#20) : pont vers la web app Apps Script ---------- */
