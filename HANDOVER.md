@@ -14,9 +14,14 @@
 > service avancé + REST Gmail bannis, tripwire scope↔CLAUDE.md). Constitution §2.3 mise à jour (la
 > lecture seule est levée, décision Marc). **Après le merge : ré-autorisation manuelle par Marc
 > (tickDriveAI) obligatoire — tous les déclencheurs sont gelés d'ici là** ; puis vérifier la reprise
-> par signaux Drive et les premiers libellés ; ensuite Marc supprime sa tâche Cowork. Suivi prod en
-> attente : quota Gmail (reset ~03h) → campagne historique 60 min/j + rangement (62 %, ~804 restants) ;
-> `dequarantaine()` et Script Property `DriveAI_EMAIL` toujours à poser côté Marc. Chantiers suivants
+> par signaux Drive et les premiers libellés ; ensuite Marc supprime sa tâche Cowork. Suivi prod (vérifié par Journal exporté, 13h ET) :
+> 🔴 **la recharge de crédit API n'a JAMAIS pris effet** — 291 « PANNE DE COMPTE (400 credit balance) »
+> depuis le 5/7 00:00, zéro « RÉTABLI » ; Marc doit vérifier console.anthropic.com → Billing (bon
+> workspace ? paiement passé ? crédits API ≠ abonnement Claude). Conséquence : quota Gmail du jour
+> re-épuisé à 07:25 par les runs stériles du matin (code pré-R2 encore déployé à ce moment-là) ;
+> reset ~03h ET. Le tri #16 est correctement différé (« Tri Gmail différé », l'intake n'est pas bloqué)
+> et ne montrera ses premiers libellés qu'après quota + crédit rétablis. `dequarantaine()` et Script
+> Property `DriveAI_EMAIL` toujours à poser côté Marc (131 alertes perdues + résumé hebdo perdu le 6/7). Chantiers suivants
 > actés : #18 (entités auto-validées à 3 occurrences) puis #17 (confiance visible dans l'app).
 >
 > Antérieur — **2026-07-01 (soir)** : **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
