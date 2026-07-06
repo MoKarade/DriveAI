@@ -30,6 +30,8 @@ const MOTIFS_INTERDITS: [string, RegExp][] = [
   ['batchUpdate Sheets (peut supprimer des lignes)', /:batchUpdate/],
   ['effacement de plages Sheets (:clear / :batchClear)', /:(batchC|c)lear/],
   ['corbeille Drive v2 (/trash) ou vidage (emptyTrash)', /\/trash\b|emptyTrash/],
+  ['annulation d’événement Calendar (status: cancelled = suppression douce)', /status['"`]?\s*:\s*['"`]cancelled/],
+  ['vidage de liste Tasks (/clear)', /tasks[^\n]*\/clear\b/i],
 ];
 
 describe('surface de code sans suppression (§2)', () => {

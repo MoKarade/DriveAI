@@ -19,8 +19,10 @@ import { lireConfig } from './config';
 
 /* ---------- Auth (Google Identity Services) ---------- */
 
-// Périmètre minimal : état (Sheet) en lecture/écriture + Drive (lecture, recherche, PATCH).
-const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive';
+// Périmètre : état (Sheet) RW + Drive (lecture, recherche, PATCH) + — révision Marc 2026-07-06
+// (ADR-0013, vue Agenda) — Tasks/Calendar : l'app CRÉE et COCHE, ne supprime NI n'annule jamais
+// (verrou : test miroir aucune-suppression). Consentement navigateur seul (rien côté Apps Script).
+const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/calendar.events';
 
 let jetonAcces: string | null = null; // en mémoire seulement — jamais localStorage
 
@@ -283,4 +285,56 @@ export async function journaliserCorrection(c: {
   };
   const ligne = entetes.map((e) => valeurs[e] ?? '');
   await ajouterLigne('Corrections', ligne);
+}
+
+/* ---------- Agenda (C19-05, ADR-0013) : Calendar + Tasks — création & coche SEULES ---------- */
+
+const CALENDAR = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+const TASKS = 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks';
+
+/** Événements de l'agenda PRIMAIRE entre deux instants (occurrences dépliées, ordre chronologique). */
+export async function listerEvenements(timeMinISO: string, timeMaxISO: string): Promise<unknown[]> {
+  const url = `${CALENDAR}?singleEvents=true&orderBy=startTime&maxResults=250` +
+    `&timeMin=${encodeURIComponent(timeMinISO)}&timeMax=${encodeURIComponent(timeMaxISO)}`;
+  const rep = await api<{ items?: unknown[] }>(url);
+  return rep.items ?? [];
+}
+
+/** Tâches de la liste par défaut (ouvertes + faites — le tri vit dans agenda.ts). */
+export async function listerTaches(): Promise<unknown[]> {
+  const rep = await api<{ items?: unknown[] }>(`${TASKS}?maxResults=100&showCompleted=true&showHidden=true`);
+  return rep.items ?? [];
+}
+
+/** Crée une tâche (liste par défaut). `echeance` : AAAA-MM-JJ (optionnel). */
+export async function creerTache(titre: string, echeance?: string): Promise<void> {
+  await api(TASKS, {
+    method: 'POST',
+    body: JSON.stringify({ title: titre, ...(echeance ? { due: `${echeance}T00:00:00.000Z` } : {}) }),
+  });
+}
+
+/** Crée un RDV d'une heure sur l'agenda primaire. `debutISO` : date-heure locale ISO. */
+export async function creerEvenement(titre: string, debutISO: string): Promise<void> {
+  const debut = new Date(debutISO);
+  const fin = new Date(debut.getTime() + 60 * 60 * 1000);
+  await api(CALENDAR, {
+    method: 'POST',
+    body: JSON.stringify({
+      summary: titre,
+      start: { dateTime: debut.toISOString() },
+      end: { dateTime: fin.toISOString() },
+    }),
+  });
+}
+
+/**
+ * Coche/décoche une tâche — PATCH du champ `status` UNIQUEMENT (jamais de DELETE : garde-fou §2 ;
+ * décocher est le chemin d'annulation réversible).
+ */
+export async function cocherTache(id: string, faite: boolean): Promise<void> {
+  await api(`${TASKS}/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: faite ? 'completed' : 'needsAction' }),
+  });
 }
