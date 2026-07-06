@@ -343,11 +343,13 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 > jamais de purge, jamais un dossier non vide, jamais la zone protégée. Exige un **ADR-0014** +
 > constitution mise à jour DANS le même commit (tripwire pattern) + revue flotte avant merge.
 
-### Chantier #22 — Fréquence d'analyse configurable (CADRÉ — choix Marc : UN réglage global)  ⬜
+### Chantier #22 — Fréquence d'analyse configurable (choix Marc : UN réglage global)  ✅ (livré 2026-07-06)
 
-> Réglage du tick (5/10/15/30 min) depuis l'app (Santé → Réglages) → onglet `Réglages` de la
-> Sheet → le moteur l'applique au tick suivant (`assurerIntervalleTick_` lit la Sheet, borne les
-> valeurs admises, jamais < 5 min). Zéro nouveau scope.
+> Réglage du tick (5/10/15/30 min) depuis l'app (Santé → carte « Réglages ») → onglet `Réglages`
+> de la Sheet (`A2:B2 = TICK_MINUTES | n`, seedé par le moteur) → le moteur l'applique au tick
+> suivant : `assurerIntervalleTick_` lit `intervalleTickVoulu_()` (Sheet, fallback CONFIG) et
+> ré-installe le déclencheur. Whitelist stricte `validerTickMinutes_` (5/10/15/30, jamais < 5 min,
+> valeur invalide → défaut). Zéro nouveau scope.
 
 ### Chantier #23 — Peaufinage UI (choix Marc)  ✅ (livré 2026-07-06)
 

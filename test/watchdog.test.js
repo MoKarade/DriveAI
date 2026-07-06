@@ -67,3 +67,15 @@ test('etatSysteme_ : jamais de heartbeat → démarrage, pas de faux « silencie
   const s = ctx.etatSysteme_(0, T, SEUIL);
   assert.ok(s.includes('démarrage') && !s.includes('🔴'));
 });
+
+/* ---------- #22 : validation PURE du réglage de tick (donnée utilisateur) ---------- */
+test('validerTickMinutes_ : whitelist stricte 5/10/15/30 — jamais < 5, jamais une valeur libre', () => {
+  assert.strictEqual(ctx.validerTickMinutes_(5), 5);
+  assert.strictEqual(ctx.validerTickMinutes_('10'), 10);
+  assert.strictEqual(ctx.validerTickMinutes_(30), 30);
+  assert.strictEqual(ctx.validerTickMinutes_(1), null);   // 1440 runs/j : interdit
+  assert.strictEqual(ctx.validerTickMinutes_(7), null);   // valeur non admise par Apps Script
+  assert.strictEqual(ctx.validerTickMinutes_(''), null);
+  assert.strictEqual(ctx.validerTickMinutes_('abc'), null);
+  assert.strictEqual(ctx.validerTickMinutes_(-5), null);
+});

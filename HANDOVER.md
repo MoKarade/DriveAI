@@ -56,6 +56,12 @@
 > Ordre conseillé : #23 → #22 → #21 → #18. Rappels Marc : lancer `rattraperMediasMalClasses` +
 > déployer la web app (DEPLOIEMENT.md) ; tri Gmail démarre seul ~03h.
 >
+> **#23 livré** (PR #81 : Agenda façon GCal, interface aérée, transitions). **#22 livré** : carte
+> « Réglages » dans Santé (select 5/10/15/30 min) → `Réglages!A2:B2` de la Sheet (onglet seedé par
+> le moteur) → `assurerIntervalleTick_` applique au tick suivant via `intervalleTickVoulu_()` +
+> whitelist `validerTickMinutes_` (jamais < 5 min, invalide → CONFIG). Restent : #21 (ADR-0014 +
+> constitution même commit + revue flotte) puis #18.
+>
 > Antérieur — **2026-07-01 (soir)** : **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
 > Session de conception « niveau pro » avec Marc : **8 ADR** (`docs/adr/0001`→`0008`), **roadmap priorisée à
 > 9 chantiers** (`docs/ROADMAP.md`), runbook (`docs/RUNBOOK.md`) et guide (`docs/GUIDE.md`). Socle #1 =

@@ -202,16 +202,43 @@ function assurerTriggerResume_() {
  */
 function assurerIntervalleTick_() {
   var props = PropertiesService.getScriptProperties();
-  if (props.getProperty('DriveAI_TICK_MINUTES') === String(CONFIG.TICK_MINUTES)) return;
+  var voulu = intervalleTickVoulu_();
+  if (props.getProperty('DriveAI_TICK_MINUTES') === String(voulu)) return;
 
-  var nouveau = ScriptApp.newTrigger('tickDriveAI').timeBased().everyMinutes(CONFIG.TICK_MINUTES).create();
-  props.setProperty('DriveAI_TICK_MINUTES', String(CONFIG.TICK_MINUTES)); // marqué FAIT dès la création
+  var nouveau = ScriptApp.newTrigger('tickDriveAI').timeBased().everyMinutes(voulu).create();
+  props.setProperty('DriveAI_TICK_MINUTES', String(voulu)); // marqué FAIT dès la création
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'tickDriveAI' && t.getUniqueId() !== nouveau.getUniqueId()) {
       ScriptApp.deleteTrigger(t);
     }
   });
-  journalInfo_('Setup', 'Intervalle du déclencheur ajusté à ' + CONFIG.TICK_MINUTES + ' min.');
+  journalInfo_('Setup', 'Intervalle du déclencheur ajusté à ' + voulu + ' min.');
+}
+
+/**
+ * Intervalle SOUHAITÉ du tick (#22, choix Marc : un réglage global) : l'app écrit
+ * `Réglages!B2` (A2 = TICK_MINUTES) ; valeur absente/invalide → CONFIG.TICK_MINUTES.
+ * Une lecture Sheet par tick (2 cellules) — négligeable.
+ */
+function intervalleTickVoulu_() {
+  try {
+    var v = feuille_('Réglages').getRange('B2').getValue();
+    var valide = validerTickMinutes_(v);
+    if (valide !== null) return valide;
+  } catch (e) { /* onglet illisible → défaut */ }
+  return CONFIG.TICK_MINUTES;
+}
+
+/**
+ * Valide une valeur de tick venue de la Sheet (donnée UTILISATEUR) : seules les valeurs
+ * qu'Apps Script accepte ET qui respectent les quotas sont admises — jamais < 5 min
+ * (1 min ferait 1440 runs/j : quotas Sheet/Gmail). PURE (testée).
+ * @param {*} v
+ * @return {?number} minutes valides, ou null
+ */
+function validerTickMinutes_(v) {
+  var n = Number(v);
+  return (n === 5 || n === 10 || n === 15 || n === 30) ? n : null;
 }
 
 /** Un passage du pipeline : Gmail + dépôts + partagés (+ migration, intentions) → tout est CLASSÉ (plus de revue depuis 2026-07-01). */
