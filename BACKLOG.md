@@ -332,17 +332,29 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C20-05 | App : **tooltip du graphe** (survol/doigt → « jour — N documents » dans l'en-tête de carte, barre surlignée) | ✅ |
 | C20-06 | **Bouton « Vérifier maintenant »** : web app Apps Script (`doPost` + secret Script Property `DriveAI_WEBAPP_SECRET`, anti-rafale 60 s, déclencheur ponctuel auto-nettoyé) + bouton app (no-cors) + champs Configuration | ✅ (déploiement web app = 2 clics de Marc, cf. DEPLOIEMENT.md) |
 
-### Chantier #21 — Explorateur Drive dans l'app + réorganisation IA (demandes Marc, à CADRER)  ⬜
+### Chantier #21 — Explorateur Drive dans l'app + réorganisation IA (CADRÉ — réponses Marc 2026-07-06)  ⬜
 
-> Marc veut : une interface **façon Google Drive** (mêmes outils : recherche, recherche par IA,
-> recherche limitée à un dossier, création rapide de dossiers, **drag-and-drop** pour ranger,
-> même affichage) **+** un bouton « analyser tout le Drive avec l'IA » qui propose un nouvel
-> arrangement (ajouter/supprimer des dossiers). ⚠ « supprimer des dossiers » touche le garde-fou
-> §2 (aucune suppression) → questions posées à Marc avant tout ADR.
+> Interface **façon Google Drive** dans l'app : recherche (+ IA), recherche limitée à un dossier,
+> création rapide de dossiers, **drag-and-drop** pour ranger, affichage similaire.
+> **Réorg IA (décisions Marc)** : ① l'IA analyse tout le Drive et PROPOSE un plan (avant/après)
+> dans l'app → **Marc valide** → le moteur applique par **déplacements seuls** (réversibles, bornés,
+> reprenables) ; ② **révision ÉTROITE du §2 actée** : après application validée, les dossiers
+> devenus **VIDES** sont listés → validation de Marc → **corbeille Drive** (récupérable 30 j) —
+> jamais de purge, jamais un dossier non vide, jamais la zone protégée. Exige un **ADR-0014** +
+> constitution mise à jour DANS le même commit (tripwire pattern) + revue flotte avant merge.
 
-### Chantier #22 — Fréquences d'analyse configurables (mails / Drive) — à CADRER  ⬜
+### Chantier #22 — Fréquence d'analyse configurable (CADRÉ — choix Marc : UN réglage global)  ⬜
 
-### Chantier #23 — Peaufinage UI (demandes Marc) : Agenda façon Google Calendar (style/grandeur), densité, finitions — à CADRER  ⬜
+> Réglage du tick (5/10/15/30 min) depuis l'app (Santé → Réglages) → onglet `Réglages` de la
+> Sheet → le moteur l'applique au tick suivant (`assurerIntervalleTick_` lit la Sheet, borne les
+> valeurs admises, jamais < 5 min). Zéro nouveau scope.
+
+### Chantier #23 — Peaufinage UI (CADRÉ — choix Marc)  ⬜
+
+> ① **Agenda façon Google Calendar** : grande grille pleine hauteur, style/densité GCal,
+> événements colorés, « aujourd'hui » marqué comme GCal ; ② **plus grand / plus aéré**
+> globalement ; ③ **transitions & micro-animations** (respect `prefers-reduced-motion`).
+> (Squelettes/chargements : écarté par Marc — le cache 60 s de #20 suffit pour l'instant.)
 
 ### Chantier #18 — Auto-validation des entités fréquentes (décision Marc : seuil 3)  ⬜
 
