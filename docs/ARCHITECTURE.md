@@ -43,7 +43,10 @@
   revue / tâches / événements / erreurs / coût mesuré du mois ; déclencheur hebdo auto-installé, scope
   `script.send_mail` existant).
 - **Scopes** (`appsscript.json` → `oauthScopes`), moindre privilège — chaque scope est justifié :
-  - `gmail.readonly` — lecture des mails + PJ. **Aucune écriture Gmail** (pas de label).
+  - `gmail.modify` *(chantier #16, ADR-0012 — remplace `gmail.readonly`)* — lecture des mails + PJ,
+    et les SEULES écritures du tri : poser un libellé EXISTANT sur un fil, archiver (réversible).
+    Corbeille/Spam/suppression/création-destruction-retrait de libellés : INTERDITS par le verrou
+    CI `surface-gmail-ecriture` (check requis qui gate `main`).
   - `drive` — créer/déplacer dans Drive, OCR via conversion.
   - `script.external_request` — `UrlFetchApp` vers l'API Anthropic et les API Tasks/Calendar.
   - `spreadsheets` — état (Index/Journal/Revue/Entités).
@@ -60,13 +63,12 @@
     ⚠️ Portée : `forms` donne accès en lecture/écriture à **tous** les formulaires du compte — intrinsèque
     à `FormApp`. Piste plus étroite (future) : API Forms REST via `UrlFetchApp` avec `forms.body` +
     `forms.responses.readonly` (cf. leçon « API Google via REST »). Aucune suppression de formulaire.
-- **Idempotence sans écriture Gmail** : `gmail.readonly` interdit la pose d'un label de
-  traitement. L'idempotence est donc portée **uniquement par l'`Index`** (clé
-  `messageId|i|nom|taille`). La fenêtre 30 jours est paginée pour ne pas affamer les anciens
-  fils. *(Correction audit 2026-07-06 : `gmail.labels` ne permettrait PAS de poser un libellé sur
-  un fil — ce scope ne gère que les DÉFINITIONS de libellés ; la pose exige `gmail.modify`. C'est
-  ce scope que le chantier #16 (ADR-0012) introduira — l'idempotence restera portée par l'Index,
-  jamais par un libellé.)*
+- **Idempotence par l'Index, jamais par un libellé** : même avec `gmail.modify` (#16), l'état
+  « déjà traité » est porté **uniquement par l'`Index`** (clé `messageId|i|nom|taille` pour les PJ,
+  `tri|fil|ts|lu` pour le tri) — un libellé est une donnée UTILISATEUR, pas un marqueur d'état.
+  La fenêtre 30 jours est paginée pour ne pas affamer les anciens fils. *(Correction audit
+  2026-07-06 : `gmail.labels` ne permettrait PAS de poser un libellé sur un fil — ce scope ne gère
+  que les DÉFINITIONS de libellés ; la pose exige `gmail.modify`, introduit par le chantier #16.)*
 - **Clé API** : Script Properties `DriveAI_ANTHROPIC_KEY`, lue via `PropertiesService`.
   Jamais en dur, jamais commitée.
 
@@ -97,9 +99,9 @@ Base de données légère, lisible/éditable à la main, partagée entre Apps Sc
 ## Quotas & robustesse (Apps Script)
 - Limiter le scan Gmail à `newer_than:30d`, traiter **par lots**.
 - Prévoir les coupures de quota (UrlFetch, conversions Drive, temps d'exécution 6 min).
-- **Idempotence** : `gmail.readonly` interdit tout label → portée uniquement par l'`Index`
+- **Idempotence** : portée uniquement par l'`Index`, jamais par un label Gmail
   (clé `messageId|i|nom|taille` pour les PJ, `intention|messageId` / `tache|…` / `event|…` pour
-  les tâches/événements Phase 3) ; vérification AVANT tout traitement.
+  les tâches/événements Phase 3, `tri|fil|ts|lu` pour le tri #16) ; vérification AVANT tout traitement.
 - **Pagination sur fenêtre mouvante (Phase 3)** : un offset numérique seul dérive quand de
   nouveaux mails s'insèrent en tête à chaque tick (`newer_than:30d` n'est pas un jeu de résultats
   stable). `Intentions.gs` combine un scan « avant » (offset 0, s'arrête dès une page entièrement
