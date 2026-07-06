@@ -100,6 +100,14 @@ mécanismes distincts dans le code :
 - **Doublon** (non sensible) : **déplacé** dans `_Doublons` (jamais effacé, jamais en revue — au volume
   du grand rangement, signaler chaque doublon en revue la saturerait). S'applique **aussi** aux doublons
   sensibles (1 exemplaire classé, les autres dans `_Doublons`) — cf. Zone protégée ci-dessous.
+- **Réorg IA (#21, Reorg.gs)** : sont **immuables** pour la réorg — les domaines `NN · …` (deplacer/
+  renommer/fusionner interdits ; le renommage de domaine appartient au self-healing `NOMS_DOMAINES_TAG`),
+  les files `00 ·` (À trier, À vérifier) et les racines `_…`, les sous-dossiers d'année `AAAA` et les
+  **noms** des sous-dossiers de schéma (l'aiguillage du router matche par nom — les fusionner/renommer
+  rendrait le plan non convergent : le router les re-créerait). `creer` sert aux dossiers STRUCTURELS,
+  jamais à inventer une entité (le référentiel `Entités` route par `Dossier ID`). **Fusionner un dossier
+  d'entité impose de re-pointer `Entités.Dossier ID`** (contrat C21-06). Zone protégée exclue de
+  l'inventaire par remontée d'ancêtres (multi-parents, échec fermé) dès la collecte.
 
 ## Documents sensibles 🔒 *(politique révisée 2026-07-01)*
 

@@ -60,3 +60,20 @@ test('indexAjouter_ : empreinte absente → cellule vide (jamais de fuite de con
   assert.strictEqual(row[7], ''); // pas de confiance (ligne non-LLM) → '' aussi
 });
 
+/* --- Onglet Réorg (#21, C21-04) : mêmes règles — métadonnées seulement, contrat d'en-têtes --- */
+
+test('lignePourAction_ (Réorg) : 8 colonnes métadonnées, jamais un corps de document', () => {
+  const ctx = load(['Config.gs', 'Reorg.gs']);
+  const inventaire = [
+    { id: 'idA', chemin: '02 · Finances', nbFichiers: 3, exemples: [] },
+    { id: 'idB', chemin: '02 · Finances/Vieux', nbFichiers: 1, exemples: [] },
+  ];
+  const row = ctx.lignePourAction_('reorg|d', 1,
+    { type: 'deplacer', dossier: 2, vers: 1, raison: SECRET.slice(0, 150) }, inventaire, 'T');
+  assert.strictEqual(row.length, 8, '8 colonnes (Clé|Type|ID|Chemin actuel|Chemin proposé|Statut|Détail|Horodaté)');
+  // La « raison » vient du LLM (tronquée en amont par parserPropositionReorg_ à 150) — c'est un
+  // libellé, pas un contenu de document : le moteur n'envoie au LLM que chemins + NOMS de fichiers.
+  assert.ok(['deplacer', 'fusionner', 'creer', 'renommer'].includes(row[1]));
+  assert.strictEqual(row[5], 'proposé');
+});
+

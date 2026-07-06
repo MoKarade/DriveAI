@@ -63,6 +63,10 @@ const CONTRAT = [
   // web app : recherche IA (C21-03)
   'actionTickPonctuel_', 'actionRechercheIA_', 'promptRechercheIA_', 'validerQuestionIA_',
   'parserPlanIA_', 'appelAnthropicTexte_', 'domainesAutorises_',
+  // réorg IA (#21, C21-04 : proposition)
+  'appliquerReorgIA_', 'inventaireDossiers_', 'resumeArborescence_', 'promptReorg_',
+  'parserPropositionReorg_', 'lignePourAction_', 'solderDemande_', 'aParentEtrangerProtege_',
+  'chaineMonteVersProtege_',
 ];
 
 test('surface du moteur : toutes les fonctions du contrat interne sont définies', () => {

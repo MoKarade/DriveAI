@@ -303,6 +303,10 @@ function appelAnthropicTexte_(modele, systeme, contenu, maxTokens) {
     journalErreur_('LLM', 'Refus du modèle (' + modele + ', texte)');
     return null;
   }
+  if (data.stop_reason === 'max_tokens') {
+    // Réponse TRONQUÉE : le JSON aval sera illisible — dit explicitement (diagnostic en 1 lecture).
+    journalErreur_('LLM', 'Réponse tronquée à max_tokens (' + modele + ', texte) — augmenter le plafond de l\'appelant ?');
+  }
 
   signalerRetablissement_();
   enregistrerUsage_(modele, data.usage);

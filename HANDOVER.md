@@ -74,9 +74,12 @@
 > Recherche DriveAI → « ✨ ») — question libre → doPost (`action=recherche-ia`, POST text/plain
 > lisible = CORS levé) → Haiku → plan whitelisté → filtres + plein texte. Bornes : 5 s, 50 appels
 > servis/jour (~3 $/mois max), panne API sans consommer le plafond. ⚠ Marc : REDÉPLOYER la web
-> app en nouvelle version (DEPLOIEMENT.md) pour activer la recherche IA. Prochain : C21-04
-> (moteur Reorg.gs : inventaire + proposition), C21-05 (vue plan), C21-06 (application),
-> C21-07 (ADR-0014 + §2 + corbeille dossiers vides).
+> app en nouvelle version (DEPLOIEMENT.md) pour activer la recherche IA. **C21-04 livré** :
+> `Reorg.gs` (phase PROPOSITION — inventaire BFS borné zone-protégée-exclue-par-ancêtres,
+> UN appel Haiku, plan whitelisté racines-intouchables, onglet `Réorg`, essais rendus sur
+> budget/panne, 5 analyses/jour max). Revue flotte 4 agents, 3 bloquants corrigés. Prochain :
+> C21-05 (vue plan + « Demander une analyse »), C21-06 (application), C21-07 (ADR-0014 + §2 +
+> corbeille dossiers vides).
 >
 > Antérieur — **2026-07-01 (soir)** : **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
 > Session de conception « niveau pro » avec Marc : **8 ADR** (`docs/adr/0001`→`0008`), **roadmap priorisée à

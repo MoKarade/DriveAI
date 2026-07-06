@@ -21,6 +21,9 @@ function initialiserSheet_(ss) {
   creerOnglet_(ss, 'Relances', ['Clé', 'Demandé le']); // demandes de relance de quarantaine (app web, ADR-0011)
   creerOnglet_(ss, 'TriAppris', ['Adresse', 'Libellé', 'Appris le']); // table adresse→libellé du tri Gmail (#16)
   creerOnglet_(ss, 'Réglages', ['Clé', 'Valeur']); // réglages modifiables depuis l'app (#22)
+  // Réorg IA (#21) : demandes de l'app + actions proposées/validées/appliquées — machine à états,
+  // aucune ligne jamais supprimée (cf. Reorg.gs).
+  creerOnglet_(ss, 'Réorg', ['Clé', 'Type', 'ID', 'Chemin actuel', 'Chemin proposé', 'Statut', 'Détail', 'Horodaté']);
   // Seed du réglage #22 (position FIXE : A2/B2 — contrat avec l'app) — seulement si absent.
   var fReg = ss.getSheetByName('Réglages');
   if (fReg && String(fReg.getRange('A2').getValue()) === '') {

@@ -368,6 +368,15 @@ function tickDriveAI() {
       try { trierFilsGmail_(estBudgetDepasse); }
       catch (e) { journalErreur_('TriGmail', 'Tri Gmail différé : ' + e); }
     }
+
+    // Réorg IA (#21, C21-04) : phase PROPOSITION seulement — lit une demande de l'app (onglet
+    // Réorg), inventorie l'arborescence (métadonnées, zone protégée exclue), demande UN plan à
+    // Haiku, écrit les lignes « proposé ». AUCUNE mutation Drive. Tout en DERNIER (à la demande,
+    // jamais prioritaire sur l'intake), budget-gaté, enveloppé.
+    if (!estBudgetDepasse()) {
+      try { appliquerReorgIA_(estBudgetDepasse); }
+      catch (e) { journalErreur_('Reorg', 'Analyse de réorg différée : ' + e); }
+    }
     } // fin de la suspension R2 (panne de compte API)
   } finally {
     // `releaseLock` DOIT toujours s'exécuter : un try/finally imbriqué garantit sa libération même si

@@ -303,6 +303,14 @@ var CONFIG = {
   IA_RECHERCHE_MAX_JOUR: 50,              // plafond quotidien d'appels SERVIS (≈ 0,002 $/question Haiku pire cas — ~3 $/mois au plafond)
   LLM_MAX_TOKENS_RECHERCHE: 300,          // le plan JSON tient largement dedans
 
+  // --- Réorg IA (#21, C21-04) : proposition de réorganisation des DOSSIERS ---
+  REORG_DOSSIERS_MAX: 250,                // inventaire borné (au-delà : abandon honnête, jamais un plan partiel)
+  REORG_EXEMPLES_PAR_DOSSIER: 3,          // noms de fichiers donnés en exemple au LLM (métadonnées seules)
+  REORG_ACTIONS_MAX: 40,                  // un plan reste digeste — au-delà, tronqué
+  REORG_ESSAIS_MAX: 3,                    // tentatives par demande (inventaire/LLM) avant « échec »
+  REORG_MAX_JOUR: 5,                      // plafond quotidien d'appels LLM de réorg (borne une app boguée qui re-demanderait en boucle)
+  LLM_MAX_TOKENS_REORG: 3000,             // 40 actions pretty-printées + synthèse SANS troncature (analyse ≈ 0,02 $, à la demande seulement)
+
   // --- Phase 2 : référentiel d'entités ---
   // Dossier d'entrée scanné pour le dépôt manuel (réutilise A_TRIER ci-dessus).
   INTAKE_PAGE: 150,                       // nb de fichiers de 00·À trier traités par run (50→150 pour le
