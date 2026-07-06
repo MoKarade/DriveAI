@@ -241,6 +241,27 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-06 — Chantier #16 DÉCIDÉ (ADR-0012) : tri Gmail natif, remplace la tâche Cowork de Marc.**
+  Marc a répondu explicitement (AskUserQuestion) : ÉCRITURE Gmail oui (libellés + archivage —
+  levée du garde-fou §3, scope `gmail.modify`, jamais de suppression), tri AU FIL DE L'EAU,
+  SOUS-LIBELLÉS existants (~60 libellés hérités du Cowork, vérifiés via MCP), extras hebdo =
+  phishing en tête + newsletters jamais lues (écartés : docs manquants, registre montants).
+  Défaut posé à valider : zone protégée = libellés oui, archivage non. ⚠️ À l'implémentation,
+  séquencer le merge du scope avec Marc (gel des déclencheurs jusqu'à ré-autorisation). Une fois
+  livré/vérifié, Marc supprime sa tâche Cowork. Rien codé — backlog C16-01→06 ⬜.
+
+- **2026-07-06 (même session) — CALIBRAGE global (2 salves de questions à Marc) + audit ADR-0012 intégré.**
+  Audit sécurité de l'ADR-0012 (7 corrections intégrées : motifs anti-corbeille/Spam complets en check CI
+  REQUIS, label `do-not-merge` obligatoire sur toute PR touchant `appsscript.json` — l'auto-merge aurait
+  gelé le moteur sans Marc —, archivage non-lu sur signaux DÉTERMINISTES seulement — un phishing rédigé en
+  newsletter ne peut pas se masquer —, `gmail.modify` confirmé scope minimal, ARCHITECTURE.md corrigée).
+  Réponses Marc intégrées à l'ADR : zone protégée triée comme le reste (archivage si LU seulement), stock
+  initial = fenêtre 30 j, `⏰ À traiter` jamais archivé par le moteur, promos non-lues archivées. CODÉ dans
+  la foulée (CAL-01/02) : **plus aucun mail d'alerte immédiat** (tout au résumé hebdo — choix Marc informé
+  du risque ; l'auto-réparation du chien de garde reste) et **campagne historique 20 → 60 min/j** (Marc
+  voulait 100 — impossible, quota dur ~90 min/j). Nouveaux chantiers actés : **#17** (confiance visible
+  dans l'app) et **#18** (entités auto-validées à 3 occurrences). Moteur **203 tests**.
+
 - **2026-07-06 — Reprise après recharge (+20 $ Marc) → Correctif R2.** Constat à la reprise : la panne
   crédit est FINIE (dernière ligne « PANNE DE COMPTE » à 08:21, garde R1 : 689 lignes en 4 j, zéro
   nouvelle quarantaine) MAIS **le quota de lecture Gmail du jour était épuisé** — pendant la panne, les

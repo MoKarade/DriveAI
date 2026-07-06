@@ -33,6 +33,9 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
    jamais effacés.
 3. **Moindre privilège.** Gmail en **lecture seule**. Scopes déclarés explicitement dans
    `appsscript.json`. Drive RW, Tasks/Calendar écriture uniquement (Phase 3).
+   *(Décision Marc 2026-07-06, ADR-0012 — PAS ENCORE EFFECTIVE : au chantier #16, Gmail passera en
+   `gmail.modify` pour les libellés + l'archivage réversible. Restent interdits à jamais : toute
+   suppression Gmail, toucher au Spam. Le merge du scope se séquence AVEC Marc — gel des déclencheurs.)*
 4. **Aucun secret en dur.** La clé API vit dans les Script Properties
    (`DriveAI_ANTHROPIC_KEY`), jamais dans le code, jamais dans un commit.
 5. **Idempotence.** Un fichier déjà traité ne l'est pas deux fois (label Gmail +
@@ -94,7 +97,9 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
 
 - **Gmail lecture seule = pas de label.** `gmail.readonly` interdit `addLabel`/`createLabel`
   (exception à l'exécution). L'idempotence se porte **par l'Index** (clé `messageId|i|nom|taille`,
-  index de PJ inclus), jamais par un label Gmail.
+  index de PJ inclus), jamais par un label Gmail. *(La prémisse « lecture seule » sera levée par le
+  chantier #16 (ADR-0012, `gmail.modify`) — la partie DURABLE reste : l'idempotence vit dans
+  l'Index, jamais dans un libellé, y compris pour le tri.)*
 - **Ordre des écritures d'état.** L'inscription Index (« c'est fini ») se pose en dernier — après
   le dépôt Drive et après la ligne Revue — pour qu'une coupure rejoue au lieu de perdre un cas.
 - **Robustesse moteur Apps Script.** `LockService` (anti-chevauchement), garde-temps (coupure

@@ -63,8 +63,10 @@
 - **Idempotence sans écriture Gmail** : `gmail.readonly` interdit la pose d'un label de
   traitement. L'idempotence est donc portée **uniquement par l'`Index`** (clé
   `messageId|i|nom|taille`). La fenêtre 30 jours est paginée pour ne pas affamer les anciens
-  fils. *(Alternative possible si Marc le souhaite : ajouter `gmail.labels` pour reposer le
-  label `DriveAI/traité` — léger assouplissement du « lecture seule ».)*
+  fils. *(Correction audit 2026-07-06 : `gmail.labels` ne permettrait PAS de poser un libellé sur
+  un fil — ce scope ne gère que les DÉFINITIONS de libellés ; la pose exige `gmail.modify`. C'est
+  ce scope que le chantier #16 (ADR-0012) introduira — l'idempotence restera portée par l'Index,
+  jamais par un libellé.)*
 - **Clé API** : Script Properties `DriveAI_ANTHROPIC_KEY`, lue via `PropertiesService`.
   Jamais en dur, jamais commitée.
 

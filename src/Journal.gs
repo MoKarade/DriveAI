@@ -104,21 +104,11 @@ function majSante_() {
  * @param {string} message
  */
 function notifierEchec_(source, message) {
+  // Décision Marc 2026-07-06 (calibrage) : AUCUN mail d'alerte immédiat — tout se découvre au
+  // résumé hebdo (compteur d'erreurs + quarantaines ; la liste vit dans l'app avec « Relancer »).
+  // L'auto-réparation du chien de garde reste entièrement active ; seul le MAIL disparaît.
+  // (Revenir en arrière = restaurer l'envoi via emailAlerte_ ici et dans alerterChienDeGarde_.)
   journalErreur_(source, message);
-  var dest = emailAlerte_();
-  if (!dest) {
-    journalErreur_('Notif', 'Alerte NON envoyée (aucun destinataire — pose la Script Property DriveAI_EMAIL).');
-    return;
-  }
-  try {
-    MailApp.sendEmail(
-      dest,
-      '[DriveAI] Échec — ' + source,
-      'DriveAI a rencontré une erreur.\n\nSource : ' + source + '\nDétail : ' + message
-    );
-  } catch (e) {
-    journalErreur_('Notif', 'Envoi du mail d\'échec impossible : ' + e);
-  }
 }
 
 /**

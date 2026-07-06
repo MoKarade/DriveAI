@@ -247,7 +247,7 @@ test('historique : budget QUOTIDIEN épuisé → aucun appel, repris le lendemai
     props: {
       DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02',
       DriveAI_GMAIL_HISTO_JOUR: auj,
-      DriveAI_GMAIL_HISTO_MS_JOUR: String(20 * 60 * 1000), // plafond atteint aujourd'hui
+      DriveAI_GMAIL_HISTO_MS_JOUR: String(60 * 60 * 1000), // = GMAIL_HISTO_BUDGET_JOUR_MS (plafond du jour atteint)
     },
     page: () => [fil([['a']])],
   });
