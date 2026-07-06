@@ -25,9 +25,11 @@ confiance visible (#17). **Choix : B.**
    capitales espacées. Chiffres `tabular-nums` partout.
 2. **Structure : 6 sections** (remplace les 3 onglets) — **Aujourd'hui** (stats, activité 30 j,
    suspects, derniers tris, docs récents + confiance, strip Agenda), **Agenda** *(ajout Marc,
-   revue de maquette 2026-07-06)* : RDV à venir (agenda COMPLET en lecture), tâches ouvertes
-   (cocher = coché dans Google Tasks), mails ⏰ à traiter, **création directe** de tâches/RDV
-   depuis l'app, **Documents** (recherche filtrée : domaine/entité/type/année + badge et filtre
+   revue de maquette 2026-07-06, précisé « un vrai agenda aussi »)* : **vraie vue calendrier**
+   (grille MOIS avec bascule semaine ; bande semaine au téléphone — événements de l'agenda
+   complet en lecture, RDV créés par DriveAI marqués en ambre, échéances de tâches en
+   pointillé), liste « À venir · 7 j », tâches ouvertes (cocher = coché dans Google Tasks),
+   mails ⏰ à traiter, **création directe** de tâches/RDV depuis l'app, **Documents** (recherche filtrée : domaine/entité/type/année + badge et filtre
    confiance — le chantier #17 est ABSORBÉ ici), **Mails** (suspects avec raison, fils triés,
    table `TriAppris` corrigeable, newsletters jamais lues), **Apprentissage** (corrections
    few-shot + curation d'entités, fusion de l'existant), **Santé** (heartbeat, quotas, coût LLM,

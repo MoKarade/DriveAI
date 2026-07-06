@@ -319,7 +319,7 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C19-06 | Vue « Documents » : recherche filtrée (domaine/entité/type/date) + badge & filtre confiance (#17) | ⬜ |
 | C19-07 | Vue « Santé » : heartbeat, quotas, coût LLM (graphique), avancement rangement/campagnes | ⬜ |
 | C19-08 | Vue « Apprentissage » : corrections + entités (fusion de l'existant) | ⬜ |
-| C19-09 | Vue « Agenda » *(ajout Marc, revue de maquette)* : RDV à venir (agenda complet lecture), tâches ouvertes (cocher = Google Tasks), mails ⏰, création DIRECTE tâche/RDV — scopes app `tasks` + `calendar.events` (consentement navigateur, zéro gel), jamais de suppression/modification d'existant | ⬜ |
+| C19-09 | Vue « Agenda » *(ajout Marc, revue de maquette — « un vrai agenda aussi »)* : **grille calendrier mois** (+ bande semaine mobile, RDV DriveAI marqués, échéances de tâches), liste à venir, tâches ouvertes (cocher = Google Tasks), mails ⏰, création DIRECTE tâche/RDV — scopes app `tasks` + `calendar.events` (consentement navigateur, zéro gel), jamais de suppression/modification d'existant | ⬜ |
 
 ### Chantier #18 — Auto-validation des entités fréquentes (décision Marc : seuil 3)  ⬜
 
