@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useMemo, useState } from 'react';
-import { lirePlage, rechercheFullText, FichierDrive } from '../google';
+import { lirePlage, rechercheFullText, rechercheIA, FichierDrive } from '../google';
 import {
   LigneIndex,
   interpreterIndex,
@@ -42,6 +42,12 @@ export function Recherche({ langue }: { langue: Langue }) {
   const [contenus, setContenus] = useState<FichierDrive[] | null>(null);
   const [enCours, setEnCours] = useState(false);
 
+  // Recherche IA (C21-03) : question libre → le moteur (Haiku) renvoie un plan whitelisté,
+  // l'app l'applique aux filtres ci-dessus et lance le plein texte avec les mots-clés.
+  const [question, setQuestion] = useState('');
+  const [iaEnCours, setIaEnCours] = useState(false);
+  const [iaExplication, setIaExplication] = useState('');
+
   useEffect(() => {
     (async () => {
       try {
@@ -68,16 +74,42 @@ export function Recherche({ langue }: { langue: Langue }) {
   const statuts = useMemo(() => statutsDepuisIndex(index), [index]);
   const annees = useMemo(() => anneesDepuisIndex(index), [index]);
 
-  async function chercherContenu() {
-    if (!texte.trim()) return;
+  async function chercherContenu(terme?: string) {
+    const requete = (terme ?? texte).trim();
+    if (!requete) return;
     setEnCours(true);
     setContenus(null);
     try {
-      setContenus(await rechercheFullText(texte.trim()));
+      setContenus(await rechercheFullText(requete));
     } catch (e) {
       setErreur(String(e));
     } finally {
       setEnCours(false);
+    }
+  }
+
+  async function chercherIA() {
+    if (!question.trim() || iaEnCours) return;
+    setIaEnCours(true);
+    setIaExplication('');
+    setErreur('');
+    try {
+      const plan = await rechercheIA(question.trim());
+      // Le plan est déjà whitelisté par le moteur — il remplace TOUT l'état de filtre
+      // (un filtre résiduel masquerait silencieusement des résultats).
+      setTexte(plan.texte ?? '');
+      setDomaine(plan.domaine && domaines.includes(plan.domaine) ? plan.domaine : '');
+      setAnnee(plan.annee && annees.includes(plan.annee) ? plan.annee : '');
+      setStatut('');
+      setConfianceBasse(false);
+      setIaExplication(plan.explication ?? '');
+      const mots = (plan.motsCles ?? []).join(' ');
+      if (mots) await chercherContenu(mots);
+      else setContenus(null); // pas de mots-clés → pas de résultats plein texte périmés
+    } catch (e) {
+      setErreur(String(e));
+    } finally {
+      setIaEnCours(false);
     }
   }
 
@@ -86,6 +118,18 @@ export function Recherche({ langue }: { langue: Langue }) {
       <section className="carte large">
         <h2>{t('recherche', langue)}</h2>
         {erreur && <p className="erreur">{t('erreur', langue)} : {erreur}</p>}
+        <div className="ligne-formulaire recherche-ia">
+          <input
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && chercherIA()}
+            placeholder={t('questionIA', langue)}
+          />
+          <button onClick={chercherIA} disabled={iaEnCours || !question.trim()}>
+            {iaEnCours ? t('chargement', langue) : `✨ ${t('rechercheIA', langue)}`}
+          </button>
+        </div>
+        {iaExplication && <p className="explication ia-explication">✨ {iaExplication}</p>}
         <div className="ligne-formulaire filtres">
           <input
             value={texte}
@@ -149,7 +193,7 @@ export function Recherche({ langue }: { langue: Langue }) {
         <h2>{t('rechercheContenu', langue)}</h2>
         <p className="explication">{t('rechercheContenuExplication', langue)}</p>
         <div className="ligne-formulaire">
-          <button onClick={chercherContenu} disabled={enCours || !texte.trim()}>
+          <button onClick={() => chercherContenu()} disabled={enCours || !texte.trim()}>
             {enCours ? t('chargement', langue) : `${t('chercherDansContenu', langue)}${texte.trim() ? ` : « ${texte.trim()} »` : ''}`}
           </button>
         </div>

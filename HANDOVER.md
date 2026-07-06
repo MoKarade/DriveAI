@@ -70,8 +70,13 @@
 > de dossiers + déplacement manuel de fichiers (drag souris + mode « Déplacer → Déposer ici »),
 > verdict `deplacementSeul` (nom conservé, zone protégée inconditionnelle), parades intake
 > (ligne Index statut `manuel`, refus de redépôt dans 00·À trier, pas de dossier dans 00·À trier).
-> Revue flotte 4 agents, correctifs intégrés. Prochain : C21-03 (recherche IA — lever le risque
-> CORS du doPost d'abord), puis C21-04→07 (réorg IA moteur + ADR-0014).
+> Revue flotte 4 agents, correctifs intégrés. **C21-03 livré** : recherche IA (Documents →
+> Recherche DriveAI → « ✨ ») — question libre → doPost (`action=recherche-ia`, POST text/plain
+> lisible = CORS levé) → Haiku → plan whitelisté → filtres + plein texte. Bornes : 5 s, 50 appels
+> servis/jour (~3 $/mois max), panne API sans consommer le plafond. ⚠ Marc : REDÉPLOYER la web
+> app en nouvelle version (DEPLOIEMENT.md) pour activer la recherche IA. Prochain : C21-04
+> (moteur Reorg.gs : inventaire + proposition), C21-05 (vue plan), C21-06 (application),
+> C21-07 (ADR-0014 + §2 + corbeille dossiers vides).
 >
 > Antérieur — **2026-07-01 (soir)** : **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
 > Session de conception « niveau pro » avec Marc : **8 ADR** (`docs/adr/0001`→`0008`), **roadmap priorisée à

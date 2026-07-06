@@ -251,6 +251,65 @@ function appelAnthropic_(modele, meta, systeme) {
 }
 
 /**
+ * Appel Anthropic GÉNÉRIQUE (C21-03) : un prompt système + un contenu → le TEXTE brut de la
+ * réponse. Réutilise toute la robustesse de l'appel de classification (retry, panne de compte
+ * signalée/persistée, coût mesuré) sans son bagage métier (few-shot, meta). Sert à la recherche
+ * IA du doPost ; d'autres usages ponctuels peuvent s'y brancher (toujours Haiku, toujours borné).
+ * @param {string} modele
+ * @param {string} systeme
+ * @param {string} contenu
+ * @param {number} [maxTokens] défaut CONFIG.LLM_MAX_TOKENS
+ * @return {string|null}
+ */
+function appelAnthropicTexte_(modele, systeme, contenu, maxTokens) {
+  if (estPannePlateforme_()) return null; // panne de compte → échec rapide, sans réseau
+
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'x-api-key': getCleAnthropic_(),
+      'anthropic-version': '2023-06-01'
+    },
+    payload: JSON.stringify({
+      model: modele,
+      max_tokens: maxTokens || CONFIG.LLM_MAX_TOKENS,
+      system: systeme,
+      messages: [{ role: 'user', content: contenu }]
+    }),
+    muteHttpExceptions: true
+  };
+
+  var reponse = fetchAvecRetry_('https://api.anthropic.com/v1/messages', options, modele);
+  if (!reponse) return null;
+
+  var code = reponse.getResponseCode();
+  if (code !== 200) {
+    if (!signalerPannePlateforme_(code, reponse.getContentText(), modele)) {
+      journalErreur_('LLM', 'HTTP ' + code + ' (' + modele + ', texte) : ' +
+        tronquer_(reponse.getContentText(), 500));
+    }
+    return null;
+  }
+
+  var data;
+  try {
+    data = JSON.parse(reponse.getContentText());
+  } catch (e) {
+    journalErreur_('LLM', 'Réponse non-JSON (' + modele + ', texte) : ' + e);
+    return null;
+  }
+  if (data.stop_reason === 'refusal') {
+    journalErreur_('LLM', 'Refus du modèle (' + modele + ', texte)');
+    return null;
+  }
+
+  signalerRetablissement_();
+  enregistrerUsage_(modele, data.usage);
+  return texteReponse_(data);
+}
+
+/**
  * Appel avec un retry léger borné sur erreurs transitoires (429, 529, 5xx).
  * @return {HTTPResponse|null}
  */

@@ -336,3 +336,7 @@ table.expl-table td { padding-top: 0.55rem; padding-bottom: 0.55rem; }
 .expl-actions { width: 2rem; }
 .expl-actions button { opacity: 0.35; transition: opacity 0.15s ease; }
 tr:hover .expl-actions button, .expl-actions button:focus-visible { opacity: 1; }
+
+/* recherche IA (C21-03) */
+.recherche-ia input:not([type]) { flex: 1 1 260px; }
+.ia-explication { color: var(--accent); }

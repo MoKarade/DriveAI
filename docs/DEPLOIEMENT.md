@@ -297,6 +297,13 @@ mémoire** de l'onglet, jamais persisté.
 3. Dans l'app → ⚙ Configuration : coller l'URL et le secret. Le bouton « ⟳ Vérifier maintenant »
    apparaît dans la barre : le moteur passe dans la minute (déclencheur ponctuel auto-nettoyé).
 
+> ⚠️ **Une web app est figée sur une VERSION.** Après un merge qui change `WebApp.gs` (ex. la
+> recherche IA du chantier #21), le `clasp push` automatique met le code à jour mais PAS le
+> déploiement : refaire **Déployer → Gérer les déploiements → ✏ Modifier → Version : Nouvelle
+> version → Déployer** (l'URL /exec ne change pas, rien à refaire dans l'app). La **recherche IA**
+> (Documents → Recherche DriveAI → « ✨ Recherche IA ») passe par cette même web app : même
+> secret, bornée à 50 questions/jour, ~0,002 $/question (Haiku) — ~3 $/mois au plafond.
+
 ## Rattrapage des photos mal classées (incident « BACAR », 2026-07-06)
 
 Après le merge du chantier #20 : éditeur Apps Script → fonction `rattraperMediasMalClasses`
