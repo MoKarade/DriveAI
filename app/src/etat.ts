@@ -402,3 +402,28 @@ export function estConfianceBasse(l: LigneIndex): boolean {
   const n = Number(String(l.confiance).replace(',', '.'));
   return !Number.isNaN(n) && n < SEUIL_CONFIANCE_BASSE;
 }
+
+/* ---------- Santé v3 (C19-08) : signaux dérivés du Journal ---------- */
+
+/** Vrai si le Journal du JOUR (local) contient une erreur de quota Gmail quotidien. */
+export function quotaGmailEpuise(journal: LigneJournal[], maintenant: Date): boolean {
+  const jour = `${maintenant.getFullYear()}-${String(maintenant.getMonth() + 1).padStart(2, '0')}-${String(maintenant.getDate()).padStart(2, '0')}`;
+  return journal.some((l) => {
+    if (!l.message.includes('too many times') || !l.message.toLowerCase().includes('gmail')) return false;
+    const t = Date.parse(l.date);
+    if (Number.isNaN(t)) return false;
+    const d = new Date(t);
+    const c = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return c === jour;
+  });
+}
+
+/** Nombre d'ERREURS du Journal sur les `jours` derniers jours. */
+export function erreursRecentes(journal: LigneJournal[], jours: number, maintenant: Date): number {
+  const seuil = maintenant.getTime() - jours * 24 * 60 * 60 * 1000;
+  return journal.filter((l) => {
+    if (l.niveau !== 'ERREUR') return false;
+    const t = Date.parse(l.date);
+    return !Number.isNaN(t) && t >= seuil;
+  }).length;
+}

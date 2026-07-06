@@ -328,3 +328,25 @@ describe('confiance (#17, C19-07)', () => {
     expect(estConfianceBasse(lignes[3])).toBe(false);
   });
 });
+
+describe('signaux Santé (C19-08)', () => {
+  it('quotaGmailEpuise : erreur quota Gmail DU JOUR seulement', async () => {
+    const { quotaGmailEpuise, interpreterJournal } = await import('../src/etat');
+    const j = interpreterJournal([
+      ['2026-07-06 12:55', 'ERREUR', 'Gmail', 'Recherche impossible : Service invoked too many times for one day: gmail.'],
+      ['2026-07-05 08:00', 'ERREUR', 'Gmail', 'Service invoked too many times for one day: gmail.'],
+    ]);
+    expect(quotaGmailEpuise(j, new Date('2026-07-06T18:00:00'))).toBe(true);
+    expect(quotaGmailEpuise(j.slice(1), new Date('2026-07-06T18:00:00'))).toBe(false);
+  });
+
+  it('erreursRecentes : fenêtre glissante, niveau ERREUR seul', async () => {
+    const { erreursRecentes, interpreterJournal } = await import('../src/etat');
+    const j = interpreterJournal([
+      ['2026-07-06 12:00', 'ERREUR', 'X', 'a'],
+      ['2026-07-06 12:01', 'INFO', 'X', 'b'],
+      ['2026-06-01 12:00', 'ERREUR', 'X', 'c'],
+    ]);
+    expect(erreursRecentes(j, 7, new Date('2026-07-06T18:00:00'))).toBe(1);
+  });
+});
