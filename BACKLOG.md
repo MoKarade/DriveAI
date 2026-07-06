@@ -306,8 +306,8 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 > style : **3 directions proposées sur maquette** (A « Dossier » épuré papier, B « Salle des
 > machines » sombre dense, C « Par avion » postal) — en attente de son choix ; contenu : vue
 > Tri Gmail (suspects/appris/newsletters), Santé & coût du moteur, Recherche enrichie (filtres),
-> Confiance visible (#17 absorbé). Nouvelle structure : 5 sections (Aujourd'hui · Documents ·
-> Mails · Apprentissage · Santé). Maquette : artifact « trois directions » (2026-07-06).
+> Confiance visible (#17 absorbé). Nouvelle structure : 6 sections (Aujourd'hui · Agenda ·
+> Documents · Mails · Apprentissage · Santé — Agenda ajouté en revue de maquette). Maquette : artifact « trois directions » (2026-07-06).
 
 | ID | Tâche | Statut |
 |----|-------|--------|
@@ -319,6 +319,7 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C19-06 | Vue « Documents » : recherche filtrée (domaine/entité/type/date) + badge & filtre confiance (#17) | ⬜ |
 | C19-07 | Vue « Santé » : heartbeat, quotas, coût LLM (graphique), avancement rangement/campagnes | ⬜ |
 | C19-08 | Vue « Apprentissage » : corrections + entités (fusion de l'existant) | ⬜ |
+| C19-09 | Vue « Agenda » *(ajout Marc, revue de maquette)* : RDV à venir (agenda complet lecture), tâches ouvertes (cocher = Google Tasks), mails ⏰, création DIRECTE tâche/RDV — scopes app `tasks` + `calendar.events` (consentement navigateur, zéro gel), jamais de suppression/modification d'existant | ⬜ |
 
 ### Chantier #18 — Auto-validation des entités fréquentes (décision Marc : seuil 3)  ⬜
 
