@@ -287,7 +287,9 @@ function chargerEntitesCache_() {
       categorie: v[idx['Catégorie']] || '',
       type: v[idx['Type']] || '',
       statut: normaliserCle_(v[idx['Statut']]),
-      dossierId: v[idx['Dossier ID']] || ''
+      dossierId: v[idx['Dossier ID']] || '',
+      variante: v[idx['Variante possible ?']] || '',     // #18 : variante non résolue = validation manuelle
+      vuNFois: Number(v[idx['Vu N fois']]) || 1          // #18 : signal de fréquence
     };
     _entitesCache.lignes.push(ligne);
     _entitesCache.parCle[cleEntite_(ligne.domaine, ligne.entite)] = ligne;
@@ -299,9 +301,10 @@ function entitesCache_() {
   return _entitesCache;
 }
 
-/** Une entité est « validée » dès que son statut le dit (tolère « validee »). */
+/** Une entité est « validée » dès que son statut le dit (tolère « validee » et « validee (auto ≥3) » — #18). */
 function estValidee_(statut) {
-  return statut === 'validee' || statut === 'validée' || statut === 'valide';
+  return statut === 'validee' || statut === 'validée' || statut === 'valide' ||
+    String(statut).indexOf('validee (auto') === 0 || String(statut).indexOf('validée (auto') === 0;
 }
 
 /**
@@ -527,6 +530,62 @@ function creerDossiersEntitesValidees_(estBudgetDepasse) {
       (schema.length ? ' (+' + schema.length + ' sous-dossiers)' : ''));
   }
   if (creees) journalInfo_('Entités', creees + ' dossier(s) d\'entité créé(s).');
+}
+
+/* ---------- Chantier #18 : auto-validation des entités fréquentes (seuil 3, décision Marc) ---------- */
+
+/**
+ * Éligibilité PURE (testée) : une ligne du référentiel peut-elle s'auto-valider ?
+ * en_attente + vue ≥ seuil + PAS de variante possible (la fusion appartient à Marc) + PAS
+ * générique (défense en profondeur — la curation #10 les refuse déjà) + JAMAIS un domaine
+ * protégé (04 · Immigration : validation manuelle obligatoire).
+ */
+function estAutoValidable_(l, seuil, domainesProteges) {
+  if (l.statut !== 'en_attente' && l.statut !== 'en attente') return false;
+  if (l.dossierId) return false; // déjà matérialisée un jour : une réédition de Marc PRIME (donnée utilisateur)
+  if ((Number(l.vuNFois) || 1) < seuil) return false;
+  if (l.variante) return false;
+  if (estEntiteGenerique_(l.entite)) return false;
+  var proteges = (domainesProteges || []).map(normaliserCle_);
+  if (proteges.indexOf(normaliserCle_(l.domaine)) !== -1) return false;
+  return true;
+}
+
+/**
+ * #18 (décision Marc 2026-07-06 : seuil 3) : les entités `en_attente` vues souvent s'auto-
+ * valident — statut « validée (auto ≥N) », accepté par estValidee_, donc MATÉRIALISÉES par
+ * creerDossiersEntitesValidees_ au même tick. Pour ANNULER : passer le Statut à « refusée »
+ * (ou « variante de : X ») — un retour à « en_attente » serait re-validé au tick suivant ;
+ * le dossier créé n'est jamais supprimé. Signalées au résumé hebdo. Bornée par run.
+ * @param {function():boolean} [estBudgetDepasse]
+ */
+function autoValiderEntitesFrequentes_(estBudgetDepasse) {
+  var cache = entitesCache_();
+  var idx = colonnesEntites_();
+  var f = feuille_('Entités');
+  var faites = 0;
+  for (var i = 0; i < cache.lignes.length; i++) {
+    if (faites >= CONFIG.ENTITES_AUTO_MAX_PAR_RUN || (estBudgetDepasse && estBudgetDepasse())) break;
+    var l = cache.lignes[i];
+    if (!estAutoValidable_(l, CONFIG.ENTITES_AUTO_SEUIL, CONFIG.DOMAINES_PROTEGES)) continue;
+    var libelle = 'validée (auto ≥' + CONFIG.ENTITES_AUTO_SEUIL + ')'; // seuil affiché = seuil réel
+    f.getRange(l.ligneSheet, idx['Statut'] + 1).setValue(libelle);
+    l.statut = normaliserCle_(libelle); // cache du run à jour (normalisé) → matérialisée CE tick
+    faites++;
+    journalInfo_('Entités', 'Entité auto-validée (vue ' + l.vuNFois + '×) : ' + l.entite +
+      ' — pour annuler : Statut → « refusée ».');
+  }
+}
+
+/** Entités au statut « validée (auto …) » — pour la visibilité du résumé hebdo (#18). */
+function entitesAutoValidees_() {
+  var lignes = entitesCache_().lignes.filter(function (l) {
+    return String(l.statut).indexOf('validee (auto') === 0;
+  });
+  return {
+    total: lignes.length,
+    exemples: lignes.slice(0, 5).map(function (l) { return String(l.entite); })
+  };
 }
 
 /* ---------- Chantier #10 : incrément de fréquence + curation one-shot ---------- */

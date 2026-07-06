@@ -134,7 +134,7 @@ export function entitesEnAttente(lignes: LigneEntite[]): LigneEntite[] {
 
 /** Entités validées AVEC dossier matérialisé — destinations proposées au reclassement. */
 export function entitesValidees(lignes: LigneEntite[]): LigneEntite[] {
-  return lignes.filter((l) => l.statut === 'validee' && l.dossierId);
+  return lignes.filter((l) => (l.statut === 'validee' || l.statut.startsWith('validee (auto')) && l.dossierId);
 }
 
 /* ---------- Aides de saisie (pures, testées) ---------- */
