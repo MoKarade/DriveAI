@@ -321,3 +321,18 @@ nav.sous-onglets button.actif { color: var(--accent); border-color: var(--accent
 .ariane-sep { padding: 0 0.15rem; }
 table.expl-table td { padding-top: 0.55rem; padding-bottom: 0.55rem; }
 .expl-ic { width: 1.6rem; font-size: 1rem; }
+
+/* explorateur — C21-02 : création de dossier + déplacement manuel */
+.ariane-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 0.3rem; }
+.creation-dossier { display: inline-flex; gap: 0.3rem; margin: 0; }
+.creation-dossier input { width: 12rem; padding: 0.25rem 0.5rem; font-size: 0.85rem; }
+.creation-dossier button { padding: 0.25rem 0.6rem; font-size: 0.82rem; }
+.depot-survol, tr.depot-survol td { background: color-mix(in srgb, var(--accent) 14%, transparent) !important; }
+.bandeau-deplacement {
+  border: 1px dashed var(--accent); border-radius: 8px; padding: 0.5rem 0.7rem;
+  font-size: 0.88rem; display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;
+}
+.bandeau-deplacement button { padding: 0.25rem 0.7rem; font-size: 0.82rem; }
+.expl-actions { width: 2rem; }
+.expl-actions button { opacity: 0.35; transition: opacity 0.15s ease; }
+tr:hover .expl-actions button, .expl-actions button:focus-visible { opacity: 1; }

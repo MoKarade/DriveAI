@@ -64,10 +64,16 @@ export function nomEstNormalise(nom: string): boolean {
  * Valide une demande de reclassement AVANT tout appel Drive. Renvoie la liste des violations
  * (vide = autorisé). C'est LE point de passage obligé de l'app : `google.ts` refuse d'appliquer
  * un déplacement sans un verdict vide.
+ *
+ * Deux modes (C21-02) :
+ *  - reclassement (défaut) : déplacement + renommage — le nom final doit suivre la convention ;
+ *  - `deplacementSeul` : geste MANUEL de Marc (drag-and-drop), nom conservé — seule la règle de
+ *    nom est relâchée. La zone protégée reste INCONDITIONNELLE dans les deux modes.
  */
 export function verdictReclassement(args: {
   ascendanceActuelle: Ascendance;
-  nouveauNom: string;
+  nouveauNom?: string;
+  deplacementSeul?: boolean;
   racinesProtegees?: string[];
 }): string[] {
   const violations: string[] = [];
@@ -75,7 +81,7 @@ export function verdictReclassement(args: {
   if (!detachementAutorise(args.ascendanceActuelle, proteges)) {
     violations.push('zone-protegee'); // jamais détacher de 04 · Immigration (ou ascendance illisible)
   }
-  if (!nomEstNormalise(args.nouveauNom)) {
+  if (!args.deplacementSeul && !nomEstNormalise(args.nouveauNom ?? '')) {
     violations.push('nom-invalide'); // le nom final doit suivre la convention (3 granularités)
   }
   return violations;

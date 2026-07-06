@@ -62,6 +62,53 @@ describe('verdictReclassement (point de passage obligé avant toute mutation Dri
   });
 });
 
+describe('verdictReclassement en mode deplacementSeul (C21-02 : drag-and-drop, nom conservé)', () => {
+  it('relâche UNIQUEMENT la règle de nom (nom quelconque accepté)', () => {
+    expect(
+      verdictReclassement({
+        ascendanceActuelle: { ids: ['x'], complete: true },
+        deplacementSeul: true,
+        racinesProtegees: [PROTEGE],
+      }),
+    ).toEqual([]);
+    // La RÈGLE est relâchée (pas seulement l'optionalité) : nom fourni NON conforme accepté.
+    expect(
+      verdictReclassement({
+        ascendanceActuelle: { ids: ['x'], complete: true },
+        nouveauNom: 'IMG_1234 brouillon sans date.jpg',
+        deplacementSeul: true,
+        racinesProtegees: [PROTEGE],
+      }),
+    ).toEqual([]);
+  });
+  it('la zone protégée reste INCONDITIONNELLE — jamais relâchée par le mode manuel', () => {
+    expect(
+      verdictReclassement({
+        ascendanceActuelle: { ids: [PROTEGE], complete: true },
+        deplacementSeul: true,
+        racinesProtegees: [PROTEGE],
+      }),
+    ).toContain('zone-protegee');
+  });
+  it('ascendance illisible → refus même en manuel (échec fermé)', () => {
+    expect(
+      verdictReclassement({
+        ascendanceActuelle: { ids: [], complete: false },
+        deplacementSeul: true,
+        racinesProtegees: [PROTEGE],
+      }),
+    ).toContain('zone-protegee');
+  });
+  it('sans le mode, un nom manquant reste une violation (compat reclassement)', () => {
+    expect(
+      verdictReclassement({
+        ascendanceActuelle: { ids: [], complete: true },
+        racinesProtegees: [PROTEGE],
+      }),
+    ).toContain('nom-invalide');
+  });
+});
+
 describe('nomEstNormalise (miroir 3 granularités du nommage par type)', () => {
   it.each([
     ['2024-03-05_Facture_Hydro-Québec.pdf', true],

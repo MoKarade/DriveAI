@@ -66,8 +66,12 @@
 > `Réorg`, corbeille des dossiers vides côté APP au clic validé, réorg de masse côté moteur).
 > **C21-01 livré** : explorateur Drive lecture seule (sous-onglets Documents = Drive | Recherche
 > DriveAI, fil d'Ariane, recherche nom+plein texte, portée « dans ce dossier » bornée et honnête).
-> Revue flotte passée (sécurité + code, correctifs intégrés). Prochain : C21-02 (création de
-> dossiers + drag-and-drop via reclasserFichier en mode « déplacement sans renommage »).
+> Revue flotte passée (sécurité + code, correctifs intégrés). **C21-02 livré** : création rapide
+> de dossiers + déplacement manuel de fichiers (drag souris + mode « Déplacer → Déposer ici »),
+> verdict `deplacementSeul` (nom conservé, zone protégée inconditionnelle), parades intake
+> (ligne Index statut `manuel`, refus de redépôt dans 00·À trier, pas de dossier dans 00·À trier).
+> Revue flotte 4 agents, correctifs intégrés. Prochain : C21-03 (recherche IA — lever le risque
+> CORS du doPost d'abord), puis C21-04→07 (réorg IA moteur + ADR-0014).
 >
 > Antérieur — **2026-07-01 (soir)** : **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
 > Session de conception « niveau pro » avec Marc : **8 ADR** (`docs/adr/0001`→`0008`), **roadmap priorisée à

@@ -13,6 +13,7 @@ import {
   qSousDossiers,
   decouperEnLots,
   estDossier,
+  estDossierATrier,
   trierElements,
   iconePourMime,
   pousserEtape,
@@ -115,5 +116,19 @@ describe('affichage', () => {
     expect(formaterDateCourte(undefined)).toBe('—');
     expect(formaterDateCourte('pas-une-date')).toBe('—');
     expect(formaterDateCourte('2026-07-06T12:00:00Z')).toContain('2026');
+  });
+});
+
+describe('estDossierATrier (parades intake C21-02 — reconnu par NOM, accents/casse neutralisés)', () => {
+  it.each([
+    ['00 · À trier', true],
+    ['À trier', true],
+    ['a trier', true],
+    ['03 · Logement & véhicule', false],
+    ['_Doublons', false],
+    ['Mon Drive', false],
+    ['', false],
+  ])('%s → %s', (nom, attendu) => {
+    expect(estDossierATrier(nom)).toBe(attendu);
   });
 });

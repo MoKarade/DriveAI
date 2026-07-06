@@ -1,17 +1,27 @@
 /**
- * Explorateur.tsx — explorateur façon Google Drive (C21-01, chantier #21). LECTURE SEULE :
- * navigation par dossiers (fil d'Ariane), recherche nom + plein texte, portée limitable au
- * dossier courant (collecte bornée des sous-dossiers — l'UI dit si elle est tronquée).
- * Un dossier s'ouvre dans l'app ; un fichier s'ouvre dans Drive (nouvel onglet).
- * Création de dossiers et drag-and-drop : C21-02 (PR suivante).
+ * Explorateur.tsx — explorateur façon Google Drive (chantier #21).
+ * C21-01 : navigation par dossiers (fil d'Ariane), recherche nom + plein texte, portée limitable
+ * au dossier courant (collecte bornée — l'UI dit si elle est tronquée).
+ * C21-02 : création rapide de dossiers + déplacement MANUEL de fichiers — drag-and-drop (souris)
+ * et mode « Déplacer → Déposer ici » (tactile/clavier). Nom conservé, verdict garde-fous
+ * `deplacementSeul` (zone protégée inconditionnelle). Les DOSSIERS ne se déplacent pas ici
+ * (réorg de masse = moteur, C21-04+). Aucune suppression nulle part.
  */
 
 import { useEffect, useState } from 'react';
-import { listerEnfants, collecterSousDossiers, rechercherDrive, PageDrive } from '../google';
+import {
+  listerEnfants,
+  collecterSousDossiers,
+  rechercherDrive,
+  creerDossier,
+  deplacerFichierManuel,
+  PageDrive,
+} from '../google';
 import {
   ElementDrive,
   Etape,
   estDossier,
+  estDossierATrier,
   trierElements,
   iconePourMime,
   pousserEtape,
@@ -27,6 +37,7 @@ export function Explorateur({ langue }: { langue: Langue }) {
   const [suivant, setSuivant] = useState<string | undefined>();
   const [charge, setCharge] = useState(false);
   const [erreur, setErreur] = useState('');
+  const [rafraichir, setRafraichir] = useState(0); // re-liste le dossier courant après une écriture
 
   // Recherche (remplace le listage tant qu'elle est active).
   const [texte, setTexte] = useState('');
@@ -34,6 +45,13 @@ export function Explorateur({ langue }: { langue: Langue }) {
   const [resultats, setResultats] = useState<ElementDrive[] | null>(null);
   const [enCours, setEnCours] = useState(false);
   const [porteeTronquee, setPorteeTronquee] = useState(false);
+
+  // C21-02 : création de dossier + déplacement.
+  const [creation, setCreation] = useState<'' | 'ouvert' | 'encours'>('');
+  const [nomDossier, setNomDossier] = useState('');
+  const [aDeplacer, setADeplacer] = useState<ElementDrive | null>(null); // mode « Déplacer → Déposer ici »
+  const [survolDepot, setSurvolDepot] = useState(''); // id du dossier survolé pendant un drag
+  const [statutDepot, setStatutDepot] = useState(''); // '' | 'ok' | message d'erreur
 
   const dossier = ariane[ariane.length - 1];
 
@@ -57,7 +75,7 @@ export function Explorateur({ langue }: { langue: Langue }) {
       }
     })();
     return () => { actif = false; };
-  }, [dossier.id]);
+  }, [dossier.id, rafraichir]);
 
   const [enChargementPlus, setEnChargementPlus] = useState(false);
 
@@ -105,11 +123,72 @@ export function Explorateur({ langue }: { langue: Langue }) {
     if (estDossier(e)) {
       // Approximation assumée : un dossier trouvé par recherche GLOBALE est poussé au bout de
       // l'Ariane courant, même s'il vit ailleurs dans le Drive — la navigation (par id) reste
-      // juste, seul le chemin affiché est approximatif. Chemin réel (walk des parents) : C21-02+.
+      // juste, seul le chemin affiché est approximatif. Chemin réel (walk des parents) : C21-04+.
       setResultats(null);
       setAriane((a) => pousserEtape(a, { id: e.id, nom: e.name }));
     } else {
       window.open(e.webViewLink ?? `https://drive.google.com/file/d/${e.id}/view`, '_blank', 'noopener');
+    }
+  }
+
+  async function creer() {
+    if (!nomDossier.trim() || creation === 'encours') return;
+    setCreation('encours');
+    setErreur('');
+    try {
+      await creerDossier(nomDossier.trim(), dossier.id);
+      setNomDossier('');
+      setCreation('');
+      setRafraichir((n) => n + 1);
+    } catch (e) {
+      setErreur(String(e));
+      setCreation('ouvert');
+    }
+  }
+
+  /** Déplace `fichier` vers `cible` (drag-and-drop OU mode « Déposer ici »). */
+  async function deposer(fichier: ElementDrive, cibleId: string, cibleNom: string) {
+    setStatutDepot('');
+    setErreur('');
+    try {
+      const deplace = await deplacerFichierManuel({
+        fileId: fichier.id,
+        nouveauParent: cibleId,
+        nomCible: cibleNom,
+      });
+      setADeplacer(null);
+      if (!deplace) return; // déjà en place — rien à annoncer, rien à rafraîchir
+      setStatutDepot(`ok:${fichier.name} → ${cibleNom}`);
+      setResultats(null);
+      setRafraichir((n) => n + 1);
+    } catch (e) {
+      setStatutDepot(String(e));
+    }
+  }
+
+  // Type MIME PROPRIÉTAIRE : un drag venu d'ailleurs (autre onglet, autre app) est
+  // structurellement invisible — seul un drag démarré ICI porte ce type.
+  const TYPE_DRAG = 'application/x-driveai-fichier';
+
+  function surDragStart(ev: React.DragEvent, e: ElementDrive) {
+    ev.dataTransfer.setData(TYPE_DRAG, JSON.stringify({ id: e.id, name: e.name }));
+    ev.dataTransfer.effectAllowed = 'move';
+  }
+
+  function surDrop(ev: React.DragEvent, cible: ElementDrive | Etape) {
+    ev.preventDefault();
+    setSurvolDepot('');
+    try {
+      const brut = ev.dataTransfer.getData(TYPE_DRAG);
+      if (!brut) return;
+      const { id, name } = JSON.parse(brut) as { id: string; name: string };
+      if (typeof id !== 'string' || !id) return;
+      const cibleId = cible.id;
+      const cibleNom = 'nom' in cible ? cible.nom : cible.name;
+      if (id === cibleId) return;
+      void deposer({ id, name, mimeType: '' }, cibleId, cibleNom);
+    } catch {
+      /* payload étranger malformé : ignoré */
     }
   }
 
@@ -147,9 +226,20 @@ export function Explorateur({ langue }: { langue: Langue }) {
             <span key={e.id}>
               {i > 0 && <span className="ariane-sep" aria-hidden="true">›</span>}
               {i === ariane.length - 1 && !resultats ? (
-                <b>{e.nom}</b>
+                <b
+                  className={survolDepot === e.id ? 'depot-survol' : ''}
+                  onDragOver={(ev) => { ev.preventDefault(); setSurvolDepot(e.id); }}
+                  onDragLeave={() => setSurvolDepot('')}
+                  onDrop={(ev) => surDrop(ev, e)}
+                >{e.nom}</b>
               ) : (
-                <button className="discret" onClick={() => { setResultats(null); setAriane((a) => couperA(a, e.id)); }}>
+                <button
+                  className={`discret ${survolDepot === e.id ? 'depot-survol' : ''}`}
+                  onClick={() => { setResultats(null); setAriane((a) => couperA(a, e.id)); }}
+                  onDragOver={(ev) => { ev.preventDefault(); setSurvolDepot(e.id); }}
+                  onDragLeave={() => setSurvolDepot('')}
+                  onDrop={(ev) => surDrop(ev, e)}
+                >
                   {e.nom}
                 </button>
               )}
@@ -157,7 +247,43 @@ export function Explorateur({ langue }: { langue: Langue }) {
           ))}
           {resultats && <span className="ariane-sep" aria-hidden="true">›</span>}
           {resultats && <b>{resultats.length} {t('resultats', langue)}</b>}
+          {!resultats && !estDossierATrier(dossier.nom) && (
+            <span className="ariane-actions">
+              {creation === '' ? (
+                <button className="discret" onClick={() => setCreation('ouvert')}>+ {t('nouveauDossier', langue)}</button>
+              ) : (
+                <span className="ligne-formulaire creation-dossier">
+                  <input
+                    autoFocus
+                    value={nomDossier}
+                    onChange={(e) => setNomDossier(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') creer();
+                      if (e.key === 'Escape') { setCreation(''); setNomDossier(''); }
+                    }}
+                    placeholder={t('nomDossierPlaceholder', langue)}
+                  />
+                  <button onClick={creer} disabled={!nomDossier.trim() || creation === 'encours'}>
+                    {creation === 'encours' ? t('chargement', langue) : t('creerBouton', langue)}
+                  </button>
+                  <button className="discret" onClick={() => { setCreation(''); setNomDossier(''); }}>✕</button>
+                </span>
+              )}
+            </span>
+          )}
         </nav>
+
+        {aDeplacer && (
+          <p className="bandeau-deplacement">
+            ✥ {t('deplacementDe', langue)} <b>{aDeplacer.name}</b> — {t('deplacementConsigne', langue)}{' '}
+            <button onClick={() => deposer(aDeplacer, dossier.id, dossier.nom)}>
+              {t('deposerIci', langue)} ({dossier.nom})
+            </button>{' '}
+            <button className="discret" onClick={() => setADeplacer(null)}>{t('annulerBouton', langue)}</button>
+          </p>
+        )}
+        {statutDepot.startsWith('ok:') && <p className="ok">✓ {t('deplaceOk', langue)} : {statutDepot.slice(3)}</p>}
+        {statutDepot && !statutDepot.startsWith('ok:') && <p className="erreur">{statutDepot}</p>}
 
         {erreur && <p className="erreur">{t('erreur', langue)} : {erreur}</p>}
         {resultats && porteeTronquee && <p className="explication">⚠ {t('porteeTronquee', langue)}</p>}
@@ -169,13 +295,34 @@ export function Explorateur({ langue }: { langue: Langue }) {
         <table className="expl-table">
           <tbody>
             {affiches.map((e) => (
-              <tr key={e.id} className="ligne-clic" onClick={() => ouvrir(e)}
-                tabIndex={0} onKeyDown={(ev) => ev.key === 'Enter' && ouvrir(e)}
-                title={estDossier(e) ? t('ouvrirDossier', langue) : t('ouvrirDansDrive', langue)}>
+              <tr
+                key={e.id}
+                className={`ligne-clic ${survolDepot === e.id ? 'depot-survol' : ''}`}
+                onClick={() => ouvrir(e)}
+                tabIndex={0}
+                // ev.target === ev.currentTarget : Entrée sur le bouton ✥ ne doit PAS aussi ouvrir la ligne.
+                onKeyDown={(ev) => ev.key === 'Enter' && ev.target === ev.currentTarget && ouvrir(e)}
+                title={estDossier(e) ? t('ouvrirDossier', langue) : t('ouvrirDansDrive', langue)}
+                draggable={!estDossier(e)}
+                onDragStart={(ev) => !estDossier(e) && surDragStart(ev, e)}
+                onDragEnd={() => setSurvolDepot('')}
+                onDragOver={estDossier(e) ? (ev) => { ev.preventDefault(); setSurvolDepot(e.id); } : undefined}
+                onDragLeave={estDossier(e) ? () => setSurvolDepot('') : undefined}
+                onDrop={estDossier(e) ? (ev) => surDrop(ev, e) : undefined}
+              >
                 <td className="expl-ic" aria-hidden="true">{iconePourMime(e.mimeType)}</td>
                 <td>{e.name}</td>
                 <td className="date">{formaterDateCourte(e.modifiedTime, langue === 'fr' ? 'fr-CA' : 'en-CA')}</td>
                 <td className="date nombre">{formaterTaille(e.size)}</td>
+                <td className="nombre expl-actions">
+                  {!estDossier(e) && (
+                    <button
+                      className="discret"
+                      title={t('deplacerTitre', langue)}
+                      onClick={(ev) => { ev.stopPropagation(); setADeplacer(e); setStatutDepot(''); }}
+                    >✥</button>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
