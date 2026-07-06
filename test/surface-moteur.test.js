@@ -49,6 +49,11 @@ const CONTRAT = [
   'reinitialiserPannePlateforme_', 'estPannePlateforme_', 'detecterPannePlateforme_',
   'signalerPannePlateforme_', 'chargerPannePlateforme_', 'signalerRetablissement_',
   'emailAlerte_', 'signalerNatifUneFois_',
+  // tri Gmail (#16)
+  'trierFilsGmail_', 'trierFil_', 'decisionTri_', 'heuristiquePhishing_', 'adresseExpediteur_',
+  'parserMiniCategorie_', 'miniCategorie_', 'triApprisCache_', 'apprendreTri_',
+  'reinitialiserTriApprisCache_', 'libellesUtilisateur_', 'reinitialiserLibellesCache_',
+  'newslettersJamaisLues_',
   'miniCheckMail_', 'parserMiniCheck_', 'marquerMailImportant_', 'lienGmail_',
   // cibles publiques des déclencheurs / outils
   'tickDriveAI', 'installerTrigger', 'chienDeGarde', 'resumeHebdo', 'rangerToutLeDrive', 'dequarantaine',

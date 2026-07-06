@@ -241,6 +241,20 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 
 ## 7. Historique des sessions
 
+- **2026-07-06 — Chantier #16 CODÉ : tri Gmail natif (ADR-0012) — EN ATTENTE DU GO TEMPS-RÉEL DE MARC.**
+  `TriGmail.gs` : décision PURE (suspect prime/jamais archivé ; doute → `À vérifier` ; lu → archivé ;
+  promo DÉTERMINISTE (List-Unsubscribe) non-lue → archivée sauf zone protégée ; `⏰` jamais archivé),
+  heuristiques phishing étroites + signal LLM, table `TriAppris` adresse→libellé (jamais le nom
+  affiché), mini-appel catégorie par FIL validé contre les libellés EXISTANTS (jamais de création),
+  30 fils/run, idempotence `tri|<fil>|<ts>` sans charger les messages, tri APRÈS les intentions
+  (attend l'analyse du dernier message). `⏰` posé par `marquerMailImportant_`. Résumé hebdo :
+  « ⚠️ Suspects » EN TÊTE, compteur triés, « 🗞️ newsletters jamais ouvertes ». VERROU CI :
+  `test/surface-gmail-ecriture.test.js` (corbeille/Spam/suppression/création de libellés interdits
+  dans src/ + manifeste jamais > gmail.modify). App : clés `tri|` exclues. **Moteur 223 tests.**
+  ⚠️ SÉQUENCE DE MERGE : PR avec label `do-not-merge` (code + scope `gmail.modify` + constitution) —
+  ne merger que sur GO temps-réel de Marc (gel des déclencheurs → il ré-autorise dans la foulée),
+  puis vérifier le run Deploy réel + la reprise par signaux Drive + les premiers libellés posés.
+
 - **2026-07-06 — Chantier #16 DÉCIDÉ (ADR-0012) : tri Gmail natif, remplace la tâche Cowork de Marc.**
   Marc a répondu explicitement (AskUserQuestion) : ÉCRITURE Gmail oui (libellés + archivage —
   levée du garde-fou §3, scope `gmail.modify`, jamais de suppression), tri AU FIL DE L'EAU,

@@ -113,6 +113,25 @@ var CONFIG = {
   // (une action/un rdv peut être dans un mail sans pièce jointe). Toujours gmail.readonly.
   GMAIL_REQUETE_ACTIONS: 'newer_than:30d',
   PAGE_FILS_ACTIONS: 20,                  // taille de page de cette recherche
+
+  // --- Chantier #16 (ADR-0012) : tri Gmail natif (libellés + archivage réversible) ---
+  // Périmètre du tri : la BOÎTE seulement (revue flotte : sans in:inbox, le stock paierait des
+  // mini-appels pour des fils DÉJÀ archivés par Marc/l'ancien Cowork — hors objectif « boîte propre »).
+  TRI_REQUETE: 'newer_than:30d in:inbox',
+  TRI_MAX_FILS_PAR_RUN: 30,               // écritures Gmail bornées par run (quotas)
+  TRI_MAX_ATTENTES: 20,                   // fils « en attente des intentions » chargés par run (borne
+                                          // la re-facture de lecture — revue flotte, classe R2)
+  LLM_MAX_TOKENS_MINICAT: 64,             // mini-appel catégorie : JSON {categorie, suspect} — marge pour le plus long libellé + clôture markdown
+  // Noms EXACTS des libellés spéciaux existants dans le Gmail de Marc (vérifiés le 2026-07-06).
+  TRI_LIBELLES: { A_VERIFIER: 'À vérifier', SUSPECT: '⚠️ Suspect', A_TRAITER: '⏰ À traiter' },
+  // Heuristiques phishing DÉTERMINISTES, étroites (le signal LLM complète) :
+  TRI_PJ_RISQUEES: ['.exe', '.zip', '.html', '.htm', '.scr'],
+  TRI_MOTS_URGENCE: ['urgent', 'immédiat', 'dernier rappel', 'compte suspendu', 'sera suspendu'],
+  TRI_MOTS_CREDENTIELS: ['mot de passe', 'password', 'identifiant', 'vérifiez votre compte',
+    'confirmez votre identité', 'coordonnées bancaires', 'carte de crédit'],
+  RESUME_SUSPECTS_MAX: 10,                // « ⚠️ Suspects » listés au résumé hebdo (en tête)
+  RESUME_NEWSLETTERS_MAX: 10,             // « newsletters jamais ouvertes » listées au résumé
+  TRI_NEWSLETTERS_SEUIL: 3,               // n fils promo non lus (30 j) pour qualifier un expéditeur
   INTENTIONS_MAX_PAR_RUN: 200,            // plafond de messages ANALYSÉS (pré-filtre inclus) par run
   CREATIONS_MAX_PAR_RUN: 30,              // plafond de tâches/événements CRÉÉS par run (pas de rafale)
   LLM_MAX_TOKENS_MINICHECK: 24,           // mini-check JSON {action, important} (expéditeur+sujet seuls)

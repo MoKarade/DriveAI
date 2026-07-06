@@ -56,7 +56,7 @@ export function TableauDeBord({ langue }: { langue: Langue }) {
   // des documents : les agrégats « documents » les excluent (même filtre que la Recherche) — sinon
   // chaque mail important compterait double dans l'activité et gonflerait le bucket « — » des
   // domaines. Elles ont leurs sections dédiées ci-dessous.
-  const docs = index.filter((l) => !/^(intention|tache|event|important)\|/.test(l.cle));
+  const docs = index.filter((l) => !/^(intention|tache|event|important|tri)\|/.test(l.cle));
   const parDomaine = Array.from(compterParDomaine(docs.slice(-INDEX_RECENT))).sort((a, b) => b[1] - a[1]);
   const activite = activiteParJour(docs, 30, new Date());
   const maxJour = Math.max(1, ...activite.map((a) => a.n));

@@ -88,6 +88,10 @@ l'API Drive du projet est désactivée : panneau **Services** (＋) → ajoute *
   `Session.getEffectiveUser()` exige un scope absent du manifeste, donc sans cette propriété AUCUN
   mail ne part — le Journal trace « pose la Script Property DriveAI_EMAIL »).
   Valeur : ton adresse Gmail.
+- ⚠️ **Chantier #16 (tri Gmail)** : son merge remplace le scope `gmail.readonly` par `gmail.modify`
+  → TOUS les déclencheurs gèlent jusqu'à une ré-autorisation manuelle (ouvrir l'éditeur Apps Script,
+  exécuter `tickDriveAI`, accepter le nouvel écran de consentement). Le merge n'est fait QUE quand
+  Marc est disponible pour ré-autoriser dans la foulée (label `do-not-merge` sur la PR).
 
 ### 7. Installer le déclencheur (10 min)
 Dans l'éditeur, sélectionne la fonction **`installerTrigger`** dans la barre d'outils → **Exécuter**.

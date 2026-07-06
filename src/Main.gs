@@ -227,6 +227,8 @@ function tickDriveAI() {
     reinitialiserCorrectionsCache_(); // référentiel d'apprentissage relu 1×/run (few-shot, ADR-0003)
     reinitialiserEscalades_(); // plafond d'escalades LLM par run (anti-emballement de coût)
     chargerPannePlateforme_(); // panne de compte PERSISTÉE (R2) : suspend les sources, re-sonde ≤ 1×/h
+    reinitialiserTriApprisCache_();  // table adresse→libellé du tri (#16), rechargée 1×/run
+    reinitialiserLibellesCache_();   // libellés Gmail de Marc, rechargés 1×/run
     reinitialiserUsage_();     // compteur de coût LLM du run (mesure réelle, P1-09)
 
     // Applique un éventuel changement d'intervalle (CONFIG.TICK_MINUTES) sans action manuelle,
@@ -330,6 +332,13 @@ function tickDriveAI() {
     // En dernier, budget restant seulement : le classement documentaire (déjà validé en
     // prod) garde toujours la priorité sur ce nouveau flux.
     if (!estBudgetDepasse()) traiterIntentionsMail_(estBudgetDepasse);
+
+    // Tri Gmail natif (#16, ADR-0012) : libellés + archivage réversible. APRÈS les intentions
+    // (le ⏰/l'archivage dépendent du flag `important` qu'elles posent). SECONDAIRE → enveloppé.
+    if (!estBudgetDepasse()) {
+      try { trierFilsGmail_(estBudgetDepasse); }
+      catch (e) { journalErreur_('TriGmail', 'Tri Gmail différé : ' + e); }
+    }
     } // fin de la suspension R2 (panne de compte API)
   } finally {
     // `releaseLock` DOIT toujours s'exécuter : un try/finally imbriqué garantit sa libération même si
