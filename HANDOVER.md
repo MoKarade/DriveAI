@@ -80,8 +80,12 @@
 > budget/panne, 5 analyses/jour max). Revue flotte 4 agents, 3 bloquants corrigés. Prochain :
 > **C21-05 livré** : vue « ✨ Réorg IA » (Documents) — demande d'analyse (aussi depuis
 > l'Explorateur, portée dossier), plan avant/après, Valider/Écarter ligne/masse (plages
-> contiguës), historique. Restent : C21-06 (application par le moteur), C21-07 (ADR-0014 +
-> §2 + corbeille dossiers vides — tripwire + revue flotte bloquante).
+> contiguës), historique. **C21-06 livré** : le moteur APPLIQUE les actions validées
+> (deplacer/fusionner/creer/renommer de dossiers — jamais de suppression), re-vérif zone
+> protégée par mutation (identité + ascendance), fusion collecte-puis-mutation reprenable,
+> re-pointage Entités avant le « fini », vide-candidat inscrit. Reste : C21-07 (ADR-0014 +
+> CLAUDE.md §2 + corbeille.ts des dossiers VIDES validés — tripwire CI + revue flotte
+> bloquante, DANS LE MÊME COMMIT).
 >
 > Antérieur — **2026-07-01 (soir)** : **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
 > Session de conception « niveau pro » avec Marc : **8 ADR** (`docs/adr/0001`→`0008`), **roadmap priorisée à

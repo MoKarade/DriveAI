@@ -369,13 +369,13 @@ function tickDriveAI() {
       catch (e) { journalErreur_('TriGmail', 'Tri Gmail différé : ' + e); }
     }
 
-    // Réorg IA (#21, C21-04) : phase PROPOSITION seulement — lit une demande de l'app (onglet
-    // Réorg), inventorie l'arborescence (métadonnées, zone protégée exclue), demande UN plan à
-    // Haiku, écrit les lignes « proposé ». AUCUNE mutation Drive. Tout en DERNIER (à la demande,
-    // jamais prioritaire sur l'intake), budget-gaté, enveloppé.
+    // Réorg IA (#21, C21-04/06) : APPLIQUE d'abord les actions validées par Marc (déplacements/
+    // renommages de dossiers, re-vérif zone protégée par mutation — jamais de suppression), PUIS
+    // propose un nouveau plan si demandé (drainer avant d'alimenter). Tout en DERNIER (à la
+    // demande, jamais prioritaire sur l'intake), budget-gaté, enveloppé.
     if (!estBudgetDepasse()) {
-      try { appliquerReorgIA_(estBudgetDepasse); }
-      catch (e) { journalErreur_('Reorg', 'Analyse de réorg différée : ' + e); }
+      try { etapeReorg_(estBudgetDepasse); }
+      catch (e) { journalErreur_('Reorg', 'Étape réorg différée : ' + e); }
     }
     } // fin de la suspension R2 (panne de compte API)
   } finally {
