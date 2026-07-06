@@ -197,7 +197,7 @@ function traiterMessagePourIntentions_(message) {
   // créable (question ouverte) doit quand même remonter. Les gardes zone protégée (expéditeur/
   // sujet ET corps) sont TOUTES en amont. Un message déjà indexé `intention|` avant ce chantier
   // saute le mini-check (le flag ne vaut que pour l'avenir).
-  if (check.important) marquerMailImportant_(messageId, sujet);
+  if (check.important) marquerMailImportant_(messageId, sujet, message);
   if (!check.action) {
     indexAjouter_(cleMessage, { statut: 'intention-ecartee', nom: sujet });
     return 0;
@@ -273,10 +273,18 @@ function creerIntentionIdempotente_(messageId, intention) {
  * @param {string} messageId
  * @param {string} sujet
  */
-function marquerMailImportant_(messageId, sujet) {
+function marquerMailImportant_(messageId, sujet, message) {
   var cle = 'important|' + messageId;
   if (indexContient_(cle)) return; // déjà signalé (rejeu d'un message en reprise d'extraction)
   indexAjouter_(cle, { statut: 'important', nom: sujet });
+  // #16 (ADR-0012) : miroir VISIBLE dans Gmail — libellé ⏰ posé sur le fil (l'Index reste la
+  // source de vérité ; best-effort : jamais un plantage du flux intentions pour un libellé).
+  if (message) {
+    try {
+      var lab = libellesUtilisateur_()[CONFIG.TRI_LIBELLES.A_TRAITER];
+      if (lab) lab.addToThread(message.getThread());
+    } catch (e) { /* sans scope/libellé, le flag Index suffit */ }
+  }
 }
 
 /**

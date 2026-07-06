@@ -581,3 +581,21 @@ c'est là que le coût par tick explose silencieusement. (3) Un log répétitif 
 laissé en place ») doit être dédupliqué à la SOURCE (une fois par objet, Property bornée) — 576
 lignes/jour de bruit avaient enterré les vrais signaux pendant le diagnostic.
 **Règle durable ?** oui.
+
+## 2026-07-06 — C16 : une clé d'idempotence doit encoder TOUT l'état qui commande la décision
+**Contexte.** Tri Gmail natif (#16, ADR-0012), 2ᵉ ronde adversariale avant merge. La clé
+d'idempotence initiale du tri était `tri|<fil>|<tsDernierMessage>` : correcte pour « ne pas re-trier
+deux fois », mais elle rendait le cœur du rôle Cowork IMPOSSIBLE — un mail trié non-lu puis LU par
+Marc ne changeait ni de fil ni de ts, donc n'était JAMAIS re-trié, donc jamais archivé. Trouvé par
+revue adversariale (pas par les tests unitaires : chacun validait sa règle isolée).
+**Leçon.** (1) Une clé d'idempotence n'est pas « un identifiant » : c'est un INSTANTANÉ de l'état.
+Elle doit inclure CHAQUE variable dont dépend la décision (ici : dernier message ET lu/non-lu →
+`tri|fil|ts|lu`), sinon tout changement de cette variable après coup est invisible à jamais.
+Question de revue systématique : « quel changement d'état DEVRAIT re-déclencher cette action, et
+est-il dans la clé ? » (2) Corollaire abandon : un abandon « par état » (clé avec ts) ne protège
+pas un objet dont l'ÉTAT même est illisible (le ts plante) — il faut un marqueur dégradé sans ts,
+vérifié AVANT de relire ce qui plante, sinon l'objet malade re-journalise à chaque tick. (3) Deux
+documents qui doivent bouger ENSEMBLE (manifeste `oauthScopes` ↔ constitution `CLAUDE.md`) se
+verrouillent par un TRIPWIRE CI qui lit les deux et échoue s'ils divergent — la cohérence des
+documents vivants devient testable au lieu d'être une discipline.
+**Règle durable ?** oui.

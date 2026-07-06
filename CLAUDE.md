@@ -31,11 +31,14 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
    effacé. *(Réactiver un filet de revue = re-router dans `Router.deciderRoutage_` + rétablir `revue_`.)*
 2. **Aucune suppression automatique.** Les doublons sont *écartés dans `_Doublons` (déplacement seul)*,
    jamais effacés.
-3. **Moindre privilège.** Gmail en **lecture seule**. Scopes déclarés explicitement dans
-   `appsscript.json`. Drive RW, Tasks/Calendar écriture uniquement (Phase 3).
-   *(Décision Marc 2026-07-06, ADR-0012 — PAS ENCORE EFFECTIVE : au chantier #16, Gmail passera en
-   `gmail.modify` pour les libellés + l'archivage réversible. Restent interdits à jamais : toute
-   suppression Gmail, toucher au Spam. Le merge du scope se séquence AVEC Marc — gel des déclencheurs.)*
+3. **Moindre privilège.** Scopes déclarés explicitement dans `appsscript.json`. Gmail en
+   **`gmail.modify`** *(décision Marc 2026-07-06, ADR-0012, chantier #16 — révise l'ancienne règle
+   « lecture seule »)* : les SEULES écritures permises sont poser un libellé **existant** sur un fil
+   et archiver (retrait de la boîte, réversible). Restent interdits **à jamais** (verrou CI
+   `surface-gmail-ecriture`, check requis) : toute suppression/corbeille Gmail, toucher au Spam,
+   créer/détruire/**retirer** un libellé, service avancé et REST Gmail. Drive RW, Tasks/Calendar
+   écriture uniquement (Phase 3). Tout merge qui étend un scope se séquence AVEC Marc (gel des
+   déclencheurs jusqu'à ré-autorisation).
 4. **Aucun secret en dur.** La clé API vit dans les Script Properties
    (`DriveAI_ANTHROPIC_KEY`), jamais dans le code, jamais dans un commit.
 5. **Idempotence.** Un fichier déjà traité ne l'est pas deux fois (label Gmail +
@@ -95,11 +98,11 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
 
 > Distillées depuis `docs/LESSONS.md`. N'ajouter ici que ce qui change la façon de coder.
 
-- **Gmail lecture seule = pas de label.** `gmail.readonly` interdit `addLabel`/`createLabel`
-  (exception à l'exécution). L'idempotence se porte **par l'Index** (clé `messageId|i|nom|taille`,
-  index de PJ inclus), jamais par un label Gmail. *(La prémisse « lecture seule » sera levée par le
-  chantier #16 (ADR-0012, `gmail.modify`) — la partie DURABLE reste : l'idempotence vit dans
-  l'Index, jamais dans un libellé, y compris pour le tri.)*
+- **L'idempotence vit dans l'Index, jamais dans un libellé Gmail.** *(Prémisse « lecture seule »
+  levée au chantier #16 — ADR-0012, `gmail.modify` — mais la partie DURABLE reste :)* l'état
+  « déjà traité » se porte **par l'Index** (clé `messageId|i|nom|taille` pour les PJ,
+  `tri|fil|ts|lu` pour le tri), JAMAIS par un label — un libellé est une donnée UTILISATEUR que
+  Marc peut retirer, pas un marqueur d'état.
 - **Ordre des écritures d'état.** L'inscription Index (« c'est fini ») se pose en dernier — après
   le dépôt Drive et après la ligne Revue — pour qu'une coupure rejoue au lieu de perdre un cas.
 - **Robustesse moteur Apps Script.** `LockService` (anti-chevauchement), garde-temps (coupure
@@ -179,6 +182,12 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   concurrence du traitement), avec filet « après N recensements incomplets, accepter le compte partiel » ;
   numérateur monotone, base re-basable (jamais > 100 %), « terminé » sur le vrai signal de fin (passe qui ne
   collecte plus rien), pas sur `traites >= base`. Toujours tracer le scénario sur plusieurs ticks.
+- **Une clé d'idempotence encode TOUT l'état qui commande la décision.** C'est un instantané, pas
+  un identifiant : chaque variable dont dépend l'action doit être DANS la clé (ex. tri Gmail :
+  `tri|fil|ts|lu` — sans le flag lu/non-lu, un mail lu APRÈS son tri n'aurait jamais été archivé).
+  Revue systématique : « quel changement d'état devrait re-déclencher l'action, est-il dans la
+  clé ? » Et deux documents qui doivent bouger ensemble (manifeste ↔ constitution) se verrouillent
+  par un tripwire CI, pas par la discipline.
 - **Pagination sur une recherche MOUVANTE (Gmail) ⇒ pas d'offset numérique seul.** Si de nouveaux
   éléments s'insèrent en tête entre deux appels (tri du plus récent au plus ancien), un offset qui
   repart de 0 à chaque tick capte bien le neuf mais peut **stagner indéfiniment** sur le reste de

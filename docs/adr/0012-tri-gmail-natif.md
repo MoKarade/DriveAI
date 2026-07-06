@@ -24,8 +24,12 @@ Son Gmail possède déjà toute la taxonomie (16 catégories + ~45 sous-libellé
 ## Décisions
 
 1. **Tri au fil de l'eau** (choix Marc) : intégré au tick (5 min) — chaque fil récent est trié à
-   l'arrivée ; le résumé hebdo récapitule. Réutilise le pipeline Phase 3 existant : le mini-check
-   passe de 2 à **3 signaux en un appel** (`action`, `important`, `categorie`) — coût marginal.
+   l'arrivée ; le résumé hebdo récapitule. *(Note d'implémentation : la catégorie passe par un
+   mini-appel SÉPARÉ par FIL (`miniCategorie_`) plutôt que d'étendre le mini-check par MESSAGE —
+   granularités différentes, MOINS d'appels au total (1/fil vs 1/message) et la liste des ~60
+   libellés n'alourdit pas chaque mini-check d'intentions.)* Le tri s'exécute APRÈS les intentions
+   et attend que le dernier message du fil soit analysé (le ⏰/l'archivage dépendent du flag
+   `important` qu'elles posent).
 2. **Libellés** : le plus PRÉCIS parmi les libellés **existants** de Marc (sous-libellés inclus).
    Le moteur ne crée JAMAIS de libellé — il peut en PROPOSER dans le résumé hebdo, Marc crée. Table `expéditeur → libellé` apprise dans
    la Sheet (même mécanique que les corrections few-shot). **Règle de sûreté du prompt Cowork

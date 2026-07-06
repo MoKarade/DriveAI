@@ -48,7 +48,7 @@ export function Recherche({ langue }: { langue: Langue }) {
         // sinon elles domineraient la vue par défaut et pollueraient le sélecteur de statuts.
         // (Elles ont leur section dédiée au tableau de bord — C13.)
         setIndex(interpreterIndex(await lirePlage('Index', 'A2:F20000'))
-          .filter((l) => !/^(intention|tache|event|important)\|/.test(l.cle)));
+          .filter((l) => !/^(intention|tache|event|important|tri(-abandon)?)\|/.test(l.cle)));
       } catch (e) {
         setErreur(String(e));
       } finally {

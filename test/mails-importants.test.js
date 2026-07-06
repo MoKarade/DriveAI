@@ -58,6 +58,7 @@ function ctxIntentions(check) {
   c.journalInfo_ = () => {};
   c.notifierEchec_ = () => {};
   c.estPannePlateforme_ = () => false; // garde panne de compte (Llm.gs non chargé ici)
+  c.libellesUtilisateur_ = () => ({}); // ⏰ via TriGmail.gs (non chargé ici) — miroir best-effort
   return { c, calls };
 }
 

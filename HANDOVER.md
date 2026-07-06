@@ -4,7 +4,22 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **Dernière mise à jour : 2026-07-01 (soir)** — **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
+> **Dernière mise à jour : 2026-07-06 (soir)** — **C16 LIVRÉ : tri Gmail natif (ADR-0012), scope
+> `gmail.modify`.** PR #66 (2 rondes adversariales, 4 lentilles) : `TriGmail.gs` — libellés existants
+> + archivage réversible au fil de l'eau, idempotence par ÉTAT (`tri|fil|ts|lu/nonlu` : un mail lu
+> APRÈS son tri est re-trié donc archivé), rattrapage du stock 30 j par ancre FIXE + offset (ensemble
+> figé), phishing → `⚠️ Suspect` (reste en boîte), promos non lues archivées sur signaux DÉTERMINISTES
+> (List-Unsubscribe ET catégorie Gmail), table `TriAppris` (apprentissage restreint anti-empoisonnement),
+> panne d'écriture SYSTÉMIQUE, verrou CI durci (corbeille/Spam/suppression/retrait de libellés interdits,
+> service avancé + REST Gmail bannis, tripwire scope↔CLAUDE.md). Constitution §2.3 mise à jour (la
+> lecture seule est levée, décision Marc). **Après le merge : ré-autorisation manuelle par Marc
+> (tickDriveAI) obligatoire — tous les déclencheurs sont gelés d'ici là** ; puis vérifier la reprise
+> par signaux Drive et les premiers libellés ; ensuite Marc supprime sa tâche Cowork. Suivi prod en
+> attente : quota Gmail (reset ~03h) → campagne historique 60 min/j + rangement (62 %, ~804 restants) ;
+> `dequarantaine()` et Script Property `DriveAI_EMAIL` toujours à poser côté Marc. Chantiers suivants
+> actés : #18 (entités auto-validées à 3 occurrences) puis #17 (confiance visible dans l'app).
+>
+> Antérieur — **2026-07-01 (soir)** : **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
 > Session de conception « niveau pro » avec Marc : **8 ADR** (`docs/adr/0001`→`0008`), **roadmap priorisée à
 > 9 chantiers** (`docs/ROADMAP.md`), runbook (`docs/RUNBOOK.md`) et guide (`docs/GUIDE.md`). Socle #1 =
 > **fondation testable** (logique pure isolée des appels Google + filet de tests CI + Journal borné/onglet
@@ -240,6 +255,20 @@ déjà accumulés en revue. ✅ codé, revue flotte (sécurité + file-checker +
 - `/ship` — commit + push + PR draft.
 
 ## 7. Historique des sessions
+
+- **2026-07-06 — Chantier #16 CODÉ : tri Gmail natif (ADR-0012) — EN ATTENTE DU GO TEMPS-RÉEL DE MARC.**
+  `TriGmail.gs` : décision PURE (suspect prime/jamais archivé ; doute → `À vérifier` ; lu → archivé ;
+  promo DÉTERMINISTE (List-Unsubscribe) non-lue → archivée sauf zone protégée ; `⏰` jamais archivé),
+  heuristiques phishing étroites + signal LLM, table `TriAppris` adresse→libellé (jamais le nom
+  affiché), mini-appel catégorie par FIL validé contre les libellés EXISTANTS (jamais de création),
+  30 fils/run, idempotence `tri|<fil>|<ts>` sans charger les messages, tri APRÈS les intentions
+  (attend l'analyse du dernier message). `⏰` posé par `marquerMailImportant_`. Résumé hebdo :
+  « ⚠️ Suspects » EN TÊTE, compteur triés, « 🗞️ newsletters jamais ouvertes ». VERROU CI :
+  `test/surface-gmail-ecriture.test.js` (corbeille/Spam/suppression/création de libellés interdits
+  dans src/ + manifeste jamais > gmail.modify). App : clés `tri|` exclues. **Moteur 223 tests.**
+  ⚠️ SÉQUENCE DE MERGE : PR avec label `do-not-merge` (code + scope `gmail.modify` + constitution) —
+  ne merger que sur GO temps-réel de Marc (gel des déclencheurs → il ré-autorise dans la foulée),
+  puis vérifier le run Deploy réel + la reprise par signaux Drive + les premiers libellés posés.
 
 - **2026-07-06 — Chantier #16 DÉCIDÉ (ADR-0012) : tri Gmail natif, remplace la tâche Cowork de Marc.**
   Marc a répondu explicitement (AskUserQuestion) : ÉCRITURE Gmail oui (libellés + archivage —
