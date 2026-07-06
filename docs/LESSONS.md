@@ -599,3 +599,17 @@ documents qui doivent bouger ENSEMBLE (manifeste `oauthScopes` ↔ constitution 
 verrouillent par un TRIPWIRE CI qui lit les deux et échoue s'ils divergent — la cohérence des
 documents vivants devient testable au lieu d'être une discipline.
 **Règle durable ?** oui.
+
+
+## 2026-07-06 — Quand aucun trafic ne passe, CRÉER la sonde : un fichier test par la porte d'entrée réelle
+**Contexte.** Crédit API annoncé rechargé, mais aucun moyen passif de le vérifier : tous les chemins
+vers le LLM passaient par Gmail (quota mort) et rien ne transitait côté Drive. Plutôt que d'attendre ou
+de croire l'annonce, dépôt d'un fichier test inoffensif dans `00 · À trier` (la porte d'entrée RÉELLE
+du pipeline) : au tick suivant, extraction → LLM → renommage → classement observables sur le fichier
+lui-même (métadonnées Drive), et le compteur de coût a bougé — preuve de bout en bout en 2 minutes.
+**Leçon.** Extension de « vérifier la prod par un signal indépendant » : quand le flux naturel est à
+l'arrêt, INJECTER une sonde par le chemin nominal (jamais un chemin de test dédié) et lire le résultat
+sur l'artefact produit, pas sur les logs seuls. La sonde doit être inoffensive, identifiable, et
+son cycle de vie complet (elle finit classée quelque part — le dire à l'utilisateur pour qu'il puisse
+la supprimer).
+**Règle durable ?** non (extension d'une règle existante déjà dans CLAUDE.md).

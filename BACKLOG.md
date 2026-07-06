@@ -299,6 +299,27 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C17-01 | Colonne `Confiance` à l'Index (nombre seul — métadonnée, ADR-0007) écrite par le pipeline au classement ; compat lignes historiques (vide = inconnu) ; en-têtes réels côté app | ⬜ |
 | C17-02 | App/Recherche : filtre « confiance basse » (< SEUIL_CONFIANCE) pour repasser derrière les « classés au mieux » ; tri par confiance croissante | ⬜ |
 
+### Chantier #19 — App v3 : refonte complète de l'interface (décision Marc 2026-07-06)  🟦
+
+> Cadrage explicite de Marc (4 réponses) : refonte visuelle complète + navigation/structure +
+> nouvelles fonctionnalités + expérience mobile/PWA ; usage **desktop et mobile à égalité** ;
+> style : **3 directions proposées sur maquette** (A « Dossier » épuré papier, B « Salle des
+> machines » sombre dense, C « Par avion » postal) — en attente de son choix ; contenu : vue
+> Tri Gmail (suspects/appris/newsletters), Santé & coût du moteur, Recherche enrichie (filtres),
+> Confiance visible (#17 absorbé). Nouvelle structure : 5 sections (Aujourd'hui · Documents ·
+> Mails · Apprentissage · Santé). Maquette : artifact « trois directions » (2026-07-06).
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C19-01 | Choix de la direction visuelle sur maquette (A/B/C ou panachage) | 🟦 maquette livrée, attente choix Marc |
+| C19-02 | ADR + maquettes haute-fidélité des 5 sections dans la direction choisie | ⬜ |
+| C19-03 | Socle v3 : tokens/design system, navigation 5 sections, responsive + PWA mobile | ⬜ |
+| C19-04 | Vue « Aujourd'hui » (stats, activité, suspects, derniers tris) | ⬜ |
+| C19-05 | Vue « Mails » : suspects, fils triés, table TriAppris corrigeable, newsletters | ⬜ |
+| C19-06 | Vue « Documents » : recherche filtrée (domaine/entité/type/date) + badge & filtre confiance (#17) | ⬜ |
+| C19-07 | Vue « Santé » : heartbeat, quotas, coût LLM (graphique), avancement rangement/campagnes | ⬜ |
+| C19-08 | Vue « Apprentissage » : corrections + entités (fusion de l'existant) | ⬜ |
+
 ### Chantier #18 — Auto-validation des entités fréquentes (décision Marc : seuil 3)  ⬜
 
 | ID | Tâche | Statut |
