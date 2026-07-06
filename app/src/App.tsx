@@ -1,8 +1,7 @@
 /**
  * App.tsx — coquille v3 (ADR-0013) : configuration → connexion Google → 6 sections.
  * Documents / Apprentissage / Santé embarquent les vues v2 existantes tant que
- * leur remplaçante v3 n'est pas livrée (C19-04 → C19-09) ; Agenda / Mails / Santé
- * s'affichent « en construction ». Mobile : barre basse 5 entrées + feuille « Plus ».
+ * leur remplaçante v3 n'est pas livrée (C19-04 → C19-09). Mobile : barre basse 5 entrées + feuille « Plus ».
  */
 
 import { useEffect, useState } from 'react';
@@ -15,6 +14,7 @@ import { AujourdHui } from './vues/AujourdHui';
 import { Corrections } from './vues/Corrections';
 import { Recherche } from './vues/Recherche';
 import { Agenda } from './vues/Agenda';
+import { Mails } from './vues/Mails';
 
 export type Section = 'aujourdhui' | 'agenda' | 'mails' | 'documents' | 'apprentissage' | 'sante';
 
@@ -115,7 +115,7 @@ export function App() {
             {section === 'documents' && <Recherche langue={langue} />}
             {section === 'apprentissage' && <Corrections langue={langue} />}
             {section === 'agenda' && <Agenda langue={langue} />}
-            {section === 'mails' && <EnConstruction langue={langue} etape="C19-06" />}
+            {section === 'mails' && <Mails langue={langue} />}
             {/* Santé v3 = C19-08 ; en attendant, le TableauDeBord v2 (santé, journal, quarantaine) vit ici — rien ne se perd. */}
             {section === 'sante' && <TableauDeBord langue={langue} />}
           </div>
@@ -155,16 +155,6 @@ export function App() {
 
       <footer>{t('gardeFous', langue)}</footer>
     </div>
-  );
-}
-
-/** Section v3 pas encore construite : on le dit, avec l'étape du chantier (aucun faux contenu). */
-function EnConstruction({ langue, etape }: { langue: Langue; etape: string }) {
-  return (
-    <section className="carte en-construction">
-      <p>{t('enConstruction', langue)}</p>
-      <p className="maquette">{etape} · ADR-0013</p>
-    </section>
   );
 }
 

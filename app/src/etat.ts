@@ -365,3 +365,27 @@ export function dernierPassageDepuisSante(lignesSante: string[]): string {
   }
   return '';
 }
+
+/* ---------- TriAppris (#16) : table expéditeur → libellé, corrigeable depuis l'app ---------- */
+
+export interface LigneTriAppris {
+  ligneSheet: number; // 1-based (en-tête = 1) — cible du « Retirer » (vidage de cellules)
+  adresse: string;
+  libelle: string;
+  apprisLe: string;
+}
+
+/**
+ * Interprète l'onglet TriAppris (Adresse, Libellé, Appris le). Les lignes à adresse VIDE sont
+ * ignorées — c'est justement l'état « retiré » (l'app vide les cellules, ne supprime jamais
+ * de ligne : garde-fou §2 ; le moteur saute les adresses vides).
+ */
+export function interpreterTriAppris(brut: string[][]): LigneTriAppris[] {
+  const lignes: LigneTriAppris[] = [];
+  for (let i = 0; i < brut.length; i++) {
+    const l = brut[i];
+    if (!l[0]) continue;
+    lignes.push({ ligneSheet: i + 2, adresse: l[0] ?? '', libelle: l[1] ?? '', apprisLe: l[2] ?? '' });
+  }
+  return lignes;
+}

@@ -297,3 +297,17 @@ describe('tuiles Santé (C19-04)', () => {
     expect(dernierPassageDepuisSante(['autre'])).toBe('');
   });
 });
+
+describe('TriAppris (C19-06)', () => {
+  it('interpreterTriAppris : ligneSheet 1-based (+1 en-tête), lignes vidées ignorées', async () => {
+    const { interpreterTriAppris } = await import('../src/etat');
+    const lignes = interpreterTriAppris([
+      ['conseiller@banque.com', '02 · Finances', '2026-07-06'],
+      ['', '', ''], // « retirée » (cellules vidées) — le moteur l'ignore aussi
+      ['rh@employeur.ca', '05 · Carrière', '2026-07-06'],
+    ]);
+    expect(lignes.map((l) => l.ligneSheet)).toEqual([2, 4]);
+    expect(lignes[0].adresse).toBe('conseiller@banque.com');
+    expect(lignes[1].libelle).toBe('05 · Carrière');
+  });
+});
