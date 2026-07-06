@@ -46,7 +46,13 @@ confiance visible (#17). **Choix : B.**
 5. **Charts** : une teinte de données (ambre) par graphique, une seule ordonnée, barres fines
    à bouts arrondis, grille discrète, dernier point accentué + étiquette directe, tooltips.
    Couleurs de statut réservées à l'état, jamais « série 4 ».
-6. **Livraison par étapes** (C19-03 → C19-09, une PR par étape, CI + Vercel à chaque merge) :
+6. **Interactions** *(revue Marc 2026-07-06, 2ᵉ passe)* : texte JAMAIS tronqué (les chips
+   passent à la ligne) ; **clic sur un jour** du calendrier → panneau détail du jour ;
+   **clic sur une tâche** → panneau détail (échéance, mail d'origine, ☑ marquer faite) ;
+   **clic sur n'importe quel mail** (fils triés, suspects, ⏰, newsletters) → ouverture
+   DIRECTE dans Gmail (deep-link `#all/<id>`, mécanisme `lienGmail_` existant) ; textes
+   d'interface minimaux — « moins de blabla, plus de direct ».
+7. **Livraison par étapes** (C19-03 → C19-09, une PR par étape, CI + Vercel à chaque merge) :
    socle tokens/nav/responsive → Aujourd'hui → Agenda (les scopes app sont demandés à cette
    étape) → Mails → Documents → Santé → Apprentissage.
    Chaque étape laisse l'app UTILISABLE (pas de grand soir : les vues v2 restent branchées
