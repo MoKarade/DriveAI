@@ -10,6 +10,8 @@
 export interface ConfigApp {
   clientId: string;
   spreadsheetId: string;
+  webappUrl: string;    // optionnel : URL /exec de la web app Apps Script (« Vérifier maintenant »)
+  webappSecret: string; // optionnel : secret partagé (Script Property DriveAI_WEBAPP_SECRET)
 }
 
 const CLE_STOCKAGE = 'driveai.config';
@@ -25,6 +27,8 @@ export function lireConfig(): ConfigApp {
   return {
     clientId: (env.VITE_GOOGLE_CLIENT_ID as string) || stockee.clientId || '',
     spreadsheetId: (env.VITE_SPREADSHEET_ID as string) || stockee.spreadsheetId || '',
+    webappUrl: (env.VITE_WEBAPP_URL as string) || stockee.webappUrl || '',
+    webappSecret: (env.VITE_WEBAPP_SECRET as string) || stockee.webappSecret || '',
   };
 }
 

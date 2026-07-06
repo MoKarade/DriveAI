@@ -321,6 +321,29 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C19-08 | Vue « Santé » : heartbeat, quotas, coût LLM, quarantaine | ✅ (lignes Santé + signal quota Gmail dérivé du Journal — testé —, coût avec jauge, erreurs 7 j, quarantaine + Relancer conservés ; TableauDeBord v2 supprimé, remplacé par Aujourd'hui + Santé) |
 | C19-09 | Vue « Apprentissage » : corrections + entités | ✅ (Corrections v2 adoptée telle quelle sous « Apprentissage » — déjà fusionnée : entités + corrections + reclassement ; tokens v3 hérités) |
 
+### Chantier #20 — Retouches post-v3 (demandes Marc 2026-07-06, soir)  🟦
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C20-01 | **Incident « BACAR »** (photo de plat classée « Reçu de dépôt ») : garde post-LLM — une PHOTO au nom non-documentaire classée sous `MEDIAS_CONFIANCE_MIN` (0,7) → `_Médias`, JAMAIS « au mieux » ; exception zone protégée/sensible (jamais rétrogradée) ; le seuil OCR pré-LLM reste bas (le juge doit siéger, §1) | ✅ (testé : étiquettes→média, reçu 0,92→classé, sensible→jamais média) |
+| C20-02 | `rattraperMediasMalClasses()` — one-shot MANUEL borné : re-juge les images « classées » depuis le 02-07 (OCR court → média ; sinon re-classif à nom NEUTRE, confiance < 0,7 et non-sensible → média) ; déplacement seul + cellule statut mise à jour | ✅ (à LANCER par Marc après le merge) |
+| C20-03 | App : **retry 429** avec repli progressif (quota d'écriture Sheets PARTAGÉ avec le moteur) + message doux | ✅ |
+| C20-04 | App : **cache de lecture 60 s** (changer d'onglet ne recharge plus tout — « beaucoup moins de chargements », 1ʳᵉ tranche) + invalidation sur écriture | ✅ |
+| C20-05 | App : **tooltip du graphe** (survol/doigt → « jour — N documents » dans l'en-tête de carte, barre surlignée) | ✅ |
+| C20-06 | **Bouton « Vérifier maintenant »** : web app Apps Script (`doPost` + secret Script Property `DriveAI_WEBAPP_SECRET`, anti-rafale 60 s, déclencheur ponctuel auto-nettoyé) + bouton app (no-cors) + champs Configuration | ✅ (déploiement web app = 2 clics de Marc, cf. DEPLOIEMENT.md) |
+
+### Chantier #21 — Explorateur Drive dans l'app + réorganisation IA (demandes Marc, à CADRER)  ⬜
+
+> Marc veut : une interface **façon Google Drive** (mêmes outils : recherche, recherche par IA,
+> recherche limitée à un dossier, création rapide de dossiers, **drag-and-drop** pour ranger,
+> même affichage) **+** un bouton « analyser tout le Drive avec l'IA » qui propose un nouvel
+> arrangement (ajouter/supprimer des dossiers). ⚠ « supprimer des dossiers » touche le garde-fou
+> §2 (aucune suppression) → questions posées à Marc avant tout ADR.
+
+### Chantier #22 — Fréquences d'analyse configurables (mails / Drive) — à CADRER  ⬜
+
+### Chantier #23 — Peaufinage UI (demandes Marc) : Agenda façon Google Calendar (style/grandeur), densité, finitions — à CADRER  ⬜
+
 ### Chantier #18 — Auto-validation des entités fréquentes (décision Marc : seuil 3)  ⬜
 
 | ID | Tâche | Statut |

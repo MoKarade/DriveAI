@@ -284,3 +284,21 @@ mémoire** de l'onglet, jamais persisté.
   confirme < 10 $/mois (estimé ~1–3 $/mois à volume perso).
 - **Calibrer** `SEUIL_CONFIANCE` (0.80 au départ) dans `src/Config.gs` selon le taux de revue.
 - Quand la Phase 1 est validée → **Phase 2** (`/phase 2`).
+
+
+## Bouton « Vérifier maintenant » (chantier #20) — déploiement de la web app (une fois)
+
+1. Éditeur Apps Script → ⚙ Paramètres du projet → Propriétés du script → **Ajouter** :
+   `DriveAI_WEBAPP_SECRET` = une longue chaîne aléatoire (invente-la).
+2. Éditeur → **Déployer → Nouveau déploiement → Application Web** :
+   « Exécuter en tant que : **Moi** », « Accès : **Tout le monde** » (le secret fait le contrôle,
+   l'anti-rafale limite à 1 demande/min, et le pire abus possible = lancer le tick normal).
+   Copier l'**URL /exec**.
+3. Dans l'app → ⚙ Configuration : coller l'URL et le secret. Le bouton « ⟳ Vérifier maintenant »
+   apparaît dans la barre : le moteur passe dans la minute (déclencheur ponctuel auto-nettoyé).
+
+## Rattrapage des photos mal classées (incident « BACAR », 2026-07-06)
+
+Après le merge du chantier #20 : éditeur Apps Script → fonction `rattraperMediasMalClasses`
+→ Exécuter. Borné (25 images/run) — relancer si le Journal dit « restent à traiter ».
+Déplacement seul vers `_Médias` (jamais de suppression), zone protégée/sensible jamais touchée.

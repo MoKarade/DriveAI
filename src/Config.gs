@@ -290,6 +290,13 @@ var CONFIG = {
   ],
   EXT_PHOTOS: ['.jpg', '.jpeg', '.png', '.heic', '.heif', '.webp', '.bmp', '.tif', '.tiff'],
   MEDIAS_OCR_MAX_CARS: 20,               // extrait OCR sous ce seuil = « photo sans texte »
+  // Incident « BACAR » (2026-07-06) : photo de plat classée « Reçu de dépôt_BACAR » — l'OCR avait
+  // lu les étiquettes de bouteilles (> 20 cars) et le LLM a inventé un document. Le seuil OCR reste
+  // BAS (un passeport mal photographié doit atteindre le juge, §1) ; c'est la CONFIANCE du verdict
+  // qui tranche : une PHOTO au nom NON documentaire classée sous ce seuil n'est JAMAIS « classée au
+  // mieux » → _Médias (réversible, nom conservé). Exception : zone protégée/sensible — jamais
+  // rétrogradée en média (un passeport à 0,6 reste classé dans son domaine).
+  MEDIAS_CONFIANCE_MIN: 0.7,
 
   // --- Phase 2 : référentiel d'entités ---
   // Dossier d'entrée scanné pour le dépôt manuel (réutilise A_TRIER ci-dessus).
