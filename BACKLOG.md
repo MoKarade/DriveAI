@@ -317,9 +317,9 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C19-04 | Vue « Aujourd'hui » (stats, activité, suspects, derniers tris) | ✅ (tuiles docs/coût/tri/suspects depuis Santé+Index — parse pur testé ; ⚠ suspects et fils triés cliquables → Gmail ; derniers classements → Drive ; statut moteur ; TableauDeBord v2 déplacé sous Santé en attendant C19-08, zéro perte) |
 | C19-05 | Vue « Agenda » : calendrier réel + tâches + création directe | ✅ (grille mois cliquable → détail jour ; tâches Google cochables — PATCH status seul — + détail ; mails ⏰ → Gmail ; création directe tâche/RDV ; scopes app tasks+calendar.events, consentement navigateur au prochain login ; bans miroir : jamais DELETE, jamais status:cancelled, jamais /clear ; helpers purs testés) |
 | C19-06 | Vue « Mails » : suspects, fils triés, table TriAppris corrigeable, newsletters | ✅ (tuiles tri 7j/à vérifier/suspects/appris ; fils triés + suspects cliquables → Gmail ; table apprise avec « Retirer » = vidage de cellules — jamais de suppression de ligne, le moteur ignore les adresses vides ; newsletters restent au résumé hebdo — le calcul vit côté moteur/Gmail) |
-| C19-07 | Vue « Santé » : heartbeat, quotas, coût LLM (graphique), avancement rangement/campagnes | ⬜ |
-| C19-08 | Vue « Apprentissage » : corrections + entités (fusion de l'existant) | ⬜ |
-| C19-09 | Vue « Agenda » *(ajout Marc, revue de maquette — « un vrai agenda aussi »)* : **grille calendrier mois** (+ bande semaine mobile, RDV DriveAI marqués, échéances de tâches), liste à venir, tâches ouvertes (cocher = Google Tasks), mails ⏰, création DIRECTE tâche/RDV — scopes app `tasks` + `calendar.events` (consentement navigateur, zéro gel), jamais de suppression/modification d'existant | ⬜ |
+| C19-07 | Vue « Documents » : recherche filtrée + badge & filtre confiance (#17 ABSORBÉ — moteur : colonne H « Confiance » à l'Index, `decision.confiance` au classement, en-tête auto-réparé) | ✅ (badge 0,xx vert/orange, case « Confiance basse » < 0,5 ; verrou vie-privée mis à jour : 8 colonnes métadonnées, la confiance est un NOMBRE) |
+| C19-08 | Vue « Santé » : heartbeat, quotas, coût LLM (graphique), avancement rangement/campagnes | ⬜ (en attendant : TableauDeBord v2 vit sous Santé) |
+| C19-09 | Vue « Apprentissage » : corrections + entités (fusion de l'existant) | ⬜ (en attendant : Corrections v2 vit sous Apprentissage) |
 
 ### Chantier #18 — Auto-validation des entités fréquentes (décision Marc : seuil 3)  ⬜
 

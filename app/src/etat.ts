@@ -27,6 +27,7 @@ export interface LigneIndex {
   domaine: string;
   chemin: string;
   statut: string;
+  confiance: string; // colonne H (#17) — '' pour les lignes sans classification LLM
 }
 
 export function interpreterIndex(brut: string[][]): LigneIndex[] {
@@ -39,6 +40,7 @@ export function interpreterIndex(brut: string[][]): LigneIndex[] {
       domaine: l[3] ?? '',
       chemin: l[4] ?? '',
       statut: l[5] ?? '',
+      confiance: l[7] ?? '',
     }));
 }
 
@@ -388,4 +390,15 @@ export function interpreterTriAppris(brut: string[][]): LigneTriAppris[] {
     lignes.push({ ligneSheet: i + 2, adresse: l[0] ?? '', libelle: l[1] ?? '', apprisLe: l[2] ?? '' });
   }
   return lignes;
+}
+
+/* ---------- Confiance (#17, C19-07) ---------- */
+
+export const SEUIL_CONFIANCE_BASSE = 0.5;
+
+/** Vrai si la ligne porte une confiance NUMÉRIQUE sous le seuil (« classé au mieux »). */
+export function estConfianceBasse(l: LigneIndex): boolean {
+  if (l.confiance === '') return false;
+  const n = Number(String(l.confiance).replace(',', '.'));
+  return !Number.isNaN(n) && n < SEUIL_CONFIANCE_BASSE;
 }

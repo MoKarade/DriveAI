@@ -31,7 +31,7 @@ export function Mails({ langue }: { langue: Langue }) {
     (async () => {
       try {
         const [idx, ta] = await Promise.all([
-          lirePlage('Index', 'A2:F20000'),
+          lirePlage('Index', 'A2:H20000'),
           // Onglet créé par le moteur au premier apprentissage — absent = table vide, pas une erreur.
           lirePlage('TriAppris', 'A2:C1000').catch(() => [] as string[][]),
         ]);

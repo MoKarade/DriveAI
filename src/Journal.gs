@@ -11,7 +11,11 @@
 function initialiserSheet_(ss) {
   creerOnglet_(ss, 'Entités', COLONNES_ENTITES); // cf. COLONNES_ENTITES (9 colonnes, dont Variante possible ? et Vu N fois)
   creerOnglet_(ss, 'Corrections', COLONNES_CORRECTIONS); // apprentissage : doc corrigé → exemples few-shot (ADR-0003)
-  creerOnglet_(ss, 'Index', ['Clé', 'Traité le', 'Fichier', 'Domaine', 'Chemin', 'Statut', 'Empreinte']);
+  creerOnglet_(ss, 'Index', ['Clé', 'Traité le', 'Fichier', 'Domaine', 'Chemin', 'Statut', 'Empreinte', 'Confiance']);
+  // #17 : la Sheet existante n'a pas l'en-tête H — réparé ici (initialiserSheet_ ne tourne que
+  // quand un onglet manque : coût nul en régime normal).
+  var fIndex = ss.getSheetByName('Index');
+  if (fIndex && String(fIndex.getRange('H1').getValue()) === '') fIndex.getRange('H1').setValue('Confiance');
   creerOnglet_(ss, 'Journal', ['Horodatage', 'Niveau', 'Source', 'Message']);
   creerOnglet_(ss, 'Échecs', ['Clé', 'Tentatives', 'Dernière tentative']); // compteur de quarantaine
   creerOnglet_(ss, 'Relances', ['Clé', 'Demandé le']); // demandes de relance de quarantaine (app web, ADR-0011)
@@ -198,7 +202,10 @@ function estDoublon_(empreinte) {
 function indexAjouter_(cle, resultat, empreinte) {
   feuille_('Index').appendRow([
     cle, new Date(), resultat.nom, resultat.domaine || '', resultat.chemin || '',
-    resultat.statut, empreinte || ''
+    resultat.statut, empreinte || '',
+    // #17 (App v3 « Documents ») : confiance du classement — vide pour tout ce qui n'est pas
+    // une classification LLM (mails, doublons, quarantaine…).
+    resultat.confiance != null && resultat.confiance !== '' ? resultat.confiance : ''
   ]);
   if (_indexCache !== null) _indexCache[cle] = true;
   if (_empreintesCache !== null && empreinte) _empreintesCache[empreinte] = true;

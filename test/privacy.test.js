@@ -20,7 +20,7 @@ function chargerAvecFeuilleMock() {
   return { ctx, rows };
 }
 
-test('indexAjouter_ : n\'écrit que les 7 colonnes métadonnées (aucun corps de doc)', () => {
+test('indexAjouter_ : n\'écrit que les 8 colonnes métadonnées (aucun corps de doc)', () => {
   const { ctx, rows } = chargerAvecFeuilleMock();
   ctx.indexAjouter_('m|0|passeport.pdf|999', {
     statut: 'classé',
@@ -31,13 +31,14 @@ test('indexAjouter_ : n\'écrit que les 7 colonnes métadonnées (aucun corps de
     texteOCR: SECRET,
     contenu: SECRET,
     corps: SECRET,
+    confiance: 0.87, // #17 — seule addition légitime (nombre, jamais un texte)
   }, 'HASH_ABCDEF0123');
 
   const indexRows = rows.filter((r) => r.nom === 'Index');
   assert.strictEqual(indexRows.length, 1, 'exactement une ligne Index');
   const row = indexRows[0].row;
 
-  assert.strictEqual(row.length, 7, '7 colonnes métadonnées, ni plus ni moins');
+  assert.strictEqual(row.length, 8, '8 colonnes métadonnées, ni plus ni moins');
   assert.strictEqual(row[0], 'm|0|passeport.pdf|999'); // Clé
   assert.ok(row[1] instanceof Date, 'Traité le = Date');
   assert.strictEqual(row[2], '2026-01-15_Passeport_IRCC.pdf'); // Fichier (nom final)
@@ -45,6 +46,7 @@ test('indexAjouter_ : n\'écrit que les 7 colonnes métadonnées (aucun corps de
   assert.strictEqual(row[4], '04 · Immigration/Documents'); // Chemin
   assert.strictEqual(row[5], 'classé'); // Statut
   assert.strictEqual(row[6], 'HASH_ABCDEF0123'); // Empreinte = hash (métadonnée, non réversible)
+  assert.strictEqual(row[7], 0.87); // Confiance (#17) = NOMBRE — jamais un texte libre
 
   // Aucune cellule ne contient le corps du document.
   assert.ok(!JSON.stringify(row).includes(SECRET), 'aucun corps de document dans la ligne Index');
@@ -55,5 +57,6 @@ test('indexAjouter_ : empreinte absente → cellule vide (jamais de fuite de con
   ctx.indexAjouter_('m|1|doc.pdf|10', { statut: 'classé', nom: '2026-01-01_Document_Inconnu.pdf', domaine: '01', chemin: '01' });
   const row = rows.filter((r) => r.nom === 'Index')[0].row;
   assert.strictEqual(row[6], ''); // pas d'empreinte → '' (et surtout pas un extrait de contenu)
+  assert.strictEqual(row[7], ''); // pas de confiance (ligne non-LLM) → '' aussi
 });
 

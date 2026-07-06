@@ -264,6 +264,13 @@ button.coche { border: 1px solid var(--bord); padding: 0.1rem 0.4rem; font-size:
 .creation select, .creation input[type='date'], .creation input[type='time'] { width: auto; }
 .creation input:not([type]) { flex: 1 1 220px; }
 
+/* vue Documents (C19-07) : confiance */
+.filtre-confiance { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem;
+  color: var(--texte-doux); white-space: nowrap; }
+.filtre-confiance input { width: auto; }
+.conf-badge { font-family: var(--mono); font-size: 0.8rem; color: var(--ok); }
+.conf-badge.basse { color: var(--attention); }
+
 /* section en construction (chantier v3 par étapes) */
 .en-construction { color: var(--texte-doux); }
 .en-construction .maquette { font-family: var(--mono); font-size: 0.8rem; color: var(--accent); }

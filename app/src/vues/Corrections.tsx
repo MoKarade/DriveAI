@@ -44,7 +44,7 @@ export function Corrections({ langue }: { langue: Langue }) {
         // Plage large (Z) : si le moteur ajoute une colonne (auto-réparation), Statut reste visible.
         const [brutEntites, brutIndex] = await Promise.all([
           lirePlage('Entités', 'A1:Z10000'),
-          lirePlage('Index', 'A2:F20000'),
+          lirePlage('Index', 'A2:H20000'),
         ]);
         const { lignes, colonneStatut: col } = interpreterEntites(brutEntites);
         setEntites(lignes);

@@ -39,7 +39,7 @@ export function AujourdHui({ langue }: { langue: Langue }) {
       try {
         const [s, i] = await Promise.all([
           lirePlage('Santé', 'A2:A10'),
-          lirePlage('Index', 'A2:F20000'),
+          lirePlage('Index', 'A2:H20000'),
         ]);
         setSante(interpreterSante(s));
         setIndex(interpreterIndex(i));

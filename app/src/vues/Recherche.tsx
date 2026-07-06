@@ -20,6 +20,7 @@ import {
   statutsDepuisIndex,
   anneesDepuisIndex,
   lienDrivePourLigne,
+  estConfianceBasse,
 } from '../etat';
 import { Langue, t } from '../i18n';
 
@@ -35,6 +36,7 @@ export function Recherche({ langue }: { langue: Langue }) {
   const [domaine, setDomaine] = useState('');
   const [statut, setStatut] = useState('');
   const [annee, setAnnee] = useState('');
+  const [confianceBasse, setConfianceBasse] = useState(false); // #17 : « classés au mieux »
 
   // Plein texte Drive.
   const [contenus, setContenus] = useState<FichierDrive[] | null>(null);
@@ -47,7 +49,7 @@ export function Recherche({ langue }: { langue: Langue }) {
         // (sujet en colonne « fichier », domaine vide) — pas des documents : exclues de la recherche,
         // sinon elles domineraient la vue par défaut et pollueraient le sélecteur de statuts.
         // (Elles ont leur section dédiée au tableau de bord — C13.)
-        setIndex(interpreterIndex(await lirePlage('Index', 'A2:F20000'))
+        setIndex(interpreterIndex(await lirePlage('Index', 'A2:H20000'))
           .filter((l) => !/^(intention|tache|event|important|tri(-abandon)?)\|/.test(l.cle)));
       } catch (e) {
         setErreur(String(e));
@@ -57,10 +59,11 @@ export function Recherche({ langue }: { langue: Langue }) {
     })();
   }, []);
 
-  const resultats = useMemo(
-    () => filtrerIndex(index, { texte, domaine, statut, annee }).slice().reverse(), // plus récents d'abord (copie défensive)
-    [index, texte, domaine, statut, annee],
-  );
+  const resultats = useMemo(() => {
+    const base = filtrerIndex(index, { texte, domaine, statut, annee });
+    const filtres = confianceBasse ? base.filter(estConfianceBasse) : base;
+    return filtres.slice().reverse(); // plus récents d'abord (copie défensive)
+  }, [index, texte, domaine, statut, annee, confianceBasse]);
   const domaines = useMemo(() => domainesDepuisIndex(index), [index]);
   const statuts = useMemo(() => statutsDepuisIndex(index), [index]);
   const annees = useMemo(() => anneesDepuisIndex(index), [index]);
@@ -107,6 +110,10 @@ export function Recherche({ langue }: { langue: Langue }) {
               <option key={s} value={s}>{s}</option>
             ))}
           </select>
+          <label className="filtre-confiance">
+            <input type="checkbox" checked={confianceBasse} onChange={(e) => setConfianceBasse(e.target.checked)} />
+            {t('confianceBasse', langue)}
+          </label>
         </div>
         <p className="explication">
           {chargee && `${resultats.length} ${t('resultats', langue)}`}
@@ -124,6 +131,14 @@ export function Recherche({ langue }: { langue: Langue }) {
                 <td>{l.domaine}</td>
                 <td className="variante">{l.chemin}</td>
                 <td className="date">{l.statut}</td>
+                <td className="nombre">
+                  {l.confiance !== '' && (
+                    <span className={`conf-badge ${estConfianceBasse(l) ? 'basse' : ''}`}
+                      title={estConfianceBasse(l) ? t('confianceBasseTitre', langue) : ''}>
+                      {Number(String(l.confiance).replace(',', '.')).toFixed(2)}
+                    </span>
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>
