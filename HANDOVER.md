@@ -78,8 +78,10 @@
 > `Reorg.gs` (phase PROPOSITION — inventaire BFS borné zone-protégée-exclue-par-ancêtres,
 > UN appel Haiku, plan whitelisté racines-intouchables, onglet `Réorg`, essais rendus sur
 > budget/panne, 5 analyses/jour max). Revue flotte 4 agents, 3 bloquants corrigés. Prochain :
-> C21-05 (vue plan + « Demander une analyse »), C21-06 (application), C21-07 (ADR-0014 + §2 +
-> corbeille dossiers vides).
+> **C21-05 livré** : vue « ✨ Réorg IA » (Documents) — demande d'analyse (aussi depuis
+> l'Explorateur, portée dossier), plan avant/après, Valider/Écarter ligne/masse (plages
+> contiguës), historique. Restent : C21-06 (application par le moteur), C21-07 (ADR-0014 +
+> §2 + corbeille dossiers vides — tripwire + revue flotte bloquante).
 >
 > Antérieur — **2026-07-01 (soir)** : **BRAINSTORM PRODUIT COMPLET → dossier de conception (8 ADR).**
 > Session de conception « niveau pro » avec Marc : **8 ADR** (`docs/adr/0001`→`0008`), **roadmap priorisée à

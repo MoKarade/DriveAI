@@ -340,3 +340,7 @@ tr:hover .expl-actions button, .expl-actions button:focus-visible { opacity: 1; 
 /* recherche IA (C21-03) */
 .recherche-ia input:not([type]) { flex: 1 1 260px; }
 .ia-explication { color: var(--accent); }
+
+/* vue Réorg IA (C21-05) */
+.reorg-boutons { white-space: nowrap; }
+.reorg-boutons button { margin-left: 0.25rem; }

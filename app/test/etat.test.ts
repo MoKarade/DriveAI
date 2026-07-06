@@ -350,3 +350,48 @@ describe('signaux Santé (C19-08)', () => {
     expect(erreursRecentes(j, 7, new Date('2026-07-06T18:00:00'))).toBe(1);
   });
 });
+
+/* ---------- Réorg IA (C21-05) ---------- */
+
+import {
+  interpreterReorg,
+  derniereDemandeReorg,
+  actionsDuPlan,
+  plagesContigues,
+} from '../src/etat';
+
+describe('Réorg IA (C21-05)', () => {
+  const brut = [
+    ['demande-1', 'demande', '', '', '', 'proposé', 'Synthèse.', 'T1'],
+    ['reorg|demande-1|1', 'deplacer', 'idC', '08/Vrac', '03/Vrac', 'proposé', 'raison', 'T1'],
+    ['reorg|demande-1|2', 'renommer', 'idB', '03/KIA', '03/KIA Sportage', 'validé', '', 'T1'],
+    ['', '', '', '', '', '', '', ''], // ligne vide ignorée
+    ['demande-2', 'demande', '', '', '', 'analyse demandée', 'tout', 'T2'],
+  ];
+
+  it('interpreterReorg : lignes numérotées (Sheet), vides ignorées', () => {
+    const lignes = interpreterReorg(brut);
+    expect(lignes).toHaveLength(4);
+    expect(lignes[0].ligneSheet).toBe(2);
+    expect(lignes[3].ligneSheet).toBe(6); // la ligne vide ne décale pas la numérotation
+  });
+
+  it('derniereDemandeReorg : la plus récente (celle que le moteur traite)', () => {
+    const lignes = interpreterReorg(brut);
+    expect(derniereDemandeReorg(lignes)?.cle).toBe('demande-2');
+    expect(derniereDemandeReorg([])).toBeNull();
+  });
+
+  it('actionsDuPlan : préfixe strict reorg|<cléDemande>|', () => {
+    const lignes = interpreterReorg(brut);
+    expect(actionsDuPlan(lignes, 'demande-1')).toHaveLength(2);
+    expect(actionsDuPlan(lignes, 'demande-2')).toHaveLength(0);
+    expect(actionsDuPlan(lignes, 'demande')).toHaveLength(0); // pas de demi-préfixe
+  });
+
+  it('plagesContigues : regroupe, dédoublonne, trie — jamais une ligne non ciblée', () => {
+    expect(plagesContigues([5, 3, 4, 9, 3])).toEqual([{ debut: 3, fin: 5 }, { debut: 9, fin: 9 }]);
+    expect(plagesContigues([])).toEqual([]);
+    expect(plagesContigues([7])).toEqual([{ debut: 7, fin: 7 }]);
+  });
+});

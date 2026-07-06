@@ -181,6 +181,27 @@ export async function ecrireCellule(onglet: string, cellule: string, valeur: str
   );
 }
 
+/**
+ * Écrit une PLAGE CONTIGUË d'une même colonne (ex. Statuts F3:F7) — UN PUT par plage, jamais de
+ * batchUpdate (motif interdit §2) ; l'appelant découpe via `plagesContigues` pour ne JAMAIS
+ * toucher une ligne non sélectionnée.
+ */
+export async function ecrireColonnePlage(
+  onglet: string,
+  colonne: string,
+  debut: number,
+  valeurs: string[],
+): Promise<void> {
+  if (valeurs.length === 0) return;
+  viderCachePlages();
+  const { spreadsheetId } = lireConfig();
+  const plage = `${onglet}!${colonne}${debut}:${colonne}${debut + valeurs.length - 1}`;
+  await api(
+    `${SHEETS}/${spreadsheetId}/values/${encodeURIComponent(plage)}?valueInputOption=RAW`,
+    { method: 'PUT', body: JSON.stringify({ values: valeurs.map((v) => [v]) }) },
+  );
+}
+
 /** Ajoute une ligne en fin d'onglet (ex. Corrections → few-shot du moteur). */
 export async function ajouterLigne(onglet: string, ligne: (string | number)[]): Promise<void> {
   viderCachePlages();
