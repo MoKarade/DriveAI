@@ -299,7 +299,7 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C17-01 | Colonne `Confiance` à l'Index (nombre seul — métadonnée, ADR-0007) écrite par le pipeline au classement ; compat lignes historiques (vide = inconnu) ; en-têtes réels côté app | ⬜ |
 | C17-02 | App/Recherche : filtre « confiance basse » (< SEUIL_CONFIANCE) pour repasser derrière les « classés au mieux » ; tri par confiance croissante | ⬜ |
 
-### Chantier #19 — App v3 : refonte complète de l'interface (décision Marc 2026-07-06)  🟦
+### Chantier #19 — App v3 : refonte complète de l'interface (décision Marc 2026-07-06)  ✅ (livré le 2026-07-06 — 6 sections, PR #73→#78)
 
 > Cadrage explicite de Marc (4 réponses) : refonte visuelle complète + navigation/structure +
 > nouvelles fonctionnalités + expérience mobile/PWA ; usage **desktop et mobile à égalité** ;
@@ -318,8 +318,8 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | C19-05 | Vue « Agenda » : calendrier réel + tâches + création directe | ✅ (grille mois cliquable → détail jour ; tâches Google cochables — PATCH status seul — + détail ; mails ⏰ → Gmail ; création directe tâche/RDV ; scopes app tasks+calendar.events, consentement navigateur au prochain login ; bans miroir : jamais DELETE, jamais status:cancelled, jamais /clear ; helpers purs testés) |
 | C19-06 | Vue « Mails » : suspects, fils triés, table TriAppris corrigeable, newsletters | ✅ (tuiles tri 7j/à vérifier/suspects/appris ; fils triés + suspects cliquables → Gmail ; table apprise avec « Retirer » = vidage de cellules — jamais de suppression de ligne, le moteur ignore les adresses vides ; newsletters restent au résumé hebdo — le calcul vit côté moteur/Gmail) |
 | C19-07 | Vue « Documents » : recherche filtrée + badge & filtre confiance (#17 ABSORBÉ — moteur : colonne H « Confiance » à l'Index, `decision.confiance` au classement, en-tête auto-réparé) | ✅ (badge 0,xx vert/orange, case « Confiance basse » < 0,5 ; verrou vie-privée mis à jour : 8 colonnes métadonnées, la confiance est un NOMBRE) |
-| C19-08 | Vue « Santé » : heartbeat, quotas, coût LLM (graphique), avancement rangement/campagnes | ⬜ (en attendant : TableauDeBord v2 vit sous Santé) |
-| C19-09 | Vue « Apprentissage » : corrections + entités (fusion de l'existant) | ⬜ (en attendant : Corrections v2 vit sous Apprentissage) |
+| C19-08 | Vue « Santé » : heartbeat, quotas, coût LLM, quarantaine | ✅ (lignes Santé + signal quota Gmail dérivé du Journal — testé —, coût avec jauge, erreurs 7 j, quarantaine + Relancer conservés ; TableauDeBord v2 supprimé, remplacé par Aujourd'hui + Santé) |
+| C19-09 | Vue « Apprentissage » : corrections + entités | ✅ (Corrections v2 adoptée telle quelle sous « Apprentissage » — déjà fusionnée : entités + corrections + reclassement ; tokens v3 hérités) |
 
 ### Chantier #18 — Auto-validation des entités fréquentes (décision Marc : seuil 3)  ⬜
 

@@ -45,7 +45,7 @@ Détail : `BACKLOG.md` (P1-01 → P1-20).
 | 16 | **Tri Gmail natif** — libellés (sous-libellés existants) + archivage prudent + ⚠️ phishing + newsletters jamais lues, au fil de l'eau (remplace la tâche Cowork de Marc) | Mails | M-L | [0012](adr/0012-tri-gmail-natif.md) | ✅ livré 2026-07-06 (PR #66, 2 rondes adversariales, verrou CI + tripwire scope↔constitution) — vérification réelle après ré-autorisation de Marc, puis il supprime sa tâche Cowork |
 | 17 | **Confiance visible** — colonne Confiance à l'Index + filtre « confiance basse » dans l'app (choix Marc : voir les « classés au mieux » dans l'app, pas dans le hebdo) | Site | S | — | ⬜ |
 | 18 | **Entités auto-validées à 3 occurrences** (choix Marc) — dossier créé sans clic, signalé au hebdo, réversible, jamais en zone protégée | Moteur | S | — | ⬜ |
-| 19 | **App v3** — refonte complète (visuel + 5 sections + mobile/PWA) : vue Tri Gmail, Santé & coût, recherche filtrée, confiance (#17 absorbé) | Site | L | — | 🟦 direction **B « Salle des machines »** choisie (2026-07-06) ; maquette haute-fidélité en cours |
+| 19 | **App v3** — refonte complète (visuel + 5 sections + mobile/PWA) : vue Tri Gmail, Santé & coût, recherche filtrée, confiance (#17 absorbé) | Site | L | — | ✅ livré 2026-07-06 (PR #73→#78) : 6 sections, thème sombre/clair, calendrier réel + création Tasks/Calendar, tri visible + TriAppris corrigeable, confiance (#17), Santé |
 
 **Rationale v2 :** moteur d'abord (choix Marc) — #10 assainit la source ET la file existante (la
 validation redevient courte avant même l'app v2), #11 accélère le rangement Facebook en cours.

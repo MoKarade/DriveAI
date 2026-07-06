@@ -613,3 +613,14 @@ sur l'artefact produit, pas sur les logs seuls. La sonde doit être inoffensive,
 son cycle de vie complet (elle finit classée quelque part — le dire à l'utilisateur pour qu'il puisse
 la supprimer).
 **Règle durable ?** non (extension d'une règle existante déjà dans CLAUDE.md).
+
+
+## 2026-07-06 — Tester un HTML avec le doctype de PROD (mode quirks = bugs fantômes)
+**Contexte.** Maquette App v3 : capture Playwright sur le fichier local → texte des tables quasi
+invisible (les <table> n'héritaient plus la couleur). Cause réelle : le fichier local n'a PAS de
+doctype (l'Artifact l'ajoute à la publication) → Chrome rend en MODE QUIRKS, où les tables
+n'héritent pas `color`.
+**Leçon.** Toujours vérifier un rendu HTML dans les conditions de PUBLICATION (préfixer le doctype
+avant la capture locale). Un bug de rendu incompréhensible sur du CSS sain → vérifier le mode de
+rendu (quirks vs standard) avant de toucher au CSS.
+**Règle durable ?** non (piège d'outillage, consigné ici suffit).
