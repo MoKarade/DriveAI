@@ -735,3 +735,26 @@ requis, existe-t-il un sous-chemin où le prompt autorise son absence ? ». (2) 
 « plafonds à l'unité de COÛT réelle » : un garde-temps/budget par run calibré pour un modèle doit
 suivre le coût-temps réel par item quand on change de modèle (Sonnet ×2 = ~×10 le temps/doc).
 **Règle durable ?** oui (le point 1 ; le point 2 est une instance d'une règle déjà consignée).
+
+## 2026-07-07 — Miroir Drive (#27) : 2 pièges curl → web app Apps Script, invisibles hors prod réelle
+**Contexte.** Premier sync réel du miroir Drive (chantier #27, ADR-0017) contre la vraie web app
+déployée de Marc. Le workflow GitHub Actions échouait systématiquement (405, puis « Argument list
+too long ») malgré 359+ tests verts et 2 revues flotte passées — aucun test local/CI simulé ne
+pouvait révéler ces deux bugs, ils n'existent que contre le VRAI comportement HTTP d'Apps Script et
+les limites RÉELLES de l'OS du runner.
+**Leçon.** (1) Apps Script répond à un POST `/exec` par une redirection 302 vers
+`script.googleusercontent.com/macros/echo`, qui n'accepte QUE `HEAD`/`GET`. Combiner `-X POST`
+explicite avec `-L` (suivre les redirections) fait que curl RENVOIE POST sur cette redirection (
+`-X` verrouille la méthode sur TOUTE la chaîne de redirection, court-circuitant le downgrade
+POST→GET normal de la RFC sur un 302) → 405 systématique malgré une requête initiale parfaitement
+valide. Fix : jamais de `-X POST` explicite combiné à `-L` vers un endpoint qui répond par 302/303
+à un POST (Apps Script, et plus généralement tout endpoint de ce type) — `--data-binary` seul
+positionne déjà POST pour la 1ère requête, sans verrouiller les suivantes. (2) Passer un payload
+volumineux (jusqu'à 2 Mo, un lot de fichiers) via `--data-binary "$VARIABLE"` le place en ARGUMENT
+shell, qui peut dépasser `ARG_MAX` de l'OS sur les gros lots (exit 126) — fix : écrire le payload
+dans un fichier temporaire et utiliser `--data-binary @fichier` (curl lit directement le contenu,
+jamais via argv). (3) Diagnostiqué via `curl -v` avec le secret TOUJOURS expurgé du log avant
+affichage (`sed`) — un masquage automatique de plateforme (GitHub Actions) ne couvre pas les
+transformations dérivées d'un secret (ex. encodage URL), donc un log verbeux public doit être
+assaini manuellement, jamais faire confiance au seul masquage automatique.
+**Règle durable ?** oui.

@@ -4,22 +4,30 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **2026-07-07 (nuit) — ADR-0017 : MIROIR DRIVE du dépôt (accès de partout + NotebookLM).** Marc a
-> d'abord demandé de remplacer GitHub par Drive comme dépôt — refusé et expliqué techniquement
-> (Drive n'a pas de sémantique git, tout le CI/CD en dépend). Vrai besoin clarifié : accès de
-> partout (déjà couvert par GitHub web/mobile) + une copie DANS Drive parce que **NotebookLM lit
-> ses sources depuis Drive**. Livré : `src/Miroir.gs` (nouveau module) écrit une copie `.txt` de
+> **2026-07-07 (nuit) — ADR-0017 : MIROIR DRIVE du dépôt (accès de partout + NotebookLM) — EN
+> DÉBOGAGE PROD.** Marc a d'abord demandé de remplacer GitHub par Drive comme dépôt — refusé et
+> expliqué techniquement (Drive n'a pas de sémantique git, tout le CI/CD en dépend). Vrai besoin
+> clarifié : accès de partout (déjà GitHub web/mobile) + une copie DANS Drive parce que
+> **NotebookLM lit ses sources depuis Drive**. Livré : `src/Miroir.gs` écrit une copie `.txt` de
 > TOUT le dépôt dans `_Miroir du dépôt` (Drive de Marc), via la web app déjà déployée (`doPost`,
 > action `sync-miroir`) — **aucun nouveau scope OAuth**. Secret DÉDIÉ `DriveAI_SYNC_SECRET`
-> (Property), JAMAIS le même que `DriveAI_WEBAPP_SECRET` (exposé navigateur par conception).
-> Nouveau workflow `.github/workflows/sync-drive.yml` (déclenché à chaque merge sur `main`,
-> dispatché explicitement par `auto-merge.yml` comme `deploy.yml` — un merge bot ne déclenche pas
-> `on: push`). Jamais de suppression (§2) : un fichier retiré du dépôt laisse une copie obsolète
-> dans le miroir (nettoyage manuel occasionnel, comme `_Doublons`/`_Technique`). +12 tests
-> (`test/miroir.test.js`). **CONFIG CÔTÉ MARC REQUISE (~5 min, voir `docs/DEPLOIEMENT.md` § Miroir
-> Drive) avant que ça fonctionne** : 1 Script Property (`DriveAI_SYNC_SECRET`) + 2 secrets GitHub
-> (`DRIVEAI_WEBAPP_URL`, `DRIVEAI_SYNC_SECRET`). Tant qu'absents, le workflow réussit
-> silencieusement sans rien faire (même patron que `deploy.yml`).
+> (Property), JAMAIS le même que `DriveAI_WEBAPP_SECRET`. Workflow `.github/workflows/sync-drive.yml`
+> dispatché par `auto-merge.yml` (comme `deploy.yml`). Mergé (PR #107), +12 tests (`miroir.test.js`).
+> **Config Marc faite** (Property + 2 secrets GitHub + accès web app « Tout le monde »), mais le
+> PREMIER SYNC RÉEL a révélé 2 bugs invisibles hors prod (aucun test/CI ne pouvait les attraper —
+> voir leçon `docs/LESSONS.md` 2026-07-07 « Miroir Drive : 2 pièges curl ») :
+> 1. **405 systématique** — `curl -X POST -L` verrouillait POST sur la redirection 302 d'Apps
+>    Script (`/exec` → `script.googleusercontent.com/macros/echo`, qui n'accepte que HEAD/GET).
+>    **Corrigé** : retrait de `-X POST` (poussé sur la branche, PAS ENCORE mergé sur `main`).
+> 2. **« Argument list too long »** sur les gros lots — payload passé en argument shell dépassait
+>    `ARG_MAX`. **Corrigé** : payload écrit dans un fichier, `--data-binary @fichier` (poussé,
+>    pas encore mergé).
+> **BLOQUÉ EN ATTENTE** : après ces 2 fixes, le premier lot répondait proprement en JSON
+> (`{"ok":false,"erreur":"refusé"}`) — la requête atteint bien `doPost`, mais le secret ne
+> correspond pas. **Marc doit revérifier que `DriveAI_SYNC_SECRET` (Apps Script Property) est
+> IDENTIQUE, caractère pour caractère, à `DRIVEAI_SYNC_SECRET` (secret GitHub)** avant de relancer.
+> Prochaine étape : une fois le secret aligné, dispatcher `sync-drive.yml` sur la branche pour
+> confirmer un sync complet (169 fichiers) réussi, PUIS merger les 2 fixes curl sur `main`.
 >
 > **2026-07-07 (soir) — Chantier #26 : REFONTE de l'analyse documentaire (demande Marc « fiabilité
 > maximale »).** Diagnostic prod accablant (65,6 % d'émetteurs « Inconnu », vols → Administratif,
