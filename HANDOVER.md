@@ -4,37 +4,34 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **2026-07-07 (nuit) — ADR-0017 : MIROIR DRIVE du dépôt (accès de partout + NotebookLM) — EN
-> DÉBOGAGE PROD.** Marc a d'abord demandé de remplacer GitHub par Drive comme dépôt — refusé et
-> expliqué techniquement (Drive n'a pas de sémantique git, tout le CI/CD en dépend). Vrai besoin
-> clarifié : accès de partout (déjà GitHub web/mobile) + une copie DANS Drive parce que
-> **NotebookLM lit ses sources depuis Drive**. Livré : `src/Miroir.gs` écrit une copie `.txt` de
-> TOUT le dépôt dans `_Miroir du dépôt` (Drive de Marc), via la web app déjà déployée (`doPost`,
-> action `sync-miroir`) — **aucun nouveau scope OAuth**. Secret DÉDIÉ `DriveAI_SYNC_SECRET`
-> (Property), JAMAIS le même que `DriveAI_WEBAPP_SECRET`. Workflow `.github/workflows/sync-drive.yml`
+> **2026-07-07 (nuit) — ADR-0017 : MIROIR DRIVE du dépôt (accès de partout + NotebookLM) — TERMINÉ.**
+> Marc a d'abord demandé de remplacer GitHub par Drive comme dépôt — refusé et expliqué
+> techniquement (Drive n'a pas de sémantique git, tout le CI/CD en dépend). Vrai besoin clarifié :
+> accès de partout (déjà GitHub web/mobile) + une copie DANS Drive parce que **NotebookLM lit ses
+> sources depuis Drive**. Livré : `src/Miroir.gs` écrit une copie `.txt` de TOUT le dépôt dans
+> `_Miroir du dépôt` (Drive de Marc), via la web app déjà déployée (`doPost`, action
+> `sync-miroir`) — **aucun nouveau scope OAuth**. Secret DÉDIÉ `DriveAI_SYNC_SECRET` (Property),
+> JAMAIS le même que `DriveAI_WEBAPP_SECRET`. Workflow `.github/workflows/sync-drive.yml`
 > dispatché par `auto-merge.yml` (comme `deploy.yml`). Mergé (PR #107), +12 tests (`miroir.test.js`).
-> **Config Marc faite** (Property + 2 secrets GitHub + accès web app « Tout le monde »), mais le
-> PREMIER SYNC RÉEL a révélé 2 bugs invisibles hors prod (aucun test/CI ne pouvait les attraper —
-> voir leçon `docs/LESSONS.md` 2026-07-07 « Miroir Drive : 2 pièges curl ») :
+> **Config Marc faite** (Property + 2 secrets GitHub + accès web app « Tout le monde »). Le PREMIER
+> SYNC RÉEL a révélé 3 pièges invisibles hors prod, tous corrigés (PR #108, voir leçon
+> `docs/LESSONS.md` 2026-07-07 « Miroir Drive : 2 pièges curl » + leçon durable `CLAUDE.md` §7) :
 > 1. **405 systématique** — `curl -X POST -L` verrouillait POST sur la redirection 302 d'Apps
 >    Script (`/exec` → `script.googleusercontent.com/macros/echo`, qui n'accepte que HEAD/GET).
->    **Corrigé** : retrait de `-X POST` (poussé sur la branche, PAS ENCORE mergé sur `main`).
+>    Corrigé : retrait de `-X POST`.
 > 2. **« Argument list too long »** sur les gros lots — payload passé en argument shell dépassait
->    `ARG_MAX`. **Corrigé** : payload écrit dans un fichier, `--data-binary @fichier` (poussé,
->    pas encore mergé).
-> **BLOQUÉ EN ATTENTE** : après ces 2 fixes, chaque lot répondait proprement en JSON
-> (`{"ok":false,"erreur":"refusé"}`) — la requête atteint bien `doPost`, mais le secret ne
-> correspond pas. Écarté : clé Property mal nommée (vérifiée exacte via capture d'écran :
-> `DriveAI_SYNC_SECRET`), typo/espace (re-testé avec une valeur hex fraîche donnée par Claude,
-> collée aux 2 endroits — toujours refusé). **Cause identifiée** : diagnostic temporaire ajouté à
-> `doPost` (longueurs comparées, jamais le contenu — commit debug, PAS mergé) déployé via
-> `workflow_dispatch` de `deploy.yml` sur la branche (itération rapide sans toucher `main`) — la
-> réponse ne portait PAS les nouveaux champs de diagnostic, révélant que **la web app `/exec` sert
-> une version FIGÉE** (piège déjà documenté `docs/DEPLOIEMENT.md`, confirmé s'appliquer aussi à un
-> déploiement déclenché manuellement sur une branche). **Marc doit refaire Déployer → Gérer les
-> déploiements → ✏ → Version : Nouvelle version → Déployer**, puis je relance le diagnostic.
-> Une fois le secret confirmé aligné : sync complet (169 fichiers) sur la branche, retirer le code
-> diagnostic (`WebApp.gs` + `sync-drive.yml` 1-fichier), PUIS merger les 3 commits fix sur `main`.
+>    `ARG_MAX`. Corrigé : payload écrit dans un fichier, `--data-binary @fichier`.
+> 3. **Secret « refusé » persistant** malgré 2 vérifications de Marc — pas un problème de secret :
+>    diagnostic temporaire (longueurs comparées, jamais le contenu) a révélé que la web app
+>    `/exec` servait une version FIGÉE (piège déjà documenté `docs/DEPLOIEMENT.md`, confirmé
+>    s'appliquer aussi à un déploiement `workflow_dispatch` sur une branche). Résolu par le
+>    redéploiement manuel de Marc (Nouvelle version).
+> **Validé en prod à 2 reprises** : sync complet (169 fichiers, 0 ignoré, 0 erreur) une fois sur la
+> branche (code de diagnostic retiré avant merge), puis une seconde fois sur `main` après le merge
+> #108 + le `clasp push` auto + le redéploiement manuel de Marc — confirmant que le pipeline
+> complet (push → CI verte → auto-merge → dispatch `deploy.yml` → redéploiement manuel) fonctionne
+> de bout en bout. Le miroir Drive (`_Miroir du dépôt`) est maintenant à jour et se resynchronisera
+> à chaque merge sur `main`. Chantier #27 clos.
 >
 > **2026-07-07 (soir) — Chantier #26 : REFONTE de l'analyse documentaire (demande Marc « fiabilité
 > maximale »).** Diagnostic prod accablant (65,6 % d'émetteurs « Inconnu », vols → Administratif,
