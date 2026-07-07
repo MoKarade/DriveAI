@@ -288,7 +288,9 @@ var CONFIG = {
   // Domaines AUTO-créés (ADR-0002 §3) : nouveaux domaines sans ID en dur — le dossier est trouvé/créé
   // par le code À CÔTÉ des domaines existants (find-or-create, cf. Router.dossierDomaineAuto_), zéro clic.
   // Ils sont autorisés dans le prompt LLM (domainesAutorises_) et routés comme les 7 domaines fixes.
-  DOMAINES_AUTO: ['07 · Santé'],
+  // 09 · Voyages ajouté (refonte 2026-07-07, demande Marc) : vols, trains, hôtels, réservations,
+  // locations de voyage — le domaine manquant qui éparpillait les billets dans Administratif/Perso.
+  DOMAINES_AUTO: ['07 · Santé', '09 · Voyages'],
 
   // Fichiers TECHNIQUES (ADR-0002 §3, `_Technique` hors domaines) : code, CAO — écartés du classement
   // documentaire (ni OCR ni LLM : ce ne sont pas des documents à classer par domaine). Rangés dans

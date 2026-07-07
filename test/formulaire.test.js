@@ -10,12 +10,12 @@ const { load } = require('./harness');
 
 const ctx = load(['Config.gs', 'Formulaire.gs']);
 
-test('domainesPourFormulaire_ : domaines de config + « 07 · Santé », triés', () => {
+test('domainesPourFormulaire_ : domaines de config + auto (Santé, Voyages), triés', () => {
   const doms = [...ctx.domainesPourFormulaire_()]; // realm hôte pour comparer
   assert.ok(doms.indexOf('07 · Santé') !== -1, 'inclut Santé (auto-créé)');
+  assert.ok(doms.indexOf('09 · Voyages') !== -1, 'inclut Voyages (auto-créé, refonte)');
   assert.ok(doms.indexOf('01 · Administratif & identité') !== -1);
-  assert.strictEqual(doms.length, Object.keys(ctx.CONFIG.DOMAINES).length + 1); // +1 = Santé
-  // trié : 07 · Santé s'insère entre 06 et 08
+  assert.strictEqual(doms.length, Object.keys(ctx.CONFIG.DOMAINES).length + ctx.CONFIG.DOMAINES_AUTO.length);
   const sorted = [...doms].sort();
   assert.deepStrictEqual(doms, sorted);
 });
