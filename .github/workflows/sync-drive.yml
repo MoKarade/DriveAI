@@ -62,8 +62,6 @@ jobs:
           # EXT_MIROIR_BINAIRES côté moteur (src/Miroir.gs), filtrage en double (bande passante).
           BINAIRES='png|jpg|jpeg|gif|ico|webp|bmp|tif|tiff|heic|heif|woff2?|ttf|eot|otf|zip|gz|tar|pdf'
           mapfile -t FICHIERS < <(git ls-files | grep -viE "\.(${BINAIRES})\$")
-          # DIAGNOSTIC TEMPORAIRE (à retirer) : 1 seul fichier, pour un test rapide et peu coûteux.
-          FICHIERS=("README.md")
           echo "Fichiers à synchroniser : ${#FICHIERS[@]}"
 
           # Encodage URL du secret (revue code #27) : une valeur aléatoire peut contenir des
@@ -92,7 +90,10 @@ jobs:
             # redirection (curl renvoyait alors POST vers /macros/echo, qui n'accepte que
             # HEAD/GET → 405). --data-binary positionne déjà POST pour la 1ère requête SEULE,
             # laissant curl basculer en GET sur la redirection comme le veut la RFC (bug repéré en prod).
-            CODE="$(curl -sS -L -o /tmp/miroir-rep.json -w '%{http_code}' \
+            # --max-time : Apps Script peut mettre du temps à répondre (find-or-create de
+            # dossiers, écriture) — borne dure pour ne jamais laisser un lot bloquer le run
+            # indéfiniment (aucun timeout par défaut sur curl).
+            CODE="$(curl -sS -L --max-time 120 -o /tmp/miroir-rep.json -w '%{http_code}' \
               "${URL}?action=sync-miroir&secret=${SECRET_ENC}" \
               -H 'Content-Type: text/plain;charset=utf-8' \
               --data-binary @"$PAYLOAD_FILE")"
