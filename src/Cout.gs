@@ -62,10 +62,13 @@ function budgetCampagnesAtteint_() {
     _freinBudget = coutDollars_(lireCoutMois_(props, cle)) >= CONFIG.LLM_BUDGET_CAMPAGNES;
     if (_freinBudget) {
       // Signalement best-effort dans son PROPRE try : une panne de journal/Property ne doit pas
-      // relever un frein correctement MESURÉ (la mesure prime sur l'annonce).
+      // relever un frein correctement MESURÉ (la mesure prime sur l'annonce). La mémoire « déjà
+      // signalé » inclut le SEUIL : si Marc relève le plafond en cours de mois et que le frein se
+      // re-déclenche au nouveau niveau, la re-pause est re-annoncée (jamais silencieuse).
       try {
-        if (props.getProperty('DriveAI_FREIN_BUDGET') !== cle) {
-          props.setProperty('DriveAI_FREIN_BUDGET', cle);
+        var marque = cle + '|' + CONFIG.LLM_BUDGET_CAMPAGNES;
+        if (props.getProperty('DriveAI_FREIN_BUDGET') !== marque) {
+          props.setProperty('DriveAI_FREIN_BUDGET', marque);
           journalInfo_('Cout', 'Budget campagnes atteint (' + CONFIG.LLM_BUDGET_CAMPAGNES +
             ' $/mois) — rangement/migration/historique EN PAUSE jusqu\'au mois prochain ; le flux vivant continue.');
         }

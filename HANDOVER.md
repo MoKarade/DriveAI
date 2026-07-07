@@ -15,8 +15,10 @@
 > depuis le tick : réentrance), ré-armée par un rétablissement de panne ; natifs Docs/Sheets/Slides
 > classés (export texte REST, empreinte sur texte ENTIER, `ignorerDoublon` sous 20 cars ; échec
 > d'export = échec compté ; type sans export = indexé `natif`) ; **frein budget campagnes**
-> (`LLM_BUDGET_CAMPAGNES` 10 $ : rangement/historique/migration EN PAUSE jusqu'au 1ᵉʳ août — le
-> flux vivant dont la file de Marc CONTINUE ; relever = éditer la constante). Revue flotte 4 agents :
+> (`LLM_BUDGET_CAMPAGNES` : rangement/historique/migration en pause au-delà — le flux vivant dont
+> la file de Marc CONTINUE ; **plafond relevé 10 → 30 $ le 07-07, décision Marc « je veux que tu
+> continues le tri au complet » → le rattrapage reprend et finit ce mois-ci ; cible croisière
+> < 10 $ maintenue, §2.6 révisé**). Revue flotte 4 agents :
 > 3 bloquants réels corrigés (306 tests). À VÉRIFIER post-déploiement par signaux Drive : PDF
 > `1-ePHLXUsVVhiT9fEX7thR5P5Bs1YmkDD` classé, 32 quarantainés relancés, 2 Sheets natifs classés.
 > Info : racine sup `1W3b0…` (RANGEMENT_RACINES_SUP) inaccessible. Rappel Marc encore ouvert :

@@ -38,8 +38,12 @@ test('proportionnel sous le million (pas d\'arrondi masquant)', () => {
 // budgetCampagnesAtteint_ (frein des campagnes, R3)
 // ---------------------------------------------------------------------------
 
-/** Contexte avec Script Properties EN MÉMOIRE, pré-remplies avec un coût mensuel donné. */
-function ctxFrein(tokensHaikuIn) {
+/**
+ * Contexte avec Script Properties EN MÉMOIRE. `deltaDollars` positionne le coût du mois PAR
+ * RAPPORT au seuil CONFIG.LLM_BUDGET_CAMPAGNES (les tests restent vrais si Marc rajuste le
+ * plafond — vécu : 10 → 30 le 07-07, les tests codés « 16 $ ≥ 10 » auraient menti).
+ */
+function ctxFrein(deltaDollars) {
   const store = {};
   const c = load(['Config.gs', 'Cout.gs'], {
     PropertiesService: {
@@ -50,24 +54,29 @@ function ctxFrein(tokensHaikuIn) {
       }),
     },
   });
-  if (tokensHaikuIn != null) {
-    store[c.cleCoutMois_()] = JSON.stringify({ hin: tokensHaikuIn, hout: 0, sin: 0, sout: 0, appels: 1 });
-  }
-  return { c, store };
+  const poserCout = (delta) => {
+    // haiku_in = 1 $/MTok → dollars × 1e6 tokens.
+    const hin = Math.max(0, (c.CONFIG.LLM_BUDGET_CAMPAGNES + delta)) * 1e6;
+    store[c.cleCoutMois_()] = JSON.stringify({ hin, hout: 0, sin: 0, sout: 0, appels: 1 });
+  };
+  if (deltaDollars != null) poserCout(deltaDollars);
+  return { c, store, poserCout };
 }
 
 test('frein : sous le budget → false, aucun journal', () => {
-  const { c } = ctxFrein(1e6); // 1 $ < 10 $
+  const { c } = ctxFrein(-1); // seuil − 1 $
   assert.strictEqual(c.budgetCampagnesAtteint_(), false);
   assert.strictEqual(c.__logs.length, 0);
 });
 
 test('frein : budget atteint → true + journalisé UNE seule fois par mois', () => {
-  const { c, store } = ctxFrein(16e6); // 16 $ ≥ LLM_BUDGET_CAMPAGNES (10)
+  const { c, store } = ctxFrein(+6); // seuil + 6 $
   assert.strictEqual(c.budgetCampagnesAtteint_(), true);
   const infos = c.__logs.filter(([niv, src]) => niv === 'INFO' && src === 'Cout');
   assert.strictEqual(infos.length, 1, 'enclenchement journalisé');
-  assert.strictEqual(store.DriveAI_FREIN_BUDGET, c.cleCoutMois_(), 'mémoire « déjà signalé ce mois »');
+  assert.strictEqual(store.DriveAI_FREIN_BUDGET,
+    c.cleCoutMois_() + '|' + c.CONFIG.LLM_BUDGET_CAMPAGNES,
+    'mémoire « déjà signalé ce mois, à ce seuil »');
 
   // Run suivant (cache remis à zéro) : toujours freiné, mais PAS de nouvelle ligne de journal.
   c.reinitialiserFreinBudget_();
@@ -75,11 +84,28 @@ test('frein : budget atteint → true + journalisé UNE seule fois par mois', ()
   assert.strictEqual(c.__logs.filter(([niv, src]) => niv === 'INFO' && src === 'Cout').length, 1);
 });
 
+test('frein : plafond RELEVÉ en cours de mois → campagnes reprennent ; re-déclenché plus haut → re-annoncé', () => {
+  // Le scénario réel du 07-07 : frein posé à 10 $, Marc dit « continue le tri au complet ».
+  const { c, store, poserCout } = ctxFrein(+2); // au-dessus du seuil courant
+  assert.strictEqual(c.budgetCampagnesAtteint_(), true);
+  const seuilInitial = c.CONFIG.LLM_BUDGET_CAMPAGNES;
+
+  c.CONFIG.LLM_BUDGET_CAMPAGNES = seuilInitial + 20; // Marc relève le plafond
+  c.reinitialiserFreinBudget_();
+  assert.strictEqual(c.budgetCampagnesAtteint_(), false, 'les campagnes reprennent au tick suivant');
+
+  poserCout(+1); // le coût finit par atteindre le NOUVEAU plafond (relatif au seuil courant)
+  c.reinitialiserFreinBudget_();
+  assert.strictEqual(c.budgetCampagnesAtteint_(), true, 're-freiné au nouveau niveau');
+  assert.strictEqual(c.__logs.filter(([niv, src]) => niv === 'INFO' && src === 'Cout').length, 2,
+    'la re-pause au seuil relevé est RE-annoncée (jamais silencieuse)');
+});
+
 test('frein : lu au plus 1×/run (cache) — pas une lecture Properties par campagne', () => {
-  const { c, store } = ctxFrein(1e6);
+  const { c, poserCout } = ctxFrein(-1);
   assert.strictEqual(c.budgetCampagnesAtteint_(), false);
   // Le coût explose ENTRE deux appels du même run : la valeur cachée reste servie.
-  store[c.cleCoutMois_()] = JSON.stringify({ hin: 99e6, hout: 0, sin: 0, sout: 0, appels: 2 });
+  poserCout(+99);
   assert.strictEqual(c.budgetCampagnesAtteint_(), false, 'même run → valeur du cache');
   c.reinitialiserFreinBudget_();
   assert.strictEqual(c.budgetCampagnesAtteint_(), true, 'run suivant → relu');

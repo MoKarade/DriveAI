@@ -38,9 +38,10 @@ Quatre causes possibles, CUMULABLES (incident R3 du 2026-07-07 : les quatre à l
    panne passée) → il est INVISIBLE pour l'intake. Remède : `dequarantaine()` ou bump `DEQUARANTAINE_TAG`.
 3. **Fichier Google natif** : depuis R3, Docs/Sheets/Slides sont classés (export texte REST). Les types
    SANS export (Forms, dessins) restent en place par design — les ranger à la main.
-4. **Frein budget** (`LLM_BUDGET_CAMPAGNES`, 10 $/mois mesurés) : les CAMPAGNES (grand rangement,
-   historique Gmail, migration) sont en pause — mais le flux vivant (dépôts, Gmail récent) continue.
-   Journal : « Budget campagnes atteint ». Relever = éditer `CONFIG.LLM_BUDGET_CAMPAGNES` (choix explicite).
+4. **Frein budget** (`CONFIG.LLM_BUDGET_CAMPAGNES` — 30 $ depuis le 07-07, décision Marc « tri au
+   complet » ; cible croisière < 10 $) : les CAMPAGNES (grand rangement, historique Gmail, migration)
+   sont en pause — mais le flux vivant (dépôts, Gmail récent) continue. Journal : « Budget campagnes
+   atteint ». Relever = éditer la constante (choix explicite de Marc, jamais 0/Infinity).
 Diagnostic rapide : chercher la clé `drive|<fileId>` dans l'Index (statut ?), puis le Journal du dernier tick.
 
 ### 🔴 Crédit API Anthropic épuisé (Journal : « PANNE DE COMPTE API »)

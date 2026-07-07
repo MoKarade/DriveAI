@@ -38,12 +38,15 @@ var CONFIG = {
   // Prix Anthropic par MILLION de tokens (input/output), pour MESURER le coût réel (Cout.gs, P1-09).
   // À ajuster si la grille de prix change. Haiku 4.5 : 1$/5$ ; Sonnet 4.6 : 3$/15$.
   LLM_PRIX: { haiku_in: 1, haiku_out: 5, sonnet_in: 3, sonnet_out: 15 },
-  // FREIN BUDGET des CAMPAGNES (R3, garde-fou §2.6 « < 10 $/mois » rendu EFFECTIF — vécu :
-  // 15,62 $ le 7 juillet, le grand rangement churnait l'ancien Drive toute la nuit) : au-delà
-  // de ce coût MENSUEL mesuré, les campagnes de MASSE (grand rangement, migration, historique
-  // Gmail) se mettent en pause jusqu'au mois suivant — le FLUX VIVANT (Gmail 30 j, dépôts,
-  // partages, intentions, tri) continue, lui. Relever cette valeur = choix explicite de Marc.
-  LLM_BUDGET_CAMPAGNES: 10,
+  // FREIN BUDGET des CAMPAGNES (R3, garde-fou §2.6 rendu EFFECTIF — vécu : 15,62 $ le 7 juillet,
+  // le grand rangement churnait l'ancien Drive toute la nuit) : au-delà de ce coût MENSUEL mesuré,
+  // les campagnes de MASSE (grand rangement, migration, historique Gmail) se mettent en pause
+  // jusqu'au mois suivant — le FLUX VIVANT (Gmail 30 j, dépôts, partages, intentions, tri)
+  // continue, lui. Relevé 10 → 30 (décision Marc 2026-07-07 : « je veux que tu continues le tri
+  // au complet » — les campagnes de RATTRAPAGE sont un coût one-shot ; la cible < 10 $/mois reste
+  // celle du régime de croisière une fois le rattrapage fini). Jamais 0/Infinity : le frein reste
+  // le filet anti-emballement (boucle de re-OCR, erreur de convergence).
+  LLM_BUDGET_CAMPAGNES: 30,
   // Résumé hebdomadaire automatique (mail récap à soi-même, scope script.send_mail existant).
   RESUME_JOUR: 'MONDAY',                  // jour du déclencheur hebdo (WeekDay Apps Script)
   RESUME_HEURE: 8,                        // heure locale d'envoi
