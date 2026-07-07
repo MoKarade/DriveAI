@@ -416,6 +416,20 @@ var CONFIG = {
                                           // lui, la campagne épuiserait le quota en quelques heures et
                                           // l'intake serait mort le reste de la journée
 
+  // --- C26-07 (ADR-0015) : PREUVE dry-run avant/après du pipeline v2, sur un échantillon RÉEL ---
+  // Prérequis à la campagne C26-08 et à l'allumage de ANALYSE_V2. Interrupteur DÉDIÉ, distinct
+  // d'ANALYSE_V2 : n'affecte JAMAIS le flux vivant (Haiku 1 passe reste actif tant qu'ANALYSE_V2
+  // est éteint). Exécute classifierDeuxPasses_ + planRoutageV2_ (PUR, aucune I/O) sur un échantillon
+  // stratifié, écrit l'avant/après dans l'onglet Sheet « DryRunV2 » — NE DÉPLACE NI NE RENOMME RIEN.
+  // Coût réel engagé quand ON (Sonnet ×2/doc, ~0,03-0,04 $/doc, ADR-0015) : n'allumer qu'après feu
+  // vert explicite de Marc sur la taille de l'échantillon (docs/RUNBOOK.md).
+  DRYRUN_V2_ACTIF: false,
+  DRYRUN_V2_TAG: 'd1',                    // bumper relance un NOUVEL échantillon (re-facture, décision explicite)
+  DRYRUN_V2_TAILLE: 100,                  // taille cible de l'échantillon global (marge 50-150, à confirmer avec Marc)
+  DRYRUN_V2_MAX_PAR_DOMAINE: 15,          // plafond par domaine — anti-déséquilibre (un domaine énorme n'écrase pas les autres)
+  DRYRUN_V2_MAX_PAR_RUN: 8,               // docs traités (OCR + Sonnet ×2, lourds) par tick — flux vivant reste prioritaire
+  DRYRUN_V2_BUDGET_MS: 2 * 60 * 1000,     // sous-budget PAR TICK (même famille que MIGRATION_BUDGET_MS)
+
   // Schémas de sous-dossiers FIXES créés à la validation d'une entité (docs/TAXONOMY.md).
   // Clé = Type d'entité ; valeur = liste ordonnée de sous-dossiers.
   SCHEMAS_ENTITE: {
@@ -455,12 +469,17 @@ function domainesAutorises_() {
 }
 
 /**
- * Garde-temps effectif du run : abaissé sous ANALYSE_V2 (Sonnet ×2/doc = documents bien plus longs)
- * pour tenir le mur dur des 6 min avec de la marge (ADR-0015). Haiku 1 passe → budget nominal. PUR.
+ * Garde-temps effectif du run : abaissé quand un document du tick peut passer par le pipeline
+ * Sonnet ×2 (documents bien plus longs) pour tenir le mur dur des 6 min avec de la marge
+ * (ADR-0015). Couvre `ANALYSE_V2` (flux vivant) ET `DRYRUN_V2_ACTIF` (C26-07) : le dry-run exécute
+ * EXACTEMENT le même pipeline lourd (`classifierDeuxPasses_`) alors qu'`ANALYSE_V2` reste ÉTEINT
+ * par construction (interrupteur dédié) — sans ce OU, le dry-run tournerait avec le budget
+ * calibré Haiku (270 s) au lieu des 180 s prévus pour ce coût-temps, revue llm-cost-optimizer #26.
+ * Haiku seul (aucun des deux ON) → budget nominal. PUR.
  * @return {number} millisecondes
  */
 function budgetMsRun_() {
-  return CONFIG.ANALYSE_V2 ? CONFIG.ANALYSE_V2_BUDGET_MS : CONFIG.BUDGET_MS;
+  return (CONFIG.ANALYSE_V2 || CONFIG.DRYRUN_V2_ACTIF) ? CONFIG.ANALYSE_V2_BUDGET_MS : CONFIG.BUDGET_MS;
 }
 
 /** Catégories connues (Phase 1), pour borner la sortie du LLM. */

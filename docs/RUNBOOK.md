@@ -58,6 +58,23 @@ Après recharge, la reprise est automatique en ≤ 1 h (ligne Journal « Compte 
 ### 🔧 Relancer un grand rangement de zéro
 - Bumper **`CONFIG.RANGEMENT_TAG`** → re-parcours complet, **borné + reprenable**, déplacement seul.
 
+### 🟦 Lancer le dry-run v2 (preuve avant/après) — `CONFIG.DRYRUN_V2_ACTIF` (C26-07, ADR-0015)
+> Prérequis à la campagne C26-08 ET à l'allumage d'`ANALYSE_V2` ci-dessous. Interrupteur DÉDIÉ,
+> distinct d'`ANALYSE_V2` — n'affecte JAMAIS le flux vivant (Haiku reste actif tant qu'`ANALYSE_V2`
+> est éteint), mais exécute le VRAI pipeline Sonnet ×2 (coût réel, ~0,03-0,04 $/doc, ADR-0015).
+1. **Confirmer avec Marc** la taille de l'échantillon (`CONFIG.DRYRUN_V2_TAILLE`, 100 par défaut,
+   marge 50-150) et son coût estimé (~3-4 $, jusqu'à ~6 $ à 150) — un feu vert DISTINCT et plus
+   petit que celui de la campagne C26-08.
+2. Mettre `CONFIG.DRYRUN_V2_ACTIF: true`, déployer. Le moteur sélectionne un échantillon stratifié
+   par domaine (y compris `04 · Immigration`, lecture seule) et l'analyse, quelques documents par
+   tick (`DRYRUN_V2_MAX_PAR_RUN`).
+3. **Vérifier l'onglet Sheet `DryRunV2`** : avant/après par document (domaine/sous-dossier/nom
+   proposés, fail-safe déclenché ou non, coût mesuré) — AUCUN fichier n'est déplacé/renommé.
+4. Une fois `DriveAI_DRYRUNV2` = tag courant (Property, campagne terminée) : repasser
+   `CONFIG.DRYRUN_V2_ACTIF: false`, présenter la Sheet à Marc pour validation avant C26-08.
+5. **Relancer un nouvel échantillon** : bumper `CONFIG.DRYRUN_V2_TAG` (ex. `d1` → `d2`) — coût
+   PAYANT à nouveau, décision explicite seulement.
+
 ### 🟦 Allumer l'analyse v2 (Sonnet 2 passes) — `CONFIG.ANALYSE_V2` (ADR-0015)
 > Le pipeline v2 (fiabilité maximale) est livré **éteint**. NE PAS mettre `ANALYSE_V2: true` sans cette checklist — Sonnet ×2/doc coûte ~×10-20 et double le temps par document.
 1. **Campagnes closes** : rangement (`RANGEMENT_TAG` r3 terminé, `RANGEMENT_RACINES_SUP: []`), migration, historique Gmail tous finis. Sinon le flux vivant Sonnet + campagne peut épuiser le runtime ~90 min/j et **geler tout le moteur**.

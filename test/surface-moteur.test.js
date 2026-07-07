@@ -92,6 +92,12 @@ const CONTRAT = [
   'actionSyncMiroir_',
   // entités auto-validées (#18)
   'autoValiderEntitesFrequentes_', 'estAutoValidable_', 'entitesAutoValidees_', 'estValidee_',
+  // dry-run v2 (#26, C26-07, ADR-0015) : preuve avant/après, zéro mutation
+  'appliquerDryRunV2_', 'traiterUnDryRunV2_', 'chargerOuGenererEchantillonDryRunV2_',
+  'collecterCandidatsDryRunV2_', 'collecterCandidatsDomaine_', 'domainesAEchantillonner_',
+  'stratifierEchantillonDryRunV2_', 'ligneDryRunV2_', 'cheminActuelDryRunV2_',
+  'encoderEchantillonDryRunV2_', 'decoderEchantillonDryRunV2_',
+  'usageRunSnapshot_', 'coutDollarsDelta_',
 ];
 
 test('surface du moteur : toutes les fonctions du contrat interne sont définies', () => {

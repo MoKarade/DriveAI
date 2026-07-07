@@ -1,7 +1,7 @@
 /**
  * Journal.gs — État dans la Google Sheet + notifications d'échec.
  *
- * Onglets : Entités | Corrections | Index | Journal | Échecs | Santé | Progression (créés au premier run).
+ * Onglets : Entités | Corrections | Index | Journal | Échecs | Santé | Progression | DryRunV2 (créés au premier run).
  * - Index   : catalogue des fichiers traités (sert l'idempotence + la recherche Phase 4).
  * - Journal : log d'exécution + erreurs.
  * Une erreur déclenche TOUJOURS une notif mail immédiate + une ligne de Journal.
@@ -29,6 +29,11 @@ function initialiserSheet_(ss) {
   if (fReg && String(fReg.getRange('A2').getValue()) === '') {
     fReg.getRange('A2:B2').setValues([['TICK_MINUTES', CONFIG.TICK_MINUTES]]);
   }
+  // C26-07 (ADR-0015) : avant/après du dry-run v2 sur échantillon réel — RAPPORT seul (jamais lu
+  // pour l'idempotence, qui vit dans Index via la clé `dryrunv2|<tag>|fileId` comme Migration.gs).
+  creerOnglet_(ss, 'DryRunV2', ['Horodaté', 'ID fichier', 'Nom actuel', 'Domaine actuel', 'Chemin actuel',
+    'Type v2', 'Domaine proposé', 'Sous-dossier proposé', 'Nom proposé', 'Fail-safe déclenché',
+    'Confiance', 'Coût $ mesuré']);
   creerOnglet_(ss, 'Progression', ['Rangement de l\'ancien Drive']);        // barre de chargement (cf. Maintenance)
   creerOnglet_(ss, 'Santé', ['Santé DriveAI']);                             // vue lisible (heartbeat + métriques, ADR-0006)
   var defaut = ss.getSheetByName('Feuille 1') || ss.getSheetByName('Sheet1');
