@@ -132,8 +132,38 @@ function collecterCandidatsDryRunV2_(estBudgetDepasse) {
       journalErreur_('DryRunV2', 'Domaine inaccessible à la collecte (' + domaines[i].domaine + ') : ' + e);
     }
     candidats[domaines[i].domaine] = ids;
+    // Re-vérifié APRÈS la collecte du domaine (pas seulement en tête de boucle) : le budget peut
+    // basculer PENDANT `collecterCandidatsDomaine_` (elle s'arrête tôt, mais SANS remonter
+    // l'information) — sans ce test, le dernier domaine collecté partiellement passerait pour
+    // complet et casserait l'invariant « jamais persister un échantillon partiel » (revue code #26).
+    if (estBudgetDepasse()) { complet = false; break; }
   }
   return { candidats: candidats, complet: complet };
+}
+
+/**
+ * Encode l'échantillon en forme COMPACTE pour la persistance Property (limite ~9 Ko/valeur) : les
+ * noms de domaine (répétés jusqu'à `DRYRUN_V2_TAILLE` fois, ~30 car. chacun) sont remplacés par un
+ * index dans une table courte — un échantillon de 150 documents encodé NAÏVEMENT (domaine en clair
+ * par item) dépasse la limite (mesuré, revue code #26) ; `setProperty` lèverait alors à chaque tick
+ * sans jamais réussir à persister (la collecte, coûteuse en appels Drive, serait refaite en pure
+ * perte). PURE.
+ * @param {{domaine:string, id:string}[]} echantillon
+ * @return {{domaines:string[], items:Array<[number,string]>}}
+ */
+function encoderEchantillonDryRunV2_(echantillon) {
+  var domaines = [];
+  var index = {};
+  var items = echantillon.map(function (e) {
+    if (!(e.domaine in index)) { index[e.domaine] = domaines.length; domaines.push(e.domaine); }
+    return [index[e.domaine], e.id];
+  });
+  return { domaines: domaines, items: items };
+}
+
+/** Inverse de `encoderEchantillonDryRunV2_`. PURE. @param {Object} encode @return {{domaine:string, id:string}[]} */
+function decoderEchantillonDryRunV2_(encode) {
+  return (encode.items || []).map(function (it) { return { domaine: encode.domaines[it[0]], id: it[1] }; });
 }
 
 /**
@@ -148,12 +178,12 @@ function chargerOuGenererEchantillonDryRunV2_(estBudgetDepasse) {
   var cle = 'DriveAI_DRYRUNV2_ECHANTILLON_' + CONFIG.DRYRUN_V2_TAG;
   var brut = props.getProperty(cle);
   if (brut) {
-    try { return JSON.parse(brut); } catch (e) { /* corrompu → régénère ci-dessous */ }
+    try { return decoderEchantillonDryRunV2_(JSON.parse(brut)); } catch (e) { /* corrompu → régénère ci-dessous */ }
   }
   var r = collecterCandidatsDryRunV2_(estBudgetDepasse);
   if (!r.complet) return null; // interrompue : rien de persisté, reprise au prochain tick
   var echantillon = stratifierEchantillonDryRunV2_(r.candidats, CONFIG.DRYRUN_V2_MAX_PAR_DOMAINE, CONFIG.DRYRUN_V2_TAILLE);
-  props.setProperty(cle, JSON.stringify(echantillon));
+  props.setProperty(cle, JSON.stringify(encoderEchantillonDryRunV2_(echantillon)));
   journalInfo_('DryRunV2', 'Échantillon généré (' + echantillon.length + ' documents, tag « ' + CONFIG.DRYRUN_V2_TAG + ' »).');
   return echantillon;
 }
@@ -246,6 +276,10 @@ function traiterUnDryRunV2_(fileId, domaineActuel, tag) {
   } catch (e) {
     indexAjouter_(cle, { statut: 'dry-run illisible', nom: fileId, domaine: '', chemin: '' }, '');
     journalErreur_('DryRunV2', 'Fichier illisible ignoré (' + fileId + ') : ' + e);
+    // Une ligne quand même (jamais un no-op silencieux, cf. @return ci-dessus) : un fichier
+    // disparu/permission retirée entre la collecte et le traitement ne doit pas s'effacer du
+    // rapport que Marc lit pour valider C26-08 — seul l'Index technique en garderait trace sinon.
+    feuille_('DryRunV2').appendRow(ligneDryRunV2_({ id: fileId, nom: fileId, domaineActuel: domaineActuel, cheminActuel: domaineActuel }, null, null, 0));
     return true;
   }
 

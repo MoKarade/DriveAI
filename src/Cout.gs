@@ -123,7 +123,8 @@ function coutDollarsDelta_(avant, apres) {
 /**
  * Copie de l'accumulateur du run courant (jamais la référence — l'appelant ne doit pas pouvoir
  * muter `_usageRun`). Sert à mesurer un coût PAR DOCUMENT par différence de 2 relevés (dry-run
- * C26-07) sans dupliquer la comptabilité de `enregistrerUsage_`. {} si aucun run en cours.
+ * C26-07) sans dupliquer la comptabilité de `enregistrerUsage_`. Un objet ZÉRO (jamais `{}` — le
+ * delta marche sans garde supplémentaire côté appelant) si aucun run en cours.
  * @return {{hin:number,hout:number,sin:number,sout:number,appels:number}}
  */
 function usageRunSnapshot_() {

@@ -159,6 +159,181 @@ test('collecterCandidatsDomaine_ : budget épuisé → arrêt immédiat', () => 
   assert.strictEqual(ids.length, 0);
 });
 
+/* ---------- collecterCandidatsDryRunV2_ : orchestration multi-domaines, complétude ---------- */
+
+function ctxCollecte(dossiersParId) {
+  const ctx = load(['Config.gs', 'DryRunV2.gs']);
+  ctx.journalErreur_ = () => {};
+  ctx.domainesAEchantillonner_ = () => Object.keys(dossiersParId).map((id) => ({ domaine: id, dossierId: id }));
+  ctx.DriveApp = { getFolderById: (id) => dossiersParId[id] };
+  return ctx;
+}
+
+test('collecterCandidatsDryRunV2_ : tous les domaines collectés, budget jamais atteint → complet', () => {
+  const ctx = ctxCollecte({
+    A: fauxDossier([fakeFile({ id: 'a1', mime: 'application/pdf' })]),
+    B: fauxDossier([fakeFile({ id: 'b1', mime: 'application/pdf' })]),
+  });
+  const r = ctx.collecterCandidatsDryRunV2_(() => false);
+  assert.strictEqual(r.complet, true);
+  assert.deepStrictEqual(plat(r.candidats), { A: ['a1'], B: ['b1'] });
+});
+
+test('collecterCandidatsDryRunV2_ : budget dépassé AVANT un domaine → incomplet (jamais persisté)', () => {
+  const ctx = ctxCollecte({ A: fauxDossier([]), B: fauxDossier([]) });
+  let appels = 0;
+  const r = ctx.collecterCandidatsDryRunV2_(() => { appels++; return appels > 1; }); // dépassé au 2e domaine
+  assert.strictEqual(r.complet, false);
+});
+
+test('collecterCandidatsDryRunV2_ : budget dépassé PENDANT la collecte du DERNIER domaine → incomplet (fix code-reviewer #26)', () => {
+  // Le budget ne bascule PAS en tête de boucle (le test entre dans le dernier domaine), mais
+  // `estBudgetDepasse` devient vrai APRÈS la collecte de ce domaine — sans le fix, `complet`
+  // resterait `true` malgré une collecte potentiellement partielle sur ce domaine.
+  const ctx = ctxCollecte({ A: fauxDossier([fakeFile({ id: 'a1', mime: 'application/pdf' })]) });
+  let appels = 0;
+  const r = ctx.collecterCandidatsDryRunV2_(() => { appels++; return appels > 1; }); // faux au 1er (entrée), vrai ensuite
+  assert.strictEqual(r.complet, false, 'une bascule du budget APRÈS le dernier domaine doit être détectée');
+});
+
+test('collecterCandidatsDryRunV2_ : domaine INACCESSIBLE (dossier introuvable) → sauté (journalisé), les autres continuent, reste complet', () => {
+  // Distinct du cas « fichier illisible dans un dossier accessible » (déjà couvert par
+  // `collecterCandidatsDomaine_`, qui l'avale silencieusement) : ici c'est le DOMAINE entier
+  // (`getFolderById`) qui échoue — le seul cas que le try/catch de `collecterCandidatsDryRunV2_` couvre.
+  const ctx = load(['Config.gs', 'DryRunV2.gs']);
+  ctx.domainesAEchantillonner_ = () => [{ domaine: 'A', dossierId: 'IDA' }, { domaine: 'B', dossierId: 'IDB' }];
+  ctx.DriveApp = {
+    getFolderById: (id) => {
+      if (id === 'IDA') throw new Error('dossier supprimé');
+      return fauxDossier([fakeFile({ id: 'b1', mime: 'application/pdf' })]);
+    },
+  };
+  const journaux = [];
+  ctx.journalErreur_ = (s, m) => journaux.push(m);
+  const r = ctx.collecterCandidatsDryRunV2_(() => false);
+  assert.strictEqual(r.complet, true);
+  assert.deepStrictEqual(plat(r.candidats.B), ['b1']);
+  assert.strictEqual(journaux.length, 1);
+});
+
+/* ---------- encoderEchantillonDryRunV2_ / decoderEchantillonDryRunV2_ : compact + round-trip ---------- */
+
+test('encoderEchantillonDryRunV2_ / decoderEchantillonDryRunV2_ : round-trip fidèle', () => {
+  const ctx = load(['Config.gs', 'DryRunV2.gs']);
+  const echantillon = [
+    { domaine: 'A', id: 'x1' }, { domaine: 'A', id: 'x2' }, { domaine: 'B', id: 'y1' },
+  ];
+  const encode = ctx.encoderEchantillonDryRunV2_(echantillon);
+  assert.deepStrictEqual(plat(encode.domaines), ['A', 'B']); // table courte, sans répétition
+  const decode = ctx.decoderEchantillonDryRunV2_(encode);
+  assert.deepStrictEqual(plat(decode), echantillon);
+});
+
+test('encoderEchantillonDryRunV2_ : reste sous la limite Property (~9 Ko) même au plafond DRYRUN_V2_TAILLE=150', () => {
+  // Preuve mesurée (revue code-reviewer #26) : l'encodage NAÏF (domaine en clair par item) dépasse
+  // ~12,5 Ko à 150 documents. Dérivé de CONFIG (jamais un nombre en dur, cf. leçon « seuil dans la clé »).
+  const ctx = load(['Config.gs', 'DryRunV2.gs']);
+  const domaines = Object.keys(ctx.CONFIG.DOMAINES).concat(ctx.CONFIG.DOMAINES_AUTO);
+  const gros = Array.from({ length: 150 }, (_, i) => ({
+    domaine: domaines[i % domaines.length],
+    id: '1' + 'a'.repeat(32), // longueur d'ID Drive réaliste (33 car.)
+  }));
+  const taille = JSON.stringify(ctx.encoderEchantillonDryRunV2_(gros)).length;
+  assert.ok(taille < 8500, `encodage = ${taille} car., doit rester sous la marge de sécurité (limite Property ~9 Ko)`);
+});
+
+/* ---------- chargerOuGenererEchantillonDryRunV2_ : persistance, régénération, corruption ---------- */
+
+test('chargerOuGenererEchantillonDryRunV2_ : génère + persiste (encodé) au 1er appel, relit ensuite', () => {
+  const store = {};
+  const ctx = load(['Config.gs', 'DryRunV2.gs'], {
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: (k) => (k in store ? store[k] : null),
+      setProperty: (k, v) => { store[k] = String(v); },
+    }) },
+  });
+  ctx.journalInfo_ = () => {};
+  ctx.collecterCandidatsDryRunV2_ = () => ({ candidats: { A: ['a1', 'a2'] }, complet: true });
+  const r1 = ctx.chargerOuGenererEchantillonDryRunV2_(() => false);
+  assert.deepStrictEqual(plat(r1), [{ domaine: 'A', id: 'a1' }, { domaine: 'A', id: 'a2' }]);
+  const cle = 'DriveAI_DRYRUNV2_ECHANTILLON_' + ctx.CONFIG.DRYRUN_V2_TAG;
+  assert.ok(store[cle], 'persisté en Property');
+  assert.ok(!store[cle].includes('"domaine":"A"'), 'forme COMPACTE (jamais le nom de domaine en clair par item)');
+
+  ctx.collecterCandidatsDryRunV2_ = () => { throw new Error('ne doit PAS être re-collecté'); };
+  const r2 = ctx.chargerOuGenererEchantillonDryRunV2_(() => false);
+  assert.deepStrictEqual(plat(r2), plat(r1));
+});
+
+test('chargerOuGenererEchantillonDryRunV2_ : collecte incomplète → null, RIEN persisté (reprise au tick suivant)', () => {
+  const store = {};
+  const ctx = load(['Config.gs', 'DryRunV2.gs'], {
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: (k) => (k in store ? store[k] : null),
+      setProperty: (k, v) => { store[k] = String(v); },
+    }) },
+  });
+  ctx.collecterCandidatsDryRunV2_ = () => ({ candidats: { A: ['a1'] }, complet: false });
+  const r = ctx.chargerOuGenererEchantillonDryRunV2_(() => true);
+  assert.strictEqual(r, null);
+  assert.strictEqual(Object.keys(store).length, 0, 'jamais un échantillon partiel persisté');
+});
+
+test('chargerOuGenererEchantillonDryRunV2_ : Property corrompue → régénère proprement (jamais un plantage)', () => {
+  const store = { DriveAI_DRYRUNV2_ECHANTILLON_d1: '{pas du json valide' };
+  const ctx = load(['Config.gs', 'DryRunV2.gs'], {
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: (k) => (k in store ? store[k] : null),
+      setProperty: (k, v) => { store[k] = String(v); },
+    }) },
+  });
+  ctx.journalInfo_ = () => {};
+  ctx.collecterCandidatsDryRunV2_ = () => ({ candidats: { A: ['a1'] }, complet: true });
+  const r = ctx.chargerOuGenererEchantillonDryRunV2_(() => false);
+  assert.deepStrictEqual(plat(r), [{ domaine: 'A', id: 'a1' }]);
+});
+
+/* ---------- cheminActuelDryRunV2_ : profondeur multi-niveaux, bornée, dégradation ---------- */
+
+function fauxFichierParents(chaineNoms) {
+  // Construit un file → parent → parent → … depuis une liste de noms (ordre feuille→racine).
+  let courant = null;
+  for (let i = chaineNoms.length - 1; i >= 0; i--) {
+    const nom = chaineNoms[i];
+    const suivant = courant;
+    courant = { getName: () => nom, getParents: () => iter(suivant ? [suivant] : []) };
+  }
+  return { getParents: () => iter(courant ? [courant] : []) };
+}
+
+test('cheminActuelDryRunV2_ : multi-niveaux (entité + sous-dossier), s\'arrête AU domaine (exclu)', () => {
+  const ctx = load(['Config.gs', 'DryRunV2.gs']);
+  const f = fauxFichierParents(['Entretien & réparations', 'Véhicule — Honda Civic', 'Véhicule', '03 · Logement & véhicule']);
+  const r = ctx.cheminActuelDryRunV2_(f, '03 · Logement & véhicule');
+  assert.strictEqual(r, '03 · Logement & véhicule/Véhicule/Véhicule — Honda Civic/Entretien & réparations');
+});
+
+test('cheminActuelDryRunV2_ : à la racine du domaine (aucun sous-dossier) → domaine seul', () => {
+  const ctx = load(['Config.gs', 'DryRunV2.gs']);
+  const f = fauxFichierParents(['02 · Finances']);
+  assert.strictEqual(ctx.cheminActuelDryRunV2_(f, '02 · Finances'), '02 · Finances');
+});
+
+test('cheminActuelDryRunV2_ : borné à 5 niveaux (anti-boucle), jamais un plantage sur une chaîne trop profonde', () => {
+  const ctx = load(['Config.gs', 'DryRunV2.gs']);
+  const chaine = Array.from({ length: 10 }, (_, i) => 'niveau' + i); // jamais « 08 · Perso & projets »
+  const f = fauxFichierParents(chaine.concat(['08 · Perso & projets']));
+  const r = ctx.cheminActuelDryRunV2_(f, '08 · Perso & projets');
+  assert.strictEqual(r.split('/').length - 1, 5, 'au plus 5 segments au-delà du domaine');
+});
+
+test('cheminActuelDryRunV2_ : ancêtre illisible → dégrade sur ce qui a pu être lu, jamais un plantage', () => {
+  const ctx = load(['Config.gs', 'DryRunV2.gs']);
+  const cassé = { getParents: () => { throw new Error('illisible'); } };
+  const f = { getParents: () => iter([{ getName: () => 'sous-dossier', getParents: () => iter([cassé]) }]) };
+  assert.strictEqual(ctx.cheminActuelDryRunV2_(f, '01 · Administratif & identité'), '01 · Administratif & identité/sous-dossier');
+});
+
 /* ---------- traiterUnDryRunV2_ / appliquerDryRunV2_ : idempotence, convergence, bornage ---------- */
 
 function ctxTraiter(opts) {
@@ -210,16 +385,22 @@ test('traiterUnDryRunV2_ : échec LLM (classif null) → ligne « échec », tou
   assert.strictEqual(calls.index.length, 1); // jamais re-collecté à vie
 });
 
-test('traiterUnDryRunV2_ : fichier illisible → jamais fatal, marqué et journalisé', () => {
+test('traiterUnDryRunV2_ : fichier illisible → jamais fatal, marqué ET une ligne écrite (jamais un no-op silencieux)', () => {
   const ctx = load(['Config.gs', 'Entites.gs', 'Router.gs', 'DryRunV2.gs']);
-  const calls = { index: [], journaux: [] };
+  const calls = { index: [], journaux: [], rows: [] };
   ctx.journalErreur_ = (s, m) => calls.journaux.push(m);
   ctx.indexAjouter_ = (cle, res) => calls.index.push({ cle, res });
+  ctx.feuille_ = (nom) => ({ appendRow: (ligne) => calls.rows.push({ nom, ligne }) });
   ctx.DriveApp = { getFileById: () => { throw new Error('introuvable'); } };
   const r = ctx.traiterUnDryRunV2_('KO', '02 · Finances', 'd1');
   assert.strictEqual(r, true);
   assert.strictEqual(calls.index[0].cle, 'dryrunv2|d1|KO');
   assert.strictEqual(calls.index[0].res.statut, 'dry-run illisible');
+  // Un fichier supprimé/permission retirée entre la collecte et le traitement ne doit PAS
+  // disparaître du rapport que Marc lit pour valider C26-08 (fix code-reviewer #26).
+  assert.strictEqual(calls.rows.length, 1);
+  assert.strictEqual(calls.rows[0].nom, 'DryRunV2');
+  assert.strictEqual(calls.rows[0].ligne[5], 'échec classification');
 });
 
 test('appliquerDryRunV2_ : interrupteur DÉDIÉ éteint par défaut → no-op total, zéro appel Drive', () => {
