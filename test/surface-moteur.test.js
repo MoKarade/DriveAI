@@ -79,6 +79,8 @@ const CONTRAT = [
   // documents d'identité & titulaire (refonte 2026-07-07)
   'normaliserTypeIdentite_', 'estDocumentIdentitePersonnel_', 'dossierIdentite_', 'titulairePourNom_',
   'nommerDocument_', 'garantirNomUnique_', 'casseNomPersonne_',
+  // décision non-document (refonte 2026-07-07)
+  'decisionNonDocument_', 'distinguerVraiScan_', 'estExportDonnees_', 'estMediaSansTexte_', 'extensionEstTechnique_',
   // entités auto-validées (#18)
   'autoValiderEntitesFrequentes_', 'estAutoValidable_', 'entitesAutoValidees_', 'estValidee_',
 ];

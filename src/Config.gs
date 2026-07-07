@@ -311,6 +311,10 @@ var CONFIG = {
   ],
   EXT_PHOTOS: ['.jpg', '.jpeg', '.png', '.heic', '.heif', '.webp', '.bmp', '.tif', '.tiff'],
   MEDIAS_OCR_MAX_CARS: 20,               // extrait OCR sous ce seuil = « photo sans texte »
+  // Exports de compte (Facebook/Instagram…) : un gros HTML/JSON de navigation, jamais un document
+  // (refonte 2026-07-07). Au-delà de ce poids ET sans émetteur identifié, un .html/.htm est traité
+  // comme un export → _Technique (une facture .html légitime porte un émetteur et reste plus petite).
+  EXPORT_TAILLE_MIN: 40000,
   // Incident « BACAR » (2026-07-06) : photo de plat classée « Reçu de dépôt_BACAR » — l'OCR avait
   // lu les étiquettes de bouteilles (> 20 cars) et le LLM a inventé un document. Le seuil OCR reste
   // BAS (un passeport mal photographié doit atteindre le juge, §1) ; c'est la CONFIANCE du verdict
