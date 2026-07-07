@@ -469,12 +469,17 @@ function domainesAutorises_() {
 }
 
 /**
- * Garde-temps effectif du run : abaissé sous ANALYSE_V2 (Sonnet ×2/doc = documents bien plus longs)
- * pour tenir le mur dur des 6 min avec de la marge (ADR-0015). Haiku 1 passe → budget nominal. PUR.
+ * Garde-temps effectif du run : abaissé quand un document du tick peut passer par le pipeline
+ * Sonnet ×2 (documents bien plus longs) pour tenir le mur dur des 6 min avec de la marge
+ * (ADR-0015). Couvre `ANALYSE_V2` (flux vivant) ET `DRYRUN_V2_ACTIF` (C26-07) : le dry-run exécute
+ * EXACTEMENT le même pipeline lourd (`classifierDeuxPasses_`) alors qu'`ANALYSE_V2` reste ÉTEINT
+ * par construction (interrupteur dédié) — sans ce OU, le dry-run tournerait avec le budget
+ * calibré Haiku (270 s) au lieu des 180 s prévus pour ce coût-temps, revue llm-cost-optimizer #26.
+ * Haiku seul (aucun des deux ON) → budget nominal. PUR.
  * @return {number} millisecondes
  */
 function budgetMsRun_() {
-  return CONFIG.ANALYSE_V2 ? CONFIG.ANALYSE_V2_BUDGET_MS : CONFIG.BUDGET_MS;
+  return (CONFIG.ANALYSE_V2 || CONFIG.DRYRUN_V2_ACTIF) ? CONFIG.ANALYSE_V2_BUDGET_MS : CONFIG.BUDGET_MS;
 }
 
 /** Catégories connues (Phase 1), pour borner la sortie du LLM. */

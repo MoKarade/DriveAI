@@ -199,6 +199,34 @@ function ligneDryRunV2_(avant, classif, plan, coutDoc) {
 /* ---------- Traitement d'un document (I/O, lecture + 1 écriture de rapport, ZÉRO mutation) ---------- */
 
 /**
+ * Chemin LISIBLE depuis le domaine jusqu'au fichier (premier parent à chaque niveau), pour que
+ * Marc juge le VRAI avant/après sur les domaines à schéma d'entité (Logement/Véhicule/Compte
+ * financier/Diplôme, `docs/TAXONOMY.md`) — un document y est 3-4 niveaux sous le domaine (ex.
+ * « Véhicule/Véhicule — Honda Civic (…)/Entretien & réparations »), un seul niveau afficherait à
+ * tort une structure plate (revue structure-keeper #26). Borné à 5 niveaux (même anti-boucle que
+ * `chaineMonteVersProtege_`, Maintenance.gs) ; s'arrête AU dossier de domaine (exclu, jamais
+ * répété — même règle que `nommerDocument_`, l'entité vit dans le CHEMIN pas dans le nom).
+ * Lecture seule (`getParents`/`getName`), dégrade sur `domaineActuel` seul si illisible/absent —
+ * ZÉRO mutation. @param {File} f @param {string} domaineActuel @return {string}
+ */
+function cheminActuelDryRunV2_(f, domaineActuel) {
+  var segments = [];
+  var courant = f;
+  for (var i = 0; i < 5; i++) {
+    var parents;
+    try { parents = courant.getParents(); } catch (e) { break; }
+    if (!parents.hasNext()) break;
+    var parent = parents.next();
+    var nom;
+    try { nom = parent.getName(); } catch (e) { break; }
+    if (nom === domaineActuel) break; // dossier de domaine atteint : jamais répété dans le chemin
+    segments.unshift(nom);
+    courant = parent;
+  }
+  return domaineActuel + (segments.length ? '/' + segments.join('/') : '');
+}
+
+/**
  * Analyse UN document de l'échantillon : OCR (troncature v2 explicite, SANS activer
  * `ANALYSE_V2`), `classifierDeuxPasses_`, `planRoutageV2_` (PUR). Écrit la ligne avant/après et
  * marque la clé de convergence. Ne touche JAMAIS Drive en écriture (lecture de blob/parents
@@ -214,9 +242,7 @@ function traiterUnDryRunV2_(fileId, domaineActuel, tag) {
   try {
     f = DriveApp.getFileById(fileId);
     nom = f.getName();
-    var parents = f.getParents();
-    cheminActuel = domaineActuel + (parents.hasNext() ? '/' + parents.next().getName() : '');
-    if (cheminActuel.indexOf(domaineActuel + '/' + domaineActuel) === 0) cheminActuel = domaineActuel; // à la racine du domaine
+    cheminActuel = cheminActuelDryRunV2_(f, domaineActuel);
   } catch (e) {
     indexAjouter_(cle, { statut: 'dry-run illisible', nom: fileId, domaine: '', chemin: '' }, '');
     journalErreur_('DryRunV2', 'Fichier illisible ignoré (' + fileId + ') : ' + e);
@@ -271,13 +297,18 @@ function appliquerDryRunV2_(estBudgetDepasse) {
   if (props.getProperty('DriveAI_DRYRUNV2') === tag) return; // campagne déjà terminée
   if (estBudgetDepasse()) return;
 
+  // Sélection de l'échantillon : liste-only (aucun OCR/LLM), donc bornée par le SEUL budget
+  // GLOBAL du tick — PAS le sous-budget DRYRUN_V2_BUDGET_MS ci-dessous (dimensionné pour les
+  // appels Sonnet coûteux du traitement). Un sous-budget de 2 min appliqué aussi à la collecte
+  // risquerait de ne jamais réussir à compléter un walk sur les 9 domaines d'un vrai Drive
+  // volumineux → l'échantillon ne se persisterait jamais (revue apps-script-quota #26).
+  var echantillon = chargerOuGenererEchantillonDryRunV2_(estBudgetDepasse);
+  if (!echantillon) return; // collecte de l'échantillon pas encore complète — reprise au tick suivant
+
   var debut = Date.now();
   var garde = function () {
     return estBudgetDepasse() || (Date.now() - debut) > CONFIG.DRYRUN_V2_BUDGET_MS;
   };
-
-  var echantillon = chargerOuGenererEchantillonDryRunV2_(garde);
-  if (!echantillon) return; // collecte de l'échantillon pas encore complète — reprise au tick suivant
 
   var nonFait = function (item) { return !indexContient_('dryrunv2|' + tag + '|' + item.id); };
   var aTraiter = echantillon.filter(nonFait);

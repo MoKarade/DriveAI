@@ -104,3 +104,15 @@ test('budgetMsRun_ : garde-temps nominal quand OFF, abaissé quand ON', () => {
     ctx.CONFIG.ANALYSE_V2 = sauvegarde; // ne pas fuiter l'état entre tests
   }
 });
+
+test('budgetMsRun_ : abaissé aussi sous DRYRUN_V2_ACTIF (C26-07 exécute le même pipeline Sonnet ×2, ANALYSE_V2 reste OFF)', () => {
+  const sauvegarde = ctx.CONFIG.DRYRUN_V2_ACTIF;
+  try {
+    assert.strictEqual(ctx.CONFIG.ANALYSE_V2, false, 'le dry-run tourne SANS jamais activer le flag live');
+    ctx.CONFIG.DRYRUN_V2_ACTIF = true;
+    assert.strictEqual(ctx.budgetMsRun_(), ctx.CONFIG.ANALYSE_V2_BUDGET_MS,
+      'même marge de sécurité que ANALYSE_V2 — le dry-run fait le même travail lourd par doc');
+  } finally {
+    ctx.CONFIG.DRYRUN_V2_ACTIF = sauvegarde;
+  }
+});

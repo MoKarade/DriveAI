@@ -269,9 +269,14 @@ test('VERROU zéro-mutation : DryRunV2.gs n\'appelle JAMAIS une fonction de muta
   const contenu = fs.readFileSync(chemin, 'utf-8');
   // Adjacence STRICTE nom+« ( » (un vrai appel) : les mentions en prose dans les commentaires
   // (ex. « jamais deciderRoutageV2_ (qui crée... ») ne portent jamais ce motif — jamais de faux positif.
+  // Liste PROUVÉE exhaustive par la revue security-auditor #26 (injection empirique de 3 mutations
+  // natives absentes de la 1ʳᵉ version — setName/createFile/addFile — confirmées NON détectées avant
+  // cet ajout) : wrappers du moteur + API Drive natives de mutation (renommage, création, multi-parents).
   const INTERDITS = [
     'deciderRoutageV2_(', 'sousDossier_(', 'renommer_(', 'deplacerEtRenommer_(',
-    'garantirNomUnique_(', 'creerRaccourci_(', 'setTrashed(', '.moveTo(', 'createFolder(',
+    'garantirNomUnique_(', 'creerRaccourci_(',
+    'setTrashed(', '.moveTo(', 'createFolder(', '.setName(', '.createFile(',
+    '.addFile(', '.removeFile(', '.createShortcut(',
   ];
   const violations = INTERDITS.filter((motif) => contenu.includes(motif));
   assert.deepStrictEqual(violations, [],
