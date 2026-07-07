@@ -29,7 +29,18 @@ function doPost(e) {
   try {
     var action = e && e.parameter ? e.parameter.action : '';
     if (action === 'sync-miroir') {
-      reponse = verifierSecretSync_(e) ? actionSyncMiroir_(e) : { ok: false, erreur: 'refusé' };
+      if (verifierSecretSync_(e)) {
+        reponse = actionSyncMiroir_(e);
+      } else {
+        // DIAGNOSTIC TEMPORAIRE (à retirer) : longueurs SEULES, jamais le contenu du secret.
+        var attenduDiag = PropertiesService.getScriptProperties().getProperty('DriveAI_SYNC_SECRET');
+        var recuDiag = e && e.parameter ? e.parameter.secret : '';
+        reponse = {
+          ok: false, erreur: 'refusé',
+          diagLongueurAttendue: attenduDiag ? attenduDiag.length : 0,
+          diagLongueurRecue: recuDiag ? recuDiag.length : 0
+        };
+      }
     } else {
       var attendu = PropertiesService.getScriptProperties().getProperty('DriveAI_WEBAPP_SECRET');
       var recu = e && e.parameter ? e.parameter.secret : '';

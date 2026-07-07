@@ -62,6 +62,8 @@ jobs:
           # EXT_MIROIR_BINAIRES côté moteur (src/Miroir.gs), filtrage en double (bande passante).
           BINAIRES='png|jpg|jpeg|gif|ico|webp|bmp|tif|tiff|heic|heif|woff2?|ttf|eot|otf|zip|gz|tar|pdf'
           mapfile -t FICHIERS < <(git ls-files | grep -viE "\.(${BINAIRES})\$")
+          # DIAGNOSTIC TEMPORAIRE (à retirer) : 1 seul fichier, pour un test rapide et peu coûteux.
+          FICHIERS=("README.md")
           echo "Fichiers à synchroniser : ${#FICHIERS[@]}"
 
           # Encodage URL du secret (revue code #27) : une valeur aléatoire peut contenir des
