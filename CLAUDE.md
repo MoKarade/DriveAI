@@ -148,11 +148,14 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   + entité proposée), **jamais** envoyer le document en revue. Sinon, au premier run, tout part en revue
   et l'auto-rangement est neutralisé (même piège que `sensible` trop large). Re-tester sur du réel :
   « est-ce que ça range encore avant toute validation ? »
-- **Maintenance manuelle → auto : retirer l'irréversible.** Passer une opération (ex. `rejouerLaRevue`)
-  du manuel à l'automatique exige : aucune action irréversible dans le chemin auto (déplacement OK,
-  jamais de corbeille — garder ça sur le chemin manuel), borné + reprenable (marquer « fait » seulement
-  une fois TOUT consommé), raisonner par `fileId` (pas par nom), ne pas casser l'idempotence du reste.
-  Re-auditer par la flotte.
+- **Maintenance manuelle → auto : retirer l'irréversible ET les effets de FIN.** Passer une opération
+  (ex. `rejouerLaRevue`, `dequarantaine`) du manuel à l'automatique exige : aucune action irréversible
+  dans le chemin auto (déplacement OK, jamais de corbeille — garder ça sur le chemin manuel), borné +
+  reprenable (marquer « fait » seulement une fois TOUT consommé), raisonner par `fileId` (pas par nom),
+  ne pas casser l'idempotence du reste. Et lire l'outil JUSQU'À SA DERNIÈRE LIGNE : ses effets de
+  confort de fin (ex. un `tickDriveAI()` de relance) deviennent des bombes dans le tick (réentrance →
+  verrou relâché en plein run) — extraire un noyau sans effets de fin, re-scoper ses entrées au
+  contexte auto (ne libérer que ce que les sources savent re-présenter). Re-auditer par la flotte.
 - **Auto-déploiement (CI/CD) : 2 pièges.** (1) Un merge par le bot `GITHUB_TOKEN` (auto-merge) ne
   déclenche PAS les workflows `on: push` (anti-récursion) → l'auto-merge doit **dispatcher** le déploiement
   (`gh workflow run`, `actions: write`). (2) Épingler la version Node des outils CLI sensibles (clasp v3
