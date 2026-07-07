@@ -267,6 +267,11 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   merge, regrouper les nouveaux scopes en un seul merge, puis VÉRIFIER la reprise par signaux Drive
   indépendants (heartbeat Sheet, artefact attendu, file `00·À trier` qui se draine). Pour voir une création
   Drive fraîche : `list_recent_files` (recency), pas la recherche (index en retard).
+- **Un test qui verrouille un comportement PARAMÉTRÉ par CONFIG dérive ses cas de la constante
+  (seuil−1/seuil+δ), jamais de sa valeur du jour.** Codé « 16 $ ≥ 10 », il ment au premier
+  rajustement (vécu : plafond campagnes 10→30). Exception : le tripwire qui verrouille la VALEUR
+  elle-même — et le dit en commentaire. Corollaire : toute Property « déjà fait/déjà dit » se
+  re-audite quand un paramètre qu'elle supposait fixe devient variable (le seuil va dans la clé).
 - **Retrait de code : frontières de fonctions + filet de SURFACE.** Jamais de regex multi-lignes pour
   retirer une fonction (elle avale les voisines — vécu ×2, dont `deciderRoutage_` entière) : analyse de
   frontières + assertions de présence des voisines. Les tests unitaires mockés ne voient PAS une fonction
