@@ -5,6 +5,29 @@
 
 ---
 
+## Chantier #26 — REFONTE de l'analyse documentaire (demande Marc « fiabilité maximale », 2026-07-07)  🟦
+
+> Diagnostic prod : 65,6 % d'émetteurs « Inconnu », mauvais domaines (vols → Administratif faute de
+> Voyages), non-documents (exports Facebook) classés jusqu'en Immigration, et 285 entités en vrac
+> (Marc lui-même ×4, génériques, « Ford Fiesta » en 3, une adresse en 6). Décisions Marc : Sonnet +
+> 2 passes + texte complet ; re-analyser tout l'existant (~2400 docs, ~45-70 $ avec cache) ; entités
+> strictes + fusion des variantes ; docs d'identité groupés PAR TYPE (Passeport/Permis…) mêlant Marc
+> et les autres, **nom de la personne dans le fichier dès que ce n'est pas Marc** (pas de `_Tiers`).
+> Conçu + validé par workflow (14/14 cas réels conformes, revue adversariale : 7 correctifs intégrés).
+> Livraison en PR ordonnées, **tests + preuve avant toute campagne de masse** (exigence Marc).
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C26-02 | **Fonctions pures ENTITÉS + tests** (`Entites.gs`) : `canoniserEntite_` (générique→null, Marc→null, retrait suffixe juridique, correction OCR, canonicalisation véhicule/adresse, casse), `estProprietaireMarc_`, `retirerSuffixeJuridique_`, `canoniserVehicule_`, `canoniserAdresse_`, `corrigerOcrConnu_`, `cleCanoniqueEntite_` (clé de fusion) ; `estFusionnableEntite_` DURCI (marque seule + modèle propre ⇒ pas de fusion : Ford ≠ Ford Fiesta). 11 tests, calés sur les vrais cas | ✅ |
+| C26-01 | **Taxonomie** : domaine `09 · Voyages` + sous-dossiers de type identité | ⬜ |
+| C26-03 | **Fonctions pures TITULAIRE/IDENTITÉ + tests** : `nommerDocument_`, `dossierIdentite_`, `titulairePourNom_`, `garantirNomUnique_` (anti-écrasement) | ⬜ |
+| C26-04 | **Fonctions pures NON-DOCUMENT + tests** : `decisionNonDocument_` (identité jamais média-isée), `estExportDonnees_` | ⬜ |
+| C26-05 | **Prompts 2 passes + Sonnet + texte complet** (schéma étendu, cache) | ⬜ |
+| C26-06 | **Câblage pipeline** (Router/Intake) + garde zone 04 sur tous les chemins | ⬜ |
+| C26-07 | **PREUVE** : avant/après sur un échantillon réel (dry-run, sans déplacer) → validation Marc | ⬜ |
+| C26-08 | **Campagne de re-analyse** (budget/jour, reprenable) — SEULEMENT après feu vert | ⬜ |
+| C26-09 | **App** : validation 1-clic des intrus coincés sous 04 + révision §6 budget | ⬜ |
+
 ## Épopée Phase 0 — Scaffolding & automatisation  ✅
 
 | ID | Tâche | Statut |

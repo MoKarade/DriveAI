@@ -124,13 +124,145 @@ function estFusionnableEntite_(a, b) {
   var court = ta.length <= tb.length ? ta : tb;
   var long_ = ta.length <= tb.length ? tb : ta;
   if (!court.every(function (t) { return long_.indexOf(t) !== -1; })) return false;
-  // Garde anti-effondrement (revue flotte) : une ANNÉE excédentaire distingue deux entités réelles
-  // (« Honda Civic » n'avale ni « Honda Civic 2014 » ni « 2017 » — deux véhicules). Les autres jetons
-  // excédentaires (« app 5 québec » d'une adresse, « carte de crédit » d'une banque) restent fusionnables.
+  // Gardes anti-effondrement :
+  // 1) une ANNÉE excédentaire distingue deux entités réelles (« Honda Civic » n'avale ni « Honda
+  //    Civic 2014 » ni « 2017 » — deux véhicules) ;
+  // 2) (refonte 2026-07-07, revue) quand le libellé COURT n'a qu'UN jeton significatif (une marque
+  //    seule : « Ford »), un jeton excédentaire NON GÉNÉRIQUE (« fiesta » = un modèle) désigne une
+  //    entité DIFFÉRENTE → refus. Les compléments génériques (« carte de crédit » Desjardins,
+  //    « caisse » Desjardins) restent fusionnables ; les adresses (≥2 jetons courts) ne sont pas visées.
   for (var i = 0; i < long_.length; i++) {
-    if (court.indexOf(long_[i]) === -1 && /^(19|20)\d{2}$/.test(long_[i])) return false;
+    if (court.indexOf(long_[i]) !== -1) continue; // pas un excédent
+    if (/^(19|20)\d{2}$/.test(long_[i])) return false; // année
+    if (court.length === 1 && !estJetonGenerique_(long_[i])) return false; // marque seule + modèle propre
   }
   return true;
+}
+
+/* ============================================================================
+ * CANONICALISATION & FUSION D'ENTITÉS (refonte 2026-07-07, chantier « analyse fiable »).
+ * Objectif : une même entité réelle = UNE seule ligne/dossier. Fonctions PURES, testées.
+ * ==========================================================================*/
+
+/** Un jeton est GÉNÉRIQUE s'il (ou son singulier) est du lexique. PUR. */
+function estJetonGenerique_(j) {
+  if (!j) return true;
+  var sing = j.length > 3 && j.charAt(j.length - 1) === 's' ? j.slice(0, -1) : j;
+  return LEXIQUE_GENERIQUE_ENTITE.indexOf(j) !== -1 || LEXIQUE_GENERIQUE_ENTITE.indexOf(sing) !== -1;
+}
+
+// Variantes du PROPRIÉTAIRE (Marc) : jamais une entité/émetteur d'un document d'organisation.
+var PROPRIO_JETONS = ['marc', 'alexis', 'claude', 'richard', 'a'];
+
+/**
+ * Vrai si `nom` désigne MARC (le propriétaire) — à exclure comme entité/émetteur d'un doc
+ * d'organisation (il reste un TITULAIRE valide sur une pièce d'identité, voir titulairePourNom_). PUR.
+ * Règle : « richard » présent ET tous les jetons ∈ {marc,alexis,claude,richard,a}.
+ */
+function estProprietaireMarc_(nom) {
+  var toks = normaliserCle_(nom).replace(/[^a-z0-9]+/g, ' ').split(/\s+/).filter(Boolean);
+  if (!toks.length || toks.indexOf('richard') === -1) return false;
+  return toks.every(function (t) { return PROPRIO_JETONS.indexOf(t) !== -1; });
+}
+
+// Suffixes juridiques retirés en fin de libellé (« Desjardins Inc. » → « Desjardins »).
+var SUFFIXES_JURIDIQUES = ['inc', 'sas', 'sa', 'sarl', 'ltee', 'ltd', 'pbc', 'corp', 'gmbh', 'llc'];
+
+/** Retire un suffixe juridique FINAL (jamais un « SA » interne comme « Sassone »). PUR. */
+function retirerSuffixeJuridique_(nom) {
+  var s = String(nom == null ? '' : nom).trim();
+  var toks = s.split(/\s+/);
+  if (toks.length >= 2) {
+    var dernier = normaliserCle_(toks[toks.length - 1]).replace(/[.,]/g, '');
+    if (SUFFIXES_JURIDIQUES.indexOf(dernier) !== -1) {
+      toks.pop();
+      return toks.join(' ').replace(/[\s,]+$/, '').trim();
+    }
+  }
+  return s;
+}
+
+// Marques automobiles (pour ne canoniser en véhicule QUE ce qui en est un — jamais « Groupe Sport »).
+var MARQUES_VEHICULE = ['ford', 'honda', 'toyota', 'volkswagen', 'vw', 'mazda', 'kia', 'yamaha',
+  'nissan', 'hyundai', 'chevrolet', 'bmw', 'audi', 'mercedes', 'peugeot', 'renault', 'citroen',
+  'fiat', 'jeep', 'dodge', 'ram', 'gmc', 'subaru', 'lexus', 'acura', 'volvo', 'tesla'];
+var FINITIONS_VEHICULE = ['se', 'sl', 'sle', 'lx', 'ex', 'gt', 'gts', 'sport', 'comfortline',
+  'trendline', 'limited', 'touring', 'hybrid', 'base', 'sv', 'lt'];
+
+/** Vrai si `nom` commence par une marque auto connue. PUR. */
+function estMotifVehicule_(nom) {
+  return MARQUES_VEHICULE.indexOf(normaliserCle_(String(nom).split(/\s+/)[0] || '')) !== -1;
+}
+
+/** « Ford Fiesta SE 2011 » → « Ford Fiesta » : retire année + finition (marque + modèle seuls). PUR. */
+function canoniserVehicule_(nom) {
+  var toks = String(nom == null ? '' : nom).trim().split(/\s+/).filter(Boolean);
+  var out = toks.filter(function (t) {
+    var n = normaliserCle_(t);
+    return !/^(19|20)\d{2}$/.test(n) && FINITIONS_VEHICULE.indexOf(n) === -1;
+  });
+  return out.join(' ') || String(nom == null ? '' : nom).trim();
+}
+
+/**
+ * Adresse → forme canonique « numéro voie, ville » : normalise ordinaux (4th/4e/4ème → 4e) et voie
+ * (Av./Ave → Avenue), retire compléments (App./Bureau/étage) et code postal. Fusionne les variantes.
+ * PUR. (Cas sans virgule : best-effort — la fusion par inclusion de jetons rattrape le reste.)
+ */
+function canoniserAdresse_(nom) {
+  var s = String(nom == null ? '' : nom).trim();
+  if (!/^\d/.test(s)) return s; // pas une adresse (ne commence pas par un numéro civique)
+  s = s.replace(/\b(\d+)(?:er|ere|eme|ème|e|th|st|nd|rd)\b/gi, '$1e'); // ordinaux
+  s = s.replace(/\bav(?:e|e\.|enue)?\b\.?/gi, 'Avenue').replace(/\bboul(?:\.|evard)?\b/gi, 'Boulevard')
+    .replace(/\brte\b\.?/gi, 'Route');
+  s = s.replace(/\b[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d\b/g, '').replace(/\b\d{5}\b/g, ''); // codes postaux CA/FR
+  var parts = s.split(',').map(function (p) { return p.replace(/\s+/g, ' ').trim(); }).filter(Boolean);
+  parts = parts.filter(function (p) {
+    var k = normaliserCle_(p);
+    return !/^(app|apt|appartement|bureau|unite|etage|no|#)\b/.test(k) && !/^#?\d+$/.test(p.trim());
+  });
+  return parts.join(', ').trim() || s.replace(/\s+/g, ' ').trim();
+}
+
+// Corruptions OCR récurrentes → forme canonique (jamais d'invention : absent = inchangé).
+var CORRECTIONS_OCR_ENTITE = { 'matech robotik': 'Automatech', 'automatech robotik': 'Automatech' };
+
+/** Corrige une corruption OCR connue (table). PUR. */
+function corrigerOcrConnu_(nom) {
+  return CORRECTIONS_OCR_ENTITE[normaliserCle_(nom)] || String(nom == null ? '' : nom).trim();
+}
+
+/** Casse Titre en préservant les acronymes/casse existante (« hydro quebec » → « Hydro Quebec », « IRCC » inchangé). PUR. */
+function casseTitreEntite_(s) {
+  return String(s == null ? '' : s).replace(/\S+/g, function (w) {
+    return w === w.toLowerCase() ? w.charAt(0).toUpperCase() + w.slice(1) : w;
+  });
+}
+
+/**
+ * Forme CANONIQUE d'affichage d'une entité, ou null si elle ne mérite pas de ligne/dossier. PUR.
+ * Ordre : générique → null ; Marc → null ; retrait suffixe juridique ; correction OCR ; motif
+ * (adresse/véhicule) ; casse de surface.
+ */
+function canoniserEntite_(nom) {
+  if (nom == null || !String(nom).trim()) return null;
+  if (estEntiteGenerique_(nom)) return null;
+  if (estProprietaireMarc_(nom)) return null;
+  var s = corrigerOcrConnu_(retirerSuffixeJuridique_(String(nom).trim()));
+  if (/^\d/.test(s.trim())) s = canoniserAdresse_(s);
+  else if (estMotifVehicule_(s)) s = canoniserVehicule_(s);
+  s = casseTitreEntite_(s.replace(/\s+/g, ' ').trim());
+  return s || null;
+}
+
+/**
+ * Clé de FUSION/déduplication d'une entité (domaine + forme canonique). Deux libellés qui se
+ * canonisent pareil partagent la clé → une seule ligne au référentiel. PUR.
+ * @return {?string} null si l'entité n'est pas retenue (générique / propriétaire).
+ */
+function cleCanoniqueEntite_(domaine, nom) {
+  var c = canoniserEntite_(nom);
+  return c ? normaliserCle_(domaine) + '|' + normaliserCle_(c) : null;
 }
 
 /**
