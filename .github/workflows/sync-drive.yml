@@ -1,0 +1,122 @@
+name: Sync Drive (miroir NotebookLM)
+
+# Copie une version TEXTE (.txt) de tout le dépôt dans un dossier Drive de Marc
+# (« _Miroir du dépôt »), via la web app Apps Script DÉJÀ déployée (aucun nouveau scope
+# OAuth). Sert 2 besoins de Marc : accéder au projet depuis n'importe où, et ingestion
+# par NotebookLM (qui lit depuis Drive). Jamais de suppression (§2) : un fichier retiré
+# du dépôt laisse une copie obsolète dans le miroir (à nettoyer à la main de temps en temps).
+#
+# Configuration UNIQUE côté Marc (voir docs/DEPLOIEMENT.md) :
+#   1. Settings → Secrets and variables → Actions → New repository secret :
+#        - DRIVEAI_WEBAPP_URL   : l'URL /exec de la web app (Déployer → Gérer les déploiements)
+#        - DRIVEAI_SYNC_SECRET  : une valeur ALÉATOIRE (générée une fois par Marc)
+#   2. Apps Script → Paramètres du projet → Script Properties → ajouter :
+#        - DriveAI_SYNC_SECRET : LA MÊME valeur qu'au point 1 (secret DÉDIÉ, JAMAIS le
+#          même que DriveAI_WEBAPP_SECRET utilisé par l'app dans le navigateur).
+# Tant que ces secrets sont absents, le job se contente d'un message et réussit (aucun
+# échec rouge) — comme deploy.yml pour CLASPRC_JSON/SCRIPT_ID.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-drive-miroir
+  cancel-in-progress: true # un sync plus récent rend l'ancien obsolète
+
+jobs:
+  sync:
+    name: Copier le dépôt vers le miroir Drive
+    runs-on: ubuntu-latest
+    steps:
+      - name: Vérifier la configuration
+        id: guard
+        env:
+          DRIVEAI_WEBAPP_URL: ${{ secrets.DRIVEAI_WEBAPP_URL }}
+          DRIVEAI_SYNC_SECRET: ${{ secrets.DRIVEAI_SYNC_SECRET }}
+        run: |
+          if [ -z "$DRIVEAI_WEBAPP_URL" ] || [ -z "$DRIVEAI_SYNC_SECRET" ]; then
+            echo "::notice::Miroir Drive non configuré (secrets DRIVEAI_WEBAPP_URL / DRIVEAI_SYNC_SECRET absents). Voir docs/DEPLOIEMENT.md. On saute."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.guard.outputs.ready == 'true'
+        uses: actions/checkout@v5
+
+      - name: Envoyer les fichiers par lots
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          URL: ${{ secrets.DRIVEAI_WEBAPP_URL }}
+          SECRET: ${{ secrets.DRIVEAI_SYNC_SECRET }}
+        run: |
+          set -euo pipefail
+
+          # Formats binaires (miroir : jamais exploitables convertis en .txt) — même liste que
+          # EXT_MIROIR_BINAIRES côté moteur (src/Miroir.gs), filtrage en double (bande passante).
+          BINAIRES='png|jpg|jpeg|gif|ico|webp|bmp|tif|tiff|heic|heif|woff2?|ttf|eot|otf|zip|gz|tar|pdf'
+          mapfile -t FICHIERS < <(git ls-files | grep -viE "\.(${BINAIRES})\$")
+          echo "Fichiers à synchroniser : ${#FICHIERS[@]}"
+
+          # Encodage URL du secret (revue code #27) : une valeur aléatoire peut contenir des
+          # caractères qui coupent silencieusement la query string (&, +, =, espace…) — jamais
+          # supposer un secret alphanumérique.
+          SECRET_ENC="$(jq -rn --arg s "$SECRET" '$s|@uri')"
+
+          BATCH_FILE="$(mktemp)"
+          : > "$BATCH_FILE"
+          COMPTE=0
+          ENVOYES=0
+          IGNORES=0
+
+          envoyer_lot() {
+            if [ "$COMPTE" -eq 0 ]; then return 0; fi
+            echo "Envoi d'un lot de $COMPTE fichier(s)…"
+            PAYLOAD="$(jq -c -s '{fichiers: .}' "$BATCH_FILE")"
+            CODE="$(curl -sS -o /tmp/miroir-rep.json -w '%{http_code}' -X POST \
+              "${URL}?action=sync-miroir&secret=${SECRET_ENC}" \
+              -H 'Content-Type: text/plain;charset=utf-8' \
+              --data-binary "$PAYLOAD")"
+            if [ "$CODE" != "200" ]; then
+              echo "::error::Échec HTTP $CODE — $(cat /tmp/miroir-rep.json)"
+              exit 1
+            fi
+            cat /tmp/miroir-rep.json
+            echo
+            # Alerte (non bloquante) si le moteur a écrit MOINS que le lot envoyé (garde-temps
+            # dépassé côté script ou échec d'écriture par fichier) — revue code #27.
+            ECRITS_LOT="$(jq -r '.ecrits // 0' /tmp/miroir-rep.json 2>/dev/null || echo 0)"
+            if [ "${ECRITS_LOT}" != "${COMPTE}" ]; then
+              echo "::warning::Lot de $COMPTE fichier(s) : seulement $ECRITS_LOT écrit(s) côté moteur."
+            fi
+            ENVOYES=$((ENVOYES + COMPTE))
+            : > "$BATCH_FILE"
+            COMPTE=0
+          }
+
+          for f in "${FICHIERS[@]}"; do
+            [ -f "$f" ] || continue
+            ITEM_TMP="$(mktemp)"
+            if jq -Rc -s --arg c "$f" '{chemin:$c, contenu:.}' "$f" > "$ITEM_TMP" 2>/dev/null; then
+              cat "$ITEM_TMP" >> "$BATCH_FILE"
+              COMPTE=$((COMPTE + 1))
+            else
+              echo "Ignoré (lecture/encodage impossible) : $f"
+              IGNORES=$((IGNORES + 1))
+            fi
+            rm -f "$ITEM_TMP"
+
+            TAILLE="$(wc -c < "$BATCH_FILE" | tr -d ' ')"
+            if [ "$COMPTE" -ge 25 ] || [ "$TAILLE" -ge 2000000 ]; then
+              envoyer_lot
+            fi
+          done
+          envoyer_lot
+
+          echo "Terminé : $ENVOYES fichier(s) envoyé(s) au moteur, $IGNORES ignoré(s) localement."

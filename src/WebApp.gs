@@ -1,6 +1,5 @@
 /**
- * WebApp.gs — pont HTTP entre l'app (SPA) et le moteur. Deux actions, secret OBLIGATOIRE
- * (Script Property `DriveAI_WEBAPP_SECRET`, jamais dans le code) :
+ * WebApp.gs — pont HTTP entre l'app (SPA)/GitHub Actions et le moteur. Trois actions :
  *
  *  - (défaut) « Vérifier maintenant » (#20) : déclencheur PONCTUEL du tick (idempotent,
  *    LockService, garde-temps) — réponse non lue par l'app (no-cors).
@@ -10,26 +9,37 @@
  *    exécute elle-même les recherches avec le jeton de Marc. La clé Anthropic reste dans les
  *    Script Properties. L'app lit la réponse : elle POSTe en Content-Type text/plain (requête
  *    « simple », pas de préflight) — Apps Script renvoie alors un CORS lisible (`*`).
+ *  - `action=sync-miroir` (ADR-0017) : GitHub Actions y POSTe un lot de fichiers du dépôt →
+ *    copiés en texte dans un dossier Drive dédié (`Miroir.gs`). Secret DÉDIÉ (voir ci-dessous).
  *
- * Garde-fous : anti-rafale par action, plafond QUOTIDIEN d'appels LLM (budget), question
- * bornée, sortie whitelistée par un parseur strict (fonctions PURES testées).
+ * Secrets — DEUX, jamais confondus :
+ *  - `DriveAI_WEBAPP_SECRET` (défaut, recherche-ia) : exposé côté NAVIGATEUR par conception
+ *    (app/src/config.ts — « la sécurité vient du login Google, pas du secret »).
+ *  - `DriveAI_SYNC_SECRET` (sync-miroir) : DÉDIÉ, JAMAIS exposé à un navigateur — connu
+ *    seulement de GitHub Actions (secret CI) et du script. Pire abus s'il fuit : écrire des
+ *    fichiers texte dans UN dossier dédié (`_Miroir du dépôt`), jamais toucher à un document
+ *    classé ni à l'état (Index/Journal/Entités).
  *
- * Pire abus si le secret fuit : déclencher le tick (idempotent) + brûler le plafond quotidien
- * d'appels Haiku + lire les NOMS de domaines de la taxonomie (déjà publics dans ce repo) —
- * JAMAIS un contenu de document, de mail ou de l'état (le LLM ne reçoit que question + taxonomie).
+ * Garde-fous communs : anti-rafale par action, plafonds bornés, sortie whitelistée par un
+ * parseur strict (fonctions PURES testées).
  */
 
 function doPost(e) {
   var reponse = { ok: false };
   try {
-    var attendu = PropertiesService.getScriptProperties().getProperty('DriveAI_WEBAPP_SECRET');
-    var recu = e && e.parameter ? e.parameter.secret : '';
-    if (!attendu || !recu || recu !== attendu) {
-      reponse.erreur = 'refusé';
-    } else if (e && e.parameter && e.parameter.action === 'recherche-ia') {
-      reponse = actionRechercheIA_(e);
+    var action = e && e.parameter ? e.parameter.action : '';
+    if (action === 'sync-miroir') {
+      reponse = verifierSecretSync_(e) ? actionSyncMiroir_(e) : { ok: false, erreur: 'refusé' };
     } else {
-      reponse = actionTickPonctuel_();
+      var attendu = PropertiesService.getScriptProperties().getProperty('DriveAI_WEBAPP_SECRET');
+      var recu = e && e.parameter ? e.parameter.secret : '';
+      if (!attendu || !recu || recu !== attendu) {
+        reponse.erreur = 'refusé';
+      } else if (action === 'recherche-ia') {
+        reponse = actionRechercheIA_(e);
+      } else {
+        reponse = actionTickPonctuel_();
+      }
     }
   } catch (err) {
     reponse.erreur = String(err);

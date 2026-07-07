@@ -348,6 +348,12 @@ var CONFIG = {
   IA_RECHERCHE_MAX_JOUR: 50,              // plafond quotidien d'appels SERVIS (≈ 0,002 $/question Haiku pire cas — ~3 $/mois au plafond)
   LLM_MAX_TOKENS_RECHERCHE: 300,          // le plan JSON tient largement dedans
 
+  // --- Miroir Drive du dépôt (ADR-0017, demande Marc : accès de partout + NotebookLM lit depuis
+  // Drive) : copie TEXTE (.txt) du dépôt, écrite par la web app (action=sync-miroir, GitHub Actions
+  // à chaque push sur main). Garde-temps par LOT (la boucle complète vit côté Action, en plusieurs
+  // requêtes) — jamais de suppression (§2), un fichier retiré du dépôt laisse une copie obsolète.
+  MIROIR_BUDGET_MS: 4 * 60 * 1000,
+
   // --- Auto-validation des entités fréquentes (#18, décision Marc : seuil 3) ---
   ENTITES_AUTO_SEUIL: 3,                  // vue ≥ N fois → auto-validée (dossier créé au même tick)
   ENTITES_AUTO_MAX_PAR_RUN: 5,            // bornée par run (le reste au tick suivant)

@@ -304,6 +304,37 @@ mémoire** de l'onglet, jamais persisté.
 > (Documents → Recherche DriveAI → « ✨ Recherche IA ») passe par cette même web app : même
 > secret, bornée à 50 questions/jour, ~0,002 $/question (Haiku) — ~3 $/mois au plafond.
 
+## Miroir Drive du dépôt (ADR-0017) — accès de partout + NotebookLM
+
+Sur ta demande : une copie TEXTE (`.txt`) de tout le dépôt, tenue à jour dans un dossier de ton
+Drive (`_Miroir du dépôt`), à chaque merge sur `main`. Deux usages : consulter/rechercher le projet
+depuis n'importe quel appareil, et pointer **NotebookLM** dessus (il lit depuis Drive, pas GitHub).
+
+**GitHub reste le dépôt réel** (git, CI, tests, déploiement) — le miroir est une COPIE en lecture,
+jamais l'inverse. Aucun nouveau scope OAuth (réutilise `drive`, déjà déclaré) → pas de re-consentement.
+
+Configuration UNIQUE (~5 min), après avoir déjà fait la section précédente (web app déployée) :
+
+1. **Éditeur Apps Script → ⚙ Paramètres du projet → Propriétés du script → Ajouter** :
+   `DriveAI_SYNC_SECRET` = une longue chaîne aléatoire **alphanumérique** (ex. `openssl rand -hex 32`
+   dans un terminal, ou n'importe quel générateur — évite `&`, `+`, `=`, espace : le workflow encode
+   déjà l'URL, mais autant rester simple), **différente** de `DriveAI_WEBAPP_SECRET`
+   (celui-ci ne doit JAMAIS être le même — `DriveAI_WEBAPP_SECRET` est visible dans le navigateur
+   par conception, `DriveAI_SYNC_SECRET` doit rester connu SEULEMENT de GitHub et du script).
+2. **GitHub → Settings → Secrets and variables → Actions → New repository secret** (2 secrets) :
+   - `DRIVEAI_WEBAPP_URL` : l'URL `/exec` de la web app (la même que dans l'app, section précédente).
+   - `DRIVEAI_SYNC_SECRET` : **la même valeur** que celle collée à l'étape 1.
+3. C'est tout. Au prochain merge sur `main`, le workflow **Sync Drive** (`.github/workflows/sync-drive.yml`)
+   copie tous les fichiers texte du dépôt (code, docs, config) vers `_Miroir du dépôt` dans ton Drive.
+   Tant que les secrets ne sont pas posés, ce workflow réussit silencieusement sans rien faire.
+
+**Pour NotebookLM** : crée un notebook, « Ajouter une source → Google Drive », sélectionne le
+dossier `_Miroir du dépôt` (ou les fichiers dedans).
+
+**Limite assumée** : le miroir n'écrit ni ne supprime JAMAIS un fichier retiré du dépôt (garde-fou
+§2, aucune suppression automatique, nulle part) — une copie obsolète peut s'accumuler ; tu peux la
+nettoyer à la main de temps en temps, comme `_Doublons`/`_Technique`.
+
 ## Rattrapage des photos mal classées (incident « BACAR », 2026-07-06)
 
 Après le merge du chantier #20 : éditeur Apps Script → fonction `rattraperMediasMalClasses`
