@@ -660,3 +660,21 @@ un incident transitoire devient une perte permanente et silencieuse. (3) Un dép
 freiner les CAMPAGNES (rangement, historique, migration), jamais le flux vivant — sinon « le moteur
 marche » et la boîte de dépôt de Marc, elle, est morte.
 **Règle durable ?** oui (fusionnée avec la puce pagination de CLAUDE.md §7).
+
+## 2026-07-07 — Promouvoir un outil MANUEL en étape du tick : auditer aussi ses effets de FIN
+**Contexte.** R3 : le tick devait relancer les quarantainés automatiquement. Premier réflexe :
+appeler `dequarantaine()` (l'outil « un clic ») depuis `tickDriveAI`. Les 3 revues flotte ont
+convergé sur le même bloquant : la DERNIÈRE ligne de l'outil manuel est `tickDriveAI()` (« re-traiter
+tout de suite », parfait au clic) → appel RÉENTRANT du pipeline ; le `finally` du tick imbriqué
+exécute `releaseLock()` et le tick externe continue SANS verrou (anti-chevauchement neutralisé,
+double traitement possible), budget re-basé → mur dur 6 min. Correctif : scinder — noyau
+`dequarantainerLignes_(prefixe)` appelé par le tick (clés `drive|` seulement : une clé Gmail hors
+fenêtre serait libérée « dans le vide » et perdrait son bouton Relancer), l'outil manuel = noyau +
+relance.
+**Leçon.** Complément de « maintenance manuelle → auto : retirer l'irréversible » : un outil manuel
+embarque souvent des effets de CONFORT DE FIN (relance du pipeline, mail, tick immédiat) invisibles
+à la lecture de son « cœur ». Avant de l'appeler depuis le moteur : lire l'outil JUSQU'À SA DERNIÈRE
+LIGNE, extraire un noyau sans effets de fin, et re-scoper ses entrées au contexte auto (le tick ne
+doit toucher que ce que ses sources savent re-présenter). La revue adversariale a payé une 3ᵉ fois
+sur ce même thème.
+**Règle durable ?** oui (fusionnée dans la puce « maintenance manuelle → auto » de CLAUDE.md §7).
