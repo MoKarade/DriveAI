@@ -18,17 +18,23 @@ Stack : **Google Apps Script** (moteur, Phases 1–3) + une **Google Sheet** (é
 
 Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer la revue.
 
-1. **Documents sensibles — classés, jamais supprimés ni détachés. PLUS DE FILE DE REVUE.**
-   *(Décisions Marc 2026-07-01 : révise l'ancienne règle « sensible → toujours en revue », puis
-   supprime la revue.)* Un **seul dossier d'arrivée** (`00 · À trier`). **TOUT** document est
-   **auto-classé** dans son domaine avec son **nom final propre** (`AAAA-MM-JJ_Type_Émetteur.ext`),
-   jamais un nom encodé `[REVUE] …`. Un **domaine introuvable** n'est plus mis en revue : il est rangé
-   dans `CONFIG.DOMAINE_DEFAUT` (bucket générique `01 · Administratif`). Le flag `sensible` du LLM reste
+1. **Documents sensibles — classés, jamais supprimés ni détachés. Revue ULTRA-STRICTE seulement.**
+   *(Décisions Marc 2026-07-01 : révise « sensible → toujours en revue » puis supprime la revue ;
+   2026-07-07, ADR-0016 : ré-introduit un filet de revue ÉTROIT.)* Un **seul dossier d'arrivée**
+   (`00 · À trier`). **TOUT** document est **auto-classé** dans son domaine avec son **nom final propre**
+   (`AAAA-MM-JJ_Type_Émetteur.ext`), jamais un nom encodé `[REVUE] …`. **Fail-safe hybride (ADR-0016)** :
+   un document ne va dans `00 · À vérifier` que si l'analyse ne porte **AUCUN fait exploitable** —
+   `domaine` inconnu **ET** `emetteur` **ET** `type_doc` **ET** `entite` **ET** `descripteur` tous
+   absents (`estClassificationVide_`, PURE ; les sentinelles LLM « Inconnu »/« N/A »/« - » comptent
+   comme absentes). Un **seul** fait présent ⇒ classé au mieux (domaine introuvable mais un autre fait
+   présent → `CONFIG.DOMAINE_DEFAUT`).
+   La conjonction **ET** est l'anti-saturation NON négociable (sinon la revue neutralise l'auto-rangement
+   — leçon vécue) : la revue est l'exception rare, jamais la posture. Le flag `sensible` du LLM reste
    produit mais ne route plus rien. Ce qui reste **NON négociable** : (a) **aucune suppression** (§2) ;
    (b) le grand rangement ne **détache jamais** un fichier déjà rangé sous `04 · Immigration` (garde
    multi-parents `aParentProtege_`, remonte toute la chaîne d'ancêtres, appliquée à la collecte ET avant
    chaque mutation) ; (c) un doublon, **même sensible**, va dans `_Doublons` (déplacement seul), jamais
-   effacé. *(Réactiver un filet de revue = re-router dans `Router.deciderRoutage_` + rétablir `revue_`.)*
+   effacé. *(Élargir la revue = assouplir `estClassificationVide_` ⇒ ré-audit anti-saturation obligatoire.)*
 2. **Aucune suppression automatique.** Les doublons sont *écartés dans `_Doublons` (déplacement seul)*,
    jamais effacés. **Unique exception, ÉTROITE (ADR-0014, décision Marc 2026-07-06)** : un **DOSSIER
    devenu VIDE** après une réorg validée (#21) peut être mis à la **corbeille Drive** (récupérable 30 j)
@@ -294,3 +300,23 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   (instance de « plafonds à l'unité de coût réelle ») : un garde-temps/budget par run calibré pour un
   modèle doit suivre le coût-temps réel par item si on change de modèle (Sonnet ×2 ≈ ×10 le temps/doc →
   `budgetMsRun_()` abaisse le budget sous `ANALYSE_V2`, anti-mur 6 min).
+
+## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
+
+> Règle d'or (demande Marc 2026-07-07). Obligatoire pour tout changement du **classement**.
+
+1. **Cadrage ADR d'abord** — problème/objectif, impact quotas Google & coût LLM (estimé), risques
+   (garde-fous, intégrité), méthode de test. Aucune ligne de code avant l'ADR.
+2. **Audit (PoC) sur du réel** — exécuter la logique de décision sur ~20 documents réels
+   (`test/audit-logique.test.js`), rendre le tableau [nom | domaine | entité | verdict] AVANT de
+   modifier le pipeline. Prouver le comportement sur du réel, jamais 2-3 cas choisis.
+3. **Double-passe** (quand `ANALYSE_V2` est ON) — Passage 1 extrait les faits (date/émetteur/type/
+   titulaire ; incertain ⇒ null) ; Passage 2 vérifie (adversarial) et applique la taxonomie ADR-0002.
+4. **Fail-safe HYBRIDE ultra-strict** (ADR-0016, §2.1) — « ne jamais deviner » ne veut PAS dire « tout
+   en revue » : un doc part en `00 · À vérifier` **uniquement** si `domaine` **ET** `emetteur` **ET**
+   `type_doc` sont **tous** NULL (`estClassificationVide_`). Confiance basse SEULE ⇒ classé au mieux
+   (jamais dumpé dans `01 · Administratif` par défaut : « granularité = enrichissement, jamais frein »).
+5. **Non-régression** — ≥ 3 faux-positifs historiques en test bloquant (CV sans émetteur, note perso,
+   export) qui NE doivent PAS partir en revue. CI verte exigée sur ces cas.
+6. **Fonctions PURES + revue flotte** — logique isolée des I/O (testable `node --test`), surface
+   verrouillée, revue adversariale avant merge. Toute opération de MASSE ⇒ `dryRun_` (validation Sheet).

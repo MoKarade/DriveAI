@@ -84,6 +84,8 @@ const CONTRAT = [
   // analyse 2 passes & routage v2 (refonte #26, C26-05/06 — flag CONFIG.ANALYSE_V2)
   'classifierDeuxPasses_', 'appelAnthropicV2_', 'normaliserChampsV2_',
   'deciderRoutageV2_', 'planRoutageV2_', 'nomsDansDossier_', 'budgetMsRun_',
+  // fail-safe hybride ultra-strict (ADR-0016 — révision §2.1)
+  'estClassificationVide_', 'estRenseigne_', 'routageAVerifier_', 'dossierAVerifier_',
   // entités auto-validées (#18)
   'autoValiderEntitesFrequentes_', 'estAutoValidable_', 'entitesAutoValidees_', 'estValidee_',
 ];
