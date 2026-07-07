@@ -27,6 +27,19 @@ var CONFIG = {
   // vide/quasi vide = collision garantie entre documents différents sans texte).
   NATIF_EXPORT_MAX_CARS: 2000000,
   OCR_MIN_CARS_EXPLOITABLE: 20,
+
+  // --- REFONTE #26 : analyse en 2 passes (extraction + vérification adversariale) ---
+  // Chantier #26 (demande Marc 2026-07-07 : « fiabilité maximale, Sonnet 2 passes, quitte à coûter
+  // plus cher »). ÉTEINT par défaut : le pipeline live reste sur Haiku 1 passe tant que Marc n'a pas
+  // donné son FEU VERT explicite (Sonnet ×2 sur CHAQUE document du flux vivant est coûteux — §2.6, la
+  // cible de croisière reste < 10 $/mois). Quand ON : `classifierDeuxPasses_` (Llm.gs) remplace
+  // `classifier_`, et `deciderRoutageV2_` (Router.gs) remplace `deciderRoutage_` — schéma étendu
+  // (non-document, identité par type, entité unifiée, descripteur jamais « Inconnu », sous-dossier
+  // obligatoire). OFF ⇒ comportement d'aujourd'hui, octet pour octet.
+  ANALYSE_V2: false,
+  ANALYSE_V2_MODELE: 'claude-sonnet-4-6',   // les 2 passes tournent sur Sonnet (fiabilité > coût, quand ON)
+  ANALYSE_V2_MAX_TOKENS: 1000,              // schéma étendu (15 champs) → marge large (un JSON tronqué = doc en échec)
+  ANALYSE_V2_OCR_MAX_CARS: 12000,           // texte envoyé au LLM moins tronqué qu'en Haiku (4000) — analyse plus fine
   // Escalade : si Haiku rend une confiance < SEUIL (et doc NON sensible), on relance
   // une analyse approfondie avec Sonnet, plusieurs passes, et on garde la meilleure (consensus
   // de domaine puis confiance max). 3 passes (impair → vote utile). Borné pour le budget

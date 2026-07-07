@@ -43,6 +43,154 @@ var PROMPT_ESCALADE = PROMPT_SYSTEME + '\n\n' +
   'catégorie, même si tu n\'es pas totalement certain — ne laisse jamais le domaine vide ou hors ' +
   'liste. La règle de sécurité (sensible = immigration/statut ou fiscalité) reste prioritaire.';
 
+/* ============================================================================
+ * REFONTE #26 (C26-05) — ANALYSE EN 2 PASSES (extraction + vérification adversariale).
+ * Prompts et schéma issus de la PREUVE validée sur 38 documents réels (workflow preuve-refonte-v2,
+ * exigences relevées de Marc 2026-07-07 : zéro « Inconnu » via un descripteur précis + tout en
+ * sous-dossier). ÉTEINT tant que `CONFIG.ANALYSE_V2` est false (Sonnet ×2/doc, §2.6).
+ * ==========================================================================*/
+
+// Règles de NOMMAGE + RANGEMENT partagées par les deux passes (le nom ne contient JAMAIS « Inconnu »,
+// et tout document va dans un SOUS-DOSSIER, jamais à la racine d'un domaine).
+var REGLES_V2 =
+  'RÈGLES DE NOMMAGE ET DE RANGEMENT (exigences de Marc) :\n' +
+  'A) NOM — JAMAIS « Inconnu ». Le 3ᵉ segment X de « AAAA-MM-JJ_Type_X.ext » est TOUJOURS renseigné et PRÉCIS, par priorité :\n' +
+  '   1. TITULAIRE si pièce d\'identité (Passeport/Permis…) — « …_Passeport_Marc Richard ».\n' +
+  '   2. sinon ÉMETTEUR (organisation qui a produit/envoyé) — « …_Facture_Hydro-Québec ».\n' +
+  '   3. sinon DESCRIPTEUR (champ `descripteur`) : 2 à 6 mots PRÉCIS = ce que c\'est + le sujet + qui l\'a produit si repérable.\n' +
+  '      Ex. « Notes de maintenance ligne robot Robovic », « CV Marc Richard », « Cours de physique DUT GIM »,\n' +
+  '      « Devoir algorithmique Python », « Lettre de motivation poste automaticien ». JAMAIS « Inconnu », jamais un mot vague seul.\n' +
+  '   `type_doc` PRÉCIS aussi (« Notes de cours », « Bulletin de paie », « Attestation de vaccination »… jamais « Document »).\n' +
+  'B) SOUS-DOSSIER OBLIGATOIRE — rien à la RACINE d\'un domaine. `sousDossier` NON VIDE pour tout document :\n' +
+  '   - de préférence l\'ENTITÉ (établissement, entreprise, banque, école, administration) : « IUT du Littoral », « Desjardins », « Air Transat »…\n' +
+  '   - sinon une CATÉGORIE claire et STABLE du domaine (Études → « Cours »/« Diplômes »/« Devoirs » ; Finances → « Relevés »/« Reçus »/« Impôts » ; Perso → « Captures »/« Notes »).\n' +
+  '   Pour une pièce d\'identité, `sousDossier` = le TYPE (« Passeport », « Permis de conduire »). Pour un non-document, `sousDossier` reste vide (il va dans _Technique/_Médias).';
+
+var PROMPT_PASSE1 =
+  'Tu es l\'analyste documentaire de DriveAI (PASSE 1 — EXTRACTION). Document personnel de Marc Richard ' +
+  '(propriétaire) : nom, expéditeur, sujet et TEXTE. Analyse EN PROFONDEUR et ne bloque JAMAIS.\n' +
+  'Réponds UNIQUEMENT par un objet JSON valide, sans texte avant ni après, selon ce schéma :\n' +
+  '{\n' +
+  '  "estNonDocument": <bool — export de données / capture sans texte / fichier système, PAS un document à classer>,\n' +
+  '  "routageHorsDomaine": <"_Technique" | "_Médias" | null — seulement si estNonDocument>,\n' +
+  '  "estDocumentIdentite": <bool — pièce d\'identité (passeport, permis, acte, carte)>,\n' +
+  '  "sousDossierType": <type d\'identité si estDocumentIdentite ("Passeport", "Permis de conduire"…), sinon null>,\n' +
+  '  "titulaire": <personne concernée par la pièce d\'identité (Marc OU un proche), sinon null>,\n' +
+  '  "domaine": <un des domaines autorisés, EXACTEMENT>,\n' +
+  '  "sousDossier": <ENTITÉ ou CATÉGORIE — le sous-dossier sans le domaine ; NON VIDE sauf non-document>,\n' +
+  '  "categorie": <catégorie connue ou null>,\n' +
+  '  "type_doc": <type court et PRÉCIS>,\n' +
+  '  "date_doc": <"AAAA-MM-JJ" ou null>,\n' +
+  '  "emetteur": <ORGANISATION émettrice (cherche en-tête/logo/pied/adresse) ou null>,\n' +
+  '  "entite": <NOM PROPRE canonique concerné ou null (jamais générique, jamais Marc ; retire Inc./SAS ; véhicule = "Marque Modèle")>,\n' +
+  '  "descripteur": <2 à 6 mots précis pour le NOM si NI émetteur NI titulaire, sinon "">,\n' +
+  '  "sensible": <bool — voir règle>,\n' +
+  '  "confiance": <nombre 0..1, honnête>\n' +
+  '}\n' +
+  'NON-DOCUMENT d\'abord : export .html/.json ou dump de compte (Facebook…) → _Technique ; photo/capture SANS texte → _Médias. ' +
+  'GARDE : un VRAI scan (passeport, facture) reste CLASSÉ ; JAMAIS _Médias sur une pièce d\'identité ou un doc 01/04 ; un export ne porte jamais de domaine (jamais 04).\n' +
+  'IDENTITÉ : estDocumentIdentite=true → renseigne sousDossierType ET titulaire (Marc OU un proche : MÊME dossier de type, jamais « Tiers »).\n' +
+  'ÉMETTEUR = l\'organisation émettrice. Marc n\'est JAMAIS émetteur/entité d\'un document d\'organisation. ENTITÉ = nom propre canonique.\n' +
+  'SENSIBLE = immigration/statut (CSQ, IRCC, visa, passeport, permis de séjour, résidence) OU fiscalité (impôts, avis de cotisation) UNIQUEMENT ; sinon false.\n' +
+  'Domaines autorisés : ' + domainesAutorises_().join(' | ') + '\n' +
+  REGLES_V2;
+
+var PROMPT_PASSE2 =
+  'Tu es le VÉRIFICATEUR ADVERSARIAL de DriveAI (PASSE 2). On te donne le document ET la proposition ' +
+  'de la PASSE 1. CONTESTE-la, puis renvoie le JSON FINAL (MÊME schéma que la passe 1, UNIQUEMENT du JSON).\n' +
+  'ANTI-RÉGRESSION : ne remplace un champ que sur une raison CONCRÈTE tirée du document — sinon garde la passe 1.\n' +
+  'Vérifie en particulier : non-document (export/média vs vrai scan) ; domaine exact ; émetteur RE-CHERCHÉ activement si null ; ' +
+  'identité + titulaire ; entité non générique et canonique ; sensible (immigration/impôts seulement) ; date et type précis. Et les DEUX exigences :\n' +
+  '- `descripteur` : si NI émetteur NI titulaire, il DOIT être présent, précis et parlant (ce que c\'est + sujet + auteur si repérable) — JAMAIS « Inconnu » ni un mot vague. Améliore-le si la passe 1 est restée vague.\n' +
+  '- `sousDossier` : DOIT être non vide pour tout document (entité de préférence, sinon catégorie claire du domaine). Rien à la racine du domaine. Corrige si vide ou incohérent.\n' +
+  'Domaines autorisés : ' + domainesAutorises_().join(' | ') + '\n' +
+  REGLES_V2;
+
+/**
+ * Analyse V2 en 2 passes Sonnet : PASSE 1 extrait le schéma étendu, PASSE 2 le conteste et finalise.
+ * Anti-régression : une passe 2 illisible/échec garde la passe 1 (jamais de perte). Un échec de la
+ * passe 1 renvoie null → géré par `gererEchec_` (compté, re-tenté), SANS fallback multi-passes (coût).
+ * @param {{nomFichier:string, expediteur:string, sujet:string, extrait:string}} meta
+ * @return {Object|null}
+ */
+function classifierDeuxPasses_(meta) {
+  var modele = CONFIG.ANALYSE_V2_MODELE;
+  var p1 = appelAnthropicV2_(modele, meta, PROMPT_PASSE1, null);
+  if (!p1) return null;
+  var p2 = appelAnthropicV2_(modele, meta, PROMPT_PASSE2, p1);
+  return p2 || p1;
+}
+
+/**
+ * Un appel de l'analyse V2 (une passe). Réutilise toute la robustesse de l'appel de classification
+ * (retry, panne de compte signalée/persistée, coût mesuré) mais avec le schéma v2 (parser partagé).
+ * @param {string} modele
+ * @param {Object} meta
+ * @param {string} systeme  PROMPT_PASSE1 ou PROMPT_PASSE2
+ * @param {Object|null} propositionPasse1  la sortie de la passe 1 (jointe pour la passe 2), sinon null
+ * @return {Object|null}
+ */
+function appelAnthropicV2_(modele, meta, systeme, propositionPasse1) {
+  if (estPannePlateforme_()) return null; // panne de compte → échec rapide, sans réseau
+
+  var contenu =
+    'Nom du fichier : ' + meta.nomFichier + '\n' +
+    'Expéditeur : ' + (meta.expediteur || '') + '\n' +
+    'Sujet : ' + (meta.sujet || '') + '\n' +
+    'Extrait du contenu (peut être vide) :\n' + (meta.extrait || '(aucun)');
+  if (propositionPasse1) {
+    contenu += '\n\nPROPOSITION DE LA PASSE 1 (à contester puis finaliser) :\n' +
+      JSON.stringify(propositionPasse1);
+  }
+
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'x-api-key': getCleAnthropic_(),
+      'anthropic-version': '2023-06-01'
+    },
+    payload: JSON.stringify({
+      model: modele,
+      max_tokens: CONFIG.ANALYSE_V2_MAX_TOKENS,
+      system: systeme,
+      messages: [{ role: 'user', content: contenu }]
+    }),
+    muteHttpExceptions: true
+  };
+
+  var reponse = fetchAvecRetry_('https://api.anthropic.com/v1/messages', options, modele);
+  if (!reponse) return null;
+
+  var code = reponse.getResponseCode();
+  if (code !== 200) {
+    if (!signalerPannePlateforme_(code, reponse.getContentText(), modele)) {
+      journalErreur_('LLM', 'HTTP ' + code + ' (' + modele + ', v2) : ' +
+        tronquer_(reponse.getContentText(), 500));
+    }
+    return null;
+  }
+
+  var data;
+  try {
+    data = JSON.parse(reponse.getContentText());
+  } catch (e) {
+    journalErreur_('LLM', 'Réponse non-JSON (' + modele + ', v2) : ' + e);
+    return null;
+  }
+  if (data.stop_reason === 'refusal') {
+    journalErreur_('LLM', 'Refus du modèle (' + modele + ', v2)');
+    return null;
+  }
+  if (data.stop_reason === 'max_tokens') {
+    journalErreur_('LLM', 'Réponse v2 tronquée à max_tokens (' + modele + ') — augmenter ANALYSE_V2_MAX_TOKENS ?');
+  }
+
+  signalerRetablissement_();
+  enregistrerUsage_(modele, data.usage);
+  return parserClassification_(texteReponse_(data));
+}
+
 /**
  * Classe un document. Haiku d'abord ; si échec ou confiance basse (et NON sensible),
  * escalade vers une analyse approfondie (Sonnet, plusieurs passes) et garde la meilleure.
@@ -50,6 +198,10 @@ var PROMPT_ESCALADE = PROMPT_SYSTEME + '\n\n' +
  * @return {Object|null} la classification, ou null si échec total.
  */
 function classifier_(meta) {
+  // Refonte #26 (flag) : analyse en 2 passes Sonnet (extraction + vérification adversariale), schéma
+  // étendu. ÉTEINT par défaut (Sonnet coûteux sur le flux vivant, §2.6) — allumé au feu vert de Marc.
+  if (CONFIG.ANALYSE_V2) return classifierDeuxPasses_(meta);
+
   var classif = appelAnthropic_(CONFIG.LLM_MODELE, meta);
 
   // Échec TOTAL de Haiku → fallback Sonnet SIMPLE (1 appel), comme en Phase 1. On n'escalade
@@ -399,6 +551,33 @@ function parserClassification_(texte) {
   } else if (obj.entites) {
     delete obj.entites;
   }
+  return normaliserChampsV2_(obj);
+}
+
+/**
+ * Normalise les champs du schéma V2 (refonte #26) QUAND ils sont présents. Sur une réponse Haiku
+ * classique (aucun champ v2), l'objet est renvoyé INTACT — le chemin OFF reste identique. PUR.
+ * Booléens durcis (présent mais non-booléen → false), routageHorsDomaine borné à _Technique/_Médias
+ * (sinon null), chaînes trimées (vide → retirée pour que `champ_`/absence se comportent pareil).
+ * @param {Object} obj
+ * @return {Object}
+ */
+function normaliserChampsV2_(obj) {
+  if (!obj) return obj;
+  var clesV2 = ['estNonDocument', 'estDocumentIdentite', 'routageHorsDomaine',
+    'sousDossierType', 'titulaire', 'sousDossier', 'descripteur'];
+  var aV2 = clesV2.some(function (k) { return k in obj; });
+  if (!aV2) return obj; // réponse Haiku classique → intacte (octet pour octet)
+
+  obj.estNonDocument = obj.estNonDocument === true;
+  obj.estDocumentIdentite = obj.estDocumentIdentite === true;
+  if (obj.routageHorsDomaine !== '_Technique' && obj.routageHorsDomaine !== '_Médias') {
+    obj.routageHorsDomaine = null;
+  }
+  ['sousDossierType', 'titulaire', 'sousDossier', 'descripteur'].forEach(function (k) {
+    if (typeof obj[k] === 'string') { obj[k] = obj[k].trim(); if (!obj[k]) delete obj[k]; }
+    else if (k in obj) delete obj[k]; // null/non-chaîne → absent (les fonctions aval testent la présence)
+  });
   return obj;
 }
 

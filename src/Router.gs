@@ -399,6 +399,89 @@ function deciderRoutage_(classif, dateReference, ext) {
   };
 }
 
+/* ============================================================================
+ * ROUTAGE V2 (refonte #26, C26-06) — consomme le schéma étendu de l'analyse 2 passes. ACTIF seulement
+ * si `CONFIG.ANALYSE_V2` (gate au Pipeline). Différences avec `deciderRoutage_` :
+ *  (1) NON-DOCUMENT écarté vers `_Technique`/`_Médias` (jamais un domaine, jamais 04) ;
+ *  (2) pièce d'IDENTITÉ rangée PAR TYPE (dossier partagé Marc + proches), nom = titulaire ;
+ *  (3) tout document dans un SOUS-DOSSIER (entité canonique UNIFIÉE, sinon catégorie), jamais à la racine ;
+ *  (4) nom via `nommerDocument_` (jamais « Inconnu » — descripteur en repli).
+ * `planRoutageV2_` est le cœur PUR (aucune I/O) ; `deciderRoutageV2_` en est l'enveloppe Drive.
+ * ==========================================================================*/
+
+/**
+ * Cœur PUR de la décision v2 : détermine le TYPE de placement (non-document vs classé), le domaine,
+ * le sous-dossier et le nom final — sans aucune I/O Drive (testable). PUR.
+ * @param {Object} classif  sortie de l'analyse 2 passes (schéma v2)
+ * @param {{nomFichier:string, taille?:number, extraitOcr?:string, emetteur?:string}} meta
+ * @param {string} date  AAAA-MM-JJ (déjà normalisée)
+ * @param {string} ext
+ * @return {{type:('non-doc'|'classé'), routage?:('_Technique'|'_Médias'), domaine?:string, sousDossier?:string, nom?:string}}
+ */
+function planRoutageV2_(classif, meta, date, ext) {
+  // (1) Non-document → hors domaines (la garde DOMINANTE de decisionNonDocument_ protège identité/01/04).
+  var nd = decisionNonDocument_(classif, meta);
+  if (nd.estNonDoc) return { type: 'non-doc', routage: nd.routage };
+
+  var c = classif || {};
+  // (2) Domaine introuvable (LLM hors-liste/malformé) → domaine par défaut (jamais de limbo).
+  if (!domaineConnu_(c.domaine)) c.domaine = CONFIG.DOMAINE_DEFAUT;
+
+  var domaine, sousDossier;
+  if (estDocumentIdentitePersonnel_(c)) {
+    var di = dossierIdentite_(c);          // identité → domaine + sous-dossier de TYPE (04 possible : légitime)
+    domaine = di.domaine; sousDossier = di.sousDossier;
+  } else {
+    domaine = c.domaine;
+    sousDossier = sousDossierPourNom_(c);  // entité canonique unifiée, sinon catégorie, jamais vide
+  }
+  return { type: 'classé', domaine: domaine, sousDossier: sousDossier, nom: nommerDocument_(c, date, ext) };
+}
+
+/**
+ * Décision de routage V2 (enveloppe I/O de `planRoutageV2_`) : find-or-create du sous-dossier sous le
+ * domaine, anti-écrasement du nom (garantirNomUnique_). Ne route JAMAIS un non-document vers un domaine.
+ * @param {Object} classif
+ * @param {{nomFichier:string, taille?:number, extraitOcr?:string, emetteur?:string}} meta
+ * @param {Date} dateReference
+ * @param {string} ext
+ * @return {{statut:string, domaine:string, chemin:string, nom:string, dossierId:string, autresEntites:string[]}}
+ */
+function deciderRoutageV2_(classif, meta, dateReference, ext) {
+  var date = dateNormalisee_(classif && classif.date_doc, dateReference);
+  var plan = planRoutageV2_(classif, meta, date, ext);
+
+  if (plan.type === 'non-doc') {
+    return plan.routage === '_Technique'
+      ? routageTechnique_(meta.nomFichier, dateReference, ext)
+      : routageMedia_(meta.nomFichier);
+  }
+
+  var dom = DriveApp.getFolderById(idDomaine_(plan.domaine));
+  var cible = sousDossier_(dom, plan.sousDossier);
+  var nom = garantirNomUnique_(plan.nom, nomsDansDossier_(cible.getId()));
+  return {
+    statut: 'classé', domaine: plan.domaine, chemin: plan.domaine + '/' + plan.sousDossier,
+    nom: nom, dossierId: cible.getId(), autresEntites: []
+  };
+}
+
+/**
+ * Noms des fichiers déjà présents dans un dossier (borné) — pour l'anti-écrasement `garantirNomUnique_`.
+ * Borne à 500 pour ne pas faire exploser le quota sur un dossier atypiquement gros. Dégrade en [] si l'API échoue.
+ * @param {string} dossierId
+ * @return {string[]}
+ */
+function nomsDansDossier_(dossierId) {
+  var noms = [];
+  try {
+    var it = DriveApp.getFolderById(dossierId).getFiles();
+    var n = 0;
+    while (it.hasNext() && n < 500) { noms.push(it.next().getName()); n++; }
+  } catch (e) { /* dossier illisible → pas d'anti-écrasement, sans planter */ }
+  return noms;
+}
+
 /** `AAAA-MM-JJ_Type_Émetteur.ext` — format historique (granularité JOUR). */
 function nomNormalise_(date, type, emetteur, ext) {
   var t = champ_(type) || 'Document';

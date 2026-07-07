@@ -19,12 +19,20 @@
 > (`canoniserEntite_`, `estProprietaireMarc_`, `cleCanoniqueEntite_`, `estFusionnableEntite_` durci
 > Ford≠Ford Fiesta) ; titulaire/identité + anti-écrasement ; descripteur (jamais Inconnu) +
 > `sousDossierPourNom_` ; `decisionNonDocument_` (identité jamais média-isée, export jamais sous 04).
-> **RESTE (pipeline live) : C26-05** prompts 2 passes + Sonnet + texte complet + schéma étendu
-> (descripteur/sousDossier) + révision §6 budget, **DERRIÈRE UN FLAG ÉTEINT** ; **C26-06** câblage
-> Router/Intake ; **C26-07** dry-run à grande échelle ; **C26-08** campagne de re-analyse (budget/jour,
-> déplacement seul, reprenable). ⚠️ **PRÉVENIR MARC AVANT** le déploiement Sonnet et la campagne (coût
-> réel ~×10-20/doc ; campagne ~60-150 $ one-shot). Prompts finaux + specs des 21 fonctions pures : dans
-> les scripts de workflow persistés (`workflows/scripts/refonte-analyse-documents-*`, `preuve-refonte-v2-*`).
+> **C26-05 + C26-06 CODÉS (2026-07-07 soir), DERRIÈRE LE FLAG `CONFIG.ANALYSE_V2` (= false)** — le
+> flux vivant reste sur Haiku 1 passe tant que Marc n'a pas donné son FEU VERT. **C26-05** (`Llm.gs`) :
+> prompts `PROMPT_PASSE1`/`PROMPT_PASSE2` (issus de la preuve validée), `classifierDeuxPasses_` +
+> `appelAnthropicV2_` (Sonnet ×2, anti-régression passe2→passe1), parser étendu `normaliserChampsV2_`
+> (réponse Haiku laissée INTACTE), texte OCR moins tronqué (`ANALYSE_V2_OCR_MAX_CARS` 12000). **C26-06**
+> (`Router.gs`/`Pipeline.gs`) : `planRoutageV2_` (cœur PUR) + `deciderRoutageV2_` (I/O) — non-document
+> écarté (jamais un domaine, jamais 04), identité par type, sous-dossier obligatoire (entité unifiée),
+> nom via `nommerDocument_` (jamais « Inconnu »), anti-écrasement `garantirNomUnique_`. Gate au Pipeline
+> `CONFIG.ANALYSE_V2 ? deciderRoutageV2_ : deciderRoutage_`. **Coût correctement compté Sonnet** (le frein
+> §2.6 pausera la campagne). +21 tests (`routage-v2.test.js`, `llm-v2.test.js`). En revue flotte
+> (code/sécurité/quotas) avant merge draft. **RESTE : C26-07** dry-run à grande échelle ; **C26-08**
+> campagne de re-analyse (budget/jour, déplacement seul, reprenable) ; **C26-09** app + §6 budget.
+> ⚠️ **PRÉVENIR MARC AVANT** d'allumer `ANALYSE_V2` et de lancer la campagne (coût réel ~×10-20/doc ;
+> campagne ~60-150 $ one-shot). Prompts finaux + specs : scripts de workflow persistés.
 >
 > **2026-07-07 — Tri Gmail : recalibration du signal ⚠️ Suspect (demande Marc « trop de suspects »).**
 > 14 fils marqués ⚠️, dont 13 FAUX POSITIFS (alertes Google/Anthropic, codes 2FA + réclamations
