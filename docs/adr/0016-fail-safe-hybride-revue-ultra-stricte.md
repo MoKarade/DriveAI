@@ -15,10 +15,12 @@ deviner ». Sa phase 2 voulait envoyer vers `00 · À vérifier` dès qu'un fait
 file et **neutralise l'auto-rangement** » (au premier run de masse, tout partait en revue).
 
 **Décision de réconciliation (Marc, hybride ultra-strict)** : on ré-introduit `00 · À vérifier`, mais
-**UNIQUEMENT** quand l'analyse n'a produit **AUCUN** fait exploitable — `domaine` **ET** `emetteur`
-**ET** `type_doc` **tous** absents/inconnus. Sinon, comportement inchangé (classé au mieux ; domaine
-inconnu → `DOMAINE_DEFAUT`). But : offrir un filet humain pour les cas VRAIMENT vides, sans rouvrir la
-vanne qui neutralise l'auto-rangement.
+**UNIQUEMENT** quand l'analyse n'a produit **AUCUN** fait exploitable. Périmètre affiné en revue code
+(#26) : outre `domaine` inconnu **ET** `emetteur` **ET** `type_doc`, la règle exige aussi `entite`
+**ET** `descripteur` absents (au moindre fait exploitable on classe — « granularité = enrichissement,
+jamais frein »), et traite les **sentinelles** LLM (« Inconnu », « N/A », « - »…) comme absentes — car
+Haiku n'offre pas `null` pour `type_doc` et écrit « Inconnu », sinon le filet raterait sa cible dans le
+chemin live. Sinon, comportement inchangé (classé au mieux ; domaine inconnu → `DOMAINE_DEFAUT`).
 
 ## Impact quotas Google / coûts LLM
 

@@ -23,9 +23,11 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
    2026-07-07, ADR-0016 : ré-introduit un filet de revue ÉTROIT.)* Un **seul dossier d'arrivée**
    (`00 · À trier`). **TOUT** document est **auto-classé** dans son domaine avec son **nom final propre**
    (`AAAA-MM-JJ_Type_Émetteur.ext`), jamais un nom encodé `[REVUE] …`. **Fail-safe hybride (ADR-0016)** :
-   un document ne va dans `00 · À vérifier` que si l'analyse est **TOUT-NULL** — `domaine` inconnu **ET**
-   `emetteur` **ET** `type_doc` tous absents (`estClassificationVide_`, fonction PURE). Un **seul** fait
-   présent ⇒ classé au mieux (domaine introuvable mais un autre fait présent → `CONFIG.DOMAINE_DEFAUT`).
+   un document ne va dans `00 · À vérifier` que si l'analyse ne porte **AUCUN fait exploitable** —
+   `domaine` inconnu **ET** `emetteur` **ET** `type_doc` **ET** `entite` **ET** `descripteur` tous
+   absents (`estClassificationVide_`, PURE ; les sentinelles LLM « Inconnu »/« N/A »/« - » comptent
+   comme absentes). Un **seul** fait présent ⇒ classé au mieux (domaine introuvable mais un autre fait
+   présent → `CONFIG.DOMAINE_DEFAUT`).
    La conjonction **ET** est l'anti-saturation NON négociable (sinon la revue neutralise l'auto-rangement
    — leçon vécue) : la revue est l'exception rare, jamais la posture. Le flag `sensible` du LLM reste
    produit mais ne route plus rien. Ce qui reste **NON négociable** : (a) **aucune suppression** (§2) ;

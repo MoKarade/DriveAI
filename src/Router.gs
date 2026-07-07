@@ -362,22 +362,36 @@ function decisionNonDocument_(classif, meta) {
  * La conjonction ET garantit l'anti-saturation (un seul fait présent suffit à classer). PURES + I/O.
  * ==========================================================================*/
 
-/** Vrai si un champ de classification est réellement RENSEIGNÉ (non vide après nettoyage). PUR. */
-function estRenseigne_(v) { return !!(v != null && String(v).trim() && champ_(v)); }
+// Valeurs SENTINELLES que le LLM émet pour « je ne sais pas » (Haiku n'offre PAS `null` pour type_doc
+// → il écrit « Inconnu ») : à traiter comme ABSENTES, sinon le fail-safe RATE le cas vide dans le
+// chemin live et le doc atterrit au hasard dans `01 · Administratif` (revue code #26).
+var SENTINELLES_VIDES = ['inconnu', 'inconnue', 'unknown', 'null', 'undefined', 'na', 'none',
+  'aucun', 'aucune', 'so', 'vide', 'nc', 'indetermine'];
+
+/** Vrai si un champ de classification est réellement RENSEIGNÉ : non vide ET pas une sentinelle. PUR. */
+function estRenseigne_(v) {
+  if (v == null) return false;
+  var s = String(v).trim();
+  if (!s || !champ_(v)) return false;
+  var k = s.toLowerCase().replace(/[^a-z0-9]/g, ''); // 'N/A'→'na', '-'→'', 'Inconnu'→'inconnu'
+  return k !== '' && SENTINELLES_VIDES.indexOf(k) === -1;
+}
 
 /**
- * Vrai si l'analyse est VIDE au sens fail-safe (ADR-0016) : les TROIS faits critiques absents —
- * domaine inconnu/hors-liste ET émetteur absent ET type_doc absent. Un seul fait présent ⇒ false
- * (on classe au mieux). Ne dépend d'AUCUNE I/O. PUR.
+ * Vrai si l'analyse ne porte AUCUN fait exploitable (fail-safe ADR-0016) : domaine inconnu/hors-liste
+ * ET émetteur ET type_doc ET entité ET descripteur tous absents (sentinelles incluses). Le MOINDRE
+ * fait présent ⇒ false (on classe au mieux — « granularité = enrichissement, jamais frein » : entité
+ * et descripteur comptent, révision code #26). Ne dépend d'AUCUNE I/O. PUR.
  * @param {Object} classif
  * @return {boolean}
  */
 function estClassificationVide_(classif) {
   if (!classif) return true; // aucune classif du tout → à vérifier
-  var domaineVide = !domaineConnu_(classif.domaine);
-  var emetteurVide = !estRenseigne_(classif.emetteur);
-  var typeVide = !estRenseigne_(classif.type_doc);
-  return domaineVide && emetteurVide && typeVide;
+  return !domaineConnu_(classif.domaine) &&
+    !estRenseigne_(classif.emetteur) &&
+    !estRenseigne_(classif.type_doc) &&
+    !estRenseigne_(classif.entite) &&          // un fait exploitable (entité) suffit à classer
+    !estRenseigne_(classif.descripteur);       // v2 : descripteur toujours produit → jamais vide en v2
 }
 
 /**
@@ -418,9 +432,13 @@ function routageAVerifier_(classif, date, ext) {
 function deciderRoutage_(classif, dateReference, ext) {
   var date = dateNormalisee_(classif.date_doc, dateReference); // AAAA-MM-JJ
 
-  // FAIL-SAFE (ADR-0016) : analyse TOUT-NULL (domaine inconnu ET émetteur ET type absents) → filet
-  // humain `00 · À vérifier` au lieu d'un rangement au hasard. Ultra-strict → rare (anti-saturation).
-  if (estClassificationVide_(classif)) return routageAVerifier_(classif, date, ext);
+  // FAIL-SAFE (ADR-0016) : aucun fait exploitable → filet humain `00 · À vérifier` au lieu d'un
+  // rangement au hasard. Ultra-strict → rare (anti-saturation). Garde identité symétrique avec le
+  // chemin v2 (aujourd'hui toujours vraie en Haiku : `estDocumentIdentite` est un champ v2 — mais la
+  // symétrie protège si Haiku venait à produire ce signal).
+  if (!estDocumentIdentitePersonnel_(classif) && estClassificationVide_(classif)) {
+    return routageAVerifier_(classif, date, ext);
+  }
 
   // (Le cas DOUBLON vit en AMONT, au fast-path du Pipeline (P1-20) — plus jamais ici.)
   // 1) Domaine introuvable (LLM hors-liste/malformé) : on CLASSE au mieux dans le domaine par défaut

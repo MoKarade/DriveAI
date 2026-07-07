@@ -19,10 +19,22 @@ const meta = (nom, opts) => Object.assign(
 test('estRenseigne_ : vrai seulement pour une valeur réellement remplie', () => {
   assert.strictEqual(ctx.estRenseigne_('Hydro-Québec'), true);
   assert.strictEqual(ctx.estRenseigne_('Facture'), true);
+  assert.strictEqual(ctx.estRenseigne_('CNAM'), true);
   assert.strictEqual(ctx.estRenseigne_(''), false);
   assert.strictEqual(ctx.estRenseigne_('   '), false);
   assert.strictEqual(ctx.estRenseigne_(null), false);
   assert.strictEqual(ctx.estRenseigne_(undefined), false);
+});
+
+test('estRenseigne_ : les SENTINELLES du LLM (« Inconnu », « N/A », « - »…) comptent comme ABSENTES', () => {
+  // Haiku n'offre pas null pour type_doc → il écrit « Inconnu » : le fail-safe doit le voir vide (revue #26).
+  assert.strictEqual(ctx.estRenseigne_('Inconnu'), false);
+  assert.strictEqual(ctx.estRenseigne_('inconnue'), false);
+  assert.strictEqual(ctx.estRenseigne_('Unknown'), false);
+  assert.strictEqual(ctx.estRenseigne_('N/A'), false);
+  assert.strictEqual(ctx.estRenseigne_('-'), false);
+  assert.strictEqual(ctx.estRenseigne_('?'), false);
+  assert.strictEqual(ctx.estRenseigne_('null'), false);
 });
 
 /* ---------- estClassificationVide_ : conjonction ET (ultra-strict) ---------- */
@@ -43,6 +55,16 @@ test('estClassificationVide_ : UN SEUL fait présent ⇒ FAUX (on classe au mieu
   assert.strictEqual(ctx.estClassificationVide_({ domaine: null, emetteur: 'EDF', type_doc: null }), false);
   // type seul (domaine inconnu)
   assert.strictEqual(ctx.estClassificationVide_({ domaine: null, emetteur: null, type_doc: 'Facture' }), false);
+  // ENTITÉ seule (fait exploitable) — ne doit PAS partir en revue (on perd le signal sinon)
+  assert.strictEqual(ctx.estClassificationVide_({ domaine: 'xxx', emetteur: null, type_doc: null, entite: 'Desjardins' }), false);
+  // DESCRIPTEUR seul (v2, toujours produit) — ne doit PAS partir en revue
+  assert.strictEqual(ctx.estClassificationVide_({ domaine: null, emetteur: null, type_doc: null, descripteur: 'Notes maintenance robot Robovic' }), false);
+});
+
+test('estClassificationVide_ : chemin Haiku LIVE — type_doc « Inconnu » (sentinelle) + reste absent ⇒ VIDE', () => {
+  // Le cas réel que la revue a repéré : Haiku écrit « Inconnu » faute de null → doit être capté.
+  assert.strictEqual(ctx.estClassificationVide_({ domaine: 'Inconnu', emetteur: 'Inconnu', type_doc: 'Inconnu' }), true);
+  assert.strictEqual(ctx.estClassificationVide_({ domaine: null, emetteur: '-', type_doc: 'N/A', entite: 'Inconnu' }), true);
 });
 
 /* ---------- Câblage v2 (planRoutageV2_) : type « à vérifier » ---------- */
