@@ -5,6 +5,17 @@
 
 ---
 
+## Chantier #27 — MIROIR DRIVE du dépôt (ADR-0017, demande Marc « accès de partout + NotebookLM », 2026-07-07)  🟦
+
+> Marc voulait remplacer GitHub par Drive comme dépôt — refusé (pas de sémantique git, CI/CD en
+> dépend). Vrai besoin : accès de partout (déjà GitHub) + copie DANS Drive pour NotebookLM (lit
+> depuis Drive). Réutilise la web app déjà déployée, zéro nouveau scope OAuth.
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C27-01 | `src/Miroir.gs` (fonctions pures + I/O), action `sync-miroir` sur `doPost` (secret DÉDIÉ `DriveAI_SYNC_SECRET`), `.github/workflows/sync-drive.yml` (lots via GitHub Actions), dispatché par `auto-merge.yml`. +12 tests | 🟦 codé, attend config secrets Marc |
+| C27-02 | Config une fois côté Marc (Property + 2 secrets GitHub, doc `DEPLOIEMENT.md`) + vérifier le 1er sync réel | ⬜ (côté Marc) |
+
 ## Chantier #26 — REFONTE de l'analyse documentaire (demande Marc « fiabilité maximale », 2026-07-07)  🟦
 
 > Diagnostic prod : 65,6 % d'émetteurs « Inconnu », mauvais domaines (vols → Administratif faute de

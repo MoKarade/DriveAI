@@ -55,3 +55,7 @@ jobs:
           # explicitement pour que chaque merge déploie le moteur dans le projet Apps Script.
           gh workflow run deploy.yml --repo "$REPO" --ref main \
             || echo "Dispatch de Deploy non effectué (workflow absent ou secrets manquants) — ignoré."
+
+          # Même raison : dispatcher le miroir Drive (ADR-0017) après chaque merge.
+          gh workflow run sync-drive.yml --repo "$REPO" --ref main \
+            || echo "Dispatch de Sync Drive non effectué (workflow absent ou secrets manquants) — ignoré."

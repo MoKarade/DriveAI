@@ -86,6 +86,10 @@ const CONTRAT = [
   'deciderRoutageV2_', 'planRoutageV2_', 'nomsDansDossier_', 'budgetMsRun_',
   // fail-safe hybride ultra-strict (ADR-0016 — révision §2.1)
   'estClassificationVide_', 'estRenseigne_', 'routageAVerifier_', 'dossierAVerifier_',
+  // miroir Drive du dépôt (ADR-0017 — accès de partout + NotebookLM)
+  'dossierMiroir_', 'estFichierMiroirable_', 'nettoyerSegmentChemin_', 'nomFichierMiroir_',
+  'dossiersMiroir_', 'dossierMiroirPourChemin_', 'ecrireFichierMiroir_', 'verifierSecretSync_',
+  'actionSyncMiroir_',
   // entités auto-validées (#18)
   'autoValiderEntitesFrequentes_', 'estAutoValidable_', 'entitesAutoValidees_', 'estValidee_',
 ];
