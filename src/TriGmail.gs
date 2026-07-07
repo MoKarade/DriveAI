@@ -164,8 +164,26 @@ function miniCategorie_(expediteur, sujet, libelles) {
       system: 'Tu tries la boîte mail personnelle de Marc. Réponds UNIQUEMENT avec un objet JSON ' +
         '{"categorie": "<un libellé de la liste, EXACTEMENT>" | null, "suspect": true|false}. ' +
         'Choisis le libellé le plus PRÉCIS de la liste ; si aucun ne convient AVEC CERTITUDE, mets ' +
-        'null (jamais le plus probable). "suspect"=true si le mail ressemble à du phishing ' +
-        '(usurpation d\'expéditeur, urgence artificielle, demande d\'identifiants ou de paiement).\n' +
+        'null (jamais le plus probable).\n' +
+        // Recalibration 2026-07-07 (workflow validé : 14 faux positifs → ~1, 8/8 phishing détectés).
+        // L'ancien prompt assimilait « urgence/identifiants/paiement » à du phishing → il flaguait TOUT
+        // mail transactionnel légitime (alertes Google, codes 2FA, réclamations Desjardins…). On inverse
+        // la charge de la preuve : suspect exige un signal de TROMPERIE sur l'IDENTITÉ du domaine, pas le ton.
+        'Gmail a DÉJÀ écarté le spam et le phishing : ce qui arrive dans cette boîte est presque ' +
+        'toujours LÉGITIME. Ne mets "suspect": true QUE si l\'EXPÉDITEUR ou le SUJET montrent un signal ' +
+        'de TROMPERIE CONCRET :\n' +
+        '- le domaine de l\'expéditeur NE CORRESPOND PAS à l\'organisation prétendue (ex. « La Poste » ' +
+        'depuis un .info, une banque depuis un domaine inconnu) ;\n' +
+        '- domaine SOSIE / typosquat d\'une vraie marque (caractère en trop, tiret, mot ajouté, TLD douteux) ;\n' +
+        '- webmail gratuit (gmail, outlook, yahoo…) se faisant passer pour une INSTITUTION (banque, ' +
+        'impôts, gouvernement, assureur) ;\n' +
+        '- arnaque MANIFESTE : loterie/héritage/gain, sextorsion/chantage, faux remboursement, virement inattendu.\n' +
+        'N\'est PAS suspect (false) — même si le ton est pressant — dès lors que le domaine est COHÉRENT ' +
+        'avec l\'organisation : alerte de sécurité, code de connexion/2FA, confirmation de commande/réception, ' +
+        'relance ou avis de paiement, document de réclamation, facture, notification de service. Une ' +
+        'newsletter ou une promo n\'est pas suspecte. Un message personnel d\'un particulier n\'est pas suspect.\n' +
+        'En cas de DOUTE, mets "suspect": false : Gmail filtre déjà le vrai phishing, et un faux positif ' +
+        'sur du courrier légitime est PIRE qu\'un rare manqué.\n' +
         'Libellés autorisés : ' + libelles.join(' | '),
       messages: [{ role: 'user', content: 'Expéditeur : ' + expediteur + '\nSujet : ' + sujet }]
     }),
@@ -447,6 +465,7 @@ function trierFil_(fil, candidats, libelles, verifierBoite) {
     // « promo non lue » (archivage sans lecture), le signal suspect LLM est TOUJOURS re-demandé,
     // même pour une adresse apprise (anti-empoisonnement).
     var categorie = triApprisCache_()[adresse] || null;
+    var expediteurAppris = !!triApprisCache_()[adresse]; // Marc a déjà ouvert/laissé classer ce fil → de confiance
     var suspectLlm = false;
     var cheminDangereux = promoDeterministe && nonLu;
     if ((!categorie || cheminDangereux) && !suspectHeuristique) {
@@ -472,10 +491,20 @@ function trierFil_(fil, candidats, libelles, verifierBoite) {
     var important = indexContient_('important|' + dernierId) ||
       !!dejaPoses[CONFIG.TRI_LIBELLES.A_TRAITER]; // ⏰ déjà posé (message antérieur) → jamais archivé
 
+    // SUSPECT (recalibré 2026-07-07) : l'heuristique déterministe (.exe/.scr) prime toujours ; le signal
+    // LLM ne compte QUE s'il vise un expéditeur qui n'est ni Marc lui-même (G1 : on ne se phishe pas) ni
+    // un expéditeur DÉJÀ de confiance (G2 : dans TriAppris) — SAUF sur le chemin dangereux « promo non lue
+    // archivée sans lecture » où l'on re-vérifie même un expéditeur appris (anti-empoisonnement, inchangé).
+    // Un fil déjà marqué ⚠️ le reste (le moteur ne retire jamais un libellé — garde-fou).
+    var estMoi = adresse === proprio;
+    var suspect = suspectHeuristique ||
+      (suspectLlm && !estMoi && (!expediteurAppris || cheminDangereux)) ||
+      !!dejaPoses[CONFIG.TRI_LIBELLES.SUSPECT];
+
     var decision = decisionTri_({
       categorie: categorie,
       important: important,
-      suspect: suspectHeuristique || suspectLlm || !!dejaPoses[CONFIG.TRI_LIBELLES.SUSPECT],
+      suspect: suspect,
       zoneProtegee: zoneProtegee,
       promoDeterministe: promoDeterministe,
       entierementLu: !nonLu
