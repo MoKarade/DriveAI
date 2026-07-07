@@ -275,6 +275,86 @@ function routageMedia_(nomOrigine) {
   };
 }
 
+/* ============================================================================
+ * DÉCISION NON-DOCUMENT (refonte 2026-07-07). Un export Facebook, un fichier système, une photo sans
+ * texte ne sont PAS des documents → `_Technique`/`_Médias`, JAMAIS un domaine (surtout pas la zone
+ * protégée 04). Garde DOMINANTE : une pièce d'identité / un doc 01|04 / un vrai scan documentaire
+ * n'est JAMAIS écarté — même en image, même OCR pauvre. Fonctions PURES.
+ * ==========================================================================*/
+
+/** Reprise nominale du filtre TECHNIQUE par extension (code/CAO). PUR. */
+function extensionEstTechnique_(nom) {
+  return estTechnique_(nom);
+}
+
+/**
+ * Vrai si le fichier est un EXPORT DE DONNÉES de compte (Facebook/Instagram…) : .html/.htm/.json ET
+ * (nom évocateur OU gros HTML sans émetteur). Distingue une facture .html légitime (émetteur, petite). PUR.
+ * @param {{nomFichier:string, taille?:number, emetteur?:string}} meta
+ */
+function estExportDonnees_(meta) {
+  meta = meta || {};
+  var nom = String(meta.nomFichier || '');
+  var ext = (extension_(nom) || '').toLowerCase();
+  if (['.html', '.htm', '.json'].indexOf(ext) === -1) return false;
+  var k = normaliserCle_(nom.replace(/\.[^.]+$/, ''));
+  if (/facebook|instagram|messenger|whatsapp|linkedin|snapchat|export|votre information|your information|friends|posts|messages|donnee/.test(k)) return true;
+  // Gros HTML de navigation SANS émetteur identifié → export (une facture .html porte un émetteur).
+  return ext !== '.json' && (meta.taille || 0) > CONFIG.EXPORT_TAILLE_MIN &&
+    !(meta.emetteur && String(meta.emetteur).trim());
+}
+
+/** Vrai si média SANS TEXTE (vidéo/audio/gif toujours ; photo si nom non-documentaire ET OCR pauvre). PUR. */
+function estMediaSansTexte_(meta, extraitOcr) {
+  meta = meta || {};
+  var nom = String(meta.nomFichier || '');
+  if (estMediaDirect_(nom)) return true;
+  return estPhoto_(nom) && estNomNonDocumentaire_(nom) &&
+    String(extraitOcr || '').length < CONFIG.MEDIAS_OCR_MAX_CARS;
+}
+
+/**
+ * Garde DOMINANTE anti-faux-négatif : `true` = VRAI document, à NE PAS écarter. Vrai si pièce
+ * d'identité, OU domaine 01|04 (identité / zone protégée), OU (domaine valide + type documentaire +
+ * émetteur OU titulaire). Empêche qu'un passeport/facture PHOTOGRAPHIÉ (même OCR pauvre) parte en média. PUR.
+ */
+function distinguerVraiScan_(classif) {
+  if (!classif) return false;
+  if (classif.estDocumentIdentite === true) return true;
+  var num = String(classif.domaine || '').slice(0, 2);
+  if (num === '01' || num === '04') return true; // identité / immigration (protégée) — jamais un « média »
+  var aType = !!(classif.type_doc && String(classif.type_doc).trim());
+  var aTiers = !!((classif.emetteur && String(classif.emetteur).trim()) ||
+    (classif.titulaire && String(classif.titulaire).trim()));
+  return domaineConnu_(classif.domaine) && aType && aTiers;
+}
+
+/**
+ * Décision NON-DOCUMENT — ordre EXPLICITE (spec revue) :
+ *  (0) vrai document (distinguerVraiScan_) → NON écarté, SAUF export de données déterministe (un
+ *      export ne porte jamais de domaine, encore moins la zone 04) ;
+ *  (1) sinon écarté si le LLM le dit, ou extension technique, ou export, ou média sans texte ;
+ *  (2) routage `_Technique` (code/export/système) ou `_Médias` (photo/vidéo sans texte).
+ * Ne route JAMAIS vers un domaine, JAMAIS vers 04. PUR.
+ * @param {Object} classif
+ * @param {{nomFichier:string, taille?:number, extraitOcr?:string, emetteur?:string}} meta
+ * @return {{estNonDoc:boolean, routage:('_Technique'|'_Médias'|null)}}
+ */
+function decisionNonDocument_(classif, meta) {
+  meta = meta || {};
+  var estExport = estExportDonnees_(meta);
+  if (distinguerVraiScan_(classif) && !estExport) return { estNonDoc: false, routage: null };
+  var technique = estExport || extensionEstTechnique_(meta.nomFichier);
+  var media = estMediaSansTexte_(meta, meta.extraitOcr);
+  if ((classif && classif.estNonDocument === true) || technique || media) {
+    var routage = technique ? '_Technique' : (media ? '_Médias'
+      : (classif && (classif.routageHorsDomaine === '_Technique' || classif.routageHorsDomaine === '_Médias')
+        ? classif.routageHorsDomaine : '_Médias'));
+    return { estNonDoc: true, routage: routage };
+  }
+  return { estNonDoc: false, routage: null };
+}
+
 /* ---------- Nommage (docs/NAMING.md) ---------- */
 
 /**
