@@ -300,6 +300,17 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   (instance de « plafonds à l'unité de coût réelle ») : un garde-temps/budget par run calibré pour un
   modèle doit suivre le coût-temps réel par item si on change de modèle (Sonnet ×2 ≈ ×10 le temps/doc →
   `budgetMsRun_()` abaisse le budget sous `ANALYSE_V2`, anti-mur 6 min).
+- **`curl` vers une web app Apps Script : jamais `-X POST` combiné à `-L`.** Un `/exec` répond à un
+  POST par une redirection 302 vers `script.googleusercontent.com/macros/echo` qui n'accepte QUE
+  `HEAD`/`GET` — `-X POST` verrouille la méthode sur TOUTE la chaîne de redirection (court-circuite le
+  downgrade POST→GET normal de la RFC) → 405 systématique malgré une requête initiale valide.
+  `--data-binary` seul suffit à poser POST sur la 1ʳᵉ requête sans verrouiller les suivantes. Corollaire :
+  un payload de taille non bornée en CLI passe TOUJOURS par un fichier (`--data-binary @fichier`),
+  jamais par une variable shell interpolée en argument (`ARG_MAX` de l'OS, « Argument list too long »
+  sur les gros lots). Et un `curl -v` de diagnostic dans un log CI PUBLIC expurge TOUJOURS le secret
+  avant affichage (`sed`) — le masquage automatique de la plateforme ne couvre pas ses transformations
+  dérivées (ex. encodage URL). Ces bugs n'apparaissent qu'au premier test RÉEL contre la vraie web app
+  déployée, jamais en test local/CI simulé.
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 
