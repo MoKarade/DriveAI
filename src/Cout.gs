@@ -106,6 +106,33 @@ function coutDollars_(t) {
 }
 
 /**
+ * Coût $ d'un document isolé par différence de 2 relevés de `usageRunSnapshot_` (avant/après son
+ * classement). PURE. Sert le dry-run C26-07 : un coût PAR LIGNE, sans compteur dédié qui dupliquerait
+ * (et pourrait diverger de) la comptabilité mensuelle déjà tenue par `enregistrerUsage_`/`flushUsage_`.
+ * @param {{hin:number,hout:number,sin:number,sout:number}} avant
+ * @param {{hin:number,hout:number,sin:number,sout:number}} apres
+ * @return {number} dollars
+ */
+function coutDollarsDelta_(avant, apres) {
+  return coutDollars_({
+    hin: apres.hin - avant.hin, hout: apres.hout - avant.hout,
+    sin: apres.sin - avant.sin, sout: apres.sout - avant.sout
+  });
+}
+
+/**
+ * Copie de l'accumulateur du run courant (jamais la référence — l'appelant ne doit pas pouvoir
+ * muter `_usageRun`). Sert à mesurer un coût PAR DOCUMENT par différence de 2 relevés (dry-run
+ * C26-07) sans dupliquer la comptabilité de `enregistrerUsage_`. {} si aucun run en cours.
+ * @return {{hin:number,hout:number,sin:number,sout:number,appels:number}}
+ */
+function usageRunSnapshot_() {
+  return _usageRun
+    ? { hin: _usageRun.hin, hout: _usageRun.hout, sin: _usageRun.sin, sout: _usageRun.sout, appels: _usageRun.appels }
+    : { hin: 0, hout: 0, sin: 0, sout: 0, appels: 0 };
+}
+
+/**
  * Synthèse du coût du mois courant (pour le résumé hebdo).
  * @return {{appels:number, dollars:number, tokens:number}}
  */

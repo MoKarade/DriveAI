@@ -17,14 +17,17 @@
 
 /**
  * @param {Blob} blob
+ * @param {number} [maxCarsOverride]  borne de troncature explicite — sert au dry-run C26-07 qui
+ *   doit répliquer la troncature v2 (12000 car.) SANS activer CONFIG.ANALYSE_V2 (le flag pilote
+ *   aussi le flux vivant). Omis ⇒ comportement historique inchangé (branché sur le flag).
  * @return {?string} texte extrait (tronqué) ; '' si le fichier est SANS texte ; null si
  *   l'extraction a ÉCHOUÉ (panne/quota — un échec n'est pas un verdict « vide », cf. P2 #11).
  */
-function extraireTexte_(blob) {
+function extraireTexte_(blob, maxCarsOverride) {
   var type = blob.getContentType() || '';
   // Refonte #26 : quand l'analyse v2 est active, on tronque MOINS (texte plus complet → analyse plus
   // fiable). OFF ⇒ borne historique inchangée (Haiku, 4000 car.).
-  var maxCars = CONFIG.ANALYSE_V2 ? CONFIG.ANALYSE_V2_OCR_MAX_CARS : CONFIG.LLM_OCR_MAX_CARS;
+  var maxCars = maxCarsOverride || (CONFIG.ANALYSE_V2 ? CONFIG.ANALYSE_V2_OCR_MAX_CARS : CONFIG.LLM_OCR_MAX_CARS);
   try {
     if (type.indexOf('text/') === 0) {
       return tronquer_(blob.getDataAsString(), maxCars);

@@ -13,6 +13,7 @@ const { load } = require('./harness');
 
 const ctx = load(['Config.gs', 'Cout.gs']);
 const M = 1e6;
+const plat = (o) => JSON.parse(JSON.stringify(o)); // normalise les prototypes (frontière vm)
 
 test('coût nul', () => {
   assert.strictEqual(ctx.coutDollars_({ hin: 0, hout: 0, sin: 0, sout: 0 }), 0);
@@ -32,6 +33,25 @@ test('somme pondérée cohérente', () => {
 
 test('proportionnel sous le million (pas d\'arrondi masquant)', () => {
   assert.strictEqual(ctx.coutDollars_({ hin: 500000, hout: 0, sin: 0, sout: 0 }), 0.5);
+});
+
+test('coutDollarsDelta_ : différence de 2 relevés (dry-run C26-07, coût PAR document)', () => {
+  const avant = { hin: 0, hout: 0, sin: 0, sout: 0 };
+  const apres = { hin: 0, hout: 0, sin: M, sout: 0 }; // 1 MTok Sonnet in = 3 $
+  assert.strictEqual(ctx.coutDollarsDelta_(avant, apres), 3);
+  assert.strictEqual(ctx.coutDollarsDelta_(apres, apres), 0); // pas de progrès entre 2 relevés → 0
+});
+
+test('usageRunSnapshot_ : copie (jamais la référence), {} si aucun run en cours', () => {
+  const c = load(['Config.gs', 'Cout.gs']);
+  assert.deepStrictEqual(plat(c.usageRunSnapshot_()), { hin: 0, hout: 0, sin: 0, sout: 0, appels: 0 });
+  c.reinitialiserUsage_();
+  c.enregistrerUsage_('claude-sonnet-4-6', { input_tokens: 100, output_tokens: 20 });
+  const s1 = c.usageRunSnapshot_();
+  assert.strictEqual(s1.sin, 100);
+  c.enregistrerUsage_('claude-sonnet-4-6', { input_tokens: 900, output_tokens: 80 });
+  assert.strictEqual(s1.sin, 100, 'le relevé pris AVANT le 2e appel ne doit pas bouger (copie)');
+  assert.strictEqual(c.usageRunSnapshot_().sin, 1000);
 });
 
 // ---------------------------------------------------------------------------

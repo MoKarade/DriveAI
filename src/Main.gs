@@ -382,6 +382,15 @@ function tickDriveAI() {
       catch (e) { journalErreur_('Migration', 'Migration taxonomie différée : ' + e); }
     }
 
+    // Dry-run v2 (#26, C26-07, ADR-0015) : preuve avant/après sur échantillon réel, ZÉRO mutation
+    // Drive (planRoutageV2_ seul — jamais deciderRoutageV2_). Interrupteur DÉDIÉ (DRYRUN_V2_ACTIF,
+    // OFF par défaut) : n'affecte JAMAIS le flux vivant ni CONFIG.ANALYSE_V2. Même famille que la
+    // migration (après l'intake, gatée par le frein budget campagnes, enveloppée).
+    if (!estBudgetDepasse() && !budgetCampagnesAtteint_()) {
+      try { appliquerDryRunV2_(estBudgetDepasse); }
+      catch (e) { journalErreur_('DryRunV2', 'Dry-run v2 différé : ' + e); }
+    }
+
     // Phase 3 : détection d'actions/rdv dans TOUS les mails récents → Tasks/Calendar.
     // En dernier, budget restant seulement : le classement documentaire (déjà validé en
     // prod) garde toujours la priorité sur ce nouveau flux.
