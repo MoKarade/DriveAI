@@ -5,7 +5,7 @@
 
 ---
 
-## Chantier #27 — MIROIR DRIVE du dépôt (ADR-0017, demande Marc « accès de partout + NotebookLM », 2026-07-07)  🟦
+## Chantier #27 — MIROIR DRIVE du dépôt (ADR-0017, demande Marc « accès de partout + NotebookLM », 2026-07-07)  ✅
 
 > Marc voulait remplacer GitHub par Drive comme dépôt — refusé (pas de sémantique git, CI/CD en
 > dépend). Vrai besoin : accès de partout (déjà GitHub) + copie DANS Drive pour NotebookLM (lit
@@ -15,7 +15,7 @@
 |----|-------|--------|
 | C27-01 | `src/Miroir.gs` (fonctions pures + I/O), action `sync-miroir` sur `doPost` (secret DÉDIÉ `DriveAI_SYNC_SECRET`), `.github/workflows/sync-drive.yml` (lots via GitHub Actions), dispatché par `auto-merge.yml`. +12 tests | ✅ mergé #107 |
 | C27-02 | Config une fois côté Marc (Property + 2 secrets GitHub, accès web app « Tout le monde ») | ✅ fait par Marc |
-| C27-03 | **Débogage 1er sync réel** — 2 bugs curl invisibles hors prod trouvés + corrigés (405 : `-X POST`+`-L` verrouille la méthode sur la redirection Apps Script ; « Argument list too long » : payload en argument shell → fichier + `--data-binary @`). Fixes poussés sur la branche, PAS ENCORE mergés. Voir leçon `docs/LESSONS.md`. | 🟦 bloqué : web app `/exec` figée sur une ancienne version (piège déjà documenté) — Marc doit refaire Déployer → Nouvelle version, secret restant à confirmer via diagnostic de longueur |
+| C27-03 | **Débogage 1er sync réel** — 2 bugs curl invisibles hors prod trouvés + corrigés (405 : `-X POST`+`-L` verrouille la méthode sur la redirection Apps Script ; « Argument list too long » : payload en argument shell → fichier + `--data-binary @`). Cause du 3e blocage (secret « refusé ») identifiée : web app `/exec` figée sur une ancienne version — résolue par redéploiement manuel de Marc (Nouvelle version). Fixes mergés #108. Sync complet validé 2× en prod réelle (169/169 fichiers, 0 ignoré, 0 erreur) : une fois sur la branche, une fois sur `main` après merge + redéploiement. Voir leçon `docs/LESSONS.md`. | ✅ terminé — miroir Drive à jour, vivant à chaque merge sur `main` |
 
 ## Chantier #26 — REFONTE de l'analyse documentaire (demande Marc « fiabilité maximale », 2026-07-07)  🟦
 
