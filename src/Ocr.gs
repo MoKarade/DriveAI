@@ -22,15 +22,18 @@
  */
 function extraireTexte_(blob) {
   var type = blob.getContentType() || '';
+  // Refonte #26 : quand l'analyse v2 est active, on tronque MOINS (texte plus complet → analyse plus
+  // fiable). OFF ⇒ borne historique inchangée (Haiku, 4000 car.).
+  var maxCars = CONFIG.ANALYSE_V2 ? CONFIG.ANALYSE_V2_OCR_MAX_CARS : CONFIG.LLM_OCR_MAX_CARS;
   try {
     if (type.indexOf('text/') === 0) {
-      return tronquer_(blob.getDataAsString(), CONFIG.LLM_OCR_MAX_CARS);
+      return tronquer_(blob.getDataAsString(), maxCars);
     }
     var conv = cibleConversion_(type, blob.getName());
     if (conv) {
       var texte = convertirEtExtraire_(blob, conv.cible, conv.exportMime, conv.ocr);
       if (texte === null) return null; // échec technique ≠ document sans texte
-      return tronquer_(texte, CONFIG.LLM_OCR_MAX_CARS);
+      return tronquer_(texte, maxCars);
     }
   } catch (e) {
     journalErreur_('OCR', 'Extraction échouée pour « ' + blob.getName() + ' » : ' + e);

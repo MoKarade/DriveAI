@@ -127,7 +127,14 @@ function traiterDocument_(src) {
       return;
     }
 
-    var decision = deciderRoutage_(classif, src.date, ext);
+    // Routage : v2 (refonte #26, schéma étendu — identité par type, non-document, entité unifiée,
+    // descripteur, sous-dossier obligatoire) si le flag est ON ; sinon logique historique inchangée.
+    var decision = CONFIG.ANALYSE_V2
+      ? deciderRoutageV2_(classif, {
+          nomFichier: src.nom, taille: src.taille,
+          extraitOcr: extrait || '', emetteur: classif.emetteur
+        }, src.date, ext)
+      : deciderRoutage_(classif, src.date, ext);
     decision.confiance = typeof classif.confiance === 'number' ? classif.confiance : ''; // #17 → Index H
 
     // Plus de file de revue (décision Marc 2026-07-01) : tout est CLASSÉ ('classé'), placé dans son
