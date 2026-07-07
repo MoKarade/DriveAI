@@ -62,8 +62,6 @@ jobs:
           # EXT_MIROIR_BINAIRES côté moteur (src/Miroir.gs), filtrage en double (bande passante).
           BINAIRES='png|jpg|jpeg|gif|ico|webp|bmp|tif|tiff|heic|heif|woff2?|ttf|eot|otf|zip|gz|tar|pdf'
           mapfile -t FICHIERS < <(git ls-files | grep -viE "\.(${BINAIRES})\$")
-          # DIAGNOSTIC TEMPORAIRE (à retirer) : 1 seul fichier, pour isoler la cause exacte.
-          FICHIERS=("README.md")
           echo "Fichiers à synchroniser : ${#FICHIERS[@]}"
 
           # Encodage URL du secret (revue code #27) : une valeur aléatoire peut contenir des
@@ -84,13 +82,14 @@ jobs:
             # -L : Apps Script répond à /exec par une redirection 302 vers
             # script.googleusercontent.com (comportement NORMAL) — sans -L, curl rapportait le
             # 302 comme un échec au lieu de suivre vers la vraie réponse JSON (bug repéré en prod).
-            CODE="$(curl -sS -v -L -o /tmp/miroir-rep.json -w '%{http_code}' -X POST \
+            # PAS de -X POST : cette option verrouille la méthode sur TOUTE la chaîne de
+            # redirection (curl renvoyait alors POST vers /macros/echo, qui n'accepte que
+            # HEAD/GET → 405). --data-binary positionne déjà POST pour la 1ère requête SEULE,
+            # laissant curl basculer en GET sur la redirection comme le veut la RFC (bug repéré en prod).
+            CODE="$(curl -sS -L -o /tmp/miroir-rep.json -w '%{http_code}' \
               "${URL}?action=sync-miroir&secret=${SECRET_ENC}" \
               -H 'Content-Type: text/plain;charset=utf-8' \
-              --data-binary "$PAYLOAD" 2>/tmp/miroir-verbose.log)"
-            echo "::group::Verbose curl (diagnostic temporaire, secret expurgé)"
-            sed -E 's/secret=[^&[:space:]]+/secret=***REDACTED***/g' /tmp/miroir-verbose.log
-            echo "::endgroup::"
+              --data-binary "$PAYLOAD")"
             if [ "$CODE" != "200" ]; then
               echo "::error::Échec HTTP $CODE — $(cat /tmp/miroir-rep.json)"
               exit 1
