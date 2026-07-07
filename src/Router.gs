@@ -458,10 +458,13 @@ function deciderRoutageV2_(classif, meta, dateReference, ext) {
   }
 
   var dom = DriveApp.getFolderById(idDomaine_(plan.domaine));
-  var cible = sousDossier_(dom, plan.sousDossier);
+  // Assainit le nom de sous-dossier (caractères interdits Drive → '-', comme pour les noms de
+  // fichiers) : `plan.sousDossier` vient d'une entité/catégorie LLM libre, jamais d'un ID fixe.
+  var sousNom = champ_(plan.sousDossier) || 'Divers';
+  var cible = sousDossier_(dom, sousNom);
   var nom = garantirNomUnique_(plan.nom, nomsDansDossier_(cible.getId()));
   return {
-    statut: 'classé', domaine: plan.domaine, chemin: plan.domaine + '/' + plan.sousDossier,
+    statut: 'classé', domaine: plan.domaine, chemin: plan.domaine + '/' + sousNom,
     nom: nom, dossierId: cible.getId(), autresEntites: []
   };
 }

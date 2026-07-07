@@ -88,7 +88,7 @@ var PROMPT_PASSE1 =
   '  "confiance": <nombre 0..1, honnête>\n' +
   '}\n' +
   'NON-DOCUMENT d\'abord : export .html/.json ou dump de compte (Facebook…) → _Technique ; photo/capture SANS texte → _Médias. ' +
-  'GARDE : un VRAI scan (passeport, facture) reste CLASSÉ ; JAMAIS _Médias sur une pièce d\'identité ou un doc 01/04 ; un export ne porte jamais de domaine (jamais 04).\n' +
+  'GARDE : un VRAI scan (passeport, facture) reste CLASSÉ ; JAMAIS _Médias sur une pièce d\'identité ou un doc 01/04 ; un non-document (export/dump/capture) n\'est JAMAIS rangé dans un domaine (encore moins 04) — mets estNonDocument=true + routageHorsDomaine, le champ domaine peut rester null.\n' +
   'IDENTITÉ : estDocumentIdentite=true → renseigne sousDossierType ET titulaire (Marc OU un proche : MÊME dossier de type, jamais « Tiers »).\n' +
   'ÉMETTEUR = l\'organisation émettrice. Marc n\'est JAMAIS émetteur/entité d\'un document d\'organisation. ENTITÉ = nom propre canonique.\n' +
   'SENSIBLE = immigration/statut (CSQ, IRCC, visa, passeport, permis de séjour, résidence) OU fiscalité (impôts, avis de cotisation) UNIQUEMENT ; sinon false.\n' +
@@ -532,7 +532,15 @@ function parserClassification_(texte) {
       }
     }
   }
-  if (!obj || typeof obj.domaine !== 'string' || typeof obj.confiance !== 'number') {
+  // Un NON-DOCUMENT v2 (export/dump/média) n'a pas besoin de domaine : le prompt lui dit « ne range
+  // jamais dans un domaine » → le modèle peut légitimement renvoyer domaine:null. On le TOLÈRE (le
+  // routage v2 l'écarte vers _Technique/_Médias, où le domaine est ignoré) au lieu de le rejeter →
+  // sinon quarantaine À TORT du cas même que la refonte #26 visait (revue code #26). Le chemin Haiku
+  // (aucun champ v2) garde l'exigence STRICTE d'un domaine string — comportement OFF inchangé.
+  var estNonDocV2 = !!(obj && (obj.estNonDocument === true ||
+    obj.routageHorsDomaine === '_Technique' || obj.routageHorsDomaine === '_Médias'));
+  if (!obj || typeof obj.confiance !== 'number' ||
+      (typeof obj.domaine !== 'string' && !estNonDocV2)) {
     journalErreur_('LLM', 'JSON de classification invalide : ' + tronquer_(texte, 300));
     return null;
   }

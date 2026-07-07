@@ -274,7 +274,7 @@ function tickDriveAI() {
     catch (e) { journalErreur_('Setup', 'Sync des noms de domaines différée : ' + e); }
 
     var debut = Date.now();
-    var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
+    var estBudgetDepasse = function () { return Date.now() - debut > budgetMsRun_(); };
 
     // Auto-rejeu sur nouvelle version du classement : renvoie les DÉPÔTS partis en revue vers
     // 00·À trier pour reclassement. SECONDAIRE → enveloppé d'un try/catch : un échec ne doit
