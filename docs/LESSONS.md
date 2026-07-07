@@ -693,3 +693,25 @@ fixe. (2) Un test qui verrouille un comportement PARAMÉTRÉ par CONFIG dérive 
 constante (seuil−1, seuil+6…), jamais de sa valeur du jour — sauf tripwire volontaire qui
 verrouille la VALEUR elle-même (et le dit en commentaire).
 **Règle durable ?** oui (le point 2 ; le point 1 est une instance d'une règle déjà consignée).
+
+## 2026-07-07 — Refonte d'un pipeline LLM coûteux : PROUVER sur du réel large + métriques HONNÊTES avant de coder
+**Contexte.** Refonte complète de l'analyse documentaire (chantier #26, demande Marc « fiabilité
+maximale, Sonnet 2 passes, quitte à payer plus »). Avant de coder le pipeline live (coûteux : Sonnet
+×10-20/doc, campagne ~60-150 $), on a (1) conçu + validé par workflow adversarial (14/14 cas, 7
+correctifs), puis (2) PROUVÉ sur 38 VRAIS documents lus depuis le Drive, avant/après présenté en
+artifact, itéré 2 fois avec Marc (qui a relevé le niveau : zéro « Inconnu » + tout en sous-dossier).
+La preuve a révélé un contre-résultat majeur invisible autrement : **0/21 émetteurs réellement
+récupérés** — le « 65 % d'Inconnu » n'était PAS un problème récupérable, la plupart des Inconnu sont
+LÉGITIMES (CV/notes/devoirs perso sans émetteur). Le vrai gain est la CORRECTNESS (bon domaine,
+non-docs écartés, identité par type, entités fusionnées), pas le remplissage d'émetteur.
+**Leçon.** Avant de coder (et surtout de DÉPLOYER/lancer une campagne) un pipeline LLM coûteux ou une
+refonte d'analyse : (1) PROUVER la nouvelle logique sur un ÉCHANTILLON RÉEL large et STRATIFIÉ (pas
+2-3 cas choisis), en mesurant des métriques HONNÊTES et vérifiées indépendamment (ici : taux de
+récupération réel, % sans Inconnu, % en sous-dossier) ; (2) présenter l'avant/après VISIBLE à
+l'utilisateur (artifact) et ITÉRER les prompts/règles avec lui sur la preuve — c'est là qu'il relève
+le niveau ; (3) ne JAMAIS présenter un chiffre-titre comme une promesse de gain sans l'avoir mesuré
+sur le corpus réel (un « 65 % d'Inconnu » peut être 0 % récupérable). Bâtir d'abord les fonctions
+PURES testables (nommage, canonicalisation, routage), la preuve tourne dessus, le pipeline LLM live
+(flag éteint) et la campagne viennent APRÈS validation. La preuve coûte quelques workflows ; elle
+évite de dépenser des dizaines de dollars et de churner le Drive sur une fausse attente.
+**Règle durable ?** oui.

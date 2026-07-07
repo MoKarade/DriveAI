@@ -234,6 +234,15 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   fond se budgète PAR JOUR (ms réelles persistées). Une complémentarité entre scans se vérifie au
   niveau où Gmail MATCHE : par MESSAGE, pas par fil (un fil ravivé par un message sans PJ échappe à
   `has:attachment newer_than:`) ; `before:` exclusif ⇒ chevauchement par construction (−29 j).
+- **Refonte/pipeline LLM coûteux ⇒ PROUVER sur du réel large avant de coder ET de déployer.** Avant
+  de bâtir (surtout de déployer/lancer une campagne) une refonte d'analyse ou un changement de
+  modèle onéreux : d'abord les fonctions PURES testables (nommage, canonicalisation, routage), puis
+  PROUVER la nouvelle logique sur un ÉCHANTILLON RÉEL large et STRATIFIÉ (pas 2-3 cas choisis), avec
+  des métriques HONNÊTES vérifiées indépendamment, présentées en avant/après VISIBLE (artifact) et
+  ITÉRÉES avec Marc — c'est là qu'il relève le niveau. Un chiffre-titre n'est jamais une promesse de
+  gain tant qu'il n'est pas mesuré sur le corpus (vécu : « 65 % d'Inconnu » = 0/21 réellement
+  récupérable — les Inconnu étaient légitimes ; le vrai gain était la CORRECTNESS, pas l'émetteur).
+  Le pipeline LLM live (flag éteint) et la campagne viennent APRÈS validation.
 - **Échecs LLM : classer par ORIGINE avant de compter.** Une erreur de PLATEFORME (HTTP 400
   « credit balance », 401 — panne de COMPTE) n'est jamais imputée au document : détecter →
   suspendre les appels du run (échec rapide) → ne rien compter → re-sonder au run suivant. Sinon
