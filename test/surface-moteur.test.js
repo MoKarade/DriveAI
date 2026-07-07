@@ -83,7 +83,7 @@ const CONTRAT = [
   'decisionNonDocument_', 'distinguerVraiScan_', 'estExportDonnees_', 'estMediaSansTexte_', 'extensionEstTechnique_',
   // analyse 2 passes & routage v2 (refonte #26, C26-05/06 — flag CONFIG.ANALYSE_V2)
   'classifierDeuxPasses_', 'appelAnthropicV2_', 'normaliserChampsV2_',
-  'deciderRoutageV2_', 'planRoutageV2_', 'nomsDansDossier_',
+  'deciderRoutageV2_', 'planRoutageV2_', 'nomsDansDossier_', 'budgetMsRun_',
   // entités auto-validées (#18)
   'autoValiderEntitesFrequentes_', 'estAutoValidable_', 'entitesAutoValidees_', 'estValidee_',
 ];

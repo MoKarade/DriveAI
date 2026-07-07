@@ -58,6 +58,14 @@ Après recharge, la reprise est automatique en ≤ 1 h (ligne Journal « Compte 
 ### 🔧 Relancer un grand rangement de zéro
 - Bumper **`CONFIG.RANGEMENT_TAG`** → re-parcours complet, **borné + reprenable**, déplacement seul.
 
+### 🟦 Allumer l'analyse v2 (Sonnet 2 passes) — `CONFIG.ANALYSE_V2` (ADR-0015)
+> Le pipeline v2 (fiabilité maximale) est livré **éteint**. NE PAS mettre `ANALYSE_V2: true` sans cette checklist — Sonnet ×2/doc coûte ~×10-20 et double le temps par document.
+1. **Campagnes closes** : rangement (`RANGEMENT_TAG` r3 terminé, `RANGEMENT_RACINES_SUP: []`), migration, historique Gmail tous finis. Sinon le flux vivant Sonnet + campagne peut épuiser le runtime ~90 min/j et **geler tout le moteur**.
+2. **Feu vert coût de Marc** (Sonnet sur le flux vivant + campagne C26-08 ~70-100 $) + **plafond `LLM_BUDGET_CAMPAGNES`** revu le temps du rattrapage.
+3. **Dry-run d'abord** (C26-08) : avant/après écrit dans la Sheet, **rien déplacé**, validation humaine.
+4. **Surveiller** les 1ers jours : heartbeat Sheet (le moteur tourne-t-il ?), `Cout.gs` (coût mensuel), file `00 · À trier` qui se draine. Le garde-temps est déjà abaissé sous v2 (`budgetMsRun_()` → `ANALYSE_V2_BUDGET_MS`).
+5. **Rollback immédiat** : repasser `ANALYSE_V2: false` → retour Haiku 1 passe instantané (chemin OFF prouvé identique).
+
 ## 5. Garde-fous NON négociables (CLAUDE.md §2)
 - **Aucune suppression** auto (doublons → `_Doublons`). **Zone protégée `04 · Immigration` jamais détachée** (garde multi-parents, remonte toute la chaîne d'ancêtres). **Gmail lecture seule.** **Clé API jamais en dur** (Script Properties).
 

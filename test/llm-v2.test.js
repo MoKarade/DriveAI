@@ -9,7 +9,8 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { load } = require('./harness');
 
-const ctx = load(['Config.gs', 'Llm.gs']);
+// tronquer_ vit dans Ocr.gs (non chargé ici) ; stub pour la branche de rejet de parserClassification_.
+const ctx = load(['Config.gs', 'Llm.gs'], { tronquer_: (s, n) => String(s == null ? '' : s).slice(0, n) });
 
 /* ---------- normaliserChampsV2_ : intact sur Haiku, durci sur v2 ---------- */
 
@@ -66,4 +67,40 @@ test('PROMPT_PASSE2 : vérificateur adversarial avec anti-régression et les deu
 
 test('CONFIG : le flag ANALYSE_V2 est ÉTEINT par défaut (pas de Sonnet sur le flux vivant sans feu vert)', () => {
   assert.strictEqual(ctx.CONFIG.ANALYSE_V2, false);
+});
+
+/* ---------- parserClassification_ : non-document v2 sans domaine (fix revue #26, ADR-0015) ---------- */
+
+test('parserClassification_ : un NON-DOCUMENT v2 (domaine null) est ACCEPTÉ, pas quarantainé', () => {
+  // Le prompt v2 autorise domaine=null pour un non-document → le parser doit le tolérer (routé
+  // hors domaines par decisionNonDocument_), sinon quarantaine à tort du cas visé par la refonte.
+  const parExport = ctx.parserClassification_(JSON.stringify(
+    { estNonDocument: true, routageHorsDomaine: '_Technique', confiance: 0.9 }));
+  assert.ok(parExport, 'un export sans domaine ne doit pas être rejeté');
+  assert.strictEqual(parExport.estNonDocument, true);
+
+  const parMedia = ctx.parserClassification_(JSON.stringify(
+    { routageHorsDomaine: '_Médias', confiance: 0.8 })); // routage seul suffit à signaler le non-doc
+  assert.ok(parMedia, 'un média sans domaine ne doit pas être rejeté');
+});
+
+test('parserClassification_ : chemin Haiku — domaine manquant SANS champ v2 → toujours rejeté (strictness préservée)', () => {
+  assert.strictEqual(ctx.parserClassification_(JSON.stringify({ confiance: 0.9 })), null);
+  assert.strictEqual(ctx.parserClassification_(JSON.stringify({ categorie: null, confiance: 0.7 })), null);
+  // domaine string normal → accepté
+  assert.ok(ctx.parserClassification_(JSON.stringify({ domaine: '02 · Finances', confiance: 0.8 })));
+});
+
+/* ---------- budgetMsRun_ : garde-temps abaissé sous ANALYSE_V2 (fix quotas, ADR-0015) ---------- */
+
+test('budgetMsRun_ : garde-temps nominal quand OFF, abaissé quand ON', () => {
+  assert.strictEqual(ctx.budgetMsRun_(), ctx.CONFIG.BUDGET_MS); // OFF par défaut
+  const sauvegarde = ctx.CONFIG.ANALYSE_V2;
+  try {
+    ctx.CONFIG.ANALYSE_V2 = true;
+    assert.strictEqual(ctx.budgetMsRun_(), ctx.CONFIG.ANALYSE_V2_BUDGET_MS);
+    assert.ok(ctx.CONFIG.ANALYSE_V2_BUDGET_MS < ctx.CONFIG.BUDGET_MS, 'le budget v2 doit être plus court');
+  } finally {
+    ctx.CONFIG.ANALYSE_V2 = sauvegarde; // ne pas fuiter l'état entre tests
+  }
 });

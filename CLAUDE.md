@@ -286,3 +286,11 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   frontières + assertions de présence des voisines. Les tests unitaires mockés ne voient PAS une fonction
   inter-module disparue → `test/surface-moteur.test.js` charge tout le moteur et vérifie le contrat
   interne ; y ajouter toute nouvelle fonction appelée en travers des modules.
+- **Un champ « requis » par le schéma général peut être OPTIONNEL sur un sous-chemin.** Quand une passe
+  LLM peut légitimement omettre un champ (un non-document v2 n'a pas de `domaine`), le PARSER PARTAGÉ qui
+  l'exige rejette le cas même qu'on voulait traiter → quarantaine à tort (faux positif silencieux). Le
+  parser doit tolérer l'omission SUR CE CHEMIN, détecté par un autre signal du même schéma
+  (`estNonDocument`/`routageHorsDomaine`), sans relâcher la contrainte sur le chemin nominal. Corollaire
+  (instance de « plafonds à l'unité de coût réelle ») : un garde-temps/budget par run calibré pour un
+  modèle doit suivre le coût-temps réel par item si on change de modèle (Sonnet ×2 ≈ ×10 le temps/doc →
+  `budgetMsRun_()` abaisse le budget sous `ANALYSE_V2`, anti-mur 6 min).

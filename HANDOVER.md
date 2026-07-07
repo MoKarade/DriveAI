@@ -28,11 +28,24 @@
 > écarté (jamais un domaine, jamais 04), identité par type, sous-dossier obligatoire (entité unifiée),
 > nom via `nommerDocument_` (jamais « Inconnu »), anti-écrasement `garantirNomUnique_`. Gate au Pipeline
 > `CONFIG.ANALYSE_V2 ? deciderRoutageV2_ : deciderRoutage_`. **Coût correctement compté Sonnet** (le frein
-> §2.6 pausera la campagne). +21 tests (`routage-v2.test.js`, `llm-v2.test.js`). En revue flotte
-> (code/sécurité/quotas) avant merge draft. **RESTE : C26-07** dry-run à grande échelle ; **C26-08**
-> campagne de re-analyse (budget/jour, déplacement seul, reprenable) ; **C26-09** app + §6 budget.
-> ⚠️ **PRÉVENIR MARC AVANT** d'allumer `ANALYSE_V2` et de lancer la campagne (coût réel ~×10-20/doc ;
-> campagne ~60-150 $ one-shot). Prompts finaux + specs : scripts de workflow persistés.
+> §2.6 pausera la campagne). **MERGÉ PR #104** (revue flotte : sécurité 🟢, code/quotas OK). **DURCI
+> ensuite (ADR-0015, PR suivante)** sur retours de revue, toujours flag ÉTEINT : (1) `parserClassification_`
+> tolère `domaine:null` pour un NON-document v2 (sinon quarantaine à tort d'un export) ; (2) prompt v2
+> clarifié (non-doc → `domaine` peut rester null) ; (3) garde-temps abaissé sous v2 `budgetMsRun_()`
+> (`ANALYSE_V2_BUDGET_MS` 180 s, anti-mur 6 min + anti-2ᵉ-copie) ; (4) sous-dossier v2 assaini par
+> `champ_`. **PRÉ-REQUIS d'allumage (ADR-0015)** : campagnes closes, plafond budget revu, surveillance
+> runtime/coût, feu vert coût de Marc. +5 tests (parser non-doc, garde-temps), **359 verts. RESTE :
+> C26-07** dry-run à grande échelle (obligatoire, protocole §2) ; **C26-08** campagne de re-analyse
+> (budget/jour, déplacement seul, reprenable) ; **C26-09** app + §6 budget. ⚠️ **NE PAS allumer
+> `ANALYSE_V2` ni lancer la campagne sans le feu vert coût de Marc** (~×10-20/doc ; campagne ~70-100 $).
+>
+> **⚠️ CONFLIT OUVERT (2026-07-07, à trancher avec Marc)** — son nouveau « Protocole de précision »
+> exige un retour à `00 · À vérifier` (file de revue) pour les NULL critiques / confiance < 80 %, ce
+> qui **contredit la décision NON NÉGOCIABLE §2.1 « PLUS DE FILE DE REVUE » (sa propre décision du
+> 2026-07-01)** + la leçon « low-confidence → revue SATURE et neutralise l'auto-rangement ». Question
+> de réconciliation posée (app comme file de revue SANS dossier, vs réintroduire le dossier). NE PAS
+> coder de routage vers `00 · À vérifier` tant que ce n'est pas tranché ATOMIQUEMENT (ADR + §2.1 + code
+> + tests, même commit).
 >
 > **2026-07-07 — Tri Gmail : recalibration du signal ⚠️ Suspect (demande Marc « trop de suspects »).**
 > 14 fils marqués ⚠️, dont 13 FAUX POSITIFS (alertes Google/Anthropic, codes 2FA + réclamations

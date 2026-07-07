@@ -141,6 +141,11 @@ var CONFIG = {
   GMAIL_HISTO_BUDGET_JOUR_MS: 60 * 60 * 1000,
   PAGE_FILS: 20,                         // taille de page de la recherche Gmail
   BUDGET_MS: 4.5 * 60 * 1000,            // garde-temps (exécution Apps Script < 6 min)
+  // Sous ANALYSE_V2 (Sonnet ×2/doc, 12000 car., retries possibles), un document est BEAUCOUP plus
+  // long ; le garde-temps est abaissé pour qu'un doc pire-cas démarré juste sous le budget finisse
+  // LOIN du mur dur des 6 min (ADR-0015) — la fenêtre placer→Index reste éloignée du kill (anti 2ᵉ
+  // copie au rejeu). Le reste est repris au tick suivant. Inerte tant que ANALYSE_V2 est false.
+  ANALYSE_V2_BUDGET_MS: 3 * 60 * 1000,
 
   // --- Phase 3 : tâches & agenda depuis TOUS les mails récents ---
   // Requête séparée de GMAIL_REQUETE (PJ) : ici TOUS les mails, pas seulement ceux avec PJ
@@ -441,6 +446,15 @@ var CONFIG = {
  *  Triée (préfixes `NN ·` → ordre 01→08) pour un prompt LLM lisible, même avec les domaines auto. */
 function domainesAutorises_() {
   return Object.keys(CONFIG.DOMAINES).concat(CONFIG.DOMAINES_AUTO || []).sort();
+}
+
+/**
+ * Garde-temps effectif du run : abaissé sous ANALYSE_V2 (Sonnet ×2/doc = documents bien plus longs)
+ * pour tenir le mur dur des 6 min avec de la marge (ADR-0015). Haiku 1 passe → budget nominal. PUR.
+ * @return {number} millisecondes
+ */
+function budgetMsRun_() {
+  return CONFIG.ANALYSE_V2 ? CONFIG.ANALYSE_V2_BUDGET_MS : CONFIG.BUDGET_MS;
 }
 
 /** Catégories connues (Phase 1), pour borner la sortie du LLM. */

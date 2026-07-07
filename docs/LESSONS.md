@@ -715,3 +715,23 @@ PURES testables (nommage, canonicalisation, routage), la preuve tourne dessus, l
 (flag éteint) et la campagne viennent APRÈS validation. La preuve coûte quelques workflows ; elle
 évite de dépenser des dizaines de dollars et de churner le Drive sur une fausse attente.
 **Règle durable ?** oui.
+
+## 2026-07-07 — Un champ « requis » par le schéma général peut être OPTIONNEL sur un sous-chemin
+**Contexte.** Refonte #26, revue flotte du pipeline v2 (2 passes). Le prompt PASSE1 dit « un
+non-document ne porte jamais de domaine » → le modèle peut légitimement renvoyer `domaine: null`.
+Or `parserClassification_` (partagé avec Haiku) EXIGE un `domaine` string → un export/dump aurait
+été REJETÉ → `gererEchec_` → quarantaine à tort, exactement le cas que la refonte voulait écarter
+proprement vers `_Technique`/`_Médias`. Corrigé : le parser tolère `domaine` absent QUAND la réponse
+est un non-document v2 (`estNonDocument===true` ou `routageHorsDomaine` posé), le chemin Haiku (aucun
+champ v2) gardant l'exigence stricte. En parallèle : le garde-temps `BUDGET_MS` calibré Haiku 1 passe
+devient dangereux sous Sonnet ×2 (docs bien plus longs, fenêtre placer→Index élargie au mur des 6 min)
+→ `budgetMsRun_()` abaisse le budget sous v2.
+**Leçon.** (1) Quand une passe LLM peut LÉGITIMEMENT omettre un champ que le schéma général marque
+« requis » (un non-document n'a pas de domaine), le PARSER partagé doit tolérer l'omission SUR CE
+CHEMIN — détecté par un autre signal du même schéma (`estNonDocument`/`routageHorsDomaine`) — sans
+relâcher la contrainte sur le chemin nominal. Un garde-fou de validation qui rejette le cas même
+qu'on voulait traiter est un faux positif silencieux (quarantaine). Tracer : « pour chaque champ
+requis, existe-t-il un sous-chemin où le prompt autorise son absence ? ». (2) Instance de la règle
+« plafonds à l'unité de COÛT réelle » : un garde-temps/budget par run calibré pour un modèle doit
+suivre le coût-temps réel par item quand on change de modèle (Sonnet ×2 = ~×10 le temps/doc).
+**Règle durable ?** oui (le point 1 ; le point 2 est une instance d'une règle déjà consignée).
