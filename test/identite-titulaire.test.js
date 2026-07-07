@@ -73,7 +73,7 @@ test('nommerDocument_ : document normal → émetteur ; date absente → date de
 
 test('nommerDocument_ : émetteur ET titulaire absents → « …_Type.ext » (jamais un blocage, jamais _Inconnu)', () => {
   assert.strictEqual(
-    ctx.nommerDocument_({ type_doc: 'Facture' }, '2026-03-01', '.pdf'), '2026-03-01_Facture_Inconnu.pdf'); // doc normal : garde le repli historique
+    ctx.nommerDocument_({ type_doc: 'Facture' }, '2026-03-01', '.pdf'), '2026-03-01_Facture.pdf'); // règle v2 : jamais « _Inconnu »
   assert.strictEqual(
     ctx.nommerDocument_({ estDocumentIdentite: true, sousDossierType: 'Passeport' }, '2026-03-01', '.pdf'),
     '2026-03-01_Passeport.pdf'); // pièce d'identité sans titulaire lisible : pas de « _Inconnu »
@@ -85,4 +85,32 @@ test('garantirNomUnique_ : insère un suffixe si le nom existe déjà (deux piè
   assert.strictEqual(ctx.garantirNomUnique_('2020_Passeport.pdf', ['2020_Passeport.pdf']), '2020_Passeport_2.pdf');
   assert.strictEqual(ctx.garantirNomUnique_('2020_Passeport.pdf', ['2020_Passeport.pdf', '2020_Passeport_2.pdf']), '2020_Passeport_3.pdf');
   assert.strictEqual(ctx.garantirNomUnique_('a.pdf', []), 'a.pdf');
+});
+
+/* ---------- nommerDocument_ v2 : descripteur (jamais « Inconnu ») + sousDossierPourNom_ ---------- */
+
+test('nommerDocument_ : émetteur > descripteur > type seul — JAMAIS « Inconnu »', () => {
+  // émetteur présent
+  assert.strictEqual(ctx.nommerDocument_({ type_doc: 'Facture', emetteur: 'Hydro-Québec' }, '2026-03-01', '.pdf'),
+    '2026-03-01_Facture_Hydro-Québec.pdf');
+  // pas d'émetteur → descripteur
+  assert.strictEqual(ctx.nommerDocument_({ type_doc: 'Notes de maintenance', descripteur: 'ligne robot Robovic' }, '2026-06-15', '.jpg'),
+    '2026-06-15_Notes de maintenance_ligne robot Robovic.jpg');
+  // ni émetteur ni descripteur → type seul, jamais « _Inconnu »
+  const n = ctx.nommerDocument_({ type_doc: 'Rapport' }, '2026-06-16', '.pdf');
+  assert.strictEqual(n, '2026-06-16_Rapport.pdf');
+  assert.ok(!/inconnu/i.test(n));
+});
+
+test('sousDossierPourNom_ : entité unifiée d\'abord, catégorie en repli, jamais vide', () => {
+  // pièce d'identité → type
+  assert.strictEqual(ctx.sousDossierPourNom_({ estDocumentIdentite: true, sousDossierType: 'Passeport' }), 'Passeport');
+  // entité (établissement) — les variantes se canonisent vers le MÊME dossier (IUT = 1 seul)
+  assert.strictEqual(ctx.sousDossierPourNom_({ entite: 'IUT du Littoral' }), ctx.sousDossierPourNom_({ emetteur: 'IUT du Littoral' }));
+  assert.strictEqual(ctx.sousDossierPourNom_({ entite: 'Desjardins Inc.' }), 'Desjardins');
+  // pas d'entité → catégorie fournie par l'analyse
+  assert.strictEqual(ctx.sousDossierPourNom_({ sousDossier: 'Cours', type_doc: 'Notes de cours' }), 'Cours');
+  // rien → type, jamais vide
+  assert.strictEqual(ctx.sousDossierPourNom_({ type_doc: 'Devoir' }), 'Devoir');
+  assert.strictEqual(ctx.sousDossierPourNom_({}), 'Divers');
 });

@@ -78,7 +78,7 @@ const CONTRAT = [
   'estSegmentStructurel_',
   // documents d'identité & titulaire (refonte 2026-07-07)
   'normaliserTypeIdentite_', 'estDocumentIdentitePersonnel_', 'dossierIdentite_', 'titulairePourNom_',
-  'nommerDocument_', 'garantirNomUnique_', 'casseNomPersonne_',
+  'nommerDocument_', 'garantirNomUnique_', 'casseNomPersonne_', 'sousDossierPourNom_',
   // décision non-document (refonte 2026-07-07)
   'decisionNonDocument_', 'distinguerVraiScan_', 'estExportDonnees_', 'estMediaSansTexte_', 'extensionEstTechnique_',
   // entités auto-validées (#18)

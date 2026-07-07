@@ -488,10 +488,11 @@ function nomSansTiers_(date, type, ext) {
 }
 
 /**
- * NOM FINAL d'un document (aiguillage). Pièce d'identité personnelle AVEC titulaire →
- * « AAAA-MM-JJ_Type_Titulaire.ext » (Marc et les autres, même dossier de type) ; sinon →
- * « AAAA-MM-JJ_Type_Émetteur.ext ». Aucun blocage : émetteur ET titulaire absents → « …_Type.ext ». PUR.
- * @param {Object} classif  {date_doc, type_doc, emetteur, estDocumentIdentite, sousDossierType, titulaire}
+ * NOM FINAL d'un document (aiguillage). JAMAIS « Inconnu » (exigence Marc 2026-07-07) : le 3ᵉ segment
+ * est TOUJOURS renseigné et précis, par priorité TITULAIRE (pièce d'identité) > ÉMETTEUR (organisation)
+ * > DESCRIPTEUR (2-6 mots : ce que c'est + le sujet + qui l'a produit). Aucun des trois → « …_Type.ext »
+ * (jamais « _Inconnu »). PUR.
+ * @param {Object} classif  {date_doc, type_doc, emetteur, descripteur, estDocumentIdentite, sousDossierType, titulaire}
  * @param {string} dateReception  AAAA-MM-JJ (repli si date_doc absente)
  * @param {string} ext
  */
@@ -503,7 +504,27 @@ function nommerDocument_(classif, dateReception, ext) {
     var titu = titulairePourNom_(classif);
     return titu ? nomParType_(date, type, titu, ext) : nomSansTiers_(date, type, ext);
   }
-  return nomParType_(date, classif.type_doc, classif.emetteur, ext);
+  // Émetteur d'abord, sinon descripteur (jamais « Inconnu ») ; aucun des deux → type seul.
+  var tiers = champ_(classif.emetteur) ? classif.emetteur : (champ_(classif.descripteur) ? classif.descripteur : '');
+  return tiers ? nomParType_(date, classif.type_doc, tiers, ext) : nomSansTiers_(date, classif.type_doc, ext);
+}
+
+/**
+ * SOUS-DOSSIER d'un document (exigence Marc 2026-07-07 : rien à la racine d'un domaine). Priorité :
+ * pièce d'identité → TYPE (« Passeport ») ; sinon ENTITÉ canonique UNIFIÉE (établissement/entreprise :
+ * « IUT du Littoral » regroupe DUT GIM / Université du Littoral via canoniserEntite_) ; sinon la
+ * CATÉGORIE fournie par l'analyse (« Cours », « Reçus »…) ; sinon le type. JAMAIS vide pour un vrai
+ * document (un non-document part en _Technique/_Médias, hors de ce chemin). PUR.
+ * @param {Object} classif  {estDocumentIdentite, sousDossierType, entite, emetteur, sousDossier, type_doc}
+ * @return {string} nom du sous-dossier (sans le domaine)
+ */
+function sousDossierPourNom_(classif) {
+  classif = classif || {};
+  if (estDocumentIdentitePersonnel_(classif)) return normaliserTypeIdentite_(classif.sousDossierType);
+  var ent = canoniserEntite_(classif.entite || classif.emetteur); // entité unifiée (IUT = 1 seul dossier)
+  if (ent) return ent;
+  var cat = classif.sousDossier && String(classif.sousDossier).trim();
+  return cat || (String(classif.type_doc || '').trim()) || 'Divers'; // catégorie de repli, jamais vide
 }
 
 /**
