@@ -76,6 +76,9 @@ const CONTRAT = [
   'etapeReorg_', 'appliquerReorgValidee_', 'appliquerUneAction_', 'actionsValidees_',
   'partiesId_', 'dernierSegment_', 'ensembleIntouchables_', 'repointerEntites_', 'solderAction_',
   'estSegmentStructurel_',
+  // documents d'identité & titulaire (refonte 2026-07-07)
+  'normaliserTypeIdentite_', 'estDocumentIdentitePersonnel_', 'dossierIdentite_', 'titulairePourNom_',
+  'nommerDocument_', 'garantirNomUnique_', 'casseNomPersonne_',
   // entités auto-validées (#18)
   'autoValiderEntitesFrequentes_', 'estAutoValidable_', 'entitesAutoValidees_', 'estValidee_',
 ];

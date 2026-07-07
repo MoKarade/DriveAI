@@ -346,6 +346,103 @@ function nomParType_(date, type, emetteur, ext) {
   return d + '_' + label + '_' + e + ext;
 }
 
+/* ============================================================================
+ * DOCUMENTS D'IDENTITÉ & TITULAIRE (refonte 2026-07-07, demande Marc). Les pièces d'identité se
+ * rangent PAR TYPE (dossier « Passeport », « Permis de conduire »…) contenant TOUS les titulaires
+ * (Marc ET les autres) ; le nom de la PERSONNE va dans le fichier. Aucun dossier « Tiers ». PURES.
+ * ==========================================================================*/
+
+// Types d'identité CANONIQUES : un même type (variantes du LLM incluses) tombe dans le MÊME dossier,
+// que le titulaire soit Marc ou un proche.
+var TYPES_IDENTITE = ['Passeport', 'Carte d’identité', 'Permis de conduire', 'Acte de naissance',
+  'Acte de mariage', 'Certificat de citoyenneté', 'Carte d’assurance maladie', 'Carte de résident permanent'];
+
+/** Ramène un type d'identité à sa forme canonique (dossier partagé). Type inconnu → nettoyé, jamais rejeté. PUR. */
+function normaliserTypeIdentite_(sousDossierType) {
+  var k = normaliserCle_(sousDossierType); // minuscule, sans accents, apostrophes → espace
+  if (!k) return '';
+  if (k.indexOf('passeport') !== -1 || k.indexOf('passport') !== -1) return 'Passeport';
+  if (k.indexOf('permis de conduire') !== -1 || k.indexOf('permis conduire') !== -1 ||
+      k.indexOf('driver') !== -1 || k === 'permis') return 'Permis de conduire';
+  if (k.indexOf('acte de naissance') !== -1 || k.indexOf('naissance') !== -1 || k.indexOf('birth') !== -1) return 'Acte de naissance';
+  if (k.indexOf('acte de mariage') !== -1 || k.indexOf('mariage') !== -1 || k.indexOf('marriage') !== -1) return 'Acte de mariage';
+  if (k.indexOf('citoyennete') !== -1 || k.indexOf('citizenship') !== -1) return 'Certificat de citoyenneté';
+  if (k.indexOf('assurance maladie') !== -1 || k.indexOf('ramq') !== -1 || k.indexOf('carte soleil') !== -1) return 'Carte d’assurance maladie';
+  if (k.indexOf('resident permanent') !== -1 || k.indexOf('residence permanente') !== -1 || k.indexOf('permanent resident') !== -1) return 'Carte de résident permanent';
+  if (k.indexOf('carte d identite') !== -1 || k.indexOf('carte identite') !== -1 || k === 'cni' || k.indexOf('identity card') !== -1) return 'Carte d’identité';
+  return casseTitreEntite_(String(sousDossierType == null ? '' : sousDossierType).replace(/\s+/g, ' ').trim());
+}
+
+/** Vrai ssi c'est une pièce d'identité PERSONNELLE reconnue (→ rangement par type + titulaire). PUR. */
+function estDocumentIdentitePersonnel_(classif) {
+  if (!classif || classif.estDocumentIdentite !== true) return false;
+  return TYPES_IDENTITE.indexOf(normaliserTypeIdentite_(classif.sousDossierType)) !== -1;
+}
+
+/** Domaine + sous-dossier de type d'une pièce d'identité (jamais par personne, jamais « Tiers »). PUR. */
+function dossierIdentite_(classif) {
+  var t = normaliserTypeIdentite_(classif && classif.sousDossierType);
+  var domaine = '01 · Administratif & identité';
+  if (t === 'Carte de résident permanent') domaine = '04 · Immigration';       // lié au statut (protégé)
+  else if (t === 'Carte d’assurance maladie') domaine = '07 · Santé';
+  return { domaine: domaine, sousDossier: t };
+}
+
+/** Casse Titre d'un NOM DE PERSONNE (contrairement aux entités, on normalise MÊME l'ALL-CAPS). PUR. */
+function casseNomPersonne_(s) {
+  return String(s == null ? '' : s).toLowerCase().replace(/(^|[\s'’-])([a-zà-ÿ])/g,
+    function (m, sep, c) { return sep + c.toUpperCase(); });
+}
+
+/** Titulaire (personne concernée) nettoyé pour le NOM du fichier. Marc y est un titulaire VALIDE. null si absent. PUR. */
+function titulairePourNom_(classif) {
+  var t = classif && classif.titulaire;
+  if (t == null || !String(t).trim()) return null;
+  return casseNomPersonne_(String(t).replace(/\s+/g, ' ').trim()) || null;
+}
+
+/** Nom d'un document SANS émetteur ni titulaire (« AAAA-MM-JJ_Type.ext ») — jamais « _Inconnu ». PUR. */
+function nomSansTiers_(date, type, ext) {
+  var sc = schemaNommage_(type);
+  return tronquerDate_(date, sc.gran) + '_' + (champ_(sc.label || type) || 'Document') + ext;
+}
+
+/**
+ * NOM FINAL d'un document (aiguillage). Pièce d'identité personnelle AVEC titulaire →
+ * « AAAA-MM-JJ_Type_Titulaire.ext » (Marc et les autres, même dossier de type) ; sinon →
+ * « AAAA-MM-JJ_Type_Émetteur.ext ». Aucun blocage : émetteur ET titulaire absents → « …_Type.ext ». PUR.
+ * @param {Object} classif  {date_doc, type_doc, emetteur, estDocumentIdentite, sousDossierType, titulaire}
+ * @param {string} dateReception  AAAA-MM-JJ (repli si date_doc absente)
+ * @param {string} ext
+ */
+function nommerDocument_(classif, dateReception, ext) {
+  classif = classif || {};
+  var date = (classif.date_doc && /^\d{4}-\d{2}-\d{2}$/.test(classif.date_doc)) ? classif.date_doc : (dateReception || '');
+  if (estDocumentIdentitePersonnel_(classif)) {
+    var type = normaliserTypeIdentite_(classif.sousDossierType);
+    var titu = titulairePourNom_(classif);
+    return titu ? nomParType_(date, type, titu, ext) : nomSansTiers_(date, type, ext);
+  }
+  return nomParType_(date, classif.type_doc, classif.emetteur, ext);
+}
+
+/**
+ * ANTI-ÉCRASEMENT (revue) : deux pièces distinctes de personnes différentes, même type, date absente
+ * → même nom, hash différent ⇒ ce ne sont PAS des doublons. Suffixe incrémental avant l'extension.
+ * Garantit qu'aucun dépôt n'écrase un fichier existant (violerait « aucune suppression »). PUR.
+ * @param {string} nom
+ * @param {string[]} nomsExistants  noms déjà présents dans le dossier cible
+ */
+function garantirNomUnique_(nom, nomsExistants) {
+  var existants = nomsExistants || [];
+  if (existants.indexOf(nom) === -1) return nom;
+  var s = String(nom), dot = s.lastIndexOf('.');
+  var base = dot > 0 ? s.slice(0, dot) : s, ext = dot > 0 ? s.slice(dot) : '';
+  var i = 2, candidat;
+  do { candidat = base + '_' + i + ext; i++; } while (existants.indexOf(candidat) !== -1);
+  return candidat;
+}
+
 /**
  * Schéma de nommage pour un type_doc : granularité de date + libellé fixe éventuel. Règles ORDONNÉES
  * (le 1er motif trouvé gagne) — « relevé de notes » (annuel) doit passer AVANT « relevé » (mensuel).
