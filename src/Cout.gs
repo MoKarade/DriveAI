@@ -47,6 +47,36 @@ function flushUsage_() {
   _usageRun = null;
 }
 
+/**
+ * FREIN BUDGET des campagnes (R3, §2.6) : vrai si le coût MENSUEL mesuré atteint
+ * CONFIG.LLM_BUDGET_CAMPAGNES. Lu au plus une fois par run (cache), journalisé UNE fois par
+ * mois quand il s'enclenche. Le flux vivant n'est jamais gaté par ce frein.
+ */
+var _freinBudget = null;
+function reinitialiserFreinBudget_() { _freinBudget = null; }
+function budgetCampagnesAtteint_() {
+  if (_freinBudget !== null) return _freinBudget;
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var cle = cleCoutMois_();
+    _freinBudget = coutDollars_(lireCoutMois_(props, cle)) >= CONFIG.LLM_BUDGET_CAMPAGNES;
+    if (_freinBudget) {
+      // Signalement best-effort dans son PROPRE try : une panne de journal/Property ne doit pas
+      // relever un frein correctement MESURÉ (la mesure prime sur l'annonce).
+      try {
+        if (props.getProperty('DriveAI_FREIN_BUDGET') !== cle) {
+          props.setProperty('DriveAI_FREIN_BUDGET', cle);
+          journalInfo_('Cout', 'Budget campagnes atteint (' + CONFIG.LLM_BUDGET_CAMPAGNES +
+            ' $/mois) — rangement/migration/historique EN PAUSE jusqu\'au mois prochain ; le flux vivant continue.');
+        }
+      } catch (e2) { /* annonce différée au prochain run */ }
+    }
+  } catch (e) {
+    _freinBudget = false; // mesure illisible → on ne bloque pas (le budget reste une cible, pas un fusible dur)
+  }
+  return _freinBudget;
+}
+
 /** Clé de Script Property du mois courant. */
 function cleCoutMois_() {
   return 'DriveAI_COUT_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');

@@ -27,7 +27,21 @@
 4. Diagnostiquer par le **CODE + signaux Drive** quand le Journal est illisible (énorme/tronqué).
 
 ### 🟠 Un fichier échoue en boucle
-- Après `QUARANTAINE_MAX` (3) essais, il est **quarantiné** (onglet `Échecs`, statut Index `quarantaine`) → plus re-tenté, une seule alerte. Pour le relancer après une panne transitoire : exécuter **`dequarantaine()`**.
+- Après `QUARANTAINE_MAX` (3) essais, il est **quarantiné** (onglet `Échecs`, statut Index `quarantaine`) → plus re-tenté, une seule alerte. Pour le relancer après une panne transitoire : exécuter **`dequarantaine()`** (tout libérer, manuel) — ou **bumper `CONFIG.DEQUARANTAINE_TAG`** (R3 : le tick lance le noyau tout seul, one-shot, clés `drive|` seulement ; un rétablissement de panne le ré-arme automatiquement).
+
+### 🟠 « La file `00 · À trier` ne se draine pas » (fichiers qui stagnent des heures)
+Quatre causes possibles, CUMULABLES (incident R3 du 2026-07-07 : les quatre à la fois) :
+1. **Famine d'équité** (corrigée par R3, `Intake.gs`) : la page est désormais composée de
+   TRAITABLES seulement et triée FIFO (plus ancien d'abord). Si ça stagne encore, vérifier que le
+   renommage produit bien `AAAA-MM-JJ_…` (prédicat de skip du rangement) et le Journal « Budget temps ».
+2. **Quarantaine silencieuse** : le fichier est dans l'Index avec statut `quarantaine` (échecs d'une
+   panne passée) → il est INVISIBLE pour l'intake. Remède : `dequarantaine()` ou bump `DEQUARANTAINE_TAG`.
+3. **Fichier Google natif** : depuis R3, Docs/Sheets/Slides sont classés (export texte REST). Les types
+   SANS export (Forms, dessins) restent en place par design — les ranger à la main.
+4. **Frein budget** (`LLM_BUDGET_CAMPAGNES`, 10 $/mois mesurés) : les CAMPAGNES (grand rangement,
+   historique Gmail, migration) sont en pause — mais le flux vivant (dépôts, Gmail récent) continue.
+   Journal : « Budget campagnes atteint ». Relever = éditer `CONFIG.LLM_BUDGET_CAMPAGNES` (choix explicite).
+Diagnostic rapide : chercher la clé `drive|<fileId>` dans l'Index (statut ?), puis le Journal du dernier tick.
 
 ### 🔴 Crédit API Anthropic épuisé (Journal : « PANNE DE COMPTE API »)
 Le moteur tourne mais SUSPEND ses sources (Gmail, dépôts, campagnes) pendant la panne — il

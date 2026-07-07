@@ -259,6 +259,7 @@ function tickDriveAI() {
     reinitialiserPromoSetCache_();   // fils CATEGORY_PROMOTIONS (signal déterministe), 1×/run
     reinitialiserPanneEcriture_();   // panne d'ÉCRITURE Gmail : nouvelle chance à chaque run
     reinitialiserUsage_();     // compteur de coût LLM du run (mesure réelle, P1-09)
+    reinitialiserFreinBudget_(); // frein budget des campagnes (R3, §2.6), relu 1×/run
 
     // Applique un éventuel changement d'intervalle (CONFIG.TICK_MINUTES) sans action manuelle,
     // et installe le déclencheur du résumé hebdo s'il manque. Secondaire : un échec ne doit
@@ -280,6 +281,23 @@ function tickDriveAI() {
     // JAMAIS bloquer l'intake (même principe que l'ajustement du déclencheur ci-dessus).
     try { appliquerRejeuSiNouvelleVersion_(estBudgetDepasse); }
     catch (e) { journalErreur_('Maintenance', 'Rejeu de version différé : ' + e); }
+
+    // Dé-quarantaine AUTOMATIQUE one-shot (R3, gatée par CONFIG.DEQUARANTAINE_TAG) : relance les
+    // quarantainés — les 3 échecs datant d'une panne de compte sont des faux positifs (vécu :
+    // 32 fichiers de la panne du 1ᵉʳ juillet sautés en silence 6 jours). Le RÉTABLISSEMENT d'une
+    // panne ré-arme ce one-shot tout seul (Llm.signalerRetablissement_). NOYAU seulement
+    // (`dequarantainerLignes_`, JAMAIS `dequarantaine()` : son tickDriveAI() final serait
+    // réentrant — verrou relâché par le finally du tick imbriqué, bloquant revue R3), et clés
+    // `drive|` seulement (re-présentables par la collecte ; une clé Gmail hors fenêtre serait
+    // libérée « dans le vide » et perdrait son bouton Relancer dans l'app). Le noyau invalide les
+    // caches → les libérés sont re-traités dès CE tick. SECONDAIRE → enveloppée.
+    try {
+      var propsDQ = PropertiesService.getScriptProperties();
+      if (propsDQ.getProperty('DriveAI_DEQUARANTAINE') !== CONFIG.DEQUARANTAINE_TAG) {
+        dequarantainerLignes_('drive|');
+        propsDQ.setProperty('DriveAI_DEQUARANTAINE', CONFIG.DEQUARANTAINE_TAG);
+      }
+    } catch (e) { journalErreur_('Maintenance', 'Dé-quarantaine automatique différée : ' + e); }
 
     // #18 (décision Marc : seuil 3) : auto-valide les entités en_attente vues ≥ 3 fois, AVANT la
     // matérialisation (le dossier naît au même tick). Jamais une variante, jamais un générique,
@@ -324,6 +342,7 @@ function tickDriveAI() {
     // `rangementTermine_()` (1 Property, cheap) court-circuite le comptage Drive une fois le rangement
     // fini — sinon on itérerait jusqu'à 40 fichiers de 00·À trier à chaque tick pour rien, à vie.
     if (!estBudgetDepasse() && !estPannePlateforme_() && !rangementTermine_() &&
+        !budgetCampagnesAtteint_() &&
         nbFichiersATrier_(CONFIG.RANGEMENT_SEUIL_FILE) < CONFIG.RANGEMENT_SEUIL_FILE) {
       try { appliquerRangementInitial_(estBudgetDepasse); }
       catch (e) { journalErreur_('Rangement', 'Grand rangement différé : ' + e); }
@@ -349,7 +368,7 @@ function tickDriveAI() {
     // Campagne HISTORIQUE Gmail (#12, ADR-0010 §1) : remonte tout l'historique de PJ par tranches
     // ancrées. APRÈS le flux vivant (priorité), AVANT migration/intentions. Coût nul une fois finie.
     // SECONDAIRE → enveloppée : un échec Gmail ne bloque jamais la suite du tick.
-    if (!estBudgetDepasse()) {
+    if (!estBudgetDepasse() && !budgetCampagnesAtteint_()) {
       try { traiterGmailHistorique_(estBudgetDepasse); }
       catch (e) { journalErreur_('Gmail', 'Campagne historique différée : ' + e); }
     }
@@ -358,7 +377,7 @@ function tickDriveAI() {
     // taxonomie, EN PLACE, une page par tick. APRÈS l'intake (le flux vivant garde la priorité),
     // AVANT les intentions (la précision documentaire prime, cap produit ADR-0001). Campagne finie
     // → 1 Property lue, coût nul. ENVELOPPÉE : un échec ne doit jamais bloquer la suite du tick.
-    if (!estBudgetDepasse()) {
+    if (!estBudgetDepasse() && !budgetCampagnesAtteint_()) {
       try { appliquerMigrationTaxonomie_(estBudgetDepasse); }
       catch (e) { journalErreur_('Migration', 'Migration taxonomie différée : ' + e); }
     }

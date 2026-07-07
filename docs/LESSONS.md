@@ -641,3 +641,22 @@ périmètre de l'exception se définit aussi par IDENTITÉ (IDs fixes du routage
 ou ascendance. (3) La revue adversariale sur LA PR sensible n'est pas un luxe : les deux trous étaient
 invisibles aux tests existants.
 **Règle durable ?** oui.
+
+## 2026-07-07 — File d'intake affamée : 4 causes cumulées, aucune visible au Journal
+**Contexte.** Marc : « je veux que ça trie ce qu'il y a dans À trier, ça fait longtemps que ça ne le
+fait pas ». Un PDF déposé un soir est resté 11 h (~130 ticks) dans `00 · À trier`. Diagnostic par
+signaux INDÉPENDANTS (listing Drive + export xlsx de la Sheet) : QUATRE causes cumulées — (1) famine
+d'équité : le grand rangement re-alimente la file en continu, l'itérateur DriveApp sert les plus
+RÉCENTS d'abord, le budget meurt avant les anciens ; (2) 32 fichiers quarantainés pendant la panne
+crédit du 01-07, sautés en silence à vie (`indexContient_` → return) ; (3) 2 Google Sheets natifs
+refusés par design (pas de blob) ; (4) budget §2.6 crevé (15,62 $) par le rangement de masse nocturne.
+**Leçon.** (1) Une page d'intake sur une file RE-ALIMENTÉE doit être composée de TRAITABLES seulement
+(filtrer les skips À LA COLLECTE — un mur de déjà-traités ne doit occuper aucune place) et TRIÉE FIFO
+(plus ancien d'abord) : l'ordre naturel d'un itérateur Drive est l'inverse de l'équité. Même famille
+que la pagination Gmail mouvante : toujours TRACER un scénario multi-ticks « le plus ancien sort-il
+un jour ? ». (2) Un garde-fou fin (quarantaine, budget) qui met des items HORS CIRCUIT doit avoir un
+chemin de RETOUR automatique (dé-quarantaine one-shot ré-armée par le rétablissement de panne), sinon
+un incident transitoire devient une perte permanente et silencieuse. (3) Un dépassement de budget doit
+freiner les CAMPAGNES (rangement, historique, migration), jamais le flux vivant — sinon « le moteur
+marche » et la boîte de dépôt de Marc, elle, est morte.
+**Règle durable ?** oui (fusionnée avec la puce pagination de CLAUDE.md §7).
