@@ -78,7 +78,11 @@ jobs:
           envoyer_lot() {
             if [ "$COMPTE" -eq 0 ]; then return 0; fi
             echo "Envoi d'un lot de $COMPTE fichier(s)…"
-            PAYLOAD="$(jq -c -s '{fichiers: .}' "$BATCH_FILE")"
+            # Payload écrit dans un FICHIER, jamais passé en argument shell : un gros lot
+            # (jusqu'à 2 Mo) dépasse la limite ARG_MAX de l'OS en argument (« Argument list too
+            # long », repéré en prod) — `--data-binary @fichier` lit directement le contenu.
+            PAYLOAD_FILE="$(mktemp)"
+            jq -c -s '{fichiers: .}' "$BATCH_FILE" > "$PAYLOAD_FILE"
             # -L : Apps Script répond à /exec par une redirection 302 vers
             # script.googleusercontent.com (comportement NORMAL) — sans -L, curl rapportait le
             # 302 comme un échec au lieu de suivre vers la vraie réponse JSON (bug repéré en prod).
@@ -89,7 +93,8 @@ jobs:
             CODE="$(curl -sS -L -o /tmp/miroir-rep.json -w '%{http_code}' \
               "${URL}?action=sync-miroir&secret=${SECRET_ENC}" \
               -H 'Content-Type: text/plain;charset=utf-8' \
-              --data-binary "$PAYLOAD")"
+              --data-binary @"$PAYLOAD_FILE")"
+            rm -f "$PAYLOAD_FILE"
             if [ "$CODE" != "200" ]; then
               echo "::error::Échec HTTP $CODE — $(cat /tmp/miroir-rep.json)"
               exit 1
