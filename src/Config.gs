@@ -21,6 +21,12 @@ var CONFIG = {
   LLM_MODELE_FALLBACK: 'claude-sonnet-4-6', // fallback ponctuel si Haiku échoue
   LLM_MAX_TOKENS: 400,
   LLM_OCR_MAX_CARS: 4000,                // troncature de l'extrait envoyé au LLM (coût)
+  // Export texte d'un fichier Google natif (R3). Le hash de doublon porte sur le texte ENTIER
+  // (tronqué à 4000, deux gros CSV au même en-tête = « doublons » — faux) ; la borne large ne
+  // protège que la mémoire. Sous le seuil MIN, jamais de fast-path doublon (MD5 d'un export
+  // vide/quasi vide = collision garantie entre documents différents sans texte).
+  NATIF_EXPORT_MAX_CARS: 2000000,
+  OCR_MIN_CARS_EXPLOITABLE: 20,
   // Escalade : si Haiku rend une confiance < SEUIL (et doc NON sensible), on relance
   // une analyse approfondie avec Sonnet, plusieurs passes, et on garde la meilleure (consensus
   // de domaine puis confiance max). 3 passes (impair → vote utile). Borné pour le budget
@@ -32,6 +38,12 @@ var CONFIG = {
   // Prix Anthropic par MILLION de tokens (input/output), pour MESURER le coût réel (Cout.gs, P1-09).
   // À ajuster si la grille de prix change. Haiku 4.5 : 1$/5$ ; Sonnet 4.6 : 3$/15$.
   LLM_PRIX: { haiku_in: 1, haiku_out: 5, sonnet_in: 3, sonnet_out: 15 },
+  // FREIN BUDGET des CAMPAGNES (R3, garde-fou §2.6 « < 10 $/mois » rendu EFFECTIF — vécu :
+  // 15,62 $ le 7 juillet, le grand rangement churnait l'ancien Drive toute la nuit) : au-delà
+  // de ce coût MENSUEL mesuré, les campagnes de MASSE (grand rangement, migration, historique
+  // Gmail) se mettent en pause jusqu'au mois suivant — le FLUX VIVANT (Gmail 30 j, dépôts,
+  // partages, intentions, tri) continue, lui. Relever cette valeur = choix explicite de Marc.
+  LLM_BUDGET_CAMPAGNES: 10,
   // Résumé hebdomadaire automatique (mail récap à soi-même, scope script.send_mail existant).
   RESUME_JOUR: 'MONDAY',                  // jour du déclencheur hebdo (WeekDay Apps Script)
   RESUME_HEURE: 8,                        // heure locale d'envoi
@@ -73,6 +85,12 @@ var CONFIG = {
   // mail. Les échecs intermédiaires ne journalisent qu'une ligne (pas de mail), anti-spam. Pour
   // re-tenter un doc quarantiné à tort (panne transitoire), lancer `dequarantaine()` (Maintenance.gs).
   QUARANTAINE_MAX: 3,
+  // Dé-quarantaine AUTOMATIQUE one-shot (R3, 2026-07-07) : tant que le tag stocké
+  // (`DriveAI_DEQUARANTAINE`) diffère, le tick relance UNE fois tous les quarantainés (les
+  // 3 échecs datant d'une panne de compte sont des faux positifs — vécu : 32 fichiers de la
+  // panne du 1ᵉʳ juillet sautés en silence pendant 6 jours). Le RÉTABLISSEMENT d'une panne
+  // efface aussi la Property → re-déclenche tout seul après chaque panne. Bumper le tag rejoue.
+  DEQUARANTAINE_TAG: 'q1',
 
   // Panne de COMPTE API persistée (R2, check-up 2026-07-06) : pendant une panne (crédit/clé), les
   // SOURCES du tick sont suspendues (Gmail/dépôts/partages/campagnes/intentions) — sinon les scans
@@ -318,6 +336,7 @@ var CONFIG = {
 
   // --- Phase 2 : référentiel d'entités ---
   // Dossier d'entrée scanné pour le dépôt manuel (réutilise A_TRIER ci-dessus).
+  INTAKE_SCAN_MAX: 400,                   // fichiers PARCOURUS par run pour composer la page (mur de skips borné)
   INTAKE_PAGE: 150,                       // nb de fichiers de 00·À trier traités par run (50→150 pour le
                                           // rangement de masse : chaque tick utilise tout son budget-temps
                                           // au lieu de s'arrêter à 50 — le garde-temps reste la vraie borne)

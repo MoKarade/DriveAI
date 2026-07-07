@@ -10,28 +10,51 @@
  * d'Index ET leur ligne « Échecs », puis relance le pipeline pour les re-traiter. Utile après une
  * panne transitoire (Gmail/Drive momentanément indisponible) ayant quarantiné à tort un doc sain.
  *
- * À lancer À LA MAIN (un clic). Aucune suppression de fichier : un dépôt quarantiné est resté dans
- * `00·À trier` (re-collecté au prochain tick) ; une PJ Gmail est re-cherchée dans la fenêtre 30 j.
- * On supprime les lignes en ordre DÉCROISSANT (pas de décalage). Tourne hors tick → pas de cache à
- * invalider (le cache d'Index/Échecs est reconstruit au prochain `tickDriveAI`).
+ * À lancer À LA MAIN (un clic). Le tick, lui, appelle `dequarantainerLignes_` (le noyau) — JAMAIS
+ * cette fonction : le `tickDriveAI()` final serait RÉENTRANT depuis le tick (verrou relâché par le
+ * `finally` du tick imbriqué → anti-chevauchement neutralisé — bloquant revue R3).
  */
 function dequarantaine() {
+  if (dequarantainerLignes_() > 0) tickDriveAI();
+}
+
+/**
+ * Noyau de la dé-quarantaine : purge les LIGNES d'état (jamais un fichier). Aucune suppression de
+ * fichier : un dépôt quarantiné est resté dans `00·À trier` (re-collecté au prochain tick) ; une PJ
+ * Gmail est re-cherchée dans la fenêtre 30 j.
+ *
+ * `prefixe` (tick, R3) : ne libère que les clés re-PRÉSENTABLES par une source (`drive|` — le
+ * fichier est physiquement dans 00·À trier). Sans préfixe (manuel), tout est libéré — mais une clé
+ * Gmail/partage hors fenêtre ou de campagne figée est libérée « dans le vide » (plus visible dans
+ * la liste Relancer de l'app, source qui ne la re-présentera pas) : c'est le geste ASSUMÉ du clic
+ * manuel, jamais celui du tick.
+ *
+ * Ordre des écritures : les compteurs « Échecs » d'abord, la ligne Index (l'état « quarantainé »)
+ * en DERNIER — une coupure au milieu laisse le doc encore quarantainé et un re-run répare ;
+ * l'inverse laisserait un compteur orphelin à 3 → re-quarantaine au 1ᵉʳ échec transitoire.
+ * Lignes supprimées en ordre DÉCROISSANT (pas de décalage), puis caches Index/Échecs invalidés
+ * (le tick peut nous appeler APRÈS leur chargement — sans invalidation, `incrementerEchec_`
+ * écrirait sur des numéros de ligne périmés).
+ * @param {string} [prefixe]  ne libérer que les clés commençant par ce préfixe (ex. 'drive|')
+ * @return {number} nombre de documents libérés
+ */
+function dequarantainerLignes_(prefixe) {
   var f = feuille_('Index');
   var dern = f.getLastRow();
   var cles = {}, lignes = [];
   if (dern >= 2) {
     var v = f.getRange(2, 1, dern - 1, 6).getValues(); // A=Clé … F=Statut
     for (var i = 0; i < v.length; i++) {
-      if (v[i][5] === 'quarantaine') { cles[v[i][0]] = true; lignes.push(i + 2); }
+      if (v[i][5] !== 'quarantaine') continue;
+      if (prefixe && String(v[i][0]).indexOf(prefixe) !== 0) continue;
+      cles[v[i][0]] = true;
+      lignes.push(i + 2);
     }
   }
-  if (!lignes.length) { journalInfo_('Maintenance', 'Aucun document en quarantaine.'); return; }
+  if (!lignes.length) { journalInfo_('Maintenance', 'Aucun document en quarantaine' + (prefixe ? ' (' + prefixe + ')' : '') + '.'); return 0; }
 
-  lignes.sort(function (a, b) { return b - a; });
-  for (var k = 0; k < lignes.length; k++) f.deleteRow(lignes[k]);
-
-  // Retire aussi les compteurs « Échecs » correspondants (sinon le doc repartirait avec un
-  // compteur déjà élevé et re-quarantinerait au 1er nouvel échec).
+  // 1) Compteurs « Échecs » (sinon le doc repartirait avec un compteur déjà à 3 → re-quarantaine
+  //    au 1ᵉʳ nouvel échec, même transitoire).
   var fe = feuille_('Échecs');
   var derE = fe.getLastRow();
   if (derE >= 2) {
@@ -42,8 +65,13 @@ function dequarantaine() {
     for (var m = 0; m < lignesE.length; m++) fe.deleteRow(lignesE[m]);
   }
 
+  // 2) Lignes Index (l'état « quarantainé » tombe en dernier).
+  lignes.sort(function (a, b) { return b - a; });
+  for (var k = 0; k < lignes.length; k++) f.deleteRow(lignes[k]);
+
+  reinitialiserIndexCache_(); // caches Index + Échecs invalidés (lignes supprimées)
   journalInfo_('Maintenance', lignes.length + ' document(s) sortis de quarantaine — re-traités au prochain run.');
-  tickDriveAI();
+  return lignes.length;
 }
 
 /* ============================================================================
@@ -302,11 +330,22 @@ function repeter_(c, n) {
   return s;
 }
 
-/** Nombre de fichiers dans `00·À trier`, compté jusqu'à `plafond` (au-delà on renvoie `plafond`). */
+/**
+ * Nombre de fichiers EN ATTENTE dans `00·À trier`, compté jusqu'à `plafond` (au-delà on renvoie
+ * `plafond`). Les résidents déjà indexés (quarantaine, natifs sans export — R3) ne comptent PAS :
+ * ils ne se drainent jamais, et 40 quarantainés fermaient la porte du grand rangement À VIE
+ * (le seuil « drainer avant d'alimenter » doit mesurer le drainable, pas l'immobile).
+ * Parcours borné (INTAKE_SCAN_MAX) : un mur de résidents ne fait pas un scan sans fin.
+ */
 function nbFichiersATrier_(plafond) {
   var it = DriveApp.getFolderById(CONFIG.DOSSIERS.A_TRIER).getFiles();
-  var n = 0;
-  while (it.hasNext() && n < plafond) { it.next(); n++; }
+  var n = 0, parcourus = 0;
+  while (it.hasNext() && n < plafond && parcourus < CONFIG.INTAKE_SCAN_MAX) {
+    parcourus++;
+    var f = it.next();
+    if (indexContient_('drive|' + f.getId())) continue;
+    n++;
+  }
   return n;
 }
 

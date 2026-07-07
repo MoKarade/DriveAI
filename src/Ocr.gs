@@ -67,6 +67,53 @@ function cibleConversion_(type, nom) {
 }
 
 /**
+ * Type d'EXPORT texte d'un fichier Google NATIF (déjà converti par nature — R3, correctif
+ * « file À trier » 2026-07-07). PURE (testée). Les types sans texte exploitable (Forms,
+ * dessins, raccourcis, dossiers…) → null (laissés en place, comme avant).
+ * @param {string} mime
+ * @return {?string}
+ */
+function exportNatifMime_(mime) {
+  if (mime === 'application/vnd.google-apps.document') return 'text/plain';
+  if (mime === 'application/vnd.google-apps.spreadsheet') return 'text/csv';
+  if (mime === 'application/vnd.google-apps.presentation') return 'text/plain';
+  return null;
+}
+
+/**
+ * Exporte le TEXTE d'un fichier Google natif via l'API Drive REST — la capacité qui manquait à
+ * l'intake (leçon 2026-07-01 : corriger la CAPACITÉ, pas le garde-fou ; deux Google Sheets ont
+ * stagné 3 semaines dans 00·À trier faute de lecteur). Aucune conversion ni fichier temporaire :
+ * le natif s'exporte directement. Dégrade proprement : null si type non exportable ou échec HTTP
+ * (l'appelant décide — échec compté, type sans export inscrit `natif`). Le texte est retourné
+ * (quasi) ENTIER — borne mémoire NATIF_EXPORT_MAX_CARS seulement : il sert d'EMPREINTE de doublon
+ * (hash sur 4000 cars = faux doublons entre gros exports au même début) ; la troncature LLM
+ * (LLM_OCR_MAX_CARS) est appliquée en aval par extraireTexte_, comme pour tout texte.
+ * @param {string} fileId
+ * @param {string} mime
+ * @return {?string} texte (borné à NATIF_EXPORT_MAX_CARS), ou null
+ */
+function exporterTexteNatif_(fileId, mime) {
+  var exportMime = exportNatifMime_(mime);
+  if (!exportMime) return null;
+  try {
+    var rep = UrlFetchApp.fetch(
+      'https://www.googleapis.com/drive/v3/files/' + fileId + '/export?mimeType=' + encodeURIComponent(exportMime),
+      { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true }
+    );
+    if (rep.getResponseCode() !== 200) {
+      journalErreur_('OCR', 'Export natif HTTP ' + rep.getResponseCode() + ' (' + mime + ') : ' +
+        tronquer_(rep.getContentText(), 200));
+      return null;
+    }
+    return tronquer_(rep.getContentText(), CONFIG.NATIF_EXPORT_MAX_CARS);
+  } catch (e) {
+    journalErreur_('OCR', 'Export natif impossible (' + fileId + ') : ' + e);
+    return null;
+  }
+}
+
+/**
  * Convertit un blob en fichier Google temporaire (Doc/Slides/Sheets) via l'API Drive REST (v3),
  * en exporte le texte, puis supprime le temporaire. `ocr=true` ajoute l'OCR (images/PDF).
  * @param {Blob} blob

@@ -113,7 +113,13 @@ function signalerRetablissement_() {
     var props = PropertiesService.getScriptProperties();
     if (props.getProperty('DriveAI_LLM_PANNE')) {
       props.deleteProperty('DriveAI_LLM_PANNE');
-      journalInfo_('LLM', 'Compte API RÉTABLI — reprise normale des sources au prochain tick.');
+      // R3 : les documents quarantainés PENDANT la panne sont des faux positifs (3 échecs de
+      // compte, pas du document) → ré-arme la dé-quarantaine automatique du prochain tick.
+      // Assumé : elle libère TOUS les quarantainés `drive|`, y compris les cassés « pour de
+      // bon » (re-tentés 3×, puis re-quarantainés) — volume borné, pannes rares ; avec le garde
+      // R1 (gererEchec_ ne compte rien pendant une panne), ce cas devrait rester marginal.
+      try { props.deleteProperty('DriveAI_DEQUARANTAINE'); } catch (e2) { /* best-effort */ }
+      journalInfo_('LLM', 'Compte API RÉTABLI — reprise normale des sources au prochain tick (quarantaine de panne relancée).');
     }
   } catch (e) { /* best-effort : au pire une re-sonde de plus */ }
 }

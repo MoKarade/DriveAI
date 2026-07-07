@@ -200,15 +200,21 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   Une exception à un garde-fou se livre ATOMIQUEMENT (ADR + constitution + code + tripwire
   bidirectionnel + revue flotte), et son périmètre se définit aussi par IDENTITÉ (IDs fixes du
   routage), pas seulement par nom/ascendance.
-- **Pagination sur une recherche MOUVANTE (Gmail) ⇒ pas d'offset numérique seul.** Si de nouveaux
-  éléments s'insèrent en tête entre deux appels (tri du plus récent au plus ancien), un offset qui
-  repart de 0 à chaque tick capte bien le neuf mais peut **stagner indéfiniment** sur le reste de
-  l'historique dès que le volume dépasse le plafond/run (chaque tick re-confirme le même mur de
-  contenu déjà traité au lieu de progresser). Il faut un scan ancré sur une valeur ABSOLUE et stable
-  (ex. une date via `before:`, persistée), qui n'avance que dans un sens, COMBINÉ à un scan séparé
-  depuis l'offset 0 (pour le neuf) qui s'arrête tôt dès qu'il détecte un mur déjà traité. Toujours
-  **tracer un scénario concret sur plusieurs ticks** avant de valider une pagination, pas une relecture
-  superficielle — c'est ce qui révèle un plateau silencieux.
+- **Pagination/page sur une file MOUVANTE (Gmail, `00·À trier`) ⇒ prouver que le plus ANCIEN sort
+  un jour.** Si du neuf s'insère en tête entre deux passes (itérateurs Gmail ET DriveApp servent les
+  plus récents d'abord), un scan qui repart « du haut » à chaque tick capte le neuf mais peut
+  **stagner indéfiniment** sur l'ancien (vécu 2× : mur historique Gmail ; PDF déposé resté 11 h dans
+  À trier pendant que le rangement re-alimentait la file). Remèdes éprouvés : scan ancré sur une
+  valeur ABSOLUE qui n'avance que dans un sens (`before:` persisté) + scan du neuf qui s'arrête tôt
+  (Gmail) ; page composée de TRAITABLES seulement (skips filtrés À LA COLLECTE — un mur de
+  déjà-indexés n'occupe aucune place) + tri FIFO ancien→récent (intake Drive, R3). Toujours
+  **tracer un scénario concret sur plusieurs ticks** avant de valider une pagination — c'est ce qui
+  révèle un plateau silencieux.
+- **Un garde-fou qui met des items HORS CIRCUIT exige un chemin de RETOUR auto.** Une quarantaine
+  sans dé-quarantaine automatique transforme un incident transitoire (panne de crédit) en perte
+  permanente et silencieuse (32 fichiers sautés à vie, R3 : one-shot gaté par tag, ré-armé par le
+  rétablissement de panne). Et un frein budget (§2.6) met en pause les CAMPAGNES, jamais le flux
+  vivant — sinon « le moteur marche » pendant que la boîte de dépôt de Marc est morte.
 - **Campagne Gmail : requête figée ⇒ appartenance stable, mais l'ORDRE bouge quand même** (tri par
   DERNIER message, suppressions) — l'offset persistant sert à PROGRESSER, jamais à prouver la
   COMPLÉTUDE. Celle-ci vient de « terminé quand DEUX passes complètes consécutives ne collectent

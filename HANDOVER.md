@@ -4,7 +4,25 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **Dernière mise à jour : 2026-07-06 (soir)** — **C16 LIVRÉ : tri Gmail natif (ADR-0012), scope
+> **Dernière mise à jour : 2026-07-07 — Correctif R3 : « la file 00·À trier ne se draine pas »
+> (demande Marc).** Diagnostic par signaux indépendants (listing Drive + export xlsx de la Sheet) :
+> un PDF déposé est resté 11 h (~130 ticks) — QUATRE causes cumulées : (1) famine d'équité (le
+> rangement re-alimente la file, l'itérateur Drive sert les récents d'abord) ; (2) 32 quarantainés
+> de la panne du 01-07 sautés en silence à vie ; (3) 2 Google Sheets natifs sans lecteur ; (4)
+> **budget §2.6 CREVÉ (15,62 $ le 07-07)**. Livré (BACKLOG § Correctif R3, R3-01→05) : page
+> d'intake = TRAITABLES seulement + FIFO ancien→récent (tri avant troncature) ; dé-quarantaine AUTO
+> one-shot (`DEQUARANTAINE_TAG`, noyau `dequarantainerLignes_('drive|')` — jamais `dequarantaine()`
+> depuis le tick : réentrance), ré-armée par un rétablissement de panne ; natifs Docs/Sheets/Slides
+> classés (export texte REST, empreinte sur texte ENTIER, `ignorerDoublon` sous 20 cars ; échec
+> d'export = échec compté ; type sans export = indexé `natif`) ; **frein budget campagnes**
+> (`LLM_BUDGET_CAMPAGNES` 10 $ : rangement/historique/migration EN PAUSE jusqu'au 1ᵉʳ août — le
+> flux vivant dont la file de Marc CONTINUE ; relever = éditer la constante). Revue flotte 4 agents :
+> 3 bloquants réels corrigés (306 tests). À VÉRIFIER post-déploiement par signaux Drive : PDF
+> `1-ePHLXUsVVhiT9fEX7thR5P5Bs1YmkDD` classé, 32 quarantainés relancés, 2 Sheets natifs classés.
+> Info : racine sup `1W3b0…` (RANGEMENT_RACINES_SUP) inaccessible. Rappel Marc encore ouvert :
+> lancer `rattraperMediasMalClasses()` si pas fait.
+>
+> Antérieur — **2026-07-06 (soir)** — **C16 LIVRÉ : tri Gmail natif (ADR-0012), scope
 > `gmail.modify`.** PR #66 (2 rondes adversariales, 4 lentilles) : `TriGmail.gs` — libellés existants
 > + archivage réversible au fil de l'eau, idempotence par ÉTAT (`tri|fil|ts|lu/nonlu` : un mail lu
 > APRÈS son tri est re-trié donc archivé), rattrapage du stock 30 j par ancre FIXE + offset (ensemble
