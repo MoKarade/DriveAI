@@ -23,10 +23,19 @@
 | `06 · Études & diplômes` | `1PeeKG8XgZB6gJdZo03cO7F0s_iMgw6Ec` |
 | `07 · Santé` 🆕 | auto-créé à côté des domaines (`Router.dossierDomaineAuto_`), ID en Script Property `DriveAI_DOM_07 · Santé` |
 | `08 · Perso & projets` *(ex-07, renuméroté ADR-0002)* | `19uwSc1A47d_q32Dd2YJ4Wi9StllvyLey` |
+| `09 · Voyages` 🆕 *(refonte 2026-07-07)* | auto-créé (`Router.dossierDomaineAuto_`), ID en Script Property `DriveAI_DOM_09 · Voyages` |
 
 > **Renumérotage 07→08** : « Perso & projets » passe de 07 à 08 (07 devient « Santé »). Le dossier physique
 > (ID inchangé) est renommé automatiquement par `Main.assurerNomsDomaines_` (gated `CONFIG.NOMS_DOMAINES_TAG`,
 > renommage seul, réversible). `07 · Santé` est créé au premier document de santé (find-or-create, zéro clic).
+>
+> **`09 · Voyages` (refonte)** : vols, trains, hôtels, réservations, locations de voyage — le domaine qui
+> manquait (les billets partaient dans Administratif/Perso). Auto-créé au premier document de voyage.
+>
+> **Pièces d'identité (refonte)** : rangées PAR TYPE (`01 · Administratif & identité/Passeport`, `…/Permis
+> de conduire`…) mêlant Marc ET les autres personnes ; le nom de la personne (titulaire) va dans le fichier
+> (`AAAA-MM-JJ_Type_Titulaire.ext`). Pas de dossier « Tiers ». Carte de résident permanent → `04 · Immigration` ;
+> carte d'assurance maladie → `07 · Santé`.
 
 **Hors domaines** (préfixe `_`, à la racine, triés en tête ; ni domaine ni racine de rangement) :
 

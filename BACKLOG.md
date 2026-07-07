@@ -19,7 +19,7 @@
 | ID | Tâche | Statut |
 |----|-------|--------|
 | C26-02 | **Fonctions pures ENTITÉS + tests** (`Entites.gs`) : `canoniserEntite_` (générique→null, Marc→null, retrait suffixe juridique, correction OCR, canonicalisation véhicule/adresse, casse), `estProprietaireMarc_`, `retirerSuffixeJuridique_`, `canoniserVehicule_`, `canoniserAdresse_`, `corrigerOcrConnu_`, `cleCanoniqueEntite_` (clé de fusion) ; `estFusionnableEntite_` DURCI (marque seule + modèle propre ⇒ pas de fusion : Ford ≠ Ford Fiesta). 11 tests, calés sur les vrais cas | ✅ |
-| C26-01 | **Taxonomie** : domaine `09 · Voyages` + sous-dossiers de type identité | ⬜ |
+| C26-01 | **Taxonomie** : domaine `09 · Voyages` (DOMAINES_AUTO, find-or-create) + sous-dossiers de type identité ; docs/TAXONOMY.md. Test formulaire robuste | ✅ |
 | C26-03 | **Fonctions pures TITULAIRE/IDENTITÉ + tests** (`Router.gs`) : `normaliserTypeIdentite_` (variantes → dossier canonique), `estDocumentIdentitePersonnel_`, `dossierIdentite_` (par type, jamais par personne), `titulairePourNom_` (Marc valide ici), `nommerDocument_` (aiguille titulaire↔émetteur), `nomSansTiers_`, `garantirNomUnique_` (anti-écrasement). 8 tests | ✅ |
 | C26-04 | **Fonctions pures NON-DOCUMENT + tests** (`Router.gs`) : `decisionNonDocument_` (ordre explicite : garde `distinguerVraiScan_` DOMINANTE > export déterministe > LLM > média ; identité/01/04 jamais média-isée ; export jamais sous 04), `estExportDonnees_`, `estMediaSansTexte_`, `distinguerVraiScan_`, `extensionEstTechnique_`. 7 tests | ✅ |
 | C26-05 | **Prompts 2 passes + Sonnet + texte complet** (schéma étendu, cache) | ⬜ |
