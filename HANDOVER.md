@@ -4,6 +4,28 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **2026-07-07 (soir) — Chantier #26 : REFONTE de l'analyse documentaire (demande Marc « fiabilité
+> maximale »).** Diagnostic prod accablant (65,6 % d'émetteurs « Inconnu », vols → Administratif,
+> exports Facebook jusqu'en Immigration, 285 entités en vrac — Marc lui-même ×4, Ford Fiesta ×3).
+> Conçu + validé par workflow (14/14 cas, revue adversariale 7 correctifs), PUIS **prouvé sur 38 vrais
+> documents en 2 itérations** (artifact avant/après présenté à Marc, qui a validé). La v2 tient les 2
+> exigences RELEVÉES de Marc : **0 « Inconnu »** (descripteur précis à la place) et **0 document à la
+> racine d'un domaine** (tout en sous-dossier, entité unifiée d'abord — « l'IUT = 1 seul dossier » ;
+> captures sans valeur → `_Médias`). LEÇON HONNÊTE de la preuve : **0/21 émetteurs réellement récupérés**
+> — la plupart des « Inconnu » sont LÉGITIMES (CV/notes/devoirs perso sans émetteur) ; le vrai gain est
+> la CORRECTNESS (bon domaine : 11 corrigés ; non-docs écartés ; identité par type ; entités fusionnées ;
+> descripteurs parlants), pas le remplissage d'émetteur. **LIVRÉ + testé (fondations pures, interrupteur
+> éteint, 337 tests, PR #92→102)** : `09 · Voyages` ; canonicalisation/fusion d'entités
+> (`canoniserEntite_`, `estProprietaireMarc_`, `cleCanoniqueEntite_`, `estFusionnableEntite_` durci
+> Ford≠Ford Fiesta) ; titulaire/identité + anti-écrasement ; descripteur (jamais Inconnu) +
+> `sousDossierPourNom_` ; `decisionNonDocument_` (identité jamais média-isée, export jamais sous 04).
+> **RESTE (pipeline live) : C26-05** prompts 2 passes + Sonnet + texte complet + schéma étendu
+> (descripteur/sousDossier) + révision §6 budget, **DERRIÈRE UN FLAG ÉTEINT** ; **C26-06** câblage
+> Router/Intake ; **C26-07** dry-run à grande échelle ; **C26-08** campagne de re-analyse (budget/jour,
+> déplacement seul, reprenable). ⚠️ **PRÉVENIR MARC AVANT** le déploiement Sonnet et la campagne (coût
+> réel ~×10-20/doc ; campagne ~60-150 $ one-shot). Prompts finaux + specs des 21 fonctions pures : dans
+> les scripts de workflow persistés (`workflows/scripts/refonte-analyse-documents-*`, `preuve-refonte-v2-*`).
+>
 > **2026-07-07 — Tri Gmail : recalibration du signal ⚠️ Suspect (demande Marc « trop de suspects »).**
 > 14 fils marqués ⚠️, dont 13 FAUX POSITIFS (alertes Google/Anthropic, codes 2FA + réclamations
 > Desjardins, le propre mail envoyé de Marc, sa famille). Cause : le prompt LLM assimilait
