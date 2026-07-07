@@ -303,6 +303,12 @@ mémoire** de l'onglet, jamais persisté.
 > version → Déployer** (l'URL /exec ne change pas, rien à refaire dans l'app). La **recherche IA**
 > (Documents → Recherche DriveAI → « ✨ Recherche IA ») passe par cette même web app : même
 > secret, bornée à 50 questions/jour, ~0,002 $/question (Haiku) — ~3 $/mois au plafond.
+> **Confirmé une fois de plus (débogage miroir Drive, chantier #27)** : ce piège s'applique AUSSI
+> à un `clasp push` déclenché manuellement (`workflow_dispatch` de `deploy.yml` sur une branche,
+> pour itérer vite sans passer par `main`) — le code du projet est à jour, mais `/exec` sert
+> l'ancienne version tant que Marc n'a pas cliqué **Nouvelle version → Déployer**. Un test qui
+> renvoie une réponse SANS les derniers champs/comportements ajoutés = signal quasi certain d'un
+> redéploiement manquant, pas un bug de code.
 
 ## Miroir Drive du dépôt (ADR-0017) — accès de partout + NotebookLM
 

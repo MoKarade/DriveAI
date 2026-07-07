@@ -15,7 +15,7 @@
 |----|-------|--------|
 | C27-01 | `src/Miroir.gs` (fonctions pures + I/O), action `sync-miroir` sur `doPost` (secret DÉDIÉ `DriveAI_SYNC_SECRET`), `.github/workflows/sync-drive.yml` (lots via GitHub Actions), dispatché par `auto-merge.yml`. +12 tests | ✅ mergé #107 |
 | C27-02 | Config une fois côté Marc (Property + 2 secrets GitHub, accès web app « Tout le monde ») | ✅ fait par Marc |
-| C27-03 | **Débogage 1er sync réel** — 2 bugs curl invisibles hors prod trouvés + corrigés (405 : `-X POST`+`-L` verrouille la méthode sur la redirection Apps Script ; « Argument list too long » : payload en argument shell → fichier + `--data-binary @`). Fixes poussés sur la branche, PAS ENCORE mergés. Voir leçon `docs/LESSONS.md`. | 🟦 bloqué : secret `DriveAI_SYNC_SECRET` refusé par `doPost` — Marc doit revérifier la correspondance exacte Property ↔ secret GitHub |
+| C27-03 | **Débogage 1er sync réel** — 2 bugs curl invisibles hors prod trouvés + corrigés (405 : `-X POST`+`-L` verrouille la méthode sur la redirection Apps Script ; « Argument list too long » : payload en argument shell → fichier + `--data-binary @`). Fixes poussés sur la branche, PAS ENCORE mergés. Voir leçon `docs/LESSONS.md`. | 🟦 bloqué : web app `/exec` figée sur une ancienne version (piège déjà documenté) — Marc doit refaire Déployer → Nouvelle version, secret restant à confirmer via diagnostic de longueur |
 
 ## Chantier #26 — REFONTE de l'analyse documentaire (demande Marc « fiabilité maximale », 2026-07-07)  🟦
 

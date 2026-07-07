@@ -22,12 +22,19 @@
 > 2. **« Argument list too long »** sur les gros lots — payload passé en argument shell dépassait
 >    `ARG_MAX`. **Corrigé** : payload écrit dans un fichier, `--data-binary @fichier` (poussé,
 >    pas encore mergé).
-> **BLOQUÉ EN ATTENTE** : après ces 2 fixes, le premier lot répondait proprement en JSON
+> **BLOQUÉ EN ATTENTE** : après ces 2 fixes, chaque lot répondait proprement en JSON
 > (`{"ok":false,"erreur":"refusé"}`) — la requête atteint bien `doPost`, mais le secret ne
-> correspond pas. **Marc doit revérifier que `DriveAI_SYNC_SECRET` (Apps Script Property) est
-> IDENTIQUE, caractère pour caractère, à `DRIVEAI_SYNC_SECRET` (secret GitHub)** avant de relancer.
-> Prochaine étape : une fois le secret aligné, dispatcher `sync-drive.yml` sur la branche pour
-> confirmer un sync complet (169 fichiers) réussi, PUIS merger les 2 fixes curl sur `main`.
+> correspond pas. Écarté : clé Property mal nommée (vérifiée exacte via capture d'écran :
+> `DriveAI_SYNC_SECRET`), typo/espace (re-testé avec une valeur hex fraîche donnée par Claude,
+> collée aux 2 endroits — toujours refusé). **Cause identifiée** : diagnostic temporaire ajouté à
+> `doPost` (longueurs comparées, jamais le contenu — commit debug, PAS mergé) déployé via
+> `workflow_dispatch` de `deploy.yml` sur la branche (itération rapide sans toucher `main`) — la
+> réponse ne portait PAS les nouveaux champs de diagnostic, révélant que **la web app `/exec` sert
+> une version FIGÉE** (piège déjà documenté `docs/DEPLOIEMENT.md`, confirmé s'appliquer aussi à un
+> déploiement déclenché manuellement sur une branche). **Marc doit refaire Déployer → Gérer les
+> déploiements → ✏ → Version : Nouvelle version → Déployer**, puis je relance le diagnostic.
+> Une fois le secret confirmé aligné : sync complet (169 fichiers) sur la branche, retirer le code
+> diagnostic (`WebApp.gs` + `sync-drive.yml` 1-fichier), PUIS merger les 3 commits fix sur `main`.
 >
 > **2026-07-07 (soir) — Chantier #26 : REFONTE de l'analyse documentaire (demande Marc « fiabilité
 > maximale »).** Diagnostic prod accablant (65,6 % d'émetteurs « Inconnu », vols → Administratif,
