@@ -4,7 +4,24 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **Dernière mise à jour : 2026-07-07 — Correctif R3 : « la file 00·À trier ne se draine pas »
+> **2026-07-07 — Tri Gmail : recalibration du signal ⚠️ Suspect (demande Marc « trop de suspects »).**
+> 14 fils marqués ⚠️, dont 13 FAUX POSITIFS (alertes Google/Anthropic, codes 2FA + réclamations
+> Desjardins, le propre mail envoyé de Marc, sa famille). Cause : le prompt LLM assimilait
+> « urgence/identifiants/paiement » à du phishing → tout mail transactionnel légitime flaggé. Refonte
+> (workflow validé par 3 juges : 14 → ~1 faux positif, 8/8 phishing détectés) : prompt haute-barre
+> (suspect exige un signal de TROMPERIE sur l'IDENTITÉ du domaine — sosie/typosquat, webmail posant en
+> institution, arnaque manifeste — jamais le ton) + 2 gardes déterministes (G1 : le mail de Marc jamais
+> suspect ; G2 : expéditeur déjà appris jamais requalifié par le LLM seul, sauf chemin dangereux promo).
+> Signal DMARC ABANDONNÉ (la revue sécu a trouvé une injection de prompt possible). Le moteur ne retire
+> jamais un libellé (garde-fou) → Marc décoche à la main les 14 existants (recherche `label:"⚠️ Suspect"`).
+> 310 tests. **EN COURS (demande Marc, priorité)** : refonte MAJEURE de l'analyse documentaire (65 %
+> d'émetteurs « Inconnu », mauvais domaines, entités en vrac — Marc lui-même ×4, génériques, doublons
+> Ford Fiesta ×3). Décisions actées : Sonnet + 2 passes + texte complet ; re-analyser tout l'existant
+> (~2400 docs, ~80-150 $) ; reconstruire entités (fusion variantes) + taxonomie (ajout domaine 09
+> Voyages) ; documents d'identité groupés PAR TYPE (dossier « Passeport »/« Permis » contenant Marc ET
+> les autres — PAS de dossier _Tiers). Workflow de conception en cours.
+>
+> Antérieur — **2026-07-07 — Correctif R3 : « la file 00·À trier ne se draine pas »
 > (demande Marc).** Diagnostic par signaux indépendants (listing Drive + export xlsx de la Sheet) :
 > un PDF déposé est resté 11 h (~130 ticks) — QUATRE causes cumulées : (1) famine d'équité (le
 > rangement re-alimente la file, l'itérateur Drive sert les récents d'abord) ; (2) 32 quarantainés

@@ -342,6 +342,41 @@ test('fil portant DÉJÀ ⏰ (message antérieur important) → JAMAIS archivé,
   assert.deepStrictEqual(calls.archives, []); // la décision antérieure survit aux nouveaux messages
 });
 
+test('SUSPECT recalibré — G1 : un signal suspect du LLM sur le PROPRE mail de Marc est IGNORÉ (on ne se phishe pas)', () => {
+  const { c, calls } = ctxTri({
+    index: { 'intention|MSelf': true },
+    miniCategorie_: () => ({ categorie: 'Finance', suspect: true }), // le LLM flague à tort « demande urgente »
+  });
+  // Fil dont l'unique message vient de Marc (son propre envoi) → ref = Marc, adresse = propriétaire.
+  c.GmailApp.search = (q, d) => (d === 0 ? [filMock(calls, { id: 'SELF', ts: 100, dernierMsgId: 'MSelf', expediteur: 'Marc <marc.richard4@gmail.com>', sujet: 'demande urgente de documents' })] : []);
+  c.trierFilsGmail_(() => false);
+  assert.ok(!calls.labels.some((l) => l.label === '⚠️ Suspect'), 'jamais ⚠️ Suspect sur son propre mail');
+});
+
+test('SUSPECT recalibré — G2 : expéditeur DÉJÀ APPRIS non requalifié suspect par le LLM seul (chemin normal)', () => {
+  const { c, calls } = ctxTri({
+    index: { 'intention|MLearn': true },
+    miniCategorie_: () => ({ categorie: 'Finance', suspect: true }), // faux positif LLM (mail transactionnel légitime)
+  });
+  c.feuille_ = () => ({ getLastRow: () => 2, getRange: () => ({ getValues: () => [['app@desjardinsinsurance.com', 'Finance']] }), appendRow: () => {} });
+  c.GmailApp.search = (q, d) => (d === 0 ? [filMock(calls, { id: 'LRN', ts: 100, dernierMsgId: 'MLearn', expediteur: 'Desjardins <app@desjardinsinsurance.com>', sujet: 'Code to log on' })] : []);
+  c.trierFilsGmail_(() => false);
+  assert.ok(!calls.labels.some((l) => l.label === '⚠️ Suspect'), 'expéditeur de confiance : le LLM seul ne le flague plus');
+  assert.deepStrictEqual(plain(calls.labels.map((l) => l.label)), ['Finance']);
+});
+
+test('SUSPECT recalibré — PJ .exe sur un expéditeur APPRIS reste ⚠️ (l\'heuristique déterministe prime sur G2)', () => {
+  const { c, calls } = ctxTri({
+    index: { 'intention|MExe': true },
+    miniCategorie_: () => ({ categorie: 'Finance', suspect: false }),
+    piecesJointes_: () => [{ getName: () => 'facture.exe' }],
+  });
+  c.feuille_ = () => ({ getLastRow: () => 2, getRange: () => ({ getValues: () => [['connu@banque.com', 'Finance']] }), appendRow: () => {} });
+  c.GmailApp.search = (q, d) => (d === 0 ? [filMock(calls, { id: 'EXE', ts: 100, dernierMsgId: 'MExe', expediteur: 'connu@banque.com', sujet: 'Facture' })] : []);
+  c.trierFilsGmail_(() => false);
+  assert.deepStrictEqual(plain(calls.labels.map((l) => l.label)), ['⚠️ Suspect']);
+});
+
 test('promo NON LUE d\'une adresse APPRISE → le signal suspect LLM est QUAND MÊME redemandé (anti-empoisonnement)', () => {
   let llm = 0;
   const { c, calls } = ctxTri({
