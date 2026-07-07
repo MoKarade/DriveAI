@@ -678,3 +678,18 @@ LIGNE, extraire un noyau sans effets de fin, et re-scoper ses entrées au contex
 doit toucher que ce que ses sources savent re-présenter). La revue adversariale a payé une 3ᵉ fois
 sur ce même thème.
 **Règle durable ?** oui (fusionnée dans la puce « maintenance manuelle → auto » de CLAUDE.md §7).
+
+## 2026-07-07 — Rajuster un seuil CONFIG : la clé d'annonce ET les tests doivent suivre
+**Contexte.** Décision Marc « je veux que tu continues le tri au complet » → plafond
+`LLM_BUDGET_CAMPAGNES` relevé 10 → 30 $ en cours de mois. Deux pièges jumeaux détectés au moment
+du changement : (1) la mémoire « déjà signalé » du frein (`DriveAI_FREIN_BUDGET` = mois seul)
+aurait rendu SILENCIEUSE une re-pause au nouveau seuil — le mois était dans la clé, pas le seuil ;
+(2) les tests du frein codaient le seuil en dur (« 16 $ ≥ 10 ») : au rajustement, ils seraient
+devenus mensongers sans échouer pour la bonne raison.
+**Leçon.** (1) Instance de la règle durable « une clé d'idempotence encode TOUT l'état qui
+commande la décision » : le SEUIL commande l'annonce → il va DANS la clé (`mois|seuil`), et toute
+Property « déjà fait/déjà dit » se re-audite quand on rend variable un paramètre qu'elle supposait
+fixe. (2) Un test qui verrouille un comportement PARAMÉTRÉ par CONFIG dérive ses cas de la
+constante (seuil−1, seuil+6…), jamais de sa valeur du jour — sauf tripwire volontaire qui
+verrouille la VALEUR elle-même (et le dit en commentaire).
+**Règle durable ?** oui (le point 2 ; le point 1 est une instance d'une règle déjà consignée).
