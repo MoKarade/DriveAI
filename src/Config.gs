@@ -361,8 +361,14 @@ var CONFIG = {
                                           // (r2 s'était figé « terminé » sans rien ranger — cf. P1-17)
   // Racines SUPPLÉMENTAIRES à reclasser en plus des 7 domaines (ancien Drive). Tout leur contenu
   // « en vrac » est renvoyé dans 00·À trier puis re-classé par le pipeline (mêmes garde-fous : zone
-  // protégée multi-parents, format normalisé sauté, garde-temps). « Ancienne structure » = ancien Drive de Marc.
-  RANGEMENT_RACINES_SUP: ['1W3b0KkKFfXa77YSynCy9-4lgwPSFft-L'],
+  // protégée multi-parents, format normalisé sauté, garde-temps).
+  // VIDE depuis 2026-07-07 (décision Marc « retire ») : la racine « Ancienne structure »
+  // (1W3b0…) est devenue INACCESSIBLE (supprimée/déplacée par Marc). Son `getFolderById` levait à
+  // chaque passe ⇒ `erreurCollecte=true` ⇒ `reste=true` permanent ⇒ le rangement ne pouvait plus
+  // jamais figer « terminé » (barre bloquée à 99 %). Le rattrapage étant fini (2796/2796 classés,
+  // 0 restant), on retire la racine : la prochaine passe collecte 0 sans erreur ⇒ « terminé » + 100 %.
+  // Ré-ajouter un ID ici (et bumper RANGEMENT_TAG) relancerait un rangement sur cette racine.
+  RANGEMENT_RACINES_SUP: [],
 
   // --- Chantier #8 : MIGRATION de l'existant vers la nouvelle taxonomie (ADR-0002) ---
   // Re-classe les documents DÉJÀ CLASSÉS (avant le nommage par type, les entités, 07·Santé, le few-shot)
