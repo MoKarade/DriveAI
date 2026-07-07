@@ -355,6 +355,57 @@ function decisionNonDocument_(classif, meta) {
   return { estNonDoc: false, routage: null };
 }
 
+/* ============================================================================
+ * FAIL-SAFE HYBRIDE ULTRA-STRICT (ADR-0016, décision Marc 2026-07-07). Révise §2.1 ÉTROITEMENT : on
+ * ré-introduit `00 · À vérifier`, mais UNIQUEMENT quand l'analyse n'a produit AUCUN fait exploitable
+ * (`domaine` inconnu ET `emetteur` absent ET `type_doc` absent). Sinon, classé au mieux comme avant.
+ * La conjonction ET garantit l'anti-saturation (un seul fait présent suffit à classer). PURES + I/O.
+ * ==========================================================================*/
+
+/** Vrai si un champ de classification est réellement RENSEIGNÉ (non vide après nettoyage). PUR. */
+function estRenseigne_(v) { return !!(v != null && String(v).trim() && champ_(v)); }
+
+/**
+ * Vrai si l'analyse est VIDE au sens fail-safe (ADR-0016) : les TROIS faits critiques absents —
+ * domaine inconnu/hors-liste ET émetteur absent ET type_doc absent. Un seul fait présent ⇒ false
+ * (on classe au mieux). Ne dépend d'AUCUNE I/O. PUR.
+ * @param {Object} classif
+ * @return {boolean}
+ */
+function estClassificationVide_(classif) {
+  if (!classif) return true; // aucune classif du tout → à vérifier
+  var domaineVide = !domaineConnu_(classif.domaine);
+  var emetteurVide = !estRenseigne_(classif.emetteur);
+  var typeVide = !estRenseigne_(classif.type_doc);
+  return domaineVide && emetteurVide && typeVide;
+}
+
+/**
+ * Dossier `00 · À vérifier` (fail-safe) : réutilise l'ID configuré s'il vit encore, sinon find-or-create
+ * à la racine DriveAI (Marc a pu supprimer l'ancien dossier vide). Déplacement seul, jamais supprimé.
+ * @return {Folder}
+ */
+function dossierAVerifier_() {
+  try { return DriveApp.getFolderById(CONFIG.DOSSIERS.A_VERIFIER); }
+  catch (e) { return dossierRacineParNom_('00 · À vérifier', 'DriveAI_A_VERIFIER_ID'); }
+}
+
+/**
+ * Décision fail-safe : document déplacé vers `00 · À vérifier` (validation humaine via l'app). Nom au
+ * mieux (jamais « Inconnu ») : `nommerDocument_` retombe sur « …_Type.ext » quand tout est absent.
+ * @param {Object} classif
+ * @param {string} date  AAAA-MM-JJ
+ * @param {string} ext
+ * @return {{statut:string, domaine:string, chemin:string, nom:string, dossierId:string, autresEntites:string[]}}
+ */
+function routageAVerifier_(classif, date, ext) {
+  return {
+    statut: 'à vérifier', domaine: '', chemin: '00 · À vérifier',
+    nom: nommerDocument_(classif, date, ext),
+    dossierId: dossierAVerifier_().getId(), autresEntites: []
+  };
+}
+
 /* ---------- Nommage (docs/NAMING.md) ---------- */
 
 /**
@@ -367,9 +418,13 @@ function decisionNonDocument_(classif, meta) {
 function deciderRoutage_(classif, dateReference, ext) {
   var date = dateNormalisee_(classif.date_doc, dateReference); // AAAA-MM-JJ
 
+  // FAIL-SAFE (ADR-0016) : analyse TOUT-NULL (domaine inconnu ET émetteur ET type absents) → filet
+  // humain `00 · À vérifier` au lieu d'un rangement au hasard. Ultra-strict → rare (anti-saturation).
+  if (estClassificationVide_(classif)) return routageAVerifier_(classif, date, ext);
+
   // (Le cas DOUBLON vit en AMONT, au fast-path du Pipeline (P1-20) — plus jamais ici.)
-  // 1) Domaine introuvable (LLM hors-liste/malformé) : plus de revue (décision Marc 2026-07-01) —
-  // on CLASSE au mieux dans le domaine par défaut, avec le nom final propre. Zéro fichier en limbo.
+  // 1) Domaine introuvable (LLM hors-liste/malformé) : on CLASSE au mieux dans le domaine par défaut
+  // (le cas tout-vide est déjà parti en revue ci-dessus). Zéro fichier en limbo.
   // `domaineConnu_` accepte les 7 domaines fixes ET les domaines auto-créés (07 · Santé, ADR-0002).
   if (!domaineConnu_(classif.domaine)) classif.domaine = CONFIG.DOMAINE_DEFAUT;
 
@@ -424,7 +479,11 @@ function planRoutageV2_(classif, meta, date, ext) {
   if (nd.estNonDoc) return { type: 'non-doc', routage: nd.routage };
 
   var c = classif || {};
-  // (2) Domaine introuvable (LLM hors-liste/malformé) → domaine par défaut (jamais de limbo).
+  // (2) FAIL-SAFE (ADR-0016) : analyse TOUT-NULL → `00 · À vérifier` (une pièce d'identité a un
+  // type/titulaire → jamais vide → jamais déviée). Ultra-strict, donc rare.
+  if (!estDocumentIdentitePersonnel_(c) && estClassificationVide_(c)) return { type: 'à vérifier' };
+
+  // (3) Domaine introuvable (LLM hors-liste/malformé) → domaine par défaut (jamais de limbo).
   if (!domaineConnu_(c.domaine)) c.domaine = CONFIG.DOMAINE_DEFAUT;
 
   var domaine, sousDossier;
@@ -456,6 +515,7 @@ function deciderRoutageV2_(classif, meta, dateReference, ext) {
       ? routageTechnique_(meta.nomFichier, dateReference, ext)
       : routageMedia_(meta.nomFichier);
   }
+  if (plan.type === 'à vérifier') return routageAVerifier_(classif, date, ext); // fail-safe (ADR-0016)
 
   var dom = DriveApp.getFolderById(idDomaine_(plan.domaine));
   // Assainit le nom de sous-dossier (caractères interdits Drive → '-', comme pour les noms de

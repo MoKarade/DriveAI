@@ -39,13 +39,17 @@
 > (budget/jour, déplacement seul, reprenable) ; **C26-09** app + §6 budget. ⚠️ **NE PAS allumer
 > `ANALYSE_V2` ni lancer la campagne sans le feu vert coût de Marc** (~×10-20/doc ; campagne ~70-100 $).
 >
-> **⚠️ CONFLIT OUVERT (2026-07-07, à trancher avec Marc)** — son nouveau « Protocole de précision »
-> exige un retour à `00 · À vérifier` (file de revue) pour les NULL critiques / confiance < 80 %, ce
-> qui **contredit la décision NON NÉGOCIABLE §2.1 « PLUS DE FILE DE REVUE » (sa propre décision du
-> 2026-07-01)** + la leçon « low-confidence → revue SATURE et neutralise l'auto-rangement ». Question
-> de réconciliation posée (app comme file de revue SANS dossier, vs réintroduire le dossier). NE PAS
-> coder de routage vers `00 · À vérifier` tant que ce n'est pas tranché ATOMIQUEMENT (ADR + §2.1 + code
-> + tests, même commit).
+> **✅ CONFLIT RÉSOLU → FAIL-SAFE HYBRIDE (2026-07-07, ADR-0016, décision Marc « hybride ultra-strict »).**
+> Son « Protocole de précision » voulait rouvrir `00 · À vérifier` (contredisait §2.1). Réconcilié :
+> un doc part en revue **UNIQUEMENT si l'analyse est TOUT-NULL** — `domaine` inconnu **ET** `emetteur`
+> **ET** `type_doc` tous absents (`estClassificationVide_`, PURE). Un seul fait présent ⇒ classé au mieux.
+> La conjonction **ET** = anti-saturation (leçon vécue). Livré ATOMIQUEMENT : ADR-0016 + CLAUDE.md §2.1
+> révisé + §8 (protocole de précision) + code (`deciderRoutage_` live + `planRoutageV2_`, garde identité)
+> + tests. **Preuve (protocole phase 1)** : `test/audit-logique.test.js` prouve **0/20 documents réels**
+> déclenchés (anti-saturation), contre-épreuve OK. Faux-positifs historiques (CV/note/export) en
+> non-régression. **370 tests verts.** PR **draft + `do-not-merge`** (révision de garde-fou → attend le
+> feu vert explicite de Marc pour merger). Reste : consolidation docs (project-status.md/coding-standards.md)
+> sur feu vert ; C26-07/08/09 (dry-run + campagne + app) inchangés.
 >
 > **2026-07-07 — Tri Gmail : recalibration du signal ⚠️ Suspect (demande Marc « trop de suspects »).**
 > 14 fils marqués ⚠️, dont 13 FAUX POSITIFS (alertes Google/Anthropic, codes 2FA + réclamations
