@@ -4,6 +4,17 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **2026-07-08 (fin de soirée) — ANOMALIES PROD corrigées (PR #126).** Deux constats chiffrés sur
+> l'état réel : (1) ~9 fichiers « Access denied » re-tentés par le rangement à CHAQUE tick →
+> `deplacerVersATrier_` passe les échecs par `gererEchec_` (quarantaine après 3, clé `drive|` qui
+> stoppe la re-collecte — la Relance app = chemin de retour) et inscrit les fichiers protégés une
+> fois (`zone protégée`) ; (2) domaine AUTO erroné « 07 · Perso & projets » (340 docs) doublonnant
+> le canonique 08 → **`fusionnerDomaine07PersoVers08`** (Maintenance.gs, one-shot manuel,
+> reprenable) : **Marc doit l'exécuter dans l'éditeur APRÈS le merge et AVANT C26-08.** Aussi :
+> quota Gmail du jour épuisé par l'incident (tri en pause, reprise auto ~03:00) ; 93 % des docs
+> classés sont à la RACINE de leur domaine (2 421/2 607 — attendu en v1, c'est C26-08 qui rangera
+> en sous-dossiers) ; dry-run 33/100, surveillance horaire armée.
+>
 > **2026-07-08 (soir) — PLANS P1/P2/P3 EXÉCUTÉS + ⚠ INCIDENT PROD (Sheet d'état recréée à vide).**
 > • **⚠ INCIDENT (ouvert, décision Marc attendue)** : à 02:34 EDT, un échec TRANSITOIRE de
 >   `SpreadsheetApp.openById` (dégradation Google, `Access denied: DriveApp` en rafale au même
