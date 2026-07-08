@@ -19,12 +19,18 @@ test('estFichierMiroirable_ : les fichiers TEXTE (code, docs, config) sont inclu
   assert.strictEqual(ctx.estFichierMiroirable_('package.json'), true);
 });
 
-test('estFichierMiroirable_ : les formats BINAIRES sont exclus (illisibles en .txt)', () => {
-  assert.strictEqual(ctx.estFichierMiroirable_('app/public/logo.png'), false);
-  assert.strictEqual(ctx.estFichierMiroirable_('assets/photo.jpeg'), false);
+test('estFichierMiroirable_ : les binaires UTILES à NotebookLM (vision multimodale) sont INCLUS (rév. 2026-07-08)', () => {
+  assert.strictEqual(ctx.estFichierMiroirable_('app/public/logo.png'), true);
+  assert.strictEqual(ctx.estFichierMiroirable_('assets/photo.jpeg'), true);
+  assert.strictEqual(ctx.estFichierMiroirable_('rapport.pdf'), true);
+  assert.strictEqual(ctx.estFichierMiroirable_('app/public/icone.svg'), true);
+});
+
+test('estFichierMiroirable_ : les binaires INUTILES (polices, archives) restent exclus', () => {
   assert.strictEqual(ctx.estFichierMiroirable_('fonts/inter.woff2'), false);
+  assert.strictEqual(ctx.estFichierMiroirable_('fonts/inter.ttf'), false);
   assert.strictEqual(ctx.estFichierMiroirable_('archive.zip'), false);
-  assert.strictEqual(ctx.estFichierMiroirable_('rapport.pdf'), false);
+  assert.strictEqual(ctx.estFichierMiroirable_('anim.gif'), false);
 });
 
 test('estFichierMiroirable_ : jamais de remontée de chemin ; jamais vide', () => {
@@ -57,6 +63,38 @@ test('nomFichierMiroir_ : chemin vide ou sans nom → chaîne vide (jamais plant
 
 test('nomFichierMiroir_ : caractères interdits Drive nettoyés PAR SEGMENT avant l\'aplatissement', () => {
   assert.strictEqual(ctx.nomFichierMiroir_('docs/a:b*c.md'), 'docs---a-b-c.md.txt');
+});
+
+test('nomFichierMiroir_ : BINAIRE → extension d\'ORIGINE conservée (jamais .txt — le type porte la vision multimodale)', () => {
+  assert.strictEqual(ctx.nomFichierMiroir_('app/public/logo.png', true), 'app---public---logo.png');
+  assert.strictEqual(ctx.nomFichierMiroir_('rapport.pdf', true), 'rapport.pdf');
+  // Le même chemin SANS le flag reste la voie texte (suffixe .txt) — le flag fait foi.
+  assert.strictEqual(ctx.nomFichierMiroir_('rapport.pdf', false), 'rapport.pdf.txt');
+});
+
+/* ---------- mimeTypePourMiroir_ : le bon type à la création Drive ---------- */
+
+test('mimeTypePourMiroir_ : MIME correct par extension (une image doit arriver lisible, jamais text/plain)', () => {
+  assert.strictEqual(ctx.mimeTypePourMiroir_('app---public---logo.png'), 'image/png');
+  assert.strictEqual(ctx.mimeTypePourMiroir_('photo.jpeg'), 'image/jpeg');
+  assert.strictEqual(ctx.mimeTypePourMiroir_('photo.jpg'), 'image/jpeg');
+  assert.strictEqual(ctx.mimeTypePourMiroir_('icone.svg'), 'image/svg+xml');
+  assert.strictEqual(ctx.mimeTypePourMiroir_('rapport.pdf'), 'application/pdf');
+  assert.strictEqual(ctx.mimeTypePourMiroir_('src---Router.gs.txt'), 'text/plain');
+});
+
+/* ---------- ecrireFichierMiroir_ : allowlist binaire (défense en profondeur) ---------- */
+
+test('ecrireFichierMiroir_ : binaire:true sur une extension HORS allowlist → refusé sans toucher Drive', () => {
+  const c = load(['Config.gs', 'Router.gs', 'Miroir.gs'], {
+    DriveApp: { getFolderById: () => { throw new Error('ne doit pas être atteint'); } },
+  });
+  c.journalErreur_ = () => {};
+  // .exe bloqué nulle part par la blocklist mais PAS dans l'allowlist binaire → refusé.
+  assert.strictEqual(c.ecrireFichierMiroir_('malware.exe', 'AAAA', true), false);
+  // .gs en binaire : pas dans l'allowlist non plus → refusé (un vol de secret ne peut pas pousser
+  // du pseudo-binaire sous un nom de code).
+  assert.strictEqual(c.ecrireFichierMiroir_('src/Router.gs', 'AAAA', true), false);
 });
 
 /* ---------- verifierSecretSync_ : secret DÉDIÉ, distinct de celui de l'app ---------- */

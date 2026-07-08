@@ -58,10 +58,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Formats binaires (miroir : jamais exploitables convertis en .txt) — même liste que
-          # EXT_MIROIR_BINAIRES côté moteur (src/Miroir.gs), filtrage en double (bande passante).
-          BINAIRES='png|jpg|jpeg|gif|ico|webp|bmp|tif|tiff|heic|heif|woff2?|ttf|eot|otf|zip|gz|tar|pdf'
-          mapfile -t FICHIERS < <(git ls-files | grep -viE "\.(${BINAIRES})\$")
+          # Binaires INUTILES à NotebookLM (polices, archives, formats exotiques) — même liste que
+          # EXT_MIROIR_BINAIRES_BLOQUEES côté moteur (src/Miroir.gs), filtrage en double (bande
+          # passante). Les binaires UTILES (pdf/png/jpg/svg — vision multimodale de NotebookLM)
+          # passent désormais, encodés base64 + flag binaire:true (plan PM/architecte 2026-07-08).
+          INUTILES='gif|ico|webp|bmp|tif|tiff|heic|heif|woff2?|ttf|eot|otf|zip|gz|tar'
+          BINAIRES_UTILES='pdf|png|jpe?g|svg'
+          mapfile -t FICHIERS < <(git ls-files | grep -viE "\.(${INUTILES})\$")
           echo "Fichiers à synchroniser : ${#FICHIERS[@]}"
 
           # Encodage URL du secret (revue code #27) : une valeur aléatoire peut contenir des
@@ -118,7 +121,20 @@ jobs:
           for f in "${FICHIERS[@]}"; do
             [ -f "$f" ] || continue
             ITEM_TMP="$(mktemp)"
-            if jq -Rc -s --arg c "$f" '{chemin:$c, contenu:.}' "$f" > "$ITEM_TMP" 2>/dev/null; then
+            # Binaire UTILE → base64 (sans retour à la ligne : Utilities.base64Decode côté Apps
+            # Script n'aime pas les blancs) + flag binaire:true ; texte → contenu en clair.
+            if echo "$f" | grep -qiE "\.(${BINAIRES_UTILES})\$"; then
+              OK_ITEM=0
+              if base64 -w0 "$f" | tr -d '\n' | jq -Rc -s --arg c "$f" '{chemin:$c, contenu:., binaire:true}' > "$ITEM_TMP" 2>/dev/null; then
+                OK_ITEM=1
+              fi
+            else
+              OK_ITEM=0
+              if jq -Rc -s --arg c "$f" '{chemin:$c, contenu:.}' "$f" > "$ITEM_TMP" 2>/dev/null; then
+                OK_ITEM=1
+              fi
+            fi
+            if [ "$OK_ITEM" -eq 1 ]; then
               cat "$ITEM_TMP" >> "$BATCH_FILE"
               COMPTE=$((COMPTE + 1))
             else
