@@ -100,3 +100,39 @@ jobs:
       - name: Typecheck + build (tsc --noEmit && vite build)
         working-directory: app
         run: npm run build
+
+  screenshots:
+    name: Captures d'écran UI (E2E mode mock)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Dépendances (npm ci, lockfile committé)
+        working-directory: app
+        run: npm ci
+
+      - name: Navigateur Playwright (Chromium seul)
+        working-directory: app
+        run: npx playwright install --with-deps chromium
+
+      # VITE_E2E_MOCK=true est injectée par playwright.config.ts (webServer) : auth bouchonnée,
+      # données locales (mockData.ts), AUCUN appel aux vraies API Google (api() lève en mock).
+      # La variable n'existe nulle part ailleurs (ni Vercel, ni dev normal) — zéro fuite en prod.
+      - name: Captures des 6 sections (Playwright, serveur de dev Vite mocké)
+        working-directory: app
+        run: npm run test:e2e
+
+      - name: Publier les captures en artifact
+        if: always() # même si le test échoue, les captures partielles aident au diagnostic
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-screenshots
+          path: app/e2e-screenshots/
+          if-no-files-found: warn
+          retention-days: 14

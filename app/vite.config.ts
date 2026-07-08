@@ -8,5 +8,9 @@ export default defineConfig({
   plugins: [react()],
   test: {
     environment: 'node',
+    // Les tests unitaires vivent dans test/ ; e2e/ appartient à Playwright (npm run test:e2e) —
+    // sans cette borne, vitest ramasse e2e/*.spec.ts (motif par défaut) et plante sur
+    // @playwright/test.
+    include: ['test/**/*.test.ts'],
   },
 });

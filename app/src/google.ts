@@ -27,6 +27,17 @@ import {
   estDossierATrier,
 } from './explorateur';
 import { lireConfig } from './config';
+import { plageMock, ENFANTS_MOCK, TACHES_MOCK, EVENEMENTS_MOCK } from './mockData';
+
+/* ---------- Mode E2E MOCK (captures d'écran CI) ---------- */
+
+// `VITE_E2E_MOCK` n'est posée QUE par playwright.config.ts (serveur de dev CI) — jamais dans un
+// build Vercel ni en local normal. Variable Vite figée au BUILD : en production la condition est
+// une constante `false` (branches mortes, aucune fuite possible). Sous ce mode : auth bouchonnée,
+// lectures Sheets/Drive/Tasks/Calendar servies par mockData.ts, et TOUT appel réseau résiduel
+// échoue BRUYAMMENT (api() lève) — un chemin non bouchonné se voit sur la capture au lieu de
+// taper les vraies API Google.
+const MODE_MOCK = import.meta.env.VITE_E2E_MOCK === 'true';
 
 /* ---------- Auth (Google Identity Services) ---------- */
 
@@ -67,6 +78,7 @@ function chargerGis(): Promise<void> {
 
 /** Ouvre le consentement Google et garde le jeton en mémoire. */
 export async function seConnecter(): Promise<void> {
+  if (MODE_MOCK) { jetonAcces = 'jeton-mock-e2e'; return; } // jamais de GIS ni de popup en CI
   await chargerGis();
   const { clientId } = lireConfig();
   if (!clientId) throw new Error('Client ID OAuth manquant (écran Configuration)');
@@ -88,6 +100,7 @@ export async function seConnecter(): Promise<void> {
 }
 
 export function estConnecte(): boolean {
+  if (MODE_MOCK) return true; // l'app saute l'écran de connexion (les vues lisent mockData)
   return jetonAcces !== null;
 }
 
@@ -105,6 +118,9 @@ export function abonnerSessionExpiree(cb: () => void): void {
 /* ---------- Appels HTTP (401 → jeton expiré) ---------- */
 
 export async function api<T>(url: string, options?: RequestInit): Promise<T> {
+  // Filet du mode mock : AUCUN appel réseau ne doit atteindre les vraies API Google en CI.
+  // Un chemin oublié échoue bruyamment (visible sur la capture) au lieu de fuiter.
+  if (MODE_MOCK) throw new Error(`mode E2E mock : appel réseau interdit (${url.slice(0, 80)})`);
   if (!jetonAcces) throw new Error('Non connecté');
   // 429 (quota par minute PARTAGÉ avec le moteur — il écrit dans la même Sheet, en tant que Marc) :
   // réessai avec repli progressif au lieu d'une erreur brute. Un 429 = requête NON exécutée → le
@@ -165,6 +181,7 @@ export async function lirePlage(onglet: string, plage: string): Promise<string[]
 }
 
 async function lirePlageDirecte(onglet: string, plage: string): Promise<string[][]> {
+  if (MODE_MOCK) return plageMock(onglet, plage);
   const { spreadsheetId } = lireConfig();
   const r = await api<{ values?: string[][] }>(
     `${SHEETS}/${spreadsheetId}/values/${encodeURIComponent(`${onglet}!${plage}`)}`,
@@ -372,6 +389,7 @@ const TASKS = 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks';
 
 /** Événements de l'agenda PRIMAIRE entre deux instants (occurrences dépliées, ordre chronologique). */
 export async function listerEvenements(timeMinISO: string, timeMaxISO: string): Promise<unknown[]> {
+  if (MODE_MOCK) return EVENEMENTS_MOCK;
   const url = `${CALENDAR}?singleEvents=true&orderBy=startTime&maxResults=250` +
     `&timeMin=${encodeURIComponent(timeMinISO)}&timeMax=${encodeURIComponent(timeMaxISO)}`;
   const rep = await api<{ items?: unknown[] }>(url);
@@ -380,6 +398,7 @@ export async function listerEvenements(timeMinISO: string, timeMaxISO: string): 
 
 /** Tâches de la liste par défaut (ouvertes + faites — le tri vit dans agenda.ts). */
 export async function listerTaches(): Promise<unknown[]> {
+  if (MODE_MOCK) return TACHES_MOCK;
   const rep = await api<{ items?: unknown[] }>(`${TASKS}?maxResults=100&showCompleted=true&showHidden=true`);
   return rep.items ?? [];
 }
@@ -432,6 +451,7 @@ const cacheDossiers = new Map<string, { t: number; page: PageDrive }>();
 
 /** Enfants directs d'un dossier (`'root'` = racine Mon Drive), triés dossiers d'abord côté API. */
 export async function listerEnfants(dossierId: string, pageToken?: string): Promise<PageDrive> {
+  if (MODE_MOCK) return { elements: (ENFANTS_MOCK[dossierId] ?? []) as ElementDrive[] };
   const cle = `${dossierId}|${pageToken ?? ''}`;
   const memo = cacheDossiers.get(cle);
   if (memo && Date.now() - memo.t < CACHE_MS) return memo.page;

@@ -23,3 +23,7 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+
+# E2E Playwright (captures d'écran CI) — artefacts locaux, remontés en artifact GitHub
+app/e2e-screenshots/
+app/e2e-results/
