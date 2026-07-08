@@ -96,28 +96,39 @@ jobs:
             # --max-time : Apps Script peut mettre du temps à répondre (find-or-create de
             # dossiers, écriture) — borne dure pour ne jamais laisser un lot bloquer le run
             # indéfiniment (aucun timeout par défaut sur curl).
-            # Jusqu'à 3 tentatives : Apps Script /exec renvoie parfois un 404 TRANSITOIRE (page
-            # Drive « Sorry, unable to open the file at this time ») sous des POST en rafale —
-            # vécu 2× le 2026-07-08, toujours vers le 4e lot, tuant le sync avant docs---.
-            # Le POST est IDEMPOTENT (écriture par nom, create-or-update) : rejouer un lot est sûr.
+            # Jusqu'à 3 tentatives : les pannes TRANSITOIRES d'Apps Script /exec ont DEUX
+            # signatures (vécues le 2026-07-08, toujours vers le 4e lot) : (a) un code non-200
+            # (404 « Sorry, unable to open the file ») ; (b) un 200 avec une page d'erreur HTML
+            # à la place du JSON (« Script function not found: doGet » — la requête a été servie
+            # en GET). Le critère de SUCCÈS est donc « JSON avec ok:true », jamais le seul code
+            # HTTP. Un JSON propre avec ok:false (ex. secret refusé) est PERMANENT : échec
+            # immédiat, re-essayer ne changerait rien. Le POST est IDEMPOTENT (écriture par nom,
+            # create-or-update) : rejouer un lot est sûr.
+            REUSSI=0
             CODE=""
             for tentative in 1 2 3; do
               CODE="$(curl -sS -L --max-time 120 -o /tmp/miroir-rep.json -w '%{http_code}' \
                 "${URL}?action=sync-miroir&secret=${SECRET_ENC}" \
                 -H 'Content-Type: text/plain;charset=utf-8' \
                 --data-binary @"$PAYLOAD_FILE")"
-              if [ "$CODE" = "200" ]; then break; fi
+              if [ "$CODE" = "200" ] && jq -e '.ok == true' /tmp/miroir-rep.json >/dev/null 2>&1; then
+                REUSSI=1
+                break
+              fi
+              if [ "$CODE" = "200" ] && jq -e 'has("ok")' /tmp/miroir-rep.json >/dev/null 2>&1; then
+                break # JSON propre mais ok:false (secret/config) : permanent, inutile de rejouer
+              fi
               case "$CODE" in
-                404|429|5*)
-                  echo "::warning::HTTP $CODE transitoire (tentative $tentative/3) — nouvel essai dans 20 s…"
+                200|404|429|5*)
+                  echo "::warning::réponse transitoire (HTTP $CODE, tentative $tentative/3) — nouvel essai dans 20 s…"
                   sleep 20
                   ;;
-                *) break ;; # 401/403/erreur de config : re-essayer ne changera rien
+                *) break ;; # 401/403 : erreur de config, re-essayer ne changera rien
               esac
             done
             rm -f "$PAYLOAD_FILE"
-            if [ "$CODE" != "200" ]; then
-              echo "::error::Échec HTTP $CODE — $(cat /tmp/miroir-rep.json)"
+            if [ "$REUSSI" != "1" ]; then
+              echo "::error::Échec du lot (HTTP $CODE) — $(head -c 300 /tmp/miroir-rep.json)"
               exit 1
             fi
             cat /tmp/miroir-rep.json
