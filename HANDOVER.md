@@ -4,6 +4,20 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **2026-07-08 — GOUVERNANCE : analyse déléguée à NotebookLM (règle stricte, CLAUDE.md §4) +
+> C26-07 MERGÉ + retours produit de Marc en triage.** Marc a dicté une règle d'opération stricte
+> (PR #111, mergée) : NotebookLM (qui lit le miroir Drive) = analyse architecturale & décision ;
+> Claude = exécution. Pour toute nouvelle tâche de code : générer un prompt NotebookLM copiable,
+> s'ARRÊTER, attendre le plan validé collé par Marc — voir CLAUDE.md §4 (⛔). Par ailleurs :
+> **C26-07 (dry-run v2) mergé** (PR #110, revue flotte 6 agents, 418 tests verts) — le mécanisme
+> de preuve est prêt derrière `CONFIG.DRYRUN_V2_ACTIF` (OFF) ; prochaine étape = feu vert de Marc
+> (échantillon ~100 docs, ~3-6 $) puis run réel → validation Sheet `DryRunV2` → campagne C26-08.
+> Enfin, Marc a déposé ~13 retours produit (session persistante, vues agenda, tâches manuelles/
+> depuis mails, sync Documents↔Drive, vitesse de déplacement, apprentissage/entités illogiques,
+> boutons d'analyse paramétrables, erreurs du 2 juillet, section suspect périmée, UI) — un
+> triage factuel (workflow lecture seule) est en cours ; sa sortie servira à générer les prompts
+> NotebookLM par sujet (aucun code sans plan validé, conformément à la nouvelle règle).
+>
 > **2026-07-07 (nuit) — ADR-0017 : MIROIR DRIVE du dépôt (accès de partout + NotebookLM) — TERMINÉ.**
 > Marc a d'abord demandé de remplacer GitHub par Drive comme dépôt — refusé et expliqué
 > techniquement (Drive n'a pas de sémantique git, tout le CI/CD en dépend). Vrai besoin clarifié :
