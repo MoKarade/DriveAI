@@ -53,6 +53,7 @@ const CONTRAT = [
   'traiterIntentionsMail_', 'reinitialiserEscalades_', 'reinitialiserUsage_', 'flushUsage_',
   'reinitialiserPannePlateforme_', 'estPannePlateforme_', 'detecterPannePlateforme_',
   'signalerPannePlateforme_', 'chargerPannePlateforme_', 'signalerRetablissement_',
+  'estCodeSystemique_', 'poserPannePlateforme_', // panne durable 429/529/5xx (C28-12)
   'emailAlerte_', 'signalerNatifUneFois_',
   // tri Gmail (#16)
   'trierFilsGmail_', 'trierFil_', 'decisionTri_', 'heuristiquePhishing_', 'adresseExpediteur_',

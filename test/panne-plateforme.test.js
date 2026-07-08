@@ -147,6 +147,87 @@ test('signalerRetablissement_ : un appel 200 efface la panne persistée et le jo
   assert.ok(calls.journaux.some((j) => j.includes('RÉTABLI')));
 });
 
+/* ---------- C28-12 : panne API DURABLE (429/529/5xx en série) — jamais un hoquet isolé ---------- */
+
+test('estCodeSystemique_ : 429 et 5xx (dont 529 Anthropic) → systémique ; 400/401/404 → non', () => {
+  const c = load(['Config.gs', 'Llm.gs']);
+  assert.strictEqual(c.estCodeSystemique_(429), true);
+  assert.strictEqual(c.estCodeSystemique_(529), true);
+  assert.strictEqual(c.estCodeSystemique_(500), true);
+  assert.strictEqual(c.estCodeSystemique_(503), true);
+  assert.strictEqual(c.estCodeSystemique_(400), false); // panne de compte = autre chemin (corps)
+  assert.strictEqual(c.estCodeSystemique_(401), false); // idem
+  assert.strictEqual(c.estCodeSystemique_(404), false);
+});
+
+test('panne durable : un 529 ISOLÉ → échec normal (false), série armée en Property, PAS de panne', () => {
+  const { c, calls } = ctxPersistance({});
+  c.chargerPannePlateforme_();
+  const r = c.signalerPannePlateforme_(529, 'overloaded', 'claude-haiku-4-5');
+  assert.strictEqual(r, false);                                   // le document vit son échec normal
+  assert.strictEqual(calls.props.DriveAI_LLM_ECHECS_SYST, '1');   // mais la série est comptée
+  assert.strictEqual(calls.props.DriveAI_LLM_PANNE, undefined);   // aucune suspension
+  assert.strictEqual(c.estPannePlateforme_(), false);
+});
+
+test('panne durable : LLM_ECHECS_SYST_MAX échecs consécutifs → panne posée (dérivé de la constante)', () => {
+  const { c, calls } = ctxPersistance({});
+  c.chargerPannePlateforme_();
+  const max = c.CONFIG.LLM_ECHECS_SYST_MAX;
+  for (let i = 0; i < max - 1; i++) {
+    assert.strictEqual(c.signalerPannePlateforme_(529, 'overloaded', 'claude-haiku-4-5'), false,
+      `échec ${i + 1}/${max} : pas encore une panne`);
+  }
+  assert.strictEqual(c.signalerPannePlateforme_(529, 'overloaded', 'claude-sonnet-4-6'), true,
+    `échec ${max}/${max} : panne durable déclarée`);
+  assert.ok(Number(calls.props.DriveAI_LLM_PANNE) > 0);           // suspension persistée (même canal que crédit)
+  assert.strictEqual(c.estPannePlateforme_(), true);
+  assert.ok(calls.journaux.some((j) => j.includes('PANNE API DURABLE')));
+});
+
+test('panne durable : la série SURVIT entre les ticks (2 échecs au run N + 1 au run N+1 → panne)', () => {
+  const max = 3; // scénario concret à 3 (la valeur par défaut) — le test générique est au-dessus
+  const { c, calls } = ctxPersistance({ DriveAI_LLM_ECHECS_SYST: String(max - 1) });
+  c.CONFIG.LLM_ECHECS_SYST_MAX = max;
+  c.chargerPannePlateforme_();                                    // recharge la série persistée
+  assert.strictEqual(c.signalerPannePlateforme_(503, 'service unavailable', 'claude-haiku-4-5'), true,
+    'la série reprend là où elle en était — une panne étalée sur plusieurs ticks déclenche');
+  assert.ok(Number(calls.props.DriveAI_LLM_PANNE) > 0);
+});
+
+test('panne durable : un SUCCÈS casse la série (mémoire ET Property) — hoquets espacés jamais cumulés', () => {
+  const { c, calls } = ctxPersistance({ DriveAI_LLM_ECHECS_SYST: '2' });
+  c.chargerPannePlateforme_();
+  c.signalerRetablissement_();                                    // premier succès du run
+  assert.strictEqual(calls.props.DriveAI_LLM_ECHECS_SYST, undefined, 'série purgée');
+  // Un nouvel échec isolé APRÈS le succès repart de 1 — jamais de cumul de hoquets espacés.
+  assert.strictEqual(c.signalerPannePlateforme_(529, 'overloaded', 'claude-haiku-4-5'), false);
+  assert.strictEqual(calls.props.DriveAI_LLM_ECHECS_SYST, '1');
+});
+
+test('panne durable : le rétablissement APRÈS la panne ré-arme la dé-quarantaine auto (R3, même canal que crédit)', () => {
+  const { c, calls } = ctxPersistance({});
+  c.chargerPannePlateforme_();
+  for (let i = 0; i < c.CONFIG.LLM_ECHECS_SYST_MAX; i++) {
+    c.signalerPannePlateforme_(529, 'overloaded', 'claude-haiku-4-5');
+  }
+  assert.ok(calls.props.DriveAI_LLM_PANNE, 'panne posée');
+  calls.props.DriveAI_DEQUARANTAINE = 'q1';                       // dé-quarantaine déjà consommée avant
+  c.signalerRetablissement_();
+  assert.strictEqual(calls.props.DriveAI_LLM_PANNE, undefined, 'panne effacée');
+  assert.strictEqual(calls.props.DriveAI_DEQUARANTAINE, undefined,
+    'dé-quarantaine ré-armée : les faux-quarantainés de la panne naissante seront libérés');
+  assert.strictEqual(calls.props.DriveAI_LLM_ECHECS_SYST, undefined, 'série purgée');
+});
+
+test('panne de COMPTE (crédit/clé) : toujours IMMÉDIATE — jamais soumise au seuil systémique', () => {
+  const { c, calls } = ctxPersistance({});
+  c.chargerPannePlateforme_();
+  assert.strictEqual(c.signalerPannePlateforme_(401, 'invalid key', 'claude-haiku-4-5'), true);
+  assert.ok(Number(calls.props.DriveAI_LLM_PANNE) > 0);
+  assert.strictEqual(calls.props.DriveAI_LLM_ECHECS_SYST, undefined, 'le compteur systémique n\'est pas touché');
+});
+
 test('traiterIntentionsMail_ : panne active → AUCUNE recherche Gmail (le quota de lecture est préservé)', () => {
   const c = load(['Config.gs', 'Intentions.gs']);
   let recherches = 0;

@@ -114,6 +114,14 @@ var CONFIG = {
   // Gmail quotidien (vécu : 4 j de panne crédit → quota Gmail épuisé, moteur re-bloqué 24 h de plus
   // APRÈS la recharge). Re-sonde automatique : au plus un run « normal » par fenêtre ci-dessous.
   LLM_PANNE_RESONDE_MS: 60 * 60 * 1000,
+  // Panne API DURABLE (C28-12, plan NotebookLM P5) : une panne plateforme d'une AUTRE signature
+  // que crédit/clé (529 « overloaded » Anthropic prolongé, 429 persistant, 5xx) doit finir par
+  // déclencher la MÊME suspension que la panne de compte — sinon chaque document brûle ses essais
+  // sur une API saturée (fausses quarantaines + spam Journal, scénario du 2026-07-02 par une autre
+  // porte). Seuil = nombre d'APPELS LLM consécutifs en échec 429/529/5xx (tous documents confondus,
+  // persisté entre les ticks) avant de déclarer la panne. Un hoquet isolé (1-2 échecs) reste un
+  // échec normal (retry/fallback existants) — « classer les échecs par ORIGINE avant de compter ».
+  LLM_ECHECS_SYST_MAX: 3,
 
   // --- Gmail (lecture seule) & lots ---
   // Idempotence assurée par l'Index (clé messageId|i|nom|taille), PAS par un
