@@ -423,7 +423,9 @@ var CONFIG = {
   // stratifié, écrit l'avant/après dans l'onglet Sheet « DryRunV2 » — NE DÉPLACE NI NE RENOMME RIEN.
   // Coût réel engagé quand ON (Sonnet ×2/doc, ~0,03-0,04 $/doc, ADR-0015) : n'allumer qu'après feu
   // vert explicite de Marc sur la taille de l'échantillon (docs/RUNBOOK.md).
-  DRYRUN_V2_ACTIF: false,
+  // ALLUMÉ 2026-07-08 (feu vert Marc : ~100 docs, ~3-6 $). À repasser à false une fois l'onglet
+  // DryRunV2 rempli et validé (la campagne se fige seule via la Property DriveAI_DRYRUNV2).
+  DRYRUN_V2_ACTIF: true,
   DRYRUN_V2_TAG: 'd1',                    // bumper relance un NOUVEL échantillon (re-facture, décision explicite)
   DRYRUN_V2_TAILLE: 100,                  // taille cible de l'échantillon global (marge 50-150, à confirmer avec Marc)
   DRYRUN_V2_MAX_PAR_DOMAINE: 15,          // plafond par domaine — anti-déséquilibre (un domaine énorme n'écrase pas les autres)
