@@ -351,6 +351,70 @@ describe('signaux Santé (C19-08)', () => {
   });
 });
 
+/* ---------- État COURANT de l'Index (P1/C28-02) ---------- */
+
+import { cleEtatIndex, etatCourantIndex } from '../src/etat';
+
+describe('cleEtatIndex : identité d\'état par entité réelle', () => {
+  it.each([
+    ['tri|F1|100|lu', 'fil|F1'],           // le FIL, jamais le ts/lu (une ligne PAR état)
+    ['tri|F1|200|nonlu', 'fil|F1'],
+    ['drive|ABC', 'fichier|ABC'],
+    ['shared|ABC', 'fichier|ABC'],
+    ['migre|m1|ABC', 'fichier|ABC'],       // re-traitement du MÊME fichier → même identité
+    ['18c9ab12f3e4d5a6|0|a.pdf|99', '18c9ab12f3e4d5a6|0|a.pdf|99'], // PJ Gmail (messageId brut) : clé = identité, jamais fusionnée
+    ['important|MC', 'important|MC'],
+    ['dryrunv2|d1|ABC', 'dryrunv2|d1|ABC'], // rapport dry-run : JAMAIS l'identité du fichier
+  ])('%s → %s', (cle, attendu) => {
+    expect(cleEtatIndex(cle)).toBe(attendu);
+  });
+});
+
+describe('etatCourantIndex : la section Suspects redevient honnête (C28-13)', () => {
+  it('un fil suspect à T1 puis trié à T2 disparaît de lignesSuspects', () => {
+    const lignes = interpreterIndex([
+      ['tri|F1|100|nonlu', '2026-07-06 12:00', '« Compte suspendu »', '', '', 'suspect'],
+      ['tri|F2|150|lu', '2026-07-06 13:00', 'Autre fil louche', '', '', 'suspect'],
+      ['tri|F1|200|lu', '2026-07-07 09:00', '« Compte suspendu »', '', '', 'trié'], // Marc a tranché
+    ]);
+    const courant = etatCourantIndex(lignes);
+    expect(courant).toHaveLength(2);
+    expect(lignesSuspects(courant).map((l) => l.cle)).toEqual(['tri|F2|150|lu']);
+  });
+
+  it('drive| puis migre| du même fichier fusionnent — la ligne la plus récente gagne', () => {
+    const lignes = interpreterIndex([
+      ['drive|F9', '2026-06-01', 'scan.pdf', '', '', 'quarantaine'],
+      ['migre|m1|F9', '2026-07-01', '2024-03-05_Facture_EDF.pdf', '03 · Logement & véhicule', 'x', 'classé'],
+    ]);
+    const courant = etatCourantIndex(lignes);
+    expect(courant).toHaveLength(1);
+    expect(courant[0].statut).toBe('classé');
+    expect(lignesQuarantaine(courant)).toEqual([]);
+  });
+
+  it('une entité re-traitée est RÉ-INSÉRÉE en fin de liste (ordre = chronologie, les vues « récents » en dépendent)', () => {
+    const lignes = interpreterIndex([
+      ['tri|F1|100|nonlu', '2026-07-01', 'Vieux fil', '', '', 'trié'],
+      ['drive|F2', '2026-07-02', 'b.pdf', '02 · Finances', 'x', 'classé'],
+      ['tri|F1|200|lu', '2026-07-08', 'Vieux fil (re-trié auj.)', '', '', 'trié'], // re-traité APRÈS F2
+    ]);
+    // Sans ré-insertion, une Map garderait F1 à sa position INITIALE (avant F2) → il sortirait
+    // des listes « récents » bornées (.reverse().slice(0, N)) alors qu'il est le plus frais.
+    expect(etatCourantIndex(lignes).map((l) => l.cle)).toEqual(['drive|F2', 'tri|F1|200|lu']);
+  });
+
+  it('une ligne dryrunv2| n\'écrase JAMAIS l\'état réel du fichier', () => {
+    const lignes = interpreterIndex([
+      ['drive|F5', '2026-07-01', 'a.pdf', '02 · Finances', 'x', 'classé'],
+      ['dryrunv2|d1|F5', '2026-07-08', 'a.pdf', '', '', 'dry-run'],
+    ]);
+    const courant = etatCourantIndex(lignes);
+    expect(courant).toHaveLength(2); // les deux survivent : identités distinctes
+    expect(courant.find((l) => l.cle === 'drive|F5')?.statut).toBe('classé');
+  });
+});
+
 /* ---------- Réorg IA (C21-05) ---------- */
 
 import {

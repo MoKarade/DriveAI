@@ -10,11 +10,10 @@
  * recherche Drive sur le nom exact sinon).
  */
 
-import { useEffect, useMemo, useState } from 'react';
-import { lirePlage, rechercheFullText, rechercheIA, FichierDrive } from '../google';
+import { useMemo, useState } from 'react';
+import { rechercheFullText, rechercheIA, FichierDrive } from '../google';
+import { useEtatGlobal } from '../etatGlobal';
 import {
-  LigneIndex,
-  interpreterIndex,
   filtrerIndex,
   domainesDepuisIndex,
   statutsDepuisIndex,
@@ -27,9 +26,7 @@ import { Langue, t } from '../i18n';
 const RESULTATS_MAX = 200; // affichage borné (l'Index peut avoir des milliers de lignes)
 
 export function Recherche({ langue }: { langue: Langue }) {
-  const [index, setIndex] = useState<LigneIndex[]>([]);
-  const [erreur, setErreur] = useState('');
-  const [chargee, setChargee] = useState(false);
+  const [erreur, setErreur] = useState(''); // erreurs des recherches plein texte / IA (actions locales)
 
   // Filtres structurés.
   const [texte, setTexte] = useState('');
@@ -48,22 +45,16 @@ export function Recherche({ langue }: { langue: Langue }) {
   const [iaEnCours, setIaEnCours] = useState(false);
   const [iaExplication, setIaExplication] = useState('');
 
-  useEffect(() => {
-    (async () => {
-      try {
-        // Les clés `intention|`/`tache|`/`event|`/`important|` (Phase 3) tracent des E-MAILS/actions
-        // (sujet en colonne « fichier », domaine vide) — pas des documents : exclues de la recherche,
-        // sinon elles domineraient la vue par défaut et pollueraient le sélecteur de statuts.
-        // (Elles ont leur section dédiée au tableau de bord — C13.)
-        setIndex(interpreterIndex(await lirePlage('Index', 'A2:H20000'))
-          .filter((l) => !/^(intention|tache|event|important|tri(-abandon)?)\|/.test(l.cle)));
-      } catch (e) {
-        setErreur(String(e));
-      } finally {
-        setChargee(true);
-      }
-    })();
-  }, []);
+  // Données PARTAGÉES (P1/C28-02) : l'Index (état COURANT, rafraîchi 5 min) vient du fournisseur.
+  // Les clés `intention|`/`tache|`/`event|`/`important|`/`tri|` tracent des E-MAILS/actions
+  // (sujet en colonne « fichier », domaine vide) — pas des documents : exclues de la recherche,
+  // sinon elles domineraient la vue par défaut et pollueraient le sélecteur de statuts.
+  const { donnees } = useEtatGlobal();
+  const chargee = donnees !== null;
+  const index = useMemo(
+    () => (donnees?.index ?? []).filter((l) => !/^(intention|tache|event|important|tri(-abandon)?)\|/.test(l.cle)),
+    [donnees],
+  );
 
   const resultats = useMemo(() => {
     const base = filtrerIndex(index, { texte, domaine, statut, annee });
