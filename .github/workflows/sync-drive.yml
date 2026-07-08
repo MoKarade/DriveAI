@@ -96,10 +96,25 @@ jobs:
             # --max-time : Apps Script peut mettre du temps à répondre (find-or-create de
             # dossiers, écriture) — borne dure pour ne jamais laisser un lot bloquer le run
             # indéfiniment (aucun timeout par défaut sur curl).
-            CODE="$(curl -sS -L --max-time 120 -o /tmp/miroir-rep.json -w '%{http_code}' \
-              "${URL}?action=sync-miroir&secret=${SECRET_ENC}" \
-              -H 'Content-Type: text/plain;charset=utf-8' \
-              --data-binary @"$PAYLOAD_FILE")"
+            # Jusqu'à 3 tentatives : Apps Script /exec renvoie parfois un 404 TRANSITOIRE (page
+            # Drive « Sorry, unable to open the file at this time ») sous des POST en rafale —
+            # vécu 2× le 2026-07-08, toujours vers le 4e lot, tuant le sync avant docs---.
+            # Le POST est IDEMPOTENT (écriture par nom, create-or-update) : rejouer un lot est sûr.
+            CODE=""
+            for tentative in 1 2 3; do
+              CODE="$(curl -sS -L --max-time 120 -o /tmp/miroir-rep.json -w '%{http_code}' \
+                "${URL}?action=sync-miroir&secret=${SECRET_ENC}" \
+                -H 'Content-Type: text/plain;charset=utf-8' \
+                --data-binary @"$PAYLOAD_FILE")"
+              if [ "$CODE" = "200" ]; then break; fi
+              case "$CODE" in
+                404|429|5*)
+                  echo "::warning::HTTP $CODE transitoire (tentative $tentative/3) — nouvel essai dans 20 s…"
+                  sleep 20
+                  ;;
+                *) break ;; # 401/403/erreur de config : re-essayer ne changera rien
+              esac
+            done
             rm -f "$PAYLOAD_FILE"
             if [ "$CODE" != "200" ]; then
               echo "::error::Échec HTTP $CODE — $(cat /tmp/miroir-rep.json)"
