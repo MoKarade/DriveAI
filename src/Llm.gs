@@ -239,7 +239,11 @@ function escaladeAutorisee_() { return _escaladesCeRun < CONFIG.LLM_ESCALADE_MAX
 // le tick suivant re-sonde naturellement (1ᵉʳ appel réel du run).
 var _pannePlateformeCeRun = false;
 var _retablissementVerifie = false;
-function reinitialiserPannePlateforme_() { _pannePlateformeCeRun = false; _retablissementVerifie = false; }
+// Série d'échecs SYSTÉMIQUES consécutifs (429/529/5xx, tous documents confondus) — persistée
+// entre les ticks (`DriveAI_LLM_ECHECS_SYST`) pour détecter une panne DURABLE qui s'étale sur
+// plusieurs runs. Cassée par le premier succès (signalerRetablissement_).
+var _echecsSystemiques = 0;
+function reinitialiserPannePlateforme_() { _pannePlateformeCeRun = false; _retablissementVerifie = false; _echecsSystemiques = 0; }
 function estPannePlateforme_() { return _pannePlateformeCeRun; }
 
 /**
@@ -252,13 +256,28 @@ function estPannePlateforme_() { return _pannePlateformeCeRun; }
 function chargerPannePlateforme_() {
   _pannePlateformeCeRun = false;
   _retablissementVerifie = false;
+  _echecsSystemiques = 0;
   var t = 0;
-  try { t = Number(PropertiesService.getScriptProperties().getProperty('DriveAI_LLM_PANNE')) || 0; } catch (e) { }
+  try {
+    var props = PropertiesService.getScriptProperties();
+    t = Number(props.getProperty('DriveAI_LLM_PANNE')) || 0;
+    // Série systémique en cours (panne durable naissante) : reprise d'où elle en était — une
+    // panne qui s'étale sur plusieurs ticks (2 échecs au run N, 1 au run N+1) doit déclencher.
+    _echecsSystemiques = Number(props.getProperty('DriveAI_LLM_ECHECS_SYST')) || 0;
+  } catch (e) { }
   if (t && Date.now() - t < CONFIG.LLM_PANNE_RESONDE_MS) _pannePlateformeCeRun = true;
 }
 
 /** Premier appel LLM réussi du run : efface la panne persistée (si posée) et le journalise. */
 function signalerRetablissement_() {
+  // Panne DURABLE (C28-12) : tout succès CASSE la série d'échecs systémiques — en mémoire ET
+  // persistée (sinon une série entamée hier + un hoquet isolé aujourd'hui déclencherait à tort).
+  // Avant le memo `_retablissementVerifie` : la série peut naître EN COURS de run, après le
+  // premier succès. Écriture Property seulement si une série existait (rare) — coût nul sinon.
+  if (_echecsSystemiques > 0) {
+    _echecsSystemiques = 0;
+    try { PropertiesService.getScriptProperties().deleteProperty('DriveAI_LLM_ECHECS_SYST'); } catch (e0) { }
+  }
   if (_retablissementVerifie) return; // 1 lecture de Property par run au maximum
   _retablissementVerifie = true;
   try {
@@ -288,22 +307,53 @@ function detecterPannePlateforme_(code, corps) {
 }
 
 /**
- * Marque la panne (journal UNE fois par run) si la réponse la révèle.
- * @return {boolean} vrai si une panne de plateforme a été détectée.
+ * Vrai si le code HTTP est de nature SYSTÉMIQUE (l'API, pas le document) : 429 (quota/rate limit)
+ * ou 5xx (dont 529 « overloaded » Anthropic). Un cas ISOLÉ est normal (hoquet) — seule une SÉRIE
+ * consécutive (LLM_ECHECS_SYST_MAX) déclenche la panne durable (C28-12). PUR.
+ * @param {number} code
+ * @return {boolean}
  */
-function signalerPannePlateforme_(code, corps, modele) {
-  if (!detecterPannePlateforme_(code, corps)) return false;
-  if (!_pannePlateformeCeRun) {
-    journalErreur_('LLM', 'PANNE DE COMPTE API (HTTP ' + code + ', ' + modele + ') — sources ' +
-      'suspendues (re-sonde auto dans ≤ ' + Math.round(CONFIG.LLM_PANNE_RESONDE_MS / 3600000) + ' h), ' +
-      'aucun échec compté aux documents. ' +
-      'Recharger le crédit Anthropic (console.anthropic.com → Billing).');
-  }
+function estCodeSystemique_(code) {
+  return code === 429 || code >= 500;
+}
+
+/** Pose la panne plateforme : journal UNE fois par run + Property (suspension des ticks suivants). */
+function poserPannePlateforme_(message) {
+  if (!_pannePlateformeCeRun) journalErreur_('LLM', message);
   _pannePlateformeCeRun = true;
   // R2 : panne PERSISTÉE — les ticks suivants suspendent leurs sources sans re-scanner Gmail,
   // jusqu'à la prochaine fenêtre de re-sonde (LLM_PANNE_RESONDE_MS).
   try { PropertiesService.getScriptProperties().setProperty('DriveAI_LLM_PANNE', String(Date.now())); } catch (e2) { }
-  return true;
+}
+
+/**
+ * Marque la panne (journal UNE fois par run) si la réponse la révèle — soit une panne de COMPTE
+ * (immédiate : crédit/clé), soit une panne DURABLE (série de LLM_ECHECS_SYST_MAX échecs
+ * 429/529/5xx consécutifs, tous documents confondus, persistée entre les ticks — C28-12).
+ * @return {boolean} vrai si une panne de plateforme est POSÉE (l'appelant ne journalise pas
+ *   l'échec par document ; gererEchec_ ne compte rien) ; faux = échec normal du document.
+ */
+function signalerPannePlateforme_(code, corps, modele) {
+  if (detecterPannePlateforme_(code, corps)) {
+    poserPannePlateforme_('PANNE DE COMPTE API (HTTP ' + code + ', ' + modele + ') — sources ' +
+      'suspendues (re-sonde auto dans ≤ ' + Math.round(CONFIG.LLM_PANNE_RESONDE_MS / 3600000) + ' h), ' +
+      'aucun échec compté aux documents. ' +
+      'Recharger le crédit Anthropic (console.anthropic.com → Billing).');
+    return true;
+  }
+  if (estCodeSystemique_(code)) {
+    _echecsSystemiques++;
+    try { PropertiesService.getScriptProperties().setProperty('DriveAI_LLM_ECHECS_SYST', String(_echecsSystemiques)); } catch (e3) { }
+    if (_echecsSystemiques >= CONFIG.LLM_ECHECS_SYST_MAX) {
+      poserPannePlateforme_('PANNE API DURABLE (HTTP ' + code + ' ×' + _echecsSystemiques +
+        ' consécutifs, ' + modele + ') — API saturée ou quota atteint, sources suspendues ' +
+        '(re-sonde auto dans ≤ ' + Math.round(CONFIG.LLM_PANNE_RESONDE_MS / 3600000) + ' h), ' +
+        'aucun échec compté aux documents. Rien à faire : reprise automatique au rétablissement.');
+      return true;
+    }
+    return false; // hoquet isolé : échec normal (retry/fallback existants), la série reste armée
+  }
+  return false;
 }
 
 /**
