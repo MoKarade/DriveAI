@@ -71,6 +71,12 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   *chemin*, jamais répétée dans le nom. Date absente → date de réception du mail.
 - **Discipline de scope** : on livre par phases. Ne pas anticiper une phase ultérieure.
   Voir `BACKLOG.md` pour le périmètre exact de chaque phase.
+- **Nouveau fichier ⇒ prévenir le PM** (décision PM/architecte 2026-07-08, miroir à plat) : le
+  miroir Drive écrit les fichiers à plat et NotebookLM n'ajoute PAS tout seul une nouvelle source.
+  Lorsque tu crées un NOUVEAU FICHIER dans le projet, tu dois impérativement avertir l'utilisateur
+  dans ta réponse texte avec ce message : « ⚠️ J'ai créé un nouveau fichier [NomDuFichier].
+  N'oublie pas de l'ajouter manuellement comme source dans ton NotebookLM une fois le code
+  mergé ! »
 
 ## 4. Workflow automatisé
 

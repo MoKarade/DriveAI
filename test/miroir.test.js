@@ -8,7 +8,6 @@ const assert = require('node:assert');
 const { load } = require('./harness');
 
 const ctx = load(['Config.gs', 'Router.gs', 'Miroir.gs']);
-const plat = (o) => JSON.parse(JSON.stringify(o)); // normalise les prototypes (frontière vm)
 
 /* ---------- estFichierMiroirable_ ---------- */
 
@@ -41,13 +40,14 @@ test('nettoyerSegmentChemin_ : caractères interdits Drive → « - »', () => {
   assert.strictEqual(ctx.nettoyerSegmentChemin_('a:b*c?d'), 'a-b-c-d');
 });
 
-/* ---------- nomFichierMiroir_ : toujours .txt ---------- */
+/* ---------- nomFichierMiroir_ : chemin APLATI (`/` → `---`), toujours .txt ---------- */
 
-test('nomFichierMiroir_ : ajoute .txt quelle que soit l\'extension d\'origine', () => {
-  assert.strictEqual(ctx.nomFichierMiroir_('src/Router.gs'), 'Router.gs.txt');
-  assert.strictEqual(ctx.nomFichierMiroir_('app/src/config.ts'), 'config.ts.txt');
-  assert.strictEqual(ctx.nomFichierMiroir_('README.md'), 'README.md.txt');
-  assert.strictEqual(ctx.nomFichierMiroir_('docs/notes.txt'), 'notes.txt'); // déjà .txt, pas doublé
+test('nomFichierMiroir_ : chemin aplati par --- et suffixé .txt (révision 2026-07-08 — NotebookLM sélectionne sur UN niveau)', () => {
+  assert.strictEqual(ctx.nomFichierMiroir_('src/Router.gs'), 'src---Router.gs.txt');
+  assert.strictEqual(ctx.nomFichierMiroir_('app/src/config.ts'), 'app---src---config.ts.txt');
+  assert.strictEqual(ctx.nomFichierMiroir_('docs/adr/0016-fail-safe.md'), 'docs---adr---0016-fail-safe.md.txt');
+  assert.strictEqual(ctx.nomFichierMiroir_('README.md'), 'README.md.txt'); // racine : inchangé
+  assert.strictEqual(ctx.nomFichierMiroir_('docs/notes.txt'), 'docs---notes.txt'); // déjà .txt, pas doublé
 });
 
 test('nomFichierMiroir_ : chemin vide ou sans nom → chaîne vide (jamais planter)', () => {
@@ -55,12 +55,8 @@ test('nomFichierMiroir_ : chemin vide ou sans nom → chaîne vide (jamais plant
   assert.strictEqual(ctx.nomFichierMiroir_('src/'), '');
 });
 
-/* ---------- dossiersMiroir_ : segments de dossier, sans le fichier ---------- */
-
-test('dossiersMiroir_ : segments de dossier nettoyés, jamais le nom de fichier', () => {
-  assert.deepStrictEqual(plat(ctx.dossiersMiroir_('src/Router.gs')), ['src']);
-  assert.deepStrictEqual(plat(ctx.dossiersMiroir_('docs/adr/0016-fail-safe.md')), ['docs', 'adr']);
-  assert.deepStrictEqual(plat(ctx.dossiersMiroir_('README.md')), []); // racine du miroir
+test('nomFichierMiroir_ : caractères interdits Drive nettoyés PAR SEGMENT avant l\'aplatissement', () => {
+  assert.strictEqual(ctx.nomFichierMiroir_('docs/a:b*c.md'), 'docs---a-b-c.md.txt');
 });
 
 /* ---------- verifierSecretSync_ : secret DÉDIÉ, distinct de celui de l'app ---------- */
