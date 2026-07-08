@@ -5,7 +5,9 @@
  */
 
 import { useEffect, useState } from 'react';
-import { lirePlage, listerEvenements, listerTaches, creerTache, creerEvenement, cocherTache } from '../google';
+import { listerEvenements, listerTaches, creerTache, creerEvenement, cocherTache } from '../google';
+import { useEtatGlobal } from '../etatGlobal';
+import { IndicateurChargement, BanniereErreur } from '../composants/UI';
 import {
   Evenement,
   Tache,
@@ -19,7 +21,8 @@ import {
   heureEvenement,
   titresDriveAI,
 } from '../agenda';
-import { interpreterIndex, lignesImportants, lienGmailPourLigne, LigneIndex } from '../etat';
+import { lignesImportants, lienGmailPourLigne, LigneIndex } from '../etat';
+import { formaterDateCourte } from '../explorateur';
 import { Langue, t } from '../i18n';
 
 const JOURS_SEMAINE = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
@@ -40,30 +43,35 @@ export function Agenda({ langue }: { langue: Langue }) {
 
   const semaines = grilleMois(mois.getFullYear(), mois.getMonth());
 
+  // L'Index vient de l'état PARTAGÉ (P1/C28-02) ; Tasks/Calendar restent chargés ICI (la plage
+  // dépend du mois affiché) mais se re-chargent AUSSI à chaque synchro globale (dep synchroA) —
+  // l'agenda ouvert ne reste plus figé sur sa photo d'ouverture.
+  const { donnees, synchroA, rafraichir } = useEtatGlobal();
+
   useEffect(() => {
+    if (!donnees) return;
     (async () => {
       try {
-        setCharge(false);
         const debut = semaines[0][0].date;
         const finJour = semaines[semaines.length - 1][6].date;
         const fin = new Date(finJour.getFullYear(), finJour.getMonth(), finJour.getDate() + 1);
-        const [evts, tks, idx] = await Promise.all([
+        const [evts, tks] = await Promise.all([
           listerEvenements(debut.toISOString(), fin.toISOString()),
           listerTaches(),
-          lirePlage('Index', 'A2:H20000'),
         ]);
-        const lignes = interpreterIndex(idx);
+        const lignes = donnees.index;
         const marques = titresDriveAI(lignes);
         setEvenements(interpreterEvenements(evts, marques));
         setTaches(interpreterTaches(tks, marques));
         setImportants(lignesImportants(lignes).slice(0, 8));
         setCharge(true);
+        setErreur('');
       } catch (e) {
         setErreur(String(e));
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mois]);
+  }, [mois, synchroA]);
 
   async function basculerTache(tache: Tache) {
     try {
@@ -74,8 +82,11 @@ export function Agenda({ langue }: { langue: Langue }) {
     }
   }
 
-  if (erreur) return <p className="erreur">{t('erreur', langue)} : {erreur}</p>;
-  if (!charge) return <p>{t('chargement', langue)}</p>;
+  // Le retry RELANCE vraiment (synchro globale forcée → l'effet [synchroA] re-charge Tasks/Calendar) ;
+  // et une fois chargé une première fois, l'agenda reste AFFICHÉ pendant les re-lectures (pas de
+  // clignotement « Chargement… » toutes les 5 min) — même politique que le fournisseur global.
+  if (erreur) return <BanniereErreur langue={langue} erreur={erreur} onReessayer={() => { setErreur(''); void rafraichir(true); }} />;
+  if (!donnees || !charge) return <IndicateurChargement langue={langue} />;
 
   const aujourdhuiCle = cleJour(new Date());
 
@@ -185,7 +196,7 @@ export function Agenda({ langue }: { langue: Langue }) {
                   <a className="lien-ligne" href={lienGmailPourLigne(l)} target="_blank" rel="noreferrer">
                     {l.fichier}
                   </a>
-                  <div className="variante">{l.traiteLe}</div>
+                  <div className="variante">{formaterDateCourte(l.traiteLe, langue === 'fr' ? 'fr-CA' : 'en-CA')}</div>
                 </td>
               </tr>
             ))}

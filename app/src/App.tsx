@@ -7,6 +7,8 @@
 import { useEffect, useState } from 'react';
 import { configComplete, lireConfig, enregistrerConfig } from './config';
 import { seConnecter, estConnecte, seDeconnecter, abonnerSessionExpiree, verifierMaintenant, viderCachePlages } from './google';
+import { FournisseurEtat, useEtatGlobal } from './etatGlobal';
+import { BanniereErreur } from './composants/UI';
 import { Langue, langueCourante, changerLangue, t } from './i18n';
 import { basculerTheme, themeCourant } from './theme';
 import { AujourdHui } from './vues/AujourdHui';
@@ -120,13 +122,14 @@ export function App() {
       )}
 
       {configOk && connecte && (
-        <>
+        <FournisseurEtat>
           <nav className="sections" aria-label="Sections">
             {SECTIONS.map((s) => (
               <button key={s} className={section === s ? 'actif' : ''} onClick={() => allerA(s)}>
                 {t(s, langue)}
               </button>
             ))}
+            <BadgeSynchro langue={langue} />
           </nav>
 
           <div className="vue-active" key={section}>
@@ -168,11 +171,32 @@ export function App() {
               </div>
             </>
           )}
-        </>
+        </FournisseurEtat>
       )}
 
       <footer>{t('gardeFous', langue)}</footer>
     </div>
+  );
+}
+
+/**
+ * Badge « Synchro HH:MM » + bouton ⟳ (P1/C28-03) : indicateur GLOBAL de fraîcheur des données,
+ * et rafraîchissement manuel qui invalide le cache (le périodique tourne déjà toutes les 5 min).
+ * Affiche aussi l'erreur de lecture globale avec « Réessayer » — les vues n'ont plus chacune la leur.
+ */
+function BadgeSynchro({ langue }: { langue: Langue }) {
+  const { synchroA, erreur, rafraichir } = useEtatGlobal();
+  return (
+    <span className="badge-synchro">
+      {erreur
+        ? <BanniereErreur langue={langue} erreur={erreur} onReessayer={() => void rafraichir(true)} />
+        : (
+          <button className="discret" onClick={() => void rafraichir(true)}
+            title={t('synchro', langue)}>
+            ⟳ {t('synchro', langue)} {synchroA ? synchroA.toLocaleTimeString(langue === 'fr' ? 'fr-CA' : 'en-CA', { hour: '2-digit', minute: '2-digit' }) : '…'}
+          </button>
+        )}
+    </span>
   );
 }
 

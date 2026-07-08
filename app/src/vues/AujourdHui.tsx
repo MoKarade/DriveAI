@@ -5,12 +5,12 @@
  * Lecture seule (Santé + Index) — mêmes plages que la v2.
  */
 
-import { useEffect, useState } from 'react';
-import { lirePlage } from '../google';
+import { useState } from 'react';
+import { useEtatGlobal } from '../etatGlobal';
+import { IndicateurChargement } from '../composants/UI';
 import {
   LigneIndex,
   Sante,
-  interpreterIndex,
   interpreterSante,
   activiteParJour,
   lignesTri,
@@ -22,6 +22,7 @@ import {
   lienGmailPourLigne,
   lienDrivePourLigne,
 } from '../etat';
+import { formaterDateCourte } from '../explorateur';
 import { Langue, t } from '../i18n';
 
 const BUDGET_LLM = 10; // cible < 10 $/mois (CLAUDE.md §2)
@@ -30,28 +31,14 @@ const CLASSEMENTS_RECENTS = 6;
 const SUSPECTS_MAX = 5;
 
 export function AujourdHui({ langue }: { langue: Langue }) {
-  const [sante, setSante] = useState<Sante | null>(null);
-  const [index, setIndex] = useState<LigneIndex[]>([]);
+  // Données PARTAGÉES (P1/C28-02) : chargées/rafraîchies par le fournisseur global — plus de
+  // lirePlage local, plus de photo figée au montage. L'Index arrive déjà en ÉTAT COURANT.
+  const { donnees } = useEtatGlobal();
   const [survol, setSurvol] = useState<{ jour: string; n: number } | null>(null);
-  const [erreur, setErreur] = useState('');
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [s, i] = await Promise.all([
-          lirePlage('Santé', 'A2:A10'),
-          lirePlage('Index', 'A2:H20000'),
-        ]);
-        setSante(interpreterSante(s));
-        setIndex(interpreterIndex(i));
-      } catch (e) {
-        setErreur(String(e));
-      }
-    })();
-  }, []);
-
-  if (erreur) return <p className="erreur">{t('erreur', langue)} : {erreur}</p>;
-  if (!sante) return <p>{t('chargement', langue)}</p>;
+  if (!donnees) return <IndicateurChargement langue={langue} />;
+  const sante: Sante = interpreterSante(donnees.santeBrut);
+  const index: LigneIndex[] = donnees.index;
 
   const maintenant = new Date();
   // Documents seuls (les lignes mail — intention/tache/event/important/tri — ont leurs sections).
@@ -111,7 +98,7 @@ export function AujourdHui({ langue }: { langue: Langue }) {
               <span className="ic" aria-hidden="true">!</span>
               <span>
                 <b>{l.fichier}</b>
-                <span className="date"> · {l.traiteLe}</span>
+                <span className="date"> · {formaterDateCourte(l.traiteLe, langue === 'fr' ? 'fr-CA' : 'en-CA')}</span>
               </span>
             </a>
           ))}

@@ -80,6 +80,11 @@ nav.sections button {
 nav.sections button.actif { color: var(--accent); box-shadow: 0 -2px 0 var(--accent) inset; background: none; }
 nav.sections button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
+/* badge « Synchro HH:MM » (P1/C28-03) : collé à droite de la barre de sections */
+.badge-synchro { margin-left: auto; display: flex; align-items: center; }
+nav.sections .badge-synchro button { text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+.badge-synchro .erreur { margin: 0; font-size: 0.78rem; }
+
 /* barre basse (mobile) : Auj · Agenda · Mails · Docs · Plus */
 nav.barre-basse {
   display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;

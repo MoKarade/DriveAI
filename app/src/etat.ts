@@ -44,6 +44,42 @@ export function interpreterIndex(brut: string[][]): LigneIndex[] {
     }));
 }
 
+/**
+ * Identité d'ÉTAT d'une ligne d'Index (P1/C28-02) : l'Index est APPEND-ONLY côté moteur — un même
+ * fil Gmail (clé `tri|<fil>|<ts>|<lu>`, une ligne PAR état) ou un même fichier re-traité
+ * (`drive|<id>` puis `migre|<tag>|<id>`, ou ligne de réconciliation future) produit PLUSIEURS
+ * lignes. Pour afficher l'ÉTAT COURANT, on regroupe par l'entité réelle : le FIL pour le tri,
+ * le FICHIER pour drive/shared/migre. Les autres clés (messageId|…, tache|, important|,
+ * dryrunv2|… — de simples marqueurs) restent leur propre identité : jamais fusionnées, et le
+ * rapport dry-run n'écrase JAMAIS l'état réel d'un fichier. PURE.
+ */
+export function cleEtatIndex(cle: string): string {
+  const seg = cle.split('|');
+  if (seg[0] === 'tri' && seg[1]) return 'fil|' + seg[1];
+  if ((seg[0] === 'drive' || seg[0] === 'shared') && seg[1]) return 'fichier|' + seg[1];
+  if (seg[0] === 'migre' && seg[2]) return 'fichier|' + seg[2];
+  return cle;
+}
+
+/**
+ * ÉTAT COURANT de l'Index : pour chaque entité (fil, fichier), seule la ligne la plus RÉCENTE
+ * (la plus basse dans la Sheet — l'Index est append-only chronologique) est conservée. C'est ce
+ * qui rend la section « ⚠ Suspects » honnête : un fil marqué suspect PUIS trié n'apparaît plus
+ * comme suspect (C28-02/13, plan P1). PURE.
+ */
+export function etatCourantIndex(lignes: LigneIndex[]): LigneIndex[] {
+  const parCle = new Map<string, LigneIndex>();
+  for (const l of lignes) {
+    const k = cleEtatIndex(l.cle);
+    // delete AVANT set : une Map conserve la position d'insertion INITIALE d'une clé ré-écrite,
+    // or les vues supposent ordre de liste = chronologie (`.reverse().slice(0, N)` « récents ») —
+    // une entité re-traitée doit donc être RÉ-INSÉRÉE en fin, pas mise à jour en place.
+    parCle.delete(k);
+    parCle.set(k, l);
+  }
+  return [...parCle.values()];
+}
+
 /** Compte par domaine (pour le dashboard). */
 export function compterParDomaine(lignes: LigneIndex[]): Map<string, number> {
   const compte = new Map<string, number>();

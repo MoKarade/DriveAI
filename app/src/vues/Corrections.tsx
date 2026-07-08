@@ -8,9 +8,9 @@
  *     sans émetteur/domaine la ligne serait MORTE pour le few-shot du moteur (ADR-0003).
  */
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
+import { useEtatGlobal } from '../etatGlobal';
 import {
-  lirePlage,
   ecrireCellule,
   chercherParNom,
   reclasserFichier,
@@ -22,7 +22,6 @@ import {
   interpreterEntites,
   entitesEnAttente,
   entitesValidees,
-  interpreterIndex,
   domainesDepuisIndex,
   emetteurDepuisNom,
   extraireIdDossier,
@@ -31,36 +30,14 @@ import {
 import { Langue, t } from '../i18n';
 
 export function Corrections({ langue }: { langue: Langue }) {
-  // Lu UNE fois pour les deux sections : file « en attente » + destinations validées + domaines.
-  const [entites, setEntites] = useState<LigneEntite[]>([]);
-  const [colonneStatut, setColonneStatut] = useState('');
-  const [domaines, setDomaines] = useState<string[]>([]);
-  const [erreur, setErreur] = useState('');
-  const [chargee, setChargee] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        // Plage large (Z) : si le moteur ajoute une colonne (auto-réparation), Statut reste visible.
-        const [brutEntites, brutIndex] = await Promise.all([
-          lirePlage('Entités', 'A1:Z10000'),
-          lirePlage('Index', 'A2:H20000'),
-        ]);
-        const { lignes, colonneStatut: col } = interpreterEntites(brutEntites);
-        setEntites(lignes);
-        setColonneStatut(col);
-        setDomaines(domainesDepuisIndex(interpreterIndex(brutIndex)));
-      } catch (e) {
-        setErreur(String(e));
-      } finally {
-        setChargee(true);
-      }
-    })();
-  }, []);
+  // Données PARTAGÉES (P1/C28-02) : chargées/rafraîchies par le fournisseur global (5 min + ⟳).
+  const { donnees } = useEtatGlobal();
+  const chargee = donnees !== null;
+  const { lignes: entites, colonneStatut } = interpreterEntites(donnees?.entitesBrut ?? []);
+  const domaines = domainesDepuisIndex(donnees?.index ?? []);
 
   return (
     <div className="colonnes">
-      {erreur && <p className="erreur">{t('erreur', langue)} : {erreur}</p>}
       <ValidationEntites
         langue={langue}
         enAttente={entitesEnAttente(entites)}

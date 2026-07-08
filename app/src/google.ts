@@ -8,8 +8,13 @@
  * (statut d'entité) et append de lignes (Corrections). Tout déplacement passe par
  * `reclasserFichier`, qui exige un verdict garde-fous VIDE avant d'appeler l'API.
  *
- * Aucun backend : l'app (SPA statique) parle directement aux API Google — le jeton vit en
- * mémoire (jamais persisté), rien n'est stocké côté serveur (ADR-0007 intact).
+ * Aucun backend : l'app (SPA statique) parle directement aux API Google — rien n'est stocké côté
+ * serveur (ADR-0007 intact). SESSION (révision P1/C28-01, plan architecte validé par Marc
+ * 2026-07-08) : le jeton vit en **sessionStorage** — il survit au RECHARGEMENT de l'onglet (fini
+ * la reconnexion à chaque F5) mais est détruit à sa FERMETURE ; le flux GIS implicite n'a pas de
+ * refresh token et la reconnexion silencieuse au chargement est bloquée par les anti-popups.
+ * localStorage reste INTERDIT pour le jeton (verrou : app/test/session.test.ts) ; un jeton
+ * périmé est purgé au premier 401 (l'UI rebascule sur l'écran de connexion).
  */
 
 import {
@@ -46,7 +51,22 @@ const MODE_MOCK = import.meta.env.VITE_E2E_MOCK === 'true';
 // (verrou : test miroir aucune-suppression). Consentement navigateur seul (rien côté Apps Script).
 const SCOPES = 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/calendar.events';
 
-let jetonAcces: string | null = null; // en mémoire seulement — jamais localStorage
+// Jeton en sessionStorage (P1/C28-01) : survit au reload de l'onglet, meurt à sa fermeture.
+// JAMAIS localStorage (persistance disque inter-sessions = surface XSS durable — verrouillé par test).
+// Repli MÉMOIRE si le stockage est indisponible (navigation privée stricte) : la session vaut alors
+// la durée de l'onglet sans reload — mais la connexion n'est jamais silencieusement perdue.
+const CLE_JETON = 'driveai.jeton';
+let jetonMemoire: string | null = null;
+function lireJeton(): string | null {
+  try { return sessionStorage.getItem(CLE_JETON) ?? jetonMemoire; } catch { return jetonMemoire; }
+}
+function ecrireJeton(jeton: string | null): void {
+  jetonMemoire = jeton;
+  try {
+    if (jeton === null) sessionStorage.removeItem(CLE_JETON);
+    else sessionStorage.setItem(CLE_JETON, jeton);
+  } catch { /* stockage indisponible : le repli mémoire ci-dessus porte la session */ }
+}
 
 declare global {
   interface Window {
@@ -76,9 +96,9 @@ function chargerGis(): Promise<void> {
   });
 }
 
-/** Ouvre le consentement Google et garde le jeton en mémoire. */
+/** Ouvre le consentement Google et garde le jeton en sessionStorage (P1/C28-01). */
 export async function seConnecter(): Promise<void> {
-  if (MODE_MOCK) { jetonAcces = 'jeton-mock-e2e'; return; } // jamais de GIS ni de popup en CI
+  if (MODE_MOCK) { ecrireJeton('jeton-mock-e2e'); return; } // jamais de GIS ni de popup en CI
   await chargerGis();
   const { clientId } = lireConfig();
   if (!clientId) throw new Error('Client ID OAuth manquant (écran Configuration)');
@@ -88,7 +108,7 @@ export async function seConnecter(): Promise<void> {
       scope: SCOPES,
       callback: (rep) => {
         if (rep.access_token) {
-          jetonAcces = rep.access_token;
+          ecrireJeton(rep.access_token);
           resoudre();
         } else {
           rejeter(new Error(rep.error || 'Connexion refusée'));
@@ -101,11 +121,11 @@ export async function seConnecter(): Promise<void> {
 
 export function estConnecte(): boolean {
   if (MODE_MOCK) return true; // l'app saute l'écran de connexion (les vues lisent mockData)
-  return jetonAcces !== null;
+  return lireJeton() !== null;
 }
 
 export function seDeconnecter(): void {
-  jetonAcces = null; // le jeton n'est nulle part ailleurs
+  ecrireJeton(null); // le jeton n'est nulle part ailleurs (ni mémoire longue, ni localStorage)
 }
 
 // Rappel global « session expirée » : l'UI s'y abonne pour rebasculer sur l'écran de connexion
@@ -121,7 +141,8 @@ export async function api<T>(url: string, options?: RequestInit): Promise<T> {
   // Filet du mode mock : AUCUN appel réseau ne doit atteindre les vraies API Google en CI.
   // Un chemin oublié échoue bruyamment (visible sur la capture) au lieu de fuiter.
   if (MODE_MOCK) throw new Error(`mode E2E mock : appel réseau interdit (${url.slice(0, 80)})`);
-  if (!jetonAcces) throw new Error('Non connecté');
+  const jeton = lireJeton();
+  if (!jeton) throw new Error('Non connecté');
   // 429 (quota par minute PARTAGÉ avec le moteur — il écrit dans la même Sheet, en tant que Marc) :
   // réessai avec repli progressif au lieu d'une erreur brute. Un 429 = requête NON exécutée → le
   // réessai est sûr, y compris pour les écritures.
@@ -129,13 +150,13 @@ export async function api<T>(url: string, options?: RequestInit): Promise<T> {
     const rep = await fetch(url, {
       ...options,
       headers: {
-        Authorization: `Bearer ${jetonAcces}`,
+        Authorization: `Bearer ${jeton}`,
         'Content-Type': 'application/json',
         ...(options?.headers ?? {}),
       },
     });
     if (rep.status === 401) {
-      jetonAcces = null;
+      ecrireJeton(null); // jeton périmé purgé — un F5 ne le ressuscitera pas
       surSessionExpiree?.(); // l'UI rebascule sur l'écran de connexion
       throw new Error('Session expirée — reconnecte-toi');
     }

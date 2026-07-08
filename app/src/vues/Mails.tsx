@@ -5,58 +5,46 @@
  * Les newsletters jamais lues restent dans le résumé hebdo (calcul Gmail côté moteur).
  */
 
-import { useEffect, useState } from 'react';
-import { lirePlage, ecrireCellule } from '../google';
+import { useState } from 'react';
+import { ecrireCellule } from '../google';
+import { useEtatGlobal } from '../etatGlobal';
+import { IndicateurChargement, BanniereErreur } from '../composants/UI';
 import {
   LigneIndex,
   LigneTriAppris,
-  interpreterIndex,
   interpreterTriAppris,
   lignesTri,
   lignesSuspects,
   statsTri,
   lienGmailPourLigne,
 } from '../etat';
+import { formaterDateCourte } from '../explorateur';
 import { Langue, t } from '../i18n';
 
 const TRIS_RECENTS = 20;
 
 export function Mails({ langue }: { langue: Langue }) {
-  const [index, setIndex] = useState<LigneIndex[]>([]);
-  const [appris, setAppris] = useState<LigneTriAppris[]>([]);
-  const [charge, setCharge] = useState(false);
-  const [erreur, setErreur] = useState('');
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const [idx, ta] = await Promise.all([
-          lirePlage('Index', 'A2:H20000'),
-          // Onglet créé par le moteur au premier apprentissage — absent = table vide, pas une erreur.
-          lirePlage('TriAppris', 'A2:C1000').catch(() => [] as string[][]),
-        ]);
-        setIndex(interpreterIndex(idx));
-        setAppris(interpreterTriAppris(ta));
-        setCharge(true);
-      } catch (e) {
-        setErreur(String(e));
-      }
-    })();
-  }, []);
+  // Données PARTAGÉES (P1/C28-02) : l'Index arrive en ÉTAT COURANT — un fil suspect PUIS trié
+  // n'apparaît plus ⚠ (fini la section Suspects périmée, C28-13). Rafraîchi toutes les 5 min.
+  const { donnees, rafraichir } = useEtatGlobal();
+  const [retires, setRetires] = useState<number[]>([]); // optimiste, le temps du prochain rafraîchissement
+  const [erreurAction, setErreurAction] = useState('');
 
   async function retirer(l: LigneTriAppris) {
     try {
       // Vidage des cellules (A/B) — la ligne reste, le moteur ignore les adresses vides.
       await ecrireCellule('TriAppris', `A${l.ligneSheet}`, '');
       await ecrireCellule('TriAppris', `B${l.ligneSheet}`, '');
-      setAppris((xs) => xs.filter((x) => x.ligneSheet !== l.ligneSheet));
+      setRetires((xs) => [...xs, l.ligneSheet]);
+      void rafraichir(true);
     } catch (e) {
-      setErreur(String(e));
+      setErreurAction(String(e));
     }
   }
 
-  if (erreur) return <p className="erreur">{t('erreur', langue)} : {erreur}</p>;
-  if (!charge) return <p>{t('chargement', langue)}</p>;
+  if (!donnees) return <IndicateurChargement langue={langue} />;
+  const index: LigneIndex[] = donnees.index;
+  const appris = interpreterTriAppris(donnees.triApprisBrut).filter((x) => !retires.includes(x.ligneSheet));
 
   const tri7j = statsTri(index, 7, new Date());
   const suspects = lignesSuspects(index).slice(0, 8);
@@ -64,6 +52,7 @@ export function Mails({ langue }: { langue: Langue }) {
 
   return (
     <div className="colonnes">
+      <BanniereErreur langue={langue} erreur={erreurAction} onReessayer={() => setErreurAction('')} />
       <div className="tuiles large">
         <div className="tuile"><div className="v">{tri7j.tries}</div><div className="l">{t('filsTries7j', langue)}</div></div>
         <div className="tuile"><div className="v">{tri7j.aVerifier}</div><div className="l">{t('aVerifierTuile', langue)}</div></div>
@@ -82,7 +71,7 @@ export function Mails({ langue }: { langue: Langue }) {
                   <a href={lienGmailPourLigne(l)} target="_blank" rel="noreferrer" className="lien-ligne">
                     {l.fichier || '(sans sujet)'}
                   </a>
-                  <div className="variante">{l.traiteLe}</div>
+                  <div className="variante">{formaterDateCourte(l.traiteLe, langue === 'fr' ? 'fr-CA' : 'en-CA')}</div>
                 </td>
                 <td className="nombre">
                   <span className={`pastille ${l.statut === 'suspect' ? 'crit' : l.statut === 'tri-a-verifier' ? 'douce' : 'ok'}`}>
@@ -104,7 +93,7 @@ export function Mails({ langue }: { langue: Langue }) {
             <span className="ic" aria-hidden="true">!</span>
             <span>
               <b>{l.fichier}</b>
-              <span className="date"> · {l.traiteLe}</span>
+              <span className="date"> · {formaterDateCourte(l.traiteLe, langue === 'fr' ? 'fr-CA' : 'en-CA')}</span>
             </span>
           </a>
         ))}

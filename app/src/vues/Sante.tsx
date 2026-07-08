@@ -4,55 +4,37 @@
  * (l'app APPEND une demande, le moteur agit au tick) · dernières erreurs du Journal.
  */
 
-import { useEffect, useState } from 'react';
-import { lirePlage, ajouterLigne, ecrireCellule } from '../google';
+import { useState } from 'react';
+import { ajouterLigne, ecrireCellule } from '../google';
+import { useEtatGlobal } from '../etatGlobal';
+import { IndicateurChargement } from '../composants/UI';
 import {
   Sante as ModeleSante,
   LigneJournal,
   LigneIndex,
   interpreterSante,
   interpreterJournal,
-  interpreterIndex,
   lignesQuarantaine,
   coutDepuisSante,
   dernierPassageDepuisSante,
   quotaGmailEpuise,
   erreursRecentes,
 } from '../etat';
+import { formaterDateCourte } from '../explorateur';
 import { Langue, t } from '../i18n';
 
 const JOURNAL_RECENT = 20;
 const BUDGET_LLM = 10;
 
 export function SanteVue({ langue }: { langue: Langue }) {
-  const [sante, setSante] = useState<ModeleSante | null>(null);
-  const [journal, setJournal] = useState<LigneJournal[]>([]);
-  const [index, setIndex] = useState<LigneIndex[]>([]);
-  const [tickInitial, setTickInitial] = useState('');
-  const [erreur, setErreur] = useState('');
+  // Données PARTAGÉES (P1/C28-02) : chargées/rafraîchies par le fournisseur global (5 min + ⟳).
+  const { donnees } = useEtatGlobal();
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [s, j, i, r] = await Promise.all([
-          lirePlage('Santé', 'A2:A10'),
-          lirePlage('Journal', 'A2:D5000'),
-          lirePlage('Index', 'A2:H20000'),
-          // Onglet créé par le moteur au premier tick après déploiement — absent = défaut, pas une erreur.
-          lirePlage('Réglages', 'A2:B2').catch(() => [] as string[][]),
-        ]);
-        setSante(interpreterSante(s));
-        setJournal(interpreterJournal(j));
-        setIndex(interpreterIndex(i));
-        setTickInitial(r?.[0]?.[1] ?? '');
-      } catch (e) {
-        setErreur(String(e));
-      }
-    })();
-  }, []);
-
-  if (erreur) return <p className="erreur">{t('erreur', langue)} : {erreur}</p>;
-  if (!sante) return <p>{t('chargement', langue)}</p>;
+  if (!donnees) return <IndicateurChargement langue={langue} />;
+  const sante: ModeleSante = interpreterSante(donnees.santeBrut);
+  const journal: LigneJournal[] = interpreterJournal(donnees.journalBrut);
+  const index: LigneIndex[] = donnees.index;
+  const tickInitial = donnees.reglagesBrut?.[0]?.[1] ?? '';
 
   const maintenant = new Date();
   const passage = dernierPassageDepuisSante(sante.lignes);
@@ -189,7 +171,7 @@ function QuarantaineSection({ langue, lignes }: { langue: Langue; lignes: LigneI
           {lignes.map((l) => (
             <tr key={l.cle}>
               <td>{l.fichier}</td>
-              <td className="date">{l.traiteLe}</td>
+              <td className="date">{formaterDateCourte(l.traiteLe, langue === 'fr' ? 'fr-CA' : 'en-CA')}</td>
               <td className="nombre">
                 {relances.has(l.cle) ? (
                   <span className="ok">{t('relance', langue)}</span>
