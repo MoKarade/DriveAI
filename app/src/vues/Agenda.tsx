@@ -5,14 +5,16 @@
  */
 
 import { useEffect, useState } from 'react';
-import { listerEvenements, listerTaches, creerTache, creerEvenement, cocherTache } from '../google';
+import { listerEvenements, listerTaches, cocherTache } from '../google';
 import { useEtatGlobal } from '../etatGlobal';
 import { IndicateurChargement, BanniereErreur } from '../composants/UI';
+import { Creation } from '../composants/Creation';
 import {
   Evenement,
   Tache,
   JourGrille,
   grilleMois,
+  grilleSemaine,
   cleJour,
   interpreterEvenements,
   interpreterTaches,
@@ -34,6 +36,8 @@ type Detail = { type: 'jour'; jour: Date } | { type: 'tache'; tache: Tache };
 export function Agenda({ langue }: { langue: Langue }) {
   const maintenant = new Date();
   const [mois, setMois] = useState(new Date(maintenant.getFullYear(), maintenant.getMonth(), 1));
+  const [vueCal, setVueCal] = useState<'mois' | 'semaine'>('mois'); // C28-04 : toggle Mois/Semaine
+  const [semaineRef, setSemaineRef] = useState(maintenant);
   const [evenements, setEvenements] = useState<Evenement[]>([]);
   const [taches, setTaches] = useState<Tache[]>([]);
   const [importants, setImportants] = useState<LigneIndex[]>([]);
@@ -41,7 +45,24 @@ export function Agenda({ langue }: { langue: Langue }) {
   const [charge, setCharge] = useState(false);
   const [erreur, setErreur] = useState('');
 
-  const semaines = grilleMois(mois.getFullYear(), mois.getMonth());
+  // La plage Tasks/Calendar chargée reste TOUJOURS celle de la grille du MOIS : la semaine
+  // affichée est un sous-ensemble (la navigation semaine garde `mois` aligné sur sa référence),
+  // donc changer de vue ou de semaine dans le même mois ne re-fetch rien.
+  const semainesMois = grilleMois(mois.getFullYear(), mois.getMonth());
+  const semaines = vueCal === 'semaine' ? [grilleSemaine(semaineRef)] : semainesMois;
+
+  /** Navigation ‹ › : ±1 mois (vue mois) ou ±7 jours (vue semaine, `mois` suit la référence). */
+  function naviguer(sens: 1 | -1) {
+    if (vueCal === 'mois') {
+      setMois(new Date(mois.getFullYear(), mois.getMonth() + sens, 1));
+    } else {
+      const ref = new Date(semaineRef.getFullYear(), semaineRef.getMonth(), semaineRef.getDate() + 7 * sens);
+      setSemaineRef(ref);
+      if (ref.getMonth() !== mois.getMonth() || ref.getFullYear() !== mois.getFullYear()) {
+        setMois(new Date(ref.getFullYear(), ref.getMonth(), 1));
+      }
+    }
+  }
 
   // L'Index vient de l'état PARTAGÉ (P1/C28-02) ; Tasks/Calendar restent chargés ICI (la plage
   // dépend du mois affiché) mais se re-chargent AUSSI à chaque synchro globale (dep synchroA) —
@@ -52,8 +73,8 @@ export function Agenda({ langue }: { langue: Langue }) {
     if (!donnees) return;
     (async () => {
       try {
-        const debut = semaines[0][0].date;
-        const finJour = semaines[semaines.length - 1][6].date;
+        const debut = semainesMois[0][0].date;
+        const finJour = semainesMois[semainesMois.length - 1][6].date;
         const fin = new Date(finJour.getFullYear(), finJour.getMonth(), finJour.getDate() + 1);
         const [evts, tks] = await Promise.all([
           listerEvenements(debut.toISOString(), fin.toISOString()),
@@ -92,20 +113,29 @@ export function Agenda({ langue }: { langue: Langue }) {
 
   return (
     <div className="colonnes agenda">
+      {/* Carte « Créer » EN TÊTE (C28-05, plan P2 : découvrabilité — elle existait mais en bas de page). */}
+      <Creation langue={langue} onCree={() => setMois(new Date(mois))} />
+
       <section className="carte cal-carte">
         <h2>
           <span className="cal-titre">{MOIS[mois.getMonth()]} {mois.getFullYear()}</span>
           <span className="cal-nav">
-            <button className="discret" aria-label="Mois précédent"
-              onClick={() => setMois(new Date(mois.getFullYear(), mois.getMonth() - 1, 1))}>‹</button>
+            <button className={vueCal === 'mois' ? '' : 'discret'} onClick={() => setVueCal('mois')}>
+              {t('vueMois', langue)}
+            </button>
+            <button className={vueCal === 'semaine' ? '' : 'discret'}
+              onClick={() => { setVueCal('semaine'); setSemaineRef(detail.type === 'jour' ? detail.jour : new Date()); }}>
+              {t('vueSemaine', langue)}
+            </button>
+            <button className="discret" aria-label={t('precedent', langue)} onClick={() => naviguer(-1)}>‹</button>
             <button className="discret"
               onClick={() => {
                 const auj = new Date();
                 setMois(new Date(auj.getFullYear(), auj.getMonth(), 1));
+                setSemaineRef(auj);
                 setDetail({ type: 'jour', jour: auj });
               }}>{t('aujourdhui', langue)}</button>
-            <button className="discret" aria-label="Mois suivant"
-              onClick={() => setMois(new Date(mois.getFullYear(), mois.getMonth() + 1, 1))}>›</button>
+            <button className="discret" aria-label={t('suivant', langue)} onClick={() => naviguer(1)}>›</button>
           </span>
         </h2>
         <table className="cal">
@@ -204,8 +234,6 @@ export function Agenda({ langue }: { langue: Langue }) {
         </table>
         <p className="explication">{t('aTraiterNote', langue)}</p>
       </section>
-
-      <Creation langue={langue} onCree={() => setMois(new Date(mois))} />
     </div>
   );
 }
@@ -261,46 +289,5 @@ function DetailTache({ langue, tache, onBasculer }:
         <a className="lien-bouton" href="https://tasks.google.com/" target="_blank" rel="noreferrer">Tasks ↗</a>
       </div>
     </>
-  );
-}
-
-/** Création directe (choix Marc) : tâche ou RDV, dans SON Google — l'app crée, ne supprime jamais. */
-function Creation({ langue, onCree }: { langue: Langue; onCree: () => void }) {
-  const [type, setType] = useState<'tache' | 'rdv'>('tache');
-  const [titre, setTitre] = useState('');
-  const [date, setDate] = useState('');
-  const [heure, setHeure] = useState('09:00');
-  const [statut, setStatut] = useState('');
-
-  async function creer() {
-    setStatut('');
-    try {
-      if (type === 'tache') await creerTache(titre, date || undefined);
-      else await creerEvenement(titre, `${date}T${heure}`);
-      setStatut('ok');
-      setTitre('');
-      onCree();
-    } catch (e) {
-      setStatut(String(e));
-    }
-  }
-
-  return (
-    <section className="carte large">
-      <h2>{t('creer', langue)}</h2>
-      <div className="ligne-formulaire creation">
-        <select value={type} onChange={(e) => setType(e.target.value as 'tache' | 'rdv')} aria-label={t('creer', langue)}>
-          <option value="tache">{t('tache', langue)}</option>
-          <option value="rdv">{t('rdv', langue)}</option>
-        </select>
-        <input value={titre} onChange={(e) => setTitre(e.target.value)} placeholder={t('titrePlaceholder', langue)} />
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Date" />
-        {type === 'rdv' && <input type="time" value={heure} onChange={(e) => setHeure(e.target.value)} aria-label="Heure" />}
-        <button disabled={!titre || (type === 'rdv' && !date)} onClick={creer}>{t('creerBouton', langue)}</button>
-      </div>
-      {statut === 'ok' && <p className="ok">{t('creeOk', langue)}</p>}
-      {statut && statut !== 'ok' && <p className="erreur">{statut}</p>}
-      <p className="explication">{t('creerNote', langue)}</p>
-    </section>
   );
 }

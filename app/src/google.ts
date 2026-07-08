@@ -424,16 +424,20 @@ export async function listerTaches(): Promise<unknown[]> {
   return rep.items ?? [];
 }
 
-/** Crée une tâche (liste par défaut). `echeance` : AAAA-MM-JJ (optionnel). */
-export async function creerTache(titre: string, echeance?: string): Promise<void> {
+/** Crée une tâche (liste par défaut). `echeance` : AAAA-MM-JJ ; `notes` : ex. lien Gmail (C28-06). */
+export async function creerTache(titre: string, echeance?: string, notes?: string): Promise<void> {
   await api(TASKS, {
     method: 'POST',
-    body: JSON.stringify({ title: titre, ...(echeance ? { due: `${echeance}T00:00:00.000Z` } : {}) }),
+    body: JSON.stringify({
+      title: titre,
+      ...(echeance ? { due: `${echeance}T00:00:00.000Z` } : {}),
+      ...(notes ? { notes } : {}),
+    }),
   });
 }
 
 /** Crée un RDV d'une heure sur l'agenda primaire. `debutISO` : date-heure locale ISO. */
-export async function creerEvenement(titre: string, debutISO: string): Promise<void> {
+export async function creerEvenement(titre: string, debutISO: string, description?: string): Promise<void> {
   const debut = new Date(debutISO);
   const fin = new Date(debut.getTime() + 60 * 60 * 1000);
   await api(CALENDAR, {
@@ -442,8 +446,23 @@ export async function creerEvenement(titre: string, debutISO: string): Promise<v
       summary: titre,
       start: { dateTime: debut.toISOString() },
       end: { dateTime: fin.toISOString() },
+      ...(description ? { description } : {}),
     }),
   });
+}
+
+/**
+ * Marque un fil « intention traitée MANUELLEMENT » (C28-06, plan P2) : ligne Index
+ * `intention-manuel|<threadId>` (statut `manuel`) — le moteur saute alors l'analyse
+ * d'intentions de TOUT le fil (pas de tâche en double après une création à la main).
+ * Préfixe DÉDIÉ, jamais `intention|<threadId>` : l'ID d'un fil Gmail EST l'ID de son premier
+ * message, la clé moteur `intention|<messageId>` entrerait en collision (chaque fil dont le
+ * 1er message a été analysé serait sauté en entier — régression silencieuse).
+ */
+export async function marquerIntentionManuelle(threadId: string, sujet: string): Promise<void> {
+  await ajouterLigne('Index', [
+    `intention-manuel|${threadId}`, new Date().toISOString(), sujet, '', '', 'manuel', '', '',
+  ]);
 }
 
 /**
@@ -724,4 +743,31 @@ export async function rechercheIA(question: string): Promise<PlanRechercheIA> {
   }
   if (!data.ok || !data.plan) throw new Error(data.erreur || 'recherche IA indisponible');
   return data.plan;
+}
+
+/* ---------- Analyse ciblée des mails (C28-06, plan P2) ---------- */
+
+/**
+ * Demande au MOTEUR un balayage d'intentions sur une requête Gmail LIBRE (ex. `label:Factures
+ * older_than:30d`). L'app ne lit aucun mail : elle dépose la requête (Script Property côté
+ * moteur), le tick la consomme par pages — campagne bornée par les plafonds/run et le frein
+ * budget (§2.6). Même canal lisible que `rechercheIA` (POST text/plain, corps JSON).
+ */
+export async function analyseCiblee(requete: string): Promise<string> {
+  const { webappUrl, webappSecret } = lireConfig();
+  if (!webappUrl || !webappSecret) throw new Error('Configurer l’URL de la web app et son secret (⚙)');
+  const rep = await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}&action=analyse-ciblee`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ requete }),
+  });
+  if (!rep.ok) throw new Error(`Web app ${rep.status}`);
+  let data: { ok: boolean; erreur?: string; message?: string };
+  try {
+    data = await rep.json();
+  } catch {
+    throw new Error('Réponse illisible — la web app a-t-elle été redéployée en nouvelle version ?');
+  }
+  if (!data.ok) throw new Error(data.erreur || 'analyse ciblée refusée');
+  return data.message ?? 'analyse programmée';
 }

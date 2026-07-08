@@ -188,6 +188,7 @@ var CONFIG = {
   TRI_NEWSLETTERS_SEUIL: 3,               // n fils promo non lus (30 j) pour qualifier un expéditeur
   INTENTIONS_MAX_PAR_RUN: 200,            // plafond de messages ANALYSÉS (pré-filtre inclus) par run
   CREATIONS_MAX_PAR_RUN: 30,              // plafond de tâches/événements CRÉÉS par run (pas de rafale)
+  CIBLEE_ECHECS_MAX: 3,                   // échecs de recherche CONSÉCUTIFS avant abandon tracé de l'analyse ciblée (C28-06)
   LLM_MAX_TOKENS_MINICHECK: 24,           // mini-check JSON {action, important} (expéditeur+sujet seuls)
   LLM_MAX_TOKENS_INTENTIONS: 500,
   EVENT_DUREE_MIN_DEFAUT: 60,             // durée par défaut d'un événement créé (minutes)

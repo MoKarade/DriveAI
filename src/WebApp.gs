@@ -37,6 +37,8 @@ function doPost(e) {
         reponse.erreur = 'refusé';
       } else if (action === 'recherche-ia') {
         reponse = actionRechercheIA_(e);
+      } else if (action === 'analyse-ciblee') {
+        reponse = actionAnalyseCiblee_(e);
       } else {
         reponse = actionTickPonctuel_();
       }
@@ -164,6 +166,67 @@ function promptRechercheIA_() {
     '{"texte":"hydro","domaine":"02 · Finances","annee":"2025","motsCles":["facture","Hydro-Québec"],' +
     '"explication":"Factures Hydro-Québec de 2025."}\n' +
     'Date du jour : ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd') + '.';
+}
+
+/* ---------- Analyse ciblée des mails (C28-06, plan P2) ---------- */
+
+/**
+ * Dépose une requête Gmail LIBRE que le tick balaiera par pages (`balayerAnalyseCiblee_`,
+ * Intentions.gs). AUCUN coût ici : le dépôt écrit deux Script Properties — le vrai travail
+ * (Gmail + LLM) est borné côté tick (plafonds/run + frein budget campagnes §2.6). Une nouvelle
+ * requête REMPLACE la campagne en cours (offset remis à zéro). La requête voyage dans le CORPS
+ * (JSON `{requete}` en text/plain) — jamais dans l'URL (les URL finissent dans des logs).
+ */
+function actionAnalyseCiblee_(e) {
+  var props = PropertiesService.getScriptProperties();
+
+  // Anti-rafale (5 s) — même politique que la recherche IA : consommé après validation.
+  var derniere = Number(props.getProperty('DriveAI_DERNIERE_ANALYSE_CIBLEE')) || 0;
+  if (Date.now() - derniere < 5000) {
+    return { ok: false, erreur: 'trop de requêtes — réessaie dans quelques secondes' };
+  }
+
+  var requete = null;
+  try {
+    var corps = e && e.postData && e.postData.contents ? JSON.parse(e.postData.contents) : {};
+    requete = validerRequeteCiblee_(corps.requete);
+  } catch (err) {
+    requete = null;
+  }
+  if (requete === null) {
+    return { ok: false, erreur: 'requête invalide (3 à 200 caractères, une seule ligne, sans in:spam/in:trash/in:anywhere)' };
+  }
+  props.setProperty('DriveAI_DERNIERE_ANALYSE_CIBLEE', String(Date.now()));
+
+  // Progression/série d'échecs de l'ancienne campagne effacées AVANT de poser la nouvelle
+  // requête (ordre d'écritures : une coupure entre les deux donne un re-scan quasi gratuit,
+  // jamais une nouvelle requête accrochée à un vieil offset — revue quotas).
+  props.deleteProperty('DriveAI_CUSTOM_SCAN_OFFSET');
+  props.deleteProperty('DriveAI_CUSTOM_SCAN_ECHECS');
+  props.deleteProperty('DriveAI_CUSTOM_SCAN_PAUSE');
+  props.setProperty('DriveAI_CUSTOM_SCAN_QUERY', requete);
+  // La requête n'est PAS journalisée (comme la question de la recherche IA : elle peut révéler
+  // une intention personnelle — la réponse HTTP, elle, ne va qu'au navigateur de Marc).
+  journalInfo_('WebApp', 'Analyse ciblée programmée (requête de ' + requete.length + ' caractères).');
+  return { ok: true, message: 'analyse programmée — le moteur balaie « ' + requete + ' » à ses prochains passages' };
+}
+
+/**
+ * Valide la requête Gmail de l'analyse ciblée (donnée UTILISATEUR via HTTP) : chaîne 3..200
+ * caractères, une seule ligne (les caractères de contrôle sont refusés — une Property ne doit
+ * jamais transporter autre chose qu'une requête de recherche), jamais de spam/corbeille
+ * (`in:spam`/`in:trash`/`in:anywhere` refusés — les scans du moteur n'y mettent JAMAIS les
+ * pieds ; le balayeur suffixe en plus `-in:spam -in:trash`, défense en profondeur). PURE (testée).
+ * @param {*} q
+ * @return {?string} requête nettoyée, ou null
+ */
+function validerRequeteCiblee_(q) {
+  if (typeof q !== 'string') return null;
+  if (/[\u0000-\u001F\u007F]/.test(q)) return null; // saut de ligne, tab, contrôle → refus
+  var propre = q.replace(/\s+/g, ' ').trim();
+  if (propre.length < 3 || propre.length > 200) return null;
+  if (/(^|[\s(])-?in:(spam|trash|anywhere)\b/i.test(propre)) return null; // jamais de spam/corbeille
+  return propre;
 }
 
 /**

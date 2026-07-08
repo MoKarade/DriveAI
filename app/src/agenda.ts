@@ -40,6 +40,23 @@ export function grilleMois(annee: number, mois: number): JourGrille[][] {
   return semaines;
 }
 
+/**
+ * La semaine (lundi → dimanche) contenant `reference` (C28-04, plan P2) : même forme qu'une
+ * ligne de `grilleMois` pour que la grille se rende à l'identique. `horsMois` est relatif au
+ * mois de `reference` (une semaine à cheval sur deux mois garde le mois courant en clair).
+ */
+export function grilleSemaine(reference: Date): JourGrille[] {
+  const decalage = (reference.getDay() + 6) % 7; // lundi en tête, comme grilleMois
+  const lundi = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate() - decalage);
+  const semaine: JourGrille[] = [];
+  const d = new Date(lundi);
+  for (let i = 0; i < 7; i++) {
+    semaine.push({ date: new Date(d), horsMois: d.getMonth() !== reference.getMonth() });
+    d.setDate(d.getDate() + 1);
+  }
+  return semaine;
+}
+
 /* ---------- Calendar (lecture) ---------- */
 
 export interface Evenement {

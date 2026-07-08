@@ -49,6 +49,9 @@ function traiterIntentionsMail_(estBudgetDepasse) {
 
   balayerNouveauxMails_(etat, plafondAtteint);
   if (!plafondAtteint()) balayerArriereHistorique_(etat, plafondAtteint);
+  // C28-06 : l'analyse CIBLÉE (requête libre déposée par l'app) passe en DERNIER — c'est une
+  // campagne : le flux vivant (les deux scans ci-dessus) garde toujours la priorité du budget.
+  if (!plafondAtteint()) balayerAnalyseCiblee_(etat, plafondAtteint);
 }
 
 /**
@@ -72,15 +75,19 @@ function balayerNouveauxMails_(etat, plafondAtteint) {
 
     var pageEntierementIndexee = true;
     for (var i = 0; i < fils.length; i++) {
+      var threadId = fils[i].getId();
+      // Un fil marqué MANUEL compte comme indexé pour le mur « déjà vu » (sinon il empêcherait
+      // l'arrêt tôt du scan avant pendant toute sa présence dans la fenêtre 30 jours).
+      var filManuel = indexContient_('intention-manuel|' + threadId);
       var messages = fils[i].getMessages();
       for (var m = 0; m < messages.length; m++) {
         if (plafondAtteint()) {
           journalInfo_('Intentions', 'Budget/plafond atteint (mail récent) — reprise au prochain tick.');
           return;
         }
-        if (!indexContient_('intention|' + messages[m].getId())) pageEntierementIndexee = false;
+        if (!filManuel && !indexContient_('intention|' + messages[m].getId())) pageEntierementIndexee = false;
         etat.analyses++;
-        etat.creations += traiterMessagePourIntentions_(messages[m]);
+        etat.creations += traiterMessagePourIntentions_(messages[m], threadId);
       }
     }
     if (pageEntierementIndexee) return; // mur de mail déjà vu → laisse la main au scan arrière
@@ -119,6 +126,7 @@ function balayerArriereHistorique_(etat, plafondAtteint) {
 
     var plusAncienne = null;
     for (var i = 0; i < fils.length; i++) {
+      var threadId = fils[i].getId();
       var messages = fils[i].getMessages();
       for (var m = 0; m < messages.length; m++) {
         if (plafondAtteint()) {
@@ -129,7 +137,7 @@ function balayerArriereHistorique_(etat, plafondAtteint) {
         var date = messages[m].getDate();
         if (!plusAncienne || date < plusAncienne) plusAncienne = date;
         etat.analyses++;
-        etat.creations += traiterMessagePourIntentions_(messages[m]);
+        etat.creations += traiterMessagePourIntentions_(messages[m], threadId);
       }
     }
     if (plusAncienne) avancerCurseurHistorique_(props, plusAncienne);
@@ -148,14 +156,133 @@ function avancerCurseurHistorique_(props, datePlusAncienne) {
 }
 
 /**
+ * Analyse CIBLÉE (C28-06, plan P2) : balaie une requête Gmail LIBRE déposée par l'app
+ * (`DriveAI_CUSTOM_SCAN_QUERY`, posée par `actionAnalyseCiblee_`) avec un offset persistant.
+ * C'est une CAMPAGNE : gatée par `budgetCampagnesAtteint_()` (le frein §2.6 la met en pause,
+ * jamais le flux vivant) en PLUS des plafonds/run partagés. Revue flotte appliquée :
+ *  - un message DÉJÀ INDEXÉ ne consomme jamais le plafond d'analyses (sinon une grosse page
+ *    rejouée re-brûle le budget sur du déjà-vu à chaque tick et l'offset ne bouge plus —
+ *    plateau silencieux) ; le rejeu converge, borné par le garde-temps ;
+ *  - l'offset est LIÉ à sa requête (`{q: hash, offset}`) : l'offset d'une ancienne campagne
+ *    ne s'applique jamais à une nouvelle, et il avance par FIL complété (progression, jamais
+ *    preuve de complétude — leçon campagnes Gmail) ;
+ *  - un échec de recherche est TRANSITOIRE jusqu'à `CONFIG.CIBLEE_ECHECS_MAX` (classer les
+ *    échecs par origine : un blip de service ne tue pas la demande de Marc) ; l'abandon est tracé ;
+ *  - spam/corbeille exclus d'office (défense en profondeur, même contre `in:anywhere`) ;
+ *  - la requête n'est jamais journalisée en clair (cohérence recherche-ia, vie privée).
+ * @param {{analyses:number, creations:number}} etat
+ * @param {function():boolean} plafondAtteint
+ */
+function balayerAnalyseCiblee_(etat, plafondAtteint) {
+  var props = PropertiesService.getScriptProperties();
+  var requete = props.getProperty('DriveAI_CUSTOM_SCAN_QUERY');
+  if (!requete) return;
+  var hashRequete = hashHex_(requete);
+
+  while (!plafondAtteint()) {
+    if (budgetCampagnesAtteint_()) {
+      // Annoncée UNE fois par campagne (marqueur lié à la requête) — jamais 288 lignes/jour.
+      if (props.getProperty('DriveAI_CUSTOM_SCAN_PAUSE') !== hashRequete) {
+        props.setProperty('DriveAI_CUSTOM_SCAN_PAUSE', hashRequete);
+        journalInfo_('Intentions', 'Analyse ciblée en pause (frein budget campagnes) — reprise après le rétablissement.');
+      }
+      return; // la requête et l'offset RESTENT : la campagne reprendra, jamais perdue
+    }
+    var offset = offsetCampagneCiblee_(props.getProperty('DriveAI_CUSTOM_SCAN_OFFSET'), hashRequete);
+    var fils;
+    try {
+      fils = GmailApp.search(requete + ' -in:spam -in:trash', offset, CONFIG.PAGE_FILS_ACTIONS);
+    } catch (e) {
+      var echecs = (Number(props.getProperty('DriveAI_CUSTOM_SCAN_ECHECS')) || 0) + 1;
+      if (echecs >= CONFIG.CIBLEE_ECHECS_MAX) {
+        journalErreur_('Intentions', 'Analyse ciblée abandonnée après ' + echecs + ' échecs de recherche : ' + e);
+        effacerCampagneCiblee_(props, requete);
+      } else {
+        props.setProperty('DriveAI_CUSTOM_SCAN_ECHECS', String(echecs));
+        journalErreur_('Intentions', 'Analyse ciblée : recherche en échec (' + echecs + '/' + CONFIG.CIBLEE_ECHECS_MAX + ') — nouvel essai au prochain tick : ' + e);
+      }
+      return;
+    }
+    props.deleteProperty('DriveAI_CUSTOM_SCAN_ECHECS'); // une recherche servie remet la série à zéro
+    if (!fils.length) {
+      journalInfo_('Intentions', 'Analyse ciblée terminée (' + offset + ' fils balayés).');
+      effacerCampagneCiblee_(props, requete);
+      return;
+    }
+
+    var filsCompletes = 0;
+    for (var i = 0; i < fils.length; i++) {
+      var threadId = fils[i].getId();
+      var filManuel = indexContient_('intention-manuel|' + threadId);
+      var messages = fils[i].getMessages();
+      for (var m = 0; m < messages.length; m++) {
+        if (plafondAtteint()) {
+          // Progression par fil COMPLÉTÉ : le fil en cours rejouera (ses messages faits se
+          // re-sautent par l'Index, sans consommer le plafond — voir comptage ci-dessous).
+          if (filsCompletes > 0) ecrireOffsetCiblee_(props, hashRequete, offset + filsCompletes);
+          journalInfo_('Intentions', 'Budget/plafond atteint (analyse ciblée) — reprise au prochain tick.');
+          return;
+        }
+        // Un déjà-vu ne consomme JAMAIS le plafond d'analyses (anti-plateau, revue quotas).
+        if (!filManuel && !indexContient_('intention|' + messages[m].getId())) etat.analyses++;
+        etat.creations += traiterMessagePourIntentions_(messages[m], threadId);
+      }
+      filsCompletes++;
+    }
+    ecrireOffsetCiblee_(props, hashRequete, offset + fils.length);
+  }
+}
+
+/**
+ * Offset persistant de la campagne ciblée, LIÉ à sa requête. Un offset écrit sous une autre
+ * requête (campagne remplacée entre deux ticks) ou illisible ⇒ 0 (re-scan quasi gratuit,
+ * jamais un trou en tête de la nouvelle campagne). PURE.
+ * @param {?string} brut  contenu de la Property (JSON `{q, offset}`)
+ * @param {string} hashRequete
+ * @return {number}
+ */
+function offsetCampagneCiblee_(brut, hashRequete) {
+  if (!brut) return 0;
+  try {
+    var o = JSON.parse(brut);
+    return o && o.q === hashRequete ? Number(o.offset) || 0 : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+/** Écrit l'offset de la campagne ciblée, toujours accroché au hash de SA requête. */
+function ecrireOffsetCiblee_(props, hashRequete, offset) {
+  props.setProperty('DriveAI_CUSTOM_SCAN_OFFSET', JSON.stringify({ q: hashRequete, offset: offset }));
+}
+
+/**
+ * Solde la campagne ciblée (terminée ou abandonnée). La requête n'est effacée que si elle est
+ * ENCORE celle qu'on vient de balayer — un dépôt tout frais de Marc n'est jamais avalé par la
+ * terminaison de l'ancienne campagne (course dépôt/tick, revue sécurité).
+ */
+function effacerCampagneCiblee_(props, requete) {
+  if (props.getProperty('DriveAI_CUSTOM_SCAN_QUERY') === requete) props.deleteProperty('DriveAI_CUSTOM_SCAN_QUERY');
+  props.deleteProperty('DriveAI_CUSTOM_SCAN_OFFSET');
+  props.deleteProperty('DriveAI_CUSTOM_SCAN_ECHECS');
+  props.deleteProperty('DriveAI_CUSTOM_SCAN_PAUSE');
+}
+
+/**
  * Traite un message : pré-filtre → extraction → création idempotente.
  * @param {GmailMessage} message
+ * @param {string} [threadId]  ID du fil (fourni par les balayeurs — évite un getThread() par message)
  * @return {number} nombre de tâches/événements RÉELLEMENT créés (pour le plafond/run).
  */
-function traiterMessagePourIntentions_(message) {
+function traiterMessagePourIntentions_(message, threadId) {
   var messageId = message.getId();
   var cleMessage = 'intention|' + messageId;
   if (indexContient_(cleMessage)) return 0; // déjà entièrement traité
+  // C28-06 (plan P2) : Marc a créé sa tâche À LA MAIN depuis ce fil dans l'app → tout le fil est
+  // sauté (pas de doublon Tasks/Calendar). Préfixe DÉDIÉ `intention-manuel|<threadId>` — jamais
+  // `intention|<threadId>` : l'ID d'un fil Gmail EST l'ID de son premier message, la clé message
+  // entrerait en collision et ferait sauter des fils entiers à tort dès le 1er message analysé.
+  if (threadId && indexContient_('intention-manuel|' + threadId)) return 0;
 
   var expediteur = message.getFrom() || '';
   var sujet = message.getSubject() || '';

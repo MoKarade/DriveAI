@@ -309,6 +309,10 @@ mémoire** de l'onglet, jamais persisté.
 > l'ancienne version tant que Marc n'a pas cliqué **Nouvelle version → Déployer**. Un test qui
 > renvoie une réponse SANS les derniers champs/comportements ajoutés = signal quasi certain d'un
 > redéploiement manquant, pas un bug de code.
+> **S'applique à l'« Analyse ciblée des mails » (C28-06, plan P2)** : la nouvelle action
+> `analyse-ciblee` du `doPost` n'existe pour l'app qu'après un redéploiement **Nouvelle version**
+> — avant ça, le formulaire de la vue Mails déclenchera l'action par défaut (un simple passage
+> immédiat) au lieu de programmer l'analyse.
 
 ## Miroir Drive du dépôt (ADR-0017) — accès de partout + NotebookLM
 
