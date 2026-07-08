@@ -72,6 +72,7 @@ const CONTRAT = [
   'dequarantainerLignes_', // noyau appelé par le tick (R3) — JAMAIS dequarantaine() (réentrance)
   'rattraperMediasMalClasses', 'doPost', 'tickPonctuel', 'fileIdDepuisCleMaintenance_',
   'reparerIncidentSheet', 'estCleFichierIncident_', // réparation incident Sheet d'état (2026-07-08)
+  'fusionnerDomaine07PersoVers08', 'remplacerColonneOnglet_', // fusion domaine erroné (anomalies 2026-07-08)
   // web app : recherche IA (C21-03)
   'actionTickPonctuel_', 'actionRechercheIA_', 'promptRechercheIA_', 'validerQuestionIA_',
   'parserPlanIA_', 'appelAnthropicTexte_', 'domainesAutorises_',
