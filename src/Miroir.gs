@@ -17,6 +17,12 @@
  * miroir (limite assumée : à nettoyer à la main de temps en temps, comme `_Doublons`/`_Technique`).
  * Écriture bornée par LOT + garde-temps (la boucle complète, sur tout le dépôt, vit côté GitHub
  * Actions — en plusieurs requêtes — jamais une seule exécution qui parcourt tout).
+ *
+ * DISPOSITION À PLAT (révision PM/architecte 2026-07-08) : plus AUCUN sous-dossier — tous les
+ * fichiers vivent à la racine de `_Miroir du dépôt`, le chemin d'origine aplati par `---`
+ * (« src/Router.gs » → « src---Router.gs.txt ») pour que NotebookLM puisse tout sélectionner d'un
+ * seul niveau. Les copies de l'ANCIENNE arborescence (sous-dossiers src/, docs/…) sont obsolètes :
+ * purge MANUELLE par Marc (le code ne supprime jamais rien).
  */
 
 /** Dossier racine du miroir (hors domaines, à côté de `_Doublons`/`_Technique`). */
@@ -42,41 +48,26 @@ function nettoyerSegmentChemin_(segment) {
   return String(segment == null ? '' : segment).replace(/[\/\\:*?"<>|]/g, '-').trim();
 }
 
-/** Segments de DOSSIER (sans le nom de fichier final), nettoyés, jamais vides. PUR. */
-function dossiersMiroir_(chemin) {
-  var segs = String(chemin == null ? '' : chemin).split('/').filter(Boolean).map(nettoyerSegmentChemin_);
-  return segs.slice(0, -1).filter(Boolean);
-}
-
-/** Nom de fichier final dans le miroir : toujours `.txt` (lisible par NotebookLM), quelle que soit
- *  l'extension d'origine (ex. "Router.gs" → "Router.gs.txt"). PUR. */
+/**
+ * Nom de fichier APLATI dans le miroir (révision PM/architecte 2026-07-08) : tout le chemin sur UN
+ * niveau, `/` → `---`, toujours suffixé `.txt` (ex. "src/Router.gs" → "src---Router.gs.txt").
+ * Pourquoi à plat : NotebookLM limite la SÉLECTION de sources aux fichiers d'un seul niveau —
+ * l'arborescence de sous-dossiers du miroir v1 l'empêchait de tout ingérer. PUR.
+ */
 function nomFichierMiroir_(chemin) {
   var s = String(chemin == null ? '' : chemin);
   if (!s || /\/$/.test(s)) return ''; // chemin vide ou finissant par '/' → pas de nom de fichier
-  var segs = s.split('/').filter(Boolean).map(nettoyerSegmentChemin_);
+  var segs = s.split('/').filter(Boolean).map(nettoyerSegmentChemin_).filter(Boolean);
   if (!segs.length) return '';
-  var base = segs[segs.length - 1];
-  if (!base) return '';
-  return /\.txt$/i.test(base) ? base : base + '.txt';
+  var nom = segs.join('---');
+  return /\.txt$/i.test(nom) ? nom : nom + '.txt';
 }
 
 /**
- * Trouve/crée la chaîne de sous-dossiers sous le miroir correspondant aux segments de dossier.
- * @param {string[]} segments
- * @return {Folder}
- */
-function dossierMiroirPourChemin_(segments) {
-  var courant = dossierMiroir_();
-  for (var i = 0; i < segments.length; i++) {
-    courant = sousDossier_(courant, segments[i]);
-  }
-  return courant;
-}
-
-/**
- * Écrit (crée ou MET À JOUR) un fichier texte dans le miroir. Jamais de suppression. Utilise le
- * service Drive STANDARD (`DriveApp`, comme partout ailleurs dans le moteur pour créer/lire — pas
- * l'Advanced Drive Service, cf. LESSONS). Idempotent par nom dans son dossier.
+ * Écrit (crée ou MET À JOUR) un fichier texte À PLAT à la racine du miroir — plus aucun
+ * sous-dossier (révision 2026-07-08 ; les copies de l'ancienne arborescence sont à purger À LA
+ * MAIN par Marc, le code ne supprime jamais rien, §2). Jamais d'alerte/mail ici : écriture pure.
+ * Service Drive STANDARD (`DriveApp`, pas l'Advanced Service, cf. LESSONS). Idempotent par nom.
  * @param {string} chemin   chemin relatif dans le dépôt (ex. "src/Router.gs")
  * @param {string} contenu  contenu texte (déjà en UTF-8)
  * @return {boolean} vrai si écrit avec succès.
@@ -86,7 +77,7 @@ function ecrireFichierMiroir_(chemin, contenu) {
   var nom = nomFichierMiroir_(chemin);
   if (!nom) return false;
   try {
-    var dossier = dossierMiroirPourChemin_(dossiersMiroir_(chemin));
+    var dossier = dossierMiroir_();
     var it = dossier.getFilesByName(nom);
     if (it.hasNext()) {
       it.next().setContent(contenu || '');
