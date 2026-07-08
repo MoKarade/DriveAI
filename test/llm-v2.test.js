@@ -94,14 +94,19 @@ test('parserClassification_ : chemin Haiku — domaine manquant SANS champ v2 �
 /* ---------- budgetMsRun_ : garde-temps abaissé sous ANALYSE_V2 (fix quotas, ADR-0015) ---------- */
 
 test('budgetMsRun_ : garde-temps nominal quand OFF, abaissé quand ON', () => {
-  assert.strictEqual(ctx.budgetMsRun_(), ctx.CONFIG.BUDGET_MS); // OFF par défaut
-  const sauvegarde = ctx.CONFIG.ANALYSE_V2;
+  // Les 2 flags sont forcés dans CE contexte (leurs valeurs GLOBALES sont des décisions de
+  // campagne de Marc, jamais des invariants de test).
+  const sauvegarde = { v2: ctx.CONFIG.ANALYSE_V2, dry: ctx.CONFIG.DRYRUN_V2_ACTIF };
   try {
+    ctx.CONFIG.ANALYSE_V2 = false;
+    ctx.CONFIG.DRYRUN_V2_ACTIF = false;
+    assert.strictEqual(ctx.budgetMsRun_(), ctx.CONFIG.BUDGET_MS);
     ctx.CONFIG.ANALYSE_V2 = true;
     assert.strictEqual(ctx.budgetMsRun_(), ctx.CONFIG.ANALYSE_V2_BUDGET_MS);
     assert.ok(ctx.CONFIG.ANALYSE_V2_BUDGET_MS < ctx.CONFIG.BUDGET_MS, 'le budget v2 doit être plus court');
   } finally {
-    ctx.CONFIG.ANALYSE_V2 = sauvegarde; // ne pas fuiter l'état entre tests
+    ctx.CONFIG.ANALYSE_V2 = sauvegarde.v2;
+    ctx.CONFIG.DRYRUN_V2_ACTIF = sauvegarde.dry;
   }
 });
 

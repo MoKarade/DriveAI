@@ -403,10 +403,13 @@ test('traiterUnDryRunV2_ : fichier illisible → jamais fatal, marqué ET une li
   assert.strictEqual(calls.rows[0].ligne[5], 'échec classification');
 });
 
-test('appliquerDryRunV2_ : interrupteur DÉDIÉ éteint par défaut → no-op total, zéro appel Drive', () => {
+test('appliquerDryRunV2_ : interrupteur éteint → no-op total, zéro appel Drive', () => {
+  // Le flag est forcé OFF dans CE contexte (sa valeur GLOBALE est une décision de campagne de
+  // Marc — feu vert du 2026-07-08 — jamais un invariant de test, cf. leçon « tests dérivés de la
+  // constante, pas de sa valeur du jour »).
   const ctx = load(['Config.gs', 'DryRunV2.gs']);
+  ctx.CONFIG.DRYRUN_V2_ACTIF = false;
   ctx.DriveApp = { getFolderById: () => { throw new Error('ne doit jamais être appelé (flag OFF)'); } };
-  assert.strictEqual(ctx.CONFIG.DRYRUN_V2_ACTIF, false);
   assert.doesNotThrow(() => ctx.appliquerDryRunV2_(() => false));
 });
 
