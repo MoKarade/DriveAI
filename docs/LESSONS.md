@@ -790,3 +790,47 @@ ex. secret refusé → échouer vite, rejouer est inutile). (3) Un pipeline par 
 peut échouer en silence doit FAIRE ÉCHOUER le run (jamais un « Terminé : N envoyés » qui compte
 les envois, pas les écritures) — un warning ne se voit pas dans un run vert.
 **Règle durable ?** oui.
+
+## 2026-07-08 — INCIDENT : un fallback de CRÉATION d'état déclenché par une exception transitoire = reset silencieux de TOUT l'état
+**Contexte.** À 02:34, pendant une dégradation transitoire de Google (rafale d'« Access denied:
+DriveApp » au Journal), UN appel `SpreadsheetApp.openById` a levé. `getSheetEtat_` traite tout
+échec d'ouverture comme « classeur supprimé » → il a créé une NOUVELLE Sheet « DriveAI — État »
+vide et écrasé `DriveAI_SHEET_ID`, en plein tick, sans un mot. Le moteur a continué comme si de
+rien n'était : Index reparti de zéro (idempotence perdue → ~87 PJ Gmail re-déposées en copies
+dans Drive), file d'entités re-proposée (validations de Marc orphelines), app de Marc figée sur
+l'ancienne Sheet. Découvert par hasard 13 h plus tard (deux Sheets homonymes lors d'une recherche
+Drive) — aucun signal, le heartbeat était VERT (le moteur « marchait », sur le mauvais état).
+**Leçon.** Résoudre une ressource d'ÉTAT par ID avec un fallback de CRÉATION exige de distinguer
+« ABSENTE » (id vide/ressource vraiment supprimée → créer, première installation seulement)
+d'« INACCESSIBLE » (exception transitoire → échec FERMÉ : re-essai borné puis laisser le run
+échouer — le tick suivant réessaie). Un `catch` qui répond à une panne passagère en RECRÉANT la
+ressource transforme un blip de 5 minutes en fork d'état permanent et silencieux — la pire
+espèce de panne : le chien de garde ne voit rien (le moteur bat), seul un signal INDÉPENDANT
+(deux fichiers homonymes, volume d'Index incohérent) la révèle. Corollaire : l'IDENTITÉ de la
+ressource d'état (l'ID de la Sheet) fait partie des invariants à surveiller/verrouiller, pas
+seulement son contenu.
+**Règle durable ?** oui.
+
+## 2026-07-08 — Gmail : l'ID d'un FIL est l'ID de son PREMIER message — jamais deux entités sous le même préfixe de clé
+**Contexte.** Plan P2 validé : l'app marque un fil traité manuellement par une ligne Index
+`intention|<threadId>` que le moteur devait sauter. Or les clés moteur existantes sont
+`intention|<messageId>` — et dans Gmail, l'ID d'un fil EST l'ID de son premier message. Dès que
+le moteur aurait analysé le 1er message d'un fil (clé `intention|X` posée avec X = threadId),
+TOUS les messages suivants du fil auraient été sautés à tort — régression silencieuse sur le
+flux vivant, invisible en test si on ne connaît pas cette identité. Corrigé en préfixe DÉDIÉ
+(`intention-manuel|<threadId>`), avec test de collision explicite.
+**Leçon.** (1) Dans Gmail, threadId = messageId du premier message : deux espaces de clés (fil,
+message) ne peuvent JAMAIS partager le même préfixe — un préfixe d'idempotence identifie une
+ENTITÉ, pas une valeur. (2) Un plan validé (NotebookLM ou autre) reste faillible sur ce genre
+d'identité de plateforme : l'exécutant doit vérifier les identités que le plan suppose
+distinctes, et dévier en documentant (code + PR + test de collision) quand elles ne le sont pas.
+**Règle durable ?** oui.
+
+## 2026-07-08 — Une Map ré-écrite garde sa position d'insertion INITIALE — delete avant set quand l'ordre porte du sens
+**Contexte.** `etatCourantIndex` (P1) : dédoublonnage de l'Index append-only par
+`Map.set(cle, ligne)`, la dernière gagne. Or une Map JS conserve la position d'insertion de la
+PREMIÈRE écriture d'une clé : un fil re-trié aujourd'hui restait à la position de sa ligne
+d'origine → il sortait des listes « récents » bornées (`.reverse().slice(0, N)`) alors qu'il
+était le plus frais — le symptôme même que C28-02 corrigeait, recréé en silence. Repéré en revue
+flotte, corrigé par `delete` avant `set` (ré-insertion en fin) + test d'ordre.
+**Règle durable ?** non (piège JS ponctuel — le test d'ordre le verrouille localement).

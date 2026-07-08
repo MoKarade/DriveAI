@@ -45,6 +45,9 @@ const CONTRAT = [
   'appliquerRelancesQuarantaine_',
   'estAReclasserLeger_', 'collecterAReclasser_', 'deplacerVersATrier_',
   'aParentProtege_', 'ensembleDomainesProteges_', 'nbFichiersATrier_',
+  'normaliserCle_', // Entites.gs, appelé par Router/Corrections/Maintenance
+  // réconciliation Index↔Drive (C28-07, plan P3)
+  'synchroniserIndex_', 'constaterEtatDrive_', 'decisionSyncIndex_', 'cheminsSyncCompatibles_',
   // Drive REST
   'deplacerEtRenommer_', 'renommer_', 'creerRaccourci_', 'fetchDriveAvecRetry_', 'jetonDrive_',
   // corrections & formulaire

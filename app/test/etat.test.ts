@@ -404,6 +404,17 @@ describe('etatCourantIndex : la section Suspects redevient honnête (C28-13)', (
     expect(etatCourantIndex(lignes).map((l) => l.cle)).toEqual(['drive|F2', 'tri|F1|200|lu']);
   });
 
+  it('réconciliation (P3) : une ligne « déplacé » puis « corbeillé » du MÊME fichier remplace l\'état affiché', () => {
+    const lignes = interpreterIndex([
+      ['drive|X', '2024-01-01', 'vieux.pdf', '02 · Finances', '02/X', 'classé'],
+      ['drive|X', '2025-01-01', 'nouveau.pdf', '02 · Finances', 'DriveAI/02/Y', 'déplacé'], // appendée par synchroniserIndex_
+    ]);
+    const courant = etatCourantIndex(lignes);
+    expect(courant).toHaveLength(1);
+    expect(courant[0].fichier).toBe('nouveau.pdf');
+    expect(courant[0].statut).toBe('déplacé');
+  });
+
   it('une ligne dryrunv2| n\'écrase JAMAIS l\'état réel du fichier', () => {
     const lignes = interpreterIndex([
       ['drive|F5', '2026-07-01', 'a.pdf', '02 · Finances', 'x', 'classé'],

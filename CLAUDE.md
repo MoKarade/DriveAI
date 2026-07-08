@@ -352,6 +352,16 @@ NotebookLM en devient l'entrée, pas le remplacement.
   est PERMANENT — échouer vite. Et un pipeline par lots dont un lot peut se perdre doit FAIRE ÉCHOUER
   le run : un compteur d'« envoyés » (pas d'écrits) + un warning dans un run vert = trou silencieux
   (vécu : 25 fichiers manquants dans le miroir).
+- **Fallback de CRÉATION d'une ressource d'ÉTAT : « absente » ≠ « inaccessible ».** Un `openById`
+  d'état (Sheet, dossier) qui échoue TRANSITOIREMENT ne doit JAMAIS re-créer la ressource ni
+  écraser son ID (vécu 07-08 : `getSheetEtat_` a forké tout l'état sur un blip Google — Index
+  re-fait, ~87 PJ re-déposées en copies, app orpheline, heartbeat VERT pendant 13 h). Créer
+  seulement si l'ID est ABSENT (première installation) ; sinon échec fermé, re-essai au tick
+  suivant. L'IDENTITÉ de la ressource d'état est un invariant à verrouiller, pas juste son contenu.
+- **Gmail : threadId = messageId du PREMIER message.** Deux entités (fil, message) ne partagent
+  JAMAIS le même préfixe de clé d'idempotence (`intention|<threadId>` serait entré en collision
+  avec `intention|<messageId>` — fils entiers sautés à tort) : préfixe DÉDIÉ par entité + test de
+  collision. Vérifier les identités de plateforme qu'un plan validé suppose distinctes.
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 

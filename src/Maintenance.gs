@@ -635,3 +635,191 @@ function fileIdDepuisCleMaintenance_(cle) {
   if (mg) return mg[1];
   return '';
 }
+
+/* ---------- Réconciliation Index ↔ Drive (C28-07, plan P3) ---------- */
+
+// Statuts dont la ligne « la plus récente » se compare à Drive. JAMAIS `quarantaine` (l'état
+// courant doit rester quarantaine pour la relance) ni `à vérifier` (géré par le rejeu de revue).
+// `corbeillé` RESTE visité : une restauration depuis la corbeille redevient « déplacé » (revue
+// quotas). Les clés non-fichier (tri|, intention|…) sont écartées par fileIdDepuisCleMaintenance_.
+var STATUTS_SYNC_INDEX = { 'classé': true, 'doublon': true, 'média': true, 'technique': true, 'déplacé': true, 'manuel': true, 'corbeillé': true };
+
+/**
+ * Réconciliation Index ↔ Drive — campagne de fond PERPÉTUELLE, Drive en LECTURE SEULE :
+ * quand Marc déplace/renomme/corbeille un fichier DIRECTEMENT dans Drive, l'Index (append-only)
+ * dérive. Cette passe re-visite le catalogue par tranches (curseur `DriveAI_SYNC_LIGNE`) et
+ * APPEND une ligne d'état à jour (statut `déplacé` ou `corbeillé`) — jamais de mutation Drive,
+ * jamais de ré-écriture de ligne (l'app lit l'état COURANT par clé, `etatCourantIndex`).
+ *
+ * Déviation assumée du plan (« lire 50 lignes depuis le curseur ») : une ligne n'est comparée
+ * que si elle est la plus RÉCENTE de sa clé (colonne A relue au début de chaque tranche) —
+ * sinon chaque tour de curseur re-détecterait le même déplacement depuis les VIEILLES lignes
+ * et re-appendrait la même ligne à vie (croissance non bornée : il faut un prédicat de
+ * convergence que la passe produit elle-même). Auto-stabilisant : la ligne appendée devient la
+ * plus récente de sa clé et porte le chemin RECALCULÉ — la re-visite suivante n'append rien.
+ *
+ * Bornes (leçon « une campagne de fond se budgète PAR JOUR ») : `SYNC_LIGNES_PAR_RUN` lignes
+ * par tick, `SYNC_FICHIERS_PAR_JOUR` vérifications Drive par jour (l'unité de coût réelle est
+ * la vérification, pas la ligne), garde-temps partagé vérifié entre chaque fichier.
+ * @param {function():boolean} estBudgetDepasse
+ */
+function synchroniserIndex_(estBudgetDepasse) {
+  var props = PropertiesService.getScriptProperties();
+
+  // Budget QUOTIDIEN en MS RÉELLES persistées (leçon §7 : un plafond par RUN ne borne pas la
+  // JOURNÉE — ×288 ticks ; même patron que DriveAI_GMAIL_HISTO_MS_JOUR). Format `AAAA-MM-JJ|ms`.
+  var jour = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var brut = String(props.getProperty('DriveAI_SYNC_JOUR') || '');
+  var msJour = brut.indexOf(jour + '|') === 0 ? Number(brut.split('|')[1]) || 0 : 0;
+  if (msJour >= CONFIG.SYNC_BUDGET_JOUR_MS) return;
+  var depart = Date.now();
+
+  var feuille = feuille_('Index');
+  var derniere = feuille.getLastRow();
+  if (derniere < 2) return;
+
+  var curseur = Number(props.getProperty('DriveAI_SYNC_LIGNE')) || 2;
+  if (curseur < 2 || curseur > derniere) curseur = 2;
+
+  // Ligne la plus récente PAR CLÉ (colonne A seule, une lecture) : le prédicat de convergence.
+  var cles = feuille.getRange(2, 1, derniere - 1, 1).getValues();
+  var derniereLignePourCle = {};
+  for (var i = 0; i < cles.length; i++) {
+    var k = String(cles[i][0] || '');
+    if (k) derniereLignePourCle[k] = i + 2;
+  }
+
+  var fin = Math.min(derniere, curseur + CONFIG.SYNC_LIGNES_PAR_RUN - 1);
+  var lignes = feuille.getRange(curseur, 1, fin - curseur + 1, 6).getValues(); // A..F : Clé..Statut
+  var reprise = null; // ligne de reprise si la tranche est interrompue (budget)
+  var passeComplete = false;
+  try {
+    for (var j = 0; j < lignes.length; j++) {
+      if (estBudgetDepasse() || msJour + (Date.now() - depart) >= CONFIG.SYNC_BUDGET_JOUR_MS) {
+        reprise = curseur + j; // reprise exacte au tick suivant — le déjà-fait ne se refait pas
+        break;
+      }
+      var cle = String(lignes[j][0] || '');
+      var fileId = fileIdDepuisCleMaintenance_(cle);
+      if (!fileId || derniereLignePourCle[cle] !== curseur + j) continue; // pas un fichier, ou ligne périmée
+      var statut = String(lignes[j][5] || '');
+      if (!STATUTS_SYNC_INDEX[statut]) continue;
+      // Fraîcheur : une ligne écrite il y a moins de SYNC_AGE_MIN_H n'a pas eu le temps de
+      // dériver — le budget Drive du jour se garde pour le stock (revue quotas).
+      var traiteLe = new Date(lignes[j][1]).getTime();
+      if (!isNaN(traiteLe) && Date.now() - traiteLe < CONFIG.SYNC_AGE_MIN_H * 3600 * 1000) continue;
+      // Corps PAR ITEM enveloppé : un append Sheet qui tousse saute la ligne (re-détectée à la
+      // passe suivante — convergent), jamais toute la tranche rejouée hors compteur.
+      try {
+        var constat = constaterEtatDrive_(fileId);
+        var decision = decisionSyncIndex_(
+          { nom: String(lignes[j][2] || ''), chemin: String(lignes[j][4] || ''), statut: statut }, constat);
+        if (decision) indexAjouter_(cle, decision);
+      } catch (e) {
+        journalErreur_('Maintenance', 'Réconciliation : ligne ' + (curseur + j) + ' sautée : ' + e);
+      }
+    }
+    if (reprise === null) passeComplete = fin >= derniere;
+  } finally {
+    // Curseur + budget du jour persistés QUOI QU'IL ARRIVE (jamais de tranche rejouée hors compteur).
+    try {
+      var suivant = reprise !== null ? reprise : (passeComplete ? 2 : fin + 1);
+      props.setProperty('DriveAI_SYNC_LIGNE', String(suivant));
+      props.setProperty('DriveAI_SYNC_JOUR', jour + '|' + (msJour + (Date.now() - depart)));
+    } catch (e) { /* Properties indisponibles : la tranche sera simplement rejouée (convergent) */ }
+  }
+  if (passeComplete) {
+    journalInfo_('Maintenance', 'Réconciliation Index↔Drive : passe complète (' + (derniere - 1) + ' lignes).');
+  }
+}
+
+/**
+ * Observe l'état RÉEL d'un fichier dans Drive (lecture seule) : existence, corbeille, nom,
+ * chemin lisible (noms des ancêtres jusqu'à la racine DriveAI, premier parent seulement —
+ * les multi-parents sont l'exception et la zone protégée a son propre walk strict).
+ * @param {string} fileId
+ * @return {{existe:boolean, corbeille:boolean, nom:string, chemin:string}}
+ */
+function constaterEtatDrive_(fileId) {
+  var f = null;
+  try {
+    f = DriveApp.getFileById(fileId);
+  } catch (e) {
+    return { existe: false, corbeille: false, nom: '', chemin: '' };
+  }
+  var corbeille = false;
+  try { corbeille = f.isTrashed() === true; } catch (e) { /* illisible → pas corbeillé */ }
+  var nom = '';
+  try { nom = f.getName(); } catch (e) { /* nom illisible : comparaison sur chemin seul */ }
+  var segments = [];
+  try {
+    var parents = f.getParents();
+    var courant = parents.hasNext() ? parents.next() : null;
+    for (var n = 0; courant && n < 8; n++) {
+      segments.unshift(courant.getName());
+      var ps = courant.getParents();
+      courant = ps.hasNext() ? ps.next() : null;
+    }
+  } catch (e) {
+    segments = []; // branche illisible → chemin inconnu (la décision n'append pas sur un inconnu)
+  }
+  return { existe: true, corbeille: corbeille, nom: nom, chemin: segments.join('/') };
+}
+
+/**
+ * Décide la ligne d'état à APPENDRE (ou null si rien à constater). PURE (testée).
+ * Comparaison de chemins par SUFFIXE normalisé : le chemin d'Index est un libellé logique
+ * (« 02 · Finances/Desjardins ») alors que le constat remonte jusqu'à la racine du Drive —
+ * l'un doit terminer l'autre. Chemin constaté INCONNU (branche illisible) ⇒ on ne constate
+ * rien (jamais un faux « déplacé » sur une lecture partielle).
+ * @param {{nom:string, chemin:string, statut:(string|undefined)}} ligne  dernière ligne d'Index de la clé
+ * @param {{existe:boolean, corbeille:boolean, nom:string, chemin:string}} constat
+ * @return {?{statut:string, domaine:string, chemin:string, nom:string}}
+ */
+function decisionSyncIndex_(ligne, constat) {
+  var disparu = !constat.existe || constat.corbeille;
+  if (ligne.statut === 'corbeillé') {
+    // Sens INVERSE (revue quotas) : un fichier RESTAURÉ de la corbeille redevient visible —
+    // sinon « corbeillé » à vie dans l'app alors qu'il est bien là.
+    if (disparu) return null;
+    return { statut: 'déplacé', domaine: '', chemin: constat.chemin || ligne.chemin, nom: constat.nom || ligne.nom };
+  }
+  if (disparu) {
+    // Constat de RÉALITÉ, pas une action : le fichier a été corbeillé/retiré PAR MARC dans
+    // Drive — l'Index cesse de le présenter comme classé (aucune écriture Drive ici, §2).
+    return { statut: 'corbeillé', domaine: '', chemin: ligne.chemin, nom: ligne.nom };
+  }
+  var nomPareil = !constat.nom || constat.nom === ligne.nom;
+  var cheminPareil = !constat.chemin || cheminsSyncCompatibles_(ligne.chemin, constat.chemin);
+  if (nomPareil && cheminPareil) return null;
+  return {
+    statut: 'déplacé', domaine: '',
+    chemin: constat.chemin || ligne.chemin,
+    nom: constat.nom || ligne.nom,
+  };
+}
+
+/**
+ * Vrai si le chemin d'Index (libellé logique) et le chemin constaté (depuis la racine Drive)
+ * désignent le même endroit : l'un TERMINE l'autre, comparaison normalisée (casse/accents).
+ * Un chemin d'Index VIDE (ligne `manuel`, quarantaine historique) est compatible avec tout —
+ * la première passe ne re-qualifie pas des lignes qui n'ont jamais porté de chemin. PURE.
+ * @param {string} cheminIndex
+ * @param {string} cheminConstate
+ * @return {boolean}
+ */
+function cheminsSyncCompatibles_(cheminIndex, cheminConstate) {
+  if (!cheminIndex) return true;
+  var a = normaliserCle_(cheminIndex);
+  var b = normaliserCle_(cheminConstate);
+  if (!a || !b) return true;
+  if (a === b) return true;
+  return a.length < b.length ? finitPar_(b, a) : finitPar_(a, b);
+}
+
+/** Vrai si `texte` finit par `suffixe` sur une FRONTIÈRE de segment (`/`). PURE. */
+function finitPar_(texte, suffixe) {
+  if (texte === suffixe) return true;
+  if (texte.length <= suffixe.length) return false;
+  return texte.slice(-(suffixe.length + 1)) === '/' + suffixe;
+}
