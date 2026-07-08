@@ -773,3 +773,20 @@ par item) et (2) verrouillée par un test qui construit le cas au PLAFOND dériv
 une marge de sécurité. Un commentaire qui documente une marge (« 50-150 ») crée l'obligation de
 tester la borne haute de cette marge.
 **Règle durable ?** oui.
+
+## 2026-07-08 — Sync miroir : la panne transitoire d'Apps Script /exec a DEUX signatures — le succès se juge au CONTENU
+**Contexte.** Premier sync du miroir à plat : deux runs tués par un 404 transitoire (page Drive
+« Sorry, unable to open the file ») au 4e lot → re-essai borné ajouté sur les codes non-200. Le
+run suivant « réussit »… avec 25 fichiers manquants en silence : Apps Script a servi UN lot en
+HTTP 200 mais avec une page d'erreur HTML (« Script function not found: doGet » — la requête a
+été traitée en GET) à la place du JSON. Le re-essai, déclenché sur le seul code HTTP, ne voyait
+rien ; le compteur « envoyés » du workflow comptait les fichiers ENVOYÉS, pas écrits.
+**Leçon.** (1) Les pannes transitoires d'un `/exec` Apps Script sous POST en rafale ont DEUX
+signatures : un code non-200 (404), ET un 200 avec du HTML à la place du JSON attendu. Un
+re-essai qui ne regarde que le code HTTP rate la moitié des cas — le critère de succès d'un
+appel est le CONTENU (`JSON` avec `ok:true`), jamais le transport. (2) Distinguer l'échec
+TRANSITOIRE (réponse non-JSON → rejouer, borné) de l'échec PERMANENT (JSON propre `ok:false`,
+ex. secret refusé → échouer vite, rejouer est inutile). (3) Un pipeline par lots dont un lot
+peut échouer en silence doit FAIRE ÉCHOUER le run (jamais un « Terminé : N envoyés » qui compte
+les envois, pas les écritures) — un warning ne se voit pas dans un run vert.
+**Règle durable ?** oui.

@@ -345,6 +345,13 @@ NotebookLM en devient l'entrée, pas le remplacement.
   avant affichage (`sed`) — le masquage automatique de la plateforme ne couvre pas ses transformations
   dérivées (ex. encodage URL). Ces bugs n'apparaissent qu'au premier test RÉEL contre la vraie web app
   déployée, jamais en test local/CI simulé.
+- **Appel `/exec` Apps Script : le succès se juge au CONTENU (JSON `ok:true`), jamais au code HTTP.**
+  Les pannes transitoires sous POST en rafale ont DEUX signatures : un non-200 (404 « Sorry, unable to
+  open ») ET un 200 avec une page HTML à la place du JSON (« Script function not found: doGet »).
+  Rejouer (borné) tout ce qui n'est pas un JSON `ok:true` ; un JSON propre `ok:false` (secret/config)
+  est PERMANENT — échouer vite. Et un pipeline par lots dont un lot peut se perdre doit FAIRE ÉCHOUER
+  le run : un compteur d'« envoyés » (pas d'écrits) + un warning dans un run vert = trou silencieux
+  (vécu : 25 fichiers manquants dans le miroir).
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 

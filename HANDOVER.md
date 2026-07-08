@@ -4,19 +4,31 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **2026-07-08 — GOUVERNANCE : analyse déléguée à NotebookLM (règle stricte, CLAUDE.md §4) +
-> C26-07 MERGÉ + retours produit de Marc en triage.** Marc a dicté une règle d'opération stricte
-> (PR #111, mergée) : NotebookLM (qui lit le miroir Drive) = analyse architecturale & décision ;
-> Claude = exécution. Pour toute nouvelle tâche de code : générer un prompt NotebookLM copiable,
-> s'ARRÊTER, attendre le plan validé collé par Marc — voir CLAUDE.md §4 (⛔). Par ailleurs :
-> **C26-07 (dry-run v2) mergé** (PR #110, revue flotte 6 agents, 418 tests verts) — le mécanisme
-> de preuve est prêt derrière `CONFIG.DRYRUN_V2_ACTIF` (OFF) ; prochaine étape = feu vert de Marc
-> (échantillon ~100 docs, ~3-6 $) puis run réel → validation Sheet `DryRunV2` → campagne C26-08.
-> Enfin, Marc a déposé ~13 retours produit (session persistante, vues agenda, tâches manuelles/
-> depuis mails, sync Documents↔Drive, vitesse de déplacement, apprentissage/entités illogiques,
-> boutons d'analyse paramétrables, erreurs du 2 juillet, section suspect périmée, UI) — un
-> triage factuel (workflow lecture seule) est en cours ; sa sortie servira à générer les prompts
-> NotebookLM par sujet (aucun code sans plan validé, conformément à la nouvelle règle).
+> **2026-07-08 (après-midi) — GROSSE RAFALE : dry-run LANCÉ, 3 plans NotebookLM exécutés,
+> captures E2E, miroir COMPLET à plat.** Sur feu vert de Marc, PR #114-#120 toutes mergées :
+> • **Dry-run v2 EN COURS** (`DRYRUN_V2_ACTIF: true`, #114) — l'onglet Sheet `DryRunV2` se
+>   remplit (~100 docs, ~3-6 $) ; à valider par Marc, puis C26-08. Repasser le flag à false après.
+> • **P5 (#115)** : panne API DURABLE (429/529/5xx en série, seuil `LLM_ECHECS_SYST_MAX`) → même
+>   suspension/reprise auto que la panne de crédit. • **P4 (#118)** : canonicalisation des entités
+>   sur le chemin VIVANT + « reality check » Drive (`dossiersExistantsDomaine_`) + curation
+>   rétroactive (tag `c2`) — la file d'apprentissage se nettoie seule (« Richard Marc » déjà
+>   refusé en prod). • **C28-14 (#116)** : captures d'écran des 6 sections à chaque push (mode
+>   mock `VITE_E2E_MOCK`, artifact CI `e2e-screenshots`, zéro fuite prod prouvée). • **Miroir
+>   révisé 2× (#117, #119)** : À PLAT (`src---Router.gs.txt` — NotebookLM sélectionne sur un
+>   niveau) puis COMPLET (binaires utiles pdf/png/jpg/svg en base64 + PATCH REST en place ;
+>   allowlist stricte). • **2 fixes d'incident sync (#119, #120)** : les pannes transitoires
+>   d'Apps Script /exec ont DEUX signatures (404 ET 200+HTML « doGet ») → succès d'un lot = JSON
+>   `ok:true`, rejoué 3×, échec réel = run rouge (leçon durable CLAUDE.md §7). RESTE : Marc doit
+>   refaire « Nouvelle version » (web app figée pré-#119) pour le binaire svg ; plans NotebookLM
+>   **P1** (session+fraîcheur+UI), **P2** (agenda/tâches-mails), **P3** (vitesse+réconciliation
+>   Index↔Drive) validés, À EXÉCUTER. Chantier #28 = table de triage des 13 retours (BACKLOG).
+>
+> **2026-07-08 (matin) — GOUVERNANCE : analyse déléguée à NotebookLM (règle stricte, CLAUDE.md
+> §4).** Marc a dicté (PR #111) : NotebookLM (qui lit le miroir Drive) = analyse architecturale &
+> décision ; Claude = exécution. Pour toute nouvelle tâche de code : générer un prompt NotebookLM
+> copiable, s'ARRÊTER, attendre le plan validé collé par Marc — voir CLAUDE.md §4 (⛔). S'ajoute :
+> nouveau fichier créé ⇒ prévenir Marc d'ajouter la source NotebookLM (CLAUDE.md §3). Le triage
+> factuel des 13 retours produit de Marc est au chantier #28 du BACKLOG.
 >
 > **2026-07-07 (nuit) — ADR-0017 : MIROIR DRIVE du dépôt (accès de partout + NotebookLM) — TERMINÉ.**
 > Marc a d'abord demandé de remplacer GitHub par Drive comme dépôt — refusé et expliqué
