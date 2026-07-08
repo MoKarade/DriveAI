@@ -15,10 +15,14 @@
 var COLONNES_ENTITES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?', 'Vu N fois'];
 
 var _entitesCache = null; // { lignes: [...], parCle: { normKey: ligne } }
+// P4 (C28-10) : inventaire PARESSEUX des sous-dossiers existants par domaine (« reality check »
+// des propositions) — 1 listage Drive au plus par domaine et par run, jamais par document.
+var _dossiersDomaineCache = {};
 
 /** À appeler en tête de run pour repartir d'un cache neuf. */
 function reinitialiserEntitesCache_() {
   _entitesCache = null;
+  _dossiersDomaineCache = {};
 }
 
 /**
@@ -447,7 +451,12 @@ function estValidee_(statut) {
  */
 function resoudreEntite_(classif) {
   if (!classif.entite) return { etat: 'transverse' };
-  var ligne = entitesCache_().parCle[cleEntite_(classif.domaine, classif.entite)];
+  // P4 (C28-10) : la requête entrante est CANONISÉE avant le matching — les variantes d'une même
+  // entité réelle (« 3325 4e ave, app 5 » vs « 3325 4e Avenue ») résolvent vers la même ligne.
+  // Canonique null = générique ou le propriétaire lui-même : jamais une entité (doc au domaine).
+  var nomCanonique = canoniserEntite_(classif.entite);
+  if (!nomCanonique) return { etat: 'transverse' };
+  var ligne = entitesCache_().parCle[cleEntite_(classif.domaine, nomCanonique)];
   if (!ligne) return { etat: 'inconnue' };
   if (estValidee_(ligne.statut) && ligne.dossierId) {
     // On renvoie domaine/catégorie/entité DE LA LIGNE validée (source de vérité du
@@ -477,10 +486,13 @@ function typeEntiteDevine_(classif) {
  */
 function entiteEnAttenteAjouter_(classif) {
   if (!classif.entite) return;
-  // Filtre qualité (#10, ADR-0009) : un GÉNÉRIQUE (« banque », « cours de physique ») n'est jamais
-  // proposé — le document reste classé au domaine, la file de validation reste propre.
-  if (estEntiteGenerique_(classif.entite)) return;
-  var cle = cleEntite_(classif.domaine, classif.entite);
+  // P4 (C28-10) : la proposition naît sous sa forme CANONIQUE — « Ford Fiesta SE 2011 » et
+  // « Ford Fiesta 2011 » se réduisent au même nom AVANT d'entrer dans la file (fini les N formes
+  // du même appartement). Canonique null = générique ou propriétaire (subsume le filtre #10) :
+  // jamais proposé, le document reste classé au domaine.
+  var nomCanonique = canoniserEntite_(classif.entite);
+  if (!nomCanonique) return;
+  var cle = cleEntite_(classif.domaine, nomCanonique);
   var cache = entitesCache_();
   if (cache.parCle[cle]) return; // déjà proposée ou connue
 
@@ -492,7 +504,7 @@ function entiteEnAttenteAjouter_(classif) {
   // interdite (TAXONOMY : « suggestion seulement »). Sans alias, chaque re-proposition re-scanne et
   // re-incrémente — comptage de fréquence plus juste, et le document reste classé au domaine tant
   // que Marc n'a pas fusionné/validé explicitement.
-  var canonique = chercherLigneFusionnable_(classif.entite, cache, classif.domaine);
+  var canonique = chercherLigneFusionnable_(nomCanonique, cache, classif.domaine);
   if (canonique) {
     incrementerVuEntite_(canonique);
     return;
@@ -501,17 +513,24 @@ function entiteEnAttenteAjouter_(classif) {
   var type = typeEntiteDevine_(classif);
   // Garde anti-variantes (ADR-0002 §4) : propose la plus proche entité EXISTANTE du même domaine —
   // pour que Marc fusionne en 1 clic au lieu de créer un quasi-doublon. Suggestion seulement, jamais auto.
-  var variante = chercherVariante_(classif.entite, entitesMemeDomaine_(cache, classif.domaine), CONFIG.SEUIL_VARIANTE);
+  var variante = chercherVariante_(nomCanonique, entitesMemeDomaine_(cache, classif.domaine), CONFIG.SEUIL_VARIANTE);
+
+  // P4 (C28-10) — « reality check » Drive : si un dossier du domaine porte DÉJÀ ce nom (créé à la
+  // main par Marc, par une validation passée ou par la réorg #21), la proposition naît directement
+  // VALIDÉE et pointe vers lui — jamais une n-ième forme « en attente » d'un dossier qui existe.
+  // Lecture seule (inventaire paresseux 1×/domaine/run), aucun dossier créé ni déplacé ici.
+  var idExistant = dossiersExistantsDomaine_(classif.domaine)[normaliserCle_(nomCanonique)] || '';
+  var statut = idExistant ? 'validée' : 'en_attente';
 
   var f = feuille_('Entités');
   var idx = colonnesEntites_();
   var ligne = [];
-  ligne[idx['Entité']] = classif.entite;
+  ligne[idx['Entité']] = nomCanonique;
   ligne[idx['Domaine']] = classif.domaine || '';
   ligne[idx['Catégorie']] = classif.categorie || '';
   ligne[idx['Type']] = type;
-  ligne[idx['Statut']] = 'en_attente';
-  ligne[idx['Dossier ID']] = '';
+  ligne[idx['Statut']] = statut;
+  ligne[idx['Dossier ID']] = idExistant;
   ligne[idx['Ajoutée le']] = new Date();
   ligne[idx['Variante possible ?']] = variante
     ? '→ ' + variante.nom + ' (' + Math.round(variante.score * 100) + ' %) ?'
@@ -519,14 +538,41 @@ function entiteEnAttenteAjouter_(classif) {
   ligne[idx['Vu N fois']] = 1;
   for (var i = 0; i < ligne.length; i++) if (ligne[i] === undefined) ligne[i] = '';
   f.appendRow(ligne);
+  if (idExistant) journalInfo_('Entités', 'Entité existante dans Drive auto-validée : ' + nomCanonique);
 
   // Met le cache à jour (parCle + lignes) pour éviter une 2e proposition dans le même run.
   var nouvelle = {
-    ligneSheet: f.getLastRow(), entite: classif.entite, domaine: classif.domaine || '',
-    categorie: classif.categorie || '', type: type, statut: 'en_attente', dossierId: ''
+    ligneSheet: f.getLastRow(), entite: nomCanonique, domaine: classif.domaine || '',
+    categorie: classif.categorie || '', type: type, statut: statut, dossierId: idExistant
   };
   cache.parCle[cle] = nouvelle;
   cache.lignes.push(nouvelle);
+}
+
+/**
+ * Sous-dossiers EXISTANTS d'un domaine (nom normalisé → ID), inventaire PARESSEUX borné (≤ 500),
+ * mis en cache pour le run (P4/C28-10 : les propositions d'entités consultent la structure Drive
+ * réelle avant de proposer). Lecture seule — un échec Drive dégrade en table vide (cachée elle
+ * aussi : jamais de re-tentative par document dans le même run).
+ * @param {string} domaine
+ * @return {Object<string,string>}
+ */
+function dossiersExistantsDomaine_(domaine) {
+  if (_dossiersDomaineCache[domaine]) return _dossiersDomaineCache[domaine];
+  var table = {};
+  try {
+    var it = DriveApp.getFolderById(idDomaine_(domaine)).getFolders();
+    var n = 0;
+    while (it.hasNext() && n < 500) {
+      var d = it.next();
+      table[normaliserCle_(d.getName())] = d.getId();
+      n++;
+    }
+  } catch (e) {
+    journalErreur_('Entités', 'Inventaire des dossiers du domaine impossible (' + domaine + ') : ' + e);
+  }
+  _dossiersDomaineCache[domaine] = table;
+  return table;
 }
 
 /* ---------- C6-04 : promotion d'une entité par correction (ADR-0003) ---------- */
@@ -767,6 +813,44 @@ function appliquerCurationEntites_(estBudgetDepasse) {
     } else {
       enAttente.push(l);
     }
+  }
+
+  // Passe 1.5 (P4/C28-10) — canonicalisation rétroactive : une ligne en_attente dont la forme
+  // CANONIQUE rejoint une ligne VALIDÉE ou un canonique déjà vu dans la file passe « variante
+  // de : X » (statuts seulement, réversible) ; un canonique NULL restant (ex. le propriétaire,
+  // que la passe 1 « générique » ne voit pas) est refusé. Nettoie le stock accumulé AVANT ce
+  // chantier — le chemin vivant, désormais canonisé à la source, n'en produira plus.
+  if (!interrompue) {
+    var parCanonique = {};
+    for (var v = 0; v < cache.lignes.length; v++) {
+      var lv = cache.lignes[v];
+      if (!estValidee_(lv.statut)) continue;
+      var kv = cleCanoniqueEntite_(lv.domaine, lv.entite);
+      if (kv && !parCanonique[kv]) parCanonique[kv] = lv;
+    }
+    var restantes = [];
+    for (var m = 0; m < enAttente.length; m++) {
+      if (estBudgetDepasse()) { interrompue = true; break; }
+      var le = enAttente[m];
+      var ke = cleCanoniqueEntite_(le.domaine, le.entite);
+      if (!ke) {
+        f.getRange(le.ligneSheet, colStatut).setValue('refusée (générique)');
+        le.statut = 'refusee (generique)';
+        refusees++;
+        continue;
+      }
+      var porteur = parCanonique[ke];
+      if (porteur) {
+        f.getRange(le.ligneSheet, colStatut).setValue('variante de : ' + porteur.entite);
+        le.statut = 'variante de : ' + normaliserCle_(porteur.entite);
+        incrementerVuEntite_(porteur, idx['Vu N fois'] + 1);
+        regroupees++;
+      } else {
+        parCanonique[ke] = le;
+        restantes.push(le);
+      }
+    }
+    enAttente = restantes;
   }
 
   // Passe 2 — regroupement par inclusion : la plus COURTE d'un groupe reste en_attente (canonique),
