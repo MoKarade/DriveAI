@@ -5,6 +5,29 @@
 
 ---
 
+## Chantier #28 — Retours produit de Marc du 2026-07-08 (13 points, triés contre le code réel)  🟦
+
+> Triage factuel fait (workflow 13 agents + contre-vérification adversariale). **Nouvelle règle
+> CLAUDE.md §4 : la CONCEPTION de chaque tâche passe par NotebookLM** (prompt généré par Claude,
+> plan validé collé par Marc) — les statuts ci-dessous restent « en attente plan NotebookLM »
+> jusqu'à validation. Ce qui s'est révélé DÉJÀ corrigé/couvert est noté tel quel.
+
+| ID | Retour | Constat du triage | Statut |
+|----|--------|-------------------|--------|
+| C28-01 | Ne plus se connecter à chaque fois | Jeton GIS en mémoire seule (~1 h, aucun refresh silencieux) — décision « jamais persisté » (C9-01) à préserver ; reconnexion silencieuse possible sans la violer | ⬜ en attente plan NotebookLM (P1) |
+| C28-02 | Vues qui ne se rafraîchissent jamais + section ⚠ Suspects périmée | 2 causes prouvées : fetch unique au montage (toutes les vues) + l'app affiche TOUT l'historique Index append-only (statut suspect collant, jamais dédup par fil) ; plafond `A2:H20000` en dur ×6 | ⬜ en attente plan NotebookLM (P1) |
+| C28-03 | UI de partout | Gisements repérés : dates ISO brutes (formateur existant non utilisé), états chargement/erreur hétérogènes, aucun indicateur de fraîcheur | ⬜ en attente plan NotebookLM (P1) |
+| C28-04 | Agenda : choisir mois/semaine… | Un seul mode (grille mois) ; le détail-jour et la plage Calendar dérivée existent déjà — ajout semaine peu invasif | ⬜ en attente plan NotebookLM (P2) |
+| C28-05 | Ajouter des tâches manuellement | **DÉJÀ LIVRÉ** (C19-05) : carte « Créer » dans la vue Agenda (tâche/RDV + titre + date + heure). Problème réel = découvrabilité | ✅ existe — découvrabilité à traiter dans P2 |
+| C28-06 | Tâches depuis les mails + bouton « analyser les mails » paramétrable | L'automatique existe (Phase 3, fenêtre figée `newer_than:30d`) ; le manuel depuis UN mail précis n'existe pas ; rien de paramétrable | ⬜ en attente plan NotebookLM (P2) |
+| C28-07 | Mettre à jour les documents selon le Drive | L'onglet « Drive » lit en direct (pas de dérive) ; la dérive = l'Index Sheet (écrit 1× à la classification, jamais réconcilié avec les déplacements/renommages ultérieurs) | ⬜ en attente plan NotebookLM (P3) |
+| C28-08 | Vitesse de déplacement depuis l'app | 8-12 allers-retours HTTP séquentiels par drag-and-drop (dont un `lireFichier` doublon et une lecture `Index!A2:A30000` à chaque coup, cache invalidé par chaque écriture) | ⬜ en attente plan NotebookLM (P3) |
+| C28-09 | Bouton « analyser le Drive » paramétrable | **DÉJÀ LIVRÉ pour la structure** (#21) : « ✨ Analyser la structure » (Explorateur, portée = dossier courant) + « Analyser tout mon Drive » (vue Réorg). Pour les DOCUMENTS : c'est la campagne C26-08 (après dry-run) | ✅ structure — documents couverts par #26 |
+| C28-10 | Apprentissage : dossiers illogiques (mon appartement ×N) | Cause prouvée : la canonicalisation C26-02 (`canoniserAdresse_`…) n'est PAS branchée sur le chemin vivant des propositions (elle ne sert que le routage v2, éteint) ; la détection de variantes n'est qu'un indice (la ligne est quand même ajoutée) ; les propositions ne consultent JAMAIS les dossiers Drive existants — exactement le diagnostic de Marc | ⬜ en attente plan NotebookLM (P4) |
+| C28-11 | Fichiers INCONNU mal classés | **COUVERT par #26** : dry-run C26-07 mergé (feu vert Marc attendu, ~3-6 $) → campagne C26-08. Trou résiduel confirmé : le flux VIVANT produit encore des `_Inconnu` tant qu'`ANALYSE_V2` est éteint (allumage après la preuve) | ✅ couvert par #26 |
+| C28-12 | Erreurs du 2/7 (crédit API + `Session.getEffectiveUser`) | **DÉJÀ CORRIGÉ** (R1/R2/R3, construits après le 2/7 ; `DriveAI_EMAIL` posée le 6/7). MAIS la contre-vérification a trouvé un trou réel : une panne plateforme DURABLE d'une autre signature (429 persistant, 529, 5xx prolongé) n'active pas `estPannePlateforme_` → re-spam Journal + fausses quarantaines jamais auto-libérées | 🟠 trou 429/529/5xx → plan NotebookLM (P5) |
+| C28-13 | Section suspect rarement à jour | = C28-02 (mêmes 2 causes) | fusionné avec C28-02 |
+
 ## Chantier #27 — MIROIR DRIVE du dépôt (ADR-0017, demande Marc « accès de partout + NotebookLM », 2026-07-07)  ✅
 
 > Marc voulait remplacer GitHub par Drive comme dépôt — refusé (pas de sémantique git, CI/CD en
@@ -428,7 +451,7 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 |----|-------|--------|
 | R1-01 | **Garde « panne de PLATEFORME »** (`Llm.gs`) : HTTP 400 « credit balance » / 401 ⇒ panne de COMPTE, jamais imputée aux documents — `gererEchec_` ne compte RIEN pendant la panne (incident réel : crédit épuisé le 01-07 20:56 → ~89 docs quarantainés à tort en 2 jours), le pipeline saute les docs (pas d'OCR/mutation), les appels LLM du run échouent VITE (sans réseau), journal UNE fois par run, re-sonde au run suivant | ✅ (tests) |
 | R1-02 | **Canal d'alerte réparé SANS nouveau scope** : `Session.getEffectiveUser()` exige un scope (userinfo) ABSENT du manifeste → 597 alertes mortes en silence depuis le début (chien de garde, quarantaines, résumé hebdo). `emailAlerte_()` lit la Script Property **`DriveAI_EMAIL`** (repli Session, ne lève jamais) ; sans destinataire → trace explicite au Journal. Câblé partout : notifierEchec_, chien de garde, alerte stockage, résumé hebdo | ✅ (tests) |
-| R1-03 | **Reste côté Marc** : (1) **recharger le crédit Anthropic** (console.anthropic.com → Billing — panne active depuis le 01-07 20:56) ; (2) poser la Script Property `DriveAI_EMAIL` = son adresse ; (3) après recharge, UN clic `dequarantaine()` (éditeur Apps Script) pour re-tenter les ~89 docs quarantainés à tort (les ~64 photos Facebook coincées dans 00·À trier passeront par le fast-path médias, quasi gratuit) | ⬜ |
+| R1-03 | **Reste côté Marc** : (1) **recharger le crédit Anthropic** (console.anthropic.com → Billing — panne active depuis le 01-07 20:56) ; (2) poser la Script Property `DriveAI_EMAIL` = son adresse ; (3) après recharge, UN clic `dequarantaine()` (éditeur Apps Script) pour re-tenter les ~89 docs quarantainés à tort (les ~64 photos Facebook coincées dans 00·À trier passeront par le fast-path médias, quasi gratuit) | ✅ fait par Marc le 06-07 (crédit rechargé + `DriveAI_EMAIL` posée + dequarantaine, drainage vérifié — cf. HANDOVER ; seul le résumé HEBDO n'a pas encore été reçu de bout en bout, à confirmer au prochain lundi) |
 
 ### Correctif R2 — Panne persistée : sources suspendues, quota Gmail préservé (2026-07-06)  🟦
 
