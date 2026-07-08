@@ -834,3 +834,13 @@ d'origine → il sortait des listes « récents » bornées (`.reverse().slice(0
 était le plus frais — le symptôme même que C28-02 corrigeait, recréé en silence. Repéré en revue
 flotte, corrigé par `delete` avant `set` (ré-insertion en fin) + test d'ordre.
 **Règle durable ?** non (piège JS ponctuel — le test d'ordre le verrouille localement).
+
+## 2026-07-08 — Un outil manuel Apps Script ne porte JAMAIS d'underscore final
+**Contexte.** Réparation de l'incident Sheet : le plan validé nommait `reparerIncidentSheet_()`,
+à exécuter par Marc depuis l'éditeur Apps Script. Or un nom terminé par `_` est PRIVÉ pour Apps
+Script : masqué du menu d'exécution de l'éditeur — Marc n'aurait jamais pu la lancer. Renommée
+`reparerIncidentSheet` (même convention que `dequarantaine`, `rangerToutLeDrive`).
+**Leçon.** Tout point d'entrée MANUEL (exécuté par un humain dans l'éditeur) se nomme sans `_`
+final ; le `_` est réservé aux fonctions internes. Encore un cas « vérifier les identités de
+plateforme qu'un plan validé suppose » (comme threadId=messageId du 1er message).
+**Règle durable ?** non (convention locale — verrouillée par le test de surface qui liste le nom public).

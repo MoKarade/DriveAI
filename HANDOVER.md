@@ -15,8 +15,15 @@
 >   pointe toujours l'ancienne** (ses gestes n'atteignent plus le moteur). Le dry-run v2 écrit
 >   dans la NOUVELLE (démarré après la bascule — pas de fork pour lui). AUCUNE perte définitive
 >   (append-only, rien de supprimé). Correctif + fusion d'état = prompt NotebookLM généré (règle
->   §4), en attente du plan validé. IDs : ancienne `10VSEgfSulXn2V5apYktNOzWTm3y_V4iaBxsm_hRc7UY`,
->   nouvelle `1SY8PiuQ3G3U0xlp63Wihax-efl3NEZIyX2af__hBSY8`.
+>   §4), plan architecte validé puis EXÉCUTÉ. IDs : ancienne
+>   `10VSEgfSulXn2V5apYktNOzWTm3y_V4iaBxsm_hRc7UY`, nouvelle
+>   `1SY8PiuQ3G3U0xlp63Wihax-efl3NEZIyX2af__hBSY8`. Livré : `getSheetEtat_` ÉCHEC FERMÉ (jamais
+>   de re-création quand l'ID existe — tripwire `test/sheet-etat.test.js`) + `reparerIncidentSheet`
+>   (Maintenance.gs, SANS `_` final sinon masquée de l'éditeur) : réparation UN CLIC — inédits
+>   re-portés dans l'ancienne Sheet, copies de rejeu écartées dans `_Doublons` (protégés laissés
+>   en place, original jamais touché grâce au filtre date de création), Journal+DryRunV2 fusionnés,
+>   bascule `DriveAI_SHEET_ID`, marqueur d'idempotence DUR (jamais 2 passages).
+>   **RESTE : Marc exécute `reparerIncidentSheet` dans l'éditeur Apps Script après le merge.**
 > • **P1 (#122, mergé)** : jeton GIS en sessionStorage (verrou source-scan `session.test.ts`),
 >   fournisseur d'état GLOBAL (`etatGlobal.tsx`, 5 min + ⟳), Index servi en ÉTAT COURANT
 >   (`etatCourantIndex` — suspects honnêtes, C28-13), badge « Synchro HH:MM », dates formatées.

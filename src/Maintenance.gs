@@ -823,3 +823,153 @@ function finitPar_(texte, suffixe) {
   if (texte.length <= suffixe.length) return false;
   return texte.slice(-(suffixe.length + 1)) === '/' + suffixe;
 }
+
+/* ---------- Réparation de l'incident Sheet d'état du 2026-07-08 (plan architecte validé) ---------- */
+
+/**
+ * Vrai si la clé d'Index désigne un DÉPÔT DE FICHIER (le rejeu a pu créer une copie dans Drive) :
+ * `drive|…`, `shared|…`, ou une clé PJ Gmail BRUTE `<messageId hex>|i|nom|taille` — les clés PJ
+ * n'ont PAS de préfixe nommé (déviation documentée du plan, qui supposait `messageId|`). Les clés
+ * d'état pur (tri|, important|, intention*|, tache|, event|, dryrunv2|, migre|…) sont exclues :
+ * leur rejeu n'a rien déposé de neuf. PURE (testée).
+ * @param {string} cle
+ * @return {boolean}
+ */
+function estCleFichierIncident_(cle) {
+  if (/^(drive|shared)\|/.test(cle)) return true;
+  return /^[0-9a-f]{10,}\|/.test(cle); // PJ Gmail : premier segment = messageId hexadécimal brut
+}
+
+/**
+ * RÉPARATION MANUELLE de l'incident du 2026-07-08 (fail-open de getSheetEtat_ : Sheet d'état
+ * recréée à VIDE à 02:34, état forké ~13 h). À exécuter UNE FOIS par Marc depuis l'éditeur
+ * Apps Script, après merge. Fait, sous le verrou du script (jamais en même temps qu'un tick) :
+ *   1. re-porte dans l'ANCIENNE Sheet (la vraie) les lignes d'Index INÉDITES de la nouvelle
+ *      (docs/états réellement nouveaux du matin, rapport dry-run inclus — leur idempotence suit) ;
+ *   2. pour chaque REJEU de dépôt (clé déjà connue de l'ancien Index) : la copie re-déposée
+ *      aujourd'hui (créée APRÈS l'incident) est ÉCARTÉE dans `_Doublons` — déplacement seul,
+ *      jamais de suppression (§2) ; zone protégée re-vérifiée par fichier, échec fermé (§1) ;
+ *   3. fusionne Journal et DryRunV2 (append en fin d'ancienne Sheet) ;
+ *   4. TriAppris/Entités : RIEN (décision architecte — l'historique de l'ancienne fait foi) ;
+ *   5. re-pointe `DriveAI_SHEET_ID` sur l'ancienne et invalide les caches.
+ * IDEMPOTENCE DURE : refuse de tourner si la bascule est déjà faite (un 2e passage prendrait les
+ * vrais nouveaux fichiers du matin pour des rejeux et les écarterait à tort).
+ * SANS underscore final (déviation du plan, documentée) : un nom en `_` est MASQUÉ de l'éditeur
+ * Apps Script — Marc ne pourrait pas l'exécuter (même convention que dequarantaine/rangerToutLeDrive).
+ */
+function reparerIncidentSheet() {
+  var ID_ANCIENNE = '10VSEgfSulXn2V5apYktNOzWTm3y_V4iaBxsm_hRc7UY';
+  var ID_NOUVELLE = '1SY8PiuQ3G3U0xlp63Wihax-efl3NEZIyX2af__hBSY8';
+  var INCIDENT_MS = new Date('2026-07-08T02:00:00Z').getTime();
+
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DriveAI_INCIDENT_0708_REPARE')) {
+    throw new Error('Réparation DÉJÀ exécutée (DriveAI_INCIDENT_0708_REPARE) — un 2e passage écarterait à tort les vrais nouveaux fichiers.');
+  }
+  if (props.getProperty('DriveAI_SHEET_ID') !== ID_NOUVELLE) {
+    throw new Error('DriveAI_SHEET_ID ne pointe pas la Sheet de l\'incident — état inattendu, abandon (rien modifié).');
+  }
+  var verrou = LockService.getScriptLock();
+  if (!verrou.tryLock(30 * 1000)) {
+    throw new Error('Tick en cours — réessaie dans une minute (la réparation ne tourne jamais en même temps qu\'un tick).');
+  }
+  try {
+    var ancienne = SpreadsheetApp.openById(ID_ANCIENNE);
+    var nouvelle = SpreadsheetApp.openById(ID_NOUVELLE);
+    var bilan = { inedites: 0, rejeux: 0, ecartes: 0, proteges: 0, dejaDoublons: 0, introuvables: 0 };
+
+    // --- 1+2. Index : inédits re-portés, copies de rejeu écartées ---
+    var fAncien = ancienne.getSheetByName('Index');
+    var fNouveau = nouvelle.getSheetByName('Index');
+    var clesAnciennes = {};
+    if (fAncien.getLastRow() > 1) {
+      var colA = fAncien.getRange(2, 1, fAncien.getLastRow() - 1, 1).getValues();
+      for (var i = 0; i < colA.length; i++) clesAnciennes[String(colA[i][0] || '')] = true;
+    }
+    var lignesNouvelles = fNouveau.getLastRow() > 1
+      ? fNouveau.getRange(2, 1, fNouveau.getLastRow() - 1, 8).getValues() : [];
+    var proteges = ensembleDomainesProteges_();
+    var doublons = dossierDoublons_();
+    var aReporter = [];
+    for (var j = 0; j < lignesNouvelles.length; j++) {
+      var cle = String(lignesNouvelles[j][0] || '');
+      if (!cle) continue;
+      if (!clesAnciennes[cle]) {
+        aReporter.push(lignesNouvelles[j]); // inédit du matin → suit dans la vraie Sheet
+        clesAnciennes[cle] = true;          // (dédoublonne aussi les clés répétées de la nouvelle)
+        bilan.inedites++;
+        continue;
+      }
+      if (!estCleFichierIncident_(cle)) continue; // rejeu d'état pur : rien à écarter
+      bilan.rejeux++;
+      var nom = String(lignesNouvelles[j][2] || '');
+      if (!nom) continue;
+      // Copie re-déposée = même nom exact ET créée APRÈS l'incident. L'original (créé avant)
+      // ne matche jamais le filtre de date.
+      var sain = nom.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+      var it;
+      try {
+        it = DriveApp.searchFiles("title = '" + sain + "' and trashed = false");
+      } catch (e) {
+        bilan.introuvables++;
+        continue;
+      }
+      var trouve = false;
+      while (it.hasNext()) {
+        var f = it.next();
+        try {
+          if (f.getDateCreated().getTime() <= INCIDENT_MS) continue; // l'original — intouchable
+          var parents = f.getParents();
+          if (parents.hasNext() && parents.next().getId() === doublons.getId()) { bilan.dejaDoublons++; trouve = true; continue; }
+          if (aParentProtege_(f, proteges, true)) {
+            bilan.proteges++;
+            trouve = true;
+            Logger.log('PROTÉGÉ, laissé en place (§1) : ' + f.getName() + ' (' + f.getId() + ')');
+            continue;
+          }
+          f.moveTo(doublons); // déplacement SEUL — jamais de suppression (§2)
+          bilan.ecartes++;
+          trouve = true;
+          Logger.log('Écarté dans _Doublons : ' + f.getName() + ' (' + f.getId() + ')');
+        } catch (e) {
+          Logger.log('Copie non déplaçable (' + nom + ') : ' + e);
+        }
+      }
+      if (!trouve) bilan.introuvables++;
+    }
+    if (aReporter.length) {
+      fAncien.getRange(fAncien.getLastRow() + 1, 1, aReporter.length, 8).setValues(aReporter);
+    }
+
+    // --- 3. Journal + DryRunV2 : fusion par append ---
+    var ongletsAFusionner = ['Journal', 'DryRunV2'];
+    for (var o = 0; o < ongletsAFusionner.length; o++) {
+      var nomOnglet = ongletsAFusionner[o];
+      var src = nouvelle.getSheetByName(nomOnglet);
+      if (!src || src.getLastRow() < 2) continue;
+      var dst = ancienne.getSheetByName(nomOnglet);
+      if (!dst) {
+        dst = ancienne.insertSheet(nomOnglet);
+        dst.getRange(1, 1, 1, src.getLastColumn())
+          .setValues(src.getRange(1, 1, 1, src.getLastColumn()).getValues());
+      }
+      var donnees = src.getRange(2, 1, src.getLastRow() - 1, src.getLastColumn()).getValues();
+      dst.getRange(dst.getLastRow() + 1, 1, donnees.length, donnees[0].length).setValues(donnees);
+    }
+
+    // --- 5. Bascule + caches + bilan (écrit DIRECTEMENT dans l'ancienne — jamais via feuille_,
+    // qui pointerait encore la nouvelle pendant la réparation) ---
+    props.setProperty('DriveAI_SHEET_ID', ID_ANCIENNE);
+    props.setProperty('DriveAI_INCIDENT_0708_REPARE', new Date().toISOString());
+    reinitialiserIndexCache_();
+    var resume = 'Réparation incident Sheet : ' + bilan.inedites + ' ligne(s) inédite(s) re-portée(s), ' +
+      bilan.rejeux + ' rejeu(x) de dépôt, ' + bilan.ecartes + ' copie(s) écartée(s) dans _Doublons, ' +
+      bilan.proteges + ' protégée(s) laissée(s) en place, ' + bilan.dejaDoublons + ' déjà en _Doublons, ' +
+      bilan.introuvables + ' sans copie retrouvée. Bascule DriveAI_SHEET_ID → ancienne Sheet faite.';
+    ancienne.getSheetByName('Journal').appendRow([new Date(), 'INFO', 'Réparation', resume]);
+    Logger.log(resume);
+    return resume;
+  } finally {
+    verrou.releaseLock();
+  }
+}

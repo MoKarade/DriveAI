@@ -523,7 +523,14 @@ function getCleAnthropic_() {
 
 /**
  * Classeur d'état (Entités / Corrections / Index / Journal / Échecs / Santé / Progression).
- * Auto-créé au premier run si DriveAI_SHEET_ID est absent.
+ * Auto-créé au premier run UNIQUEMENT si DriveAI_SHEET_ID est ABSENT (première installation).
+ *
+ * ÉCHEC FERMÉ (incident 2026-07-08, leçon durable §7) : « absente » ≠ « inaccessible ». Un
+ * `openById` qui échoue TRANSITOIREMENT (panne API Google, blip d'accès) ne doit JAMAIS
+ * recréer la ressource ni écraser son ID — c'est arrivé une fois : nouvelle Sheet VIDE créée
+ * en plein tick, tout l'état forké en silence (~87 PJ re-déposées, validations orphelines).
+ * On lève : le run échoue proprement, le tick suivant réessaie. L'IDENTITÉ de la Sheet d'état
+ * est un invariant (verrou : test/sheet-etat.test.js).
  * @return {Spreadsheet}
  */
 function getSheetEtat_() {
@@ -533,7 +540,7 @@ function getSheetEtat_() {
     try {
       return SpreadsheetApp.openById(id);
     } catch (e) {
-      // ID invalide (classeur supprimé) → on en recrée un ci-dessous.
+      throw new Error('Panne API Google ou accès refusé à la Sheet d\'état. Abandon pour protéger l\'idempotence : ' + e);
     }
   }
   var ss = SpreadsheetApp.create('DriveAI — État');
