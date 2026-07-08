@@ -358,6 +358,9 @@ NotebookLM en devient l'entrée, pas le remplacement.
   re-fait, ~87 PJ re-déposées en copies, app orpheline, heartbeat VERT pendant 13 h). Créer
   seulement si l'ID est ABSENT (première installation) ; sinon échec fermé, re-essai au tick
   suivant. L'IDENTITÉ de la ressource d'état est un invariant à verrouiller, pas juste son contenu.
+- **Consigne manuelle Apps Script = fichier .gs D'ABORD.** Toute instruction « exécute X dans
+  l'éditeur » nomme le FICHIER puis la fonction (« ouvre `Maintenance.gs` → `fusionnerDomaine…` →
+  Exécuter ») — l'éditeur choisit les fonctions PAR fichier, sans lui Marc doit fouiller le projet.
 - **Gmail : threadId = messageId du PREMIER message.** Deux entités (fil, message) ne partagent
   JAMAIS le même préfixe de clé d'idempotence (`intention|<threadId>` serait entré en collision
   avec `intention|<messageId>` — fils entiers sautés à tort) : préfixe DÉDIÉ par entité + test de

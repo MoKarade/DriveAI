@@ -844,3 +844,14 @@ Script : masqué du menu d'exécution de l'éditeur — Marc n'aurait jamais pu 
 final ; le `_` est réservé aux fonctions internes. Encore un cas « vérifier les identités de
 plateforme qu'un plan validé suppose » (comme threadId=messageId du 1er message).
 **Règle durable ?** non (convention locale — verrouillée par le test de surface qui liste le nom public).
+
+## 2026-07-08 — Une consigne d'exécution manuelle nomme TOUJOURS le fichier .gs
+**Contexte.** Après les merges #125/#126, Marc devait exécuter `reparerIncidentSheet` puis
+`fusionnerDomaine07PersoVers08` dans l'éditeur Apps Script. Les consignes donnaient le nom de la
+FONCTION mais pas le FICHIER — or dans l'éditeur, on ouvre d'abord un fichier `.gs`, puis on
+choisit la fonction dans son menu déroulant : sans le fichier, Marc doit fouiller tout le projet.
+(Les deux étaient dans `Maintenance.gs`.)
+**Leçon.** Toute consigne « exécute X dans l'éditeur Apps Script » se formule
+« ouvre `<Fichier>.gs` → choisis `X` dans le menu → Exécuter » — le fichier d'abord, toujours.
+Même exigence pour les docs (DEPLOIEMENT, HANDOVER) qui décrivent une action manuelle.
+**Règle durable ?** oui (convention de communication avec Marc).
