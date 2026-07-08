@@ -398,10 +398,14 @@ function collecterAReclasser_(dossier, ids, max, estBudgetDepasse, proteges) {
  * @return {boolean} vrai si déplacé.
  */
 function deplacerVersATrier_(fileId, proteges) {
+  var f = null;
   try {
-    var f = DriveApp.getFileById(fileId);
+    f = DriveApp.getFileById(fileId);
     if (aParentProtege_(f, proteges, true)) { // STRICT : abstention si indéterminable (jamais détacher, §1)
       journalInfo_('Rangement', 'Fichier en zone protégée ignoré (non déplacé) : ' + fileId);
+      // Convergence (plan anomalies 2026-07-08) : la ligne d'Index stoppe la re-collecte à vie
+      // (`estAReclasserLeger_` saute toute clé drive| connue) — fini le re-contrôle à chaque tick.
+      indexAjouter_('drive|' + fileId, { statut: 'zone protégée', nom: f.getName(), domaine: '', chemin: '' }, '');
       return false;
     }
     var cibleId = CONFIG.DOSSIERS.A_TRIER;
@@ -414,7 +418,13 @@ function deplacerVersATrier_(fileId, proteges) {
     }
     return true;
   } catch (e) {
-    journalErreur_('Rangement', 'Déplacement impossible (' + fileId + ') : ' + e);
+    // Échec de déplacement (ex. « Access denied » sur un fichier partagé sans droit) : compté par le
+    // gestionnaire d'échecs — après QUARANTAINE_MAX, la ligne quarantaine (clé drive|) stoppe la
+    // re-collecte, et la Relance de l'app reste le chemin de RETOUR manuel (leçon : un garde-fou
+    // qui met hors circuit exige un retour). Une panne plateforme n'est jamais comptée (gererEchec_).
+    var nom = '';
+    try { nom = f ? f.getName() : ''; } catch (e2) { /* nom illisible — l'ID suffira */ }
+    gererEchec_({ cle: 'drive|' + fileId, nom: nom || fileId }, 'Déplacement vers À trier impossible : ' + e);
     return false;
   }
 }
@@ -972,4 +982,78 @@ function reparerIncidentSheet() {
   } finally {
     verrou.releaseLock();
   }
+}
+
+/* ---------- Fusion du domaine erroné « 07 · Perso & projets » (plan anomalies 2026-07-08) ---------- */
+
+/**
+ * FUSION MANUELLE one-shot : « 07 · Perso & projets » (domaine AUTO-CRÉÉ par erreur — absent de
+ * DOMAINES_AUTO, donc sans voie de re-création une fois la Property effacée) → le canonique
+ * « 08 · Perso & projets » (CONFIG.DOMAINES). À exécuter par Marc depuis l'éditeur Apps Script,
+ * AVANT la campagne C26-08. SANS underscore final (un nom en `_` est masqué de l'éditeur).
+ *
+ * Ordre PENSÉ pour la reprise : les déplacements d'abord (idempotents — si la limite des 6 min
+ * coupe, RELANCER la fonction : elle reprend sur le restant), la Property et le ré-étiquetage
+ * Sheet à la fin seulement. Déplacement SEUL, jamais de suppression (§2) : le dossier VIDE
+ * restant relève d'ADR-0014 (corbeille par l'APP, au clic de Marc). Le CHEMIN des lignes d'Index
+ * n'est pas réécrit : la réconciliation (synchroniserIndex_) constatera les déplacements au fil
+ * de l'eau — seule l'étiquette Domaine (donnée erronée) est corrigée, dans Entités et Index.
+ */
+function fusionnerDomaine07PersoVers08() {
+  var NOM_ERRONE = '07 · Perso & projets';
+  var NOM_CIBLE = '08 · Perso & projets';
+  var props = PropertiesService.getScriptProperties();
+  var idSource = props.getProperty('DriveAI_DOM_' + NOM_ERRONE);
+  if (!idSource) {
+    Logger.log('Rien à fusionner : le domaine auto « ' + NOM_ERRONE + ' » est absent des Properties.');
+    return 'rien à faire';
+  }
+  var idCible = CONFIG.DOMAINES[NOM_CIBLE];
+  if (!idCible) throw new Error('Domaine cible introuvable dans CONFIG.DOMAINES : ' + NOM_CIBLE);
+  var verrou = LockService.getScriptLock();
+  if (!verrou.tryLock(30 * 1000)) {
+    throw new Error('Tick en cours — réessaie dans une minute (la fusion ne tourne jamais en même temps qu\'un tick).');
+  }
+  try {
+    var source = DriveApp.getFolderById(idSource);
+    var cible = DriveApp.getFolderById(idCible);
+    var fichiers = 0, dossiers = 0;
+    var fi = source.getFiles();
+    while (fi.hasNext()) { fi.next().moveTo(cible); fichiers++; }
+    var fo = source.getFolders();
+    while (fo.hasNext()) { fo.next().moveTo(cible); dossiers++; }
+    props.deleteProperty('DriveAI_DOM_' + NOM_ERRONE);
+    var corrEntites = remplacerColonneOnglet_('Entités', 'Domaine', NOM_ERRONE, NOM_CIBLE);
+    var corrIndex = remplacerColonneOnglet_('Index', 'Domaine', NOM_ERRONE, NOM_CIBLE);
+    var resume = 'Fusion « ' + NOM_ERRONE + ' » → « ' + NOM_CIBLE + ' » : ' + fichiers + ' fichier(s) et ' +
+      dossiers + ' sous-dossier(s) déplacés, Property effacée, ' + corrEntites + ' ligne(s) Entités et ' +
+      corrIndex + ' ligne(s) Index ré-étiquetées. Dossier vide restant : ADR-0014 (app).';
+    journalInfo_('Maintenance', resume);
+    Logger.log(resume);
+    return resume;
+  } finally {
+    verrou.releaseLock();
+  }
+}
+
+/**
+ * Remplace `ancienne` par `nouvelle` dans la colonne nommée `entete` d'un onglet (en-têtes réels
+ * de la ligne 1 — jamais un index de colonne en dur). Réparation d'étiquettes, une seule écriture.
+ * @return {number} nombre de cellules corrigées.
+ */
+function remplacerColonneOnglet_(onglet, entete, ancienne, nouvelle) {
+  var f = feuille_(onglet);
+  var dern = f.getLastRow();
+  if (dern < 2) return 0;
+  var entetes = f.getRange(1, 1, 1, f.getLastColumn()).getValues()[0].map(String);
+  var col = entetes.indexOf(entete) + 1;
+  if (col < 1) return 0;
+  var plage = f.getRange(2, col, dern - 1, 1);
+  var valeurs = plage.getValues();
+  var n = 0;
+  for (var i = 0; i < valeurs.length; i++) {
+    if (String(valeurs[i][0]) === ancienne) { valeurs[i][0] = nouvelle; n++; }
+  }
+  if (n > 0) plage.setValues(valeurs);
+  return n;
 }
