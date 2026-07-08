@@ -71,6 +71,8 @@ const CONTRAT = [
   // web app : recherche IA (C21-03)
   'actionTickPonctuel_', 'actionRechercheIA_', 'promptRechercheIA_', 'validerQuestionIA_',
   'parserPlanIA_', 'appelAnthropicTexte_', 'domainesAutorises_',
+  // analyse ciblée des mails (C28-06, plan P2)
+  'actionAnalyseCiblee_', 'validerRequeteCiblee_', 'balayerAnalyseCiblee_',
   // réorg IA (#21, C21-04 : proposition ; C21-06 : application)
   'appliquerReorgIA_', 'inventaireDossiers_', 'resumeArborescence_', 'promptReorg_',
   'parserPropositionReorg_', 'lignePourAction_', 'solderDemande_', 'aParentEtrangerProtege_',

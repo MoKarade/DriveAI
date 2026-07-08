@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   grilleMois,
+  grilleSemaine,
   cleJour,
   interpreterEvenements,
   interpreterTaches,
@@ -32,6 +33,34 @@ describe('grilleMois', () => {
     const g = grilleMois(2027, 1);
     expect(g.length).toBe(4);
     expect(g.flat().every((j) => !j.horsMois)).toBe(true);
+  });
+});
+
+describe('grilleSemaine (C28-04, plan P2)', () => {
+  it('mercredi 8 juillet 2026 → lundi 6 au dimanche 12, tous dans le mois', () => {
+    const s = grilleSemaine(new Date(2026, 6, 8));
+    expect(s.length).toBe(7);
+    expect(cleJour(s[0].date)).toBe('2026-07-06');
+    expect(cleJour(s[6].date)).toBe('2026-07-12');
+    expect(s.every((j) => !j.horsMois)).toBe(true);
+  });
+
+  it('un lundi → la semaine commence ce jour-là (pas la précédente)', () => {
+    const s = grilleSemaine(new Date(2026, 6, 6));
+    expect(cleJour(s[0].date)).toBe('2026-07-06');
+  });
+
+  it('un dimanche → la semaine commence le lundi PRÉCÉDENT', () => {
+    const s = grilleSemaine(new Date(2026, 6, 12));
+    expect(cleJour(s[0].date)).toBe('2026-07-06');
+  });
+
+  it('semaine à cheval sur deux mois : horsMois relatif au mois de la référence', () => {
+    const s = grilleSemaine(new Date(2026, 6, 31)); // vendredi 31 juillet
+    expect(cleJour(s[0].date)).toBe('2026-07-27');
+    expect(cleJour(s[6].date)).toBe('2026-08-02');
+    expect(s[4].horsMois).toBe(false); // 31 juillet
+    expect(s[5].horsMois).toBe(true);  // 1er août
   });
 });
 

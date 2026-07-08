@@ -5,10 +5,11 @@
  * Les newsletters jamais lues restent dans le résumé hebdo (calcul Gmail côté moteur).
  */
 
-import { useState } from 'react';
-import { ecrireCellule } from '../google';
+import { useRef, useState } from 'react';
+import { ecrireCellule, marquerIntentionManuelle, analyseCiblee } from '../google';
 import { useEtatGlobal } from '../etatGlobal';
 import { IndicateurChargement, BanniereErreur } from '../composants/UI';
+import { Creation } from '../composants/Creation';
 import {
   LigneIndex,
   LigneTriAppris,
@@ -29,6 +30,22 @@ export function Mails({ langue }: { langue: Langue }) {
   const { donnees, rafraichir } = useEtatGlobal();
   const [retires, setRetires] = useState<number[]>([]); // optimiste, le temps du prochain rafraîchissement
   const [erreurAction, setErreurAction] = useState('');
+  // C28-06 (plan P2) : création manuelle de tâche/RDV DEPUIS un fil trié (modale pré-remplie).
+  const [creationPour, setCreationPour] = useState<LigneIndex | null>(null);
+  const filsMarques = useRef(new Set<string>()); // marqueur Index écrit UNE fois par fil
+
+  /** Après la 1ʳᵉ création réussie : le moteur ne doit plus analyser ce fil (pas de doublon). */
+  async function marquerFilTraite(l: LigneIndex) {
+    const threadId = l.cle.split('|')[1] ?? '';
+    if (!threadId || filsMarques.current.has(threadId)) return;
+    filsMarques.current.add(threadId);
+    try {
+      await marquerIntentionManuelle(threadId, l.fichier);
+    } catch (e) {
+      filsMarques.current.delete(threadId); // re-tentable
+      setErreurAction(String(e));
+    }
+  }
 
   async function retirer(l: LigneTriAppris) {
     try {
@@ -78,6 +95,10 @@ export function Mails({ langue }: { langue: Langue }) {
                     {l.statut === 'trié' ? t('trie', langue) : l.statut === 'tri-a-verifier' ? t('aVerifier', langue) : '⚠'}
                   </span>
                 </td>
+                <td className="nombre">
+                  <button className="discret" title={t('creerTacheFilTitre', langue)}
+                    onClick={() => setCreationPour(l)}>➕</button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -119,6 +140,69 @@ export function Mails({ langue }: { langue: Langue }) {
         </table>
         <p className="explication">{t('tableAppriseNote', langue)}</p>
       </section>
+
+      <AnalyseCiblee langue={langue} />
+
+      {creationPour && (
+        <>
+          <button className="feuille-fond" aria-label={t('fermer', langue)} onClick={() => setCreationPour(null)} />
+          <div className="feuille-plus" role="dialog" aria-label={t('creer', langue)}>
+            <Creation
+              langue={langue}
+              titreInitial={creationPour.fichier}
+              note={lienGmailPourLigne(creationPour)}
+              onCree={() => void marquerFilTraite(creationPour)}
+            />
+            <button className="discret" onClick={() => setCreationPour(null)}>{t('fermer', langue)}</button>
+          </div>
+        </>
+      )}
     </div>
+  );
+}
+
+/**
+ * Analyse ciblée des mails (C28-06, plan P2) : Marc dépose une requête Gmail LIBRE, le MOTEUR
+ * la balaie par pages à ses prochains ticks (campagne bornée : plafonds/run + frein budget §2.6
+ * — jamais le flux vivant). L'app ne lit aucun mail ici.
+ */
+function AnalyseCiblee({ langue }: { langue: Langue }) {
+  const [requete, setRequete] = useState('');
+  const [statut, setStatut] = useState('');
+  const [erreur, setErreur] = useState('');
+  const [enCours, setEnCours] = useState(false);
+
+  async function lancer() {
+    setErreur('');
+    setStatut('');
+    setEnCours(true);
+    try {
+      setStatut(await analyseCiblee(requete));
+      setRequete('');
+    } catch (e) {
+      setErreur(String(e));
+    } finally {
+      setEnCours(false);
+    }
+  }
+
+  return (
+    <section className="carte large">
+      <h2>{t('analyseCibleeTitre', langue)}</h2>
+      <div className="ligne-formulaire">
+        <input
+          value={requete}
+          onChange={(e) => setRequete(e.target.value)}
+          placeholder={t('analyseCibleePlaceholder', langue)}
+          style={{ flex: 1 }}
+        />
+        <button disabled={requete.trim().length < 3 || enCours} onClick={lancer}>
+          {t('lancer', langue)}
+        </button>
+      </div>
+      {statut && <p className="ok">✓ {statut}</p>}
+      <BanniereErreur langue={langue} erreur={erreur} />
+      <p className="explication">{t('analyseCibleeNote', langue)}</p>
+    </section>
   );
 }
