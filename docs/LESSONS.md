@@ -855,3 +855,16 @@ choisit la fonction dans son menu déroulant : sans le fichier, Marc doit fouill
 « ouvre `<Fichier>.gs` → choisis `X` dans le menu → Exécuter » — le fichier d'abord, toujours.
 Même exigence pour les docs (DEPLOIEMENT, HANDOVER) qui décrivent une action manuelle.
 **Règle durable ?** oui (convention de communication avec Marc).
+
+## 2026-07-08 — La garde de reprise d'un outil coupable par la limite 6 min se pose sur la DERNIÈRE étape
+**Contexte.** `fusionnerDomaine07PersoVers08` : déplacements (reprenables) → effacement de la
+Property → ré-étiquetage Sheets → bilan. La 1ʳᵉ exécution a été coupée à 6 min ENTRE l'effacement
+de la Property et le ré-étiquetage. Or la garde d'entrée (« Property absente → rien à faire »)
+servait aussi de garde de REPRISE : la relance a répondu « rien à fusionner » en laissant 360
+cellules mal étiquetées — reprise cassée en silence, rattrapée par `terminerFusionDomaine07`.
+**Leçon.** Instance de « l'inscription "c'est fini" se pose en dernier » : dans un outil manuel
+susceptible d'être coupé par la limite des 6 minutes, le marqueur qui fait dire « déjà fait » à
+la relance doit être posé APRÈS la toute dernière étape utile — et chaque étape intermédiaire
+doit être idempotente SEULE (remplacement conditionnel, jamais un état qui neutralise la suite).
+Tracer la coupure à CHAQUE frontière d'étape avant de déclarer un outil « reprenable ».
+**Règle durable ?** non (instance d'une règle durable déjà consignée — « ordre des écritures d'état »).

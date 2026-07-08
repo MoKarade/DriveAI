@@ -1057,3 +1057,36 @@ function remplacerColonneOnglet_(onglet, entete, ancienne, nouvelle) {
   if (n > 0) plage.setValues(valeurs);
   return n;
 }
+
+/**
+ * FIN DE FUSION manuelle (correctif du 2026-07-08 au soir) : la 1ʳᵉ exécution de
+ * `fusionnerDomaine07PersoVers08` a déplacé TOUS les fichiers puis a été coupée (limite 6 min)
+ * ENTRE l'effacement de la Property et le ré-étiquetage — et sa garde de reprise (la Property)
+ * disait ensuite « rien à faire » (leçon : la garde de reprise se pose sur la DERNIÈRE étape,
+ * jamais une étape intermédiaire). Cette fonction termine le travail, idempotente par NATURE
+ * (elle ne remplace que les cellules portant ENCORE le libellé erroné — un 2e passage ne change
+ * rien) : colonnes Domaine d'Entités et d'Index, et Chemin d'Index (égalité STRICTE — les
+ * fichiers SONT réellement sous 08 maintenant, autant épargner 349 constats « déplacé » à la
+ * réconciliation). Verrou patient (3 min) : les ticks du dry-run laissent des fenêtres étroites.
+ */
+function terminerFusionDomaine07() {
+  var NOM_ERRONE = '07 · Perso & projets';
+  var NOM_CIBLE = '08 · Perso & projets';
+  var verrou = LockService.getScriptLock();
+  if (!verrou.tryLock(3 * 60 * 1000)) {
+    throw new Error('Verrou du script indisponible après 3 min — réessaie (les ticks du dry-run sont longs).');
+  }
+  try {
+    var corrEntites = remplacerColonneOnglet_('Entités', 'Domaine', NOM_ERRONE, NOM_CIBLE);
+    var corrDomaine = remplacerColonneOnglet_('Index', 'Domaine', NOM_ERRONE, NOM_CIBLE);
+    var corrChemin = remplacerColonneOnglet_('Index', 'Chemin', NOM_ERRONE, NOM_CIBLE);
+    var resume = 'Fin de fusion « ' + NOM_ERRONE + ' » → « ' + NOM_CIBLE + ' » : ' + corrEntites +
+      ' ligne(s) Entités, ' + corrDomaine + ' Domaine et ' + corrChemin + ' Chemin d\'Index ré-étiquetés ' +
+      '(les fichiers avaient déjà tous été déplacés par la 1re exécution).';
+    journalInfo_('Maintenance', resume);
+    Logger.log(resume);
+    return resume;
+  } finally {
+    verrou.releaseLock();
+  }
+}

@@ -158,3 +158,22 @@ test('fusionnerDomaine07PersoVers08 : fichiers + sous-dossiers déplacés vers 0
   assert.strictEqual(onglets['Index'].donnees[2][3], '02 · Finances');
   assert.ok(String(resume).includes('2 fichier(s) et 1 sous-dossier(s)'));
 });
+
+test('terminerFusionDomaine07 : ré-étiquette Domaine (Entités+Index) et Chemin (Index), idempotent par nature', () => {
+  const ctx = ctxFusion({
+    entites: [['EDF', NOM_ERRONE, 'en_attente']],
+    index: [
+      ['drive|F1', '2026-07-01', 'a.pdf', NOM_ERRONE, NOM_ERRONE, 'classé'],
+      ['drive|F2', '2026-07-02', 'b.pdf', '02 · Finances', NOM_ERRONE + '/Vrac', 'classé'], // chemin COMPOSÉ : jamais touché (égalité stricte)
+    ],
+  });
+  delete ctx.props['DriveAI_DOM_' + NOM_ERRONE]; // état réel post-coupure : Property déjà effacée
+  const resume = ctx.c.terminerFusionDomaine07();
+  assert.strictEqual(ctx.onglets['Entités'].donnees[1][1], '08 · Perso & projets');
+  assert.strictEqual(ctx.onglets['Index'].donnees[1][3], '08 · Perso & projets');
+  assert.strictEqual(ctx.onglets['Index'].donnees[1][4], '08 · Perso & projets'); // chemin racine ré-étiqueté
+  assert.strictEqual(ctx.onglets['Index'].donnees[2][4], NOM_ERRONE + '/Vrac');   // composé intact
+  assert.ok(String(resume).includes('ré-étiquetés'));
+  // Idempotence : un 2e passage ne change plus rien.
+  assert.ok(String(ctx.c.terminerFusionDomaine07()).includes('0 ligne(s) Entités'));
+});
