@@ -758,3 +758,18 @@ affichage (`sed`) — un masquage automatique de plateforme (GitHub Actions) ne 
 transformations dérivées d'un secret (ex. encodage URL), donc un log verbeux public doit être
 assaini manuellement, jamais faire confiance au seul masquage automatique.
 **Règle durable ?** oui.
+
+## 2026-07-08 — C26-07 : une Script Property qui persiste une liste paramétrée par CONFIG se borne contre ~9 Ko
+**Contexte.** Dry-run v2 (C26-07) : l'échantillon (liste `{domaine, id}`) est persisté en Script
+Property pour la reproductibilité. La revue code a mesuré qu'à `DRYRUN_V2_TAILLE=150` — le haut de
+la marge que le commentaire de CONFIG invitait lui-même à essayer — l'encodage naïf (nom de domaine
+en clair répété par item) atteint ~12,5 Ko, au-delà de la limite PropertiesService (~9 Ko/valeur) :
+`setProperty` lèverait à chaque tick, la collecte Drive (coûteuse) serait refaite en boucle sans
+jamais persister, avec un message d'erreur muet sur la vraie cause.
+**Leçon.** Toute Script Property qui persiste une LISTE dont la taille est paramétrée par CONFIG
+doit être (1) encodée COMPACTE (table d'index pour les champs répétés, jamais le libellé en clair
+par item) et (2) verrouillée par un test qui construit le cas au PLAFOND dérivé de la CONFIG
+(jamais de la valeur du jour — même règle que les tests de seuils) et vérifie la taille JSON sous
+une marge de sécurité. Un commentaire qui documente une marge (« 50-150 ») crée l'obligation de
+tester la borne haute de cette marge.
+**Règle durable ?** oui.

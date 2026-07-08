@@ -310,6 +310,11 @@ NotebookLM en devient l'entrée, pas le remplacement.
   rajustement (vécu : plafond campagnes 10→30). Exception : le tripwire qui verrouille la VALEUR
   elle-même — et le dit en commentaire. Corollaire : toute Property « déjà fait/déjà dit » se
   re-audite quand un paramètre qu'elle supposait fixe devient variable (le seuil va dans la clé).
+- **Une Script Property qui persiste une LISTE paramétrée par CONFIG se borne contre ~9 Ko.**
+  Encodage COMPACT (table d'index pour les champs répétés, jamais le libellé en clair par item) +
+  test au PLAFOND dérivé de la CONFIG (borne haute de la marge documentée, pas la valeur du jour) —
+  sinon `setProperty` lève au premier rajustement et la collecte amont est refaite en boucle sans
+  jamais persister (repéré en revue C26-07 : 150 items naïfs ≈ 12,5 Ko > limite).
 - **Retrait de code : frontières de fonctions + filet de SURFACE.** Jamais de regex multi-lignes pour
   retirer une fonction (elle avale les voisines — vécu ×2, dont `deciderRoutage_` entière) : analyse de
   frontières + assertions de présence des voisines. Les tests unitaires mockés ne voient PAS une fonction
