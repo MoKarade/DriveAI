@@ -31,9 +31,10 @@ const CONTRAT = [
   'entitesCache_', 'reinitialiserEntitesCache_', 'resoudreEntite_', 'entiteEnAttenteAjouter_',
   'creerDossiersEntitesValidees_', 'promouvoirEntiteValidee_', 'appliquerCurationEntites_',
   'estEntiteGenerique_', 'estFusionnableEntite_', 'incrementerVuEntite_',
-  // canonicalisation & fusion d'entités (refonte 2026-07-07)
+  // canonicalisation & fusion d'entités (refonte 2026-07-07 ; branchée sur le chemin VIVANT P4/C28-10)
   'canoniserEntite_', 'cleCanoniqueEntite_', 'estProprietaireMarc_', 'estJetonGenerique_',
   'retirerSuffixeJuridique_', 'canoniserVehicule_', 'canoniserAdresse_', 'corrigerOcrConnu_',
+  'dossiersExistantsDomaine_', // « reality check » Drive des propositions (P4/C28-10)
   // sources & maintenance
   'traiterGmail_', 'traiterGmailHistorique_', 'traiterPageHistorique_', 'pageFilsHisto_',
   'requeteHisto_', 'dateGmail_',

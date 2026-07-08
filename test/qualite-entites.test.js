@@ -134,7 +134,12 @@ test('entiteEnAttenteAjouter_ : canonique VALIDÉE → Vu incrémenté, AUCUN al
   assert.strictEqual(c._entitesCache.parCle[cleVariante], undefined);
 });
 
-test('appliquerCurationEntites_ : PAS d\'effondrement transitif — « Honda Civic » n\'avale pas 2014/2017', () => {
+test('appliquerCurationEntites_ : passe 1.5 (P4/C28-10) — les millésimes d\'un MÊME véhicule se regroupent sous la forme canonique', () => {
+  // Révision du comportement (plan NotebookLM P4 validé par Marc, 2026-07-08) : la canonicalisation
+  // véhicule (C26-02) retire les années/finitions — « Honda Civic 2014 » et « Honda Civic 2017 »
+  // SONT le même véhicule que « Honda Civic » (la plainte d'origine : « Ford Fiesta en 3 dossiers »).
+  // Le regroupement est par ÉGALITÉ de clé canonique (jamais l'inclusion transitive d'antan) et
+  // reste réversible (statuts seulement).
   const lignes = [
     { ligneSheet: 2, entite: 'Honda Civic', domaine: '03 · Logement & véhicule', categorie: '', type: '', statut: 'en_attente', dossierId: '' },
     { ligneSheet: 3, entite: 'Honda Civic 2014', domaine: '03 · Logement & véhicule', categorie: '', type: '', statut: 'en_attente', dossierId: '' },
@@ -142,8 +147,33 @@ test('appliquerCurationEntites_ : PAS d\'effondrement transitif — « Honda Civ
   ];
   const { c, calls } = ctxCuration(lignes, false);
   c.appliquerCurationEntites_(() => false);
-  const statuts = calls.statuts.filter((s) => typeof s.v === 'string' && s.v.indexOf('variante') === 0);
-  assert.strictEqual(statuts.length, 0, 'les trois Honda restent des lignes distinctes');
+  const variantes = calls.statuts.filter((s) => typeof s.v === 'string' && s.v.indexOf('variante') === 0);
+  assert.strictEqual(variantes.length, 2, '2014 et 2017 rejoignent la forme canonique');
+  variantes.forEach((s) => assert.strictEqual(s.v, 'variante de : Honda Civic'));
+});
+
+test('appliquerCurationEntites_ : passe 1.5 — une en_attente dont le canonique rejoint une ligne VALIDÉE devient sa variante', () => {
+  const lignes = [
+    { ligneSheet: 2, entite: 'Ford Fiesta', domaine: '03 · Logement & véhicule', categorie: '', type: '', statut: 'validee', dossierId: 'DOSSIER-FIESTA' },
+    { ligneSheet: 3, entite: 'Ford Fiesta SE 2011', domaine: '03 · Logement & véhicule', categorie: '', type: '', statut: 'en_attente', dossierId: '' },
+  ];
+  const { c, calls } = ctxCuration(lignes, false);
+  c.appliquerCurationEntites_(() => false);
+  const variantes = calls.statuts.filter((s) => typeof s.v === 'string' && s.v.indexOf('variante') === 0);
+  assert.strictEqual(variantes.length, 1);
+  assert.strictEqual(variantes[0].v, 'variante de : Ford Fiesta');
+  assert.strictEqual(variantes[0].ligne, 3, 'c\'est la ligne en_attente qui est requalifiée, jamais la validée');
+});
+
+test('appliquerCurationEntites_ : deux domaines DIFFÉRENTS ne se regroupent jamais (clé canonique = domaine + nom)', () => {
+  const lignes = [
+    { ligneSheet: 2, entite: 'Desjardins', domaine: '02 · Finances', categorie: '', type: '', statut: 'en_attente', dossierId: '' },
+    { ligneSheet: 3, entite: 'Desjardins', domaine: '03 · Logement & véhicule', categorie: '', type: '', statut: 'en_attente', dossierId: '' },
+  ];
+  const { c, calls } = ctxCuration(lignes, false);
+  c.appliquerCurationEntites_(() => false);
+  const variantes = calls.statuts.filter((s) => typeof s.v === 'string' && s.v.indexOf('variante') === 0);
+  assert.strictEqual(variantes.length, 0);
 });
 
 test('entiteEnAttenteAjouter_ : entité INÉDITE → append avec Vu N fois = 1', () => {
@@ -153,6 +183,69 @@ test('entiteEnAttenteAjouter_ : entité INÉDITE → append avec Vu N fois = 1',
   const ENTETES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?', 'Vu N fois'];
   assert.strictEqual(calls.append[0][ENTETES.indexOf('Vu N fois')], 1);
   assert.strictEqual(calls.append[0][ENTETES.indexOf('Statut')], 'en_attente');
+});
+
+/* ---------- P4 (C28-10) : canonicalisation à la SOURCE + « reality check » Drive ---------- */
+
+test('entiteEnAttenteAjouter_ : deux formes du MÊME véhicule → UNE seule ligne, sous la forme canonique', () => {
+  const { c, calls } = ctxProposition([]);
+  c.entiteEnAttenteAjouter_({ entite: 'Ford Fiesta SE 2011', domaine: '03 · Logement & véhicule', categorie: 'Véhicule' });
+  c.entiteEnAttenteAjouter_({ entite: 'Ford Fiesta 2011', domaine: '03 · Logement & véhicule', categorie: 'Véhicule' });
+  assert.strictEqual(calls.append.length, 1, 'la 2e forme rejoint la clé canonique de la 1re');
+  const ENTETES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?', 'Vu N fois'];
+  assert.strictEqual(calls.append[0][ENTETES.indexOf('Entité')], 'Ford Fiesta', 'proposée sous sa forme canonique (années/finitions retirées)');
+});
+
+test('entiteEnAttenteAjouter_ : un dossier du domaine porte DÉJÀ ce nom → ligne directement VALIDÉE, liée au dossier', () => {
+  const { c, calls } = ctxProposition([]);
+  c.idDomaine_ = () => 'ID-DOMAINE-03';
+  c.DriveApp = {
+    getFolderById: (id) => {
+      assert.strictEqual(id, 'ID-DOMAINE-03');
+      let servi = false;
+      return {
+        getFolders: () => ({
+          hasNext: () => !servi,
+          next: () => { servi = true; return { getName: () => '3325 4e Avenue, Québec', getId: () => 'DOSSIER-APPART' }; },
+        }),
+      };
+    },
+  };
+  // Variante d'adresse (« ave », complément « app 5 ») : canonisée puis matchée au dossier existant.
+  c.entiteEnAttenteAjouter_({ entite: '3325 4e ave, app 5, Québec', domaine: '03 · Logement & véhicule', categorie: 'Logement' });
+  assert.strictEqual(calls.append.length, 1);
+  const ENTETES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?', 'Vu N fois'];
+  assert.strictEqual(calls.append[0][ENTETES.indexOf('Statut')], 'validée', 'jamais en_attente quand le dossier existe déjà');
+  assert.strictEqual(calls.append[0][ENTETES.indexOf('Dossier ID')], 'DOSSIER-APPART');
+});
+
+test('dossiersExistantsDomaine_ : 1 listage Drive par domaine et par run (cache), échec → table vide sans planter', () => {
+  const { c } = ctxProposition([]);
+  let listages = 0;
+  c.idDomaine_ = () => 'ID-DOM';
+  c.DriveApp = {
+    getFolderById: () => { listages++; return { getFolders: () => ({ hasNext: () => false, next: () => null }) }; },
+  };
+  c.dossiersExistantsDomaine_('02 · Finances');
+  c.dossiersExistantsDomaine_('02 · Finances');
+  assert.strictEqual(listages, 1, 'le 2e appel sert le cache');
+  // Échec Drive (autre domaine) : table vide, cachée elle aussi — jamais une exception qui remonte.
+  c.DriveApp = { getFolderById: () => { throw new Error('Drive indisponible'); } };
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(c.dossiersExistantsDomaine_('05 · Carrière'))), {});
+});
+
+test('resoudreEntite_ : la requête est canonisée avant le matching — une variante d\'adresse résout vers la ligne validée', () => {
+  const validee = { ligneSheet: 2, entite: '3325 4e Avenue, Québec', domaine: '03 · Logement & véhicule', categorie: 'Logement', type: 'Logement', statut: 'validee', dossierId: 'DOSSIER-APPART' };
+  const { c } = ctxProposition([validee]);
+  const r = c.resoudreEntite_({ entite: '3325 4e ave, app 5, Québec', domaine: '03 · Logement & véhicule' });
+  assert.strictEqual(r.etat, 'connue');
+  assert.strictEqual(r.dossierId, 'DOSSIER-APPART');
+});
+
+test('resoudreEntite_ : canonique NULL (générique, propriétaire) → transverse (document classé au domaine)', () => {
+  const { c } = ctxProposition([]);
+  assert.strictEqual(c.resoudreEntite_({ entite: 'Banque/Service en ligne', domaine: '02 · Finances' }).etat, 'transverse');
+  assert.strictEqual(c.resoudreEntite_({ entite: 'Marc Richard', domaine: '01 · Administratif & identité' }).etat, 'transverse');
 });
 
 /* ---------- appliquerCurationEntites_ (one-shot gaté) ---------- */

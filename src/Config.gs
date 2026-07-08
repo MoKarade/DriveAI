@@ -277,7 +277,8 @@ var CONFIG = {
   // (`DriveAI_CURATION_ENTITES`) diffère, chaque tick passe la file `en_attente` au filtre
   // anti-génériques + au regroupement de variantes (statuts seulement — AUCUN document touché,
   // 100 % réversible en rééditant le Statut). Bumper le tag rejoue une curation complète.
-  CURATION_ENTITES_TAG: 'c1',
+  CURATION_ENTITES_TAG: 'c2',            // c2 (P4/C28-10) : rejoue la curation avec la passe 1.5
+                                          // (canonicalisation rétroactive) sur la file actuelle de Marc
 
   // Boucle d'apprentissage (ADR-0003 §3) : à chaque classement, on injecte dans le prompt les
   // corrections passées les PLUS PROCHES (même émetteur) comme exemples few-shot. Borné pour le coût
