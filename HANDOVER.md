@@ -4,6 +4,34 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **2026-07-08 (soir) — PLANS P1/P2/P3 EXÉCUTÉS + ⚠ INCIDENT PROD (Sheet d'état recréée à vide).**
+> • **⚠ INCIDENT (ouvert, décision Marc attendue)** : à 02:34 EDT, un échec TRANSITOIRE de
+>   `SpreadsheetApp.openById` (dégradation Google, `Access denied: DriveApp` en rafale au même
+>   moment) a déclenché le fail-open de `getSheetEtat_` (src/Config.gs:524) : **nouvelle Sheet
+>   « DriveAI — État » créée VIDE + `DriveAI_SHEET_ID` écrasé**. Depuis : le moteur tourne sur la
+>   NOUVELLE Sheet (Index reparti de 0 — 254 lignes re-faites, ~87 PJ Gmail re-déposées en
+>   copies/doublons dans Drive, file d'entités re-proposée, TriAppris re-appris, +~0,8 $ LLM) ;
+>   l'ancienne Sheet (4 385 lignes, les validations de Marc) est ORPHELINE — et l'**app de Marc
+>   pointe toujours l'ancienne** (ses gestes n'atteignent plus le moteur). Le dry-run v2 écrit
+>   dans la NOUVELLE (démarré après la bascule — pas de fork pour lui). AUCUNE perte définitive
+>   (append-only, rien de supprimé). Correctif + fusion d'état = prompt NotebookLM généré (règle
+>   §4), en attente du plan validé. IDs : ancienne `10VSEgfSulXn2V5apYktNOzWTm3y_V4iaBxsm_hRc7UY`,
+>   nouvelle `1SY8PiuQ3G3U0xlp63Wihax-efl3NEZIyX2af__hBSY8`.
+> • **P1 (#122, mergé)** : jeton GIS en sessionStorage (verrou source-scan `session.test.ts`),
+>   fournisseur d'état GLOBAL (`etatGlobal.tsx`, 5 min + ⟳), Index servi en ÉTAT COURANT
+>   (`etatCourantIndex` — suspects honnêtes, C28-13), badge « Synchro HH:MM », dates formatées.
+> • **P2 (#123, mergé)** : vue Agenda Mois/**Semaine** (`grilleSemaine`), carte « Créer » en tête
+>   + composant réutilisable, « ➕ » par fil Gmail (modale pré-remplie + marqueur
+>   `intention-manuel|<threadId>` que le moteur saute — préfixe DÉDIÉ, collision threadId=1er
+>   messageId évitée), **analyse ciblée des mails** (formulaire → `action=analyse-ciblee` →
+>   `balayerAnalyseCiblee_`, campagne frein-budget/plafonds, anti-plateau, offset lié à la
+>   requête). **⚠ Marc doit redéployer la web app (Nouvelle version)** pour activer l'action.
+> • **P3 (en PR)** : drag-and-drop accéléré (ascendances dossiers mémoïsées, invalidation de
+>   cache par onglet, traces Sheet en tâche de fond) + **réconciliation Index↔Drive**
+>   (`synchroniserIndex_`, campagne perpétuelle bornée/convergente, statuts `déplacé`/`corbeillé`).
+> • Dry-run v2 : continue de remplir l'onglet `DryRunV2` (nouvelle Sheet) — validation Marc
+>   attendue avant C26-08.
+>
 > **2026-07-08 (après-midi) — GROSSE RAFALE : dry-run LANCÉ, 3 plans NotebookLM exécutés,
 > captures E2E, miroir COMPLET à plat.** Sur feu vert de Marc, PR #114-#120 toutes mergées :
 > • **Dry-run v2 EN COURS** (`DRYRUN_V2_ACTIF: true`, #114) — l'onglet Sheet `DryRunV2` se

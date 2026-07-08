@@ -185,9 +185,27 @@ const SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets';
 const cachePlages = new Map<string, { t: number; donnees: string[][] }>();
 const CACHE_MS = 60 * 1000;
 
-export function viderCachePlages(): void {
+/**
+ * Invalide les caches de lecture. Sans argument : TOUT (rafraîchissement global ⟳, cycle 5 min).
+ * Avec un onglet : seules les plages de CET onglet (C28-08, plan P3 — une écriture Sheet ne doit
+ * plus jeter les listages Drive ni les autres onglets, c'était le gros du coût d'un drag-and-drop).
+ */
+export function viderCachePlages(onglet?: string): void {
+  if (onglet) {
+    for (const cle of [...cachePlages.keys()]) {
+      if (cle.startsWith(`${onglet}!`)) cachePlages.delete(cle);
+    }
+    return;
+  }
   cachePlages.clear();
   cacheDossiers.clear(); // les listages Drive suivent le même cycle de vie (C21-01)
+  cachePortee.clear();
+  cacheAscendanceDossier.clear(); // l'ascendance peut avoir changé (réorg moteur) — re-vérifiée
+}
+
+/** Invalide les seuls caches DRIVE (déplacement/création : les listages changent, pas la Sheet). */
+function viderCachesDrive(): void {
+  cacheDossiers.clear();
   cachePortee.clear();
 }
 
@@ -212,7 +230,7 @@ async function lirePlageDirecte(onglet: string, plage: string): Promise<string[]
 
 /** Écrit UNE cellule (ex. Statut d'une entité → « validée »). */
 export async function ecrireCellule(onglet: string, cellule: string, valeur: string): Promise<void> {
-  viderCachePlages(); // l'état vient de changer — les vues doivent relire
+  viderCachePlages(onglet); // l'onglet vient de changer — ses lecteurs doivent relire (les autres non)
   const { spreadsheetId } = lireConfig();
   await api(
     `${SHEETS}/${spreadsheetId}/values/${encodeURIComponent(`${onglet}!${cellule}`)}?valueInputOption=RAW`,
@@ -232,7 +250,7 @@ export async function ecrireColonnePlage(
   valeurs: string[],
 ): Promise<void> {
   if (valeurs.length === 0) return;
-  viderCachePlages();
+  viderCachePlages(onglet);
   const { spreadsheetId } = lireConfig();
   const plage = `${onglet}!${colonne}${debut}:${colonne}${debut + valeurs.length - 1}`;
   await api(
@@ -243,7 +261,7 @@ export async function ecrireColonnePlage(
 
 /** Ajoute une ligne en fin d'onglet (ex. Corrections → few-shot du moteur). */
 export async function ajouterLigne(onglet: string, ligne: (string | number)[]): Promise<void> {
-  viderCachePlages();
+  viderCachePlages(onglet);
   const { spreadsheetId } = lireConfig();
   await api(
     `${SHEETS}/${spreadsheetId}/values/${encodeURIComponent(`${onglet}!A1`)}:append?valueInputOption=RAW`,
@@ -304,38 +322,57 @@ export async function rechercheFullText(texte: string): Promise<FichierDrive[]> 
   return r.files ?? [];
 }
 
+// Cache SESSION des ascendances de DOSSIERS (C28-08, plan P3) : l'ascendance d'un dossier ne
+// bouge pas pendant une session de tri (l'app ne déplace jamais de dossier ; la réorg MOTEUR
+// peut en bouger un → le cache est purgé par `viderCachePlages()` global : ⟳ manuel et cycle
+// 5 min — fenêtre de staleté bornée). Ne mémorise JAMAIS une branche illisible (échec fermé).
+const cacheAscendanceDossier = new Map<string, Ascendance>();
+
+/** Ancêtres d'un DOSSIER (lui inclus), mémoïsés — le gros du coût d'un drag-and-drop répété. */
+async function ascendanceDossier(id: string, profondeur: number): Promise<Ascendance> {
+  if (profondeur <= 0) return { ids: [id], complete: false };
+  const memo = cacheAscendanceDossier.get(id);
+  if (memo) return memo;
+  const ids = new Set<string>([id]);
+  let complete = true;
+  let parents: string[] = [];
+  try {
+    const d = await api<{ parents?: string[] }>(`${DRIVE}/${id}?fields=parents`);
+    parents = d.parents ?? [];
+  } catch {
+    complete = false; // branche illisible → le verdict refusera le détachement
+  }
+  for (const p of parents) {
+    const asc = await ascendanceDossier(p, profondeur - 1);
+    asc.ids.forEach((i) => ids.add(i));
+    if (!asc.complete) complete = false;
+  }
+  const resultat = { ids: Array.from(ids), complete };
+  if (complete) cacheAscendanceDossier.set(id, resultat);
+  return resultat;
+}
+
 /**
  * Remonte TOUTE la chaîne d'ancêtres d'un fichier (multi-parents, borné) — miroir du walk du
  * moteur. Une branche illisible ⇒ `complete: false` (le verdict refusera : échec fermé).
+ * Les ascendances de dossiers sont mémoïsées pour la session (le fichier, lui, est toujours relu).
  */
 export async function remonterAscendance(fileId: string, profondeurMax = 50): Promise<Ascendance> {
-  const vus = new Set<string>();
-  let complete = true;
-  let front: string[] = [];
+  let parents: string[] = [];
   try {
     const f = await lireFichier(fileId);
-    front = f.parents ?? [];
+    parents = f.parents ?? [];
   } catch {
     return { ids: [], complete: false };
   }
-  let profondeur = 0;
-  while (front.length > 0 && profondeur < profondeurMax) {
-    const suivant: string[] = [];
-    for (const id of front) {
-      if (vus.has(id)) continue;
-      vus.add(id);
-      try {
-        const d = await api<{ parents?: string[] }>(`${DRIVE}/${id}?fields=parents`);
-        for (const p of d.parents ?? []) suivant.push(p);
-      } catch {
-        complete = false; // branche illisible → le verdict refusera le détachement
-      }
-    }
-    front = suivant;
-    profondeur++;
+  const ids = new Set<string>();
+  let complete = true;
+  for (const p of parents) {
+    const asc = await ascendanceDossier(p, profondeurMax);
+    asc.ids.forEach((i) => ids.add(i));
+    if (!asc.complete) complete = false;
   }
-  if (front.length > 0) complete = false; // profondeur max atteinte sans épuiser
-  return { ids: Array.from(vus), complete };
+  return { ids: Array.from(ids), complete };
 }
 
 /**
@@ -589,7 +626,7 @@ export async function rechercherDrive(texte: string, portee?: string[]): Promise
 export async function creerDossier(nom: string, parentId: string): Promise<ElementDrive> {
   const propre = nom.trim();
   if (!propre) throw new Error('Nom de dossier vide');
-  viderCachePlages();
+  viderCachesDrive(); // seul le listage Drive change — les onglets Sheet n'ont pas bougé
   return api<ElementDrive>(`${DRIVE}?fields=${encodeURIComponent(CHAMPS_ELEMENT)}`, {
     method: 'POST',
     body: JSON.stringify({
@@ -654,36 +691,39 @@ export async function deplacerFichierManuel(args: {
   const anciens = (f.parents ?? []).filter((p) => p !== cible).join(',');
   const dejaEnPlace = (f.parents ?? []).includes(cible);
   if (dejaEnPlace && !anciens) return false; // déjà exactement là — no-op
-  viderCachePlages();
+  viderCachesDrive(); // les listages changent ; les onglets Sheet sont invalidés par leurs appends
   const params = new URLSearchParams({ fields: 'id' });
   if (!dejaEnPlace) params.set('addParents', cible);
   if (anciens) params.set('removeParents', anciens);
   await api(`${DRIVE}/${args.fileId}?${params.toString()}`, { method: 'PATCH', body: '{}' });
+  // Écritures Sheet en TÂCHE DE FOND (C28-08, plan P3) : le PATCH Drive (critique) est attendu,
+  // la trace ne bloque plus le geste (~2 allers-retours gagnés au drag). Si elle échoue, la
+  // réconciliation Index↔Drive du moteur (synchroniserIndex_) rattrape l'Index plus tard.
+  const traces: Promise<unknown>[] = [];
   // Entérine le geste dans l'Index (sauf vers À trier : là, le fichier DOIT être traité).
-  if (!cibleATrier && !dejaIndexe) {
-    try {
-      await ajouterLigneIndexManuelle_(cleIndex, f.name);
-    } catch { /* best-effort — le rangement pourra re-collecter, jamais pire qu'avant */ }
-  }
-  // Trace best-effort au Journal (le moteur y écrit pareil) — l'échec n'annule pas le geste.
-  try {
-    await ajouterLigne('Journal', [
-      new Date().toISOString(),
-      'INFO',
-      'App',
-      `Déplacement manuel : « ${f.name} » (${args.fileId})`,
-    ]);
-  } catch { /* trace seulement */ }
+  if (!cibleATrier && !dejaIndexe) traces.push(ajouterLigneIndexManuelle_(cleIndex, f.name));
+  // Trace au Journal (le moteur y écrit pareil) — l'échec n'annule pas le geste.
+  traces.push(ajouterLigne('Journal', [
+    new Date().toISOString(),
+    'INFO',
+    'App',
+    `Déplacement manuel : « ${f.name} » (${args.fileId})`,
+  ]));
+  void Promise.all(traces.map((p) => p.catch((e) => console.error('trace de déplacement perdue', e))));
   return true;
 }
 
 /** Ligne Index d'un placement manuel — EN SUIVANT LES EN-TÊTES RÉELS (miroir de Journal.gs). */
+let entetesIndexMemo: string[] | null = null; // mémoïsés pour la session (C28-08 — 1 lecture, pas 1/drag)
 async function ajouterLigneIndexManuelle_(cle: string, nom: string): Promise<void> {
   const ORDRE_DEFAUT = ['Clé', 'Traité le', 'Fichier', 'Domaine', 'Chemin', 'Statut', 'Empreinte', 'Confiance'];
-  let entetes: string[] = [];
-  try {
-    entetes = (await lirePlage('Index', 'A1:H1'))[0] ?? [];
-  } catch { /* onglet illisible → ordre par défaut (celui que le moteur crée) */ }
+  let entetes: string[] = entetesIndexMemo ?? [];
+  if (entetes.length === 0) {
+    try {
+      entetes = (await lirePlage('Index', 'A1:H1'))[0] ?? [];
+    } catch { /* onglet illisible → ordre par défaut (celui que le moteur crée) */ }
+    if (entetes.length > 0) entetesIndexMemo = entetes;
+  }
   if (entetes.length === 0) entetes = ORDRE_DEFAUT;
   const valeurs: Record<string, string> = {
     'Clé': cle,

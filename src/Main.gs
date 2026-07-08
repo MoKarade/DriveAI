@@ -411,6 +411,14 @@ function tickDriveAI() {
       try { etapeReorg_(estBudgetDepasse); }
       catch (e) { journalErreur_('Reorg', 'Étape réorg différée : ' + e); }
     }
+
+    // Réconciliation Index↔Drive (C28-07, plan P3) : campagne de fond PERPÉTUELLE sur le
+    // reliquat de budget — OBSERVE Drive (jamais ne le modifie) et aligne l'Index append-only
+    // (statuts `déplacé`/`corbeillé`). SECONDAIRE → enveloppée : un échec ne bloque jamais l'intake.
+    if (!estBudgetDepasse()) {
+      try { synchroniserIndex_(estBudgetDepasse); }
+      catch (e) { journalErreur_('Maintenance', 'Réconciliation Index différée : ' + e); }
+    }
     } // fin de la suspension R2 (panne de compte API)
   } finally {
     // `releaseLock` DOIT toujours s'exécuter : un try/finally imbriqué garantit sa libération même si

@@ -409,6 +409,10 @@ var CONFIG = {
   // 0 restant), on retire la racine : la prochaine passe collecte 0 sans erreur ⇒ « terminé » + 100 %.
   // Ré-ajouter un ID ici (et bumper RANGEMENT_TAG) relancerait un rangement sur cette racine.
   RANGEMENT_RACINES_SUP: [],
+  // Réconciliation Index↔Drive (C28-07, plan P3) : campagne de fond perpétuelle, lecture seule.
+  SYNC_LIGNES_PAR_RUN: 50,            // lignes d'Index re-visitées par tick (sur le reliquat de budget)
+  SYNC_BUDGET_JOUR_MS: 12 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES (leçon §7 : ~90 min/j de runtime partagé — jamais un compteur d'items)
+  SYNC_AGE_MIN_H: 48,                 // une ligne plus fraîche que ça n'a pas eu le temps de dériver — pas de vérif Drive
 
   // --- Chantier #8 : MIGRATION de l'existant vers la nouvelle taxonomie (ADR-0002) ---
   // Re-classe les documents DÉJÀ CLASSÉS (avant le nommage par type, les entités, 07·Santé, le few-shot)
