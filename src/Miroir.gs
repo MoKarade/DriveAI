@@ -1,6 +1,8 @@
 /**
- * Miroir.gs — synchronise une copie TEXTE (.txt) du dépôt GitHub vers un dossier dédié du Drive de
- * Marc (ADR-0017, demande Marc : « accéder de partout » + NotebookLM, qui ingère depuis Drive).
+ * Miroir.gs — synchronise une copie COMPLÈTE du dépôt GitHub vers un dossier dédié du Drive de
+ * Marc (ADR-0017, demande Marc : « accéder de partout » + NotebookLM, qui ingère depuis Drive) :
+ * les fichiers texte en `.txt`, et depuis la révision 2026-07-08 les binaires UTILES à NotebookLM
+ * (pdf/png/jpg/svg — vision multimodale) tels quels, reçus en base64 (flag `binaire:true`).
  *
  * Écrit par la web app (`WebApp.doPost`, `action=sync-miroir`), appelée par une étape GitHub Actions
  * à chaque push sur `main` (`.github/workflows/sync-drive.yml`). AUCUN nouveau scope OAuth (réutilise
@@ -30,17 +32,24 @@ function dossierMiroir_() {
   return dossierRacineParNom_('_Miroir du dépôt', 'DriveAI_MIROIR_ID');
 }
 
-// Extensions clairement BINAIRES qu'on n'essaie pas de convertir en texte (illisibles pour
-// NotebookLM de toute façon — un octet-à-octet .png en ".txt" ne serait pas un texte exploitable).
-var EXT_MIROIR_BINAIRES = ['.png', '.jpg', '.jpeg', '.gif', '.ico', '.webp', '.bmp', '.tif', '.tiff',
-  '.heic', '.heif', '.woff', '.woff2', '.ttf', '.eot', '.otf', '.zip', '.gz', '.tar', '.pdf'];
+// Binaires UTILES à NotebookLM (vision multimodale : images ; documents : PDF) — ALLOWLIST stricte
+// (plan PM/architecte 2026-07-08) : seuls CES formats sont décodés depuis le base64 du payload.
+// Mitigation de surface d'abus : un vol de DriveAI_SYNC_SECRET ne permet d'écrire QUE ces types
+// (et du texte) dans le dossier miroir — jamais un exécutable/une archive.
+var EXT_MIROIR_BINAIRES_AUTORISEES = ['.png', '.jpg', '.jpeg', '.svg', '.pdf'];
 
-/** Vrai si ce chemin de dépôt doit être inclus dans le miroir (texte, pas binaire, pas de remontée). PUR. */
+// Binaires INUTILES à l'IA (polices, archives, formats d'image exotiques) : exclus — ils
+// gaspilleraient bande passante CI et quota Drive sans rien apporter à NotebookLM.
+var EXT_MIROIR_BINAIRES_BLOQUEES = ['.gif', '.ico', '.webp', '.bmp', '.tif', '.tiff',
+  '.heic', '.heif', '.woff', '.woff2', '.ttf', '.eot', '.otf', '.zip', '.gz', '.tar'];
+
+/** Vrai si ce chemin de dépôt doit être inclus dans le miroir (texte OU binaire utile ; jamais de
+ *  remontée, jamais un binaire hors allowlist). PUR. */
 function estFichierMiroirable_(chemin) {
   var c = String(chemin == null ? '' : chemin);
   if (!c || c.indexOf('..') !== -1) return false; // jamais de remontée de chemin hors du miroir
   var ext = (extension_(c) || '').toLowerCase();
-  return EXT_MIROIR_BINAIRES.indexOf(ext) === -1;
+  return EXT_MIROIR_BINAIRES_BLOQUEES.indexOf(ext) === -1;
 }
 
 /** Nettoie UN segment de chemin (dossier ou fichier) pour Drive : caractères interdits → '-'. PUR. */
@@ -50,35 +59,65 @@ function nettoyerSegmentChemin_(segment) {
 
 /**
  * Nom de fichier APLATI dans le miroir (révision PM/architecte 2026-07-08) : tout le chemin sur UN
- * niveau, `/` → `---`, toujours suffixé `.txt` (ex. "src/Router.gs" → "src---Router.gs.txt").
- * Pourquoi à plat : NotebookLM limite la SÉLECTION de sources aux fichiers d'un seul niveau —
- * l'arborescence de sous-dossiers du miroir v1 l'empêchait de tout ingérer. PUR.
+ * niveau, `/` → `---`. TEXTE → suffixé `.txt` (ex. "src/Router.gs" → "src---Router.gs.txt" —
+ * NotebookLM digère mal les extensions de code brutes) ; BINAIRE UTILE → extension d'ORIGINE
+ * conservée (ex. "app/public/logo.png" → "app---public---logo.png" — l'extension porte le type
+ * pour la vision multimodale). Pourquoi à plat : NotebookLM sélectionne ses sources sur UN seul
+ * niveau. PUR.
+ * @param {string} chemin
+ * @param {boolean} [binaire]
  */
-function nomFichierMiroir_(chemin) {
+function nomFichierMiroir_(chemin, binaire) {
   var s = String(chemin == null ? '' : chemin);
   if (!s || /\/$/.test(s)) return ''; // chemin vide ou finissant par '/' → pas de nom de fichier
   var segs = s.split('/').filter(Boolean).map(nettoyerSegmentChemin_).filter(Boolean);
   if (!segs.length) return '';
   var nom = segs.join('---');
+  if (binaire) return nom;
   return /\.txt$/i.test(nom) ? nom : nom + '.txt';
 }
 
+/** MIME type Drive d'un nom de fichier du miroir (binaires utiles ; texte par défaut). PUR. */
+function mimeTypePourMiroir_(nom) {
+  var ext = (extension_(nom) || '').toLowerCase();
+  if (ext === '.pdf') return 'application/pdf';
+  if (ext === '.png') return 'image/png';
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.svg') return 'image/svg+xml';
+  return 'text/plain';
+}
+
 /**
- * Écrit (crée ou MET À JOUR) un fichier texte À PLAT à la racine du miroir — plus aucun
- * sous-dossier (révision 2026-07-08 ; les copies de l'ancienne arborescence sont à purger À LA
- * MAIN par Marc, le code ne supprime jamais rien, §2). Jamais d'alerte/mail ici : écriture pure.
- * Service Drive STANDARD (`DriveApp`, pas l'Advanced Service, cf. LESSONS). Idempotent par nom.
- * @param {string} chemin   chemin relatif dans le dépôt (ex. "src/Router.gs")
- * @param {string} contenu  contenu texte (déjà en UTF-8)
+ * Écrit (crée ou MET À JOUR) un fichier À PLAT à la racine du miroir — plus aucun sous-dossier
+ * (révision 2026-07-08 ; les copies de l'ancienne arborescence sont à purger À LA MAIN par Marc,
+ * le code ne supprime jamais rien, §2). Jamais d'alerte/mail ici : écriture pure.
+ *
+ * TEXTE : service Drive STANDARD (`DriveApp.setContent`/`createFile`). BINAIRE UTILE (allowlist
+ * `EXT_MIROIR_BINAIRES_AUTORISEES`, contenu reçu en BASE64) : décodé en blob avec le bon MIME —
+ * la MISE À JOUR passe par un PATCH REST `uploadType=media` (`setContent` ne porte que du texte,
+ * et recréer le fichier exigerait une suppression, interdite §2). Idempotent par nom.
+ * @param {string} chemin    chemin relatif dans le dépôt (ex. "src/Router.gs")
+ * @param {string} contenu   texte UTF-8, ou base64 si `binaire`
+ * @param {boolean} [binaire] vrai si `contenu` est du base64 à décoder (flag posé par le workflow)
  * @return {boolean} vrai si écrit avec succès.
  */
-function ecrireFichierMiroir_(chemin, contenu) {
+function ecrireFichierMiroir_(chemin, contenu, binaire) {
   if (!estFichierMiroirable_(chemin)) return false;
-  var nom = nomFichierMiroir_(chemin);
+  var ext = (extension_(String(chemin == null ? '' : chemin)) || '').toLowerCase();
+  // Défense en profondeur : seuls les binaires de l'ALLOWLIST sont décodés — un payload
+  // `binaire:true` sur une extension non prévue est refusé (surface d'abus du secret bornée).
+  if (binaire && EXT_MIROIR_BINAIRES_AUTORISEES.indexOf(ext) === -1) return false;
+  var nom = nomFichierMiroir_(chemin, !!binaire);
   if (!nom) return false;
   try {
     var dossier = dossierMiroir_();
     var it = dossier.getFilesByName(nom);
+    if (binaire) {
+      var blob = Utilities.newBlob(Utilities.base64Decode(contenu || ''), mimeTypePourMiroir_(nom), nom);
+      if (it.hasNext()) return majFichierBinaireMiroir_(it.next().getId(), blob);
+      dossier.createFile(blob);
+      return true;
+    }
     if (it.hasNext()) {
       it.next().setContent(contenu || '');
     } else {
@@ -89,6 +128,31 @@ function ecrireFichierMiroir_(chemin, contenu) {
     journalErreur_('Miroir', 'Écriture échouée pour « ' + chemin + ' » : ' + e);
     return false;
   }
+}
+
+/**
+ * Met à jour le CONTENU d'un fichier binaire existant du miroir, EN PLACE (l'ID Drive survit) —
+ * PATCH REST `uploadType=media`, même patron que DriveRest.gs/l'OCR (REST via UrlFetchApp, jamais
+ * le service avancé, cf. LESSONS). Jamais de suppression/recréation (§2).
+ * @param {string} fileId
+ * @param {Blob} blob  contenu décodé, MIME déjà posé
+ * @return {boolean}
+ */
+function majFichierBinaireMiroir_(fileId, blob) {
+  var rep = fetchDriveAvecRetry_(
+    'https://www.googleapis.com/upload/drive/v3/files/' + encodeURIComponent(fileId) + '?uploadType=media',
+    {
+      method: 'patch',
+      contentType: blob.getContentType(),
+      payload: blob.getBytes(),
+      headers: { Authorization: 'Bearer ' + jetonDrive_() },
+      muteHttpExceptions: true
+    }
+  );
+  if (rep.getResponseCode() === 200) return true;
+  journalErreur_('Miroir', 'PATCH binaire échoué (HTTP ' + rep.getResponseCode() + ') : ' +
+    tronquer_(rep.getContentText(), 200));
+  return false;
 }
 
 /** Vrai si le secret DÉDIÉ (distinct de celui de l'app) est valide pour cette requête. */
@@ -118,7 +182,7 @@ function actionSyncMiroir_(e) {
     if (Date.now() - debut > CONFIG.MIROIR_BUDGET_MS) break; // garde-temps — le reste au lot suivant
     var f = fichiers[i];
     if (!f || typeof f.chemin !== 'string' || typeof f.contenu !== 'string') { ignores++; continue; }
-    if (ecrireFichierMiroir_(f.chemin, f.contenu)) ecrits++; else ignores++;
+    if (ecrireFichierMiroir_(f.chemin, f.contenu, f.binaire === true)) ecrits++; else ignores++;
   }
   journalInfo_('Miroir', ecrits + ' fichier(s) synchronisé(s) vers Drive, ' + ignores + ' ignoré(s)/échoué(s).');
   return { ok: true, ecrits: ecrits, ignores: ignores };
