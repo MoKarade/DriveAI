@@ -317,6 +317,9 @@ NotebookLM en devient l'entrée, pas le remplacement.
   rajustement (vécu : plafond campagnes 10→30). Exception : le tripwire qui verrouille la VALEUR
   elle-même — et le dit en commentaire. Corollaire : toute Property « déjà fait/déjà dit » se
   re-audite quand un paramètre qu'elle supposait fixe devient variable (le seuil va dans la clé).
+  Corollaire FLAG (vécu : bascule `ANALYSE_V2`, 3 tests cassés) : un test d'un CHEMIN gaté par un
+  flag de campagne FORCE ce flag dans son contexte (save/restore) — la position globale d'un flag
+  est une décision de Marc, jamais un invariant de test.
 - **Une Script Property qui persiste une LISTE paramétrée par CONFIG se borne contre ~9 Ko.**
   Encodage COMPACT (table d'index pour les champs répétés, jamais le libellé en clair par item) +
   test au PLAFOND dérivé de la CONFIG (borne haute de la marge documentée, pas la valeur du jour) —
