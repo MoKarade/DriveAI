@@ -175,6 +175,118 @@ test('traiterDocument_ : AVEC ignorerDoublon (migration), le fast-path est saut�
   assert.deepStrictEqual(calls.echecs, ['classification impossible']); // preuve : a continué jusqu'au LLM (mocké null)
 });
 
+/* ---------- C26-08 (ADR-0018) : re-analyse v2 ciblée ---------- */
+
+test('TRIPWIRE cibles : REANALYSE_CIBLES existent dans DOMAINES et n\'intersectent JAMAIS la zone protégée', () => {
+  const ctx = load(['Config.gs']);
+  const cibles = ctx.CONFIG.REANALYSE_CIBLES;
+  assert.ok(Array.isArray(cibles) && cibles.length > 0);
+  cibles.forEach((dom) => {
+    // Un libellé absent de DOMAINES ⇒ getFolderById(undefined) lève à CHAQUE tick → erreurCollecte
+    // permanente → la campagne ne se figerait JAMAIS (reste=true à vie).
+    assert.ok(dom in ctx.CONFIG.DOMAINES, 'cible hors DOMAINES fixes : ' + dom);
+    assert.strictEqual(ctx.CONFIG.DOMAINES_PROTEGES.indexOf(dom), -1, 'cible protégée interdite : ' + dom);
+  });
+});
+
+test('migrerUnePage_ : les domaines de REANALYSE_CIBLES sont EXCLUS de m1 (jamais payés deux fois v1+v2)', () => {
+  const ctx = ctxMigration([]);
+  const visites = [];
+  // Cas dérivés de la CONFIG (jamais des libellés du jour) : on note l'ID de chaque dossier ouvert.
+  ctx.DriveApp = { getFolderById: (id) => { visites.push(id); return fauxDossier([]); } };
+  ctx.ensembleDomainesProteges_ = () => ({});
+  ctx.migrerUnePage_(() => false, {});
+  const cibles = ctx.CONFIG.REANALYSE_CIBLES.map((dom) => ctx.CONFIG.DOMAINES[dom]);
+  const protges = ctx.CONFIG.DOMAINES_PROTEGES.map((dom) => ctx.CONFIG.DOMAINES[dom]);
+  cibles.forEach((id) => assert.strictEqual(visites.indexOf(id), -1, 'cible C26-08 visitée par m1 : ' + id));
+  protges.forEach((id) => assert.strictEqual(visites.indexOf(id), -1, 'zone protégée visitée par m1 : ' + id));
+  // Non-régression : m1 visite toujours les AUTRES domaines fixes.
+  const attendus = Object.keys(ctx.CONFIG.DOMAINES)
+    .filter((d) => ctx.CONFIG.DOMAINES_PROTEGES.indexOf(d) === -1 && ctx.CONFIG.REANALYSE_CIBLES.indexOf(d) === -1)
+    .map((d) => ctx.CONFIG.DOMAINES[d]);
+  assert.deepStrictEqual(visites, attendus);
+});
+
+test('estAReanalyser_ : convergence par clé reanalyse|<tag>| ; natifs exclus ; indépendant des clés migre|', () => {
+  const ctx = ctxMigration(['reanalyse|c26-08|DEJA', 'migre|m1|AUTRE']);
+  assert.strictEqual(ctx.estAReanalyser_(fakeFile({ id: 'LIBRE', mime: 'application/pdf' }), 'c26-08'), true);
+  assert.strictEqual(ctx.estAReanalyser_(fakeFile({ id: 'DEJA', mime: 'application/pdf' }), 'c26-08'), false);
+  assert.strictEqual(ctx.estAReanalyser_(fakeFile({ id: 'DEJA', mime: 'application/pdf' }), 'c27'), true); // autre campagne
+  assert.strictEqual(ctx.estAReanalyser_(fakeFile({ id: 'AUTRE', mime: 'application/pdf' }), 'c26-08'), true); // migre| ≠ reanalyse|
+  assert.strictEqual(ctx.estAReanalyser_(fakeFile({ id: 'N', mime: 'application/vnd.google-apps.document' }), 'c26-08'), false);
+});
+
+function ctxReanalyseCampagne(props) {
+  const ctx = load(['Config.gs', 'Migration.gs']);
+  const journal = [];
+  ctx.journalInfo_ = (s, m) => journal.push(m);
+  ctx.journalErreur_ = () => {};
+  ctx.rangementTermine_ = () => props.rangement !== false;
+  ctx.ensembleDomainesProteges_ = () => ({});
+  ctx.PropertiesService = {
+    getScriptProperties: () => ({
+      getProperty: (k) => (k in props.valeurs ? props.valeurs[k] : null),
+      setProperty: (k, v) => { props.valeurs[k] = String(v); },
+    }),
+  };
+  return { ctx, journal };
+}
+
+test('appliquerReanalyseCiblee_ : ne démarre JAMAIS tant que m1 n\'est pas finie (une campagne de masse à la fois)', () => {
+  const props = { valeurs: {} }; // DriveAI_MIGRATION absent → m1 en cours
+  const { ctx } = ctxReanalyseCampagne(props);
+  ctx.reanalyserUnePage_ = () => { throw new Error('ne doit pas collecter pendant m1'); };
+  ctx.appliquerReanalyseCiblee_(() => false); // ne lève pas → la garde a court-circuité
+  assert.ok(!('DriveAI_REANALYSE' in props.valeurs));
+});
+
+test('appliquerReanalyseCiblee_ : m1 finie + passe complète VIDE → Property figée (terminé) ; page pleine → jamais figée', () => {
+  const ctx1 = ctxReanalyseCampagne({ valeurs: { DriveAI_MIGRATION: 'm1' } });
+  ctx1.ctx.reanalyserUnePage_ = () => ({ traites: 0, collectes: 0, reste: false });
+  ctx1.ctx.appliquerReanalyseCiblee_(() => false);
+  assert.strictEqual(ctx1.ctx.PropertiesService.getScriptProperties().getProperty('DriveAI_REANALYSE'),
+    ctx1.ctx.CONFIG.REANALYSE_TAG);
+
+  const props2 = { valeurs: { DriveAI_MIGRATION: 'm1' } };
+  const ctx2 = ctxReanalyseCampagne(props2);
+  ctx2.ctx.reanalyserUnePage_ = () => ({ traites: 12, collectes: 12, reste: true });
+  ctx2.ctx.appliquerReanalyseCiblee_(() => false);
+  assert.ok(!('DriveAI_REANALYSE' in props2.valeurs), 'une page PLEINE ne doit jamais figer la campagne');
+  // Et une fois figée, plus aucune collecte (idempotence du re-lancement).
+  ctx1.ctx.reanalyserUnePage_ = () => { throw new Error('campagne finie : ne doit plus collecter'); };
+  ctx1.ctx.appliquerReanalyseCiblee_(() => false);
+});
+
+test('reanalyserFichier_ : zone protégée inscrite sous la clé reanalyse| ; pipeline v2 reçu avec ignorerDoublon', () => {
+  const ctx = load(['Config.gs', 'Migration.gs']);
+  const calls = { index: [], traites: [] };
+  ctx.journalInfo_ = () => {};
+  ctx.indexAjouter_ = (cle, res) => calls.index.push({ cle, statut: res.statut });
+  ctx.traiterDocument_ = (src) => calls.traites.push(src);
+  ctx.renommer_ = () => true;
+  ctx.deplacerEtRenommer_ = () => true;
+  ctx.DriveApp = {
+    getFileById: () => ({
+      getName: () => '2024-01-01_Facture_EDF.pdf',
+      getSize: () => 99,
+      getLastUpdated: () => new Date('2026-07-01T00:00:00Z'),
+      getBlob: () => ({}),
+      getParents: () => iter([{ getId: () => 'PARENT' }]),
+    }),
+  };
+
+  ctx.aParentProtege_ = () => true; // multi-parents accroché à 04 → refus inscrit, jamais muté
+  assert.strictEqual(ctx.reanalyserFichier_('F1', {}), false);
+  assert.deepStrictEqual(calls.index, [{ cle: 'reanalyse|c26-08|F1', statut: 'zone protégée' }]);
+  assert.strictEqual(calls.traites.length, 0);
+
+  ctx.aParentProtege_ = () => false;
+  assert.strictEqual(ctx.reanalyserFichier_('F2', {}), true);
+  assert.strictEqual(calls.traites.length, 1);
+  assert.strictEqual(calls.traites[0].cle, 'reanalyse|c26-08|F2');
+  assert.strictEqual(calls.traites[0].ignorerDoublon, true);
+});
+
 /* ---------- Fix convergence rangement : 3 granularités de date ---------- */
 
 test('estAReclasserLeger_ : les noms produits par le nommage PAR TYPE sont « déjà rangés » (convergence)', () => {

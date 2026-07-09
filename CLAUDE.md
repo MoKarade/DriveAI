@@ -55,12 +55,13 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
    (`DriveAI_ANTHROPIC_KEY`), jamais dans le code, jamais dans un commit.
 5. **Idempotence.** Un fichier déjà traité ne l'est pas deux fois (label Gmail +
    vérification dans l'`Index`).
-6. **Budget LLM : < 10 $/mois en régime de croisière.** Haiku par défaut, Sonnet en fallback
-   ponctuel. Les campagnes de RATTRAPAGE (grand rangement, historique Gmail, migration) sont un
-   coût one-shot plafonné par le frein `CONFIG.LLM_BUDGET_CAMPAGNES` — **30 $ (décision Marc
-   2026-07-07 : « je veux que tu continues le tri au complet », révise l'ancien plafond 10)**,
-   à redescendre vers 10 une fois le rattrapage fini. Le frein ne se désactive JAMAIS
-   (filet anti-emballement) et ne gate JAMAIS le flux vivant.
+6. **Budget LLM : < 10 $/mois en régime de croisière.** Depuis le 2026-07-09 (ADR-0018, feu vert
+   Marc après la preuve C26-07), le flux vivant tourne en **Sonnet 2 passes** (`ANALYSE_V2`). Les
+   campagnes de RATTRAPAGE (grand rangement, historique Gmail, migration, re-analyse C26-08) sont un
+   coût one-shot plafonné par le frein `CONFIG.LLM_BUDGET_CAMPAGNES` — **65 $ (décision Marc
+   2026-07-09, ADR-0018 : campagne ciblée ~924 docs ≈ 24 $ sur un mois déjà à 27 $ ; révise le
+   plafond 30 du 2026-07-07)**, à redescendre vers 10 une fois C26-08 finie (checklist dans l'ADR).
+   Le frein ne se désactive JAMAIS (filet anti-emballement) et ne gate JAMAIS le flux vivant.
 
 ## 3. Conventions de code
 
