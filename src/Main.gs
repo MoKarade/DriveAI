@@ -382,6 +382,15 @@ function tickDriveAI() {
       catch (e) { journalErreur_('Migration', 'Migration taxonomie différée : ' + e); }
     }
 
+    // Re-analyse v2 CIBLÉE (#26, C26-08, ADR-0018) : re-passe les domaines mal classés
+    // (REANALYSE_CIBLES : 03, 08) au pipeline v2, EN PLACE, une page par tick. Ne démarre qu'après
+    // la FIN de m1 (une seule campagne de masse à la fois — garde dans appliquerReanalyseCiblee_).
+    // Même famille que la migration : après l'intake, gatée par le frein budget, enveloppée.
+    if (!estBudgetDepasse() && !budgetCampagnesAtteint_()) {
+      try { appliquerReanalyseCiblee_(estBudgetDepasse); }
+      catch (e) { journalErreur_('Réanalyse', 'Re-analyse ciblée différée : ' + e); }
+    }
+
     // Dry-run v2 (#26, C26-07, ADR-0015) : preuve avant/après sur échantillon réel, ZÉRO mutation
     // Drive (planRoutageV2_ seul — jamais deciderRoutageV2_). Interrupteur DÉDIÉ (DRYRUN_V2_ACTIF,
     // OFF par défaut) : n'affecte JAMAIS le flux vivant ni CONFIG.ANALYSE_V2. Même famille que la

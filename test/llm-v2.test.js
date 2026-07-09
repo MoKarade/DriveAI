@@ -65,8 +65,12 @@ test('PROMPT_PASSE2 : vérificateur adversarial avec anti-régression et les deu
   ctx.domainesAutorises_().forEach((d) => assert.ok(p.indexOf(d) !== -1, 'domaine manquant du prompt 2 : ' + d));
 });
 
-test('CONFIG : le flag ANALYSE_V2 est ÉTEINT par défaut (pas de Sonnet sur le flux vivant sans feu vert)', () => {
-  assert.strictEqual(ctx.CONFIG.ANALYSE_V2, false);
+// TRIPWIRE de VALEUR (assumé) : ce test verrouille la position de l'interrupteur lui-même.
+// Révisé faux → vrai le 2026-07-09 (ADR-0018) : feu vert EXPLICITE de Marc (« go 2 ») après la
+// preuve dry-run C26-07 — le flux vivant tourne en Sonnet 2 passes. Toute bascule future de ce
+// flag doit re-passer par une décision de Marc + un ADR (jamais un simple commit).
+test('CONFIG : le flag ANALYSE_V2 est ALLUMÉ (feu vert Marc 2026-07-09, ADR-0018)', () => {
+  assert.strictEqual(ctx.CONFIG.ANALYSE_V2, true);
 });
 
 /* ---------- parserClassification_ : non-document v2 sans domaine (fix revue #26, ADR-0015) ---------- */
@@ -110,14 +114,17 @@ test('budgetMsRun_ : garde-temps nominal quand OFF, abaissé quand ON', () => {
   }
 });
 
-test('budgetMsRun_ : abaissé aussi sous DRYRUN_V2_ACTIF (C26-07 exécute le même pipeline Sonnet ×2, ANALYSE_V2 reste OFF)', () => {
-  const sauvegarde = ctx.CONFIG.DRYRUN_V2_ACTIF;
+test('budgetMsRun_ : abaissé aussi sous DRYRUN_V2_ACTIF seul (le dry-run fait le même travail lourd, flag live OFF)', () => {
+  // Les 2 flags sont FORCÉS dans ce contexte (leurs valeurs globales sont des décisions de
+  // campagne de Marc — depuis ADR-0018 ANALYSE_V2 est ON — jamais des invariants de test).
+  const sauvegarde = { v2: ctx.CONFIG.ANALYSE_V2, dry: ctx.CONFIG.DRYRUN_V2_ACTIF };
   try {
-    assert.strictEqual(ctx.CONFIG.ANALYSE_V2, false, 'le dry-run tourne SANS jamais activer le flag live');
+    ctx.CONFIG.ANALYSE_V2 = false; // le chemin testé : dry-run SEUL (C26-07 tournait flag live éteint)
     ctx.CONFIG.DRYRUN_V2_ACTIF = true;
     assert.strictEqual(ctx.budgetMsRun_(), ctx.CONFIG.ANALYSE_V2_BUDGET_MS,
       'même marge de sécurité que ANALYSE_V2 — le dry-run fait le même travail lourd par doc');
   } finally {
-    ctx.CONFIG.DRYRUN_V2_ACTIF = sauvegarde;
+    ctx.CONFIG.ANALYSE_V2 = sauvegarde.v2;
+    ctx.CONFIG.DRYRUN_V2_ACTIF = sauvegarde.dry;
   }
 });

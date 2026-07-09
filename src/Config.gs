@@ -30,13 +30,12 @@ var CONFIG = {
 
   // --- REFONTE #26 : analyse en 2 passes (extraction + vérification adversariale) ---
   // Chantier #26 (demande Marc 2026-07-07 : « fiabilité maximale, Sonnet 2 passes, quitte à coûter
-  // plus cher »). ÉTEINT par défaut : le pipeline live reste sur Haiku 1 passe tant que Marc n'a pas
-  // donné son FEU VERT explicite (Sonnet ×2 sur CHAQUE document du flux vivant est coûteux — §2.6, la
-  // cible de croisière reste < 10 $/mois). Quand ON : `classifierDeuxPasses_` (Llm.gs) remplace
-  // `classifier_`, et `deciderRoutageV2_` (Router.gs) remplace `deciderRoutage_` — schéma étendu
-  // (non-document, identité par type, entité unifiée, descripteur jamais « Inconnu », sous-dossier
-  // obligatoire). OFF ⇒ comportement d'aujourd'hui, octet pour octet.
-  ANALYSE_V2: false,
+  // plus cher »). ALLUMÉ 2026-07-09 (ADR-0018) : FEU VERT explicite de Marc après la preuve dry-run
+  // C26-07 (100 docs réels, 0 fail-safe, confiance médiane 0,93, 0,026 $/doc — onglet DryRunV2).
+  // Quand ON : `classifierDeuxPasses_` (Llm.gs) remplace `classifier_`, et `deciderRoutageV2_`
+  // (Router.gs) remplace `deciderRoutage_` — schéma étendu (non-document, identité par type, entité
+  // unifiée, descripteur jamais « Inconnu », sous-dossier obligatoire). OFF ⇒ pipeline Haiku 1 passe.
+  ANALYSE_V2: true,
   ANALYSE_V2_MODELE: 'claude-sonnet-4-6',   // les 2 passes tournent sur Sonnet (fiabilité > coût, quand ON)
   ANALYSE_V2_MAX_TOKENS: 1000,              // schéma étendu (15 champs) → marge large (un JSON tronqué = doc en échec)
   ANALYSE_V2_OCR_MAX_CARS: 12000,           // texte envoyé au LLM moins tronqué qu'en Haiku (4000) — analyse plus fine
@@ -56,10 +55,12 @@ var CONFIG = {
   // les campagnes de MASSE (grand rangement, migration, historique Gmail) se mettent en pause
   // jusqu'au mois suivant — le FLUX VIVANT (Gmail 30 j, dépôts, partages, intentions, tri)
   // continue, lui. Relevé 10 → 30 (décision Marc 2026-07-07 : « je veux que tu continues le tri
-  // au complet » — les campagnes de RATTRAPAGE sont un coût one-shot ; la cible < 10 $/mois reste
-  // celle du régime de croisière une fois le rattrapage fini). Jamais 0/Infinity : le frein reste
-  // le filet anti-emballement (boucle de re-OCR, erreur de convergence).
-  LLM_BUDGET_CAMPAGNES: 30,
+  // au complet »), puis 30 → 65 (décision Marc 2026-07-09, ADR-0018 : campagne C26-08 ciblée
+  // ~924 docs ≈ 24 $ en plus des 27 $ du mois entamé). Les campagnes de RATTRAPAGE sont un coût
+  // one-shot ; la cible < 10 $/mois reste celle du régime de croisière — Marc REDESCEND ce plafond
+  // à 10 (en éditant cette ligne) à la fin de C26-08. Jamais 0/Infinity : le frein reste le filet
+  // anti-emballement (boucle de re-OCR, erreur de convergence).
+  LLM_BUDGET_CAMPAGNES: 65,
   // Résumé hebdomadaire automatique (mail récap à soi-même, scope script.send_mail existant).
   RESUME_JOUR: 'MONDAY',                  // jour du déclencheur hebdo (WeekDay Apps Script)
   RESUME_HEURE: 8,                        // heure locale d'envoi
@@ -430,6 +431,20 @@ var CONFIG = {
                                           // lui, la campagne épuiserait le quota en quelques heures et
                                           // l'intake serait mort le reste de la journée
 
+  // --- C26-08 (ADR-0018) : RE-ANALYSE v2 CIBLÉE des domaines mal classés ---
+  // Décision Marc 2026-07-09 (« go 2 ») après la preuve dry-run C26-07 : re-passe au pipeline v2
+  // (Sonnet 2 passes) les SEULS domaines où l'échantillon a montré un fort taux de mal-classés
+  // (03 : 9 propositions/12 ; 08 : 4/11) — ~924 docs ≈ 24 $ au coût mesuré (0,026 $/doc).
+  // Même mécanique éprouvée que la migration (clé dédiée additive `reanalyse|<tag>|fileId`,
+  // convergence par passe vide, zone protégée revérifiée, ignorerDoublon), avec 2 différences :
+  // la collecte itère UNIQUEMENT sur REANALYSE_CIBLES, et la campagne ne démarre qu'après la FIN
+  // de m1 (une seule campagne de masse à la fois — les collecteurs se marcheraient dessus).
+  // Ces domaines sont exclus de m1 dès ce merge : jamais payés DEUX fois (v1 puis v2).
+  REANALYSE_TAG: 'c26-08',                // bumper le tag relance une campagne complète (re-facture)
+  REANALYSE_CIBLES: ['03 · Logement & véhicule', '08 · Perso & projets'],
+  REANALYSE_BUDGET_MS: 2 * 60 * 1000,     // sous-budget PAR TICK (même famille que MIGRATION_BUDGET_MS) ;
+                                          // la page réutilise MIGRATION_MAX_PAR_RUN (docs lourds/run)
+
   // --- C26-07 (ADR-0015) : PREUVE dry-run avant/après du pipeline v2, sur un échantillon RÉEL ---
   // Prérequis à la campagne C26-08 et à l'allumage de ANALYSE_V2. Interrupteur DÉDIÉ, distinct
   // d'ANALYSE_V2 : n'affecte JAMAIS le flux vivant (Haiku 1 passe reste actif tant qu'ANALYSE_V2
@@ -437,9 +452,10 @@ var CONFIG = {
   // stratifié, écrit l'avant/après dans l'onglet Sheet « DryRunV2 » — NE DÉPLACE NI NE RENOMME RIEN.
   // Coût réel engagé quand ON (Sonnet ×2/doc, ~0,03-0,04 $/doc, ADR-0015) : n'allumer qu'après feu
   // vert explicite de Marc sur la taille de l'échantillon (docs/RUNBOOK.md).
-  // ALLUMÉ 2026-07-08 (feu vert Marc : ~100 docs, ~3-6 $). À repasser à false une fois l'onglet
-  // DryRunV2 rempli et validé (la campagne se fige seule via la Property DriveAI_DRYRUNV2).
-  DRYRUN_V2_ACTIF: true,
+  // ALLUMÉ 2026-07-08 (feu vert Marc : ~100 docs, ~3-6 $) ; CLOS 2026-07-09 : onglet DryRunV2
+  // rempli (100/100, coût 2,61 $) et validé par Marc → « go » à C26-08 (ADR-0018). Rebrancher
+  // exige un NOUVEAU tag (re-facture, décision explicite).
+  DRYRUN_V2_ACTIF: false,
   DRYRUN_V2_TAG: 'd1',                    // bumper relance un NOUVEL échantillon (re-facture, décision explicite)
   DRYRUN_V2_TAILLE: 100,                  // taille cible de l'échantillon global (marge 50-150, à confirmer avec Marc)
   DRYRUN_V2_MAX_PAR_DOMAINE: 15,          // plafond par domaine — anti-déséquilibre (un domaine énorme n'écrase pas les autres)

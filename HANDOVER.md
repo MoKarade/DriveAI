@@ -4,28 +4,28 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **2026-07-09 — DRY-RUN V2 TERMINÉ + rapport livré ; 🔴 PANNE DE CRÉDIT en cours ; fusion 07→08
-> et incident Sheet SOLDÉS ; artefacts DriveAI rangés sous 08.**
+> **2026-07-09 — C26-08 LANCÉE (ADR-0018) : ANALYSE_V2 allumé + campagne ciblée 03/08 ; crédit
+> rechargé ; dry-run clos ; fusion 07→08 et incident Sheet SOLDÉS ; artefacts rangés sous 08.**
+> • **C26-08 CODÉE (décision Marc « go 2ᵉ option », plan NotebookLM, ADR-0018)** :
+>   `ANALYSE_V2: true` (flux vivant en Sonnet 2 passes), `DRYRUN_V2_ACTIF: false` (clos),
+>   `LLM_BUDGET_CAMPAGNES` 30 → **65 $** (temporaire — **redescendre à 10 à la fin de C26-08**,
+>   checklist dans l'ADR). Campagne `reanalyse|c26-08|` sur `REANALYSE_CIBLES` = `03 · Logement`
+>   (186 docs) + `08 · Perso` (738 docs) ≈ 24 $ : même mécanique que m1, démarre SEULE à la fin
+>   de m1 (garde `DriveAI_MIGRATION`), 03/08 exclus de m1 dès ce merge (jamais payés 2×).
+>   Fin de campagne = Journal « Re-analyse v2 ciblée terminée (tag « c26-08 ») ».
 > • **C26-07 TERMINÉ (100/100 le 08-07 18:33, coût mesuré 2,61 $)** — rapport avant/après complet
 >   livré à Marc (artifact « Dry-run v2 — preuve avant/après »). Chiffres : **0 fail-safe** (la revue
 >   reste l'exception, 0/100), confiance médiane 0,93 (2 docs < 0,7), 22 changements de domaine
 >   proposés dont 3 refusés par le garde zone protégée (§2.1b) → **19 applicables**, 62 renommages
 >   (titulaire sur les papiers d'identité : `Passeport_Préfecture…` → `Passeport_Marc Richard`),
 >   76 sous-dossiers d'entité, 24 non-documents écartés (`_Médias`/`_Technique`).
->   **DÉCISION C26-08 ATTENDUE DE MARC** : 0,026 $/doc × 3 733 docs classés ≈ **97 $** vs frein
->   campagnes 30 $ (27,25 $ déjà consommés en juillet) → options : flux vivant seul (< 0,5 $/j) /
->   campagne ciblée ~700 docs ≈ 18 $ / complète ≈ 97 $ avec plafond relevé. Après décision :
->   repasser `DRYRUN_V2_ACTIF: false`, puis (si campagne finie) redescendre `LLM_BUDGET_CAMPAGNES`
->   30 → 10 $.
-> • **🔴 PANNE DE CRÉDIT ANTHROPIC depuis le 08-07 ~21:40** (dernier doc classé 21:37 ; HTTP 400
->   « credit balance » à chaque re-sonde horaire). Le filet R2 fonctionne : sources suspendues,
->   re-sonde 1×/h, AUCUNE quarantaine à tort, zéro coût brûlé — mais mails/dépôts en pause.
->   **Marc recharge sur console.anthropic.com → reprise auto ≤ 1 h, aucune action éditeur.**
->   Après recharge : la migration m1 (539 docs faits, en cours) touchera le frein 30 $ après
->   ~105 docs et se mettra en pause seule (filet §2.6 — le flux vivant n'est jamais gaté).
->   Nota : le Journal répète « 12 document(s) re-classé(s) (m1) » chaque heure PENDANT la panne —
+> • **Panne de crédit Anthropic du 08-07 ~21:40 → rechargée par Marc le 09-07 ~14h** (HTTP 400
+>   « credit balance » à chaque re-sonde horaire pendant ~16 h ; le filet R2 a fonctionné : sources
+>   suspendues, re-sonde 1×/h, AUCUNE quarantaine à tort, zéro coût brûlé). Reprise auto ≤ 1 h
+>   après recharge — vérifier par signaux Drive (docs classés au Journal, file À trier qui bouge).
+>   Nota : le Journal répétait « 12 document(s) re-classé(s) (m1) » chaque heure PENDANT la panne —
 >   libellé trompeur (soumissions qui échouent vite, rien d'inscrit), comportement correct ;
->   correctif cosmétique à prévoir (compter les aboutis, pas les soumis).
+>   les nouveaux messages Réanalyse disent « soumis » (correctif appliqué à C26-08, pas à m1).
 > • **Fusion « 07 · Perso & projets » → 08 SOLDÉE** : `terminerFusionDomaine07` exécutée par Marc
 >   (11 Entités + 349 Domaine + 340 Chemin ré-étiquetés) ; contre-vérifiée sur export xlsx —
 >   0 occurrence restante dans Entités et les colonnes Domaine/Chemin (survivances = historiques

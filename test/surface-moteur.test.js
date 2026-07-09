@@ -39,6 +39,9 @@ const CONTRAT = [
   'traiterGmail_', 'traiterGmailHistorique_', 'traiterPageHistorique_', 'pageFilsHisto_',
   'requeteHisto_', 'dateGmail_',
   'traiterDepots_', 'ordonnerDepots_', 'collecterPartages_', 'appliquerMigrationTaxonomie_',
+  // re-analyse v2 ciblée (C26-08, ADR-0018)
+  'estAReanalyser_', 'appliquerReanalyseCiblee_', 'reanalyserUnePage_', 'collecterAReanalyser_',
+  'reanalyserFichier_',
   'exporterTexteNatif_', 'exportNatifMime_', // natifs Google lisibles (R3)
   'budgetCampagnesAtteint_', 'reinitialiserFreinBudget_', // frein budget campagnes (R3, §2.6)
   'appliquerRangementInitial_', 'appliquerRejeuSiNouvelleVersion_', 'rangementTermine_',

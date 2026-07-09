@@ -132,6 +132,10 @@ test('pipeline : photo au nom PORTEUR DE SENS + OCR vide → analyse complète q
 
 function ctxPipelineConf(nom, extrait, classif) {
   const base = ctxPipeline(nom, extrait);
+  // Ces tests verrouillent la garde post-LLM sur le chemin V1 (deciderRoutage_ mocké) : le chemin
+  // est ÉPINGLÉ ici — la position GLOBALE du flag est une décision de campagne de Marc (ON depuis
+  // ADR-0018), jamais un invariant de test. La même garde vit AVANT la branche v1/v2 (Pipeline.gs).
+  base.c.CONFIG.ANALYSE_V2 = false;
   base.c.classifier_ = () => { base.calls.classif++; return classif; };
   base.c.toucheZoneProtegee_ = (t) => /passeport|ircc/i.test(t || '');
   base.c.enrichirClassifDepuisNom_ = () => {}; // dépend de normaliserCle_ (module non chargé ici)
