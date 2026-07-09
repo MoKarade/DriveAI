@@ -4,6 +4,45 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **2026-07-09 — DRY-RUN V2 TERMINÉ + rapport livré ; 🔴 PANNE DE CRÉDIT en cours ; fusion 07→08
+> et incident Sheet SOLDÉS ; artefacts DriveAI rangés sous 08.**
+> • **C26-07 TERMINÉ (100/100 le 08-07 18:33, coût mesuré 2,61 $)** — rapport avant/après complet
+>   livré à Marc (artifact « Dry-run v2 — preuve avant/après »). Chiffres : **0 fail-safe** (la revue
+>   reste l'exception, 0/100), confiance médiane 0,93 (2 docs < 0,7), 22 changements de domaine
+>   proposés dont 3 refusés par le garde zone protégée (§2.1b) → **19 applicables**, 62 renommages
+>   (titulaire sur les papiers d'identité : `Passeport_Préfecture…` → `Passeport_Marc Richard`),
+>   76 sous-dossiers d'entité, 24 non-documents écartés (`_Médias`/`_Technique`).
+>   **DÉCISION C26-08 ATTENDUE DE MARC** : 0,026 $/doc × 3 733 docs classés ≈ **97 $** vs frein
+>   campagnes 30 $ (27,25 $ déjà consommés en juillet) → options : flux vivant seul (< 0,5 $/j) /
+>   campagne ciblée ~700 docs ≈ 18 $ / complète ≈ 97 $ avec plafond relevé. Après décision :
+>   repasser `DRYRUN_V2_ACTIF: false`, puis (si campagne finie) redescendre `LLM_BUDGET_CAMPAGNES`
+>   30 → 10 $.
+> • **🔴 PANNE DE CRÉDIT ANTHROPIC depuis le 08-07 ~21:40** (dernier doc classé 21:37 ; HTTP 400
+>   « credit balance » à chaque re-sonde horaire). Le filet R2 fonctionne : sources suspendues,
+>   re-sonde 1×/h, AUCUNE quarantaine à tort, zéro coût brûlé — mais mails/dépôts en pause.
+>   **Marc recharge sur console.anthropic.com → reprise auto ≤ 1 h, aucune action éditeur.**
+>   Après recharge : la migration m1 (539 docs faits, en cours) touchera le frein 30 $ après
+>   ~105 docs et se mettra en pause seule (filet §2.6 — le flux vivant n'est jamais gaté).
+>   Nota : le Journal répète « 12 document(s) re-classé(s) (m1) » chaque heure PENDANT la panne —
+>   libellé trompeur (soumissions qui échouent vite, rien d'inscrit), comportement correct ;
+>   correctif cosmétique à prévoir (compter les aboutis, pas les soumis).
+> • **Fusion « 07 · Perso & projets » → 08 SOLDÉE** : `terminerFusionDomaine07` exécutée par Marc
+>   (11 Entités + 349 Domaine + 340 Chemin ré-étiquetés) ; contre-vérifiée sur export xlsx —
+>   0 occurrence restante dans Entités et les colonnes Domaine/Chemin (survivances = historiques
+>   inoffensives : noms `[REVUE]` de juin, onglet Revue pré-ADR-0016, bilan Journal).
+> • **Incident Sheet 100 % clos** : Sheet incident renommée puis CORBEILLÉE par Marc (réparation
+>   re-portée avant), `DriveAI_extract_temp` (orphelin d'une coupure — `Ocr.gs` le supprime
+>   normalement en `finally`) corbeillé aussi.
+> • **Artefacts DriveAI rangés sous `08 · Perso & projets/DriveAI`** (demande Marc, plan NotebookLM
+>   validé + contre-vérifié dans le code) : Sheet d'état, projet Apps Script, formulaire de
+>   correction — tous natifs Google (invisibles des collecteurs, `Maintenance.gs:291`) et résolus
+>   par ID (aucun code touché, zéro interruption vérifiée par heartbeat post-déplacement).
+>   **`_Doublons` et `_Miroir du dépôt` restent à la racine de `Nouvelle structure 2026`** : les
+>   collecteurs de masse parcourent récursivement chaque domaine — les nicher sous 08 ferait
+>   aspirer leur contenu vers `00 · À trier`. Règle : jamais de fichier NON-natif sous `08/DriveAI`.
+> • Rangement ancien Drive : 100 % (2 802/2 802, terminé ✅). Captures : `captures-app.pdf` arrivé
+>   dans le miroir (sync #39) — source NotebookLM à ajouter par Marc.
+>
 > **2026-07-08 (fin de soirée) — ANOMALIES PROD corrigées (PR #126).** Deux constats chiffrés sur
 > l'état réel : (1) ~9 fichiers « Access denied » re-tentés par le rangement à CHAQUE tick →
 > `deplacerVersATrier_` passe les échecs par `gererEchec_` (quarantaine après 3, clé `drive|` qui
