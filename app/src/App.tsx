@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import { configComplete, lireConfig, enregistrerConfig } from './config';
-import { seConnecter, estConnecte, seDeconnecter, abonnerSessionExpiree, verifierMaintenant, viderCachePlages } from './google';
+import { seConnecter, estConnecte, seDeconnecter, abonnerSessionExpiree, tenterRestaurationSession, verifierMaintenant, viderCachePlages } from './google';
 import { FournisseurEtat, useEtatGlobal } from './etatGlobal';
 import { BanniereErreur } from './composants/UI';
 import { Langue, langueCourante, changerLangue, t } from './i18n';
@@ -37,9 +37,19 @@ export function App() {
   const [verif, setVerif] = useState<'' | 'encours' | 'ok'>('');
   const [erreur, setErreur] = useState('');
 
-  // Jeton GIS expiré (~1 h) → rebascule sur l'écran de connexion au lieu de vues qui échouent en boucle.
+  // Session vraiment morte (le rafraîchissement silencieux a échoué) → écran de connexion,
+  // au lieu de vues qui échouent en boucle. Un simple jeton d'une heure périmé ne passe plus ici.
   useEffect(() => {
     abonnerSessionExpiree(() => setConnecte(false));
+  }, []);
+
+  // Restauration SILENCIEUSE au chargement (C28-14) : le cookie HttpOnly de session (posé au
+  // premier consentement) rend un jeton frais sans clic ni popup — « se connecter une fois ».
+  useEffect(() => {
+    if (!connecte) {
+      void tenterRestaurationSession().then((ok) => { if (ok) setConnecte(true); });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- au montage uniquement
   }, []);
 
   function basculerLangue() {
@@ -51,8 +61,10 @@ export function App() {
   async function connexion() {
     setErreur('');
     try {
+      // En réel la page NAVIGUE vers /api/login (le await n'y revient pas) ; en mode mock E2E
+      // seConnecter pose le jeton bouchonné et on bascule l'état localement.
       await seConnecter();
-      setConnecte(true);
+      setConnecte(estConnecte());
     } catch (e) {
       setErreur(String(e));
     }
@@ -201,8 +213,8 @@ function BadgeSynchro({ langue }: { langue: Langue }) {
 }
 
 function Configuration({ langue, onFait }: { langue: Langue; onFait: () => void }) {
+  // Plus de Client ID ici (C28-14) : l'OAuth vit côté serveur (variables d'environnement Vercel).
   const initiale = lireConfig();
-  const [clientId, setClientId] = useState(initiale.clientId);
   const [spreadsheetId, setSpreadsheetId] = useState(initiale.spreadsheetId);
   const [webappUrl, setWebappUrl] = useState(initiale.webappUrl);
   const [webappSecret, setWebappSecret] = useState(initiale.webappSecret);
@@ -211,7 +223,6 @@ function Configuration({ langue, onFait }: { langue: Langue; onFait: () => void 
     <section className="carte centre">
       <h2>{t('configuration', langue)}</h2>
       <div className="formulaire-config">
-        <input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder={t('clientId', langue)} />
         <input
           value={spreadsheetId}
           onChange={(e) => setSpreadsheetId(e.target.value)}
@@ -221,9 +232,9 @@ function Configuration({ langue, onFait }: { langue: Langue; onFait: () => void 
         <input value={webappSecret} onChange={(e) => setWebappSecret(e.target.value)} placeholder={t('webappSecret', langue)} />
         <button
           className="principal"
-          disabled={!clientId || !spreadsheetId}
+          disabled={!spreadsheetId}
           onClick={() => {
-            enregistrerConfig({ clientId, spreadsheetId, webappUrl, webappSecret });
+            enregistrerConfig({ spreadsheetId, webappUrl, webappSecret });
             onFait();
           }}
         >

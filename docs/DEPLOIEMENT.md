@@ -233,28 +233,39 @@ normalement : ce nouveau scope n'affecte pas les permissions déjà accordées.)
 
 ## Phase 4 — app web (tableau de bord + corrections, ADR-0008)
 
-L'app (`app/`, React/Vite/TS) est une **SPA statique sans backend** : elle parle directement aux
-API Google avec **ton** jeton (login Google), rien n'est public, aucun secret embarqué. Trois
-étapes uniques (~10 min), puis tout se déploie tout seul à chaque merge.
+L'app (`app/`, React/Vite/TS) parle directement aux API Google avec **ton** jeton (login Google) ;
+rien n'est public, aucun secret embarqué côté navigateur. Depuis **C28-14 (session durable)**, elle
+embarque 4 petites **fonctions serverless Vercel** (`api/login|callback|refresh|logout`, à la racine
+du dépôt) qui portent le flux OAuth « Authorization Code » : tu te connectes **une fois**, le
+refresh token vit dans un cookie **HttpOnly chiffré** (invisible au JavaScript), et l'app renouvelle
+son jeton d'accès en silence — plus jamais de reconnexion.
 
 ### 1. Client OAuth (Google Cloud, une fois)
 1. Dans le **même projet Google Cloud** que le script Apps Script : **API et services → Identifiants
-   → Créer → ID client OAuth → Application Web**.
-2. **Origines JavaScript autorisées** : l'URL Vercel (ex. `https://driveai-<xxx>.vercel.app`) + `http://localhost:5173` (dev).
-   Pas d'URI de redirection (flux jeton GIS).
-3. **Écran de consentement** : type Externe, ajoute `marc.richard4@gmail.com` en **utilisateur test**
+   → Créer → ID client OAuth → Application Web** (ou ouvre le client existant).
+2. **URI de redirection autorisés** (C28-14, flux code) :
+   `https://<ton-domaine>.vercel.app/api/callback` + `http://localhost:5173/api/callback` (dev).
+   Les « Origines JavaScript » de l'époque GIS ne servent plus.
+3. **Code secret du client** : note le `Client secret` (génère-le s'il n'existe pas) — il va dans
+   Vercel à l'étape 2, jamais dans le code ni dans le navigateur.
+4. **Écran de consentement** : type Externe, ajoute `marc.richard4@gmail.com` en **utilisateur test**
    (l'app peut rester en mode « test » — usage perso).
-4. Active les API **Google Sheets** et **Google Drive** dans ce projet (probablement déjà fait).
+5. Active les API **Google Sheets** et **Google Drive** dans ce projet (probablement déjà fait).
 
 ### 2. Projet Vercel (une fois)
-1. **Import du repo GitHub** → Framework « Vite », **Root Directory = `app`** (build `npm run build`,
-   sortie `dist` : détectés tout seuls).
-2. (Optionnel) Variables d'environnement `VITE_GOOGLE_CLIENT_ID` et `VITE_SPREADSHEET_ID` — sinon
-   l'app te les demande au premier lancement (écran Configuration, stockées dans TON navigateur).
+1. **Import du repo GitHub** — la config est portée par `vercel.json` à la racine (build de `app/`,
+   fonctions serverless de `api/`). **Root Directory = racine du dépôt** (pas `app`).
+2. **Variables d'environnement (Settings → Environment Variables)** — les 3 sont REQUISES :
+   - `GOOGLE_CLIENT_ID` — l'ID client OAuth de l'étape 1 ;
+   - `GOOGLE_CLIENT_SECRET` — son code secret ;
+   - `COOKIE_SECRET` — longue chaîne aléatoire (ex. `openssl rand -hex 32`) qui chiffre le cookie.
+3. (Optionnel) `VITE_SPREADSHEET_ID` — sinon l'app te le demande au premier lancement (écran
+   Configuration, stocké dans TON navigateur). `VITE_GOOGLE_CLIENT_ID` ne sert plus (C28-14).
 
-### 3. Se connecter
-Ouvre l'URL Vercel → « Se connecter avec Google » → consentement (Sheets + Drive). Le jeton vit **en
-mémoire** de l'onglet, jamais persisté.
+### 3. Se connecter (une seule fois)
+Ouvre l'URL Vercel → « Se connecter avec Google » → consentement (Sheets + Drive + Tasks/Calendar).
+Le jeton d'accès (~1 h) vit en sessionStorage et se **renouvelle tout seul** via `/api/refresh` ;
+le refresh token reste dans son cookie HttpOnly chiffré (1 an). « Se déconnecter » détruit le cookie.
 
 > **Garde-fous embarqués (miroir testé du moteur, CI)** : l'app ne peut **rien supprimer** (aucun
 > chemin DELETE dans le code — verrouillé par test), ne **détache jamais** un document de

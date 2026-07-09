@@ -883,3 +883,21 @@ l'asserter, et il le dit en commentaire (révisable uniquement avec une décisio
 « flag » de la règle durable « les tests dérivent de la constante, jamais de sa valeur du jour ».
 **Règle durable ?** non (instance de la règle durable existante « un test paramétré par CONFIG
 dérive ses cas de la constante » — le corollaire flag y est ajouté en une ligne).
+
+## 2026-07-09 — Fichiers d'infra : le plan dit où les mettre, la CONFIG de plateforme décide
+**Contexte.** C28-14 (session durable) : le plan architecte validé disait « crée `app/api/*.ts`
+(Vercel compile automatiquement `api/`) » et « installe le paquet `cookie` ».
+**Leçon.** Les deux prémisses étaient fausses pour NOTRE projet — c'est `vercel.json` qui arbitre :
+il enracine le projet Vercel au DÉPÔT (`outputDirectory: app/dist`) → les fonctions serverless vont
+dans `/api` RACINE, pas `app/api` ; et `installCommand: "true"` n'installe RIEN à la racine → toute
+dépendance npm importée par une fonction casserait le build → fonctions SANS dépendance
+(`node:crypto`, `fetch` global). Deux pièges voisins du même chantier : (1) le cookie d'état
+anti-CSRF OAuth doit être `SameSite=Lax`, jamais `Strict` — le retour depuis accounts.google.com
+est une navigation top-level CROSS-SITE que `Strict` n'enverrait pas (le state ne se vérifierait
+jamais) ; le cookie du refresh token, lui, reste `Strict` (seuls nos fetchs même-site le lisent).
+(2) Un `tsconfig.json` accepte les commentaires (JSONC) mais la CI valide TOUS les `.json` en JSON
+STRICT (`python3 -m json.tool`) — pas de commentaires dans les `.json` du dépôt.
+Instance de la règle durable « vérifier les identités de plateforme qu'un plan validé suppose » :
+avant d'exécuter un plan qui POSE des fichiers d'infrastructure, relire la config de plateforme qui
+arbitre réellement (`vercel.json`, `appsscript.json`, workflows CI).
+**Règle durable ?** non (instance de la règle durable existante — les pièges précis restent ici).
