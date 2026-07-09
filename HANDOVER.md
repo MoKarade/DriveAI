@@ -5,7 +5,17 @@
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
 > **2026-07-09 — C26-08 LANCÉE (ADR-0018) : ANALYSE_V2 allumé + campagne ciblée 03/08 ; crédit
-> rechargé ; dry-run clos ; fusion 07→08 et incident Sheet SOLDÉS ; artefacts rangés sous 08.**
+> rechargé (100 $) ; dry-run clos ; fusion 07→08 et incident Sheet SOLDÉS ; artefacts rangés
+> sous 08 ; C28-14 session durable de l'app CODÉE (attend la config Vercel de Marc).**
+> • **C28-14 — session durable (« me connecter une fois »)** : fini GIS — flux Authorization Code
+>   via 4 fonctions serverless Vercel (`api/` racine, zéro dépendance), refresh token en cookie
+>   HttpOnly CHIFFRÉ (COOKIE_SECRET), access token en sessionStorage (verrou session.test.ts
+>   INTACT), restauration silencieuse au chargement + rejeu auto sur 401, clientId retiré du
+>   client. **Avant que ça marche, Marc doit** : (1) ajouter les URI de redirection
+>   `…/api/callback` au client OAuth (console Google Cloud), (2) poser GOOGLE_CLIENT_ID,
+>   GOOGLE_CLIENT_SECRET et COOKIE_SECRET dans Vercel (Settings → Environment Variables),
+>   (3) vérifier que le Root Directory Vercel est la RACINE du dépôt (vercel.json porte le build).
+>   Détail pas à pas : docs/DEPLOIEMENT.md §Phase 4.
 > • **C26-08 CODÉE (décision Marc « go 2ᵉ option », plan NotebookLM, ADR-0018)** :
 >   `ANALYSE_V2: true` (flux vivant en Sonnet 2 passes), `DRYRUN_V2_ACTIF: false` (clos),
 >   `LLM_BUDGET_CAMPAGNES` 30 → **65 $** (temporaire — **redescendre à 10 à la fin de C26-08**,

@@ -17,12 +17,13 @@ const SECTIONS: Array<{ fichier: string; libelle: string }> = [
 ];
 
 test('captures des 6 sections (mode mock, app "connectée")', async ({ page }) => {
-  // L'écran Configuration est gaté par localStorage (clientId + spreadsheetId) : on le seed AVANT
-  // le chargement — des identifiants factices suffisent, le mode mock n'appelle aucune API.
+  // L'écran Configuration est gaté par localStorage (spreadsheetId — plus de clientId depuis
+  // C28-14) : on le seed AVANT le chargement — un identifiant factice suffit, le mode mock
+  // n'appelle aucune API (ni Google ni /api/*).
   await page.addInitScript(() => {
     localStorage.setItem(
       'driveai.config',
-      JSON.stringify({ clientId: 'mock-client-id', spreadsheetId: 'mock-spreadsheet-id', webappUrl: '', webappSecret: '' }),
+      JSON.stringify({ spreadsheetId: 'mock-spreadsheet-id', webappUrl: '', webappSecret: '' }),
     );
   });
 

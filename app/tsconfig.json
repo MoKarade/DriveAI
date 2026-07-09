@@ -12,7 +12,9 @@
     "skipLibCheck": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["vite/client"]
+    // "node" : les fonctions serverless ../api (node:crypto, process.env) sont typées par le
+    // MÊME `tsc --noEmit` que l'app — sans CI dédiée à la racine, c'est ici qu'elles se vérifient.
+    "types": ["vite/client", "node"]
   },
-  "include": ["src", "test"]
+  "include": ["src", "test", "../api"]
 }
