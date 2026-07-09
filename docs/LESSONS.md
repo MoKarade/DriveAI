@@ -868,3 +868,18 @@ la relance doit être posé APRÈS la toute dernière étape utile — et chaque
 doit être idempotente SEULE (remplacement conditionnel, jamais un état qui neutralise la suite).
 Tracer la coupure à CHAQUE frontière d'étape avant de déclarer un outil « reprenable ».
 **Règle durable ?** non (instance d'une règle durable déjà consignée — « ordre des écritures d'état »).
+
+## 2026-07-09 — Un test d'un chemin gaté par un flag de campagne ÉPINGLE ce flag, jamais ne l'hérite
+**Contexte.** C26-08 (ADR-0018) : bascule du flag global `ANALYSE_V2` OFF→ON (feu vert Marc après
+la preuve dry-run). 3 tests ont cassé parce qu'ils HÉRITAIENT de la position du flag au lieu de
+l'épingler : le tripwire qui assertait la valeur par défaut (légitime — révisé AVEC la décision),
+mais aussi 2 tests du chemin v1 (`medias.test.js` mockait `deciderRoutage_` sans forcer
+`CONFIG.ANALYSE_V2 = false` → le pipeline a pris la branche v2 non mockée, placement vide) et
+1 test du dry-run seul (assertait `ANALYSE_V2 === false` comme prémisse de son scénario).
+**Leçon.** Un test qui verrouille le COMPORTEMENT d'un chemin gaté par un flag de campagne doit
+FORCER ce flag dans son contexte (save/restore) — la position globale d'un flag est une DÉCISION
+de Marc, jamais un invariant de test. Seul le tripwire DÉDIÉ à la position du flag a le droit de
+l'asserter, et il le dit en commentaire (révisable uniquement avec une décision + ADR). Instance
+« flag » de la règle durable « les tests dérivent de la constante, jamais de sa valeur du jour ».
+**Règle durable ?** non (instance de la règle durable existante « un test paramétré par CONFIG
+dérive ses cas de la constante » — le corollaire flag y est ajouté en une ligne).
