@@ -34,7 +34,7 @@ function initialiserSheet_(ss) {
   creerOnglet_(ss, 'DryRunV2', ['Horodaté', 'ID fichier', 'Nom actuel', 'Domaine actuel', 'Chemin actuel',
     'Type v2', 'Domaine proposé', 'Sous-dossier proposé', 'Nom proposé', 'Fail-safe déclenché',
     'Confiance', 'Coût $ mesuré']);
-  creerOnglet_(ss, 'Progression', ['Rangement de l\'ancien Drive']);        // barre de chargement (cf. Maintenance)
+  creerOnglet_(ss, 'Progression', COLONNES_PROGRESSION); // suivi LIVE des opérations (C28-18, cf. majProgressions_)
   creerOnglet_(ss, 'Santé', ['Santé DriveAI']);                             // vue lisible (heartbeat + métriques, ADR-0006)
   var defaut = ss.getSheetByName('Feuille 1') || ss.getSheetByName('Sheet1');
   if (defaut && ss.getSheets().length > 1) ss.deleteSheet(defaut);
@@ -115,6 +115,211 @@ function majSante_() {
     ['Mis à jour : ' + new Date()]
   ];
   f.getRange(2, 1, lignes.length, 1).setValues(lignes); // une seule écriture Sheet (I/O borné/tick)
+}
+
+/* ---------- Progression LIVE des opérations (C28-18) ---------- */
+
+// Contrat avec l'app (interpreterProgression côté React) : 7 colonnes, une ligne par opération.
+var COLONNES_PROGRESSION = ['Clé', 'Opération', 'Traités', 'Base', 'Unité', 'Statut', 'Horodaté'];
+
+/**
+ * L'onglet Progression v1 était une barre TEXTE mono-opération (rangement, cellules A2:A4).
+ * Migration d'en-tête (une fois) : c'était un AFFICHAGE, pas un état — l'état (Properties,
+ * Index) est intact ; on repart d'un tableau vierge que `majProgressions_` re-remplit ce tick.
+ * @param {Sheet} f
+ */
+function assurerEnteteProgression_(f) {
+  if (String(f.getRange('A1').getValue()) === 'Clé') return;
+  f.clearContents();
+  f.getRange(1, 1, 1, COLONNES_PROGRESSION.length).setValues([COLONNES_PROGRESSION]);
+  f.setFrozenRows(1);
+}
+
+/**
+ * Construit les lignes de l'onglet Progression. PURE (testée) : tout l'état arrive en paramètres.
+ *
+ * Règles (leçons « barre de masse ») : le statut dérive des pannes/frein AVANT « en cours » ;
+ * une opération « terminé » garde l'horodatage de sa FIN (sinon jamais purgée) et disparaît après
+ * `purgeMs` ; une campagne finie AVANT d'avoir eu une ligne n'apparaît jamais (ex. rangement,
+ * clos depuis des semaines). Les demandes soldées (tri/intentions) arrivent par leur instantané
+ * `solde` — visibles même quand la demande s'est servie en un seul tick.
+ *
+ * @param {Object} etat  instantané des opérations (cf. majProgressions_)
+ * @param {Object} existantes  clé → {traites:number, statut:string, horodateMs:number}
+ * @param {number} maintenantMs
+ * @param {number} purgeMs  CONFIG.PROGRESSION_PURGE_MS
+ * @return {Array[]} lignes [Clé, Opération, Traités, Base, Unité, Statut, Horodaté]
+ */
+function lignesProgression_(etat, existantes, maintenantMs, purgeMs) {
+  var lignes = [];
+
+  /** Statut d'une CAMPAGNE Drive+LLM (migration, re-analyse, rangement). */
+  function statutCampagne(op) {
+    if (op.termine) return 'terminé';
+    if (op.enAttente) return 'en attente (après m1)';
+    if (op.base === null) return 'recensement';
+    if (etat.panneApi) return 'suspendu (panne API)';
+    if (etat.freinBudget) return 'en pause (frein budget)';
+    return 'en cours';
+  }
+
+  /** Pousse une ligne en appliquant les règles « terminé » (horodatage figé, purge, jamais-né). */
+  function pousser(cle, operation, traites, base, unite, statut) {
+    var ex = existantes[cle];
+    var horodateMs = maintenantMs;
+    if (statut === 'terminé') {
+      if (!ex) return; // finie avant d'avoir eu une ligne → rien à montrer
+      if (ex.statut === 'terminé') {
+        if (maintenantMs - ex.horodateMs > purgeMs) return; // purge des vieux « terminé »
+        horodateMs = ex.horodateMs; // l'horodatage de FIN ne bouge plus
+      }
+      if (traites === null || traites < ex.traites) traites = ex.traites; // numérateur figé à la fin
+    }
+    lignes.push([cle, operation, traites === null ? '' : traites, base === null ? '' : base,
+      unite, statut, new Date(horodateMs)]);
+  }
+
+  // 1. Demandes de Marc d'abord (c'est ce qu'il vient de cliquer).
+  var td = etat.triDemande;
+  if (td.active) {
+    pousser('tri-demande', 'Tri Gmail à la demande', td.faits, td.plafond,
+      'fils', etat.quotaGmail ? 'suspendu (quota Gmail)' : 'en cours');
+  } else if (td.solde && maintenantMs - td.solde.quand <= purgeMs) {
+    lignes.push(['tri-demande', 'Tri Gmail à la demande', td.solde.faits, '',
+      'fils', 'terminé', new Date(td.solde.quand)]);
+  }
+  var idm = etat.intentionsDemande;
+  if (idm.active) {
+    pousser('intentions-demande', 'Analyse des intentions (30 j)', idm.traites, null,
+      'fils', etat.quotaGmail ? 'suspendu (quota Gmail)' : 'en cours');
+  } else if (idm.solde && maintenantMs - idm.solde.quand <= purgeMs) {
+    lignes.push(['intentions-demande', 'Analyse des intentions (30 j)', idm.solde.traites, '',
+      'fils', 'terminé', new Date(idm.solde.quand)]);
+  }
+
+  // 2. Campagnes de fond.
+  pousser('migration', 'Migration taxonomie (' + etat.migration.tag + ')',
+    etat.migration.traites, etat.migration.base, 'documents', statutCampagne(etat.migration));
+  pousser('reanalyse', 'Re-analyse v2 (' + etat.reanalyse.tag + ')',
+    etat.reanalyse.traites, etat.reanalyse.base, 'documents', statutCampagne(etat.reanalyse));
+  var statutHisto = etat.histo.termine ? 'terminé'
+    : etat.quotaGmail ? 'suspendu (quota Gmail)'
+      : etat.freinBudget ? 'en pause (frein budget)' : 'en cours';
+  // L'offset histo REPART À 0 aux passes de vérification (position de scan, pas un cumul) :
+  // affichage MONOTONE via le max avec la ligne existante — le compteur ne recule jamais.
+  var exHisto = existantes['histo-gmail'];
+  var traitesHisto = exHisto && !etat.histo.termine
+    ? Math.max(etat.histo.traites, exHisto.traites) : etat.histo.traites;
+  pousser('histo-gmail', 'Historique Gmail (PJ)', traitesHisto, null, 'fils', statutHisto);
+  pousser('rangement', 'Rangement initial du Drive',
+    etat.rangement.traites, etat.rangement.base, 'fichiers', statutCampagne(etat.rangement));
+
+  return lignes;
+}
+
+/**
+ * Écrit l'onglet Progression — appelée dans le `finally` du tick (juste après `majSante_`),
+ * enveloppée par l'appelant : un échec ne bloque JAMAIS l'intake. Centralise la LECTURE de
+ * l'état (Properties + pannes) et rend TOUT en une écriture `setValues` (+ un `clearContent`
+ * du reliquat) — zéro écriture par item, l'app la lit en poll léger (C28-18).
+ */
+function majProgressions_() {
+  var props = PropertiesService.getScriptProperties();
+  var f = feuille_('Progression');
+  assurerEnteteProgression_(f);
+  var maintenant = Date.now();
+
+  var demandeTri = null;
+  try { demandeTri = JSON.parse(props.getProperty('DriveAI_TRI_DEMANDE') || 'null'); }
+  catch (e) { demandeTri = null; }
+
+  var etat = {
+    quotaGmail: estPanneGmail_(),
+    panneApi: estPannePlateforme_(),
+    freinBudget: budgetCampagnesAtteint_(),
+    rangement: {
+      termine: props.getProperty('DriveAI_RANGEMENT') === CONFIG.RANGEMENT_TAG,
+      base: proprieteNombre_(props, 'DriveAI_RANGEMENT_BASE'),
+      traites: proprieteNombre_(props, 'DriveAI_RANGEMENT_TRAITES') || 0,
+      tag: CONFIG.RANGEMENT_TAG
+    },
+    migration: {
+      termine: props.getProperty('DriveAI_MIGRATION') === CONFIG.MIGRATION_TAG,
+      base: proprieteNombre_(props, 'DriveAI_MIGRATION_BASE'),
+      traites: proprieteNombre_(props, 'DriveAI_MIGRATION_TRAITES') || 0,
+      tag: CONFIG.MIGRATION_TAG
+    },
+    reanalyse: {
+      termine: props.getProperty('DriveAI_REANALYSE') === CONFIG.REANALYSE_TAG,
+      enAttente: props.getProperty('DriveAI_MIGRATION') !== CONFIG.MIGRATION_TAG,
+      base: proprieteNombre_(props, 'DriveAI_REANALYSE_BASE'),
+      traites: proprieteNombre_(props, 'DriveAI_REANALYSE_TRAITES') || 0,
+      tag: CONFIG.REANALYSE_TAG
+    },
+    histo: {
+      termine: props.getProperty('DriveAI_GMAIL_HISTO') === 'terminé',
+      traites: proprieteNombre_(props, 'DriveAI_GMAIL_HISTO_OFFSET') || 0
+    },
+    triDemande: {
+      active: !!demandeTri,
+      faits: proprieteNombre_(props, 'DriveAI_TRI_DEMANDE_FAITS') || 0,
+      plafond: demandeTri && demandeTri.plafond ? Number(demandeTri.plafond) : null,
+      solde: lireSoldeDemande_(props, 'DriveAI_TRI_DEMANDE_SOLDE', maintenant)
+    },
+    intentionsDemande: {
+      active: !!props.getProperty('DriveAI_INTENTIONS_DEMANDE'),
+      traites: proprieteNombre_(props, 'DriveAI_INTENTIONS_DEMANDE_OFFSET') || 0,
+      solde: lireSoldeDemande_(props, 'DriveAI_INTENTIONS_DEMANDE_SOLDE', maintenant)
+    }
+  };
+
+  var lignes = lignesProgression_(etat, lireLignesProgression_(f), maintenant, CONFIG.PROGRESSION_PURGE_MS);
+  if (lignes.length) f.getRange(2, 1, lignes.length, COLONNES_PROGRESSION.length).setValues(lignes);
+  var dern = f.getLastRow();
+  if (dern > lignes.length + 1) {
+    f.getRange(lignes.length + 2, 1, dern - lignes.length - 1, COLONNES_PROGRESSION.length).clearContent();
+  }
+}
+
+/** Lit une Script Property numérique : null si ABSENTE (≠ 0 — « pas encore recensé »). */
+function proprieteNombre_(props, cle) {
+  var v = props.getProperty(cle);
+  return v === null ? null : (Number(v) || 0);
+}
+
+/**
+ * Lit l'instantané « demande soldée » (JSON posé par effacerDemandeTri_ / balayerNouveauxMails_) ;
+ * purge la Property au-delà de PROGRESSION_PURGE_MS (sinon la ligne « terminé » renaîtrait à vie).
+ * @return {?{faits:number, traites:number, quand:number}}
+ */
+function lireSoldeDemande_(props, cle, maintenantMs) {
+  var brut = props.getProperty(cle);
+  if (!brut) return null;
+  var solde = null;
+  try { solde = JSON.parse(brut); } catch (e) { }
+  if (!solde || !solde.quand || maintenantMs - solde.quand > CONFIG.PROGRESSION_PURGE_MS) {
+    props.deleteProperty(cle); // périmé ou illisible : purgé, jamais une erreur par tick
+    return null;
+  }
+  return solde;
+}
+
+/** Lit les lignes actuelles de Progression : clé → {traites, statut, horodateMs}. */
+function lireLignesProgression_(f) {
+  var existantes = {};
+  var dern = f.getLastRow();
+  if (dern < 2) return existantes;
+  var v = f.getRange(2, 1, dern - 1, COLONNES_PROGRESSION.length).getValues();
+  for (var i = 0; i < v.length; i++) {
+    if (!v[i][0]) continue;
+    var h = v[i][6];
+    existantes[v[i][0]] = {
+      traites: Number(v[i][2]) || 0,
+      statut: String(v[i][5]),
+      horodateMs: h instanceof Date ? h.getTime() : (Date.parse(String(h)) || 0)
+    };
+  }
+  return existantes;
 }
 
 /**

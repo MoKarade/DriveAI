@@ -223,10 +223,14 @@ function ctxReanalyseCampagne(props) {
   ctx.journalErreur_ = () => {};
   ctx.rangementTermine_ = () => props.rangement !== false;
   ctx.ensembleDomainesProteges_ = () => ({});
+  // Compteurs de barre (C28-18, Maintenance.gs) : hors sujet ici — l'orchestration seule est testée.
+  ctx.majCompteurCampagne_ = () => {};
+  ctx.finaliserCompteurCampagne_ = () => {};
   ctx.PropertiesService = {
     getScriptProperties: () => ({
       getProperty: (k) => (k in props.valeurs ? props.valeurs[k] : null),
       setProperty: (k, v) => { props.valeurs[k] = String(v); },
+      deleteProperty: (k) => { delete props.valeurs[k]; },
     }),
   };
   return { ctx, journal };
@@ -241,20 +245,62 @@ test('appliquerReanalyseCiblee_ : ne démarre JAMAIS tant que m1 n\'est pas fini
 });
 
 test('appliquerReanalyseCiblee_ : m1 finie + passe complète VIDE → Property figée (terminé) ; page pleine → jamais figée', () => {
-  const ctx1 = ctxReanalyseCampagne({ valeurs: { DriveAI_MIGRATION: 'm1' } });
+  // Barre pré-recensée POUR LE TAG COURANT (C28-18) : sans elle, le premier tick est un tick
+  // DÉDIÉ de recensement (et un BARRE_TAG absent/étranger purge la base — leçon « seuil dans la clé »).
+  const props1 = { valeurs: { DriveAI_MIGRATION: 'm1', DriveAI_REANALYSE_BASE: '0' } };
+  const ctx1 = ctxReanalyseCampagne(props1);
+  props1.valeurs.DriveAI_REANALYSE_BARRE_TAG = ctx1.ctx.CONFIG.REANALYSE_TAG;
   ctx1.ctx.reanalyserUnePage_ = () => ({ traites: 0, collectes: 0, reste: false });
   ctx1.ctx.appliquerReanalyseCiblee_(() => false);
   assert.strictEqual(ctx1.ctx.PropertiesService.getScriptProperties().getProperty('DriveAI_REANALYSE'),
     ctx1.ctx.CONFIG.REANALYSE_TAG);
 
-  const props2 = { valeurs: { DriveAI_MIGRATION: 'm1' } };
+  const props2 = { valeurs: { DriveAI_MIGRATION: 'm1', DriveAI_REANALYSE_BASE: '900' } };
   const ctx2 = ctxReanalyseCampagne(props2);
+  props2.valeurs.DriveAI_REANALYSE_BARRE_TAG = ctx2.ctx.CONFIG.REANALYSE_TAG;
   ctx2.ctx.reanalyserUnePage_ = () => ({ traites: 12, collectes: 12, reste: true });
   ctx2.ctx.appliquerReanalyseCiblee_(() => false);
   assert.ok(!('DriveAI_REANALYSE' in props2.valeurs), 'une page PLEINE ne doit jamais figer la campagne');
   // Et une fois figée, plus aucune collecte (idempotence du re-lancement).
   ctx1.ctx.reanalyserUnePage_ = () => { throw new Error('campagne finie : ne doit plus collecter'); };
   ctx1.ctx.appliquerReanalyseCiblee_(() => false);
+});
+
+test('appliquerReanalyseCiblee_ : tick DÉDIÉ de recensement (C28-18) — pose la base SANS collecter, filet du partiel', () => {
+  // 1ᵉʳ tick : recensement complet → BASE/TRAITES posés, la page n'est PAS lancée.
+  const props = { valeurs: { DriveAI_MIGRATION: 'm1' } };
+  const { ctx } = ctxReanalyseCampagne(props);
+  ctx.reanalyserUnePage_ = () => { throw new Error('le tick de recensement ne collecte pas'); };
+  ctx.compterRestantReanalyse_ = () => ({ n: 924, complet: true });
+  ctx.appliquerReanalyseCiblee_(() => false);
+  assert.deepStrictEqual(
+    [props.valeurs.DriveAI_REANALYSE_BASE, props.valeurs.DriveAI_REANALYSE_TRAITES], ['924', '0']);
+
+  // Recensement PARTIEL : réessais comptés, base non posée — puis filet (compte partiel accepté)
+  // au bout d'ESSAIS_MAX passes (cas dérivés de la CONSTANTE, jamais de sa valeur du jour).
+  const props2 = { valeurs: { DriveAI_MIGRATION: 'm1' } };
+  const c2 = ctxReanalyseCampagne(props2);
+  c2.ctx.reanalyserUnePage_ = () => { throw new Error('ne collecte pas pendant le recensement'); };
+  c2.ctx.compterRestantReanalyse_ = () => ({ n: 40, complet: false });
+  const ESSAIS_MAX = c2.ctx.CONFIG.RANGEMENT_RECENS_ESSAIS_MAX;
+  for (let i = 1; i < ESSAIS_MAX; i++) {
+    c2.ctx.appliquerReanalyseCiblee_(() => false);
+    assert.ok(!('DriveAI_REANALYSE_BASE' in props2.valeurs), 'partiel → base non posée (essai ' + i + ')');
+    assert.strictEqual(props2.valeurs.DriveAI_REANALYSE_RECENS, String(i));
+  }
+  c2.ctx.appliquerReanalyseCiblee_(() => false); // essai n° ESSAIS_MAX → filet : partiel ACCEPTÉ
+  assert.strictEqual(props2.valeurs.DriveAI_REANALYSE_BASE, '40',
+    'après ' + ESSAIS_MAX + ' recensements incomplets, le compte partiel devient la base (jamais bloqué)');
+
+  // Leçon §7 « le seuil va dans la clé » : la barre d'une campagne PRÉCÉDENTE (autre tag) est
+  // purgée — la nouvelle campagne re-recense au lieu d'hériter d'une barre figée à 100 %.
+  const props3 = { valeurs: { DriveAI_MIGRATION: 'm1', DriveAI_REANALYSE_BARRE_TAG: 'ancien-tag', DriveAI_REANALYSE_BASE: '900', DriveAI_REANALYSE_TRAITES: '900' } };
+  const c3 = ctxReanalyseCampagne(props3);
+  c3.ctx.reanalyserUnePage_ = () => { throw new Error('ne collecte pas pendant le recensement'); };
+  c3.ctx.compterRestantReanalyse_ = () => ({ n: 500, complet: true });
+  c3.ctx.appliquerReanalyseCiblee_(() => false);
+  assert.strictEqual(props3.valeurs.DriveAI_REANALYSE_BARRE_TAG, c3.ctx.CONFIG.REANALYSE_TAG);
+  assert.strictEqual(props3.valeurs.DriveAI_REANALYSE_BASE, '500', 'barre héritée purgée → re-recensée pour CE tag');
 });
 
 test('reanalyserFichier_ : zone protégée inscrite sous la clé reanalyse| ; pipeline v2 reçu avec ignorerDoublon', () => {

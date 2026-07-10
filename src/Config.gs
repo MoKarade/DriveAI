@@ -413,6 +413,9 @@ var CONFIG = {
   RANGEMENT_RECENS_ESSAIS_MAX: 3,         // barre de progression : nb de recensements incomplets tolérés
                                           // avant d'accepter un compte PARTIEL comme base (anti-blocage
                                           // sur un Drive énorme — la re-base/finalisation corrigent l'écart)
+  PROGRESSION_PURGE_MS: 48 * 60 * 60 * 1000, // C28-18 : une ligne « terminé » de l'onglet Progression
+                                          // reste visible 48 h (Marc voit la fin), puis est purgée —
+                                          // l'onglet ne montre que le PRÉSENT, l'histoire vit au Journal
   // Grand rangement initial AUTO (zéro clic) : tant que le tag stocké (Script Property
   // `DriveAI_RANGEMENT`) diffère de celui-ci, le moteur renvoie au fil des ticks TOUT le contenu
   // « en vrac » des domaines vers 00·À trier pour reclassement/renommage (cf. Main.appliquerRangementInitial_).

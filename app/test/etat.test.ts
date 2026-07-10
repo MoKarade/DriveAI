@@ -298,6 +298,35 @@ describe('tuiles Santé (C19-04)', () => {
   });
 });
 
+/* ---------- App v4 (C28-18) : progression LIVE des opérations ---------- */
+
+describe('progression live (C28-18)', () => {
+  it('interpreterProgression : base vide → null (indéterminé), nombres parsés, lignes vides sautées', async () => {
+    const { interpreterProgression } = await import('../src/etat');
+    const lignes = interpreterProgression([
+      ['migration', 'Migration taxonomie (m1)', '812', '1209', 'documents', 'en cours', '2026-07-10T19:00:00'],
+      ['histo-gmail', 'Historique Gmail (PJ)', '4520', '', 'fils', 'suspendu (quota Gmail)', '2026-07-10T19:00:00'],
+      ['', '', '', '', '', '', ''], // reliquat nettoyé par le moteur
+    ]);
+    expect(lignes).toHaveLength(2);
+    expect(lignes[0]).toMatchObject({ cle: 'migration', traites: 812, base: 1209, unite: 'documents' });
+    expect(lignes[1].base).toBeNull();
+    expect(lignes[1].statut).toBe('suspendu (quota Gmail)');
+  });
+
+  it('familleStatut : préfixes FR stables → famille visuelle (pastille jamais couleur seule)', async () => {
+    const { familleStatut } = await import('../src/etat');
+    expect(familleStatut('en cours')).toBe('encours');
+    expect(familleStatut('recensement')).toBe('recensement');
+    expect(familleStatut('en attente (après m1)')).toBe('attente');
+    expect(familleStatut('suspendu (quota Gmail)')).toBe('suspendu');
+    expect(familleStatut('suspendu (panne API)')).toBe('suspendu');
+    expect(familleStatut('en pause (frein budget)')).toBe('pause');
+    expect(familleStatut('terminé')).toBe('termine');
+    expect(familleStatut('statut inconnu du futur')).toBe('encours'); // repli neutre
+  });
+});
+
 /* ---------- App v4 (C28-17) : zone Attention de l'accueil ---------- */
 
 describe('lignesAVerifier (C28-17)', () => {

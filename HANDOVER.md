@@ -7,6 +7,16 @@
 > **2026-07-09 — C26-08 LANCÉE (ADR-0018) : ANALYSE_V2 allumé + campagne ciblée 03/08 ; crédit
 > rechargé (100 $) ; dry-run clos ; fusion 07→08 et incident Sheet SOLDÉS ; artefacts rangés
 > sous 08 ; C28-14 session durable de l'app LIVRÉE ET VALIDÉE en prod.**
+> • **2026-07-10 — C28-18 : progression LIVE des opérations (plan NotebookLM)** : l'onglet
+>   `Progression` devient un tableau multi-opérations (7 colonnes) écrit UNE fois par tick dans le
+>   `finally` (`majProgressions_` — les avancées partielles d'un run interrompu comptent aussi) ;
+>   l'app le lit en poll dédié 15 s HORS cache (≈ 4 req/min, ~1 % du quota Sheets) et l'accueil
+>   affiche un widget par opération : barres m1/C26-08 (bases posées par un recensement DÉDIÉ,
+>   filet du compte partiel), tri/intentions à la demande (x/plafond, instantané « solde » si servi
+>   en un tick), historique Gmail (indéterminé), statuts dérivés en toutes lettres (suspendu quota
+>   Gmail / pause frein budget / en attente après m1 / terminé, purge 48 h). L'ancienne barre texte
+>   du rangement est retirée (état Properties conservé). Attention au 1ᵉʳ tick post-déploiement :
+>   m1 marque une pause de 1-3 ticks (recensement de sa base) avant de reprendre.
 > • **2026-07-10 — C28-17 : accueil v4 « cockpit central » (ADR-0019, plan NotebookLM)** : Marc
 >   trouvait le bouton de tri « trop inaccessible, trop bas » et le dashboard « trop compliqué ».
 >   Accueil TOUT-EN-UN en 3 zones : (1) `composants/PanneauActions.tsx` PARTAGÉ (accueil + haut de

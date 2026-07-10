@@ -196,9 +196,10 @@ function rangerUnePage_(estBudgetDepasse, proteges) {
 }
 
 /**
- * Met à jour la « barre de chargement » du rangement de l'ancien Drive (onglet `Progression`) après une
- * page. La base (total « en vrac » recensé une fois) est posée par l'appelant `appliquerRangementInitial_` ;
- * ici on ne fait que CUMULER les fichiers sortis (`TRAITES`) et re-baser au besoin. Best-effort.
+ * Cumule l'avancement du rangement après une page : `TRAITES` += fichiers sortis, re-base au besoin.
+ * La base (total « en vrac » recensé une fois) est posée par l'appelant `appliquerRangementInitial_`.
+ * Depuis C28-18 les compteurs vivent dans les Properties SEULEMENT — le rendu Sheet est centralisé
+ * dans `majProgressions_` (finally du tick), plus aucune écriture d'affichage ici.
  *
  * Re-base : si on sort PLUS que le total recensé (fichiers ajoutés / redevenus en vrac après le
  * recensement), la base suit `traites` — la barre ne dépasse jamais 100 % ni n'affiche « terminé » à
@@ -206,30 +207,43 @@ function rangerUnePage_(estBudgetDepasse, proteges) {
  * @param {number} deplacesCeRun
  */
 function majProgression_(deplacesCeRun) {
-  var props = PropertiesService.getScriptProperties();
-  if (props.getProperty('DriveAI_RANGEMENT_BASE') === null) return; // pas encore recensé → pas de barre
-  var base = Number(props.getProperty('DriveAI_RANGEMENT_BASE')) || 0;
-  var traites = (Number(props.getProperty('DriveAI_RANGEMENT_TRAITES')) || 0) + deplacesCeRun;
-  if (traites > base) base = traites;               // re-base : le total suit (jamais > 100 %)
-  props.setProperty('DriveAI_RANGEMENT_BASE', String(base));
-  props.setProperty('DriveAI_RANGEMENT_TRAITES', String(traites));
-  ecrireProgression_(traites, base, false);
+  majCompteurCampagne_('DriveAI_RANGEMENT', deplacesCeRun);
 }
 
 /**
- * Fige la barre à 100 % (« terminé ») sur le VRAI signal de fin du rangement (une passe ne collecte plus
- * rien) — plutôt que sur `traites >= base`, qui ne converge pas exactement (base figée vs traites cumulé).
- * Best-effort.
+ * Fige les compteurs à 100 % (« terminé ») sur le VRAI signal de fin du rangement (une passe ne
+ * collecte plus rien) — plutôt que sur `traites >= base`, qui ne converge pas exactement.
  */
 function finaliserProgression_() {
+  finaliserCompteurCampagne_('DriveAI_RANGEMENT');
+}
+
+/**
+ * Compteurs PARTAGÉS des barres de campagne (C28-18) : rangement, migration m1, re-analyse C26-08 —
+ * chacune sous son préfixe de Properties (`<prefixe>_BASE` / `<prefixe>_TRAITES`). Numérateur
+ * MONOTONE, base re-basable (jamais > 100 %). No-op tant que la base n'est pas recensée.
+ * @param {string} prefixe   ex. 'DriveAI_MIGRATION'
+ * @param {number} traitesCeRun
+ */
+function majCompteurCampagne_(prefixe, traitesCeRun) {
   var props = PropertiesService.getScriptProperties();
-  if (props.getProperty('DriveAI_RANGEMENT_BASE') === null) return;
-  var base = Number(props.getProperty('DriveAI_RANGEMENT_BASE')) || 0;
-  var traites = Number(props.getProperty('DriveAI_RANGEMENT_TRAITES')) || 0;
+  if (props.getProperty(prefixe + '_BASE') === null) return; // pas encore recensé → pas de barre
+  var base = Number(props.getProperty(prefixe + '_BASE')) || 0;
+  var traites = (Number(props.getProperty(prefixe + '_TRAITES')) || 0) + traitesCeRun;
+  if (traites > base) base = traites;               // re-base : le total suit (jamais > 100 %)
+  props.setProperty(prefixe + '_BASE', String(base));
+  props.setProperty(prefixe + '_TRAITES', String(traites));
+}
+
+/** Fige une barre de campagne à 100 % sur le VRAI signal de fin (passe qui ne collecte plus rien). */
+function finaliserCompteurCampagne_(prefixe) {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty(prefixe + '_BASE') === null) return;
+  var base = Number(props.getProperty(prefixe + '_BASE')) || 0;
+  var traites = Number(props.getProperty(prefixe + '_TRAITES')) || 0;
   if (traites > base) base = traites;
-  props.setProperty('DriveAI_RANGEMENT_BASE', String(base));
-  props.setProperty('DriveAI_RANGEMENT_TRAITES', String(base));
-  ecrireProgression_(base, base, true);
+  props.setProperty(prefixe + '_BASE', String(base));
+  props.setProperty(prefixe + '_TRAITES', String(base));
 }
 
 /**
@@ -292,43 +306,8 @@ function estAReclasserLeger_(f) {
   return true;
 }
 
-/**
- * Écrit une barre « recensement en cours » (onglet visible dès le 1er tick, avant même le comptage).
- * @param {number} essaisFaits  nb de passes de recensement déjà tentées
- */
-function ecrireRecensement_(essaisFaits) {
-  var f = feuille_('Progression');
-  f.getRange('A2').setValue('[░░░░░░░░░░░░░░░░░░░░] démarrage…');
-  f.getRange('A3').setValue('Recensement de « Ancienne structure » en cours (passe ' + (essaisFaits + 1) + ')…');
-  f.getRange('A4').setValue('Mis à jour : ' + new Date());
-}
-
-/**
- * Écrit la barre de chargement (texte) dans l'onglet `Progression`, cellules A2..A4.
- * Tant que le rangement continue (`estFini` faux), le pourcentage est plafonné à 99 % : seul le vrai
- * signal de fin (`finaliserProgression_`) affiche 100 % et « ✅ terminé » — jamais un « terminé » à tort.
- * @param {number} traites
- * @param {number} base
- * @param {boolean} estFini
- */
-function ecrireProgression_(traites, base, estFini) {
-  var pct = estFini ? 100 : (base > 0 ? Math.min(99, Math.round((traites / base) * 100)) : 0);
-  var pleins = Math.round(pct / 5);                 // barre de 20 caractères (1 = 5 %)
-  var barre = '[' + repeter_('█', pleins) + repeter_('░', 20 - pleins) + '] ' + pct + ' %';
-  var restant = estFini ? 0 : Math.max(0, base - traites);
-  var f = feuille_('Progression');
-  f.getRange('A2').setValue(barre);
-  f.getRange('A3').setValue(traites + ' classés / ' + base + '  ·  ' + restant + ' restant(s) dans « Ancienne structure »' +
-    (estFini ? '  ✅ terminé' : ''));
-  f.getRange('A4').setValue('Mis à jour : ' + new Date());
-}
-
-/** Répète un caractère n fois (n négatif → chaîne vide). */
-function repeter_(c, n) {
-  var s = '';
-  for (var i = 0; i < n; i++) s += c;
-  return s;
-}
+// (ecrireRecensement_ / ecrireProgression_ / repeter_ — la barre TEXTE mono-opération — retirés
+//  au C28-18 : le rendu de l'onglet Progression est centralisé dans Journal.majProgressions_.)
 
 /**
  * Nombre de fichiers EN ATTENTE dans `00·À trier`, compté jusqu'à `plafond` (au-delà on renvoie

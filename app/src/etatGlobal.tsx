@@ -12,8 +12,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
-import { lirePlage, viderCachePlages } from './google';
-import { LigneIndex, interpreterIndex, etatCourantIndex } from './etat';
+import { lirePlage, lireProgressionLive, viderCachePlages } from './google';
+import { LigneIndex, LigneProgression, interpreterIndex, interpreterProgression, etatCourantIndex } from './etat';
 
 export interface DonneesEtat {
   index: LigneIndex[];       // état COURANT (dédoublonné) — les vues n'ont plus à le faire
@@ -92,4 +92,34 @@ export function FournisseurEtat({ children }: { children: ReactNode }) {
   }, [rafraichir]);
 
   return <Ctx.Provider value={{ donnees, erreur, synchroA, rafraichir }}>{children}</Ctx.Provider>;
+}
+
+/* ---------- Progression LIVE (C28-18) ---------- */
+
+// 15 s : le moteur écrit l'onglet Progression en FIN de tick — un poll léger dédié (petite plage,
+// hors cache 60 s) montre chaque saut d'avancement sans toucher au cycle 5 min du gros état.
+const PROGRESSION_POLL_MS = 15 * 1000;
+
+/**
+ * Suivi LIVE des opérations du moteur (onglet Progression). État LOCAL au composant qui l'utilise
+ * (jamais dans le contexte global : son rythme est le sien). Une lecture en échec est silencieuse —
+ * le poll suivant réessaie, les dernières lignes restent affichées.
+ */
+export function useProgressionLive(): LigneProgression[] {
+  const [lignes, setLignes] = useState<LigneProgression[]>([]);
+  useEffect(() => {
+    let vivant = true;
+    const lire = async () => {
+      try {
+        const brut = await lireProgressionLive();
+        if (vivant) setLignes(interpreterProgression(brut));
+      } catch {
+        /* silencieux : réessayé au poll suivant */
+      }
+    };
+    void lire();
+    const t = setInterval(() => void lire(), PROGRESSION_POLL_MS);
+    return () => { vivant = false; clearInterval(t); };
+  }, []);
+  return lignes;
 }

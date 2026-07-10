@@ -393,3 +393,31 @@ tr:hover .expl-actions button, .expl-actions button:focus-visible { opacity: 1; 
 
 /* zone Activité : légèrement en retrait visuel derrière la zone Attention */
 .zone-activite { opacity: 0.93; }
+
+/* ---------- Opérations en cours — suivi LIVE (C28-18) ---------- */
+/* la note flottante du titre chevauche les lignes sur écran étroit → masquée (l'info est douce) */
+@media (max-width: 720px) { .operations-live .graphe-valeur { display: none; } }
+.operations-live .operation { padding: 0.55rem 0 0.6rem; border-top: 1px solid var(--rang); }
+.operations-live .operation:first-of-type { border-top: none; }
+.op-entete { display: flex; align-items: baseline; gap: 0.55rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
+.op-nom { font-weight: 600; font-size: 0.92rem; }
+.op-compte {
+  margin-left: auto; font-family: var(--mono); font-size: 0.82rem;
+  font-variant-numeric: tabular-nums; color: var(--texte-doux); white-space: nowrap;
+}
+.op-compte b { color: var(--accent); font-weight: 600; }
+.pastille.attn { background: color-mix(in srgb, var(--attention) 16%, transparent); color: var(--attention); }
+
+/* barre : même vocabulaire que la jauge de coût, marque de données pleine hauteur */
+.op-barre { height: 7px; border-radius: 99px; background: var(--rang); overflow: hidden; }
+.op-barre i { display: block; height: 100%; border-radius: 99px; background: var(--donnee); transition: width 0.6s ease; }
+.op-barre.pleine i { background: color-mix(in srgb, var(--ok) 55%, var(--donnee)); }
+.operation.suspendu .op-barre i { background: color-mix(in srgb, var(--erreur) 60%, var(--rang)); }
+.operation.pause .op-barre i { background: color-mix(in srgb, var(--attention) 60%, var(--rang)); }
+
+/* total inconnu : ruban indéterminé qui défile (statique si mouvement réduit ou opération figée) */
+.op-barre.indeterminee i { width: 30%; }
+@media (prefers-reduced-motion: no-preference) {
+  .op-barre.indeterminee:not(.figee) i { animation: defile 1.8s ease-in-out infinite; }
+  @keyframes defile { 0% { margin-left: 0; } 50% { margin-left: 70%; } 100% { margin-left: 0; } }
+}

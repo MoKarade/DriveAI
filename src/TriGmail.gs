@@ -381,6 +381,9 @@ function effacerDemandeTri_(props, faits, motif) {
   props.deleteProperty('DriveAI_TRI_DEMANDE');
   props.deleteProperty('DriveAI_TRI_DEMANDE_OFFSET');
   props.deleteProperty('DriveAI_TRI_DEMANDE_FAITS');
+  // Instantané pour le widget Progression (C28-18) : une demande servie EN UN TICK resterait
+  // sinon invisible (Properties déjà purgées quand majProgressions_ passe). Purgé après 48 h.
+  props.setProperty('DriveAI_TRI_DEMANDE_SOLDE', JSON.stringify({ faits: faits, quand: Date.now() }));
   journalInfo_('TriGmail', 'Tri à la demande terminé (' + faits + ' fil(s) trié(s) — ' + motif + ').');
 }
 

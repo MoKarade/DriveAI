@@ -88,6 +88,8 @@ function balayerNouveauxMails_(etat, plafondAtteint) {
         // Fenêtre 30 j entièrement re-balayée : la demande est SERVIE — soldée en une ligne.
         props.deleteProperty('DriveAI_INTENTIONS_DEMANDE');
         props.deleteProperty('DriveAI_INTENTIONS_DEMANDE_OFFSET');
+        // Instantané pour le widget Progression (C28-18) — cf. effacerDemandeTri_. Purgé après 48 h.
+        props.setProperty('DriveAI_INTENTIONS_DEMANDE_SOLDE', JSON.stringify({ traites: debutPage, quand: Date.now() }));
         journalInfo_('Intentions', 'Analyse à la demande terminée (fenêtre 30 j re-balayée, ' + debutPage + ' fils).');
       }
       return; // fin de la fenêtre 30 jours
