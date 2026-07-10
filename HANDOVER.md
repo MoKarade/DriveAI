@@ -7,6 +7,13 @@
 > **2026-07-09 — C26-08 LANCÉE (ADR-0018) : ANALYSE_V2 allumé + campagne ciblée 03/08 ; crédit
 > rechargé (100 $) ; dry-run clos ; fusion 07→08 et incident Sheet SOLDÉS ; artefacts rangés
 > sous 08 ; C28-14 session durable de l'app LIVRÉE ET VALIDÉE en prod.**
+> • **2026-07-10 — C28-18 retours Marc appliqués (#143/#144)** : « resté bloqué, manque d'info,
+>   qualité visuelle » → deux langages visuels (ruban ANIMÉ = ça travaille ; piste RAYÉE statique
+>   = à l'arrêt), note d'explication sous chaque état non trivial, heure moteur en tête, compteurs
+>   non informatifs masqués, plafond 99 % hors vraie fin. Contre-vérif prod : m1 n'était PAS
+>   bloquée (phase de recensement puis reprise, 5 docs re-classés 16:47-16:52) ; son recensement
+>   coupé au budget a posé une base partielle (0) — la re-base absorbe, « terminé » viendra sur
+>   passe vide puis C26-08 s'enchaîne seule.
 > • **2026-07-10 — C28-18 : progression LIVE des opérations (plan NotebookLM)** : l'onglet
 >   `Progression` devient un tableau multi-opérations (7 colonnes) écrit UNE fois par tick dans le
 >   `finally` (`majProgressions_` — les avancées partielles d'un run interrompu comptent aussi) ;

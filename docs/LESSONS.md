@@ -940,3 +940,24 @@ suspension persistée → re-sonde bornée, câblée sur TOUS les chemins d'appe
 par item) — sinon chaque tick re-brûle des appels en pure perte."
 **Règle durable ?** oui (généralise « plafonds à l'unité de coût réelle » aux quotas PARTAGÉS :
 l'ordre d'exécution devient une décision d'allocation, pas un détail d'implémentation).
+
+## 2026-07-10 — Un indicateur de progression a DEUX langages visuels : animé = ça travaille, statique = à l'arrêt
+**Contexte.** C28-18 (widgets de progression live) : première version en prod, retour immédiat de
+Marc « resté bloqué, manque d'info et de qualité visuelle ». Le moteur n'était PAS bloqué (phase
+normale de recensement) — mais le ruban indéterminé était FIGÉ pendant cet état ACTIF, le compteur
+affichait « 0 documents » et rien n'expliquait l'état.
+**Leçon.** "Un widget de progression communique par le MOUVEMENT avant les chiffres : (1) tout état
+où le moteur TRAVAILLE (recensement, scan à total inconnu) doit être ANIMÉ — un indicateur
+indéterminé figé se lit comme une panne, quel que soit le libellé à côté ; (2) tout état À L'ARRÊT
+(suspendu, en pause) doit avoir un visuel STATIQUE distinct (rayures dans la couleur du statut),
+jamais le même ruban que le travail ; (3) chaque état non trivial porte une NOTE d'une phrase qui
+répond à « pourquoi ça ne bouge pas et quand ça reprend » (recensement ≈ 5-15 min, quota → reprise
+~3h) ; (4) un compteur non informatif (« 0 documents » pendant un comptage) se masque — la note
+suffit ; (5) l'horodatage de la dernière écriture moteur s'affiche (la preuve que c'est vivant) ;
+(6) le pourcentage plafonne à 99 % tant que le VRAI signal de fin n'est pas signé — une base
+RE-BASÉE (recensement partiel rattrapé par le réel) donnerait un 100 % « en cours » mensonger.
+Et vérifier le ressenti sur la PROD réelle, pas seulement sur le mock : c'est l'état transitoire
+réel (recensement post-déploiement) qui a révélé les trois défauts."
+**Règle durable ?** non (instance UI de deux règles durables existantes — « jamais un terminé à
+tort avant le vrai signal de fin » et « vérifier la prod par un signal indépendant » ; les détails
+concrets du langage visuel restent ici).
