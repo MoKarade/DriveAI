@@ -254,6 +254,7 @@ function tickDriveAI() {
     reinitialiserCorrectionsCache_(); // référentiel d'apprentissage relu 1×/run (few-shot, ADR-0003)
     reinitialiserEscalades_(); // plafond d'escalades LLM par run (anti-emballement de coût)
     chargerPannePlateforme_(); // panne de compte PERSISTÉE (R2) : suspend les sources, re-sonde ≤ 1×/h
+    chargerPanneGmail_();      // quota Gmail JOURNALIER épuisé (C28-15) : suspend les scans Gmail, re-sonde ≤ 2 h
     reinitialiserTriApprisCache_();  // table adresse→libellé du tri (#16), rechargée 1×/run
     reinitialiserLibellesCache_();   // libellés Gmail de Marc, rechargés 1×/run
     reinitialiserPromoSetCache_();   // fils CATEGORY_PROMOTIONS (signal déterministe), 1×/run
@@ -365,12 +366,34 @@ function tickDriveAI() {
       catch (e) { journalErreur_('Partages', 'Collecte des fichiers partagés différée : ' + e); }
     }
 
+    // ⚖️ ORDRE D'ÉQUITÉ STRICT (C28-15, décision Marc « équilibre strict » 2026-07-10) : le FLUX
+    // VIVANT Gmail (intentions puis tri — le tri dépend du flag `important` posé par les
+    // intentions) passe AVANT toutes les campagnes de masse. Avant, il passait en DERNIER : la
+    // campagne historique épuisait le quota d'appels Gmail dès ~08h10 et les mails de Marc
+    // n'étaient plus ni triés ni archivés de la journée (vécu : 4-17 fils/j au lieu de ~90).
+    // Le premier arrivé se sert — désormais c'est le vivant. ENVELOPPÉS : une erreur (quota
+    // compris — détectée par signalerPanneGmail_ dans le catch) ne bloque jamais la suite du tick.
+    if (!estBudgetDepasse()) {
+      try { traiterIntentionsMail_(estBudgetDepasse); }
+      catch (e) {
+        if (!signalerPanneGmail_(e)) journalErreur_('Intentions', 'Intentions différées : ' + e);
+      }
+    }
+    if (!estBudgetDepasse()) {
+      try { trierFilsGmail_(estBudgetDepasse); }
+      catch (e) {
+        if (!signalerPanneGmail_(e)) journalErreur_('TriGmail', 'Tri Gmail différé : ' + e);
+      }
+    }
+
     // Campagne HISTORIQUE Gmail (#12, ADR-0010 §1) : remonte tout l'historique de PJ par tranches
-    // ancrées. APRÈS le flux vivant (priorité), AVANT migration/intentions. Coût nul une fois finie.
+    // ancrées. APRÈS le flux vivant (priorité stricte C28-15). Coût nul une fois finie.
     // SECONDAIRE → enveloppée : un échec Gmail ne bloque jamais la suite du tick.
     if (!estBudgetDepasse() && !budgetCampagnesAtteint_()) {
       try { traiterGmailHistorique_(estBudgetDepasse); }
-      catch (e) { journalErreur_('Gmail', 'Campagne historique différée : ' + e); }
+      catch (e) {
+        if (!signalerPanneGmail_(e)) journalErreur_('Gmail', 'Campagne historique différée : ' + e);
+      }
     }
 
     // Migration taxonomie (#8, ADR-0002) : re-classe l'EXISTANT (pré-refonte) vers la nouvelle
@@ -400,17 +423,7 @@ function tickDriveAI() {
       catch (e) { journalErreur_('DryRunV2', 'Dry-run v2 différé : ' + e); }
     }
 
-    // Phase 3 : détection d'actions/rdv dans TOUS les mails récents → Tasks/Calendar.
-    // En dernier, budget restant seulement : le classement documentaire (déjà validé en
-    // prod) garde toujours la priorité sur ce nouveau flux.
-    if (!estBudgetDepasse()) traiterIntentionsMail_(estBudgetDepasse);
-
-    // Tri Gmail natif (#16, ADR-0012) : libellés + archivage réversible. APRÈS les intentions
-    // (le ⏰/l'archivage dépendent du flag `important` qu'elles posent). SECONDAIRE → enveloppé.
-    if (!estBudgetDepasse()) {
-      try { trierFilsGmail_(estBudgetDepasse); }
-      catch (e) { journalErreur_('TriGmail', 'Tri Gmail différé : ' + e); }
-    }
+    // (Intentions et tri Gmail : remontés AVANT les campagnes — ordre d'équité strict C28-15.)
 
     // Réorg IA (#21, C21-04/06) : APPLIQUE d'abord les actions validées par Marc (déplacements/
     // renommages de dossiers, re-vérif zone protégée par mutation — jamais de suppression), PUIS
@@ -658,17 +671,20 @@ function rejeuAutoDesDepots_(estBudgetDepasse) {
  * @param {function():boolean} estBudgetDepasse
  */
 function traiterGmail_(estBudgetDepasse) {
+  if (estPanneGmail_()) return; // quota Gmail épuisé (C28-15) : suspendu jusqu'à la re-sonde
   var debutPage = 0;
   // La panne de compte peut être détectée EN COURS de run (re-sonde qui échoue) : on sort tôt —
   // continuer à lister des fils dont chaque document sera sauté ne ferait que brûler du quota Gmail.
-  while (!estBudgetDepasse() && !estPannePlateforme_()) {
+  while (!estBudgetDepasse() && !estPannePlateforme_() && !estPanneGmail_()) {
     var fils;
     try {
       fils = pageFils_(debutPage);
     } catch (e) {
+      if (signalerPanneGmail_(e)) return; // quota épuisé : suspension posée, jamais un « échec »
       notifierEchec_('Gmail', 'Recherche des mails impossible : ' + e);
       return;
     }
+    signalerRetablissementGmail_(); // re-sonde concluante : la suspension persistée est levée
     if (!fils.length) break; // fin de la fenêtre 30 jours
 
     for (var i = 0; i < fils.length; i++) {
@@ -679,8 +695,12 @@ function traiterGmail_(estBudgetDepasse) {
       if (estPannePlateforme_()) return; // détectée en cours de run → stop (cf. ci-dessus)
       // Erreur isolée par fil (ex. getMessages/piecesJointes) : on saute ce fil sans
       // interrompre le scan Gmail — chaque PJ est déjà protégée dans traiterDocument_.
+      // SAUF le quota (C28-15) : il frappe TOUS les fils suivants — suspension et sortie.
       try { traiterFil_(fils[i], estBudgetDepasse); }
-      catch (e) { journalErreur_('Gmail', 'Fil ignoré (erreur) : ' + e); }
+      catch (e) {
+        if (signalerPanneGmail_(e)) return;
+        journalErreur_('Gmail', 'Fil ignoré (erreur) : ' + e);
+      }
     }
     debutPage += CONFIG.PAGE_FILS;
   }
@@ -742,6 +762,7 @@ function traiterFil_(fil, estBudgetDepasse) {
  * @param {function():boolean} estBudgetDepasse
  */
 function traiterGmailHistorique_(estBudgetDepasse) {
+  if (estPanneGmail_()) return; // quota Gmail épuisé (C28-15) : suspendu jusqu'à la re-sonde
   var props = PropertiesService.getScriptProperties();
   if (props.getProperty('DriveAI_GMAIL_HISTO') === 'terminé') return; // campagne finie (1 lecture)
 
@@ -784,9 +805,11 @@ function traiterPageHistorique_(props, estBudgetDepasse) {
   try {
     fils = pageFilsHisto_(ancre, offset);
   } catch (e) {
+    if (signalerPanneGmail_(e)) return; // quota épuisé : suspension posée, offset inchangé
     journalErreur_('Gmail', 'Recherche historique impossible : ' + e);
     return; // re-tenté au tick suivant, offset inchangé
   }
+  signalerRetablissementGmail_();
   if (!fils.length) {
     // Fin d'une PASSE — pas forcément de la campagne. Si la passe a eu de l'activité (inédite,
     // fil sauté), un fil a PU être manqué par un décalage d'ordre : on re-vérifie depuis 0.
@@ -815,6 +838,7 @@ function traiterPageHistorique_(props, estBudgetDepasse) {
   }
 
   var inedites = 0;
+  var filsParcourus = 0; // frein d'appels API (C28-15) : chaque fil LU coûte du quota Gmail
   var pageComplete = true;
   var echecsRun = []; // fils en erreur de CE run — comptés seulement si la page se complète
   var saleMarquee = props.getProperty('DriveAI_GMAIL_HISTO_PASSE_SALE') === 'oui';
@@ -825,13 +849,16 @@ function traiterPageHistorique_(props, estBudgetDepasse) {
   // une page de vieux fils bavards SANS PJ « réelles » (inline seulement — `has:attachment` matche
   // aussi l'inline) ferait des centaines d'appels Gmail APRÈS l'épuisement du budget.
   var doitSarreter = function () {
-    return estBudgetDepasse() || estPannePlateforme_() || inedites >= CONFIG.GMAIL_HISTO_MAX_PJ_INEDITES;
+    return estBudgetDepasse() || estPannePlateforme_() || estPanneGmail_() ||
+      inedites >= CONFIG.GMAIL_HISTO_MAX_PJ_INEDITES ||
+      filsParcourus >= CONFIG.GMAIL_HISTO_MAX_FILS_PAR_RUN;
   };
   for (var i = 0; i < fils.length && pageComplete; i++) {
     if (doitSarreter()) { pageComplete = false; break; }
     var filId = 'offset ' + (offset + i); // repli si getId échoue aussi
     try {
       filId = fils[i].getId(); // clé STABLE du compteur d'échecs (la position ne l'est pas)
+      filsParcourus++;
       var messages = fils[i].getMessages();
       for (var mi = 0; mi < messages.length && pageComplete; mi++) {
         if (doitSarreter()) { pageComplete = false; break; }
@@ -848,6 +875,9 @@ function traiterPageHistorique_(props, estBudgetDepasse) {
         }
       }
     } catch (e) {
+      // Quota Gmail épuisé (C28-15) : panne de PLATEFORME — jamais imputée au fil, la page
+      // interrompue rejouera après la re-sonde (offset inchangé, PJ indexées gratuites).
+      if (signalerPanneGmail_(e)) { pageComplete = false; break; }
       // Compté PLUS TARD, seulement si la page se complète : une page rejouée (plafond/budget) ne
       // doit pas brûler les essais d'un fil toutes les 5 min — un essai par PASSE, pas par tick.
       echecsRun.push({ filId: filId, erreur: String(e) });

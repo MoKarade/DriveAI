@@ -146,11 +146,24 @@ var CONFIG = {
   // Budget QUOTIDIEN de la campagne (2ᵉ contre-vérification) : le plafond par run ne borne PAS la
   // journée — 288 ticks × 20-30 s = 96-144 min/j, soit PLUS que le quota runtime des déclencheurs
   // (~90 min/j, compte gratuit) : tous les déclencheurs (chien de garde inclus) seraient gelés
-  // chaque après-midi de campagne. On compte les ms RÉELLEMENT consommées par jour (Properties) et
-  // Calibrage Marc 2026-07-06 (« accélère beaucoup, ~100 min/j ») : 100 est IMPOSSIBLE — le quota
-  // dur des déclencheurs (~90 min/j, compte gratuit) couvre TOUT le moteur. 60 min/j est le max
-  // raisonnable : le vivant + la Phase 3 gardent ~25-30 min/j ; campagne finie en ~3-5 jours.
-  GMAIL_HISTO_BUDGET_JOUR_MS: 60 * 60 * 1000,
+  // chaque après-midi de campagne. On compte les ms RÉELLEMENT consommées par jour (Properties).
+  // Redescendu 60 → 20 min/j (C28-15, décision Marc « équilibre strict » 2026-07-10) : à 60 min/j
+  // la campagne épuisait le quota d'APPELS Gmail journalier dès ~08h10 (804 erreurs « too many
+  // times » le 06/07) et le TRI vivant était affamé toute la journée (4-17 fils triés/j). Le quota
+  // d'appels est PARTAGÉ : la seule protection du tri est de borner la consommation TOTALE de la
+  // campagne, pas seulement son runtime. La campagne finit plus lentement — c'est le prix accepté.
+  GMAIL_HISTO_BUDGET_JOUR_MS: 20 * 60 * 1000,
+  // Frein d'appels API par RUN (C28-15) : au plus N fils PARCOURUS par run (lus depuis Gmail,
+  // indexés ou non) — les passes de VÉRIFICATION re-lisent des fils entiers « pour rien » côté
+  // quota d'appels (les PJ indexées sont gratuites côté LLM, PAS côté Gmail). NB : une page fait
+  // GMAIL_HISTO_PAGE_FILS (10) fils — ce frein ne borne donc que si la page grossit un jour ;
+  // c'est le budget quotidien ci-dessus qui porte la protection principale.
+  GMAIL_HISTO_MAX_FILS_PAR_RUN: 50,
+  // Suspension PERSISTÉE sur quota Gmail épuisé (C28-15, patron panne de compte LLM R2) : quand
+  // Google répond « Service invoked too many times for one day: gmail. », TOUS les scans Gmail
+  // sont suspendus (Property DriveAI_GMAIL_QUOTA) puis re-sondés après ce délai — sans elle,
+  // chaque tick re-brûlait des appels en pure perte (267 lignes d'erreur le matin du 10/07).
+  GMAIL_QUOTA_RESONDE_MS: 2 * 60 * 60 * 1000,
   PAGE_FILS: 20,                         // taille de page de la recherche Gmail
   BUDGET_MS: 4.5 * 60 * 1000,            // garde-temps (exécution Apps Script < 6 min)
   // Sous ANALYSE_V2 (Sonnet ×2/doc, 12000 car., retries possibles), un document est BEAUCOUP plus

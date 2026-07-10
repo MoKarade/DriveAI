@@ -38,11 +38,13 @@
  * @param {function():boolean} estBudgetDepasse
  */
 function traiterIntentionsMail_(estBudgetDepasse) {
+  if (estPanneGmail_()) return; // quota Gmail épuisé (C28-15) : suspendu jusqu'à la re-sonde
   var etat = { analyses: 0, creations: 0 };
   var plafondAtteint = function () {
     // `estPannePlateforme_` : pendant une panne de compte API, scanner ne produirait rien (aucun
     // message ne peut être marqué traité) et re-parcourir la fenêtre brûle le quota Gmail (R2).
-    return estBudgetDepasse() || estPannePlateforme_() ||
+    // `estPanneGmail_` (C28-15) : le quota peut s'épuiser EN COURS de run — stop immédiat.
+    return estBudgetDepasse() || estPannePlateforme_() || estPanneGmail_() ||
       etat.analyses >= CONFIG.INTENTIONS_MAX_PAR_RUN ||
       etat.creations >= CONFIG.CREATIONS_MAX_PAR_RUN;
   };
@@ -68,9 +70,11 @@ function balayerNouveauxMails_(etat, plafondAtteint) {
     try {
       fils = pageFilsActions_(debutPage);
     } catch (e) {
+      if (signalerPanneGmail_(e)) return; // quota épuisé (C28-15) : suspension, jamais une alerte
       notifierEchec_('Intentions', 'Recherche des mails (actions/rdv) impossible : ' + e);
       return;
     }
+    signalerRetablissementGmail_();
     if (!fils.length) return; // fin de la fenêtre 30 jours
 
     var pageEntierementIndexee = true;
@@ -119,9 +123,11 @@ function balayerArriereHistorique_(etat, plafondAtteint) {
     try {
       fils = GmailApp.search(requete, 0, CONFIG.PAGE_FILS_ACTIONS);
     } catch (e) {
+      if (signalerPanneGmail_(e)) return; // quota épuisé (C28-15) : suspension, jamais une alerte
       notifierEchec_('Intentions', 'Recherche de l\'historique (actions/rdv) impossible : ' + e);
       return;
     }
+    signalerRetablissementGmail_();
     if (!fils.length) return; // historique des 30 jours entièrement rattrapé
 
     var plusAncienne = null;
@@ -193,6 +199,9 @@ function balayerAnalyseCiblee_(etat, plafondAtteint) {
     try {
       fils = GmailApp.search(requete + ' -in:spam -in:trash', offset, CONFIG.PAGE_FILS_ACTIONS);
     } catch (e) {
+      // Quota épuisé (C28-15) : panne de PLATEFORME — ne consomme JAMAIS un essai de la campagne
+      // ciblée (sinon 3 re-sondes de quota tueraient la demande de Marc à tort).
+      if (signalerPanneGmail_(e)) return;
       var echecs = (Number(props.getProperty('DriveAI_CUSTOM_SCAN_ECHECS')) || 0) + 1;
       if (echecs >= CONFIG.CIBLEE_ECHECS_MAX) {
         journalErreur_('Intentions', 'Analyse ciblée abandonnée après ' + echecs + ' échecs de recherche : ' + e);

@@ -38,6 +38,8 @@ const CONTRAT = [
   // sources & maintenance
   'traiterGmail_', 'traiterGmailHistorique_', 'traiterPageHistorique_', 'pageFilsHisto_',
   'requeteHisto_', 'dateGmail_',
+  // panne de QUOTA Gmail journalier (C28-15 — suspension persistée, patron R2)
+  'chargerPanneGmail_', 'estPanneGmail_', 'signalerPanneGmail_', 'signalerRetablissementGmail_',
   'traiterDepots_', 'ordonnerDepots_', 'collecterPartages_', 'appliquerMigrationTaxonomie_',
   // re-analyse v2 ciblée (C26-08, ADR-0018)
   'estAReanalyser_', 'appliquerReanalyseCiblee_', 'reanalyserUnePage_', 'collecterAReanalyser_',

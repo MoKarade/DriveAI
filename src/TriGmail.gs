@@ -293,6 +293,7 @@ function signalerPanneEcriture_(e) {
  * @param {function():boolean} estBudgetDepasse
  */
 function trierFilsGmail_(estBudgetDepasse) {
+  if (estPanneGmail_()) return; // quota Gmail épuisé (C28-15) : suspendu jusqu'à la re-sonde
   var libelles = libellesUtilisateur_();
   var speciaux = [CONFIG.TRI_LIBELLES.A_VERIFIER, CONFIG.TRI_LIBELLES.SUSPECT, CONFIG.TRI_LIBELLES.A_TRAITER];
   var candidats = [];
@@ -300,7 +301,8 @@ function trierFilsGmail_(estBudgetDepasse) {
 
   var etat = { traites: 0, attentes: 0 };
   var plafondAtteint = function () {
-    return estBudgetDepasse() || estPannePlateforme_() || _panneEcritureCeRun ||
+    // `estPanneGmail_` (C28-15) : le quota peut s'épuiser EN COURS de run — stop immédiat.
+    return estBudgetDepasse() || estPannePlateforme_() || estPanneGmail_() || _panneEcritureCeRun ||
       etat.traites >= CONFIG.TRI_MAX_FILS_PAR_RUN || etat.attentes >= CONFIG.TRI_MAX_ATTENTES;
   };
 
@@ -320,9 +322,11 @@ function scanAvantTri_(etat, plafondAtteint, candidats, libelles) {
     try {
       fils = GmailApp.search(CONFIG.TRI_REQUETE, debutPage, CONFIG.PAGE_FILS_ACTIONS);
     } catch (e) {
+      if (signalerPanneGmail_(e)) return; // quota épuisé (C28-15) : suspension, pas un échec
       journalErreur_('TriGmail', 'Recherche des fils (avant) impossible : ' + e);
       return;
     }
+    signalerRetablissementGmail_();
     if (!fils.length) return;
     var pageAJour = true;
     for (var i = 0; i < fils.length; i++) {
@@ -371,9 +375,11 @@ function scanArriereTri_(etat, plafondAtteint, candidats, libelles) {
     try {
       fils = GmailApp.search(requete, offset, CONFIG.PAGE_FILS_ACTIONS);
     } catch (e) {
+      if (signalerPanneGmail_(e)) return; // quota épuisé (C28-15) : suspension, offset inchangé
       journalErreur_('TriGmail', 'Recherche des fils (rattrapage) impossible : ' + e);
       return;
     }
+    signalerRetablissementGmail_();
     if (!fils.length) {
       props.setProperty('DriveAI_TRI_RATTRAPAGE', 'terminé');
       journalInfo_('TriGmail', 'Rattrapage du stock TERMINÉ (' + offset + ' fils) — le scan avant suffit désormais.');

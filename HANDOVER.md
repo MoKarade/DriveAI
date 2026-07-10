@@ -7,6 +7,15 @@
 > **2026-07-09 — C26-08 LANCÉE (ADR-0018) : ANALYSE_V2 allumé + campagne ciblée 03/08 ; crédit
 > rechargé (100 $) ; dry-run clos ; fusion 07→08 et incident Sheet SOLDÉS ; artefacts rangés
 > sous 08 ; C28-14 session durable de l'app LIVRÉE ET VALIDÉE en prod.**
+> • **2026-07-10 — C28-15 : mails ni triés ni archivés → ordre d'équité strict + suspension
+>   quota Gmail (plan NotebookLM, décisions Marc « équilibre strict » + « tout rattraper »)** :
+>   le quota d'appels Gmail mourait dès ~08h10 (campagne historique) et le tri était affamé
+>   toute la journée (4-17 fils/j au lieu de ~90). Correctifs : intentions + tri REMONTÉS avant
+>   toutes les campagnes dans le tick ; suspension persistée `DriveAI_GMAIL_QUOTA` (re-sonde 2 h,
+>   patron R2) câblée dans TOUS les scans Gmail ; budget quotidien de l'historique 60 → 20 min/j
+>   (déviation documentée : la page fait 10 fils, le frein 50 fils/run du plan est inerte seul) +
+>   frein `GMAIL_HISTO_MAX_FILS_PAR_RUN`. Attendu : tri fiable dès demain matin ; l'historique
+>   finit plus lentement (prix accepté).
 > • **2026-07-10 — frein campagnes 65 → 110 $ (décision Marc « b », révision ADR-0018)** : m1 a
 >   basculé en v2 avec l'allumage du flag (coût/doc ×10 — 54,59 $ au compteur le 10/07 matin,
 >   1 209 docs migrés, 0 « Inconnu » produit par la v2 depuis la reprise). À 65 $ tout se serait

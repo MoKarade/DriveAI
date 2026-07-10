@@ -104,7 +104,7 @@ test('actionAnalyseCiblee_ : anti-rafale — un 2e dépôt immédiat est refusé
 
 /* ---------- offsetCampagneCiblee_ (pur) ---------- */
 
-const ctxOffset = load(['Config.gs', 'Intentions.gs']);
+const ctxOffset = load(['Config.gs', 'Gmail.gs', 'Intentions.gs']);
 
 test('offsetCampagneCiblee_ : lié à SA requête — hash étranger, JSON illisible ou vide → 0', () => {
   assert.strictEqual(ctxOffset.offsetCampagneCiblee_('{"q":"h1","offset":40}', 'h1'), 40);
@@ -135,7 +135,7 @@ function fauxFil(threadId, messageIds) {
  */
 function ctxCampagne(initial, pages, options) {
   options = options || {};
-  const c = load(['Config.gs', 'Intentions.gs']);
+  const c = load(['Config.gs', 'Gmail.gs', 'Intentions.gs']);
   const props = fauxProps(initial);
   const appels = { recherches: [], traites: [], journal: [], erreurs: [] };
   const index = options.index || {};
@@ -244,7 +244,7 @@ test('effacerCampagneCiblee_ : ne solde JAMAIS une requête plus récente que ce
 /* ---------- skip d'un fil traité MANUELLEMENT ---------- */
 
 function ctxManuel(indexInitial) {
-  const c = load(['Config.gs', 'Intentions.gs']);
+  const c = load(['Config.gs', 'Gmail.gs', 'Intentions.gs']);
   const index = Object.assign({}, indexInitial);
   const ajouts = [];
   c.indexContient_ = (cle) => !!index[cle];
