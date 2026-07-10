@@ -56,11 +56,14 @@ var CONFIG = {
   // jusqu'au mois suivant — le FLUX VIVANT (Gmail 30 j, dépôts, partages, intentions, tri)
   // continue, lui. Relevé 10 → 30 (décision Marc 2026-07-07 : « je veux que tu continues le tri
   // au complet »), puis 30 → 65 (décision Marc 2026-07-09, ADR-0018 : campagne C26-08 ciblée
-  // ~924 docs ≈ 24 $ en plus des 27 $ du mois entamé). Les campagnes de RATTRAPAGE sont un coût
-  // one-shot ; la cible < 10 $/mois reste celle du régime de croisière — Marc REDESCEND ce plafond
-  // à 10 (en éditant cette ligne) à la fin de C26-08. Jamais 0/Infinity : le frein reste le filet
-  // anti-emballement (boucle de re-OCR, erreur de convergence).
-  LLM_BUDGET_CAMPAGNES: 65,
+  // ~924 docs ≈ 24 $ en plus des 27 $ du mois entamé), puis 65 → 110 (décision Marc 2026-07-10,
+  // « b » — révision ADR-0018 : m1 re-analyse désormais en V2 depuis l'allumage du flag, coût/doc
+  // ×10 non chiffré dans le plan initial ; 54,59 $ au compteur le 10/07 au matin, finir m1 +
+  // C26-08 ≈ 40-50 $ de plus, dans le crédit disponible). Les campagnes de RATTRAPAGE sont un
+  // coût one-shot ; la cible < 10 $/mois reste celle du régime de croisière — Marc REDESCEND ce
+  // plafond à 10 (en éditant cette ligne) à la fin de C26-08. Jamais 0/Infinity : le frein reste
+  // le filet anti-emballement (boucle de re-OCR, erreur de convergence).
+  LLM_BUDGET_CAMPAGNES: 110,
   // Résumé hebdomadaire automatique (mail récap à soi-même, scope script.send_mail existant).
   RESUME_JOUR: 'MONDAY',                  // jour du déclencheur hebdo (WeekDay Apps Script)
   RESUME_HEURE: 8,                        // heure locale d'envoi

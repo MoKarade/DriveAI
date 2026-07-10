@@ -6,6 +6,15 @@
 - **S'appuie sur** : ADR-0015 (pipeline v2 + preuve dry-run), ADR-0002 (taxonomie), protocole §8.
 - **Révise** : la valeur du frein `LLM_BUDGET_CAMPAGNES` (30 → **65 $**, temporaire) — §2.6 de la
   constitution (le principe du frein est INCHANGÉ : jamais désactivé, le flux vivant jamais gaté).
+- **Révision 2026-07-10 (décision Marc : « b »)** : frein **65 → 110 $**. Cause : l'allumage
+  d'`ANALYSE_V2` a fait basculer AUSSI la migration m1 en Sonnet 2 passes (elle re-passe ses
+  documents au pipeline COURANT — coût/doc ×10, non chiffré dans le plan initial qui supposait
+  sa queue en v1). Constat au 10/07 matin : 54,59 $ au compteur, m1 à 1 209 docs et toujours en
+  cours → à 65 $ le frein aurait suspendu m1 ET reporté C26-08 au 1ᵉʳ août. Marc a choisi de
+  finir ce mois (~40-50 $ restants, couverts par le crédit) plutôt que d'attendre. Effet de bord
+  ASSUMÉ : m1 en v2 = re-analyse complète de FAIT des domaines hors 03/08 — les `_Inconnu`
+  historiques y sont corrigés aussi. La checklist de fin (redescendre à 10) est INCHANGÉE et
+  s'applique à la fin de la DERNIÈRE campagne (m1 puis C26-08).
 
 ## Problème & Objectif
 

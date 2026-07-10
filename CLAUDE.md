@@ -58,9 +58,10 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
 6. **Budget LLM : < 10 $/mois en régime de croisière.** Depuis le 2026-07-09 (ADR-0018, feu vert
    Marc après la preuve C26-07), le flux vivant tourne en **Sonnet 2 passes** (`ANALYSE_V2`). Les
    campagnes de RATTRAPAGE (grand rangement, historique Gmail, migration, re-analyse C26-08) sont un
-   coût one-shot plafonné par le frein `CONFIG.LLM_BUDGET_CAMPAGNES` — **65 $ (décision Marc
-   2026-07-09, ADR-0018 : campagne ciblée ~924 docs ≈ 24 $ sur un mois déjà à 27 $ ; révise le
-   plafond 30 du 2026-07-07)**, à redescendre vers 10 une fois C26-08 finie (checklist dans l'ADR).
+   coût one-shot plafonné par le frein `CONFIG.LLM_BUDGET_CAMPAGNES` — **110 $ (décision Marc
+   2026-07-10, révision ADR-0018 : m1 basculée en v2 par l'allumage du flag, coût/doc ×10 ;
+   révise 65 du 2026-07-09 et 30 du 2026-07-07)**, à redescendre vers 10 une fois m1 + C26-08
+   finies (checklist dans l'ADR).
    Le frein ne se désactive JAMAIS (filet anti-emballement) et ne gate JAMAIS le flux vivant.
 
 ## 3. Conventions de code

@@ -7,6 +7,12 @@
 > **2026-07-09 — C26-08 LANCÉE (ADR-0018) : ANALYSE_V2 allumé + campagne ciblée 03/08 ; crédit
 > rechargé (100 $) ; dry-run clos ; fusion 07→08 et incident Sheet SOLDÉS ; artefacts rangés
 > sous 08 ; C28-14 session durable de l'app LIVRÉE ET VALIDÉE en prod.**
+> • **2026-07-10 — frein campagnes 65 → 110 $ (décision Marc « b », révision ADR-0018)** : m1 a
+>   basculé en v2 avec l'allumage du flag (coût/doc ×10 — 54,59 $ au compteur le 10/07 matin,
+>   1 209 docs migrés, 0 « Inconnu » produit par la v2 depuis la reprise). À 65 $ tout se serait
+>   suspendu jusqu'au 1ᵉʳ août ; Marc préfère finir cette semaine (~40-50 $ restants : fin m1
+>   puis C26-08 sur 03/08). Stock `_Inconnu` restant : 1 210 docs, drainé par les 2 campagnes.
+>   REDESCENDRE le plafond à 10 à la fin (le Journal dira « Re-analyse v2 ciblée terminée »).
 > • **C28-14 — session durable (« me connecter une fois »)** : fini GIS — flux Authorization Code
 >   via 4 fonctions serverless Vercel (`api/` racine, zéro dépendance), refresh token en cookie
 >   HttpOnly CHIFFRÉ (COOKIE_SECRET), access token en sessionStorage (verrou session.test.ts
