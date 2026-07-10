@@ -86,3 +86,75 @@ test('parserPlanIA_ : illisible ou VIDE → null (jamais un plan fantôme)', () 
   // Tous les champs invalides ⇒ plan vide ⇒ null (l'app ne doit rien exécuter).
   assert.strictEqual(ctx.parserPlanIA_(JSON.stringify({ domaine: 'inconnu', motsCles: [] }), DOMAINES), null);
 });
+
+/* ---------- Tri & intentions à la demande (C28-16) ---------- */
+
+test('validerDemandeTri_ : fenêtre ∈ {1,7,30}, archiver booléen, plafond entier borné par la CONSTANTE — tout le reste → null', () => {
+  const MAX = ctx.CONFIG.TRI_DEMANDE_PLAFOND_MAX;
+  assert.deepStrictEqual(plat(ctx.validerDemandeTri_({ fenetre: 7, archiver: true, plafond: 100 })),
+    { fenetre: 7, archiver: true, plafond: 100 });
+  assert.deepStrictEqual(plat(ctx.validerDemandeTri_({ fenetre: '30', archiver: false, plafond: MAX })),
+    { fenetre: 30, archiver: false, plafond: MAX }); // fenêtre numérique-chaîne tolérée (Number)
+  assert.strictEqual(ctx.validerDemandeTri_({ fenetre: 2, archiver: true, plafond: 10 }), null);   // fenêtre hors liste
+  assert.strictEqual(ctx.validerDemandeTri_({ fenetre: 7, archiver: 'oui', plafond: 10 }), null);  // archiver non booléen
+  assert.strictEqual(ctx.validerDemandeTri_({ fenetre: 7, archiver: true, plafond: 0 }), null);    // plafond < 1
+  assert.strictEqual(ctx.validerDemandeTri_({ fenetre: 7, archiver: true, plafond: MAX + 1 }), null); // > constante
+  assert.strictEqual(ctx.validerDemandeTri_({ fenetre: 7, archiver: true, plafond: 2.5 }), null);  // non entier
+  assert.strictEqual(ctx.validerDemandeTri_(null), null);
+  assert.strictEqual(ctx.validerDemandeTri_('fenetre=7'), null);
+});
+
+function ctxDemande(sondeOk) {
+  const c = load(['Config.gs', 'WebApp.gs']);
+  const props = {};
+  const journaux = [];
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => props[k] ?? null,
+    setProperty: (k, v) => { props[k] = String(v); },
+    deleteProperty: (k) => { delete props[k]; },
+  }) };
+  c.journalInfo_ = (s, m) => journaux.push(m);
+  c.forcerSondeQuotaGmail_ = () => sondeOk;
+  c.actionTickPonctuel_ = () => ({ ok: true, message: 'passage lancé' });
+  return { c, props, journaux };
+}
+
+test('actionDemandeTri_ : quota mort (sonde forcée en échec) → { ok:false, erreur:QUOTA_GMAIL }, AUCUNE demande posée', () => {
+  const { c, props } = ctxDemande(false);
+  const r = c.actionDemandeTri_({ postData: { contents: JSON.stringify({ fenetre: 7, archiver: true, plafond: 50 }) } });
+  assert.deepStrictEqual(plat(r), { ok: false, erreur: 'QUOTA_GMAIL' });
+  assert.ok(!('DriveAI_TRI_DEMANDE' in props));
+});
+
+test('actionDemandeTri_ : demande valide → Property posée, progression d\'une ancienne demande PURGÉE, tick ponctuel lancé', () => {
+  const { c, props } = ctxDemande(true);
+  props['DriveAI_TRI_DEMANDE_OFFSET'] = '40'; // reliquat d'une demande précédente
+  props['DriveAI_TRI_DEMANDE_FAITS'] = '12';
+  const r = c.actionDemandeTri_({ postData: { contents: JSON.stringify({ fenetre: 1, archiver: false, plafond: 20 }) } });
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual(JSON.parse(props['DriveAI_TRI_DEMANDE']), { fenetre: 1, archiver: false, plafond: 20 });
+  assert.ok(!('DriveAI_TRI_DEMANDE_OFFSET' in props), 'offset de l\'ancienne demande purgé');
+  assert.ok(!('DriveAI_TRI_DEMANDE_FAITS' in props));
+});
+
+test('actionDemandeTri_ : paramètres invalides → refus AVANT la sonde quota (une demande cassée ne coûte rien)', () => {
+  const { c, props } = ctxDemande(false); // la sonde échouerait — elle ne doit pas être atteinte
+  const r = c.actionDemandeTri_({ postData: { contents: JSON.stringify({ fenetre: 3, archiver: true, plafond: 10 }) } });
+  assert.strictEqual(r.ok, false);
+  assert.notStrictEqual(r.erreur, 'QUOTA_GMAIL'); // c'est bien la VALIDATION qui a refusé
+  assert.ok(!('DriveAI_TRI_DEMANDE' in props));
+});
+
+test('actionDemandeIntentions_ : demande posée + offset purgé ; quota mort → QUOTA_GMAIL sans demande', () => {
+  const ok = ctxDemande(true);
+  ok.props['DriveAI_INTENTIONS_DEMANDE_OFFSET'] = '60';
+  const r1 = ok.c.actionDemandeIntentions_({});
+  assert.strictEqual(r1.ok, true);
+  assert.ok('DriveAI_INTENTIONS_DEMANDE' in ok.props);
+  assert.ok(!('DriveAI_INTENTIONS_DEMANDE_OFFSET' in ok.props));
+
+  const ko = ctxDemande(false);
+  const r2 = ko.c.actionDemandeIntentions_({});
+  assert.deepStrictEqual(plat(r2), { ok: false, erreur: 'QUOTA_GMAIL' });
+  assert.ok(!('DriveAI_INTENTIONS_DEMANDE' in ko.props));
+});

@@ -64,7 +64,15 @@ function traiterIntentionsMail_(estBudgetDepasse) {
  * @param {function():boolean} plafondAtteint
  */
 function balayerNouveauxMails_(etat, plafondAtteint) {
-  var debutPage = 0;
+  // Analyse À LA DEMANDE (C28-16) : Marc a cliqué « Analyser » dans l'app — le scan IGNORE le
+  // mur « déjà vu » et parcourt TOUTE la fenêtre 30 j (avec un offset persisté à travers les
+  // ticks : la demande survit aux coupures de budget). Les messages déjà indexés restent
+  // gratuits (clé `intention|` sautée dans traiterMessagePourIntentions_).
+  var props = PropertiesService.getScriptProperties();
+  var demandeForcee = !!props.getProperty('DriveAI_INTENTIONS_DEMANDE');
+  var debutPage = demandeForcee
+    ? Number(props.getProperty('DriveAI_INTENTIONS_DEMANDE_OFFSET')) || 0
+    : 0;
   while (!plafondAtteint()) {
     var fils;
     try {
@@ -75,7 +83,15 @@ function balayerNouveauxMails_(etat, plafondAtteint) {
       return;
     }
     signalerRetablissementGmail_();
-    if (!fils.length) return; // fin de la fenêtre 30 jours
+    if (!fils.length) {
+      if (demandeForcee) {
+        // Fenêtre 30 j entièrement re-balayée : la demande est SERVIE — soldée en une ligne.
+        props.deleteProperty('DriveAI_INTENTIONS_DEMANDE');
+        props.deleteProperty('DriveAI_INTENTIONS_DEMANDE_OFFSET');
+        journalInfo_('Intentions', 'Analyse à la demande terminée (fenêtre 30 j re-balayée, ' + debutPage + ' fils).');
+      }
+      return; // fin de la fenêtre 30 jours
+    }
 
     var pageEntierementIndexee = true;
     for (var i = 0; i < fils.length; i++) {
@@ -87,15 +103,20 @@ function balayerNouveauxMails_(etat, plafondAtteint) {
       for (var m = 0; m < messages.length; m++) {
         if (plafondAtteint()) {
           journalInfo_('Intentions', 'Budget/plafond atteint (mail récent) — reprise au prochain tick.');
-          return;
+          return; // offset non avancé : la page rejouera (déjà-vus gratuits)
         }
-        if (!filManuel && !indexContient_('intention|' + messages[m].getId())) pageEntierementIndexee = false;
-        etat.analyses++;
+        var inedit = !filManuel && !indexContient_('intention|' + messages[m].getId());
+        if (inedit) pageEntierementIndexee = false;
+        // En mode DEMANDE, un déjà-vu ne consomme JAMAIS le plafond (anti-plateau — leçon vécue
+        // sur l'analyse ciblée : la fenêtre re-balayée est surtout du déjà-vu ; sinon la même
+        // page interrompue re-brûlerait le plafond à chaque tick et l'offset ne bougerait plus).
+        if (inedit || !demandeForcee) etat.analyses++;
         etat.creations += traiterMessagePourIntentions_(messages[m], threadId);
       }
     }
-    if (pageEntierementIndexee) return; // mur de mail déjà vu → laisse la main au scan arrière
+    if (pageEntierementIndexee && !demandeForcee) return; // mur de mail déjà vu → main au scan arrière
     debutPage += CONFIG.PAGE_FILS_ACTIONS;
+    if (demandeForcee) props.setProperty('DriveAI_INTENTIONS_DEMANDE_OFFSET', String(debutPage));
   }
 }
 

@@ -70,6 +70,31 @@ function signalerRetablissementGmail_() {
 }
 
 /**
+ * Sonde FORCÉE du quota (C28-16) : appelée par la WEB APP quand Marc clique « Trier/Analyser »
+ * pendant une suspension — il a le droit de re-tester TOUT DE SUITE plutôt que d'attendre la
+ * re-sonde des 2 h. Lève temporairement la suspension, tente UN appel Gmail minimal ; succès →
+ * suspension levée pour de bon (rétablissement journalisé) ; échec quota → suspension re-posée
+ * (signalerPanneGmail_) et la web app répond « QUOTA_GMAIL » à l'app. Bornée par nature (1 appel)
+ * et par l'anti-rafale des actions appelantes — jamais un contournement en boucle.
+ * @return {boolean} vrai si le quota répond (la demande peut être posée)
+ */
+function forcerSondeQuotaGmail_() {
+  chargerPanneGmail_();
+  if (!estPanneGmail_()) return true;
+  _panneGmailCeRun = false; // levée TEMPORAIRE (mémoire seule) : la sonde ci-dessous tranche
+  try {
+    GmailApp.search('in:inbox', 0, 1);
+    signalerRetablissementGmail_(); // Property encore là → effacée + « RÉTABLI » journalisé
+    return true;
+  } catch (e) {
+    // Toujours mort : on remet la suspension EN MÉMOIRE sans re-journaliser (la Property n'a
+    // jamais été touchée — pas de nouvelle ligne « ÉPUISÉ » à chaque clic de Marc).
+    _panneGmailCeRun = true;
+    return false;
+  }
+}
+
+/**
  * Une page de fils Gmail avec PJ, récents.
  * @param {number} debut  offset de pagination
  * @return {GmailThread[]}

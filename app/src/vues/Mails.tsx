@@ -6,7 +6,7 @@
  */
 
 import { useRef, useState } from 'react';
-import { ecrireCellule, marquerIntentionManuelle, analyseCiblee } from '../google';
+import { ecrireCellule, marquerIntentionManuelle, analyseCiblee, demandeIntentions, demandeTriGmail } from '../google';
 import { useEtatGlobal } from '../etatGlobal';
 import { IndicateurChargement, BanniereErreur } from '../composants/UI';
 import { Creation } from '../composants/Creation';
@@ -141,7 +141,7 @@ export function Mails({ langue }: { langue: Langue }) {
         <p className="explication">{t('tableAppriseNote', langue)}</p>
       </section>
 
-      <AnalyseCiblee langue={langue} />
+      <AnalyserTrier langue={langue} />
 
       {creationPour && (
         <>
@@ -162,33 +162,80 @@ export function Mails({ langue }: { langue: Langue }) {
 }
 
 /**
- * Analyse ciblée des mails (C28-06, plan P2) : Marc dépose une requête Gmail LIBRE, le MOTEUR
- * la balaie par pages à ses prochains ticks (campagne bornée : plafonds/run + frein budget §2.6
- * — jamais le flux vivant). L'app ne lit aucun mail ici.
+ * Panneau « Analyser & trier » (C28-16) : trois déclencheurs À LA DEMANDE consommés par le
+ * MOTEUR à son prochain passage (~1 min — l'app n'exécute jamais de fonction moteur) :
+ *  1. intentions (tâches/RDV) sur toute la fenêtre 30 j ;
+ *  2. tri Gmail paramétré au clic (fenêtre / archiver / plafond de fils) ;
+ *  3. l'analyse CIBLÉE existante (requête Gmail libre, C28-06).
+ * L'erreur `QUOTA_GMAIL` du moteur (quota journalier épuisé, C28-15) s'affiche en clair.
  */
-function AnalyseCiblee({ langue }: { langue: Langue }) {
+function AnalyserTrier({ langue }: { langue: Langue }) {
   const [requete, setRequete] = useState('');
+  const [fenetre, setFenetre] = useState(7);
+  const [archiver, setArchiver] = useState(true);
+  const [plafond, setPlafond] = useState(100);
   const [statut, setStatut] = useState('');
   const [erreur, setErreur] = useState('');
   const [enCours, setEnCours] = useState(false);
 
-  async function lancer() {
+  async function lancer(action: () => Promise<string>) {
     setErreur('');
     setStatut('');
     setEnCours(true);
     try {
-      setStatut(await analyseCiblee(requete));
-      setRequete('');
+      setStatut(await action());
     } catch (e) {
-      setErreur(String(e));
+      setErreur(String(e).includes('QUOTA_GMAIL') ? t('quotaGmailEpuise', langue) : String(e));
     } finally {
       setEnCours(false);
     }
   }
 
+  const plafondValide = Number.isInteger(plafond) && plafond >= 1 && plafond <= 1000;
   return (
     <section className="carte large">
-      <h2>{t('analyseCibleeTitre', langue)}</h2>
+      <h2>{t('analyserTrierTitre', langue)}</h2>
+
+      <div className="ligne-formulaire">
+        <span style={{ minWidth: '11rem' }}>{t('intentionsLigne', langue)}</span>
+        <button disabled={enCours} onClick={() => void lancer(() => demandeIntentions())}>
+          {t('analyser30j', langue)}
+        </button>
+      </div>
+
+      <div className="ligne-formulaire">
+        <span style={{ minWidth: '11rem' }}>{t('triLigne', langue)}</span>
+        <label>
+          {t('fenetreJours', langue)}{' '}
+          <select value={fenetre} onChange={(e) => setFenetre(Number(e.target.value))}>
+            <option value={1}>1</option>
+            <option value={7}>7</option>
+            <option value={30}>30</option>
+          </select>
+        </label>
+        <label>
+          <input type="checkbox" checked={archiver} onChange={(e) => setArchiver(e.target.checked)} />{' '}
+          {t('archiverParam', langue)}
+        </label>
+        <label>
+          {t('plafondFils', langue)}{' '}
+          <input
+            type="number"
+            min={1}
+            max={1000}
+            value={plafond}
+            onChange={(e) => setPlafond(Number(e.target.value))}
+            style={{ width: '5.5rem' }}
+          />
+        </label>
+        <button
+          disabled={enCours || !plafondValide}
+          onClick={() => void lancer(() => demandeTriGmail(fenetre, archiver, plafond))}
+        >
+          {t('trierMaintenant', langue)}
+        </button>
+      </div>
+
       <div className="ligne-formulaire">
         <input
           value={requete}
@@ -196,13 +243,21 @@ function AnalyseCiblee({ langue }: { langue: Langue }) {
           placeholder={t('analyseCibleePlaceholder', langue)}
           style={{ flex: 1 }}
         />
-        <button disabled={requete.trim().length < 3 || enCours} onClick={lancer}>
+        <button
+          disabled={requete.trim().length < 3 || enCours}
+          onClick={() => void lancer(async () => {
+            const message = await analyseCiblee(requete);
+            setRequete('');
+            return message;
+          })}
+        >
           {t('lancer', langue)}
         </button>
       </div>
+
       {statut && <p className="ok">✓ {statut}</p>}
       <BanniereErreur langue={langue} erreur={erreur} />
-      <p className="explication">{t('analyseCibleeNote', langue)}</p>
+      <p className="explication">{t('analyserTrierNote', langue)}</p>
     </section>
   );
 }

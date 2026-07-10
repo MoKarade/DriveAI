@@ -806,3 +806,39 @@ export async function analyseCiblee(requete: string): Promise<string> {
   if (!data.ok) throw new Error(data.erreur || 'analyse ciblée refusée');
   return data.message ?? 'analyse programmée';
 }
+
+/* ---------- Tri & intentions à la demande (C28-16) ---------- */
+
+/**
+ * POST générique vers la web app (mêmes canal et pièges que `analyseCiblee`). L'erreur
+ * `QUOTA_GMAIL` du moteur remonte TELLE QUELLE — l'UI la traduit en message clair
+ * (« quota épuisé, reprise vers ~3h ») au lieu d'un texte technique.
+ */
+async function demandeWebApp(action: string, corps: unknown): Promise<string> {
+  const { webappUrl, webappSecret } = lireConfig();
+  if (!webappUrl || !webappSecret) throw new Error('Configurer l’URL de la web app et son secret (⚙)');
+  const rep = await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}&action=${action}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(corps),
+  });
+  if (!rep.ok) throw new Error(`Web app ${rep.status}`);
+  let data: { ok: boolean; erreur?: string; message?: string };
+  try {
+    data = await rep.json();
+  } catch {
+    throw new Error('Réponse illisible — la web app a-t-elle été redéployée en nouvelle version ?');
+  }
+  if (!data.ok) throw new Error(data.erreur || `${action} refusé`);
+  return data.message ?? 'demande programmée';
+}
+
+/** Tri Gmail à la demande, paramétré au clic (fenêtre en jours, archiver, plafond de fils). */
+export async function demandeTriGmail(fenetre: number, archiver: boolean, plafond: number): Promise<string> {
+  return demandeWebApp('demande-tri', { fenetre, archiver, plafond });
+}
+
+/** Relance l'analyse des intentions (tâches/RDV) sur toute la fenêtre 30 j. */
+export async function demandeIntentions(): Promise<string> {
+  return demandeWebApp('demande-intentions', {});
+}

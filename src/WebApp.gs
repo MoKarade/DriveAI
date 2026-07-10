@@ -39,6 +39,10 @@ function doPost(e) {
         reponse = actionRechercheIA_(e);
       } else if (action === 'analyse-ciblee') {
         reponse = actionAnalyseCiblee_(e);
+      } else if (action === 'demande-tri') {
+        reponse = actionDemandeTri_(e);
+      } else if (action === 'demande-intentions') {
+        reponse = actionDemandeIntentions_(e);
       } else {
         reponse = actionTickPonctuel_();
       }
@@ -209,6 +213,89 @@ function actionAnalyseCiblee_(e) {
   // une intention personnelle — la réponse HTTP, elle, ne va qu'au navigateur de Marc).
   journalInfo_('WebApp', 'Analyse ciblée programmée (requête de ' + requete.length + ' caractères).');
   return { ok: true, message: 'analyse programmée — le moteur balaie « ' + requete + ' » à ses prochains passages' };
+}
+
+/* ---------- Tri & intentions À LA DEMANDE (C28-16) ---------- */
+
+/**
+ * Dépose une demande de TRI paramétrée par Marc depuis l'app (fenêtre / archiver / plafond).
+ * AUCUN travail ici : validation stricte + Property de demande — c'est `scanDemandeTri_`
+ * (TriGmail.gs) qui exécute au tick, EN TÊTE du flux vivant. Si le quota Gmail est suspendu,
+ * une sonde FORCÉE re-teste tout de suite (décision Marc : « tenter une fois quand même ») —
+ * toujours mort → `QUOTA_GMAIL`, l'app affiche l'heure de reprise.
+ */
+function actionDemandeTri_(e) {
+  var props = PropertiesService.getScriptProperties();
+
+  // Anti-rafale (5 s) — même politique que l'analyse ciblée : consommé après validation.
+  var derniere = Number(props.getProperty('DriveAI_DERNIERE_DEMANDE_TRI')) || 0;
+  if (Date.now() - derniere < 5000) {
+    return { ok: false, erreur: 'trop de requêtes — réessaie dans quelques secondes' };
+  }
+
+  var demande = null;
+  try {
+    var corps = e && e.postData && e.postData.contents ? JSON.parse(e.postData.contents) : {};
+    demande = validerDemandeTri_(corps);
+  } catch (err) {
+    demande = null;
+  }
+  if (demande === null) {
+    return { ok: false, erreur: 'paramètres invalides (fenêtre 1/7/30, archiver booléen, plafond 1..' + CONFIG.TRI_DEMANDE_PLAFOND_MAX + ')' };
+  }
+  props.setProperty('DriveAI_DERNIERE_DEMANDE_TRI', String(Date.now()));
+
+  if (!forcerSondeQuotaGmail_()) {
+    return { ok: false, erreur: 'QUOTA_GMAIL' };
+  }
+
+  // Progression d'une éventuelle demande précédente effacée AVANT la nouvelle (ordre d'écritures :
+  // une coupure donne au pire un re-scan quasi gratuit, jamais une demande accrochée à un vieil offset).
+  props.deleteProperty('DriveAI_TRI_DEMANDE_OFFSET');
+  props.deleteProperty('DriveAI_TRI_DEMANDE_FAITS');
+  props.setProperty('DriveAI_TRI_DEMANDE', JSON.stringify(demande));
+  journalInfo_('WebApp', 'Tri à la demande programmé (fenêtre ' + demande.fenetre + ' j, archiver : ' +
+    (demande.archiver ? 'oui' : 'non') + ', plafond ' + demande.plafond + ' fils).');
+  return actionTickPonctuel_(); // passage immédiat : le tri démarre dans la ~minute
+}
+
+/**
+ * Relance l'analyse des INTENTIONS (tâches/RDV) sur toute la fenêtre 30 j, en ignorant le mur
+ * « déjà vu » du scan avant (c'est tout l'intérêt du bouton). Même mécanique de demande.
+ */
+function actionDemandeIntentions_(e) {
+  var props = PropertiesService.getScriptProperties();
+
+  var derniere = Number(props.getProperty('DriveAI_DERNIERE_DEMANDE_INTENTIONS')) || 0;
+  if (Date.now() - derniere < 5000) {
+    return { ok: false, erreur: 'trop de requêtes — réessaie dans quelques secondes' };
+  }
+  props.setProperty('DriveAI_DERNIERE_DEMANDE_INTENTIONS', String(Date.now()));
+
+  if (!forcerSondeQuotaGmail_()) {
+    return { ok: false, erreur: 'QUOTA_GMAIL' };
+  }
+
+  props.deleteProperty('DriveAI_INTENTIONS_DEMANDE_OFFSET');
+  props.setProperty('DriveAI_INTENTIONS_DEMANDE', String(Date.now()));
+  journalInfo_('WebApp', 'Analyse des intentions à la demande programmée (fenêtre 30 j complète).');
+  return actionTickPonctuel_();
+}
+
+/**
+ * Valide les paramètres du tri à la demande (données UTILISATEUR via HTTP). PURE (testée).
+ * @param {*} corps  `{fenetre, archiver, plafond}`
+ * @return {?{fenetre:number, archiver:boolean, plafond:number}} demande propre, ou null
+ */
+function validerDemandeTri_(corps) {
+  if (!corps || typeof corps !== 'object') return null;
+  var fenetre = Number(corps.fenetre);
+  if (fenetre !== 1 && fenetre !== 7 && fenetre !== 30) return null;
+  if (typeof corps.archiver !== 'boolean') return null;
+  var plafond = Number(corps.plafond);
+  if (!isFinite(plafond) || plafond !== Math.floor(plafond)) return null;
+  if (plafond < 1 || plafond > CONFIG.TRI_DEMANDE_PLAFOND_MAX) return null;
+  return { fenetre: fenetre, archiver: corps.archiver, plafond: plafond };
 }
 
 /**

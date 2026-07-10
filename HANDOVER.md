@@ -7,6 +7,14 @@
 > **2026-07-09 — C26-08 LANCÉE (ADR-0018) : ANALYSE_V2 allumé + campagne ciblée 03/08 ; crédit
 > rechargé (100 $) ; dry-run clos ; fusion 07→08 et incident Sheet SOLDÉS ; artefacts rangés
 > sous 08 ; C28-14 session durable de l'app LIVRÉE ET VALIDÉE en prod.**
+> • **2026-07-10 — C28-16 : panneau « Analyser & trier » (vue Mails)** : Marc déclenche à la
+>   demande les intentions (30 j complets, mur déjà-vu ignoré) et le tri Gmail PARAMÉTRÉ
+>   (fenêtre 1/7/30 j, archiver oui/non, plafond de fils) — demandes posées par la web app
+>   (`demande-tri`/`demande-intentions`), consommées par le tick en TÊTE du flux vivant,
+>   étalées sur plusieurs ticks (offsets persistés). Clic pendant une suspension de quota =
+>   UNE re-sonde forcée ; toujours mort → « QUOTA_GMAIL » affiché en clair avec l'heure de
+>   reprise. **⚠ Marc doit REDÉPLOYER la web app (Nouvelle version)** pour activer les 2
+>   nouvelles actions — sinon l'app recevra « réponse illisible ».
 > • **2026-07-10 — C28-15 : mails ni triés ni archivés → ordre d'équité strict + suspension
 >   quota Gmail (plan NotebookLM, décisions Marc « équilibre strict » + « tout rattraper »)** :
 >   le quota d'appels Gmail mourait dès ~08h10 (campagne historique) et le tri était affamé

@@ -285,3 +285,38 @@ test('sans marqueur manuel : traitement normal (non-régression)', () => {
   c.traiterMessagePourIntentions_(fauxMessage('M9'), 'F9');
   assert.ok(ajouts.some((a) => a.cle === 'intention|M9'));
 });
+
+/* ---------- Analyse des intentions À LA DEMANDE (C28-16) ---------- */
+
+test('balayerNouveauxMails_ : demande posée → IGNORE le mur « déjà vu », avance l\'offset persisté, solde en fin de fenêtre', () => {
+  const c = load(['Config.gs', 'Gmail.gs', 'Intentions.gs']);
+  const props = { DriveAI_INTENTIONS_DEMANDE: String(1780000000000) };
+  const journaux = [];
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => props[k] ?? null,
+    setProperty: (k, v) => { props[k] = String(v); },
+    deleteProperty: (k) => { delete props[k]; },
+  }) };
+  c.journalInfo_ = (s, m) => journaux.push(m);
+  c.journalErreur_ = () => {};
+  c.indexContient_ = () => true;           // TOUT est déjà vu : le scan normal s'arrêterait page 1
+  c.traiterMessagePourIntentions_ = () => 0;
+  const filDejaVu = { getId: () => 'T1', getMessages: () => [{ getId: () => 'M1' }] };
+  const PAGE = c.CONFIG.PAGE_FILS_ACTIONS;
+  c.pageFilsActions_ = (debut) => (debut < PAGE * 2 ? [filDejaVu] : []); // 2 pages puis fenêtre épuisée
+  const etat = { analyses: 0, creations: 0 };
+  c.balayerNouveauxMails_(etat, () => false);
+  // Mur ignoré (2 pages parcourues malgré le 100 % déjà-vu), déjà-vus SANS consommer le plafond,
+  // demande soldée à la fenêtre épuisée.
+  assert.strictEqual(etat.analyses, 0, 'un déjà-vu ne consomme jamais le plafond en mode demande (anti-plateau)');
+  assert.ok(!('DriveAI_INTENTIONS_DEMANDE' in props), 'demande soldée');
+  assert.ok(!('DriveAI_INTENTIONS_DEMANDE_OFFSET' in props));
+  assert.ok(journaux.some((m) => m.indexOf('Analyse à la demande terminée') !== -1));
+
+  // Sans demande : même contexte 100 % déjà-vu → arrêt page 1 (comportement historique intact).
+  const etat2 = { analyses: 0, creations: 0 };
+  let pages = 0;
+  c.pageFilsActions_ = (debut) => { pages++; return debut < PAGE * 2 ? [filDejaVu] : []; };
+  c.balayerNouveauxMails_(etat2, () => false);
+  assert.strictEqual(pages, 1, 'sans demande, le mur du déjà-vu arrête toujours le scan à la 1ʳᵉ page');
+});
