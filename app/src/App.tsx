@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from 'react';
 import { configComplete, lireConfig, enregistrerConfig } from './config';
-import { seConnecter, estConnecte, seDeconnecter, abonnerSessionExpiree, tenterRestaurationSession, verifierMaintenant, viderCachePlages } from './google';
+import { seConnecter, estConnecte, seDeconnecter, abonnerSessionExpiree, tenterRestaurationSession } from './google';
 import { FournisseurEtat, useEtatGlobal } from './etatGlobal';
 import { BanniereErreur } from './composants/UI';
 import { Langue, langueCourante, changerLangue, t } from './i18n';
@@ -34,7 +34,6 @@ export function App() {
   const [section, setSection] = useState<Section>('aujourdhui');
   const [plusOuvert, setPlusOuvert] = useState(false);
   const [, setTheme] = useState(themeCourant());
-  const [verif, setVerif] = useState<'' | 'encours' | 'ok'>('');
   const [erreur, setErreur] = useState('');
 
   // Session vraiment morte (le rafraîchissement silencieux a échoué) → écran de connexion,
@@ -75,26 +74,10 @@ export function App() {
     setPlusOuvert(false);
   }
 
-  async function verifier() {
-    setVerif('encours');
-    try {
-      await verifierMaintenant();
-      setVerif('ok');
-      // Le moteur passe dans la ~minute : on invalide le cache et on laisse le badge 90 s.
-      setTimeout(() => { viderCachePlages(); setVerif(''); }, 90 * 1000);
-    } catch (e) {
-      setVerif('');
-      setErreur(String(e));
-    }
-  }
-
+  // « Vérifier maintenant » a quitté le header (v3) pour le PanneauActions de l'accueil et de
+  // Mails (C28-17, ADR-0019) : mise en avant visuelle au lieu d'un bouton discret perdu en haut.
   const reglages = (
     <>
-      {connecte && (
-        <button className="discret" onClick={verifier} disabled={verif === 'encours'} title={t('verifierTitre', langue)}>
-          {verif === 'ok' ? t('verifOk', langue) : `⟳ ${t('verifier', langue)}`}
-        </button>
-      )}
       <button className="discret" onClick={() => setTheme(basculerTheme())} title={t('theme', langue)}>◐</button>
       <button className="discret" onClick={basculerLangue}>{langue === 'fr' ? 'EN' : 'FR'}</button>
       <button className="discret" title={t('configuration', langue)} onClick={() => setConfigOk(false)}>⚙</button>
@@ -145,7 +128,7 @@ export function App() {
           </nav>
 
           <div className="vue-active" key={section}>
-            {section === 'aujourdhui' && <AujourdHui langue={langue} />}
+            {section === 'aujourdhui' && <AujourdHui langue={langue} onAller={allerA} />}
             {section === 'documents' && <Documents langue={langue} />}
             {section === 'apprentissage' && <Corrections langue={langue} />}
             {section === 'agenda' && <Agenda langue={langue} />}

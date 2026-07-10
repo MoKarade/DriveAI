@@ -7,14 +7,24 @@
 > **2026-07-09 — C26-08 LANCÉE (ADR-0018) : ANALYSE_V2 allumé + campagne ciblée 03/08 ; crédit
 > rechargé (100 $) ; dry-run clos ; fusion 07→08 et incident Sheet SOLDÉS ; artefacts rangés
 > sous 08 ; C28-14 session durable de l'app LIVRÉE ET VALIDÉE en prod.**
+> • **2026-07-10 — C28-17 : accueil v4 « cockpit central » (ADR-0019, plan NotebookLM)** : Marc
+>   trouvait le bouton de tri « trop inaccessible, trop bas » et le dashboard « trop compliqué ».
+>   Accueil TOUT-EN-UN en 3 zones : (1) `composants/PanneauActions.tsx` PARTAGÉ (accueil + haut de
+>   Mails) — « Vérifier maintenant » remonté du header + intentions 30 j + tri paramétré + analyse
+>   ciblée ; (2) zone ATTENTION (contour ambré) — suspects, documents « à vérifier » (nouveau
+>   sélecteur `lignesAVerifier`), entités à valider avec « Aller valider » → Apprentissage ; tout
+>   vide ⇒ « Tout est à jour ✅ » ; (3) zone ACTIVITÉ discrète (l'existant v3). Décisions Marc :
+>   Trier/Analyser/Vérifier en 1 clic (pas la Recherche IA), priorité au « à faire », mobile et
+>   desktop à parts égales. Vérifié par captures (desktop + 390px). Purement front — rien à
+>   redéployer côté moteur.
 > • **2026-07-10 — C28-16 : panneau « Analyser & trier » (vue Mails)** : Marc déclenche à la
 >   demande les intentions (30 j complets, mur déjà-vu ignoré) et le tri Gmail PARAMÉTRÉ
 >   (fenêtre 1/7/30 j, archiver oui/non, plafond de fils) — demandes posées par la web app
 >   (`demande-tri`/`demande-intentions`), consommées par le tick en TÊTE du flux vivant,
 >   étalées sur plusieurs ticks (offsets persistés). Clic pendant une suspension de quota =
 >   UNE re-sonde forcée ; toujours mort → « QUOTA_GMAIL » affiché en clair avec l'heure de
->   reprise. **⚠ Marc doit REDÉPLOYER la web app (Nouvelle version)** pour activer les 2
->   nouvelles actions — sinon l'app recevra « réponse illisible ».
+>   reprise. **✅ VALIDÉ en prod par Marc (« ok ça a lancé »)** après redéploiement de la web
+>   app et correction du secret/URL (piège : « Nouveau déploiement » CHANGE l'URL `/exec`).
 > • **2026-07-10 — C28-15 : mails ni triés ni archivés → ordre d'équité strict + suspension
 >   quota Gmail (plan NotebookLM, décisions Marc « équilibre strict » + « tout rattraper »)** :
 >   le quota d'appels Gmail mourait dès ~08h10 (campagne historique) et le tri était affamé
@@ -23,7 +33,8 @@
 >   patron R2) câblée dans TOUS les scans Gmail ; budget quotidien de l'historique 60 → 20 min/j
 >   (déviation documentée : la page fait 10 fils, le frein 50 fils/run du plan est inerte seul) +
 >   frein `GMAIL_HISTO_MAX_FILS_PAR_RUN`. Attendu : tri fiable dès demain matin ; l'historique
->   finit plus lentement (prix accepté).
+>   finit plus lentement (prix accepté). ✅ Vérifié en prod le 10/07 : UNE ligne « QUOTA GMAIL
+>   ÉPUISÉ » à 11:10 puis silence (suspension propre, fini le re-spam) ; rattrapage cette nuit.
 > • **2026-07-10 — frein campagnes 65 → 110 $ (décision Marc « b », révision ADR-0018)** : m1 a
 >   basculé en v2 avec l'allumage du flag (coût/doc ×10 — 54,59 $ au compteur le 10/07 matin,
 >   1 209 docs migrés, 0 « Inconnu » produit par la v2 depuis la reprise). À 65 $ tout se serait

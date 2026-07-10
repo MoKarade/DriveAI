@@ -6,10 +6,11 @@
  */
 
 import { useRef, useState } from 'react';
-import { ecrireCellule, marquerIntentionManuelle, analyseCiblee, demandeIntentions, demandeTriGmail } from '../google';
+import { ecrireCellule, marquerIntentionManuelle } from '../google';
 import { useEtatGlobal } from '../etatGlobal';
 import { IndicateurChargement, BanniereErreur } from '../composants/UI';
 import { Creation } from '../composants/Creation';
+import { PanneauActions } from '../composants/PanneauActions';
 import {
   LigneIndex,
   LigneTriAppris,
@@ -77,6 +78,10 @@ export function Mails({ langue }: { langue: Langue }) {
         <div className="tuile"><div className="v">{appris.length}</div><div className="l">{t('exprAppris', langue)}</div></div>
       </div>
 
+      {/* Panneau d'actions PARTAGÉ (C28-17) : remonté sous les tuiles — Marc le trouvait
+          « trop inaccessible, trop bas » en fin de vue. Même composant que l'accueil. */}
+      <PanneauActions langue={langue} />
+
       <section className="carte">
         <h2>{t('filsTriesTitre', langue)}</h2>
         {tris.length === 0 && <p className="explication">{t('aucunTri', langue)}</p>}
@@ -141,8 +146,6 @@ export function Mails({ langue }: { langue: Langue }) {
         <p className="explication">{t('tableAppriseNote', langue)}</p>
       </section>
 
-      <AnalyserTrier langue={langue} />
-
       {creationPour && (
         <>
           <button className="feuille-fond" aria-label={t('fermer', langue)} onClick={() => setCreationPour(null)} />
@@ -161,103 +164,5 @@ export function Mails({ langue }: { langue: Langue }) {
   );
 }
 
-/**
- * Panneau « Analyser & trier » (C28-16) : trois déclencheurs À LA DEMANDE consommés par le
- * MOTEUR à son prochain passage (~1 min — l'app n'exécute jamais de fonction moteur) :
- *  1. intentions (tâches/RDV) sur toute la fenêtre 30 j ;
- *  2. tri Gmail paramétré au clic (fenêtre / archiver / plafond de fils) ;
- *  3. l'analyse CIBLÉE existante (requête Gmail libre, C28-06).
- * L'erreur `QUOTA_GMAIL` du moteur (quota journalier épuisé, C28-15) s'affiche en clair.
- */
-function AnalyserTrier({ langue }: { langue: Langue }) {
-  const [requete, setRequete] = useState('');
-  const [fenetre, setFenetre] = useState(7);
-  const [archiver, setArchiver] = useState(true);
-  const [plafond, setPlafond] = useState(100);
-  const [statut, setStatut] = useState('');
-  const [erreur, setErreur] = useState('');
-  const [enCours, setEnCours] = useState(false);
-
-  async function lancer(action: () => Promise<string>) {
-    setErreur('');
-    setStatut('');
-    setEnCours(true);
-    try {
-      setStatut(await action());
-    } catch (e) {
-      setErreur(String(e).includes('QUOTA_GMAIL') ? t('quotaGmailEpuise', langue) : String(e));
-    } finally {
-      setEnCours(false);
-    }
-  }
-
-  const plafondValide = Number.isInteger(plafond) && plafond >= 1 && plafond <= 1000;
-  return (
-    <section className="carte large">
-      <h2>{t('analyserTrierTitre', langue)}</h2>
-
-      <div className="ligne-formulaire">
-        <span style={{ minWidth: '11rem' }}>{t('intentionsLigne', langue)}</span>
-        <button disabled={enCours} onClick={() => void lancer(() => demandeIntentions())}>
-          {t('analyser30j', langue)}
-        </button>
-      </div>
-
-      <div className="ligne-formulaire">
-        <span style={{ minWidth: '11rem' }}>{t('triLigne', langue)}</span>
-        <label>
-          {t('fenetreJours', langue)}{' '}
-          <select value={fenetre} onChange={(e) => setFenetre(Number(e.target.value))}>
-            <option value={1}>1</option>
-            <option value={7}>7</option>
-            <option value={30}>30</option>
-          </select>
-        </label>
-        <label>
-          <input type="checkbox" checked={archiver} onChange={(e) => setArchiver(e.target.checked)} />{' '}
-          {t('archiverParam', langue)}
-        </label>
-        <label>
-          {t('plafondFils', langue)}{' '}
-          <input
-            type="number"
-            min={1}
-            max={1000}
-            value={plafond}
-            onChange={(e) => setPlafond(Number(e.target.value))}
-            style={{ width: '5.5rem' }}
-          />
-        </label>
-        <button
-          disabled={enCours || !plafondValide}
-          onClick={() => void lancer(() => demandeTriGmail(fenetre, archiver, plafond))}
-        >
-          {t('trierMaintenant', langue)}
-        </button>
-      </div>
-
-      <div className="ligne-formulaire">
-        <input
-          value={requete}
-          onChange={(e) => setRequete(e.target.value)}
-          placeholder={t('analyseCibleePlaceholder', langue)}
-          style={{ flex: 1 }}
-        />
-        <button
-          disabled={requete.trim().length < 3 || enCours}
-          onClick={() => void lancer(async () => {
-            const message = await analyseCiblee(requete);
-            setRequete('');
-            return message;
-          })}
-        >
-          {t('lancer', langue)}
-        </button>
-      </div>
-
-      {statut && <p className="ok">✓ {statut}</p>}
-      <BanniereErreur langue={langue} erreur={erreur} />
-      <p className="explication">{t('analyserTrierNote', langue)}</p>
-    </section>
-  );
-}
+// (Le panneau « Analyser & trier » C28-16 vit désormais dans composants/PanneauActions.tsx —
+// partagé entre l'accueil v4 et cette vue, enrichi du bouton « Vérifier maintenant ».)
