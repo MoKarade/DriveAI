@@ -349,3 +349,47 @@ tr:hover .expl-actions button, .expl-actions button:focus-visible { opacity: 1; 
 /* vue Réorg IA (C21-05) */
 .reorg-boutons { white-space: nowrap; }
 .reorg-boutons button { margin-left: 0.25rem; }
+
+/* ---------- App v4 (C28-17, ADR-0019) : accueil tout-en-un ---------- */
+/* Les 3 zones s'empilent (actions → attention → activité) ; la zone activité garde la
+   grille .colonnes existante à l'intérieur. */
+.accueil { display: flex; flex-direction: column; gap: 1rem; }
+
+/* panneau d'actions partagé : une ligne de blocs en desktop, colonne sur mobile */
+.panneau-actions .actions-grille { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.7rem; }
+@media (max-width: 1080px) { .panneau-actions .actions-grille { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 600px) { .panneau-actions .actions-grille { grid-template-columns: 1fr; } }
+.action-bloc {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 0.45rem;
+  background: var(--carte-2); border: 1px solid var(--bord); border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+}
+.action-libelle {
+  font-family: var(--mono); font-size: 0.68rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.07em; color: var(--texte-doux);
+}
+.action-bloc label { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.85rem; color: var(--texte-doux); }
+.action-bloc select, .action-bloc input[type='number'] { width: auto; padding: 0.3rem 0.5rem; }
+.action-bloc input[type='checkbox'] { width: auto; }
+.action-bloc input:not([type]) { width: 100%; }
+.action-bloc button { margin-top: auto; }
+
+/* zone Attention : le « à faire » de Marc — contour ambré qui attire l'œil, vert quand tout est fait */
+.zone-attention { border-left: 3px solid var(--attention); }
+.zone-attention > h2 { color: var(--attention); }
+.zone-attention.calme { border-left-color: var(--ok); }
+.zone-attention.calme > h2 { color: var(--ok); }
+.zone-attention .tout-a-jour { margin: 0.15rem 0 0.2rem; font-size: 1.02rem; color: var(--ok); }
+.attention-bloc { margin-top: 0.9rem; }
+.attention-bloc:first-of-type { margin-top: 0.2rem; }
+.attention-bloc h3 { margin: 0 0 0.45rem; font-size: 0.92rem; font-weight: 600; }
+.ligne-attention {
+  display: flex; gap: 0.6rem; align-items: baseline;
+  padding: 0.35rem 0; border-top: 1px solid var(--rang); font-size: 0.9rem;
+}
+.ligne-attention:first-of-type { border-top: none; }
+.ligne-attention .date { margin-left: auto; }
+.attention-bloc .pied { margin-top: 0.45rem; padding: 0.25rem 0.7rem; font-size: 0.85rem; }
+
+/* zone Activité : légèrement en retrait visuel derrière la zone Attention */
+.zone-activite { opacity: 0.93; }

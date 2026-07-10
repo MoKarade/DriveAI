@@ -349,6 +349,15 @@ export function lignesSuspects(lignes: LigneIndex[]): LigneIndex[] {
   return lignes.filter((l) => l.statut === 'suspect').slice().reverse();
 }
 
+/**
+ * Documents routés en « 00 · À vérifier » (fail-safe hybride ADR-0016 — analyse sans AUCUN fait
+ * exploitable), récents d'abord. Zone Attention de l'accueil v4 (C28-17) : c'est le « à faire »
+ * de Marc, pas une erreur du moteur.
+ */
+export function lignesAVerifier(lignes: LigneIndex[]): LigneIndex[] {
+  return lignes.filter((l) => l.statut === 'à vérifier').slice().reverse();
+}
+
 export interface StatsTri {
   tries: number;      // total trié + à vérifier (fils passés par le tri)
   aVerifier: number;

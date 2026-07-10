@@ -298,6 +298,21 @@ describe('tuiles Santé (C19-04)', () => {
   });
 });
 
+/* ---------- App v4 (C28-17) : zone Attention de l'accueil ---------- */
+
+describe('lignesAVerifier (C28-17)', () => {
+  it('seulement le statut « à vérifier » (fail-safe ADR-0016), récents d\'abord', async () => {
+    const { lignesAVerifier } = await import('../src/etat');
+    const lignes = interpreterIndex([
+      ['drive|A', '2026-07-09', 'scan_sans_faits.pdf', '', '00 · À vérifier', 'à vérifier'],
+      ['drive|B', '2026-07-10', '2026-07-01_Facture_EDF.pdf', '02 · Finances', 'x', 'classé'],
+      ['drive|C', '2026-07-10', 'photo_floue.jpg', '', '00 · À vérifier', 'à vérifier'],
+      ['drive|D', '2026-07-10', 'd.pdf', '', '', 'quarantaine'], // quarantaine ≠ à vérifier (sa propre liste)
+    ]);
+    expect(lignesAVerifier(lignes).map((l) => l.fichier)).toEqual(['photo_floue.jpg', 'scan_sans_faits.pdf']);
+  });
+});
+
 describe('TriAppris (C19-06)', () => {
   it('interpreterTriAppris : ligneSheet 1-based (+1 en-tête), lignes vidées ignorées', async () => {
     const { interpreterTriAppris } = await import('../src/etat');
