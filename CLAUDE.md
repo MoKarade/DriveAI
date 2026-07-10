@@ -371,6 +371,12 @@ NotebookLM en devient l'entrée, pas le remplacement.
 - **Consigne manuelle Apps Script = fichier .gs D'ABORD.** Toute instruction « exécute X dans
   l'éditeur » nomme le FICHIER puis la fonction (« ouvre `Maintenance.gs` → `fusionnerDomaine…` →
   Exécuter ») — l'éditeur choisit les fonctions PAR fichier, sans lui Marc doit fouiller le projet.
+- **Un quota PARTAGÉ se répartit par PRIORITÉ, se borne dans SON unité, se suspend en panne.**
+  L'ORDRE des étapes du tick est la politique d'allocation d'un quota partagé (appels Gmail/jour) :
+  flux vivant AVANT campagnes, sinon le premier arrivé se sert (vécu : tri affamé à 8h10). Un
+  budget en ms de runtime ne borne PAS un quota d'appels — chaque quota se borne dans sa propre
+  unité. Quota épuisé = panne de plateforme : suspension persistée + re-sonde bornée, sur TOUS
+  les chemins d'appel (catch par item inclus) — jamais des re-tentatives en boucle.
 - **Gmail : threadId = messageId du PREMIER message.** Deux entités (fil, message) ne partagent
   JAMAIS le même préfixe de clé d'idempotence (`intention|<threadId>` serait entré en collision
   avec `intention|<messageId>` — fils entiers sautés à tort) : préfixe DÉDIÉ par entité + test de

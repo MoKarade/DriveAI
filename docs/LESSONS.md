@@ -920,3 +920,23 @@ se corrigent aussi) — c'est un choix budgétaire à faire VALIDER, pas un acci
 au compteur. (Rattrapé le 2026-07-10 : décision Marc « b », frein 65 → 110 $, révision ADR-0018.)
 **Règle durable ?** oui (variante BUDGET de « plafonds à l'unité de coût réelle » : elle porte
 sur le CHIFFRAGE des décisions, pas seulement sur les garde-temps).
+
+## 2026-07-10 — Un quota PARTAGÉ se répartit par PRIORITÉ, se borne dans SON unité, se suspend en panne
+**Contexte.** C28-15 : « mes mails ne se trient pas, ne s'archivent pas ». Mesuré : le quota
+d'APPELS Gmail journalier mourait dès ~08h10 (campagne historique des PJ), le tri vivant — placé
+EN DERNIER dans le tick — était affamé toute la journée (4-17 fils/j au lieu de ~90), et chaque
+tick re-brûlait des appels en erreurs (267 lignes en une matinée). Plan NotebookLM : ordre
+d'équité strict + suspension persistée + frein historique (+ déviation : budget quotidien de
+l'historique 60 → 20 min/j, car le frein « 50 fils/run » était inerte à page de 10 fils).
+**Leçon.** "Un quota de plateforme PARTAGÉ (ex. appels Gmail/jour) se gère comme un budget commun
+à répartir, pas comme une erreur : (1) l'ORDRE des étapes du tick EST la politique d'allocation —
+les consommateurs du quota partagé se classent par priorité PRODUIT (flux vivant avant campagnes),
+sinon « le premier arrivé se sert » et le tri quotidien de Marc est affamé par la campagne
+historique ; (2) un budget en MS DE RUNTIME ne borne PAS un quota d'APPELS — 60 min/j de runtime
+de campagne suffisaient à vider tout le quota d'appels Gmail du compte : chaque quota se borne
+dans SA PROPRE UNITÉ (appels → plafond d'appels/jour ou réduction drastique du budget du gros
+consommateur) ; (3) l'épuisement du quota se traite par le patron panne de plateforme (détecter →
+suspension persistée → re-sonde bornée, câblée sur TOUS les chemins d'appel y compris les catch
+par item) — sinon chaque tick re-brûle des appels en pure perte."
+**Règle durable ?** oui (généralise « plafonds à l'unité de coût réelle » aux quotas PARTAGÉS :
+l'ordre d'exécution devient une décision d'allocation, pas un détail d'implémentation).
