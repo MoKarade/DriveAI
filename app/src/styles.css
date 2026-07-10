@@ -409,15 +409,29 @@ tr:hover .expl-actions button, .expl-actions button:focus-visible { opacity: 1; 
 .pastille.attn { background: color-mix(in srgb, var(--attention) 16%, transparent); color: var(--attention); }
 
 /* barre : même vocabulaire que la jauge de coût, marque de données pleine hauteur */
-.op-barre { height: 7px; border-radius: 99px; background: var(--rang); overflow: hidden; }
+.op-barre { height: 8px; border-radius: 99px; background: var(--rang); overflow: hidden; }
 .op-barre i { display: block; height: 100%; border-radius: 99px; background: var(--donnee); transition: width 0.6s ease; }
 .op-barre.pleine i { background: color-mix(in srgb, var(--ok) 55%, var(--donnee)); }
 .operation.suspendu .op-barre i { background: color-mix(in srgb, var(--erreur) 60%, var(--rang)); }
 .operation.pause .op-barre i { background: color-mix(in srgb, var(--attention) 60%, var(--rang)); }
 
-/* total inconnu : ruban indéterminé qui défile (statique si mouvement réduit ou opération figée) */
+/* ça travaille mais total inconnu (recensement, historique) : ruban qui défile — TOUJOURS animé
+   (un ruban figé « a l'air planté ») ; statique seulement si l'utilisateur réduit le mouvement */
 .op-barre.indeterminee i { width: 30%; }
 @media (prefers-reduced-motion: no-preference) {
-  .op-barre.indeterminee:not(.figee) i { animation: defile 1.8s ease-in-out infinite; }
+  .op-barre.indeterminee i { animation: defile 1.8s ease-in-out infinite; }
   @keyframes defile { 0% { margin-left: 0; } 50% { margin-left: 70%; } 100% { margin-left: 0; } }
 }
+
+/* à l'ARRÊT (suspendu / en pause) sans total connu : rayures statiques dans la couleur du statut —
+   lisible comme « stoppé », jamais comme une barre gelée en plein vol */
+.op-barre.rayee { background: repeating-linear-gradient(45deg, var(--rang) 0 8px, transparent 8px 16px); }
+.operation.suspendu .op-barre.rayee {
+  background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--erreur) 30%, var(--rang)) 0 8px, var(--rang) 8px 16px);
+}
+.operation.pause .op-barre.rayee {
+  background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--attention) 30%, var(--rang)) 0 8px, var(--rang) 8px 16px);
+}
+
+/* note d'explication d'un état non trivial (recensement / attente / suspension / pause) */
+.op-note { margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--texte-doux); }

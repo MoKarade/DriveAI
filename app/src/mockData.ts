@@ -76,8 +76,9 @@ const REGLAGES: string[][] = [
 
 const PROGRESSION: string[][] = [
   // Clé | Opération | Traités | Base | Unité | Statut | Horodaté (miroir de COLONNES_PROGRESSION)
+  // Un exemplaire de chaque ÉTAT visuel : barre déterminée / recensement animé / attente / rayures.
   ['tri-demande', 'Tri Gmail à la demande', '37', '100', 'fils', 'en cours', '2026-07-06T14:10:00'],
-  ['migration', 'Migration taxonomie (m1)', '812', '1209', 'documents', 'en cours', '2026-07-06T14:10:00'],
+  ['migration', 'Migration taxonomie (m1)', '0', '', 'documents', 'recensement', '2026-07-06T14:10:00'],
   ['reanalyse', 'Re-analyse v2 (c26-08)', '0', '', 'documents', 'en attente (après m1)', '2026-07-06T14:10:00'],
   ['histo-gmail', 'Historique Gmail (PJ)', '4520', '', 'fils', 'suspendu (quota Gmail)', '2026-07-06T14:10:00'],
 ];
