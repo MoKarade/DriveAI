@@ -229,7 +229,7 @@ test('panne de COMPTE (crédit/clé) : toujours IMMÉDIATE — jamais soumise au
 });
 
 test('traiterIntentionsMail_ : panne active → AUCUNE recherche Gmail (le quota de lecture est préservé)', () => {
-  const c = load(['Config.gs', 'Intentions.gs']);
+  const c = load(['Config.gs', 'Gmail.gs', 'Intentions.gs']);
   let recherches = 0;
   c.estPannePlateforme_ = () => true;
   c.pageFilsActions_ = () => { recherches++; return []; };
@@ -242,7 +242,7 @@ test('traiterIntentionsMail_ : panne active → AUCUNE recherche Gmail (le quota
 });
 
 test('traiterGmail_ : panne active → AUCUNE recherche Gmail', () => {
-  const c = load(['Config.gs', 'Main.gs']);
+  const c = load(['Config.gs', 'Gmail.gs', 'Main.gs']);
   let recherches = 0;
   c.estPannePlateforme_ = () => true;
   c.pageFils_ = () => { recherches++; return []; };
