@@ -87,7 +87,10 @@ function Operation({ l, langue }: { l: LigneProgression; langue: Langue }) {
   const libelle = LIBELLES[l.cle] ? t(LIBELLES[l.cle], langue) : l.operation;
   const unite = UNITES[l.unite] ? t(UNITES[l.unite], langue) : l.unite;
   const fini = famille === 'termine';
-  const pct = l.base && l.base > 0 ? Math.min(100, Math.round((l.traites / l.base) * 100)) : null;
+  // Plafond 99 % tant que la vraie fin n'est pas signée (leçon barre de masse) : une base
+  // RE-BASÉE (recensement partiel rattrapé par le réel) donnerait sinon un 100 % « en cours ».
+  const pct = l.base && l.base > 0
+    ? Math.min(fini ? 100 : 99, Math.round((l.traites / l.base) * 100)) : null;
   const note = noteStatut(l, famille);
   // « 0 documents » pendant un recensement ou une attente n'informe pas : la note suffit.
   const compteUtile = !(l.traites === 0 && (famille === 'recensement' || famille === 'attente'));
