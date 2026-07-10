@@ -901,3 +901,22 @@ Instance de la règle durable « vérifier les identités de plateforme qu'un pl
 avant d'exécuter un plan qui POSE des fichiers d'infrastructure, relire la config de plateforme qui
 arbitre réellement (`vercel.json`, `appsscript.json`, workflows CI).
 **Règle durable ?** non (instance de la règle durable existante — les pièges précis restent ici).
+
+## 2026-07-10 — Allumer un flag de pipeline re-tarife les campagnes DÉJÀ en cours
+**Contexte.** ADR-0018 : allumage d'`ANALYSE_V2` (flux vivant en Sonnet 2 passes) + campagne
+ciblée C26-08 (03/08, ~24 $), frein relevé 30 → 65 $ pour couvrir « le mois entamé + la
+campagne + la fin de m1 ».
+**Leçon.** "Allumer un FLAG global de pipeline (ANALYSE_V2) bascule AUSSI les campagnes DÉJÀ EN
+COURS qui re-passent leurs documents au pipeline COURANT (m1 re-analyse via `traiterDocument_`
+→ ses ~1 500 docs restants sont passés de Haiku 1 passe à Sonnet 2 passes, coût/doc ×10) : le
+chiffrage d'ADR-0018 supposait la queue de m1 en v1 et le mois a doublé en une nuit
+(27 → 54,59 $), le frein à 65 $ allait suspendre m1 en plein vol et reporter C26-08 d'un mois.
+Règle : avant d'allumer un flag qui change le MODÈLE/COÛT du pipeline partagé, inventorier les
+CONSOMMATEURS déjà actifs de ce pipeline (campagnes en cours, rejeux, escalades) et re-chiffrer
+leur stock restant à la NOUVELLE unité de coût — puis dimensionner le frein pour le total, pas
+pour la seule campagne nouvelle. Corollaire positif à documenter dans l'ADR : la campagne
+héritée devient de facto une re-analyse complète de son périmètre (les `_Inconnu` hors cibles
+se corrigent aussi) — c'est un choix budgétaire à faire VALIDER, pas un accident à découvrir
+au compteur. (Rattrapé le 2026-07-10 : décision Marc « b », frein 65 → 110 $, révision ADR-0018.)
+**Règle durable ?** oui (variante BUDGET de « plafonds à l'unité de coût réelle » : elle porte
+sur le CHIFFRAGE des décisions, pas seulement sur les garde-temps).

@@ -331,6 +331,11 @@ NotebookLM en devient l'entrée, pas le remplacement.
   frontières + assertions de présence des voisines. Les tests unitaires mockés ne voient PAS une fonction
   inter-module disparue → `test/surface-moteur.test.js` charge tout le moteur et vérifie le contrat
   interne ; y ajouter toute nouvelle fonction appelée en travers des modules.
+- **Allumer un flag qui change le modèle/coût du pipeline re-tarife AUSSI les campagnes déjà en
+  cours** (elles re-passent leurs documents au pipeline COURANT — vécu : m1 basculée en Sonnet ×2
+  par `ANALYSE_V2`, mois doublé en une nuit). Avant d'allumer : inventorier les consommateurs
+  ACTIFS du pipeline, re-chiffrer leur stock restant à la nouvelle unité de coût, dimensionner le
+  frein pour le TOTAL — et faire valider l'effet de bord (campagne héritée = re-analyse de fait).
 - **Un champ « requis » par le schéma général peut être OPTIONNEL sur un sous-chemin.** Quand une passe
   LLM peut légitimement omettre un champ (un non-document v2 n'a pas de `domaine`), le PARSER PARTAGÉ qui
   l'exige rejette le cas même qu'on voulait traiter → quarantaine à tort (faux positif silencieux). Le
