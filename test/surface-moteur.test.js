@@ -40,6 +40,9 @@ const CONTRAT = [
   'requeteHisto_', 'dateGmail_',
   // panne de QUOTA Gmail journalier (C28-15 — suspension persistée, patron R2)
   'chargerPanneGmail_', 'estPanneGmail_', 'signalerPanneGmail_', 'signalerRetablissementGmail_',
+  // tri & intentions À LA DEMANDE (C28-16 — panneau « Analyser & trier » de l'app)
+  'forcerSondeQuotaGmail_', 'scanDemandeTri_', 'effacerDemandeTri_',
+  'actionDemandeTri_', 'actionDemandeIntentions_', 'validerDemandeTri_',
   'traiterDepots_', 'ordonnerDepots_', 'collecterPartages_', 'appliquerMigrationTaxonomie_',
   // re-analyse v2 ciblée (C26-08, ADR-0018)
   'estAReanalyser_', 'appliquerReanalyseCiblee_', 'reanalyserUnePage_', 'collecterAReanalyser_',

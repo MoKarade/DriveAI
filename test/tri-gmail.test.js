@@ -459,3 +459,58 @@ test('fil où MARC a répondu en dernier → catégorisé sur le message de l\'A
   assert.strictEqual(vuExpediteur, 'Banque <conseiller@banque.com>'); // référence = l'AUTRE partie
   assert.deepStrictEqual(plain(appris), [{ adresse: 'conseiller@banque.com', lib: 'Finance' }]);
 });
+
+/* ---------- Tri À LA DEMANDE (C28-16) ---------- */
+
+/** Contexte demande : ctxTri + deleteProperty (les Properties de demande se purgent). */
+function ctxTriDemande(opts) {
+  const base = ctxTri(opts);
+  base.c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => base.calls.props[k] ?? null,
+    setProperty: (k, v) => { base.calls.props[k] = String(v); },
+    deleteProperty: (k) => { delete base.calls.props[k]; },
+  }) };
+  base.c.estPanneGmail_ = () => false; // quota vivant (le scan à la demande est testé, pas la panne)
+  return base;
+}
+
+test('scanDemandeTri_ : demande « archiver: false » → fil traité, libellé posé, JAMAIS archivé, demande soldée', () => {
+  const { c, calls } = ctxTriDemande({
+    index: { 'intention|M1': true },
+    props: { DriveAI_TRI_DEMANDE: JSON.stringify({ fenetre: 7, archiver: false, plafond: 10 }) },
+    fils: [],
+  });
+  const fil = filMock(calls, { id: 'F1', ts: 1700000000000, dernierMsgId: 'M1', expediteur: 'EDF <f@edf.fr>', sujet: 'Facture' });
+  // La recherche de la DEMANDE sert le fil à l'offset 0 ; la page suivante est vide (fenêtre épuisée).
+  c.GmailApp.search = (q, debut) => (q.indexOf('newer_than:7d') === 0 && debut === 0 ? [fil] : []);
+  c.trierFilsGmail_(() => false);
+  assert.deepStrictEqual(calls.labels.map((l) => l.label), ['Finance']); // libellé posé normalement
+  assert.deepStrictEqual(calls.archives, []); // mail LU qui serait archivé en temps normal → PAS archivé
+  assert.ok(calls.ajouts.some((a) => a.cle.indexOf('tri|F1|') === 0 && a.statut === 'trié')); // Index inchangé dans sa forme
+  assert.ok(!('DriveAI_TRI_DEMANDE' in calls.props), 'demande soldée (fenêtre épuisée)');
+  assert.ok(!('DriveAI_TRI_DEMANDE_OFFSET' in calls.props));
+});
+
+test('scanDemandeTri_ : plafond de fils respecté — le surplus est laissé au tri NORMAL (qui archive, lui)', () => {
+  const { c, calls } = ctxTriDemande({
+    index: { 'intention|M1': true, 'intention|M2': true },
+    props: { DriveAI_TRI_DEMANDE: JSON.stringify({ fenetre: 30, archiver: false, plafond: 1 }) },
+  });
+  const fil1 = filMock(calls, { id: 'F1', ts: 1700000000000, dernierMsgId: 'M1', expediteur: 'EDF <f@edf.fr>', sujet: 'Facture 1' });
+  const fil2 = filMock(calls, { id: 'F2', ts: 1700000100000, dernierMsgId: 'M2', expediteur: 'EDF <f@edf.fr>', sujet: 'Facture 2' });
+  c.GmailApp.search = (q, debut) => {
+    if (q.indexOf('newer_than:30d') === 0) return debut === 0 ? [fil1, fil2] : []; // la demande
+    return debut === 0 ? [fil1, fil2] : []; // le scan avant (TRI_REQUETE)
+  };
+  c.trierFilsGmail_(() => false);
+  // Demande (plafond 1) : F1 trié SANS archivage. Scan avant ensuite : F2 trié NORMALEMENT (archivé).
+  assert.deepStrictEqual(calls.archives, ['F2'], 'seul le fil traité par le scan NORMAL est archivé');
+  assert.ok(!('DriveAI_TRI_DEMANDE' in calls.props), 'demande soldée (plafond atteint)');
+});
+
+test('scanDemandeTri_ : demande illisible (Property corrompue) → purgée en une fois, jamais une boucle d\'erreurs', () => {
+  const { c, calls } = ctxTriDemande({ props: { DriveAI_TRI_DEMANDE: '{pas du json' }, fils: [] });
+  c.GmailApp.search = () => [];
+  c.trierFilsGmail_(() => false);
+  assert.ok(!('DriveAI_TRI_DEMANDE' in calls.props));
+});

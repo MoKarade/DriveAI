@@ -306,8 +306,82 @@ function trierFilsGmail_(estBudgetDepasse) {
       etat.traites >= CONFIG.TRI_MAX_FILS_PAR_RUN || etat.attentes >= CONFIG.TRI_MAX_ATTENTES;
   };
 
-  scanAvantTri_(etat, plafondAtteint, candidats, libelles);
+  // Tri À LA DEMANDE (C28-16) : la demande de Marc (fenêtre/archiver/plafond posée par l'app)
+  // passe EN PREMIER — c'est lui qui a cliqué. Elle s'étale sur plusieurs ticks si besoin
+  // (offset/faits persistés), toujours sous les plafonds par run du tri.
+  scanDemandeTri_(etat, plafondAtteint, candidats, libelles);
+  if (!plafondAtteint()) scanAvantTri_(etat, plafondAtteint, candidats, libelles);
   if (!plafondAtteint()) scanArriereTri_(etat, plafondAtteint, candidats, libelles);
+}
+
+/**
+ * Scan À LA DEMANDE (C28-16) : consomme la Property `DriveAI_TRI_DEMANDE` posée par l'app
+ * (`actionDemandeTri_` — fenêtre ∈ {1,7,30} j, archiver oui/non, plafond de fils TRAITÉS).
+ * Pages depuis un offset persistant ; les fils déjà à jour (clé `tri|fil|ts|lu` à l'Index)
+ * sont sautés gratuitement — re-trier une fenêtre déjà triée ne re-paie ni ne re-archive rien.
+ * Le plafond compte les fils réellement TRAITÉS (écritures) ; une page interrompue par le
+ * budget du run rejouera au tick suivant (offset inchangé, déjà-vus gratuits). La demande est
+ * effacée quand ENTIÈREMENT servie (plafond atteint ou fenêtre épuisée) — reprenable si coupée.
+ * @param {{traites:number, attentes:number}} etat
+ * @param {function():boolean} plafondAtteint
+ * @param {string[]} candidats
+ * @param {Object} libelles
+ */
+function scanDemandeTri_(etat, plafondAtteint, candidats, libelles) {
+  var props = PropertiesService.getScriptProperties();
+  var brut = props.getProperty('DriveAI_TRI_DEMANDE');
+  if (!brut) return;
+  var demande = null;
+  try { demande = JSON.parse(brut); } catch (e) { }
+  if (!demande || !demande.fenetre || !demande.plafond) {
+    // Demande illisible (Property corrompue) : purgée — jamais une boucle d'erreurs à chaque tick.
+    effacerDemandeTri_(props, 0, 'demande illisible — annulée');
+    return;
+  }
+  var requete = 'newer_than:' + demande.fenetre + 'd in:inbox';
+
+  while (!plafondAtteint()) {
+    var faits = Number(props.getProperty('DriveAI_TRI_DEMANDE_FAITS')) || 0;
+    if (faits >= demande.plafond) {
+      effacerDemandeTri_(props, faits, 'plafond atteint');
+      return;
+    }
+    var offset = Number(props.getProperty('DriveAI_TRI_DEMANDE_OFFSET')) || 0;
+    var fils;
+    try {
+      fils = GmailApp.search(requete, offset, CONFIG.PAGE_FILS_ACTIONS);
+    } catch (e) {
+      if (signalerPanneGmail_(e)) return; // quota : demande INTACTE, reprise après la re-sonde
+      journalErreur_('TriGmail', 'Recherche du tri à la demande impossible : ' + e);
+      return;
+    }
+    signalerRetablissementGmail_();
+    if (!fils.length) {
+      effacerDemandeTri_(props, faits, 'fenêtre épuisée');
+      return;
+    }
+    for (var i = 0; i < fils.length; i++) {
+      if (plafondAtteint() || faits >= demande.plafond) break; // la page rejouera (déjà-vus gratuits)
+      var r = trierFil_(fils[i], candidats, libelles, false, !demande.archiver);
+      if (r === 'traite') { etat.traites++; faits++; }
+      if (r === 'attend') etat.attentes++;
+    }
+    props.setProperty('DriveAI_TRI_DEMANDE_FAITS', String(faits));
+    if (faits >= demande.plafond) {
+      effacerDemandeTri_(props, faits, 'plafond atteint');
+      return;
+    }
+    if (plafondAtteint()) return; // page interrompue par le run : offset INCHANGÉ (rejeu gratuit)
+    props.setProperty('DriveAI_TRI_DEMANDE_OFFSET', String(offset + fils.length));
+  }
+}
+
+/** Solde une demande de tri : Properties purgées + bilan journalisé (une seule ligne). */
+function effacerDemandeTri_(props, faits, motif) {
+  props.deleteProperty('DriveAI_TRI_DEMANDE');
+  props.deleteProperty('DriveAI_TRI_DEMANDE_OFFSET');
+  props.deleteProperty('DriveAI_TRI_DEMANDE_FAITS');
+  journalInfo_('TriGmail', 'Tri à la demande terminé (' + faits + ' fil(s) trié(s) — ' + motif + ').');
 }
 
 /**
@@ -406,7 +480,7 @@ function scanArriereTri_(etat, plafondAtteint, candidats, libelles) {
  * @param {boolean} verifierBoite  vrai pour le scan arrière : un fil déjà HORS boîte est sauté
  *   (l'objectif est « boîte propre » — pas de libellés/coût LLM pour l'archivé d'avant).
  */
-function trierFil_(fil, candidats, libelles, verifierBoite) {
+function trierFil_(fil, candidats, libelles, verifierBoite, forcerNonArchivage) {
   var filId = '';
   var ts = '';
   try {
@@ -515,6 +589,10 @@ function trierFil_(fil, candidats, libelles, verifierBoite) {
       promoDeterministe: promoDeterministe,
       entierementLu: !nonLu
     });
+    // Tri À LA DEMANDE (C28-16) : Marc a décoché « archiver » pour CE déclenchement — l'archivage
+    // est suspendu juste avant la mutation (libellés et clé Index INCHANGÉS) ; la politique du
+    // tri automatique quotidien n'est pas modifiée.
+    if (forcerNonArchivage) decision.archiver = false;
 
     // ÉCRITURES (les seules du module) : libellés existants + archivage réversible. Une panne ICI
     // est SYSTÉMIQUE (scope, API) : elle stoppe le run sans imputer d'échec au fil.

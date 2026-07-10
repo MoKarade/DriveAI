@@ -183,6 +183,9 @@ var CONFIG = {
   // mini-appels pour des fils DÉJÀ archivés par Marc/l'ancien Cowork — hors objectif « boîte propre »).
   TRI_REQUETE: 'newer_than:30d in:inbox',
   TRI_MAX_FILS_PAR_RUN: 30,               // écritures Gmail bornées par run (quotas)
+  TRI_DEMANDE_PLAFOND_MAX: 1000,          // borne DURE du plafond réglable au clic (C28-16) — la
+                                          // demande s'étale sur plusieurs ticks, jamais plus par run
+                                          // que TRI_MAX_FILS_PAR_RUN (le quota reste protégé)
   TRI_MAX_ATTENTES: 20,                   // fils « en attente des intentions » chargés par run (borne
                                           // la re-facture de lecture — revue flotte, classe R2)
   LLM_MAX_TOKENS_MINICAT: 64,             // mini-appel catégorie : JSON {categorie, suspect} — marge pour le plus long libellé + clôture markdown
