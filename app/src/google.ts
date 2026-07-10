@@ -223,6 +223,15 @@ async function lirePlageDirecte(onglet: string, plage: string): Promise<string[]
   return r.values ?? [];
 }
 
+/**
+ * Lecture LIVE de l'onglet Progression (C28-18) : CONTOURNE le cache 60 s — le poll dédié
+ * (useProgressionLive, 15 s) doit voir chaque tick du moteur. Petite plage fixe : ~4 req/min,
+ * ≈ 1 % du quota de lecture Sheets. Le rendu est écrit par le moteur en fin de tick.
+ */
+export async function lireProgressionLive(): Promise<string[][]> {
+  return lirePlageDirecte('Progression', 'A2:G30');
+}
+
 /** Écrit UNE cellule (ex. Statut d'une entité → « validée »). */
 export async function ecrireCellule(onglet: string, cellule: string, valeur: string): Promise<void> {
   viderCachePlages(onglet); // l'onglet vient de changer — ses lecteurs doivent relire (les autres non)

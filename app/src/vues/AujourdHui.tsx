@@ -15,6 +15,7 @@ import type { Section } from '../App';
 import { useEtatGlobal } from '../etatGlobal';
 import { IndicateurChargement } from '../composants/UI';
 import { PanneauActions } from '../composants/PanneauActions';
+import { OperationsLive } from '../composants/OperationsLive';
 import {
   LigneIndex,
   Sante,
@@ -131,6 +132,9 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
           </div>
         )}
       </section>
+
+      {/* ---------- Zone 2bis : opérations en cours, suivies EN LIVE (C28-18, poll 15 s) ---------- */}
+      <OperationsLive langue={langue} />
 
       {/* ---------- Zone 3 : activité (discrète) ---------- */}
       <div className="colonnes zone-activite">

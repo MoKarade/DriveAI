@@ -542,3 +542,43 @@ export function plagesContigues(lignesSheet: number[]): { debut: number; fin: nu
 export function lignesVideCandidat(lignes: LigneReorg[]): LigneReorg[] {
   return lignes.filter((l) => l.type === 'dossier-vide' && l.statut === 'vide-candidat');
 }
+
+/* ---------- Progression LIVE des opérations (C28-18) ---------- */
+
+/** Miroir d'une ligne de l'onglet Progression (COLONNES_PROGRESSION, Journal.gs). */
+export interface LigneProgression {
+  cle: string;         // clé stable ('migration', 'tri-demande', …) — sélectionne le widget/libellé
+  operation: string;   // libellé FR écrit par le moteur (repli d'affichage)
+  traites: number;
+  base: number | null; // null = total inconnu (historique Gmail, intentions) → barre indéterminée
+  unite: string;       // 'documents' | 'fils' | 'mails' | 'fichiers'
+  statut: string;      // 'en cours' | 'recensement' | 'en attente…' | 'suspendu…' | 'en pause…' | 'terminé'
+  horodate: string;
+}
+
+/** Interprète l'onglet Progression (Clé|Opération|Traités|Base|Unité|Statut|Horodaté). PURE. */
+export function interpreterProgression(brut: string[][]): LigneProgression[] {
+  return brut
+    .filter((l) => l[0])
+    .map((l) => ({
+      cle: l[0] ?? '',
+      operation: l[1] ?? '',
+      traites: Number(l[2]) || 0,
+      base: l[3] === '' || l[3] == null ? null : Number(l[3]) || 0,
+      unite: l[4] ?? '',
+      statut: l[5] ?? '',
+      horodate: l[6] ?? '',
+    }));
+}
+
+export type FamilleStatut = 'encours' | 'suspendu' | 'pause' | 'attente' | 'termine' | 'recensement';
+
+/** Famille visuelle d'un statut moteur (préfixe FR stable) — pilote la pastille du widget. PURE. */
+export function familleStatut(statut: string): FamilleStatut {
+  if (statut.startsWith('suspendu')) return 'suspendu';
+  if (statut.startsWith('en pause')) return 'pause';
+  if (statut.startsWith('en attente')) return 'attente';
+  if (statut.startsWith('terminé')) return 'termine';
+  if (statut.startsWith('recensement')) return 'recensement';
+  return 'encours';
+}

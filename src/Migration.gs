@@ -61,15 +61,114 @@ function appliquerMigrationTaxonomie_(estBudgetDepasse) {
     return estBudgetDepasse() || (Date.now() - debutMigration) > CONFIG.MIGRATION_BUDGET_MS;
   };
 
+  // Nouveau tag = nouvelle campagne → barre VIERGE (leçon §7 « le seuil va dans la clé » : sans ce
+  // reset, une future m2 hériterait de la barre figée à 100 % de m1 et sauterait son recensement).
+  if (props.getProperty('DriveAI_MIGRATION_BARRE_TAG') !== CONFIG.MIGRATION_TAG) {
+    props.deleteProperty('DriveAI_MIGRATION_BASE');
+    props.deleteProperty('DriveAI_MIGRATION_TRAITES');
+    props.deleteProperty('DriveAI_MIGRATION_RECENS');
+    props.setProperty('DriveAI_MIGRATION_BARRE_TAG', CONFIG.MIGRATION_TAG);
+  }
+
+  // PHASE RECENSEMENT (C28-18, leçon « barre de masse ») : la BASE de la barre se pose dans des
+  // ticks DÉDIÉS (ce tick ne migre pas — un comptage en concurrence du traitement ne finirait
+  // jamais). Filet : après RANGEMENT_RECENS_ESSAIS_MAX passes incomplètes, le compte PARTIEL est
+  // accepté — la campagne n'est JAMAIS bloquée par sa barre (re-base + finalisation corrigent).
+  if (props.getProperty('DriveAI_MIGRATION_BASE') === null) {
+    var essaisRecens = Number(props.getProperty('DriveAI_MIGRATION_RECENS')) || 0;
+    var rec = compterRestantMigration_(garde);
+    if (!rec.complet && essaisRecens + 1 < CONFIG.RANGEMENT_RECENS_ESSAIS_MAX) {
+      props.setProperty('DriveAI_MIGRATION_RECENS', String(essaisRecens + 1)); // partiel → réessai
+      return;
+    }
+    props.setProperty('DriveAI_MIGRATION_BASE', String(rec.n || 0)); // complet, ou partiel accepté
+    props.setProperty('DriveAI_MIGRATION_TRAITES', '0');
+    props.deleteProperty('DriveAI_MIGRATION_RECENS'); // compteur d'essais soldé avec le recensement
+    return; // tick dédié : la migration reprend au tick suivant
+  }
+
   var r = migrerUnePage_(garde, ensembleDomainesProteges_());
   if (r.traites) {
+    majCompteurCampagne_('DriveAI_MIGRATION', r.traites); // barre (C28-18) — Properties seules
     journalInfo_('Migration', r.traites + ' document(s) re-classé(s) vers la nouvelle taxonomie (campagne « ' +
       CONFIG.MIGRATION_TAG + ' »).');
   }
   // Terminé SEULEMENT quand une passe complète (non interrompue, sans erreur) ne collecte plus rien.
   if (!r.reste && r.collectes === 0) {
     props.setProperty('DriveAI_MIGRATION', CONFIG.MIGRATION_TAG);
+    finaliserCompteurCampagne_('DriveAI_MIGRATION'); // barre à 100 % sur le VRAI signal de fin
     journalInfo_('Migration', 'Migration vers la nouvelle taxonomie terminée (tag « ' + CONFIG.MIGRATION_TAG + ' »).');
+  }
+}
+
+/**
+ * Recense (compte, sans rien toucher) les documents RESTANT à migrer — même périmètre exact que
+ * `migrerUnePage_` (domaines fixes non protégés, hors cibles C26-08), même prédicat `estAMigrer_`
+ * (léger : mime + lookup O(1) sur le cache Index). Borné par le garde (sous-budget migration).
+ * @param {function():boolean} estBudgetDepasse
+ * @return {{n:number, complet:boolean}}
+ */
+function compterRestantMigration_(estBudgetDepasse) {
+  var etat = { n: 0, complet: true };
+  var domaines = Object.keys(CONFIG.DOMAINES);
+  for (var d = 0; d < domaines.length; d++) {
+    if (estBudgetDepasse()) { etat.complet = false; break; }
+    var dom = domaines[d];
+    if (CONFIG.DOMAINES_PROTEGES.indexOf(dom) !== -1) continue;
+    if ((CONFIG.REANALYSE_CIBLES || []).indexOf(dom) !== -1) continue;
+    try {
+      compterCampagneDossier_(DriveApp.getFolderById(CONFIG.DOMAINES[dom]), etat, estBudgetDepasse,
+        function (f) { return estAMigrer_(f, CONFIG.MIGRATION_TAG); });
+    } catch (e) {
+      etat.complet = false; // domaine illisible → compte non fiable, on réessaiera (ou filet partiel)
+    }
+  }
+  return etat;
+}
+
+/**
+ * Recense les documents RESTANT à re-analyser (C26-08) — même périmètre que `reanalyserUnePage_`
+ * (les seuls domaines de REANALYSE_CIBLES), même prédicat `estAReanalyser_`.
+ * @param {function():boolean} estBudgetDepasse
+ * @return {{n:number, complet:boolean}}
+ */
+function compterRestantReanalyse_(estBudgetDepasse) {
+  var etat = { n: 0, complet: true };
+  var cibles = CONFIG.REANALYSE_CIBLES;
+  for (var d = 0; d < cibles.length; d++) {
+    if (estBudgetDepasse()) { etat.complet = false; break; }
+    if (CONFIG.DOMAINES_PROTEGES.indexOf(cibles[d]) !== -1) continue; // défense en profondeur
+    try {
+      compterCampagneDossier_(DriveApp.getFolderById(CONFIG.DOMAINES[cibles[d]]), etat, estBudgetDepasse,
+        function (f) { return estAReanalyser_(f, CONFIG.REANALYSE_TAG); });
+    } catch (e) {
+      etat.complet = false;
+    }
+  }
+  return etat;
+}
+
+/**
+ * Compte récursif des fichiers d'un dossier qui matchent `predicat` (lecture seule, borné —
+ * même squelette que `compterVracDossier_` du rangement). Un fichier illisible n'est pas compté
+ * et n'avorte jamais le comptage.
+ * @param {Folder} dossier
+ * @param {{n:number, complet:boolean}} etat  muté en place
+ * @param {function():boolean} estBudgetDepasse
+ * @param {function(File):boolean} predicat
+ */
+function compterCampagneDossier_(dossier, etat, estBudgetDepasse, predicat) {
+  if (etat.n > 20000) { etat.complet = false; return; } // plafond dur de sécurité
+  var fi = dossier.getFiles();
+  while (fi.hasNext()) {
+    if (estBudgetDepasse()) { etat.complet = false; return; }
+    try { if (predicat(fi.next())) etat.n++; } catch (e) { /* illisible : pas compté */ }
+  }
+  var fo = dossier.getFolders();
+  while (fo.hasNext()) {
+    if (estBudgetDepasse()) { etat.complet = false; return; }
+    compterCampagneDossier_(fo.next(), etat, estBudgetDepasse, predicat);
+    if (!etat.complet) return;
   }
 }
 
@@ -248,14 +347,38 @@ function appliquerReanalyseCiblee_(estBudgetDepasse) {
     return estBudgetDepasse() || (Date.now() - debutReanalyse) > CONFIG.REANALYSE_BUDGET_MS;
   };
 
+  // Nouveau tag = nouvelle campagne → barre VIERGE (même patron BARRE_TAG que m1/rangement).
+  if (props.getProperty('DriveAI_REANALYSE_BARRE_TAG') !== CONFIG.REANALYSE_TAG) {
+    props.deleteProperty('DriveAI_REANALYSE_BASE');
+    props.deleteProperty('DriveAI_REANALYSE_TRAITES');
+    props.deleteProperty('DriveAI_REANALYSE_RECENS');
+    props.setProperty('DriveAI_REANALYSE_BARRE_TAG', CONFIG.REANALYSE_TAG);
+  }
+
+  // PHASE RECENSEMENT (C28-18) : même mécanique que m1 — ticks dédiés, filet du compte partiel.
+  if (props.getProperty('DriveAI_REANALYSE_BASE') === null) {
+    var essaisRecens = Number(props.getProperty('DriveAI_REANALYSE_RECENS')) || 0;
+    var rec = compterRestantReanalyse_(garde);
+    if (!rec.complet && essaisRecens + 1 < CONFIG.RANGEMENT_RECENS_ESSAIS_MAX) {
+      props.setProperty('DriveAI_REANALYSE_RECENS', String(essaisRecens + 1)); // partiel → réessai
+      return;
+    }
+    props.setProperty('DriveAI_REANALYSE_BASE', String(rec.n || 0)); // complet, ou partiel accepté
+    props.setProperty('DriveAI_REANALYSE_TRAITES', '0');
+    props.deleteProperty('DriveAI_REANALYSE_RECENS'); // compteur d'essais soldé avec le recensement
+    return; // tick dédié : la re-analyse reprend au tick suivant
+  }
+
   var r = reanalyserUnePage_(garde, ensembleDomainesProteges_());
   if (r.traites) {
+    majCompteurCampagne_('DriveAI_REANALYSE', r.traites); // barre (C28-18) — Properties seules
     journalInfo_('Réanalyse', r.traites + ' document(s) soumis à la re-analyse v2 (campagne « ' +
       CONFIG.REANALYSE_TAG + ' »).');
   }
   // Terminé SEULEMENT quand une passe complète (non interrompue, sans erreur) ne collecte plus rien.
   if (!r.reste && r.collectes === 0) {
     props.setProperty('DriveAI_REANALYSE', CONFIG.REANALYSE_TAG);
+    finaliserCompteurCampagne_('DriveAI_REANALYSE'); // barre à 100 % sur le VRAI signal de fin
     journalInfo_('Réanalyse', 'Re-analyse v2 ciblée terminée (tag « ' + CONFIG.REANALYSE_TAG + ' »).');
   }
 }

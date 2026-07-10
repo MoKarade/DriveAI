@@ -456,6 +456,9 @@ function tickDriveAI() {
       // Observabilité (ADR-0006), SECONDAIRE et enveloppé : un échec ne doit jamais bloquer le tick.
       // Le heartbeat Santé s'écrit même si l'intake a partiellement échoué (d'où le finally).
       try { majSante_(); } catch (e) { journalErreur_('Santé', 'MàJ Santé impossible : ' + e); }
+      // Progression LIVE des opérations (C28-18) : rendu centralisé UNE fois par tick, dans le
+      // finally — les avancées PARTIELLES d'un run interrompu sont capturées aussi. Enveloppé.
+      try { majProgressions_(); } catch (e) { journalErreur_('Progression', 'MàJ progression impossible : ' + e); }
       try { bornerJournal_(); } catch (e) { journalErreur_('Santé', 'Journal borné impossible : ' + e); }
     } finally {
       verrou.releaseLock();
@@ -540,13 +543,9 @@ function appliquerRangementInitial_(estBudgetDepasse) {
   }
 
   // PHASE 1 — RECENSEMENT (tick dédié, une fois) : pose la base de la barre. Ce tick NE range pas.
+  // (Le RENDU de la barre est centralisé dans majProgressions_ au finally du tick — C28-18.)
   if (props.getProperty('DriveAI_RANGEMENT_BASE') === null) {
     var essaisFaits = Number(props.getProperty('DriveAI_RANGEMENT_RECENS')) || 0;
-    // Onglet visible DÈS ce tick, même avant la fin du comptage (recensement léger = rapide, mais
-    // filet si un très gros Drive l'étale malgré tout sur plusieurs passes).
-    try { ecrireRecensement_(essaisFaits); }
-    catch (e) { journalErreur_('Progression', 'Init barre impossible : ' + e); }
-
     var rec = compterVracRacines_(estBudgetDepasse);
     var essais = essaisFaits + 1;
     if (!rec.complet && essais < CONFIG.RANGEMENT_RECENS_ESSAIS_MAX) {
@@ -555,8 +554,7 @@ function appliquerRangementInitial_(estBudgetDepasse) {
     }
     props.setProperty('DriveAI_RANGEMENT_BASE', String(rec.n || 0)); // complet, ou partiel accepté (filet)
     props.setProperty('DriveAI_RANGEMENT_TRAITES', '0');
-    try { ecrireProgression_(0, rec.n || 0, false); }
-    catch (e) { journalErreur_('Progression', 'Init barre impossible : ' + e); }
+    props.deleteProperty('DriveAI_RANGEMENT_RECENS'); // compteur d'essais soldé avec le recensement
     return; // barre initialisée ; le rangement démarre au tick suivant
   }
 

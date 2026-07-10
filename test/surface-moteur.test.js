@@ -47,6 +47,10 @@ const CONTRAT = [
   // re-analyse v2 ciblée (C26-08, ADR-0018)
   'estAReanalyser_', 'appliquerReanalyseCiblee_', 'reanalyserUnePage_', 'collecterAReanalyser_',
   'reanalyserFichier_',
+  // progression LIVE des opérations (C28-18) : rendu centralisé (tick finally) + recensements
+  'majProgressions_', 'lignesProgression_', 'assurerEnteteProgression_', 'lireSoldeDemande_',
+  'compterRestantMigration_', 'compterRestantReanalyse_', 'compterCampagneDossier_',
+  'majCompteurCampagne_', 'finaliserCompteurCampagne_',
   'exporterTexteNatif_', 'exportNatifMime_', // natifs Google lisibles (R3)
   'budgetCampagnesAtteint_', 'reinitialiserFreinBudget_', // frein budget campagnes (R3, §2.6)
   'appliquerRangementInitial_', 'appliquerRejeuSiNouvelleVersion_', 'rangementTermine_',
@@ -128,7 +132,8 @@ test('surface du moteur : les fonctions RETIRÉES par l\'audit ne reviennent pas
   const retirees = ['rejouerLaRevue', 'sourceParNomRevue_', 'nettoyerDoublonsRevue',
     'deplacerVersDoublons_', 'viderOnglet_', 'estAReclasser_', 'doublon_',
     'curseurSuivantHisto_', 'miniVerifActionRdv_',
-    'dossiersMiroir_', 'dossierMiroirPourChemin_']; // miroir à plat 2026-07-08 : plus de sous-dossiers
+    'dossiersMiroir_', 'dossierMiroirPourChemin_', // miroir à plat 2026-07-08 : plus de sous-dossiers
+    'ecrireRecensement_', 'ecrireProgression_', 'repeter_']; // barre texte mono-op retirée (C28-18)
   const revenues = retirees.filter((nom) => typeof ctx[nom] === 'function');
   assert.deepStrictEqual(revenues, [], `retirées mais présentes : ${revenues.join(', ')}`);
 });
