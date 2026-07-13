@@ -22,18 +22,24 @@ function ctxMigration(clesIndexees) {
   return ctx;
 }
 
-test('estAMigrer_ : fichier classique non traité → true ; Google natif / raccourci → false', () => {
+test('estAMigrer_ (C28-21) : SEUL un nom portant « Inconnu » est collecté ; bien nommé / natif / raccourci → false', () => {
   const ctx = ctxMigration([]);
-  assert.strictEqual(ctx.estAMigrer_(fakeFile({ id: 'A', mime: 'application/pdf' }), 'm1'), true);
-  assert.strictEqual(ctx.estAMigrer_(fakeFile({ id: 'B', mime: 'image/jpeg' }), 'm1'), true);
-  assert.strictEqual(ctx.estAMigrer_(fakeFile({ id: 'C', mime: 'application/vnd.google-apps.document' }), 'm1'), false);
-  assert.strictEqual(ctx.estAMigrer_(fakeFile({ id: 'D', mime: 'application/vnd.google-apps.shortcut' }), 'm1'), false);
+  // Le vrai problème (héritage v1) : « Inconnu » dans le nom, quelle que soit la casse/position.
+  assert.strictEqual(ctx.estAMigrer_(fakeFile({ id: 'A', name: '2024-01-01_Inconnu.pdf', mime: 'application/pdf' }), 'm2-inconnu'), true);
+  assert.strictEqual(ctx.estAMigrer_(fakeFile({ id: 'B', name: '2024-03_Facture_Inconnu.pdf', mime: 'image/jpeg' }), 'm2-inconnu'), true);
+  assert.strictEqual(ctx.estAMigrer_(fakeFile({ id: 'B2', name: 'devoir-inconnu-v2.html', mime: 'text/html' }), 'm2-inconnu'), true);
+  // Bien nommé (émetteur connu) → HORS périmètre : c'est ce qui rend la campagne finissable en jours.
+  assert.strictEqual(ctx.estAMigrer_(fakeFile({ id: 'E', name: '2024-01-01_Facture_EDF.pdf', mime: 'application/pdf' }), 'm2-inconnu'), false);
+  // Natif / raccourci : toujours exclus (pas de blob exploitable).
+  assert.strictEqual(ctx.estAMigrer_(fakeFile({ id: 'C', name: 'Inconnu.gdoc', mime: 'application/vnd.google-apps.document' }), 'm2-inconnu'), false);
+  assert.strictEqual(ctx.estAMigrer_(fakeFile({ id: 'D', name: 'Inconnu.lnk', mime: 'application/vnd.google-apps.shortcut' }), 'm2-inconnu'), false);
 });
 
 test('estAMigrer_ : déjà re-traité dans CETTE campagne (clé migre|) → false (convergence)', () => {
-  const ctx = ctxMigration(['migre|m1|DEJA']);
-  assert.strictEqual(ctx.estAMigrer_(fakeFile({ id: 'DEJA', mime: 'application/pdf' }), 'm1'), false);
-  assert.strictEqual(ctx.estAMigrer_(fakeFile({ id: 'DEJA', mime: 'application/pdf' }), 'm2'), true); // autre campagne
+  const ctx = ctxMigration(['migre|m2-inconnu|DEJA']);
+  const f = () => fakeFile({ id: 'DEJA', name: '2024_Relevé_Inconnu.pdf', mime: 'application/pdf' });
+  assert.strictEqual(ctx.estAMigrer_(f(), 'm2-inconnu'), false);
+  assert.strictEqual(ctx.estAMigrer_(f(), 'm3'), true); // autre campagne
 });
 
 function fauxDossier(fichiers, sousDossiers) {
@@ -49,8 +55,10 @@ test('collecterAMigrer_ : walk récursif, plafond respecté, fichier illisible s
     getMimeType: () => { throw new Error('métadonnée illisible'); },
     getId: () => 'KO',
   };
-  const sous = fauxDossier([fakeFile({ id: 'S1' }), fakeFile({ id: 'S2' })]);
-  const racine = fauxDossier([fakeFile({ id: 'R1' }), cassé, fakeFile({ id: 'R2' })], [sous]);
+  // Noms dans le périmètre m2 (« Inconnu ») : le walk et le plafond restent le sujet du test.
+  const inconnu = (id) => fakeFile({ id, name: id + '_Inconnu.pdf' });
+  const sous = fauxDossier([inconnu('S1'), inconnu('S2')]);
+  const racine = fauxDossier([inconnu('R1'), cassé, inconnu('R2'), fakeFile({ id: 'HORS', name: '2024-01-01_Facture_EDF.pdf' })], [sous]);
 
   const ids = [];
   ctx.collecterAMigrer_(racine, ids, 10, () => false);
@@ -95,7 +103,7 @@ test('migrerFichier_ : zone protégée (strict) → non touché, inscrit « zone
   assert.strictEqual(r, false);
   assert.strictEqual(calls.traites.length, 0);                       // jamais passé au pipeline
   assert.strictEqual(calls.index.length, 1);                          // mais inscrit → plus jamais re-collecté
-  assert.strictEqual(calls.index[0].cle, 'migre|m1|F1');
+  assert.strictEqual(calls.index[0].cle, 'migre|' + ctx.CONFIG.MIGRATION_TAG + '|F1'); // dérivé de la CONSTANTE
   assert.strictEqual(calls.index[0].res.statut, 'zone protégée');
 });
 
@@ -105,7 +113,7 @@ test('migrerFichier_ : descripteur pipeline (clé migre|, ignorerDoublon) + plac
   assert.strictEqual(r, true);
   assert.strictEqual(calls.traites.length, 1);
   const src = calls.traites[0];
-  assert.strictEqual(src.cle, 'migre|m1|F2');
+  assert.strictEqual(src.cle, 'migre|' + ctx.CONFIG.MIGRATION_TAG + '|F2');
   assert.strictEqual(src.ignorerDoublon, true);
   assert.strictEqual(src.nom, 'doc 2024.pdf');
 
@@ -130,7 +138,7 @@ test('migrerFichier_ : document illisible → quarantaine (gererEchec_), jamais 
   ctx.DriveApp = { getFileById: () => { throw new Error('introuvable'); } };
   assert.strictEqual(ctx.migrerFichier_('KO', {}), false);
   assert.strictEqual(echecs.length, 1);                 // → compteur d'échecs → quarantaine après N
-  assert.strictEqual(echecs[0].cle, 'migre|m1|KO');     // sous la clé de campagne (convergence)
+  assert.strictEqual(echecs[0].cle, 'migre|' + ctx.CONFIG.MIGRATION_TAG + '|KO'); // sous la clé de campagne (convergence)
 });
 
 /* ---------- Pipeline : bypass du fast-path doublon ---------- */
@@ -236,27 +244,33 @@ function ctxReanalyseCampagne(props) {
   return { ctx, journal };
 }
 
-test('appliquerReanalyseCiblee_ : ne démarre JAMAIS tant que m1 n\'est pas finie (une campagne de masse à la fois)', () => {
-  const props = { valeurs: {} }; // DriveAI_MIGRATION absent → m1 en cours
+test('appliquerReanalyseCiblee_ : ne démarre JAMAIS tant que la migration n\'est pas finie (une campagne de masse à la fois)', () => {
+  const props = { valeurs: {} }; // DriveAI_MIGRATION absent → migration en cours
   const { ctx } = ctxReanalyseCampagne(props);
-  ctx.reanalyserUnePage_ = () => { throw new Error('ne doit pas collecter pendant m1'); };
+  ctx.reanalyserUnePage_ = () => { throw new Error('ne doit pas collecter pendant la migration'); };
   ctx.appliquerReanalyseCiblee_(() => false); // ne lève pas → la garde a court-circuité
+  assert.ok(!('DriveAI_REANALYSE' in props.valeurs));
+  // Une campagne PRÉCÉDENTE finie (autre tag) ne suffit pas : la garde exige le tag COURANT.
+  props.valeurs.DriveAI_MIGRATION = 'm1';
+  ctx.appliquerReanalyseCiblee_(() => false);
   assert.ok(!('DriveAI_REANALYSE' in props.valeurs));
 });
 
-test('appliquerReanalyseCiblee_ : m1 finie + passe complète VIDE → Property figée (terminé) ; page pleine → jamais figée', () => {
+test('appliquerReanalyseCiblee_ : migration finie + passe complète VIDE → Property figée (terminé) ; page pleine → jamais figée', () => {
   // Barre pré-recensée POUR LE TAG COURANT (C28-18) : sans elle, le premier tick est un tick
   // DÉDIÉ de recensement (et un BARRE_TAG absent/étranger purge la base — leçon « seuil dans la clé »).
-  const props1 = { valeurs: { DriveAI_MIGRATION: 'm1', DriveAI_REANALYSE_BASE: '0' } };
+  const props1 = { valeurs: { DriveAI_REANALYSE_BASE: '0' } };
   const ctx1 = ctxReanalyseCampagne(props1);
+  props1.valeurs.DriveAI_MIGRATION = ctx1.ctx.CONFIG.MIGRATION_TAG; // dérivé de la CONSTANTE
   props1.valeurs.DriveAI_REANALYSE_BARRE_TAG = ctx1.ctx.CONFIG.REANALYSE_TAG;
   ctx1.ctx.reanalyserUnePage_ = () => ({ traites: 0, collectes: 0, reste: false });
   ctx1.ctx.appliquerReanalyseCiblee_(() => false);
   assert.strictEqual(ctx1.ctx.PropertiesService.getScriptProperties().getProperty('DriveAI_REANALYSE'),
     ctx1.ctx.CONFIG.REANALYSE_TAG);
 
-  const props2 = { valeurs: { DriveAI_MIGRATION: 'm1', DriveAI_REANALYSE_BASE: '900' } };
+  const props2 = { valeurs: { DriveAI_REANALYSE_BASE: '900' } };
   const ctx2 = ctxReanalyseCampagne(props2);
+  props2.valeurs.DriveAI_MIGRATION = ctx2.ctx.CONFIG.MIGRATION_TAG;
   props2.valeurs.DriveAI_REANALYSE_BARRE_TAG = ctx2.ctx.CONFIG.REANALYSE_TAG;
   ctx2.ctx.reanalyserUnePage_ = () => ({ traites: 12, collectes: 12, reste: true });
   ctx2.ctx.appliquerReanalyseCiblee_(() => false);
@@ -268,8 +282,9 @@ test('appliquerReanalyseCiblee_ : m1 finie + passe complète VIDE → Property f
 
 test('appliquerReanalyseCiblee_ : tick DÉDIÉ de recensement (C28-18) — pose la base SANS collecter, filet du partiel', () => {
   // 1ᵉʳ tick : recensement complet → BASE/TRAITES posés, la page n'est PAS lancée.
-  const props = { valeurs: { DriveAI_MIGRATION: 'm1' } };
+  const props = { valeurs: {} };
   const { ctx } = ctxReanalyseCampagne(props);
+  props.valeurs.DriveAI_MIGRATION = ctx.CONFIG.MIGRATION_TAG; // migration finie (dérivé de la CONSTANTE)
   ctx.reanalyserUnePage_ = () => { throw new Error('le tick de recensement ne collecte pas'); };
   ctx.compterRestantReanalyse_ = () => ({ n: 924, complet: true });
   ctx.appliquerReanalyseCiblee_(() => false);
@@ -278,8 +293,9 @@ test('appliquerReanalyseCiblee_ : tick DÉDIÉ de recensement (C28-18) — pose 
 
   // Recensement PARTIEL : réessais comptés, base non posée — puis filet (compte partiel accepté)
   // au bout d'ESSAIS_MAX passes (cas dérivés de la CONSTANTE, jamais de sa valeur du jour).
-  const props2 = { valeurs: { DriveAI_MIGRATION: 'm1' } };
+  const props2 = { valeurs: {} };
   const c2 = ctxReanalyseCampagne(props2);
+  props2.valeurs.DriveAI_MIGRATION = c2.ctx.CONFIG.MIGRATION_TAG;
   c2.ctx.reanalyserUnePage_ = () => { throw new Error('ne collecte pas pendant le recensement'); };
   c2.ctx.compterRestantReanalyse_ = () => ({ n: 40, complet: false });
   const ESSAIS_MAX = c2.ctx.CONFIG.RANGEMENT_RECENS_ESSAIS_MAX;
@@ -294,8 +310,9 @@ test('appliquerReanalyseCiblee_ : tick DÉDIÉ de recensement (C28-18) — pose 
 
   // Leçon §7 « le seuil va dans la clé » : la barre d'une campagne PRÉCÉDENTE (autre tag) est
   // purgée — la nouvelle campagne re-recense au lieu d'hériter d'une barre figée à 100 %.
-  const props3 = { valeurs: { DriveAI_MIGRATION: 'm1', DriveAI_REANALYSE_BARRE_TAG: 'ancien-tag', DriveAI_REANALYSE_BASE: '900', DriveAI_REANALYSE_TRAITES: '900' } };
+  const props3 = { valeurs: { DriveAI_REANALYSE_BARRE_TAG: 'ancien-tag', DriveAI_REANALYSE_BASE: '900', DriveAI_REANALYSE_TRAITES: '900' } };
   const c3 = ctxReanalyseCampagne(props3);
+  props3.valeurs.DriveAI_MIGRATION = c3.ctx.CONFIG.MIGRATION_TAG;
   c3.ctx.reanalyserUnePage_ = () => { throw new Error('ne collecte pas pendant le recensement'); };
   c3.ctx.compterRestantReanalyse_ = () => ({ n: 500, complet: true });
   c3.ctx.appliquerReanalyseCiblee_(() => false);

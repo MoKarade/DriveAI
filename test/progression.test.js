@@ -195,21 +195,23 @@ function ctxRecensement(arbres, dejaIndexees) {
 test('compterRestantMigration_ : compte le restant HORS cibles C26-08/protégés, sauté si déjà migré ; partiel sous budget', () => {
   const c = ctxRecensement({}, []);
   const tag = c.CONFIG.MIGRATION_TAG;
-  // Arbre : chaque domaine NON protégé et NON ciblé porte 2 fichiers, dont 1 déjà migré + 1 natif.
+  // Arbre : chaque domaine NON protégé/NON ciblé porte des fichiers du périmètre m2 (nom « Inconnu »,
+  // C28-21) dont 1 déjà migré + 1 natif, ET un fichier bien nommé qui ne doit JAMAIS être compté.
   const arbres = {};
   const attendus = [];
   Object.keys(c.CONFIG.DOMAINES).forEach((dom, i) => {
     const id = c.CONFIG.DOMAINES[dom];
     arbres[id] = fauxDossierArbre([
-      fakeFileEtendu('f-' + i + '-a'),
-      fakeFileEtendu('f-' + i + '-deja'),
-      fakeFileEtendu('f-' + i + '-natif', 'application/vnd.google-apps.document'),
-    ], [fauxDossierArbre([fakeFileEtendu('f-' + i + '-sous')])]);
+      fakeFileEtendu('f-' + i + '-a-Inconnu'),
+      fakeFileEtendu('f-' + i + '-deja-Inconnu'),
+      fakeFileEtendu('f-' + i + '-natif-Inconnu', 'application/vnd.google-apps.document'),
+      fakeFileEtendu('f-' + i + '-2024-01-01_Facture_EDF'), // bien nommé → hors périmètre m2
+    ], [fauxDossierArbre([fakeFileEtendu('f-' + i + '-sous-Inconnu')])]);
     if (c.CONFIG.DOMAINES_PROTEGES.indexOf(dom) === -1 && (c.CONFIG.REANALYSE_CIBLES || []).indexOf(dom) === -1) {
-      attendus.push('f-' + i + '-a', 'f-' + i + '-sous');
+      attendus.push('f-' + i + '-a-Inconnu', 'f-' + i + '-sous-Inconnu');
     }
   });
-  const c2 = ctxRecensement(arbres, Object.keys(arbres).map((_, i) => 'migre|' + tag + '|f-' + i + '-deja'));
+  const c2 = ctxRecensement(arbres, Object.keys(arbres).map((_, i) => 'migre|' + tag + '|f-' + i + '-deja-Inconnu'));
   const rec = c2.compterRestantMigration_(() => false);
   assert.strictEqual(rec.complet, true);
   assert.strictEqual(rec.n, attendus.length, 'protégés + cibles C26-08 exclus, déjà-migrés et natifs sautés');
