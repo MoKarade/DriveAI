@@ -255,16 +255,31 @@ son jeton d'accès en silence — plus jamais de reconnexion.
 ### 2. Projet Vercel (une fois)
 1. **Import du repo GitHub** — la config est portée par `vercel.json` à la racine (build de `app/`,
    fonctions serverless de `api/`). **Root Directory = racine du dépôt** (pas `app`).
-2. **Variables d'environnement (Settings → Environment Variables)** — les 3 sont REQUISES :
+2. **Variables d'environnement (Settings → Environment Variables)** — les **7** sont REQUISES
+   (zéro configuration client, C28-20/ADR-0021 : l'app ne demande PLUS rien au premier lancement,
+   tout vient du serveur via `/api/config`) :
    - `GOOGLE_CLIENT_ID` — l'ID client OAuth de l'étape 1 ;
    - `GOOGLE_CLIENT_SECRET` — son code secret ;
-   - `COOKIE_SECRET` — longue chaîne aléatoire (ex. `openssl rand -hex 32`) qui chiffre le cookie.
-3. (Optionnel) `VITE_SPREADSHEET_ID` — sinon l'app te le demande au premier lancement (écran
-   Configuration, stocké dans TON navigateur). `VITE_GOOGLE_CLIENT_ID` ne sert plus (C28-14).
+   - `COOKIE_SECRET` — longue chaîne aléatoire (ex. `openssl rand -hex 32`) qui chiffre le cookie ;
+   - `ALLOWED_EMAIL` — `marc.richard4@gmail.com` : **verrou d'identité**, seul ce compte Google
+     peut ouvrir une session (tout autre compte → « accès refusé », aucun cookie posé) ;
+   - `SPREADSHEET_ID` — l'ID de la Google Sheet d'état ;
+   - `WEBAPP_URL` — l'URL `/exec` de la web app Apps Script (bouton « Vérifier maintenant ») ;
+   - `WEBAPP_SECRET` — la valeur de la Script Property `DriveAI_WEBAPP_SECRET`.
+   Les anciennes `VITE_SPREADSHEET_ID` / `VITE_WEBAPP_*` ne servent plus (elles figeaient la
+   config au BUILD ; supprime-les si présentes).
+
+   > **⚠ En posant ces variables (déploiement de C28-20), RÉGÉNÈRE aussi `COOKIE_SECRET`**
+   > (nouvelle valeur `openssl rand -hex 32`). Les cookies de session posés AVANT le verrou
+   > d'identité (valables 1 an) ne sont vérifiés qu'à leur CRÉATION : sans rotation, une session
+   > antérieure d'un autre compte contournerait le verrou et obtiendrait la config. La rotation
+   > invalide toutes les sessions existantes — tu te reconnectes une fois, c'est tout.
 
 ### 3. Se connecter (une seule fois)
-Ouvre l'URL Vercel → « Se connecter avec Google » → consentement (Sheets + Drive + Tasks/Calendar).
-Le jeton d'accès (~1 h) vit en sessionStorage et se **renouvelle tout seul** via `/api/refresh` ;
+Ouvre l'URL Vercel → « Se connecter avec Google » → consentement (identité + Sheets + Drive +
+Tasks/Calendar). Le callback vérifie que le compte est bien `ALLOWED_EMAIL` avant de poser la
+session ; l'app charge ensuite sa config depuis `/api/config` — **rien à saisir**. Le jeton
+d'accès (~1 h) vit en sessionStorage et se **renouvelle tout seul** via `/api/refresh` ;
 le refresh token reste dans son cookie HttpOnly chiffré (1 an). « Se déconnecter » détruit le cookie.
 
 > **Garde-fous embarqués (miroir testé du moteur, CI)** : l'app ne peut **rien supprimer** (aucun

@@ -18,6 +18,7 @@ import {
   poserCookieRefresh,
   chiffrer,
   echangerCode,
+  emailDepuisIdToken,
   rediriger,
 } from './_lib';
 
@@ -43,6 +44,17 @@ export default async function handler(req: Requete, res: Reponse): Promise<void>
     // Pas de refresh token (erreur d'échange, ou consentement partiel) : sans lui la session
     // durable n'existe pas — on repart au login plutôt que de poser une demi-session.
     rediriger(res, '/?auth=echec');
+    return;
+  }
+
+  // Verrou d'identité (C28-20, ADR-0021) : seule l'adresse ALLOWED_EMAIL peut ouvrir une
+  // session — l'app délivre ensuite la config serveur (/api/config) sans rien demander, ce
+  // verrou est donc la SEULE barrière d'accès. Échec FERMÉ : email absent/illisible/différent
+  // ⇒ AUCUN cookie posé, retour à l'écran de connexion avec l'explication.
+  const emailAttendu = (process.env.ALLOWED_EMAIL ?? '').trim().toLowerCase();
+  const email = jetons.id_token ? emailDepuisIdToken(jetons.id_token) : null;
+  if (!emailAttendu || !email || email !== emailAttendu) {
+    rediriger(res, '/?erreur=acces_refuse');
     return;
   }
 

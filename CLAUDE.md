@@ -385,6 +385,13 @@ NotebookLM en devient l'entrée, pas le remplacement.
   limite — un prompt §4 trop long ne peut physiquement pas être collé par Marc. Style
   télégraphique, une ligne par décision, le détail vit déjà dans les sources du notebook ;
   vérifier `wc -m` avant de livrer le bloc.
+- **Un verrou posé à la CRÉATION d'un jeton longue durée n'arrête pas le stock déjà émis.** Un
+  contrôle d'accès vérifié à l'ÉMISSION (pas à chaque utilisation) d'un cookie/jeton/clé se
+  déploie AVEC l'invalidation de l'existant (rotation du secret qui les chiffre/signe — une
+  reconnexion suffit au légitime), sinon les jetons pré-verrou portent les anciens droits
+  jusqu'à expiration (vécu C28-20 : cookie 1 an vs verrou ALLOWED_EMAIL au callback). Réflexe
+  de revue : « vérifié à l'émission ou à l'usage ? si à l'émission, qu'est-ce qui invalide
+  l'existant ? »
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 

@@ -747,7 +747,7 @@ async function ajouterLigneIndexManuelle_(cle: string, nom: string): Promise<voi
  */
 export async function verifierMaintenant(): Promise<void> {
   const { webappUrl, webappSecret } = lireConfig();
-  if (!webappUrl || !webappSecret) throw new Error('Configurer l’URL de la web app et son secret (⚙)');
+  if (!webappUrl || !webappSecret) throw new Error('Variables Vercel WEBAPP_URL / WEBAPP_SECRET manquantes (Settings → Environment Variables)');
   await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}`, { method: 'POST', mode: 'no-cors' });
 }
 
@@ -771,7 +771,7 @@ export interface PlanRechercheIA {
  */
 export async function rechercheIA(question: string): Promise<PlanRechercheIA> {
   const { webappUrl, webappSecret } = lireConfig();
-  if (!webappUrl || !webappSecret) throw new Error('Configurer l’URL de la web app et son secret (⚙)');
+  if (!webappUrl || !webappSecret) throw new Error('Variables Vercel WEBAPP_URL / WEBAPP_SECRET manquantes (Settings → Environment Variables)');
   const rep = await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}&action=recherche-ia`, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -799,7 +799,7 @@ export async function rechercheIA(question: string): Promise<PlanRechercheIA> {
  */
 export async function analyseCiblee(requete: string): Promise<string> {
   const { webappUrl, webappSecret } = lireConfig();
-  if (!webappUrl || !webappSecret) throw new Error('Configurer l’URL de la web app et son secret (⚙)');
+  if (!webappUrl || !webappSecret) throw new Error('Variables Vercel WEBAPP_URL / WEBAPP_SECRET manquantes (Settings → Environment Variables)');
   const rep = await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}&action=analyse-ciblee`, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -825,7 +825,7 @@ export async function analyseCiblee(requete: string): Promise<string> {
  */
 async function demandeWebApp(action: string, corps: unknown): Promise<string> {
   const { webappUrl, webappSecret } = lireConfig();
-  if (!webappUrl || !webappSecret) throw new Error('Configurer l’URL de la web app et son secret (⚙)');
+  if (!webappUrl || !webappSecret) throw new Error('Variables Vercel WEBAPP_URL / WEBAPP_SECRET manquantes (Settings → Environment Variables)');
   const rep = await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}&action=${action}`, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },

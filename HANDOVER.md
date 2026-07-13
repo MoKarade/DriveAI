@@ -14,6 +14,22 @@
 >   bloquée (phase de recensement puis reprise, 5 docs re-classés 16:47-16:52) ; son recensement
 >   coupé au budget a posé une base partielle (0) — la re-base absorbe, « terminé » viendra sur
 >   passe vide puis C26-08 s'enchaîne seule.
+> • **2026-07-13 — C28-20 : zéro configuration client + verrou d'identité (ADR-0021, plan
+>   NotebookLM)** : demande Marc « je veux rien avoir à mettre, juste mon compte Google ».
+>   Livré : `/api/login` demande en plus `openid email` ; `/api/callback` compare l'email VÉRIFIÉ
+>   de l'`id_token` à la variable Vercel `ALLOWED_EMAIL` — mismatch ⇒ AUCUN cookie, bannière
+>   « accès refusé » ; NOUVEAU `api/config.ts` délivre `SPREADSHEET_ID`/`WEBAPP_URL`/
+>   `WEBAPP_SECRET` (env Vercel) aux seules sessions au cookie déchiffrable (401 sinon) ;
+>   `app/src/config.ts` refondu en mémoire de module (`chargerConfigServeur()` après connexion) —
+>   écran Configuration, localStorage et `VITE_*` SUPPRIMÉS ; App.tsx séquence connexion → config
+>   → vues. Scopes du MOTEUR Apps Script inchangés (aucune ré-autorisation). `session.test.ts`
+>   INTACT, +6 tests bff + 5 tests handler callback (revue flotte : « promesse de verrou =
+>   verrou codé »). **⚠ Marc doit poser 4 variables Vercel : `ALLOWED_EMAIL`
+>   (marc.richard4@gmail.com), `SPREADSHEET_ID`, `WEBAPP_URL`, `WEBAPP_SECRET` — ET RÉGÉNÉRER
+>   `COOKIE_SECRET` au même moment (trou de migration relevé en revue : un cookie de session
+>   posé AVANT le verrou resterait valable 1 an et passerait /api/config ; la rotation invalide
+>   tout, une reconnexion suffit). docs/DEPLOIEMENT.md §Phase 4 ; sans les variables,
+>   « configuration indisponible » après connexion.**
 > • **2026-07-13 — C28-19 : curation des mails (ADR-0020, plan NotebookLM)** : retours Marc
 >   « facture sans tâche / lus non archivés / trop de faux suspects / pas de bouton ». Livré :
 >   prompts intentions ÉLARGIS (facture à payer / action requise ⇒ tâche Tasks + ⏰ en boîte) ;

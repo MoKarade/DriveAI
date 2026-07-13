@@ -1,11 +1,13 @@
 /**
- * App.tsx — coquille v3 (ADR-0013) : configuration → connexion Google → 6 sections.
+ * App.tsx — coquille v3 (ADR-0013) : connexion Google → 6 sections. Depuis C28-20 (ADR-0021)
+ * il n'y a PLUS d'écran de configuration : la config vient du serveur (/api/config) après la
+ * connexion, et seul le compte ALLOWED_EMAIL peut ouvrir une session (verrou dans /api/callback).
  * Documents = explorateur Drive (C21-01) + Recherche sur l'Index ; Apprentissage embarque
  * Corrections (v2 thémée). Mobile : barre basse 5 entrées + feuille « Plus ».
  */
 
 import { useEffect, useState } from 'react';
-import { configComplete, lireConfig, enregistrerConfig } from './config';
+import { chargerConfigServeur } from './config';
 import { seConnecter, estConnecte, seDeconnecter, abonnerSessionExpiree, tenterRestaurationSession } from './google';
 import { FournisseurEtat, useEtatGlobal } from './etatGlobal';
 import { BanniereErreur } from './composants/UI';
@@ -27,10 +29,27 @@ const ICONES: Record<Section, string> = {
 /** Barre basse mobile : 4 sections directes + « Plus » (Apprentissage/Santé + réglages). */
 const BARRE_BASSE: Section[] = ['aujourdhui', 'agenda', 'mails', 'documents'];
 
+/**
+ * Verrou d'identité (C28-20) : /api/callback renvoie ici avec `?erreur=acces_refuse` quand le
+ * compte Google connecté n'est pas celui autorisé (ALLOWED_EMAIL) — aucun cookie n'a été posé.
+ * Lecture PURE (StrictMode double-invoque les initialiseurs) ; le nettoyage d'URL vit dans un
+ * useEffect au montage.
+ */
+function accesRefuseDepuisUrl(): boolean {
+  return new URLSearchParams(window.location.search).get('erreur') === 'acces_refuse';
+}
+
 export function App() {
   const [langue, setLangue] = useState<Langue>(langueCourante());
-  const [configOk, setConfigOk] = useState(configComplete());
   const [connecte, setConnecte] = useState(estConnecte());
+  const [pret, setPret] = useState(false); // config serveur chargée (gate des vues)
+  const [accesRefuse] = useState(accesRefuseDepuisUrl);
+
+  // Nettoie l'URL (?erreur=acces_refuse) après le premier rendu — pas de re-affichage au F5.
+  useEffect(() => {
+    if (accesRefuse) window.history.replaceState(null, '', window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- au montage uniquement
+  }, []);
   const [section, setSection] = useState<Section>('aujourdhui');
   const [plusOuvert, setPlusOuvert] = useState(false);
   const [, setTheme] = useState(themeCourant());
@@ -50,6 +69,19 @@ export function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- au montage uniquement
   }, []);
+
+  // Config SERVEUR (C28-20, ADR-0021) : dès que la session existe, /api/config délivre l'ID de
+  // la Sheet et la web app — plus aucune saisie. Un échec (cookie mort entre-temps, variables
+  // Vercel incomplètes) ramène à l'écran de connexion avec l'explication, plutôt que des vues
+  // qui échoueraient en boucle.
+  useEffect(() => {
+    if (!connecte) { setPret(false); return; }
+    void chargerConfigServeur().then((ok) => {
+      if (ok) { setPret(true); return; }
+      setConnecte(false);
+      setErreur(t('configIndisponible', langueCourante()));
+    });
+  }, [connecte]);
 
   function basculerLangue() {
     const l: Langue = langue === 'fr' ? 'en' : 'fr';
@@ -80,7 +112,6 @@ export function App() {
     <>
       <button className="discret" onClick={() => setTheme(basculerTheme())} title={t('theme', langue)}>◐</button>
       <button className="discret" onClick={basculerLangue}>{langue === 'fr' ? 'EN' : 'FR'}</button>
-      <button className="discret" title={t('configuration', langue)} onClick={() => setConfigOk(false)}>⚙</button>
       {connecte && (
         <button
           className="discret"
@@ -105,18 +136,19 @@ export function App() {
         <div className="header-actions">{reglages}</div>
       </header>
 
-      {!configOk && <Configuration langue={langue} onFait={() => setConfigOk(true)} />}
-
-      {configOk && !connecte && (
+      {!connecte && (
         <div className="centre">
           <button className="principal" onClick={connexion}>
             {t('connexion', langue)}
           </button>
+          {accesRefuse && <p className="erreur">{t('accesRefuse', langue)}</p>}
           {erreur && <p className="erreur">{erreur}</p>}
         </div>
       )}
 
-      {configOk && connecte && (
+      {connecte && !pret && <p className="centre">{t('chargement', langue)}</p>}
+
+      {connecte && pret && (
         <FournisseurEtat>
           <nav className="sections" aria-label="Sections">
             {SECTIONS.map((s) => (
@@ -195,35 +227,3 @@ function BadgeSynchro({ langue }: { langue: Langue }) {
   );
 }
 
-function Configuration({ langue, onFait }: { langue: Langue; onFait: () => void }) {
-  // Plus de Client ID ici (C28-14) : l'OAuth vit côté serveur (variables d'environnement Vercel).
-  const initiale = lireConfig();
-  const [spreadsheetId, setSpreadsheetId] = useState(initiale.spreadsheetId);
-  const [webappUrl, setWebappUrl] = useState(initiale.webappUrl);
-  const [webappSecret, setWebappSecret] = useState(initiale.webappSecret);
-
-  return (
-    <section className="carte centre">
-      <h2>{t('configuration', langue)}</h2>
-      <div className="formulaire-config">
-        <input
-          value={spreadsheetId}
-          onChange={(e) => setSpreadsheetId(e.target.value)}
-          placeholder={t('spreadsheetId', langue)}
-        />
-        <input value={webappUrl} onChange={(e) => setWebappUrl(e.target.value)} placeholder={t('webappUrl', langue)} />
-        <input value={webappSecret} onChange={(e) => setWebappSecret(e.target.value)} placeholder={t('webappSecret', langue)} />
-        <button
-          className="principal"
-          disabled={!spreadsheetId}
-          onClick={() => {
-            enregistrerConfig({ spreadsheetId, webappUrl, webappSecret });
-            onFait();
-          }}
-        >
-          {t('enregistrer', langue)}
-        </button>
-      </div>
-    </section>
-  );
-}
