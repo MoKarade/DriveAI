@@ -232,6 +232,9 @@ footer {
   border-radius: 8px; background: var(--erreur-fond); border: 1px solid color-mix(in srgb, var(--erreur) 35%, transparent);
   margin-bottom: 0.5rem; color: var(--texte); text-decoration: none; }
 .alerte-suspect:hover { border-color: var(--erreur); }
+/* « pas suspect » 1-clic (C28-19) : la ligne devient un conteneur — lien + bouton côte à côte */
+.alerte-suspect a.corps { flex: 1; color: inherit; text-decoration: none; min-width: 0; }
+.alerte-suspect .ps { margin-left: auto; white-space: nowrap; padding: 0.2rem 0.6rem; font-size: 0.8rem; align-self: center; }
 .alerte-suspect .ic { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 6px; background: var(--erreur);
   color: #fff; text-align: center; font-weight: 700; font-size: 0.8rem; line-height: 20px; }
 .pastille { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 600; font-family: var(--sys, inherit); }

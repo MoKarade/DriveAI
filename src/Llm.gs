@@ -664,6 +664,10 @@ var PROMPT_INTENTIONS =
   'Routage : date ET heure précises (rendez-vous, réunion, appel planifié) → "evenement". ' +
   'Action/échéance sans heure précise (payer, renvoyer, répondre, renouveler...) → "tache", ' +
   'même avec une date limite.\n' +
+  'Payer une FACTURE ou réaliser une ACTION REQUISE sur un compte est TOUJOURS une "tache" ' +
+  '(titre = le geste, ex "Payer la facture X" ; date = l\'échéance si donnée) — même si le mail ' +
+  'ressemble à une notification automatique. Un reçu ou la confirmation d\'un paiement DÉJÀ ' +
+  'effectué n\'est PAS une intention.\n' +
   'RÈGLE DE SÉCURITÉ (zone protégée) : ne propose AUCUNE intention si le mail touche ' +
   'l\'immigration ou le statut (CSQ, IRCC, visa, passeport, permis de travail/séjour, résidence) ' +
   'OU la fiscalité (déclaration d\'impôts, avis de cotisation) — renvoie {"intentions": []} pour ' +

@@ -23,6 +23,8 @@ const INDEX: string[][] = [
   ['tri|fil-100|1751500000|1', '2026-07-02T21:14:09', 'Votre facture Vidéotron de juillet', '', '', 'trié', '', ''],
   ['tri|fil-101|1751502000|0', '2026-07-02T21:16:44', 'URGENT : vérifiez vos identifiants', '', '', 'suspect', '', ''],
   ['tri|fil-101|1751590000|1', '2026-07-03T22:05:31', 'URGENT : vérifiez vos identifiants', '', '', 'trié', '', ''],
+  // Suspect ENCORE en boîte (C28-19) : montre le « ✓ Pas suspect » 1-clic sur les captures CI.
+  ['tri|fil103|1751610000|0', '2026-07-04T08:12:00', 'Code to log on to Desjardins Insurance', '', '', 'suspect', '', ''],
   ['important|msg-102', '2026-07-06T07:12:00', 'Renouvellement de votre assurance habitation', '', '', 'important', '', ''],
   ['drive|f-008', '2026-07-06T20:33:47', '2026-07-06_Devis_Centre Mécanique JF.pdf', '03 · Logement & véhicule', '03 · Logement & véhicule/Véhicule/Ford Fiesta/Entretien & réparations', 'classé', 'feedface', '0.84'],
 ];

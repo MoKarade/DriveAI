@@ -231,7 +231,9 @@ test('tri : catégorie LLM inconnue → À vérifier, pas d\'archivage, pas d\'a
 test('tri : table apprise → catégorie SANS appel LLM', () => {
   let llm = 0;
   const { c, calls } = ctxTri({ index: { 'intention|M8': true }, miniCategorie_: () => { llm++; return { categorie: 'Finance', suspect: false }; } });
-  c.feuille_ = () => ({ getLastRow: () => 2, getRange: () => ({ getValues: () => [['promo@shop.com', 'Abonnements']] }), appendRow: () => {} });
+  c.feuille_ = (nom) => (nom === 'TriAppris'
+    ? { getLastRow: () => 2, getRange: () => ({ getValues: () => [['promo@shop.com', 'Abonnements']] }), appendRow: () => {} }
+    : { getLastRow: () => 1, getRange: () => ({ getValues: () => [] }), appendRow: () => {} }); // Confiance VIDE (appris ≠ confiance, C28-19)
   c.GmailApp.search = (q, d) => (d === 0 ? [filMock(calls, { id: 'F8', ts: 8000, dernierMsgId: 'M8', expediteur: 'Shop <PROMO@shop.com>', sujet: 'Infos' })] : []);
   c.trierFilsGmail_(() => false);
   assert.strictEqual(llm, 0);
@@ -280,6 +282,7 @@ test('tri : plafond TRI_MAX_ATTENTES — une page de fils « en attente » ne re
 test('rattrapage : ancre/borne posées UNE fois, lot complet → OFFSET avance, page vide → « terminé »', () => {
   const { c, calls } = ctxTri({ index: { 'intention|MA1': true, 'intention|MA2': true }, props: {} });
   delete calls.props.DriveAI_TRI_RATTRAPAGE;
+  c.CONFIG.TRI_CYCLIQUE_PAGES_PAR_RUN = 0; // épinglé : le cyclique (C28-19) a ses propres tests
   const anciens = [
     filMock(calls, { id: 'A1', ts: 1111, dernierMsgId: 'MA1', expediteur: 'a@b.c', sujet: 's1' }),
     filMock(calls, { id: 'A2', ts: 2222, dernierMsgId: 'MA2', expediteur: 'a@b.c', sujet: 's2' }),
@@ -304,6 +307,7 @@ test('rattrapage : ancre/borne posées UNE fois, lot complet → OFFSET avance, 
 test('rattrapage : un fil du lot ATTEND les intentions → OFFSET inchangé (le lot est rejoué, idempotent)', () => {
   const { c, calls } = ctxTri({ index: { 'intention|MB1': true }, props: {} });
   delete calls.props.DriveAI_TRI_RATTRAPAGE;
+  c.CONFIG.TRI_CYCLIQUE_PAGES_PAR_RUN = 0; // épinglé : le cyclique (C28-19) a ses propres tests
   const anciens = [
     filMock(calls, { id: 'B1', ts: 1000, dernierMsgId: 'MB1', expediteur: 'a@b.c', sujet: 's' }),
     filMock(calls, { id: 'B2', ts: 2000, dernierMsgId: 'MB2', expediteur: 'a@b.c', sujet: 's' }), // pas d'intention|MB2
@@ -319,6 +323,7 @@ test('rattrapage : un fil du lot ATTEND les intentions → OFFSET inchangé (le 
 test('rattrapage : fil déjà HORS boîte → sauté sans chargement ni coût, l\'offset avance quand même', () => {
   const { c, calls } = ctxTri({ props: {} });
   delete calls.props.DriveAI_TRI_RATTRAPAGE;
+  c.CONFIG.TRI_CYCLIQUE_PAGES_PAR_RUN = 0; // épinglé : le cyclique (C28-19) a ses propres tests
   const anciens = [
     filMock(calls, { id: 'H1', ts: 100, dernierMsgId: 'MH1', expediteur: 'a@b.c', sujet: 's', horsBoite: true }),
     filMock(calls, { id: 'H2', ts: 200, dernierMsgId: 'MH2', expediteur: 'a@b.c', sujet: 's', horsBoite: true }),
@@ -371,7 +376,9 @@ test('SUSPECT recalibré — PJ .exe sur un expéditeur APPRIS reste ⚠️ (l\'
     miniCategorie_: () => ({ categorie: 'Finance', suspect: false }),
     piecesJointes_: () => [{ getName: () => 'facture.exe' }],
   });
-  c.feuille_ = () => ({ getLastRow: () => 2, getRange: () => ({ getValues: () => [['connu@banque.com', 'Finance']] }), appendRow: () => {} });
+  c.feuille_ = (nom) => (nom === 'TriAppris'
+    ? { getLastRow: () => 2, getRange: () => ({ getValues: () => [['connu@banque.com', 'Finance']] }), appendRow: () => {} }
+    : { getLastRow: () => 1, getRange: () => ({ getValues: () => [] }), appendRow: () => {} }); // Confiance VIDE (appris ≠ confiance, C28-19)
   c.GmailApp.search = (q, d) => (d === 0 ? [filMock(calls, { id: 'EXE', ts: 100, dernierMsgId: 'MExe', expediteur: 'connu@banque.com', sujet: 'Facture' })] : []);
   c.trierFilsGmail_(() => false);
   assert.deepStrictEqual(plain(calls.labels.map((l) => l.label)), ['⚠️ Suspect']);
@@ -383,7 +390,9 @@ test('promo NON LUE d\'une adresse APPRISE → le signal suspect LLM est QUAND M
     index: { 'intention|MD1': true },
     miniCategorie_: () => { llm++; return { categorie: 'Abonnements', suspect: true }; }, // le LLM flaire l'arnaque
   });
-  c.feuille_ = () => ({ getLastRow: () => 2, getRange: () => ({ getValues: () => [['promo@shop.com', 'Abonnements']] }), appendRow: () => {} });
+  c.feuille_ = (nom) => (nom === 'TriAppris'
+    ? { getLastRow: () => 2, getRange: () => ({ getValues: () => [['promo@shop.com', 'Abonnements']] }), appendRow: () => {} }
+    : { getLastRow: () => 1, getRange: () => ({ getValues: () => [] }), appendRow: () => {} }); // Confiance VIDE (appris ≠ confiance, C28-19)
   c.GmailApp.search = (q, d) => (d === 0 ? [filMock(calls, { id: 'D1', ts: 100, dernierMsgId: 'MD1', expediteur: 'promo@shop.com', sujet: 'Offre', nonLu: true, unsubscribe: true })] : []);
   c.trierFilsGmail_(() => false);
   assert.strictEqual(llm, 1);                                    // re-vérifié malgré la table

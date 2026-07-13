@@ -233,6 +233,57 @@ function apprendreTri_(adresse, libelle) {
   try { feuille_('TriAppris').appendRow([adresse, libelle, new Date()]); } catch (e) { /* best-effort */ }
 }
 
+/* ---------- table des expéditeurs DE CONFIANCE (onglet `Confiance`, C28-19/ADR-0020) ---------- */
+
+var _confianceCache = null;
+function reinitialiserConfianceCache_() { _confianceCache = null; }
+
+/**
+ * Expéditeurs marqués « pas suspect » par Marc (1-clic app). Chargée UNE fois par run.
+ * { adresse: true } — adresse nue en minuscules (jamais le nom affiché, usurpable).
+ */
+function confianceCache_() {
+  if (_confianceCache !== null) return _confianceCache;
+  _confianceCache = {};
+  try {
+    var f = feuille_('Confiance');
+    var dern = f.getLastRow();
+    if (dern >= 2) {
+      var v = f.getRange(2, 1, dern - 1, 1).getValues();
+      for (var i = 0; i < v.length; i++) {
+        if (v[i][0]) _confianceCache[String(v[i][0]).toLowerCase()] = true;
+      }
+    }
+  } catch (e) { /* onglet illisible → personne n'est de confiance ce run (prudent) */ }
+  return _confianceCache;
+}
+
+/** Apprend un expéditeur de confiance (dédupliqué — un double clic n'écrit qu'une ligne). */
+function apprendreConfiance_(adresse) {
+  var c = confianceCache_();
+  var a = String(adresse || '').toLowerCase();
+  if (!a || c[a]) return;
+  c[a] = true;
+  try { feuille_('Confiance').appendRow([a, new Date()]); } catch (e) { /* best-effort */ }
+}
+
+/**
+ * Décision PURE du signal SUSPECT (C28-19, ADR-0020 — auditée §8.5). La CONFIANCE (clic
+ * « pas suspect » de Marc) outrepasse TOUT : l'heuristique, le LLM ET le libellé ⚠ déjà posé —
+ * le libellé Gmail physique reste (§2.3 : jamais retiré), mais le système l'ignore désormais.
+ * Sinon, règle 2026-07-07 inchangée : heuristique déterministe d'abord ; signal LLM seulement
+ * hors Marc et hors expéditeur appris (sauf chemin dangereux) ; ⚠ déjà posé conservé.
+ * @param {{deConfiance:boolean, heuristique:boolean, llm:boolean, estMoi:boolean,
+ *          appris:boolean, cheminDangereux:boolean, dejaPoseSuspect:boolean}} s
+ * @return {boolean}
+ */
+function decisionSuspect_(s) {
+  if (s.deConfiance) return false;
+  return s.heuristique ||
+    (s.llm && !s.estMoi && (!s.appris || s.cheminDangereux)) ||
+    s.dejaPoseSuspect;
+}
+
 /* ---------- signaux Gmail par run ---------- */
 
 /**
@@ -306,11 +357,16 @@ function trierFilsGmail_(estBudgetDepasse) {
       etat.traites >= CONFIG.TRI_MAX_FILS_PAR_RUN || etat.attentes >= CONFIG.TRI_MAX_ATTENTES;
   };
 
+  // « Pas suspect » (C28-19) : les clics de Marc d'abord — purge des clés d'Index + re-tri
+  // immédiat des fils concernés, SOUS le verrou du tick (jamais depuis doPost : une suppression
+  // de lignes d'Index en concurrence du run serait une course).
+  appliquerPasSuspect_(etat, plafondAtteint, candidats, libelles);
   // Tri À LA DEMANDE (C28-16) : la demande de Marc (fenêtre/archiver/plafond posée par l'app)
-  // passe EN PREMIER — c'est lui qui a cliqué. Elle s'étale sur plusieurs ticks si besoin
-  // (offset/faits persistés), toujours sous les plafonds par run du tri.
-  scanDemandeTri_(etat, plafondAtteint, candidats, libelles);
+  // passe ensuite. Elle s'étale sur plusieurs ticks si besoin (offset/faits persistés),
+  // toujours sous les plafonds par run du tri.
+  if (!plafondAtteint()) scanDemandeTri_(etat, plafondAtteint, candidats, libelles);
   if (!plafondAtteint()) scanAvantTri_(etat, plafondAtteint, candidats, libelles);
+  if (!plafondAtteint()) scanCycliqueTri_(etat, plafondAtteint, candidats, libelles);
   if (!plafondAtteint()) scanArriereTri_(etat, plafondAtteint, candidats, libelles);
 }
 
@@ -416,6 +472,88 @@ function scanAvantTri_(etat, plafondAtteint, candidats, libelles) {
     if (pageAJour) return; // mur du déjà-à-jour : le stock appartient au scan arrière
     debutPage += CONFIG.PAGE_FILS_ACTIONS;
   }
+}
+
+/**
+ * Scan CYCLIQUE (C28-19, ADR-0020) : garantit que TOUT fil de la fenêtre `TRI_REQUETE` est
+ * revisité un jour — un fil LU des jours après son tri est ENFOUI sous le mur « déjà à jour »
+ * du scan avant et n'était JAMAIS re-trié (⇒ jamais archivé ; vécu : 2-11 fils/j au lieu de
+ * ~90). Offset persistant (`DriveAI_TRI_CYCLIQUE_OFFSET`) qui avance page après page et REPART à 0
+ * en fin de fenêtre — tour complet ≈ 30-60 min au fil des ticks.
+ * DÉVIATION documentée vs plan C28-19 (« remplacer le mur ») : le scan AVANT et son arrêt tôt
+ * sont CONSERVÉS — sans eux, (a) le courrier NEUF perdrait sa latence ~5 min (leçon « scan du
+ * neuf qui s'arrête tôt »), (b) un balayage libre relirait TOUTE la boîte à chaque tick (leçon
+ * quota partagé C28-15 : les lectures se bornent dans LEUR unité — ici PAGES/tick, plafond
+ * `TRI_CYCLIQUE_PAGES_PAR_RUN`). File MOUVANTE assumée : une insertion en tête décale l'offset
+ * (fils sautés/revus) — sans gravité, le cycle repasse en boucle et les revisites sont
+ * gratuites (idempotence par clé `tri|fil|ts|lu`).
+ */
+function scanCycliqueTri_(etat, plafondAtteint, candidats, libelles) {
+  var props = PropertiesService.getScriptProperties();
+  for (var page = 0; page < CONFIG.TRI_CYCLIQUE_PAGES_PAR_RUN; page++) {
+    if (plafondAtteint()) return;
+    var offset = Number(props.getProperty('DriveAI_TRI_CYCLIQUE_OFFSET')) || 0;
+    var fils;
+    try {
+      fils = GmailApp.search(CONFIG.TRI_REQUETE, offset, CONFIG.PAGE_FILS_ACTIONS);
+    } catch (e) {
+      if (signalerPanneGmail_(e)) return; // quota épuisé (C28-15) : suspension, offset inchangé
+      journalErreur_('TriGmail', 'Recherche des fils (cyclique) impossible : ' + e);
+      return;
+    }
+    signalerRetablissementGmail_();
+    if (!fils.length) {
+      props.setProperty('DriveAI_TRI_CYCLIQUE_OFFSET', '0'); // tour complet : on repart du haut
+      return;
+    }
+    var pageComplete = true;
+    for (var i = 0; i < fils.length; i++) {
+      if (plafondAtteint()) { pageComplete = false; break; }
+      var r = trierFil_(fils[i], candidats, libelles, false);
+      if (r === 'traite') etat.traites++;
+      if (r === 'attend') etat.attentes++;
+    }
+    if (!pageComplete) return; // page interrompue rejouée au tick suivant (déjà-vus gratuits)
+    props.setProperty('DriveAI_TRI_CYCLIQUE_OFFSET', String(offset + fils.length));
+  }
+}
+
+/**
+ * Consomme les demandes « PAS SUSPECT » de Marc (C28-19) : pour chaque threadId posé par l'app
+ * (Property `DriveAI_PAS_SUSPECT`, liste JSON additive), PURGE les lignes d'état du fil
+ * (clés `tri|<id>|…`, cf. purgerClesTriIndex_) puis RE-TRIE immédiatement — l'expéditeur étant
+ * désormais dans `Confiance`, le fil redevient « sain » (libellés normaux, archivé si lu).
+ * Le libellé ⚠ Gmail n'est JAMAIS retiré (§2.3) — le système l'ignore. Borné par le plafond du
+ * run ; consommation ADDITIVE (un fil non traité — coupure, attente d'intentions — survit pour
+ * le tick suivant, jamais perdu).
+ */
+function appliquerPasSuspect_(etat, plafondAtteint, candidats, libelles) {
+  var props = PropertiesService.getScriptProperties();
+  var brut = props.getProperty('DriveAI_PAS_SUSPECT');
+  if (!brut) return;
+  var ids = [];
+  try { ids = JSON.parse(brut) || []; } catch (e) { ids = []; }
+  if (!ids.length) { props.deleteProperty('DriveAI_PAS_SUSPECT'); return; }
+
+  var restants = [];
+  for (var i = 0; i < ids.length; i++) {
+    if (plafondAtteint()) { restants = restants.concat(ids.slice(i)); break; }
+    var threadId = String(ids[i]);
+    try {
+      purgerClesTriIndex_(threadId); // idempotent (0 ligne au rejeu)
+      var fil = GmailApp.getThreadById(threadId);
+      if (fil) {
+        var r = trierFil_(fil, candidats, libelles, false);
+        if (r === 'traite') etat.traites++;
+        if (r === 'attend') { etat.attentes++; restants.push(threadId); } // re-tenté au tick suivant
+      }
+    } catch (e) {
+      if (signalerPanneGmail_(e)) { restants = restants.concat(ids.slice(i)); break; }
+      journalErreur_('TriGmail', 'Pas-suspect inapplicable (' + threadId + ') : ' + e);
+    }
+  }
+  if (restants.length) props.setProperty('DriveAI_PAS_SUSPECT', JSON.stringify(restants));
+  else props.deleteProperty('DriveAI_PAS_SUSPECT');
 }
 
 /**
@@ -574,15 +712,19 @@ function trierFil_(fil, candidats, libelles, verifierBoite, forcerNonArchivage) 
     var important = indexContient_('important|' + dernierId) ||
       !!dejaPoses[CONFIG.TRI_LIBELLES.A_TRAITER]; // ⏰ déjà posé (message antérieur) → jamais archivé
 
-    // SUSPECT (recalibré 2026-07-07) : l'heuristique déterministe (.exe/.scr) prime toujours ; le signal
-    // LLM ne compte QUE s'il vise un expéditeur qui n'est ni Marc lui-même (G1 : on ne se phishe pas) ni
-    // un expéditeur DÉJÀ de confiance (G2 : dans TriAppris) — SAUF sur le chemin dangereux « promo non lue
-    // archivée sans lecture » où l'on re-vérifie même un expéditeur appris (anti-empoisonnement, inchangé).
-    // Un fil déjà marqué ⚠️ le reste (le moteur ne retire jamais un libellé — garde-fou).
+    // SUSPECT : décision PURE `decisionSuspect_` (C28-19) — la table Confiance (clic « pas
+    // suspect » de Marc) outrepasse tout, y compris le libellé ⚠ déjà posé (qui reste sur le
+    // fil Gmail, §2.3, mais que le système ignore désormais).
     var estMoi = adresse === proprio;
-    var suspect = suspectHeuristique ||
-      (suspectLlm && !estMoi && (!expediteurAppris || cheminDangereux)) ||
-      !!dejaPoses[CONFIG.TRI_LIBELLES.SUSPECT];
+    var suspect = decisionSuspect_({
+      deConfiance: !!confianceCache_()[adresse],
+      heuristique: suspectHeuristique,
+      llm: suspectLlm,
+      estMoi: estMoi,
+      appris: expediteurAppris,
+      cheminDangereux: cheminDangereux,
+      dejaPoseSuspect: !!dejaPoses[CONFIG.TRI_LIBELLES.SUSPECT]
+    });
 
     var decision = decisionTri_({
       categorie: categorie,

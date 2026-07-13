@@ -256,6 +256,7 @@ function tickDriveAI() {
     chargerPannePlateforme_(); // panne de compte PERSISTÉE (R2) : suspend les sources, re-sonde ≤ 1×/h
     chargerPanneGmail_();      // quota Gmail JOURNALIER épuisé (C28-15) : suspend les scans Gmail, re-sonde ≤ 2 h
     reinitialiserTriApprisCache_();  // table adresse→libellé du tri (#16), rechargée 1×/run
+    reinitialiserConfianceCache_();  // expéditeurs « pas suspect » (C28-19), rechargés 1×/run
     reinitialiserLibellesCache_();   // libellés Gmail de Marc, rechargés 1×/run
     reinitialiserPromoSetCache_();   // fils CATEGORY_PROMOTIONS (signal déterministe), 1×/run
     reinitialiserPanneEcriture_();   // panne d'ÉCRITURE Gmail : nouvelle chance à chaque run

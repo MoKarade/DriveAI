@@ -66,3 +66,39 @@ test('AUDIT (PoC) : contre-épreuve — une analyse réellement VIDE, elle, part
   assert.strictEqual(ctx.estClassificationVide_({ domaine: null, emetteur: null, type_doc: null }), true);
   assert.strictEqual(ctx.estClassificationVide_({ domaine: 'xxx', emetteur: '', type_doc: '' }), true);
 });
+
+/* ---------- AUDIT (PoC §8.5, C28-19/ADR-0020) : table de Confiance vs signaux suspects ---------- */
+
+const ctxSuspect = load(['Config.gs', 'TriGmail.gs']);
+
+test('AUDIT (PoC C28-19) : les faux positifs RÉELS redeviennent sains via la Confiance — même le ⚠ déjà posé', () => {
+  // Les faux positifs constatés dans la boîte de Marc (Index du 2026-07-13). `llm: true` +
+  // `dejaPoseSuspect: true` reproduisent leur état vécu (marqués ⚠, libellé posé).
+  const REELS_SUSPECTS = [
+    { cas: 'Alerte de sécurité (Google)', sujet: 'Alerte de sécurité', pj: [] },
+    { cas: 'Code 2FA Desjardins Assurances', sujet: 'Code to log on to Desjardins Insurance Home-Auto', pj: [] },
+    { cas: 'Fwd: Diplôme de Richard Marc', sujet: 'Fwd: Diplôme de Richard Marc', pj: [] },
+    { cas: 'Partage de données Google → Claude', sujet: 'Vous avez partagé certaines données de votre compte Google avec Claude', pj: [] },
+    { cas: 'Réclamation Desjardins (documents)', sujet: 'Desjardins Assurances Generales: Documents concernant votre réclamation', pj: [] },
+  ];
+  const lignes = REELS_SUSPECTS.map((r) => {
+    const heuristique = ctxSuspect.heuristiquePhishing_(r.sujet, r.pj);
+    const signaux = { heuristique, llm: true, estMoi: false, appris: false, cheminDangereux: false, dejaPoseSuspect: true };
+    const avant = ctxSuspect.decisionSuspect_(Object.assign({ deConfiance: false }, signaux));
+    const apres = ctxSuspect.decisionSuspect_(Object.assign({ deConfiance: true }, signaux));
+    return { cas: r.cas, heuristique, avant: avant ? '⚠ suspect' : 'sain', apresClic: apres ? '⚠ suspect' : 'sain' };
+  });
+  console.table(lignes); // tableau lisible pour Marc (protocole phase 1)
+  assert.ok(lignes.every((l) => l.avant === '⚠ suspect'), 'reproduit le vécu : tous marqués ⚠ avant le clic');
+  assert.ok(lignes.every((l) => l.apresClic === 'sain'),
+    'la confiance outrepasse le LLM, l\'heuristique ET le libellé ⚠ déjà posé');
+});
+
+test('AUDIT (PoC C28-19) : contre-épreuve — le phishing d\'un expéditeur NON marqué de confiance reste ⚠', () => {
+  const heuristique = ctxSuspect.heuristiquePhishing_('URGENT : vérifiez vos identifiants', ['facture.zip']);
+  assert.strictEqual(heuristique, true, 'urgence + identifiants + PJ douteuse = heuristique déterministe');
+  assert.strictEqual(ctxSuspect.decisionSuspect_({
+    deConfiance: false, heuristique: heuristique, llm: false, estMoi: false,
+    appris: false, cheminDangereux: false, dejaPoseSuspect: false,
+  }), true, 'sans clic de Marc, rien ne change : le vrai phishing reste marqué');
+});

@@ -89,12 +89,14 @@ function miniCheckMail_(expediteur, sujet) {
       max_tokens: CONFIG.LLM_MAX_TOKENS_MINICHECK,
       system: 'Réponds UNIQUEMENT avec un objet JSON {"action": true|false, "important": true|false}, ' +
         'sans rien d\'autre. "action"=true si ce mail peut PLAUSIBLEMENT contenir une action à faire ' +
-        '(échéance, paiement, formulaire) ou un rendez-vous daté ; false pour une newsletter, une ' +
-        'notification automatique, une pub, ou tout mail clairement informatif. "important"=true ' +
+        '(échéance, paiement, formulaire, FACTURE À PAYER, action requise sur un compte) ou un ' +
+        'rendez-vous daté ; false pour une newsletter, une notification automatique SANS action ' +
+        'attendue, une pub, ou tout mail clairement informatif. "important"=true ' +
         'UNIQUEMENT si une réponse ou une action PERSONNELLE du destinataire est attendue : question ' +
         'directe qui attend SA réponse, mise en demeure ou relance d\'une administration, échéance ' +
-        'qui exige un geste de SA part. JAMAIS pour un relevé disponible, une confirmation, un reçu, ' +
-        'une facture récurrente ou une offre commerciale. En cas de doute, "important"=false.',
+        'qui exige un geste de SA part, facture À PAYER ou montant dû, action requise sur un de ses ' +
+        'comptes. JAMAIS pour un relevé simplement disponible, une confirmation, un reçu d\'un ' +
+        'paiement DÉJÀ effectué ou une offre commerciale. En cas de doute, "important"=false.',
       messages: [{ role: 'user', content: 'Expéditeur : ' + expediteur + '\nSujet : ' + sujet }]
     }),
     muteHttpExceptions: true
