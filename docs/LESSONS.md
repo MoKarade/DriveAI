@@ -987,3 +987,21 @@ sinon le verrou est contournable pendant toute la durée de vie résiduelle des 
 revue : « ce contrôle est-il vérifié à l'ÉMISSION ou à chaque UTILISATION ? s'il est à l'émission,
 qu'est-ce qui invalide l'existant ? »"
 **Règle durable ?** oui (réflexe de sécurité générique — ajouté à CLAUDE.md §7).
+
+## 2026-07-13 — La « re-passe quasi gratuite par l'Index » ne l'est que côté traitement, jamais côté quota de lecture
+**Contexte.** Diagnostic C28-21 (« aucun mail archivé ») : le quota Gmail mourait en 8 s-6 min à
+chaque re-sonde depuis le 11/07. Cause : la campagne historique avait FINI son rattrapage (964
+fils, 12/07 06:50) et sa passe de VÉRIFICATION (relancée depuis l'offset 0 pour prouver la
+complétude « 2 passes vides consécutives ») re-parcourait tout le stock — chaque fil re-lu coûte
+les mêmes appels Gmail que la première fois, même si l'Index le fait skipper en 0 ms de
+traitement. Le flux vivant (scan cyclique C28-19, demandes de l'app à 0/100) n'avait jamais son
+tour : 2-11 fils triés/jour dans des fenêtres de 5 minutes.
+**Leçon.** "Une re-passe de vérification « quasi gratuite par l'Index » n'est gratuite que côté
+TRAITEMENT (skip O(1), zéro LLM) — côté QUOTA DE LECTURE de la plateforme, re-parcourir la
+fenêtre coûte plein pot. La passe de vérification d'une campagne se budgète et se PRIORISE comme
+la campagne elle-même (après le flux vivant, bornée par jour), sinon elle affame le flux vivant
+précisément au moment où la campagne « est finie ». Corollaire de diagnostic : des cycles
+suspension→rétabli→re-mort en secondes/minutes = un consommateur de fond qui draine la fenêtre
+glissante au fil de l'eau — chercher QUI tourne au retour du quota, pas combien il en reste."
+**Règle durable ?** oui (corrige la parenthèse « re-passe quasi gratuite » de la règle campagne
+Gmail — CLAUDE.md §7 amendé).
