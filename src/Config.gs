@@ -448,7 +448,11 @@ var CONFIG = {
   // campagne ; la campagne se fige quand une passe complète ne collecte plus rien. Zone protégée (04)
   // exclue de la collecte ET revérifiée avant mutation. Bumper le tag relance une campagne complète —
   // utile après une validation d'entités en masse (les docs rangés au domaine redescendent aux entités).
-  MIGRATION_TAG: 'm1',                    // m1 : 1ʳᵉ migration (nommage par type + entités + 07·Santé + few-shot)
+  MIGRATION_TAG: 'm2-inconnu',            // m2-inconnu (C28-21) : périmètre RÉDUIT aux fichiers dont le nom
+                                          // contient « Inconnu » (estAMigrer_) — sous le mur des ~90 min/j de
+                                          // runtime, re-traiter TOUT l'ancien Drive prendrait des mois ; les
+                                          // mal-classés bien nommés de 03/08 sont rattrapés par c26-08 ensuite.
+                                          // (m1 : 1ʳᵉ migration — nommage par type + entités + 07·Santé + few-shot)
   MIGRATION_MAX_PAR_RUN: 12,              // docs re-traités (OCR+LLM complets, lourds) par run — le flux
                                           // VIVANT (intake) garde la priorité ; campagne finie en fond
   MIGRATION_BUDGET_MS: 2 * 60 * 1000,     // sous-budget PAR TICK de la migration (< BUDGET_MS) : protège le

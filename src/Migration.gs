@@ -24,16 +24,18 @@
 /* ---------- Décision PURE (testée) ---------- */
 
 /**
- * Un fichier est à migrer s'il n'est ni Google natif/raccourci (pas de blob exploitable), ni déjà
- * re-traité dans CETTE campagne (clé `migre|<tag>|fileId` dans l'Index — convergence). Pas de filtre
- * par nom : la migration ré-évalue TOUT (ancienne convention, vrac résiduel, placement pré-entités).
- * @param {File} f  (interface : getId, getMimeType)
+ * Un fichier est à migrer s'il porte « Inconnu » dans son NOM (héritage v1 — plan C28-21 : sous le
+ * mur des ~90 min/j de runtime, le périmètre est RÉDUIT au vrai problème ; c26-08 rattrape ensuite
+ * les mal-classés bien nommés de 03/08), s'il n'est ni Google natif/raccourci (pas de blob
+ * exploitable), ni déjà re-traité dans CETTE campagne (clé `migre|<tag>|fileId` — convergence).
+ * @param {File} f  (interface : getId, getMimeType, getName)
  * @param {string} tag  campagne courante (CONFIG.MIGRATION_TAG)
  * @return {boolean}
  */
 function estAMigrer_(f, tag) {
   var mime = f.getMimeType() || '';
   if (mime.indexOf('application/vnd.google-apps') === 0) return false; // natif ou raccourci
+  if ((f.getName() || '').toLowerCase().indexOf('inconnu') === -1) return false; // hors périmètre m2
   return !indexContient_('migre|' + tag + '|' + f.getId());
 }
 
