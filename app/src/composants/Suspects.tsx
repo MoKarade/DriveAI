@@ -17,25 +17,29 @@ function threadIdDe(l: LigneIndex): string {
   return l.cle.split('|')[1] ?? ''; // clé `tri|<threadId>|<ts>|<lu>`
 }
 
-export function ListeSuspects({ langue, suspects, max }: { langue: Langue; suspects: LigneIndex[]; max: number }) {
-  const [caches, setCaches] = useState<Set<string>>(new Set());
-  const [erreur, setErreur] = useState('');
-  const [enCours, setEnCours] = useState('');
+// Masqués PARTAGÉS à toute la session (portée module) : la ligne disparaît AU CLIC et ne
+// réapparaît pas en changeant de vue, le temps que le moteur re-trie (~1 min) et que le
+// poll d'état rattrape (≤ 5 min). Un échec du serveur la fait revenir avec l'erreur.
+const masquesSession = new Set<string>();
 
-  const visibles = suspects.filter((l) => !caches.has(threadIdDe(l))).slice(0, max);
+export function ListeSuspects({ langue, suspects, max }: { langue: Langue; suspects: LigneIndex[]; max: number }) {
+  const [, forcer] = useState(0);
+  const [erreur, setErreur] = useState('');
+
+  const visibles = suspects.filter((l) => !masquesSession.has(threadIdDe(l))).slice(0, max);
 
   async function pasSuspect(l: LigneIndex) {
     const id = threadIdDe(l);
-    if (!id) return;
+    if (!id || masquesSession.has(id)) return;
     setErreur('');
-    setEnCours(id);
+    masquesSession.add(id); // OPTIMISTE : disparition IMMÉDIATE — la réponse serveur suit
+    forcer((n) => n + 1);
     try {
       await marquerPasSuspect(id);
-      setCaches((s) => new Set(s).add(id)); // optimiste — l'état réel suit au prochain passage
     } catch (e) {
+      masquesSession.delete(id); // échec réel → la ligne revient, l'erreur s'affiche
+      forcer((n) => n + 1);
       setErreur(String(e));
-    } finally {
-      setEnCours('');
     }
   }
 
@@ -51,7 +55,6 @@ export function ListeSuspects({ langue, suspects, max }: { langue: Langue; suspe
           </a>
           <button
             className="discret ps"
-            disabled={enCours !== ''}
             title={t('pasSuspectTitre', langue)}
             onClick={() => void pasSuspect(l)}
           >
