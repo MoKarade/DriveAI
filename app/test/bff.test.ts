@@ -15,9 +15,12 @@ import {
   poserCookieRefresh,
   effacerCookie,
   origine,
+  emailDepuisIdToken,
   COOKIE_RT,
   SCOPES,
+  SCOPES_IDENTITE,
 } from '../../api/_lib';
+import handlerConfig from '../../api/config';
 
 function fauxReq(headers: Record<string, string>): IncomingMessage {
   return { headers, url: '/', method: 'GET' } as unknown as IncomingMessage;
@@ -110,5 +113,103 @@ describe('invariants de sécurité', () => {
     for (const attendu of ['spreadsheets', 'auth/drive', 'auth/tasks', 'calendar.events']) {
       expect(SCOPES).toContain(attendu);
     }
+  });
+});
+
+/* ---------- Verrou d'identité + config serveur (C28-20, ADR-0021) ---------- */
+
+function fauxIdToken(payload: object): string {
+  const b64 = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
+  return `${b64({ alg: 'RS256', typ: 'JWT' })}.${b64(payload)}.signature-non-verifiee`;
+}
+
+describe('verrou d\'identité (emailDepuisIdToken)', () => {
+  it('les scopes d\'identité sont openid email — de la LECTURE d\'identité, jamais un service (§2.3)', () => {
+    expect(SCOPES_IDENTITE).toBe('openid email');
+    expect(SCOPES_IDENTITE).not.toMatch(/gmail|drive|spreadsheets|tasks|calendar/i);
+  });
+
+  it('email vérifié → minuscule (comparaison insensible à la casse avec ALLOWED_EMAIL)', () => {
+    expect(emailDepuisIdToken(fauxIdToken({ email: 'Marc.Exemple@Gmail.com', email_verified: true })))
+      .toBe('marc.exemple@gmail.com');
+    // `email_verified` ABSENT n'est pas un refus : seul `false` explicite l'est.
+    expect(emailDepuisIdToken(fauxIdToken({ email: 'x@y.z' }))).toBe('x@y.z');
+  });
+
+  it('échec FERMÉ : non vérifié, email absent, JWT malformé ou payload illisible → null', () => {
+    expect(emailDepuisIdToken(fauxIdToken({ email: 'x@y.z', email_verified: false }))).toBeNull();
+    expect(emailDepuisIdToken(fauxIdToken({ sub: '12345' }))).toBeNull();
+    expect(emailDepuisIdToken('')).toBeNull();
+    expect(emailDepuisIdToken('a.b')).toBeNull();
+    expect(emailDepuisIdToken('un.jwt.a.cinq.parties')).toBeNull();
+    expect(emailDepuisIdToken(`x.${Buffer.from('pas du json').toString('base64url')}.y`)).toBeNull();
+  });
+});
+
+function fauxResComplet(): ServerResponse & { corps: () => string } {
+  const entetes: Record<string, unknown> = {};
+  let corps = '';
+  return {
+    statusCode: 0,
+    entetes,
+    setHeader(nom: string, valeur: unknown) { entetes[nom] = valeur; },
+    getHeader(nom: string) { return entetes[nom]; },
+    end(texte?: string) { corps = texte ?? ''; },
+    corps: () => corps,
+  } as unknown as ServerResponse & { corps: () => string };
+}
+
+describe('/api/config — la config ne sort qu\'à une session VALIDE (zéro configuration client)', () => {
+  const CLES_ENV = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'COOKIE_SECRET',
+    'SPREADSHEET_ID', 'WEBAPP_URL', 'WEBAPP_SECRET'] as const;
+  const BASE: Record<string, string> = {
+    GOOGLE_CLIENT_ID: 'id-test', GOOGLE_CLIENT_SECRET: 'secret-test', COOKIE_SECRET: 'cookie-secret-test',
+    SPREADSHEET_ID: 'sheet-test', WEBAPP_URL: 'https://script.google.com/macros/s/x/exec', WEBAPP_SECRET: 'wa-secret',
+  };
+
+  function avecEnv(vars: Record<string, string>, fn: () => void): void {
+    const avant = CLES_ENV.map((k) => [k, process.env[k]] as const);
+    for (const k of CLES_ENV) delete process.env[k];
+    Object.assign(process.env, vars);
+    try { fn(); } finally {
+      for (const [k, v] of avant) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+    }
+  }
+
+  it('cookie de session déchiffrable → 200 avec la config des variables Vercel', () => {
+    avecEnv(BASE, () => {
+      const res = fauxResComplet();
+      const cookie = `${COOKIE_RT}=${encodeURIComponent(chiffrer('refresh-token', BASE.COOKIE_SECRET))}`;
+      handlerConfig(fauxReq({ cookie, 'x-forwarded-proto': 'https', host: 'x' }), res);
+      expect(res.statusCode).toBe(200);
+      expect(JSON.parse(res.corps())).toEqual({
+        spreadsheetId: 'sheet-test', webappUrl: BASE.WEBAPP_URL, webappSecret: 'wa-secret',
+      });
+    });
+  });
+
+  it('sans cookie, ou cookie forgé → 401 et AUCUNE config dans la réponse (le secret ne fuit pas)', () => {
+    avecEnv(BASE, () => {
+      const sans = fauxResComplet();
+      handlerConfig(fauxReq({ 'x-forwarded-proto': 'https', host: 'x' }), sans);
+      expect(sans.statusCode).toBe(401);
+      expect(sans.corps()).not.toContain('wa-secret');
+
+      const forge = fauxResComplet();
+      handlerConfig(fauxReq({ cookie: `${COOKIE_RT}=forge-par-un-tiers`, host: 'x' }), forge);
+      expect(forge.statusCode).toBe(401);
+      expect(forge.corps()).not.toContain('wa-secret');
+    });
+  });
+
+  it('variables serveur incomplètes → 500, jamais une config partielle', () => {
+    const { SPREADSHEET_ID: _, ...sansSheet } = BASE;
+    avecEnv(sansSheet, () => {
+      const res = fauxResComplet();
+      const cookie = `${COOKIE_RT}=${encodeURIComponent(chiffrer('rt', BASE.COOKIE_SECRET))}`;
+      handlerConfig(fauxReq({ cookie, host: 'x' }), res);
+      expect(res.statusCode).toBe(500);
+      expect(res.corps()).not.toContain('wa-secret');
+    });
   });
 });

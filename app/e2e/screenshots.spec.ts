@@ -17,16 +17,8 @@ const SECTIONS: Array<{ fichier: string; libelle: string }> = [
 ];
 
 test('captures des 6 sections (mode mock, app "connectée")', async ({ page }) => {
-  // L'écran Configuration est gaté par localStorage (spreadsheetId — plus de clientId depuis
-  // C28-14) : on le seed AVANT le chargement — un identifiant factice suffit, le mode mock
-  // n'appelle aucune API (ni Google ni /api/*).
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      'driveai.config',
-      JSON.stringify({ spreadsheetId: 'mock-spreadsheet-id', webappUrl: '', webappSecret: '' }),
-    );
-  });
-
+  // Plus rien à seeder (C28-20) : l'écran Configuration n'existe plus — en mode mock,
+  // config.ts sert une config factice et google.ts une session bouchonnée, sans aucun fetch.
   await page.goto('/');
 
   // Le mode mock rend estConnecte() vrai : la nav des sections doit être là, PAS le bouton Connexion.

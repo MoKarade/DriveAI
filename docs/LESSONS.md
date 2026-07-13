@@ -972,3 +972,18 @@ en une énumération compacte — le DÉTAIL vit déjà dans les sources du note
 CLAUDE.md, leçons), inutile de le re-décrire. Vérifier la longueur (wc -m) AVANT de livrer le
 bloc. Un prompt trop long n'est pas un prompt : Marc ne peut physiquement pas le soumettre."
 **Règle durable ?** oui (change la façon de produire chaque prompt §4 — ajouté à CLAUDE.md §7).
+
+## 2026-07-13 — Un verrou vérifié à la CRÉATION d'un jeton longue durée exige d'invalider le stock existant
+**Contexte.** C28-20 (verrou d'identité ALLOWED_EMAIL) : le verrou est appliqué dans /api/callback,
+au moment où le cookie de session (1 an) est POSÉ. La revue flotte (code-reviewer + security-auditor,
+même trouvaille indépendante) a relevé qu'un cookie posé AVANT le déploiement du verrou — époque où
+n'importe quel compte Google passant le consentement en obtenait un — reste déchiffrable et passe
+/api/config pendant toute sa durée de vie : le verrou n'est jamais re-vérifié à la CONSOMMATION.
+**Leçon.** "Ajouter un contrôle d'accès au point de CRÉATION d'un jeton/cookie/clé longue durée ne
+protège QUE les jetons futurs : tout le stock émis avant reste porteur des anciens droits jusqu'à
+expiration. Le déploiement d'un tel verrou s'accompagne TOUJOURS de l'invalidation du stock
+(rotation du secret de chiffrement/signature — une reconnexion suffit à l'utilisateur légitime),
+sinon le verrou est contournable pendant toute la durée de vie résiduelle des jetons. Réflexe de
+revue : « ce contrôle est-il vérifié à l'ÉMISSION ou à chaque UTILISATION ? s'il est à l'émission,
+qu'est-ce qui invalide l'existant ? »"
+**Règle durable ?** oui (réflexe de sécurité générique — ajouté à CLAUDE.md §7).

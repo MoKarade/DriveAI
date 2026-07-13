@@ -9,6 +9,7 @@ import {
   Requete,
   Reponse,
   SCOPES,
+  SCOPES_IDENTITE,
   COOKIE_ETAT,
   lireEnv,
   origine,
@@ -36,7 +37,9 @@ export default function handler(req: Requete, res: Reponse): void {
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('access_type', 'offline');
   url.searchParams.set('prompt', 'consent');
-  url.searchParams.set('scope', SCOPES);
+  // `openid email` (C28-20) : Google émet un id_token → /api/callback vérifie que le compte
+  // connecté est bien celui de Marc (ALLOWED_EMAIL) avant de poser la session.
+  url.searchParams.set('scope', `${SCOPES_IDENTITE} ${SCOPES}`);
   url.searchParams.set('state', etat);
   rediriger(res, url.toString());
 }

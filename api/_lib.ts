@@ -32,6 +32,11 @@ export const SCOPES = [
   'https://www.googleapis.com/auth/calendar.events',
 ].join(' ');
 
+/** Scopes d'IDENTITÉ (C28-20, ADR-0021) : `openid email` fait émettre un id_token par Google,
+ * dont l'email sert au verrou ALLOWED_EMAIL dans /api/callback. Aucune donnée nouvelle : ce
+ * sont des scopes de lecture d'identité, pas d'accès à un service (§2.3 inchangé). */
+export const SCOPES_IDENTITE = 'openid email';
+
 export const COOKIE_RT = 'driveai_rt'; // refresh token chiffré (longue durée)
 export const COOKIE_ETAT = 'driveai_oauth_etat'; // anti-CSRF du flux OAuth (10 min)
 const UN_AN_S = 365 * 24 * 60 * 60;
@@ -174,7 +179,30 @@ export interface ReponseToken {
   access_token?: string;
   refresh_token?: string;
   expires_in?: number;
+  id_token?: string;
   error?: string;
+}
+
+/**
+ * Email VÉRIFIÉ porté par un id_token Google (JWT), ou null s'il est illisible ou non vérifié.
+ * Pas de vérification de signature ici : le jeton vient DIRECTEMENT de l'échange
+ * code→token sur oauth2.googleapis.com en HTTPS (canal serveur↔Google), jamais du client —
+ * décoder le payload suffit (recommandation Google pour ce canal). `email_verified === false`
+ * est refusé (un email non vérifié ne prouve pas l'identité).
+ */
+export function emailDepuisIdToken(idToken: string): string | null {
+  try {
+    const morceaux = idToken.split('.');
+    if (morceaux.length !== 3) return null;
+    const payload = JSON.parse(Buffer.from(morceaux[1], 'base64url').toString('utf8')) as {
+      email?: string;
+      email_verified?: boolean;
+    };
+    if (!payload.email || payload.email_verified === false) return null;
+    return payload.email.toLowerCase();
+  } catch {
+    return null;
+  }
 }
 
 export async function echangerCode(env: EnvOAuth, code: string, redirectUri: string): Promise<ReponseToken> {
