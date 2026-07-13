@@ -796,6 +796,14 @@ function traiterPageHistorique_(props, estBudgetDepasse) {
   var filsJour = props.getProperty('DriveAI_GMAIL_HISTO_JOUR') === aujourdhui
     ? Number(props.getProperty('DriveAI_GMAIL_HISTO_FILS_JOUR')) || 0
     : 0;
+  if (props.getProperty('DriveAI_GMAIL_HISTO_JOUR') !== aujourdhui) {
+    // Purge au ROLLOVER (revue flotte C28-21) : la date est écrite par le finally de
+    // traiterGmailHistorique_ à CHAQUE run, mais le compteur seulement quand des fils sont lus —
+    // sans cette purge, un 1ᵉʳ run du jour à 0 fil (page VIDE de fin de passe, erreur de
+    // recherche) laisse le compteur de la VEILLE sous la date du jour : maxCeRun = 0 → campagne
+    // silencieusement bloquée une journée entière à chaque frontière de passe.
+    props.setProperty('DriveAI_GMAIL_HISTO_FILS_JOUR', '0');
+  }
   var maxCeRun = Math.min(CONFIG.GMAIL_HISTO_MAX_FILS_PAR_RUN,
     Math.max(0, CONFIG.GMAIL_HISTO_MAX_FILS_JOUR - filsJour));
   if (maxCeRun <= 0) return; // plafond de fils du jour atteint — repris demain (aucune recherche)
