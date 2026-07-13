@@ -308,6 +308,27 @@ test('historique : plafond de FILS du jour atteint → retour immédiat SANS rec
   assert.strictEqual(calls.pages.length, 1);
 });
 
+test('historique : lendemain dont le 1ᵉʳ run lit 0 fil (page vide) → la journée n\'est PAS bloquée (purge au rollover)', () => {
+  // Trouvaille revue flotte : JOUR est re-daté à CHAQUE run (finally) mais FILS_JOUR seulement
+  // quand des fils sont lus — sans purge, le compteur de la VEILLE (au plafond) survivait sous la
+  // date du jour et maxCeRun=0 bloquait la campagne jusqu'au surlendemain.
+  const auj = ctxPur.dateGmail_(new Date());
+  const MAX = ctxPur.CONFIG.GMAIL_HISTO_MAX_FILS_JOUR;
+  const { c, calls } = ctxHisto({
+    props: {
+      DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02',
+      DriveAI_GMAIL_HISTO_JOUR: '2020/01/01',          // hier : plafond ATTEINT
+      DriveAI_GMAIL_HISTO_FILS_JOUR: String(MAX),
+    },
+    page: (ancre, offset) => (offset === 0 ? [] : []), // 1ᵉʳ run du jour : page VIDE (fin de passe)
+  });
+  c.traiterGmailHistorique_(() => false);              // re-date JOUR=aujourd'hui, 0 fil lu
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_JOUR, auj);
+  c.pageFilsHisto_ = (ancre, offset) => { calls.pages.push({ ancre, offset }); return [fil([['n1']])]; };
+  c.traiterGmailHistorique_(() => false);              // 2ᵉ run du MÊME jour : doit chercher et lire
+  assert.deepStrictEqual(calls.pj, ['n1'], 'le compteur de la veille ne doit pas bloquer le jour neuf');
+});
+
 test('historique : les fils lus s\'AJOUTENT au compteur du jour, MÊME sur page interrompue (coût réel)', () => {
   const auj = ctxPur.dateGmail_(new Date());
   // Page interrompue par le plafond d'inédites (3 inédites dans 1 fil, plafond 2) : le FIL a bien
