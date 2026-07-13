@@ -80,6 +80,7 @@ function ctxCyclique(opts) {
   c.signalerRetablissementGmail_ = () => {};
   c.journalErreur_ = () => {};
   c.trierFil_ = opts.trierFil || (() => 'deja');
+  c.dateGmail_ = () => opts.jour || '2026/07/13'; // Gmail.gs non chargé — le « jour » est piloté par le test
   return { c, props, recherches };
 }
 
@@ -112,6 +113,49 @@ test('scanCycliqueTri_ : page interrompue par le plafond → offset INCHANGÉ (r
   c.scanCycliqueTri_(etat, () => etat.traites >= 3, [], {}); // plafond au 3ᵉ fil, page de 20
   assert.strictEqual(props.DriveAI_TRI_CYCLIQUE_OFFSET, '40', 'page incomplète → offset figé');
   assert.strictEqual(etat.traites, 3);
+  // C28-21 : les fils LUS comptent au plafond quotidien MÊME sur page interrompue — le rejeu
+  // re-lira ces fils, le coût de LECTURE est consommé, page complétée ou non. 3 lus : le plafond
+  // du run coupe AVANT la lecture du 4ᵉ (jamais un fil lu « pour rien » de ce côté-là).
+  assert.strictEqual(props.DriveAI_TRI_CYCLIQUE_FILS_JOUR, '3');
+});
+
+/* ---------- C28-21 : plafond QUOTIDIEN de lectures du cyclique ---------- */
+
+test('scanCycliqueTri_ : plafond quotidien ATTEINT → retour immédiat SANS GmailApp.search', () => {
+  const MAX = load(['Config.gs']).CONFIG.TRI_CYCLIQUE_MAX_FILS_JOUR; // dérivé de la CONSTANTE
+  const { c, recherches } = ctxCyclique({
+    jour: '2026/07/13',
+    props: { DriveAI_TRI_CYCLIQUE_JOUR: '2026/07/13', DriveAI_TRI_CYCLIQUE_FILS_JOUR: String(MAX) },
+    pages: () => { throw new Error('aucune recherche ne doit partir au plafond'); },
+  });
+  c.scanCycliqueTri_({ traites: 0, attentes: 0 }, () => false, [], {});
+  assert.strictEqual(recherches.length, 0, 'plafond du jour atteint = zéro appel Gmail');
+});
+
+test('scanCycliqueTri_ : page RÉTRÉCIE au reliquat (complétable → offset avance) ; compteur remis à zéro le lendemain', () => {
+  const c0 = load(['Config.gs']);
+  const MAX = c0.CONFIG.TRI_CYCLIQUE_MAX_FILS_JOUR;
+  const PAGE = c0.CONFIG.PAGE_FILS_ACTIONS;
+  const tailles = [];
+  // Reliquat du jour = 3 (< PAGE) → la recherche demande 3 fils, la page se COMPLÈTE : jamais un
+  // rejeu en boucle qui re-lirait la même page à chaque tick sans avancer.
+  const { c, props } = ctxCyclique({
+    jour: '2026/07/13',
+    props: { DriveAI_TRI_CYCLIQUE_JOUR: '2026/07/13', DriveAI_TRI_CYCLIQUE_FILS_JOUR: String(MAX - 3), DriveAI_TRI_CYCLIQUE_OFFSET: '60' },
+    pages: (offset, n) => { tailles.push(n); return Array.from({ length: n }, (_, i) => ({ getId: () => 'f' + i })); },
+  });
+  c.scanCycliqueTri_({ traites: 0, attentes: 0 }, () => false, [], {});
+  assert.ok(tailles[0] === 3 && tailles[0] < PAGE, 'page bornée au reliquat du jour');
+  assert.strictEqual(props.DriveAI_TRI_CYCLIQUE_OFFSET, '63', 'page complète → offset avance');
+  assert.strictEqual(props.DriveAI_TRI_CYCLIQUE_FILS_JOUR, String(MAX), 'cumul du jour');
+  // Lendemain : la Property JOUR ne matche plus → compteur reparti de zéro, pleine page de nouveau.
+  const lendemain = ctxCyclique({
+    jour: '2026/07/14',
+    props: { DriveAI_TRI_CYCLIQUE_JOUR: '2026/07/13', DriveAI_TRI_CYCLIQUE_FILS_JOUR: String(MAX) },
+    pages: (offset, n) => { tailles.push(n); return []; },
+  });
+  lendemain.c.scanCycliqueTri_({ traites: 0, attentes: 0 }, () => false, [], {});
+  assert.strictEqual(tailles[1], Math.min(PAGE, MAX), 'nouveau jour → plafond re-ouvert');
 });
 
 /* ---------- appliquerPasSuspect_ ---------- */
