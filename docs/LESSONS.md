@@ -961,3 +961,14 @@ réel (recensement post-déploiement) qui a révélé les trois défauts."
 **Règle durable ?** non (instance UI de deux règles durables existantes — « jamais un terminé à
 tort avant le vrai signal de fin » et « vérifier la prod par un signal indépendant » ; les détails
 concrets du langage visuel restent ici).
+
+## 2026-07-13 — Un prompt NotebookLM tient dans la limite de caractères de sa zone de question
+**Contexte.** C28-19 (cadrage tri/intentions Gmail) : le prompt NotebookLM généré selon la règle
+§4 était trop long — la zone de question de NotebookLM a une limite de caractères et Marc n'a pas
+pu le coller. Il a fallu le régénérer compressé.
+**Leçon.** "Tout prompt destiné à être COLLÉ dans NotebookLM se rédige sous ~2 000 caractères
+(marge comprise) : faits mesurés en style télégraphique, une ligne par décision de Marc, mission
+en une énumération compacte — le DÉTAIL vit déjà dans les sources du notebook (miroir du dépôt,
+CLAUDE.md, leçons), inutile de le re-décrire. Vérifier la longueur (wc -m) AVANT de livrer le
+bloc. Un prompt trop long n'est pas un prompt : Marc ne peut physiquement pas le soumettre."
+**Règle durable ?** oui (change la façon de produire chaque prompt §4 — ajouté à CLAUDE.md §7).

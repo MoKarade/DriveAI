@@ -381,6 +381,10 @@ NotebookLM en devient l'entrée, pas le remplacement.
   JAMAIS le même préfixe de clé d'idempotence (`intention|<threadId>` serait entré en collision
   avec `intention|<messageId>` — fils entiers sautés à tort) : préfixe DÉDIÉ par entité + test de
   collision. Vérifier les identités de plateforme qu'un plan validé suppose distinctes.
+- **Prompt NotebookLM ≤ ~2 000 caractères, TOUJOURS.** La zone de question de NotebookLM a une
+  limite — un prompt §4 trop long ne peut physiquement pas être collé par Marc. Style
+  télégraphique, une ligne par décision, le détail vit déjà dans les sources du notebook ;
+  vérifier `wc -m` avant de livrer le bloc.
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 
