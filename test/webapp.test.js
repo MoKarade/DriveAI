@@ -158,3 +158,72 @@ test('actionDemandeIntentions_ : demande posée + offset purgé ; quota mort →
   assert.deepStrictEqual(plat(r2), { ok: false, erreur: 'QUOTA_GMAIL' });
   assert.ok(!('DriveAI_INTENTIONS_DEMANDE' in ko.props));
 });
+
+/* ---------- « Pas suspect » 1-clic (C28-19, ADR-0020) ---------- */
+
+test('validerThreadId_ : hexadécimal Gmail seul — jamais un séparateur de clé d\'Index', () => {
+  assert.strictEqual(ctx.validerThreadId_('19f44ecc77d92299'), '19f44ecc77d92299');
+  assert.strictEqual(ctx.validerThreadId_('  19f44ecc77d92299  '), '19f44ecc77d92299'); // espaces tolérés
+  assert.strictEqual(ctx.validerThreadId_('tri|abc|1'), '');   // | interdit (préfixe de purge)
+  assert.strictEqual(ctx.validerThreadId_('abc'), '');          // trop court
+  assert.strictEqual(ctx.validerThreadId_('a'.repeat(40)), ''); // trop long
+  assert.strictEqual(ctx.validerThreadId_(null), '');
+  assert.strictEqual(ctx.validerThreadId_({}), '');
+});
+
+function ctxPasSuspectWeb(opts) {
+  opts = opts || {};
+  const c = load(['Config.gs', 'WebApp.gs']);
+  const props = Object.assign({}, opts.props);
+  const journaux = [];
+  const confiance = [];
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in props ? props[k] : null),
+    setProperty: (k, v) => { props[k] = String(v); },
+    deleteProperty: (k) => { delete props[k]; },
+  }) };
+  c.journalInfo_ = (s, m) => journaux.push(m);
+  c.adresseExpediteur_ = (from) => String(from).toLowerCase();
+  c.apprendreConfiance_ = (a) => confiance.push(a);
+  c.signalerPanneGmail_ = () => false;
+  c.actionTickPonctuel_ = () => ({ ok: true, message: 'passage lancé' });
+  c.GmailApp = {
+    getThreadById: opts.getThreadById || (() => ({
+      getMessages: () => [
+        { getFrom: () => 'no-reply@google.com' },
+        { getFrom: () => (c.CONFIG.PROPRIETAIRE_EMAIL || 'marc@x') }, // Marc a répondu en dernier
+      ],
+    })),
+  };
+  return { c, props, confiance };
+}
+
+test('actionPasSuspect_ : apprend l\'expéditeur (jamais Marc), demande ADDITIVE posée, tick lancé', () => {
+  const { c, props, confiance } = ctxPasSuspectWeb({ props: { DriveAI_PAS_SUSPECT: JSON.stringify(['autre']) } });
+  const r = c.actionPasSuspect_({ postData: { contents: JSON.stringify({ threadId: '19f44ecc77d92299' }) } });
+  assert.strictEqual(r.ok, true);
+  assert.deepStrictEqual(confiance, ['no-reply@google.com'],
+    'référence = dernier message PAS de Marc (sa propre réponse ne doit jamais être apprise)');
+  assert.deepStrictEqual(JSON.parse(props.DriveAI_PAS_SUSPECT), ['autre', '19f44ecc77d92299']);
+});
+
+test('actionPasSuspect_ : threadId invalide → refus AVANT toute lecture Gmail ; anti-rafale 5 s', () => {
+  const { c, props, confiance } = ctxPasSuspectWeb({});
+  const r = c.actionPasSuspect_({ postData: { contents: JSON.stringify({ threadId: 'tri|x|y' }) } });
+  assert.strictEqual(r.ok, false);
+  assert.strictEqual(confiance.length, 0);
+  assert.ok(!('DriveAI_PAS_SUSPECT' in props));
+
+  const rafale = ctxPasSuspectWeb({ props: { DriveAI_DERNIER_PAS_SUSPECT: String(Date.now()) } });
+  const r2 = rafale.c.actionPasSuspect_({ postData: { contents: JSON.stringify({ threadId: '19f44ecc77d92299' }) } });
+  assert.strictEqual(r2.ok, false);
+  assert.ok(/trop de requêtes/.test(r2.erreur));
+});
+
+test('actionPasSuspect_ : quota Gmail mort à la lecture du fil → QUOTA_GMAIL, rien d\'appris', () => {
+  const { c, confiance } = ctxPasSuspectWeb({ getThreadById: () => { throw new Error('Service invoked too many times for one day: gmail.'); } });
+  c.signalerPanneGmail_ = () => true;
+  const r = c.actionPasSuspect_({ postData: { contents: JSON.stringify({ threadId: '19f44ecc77d92299' }) } });
+  assert.deepStrictEqual({ ok: r.ok, erreur: r.erreur }, { ok: false, erreur: 'QUOTA_GMAIL' });
+  assert.strictEqual(confiance.length, 0);
+});

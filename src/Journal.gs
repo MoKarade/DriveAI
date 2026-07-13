@@ -7,6 +7,9 @@
  * Une erreur déclenche TOUJOURS une notif mail immédiate + une ligne de Journal.
  */
 
+// Expéditeurs DE CONFIANCE (clic « pas suspect » 1-clic de l'app, C28-19/ADR-0020).
+var COLONNES_CONFIANCE = ['Adresse', 'Ajouté le'];
+
 /** Crée les onglets et leurs en-têtes si absents. */
 function initialiserSheet_(ss) {
   creerOnglet_(ss, 'Entités', COLONNES_ENTITES); // cf. COLONNES_ENTITES (9 colonnes, dont Variante possible ? et Vu N fois)
@@ -20,6 +23,7 @@ function initialiserSheet_(ss) {
   creerOnglet_(ss, 'Échecs', ['Clé', 'Tentatives', 'Dernière tentative']); // compteur de quarantaine
   creerOnglet_(ss, 'Relances', ['Clé', 'Demandé le']); // demandes de relance de quarantaine (app web, ADR-0011)
   creerOnglet_(ss, 'TriAppris', ['Adresse', 'Libellé', 'Appris le']); // table adresse→libellé du tri Gmail (#16)
+  creerOnglet_(ss, 'Confiance', COLONNES_CONFIANCE); // expéditeurs « pas suspect » (C28-19, ADR-0020)
   creerOnglet_(ss, 'Réglages', ['Clé', 'Valeur']); // réglages modifiables depuis l'app (#22)
   // Réorg IA (#21) : demandes de l'app + actions proposées/validées/appliquées — machine à états,
   // aucune ligne jamais supprimée (cf. Reorg.gs).
@@ -428,6 +432,31 @@ function indexAjouter_(cle, resultat, empreinte) {
   ]);
   if (_indexCache !== null) _indexCache[cle] = true;
   if (_empreintesCache !== null && empreinte) _empreintesCache[empreinte] = true;
+}
+
+/**
+ * PURGE les lignes d'ÉTAT DU TRI d'un fil (clés `tri|<threadId>|…`) pour forcer son re-tri —
+ * « pas suspect » 1-clic (C28-19, ADR-0020). Ne touche QUE des lignes d'état du tri Gmail,
+ * jamais une ligne documentaire ; appelée SOUS le verrou du tick (appliquerPasSuspect_), jamais
+ * depuis doPost. Ordre décroissant (pas de décalage d'indices) ; cache du run invalidé.
+ * @param {string} threadId
+ * @return {number} lignes purgées
+ */
+function purgerClesTriIndex_(threadId) {
+  var f = feuille_('Index');
+  var dern = f.getLastRow();
+  if (dern < 2) return 0;
+  var prefixe = 'tri|' + threadId + '|';
+  var v = f.getRange(2, 1, dern - 1, 1).getValues();
+  var lignes = [];
+  for (var i = 0; i < v.length; i++) {
+    if (String(v[i][0]).indexOf(prefixe) === 0) lignes.push(i + 2);
+  }
+  for (var j = lignes.length - 1; j >= 0; j--) f.deleteRow(lignes[j]);
+  if (_indexCache !== null) {
+    for (var k in _indexCache) { if (k.indexOf(prefixe) === 0) delete _indexCache[k]; }
+  }
+  return lignes.length;
 }
 
 /* ---------- Quarantaine (compteur d'échecs) ---------- */

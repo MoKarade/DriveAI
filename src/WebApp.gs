@@ -43,6 +43,8 @@ function doPost(e) {
         reponse = actionDemandeTri_(e);
       } else if (action === 'demande-intentions') {
         reponse = actionDemandeIntentions_(e);
+      } else if (action === 'pas-suspect') {
+        reponse = actionPasSuspect_(e);
       } else {
         reponse = actionTickPonctuel_();
       }
@@ -280,6 +282,72 @@ function actionDemandeIntentions_(e) {
   props.setProperty('DriveAI_INTENTIONS_DEMANDE', String(Date.now()));
   journalInfo_('WebApp', 'Analyse des intentions à la demande programmée (fenêtre 30 j complète).');
   return actionTickPonctuel_();
+}
+
+/**
+ * « PAS SUSPECT » 1-clic (C28-19, ADR-0020) : apprend l'expéditeur DE CONFIANCE (onglet
+ * `Confiance`, dédupliqué) et dépose la demande de re-tri (Property `DriveAI_PAS_SUSPECT`,
+ * liste additive) consommée par le tick SOUS SON VERROU — JAMAIS de suppression de lignes
+ * d'Index ici : doPost court en concurrence du run (déviation documentée vs plan C28-19).
+ * Le libellé ⚠ Gmail du fil n'est jamais retiré (§2.3) : le moteur l'ignore désormais.
+ */
+function actionPasSuspect_(e) {
+  var props = PropertiesService.getScriptProperties();
+
+  var derniere = Number(props.getProperty('DriveAI_DERNIER_PAS_SUSPECT')) || 0;
+  if (Date.now() - derniere < 5000) {
+    return { ok: false, erreur: 'trop de requêtes — réessaie dans quelques secondes' };
+  }
+
+  var threadId = '';
+  try {
+    var corps = e && e.postData && e.postData.contents ? JSON.parse(e.postData.contents) : {};
+    threadId = validerThreadId_(corps.threadId);
+  } catch (err) {
+    threadId = '';
+  }
+  if (!threadId) return { ok: false, erreur: 'threadId invalide' };
+  props.setProperty('DriveAI_DERNIER_PAS_SUSPECT', String(Date.now()));
+
+  // Lecture du fil (adresse de l'expéditeur) — même règle de référence que le tri : le dernier
+  // message qui ne vient PAS de Marc (sinon un fil où il a répondu apprendrait SA propre adresse).
+  var adresse = '';
+  try {
+    var fil = GmailApp.getThreadById(threadId);
+    if (!fil) return { ok: false, erreur: 'fil introuvable' };
+    var messages = fil.getMessages();
+    var proprio = (CONFIG.PROPRIETAIRE_EMAIL || '').toLowerCase();
+    for (var i = messages.length - 1; i >= 0; i--) {
+      var a = adresseExpediteur_(messages[i].getFrom());
+      if (a && a !== proprio) { adresse = a; break; }
+    }
+  } catch (err) {
+    if (signalerPanneGmail_(err)) return { ok: false, erreur: 'QUOTA_GMAIL' };
+    return { ok: false, erreur: 'fil illisible : ' + err };
+  }
+  if (!adresse) return { ok: false, erreur: 'expéditeur introuvable sur ce fil' };
+
+  apprendreConfiance_(adresse);
+
+  // Demande de re-tri ADDITIVE (plusieurs clics avant le prochain tick s'accumulent, jamais écrasés).
+  var ids = [];
+  try { ids = JSON.parse(props.getProperty('DriveAI_PAS_SUSPECT') || '[]') || []; } catch (err) { ids = []; }
+  if (ids.indexOf(threadId) === -1) ids.push(threadId);
+  props.setProperty('DriveAI_PAS_SUSPECT', JSON.stringify(ids));
+
+  journalInfo_('WebApp', 'Pas-suspect : « ' + adresse + ' » ajouté à Confiance (fil re-trié au prochain passage).');
+  actionTickPonctuel_(); // passage immédiat — le fil est re-jugé « sain » dans la ~minute
+  return { ok: true, message: 'Expéditeur de confiance : ' + adresse + ' — le fil est re-trié dans la minute.' };
+}
+
+/**
+ * Valide un threadId Gmail (donnée UTILISATEUR via HTTP) : hexadécimal court, jamais un
+ * séparateur de clé d'Index (`|`) — il entre dans le préfixe `tri|<id>|` purgé par le tick.
+ * PURE (testée). @return {string} threadId propre, ou ''
+ */
+function validerThreadId_(brut) {
+  var t = String(brut || '').trim();
+  return /^[a-zA-Z0-9]{8,32}$/.test(t) ? t : '';
 }
 
 /**

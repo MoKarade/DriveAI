@@ -43,6 +43,10 @@ const CONTRAT = [
   // tri & intentions À LA DEMANDE (C28-16 — panneau « Analyser & trier » de l'app)
   'forcerSondeQuotaGmail_', 'scanDemandeTri_', 'effacerDemandeTri_',
   'actionDemandeTri_', 'actionDemandeIntentions_', 'validerDemandeTri_',
+  // curation des mails (C28-19, ADR-0020) : confiance, scan cyclique, « pas suspect » 1-clic
+  'decisionSuspect_', 'confianceCache_', 'reinitialiserConfianceCache_', 'apprendreConfiance_',
+  'scanCycliqueTri_', 'appliquerPasSuspect_', 'purgerClesTriIndex_',
+  'actionPasSuspect_', 'validerThreadId_',
   'traiterDepots_', 'ordonnerDepots_', 'collecterPartages_', 'appliquerMigrationTaxonomie_',
   // re-analyse v2 ciblée (C26-08, ADR-0018)
   'estAReanalyser_', 'appliquerReanalyseCiblee_', 'reanalyserUnePage_', 'collecterAReanalyser_',

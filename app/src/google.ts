@@ -851,3 +851,13 @@ export async function demandeTriGmail(fenetre: number, archiver: boolean, plafon
 export async function demandeIntentions(): Promise<string> {
   return demandeWebApp('demande-intentions', {});
 }
+
+/**
+ * « Pas suspect » 1-clic (C28-19) : l'expéditeur du fil devient DE CONFIANCE (onglet Confiance)
+ * et le fil est re-trié « sain » par le moteur dans la ~minute. Le libellé ⚠ Gmail existant
+ * n'est PAS retiré (garde-fou §2.3 — le moteur ne retire jamais un libellé), mais il est
+ * désormais ignoré : le fil suit le tri normal (archivé s'il est lu).
+ */
+export async function marquerPasSuspect(threadId: string): Promise<string> {
+  return demandeWebApp('pas-suspect', { threadId });
+}

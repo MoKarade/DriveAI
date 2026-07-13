@@ -183,6 +183,9 @@ var CONFIG = {
   // mini-appels pour des fils DÉJÀ archivés par Marc/l'ancien Cowork — hors objectif « boîte propre »).
   TRI_REQUETE: 'newer_than:30d in:inbox',
   TRI_MAX_FILS_PAR_RUN: 30,               // écritures Gmail bornées par run (quotas)
+  TRI_CYCLIQUE_PAGES_PAR_RUN: 1,          // C28-19 : pages du scan CYCLIQUE par tick — borne les
+                                          // LECTURES Gmail dans leur unité (leçon quota partagé) ;
+                                          // 1 page de 20 fils/tick ⇒ tour de la fenêtre 30 j ≈ 30-60 min
   TRI_DEMANDE_PLAFOND_MAX: 1000,          // borne DURE du plafond réglable au clic (C28-16) — la
                                           // demande s'étale sur plusieurs ticks, jamais plus par run
                                           // que TRI_MAX_FILS_PAR_RUN (le quota reste protégé)

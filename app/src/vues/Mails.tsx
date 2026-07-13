@@ -11,6 +11,7 @@ import { useEtatGlobal } from '../etatGlobal';
 import { IndicateurChargement, BanniereErreur } from '../composants/UI';
 import { Creation } from '../composants/Creation';
 import { PanneauActions } from '../composants/PanneauActions';
+import { ListeSuspects } from '../composants/Suspects';
 import {
   LigneIndex,
   LigneTriAppris,
@@ -114,15 +115,7 @@ export function Mails({ langue }: { langue: Langue }) {
       <section className="carte">
         <h2>⚠ {t('suspectsTitre', langue)}</h2>
         {suspects.length === 0 && <p className="explication">{t('aucunSuspect', langue)}</p>}
-        {suspects.map((l) => (
-          <a key={l.cle} className="alerte-suspect" href={lienGmailPourLigne(l)} target="_blank" rel="noreferrer">
-            <span className="ic" aria-hidden="true">!</span>
-            <span>
-              <b>{l.fichier}</b>
-              <span className="date"> · {formaterDateCourte(l.traiteLe, langue === 'fr' ? 'fr-CA' : 'en-CA')}</span>
-            </span>
-          </a>
-        ))}
+        <ListeSuspects langue={langue} suspects={suspects} max={8} />
         <p className="explication">{t('suspectsNote', langue)}</p>
       </section>
 

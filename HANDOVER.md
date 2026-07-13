@@ -14,6 +14,17 @@
 >   bloquée (phase de recensement puis reprise, 5 docs re-classés 16:47-16:52) ; son recensement
 >   coupé au budget a posé une base partielle (0) — la re-base absorbe, « terminé » viendra sur
 >   passe vide puis C26-08 s'enchaîne seule.
+> • **2026-07-13 — C28-19 : curation des mails (ADR-0020, plan NotebookLM)** : retours Marc
+>   « facture sans tâche / lus non archivés / trop de faux suspects / pas de bouton ». Livré :
+>   prompts intentions ÉLARGIS (facture à payer / action requise ⇒ tâche Tasks + ⏰ en boîte) ;
+>   `scanCycliqueTri_` (offset persistant qui fait le tour de la boîte 30 j en ~30-60 min — un
+>   fil lu tardivement finit TOUJOURS re-trié donc archivé ; scan avant + mur conservés pour la
+>   latence du neuf, déviation documentée) ; onglet `Confiance` + `decisionSuspect_` PURE
+>   (le clic « ✓ Pas suspect » de l'app apprend l'expéditeur — outrepasse heuristique, LLM et ⚠
+>   déjà posé ; le libellé Gmail physique reste, §2.3) ; `actionPasSuspect_` (doPost) + purge/
+>   re-tri sous le verrou du tick. Audit §8.5 sur les 5 faux positifs réels. **⚠ Marc doit
+>   REDÉPLOYER la web app (« Nouvelle version ») pour activer le bouton.** La règle d'archivage
+>   est INCHANGÉE (archivé une fois lu — décision re-confirmée).
 > • **2026-07-10 — C28-18 : progression LIVE des opérations (plan NotebookLM)** : l'onglet
 >   `Progression` devient un tableau multi-opérations (7 colonnes) écrit UNE fois par tick dans le
 >   `finally` (`majProgressions_` — les avancées partielles d'un run interrompu comptent aussi) ;

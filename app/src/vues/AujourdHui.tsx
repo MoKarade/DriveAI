@@ -16,6 +16,7 @@ import { useEtatGlobal } from '../etatGlobal';
 import { IndicateurChargement } from '../composants/UI';
 import { PanneauActions } from '../composants/PanneauActions';
 import { OperationsLive } from '../composants/OperationsLive';
+import { ListeSuspects } from '../composants/Suspects';
 import {
   LigneIndex,
   Sante,
@@ -86,15 +87,7 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
         {suspects.length > 0 && (
           <div className="attention-bloc">
             <h3>⚠ {t('suspectsTitre', langue)} ({suspects.length})</h3>
-            {suspects.slice(0, SUSPECTS_MAX).map((l) => (
-              <a key={l.cle} className="alerte-suspect" href={lienGmailPourLigne(l)} target="_blank" rel="noreferrer">
-                <span className="ic" aria-hidden="true">!</span>
-                <span>
-                  <b>{l.fichier}</b>
-                  <span className="date"> · {formaterDateCourte(l.traiteLe, locale)}</span>
-                </span>
-              </a>
-            ))}
+            <ListeSuspects langue={langue} suspects={suspects} max={SUSPECTS_MAX} />
             <p className="explication">{t('suspectsNote', langue)}</p>
           </div>
         )}
