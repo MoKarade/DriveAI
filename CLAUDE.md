@@ -263,8 +263,10 @@ NotebookLM en devient l'entrée, pas le remplacement.
 - **Campagne Gmail : requête figée ⇒ appartenance stable, mais l'ORDRE bouge quand même** (tri par
   DERNIER message, suppressions) — l'offset persistant sert à PROGRESSER, jamais à prouver la
   COMPLÉTUDE. Celle-ci vient de « terminé quand DEUX passes complètes consécutives ne collectent
-  plus rien » (offset remis à 0 si la passe a eu de l'activité ; re-passe quasi gratuite par
-  l'Index), avec abandon tracé d'un fil en échec après N essais — comptés par PASSE (à la complétion
+  plus rien » (offset remis à 0 si la passe a eu de l'activité ; la re-passe n'est « quasi gratuite
+  par l'Index » que côté TRAITEMENT — côté quota de LECTURE elle coûte plein pot et se
+  budgète/priorise comme la campagne elle-même, vécu 07-13 : la passe de vérification historique a
+  affamé le tri plusieurs jours), avec abandon tracé d'un fil en échec après N essais — comptés par PASSE (à la complétion
   de page), jamais par rejeu (sinon 3 essais brûlés en 15 min sur une erreur transitoire). Les
   plafonds/run se vérifient à l'unité de COÛT réelle (la PJ) et à CHAQUE niveau de boucle ; un
   plafond par RUN ne borne pas la JOURNÉE (×288 ticks > quota runtime ~90 min/j) → toute campagne de
