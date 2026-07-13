@@ -1005,3 +1005,21 @@ suspension→rétabli→re-mort en secondes/minutes = un consommateur de fond qu
 glissante au fil de l'eau — chercher QUI tourne au retour du quota, pas combien il en reste."
 **Règle durable ?** oui (corrige la parenthèse « re-passe quasi gratuite » de la règle campagne
 Gmail — CLAUDE.md §7 amendé).
+
+## 2026-07-13 — Un compteur de plafond se met à jour sur le coût CONSOMMÉ, jamais sur le travail COMPLÉTÉ
+**Contexte.** Exécution C28-21 (plafonds quotidiens de fils lus, PR #154) : le plan comptait les
+fils du jour dans le bloc `pageComplete` de la campagne historique. Trace multi-ticks avant de
+coder : dès que le reliquat du jour devient plus petit qu'une page, la page s'interrompt au
+plafond → n'est jamais « complète » → ses re-lectures ne sont JAMAIS comptées → la même page est
+re-lue à chaque tick toute la journée — le drainage silencieux que le plafond devait corriger.
+Deux corrections (déviations documentées) : compter les fils LUS même sur page interrompue
+(historique) ; RÉTRÉCIR la page au reliquat pour qu'elle reste complétable (cyclique — l'offset
+avance au lieu de rejouer).
+**Leçon.** "Un compteur qui alimente un plafond de COÛT s'incrémente au moment où le coût est
+CONSOMMÉ (le fil est lu, l'appel est parti), jamais à la complétion de l'unité de travail (page,
+lot) : tout chemin d'interruption entre les deux (plafond, budget, coupure) laisse du coût
+non compté qui se rejoue en boucle. Et quand un plafond peut couper une unité de travail en son
+milieu, préférer RÉTRÉCIR l'unité au reliquat (elle se complète, l'état avance) plutôt que
+l'interrompre (elle se rejoue). Vérifier par une trace multi-ticks au reliquat < unité."
+**Règle durable ?** non (instances de « plafond à l'unité de coût réelle » et « tracer un
+scénario concret sur plusieurs ticks » — le patron concret vit ici).
