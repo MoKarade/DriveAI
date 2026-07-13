@@ -479,7 +479,8 @@ function scanAvantTri_(etat, plafondAtteint, candidats, libelles) {
  * revisité un jour — un fil LU des jours après son tri est ENFOUI sous le mur « déjà à jour »
  * du scan avant et n'était JAMAIS re-trié (⇒ jamais archivé ; vécu : 2-11 fils/j au lieu de
  * ~90). Offset persistant (`DriveAI_TRI_CYCLIQUE_OFFSET`) qui avance page après page et REPART à 0
- * en fin de fenêtre — tour complet ≈ 30-60 min au fil des ticks.
+ * en fin de fenêtre — tour complet en ~1-3 jours (plafond quotidien `TRI_CYCLIQUE_MAX_FILS_JOUR`,
+ * C28-21) ; le scan AVANT garde la latence ~5 min sur le courrier neuf.
  * DÉVIATION documentée vs plan C28-19 (« remplacer le mur ») : le scan AVANT et son arrêt tôt
  * sont CONSERVÉS — sans eux, (a) le courrier NEUF perdrait sa latence ~5 min (leçon « scan du
  * neuf qui s'arrête tôt »), (b) un balayage libre relirait TOUTE la boîte à chaque tick (leçon
@@ -490,31 +491,54 @@ function scanAvantTri_(etat, plafondAtteint, candidats, libelles) {
  */
 function scanCycliqueTri_(etat, plafondAtteint, candidats, libelles) {
   var props = PropertiesService.getScriptProperties();
-  for (var page = 0; page < CONFIG.TRI_CYCLIQUE_PAGES_PAR_RUN; page++) {
-    if (plafondAtteint()) return;
-    var offset = Number(props.getProperty('DriveAI_TRI_CYCLIQUE_OFFSET')) || 0;
-    var fils;
-    try {
-      fils = GmailApp.search(CONFIG.TRI_REQUETE, offset, CONFIG.PAGE_FILS_ACTIONS);
-    } catch (e) {
-      if (signalerPanneGmail_(e)) return; // quota épuisé (C28-15) : suspension, offset inchangé
-      journalErreur_('TriGmail', 'Recherche des fils (cyclique) impossible : ' + e);
-      return;
+  // Plafond QUOTIDIEN de lectures (C28-21, plan architecte) : les revisites du cyclique sont
+  // « gratuites » côté traitement (déjà-vus servis par l'Index) mais chaque fil visité coûte des
+  // appels Gmail — sans plafond, 1 page × 288 ticks ≈ 5 760 lectures/jour sur le quota PARTAGÉ
+  // (leçon « la re-passe n'est gratuite que côté traitement »). Compté dans SON unité (fils).
+  var aujourdhui = dateGmail_(new Date());
+  var filsJour = props.getProperty('DriveAI_TRI_CYCLIQUE_JOUR') === aujourdhui
+    ? Number(props.getProperty('DriveAI_TRI_CYCLIQUE_FILS_JOUR')) || 0
+    : 0;
+  var filsLus = 0;
+  try {
+    for (var page = 0; page < CONFIG.TRI_CYCLIQUE_PAGES_PAR_RUN; page++) {
+      if (plafondAtteint()) return;
+      // Page RÉTRÉCIE au reliquat du jour (déviation documentée vs plan : interrompre une page
+      // pleine à `maxCeRun` la ferait REJOUER chaque tick sans avancer l'offset — des re-lectures
+      // en boucle, le bug même que ce plafond corrige) : plus petite, elle reste COMPLÉTABLE.
+      var taille = Math.min(CONFIG.PAGE_FILS_ACTIONS,
+        CONFIG.TRI_CYCLIQUE_MAX_FILS_JOUR - filsJour - filsLus);
+      if (taille <= 0) return; // plafond quotidien atteint — le tour reprend demain (aucune recherche)
+      var offset = Number(props.getProperty('DriveAI_TRI_CYCLIQUE_OFFSET')) || 0;
+      var fils;
+      try {
+        fils = GmailApp.search(CONFIG.TRI_REQUETE, offset, taille);
+      } catch (e) {
+        if (signalerPanneGmail_(e)) return; // quota épuisé (C28-15) : suspension, offset inchangé
+        journalErreur_('TriGmail', 'Recherche des fils (cyclique) impossible : ' + e);
+        return;
+      }
+      signalerRetablissementGmail_();
+      if (!fils.length) {
+        props.setProperty('DriveAI_TRI_CYCLIQUE_OFFSET', '0'); // tour complet : on repart du haut
+        return;
+      }
+      var pageComplete = true;
+      for (var i = 0; i < fils.length; i++) {
+        if (plafondAtteint()) { pageComplete = false; break; }
+        filsLus++; // le fil va être LU (trierFil_) : coût quota réel, page complétée ou non
+        var r = trierFil_(fils[i], candidats, libelles, false);
+        if (r === 'traite') etat.traites++;
+        if (r === 'attend') etat.attentes++;
+      }
+      if (!pageComplete) return; // page interrompue rejouée au tick suivant (déjà-vus gratuits)
+      props.setProperty('DriveAI_TRI_CYCLIQUE_OFFSET', String(offset + fils.length));
     }
-    signalerRetablissementGmail_();
-    if (!fils.length) {
-      props.setProperty('DriveAI_TRI_CYCLIQUE_OFFSET', '0'); // tour complet : on repart du haut
-      return;
+  } finally {
+    if (filsLus > 0) {
+      props.setProperty('DriveAI_TRI_CYCLIQUE_JOUR', aujourdhui);
+      props.setProperty('DriveAI_TRI_CYCLIQUE_FILS_JOUR', String(filsJour + filsLus));
     }
-    var pageComplete = true;
-    for (var i = 0; i < fils.length; i++) {
-      if (plafondAtteint()) { pageComplete = false; break; }
-      var r = trierFil_(fils[i], candidats, libelles, false);
-      if (r === 'traite') etat.traites++;
-      if (r === 'attend') etat.attentes++;
-    }
-    if (!pageComplete) return; // page interrompue rejouée au tick suivant (déjà-vus gratuits)
-    props.setProperty('DriveAI_TRI_CYCLIQUE_OFFSET', String(offset + fils.length));
   }
 }
 

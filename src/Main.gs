@@ -788,6 +788,18 @@ function traiterGmailHistorique_(estBudgetDepasse) {
  * @param {function():boolean} estBudgetDepasse
  */
 function traiterPageHistorique_(props, estBudgetDepasse) {
+  // Plafond QUOTIDIEN de FILS (C28-21, plan architecte) : le budget en ms ne borne pas un quota
+  // d'APPELS — la passe de VÉRIFICATION, « gratuite » côté traitement (Index), lisait des
+  // centaines de fils en 20 min et drainait le quota Gmail du compte en continu (vécu 11-13/07 :
+  // re-mort en 8 s-6 min à chaque re-sonde, flux vivant affamé). Compté dans SON unité (fils).
+  var aujourdhui = dateGmail_(new Date());
+  var filsJour = props.getProperty('DriveAI_GMAIL_HISTO_JOUR') === aujourdhui
+    ? Number(props.getProperty('DriveAI_GMAIL_HISTO_FILS_JOUR')) || 0
+    : 0;
+  var maxCeRun = Math.min(CONFIG.GMAIL_HISTO_MAX_FILS_PAR_RUN,
+    Math.max(0, CONFIG.GMAIL_HISTO_MAX_FILS_JOUR - filsJour));
+  if (maxCeRun <= 0) return; // plafond de fils du jour atteint — repris demain (aucune recherche)
+
   var ancre = props.getProperty('DriveAI_GMAIL_HISTO_ANCRE');
   if (!ancre) {
     // 1ᵉʳ run : ancre posée UNE FOIS à −29 j — `before:` est EXCLUSIF et `newer_than:30d` peut être
@@ -850,7 +862,7 @@ function traiterPageHistorique_(props, estBudgetDepasse) {
   var doitSarreter = function () {
     return estBudgetDepasse() || estPannePlateforme_() || estPanneGmail_() ||
       inedites >= CONFIG.GMAIL_HISTO_MAX_PJ_INEDITES ||
-      filsParcourus >= CONFIG.GMAIL_HISTO_MAX_FILS_PAR_RUN;
+      filsParcourus >= maxCeRun; // par-run ET reliquat du plafond quotidien (C28-21)
   };
   for (var i = 0; i < fils.length && pageComplete; i++) {
     if (doitSarreter()) { pageComplete = false; break; }
@@ -881,6 +893,15 @@ function traiterPageHistorique_(props, estBudgetDepasse) {
       // doit pas brûler les essais d'un fil toutes les 5 min — un essai par PASSE, pas par tick.
       echecsRun.push({ filId: filId, erreur: String(e) });
     }
+  }
+  // Coût RÉEL compté même sur page INTERROMPUE (déviation documentée au plan C28-21, qui comptait
+  // dans `pageComplete`) : le rejeu re-lira ces fils — le quota de LECTURE est consommé, page
+  // complétée ou non. Sinon, dès que le reliquat du jour devient plus petit qu'une page, la page
+  // ne se complète jamais et ses re-lectures ne seraient JAMAIS comptées : drainage silencieux à
+  // chaque tick, le bug même que ce plafond corrige. La DATE du compteur reste écrite par
+  // `traiterGmailHistorique_` (finally), SEUL écrivain de DriveAI_GMAIL_HISTO_JOUR.
+  if (filsParcourus > 0) {
+    props.setProperty('DriveAI_GMAIL_HISTO_FILS_JOUR', String(filsJour + filsParcourus));
   }
   if (pageComplete) {
     for (var k = 0; k < echecsRun.length; k++) {

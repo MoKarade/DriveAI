@@ -285,3 +285,64 @@ test('historique : budget épuisé mi-page → offset inchangé (aucune perte, r
   assert.deepStrictEqual(calls.pj, ['a']);
   assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_OFFSET, '10');
 });
+
+/* ---------- C28-21 : plafond QUOTIDIEN de FILS (le budget en ms ne borne pas un quota d'appels) ---------- */
+
+test('historique : plafond de FILS du jour atteint → retour immédiat SANS recherche Gmail', () => {
+  const auj = ctxPur.dateGmail_(new Date());
+  const MAX = ctxPur.CONFIG.GMAIL_HISTO_MAX_FILS_JOUR; // dérivé de la CONSTANTE, jamais de sa valeur
+  const { c, calls } = ctxHisto({
+    props: {
+      DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02',
+      DriveAI_GMAIL_HISTO_JOUR: auj,
+      DriveAI_GMAIL_HISTO_FILS_JOUR: String(MAX),
+    },
+    page: () => { throw new Error('aucune recherche ne doit partir au plafond'); },
+  });
+  c.traiterGmailHistorique_(() => false);
+  assert.strictEqual(calls.pages.length, 0, 'plafond du jour atteint = zéro appel Gmail');
+  // « Lendemain » : la Property JOUR ne matche plus → compteur reparti de zéro → la campagne relit.
+  calls.props.DriveAI_GMAIL_HISTO_JOUR = '2020/01/01';
+  c.pageFilsHisto_ = (ancre, offset) => { calls.pages.push({ ancre, offset }); return []; };
+  c.traiterGmailHistorique_(() => false);
+  assert.strictEqual(calls.pages.length, 1);
+});
+
+test('historique : les fils lus s\'AJOUTENT au compteur du jour, MÊME sur page interrompue (coût réel)', () => {
+  const auj = ctxPur.dateGmail_(new Date());
+  // Page interrompue par le plafond d'inédites (3 inédites dans 1 fil, plafond 2) : le FIL a bien
+  // été lu — sans ce comptage, un reliquat du jour plus petit qu'une page tournerait en
+  // re-lectures jamais comptées à chaque tick (drainage silencieux, le bug corrigé ici).
+  const { c, calls } = ctxHisto({
+    props: {
+      DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02',
+      DriveAI_GMAIL_HISTO_JOUR: auj,
+      DriveAI_GMAIL_HISTO_FILS_JOUR: '7',
+    },
+    page: () => [fil([['a'], ['b'], ['c']])],
+  });
+  c.traiterGmailHistorique_(() => false);
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_OFFSET ?? '0', '0'); // page rejouée (inédites)
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_FILS_JOUR, '8', 'fil lu compté malgré la page interrompue');
+});
+
+test('historique : reliquat du jour < plafond par run → le run s\'arrête au reliquat, puis zéro appel', () => {
+  const auj = ctxPur.dateGmail_(new Date());
+  const MAX = ctxPur.CONFIG.GMAIL_HISTO_MAX_FILS_JOUR;
+  // Reliquat = 1 : le 1ᵉʳ fil est LU (compté — même sémantique de frontière que le frein par run,
+  // ses PJ rejouées demain), le 2ᵉ jamais touché ; au run suivant, plus AUCUNE recherche.
+  const { c, calls } = ctxHisto({
+    props: {
+      DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02',
+      DriveAI_GMAIL_HISTO_JOUR: auj,
+      DriveAI_GMAIL_HISTO_FILS_JOUR: String(MAX - 1),
+    },
+    page: () => [fil([['v1']]), fil([['v2']])],
+    indexContient_: () => true, // re-lecture pure : gratuite côté traitement, PAS côté quota
+  });
+  c.traiterGmailHistorique_(() => false);
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_FILS_JOUR, String(MAX)); // 1 fil lu, compté
+  assert.strictEqual(calls.props.DriveAI_GMAIL_HISTO_OFFSET ?? '0', '0'); // page rejouée demain
+  c.traiterGmailHistorique_(() => false); // plafond du jour atteint
+  assert.strictEqual(calls.pages.length, 1, 'plus aucune recherche le reste de la journée');
+});

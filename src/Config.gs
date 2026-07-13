@@ -159,6 +159,13 @@ var CONFIG = {
   // GMAIL_HISTO_PAGE_FILS (10) fils — ce frein ne borne donc que si la page grossit un jour ;
   // c'est le budget quotidien ci-dessus qui porte la protection principale.
   GMAIL_HISTO_MAX_FILS_PAR_RUN: 50,
+  // Plafond QUOTIDIEN de fils lus par la campagne historique (C28-21, plan architecte) : le budget
+  // en ms ci-dessus ne borne PAS un quota d'APPELS — la passe de VÉRIFICATION, « gratuite » côté
+  // traitement (Index), lit des centaines de fils en 20 min et drainait le quota Gmail du compte
+  // en continu (vécu 11-13/07 : re-mort en 8 s-6 min à chaque re-sonde, tri affamé toute la
+  // journée). ~150 fils ≈ 2 % du quota : le flux vivant garde l'essentiel, la campagne s'étire de
+  // quelques jours — prix accepté. Compté dans SON unité (fils), persisté par jour.
+  GMAIL_HISTO_MAX_FILS_JOUR: 150,
   // Suspension PERSISTÉE sur quota Gmail épuisé (C28-15, patron panne de compte LLM R2) : quand
   // Google répond « Service invoked too many times for one day: gmail. », TOUS les scans Gmail
   // sont suspendus (Property DriveAI_GMAIL_QUOTA) puis re-sondés après ce délai — sans elle,
@@ -186,6 +193,10 @@ var CONFIG = {
   TRI_CYCLIQUE_PAGES_PAR_RUN: 1,          // C28-19 : pages du scan CYCLIQUE par tick — borne les
                                           // LECTURES Gmail dans leur unité (leçon quota partagé) ;
                                           // 1 page de 20 fils/tick ⇒ tour de la fenêtre 30 j ≈ 30-60 min
+  TRI_CYCLIQUE_MAX_FILS_JOUR: 150,        // C28-21 : plafond QUOTIDIEN de fils lus par le balayage
+                                          // cyclique (sans lui : 1 page × 288 ticks ≈ 5 760
+                                          // lectures/j) — le tour de la boîte s'étale sur ~2-3 j,
+                                          // le scan AVANT garde sa latence ~5 min sur le neuf
   TRI_DEMANDE_PLAFOND_MAX: 1000,          // borne DURE du plafond réglable au clic (C28-16) — la
                                           // demande s'étale sur plusieurs ticks, jamais plus par run
                                           // que TRI_MAX_FILS_PAR_RUN (le quota reste protégé)
