@@ -14,6 +14,19 @@
 >   bloquée (phase de recensement puis reprise, 5 docs re-classés 16:47-16:52) ; son recensement
 >   coupé au budget a posé une base partielle (0) — la re-base absorbe, « terminé » viendra sur
 >   passe vide puis C26-08 s'enchaîne seule.
+> • **2026-07-13 — C28-21 : quota Gmail rendu au flux vivant + migration recentrée (plan
+>   architecte NotebookLM, 2 PR)** : retours Marc « aucun mail archivé » (attente : lu ⇒ archivé
+>   en ~min) + « tellement de fichiers Inconnu ». Diagnostic : quota Gmail drainé EN CONTINU par
+>   la passe de VÉRIFICATION historique (964 fils re-parcourus depuis l'offset 0 à chaque retour
+>   de quota — re-mort en 8 s-6 min, 2-11 fils triés/j) ; 2 944 fichiers « Inconnu » (v1) avec m1
+>   à ~50-90 docs/j et c26-08 en attente derrière. Livré : (1) PR #153 — `estAMigrer_` ne
+>   collecte QUE les noms portant « Inconnu » (tag `m2-inconnu`, barre re-recensée, c26-08
+>   enchaîne à sa fin) ; (2) PR #154 — plafonds QUOTIDIENS dans l'unité réelle :
+>   `GMAIL_HISTO_MAX_FILS_JOUR` 150 + `TRI_CYCLIQUE_MAX_FILS_JOUR` 150 (compteurs persistés par
+>   jour, retour immédiat sans recherche au plafond ; fils comptés même sur page interrompue ;
+>   page cyclique rétrécie au reliquat). Attendu dès demain : le tri/archivage vit TOUTE la
+>   journée (~96 % du quota au flux vivant), la demande « Tri 7 j/100 fils » de Marc se sert au
+>   retour du quota (~03h) ; m2-inconnu finit en jours puis c26-08 draine 03/08.
 > • **2026-07-13 — C28-20 : zéro configuration client + verrou d'identité (ADR-0021, plan
 >   NotebookLM)** : demande Marc « je veux rien avoir à mettre, juste mon compte Google ».
 >   Livré : `/api/login` demande en plus `openid email` ; `/api/callback` compare l'email VÉRIFIÉ
