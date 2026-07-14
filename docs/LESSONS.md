@@ -1023,3 +1023,21 @@ milieu, préférer RÉTRÉCIR l'unité au reliquat (elle se complète, l'état a
 l'interrompre (elle se rejoue). Vérifier par une trace multi-ticks au reliquat < unité."
 **Règle durable ?** non (instances de « plafond à l'unité de coût réelle » et « tracer un
 scénario concret sur plusieurs ticks » — le patron concret vit ici).
+
+## 2026-07-14 — Un canal d'écriture externe jamais vérifié de bout en bout peut échouer en silence pendant des jours (et sa boucle de re-tentatives draine un quota TIERS)
+**Contexte.** Diagnostic C28-22 (« mes anciens mails sont pas archivés ») : la création de tâches
+Google échouait en HTTP 403 « Tasks API has not been used in project … » depuis le 07/07 — l'API
+n'a JAMAIS été activée dans le projet GCP, aucune tâche n'a jamais été créée en prod. La clé
+d'idempotence `tache|` n'étant posée qu'au SUCCÈS, chaque mail actionnable était re-analysé et
+re-tenté à CHAQUE tick (79 erreurs le 14/07 avant 9h) — et ces re-lectures Gmail drainaient le
+quota que C28-21 venait de protéger (re-mort en 24 s à chaque re-sonde). Bonus : les mails de la
+boucle étaient des ARNAQUES (« payer 10 USD à Google Cloud Compliance ») que les intentions
+élargies transformaient en tâches « à payer ».
+**Leçon.** Instances de trois règles durables existantes, à re-appliquer ensemble : (1) « un canal
+n'existe que VÉRIFIÉ de bout en bout une fois » vaut pour TOUT canal d'écriture externe
+(Tasks/Calendar/mail), pas seulement les alertes — une création RÉELLE vérifiée au déploiement
+aurait montré le 403 le jour 1 ; (2) un échec d'écriture SANS marquage d'échec (clé posée au seul
+succès) = re-tentative infinie qui consomme des quotas TIERS — patron `gererEchec_` + panne de
+plateforme pour les erreurs de CONFIG permanentes ; (3) « classer par ORIGINE avant de compter » :
+la MÊME signature d'erreur ×79/jour dans le Journal est le signal d'une boucle, pas 79 incidents.
+**Règle durable ?** non (instances — le correctif codé viendra avec le plan C28-22).
