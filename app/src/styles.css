@@ -317,6 +317,54 @@ table.cal { table-layout: fixed; border-collapse: collapse; }
   .cal .ev { display: none; }
   .cal td:has(.ev)::after { content: '•'; color: var(--donnee); font-size: 1rem; line-height: 0.4; display: block; }
 }
+/* grille HORAIRE façon Google Agenda (C28-23 PR2) : blocs absolus, gouttière, « maintenant » */
+.grille-temps { --gt-haut: 1152px; }
+.gt-rang { display: grid; }
+.gt-entete {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  border: none; background: none; padding: 0.35rem 0 0.5rem; border-radius: 10px;
+}
+.gt-entete:not(:disabled):hover { background: var(--carte-2); filter: none; transform: none; }
+.gt-nom { font-size: 0.66rem; letter-spacing: 0.1em; color: var(--texte-doux); font-weight: 500; }
+.gt-num {
+  font-size: 1.4rem; font-weight: 400; color: var(--texte);
+  width: 2.4rem; height: 2.4rem; line-height: 2.4rem; border-radius: 50%; text-align: center;
+}
+.gt-entete.auj .gt-nom { color: var(--accent); }
+.gt-entete.auj .gt-num { background: var(--accent); color: var(--sur-accent); }
+.gt-tj { border-top: 1px solid var(--rang); border-bottom: 1px solid var(--rang); min-height: 1.5rem; }
+.gt-tj-col { display: flex; flex-direction: column; gap: 2px; padding: 2px; border-left: 1px solid var(--rang); min-width: 0; }
+.gt-bloc-tj {
+  background: #5f6368; color: #fff; border-radius: 6px; font-size: 0.72rem;
+  padding: 1px 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.gt-bloc-tj.ia { background: #f9ab00; color: #131314; }
+.gt-corps { position: relative; height: var(--gt-haut); }
+.gt-gouttiere { position: relative; }
+.gt-gouttiere span {
+  position: absolute; right: 8px; transform: translateY(-50%);
+  font-size: 0.68rem; color: var(--texte-doux); font-variant-numeric: tabular-nums;
+}
+.gt-col {
+  position: relative; border-left: 1px solid var(--rang); cursor: pointer;
+  background: repeating-linear-gradient(to bottom, var(--rang) 0 1px, transparent 1px calc(var(--gt-haut) / 24));
+}
+.gt-ev {
+  position: absolute; left: 3px; right: 3px; z-index: 2;
+  display: flex; flex-direction: column; gap: 1px;
+  background: #4285f4; color: #fff; border-radius: 8px; padding: 3px 8px;
+  font-size: 0.74rem; line-height: 1.3; overflow: hidden; text-decoration: none;
+  box-shadow: 0 0 0 1.5px var(--carte); min-height: 14px;
+}
+.gt-ev b { font-weight: 600; }
+.gt-ev span { opacity: 0.92; }
+.gt-ev.ia { background: #f9ab00; color: #131314; }
+.gt-maintenant { position: absolute; left: 0; right: 0; height: 2px; background: #ea4335; z-index: 3; pointer-events: none; }
+.gt-maintenant::before {
+  content: ''; position: absolute; left: -4px; top: -4px;
+  width: 10px; height: 10px; border-radius: 50%; background: #ea4335;
+}
+
 .det-ligne { display: flex; gap: 0.6rem; align-items: baseline; padding: 0.5rem 0; border-top: 1px solid var(--rang); font-size: 0.9rem; }
 .det-ligne:first-of-type { border-top: none; }
 .det-lien { margin-left: auto; color: var(--accent); text-decoration: none; font-size: 0.8rem; white-space: nowrap; }

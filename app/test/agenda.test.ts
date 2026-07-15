@@ -7,15 +7,78 @@ import { describe, it, expect } from 'vitest';
 import {
   grilleMois,
   grilleSemaine,
+  grilleJour,
+  grilleTroisJours,
   cleJour,
   interpreterEvenements,
   interpreterTaches,
   evenementsDuJour,
   tachesDuJour,
   heureEvenement,
+  libelleHoraire,
+  positionEvenement,
+  positionMaintenant,
   titresDriveAI,
+  Evenement,
 } from '../src/agenda';
 import { interpreterIndex } from '../src/etat';
+
+/* ---------- grille horaire absolue (C28-23 PR2) ---------- */
+
+function evt(sur: Partial<Evenement>): Evenement {
+  return {
+    id: 'x', titre: 'T', debut: '2026-07-15T06:45:00', fin: '2026-07-15T08:00:00',
+    journee: false, lieu: '', lien: '', parDriveAI: false, ...sur,
+  };
+}
+
+describe('grilleJour / grilleTroisJours (C28-23)', () => {
+  it('grilleJour : une seule colonne, le jour de référence', () => {
+    const g = grilleJour(new Date(2026, 6, 15));
+    expect(g.length).toBe(1);
+    expect(cleJour(g[0].date)).toBe('2026-07-15');
+  });
+
+  it('grilleTroisJours : la référence + 2 jours, franchit le mois', () => {
+    const g = grilleTroisJours(new Date(2026, 6, 31));
+    expect(g.map((j) => cleJour(j.date))).toEqual(['2026-07-31', '2026-08-01', '2026-08-02']);
+  });
+});
+
+describe('positionEvenement — top/height en % de 24 h (formule du plan)', () => {
+  it('06:45 → 08:00 : top = 405/1440, hauteur = 75/1440', () => {
+    const p = positionEvenement(evt({}))!;
+    expect(p.top).toBeCloseTo((405 / 1440) * 100, 5);
+    expect(p.hauteur).toBeCloseTo((75 / 1440) * 100, 5);
+  });
+
+  it('journée entière → null (rangée dédiée, jamais un bloc dans la colonne)', () => {
+    expect(positionEvenement(evt({ journee: true, debut: '2026-07-15', fin: '' }))).toBeNull();
+  });
+
+  it('sans fin → 60 min par défaut ; fin le LENDEMAIN → coupé à minuit dans sa colonne', () => {
+    expect(positionEvenement(evt({ fin: '' }))!.hauteur).toBeCloseTo((60 / 1440) * 100, 5);
+    const p = positionEvenement(evt({ debut: '2026-07-15T22:00:00', fin: '2026-07-16T02:00:00' }))!;
+    expect(p.hauteur).toBeCloseTo((120 / 1440) * 100, 5); // 22:00 → 24:00
+  });
+
+  it('fin ≤ début (donnée aberrante) → 30 min minimum, jamais un bloc négatif', () => {
+    const p = positionEvenement(evt({ fin: '2026-07-15T06:00:00' }))!;
+    expect(p.hauteur).toBeCloseTo((30 / 1440) * 100, 5);
+  });
+});
+
+describe('libelleHoraire / positionMaintenant', () => {
+  it('« De 06:45 à 08:00 » (fr) / « 06:45 – 08:00 » (en) ; journée entière → vide', () => {
+    expect(libelleHoraire(evt({}), true)).toBe('De 06:45 à 08:00');
+    expect(libelleHoraire(evt({}), false)).toBe('06:45 – 08:00');
+    expect(libelleHoraire(evt({ journee: true, debut: '2026-07-15' }), true)).toBe('');
+  });
+
+  it('la ligne « maintenant » suit l\'heure locale (midi = 50 %)', () => {
+    expect(positionMaintenant(new Date(2026, 6, 15, 12, 0))).toBeCloseTo(50, 5);
+  });
+});
 
 describe('grilleMois', () => {
   it('juillet 2026 : commence lundi 29 juin, finit dimanche 2 août, 5 semaines', () => {
@@ -81,6 +144,17 @@ describe('interpréteurs Calendar/Tasks', () => {
     expect(evts[0].journee).toBe(true);
     expect(evts[1].parDriveAI).toBe(true);
     expect(evts[2].parDriveAI).toBe(false);
+  });
+
+  it('journée entière MULTI-JOURS : couvre chaque jour de la plage (fin exclusive, façon Google)', () => {
+    const evts = interpreterEvenements(
+      [{ id: 'v', summary: 'Vacances coloc', start: { date: '2026-07-13' }, end: { date: '2026-07-18' } }],
+      new Set(),
+    );
+    expect(evenementsDuJour(evts, new Date(2026, 6, 13)).length).toBe(1);
+    expect(evenementsDuJour(evts, new Date(2026, 6, 17)).length).toBe(1);
+    expect(evenementsDuJour(evts, new Date(2026, 6, 18)).length).toBe(0); // fin EXCLUSIVE
+    expect(evenementsDuJour(evts, new Date(2026, 6, 12)).length).toBe(0);
   });
 
   it('evenementsDuJour + heureEvenement : jour calendaire LOCAL, heure locale', () => {

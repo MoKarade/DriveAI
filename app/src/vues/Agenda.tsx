@@ -1,7 +1,9 @@
 /**
- * Agenda.tsx — vue v3 (C19-05, ADR-0013) : vrai calendrier (grille mois), tâches Google,
- * mails ⏰, création directe. Clic sur un jour → détail du jour ; clic sur une tâche → détail.
- * Écritures : créer (tâche/RDV) et cocher — jamais supprimer ni modifier l'existant.
+ * Agenda.tsx — vue v5 « clone Google Agenda » (C28-23 PR2, plan architecte) : grille HORAIRE
+ * absolue Jour/Semaine/Mois (Semaine par défaut — décision Marc), rangée « toute la journée »,
+ * gouttière d'heures, blocs positionnés/dimensionnés à la minute, couleurs PAR TYPE (RDV perso /
+ * DriveAI / journée), ligne « maintenant », 3 jours glissants sur mobile. Tâches Google, mails ⏰
+ * et création directe conservés. Écritures : créer et cocher — jamais supprimer ni modifier.
  */
 
 import { useEffect, useState } from 'react';
@@ -15,12 +17,17 @@ import {
   JourGrille,
   grilleMois,
   grilleSemaine,
+  grilleJour,
+  grilleTroisJours,
   cleJour,
   interpreterEvenements,
   interpreterTaches,
   evenementsDuJour,
   tachesDuJour,
   heureEvenement,
+  libelleHoraire,
+  positionEvenement,
+  positionMaintenant,
   titresDriveAI,
 } from '../agenda';
 import { lignesImportants, lienGmailPourLigne, LigneIndex } from '../etat';
@@ -32,11 +39,24 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
   'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 
 type Detail = { type: 'jour'; jour: Date } | { type: 'tache'; tache: Tache };
+type VueCal = 'jour' | 'semaine' | 'mois';
+
+/** Écran étroit (mobile) : la vue Semaine passe en 3 jours glissants (décision Marc). */
+function useEstEtroit(): boolean {
+  const [etroit, setEtroit] = useState(() => window.matchMedia('(max-width: 720px)').matches);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 720px)');
+    const suivre = (e: MediaQueryListEvent) => setEtroit(e.matches);
+    mq.addEventListener('change', suivre);
+    return () => mq.removeEventListener('change', suivre);
+  }, []);
+  return etroit;
+}
 
 export function Agenda({ langue }: { langue: Langue }) {
   const maintenant = new Date();
   const [mois, setMois] = useState(new Date(maintenant.getFullYear(), maintenant.getMonth(), 1));
-  const [vueCal, setVueCal] = useState<'mois' | 'semaine'>('mois'); // C28-04 : toggle Mois/Semaine
+  const [vueCal, setVueCal] = useState<VueCal>('semaine'); // Semaine par défaut (C28-23)
   const [semaineRef, setSemaineRef] = useState(maintenant);
   const [evenements, setEvenements] = useState<Evenement[]>([]);
   const [taches, setTaches] = useState<Tache[]>([]);
@@ -44,23 +64,28 @@ export function Agenda({ langue }: { langue: Langue }) {
   const [detail, setDetail] = useState<Detail>({ type: 'jour', jour: maintenant });
   const [charge, setCharge] = useState(false);
   const [erreur, setErreur] = useState('');
+  const etroit = useEstEtroit();
 
-  // La plage Tasks/Calendar chargée reste TOUJOURS celle de la grille du MOIS : la semaine
-  // affichée est un sous-ensemble (la navigation semaine garde `mois` aligné sur sa référence),
-  // donc changer de vue ou de semaine dans le même mois ne re-fetch rien.
+  // La plage Tasks/Calendar chargée reste TOUJOURS celle de la grille du MOIS : jour/semaine
+  // sont des sous-ensembles (la navigation garde `mois` aligné sur sa référence), donc changer
+  // de vue ou de jour dans le même mois ne re-fetch rien.
   const semainesMois = grilleMois(mois.getFullYear(), mois.getMonth());
-  const semaines = vueCal === 'semaine' ? [grilleSemaine(semaineRef)] : semainesMois;
+  const joursGrille: JourGrille[] =
+    vueCal === 'jour' ? grilleJour(semaineRef)
+      : etroit ? grilleTroisJours(semaineRef)
+        : grilleSemaine(semaineRef);
 
-  /** Navigation ‹ › : ±1 mois (vue mois) ou ±7 jours (vue semaine, `mois` suit la référence). */
+  /** Navigation ‹ › : ±1 mois, ±7 j (±3 sur mobile) ou ±1 jour — `mois` suit la référence. */
   function naviguer(sens: 1 | -1) {
     if (vueCal === 'mois') {
       setMois(new Date(mois.getFullYear(), mois.getMonth() + sens, 1));
-    } else {
-      const ref = new Date(semaineRef.getFullYear(), semaineRef.getMonth(), semaineRef.getDate() + 7 * sens);
-      setSemaineRef(ref);
-      if (ref.getMonth() !== mois.getMonth() || ref.getFullYear() !== mois.getFullYear()) {
-        setMois(new Date(ref.getFullYear(), ref.getMonth(), 1));
-      }
+      return;
+    }
+    const pas = vueCal === 'jour' ? 1 : etroit ? 3 : 7;
+    const ref = new Date(semaineRef.getFullYear(), semaineRef.getMonth(), semaineRef.getDate() + pas * sens);
+    setSemaineRef(ref);
+    if (ref.getMonth() !== mois.getMonth() || ref.getFullYear() !== mois.getFullYear()) {
+      setMois(new Date(ref.getFullYear(), ref.getMonth(), 1));
     }
   }
 
@@ -118,15 +143,14 @@ export function Agenda({ langue }: { langue: Langue }) {
 
       <section className="carte cal-carte">
         <h2>
-          <span className="cal-titre">{MOIS[mois.getMonth()]} {mois.getFullYear()}</span>
+          <span className="cal-titre">{MOIS[(vueCal === 'mois' ? mois : semaineRef).getMonth()]} {(vueCal === 'mois' ? mois : semaineRef).getFullYear()}</span>
           <span className="cal-nav">
-            <button className={vueCal === 'mois' ? '' : 'discret'} onClick={() => setVueCal('mois')}>
-              {t('vueMois', langue)}
-            </button>
-            <button className={vueCal === 'semaine' ? '' : 'discret'}
-              onClick={() => { setVueCal('semaine'); setSemaineRef(detail.type === 'jour' ? detail.jour : new Date()); }}>
-              {t('vueSemaine', langue)}
-            </button>
+            {(['jour', 'semaine', 'mois'] as VueCal[]).map((v) => (
+              <button key={v} className={vueCal === v ? '' : 'discret'}
+                onClick={() => { setVueCal(v); if (v !== 'mois') setSemaineRef(detail.type === 'jour' ? detail.jour : new Date()); }}>
+                {t(v === 'jour' ? 'vueJour' : v === 'semaine' ? 'vueSemaine' : 'vueMois', langue)}
+              </button>
+            ))}
             <button className="discret" aria-label={t('precedent', langue)} onClick={() => naviguer(-1)}>‹</button>
             <button className="discret"
               onClick={() => {
@@ -138,44 +162,58 @@ export function Agenda({ langue }: { langue: Langue }) {
             <button className="discret" aria-label={t('suivant', langue)} onClick={() => naviguer(1)}>›</button>
           </span>
         </h2>
-        <table className="cal">
-          <thead>
-            <tr>{JOURS_SEMAINE.map((j) => <th key={j}>{j}</th>)}</tr>
-          </thead>
-          <tbody>
-            {semaines.map((semaine, i) => (
-              <tr key={i}>
-                {semaine.map((j: JourGrille) => {
-                  const evts = evenementsDuJour(evenements, j.date);
-                  const dues = tachesDuJour(taches, j.date);
-                  const estAuj = cleJour(j.date) === aujourdhuiCle;
-                  const sel = detail.type === 'jour' && cleJour(detail.jour) === cleJour(j.date);
-                  return (
-                    <td
-                      key={cleJour(j.date)}
-                      className={`${j.horsMois ? 'hors' : ''} ${estAuj ? 'auj' : ''} ${sel ? 'sel' : ''}`}
-                      onClick={() => setDetail({ type: 'jour', jour: j.date })}
-                    >
-                      <span className="num">{j.date.getDate()}</span>
-                      {evts.map((e) => (
-                        <span key={e.id} className={`ev ${e.parDriveAI ? 'ia' : ''}`}>
-                          {heureEvenement(e) && `${heureEvenement(e)} `}{e.titre}
-                        </span>
-                      ))}
-                      {dues.map((d) => (
-                        <span key={d.id} className="ev tache">☐ {d.titre}</span>
-                      ))}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="explication legende">
-          <span className="ev ia">{t('legDriveAI', langue)}</span> <span className="ev">{t('legAgenda', langue)}</span>{' '}
-          <span className="ev tache">☐ {t('legEcheance', langue)}</span>
-        </p>
+
+        {vueCal === 'mois' ? (
+          <>
+            <table className="cal">
+              <thead>
+                <tr>{JOURS_SEMAINE.map((j) => <th key={j}>{j}</th>)}</tr>
+              </thead>
+              <tbody>
+                {semainesMois.map((semaine, i) => (
+                  <tr key={i}>
+                    {semaine.map((j: JourGrille) => {
+                      const evts = evenementsDuJour(evenements, j.date);
+                      const dues = tachesDuJour(taches, j.date);
+                      const estAuj = cleJour(j.date) === aujourdhuiCle;
+                      const sel = detail.type === 'jour' && cleJour(detail.jour) === cleJour(j.date);
+                      return (
+                        <td
+                          key={cleJour(j.date)}
+                          className={`${j.horsMois ? 'hors' : ''} ${estAuj ? 'auj' : ''} ${sel ? 'sel' : ''}`}
+                          onClick={() => setDetail({ type: 'jour', jour: j.date })}
+                        >
+                          <span className="num">{j.date.getDate()}</span>
+                          {evts.map((e) => (
+                            <span key={e.id} className={`ev ${e.parDriveAI ? 'ia' : ''}`}>
+                              {heureEvenement(e) && `${heureEvenement(e)} `}{e.titre}
+                            </span>
+                          ))}
+                          {dues.map((d) => (
+                            <span key={d.id} className="ev tache">☐ {d.titre}</span>
+                          ))}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="explication legende">
+              <span className="ev ia">{t('legDriveAI', langue)}</span> <span className="ev">{t('legAgenda', langue)}</span>{' '}
+              <span className="ev tache">☐ {t('legEcheance', langue)}</span>
+            </p>
+          </>
+        ) : (
+          <GrilleTemps
+            langue={langue}
+            jours={joursGrille}
+            evenements={evenements}
+            taches={taches}
+            aujourdhuiCle={aujourdhuiCle}
+            onJour={(j) => setDetail({ type: 'jour', jour: j })}
+          />
+        )}
       </section>
 
       <section className="carte">
@@ -234,6 +272,93 @@ export function Agenda({ langue }: { langue: Langue }) {
         </table>
         <p className="explication">{t('aTraiterNote', langue)}</p>
       </section>
+    </div>
+  );
+}
+
+/**
+ * Grille HORAIRE façon Google Agenda (C28-23 PR2) : en-têtes de jours (pastille sur
+ * aujourd'hui), rangée « toute la journée » (événements journée + tâches à échéance),
+ * gouttière d'heures, colonnes où chaque bloc est positionné en ABSOLU (top/height en % —
+ * positionEvenement). Couleurs PAR TYPE (décision Marc) : bleu = RDV perso, ambre = DriveAI
+ * (événements du moteur + tâches), gris = journée entière. Ligne rouge « maintenant » dans la
+ * colonne du jour. Un clic sur un bloc ouvre Google Agenda (le popover arrive en PR3).
+ */
+function GrilleTemps({ langue, jours, evenements, taches, aujourdhuiCle, onJour }: {
+  langue: Langue;
+  jours: JourGrille[];
+  evenements: Evenement[];
+  taches: Tache[];
+  aujourdhuiCle: string;
+  onJour: (j: Date) => void;
+}) {
+  const fr = langue === 'fr';
+  const heures = Array.from({ length: 23 }, (_, i) => i + 1);
+  const pctMaintenant = positionMaintenant(new Date());
+  const gabarit = { gridTemplateColumns: `52px repeat(${jours.length}, 1fr)` };
+
+  return (
+    <div className="grille-temps">
+      <div className="gt-rang" style={gabarit}>
+        <div />
+        {jours.map((j) => {
+          const auj = cleJour(j.date) === aujourdhuiCle;
+          return (
+            <button key={cleJour(j.date)} className={'gt-entete' + (auj ? ' auj' : '')} onClick={() => onJour(j.date)}>
+              <span className="gt-nom">{JOURS_SEMAINE[(j.date.getDay() + 6) % 7]}</span>
+              <span className="gt-num">{j.date.getDate()}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="gt-rang gt-tj" style={gabarit}>
+        <div />
+        {jours.map((j) => {
+          const journee = evenementsDuJour(evenements, j.date).filter((e) => e.journee);
+          const dues = tachesDuJour(taches, j.date);
+          return (
+            <div key={cleJour(j.date)} className="gt-tj-col">
+              {journee.map((e) => <span key={e.id} className="gt-bloc-tj">{e.titre}</span>)}
+              {dues.map((d) => <span key={d.id} className="gt-bloc-tj ia">☐ {d.titre}</span>)}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="gt-rang gt-corps" style={gabarit}>
+        <div className="gt-gouttiere">
+          {heures.map((h) => (
+            <span key={h} style={{ top: `${(h / 24) * 100}%` }}>{String(h).padStart(2, '0')}:00</span>
+          ))}
+        </div>
+        {jours.map((j) => {
+          const auj = cleJour(j.date) === aujourdhuiCle;
+          const evts = evenementsDuJour(evenements, j.date).filter((e) => !e.journee);
+          return (
+            <div key={cleJour(j.date)} className="gt-col" onClick={() => onJour(j.date)}>
+              {evts.map((e) => {
+                const pos = positionEvenement(e);
+                if (!pos) return null;
+                return (
+                  <a
+                    key={e.id}
+                    className={'gt-ev' + (e.parDriveAI ? ' ia' : '')}
+                    style={{ top: `${pos.top}%`, height: `${pos.hauteur}%` }}
+                    href={e.lien} target="_blank" rel="noreferrer"
+                    onClick={(ev) => ev.stopPropagation()}
+                  >
+                    <b>{e.titre}</b>
+                    <span>{libelleHoraire(e, fr)}</span>
+                    {e.lieu && <span>{e.lieu}</span>}
+                  </a>
+                );
+              })}
+              {auj && <i className="gt-maintenant" style={{ top: `${pctMaintenant}%` }} aria-hidden="true" />}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
