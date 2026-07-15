@@ -148,6 +148,7 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
   onLangue: () => void;
   onDeconnexion: () => void;
 }) {
+  const { rafraichir } = useEtatGlobal(); // création au FAB → l'Agenda affiché se rafraîchit
   const [section, setSection] = useState<Section>('aujourdhui');
   const [sidebarOuverte, setSidebarOuverte] = useState(false);
   const [plusOuvert, setPlusOuvert] = useState(false);
@@ -192,7 +193,10 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
           onAgendas={setAgendas}
           onAller={allerA}
           onFermer={() => setSidebarOuverte(false)}
-          onCreer={() => setCreationOuverte(true)}
+          onCreer={() => {
+            setSidebarOuverte(false); // mobile : le tiroir (z-index 35) couvrirait le dialogue (30)
+            setCreationOuverte(true);
+          }}
         />
 
         <main className="contenu">
@@ -200,7 +204,7 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
             {section === 'aujourdhui' && <AujourdHui langue={langue} onAller={allerA} />}
             {section === 'documents' && <Documents langue={langue} />}
             {section === 'apprentissage' && <Corrections langue={langue} />}
-            {section === 'agenda' && <Agenda langue={langue} dateRef={dateAgenda} />}
+            {section === 'agenda' && <Agenda langue={langue} dateRef={dateAgenda} agendas={agendas} />}
             {section === 'mails' && <Mails langue={langue} />}
             {section === 'sante' && <SanteVue langue={langue} />}
           </div>
@@ -213,7 +217,7 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
         <>
           <button className="feuille-fond" aria-label={t('fermer', langue)} onClick={() => setCreationOuverte(false)} />
           <div className="dialogue" role="dialog" aria-label={t('creer', langue)}>
-            <Creation langue={langue} onCree={() => setCreationOuverte(false)} />
+            <Creation langue={langue} onCree={() => { setCreationOuverte(false); void rafraichir(true); }} />
             <button className="discret" onClick={() => setCreationOuverte(false)}>{t('fermer', langue)}</button>
           </div>
         </>
