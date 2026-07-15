@@ -5,9 +5,11 @@
  * à son prochain passage (~1 min). Quatre déclencheurs :
  *  1. « Vérifier maintenant » (tick ponctuel) — remonté du header global v3 (trop discret) ;
  *  2. intentions (tâches/RDV) sur toute la fenêtre 30 j (C28-16) ;
- *  3. tri Gmail paramétré au clic (fenêtre / archiver / plafond de fils, C28-16) ;
+ *  3. tri Gmail à la demande (C28-24 : TOUS les mails LUS de la boîte — archiver / plafond) ;
  *  4. analyse CIBLÉE des mails (requête Gmail libre, C28-06).
  * L'erreur `QUOTA_GMAIL` du moteur (quota journalier épuisé, C28-15) s'affiche en clair.
+ * C28-24 : le widget OperationsLive vit ICI — la barre de progression apparaît SUR PLACE,
+ * juste sous le bouton cliqué (plus besoin de descendre chercher la zone activité).
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -19,11 +21,11 @@ import {
   viderCachePlages,
 } from '../google';
 import { BanniereErreur } from './UI';
+import { OperationsLive } from './OperationsLive';
 import { Langue, t } from '../i18n';
 
 export function PanneauActions({ langue }: { langue: Langue }) {
   const [requete, setRequete] = useState('');
-  const [fenetre, setFenetre] = useState(7);
   const [archiver, setArchiver] = useState(true);
   const [plafond, setPlafond] = useState(100);
   const [statut, setStatut] = useState('');
@@ -93,14 +95,6 @@ export function PanneauActions({ langue }: { langue: Langue }) {
         <div className="action-bloc">
           <span className="action-libelle">{t('triLigne', langue)}</span>
           <label>
-            {t('fenetreJours', langue)}{' '}
-            <select value={fenetre} onChange={(e) => setFenetre(Number(e.target.value))}>
-              <option value={1}>1</option>
-              <option value={7}>7</option>
-              <option value={30}>30</option>
-            </select>
-          </label>
-          <label>
             <input type="checkbox" checked={archiver} onChange={(e) => setArchiver(e.target.checked)} />{' '}
             {t('archiverParam', langue)}
           </label>
@@ -117,7 +111,7 @@ export function PanneauActions({ langue }: { langue: Langue }) {
           </label>
           <button
             disabled={enCours || !plafondValide}
-            onClick={() => void lancer(() => demandeTriGmail(fenetre, archiver, plafond))}
+            onClick={() => void lancer(() => demandeTriGmail(archiver, plafond))}
           >
             {t('trierMaintenant', langue)}
           </button>
@@ -146,6 +140,10 @@ export function PanneauActions({ langue }: { langue: Langue }) {
       {statut && <p className="ok">✓ {statut}</p>}
       <BanniereErreur langue={langue} erreur={erreur} />
       <p className="explication">{t('analyserTrierNote', langue)}</p>
+
+      {/* C28-24 : progression LIVE sur place — le widget s'affiche dès que le moteur écrit sa
+          première ligne (poll 15 s), invisible quand rien ne tourne. */}
+      <OperationsLive langue={langue} />
     </section>
   );
 }

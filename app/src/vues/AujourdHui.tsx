@@ -15,8 +15,7 @@ import type { Section } from '../App';
 import { useEtatGlobal } from '../etatGlobal';
 import { IndicateurChargement } from '../composants/UI';
 import { PanneauActions } from '../composants/PanneauActions';
-import { OperationsLive } from '../composants/OperationsLive';
-import { ListeSuspects } from '../composants/Suspects';
+import { ListeSuspects, useSuspectsVisibles } from '../composants/Suspects';
 import {
   LigneIndex,
   Sante,
@@ -49,6 +48,9 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
   // lirePlage local, plus de photo figée au montage. L'Index arrive déjà en ÉTAT COURANT.
   const { donnees } = useEtatGlobal();
   const [survol, setSurvol] = useState<{ jour: string; n: number } | null>(null);
+  // C28-24 : les suspects passent par le store des masqués — le compte de la tuile et de la
+  // zone Attention tombe À L'INSTANT du clic « pas suspect » (hook AVANT le retour anticipé).
+  const suspects = useSuspectsVisibles(donnees ? lignesSuspects(donnees.index) : []);
 
   if (!donnees) return <IndicateurChargement langue={langue} />;
   const sante: Sante = interpreterSante(donnees.santeBrut);
@@ -63,7 +65,6 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
   const cout = coutDepuisSante(sante.lignes);
   const passage = dernierPassageDepuisSante(sante.lignes);
   const tri7j = statsTri(index, 7, maintenant);
-  const suspects = lignesSuspects(index);
   const aVerifier = lignesAVerifier(docs);
   const entites = entitesEnAttente(interpreterEntites(donnees.entitesBrut).lignes);
   const tris = lignesTri(index).slice(0, TRI_RECENTS);
@@ -126,8 +127,7 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
         )}
       </section>
 
-      {/* ---------- Zone 2bis : opérations en cours, suivies EN LIVE (C28-18, poll 15 s) ---------- */}
-      <OperationsLive langue={langue} />
+      {/* (C28-24 : OperationsLive vit désormais DANS PanneauActions — progression sur place.) */}
 
       {/* ---------- Zone 3 : activité (discrète) ---------- */}
       <div className="colonnes zone-activite">

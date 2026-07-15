@@ -6,6 +6,8 @@
  *     garde-fous miroir (zone protégée jamais détachée, nom conventionnel, jamais de suppression),
  *     puis journalisation COMPLÈTE (émetteur + domaine + entité) dans l'onglet Corrections —
  *     sans émetteur/domaine la ligne serait MORTE pour le few-shot du moteur (ADR-0003).
+ *  3. TABLE APPRISE expéditeur → libellé du tri Gmail (C28-24, demande Marc : « le truc label
+ *     devrait être dans l'onglet apprentissage ») — REPLIABLE, déplacée depuis la vue Mails.
  */
 
 import { useState } from 'react';
@@ -19,7 +21,9 @@ import {
 } from '../google';
 import {
   LigneEntite,
+  LigneTriAppris,
   interpreterEntites,
+  interpreterTriAppris,
   entitesEnAttente,
   entitesValidees,
   domainesDepuisIndex,
@@ -45,7 +49,62 @@ export function Corrections({ langue }: { langue: Langue }) {
         chargee={chargee}
       />
       <ReclasserDocument langue={langue} domaines={domaines} destinations={entitesValidees(entites)} />
+      <TableApprise langue={langue} />
     </div>
+  );
+}
+
+/* ---------- 3. Table apprise expéditeur → libellé (tri Gmail, repliable — C28-24) ---------- */
+
+function TableApprise({ langue }: { langue: Langue }) {
+  const { donnees, rafraichir } = useEtatGlobal();
+  const [ouverte, setOuverte] = useState(false); // repliée par défaut — le compte suffit d'un coup d'œil
+  const [retires, setRetires] = useState<number[]>([]); // optimiste, le temps du prochain rafraîchissement
+  const [erreur, setErreur] = useState('');
+  const appris = interpreterTriAppris(donnees?.triApprisBrut ?? []).filter((x) => !retires.includes(x.ligneSheet));
+
+  async function retirer(l: LigneTriAppris) {
+    try {
+      // Vidage des cellules (A/B) — la ligne reste, le moteur ignore les adresses vides.
+      await ecrireCellule('TriAppris', `A${l.ligneSheet}`, '');
+      await ecrireCellule('TriAppris', `B${l.ligneSheet}`, '');
+      setRetires((xs) => [...xs, l.ligneSheet]);
+      void rafraichir(true);
+    } catch (e) {
+      setErreur(String(e));
+    }
+  }
+
+  return (
+    <section className="carte large">
+      <h2>
+        <button className="titre-repliable" aria-expanded={ouverte} onClick={() => setOuverte((o) => !o)}>
+          <em aria-hidden="true">{ouverte ? '▾' : '▸'}</em>
+          {t('tableApprise', langue)} ({appris.length})
+        </button>
+      </h2>
+      {ouverte && (
+        <>
+          {erreur && <p className="erreur">{t('erreur', langue)} : {erreur}</p>}
+          {appris.length === 0 && <p className="explication">{t('aucunAppris', langue)}</p>}
+          <table>
+            <tbody>
+              {appris.map((l) => (
+                <tr key={l.ligneSheet}>
+                  <td>{l.adresse}</td>
+                  <td><span className="pastille cat">{l.libelle}</span></td>
+                  <td className="date">{l.apprisLe}</td>
+                  <td className="nombre">
+                    <button className="discret" onClick={() => retirer(l)}>{t('retirer', langue)}</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="explication">{t('tableAppriseNote', langue)}</p>
+        </>
+      )}
+    </section>
   );
 }
 

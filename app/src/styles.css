@@ -52,7 +52,8 @@ body {
 .logo b { color: var(--accent); font-weight: 500; }
 .sous-titre { margin: 0; color: var(--texte-doux); font-size: 0.8rem; }
 .header-actions { display: flex; gap: 0.4rem; margin-left: auto; align-items: center; }
-button.hamburger { display: none; }
+/* ☰ visible partout depuis C28-24 : tiroir sur mobile, repli/dépli de la sidebar sur desktop. */
+button.hamburger { display: inline-flex; }
 
 /* sidebar façon GCal : même fond que la page, entrées en pilules pleines-arrondies */
 .sidebar { padding: 0.9rem 0.7rem 1.2rem; position: sticky; top: 53px; align-self: start; }
@@ -80,6 +81,21 @@ nav.sections button.actif { background: #004a77; color: #c2e7ff; }
 nav.sections button.actif em { color: #c2e7ff; }
 nav.sections button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
+/* Sidebar REPLIÉE en rail d'icônes (C28-24, desktop) : mini-cal et « Mes agendas » masqués,
+   FAB et sections en icônes seules (le libellé passe en tooltip via title). */
+.app.sidebar-repliee .corps-app { grid-template-columns: 76px minmax(0, 1fr); }
+.sidebar.repliee { padding: 0.9rem 0.5rem 1.2rem; }
+.sidebar.repliee .mini-cal,
+.sidebar.repliee .mes-agendas,
+.sidebar.repliee .fab-creer span,
+.sidebar.repliee nav.sections button span { display: none; }
+.sidebar.repliee .fab-creer {
+  width: 52px; height: 52px; padding: 0; justify-content: center;
+  margin: 0.2rem 0 1rem 0.35rem;
+}
+.sidebar.repliee nav.sections button { justify-content: center; padding: 0.6rem 0; border-radius: 999px; }
+.sidebar.repliee nav.sections button em { width: auto; font-size: 1.05rem; }
+
 /* « Mes agendas » : cases à cocher locales (trompe-l'œil UI — aucune donnée nouvelle, §2.3) */
 .mes-agendas { margin-top: 1.1rem; padding: 0 1rem; }
 .mes-agendas h3 {
@@ -92,6 +108,15 @@ nav.sections button:focus-visible { outline: 2px solid var(--accent); outline-of
 }
 .mes-agendas input[type='checkbox'] { width: auto; accent-color: var(--accent); }
 .mes-agendas label .puce { width: 12px; height: 12px; border-radius: 3px; flex: 0 0 auto; }
+
+/* titre de carte REPLIABLE (C28-24 : table apprise dans Apprentissage) */
+.titre-repliable {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  border: none; background: none; padding: 0; border-radius: 8px;
+  color: inherit; font: inherit; font-weight: inherit; text-align: left;
+}
+.titre-repliable em { font-style: normal; color: var(--texte-doux); font-size: 0.85em; }
+.titre-repliable:not(:disabled):hover { filter: none; transform: none; color: var(--accent); }
 
 /* menu avatar (réglages : langue + déconnexion) */
 .avatar {
@@ -141,8 +166,9 @@ nav.barre-basse button.actif { color: var(--accent); }
 .feuille-fond { position: fixed; inset: 0; z-index: 25; background: rgba(0, 0, 0, 0.45); border: none; }
 
 @media (max-width: 760px) {
-  /* la sidebar devient un tiroir ouvert au ☰ ; la barre basse reste la nav principale */
-  .corps-app { grid-template-columns: 1fr; }
+  /* la sidebar devient un tiroir ouvert au ☰ ; la barre basse reste la nav principale.
+     Le repli desktop (C28-24) est SANS EFFET ici : le tiroir s'affiche toujours complet. */
+  .corps-app, .app.sidebar-repliee .corps-app { grid-template-columns: 1fr; }
   .sidebar {
     position: fixed; left: 0; top: 0; bottom: 0; z-index: 35; width: 272px;
     background: var(--carte); padding-top: 1rem; overflow-y: auto;
