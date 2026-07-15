@@ -1081,3 +1081,27 @@ les 4 agents ont convergé sur un bug de COMPOSITION entre deux pipelines correc
 **Règle durable ?** non (instance composée de règles existantes — le réflexe « périmètre élargi ⇒
 re-auditer les gardes amont » est couvert par « nouvel effet de bord ⇒ toutes les gardes en
 amont » et « garde-fou hors circuit ⇒ chemin de retour »).
+
+## 2026-07-15 — Un `clasp push` vert ne garantit pas que le déclencheur exécute le nouveau code
+**Contexte.** Marc : « Coûts & quotas est vide » + quota Gmail toujours épuisé le matin. Diagnostic
+par export de la Sheet (signal indépendant) : l'onglet `Télémétrie` (C28-24) ABSENT sans aucune
+erreur au Journal, et la Progression affichait « Migration (m1) » alors que `MIGRATION_TAG` sur
+`main` = `m2-inconnu` depuis C28-21 (07-13). Donc le déclencheur exécutait du code d'avant le 13,
+alors que TOUS les déploiements clasp étaient verts (29 fichiers poussés, vérifié dans les logs).
+`clasp push` déposait bien le code frais, mais le déclencheur time-based continuait d'exécuter la
+version précédemment chargée. J'ai d'abord sur-diagnostiqué (« un second projet fantôme B tourne »)
+— hypothèse RÉFUTÉE par la vérif de stabilité : après que Marc a ouvert l'éditeur + exécuté
+`installerTrigger`, l'onglet `Télémétrie` est apparu, la Progression a basculé sur `m2-inconnu`, et
+le tag est resté frais sur plusieurs ticks (pas de retour à m1 → pas de projet B). Le vrai coupant :
+le code frais ne s'active pour les triggers qu'une fois le projet « réveillé » (éditeur ouvert /
+fonction exécutée). Les features FRONTEND (Vercel) shippaient normalement — seul le MOTEUR (Apps
+Script) était figé, ce qui masquait le problème (l'app avait l'air à jour).
+**Leçon.** "Un déploiement de code Apps Script réussi (`clasp push` vert, runs lus) ne prouve PAS
+que la PROD a pris effet : un déclencheur time-based peut exécuter l'ancienne version jusqu'à
+réouverture du projet dans l'éditeur. Toujours confirmer la prise d'effet par un SIGNAL INDÉPENDANT
+qui vient du code déployé — une CONSTANTE (tag de campagne), l'existence d'un onglet/fonction, un
+artefact attendu — comparé à ce que la prod ÉCRIT réellement, jamais le seul statut du run. Et
+diagnostiquer par preuve : une vérif de stabilité (la constante reste fraîche N ticks) réfute une
+hypothèse à deux projets avant de la propager. Symptôme typique : CI verte + comportement prod figé
++ ZÉRO erreur (le code neuf n'a pas planté, il n'a simplement jamais tourné)."
+**Règle durable ?** oui (3ᵉ piège ajouté à « Auto-déploiement (CI/CD) » dans CLAUDE.md §7).
