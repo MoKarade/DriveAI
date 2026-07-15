@@ -42,6 +42,18 @@
 | C28-14 | Captures d'écran UI automatisées à chaque push (demande PM 2026-07-08) | Mode mock `VITE_E2E_MOCK` (auth bouchonnée, données locales `mockData.ts`, `api()` lève sur tout appel réseau résiduel — zéro fuite : bundle prod vérifié sans trace du mock) + Playwright (`app/e2e/screenshots.spec.ts`, 6 sections) + job CI `screenshots` avec artifact `e2e-screenshots` (14 j) | ✅ livré — testé en local (6 captures OK) |
 | C28-15 | Miroir COMPLET pour NotebookLM : un seul dossier Drive = doc + code + médias, formats exacts (demande Marc 2026-07-08) | Plan architecte exécuté : binaires UTILES (pdf/png/jpg/svg — vision multimodale) inclus, transportés en base64 (`binaire:true`) et écrits avec le bon MIME ; mise à jour binaire EN PLACE par PATCH REST `uploadType=media` (jamais de suppression/recréation, §2) ; allowlist stricte côté moteur (surface d'abus du secret bornée) ; polices/archives/gif toujours exclus (inutiles à l'IA) | ✅ livré |
 
+## Chantier HUB — widget DriveAI sur le hub perso (`hubperso.com`, 2026-07-15)  🟦
+
+> Le hub perso agrège les apps de Marc (DriveAI, FinanceAI, …). DriveAI expose **un seul** endpoint
+> `GET /api/hub/summary` (couche Vercel `api/`, contrat `@mokarade/hub-contract` v1). URL canonique
+> **`https://drive.hubperso.com`**. 100 % additif : **aucune** touche au moteur (`src/`), à `app/`
+> (hors référence d'URL), ni aux scopes. Détail : CLAUDE.md §6 bis, `docs/DEPLOIEMENT.md` §Phase 4.
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| HUB-02 | `api/hub/summary.ts` (jeton `x-hub-token` temps constant, 503/401/405, `Cache-Control:no-store`), forme du contrat inlinée (api/ zéro-dep) + `api/hub/_engineState.ts` (`getEngineState()` → `null` en Phase 0), verrou `app/test/hub-summary.test.ts` (VRAI schéma `validateSummary`/`buildingSummary`). Phase 0 = summary `building` (no-fake-data). ⚠ Marc : poser `HUB_TOKEN` (Vercel) + brancher `hubperso.com`, `drive.hubperso.com` (DNS/domaine Vercel) | 🟦 codé (PR draft, **ne pas merger** — Marc valide + pose la variable) |
+| HUB-P1 | **Phase 1 — brancher `getEngineState()` sur le Sheet d'état** : renvoyer `reviewQueueCount`, `filedLast7d`, `errorsLast7d`, `lastRunAt` → mapper en `metrics[]` + `status:"ok"` (métadonnées seulement, ADR-0007). Canal serveur à trancher (doGet JSON dédié protégé par secret **vs** Sheets API compte de service) — le serverless Vercel n'a AUJOURD'HUI aucun accès à la Sheet (lue côté navigateur, jeton OAuth de Marc). Démarre quand le moteur (Phase 1) écrit ces métriques | ⬜ à faire (bloqué par le moteur Phase 1) |
+
 ## Chantier #27 — MIROIR DRIVE du dépôt (ADR-0017, demande Marc « accès de partout + NotebookLM », 2026-07-07)  ✅
 
 > Marc voulait remplacer GitHub par Drive comme dépôt — refusé (pas de sémantique git, CI/CD en

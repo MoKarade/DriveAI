@@ -142,6 +142,30 @@ NotebookLM en devient l'entrée, pas le remplacement.
 - **Prérequis côté Marc** avant Phase 1 : projet Apps Script créé, clé Anthropic dans les
   Script Properties (`DriveAI_ANTHROPIC_KEY`), Google Sheet d'état créée. Voir `PLAN.md` §8.
 
+## 6 bis. Intégration Hub (widget DriveAI sur hubperso.com)
+
+DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpoint** :
+`GET /api/hub/summary` (`api/hub/summary.ts`, serverless Vercel). URL canonique de l'app :
+**`https://drive.hubperso.com`**.
+
+- **Contrat** : `@mokarade/hub-contract` v1 (devDependency de `app/`). La forme du payload est
+  **inlinée** dans `api/hub/summary.ts` (api/ reste **zéro dépendance npm par construction**) et
+  **verrouillée** par le VRAI schéma du package (`validateSummary()` + `buildingSummary()`) dans
+  `app/test/hub-summary.test.ts`. Toute évolution du contrat passe par le package (bump de version
+  + re-pin), **jamais** par une divergence locale.
+- **Auth (échec fermé)** : le hub envoie le header `x-hub-token`. Comparaison en **temps constant**
+  (digests SHA-256 + `timingSafeEqual`). `HUB_TOKEN` (variable d'env Vercel, jamais en dur) absent
+  → **503** `hub disabled` ; jeton absent/faux → **401** ; méthode ≠ GET → **405**. Réponse toujours
+  `Cache-Control: no-store`.
+- **HONNÊTETÉ (no-fake-data)** : le point de bascule est `api/hub/_engineState.ts` →
+  `getEngineState()`. **Phase 0 (aujourd'hui)** : il renvoie `null` ⇒ summary `status:"building"`
+  (zéro métrique inventée). Les données réelles vivent dans la Google Sheet, lue **côté navigateur**
+  avec le jeton OAuth de Marc (ADR-0007) — le serverless Vercel n'y a **aucun** accès.
+- **Règle de maintenance** : à chaque phase du moteur qui rend une métrique disponible, la brancher
+  dans `getEngineState()` et faire passer le summary à `status:"ok"` (métadonnées **seulement**,
+  ADR-0007). Ne **jamais** casser le schéma (toute évolution passe par `hub-contract`) ni publier de
+  donnée fabriquée : `building` tant que rien de réel n'est disponible.
+
 ## 7. Leçons apprises (règles durables)
 
 > Distillées depuis `docs/LESSONS.md`. N'ajouter ici que ce qui change la façon de coder.
