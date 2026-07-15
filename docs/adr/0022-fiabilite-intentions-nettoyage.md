@@ -42,6 +42,11 @@
    `messageId` SEUL**, jamais sur le contenu (titre/date/heure du LLM) : le titre peut fluctuer
    d'un run à l'autre (Sonnet 2 passes) et une clé par contenu ne s'accumulerait jamais →
    non-convergence (le compteur reviendrait à 1 à chaque tick, le mail re-tenté à vie).
+   **Compromis assumé (sémantique PAR MESSAGE)** : le compteur est partagé entre toutes les
+   intentions du message (une incrémentation par appel). Un message à ≥ 3 intentions frappées par
+   une panne transitoire brève peut voir sa 3ᵉ intention abandonnée dès le 1er tick — une intention
+   légitime rare peut être perdue. Accepté : aucune clé stable PAR intention n'existe (titre ET
+   ordre fluctuent) ; l'alternative rouvre la non-convergence. Convergent, sans fuite ni drain quota.
 3. **Pré-filtre suspect (défense en profondeur).** `heuristiquePhishing_` (déterministe,
    gratuite) et le chemin dangereux « promo déterministe non lue » sont évalués DANS
    `traiterMessagePourIntentions_`, avant le mini-check LLM. Un mail suspect/dangereux est

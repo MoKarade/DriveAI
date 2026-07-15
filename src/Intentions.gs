@@ -464,6 +464,13 @@ function creerIntentionIdempotente_(messageId, intention) {
     // clé par contenu changerait à chaque tick, ne s'accumulerait jamais, n'atteindrait jamais le
     // seuil = NON-CONVERGENCE (le mail re-tenté à vie, quota drainé — la panne même qu'on borne ici).
     // Journal UNE seule fois (=== seuil), comme la campagne historique (Main.gs) : au-delà, silencieux.
+    //
+    // SÉMANTIQUE PAR MESSAGE (compromis assumé, revue flotte) : le compteur est PARTAGÉ entre toutes
+    // les intentions du message (une incrémentation par appel). Un message à ≥ 3 intentions frappées
+    // par une panne transitoire brève peut donc voir sa 3ᵉ intention abandonnée dès le 1er tick
+    // (compteur 1→2→3 dans une seule boucle) — une intention légitime rare peut être perdue. On
+    // l'accepte : aucune clé stable PAR intention n'existe (titre ET ordre fluctuent), et l'alternative
+    // (par contenu) rouvre la non-convergence. Convergent, sans fuite, sans drain quota — priorité.
     var essais = 0;
     try { essais = incrementerEchec_('api-intention|' + messageId); } catch (e2) { }
     if (essais >= CONFIG.QUARANTAINE_MAX) {
