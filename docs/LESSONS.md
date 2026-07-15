@@ -1061,3 +1061,23 @@ TRAVAILLEUR rapporte l'effet réel (retiré ou resté) dans son retour : étendr
 (retirés + restants)."
 **Règle durable ?** oui (clause ajoutée à la règle « pagination sur une file MOUVANTE » de
 CLAUDE.md §7).
+
+## 2026-07-15 — Une garde « attendre l'analyse X » se borne à la COUVERTURE réelle de X (revue flotte C28-24)
+**Contexte.** Revue flotte du chantier C28-24 (4 agents, 3 convergents sur le même bloquant) : le
+tri exige `intention|<dernierMessageId>` avant toute décision, or TOUS les scans d'intentions
+sont bornés à `newer_than:30d`. La nouvelle demande `in:inbox is:read` (toute la boîte) servait
+donc le stock ancien à des fils en « attend » PERMANENT : offset avancé par-dessus (jamais
+traités), `TRI_MAX_ATTENTES` saturé dès la 1ʳᵉ page (tri vivant affamé ~2 h/j), 500 lectures/j
+brûlées pour rien, et la demande soldée « boîte parcourue » — l'objectif du chantier échouait à
+~95 % EN SILENCE. Correctif : fils hors fenêtre triés sans attendre (`estHorsFenetreIntentions_`,
+borne dérivée de la CONSTANTE), le ⏰ déjà posé et les gardes suspect/zone protégée intacts.
+**Leçon.** "Un prérequis inter-pipelines (« attendre que X ait analysé ») n'est valide que sur le
+périmètre où X TOURNE : à chaque élargissement de périmètre d'un consommateur (fenêtre, requête,
+source), re-vérifier que chaque garde amont qui « attend » un producteur est SATISFAISABLE sur le
+nouveau périmètre — un prérequis qui ne se produira jamais est une mise hors circuit permanente
+et silencieuse (instance de « un garde-fou qui met des items hors circuit exige un chemin de
+retour »). Et une revue flotte post-livraison attrape ce que les tests unitaires ne voient pas :
+les 4 agents ont convergé sur un bug de COMPOSITION entre deux pipelines corrects isolément."
+**Règle durable ?** non (instance composée de règles existantes — le réflexe « périmètre élargi ⇒
+re-auditer les gardes amont » est couvert par « nouvel effet de bord ⇒ toutes les gardes en
+amont » et « garde-fou hors circuit ⇒ chemin de retour »).

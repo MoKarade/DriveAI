@@ -327,11 +327,12 @@ function actionPasSuspect_(e) {
 
   apprendreConfiance_(adresse);
 
-  // Demande de re-tri ADDITIVE (plusieurs clics avant le prochain tick s'accumulent, jamais écrasés).
-  var ids = [];
-  try { ids = JSON.parse(props.getProperty('DriveAI_PAS_SUSPECT') || '[]') || []; } catch (err) { ids = []; }
-  if (ids.indexOf(threadId) === -1) ids.push(threadId);
-  props.setProperty('DriveAI_PAS_SUSPECT', JSON.stringify(ids));
+  // Demande de re-tri : une Property PAR fil — écriture ATOMIQUE (revue flotte C28-24). Sans
+  // anti-rafale, deux doPost concurrents s'écrasaient sur la LISTE partagée (lecture → push →
+  // écriture : dernier écrivain gagnant, clic perdu en SILENCE — l'app masque la ligne de façon
+  // optimiste). Le LockService est indisponible ici : le tick le tient jusqu'à ~6 min. Le
+  // threadId ne peut pas contenir `|` (validerThreadId_) — l'espace de clés est sûr.
+  props.setProperty('DriveAI_PAS_SUSPECT|' + threadId, '1');
 
   journalInfo_('WebApp', 'Pas-suspect : « ' + adresse + ' » ajouté à Confiance (fil re-trié au prochain passage).');
   actionTickPonctuel_(); // passage immédiat — le fil est re-jugé « sain » dans la ~minute

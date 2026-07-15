@@ -399,6 +399,14 @@ function scanDemandeTri_(etat, plafondAtteint, candidats, libelles) {
     effacerDemandeTri_(props, 0, 'demande illisible — annulée');
     return;
   }
+  if (demande.fenetre) {
+    // Demande posée par une ANCIENNE version de l'app (avant C28-24) : son offset était calé sur
+    // la requête fenêtrée — l'appliquer à `in:inbox is:read` sauterait des fils jamais vus (revue
+    // flotte). Soldée proprement : Marc re-clique « Trier » depuis l'app à jour (cas transitoire).
+    effacerDemandeTri_(props, Number(props.getProperty('DriveAI_TRI_DEMANDE_FAITS')) || 0,
+      'demande d\'une ancienne version de l\'app — re-clique « Trier »');
+    return;
+  }
   var requete = 'in:inbox is:read'; // C28-24 : tous les mails LUS de la boîte, sans fenêtre
 
   var aujourdhui = dateGmail_(new Date());
@@ -414,9 +422,12 @@ function scanDemandeTri_(etat, plafondAtteint, candidats, libelles) {
         return;
       }
       // Page RÉTRÉCIE au reliquat du jour (patron C28-21) : interrompue à mi-page, elle
-      // rejouerait chaque tick sans avancer — plus petite, elle reste COMPLÉTABLE.
+      // rejouerait chaque tick sans avancer — plus petite, elle reste COMPLÉTABLE. Bornée AUSSI
+      // au reliquat d'ATTENTES (revue flotte C28-24) : une page coupée à mi-course par
+      // TRI_MAX_ATTENTES gèlerait l'offset et relirait les MÊMES fils à chaque tick.
       var taille = Math.min(CONFIG.PAGE_FILS_ACTIONS,
-        CONFIG.TRI_DEMANDE_MAX_FILS_JOUR - filsJour - filsLus);
+        CONFIG.TRI_DEMANDE_MAX_FILS_JOUR - filsJour - filsLus,
+        CONFIG.TRI_MAX_ATTENTES - etat.attentes);
       if (taille <= 0) return; // plafond quotidien atteint : demande INTACTE, reprise demain (aucune recherche)
       var offset = Number(props.getProperty('DriveAI_TRI_DEMANDE_OFFSET')) || 0;
       var fils;
@@ -443,6 +454,10 @@ function scanDemandeTri_(etat, plafondAtteint, candidats, libelles) {
           restants++;
           if (r === 'traite') { etat.traites++; faits++; }
           if (r === 'attend') etat.attentes++;
+          // Fil en ÉCHEC : page NON complète → offset figé, rejeu au tick suivant (revue flotte
+          // C28-24, alignement sur le scan arrière) — jamais sauté pour toute la demande. Un fil
+          // durablement malade finit `tri-abandon` (QUARANTAINE_MAX) puis 'deja' : l'offset passe.
+          if (r === 'erreur') pageComplete = false;
         }
       }
       props.setProperty('DriveAI_TRI_DEMANDE_FAITS', String(faits));
@@ -573,24 +588,35 @@ function scanCycliqueTri_(etat, plafondAtteint, candidats, libelles) {
 
 /**
  * Consomme les demandes « PAS SUSPECT » de Marc (C28-19) : pour chaque threadId posé par l'app
- * (Property `DriveAI_PAS_SUSPECT`, liste JSON additive), PURGE les lignes d'état du fil
- * (clés `tri|<id>|…`, cf. purgerClesTriIndex_) puis RE-TRIE immédiatement — l'expéditeur étant
- * désormais dans `Confiance`, le fil redevient « sain » (libellés normaux, archivé si lu).
- * Le libellé ⚠ Gmail n'est JAMAIS retiré (§2.3) — le système l'ignore. Borné par le plafond du
- * run ; consommation ADDITIVE (un fil non traité — coupure, attente d'intentions — survit pour
- * le tick suivant, jamais perdu).
+ * (une Property PAR fil `DriveAI_PAS_SUSPECT|<id>` — écriture atomique côté doPost, revue flotte
+ * C28-24 ; l'ancienne LISTE JSON `DriveAI_PAS_SUSPECT` est consommée en compat puis convertie),
+ * PURGE les lignes d'état du fil (clés `tri|<id>|…`, cf. purgerClesTriIndex_) puis RE-TRIE
+ * immédiatement — l'expéditeur étant désormais dans `Confiance`, le fil redevient « sain »
+ * (libellés normaux, archivé si lu). Le libellé ⚠ Gmail n'est JAMAIS retiré (§2.3) — le système
+ * l'ignore. Borné par le plafond du run ; un fil non traité (coupure, attente d'intentions)
+ * survit pour le tick suivant, jamais perdu ; une clé ajoutée par un doPost PENDANT ce run n'est
+ * pas touchée (jamais écrasée). Les écritures d'état ne se font qu'EN FIN de consommation : une
+ * coupure dure re-présente tout (rejeu idempotent).
  */
 function appliquerPasSuspect_(etat, plafondAtteint, candidats, libelles) {
   var props = PropertiesService.getScriptProperties();
-  var brut = props.getProperty('DriveAI_PAS_SUSPECT');
-  if (!brut) return;
+  var PREFIXE = 'DriveAI_PAS_SUSPECT|';
   var ids = [];
-  try { ids = JSON.parse(brut) || []; } catch (e) { ids = []; }
-  if (!ids.length) { props.deleteProperty('DriveAI_PAS_SUSPECT'); return; }
+  var brut = props.getProperty('DriveAI_PAS_SUSPECT'); // ancien format (liste JSON, avant C28-24)
+  if (brut) { try { ids = JSON.parse(brut) || []; } catch (e) { ids = []; } }
+  var tous = {};
+  try { tous = props.getProperties(); } catch (e) { }
+  for (var k in tous) {
+    if (k.indexOf(PREFIXE) === 0) {
+      var idCle = k.slice(PREFIXE.length);
+      if (ids.indexOf(idCle) === -1) ids.push(idCle);
+    }
+  }
+  if (!ids.length) { if (brut) props.deleteProperty('DriveAI_PAS_SUSPECT'); return; }
 
-  var restants = [];
+  var restants = {};
   for (var i = 0; i < ids.length; i++) {
-    if (plafondAtteint()) { restants = restants.concat(ids.slice(i)); break; }
+    if (plafondAtteint()) { for (var ri = i; ri < ids.length; ri++) restants[ids[ri]] = true; break; }
     var threadId = String(ids[i]);
     try {
       purgerClesTriIndex_(threadId); // idempotent (0 ligne au rejeu)
@@ -598,15 +624,20 @@ function appliquerPasSuspect_(etat, plafondAtteint, candidats, libelles) {
       if (fil) {
         var r = trierFil_(fil, candidats, libelles, false);
         if (r === 'traite' || r === 'archive') etat.traites++;
-        if (r === 'attend') { etat.attentes++; restants.push(threadId); } // re-tenté au tick suivant
+        if (r === 'attend') { etat.attentes++; restants[threadId] = true; } // re-tenté au tick suivant
       }
     } catch (e) {
-      if (signalerPanneGmail_(e)) { restants = restants.concat(ids.slice(i)); break; }
+      if (signalerPanneGmail_(e)) { for (var rq = i; rq < ids.length; rq++) restants[ids[rq]] = true; break; }
       journalErreur_('TriGmail', 'Pas-suspect inapplicable (' + threadId + ') : ' + e);
     }
   }
-  if (restants.length) props.setProperty('DriveAI_PAS_SUSPECT', JSON.stringify(restants));
-  else props.deleteProperty('DriveAI_PAS_SUSPECT');
+  // Persistance par CLÉ (écritures atomiques) : servi → purgé ; à re-tenter → re-posé (les ids de
+  // l'ancienne liste sont convertis au passage) ; la liste héritée est soldée en dernier.
+  for (var p = 0; p < ids.length; p++) {
+    if (restants[ids[p]]) props.setProperty(PREFIXE + ids[p], '1');
+    else props.deleteProperty(PREFIXE + ids[p]);
+  }
+  if (brut) props.deleteProperty('DriveAI_PAS_SUSPECT');
 }
 
 /**
@@ -667,6 +698,33 @@ function scanArriereTri_(etat, plafondAtteint, candidats, libelles) {
 }
 
 /**
+ * Fenêtre (en jours) couverte par l'analyse des INTENTIONS, dérivée de la CONSTANTE
+ * `CONFIG.GMAIL_REQUETE_ACTIONS` (jamais « 30 » en dur — leçon « cas dérivés de la constante »).
+ * PURE. @return {?number} jours, ou null si la requête ne porte pas de fenêtre lisible.
+ */
+function joursFenetreIntentions_() {
+  var m = /newer_than:(\d+)d/.exec(String(CONFIG.GMAIL_REQUETE_ACTIONS || ''));
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * Vrai si un fil dont le DERNIER message date de `tsMs` est HORS de la fenêtre des intentions :
+ * sa clé `intention|` n'arrivera JAMAIS (tous les scans d'intentions sont bornés à cette
+ * fenêtre) — l'attendre serait un « attend » PERMANENT (revue flotte C28-24 : la demande
+ * `in:inbox is:read` sautait tout le stock ancien en brûlant le quota, leçon « un garde-fou qui
+ * met des items hors circuit exige un chemin de retour »). PURE (testée).
+ * Fenêtre illisible → false (statu quo prudent : on attend).
+ * @param {number} tsMs  date du dernier message (ms epoch)
+ * @param {number} maintenantMs
+ * @return {boolean}
+ */
+function estHorsFenetreIntentions_(tsMs, maintenantMs) {
+  var jours = joursFenetreIntentions_();
+  if (jours === null) return false;
+  return maintenantMs - tsMs > jours * 24 * 60 * 60 * 1000;
+}
+
+/**
  * Trie UN fil. @return {'deja'|'attend'|'traite'|'archive'|'erreur'} — 'archive' = traité ET
  * retiré de la boîte (C28-24 : l'offset du tri à la demande n'avance que des fils RESTANTS en
  * boîte ; pour le comptage, 'archive' se compte partout comme 'traite').
@@ -706,7 +764,11 @@ function trierFil_(fil, candidats, libelles, verifierBoite, forcerNonArchivage) 
     var dernierId = dernier.getId();
     // Le tri passe APRÈS la Phase 3 : tant que le dernier message n'a pas été analysé (intentions),
     // on attend — c'est elle qui pose le flag `important|` dont dépend le ⏰/l'archivage.
-    if (!indexContient_('intention|' + dernierId)) return 'attend';
+    // SAUF fil HORS fenêtre intentions (revue flotte C28-24) : la clé n'arrivera JAMAIS — on trie
+    // sans attendre (`important|` structurellement absent ; le ⏰ déjà posé reste honoré via
+    // dejaPoses, les gardes suspect/zone protégée s'appliquent au vif comme pour tout fil).
+    if (!indexContient_('intention|' + dernierId) &&
+        !estHorsFenetreIntentions_(Number(ts), Date.now())) return 'attend';
 
     // Message de RÉFÉRENCE pour la catégorisation : le plus récent qui ne vient PAS de Marc —
     // sinon un fil où il a répondu en dernier apprendrait « marc@… → libellé » et catégoriserait
@@ -790,8 +852,10 @@ function trierFil_(fil, candidats, libelles, verifierBoite, forcerNonArchivage) 
       entierementLu: !nonLu
     });
     // Tri À LA DEMANDE (C28-16) : Marc a décoché « archiver » pour CE déclenchement — l'archivage
-    // est suspendu juste avant la mutation (libellés et clé Index INCHANGÉS) ; la politique du
-    // tri automatique quotidien n'est pas modifiée.
+    // est suspendu juste avant la mutation (libellés et clé Index INCHANGÉS). NB (revue flotte
+    // C28-24) : la clé posée est la même que celle du tri normal → le fil restera NON archivé
+    // tant que son état (nouveau message, lu/non-lu) ne change pas — assumé : « étiqueter sans
+    // archiver » est le sens du choix de Marc ; un fil qu'il relit/re-reçoit est re-trié normal.
     if (forcerNonArchivage) decision.archiver = false;
 
     // ÉCRITURES (les seules du module) : libellés existants + archivage réversible. Une panne ICI
@@ -812,6 +876,11 @@ function trierFil_(fil, candidats, libelles, verifierBoite, forcerNonArchivage) 
     indexAjouter_(cle, { statut: decision.statut, nom: sujet });
     return decision.archiver ? 'archive' : 'traite';
   } catch (e) {
+    // Panne de PLATEFORME d'abord (revue flotte C28-24, leçon « classer par ORIGINE avant de
+    // compter ») : un quota Gmail mort ENTRE la recherche et le traitement imputerait sinon un
+    // échec à CHAQUE fil de la page (jusqu'à l'abandon `tri-abandon` à tort) — suspension posée,
+    // aucun échec compté, aucune ligne par fil, le run s'arrête via plafondAtteint().
+    if (signalerPanneGmail_(e)) return 'erreur';
     // Fil malade (lecture) : compté PAR ÉTAT (un nouveau message redonne sa chance), ABANDONNÉ
     // après QUARANTAINE_MAX essais — sinon : une ligne de Journal par tick pendant 30 jours.
     var essais = 0;

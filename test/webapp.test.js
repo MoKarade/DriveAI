@@ -198,13 +198,17 @@ function ctxPasSuspectWeb(opts) {
   return { c, props, confiance };
 }
 
-test('actionPasSuspect_ : apprend l\'expéditeur (jamais Marc), demande ADDITIVE posée, tick lancé', () => {
+test('actionPasSuspect_ : apprend l\'expéditeur (jamais Marc), demande posée en clé PAR FIL (atomique), tick lancé', () => {
   const { c, props, confiance } = ctxPasSuspectWeb({ props: { DriveAI_PAS_SUSPECT: JSON.stringify(['autre']) } });
   const r = c.actionPasSuspect_({ postData: { contents: JSON.stringify({ threadId: '19f44ecc77d92299' }) } });
   assert.strictEqual(r.ok, true);
   assert.deepStrictEqual(confiance, ['no-reply@google.com'],
     'référence = dernier message PAS de Marc (sa propre réponse ne doit jamais être apprise)');
-  assert.deepStrictEqual(JSON.parse(props.DriveAI_PAS_SUSPECT), ['autre', '19f44ecc77d92299']);
+  // Revue C28-24 : une Property PAR fil — jamais de lecture-modification-écriture d'une liste
+  // partagée (deux doPost concurrents s'écrasaient : clic perdu en silence).
+  assert.strictEqual(props['DriveAI_PAS_SUSPECT|19f44ecc77d92299'], '1');
+  assert.deepStrictEqual(JSON.parse(props.DriveAI_PAS_SUSPECT), ['autre'],
+    'la liste HÉRITÉE n\'est plus touchée par doPost (consommée/convertie par le tick)');
 });
 
 test('actionPasSuspect_ : threadId invalide → refus AVANT toute lecture Gmail ; AUCUN anti-rafale (C28-24)', () => {
@@ -215,14 +219,15 @@ test('actionPasSuspect_ : threadId invalide → refus AVANT toute lecture Gmail 
   assert.ok(!('DriveAI_PAS_SUSPECT' in props));
 
   // C28-24 (décision Marc) : l'anti-rafale 5 s est RETIRÉ — retirer plusieurs suspects
-  // d'affilée doit marcher instantanément, chaque clic s'accumule dans la liste additive.
+  // d'affilée doit marcher instantanément, chaque clic pose SA clé (écriture atomique).
   const rapide = ctxPasSuspectWeb({});
   const r1 = rapide.c.actionPasSuspect_({ postData: { contents: JSON.stringify({ threadId: '19f44ecc77d92299' }) } });
   const r2 = rapide.c.actionPasSuspect_({ postData: { contents: JSON.stringify({ threadId: '19f44ecc77d92300' }) } });
   assert.strictEqual(r1.ok, true);
   assert.strictEqual(r2.ok, true);
-  assert.deepStrictEqual(JSON.parse(rapide.props.DriveAI_PAS_SUSPECT),
-    ['19f44ecc77d92299', '19f44ecc77d92300'], 'les deux clics rapprochés sont TOUS LES DEUX servis');
+  assert.strictEqual(rapide.props['DriveAI_PAS_SUSPECT|19f44ecc77d92299'], '1');
+  assert.strictEqual(rapide.props['DriveAI_PAS_SUSPECT|19f44ecc77d92300'], '1',
+    'les deux clics rapprochés sont TOUS LES DEUX servis (aucune liste partagée à écraser)');
 });
 
 test('actionPasSuspect_ : quota Gmail mort à la lecture du fil → QUOTA_GMAIL, rien d\'appris', () => {

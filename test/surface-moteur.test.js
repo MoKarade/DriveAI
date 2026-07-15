@@ -47,6 +47,8 @@ const CONTRAT = [
   'decisionSuspect_', 'confianceCache_', 'reinitialiserConfianceCache_', 'apprendreConfiance_',
   'scanCycliqueTri_', 'appliquerPasSuspect_', 'purgerClesTriIndex_',
   'actionPasSuspect_', 'validerThreadId_',
+  // revue flotte C28-24 : fils hors fenêtre intentions triés sans attendre (jamais d'« attend » permanent)
+  'joursFenetreIntentions_', 'estHorsFenetreIntentions_',
   'traiterDepots_', 'ordonnerDepots_', 'collecterPartages_', 'appliquerMigrationTaxonomie_',
   // re-analyse v2 ciblée (C26-08, ADR-0018)
   'estAReanalyser_', 'appliquerReanalyseCiblee_', 'reanalyserUnePage_', 'collecterAReanalyser_',

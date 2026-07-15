@@ -166,6 +166,7 @@ function ctxPasSuspect(opts) {
   const purges = [];
   c.PropertiesService = { getScriptProperties: () => ({
     getProperty: (k) => (k in props ? props[k] : null),
+    getProperties: () => ({ ...props }), // consommation du format par clé (revue C28-24)
     setProperty: (k, v) => { props[k] = String(v); },
     deleteProperty: (k) => { delete props[k]; },
   }) };
@@ -177,24 +178,30 @@ function ctxPasSuspect(opts) {
   return { c, props, purges };
 }
 
-test('appliquerPasSuspect_ : purge + re-tri immédiat de chaque fil, Property effacée quand tout est servi', () => {
-  const { c, props, purges } = ctxPasSuspect({ props: { DriveAI_PAS_SUSPECT: JSON.stringify(['fA', 'fB']) } });
+test('appliquerPasSuspect_ : clés PAR FIL servies puis purgées ; l\'ANCIENNE liste JSON est consommée en compat', () => {
+  const { c, props, purges } = ctxPasSuspect({ props: {
+    'DriveAI_PAS_SUSPECT|fA': '1',                    // nouveau format (doPost atomique)
+    DriveAI_PAS_SUSPECT: JSON.stringify(['fB', 'fA']), // héritage (fA en double → dédupliqué)
+  } });
   const etat = { traites: 0, attentes: 0 };
   c.appliquerPasSuspect_(etat, () => false, [], {});
-  assert.deepStrictEqual(purges, ['fA', 'fB']);
+  assert.deepStrictEqual(purges.sort(), ['fA', 'fB'], 'dédupliqué entre les deux formats');
   assert.strictEqual(etat.traites, 2);
-  assert.ok(!('DriveAI_PAS_SUSPECT' in props), 'liste entièrement servie → Property effacée');
+  assert.ok(!('DriveAI_PAS_SUSPECT' in props), 'liste héritée soldée');
+  assert.ok(!('DriveAI_PAS_SUSPECT|fA' in props), 'clé par fil servie → purgée');
 });
 
-test('appliquerPasSuspect_ : coupure (plafond) et « attend » → le RESTE survit pour le tick suivant', () => {
+test('appliquerPasSuspect_ : coupure (plafond) et « attend » → le RESTE survit en clés PAR FIL pour le tick suivant', () => {
   const etat = { traites: 0, attentes: 0 };
   const { c, props } = ctxPasSuspect({
     props: { DriveAI_PAS_SUSPECT: JSON.stringify(['fA', 'fB', 'fC']) },
     trierFil: (fil) => (fil.getId() === 'fA' ? 'attend' : 'traite'),
   });
   c.appliquerPasSuspect_(etat, () => etat.traites >= 1, [], {}); // plafond après le 1ᵉʳ traité (fB)
-  const restants = JSON.parse(props.DriveAI_PAS_SUSPECT);
-  assert.deepStrictEqual(restants, ['fA', 'fC'], '« attend » (fA) ET non-atteint (fC) re-présentés');
+  assert.ok(!('DriveAI_PAS_SUSPECT' in props), 'liste héritée convertie au format par fil');
+  assert.strictEqual(props['DriveAI_PAS_SUSPECT|fA'], '1', '« attend » (fA) re-présenté');
+  assert.strictEqual(props['DriveAI_PAS_SUSPECT|fC'], '1', 'non-atteint (fC) re-présenté');
+  assert.ok(!('DriveAI_PAS_SUSPECT|fB' in props), 'servi (fB) → purgé');
 });
 
 test('appliquerPasSuspect_ : Property corrompue → purgée, jamais une boucle d\'erreurs par tick', () => {
