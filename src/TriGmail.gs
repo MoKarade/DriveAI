@@ -368,6 +368,11 @@ function trierFilsGmail_(estBudgetDepasse) {
   if (!plafondAtteint()) scanAvantTri_(etat, plafondAtteint, candidats, libelles);
   if (!plafondAtteint()) scanCycliqueTri_(etat, plafondAtteint, candidats, libelles);
   if (!plafondAtteint()) scanArriereTri_(etat, plafondAtteint, candidats, libelles);
+  // Nettoyage PROFOND (C28-22) : campagne de fond sur le stock > 30 j — en DERNIER (priorité au
+  // vivant) et gaté sur le frein campagnes §2.6 (il peut coûter des mini-appels de catégorisation).
+  if (!plafondAtteint() && !budgetCampagnesAtteint_()) {
+    nettoyerBoiteHistorique_(etat, plafondAtteint, candidats, libelles);
+  }
 }
 
 /**
@@ -694,6 +699,127 @@ function scanArriereTri_(etat, plafondAtteint, candidats, libelles) {
     }
     if (!lotComplet) return; // rejeu du lot au prochain tick (idempotence = gratuit)
     props.setProperty('DriveAI_TRI_OFFSET', String(offset + fils.length));
+  }
+}
+
+/**
+ * NETTOYAGE PROFOND de la boîte (C28-22, ADR-0022) : archive progressivement les vieux mails LUS
+ * de PLUS de 30 jours — le trou de périmètre du tri vivant (`TRI_REQUETE` = newer_than:30d) et du
+ * scan arrière (ancré à −31 j). Campagne de FOND, priorité STRICTE au flux vivant (appelée en
+ * DERNIER du tri, gatée sur le frein campagnes §2.6). Requête FIGÉE `in:inbox before:<ancre>`
+ * (ancre = aujourd'hui −29 j, posée une fois : `before:` exclusif + `newer_than:30d` glissant ⇒
+ * 1 jour de chevauchement idempotent avec le vivant, jamais de trou). Passe par `trierFil_`
+ * (libellés existants + archivage réversible SEULS, §2.3) — suspects ⚠/importants ⏰/non-lus/zone
+ * protégée non lue restent en boîte (jamais archivés).
+ *
+ * FILE MOUVANTE (leçon C28-24) : chaque fil ARCHIVÉ quitte le résultat `in:inbox` → l'offset
+ * n'avance que des fils RESTÉS en boîte ('archive' exclu) ; les archivés « consomment » leur place
+ * en disparaissant. Plafond QUOTIDIEN de fils LUS (patron C28-21 : page rétrécie au reliquat,
+ * compté en `finally` sur le coût CONSOMMÉ) + reliquat d'attentes (jamais d'offset gelé, C28-24).
+ * TERMINAISON (patron historique) : les non-archivables légitimes restent → le résultat n'est
+ * JAMAIS vide, c'est l'ABSENCE D'ACTIVITÉ qui signe la fin — DEUX passes COMPLÈTES consécutives
+ * (offset revenu au bout) sans qu'aucun fil ne soit archivé/étiqueté/mis en attente.
+ * @param {{traites:number, attentes:number}} etat
+ * @param {function():boolean} plafondAtteint
+ * @param {string[]} candidats
+ * @param {Object} libelles
+ */
+function nettoyerBoiteHistorique_(etat, plafondAtteint, candidats, libelles) {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DriveAI_TRI_BOITE') === 'terminé') return; // campagne finie (1 lecture)
+
+  var aujourdhui = dateGmail_(new Date());
+  var filsJour = props.getProperty('DriveAI_TRI_BOITE_JOUR') === aujourdhui
+    ? Number(props.getProperty('DriveAI_TRI_BOITE_FILS_JOUR')) || 0
+    : 0;
+
+  var ancre = props.getProperty('DriveAI_TRI_BOITE_ANCRE');
+  if (!ancre) {
+    var d = new Date();
+    d.setDate(d.getDate() - 29); // −29 j : chevauchement idempotent d'un jour avec le tri vivant
+    ancre = dateGmail_(d);
+    props.setProperty('DriveAI_TRI_BOITE_ANCRE', ancre);
+  }
+  var requete = 'in:inbox before:' + ancre; // ensemble ancré (les vieux mails restants seulement)
+
+  // Marqueur d'ACTIVITÉ de la passe (une écriture au plus par run) : archivage/étiquetage/attente.
+  var saleDejaMarquee = props.getProperty('DriveAI_TRI_BOITE_PASSE_SALE') === 'oui';
+  var marquerActivite = function () {
+    if (!saleDejaMarquee) { props.setProperty('DriveAI_TRI_BOITE_PASSE_SALE', 'oui'); saleDejaMarquee = true; }
+  };
+
+  var filsLus = 0;
+  try {
+    while (!plafondAtteint()) {
+      // Page rétrécie au reliquat du JOUR (patron C28-21) ET au reliquat d'ATTENTES (C28-24) —
+      // sinon une page coupée à mi-course gèlerait l'offset et relirait les mêmes fils chaque tick.
+      var taille = Math.min(CONFIG.PAGE_FILS_ACTIONS,
+        CONFIG.TRI_BOITE_MAX_FILS_JOUR - filsJour - filsLus,
+        CONFIG.TRI_MAX_ATTENTES - etat.attentes);
+      if (taille <= 0) return; // plafond quotidien / attentes atteint — repris plus tard (aucune recherche)
+      var offset = Number(props.getProperty('DriveAI_TRI_BOITE_OFFSET')) || 0;
+      var fils;
+      try {
+        fils = GmailApp.search(requete, offset, taille);
+      } catch (e) {
+        if (signalerPanneGmail_(e)) return; // quota : offset inchangé, reprise après la re-sonde
+        journalErreur_('TriGmail', 'Recherche du nettoyage profond impossible : ' + e);
+        return;
+      }
+      signalerRetablissementGmail_();
+      if (!fils.length) {
+        // Fin d'une PASSE (offset au-delà du reliquat non-archivable). Le vide ne signe PAS la
+        // campagne (les non-archivables restent) : c'est l'absence d'ACTIVITÉ de la passe qui compte.
+        finaliserPasseBoite_(props, offset);
+        return;
+      }
+      var restants = 0, pageComplete = true;
+      for (var i = 0; i < fils.length; i++) {
+        if (plafondAtteint()) { pageComplete = false; break; }
+        filsLus++; // le fil va être LU (trierFil_) : coût quota réel, page complétée ou non
+        var r = trierFil_(fils[i], candidats, libelles, true);
+        if (r === 'archive') { etat.traites++; marquerActivite(); } // quitte la boîte : n'avance PAS l'offset
+        else {
+          restants++;
+          if (r === 'traite') { etat.traites++; marquerActivite(); }
+          if (r === 'attend') { etat.attentes++; marquerActivite(); } // rare (> 30 j = hors fenêtre intentions)
+          if (r === 'erreur') pageComplete = false; // fil malade rejoué (jamais sauté)
+        }
+      }
+      if (!pageComplete) return; // page interrompue (run/erreur) : offset INCHANGÉ (rejeu gratuit)
+      props.setProperty('DriveAI_TRI_BOITE_OFFSET', String(offset + restants));
+    }
+  } finally {
+    if (filsLus > 0) { // JOUR + FILS_JOUR écrits ENSEMBLE (pas de compteur de la veille orphelin)
+      props.setProperty('DriveAI_TRI_BOITE_JOUR', aujourdhui);
+      props.setProperty('DriveAI_TRI_BOITE_FILS_JOUR', String(filsJour + filsLus));
+    }
+  }
+}
+
+/**
+ * Fin d'une passe du nettoyage profond (recherche vide → offset au bout). Ordre des écritures
+ * (leçon « écritures d'état ») : offset remis à 0 D'ABORD, comptabilité des passes ENSUITE — une
+ * coupure laisse au pire une passe de plus, jamais un « terminé » prématuré. Deux passes SANS
+ * activité consécutives ⇒ campagne finie (les non-archivables restants n'y changent rien).
+ * @param {Properties} props
+ * @param {number} offset  taille de la passe (pour le journal)
+ */
+function finaliserPasseBoite_(props, offset) {
+  props.setProperty('DriveAI_TRI_BOITE_OFFSET', '0'); // la prochaine passe repart du haut
+  if (props.getProperty('DriveAI_TRI_BOITE_PASSE_SALE') === 'oui') {
+    props.deleteProperty('DriveAI_TRI_BOITE_PASSE_SALE');
+    props.deleteProperty('DriveAI_TRI_BOITE_PASSES_PROPRES');
+    journalInfo_('TriGmail', 'Nettoyage profond : passe avec activité (' + offset + ' fils) — vérification relancée.');
+    return;
+  }
+  var propres = (Number(props.getProperty('DriveAI_TRI_BOITE_PASSES_PROPRES')) || 0) + 1;
+  if (propres >= 2) {
+    props.setProperty('DriveAI_TRI_BOITE', 'terminé');
+    journalInfo_('TriGmail', 'Nettoyage PROFOND de la boîte TERMINÉ (' + propres + ' passes sans activité) — les vieux lus sont archivés.');
+  } else {
+    props.setProperty('DriveAI_TRI_BOITE_PASSES_PROPRES', String(propres));
+    journalInfo_('TriGmail', 'Nettoyage profond : passe propre (' + propres + '/2) — confirmation relancée.');
   }
 }
 
