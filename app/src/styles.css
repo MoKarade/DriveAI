@@ -1,88 +1,120 @@
-/* DriveAI — App v3 « Salle des machines » (ADR-0013).
-   Sombre d'abord ; bascule claire via [data-theme="light"]. Les NOMS de variables v2
-   (--fond, --carte, --texte…) sont conservés : les vues existantes adoptent le thème
-   sans réécriture — elles seront remplacées une à une (C19-04 → C19-09). */
+/* DriveAI — App v5 « Material Dark » (C28-23, plan architecte 2026-07-15).
+   Style Google Agenda sombre, SEUL thème (décision Marc : le clair disparaît). Les NOMS de
+   variables v2/v3 (--fond, --carte, --texte…) sont conservés : les vues existantes adoptent
+   la nouvelle peau sans réécriture. Layout : topbar + sidebar (façon GCal) + contenu. */
 
 :root {
-  /* tokens v3 (référence maquette) */
-  --fond: #10161f;
-  --fond-haut: #0c1118;
-  --carte: #18202c;
-  --carte-2: #141b25;
-  --bord: #232e3e;
-  --rang: #1f2937;
-  --texte: #e6ebf2;
-  --texte-doux: #8b98aa;
-  --accent: #e8a33a;      /* ambre — accent UI (v2 utilisait un bleu : remplacé partout) */
-  --donnee: #c97f1b;      /* marques de données (barres, graphes) */
-  --cat-fond: #26374d;    /* pastilles catégorie */
-  --cat-texte: #9fc1e8;
-  --ok: #3fb950;
-  --attention: #d29922;
-  --erreur: #e57373;
-  --erreur-fond: #2a1a1e;
+  /* tokens v5 — palette Google Material sombre (référence : capture GCal de Marc) */
+  --fond: #131314;
+  --fond-haut: #131314;
+  --carte: #1f1f1f;
+  --carte-2: #282a2c;
+  --bord: #444746;
+  --rang: #2d2f31;
+  --texte: #e3e3e3;
+  --texte-doux: #9aa0a6;
+  --accent: #8ab4f8;      /* bleu Google (Material dark primary) */
+  --sur-accent: #062e6f;  /* texte posé SUR l'accent */
+  --donnee: #7cacf8;      /* marques de données (barres, graphes) */
+  --cat-fond: #37393b;    /* pastilles catégorie (surface tonale) */
+  --cat-texte: #c2e7ff;
+  --ok: #81c995;
+  --attention: #fdd663;
+  --erreur: #f28b82;
+  --erreur-fond: #3c1d1b;
   --mono: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, monospace;
-}
-
-[data-theme='light'] {
-  --fond: #f4f5f6;
-  --fond-haut: #ffffff;
-  --carte: #ffffff;
-  --carte-2: #eef0f2;
-  --bord: #dde2e8;
-  --rang: #edf0f3;
-  --texte: #1f242b;
-  --texte-doux: #5c666e;
-  --accent: #a86a12;
-  --donnee: #b06f14;
-  --cat-fond: #e3ebf6;
-  --cat-texte: #274e7d;
-  --ok: #1a7f37;
-  --attention: #96490c;
-  --erreur: #cf222e;
-  --erreur-fond: #fbf1f0;
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-  font-size: 15.5px;
-  line-height: 1.55;
+  font-family: Roboto, 'Google Sans', system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
   background: var(--fond);
   color: var(--texte);
 }
 
-.app { max-width: 1280px; margin: 0 auto; padding: 0 1.1rem 4.5rem; }
+/* ---------- layout v5 : topbar + sidebar + contenu (façon Google Agenda) ---------- */
+.app { display: flex; flex-direction: column; min-height: 100vh; }
+.corps-app { display: grid; grid-template-columns: 256px minmax(0, 1fr); flex: 1; align-items: start; }
+.contenu { padding: 0.9rem 1.4rem 4.5rem; min-width: 0; }
 
-/* ---------- en-tête + navigation (v3) ---------- */
 .barre-haute {
-  display: flex; align-items: center; gap: 0.9rem;
-  padding: 0.7rem 0.2rem;
+  position: sticky; top: 0; z-index: 15;
+  display: flex; align-items: center; gap: 0.7rem;
+  padding: 0.55rem 1rem;
+  background: var(--fond);
   border-bottom: 1px solid var(--bord);
 }
-.logo {
-  font-family: var(--mono); font-weight: 600; font-size: 1.1rem;
-  letter-spacing: 0.04em; color: var(--accent); margin: 0;
-}
+.logo { font-weight: 500; font-size: 1.3rem; letter-spacing: 0; color: var(--texte); margin: 0; }
+.logo b { color: var(--accent); font-weight: 500; }
 .sous-titre { margin: 0; color: var(--texte-doux); font-size: 0.8rem; }
-.header-actions { display: flex; gap: 0.4rem; margin-left: auto; }
+.header-actions { display: flex; gap: 0.4rem; margin-left: auto; align-items: center; }
+button.hamburger { display: none; }
 
-nav.sections { display: flex; gap: 2px; border-bottom: 1px solid var(--bord); margin-bottom: 1rem; overflow-x: auto; }
-nav.sections button {
-  border: none; background: none; border-radius: 0;
-  font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.06em;
-  font-size: 0.76rem; color: var(--texte-doux);
-  padding: 0.85rem 1rem; white-space: nowrap;
-  transition: color 0.15s ease, box-shadow 0.2s ease;
+/* sidebar façon GCal : même fond que la page, entrées en pilules pleines-arrondies */
+.sidebar { padding: 0.9rem 0.7rem 1.2rem; position: sticky; top: 53px; align-self: start; }
+.fab-creer {
+  display: inline-flex; align-items: center; gap: 0.6rem;
+  background: var(--carte-2); color: var(--texte); border: none;
+  border-radius: 16px; padding: 0.85rem 1.15rem 0.85rem 0.95rem;
+  font-size: 0.95rem; font-weight: 500;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 4px 8px 3px rgba(0, 0, 0, 0.25);
+  margin: 0.2rem 0 1rem 0.3rem;
 }
-nav.sections button.actif { color: var(--accent); box-shadow: 0 -2px 0 var(--accent) inset; background: none; }
+.fab-creer em { font-style: normal; font-size: 1.35rem; line-height: 1; color: var(--texte); }
+.fab-creer:not(:disabled):hover { filter: none; background: #333537; }
+nav.sections { display: flex; flex-direction: column; gap: 1px; }
+nav.sections button {
+  display: flex; align-items: center; gap: 0.75rem; text-align: left;
+  border: none; background: none; border-radius: 0 999px 999px 0;
+  font-size: 0.9rem; font-weight: 400; color: var(--texte);
+  padding: 0.55rem 1rem; white-space: nowrap;
+  transition: background 0.15s ease;
+}
+nav.sections button em { font-style: normal; width: 1.2rem; text-align: center; color: var(--texte-doux); }
+nav.sections button:not(:disabled):hover { background: var(--carte); filter: none; transform: none; }
+nav.sections button.actif { background: #004a77; color: #c2e7ff; }
+nav.sections button.actif em { color: #c2e7ff; }
 nav.sections button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-/* badge « Synchro HH:MM » (P1/C28-03) : collé à droite de la barre de sections */
-.badge-synchro { margin-left: auto; display: flex; align-items: center; }
-nav.sections .badge-synchro button { text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; }
+/* « Mes agendas » : cases à cocher locales (trompe-l'œil UI — aucune donnée nouvelle, §2.3) */
+.mes-agendas { margin-top: 1.1rem; padding: 0 1rem; }
+.mes-agendas h3 {
+  margin: 0 0 0.4rem; font-size: 0.78rem; font-weight: 500;
+  color: var(--texte-doux); letter-spacing: 0.02em;
+}
+.mes-agendas label {
+  display: flex; align-items: center; gap: 0.55rem;
+  font-size: 0.86rem; color: var(--texte); padding: 0.28rem 0; cursor: pointer;
+}
+.mes-agendas input[type='checkbox'] { width: auto; accent-color: var(--accent); }
+.mes-agendas label .puce { width: 12px; height: 12px; border-radius: 3px; flex: 0 0 auto; }
+
+/* menu avatar (réglages : langue + déconnexion) */
+.avatar {
+  width: 34px; height: 34px; border-radius: 50%; border: none; padding: 0;
+  background: #7cacf8; color: var(--sur-accent); font-weight: 600; font-size: 0.95rem;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.menu-avatar { position: relative; }
+.menu-avatar .menu {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 40;
+  background: var(--carte-2); border-radius: 12px; min-width: 200px;
+  padding: 0.5rem; display: flex; flex-direction: column; gap: 2px;
+  box-shadow: 0 4px 8px 3px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+.menu-avatar .menu button {
+  border: none; background: none; color: var(--texte); text-align: left;
+  border-radius: 8px; padding: 0.55rem 0.8rem; font-weight: 400; font-size: 0.9rem;
+}
+.menu-avatar .menu button:not(:disabled):hover { background: var(--carte); filter: none; transform: none; }
+
+/* badge « Synchro HH:MM » (P1/C28-03) : vit dans la topbar (v5) */
+.badge-synchro { display: flex; align-items: center; }
+.badge-synchro button { text-transform: none; letter-spacing: 0; font-variant-numeric: tabular-nums; border: none; }
 .badge-synchro .erreur { margin: 0; font-size: 0.78rem; }
 
 /* barre basse (mobile) : Auj · Agenda · Mails · Docs · Plus */
@@ -109,22 +141,31 @@ nav.barre-basse button.actif { color: var(--accent); }
 .feuille-fond { position: fixed; inset: 0; z-index: 25; background: rgba(0, 0, 0, 0.45); border: none; }
 
 @media (max-width: 760px) {
-  nav.sections { display: none; }
+  /* la sidebar devient un tiroir ouvert au ☰ ; la barre basse reste la nav principale */
+  .corps-app { grid-template-columns: 1fr; }
+  .sidebar {
+    position: fixed; left: 0; top: 0; bottom: 0; z-index: 35; width: 272px;
+    background: var(--carte); padding-top: 1rem; overflow-y: auto;
+    transform: translateX(-105%); transition: transform 0.2s ease;
+  }
+  .sidebar.ouverte { transform: none; box-shadow: 12px 0 34px rgba(0, 0, 0, 0.45); }
+  button.hamburger { display: inline-flex; }
   nav.barre-basse { display: flex; }
-  .app { padding-bottom: 5.5rem; }
+  .contenu { padding-bottom: 5.5rem; }
 }
 
-/* ---------- boutons & champs ---------- */
+/* ---------- boutons & champs (pilules Material) ---------- */
 button {
-  padding: 0.45rem 0.9rem;
-  border-radius: 7px;
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
   border: 1px solid var(--accent);
   background: var(--accent);
-  color: #10161f;
+  color: var(--sur-accent);
   cursor: pointer;
-  font-size: 0.92rem;
-  font-weight: 600;
-  transition: transform 0.12s ease, filter 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: transform 0.12s ease, filter 0.15s ease, border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
 }
 button:not(:disabled):hover { filter: brightness(1.08); }
 button:not(:disabled):active { transform: scale(0.97); }
@@ -264,7 +305,7 @@ table.cal { table-layout: fixed; border-collapse: collapse; }
   width: 1.65rem; height: 1.65rem; border-radius: 50%; margin: 0 auto 2px; }
 .cal td { text-align: center; }
 .cal td .ev { text-align: left; }
-.cal td.auj .num { background: var(--accent); color: #10161f; font-weight: 700; }
+.cal td.auj .num { background: var(--accent); color: var(--sur-accent); font-weight: 700; }
 .ev { display: block; margin-top: 3px; font-size: 0.7rem; line-height: 1.35; border-radius: 4px;
   padding: 2px 6px; background: var(--cat-fond); color: var(--cat-texte);
   overflow: hidden; }
