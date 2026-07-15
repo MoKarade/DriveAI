@@ -20,17 +20,20 @@ import { SanteVue } from './vues/Sante';
 import { Corrections } from './vues/Corrections';
 import { Documents } from './vues/Documents';
 import { Agenda } from './vues/Agenda';
-import { Mails } from './vues/Mails';
 import { Quotas } from './vues/Quotas';
 
-export type Section = 'aujourdhui' | 'agenda' | 'mails' | 'documents' | 'apprentissage' | 'quotas' | 'sante';
+// C28-25 (Cockpit Unique) : la section « mails » est SUPPRIMÉE — le seul bloc utile qui restait
+// (les derniers fils triés + création de tâche depuis un fil) a été rapatrié dans « aujourdhui »
+// en carte repliable. Les tuiles/suspects vivaient déjà là, la table apprise dans « apprentissage ».
+export type Section = 'aujourdhui' | 'agenda' | 'documents' | 'apprentissage' | 'quotas' | 'sante';
 
-export const SECTIONS: Section[] = ['aujourdhui', 'agenda', 'mails', 'documents', 'apprentissage', 'quotas', 'sante'];
+export const SECTIONS: Section[] = ['aujourdhui', 'agenda', 'documents', 'apprentissage', 'quotas', 'sante'];
 export const ICONES: Record<Section, string> = {
-  aujourdhui: '◐', agenda: '▦', mails: '✉', documents: '▤', apprentissage: '✎', quotas: '◔', sante: '♥',
+  aujourdhui: '◐', agenda: '▦', documents: '▤', apprentissage: '✎', quotas: '◔', sante: '♥',
 };
-/** Barre basse mobile : 4 sections directes + « Plus » (Apprentissage/Quotas/Santé). */
-const BARRE_BASSE: Section[] = ['aujourdhui', 'agenda', 'mails', 'documents'];
+/** Barre basse mobile : 4 sections directes + « Plus » (Quotas/Santé). Apprentissage promu ici
+ * (C28-25) pour garder 4 boutons après le retrait de Mails. */
+const BARRE_BASSE: Section[] = ['aujourdhui', 'agenda', 'documents', 'apprentissage'];
 
 /**
  * Verrou d'identité (C28-20) : /api/callback renvoie ici avec `?erreur=acces_refuse` quand le
@@ -223,7 +226,6 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
             {section === 'documents' && <Documents langue={langue} />}
             {section === 'apprentissage' && <Corrections langue={langue} />}
             {section === 'agenda' && <Agenda langue={langue} dateRef={dateAgenda} agendas={agendas} />}
-            {section === 'mails' && <Mails langue={langue} />}
             {section === 'quotas' && <Quotas langue={langue} />}
             {section === 'sante' && <SanteVue langue={langue} />}
           </div>
@@ -250,7 +252,7 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
           </button>
         ))}
         <button
-          className={section === 'apprentissage' || section === 'quotas' || section === 'sante' ? 'actif' : ''}
+          className={section === 'quotas' || section === 'sante' ? 'actif' : ''}
           onClick={() => setPlusOuvert(true)}
         >
           <em aria-hidden="true">⋯</em>
@@ -262,9 +264,6 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
         <>
           <button className="feuille-fond" aria-label={t('fermer', langue)} onClick={() => setPlusOuvert(false)} />
           <div className="feuille-plus" role="dialog" aria-label={t('plus', langue)}>
-            <button className="discret" onClick={() => allerA('apprentissage')}>
-              {ICONES.apprentissage} {t('apprentissage', langue)}
-            </button>
             <button className="discret" onClick={() => allerA('quotas')}>
               {ICONES.quotas} {t('quotas', langue)}
             </button>
