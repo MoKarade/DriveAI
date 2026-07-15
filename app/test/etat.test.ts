@@ -525,6 +525,7 @@ describe('interpreterTelemetrie', () => {
     ['gmail_histo_fils_jour', '150', 'fils', 'Plafond 150/j'],
     ['tri_cyclique_fils_jour', '84', 'fils', 'Plafond 150/j'],
     ['tri_demande_fils_jour', '120', 'fils', 'Plafond 500/j'],
+    ['tri_boite_fils_jour', '45', 'fils', 'Plafond 150/j'],
     ['llm_cout_mois', '16.42', '$', 'Frein campagnes à 110 $'],
     ['llm_appels_mois', '5210', 'appels', ''],
   ];
@@ -537,6 +538,7 @@ describe('interpreterTelemetrie', () => {
     expect(t.demandeJour).toEqual({ lus: 120, plafond: 500 });
     expect(t.cycliqueJour).toEqual({ lus: 84, plafond: 150 });
     expect(t.histoJour).toEqual({ lus: 150, plafond: 150 });
+    expect(t.boiteJour).toEqual({ lus: 45, plafond: 150 });
     expect(t.coutDollars).toBe(16.42);
     expect(t.freinDollars).toBe(110);
     expect(t.appelsMois).toBe(5210);

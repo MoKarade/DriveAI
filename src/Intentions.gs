@@ -458,11 +458,19 @@ function creerIntentionIdempotente_(messageId, intention) {
     // Sans borne, la clé intention| n'est jamais posée → le mail est re-analysé + re-tenté à CHAQUE
     // tick à l'infini, drainant le quota Gmail (le bug C28-22). Après QUARANTAINE_MAX essais, on
     // ABANDONNE l'intention (`deja-faite`) : le message est alors marqué traité et le pipeline libéré.
+    //
+    // Le compteur est clé sur le MESSAGE (messageId), PAS sur `cle` (qui inclut hashContenu =
+    // titre/date/heure du LLM) : le titre peut FLUCTUER d'un run à l'autre (Sonnet 2 passes) → une
+    // clé par contenu changerait à chaque tick, ne s'accumulerait jamais, n'atteindrait jamais le
+    // seuil = NON-CONVERGENCE (le mail re-tenté à vie, quota drainé — la panne même qu'on borne ici).
+    // Journal UNE seule fois (=== seuil), comme la campagne historique (Main.gs) : au-delà, silencieux.
     var essais = 0;
-    try { essais = incrementerEchec_('api-intention|' + cle); } catch (e2) { }
+    try { essais = incrementerEchec_('api-intention|' + messageId); } catch (e2) { }
     if (essais >= CONFIG.QUARANTAINE_MAX) {
-      journalErreur_('Intentions', 'Intention ABANDONNÉE après ' + essais + ' échecs de création (« ' +
-        tronquer_(intention.titre, 120) + ' ») — message débloqué.');
+      if (essais === CONFIG.QUARANTAINE_MAX) {
+        journalErreur_('Intentions', 'Intention ABANDONNÉE après ' + essais + ' échecs de création (« ' +
+          tronquer_(intention.titre, 120) + ' ») — message débloqué.');
+      }
       return 'deja-faite'; // libère le message (marqué traité, plus jamais re-tenté)
     }
     return 'echec'; // retenté au prochain tick (borné par les 3 essais ci-dessus)

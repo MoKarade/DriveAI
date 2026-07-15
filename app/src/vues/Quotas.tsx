@@ -2,9 +2,10 @@
  * Quotas.tsx — vue « Coûts & quotas » (C28-24, demande Marc : « j'ai trop souvent plus de quota
  * gmail […] je veux voir un indicateur de où j'en suis du quota, du prix »). Lecture SEULE de
  * l'onglet Sheet `Télémétrie` écrit par le moteur à chaque tick (majTelemetrie_, Journal.gs) :
- *  1. QUOTA GMAIL : état (actif/suspendu + heure de reprise) et les 3 jauges quotidiennes des
+ *  1. QUOTA GMAIL : état (actif/suspendu + heure de reprise) et les 4 jauges quotidiennes des
  *     scans plafonnés (tri à la demande 500/j, balayage cyclique 150/j, campagne historique
- *     150/j). Note HONNÊTE : le quota Gmail d'Apps Script est FIXE — payer plus ne l'augmente pas.
+ *     150/j, nettoyage profond de la boîte 150/j). Note HONNÊTE : le quota Gmail d'Apps Script est
+ *     FIXE — payer plus ne l'augmente pas.
  *  2. COÛT LLM : dollars du mois vs frein campagnes, nombre d'appels, rappel de la cible §2.6.
  */
 
@@ -35,6 +36,7 @@ export function Quotas({ langue }: { langue: Langue }) {
     { cle: 'jaugeTriDemande', j: tele.demandeJour },
     { cle: 'jaugeCyclique', j: tele.cycliqueJour },
     { cle: 'jaugeHisto', j: tele.histoJour },
+    { cle: 'jaugeBoite', j: tele.boiteJour },
   ];
 
   const pctCout = tele.coutDollars !== null && tele.freinDollars

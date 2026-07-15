@@ -119,8 +119,35 @@ test('creerIntentionIdempotente_ : échec TRANSITOIRE (retour vide) → 3-strike
     assert.strictEqual(c.creerIntentionIdempotente_('M1', TACHE), 'echec', `essai ${i} → retenté`);
   }
   assert.strictEqual(c.creerIntentionIdempotente_('M1', TACHE), 'deja-faite', 'au 3ᵉ essai → abandon (message libéré)');
-  assert.strictEqual(Object.values(echecs)[0], MAX, 'compté par intention (clé dédiée)');
+  assert.strictEqual(echecs['api-intention|M1'], MAX, 'compteur clé sur le messageId SEUL');
   assert.strictEqual(journaux.filter((m) => m.includes('ABANDONNÉE')).length, 1);
+});
+
+test('creerIntentionIdempotente_ : convergence même si le TITRE fluctue (compteur clé sur messageId, pas le contenu)', () => {
+  // Régression du correctif revue flotte : le titre LLM (Sonnet 2 passes) peut CHANGER d'un run à
+  // l'autre. Un compteur clé sur le contenu ne s'accumulerait jamais → NON-CONVERGENCE (re-tenté à
+  // vie, quota drainé). Clé sur le messageId : il converge malgré la fluctuation.
+  const { c, journaux, echecs } = ctxCreation({ creerTache_: () => '' });
+  const MAX = ctxPur.CONFIG.QUARANTAINE_MAX;
+  let r = 'echec';
+  for (let i = 1; i <= MAX; i++) {
+    // Titre différent à CHAQUE appel → `cle` (index) différent, mais le compteur reste api-intention|M1.
+    r = c.creerIntentionIdempotente_('M1', { type: 'tache', titre: 'Payer facture v' + i, date: '2026-07-20', heure: null });
+  }
+  assert.strictEqual(r, 'deja-faite', 'converge et abandonne malgré le titre changeant');
+  assert.strictEqual(echecs['api-intention|M1'], MAX, 'un seul compteur (messageId), accumulé sur tous les titres');
+  assert.strictEqual(Object.keys(echecs).length, 1, 'jamais un compteur par contenu (sinon jamais de convergence)');
+  assert.strictEqual(journaux.filter((m) => m.includes('ABANDONNÉE')).length, 1, 'journalisé une seule fois');
+});
+
+test('creerIntentionIdempotente_ : au-delà du seuil (essais > MAX) → « deja-faite » SANS re-journaliser', () => {
+  const { c, journaux } = ctxCreation({ creerTache_: () => '' });
+  const MAX = ctxPur.CONFIG.QUARANTAINE_MAX;
+  for (let i = 0; i < MAX + 3; i++) {
+    // Titre fluctuant → jamais court-circuité par l'Index ; on vérifie que le journal ne re-spamme pas.
+    c.creerIntentionIdempotente_('M1', { type: 'tache', titre: 'Facture ' + i, date: '2026-07-20', heure: null });
+  }
+  assert.strictEqual(journaux.filter((m) => m.includes('ABANDONNÉE')).length, 1, 'journal UNE fois (=== seuil), jamais à chaque tick au-delà');
 });
 
 test('creerIntentionIdempotente_ : déjà indexée → « deja-faite » sans appel API', () => {
