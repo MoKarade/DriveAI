@@ -135,7 +135,11 @@ export const EVENEMENTS_MOCK: unknown[] = [
     start: { dateTime: '2026-07-09T14:00:00-04:00' }, end: { dateTime: '2026-07-09T15:00:00-04:00' },
   },
   {
-    id: 'e-2', summary: 'Garage — pose des pneus',
-    start: { dateTime: '2026-07-15T09:00:00-04:00' }, end: { dateTime: '2026-07-15T10:00:00-04:00' },
+    id: 'e-2', summary: 'Garage — pose des pneus', location: '10 Rue Boulet',
+    start: { dateTime: '2026-07-15T09:00:00-04:00' }, end: { dateTime: '2026-07-15T12:00:00-04:00' },
+  },
+  {
+    id: 'e-3', summary: 'Vacances coloc',
+    start: { date: '2026-07-13' }, end: { date: '2026-07-18' },
   },
 ];
