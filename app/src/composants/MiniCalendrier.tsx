@@ -20,8 +20,9 @@ export function MiniCalendrier({ langue, date, onChoisir }: {
   const aujourdhui = cleJour(new Date());
   const selection = cleJour(date);
 
-  // La sélection faite AILLEURS (navigation du grand Agenda, « Aujourd'hui ») ramène le mini
-  // calendrier sur le bon mois — les deux vues restent synchrones.
+  // Quand App pousse un nouveau jour (clic ici-même sur un mois voisin), le mini revient sur le
+  // mois du jour choisi. NB : la navigation ‹ › du GRAND Agenda est locale et ne remonte pas —
+  // le mini garde alors son mois (revue flotte : ne pas promettre une synchro qui n'existe pas).
   useEffect(() => {
     setAffiche(new Date(date.getFullYear(), date.getMonth(), 1));
   }, [selection]); // eslint-disable-line react-hooks/exhaustive-deps

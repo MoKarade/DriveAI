@@ -35,6 +35,7 @@ import {
 import { lignesImportants, lienGmailPourLigne, LigneIndex } from '../etat';
 import { formaterDateCourte } from '../explorateur';
 import { Langue, t } from '../i18n';
+import type { AgendasVisibles } from '../composants/Sidebar';
 
 const JOURS_SEMAINE = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
@@ -55,7 +56,7 @@ function useEstEtroit(): boolean {
   return etroit;
 }
 
-export function Agenda({ langue, dateRef }: { langue: Langue; dateRef?: Date }) {
+export function Agenda({ langue, dateRef, agendas }: { langue: Langue; dateRef?: Date; agendas?: AgendasVisibles }) {
   const maintenant = new Date();
   const [mois, setMois] = useState(new Date(maintenant.getFullYear(), maintenant.getMonth(), 1));
   const [vueCal, setVueCal] = useState<VueCal>('semaine'); // Semaine par défaut (C28-23)
@@ -71,15 +72,23 @@ export function Agenda({ langue, dateRef }: { langue: Langue; dateRef?: Date }) 
 
   // Le MINI-CALENDRIER de la sidebar pilote la référence (PR3, « remonter dateRef ») : un clic
   // là-bas déplace la grille ici, quel que soit le mois — la vue courante est conservée.
-  const cleRef = dateRef ? cleJour(dateRef) : '';
+  // Dépendance sur l'IDENTITÉ de dateRef (revue flotte) : App crée un objet NEUF à chaque clic,
+  // donc RE-CLIQUER le même jour après une navigation locale ‹ › ramène bien la grille dessus
+  // (une clé AAAA-MM-JJ identique aurait avalé le clic) — et rien ne remonte vers App (pas de
+  // boucle possible).
   useEffect(() => {
     if (!dateRef) return;
     setSemaineRef(dateRef);
     if (dateRef.getMonth() !== mois.getMonth() || dateRef.getFullYear() !== mois.getFullYear()) {
       setMois(new Date(dateRef.getFullYear(), dateRef.getMonth(), 1));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- déclenché par le JOUR choisi
-  }, [cleRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- déclenché par le jour choisi dans App
+  }, [dateRef]);
+
+  // « Mes agendas » (sidebar) filtre l'AFFICHAGE du calendrier — les données restent chargées
+  // (recocher = instantané) et la liste des tâches en bas de page reste complète.
+  const evenementsAffiches = agendas && !agendas.evenements ? [] : evenements;
+  const tachesAffichees = agendas && !agendas.taches ? [] : taches;
 
   // La plage Tasks/Calendar chargée reste TOUJOURS celle de la grille du MOIS : jour/semaine
   // sont des sous-ensembles (la navigation garde `mois` aligné sur sa référence), donc changer
@@ -93,7 +102,9 @@ export function Agenda({ langue, dateRef }: { langue: Langue; dateRef?: Date }) 
   /** Navigation ‹ › : ±1 mois, ±7 j (±3 sur mobile) ou ±1 jour — `mois` suit la référence. */
   function naviguer(sens: 1 | -1) {
     if (vueCal === 'mois') {
-      setMois(new Date(mois.getFullYear(), mois.getMonth() + sens, 1));
+      const m = new Date(mois.getFullYear(), mois.getMonth() + sens, 1);
+      setMois(m);
+      setSemaineRef(m); // la date focalisée SUIT la vue Mois (revue flotte, comportement GCal)
       return;
     }
     const pas = vueCal === 'jour' ? 1 : etroit ? 3 : 7;
@@ -186,8 +197,8 @@ export function Agenda({ langue, dateRef }: { langue: Langue; dateRef?: Date }) 
                 {semainesMois.map((semaine, i) => (
                   <tr key={i}>
                     {semaine.map((j: JourGrille) => {
-                      const evts = evenementsDuJour(evenements, j.date);
-                      const dues = tachesDuJour(taches, j.date);
+                      const evts = evenementsDuJour(evenementsAffiches, j.date);
+                      const dues = tachesDuJour(tachesAffichees, j.date);
                       const estAuj = cleJour(j.date) === aujourdhuiCle;
                       return (
                         <td
@@ -220,8 +231,8 @@ export function Agenda({ langue, dateRef }: { langue: Langue; dateRef?: Date }) 
           <GrilleTemps
             langue={langue}
             jours={joursGrille}
-            evenements={evenements}
-            taches={taches}
+            evenements={evenementsAffiches}
+            taches={tachesAffichees}
             aujourdhuiCle={aujourdhuiCle}
             onEntete={ouvrirJour}
             onCreneau={(j, h) => setCreneau({ date: cleJour(j), heure: `${String(h).padStart(2, '0')}:00` })}
@@ -411,8 +422,10 @@ function GrilleTemps({ langue, jours, evenements, taches, aujourdhuiCle, onEntet
               key={cleJour(j.date)}
               className="gt-col"
               onClick={(ev) => {
-                // Heure du CLIC dérivée de la position Y dans la colonne (plan PR3).
-                const h = Math.max(0, Math.min(23, Math.floor((ev.nativeEvent.offsetY / ev.currentTarget.clientHeight) * 24)));
+                // Heure du CLIC dérivée de la position Y dans la COLONNE (plan PR3) — clientY − bord
+                // du conteneur, jamais offsetY (relatif à target : un enfant fausserait l'heure).
+                const rect = ev.currentTarget.getBoundingClientRect();
+                const h = Math.max(0, Math.min(23, Math.floor(((ev.clientY - rect.top) / rect.height) * 24)));
                 onCreneau(j.date, h);
               }}
             >
