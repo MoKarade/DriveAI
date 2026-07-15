@@ -118,6 +118,12 @@ var CONFIG = {
   // Gmail quotidien (vécu : 4 j de panne crédit → quota Gmail épuisé, moteur re-bloqué 24 h de plus
   // APRÈS la recharge). Re-sonde automatique : au plus un run « normal » par fenêtre ci-dessous.
   LLM_PANNE_RESONDE_MS: 60 * 60 * 1000,
+  // Panne de CONFIGURATION d'une API Google (C28-22, ADR-0022) : une API non activée dans le
+  // projet GCP répond 403 « has not been used / accessNotConfigured » — panne PERMANENTE jusqu'à
+  // ce que Marc active l'API. Suspendre la création d'intentions (Tasks/Calendar) 24 h persistées
+  // évite la boucle infinie qui re-analysait chaque mail actionnable à chaque tick et drainait le
+  // quota Gmail (vécu 07/07-14/07 : Tasks jamais activée, 79 erreurs/matin). Re-sonde ≤ 1×/24 h.
+  PANNE_CONFIG_RESONDE_MS: 24 * 60 * 60 * 1000,
   // Panne API DURABLE (C28-12, plan NotebookLM P5) : une panne plateforme d'une AUTRE signature
   // que crédit/clé (529 « overloaded » Anthropic prolongé, 429 persistant, 5xx) doit finir par
   // déclencher la MÊME suspension que la panne de compte — sinon chaque document brûle ses essais

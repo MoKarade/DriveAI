@@ -232,6 +232,7 @@ test('traiterIntentionsMail_ : panne active → AUCUNE recherche Gmail (le quota
   const c = load(['Config.gs', 'Gmail.gs', 'Intentions.gs']);
   let recherches = 0;
   c.estPannePlateforme_ = () => true;
+  c.estPanneConfigApi_ = () => false; // C28-22 : garde config d'API (GoogleApi.gs non chargé ici)
   c.pageFilsActions_ = () => { recherches++; return []; };
   c.GmailApp = { search: () => { recherches++; return []; } };
   c.PropertiesService = { getScriptProperties: () => ({ getProperty: () => null, setProperty: () => {} }) };

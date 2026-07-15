@@ -63,8 +63,14 @@ function creerEvenement_(titre, dateHeureDebut, dureeMinutes, description, id) {
   var code = rep.getResponseCode();
   if (code === 200) return JSON.parse(rep.getContentText()).id;
   if (code === 409 && id) return id; // déjà créé (rejeu après coupure) → idempotent, pas un échec
+  var corps = rep.getContentText();
+  // API Calendar non activée (403 permanent, C28-22) : LÈVE — classée en panne de CONFIG en amont
+  // (suspension du run), jamais un échec qui ferait re-analyser le mail à chaque tick.
+  if (code === 403 && estMessageApiDesactivee_(corps)) {
+    throw new Error('config-api Calendar : ' + tronquer_(corps, 300));
+  }
   journalErreur_('Calendar', 'Création HTTP ' + code + ' (« ' + titre + ' ») : ' +
-    tronquer_(rep.getContentText(), 300));
+    tronquer_(corps, 300));
   return '';
 }
 

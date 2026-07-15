@@ -255,6 +255,7 @@ function tickDriveAI() {
     reinitialiserEscalades_(); // plafond d'escalades LLM par run (anti-emballement de coût)
     chargerPannePlateforme_(); // panne de compte PERSISTÉE (R2) : suspend les sources, re-sonde ≤ 1×/h
     chargerPanneGmail_();      // quota Gmail JOURNALIER épuisé (C28-15) : suspend les scans Gmail, re-sonde ≤ 2 h
+    chargerPanneConfigApi_();  // API Tasks/Calendar non activée (C28-22) : suspend les intentions, re-sonde ≤ 24 h
     reinitialiserTriApprisCache_();  // table adresse→libellé du tri (#16), rechargée 1×/run
     reinitialiserConfianceCache_();  // expéditeurs « pas suspect » (C28-19), rechargés 1×/run
     reinitialiserLibellesCache_();   // libellés Gmail de Marc, rechargés 1×/run
