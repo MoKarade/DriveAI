@@ -198,11 +198,19 @@ NotebookLM en devient l'entrée, pas le remplacement.
   confort de fin (ex. un `tickDriveAI()` de relance) deviennent des bombes dans le tick (réentrance →
   verrou relâché en plein run) — extraire un noyau sans effets de fin, re-scoper ses entrées au
   contexte auto (ne libérer que ce que les sources savent re-présenter). Re-auditer par la flotte.
-- **Auto-déploiement (CI/CD) : 2 pièges.** (1) Un merge par le bot `GITHUB_TOKEN` (auto-merge) ne
+- **Auto-déploiement (CI/CD) : 3 pièges.** (1) Un merge par le bot `GITHUB_TOKEN` (auto-merge) ne
   déclenche PAS les workflows `on: push` (anti-récursion) → l'auto-merge doit **dispatcher** le déploiement
   (`gh workflow run`, `actions: write`). (2) Épingler la version Node des outils CLI sensibles (clasp v3
-  → Node 20 ; Node 22 = « Premature close »). Toujours **vérifier qu'un déploiement auto a vraiment tourné
-  et réussi** (lire les runs), pas juste qu'il « devrait » se déclencher.
+  → Node 20 ; Node 22 = « Premature close »). (3) **Un `clasp push` VERT ne garantit PAS que le
+  déclencheur time-based exécute le nouveau code** : Apps Script peut continuer la version
+  précédemment chargée jusqu'à ce que le projet soit RÉOUVERT dans l'éditeur / une fonction y soit
+  exécutée (vécu 07-15 : CI verte mais prod figée ~4 j — `MIGRATION_TAG` périmé, onglet Sheet jamais
+  créé, plafonds jamais appliqués, ZÉRO erreur). Donc « vérifier qu'un déploiement a réussi » = lire
+  les runs **ET** confirmer que le code a PRIS EFFET par un **signal INDÉPENDANT** : comparer une
+  CONSTANTE du code déployé (tag de campagne, existence d'un onglet/fonction) à ce que la prod ÉCRIT
+  réellement, pas le statut du run. Remède : Marc ouvre l'éditeur + exécute `installerTrigger`.
+  Corollaire diagnostic : ne pas inventer un « second projet fantôme » sans preuve — une vérif de
+  stabilité (la constante reste fraîche sur plusieurs ticks) réfute l'hypothèse à deux projets.
 - **Reclassement de masse auto ⇒ convergence + garde zone protégée multi-parents.** Un rangement
   automatique de tout le Drive doit **converger** via un prédicat de skip stable que le pipeline produit
   lui-même (renommage `AAAA-MM-JJ_` ⇒ jamais re-collecté ; vérifier que le renommeur produit TOUJOURS ce

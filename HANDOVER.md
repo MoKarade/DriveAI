@@ -7,6 +7,24 @@
 > **2026-07-09 — C26-08 LANCÉE (ADR-0018) : ANALYSE_V2 allumé + campagne ciblée 03/08 ; crédit
 > rechargé (100 $) ; dry-run clos ; fusion 07→08 et incident Sheet SOLDÉS ; artefacts rangés
 > sous 08 ; C28-14 session durable de l'app LIVRÉE ET VALIDÉE en prod.**
+> • **⚠️ 2026-07-15 — INCIDENT DÉPLOIEMENT résolu : le moteur tournait du VIEUX code depuis ~4 j.**
+>   Symptôme (Marc) : « Coûts & quotas vide » + quota Gmail toujours épuisé. Cause : `clasp push`
+>   vert MAIS le déclencheur time-based exécutait la version chargée avant le 13/07 (onglet
+>   `Télémétrie` jamais créé, `MIGRATION_TAG` figé sur `m1` au lieu de `m2-inconnu`, plafonds
+>   C28-21 jamais appliqués — zéro erreur). Les features FRONTEND (Vercel) shippaient bien, seul le
+>   MOTEUR était figé. RÉSOLU : Marc a ouvert l'éditeur (Extensions → Apps Script) + exécuté
+>   `installerTrigger` → code frais activé, `Télémétrie` créé, Progression sur `m2-inconnu`, stable
+>   sur plusieurs ticks (pas de « projet fantôme »). **Le déclencheur est repassé à 30 min** (réglage
+>   Marc du matin) — abaisser dans les Réglages si besoin de rapidité. Quota Gmail du compte
+>   réellement à sec pour le 15/07 (vidé par le vieux code) → recharge la nuit, plafonds désormais
+>   actifs. Leçon durable ajoutée (CLAUDE.md §7, 3ᵉ piège auto-déploiement : vérifier la PRISE
+>   D'EFFET par signal indépendant, pas le run vert).
+> • **2026-07-15 — C28-25 : Cockpit Unique (plan architecte, PR #173)** : onglet « Mails » SUPPRIMÉ,
+>   fusionné dans « Aujourd'hui ». Le seul bloc utile restant (20 derniers fils triés + ➕ création
+>   de tâche/RDV depuis un fil) rapatrié en carte REPLIABLE (fermée par défaut, compte visible) ;
+>   `Mails.tsx` supprimé (tuiles/suspects déjà dans l'accueil, table apprise dans Apprentissage) ;
+>   barre basse mobile promeut Apprentissage (4 boutons + Plus) ; E2E 7→6 sections. Pur front, 174
+>   tests app. **⚠ Marc : retirer `Mails.tsx` des sources NotebookLM.**
 > • **2026-07-15 — C28-24 : UX instantanée + archivage total des lus + télémétrie (plan
 >   architecte NotebookLM, 3 PR #167/#168/#169)** : (1) tri à la demande recentré — requête
 >   FIGÉE `in:inbox is:read` (TOUS les mails lus, plus de fenêtre), offset de file MOUVANTE
