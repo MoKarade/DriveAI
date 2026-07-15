@@ -10,17 +10,20 @@
 import { Langue, t } from '../i18n';
 import type { Section } from '../App';
 import { SECTIONS, ICONES } from '../App';
+import { MiniCalendrier } from './MiniCalendrier';
 
 export interface AgendasVisibles {
   evenements: boolean;
   taches: boolean;
 }
 
-export function Sidebar({ langue, section, ouverte, agendas, onAgendas, onAller, onFermer, onCreer }: {
+export function Sidebar({ langue, section, ouverte, agendas, dateAgenda, onDate, onAgendas, onAller, onFermer, onCreer }: {
   langue: Langue;
   section: Section;
   ouverte: boolean;
   agendas: AgendasVisibles;
+  dateAgenda: Date;
+  onDate: (d: Date) => void;
   onAgendas: (a: AgendasVisibles) => void;
   onAller: (s: Section) => void;
   onFermer: () => void;
@@ -35,7 +38,8 @@ export function Sidebar({ langue, section, ouverte, agendas, onAgendas, onAller,
           {t('creerBouton', langue)}
         </button>
 
-        {/* PR3 : le mini-calendrier du mois s'insère ici (navigue le grand Agenda). */}
+        {/* Mini-calendrier (PR3) : un clic navigue le grand Agenda — l'état vit dans App. */}
+        <MiniCalendrier langue={langue} date={dateAgenda} onChoisir={onDate} />
 
         <nav className="sections" aria-label="Sections">
           {SECTIONS.map((s) => (
