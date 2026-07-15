@@ -19,8 +19,23 @@
 >   réellement à sec pour le 15/07 (vidé par le vieux code) → recharge la nuit, plafonds désormais
 >   actifs. Leçon durable ajoutée (CLAUDE.md §7, 3ᵉ piège auto-déploiement : vérifier la PRISE
 >   D'EFFET par signal indépendant, pas le run vert).
-> • **2026-07-15 — HUB : `GET /api/hub/summary` (widget DriveAI sur le hub perso, PR draft — NE PAS
->   MERGER).** 100 % additif (aucune touche au moteur, à `app/` hors URL, ni aux scopes). NOUVEAUX
+> • **2026-07-15 — C28-22 correctifs revue flotte (moteur + app + ADR).** Trois correctifs sur le
+>   chantier C28-22 (déjà mergé, PR #175/#176/#177) : (1) le compteur 3-strikes d'abandon
+>   d'intention (`creerIntentionIdempotente_`) est re-clé sur `api-intention|<messageId>` (avant :
+>   sur le contenu incluant le titre LLM) — le titre Sonnet 2-passes fluctue d'un run à l'autre →
+>   une clé par contenu ne convergeait jamais (mail re-tenté à vie, quota Gmail drainé, la panne
+>   même que C28-22 bornait) ; journal désormais 1× (`=== seuil`). Compromis assumé : sémantique
+>   PAR MESSAGE (compteur partagé entre intentions d'un même mail — une intention légitime rare peut
+>   être perdue sur un mail ≥ 3 intentions en fenêtre de panne). (2) Nouvelle jauge télémétrie
+>   `tri_boite_fils_jour` (nettoyage profond de la boîte) — moteur `lignesTelemetrie_`/`majTelemetrie_`
+>   + app `interpreterTelemetrie`/Quotas (4ᵉ jauge de « Coûts & quotas »). (3) ADR-0022 aligné sur le
+>   code (`−29 j`) + limite de `heuristiquePhishing_` documentée. 560 tests moteur + 179 app.
+>   **Revue flotte (3 agents) : 🟢 sécurité, 🟢 quotas (convergence garantie), code-reviewer « prêt à
+>   merger ».** Note hors-scope à suivre : le chemin EXTRACTION (`extraireIntentions_` null persistant)
+>   n'est pas borné par un 3-strikes (pré-existant, atténué par `estPannePlateforme_`) — candidat au
+>   prochain tour. À trancher avec Marc (archi) : budget Gmail AGRÉGÉ vs plafonds par-scan séparés.
+> • **2026-07-15 — HUB : `GET /api/hub/summary` (widget DriveAI sur le hub perso, MERGÉ PR #178).**
+>   100 % additif (aucune touche au moteur, à `app/` hors URL, ni aux scopes). NOUVEAUX
 >   fichiers : `api/hub/summary.ts` (jeton `x-hub-token` temps constant → 503 hub disabled / 401 /
 >   405, `Cache-Control:no-store`, forme du contrat `@mokarade/hub-contract` v1 inlinée car api/ =
 >   zéro-dep) + `api/hub/_engineState.ts` (`getEngineState()` → `null` en Phase 0). Ancien
@@ -28,11 +43,12 @@
 >   `/api/hub/summary`. Phase 0 = summary honnête `status:"building"` (zéro métrique inventée —
 >   les vraies données vivent dans la Sheet, lue côté navigateur, ADR-0007). Verrou
 >   `app/test/hub-summary.test.ts` (VRAI schéma `validateSummary`/`buildingSummary`). URL canonique
->   **`https://drive.hubperso.com`**. **⚠ Marc, avant de merger** : (1) relire la PR ; (2) poser
->   `HUB_TOKEN` (Vercel, `openssl rand -hex 32`, même valeur côté hub) ; (3) brancher le domaine
->   `drive.hubperso.com` sur le projet Vercel ; (4) redéployer. Phase 1 (brancher `getEngineState()`
->   sur le Sheet) = tâche BACKLOG `HUB-P1`, bloquée par le moteur. **⚠ Marc : ajouter
->   `api/hub/summary.ts` + `api/hub/_engineState.ts` aux sources NotebookLM.**
+>   **`https://drive.hubperso.com`**. Marc a demandé « merge vite » → mergé (Vercel déploie en prod
+>   sur push `main`). **⚠ Reste à ACTIVER côté Marc** (l'endpoint répond `503 hub disabled` tant que
+>   non fait — échec fermé, sûr) : (1) poser `HUB_TOKEN` (Vercel, `openssl rand -hex 32`, même valeur
+>   côté hub) ; (2) brancher le domaine `drive.hubperso.com` sur le projet Vercel. Phase 1 (brancher
+>   `getEngineState()` sur le Sheet) = tâche BACKLOG `HUB-P1`, bloquée par le moteur. **⚠ Marc :
+>   ajouter `api/hub/summary.ts` + `api/hub/_engineState.ts` aux sources NotebookLM.**
 > • **2026-07-15 — C28-25 : Cockpit Unique (plan architecte, PR #173)** : onglet « Mails » SUPPRIMÉ,
 >   fusionné dans « Aujourd'hui ». Le seul bloc utile restant (20 derniers fils triés + ➕ création
 >   de tâche/RDV depuis un fil) rapatrié en carte REPLIABLE (fermée par défaut, compte visible) ;

@@ -82,6 +82,7 @@ const TELEMETRIE: string[][] = [
   ['gmail_histo_fils_jour', '150', 'fils', 'Plafond 150/j'],
   ['tri_cyclique_fils_jour', '84', 'fils', 'Plafond 150/j'],
   ['tri_demande_fils_jour', '120', 'fils', 'Plafond 500/j'],
+  ['tri_boite_fils_jour', '45', 'fils', 'Plafond 150/j'],
   ['llm_cout_mois', '16.42', '$', 'Frein campagnes à 110 $'],
   ['llm_appels_mois', '5210', 'appels', ''],
 ];

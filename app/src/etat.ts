@@ -594,7 +594,7 @@ export interface JaugeJour {
 /**
  * Miroir de l'onglet Télémétrie (COLONNES_TELEMETRIE, Journal.gs) — clés STABLES écrites par
  * `lignesTelemetrie_` côté moteur : quota_gmail_etat, gmail_histo_fils_jour,
- * tri_cyclique_fils_jour, tri_demande_fils_jour, llm_cout_mois, llm_appels_mois.
+ * tri_cyclique_fils_jour, tri_demande_fils_jour, tri_boite_fils_jour, llm_cout_mois, llm_appels_mois.
  */
 export interface Telemetrie {
   presente: boolean;        // l'onglet a des lignes (faux = moteur pas encore passé depuis le déploiement)
@@ -603,6 +603,7 @@ export interface Telemetrie {
   demandeJour: JaugeJour;   // tri à la demande (in:inbox is:read)
   cycliqueJour: JaugeJour;  // balayage cyclique du tri
   histoJour: JaugeJour;     // campagne historique (PJ)
+  boiteJour: JaugeJour;     // nettoyage profond de la boîte (mails lus > 30 j, C28-22)
   coutDollars: number | null;
   freinDollars: number | null; // « Frein campagnes à N $ » (Détail)
   appelsMois: number | null;
@@ -634,6 +635,7 @@ export function interpreterTelemetrie(brut: string[][]): Telemetrie {
     demandeJour: jauge('tri_demande_fils_jour'),
     cycliqueJour: jauge('tri_cyclique_fils_jour'),
     histoJour: jauge('gmail_histo_fils_jour'),
+    boiteJour: jauge('tri_boite_fils_jour'),
     coutDollars: cout ? Number(String(cout[1]).replace(',', '.')) || 0 : null,
     freinDollars: cout ? nombreDuDetail(cout[3] ?? '') : null,
     appelsMois: appels ? Number(appels[1]) || 0 : null,

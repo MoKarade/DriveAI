@@ -338,7 +338,7 @@ var COLONNES_TELEMETRIE = ['Clé', 'Valeur', 'Unité', 'Détail'];
  * seuls les plafonds sont lus dans CONFIG (constantes). Ne jamais renommer une clé sans migrer
  * `interpreterTelemetrie` côté app.
  * @param {{quotaSuspendu:boolean, reprise:string, histoFilsJour:number, cycliqueFilsJour:number,
- *          demandeFilsJour:number, coutDollars:number, coutAppels:number}} d
+ *          demandeFilsJour:number, boiteFilsJour:number, coutDollars:number, coutAppels:number}} d
  * @return {Array[]} lignes [Clé, Valeur, Unité, Détail]
  */
 function lignesTelemetrie_(d) {
@@ -348,6 +348,7 @@ function lignesTelemetrie_(d) {
     ['gmail_histo_fils_jour', d.histoFilsJour, 'fils', 'Plafond ' + CONFIG.GMAIL_HISTO_MAX_FILS_JOUR + '/j'],
     ['tri_cyclique_fils_jour', d.cycliqueFilsJour, 'fils', 'Plafond ' + CONFIG.TRI_CYCLIQUE_MAX_FILS_JOUR + '/j'],
     ['tri_demande_fils_jour', d.demandeFilsJour, 'fils', 'Plafond ' + CONFIG.TRI_DEMANDE_MAX_FILS_JOUR + '/j'],
+    ['tri_boite_fils_jour', d.boiteFilsJour, 'fils', 'Plafond ' + CONFIG.TRI_BOITE_MAX_FILS_JOUR + '/j'],
     ['llm_cout_mois', d.coutDollars, '$', 'Frein campagnes à ' + CONFIG.LLM_BUDGET_CAMPAGNES + ' $'],
     ['llm_appels_mois', d.coutAppels, 'appels', '']
   ];
@@ -388,6 +389,7 @@ function majTelemetrie_() {
     histoFilsJour: compteurFilsJour_(props, 'DriveAI_GMAIL_HISTO', aujourdhui),
     cycliqueFilsJour: compteurFilsJour_(props, 'DriveAI_TRI_CYCLIQUE', aujourdhui),
     demandeFilsJour: compteurFilsJour_(props, 'DriveAI_TRI_DEMANDE', aujourdhui),
+    boiteFilsJour: compteurFilsJour_(props, 'DriveAI_TRI_BOITE', aujourdhui),
     coutDollars: cout.dollars,
     coutAppels: cout.appels
   });

@@ -247,25 +247,27 @@ test('lignesTelemetrie_ : clés STABLES (contrat app), plafonds dérivés des CO
   const c = ctxJournal();
   const lignes = c.lignesTelemetrie_({
     quotaSuspendu: false, reprise: '',
-    histoFilsJour: 42, cycliqueFilsJour: 7, demandeFilsJour: 120,
+    histoFilsJour: 42, cycliqueFilsJour: 7, demandeFilsJour: 120, boiteFilsJour: 45,
     coutDollars: 3.14, coutAppels: 250,
   });
   const parCle = {};
   lignes.forEach((l) => { parCle[l[0]] = l; });
   // Contrat avec interpreterTelemetrie (PR3) : ces clés ne doivent JAMAIS changer sans migration app.
   assert.deepStrictEqual(Object.keys(parCle).sort(), ['gmail_histo_fils_jour', 'llm_appels_mois',
-    'llm_cout_mois', 'quota_gmail_etat', 'tri_cyclique_fils_jour', 'tri_demande_fils_jour']);
+    'llm_cout_mois', 'quota_gmail_etat', 'tri_boite_fils_jour', 'tri_cyclique_fils_jour', 'tri_demande_fils_jour']);
   assert.deepStrictEqual([parCle['quota_gmail_etat'][1], parCle['quota_gmail_etat'][3]], ['actif', '']);
   // Plafonds affichés = les CONSTANTES du jour (l'app n'a pas à les connaître en dur).
   assert.strictEqual(parCle['gmail_histo_fils_jour'][3], 'Plafond ' + c.CONFIG.GMAIL_HISTO_MAX_FILS_JOUR + '/j');
   assert.strictEqual(parCle['tri_cyclique_fils_jour'][3], 'Plafond ' + c.CONFIG.TRI_CYCLIQUE_MAX_FILS_JOUR + '/j');
   assert.strictEqual(parCle['tri_demande_fils_jour'][3], 'Plafond ' + c.CONFIG.TRI_DEMANDE_MAX_FILS_JOUR + '/j');
+  assert.deepStrictEqual([parCle['tri_boite_fils_jour'][1], parCle['tri_boite_fils_jour'][3]],
+    [45, 'Plafond ' + c.CONFIG.TRI_BOITE_MAX_FILS_JOUR + '/j']);
   assert.strictEqual(parCle['llm_cout_mois'][3], 'Frein campagnes à ' + c.CONFIG.LLM_BUDGET_CAMPAGNES + ' $');
   assert.deepStrictEqual([parCle['llm_cout_mois'][1], parCle['llm_appels_mois'][1]], [3.14, 250]);
 
   const suspendu = c.lignesTelemetrie_({
     quotaSuspendu: true, reprise: 'Reprise vers 14:30',
-    histoFilsJour: 0, cycliqueFilsJour: 0, demandeFilsJour: 0, coutDollars: 0, coutAppels: 0,
+    histoFilsJour: 0, cycliqueFilsJour: 0, demandeFilsJour: 0, boiteFilsJour: 0, coutDollars: 0, coutAppels: 0,
   }).find((l) => l[0] === 'quota_gmail_etat');
   assert.deepStrictEqual([suspendu[1], suspendu[3]], ['suspendu', 'Reprise vers 14:30']);
 });

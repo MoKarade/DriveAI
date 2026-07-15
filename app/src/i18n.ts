@@ -108,6 +108,7 @@ const TEXTES = {
     jaugeTriDemande: 'Tri à la demande (mails lus de la boîte)',
     jaugeCyclique: 'Balayage cyclique du tri',
     jaugeHisto: 'Campagne historique (pièces jointes)',
+    jaugeBoite: 'Nettoyage profond de la boîte (mails lus > 30 j)',
     filsLusJour: 'fils lus aujourd’hui',
     quotaGmailNote:
       'Le quota Gmail d’Apps Script est FIXE (~20 000 lectures/jour, remis à zéro vers ~3h) et ne s’achète pas — payer Google Workspace ne l’augmente pas. Les plafonds ci-dessus répartissent ce quota entre les scans ; le flux vivant (courrier neuf) garde toujours la priorité.',
@@ -362,6 +363,7 @@ const TEXTES = {
     jaugeTriDemande: 'On-demand sorting (read inbox mail)',
     jaugeCyclique: 'Cyclic sorting sweep',
     jaugeHisto: 'History campaign (attachments)',
+    jaugeBoite: 'Deep inbox cleanup (read mail > 30 d)',
     filsLusJour: 'threads read today',
     quotaGmailNote:
       'The Apps Script Gmail quota is FIXED (~20,000 reads/day, reset around ~3am) and cannot be bought — paying for Google Workspace does not raise it. The caps above share that quota between scans; the live flow (new mail) always keeps priority.',

@@ -33,17 +33,34 @@
    et journalise UNE fois. `traiterIntentionsMail_` se suspend tant que la panne est fraîche
    — plus aucun scan Gmail en pure perte (patron panne de compte LLM/quota Gmail, R2/C28-15).
 2. **Tolérance aux échecs TRANSITOIRES (3-strikes).** Une création en échec NON-config (500,
-   429 après retry, 400…) est comptée (`api-intention|<clé>`, compteur d'échecs partagé) et,
+   429 après retry, 400…) est comptée (`api-intention|<messageId>`, compteur d'échecs partagé) et,
    après `QUARANTAINE_MAX` (3) essais, l'intention est **abandonnée** : `creerIntentionIdempotente_`
    renvoie `'deja-faite'` pour que le message soit enfin marqué traité et libère le pipeline
    (fini la re-analyse infinie qui drainait le quota — leçon « échec sans marquage =
-   re-tentative infinie »). L'abandon est tracé.
+   re-tentative infinie »). L'abandon est tracé **une seule fois** (au franchissement du seuil,
+   `essais === QUARANTAINE_MAX`, comme la campagne historique). **Le compteur est clé sur le
+   `messageId` SEUL**, jamais sur le contenu (titre/date/heure du LLM) : le titre peut fluctuer
+   d'un run à l'autre (Sonnet 2 passes) et une clé par contenu ne s'accumulerait jamais →
+   non-convergence (le compteur reviendrait à 1 à chaque tick, le mail re-tenté à vie).
+   **Compromis assumé (sémantique PAR MESSAGE)** : le compteur est partagé entre toutes les
+   intentions du message (une incrémentation par appel). Un message à ≥ 3 intentions frappées par
+   une panne transitoire brève peut voir sa 3ᵉ intention abandonnée dès le 1er tick — une intention
+   légitime rare peut être perdue. Accepté : aucune clé stable PAR intention n'existe (titre ET
+   ordre fluctuent) ; l'alternative rouvre la non-convergence. Convergent, sans fuite ni drain quota.
 3. **Pré-filtre suspect (défense en profondeur).** `heuristiquePhishing_` (déterministe,
    gratuite) et le chemin dangereux « promo déterministe non lue » sont évalués DANS
    `traiterMessagePourIntentions_`, avant le mini-check LLM. Un mail suspect/dangereux est
    marqué `intention-ecartee` et ne produit JAMAIS de tâche/RDV — ni ne coûte d'appel LLM.
+   **Limite assumée** : `heuristiquePhishing_` est une heuristique de MOTS-CLÉS/motifs, pas une
+   garantie — une arnaque formulée d'une façon nouvelle (hors motifs connus) peut passer ce filtre.
+   C'est de la défense en profondeur, pas un rempart unique : le signal `suspect` du tri
+   (`decisionSuspect_`, confiance apprise) et la garde zone protégée restent les filets en aval.
+   Élargir la couverture = enrichir les motifs de `heuristiquePhishing_` (re-tester sur du réel),
+   jamais durcir le mini-check au point d'écarter du courrier légitime.
 4. **Nettoyage profond de la boîte (`nettoyerBoiteHistorique_`).** Campagne de fond, requête
-   FIGÉE `in:inbox before:<ancre−30 j>` (ancre absolue posée une fois), offset persistant,
+   FIGÉE `in:inbox before:<ancre−29 j>` (ancre absolue posée une fois ; **−29 j** volontaire : un
+   jour de chevauchement idempotent avec la fenêtre du tri vivant `newer_than:30d`, pour ne
+   laisser AUCUN mail dans l'angle mort entre les deux scans), offset persistant,
    DEUX passes propres consécutives pour converger, plafond quotidien en FILS
    (`TRI_BOITE_MAX_FILS_JOUR` 150) + budget/run — passe par `trierFil_` (libellés existants +
    archivage réversible seulement). Priorité STRICTE au flux vivant (tourne en DERNIER du tri).
