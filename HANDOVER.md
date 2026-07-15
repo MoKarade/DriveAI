@@ -7,6 +7,19 @@
 > **2026-07-09 — C26-08 LANCÉE (ADR-0018) : ANALYSE_V2 allumé + campagne ciblée 03/08 ; crédit
 > rechargé (100 $) ; dry-run clos ; fusion 07→08 et incident Sheet SOLDÉS ; artefacts rangés
 > sous 08 ; C28-14 session durable de l'app LIVRÉE ET VALIDÉE en prod.**
+> • **2026-07-15 — C28-24 : UX instantanée + archivage total des lus + télémétrie (plan
+>   architecte NotebookLM, 3 PR #167/#168/#169)** : (1) tri à la demande recentré — requête
+>   FIGÉE `in:inbox is:read` (TOUS les mails lus, plus de fenêtre), offset de file MOUVANTE
+>   (n'avance que des fils restés en boîte — `trierFil_` rapporte `'archive'`), plafond
+>   quotidien 500 fils lus/j (patron C28-21), suspects ⚠/importants ⏰ toujours protégés par
+>   `decisionTri_` ; (2) « pas suspect » instantané — anti-rafale 5 s RETIRÉ côté moteur,
+>   tuiles/zone Attention re-rendues AU CLIC (store `useSuspectsVisibles`) ; (3) progression
+>   SUR PLACE — OperationsLive vit dans PanneauActions ; (4) sidebar repliable en rail
+>   d'icônes (☰, persistée) + table apprise déplacée vers Apprentissage (repliable) ;
+>   (5) NOUVEL onglet Sheet `Télémétrie` (majTelemetrie_ au finally du tick) + NOUVELLE vue
+>   « Coûts & quotas » (jauges des 3 scans plafonnés, coût LLM vs frein, note honnête : quota
+>   Gmail FIXE ~20 000 lectures/j). 534 tests moteur + 174 tests app. NOUVEAU fichier :
+>   `app/src/vues/Quotas.tsx` (source NotebookLM à ajouter par Marc).
 > • **2026-07-10 — C28-18 retours Marc appliqués (#143/#144)** : « resté bloqué, manque d'info,
 >   qualité visuelle » → deux langages visuels (ruban ANIMÉ = ça travaille ; piste RAYÉE statique
 >   = à l'arrêt), note d'explication sous chaque état non trivial, heure moteur en tête, compteurs
