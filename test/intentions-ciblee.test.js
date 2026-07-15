@@ -251,6 +251,10 @@ function ctxManuel(indexInitial) {
   c.indexAjouter_ = (cle, r) => { index[cle] = true; ajouts.push({ cle, statut: r.statut }); };
   c.ecarteParMotsCles_ = () => false;
   c.toucheZoneProtegee_ = () => false;
+  // C28-22 : bouclier anti-arnaques (gardes du tri consultées avant le LLM) — neutre par défaut.
+  c.piecesJointes_ = () => [];
+  c.heuristiquePhishing_ = () => false;
+  c.estPromoGmail_ = () => false;
   c.miniCheckMail_ = () => ({ action: true, important: false });
   c.extraireIntentions_ = () => [];
   c.tronquer_ = (s) => s;

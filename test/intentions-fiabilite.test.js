@@ -144,3 +144,63 @@ test('traiterIntentionsMail_ : panne config active → retour immédiat, aucun s
   c.traiterIntentionsMail_(() => false);
   assert.strictEqual(scanne, false, 'aucun balayage tant que l\'API est en panne de config');
 });
+
+/* ---------- bouclier ANTI-ARNAQUES (heuristiquePhishing_ / promo non lue, AVANT le LLM) ---------- */
+
+function ctxBouclier(opts) {
+  opts = opts || {};
+  const c = load(['Config.gs', 'Gmail.gs', 'TriGmail.gs', 'Intentions.gs']);
+  const index = {};
+  const ajouts = [];
+  let miniCheckAppels = 0;
+  c.indexContient_ = (cle) => !!index[cle];
+  c.indexAjouter_ = (cle, r) => { index[cle] = true; ajouts.push({ cle, statut: r.statut }); };
+  c.ecarteParMotsCles_ = () => false;
+  c.toucheZoneProtegee_ = () => false;
+  c.piecesJointes_ = () => (opts.pj || []).map((n) => ({ getName: () => n }));
+  c.estPromoGmail_ = () => !!opts.promo;
+  c.miniCheckMail_ = () => { miniCheckAppels++; return { action: true, important: false }; };
+  c.extraireIntentions_ = () => [];
+  c.tronquer_ = (s) => s;
+  c.journalInfo_ = () => {};
+  c.notifierEchec_ = () => {};
+  c.estPannePlateforme_ = () => false;
+  c.libellesUtilisateur_ = () => ({});
+  return { c, ajouts, appelsLlm: () => miniCheckAppels };
+}
+
+function messageBouclier(opts) {
+  opts = opts || {};
+  return {
+    getId: () => 'MB', getFrom: () => 'x@y.z', getSubject: () => (opts.sujet || 'Bonjour'),
+    getPlainBody: () => 'corps', getThread: () => ({}),
+    getHeader: (h) => (h === 'List-Unsubscribe' && opts.unsub ? '<mailto:u@x>' : ''),
+    isUnread: () => !!opts.nonLu,
+  };
+}
+
+test('bouclier : PJ EXÉCUTABLE → mail ÉCARTÉ (0), AUCUN appel LLM (tripwire anti-arnaque)', () => {
+  const { c, ajouts, appelsLlm } = ctxBouclier({ pj: ['facture.exe'] });
+  assert.strictEqual(c.traiterMessagePourIntentions_(messageBouclier({}), 'F1'), 0);
+  assert.strictEqual(appelsLlm(), 0, 'écarté AVANT le mini-check LLM (gratuit)');
+  assert.ok(ajouts.some((a) => a.cle === 'intention|MB' && a.statut === 'intention-ecartee'));
+});
+
+test('bouclier : PROMO déterministe NON LUE → mail ÉCARTÉ (0), AUCUN appel LLM', () => {
+  const { c, ajouts, appelsLlm } = ctxBouclier({ promo: true });
+  assert.strictEqual(c.traiterMessagePourIntentions_(messageBouclier({ unsub: true, nonLu: true }), 'F1'), 0);
+  assert.strictEqual(appelsLlm(), 0);
+  assert.ok(ajouts.some((a) => a.cle === 'intention|MB' && a.statut === 'intention-ecartee'));
+});
+
+test('bouclier : promo LUE (Marc l\'a ouverte) → PAS écartée par ce chemin, mini-check appelé (non-régression)', () => {
+  const { c, appelsLlm } = ctxBouclier({ promo: true });
+  c.traiterMessagePourIntentions_(messageBouclier({ unsub: true, nonLu: false }), 'F1');
+  assert.strictEqual(appelsLlm(), 1, 'une promo LUE peut porter une action que Marc veut suivre');
+});
+
+test('bouclier : mail sain (ni suspect ni promo) → mini-check appelé normalement (non-régression)', () => {
+  const { c, appelsLlm } = ctxBouclier({ pj: ['releve.pdf'] });
+  c.traiterMessagePourIntentions_(messageBouclier({ sujet: 'Relevé mensuel' }), 'F1');
+  assert.strictEqual(appelsLlm(), 1);
+});
