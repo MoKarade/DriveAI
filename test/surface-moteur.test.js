@@ -88,6 +88,7 @@ const CONTRAT = [
   'reinitialiserTriApprisCache_', 'libellesUtilisateur_', 'reinitialiserLibellesCache_',
   'estPromoGmail_', 'reinitialiserPromoSetCache_', 'signalerPanneEcriture_', 'reinitialiserPanneEcriture_',
   'scanAvantTri_', 'scanArriereTri_',
+  'nettoyerBoiteHistorique_', 'finaliserPasseBoite_', // nettoyage profond > 30 j (C28-22, ADR-0022)
   'newslettersJamaisLues_', 'apprentissagesSemaine_',
   'miniCheckMail_', 'parserMiniCheck_', 'marquerMailImportant_', 'lienGmail_',
   // cibles publiques des déclencheurs / outils

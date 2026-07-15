@@ -213,6 +213,14 @@ var CONFIG = {
                                           // un jour (leçon C28-21) ; elle se draine sur plusieurs j
   TRI_MAX_ATTENTES: 20,                   // fils « en attente des intentions » chargés par run (borne
                                           // la re-facture de lecture — revue flotte, classe R2)
+  TRI_BOITE_MAX_FILS_JOUR: 150,           // C28-22 (ADR-0022) : plafond QUOTIDIEN de fils LUS par le
+                                          // NETTOYAGE PROFOND (`in:inbox before:<ancre−29 j>`, le
+                                          // stock > 30 j jamais couvert). Même unité/borne que les
+                                          // autres campagnes de fond (leçon quota partagé C28-21) —
+                                          // une grosse boîte ancienne se draine sur plusieurs jours,
+                                          // le flux vivant garde le quota. (Pas de budget ms dédié :
+                                          // le deep clean n'a ni OCR ni hash — la borne en FILS + le
+                                          // garde-temps partagé + le frein campagnes §2.6 suffisent.)
   LLM_MAX_TOKENS_MINICAT: 64,             // mini-appel catégorie : JSON {categorie, suspect} — marge pour le plus long libellé + clôture markdown
   // Noms EXACTS des libellés spéciaux existants dans le Gmail de Marc (vérifiés le 2026-07-06).
   TRI_LIBELLES: { A_VERIFIER: 'À vérifier', SUSPECT: '⚠️ Suspect', A_TRAITER: '⏰ À traiter' },

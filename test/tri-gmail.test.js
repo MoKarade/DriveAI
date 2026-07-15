@@ -106,9 +106,12 @@ test('parserMiniCategorie_ : variante accents/casse → rend le nom EXACT du lib
 function ctxTri(opts) {
   const c = load(['Config.gs', 'Gmail.gs', 'TriGmail.gs']);
   const calls = { index: { ...(opts.index || {}) }, ajouts: [], labels: [], archives: [], journaux: [], getMessages: 0,
-    props: { DriveAI_TRI_RATTRAPAGE: 'terminé', ...(opts.props || {}) } }; // rattrapage OFF par défaut (tests du scan AVANT)
+    // rattrapage ET nettoyage profond (C28-22) OFF par défaut : les tests des scans AVANT/cyclique/
+    // demande ne doivent pas les déclencher (comme DriveAI_TRI_RATTRAPAGE, on pose leur « terminé »).
+    props: { DriveAI_TRI_RATTRAPAGE: 'terminé', DriveAI_TRI_BOITE: 'terminé', ...(opts.props || {}) } };
   c.journalErreur_ = (s, m) => calls.journaux.push(m);
   c.journalInfo_ = () => {};
+  c.budgetCampagnesAtteint_ = opts.budgetCampagnesAtteint_ || (() => false); // frein §2.6 (Cout.gs non chargé)
   c.indexContient_ = (cle) => !!calls.index[cle];
   c.indexAjouter_ = (cle, r) => { calls.index[cle] = true; calls.ajouts.push({ cle, statut: r.statut }); };
   c.toucheZoneProtegee_ = opts.zoneProtegee || (() => false);
@@ -675,4 +678,104 @@ test('trierFil_ (catch) : quota Gmail mort EN COURS de page → panne de PLATEFO
   assert.ok(!calls.journaux.some((j) => j.includes('Fil non trié')), 'pas de ligne d\'échec par fil');
   assert.ok(calls.journaux.some((j) => j.includes('QUOTA GMAIL')), 'la suspension est signalée UNE fois');
   assert.strictEqual(calls.props.DriveAI_GMAIL_QUOTA !== undefined, true, 'suspension persistée');
+});
+
+/* ---------- C28-22 (ADR-0022) : nettoyage PROFOND de la boîte (> 30 j) ---------- */
+
+// Contexte à INBOX MUTABLE : GmailApp.search sert une tranche de l'inbox ; trierFil_ RETIRE de
+// l'inbox tout fil 'archive' (file mouvante réelle). C'est ce qui permet de tracer la convergence.
+function ctxBoite(opts) {
+  const c = load(['Config.gs', 'Gmail.gs', 'TriGmail.gs']);
+  let inbox = (opts.inbox || []).slice(); // [{ id, action }]
+  const props = Object.assign({}, opts.props);
+  const recherches = [];
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in props ? props[k] : null),
+    setProperty: (k, v) => { props[k] = String(v); },
+    deleteProperty: (k) => { delete props[k]; },
+  }) };
+  c.GmailApp = { search: (req, offset, n) => {
+    recherches.push({ req, offset, n });
+    return inbox.slice(offset, offset + n).map((x) => ({ getId: () => x.id }));
+  } };
+  c.trierFil_ = (fil) => {
+    const id = fil.getId();
+    const item = inbox.find((x) => x.id === id);
+    const r = item ? item.action : 'deja';
+    if (r === 'archive') inbox = inbox.filter((x) => x.id !== id); // quitte la boîte
+    return r;
+  };
+  c.signalerPanneGmail_ = () => false;
+  c.signalerRetablissementGmail_ = () => {};
+  c.journalErreur_ = () => {};
+  c.journalInfo_ = () => {};
+  c.dateGmail_ = () => opts.jour || '2026/07/15';
+  return { c, props, recherches, inbox: () => inbox };
+}
+
+const etatBoite = () => ({ traites: 0, attentes: 0 });
+
+test('nettoyerBoiteHistorique_ : requête FIGÉE in:inbox before:<ancre −29 j>, ancre posée UNE fois', () => {
+  const { c, props, recherches } = ctxBoite({ inbox: [{ id: 'x', action: 'deja' }] });
+  c.nettoyerBoiteHistorique_(etatBoite(), () => false, [], {});
+  assert.strictEqual(recherches[0].req, 'in:inbox before:2026/07/15');
+  assert.strictEqual(props.DriveAI_TRI_BOITE_ANCRE, '2026/07/15');
+});
+
+test('nettoyerBoiteHistorique_ : FILE MOUVANTE — l\'offset n\'avance que des fils RESTÉS en boîte (archivés retirés)', () => {
+  // Page [A(archive), R(deja)] : A quitte la boîte, R reste → offset avance de 1, pas de 2.
+  const { c, props, recherches } = ctxBoite({ inbox: [{ id: 'A', action: 'archive' }, { id: 'R', action: 'deja' }] });
+  const etat = etatBoite();
+  c.nettoyerBoiteHistorique_(etat, () => false, [], {});
+  assert.deepStrictEqual(recherches.map((r) => r.offset), [0, 1], 'offset avancé des seuls restants (1)');
+  assert.strictEqual(etat.traites, 1, 'A archivé compté');
+  assert.strictEqual(props.DriveAI_TRI_BOITE_FILS_JOUR, '2', 'les 2 fils LUS comptés (coût quota réel)');
+});
+
+test('nettoyerBoiteHistorique_ : convergence — vieux lus archivés en une passe, puis DEUX passes propres → « terminé »', () => {
+  const inbox = [
+    { id: 'A', action: 'archive' }, { id: 'B', action: 'deja' },
+    { id: 'C', action: 'archive' }, { id: 'D', action: 'deja' }, // B,D non-archivables : restent
+  ];
+  const ctx = ctxBoite({ inbox });
+  // Passe 1 (avec activité : A,C archivés) → offset remis à 0, passes propres réinitialisées.
+  ctx.c.nettoyerBoiteHistorique_(etatBoite(), () => false, [], {});
+  assert.deepStrictEqual(ctx.inbox().map((x) => x.id), ['B', 'D'], 'A et C ont quitté la boîte');
+  assert.ok(!('DriveAI_TRI_BOITE_PASSES_PROPRES' in ctx.props), 'activité → compteur de passes propres réinitialisé');
+  assert.notStrictEqual(ctx.props.DriveAI_TRI_BOITE, 'terminé');
+  // Passe 2 (rien à faire : B,D « deja ») → 1re passe propre.
+  ctx.props.DriveAI_TRI_BOITE_JOUR = '2026/07/14'; // reliquat quotidien ré-ouvert (nouveau jour)
+  ctx.c.nettoyerBoiteHistorique_(etatBoite(), () => false, [], {});
+  assert.strictEqual(ctx.props.DriveAI_TRI_BOITE_PASSES_PROPRES, '1');
+  // Passe 3 (toujours rien) → 2e passe propre consécutive → campagne TERMINÉE.
+  ctx.props.DriveAI_TRI_BOITE_JOUR = '2026/07/13';
+  ctx.c.nettoyerBoiteHistorique_(etatBoite(), () => false, [], {});
+  assert.strictEqual(ctx.props.DriveAI_TRI_BOITE, 'terminé', 'les non-archivables restants ne bloquent jamais la fin');
+});
+
+test('nettoyerBoiteHistorique_ : plafond quotidien atteint → retour immédiat SANS recherche, campagne intacte', () => {
+  const MAX = ctxPur.CONFIG.TRI_BOITE_MAX_FILS_JOUR; // dérivé de la CONSTANTE
+  const { c, props, recherches } = ctxBoite({
+    props: { DriveAI_TRI_BOITE_JOUR: '2026/07/15', DriveAI_TRI_BOITE_FILS_JOUR: String(MAX) },
+    inbox: [{ id: 'x', action: 'archive' }],
+  });
+  c.nettoyerBoiteHistorique_(etatBoite(), () => false, [], {});
+  assert.strictEqual(recherches.length, 0, 'plafond du jour atteint = zéro appel Gmail');
+  assert.notStrictEqual(props.DriveAI_TRI_BOITE, 'terminé', 'campagne non soldée — reprise demain');
+});
+
+test('nettoyerBoiteHistorique_ : campagne « terminé » → aucune recherche (coût nul ensuite)', () => {
+  const { c, recherches } = ctxBoite({ props: { DriveAI_TRI_BOITE: 'terminé' }, inbox: [{ id: 'x', action: 'archive' }] });
+  c.nettoyerBoiteHistorique_(etatBoite(), () => false, [], {});
+  assert.strictEqual(recherches.length, 0);
+});
+
+test('trierFilsGmail_ : le nettoyage profond est GATÉ sur le frein campagnes §2.6 (jamais quand le budget est atteint)', () => {
+  const { c, calls } = ctxTri({ props: {}, budgetCampagnesAtteint_: () => true }); // frein actif, deep clean ré-activé (pas de 'terminé')
+  delete calls.props.DriveAI_TRI_BOITE;
+  let deepCleanAppele = false;
+  c.nettoyerBoiteHistorique_ = () => { deepCleanAppele = true; };
+  c.GmailApp.search = () => [];
+  c.trierFilsGmail_(() => false);
+  assert.strictEqual(deepCleanAppele, false, 'frein campagnes atteint → pas de nettoyage profond');
 });
