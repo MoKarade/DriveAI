@@ -52,6 +52,10 @@ function ctxIntentions(check) {
   c.indexAjouter_ = (cle, r) => { calls.index[cle] = true; calls.ajouts.push({ cle, statut: r.statut, nom: r.nom }); };
   c.ecarteParMotsCles_ = () => false;
   c.toucheZoneProtegee_ = () => false;
+  // C28-22 : bouclier anti-arnaques (gardes du tri, TriGmail.gs non chargé ici) — neutre par défaut.
+  c.piecesJointes_ = () => [];
+  c.heuristiquePhishing_ = () => false;
+  c.estPromoGmail_ = () => false;
   c.miniCheckMail_ = () => check;
   c.extraireIntentions_ = () => []; // pas d'intention → statut intention-aucune
   c.tronquer_ = (s) => s;

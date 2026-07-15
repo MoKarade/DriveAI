@@ -333,6 +333,28 @@ function traiterMessagePourIntentions_(message, threadId) {
     indexAjouter_(cleMessage, { statut: 'intention-zone-protegee', nom: sujet });
     return 0;
   }
+  // Bouclier ANTI-ARNAQUES (C28-22, ADR-0022) — défense en profondeur, AVANT tout appel LLM :
+  // les gardes du TRI (déterministes, gratuites) sont consultées ICI aussi, sinon une arnaque
+  // (« payer 10 USD à Google Cloud ») devient une tâche « à payer » (le tick passe les intentions
+  // AVANT le tri, vécu 14/07). Un mail suspect/dangereux est écarté sans jamais coûter d'appel LLM.
+  var nomsPj = [];
+  try {
+    var pjs = piecesJointes_(message);
+    for (var p = 0; p < pjs.length; p++) nomsPj.push(pjs[p].getName());
+  } catch (e) { /* PJ illisibles → heuristique sur le sujet seul */ }
+  if (heuristiquePhishing_(sujet, nomsPj)) {
+    indexAjouter_(cleMessage, { statut: 'intention-ecartee', nom: sujet });
+    return 0;
+  }
+  // Chemin DANGEREUX = promo déterministe NON LUE (List-Unsubscribe sous contrôle de l'expéditeur
+  // ET catégorie Promotions attribuée par Google) : bruit publicitaire jamais transformé en action.
+  var promoNonLue = false;
+  try { promoNonLue = !!message.getHeader('List-Unsubscribe') && estPromoGmail_(threadId) && message.isUnread(); }
+  catch (e) { /* en-tête/état illisible → on continue (prudent : pas d'écartement à tort) */ }
+  if (promoNonLue) {
+    indexAjouter_(cleMessage, { statut: 'intention-ecartee', nom: sujet });
+    return 0;
+  }
   // Étage 3 (mini-check Haiku, peu coûteux) : deux signaux en un appel (#14).
   var check = miniCheckMail_(expediteur, sujet);
   if (!check.action && !check.important) {
