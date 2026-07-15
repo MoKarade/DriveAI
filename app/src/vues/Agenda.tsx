@@ -1,9 +1,11 @@
 /**
- * Agenda.tsx — vue v5 « clone Google Agenda » (C28-23 PR2, plan architecte) : grille HORAIRE
- * absolue Jour/Semaine/Mois (Semaine par défaut — décision Marc), rangée « toute la journée »,
- * gouttière d'heures, blocs positionnés/dimensionnés à la minute, couleurs PAR TYPE (RDV perso /
- * DriveAI / journée), ligne « maintenant », 3 jours glissants sur mobile. Tâches Google, mails ⏰
- * et création directe conservés. Écritures : créer et cocher — jamais supprimer ni modifier.
+ * Agenda.tsx — vue v5 « clone Google Agenda » (C28-23 PR2+PR3, plan architecte) : grille
+ * HORAIRE absolue Jour/Semaine/Mois (Semaine par défaut), rangée « toute la journée »,
+ * gouttière d'heures, blocs à la minute, couleurs PAR TYPE, ligne « maintenant », 3 jours
+ * glissants sur mobile. PR3 : la date de référence est PILOTÉE par le mini-calendrier de la
+ * sidebar (prop `dateRef` remontée dans App) ; un clic sur un CRÉNEAU vide ouvre la création
+ * pré-remplie ; un clic sur un BLOC ouvre un popover façon GCal (les panneaux Détail du bas de
+ * page sont supprimés). Écritures : créer et cocher — jamais supprimer ni modifier.
  */
 
 import { useEffect, useState } from 'react';
@@ -38,8 +40,8 @@ const JOURS_SEMAINE = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
   'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 
-type Detail = { type: 'jour'; jour: Date } | { type: 'tache'; tache: Tache };
 type VueCal = 'jour' | 'semaine' | 'mois';
+type Popover = { genre: 'evenement'; e: Evenement } | { genre: 'tache'; tache: Tache };
 
 /** Écran étroit (mobile) : la vue Semaine passe en 3 jours glissants (décision Marc). */
 function useEstEtroit(): boolean {
@@ -53,18 +55,31 @@ function useEstEtroit(): boolean {
   return etroit;
 }
 
-export function Agenda({ langue }: { langue: Langue }) {
+export function Agenda({ langue, dateRef }: { langue: Langue; dateRef?: Date }) {
   const maintenant = new Date();
   const [mois, setMois] = useState(new Date(maintenant.getFullYear(), maintenant.getMonth(), 1));
   const [vueCal, setVueCal] = useState<VueCal>('semaine'); // Semaine par défaut (C28-23)
-  const [semaineRef, setSemaineRef] = useState(maintenant);
+  const [semaineRef, setSemaineRef] = useState(dateRef ?? maintenant);
   const [evenements, setEvenements] = useState<Evenement[]>([]);
   const [taches, setTaches] = useState<Tache[]>([]);
   const [importants, setImportants] = useState<LigneIndex[]>([]);
-  const [detail, setDetail] = useState<Detail>({ type: 'jour', jour: maintenant });
+  const [popover, setPopover] = useState<Popover | null>(null);
+  const [creneau, setCreneau] = useState<{ date: string; heure: string } | null>(null);
   const [charge, setCharge] = useState(false);
   const [erreur, setErreur] = useState('');
   const etroit = useEstEtroit();
+
+  // Le MINI-CALENDRIER de la sidebar pilote la référence (PR3, « remonter dateRef ») : un clic
+  // là-bas déplace la grille ici, quel que soit le mois — la vue courante est conservée.
+  const cleRef = dateRef ? cleJour(dateRef) : '';
+  useEffect(() => {
+    if (!dateRef) return;
+    setSemaineRef(dateRef);
+    if (dateRef.getMonth() !== mois.getMonth() || dateRef.getFullYear() !== mois.getFullYear()) {
+      setMois(new Date(dateRef.getFullYear(), dateRef.getMonth(), 1));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- déclenché par le JOUR choisi
+  }, [cleRef]);
 
   // La plage Tasks/Calendar chargée reste TOUJOURS celle de la grille du MOIS : jour/semaine
   // sont des sous-ensembles (la navigation garde `mois` aligné sur sa référence), donc changer
@@ -89,9 +104,15 @@ export function Agenda({ langue }: { langue: Langue }) {
     }
   }
 
-  // L'Index vient de l'état PARTAGÉ (P1/C28-02) ; Tasks/Calendar restent chargés ICI (la plage
-  // dépend du mois affiché) mais se re-chargent AUSSI à chaque synchro globale (dep synchroA) —
-  // l'agenda ouvert ne reste plus figé sur sa photo d'ouverture.
+  /** Un jour cliqué (en-tête de colonne, case du mois) → vue JOUR sur ce jour, façon GCal. */
+  function ouvrirJour(j: Date) {
+    setSemaineRef(j);
+    if (j.getMonth() !== mois.getMonth() || j.getFullYear() !== mois.getFullYear()) {
+      setMois(new Date(j.getFullYear(), j.getMonth(), 1));
+    }
+    setVueCal('jour');
+  }
+
   const { donnees, synchroA, rafraichir } = useEtatGlobal();
 
   useEffect(() => {
@@ -128,9 +149,6 @@ export function Agenda({ langue }: { langue: Langue }) {
     }
   }
 
-  // Le retry RELANCE vraiment (synchro globale forcée → l'effet [synchroA] re-charge Tasks/Calendar) ;
-  // et une fois chargé une première fois, l'agenda reste AFFICHÉ pendant les re-lectures (pas de
-  // clignotement « Chargement… » toutes les 5 min) — même politique que le fournisseur global.
   if (erreur) return <BanniereErreur langue={langue} erreur={erreur} onReessayer={() => { setErreur(''); void rafraichir(true); }} />;
   if (!donnees || !charge) return <IndicateurChargement langue={langue} />;
 
@@ -138,16 +156,12 @@ export function Agenda({ langue }: { langue: Langue }) {
 
   return (
     <div className="colonnes agenda">
-      {/* Carte « Créer » EN TÊTE (C28-05, plan P2 : découvrabilité — elle existait mais en bas de page). */}
-      <Creation langue={langue} onCree={() => setMois(new Date(mois))} />
-
       <section className="carte cal-carte">
         <h2>
           <span className="cal-titre">{MOIS[(vueCal === 'mois' ? mois : semaineRef).getMonth()]} {(vueCal === 'mois' ? mois : semaineRef).getFullYear()}</span>
           <span className="cal-nav">
             {(['jour', 'semaine', 'mois'] as VueCal[]).map((v) => (
-              <button key={v} className={vueCal === v ? '' : 'discret'}
-                onClick={() => { setVueCal(v); if (v !== 'mois') setSemaineRef(detail.type === 'jour' ? detail.jour : new Date()); }}>
+              <button key={v} className={vueCal === v ? '' : 'discret'} onClick={() => setVueCal(v)}>
                 {t(v === 'jour' ? 'vueJour' : v === 'semaine' ? 'vueSemaine' : 'vueMois', langue)}
               </button>
             ))}
@@ -157,7 +171,6 @@ export function Agenda({ langue }: { langue: Langue }) {
                 const auj = new Date();
                 setMois(new Date(auj.getFullYear(), auj.getMonth(), 1));
                 setSemaineRef(auj);
-                setDetail({ type: 'jour', jour: auj });
               }}>{t('aujourdhui', langue)}</button>
             <button className="discret" aria-label={t('suivant', langue)} onClick={() => naviguer(1)}>›</button>
           </span>
@@ -176,12 +189,11 @@ export function Agenda({ langue }: { langue: Langue }) {
                       const evts = evenementsDuJour(evenements, j.date);
                       const dues = tachesDuJour(taches, j.date);
                       const estAuj = cleJour(j.date) === aujourdhuiCle;
-                      const sel = detail.type === 'jour' && cleJour(detail.jour) === cleJour(j.date);
                       return (
                         <td
                           key={cleJour(j.date)}
-                          className={`${j.horsMois ? 'hors' : ''} ${estAuj ? 'auj' : ''} ${sel ? 'sel' : ''}`}
-                          onClick={() => setDetail({ type: 'jour', jour: j.date })}
+                          className={`${j.horsMois ? 'hors' : ''} ${estAuj ? 'auj' : ''}`}
+                          onClick={() => ouvrirJour(j.date)}
                         >
                           <span className="num">{j.date.getDate()}</span>
                           {evts.map((e) => (
@@ -211,16 +223,11 @@ export function Agenda({ langue }: { langue: Langue }) {
             evenements={evenements}
             taches={taches}
             aujourdhuiCle={aujourdhuiCle}
-            onJour={(j) => setDetail({ type: 'jour', jour: j })}
+            onEntete={ouvrirJour}
+            onCreneau={(j, h) => setCreneau({ date: cleJour(j), heure: `${String(h).padStart(2, '0')}:00` })}
+            onEvenement={(e) => setPopover({ genre: 'evenement', e })}
+            onTache={(tache) => setPopover({ genre: 'tache', tache })}
           />
-        )}
-      </section>
-
-      <section className="carte">
-        {detail.type === 'jour' ? (
-          <DetailJour langue={langue} jour={detail.jour} evenements={evenements} taches={taches} />
-        ) : (
-          <DetailTache langue={langue} tache={detail.tache} onBasculer={basculerTache} />
         )}
       </section>
 
@@ -240,7 +247,7 @@ export function Agenda({ langue }: { langue: Langue }) {
                     {tk.faite ? '☑' : '☐'}
                   </button>
                 </td>
-                <td onClick={() => setDetail({ type: 'tache', tache: tk })}>
+                <td onClick={() => setPopover({ genre: 'tache', tache: tk })}>
                   <span className={tk.faite ? 'faite' : ''}>{tk.titre}</span>
                   <div className="variante">
                     {tk.echeance && `${t('echeance', langue)} ${tk.echeance}`}
@@ -272,25 +279,85 @@ export function Agenda({ langue }: { langue: Langue }) {
         </table>
         <p className="explication">{t('aTraiterNote', langue)}</p>
       </section>
+
+      {/* Clic sur un créneau vide (PR3) : création pré-remplie date+heure, en dialogue. */}
+      {creneau && (
+        <>
+          <button className="feuille-fond" aria-label={t('fermer', langue)} onClick={() => setCreneau(null)} />
+          <div className="dialogue" role="dialog" aria-label={t('creer', langue)}>
+            <Creation
+              langue={langue}
+              typeInitial="rdv"
+              dateInitiale={creneau.date}
+              heureInitiale={creneau.heure}
+              onCree={() => { setCreneau(null); void rafraichir(true); }}
+            />
+            <button className="discret" onClick={() => setCreneau(null)}>{t('fermer', langue)}</button>
+          </div>
+        </>
+      )}
+
+      {/* Popover d'un bloc (PR3) — remplace les panneaux Détail du bas de page. */}
+      {popover && (
+        <>
+          <button className="feuille-fond" aria-label={t('fermer', langue)} onClick={() => setPopover(null)} />
+          <div className="dialogue popover-ev" role="dialog" aria-label={popover.genre === 'evenement' ? popover.e.titre : popover.tache.titre}>
+            {popover.genre === 'evenement' ? (
+              <>
+                <h3>{popover.e.titre}</h3>
+                <p className="pe-ligne">
+                  📅 {new Date(popover.e.journee ? popover.e.debut + 'T12:00:00' : popover.e.debut)
+                    .toLocaleDateString(langue === 'fr' ? 'fr-CA' : 'en-CA', { weekday: 'long', day: 'numeric', month: 'long' })}
+                </p>
+                <p className="pe-ligne">🕐 {popover.e.journee ? t('journee', langue) : libelleHoraire(popover.e, langue === 'fr')}</p>
+                {popover.e.lieu && <p className="pe-ligne">📍 {popover.e.lieu}</p>}
+                {popover.e.parDriveAI && <p className="pe-ligne variante">{t('parDriveAI', langue)}</p>}
+                <div className="actions">
+                  <a className="lien-bouton" href={popover.e.lien} target="_blank" rel="noreferrer">Agenda ↗</a>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3>{popover.tache.titre}</h3>
+                <p className="pe-ligne">
+                  🕐 {popover.tache.echeance
+                    ? `${t('echeance', langue)} ${popover.tache.echeance}`
+                    : t('sansEcheance', langue)}
+                </p>
+                {popover.tache.parDriveAI && <p className="pe-ligne variante">{t('parDriveAI', langue)}</p>}
+                <div className="actions">
+                  <button onClick={() => { void basculerTache(popover.tache); setPopover(null); }}>
+                    {popover.tache.faite ? t('decocher', langue) : `☑ ${t('marquerFaite', langue)}`}
+                  </button>
+                  <a className="lien-bouton" href="https://tasks.google.com/" target="_blank" rel="noreferrer">Tasks ↗</a>
+                </div>
+              </>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 /**
- * Grille HORAIRE façon Google Agenda (C28-23 PR2) : en-têtes de jours (pastille sur
- * aujourd'hui), rangée « toute la journée » (événements journée + tâches à échéance),
- * gouttière d'heures, colonnes où chaque bloc est positionné en ABSOLU (top/height en % —
- * positionEvenement). Couleurs PAR TYPE (décision Marc) : bleu = RDV perso, ambre = DriveAI
- * (événements du moteur + tâches), gris = journée entière. Ligne rouge « maintenant » dans la
- * colonne du jour. Un clic sur un bloc ouvre Google Agenda (le popover arrive en PR3).
+ * Grille HORAIRE façon Google Agenda (C28-23 PR2/PR3) : en-têtes de jours (pastille sur
+ * aujourd'hui — clic = vue Jour), rangée « toute la journée » (événements journée + tâches à
+ * échéance — clic = popover), gouttière d'heures, colonnes où chaque bloc est positionné en
+ * ABSOLU (top/height en % — positionEvenement). Couleurs PAR TYPE (décision Marc) : bleu =
+ * RDV perso, ambre = DriveAI, gris = journée entière. Ligne rouge « maintenant ». Un clic sur
+ * un CRÉNEAU vide remonte le jour + l'heure (créés depuis la position Y du clic, plan PR3).
  */
-function GrilleTemps({ langue, jours, evenements, taches, aujourdhuiCle, onJour }: {
+function GrilleTemps({ langue, jours, evenements, taches, aujourdhuiCle, onEntete, onCreneau, onEvenement, onTache }: {
   langue: Langue;
   jours: JourGrille[];
   evenements: Evenement[];
   taches: Tache[];
   aujourdhuiCle: string;
-  onJour: (j: Date) => void;
+  onEntete: (j: Date) => void;
+  onCreneau: (j: Date, heure: number) => void;
+  onEvenement: (e: Evenement) => void;
+  onTache: (t: Tache) => void;
 }) {
   const fr = langue === 'fr';
   const heures = Array.from({ length: 23 }, (_, i) => i + 1);
@@ -304,7 +371,7 @@ function GrilleTemps({ langue, jours, evenements, taches, aujourdhuiCle, onJour 
         {jours.map((j) => {
           const auj = cleJour(j.date) === aujourdhuiCle;
           return (
-            <button key={cleJour(j.date)} className={'gt-entete' + (auj ? ' auj' : '')} onClick={() => onJour(j.date)}>
+            <button key={cleJour(j.date)} className={'gt-entete' + (auj ? ' auj' : '')} onClick={() => onEntete(j.date)}>
               <span className="gt-nom">{JOURS_SEMAINE[(j.date.getDay() + 6) % 7]}</span>
               <span className="gt-num">{j.date.getDate()}</span>
             </button>
@@ -319,8 +386,12 @@ function GrilleTemps({ langue, jours, evenements, taches, aujourdhuiCle, onJour 
           const dues = tachesDuJour(taches, j.date);
           return (
             <div key={cleJour(j.date)} className="gt-tj-col">
-              {journee.map((e) => <span key={e.id} className="gt-bloc-tj">{e.titre}</span>)}
-              {dues.map((d) => <span key={d.id} className="gt-bloc-tj ia">☐ {d.titre}</span>)}
+              {journee.map((e) => (
+                <button key={e.id} className="gt-bloc-tj" onClick={() => onEvenement(e)}>{e.titre}</button>
+              ))}
+              {dues.map((d) => (
+                <button key={d.id} className="gt-bloc-tj ia" onClick={() => onTache(d)}>☐ {d.titre}</button>
+              ))}
             </div>
           );
         })}
@@ -336,22 +407,29 @@ function GrilleTemps({ langue, jours, evenements, taches, aujourdhuiCle, onJour 
           const auj = cleJour(j.date) === aujourdhuiCle;
           const evts = evenementsDuJour(evenements, j.date).filter((e) => !e.journee);
           return (
-            <div key={cleJour(j.date)} className="gt-col" onClick={() => onJour(j.date)}>
+            <div
+              key={cleJour(j.date)}
+              className="gt-col"
+              onClick={(ev) => {
+                // Heure du CLIC dérivée de la position Y dans la colonne (plan PR3).
+                const h = Math.max(0, Math.min(23, Math.floor((ev.nativeEvent.offsetY / ev.currentTarget.clientHeight) * 24)));
+                onCreneau(j.date, h);
+              }}
+            >
               {evts.map((e) => {
                 const pos = positionEvenement(e);
                 if (!pos) return null;
                 return (
-                  <a
+                  <button
                     key={e.id}
                     className={'gt-ev' + (e.parDriveAI ? ' ia' : '')}
                     style={{ top: `${pos.top}%`, height: `${pos.hauteur}%` }}
-                    href={e.lien} target="_blank" rel="noreferrer"
-                    onClick={(ev) => ev.stopPropagation()}
+                    onClick={(ev) => { ev.stopPropagation(); onEvenement(e); }}
                   >
                     <b>{e.titre}</b>
                     <span>{libelleHoraire(e, fr)}</span>
                     {e.lieu && <span>{e.lieu}</span>}
-                  </a>
+                  </button>
                 );
               })}
               {auj && <i className="gt-maintenant" style={{ top: `${pctMaintenant}%` }} aria-hidden="true" />}
@@ -360,59 +438,5 @@ function GrilleTemps({ langue, jours, evenements, taches, aujourdhuiCle, onJour 
         })}
       </div>
     </div>
-  );
-}
-
-function DetailJour({ langue, jour, evenements, taches }:
-  { langue: Langue; jour: Date; evenements: Evenement[]; taches: Tache[] }) {
-  const evts = evenementsDuJour(evenements, jour);
-  const dues = tachesDuJour(taches, jour);
-  const titre = jour.toLocaleDateString(langue === 'fr' ? 'fr-CA' : 'en-CA',
-    { weekday: 'long', day: 'numeric', month: 'long' });
-  return (
-    <>
-      <h2>{titre}</h2>
-      {evts.length === 0 && dues.length === 0 && <p className="explication">{t('rienCeJour', langue)}</p>}
-      {evts.map((e) => (
-        <div key={e.id} className="det-ligne">
-          <span className={`pastille ${e.parDriveAI ? 'douce' : 'cat'}`}>{heureEvenement(e) || t('journee', langue)}</span>
-          <span>
-            {e.titre}
-            {e.parDriveAI && <div className="variante">{t('parDriveAI', langue)}</div>}
-          </span>
-          <a className="det-lien" href={e.lien} target="_blank" rel="noreferrer">Agenda ↗</a>
-        </div>
-      ))}
-      {dues.map((d) => (
-        <div key={d.id} className="det-ligne">
-          <span className="pastille douce">{t('echeance', langue)}</span>
-          <span>☐ {d.titre}</span>
-        </div>
-      ))}
-    </>
-  );
-}
-
-function DetailTache({ langue, tache, onBasculer }:
-  { langue: Langue; tache: Tache; onBasculer: (t: Tache) => void }) {
-  return (
-    <>
-      <h2>{t('tache', langue)}</h2>
-      <div className="det-ligne">
-        <span>
-          <span className={tache.faite ? 'faite' : ''}>{tache.titre}</span>
-          <div className="variante">
-            {tache.echeance ? `${t('echeance', langue)} ${tache.echeance}` : t('sansEcheance', langue)}
-            {tache.parDriveAI && ` · ${t('parDriveAI', langue)}`}
-          </div>
-        </span>
-      </div>
-      <div className="actions" style={{ marginTop: '0.6rem' }}>
-        <button onClick={() => onBasculer(tache)}>
-          {tache.faite ? t('decocher', langue) : `☑ ${t('marquerFaite', langue)}`}
-        </button>
-        <a className="lien-bouton" href="https://tasks.google.com/" target="_blank" rel="noreferrer">Tasks ↗</a>
-      </div>
-    </>
   );
 }

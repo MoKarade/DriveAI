@@ -9,16 +9,19 @@ import { useState } from 'react';
 import { creerTache, creerEvenement } from '../google';
 import { Langue, t } from '../i18n';
 
-export function Creation({ langue, onCree, titreInitial, note }: {
+export function Creation({ langue, onCree, titreInitial, note, typeInitial, dateInitiale, heureInitiale }: {
   langue: Langue;
   onCree: () => void;
   titreInitial?: string;
   note?: string; // ex. lien Gmail — placé dans les notes de la tâche (jamais lu depuis Gmail)
+  typeInitial?: 'tache' | 'rdv';   // C28-23 PR3 : clic sur un créneau de la grille → RDV pré-rempli
+  dateInitiale?: string;           // AAAA-MM-JJ
+  heureInitiale?: string;          // HH:MM
 }) {
-  const [type, setType] = useState<'tache' | 'rdv'>('tache');
+  const [type, setType] = useState<'tache' | 'rdv'>(typeInitial ?? 'tache');
   const [titre, setTitre] = useState(titreInitial ?? '');
-  const [date, setDate] = useState('');
-  const [heure, setHeure] = useState('09:00');
+  const [date, setDate] = useState(dateInitiale ?? '');
+  const [heure, setHeure] = useState(heureInitiale ?? '09:00');
   const [statut, setStatut] = useState('');
 
   async function creer() {

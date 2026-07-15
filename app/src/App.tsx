@@ -13,6 +13,7 @@ import { seConnecter, estConnecte, seDeconnecter, abonnerSessionExpiree, tenterR
 import { FournisseurEtat, useEtatGlobal } from './etatGlobal';
 import { BanniereErreur } from './composants/UI';
 import { Sidebar, AgendasVisibles } from './composants/Sidebar';
+import { Creation } from './composants/Creation';
 import { Langue, langueCourante, changerLangue, t } from './i18n';
 import { AujourdHui } from './vues/AujourdHui';
 import { SanteVue } from './vues/Sante';
@@ -150,14 +151,23 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
   const [section, setSection] = useState<Section>('aujourdhui');
   const [sidebarOuverte, setSidebarOuverte] = useState(false);
   const [plusOuvert, setPlusOuvert] = useState(false);
+  const [creationOuverte, setCreationOuverte] = useState(false); // FAB « + Créer » (PR3)
+  // Date de référence de l'Agenda, REMONTÉE ici (PR3, plan architecte) : le mini-calendrier de
+  // la sidebar et la grande grille restent synchrones — un clic là-bas navigue ici.
+  const [dateAgenda, setDateAgenda] = useState(new Date());
   // « Mes agendas » (trompe-l'œil UI, §2.3) : l'état vit ici pour piloter le filtrage local de
-  // l'Agenda en PR2/PR3 — la sidebar ne fait que l'afficher.
+  // l'Agenda — la sidebar ne fait que l'afficher.
   const [agendas, setAgendas] = useState<AgendasVisibles>({ evenements: true, taches: true });
 
   function allerA(s: Section) {
     setSection(s);
     setSidebarOuverte(false);
     setPlusOuvert(false);
+  }
+
+  function choisirDate(d: Date) {
+    setDateAgenda(d);
+    allerA('agenda'); // le mini-calendrier ouvre l'Agenda sur le jour choisi
   }
 
   return (
@@ -177,10 +187,12 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
           section={section}
           ouverte={sidebarOuverte}
           agendas={agendas}
+          dateAgenda={dateAgenda}
+          onDate={choisirDate}
           onAgendas={setAgendas}
           onAller={allerA}
           onFermer={() => setSidebarOuverte(false)}
-          onCreer={() => allerA('agenda')}
+          onCreer={() => setCreationOuverte(true)}
         />
 
         <main className="contenu">
@@ -188,13 +200,24 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
             {section === 'aujourdhui' && <AujourdHui langue={langue} onAller={allerA} />}
             {section === 'documents' && <Documents langue={langue} />}
             {section === 'apprentissage' && <Corrections langue={langue} />}
-            {section === 'agenda' && <Agenda langue={langue} />}
+            {section === 'agenda' && <Agenda langue={langue} dateRef={dateAgenda} />}
             {section === 'mails' && <Mails langue={langue} />}
             {section === 'sante' && <SanteVue langue={langue} />}
           </div>
           <footer>{t('gardeFous', langue)}</footer>
         </main>
       </div>
+
+      {/* FAB « + Créer » (PR3) : la création vit en dialogue — plus de carte en tête d'Agenda. */}
+      {creationOuverte && (
+        <>
+          <button className="feuille-fond" aria-label={t('fermer', langue)} onClick={() => setCreationOuverte(false)} />
+          <div className="dialogue" role="dialog" aria-label={t('creer', langue)}>
+            <Creation langue={langue} onCree={() => setCreationOuverte(false)} />
+            <button className="discret" onClick={() => setCreationOuverte(false)}>{t('fermer', langue)}</button>
+          </div>
+        </>
+      )}
 
       <nav className="barre-basse" aria-label="Sections (mobile)">
         {BARRE_BASSE.map((s) => (

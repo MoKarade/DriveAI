@@ -337,6 +337,7 @@ table.cal { table-layout: fixed; border-collapse: collapse; }
 .gt-bloc-tj {
   background: #5f6368; color: #fff; border-radius: 6px; font-size: 0.72rem;
   padding: 1px 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  border: none; text-align: left; font-family: inherit; font-weight: 400; width: 100%;
 }
 .gt-bloc-tj.ia { background: #f9ab00; color: #131314; }
 .gt-corps { position: relative; height: var(--gt-haut); }
@@ -350,10 +351,11 @@ table.cal { table-layout: fixed; border-collapse: collapse; }
   background: repeating-linear-gradient(to bottom, var(--rang) 0 1px, transparent 1px calc(var(--gt-haut) / 24));
 }
 .gt-ev {
-  position: absolute; left: 3px; right: 3px; z-index: 2;
-  display: flex; flex-direction: column; gap: 1px;
-  background: #4285f4; color: #fff; border-radius: 8px; padding: 3px 8px;
-  font-size: 0.74rem; line-height: 1.3; overflow: hidden; text-decoration: none;
+  position: absolute; left: 3px; right: 3px; z-index: 2; width: auto;
+  display: flex; flex-direction: column; gap: 1px; align-items: flex-start;
+  background: #4285f4; color: #fff; border: none; border-radius: 8px; padding: 3px 8px;
+  font-size: 0.74rem; font-weight: 400; line-height: 1.3; overflow: hidden;
+  text-decoration: none; text-align: left; font-family: inherit;
   box-shadow: 0 0 0 1.5px var(--carte); min-height: 14px;
 }
 .gt-ev b { font-weight: 600; }
@@ -364,6 +366,37 @@ table.cal { table-layout: fixed; border-collapse: collapse; }
   content: ''; position: absolute; left: -4px; top: -4px;
   width: 10px; height: 10px; border-radius: 50%; background: #ea4335;
 }
+
+/* mini-calendrier de la sidebar (C28-23 PR3, façon GCal) */
+.mini-cal { margin: 0.2rem 0.5rem 0.4rem; }
+.mini-cal .mc-tete { display: flex; align-items: center; gap: 2px; padding: 0 0.3rem 0.25rem; }
+.mini-cal .mc-titre { flex: 1; font-weight: 500; font-size: 0.8rem; color: var(--texte); text-transform: capitalize; }
+.mini-cal .mc-tete button { border: none; background: none; color: var(--texte-doux); padding: 0.05rem 0.4rem; font-size: 0.85rem; }
+.mini-cal .mc-tete button:not(:disabled):hover { color: var(--texte); filter: none; }
+.mini-cal table { border-collapse: collapse; width: 100%; }
+.mini-cal th { font-weight: 500; color: var(--texte-doux); font-size: 0.6rem; padding: 2px 0; text-align: center; }
+.mini-cal td { padding: 1px 0; text-align: center; }
+.mini-cal td button {
+  width: 26px; height: 26px; padding: 0; border: none; background: none; border-radius: 50%;
+  font-size: 0.7rem; font-weight: 400; color: var(--texte); font-variant-numeric: tabular-nums;
+}
+.mini-cal td.hors button { color: var(--texte-doux); opacity: 0.55; }
+.mini-cal td button:not(:disabled):hover { background: var(--carte-2); filter: none; transform: none; }
+.mini-cal td.sel button { background: #004a77; color: #c2e7ff; }
+.mini-cal td.auj button { background: var(--accent); color: var(--sur-accent); font-weight: 600; }
+
+/* dialogue centré (création depuis un créneau, FAB, popover d'événement — façon GCal) */
+.dialogue {
+  position: fixed; z-index: 30; left: 50%; top: 16%; transform: translateX(-50%);
+  width: min(620px, calc(100vw - 2rem)); max-height: 72vh; overflow-y: auto;
+  background: var(--carte-2); border-radius: 16px; padding: 0.9rem 1.1rem;
+  display: flex; flex-direction: column; gap: 0.5rem;
+  box-shadow: 0 8px 24px 6px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+.dialogue .carte { background: transparent; border: none; padding: 0; }
+.popover-ev h3 { margin: 0 0 0.2rem; font-size: 1.15rem; font-weight: 500; }
+.popover-ev .pe-ligne { margin: 0.1rem 0; font-size: 0.92rem; color: var(--texte); }
+.popover-ev .actions { margin-top: 0.5rem; }
 
 .det-ligne { display: flex; gap: 0.6rem; align-items: baseline; padding: 0.5rem 0; border-top: 1px solid var(--rang); font-size: 0.9rem; }
 .det-ligne:first-of-type { border-top: none; }
