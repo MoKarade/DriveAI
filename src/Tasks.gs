@@ -36,7 +36,14 @@ function creerTache_(titre, echeance, notes) {
   if (rep.getResponseCode() === 200) {
     return JSON.parse(rep.getContentText()).id;
   }
+  var corps = rep.getContentText();
+  // API non activée dans le projet GCP (403 permanent, C28-22) : LÈVE — l'appelant
+  // (creerIntentionIdempotente_) la classe en panne de CONFIG et suspend le run, plutôt que de
+  // renvoyer un échec qui ferait re-analyser le mail à chaque tick (boucle qui drainait le quota).
+  if (rep.getResponseCode() === 403 && estMessageApiDesactivee_(corps)) {
+    throw new Error('config-api Tasks : ' + tronquer_(corps, 300));
+  }
   journalErreur_('Tasks', 'Création HTTP ' + rep.getResponseCode() + ' (« ' + titre + ' ») : ' +
-    tronquer_(rep.getContentText(), 300));
+    tronquer_(corps, 300));
   return '';
 }

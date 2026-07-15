@@ -39,6 +39,10 @@
  */
 function traiterIntentionsMail_(estBudgetDepasse) {
   if (estPanneGmail_()) return; // quota Gmail épuisé (C28-15) : suspendu jusqu'à la re-sonde
+  // Panne de CONFIG d'API (C28-22, ADR-0022) : Tasks/Calendar non activée → aucune création
+  // possible. Suspendre TOUT le scan (pas seulement les créations) : re-lire les mails pour
+  // échouer à créer brûlerait le quota Gmail en pure perte (patron panne de plateforme, R2).
+  if (estPanneConfigApi_()) return;
   var etat = { analyses: 0, creations: 0 };
   var plafondAtteint = function () {
     // `estPannePlateforme_` : pendant une panne de compte API, scanner ne produirait rien (aucun
@@ -403,22 +407,44 @@ function creerIntentionIdempotente_(messageId, intention) {
   if (indexContient_(cle)) return 'deja-faite';
 
   var id;
-  if (intention.type === 'evenement') {
-    // ID client Calendar : DOIT inclure messageId (pas seulement le contenu) pour rester
-    // unique entre deux mails distincts qui partageraient le même titre/date/heure — sinon
-    // le second événement, pourtant réel, recevrait un faux 409 « déjà créé » et serait perdu.
-    id = creerEvenement_(
-      intention.titre,
-      intention.date + 'T' + intention.heure + ':00',
-      CONFIG.EVENT_DUREE_MIN_DEFAUT,
-      '',
-      hashHex_(messageId + '|' + hashContenu)
-    );
-  } else {
-    id = creerTache_(intention.titre, intention.date, '');
+  try {
+    if (intention.type === 'evenement') {
+      // ID client Calendar : DOIT inclure messageId (pas seulement le contenu) pour rester
+      // unique entre deux mails distincts qui partageraient le même titre/date/heure — sinon
+      // le second événement, pourtant réel, recevrait un faux 409 « déjà créé » et serait perdu.
+      id = creerEvenement_(
+        intention.titre,
+        intention.date + 'T' + intention.heure + ':00',
+        CONFIG.EVENT_DUREE_MIN_DEFAUT,
+        '',
+        hashHex_(messageId + '|' + hashContenu)
+      );
+    } else {
+      id = creerTache_(intention.titre, intention.date, '');
+    }
+  } catch (e) {
+    // Panne de CONFIG d'API (C28-22, ADR-0022) : API non activée → suspension du run, rien imputé
+    // au mail. On RELÈVE pour stopper le traitement d'intentions immédiatement (Main enveloppe le
+    // scan ; les ticks suivants sont coupés en tête par estPanneConfigApi_).
+    if (signalerPanneConfigApi_(e)) throw e;
+    // Tout autre throw inattendu : traité comme un échec transitoire (3-strikes ci-dessous).
+    id = '';
   }
 
-  if (!id) return 'echec'; // déjà journalisé par creerTache_/creerEvenement_ ; retenté au prochain tick
+  if (!id) {
+    // Échec TRANSITOIRE (HTTP non-config : 500/429/400, déjà journalisé par creerTache_/creerEvenement_).
+    // Sans borne, la clé intention| n'est jamais posée → le mail est re-analysé + re-tenté à CHAQUE
+    // tick à l'infini, drainant le quota Gmail (le bug C28-22). Après QUARANTAINE_MAX essais, on
+    // ABANDONNE l'intention (`deja-faite`) : le message est alors marqué traité et le pipeline libéré.
+    var essais = 0;
+    try { essais = incrementerEchec_('api-intention|' + cle); } catch (e2) { }
+    if (essais >= CONFIG.QUARANTAINE_MAX) {
+      journalErreur_('Intentions', 'Intention ABANDONNÉE après ' + essais + ' échecs de création (« ' +
+        tronquer_(intention.titre, 120) + ' ») — message débloqué.');
+      return 'deja-faite'; // libère le message (marqué traité, plus jamais re-tenté)
+    }
+    return 'echec'; // retenté au prochain tick (borné par les 3 essais ci-dessus)
+  }
 
   indexAjouter_(cle, { statut: intention.type, nom: intention.titre });
   return 'creee';
