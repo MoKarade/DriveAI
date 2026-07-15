@@ -16,6 +16,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@mokarade/hub-contract": "github:MoKarade/hub-contract#v1.0.0",
     "@playwright/test": "^1.61.1",
     "@types/node": "^20.19.43",
     "@types/react": "^18.3.12",
