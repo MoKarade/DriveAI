@@ -240,3 +240,41 @@ test('compterRestantReanalyse_ : ne parcourt QUE les cibles, prédicat de la cam
   assert.strictEqual(rec.complet, true);
   assert.strictEqual(rec.n, 1, 'seul le restant des cibles est compté');
 });
+
+/* ---------- C28-24 : télémétrie coûts & quotas (lignesTelemetrie_ / compteurFilsJour_, PURES — Journal.gs) ---------- */
+
+test('lignesTelemetrie_ : clés STABLES (contrat app), plafonds dérivés des CONSTANTES, reprise seulement si suspendu', () => {
+  const c = ctxJournal();
+  const lignes = c.lignesTelemetrie_({
+    quotaSuspendu: false, reprise: '',
+    histoFilsJour: 42, cycliqueFilsJour: 7, demandeFilsJour: 120,
+    coutDollars: 3.14, coutAppels: 250,
+  });
+  const parCle = {};
+  lignes.forEach((l) => { parCle[l[0]] = l; });
+  // Contrat avec interpreterTelemetrie (PR3) : ces clés ne doivent JAMAIS changer sans migration app.
+  assert.deepStrictEqual(Object.keys(parCle).sort(), ['gmail_histo_fils_jour', 'llm_appels_mois',
+    'llm_cout_mois', 'quota_gmail_etat', 'tri_cyclique_fils_jour', 'tri_demande_fils_jour']);
+  assert.deepStrictEqual([parCle['quota_gmail_etat'][1], parCle['quota_gmail_etat'][3]], ['actif', '']);
+  // Plafonds affichés = les CONSTANTES du jour (l'app n'a pas à les connaître en dur).
+  assert.strictEqual(parCle['gmail_histo_fils_jour'][3], 'Plafond ' + c.CONFIG.GMAIL_HISTO_MAX_FILS_JOUR + '/j');
+  assert.strictEqual(parCle['tri_cyclique_fils_jour'][3], 'Plafond ' + c.CONFIG.TRI_CYCLIQUE_MAX_FILS_JOUR + '/j');
+  assert.strictEqual(parCle['tri_demande_fils_jour'][3], 'Plafond ' + c.CONFIG.TRI_DEMANDE_MAX_FILS_JOUR + '/j');
+  assert.strictEqual(parCle['llm_cout_mois'][3], 'Frein campagnes à ' + c.CONFIG.LLM_BUDGET_CAMPAGNES + ' $');
+  assert.deepStrictEqual([parCle['llm_cout_mois'][1], parCle['llm_appels_mois'][1]], [3.14, 250]);
+
+  const suspendu = c.lignesTelemetrie_({
+    quotaSuspendu: true, reprise: 'Reprise vers 14:30',
+    histoFilsJour: 0, cycliqueFilsJour: 0, demandeFilsJour: 0, coutDollars: 0, coutAppels: 0,
+  }).find((l) => l[0] === 'quota_gmail_etat');
+  assert.deepStrictEqual([suspendu[1], suspendu[3]], ['suspendu', 'Reprise vers 14:30']);
+});
+
+test('compteurFilsJour_ : la valeur ne vaut que si la date persistée est AUJOURD\'HUI — sinon 0 (compteur de la veille jamais affiché)', () => {
+  const c = ctxJournal();
+  const props = (kv) => ({ getProperty: (k) => (k in kv ? kv[k] : null) });
+  assert.strictEqual(c.compteurFilsJour_(props({ X_JOUR: '2026/07/15', X_FILS_JOUR: '37' }), 'X', '2026/07/15'), 37);
+  assert.strictEqual(c.compteurFilsJour_(props({ X_JOUR: '2026/07/14', X_FILS_JOUR: '37' }), 'X', '2026/07/15'), 0,
+    'rollover : le compteur de la veille ne s\'affiche jamais comme celui du jour');
+  assert.strictEqual(c.compteurFilsJour_(props({}), 'X', '2026/07/15'), 0);
+});

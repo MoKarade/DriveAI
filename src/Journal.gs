@@ -1,7 +1,7 @@
 /**
  * Journal.gs — État dans la Google Sheet + notifications d'échec.
  *
- * Onglets : Entités | Corrections | Index | Journal | Échecs | Santé | Progression | DryRunV2 (créés au premier run).
+ * Onglets : Entités | Corrections | Index | Journal | Échecs | Santé | Progression | Télémétrie | DryRunV2 (créés au premier run).
  * - Index   : catalogue des fichiers traités (sert l'idempotence + la recherche Phase 4).
  * - Journal : log d'exécution + erreurs.
  * Une erreur déclenche TOUJOURS une notif mail immédiate + une ligne de Journal.
@@ -39,6 +39,7 @@ function initialiserSheet_(ss) {
     'Type v2', 'Domaine proposé', 'Sous-dossier proposé', 'Nom proposé', 'Fail-safe déclenché',
     'Confiance', 'Coût $ mesuré']);
   creerOnglet_(ss, 'Progression', COLONNES_PROGRESSION); // suivi LIVE des opérations (C28-18, cf. majProgressions_)
+  creerOnglet_(ss, 'Télémétrie', COLONNES_TELEMETRIE); // coûts & quotas pour l'app (C28-24, cf. majTelemetrie_)
   creerOnglet_(ss, 'Santé', ['Santé DriveAI']);                             // vue lisible (heartbeat + métriques, ADR-0006)
   var defaut = ss.getSheetByName('Feuille 1') || ss.getSheetByName('Sheet1');
   if (defaut && ss.getSheets().length > 1) ss.deleteSheet(defaut);
@@ -324,6 +325,78 @@ function lireLignesProgression_(f) {
     };
   }
   return existantes;
+}
+
+/* ---------- Télémétrie coûts & quotas (C28-24) ---------- */
+
+// Contrat avec l'app (interpreterTelemetrie côté React, PR3 C28-24) : 4 colonnes, une ligne par
+// métrique — les CLÉS sont stables (l'app s'y accroche), la Valeur est brute, le Détail est humain.
+var COLONNES_TELEMETRIE = ['Clé', 'Valeur', 'Unité', 'Détail'];
+
+/**
+ * Construit les lignes de l'onglet Télémétrie. PURE (testée) : tout l'état arrive en paramètres,
+ * seuls les plafonds sont lus dans CONFIG (constantes). Ne jamais renommer une clé sans migrer
+ * `interpreterTelemetrie` côté app.
+ * @param {{quotaSuspendu:boolean, reprise:string, histoFilsJour:number, cycliqueFilsJour:number,
+ *          demandeFilsJour:number, coutDollars:number, coutAppels:number}} d
+ * @return {Array[]} lignes [Clé, Valeur, Unité, Détail]
+ */
+function lignesTelemetrie_(d) {
+  return [
+    ['quota_gmail_etat', d.quotaSuspendu ? 'suspendu' : 'actif', '',
+      d.quotaSuspendu ? d.reprise : ''],
+    ['gmail_histo_fils_jour', d.histoFilsJour, 'fils', 'Plafond ' + CONFIG.GMAIL_HISTO_MAX_FILS_JOUR + '/j'],
+    ['tri_cyclique_fils_jour', d.cycliqueFilsJour, 'fils', 'Plafond ' + CONFIG.TRI_CYCLIQUE_MAX_FILS_JOUR + '/j'],
+    ['tri_demande_fils_jour', d.demandeFilsJour, 'fils', 'Plafond ' + CONFIG.TRI_DEMANDE_MAX_FILS_JOUR + '/j'],
+    ['llm_cout_mois', d.coutDollars, '$', 'Frein campagnes à ' + CONFIG.LLM_BUDGET_CAMPAGNES + ' $'],
+    ['llm_appels_mois', d.coutAppels, 'appels', '']
+  ];
+}
+
+/**
+ * Lit un compteur quotidien `<prefixe>_JOUR` / `<prefixe>_FILS_JOUR` (patron C28-21) : la valeur
+ * ne vaut que si la date persistée est CELLE D'AUJOURD'HUI — sinon 0 (le compteur de la veille
+ * n'a pas encore été purgé par son écrivain, il ne doit jamais s'afficher comme celui du jour).
+ */
+function compteurFilsJour_(props, prefixe, aujourdhui) {
+  return props.getProperty(prefixe + '_JOUR') === aujourdhui
+    ? Number(props.getProperty(prefixe + '_FILS_JOUR')) || 0
+    : 0;
+}
+
+/**
+ * Écrit l'onglet Télémétrie (C28-24) — l'état des quotas Gmail et du coût LLM que l'app affiche
+ * dans « Coûts & quotas » (PR3). Appelée dans le `finally` du tick (après `majProgressions_`),
+ * enveloppée par l'appelant : un échec ne bloque JAMAIS l'intake. Métadonnées seulement
+ * (ADR-0007) : compteurs, plafonds, états — jamais de contenu. Tout est rendu en UNE écriture
+ * `setValues` (+ un `clearContent` du reliquat) — l'app la lit en poll léger, comme Progression.
+ */
+function majTelemetrie_() {
+  var props = PropertiesService.getScriptProperties();
+  var aujourdhui = dateGmail_(new Date());
+  var quotaDepuis = Number(props.getProperty('DriveAI_GMAIL_QUOTA')) || 0;
+  var suspendu = !!quotaDepuis && Date.now() - quotaDepuis < CONFIG.GMAIL_QUOTA_RESONDE_MS;
+  var reprise = '';
+  if (suspendu) {
+    reprise = 'Reprise vers ' + Utilities.formatDate(
+      new Date(quotaDepuis + CONFIG.GMAIL_QUOTA_RESONDE_MS), Session.getScriptTimeZone(), 'HH:mm');
+  }
+  var cout = syntheseCoutMois_();
+  var lignes = lignesTelemetrie_({
+    quotaSuspendu: suspendu,
+    reprise: reprise,
+    histoFilsJour: compteurFilsJour_(props, 'DriveAI_GMAIL_HISTO', aujourdhui),
+    cycliqueFilsJour: compteurFilsJour_(props, 'DriveAI_TRI_CYCLIQUE', aujourdhui),
+    demandeFilsJour: compteurFilsJour_(props, 'DriveAI_TRI_DEMANDE', aujourdhui),
+    coutDollars: cout.dollars,
+    coutAppels: cout.appels
+  });
+  var f = feuille_('Télémétrie');
+  f.getRange(2, 1, lignes.length, COLONNES_TELEMETRIE.length).setValues(lignes);
+  var dern = f.getLastRow();
+  if (dern > lignes.length + 1) {
+    f.getRange(lignes.length + 2, 1, dern - lignes.length - 1, COLONNES_TELEMETRIE.length).clearContent();
+  }
 }
 
 /**

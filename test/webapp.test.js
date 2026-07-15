@@ -89,19 +89,19 @@ test('parserPlanIA_ : illisible ou VIDE → null (jamais un plan fantôme)', () 
 
 /* ---------- Tri & intentions à la demande (C28-16) ---------- */
 
-test('validerDemandeTri_ : fenêtre ∈ {1,7,30}, archiver booléen, plafond entier borné par la CONSTANTE — tout le reste → null', () => {
+test('validerDemandeTri_ : archiver booléen, plafond entier borné par la CONSTANTE — fenetre IGNORÉE (C28-24), tout le reste → null', () => {
   const MAX = ctx.CONFIG.TRI_DEMANDE_PLAFOND_MAX;
-  assert.deepStrictEqual(plat(ctx.validerDemandeTri_({ fenetre: 7, archiver: true, plafond: 100 })),
-    { fenetre: 7, archiver: true, plafond: 100 });
-  assert.deepStrictEqual(plat(ctx.validerDemandeTri_({ fenetre: '30', archiver: false, plafond: MAX })),
-    { fenetre: 30, archiver: false, plafond: MAX }); // fenêtre numérique-chaîne tolérée (Number)
-  assert.strictEqual(ctx.validerDemandeTri_({ fenetre: 2, archiver: true, plafond: 10 }), null);   // fenêtre hors liste
-  assert.strictEqual(ctx.validerDemandeTri_({ fenetre: 7, archiver: 'oui', plafond: 10 }), null);  // archiver non booléen
-  assert.strictEqual(ctx.validerDemandeTri_({ fenetre: 7, archiver: true, plafond: 0 }), null);    // plafond < 1
-  assert.strictEqual(ctx.validerDemandeTri_({ fenetre: 7, archiver: true, plafond: MAX + 1 }), null); // > constante
-  assert.strictEqual(ctx.validerDemandeTri_({ fenetre: 7, archiver: true, plafond: 2.5 }), null);  // non entier
+  assert.deepStrictEqual(plat(ctx.validerDemandeTri_({ archiver: true, plafond: 100 })),
+    { archiver: true, plafond: 100 });
+  // Vieille app encore déployée : son champ `fenetre` est toléré et JETÉ (jamais persisté).
+  assert.deepStrictEqual(plat(ctx.validerDemandeTri_({ fenetre: 7, archiver: false, plafond: MAX })),
+    { archiver: false, plafond: MAX });
+  assert.strictEqual(ctx.validerDemandeTri_({ archiver: 'oui', plafond: 10 }), null);  // archiver non booléen
+  assert.strictEqual(ctx.validerDemandeTri_({ archiver: true, plafond: 0 }), null);    // plafond < 1
+  assert.strictEqual(ctx.validerDemandeTri_({ archiver: true, plafond: MAX + 1 }), null); // > constante
+  assert.strictEqual(ctx.validerDemandeTri_({ archiver: true, plafond: 2.5 }), null);  // non entier
   assert.strictEqual(ctx.validerDemandeTri_(null), null);
-  assert.strictEqual(ctx.validerDemandeTri_('fenetre=7'), null);
+  assert.strictEqual(ctx.validerDemandeTri_('archiver=true'), null);
 });
 
 function ctxDemande(sondeOk) {
@@ -121,7 +121,7 @@ function ctxDemande(sondeOk) {
 
 test('actionDemandeTri_ : quota mort (sonde forcée en échec) → { ok:false, erreur:QUOTA_GMAIL }, AUCUNE demande posée', () => {
   const { c, props } = ctxDemande(false);
-  const r = c.actionDemandeTri_({ postData: { contents: JSON.stringify({ fenetre: 7, archiver: true, plafond: 50 }) } });
+  const r = c.actionDemandeTri_({ postData: { contents: JSON.stringify({ archiver: true, plafond: 50 }) } });
   assert.deepStrictEqual(plat(r), { ok: false, erreur: 'QUOTA_GMAIL' });
   assert.ok(!('DriveAI_TRI_DEMANDE' in props));
 });
@@ -130,16 +130,16 @@ test('actionDemandeTri_ : demande valide → Property posée, progression d\'une
   const { c, props } = ctxDemande(true);
   props['DriveAI_TRI_DEMANDE_OFFSET'] = '40'; // reliquat d'une demande précédente
   props['DriveAI_TRI_DEMANDE_FAITS'] = '12';
-  const r = c.actionDemandeTri_({ postData: { contents: JSON.stringify({ fenetre: 1, archiver: false, plafond: 20 }) } });
+  const r = c.actionDemandeTri_({ postData: { contents: JSON.stringify({ archiver: false, plafond: 20 }) } });
   assert.strictEqual(r.ok, true);
-  assert.deepStrictEqual(JSON.parse(props['DriveAI_TRI_DEMANDE']), { fenetre: 1, archiver: false, plafond: 20 });
+  assert.deepStrictEqual(JSON.parse(props['DriveAI_TRI_DEMANDE']), { archiver: false, plafond: 20 });
   assert.ok(!('DriveAI_TRI_DEMANDE_OFFSET' in props), 'offset de l\'ancienne demande purgé');
   assert.ok(!('DriveAI_TRI_DEMANDE_FAITS' in props));
 });
 
 test('actionDemandeTri_ : paramètres invalides → refus AVANT la sonde quota (une demande cassée ne coûte rien)', () => {
   const { c, props } = ctxDemande(false); // la sonde échouerait — elle ne doit pas être atteinte
-  const r = c.actionDemandeTri_({ postData: { contents: JSON.stringify({ fenetre: 3, archiver: true, plafond: 10 }) } });
+  const r = c.actionDemandeTri_({ postData: { contents: JSON.stringify({ archiver: true, plafond: 0 }) } });
   assert.strictEqual(r.ok, false);
   assert.notStrictEqual(r.erreur, 'QUOTA_GMAIL'); // c'est bien la VALIDATION qui a refusé
   assert.ok(!('DriveAI_TRI_DEMANDE' in props));
@@ -207,17 +207,22 @@ test('actionPasSuspect_ : apprend l\'expéditeur (jamais Marc), demande ADDITIVE
   assert.deepStrictEqual(JSON.parse(props.DriveAI_PAS_SUSPECT), ['autre', '19f44ecc77d92299']);
 });
 
-test('actionPasSuspect_ : threadId invalide → refus AVANT toute lecture Gmail ; anti-rafale 5 s', () => {
+test('actionPasSuspect_ : threadId invalide → refus AVANT toute lecture Gmail ; AUCUN anti-rafale (C28-24)', () => {
   const { c, props, confiance } = ctxPasSuspectWeb({});
   const r = c.actionPasSuspect_({ postData: { contents: JSON.stringify({ threadId: 'tri|x|y' }) } });
   assert.strictEqual(r.ok, false);
   assert.strictEqual(confiance.length, 0);
   assert.ok(!('DriveAI_PAS_SUSPECT' in props));
 
-  const rafale = ctxPasSuspectWeb({ props: { DriveAI_DERNIER_PAS_SUSPECT: String(Date.now()) } });
-  const r2 = rafale.c.actionPasSuspect_({ postData: { contents: JSON.stringify({ threadId: '19f44ecc77d92299' }) } });
-  assert.strictEqual(r2.ok, false);
-  assert.ok(/trop de requêtes/.test(r2.erreur));
+  // C28-24 (décision Marc) : l'anti-rafale 5 s est RETIRÉ — retirer plusieurs suspects
+  // d'affilée doit marcher instantanément, chaque clic s'accumule dans la liste additive.
+  const rapide = ctxPasSuspectWeb({});
+  const r1 = rapide.c.actionPasSuspect_({ postData: { contents: JSON.stringify({ threadId: '19f44ecc77d92299' }) } });
+  const r2 = rapide.c.actionPasSuspect_({ postData: { contents: JSON.stringify({ threadId: '19f44ecc77d92300' }) } });
+  assert.strictEqual(r1.ok, true);
+  assert.strictEqual(r2.ok, true);
+  assert.deepStrictEqual(JSON.parse(rapide.props.DriveAI_PAS_SUSPECT),
+    ['19f44ecc77d92299', '19f44ecc77d92300'], 'les deux clics rapprochés sont TOUS LES DEUX servis');
 });
 
 test('actionPasSuspect_ : quota Gmail mort à la lecture du fil → QUOTA_GMAIL, rien d\'appris', () => {

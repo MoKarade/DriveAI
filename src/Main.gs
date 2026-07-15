@@ -460,6 +460,9 @@ function tickDriveAI() {
       // Progression LIVE des opérations (C28-18) : rendu centralisé UNE fois par tick, dans le
       // finally — les avancées PARTIELLES d'un run interrompu sont capturées aussi. Enveloppé.
       try { majProgressions_(); } catch (e) { journalErreur_('Progression', 'MàJ progression impossible : ' + e); }
+      // Télémétrie coûts & quotas (C28-24) : même contrat que Progression — une seule écriture
+      // par tick, lue en poll par l'app. Enveloppée : un échec ne bloque jamais le reste.
+      try { majTelemetrie_(); } catch (e) { journalErreur_('Télémétrie', 'MàJ télémétrie impossible : ' + e); }
       try { bornerJournal_(); } catch (e) { journalErreur_('Santé', 'Journal borné impossible : ' + e); }
     } finally {
       verrou.releaseLock();

@@ -469,7 +469,9 @@ test('fil où MARC a répondu en dernier → catégorisé sur le message de l\'A
   assert.deepStrictEqual(plain(appris), [{ adresse: 'conseiller@banque.com', lib: 'Finance' }]);
 });
 
-/* ---------- Tri À LA DEMANDE (C28-16) ---------- */
+/* ---------- Tri À LA DEMANDE (C28-16, recentré C28-24 : in:inbox is:read, sans fenêtre) ---------- */
+
+const REQUETE_DEMANDE = 'in:inbox is:read'; // tripwire : la requête FIGÉE du recentrage C28-24
 
 /** Contexte demande : ctxTri + deleteProperty (les Properties de demande se purgent). */
 function ctxTriDemande(opts) {
@@ -480,35 +482,36 @@ function ctxTriDemande(opts) {
     deleteProperty: (k) => { delete base.calls.props[k]; },
   }) };
   base.c.estPanneGmail_ = () => false; // quota vivant (le scan à la demande est testé, pas la panne)
+  base.c.dateGmail_ = () => opts.jour || '2026/07/15'; // « jour » piloté par le test (plafond quotidien)
   return base;
 }
 
 test('scanDemandeTri_ : demande « archiver: false » → fil traité, libellé posé, JAMAIS archivé, demande soldée', () => {
   const { c, calls } = ctxTriDemande({
     index: { 'intention|M1': true },
-    props: { DriveAI_TRI_DEMANDE: JSON.stringify({ fenetre: 7, archiver: false, plafond: 10 }) },
+    props: { DriveAI_TRI_DEMANDE: JSON.stringify({ archiver: false, plafond: 10 }) },
     fils: [],
   });
   const fil = filMock(calls, { id: 'F1', ts: 1700000000000, dernierMsgId: 'M1', expediteur: 'EDF <f@edf.fr>', sujet: 'Facture' });
-  // La recherche de la DEMANDE sert le fil à l'offset 0 ; la page suivante est vide (fenêtre épuisée).
-  c.GmailApp.search = (q, debut) => (q.indexOf('newer_than:7d') === 0 && debut === 0 ? [fil] : []);
+  // La recherche de la DEMANDE sert le fil à l'offset 0 ; la page suivante est vide (boîte parcourue).
+  c.GmailApp.search = (q, debut) => (q === REQUETE_DEMANDE && debut === 0 ? [fil] : []);
   c.trierFilsGmail_(() => false);
   assert.deepStrictEqual(calls.labels.map((l) => l.label), ['Finance']); // libellé posé normalement
   assert.deepStrictEqual(calls.archives, []); // mail LU qui serait archivé en temps normal → PAS archivé
   assert.ok(calls.ajouts.some((a) => a.cle.indexOf('tri|F1|') === 0 && a.statut === 'trié')); // Index inchangé dans sa forme
-  assert.ok(!('DriveAI_TRI_DEMANDE' in calls.props), 'demande soldée (fenêtre épuisée)');
+  assert.ok(!('DriveAI_TRI_DEMANDE' in calls.props), 'demande soldée (boîte parcourue)');
   assert.ok(!('DriveAI_TRI_DEMANDE_OFFSET' in calls.props));
 });
 
 test('scanDemandeTri_ : plafond de fils respecté — le surplus est laissé au tri NORMAL (qui archive, lui)', () => {
   const { c, calls } = ctxTriDemande({
     index: { 'intention|M1': true, 'intention|M2': true },
-    props: { DriveAI_TRI_DEMANDE: JSON.stringify({ fenetre: 30, archiver: false, plafond: 1 }) },
+    props: { DriveAI_TRI_DEMANDE: JSON.stringify({ archiver: false, plafond: 1 }) },
   });
   const fil1 = filMock(calls, { id: 'F1', ts: 1700000000000, dernierMsgId: 'M1', expediteur: 'EDF <f@edf.fr>', sujet: 'Facture 1' });
   const fil2 = filMock(calls, { id: 'F2', ts: 1700000100000, dernierMsgId: 'M2', expediteur: 'EDF <f@edf.fr>', sujet: 'Facture 2' });
   c.GmailApp.search = (q, debut) => {
-    if (q.indexOf('newer_than:30d') === 0) return debut === 0 ? [fil1, fil2] : []; // la demande
+    if (q === REQUETE_DEMANDE) return debut === 0 ? [fil1, fil2] : []; // la demande
     return debut === 0 ? [fil1, fil2] : []; // le scan avant (TRI_REQUETE)
   };
   c.trierFilsGmail_(() => false);
@@ -522,4 +525,80 @@ test('scanDemandeTri_ : demande illisible (Property corrompue) → purgée en un
   c.GmailApp.search = () => [];
   c.trierFilsGmail_(() => false);
   assert.ok(!('DriveAI_TRI_DEMANDE' in calls.props));
+});
+
+test('scanDemandeTri_ : FILE MOUVANTE — l\'offset n\'avance que des fils RESTÉS en boîte (les archivés sortent du résultat)', () => {
+  const { c, calls } = ctxTriDemande({
+    index: { 'intention|MA': true, 'intention|MS': true },
+    // Le fil « evil » est flairé suspect par le mini-appel → ⚠, jamais archivé, RESTE en boîte.
+    miniCategorie_: (exp) => (String(exp).indexOf('evil') !== -1
+      ? { categorie: 'Finance', suspect: true } : { categorie: 'Finance', suspect: false }),
+    props: { DriveAI_TRI_DEMANDE: JSON.stringify({ archiver: true, plafond: 10 }) },
+    fils: [],
+  });
+  const filArchivable = filMock(calls, { id: 'FA', ts: 1700000000000, dernierMsgId: 'MA', expediteur: 'EDF <f@edf.fr>', sujet: 'Facture' });
+  const filSuspect = filMock(calls, { id: 'FS', ts: 1700000100000, dernierMsgId: 'MS', expediteur: 'X <a@evil.ru>', sujet: 'Frais' });
+  const offsets = [];
+  c.GmailApp.search = (q, debut) => {
+    if (q !== REQUETE_DEMANDE) return [];
+    offsets.push(debut);
+    return debut === 0 ? [filArchivable, filSuspect] : [];
+  };
+  c.trierFilsGmail_(() => false);
+  assert.deepStrictEqual(calls.archives, ['FA'], 'le fil sain LU est archivé, le suspect reste en boîte');
+  // FA archivé a QUITTÉ le résultat de `in:inbox is:read` : avancer de 2 sauterait un fil encore
+  // jamais vu. La page suivante démarre à 1 — seul FS (resté en boîte) compte dans l'offset.
+  assert.deepStrictEqual(offsets, [0, 1], 'offset avancé des seuls fils restants (1), pas de la page (2)');
+  assert.ok(!('DriveAI_TRI_DEMANDE' in calls.props), 'boîte parcourue → demande soldée');
+});
+
+/* ---------- C28-24 : plafond QUOTIDIEN de lectures du tri à la demande (patron C28-21) ---------- */
+
+test('scanDemandeTri_ : plafond quotidien ATTEINT → retour immédiat SANS recherche, demande INTACTE (reprise demain)', () => {
+  const MAX = ctxPur.CONFIG.TRI_DEMANDE_MAX_FILS_JOUR; // dérivé de la CONSTANTE, jamais de sa valeur
+  const { c, calls } = ctxTriDemande({
+    jour: '2026/07/15',
+    props: {
+      DriveAI_TRI_DEMANDE: JSON.stringify({ archiver: true, plafond: 1000 }),
+      DriveAI_TRI_DEMANDE_JOUR: '2026/07/15',
+      DriveAI_TRI_DEMANDE_FILS_JOUR: String(MAX),
+    },
+    fils: [],
+  });
+  let recherchesDemande = 0;
+  c.GmailApp.search = (q) => { if (q === REQUETE_DEMANDE) recherchesDemande++; return []; };
+  c.trierFilsGmail_(() => false);
+  assert.strictEqual(recherchesDemande, 0, 'plafond du jour atteint = zéro appel Gmail pour la demande');
+  assert.ok('DriveAI_TRI_DEMANDE' in calls.props, 'demande CONSERVÉE — elle reprend demain (jamais perdue)');
+});
+
+test('scanDemandeTri_ : page RÉTRÉCIE au reliquat du jour, fils lus comptés en finally ; lendemain → compteur reparti', () => {
+  const MAX = ctxPur.CONFIG.TRI_DEMANDE_MAX_FILS_JOUR;
+  const PAGE = ctxPur.CONFIG.PAGE_FILS_ACTIONS;
+  const tailles = [];
+  // Reliquat du jour = 2 (< PAGE) → la recherche demande 2 fils ; ils sont servis, lus (comptés),
+  // puis le reliquat tombe à 0 → arrêt SANS nouvelle recherche, demande intacte.
+  const { c, calls } = ctxTriDemande({
+    index: { 'intention|M1': true, 'intention|M2': true },
+    jour: '2026/07/15',
+    props: {
+      DriveAI_TRI_DEMANDE: JSON.stringify({ archiver: false, plafond: 100 }),
+      DriveAI_TRI_DEMANDE_JOUR: '2026/07/15',
+      DriveAI_TRI_DEMANDE_FILS_JOUR: String(MAX - 2),
+    },
+    fils: [],
+  });
+  const fil1 = filMock(calls, { id: 'F1', ts: 1700000000000, dernierMsgId: 'M1', expediteur: 'EDF <f@edf.fr>', sujet: 'Facture 1' });
+  const fil2 = filMock(calls, { id: 'F2', ts: 1700000100000, dernierMsgId: 'M2', expediteur: 'EDF <f@edf.fr>', sujet: 'Facture 2' });
+  c.GmailApp.search = (q, debut, n) => {
+    if (q !== REQUETE_DEMANDE) return [];
+    tailles.push(n);
+    return debut === 0 ? [fil1, fil2] : [];
+  };
+  c.trierFilsGmail_(() => false);
+  assert.ok(tailles[0] === 2 && tailles[0] < PAGE, 'page bornée au reliquat du jour (complétable)');
+  assert.strictEqual(tailles.length, 1, 'reliquat épuisé → aucune recherche de plus ce tick');
+  assert.strictEqual(calls.props.DriveAI_TRI_DEMANDE_FILS_JOUR, String(MAX), 'cumul du jour (coût CONSOMMÉ)');
+  assert.ok('DriveAI_TRI_DEMANDE' in calls.props, 'demande non soldée — le reste attend demain');
+  assert.strictEqual(calls.props.DriveAI_TRI_DEMANDE_OFFSET, '2', 'page complète (archiver:false → 2 restants) : offset avancé');
 });
