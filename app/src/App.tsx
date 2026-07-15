@@ -21,14 +21,15 @@ import { Corrections } from './vues/Corrections';
 import { Documents } from './vues/Documents';
 import { Agenda } from './vues/Agenda';
 import { Mails } from './vues/Mails';
+import { Quotas } from './vues/Quotas';
 
-export type Section = 'aujourdhui' | 'agenda' | 'mails' | 'documents' | 'apprentissage' | 'sante';
+export type Section = 'aujourdhui' | 'agenda' | 'mails' | 'documents' | 'apprentissage' | 'quotas' | 'sante';
 
-export const SECTIONS: Section[] = ['aujourdhui', 'agenda', 'mails', 'documents', 'apprentissage', 'sante'];
+export const SECTIONS: Section[] = ['aujourdhui', 'agenda', 'mails', 'documents', 'apprentissage', 'quotas', 'sante'];
 export const ICONES: Record<Section, string> = {
-  aujourdhui: '◐', agenda: '▦', mails: '✉', documents: '▤', apprentissage: '✎', sante: '♥',
+  aujourdhui: '◐', agenda: '▦', mails: '✉', documents: '▤', apprentissage: '✎', quotas: '◔', sante: '♥',
 };
-/** Barre basse mobile : 4 sections directes + « Plus » (Apprentissage/Santé). */
+/** Barre basse mobile : 4 sections directes + « Plus » (Apprentissage/Quotas/Santé). */
 const BARRE_BASSE: Section[] = ['aujourdhui', 'agenda', 'mails', 'documents'];
 
 /**
@@ -223,6 +224,7 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
             {section === 'apprentissage' && <Corrections langue={langue} />}
             {section === 'agenda' && <Agenda langue={langue} dateRef={dateAgenda} agendas={agendas} />}
             {section === 'mails' && <Mails langue={langue} />}
+            {section === 'quotas' && <Quotas langue={langue} />}
             {section === 'sante' && <SanteVue langue={langue} />}
           </div>
           <footer>{t('gardeFous', langue)}</footer>
@@ -248,7 +250,7 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
           </button>
         ))}
         <button
-          className={section === 'apprentissage' || section === 'sante' ? 'actif' : ''}
+          className={section === 'apprentissage' || section === 'quotas' || section === 'sante' ? 'actif' : ''}
           onClick={() => setPlusOuvert(true)}
         >
           <em aria-hidden="true">⋯</em>
@@ -262,6 +264,9 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
           <div className="feuille-plus" role="dialog" aria-label={t('plus', langue)}>
             <button className="discret" onClick={() => allerA('apprentissage')}>
               {ICONES.apprentissage} {t('apprentissage', langue)}
+            </button>
+            <button className="discret" onClick={() => allerA('quotas')}>
+              {ICONES.quotas} {t('quotas', langue)}
             </button>
             <button className="discret" onClick={() => allerA('sante')}>
               {ICONES.sante} {t('sante', langue)}
