@@ -269,6 +269,14 @@ son jeton d'accès en silence — plus jamais de reconnexion.
    Les anciennes `VITE_SPREADSHEET_ID` / `VITE_WEBAPP_*` ne servent plus (elles figeaient la
    config au BUILD ; supprime-les si présentes).
 
+   **Variable OPTIONNELLE — intégration hub perso** (`GET /api/hub/summary`, widget DriveAI sur
+   `hubperso.com`) :
+   - `HUB_TOKEN` — secret partagé avec le hub. Le hub l'envoie dans le header `x-hub-token` ; le
+     endpoint le compare en temps constant. **Absente → l'endpoint répond `503 hub disabled`**
+     (échec fermé, intégration désactivée) : DriveAI fonctionne normalement sans elle. Génère une
+     valeur longue aléatoire (`openssl rand -hex 32`), pose-la **à l'identique** ici et dans la
+     config du hub. Jamais en dur dans le code. Pour révoquer : change la valeur des deux côtés.
+
    > **⚠ En posant ces variables (déploiement de C28-20), RÉGÉNÈRE aussi `COOKIE_SECRET`**
    > (nouvelle valeur `openssl rand -hex 32`). Les cookies de session posés AVANT le verrou
    > d'identité (valables 1 an) ne sont vérifiés qu'à leur CRÉATION : sans rotation, une session
