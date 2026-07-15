@@ -53,6 +53,8 @@ const CONTRAT = [
   'reanalyserFichier_',
   // progression LIVE des opérations (C28-18) : rendu centralisé (tick finally) + recensements
   'majProgressions_', 'lignesProgression_', 'assurerEnteteProgression_', 'lireSoldeDemande_',
+  // télémétrie coûts & quotas (C28-24) : rendu centralisé (tick finally), lu par l'app (PR3)
+  'majTelemetrie_', 'lignesTelemetrie_', 'compteurFilsJour_',
   'compterRestantMigration_', 'compterRestantReanalyse_', 'compterCampagneDossier_',
   'majCompteurCampagne_', 'finaliserCompteurCampagne_',
   'exporterTexteNatif_', 'exportNatifMime_', // natifs Google lisibles (R3)

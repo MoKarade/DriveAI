@@ -220,7 +220,8 @@ function actionAnalyseCiblee_(e) {
 /* ---------- Tri & intentions À LA DEMANDE (C28-16) ---------- */
 
 /**
- * Dépose une demande de TRI paramétrée par Marc depuis l'app (fenêtre / archiver / plafond).
+ * Dépose une demande de TRI paramétrée par Marc depuis l'app (archiver / plafond — C28-24 : plus
+ * de fenêtre, la demande couvre TOUS les mails LUS de la boîte, requête figée côté moteur).
  * AUCUN travail ici : validation stricte + Property de demande — c'est `scanDemandeTri_`
  * (TriGmail.gs) qui exécute au tick, EN TÊTE du flux vivant. Si le quota Gmail est suspendu,
  * une sonde FORCÉE re-teste tout de suite (décision Marc : « tenter une fois quand même ») —
@@ -243,7 +244,7 @@ function actionDemandeTri_(e) {
     demande = null;
   }
   if (demande === null) {
-    return { ok: false, erreur: 'paramètres invalides (fenêtre 1/7/30, archiver booléen, plafond 1..' + CONFIG.TRI_DEMANDE_PLAFOND_MAX + ')' };
+    return { ok: false, erreur: 'paramètres invalides (archiver booléen, plafond 1..' + CONFIG.TRI_DEMANDE_PLAFOND_MAX + ')' };
   }
   props.setProperty('DriveAI_DERNIERE_DEMANDE_TRI', String(Date.now()));
 
@@ -256,7 +257,7 @@ function actionDemandeTri_(e) {
   props.deleteProperty('DriveAI_TRI_DEMANDE_OFFSET');
   props.deleteProperty('DriveAI_TRI_DEMANDE_FAITS');
   props.setProperty('DriveAI_TRI_DEMANDE', JSON.stringify(demande));
-  journalInfo_('WebApp', 'Tri à la demande programmé (fenêtre ' + demande.fenetre + ' j, archiver : ' +
+  journalInfo_('WebApp', 'Tri à la demande programmé (tous les mails LUS de la boîte, archiver : ' +
     (demande.archiver ? 'oui' : 'non') + ', plafond ' + demande.plafond + ' fils).');
   return actionTickPonctuel_(); // passage immédiat : le tri démarre dans la ~minute
 }
@@ -290,14 +291,12 @@ function actionDemandeIntentions_(e) {
  * liste additive) consommée par le tick SOUS SON VERROU — JAMAIS de suppression de lignes
  * d'Index ici : doPost court en concurrence du run (déviation documentée vs plan C28-19).
  * Le libellé ⚠ Gmail du fil n'est jamais retiré (§2.3) : le moteur l'ignore désormais.
+ * PAS d'anti-rafale (C28-24, décision Marc) : Marc retire souvent PLUSIEURS suspects d'affilée —
+ * l'action est bon marché (1 lecture de fil + 2 écritures idempotentes/dédupliquées), la
+ * validation stricte du threadId et la liste additive bornent déjà tout abus.
  */
 function actionPasSuspect_(e) {
   var props = PropertiesService.getScriptProperties();
-
-  var derniere = Number(props.getProperty('DriveAI_DERNIER_PAS_SUSPECT')) || 0;
-  if (Date.now() - derniere < 5000) {
-    return { ok: false, erreur: 'trop de requêtes — réessaie dans quelques secondes' };
-  }
 
   var threadId = '';
   try {
@@ -307,7 +306,6 @@ function actionPasSuspect_(e) {
     threadId = '';
   }
   if (!threadId) return { ok: false, erreur: 'threadId invalide' };
-  props.setProperty('DriveAI_DERNIER_PAS_SUSPECT', String(Date.now()));
 
   // Lecture du fil (adresse de l'expéditeur) — même règle de référence que le tri : le dernier
   // message qui ne vient PAS de Marc (sinon un fil où il a répondu apprendrait SA propre adresse).
@@ -352,18 +350,18 @@ function validerThreadId_(brut) {
 
 /**
  * Valide les paramètres du tri à la demande (données UTILISATEUR via HTTP). PURE (testée).
- * @param {*} corps  `{fenetre, archiver, plafond}`
- * @return {?{fenetre:number, archiver:boolean, plafond:number}} demande propre, ou null
+ * C28-24 : plus de fenêtre — la requête `in:inbox is:read` est FIGÉE côté moteur ; un champ
+ * `fenetre` envoyé par une vieille version de l'app est simplement IGNORÉ.
+ * @param {*} corps  `{archiver, plafond}`
+ * @return {?{archiver:boolean, plafond:number}} demande propre, ou null
  */
 function validerDemandeTri_(corps) {
   if (!corps || typeof corps !== 'object') return null;
-  var fenetre = Number(corps.fenetre);
-  if (fenetre !== 1 && fenetre !== 7 && fenetre !== 30) return null;
   if (typeof corps.archiver !== 'boolean') return null;
   var plafond = Number(corps.plafond);
   if (!isFinite(plafond) || plafond !== Math.floor(plafond)) return null;
   if (plafond < 1 || plafond > CONFIG.TRI_DEMANDE_PLAFOND_MAX) return null;
-  return { fenetre: fenetre, archiver: corps.archiver, plafond: plafond };
+  return { archiver: corps.archiver, plafond: plafond };
 }
 
 /**

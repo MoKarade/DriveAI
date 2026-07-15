@@ -361,8 +361,8 @@ function trierFilsGmail_(estBudgetDepasse) {
   // immédiat des fils concernés, SOUS le verrou du tick (jamais depuis doPost : une suppression
   // de lignes d'Index en concurrence du run serait une course).
   appliquerPasSuspect_(etat, plafondAtteint, candidats, libelles);
-  // Tri À LA DEMANDE (C28-16) : la demande de Marc (fenêtre/archiver/plafond posée par l'app)
-  // passe ensuite. Elle s'étale sur plusieurs ticks si besoin (offset/faits persistés),
+  // Tri À LA DEMANDE (C28-16, recentré C28-24) : la demande de Marc (archiver/plafond posée par
+  // l'app) passe ensuite. Elle s'étale sur plusieurs ticks si besoin (offset/faits persistés),
   // toujours sous les plafonds par run du tri.
   if (!plafondAtteint()) scanDemandeTri_(etat, plafondAtteint, candidats, libelles);
   if (!plafondAtteint()) scanAvantTri_(etat, plafondAtteint, candidats, libelles);
@@ -371,13 +371,18 @@ function trierFilsGmail_(estBudgetDepasse) {
 }
 
 /**
- * Scan À LA DEMANDE (C28-16) : consomme la Property `DriveAI_TRI_DEMANDE` posée par l'app
- * (`actionDemandeTri_` — fenêtre ∈ {1,7,30} j, archiver oui/non, plafond de fils TRAITÉS).
- * Pages depuis un offset persistant ; les fils déjà à jour (clé `tri|fil|ts|lu` à l'Index)
- * sont sautés gratuitement — re-trier une fenêtre déjà triée ne re-paie ni ne re-archive rien.
- * Le plafond compte les fils réellement TRAITÉS (écritures) ; une page interrompue par le
- * budget du run rejouera au tick suivant (offset inchangé, déjà-vus gratuits). La demande est
- * effacée quand ENTIÈREMENT servie (plafond atteint ou fenêtre épuisée) — reprenable si coupée.
+ * Scan À LA DEMANDE (C28-16, recentré C28-24) : consomme la Property `DriveAI_TRI_DEMANDE`
+ * posée par l'app (`actionDemandeTri_` — archiver oui/non, plafond de fils TRAITÉS). Objectif
+ * de Marc : « archiver TOUS les mails LUS de la boîte » — requête FIGÉE `in:inbox is:read`,
+ * plus de fenêtre. FILE MOUVANTE assumée : chaque fil ARCHIVÉ sort du résultat de recherche →
+ * l'offset persistant n'avance que des fils RESTÉS en boîte ('archive' exclu) — avancer d'une
+ * page pleine SAUTERAIT autant de fils que la page en a archivés (leçon « pagination sur une
+ * file mouvante : prouver que le plus ancien sort un jour »). Les fils déjà à jour (clé
+ * `tri|fil|ts|lu` à l'Index) restent sautés gratuitement. Plafond QUOTIDIEN de LECTURES en sus
+ * (patron C28-21) : page RÉTRÉCIE au reliquat du jour (complétable → l'offset avance), compteur
+ * écrit en finally sur le coût CONSOMMÉ — une grosse boîte se draine sur plusieurs jours sans
+ * épuiser le quota Gmail partagé, la demande reste posée entre-temps. Elle est effacée quand
+ * ENTIÈREMENT servie (plafond atteint ou boîte parcourue) — reprenable si coupée.
  * @param {{traites:number, attentes:number}} etat
  * @param {function():boolean} plafondAtteint
  * @param {string[]} candidats
@@ -389,46 +394,70 @@ function scanDemandeTri_(etat, plafondAtteint, candidats, libelles) {
   if (!brut) return;
   var demande = null;
   try { demande = JSON.parse(brut); } catch (e) { }
-  if (!demande || !demande.fenetre || !demande.plafond) {
+  if (!demande || !demande.plafond) {
     // Demande illisible (Property corrompue) : purgée — jamais une boucle d'erreurs à chaque tick.
     effacerDemandeTri_(props, 0, 'demande illisible — annulée');
     return;
   }
-  var requete = 'newer_than:' + demande.fenetre + 'd in:inbox';
+  var requete = 'in:inbox is:read'; // C28-24 : tous les mails LUS de la boîte, sans fenêtre
 
-  while (!plafondAtteint()) {
-    var faits = Number(props.getProperty('DriveAI_TRI_DEMANDE_FAITS')) || 0;
-    if (faits >= demande.plafond) {
-      effacerDemandeTri_(props, faits, 'plafond atteint');
-      return;
+  var aujourdhui = dateGmail_(new Date());
+  var filsJour = props.getProperty('DriveAI_TRI_DEMANDE_JOUR') === aujourdhui
+    ? Number(props.getProperty('DriveAI_TRI_DEMANDE_FILS_JOUR')) || 0
+    : 0;
+  var filsLus = 0;
+  try {
+    while (!plafondAtteint()) {
+      var faits = Number(props.getProperty('DriveAI_TRI_DEMANDE_FAITS')) || 0;
+      if (faits >= demande.plafond) {
+        effacerDemandeTri_(props, faits, 'plafond atteint');
+        return;
+      }
+      // Page RÉTRÉCIE au reliquat du jour (patron C28-21) : interrompue à mi-page, elle
+      // rejouerait chaque tick sans avancer — plus petite, elle reste COMPLÉTABLE.
+      var taille = Math.min(CONFIG.PAGE_FILS_ACTIONS,
+        CONFIG.TRI_DEMANDE_MAX_FILS_JOUR - filsJour - filsLus);
+      if (taille <= 0) return; // plafond quotidien atteint : demande INTACTE, reprise demain (aucune recherche)
+      var offset = Number(props.getProperty('DriveAI_TRI_DEMANDE_OFFSET')) || 0;
+      var fils;
+      try {
+        fils = GmailApp.search(requete, offset, taille);
+      } catch (e) {
+        if (signalerPanneGmail_(e)) return; // quota : demande INTACTE, reprise après la re-sonde
+        journalErreur_('TriGmail', 'Recherche du tri à la demande impossible : ' + e);
+        return;
+      }
+      signalerRetablissementGmail_();
+      if (!fils.length) {
+        effacerDemandeTri_(props, faits, 'boîte parcourue');
+        return;
+      }
+      var restants = 0; // fils encore EN BOÎTE après traitement — seuls eux font avancer l'offset
+      var pageComplete = true;
+      for (var i = 0; i < fils.length; i++) {
+        if (plafondAtteint() || faits >= demande.plafond) { pageComplete = false; break; } // rejeu (déjà-vus gratuits)
+        filsLus++; // le fil va être LU (trierFil_) : coût quota réel, page complétée ou non (C28-21)
+        var r = trierFil_(fils[i], candidats, libelles, false, !demande.archiver);
+        if (r === 'archive') { etat.traites++; faits++; }
+        else {
+          restants++;
+          if (r === 'traite') { etat.traites++; faits++; }
+          if (r === 'attend') etat.attentes++;
+        }
+      }
+      props.setProperty('DriveAI_TRI_DEMANDE_FAITS', String(faits));
+      if (faits >= demande.plafond) {
+        effacerDemandeTri_(props, faits, 'plafond atteint');
+        return;
+      }
+      if (!pageComplete) return; // page interrompue par le run : offset INCHANGÉ (rejeu gratuit)
+      props.setProperty('DriveAI_TRI_DEMANDE_OFFSET', String(offset + restants));
     }
-    var offset = Number(props.getProperty('DriveAI_TRI_DEMANDE_OFFSET')) || 0;
-    var fils;
-    try {
-      fils = GmailApp.search(requete, offset, CONFIG.PAGE_FILS_ACTIONS);
-    } catch (e) {
-      if (signalerPanneGmail_(e)) return; // quota : demande INTACTE, reprise après la re-sonde
-      journalErreur_('TriGmail', 'Recherche du tri à la demande impossible : ' + e);
-      return;
+  } finally {
+    if (filsLus > 0) {
+      props.setProperty('DriveAI_TRI_DEMANDE_JOUR', aujourdhui);
+      props.setProperty('DriveAI_TRI_DEMANDE_FILS_JOUR', String(filsJour + filsLus));
     }
-    signalerRetablissementGmail_();
-    if (!fils.length) {
-      effacerDemandeTri_(props, faits, 'fenêtre épuisée');
-      return;
-    }
-    for (var i = 0; i < fils.length; i++) {
-      if (plafondAtteint() || faits >= demande.plafond) break; // la page rejouera (déjà-vus gratuits)
-      var r = trierFil_(fils[i], candidats, libelles, false, !demande.archiver);
-      if (r === 'traite') { etat.traites++; faits++; }
-      if (r === 'attend') etat.attentes++;
-    }
-    props.setProperty('DriveAI_TRI_DEMANDE_FAITS', String(faits));
-    if (faits >= demande.plafond) {
-      effacerDemandeTri_(props, faits, 'plafond atteint');
-      return;
-    }
-    if (plafondAtteint()) return; // page interrompue par le run : offset INCHANGÉ (rejeu gratuit)
-    props.setProperty('DriveAI_TRI_DEMANDE_OFFSET', String(offset + fils.length));
   }
 }
 
@@ -465,7 +494,7 @@ function scanAvantTri_(etat, plafondAtteint, candidats, libelles) {
     for (var i = 0; i < fils.length; i++) {
       if (plafondAtteint()) return;
       var r = trierFil_(fils[i], candidats, libelles, false);
-      if (r === 'traite') etat.traites++;
+      if (r === 'traite' || r === 'archive') etat.traites++;
       if (r === 'attend') etat.attentes++;
       if (r !== 'deja') pageAJour = false;
     }
@@ -528,7 +557,7 @@ function scanCycliqueTri_(etat, plafondAtteint, candidats, libelles) {
         if (plafondAtteint()) { pageComplete = false; break; }
         filsLus++; // le fil va être LU (trierFil_) : coût quota réel, page complétée ou non
         var r = trierFil_(fils[i], candidats, libelles, false);
-        if (r === 'traite') etat.traites++;
+        if (r === 'traite' || r === 'archive') etat.traites++;
         if (r === 'attend') etat.attentes++;
       }
       if (!pageComplete) return; // page interrompue rejouée au tick suivant (déjà-vus gratuits)
@@ -568,7 +597,7 @@ function appliquerPasSuspect_(etat, plafondAtteint, candidats, libelles) {
       var fil = GmailApp.getThreadById(threadId);
       if (fil) {
         var r = trierFil_(fil, candidats, libelles, false);
-        if (r === 'traite') etat.traites++;
+        if (r === 'traite' || r === 'archive') etat.traites++;
         if (r === 'attend') { etat.attentes++; restants.push(threadId); } // re-tenté au tick suivant
       }
     } catch (e) {
@@ -628,7 +657,7 @@ function scanArriereTri_(etat, plafondAtteint, candidats, libelles) {
     for (var i = 0; i < fils.length; i++) {
       if (plafondAtteint()) { lotComplet = false; break; }
       var r = trierFil_(fils[i], candidats, libelles, true);
-      if (r === 'traite') etat.traites++;
+      if (r === 'traite' || r === 'archive') etat.traites++;
       if (r === 'attend') { etat.attentes++; lotComplet = false; }
       if (r === 'erreur') lotComplet = false; // rejoué (l'abandon par fil borne les fils malades)
     }
@@ -638,7 +667,9 @@ function scanArriereTri_(etat, plafondAtteint, candidats, libelles) {
 }
 
 /**
- * Trie UN fil. @return {'deja'|'attend'|'traite'|'erreur'}
+ * Trie UN fil. @return {'deja'|'attend'|'traite'|'archive'|'erreur'} — 'archive' = traité ET
+ * retiré de la boîte (C28-24 : l'offset du tri à la demande n'avance que des fils RESTANTS en
+ * boîte ; pour le comptage, 'archive' se compte partout comme 'traite').
  * @param {GmailThread} fil
  * @param {string[]} candidats
  * @param {Object} libelles
@@ -779,7 +810,7 @@ function trierFil_(fil, candidats, libelles, verifierBoite, forcerNonArchivage) 
     }
 
     indexAjouter_(cle, { statut: decision.statut, nom: sujet });
-    return 'traite';
+    return decision.archiver ? 'archive' : 'traite';
   } catch (e) {
     // Fil malade (lecture) : compté PAR ÉTAT (un nouveau message redonne sa chance), ABANDONNÉ
     // après QUARANTAINE_MAX essais — sinon : une ligne de Journal par tick pendant 30 jours.

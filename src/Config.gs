@@ -200,6 +200,11 @@ var CONFIG = {
   TRI_DEMANDE_PLAFOND_MAX: 1000,          // borne DURE du plafond réglable au clic (C28-16) — la
                                           // demande s'étale sur plusieurs ticks, jamais plus par run
                                           // que TRI_MAX_FILS_PAR_RUN (le quota reste protégé)
+  TRI_DEMANDE_MAX_FILS_JOUR: 500,         // C28-24 : plafond QUOTIDIEN de fils LUS par le tri à la
+                                          // demande — la requête `in:inbox is:read` n'a plus de
+                                          // fenêtre (toute la boîte) : sans plafond dans SON unité,
+                                          // une grosse boîte drainerait le quota Gmail partagé en
+                                          // un jour (leçon C28-21) ; elle se draine sur plusieurs j
   TRI_MAX_ATTENTES: 20,                   // fils « en attente des intentions » chargés par run (borne
                                           // la re-facture de lecture — revue flotte, classe R2)
   LLM_MAX_TOKENS_MINICAT: 64,             // mini-appel catégorie : JSON {categorie, suspect} — marge pour le plus long libellé + clôture markdown
