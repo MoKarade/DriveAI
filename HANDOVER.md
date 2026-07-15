@@ -14,6 +14,24 @@
 >   bloquée (phase de recensement puis reprise, 5 docs re-classés 16:47-16:52) ; son recensement
 >   coupé au budget a posé une base partielle (0) — la re-base absorbe, « terminé » viendra sur
 >   passe vide puis C26-08 s'enchaîne seule.
+> • **2026-07-15 — C28-23 : app v5 « Material Dark » + Agenda clone Google Agenda (plan
+>   architecte NotebookLM, 3 PR #161/#162/#163)** : demande Marc (capture GCal fournie) « que
+>   l'agenda ressemble exactement à ça et que le style de l'app épouse entièrement ce style
+>   google », cadré par 12 questions. Livré : thème SOMBRE seul (theme.ts supprimé), layout
+>   topbar + sidebar façon Google (FAB + Créer, mini-calendrier qui pilote le grand Agenda —
+>   dateAgenda remontée dans App, « Mes agendas » trompe-l'œil sans scope §2.3), menu avatar ;
+>   Agenda : grille horaire ABSOLUE Jour/Semaine/Mois (Semaine défaut), rangée toute-la-journée
+>   multi-jours, ligne « maintenant », couleurs par type, mobile 3 jours glissants, clic-créneau
+>   → création pré-remplie, popover d'événement/tâche façon GCal. Pur front, aucun scope, 171
+>   tests app, captures E2E inspectées à chaque PR. NOUVEAUX fichiers : composants/Sidebar.tsx,
+>   composants/MiniCalendrier.tsx (sources NotebookLM à ajouter par Marc).
+> • **2026-07-14 — C28-22 : cadrage (boucle Tasks 403, arnaques → tâches, anciens mails)** :
+>   l'API Google Tasks n'est PAS activée dans le projet GCP (403 depuis le 07/07, re-tenté à
+>   chaque tick → quota Gmail drainé) ; mails d'ARNAQUE « Google Cloud 10 USD » transformés en
+>   tâches par les intentions élargies ; mails en boîte > 30 j couverts par AUCUN scan. Actions
+>   Marc : spammer les arnaques PUIS activer l'API Tasks (console GCP). Prompt NotebookLM livré
+>   (plan d'implémentation attendu : échecs Tasks/Calendar bornés + garde suspect→jamais de
+>   tâche + campagne arrière > 30 j).
 > • **2026-07-13 — C28-21 : quota Gmail rendu au flux vivant + migration recentrée (plan
 >   architecte NotebookLM, 2 PR)** : retours Marc « aucun mail archivé » (attente : lu ⇒ archivé
 >   en ~min) + « tellement de fichiers Inconnu ». Diagnostic : quota Gmail drainé EN CONTINU par
