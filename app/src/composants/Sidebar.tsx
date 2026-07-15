@@ -5,6 +5,8 @@
  * donnée ni scope nouveau) : deux cases locales Événements/Tâches qui filtreront localement
  * l'Agenda (câblage en PR2/PR3, l'état vit déjà chez le parent pour ça).
  * Mobile : tiroir ouvert par le ☰ de la topbar (`ouverte` + fond cliquable pour fermer).
+ * Desktop (C28-24) : REPLIABLE en rail d'icônes par le même ☰ (`repliee`, persistée par App) —
+ * mini-calendrier et « Mes agendas » masqués, sections en icônes seules (tooltip = libellé).
  */
 
 import { Langue, t } from '../i18n';
@@ -17,10 +19,11 @@ export interface AgendasVisibles {
   taches: boolean;
 }
 
-export function Sidebar({ langue, section, ouverte, agendas, dateAgenda, onDate, onAgendas, onAller, onFermer, onCreer }: {
+export function Sidebar({ langue, section, ouverte, repliee, agendas, dateAgenda, onDate, onAgendas, onAller, onFermer, onCreer }: {
   langue: Langue;
   section: Section;
   ouverte: boolean;
+  repliee: boolean;
   agendas: AgendasVisibles;
   dateAgenda: Date;
   onDate: (d: Date) => void;
@@ -32,10 +35,10 @@ export function Sidebar({ langue, section, ouverte, agendas, dateAgenda, onDate,
   return (
     <>
       {ouverte && <button className="feuille-fond" aria-label={t('fermer', langue)} onClick={onFermer} />}
-      <aside className={'sidebar' + (ouverte ? ' ouverte' : '')}>
-        <button className="fab-creer" onClick={onCreer}>
+      <aside className={'sidebar' + (ouverte ? ' ouverte' : '') + (repliee ? ' repliee' : '')}>
+        <button className="fab-creer" title={t('creerBouton', langue)} onClick={onCreer}>
           <em aria-hidden="true">＋</em>
-          {t('creerBouton', langue)}
+          <span>{t('creerBouton', langue)}</span>
         </button>
 
         {/* Mini-calendrier (PR3) : un clic navigue le grand Agenda — l'état vit dans App. */}
@@ -43,9 +46,9 @@ export function Sidebar({ langue, section, ouverte, agendas, dateAgenda, onDate,
 
         <nav className="sections" aria-label="Sections">
           {SECTIONS.map((s) => (
-            <button key={s} className={section === s ? 'actif' : ''} onClick={() => onAller(s)}>
+            <button key={s} className={section === s ? 'actif' : ''} title={t(s, langue)} onClick={() => onAller(s)}>
               <em aria-hidden="true">{ICONES[s]}</em>
-              {t(s, langue)}
+              <span>{t(s, langue)}</span>
             </button>
           ))}
         </nav>

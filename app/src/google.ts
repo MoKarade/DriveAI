@@ -842,9 +842,12 @@ async function demandeWebApp(action: string, corps: unknown): Promise<string> {
   return data.message ?? 'demande programmée';
 }
 
-/** Tri Gmail à la demande, paramétré au clic (fenêtre en jours, archiver, plafond de fils). */
-export async function demandeTriGmail(fenetre: number, archiver: boolean, plafond: number): Promise<string> {
-  return demandeWebApp('demande-tri', { fenetre, archiver, plafond });
+/**
+ * Tri Gmail à la demande (C28-24 : plus de fenêtre — le moteur parcourt TOUS les mails LUS de
+ * la boîte, requête `in:inbox is:read` figée côté moteur, plafond quotidien de lectures).
+ */
+export async function demandeTriGmail(archiver: boolean, plafond: number): Promise<string> {
+  return demandeWebApp('demande-tri', { archiver, plafond });
 }
 
 /** Relance l'analyse des intentions (tâches/RDV) sur toute la fenêtre 30 j. */

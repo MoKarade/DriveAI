@@ -1,21 +1,19 @@
 /**
  * Mails.tsx — vue v3 (C19-06, ADR-0013) : le tri Gmail (#16) visible et corrigeable.
- * Tuiles · fils triés (clic → Gmail) · ⚠ suspects · table apprise expéditeur → libellé
- * (« Retirer » = vidage de cellules, jamais de suppression de ligne — le moteur redemandera au LLM).
+ * Tuiles · fils triés (clic → Gmail) · ⚠ suspects. La table apprise expéditeur → libellé vit
+ * désormais dans l'onglet APPRENTISSAGE (C28-24, demande Marc — cf. Corrections.tsx).
  * Les newsletters jamais lues restent dans le résumé hebdo (calcul Gmail côté moteur).
  */
 
 import { useRef, useState } from 'react';
-import { ecrireCellule, marquerIntentionManuelle } from '../google';
+import { marquerIntentionManuelle } from '../google';
 import { useEtatGlobal } from '../etatGlobal';
 import { IndicateurChargement, BanniereErreur } from '../composants/UI';
 import { Creation } from '../composants/Creation';
 import { PanneauActions } from '../composants/PanneauActions';
-import { ListeSuspects } from '../composants/Suspects';
+import { ListeSuspects, useSuspectsVisibles } from '../composants/Suspects';
 import {
   LigneIndex,
-  LigneTriAppris,
-  interpreterTriAppris,
   lignesTri,
   lignesSuspects,
   statsTri,
@@ -29,12 +27,13 @@ const TRIS_RECENTS = 20;
 export function Mails({ langue }: { langue: Langue }) {
   // Données PARTAGÉES (P1/C28-02) : l'Index arrive en ÉTAT COURANT — un fil suspect PUIS trié
   // n'apparaît plus ⚠ (fini la section Suspects périmée, C28-13). Rafraîchi toutes les 5 min.
-  const { donnees, rafraichir } = useEtatGlobal();
-  const [retires, setRetires] = useState<number[]>([]); // optimiste, le temps du prochain rafraîchissement
+  const { donnees } = useEtatGlobal();
   const [erreurAction, setErreurAction] = useState('');
   // C28-06 (plan P2) : création manuelle de tâche/RDV DEPUIS un fil trié (modale pré-remplie).
   const [creationPour, setCreationPour] = useState<LigneIndex | null>(null);
   const filsMarques = useRef(new Set<string>()); // marqueur Index écrit UNE fois par fil
+  // C28-24 : compte de la tuile instantané — même store que la liste (clic « pas suspect »).
+  const suspects = useSuspectsVisibles(donnees ? lignesSuspects(donnees.index) : []).slice(0, 8);
 
   /** Après la 1ʳᵉ création réussie : le moteur ne doit plus analyser ce fil (pas de doublon). */
   async function marquerFilTraite(l: LigneIndex) {
@@ -49,24 +48,10 @@ export function Mails({ langue }: { langue: Langue }) {
     }
   }
 
-  async function retirer(l: LigneTriAppris) {
-    try {
-      // Vidage des cellules (A/B) — la ligne reste, le moteur ignore les adresses vides.
-      await ecrireCellule('TriAppris', `A${l.ligneSheet}`, '');
-      await ecrireCellule('TriAppris', `B${l.ligneSheet}`, '');
-      setRetires((xs) => [...xs, l.ligneSheet]);
-      void rafraichir(true);
-    } catch (e) {
-      setErreurAction(String(e));
-    }
-  }
-
   if (!donnees) return <IndicateurChargement langue={langue} />;
   const index: LigneIndex[] = donnees.index;
-  const appris = interpreterTriAppris(donnees.triApprisBrut).filter((x) => !retires.includes(x.ligneSheet));
 
   const tri7j = statsTri(index, 7, new Date());
-  const suspects = lignesSuspects(index).slice(0, 8);
   const tris = lignesTri(index).slice(0, TRIS_RECENTS);
 
   return (
@@ -76,7 +61,6 @@ export function Mails({ langue }: { langue: Langue }) {
         <div className="tuile"><div className="v">{tri7j.tries}</div><div className="l">{t('filsTries7j', langue)}</div></div>
         <div className="tuile"><div className="v">{tri7j.aVerifier}</div><div className="l">{t('aVerifierTuile', langue)}</div></div>
         <div className="tuile"><div className={`v ${suspects.length ? 'erreur' : ''}`}>{suspects.length}</div><div className="l">{t('suspectsEnBoite', langue)}</div></div>
-        <div className="tuile"><div className="v">{appris.length}</div><div className="l">{t('exprAppris', langue)}</div></div>
       </div>
 
       {/* Panneau d'actions PARTAGÉ (C28-17) : remonté sous les tuiles — Marc le trouvait
@@ -119,25 +103,7 @@ export function Mails({ langue }: { langue: Langue }) {
         <p className="explication">{t('suspectsNote', langue)}</p>
       </section>
 
-      <section className="carte large">
-        <h2>{t('tableApprise', langue)}</h2>
-        {appris.length === 0 && <p className="explication">{t('aucunAppris', langue)}</p>}
-        <table>
-          <tbody>
-            {appris.map((l) => (
-              <tr key={l.ligneSheet}>
-                <td>{l.adresse}</td>
-                <td><span className="pastille cat">{l.libelle}</span></td>
-                <td className="date">{l.apprisLe}</td>
-                <td className="nombre">
-                  <button className="discret" onClick={() => retirer(l)}>{t('retirer', langue)}</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="explication">{t('tableAppriseNote', langue)}</p>
-      </section>
+      {/* (C28-24 : la table apprise expéditeur → libellé vit dans APPRENTISSAGE — Corrections.tsx.) */}
 
       {creationPour && (
         <>

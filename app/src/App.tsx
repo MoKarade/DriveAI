@@ -151,6 +151,10 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
   const { rafraichir } = useEtatGlobal(); // création au FAB → l'Agenda affiché se rafraîchit
   const [section, setSection] = useState<Section>('aujourdhui');
   const [sidebarOuverte, setSidebarOuverte] = useState(false);
+  // C28-24 : sidebar REPLIABLE en rail d'icônes (desktop), persistée — même ☰ que le tiroir mobile.
+  const [sidebarRepliee, setSidebarRepliee] = useState(
+    () => localStorage.getItem('driveai_sidebar_repliee') === '1',
+  );
   const [plusOuvert, setPlusOuvert] = useState(false);
   const [creationOuverte, setCreationOuverte] = useState(false); // FAB « + Créer » (PR3)
   // Date de référence de l'Agenda, REMONTÉE ici (PR3, plan architecte) : le mini-calendrier de
@@ -171,10 +175,22 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
     allerA('agenda'); // le mini-calendrier ouvre l'Agenda sur le jour choisi
   }
 
+  // ☰ à double emploi, comme dans Google Agenda : tiroir sur mobile, repli/dépli sur desktop.
+  function clicMenu() {
+    if (window.matchMedia('(max-width: 760px)').matches) {
+      setSidebarOuverte(true);
+      return;
+    }
+    setSidebarRepliee((r) => {
+      localStorage.setItem('driveai_sidebar_repliee', r ? '0' : '1');
+      return !r;
+    });
+  }
+
   return (
-    <div className="app">
+    <div className={'app' + (sidebarRepliee ? ' sidebar-repliee' : '')}>
       <header className="barre-haute">
-        <button className="hamburger discret" aria-label={t('menu', langue)} onClick={() => setSidebarOuverte(true)}>☰</button>
+        <button className="hamburger discret" aria-label={t('menu', langue)} onClick={clicMenu}>☰</button>
         <h1 className="logo"><b>Drive</b>AI</h1>
         <div className="header-actions">
           <BadgeSynchro langue={langue} />
@@ -187,6 +203,7 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
           langue={langue}
           section={section}
           ouverte={sidebarOuverte}
+          repliee={sidebarRepliee && !sidebarOuverte}
           agendas={agendas}
           dateAgenda={dateAgenda}
           onDate={choisirDate}
