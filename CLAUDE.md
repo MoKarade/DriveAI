@@ -252,7 +252,10 @@ NotebookLM en devient l'entrée, pas le remplacement.
   À trier pendant que le rangement re-alimentait la file). Remèdes éprouvés : scan ancré sur une
   valeur ABSOLUE qui n'avance que dans un sens (`before:` persisté) + scan du neuf qui s'arrête tôt
   (Gmail) ; page composée de TRAITABLES seulement (skips filtrés À LA COLLECTE — un mur de
-  déjà-indexés n'occupe aucune place) + tri FIFO ancien→récent (intake Drive, R3). Toujours
+  déjà-indexés n'occupe aucune place) + tri FIFO ancien→récent (intake Drive, R3) ; et quand le
+  scan LUI-MÊME retire les items du résultat (archivage — C28-24), l'offset n'avance que des items
+  RESTANTS : le travailleur rapporte l'effet réel dans son retour (`'archive'` vs `'traite'`),
+  tous les appelants mis à jour, test sur la SUITE des offsets d'une page mixte. Toujours
   **tracer un scénario concret sur plusieurs ticks** avant de valider une pagination — c'est ce qui
   révèle un plateau silencieux.
 - **Un garde-fou qui met des items HORS CIRCUIT exige un chemin de RETOUR auto.** Une quarantaine

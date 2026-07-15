@@ -1041,3 +1041,23 @@ succès) = re-tentative infinie qui consomme des quotas TIERS — patron `gererE
 plateforme pour les erreurs de CONFIG permanentes ; (3) « classer par ORIGINE avant de compter » :
 la MÊME signature d'erreur ×79/jour dans le Journal est le signal d'une boucle, pas 79 incidents.
 **Règle durable ?** non (instances — le correctif codé viendra avec le plan C28-22).
+
+## 2026-07-15 — File mouvante dont l'ACTION retire les items : l'offset n'avance que des RESTANTS (le travailleur rapporte s'il a retiré l'item)
+**Contexte.** C28-24 PR1 : le tri à la demande passe à la requête `in:inbox is:read` + archivage —
+chaque fil ARCHIVÉ sort du résultat de recherche entre deux pages. L'ancien code avançait l'offset
+d'une page PLEINE (`offset + fils.length`) : avec 20 fils archivés sur une page de 20, la page
+suivante à l'offset 20 aurait SAUTÉ 20 fils jamais vus (le résultat s'est décalé de 20 vers le
+haut) — la moitié de la boîte ne serait jamais triée, silencieusement. Correctif : `trierFil_`
+rapporte désormais `'archive'` (traité ET retiré de la boîte) vs `'traite'` (resté), et l'offset
+n'avance que du nombre de fils RESTÉS (`offset + restants`) ; les archivés « consomment » leur
+place par leur propre disparition. Test bloquant : offsets observés `[0, 1]` (1 archivé + 1
+suspect resté), jamais `[0, 2]`.
+**Leçon.** "Nouveau remède au répertoire « pagination sur une file MOUVANTE » : quand c'est le
+scan LUI-MÊME qui retire les items du résultat (archivage, déplacement), l'offset persistant
+n'avance que des items RESTANTS après traitement — jamais de la taille de page. Cela exige que le
+TRAVAILLEUR rapporte l'effet réel (retiré ou resté) dans son retour : étendre le contrat de retour
+(`'archive'` vs `'traite'`) et mettre à jour TOUS les appelants existants (compter les deux comme
+« traité »). Vérifier par un test qui observe la SUITE des offsets sur une page mixte
+(retirés + restants)."
+**Règle durable ?** oui (clause ajoutée à la règle « pagination sur une file MOUVANTE » de
+CLAUDE.md §7).
