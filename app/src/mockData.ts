@@ -76,6 +76,16 @@ const REGLAGES: string[][] = [
   ['TICK_MINUTES', '5'],
 ];
 
+const TELEMETRIE: string[][] = [
+  // Clé | Valeur | Unité | Détail (miroir de COLONNES_TELEMETRIE / lignesTelemetrie_, Journal.gs)
+  ['quota_gmail_etat', 'suspendu', '', 'Reprise vers 16:45'],
+  ['gmail_histo_fils_jour', '150', 'fils', 'Plafond 150/j'],
+  ['tri_cyclique_fils_jour', '84', 'fils', 'Plafond 150/j'],
+  ['tri_demande_fils_jour', '120', 'fils', 'Plafond 500/j'],
+  ['llm_cout_mois', '16.42', '$', 'Frein campagnes à 110 $'],
+  ['llm_appels_mois', '5210', 'appels', ''],
+];
+
 const PROGRESSION: string[][] = [
   // Clé | Opération | Traités | Base | Unité | Statut | Horodaté (miroir de COLONNES_PROGRESSION)
   // Un exemplaire de chaque ÉTAT visuel : barre déterminée / recensement animé / attente / rayures.
@@ -99,6 +109,7 @@ export function plageMock(onglet: string, plage: string): string[][] {
     case 'Réorg': return REORG;
     case 'Réglages': return REGLAGES;
     case 'Progression': return PROGRESSION;
+    case 'Télémétrie': return TELEMETRIE;
     default: return [];
   }
 }

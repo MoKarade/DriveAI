@@ -13,10 +13,11 @@ const SECTIONS: Array<{ fichier: string; libelle: string }> = [
   { fichier: '3-mails', libelle: 'Mails' },
   { fichier: '4-documents', libelle: 'Documents' },
   { fichier: '5-apprentissage', libelle: 'Apprentissage' },
-  { fichier: '6-sante', libelle: 'Santé du moteur' },
+  { fichier: '6-quotas', libelle: 'Coûts & quotas' },
+  { fichier: '7-sante', libelle: 'Santé du moteur' },
 ];
 
-test('captures des 6 sections (mode mock, app "connectée")', async ({ page }) => {
+test('captures des 7 sections (mode mock, app "connectée")', async ({ page }) => {
   // Plus rien à seeder (C28-20) : l'écran Configuration n'existe plus — en mode mock,
   // config.ts sert une config factice et google.ts une session bouchonnée, sans aucun fetch.
   await page.goto('/');

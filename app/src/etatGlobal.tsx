@@ -22,6 +22,7 @@ export interface DonneesEtat {
   entitesBrut: string[][];   // brut A1:… (interpreterEntites a besoin des en-têtes réels)
   triApprisBrut: string[][];
   reglagesBrut: string[][];
+  telemetrieBrut: string[][]; // onglet Télémétrie (C28-24) — vue « Coûts & quotas »
 }
 
 interface EtatGlobal {
@@ -58,7 +59,7 @@ export function FournisseurEtat({ children }: { children: ReactNode }) {
     enCours.current = true;
     try {
       if (forcer) viderCachePlages(); // relire VRAIMENT (le cache 60 s servirait la même photo)
-      const [index, sante, journal, entites, triAppris, reglages] = await Promise.all([
+      const [index, sante, journal, entites, triAppris, reglages, telemetrie] = await Promise.all([
         lirePlage('Index', 'A2:H20000'),
         lirePlage('Santé', 'A2:A10'),
         lirePlage('Journal', 'A2:D5000'),
@@ -66,11 +67,12 @@ export function FournisseurEtat({ children }: { children: ReactNode }) {
         // Onglets créés par le moteur au premier usage — absents = table vide, pas une erreur.
         lirePlage('TriAppris', 'A2:C1000').catch(() => [] as string[][]),
         lirePlage('Réglages', 'A2:B2').catch(() => [] as string[][]),
+        lirePlage('Télémétrie', 'A2:D30').catch(() => [] as string[][]),
       ]);
       setDonnees({
         index: etatCourantIndex(interpreterIndex(index)),
         santeBrut: sante, journalBrut: journal, entitesBrut: entites,
-        triApprisBrut: triAppris, reglagesBrut: reglages,
+        triApprisBrut: triAppris, reglagesBrut: reglages, telemetrieBrut: telemetrie,
       });
       setErreur('');
       setSynchroA(new Date());

@@ -291,6 +291,12 @@ footer {
 .tuile .d.ok { color: var(--ok); }
 .jauge { height: 5px; border-radius: 99px; background: var(--rang); margin-top: 0.5rem; overflow: hidden; }
 .jauge i { display: block; height: 100%; border-radius: 99px; background: var(--attention); }
+
+/* vue « Coûts & quotas » (C28-24) : une ligne = nom du scan + compte du jour + jauge */
+.ligne-jauge { padding: 0.55rem 0; border-bottom: 1px solid var(--rang); }
+.ligne-jauge:last-of-type { border-bottom: none; }
+.ligne-jauge .lj-nom { font-weight: 500; }
+.ligne-jauge .lj-compte { float: right; color: var(--texte-doux); font-variant-numeric: tabular-nums; font-size: 0.85rem; }
 .statut-moteur { grid-column: 1 / -1; margin: 0; color: var(--texte-doux); font-size: 0.82rem; }
 .point-ok { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 25%, transparent); margin-right: 0.35rem; }

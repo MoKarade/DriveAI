@@ -582,3 +582,60 @@ export function familleStatut(statut: string): FamilleStatut {
   if (statut.startsWith('recensement')) return 'recensement';
   return 'encours';
 }
+
+/* ---------- Télémétrie coûts & quotas (C28-24) ---------- */
+
+/** Jauge quotidienne d'un scan Gmail plafonné : fils lus aujourd'hui / plafond (Détail moteur). */
+export interface JaugeJour {
+  lus: number;
+  plafond: number | null; // null = Détail illisible (jauge affichée sans borne)
+}
+
+/**
+ * Miroir de l'onglet Télémétrie (COLONNES_TELEMETRIE, Journal.gs) — clés STABLES écrites par
+ * `lignesTelemetrie_` côté moteur : quota_gmail_etat, gmail_histo_fils_jour,
+ * tri_cyclique_fils_jour, tri_demande_fils_jour, llm_cout_mois, llm_appels_mois.
+ */
+export interface Telemetrie {
+  presente: boolean;        // l'onglet a des lignes (faux = moteur pas encore passé depuis le déploiement)
+  quotaSuspendu: boolean;
+  quotaDetail: string;      // « Reprise vers HH:mm » ('' quand actif)
+  demandeJour: JaugeJour;   // tri à la demande (in:inbox is:read)
+  cycliqueJour: JaugeJour;  // balayage cyclique du tri
+  histoJour: JaugeJour;     // campagne historique (PJ)
+  coutDollars: number | null;
+  freinDollars: number | null; // « Frein campagnes à N $ » (Détail)
+  appelsMois: number | null;
+}
+
+/** Extrait le nombre d'un Détail moteur (« Plafond 500/j », « Frein campagnes à 110 $ »). */
+function nombreDuDetail(detail: string): number | null {
+  const m = /([\d]+(?:[.,]\d+)?)/.exec(detail ?? '');
+  return m ? Number(m[1].replace(',', '.')) : null;
+}
+
+/** Interprète l'onglet Télémétrie (Clé|Valeur|Unité|Détail). PURE (testée). */
+export function interpreterTelemetrie(brut: string[][]): Telemetrie {
+  const parCle: Record<string, string[]> = {};
+  for (const l of brut) { if (l[0]) parCle[l[0]] = l; }
+
+  const jauge = (cle: string): JaugeJour => ({
+    lus: Number(parCle[cle]?.[1]) || 0,
+    plafond: nombreDuDetail(parCle[cle]?.[3] ?? ''),
+  });
+  const quota = parCle['quota_gmail_etat'];
+  const cout = parCle['llm_cout_mois'];
+  const appels = parCle['llm_appels_mois'];
+
+  return {
+    presente: Object.keys(parCle).length > 0,
+    quotaSuspendu: (quota?.[1] ?? '') === 'suspendu',
+    quotaDetail: quota?.[3] ?? '',
+    demandeJour: jauge('tri_demande_fils_jour'),
+    cycliqueJour: jauge('tri_cyclique_fils_jour'),
+    histoJour: jauge('gmail_histo_fils_jour'),
+    coutDollars: cout ? Number(String(cout[1]).replace(',', '.')) || 0 : null,
+    freinDollars: cout ? nombreDuDetail(cout[3] ?? '') : null,
+    appelsMois: appels ? Number(appels[1]) || 0 : null,
+  };
+}
