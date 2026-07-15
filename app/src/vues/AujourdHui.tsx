@@ -10,11 +10,13 @@
  * Lecture seule (Santé + Index + Entités) ; les liens internes naviguent via onAller (App.tsx).
  */
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Section } from '../App';
+import { marquerIntentionManuelle } from '../google';
 import { useEtatGlobal } from '../etatGlobal';
-import { IndicateurChargement } from '../composants/UI';
+import { IndicateurChargement, BanniereErreur } from '../composants/UI';
 import { PanneauActions } from '../composants/PanneauActions';
+import { Creation } from '../composants/Creation';
 import { ListeSuspects, useSuspectsVisibles } from '../composants/Suspects';
 import {
   LigneIndex,
@@ -37,7 +39,7 @@ import { formaterDateCourte } from '../explorateur';
 import { Langue, t } from '../i18n';
 
 const BUDGET_LLM = 10; // cible < 10 $/mois (CLAUDE.md §2)
-const TRI_RECENTS = 6;
+const TRI_RECENTS = 20; // C28-25 : le bloc « derniers fils » rapatrié de Mails (repliable) montre 20
 const CLASSEMENTS_RECENTS = 6;
 const SUSPECTS_MAX = 5;
 const A_VERIFIER_MAX = 5;
@@ -48,9 +50,28 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
   // lirePlage local, plus de photo figée au montage. L'Index arrive déjà en ÉTAT COURANT.
   const { donnees } = useEtatGlobal();
   const [survol, setSurvol] = useState<{ jour: string; n: number } | null>(null);
+  // C28-25 (Cockpit Unique) : bloc « derniers fils » rapatrié de Mails — repliable (fermé par
+  // défaut, ne pollue pas l'accueil) + création de tâche/RDV depuis un fil (modale pré-remplie).
+  const [triOuvert, setTriOuvert] = useState(false);
+  const [creationPour, setCreationPour] = useState<LigneIndex | null>(null);
+  const [erreurAction, setErreurAction] = useState('');
+  const filsMarques = useRef(new Set<string>()); // marqueur Index écrit UNE fois par fil
   // C28-24 : les suspects passent par le store des masqués — le compte de la tuile et de la
   // zone Attention tombe À L'INSTANT du clic « pas suspect » (hook AVANT le retour anticipé).
   const suspects = useSuspectsVisibles(donnees ? lignesSuspects(donnees.index) : []);
+
+  /** Après la 1ʳᵉ création réussie : le moteur ne doit plus analyser ce fil (pas de doublon). */
+  async function marquerFilTraite(l: LigneIndex) {
+    const threadId = l.cle.split('|')[1] ?? '';
+    if (!threadId || filsMarques.current.has(threadId)) return;
+    filsMarques.current.add(threadId);
+    try {
+      await marquerIntentionManuelle(threadId, l.fichier);
+    } catch (e) {
+      filsMarques.current.delete(threadId); // re-tentable
+      setErreurAction(String(e));
+    }
+  }
 
   if (!donnees) return <IndicateurChargement langue={langue} />;
   const sante: Sante = interpreterSante(donnees.santeBrut);
@@ -183,27 +204,44 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
           </div>
         </section>
 
+        {/* C28-25 : bloc « derniers fils » rapatrié de Mails — repliable (compte visible fermé),
+            avec ➕ « créer une tâche/RDV depuis un fil » (modale pré-remplie, marquage 1×). */}
         <section className="carte">
-          <h2>{t('filsTriesTitre', langue)}</h2>
-          {tris.length === 0 && <p className="explication">{t('aucunTri', langue)}</p>}
-          <table>
-            <tbody>
-              {tris.map((l) => (
-                <tr key={l.cle} className="ligne-clic" title={t('ouvrirMail', langue)}>
-                  <td>
-                    <a href={lienGmailPourLigne(l)} target="_blank" rel="noreferrer" className="lien-ligne">
-                      {l.fichier || '(sans sujet)'}
-                    </a>
-                  </td>
-                  <td className="nombre">
-                    <span className={`pastille ${l.statut === 'suspect' ? 'crit' : l.statut === 'tri-a-verifier' ? 'douce' : 'ok'}`}>
-                      {l.statut === 'trié' ? t('trie', langue) : l.statut === 'tri-a-verifier' ? t('aVerifier', langue) : '⚠'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <h2>
+            <button className="titre-repliable" aria-expanded={triOuvert} onClick={() => setTriOuvert((o) => !o)}>
+              <em aria-hidden="true">{triOuvert ? '▾' : '▸'}</em>
+              {t('filsTriesTitre', langue)} ({tris.length})
+            </button>
+          </h2>
+          {triOuvert && (
+            <>
+              {tris.length === 0 && <p className="explication">{t('aucunTri', langue)}</p>}
+              <table>
+                <tbody>
+                  {tris.map((l) => (
+                    <tr key={l.cle} className="ligne-clic" title={t('ouvrirMail', langue)}>
+                      <td>
+                        <a href={lienGmailPourLigne(l)} target="_blank" rel="noreferrer" className="lien-ligne">
+                          {l.fichier || '(sans sujet)'}
+                        </a>
+                        <div className="variante">{formaterDateCourte(l.traiteLe, locale)}</div>
+                      </td>
+                      <td className="nombre">
+                        <span className={`pastille ${l.statut === 'suspect' ? 'crit' : l.statut === 'tri-a-verifier' ? 'douce' : 'ok'}`}>
+                          {l.statut === 'trié' ? t('trie', langue) : l.statut === 'tri-a-verifier' ? t('aVerifier', langue) : '⚠'}
+                        </span>
+                      </td>
+                      <td className="nombre">
+                        <button className="discret" title={t('creerTacheFilTitre', langue)}
+                          onClick={() => setCreationPour(l)}>➕</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="explication">{t('triNote', langue)}</p>
+            </>
+          )}
         </section>
 
         <section className="carte">
@@ -224,6 +262,23 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
           </table>
         </section>
       </div>
+
+      {/* C28-25 : création de tâche/RDV depuis un fil trié (rapatriée de Mails, modale pré-remplie). */}
+      <BanniereErreur langue={langue} erreur={erreurAction} onReessayer={() => setErreurAction('')} />
+      {creationPour && (
+        <>
+          <button className="feuille-fond" aria-label={t('fermer', langue)} onClick={() => setCreationPour(null)} />
+          <div className="feuille-plus" role="dialog" aria-label={t('creer', langue)}>
+            <Creation
+              langue={langue}
+              titreInitial={creationPour.fichier}
+              note={lienGmailPourLigne(creationPour)}
+              onCree={() => void marquerFilTraite(creationPour)}
+            />
+            <button className="discret" onClick={() => setCreationPour(null)}>{t('fermer', langue)}</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

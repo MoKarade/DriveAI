@@ -3,5 +3,8 @@
   "buildCommand": "cd app && npm ci && npm run build",
   "outputDirectory": "app/dist",
   "framework": null,
-  "installCommand": "true"
+  "installCommand": "true",
+  "rewrites": [
+    { "source": "/hub/summary", "destination": "/api/hub-summary" }
+  ]
 }
