@@ -177,10 +177,36 @@ test('tri : mail LU APRÈS son tri initial → RE-trié (clé |nonlu ≠ |lu) et
 
 test('tri : le dernier message PAS ENCORE analysé par les intentions → on ATTEND (clé non consommée)', () => {
   const { c, calls } = ctxTri({});
-  c.GmailApp.search = (q, d) => (d === 0 ? [filMock(calls, { id: 'F2', ts: 2000, dernierMsgId: 'M2', expediteur: 'a@b.c', sujet: 'x' })] : []);
+  // Fil RÉCENT (dans la fenêtre intentions) : la clé `intention|` peut encore arriver — on attend.
+  // (Revue C28-24 : un fil HORS fenêtre ne l'attend plus — cas couvert par son propre test.)
+  const ts = Date.now() - 60 * 1000;
+  c.GmailApp.search = (q, d) => (d === 0 ? [filMock(calls, { id: 'F2', ts, dernierMsgId: 'M2', expediteur: 'a@b.c', sujet: 'x' })] : []);
   c.trierFilsGmail_(() => false);
   assert.deepStrictEqual(calls.labels, []);                 // rien écrit
-  assert.strictEqual(calls.index['tri|F2|2000|lu'], undefined); // re-tenté au prochain tick
+  assert.strictEqual(calls.index[`tri|F2|${ts}|lu`], undefined); // re-tenté au prochain tick
+});
+
+test('tri : fil HORS fenêtre intentions (clé impossible à jamais) → trié SANS attendre — jamais un « attend » permanent (revue C28-24)', () => {
+  const { c, calls } = ctxTri({});
+  // Âge dérivé de la CONSTANTE (jamais « 30 » en dur) : un jour AU-DELÀ de la fenêtre intentions.
+  const jours = Number(/newer_than:(\d+)d/.exec(c.CONFIG.GMAIL_REQUETE_ACTIONS)[1]);
+  const ts = Date.now() - (jours + 1) * 24 * 3600 * 1000;
+  c.GmailApp.search = (q, d) => (d === 0 ? [filMock(calls, { id: 'FV', ts, dernierMsgId: 'MV', expediteur: 'EDF <f@edf.fr>', sujet: 'Facture' })] : []);
+  c.trierFilsGmail_(() => false);
+  assert.deepStrictEqual(calls.labels.map((l) => l.label), ['Finance'], 'libellé posé sans clé intention|');
+  assert.deepStrictEqual(calls.archives, ['FV'], 'fil LU ancien → archivé (l\'objectif C28-24 sur le stock)');
+  assert.ok(calls.ajouts.some((a) => a.cle === `tri|FV|${ts}|lu` && a.statut === 'trié'));
+});
+
+test('estHorsFenetreIntentions_ : bornes dérivées de la CONSTANTE ; requête sans fenêtre → statu quo (attendre)', () => {
+  const jours = Number(/newer_than:(\d+)d/.exec(ctxPur.CONFIG.GMAIL_REQUETE_ACTIONS)[1]);
+  const maintenant = 1_800_000_000_000;
+  const unJour = 24 * 3600 * 1000;
+  assert.strictEqual(ctxPur.estHorsFenetreIntentions_(maintenant - (jours - 1) * unJour, maintenant), false, 'dans la fenêtre');
+  assert.strictEqual(ctxPur.estHorsFenetreIntentions_(maintenant - (jours + 1) * unJour, maintenant), true, 'au-delà');
+  const sansFenetre = load(['Config.gs', 'Gmail.gs', 'TriGmail.gs']);
+  sansFenetre.CONFIG.GMAIL_REQUETE_ACTIONS = 'label:tout'; // fenêtre illisible
+  assert.strictEqual(sansFenetre.estHorsFenetreIntentions_(0, maintenant), false, 'illisible → on attend (prudent)');
 });
 
 test('tri : fil lu + catégorie sûre → libellé posé + archivé + indexé « trié »', () => {
@@ -269,8 +295,8 @@ test('tri : plafond TRI_MAX_ATTENTES — une page de fils « en attente » ne re
   const { c, calls } = ctxTri({});
   c.CONFIG.TRI_MAX_ATTENTES = 2;
   const fils = [];
-  for (let i = 0; i < 5; i++) { // AUCUNE intention indexée → tous « attend »
-    fils.push(filMock(calls, { id: 'AT' + i, ts: 100 + i, dernierMsgId: 'MA' + i, expediteur: 'a@b.c', sujet: 's' }));
+  for (let i = 0; i < 5; i++) { // fils RÉCENTS sans intention indexée → tous « attend » (revue C28-24)
+    fils.push(filMock(calls, { id: 'AT' + i, ts: Date.now() - 1000 - i, dernierMsgId: 'MA' + i, expediteur: 'a@b.c', sujet: 's' }));
   }
   c.GmailApp.search = (q, d) => (d === 0 ? fils : []);
   c.trierFilsGmail_(() => false);
@@ -308,16 +334,18 @@ test('rattrapage : un fil du lot ATTEND les intentions → OFFSET inchangé (le 
   const { c, calls } = ctxTri({ index: { 'intention|MB1': true }, props: {} });
   delete calls.props.DriveAI_TRI_RATTRAPAGE;
   c.CONFIG.TRI_CYCLIQUE_PAGES_PAR_RUN = 0; // épinglé : le cyclique (C28-19) a ses propres tests
+  // Fils RÉCENTS (dans la fenêtre intentions — revue C28-24 : un fil hors fenêtre n'attend plus).
+  const tsB1 = Date.now() - 1000;
   const anciens = [
-    filMock(calls, { id: 'B1', ts: 1000, dernierMsgId: 'MB1', expediteur: 'a@b.c', sujet: 's' }),
-    filMock(calls, { id: 'B2', ts: 2000, dernierMsgId: 'MB2', expediteur: 'a@b.c', sujet: 's' }), // pas d'intention|MB2
+    filMock(calls, { id: 'B1', ts: tsB1, dernierMsgId: 'MB1', expediteur: 'a@b.c', sujet: 's' }),
+    filMock(calls, { id: 'B2', ts: Date.now() - 2000, dernierMsgId: 'MB2', expediteur: 'a@b.c', sujet: 's' }), // pas d'intention|MB2
   ];
   let appels = 0;
   c.GmailApp.search = () => (appels++ === 1 ? anciens : []);
   c.trierFilsGmail_(() => false);
   assert.strictEqual(calls.props.DriveAI_TRI_OFFSET, undefined);      // pas d'avance
   assert.strictEqual(calls.props.DriveAI_TRI_RATTRAPAGE, undefined);  // pas de faux « terminé »
-  assert.strictEqual(calls.index['tri|B1|1000|lu'], true);            // l'acquis du lot est gardé (rejeu gratuit)
+  assert.strictEqual(calls.index[`tri|B1|${tsB1}|lu`], true);         // l'acquis du lot est gardé (rejeu gratuit)
 });
 
 test('rattrapage : fil déjà HORS boîte → sauté sans chargement ni coût, l\'offset avance quand même', () => {
@@ -601,4 +629,50 @@ test('scanDemandeTri_ : page RÉTRÉCIE au reliquat du jour, fils lus comptés e
   assert.strictEqual(calls.props.DriveAI_TRI_DEMANDE_FILS_JOUR, String(MAX), 'cumul du jour (coût CONSOMMÉ)');
   assert.ok('DriveAI_TRI_DEMANDE' in calls.props, 'demande non soldée — le reste attend demain');
   assert.strictEqual(calls.props.DriveAI_TRI_DEMANDE_OFFSET, '2', 'page complète (archiver:false → 2 restants) : offset avancé');
+});
+
+/* ---------- revue flotte C28-24 : correctifs du tri à la demande ---------- */
+
+test('scanDemandeTri_ : fil en ERREUR → page NON complète, offset FIGÉ (jamais sauté pour toute la demande)', () => {
+  const { c, calls } = ctxTriDemande({
+    index: { 'intention|M1': true },
+    props: { DriveAI_TRI_DEMANDE: JSON.stringify({ archiver: true, plafond: 10 }) },
+    fils: [],
+  });
+  const filOk = filMock(calls, { id: 'F1', ts: 1700000000000, dernierMsgId: 'M1', expediteur: 'EDF <f@edf.fr>', sujet: 'Facture' });
+  const filMalade = { getId: () => 'FM', isInInbox: () => true, getLastMessageDate: () => { throw new Error('boom'); } };
+  c.GmailApp.search = (q, debut) => (q === REQUETE_DEMANDE && debut === 0 ? [filOk, filMalade] : []);
+  c.trierFilsGmail_(() => false);
+  assert.deepStrictEqual(calls.archives, ['F1'], 'le fil sain de la page est traité normalement');
+  assert.ok(!('DriveAI_TRI_DEMANDE_OFFSET' in calls.props) || calls.props.DriveAI_TRI_DEMANDE_OFFSET === '0',
+    'offset figé — le fil malade sera rejoué (déjà-vus gratuits), abandonné après QUARANTAINE_MAX');
+  assert.ok('DriveAI_TRI_DEMANDE' in calls.props, 'demande NON soldée sur une page en échec');
+});
+
+test('scanDemandeTri_ : demande HÉRITÉE d\'une ancienne app (champ fenetre) → soldée SANS recherche (offset d\'une autre requête)', () => {
+  const { c, calls } = ctxTriDemande({
+    props: {
+      DriveAI_TRI_DEMANDE: JSON.stringify({ fenetre: 7, archiver: true, plafond: 100 }),
+      DriveAI_TRI_DEMANDE_OFFSET: '40', // calé sur newer_than:7d — invalide pour in:inbox is:read
+    },
+    fils: [],
+  });
+  let recherches = 0;
+  c.GmailApp.search = (q) => { if (q === REQUETE_DEMANDE) recherches++; return []; };
+  c.trierFilsGmail_(() => false);
+  assert.strictEqual(recherches, 0, 'aucune lecture Gmail sur une demande d\'ancien format');
+  assert.ok(!('DriveAI_TRI_DEMANDE' in calls.props), 'demande soldée (Marc re-clique depuis l\'app à jour)');
+  assert.ok(!('DriveAI_TRI_DEMANDE_OFFSET' in calls.props), 'offset de l\'ancienne requête purgé');
+});
+
+test('trierFil_ (catch) : quota Gmail mort EN COURS de page → panne de PLATEFORME, AUCUN échec imputé au fil, une seule annonce', () => {
+  const { c, calls } = ctxTri({ fils: [] });
+  const filQuota = { getId: () => 'FQ', isInInbox: () => true,
+    getLastMessageDate: () => { throw new Error('Service invoked too many times for one day: gmail.'); } };
+  c.GmailApp.search = (q, d) => (d === 0 ? [filQuota] : []);
+  c.trierFilsGmail_(() => false);
+  assert.strictEqual(calls.echecs, undefined, 'aucun échec compté par fil (leçon « classer par ORIGINE »)');
+  assert.ok(!calls.journaux.some((j) => j.includes('Fil non trié')), 'pas de ligne d\'échec par fil');
+  assert.ok(calls.journaux.some((j) => j.includes('QUOTA GMAIL')), 'la suspension est signalée UNE fois');
+  assert.strictEqual(calls.props.DriveAI_GMAIL_QUOTA !== undefined, true, 'suspension persistée');
 });
