@@ -50,8 +50,8 @@ var PROMPT_ESCALADE = PROMPT_SYSTEME + '\n\n' +
  * sous-dossier). ÉTEINT tant que `CONFIG.ANALYSE_V2` est false (Sonnet ×2/doc, §2.6).
  * ==========================================================================*/
 
-// Règles de NOMMAGE + RANGEMENT partagées par les deux passes (le nom ne contient JAMAIS « Inconnu »,
-// et tout document va dans un SOUS-DOSSIER, jamais à la racine d'un domaine).
+// Règles de NOMMAGE + RANGEMENT partagées par les deux passes (le nom ne contient JAMAIS « Inconnu » ;
+// classement à PLAT par défaut, sous-dossier réservé aux entités MAJEURES — ADR-0023).
 var REGLES_V2 =
   'RÈGLES DE NOMMAGE ET DE RANGEMENT (exigences de Marc) :\n' +
   'A) NOM — JAMAIS « Inconnu ». Le 3ᵉ segment X de « AAAA-MM-JJ_Type_X.ext » est TOUJOURS renseigné et PRÉCIS, par priorité :\n' +
@@ -61,10 +61,10 @@ var REGLES_V2 =
   '      Ex. « Notes de maintenance ligne robot Robovic », « CV Marc Richard », « Cours de physique DUT GIM »,\n' +
   '      « Devoir algorithmique Python », « Lettre de motivation poste automaticien ». JAMAIS « Inconnu », jamais un mot vague seul.\n' +
   '   `type_doc` PRÉCIS aussi (« Notes de cours », « Bulletin de paie », « Attestation de vaccination »… jamais « Document »).\n' +
-  'B) SOUS-DOSSIER OBLIGATOIRE — rien à la RACINE d\'un domaine. `sousDossier` NON VIDE pour tout document :\n' +
-  '   - de préférence l\'ENTITÉ (établissement, entreprise, banque, école, administration) : « IUT du Littoral », « Desjardins », « Air Transat »…\n' +
-  '   - sinon une CATÉGORIE claire et STABLE du domaine (Études → « Cours »/« Diplômes »/« Devoirs » ; Finances → « Relevés »/« Reçus »/« Impôts » ; Perso → « Captures »/« Notes »).\n' +
-  '   Pour une pièce d\'identité, `sousDossier` = le TYPE (« Passeport », « Permis de conduire »). Pour un non-document, `sousDossier` reste vide (il va dans _Technique/_Médias).';
+  'B) SOUS-DOSSIER = EXCEPTION — classement à PLAT dans le domaine par défaut (ADR-0023). `sousDossier` reste vide (null) pour la plupart des documents :\n' +
+  '   - à renseigner UNIQUEMENT pour une entité MAJEURE et durable de la vie de Marc (employeur, école, véhicule, banque) : « Robovic », « IUT du Littoral », « Desjardins »…\n' +
+  '   - pièce d\'identité : `sousDossier` = le TYPE (« Passeport », « Permis de conduire »).\n' +
+  '   JAMAIS de dossier par émetteur ponctuel (marchand, site web, abonnement) ni par catégorie générique (« Cours », « Devoirs », « Reçus », « Divers ») : ces documents se classent à PLAT.';
 
 var PROMPT_PASSE1 =
   'Tu es l\'analyste documentaire de DriveAI (PASSE 1 — EXTRACTION). Document personnel de Marc Richard ' +
@@ -77,7 +77,7 @@ var PROMPT_PASSE1 =
   '  "sousDossierType": <type d\'identité si estDocumentIdentite ("Passeport", "Permis de conduire"…), sinon null>,\n' +
   '  "titulaire": <personne concernée par la pièce d\'identité (Marc OU un proche), sinon null>,\n' +
   '  "domaine": <un des domaines autorisés, EXACTEMENT>,\n' +
-  '  "sousDossier": <ENTITÉ ou CATÉGORIE — le sous-dossier sans le domaine ; NON VIDE sauf non-document>,\n' +
+  '  "sousDossier": <ENTITÉ MAJEURE (employeur, école, véhicule, banque) ou null — null = classement à PLAT (défaut)>,\n' +
   '  "categorie": <catégorie connue ou null>,\n' +
   '  "type_doc": <type court et PRÉCIS>,\n' +
   '  "date_doc": <"AAAA-MM-JJ" ou null>,\n' +
@@ -102,7 +102,7 @@ var PROMPT_PASSE2 =
   'Vérifie en particulier : non-document (export/média vs vrai scan) ; domaine exact ; émetteur RE-CHERCHÉ activement si null ; ' +
   'identité + titulaire ; entité non générique et canonique ; sensible (immigration/impôts seulement) ; date et type précis. Et les DEUX exigences :\n' +
   '- `descripteur` : si NI émetteur NI titulaire, il DOIT être présent, précis et parlant (ce que c\'est + sujet + auteur si repérable) — JAMAIS « Inconnu » ni un mot vague. Améliore-le si la passe 1 est restée vague.\n' +
-  '- `sousDossier` : DOIT être non vide pour tout document (entité de préférence, sinon catégorie claire du domaine). Rien à la racine du domaine. Corrige si vide ou incohérent.\n' +
+  '- `sousDossier` : laisse VIDE (null) par défaut pour un classement à PLAT dans le domaine. À renseigner UNIQUEMENT pour une entité majeure (employeur, école, véhicule, banque). Corrige la passe 1 si elle a inventé un dossier-catégorie ou un dossier d\'émetteur ponctuel.\n' +
   'Domaines autorisés : ' + domainesAutorises_().join(' | ') + '\n' +
   REGLES_V2;
 

@@ -74,9 +74,9 @@ test('planRoutageV2_ : carte de résident permanent → domaine 04 (lié au stat
   assert.strictEqual(p.sousDossier, 'Carte de résident permanent');
 });
 
-/* ---------- Documents normaux : sous-dossier = entité unifiée, sinon catégorie ; jamais à la racine ---------- */
+/* ---------- Documents normaux (ADR-0023) : à PLAT par défaut ; sous-dossier = entité MAJEURE seulement ---------- */
 
-test('planRoutageV2_ : émetteur/entité → sous-dossier canonique, nom par émetteur', () => {
+test('planRoutageV2_ : entité majeure fournie → sous-dossier canonique, nom par émetteur', () => {
   const p = ctx.planRoutageV2_(
     { domaine: '02 · Finances', type_doc: 'Relevé', emetteur: 'Desjardins', entite: 'Desjardins Inc.', date_doc: '2026-03-15' },
     meta('releve.pdf', { emetteur: 'Desjardins' }), '2026-07-07', '.pdf');
@@ -84,22 +84,40 @@ test('planRoutageV2_ : émetteur/entité → sous-dossier canonique, nom par ém
   assert.strictEqual(p.nom, '2026-03_Relevé_Desjardins.pdf'); // relevé = granularité mois
 });
 
-test('planRoutageV2_ : ni émetteur ni titulaire → descripteur dans le nom (JAMAIS « Inconnu »), catégorie en sous-dossier', () => {
+test('planRoutageV2_ : émetteur ponctuel SANS entité → À PLAT (plus jamais un dossier par marchand)', () => {
+  // ADR-0023 : l'ancien repli `emetteur` créait un dossier par émetteur au 1er fichier
+  // (EDF, Cleverbridge, Virgin Plus… — recensement 2026-07-16). Désormais : racine du domaine.
+  const p = ctx.planRoutageV2_(
+    { domaine: '02 · Finances', type_doc: 'Facture', emetteur: 'Cleverbridge', date_doc: '2026-01-10' },
+    meta('facture.pdf', { emetteur: 'Cleverbridge' }), '2026-07-07', '.pdf');
+  assert.strictEqual(p.type, 'classé');
+  assert.strictEqual(p.sousDossier, '', 'un émetteur sans entité majeure ne crée plus de dossier');
+  assert.ok(/Cleverbridge/.test(p.nom), 'l\'émetteur reste dans le NOM : ' + p.nom);
+});
+
+test('planRoutageV2_ : ni émetteur ni titulaire → descripteur dans le nom (JAMAIS « Inconnu »), classé À PLAT (la catégorie LLM ne fait plus de dossier)', () => {
   const p = ctx.planRoutageV2_(
     { domaine: '06 · Études & diplômes', type_doc: 'Devoir', descripteur: 'Devoir algorithmique Python', sousDossier: 'Devoirs', date_doc: '2026-06-30' },
     meta('TP4.docx'), '2026-07-07', '.docx');
   assert.strictEqual(p.type, 'classé');
-  assert.strictEqual(p.sousDossier, 'Devoirs');      // rien à la racine du domaine
+  assert.strictEqual(p.sousDossier, '', 'une catégorie (« Devoirs ») ne crée plus de dossier — à plat (ADR-0023)');
   assert.ok(!/inconnu/i.test(p.nom), 'le nom ne doit jamais contenir « Inconnu » : ' + p.nom);
   assert.ok(/Devoir algorithmique Python/.test(p.nom), 'le descripteur doit être dans le nom : ' + p.nom);
 });
 
-test('planRoutageV2_ : rien d\'exploitable → sous-dossier de repli non vide (jamais la racine)', () => {
+test('planRoutageV2_ : rien d\'exploitable → à PLAT, plus jamais « Divers » ni un dossier de type', () => {
   const p = ctx.planRoutageV2_(
     { domaine: '08 · Perso & projets', type_doc: 'Note' },
     meta('note.pdf'), '2026-07-07', '.pdf');
   assert.strictEqual(p.type, 'classé');
-  assert.ok(p.sousDossier && p.sousDossier.length, 'le sous-dossier ne doit jamais être vide : ' + JSON.stringify(p));
+  assert.strictEqual(p.sousDossier, '', 'sans entité majeure : racine du domaine (ADR-0023) : ' + JSON.stringify(p));
+});
+
+test('planRoutageV2_ : une pièce d\'identité garde TOUJOURS son sous-dossier de TYPE (jamais à plat)', () => {
+  const p = ctx.planRoutageV2_(
+    { estDocumentIdentite: true, sousDossierType: 'Permis de conduire', titulaire: 'Marc Richard', date_doc: '2023-02-01' },
+    meta('permis.pdf'), '2026-07-07', '.pdf');
+  assert.strictEqual(p.sousDossier, 'Permis de conduire'); // l'identité reste l'exception au « à plat »
 });
 
 /* ---------- Domaine hors-liste → domaine par défaut (jamais de limbo) ---------- */

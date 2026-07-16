@@ -477,7 +477,7 @@ function deciderRoutage_(classif, dateReference, ext) {
  * si `CONFIG.ANALYSE_V2` (gate au Pipeline). Différences avec `deciderRoutage_` :
  *  (1) NON-DOCUMENT écarté vers `_Technique`/`_Médias` (jamais un domaine, jamais 04) ;
  *  (2) pièce d'IDENTITÉ rangée PAR TYPE (dossier partagé Marc + proches), nom = titulaire ;
- *  (3) tout document dans un SOUS-DOSSIER (entité canonique UNIFIÉE, sinon catégorie), jamais à la racine ;
+ *  (3) classement à PLAT par défaut (ADR-0023) — sous-dossier UNIQUEMENT pour une entité majeure canonique ou un type d'identité ;
  *  (4) nom via `nommerDocument_` (jamais « Inconnu » — descripteur en repli).
  * `planRoutageV2_` est le cœur PUR (aucune I/O) ; `deciderRoutageV2_` en est l'enveloppe Drive.
  * ==========================================================================*/
@@ -510,7 +510,7 @@ function planRoutageV2_(classif, meta, date, ext) {
     domaine = di.domaine; sousDossier = di.sousDossier;
   } else {
     domaine = c.domaine;
-    sousDossier = sousDossierPourNom_(c);  // entité canonique unifiée, sinon catégorie, jamais vide
+    sousDossier = sousDossierPourNom_(c);  // entité majeure canonique si fournie, sinon '' = à plat (ADR-0023)
   }
   return { type: 'classé', domaine: domaine, sousDossier: sousDossier, nom: nommerDocument_(c, date, ext) };
 }
@@ -536,13 +536,15 @@ function deciderRoutageV2_(classif, meta, dateReference, ext) {
   if (plan.type === 'à vérifier') return routageAVerifier_(classif, date, ext); // fail-safe (ADR-0016)
 
   var dom = DriveApp.getFolderById(idDomaine_(plan.domaine));
-  // Assainit le nom de sous-dossier (caractères interdits Drive → '-', comme pour les noms de
-  // fichiers) : `plan.sousDossier` vient d'une entité/catégorie LLM libre, jamais d'un ID fixe.
-  var sousNom = champ_(plan.sousDossier) || 'Divers';
-  var cible = sousDossier_(dom, sousNom);
+  // ADR-0023 : sous-dossier VIDE = classement à PLAT à la racine du domaine (plus de repli
+  // « Divers »). Sinon, assainit le nom (caractères interdits Drive → '-', comme pour les noms
+  // de fichiers) : `plan.sousDossier` vient d'une entité LLM libre, jamais d'un ID fixe.
+  var sousNom = champ_(plan.sousDossier) || '';
+  var cible = sousNom ? sousDossier_(dom, sousNom) : dom;
   var nom = garantirNomUnique_(plan.nom, nomsDansDossier_(cible.getId()));
   return {
-    statut: 'classé', domaine: plan.domaine, chemin: plan.domaine + '/' + sousNom,
+    statut: 'classé', domaine: plan.domaine,
+    chemin: sousNom ? plan.domaine + '/' + sousNom : plan.domaine,
     nom: nom, dossierId: cible.getId(), autresEntites: []
   };
 }
@@ -674,21 +676,22 @@ function nommerDocument_(classif, dateReception, ext) {
 }
 
 /**
- * SOUS-DOSSIER d'un document (exigence Marc 2026-07-07 : rien à la racine d'un domaine). Priorité :
- * pièce d'identité → TYPE (« Passeport ») ; sinon ENTITÉ canonique UNIFIÉE (établissement/entreprise :
- * « IUT du Littoral » regroupe DUT GIM / Université du Littoral via canoniserEntite_) ; sinon la
- * CATÉGORIE fournie par l'analyse (« Cours », « Reçus »…) ; sinon le type. JAMAIS vide pour un vrai
- * document (un non-document part en _Technique/_Médias, hors de ce chemin). PUR.
+ * SOUS-DOSSIER d'un document (ADR-0023 : classement à PLAT par défaut — révise l'exigence 2026-07-07
+ * « rien à la racine » ; retour Marc 2026-07-16 : la profondeur forcée a produit ~500 dossiers dont
+ * ~100 vides, recensement docs/diagnostics/2026-07-16-recensement-drive.md). Priorité : pièce
+ * d'identité → TYPE (« Passeport ») ; sinon ENTITÉ canonique UNIFIÉE si l'analyse en fournit une
+ * (entité MAJEURE seulement — employeur, école, véhicule, banque — le prompt v2 laisse `entite`
+ * null sinon) ; sinon CHAÎNE VIDE = à PLAT à la racine du domaine. Plus JAMAIS de dossier par
+ * émetteur ponctuel (l'ancien repli `emetteur` a créé un dossier par marchand), par catégorie
+ * (« Cours », « Devoirs ») ni « Divers ». PUR.
  * @param {Object} classif  {estDocumentIdentite, sousDossierType, entite, emetteur, sousDossier, type_doc}
- * @return {string} nom du sous-dossier (sans le domaine)
+ * @return {string} nom du sous-dossier (sans le domaine), '' = racine du domaine
  */
 function sousDossierPourNom_(classif) {
   classif = classif || {};
   if (estDocumentIdentitePersonnel_(classif)) return normaliserTypeIdentite_(classif.sousDossierType);
-  var ent = canoniserEntite_(classif.entite || classif.emetteur); // entité unifiée (IUT = 1 seul dossier)
-  if (ent) return ent;
-  var cat = classif.sousDossier && String(classif.sousDossier).trim();
-  return cat || (String(classif.type_doc || '').trim()) || 'Divers'; // catégorie de repli, jamais vide
+  var ent = classif.entite ? canoniserEntite_(classif.entite) : null; // entité unifiée (IUT = 1 seul dossier)
+  return ent || '';
 }
 
 /**
