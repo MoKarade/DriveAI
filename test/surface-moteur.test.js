@@ -133,6 +133,10 @@ const CONTRAT = [
   'stratifierEchantillonDryRunV2_', 'ligneDryRunV2_', 'cheminActuelDryRunV2_',
   'encoderEchantillonDryRunV2_', 'decoderEchantillonDryRunV2_',
   'usageRunSnapshot_', 'coutDollarsDelta_',
+  // consolidation de l'arborescence (C28-26, ADR-0023) : dry-run pur, appelé depuis Main
+  'genererPlanConsolidation_', 'traiterUnConsolidation_', 'collecterConsolidation_',
+  'analyserNomClasse_', 'cheminCibleConsolidation_', 'decisionConsolidation_',
+  'entitesValideesParCle_', 'empreintesPlanConsolidation_',
 ];
 
 test('surface du moteur : toutes les fonctions du contrat interne sont définies', () => {

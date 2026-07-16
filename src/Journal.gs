@@ -40,6 +40,10 @@ function initialiserSheet_(ss) {
     'Confiance', 'Coût $ mesuré']);
   creerOnglet_(ss, 'Progression', COLONNES_PROGRESSION); // suivi LIVE des opérations (C28-18, cf. majProgressions_)
   creerOnglet_(ss, 'Télémétrie', COLONNES_TELEMETRIE); // coûts & quotas pour l'app (C28-24, cf. majTelemetrie_)
+  // C28-26 (ADR-0023) : plan de CONSOLIDATION de l'arborescence — dry-run pur, validé par Marc
+  // avant toute exécution. La colonne Empreinte est la mémoire de dédup de la campagne
+  // (jamais en Script Properties : ~2 900 empreintes dépasseraient la limite ~9 Ko).
+  creerOnglet_(ss, 'PlanConsolidation', COLONNES_PLAN_CONSOLIDATION);
   creerOnglet_(ss, 'Santé', ['Santé DriveAI']);                             // vue lisible (heartbeat + métriques, ADR-0006)
   var defaut = ss.getSheetByName('Feuille 1') || ss.getSheetByName('Sheet1');
   if (defaut && ss.getSheets().length > 1) ss.deleteSheet(defaut);
@@ -332,6 +336,10 @@ function lireLignesProgression_(f) {
 // Contrat avec l'app (interpreterTelemetrie côté React, PR3 C28-24) : 4 colonnes, une ligne par
 // métrique — les CLÉS sont stables (l'app s'y accroche), la Valeur est brute, le Détail est humain.
 var COLONNES_TELEMETRIE = ['Clé', 'Valeur', 'Unité', 'Détail'];
+
+// Plan de consolidation C28-26 (ADR-0023, cf. Consolidation.gs). L'Empreinte (MD5) est une
+// MÉTADONNÉE (ADR-0007) : jamais de contenu de document dans l'état.
+var COLONNES_PLAN_CONSOLIDATION = ['Horodaté', 'Fichier', 'ID', 'Action', 'Cible', 'Raison', 'Empreinte'];
 
 /**
  * Construit les lignes de l'onglet Télémétrie. PURE (testée) : tout l'état arrive en paramètres,

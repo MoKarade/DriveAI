@@ -19,14 +19,21 @@
 >   réellement à sec pour le 15/07 (vidé par le vieux code) → recharge la nuit, plafonds désormais
 >   actifs. Leçon durable ajoutée (CLAUDE.md §7, 3ᵉ piège auto-déploiement : vérifier la PRISE
 >   D'EFFET par signal indépendant, pas le run vert).
-> • **2026-07-16 — C28-26 : refonte COMPLÈTE de l'arborescence (cadrage).** Retour Marc : « trop le
->   bordel » — trop de dossiers, vides, fichiers à plat, Inconnu, entités fantômes, doublons.
->   Recensement RÉEL 13 agents lecture seule → `docs/diagnostics/2026-07-16-recensement-drive.md`
->   (~499 dossiers dont ~102 vides, ~2 880 fichiers dont ~1 357 à plat et ~909 Inconnu ; passeport
->   ×6 dans _Doublons ; 7 mécanismes fautifs identifiés). Listes d'entités réelles de Marc
->   consignées (véhicules Fiesta 2011/Jetta/Toyota bZ ; employeurs Automatech Robotik/Robovic ;
->   parcours scolaire 6 étapes). Prompt NotebookLM livré — **en attente du plan architecte** (§4).
->   Prérequis : merge du diagnostic + re-sync des sources NotebookLM avant analyse.
+> • **2026-07-16 — C28-26 : refonte de l'arborescence — plan architecte EXÉCUTÉ (ADR-0023, 2 PR).**
+>   Retour Marc : « trop le bordel ». Recensement réel (13 agents) →
+>   `docs/diagnostics/2026-07-16-recensement-drive.md` (~499 dossiers dont ~102 vides, ~2 880
+>   fichiers dont ~1 357 à plat et ~909 Inconnu). **PR1 #181 (mergée)** : classement à PLAT par
+>   défaut — `sousDossierPourNom_` sans replis émetteur/catégorie/« Divers » (entité MAJEURE
+>   canonisée, type d'identité, ou '' = racine du domaine), `deciderRoutageV2_` route '' à la
+>   racine (le 2ᵉ repli « Divers » aurait neutralisé le fix), prompts v2 alignés aux 3 endroits.
+>   **PR2** : campagne de CONSOLIDATION dry-run — NOUVEAU `src/Consolidation.gs` (plan → onglet
+>   `PlanConsolidation` ; cible = domaine [+/AAAA si 02] [+/entité VALIDÉE] sinon plat ; identité →
+>   dossier de TYPE ; doublons par empreinte de CAMPAGNE (jamais l'Index — auto-doublon ; jamais
+>   les Properties — ~93 Ko > 9 Ko) ; garde §1 STRICTE → « Ignoré » avec constat ; convergence
+>   `conso|<tag>|fileId` ; « terminé » sur passe vide). Flag `CONSOLIDATION_ACTIF: false` —
+>   **Marc l'allume** (Réglages/Config) pour générer le plan, le VALIDE, puis l'exécution des
+>   déplacements sera un chantier séparé. 572 tests moteur. **⚠ Marc : ajouter `src/Consolidation.gs`
+>   aux sources NotebookLM.** À fournir : liste exacte des LOGEMENTS (pour valider les entités 03).
 > • **2026-07-15 — C28-22 correctifs revue flotte (moteur + app + ADR).** Trois correctifs sur le
 >   chantier C28-22 (déjà mergé, PR #175/#176/#177) : (1) le compteur 3-strikes d'abandon
 >   d'intention (`creerIntentionIdempotente_`) est re-clé sur `api-intention|<messageId>` (avant :
