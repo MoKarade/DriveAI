@@ -102,15 +102,17 @@ test('nommerDocument_ : émetteur > descripteur > type seul — JAMAIS « Inconn
   assert.ok(!/inconnu/i.test(n));
 });
 
-test('sousDossierPourNom_ : entité unifiée d\'abord, catégorie en repli, jamais vide', () => {
-  // pièce d'identité → type
+test('sousDossierPourNom_ (ADR-0023) : identité → type ; entité majeure → canonique ; sinon À PLAT (chaîne vide)', () => {
+  // pièce d'identité → type (l'exception au « à plat », inchangée)
   assert.strictEqual(ctx.sousDossierPourNom_({ estDocumentIdentite: true, sousDossierType: 'Passeport' }), 'Passeport');
-  // entité (établissement) — les variantes se canonisent vers le MÊME dossier (IUT = 1 seul)
-  assert.strictEqual(ctx.sousDossierPourNom_({ entite: 'IUT du Littoral' }), ctx.sousDossierPourNom_({ emetteur: 'IUT du Littoral' }));
+  // entité majeure → forme canonique unifiée (suffixe juridique retiré)
+  assert.strictEqual(ctx.sousDossierPourNom_({ entite: 'IUT du Littoral' }), 'IUT Du Littoral');
   assert.strictEqual(ctx.sousDossierPourNom_({ entite: 'Desjardins Inc.' }), 'Desjardins');
-  // pas d'entité → catégorie fournie par l'analyse
-  assert.strictEqual(ctx.sousDossierPourNom_({ sousDossier: 'Cours', type_doc: 'Notes de cours' }), 'Cours');
-  // rien → type, jamais vide
-  assert.strictEqual(ctx.sousDossierPourNom_({ type_doc: 'Devoir' }), 'Devoir');
-  assert.strictEqual(ctx.sousDossierPourNom_({}), 'Divers');
+  // un ÉMETTEUR seul ne crée plus JAMAIS de dossier (l'ancien repli fabriquait un dossier par marchand)
+  assert.strictEqual(ctx.sousDossierPourNom_({ emetteur: 'IUT du Littoral' }), '');
+  // la CATÉGORIE de l'analyse ne crée plus de dossier (« Cours », « Devoirs » → à plat)
+  assert.strictEqual(ctx.sousDossierPourNom_({ sousDossier: 'Cours', type_doc: 'Notes de cours' }), '');
+  // rien → à plat, plus jamais un dossier de type ni « Divers »
+  assert.strictEqual(ctx.sousDossierPourNom_({ type_doc: 'Devoir' }), '');
+  assert.strictEqual(ctx.sousDossierPourNom_({}), '');
 });
