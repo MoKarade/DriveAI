@@ -422,6 +422,13 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   limite — un prompt §4 trop long ne peut physiquement pas être collé par Marc. Style
   télégraphique, une ligne par décision, le détail vit déjà dans les sources du notebook ;
   vérifier `wc -m` avant de livrer le bloc.
+- **Campagne de rangement ⇒ CIBLE calculée par LA MÊME fonction pure que le flux vivant +
+  tripwire.** Deux formules « équivalentes » écrites séparément divergent toujours quelque part
+  (année, canonisation, champ source) → la campagne re-déplace en boucle ce que le flux vient de
+  classer (non-convergence structurelle, vécu C28-26 : cible `02/AAAA/Entité` vs flux à plat).
+  Une seule règle, deux consommateurs, verrouillée par un test « la sortie du flux est OK pour la
+  campagne ». Corollaire : un référentiel (entités validées) consulté par la campagne doit l'être
+  AUSSI par le flux — sinon l'un crée ce que l'autre défait.
 - **Un verrou posé à la CRÉATION d'un jeton longue durée n'arrête pas le stock déjà émis.** Un
   contrôle d'accès vérifié à l'ÉMISSION (pas à chaque utilisation) d'un cookie/jeton/clé se
   déploie AVEC l'invalidation de l'existant (rotation du secret qui les chiffre/signe — une
