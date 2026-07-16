@@ -24,9 +24,17 @@
  *    `ignorerDoublon`). Elle vit dans la SHEET, pas en Script Properties (~2 900 empreintes ≈ 93 Ko
  *    ≫ la limite ~9 Ko d'une Property — leçon « une Property qui persiste une liste se borne ») ;
  *  - convergence : clé d'idempotence DÉDIÉE `conso|<tag>|<fileId>` (patron Migration/DryRunV2),
- *    posée en DERNIER ; campagne « terminée » quand une passe complète ne collecte plus rien ;
- *  - bornes : garde-temps partagé + sous-budget `CONSOLIDATION_BUDGET_MS` + plafond
- *    `CONSOLIDATION_MAX_PAR_RUN` par run ; le hash suit la même borne de taille que l'OCR.
+ *    posée en DERNIER ; un domaine dont une passe ENTIÈRE ne collecte plus rien est marqué épuisé
+ *    (`conso|<tag>|dom|<nom>`) et sauté en O(1) — anti re-walk du mur de déjà-faits ; campagne
+ *    « terminée » quand TOUS les domaines sont épuisés ; l'empreinte ne va JAMAIS dans l'Index
+ *    (elle alimenterait le fast-path doublon de l'intake — auto-doublon) ;
+ *  - bornes : garde-temps partagé + sous-budget `CONSOLIDATION_BUDGET_MS` par run + budget
+ *    QUOTIDIEN `CONSOLIDATION_BUDGET_JOUR_MS` en ms réelles persistées (un plafond par run ne
+ *    borne pas la journée — ×288 ticks) + garde de COLLECTE à mi-budget (réserve du temps au
+ *    traitement : progrès garanti à chaque run) + plafond `CONSOLIDATION_MAX_PAR_RUN` ; le hash
+ *    suit la même borne de taille que l'OCR ;
+ *  - la CIBLE délègue à la règle UNIQUE `sousCheminDomaine_` (Router.gs) partagée avec le flux
+ *    vivant (arbitrage Marc 2026-07-16 « entité OU année ») — divergence = « Déplacer » en boucle.
  */
 
 /* ---------- Fonctions PURES (testées par test/consolidation.test.js) ---------- */
@@ -47,31 +55,35 @@ function analyserNomClasse_(nom) {
 }
 
 /**
- * SOUS-CHEMIN CIBLE d'un fichier sous son domaine, selon la taxonomie à plat (ADR-0023) :
- *  1. pièce d'identité (le segment Type se normalise vers un TYPE_IDENTITE) → dossier de TYPE
- *     (« Passeport »…) — l'exception identité reste des dossiers, jamais aplatie ;
- *  2. sinon : [AAAA si le domaine est dans DOMAINES_PAR_ANNEE et la date est lisible]
- *             [+ Entité si le tiers du nom se canonise vers une entité VALIDÉE de ce domaine] ;
- *  3. sinon '' = À PLAT à la racine du domaine.
+ * SOUS-CHEMIN CIBLE d'un fichier sous son domaine — délègue à la RÈGLE UNIQUE `sousCheminDomaine_`
+ * (Router.gs), la même que le flux vivant (arbitrage Marc 2026-07-16 « entité OU année » ;
+ * tripwire test : divergence = « Déplacer » en boucle sur ce que le flux vient de classer) :
+ *  1. type d'IDENTITÉ → dossier de TYPE — UNIQUEMENT dans le domaine du type (un passeport égaré
+ *     dans 02 est ciblé à plat : le re-DOMAINE est hors périmètre de la consolidation, zéro LLM) ;
+ *  2. ENTITÉ VALIDÉE (le tiers du nom se canonise vers une entité validée de CE domaine) → dossier
+ *     d'entité, sans année ;
+ *  3. domaine par ANNÉE → « AAAA » ;  4. sinon '' = à plat.
  * PUR (les entités validées arrivent en paramètre : {cleCanonique → nom canonique}).
  * @param {string} domaine
  * @param {string} nom  nom ACTUEL du fichier
  * @param {Object} validees  carte cleCanoniqueEntite_ → libellé canonique (entités VALIDÉES seules)
- * @return {string} sous-chemin relatif ('' = racine du domaine, sinon 'AAAA', 'Entité' ou 'AAAA/Entité')
+ * @return {string} sous-chemin relatif ('' = racine du domaine)
  */
 function cheminCibleConsolidation_(domaine, nom, validees) {
   var seg = analyserNomClasse_(nom);
+  var typeId = null;
   if (seg.type) {
-    var typeId = normaliserTypeIdentite_(seg.type);
-    if (TYPES_IDENTITE.indexOf(typeId) !== -1) return typeId; // identité → dossier de type (inchangé)
+    var t = normaliserTypeIdentite_(seg.type);
+    if (TYPES_IDENTITE.indexOf(t) !== -1 && dossierIdentite_({ sousDossierType: seg.type }).domaine === domaine) {
+      typeId = t;
+    }
   }
-  var parts = [];
-  if (seg.annee && (CONFIG.DOMAINES_PAR_ANNEE || []).indexOf(domaine) !== -1) parts.push(seg.annee);
+  var entite = null;
   if (seg.tiers) {
     var cle = cleCanoniqueEntite_(domaine, seg.tiers);
-    if (cle && validees && validees[cle]) parts.push(validees[cle]);
+    if (cle && validees && validees[cle]) entite = validees[cle];
   }
-  return parts.join('/');
+  return sousCheminDomaine_({ domaine: domaine, typeIdentite: typeId, entite: entite, annee: seg.annee });
 }
 
 /**
@@ -82,7 +94,9 @@ function cheminCibleConsolidation_(domaine, nom, validees) {
  *  - déjà en place → « OK » ;
  *  - sinon         → « Déplacer » vers `domaine[/sousCheminCible]`.
  * @param {{domaine:string, sousCheminActuel:string, sousCheminCible:string, protege:boolean,
- *          raccourci:boolean, doublonDe:?string}} d  doublonDe = fileId du 1er porteur de l'empreinte
+ *          protegeIllisible:boolean, raccourci:boolean, doublonDe:?string}} d
+ *   protege = zone protégée CONSTATÉE (détection positive) ; protegeIllisible = contrôle §1
+ *   illisible (abstention prudente, raison HONNÊTE — le plan que Marc valide ne doit pas mentir).
  * @return {{action:string, cible:string, raison:string}}
  */
 function decisionConsolidation_(d) {
@@ -90,6 +104,12 @@ function decisionConsolidation_(d) {
     return {
       action: 'Ignoré', cible: '',
       raison: 'Zone protégée (04) intouchable' + (d.doublonDe ? ' — doublon constaté de ' + d.doublonDe : ''),
+    };
+  }
+  if (d.protegeIllisible) {
+    return {
+      action: 'Ignoré', cible: '',
+      raison: 'Contrôle zone protégée ILLISIBLE — abstention (§1), à re-vérifier avant toute exécution',
     };
   }
   if (d.raccourci) return { action: 'Ignoré', cible: '', raison: 'Raccourci Drive (artefact d\'entité, jamais déplacé)' };
@@ -102,23 +122,6 @@ function decisionConsolidation_(d) {
 }
 
 /* ---------- I/O (lecture Drive + rapport Sheet, ZÉRO mutation Drive) ---------- */
-
-/** Carte des entités VALIDÉES du référentiel : cleCanoniqueEntite_ → libellé canonique. 1 lecture/run. */
-function entitesValideesParCle_() {
-  var validees = {};
-  try {
-    var cache = chargerEntitesCache_();
-    for (var i = 0; i < cache.lignes.length; i++) {
-      var l = cache.lignes[i];
-      if (!estValidee_(l.statut)) continue;
-      var cle = cleCanoniqueEntite_(l.domaine, l.entite);
-      if (cle) validees[cle] = canoniserEntite_(l.entite);
-    }
-  } catch (e) {
-    journalErreur_('Consolidation', 'Référentiel d\'entités illisible (plan sans dossiers d\'entité ce run) : ' + e);
-  }
-  return validees;
-}
 
 /**
  * Mémoire d'empreintes de LA CAMPAGNE : carte empreinte → fileId du PREMIER porteur, rechargée
@@ -144,31 +147,48 @@ function empreintesPlanConsolidation_() {
   return vues;
 }
 
+/** Consommation du budget QUOTIDIEN de la campagne (ms réelles persistées `AAAA-MM-JJ|ms`). PUR sur props. */
+function budgetJourConsolidation_(props, aujourdhui) {
+  var brut = String(props.getProperty('DriveAI_CONSO_JOUR') || '');
+  var sep = brut.indexOf('|');
+  if (sep === -1) return 0;
+  return brut.slice(0, sep) === aujourdhui ? (Number(brut.slice(sep + 1)) || 0) : 0;
+}
+
 /**
  * Collecte récursive des fichiers d'un domaine PAS ENCORE au plan (clé `conso|<tag>|<id>` absente
  * de l'Index — prédicat de convergence, filtré À LA COLLECTE : un mur de déjà-faits n'occupe
- * aucune place). Lecture seule, bornée par `max` et le garde. Même squelette que la Migration.
+ * aucune place de page). Lecture seule, bornée par `max` et le garde. `etat.complet` passe à false
+ * dès que le walk s'arrête AVANT la fin de l'arbre (garde ou page pleine) — il permet de marquer
+ * un domaine « épuisé » SEULEMENT sur une passe entière (revue apps-script-quota : sans ce
+ * marquage, le re-walk du mur de déjà-faits brûlait tout le budget en fin de campagne). `vusRun`
+ * dédoublonne par fileId dans le run (multi-parents/pagination — leçon « raisonner par fileId »).
  * @param {Folder} dossier
  * @param {string} domaine
  * @param {Array<{id:string, domaine:string}>} items  muté en place
  * @param {number} max
  * @param {function():boolean} garde
  * @param {string} tag
+ * @param {{complet:boolean}} etat  muté en place
+ * @param {Object} vusRun  {fileId: true} — partagé sur tout le run
  */
-function collecterConsolidation_(dossier, domaine, items, max, garde, tag) {
+function collecterConsolidation_(dossier, domaine, items, max, garde, tag, etat, vusRun) {
   var fi = dossier.getFiles();
-  while (fi.hasNext() && items.length < max) {
-    if (garde()) return;
+  while (fi.hasNext()) {
+    if (garde() || items.length >= max) { etat.complet = false; return; }
     try {
       var f = fi.next();
-      if (!indexContient_('conso|' + tag + '|' + f.getId())) items.push({ id: f.getId(), domaine: domaine });
-    } catch (e) { /* fichier illisible : sauté, re-vu à la passe suivante */ }
+      var id = f.getId();
+      if (vusRun[id]) continue;
+      vusRun[id] = true;
+      if (!indexContient_('conso|' + tag + '|' + id)) items.push({ id: id, domaine: domaine });
+    } catch (e) { etat.complet = false; /* fichier illisible : re-vu à la passe suivante */ }
   }
   var fo = dossier.getFolders();
-  while (fo.hasNext() && items.length < max) {
-    if (garde()) return;
-    try { collecterConsolidation_(fo.next(), domaine, items, max, garde, tag); }
-    catch (e) { /* sous-dossier illisible : la passe reste incomplète, jamais un plantage */ }
+  while (fo.hasNext()) {
+    if (garde() || items.length >= max) { etat.complet = false; return; }
+    try { collecterConsolidation_(fo.next(), domaine, items, max, garde, tag, etat, vusRun); }
+    catch (e) { etat.complet = false; /* sous-dossier illisible : jamais un plantage */ }
   }
 }
 
@@ -192,13 +212,18 @@ function traiterUnConsolidation_(fileId, domaine, tag, ctx) {
   } catch (e) {
     // Fichier disparu/illisible entre la collecte et le traitement : ligne quand même (jamais un
     // no-op silencieux — le plan que Marc lit doit porter la trace), convergence posée.
-    feuille_('PlanConsolidation').appendRow([new Date(), fileId, fileId, 'Ignoré', '', 'Fichier illisible : ' + e, '']);
+    ctx.feuille.appendRow([new Date(), fileId, fileId, 'Ignoré', '', 'Fichier illisible : ' + e, '']);
     indexAjouter_(cle, { statut: 'consolidation-plan', nom: fileId, domaine: domaine, chemin: '' }, '');
     return true;
   }
 
   var raccourci = mime === 'application/vnd.google-apps.shortcut';
-  var protege = aParentProtege_(f, ctx.proteges, true); // STRICT : illisible = protégé (abstention §1)
+  // Garde §1 en DEUX temps pour une raison HONNÊTE : détection POSITIVE (vraie zone protégée) vs
+  // contrôle ILLISIBLE (le strict échec-fermé rattrape les deux, mais le plan que Marc valide ne
+  // doit pas étiqueter « Zone protégée » un simple blip de lecture). Le 2ᵉ appel (non strict) ne
+  // coûte que sur les fichiers où le strict a dit vrai (rares).
+  var protegeStrict = aParentProtege_(f, ctx.proteges, true);
+  var protegeConstate = protegeStrict && aParentProtege_(f, ctx.proteges, false);
 
   // Empreinte : même borne de taille que l'OCR (mémoire) ; Google Docs natifs / blob illisible → ''.
   var empreinte = '';
@@ -219,13 +244,17 @@ function traiterUnConsolidation_(fileId, domaine, tag, ctx) {
     domaine: domaine,
     sousCheminActuel: sousCheminActuel,
     sousCheminCible: cheminCibleConsolidation_(domaine, nom, ctx.validees),
-    protege: protege,
+    protege: protegeConstate,
+    protegeIllisible: protegeStrict && !protegeConstate,
     raccourci: raccourci,
     doublonDe: doublonDe,
   });
 
-  feuille_('PlanConsolidation').appendRow([new Date(), nom, fileId, d.action, d.cible, d.raison, empreinte]);
-  indexAjouter_(cle, { statut: 'consolidation-plan', nom: nom, domaine: domaine, chemin: d.cible }, empreinte);
+  // L'empreinte va dans la COLONNE du plan (mémoire de campagne) mais JAMAIS dans l'Index : elle y
+  // alimenterait `estDoublon_` (fast-path intake) et fabriquerait des « doublons de lui-même » si un
+  // rangement futur re-présentait le fichier (revue code C28-26 — leçon bypass `ignorerDoublon`).
+  ctx.feuille.appendRow([new Date(), nom, fileId, d.action, d.cible, d.raison, empreinte]);
+  indexAjouter_(cle, { statut: 'consolidation-plan', nom: nom, domaine: domaine, chemin: d.cible }, '');
   return true;
 }
 
@@ -244,53 +273,82 @@ function genererPlanConsolidation_(estBudgetDepasse) {
   if (props.getProperty('DriveAI_CONSOLIDATION') === tag) return; // campagne finie (1 lecture)
   if (estBudgetDepasse()) return;
 
+  // Budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 : un plafond par RUN ne borne pas la
+  // JOURNÉE — ×288 ticks > quota runtime ~90 min/j, la campagne affamerait l'intake).
+  var aujourdhui = dateGmail_(new Date());
+  var consommeJour = budgetJourConsolidation_(props, aujourdhui);
+  if (consommeJour >= CONFIG.CONSOLIDATION_BUDGET_JOUR_MS) return; // repris demain
+
   var debut = Date.now();
-  var garde = function () { return estBudgetDepasse() || (Date.now() - debut) > CONFIG.CONSOLIDATION_BUDGET_MS; };
+  var budgetRun = Math.min(CONFIG.CONSOLIDATION_BUDGET_MS, CONFIG.CONSOLIDATION_BUDGET_JOUR_MS - consommeJour);
+  var garde = function () { return estBudgetDepasse() || (Date.now() - debut) > budgetRun; };
+  // Garde de COLLECTE : moitié du budget au plus — réserve du temps au TRAITEMENT, sinon un walk
+  // long laisse n=0 à chaque run (plateau silencieux, revue apps-script-quota) : progrès garanti.
+  var gardeCollecte = function () { return garde() || (Date.now() - debut) > budgetRun / 2; };
 
-  // Périmètre : domaines FIXES (04 INCLUS — en CONSTAT seul, la garde §1 force « Ignoré ») + domaines
-  // AUTO déjà nés (ID en Script Property — jamais `dossierDomaineAuto_` ici : il CRÉERAIT le dossier,
-  // or ce module ne mute rien). `_Doublons`/`_Technique`/`_Médias`/files 00 : pas des domaines, jamais parcourus.
-  var domaines = [];
-  Object.keys(CONFIG.DOMAINES).forEach(function (nom) { domaines.push({ nom: nom, id: CONFIG.DOMAINES[nom] }); });
-  (CONFIG.DOMAINES_AUTO || []).forEach(function (nom) {
-    var id = props.getProperty('DriveAI_DOM_' + nom);
-    if (id) domaines.push({ nom: nom, id: id });
-  });
+  try {
+    // Périmètre : domaines FIXES (04 INCLUS — en CONSTAT seul, la garde §1 force « Ignoré ») + domaines
+    // AUTO déjà nés (ID en Script Property — jamais `dossierDomaineAuto_` ici : il CRÉERAIT le dossier,
+    // or ce module ne mute rien). `_Doublons`/`_Technique`/`_Médias`/files 00 : pas des domaines, jamais parcourus.
+    var domaines = [];
+    Object.keys(CONFIG.DOMAINES).forEach(function (nom) { domaines.push({ nom: nom, id: CONFIG.DOMAINES[nom] }); });
+    (CONFIG.DOMAINES_AUTO || []).forEach(function (nom) {
+      var id = props.getProperty('DriveAI_DOM_' + nom);
+      if (id) domaines.push({ nom: nom, id: id });
+    });
 
-  var items = [];
-  var erreurCollecte = false;
-  for (var i = 0; i < domaines.length && items.length < CONFIG.CONSOLIDATION_MAX_PAR_RUN; i++) {
-    if (garde()) break;
-    try {
-      collecterConsolidation_(DriveApp.getFolderById(domaines[i].id), domaines[i].nom, items,
-        CONFIG.CONSOLIDATION_MAX_PAR_RUN, garde, tag);
-    } catch (e) {
-      erreurCollecte = true;
-      journalErreur_('Consolidation', 'Domaine inaccessible (' + domaines[i].nom + ') : ' + e);
+    var items = [];
+    var vusRun = {};
+    for (var i = 0; i < domaines.length && items.length < CONFIG.CONSOLIDATION_MAX_PAR_RUN; i++) {
+      if (gardeCollecte()) break;
+      var cleDom = 'conso|' + tag + '|dom|' + domaines[i].nom;
+      if (indexContient_(cleDom)) continue; // domaine ÉPUISÉ pour le tag : sauté en O(1) (anti re-walk)
+      var etatDom = { complet: true };
+      var avantDom = items.length;
+      try {
+        collecterConsolidation_(DriveApp.getFolderById(domaines[i].id), domaines[i].nom, items,
+          CONFIG.CONSOLIDATION_MAX_PAR_RUN, gardeCollecte, tag, etatDom, vusRun);
+      } catch (e) {
+        etatDom.complet = false;
+        journalErreur_('Consolidation', 'Domaine inaccessible (' + domaines[i].nom + ') : ' + e);
+      }
+      // Passe ENTIÈRE de CE domaine sans y collecter → plus rien à y faire pour ce tag : marqué
+      // épuisé (les fichiers ajoutés PLUS TARD sont l'affaire du flux vivant, pas de la campagne).
+      if (etatDom.complet && items.length === avantDom) {
+        indexAjouter_(cleDom, { statut: 'consolidation-domaine-epuise', nom: domaines[i].nom, domaine: domaines[i].nom, chemin: '' }, '');
+      }
     }
-  }
 
-  var interrompue = garde();
-  if (!items.length) {
-    // Passe COMPLÈTE et vide = vrai signal de fin (jamais sur interruption/erreur — anti-faux-terminé).
-    if (!interrompue && !erreurCollecte) {
-      props.setProperty('DriveAI_CONSOLIDATION', tag);
-      journalInfo_('Consolidation', 'Plan de consolidation TERMINÉ (tag « ' + tag + ' ») — onglet PlanConsolidation prêt pour validation.');
+    if (!items.length) {
+      // Fin de campagne = TOUS les domaines marqués épuisés (jamais sur interruption : un domaine
+      // coupé par la garde n'est pas marqué — anti-faux-terminé).
+      var tousEpuises = true;
+      for (var k = 0; k < domaines.length; k++) {
+        if (!indexContient_('conso|' + tag + '|dom|' + domaines[k].nom)) { tousEpuises = false; break; }
+      }
+      if (tousEpuises) {
+        props.setProperty('DriveAI_CONSOLIDATION', tag);
+        journalInfo_('Consolidation', 'Plan de consolidation TERMINÉ (tag « ' + tag + ' ») — onglet PlanConsolidation prêt pour validation.');
+      }
+      return;
     }
-    return;
-  }
 
-  var ctx = {
-    proteges: ensembleDomainesProteges_(),
-    validees: entitesValideesParCle_(),
-    empreintesVues: empreintesPlanConsolidation_(),
-  };
-  var n = 0;
-  for (var j = 0; j < items.length; j++) {
-    if (garde()) break;
-    // Try PAR ITEM : un fichier empoisonné ne doit jamais avorter le reste de la page.
-    try { if (traiterUnConsolidation_(items[j].id, items[j].domaine, tag, ctx)) n++; }
-    catch (e) { journalErreur_('Consolidation', 'Item sauté (' + items[j].id + ') : ' + e); }
+    var ctx = {
+      proteges: ensembleDomainesProteges_(),
+      validees: entitesValideesParCle_(),
+      empreintesVues: empreintesPlanConsolidation_(),
+      feuille: feuille_('PlanConsolidation'), // hissée : ~2 appendRow/fichier sans re-résolution d'onglet
+    };
+    var n = 0;
+    for (var j = 0; j < items.length; j++) {
+      if (garde()) break;
+      // Try PAR ITEM : un fichier empoisonné ne doit jamais avorter le reste de la page.
+      try { if (traiterUnConsolidation_(items[j].id, items[j].domaine, tag, ctx)) n++; }
+      catch (e) { journalErreur_('Consolidation', 'Item sauté (' + items[j].id + ') : ' + e); }
+    }
+    if (n) journalInfo_('Consolidation', n + ' fichier(s) ajoutés au plan de consolidation (dry-run, aucune mutation).');
+  } finally {
+    // ms RÉELLES consommées ce run, persistées (date|ms) — même sur interruption/exception.
+    props.setProperty('DriveAI_CONSO_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
   }
-  if (n) journalInfo_('Consolidation', n + ' fichier(s) ajoutés au plan de consolidation (dry-run, aucune mutation).');
 }

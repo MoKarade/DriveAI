@@ -38,13 +38,13 @@ const validees = {};
   validees[ctx.cleCanoniqueEntite_(dom, ent)] = ent;
 });
 
-test('cheminCibleConsolidation_ : domaine par ANNÉE (02) → /AAAA ; + entité VALIDÉE → /AAAA/Entité', () => {
+test('cheminCibleConsolidation_ : arbitrage « entité OU année » (02) — entité validée SANS année, sinon AAAA', () => {
   // la CONSTANTE pilote le test (jamais la valeur du jour en dur)
   const domAnnee = ctx.CONFIG.DOMAINES_PAR_ANNEE[0];
   assert.strictEqual(ctx.cheminCibleConsolidation_(domAnnee, '2026-03-01_Facture_EDF.pdf', validees),
     '2026', 'émetteur non validé → année seule');
   assert.strictEqual(ctx.cheminCibleConsolidation_(domAnnee, '2026-03_Relevé_Desjardins.pdf', validees),
-    '2026/Desjardins', 'entité validée du domaine → année + entité');
+    'Desjardins', 'entité validée → UN dossier d\'entité, JAMAIS fragmentée par année (2026/Desjardins interdit)');
 });
 
 test('cheminCibleConsolidation_ : domaine SANS année → entité validée seule, sinon À PLAT', () => {
@@ -59,11 +59,48 @@ test('cheminCibleConsolidation_ : domaine SANS année → entité validée seule
     '', 'Desjardins est validée en 02, pas en 05');
 });
 
-test('cheminCibleConsolidation_ : pièce d\'identité → dossier de TYPE (l\'exception au « à plat », jamais aplatie)', () => {
+test('cheminCibleConsolidation_ : pièce d\'identité → dossier de TYPE — UNIQUEMENT dans le domaine du type', () => {
   assert.strictEqual(ctx.cheminCibleConsolidation_('01 · Administratif & identité', '2020-01-01_Passeport_Marc Richard.pdf', validees),
     'Passeport');
   assert.strictEqual(ctx.cheminCibleConsolidation_('01 · Administratif & identité', '2023-02-01_Permis de conduire_Marc Richard.pdf', {}),
     'Permis de conduire', 'même sans référentiel d\'entités');
+  // Un passeport ÉGARÉ dans 02 ne fabrique pas de dossier « Passeport » hors 01 : ciblé par la règle
+  // du domaine courant (année en 02) — le re-DOMAINE est hors périmètre de la consolidation (O2).
+  assert.strictEqual(ctx.cheminCibleConsolidation_('02 · Finances', '2020-01-01_Passeport_Marc Richard.pdf', validees),
+    '2020', 'l\'exception identité est scopée à son domaine');
+});
+
+/* ---------- TRIPWIRE : la cible de consolidation == la sortie du flux vivant (règle UNIQUE) ---------- */
+
+test('TRIPWIRE flux vivant ↔ consolidation : pour un même document, le sous-chemin est IDENTIQUE (sinon « Déplacer » en boucle)', () => {
+  const cas = [
+    // [classif, date, ext, domaine attendu]
+    [{ domaine: '02 · Finances', type_doc: 'Facture', emetteur: 'Cleverbridge', date_doc: '2026-01-10' }, '2026-01-10', '.pdf'],
+    [{ domaine: '02 · Finances', type_doc: 'Relevé', emetteur: 'Desjardins', sousDossier: 'Desjardins Inc.', date_doc: '2026-03-15' }, '2026-03-15', '.pdf'],
+    [{ domaine: '05 · Carrière', type_doc: 'Lettre', emetteur: 'Schneider Electric', date_doc: '2026-01-05' }, '2026-01-05', '.pdf'],
+    [{ estDocumentIdentite: true, sousDossierType: 'Passeport', titulaire: 'Marc Richard', domaine: '01 · Administratif & identité', date_doc: '2020-01-01' }, '2020-01-01', '.pdf'],
+  ];
+  for (const [classif, date, ext] of cas) {
+    const meta = { nomFichier: 'f' + ext, taille: 100000, extraitOcr: 'texte lisible du document '.repeat(4), emetteur: classif.emetteur || '' };
+    const plan = ctx.planRoutageV2_(classif, meta, date, ext, validees);
+    assert.strictEqual(plan.type, 'classé', JSON.stringify(plan));
+    // Le fichier que le flux vivant vient de produire (plan.nom, dans plan.domaine) doit être « OK »
+    // pour la consolidation : même sous-chemin par la règle unique.
+    const cible = ctx.cheminCibleConsolidation_(plan.domaine, plan.nom, validees);
+    assert.strictEqual(cible, plan.sousDossier,
+      'divergence flux↔plan pour ' + plan.nom + ' (' + plan.domaine + ') : flux="' + plan.sousDossier + '" vs conso="' + cible + '"');
+  }
+});
+
+/* ---------- budgetJourConsolidation_ : ms réelles persistées, remises à zéro au rollover ---------- */
+
+test('budgetJourConsolidation_ : la valeur ne vaut que si la date persistée est AUJOURD\'HUI (sinon 0), format date|ms', () => {
+  const props = (kv) => ({ getProperty: (k) => (k in kv ? kv[k] : null) });
+  assert.strictEqual(ctx.budgetJourConsolidation_(props({ DriveAI_CONSO_JOUR: '2026/07/16|540000' }), '2026/07/16'), 540000);
+  assert.strictEqual(ctx.budgetJourConsolidation_(props({ DriveAI_CONSO_JOUR: '2026/07/15|540000' }), '2026/07/16'), 0,
+    'rollover : la consommation de la veille ne compte pas aujourd\'hui');
+  assert.strictEqual(ctx.budgetJourConsolidation_(props({}), '2026/07/16'), 0);
+  assert.strictEqual(ctx.budgetJourConsolidation_(props({ DriveAI_CONSO_JOUR: 'corrompu' }), '2026/07/16'), 0);
 });
 
 /* ---------- decisionConsolidation_ : OK / Déplacer / Doublon / Ignoré ---------- */
@@ -111,6 +148,16 @@ test('decisionConsolidation_ : zone protégée (04) → « Ignoré » MÊME mal 
   assert.ok(doublon.raison.includes('Zone protégée'), doublon.raison);
 });
 
+test('decisionConsolidation_ : contrôle §1 ILLISIBLE → « Ignoré » avec une raison HONNÊTE (jamais « Zone protégée » à tort)', () => {
+  const d = ctx.decisionConsolidation_({
+    domaine: '02 · Finances', sousCheminActuel: 'X', sousCheminCible: '',
+    protege: false, protegeIllisible: true, raccourci: false, doublonDe: null,
+  });
+  assert.strictEqual(d.action, 'Ignoré', 'abstention prudente (échec-fermé §1)');
+  assert.ok(/illisible/i.test(d.raison), 'la raison dit la vérité (le plan que Marc valide ne ment pas) : ' + d.raison);
+  assert.ok(!/Zone protégée \(04\) intouchable/.test(d.raison), 'jamais étiqueté « zone protégée » sans preuve : ' + d.raison);
+});
+
 test('decisionConsolidation_ : raccourci Drive → « Ignoré » (artefact d\'entité voulu, jamais déplacé)', () => {
   const d = ctx.decisionConsolidation_({
     domaine: '02 · Finances', sousCheminActuel: 'Société Générale', sousCheminCible: '',
@@ -127,7 +174,10 @@ test('Consolidation.gs : aucun appel de mutation Drive (dry-run PUR par construc
   const path = require('path');
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'Consolidation.gs'), 'utf8');
   // Motifs d'APPEL réels (parenthèse ouvrante) — les mentions en commentaire ne matchent pas.
-  ['moveTo(', 'setTrashed(', 'setName(', '.createFolder(', '.createFile(', 'removeFile(', 'addFile(']
+  // `UrlFetchApp` (sans parenthèse) : la voie REST Drive passerait sous les motifs DriveApp — le
+  // module n'en a AUCUN besoin légitime (revue sécurité C28-26 : promesse de verrou = couverture réelle).
+  ['moveTo(', 'setTrashed(', 'setName(', '.createFolder(', '.createFile(', 'removeFile(', 'addFile(',
+    'addFolder(', 'removeFolder(', 'makeCopy(', 'setContent(', 'UrlFetchApp']
     .forEach((motif) => {
       assert.ok(!src.includes(motif), 'mutation interdite trouvée dans Consolidation.gs : ' + motif);
     });

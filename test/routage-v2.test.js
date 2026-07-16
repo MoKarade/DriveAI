@@ -74,31 +74,44 @@ test('planRoutageV2_ : carte de résident permanent → domaine 04 (lié au stat
   assert.strictEqual(p.sousDossier, 'Carte de résident permanent');
 });
 
-/* ---------- Documents normaux (ADR-0023) : à PLAT par défaut ; sous-dossier = entité MAJEURE seulement ---------- */
+/* ---------- Documents normaux (ADR-0023, arbitrage « entité OU année ») : à PLAT par défaut ;
+ * sous-dossier = entité VALIDÉE au référentiel (sans année), sinon AAAA pour les domaines par
+ * année, sinon racine. Le verrou : SANS carte de validées, JAMAIS de dossier d'entité. ---------- */
 
-test('planRoutageV2_ : entité majeure fournie → sous-dossier canonique, nom par émetteur', () => {
-  const p = ctx.planRoutageV2_(
-    { domaine: '02 · Finances', type_doc: 'Relevé', emetteur: 'Desjardins', entite: 'Desjardins Inc.', date_doc: '2026-03-15' },
-    meta('releve.pdf', { emetteur: 'Desjardins' }), '2026-07-07', '.pdf');
-  assert.strictEqual(p.sousDossier, 'Desjardins');            // suffixe juridique retiré, unifié
-  assert.strictEqual(p.nom, '2026-03_Relevé_Desjardins.pdf'); // relevé = granularité mois
+// Carte des entités VALIDÉES de test (comme entitesValideesParCle_).
+const validees = {};
+validees[ctx.cleCanoniqueEntite_('02 · Finances', 'Desjardins')] = 'Desjardins';
+
+test('planRoutageV2_ : entité VALIDÉE → dossier d\'entité canonique SANS année ; NON validée → année (02)', () => {
+  const classif = { domaine: '02 · Finances', type_doc: 'Relevé', emetteur: 'Desjardins', sousDossier: 'Desjardins Inc.', date_doc: '2026-03-15' };
+  const avecCarte = ctx.planRoutageV2_(classif, meta('releve.pdf', { emetteur: 'Desjardins' }), '2026-03-15', '.pdf', validees);
+  assert.strictEqual(avecCarte.sousDossier, 'Desjardins');            // validée → entité, jamais 2026/Desjardins
+  assert.strictEqual(avecCarte.nom, '2026-03_Relevé_Desjardins.pdf'); // relevé = granularité mois
+
+  const sansCarte = ctx.planRoutageV2_(classif, meta('releve.pdf', { emetteur: 'Desjardins' }), '2026-03-15', '.pdf');
+  assert.strictEqual(sansCarte.sousDossier, '2026',
+    'entité NON validée : le verrou référentiel dégrade vers l\'année (02 est par année) — jamais un dossier non validé');
 });
 
-test('planRoutageV2_ : émetteur ponctuel SANS entité → À PLAT (plus jamais un dossier par marchand)', () => {
+test('planRoutageV2_ : émetteur ponctuel → jamais un dossier par marchand (année en 02, racine ailleurs)', () => {
   // ADR-0023 : l'ancien repli `emetteur` créait un dossier par émetteur au 1er fichier
-  // (EDF, Cleverbridge, Virgin Plus… — recensement 2026-07-16). Désormais : racine du domaine.
-  const p = ctx.planRoutageV2_(
+  // (EDF, Cleverbridge, Virgin Plus… — recensement 2026-07-16).
+  const en02 = ctx.planRoutageV2_(
     { domaine: '02 · Finances', type_doc: 'Facture', emetteur: 'Cleverbridge', date_doc: '2026-01-10' },
-    meta('facture.pdf', { emetteur: 'Cleverbridge' }), '2026-07-07', '.pdf');
-  assert.strictEqual(p.type, 'classé');
-  assert.strictEqual(p.sousDossier, '', 'un émetteur sans entité majeure ne crée plus de dossier');
-  assert.ok(/Cleverbridge/.test(p.nom), 'l\'émetteur reste dans le NOM : ' + p.nom);
+    meta('facture.pdf', { emetteur: 'Cleverbridge' }), '2026-01-10', '.pdf', validees);
+  assert.strictEqual(en02.sousDossier, '2026', '02 est par ANNÉE : le tout-venant va dans AAAA');
+  assert.ok(/Cleverbridge/.test(en02.nom), 'l\'émetteur reste dans le NOM : ' + en02.nom);
+
+  const en05 = ctx.planRoutageV2_(
+    { domaine: '05 · Carrière', type_doc: 'Lettre', emetteur: 'Schneider Electric', date_doc: '2026-01-05' },
+    meta('lettre.pdf', { emetteur: 'Schneider Electric' }), '2026-01-05', '.pdf', validees);
+  assert.strictEqual(en05.sousDossier, '', 'domaine sans année : racine (une candidature ne crée pas de dossier)');
 });
 
 test('planRoutageV2_ : ni émetteur ni titulaire → descripteur dans le nom (JAMAIS « Inconnu »), classé À PLAT (la catégorie LLM ne fait plus de dossier)', () => {
   const p = ctx.planRoutageV2_(
     { domaine: '06 · Études & diplômes', type_doc: 'Devoir', descripteur: 'Devoir algorithmique Python', sousDossier: 'Devoirs', date_doc: '2026-06-30' },
-    meta('TP4.docx'), '2026-07-07', '.docx');
+    meta('TP4.docx'), '2026-06-30', '.docx', validees);
   assert.strictEqual(p.type, 'classé');
   assert.strictEqual(p.sousDossier, '', 'une catégorie (« Devoirs ») ne crée plus de dossier — à plat (ADR-0023)');
   assert.ok(!/inconnu/i.test(p.nom), 'le nom ne doit jamais contenir « Inconnu » : ' + p.nom);
@@ -110,7 +123,7 @@ test('planRoutageV2_ : rien d\'exploitable → à PLAT, plus jamais « Divers »
     { domaine: '08 · Perso & projets', type_doc: 'Note' },
     meta('note.pdf'), '2026-07-07', '.pdf');
   assert.strictEqual(p.type, 'classé');
-  assert.strictEqual(p.sousDossier, '', 'sans entité majeure : racine du domaine (ADR-0023) : ' + JSON.stringify(p));
+  assert.strictEqual(p.sousDossier, '', 'sans entité validée, 08 sans année : racine du domaine : ' + JSON.stringify(p));
 });
 
 test('planRoutageV2_ : une pièce d\'identité garde TOUJOURS son sous-dossier de TYPE (jamais à plat)', () => {

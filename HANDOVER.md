@@ -19,6 +19,22 @@
 >   réellement à sec pour le 15/07 (vidé par le vieux code) → recharge la nuit, plafonds désormais
 >   actifs. Leçon durable ajoutée (CLAUDE.md §7, 3ᵉ piège auto-déploiement : vérifier la PRISE
 >   D'EFFET par signal indépendant, pas le run vert).
+> • **2026-07-16 — C28-26 (suite) : correctifs revue flotte (PR3).** 4 agents, verdicts convergents ;
+>   tout corrigé avant tout allumage : (1) 🔴 `entitesValideesParCle_` mort-né (`chargerEntitesCache_`
+>   ne retourne rien → `entitesCache_()`) ; (2) 🔴 verrou « entité majeure » re-branché sur le champ
+>   GATÉ `sousDossier` + **verrou RÉFÉRENTIEL** : un dossier d'entité n'existe QUE si l'entité est
+>   VALIDÉE (demande initiale de Marc) ; (3) 🔴 matérialisation d'entités → racine du domaine SANS
+>   squelette ; (4) 🔴 arbitrage Marc « **entité OU année** » (02/Desjardins sans année, tout-venant
+>   02/2026) → RÈGLE UNIQUE `sousCheminDomaine_` (Router.gs) partagée flux vivant ↔ consolidation +
+>   TRIPWIRE test (divergence = « Déplacer » en boucle) ; (5) 🔴 budget QUOTIDIEN de campagne
+>   (12 min/j, ms réelles persistées `DriveAI_CONSO_JOUR`) + garde de collecte à mi-budget
+>   (anti-plateau) + domaines épuisés `conso|<tag>|dom|<nom>` (anti re-walk) ; (6) 🟠 empreinte
+>   JAMAIS dans l'Index (auto-doublon intake), identité scopée à son domaine dans la cible, raison
+>   §1 honnête, motifs anti-mutation élargis. `docs/TAXONOMY.md` RÉÉCRIT (à plat, règle unique,
+>   interdits, campagne), ADR-0023 révisé. 575 tests moteur. **L'allumage de `CONSOLIDATION_ACTIF`
+>   attend le merge de ces correctifs.** Notes : raccourcis multi-entités = abandon ACTÉ (hérités
+>   « Ignoré ») ; suffixes anti-écrasement `_2` ciblés à plat (connu) ; toujours en attente de Marc :
+>   liste exacte des LOGEMENTS (validation des entités 03).
 > • **2026-07-16 — C28-26 : refonte de l'arborescence — plan architecte EXÉCUTÉ (ADR-0023, 2 PR).**
 >   Retour Marc : « trop le bordel ». Recensement réel (13 agents) →
 >   `docs/diagnostics/2026-07-16-recensement-drive.md` (~499 dossiers dont ~102 vides, ~2 880

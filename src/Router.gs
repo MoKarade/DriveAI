@@ -489,9 +489,12 @@ function deciderRoutage_(classif, dateReference, ext) {
  * @param {{nomFichier:string, taille?:number, extraitOcr?:string, emetteur?:string}} meta
  * @param {string} date  AAAA-MM-JJ (déjà normalisée)
  * @param {string} ext
+ * @param {Object} [validees]  carte des entités VALIDÉES (cleCanoniqueEntite_ → libellé canonique,
+ *   cf. entitesValideesParCle_). ABSENTE/vide ⇒ AUCUN dossier d'entité (verrou : « un dossier
+ *   d'entité SEULEMENT si validée par Marc » — le prompt seul ne suffit pas, ADR-0023 révisé).
  * @return {{type:('non-doc'|'classé'), routage?:('_Technique'|'_Médias'), domaine?:string, sousDossier?:string, nom?:string}}
  */
-function planRoutageV2_(classif, meta, date, ext) {
+function planRoutageV2_(classif, meta, date, ext, validees) {
   // (1) Non-document → hors domaines (la garde DOMINANTE de decisionNonDocument_ protège identité/01/04).
   var nd = decisionNonDocument_(classif, meta);
   if (nd.estNonDoc) return { type: 'non-doc', routage: nd.routage };
@@ -510,7 +513,16 @@ function planRoutageV2_(classif, meta, date, ext) {
     domaine = di.domaine; sousDossier = di.sousDossier;
   } else {
     domaine = c.domaine;
-    sousDossier = sousDossierPourNom_(c);  // entité majeure canonique si fournie, sinon '' = à plat (ADR-0023)
+    // Candidat d'entité (champ gaté du prompt), retenu SEULEMENT s'il est VALIDÉ au référentiel —
+    // le libellé du référentiel prime (une seule graphie de dossier par entité). Sinon : année
+    // (DOMAINES_PAR_ANNEE) ou racine, via la règle UNIQUE partagée avec la consolidation.
+    var candidat = sousDossierPourNom_(c);
+    var cleEnt = candidat ? cleCanoniqueEntite_(domaine, candidat) : null;
+    var entiteValidee = (cleEnt && validees && validees[cleEnt]) ? validees[cleEnt] : null;
+    sousDossier = sousCheminDomaine_({
+      domaine: domaine, typeIdentite: null, entite: entiteValidee,
+      annee: /^\d{4}/.test(date || '') ? date.substring(0, 4) : null,
+    });
   }
   return { type: 'classé', domaine: domaine, sousDossier: sousDossier, nom: nommerDocument_(c, date, ext) };
 }
@@ -526,7 +538,11 @@ function planRoutageV2_(classif, meta, date, ext) {
  */
 function deciderRoutageV2_(classif, meta, dateReference, ext) {
   var date = dateNormalisee_(classif && classif.date_doc, dateReference);
-  var plan = planRoutageV2_(classif, meta, date, ext);
+  // Carte des entités VALIDÉES (1 lecture de cache/run — le cache Entités est déjà chargé par le
+  // tick) : le verrou « dossier d'entité seulement si validée » vit dans planRoutageV2_ (PUR).
+  var validees;
+  try { validees = entitesValideesParCle_(); } catch (e) { validees = {}; } // échec fermé : à plat
+  var plan = planRoutageV2_(classif, meta, date, ext, validees);
 
   if (plan.type === 'non-doc') {
     return plan.routage === '_Technique'
@@ -690,8 +706,31 @@ function nommerDocument_(classif, dateReception, ext) {
 function sousDossierPourNom_(classif) {
   classif = classif || {};
   if (estDocumentIdentitePersonnel_(classif)) return normaliserTypeIdentite_(classif.sousDossierType);
-  var ent = classif.entite ? canoniserEntite_(classif.entite) : null; // entité unifiée (IUT = 1 seul dossier)
+  // Champ `sousDossier` (PAS `entite`) : c'est LUI que le prompt v2 gate « entité majeure ou null » —
+  // `entite` reste un champ RICHE (référentiel, few-shot) légitimement rempli pour un émetteur
+  // ponctuel ; router dessus ferait revenir le dossier-par-émetteur (revue structure-keeper C28-26).
+  var ent = classif.sousDossier ? canoniserEntite_(classif.sousDossier) : null;
   return ent || '';
+}
+
+/**
+ * RÈGLE UNIQUE de sous-chemin sous un domaine (ADR-0023, arbitrage Marc 2026-07-16 « entité OU
+ * année ») — PARTAGÉE par le flux vivant (planRoutageV2_) et la cible de consolidation
+ * (cheminCibleConsolidation_), verrouillée par un tripwire test : toute divergence entre les deux
+ * ferait re-proposer « Déplacer » en boucle ce que le flux vivant vient de classer.
+ *  1. type d'IDENTITÉ → dossier de TYPE (« Passeport ») ;
+ *  2. ENTITÉ (majeure, VALIDÉE) → dossier d'entité, SANS année (une entité = UN dossier) ;
+ *  3. domaine par ANNÉE (DOMAINES_PAR_ANNEE) + année lisible → dossier « AAAA » ;
+ *  4. sinon '' = racine du domaine (à plat). PUR.
+ * @param {{domaine:string, typeIdentite:?string, entite:?string, annee:?string}} d
+ * @return {string}
+ */
+function sousCheminDomaine_(d) {
+  d = d || {};
+  if (d.typeIdentite) return d.typeIdentite;
+  if (d.entite) return d.entite;
+  if (d.annee && (CONFIG.DOMAINES_PAR_ANNEE || []).indexOf(d.domaine) !== -1) return d.annee;
+  return '';
 }
 
 /**

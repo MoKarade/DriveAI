@@ -27,18 +27,32 @@ L'IA a confondu « métadonnées riches » (le JSON d'analyse) avec « arboresce
 1. **Classement à PLAT par défaut.** Un document se range à la RACINE de son domaine
    (`02 · Finances/2026-03-01_Facture_EDF.pdf`). Le nom de fichier (`AAAA-MM-JJ_Type_Émetteur.ext`)
    porte déjà toute l'information — le dossier n'ajoutait que du bruit.
-2. **Le sous-dossier devient l'EXCEPTION**, réservé à :
-   - une **pièce d'identité** → dossier de TYPE (« Passeport »… — inchangé) ;
-   - une **entité MAJEURE et durable** de la vie de Marc (employeur, école, véhicule, banque),
-     canonisée par `canoniserEntite_`. Le prompt v2 laisse `entite`/`sousDossier` null sinon ;
-   - les **années** pour les domaines à volume (`DOMAINES_PAR_ANNEE`, ex. 02) — inchangé (chemin v1
-     / cible de consolidation).
+2. **Le sous-dossier devient l'EXCEPTION** — RÈGLE UNIQUE `sousCheminDomaine_` (Router.gs),
+   partagée par le flux vivant ET la cible de consolidation (tripwire test), ordre EXCLUSIF
+   *(révision post-revue flotte, arbitrage Marc 2026-07-16 « entité OU année »)* :
+   - une **pièce d'identité** → dossier de TYPE (« Passeport »…), dans le domaine du type seulement ;
+   - une **entité MAJEURE VALIDÉE au référentiel** (employeur, école, véhicule, banque) → dossier
+     au niveau 1, nom canonique du référentiel, **SANS année** (une entité = UN dossier — jamais
+     `2026/Desjardins`). **Verrou référentiel** : le routage (`planRoutageV2_`) ne consulte QUE
+     `entitesValideesParCle_` — le prompt gate le champ `sousDossier` (jamais `entite`, champ riche
+     non gaté — revue structure-keeper), le référentiel verrouille : une entité non validée ne crée
+     JAMAIS de dossier ;
+   - l'**année** (`AAAA`) pour `DOMAINES_PAR_ANNEE` (02) quand aucune entité validée ne s'applique
+     — désormais AUSSI dans le flux vivant v2 (avant : cible de consolidation seule = divergence,
+     « Déplacer » en boucle sur ce que le flux venait de classer).
 3. **Plus JAMAIS** de dossier par émetteur ponctuel, par catégorie (« Cours », « Devoirs »,
-   « Reçus ») ni « Divers » : `sousDossierPourNom_` retourne l'entité canonisée, le type
-   d'identité, ou `''` (= racine du domaine) ; `deciderRoutageV2_` route `''` vers la racine.
+   « Reçus ») ni « Divers » ; `deciderRoutageV2_` route `''` vers la racine. La **matérialisation
+   d'entités validées** (Entites.gs) crée le dossier à la RACINE du domaine, **sans squelette**
+   (`SCHEMAS_ENTITE` plus jamais instancié — l'ancien parent « catégorie » + squelette a produit
+   ~100 dossiers vides et des doubles dossiers, revue structure-keeper).
 4. **Campagne de consolidation** (`src/Consolidation.gs`, PR2) : génère un PLAN dans l'onglet
-   Sheet `PlanConsolidation` (Fichier | ID | Action | Cible | Raison) — dry-run PUR, flag
-   `CONSOLIDATION_ACTIF: false` par défaut, aucune mutation tant que Marc n'a pas validé.
+   Sheet `PlanConsolidation` (Fichier | ID | Action | Cible | Raison | Empreinte) — dry-run PUR,
+   flag `CONSOLIDATION_ACTIF: false` par défaut, aucune mutation tant que Marc n'a pas validé.
+   Bornes post-revue flotte : budget QUOTIDIEN `CONSOLIDATION_BUDGET_JOUR_MS` en ms réelles
+   persistées (un plafond par run ne borne pas la journée — ×288 ticks), garde de COLLECTE à
+   mi-budget (progrès garanti, anti-plateau), domaines épuisés marqués `conso|<tag>|dom|<nom>`
+   (anti re-walk du mur de déjà-faits), empreinte JAMAIS écrite à l'Index (elle alimenterait le
+   fast-path doublon de l'intake — auto-doublon).
 
 ## Impact & garde-fous (§2)
 
