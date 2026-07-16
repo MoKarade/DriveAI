@@ -1105,3 +1105,22 @@ diagnostiquer par preuve : une vérif de stabilité (la constante reste fraîche
 hypothèse à deux projets avant de la propager. Symptôme typique : CI verte + comportement prod figé
 + ZÉRO erreur (le code neuf n'a pas planté, il n'a simplement jamais tourné)."
 **Règle durable ?** oui (3ᵉ piège ajouté à « Auto-déploiement (CI/CD) » dans CLAUDE.md §7).
+
+## 2026-07-16 — La pagination de l'API Drive (MCP) renvoie des fenêtres chevauchantes : dédupliquer par fileId
+
+**Contexte.** Recensement complet du Drive pour le cadrage C28-26 (refonte de l'arborescence) :
+13 agents parallèles en lecture seule, un BFS `search_files(parentId=…)` paginé par domaine.
+Trois agents indépendants ont constaté le même artefact sur des dossiers volumineux et STATIQUES :
+des pages successives se chevauchent (éléments répétés entre pages — `_Doublons` : 1 069 lignes
+brutes pour 1 015 fichiers uniques ; `_Technique` : 13 puis 9 éléments répétés ; `08` : 3 répétitions).
+Sans déduplication, les comptes sont FAUX (gonflés) — et un traitement par item referait le même
+travail plusieurs fois.
+
+**Leçon.** "Toute énumération Drive paginée (API REST/MCP `search_files`, même sur un dossier
+statique) doit être DÉDUPLIQUÉE par `fileId` avant de compter ou de traiter — la pagination peut
+renvoyer des fenêtres chevauchantes entre pages. Corollaire census : distinguer 'lignes reçues' de
+'fichiers uniques', et faire porter plafonds/offsets sur les UNIQUES. Instance de la règle §7
+« raisonner par fileId (pas par nom/position) », étendue à la lecture paginée."
+
+**Règle durable ?** non (instance du réflexe existant « raisonner par fileId » — consignée ici pour
+le prochain recensement/campagne de masse C28-26, où l'oublier fausserait les bases de progression).

@@ -19,6 +19,14 @@
 >   réellement à sec pour le 15/07 (vidé par le vieux code) → recharge la nuit, plafonds désormais
 >   actifs. Leçon durable ajoutée (CLAUDE.md §7, 3ᵉ piège auto-déploiement : vérifier la PRISE
 >   D'EFFET par signal indépendant, pas le run vert).
+> • **2026-07-16 — C28-26 : refonte COMPLÈTE de l'arborescence (cadrage).** Retour Marc : « trop le
+>   bordel » — trop de dossiers, vides, fichiers à plat, Inconnu, entités fantômes, doublons.
+>   Recensement RÉEL 13 agents lecture seule → `docs/diagnostics/2026-07-16-recensement-drive.md`
+>   (~499 dossiers dont ~102 vides, ~2 880 fichiers dont ~1 357 à plat et ~909 Inconnu ; passeport
+>   ×6 dans _Doublons ; 7 mécanismes fautifs identifiés). Listes d'entités réelles de Marc
+>   consignées (véhicules Fiesta 2011/Jetta/Toyota bZ ; employeurs Automatech Robotik/Robovic ;
+>   parcours scolaire 6 étapes). Prompt NotebookLM livré — **en attente du plan architecte** (§4).
+>   Prérequis : merge du diagnostic + re-sync des sources NotebookLM avant analyse.
 > • **2026-07-15 — C28-22 correctifs revue flotte (moteur + app + ADR).** Trois correctifs sur le
 >   chantier C28-22 (déjà mergé, PR #175/#176/#177) : (1) le compteur 3-strikes d'abandon
 >   d'intention (`creerIntentionIdempotente_`) est re-clé sur `api-intention|<messageId>` (avant :
