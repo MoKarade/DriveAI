@@ -448,8 +448,10 @@ var CONFIG = {
                                           // sur un Drive énorme — la re-base/finalisation corrigent l'écart)
 
   // ---- Campagne de CONSOLIDATION de l'arborescence (C28-26, ADR-0023 — Consolidation.gs) ----
-  CONSOLIDATION_ACTIF: false,             // interrupteur du DRY-RUN (génération du plan seule) — OFF par
-                                          // défaut : Marc allume quand il veut produire le PlanConsolidation
+  CONSOLIDATION_ACTIF: true,              // interrupteur du DRY-RUN (génération du plan seule) — ALLUMÉ
+                                          // 2026-07-17 (« continue », post-correctifs revue flotte #183) :
+                                          // le moteur remplit l'onglet PlanConsolidation (~12 min/j max,
+                                          // AUCUNE mutation Drive). Repasser à false pour suspendre.
   CONSOLIDATION_TAG: 'conso-1',           // tag de campagne (clé de convergence `conso|<tag>|<fileId>`)
   CONSOLIDATION_BUDGET_MS: 3 * 60 * 1000, // sous-budget PROPRE par run (le hash MD5 lit les octets — sans
                                           // cette borne, un run mangerait le budget des étapes suivantes)
