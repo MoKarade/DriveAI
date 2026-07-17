@@ -1124,3 +1124,25 @@ renvoyer des fenêtres chevauchantes entre pages. Corollaire census : distinguer
 
 **Règle durable ?** non (instance du réflexe existant « raisonner par fileId » — consignée ici pour
 le prochain recensement/campagne de masse C28-26, où l'oublier fausserait les bases de progression).
+
+## 2026-07-16 — Une campagne de rangement définit sa CIBLE avec la MÊME fonction que le flux vivant
+
+**Contexte.** C28-26 (taxonomie à plat, ADR-0023) : la consolidation calculait sa cible
+(`02/AAAA/Entité`) avec SA propre formule pendant que le flux vivant v2 classait autrement
+(à plat/entité, jamais d'année). Trois relecteurs indépendants de la flotte ont convergé sur la
+divergence : chaque document classé par le flux aurait été re-proposé « Déplacer », et re-devenait
+« mal rangé » dès le tick suivant l'exécution du plan → non-convergence STRUCTURELLE, retour du
+bordel garanti. Corrigé par la règle unique `sousCheminDomaine_` (Router.gs) consommée par les
+deux chemins + tripwire test, après arbitrage Marc (« entité OU année »). Même famille : le verrou
+« entité validée » consulté par la campagne devait l'être AUSSI par le routage vivant (sinon le
+flux crée les dossiers que la campagne défait).
+
+**Leçon.** "Quand une CAMPAGNE (consolidation, migration, réorg) définit une CIBLE de rangement,
+la cible DOIT être calculée par la MÊME fonction PURE que le flux vivant — une seule règle, deux
+consommateurs — et verrouillée par un TRIPWIRE test « ce que le flux vivant vient de produire est
+OK pour la campagne ». Deux formules « équivalentes » écrites séparément divergent toujours
+quelque part (année, canonisation, casse, champ source) → la campagne re-déplace en boucle ce que
+le flux vient de classer. Corollaire : un RÉFÉRENTIEL (entités validées) consulté par la campagne
+doit l'être AUSSI par le flux — sinon l'un crée ce que l'autre défait."
+
+**Règle durable ?** oui (puce ajoutée à CLAUDE.md §7).

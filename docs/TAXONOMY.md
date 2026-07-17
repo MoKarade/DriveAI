@@ -49,51 +49,59 @@
 > ⚠️ Ces IDs sont des données de configuration, pas des secrets, mais ils ne doivent vivre que
 > dans `Config.gs` (Phase 1) et ici. Ne pas les disperser dans le code.
 
-## Granularité : un dossier par entité
+## Granularité : classement à PLAT par défaut (ADR-0023 — RÉVISION 2026-07-16)
 
-**Constat du scan :** l'intérieur est plat (un seul `Logement`, un seul `Véhicule`). Le
-système doit le rendre **granulaire** : un dossier par entité, avec un jeu de sous-dossiers
-fixes selon le type d'entité.
+> **Révise l'ancienne règle « un dossier par entité + schémas de sous-dossiers »** (retour Marc
+> 2026-07-16 : ~499 dossiers dont ~102 vides pour ~2 880 fichiers — recensement
+> `docs/diagnostics/2026-07-16-recensement-drive.md`). Le nom `AAAA-MM-JJ_Type_Tiers.ext` porte
+> déjà toute l'information : le dossier n'ajoutait que du bruit.
 
-### Schémas de sous-dossiers fixes par type d'entité
+**Principe** : un document se classe **à la racine de son domaine**
+(`02 · Finances/2026-03-01_Facture_EDF.pdf`). La **RÈGLE UNIQUE** de sous-chemin
+(`sousCheminDomaine_`, Router.gs — partagée par le flux vivant ET la cible de consolidation,
+verrouillée par un tripwire test) n'accorde un sous-dossier que dans TROIS cas EXCLUSIFS, dans
+cet ordre (arbitrage Marc 2026-07-16 « entité OU année ») :
 
-```
-Logement — <Nom> (Ville)/        Véhicule — <Modèle> (immat.)/
-├─ Bail & contrat/               ├─ Achat & financement/
-├─ Factures/  → AAAA/            ├─ Assurance/
-├─ Assurance/                    ├─ Entretien & réparations/
-├─ État des lieux & photos/      └─ Immatriculation (SAAQ)/
-└─ Correspondance/
+1. **Type d'identité** (`Passeport`, `Permis de conduire`…) — dans le domaine du type seulement
+   (01/04/07, cf. `dossierIdentite_`) ; le titulaire vit dans le NOM, jamais un dossier par personne.
+2. **Entité MAJEURE VALIDÉE** au référentiel `Entités` (employeur, école, véhicule, banque…) —
+   dossier au **niveau 1** du domaine, **nom canonique du référentiel**, **sans année** : une
+   entité = UN dossier (`02 · Finances/Desjardins`, jamais `2026/Desjardins`). Le routage v2 ne
+   consulte QUE les validées (`entitesValideesParCle_`) : une entité que Marc n'a pas validée ne
+   crée JAMAIS de dossier (le prompt gate le champ `sousDossier` en amont, le référentiel verrouille).
+3. **Année** (`AAAA`) pour les domaines à volume (`CONFIG.DOMAINES_PAR_ANNEE` = `02 · Finances`),
+   quand aucune entité validée ne s'applique : le tout-venant Finances va dans `02/2026`.
 
-Compte financier — <Banque>/     Diplôme — <Intitulé>/
-├─ Relevés/  → AAAA/             ├─ Diplôme & attestation/
-├─ Contrats & produits/          ├─ Relevés de notes/
-└─ Correspondance/               └─ Mémoire & travaux/
-```
+Sinon : **racine du domaine**. **Interdits** (les mécanismes du bordel, recensement 2026-07-16) :
+dossier par émetteur ponctuel, dossier-catégorie (« Cours », « Devoirs », « Reçus »), « Divers »,
+squelettes de sous-dossiers d'entité (`SCHEMAS_ENTITE` — plus jamais créés),
+`SOUS_DOSSIERS_PAR_ANNEE` (mort avec le chemin v1).
 
-Domaines à fort volume : **sous-dossier par année** (`AAAA`) créé automatiquement. Deux
-mécanismes distincts dans le code :
-- **par sous-dossier d'entité** (`CONFIG.SOUS_DOSSIERS_PAR_ANNEE` = `Factures`, `Relevés`) —
-  ex. `…/Logement — X/Factures/2026/` ;
-- **par domaine transverse** (`CONFIG.DOMAINES_PAR_ANNEE` = `02 · Finances`) — ex. `Impôts/2025/`.
-  Le fiscal est désormais **auto-classé** dans `02 · Finances` (plus de file de revue, décision Marc
-  2026-07-01) ; le découpage Impôts/AAAA relève du domaine, **pas** d'un schéma d'entité.
+## Campagne de consolidation (C28-26, `src/Consolidation.gs`)
+
+Le stock existant est ramené à cette taxonomie par une campagne DRY-RUN (flag
+`CONSOLIDATION_ACTIF`, OFF par défaut) : plan écrit dans l'onglet Sheet **`PlanConsolidation`**
+(Fichier | ID | Action | Cible | Raison | Empreinte), actions **OK / Déplacer / Doublon
+(→ `_Doublons`) / Ignoré** — intra-domaine seulement (jamais de re-domaine, zéro LLM), `04` parcouru
+en CONSTAT seul (garde §1 stricte), doublons par empreinte MD5 propre à la campagne. **Rien n'est
+déplacé** tant que Marc n'a pas validé le plan ; l'exécution sera un chantier séparé (dry-run §8.6).
+Les dossiers VIDÉS relèvent de la corbeille APP validée (ADR-0014), jamais du moteur.
 
 ## Règles structurelles
 
 - **Nouvelle entité** (plus de file de revue, décision Marc 2026-07-01) : le document est **classé au
-  niveau du domaine** et l'entité est **proposée** (`en_attente`) dans l'onglet `Entités` — jamais un
-  blocage. Le dossier d'entité n'est matérialisé qu'**après validation** de Marc (anti-prolifération).
+  niveau du domaine** (règle unique ci-dessus : année ou racine) et l'entité est **proposée**
+  (`en_attente`) dans l'onglet `Entités` — jamais un blocage. Le dossier d'entité n'est matérialisé
+  qu'**après validation** de Marc (anti-prolifération), **à la racine du domaine, SANS schéma de
+  sous-dossiers** (ADR-0023 — l'ancien parent « catégorie » + squelette créait un double dossier et
+  ~100 dossiers vides).
   **Garde anti-variantes** (ADR-0002 §4) : à la proposition, la colonne `Variante possible ?` signale la
   plus proche entité existante du même domaine (« Caisse Desjardins » ≈ « Desjardins ») — Marc fusionne
   en 1 clic au lieu de créer un quasi-doublon. Suggestion seulement, jamais de fusion automatique.
 - **Entité validée par correction** (formulaire, ADR-0003, C6-04) : une correction qui nomme une entité +
   son domaine la promeut directement « validée » (validation EXPLICITE de Marc — pas d'auto-prolifération).
   Invariant : la matérialisation du dossier (`dossierParentEntite_`) doit supporter les **domaines AUTO**
-  (`07 · Santé`) autant que les 7 fixes — une entité peut être validée sous un domaine auto-créé. Le
-  formulaire ne capte pas la **catégorie** : une entité de `03 · Logement & véhicule` validée par formulaire
-  est créée à la **racine du domaine** (pas sous `Logement/`/`Véhicule/`) et sans schéma de sous-dossiers —
-  dégradation propre (dossier créé, docs classables), le sous-classement s'affine ensuite au besoin.
+  (`07 · Santé`) autant que les 7 fixes — une entité peut être validée sous un domaine auto-créé.
 - **Statuts de ligne du référentiel `Entités`** (#10, ADR-0009) : `en_attente`, `validée`,
   `refusée (générique)`, `variante de : X` — **seuls les deux premiers sont actifs** (file de
   validation de l'app / routage). La colonne **« Vu N fois »** est un signal de priorisation
@@ -103,19 +111,22 @@ mécanismes distincts dans le code :
   n'avale ni « Honda Civic 2014 » ni « 2017 » — deux véhicules réels). Jamais d'alias de routage :
   un document dont l'entité est une variante non fusionnée reste classé au domaine tant que Marc
   n'a pas fusionné explicitement.
-- **Multi-entités** : un document concernant plusieurs entités → **raccourci Drive** dans
-  chaque dossier concerné (jamais de copie physique).
-- **Document transverse** (`entite = null`) → dossier générique du domaine.
+- **Multi-entités** : mécanisme **abandonné avec le routage v2** (constat revue C28-26 :
+  `deciderRoutageV2_` renvoie `autresEntites: []` — `creerRaccourcisEntites_` n'est plus appelé).
+  Les raccourcis HÉRITÉS restent en place (« Ignoré » par la consolidation, jamais déplacés) ;
+  re-brancher les raccourcis sur les entités validées serait un chantier explicite, pas un défaut.
+- **Document transverse** (sans entité validée) → année (02) ou racine du domaine (règle unique).
 - **Doublon** (non sensible) : **déplacé** dans `_Doublons` (jamais effacé, jamais en revue — au volume
   du grand rangement, signaler chaque doublon en revue la saturerait). S'applique **aussi** aux doublons
   sensibles (1 exemplaire classé, les autres dans `_Doublons`) — cf. Zone protégée ci-dessous.
 - **Réorg IA (#21, Reorg.gs)** : sont **immuables** pour la réorg — les domaines `NN · …` (deplacer/
   renommer/fusionner interdits ; le renommage de domaine appartient au self-healing `NOMS_DOMAINES_TAG`),
   les files `00 ·` (À trier, À vérifier) et les racines `_…`, les **dossiers de catégorie à ID FIXE**
-  (`CONFIG.CATEGORIES` : `Logement`/`Véhicule` — routés par ID en dur, aucune re-création par nom),
-  les sous-dossiers d'année `AAAA` et les
-  **noms** des sous-dossiers de schéma (l'aiguillage du router matche par nom — les fusionner/renommer
-  rendrait le plan non convergent : le router les re-créerait). `creer` sert aux dossiers STRUCTURELS,
+  (`CONFIG.CATEGORIES` : `Logement`/`Véhicule` — HÉRITAGE du chemin v1, plus une cible de routage
+  depuis ADR-0023 ; la consolidation en drainera les fichiers, puis vidés → corbeille APP ADR-0014),
+  les sous-dossiers d'année `AAAA` et les **noms** des sous-dossiers de schéma hérités (plus jamais
+  créés depuis ADR-0023 — mais tant qu'ils portent des fichiers, les fusionner/renommer hors app
+  casserait le plan de consolidation). `creer` sert aux dossiers STRUCTURELS,
   jamais à inventer une entité (le référentiel `Entités` route par `Dossier ID`). **Fusionner un dossier
   d'entité impose de re-pointer `Entités.Dossier ID`** (contrat C21-06). Zone protégée exclue de
   l'inventaire par remontée d'ancêtres (multi-parents, échec fermé) dès la collecte.

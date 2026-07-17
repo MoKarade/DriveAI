@@ -137,6 +137,7 @@ const CONTRAT = [
   'genererPlanConsolidation_', 'traiterUnConsolidation_', 'collecterConsolidation_',
   'analyserNomClasse_', 'cheminCibleConsolidation_', 'decisionConsolidation_',
   'entitesValideesParCle_', 'empreintesPlanConsolidation_',
+  'sousCheminDomaine_', 'budgetJourConsolidation_', // règle unique flux↔plan + budget quotidien (revue flotte)
 ];
 
 test('surface du moteur : toutes les fonctions du contrat interne sont définies', () => {

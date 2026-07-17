@@ -437,6 +437,29 @@ function entitesCache_() {
   return _entitesCache;
 }
 
+/**
+ * Carte des entités VALIDÉES du référentiel : cleCanoniqueEntite_ → libellé canonique. 1 lecture de
+ * cache/run. Consommée par le ROUTAGE v2 (verrou « dossier d'entité seulement si validée »,
+ * ADR-0023 révisé) et par la CONSOLIDATION (cible du plan) — la MÊME carte des deux côtés, sinon le
+ * plan contredirait le flux vivant. Un référentiel illisible rend {} (échec fermé : à plat).
+ * @return {Object} {cleCanonique: libellé canonique}
+ */
+function entitesValideesParCle_() {
+  var validees = {};
+  try {
+    var cache = entitesCache_(); // accesseur (chargerEntitesCache_ remplit la globale, ne retourne rien)
+    for (var i = 0; i < cache.lignes.length; i++) {
+      var l = cache.lignes[i];
+      if (!estValidee_(l.statut)) continue;
+      var cle = cleCanoniqueEntite_(l.domaine, l.entite);
+      if (cle) validees[cle] = canoniserEntite_(l.entite);
+    }
+  } catch (e) {
+    journalErreur_('Entités', 'Référentiel illisible (aucun dossier d\'entité ce run — à plat) : ' + e);
+  }
+  return validees;
+}
+
 /** Une entité est « validée » dès que son statut le dit (tolère « validee » et « validee (auto ≥3) » — #18). */
 function estValidee_(statut) {
   return statut === 'validee' || statut === 'validée' || statut === 'valide' ||
@@ -651,10 +674,13 @@ function promouvoirEntiteValidee_(corr) {
 
 /* ---------- P2-04 : création des dossiers d'entités validées ---------- */
 
-/** Dossier parent d'une entité : catégorie connue si dispo, sinon racine du domaine (fixe OU auto-créé). */
+/**
+ * Dossier parent d'une entité : la RACINE du domaine, TOUJOURS (ADR-0023 : une entité validée = UN
+ * dossier au niveau 1 du domaine, aligné sur le find-or-create du routeur v2 — l'ancien parent
+ * « catégorie » créait un DOUBLE dossier par entité et nourrissait la prolifération, revue
+ * structure-keeper C28-26). Le paramètre catégorie est conservé pour compat d'appel mais IGNORÉ.
+ */
 function dossierParentEntite_(domaine, categorie) {
-  var cats = CONFIG.CATEGORIES[domaine];
-  if (cats && categorie && cats[categorie]) return DriveApp.getFolderById(cats[categorie]);
   if (CONFIG.DOMAINES[domaine]) return DriveApp.getFolderById(CONFIG.DOMAINES[domaine]);
   // Domaine AUTO (ex. « 07 · Santé ») : le formulaire de correction le propose (domainesAutorises_) et
   // le LLM peut le renvoyer → il DOIT être matérialisable, sinon l'entité validée boucle en « Domaine
@@ -697,15 +723,13 @@ function creerDossiersEntitesValidees_(estBudgetDepasse) {
       continue;
     }
     var dossier = sousDossier_(parent, String(l.entite));
-    // Sous-dossiers fixes selon le type (aucun si type non reconnu).
-    var schema = CONFIG.SCHEMAS_ENTITE[l.type] || [];
-    for (var s = 0; s < schema.length; s++) sousDossier_(dossier, schema[s]);
-
+    // ADR-0023 : PLUS JAMAIS de squelette de sous-dossiers (SCHEMAS_ENTITE) — le recensement
+    // 2026-07-16 a mesuré ~100 dossiers vides nés de ces schémas jamais remplis. Le contenu de
+    // l'entité vit À PLAT dans son dossier (le nom AAAA-MM-JJ_Type_Tiers porte l'information).
     f.getRange(l.ligneSheet, idx['Dossier ID'] + 1).setValue(dossier.getId());
     l.dossierId = dossier.getId(); // tient le cache à jour pour le routage du même run
     creees++;
-    journalInfo_('Entités', 'Dossier d\'entité créé : ' + l.entite +
-      (schema.length ? ' (+' + schema.length + ' sous-dossiers)' : ''));
+    journalInfo_('Entités', 'Dossier d\'entité créé (racine du domaine, à plat) : ' + l.entite);
   }
   if (creees) journalInfo_('Entités', creees + ' dossier(s) d\'entité créé(s).');
 }

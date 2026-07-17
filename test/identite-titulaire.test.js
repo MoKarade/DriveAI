@@ -102,17 +102,20 @@ test('nommerDocument_ : émetteur > descripteur > type seul — JAMAIS « Inconn
   assert.ok(!/inconnu/i.test(n));
 });
 
-test('sousDossierPourNom_ (ADR-0023) : identité → type ; entité majeure → canonique ; sinon À PLAT (chaîne vide)', () => {
+test('sousDossierPourNom_ (ADR-0023 révisé) : identité → type ; CANDIDAT d\'entité = champ sousDossier gaté ; sinon vide', () => {
   // pièce d'identité → type (l'exception au « à plat », inchangée)
   assert.strictEqual(ctx.sousDossierPourNom_({ estDocumentIdentite: true, sousDossierType: 'Passeport' }), 'Passeport');
-  // entité majeure → forme canonique unifiée (suffixe juridique retiré)
-  assert.strictEqual(ctx.sousDossierPourNom_({ entite: 'IUT du Littoral' }), 'IUT Du Littoral');
-  assert.strictEqual(ctx.sousDossierPourNom_({ entite: 'Desjardins Inc.' }), 'Desjardins');
-  // un ÉMETTEUR seul ne crée plus JAMAIS de dossier (l'ancien repli fabriquait un dossier par marchand)
+  // candidat d'entité = le champ `sousDossier` (gaté « majeure » par le prompt v2), canonisé
+  assert.strictEqual(ctx.sousDossierPourNom_({ sousDossier: 'IUT du Littoral' }), 'IUT Du Littoral');
+  assert.strictEqual(ctx.sousDossierPourNom_({ sousDossier: 'Desjardins Inc.' }), 'Desjardins');
+  // le champ `entite` (RICHE, non gaté — rempli même pour un émetteur ponctuel) ne route JAMAIS :
+  // router dessus ferait revenir le dossier-par-émetteur (revue structure-keeper C28-26)
+  assert.strictEqual(ctx.sousDossierPourNom_({ entite: 'Hydro-Québec' }), '');
+  // un ÉMETTEUR seul non plus (l'ancien repli fabriquait un dossier par marchand)
   assert.strictEqual(ctx.sousDossierPourNom_({ emetteur: 'IUT du Littoral' }), '');
-  // la CATÉGORIE de l'analyse ne crée plus de dossier (« Cours », « Devoirs » → à plat)
+  // une CATÉGORIE dans sousDossier est filtrée par le lexique générique (double filet sous le prompt)
   assert.strictEqual(ctx.sousDossierPourNom_({ sousDossier: 'Cours', type_doc: 'Notes de cours' }), '');
-  // rien → à plat, plus jamais un dossier de type ni « Divers »
+  // rien → vide, plus jamais un dossier de type ni « Divers »
   assert.strictEqual(ctx.sousDossierPourNom_({ type_doc: 'Devoir' }), '');
   assert.strictEqual(ctx.sousDossierPourNom_({}), '');
 });

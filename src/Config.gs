@@ -443,6 +443,9 @@ var CONFIG = {
                                           // l'INTAKE — sinon le rangement affame le classement, cf. P1-19)
   RANGEMENT_SEUIL_FILE: 40,               // ne collecte de NOUVEAUX fichiers que si 00·À trier en a moins
                                           // (drainer avant d'alimenter, sans affamer ni déborder la file)
+  RANGEMENT_RECENS_ESSAIS_MAX: 3,         // barre de progression : nb de recensements incomplets tolérés
+                                          // avant d'accepter un compte PARTIEL comme base (anti-blocage
+                                          // sur un Drive énorme — la re-base/finalisation corrigent l'écart)
 
   // ---- Campagne de CONSOLIDATION de l'arborescence (C28-26, ADR-0023 — Consolidation.gs) ----
   CONSOLIDATION_ACTIF: false,             // interrupteur du DRY-RUN (génération du plan seule) — OFF par
@@ -450,10 +453,10 @@ var CONFIG = {
   CONSOLIDATION_TAG: 'conso-1',           // tag de campagne (clé de convergence `conso|<tag>|<fileId>`)
   CONSOLIDATION_BUDGET_MS: 3 * 60 * 1000, // sous-budget PROPRE par run (le hash MD5 lit les octets — sans
                                           // cette borne, un run mangerait le budget des étapes suivantes)
+  CONSOLIDATION_BUDGET_JOUR_MS: 12 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
+                                          // un plafond par RUN ne borne pas la JOURNÉE — ×288 ticks > quota
+                                          // runtime ~90 min/j ; patron GMAIL_HISTO/SYNC_BUDGET_JOUR_MS)
   CONSOLIDATION_MAX_PAR_RUN: 40,          // fichiers ajoutés au plan par run (le coût réel = le hash)
-  RANGEMENT_RECENS_ESSAIS_MAX: 3,         // barre de progression : nb de recensements incomplets tolérés
-                                          // avant d'accepter un compte PARTIEL comme base (anti-blocage
-                                          // sur un Drive énorme — la re-base/finalisation corrigent l'écart)
   PROGRESSION_PURGE_MS: 48 * 60 * 60 * 1000, // C28-18 : une ligne « terminé » de l'onglet Progression
                                           // reste visible 48 h (Marc voit la fin), puis est purgée —
                                           // l'onglet ne montre que le PRÉSENT, l'histoire vit au Journal
