@@ -443,14 +443,6 @@ var CONFIG = {
                                           // l'INTAKE — sinon le rangement affame le classement, cf. P1-19)
   RANGEMENT_SEUIL_FILE: 40,               // ne collecte de NOUVEAUX fichiers que si 00·À trier en a moins
                                           // (drainer avant d'alimenter, sans affamer ni déborder la file)
-
-  // ---- Campagne de CONSOLIDATION de l'arborescence (C28-26, ADR-0023 — Consolidation.gs) ----
-  CONSOLIDATION_ACTIF: false,             // interrupteur du DRY-RUN (génération du plan seule) — OFF par
-                                          // défaut : Marc allume quand il veut produire le PlanConsolidation
-  CONSOLIDATION_TAG: 'conso-1',           // tag de campagne (clé de convergence `conso|<tag>|<fileId>`)
-  CONSOLIDATION_BUDGET_MS: 3 * 60 * 1000, // sous-budget PROPRE par run (le hash MD5 lit les octets — sans
-                                          // cette borne, un run mangerait le budget des étapes suivantes)
-  CONSOLIDATION_MAX_PAR_RUN: 40,          // fichiers ajoutés au plan par run (le coût réel = le hash)
   RANGEMENT_RECENS_ESSAIS_MAX: 3,         // barre de progression : nb de recensements incomplets tolérés
                                           // avant d'accepter un compte PARTIEL comme base (anti-blocage
                                           // sur un Drive énorme — la re-base/finalisation corrigent l'écart)
