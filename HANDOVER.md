@@ -19,6 +19,14 @@
 >   réellement à sec pour le 15/07 (vidé par le vieux code) → recharge la nuit, plafonds désormais
 >   actifs. Leçon durable ajoutée (CLAUDE.md §7, 3ᵉ piège auto-déploiement : vérifier la PRISE
 >   D'EFFET par signal indépendant, pas le run vert).
+> • **2026-07-17 — C28-26 : campagne de consolidation ALLUMÉE (`CONSOLIDATION_ACTIF: true`).**
+>   Correctifs revue flotte mergés (#183) → allumage (« continue », Marc). Le moteur GÉNÈRE le plan
+>   dans l'onglet `PlanConsolidation` (~12 min/j max, dry-run PUR — rien ne bouge). ⚠ PRISE D'EFFET :
+>   le déclencheur doit charger le nouveau code — Marc ouvre l'éditeur Apps Script + exécute
+>   `installerTrigger` ; signal indépendant = l'onglet `PlanConsolidation` se remplit. Fin de
+>   campagne = Journal « Plan de consolidation TERMINÉ (tag conso-1) ». ENSUITE : Marc valide le
+>   plan (+ ses entités dans l'app + liste des logements) → chantier d'EXÉCUTION des déplacements
+>   (séparé, avec re-vérif §1 par mutation, jamais codé sans nouveau plan §4).
 > • **2026-07-16 — C28-26 (suite) : correctifs revue flotte (PR3).** 4 agents, verdicts convergents ;
 >   tout corrigé avant tout allumage : (1) 🔴 `entitesValideesParCle_` mort-né (`chargerEntitesCache_`
 >   ne retourne rien → `entitesCache_()`) ; (2) 🔴 verrou « entité majeure » re-branché sur le champ
