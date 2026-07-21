@@ -138,6 +138,7 @@ const CONTRAT = [
   'analyserNomClasse_', 'cheminCibleConsolidation_', 'decisionConsolidation_',
   'entitesValideesParCle_', 'empreintesPlanConsolidation_',
   'sousCheminDomaine_', 'budgetJourConsolidation_', // règle unique flux↔plan + budget quotidien (revue flotte)
+  'seedEntitesMarc_', // seed one-shot des entités de Marc (décision 2026-07-17), appelé depuis Main
 ];
 
 test('surface du moteur : toutes les fonctions du contrat interne sont définies', () => {
