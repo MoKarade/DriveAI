@@ -493,6 +493,11 @@ function tickDriveAI() {
       // Télémétrie coûts & quotas (C28-24) : même contrat que Progression — une seule écriture
       // par tick, lue en poll par l'app. Enveloppée : un échec ne bloque jamais le reste.
       try { majTelemetrie_(); } catch (e) { journalErreur_('Télémétrie', 'MàJ télémétrie impossible : ' + e); }
+      // Résumé hub (C28-27) : les 4 métriques du widget hubperso.com sont PRÉ-CALCULÉES ici, une
+      // fois par tick, et persistées (Property DriveAI_HUB_SUMMARY). L'action hub-summary de la web
+      // app ne fait plus que LIRE cette Property → réponse en ms (le calcul à la volée dépassait le
+      // délai du broker Vercel — 500 en boucle). SECONDAIRE et enveloppée : un échec ne bloque rien.
+      try { majResumeHub_(); } catch (e) { journalErreur_('Hub', 'MàJ résumé hub impossible : ' + e); }
       try { bornerJournal_(); } catch (e) { journalErreur_('Santé', 'Journal borné impossible : ' + e); }
     } finally {
       verrou.releaseLock();

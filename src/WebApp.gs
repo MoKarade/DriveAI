@@ -348,26 +348,44 @@ function actionPasSuspect_(e) {
  * (`api/hub/_engineState.ts`), JAMAIS directement au hub (le jeton `x-hub-token` est vérifié
  * côté Vercel ; ici c'est `DriveAI_WEBAPP_SECRET` qui garde la porte, comme les autres actions).
  * ADR-0007 : 4 compteurs + 1 horodatage — aucun nom de fichier, aucun contenu.
- * Échec fermé : toute exception (Sheet/Drive en hoquet) remonte au try/catch du doPost →
- * `{ ok:false, erreur }` — le broker n'affiche alors AUCUNE donnée (leçon « fallback d'état » :
- * on ne recrée jamais rien ici, `feuille_` passe par `getSheetEtat_`).
+ *
+ * LECTURE SEULE d'une Property PRÉ-CALCULÉE au tick (`DriveAI_HUB_SUMMARY`, cf. majResumeHub_) :
+ * le calcul (getValues Index+Journal + liste Drive de la file) dépassait le délai du broker Vercel
+ * quand il était fait à chaque appel → 500 en boucle (C28-27, mise en service). Ici, réponse en ms.
+ * Property absente (aucun tick depuis le déploiement) → `lastRunAt:null` : le broker rend « building »
+ * honnête (no-fake-data). Échec fermé : toute exception remonte au try/catch du doPost.
  */
 function actionHubSummary_() {
-  var lastTick = Number(PropertiesService.getScriptProperties().getProperty('DriveAI_LAST_TICK')) || 0;
+  var brut = PropertiesService.getScriptProperties().getProperty('DriveAI_HUB_SUMMARY');
+  var etat = brut ? JSON.parse(brut) : null;
+  if (!etat || typeof etat !== 'object') {
+    return { ok: true, etat: { reviewQueueCount: 0, filedLast7d: 0, errorsLast7d: 0, lastRunAt: null } };
+  }
+  return { ok: true, etat: etat };
+}
+
+/**
+ * Pré-calcule les 4 métriques du widget hub et les persiste (Property `DriveAI_HUB_SUMMARY`, JSON
+ * compact ~90 octets ≪ 9 Ko). Appelée UNE fois par tick, dans le finally, ENVELOPPÉE (Main.gs) :
+ * un échec ne bloque jamais l'intake. Le calcul (getValues + liste Drive) est ici sans risque de
+ * délai — le tick a son propre garde-temps. `lastRunAt` = heartbeat DriveAI_LAST_TICK (écrit juste
+ * avant dans le même finally). ADR-0007 : métadonnées seulement.
+ */
+function majResumeHub_() {
+  var props = PropertiesService.getScriptProperties();
+  var lastTick = Number(props.getProperty('DriveAI_LAST_TICK')) || 0;
   var compte = compterMetriquesHub_(
     feuille_('Index').getDataRange().getValues(),
     feuille_('Journal').getDataRange().getValues(),
     Date.now()
   );
-  return {
-    ok: true,
-    etat: {
-      reviewQueueCount: compterDossierRevue_(),
-      filedLast7d: compte.classes7j,
-      errorsLast7d: compte.erreurs7j,
-      lastRunAt: lastTick ? new Date(lastTick).toISOString() : null
-    }
+  var etat = {
+    reviewQueueCount: compterDossierRevue_(),
+    filedLast7d: compte.classes7j,
+    errorsLast7d: compte.erreurs7j,
+    lastRunAt: lastTick ? new Date(lastTick).toISOString() : null
   };
+  props.setProperty('DriveAI_HUB_SUMMARY', JSON.stringify(etat));
 }
 
 /**

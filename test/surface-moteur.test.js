@@ -60,6 +60,8 @@ const CONTRAT = [
   'majProgressions_', 'lignesProgression_', 'assurerEnteteProgression_', 'lireSoldeDemande_',
   // télémétrie coûts & quotas (C28-24) : rendu centralisé (tick finally), lu par l'app (PR3)
   'majTelemetrie_', 'lignesTelemetrie_', 'compteurFilsJour_',
+  // résumé hub (C28-27) : pré-calcul au tick finally (Main.gs) des 4 métriques du widget hubperso.com
+  'majResumeHub_', 'compterMetriquesHub_', 'compterDossierRevue_', 'cleDocumentIndex_', 'tsCellule_',
   'compterRestantMigration_', 'compterRestantReanalyse_', 'compterCampagneDossier_',
   'majCompteurCampagne_', 'finaliserCompteurCampagne_',
   'exporterTexteNatif_', 'exportNatifMime_', // natifs Google lisibles (R3)
