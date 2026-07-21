@@ -21,7 +21,7 @@
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { Requete, Reponse, repondreJson } from '../_lib';
-import { getEngineState } from './_engineState';
+import { getEngineState, EngineState } from './_engineState';
 
 /** Version du contrat hub (= CONTRACT_VERSION du package). Bump = rupture → nouveau tag + re-pin. */
 const CONTRACT_VERSION = 1;
@@ -31,6 +31,8 @@ const HUB_TOKEN_HEADER = 'x-hub-token';
 const URL_APP = 'https://drive.hubperso.com';
 /** Couleur d'accent du widget (hex 6 digits) — accent de l'app (styles.css `--accent`, v5 Material Dark). */
 const COULEUR = '#8ab4f8';
+/** Moteur « muet » au-delà de 45 min sans tick (déclencheur à 30 min + marge) → status degraded. */
+const SEUIL_MUET_MS = 45 * 60 * 1000;
 
 /**
  * Comparaison de jetons en TEMPS CONSTANT, insensible aux longueurs différentes : on compare les
@@ -44,7 +46,7 @@ function jetonValide(fourni: string | string[] | undefined, attendu: string): bo
   return timingSafeEqual(a, b);
 }
 
-export default function handler(req: Requete, res: Reponse): void {
+export default async function handler(req: Requete, res: Reponse): Promise<void> {
   if (req.method !== 'GET') {
     repondreJson(res, 405, { error: 'method not allowed' });
     return;
@@ -65,21 +67,58 @@ export default function handler(req: Requete, res: Reponse): void {
 
   const app = { id: 'driveai', name: 'DriveAI', url: URL_APP, color: COULEUR };
 
-  // getEngineState() est le POINT DE BASCULE Phase 0 → Phase 1. En Phase 0 il renvoie null : le
-  // summary est « building » (honnête, no-fake-data). Le mapping `etat` → metrics + status 'ok'
-  // est une tâche PHASE 1 documentée (BACKLOG + _engineState.ts + « ## Intégration Hub » de
-  // CLAUDE.md) — volontairement NON implémentée ici (périmètre : ne rien entamer de la Phase 1).
-  void getEngineState();
+  // getEngineState() est le POINT DE BASCULE Phase 0 → Phase 1 (C28-27 : branché). `null` =
+  // pas de données réelles (intégration pas configurée, ou moteur jamais passé) → « building »
+  // honnête, identique à la Phase 0. Une PANNE du canal (throw) → 500, jamais une donnée
+  // partielle ni inventée (échec fermé — plan architecte 2026-07-21).
+  let etat: EngineState | null;
+  try {
+    etat = await getEngineState();
+  } catch {
+    repondreJson(res, 500, { status: 'error', error: 'Moteur indisponible' });
+    return;
+  }
 
-  // Équivalent EXACT de buildingSummary(app, { alertLabel }) du contrat (verrouillé par le test),
-  // enrichi de l'action « Ouvrir DriveAI ». Aucune métrique inventée.
+  if (etat === null) {
+    // Équivalent EXACT de buildingSummary(app, { alertLabel }) du contrat (verrouillé par le
+    // test), enrichi de l'action « Ouvrir DriveAI ». Aucune métrique inventée.
+    repondreJson(res, 200, {
+      contractVersion: CONTRACT_VERSION,
+      app,
+      generatedAt: new Date().toISOString(),
+      status: 'building',
+      metrics: [],
+      alerts: [{ label: 'Moteur en Phase 0 — classement pas encore actif', severity: 'info' }],
+      actions: [{ label: 'Ouvrir DriveAI', kind: 'link', href: URL_APP }],
+    });
+    return;
+  }
+
+  // Données réelles : 3 compteurs en métriques, lastRunAt en dataAsOf. « degraded » si le
+  // moteur est muet depuis plus de SEUIL_MUET_MS (déclencheur 30 min + marge). Les alertes ne
+  // disent que ce qui est vrai : rien à signaler = aucune alerte.
+  const muet = Date.now() - Date.parse(etat.lastRunAt) > SEUIL_MUET_MS;
+  const alerts: { label: string; severity: 'info' | 'warn' }[] = [];
+  if (muet) alerts.push({ label: 'Moteur silencieux depuis plus de 45 minutes', severity: 'warn' });
+  if (etat.errorsLast7d > 0) {
+    alerts.push({ label: etat.errorsLast7d + ' erreur(s) de traitement sur 7 jours', severity: 'warn' });
+  }
+  if (etat.reviewQueueCount > 0) {
+    alerts.push({ label: etat.reviewQueueCount + ' document(s) en attente dans la file de revue', severity: 'info' });
+  }
+
   repondreJson(res, 200, {
     contractVersion: CONTRACT_VERSION,
     app,
     generatedAt: new Date().toISOString(),
-    status: 'building',
-    metrics: [],
-    alerts: [{ label: 'Moteur en Phase 0 — classement pas encore actif', severity: 'info' }],
+    dataAsOf: etat.lastRunAt,
+    status: muet ? 'degraded' : 'ok',
+    metrics: [
+      { label: 'Classés (7 jours)', value: etat.filedLast7d, format: 'number' },
+      { label: 'File de revue', value: etat.reviewQueueCount, format: 'number' },
+      { label: 'Erreurs (7 jours)', value: etat.errorsLast7d, format: 'number' },
+    ],
+    alerts,
     actions: [{ label: 'Ouvrir DriveAI', kind: 'link', href: URL_APP }],
   });
 }
