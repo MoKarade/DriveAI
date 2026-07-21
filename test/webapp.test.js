@@ -6,7 +6,7 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { load } = require('./harness');
+const { load, iter, fakeFile } = require('./harness');
 
 const ctx = load(['Config.gs', 'WebApp.gs']);
 const DOMAINES = ['02 · Finances', '03 · Logement & véhicule', '04 · Immigration'];
@@ -300,4 +300,69 @@ test('tsCellule_ : objet Date (getValues) et chaîne ISO acceptés, illisible �
   assert.strictEqual(ctx.tsCellule_('2026-07-20T12:00:00Z'), d.getTime());
   assert.ok(isNaN(ctx.tsCellule_('n/importe quoi')));
   assert.ok(isNaN(ctx.tsCellule_(null)) || isNaN(ctx.tsCellule_('null')));
+});
+
+/* ---------- Résumé hub (C28-27) : lecture Property + pré-calcul au tick ---------- */
+
+/** Contexte web app avec Property store et mocks Sheet/Drive injectables. */
+function ctxHub(opts) {
+  opts = opts || {};
+  const c = load(['Config.gs', 'WebApp.gs']);
+  const props = Object.assign({}, opts.props);
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in props ? props[k] : null),
+    setProperty: (k, v) => { props[k] = String(v); },
+  }) };
+  c.feuille_ = (nom) => ({ getDataRange: () => ({ getValues: () => (opts.feuilles || {})[nom] || [[]] }) });
+  c.DriveApp = { getFolderById: () => ({ getFiles: () => iter(opts.fichiersRevue || []) }) };
+  return { c, props };
+}
+
+test('actionHubSummary_ : Property absente → lastRunAt null (broker rendra « building »)', () => {
+  const { c } = ctxHub({});
+  assert.deepStrictEqual(plat(c.actionHubSummary_()), {
+    ok: true,
+    etat: { reviewQueueCount: 0, filedLast7d: 0, errorsLast7d: 0, lastRunAt: null },
+  });
+});
+
+test('actionHubSummary_ : lit la Property pré-calculée telle quelle (aucun calcul)', () => {
+  const etat = { reviewQueueCount: 2, filedLast7d: 14, errorsLast7d: 1, lastRunAt: '2026-07-21T20:00:00.000Z' };
+  const { c } = ctxHub({ props: { DriveAI_HUB_SUMMARY: JSON.stringify(etat) } });
+  assert.deepStrictEqual(plat(c.actionHubSummary_()), { ok: true, etat });
+});
+
+test('majResumeHub_ : calcule les 4 métriques et les persiste dans DriveAI_HUB_SUMMARY', () => {
+  const recent = new Date(Date.now() - 24 * 60 * 60 * 1000); // < 7 j quelle que soit l'horloge du test
+  const tick = Date.now() - 5 * 60 * 1000;
+  const feuilles = {
+    Index: [
+      ['Clé', 'Date', 'Nom', 'Domaine', 'Chemin', 'Statut', 'Empreinte', 'Confiance'],
+      ['drive|F1', recent, 'a.pdf', '02', 'x', 'classé', '', 0.9],
+      ['migre|m2|F1', recent, 'a.pdf', '02', 'y', 'classé', '', 0.9], // même fichier → 1
+    ],
+    Journal: [['Date', 'Niveau', 'Source', 'Message'], [recent, 'ERREUR', 'Pipeline', 'boum']],
+  };
+  const { c, props } = ctxHub({
+    props: { DriveAI_LAST_TICK: String(tick) },
+    feuilles,
+    fichiersRevue: [fakeFile({}), fakeFile({}), fakeFile({})], // 3 en file de revue
+  });
+  c.majResumeHub_();
+  const ecrit = JSON.parse(props.DriveAI_HUB_SUMMARY);
+  assert.strictEqual(ecrit.reviewQueueCount, 3);
+  assert.strictEqual(ecrit.filedLast7d, 1, 'drive|F1 + migre|m2|F1 = un seul document');
+  assert.strictEqual(ecrit.errorsLast7d, 1);
+  assert.strictEqual(ecrit.lastRunAt, new Date(tick).toISOString());
+});
+
+test('majResumeHub_ puis actionHubSummary_ : la lecture rend EXACTEMENT ce que le tick a écrit', () => {
+  const feuilles = { Index: [['h']], Journal: [['h']] };
+  const tick = Date.now() - 5 * 60 * 1000;
+  const { c } = ctxHub({ props: { DriveAI_LAST_TICK: String(tick) }, feuilles, fichiersRevue: [] });
+  c.majResumeHub_();
+  assert.deepStrictEqual(plat(c.actionHubSummary_()), {
+    ok: true,
+    etat: { reviewQueueCount: 0, filedLast7d: 0, errorsLast7d: 0, lastRunAt: new Date(tick).toISOString() },
+  });
 });
