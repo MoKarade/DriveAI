@@ -139,6 +139,9 @@ const CONTRAT = [
   'entitesValideesParCle_', 'empreintesPlanConsolidation_',
   'sousCheminDomaine_', 'budgetJourConsolidation_', // règle unique flux↔plan + budget quotidien (revue flotte)
   'seedEntitesMarc_', // seed one-shot des entités de Marc (décision 2026-07-17), appelé depuis Main
+  // exécution du plan de consolidation (ADR-0024) — moveTo seul, §1 par mutation
+  'appliquerPlanConsolidation_', 'appliquerLigneConsolidation_', 'decouperCiblePlan_',
+  'ligneAAppliquer_', 'budgetJourConsoExec_', 'dossierCiblePlan_', 'nbParentsBorne_',
 ];
 
 test('surface du moteur : toutes les fonctions du contrat interne sont définies', () => {

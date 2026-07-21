@@ -19,6 +19,22 @@
 >   réellement à sec pour le 15/07 (vidé par le vieux code) → recharge la nuit, plafonds désormais
 >   actifs. Leçon durable ajoutée (CLAUDE.md §7, 3ᵉ piège auto-déploiement : vérifier la PRISE
 >   D'EFFET par signal indépendant, pas le run vert).
+> • **2026-07-21 — C28-26-EXEC : « c'est toi qui le fais » (ADR-0024, 2 PR).** Décision Marc
+>   (verbatim : changer tout LIVE, pas de dossier par banque, ajout de dossiers sécurisé/utile
+>   seulement — dérogation §4 assumée, revue flotte en garde-fou). **PR-A #185 (mergée)** : seed
+>   one-shot des 15 entités RÉELLES validées par le code (4 logements : 3325 4e Avenue, 783 Avenue
+>   Moreau, 3987 Route Des Rivières, 1548 Avenue De La Roselière ; Ford Fiesta, VW Jetta,
+>   Toyota bZ ; Automatech, Robovic ; 6 écoles) + DÉVALIDATION des entités 02 (« pas de dossier
+>   par banque », statut tracé) + auto-validation ≥3 vues COUPÉE (`ENTITES_AUTO_VALIDATION:
+>   false`) + prompts sans banque. **PR-B** : NOUVEAU `src/ConsolidationExec.gs` — applique
+>   Déplacer/Doublon du PlanConsolidation au fil de l'eau : `moveTo` SEULE mutation (verrou de
+>   surface), §1 re-vérifiée STRICTE par mutation, multi-parents jamais déplacé, cible parsée/
+>   validée (`decouperCiblePlan_` — jamais un chemin arbitraire), curseur append-only, abandon
+>   tracé à 3 échecs (curseur jamais gelé), budgets 2 min/run + 10 min/j (ms réelles),
+>   `CONSOLIDATION_EXEC_ACTIF: false` = suspension immédiate. Les dossiers VIDÉS restent pour la
+>   corbeille APP (clic Marc, ADR-0014 — non négociable). 587 tests. **⚠ Marc : `installerTrigger`
+>   pour activer, puis le Drive se transforme tout seul ; sources NotebookLM à ajouter :
+>   `src/ConsolidationExec.gs`, `docs/adr/0024-execution-consolidation.md`.**
 > • **2026-07-17 — C28-26 : campagne de consolidation ALLUMÉE (`CONSOLIDATION_ACTIF: true`).**
 >   Correctifs revue flotte mergés (#183) → allumage (« continue », Marc). Le moteur GÉNÈRE le plan
 >   dans l'onglet `PlanConsolidation` (~12 min/j max, dry-run PUR — rien ne bouge). ⚠ PRISE D'EFFET :

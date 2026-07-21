@@ -459,6 +459,12 @@ var CONFIG = {
                                           // un plafond par RUN ne borne pas la JOURNÉE — ×288 ticks > quota
                                           // runtime ~90 min/j ; patron GMAIL_HISTO/SYNC_BUDGET_JOUR_MS)
   CONSOLIDATION_MAX_PAR_RUN: 40,          // fichiers ajoutés au plan par run (le coût réel = le hash)
+  // Exécution du plan (ConsolidationExec.gs, ADR-0024 — décision Marc 2026-07-17 « change tout live ») :
+  CONSOLIDATION_EXEC_ACTIF: true,         // applique Déplacer/Doublon du PlanConsolidation (moveTo seul,
+                                          // §1 re-vérifiée par mutation) — false = suspension immédiate
+  CONSOLIDATION_EXEC_BUDGET_MS: 2 * 60 * 1000,        // sous-budget par run
+  CONSOLIDATION_EXEC_BUDGET_JOUR_MS: 10 * 60 * 1000,  // budget QUOTIDIEN en ms réelles persistées
+  CONSOLIDATION_EXEC_MAX_PAR_RUN: 60,     // lignes du plan consommées par run au maximum
   SEED_ENTITES_TAG: 'seed-1',             // seed one-shot des entités de Marc (Entites.seedEntitesMarc_)
   ENTITES_AUTO_VALIDATION: false,         // auto-validation « vue ≥ 3 fois » COUPÉE (décision Marc
                                           // 2026-07-17 : « l'ajout de dossiers vraiment sécurisé,
