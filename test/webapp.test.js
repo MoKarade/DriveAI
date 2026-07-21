@@ -237,3 +237,67 @@ test('actionPasSuspect_ : quota Gmail mort à la lecture du fil → QUOTA_GMAIL,
   assert.deepStrictEqual({ ok: r.ok, erreur: r.erreur }, { ok: false, erreur: 'QUOTA_GMAIL' });
   assert.strictEqual(confiance.length, 0);
 });
+
+/* ---------- Résumé hub (C28-27) : compteurs PURS ---------- */
+
+test('compterMetriquesHub_ : classés 7 j (statut colonne 5, date colonne 1), erreurs Journal 7 j', () => {
+  const maintenant = Date.parse('2026-07-21T12:00:00Z');
+  const recent = new Date('2026-07-20T12:00:00Z');   // objet Date, comme getValues()
+  const vieux = new Date('2026-07-01T12:00:00Z');
+  const index = [
+    ['Clé', 'Date', 'Nom', 'Domaine', 'Chemin', 'Statut', 'Empreinte', 'Confiance'], // en-têtes
+    ['m1|0|a.pdf|123', recent, 'a.pdf', '02', 'x', 'classé', '', 0.9],
+    ['m2|0|b.pdf|456', vieux, 'b.pdf', '02', 'x', 'classé', '', 0.9],                // hors fenêtre
+    ['m3|0|c.pdf|789', recent, 'c.pdf', '', '', 'doublon', '', ''],                  // pas « classé »
+    ['drive|F1', recent, 'd.pdf', '02', 'x', 'classé', '', 0.8],
+  ];
+  const journal = [
+    ['Date', 'Niveau', 'Source', 'Message'],
+    [recent, 'ERREUR', 'Pipeline', 'boum'],
+    [vieux, 'ERREUR', 'Pipeline', 'vieux boum'],   // hors fenêtre
+    [recent, 'INFO', 'Tick', 'ras'],               // pas une erreur
+  ];
+  const r = ctx.compterMetriquesHub_(index, journal, maintenant);
+  assert.deepStrictEqual({ classes7j: r.classes7j, erreurs7j: r.erreurs7j }, { classes7j: 2, erreurs7j: 1 });
+});
+
+test('compterMetriquesHub_ : un document re-classé par campagne compte UNE fois (dédup par fileId)', () => {
+  const maintenant = Date.parse('2026-07-21T12:00:00Z');
+  const recent = new Date('2026-07-20T12:00:00Z');
+  const index = [
+    ['en-têtes'],
+    ['drive|F1', recent, 'a.pdf', '02', 'x', 'classé', '', ''],
+    ['migre|m2|F1', recent, 'a.pdf', '02', 'y', 'classé', '', ''],   // même fichier, campagne
+    ['shared|F2', recent, 'b.pdf', '02', 'x', 'classé', '', ''],
+  ];
+  const r = ctx.compterMetriquesHub_(index, [['en-têtes']], maintenant);
+  assert.strictEqual(r.classes7j, 2, 'F1 (drive+migre) = 1 document ; F2 = 1');
+});
+
+test('compterMetriquesHub_ : dates illisibles ignorées, jamais NaN dans les comptes', () => {
+  const maintenant = Date.parse('2026-07-21T12:00:00Z');
+  const index = [
+    ['en-têtes'],
+    ['k1', 'pas-une-date', 'a.pdf', '', '', 'classé', '', ''],
+    ['k2', '', 'b.pdf', '', '', 'classé', '', ''],
+  ];
+  const journal = [['en-têtes'], ['pas-une-date', 'ERREUR', 'X', 'y']];
+  const r = ctx.compterMetriquesHub_(index, journal, maintenant);
+  assert.deepStrictEqual({ classes7j: r.classes7j, erreurs7j: r.erreurs7j }, { classes7j: 0, erreurs7j: 0 });
+});
+
+test('cleDocumentIndex_ : drive/shared/migre normalisées vers le fileId, le reste inchangé', () => {
+  assert.strictEqual(ctx.cleDocumentIndex_('drive|F1'), 'doc|F1');
+  assert.strictEqual(ctx.cleDocumentIndex_('shared|F1'), 'doc|F1');
+  assert.strictEqual(ctx.cleDocumentIndex_('migre|m2|F1'), 'doc|F1');
+  assert.strictEqual(ctx.cleDocumentIndex_('19f4|0|a.pdf|123'), '19f4|0|a.pdf|123'); // PJ Gmail
+  assert.strictEqual(ctx.cleDocumentIndex_('migre|seul'), 'migre|seul');             // malformée → inchangée
+});
+
+test('tsCellule_ : objet Date (getValues) et chaîne ISO acceptés, illisible → NaN', () => {
+  const d = new Date('2026-07-20T12:00:00Z');
+  assert.strictEqual(ctx.tsCellule_(d), d.getTime());
+  assert.strictEqual(ctx.tsCellule_('2026-07-20T12:00:00Z'), d.getTime());
+  assert.ok(isNaN(ctx.tsCellule_('n/importe quoi')));
+  assert.ok(isNaN(ctx.tsCellule_(null)) || isNaN(ctx.tsCellule_('null')));
+});
