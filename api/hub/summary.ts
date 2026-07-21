@@ -74,7 +74,10 @@ export default async function handler(req: Requete, res: Reponse): Promise<void>
   let etat: EngineState | null;
   try {
     etat = await getEngineState();
-  } catch {
+  } catch (err) {
+    // Cause loggée pour le diagnostic (logs Vercel) — le hub, lui, ne reçoit qu'un 500 opaque
+    // et l'erreur ne porte jamais de secret (messages construits dans _engineState.ts).
+    console.error('[hub-summary] canal moteur en panne :', err instanceof Error ? err.message : String(err));
     repondreJson(res, 500, { status: 'error', error: 'Moteur indisponible' });
     return;
   }
