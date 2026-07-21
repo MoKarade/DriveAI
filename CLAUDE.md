@@ -192,7 +192,9 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   d'`origin/main` (reset/merge). Si la branche distante `claude/**` diverge après merge,
   refusionner son tip plutôt que force-push (ruleset). Un check requis doit gater le merge vers
   `main`, pas le push des branches de travail. Ne jamais juger un `git push` via `| tail` (l'exit
-  code est masqué) — vérifier `git push; echo $?`.
+  code est masqué) — vérifier `git push; echo $?`. Après toute fusion de rattrapage post-squash,
+  vérifier par `grep -c` l'UNICITÉ des blocs/appels DÉPLACÉS : l'auto-merge garde silencieusement
+  les deux exemplaires (« Auto-merging » vert, 0 conflit — vécu ×2, appel exécuté 2×/tick).
 - **Frontière d'exécution.** DriveAI tourne dans le compte Google de Marc (Apps Script). La
   session Claude ne peut **pas** y déployer (`clasp push`) ni exécuter de fonction ; le MCP Drive
   est lecture/copie/création seulement. Annoncer cette frontière tôt et minimiser la part manuelle

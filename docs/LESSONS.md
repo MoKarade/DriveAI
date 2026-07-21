@@ -1146,3 +1146,24 @@ le flux vient de classer. Corollaire : un RÉFÉRENTIEL (entités validées) con
 doit l'être AUSSI par le flux — sinon l'un crée ce que l'autre défait."
 
 **Règle durable ?** oui (puce ajoutée à CLAUDE.md §7).
+
+## 2026-07-21 — Un auto-merge « vert » peut dupliquer silencieusement un bloc déplacé
+
+**Contexte.** PR-C du lot C28-26-EXEC : la PR #189 était en conflit avec `main` (squash-merges
+#186–#188 non ré-intégrés). Fusion de rattrapage `origin/main` → les 6 conflits résolus `--ours`,
+MAIS `src/Main.gs` s'est auto-fusionné SANS conflit en gardant DEUX exemplaires de l'appel
+`appliquerPlanConsolidation_` : la branche l'avait DÉPLACÉ avant la génération (drainer avant
+d'alimenter), main portait encore l'ancienne position. Résultat silencieux : l'exécuteur aurait
+tourné 2× par tick (double budget). Repéré uniquement par un `grep -n` de vérification post-merge.
+Deuxième occurrence du piège (déjà vécu : bloc CONSOLIDATION dupliqué dans Config.gs après un
+merge `-X ours`).
+
+**Leçon.** "Un auto-merge Git peut DUPLIQUER silencieusement (sans conflit) un bloc de code
+DÉPLACÉ : quand une branche déplace un appel et que main porte encore l'ancienne position via un
+squash-merge, la fusion de rattrapage garde LES DEUX exemplaires — 'Auto-merging' vert, 0 conflit.
+Règle : après TOUTE fusion de rattrapage post-squash-merge (conflits OU auto-merge propre),
+vérifier l'UNICITÉ des blocs/appels déplacés par `grep -c` sur les fichiers touchés — un merge
+vert ne prouve pas l'absence de doublon. Les tests unitaires mockés ne le voient pas (le double
+appel est fonctionnellement idempotent mais brûle le budget)."
+
+**Règle durable ?** oui (clause ajoutée à la puce Git de CLAUDE.md §7).
