@@ -462,6 +462,14 @@ function tickDriveAI() {
       try { genererPlanConsolidation_(estBudgetDepasse); }
       catch (e) { journalErreur_('Consolidation', 'Génération du plan différée : ' + e); }
     }
+
+    // EXÉCUTION du plan de consolidation (ADR-0024, décision Marc « change tout live ») : applique
+    // Déplacer/Doublon — moveTo SEUL, §1 re-vérifiée par mutation, budgets run + quotidien.
+    // SECONDAIRE → enveloppée : un échec ne bloque jamais l'intake.
+    if (CONFIG.CONSOLIDATION_EXEC_ACTIF && !estBudgetDepasse()) {
+      try { appliquerPlanConsolidation_(estBudgetDepasse); }
+      catch (e) { journalErreur_('ConsolidationExec', 'Exécution du plan différée : ' + e); }
+    }
     } // fin de la suspension R2 (panne de compte API)
   } finally {
     // `releaseLock` DOIT toujours s'exécuter : un try/finally imbriqué garantit sa libération même si
