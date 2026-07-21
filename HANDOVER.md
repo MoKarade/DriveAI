@@ -19,7 +19,14 @@
 >   réellement à sec pour le 15/07 (vidé par le vieux code) → recharge la nuit, plafonds désormais
 >   actifs. Leçon durable ajoutée (CLAUDE.md §7, 3ᵉ piège auto-déploiement : vérifier la PRISE
 >   D'EFFET par signal indépendant, pas le run vert).
-> • **2026-07-21 — C28-26-EXEC (suite) : correctifs revue flotte (PR-C).** 4 agents. 🔴 principal
+> • **2026-07-21 — C28-26-EXEC (suite) : correctifs revue flotte (PR-C) — MERGÉE (#189).**
+>   Le lot moteur COMPLET (taxonomie à plat + seed + exécuteur + correctifs) est sur `main` ;
+>   **reste à Marc : `installerTrigger` (Extensions → Apps Script) pour réveiller le moteur** —
+>   signal de prise d'effet INDÉPENDANT : l'onglet `PlanConsolidation` se remplit en `conso-2`,
+>   les dossiers d'entités seed apparaissent aux racines de domaine, plus aucun dossier d'émetteur
+>   créé. Puis validation corbeille des dossiers vidés dans l'app (ADR-0014). NB fusion de
+>   rattrapage : `main` avait avancé (#186–#188) → merge `origin/main`, artefact d'auto-merge
+>   corrigé (appel `appliquerPlanConsolidation_` DUPLIQUÉ dans Main.gs — leçon consignée). 4 agents. 🔴 principal
 >   (code-reviewer) : le plan conso-1 a pu se générer AVANT le seed (4 jours de cibles pré-seed :
 >   dossiers de banque, noms périmés) → (1) **cible RECALCULÉE au moment du move** (règle unique +
 >   référentiel COURANT — la colonne Cible n'est qu'une trace ; `decouperCiblePlan_` retirée) ;
@@ -30,7 +37,7 @@
 >   Sécurité : refus des IDs de **dossier** (ligne forgée), motifs élargis, tripwire repo-wide
 >   anti-FUITE (`setSharing`/`addEditor`/`addViewer`). Structure : réutilisation des dossiers à
 >   casse divergente (« 783 avenue Moreau » minuscule existant), **alias VW↔Volkswagen**
->   (canoniserVehicule_), TAXONOMY retouché ×3, ADR-0024 « révise ADR-0023 D4 ». 589 tests.
+>   (canoniserVehicule_), TAXONOMY retouché ×3, ADR-0024 « révise ADR-0023 D4 ». 595 tests.
 > • **2026-07-21 — C28-26-EXEC : « c'est toi qui le fais » (ADR-0024, 2 PR).** Décision Marc
 >   (verbatim : changer tout LIVE, pas de dossier par banque, ajout de dossiers sécurisé/utile
 >   seulement — dérogation §4 assumée, revue flotte en garde-fou). **PR-A #185 (mergée)** : seed
