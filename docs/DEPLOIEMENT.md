@@ -277,6 +277,16 @@ son jeton d'accès en silence — plus jamais de reconnexion.
      valeur longue aléatoire (`openssl rand -hex 32`), pose-la **à l'identique** ici et dans la
      config du hub. Jamais en dur dans le code. Pour révoquer : change la valeur des deux côtés.
 
+   Depuis C28-27 (métriques réelles), le endpoint relaie vers la web app Apps Script
+   (`action=hub-summary`) avec `WEBAPP_URL` + `WEBAPP_SECRET` **déjà configurées ci-dessus** —
+   AUCUNE variable nouvelle. Sans elles, le summary reste « building » (honnête) ; web app en
+   panne → `500 Moteur indisponible` (jamais de donnée partielle). **Prise d'effet côté Apps
+   Script après le merge** (leçon 07-15) : ouvre l'éditeur Apps Script → Déployer → Gérer les
+   déploiements → ✏ Modifier → Version : « Nouvelle version » → Déployer, puis exécute
+   `installerTrigger` (fichier `Main.gs`) — sinon la web app sert l'ANCIEN code et le widget
+   reste « building ». Signal indépendant de réussite : `GET /api/hub/summary` (avec le jeton)
+   renvoie `status:"ok"` et un `dataAsOf` frais.
+
    > **⚠ En posant ces variables (déploiement de C28-20), RÉGÉNÈRE aussi `COOKIE_SECRET`**
    > (nouvelle valeur `openssl rand -hex 32`). Les cookies de session posés AVANT le verrou
    > d'identité (valables 1 an) ne sont vérifiés qu'à leur CRÉATION : sans rotation, une session
