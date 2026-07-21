@@ -302,11 +302,22 @@ function tickDriveAI() {
       }
     } catch (e) { journalErreur_('Maintenance', 'Dé-quarantaine automatique différée : ' + e); }
 
+    // SEED des entités de Marc (C28-26, décision Marc 2026-07-17 : « c'est toi qui le fais ») —
+    // one-shot gaté par tag : valide d'office SES listes (4 logements, 3 véhicules, 2 employeurs,
+    // 6 écoles) et DÉVALIDE les entités bancaires de 02 (« pas de dossier par banque »).
+    // SECONDAIRE → enveloppée.
+    try { seedEntitesMarc_(); }
+    catch (e) { journalErreur_('Entités', 'Seed des entités différé : ' + e); }
+
     // #18 (décision Marc : seuil 3) : auto-valide les entités en_attente vues ≥ 3 fois, AVANT la
     // matérialisation (le dossier naît au même tick). Jamais une variante, jamais un générique,
-    // jamais la zone protégée. SECONDAIRE → enveloppée.
-    try { autoValiderEntitesFrequentes_(estBudgetDepasse); }
-    catch (e) { journalErreur_('Entités', 'Auto-validation différée : ' + e); }
+    // jamais la zone protégée. SECONDAIRE → enveloppée. COUPÉE depuis le 2026-07-17
+    // (ENTITES_AUTO_VALIDATION: false — « l'ajout de dossiers vraiment sécurisé, utile seulement » :
+    // seuls le seed, le formulaire de correction et l'app de Marc valident désormais une entité).
+    if (CONFIG.ENTITES_AUTO_VALIDATION) {
+      try { autoValiderEntitesFrequentes_(estBudgetDepasse); }
+      catch (e) { journalErreur_('Entités', 'Auto-validation différée : ' + e); }
+    }
 
     // Matérialise les entités validées par Marc (Statut = « validée ») avant le routage, bornée par
     // le garde-temps. SECONDAIRE → enveloppée : une erreur Drive/Sheet ne doit jamais geler l'intake.

@@ -459,6 +459,11 @@ var CONFIG = {
                                           // un plafond par RUN ne borne pas la JOURNÉE — ×288 ticks > quota
                                           // runtime ~90 min/j ; patron GMAIL_HISTO/SYNC_BUDGET_JOUR_MS)
   CONSOLIDATION_MAX_PAR_RUN: 40,          // fichiers ajoutés au plan par run (le coût réel = le hash)
+  SEED_ENTITES_TAG: 'seed-1',             // seed one-shot des entités de Marc (Entites.seedEntitesMarc_)
+  ENTITES_AUTO_VALIDATION: false,         // auto-validation « vue ≥ 3 fois » COUPÉE (décision Marc
+                                          // 2026-07-17 : « l'ajout de dossiers vraiment sécurisé,
+                                          // utile seulement ») — seuls le seed, le formulaire de
+                                          // correction et l'app valident désormais une entité
   PROGRESSION_PURGE_MS: 48 * 60 * 60 * 1000, // C28-18 : une ligne « terminé » de l'onglet Progression
                                           // reste visible 48 h (Marc voit la fin), puis est purgée —
                                           // l'onglet ne montre que le PRÉSENT, l'histoire vit au Journal

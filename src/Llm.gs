@@ -62,7 +62,8 @@ var REGLES_V2 =
   '      « Devoir algorithmique Python », « Lettre de motivation poste automaticien ». JAMAIS « Inconnu », jamais un mot vague seul.\n' +
   '   `type_doc` PRÉCIS aussi (« Notes de cours », « Bulletin de paie », « Attestation de vaccination »… jamais « Document »).\n' +
   'B) SOUS-DOSSIER = EXCEPTION — classement à PLAT dans le domaine par défaut (ADR-0023). `sousDossier` reste vide (null) pour la plupart des documents :\n' +
-  '   - à renseigner UNIQUEMENT pour une entité MAJEURE et durable de la vie de Marc (employeur, école, véhicule, banque) : « Robovic », « IUT du Littoral », « Desjardins »…\n' +
+  '   - à renseigner UNIQUEMENT pour une entité MAJEURE et durable de la vie de Marc (employeur, école, véhicule, logement) : « Robovic », « IUT du Littoral », « 3325 4e Avenue »…\n' +
+  '   JAMAIS une banque (les documents financiers vont dans l\'ANNÉE du domaine 02, pas dans un dossier de banque).\n' +
   '   - pièce d\'identité : `sousDossier` = le TYPE (« Passeport », « Permis de conduire »).\n' +
   '   JAMAIS de dossier par émetteur ponctuel (marchand, site web, abonnement) ni par catégorie générique (« Cours », « Devoirs », « Reçus », « Divers ») : ces documents se classent à PLAT.';
 
@@ -77,7 +78,7 @@ var PROMPT_PASSE1 =
   '  "sousDossierType": <type d\'identité si estDocumentIdentite ("Passeport", "Permis de conduire"…), sinon null>,\n' +
   '  "titulaire": <personne concernée par la pièce d\'identité (Marc OU un proche), sinon null>,\n' +
   '  "domaine": <un des domaines autorisés, EXACTEMENT>,\n' +
-  '  "sousDossier": <ENTITÉ MAJEURE (employeur, école, véhicule, banque) ou null — null = classement à PLAT (défaut)>,\n' +
+  '  "sousDossier": <ENTITÉ MAJEURE (employeur, école, véhicule, logement) ou null — null = classement à PLAT (défaut) ; jamais une banque>,\n' +
   '  "categorie": <catégorie connue ou null>,\n' +
   '  "type_doc": <type court et PRÉCIS>,\n' +
   '  "date_doc": <"AAAA-MM-JJ" ou null>,\n' +
@@ -102,7 +103,7 @@ var PROMPT_PASSE2 =
   'Vérifie en particulier : non-document (export/média vs vrai scan) ; domaine exact ; émetteur RE-CHERCHÉ activement si null ; ' +
   'identité + titulaire ; entité non générique et canonique ; sensible (immigration/impôts seulement) ; date et type précis. Et les DEUX exigences :\n' +
   '- `descripteur` : si NI émetteur NI titulaire, il DOIT être présent, précis et parlant (ce que c\'est + sujet + auteur si repérable) — JAMAIS « Inconnu » ni un mot vague. Améliore-le si la passe 1 est restée vague.\n' +
-  '- `sousDossier` : laisse VIDE (null) par défaut pour un classement à PLAT dans le domaine. À renseigner UNIQUEMENT pour une entité majeure (employeur, école, véhicule, banque). Corrige la passe 1 si elle a inventé un dossier-catégorie ou un dossier d\'émetteur ponctuel.\n' +
+  '- `sousDossier` : laisse VIDE (null) par défaut pour un classement à PLAT dans le domaine. À renseigner UNIQUEMENT pour une entité majeure (employeur, école, véhicule, logement) — JAMAIS une banque. Corrige la passe 1 si elle a inventé un dossier-catégorie, un dossier de banque ou un dossier d\'émetteur ponctuel.\n' +
   'Domaines autorisés : ' + domainesAutorises_().join(' | ') + '\n' +
   REGLES_V2;
 

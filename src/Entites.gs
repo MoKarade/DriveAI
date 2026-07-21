@@ -598,6 +598,69 @@ function dossiersExistantsDomaine_(domaine) {
   return table;
 }
 
+/* ---------- C28-26 : SEED des entités de Marc (décision 2026-07-17 : « c'est toi qui le fais ») ---------- */
+
+// Les listes RÉELLES données par Marc (2026-07-16/17) — libellés en forme CANONIQUE (chacun est un
+// point fixe de canoniserEntite_, verrouillé par test) : ce sont les SEULS dossiers d'entité voulus.
+var SEED_ENTITES = [
+  // 4 logements
+  { domaine: '03 · Logement & véhicule', entite: '3325 4e Avenue' },
+  { domaine: '03 · Logement & véhicule', entite: '783 Avenue Moreau' },
+  { domaine: '03 · Logement & véhicule', entite: '3987 Route Des Rivières' },
+  { domaine: '03 · Logement & véhicule', entite: '1548 Avenue De La Roselière' },
+  // 3 véhicules (l'année n'entre jamais dans le libellé — canoniserVehicule_)
+  { domaine: '03 · Logement & véhicule', entite: 'Ford Fiesta' },
+  { domaine: '03 · Logement & véhicule', entite: 'VW Jetta' },
+  { domaine: '03 · Logement & véhicule', entite: 'Toyota bZ' },
+  // 2 employeurs (le reste de 05 = candidatures, jamais des dossiers)
+  { domaine: '05 · Carrière', entite: 'Automatech' },
+  { domaine: '05 · Carrière', entite: 'Robovic' },
+  // 6 étapes du parcours scolaire
+  { domaine: '06 · Études & diplômes', entite: 'Lycée Thérèse d\'Avila' },
+  { domaine: '06 · Études & diplômes', entite: 'Lycée Gustave Eiffel' },
+  { domaine: '06 · Études & diplômes', entite: 'IUT Du Littoral' },
+  { domaine: '06 · Études & diplômes', entite: 'Cégep De Sherbrooke' },
+  { domaine: '06 · Études & diplômes', entite: 'IMERIR' },
+  { domaine: '06 · Études & diplômes', entite: 'HAMK' },
+];
+
+/**
+ * Seed ONE-SHOT (gaté par `CONFIG.SEED_ENTITES_TAG`) des entités de Marc :
+ *  1. promeut chaque entrée de SEED_ENTITES en « validée » (via `promouvoirEntiteValidee_` —
+ *     idempotente, exactement la sémantique « validation explicite de Marc ») ;
+ *  2. DÉVALIDE toute entité encore validée dans `02 · Finances` (« faut pas faire un dossier par
+ *     banque » — les documents financiers vont dans l'ANNÉE du domaine) : statut → refus tracé,
+ *     jamais de suppression de ligne ni de dossier (les dossiers existants se vident par la
+ *     consolidation, puis corbeille APP ADR-0014).
+ * Le tag n'est posé qu'après une passe COMPLÈTE sans exception (sinon re-tenté au tick suivant).
+ */
+function seedEntitesMarc_() {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DriveAI_SEED_ENTITES') === CONFIG.SEED_ENTITES_TAG) return; // déjà fait
+
+  for (var i = 0; i < SEED_ENTITES.length; i++) {
+    promouvoirEntiteValidee_({ domaine: SEED_ENTITES[i].domaine, entite: SEED_ENTITES[i].entite });
+  }
+
+  // « Pas de dossier par banque » : dévalidation des entités 02 (statut seul — aucune ligne ni
+  // dossier supprimés, §2). Une entité dévalidée ne route plus (entitesValideesParCle_ filtre) et
+  // la consolidation cible ses fichiers vers l'année du domaine.
+  var cache = entitesCache_();
+  var idx = colonnesEntites_();
+  var f = feuille_('Entités');
+  for (var j = 0; j < cache.lignes.length; j++) {
+    var l = cache.lignes[j];
+    if (l.domaine !== '02 · Finances' || !estValidee_(l.statut)) continue;
+    f.getRange(l.ligneSheet, idx['Statut'] + 1).setValue('refusée (pas de dossier par banque — décision Marc 2026-07-17)');
+    l.statut = 'refusée (pas de dossier par banque — décision Marc 2026-07-17)';
+    journalInfo_('Entités', 'Entité 02 dévalidée (pas de dossier par banque) : ' + l.entite);
+  }
+
+  props.setProperty('DriveAI_SEED_ENTITES', CONFIG.SEED_ENTITES_TAG);
+  journalInfo_('Entités', 'Seed des entités de Marc appliqué (tag « ' + CONFIG.SEED_ENTITES_TAG + ' ») : ' +
+    SEED_ENTITES.length + ' entités validées, banques 02 dévalidées.');
+}
+
 /* ---------- C6-04 : promotion d'une entité par correction (ADR-0003) ---------- */
 
 /** Une correction VALIDE une entité si elle nomme À LA FOIS l'entité et son domaine (routage possible). */
