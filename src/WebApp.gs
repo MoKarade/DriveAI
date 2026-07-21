@@ -45,6 +45,8 @@ function doPost(e) {
         reponse = actionDemandeIntentions_(e);
       } else if (action === 'pas-suspect') {
         reponse = actionPasSuspect_(e);
+      } else if (action === 'hub-summary') {
+        reponse = actionHubSummary_();
       } else {
         reponse = actionTickPonctuel_();
       }
@@ -337,6 +339,112 @@ function actionPasSuspect_(e) {
   journalInfo_('WebApp', 'Pas-suspect : « ' + adresse + ' » ajouté à Confiance (fil re-trié au prochain passage).');
   actionTickPonctuel_(); // passage immédiat — le fil est re-jugé « sain » dans la ~minute
   return { ok: true, message: 'Expéditeur de confiance : ' + adresse + ' — le fil est re-trié dans la minute.' };
+}
+
+/* ---------- Résumé pour le hub perso (C28-27, CLAUDE.md §6 bis) ---------- */
+
+/**
+ * Métadonnées du moteur pour le widget hubperso.com — servies au BROKER Vercel
+ * (`api/hub/_engineState.ts`), JAMAIS directement au hub (le jeton `x-hub-token` est vérifié
+ * côté Vercel ; ici c'est `DriveAI_WEBAPP_SECRET` qui garde la porte, comme les autres actions).
+ * ADR-0007 : 4 compteurs + 1 horodatage — aucun nom de fichier, aucun contenu.
+ * Échec fermé : toute exception (Sheet/Drive en hoquet) remonte au try/catch du doPost →
+ * `{ ok:false, erreur }` — le broker n'affiche alors AUCUNE donnée (leçon « fallback d'état » :
+ * on ne recrée jamais rien ici, `feuille_` passe par `getSheetEtat_`).
+ */
+function actionHubSummary_() {
+  var lastTick = Number(PropertiesService.getScriptProperties().getProperty('DriveAI_LAST_TICK')) || 0;
+  var compte = compterMetriquesHub_(
+    feuille_('Index').getDataRange().getValues(),
+    feuille_('Journal').getDataRange().getValues(),
+    Date.now()
+  );
+  return {
+    ok: true,
+    etat: {
+      reviewQueueCount: compterDossierRevue_(),
+      filedLast7d: compte.classes7j,
+      errorsLast7d: compte.erreurs7j,
+      lastRunAt: lastTick ? new Date(lastTick).toISOString() : null
+    }
+  };
+}
+
+/**
+ * Taille RÉELLE de la file de revue = fichiers du dossier `00 · À vérifier` (source de vérité :
+ * l'Index garde ses lignes `à vérifier` même après que Marc a vidé la file — compter l'Index
+ * ne redescendrait jamais). Boucle bornée (plafond) : la file est ~vide en régime normal
+ * (ADR-0016, revue = exception rare) — le plafond ne borne que le cas pathologique.
+ */
+function compterDossierRevue_() {
+  var fichiers = DriveApp.getFolderById(CONFIG.DOSSIERS.A_VERIFIER).getFiles();
+  var n = 0;
+  while (fichiers.hasNext() && n < 500) {
+    fichiers.next();
+    n++;
+  }
+  return n;
+}
+
+/**
+ * Compte, sur les lignes BRUTES de l'Index et du Journal (`getDataRange().getValues()`,
+ * en-têtes incluses), les documents CLASSÉS et les ERREURS des 7 derniers jours. PURE (testée).
+ * Schémas réels : Index = [clé, Date, nom, domaine, chemin, STATUT(5), empreinte, confiance] ;
+ * Journal = [Date(0), NIVEAU(1), source, message]. Les cellules datetime arrivent en objets
+ * Date (tsCellule_ absorbe Date ou chaîne). Un document re-classé par une campagne (`migre|…`)
+ * ou redéposé (`drive|…`) compte UNE fois : clés normalisées par cleDocumentIndex_.
+ * @param {Array[]} lignesIndex
+ * @param {Array[]} lignesJournal
+ * @param {number} maintenantMs
+ * @return {{classes7j:number, erreurs7j:number}}
+ */
+function compterMetriquesHub_(lignesIndex, lignesJournal, maintenantMs) {
+  var seuil = maintenantMs - 7 * 24 * 60 * 60 * 1000;
+
+  var parDocument = {};
+  for (var i = 1; i < lignesIndex.length; i++) {
+    var ligne = lignesIndex[i];
+    if (String(ligne[5]) !== 'classé') continue;
+    var ts = tsCellule_(ligne[1]);
+    if (isNaN(ts) || ts < seuil) continue;
+    parDocument[cleDocumentIndex_(String(ligne[0]))] = true;
+  }
+  var classes7j = Object.keys(parDocument).length;
+
+  var erreurs7j = 0;
+  for (var j = 1; j < lignesJournal.length; j++) {
+    if (String(lignesJournal[j][1]) !== 'ERREUR') continue;
+    var tsJ = tsCellule_(lignesJournal[j][0]);
+    if (!isNaN(tsJ) && tsJ >= seuil) erreurs7j++;
+  }
+
+  return { classes7j: classes7j, erreurs7j: erreurs7j };
+}
+
+/**
+ * Normalise une clé d'Index vers l'identité du DOCUMENT qu'elle vise, pour dédoublonner les
+ * comptes (le même fichier re-classé par une campagne ne compte pas deux fois). PURE (testée).
+ * `drive|<fileId>` / `shared|<fileId>` → `doc|<fileId>` ; `migre|<tag>|<fileId>` → `doc|<fileId>` ;
+ * toute autre clé (PJ Gmail `messageId|i|nom|taille`…) reste elle-même (déjà unique par document).
+ * @param {string} cle
+ * @return {string}
+ */
+function cleDocumentIndex_(cle) {
+  var seg = cle.split('|');
+  if ((seg[0] === 'drive' || seg[0] === 'shared') && seg[1]) return 'doc|' + seg[1];
+  if (seg[0] === 'migre' && seg[2]) return 'doc|' + seg[2];
+  return cle;
+}
+
+/**
+ * Horodatage ms d'une cellule Sheet : objet Date (`getValues()` sur une colonne datetime) ou
+ * chaîne ISO — NaN si illisible. PURE (testée).
+ * @param {*} v
+ * @return {number}
+ */
+function tsCellule_(v) {
+  if (v instanceof Date) return v.getTime();
+  return Date.parse(String(v));
 }
 
 /**
