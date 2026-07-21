@@ -270,8 +270,31 @@ function genererPlanConsolidation_(estBudgetDepasse) {
   if (!CONFIG.CONSOLIDATION_ACTIF) return;
   var props = PropertiesService.getScriptProperties();
   var tag = CONFIG.CONSOLIDATION_TAG;
+
+  // ROTATION de campagne (revue flotte 2026-07-21) : un NOUVEAU tag purge le plan PÉRIMÉ (des
+  // lignes calculées contre un ancien référentiel — ex. conso-1 généré AVANT le seed des entités
+  // ciblait encore des dossiers de banque) et remet les curseurs à zéro. Purge d'un RAPPORT
+  // (jamais de documents, §2 intact — même famille que la rotation du Journal).
+  if (props.getProperty('DriveAI_CONSO_PLAN_TAG') !== tag) {
+    var fPlan = feuille_('PlanConsolidation');
+    var dernL = fPlan.getLastRow();
+    if (dernL > 1) fPlan.getRange(2, 1, dernL - 1, COLONNES_PLAN_CONSOLIDATION.length).clearContent();
+    props.deleteProperty('DriveAI_CONSOLIDATION');
+    props.deleteProperty('DriveAI_CONSO_EXEC_LIGNE');
+    props.deleteProperty('DriveAI_CONSO_EXEC_FINI');
+    props.setProperty('DriveAI_CONSO_PLAN_TAG', tag);
+    journalInfo_('Consolidation', 'Nouveau tag de campagne « ' + tag + ' » : plan purgé, curseurs remis à zéro.');
+  }
+
   if (props.getProperty('DriveAI_CONSOLIDATION') === tag) return; // campagne finie (1 lecture)
   if (estBudgetDepasse()) return;
+
+  // CONTRE-PRESSION (drainer avant d'alimenter, tôt + gated) : si l'EXÉCUTEUR a trop de lignes de
+  // retard, on n'alimente pas le plan ce run — il rattrape d'abord (revue quotas 2026-07-21).
+  if (CONFIG.CONSOLIDATION_EXEC_ACTIF) {
+    var curseurExec = Number(props.getProperty('DriveAI_CONSO_EXEC_LIGNE')) || 1;
+    if (feuille_('PlanConsolidation').getLastRow() - curseurExec >= CONFIG.CONSOLIDATION_BACKLOG_MAX) return;
+  }
 
   // Budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 : un plafond par RUN ne borne pas la
   // JOURNÉE — ×288 ticks > quota runtime ~90 min/j, la campagne affamerait l'intake).

@@ -1,52 +1,36 @@
 'use strict';
 /**
- * EXÉCUTION du plan de consolidation (C28-26, ADR-0024 — ConsolidationExec.gs) : cible parsée et
- * VALIDÉE (jamais un chemin arbitraire), seules les lignes Déplacer/Doublon s'appliquent, §1
- * re-vérifiée par mutation, multi-parents jamais déplacé, curseur append-only, moveTo = seule
- * mutation du module (verrou de surface).
+ * EXÉCUTION du plan de consolidation (C28-26, ADR-0024 — ConsolidationExec.gs) : cible RECALCULÉE
+ * au moment du move (la colonne Cible du plan est un instantané périmable — revue flotte), seules
+ * les lignes Déplacer/Doublon s'appliquent, §1 re-vérifiée par mutation, multi-parents/dossier
+ * jamais déplacés, curseur append-only (suite des offsets d'une page mixte testée), échec compté
+ * ≤ 1×/JOUR (abandon = 3 jours distincts), moveTo = seule mutation (verrou de surface).
  */
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { load } = require('./harness');
 
-const ctx = load(['Config.gs', 'ConsolidationExec.gs']);
-const DOMAINES = ['01 · Administratif & identité', '02 · Finances', '03 · Logement & véhicule'];
-
-/* ---------- decouperCiblePlan_ : validation stricte de la cible ---------- */
-
-test('decouperCiblePlan_ : domaine seul, domaine/segment, _Doublons — et REJET de tout chemin arbitraire', () => {
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.decouperCiblePlan_('02 · Finances', DOMAINES))),
-    { doublons: false, domaine: '02 · Finances', segments: [] });
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.decouperCiblePlan_('02 · Finances/2026', DOMAINES))),
-    { doublons: false, domaine: '02 · Finances', segments: ['2026'] });
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.decouperCiblePlan_('03 · Logement & véhicule/3325 4e Avenue', DOMAINES))),
-    { doublons: false, domaine: '03 · Logement & véhicule', segments: ['3325 4e Avenue'] });
-  assert.strictEqual(ctx.decouperCiblePlan_('_Doublons', DOMAINES).doublons, true);
-  // Rejets : domaine inconnu, segment système/vide/remontée, profondeur > 2, cible vide
-  assert.strictEqual(ctx.decouperCiblePlan_('99 · Bidon/2026', DOMAINES), null);
-  assert.strictEqual(ctx.decouperCiblePlan_('02 · Finances/_Doublons', DOMAINES), null);
-  assert.strictEqual(ctx.decouperCiblePlan_('02 · Finances/..', DOMAINES), null);
-  assert.strictEqual(ctx.decouperCiblePlan_('02 · Finances//x', DOMAINES), null);
-  assert.strictEqual(ctx.decouperCiblePlan_('02 · Finances/a/b/c', DOMAINES), null);
-  assert.strictEqual(ctx.decouperCiblePlan_('', DOMAINES), null);
-});
+const ctxPur = load(['Config.gs', 'ConsolidationExec.gs']);
 
 test('ligneAAppliquer_ : Déplacer/Doublon seulement — OK et Ignoré ne se touchent JAMAIS', () => {
-  assert.strictEqual(ctx.ligneAAppliquer_('Déplacer'), true);
-  assert.strictEqual(ctx.ligneAAppliquer_('Doublon'), true);
-  assert.strictEqual(ctx.ligneAAppliquer_('OK'), false);
-  assert.strictEqual(ctx.ligneAAppliquer_('Ignoré'), false);
-  assert.strictEqual(ctx.ligneAAppliquer_(''), false);
+  assert.strictEqual(ctxPur.ligneAAppliquer_('Déplacer'), true);
+  assert.strictEqual(ctxPur.ligneAAppliquer_('Doublon'), true);
+  assert.strictEqual(ctxPur.ligneAAppliquer_('OK'), false);
+  assert.strictEqual(ctxPur.ligneAAppliquer_('Ignoré'), false);
+  assert.strictEqual(ctxPur.ligneAAppliquer_(''), false);
 });
 
 test('budgetJourConsoExec_ : ms réelles du jour seulement (rollover → 0)', () => {
   const props = (kv) => ({ getProperty: (k) => (k in kv ? kv[k] : null) });
-  assert.strictEqual(ctx.budgetJourConsoExec_(props({ DriveAI_CONSO_EXEC_JOUR: '2026/07/21|300000' }), '2026/07/21'), 300000);
-  assert.strictEqual(ctx.budgetJourConsoExec_(props({ DriveAI_CONSO_EXEC_JOUR: '2026/07/20|300000' }), '2026/07/21'), 0);
-  assert.strictEqual(ctx.budgetJourConsoExec_(props({}), '2026/07/21'), 0);
+  assert.strictEqual(ctxPur.budgetJourConsoExec_(props({ DriveAI_CONSO_EXEC_JOUR: '2026/07/21|300000' }), '2026/07/21'), 300000);
+  assert.strictEqual(ctxPur.budgetJourConsoExec_(props({ DriveAI_CONSO_EXEC_JOUR: '2026/07/20|300000' }), '2026/07/21'), 0);
+  assert.strictEqual(ctxPur.budgetJourConsoExec_(props({}), '2026/07/21'), 0);
 });
 
-/* ---------- appliquerLigneConsolidation_ : gardes par mutation (mocks) ---------- */
+/* ---------- appliquerLigneConsolidation_ : recalcul de cible + gardes par mutation (mocks) ---------- */
+
+// parId de test : le dossier 'DOMID' est la racine du domaine 02.
+const PAR_ID = { DOMID: '02 · Finances' };
 
 function ctxLigne(opts) {
   opts = opts || {};
@@ -55,80 +39,192 @@ function ctxLigne(opts) {
   const ajouts = [];
   const moves = [];
   c.indexContient_ = (cle) => !!index[cle];
-  c.indexAjouter_ = (cle, dec) => { index[cle] = true; ajouts.push({ cle, statut: dec.statut }); };
+  c.indexAjouter_ = (cle, dec) => { index[cle] = true; ajouts.push({ cle, statut: dec.statut, chemin: dec.chemin }); };
   c.journalInfo_ = () => {};
   c.journalErreur_ = () => {};
   c.aParentProtege_ = () => !!opts.protege;
   c.dossierDoublons_ = () => ({ getId: () => 'DOUBLONS' });
   c.idDomaine_ = () => 'DOM';
   c.sousDossier_ = (parent, nom) => ({ getId: () => parent.getId() + '/' + nom });
+  c.champ_ = (s) => String(s == null ? '' : s).trim();
+  // La cible est RECALCULÉE via la règle unique — mockée ici (testée pour de vrai dans consolidation.test.js).
+  c.cheminCibleConsolidation_ = () => (opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : '2026');
   const fichier = {
     // next() avance l'index LUI-MÊME (comme DriveApp) — un incrément caché dans getId() fausserait
     // le compteur de parents (vécu : hasNext éternel → faux « multi-parents »).
     getParents: () => {
-      let i = 0; const p = opts.parents || ['AUTRE'];
-      return { hasNext: () => i < p.length, next: () => { const id = p[i++]; return { getId: () => id }; } };
+      let i = 0; const p = opts.parents || ['DOMID'];
+      return {
+        hasNext: () => i < p.length,
+        next: () => {
+          const id = p[i++];
+          // Le parent-dossier expose aussi getParents (chaîne) : vide par défaut (racine atteinte).
+          return { getId: () => id, getParents: () => ({ hasNext: () => false, next: () => null }) };
+        },
+      };
     },
+    getName: () => opts.nom || 'f.pdf',
+    getMimeType: () => opts.mime || 'application/pdf',
     moveTo: (dossier) => moves.push(dossier.getId()),
   };
   c.DriveApp = { getFolderById: (id) => ({ getId: () => id }), getFileById: () => { if (opts.absent) throw new Error('absent'); return fichier; } };
   return { c, ajouts, moves };
 }
 
-const CTX_EXEC = { proteges: {}, domainesConnus: DOMAINES, tag: 'conso-1' };
+const CTX_EXEC = { proteges: {}, tag: 'conso-2', validees: {}, parId: PAR_ID };
 
-test('appliquerLigneConsolidation_ : Déplacer → moveTo vers la cible résolue, clé posée APRÈS', () => {
-  const { c, moves, ajouts } = ctxLigne({ parents: ['AILLEURS'] });
-  const r = c.appliquerLigneConsolidation_({ fileId: 'F1', nom: 'f.pdf', action: 'Déplacer', cible: '02 · Finances/2026' }, CTX_EXEC);
+test('appliquerLigneConsolidation_ : Déplacer → cible RECALCULÉE (la colonne Cible périmée est IGNORÉE)', () => {
+  const { c, moves, ajouts } = ctxLigne({ cibleRecalculee: '2026' });
+  // La ligne du plan (pré-seed) disait « 02 · Finances/Desjardins » — le recalcul dit « 2026 ».
+  const r = c.appliquerLigneConsolidation_({ fileId: 'F1', nom: 'f.pdf', action: 'Déplacer', cible: '02 · Finances/Desjardins' }, CTX_EXEC);
   assert.strictEqual(r, 'fait');
-  assert.deepStrictEqual(moves, ['DOM/2026']);
+  assert.deepStrictEqual(moves, ['DOM/2026'], 'jamais le dossier de banque périmé : la règle unique du jour prime');
   assert.strictEqual(ajouts[0].statut, 'consolidé');
+  assert.strictEqual(ajouts[0].chemin, '02 · Finances/2026');
 });
 
-test('appliquerLigneConsolidation_ : §1 au vif → JAMAIS de moveTo (abstention tracée)', () => {
-  const { c, moves, ajouts } = ctxLigne({ protege: true });
-  const r = c.appliquerLigneConsolidation_({ fileId: 'F2', nom: 'p.pdf', action: 'Déplacer', cible: '02 · Finances' }, CTX_EXEC);
-  assert.strictEqual(r, 'saute');
-  assert.deepStrictEqual(moves, [], 'zone protégée : zéro mutation');
-  assert.strictEqual(ajouts[0].statut, 'consolidé-protégé');
+test('appliquerLigneConsolidation_ : recalcul « à plat » → racine du domaine ; recalcul = position actuelle → no-op', () => {
+  const plat = ctxLigne({ cibleRecalculee: '' });
+  const r1 = plat.c.appliquerLigneConsolidation_({ fileId: 'F2', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, CTX_EXEC);
+  assert.strictEqual(r1, 'fait');
+  assert.deepStrictEqual(plat.moves, ['DOM'], 'sous-chemin vide = racine du domaine');
+
+  // Fichier DÉJÀ à la racine du domaine (parent = idDomaine_ 'DOM') et recalcul '' → aucun moveTo.
+  const enPlace = ctxLigne({ cibleRecalculee: '', parents: ['DOM'] });
+  enPlace.c.domaineActuelFichier_ = () => '02 · Finances'; // parent 'DOM' n'est pas dans PAR_ID — court-circuité
+  const r2 = enPlace.c.appliquerLigneConsolidation_({ fileId: 'F3', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, CTX_EXEC);
+  assert.strictEqual(r2, 'fait');
+  assert.deepStrictEqual(enPlace.moves, [], 'déjà en place : aucun moveTo (rejeu sûr)');
 });
 
-test('appliquerLigneConsolidation_ : MULTI-PARENTS → jamais déplacé (moveTo retirerait tous les parents)', () => {
-  const { c, moves } = ctxLigne({ parents: ['P1', 'P2'] });
-  const r = c.appliquerLigneConsolidation_({ fileId: 'F3', nom: 'm.pdf', action: 'Déplacer', cible: '02 · Finances' }, CTX_EXEC);
+test('appliquerLigneConsolidation_ : hors domaines (déplacé ailleurs par Marc) → saute, jamais ramené de force', () => {
+  const { c, moves, ajouts } = ctxLigne({ parents: ['AILLEURS'] }); // 'AILLEURS' ∉ parId, chaîne vide ensuite
+  const r = c.appliquerLigneConsolidation_({ fileId: 'F4', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, CTX_EXEC);
   assert.strictEqual(r, 'saute');
   assert.deepStrictEqual(moves, []);
+  assert.strictEqual(ajouts[0].statut, 'consolidé-hors-domaine');
 });
 
-test('appliquerLigneConsolidation_ : déjà dans la cible → no-op (rejeu sûr) ; cible invalide → refus tracé sans mutation', () => {
-  const dansCible = ctxLigne({ parents: ['DOM/2026'] });
-  const r1 = dansCible.c.appliquerLigneConsolidation_({ fileId: 'F4', nom: 'ok.pdf', action: 'Déplacer', cible: '02 · Finances/2026' }, CTX_EXEC);
-  assert.strictEqual(r1, 'fait');
-  assert.deepStrictEqual(dansCible.moves, [], 'déjà en place : aucun moveTo');
+test('appliquerLigneConsolidation_ : §1 au vif → JAMAIS de moveTo ; multi-parents → jamais déplacé ; ID de DOSSIER → refusé', () => {
+  const protege = ctxLigne({ protege: true });
+  assert.strictEqual(protege.c.appliquerLigneConsolidation_({ fileId: 'F5', nom: 'p.pdf', action: 'Déplacer', cible: 'x' }, CTX_EXEC), 'saute');
+  assert.deepStrictEqual(protege.moves, [], 'zone protégée : zéro mutation');
+  assert.strictEqual(protege.ajouts[0].statut, 'consolidé-protégé');
 
-  const invalide = ctxLigne({});
-  const r2 = invalide.c.appliquerLigneConsolidation_({ fileId: 'F5', nom: 'x.pdf', action: 'Déplacer', cible: 'Chemin/Arbitraire' }, CTX_EXEC);
-  assert.strictEqual(r2, 'saute');
-  assert.deepStrictEqual(invalide.moves, []);
-  assert.strictEqual(invalide.ajouts[0].statut, 'consolidé-refus');
+  const multi = ctxLigne({ parents: ['P1', 'P2'] });
+  assert.strictEqual(multi.c.appliquerLigneConsolidation_({ fileId: 'F6', nom: 'm.pdf', action: 'Déplacer', cible: 'x' }, CTX_EXEC), 'saute');
+  assert.deepStrictEqual(multi.moves, []);
+
+  const dossier = ctxLigne({ mime: 'application/vnd.google-apps.folder' });
+  assert.strictEqual(dossier.c.appliquerLigneConsolidation_({ fileId: '1VBK', nom: '04 · Immigration', action: 'Déplacer', cible: 'x' }, CTX_EXEC), 'saute');
+  assert.deepStrictEqual(dossier.moves, [], 'une ligne forgée portant un ID de dossier ne déplace RIEN');
+  assert.strictEqual(dossier.ajouts[0].statut, 'consolidé-refus');
 });
 
-test('appliquerLigneConsolidation_ : Doublon → moveTo vers _Doublons (déplacement seul, §2)', () => {
-  const { c, moves, ajouts } = ctxLigne({ parents: ['AILLEURS'] });
-  const r = c.appliquerLigneConsolidation_({ fileId: 'F6', nom: 'd.pdf', action: 'Doublon', cible: '_Doublons' }, CTX_EXEC);
+test('appliquerLigneConsolidation_ : Doublon → moveTo vers _Doublons (décision par CONTENU, appliquée telle quelle)', () => {
+  const { c, moves, ajouts } = ctxLigne({});
+  const r = c.appliquerLigneConsolidation_({ fileId: 'F7', nom: 'd.pdf', action: 'Doublon', cible: '_Doublons' }, CTX_EXEC);
   assert.strictEqual(r, 'fait');
   assert.deepStrictEqual(moves, ['DOUBLONS']);
   assert.strictEqual(ajouts[0].statut, 'consolidé-doublon');
 });
 
+/* ---------- appliquerPlanConsolidation_ : suite des curseurs d'une page mixte + échec ≤ 1×/jour ---------- */
+
+function ctxPlan(opts) {
+  opts = opts || {};
+  const c = load(['Config.gs', 'ConsolidationExec.gs']);
+  const store = Object.assign({}, opts.props);
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in store ? store[k] : null),
+    setProperty: (k, v) => { store[k] = String(v); },
+    deleteProperty: (k) => { delete store[k]; },
+  }) };
+  c.COLONNES_PLAN_CONSOLIDATION = ['Horodaté', 'Fichier', 'ID', 'Action', 'Cible', 'Raison', 'Empreinte']; // Journal.gs
+  const lignes = opts.lignes || []; // lignes de données (après l'en-tête)
+  c.feuille_ = () => ({
+    getLastRow: () => 1 + lignes.length,
+    getRange: (ligne, col, nb) => ({ getValues: () => lignes.slice(ligne - 2, ligne - 2 + nb) }),
+  });
+  c.dateGmail_ = () => opts.jour || '2026/07/21';
+  c.ensembleDomainesProteges_ = () => ({});
+  c.entitesValideesParCle_ = () => ({});
+  c.journalInfo_ = () => {};
+  c.journalErreur_ = () => {};
+  const echecs = {};
+  c.incrementerEchec_ = (cle) => { echecs[cle] = (echecs[cle] || 0) + 1; return echecs[cle]; };
+  c.indexAjouter_ = () => {};
+  const tentatives = [];
+  c.appliquerLigneConsolidation_ = (ligne) => {
+    tentatives.push(ligne.fileId);
+    if ((opts.echouent || []).indexOf(ligne.fileId) !== -1) throw new Error('blip Drive');
+    return 'fait';
+  };
+  return { c, store, tentatives, echecs };
+}
+
+const L = (fileId, action) => ['2026-07-21', fileId + '.pdf', fileId, action, 'cible', 'raison', ''];
+
+test('appliquerPlanConsolidation_ : page MIXTE (OK sauté, Déplacer fait, Ignoré sauté, échec) → le curseur s\'arrête SUR la ligne en échec', () => {
+  const { c, store, tentatives } = ctxPlan({
+    lignes: [L('A', 'OK'), L('B', 'Déplacer'), L('C', 'Ignoré'), L('D', 'Déplacer'), L('E', 'Déplacer')],
+    echouent: ['D'],
+  });
+  c.appliquerPlanConsolidation_(() => false);
+  assert.deepStrictEqual(tentatives, ['B', 'D'], 'seules les lignes applicables sont tentées');
+  // Lignes 2 (A/OK), 3 (B/fait), 4 (C/Ignoré) consommées → curseur = 4 ; D (ligne 5) re-tentée.
+  assert.strictEqual(store.DriveAI_CONSO_EXEC_LIGNE, '4', 'curseur figé AVANT la ligne en échec');
+  assert.ok(store.DriveAI_CONSO_EXEC_JOUR.startsWith('2026/07/21|'), 'ms réelles du jour écrites au finally');
+
+  // Run suivant, MÊME jour : D échoue encore → PAS de 2ᵉ strike le même jour.
+  const { c: c2, store: s2, echecs: e2 } = ctxPlan({
+    props: { DriveAI_CONSO_EXEC_LIGNE: '4', DriveAI_CONSO_EXEC_EJ: '2026/07/21' },
+    lignes: [L('A', 'OK'), L('B', 'Déplacer'), L('C', 'Ignoré'), L('D', 'Déplacer'), L('E', 'Déplacer')],
+    echouent: ['D'],
+  });
+  c2.appliquerPlanConsolidation_(() => false);
+  assert.deepStrictEqual(Object.keys(e2), [], 'échec déjà compté aujourd\'hui : aucun nouveau strike (leçon « par passe, jamais par rejeu »)');
+  assert.strictEqual(s2.DriveAI_CONSO_EXEC_LIGNE, '4', 'curseur inchangé (aucune ligne consommée ce run)');
+});
+
+test('appliquerPlanConsolidation_ : l\'abandon exige QUARANTAINE_MAX JOURS distincts, puis le curseur avance', () => {
+  const MAX = ctxPur.CONFIG.QUARANTAINE_MAX;
+  // Le compteur porte déjà MAX-1 échecs (MAX-1 jours passés) ; aujourd'hui = jour non compté → 3ᵉ strike.
+  const { c, store, echecs } = ctxPlan({
+    props: { DriveAI_CONSO_EXEC_EJ: '2026/07/20' }, // dernier strike HIER → aujourd'hui compte
+    lignes: [L('D', 'Déplacer'), L('E', 'Déplacer')],
+    echouent: ['D'],
+  });
+  // Pré-charge le compteur à MAX-1 (jours précédents).
+  for (let i = 0; i < MAX - 1; i++) c.incrementerEchec_('consoexec|essai|conso-2|D');
+  c.appliquerPlanConsolidation_(() => false);
+  assert.strictEqual(echecs['consoexec|essai|conso-2|D'], MAX, 'strike du jour porté au seuil');
+  // D abandonnée (consommée) PUIS la boucle continue : E traitée → curseur = 3 (jamais gelé à vie).
+  assert.strictEqual(store.DriveAI_CONSO_EXEC_LIGNE, '3', 'abandon consommé ET la page continue derrière');
+});
+
+test('appliquerPlanConsolidation_ : plan consommé + génération finie → FINI posé, puis COURT-CIRCUIT total (aucune I/O Sheet)', () => {
+  const { c, store } = ctxPlan({
+    props: { DriveAI_CONSO_EXEC_LIGNE: '3', DriveAI_CONSOLIDATION: 'conso-2' },
+    lignes: [L('A', 'OK'), L('B', 'OK')], // dern = 3 = curseur
+  });
+  c.appliquerPlanConsolidation_(() => false);
+  assert.strictEqual(store.DriveAI_CONSO_EXEC_FINI, 'conso-2');
+
+  // Run suivant : le court-circuit sort AVANT feuille_ (une lecture de Property seulement).
+  const { c: c2 } = ctxPlan({ props: { DriveAI_CONSO_EXEC_FINI: 'conso-2' } });
+  c2.feuille_ = () => { throw new Error('feuille_ ne doit JAMAIS être appelée après FINI'); };
+  c2.appliquerPlanConsolidation_(() => false); // ne lève pas
+});
+
 /* ---------- Verrou de surface : moveTo est la SEULE mutation du module ---------- */
 
-test('ConsolidationExec.gs : aucune mutation hors moveTo (jamais de suppression/renommage/copie/REST)', () => {
+test('ConsolidationExec.gs : aucune mutation hors moveTo (jamais de suppression/renommage/copie/partage/REST)', () => {
   const fs = require('fs');
   const path = require('path');
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'ConsolidationExec.gs'), 'utf8');
-  ['setTrashed(', 'setName(', '.createFile(', 'removeFile(', 'addFile(', 'addFolder(', 'removeFolder(',
-    'makeCopy(', 'setContent(', 'UrlFetchApp', 'files.delete', "'delete'"]
+  ['setTrashed(', 'setName(', '.createFile(', '.createFolder(', 'removeFile(', 'addFile(', 'addFolder(', 'removeFolder(',
+    'makeCopy(', 'setContent(', 'UrlFetchApp', 'files.delete', "'delete'", 'setSharing(', 'addEditor(', 'addViewer(']
     .forEach((motif) => {
       assert.ok(!src.includes(motif), 'mutation interdite dans ConsolidationExec.gs : ' + motif);
     });

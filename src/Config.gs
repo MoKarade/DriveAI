@@ -452,7 +452,11 @@ var CONFIG = {
                                           // 2026-07-17 (« continue », post-correctifs revue flotte #183) :
                                           // le moteur remplit l'onglet PlanConsolidation (~12 min/j max,
                                           // AUCUNE mutation Drive). Repasser à false pour suspendre.
-  CONSOLIDATION_TAG: 'conso-1',           // tag de campagne (clé de convergence `conso|<tag>|<fileId>`)
+  CONSOLIDATION_TAG: 'conso-2',           // tag de campagne (clé de convergence `conso|<tag>|<fileId>`).
+                                          // conso-1 → conso-2 (revue flotte 2026-07-21) : le plan conso-1
+                                          // a pu se générer AVANT le seed des entités (cibles pré-seed :
+                                          // dossiers de banque, noms périmés) — le bump purge et re-génère
+                                          // tout avec le référentiel courant (rotation dans genererPlan…)
   CONSOLIDATION_BUDGET_MS: 3 * 60 * 1000, // sous-budget PROPRE par run (le hash MD5 lit les octets — sans
                                           // cette borne, un run mangerait le budget des étapes suivantes)
   CONSOLIDATION_BUDGET_JOUR_MS: 12 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
@@ -463,8 +467,14 @@ var CONFIG = {
   CONSOLIDATION_EXEC_ACTIF: true,         // applique Déplacer/Doublon du PlanConsolidation (moveTo seul,
                                           // §1 re-vérifiée par mutation) — false = suspension immédiate
   CONSOLIDATION_EXEC_BUDGET_MS: 2 * 60 * 1000,        // sous-budget par run
-  CONSOLIDATION_EXEC_BUDGET_JOUR_MS: 10 * 60 * 1000,  // budget QUOTIDIEN en ms réelles persistées
+  CONSOLIDATION_EXEC_BUDGET_JOUR_MS: 6 * 60 * 1000,   // budget QUOTIDIEN en ms réelles persistées.
+                                          // 10 → 6 min (revue quotas 2026-07-21) : l'ENVELOPPE agrégée des
+                                          // campagnes (gen 12 + exec + sync 12 + histo 20) doit rester loin
+                                          // du quota runtime ~90 min/j — remonter vers 10 quand la
+                                          // génération (CONSOLIDATION_BUDGET_JOUR_MS) sera terminée
   CONSOLIDATION_EXEC_MAX_PAR_RUN: 60,     // lignes du plan consommées par run au maximum
+  CONSOLIDATION_BACKLOG_MAX: 150,         // contre-pression : la GÉNÉRATION s'arrête si l'exécuteur a plus
+                                          // de N lignes de retard (drainer avant d'alimenter, tôt + gated)
   SEED_ENTITES_TAG: 'seed-1',             // seed one-shot des entités de Marc (Entites.seedEntitesMarc_)
   ENTITES_AUTO_VALIDATION: false,         // auto-validation « vue ≥ 3 fois » COUPÉE (décision Marc
                                           // 2026-07-17 : « l'ajout de dossiers vraiment sécurisé,

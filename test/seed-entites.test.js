@@ -31,6 +31,12 @@ test('SEED_ENTITES : 15 entités (4 logements + 3 véhicules + 2 employeurs + 6 
   assert.strictEqual(parDomaine['02 · Finances'], undefined, 'JAMAIS d\'entité bancaire seedée (pas de dossier par banque)');
 });
 
+test('alias de marque (revue C28-26) : « Volkswagen Jetta » se canonise vers le seed « VW Jetta » (même dossier)', () => {
+  assert.strictEqual(ctxPur.canoniserEntite_('Volkswagen Jetta'), 'VW Jetta');
+  assert.strictEqual(ctxPur.canoniserEntite_('Volkswagen Jetta 2019'), 'VW Jetta');
+  assert.strictEqual(ctxPur.canoniserEntite_('VW Jetta'), 'VW Jetta', 'le libellé du seed reste un point fixe');
+});
+
 function ctxSeed(opts) {
   opts = opts || {};
   const c = load(['Config.gs', 'Entites.gs', 'Router.gs']);

@@ -16,8 +16,8 @@
 | `01 · Administratif & identité` | `1Bozg3oLNUVXehm1cQl4gTKs6_XpwolWx` |
 | `02 · Finances` | `1B9jNRpAKrAWdUs6Gn5_ojle3ZH7JbFDW` |
 | `03 · Logement & véhicule` | `1oI1inPX3nWr_1I74A3jDM-ovr6talQlN` |
-| → `Logement` | `13ISBh6ZrwK9YHgmIM20tWTgWh4x9wI79` |
-| → `Véhicule` | `1Hqmg1eV4q28saCreUyrfUIfKLwV972Wc` |
+| → `Logement` *(héritage v1, en drainage — ADR-0023/0024)* | `13ISBh6ZrwK9YHgmIM20tWTgWh4x9wI79` |
+| → `Véhicule` *(héritage v1, en drainage — ADR-0023/0024)* | `1Hqmg1eV4q28saCreUyrfUIfKLwV972Wc` |
 | `04 · Immigration` *(zone protégée)* | `1VBK_4pkJmIeTsRyz-MWpMBYaOhKYNfRC` |
 | `05 · Carrière` | `1BAg7k7RVrJ4ifoeh9U0XW5hKWXjRI1CC` |
 | `06 · Études & diplômes` | `1PeeKG8XgZB6gJdZo03cO7F0s_iMgw6Ec` |
@@ -64,11 +64,15 @@ cet ordre (arbitrage Marc 2026-07-16 « entité OU année ») :
 
 1. **Type d'identité** (`Passeport`, `Permis de conduire`…) — dans le domaine du type seulement
    (01/04/07, cf. `dossierIdentite_`) ; le titulaire vit dans le NOM, jamais un dossier par personne.
-2. **Entité MAJEURE VALIDÉE** au référentiel `Entités` (employeur, école, véhicule, banque…) —
-   dossier au **niveau 1** du domaine, **nom canonique du référentiel**, **sans année** : une
-   entité = UN dossier (`02 · Finances/Desjardins`, jamais `2026/Desjardins`). Le routage v2 ne
-   consulte QUE les validées (`entitesValideesParCle_`) : une entité que Marc n'a pas validée ne
-   crée JAMAIS de dossier (le prompt gate le champ `sousDossier` en amont, le référentiel verrouille).
+2. **Entité MAJEURE VALIDÉE** au référentiel `Entités` (logement, véhicule, employeur, école —
+   **JAMAIS une banque** : `02 · Finances` n'a plus d'entités validées, décision Marc 2026-07-17,
+   ADR-0024) — dossier au **niveau 1** du domaine, **nom canonique du référentiel**, **sans
+   année** : une entité = UN dossier (`05 · Carrière/Robovic`, jamais `2026/Robovic`). Le routage
+   v2 ne consulte QUE les validées (`entitesValideesParCle_`) : une entité que Marc n'a pas validée
+   ne crée JAMAIS de dossier (le prompt gate le champ `sousDossier`, le référentiel verrouille).
+   Les entités de Marc sont posées par un SEED one-shot (`seedEntitesMarc_`, ADR-0024 : 4 logements,
+   3 véhicules, 2 employeurs, 6 écoles) ; l'auto-validation « vue ≥ 3 fois » est COUPÉE
+   (`ENTITES_AUTO_VALIDATION: false`) — seuls le seed, le formulaire de correction et l'app valident.
 3. **Année** (`AAAA`) pour les domaines à volume (`CONFIG.DOMAINES_PAR_ANNEE` = `02 · Finances`),
    quand aucune entité validée ne s'applique : le tout-venant Finances va dans `02/2026`.
 
@@ -77,14 +81,22 @@ dossier par émetteur ponctuel, dossier-catégorie (« Cours », « Devoirs », 
 squelettes de sous-dossiers d'entité (`SCHEMAS_ENTITE` — plus jamais créés),
 `SOUS_DOSSIERS_PAR_ANNEE` (mort avec le chemin v1).
 
-## Campagne de consolidation (C28-26, `src/Consolidation.gs`)
+## Campagne de consolidation (C28-26 — génération `src/Consolidation.gs`, exécution `src/ConsolidationExec.gs`)
 
-Le stock existant est ramené à cette taxonomie par une campagne DRY-RUN (flag
-`CONSOLIDATION_ACTIF`, OFF par défaut) : plan écrit dans l'onglet Sheet **`PlanConsolidation`**
-(Fichier | ID | Action | Cible | Raison | Empreinte), actions **OK / Déplacer / Doublon
-(→ `_Doublons`) / Ignoré** — intra-domaine seulement (jamais de re-domaine, zéro LLM), `04` parcouru
-en CONSTAT seul (garde §1 stricte), doublons par empreinte MD5 propre à la campagne. **Rien n'est
-déplacé** tant que Marc n'a pas validé le plan ; l'exécution sera un chantier séparé (dry-run §8.6).
+Le stock existant est ramené à cette taxonomie par une campagne en DEUX étages, tous deux ALLUMÉS
+(décision Marc 2026-07-17 « change tout live », ADR-0024 — qui RÉVISE la validation ligne-à-ligne
+d'ADR-0023 en validation globale + droit de suspension) :
+1. **Génération** (`CONSOLIDATION_ACTIF`) : plan écrit dans l'onglet **`PlanConsolidation`**
+   (Fichier | ID | Action | Cible | Raison | Empreinte), actions **OK / Déplacer / Doublon
+   (→ `_Doublons`) / Ignoré** — intra-domaine seulement (jamais de re-domaine, zéro LLM), `04`
+   parcouru en CONSTAT seul (garde §1 stricte), doublons par empreinte MD5 propre à la campagne,
+   contre-pression (s'arrête si l'exécuteur a > `CONSOLIDATION_BACKLOG_MAX` lignes de retard).
+2. **Exécution AUTOMATIQUE progressive** (`CONSOLIDATION_EXEC_ACTIF` — `false` = suspension
+   immédiate) : applique Déplacer/Doublon — **`moveTo` seule mutation** (verrou de surface), **§1
+   re-vérifiée STRICTEMENT à chaque mutation**, multi-parents/ID de dossier jamais déplacés,
+   **cible RECALCULÉE au move** (règle unique + référentiel courant — la colonne Cible n'est
+   qu'une trace), budgets 2 min/run + quotidien en ms réelles, échec compté ≤ 1×/jour (abandon
+   tracé après `QUARANTAINE_MAX` jours distincts).
 Les dossiers VIDÉS relèvent de la corbeille APP validée (ADR-0014), jamais du moteur.
 
 ## Règles structurelles

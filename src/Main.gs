@@ -455,21 +455,23 @@ function tickDriveAI() {
       catch (e) { journalErreur_('Maintenance', 'Réconciliation Index différée : ' + e); }
     }
 
-    // Consolidation de l'arborescence (C28-26, ADR-0023) : GÉNÈRE le plan (onglet
-    // PlanConsolidation) — DRY-RUN pur, aucune mutation Drive. Flag OFF par défaut (inerte tant
-    // que Marc n'allume pas). SECONDAIRE → enveloppée : un échec ne bloque jamais l'intake.
+    // Consolidation de l'arborescence (C28-26, ADR-0023/0024).
+    // EXÉCUTION du plan de consolidation (ADR-0024, décision Marc « change tout live ») AVANT la
+    // génération — DRAINER avant d'alimenter (revue quotas) : applique Déplacer/Doublon, cible
+    // RECALCULÉE au move (règle unique + référentiel courant), moveTo SEUL, §1 par mutation,
+    // budgets run + quotidien. SECONDAIRE → enveloppée : un échec ne bloque jamais l'intake.
+    if (CONFIG.CONSOLIDATION_EXEC_ACTIF && !estBudgetDepasse()) {
+      try { appliquerPlanConsolidation_(estBudgetDepasse); }
+      catch (e) { journalErreur_('ConsolidationExec', 'Exécution du plan différée : ' + e); }
+    }
+
+    // GÉNÉRATION du plan (ADR-0023) — APRÈS l'exécuteur et gatée par la contre-pression (backlog
+    // bas). SECONDAIRE → enveloppée.
     if (CONFIG.CONSOLIDATION_ACTIF && !estBudgetDepasse()) {
       try { genererPlanConsolidation_(estBudgetDepasse); }
       catch (e) { journalErreur_('Consolidation', 'Génération du plan différée : ' + e); }
     }
 
-    // EXÉCUTION du plan de consolidation (ADR-0024, décision Marc « change tout live ») : applique
-    // Déplacer/Doublon — moveTo SEUL, §1 re-vérifiée par mutation, budgets run + quotidien.
-    // SECONDAIRE → enveloppée : un échec ne bloque jamais l'intake.
-    if (CONFIG.CONSOLIDATION_EXEC_ACTIF && !estBudgetDepasse()) {
-      try { appliquerPlanConsolidation_(estBudgetDepasse); }
-      catch (e) { journalErreur_('ConsolidationExec', 'Exécution du plan différée : ' + e); }
-    }
     } // fin de la suspension R2 (panne de compte API)
   } finally {
     // `releaseLock` DOIT toujours s'exécuter : un try/finally imbriqué garantit sa libération même si

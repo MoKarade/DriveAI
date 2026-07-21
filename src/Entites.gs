@@ -198,12 +198,20 @@ function estMotifVehicule_(nom) {
   return MARQUES_VEHICULE.indexOf(normaliserCle_(String(nom).split(/\s+/)[0] || '')) !== -1;
 }
 
-/** « Ford Fiesta SE 2011 » → « Ford Fiesta » : retire année + finition (marque + modèle seuls). PUR. */
+/**
+ * « Ford Fiesta SE 2011 » → « Ford Fiesta » : retire année + finition (marque + modèle seuls),
+ * et unifie les MARQUES à alias (« Volkswagen Jetta » → « VW Jetta » — sinon le dossier seedé
+ * « VW Jetta » et les documents « Volkswagen » ne se rejoindraient jamais, revue C28-26). PUR.
+ */
+var MARQUES_ALIAS = { volkswagen: 'VW' };
+
 function canoniserVehicule_(nom) {
   var toks = String(nom == null ? '' : nom).trim().split(/\s+/).filter(Boolean);
   var out = toks.filter(function (t) {
     var n = normaliserCle_(t);
     return !/^(19|20)\d{2}$/.test(n) && FINITIONS_VEHICULE.indexOf(n) === -1;
+  }).map(function (t) {
+    return MARQUES_ALIAS[normaliserCle_(t)] || t;
   });
   return out.join(' ') || String(nom == null ? '' : nom).trim();
 }
@@ -785,7 +793,21 @@ function creerDossiersEntitesValidees_(estBudgetDepasse) {
       journalErreur_('Entités', 'Domaine inconnu pour l\'entité « ' + l.entite + ' » — dossier non créé.');
       continue;
     }
-    var dossier = sousDossier_(parent, String(l.entite));
+    // RÉUTILISE un dossier existant à graphie/casse DIVERGENTE avant d'en créer un (revue
+    // structure-keeper C28-26 : le recensement montre « 783 avenue Moreau » minuscule déjà au
+    // niveau 1 — un find-or-create par nom exact créerait un quasi-doublon, ce que Marc interdit).
+    // L'inventaire normalisé (dossiersExistantsDomaine_) est le même « reality check » que les
+    // propositions d'entités (P4/C28-10).
+    var dossier;
+    var inventaire = dossiersExistantsDomaine_(l.domaine);
+    var idExistant = inventaire[normaliserCle_(String(l.entite))];
+    if (idExistant) {
+      try { dossier = DriveApp.getFolderById(idExistant); }
+      catch (e) { dossier = sousDossier_(parent, String(l.entite)); }
+    } else {
+      dossier = sousDossier_(parent, String(l.entite));
+      inventaire[normaliserCle_(String(l.entite))] = dossier.getId(); // cache tenu à jour dans le run
+    }
     // ADR-0023 : PLUS JAMAIS de squelette de sous-dossiers (SCHEMAS_ENTITE) — le recensement
     // 2026-07-16 a mesuré ~100 dossiers vides nés de ces schémas jamais remplis. Le contenu de
     // l'entité vit À PLAT dans son dossier (le nom AAAA-MM-JJ_Type_Tiers porte l'information).
