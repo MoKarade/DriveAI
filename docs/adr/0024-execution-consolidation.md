@@ -4,9 +4,13 @@
   fasse » ; « je veux que tu change tout live » ; « il y a beaucoup trop de dossiers inutiles,
   ça m'empêche de faire mes recherches, c'est inutilisable » ; « que l'ajout de dossiers soit
   vraiment sécurisé et safe et simple et utile seulement » ; « pas de dossier par banque »)
-- **Complète** : ADR-0023 (taxonomie à plat + plan dry-run). **Dérogation §4 assumée** : exécution
-  directe sur instruction explicite de Marc (pas de boucle NotebookLM) — la revue flotte reste le
-  garde-fou adversarial.
+- **Complète ADR-0023 et RÉVISE sa Décision 4** : la validation ligne-à-ligne du plan par Marc est
+  remplacée par une validation GLOBALE (son verbatim) + un droit de suspension immédiat
+  (`CONSOLIDATION_EXEC_ACTIF: false`). **Dérogation §4 assumée** : exécution directe sur
+  instruction explicite de Marc (pas de boucle NotebookLM) — la revue flotte reste le garde-fou
+  adversarial (ses correctifs : cible RECALCULÉE au move + rotation de tag `conso-2`, budgets
+  agrégés, échec ≤ 1×/jour, refus des IDs de dossier, réutilisation des dossiers à casse
+  divergente, alias VW↔Volkswagen).
 
 ## Décision
 

@@ -130,6 +130,10 @@ test('surface Drive : AUCUNE suppression/corbeille dans le moteur (l\'exception 
     [/\/trash\b/, 'endpoint corbeille REST'],
     [/method\s*:\s*['"`]delete['"`]/i, 'DELETE REST (Drive/Sheets)'],
     [/trashed['"`]?\s*:\s*true/, 'corbeille par PATCH REST'],
+    // Revue sécurité C28-26 : le seul type de mutation Drive DANGEREUSE que les tripwires ne
+    // voyaient pas — la FUITE par partage. Aucun usage légitime dans le moteur, jamais.
+    [/setSharing\(/, 'modification du partage DriveApp'],
+    [/addEditor\(|addViewer\(/, 'ajout d\'un éditeur/lecteur (fuite par partage)'],
   ];
   // UNIQUE exception préexistante, whitelistée NOMMÉMENT : Ocr.gs supprime SON fichier
   // TEMPORAIRE de conversion (artefact créé par le moteur la seconde d'avant, jamais un

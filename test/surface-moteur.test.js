@@ -139,8 +139,8 @@ const CONTRAT = [
   'entitesValideesParCle_', 'empreintesPlanConsolidation_',
   'sousCheminDomaine_', 'budgetJourConsolidation_', // règle unique flux↔plan + budget quotidien (revue flotte)
   'seedEntitesMarc_', // seed one-shot des entités de Marc (décision 2026-07-17), appelé depuis Main
-  // exécution du plan de consolidation (ADR-0024) — moveTo seul, §1 par mutation
-  'appliquerPlanConsolidation_', 'appliquerLigneConsolidation_', 'decouperCiblePlan_',
+  // exécution du plan de consolidation (ADR-0024) — moveTo seul, §1 par mutation, cible recalculée
+  'appliquerPlanConsolidation_', 'appliquerLigneConsolidation_', 'domaineActuelFichier_',
   'ligneAAppliquer_', 'budgetJourConsoExec_', 'dossierCiblePlan_', 'nbParentsBorne_',
 ];
 
@@ -150,7 +150,8 @@ test('surface du moteur : toutes les fonctions du contrat interne sont définies
 });
 
 test('surface du moteur : les fonctions RETIRÉES par l\'audit ne reviennent pas par accident', () => {
-  const retirees = ['rejouerLaRevue', 'sourceParNomRevue_', 'nettoyerDoublonsRevue',
+  const retirees = ['decouperCiblePlan_', // remplacée par le RECALCUL de cible au move (revue C28-26)
+    'rejouerLaRevue', 'sourceParNomRevue_', 'nettoyerDoublonsRevue',
     'deplacerVersDoublons_', 'viderOnglet_', 'estAReclasser_', 'doublon_',
     'curseurSuivantHisto_', 'miniVerifActionRdv_',
     'dossiersMiroir_', 'dossierMiroirPourChemin_', // miroir à plat 2026-07-08 : plus de sous-dossiers
