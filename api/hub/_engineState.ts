@@ -31,8 +31,13 @@ export interface EngineState {
   lastRunAt: string;
 }
 
-/** Au-delà, la web app est en panne du point de vue du hub (qui coupe lui-même à 5 s). */
-const TIMEOUT_MS = 4000;
+/**
+ * Au-delà, la web app est en panne du point de vue du hub (qui coupe lui-même à 5 s). Calé à
+ * 4,8 s (marge sous les 5 s du hub) : depuis le pré-calcul au tick, la réponse elle-même est
+ * instantanée — le temps résiduel est le RÉVEIL variable de la web app Apps Script (cold start),
+ * qui dépassait ponctuellement 4 s → 500 par intermittence (constaté en prod). 4,8 s l'absorbe.
+ */
+const TIMEOUT_MS = 4800;
 
 /** Entier de compteur valide (fini, ≥ 0) — tout le reste est une réponse corrompue. */
 function compteurValide(v: unknown): number | null {
