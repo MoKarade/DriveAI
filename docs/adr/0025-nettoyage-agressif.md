@@ -54,6 +54,20 @@ restent le PASSIF et la CORRECTNESS.
 - **Convergence (axe 3)** : la cible reste `sousCheminDomaine_` (règle unique, tripwire existant
   `consolidation.test.js`) — aucune divergence flux↔campagne introduite.
 
+## Revue flotte (garde adversariale)
+
+- **PR1** : structure-keeper CONFORME ; code-reviewer 🟠 → la regex d'exclusion mail capturait les
+  fils Facebook `message_1.html`/`conversation_3.html` (le filtre social ne captait que `messages`
+  pluriel) → lookahead `(?!_?\d)` (corrigé en PR2) + contre-épreuves.
+- **PR2** : security-auditor 🟢 (aucune suppression moteur, zone 04 jamais candidate, inscription
+  enveloppée) ; apps-script-quota RAS (coût borné, lecture Réorg 1×/run lazy). 2 durcissements 🟡
+  folddés en PR3 : (a) garde §1 de `detecterDossierVide_` par REMONTÉE de toute la chaîne d'ancêtres
+  (`chaineMonteVersProtege_`, échec-fermé), placée APRÈS la vacuité pour n'être payée que sur un
+  dossier réellement vide ; (b) lecture de la seule colonne A de l'onglet Réorg (÷8 le payload).
+- **PR3** : corbeillage en lot = itération sur la fonction unitaire existante (`corbeillerDossierVide`,
+  seul porteur de `trashed`), re-vérif live par dossier, séquentiel, arrêt propre. Tripwire
+  `app/test/aucune-suppression.test.ts` inchangé et vert.
+
 ## Méthode de test
 
 Fonctions PURES (`estExportDonnees_`, `decisionNonDocument_`, `planRoutageV2_`) + audit §8 sur

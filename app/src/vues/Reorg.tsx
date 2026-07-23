@@ -126,6 +126,33 @@ export function ReorgVue({ langue }: { langue: Langue }) {
     }
   }
 
+  /**
+   * ADR-0025 (axe 1) : corbeille EN LOT — un seul geste pour N dossiers vidés par le rangement. Chaque
+   * dossier passe par la MÊME re-vérif LIVE (`corbeillerDossierVide` → `verdictCorbeille`) qu'au clic
+   * unitaire ; SÉQUENTIEL (jamais de rafale d'appels Drive) ; s'arrête PROPREMENT à la première
+   * violation (dossier re-rempli entre-temps, zone protégée) en nommant où, et garde tout le progrès
+   * déjà acquis. Le moteur ne corbeille toujours rien : tout part de ce clic.
+   */
+  async function toutCorbeiller(vides: LigneReorg[]) {
+    if (enCours || vides.length === 0) return;
+    setEnCours(true);
+    setErreurCorbeille('');
+    let courant: LigneReorg | null = null;
+    try {
+      for (const l of vides) {
+        courant = l;
+        await corbeillerDossierVide(l.id);
+        await ecrireCellule('Réorg', `F${l.ligneSheet}`, 'corbeillé');
+        setLignes((xs) => xs.map((x) => (x.ligneSheet === l.ligneSheet ? { ...x, statut: 'corbeillé' } : x)));
+      }
+    } catch (e) {
+      const ou = courant ? ` (${t('corbeilleArreteA', langue)} ${courant.cheminActuel})` : '';
+      setErreurCorbeille(messageCorbeille(e, langue) + ou);
+    } finally {
+      setEnCours(false);
+    }
+  }
+
   if (erreur && !charge) return <p className="erreur">{t('erreur', langue)} : {erreur}</p>;
   if (!charge) return <p>{t('chargement', langue)}</p>;
 
@@ -207,6 +234,13 @@ export function ReorgVue({ langue }: { langue: Langue }) {
           <h2>🗑 {t('dossiersVides', langue)}</h2>
           <p className="explication">{t('dossiersVidesIntro', langue)}</p>
           {erreurCorbeille && <p className="erreur">{erreurCorbeille}</p>}
+          {videsCandidats.length >= 2 && (
+            <div className="actions" style={{ margin: '0.6rem 0' }}>
+              <button onClick={() => toutCorbeiller(videsCandidats)} disabled={enCours}>
+                🗑 {t('toutCorbeiller', langue)} ({videsCandidats.length})
+              </button>
+            </div>
+          )}
           <table>
             <tbody>
               {videsCandidats.map((l) => (
