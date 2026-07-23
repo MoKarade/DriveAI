@@ -195,13 +195,17 @@ function appliquerLigneConsolidation_(ligne, ctx) {
  */
 function detecterDossierVide_(parent, ctx) {
   var id = parent.getId();
-  if (ctx.proteges && ctx.proteges[id]) return;              // zone protégée (défense en profondeur)
   if (!ctx.intouchables) ctx.intouchables = ensembleIntouchables_();
   if (ctx.intouchables[id]) return;                          // domaine / catégorie à ID fixe / file système
   var nom = parent.getName();
   if (nom.charAt(0) === '_' || estSegmentStructurel_(nom)) return; // racine système / année AAAA / schéma
-  // Vacuité STRICTE (non corbeillés) : le moindre fichier OU sous-dossier ⇒ pas un candidat.
+  // Vacuité STRICTE (non corbeillés) d'ABORD (cas DOMINANT : le parent reste NON vide → sortie tôt,
+  // coût minimal — revue quotas) : le moindre fichier OU sous-dossier ⇒ pas un candidat.
   if (parent.getFiles().hasNext() || parent.getFolders().hasNext()) return;
+  // RARE (parent devenu vide) : garde §1 par REMONTÉE de TOUTE la chaîne d'ancêtres (leçon « remonter
+  // toute la chaîne d'ancêtres », durcissement revue sécurité) — self OU ascendance protégée / illisible
+  // ⇒ jamais un candidat (échec-fermé). Placée APRÈS la vacuité : la remontée ne se paie que sur un vide.
+  if (chaineMonteVersProtege_(parent, ctx.proteges || {}, 0, true)) return;
   inscrireDossierVideCandidat_(id, nom, ctx);
 }
 
@@ -215,9 +219,11 @@ function inscrireDossierVideCandidat_(id, chemin, ctx) {
   var feuille = feuille_('Réorg');
   if (!ctx.videsConnus) {
     ctx.videsConnus = {};
-    var vals = feuille.getDataRange().getValues();
-    for (var i = 1; i < vals.length; i++) {
-      var k = String(vals[i][0]);
+    // Seule la colonne A (clés) est lue — ÷8 le payload vs getDataRange (8 colonnes), revue quotas.
+    var dern = feuille.getLastRow();
+    var cles = dern >= 1 ? feuille.getRange(1, 1, dern, 1).getValues() : [];
+    for (var i = 0; i < cles.length; i++) {
+      var k = String(cles[i][0]);
       if (k.indexOf('videcandidat|') === 0) ctx.videsConnus[k] = true;
     }
   }

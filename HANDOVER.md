@@ -19,8 +19,15 @@
 > `ConsolidationExec.gs` — après chaque `moveTo`, le dossier QUITTÉ devenu STRICTEMENT vide (hors
 > protégé/intouchable/structurel) est inscrit `vide-candidat` dans l'onglet Réorg (même format que la
 > fusion, dédupliqué, lazy 1 lecture/run) — CONSTAT seul, JAMAIS de suppression ; enveloppé (ne bloque
-> jamais le déplacement). TAXONOMY retouché. 605 tests. **PR3 (axe 1 app) À VENIR** : bouton « Tout
-> corbeiller » en lot (vérif live par dossier avant chaque mutation, moteur ne corbeille rien).
+> jamais le déplacement). TAXONOMY retouché. 605 tests. **PR2 MERGÉE (#197)** ; revue flotte :
+> security-auditor 🟢 (aucune suppression, zone 04 intacte) + apps-script-quota RAS — 2 durcissements
+> 🟡 folddés dans PR3 : garde §1 de `detecterDossierVide_` par REMONTÉE d'ancêtres
+> (`chaineMonteVersProtege_`, placée APRÈS la vacuité = zéro coût sur le cas dominant) + lecture
+> Réorg colonne A seule (÷8 payload). **PR3 (axe 1 app) FAITE** : bouton « Tout corbeiller » dans
+> `Reorg.tsx` (affiché si ≥ 2) — boucle SÉQUENTIELLE sur `corbeillerDossierVide` (MÊME re-vérif live
+> `verdictCorbeille` par dossier), arrêt propre à la 1ʳᵉ violation en nommant où, progrès gardé ; le
+> moteur ne corbeille toujours RIEN. i18n FR/EN, tsc propre, 187 tests app (aucune-suppression vert).
+> **C28-28 COMPLET (3 PR).** Marc : ré-exécuter `installerTrigger` après merge pour le moteur PR2.
 > **2026-07-23 — MOTEUR RÉVEILLÉ + accélération (C28-26-ACCEL).** Marc a exécuté `installerTrigger` :
 > prise d'effet VÉRIFIÉE par signaux indépendants (lecture Drive) — heartbeat frais (Sheet d'état
 > 13:32), `00·À trier` VIDE (intake sain), dossiers d'entités seed créés aux racines de domaine (dont

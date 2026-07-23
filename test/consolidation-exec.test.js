@@ -149,12 +149,17 @@ function ctxVide(opts) {
   c.champ_ = (s) => String(s == null ? '' : s).trim();
   c.cheminCibleConsolidation_ = () => (opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : '');
   c.domaineActuelFichier_ = () => '02 · Finances';
-  // Injections cross-module (Reorg.gs non chargé dans ce contexte de test).
+  // Injections cross-module (Reorg.gs / Maintenance.gs non chargés dans ce contexte de test).
   c.ensembleIntouchables_ = () => (opts.intouchables || {});
   c.estSegmentStructurel_ = () => !!opts.structurel;
+  c.chaineMonteVersProtege_ = (dossier, proteges) => !!(proteges && proteges[dossier.getId()]);
   c.feuille_ = () => {
     if (opts.feuilleLeve) throw new Error('Sheet indisponible');
-    return { getDataRange: () => ({ getValues: () => reorgData }), appendRow: (row) => { appends.push(row); } };
+    return {
+      getLastRow: () => reorgData.length,
+      getRange: (r, col, nb) => ({ getValues: () => reorgData.slice(r - 1, r - 1 + nb).map((row) => [row[0]]) }),
+      appendRow: (row) => { appends.push(row); },
+    };
   };
   const ancienParent = {
     getId: () => opts.parentId || 'PARENT',
