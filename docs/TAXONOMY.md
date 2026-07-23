@@ -43,7 +43,7 @@
 |---------|------|
 | `_Archive 2025` | ancien Drive figé — DriveAI n'y touche jamais (sauf via `RANGEMENT_RACINES_SUP` si configuré) |
 | `_Doublons` | doublons NON sensibles écartés (déplacement seul, jamais supprimé) — auto-créé, ID en Script Property `DriveAI_DOUBLONS_ID` |
-| `_Technique` 🆕 | fichiers **code/CAO** (par extension `CONFIG.EXT_TECHNIQUES`) écartés du classement documentaire (ni OCR ni LLM) — auto-créé, ID en `DriveAI_TECHNIQUE_ID` |
+| `_Technique` 🆕 | fichiers **code/CAO** (par extension `CONFIG.EXT_TECHNIQUES`) et **exports de données bruts** (Facebook/Instagram…, gros HTML/JSON sans émetteur) écartés du classement documentaire (ni OCR ni LLM) — auto-créé, ID en `DriveAI_TECHNIQUE_ID`. **Exception (ADR-0025)** : un export de **correspondance** (`Message_`, `Correspondance_`, `Courriel_`, `Courrier_`, `Conversation_` en `.html`) est classé **par CONTENU au domaine** concerné (pas de dossier « Correspondance » dédié) ; un vrai export social (`messages` pluriel, `message_1.html` numéroté Facebook…) reste ici. `Relevé_` reste hors périmètre (ambigu financier). |
 | `_Médias` 🆕 | **médias personnels** (vidéo/audio/gif direct ; photo si nom non-documentaire ET OCR vide — l'OCR reste le juge, ADR-0009 §2) écartés sans LLM, nom d'origine conservé — auto-créé, ID en `DriveAI_MEDIAS_ID` |
 
 > ⚠️ Ces IDs sont des données de configuration, pas des secrets, mais ils ne doivent vivre que

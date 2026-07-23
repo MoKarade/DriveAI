@@ -129,6 +129,94 @@ test('appliquerLigneConsolidation_ : Doublon → moveTo vers _Doublons (décisio
   assert.strictEqual(ajouts[0].statut, 'consolidé-doublon');
 });
 
+/* ---------- détection auto des coquilles vides (ADR-0025, axe 1) : CONSTAT seul dans Réorg ---------- */
+
+// Le parent QUITTÉ est un dossier RICHE (getName/getFiles/getFolders) dont la vacuité est configurable ;
+// les fonctions cross-module (Reorg.gs non chargé ici) sont injectées ; feuille_ capte les appendRow.
+function ctxVide(opts) {
+  opts = opts || {};
+  const c = load(['Config.gs', 'ConsolidationExec.gs']);
+  const appends = [];
+  const reorgData = [['Clé', 'Type', 'ID', 'CheminA', 'CheminP', 'Statut', 'Détail', 'H']].concat(opts.reorgData || []);
+  c.indexContient_ = () => false;
+  c.indexAjouter_ = () => {};
+  c.journalInfo_ = () => {};
+  c.journalErreur_ = () => {};
+  c.aParentProtege_ = () => false;
+  c.idDomaine_ = () => 'DOM';
+  c.dossierDoublons_ = () => ({ getId: () => 'DOUBLONS' });
+  c.sousDossier_ = (parent, nom) => ({ getId: () => parent.getId() + '/' + nom });
+  c.champ_ = (s) => String(s == null ? '' : s).trim();
+  c.cheminCibleConsolidation_ = () => (opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : '');
+  c.domaineActuelFichier_ = () => '02 · Finances';
+  // Injections cross-module (Reorg.gs non chargé dans ce contexte de test).
+  c.ensembleIntouchables_ = () => (opts.intouchables || {});
+  c.estSegmentStructurel_ = () => !!opts.structurel;
+  c.feuille_ = () => {
+    if (opts.feuilleLeve) throw new Error('Sheet indisponible');
+    return { getDataRange: () => ({ getValues: () => reorgData }), appendRow: (row) => { appends.push(row); } };
+  };
+  const ancienParent = {
+    getId: () => opts.parentId || 'PARENT',
+    getName: () => opts.parentNom || 'ENGIE',
+    getParents: () => ({ hasNext: () => false, next: () => null }),
+    getFiles: () => ({ hasNext: () => !!opts.resteFichier }),
+    getFolders: () => ({ hasNext: () => !!opts.resteDossier }),
+  };
+  const fichier = {
+    getParents: () => { let i = 0; const p = [ancienParent]; return { hasNext: () => i < p.length, next: () => p[i++] }; },
+    getName: () => 'f.pdf', getMimeType: () => 'application/pdf', moveTo: () => {},
+  };
+  c.DriveApp = { getFolderById: (id) => ({ getId: () => id }), getFileById: () => fichier };
+  return { c, appends };
+}
+
+function ctxV() { return { proteges: {}, tag: 'conso-2', validees: {}, parId: PAR_ID }; }
+
+test('détection vide : le dossier QUITTÉ devenu vide → UNE ligne vide-candidat (constat seul, jamais de suppression)', () => {
+  const v = ctxVide({ parentId: 'ENGIEID', parentNom: 'ENGIE' }); // vacuité par défaut (rien ne reste)
+  const r = v.c.appliquerLigneConsolidation_({ fileId: 'F1', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+  assert.strictEqual(r, 'fait');
+  assert.strictEqual(v.appends.length, 1, 'une inscription vide-candidat');
+  assert.strictEqual(v.appends[0][0], 'videcandidat|ENGIEID');
+  assert.strictEqual(v.appends[0][1], 'dossier-vide');
+  assert.strictEqual(v.appends[0][5], 'vide-candidat', 'statut lu par l\'app (jamais corbeillé par le moteur)');
+});
+
+test('détection vide : un dossier qui reste NON vide → aucune inscription', () => {
+  const resteF = ctxVide({ resteFichier: true });
+  resteF.c.appliquerLigneConsolidation_({ fileId: 'F2', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+  assert.strictEqual(resteF.appends.length, 0, 'un fichier reste → pas un candidat');
+  const resteD = ctxVide({ resteDossier: true });
+  resteD.c.appliquerLigneConsolidation_({ fileId: 'F3', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+  assert.strictEqual(resteD.appends.length, 0, 'un sous-dossier reste → pas un candidat');
+});
+
+test('détection vide : jamais un dossier STRUCTUREL/INTOUCHABLE/PROTÉGÉ, même vide', () => {
+  const struct = ctxVide({ structurel: true });
+  struct.c.appliquerLigneConsolidation_({ fileId: 'F4', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+  assert.strictEqual(struct.appends.length, 0, 'année AAAA / schéma d\'entité : jamais corbeillable');
+
+  const intouch = ctxVide({ parentId: 'ENGIEID', intouchables: { ENGIEID: true } });
+  intouch.c.appliquerLigneConsolidation_({ fileId: 'F5', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+  assert.strictEqual(intouch.appends.length, 0, 'racine de domaine / catégorie / file système : jamais candidat');
+
+  const prot = ctxVide({ parentId: 'ENGIEID' });
+  const ctxP = ctxV(); ctxP.proteges = { ENGIEID: true };
+  prot.c.appliquerLigneConsolidation_({ fileId: 'F6', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxP);
+  assert.strictEqual(prot.appends.length, 0, 'zone protégée : jamais candidat (défense en profondeur)');
+});
+
+test('détection vide : dédup (déjà signalé) ; et un échec d\'inscription ne remet PAS en cause le déplacement', () => {
+  const deja = ctxVide({ parentId: 'ENGIEID', reorgData: [['videcandidat|ENGIEID', 'dossier-vide', 'ENGIEID', '', '', 'vide-candidat', '', '']] });
+  deja.c.appliquerLigneConsolidation_({ fileId: 'F7', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+  assert.strictEqual(deja.appends.length, 0, 'clé déjà présente → jamais un doublon de ligne');
+
+  const casse = ctxVide({ feuilleLeve: true });
+  const r = casse.c.appliquerLigneConsolidation_({ fileId: 'F8', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+  assert.strictEqual(r, 'fait', 'l\'inscription enveloppée ne casse jamais le déplacement déjà acquis');
+});
+
 /* ---------- appliquerPlanConsolidation_ : suite des curseurs d'une page mixte + échec ≤ 1×/jour ---------- */
 
 function ctxPlan(opts) {

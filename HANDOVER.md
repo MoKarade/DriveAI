@@ -13,8 +13,13 @@
 > (`Message_`/`Correspondance_`/`Courriel_`…) du dump `_Technique` → classés au domaine (placé APRÈS le
 > filtre social : un vrai export Messenger « messages » reste `_Technique` ; `Relevé_` hors périmètre,
 > ambigu). Audit §8 sur réel + contre-épreuves (export social conservé, facture .html non-export).
-> 601 tests. **PR2 (axe 1 moteur) À VENIR** : détection auto des dossiers vidés → onglet Réorg
-> `vide-candidat` (constat seul, jamais de suppression). **PR3 (axe 1 app) À VENIR** : bouton « Tout
+> 601 tests. **PR1 MERGÉE (#196)** ; revue flotte : structure-keeper CONFORME, code-reviewer 🟠 (la
+> regex mail capturait les fils Facebook `message_1.html`/`conversation_3.html`) → **hotfix folddé
+> dans PR2** (lookahead `(?!_?\d)` + contre-épreuves). **PR2 (axe 1 moteur) FAITE** :
+> `ConsolidationExec.gs` — après chaque `moveTo`, le dossier QUITTÉ devenu STRICTEMENT vide (hors
+> protégé/intouchable/structurel) est inscrit `vide-candidat` dans l'onglet Réorg (même format que la
+> fusion, dédupliqué, lazy 1 lecture/run) — CONSTAT seul, JAMAIS de suppression ; enveloppé (ne bloque
+> jamais le déplacement). TAXONOMY retouché. 605 tests. **PR3 (axe 1 app) À VENIR** : bouton « Tout
 > corbeiller » en lot (vérif live par dossier avant chaque mutation, moteur ne corbeille rien).
 > **2026-07-23 — MOTEUR RÉVEILLÉ + accélération (C28-26-ACCEL).** Marc a exécuté `installerTrigger` :
 > prise d'effet VÉRIFIÉE par signaux indépendants (lecture Drive) — heartbeat frais (Sheet d'état

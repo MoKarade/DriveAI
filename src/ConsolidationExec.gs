@@ -156,11 +156,17 @@ function appliquerLigneConsolidation_(ligne, ctx) {
   }
 
   var cibleDossier = dossierCiblePlan_(c);
-  // Déjà dans la cible (rejeu, ou classé entre-temps par le flux vivant) → no-op propre.
+  // Déjà dans la cible (rejeu, ou classé entre-temps par le flux vivant) → no-op propre. On capte
+  // au passage le parent UNIQUE (les multi-parents ont déjà été écartés) — celui qui va être quitté.
   var dejaEnPlace = false;
+  var ancienParent = null;
   try {
     var parents = f.getParents();
-    while (parents.hasNext()) { if (parents.next().getId() === cibleDossier.getId()) { dejaEnPlace = true; break; } }
+    while (parents.hasNext()) {
+      var p = parents.next();
+      if (!ancienParent) ancienParent = p;
+      if (p.getId() === cibleDossier.getId()) { dejaEnPlace = true; break; }
+    }
   } catch (e) { /* illisible → on tente le déplacement (moveTo est idempotent vers le même parent) */ }
 
   if (!dejaEnPlace) f.moveTo(cibleDossier); // LA seule mutation du module — déplacement, jamais suppression
@@ -169,7 +175,57 @@ function appliquerLigneConsolidation_(ligne, ctx) {
     statut: c.doublons ? 'consolidé-doublon' : 'consolidé',
     nom: nom, domaine: c.domaine || '', chemin: cheminFinal,
   }, '');
+  // Le dossier QUITTÉ est-il devenu une coquille vide ? (ADR-0025, axe 1) — CONSTAT seul dans Réorg,
+  // JAMAIS une suppression (la corbeille reste à l'app, au clic). ENVELOPPÉ : un échec ici ne remet
+  // JAMAIS en cause le déplacement déjà acquis ni le marquage Index.
+  if (!dejaEnPlace && ancienParent && ancienParent.getId() !== cibleDossier.getId()) {
+    try { detecterDossierVide_(ancienParent, ctx); }
+    catch (e) { journalErreur_('ConsolidationExec', 'Détection coquille vide différée : ' + e); }
+  }
   return 'fait';
+}
+
+/**
+ * DÉTECTION AUTO d'une coquille vide (ADR-0025, axe 1) : après un déplacement, le dossier QUITTÉ
+ * est-il devenu STRICTEMENT vide (aucun fichier, aucun sous-dossier non corbeillés) et non
+ * structurel ? Si oui, inscrit un CONSTAT `vide-candidat` dans l'onglet Réorg — JAMAIS une
+ * suppression (la corbeille reste à l'APP, au clic de Marc, ADR-0014, avec re-vérif live corbeillés
+ * inclus). Exclusions (jamais un candidat) : zone protégée, racines système/domaine/catégorie
+ * (`ensembleIntouchables_`), noms `_…`, segments structurels (année AAAA, schéma d'entité).
+ */
+function detecterDossierVide_(parent, ctx) {
+  var id = parent.getId();
+  if (ctx.proteges && ctx.proteges[id]) return;              // zone protégée (défense en profondeur)
+  if (!ctx.intouchables) ctx.intouchables = ensembleIntouchables_();
+  if (ctx.intouchables[id]) return;                          // domaine / catégorie à ID fixe / file système
+  var nom = parent.getName();
+  if (nom.charAt(0) === '_' || estSegmentStructurel_(nom)) return; // racine système / année AAAA / schéma
+  // Vacuité STRICTE (non corbeillés) : le moindre fichier OU sous-dossier ⇒ pas un candidat.
+  if (parent.getFiles().hasNext() || parent.getFolders().hasNext()) return;
+  inscrireDossierVideCandidat_(id, nom, ctx);
+}
+
+/**
+ * Inscrit (DÉDUPLIQUÉ) une ligne `vide-candidat` dans l'onglet Réorg — MÊME format que la fusion
+ * (Reorg.gs) : l'app la lit déjà (C21-07/ADR-0014). Le set des clés existantes est chargé UNE fois
+ * par run (lazy, sur `ctx`) et tenu à jour, pour éviter une lecture de l'onglet par dossier vidé.
+ * Colonnes : Clé | Type | ID | Chemin actuel | Chemin proposé | Statut | Détail | Horodaté.
+ */
+function inscrireDossierVideCandidat_(id, chemin, ctx) {
+  var feuille = feuille_('Réorg');
+  if (!ctx.videsConnus) {
+    ctx.videsConnus = {};
+    var vals = feuille.getDataRange().getValues();
+    for (var i = 1; i < vals.length; i++) {
+      var k = String(vals[i][0]);
+      if (k.indexOf('videcandidat|') === 0) ctx.videsConnus[k] = true;
+    }
+  }
+  var cle = 'videcandidat|' + id;
+  if (ctx.videsConnus[cle]) return; // déjà signalé (rejeu, ou fusion antérieure) — jamais un doublon
+  feuille.appendRow([cle, 'dossier-vide', id, chemin, '', 'vide-candidat',
+    'devenu vide par la consolidation', new Date().toISOString()]);
+  ctx.videsConnus[cle] = true;
 }
 
 /**
