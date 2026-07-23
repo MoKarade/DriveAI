@@ -97,6 +97,10 @@ test('AUDIT AXE 2 (ADR-0025) : un export de MAIL n\'est plus dumpé en _Techniqu
     { nom: 'facebook_data.html', taille: 200000, attenduExport: true },
     { nom: 'your_information_messages.html', taille: 200000, attenduExport: true },
     { nom: 'navigation_2024.html', taille: 200000, attenduExport: true }, // gros HTML sans émetteur
+    // Fils de conversation Facebook (singulier + chiffre) : RESTENT des exports (revue code-reviewer).
+    { nom: 'message_1.html', taille: 200000, attenduExport: true },
+    { nom: 'message_12.html', taille: 200000, attenduExport: true },
+    { nom: 'conversation_3.html', taille: 200000, attenduExport: true },
     // Une facture .html légitime (émetteur, petite) n'a jamais été un export.
     { nom: '2024-03_Facture_EDF.html', taille: 5000, emetteur: 'EDF', attenduExport: false },
   ];

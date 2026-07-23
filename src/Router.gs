@@ -303,7 +303,9 @@ function estExportDonnees_(meta) {
   // (recensement 2026-07-16 : 169 « Inconnu » dans _Technique) : ce n'est PAS un export de données
   // brut → on le laisse au pipeline pour un classement au DOMAINE (ADR-0025, axe 2). Placé APRÈS le
   // filtre social : un vrai export Messenger (« messages » pluriel) y est déjà capté ci-dessus.
-  if (/(^|[_ ])(message|correspondance|courriel|courrier|conversation)(_| |$)/.test(k)) return false;
+  // Lookahead `(?!_?\d)` (revue code-reviewer C28-28) : un export Facebook nomme ses fils
+  // `message_1.html`/`conversation_3.html` (singulier + chiffre) — ceux-là RESTENT des exports.
+  if (/(^|[_ ])(message(?!_?\d)|correspondance|courriel|courrier|conversation(?!_?\d))(_| |$)/.test(k)) return false;
   // Gros HTML de navigation SANS émetteur identifié → export (une facture .html porte un émetteur).
   return ext !== '.json' && (meta.taille || 0) > CONFIG.EXPORT_TAILLE_MIN &&
     !(meta.emetteur && String(meta.emetteur).trim());
