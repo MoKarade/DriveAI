@@ -67,6 +67,54 @@ test('AUDIT (PoC) : contre-épreuve — une analyse réellement VIDE, elle, part
   assert.strictEqual(ctx.estClassificationVide_({ domaine: 'xxx', emetteur: '', type_doc: '' }), true);
 });
 
+/* ---------- AUDIT AXE 2 (ADR-0025 §8) : aplatissement des candidatures + exports de mails ---------- */
+
+test('AUDIT AXE 2 (ADR-0025) : une candidature (05, entreprise VISÉE) route à PLAT — le verrou référentiel prouvé', () => {
+  const meta = { nomFichier: '2026-06-30_Lettre de motivation_Airbus.docx' };
+  // Même si la PASSE 1 a proposé sousDossier:'Airbus' (entreprise de candidature), le référentiel
+  // (validees vide = rien de validé) l'ignore → classement à plat. Le dossier fantôme ne peut plus naître.
+  const cand = ctx.planRoutageV2_(
+    { domaine: '05 · Carrière', type_doc: 'Lettre de motivation', emetteur: 'Airbus', sousDossier: 'Airbus' },
+    meta, '2026-06-30', '.docx', {});
+  console.table([{ cas: 'candidature Airbus', type: cand.type, sousDossier: cand.sousDossier === '' ? '(à plat)' : cand.sousDossier }]);
+  assert.strictEqual(cand.type, 'classé');
+  assert.strictEqual(cand.sousDossier, '', 'candidature 05 → jamais un dossier d\'entreprise, à plat');
+
+  // Contraste : un employeur RÉEL, lui, garde son dossier SI validé au référentiel (la granularité utile reste).
+  const cle = ctx.cleCanoniqueEntite_('05 · Carrière', 'Robovic');
+  const valide = ctx.planRoutageV2_(
+    { domaine: '05 · Carrière', type_doc: 'Paie', emetteur: 'Robovic', sousDossier: 'Robovic' },
+    { nomFichier: '2026-06_Paie_Robovic.pdf' }, '2026-06-01', '.pdf', { [cle]: 'Robovic' });
+  assert.strictEqual(valide.sousDossier, 'Robovic', 'un employeur VALIDÉ garde son dossier (granularité utile)');
+});
+
+test('AUDIT AXE 2 (ADR-0025) : un export de MAIL n\'est plus dumpé en _Technique (classé au domaine)', () => {
+  const cas = [
+    { nom: 'Message_Inconnu.html', taille: 200000, attenduExport: false },
+    { nom: 'Correspondance_Inconnu.html', taille: 200000, attenduExport: false },
+    { nom: '2026-06-30_Courriel_Untel.html', taille: 200000, attenduExport: false },
+    // Contre-épreuves (non-régression) : les VRAIS exports de données restent des exports → _Technique.
+    { nom: 'facebook_data.html', taille: 200000, attenduExport: true },
+    { nom: 'your_information_messages.html', taille: 200000, attenduExport: true },
+    { nom: 'navigation_2024.html', taille: 200000, attenduExport: true }, // gros HTML sans émetteur
+    // Une facture .html légitime (émetteur, petite) n'a jamais été un export.
+    { nom: '2024-03_Facture_EDF.html', taille: 5000, emetteur: 'EDF', attenduExport: false },
+  ];
+  const lignes = cas.map((c) => {
+    const est = ctx.estExportDonnees_({ nomFichier: c.nom, taille: c.taille, emetteur: c.emetteur });
+    return { fichier: c.nom.slice(0, 34), export: est, attendu: c.attenduExport, ok: est === c.attenduExport };
+  });
+  console.table(lignes);
+  assert.ok(lignes.every((l) => l.ok), 'exports mail exclus, exports sociaux conservés : ' +
+    lignes.filter((l) => !l.ok).map((l) => l.fichier).join(', '));
+
+  // Bout-en-bout : un mail de correspondance porté par un domaine n'est PLUS un non-document.
+  const nd = ctx.decisionNonDocument_(
+    { domaine: '01 · Administratif & identité', type_doc: 'Correspondance', emetteur: null },
+    { nomFichier: 'Message_Inconnu.html', taille: 200000 });
+  assert.strictEqual(nd.estNonDoc, false, 'le mail repart au pipeline (classé), pas en _Technique');
+});
+
 /* ---------- AUDIT (PoC §8.5, C28-19/ADR-0020) : table de Confiance vs signaux suspects ---------- */
 
 const ctxSuspect = load(['Config.gs', 'TriGmail.gs']);

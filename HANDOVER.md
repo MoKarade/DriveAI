@@ -4,6 +4,18 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **2026-07-23 — C28-28 « c'est toujours un bordel » (plan architecte NotebookLM, 3 axes, 3 PR).**
+> Marc a coché 3 priorités (vider l'ancien à fond ; fichiers mal classés ; encore trop de dossiers),
+> PAS « valider d'un coup d'œil » → plus d'automatisation, pas de gate manuel. Plan validé (ADR-0025,
+> révise ADR-0014 pour le corbeillage en LOT). **PR1 (axes 2&3, classement + audit §8)** : prompt v2
+> — candidature (05, entreprise VISÉE) jamais une entité → à plat (renfort du verrou référentiel qui
+> route déjà à plat, PROUVÉ par l'audit) ; `estExportDonnees_` (Router) exclut les exports de MAILS
+> (`Message_`/`Correspondance_`/`Courriel_`…) du dump `_Technique` → classés au domaine (placé APRÈS le
+> filtre social : un vrai export Messenger « messages » reste `_Technique` ; `Relevé_` hors périmètre,
+> ambigu). Audit §8 sur réel + contre-épreuves (export social conservé, facture .html non-export).
+> 601 tests. **PR2 (axe 1 moteur) À VENIR** : détection auto des dossiers vidés → onglet Réorg
+> `vide-candidat` (constat seul, jamais de suppression). **PR3 (axe 1 app) À VENIR** : bouton « Tout
+> corbeiller » en lot (vérif live par dossier avant chaque mutation, moteur ne corbeille rien).
 > **2026-07-23 — MOTEUR RÉVEILLÉ + accélération (C28-26-ACCEL).** Marc a exécuté `installerTrigger` :
 > prise d'effet VÉRIFIÉE par signaux indépendants (lecture Drive) — heartbeat frais (Sheet d'état
 > 13:32), `00·À trier` VIDE (intake sain), dossiers d'entités seed créés aux racines de domaine (dont

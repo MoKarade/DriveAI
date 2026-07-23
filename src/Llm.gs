@@ -104,6 +104,7 @@ var PROMPT_PASSE2 =
   'identité + titulaire ; entité non générique et canonique ; sensible (immigration/impôts seulement) ; date et type précis. Et les DEUX exigences :\n' +
   '- `descripteur` : si NI émetteur NI titulaire, il DOIT être présent, précis et parlant (ce que c\'est + sujet + auteur si repérable) — JAMAIS « Inconnu » ni un mot vague. Améliore-le si la passe 1 est restée vague.\n' +
   '- `sousDossier` : laisse VIDE (null) par défaut pour un classement à PLAT dans le domaine. À renseigner UNIQUEMENT pour une entité majeure (employeur, école, véhicule, logement) — JAMAIS une banque. Corrige la passe 1 si elle a inventé un dossier-catégorie, un dossier de banque ou un dossier d\'émetteur ponctuel.\n' +
+  '  Candidatures et prospection (05 · Carrière) : l\'entreprise VISÉE (où Marc n\'a jamais travaillé) n\'est JAMAIS une entité de classement — `sousDossier` = null (classement à PLAT). Seuls ses employeurs RÉELS sont des entités (ADR-0025, axe 2).\n' +
   'Domaines autorisés : ' + domainesAutorises_().join(' | ') + '\n' +
   REGLES_V2;
 

@@ -299,6 +299,11 @@ function estExportDonnees_(meta) {
   if (['.html', '.htm', '.json'].indexOf(ext) === -1) return false;
   var k = normaliserCle_(nom.replace(/\.[^.]+$/, ''));
   if (/facebook|instagram|messenger|whatsapp|linkedin|snapchat|export|votre information|your information|friends|posts|messages|donnee/.test(k)) return true;
+  // Export de MAIL / correspondance (Message_…, Correspondance_…) sur-capté vers `_Technique`
+  // (recensement 2026-07-16 : 169 « Inconnu » dans _Technique) : ce n'est PAS un export de données
+  // brut → on le laisse au pipeline pour un classement au DOMAINE (ADR-0025, axe 2). Placé APRÈS le
+  // filtre social : un vrai export Messenger (« messages » pluriel) y est déjà capté ci-dessus.
+  if (/(^|[_ ])(message|correspondance|courriel|courrier|conversation)(_| |$)/.test(k)) return false;
   // Gros HTML de navigation SANS émetteur identifié → export (une facture .html porte un émetteur).
   return ext !== '.json' && (meta.taille || 0) > CONFIG.EXPORT_TAILLE_MIN &&
     !(meta.emetteur && String(meta.emetteur).trim());
