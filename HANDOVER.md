@@ -18,7 +18,12 @@
 > `test/orchestration.test.js` fige l'ordre + le garde. 607 tests. **⚠ Marc : ré-exécuter
 > `installerTrigger` après merge ; signal PROD : 02/03 se vident (tri « dernière modification »).**
 > Note ADR-0024 (bis). Diagnostic clé : un budget quotidien ne sert à rien si le gate PAR TICK coupe
-> l'étape avant qu'elle démarre — l'ORDRE prime sur les budgets.
+> l'étape avant qu'elle démarre — l'ORDRE prime sur les budgets. **Correctif quota (revue
+> apps-script-quota 🟠, suivi PR)** : maintenant que la consolidation tourne VRAIMENT (jusqu'à 32
+> min/j au lieu de ~0), l'agrégat runtime aurait pu frôler le quota ~90 min/j (flux + `finally` ×288
+> + campagnes) → GEL de tous les déclencheurs. Budgets consolidation REDESCENDUS gen 20→12 / exec
+> 12→6 min/j (18 min/j, drainage en ~2-3 j, marge confortable). ⚠ à surveiller : `DriveAI_LAST_TICK`
+> ne doit pas se figer l'après-midi ; redescendre davantage (ou histo/sync) si le heartbeat gèle.
 > **2026-07-23 — C28-28 « c'est toujours un bordel » (plan architecte NotebookLM, 3 axes, 3 PR).**
 > Marc a coché 3 priorités (vider l'ancien à fond ; fichiers mal classés ; encore trop de dossiers),
 > PAS « valider d'un coup d'œil » → plus d'automatisation, pas de gate manuel. Plan validé (ADR-0025,
