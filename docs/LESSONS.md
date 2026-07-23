@@ -1189,3 +1189,33 @@ frontière."
 
 **Règle durable ?** non (instance des règles §7 « prouver sur du réel + contre-épreuve » et
 « few-shot/regex : bornes stables » — consignée ici pour le prochain filtre par nom).
+
+## 2026-07-23 — Famine par ordre du tick : un budget QUOTIDIEN ne borne rien si le gate PAR TICK coupe avant
+
+**Contexte.** Après C28-28 (nettoyage) + l'accélération des budgets consolidation (gen 20/exec 12
+min/j) + 2 `installerTrigger`, vérification PROD par signaux Drive : le grand nettoyage NE DRAÎNAIT
+TOUJOURS PAS — 02·Finances gardait ~40 vieux dossiers banques/émetteurs, 03 ~20, INTACTS depuis
+2 jours, alors que le heartbeat restait frais (moteur vivant). Diagnostic par lecture du CODE (pas de
+Journal/Properties accessibles) : dans `tickDriveAI` (Main.gs), `appliquerPlanConsolidation_` et
+`genererPlanConsolidation_` étaient placés EN DERNIER, gatés `!estBudgetDepasse()` (budget de tick
+3 min sous ANALYSE_V2), APRÈS l'intake + intentions/tri + campagnes legacy (historique/migration/
+réanalyse) + `synchroniserIndex_` (réconciliation « perpétuelle sur le reliquat de budget »). Sous
+3 min, tout était consommé avant → la consolidation n'était JAMAIS évaluée. Les budgets quotidiens
+que j'avais montés ne servaient à RIEN. C'était l'anti-patron EXACT d'une leçon durable existante
+(« tôt + gated, pas en dernier ») — violé pour la consolidation. Correctif (plan architecte
+NotebookLM) : remontée juste après le flux vivant + « BUDGET TAIL » (`estBudgetDepasseStandard`, mur
+Apps Script 4,5 min pour l'I/O Drive pur — le flux vivant reste borné à 3 min, la consolidation
+n'utilise que le reliquat → garantie sans lui voler une ms). Verrou `test/orchestration.test.js`
+(ordre + garde). J'avais accéléré les budgets (bon réflexe apparent) AVANT de vérifier que l'étape
+était seulement ATTEINTE — l'accélération ne pouvait rien y faire.
+
+**Leçon.** "Quand une étape de tick « écrit son état mais ne produit rien » (heartbeat vert, zéro
+effet), diagnostiquer d'abord si elle est ATTEINTE — ordre + gate de budget — AVANT de suspecter sa
+logique ou de gonfler ses budgets. Un budget QUOTIDIEN ne borne rien si le gate PAR TICK coupe
+l'étape avant qu'elle démarre : l'ORDRE du tick prime sur les budgets. Corollaire « BUDGET TAIL » :
+une tâche PURE I/O (Drive/Sheet, sans risque LLM) peut recevoir un garde ÉTENDU au vrai mur Apps
+Script (BUDGET_MS 4,5 min) au lieu du budget de tick réduit réservé aux appels Sonnet (3 min) —
+placée APRÈS le flux vivant, elle n'utilise que le reliquat, garantie de tourner sans affamer
+personne. Vérifier la PROD par signal indépendant (dossiers qui se vident) reste la seule preuve."
+
+**Règle durable ?** oui (corollaire ajouté à la puce « Drainer avant d'alimenter » de CLAUDE.md §7).

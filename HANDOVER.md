@@ -4,6 +4,21 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **⚠️ 2026-07-23 (soir) — INCIDENT FAMINE consolidation + correctif « BUDGET TAIL » (C28-29).**
+> Vérification PROD (signaux Drive) après C28-28 : le grand nettoyage NE DRAÎNAIT TOUJOURS PAS —
+> 02·Finances gardait ~40 vieux dossiers banques/émetteurs, 03 ~20, INTACTS 2 jours malgré 2
+> `installerTrigger` + l'accélération. **Cause (code, `src/Main.gs`)** : `appliquerPlanConsolidation_`
+> + `genererPlanConsolidation_` étaient EN DERNIER dans le tick, gatés par le budget de tick 3 min
+> (`estBudgetDepasse`), APRÈS l'intake + campagnes legacy + `synchroniserIndex_` (« perpétuelle sur le
+> reliquat ») → tout mangé avant, consolidation SAUTÉE chaque tick (heartbeat vert, zéro drainage). =
+> anti-patron leçon §7 « tôt + gated, PAS en dernier ». **Correctif (plan NotebookLM)** : remontée de
+> la consolidation juste après le flux vivant + « BUDGET TAIL » (`estBudgetDepasseStandard`, mur
+> Apps Script 4,5 min réservé à l'I/O Drive pur sans risque LLM — le flux vivant reste borné à 3 min,
+> la consolidation n'utilise que le reliquat → garantie à chaque tick sans lui voler une ms).
+> `test/orchestration.test.js` fige l'ordre + le garde. 607 tests. **⚠ Marc : ré-exécuter
+> `installerTrigger` après merge ; signal PROD : 02/03 se vident (tri « dernière modification »).**
+> Note ADR-0024 (bis). Diagnostic clé : un budget quotidien ne sert à rien si le gate PAR TICK coupe
+> l'étape avant qu'elle démarre — l'ORDRE prime sur les budgets.
 > **2026-07-23 — C28-28 « c'est toujours un bordel » (plan architecte NotebookLM, 3 axes, 3 PR).**
 > Marc a coché 3 priorités (vider l'ancien à fond ; fichiers mal classés ; encore trop de dossiers),
 > PAS « valider d'un coup d'œil » → plus d'automatisation, pas de gate manuel. Plan validé (ADR-0025,

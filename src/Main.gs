@@ -278,6 +278,13 @@ function tickDriveAI() {
 
     var debut = Date.now();
     var estBudgetDepasse = function () { return Date.now() - debut > budgetMsRun_(); };
+    // « BUDGET TAIL » (incident 2026-07-23) : garde-temps ÉTENDU au VRAI mur Apps Script
+    // (CONFIG.BUDGET_MS = 4,5 min) pour les tâches PURE I/O Drive/Sheet SANS risque LLM — la
+    // consolidation (moveTo + hash MD5). Le flux vivant reste borné au budget de tick 3 min
+    // (budgetMsRun_ sous ANALYSE_V2, marge de sécurité face aux appels Sonnet) ; la consolidation,
+    // remontée juste après lui, n'utilise que le RELIQUAT jusqu'à 4,5 min : elle est ainsi GARANTIE
+    // de s'exécuter à chaque tick sans jamais voler une ms au flux vivant (leçon §7 « tôt + gated »).
+    var estBudgetDepasseStandard = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
 
     // Auto-rejeu sur nouvelle version du classement : renvoie les DÉPÔTS partis en revue vers
     // 00·À trier pour reclassement. SECONDAIRE → enveloppé d'un try/catch : un échec ne doit
@@ -399,6 +406,23 @@ function tickDriveAI() {
       }
     }
 
+    // ⚖️ CONSOLIDATION de l'arborescence (C28-26, ADR-0024) — REMONTÉE ICI, juste après le flux
+    // vivant et AVANT les campagnes legacy + la réconciliation (incident 2026-07-23 : placée EN
+    // DERNIER, elle était affamée et ne draînait JAMAIS — anti-patron leçon §7). « BUDGET TAIL » :
+    // gatée par estBudgetDepasseStandard (mur 4,5 min) et non par le budget de tick 3 min — elle est
+    // PURE I/O Drive (moveTo + hash MD5, aucun risque LLM). Le flux vivant ci-dessus (borné à 3 min)
+    // a déjà eu sa part ; la consolidation n'utilise que le reliquat → GARANTIE à chaque tick sans
+    // rien lui voler. EXÉCUTION avant GÉNÉRATION (drainer avant d'alimenter). Bornée par ses budgets
+    // run + quotidien (12/20 min) + la contre-pression. SECONDAIRES → enveloppées (jamais bloquer l'intake).
+    if (CONFIG.CONSOLIDATION_EXEC_ACTIF && !estBudgetDepasseStandard()) {
+      try { appliquerPlanConsolidation_(estBudgetDepasseStandard); }
+      catch (e) { journalErreur_('ConsolidationExec', 'Exécution du plan différée : ' + e); }
+    }
+    if (CONFIG.CONSOLIDATION_ACTIF && !estBudgetDepasseStandard()) {
+      try { genererPlanConsolidation_(estBudgetDepasseStandard); }
+      catch (e) { journalErreur_('Consolidation', 'Génération du plan différée : ' + e); }
+    }
+
     // Campagne HISTORIQUE Gmail (#12, ADR-0010 §1) : remonte tout l'historique de PJ par tranches
     // ancrées. APRÈS le flux vivant (priorité stricte C28-15). Coût nul une fois finie.
     // SECONDAIRE → enveloppée : un échec Gmail ne bloque jamais la suite du tick.
@@ -455,22 +479,9 @@ function tickDriveAI() {
       catch (e) { journalErreur_('Maintenance', 'Réconciliation Index différée : ' + e); }
     }
 
-    // Consolidation de l'arborescence (C28-26, ADR-0023/0024).
-    // EXÉCUTION du plan de consolidation (ADR-0024, décision Marc « change tout live ») AVANT la
-    // génération — DRAINER avant d'alimenter (revue quotas) : applique Déplacer/Doublon, cible
-    // RECALCULÉE au move (règle unique + référentiel courant), moveTo SEUL, §1 par mutation,
-    // budgets run + quotidien. SECONDAIRE → enveloppée : un échec ne bloque jamais l'intake.
-    if (CONFIG.CONSOLIDATION_EXEC_ACTIF && !estBudgetDepasse()) {
-      try { appliquerPlanConsolidation_(estBudgetDepasse); }
-      catch (e) { journalErreur_('ConsolidationExec', 'Exécution du plan différée : ' + e); }
-    }
-
-    // GÉNÉRATION du plan (ADR-0023) — APRÈS l'exécuteur et gatée par la contre-pression (backlog
-    // bas). SECONDAIRE → enveloppée.
-    if (CONFIG.CONSOLIDATION_ACTIF && !estBudgetDepasse()) {
-      try { genererPlanConsolidation_(estBudgetDepasse); }
-      catch (e) { journalErreur_('Consolidation', 'Génération du plan différée : ' + e); }
-    }
+    // (Consolidation C28-26 : REMONTÉE juste après le flux vivant — voir bloc « BUDGET TAIL » plus
+    // haut. Elle était ici EN DERNIER et se faisait affamer par la réconciliation + les campagnes
+    // legacy, incident 2026-07-23.)
 
     } // fin de la suspension R2 (panne de compte API)
   } finally {

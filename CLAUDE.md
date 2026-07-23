@@ -267,6 +267,16 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   concurrence du traitement), avec filet « après N recensements incomplets, accepter le compte partiel » ;
   numérateur monotone, base re-basable (jamais > 100 %), « terminé » sur le vrai signal de fin (passe qui ne
   collecte plus rien), pas sur `traites >= base`. Toujours tracer le scénario sur plusieurs ticks.
+  **Corollaire (incident 2026-07-23, consolidation) : un budget QUOTIDIEN ne borne RIEN si le gate PAR TICK
+  coupe l'étape avant qu'elle démarre.** La consolidation (budgets/jour 12+20 min) était placée EN DERNIER,
+  gatée par le budget de tick 3 min (`estBudgetDepasse` sous ANALYSE_V2), après la réconciliation
+  « perpétuelle sur le reliquat » → jamais atteinte, zéro drainage pendant que le heartbeat restait vert. Deux
+  correctifs conjoints : (1) **remonter** l'étape TÔT (après le flux vivant, avant les campagnes basses
+  priorité) — l'ORDRE prime sur les budgets ; (2) **« BUDGET TAIL »** : une tâche PURE I/O (Drive/Sheet, sans
+  risque LLM) peut recevoir un garde ÉTENDU au vrai mur Apps Script (`CONFIG.BUDGET_MS` 4,5 min) au lieu du
+  budget de tick 3 min réservé aux appels Sonnet — placée APRÈS le flux vivant, elle n'utilise que le reliquat
+  jusqu'au mur, garantie de tourner sans lui voler une ms. Vérifier une étape « qui écrit son état mais ne
+  produit rien » = d'abord se demander si elle est seulement ATTEINTE (ordre/budget), pas si sa logique est juste.
 - **Une clé d'idempotence encode TOUT l'état qui commande la décision.** C'est un instantané, pas
   un identifiant : chaque variable dont dépend l'action doit être DANS la clé (ex. tri Gmail :
   `tri|fil|ts|lu` — sans le flag lu/non-lu, un mail lu APRÈS son tri n'aurait jamais été archivé).
