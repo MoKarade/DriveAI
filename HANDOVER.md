@@ -4,6 +4,20 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **2026-07-23 — MOTEUR RÉVEILLÉ + accélération (C28-26-ACCEL).** Marc a exécuté `installerTrigger` :
+> prise d'effet VÉRIFIÉE par signaux indépendants (lecture Drive) — heartbeat frais (Sheet d'état
+> 13:32), `00·À trier` VIDE (intake sain), dossiers d'entités seed créés aux racines de domaine (dont
+> « 783 avenue Moreau » RÉUTILISÉ sans doublon), `02·Finances` se remplit PAR ANNÉE (2022/2025/2026 —
+> paies, T4, relevés, contrats courtiers), zéro dossier par banque, zéro doublon créé. **Constat** :
+> rangement de fond correct mais LENT (goulot = la GÉNÉRATION du plan, pas l'exécution) et beaucoup de
+> vieux dossiers de `03` pas encore drainés. **Décision Marc « accélérer »** → hausse des budgets
+> QUOTIDIENS (`Config.gs` seul, aucune logique de classement) : génération 12→20 min/j (le vrai levier)
+> + plafond 40→60/run ; exécution 6→12 min/j (juste assez pour ne jamais devenir le goulot) + plafond
+> 60→100/run ; per-run exec inchangé (2 min, < garde-temps). **Enveloppe agrégée = 64 min/j** (histo 20
+> + gen 20 + exec 12 + sync 12), marge ~26 min sous le quota runtime ~90 min/j — intake PRIORITAIRE.
+> Revue flotte quota (garde ADR-0024) : 🟠 → à VÉRIFIER par signal indépendant (heartbeat qui ne se
+> fige pas l'après-midi) et REDESCENDRE (exec 6 / gen 12) une fois le drainage fini. **⚠ Marc :
+> ré-exécuter `installerTrigger` une fois cette PR mergée** pour que le nouveau budget prenne effet.
 > **2026-07-09 — C26-08 LANCÉE (ADR-0018) : ANALYSE_V2 allumé + campagne ciblée 03/08 ; crédit
 > rechargé (100 $) ; dry-run clos ; fusion 07→08 et incident Sheet SOLDÉS ; artefacts rangés
 > sous 08 ; C28-14 session durable de l'app LIVRÉE ET VALIDÉE en prod.**
