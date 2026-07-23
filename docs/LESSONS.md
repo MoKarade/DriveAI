@@ -1167,3 +1167,25 @@ vert ne prouve pas l'absence de doublon. Les tests unitaires mockés ne le voien
 appel est fonctionnellement idempotent mais brûle le budget)."
 
 **Règle durable ?** oui (clause ajoutée à la puce Git de CLAUDE.md §7).
+
+## 2026-07-23 — Un filtre d'exclusion ÉTROIT placé APRÈS un filtre LARGE peut ré-ouvrir un trou
+
+**Contexte.** C28-28 PR1 : `estExportDonnees_` (Router.gs) ajoutait une exclusion des exports de MAILS
+(`Message_`, `Correspondance_`) placée APRÈS le filtre social (Facebook/Instagram/`messages`), pour
+qu'un `Message_Inconnu.html` reparte au pipeline au lieu d'être dumpé en `_Technique`. La revue
+code-reviewer a trouvé que la regex étroite `/(^|[_ ])(message|…)(_| |$)/` capturait AUSSI les fils de
+conversation Facebook `message_1.html`/`conversation_3.html` (singulier + chiffre) — que le filtre
+social RATE (il ne matche que `messages` PLURIEL). Résultat : de VRAIS exports sociaux seraient
+repartis au pipeline (fuite vers un domaine), aggravant le « bordel » qu'on corrigeait. Corrigé par un
+lookahead `(?!_?\d)` + contre-épreuves explicites `message_1`/`conversation_3` → restent exports.
+
+**Leçon.** "Quand on ajoute un filtre d'exclusion ÉTROIT (par nom) APRÈS un filtre plus LARGE, la
+regex étroite doit se blinder contre les variantes de nommage que le LARGE ne couvre pas (ici
+`message_1` NUMÉROTÉ de Facebook vs `messages` PLURIEL du social) — sinon l'étroit ré-attrape ce que
+le large a laissé passer et ré-ouvre le trou. Toujours écrire la CONTRE-ÉPREUVE dans le test (le cas
+qui doit RESTER exclu par le filtre large), pas seulement le cas nominal. Réflexe : un `return false`
+anticipé a une direction de risque = faux négatifs → tracer un exemple réel des DEUX côtés de la
+frontière."
+
+**Règle durable ?** non (instance des règles §7 « prouver sur du réel + contre-épreuve » et
+« few-shot/regex : bornes stables » — consignée ici pour le prochain filtre par nom).
