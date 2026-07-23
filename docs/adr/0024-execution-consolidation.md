@@ -77,6 +77,29 @@ terminaison, gardes §1 intactes) ; deux actionnables traités : (a) invariant p
 drainage terminé — engagement inscrit dans le commentaire de `Config.gs`. Marc doit ré-exécuter
 `installerTrigger` après merge pour que le nouveau budget prenne effet.
 
+## Mise à jour 2026-07-23 (bis) — INCIDENT famine + orchestration « budget tail »
+
+Après l'accélération, vérification PROD par signaux Drive indépendants : **la consolidation ne
+draînait TOUJOURS pas** (02·Finances ~40 vieux dossiers banques/émetteurs + 03 ~20, INTACTS depuis
+2 jours malgré 2 `installerTrigger`). Cause diagnostiquée dans le CODE (`src/Main.gs`) : `exec` et
+`gen` étaient placés **EN DERNIER** dans le tick, gatés par le budget de tick 3 min
+(`estBudgetDepasse`), APRÈS l'intake + les campagnes legacy + `synchroniserIndex_` (réconciliation
+« perpétuelle sur le reliquat de budget »). Sous les 3 min, tout était consommé avant → consolidation
+**SAUTÉE à chaque tick** (les budgets quotidiens 12/20 min ne servaient à rien : le gate par-tick la
+coupait avant). = anti-patron de la leçon §7 « drainer avant d'alimenter SANS affamer l'alimenteur :
+TÔT + gated, PAS en dernier », violé pour la consolidation.
+
+**Correctif (plan architecte NotebookLM)** : (a) **REMONTÉE** de exec+gen juste après le flux vivant
+(tri Gmail) et AVANT les campagnes legacy + la réconciliation ; (b) **« BUDGET TAIL »** — un garde
+étendu `estBudgetDepasseStandard` (mur Apps Script `CONFIG.BUDGET_MS` 4,5 min) réservé aux tâches
+PURE I/O Drive sans risque LLM (la consolidation = `moveTo` + hash MD5). Le flux vivant reste borné à
+3 min (`budgetMsRun_` sous ANALYSE_V2, marge anti-Sonnet) ; la consolidation, placée après lui,
+n'utilise que le RELIQUAT jusqu'à 4,5 min → **garantie de tourner à chaque tick sans lui voler une
+ms**. Effet de bord assumé : la consolidation prime désormais sur les campagnes legacy
+(migration/réanalyse), gatées par le frein $ de toute façon. Verrou : `test/orchestration.test.js`
+fige l'ordre ET le garde (aucun appel de consolidation sous `estBudgetDepasse`). Marc ré-exécute
+`installerTrigger` après merge ; signal PROD : 02/03 se vident (tri « dernière modification »).
+
 ## Méthode de test
 
 Fonctions PURES (`decouperCiblePlan_`, `ligneAAppliquer_`, `budgetJourConsoExec_`, seed) +
