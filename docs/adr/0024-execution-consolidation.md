@@ -55,6 +55,28 @@
   une variante de graphie non couverte (ex. « Volkswagen Jetta » vs « VW Jetta ») se classe à
   plat/année — fusionnable plus tard dans l'app, jamais un blocage.
 
+## Mise à jour 2026-07-23 — accélération (C28-26-ACCEL)
+
+Moteur réveillé par Marc (`installerTrigger`) ; prise d'effet vérifiée par signaux Drive indépendants
+(heartbeat frais, `00·À trier` vide, seed matérialisé, `02` par année sans dossier de banque). Le
+rangement de fond était correct mais LENT. Sur instruction explicite de Marc (« accélérer »), hausse
+des budgets QUOTIDIENS dans `Config.gs` **uniquement** (aucune logique de classement) :
+
+- **Génération** (le vrai goulot — l'exécuteur draine bien plus vite qu'elle n'alimente) :
+  `CONSOLIDATION_BUDGET_JOUR_MS` 12→20 min/j, `CONSOLIDATION_MAX_PAR_RUN` 40→60.
+- **Exécution** (juste assez pour ne jamais devenir le goulot) : `CONSOLIDATION_EXEC_BUDGET_JOUR_MS`
+  6→12 min/j, `CONSOLIDATION_EXEC_MAX_PAR_RUN` 60→100 ; `CONSOLIDATION_EXEC_BUDGET_MS` inchangé
+  (2 min, strictement < garde-temps de tick 3 min sous V2).
+- **Enveloppe agrégée** = histo 20 + gen 20 + exec 12 + sync 12 = **64 min/j**, marge ~26 min sous le
+  quota runtime Apps Script ~90 min/j ; intake PRIORITAIRE dans le tick + `00·À trier` à vide.
+
+Revue flotte quota (garde adversariale, comme le reste du lot) : **🟠** — sûr sur le fond (convergence,
+terminaison, gardes §1 intactes) ; deux actionnables traités : (a) invariant per-run rétabli (exec 2 min
+< garde-temps réel 3 min sous V2, pas 4,5) ; (b) l'enveloppe reste à **vérifier par signal indépendant**
+(heartbeat qui ne se fige pas l'après-midi) et à **REDESCENDRE** (exec 6 / gen 12) une fois le grand
+drainage terminé — engagement inscrit dans le commentaire de `Config.gs`. Marc doit ré-exécuter
+`installerTrigger` après merge pour que le nouveau budget prenne effet.
+
 ## Méthode de test
 
 Fonctions PURES (`decouperCiblePlan_`, `ligneAAppliquer_`, `budgetJourConsoExec_`, seed) +

@@ -459,20 +459,30 @@ var CONFIG = {
                                           // tout avec le référentiel courant (rotation dans genererPlan…)
   CONSOLIDATION_BUDGET_MS: 3 * 60 * 1000, // sous-budget PROPRE par run (le hash MD5 lit les octets — sans
                                           // cette borne, un run mangerait le budget des étapes suivantes)
-  CONSOLIDATION_BUDGET_JOUR_MS: 12 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
+  CONSOLIDATION_BUDGET_JOUR_MS: 20 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
                                           // un plafond par RUN ne borne pas la JOURNÉE — ×288 ticks > quota
-                                          // runtime ~90 min/j ; patron GMAIL_HISTO/SYNC_BUDGET_JOUR_MS)
-  CONSOLIDATION_MAX_PAR_RUN: 40,          // fichiers ajoutés au plan par run (le coût réel = le hash)
+                                          // runtime ~90 min/j ; patron GMAIL_HISTO/SYNC_BUDGET_JOUR_MS).
+                                          // 12 → 20 min (accélération, décision Marc 2026-07-23 « accélérer ») :
+                                          // alimenter l'exécuteur plus vite le temps du grand drainage
+  CONSOLIDATION_MAX_PAR_RUN: 60,          // fichiers ajoutés au plan par run (40 → 60 ; le coût réel = le hash)
   // Exécution du plan (ConsolidationExec.gs, ADR-0024 — décision Marc 2026-07-17 « change tout live ») :
   CONSOLIDATION_EXEC_ACTIF: true,         // applique Déplacer/Doublon du PlanConsolidation (moveTo seul,
                                           // §1 re-vérifiée par mutation) — false = suspension immédiate
-  CONSOLIDATION_EXEC_BUDGET_MS: 2 * 60 * 1000,        // sous-budget par run
-  CONSOLIDATION_EXEC_BUDGET_JOUR_MS: 6 * 60 * 1000,   // budget QUOTIDIEN en ms réelles persistées.
-                                          // 10 → 6 min (revue quotas 2026-07-21) : l'ENVELOPPE agrégée des
-                                          // campagnes (gen 12 + exec + sync 12 + histo 20) doit rester loin
-                                          // du quota runtime ~90 min/j — remonter vers 10 quand la
-                                          // génération (CONSOLIDATION_BUDGET_JOUR_MS) sera terminée
-  CONSOLIDATION_EXEC_MAX_PAR_RUN: 60,     // lignes du plan consommées par run au maximum
+  CONSOLIDATION_EXEC_BUDGET_MS: 2 * 60 * 1000,        // sous-budget par run — reste STRICTEMENT < garde-temps de
+                                          // tick (ANALYSE_V2_BUDGET_MS 3 min) pour ne pas affamer le reste du
+                                          // tick ; le ×3 de débit vient du budget QUOTIDIEN (18 min ÷ 2 = 9 runs/j)
+  CONSOLIDATION_EXEC_BUDGET_JOUR_MS: 12 * 60 * 1000,  // budget QUOTIDIEN en ms réelles persistées.
+                                          // 6 → 12 min (accélération, décision Marc 2026-07-23 « accélérer »).
+                                          // NB (revue quota 07-23) : l'exécuteur N'EST PAS le goulot — la
+                                          // GÉNÉRATION l'est (exec draine bien plus vite qu'elle n'alimente) ;
+                                          // le vrai levier est CONSOLIDATION_BUDGET_JOUR_MS. Exec à 12 min
+                                          // garantit seulement qu'il ne devient jamais le goulot. ENVELOPPE
+                                          // agrégée = histo 20 + gen 20 + exec 12 + sync 12 = 64 min/j, marge
+                                          // ~26 min sous le quota runtime ~90 min/j (intake PRIORITAIRE + file
+                                          // `00·À trier` à vide) — À VÉRIFIER par signal indépendant (heartbeat
+                                          // qui ne se fige pas l'après-midi) et REDESCENDRE (exec 6 / gen 12)
+                                          // une fois le grand drainage terminé
+  CONSOLIDATION_EXEC_MAX_PAR_RUN: 100,    // lignes du plan consommées par run au maximum (60 → 100 ; moveTo cheap)
   CONSOLIDATION_BACKLOG_MAX: 150,         // contre-pression : la GÉNÉRATION s'arrête si l'exécuteur a plus
                                           // de N lignes de retard (drainer avant d'alimenter, tôt + gated)
   SEED_ENTITES_TAG: 'seed-1',             // seed one-shot des entités de Marc (Entites.seedEntitesMarc_)
