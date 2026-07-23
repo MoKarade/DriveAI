@@ -459,29 +459,32 @@ var CONFIG = {
                                           // tout avec le référentiel courant (rotation dans genererPlan…)
   CONSOLIDATION_BUDGET_MS: 3 * 60 * 1000, // sous-budget PROPRE par run (le hash MD5 lit les octets — sans
                                           // cette borne, un run mangerait le budget des étapes suivantes)
-  CONSOLIDATION_BUDGET_JOUR_MS: 20 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
+  CONSOLIDATION_BUDGET_JOUR_MS: 12 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
                                           // un plafond par RUN ne borne pas la JOURNÉE — ×288 ticks > quota
                                           // runtime ~90 min/j ; patron GMAIL_HISTO/SYNC_BUDGET_JOUR_MS).
-                                          // 12 → 20 min (accélération, décision Marc 2026-07-23 « accélérer ») :
-                                          // alimenter l'exécuteur plus vite le temps du grand drainage
+                                          // 20 → 12 min (REDESCENTE, revue quota C28-29) : la consolidation
+                                          // tourne enfin VRAIMENT (correctif famine) ; à 20 l'agrégat journalier
+                                          // (flux + finally ×288 + campagnes) frôlait le quota runtime → risque de
+                                          // GEL de TOUS les déclencheurs (chien de garde inclus). 12 min planifie
+                                          // ~700 fichiers/j (la génération est le goulot) : drainage en ~2-3 j, safe.
   CONSOLIDATION_MAX_PAR_RUN: 60,          // fichiers ajoutés au plan par run (40 → 60 ; le coût réel = le hash)
   // Exécution du plan (ConsolidationExec.gs, ADR-0024 — décision Marc 2026-07-17 « change tout live ») :
   CONSOLIDATION_EXEC_ACTIF: true,         // applique Déplacer/Doublon du PlanConsolidation (moveTo seul,
                                           // §1 re-vérifiée par mutation) — false = suspension immédiate
   CONSOLIDATION_EXEC_BUDGET_MS: 2 * 60 * 1000,        // sous-budget par run — reste STRICTEMENT < garde-temps de
                                           // tick (ANALYSE_V2_BUDGET_MS 3 min) pour ne pas affamer le reste du
-                                          // tick ; le ×3 de débit vient du budget QUOTIDIEN (18 min ÷ 2 = 9 runs/j)
-  CONSOLIDATION_EXEC_BUDGET_JOUR_MS: 12 * 60 * 1000,  // budget QUOTIDIEN en ms réelles persistées.
-                                          // 6 → 12 min (accélération, décision Marc 2026-07-23 « accélérer »).
-                                          // NB (revue quota 07-23) : l'exécuteur N'EST PAS le goulot — la
-                                          // GÉNÉRATION l'est (exec draine bien plus vite qu'elle n'alimente) ;
-                                          // le vrai levier est CONSOLIDATION_BUDGET_JOUR_MS. Exec à 12 min
-                                          // garantit seulement qu'il ne devient jamais le goulot. ENVELOPPE
-                                          // agrégée = histo 20 + gen 20 + exec 12 + sync 12 = 64 min/j, marge
-                                          // ~26 min sous le quota runtime ~90 min/j (intake PRIORITAIRE + file
-                                          // `00·À trier` à vide) — À VÉRIFIER par signal indépendant (heartbeat
-                                          // qui ne se fige pas l'après-midi) et REDESCENDRE (exec 6 / gen 12)
-                                          // une fois le grand drainage terminé
+                                          // tick ; le débit journalier vient du budget QUOTIDIEN (moveTo cheap)
+  CONSOLIDATION_EXEC_BUDGET_JOUR_MS: 6 * 60 * 1000,   // budget QUOTIDIEN en ms réelles persistées.
+                                          // 12 → 6 min (REDESCENTE, revue quota C28-29) : l'exécuteur N'EST PAS le
+                                          // goulot (la GÉNÉRATION l'est — exec draine bien plus vite qu'elle
+                                          // n'alimente), 6 min suffisent largement. ENVELOPPE agrégée ramenée à
+                                          // histo 20 + gen 12 + exec 6 + sync 12 = 50 min/j de campagnes ; + le
+                                          // socle non budgété (flux vivant + `finally` ×288 ticks ~15-25 min) ⇒
+                                          // marge CONFORTABLE sous le quota runtime ~90 min/j. À 20/12 (avant
+                                          // C28-29, quand la consolidation ne tournait PAS) l'agrégat aurait frôlé
+                                          // 90-100 min/j une fois le correctif famine actif = risque de gel total.
+                                          // À VÉRIFIER quand même par signal indépendant (heartbeat non figé
+                                          // l'après-midi) ; redescendre davantage si besoin
   CONSOLIDATION_EXEC_MAX_PAR_RUN: 100,    // lignes du plan consommées par run au maximum (60 → 100 ; moveTo cheap)
   CONSOLIDATION_BACKLOG_MAX: 150,         // contre-pression : la GÉNÉRATION s'arrête si l'exécuteur a plus
                                           // de N lignes de retard (drainer avant d'alimenter, tôt + gated)
