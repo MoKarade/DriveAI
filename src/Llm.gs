@@ -523,6 +523,110 @@ function appelAnthropicTexte_(modele, systeme, contenu, maxTokens) {
   return texteReponse_(data);
 }
 
+/* ============================================================================
+ * ASSISTANT CHAT (C28-30, ADR-0026) — appel « messages » multi-tours + boucle Tool Use.
+ * La clé + l'accès Drive vivent dans le moteur (ADR-0007) ; l'app n'envoie que l'historique.
+ * ==========================================================================*/
+
+/**
+ * UN appel Anthropic « messages » (multi-tours, Tool Use possible). Renvoie l'objet `data` parsé
+ * (content[], stop_reason, usage) ou null (panne/erreur). Comptabilise l'usage. AUCUNE boucle ici —
+ * c'est `appelAnthropicChat_` qui orchestre le Tool Use.
+ * @param {string} modele
+ * @param {string} systeme  prompt système
+ * @param {Array} messages  historique format Anthropic [{role, content}]
+ * @param {Array} outils    définitions d'outils (`tools`) — vide/absent si aucun
+ * @param {number} maxTokens
+ * @param {?Object} toolChoice  `tool_choice` optionnel (ex. {type:'none'} pour forcer une réponse
+ *   texte SANS retirer `tools` de l'historique — les blocs tool_use/tool_result y restent valides)
+ * @return {?Object}
+ */
+function appelAnthropicMessages_(modele, systeme, messages, outils, maxTokens, toolChoice) {
+  if (estPannePlateforme_()) return null; // panne de compte → échec rapide, sans réseau
+
+  var corps = {
+    model: modele,
+    max_tokens: maxTokens || CONFIG.CHAT_MAX_TOKENS,
+    system: systeme,
+    messages: messages,
+  };
+  if (outils && outils.length) corps.tools = outils;
+  if (toolChoice) corps.tool_choice = toolChoice;
+
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'x-api-key': getCleAnthropic_(), 'anthropic-version': '2023-06-01' },
+    payload: JSON.stringify(corps),
+    muteHttpExceptions: true,
+  };
+
+  var reponse = fetchAvecRetry_('https://api.anthropic.com/v1/messages', options, modele);
+  if (!reponse) return null;
+  var code = reponse.getResponseCode();
+  if (code !== 200) {
+    if (!signalerPannePlateforme_(code, reponse.getContentText(), modele)) {
+      journalErreur_('LLM', 'HTTP ' + code + ' (' + modele + ', chat) : ' + tronquer_(reponse.getContentText(), 500));
+    }
+    return null;
+  }
+  var data;
+  try { data = JSON.parse(reponse.getContentText()); }
+  catch (e) { journalErreur_('LLM', 'Réponse non-JSON (' + modele + ', chat) : ' + e); return null; }
+
+  // Diagnostic (aligné sur appelAnthropicTexte_) : un refus ou une troncature ressort en texte vide
+  // côté Marc — le tracer évite un « aucune réponse » opaque au Journal.
+  if (data.stop_reason === 'refusal') journalErreur_('LLM', 'Refus du modèle (' + modele + ', chat)');
+  if (data.stop_reason === 'max_tokens') journalErreur_('LLM', 'Réponse tronquée à max_tokens (' + modele + ', chat) — CHAT_MAX_TOKENS trop bas ?');
+
+  signalerRetablissement_();
+  enregistrerUsage_(modele, data.usage);
+  return data;
+}
+
+/**
+ * Boucle de CHAT avec Tool Use : rappelle l'API tant que le modèle demande des outils, en exécutant
+ * chacun via le callback `executerOutil(nom, input) → string` (fourni par l'appelant : c'est LUI qui
+ * lit le Drive — ce module reste sans I/O Drive). Bornée DEUX fois : CONFIG.CHAT_TOOL_ITERATIONS_MAX
+ * tours ET un garde-temps CONFIG.CHAT_BUDGET_MS (chaque tour peut déclencher un OCR Drive de
+ * plusieurs secondes → ne pas démarrer un tour près du mur 6 min de doPost). Renvoie le TEXTE final
+ * de l'assistant, ou null (panne/erreur). N'ÉCRIT RIEN : les mutations passeront par un outil
+ * `proposer_reorg` distinct (PR2), jamais ici.
+ * @param {string} systeme
+ * @param {Array} messages  historique [{role, content}] — MUTÉ localement (l'appelant passe une copie)
+ * @param {Array} outils    définitions d'outils
+ * @param {function(string, Object): string} executerOutil
+ * @return {?string}
+ */
+function appelAnthropicChat_(systeme, messages, outils, executerOutil) {
+  var debut = Date.now();
+  for (var tour = 0; tour < CONFIG.CHAT_TOOL_ITERATIONS_MAX; tour++) {
+    if (Date.now() - debut > CONFIG.CHAT_BUDGET_MS) break; // garde-temps : forcer une réponse avant le mur
+    var data = appelAnthropicMessages_(CONFIG.CHAT_MODELE, systeme, messages, outils, CONFIG.CHAT_MAX_TOKENS);
+    if (!data) return null;
+    if (data.stop_reason !== 'tool_use') return texteReponse_(data);
+
+    // Le modèle demande un/des outil(s) : on rejoue SON tour, puis on lui rend les résultats.
+    messages.push({ role: 'assistant', content: data.content });
+    var resultats = [];
+    for (var i = 0; i < data.content.length; i++) {
+      var bloc = data.content[i];
+      if (!bloc || bloc.type !== 'tool_use') continue;
+      var sortie;
+      try { sortie = String(executerOutil(bloc.name, bloc.input || {})); }
+      catch (e) { sortie = 'ERREUR outil : ' + e; } // rendue au modèle, jamais un plantage du run
+      resultats.push({ type: 'tool_result', tool_use_id: bloc.id, content: sortie });
+    }
+    if (!resultats.length) return texteReponse_(data); // tool_use annoncé sans bloc exploitable : on rend le texte
+    messages.push({ role: 'user', content: resultats });
+  }
+  // Boucle épuisée (ou garde-temps) : un dernier appel force une réponse texte. On GARDE `outils`
+  // (l'historique contient déjà des tool_use/tool_result — les retirer peut faire rejeter la requête)
+  // et on impose `tool_choice:{type:'none'}` pour interdire un nouvel outil → jamais bloqué en tool_use.
+  var fin = appelAnthropicMessages_(CONFIG.CHAT_MODELE, systeme, messages, outils, CONFIG.CHAT_MAX_TOKENS, { type: 'none' });
+  return fin ? texteReponse_(fin) : null;
+}
+
 /**
  * Appel avec un retry léger borné sur erreurs transitoires (429, 529, 5xx).
  * @return {HTTPResponse|null}

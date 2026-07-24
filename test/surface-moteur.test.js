@@ -103,6 +103,10 @@ const CONTRAT = [
   // web app : recherche IA (C21-03)
   'actionTickPonctuel_', 'actionRechercheIA_', 'promptRechercheIA_', 'validerQuestionIA_',
   'parserPlanIA_', 'appelAnthropicTexte_', 'domainesAutorises_',
+  // web app : chat assistant (C28-30, ADR-0026 — PR1 Q&A LECTURE SEULE)
+  'appelAnthropicMessages_', 'appelAnthropicChat_', 'texteReponse_', // Llm.gs, appelés par WebApp.gs
+  'actionChatAssistant_', 'validerHistoriqueChat_', 'coutChatJour_', 'promptChatAssistant_',
+  'outilsChatAssistant_', 'executerOutilChatAssistant_', 'rechercheDriveChat_', 'lireFichierChat_',
   // analyse ciblée des mails (C28-06, plan P2)
   'actionAnalyseCiblee_', 'validerRequeteCiblee_', 'balayerAnalyseCiblee_',
   // réorg IA (#21, C21-04 : proposition ; C21-06 : application)

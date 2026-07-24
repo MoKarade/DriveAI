@@ -4,6 +4,28 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **2026-07-24 — C28-30 : onglet ASSISTANT (chatbot Claude), PR1/3 (plan architecte NotebookLM,
+> ADR-0026).** Marc veut un assistant conversationnel : (A) Q&A qui RETROUVE et LIT ses fichiers
+> (« donne mon NAS » → cherche, lit, extrait) ; (B) opérations de dossiers par chat (créer/fusionner/
+> déplacer/renommer + « organiser un dossier ») via la réorg GARDÉE (C21-06), aperçu + validation par
+> fichier. Remplace la page réorg. **PR1 FAITE (moteur, cœur chat LECTURE SEULE)** : `Llm.gs`
+> `appelAnthropicMessages_` (un tour `/v1/messages`) + `appelAnthropicChat_` (boucle Tool Use bornée
+> `CHAT_TOOL_ITERATIONS_MAX`, sans I/O Drive — l'exécution des outils est un callback) ; `WebApp.gs`
+> action `chat-assistant` (garde secret existant) + 3 outils LECTURE (`recherche_nom`/
+> `recherche_contenu`/`lire_fichier`, bornés) ; plafond QUOTIDIEN `CHAT_COUT_JOUR_MAX` **0,33 $**
+> (échec fermé ; revue llm-cost : 0,50 aurait plafonné à 15 $/mois > cible §2.6) + anti-rafale ;
+> ADR-0007 (rien du contenu persisté — historique éphémère côté navigateur, texte lu en transit
+> Claude seul). Revue flotte : **security-auditor 🟢** (lecture seule réelle, injection Drive
+> échappée, budget échec fermé — 2 notes écrites dans l'ADR : temp OCR de `lire_fichier`, exposition
+> délibérée du contenu sensible à la demande) ; **llm-cost 🟠→corrigé** (cap 0,50→0,33 ; suivi :
+> prompt caching = plus gros levier, après vérif doc Anthropic) ; **code-reviewer 🟠×2→corrigés**
+> (garde-temps de boucle `CHAT_BUDGET_MS` 4 min contre le mur 6 min ; tour final garde `tools` +
+> `tool_choice:{type:'none'}` au lieu de retirer `tools`). Tests `chat-assistant.test.js` (9) +
+> surface. 617 tests. **PR2 (à venir)** : outil `proposer_reorg` (plan via `appliquerUneAction_`) + marque
+> « épinglé Marc » (Index, respectée par consolidation ET migration à la collecte — convergence) +
+> action `deplacer-fichier`. **PR3 (à venir)** : UI `Assistant.tsx` (chat + suggestions auto/
+> questionnaire), compteur budget, embarque la réorg pour la validation ligne-à-ligne.
+>
 > **⚠️ 2026-07-23 (soir) — INCIDENT FAMINE consolidation + correctif « BUDGET TAIL » (C28-29).**
 > Vérification PROD (signaux Drive) après C28-28 : le grand nettoyage NE DRAÎNAIT TOUJOURS PAS —
 > 02·Finances gardait ~40 vieux dossiers banques/émetteurs, 03 ~20, INTACTS 2 jours malgré 2

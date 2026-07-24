@@ -37,6 +37,8 @@ function doPost(e) {
         reponse.erreur = 'refusé';
       } else if (action === 'recherche-ia') {
         reponse = actionRechercheIA_(e);
+      } else if (action === 'chat-assistant') {
+        reponse = actionChatAssistant_(e);
       } else if (action === 'analyse-ciblee') {
         reponse = actionAnalyseCiblee_(e);
       } else if (action === 'demande-tri') {
@@ -174,6 +176,162 @@ function promptRechercheIA_() {
     '{"texte":"hydro","domaine":"02 · Finances","annee":"2025","motsCles":["facture","Hydro-Québec"],' +
     '"explication":"Factures Hydro-Québec de 2025."}\n' +
     'Date du jour : ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd') + '.';
+}
+
+/* ---------- Assistant CHAT (C28-30, ADR-0026) : Q&A qui LIT le contenu ----------
+ * Boucle Tool Use (Llm.appelAnthropicChat_) : l'app envoie l'historique éphémère, le moteur cherche
+ * (nom → contenu) et LIT les fichiers à la volée, répond, oublie tout (ADR-0007 : rien de persisté).
+ * LECTURE SEULE en PR1 : aucune mutation (les opérations de dossiers = outil `proposer_reorg`, PR2).
+ */
+
+/** Consommation $ du chat AUJOURD'HUI (Script Property `AAAA-MM-JJ|dollars`). PURE sur props. */
+function coutChatJour_(props, jour) {
+  var brut = String(props.getProperty('DriveAI_CHAT_COUT_JOUR') || '');
+  return brut.indexOf(jour + '|') === 0 ? (Number(brut.split('|')[1]) || 0) : 0;
+}
+
+/**
+ * Valide l'historique reçu : tableau non vide (≤ MAX) de {role:'user'|'assistant', content:string}
+ * (≤ MAX_CARS), se terminant par un tour `user`. Renvoie les messages assainis, ou null. PURE (testée).
+ */
+function validerHistoriqueChat_(brut) {
+  if (!Array.isArray(brut) || !brut.length || brut.length > CONFIG.CHAT_HISTORIQUE_MAX) return null;
+  var messages = [];
+  for (var i = 0; i < brut.length; i++) {
+    var m = brut[i];
+    if (!m || (m.role !== 'user' && m.role !== 'assistant') || typeof m.content !== 'string') return null;
+    var contenu = m.content.trim();
+    if (!contenu || contenu.length > CONFIG.CHAT_MESSAGE_MAX_CARS) return null;
+    // L'API Messages exige : 1er tour = user, alternance stricte user/assistant, dernier = user.
+    var attendu = (i % 2 === 0) ? 'user' : 'assistant';
+    if (m.role !== attendu) return null;
+    messages.push({ role: m.role, content: contenu });
+  }
+  if (messages[messages.length - 1].role !== 'user') return null; // le dernier tour est une question de Marc
+  return messages;
+}
+
+/** Définitions des outils LECTURE offerts au modèle (format `tools` Anthropic). */
+function outilsChatAssistant_() {
+  return [
+    { name: 'recherche_nom',
+      description: 'Cherche des fichiers du Drive de Marc par leur NOM (rapide). Renvoie une liste avec l\'id et le dossier de chacun.',
+      input_schema: { type: 'object', properties: { requete: { type: 'string', description: 'terme à chercher dans le nom du fichier' } }, required: ['requete'] } },
+    { name: 'recherche_contenu',
+      description: 'Cherche des fichiers par leur CONTENU (plein-texte). Plus lent — n\'utilise que si la recherche par nom ne suffit pas.',
+      input_schema: { type: 'object', properties: { requete: { type: 'string', description: 'terme à chercher dans le contenu' } }, required: ['requete'] } },
+    { name: 'lire_fichier',
+      description: 'Lit le TEXTE d\'un fichier (par son id) pour en extraire une information. Coûteux : ne lis que les fichiers vraiment pertinents.',
+      input_schema: { type: 'object', properties: { fileId: { type: 'string', description: 'id du fichier à lire (obtenu via une recherche)' } }, required: ['fileId'] } },
+  ];
+}
+
+/** Exécute UN outil de lecture demandé par le modèle. Renvoie toujours une string (rendue au modèle). */
+function executerOutilChatAssistant_(nom, input) {
+  if (nom === 'recherche_nom') return rechercheDriveChat_('title', input && input.requete);
+  if (nom === 'recherche_contenu') return rechercheDriveChat_('fullText', input && input.requete);
+  if (nom === 'lire_fichier') return lireFichierChat_(input && input.fileId);
+  return 'Outil inconnu : ' + nom;
+}
+
+/** Recherche Drive (champ = 'title' ou 'fullText'), bornée, non corbeillés. Renvoie un texte lisible. */
+function rechercheDriveChat_(champ, requete) {
+  var q = String(requete == null ? '' : requete).trim();
+  if (!q) return 'Requête vide.';
+  var sain = q.replace(/\\/g, '\\\\').replace(/'/g, "\\'"); // échappe pour la requête Drive
+  var it;
+  try { it = DriveApp.searchFiles(champ + " contains '" + sain + "' and trashed = false"); }
+  catch (e) { return 'Recherche impossible : ' + e; }
+  var lignes = [], n = 0;
+  while (it.hasNext() && n < CONFIG.CHAT_RECHERCHE_MAX) {
+    var f = it.next();
+    var dossier = '';
+    try { var ps = f.getParents(); if (ps.hasNext()) dossier = ps.next().getName(); } catch (e2) { /* dossier ? */ }
+    lignes.push('- ' + f.getName() + ' [id:' + f.getId() + '] (dossier: ' + (dossier || '?') + ')');
+    n++;
+  }
+  if (!lignes.length) return 'Aucun fichier trouvé pour « ' + q + ' ».';
+  return lignes.length + ' fichier(s) :\n' + lignes.join('\n') +
+    (it.hasNext() ? '\n(… d\'autres résultats existent, affine si besoin)' : '');
+}
+
+/** Lit le texte d'un fichier (borné en taille + caractères). Renvoie un texte lisible pour le modèle. */
+function lireFichierChat_(fileId) {
+  var id = String(fileId == null ? '' : fileId).trim();
+  if (!id) return 'fileId manquant.';
+  var f;
+  try { f = DriveApp.getFileById(id); } catch (e) { return 'Fichier introuvable : ' + id; }
+  try {
+    if (f.getSize() > CONFIG.OCR_TAILLE_MAX) {
+      return 'Fichier trop volumineux pour être lu (> ' + Math.round(CONFIG.OCR_TAILLE_MAX / 1048576) + ' Mo).';
+    }
+    var texte = extraireTexte_(f.getBlob(), CONFIG.CHAT_LIRE_MAX_CARS);
+    if (texte === null) return 'Contenu illisible (échec d\'extraction transitoire).';
+    if (texte === '') return 'Ce fichier ne contient pas de texte extractible (image/média sans OCR ?).';
+    return 'Contenu de « ' + f.getName() + ' » :\n' + texte;
+  } catch (e) { return 'Lecture impossible : ' + e; }
+}
+
+/** Prompt système de l'assistant (PR1 : LECTURE SEULE — aucune mutation possible). */
+function promptChatAssistant_() {
+  return 'Tu es l\'assistant personnel de DriveAI, le classeur de documents de Marc Richard. Tu réponds à ' +
+    'ses questions en retrouvant et en LISANT ses fichiers. Méthode : cherche d\'abord par NOM ' +
+    '(recherche_nom), puis par CONTENU (recherche_contenu) si le nom ne suffit pas, puis LIS ' +
+    '(lire_fichier) le ou les fichiers pertinents pour en extraire l\'info demandée. Va au but en le ' +
+    'moins d\'étapes possible : ne relis jamais un fichier déjà lu et arrête-toi dès que tu as l\'info. ' +
+    'Cite TOUJOURS le nom du fichier d\'où vient l\'information. Réponds en français, clair et concis. Si tu ne trouves pas, ' +
+    'dis-le honnêtement — n\'invente JAMAIS une réponse. Tu es en LECTURE SEULE : tu ne peux ni déplacer, ' +
+    'ni supprimer, ni créer quoi que ce soit. Date du jour : ' +
+    Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd') + '.';
+}
+
+/**
+ * Action `chat-assistant` : une réponse de l'assistant à partir de l'historique éphémère. Anti-rafale
+ * + plafond QUOTIDIEN en $ (échec fermé au-delà) + panne de compte gérée (jamais imputée au plafond).
+ * Rien n'est persisté du contenu (ADR-0007) : l'historique vit côté navigateur, le contenu lu ne fait
+ * que transiter vers Claude. @return {{ok:boolean, reponse?:string, erreur?:string}}
+ */
+function actionChatAssistant_(e) {
+  var props = PropertiesService.getScriptProperties();
+  var jour = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+
+  var derniere = Number(props.getProperty('DriveAI_CHAT_DERNIER')) || 0;
+  if (Date.now() - derniere < CONFIG.CHAT_MIN_INTERVALLE_MS) {
+    return { ok: false, erreur: 'trop de messages — réessaie dans quelques secondes' };
+  }
+  var coutJour = coutChatJour_(props, jour);
+  if (coutJour >= CONFIG.CHAT_COUT_JOUR_MAX) {
+    return { ok: false, erreur: 'Budget chat quotidien épuisé — reviens demain.' };
+  }
+
+  var messages = null;
+  try {
+    var corps = e && e.postData && e.postData.contents ? JSON.parse(e.postData.contents) : {};
+    messages = validerHistoriqueChat_(corps.historique);
+  } catch (err) { messages = null; }
+  if (messages === null) return { ok: false, erreur: 'historique de chat invalide' };
+  props.setProperty('DriveAI_CHAT_DERNIER', String(Date.now()));
+
+  // Contexte web app ≠ tick : panne persistée chargée, compteur d'usage PROPRE (le tick n'a pas tourné).
+  chargerPannePlateforme_();
+  if (estPannePlateforme_()) {
+    return { ok: false, erreur: 'Assistant momentanément indisponible (compte API en panne) — réessaie plus tard' };
+  }
+
+  reinitialiserUsage_();
+  var reponse = null;
+  try {
+    reponse = appelAnthropicChat_(promptChatAssistant_(), messages, outilsChatAssistant_(), executerOutilChatAssistant_);
+  } finally {
+    // Coût de CE run ajouté au total du jour (même usage que le flush mensuel — mesuré une fois).
+    try { props.setProperty('DriveAI_CHAT_COUT_JOUR', jour + '|' + (coutJour + coutDollars_(usageRunSnapshot_()))); }
+    catch (e2) { /* mesure du jour perdue — accepté (le mensuel reste tenu par flushUsage_) */ }
+    try { flushUsage_(); } catch (e3) { /* comptabilité mensuelle perdue pour ce run — accepté */ }
+  }
+
+  if (!reponse) return { ok: false, erreur: 'Assistant indisponible (aucune réponse) — réessaie' };
+  journalInfo_('WebApp', 'Chat assistant servi (coût du jour ≈ ' + coutChatJour_(props, jour).toFixed(3) + ' $).');
+  return { ok: true, reponse: reponse };
 }
 
 /* ---------- Analyse ciblée des mails (C28-06, plan P2) ---------- */
