@@ -391,7 +391,11 @@ function promptChatAssistant_() {
     'Tu peux aussi ORGANISER le Drive : créer/renommer/fusionner des dossiers, et déplacer des ' +
     'fichiers (« range ce fichier dans… », « crée un dossier Garage dans Véhicule », « organise tel ' +
     'dossier » = retrouve par recherche les fichiers qui y ont leur place et propose de les y déplacer). ' +
-    'Pour cela, appelle proposer_reorg avec les id EXACTS que tes recherches ont renvoyés. ' +
+    'Pour cela, appelle proposer_reorg avec les id EXACTS que tes recherches ont renvoyés (cherche ' +
+    'd\'abord les DOSSIERS cibles pour avoir leurs id). Garde ton analyse en texte COURTE : dès que tu ' +
+    'proposes une réorganisation, tu DOIS appeler l\'outil proposer_reorg — ne décris JAMAIS les ' +
+    'déplacements uniquement en texte (sans appel d\'outil, rien n\'arrive dans la file de validation ' +
+    'de Marc). Une réponse qui annonce « je te propose… » sans appel proposer_reorg est une ERREUR. ' +
     'IMPORTANT : tu ne fais que PROPOSER — c\'est MARC qui valide chaque opération dans l\'app, et le ' +
     'moteur les applique ensuite (avec ses garde-fous : jamais toucher les documents d\'immigration, ' +
     'jamais rien supprimer). Ne prétends JAMAIS avoir déjà déplacé/créé quelque chose : dis que tu l\'as ' +

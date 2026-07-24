@@ -6,10 +6,12 @@ name: Deploy
 #
 # Configuration UNIQUE côté Marc (3 min, une seule fois) — voir docs/DEPLOIEMENT.md :
 #   Settings → Secrets and variables → Actions → New repository secret :
-#     - CLASPRC_JSON : le contenu de ~/.clasprc.json (généré par `clasp login`)
-#     - SCRIPT_ID    : l'ID du projet Apps Script (depuis .clasp.json local)
-# Tant que ces secrets sont absents, le job se contente d'un message et réussit
-# (aucun échec rouge).
+#     - CLASPRC_JSON         : le contenu de ~/.clasprc.json (généré par `clasp login`)
+#     - SCRIPT_ID            : l'ID du projet Apps Script (depuis .clasp.json local)
+#     - WEBAPP_DEPLOYMENT_ID : (OPTIONNEL) l'ID `AKfycb…` de l'URL /exec de la web app →
+#         redéploie AUTOMATIQUEMENT la web app (Nouvelle version) à chaque merge touchant
+#         WebApp.gs. Absent = redéploiement manuel requis (repli, aucun échec rouge).
+# Tant que CLASPRC_JSON/SCRIPT_ID sont absents, le job se contente d'un message et réussit.
 
 on:
   push:
@@ -67,3 +69,22 @@ jobs:
       - name: Pousser le code
         if: steps.guard.outputs.ready == 'true'
         run: clasp push --force || (sleep 5 && clasp push --force) # retry léger (erreurs réseau transitoires)
+
+      # Redéploie la WEB APP `/exec` en NOUVELLE VERSION (décision Marc 2026-07-24 « fais le », après
+      # 2 redéploiements manuels vécus). Sans ça, `clasp push` met à jour le HEAD mais `/exec` sert
+      # l'ANCIENNE version → toute nouvelle action `doPost` (ex. `chat-assistant`) tombe en silence
+      # (leçon 2026-07-24). `clasp deploy` = alias de `create-deployment` (clasp v3) ; `-i` redéploie
+      # le MÊME deploymentId → l'URL /exec NE CHANGE PAS (rien à retoucher dans l'app/Vercel).
+      # Secret OPTIONNEL : tant que WEBAPP_DEPLOYMENT_ID est absent, on saute (le redéploiement manuel
+      # reste le repli — aucun échec rouge). L'ID = la partie `AKfycb…` de l'URL /exec (voir DEPLOIEMENT.md).
+      - name: Redéployer la web app (/exec inchangé)
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          WEBAPP_DEPLOYMENT_ID: ${{ secrets.WEBAPP_DEPLOYMENT_ID }}
+        run: |
+          if [ -z "$WEBAPP_DEPLOYMENT_ID" ]; then
+            echo "::notice::WEBAPP_DEPLOYMENT_ID absent — web app /exec NON redéployée auto (redéploiement manuel requis après un changement de WebApp.gs). Voir docs/DEPLOIEMENT.md."
+            exit 0
+          fi
+          clasp deploy -i "$WEBAPP_DEPLOYMENT_ID" -d "auto ${GITHUB_SHA}" \
+            || (sleep 5 && clasp deploy -i "$WEBAPP_DEPLOYMENT_ID" -d "auto ${GITHUB_SHA}")

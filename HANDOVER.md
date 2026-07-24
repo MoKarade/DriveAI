@@ -4,6 +4,17 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **⚡ ÉTAT AU 2026-07-24 (soir) — C28-30 COMPLET + suivi.** Les 3 PR du chatbot sont MERGÉES
+> (#202 moteur chat · #203 opérations dossiers/épinglé · #204 UI onglet Assistant). Marc a redéployé
+> la web app (« Nouvelle version ») → le chat RÉPOND en prod. Retours traités dans **PR #206** (en
+> cours) : troncature de réponse corrigée (`CHAT_MAX_TOKENS` 1500→4000, itérations 4→6, prompt qui
+> FORCE l'appel `proposer_reorg`) ; plafond retiré (`CHAT_COUT_JOUR_MAX` 0,33→10 $/j = filet
+> anti-emballement seul) ; **redéploiement web app AUTOMATISÉ** (`deploy.yml` `clasp deploy -i
+> $WEBAPP_DEPLOYMENT_ID` — Marc doit poser ce secret GitHub, l'`AKfycb…` de son URL /exec, pour ne
+> plus jamais redéployer à la main) ; + lien « ← Hub » (#205) rapatrié vers main. **Reste** : Marc
+> pose `WEBAPP_DEPLOYMENT_ID` ; après merge #206, vérifier par signal indépendant (le chat finit ses
+> phrases ET propose des opérations validables à droite). Détail des 3 PR ci-dessous.
+>
 > **2026-07-24 — C28-30 : onglet ASSISTANT (chatbot Claude), PR1/3 (plan architecte NotebookLM,
 > ADR-0026).** Marc veut un assistant conversationnel : (A) Q&A qui RETROUVE et LIT ses fichiers
 > (« donne mon NAS » → cherche, lit, extrait) ; (B) opérations de dossiers par chat (créer/fusionner/

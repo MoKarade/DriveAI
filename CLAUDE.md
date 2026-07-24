@@ -224,7 +224,7 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   confort de fin (ex. un `tickDriveAI()` de relance) deviennent des bombes dans le tick (réentrance →
   verrou relâché en plein run) — extraire un noyau sans effets de fin, re-scoper ses entrées au
   contexte auto (ne libérer que ce que les sources savent re-présenter). Re-auditer par la flotte.
-- **Auto-déploiement (CI/CD) : 3 pièges.** (1) Un merge par le bot `GITHUB_TOKEN` (auto-merge) ne
+- **Auto-déploiement (CI/CD) : 4 pièges.** (1) Un merge par le bot `GITHUB_TOKEN` (auto-merge) ne
   déclenche PAS les workflows `on: push` (anti-récursion) → l'auto-merge doit **dispatcher** le déploiement
   (`gh workflow run`, `actions: write`). (2) Épingler la version Node des outils CLI sensibles (clasp v3
   → Node 20 ; Node 22 = « Premature close »). (3) **Un `clasp push` VERT ne garantit PAS que le
@@ -237,6 +237,20 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   réellement, pas le statut du run. Remède : Marc ouvre l'éditeur + exécute `installerTrigger`.
   Corollaire diagnostic : ne pas inventer un « second projet fantôme » sans preuve — une vérif de
   stabilité (la constante reste fraîche sur plusieurs ticks) réfute l'hypothèse à deux projets.
+  (4) **La WEB APP `/exec` sert une VERSION ÉPINGLÉE, indépendante du HEAD** (distinct du piège 3 sur
+  le tick) : `clasp push` met à jour le code mais `/exec` sert l'ANCIEN tant qu'on ne redéploie pas.
+  Une nouvelle action `doPost` inconnue de l'ancienne version NE plante PAS — elle tombe dans le `else`
+  par défaut et renvoie `{ok:true}` SANS le champ attendu → **panne SILENCIEUSE** (réponse vide, aucune
+  erreur ; vécu C28-30 : chat muet). Diagnostic : « champ manquant / réponse vide, pas d'erreur » = action
+  non déployée, PAS un bug de code (lire le `else` du `doPost`). Remède désormais AUTOMATISÉ :
+  `deploy.yml` fait `clasp deploy -i $WEBAPP_DEPLOYMENT_ID` (Nouvelle version, /exec inchangé) si le
+  secret est posé ; sinon redéploiement manuel (Gérer les déploiements → ✏ → Nouvelle version).
+- **Branche `claude/**` partagée entre sessions : `force-with-lease` rejeté = enquêter, jamais forcer.**
+  Un « stale info » signifie que le distant a bougé — une AUTRE session a pu ouvrir/merger une PR SUR ta
+  branche désignée (vécu C28-30 : lien Hub #205 mergé dans la branche, jamais dans `main`). Forcer aurait
+  détruit son travail. Réflexe : `git ls-remote` + `pull_request_read` AVANT toute écriture, puis
+  **rebaser mon commit sur le TIP distant** (`git rebase origin/<branch>`) pour empiler sans clobberer
+  (push fast-forward). Vérifier `git diff origin/main <mon-commit-déjà-squashé>` == vide ⇒ la PR restera propre.
 - **Reclassement de masse auto ⇒ convergence + garde zone protégée multi-parents.** Un rangement
   automatique de tout le Drive doit **converger** via un prédicat de skip stable que le pipeline produit
   lui-même (renommage `AAAA-MM-JJ_` ⇒ jamais re-collecté ; vérifier que le renommeur produit TOUJOURS ce

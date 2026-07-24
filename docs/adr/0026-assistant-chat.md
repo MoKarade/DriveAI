@@ -156,3 +156,19 @@ correctifs :
   (🟠) `envoyerMessageChat` jetait `coutJour`/`plafond` sur `!ok` (compteur invisible au refus à froid,
   retour moteur mort) → erreur ENRICHIE (`ErreurChat`) lue par le catch → `setBudget`. 🟡 aussi :
   garde IME sur Enter, dé-duplication de l'affichage d'erreur, timestamps de test réalistes (13 chiffres).
+
+## Mise à jour 2026-07-24 (post-déploiement, retours Marc)
+
+Web app redéployée par Marc (Nouvelle version → Déployer) : le chat répond. Deux retours traités :
+1. **Troncature** — la réponse se coupait en pleine phrase (« Je te propose la réorganisation
+   suivante : » puis rien) : `CHAT_MAX_TOKENS` 1500 → **4000** (l'analyse + l'appel `proposer_reorg`
+   tenaient pas dans 1500) ; `CHAT_TOOL_ITERATIONS_MAX` 4 → **6** (chercher les dossiers cibles PUIS
+   proposer) ; prompt renforcé : « dès que tu proposes, tu DOIS appeler `proposer_reorg` — décrire en
+   texte sans appel d'outil est une ERREUR » (sinon rien n'arrive dans la file de validation).
+2. **Plafond retiré** (décision Marc « enlève le plafond ») — `CHAT_COUT_JOUR_MAX` 0,33 → **10,0 $/j**,
+   redéfini en **filet ANTI-EMBALLEMENT seulement** (un chat interactif est gaté par Marc via
+   l'anti-rafale → ne s'emballe pas seul ; le backstop haut ne sert qu'à couper un bug qui bouclerait
+   les appels — le principe §2.6 « ne jamais désactiver à zéro » tient). Au-delà de la cible §2.6 en
+   usage soutenu : **assumé par Marc**. Compteur app simplifié en « Coût aujourd'hui : X $ » (plus de
+   dénominateur/jauge). ⚠ Tout changement de `WebApp.gs`/`Config.gs` exige un **redéploiement Nouvelle
+   version** de la web app (DEPLOIEMENT.md §web app) — friction connue, candidate à automatisation.
