@@ -21,10 +21,18 @@
 > prompt caching = plus gros levier, après vérif doc Anthropic) ; **code-reviewer 🟠×2→corrigés**
 > (garde-temps de boucle `CHAT_BUDGET_MS` 4 min contre le mur 6 min ; tour final garde `tools` +
 > `tool_choice:{type:'none'}` au lieu de retirer `tools`). Tests `chat-assistant.test.js` (9) +
-> surface. 617 tests. **PR2 (à venir)** : outil `proposer_reorg` (plan via `appliquerUneAction_`) + marque
-> « épinglé Marc » (Index, respectée par consolidation ET migration à la collecte — convergence) +
-> action `deplacer-fichier`. **PR3 (à venir)** : UI `Assistant.tsx` (chat + suggestions auto/
-> questionnaire), compteur budget, embarque la réorg pour la validation ligne-à-ligne.
+> surface. 617 tests. **PR2 FAITE (moteur, opérations dossiers/fichiers)** : outil `proposer_reorg`
+> (`WebApp.gs`, whiteliste PURE `parserActionsChat_`, écrit des lignes `proposé` dans l'onglet `Réorg`,
+> N'APPLIQUE RIEN — le chat ne mute jamais le Drive) ; action `deplacer-fichier` (`Reorg.gs`
+> `appliquerDeplacerFichier_` — `getFileById(source).moveTo(cible)`, garde §1 STRICTE échec-fermé
+> SOURCE — jamais détacher un fichier de 04 — ET CIBLE, appliquée par `appliquerUneAction_` sur
+> validation Marc) ; convergence « épinglé Marc » = clé DÉDIÉE Index `epingle|<fileId>` (le plan
+> supposait `indexLire_('drive|…').statut` INEXISTANT → namespace dédié checkable par `indexContient_`)
+> IGNORÉE par les 4 campagnes de re-rangement (consolidation, migration, réanalyse, grand rangement).
+> Tests `chat-reorg.test.js`. 629 tests. **⚠ PR2 n'a d'effet visible qu'avec l'UI (PR3)** : l'outil
+> `proposer_reorg` écrit dans `Réorg`, mais l'app doit l'afficher/le valider (PR3) ; le moteur applique
+> ensuite au tick. **PR3 (à venir)** : UI `Assistant.tsx` (chat + suggestions auto/questionnaire),
+> compteur budget, embarque la réorg pour la validation ligne-à-ligne.
 >
 > **⚠️ 2026-07-23 (soir) — INCIDENT FAMINE consolidation + correctif « BUDGET TAIL » (C28-29).**
 > Vérification PROD (signaux Drive) après C28-28 : le grand nettoyage NE DRAÎNAIT TOUJOURS PAS —

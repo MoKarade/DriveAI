@@ -181,6 +181,8 @@ function collecterConsolidation_(dossier, domaine, items, max, garde, tag, etat,
       var id = f.getId();
       if (vusRun[id]) continue;
       vusRun[id] = true;
+      // Épinglé par Marc (rangé via le chat) → JAMAIS re-déplacé (convergence, C28-30/ADR-0026).
+      if (indexContient_('epingle|' + id)) continue;
       if (!indexContient_('conso|' + tag + '|' + id)) items.push({ id: id, domaine: domaine });
     } catch (e) { etat.complet = false; /* fichier illisible : re-vu à la passe suivante */ }
   }

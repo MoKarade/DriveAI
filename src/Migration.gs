@@ -33,6 +33,7 @@
  * @return {boolean}
  */
 function estAMigrer_(f, tag) {
+  if (indexContient_('epingle|' + f.getId())) return false; // épinglé par Marc (chat) → immunisé (convergence, ADR-0026)
   var mime = f.getMimeType() || '';
   if (mime.indexOf('application/vnd.google-apps') === 0) return false; // natif ou raccourci
   if ((f.getName() || '').toLowerCase().indexOf('inconnu') === -1) return false; // hors périmètre m2
@@ -323,6 +324,7 @@ function migrerFichier_(fileId, proteges) {
  * @return {boolean}
  */
 function estAReanalyser_(f, tag) {
+  if (indexContient_('epingle|' + f.getId())) return false; // épinglé par Marc (chat) → immunisé (convergence, ADR-0026)
   var mime = f.getMimeType() || '';
   if (mime.indexOf('application/vnd.google-apps') === 0) return false; // natif ou raccourci
   return !indexContient_('reanalyse|' + tag + '|' + f.getId());

@@ -484,7 +484,14 @@ function chargerIndexCache_() {
   }
 }
 
-/** @return {boolean} vrai si la clé est déjà dans l'Index. */
+/**
+ * @return {boolean} vrai si la clé est déjà dans l'Index.
+ * NB. ÉPINGLÉ Marc (C28-30/ADR-0026) : un fichier rangé à la main via le chat porte la clé DÉDIÉE
+ * `epingle|<fileId>` (posée par Reorg.appliquerDeplacerFichier_). Les prédicats de re-rangement auto
+ * (consolidation, migration, réanalyse, grand rangement) testent cette PRÉSENCE via `indexContient_`
+ * pour l'IMMUNISER (convergence). Clé dédiée car `drive|<fileId>` est déjà le namespace des dépôts
+ * classés (le réutiliser sur-filtrerait) et aucun helper ne lit le statut par clé.
+ */
 function indexContient_(cle) {
   if (_indexCache === null) chargerIndexCache_();
   return _indexCache[cle] === true;
