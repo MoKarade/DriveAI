@@ -192,4 +192,11 @@ Retours d'usage réel de Marc → chantier d'amélioration en 3 PR séquentielle
   Markdown resserrés). (c) Indicateur de charge TRÈS visible (`.chat-loader` : 3 points qui rebondissent +
   « Analyse en cours… (jusqu'à 1 min) », `prefers-reduced-motion` respecté) — remplace le faible « … ».
   Tripwire `session.test.ts` (jamais `localStorage`) toujours vert.
-- **PR3** : troncature de l'historique envoyé à Anthropic aux 12 derniers messages (tokens + latence).
+- **PR3 (faite)** : troncature de l'historique envoyé à Anthropic aux `CONFIG.CHAT_HISTORIQUE_MAX` (13)
+  derniers messages (tokens + latence). Fonction PURE `tronquerHistoriqueChat_` (garde les N derniers,
+  coupe sur frontière PAIRE → toujours un `user` en tête, dernier message conservé) appelée en tête de
+  `validerHistoriqueChat_`. **Corrige aussi un bug latent** : avant, un historique de plus de 20 messages
+  était REJETÉ (`null` → « historique invalide ») → un chat long CASSAIT ; désormais il est TRONQUÉ, pas
+  rejeté. 13 = impair car un historique valide commence ET finit par `user` (6 échanges Q/R + la question
+  courante). Le prompt système (hors `messages`) est toujours conservé. Les tool_use/tool_result ajoutés
+  par la boucle Tool Use (intra-tour) ne sont pas touchés.

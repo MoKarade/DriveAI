@@ -26,8 +26,11 @@
 > revue flotte 🟢 sécurité)** : réponses en **Markdown** (`react-markdown` ^10, sans `rehype-raw` → HTML
 > inerte, URLs `javascript:` neutralisées ; liens `target=_blank rel=noopener`) ; fenêtre type claude.ai
 > (`.chat-fil` plus haute + `min-height`) ; indicateur de chargement TRÈS visible (`.chat-loader` 3 points
-> animés + « Analyse en cours… (jusqu'à 1 min) », `prefers-reduced-motion`). **PR3 (à venir)** : troncature
-> historique aux 12 derniers messages (tokens+latence). NB : ré-exécuter `npm install` dans `app/` après un
+> animés + « Analyse en cours… (jusqu'à 1 min) », `prefers-reduced-motion`). **PR3 FAITE (branche courante)** :
+> troncature de l'historique chat aux `CHAT_HISTORIQUE_MAX` (13) derniers messages avant l'envoi à
+> Anthropic (`tronquerHistoriqueChat_` PURE, coupe sur frontière paire → `user` en tête ; dernier message
+> conservé) — réduit tokens + latence ET corrige un bug latent (un chat > 20 messages était REJETÉ →
+> cassait ; désormais tronqué). 634 tests moteur. NB : ré-exécuter `npm install` dans `app/` après un
 > checkout frais (#207 a re-pinné `@mokarade/hub-contract` v1.1 — sinon tsc casse sur `usage` ; et
 > react-markdown est désormais une dépendance à installer).
 >

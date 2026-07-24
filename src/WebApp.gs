@@ -193,11 +193,33 @@ function coutChatJour_(props, jour) {
 }
 
 /**
- * Valide l'historique reçu : tableau non vide (≤ MAX) de {role:'user'|'assistant', content:string}
- * (≤ MAX_CARS), se terminant par un tour `user`. Renvoie les messages assainis, ou null. PURE (testée).
+ * Ne garde que les `maxN` DERNIERS messages de l'historique (tokens + latence ; et un chat long ne
+ * casse plus l'appel — avant : rejet au-delà de la borne). Coupe sur une frontière PAIRE pour garder
+ * un `user` en tête : l'API Messages exige 1er tour = user + alternance stricte, et un historique
+ * valide a un `user` à chaque indice pair. Le dernier message (question courante) est toujours
+ * conservé. Ne touche PAS au prompt système (hors `messages`). PURE (testée) ; n'assainit rien —
+ * `validerHistoriqueChat_` valide APRÈS (un `brut` malformé sera rejeté là, jamais faussement accepté).
+ * @param {Array} brut
+ * @param {number} maxN
+ * @return {Array}
+ */
+function tronquerHistoriqueChat_(brut, maxN) {
+  if (!Array.isArray(brut)) return []; // contrat @return {Array} (chemin mort : garde amont de validerHistoriqueChat_)
+  if (brut.length <= maxN) return brut;
+  var debut = brut.length - maxN;
+  if (debut % 2 !== 0) debut++; // frontière paire = message `user` en tête (jamais un `assistant`)
+  return brut.slice(debut);
+}
+
+/**
+ * Valide l'historique reçu : tableau non vide de {role:'user'|'assistant', content:string}
+ * (≤ MAX_CARS), 1er tour = user, alternance stricte, se terminant par un tour `user`. TRONQUE d'abord
+ * aux `CHAT_HISTORIQUE_MAX` derniers messages (tokens + latence). Renvoie les messages assainis, ou
+ * null. PURE (testée).
  */
 function validerHistoriqueChat_(brut) {
-  if (!Array.isArray(brut) || !brut.length || brut.length > CONFIG.CHAT_HISTORIQUE_MAX) return null;
+  if (!Array.isArray(brut) || !brut.length) return null;
+  brut = tronquerHistoriqueChat_(brut, CONFIG.CHAT_HISTORIQUE_MAX); // garde les N derniers (user en tête)
   var messages = [];
   for (var i = 0; i < brut.length; i++) {
     var m = brut[i];
