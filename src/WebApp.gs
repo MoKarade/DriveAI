@@ -439,9 +439,10 @@ function actionChatAssistant_(e) {
   }
 
   reinitialiserUsage_();
-  // On TRACKE si le chat a appelé `proposer_reorg` (donc écrit des lignes dans l'onglet Réorg) →
-  // renvoyé à l'app pour qu'elle invalide son cache et re-rende la file de validation (sinon Marc ne
-  // voit pas les propositions fraîches — le moteur écrit côté serveur, l'app ne le sait pas).
+  // On TRACKE si le chat a APPELÉ `proposer_reorg` (des lignes ONT PU être écrites dans l'onglet
+  // Réorg — sauf si toutes les actions étaient invalides) → renvoyé à l'app pour qu'elle invalide son
+  // cache et re-rende la file de validation. Un refresh « pour rien » (actions invalides) est
+  // idempotent et inoffensif ; ne PAS refléter l'appel serait le vrai bug (« propositions pas à jour »).
   var actionsProposees = false;
   var executer = function (nom, input) {
     if (nom === 'proposer_reorg') actionsProposees = true;

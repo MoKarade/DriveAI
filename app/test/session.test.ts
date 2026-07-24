@@ -67,3 +67,19 @@ describe('verrou session (google.ts) — jeton en sessionStorage, jamais localSt
     expect(codeSeul("/* d'abord */ suite('x')")).toContain('suite');
   });
 });
+
+describe('verrou Assistant (C28-30 UX) — historique du chat en sessionStorage, jamais localStorage', () => {
+  // L'historique du chat peut CITER du contenu de doc lu par Claude : le persister en localStorage
+  // l'inscrirait DURABLEMENT sur le disque (contre l'esprit ADR-0007). Arbitrage architecte :
+  // sessionStorage STRICT. Ce tripwire scanne le CODE (commentaires « localStorage » ignorés).
+  const code = codeSeul(readFileSync(join(ici, '../src/vues/Assistant.tsx'), 'utf8'));
+
+  it('le CODE d\'Assistant.tsx ne référence jamais localStorage', () => {
+    expect(code).not.toMatch(/\blocalStorage\b/);
+  });
+
+  it('l\'historique passe bien par sessionStorage (le verrou surveille le bon mécanisme)', () => {
+    expect(code).toMatch(/sessionStorage\.getItem\(/);
+    expect(code).toMatch(/sessionStorage\.setItem\(/);
+  });
+});

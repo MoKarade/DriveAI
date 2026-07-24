@@ -51,8 +51,7 @@ export function Assistant({ langue }: { langue: Langue }) {
   useEffect(() => { finRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, enCours]);
 
   function effacer() {
-    setMessages([]);
-    try { sessionStorage.removeItem(CLE_CHAT); } catch { /* rien à faire */ }
+    setMessages([]); // l'effet de persistance ci-dessus réécrit alors '[]' → historique vidé
   }
 
   async function envoyer(texte: string) {
