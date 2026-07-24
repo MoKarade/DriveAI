@@ -1301,3 +1301,23 @@ est un appel RÉEL (Marc, ou un canal serveur→serveur comme le miroir qui rede
 statut du run — répétition de la leçon 'signal indépendant'."
 
 **Règle durable ?** oui (piège #5 d'auto-déploiement, ajouté à CLAUDE.md §7).
+
+## 2026-07-24 — Une BORNE sur une entrée qui CROÎT doit TRONQUER, jamais REJETER
+
+**Contexte.** C28-30 UX PR3 : troncature de l'historique du chat envoyé à Anthropic (retour Marc « c'est
+trop long » → moins de tokens/latence). En le codant, découverte d'un bug LATENT : `validerHistoriqueChat_`
+REJETAIT (`null` → « historique invalide ») tout historique de plus de `CHAT_HISTORIQUE_MAX` (20) messages
+→ le chat CASSAIT une fois la conversation longue (l'app ré-envoie TOUT l'historique accumulé à chaque
+tour). Correctif : `tronquerHistoriqueChat_` garde les N derniers au lieu de rejeter au-delà.
+
+**Leçon.** "Un garde-fou de BORNE (rejet au-delà de N) posé sur une entrée qui CROÎT NATURELLEMENT —
+historique de chat ré-envoyé en entier à chaque tour, liste accumulée côté client — doit TRONQUER (garder
+les N plus RÉCENTS), jamais REJETER : sinon la feature meurt SILENCIEUSEMENT dès que l'usage normal dépasse
+N (vécu : chat > 20 messages → 'historique invalide', le chat mort une fois la conversation longue).
+Corollaire : tronquer une séquence qui porte un INVARIANT de protocole (API Messages : 1er tour = user,
+alternance stricte, dernier = user) exige de couper sur une frontière qui PRÉSERVE l'invariant (frontière
+PAIRE = un `user` en tête, un historique valide ayant `user` aux indices pairs), pas un `slice(-N)` naïf
+qui pourrait démarrer sur un `assistant`. Et la troncature n'assainit rien : la validation tourne APRÈS,
+sur le tableau EXACT envoyé (défense en profondeur — un préfixe malformé droppé n'est jamais transmis)."
+
+**Règle durable ?** oui (ajouté à CLAUDE.md §7 — borne sur entrée croissante = troncature).

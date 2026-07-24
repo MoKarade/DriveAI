@@ -472,6 +472,13 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   jusqu'à expiration (vécu C28-20 : cookie 1 an vs verrou ALLOWED_EMAIL au callback). Réflexe
   de revue : « vérifié à l'émission ou à l'usage ? si à l'émission, qu'est-ce qui invalide
   l'existant ? »
+- **Une BORNE sur une entrée qui CROÎT se TRONQUE, ne se REJETTE pas.** Un rejet au-delà de N sur une
+  entrée qui grossit naturellement (historique de chat ré-envoyé en entier à chaque tour, liste
+  accumulée côté client) casse la feature EN SILENCE dès que l'usage normal dépasse N (vécu C28-30 :
+  chat > 20 messages → « historique invalide »). Garder les N plus RÉCENTS ; si la séquence porte un
+  invariant de protocole (API Messages : 1er tour = user, alternance stricte), couper sur une frontière
+  qui le PRÉSERVE (frontière PAIRE = un `user` en tête), jamais un `slice(-N)` naïf. La validation tourne
+  APRÈS la troncature, sur le tableau EXACT envoyé (défense en profondeur).
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 
