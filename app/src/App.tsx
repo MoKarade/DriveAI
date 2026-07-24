@@ -23,6 +23,9 @@ import { Assistant } from './vues/Assistant';
 import { Agenda } from './vues/Agenda';
 import { Quotas } from './vues/Quotas';
 
+// Retour au hub perso (lien externe dans la topbar ; overridable au build via VITE_HUB_URL).
+const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined)?.replace(/\/+$/, '') || 'https://hubperso.com';
+
 // C28-25 (Cockpit Unique) : la section « mails » est SUPPRIMÉE — le seul bloc utile qui restait
 // (les derniers fils triés + création de tâche depuis un fil) a été rapatrié dans « aujourdhui »
 // en carte repliable. Les tuiles/suspects vivaient déjà là, la table apprise dans « apprentissage ».
@@ -125,6 +128,7 @@ export function App() {
         <h1 className="logo"><b>Drive</b>AI</h1>
         <p className="sous-titre">{t('sousTitre', langue)}</p>
         <div className="header-actions">
+          <a className="lien-hub" href={HUB_URL} title="Retour au hub">← Hub</a>
           <MenuAvatar langue={langue} connecte={false} onLangue={basculerLangue} onDeconnexion={deconnexion} />
         </div>
       </header>
@@ -198,6 +202,7 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
         <button className="hamburger discret" aria-label={t('menu', langue)} onClick={clicMenu}>☰</button>
         <h1 className="logo"><b>Drive</b>AI</h1>
         <div className="header-actions">
+          <a className="lien-hub" href={HUB_URL} title="Retour au hub">← Hub</a>
           <BadgeSynchro langue={langue} />
           <MenuAvatar langue={langue} connecte onLangue={onLangue} onDeconnexion={onDeconnexion} />
         </div>
