@@ -14,6 +14,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { envoyerMessageChat, viderCachePlages, MessageChat } from '../google';
 import { ReorgVue } from './Reorg';
 import { Langue, t } from '../i18n';
@@ -103,12 +104,33 @@ export function Assistant({ langue }: { langue: Langue }) {
 
         <div className="chat-fil" role="log" aria-live="polite">
           {messages.length === 0 && <p className="explication">{t('assistantVide', langue)}</p>}
-          {messages.map((m, i) => (
-            <div key={i} className={`chat-bulle ${m.role === 'user' ? 'chat-moi' : 'chat-ia'}`}>
-              {m.content}
+          {messages.map((m, i) =>
+            m.role === 'user' ? (
+              <div key={i} className="chat-bulle chat-moi">{m.content}</div>
+            ) : (
+              // Réponse de l'assistant en Markdown (listes, gras, liens). react-markdown NE rend PAS
+              // le HTML brut par défaut (pas de rehype-raw) → un contenu de doc cité reste inerte (XSS
+              // impossible ; esprit ADR-0007). Les URLs javascript: sont neutralisées par défaut.
+              <div key={i} className="chat-bulle chat-ia chat-markdown">
+                <ReactMarkdown
+                  components={{
+                    a: ({ node: _n, ...p }) => <a {...p} target="_blank" rel="noopener noreferrer" />,
+                  }}
+                >
+                  {m.content}
+                </ReactMarkdown>
+              </div>
+            ),
+          )}
+          {enCours && (
+            // Indicateur de charge BIEN VISIBLE (retour Marc : « on voit pas qu'il charge »).
+            // Un tour peut durer jusqu'à ~1 min (2 passes + Tool Use) → on l'annonce. Pas de
+            // role/aria-live ici : la fenêtre parente (role="log" aria-live) annonce déjà l'ajout.
+            <div className="chat-loader">
+              <span className="chat-loader-points" aria-hidden="true"><span /><span /><span /></span>
+              <span>{t('assistantAnalyse', langue)}</span>
             </div>
-          ))}
-          {enCours && <div className="chat-bulle chat-ia chat-attente">…</div>}
+          )}
           <div ref={finRef} />
         </div>
 

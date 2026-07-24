@@ -185,6 +185,11 @@ Retours d'usage réel de Marc → chantier d'amélioration en 3 PR séquentielle
   appelé `proposer_reorg`) → l'app invalide le cache `Réorg` PUIS remonte `ReorgVue` (changement de
   `key`) — corrige « propositions pas à jour » sans faux rafraîchissement ; (b) historique en
   `sessionStorage` (init + persist + bouton « Effacer le chat »).
-- **PR2** : `react-markdown` pour les réponses, layout fenêtre type claude.ai, indicateur de chargement
-  TRÈS visible (« Analyse en cours, jusqu'à 1 min »).
+- **PR2 (faite)** : (a) réponses de l'assistant rendues en **Markdown** via `react-markdown` ^10 (listes,
+  gras, liens, code) — PAS de `rehype-raw` → HTML brut inerte, URLs `javascript:` neutralisées par défaut
+  (XSS impossible, esprit ADR-0007) ; liens en `target=_blank rel="noopener noreferrer"` ; bulles user en
+  texte brut. (b) Fenêtre type claude.ai (`.chat-fil` plus haute + `min-height`, bulles arrondies, styles
+  Markdown resserrés). (c) Indicateur de charge TRÈS visible (`.chat-loader` : 3 points qui rebondissent +
+  « Analyse en cours… (jusqu'à 1 min) », `prefers-reduced-motion` respecté) — remplace le faible « … ».
+  Tripwire `session.test.ts` (jamais `localStorage`) toujours vert.
 - **PR3** : troncature de l'historique envoyé à Anthropic aux 12 derniers messages (tokens + latence).
