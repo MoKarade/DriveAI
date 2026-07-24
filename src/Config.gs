@@ -427,7 +427,7 @@ var CONFIG = {
   CHAT_COUT_JOUR_MAX: 10.0,               // $/jour — filet anti-emballement seulement (jamais atteint en usage interactif normal)
   CHAT_RECHERCHE_MAX: 15,                 // résultats max renvoyés par un outil de recherche (borne le contexte)
   CHAT_LIRE_MAX_CARS: 8000,               // texte max extrait d'UN fichier par `lire_fichier` (borne les tokens)
-  CHAT_HISTORIQUE_MAX: 20,                // messages max dans un historique reçu (borne l'entrée)
+  CHAT_HISTORIQUE_MAX: 13,                // messages CONSERVÉS de l'historique et envoyés à Anthropic (le plus ancien est TRONQUÉ, pas rejeté) — borne tokens + latence, et évite qu'un chat long casse l'appel. Impair : un historique valide commence ET finit par `user` (13 = 6 échanges Q/R + la question courante). Le prompt système est toujours conservé (hors `messages`).
   CHAT_MESSAGE_MAX_CARS: 2000,            // caractères max par message reçu (borne l'entrée)
 
   // --- Miroir Drive du dépôt (ADR-0017, demande Marc : accès de partout + NotebookLM lit depuis

@@ -105,7 +105,7 @@ const CONTRAT = [
   'parserPlanIA_', 'appelAnthropicTexte_', 'domainesAutorises_',
   // web app : chat assistant (C28-30, ADR-0026 — PR1 Q&A LECTURE SEULE)
   'appelAnthropicMessages_', 'appelAnthropicChat_', 'texteReponse_', // Llm.gs, appelés par WebApp.gs
-  'actionChatAssistant_', 'validerHistoriqueChat_', 'coutChatJour_', 'promptChatAssistant_',
+  'actionChatAssistant_', 'validerHistoriqueChat_', 'tronquerHistoriqueChat_', 'coutChatJour_', 'promptChatAssistant_',
   'outilsChatAssistant_', 'executerOutilChatAssistant_', 'rechercheDriveChat_', 'lireFichierChat_',
   // opérations de dossiers via le chat (C28-30 PR2) : proposer_reorg → onglet Réorg, déplacement de
   // fichier via le chemin GARDÉ (Reorg.appliquerUneAction_), épinglé Marc respecté des deux côtés

@@ -26,7 +26,7 @@ test('validerHistoriqueChat_ : whitelist stricte (rôle, string bornée, dernier
   assert.strictEqual(ctx.validerHistoriqueChat_(
     [{ role: 'user', content: 'q' }, { role: 'assistant', content: 'a' }]), null); // dernier = assistant
   assert.strictEqual(ctx.validerHistoriqueChat_(
-    Array.from({ length: 21 }, () => ({ role: 'user', content: 'x' }))), null);    // trop de messages
+    Array.from({ length: 21 }, () => ({ role: 'user', content: 'x' }))), null);    // long ET malformé (tout user) → rejeté par l'alternance, même après troncature
   // Alternance stricte exigée par l'API Messages (1er=user, user/assistant/user…, dernier=user).
   assert.deepStrictEqual(plat(ctx.validerHistoriqueChat_(
     [{ role: 'user', content: 'q1' }, { role: 'assistant', content: 'a1' }, { role: 'user', content: 'q2' }])),
@@ -35,6 +35,38 @@ test('validerHistoriqueChat_ : whitelist stricte (rôle, string bornée, dernier
     [{ role: 'assistant', content: 'a' }, { role: 'user', content: 'q' }]), null); // 1er tour ≠ user
   assert.strictEqual(ctx.validerHistoriqueChat_(
     [{ role: 'user', content: 'q1' }, { role: 'user', content: 'q2' }]), null);    // alternance rompue
+});
+
+// Historique alternant : user aux indices PAIRS, assistant aux impairs (m0, m1, …).
+const roleA = (n) => Array.from({ length: n }, (_, i) => ({ role: i % 2 === 0 ? 'user' : 'assistant', content: 'm' + i }));
+
+test('tronquerHistoriqueChat_ : garde ≤ N derniers messages, TOUJOURS un user en tête (PR3)', () => {
+  const M = ctx.CONFIG.CHAT_HISTORIQUE_MAX; // cas dérivés de la CONFIG, jamais de la valeur du jour
+  // Court (≤ M) : inchangé.
+  assert.deepStrictEqual(plat(ctx.tronquerHistoriqueChat_(roleA(3), M)), plat(roleA(3)));
+  assert.deepStrictEqual(plat(ctx.tronquerHistoriqueChat_(roleA(M), M)), plat(roleA(M)));
+  // Long : un SUFFIXE contigu, ≤ M, débutant par user (jamais un assistant en tête même si la
+  // frontière tombe sur un assistant → décalage d'un cran) ; le DERNIER message est toujours conservé.
+  for (const L of [M + 1, M + 2, 3 * M]) {
+    const src = roleA(L);
+    const tr = ctx.tronquerHistoriqueChat_(src, M);
+    assert.ok(tr.length <= M && tr.length >= M - 1, 'garde M ou M-1 (frontière paire/impaire)');
+    assert.strictEqual(tr[0].role, 'user', 'user en tête');
+    assert.strictEqual(tr[tr.length - 1].content, src[L - 1].content, 'dernier message (question courante) conservé');
+    assert.deepStrictEqual(plat(tr), plat(src.slice(L - tr.length)), 'suffixe contigu (les plus récents)');
+  }
+});
+
+test('validerHistoriqueChat_ : historique long et VALIDE → TRONQUÉ (accepté), plus jamais rejeté (PR3)', () => {
+  const M = ctx.CONFIG.CHAT_HISTORIQUE_MAX;
+  const longValide = roleA(2 * M + 1); // impair → commence ET finit par user (historique valide)
+  const out = ctx.validerHistoriqueChat_(longValide);
+  assert.notStrictEqual(out, null, 'un chat long ne casse plus l\'appel');
+  assert.ok(out.length <= M, 'borné à CHAT_HISTORIQUE_MAX');
+  assert.strictEqual(out[0].role, 'user');
+  assert.strictEqual(out[out.length - 1].role, 'user');
+  // C'est bien le SUFFIXE (les tours les plus RÉCENTS), assaini par la whitelist.
+  assert.deepStrictEqual(plat(out), plat(longValide.slice(longValide.length - out.length)));
 });
 
 test('appelAnthropicChat_ : PLUSIEURS tool_use dans un tour → un tool_result par bloc (id exacts)', () => {
