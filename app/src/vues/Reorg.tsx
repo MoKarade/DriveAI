@@ -13,12 +13,13 @@ import {
   interpreterReorg,
   derniereDemandeReorg,
   actionsDuPlan,
+  actionsProposeesChat,
   lignesVideCandidat,
   plagesContigues,
 } from '../etat';
 import { Langue, t } from '../i18n';
 
-const TYPES: Record<string, string> = { deplacer: '→', fusionner: '⇒', creer: '+', renommer: '✎' };
+const TYPES: Record<string, string> = { deplacer: '→', fusionner: '⇒', creer: '+', renommer: '✎', 'deplacer-fichier': '↳' };
 
 /** Traduit les codes de refus du verdict corbeille (ADR-0014) en message lisible. */
 function messageCorbeille(e: unknown, langue: Langue): string {
@@ -36,10 +37,11 @@ function libelleType(type: string, langue: Langue): string {
   if (type === 'fusionner') return t('reorgFusionner', langue);
   if (type === 'creer') return t('reorgCreer', langue);
   if (type === 'renommer') return t('reorgRenommer', langue);
+  if (type === 'deplacer-fichier') return t('reorgDeplacerFichier', langue);
   return type;
 }
 
-export function ReorgVue({ langue }: { langue: Langue }) {
+export function ReorgVue({ langue, signalRafraichir = 0 }: { langue: Langue; signalRafraichir?: number }) {
   const [lignes, setLignes] = useState<LigneReorg[]>([]);
   const [charge, setCharge] = useState(false);
   const [erreur, setErreur] = useState('');
@@ -63,7 +65,9 @@ export function ReorgVue({ langue }: { langue: Langue }) {
         setErreur(String(e));
       }
     })();
-  }, [version]);
+    // `signalRafraichir` (bumpé par l'Assistant après une proposition du chat) force la relecture —
+    // l'appelant a déjà invalidé le cache de l'onglet Réorg (viderCachePlages) juste avant.
+  }, [version, signalRafraichir]);
 
   async function demanderAnalyse(portee: string) {
     setEnCours(true);
@@ -161,9 +165,44 @@ export function ReorgVue({ langue }: { langue: Langue }) {
   const proposees = actions.filter((a) => a.statut === 'proposé');
   const decidees = actions.filter((a) => a.statut !== 'proposé');
   const videsCandidats = lignesVideCandidat(lignes);
+  const chatProposees = actionsProposeesChat(lignes);
 
   return (
     <div className="colonnes">
+      {chatProposees.length > 0 && (
+        <section className="carte large">
+          <h2>💬 {t('chatPropTitre', langue)}</h2>
+          <p className="explication">{t('chatPropIntro', langue)}</p>
+          <div className="actions" style={{ margin: '0.6rem 0' }}>
+            <button onClick={() => poserStatutEnMasse(chatProposees, 'validé')} disabled={enCours}>
+              ✓ {t('toutValider', langue)} ({chatProposees.length})
+            </button>
+            <button className="discret" onClick={() => poserStatutEnMasse(chatProposees, 'écarté')} disabled={enCours}>
+              ✕ {t('toutEcarter', langue)}
+            </button>
+          </div>
+          <table>
+            <tbody>
+              {chatProposees.map((a) => (
+                <tr key={a.cle}>
+                  <td className="expl-ic" aria-hidden="true">{TYPES[a.type] ?? '·'}</td>
+                  <td>
+                    <b>{libelleType(a.type, langue)}</b>
+                    <div className="variante">
+                      {a.cheminActuel && <>{a.cheminActuel} {'→'} </>}{a.cheminPropose}
+                    </div>
+                    {a.detail && <div className="variante">{a.detail}</div>}
+                  </td>
+                  <td className="nombre reorg-boutons">
+                    <button className="discret" disabled={enCours} onClick={() => poserStatut(a, 'validé')}>✓ {t('valider', langue)}</button>
+                    <button className="discret" disabled={enCours} onClick={() => poserStatut(a, 'écarté')}>✕ {t('ecarter', langue)}</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
       <section className="carte large">
         <h2>{t('reorgTitre', langue)}</h2>
         {erreur && <p className="erreur">{t('erreur', langue)} : {erreur}</p>}

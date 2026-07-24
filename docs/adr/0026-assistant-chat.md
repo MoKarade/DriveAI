@@ -70,9 +70,22 @@ unique, avec aperçu + validation avant toute mutation, et un budget borné.
      prédicats de collecte des campagnes de re-rangement l'IGNORENT (immunité) : `collecterConsolidation_`,
      `estAMigrer_`, `estAReanalyser_` **et** `estAReclasserLeger_` (grand rangement, défense en
      profondeur) — les QUATRE, pour une convergence complète.
-3. **PR3 — UI de l'onglet Assistant.** `app/src/vues/Assistant.tsx` (chat + partie « dossiers à
-   créer » : suggestions auto ET questionnaire guidé), remplace la section réorg, embarque la vue
-   réorg existante pour la validation ligne-à-ligne, compteur de budget visible.
+3. **PR3 — UI de l'onglet Assistant.** *(← ce commit)*
+   - **`assistant` = SECTION de PREMIER NIVEAU** (App.tsx `Section`/`SECTIONS`/`ICONES` 💬 + Sidebar
+     auto), **pas** un sous-onglet. La « Réorg IA » QUITTE `Documents.tsx` (sous-onglet retiré) →
+     l'Assistant REMPLACE la page réorg (demande Marc « un onglet assistant »).
+   - **`app/src/vues/Assistant.tsx`** (NOUVEAU) : layout en colonne (`.accueil`) — GAUCHE le chat
+     (historique éphémère en State React, ADR-0007 ; `envoyerMessageChat` → doPost `chat-assistant`),
+     DESSOUS la `ReorgVue` embarquée pour valider le plan. Deux actions rapides « Suggérer des
+     dossiers » / « Organiser un dossier » (prompts pré-remplis = suggestions auto + questionnaire
+     guidé). **Compteur de budget visible** : `actionChatAssistant_` renvoie désormais
+     `coutJour`/`plafond` (métadonnées seulement) → jauge « X,XX / 0,33 $ ».
+   - **Propositions du chat surfacées** : nouveau helper PUR `actionsProposeesChat` (etat.ts) remonte
+     les lignes `chatreorg|…` `proposé` (sans `demande`) ; `ReorgVue` les affiche en section dédiée
+     avec validation PAR ACTION (réutilise `poserStatut`/`ecrireCellule`). Refresh : `signalRafraichir`
+     + `viderCachePlages('Réorg')` après chaque réponse (le chat écrit côté moteur, hors cache app).
+   - Frontend pur + un ajout moteur trivial (deux nombres dans la réponse). Tests : `etat.test.ts`
+     (`actionsProposeesChat`) + `chat-assistant.test.js` (compteur) ; capture e2e de l'onglet.
 
 ## Garde-fous & risques
 
@@ -131,3 +144,15 @@ correctifs :
   structure protégée respectée, convergence conforme. Note appliquée : commentaire près de `Intake.gs`
   expliquant que l'intake filtre `drive|` (pas `epingle|`) VOLONTAIREMENT (un re-dépôt manuel doit se
   re-trier ; un skip y coincerait le fichier à vie).
+
+**PR3 — revue flotte** :
+- **security-auditor 🟢 CONFORME** (5/5) : aucune nouvelle surface de suppression (`envoyerMessageChat`
+  = fetch seul ; `aucune-suppression.test.ts` vert), ADR-0007 (coutJour/plafond = métadonnées), le
+  retrait du sous-onglet réorg ne perd AUCUN garde-fou (ReorgVue + corbeille ADR-0014 intactes, juste
+  embarquées dans l'Assistant), le chat n'applique/ne supprime rien, secret inchangé.
+- **code-reviewer 🔴 + 🟠 → corrigés** : (🔴) `Assistant.tsx envoyer()` ne rollbackait pas le tour
+  `user` optimiste sur erreur → un blip (anti-rafale 3 s, budget, réseau) cassait l'alternance stricte
+  du moteur et bloquait le chat jusqu'au reload → catch qui RETIRE le tour orphelin + rend la saisie ;
+  (🟠) `envoyerMessageChat` jetait `coutJour`/`plafond` sur `!ok` (compteur invisible au refus à froid,
+  retour moteur mort) → erreur ENRICHIE (`ErreurChat`) lue par le catch → `setBudget`. 🟡 aussi :
+  garde IME sur Enter, dé-duplication de l'affichage d'erreur, timestamps de test réalistes (13 chiffres).

@@ -506,6 +506,24 @@ tr:hover .expl-actions button, .expl-actions button:focus-visible { opacity: 1; 
 .reorg-boutons { white-space: nowrap; }
 .reorg-boutons button { margin-left: 0.25rem; }
 
+/* ---------- Assistant chat (C28-30, ADR-0026) ---------- */
+.chat-fil {
+  display: flex; flex-direction: column; gap: 0.5rem;
+  max-height: 46vh; overflow-y: auto;
+  padding: 0.6rem; margin: 0.4rem 0;
+  background: var(--carte-2); border: 1px solid var(--bord); border-radius: 8px;
+}
+.chat-bulle {
+  max-width: 82%; padding: 0.5rem 0.7rem; border-radius: 10px;
+  white-space: pre-wrap; word-break: break-word; line-height: 1.4;
+}
+.chat-moi { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 3px; }
+.chat-ia { align-self: flex-start; background: var(--carte); border: 1px solid var(--bord); border-bottom-left-radius: 3px; }
+.chat-attente { color: var(--muet); letter-spacing: 0.15em; }
+.chat-budget { margin-top: 0.4rem; }
+.chat-budget-piste { height: 5px; border-radius: 3px; background: var(--carte-2); border: 1px solid var(--bord); overflow: hidden; margin-top: 0.25rem; }
+.chat-budget-jauge { height: 100%; background: var(--accent); transition: width 0.3s ease; }
+
 /* ---------- App v4 (C28-17, ADR-0019) : accueil tout-en-un ---------- */
 /* Les 3 zones s'empilent (actions → attention → activité) ; la zone activité garde la
    grille .colonnes existante à l'intérieur. */

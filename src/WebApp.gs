@@ -403,7 +403,9 @@ function promptChatAssistant_() {
  * Action `chat-assistant` : une réponse de l'assistant à partir de l'historique éphémère. Anti-rafale
  * + plafond QUOTIDIEN en $ (échec fermé au-delà) + panne de compte gérée (jamais imputée au plafond).
  * Rien n'est persisté du contenu (ADR-0007) : l'historique vit côté navigateur, le contenu lu ne fait
- * que transiter vers Claude. @return {{ok:boolean, reponse?:string, erreur?:string}}
+ * que transiter vers Claude.
+ * @return {{ok:boolean, reponse?:string, erreur?:string, coutJour?:number, plafond?:number}}
+ *   coutJour/plafond accompagnent la réponse (et le refus de budget) → compteur visible côté app.
  */
 function actionChatAssistant_(e) {
   var props = PropertiesService.getScriptProperties();
@@ -415,7 +417,7 @@ function actionChatAssistant_(e) {
   }
   var coutJour = coutChatJour_(props, jour);
   if (coutJour >= CONFIG.CHAT_COUT_JOUR_MAX) {
-    return { ok: false, erreur: 'Budget chat quotidien épuisé — reviens demain.' };
+    return { ok: false, erreur: 'Budget chat quotidien épuisé — reviens demain.', coutJour: coutJour, plafond: CONFIG.CHAT_COUT_JOUR_MAX };
   }
 
   var messages = null;
@@ -444,8 +446,10 @@ function actionChatAssistant_(e) {
   }
 
   if (!reponse) return { ok: false, erreur: 'Assistant indisponible (aucune réponse) — réessaie' };
-  journalInfo_('WebApp', 'Chat assistant servi (coût du jour ≈ ' + coutChatJour_(props, jour).toFixed(3) + ' $).');
-  return { ok: true, reponse: reponse };
+  var coutMaj = coutChatJour_(props, jour);
+  journalInfo_('WebApp', 'Chat assistant servi (coût du jour ≈ ' + coutMaj.toFixed(3) + ' $).');
+  // coutJour/plafond : compteur de budget VISIBLE côté app (demande Marc — métadonnées seulement).
+  return { ok: true, reponse: reponse, coutJour: coutMaj, plafond: CONFIG.CHAT_COUT_JOUR_MAX };
 }
 
 /* ---------- Analyse ciblée des mails (C28-06, plan P2) ---------- */

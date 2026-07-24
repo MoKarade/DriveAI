@@ -19,17 +19,18 @@ import { AujourdHui } from './vues/AujourdHui';
 import { SanteVue } from './vues/Sante';
 import { Corrections } from './vues/Corrections';
 import { Documents } from './vues/Documents';
+import { Assistant } from './vues/Assistant';
 import { Agenda } from './vues/Agenda';
 import { Quotas } from './vues/Quotas';
 
 // C28-25 (Cockpit Unique) : la section « mails » est SUPPRIMÉE — le seul bloc utile qui restait
 // (les derniers fils triés + création de tâche depuis un fil) a été rapatrié dans « aujourdhui »
 // en carte repliable. Les tuiles/suspects vivaient déjà là, la table apprise dans « apprentissage ».
-export type Section = 'aujourdhui' | 'agenda' | 'documents' | 'apprentissage' | 'quotas' | 'sante';
+export type Section = 'aujourdhui' | 'agenda' | 'documents' | 'assistant' | 'apprentissage' | 'quotas' | 'sante';
 
-export const SECTIONS: Section[] = ['aujourdhui', 'agenda', 'documents', 'apprentissage', 'quotas', 'sante'];
+export const SECTIONS: Section[] = ['aujourdhui', 'agenda', 'documents', 'assistant', 'apprentissage', 'quotas', 'sante'];
 export const ICONES: Record<Section, string> = {
-  aujourdhui: '◐', agenda: '▦', documents: '▤', apprentissage: '✎', quotas: '◔', sante: '♥',
+  aujourdhui: '◐', agenda: '▦', documents: '▤', assistant: '💬', apprentissage: '✎', quotas: '◔', sante: '♥',
 };
 /** Barre basse mobile : 4 sections directes + « Plus » (Quotas/Santé). Apprentissage promu ici
  * (C28-25) pour garder 4 boutons après le retrait de Mails. */
@@ -224,6 +225,7 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
           <div className="vue-active" key={section}>
             {section === 'aujourdhui' && <AujourdHui langue={langue} onAller={allerA} />}
             {section === 'documents' && <Documents langue={langue} />}
+            {section === 'assistant' && <Assistant langue={langue} />}
             {section === 'apprentissage' && <Corrections langue={langue} />}
             {section === 'agenda' && <Agenda langue={langue} dateRef={dateAgenda} agendas={agendas} />}
             {section === 'quotas' && <Quotas langue={langue} />}

@@ -139,6 +139,8 @@ test('actionChatAssistant_ : budget quotidien épuisé → refus, AUCUN appel LL
   const r = c.actionChatAssistant_({ postData: { contents: JSON.stringify({ historique: [{ role: 'user', content: 'q' }] }) } });
   assert.strictEqual(r.ok, false);
   assert.ok(/[Bb]udget/.test(r.erreur), r.erreur);
+  assert.strictEqual(r.plafond, c.CONFIG.CHAT_COUT_JOUR_MAX, 'plafond renvoyé pour le compteur');
+  assert.ok(r.coutJour >= r.plafond, 'coutJour renvoyé pour le compteur'); // refus = au-dessus du plafond
 });
 
 test('outils lecture : recherche formatée (id + dossier) et lecture bornée en taille', () => {

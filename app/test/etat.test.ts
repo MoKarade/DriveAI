@@ -476,6 +476,7 @@ import {
   interpreterReorg,
   derniereDemandeReorg,
   actionsDuPlan,
+  actionsProposeesChat,
   plagesContigues,
 } from '../src/etat';
 
@@ -506,6 +507,21 @@ describe('Réorg IA (C21-05)', () => {
     expect(actionsDuPlan(lignes, 'demande-1')).toHaveLength(2);
     expect(actionsDuPlan(lignes, 'demande-2')).toHaveLength(0);
     expect(actionsDuPlan(lignes, 'demande')).toHaveLength(0); // pas de demi-préfixe
+  });
+
+  it('actionsProposeesChat : lignes chatreorg| PROPOSÉES seules, sans demande, plus récentes d’abord', () => {
+    const avecChat = interpreterReorg([
+      ...brut,
+      ['chatreorg|1799999999100|1', 'deplacer-fichier', 'F1→D1', 'nas.txt', 'Réseau', 'proposé', 'range', 'T3'],
+      ['chatreorg|1799999999200|1', 'creer', '→P1', '', 'Véhicule/Garage', 'proposé', '', 'T4'],
+      ['chatreorg|1799999999050|1', 'deplacer-fichier', 'F2→D2', 'vieux.pdf', 'Archives', 'validé', '', 'T2'], // décidé → exclu
+    ]);
+    const chat = actionsProposeesChat(avecChat);
+    // ts réels (13 chiffres, largeur fixe) : ordre lexical décroissant == plus récent d'abord ; validé exclu.
+    expect(chat.map((c) => c.cle)).toEqual(['chatreorg|1799999999200|1', 'chatreorg|1799999999100|1']);
+    // N’attrape jamais les lignes du plan réorg classique (préfixe reorg|…).
+    expect(chat.every((c) => c.cle.startsWith('chatreorg|'))).toBe(true);
+    expect(actionsProposeesChat(interpreterReorg(brut))).toHaveLength(0);
   });
 
   it('plagesContigues : regroupe, dédoublonne, trie — jamais une ligne non ciblée', () => {

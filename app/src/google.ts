@@ -816,6 +816,60 @@ export async function analyseCiblee(requete: string): Promise<string> {
   return data.message ?? 'analyse programmée';
 }
 
+/* ---------- Assistant chat (C28-30) : Q&A + propositions d'opérations ---------- */
+
+export interface MessageChat {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/** Réponse du chat : le texte de l'assistant + le compteur de budget du jour (métadonnées). */
+export interface ReponseChat {
+  reponse: string;
+  coutJour?: number;
+  plafond?: number;
+}
+
+/** Erreur du chat portant le compteur de budget (le refus de budget renvoie coutJour/plafond). */
+export interface ErreurChat extends Error {
+  coutJour?: number;
+  plafond?: number;
+}
+
+/**
+ * Envoie l'historique éphémère du chat au MOTEUR (doPost `chat-assistant`) — la clé Anthropic et
+ * l'accès Drive vivent côté moteur (ADR-0007) ; l'app n'envoie que l'historique et n'affiche que la
+ * réponse + le compteur de budget (coutJour/plafond, métadonnées SEULEMENT). Même canal LISIBLE que
+ * `rechercheIA`/`analyseCiblee` (POST text/plain, corps JSON). L'erreur de budget quotidien (§2.6)
+ * remonte TELLE QUELLE (« Budget… ») pour que l'UI la distingue d'une panne. Rien du contenu n'est
+ * persisté (chat éphémère, State React).
+ */
+export async function envoyerMessageChat(historique: MessageChat[]): Promise<ReponseChat> {
+  const { webappUrl, webappSecret } = lireConfig();
+  if (!webappUrl || !webappSecret) throw new Error('Variables Vercel WEBAPP_URL / WEBAPP_SECRET manquantes (Settings → Environment Variables)');
+  const rep = await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}&action=chat-assistant`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ historique }),
+  });
+  if (!rep.ok) throw new Error(`Web app ${rep.status}`);
+  let data: { ok: boolean; erreur?: string; reponse?: string; coutJour?: number; plafond?: number };
+  try {
+    data = await rep.json();
+  } catch {
+    throw new Error('Réponse illisible — la web app a-t-elle été redéployée en nouvelle version ?');
+  }
+  if (!data.ok) {
+    // Le refus de budget porte AUSSI coutJour/plafond → on les attache à l'erreur pour que l'UI
+    // affiche le compteur « plafond atteint » même au premier message d'une journée déjà plafonnée.
+    const err: ErreurChat = new Error(data.erreur || 'assistant indisponible');
+    err.coutJour = data.coutJour;
+    err.plafond = data.plafond;
+    throw err;
+  }
+  return { reponse: data.reponse ?? '', coutJour: data.coutJour, plafond: data.plafond };
+}
+
 /* ---------- Tri & intentions à la demande (C28-16) ---------- */
 
 /**
