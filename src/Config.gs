@@ -411,6 +411,20 @@ var CONFIG = {
   IA_RECHERCHE_MAX_JOUR: 50,              // plafond quotidien d'appels SERVIS (≈ 0,002 $/question Haiku pire cas — ~3 $/mois au plafond)
   LLM_MAX_TOKENS_RECHERCHE: 300,          // le plan JSON tient largement dedans
 
+  // --- Assistant CHAT (C28-30, ADR-0026, via doPost `chat-assistant`) : Q&A qui LIT le contenu ---
+  // Boucle Tool Use (Sonnet) : cherche (nom → contenu → plein-texte) puis lit des fichiers à la volée.
+  // La clé Claude + l'accès Drive vivent ICI (moteur), jamais côté navigateur (ADR-0007).
+  CHAT_MODELE: 'claude-sonnet-4-6',       // raisonnement + appels d'outils (le chat n'est pas du flux vivant Haiku)
+  CHAT_MAX_TOKENS: 1500,                  // réponse + blocs tool_use — large (l'assistant explique + agit)
+  CHAT_TOOL_ITERATIONS_MAX: 4,            // tours de boucle Tool Use max/appel (anti-boucle)
+  CHAT_BUDGET_MS: 4 * 60 * 1000,          // garde-temps de la boucle : ne pas démarrer un tour après 4 min (marge avant le mur 6 min de doPost pour le tour final + le finally coût)
+  CHAT_MIN_INTERVALLE_MS: 3000,           // anti-rafale (3 s entre deux messages)
+  CHAT_COUT_JOUR_MAX: 0.33,              // plafond QUOTIDIEN en $ — 0,33 × 30 ≈ 9,9 $/mois GARANTIT la cible §2.6 (< 10 $/mois) même saturé chaque jour ; échec fermé au-delà (revue llm-cost : 0,50 aurait plafonné à 15 $/mois)
+  CHAT_RECHERCHE_MAX: 15,                 // résultats max renvoyés par un outil de recherche (borne le contexte)
+  CHAT_LIRE_MAX_CARS: 8000,               // texte max extrait d'UN fichier par `lire_fichier` (borne les tokens)
+  CHAT_HISTORIQUE_MAX: 20,                // messages max dans un historique reçu (borne l'entrée)
+  CHAT_MESSAGE_MAX_CARS: 2000,            // caractères max par message reçu (borne l'entrée)
+
   // --- Miroir Drive du dépôt (ADR-0017, demande Marc : accès de partout + NotebookLM lit depuis
   // Drive) : copie TEXTE (.txt) du dépôt, écrite par la web app (action=sync-miroir, GitHub Actions
   // à chaque push sur main). Garde-temps par LOT (la boucle complète vit côté Action, en plusieurs
