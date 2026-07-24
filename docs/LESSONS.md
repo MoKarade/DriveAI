@@ -1219,3 +1219,60 @@ placée APRÈS le flux vivant, elle n'utilise que le reliquat, garantie de tourn
 personne. Vérifier la PROD par signal indépendant (dossiers qui se vident) reste la seule preuve."
 
 **Règle durable ?** oui (corollaire ajouté à la puce « Drainer avant d'alimenter » de CLAUDE.md §7).
+
+## 2026-07-24 — Web app Apps Script : `/exec` sert une VERSION FIGÉE (pas HEAD) — panne SILENCIEUSE
+
+**Contexte.** Chantier C28-30 (chat assistant) mergé (3 PR), déploiement auto (`clasp push`) VERT sur
+les 3 merges, app Vercel redéployée. Marc teste : le chat ne répond pas (bulles VIDES), « suggérer/
+organiser » non plus, réorg « Analyse en cours » à l'infini. Aucune erreur affichée.
+
+**Leçon.** "Le `clasp push` du workflow met à jour le HEAD du projet Apps Script, mais la WEB APP
+`/exec` sert une VERSION ÉPINGLÉE : tant que Marc n'a pas fait **Déployer → Gérer les déploiements →
+✏ → Nouvelle version → Déployer**, `/exec` exécute l'ANCIEN code (documenté DEPLOIEMENT.md §web app).
+Un nouveau `doPost` `action=X` inconnu de l'ancien code NE PLANTE PAS : il tombe dans le `else` par
+défaut (`actionTickPonctuel_`) → renvoie `{ok:true, message:…}` SANS champ `reponse` → l'app affiche
+une réponse VIDE, aucune erreur, aucun signal. Diagnostic : « bulle vide + pas d'erreur » = action
+non déployée, PAS un bug de code — le confirmer en LISANT le `doPost` (le `else` de fallthrough) plutôt
+qu'en soupçonnant le front. Tout merge touchant `WebApp.gs` exige ce redéploiement manuel → friction à
+automatiser (`clasp deploy` dans deploy.yml). Corollaire de conception : un `else` par défaut qui
+renvoie `ok:true` MASQUE les actions non déployées ; un `else { ok:false, erreur:'action inconnue' }`
+donnerait un signal franc."
+
+**Règle durable ?** oui (précise la puce §7 « auto-déploiement » : la WEB APP a la même figée que le
+trigger, + le piège du fallthrough silencieux).
+
+## 2026-07-24 — Branche `claude/**` partagée entre sessions : `force-with-lease` rejeté = enquêter, jamais forcer
+
+**Contexte.** Après le merge de PR3 (#204), un `git push --force-with-lease` sur la branche désignée
+est rejeté (« stale info »). Une AUTRE session avait ouvert PR #205 (lien « ← Hub ») sur
+`claude/retour-hub` avec pour BASE ma branche, et l'avait mergée DANS ma branche (pas dans `main`) → la
+branche distante pointait un commit inconnu de moi, contenant un changement mergé mais JAMAIS arrivé
+dans `main`.
+
+**Leçon.** "Un `force-with-lease` rejeté (« stale info ») ne se contourne JAMAIS par `--force` : la
+branche distante a bougé pour une raison. Enquêter (`git ls-remote`, `pull_request_read`) AVANT toute
+écriture — une branche `claude/**` désignée peut héberger le travail d'une AUTRE session (une PR
+ouverte/mergée dessus). Ici, forcer aurait DÉTRUIT le lien Hub (#205). Bon réflexe : rebaser MON commit
+sur le TIP distant (`git rebase origin/<branch>`) pour EMPILER sans clobberer → préserve le travail
+voisin, push en fast-forward (pas de force). Vérifier `git diff origin/main <mon-commit-PR-squashé>` ==
+vide pour confirmer que la nouvelle PR sera PROPRE (le contenu déjà squashé dans main ne réapparaît pas
+dans le diff à trois points)."
+
+**Règle durable ?** oui (git multi-sessions — ajout puce §7).
+
+## 2026-07-24 — Chat LLM qui explique ET appelle un outil : `max_tokens` pour les DEUX + prompt qui FORCE l'appel
+
+**Contexte.** Le chat assistant répondait (web app enfin redéployée) mais se COUPAIT en pleine phrase
+(« Je te propose la réorganisation suivante : » puis rien) — il n'appelait jamais `proposer_reorg`.
+`CHAT_MAX_TOKENS` était 1500.
+
+**Leçon.** "Un tour de chat qui produit une ANALYSE en texte PUIS un appel d'outil doit avoir un
+`max_tokens` couvrant les DEUX : sinon le modèle épuise le budget en pleine prose et n'atteint jamais
+le bloc `tool_use` → troncature SILENCIEUSE (on dirait qu'il « s'est arrêté »). Remède : monter
+`max_tokens` ET borner la prose dans le prompt. Et un prompt qui laisse le choix « décrire OU appeler
+l'outil » se fait souvent répondre en PROSE (rien n'arrive dans la file d'actions) — il faut FORCER :
+« dès que tu proposes, tu DOIS appeler l'outil ; décrire en texte sans appel = ERREUR ». Sinon l'effet
+utile (les actions validables) n'existe pas."
+
+**Règle durable ?** non (instance de « prompt : forcer le comportement voulu » + dimensionner les
+budgets à l'unité réelle — déjà en §7).

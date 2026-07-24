@@ -357,6 +357,24 @@ le refresh token reste dans son cookie HttpOnly chiffré (1 an). « Se déconnec
 > `analyse-ciblee` du `doPost` n'existe pour l'app qu'après un redéploiement **Nouvelle version**
 > — avant ça, le formulaire de la vue Mails déclenchera l'action par défaut (un simple passage
 > immédiat) au lieu de programmer l'analyse.
+> **Re-confirmé C28-30 (chat assistant)** : les nouvelles actions `chat-assistant`/`proposer_reorg`
+> renvoyaient une réponse VIDE (l'ancienne version tombait sur l'action par défaut) tant que la web
+> app n'était pas redéployée — bulle vide, aucune erreur.
+
+### ⚡ Redéploiement AUTOMATIQUE de la web app (décision Marc 2026-07-24 — fini le geste manuel)
+
+Pour ne PLUS jamais faire le « Nouvelle version → Déployer » à la main, ajoute UN secret GitHub :
+
+- **Settings → Secrets and variables → Actions → New repository secret** :
+  `WEBAPP_DEPLOYMENT_ID` = l'identifiant `AKfycb…` de ton URL /exec (la partie entre
+  `…/macros/s/` et `/exec` — c'est le même que dans « Gérer les déploiements »).
+
+Dès que ce secret existe, `deploy.yml` fait `clasp deploy -i <ID>` après chaque `clasp push` sur
+`main` : la web app est redéployée en **Nouvelle version automatiquement**, **l'URL /exec ne change
+pas** (rien à retoucher dans l'app ni Vercel). Vérifie la 1ʳᵉ fois par un **signal indépendant** (le
+chat répond / l'action nouvelle marche), pas seulement le vert du job. Sans le secret : comportement
+inchangé (redéploiement manuel, ci-dessus). `installerTrigger` reste requis si le *tick* time-based
+doit prendre un nouveau code (pas la web app, qui est sur-demande).
 
 ## Miroir Drive du dépôt (ADR-0017) — accès de partout + NotebookLM
 
