@@ -363,6 +363,11 @@ test('majResumeHub_ puis actionHubSummary_ : la lecture rend EXACTEMENT ce que l
   c.majResumeHub_();
   assert.deepStrictEqual(plat(c.actionHubSummary_()), {
     ok: true,
-    etat: { reviewQueueCount: 0, filedLast7d: 0, errorsLast7d: 0, lastRunAt: new Date(tick).toISOString() },
+    // #207 (bloc usage) : majResumeHub_ publie aussi ces 3 champs — null/false quand la métrique
+    // n'est pas disponible (mock sans coût LLM ni fils Gmail). Le bloc `usage` côté api/ les omet alors.
+    etat: {
+      reviewQueueCount: 0, filedLast7d: 0, errorsLast7d: 0, lastRunAt: new Date(tick).toISOString(),
+      llmCostMonthUsd: null, gmailThreadsToday: null, gmailQuotaSuspended: false,
+    },
   });
 });

@@ -71,7 +71,16 @@ function fauxFetch(status: number, corps: unknown, json = true): typeof fetch {
 
 const ETAT_SAIN = {
   ok: true,
-  etat: { reviewQueueCount: 2, filedLast7d: 14, errorsLast7d: 1, lastRunAt: new Date(Date.now() - 5 * 60 * 1000).toISOString() },
+  etat: {
+    reviewQueueCount: 2,
+    filedLast7d: 14,
+    errorsLast7d: 1,
+    lastRunAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+    // Champs usage additifs (bloc coûts & quotas) publiés par le moteur.
+    llmCostMonthUsd: 2.37,
+    gmailThreadsToday: 41,
+    gmailQuotaSuspended: false,
+  },
 };
 
 afterEach(() => {
@@ -191,6 +200,27 @@ describe('/api/hub/summary — métriques réelles (C28-27, canal sain)', () => 
         { label: '2 document(s) en attente dans la file de revue', severity: 'info' },
       ]);
       expect(summary.actions).toEqual([{ label: 'Ouvrir DriveAI', kind: 'link', href: URL_APP }]);
+      // Bloc usage (coûts & quotas) : coût LLM mensuel + activité Gmail du jour.
+      expect(summary.usage?.cost).toEqual({ amount: 2.37, currency: 'USD', period: 'mois' });
+      expect(summary.usage?.quotas).toEqual([
+        { label: 'Fils Gmail (aujourd’hui)', used: 41, limit: null, unit: 'fils' },
+      ]);
+    });
+  });
+
+  it('sans champs usage (moteur pas encore redéployé) → pas de bloc usage, jamais inventé', async () => {
+    await avecEnv({ HUB_TOKEN: JETON, WEBAPP_URL: 'https://script.example/exec', WEBAPP_SECRET: 's' }, async () => {
+      vi.stubGlobal(
+        'fetch',
+        fauxFetch(200, {
+          ok: true,
+          etat: { reviewQueueCount: 0, filedLast7d: 3, errorsLast7d: 0, lastRunAt: new Date().toISOString() },
+        }),
+      );
+      const res = fauxRes();
+      await handlerHub(fauxReq({ [HUB_TOKEN_HEADER]: JETON }), res);
+      const summary = validateSummary(JSON.parse(res.corps()));
+      expect(summary.usage).toBeUndefined();
     });
   });
 
