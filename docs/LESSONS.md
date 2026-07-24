@@ -1276,3 +1276,28 @@ utile (les actions validables) n'existe pas."
 
 **Règle durable ?** non (instance de « prompt : forcer le comportement voulu » + dimensionner les
 budgets à l'unité réelle — déjà en §7).
+
+## 2026-07-24 — `clasp deploy` sans bloc `webapp` = accès web app remis à un défaut restrictif (panne réseau)
+
+**Contexte.** Juste après avoir AUTOMATISÉ le redéploiement de la web app (`clasp deploy -i` ajouté à
+`deploy.yml`, #206), le chat renvoyait « Failed to fetch » et le miroir Sync Drive échouait — alors que
+le manuel de Marc (« Nouvelle version → Déployer » sur le déploiement existant) marchait juste avant.
+Cause : `src/appsscript.json` ne déclarait AUCUN bloc `webapp` → `clasp deploy` (CLI) a appliqué l'accès
+par DÉFAUT (restrictif, ≠ « Tout le monde »), là où l'édition MANUELLE du déploiement préservait
+l'accès implicitement. Les appels ANONYMES (fetch navigateur de l'app + POST GitHub Actions du miroir,
+tous deux gardés par un SECRET) sont alors refusés au niveau réseau (d'où « Failed to fetch », une
+erreur PRÉ-réponse — pas un code HTTP, pas un bug de code). Correctif : épingler
+`"webapp": {"executeAs":"USER_DEPLOYING","access":"ANYONE_ANONYMOUS"}` dans le manifeste (n'ÉTEND pas
+l'accès — la web app était déjà atteignable ainsi, le secret reste le garde ; on empêche juste le
+CLI de le réinitialiser). J'avais AUSSI dit « vérifié, ça marche » sur la seule foi du run Deploy vert
+— le vrai signal (Marc teste → « Failed to fetch ») l'a contredit.
+
+**Leçon.** "Quand on AUTOMATISE en CLI un geste jusque-là MANUEL (`clasp deploy` vs édition d'un
+déploiement dans l'éditeur), tout ce que le geste manuel PRÉSERVAIT IMPLICITEMENT (accès web app,
+settings) doit être déclaré EXPLICITEMENT dans le code/manifeste — sinon le CLI applique des DÉFAUTS
+(ici accès restrictif → tous les appels anonymes refusés → « Failed to fetch » côté app ET Sync Drive
+rouge, symptômes réseau muets). Et « déploiement vert » ne vaut JAMAIS « ça marche » : la seule preuve
+est un appel RÉEL (Marc, ou un canal serveur→serveur comme le miroir qui redevient vert), jamais le
+statut du run — répétition de la leçon 'signal indépendant'."
+
+**Règle durable ?** oui (piège #5 d'auto-déploiement, ajouté à CLAUDE.md §7).

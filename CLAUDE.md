@@ -224,7 +224,7 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   confort de fin (ex. un `tickDriveAI()` de relance) deviennent des bombes dans le tick (réentrance →
   verrou relâché en plein run) — extraire un noyau sans effets de fin, re-scoper ses entrées au
   contexte auto (ne libérer que ce que les sources savent re-présenter). Re-auditer par la flotte.
-- **Auto-déploiement (CI/CD) : 4 pièges.** (1) Un merge par le bot `GITHUB_TOKEN` (auto-merge) ne
+- **Auto-déploiement (CI/CD) : 5 pièges.** (1) Un merge par le bot `GITHUB_TOKEN` (auto-merge) ne
   déclenche PAS les workflows `on: push` (anti-récursion) → l'auto-merge doit **dispatcher** le déploiement
   (`gh workflow run`, `actions: write`). (2) Épingler la version Node des outils CLI sensibles (clasp v3
   → Node 20 ; Node 22 = « Premature close »). (3) **Un `clasp push` VERT ne garantit PAS que le
@@ -245,6 +245,16 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   non déployée, PAS un bug de code (lire le `else` du `doPost`). Remède désormais AUTOMATISÉ :
   `deploy.yml` fait `clasp deploy -i $WEBAPP_DEPLOYMENT_ID` (Nouvelle version, /exec inchangé) si le
   secret est posé ; sinon redéploiement manuel (Gérer les déploiements → ✏ → Nouvelle version).
+  (5) **`clasp deploy` sans bloc `webapp` dans `appsscript.json` REMET l'accès de la web app à un
+  DÉFAUT restrictif** (≠ « Tout le monde ») → tous les appels ANONYMES (fetch navigateur de l'app +
+  POST GitHub Actions du miroir, pourtant gardés par un SECRET) sont refusés au niveau réseau →
+  **« Failed to fetch » + Sync Drive rouge** (vécu C28-30, dès qu'on a automatisé le `clasp deploy`).
+  Le redéploiement MANUEL (édition du déploiement existant) préservait l'accès ; le CLI, non. Règle :
+  **tout geste manuel qu'on AUTOMATISE en CLI doit déclarer EXPLICITEMENT ce qu'il préservait
+  implicitement** — ici `"webapp": {"executeAs":"USER_DEPLOYING","access":"ANYONE_ANONYMOUS"}` épinglé
+  dans le manifeste (n'ÉTEND pas l'accès — la web app était déjà ainsi, le secret reste le garde). Et
+  corollaire du piège (3) : « déploiement vert » ≠ « ça marche » — le SEUL vrai signal reste un appel
+  RÉEL (Marc teste, ou le Sync Drive redevient vert), jamais le statut du run.
 - **Branche `claude/**` partagée entre sessions : `force-with-lease` rejeté = enquêter, jamais forcer.**
   Un « stale info » signifie que le distant a bougé — une AUTRE session a pu ouvrir/merger une PR SUR ta
   branche désignée (vécu C28-30 : lien Hub #205 mergé dans la branche, jamais dans `main`). Forcer aurait
