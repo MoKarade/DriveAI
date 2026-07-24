@@ -659,11 +659,32 @@ function majResumeHub_() {
     feuille_('Journal').getDataRange().getValues(),
     Date.now()
   );
+  // Coûts & quotas (bloc `usage` du hub) : coût LLM MENSUEL mesuré + activité Gmail du jour
+  // + état du quota Gmail. Métadonnées agrégées seulement (ADR-0007). Enveloppé : une panne
+  // de mesure ne doit pas priver le hub des 4 compteurs.
+  var llmCostMonthUsd = null, gmailThreadsToday = null, gmailQuotaSuspended = false;
+  try {
+    llmCostMonthUsd = syntheseCoutMois_().dollars;
+    var aujourdhui = dateGmail_(new Date());
+    gmailThreadsToday =
+      compteurFilsJour_(props, 'DriveAI_GMAIL_HISTO', aujourdhui) +
+      compteurFilsJour_(props, 'DriveAI_TRI_CYCLIQUE', aujourdhui) +
+      compteurFilsJour_(props, 'DriveAI_TRI_DEMANDE', aujourdhui) +
+      compteurFilsJour_(props, 'DriveAI_TRI_BOITE', aujourdhui);
+    var quotaDepuis = Number(props.getProperty('DriveAI_GMAIL_QUOTA')) || 0;
+    gmailQuotaSuspended = !!quotaDepuis && Date.now() - quotaDepuis < CONFIG.GMAIL_QUOTA_RESONDE_MS;
+  } catch (e) {
+    journalErreur_('Hub', 'Mesure usage indisponible : ' + e);
+  }
   var etat = {
     reviewQueueCount: compterDossierRevue_(),
     filedLast7d: compte.classes7j,
     errorsLast7d: compte.erreurs7j,
-    lastRunAt: lastTick ? new Date(lastTick).toISOString() : null
+    lastRunAt: lastTick ? new Date(lastTick).toISOString() : null,
+    // Champs additifs (bloc usage) : le broker Vercel les mappe si présents, les ignore sinon.
+    llmCostMonthUsd: llmCostMonthUsd,
+    gmailThreadsToday: gmailThreadsToday,
+    gmailQuotaSuspended: gmailQuotaSuspended
   };
   props.setProperty('DriveAI_HUB_SUMMARY', JSON.stringify(etat));
 }

@@ -29,6 +29,12 @@ export interface EngineState {
   errorsLast7d: number;
   /** Dernier passage du moteur (ISO 8601) — sert d'alerte « moteur muet » côté hub. */
   lastRunAt: string;
+  /** Coût LLM MENSUEL mesuré en USD (bloc usage) — optionnel (absent avant redéploiement moteur). */
+  llmCostMonthUsd?: number;
+  /** Fils Gmail traités aujourd'hui (bloc usage) — optionnel. */
+  gmailThreadsToday?: number;
+  /** Quota Gmail en pause (bloc usage) — optionnel. */
+  gmailQuotaSuspended?: boolean;
 }
 
 /**
@@ -44,6 +50,11 @@ const TIMEOUT_MS = 8000;
 /** Entier de compteur valide (fini, ≥ 0) — tout le reste est une réponse corrompue. */
 function compteurValide(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : null;
+}
+
+/** Nombre ≥ 0 (non arrondi : les coûts ont des cents) ou null. Champs usage additifs, tolérants. */
+function nombrePositif(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
 }
 
 /**
@@ -89,5 +100,19 @@ export async function getEngineState(): Promise<EngineState | null> {
   const lastRunAt = String(etat.lastRunAt);
   if (Number.isNaN(Date.parse(lastRunAt))) throw new Error('web app : lastRunAt illisible');
 
-  return { reviewQueueCount, filedLast7d, errorsLast7d, lastRunAt };
+  // Champs usage ADDITIFS (absents tant que le moteur n'a pas été redéployé) : tolérés, jamais
+  // bloquants — une valeur invalide est simplement ignorée (le bloc usage restera partiel).
+  const llmCostMonthUsd = nombrePositif(etat.llmCostMonthUsd);
+  const gmailThreadsToday = nombrePositif(etat.gmailThreadsToday);
+  const gmailQuotaSuspended = etat.gmailQuotaSuspended === true ? true : undefined;
+
+  return {
+    reviewQueueCount,
+    filedLast7d,
+    errorsLast7d,
+    lastRunAt,
+    ...(llmCostMonthUsd !== null ? { llmCostMonthUsd } : {}),
+    ...(gmailThreadsToday !== null ? { gmailThreadsToday } : {}),
+    ...(gmailQuotaSuspended ? { gmailQuotaSuspended } : {}),
+  };
 }
