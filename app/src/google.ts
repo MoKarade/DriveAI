@@ -826,6 +826,7 @@ export interface MessageChat {
 /** Réponse du chat : le texte de l'assistant + le compteur de budget du jour (métadonnées). */
 export interface ReponseChat {
   reponse: string;
+  actionsProposees?: boolean; // le chat a appelé proposer_reorg → l'app doit rafraîchir la file Réorg
   coutJour?: number;
   plafond?: number;
 }
@@ -853,7 +854,7 @@ export async function envoyerMessageChat(historique: MessageChat[]): Promise<Rep
     body: JSON.stringify({ historique }),
   });
   if (!rep.ok) throw new Error(`Web app ${rep.status}`);
-  let data: { ok: boolean; erreur?: string; reponse?: string; coutJour?: number; plafond?: number };
+  let data: { ok: boolean; erreur?: string; reponse?: string; actionsProposees?: boolean; coutJour?: number; plafond?: number };
   try {
     data = await rep.json();
   } catch {
@@ -867,7 +868,7 @@ export async function envoyerMessageChat(historique: MessageChat[]): Promise<Rep
     err.plafond = data.plafond;
     throw err;
   }
-  return { reponse: data.reponse ?? '', coutJour: data.coutJour, plafond: data.plafond };
+  return { reponse: data.reponse ?? '', actionsProposees: data.actionsProposees === true, coutJour: data.coutJour, plafond: data.plafond };
 }
 
 /* ---------- Tri & intentions à la demande (C28-16) ---------- */

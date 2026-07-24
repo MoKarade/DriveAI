@@ -41,7 +41,7 @@ function libelleType(type: string, langue: Langue): string {
   return type;
 }
 
-export function ReorgVue({ langue, signalRafraichir = 0 }: { langue: Langue; signalRafraichir?: number }) {
+export function ReorgVue({ langue }: { langue: Langue }) {
   const [lignes, setLignes] = useState<LigneReorg[]>([]);
   const [charge, setCharge] = useState(false);
   const [erreur, setErreur] = useState('');
@@ -65,9 +65,9 @@ export function ReorgVue({ langue, signalRafraichir = 0 }: { langue: Langue; sig
         setErreur(String(e));
       }
     })();
-    // `signalRafraichir` (bumpé par l'Assistant après une proposition du chat) force la relecture —
-    // l'appelant a déjà invalidé le cache de l'onglet Réorg (viderCachePlages) juste avant.
-  }, [version, signalRafraichir]);
+    // L'Assistant remonte ce composant (changement de `key`) après une proposition du chat, en ayant
+    // invalidé le cache de l'onglet Réorg juste avant → cette relecture repart du frais.
+  }, [version]);
 
   async function demanderAnalyse(portee: string) {
     setEnCours(true);

@@ -17,6 +17,16 @@
 > l'accès web app est bien revenu (chat OK + Sync Drive vert). Piège appris : CLAUDE.md §7 pièges
 > auto-déploiement #5. Détail des 3 PR ci-dessous.
 >
+> **UX ASSISTANT (retours d'usage Marc 2026-07-24, plan architecte NotebookLM, 3 PR).** **PR1 FAITE**
+> (branche courante) : (a) `actionChatAssistant_` renvoie `actionsProposees` (vrai si `proposer_reorg`
+> appelé) → l'app invalide le cache `Réorg` + remonte `ReorgVue` (`key`) SEULEMENT alors — corrige
+> « propositions pas à jour » ; (b) historique du chat en **sessionStorage** (survit au F5, meurt à la
+> fermeture d'onglet, jamais localStorage — arbitrage ADR-0007 de l'architecte) + bouton « Effacer le
+> chat ». 632 tests moteur + 189 app + build. **PR2 (à venir)** : react-markdown + fenêtre type
+> claude.ai + indicateur de chargement TRÈS visible. **PR3 (à venir)** : troncature historique aux 12
+> derniers messages (tokens+latence). NB : ré-exécuter `npm install` dans `app/` après un checkout frais
+> (#207 a re-pinné `@mokarade/hub-contract` v1.1 — sinon tsc casse sur `usage`).
+>
 > **2026-07-24 — C28-30 : onglet ASSISTANT (chatbot Claude), PR1/3 (plan architecte NotebookLM,
 > ADR-0026).** Marc veut un assistant conversationnel : (A) Q&A qui RETROUVE et LIT ses fichiers
 > (« donne mon NAS » → cherche, lit, extrait) ; (B) opérations de dossiers par chat (créer/fusionner/

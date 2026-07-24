@@ -5,8 +5,9 @@
  *  - GAUCHE : le CHAT. Marc pose des questions sur ses fichiers (« donne mon NAS ») OU demande de
  *    ranger (« crée un dossier Garage dans Véhicule », « organise mes photos »). Le moteur (doPost
  *    `chat-assistant`) cherche/lit et répond ; la clé Claude et l'accès Drive vivent CÔTÉ MOTEUR
- *    (ADR-0007) — l'app n'envoie que l'historique ÉPHÉMÈRE (State React, rien persisté) et n'affiche
- *    que la réponse + un compteur de budget. Plafond quotidien §2.6 : au-delà, refus honnête.
+ *    (ADR-0007) — l'app n'envoie que l'historique et n'affiche que la réponse + un compteur de budget.
+ *    L'historique persiste en sessionStorage (survit au F5, meurt à la fermeture d'onglet ; jamais
+ *    localStorage — esprit ADR-0007). Plafond quotidien §2.6 : au-delà, refus honnête.
  *  - DROITE : le PLAN à valider (`ReorgVue`). Les opérations que l'assistant PROPOSE arrivent dans
  *    l'onglet Réorg ; Marc les valide PAR ACTION ici. Le moteur applique ensuite (chemin GARDÉ
  *    C21-06). Rien n'est jamais supprimé ni appliqué sans la validation de Marc.
@@ -17,17 +18,42 @@ import { envoyerMessageChat, viderCachePlages, MessageChat } from '../google';
 import { ReorgVue } from './Reorg';
 import { Langue, t } from '../i18n';
 
+// Historique du chat en sessionStorage (survit au F5, DÉTRUIT à la fermeture de l'onglet) — jamais
+// localStorage : l'historique peut CITER du contenu de doc lu par Claude, on ne l'inscrit pas
+// durablement sur le disque (esprit ADR-0007 ; même politique que le jeton OAuth, cf. google.ts).
+const CLE_CHAT = 'driveai_chat';
+function lireHistorique(): MessageChat[] {
+  try {
+    const arr = JSON.parse(sessionStorage.getItem(CLE_CHAT) || '[]');
+    return Array.isArray(arr)
+      ? arr.filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 export function Assistant({ langue }: { langue: Langue }) {
-  const [messages, setMessages] = useState<MessageChat[]>([]);
+  const [messages, setMessages] = useState<MessageChat[]>(lireHistorique);
   const [saisie, setSaisie] = useState('');
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState('');
   const [budget, setBudget] = useState<{ coutJour: number; plafond: number } | null>(null);
-  const [signalReorg, setSignalReorg] = useState(0); // bumpé après une proposition → ReorgVue relit
+  const [cleReorg, setCleReorg] = useState(0); // change → remonte ReorgVue (relit l'onglet Réorg)
   const finRef = useRef<HTMLDivElement | null>(null);
+
+  // Persistance éphémère : l'historique survit au refresh (sessionStorage), pas à la fermeture d'onglet.
+  useEffect(() => {
+    try { sessionStorage.setItem(CLE_CHAT, JSON.stringify(messages)); } catch { /* stockage indispo : le chat reste en mémoire */ }
+  }, [messages]);
 
   // Auto-scroll vers le dernier message.
   useEffect(() => { finRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, enCours]);
+
+  function effacer() {
+    setMessages([]);
+    try { sessionStorage.removeItem(CLE_CHAT); } catch { /* rien à faire */ }
+  }
 
   async function envoyer(texte: string) {
     const propre = texte.trim();
@@ -41,10 +67,13 @@ export function Assistant({ langue }: { langue: Langue }) {
       const r = await envoyerMessageChat(histo);
       setMessages((xs) => [...xs, { role: 'assistant', content: r.reponse }]);
       if (r.coutJour != null && r.plafond != null) setBudget({ coutJour: r.coutJour, plafond: r.plafond });
-      // Une réponse peut avoir écrit des propositions dans l'onglet Réorg (côté moteur) : le cache de
-      // l'app ne le sait pas → on l'invalide et on demande à ReorgVue de relire.
-      viderCachePlages('Réorg');
-      setSignalReorg((v) => v + 1);
+      // SEULEMENT si le chat a appelé proposer_reorg (le moteur l'a signalé) : il a écrit des lignes
+      // dans l'onglet Réorg côté serveur → on invalide le cache de l'app PUIS on remonte ReorgVue pour
+      // qu'elle relise du frais. Sans ce signal, rien ne bouge (pas de faux rafraîchissement).
+      if (r.actionsProposees) {
+        viderCachePlages('Réorg');
+        setCleReorg((k) => k + 1);
+      }
     } catch (e) {
       setErreur(String(e instanceof Error ? e.message : e));
       // Le moteur exige une alternance user/assistant STRICTE : on RETIRE le tour user resté sans
@@ -63,7 +92,14 @@ export function Assistant({ langue }: { langue: Langue }) {
   return (
     <div className="accueil">
       <section className="carte large">
-        <h2>💬 {t('assistant', langue)}</h2>
+        <div className="chat-entete">
+          <h2>💬 {t('assistant', langue)}</h2>
+          {messages.length > 0 && (
+            <button className="discret" onClick={effacer} disabled={enCours} title={t('assistantEffacer', langue)}>
+              🗑 {t('assistantEffacer', langue)}
+            </button>
+          )}
+        </div>
         <p className="explication">{t('assistantIntro', langue)}</p>
 
         <div className="chat-fil" role="log" aria-live="polite">
@@ -108,7 +144,7 @@ export function Assistant({ langue }: { langue: Langue }) {
         )}
       </section>
 
-      <ReorgVue langue={langue} signalRafraichir={signalReorg} />
+      <ReorgVue key={cleReorg} langue={langue} />
     </div>
   );
 }
