@@ -296,6 +296,7 @@ function compterVracDossier_(dossier, etat, estBudgetDepasse) {
  * @return {boolean}
  */
 function estAReclasserLeger_(f) {
+  if (indexContient_('epingle|' + f.getId())) return false; // épinglé par Marc (chat) → immunisé (convergence, ADR-0026)
   if (/^\d{4}(-\d{2}){0,2}_/.test(f.getName())) return false; // déjà rangé/renommé (AAAA_, AAAA-MM_ ou AAAA-MM-JJ_ — le nommage PAR TYPE produit les 3 granularités, cf. Router.nomParType_)
   // P3 (#11) : un fichier DÉJÀ TRAITÉ (clé drive| à l'Index — ex. un média sorti de _Médias à la main,
   // nom d'origine sans préfixe date) n'est JAMAIS re-collecté : l'intake le sauterait (idempotence) et

@@ -147,7 +147,8 @@ function actionsValidees_(lignes) {
   for (var i = 1; i < lignes.length; i++) {
     var type = String(lignes[i][1]);
     if (String(lignes[i][5]) !== 'validé') continue;
-    if (type !== 'deplacer' && type !== 'fusionner' && type !== 'creer' && type !== 'renommer') continue;
+    if (type !== 'deplacer' && type !== 'fusionner' && type !== 'creer' && type !== 'renommer' &&
+        type !== 'deplacer-fichier') continue;
     var ids = partiesId_(String(lignes[i][2]));
     res.push({
       rang: i + 1,
@@ -222,7 +223,12 @@ function estSegmentStructurel_(nom) {
 function appliquerUneAction_(a, proteges, intouchables, estBudgetDepasse) {
   if (a.type === 'creer') {
     if (!a.cible) return { statut: 'échec', detail: 'parent manquant' };
-    if (proteges[a.cible] || intouchables[a.cible]) {
+    // CRÉER un dossier DANS un domaine/catégorie ne MUTE pas le parent (ni détachement ni suppression)
+    // → AUTORISÉ (demande Marc C28-30 : « crée un dossier Garage dans Véhicule », ADR-0026). Restent
+    // interdits : la zone protégée (04), les files d'arrivée/revue (créer dans l'intake casserait le
+    // tri), et les racines système « _… ». NB : `intouchables` protège les dossiers contre leur propre
+    // mutation (déplacer/renommer/vider), PAS contre la RÉCEPTION d'un enfant — d'où le retrait ici.
+    if (proteges[a.cible] || a.cible === CONFIG.DOSSIERS.A_TRIER || a.cible === CONFIG.DOSSIERS.A_VERIFIER) {
       return { statut: 'refusé (zone protégée)', detail: 'parent protégé ou système' };
     }
     var parent = DriveApp.getFolderById(a.cible);
@@ -236,6 +242,10 @@ function appliquerUneAction_(a, proteges, intouchables, estBudgetDepasse) {
     if (!existants.hasNext()) parent.createFolder(nomCreer);
     return { statut: 'appliqué', detail: undefined };
   }
+
+  // Déplacement de FICHIER (chat assistant, C28-30) : source = fileId (pas un dossier) → branche
+  // DÉDIÉE, avant les gardes propres aux dossiers ci-dessous (getFolderById échouerait sur un fichier).
+  if (a.type === 'deplacer-fichier') return appliquerDeplacerFichier_(a, proteges);
 
   if (!a.source) return { statut: 'échec', detail: 'source manquante' };
   if (intouchables[a.source] || proteges[a.source]) {
@@ -320,6 +330,49 @@ function appliquerUneAction_(a, proteges, intouchables, estBudgetDepasse) {
   if (deplaces > 0 || estBudgetDepasse()) return { enCours: true, aProgresse: deplaces > 0 };
   if (laissesProteges > 0) {
     return { statut: 'refusé (zone protégée)', detail: laissesProteges + ' élément(s) protégé(s) laissé(s) en place' };
+  }
+  return { statut: 'appliqué', detail: undefined };
+}
+
+/**
+ * Applique un déplacement de FICHIER (chat assistant, C28-30/ADR-0026) : `getFileById(source)
+ * .moveTo(cible)`. moveTo SEUL (réversible), jamais de suppression. Garde §1 STRICTE échec-fermé
+ * des DEUX côtés (comme les déplacements de dossiers) : la SOURCE — un fichier sous 04 · Immigration
+ * n'est JAMAIS détaché (moveTo retirerait TOUS ses parents, y compris un parent protégé multi-parents)
+ * — ET la CIBLE — jamais VERS la zone protégée, une racine système (`_…`) ou une file d'arrivée/revue.
+ * Sur succès, ÉPINGLE le fichier (Index `epingle|<id>`) : immunité contre tout re-rangement auto
+ * (convergence). Idempotent : moveTo déjà-en-place = no-op, épinglage dédoublonné par la clé.
+ * @return {{statut, detail}}
+ */
+function appliquerDeplacerFichier_(a, proteges) {
+  if (!a.source) return { statut: 'échec', detail: 'source (fichier) manquante' };
+  if (!a.cible) return { statut: 'échec', detail: 'cible (dossier) manquante' };
+  var fichier;
+  try { fichier = DriveApp.getFileById(a.source); }
+  catch (e) { return { statut: 'échec', detail: 'fichier introuvable' }; }
+  // La source DOIT être un FICHIER : un DOSSIER (racine de domaine « NN · … », catégorie à ID fixe,
+  // ou 04 lui-même) passé par erreur ici serait RELOGÉ par moveTo (dérive structurelle que le chemin
+  // `deplacer` de dossier interdit déjà). getFileById accepte un ID de dossier → filtrer par le MIME.
+  if (fichier.getMimeType() === 'application/vnd.google-apps.folder') {
+    return { statut: 'refusé (structure)', detail: 'la source doit être un fichier, pas un dossier' };
+  }
+  // Source : un fichier en zone protégée n'est JAMAIS déplacé (détachement interdit — §2.1b, strict).
+  if (aParentProtege_(fichier, proteges, true)) {
+    return { statut: 'refusé (zone protégée)', detail: 'fichier en zone protégée (04)' };
+  }
+  var cible;
+  try { cible = DriveApp.getFolderById(a.cible); }
+  catch (e2) { return { statut: 'échec', detail: 'dossier cible introuvable' }; }
+  // Cible : jamais vers la zone protégée ni une racine/file système.
+  if (cible.getName().charAt(0) === '_' || cible.getId() === CONFIG.DOSSIERS.A_TRIER ||
+      cible.getId() === CONFIG.DOSSIERS.A_VERIFIER ||
+      chaineMonteVersProtege_(cible, proteges, 0, true)) {
+    return { statut: 'refusé (zone protégée)', detail: 'cible protégée ou système' };
+  }
+  fichier.moveTo(cible); // déjà en place = no-op (rejeu sûr)
+  // Épinglage (convergence, ADR-0026) : posé APRÈS le move réussi, dédoublonné par la clé dédiée.
+  if (!indexContient_('epingle|' + a.source)) {
+    indexAjouter_('epingle|' + a.source, { statut: 'épinglé', nom: fichier.getName(), domaine: '', chemin: '' });
   }
   return { statut: 'appliqué', detail: undefined };
 }

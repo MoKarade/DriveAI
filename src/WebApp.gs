@@ -178,10 +178,12 @@ function promptRechercheIA_() {
     'Date du jour : ' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd') + '.';
 }
 
-/* ---------- Assistant CHAT (C28-30, ADR-0026) : Q&A qui LIT le contenu ----------
+/* ---------- Assistant CHAT (C28-30, ADR-0026) : Q&A qui LIT le contenu + PROPOSE des opérations ----
  * Boucle Tool Use (Llm.appelAnthropicChat_) : l'app envoie l'historique éphémère, le moteur cherche
  * (nom → contenu) et LIT les fichiers à la volée, répond, oublie tout (ADR-0007 : rien de persisté).
- * LECTURE SEULE en PR1 : aucune mutation (les opérations de dossiers = outil `proposer_reorg`, PR2).
+ * PR2 : l'outil `proposer_reorg` écrit des lignes `proposé` dans l'onglet `Réorg` — le chat ne MUTE
+ * JAMAIS le Drive lui-même ; l'application reste confinée à Reorg.gs (`appliquerUneAction_`, chemin
+ * GARDÉ C21-06) après validation de Marc dans l'app.
  */
 
 /** Consommation $ du chat AUJOURD'HUI (Script Property `AAAA-MM-JJ|dollars`). PURE sur props. */
@@ -223,14 +225,31 @@ function outilsChatAssistant_() {
     { name: 'lire_fichier',
       description: 'Lit le TEXTE d\'un fichier (par son id) pour en extraire une information. Coûteux : ne lis que les fichiers vraiment pertinents.',
       input_schema: { type: 'object', properties: { fileId: { type: 'string', description: 'id du fichier à lire (obtenu via une recherche)' } }, required: ['fileId'] } },
+    { name: 'proposer_reorg',
+      description: 'PROPOSE des opérations sur les dossiers/fichiers (Marc les VALIDE ensuite dans l\'app — tu n\'appliques rien toi-même). Utilise les id EXACTS obtenus via tes recherches. Types : ' +
+        '"deplacer-fichier" (source=id du FICHIER, cible=id du DOSSIER destination) ; "creer" (cible=id du dossier PARENT, nom=nom du nouveau dossier) ; ' +
+        '"deplacer" (source=id d\'un DOSSIER, cible=id du dossier destination) ; "fusionner" (source=id d\'un DOSSIER vidé dans cible=id destination) ; "renommer" (source=id d\'un DOSSIER, nom=nouveau nom).',
+      input_schema: { type: 'object', properties: {
+        actions: { type: 'array', description: 'liste des opérations proposées', items: { type: 'object', properties: {
+          type: { type: 'string', enum: ['deplacer-fichier', 'creer', 'deplacer', 'fusionner', 'renommer'] },
+          source: { type: 'string', description: 'id du fichier/dossier source (selon le type)' },
+          cible: { type: 'string', description: 'id du dossier cible/parent (selon le type)' },
+          nom: { type: 'string', description: 'nouveau nom (creer/renommer)' },
+          source_nom: { type: 'string', description: 'nom lisible de la source (pour l\'aperçu de Marc)' },
+          cible_nom: { type: 'string', description: 'nom lisible du dossier cible (pour l\'aperçu)' },
+          raison: { type: 'string', description: 'justification courte' },
+        }, required: ['type'] } },
+        synthese: { type: 'string', description: 'résumé en 1-2 phrases de ce que tu proposes' },
+      }, required: ['actions'] } },
   ];
 }
 
-/** Exécute UN outil de lecture demandé par le modèle. Renvoie toujours une string (rendue au modèle). */
+/** Exécute UN outil demandé par le modèle. Renvoie toujours une string (rendue au modèle). */
 function executerOutilChatAssistant_(nom, input) {
   if (nom === 'recherche_nom') return rechercheDriveChat_('title', input && input.requete);
   if (nom === 'recherche_contenu') return rechercheDriveChat_('fullText', input && input.requete);
   if (nom === 'lire_fichier') return lireFichierChat_(input && input.fileId);
+  if (nom === 'proposer_reorg') return proposerReorgChat_(input || {});
   return 'Outil inconnu : ' + nom;
 }
 
@@ -272,7 +291,95 @@ function lireFichierChat_(fileId) {
   } catch (e) { return 'Lecture impossible : ' + e; }
 }
 
-/** Prompt système de l'assistant (PR1 : LECTURE SEULE — aucune mutation possible). */
+/* ---------- proposer_reorg (C28-30 PR2) : le chat PROPOSE, Marc VALIDE, le moteur APPLIQUE ----------
+ * Le modèle fournit des actions avec de VRAIS id Drive (obtenus par ses recherches). On les WHITELISTE
+ * (PURE) puis on écrit des lignes `proposé` dans l'onglet `Réorg` — SANS jamais muter le Drive ici :
+ * l'application (déplacements/créations, re-vérif zone 04 par mutation) reste confinée à Reorg.gs
+ * (`appliquerUneAction_`) après validation de Marc dans l'app (réutilisation du chemin GARDÉ C21-06).
+ */
+
+/** Champs par type d'action (id requis + nom requis). PURE. @return {?{src:boolean, cib:boolean, nom:boolean}} */
+function champsActionChat_(type) {
+  if (type === 'deplacer-fichier' || type === 'deplacer' || type === 'fusionner') return { src: true, cib: true, nom: false };
+  if (type === 'creer') return { src: false, cib: true, nom: true };
+  if (type === 'renommer') return { src: true, cib: false, nom: true };
+  return null;
+}
+
+/**
+ * WHITELISTE les actions proposées par le modèle (donnée NON fiable). PURE (testée). Ne valide QUE la
+ * FORME (type connu, id requis non vides, nom sans « / » borné) — l'EXISTENCE des id et les gardes de
+ * zone protégée sont re-vérifiées à l'APPLICATION (Reorg.gs, échec-fermé par mutation). Rejet PAR
+ * action (jamais tout le plan). @return {?{actions: Array, ignorees: number}} — null si aucune valide.
+ */
+function parserActionsChat_(brut) {
+  if (!Array.isArray(brut) || !brut.length) return null;
+  var actions = [];
+  var ignorees = 0;
+  for (var i = 0; i < brut.length && actions.length < CONFIG.REORG_ACTIONS_MAX; i++) {
+    var a = brut[i];
+    var champs = a && typeof a === 'object' ? champsActionChat_(String(a.type)) : null;
+    if (!champs) { ignorees++; continue; }
+    // « → » retiré : c'est le séparateur de la colonne ID de l'onglet Réorg — un id Drive n'en
+    // contient jamais ; l'invariant « source→cible » reste non ambigu (défense en profondeur).
+    var source = typeof a.source === 'string' ? a.source.trim().replace(/→/g, '') : '';
+    var cible = typeof a.cible === 'string' ? a.cible.trim().replace(/→/g, '') : '';
+    var nom = typeof a.nom === 'string' ? a.nom.trim().slice(0, 80) : '';
+    if (champs.src && !source) { ignorees++; continue; }
+    if (champs.cib && !cible) { ignorees++; continue; }
+    if (champs.nom && (!nom || nom.indexOf('/') !== -1)) { ignorees++; continue; }
+    actions.push({
+      type: String(a.type), source: source, cible: cible, nom: nom,
+      sourceNom: (typeof a.source_nom === 'string' ? a.source_nom : '').trim().slice(0, 120),
+      cibleNom: (typeof a.cible_nom === 'string' ? a.cible_nom : '').trim().slice(0, 120),
+      raison: (typeof a.raison === 'string' ? a.raison : '').trim().slice(0, 150),
+    });
+  }
+  if (!actions.length) return null;
+  return { actions: actions, ignorees: ignorees + Math.max(0, brut.length - CONFIG.REORG_ACTIONS_MAX - ignorees) };
+}
+
+/**
+ * Ligne d'onglet `Réorg` (8 col : Clé|Type|ID|Chemin actuel|Chemin proposé|Statut|Détail|Horodaté)
+ * pour une action de CHAT. PURE (testée). Colonne ID = « source→cible » (comme `lignePourAction_`) :
+ * deplacer-fichier/deplacer/fusionner portent les deux, creer « →parent », renommer la source seule.
+ * Les chemins sont les LIBELLÉS lisibles fournis par le modèle (aperçu de Marc) ; l'application
+ * raisonne par ID, jamais par ces libellés.
+ */
+function ligneActionChat_(tag, n, a, horodate) {
+  var cle = tag + '|' + n;
+  var actuel = a.sourceNom || '';
+  var propose;
+  var idCol;
+  if (a.type === 'creer') { idCol = '→' + a.cible; propose = (a.cibleNom ? a.cibleNom + '/' : '') + a.nom; }
+  else if (a.type === 'renommer') { idCol = a.source; propose = a.nom; }
+  else { idCol = a.source + '→' + a.cible; propose = a.cibleNom || ''; } // deplacer-fichier / deplacer / fusionner
+  return [cle, a.type, idCol, actuel, propose, 'proposé', a.raison, horodate];
+}
+
+/**
+ * Outil `proposer_reorg` : whiteliste les actions et les écrit `proposé` dans l'onglet `Réorg`
+ * (append par ligne). Le tick n'APPLIQUE que les lignes `validé` → une ligne fraîchement `proposé`
+ * n'est jamais consommée avant validation de Marc. (Fenêtre de course résiduelle, minuscule et
+ * PRÉ-EXISTANTE — l'app écrit déjà des lignes depuis le navigateur pendant le tick : au pire une
+ * proposition perdue si un append tombe dans le `setValues`-bloc du tick ; Marc reformule. Aucune
+ * garde-fou perdue.) AUCUNE mutation Drive. Renvoie un compte-rendu lisible pour le modèle.
+ */
+function proposerReorgChat_(input) {
+  var parse = parserActionsChat_(input.actions);
+  if (!parse) return 'Aucune action valide à proposer (vérifie les id et les types).';
+  var tag = 'chatreorg|' + Date.now();
+  var horodate = new Date().toISOString();
+  var f = feuille_('Réorg');
+  for (var i = 0; i < parse.actions.length; i++) {
+    f.appendRow(ligneActionChat_(tag, i + 1, parse.actions[i], horodate));
+  }
+  return 'J\'ai proposé ' + parse.actions.length + ' opération(s) dans l\'onglet Assistant' +
+    (parse.ignorees ? ' (' + parse.ignorees + ' ignorée(s), mal formée(s))' : '') +
+    '. Marc doit les VALIDER pour que je les applique — préviens-le et résume-lui ce que tu proposes.';
+}
+
+/** Prompt système de l'assistant : Q&A LECTURE + PROPOSITION d'opérations (jamais d'application directe). */
 function promptChatAssistant_() {
   return 'Tu es l\'assistant personnel de DriveAI, le classeur de documents de Marc Richard. Tu réponds à ' +
     'ses questions en retrouvant et en LISANT ses fichiers. Méthode : cherche d\'abord par NOM ' +
@@ -280,8 +387,15 @@ function promptChatAssistant_() {
     '(lire_fichier) le ou les fichiers pertinents pour en extraire l\'info demandée. Va au but en le ' +
     'moins d\'étapes possible : ne relis jamais un fichier déjà lu et arrête-toi dès que tu as l\'info. ' +
     'Cite TOUJOURS le nom du fichier d\'où vient l\'information. Réponds en français, clair et concis. Si tu ne trouves pas, ' +
-    'dis-le honnêtement — n\'invente JAMAIS une réponse. Tu es en LECTURE SEULE : tu ne peux ni déplacer, ' +
-    'ni supprimer, ni créer quoi que ce soit. Date du jour : ' +
+    'dis-le honnêtement — n\'invente JAMAIS une réponse.\n' +
+    'Tu peux aussi ORGANISER le Drive : créer/renommer/fusionner des dossiers, et déplacer des ' +
+    'fichiers (« range ce fichier dans… », « crée un dossier Garage dans Véhicule », « organise tel ' +
+    'dossier » = retrouve par recherche les fichiers qui y ont leur place et propose de les y déplacer). ' +
+    'Pour cela, appelle proposer_reorg avec les id EXACTS que tes recherches ont renvoyés. ' +
+    'IMPORTANT : tu ne fais que PROPOSER — c\'est MARC qui valide chaque opération dans l\'app, et le ' +
+    'moteur les applique ensuite (avec ses garde-fous : jamais toucher les documents d\'immigration, ' +
+    'jamais rien supprimer). Ne prétends JAMAIS avoir déjà déplacé/créé quelque chose : dis que tu l\'as ' +
+    'proposé et qu\'il doit valider. Date du jour : ' +
     Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd') + '.';
 }
 

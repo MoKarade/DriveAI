@@ -107,6 +107,10 @@ const CONTRAT = [
   'appelAnthropicMessages_', 'appelAnthropicChat_', 'texteReponse_', // Llm.gs, appelés par WebApp.gs
   'actionChatAssistant_', 'validerHistoriqueChat_', 'coutChatJour_', 'promptChatAssistant_',
   'outilsChatAssistant_', 'executerOutilChatAssistant_', 'rechercheDriveChat_', 'lireFichierChat_',
+  // opérations de dossiers via le chat (C28-30 PR2) : proposer_reorg → onglet Réorg, déplacement de
+  // fichier via le chemin GARDÉ (Reorg.appliquerUneAction_), épinglé Marc respecté des deux côtés
+  'proposerReorgChat_', 'parserActionsChat_', 'ligneActionChat_', 'champsActionChat_',
+  'appliquerDeplacerFichier_', // Reorg.gs — appliqué au chemin gardé (C21-06)
   // analyse ciblée des mails (C28-06, plan P2)
   'actionAnalyseCiblee_', 'validerRequeteCiblee_', 'balayerAnalyseCiblee_',
   // réorg IA (#21, C21-04 : proposition ; C21-06 : application)

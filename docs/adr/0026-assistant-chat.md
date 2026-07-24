@@ -40,12 +40,36 @@ unique, avec aperçu + validation avant toute mutation, et un budget borné.
    - **ADR-0007** : rien du contenu n'est persisté — l'historique vit côté navigateur (éphémère),
      le texte lu ne fait que transiter vers Claude ; seules des métadonnées (coût $, timestamp)
      touchent les Script Properties.
-2. **PR2 — Opérations de dossiers via la réorg GARDÉE + « épinglé Marc ».** Outil `proposer_reorg`
-   (créer/fusionner/déplacer/renommer + « organiser un dossier ») qui **produit un plan** (jamais
-   une mutation directe) réutilisant `appliquerUneAction_` (C21-06) : §1 re-vérifiée par mutation,
-   zone 04 intouchable, `moveTo`/create/rename seuls. Validation **par fichier** côté app.
-   Marque « épinglé Marc » (Index) posée sur un fichier rangé via chat, **respectée des deux côtés**
-   (consolidation + migration l'ignorent à la collecte — convergence).
+2. **PR2 — Opérations de dossiers via la réorg GARDÉE + « épinglé Marc ».** *(← ce commit)*
+   - Outil `proposer_reorg(actions, synthese)` (`WebApp.gs`) : le chat fournit des actions avec de
+     VRAIS id Drive (obtenus par ses recherches), whitelistées PURE (`parserActionsChat_` : type
+     connu, id requis non vides, nom sans « / », plafond `REORG_ACTIONS_MAX`), écrites en lignes
+     `proposé` dans l'onglet `Réorg` (append). **Le chat ne MUTE JAMAIS le Drive** ; l'existence des
+     id et les gardes de zone sont re-vérifiées à l'APPLICATION.
+   - Nouvelle action `deplacer-fichier` dans `appliquerUneAction_` (`Reorg.gs`, chemin GARDÉ C21-06)
+     via `appliquerDeplacerFichier_` : `getFileById(source).moveTo(cible)` — **moveTo seul**
+     (réversible, jamais de suppression), garde §1 STRICTE échec-fermé des DEUX côtés (`aParentProtege_`
+     sur le FICHIER source — jamais détacher un fichier de 04 · Immigration — ET zone/racine système
+     sur la cible via `chaineMonteVersProtege_`). La **source doit être un FICHIER** : un dossier
+     (racine de domaine/catégorie/04) passé par erreur est rejeté par le MIME (revue sécurité — sinon
+     `moveTo` relogerait la racine, dérive structurelle). Application déclenchée par la **validation de
+     Marc** (par fichier) dans l'app (PR3).
+   - **Assouplissement `creer` (revue code 🟠, §8)** : créer un dossier DANS un domaine/catégorie
+     `intouchable` (ex. « crée Garage dans Véhicule » — demande explicite de Marc) est désormais
+     AUTORISÉ — créer un ENFANT ne MUTE pas le parent (ni détachement ni suppression), donc n'enfreint
+     pas l'invariant d'immunité structurelle (`intouchables` protège un dossier contre SA PROPRE
+     mutation, pas contre la réception d'un enfant). Restent interdits (préservés explicitement) :
+     zone protégée 04, files `00 · À trier`/`À vérifier` (créer dans l'intake casserait le tri) et
+     racines système `_…`. Change le guard PARTAGÉ (affecte aussi le plan réorg #21 — moins de refus
+     spurieux, aucun garde-fou perdu).
+   - **« Épinglé Marc » (convergence)** : un déplacement de fichier réussi inscrit la clé DÉDIÉE
+     `epingle|<fileId>` dans l'Index. **Adaptation au code réel (le plan supposait
+     `indexLire_('drive|…').statut`, qui n'existe pas)** : `indexAjouter_` APPEND (pas d'update) et
+     `drive|<fileId>` est déjà le namespace des dépôts classés — un namespace dédié `epingle|`,
+     checkable O(1) par `indexContient_`, évite la sur-filtration et la duplication de clé. Les
+     prédicats de collecte des campagnes de re-rangement l'IGNORENT (immunité) : `collecterConsolidation_`,
+     `estAMigrer_`, `estAReanalyser_` **et** `estAReclasserLeger_` (grand rangement, défense en
+     profondeur) — les QUATRE, pour une convergence complète.
 3. **PR3 — UI de l'onglet Assistant.** `app/src/vues/Assistant.tsx` (chat + partie « dossiers à
    créer » : suggestions auto ET questionnaire guidé), remplace la section réorg, embarque la vue
    réorg existante pour la validation ligne-à-ligne, compteur de budget visible.
@@ -94,3 +118,16 @@ correctifs :
   alors que l'historique porte des `tool_use`/`tool_result` risquait un 400). 🟡 traités aussi :
   alternance stricte validée dans `validerHistoriqueChat_`, `refusal`/`max_tokens` journalisés,
   tests des chemins limites (multi tool_use, tour forcé, bloc non exploitable).
+
+**PR2 — revue flotte** :
+- **security-auditor 🟢** (7/7 §2) : aucune suppression, zone 04 jamais détachée (source ET cible,
+  multi-parents inclus), chat ne contourne pas la validation de Marc, injection d'ID gérée (échec-fermé
+  à l'application), convergence correcte, ADR-0007 respecté. Durcissement appliqué : rejet d'une source
+  qui est un DOSSIER (MIME) + strip du séparateur `→` dans le parser.
+- **code-reviewer 🟠 → corrigé** : `creer` refusait un parent `intouchable` (l'exemple du prompt « crée
+  dans Véhicule » revenait `refusé`) → assouplissement ci-dessus. 🟡 notés : fenêtre de course réorg
+  minuscule et PRÉ-EXISTANTE (commentaire honnêtifié) ; garde cible `_…` par nom (identique à l'existant).
+- **structure-keeper 🟢 CONFORME** (4 axes) : onglet Réorg cohérent, séparation propre fichier↔dossier,
+  structure protégée respectée, convergence conforme. Note appliquée : commentaire près de `Intake.gs`
+  expliquant que l'intake filtre `drive|` (pas `epingle|`) VOLONTAIREMENT (un re-dépôt manuel doit se
+  re-trier ; un skip y coincerait le fichier à vie).

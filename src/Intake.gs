@@ -35,6 +35,9 @@ function traiterDepots_(estBudgetDepasse) {
     var f = it.next();
     var id = f.getId();
     if (indexContient_('drive|' + id)) continue; // déjà traité/quarantainé/natif : jamais dans la page
+    // NB. l'intake filtre SUR `drive|`, PAS `epingle|` (C28-30) — VOLONTAIRE : un fichier épinglé ne
+    // peut atterrir ici que par un RE-DÉPÔT MANUEL de Marc (le moteur refuse cible=00·À trier), et là
+    // le re-tri est le comportement VOULU ; un skip `epingle|` le coincerait à vie dans À trier.
     var date = 0;
     try { date = f.getLastUpdated().getTime(); } catch (e) { /* date illisible → tête de file */ }
     candidats.push({ id: id, date: date });
