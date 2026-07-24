@@ -29,10 +29,17 @@
 > validation Marc) ; convergence « épinglé Marc » = clé DÉDIÉE Index `epingle|<fileId>` (le plan
 > supposait `indexLire_('drive|…').statut` INEXISTANT → namespace dédié checkable par `indexContient_`)
 > IGNORÉE par les 4 campagnes de re-rangement (consolidation, migration, réanalyse, grand rangement).
-> Tests `chat-reorg.test.js`. 629 tests. **⚠ PR2 n'a d'effet visible qu'avec l'UI (PR3)** : l'outil
-> `proposer_reorg` écrit dans `Réorg`, mais l'app doit l'afficher/le valider (PR3) ; le moteur applique
-> ensuite au tick. **PR3 (à venir)** : UI `Assistant.tsx` (chat + suggestions auto/questionnaire),
-> compteur budget, embarque la réorg pour la validation ligne-à-ligne.
+> Tests `chat-reorg.test.js`. 631 tests. **PR3 FAITE (UI)** : `app/src/vues/Assistant.tsx` (NOUVEAU) —
+> onglet de PREMIER NIVEAU 💬 (App.tsx `SECTIONS`/`ICONES` + Sidebar auto ; la « Réorg IA » QUITTE
+> `Documents.tsx` → l'Assistant remplace la page réorg). Chat éphémère (`envoyerMessageChat` → doPost
+> `chat-assistant`, rien persisté ADR-0007) + `ReorgVue` embarquée : les propositions du chat
+> (`chatreorg|…`, nouveau helper pur `actionsProposeesChat`) s'y valident PAR ACTION ; refresh
+> `signalRafraichir`+`viderCachePlages('Réorg')` après chaque réponse. 2 actions rapides (suggérer/
+> organiser) + compteur budget (`actionChatAssistant_` renvoie `coutJour`/`plafond`). i18n FR/EN,
+> capture e2e. 188 tests app + build vert. **⚠ CHANTIER C28-30 COMPLET (3 PR)** — reste à VÉRIFIER en
+> prod après déploiement (Marc) : l'onglet Assistant répond, propose, et Marc valide → le moteur
+> applique au tick. Le chat est un flux SUR-DEMANDE (pas un tick) : pas d'`installerTrigger` requis
+> pour lui, mais le déploiement `clasp push` doit passer (auto au merge).
 >
 > **⚠️ 2026-07-23 (soir) — INCIDENT FAMINE consolidation + correctif « BUDGET TAIL » (C28-29).**
 > Vérification PROD (signaux Drive) après C28-28 : le grand nettoyage NE DRAÎNAIT TOUJOURS PAS —

@@ -523,6 +523,18 @@ export function actionsDuPlan(lignes: LigneReorg[], cleDemande: string): LigneRe
 }
 
 /**
+ * Les opérations PROPOSÉES par l'assistant chat (C28-30 PR2) — clé `chatreorg|<ts>|<n>`, statut
+ * `proposé`. Contrairement aux plans réorg (`actionsDuPlan`), elles ne dépendent d'AUCUNE ligne
+ * `demande` : le chat les écrit directement dans l'onglet Réorg pour que Marc les valide par action.
+ * Les plus récentes d'abord (tri décroissant sur la clé = ordre d'insertion inverse).
+ */
+export function actionsProposeesChat(lignes: LigneReorg[]): LigneReorg[] {
+  return lignes
+    .filter((l) => l.cle.startsWith('chatreorg|') && l.statut === 'proposé')
+    .sort((a, b) => b.cle.localeCompare(a.cle));
+}
+
+/**
  * Regroupe des numéros de lignes Sheet en PLAGES CONTIGUËS (écriture par lot de la colonne
  * Statut : une plage = un PUT — jamais un batchUpdate, jamais une ligne non sélectionnée
  * écrasée). Entrée dédupliquée et triée ici (copie).

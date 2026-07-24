@@ -1,5 +1,5 @@
 /**
- * screenshots.spec.ts — photographie les 6 sections de l'app en MODE MOCK (VITE_E2E_MOCK=true,
+ * screenshots.spec.ts — photographie les 7 sections de l'app en MODE MOCK (VITE_E2E_MOCK=true,
  * injectée par playwright.config.ts). Les images atterrissent dans `e2e-screenshots/` et sont
  * remontées en artifact GitHub à chaque push (voir .github/workflows/ci.yml) : un coup d'œil
  * suffit pour voir si l'UI est visuellement cassée.
@@ -11,12 +11,13 @@ const SECTIONS: Array<{ fichier: string; libelle: string }> = [
   { fichier: '1-aujourdhui', libelle: 'Aujourd’hui' },
   { fichier: '2-agenda', libelle: 'Agenda' },
   { fichier: '3-documents', libelle: 'Documents' },
-  { fichier: '4-apprentissage', libelle: 'Apprentissage' },
-  { fichier: '5-quotas', libelle: 'Coûts & quotas' },
-  { fichier: '6-sante', libelle: 'Santé du moteur' },
+  { fichier: '4-assistant', libelle: 'Assistant' }, // C28-30 : chat + validation du plan
+  { fichier: '5-apprentissage', libelle: 'Apprentissage' },
+  { fichier: '6-quotas', libelle: 'Coûts & quotas' },
+  { fichier: '7-sante', libelle: 'Santé du moteur' },
 ];
 
-test('captures des 6 sections (mode mock, app "connectée")', async ({ page }) => {
+test('captures des 7 sections (mode mock, app "connectée")', async ({ page }) => {
   // Plus rien à seeder (C28-20) : l'écran Configuration n'existe plus — en mode mock,
   // config.ts sert une config factice et google.ts une session bouchonnée, sans aucun fetch.
   await page.goto('/');
