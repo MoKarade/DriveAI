@@ -4,16 +4,18 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **⚡ ÉTAT AU 2026-07-24 (soir) — C28-30 COMPLET + suivi.** Les 3 PR du chatbot sont MERGÉES
-> (#202 moteur chat · #203 opérations dossiers/épinglé · #204 UI onglet Assistant). Marc a redéployé
-> la web app (« Nouvelle version ») → le chat RÉPOND en prod. Retours traités dans **PR #206** (en
-> cours) : troncature de réponse corrigée (`CHAT_MAX_TOKENS` 1500→4000, itérations 4→6, prompt qui
-> FORCE l'appel `proposer_reorg`) ; plafond retiré (`CHAT_COUT_JOUR_MAX` 0,33→10 $/j = filet
-> anti-emballement seul) ; **redéploiement web app AUTOMATISÉ** (`deploy.yml` `clasp deploy -i
-> $WEBAPP_DEPLOYMENT_ID` — Marc doit poser ce secret GitHub, l'`AKfycb…` de son URL /exec, pour ne
-> plus jamais redéployer à la main) ; + lien « ← Hub » (#205) rapatrié vers main. **Reste** : Marc
-> pose `WEBAPP_DEPLOYMENT_ID` ; après merge #206, vérifier par signal indépendant (le chat finit ses
-> phrases ET propose des opérations validables à droite). Détail des 3 PR ci-dessous.
+> **⚡ ÉTAT AU 2026-07-24 (soir) — C28-30 COMPLET + LIVE.** Les 3 PR du chatbot sont MERGÉES
+> (#202 moteur · #203 opérations dossiers/épinglé · #204 UI onglet Assistant) ; le chat RÉPOND en prod.
+> Suivis mergés : **#206** (troncature corrigée `CHAT_MAX_TOKENS` 1500→4000 + itérations 4→6 + prompt
+> qui FORCE `proposer_reorg` ; plafond retiré `CHAT_COUT_JOUR_MAX` 0,33→10 $/j = filet anti-emballement
+> seul ; **auto-redéploiement web app** `clasp deploy -i $WEBAPP_DEPLOYMENT_ID`) ; **#207** (bloc usage
+> hub : coûts/quotas) ; **#208 HOTFIX** — l'auto-`clasp deploy` cassait l'accès web app (« Failed to
+> fetch » + Sync Drive rouge) car `appsscript.json` ne pinnait pas `webapp.access` → épinglé
+> `ANYONE_ANONYMOUS`/`USER_DEPLOYING`. Marc a posé le secret `WEBAPP_DEPLOYMENT_ID` → **chaque merge
+> moteur redéploie /exec tout seul** (plus de « Nouvelle version » à la main). **Reste à confirmer par
+> signal RÉEL** (Marc teste) : le chat finit ses phrases ET propose des opérations validables à droite ;
+> l'accès web app est bien revenu (chat OK + Sync Drive vert). Piège appris : CLAUDE.md §7 pièges
+> auto-déploiement #5. Détail des 3 PR ci-dessous.
 >
 > **2026-07-24 — C28-30 : onglet ASSISTANT (chatbot Claude), PR1/3 (plan architecte NotebookLM,
 > ADR-0026).** Marc veut un assistant conversationnel : (A) Q&A qui RETROUVE et LIT ses fichiers
