@@ -143,6 +143,37 @@ test('actionChatAssistant_ : budget quotidien épuisé → refus, AUCUN appel LL
   assert.ok(r.coutJour >= r.plafond, 'coutJour renvoyé pour le compteur'); // refus = au-dessus du plafond
 });
 
+test('actionChatAssistant_ : actionsProposees reflète l\'appel réel de proposer_reorg (refresh app)', () => {
+  const c = load(MODULES);
+  const store = {};
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in store ? store[k] : null),
+    setProperty: (k, v) => { store[k] = String(v); },
+  }) };
+  c.chargerPannePlateforme_ = () => {};
+  c.estPannePlateforme_ = () => false;
+  const rows = [];
+  c.feuille_ = () => ({ appendRow: (r) => rows.push(r) }); // onglet Réorg pour proposerReorgChat_
+  const envoi = (h) => c.actionChatAssistant_({ postData: { contents: JSON.stringify({ historique: h }) } });
+
+  // (a) le chat APPELLE proposer_reorg → l'app doit rafraîchir.
+  c.appelAnthropicChat_ = (_s, _m, _o, executer) => {
+    executer('proposer_reorg', { actions: [{ type: 'deplacer-fichier', source: 'F1', cible: 'D1' }] });
+    return 'j\'ai proposé';
+  };
+  const rA = envoi([{ role: 'user', content: 'range' }]);
+  assert.strictEqual(rA.ok, true);
+  assert.strictEqual(rA.actionsProposees, true);
+  assert.strictEqual(rows.length, 1, 'une ligne proposé écrite');
+
+  // (b) le chat NE propose PAS (aucun outil de reorg) → pas de faux rafraîchissement.
+  store.DriveAI_CHAT_DERNIER = '0'; // reset anti-rafale
+  c.appelAnthropicChat_ = () => 'juste une réponse';
+  const rB = envoi([{ role: 'user', content: 'donne mon NAS' }]);
+  assert.strictEqual(rB.ok, true);
+  assert.strictEqual(rB.actionsProposees, false);
+});
+
 test('outils lecture : recherche formatée (id + dossier) et lecture bornée en taille', () => {
   const c = load(MODULES);
   c.DriveApp = {

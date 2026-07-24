@@ -172,3 +172,19 @@ Web app redéployée par Marc (Nouvelle version → Déployer) : le chat répond
    usage soutenu : **assumé par Marc**. Compteur app simplifié en « Coût aujourd'hui : X $ » (plus de
    dénominateur/jauge). ⚠ Tout changement de `WebApp.gs`/`Config.gs` exige un **redéploiement Nouvelle
    version** de la web app (DEPLOIEMENT.md §web app) — friction connue, candidate à automatisation.
+
+## Mise à jour 2026-07-24 (bis) — UX Assistant (plan architecte NotebookLM, 3 PR)
+
+Retours d'usage réel de Marc → chantier d'amélioration en 3 PR séquentielles.
+- **Arbitrage persistance (ADR-0007)** : l'historique du chat doit survivre au F5 sans violer
+  ADR-0007. Décision : **`sessionStorage` STRICT, jamais `localStorage`**. L'historique peut CITER du
+  contenu de doc lu par Claude → l'écrire en `localStorage` l'inscrirait DURABLEMENT sur le disque
+  (contre l'esprit ADR-0007). `sessionStorage` survit au refresh mais meurt à la fermeture d'onglet →
+  reste 100 % éphémère, même politique que le jeton OAuth (leçon §7 « localStorage interdit »).
+- **PR1 (faite)** : (a) `actionChatAssistant_` renvoie `actionsProposees` (vrai SEULEMENT si le chat a
+  appelé `proposer_reorg`) → l'app invalide le cache `Réorg` PUIS remonte `ReorgVue` (changement de
+  `key`) — corrige « propositions pas à jour » sans faux rafraîchissement ; (b) historique en
+  `sessionStorage` (init + persist + bouton « Effacer le chat »).
+- **PR2** : `react-markdown` pour les réponses, layout fenêtre type claude.ai, indicateur de chargement
+  TRÈS visible (« Analyse en cours, jusqu'à 1 min »).
+- **PR3** : troncature de l'historique envoyé à Anthropic aux 12 derniers messages (tokens + latence).

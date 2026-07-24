@@ -439,9 +439,18 @@ function actionChatAssistant_(e) {
   }
 
   reinitialiserUsage_();
+  // On TRACKE si le chat a APPELÉ `proposer_reorg` (des lignes ONT PU être écrites dans l'onglet
+  // Réorg — sauf si toutes les actions étaient invalides) → renvoyé à l'app pour qu'elle invalide son
+  // cache et re-rende la file de validation. Un refresh « pour rien » (actions invalides) est
+  // idempotent et inoffensif ; ne PAS refléter l'appel serait le vrai bug (« propositions pas à jour »).
+  var actionsProposees = false;
+  var executer = function (nom, input) {
+    if (nom === 'proposer_reorg') actionsProposees = true;
+    return executerOutilChatAssistant_(nom, input);
+  };
   var reponse = null;
   try {
-    reponse = appelAnthropicChat_(promptChatAssistant_(), messages, outilsChatAssistant_(), executerOutilChatAssistant_);
+    reponse = appelAnthropicChat_(promptChatAssistant_(), messages, outilsChatAssistant_(), executer);
   } finally {
     // Coût de CE run ajouté au total du jour (même usage que le flush mensuel — mesuré une fois).
     try { props.setProperty('DriveAI_CHAT_COUT_JOUR', jour + '|' + (coutJour + coutDollars_(usageRunSnapshot_()))); }
@@ -453,7 +462,7 @@ function actionChatAssistant_(e) {
   var coutMaj = coutChatJour_(props, jour);
   journalInfo_('WebApp', 'Chat assistant servi (coût du jour ≈ ' + coutMaj.toFixed(3) + ' $).');
   // coutJour/plafond : compteur de budget VISIBLE côté app (demande Marc — métadonnées seulement).
-  return { ok: true, reponse: reponse, coutJour: coutMaj, plafond: CONFIG.CHAT_COUT_JOUR_MAX };
+  return { ok: true, reponse: reponse, actionsProposees: actionsProposees, coutJour: coutMaj, plafond: CONFIG.CHAT_COUT_JOUR_MAX };
 }
 
 /* ---------- Analyse ciblée des mails (C28-06, plan P2) ---------- */

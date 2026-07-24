@@ -510,6 +510,8 @@ tr:hover .expl-actions button, .expl-actions button:focus-visible { opacity: 1; 
 .reorg-boutons button { margin-left: 0.25rem; }
 
 /* ---------- Assistant chat (C28-30, ADR-0026) ---------- */
+.chat-entete { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.chat-entete h2 { margin: 0; }
 .chat-fil {
   display: flex; flex-direction: column; gap: 0.5rem;
   max-height: 46vh; overflow-y: auto;
