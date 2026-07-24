@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0"
   },
   "devDependencies": {
     "@mokarade/hub-contract": "github:MoKarade/hub-contract#2d37a61c337d485ab9ec716d9c7507972e807226",

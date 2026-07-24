@@ -22,10 +22,14 @@
 > appelé) → l'app invalide le cache `Réorg` + remonte `ReorgVue` (`key`) SEULEMENT alors — corrige
 > « propositions pas à jour » ; (b) historique du chat en **sessionStorage** (survit au F5, meurt à la
 > fermeture d'onglet, jamais localStorage — arbitrage ADR-0007 de l'architecte) + bouton « Effacer le
-> chat ». 632 tests moteur + 189 app + build. **PR2 (à venir)** : react-markdown + fenêtre type
-> claude.ai + indicateur de chargement TRÈS visible. **PR3 (à venir)** : troncature historique aux 12
-> derniers messages (tokens+latence). NB : ré-exécuter `npm install` dans `app/` après un checkout frais
-> (#207 a re-pinné `@mokarade/hub-contract` v1.1 — sinon tsc casse sur `usage`).
+> chat ». 632 tests moteur + 189 app + build. **PR1 MERGÉE (#210).** **PR2 FAITE (branche courante,
+> revue flotte 🟢 sécurité)** : réponses en **Markdown** (`react-markdown` ^10, sans `rehype-raw` → HTML
+> inerte, URLs `javascript:` neutralisées ; liens `target=_blank rel=noopener`) ; fenêtre type claude.ai
+> (`.chat-fil` plus haute + `min-height`) ; indicateur de chargement TRÈS visible (`.chat-loader` 3 points
+> animés + « Analyse en cours… (jusqu'à 1 min) », `prefers-reduced-motion`). **PR3 (à venir)** : troncature
+> historique aux 12 derniers messages (tokens+latence). NB : ré-exécuter `npm install` dans `app/` après un
+> checkout frais (#207 a re-pinné `@mokarade/hub-contract` v1.1 — sinon tsc casse sur `usage` ; et
+> react-markdown est désormais une dépendance à installer).
 >
 > **2026-07-24 — C28-30 : onglet ASSISTANT (chatbot Claude), PR1/3 (plan architecte NotebookLM,
 > ADR-0026).** Marc veut un assistant conversationnel : (A) Q&A qui RETROUVE et LIT ses fichiers
