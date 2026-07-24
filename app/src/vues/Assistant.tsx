@@ -60,10 +60,6 @@ export function Assistant({ langue }: { langue: Langue }) {
     }
   }
 
-  const pourcentBudget = budget && budget.plafond > 0
-    ? Math.min(100, Math.round((budget.coutJour / budget.plafond) * 100))
-    : 0;
-
   return (
     <div className="accueil">
       <section className="carte large">
@@ -107,13 +103,7 @@ export function Assistant({ langue }: { langue: Langue }) {
 
         {budget && (
           <div className="chat-budget">
-            <span className="explication">
-              {t('assistantBudget', langue)} : {budget.coutJour.toFixed(2)} / {budget.plafond.toFixed(2)} $
-              {pourcentBudget >= 100 && ` — ${t('assistantBudgetEpuise', langue)}`}
-            </span>
-            <div className="chat-budget-piste" aria-hidden="true">
-              <div className="chat-budget-jauge" style={{ width: `${pourcentBudget}%` }} />
-            </div>
+            <span className="explication">{t('assistantBudget', langue)} : {budget.coutJour.toFixed(2)} $</span>
           </div>
         )}
       </section>

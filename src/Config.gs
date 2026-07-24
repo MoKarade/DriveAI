@@ -415,11 +415,16 @@ var CONFIG = {
   // Boucle Tool Use (Sonnet) : cherche (nom → contenu → plein-texte) puis lit des fichiers à la volée.
   // La clé Claude + l'accès Drive vivent ICI (moteur), jamais côté navigateur (ADR-0007).
   CHAT_MODELE: 'claude-sonnet-4-6',       // raisonnement + appels d'outils (le chat n'est pas du flux vivant Haiku)
-  CHAT_MAX_TOKENS: 1500,                  // réponse + blocs tool_use — large (l'assistant explique + agit)
-  CHAT_TOOL_ITERATIONS_MAX: 4,            // tours de boucle Tool Use max/appel (anti-boucle)
+  CHAT_MAX_TOKENS: 4000,                  // réponse + blocs tool_use — assez large pour une ANALYSE + l'appel proposer_reorg sans troncature (1500 coupait en pleine phrase, vécu 2026-07-24)
+  CHAT_TOOL_ITERATIONS_MAX: 6,            // tours de boucle Tool Use max/appel (chercher les dossiers cibles PUIS proposer demande plus de tours ; anti-boucle + garde-temps ci-dessous)
   CHAT_BUDGET_MS: 4 * 60 * 1000,          // garde-temps de la boucle : ne pas démarrer un tour après 4 min (marge avant le mur 6 min de doPost pour le tour final + le finally coût)
   CHAT_MIN_INTERVALLE_MS: 3000,           // anti-rafale (3 s entre deux messages)
-  CHAT_COUT_JOUR_MAX: 0.33,              // plafond QUOTIDIEN en $ — 0,33 × 30 ≈ 9,9 $/mois GARANTIT la cible §2.6 (< 10 $/mois) même saturé chaque jour ; échec fermé au-delà (revue llm-cost : 0,50 aurait plafonné à 15 $/mois)
+  // FILET ANTI-EMBALLEMENT (décision Marc 2026-07-24 « enlève le plafond ») : le plafond BLOQUANT
+  // quotidien est retiré de l'usage normal (monté très haut) — un chat INTERACTIF est gaté par Marc
+  // (anti-rafale) donc ne peut pas s'emballer seul ; il reste un backstop HAUT contre un bug qui
+  // bouclerait les appels (le principe anti-emballement §2.6 ne se désactive JAMAIS à zéro). Au-delà
+  // de la cible §2.6 en usage soutenu — assumé par Marc pour le confort du chat.
+  CHAT_COUT_JOUR_MAX: 10.0,               // $/jour — filet anti-emballement seulement (jamais atteint en usage interactif normal)
   CHAT_RECHERCHE_MAX: 15,                 // résultats max renvoyés par un outil de recherche (borne le contexte)
   CHAT_LIRE_MAX_CARS: 8000,               // texte max extrait d'UN fichier par `lire_fichier` (borne les tokens)
   CHAT_HISTORIQUE_MAX: 20,                // messages max dans un historique reçu (borne l'entrée)
