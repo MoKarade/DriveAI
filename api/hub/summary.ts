@@ -110,6 +110,25 @@ export default async function handler(req: Requete, res: Reponse): Promise<void>
     alerts.push({ label: etat.reviewQueueCount + ' document(s) en attente dans la file de revue', severity: 'info' });
   }
 
+  // Bloc `usage` (coûts & quotas du hub) — additif v1.1, uniquement les champs réellement
+  // publiés par le moteur (absents tant qu'il n'a pas été redéployé → bloc partiel ou omis).
+  const quotas: { label: string; used: number; limit: number | null; unit?: string }[] = [];
+  if (typeof etat.gmailThreadsToday === 'number') {
+    quotas.push({ label: 'Fils Gmail (aujourd’hui)', used: etat.gmailThreadsToday, limit: null, unit: 'fils' });
+  }
+  if (etat.gmailQuotaSuspended) {
+    // Quota Gmail Apps Script épuisé (pause automatique) : représenté « au plafond ».
+    quotas.push({ label: 'Quota Gmail', used: 1, limit: 1 });
+  }
+  const usage: {
+    cost?: { amount: number; currency: 'USD'; period: 'mois' };
+    quotas?: typeof quotas;
+  } = {};
+  if (typeof etat.llmCostMonthUsd === 'number') {
+    usage.cost = { amount: Math.round(etat.llmCostMonthUsd * 100) / 100, currency: 'USD', period: 'mois' };
+  }
+  if (quotas.length > 0) usage.quotas = quotas;
+
   repondreJson(res, 200, {
     contractVersion: CONTRACT_VERSION,
     app,
@@ -123,5 +142,6 @@ export default async function handler(req: Requete, res: Reponse): Promise<void>
     ],
     alerts,
     actions: [{ label: 'Ouvrir DriveAI', kind: 'link', href: URL_APP }],
+    ...(usage.cost || usage.quotas ? { usage } : {}),
   });
 }
