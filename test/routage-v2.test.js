@@ -155,3 +155,60 @@ test('planRoutageV2_ : un non-document est écarté hors domaines (aucun domaine
   assert.strictEqual(p.routage, '_Médias');
   assert.strictEqual(plat(p).domaine, undefined); // un non-document ne porte jamais de domaine
 });
+
+/* ---------- ADR-0028 : résolution TOPOLOGIQUE du dossier d'entité (par ID) ---------- */
+
+// Faux dossier Drive minimal : id, nom, parent, état corbeille.
+const dossierF = (id, nom, parent, corbeille) => ({
+  getId: () => id,
+  getName: () => nom,
+  isTrashed: () => !!corbeille,
+  getParents: () => { let i = 0; const p = parent ? [parent] : []; return { hasNext: () => i < p.length, next: () => p[i++] }; },
+});
+
+test('segmentsSousDomaine_ : chemin RÉEL sous le domaine, null si le domaine n\'est pas un ancêtre', () => {
+  const dom = dossierF('DOM', '05 · Carrière', null);
+  const groupe = dossierF('G', 'Anciens employeurs', dom);
+  const entite = dossierF('E', 'Robovic', groupe);
+
+  assert.deepStrictEqual(plat(ctx.segmentsSousDomaine_(dom, 'DOM')), [], 'le domaine lui-même : aucun segment');
+  assert.deepStrictEqual(plat(ctx.segmentsSousDomaine_(groupe, 'DOM')), ['Anciens employeurs']);
+  assert.deepStrictEqual(plat(ctx.segmentsSousDomaine_(entite, 'DOM')), ['Anciens employeurs', 'Robovic'],
+    'chemin réel — c\'est lui qui part dans l\'Index (sinon la sync le juge « déplacé »)');
+
+  // Hors domaine → null (= repli par nom) : jamais classer un document hors de son domaine.
+  const autre = dossierF('X', 'Ailleurs', dossierF('DOM2', '08 · Perso', null));
+  assert.strictEqual(ctx.segmentsSousDomaine_(autre, 'DOM'), null);
+  // Chaîne illisible → null (échec fermé côté décision, repli côté classement).
+  const casse = dossierF('K', 'Cassé', null);
+  casse.getParents = () => { throw new Error('parents illisibles'); };
+  assert.strictEqual(ctx.segmentsSousDomaine_(casse, 'DOM'), null);
+});
+
+test('dossierEntiteParId_ : refuse un dossier CORBEILLÉ, hors domaine, ou un ID mort (repli par nom)', () => {
+  const dom = dossierF('DOM', '05 · Carrière', null);
+  const vivant = dossierF('E', 'Robovic', dom);
+  const corbeille = dossierF('T', 'Robovic', dom, true);
+  const par = { E: vivant, T: corbeille };
+  ctx.DriveApp = { getFolderById: (id) => { if (!par[id]) throw new Error('introuvable'); return par[id]; } };
+
+  assert.deepStrictEqual(plat(ctx.dossierEntiteParId_('E', dom).segments), ['Robovic']);
+  assert.strictEqual(ctx.dossierEntiteParId_('T', dom), null,
+    'corbeillé (ADR-0014) : y ranger un document le ferait purger à 30 j — perte silencieuse');
+  assert.strictEqual(ctx.dossierEntiteParId_('MORT', dom), null, 'ID mort → repli, jamais une exception');
+  assert.strictEqual(ctx.dossierEntiteParId_('', dom), null, 'pas d\'ID au référentiel → repli par nom');
+  assert.strictEqual(ctx.dossierEntiteParId_(null, dom), null);
+});
+
+test('sousCheminDomaine_ : la RÈGLE UNIQUE rend {nom, id} — id SEULEMENT pour une entité validée', () => {
+  const dom = ctx.CONFIG.DOMAINES_PAR_ANNEE[0];
+  assert.deepStrictEqual(plat(ctx.sousCheminDomaine_({ domaine: dom, typeIdentite: 'Passeport' })),
+    { nom: 'Passeport', id: '' }, 'type d\'identité : résolu par NOM (aucune identité au référentiel)');
+  assert.deepStrictEqual(plat(ctx.sousCheminDomaine_({ domaine: dom, entite: { nom: 'Desjardins', dossierId: 'ID_D' } })),
+    { nom: 'Desjardins', id: 'ID_D' });
+  assert.deepStrictEqual(plat(ctx.sousCheminDomaine_({ domaine: dom, annee: '2026' })), { nom: '2026', id: '' });
+  assert.deepStrictEqual(plat(ctx.sousCheminDomaine_({ domaine: dom })), { nom: '', id: '' }, 'à plat');
+  // Branche de tolérance : une entité passée en CHAÎNE vaut un id vide (repli par nom, jamais un id inventé).
+  assert.deepStrictEqual(plat(ctx.sousCheminDomaine_({ domaine: dom, entite: 'Desjardins' })),
+    { nom: 'Desjardins', id: '' });
+});

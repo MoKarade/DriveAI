@@ -41,10 +41,15 @@ dossier » d'ADR-0023. Il faut imposer la limite **sans** briser la taxonomie ni
    - la **zone protégée `04 · Immigration`** — déjà exclue de l'inventaire de la Réorg par
      ascendance (`aParentEtrangerProtege_`, échec fermé).
 
-4. **Élégance : aucun code de routage à changer.** Si la Réorg déplace le dossier de l'entité
-   `Robovic` sous un nouveau parent `05 · Carrière/Anciens employeurs`, le flux vivant continue d'y
-   ranger les fiches de paie **sans aucune modification** : le référentiel `Entités` pointe vers le
-   **`Dossier ID` Drive**, pas vers un chemin. Où que le dossier soit déplacé, le flux le retrouve.
+4. ~~**Élégance : aucun code de routage à changer.**~~ **⚠️ AFFIRMATION FAUSSE — corrigée par
+   l'ADR-0028 (2026-07-28).** Ce point soutenait que « le référentiel `Entités` pointe vers le
+   `Dossier ID` Drive, donc où que le dossier soit déplacé, le flux le retrouve ». **C'était faux
+   pour le pipeline actif** : `entitesValideesParCle_` **jetait** le `dossierId`, le routage v2
+   résolvait le dossier d'entité **par NOM** en enfant DIRECT du domaine, et le seul lecteur de
+   l'ID (`dossierEntiteCible_`) n'était appelé que par le routage v1, mort depuis `ANALYSE_V2`.
+   Conséquence si on avait livré le regroupement tel quel : le flux re-créait le dossier à plat, la
+   consolidation ressortait les fichiers, puis proposait de corbeiller le dossier vidé.
+   **Le routage par ID a donc dû être écrit** (ADR-0028) — c'est le PRÉREQUIS de ce chantier.
 
 ## Mise en œuvre
 
@@ -55,7 +60,12 @@ dossier » d'ADR-0023. Il faut imposer la limite **sans** briser la taxonomie ni
   `promptReorg_` ordonne le regroupement (créer un parent thématique + y déplacer).
 - **WebApp.gs** : `promptChatAssistant_` porte la même règle de lisibilité (proposition proactive via
   l'outil `proposer_reorg`).
-- **Router.gs / Consolidation.gs : INTOUCHÉS** (vérifié en revue).
+- **Router.gs / Consolidation.gs** : intouchés **par le chantier C28-31 lui-même**, mais l'ADR-0028
+  (prérequis) a dû y écrire la résolution par `Dossier ID` — voir le point 4 corrigé ci-dessus.
+- **Exemptions du décompte** (plus larges que le §3 initial) : sont exclus tous les segments
+  **STRUCTURELS** (années « AAAA » **et** noms de schéma d'entité, via `estSegmentStructurel_`) ainsi
+  que les racines système « _… ». Motif : `parserPropositionReorg_` REJETTE toute mutation d'un
+  segment structurel — les compter ferait proposer au LLM des regroupements systématiquement rejetés.
 
 ## Garde-fous (§2)
 

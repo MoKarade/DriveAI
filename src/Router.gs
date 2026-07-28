@@ -566,13 +566,87 @@ function deciderRoutageV2_(classif, meta, dateReference, ext) {
   // « Divers »). Sinon, assainit le nom (caractères interdits Drive → '-', comme pour les noms
   // de fichiers) : `plan.sousDossier` vient d'une entité LLM libre, jamais d'un ID fixe.
   var sousNom = champ_(plan.sousDossier) || '';
-  var cible = sousNom ? sousDossier_(dom, sousNom) : dom;
+  // ADR-0028 — TOPOLOGIE D'ABORD : si le plan porte l'ID du dossier d'entité, on y range le
+  // document LÀ OÙ IL EST (même imbriqué sous un regroupement, ADR-0027) au lieu de le re-créer à
+  // plat. Trois conditions pour l'utiliser, sinon repli par NOM (comportement historique) :
+  // l'ID s'ouvre, le dossier est TOUJOURS sous ce domaine, et sa chaîne est lisible.
+  var parId = dossierEntiteParId_(plan.dossierIdCible, dom); // null ⇒ repli par nom (voir la fonction)
+  var cible = parId ? parId.dossier : (sousNom ? sousDossier_(dom, sousNom) : dom);
+  var segments = parId ? parId.segments : (sousNom ? [sousNom] : []);
   var nom = garantirNomUnique_(plan.nom, nomsDansDossier_(cible.getId()));
   return {
     statut: 'classé', domaine: plan.domaine,
-    chemin: sousNom ? plan.domaine + '/' + sousNom : plan.domaine,
+    // Chemin RÉELLEMENT obtenu (pas le nominal) — sinon `cheminsSyncCompatibles_` juge l'Index
+    // incompatible avec le Drive et marque le fichier « déplacé » en vidant son domaine.
+    chemin: plan.domaine + (segments.length ? '/' + segments.join('/') : ''),
     nom: nom, dossierId: cible.getId(), autresEntites: []
   };
+}
+
+/**
+ * ADR-0028 — CONFINEMENT + CHEMIN RÉEL en un seul passage. Remonte la chaîne du PREMIER parent de
+ * `dossier` jusqu'au domaine `domaineId` et renvoie les segments traversés (du plus haut au plus
+ * bas), ou `null` si le domaine n'est pas un ANCÊTRE (dossier déplacé hors de son domaine, ID
+ * périmé, chaîne illisible, profondeur anormale).
+ *
+ * `null` est un signal de REPLI, pas une erreur : l'appelant retombe alors sur la résolution par
+ * NOM sous le domaine. Deux raisons de ne PAS se contenter d'ouvrir l'ID :
+ *  1. GARDE : un `Dossier ID` périmé ou déplacé ne doit jamais faire classer un document HORS de
+ *     son domaine (ni, silencieusement, sous la zone protégée `04`) — le gain topologique vaut
+ *     À L'INTÉRIEUR du domaine, pas au-delà ;
+ *  2. CHEMIN HONNÊTE : l'Index doit porter le chemin RÉELLEMENT obtenu (« domaine/Anciens
+ *     employeurs/Robovic »), sinon la maintenance de sync (`cheminsSyncCompatibles_`, comparaison
+ *     par suffixe) le juge incompatible, marque le fichier « déplacé » et VIDE son domaine.
+ * Borné par `CONFIG.ROUTAGE_PROFONDEUR_MAX` (anti-cycle multi-parents).
+ * @param {Folder} dossier
+ * @param {string} domaineId
+ * @return {?string[]} segments sous le domaine ([] si c'est le domaine lui-même), ou null
+ */
+function segmentsSousDomaine_(dossier, domaineId) {
+  var segments = [];
+  try {
+    var courant = dossier;
+    for (var i = 0; i <= CONFIG.ROUTAGE_PROFONDEUR_MAX; i++) {
+      if (courant.getId() === domaineId) return segments;
+      segments.unshift(courant.getName());
+      var parents = courant.getParents();
+      if (!parents.hasNext()) return null; // racine atteinte sans croiser le domaine
+      courant = parents.next();            // premier parent (même convention que domaineActuelFichier_)
+    }
+  } catch (e) {
+    return null; // chaîne illisible → repli par nom (jamais un classement sur du flou)
+  }
+  return null;   // trop profond (ou cycle) → repli
+}
+
+/**
+ * ADR-0028 — RÉSOLUTION UNIQUE du dossier d'entité par ID, partagée par le flux vivant
+ * (`deciderRoutageV2_`) et par l'exécution du plan (`dossierCiblePlan_`). UNE seule fonction pour
+ * les DEUX exécutants : la divergence « la décision dit OK / l'exécution recrée à plat » devient
+ * impossible par CONSTRUCTION, au lieu d'être surveillée par un test.
+ *
+ * Rend `null` = REPLI par nom (jamais une erreur) dans TOUS les cas douteux :
+ *  - pas d'ID au référentiel (entité validée dont le dossier n'est pas encore créé) ;
+ *  - ID périmé/illisible (dossier supprimé) ;
+ *  - dossier **CORBEILLÉ** — `getFolderById` rend un dossier en corbeille : y ranger un document
+ *    le ferait purger avec lui à 30 jours (perte SILENCIEUSE). L'app peut corbeiller un dossier
+ *    d'entité devenu vide (ADR-0014) sans toucher `Entités.Dossier ID` : garde indispensable ;
+ *  - dossier sorti de son DOMAINE (`segmentsSousDomaine_`) — le gain topologique vaut à
+ *    l'intérieur du domaine, jamais au-delà (ni, silencieusement, sous la zone protégée).
+ * @param {?string} dossierId
+ * @param {Folder} domaine
+ * @return {?{dossier: Folder, segments: string[]}}
+ */
+function dossierEntiteParId_(dossierId, domaine) {
+  if (!dossierId) return null;
+  try {
+    var candidat = DriveApp.getFolderById(dossierId);
+    if (candidat.isTrashed()) return null; // corbeillé → jamais une cible de classement
+    var segments = segmentsSousDomaine_(candidat, domaine.getId());
+    return segments ? { dossier: candidat, segments: segments } : null;
+  } catch (e) {
+    return null; // ID mort/illisible → repli par nom (échec OUVERT, jamais un blocage)
+  }
 }
 
 /**

@@ -58,12 +58,21 @@ function nbParentsBorne_(f) {
 /**
  * Résout (find-or-create) le DOSSIER cible d'une ligne validée. Les seuls dossiers créés sont les
  * segments de la règle unique (année / entité validée / type d'identité) sous un domaine CONNU.
- * @param {{doublons:boolean, domaine:?string, segments:string[]}} c
+ *
+ * ADR-0028 : si la ligne porte `dossierIdCible` (dossier d'entité du référentiel), on OUVRE ce
+ * dossier — à sa profondeur réelle — au lieu de le find-or-create à plat. MÊME garde que le flux
+ * vivant (`segmentsSousDomaine_`) : l'ID doit s'ouvrir ET rester sous ce domaine, sinon repli par
+ * NOM. Sans cette symétrie, la décision dirait « OK » pendant que l'exécution recréerait le
+ * dossier à plat — l'un déferait l'autre (la divergence même que l'ADR corrige).
+ * @param {{doublons:boolean, domaine:?string, segments:string[], dossierIdCible:?string}} c
  * @return {Folder}
  */
 function dossierCiblePlan_(c) {
   if (c.doublons) return dossierDoublons_();
-  var dossier = DriveApp.getFolderById(idDomaine_(c.domaine));
+  var domaine = DriveApp.getFolderById(idDomaine_(c.domaine));
+  var parId = dossierEntiteParId_(c.dossierIdCible, domaine); // MÊME résolveur que le flux vivant
+  if (parId) return parId.dossier;
+  var dossier = domaine;
   for (var i = 0; i < c.segments.length; i++) dossier = sousDossier_(dossier, c.segments[i]);
   return dossier;
 }
@@ -152,7 +161,7 @@ function appliquerLigneConsolidation_(ligne, ctx) {
     // Segments assainis comme le flux vivant (champ_ : caractères interdits → '-') — la règle
     // unique doit produire le MÊME nom de dossier des deux côtés (anti-divergence).
     var segments = sousCible.nom ? sousCible.nom.split('/').map(function (s) { return champ_(s); }).filter(Boolean) : [];
-    // `dossierIdCible` sera consommé par `dossierCiblePlan_` (résolution par ID) — PR2 de l'ADR-0028.
+    // `dossierIdCible` est consommé par `dossierCiblePlan_` : résolution par ID, confinée au domaine.
     c = { doublons: false, domaine: domaine, segments: segments, dossierIdCible: sousCible.id || '' };
   }
 
