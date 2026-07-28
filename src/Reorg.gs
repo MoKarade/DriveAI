@@ -508,9 +508,120 @@ function appliquerReorgIA_(f, lignes, estBudgetDepasse) {
     });
     f.getRange(f.getLastRow() + 1, 1, rows.length, 8).setValues(rows);
   }
+  // CONVERGENCE (ADR-0029) : le LLM n'a rien trouvé à regrouper sur un dossier que la campagne AUTO
+  // avait désigné → on l'ignore REORG_AUTO_SKIP_JOURS jours. Sans ça, la campagne re-choisirait le
+  // même dossier demain, et tous les jours (le compte de sous-dossiers, lui, n'a pas bougé).
+  // Uniquement pour les demandes AUTO : une demande de Marc n'est jamais mise en sourdine.
+  if (proposition.actions.length === 0 && demande.cle.indexOf('demande-auto') === 0) {
+    try {
+      var maintenantSkip = Date.now();
+      props.setProperty('DriveAI_REORG_SKIP', ajouterSkipReorg_(
+        lireSkipReorg_(props.getProperty('DriveAI_REORG_SKIP')),
+        demande.portee, maintenantSkip, CONFIG.REORG_AUTO_SKIP_JOURS));
+      journalInfo_('Reorg', 'Aucun regroupement proposé : dossier ignoré ' +
+        CONFIG.REORG_AUTO_SKIP_JOURS + ' jours par la campagne auto.');
+    } catch (eSkip) { /* skip-list non persistée : au pire le dossier est re-proposé — jamais bloquant */ }
+  }
   solderDemande_(f, demande.rang, 'proposé', proposition.synthese || '');
   try { props.deleteProperty('DriveAI_REORG_ESSAIS'); } catch (e) { /* résidu inoffensif */ }
   journalInfo_('Reorg', 'Proposition écrite : ' + proposition.actions.length + ' action(s) — à valider dans l’app.');
+}
+
+/* ================= C28-32 (ADR-0029) : demande de réorg AUTOMATIQUE ================= */
+
+/**
+ * Skip-list de la campagne auto : {folderId: horodatage d'expiration}. Un dossier pour lequel le LLM
+ * n'a proposé AUCUN regroupement est ignoré `REORG_AUTO_SKIP_JOURS` jours — sinon la campagne le
+ * re-proposerait tous les jours (non-convergence). PURES (testées), bornées : les entrées expirées
+ * sont PURGÉES à chaque écriture, donc la Property ne grossit pas indéfiniment.
+ */
+function lireSkipReorg_(brut) {
+  try {
+    var o = JSON.parse(String(brut || '{}'));
+    return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
+  } catch (e) {
+    return {}; // illisible → on repart d'une liste vide (au pire, un dossier re-proposé une fois)
+  }
+}
+
+/** Vrai si `id` est ignoré à `maintenant` (expiration dépassée ⇒ non ignoré). PURE. */
+function estIgnoreReorg_(skip, id, maintenant) {
+  var exp = skip && skip[id];
+  return typeof exp === 'number' && exp > maintenant;
+}
+
+/** Ajoute `id` à la skip-list et PURGE les entrées expirées. Rend le JSON à persister. PURE. */
+function ajouterSkipReorg_(skip, id, maintenant, jours) {
+  var sortie = {};
+  Object.keys(skip || {}).forEach(function (k) {
+    if (typeof skip[k] === 'number' && skip[k] > maintenant) sortie[k] = skip[k]; // encore valide
+  });
+  sortie[id] = maintenant + jours * 24 * 3600 * 1000;
+  return JSON.stringify(sortie);
+}
+
+/**
+ * Choisit le dossier à aérer : le PREMIER de l'inventaire dont le nombre de sous-dossiers
+ * REGROUPABLES atteint la tolérance et qui n'est pas dans la skip-list. PURE (testée).
+ * @return {?{id: string, chemin: string, nbSousDossiers: number}}
+ */
+function choisirDossierSature_(dossiers, skip, maintenant) {
+  for (var i = 0; i < (dossiers || []).length; i++) {
+    var d = dossiers[i];
+    var n = Number(d.nbSousDossiers);
+    if (!isFinite(n) || n < CONFIG.REORG_MAX_SOUS_DOSSIERS_TOLERANCE) continue;
+    if (estIgnoreReorg_(skip, d.id, maintenant)) continue;
+    return { id: d.id, chemin: d.chemin, nbSousDossiers: n };
+  }
+  return null;
+}
+
+/**
+ * Dépose AUTOMATIQUEMENT une demande de réorg sur un dossier saturé (ADR-0029) — ce que Marc faisait
+ * à la main depuis l'app. N'ANALYSE RIEN et NE MUTE RIEN ici : la demande est ensuite traitée par le
+ * pipeline existant (`appliquerReorgIA_`), et les actions restent `proposé` jusqu'à SA validation.
+ *
+ * Trois gates, dans cet ordre (le moins cher d'abord) :
+ *  1. `REORG_AUTO_ACTIF` — interrupteur ;
+ *  2. budget QUOTIDIEN (`REORG_AUTO_MAX_JOUR`) — consommé dès qu'un scan ABOUTIT, même sans cible :
+ *     sinon on re-scannerait le Drive à chaque tick (288×/jour) pour rien ;
+ *  3. « assiette propre » — aucune demande au statut `analyse demandée` NI `proposé` : le moteur ne
+ *     propose un nouveau dossier que quand Marc a traité le précédent (zéro spam, et la campagne
+ *     devient naturellement séquentielle).
+ * L'inventaire est celui de la réorg (`inventaireDossiers_`) : mêmes gardes zone protégée par
+ * ascendance, mêmes bornes — une seule façon de lire l'arborescence, jamais un second BFS divergent.
+ * @param {function(): boolean} estBudgetDepasse
+ */
+function genererDemandeReorgAuto_(estBudgetDepasse) {
+  if (!CONFIG.REORG_AUTO_ACTIF) return;
+  var props = PropertiesService.getScriptProperties();
+  var jour = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  var brutJour = String(props.getProperty('DriveAI_REORG_AUTO_JOUR') || '');
+  var faitsAujourdhui = brutJour.indexOf(jour + '|') === 0 ? (Number(brutJour.split('|')[1]) || 0) : 0;
+  if (faitsAujourdhui >= CONFIG.REORG_AUTO_MAX_JOUR) return;
+
+  var f = feuille_('Réorg');
+  var lignes = f.getDataRange().getValues();
+  for (var i = 1; i < lignes.length; i++) {
+    if (String(lignes[i][1]) !== 'demande') continue;
+    var statut = String(lignes[i][5]);
+    if (statut === 'analyse demandée' || statut === 'proposé') return; // assiette pas encore propre
+  }
+
+  var inv = inventaireDossiers_('tout', estBudgetDepasse);
+  if (!inv.dossiers) return; // interrompu/trop large/protégé : on retentera, sans consommer le jour
+
+  var maintenant = Date.now();
+  var skip = lireSkipReorg_(props.getProperty('DriveAI_REORG_SKIP'));
+  var cible = choisirDossierSature_(inv.dossiers, skip, maintenant);
+  // Le scan a ABOUTI : on consomme le budget du jour même sans cible (sinon re-scan à chaque tick).
+  props.setProperty('DriveAI_REORG_AUTO_JOUR', jour + '|' + (faitsAujourdhui + 1));
+  if (!cible) return;
+
+  f.appendRow(['demande-auto-' + maintenant, 'demande', '', '', '', 'analyse demandée',
+    cible.id, new Date().toISOString()]);
+  journalInfo_('Reorg', 'Demande AUTO déposée sur « ' + cible.chemin + ' » (' +
+    cible.nbSousDossiers + ' sous-dossiers regroupables) — analyse au prochain passage.');
 }
 
 /** Pose statut (col 6) + détail (col 7) d'une ligne de demande. */

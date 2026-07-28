@@ -20,7 +20,10 @@ statut « analyse demandée » dans l'onglet `Réorg`. Le Drive ne converge donc
    écriture des actions `proposé`, validation, application gardée) est **inchangé**.
 
 2. **Régulation stricte — zéro spam.** Deux gates :
-   - **budget** : au plus `REORG_AUTO_MAX_JOUR` (**1**) analyse automatique par jour (≈ 0,02 $/j) ;
+   - **budget** : au plus `REORG_AUTO_MAX_JOUR` (**3** — décision Marc 2026-07-28 « accélère », révise
+     1) dépôts automatiques par jour (≈ 0,06 $/j). **Doit rester ≤ `REORG_MAX_JOUR`** (5, le plafond
+     des analyses LLM, compteur DISTINCT) : au-delà, les demandes s'empileraient sans être analysées —
+     et il faut garder de la marge pour les réorgs MANUELLES de Marc ;
    - **« assiette propre »** : aucune demande n'est déposée s'il en existe déjà une au statut
      « analyse demandée » **ou** « proposé ». Le moteur ne propose un nouveau dossier que quand Marc
      a traité le précédent. C'est aussi ce qui rend la campagne naturellement **séquentielle**.
@@ -46,12 +49,15 @@ statut « analyse demandée » dans l'onglet `Réorg`. Le Drive ne converge donc
 - **Verrous hérités de C28-31** : `fusionner` interdit sur un dossier d'entité (il le détruirait et
   re-pointerait `Entités.Dossier ID`) ; année et type de pièce d'identité jamais parents d'un
   regroupement ; segments structurels exclus du décompte.
-- **Budget §2.6** : 1 appel LLM/jour, plafonné et jamais prioritaire sur le flux vivant.
+- **Budget §2.6** : `REORG_AUTO_MAX_JOUR` appels LLM/jour au plus (3 ≈ 0,06 $/j), plafonné, borné par
+  `REORG_MAX_JOUR` et jamais prioritaire sur le flux vivant (étape budget-gatée, après la consolidation).
 
 ## Conséquences
 
-- Le Drive **converge** vers ≤ ~7 sous-dossiers sans que Marc ait à lancer quoi que ce soit — au
-  rythme d'**un dossier tous les deux jours** (2 tours), et seulement s'il valide.
-- Cadence ajustable en montant `REORG_AUTO_MAX_JOUR` une fois la mécanique éprouvée.
+- Le Drive **converge** vers ≤ ~7 sous-dossiers sans que Marc ait à lancer quoi que ce soit. Avec 3
+  dépôts/jour, un dossier peut être aéré **dans la journée** (tour 1 création, tour 2 déplacements)
+  s'il valide au fil de l'eau ; sinon la campagne attend — le vrai facteur limitant est **sa
+  validation**, pas la cadence du moteur (gate « assiette propre » : une seule demande en vol).
+- Cadence ajustable par `REORG_AUTO_MAX_JOUR`, dans la limite de `REORG_MAX_JOUR`.
 - Un dossier que le LLM juge non regroupable est laissé tranquille 30 jours, pas indéfiniment : si
   la situation change (nouvelles entités), il sera re-proposé.
