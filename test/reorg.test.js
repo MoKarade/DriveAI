@@ -362,3 +362,113 @@ test('compterSousDossiersRegroupables_ : seules les ENTITÉS comptent (structure
   // Un dossier de REGROUPEMENT compte lui-même (règle récursive : un regroupement saturé sera reflaggé).
   assert.strictEqual(c.compterSousDossiersRegroupables_([f('Anciens employeurs')]), 1);
 });
+
+/* ---------- C28-32 (ADR-0029) : skip-list et choix du dossier saturé ---------- */
+
+test('skip-list : lecture tolérante, expiration, PURGE des entrées périmées (bornée)', () => {
+  const c = load(['Config.gs', 'Reorg.gs']);
+  const T0 = 1_700_000_000_000;
+
+  assert.deepStrictEqual(plat(c.lireSkipReorg_('{"a":123}')), { a: 123 });
+  assert.deepStrictEqual(plat(c.lireSkipReorg_('pas du json')), {}, 'illisible → liste vide, jamais un plantage');
+  assert.deepStrictEqual(plat(c.lireSkipReorg_('[1,2]')), {}, 'un tableau n\'est pas une carte');
+  assert.deepStrictEqual(plat(c.lireSkipReorg_(null)), {});
+
+  assert.strictEqual(c.estIgnoreReorg_({ a: T0 + 1000 }, 'a', T0), true);
+  assert.strictEqual(c.estIgnoreReorg_({ a: T0 - 1000 }, 'a', T0), false, 'expiré → plus ignoré');
+  assert.strictEqual(c.estIgnoreReorg_({}, 'a', T0), false);
+
+  // L'ajout purge les entrées expirées : la Property ne grossit pas indéfiniment.
+  const json = c.ajouterSkipReorg_({ vieux: T0 - 1, encore: T0 + 999_999 }, 'neuf', T0, c.CONFIG.REORG_AUTO_SKIP_JOURS);
+  const apres = JSON.parse(json);
+  assert.ok(!('vieux' in apres), 'entrée expirée purgée');
+  assert.ok('encore' in apres && 'neuf' in apres);
+  assert.strictEqual(apres.neuf, T0 + c.CONFIG.REORG_AUTO_SKIP_JOURS * 24 * 3600 * 1000);
+});
+
+test('choisirDossierSature_ : premier dossier ≥ tolérance, hors skip-list (sinon null)', () => {
+  const c = load(['Config.gs', 'Reorg.gs']);
+  const T = c.CONFIG.REORG_MAX_SOUS_DOSSIERS_TOLERANCE;
+  const T0 = 1_700_000_000_000;
+  const dossiers = [
+    { id: 'sain', chemin: 'A', nbSousDossiers: T - 1 },
+    { id: 'plein', chemin: 'B', nbSousDossiers: T },
+    { id: 'plein2', chemin: 'C', nbSousDossiers: T + 3 },
+  ];
+
+  assert.strictEqual(plat(c.choisirDossierSature_(dossiers, {}, T0)).id, 'plein', 'le premier saturé');
+  // Ignoré → on passe au suivant ; tous ignorés → null (la campagne se tait, elle ne boucle pas).
+  assert.strictEqual(plat(c.choisirDossierSature_(dossiers, { plein: T0 + 1000 }, T0)).id, 'plein2');
+  assert.strictEqual(c.choisirDossierSature_(dossiers, { plein: T0 + 1000, plein2: T0 + 1000 }, T0), null);
+  // Expiration passée → le dossier redevient éligible (mise en sourdine, jamais définitive).
+  assert.strictEqual(plat(c.choisirDossierSature_(dossiers, { plein: T0 - 1 }, T0)).id, 'plein');
+  // Aucun saturé, champ absent ou non numérique : jamais une cible inventée.
+  assert.strictEqual(c.choisirDossierSature_([{ id: 'x', chemin: 'X', nbSousDossiers: T - 1 }], {}, T0), null);
+  assert.strictEqual(c.choisirDossierSature_([{ id: 'x', chemin: 'X' }], {}, T0), null);
+  assert.strictEqual(c.choisirDossierSature_([], {}, T0), null);
+});
+
+test('genererDemandeReorgAuto_ : les 3 gates (interrupteur, 1 scan/jour, assiette propre) puis dépôt', () => {
+  const T = load(['Config.gs', 'Reorg.gs']).CONFIG.REORG_MAX_SOUS_DOSSIERS_TOLERANCE;
+  // Monte un contexte avec un onglet Réorg mocké et un inventaire contrôlé.
+  const monter = (opts) => {
+    const c = load(['Config.gs', 'Reorg.gs']);
+    const props = {};
+    const ajouts = [];
+    c.PropertiesService = { getScriptProperties: () => ({
+      getProperty: (k) => (k in props ? props[k] : null),
+      setProperty: (k, v) => { props[k] = String(v); },
+      deleteProperty: (k) => { delete props[k]; },
+    }) };
+    Object.assign(props, opts.props || {});
+    c.feuille_ = () => ({
+      getDataRange: () => ({ getValues: () => opts.lignes || [['Clé', 'Type', 'ID', '', '', 'Statut', 'Détail', 'H']] }),
+      appendRow: (r) => ajouts.push(r),
+    });
+    c.inventaireDossiers_ = () => (opts.inventaire !== undefined ? opts.inventaire
+      : { dossiers: [{ id: 'ID_PLEIN', chemin: '05 · Carrière', nbSousDossiers: T }] });
+    c.journalInfo_ = () => {};
+    return { c, props, ajouts };
+  };
+
+  // Nominal : une demande AUTO est déposée sur le dossier saturé, et le jour est consommé.
+  const ok = monter({});
+  ok.c.genererDemandeReorgAuto_(() => false);
+  assert.strictEqual(ok.ajouts.length, 1);
+  assert.strictEqual(ok.ajouts[0][1], 'demande');
+  assert.strictEqual(ok.ajouts[0][5], 'analyse demandée');
+  assert.strictEqual(ok.ajouts[0][6], 'ID_PLEIN', 'la portée est l\'ID du dossier saturé');
+  assert.ok(String(ok.ajouts[0][0]).indexOf('demande-auto') === 0, 'clé AUTO (pilote la skip-list)');
+  assert.ok(ok.props.DriveAI_REORG_AUTO_JOUR, 'budget du jour consommé');
+
+  // Gate « assiette propre » : une demande déjà en cours → aucun dépôt.
+  for (const statut of ['analyse demandée', 'proposé']) {
+    const occupe = monter({ lignes: [['h'], ['demande-1', 'demande', '', '', '', statut, 'tout', '']] });
+    occupe.c.genererDemandeReorgAuto_(() => false);
+    assert.strictEqual(occupe.ajouts.length, 0, 'statut « ' + statut + ' » : on attend Marc');
+  }
+
+  // Gate budget : le quota du jour est déjà consommé.
+  const jour = new Date().toISOString().slice(0, 10);
+  const epuise = monter({ props: { DriveAI_REORG_AUTO_JOUR: jour + '|' + load(['Config.gs', 'Reorg.gs']).CONFIG.REORG_AUTO_MAX_JOUR } });
+  epuise.c.genererDemandeReorgAuto_(() => false);
+  assert.strictEqual(epuise.ajouts.length, 0);
+
+  // Inventaire interrompu (budget/trop large) : aucun dépôt ET le jour n'est PAS consommé (on retente).
+  const coupe = monter({ inventaire: { raison: 'interrompu' } });
+  coupe.c.genererDemandeReorgAuto_(() => false);
+  assert.strictEqual(coupe.ajouts.length, 0);
+  assert.ok(!coupe.props.DriveAI_REORG_AUTO_JOUR, 'un scan interrompu ne consomme pas la journée');
+
+  // Aucun dossier saturé : rien n'est déposé, mais le jour EST consommé (sinon re-scan à chaque tick).
+  const sain = monter({ inventaire: { dossiers: [{ id: 'a', chemin: 'A', nbSousDossiers: T - 1 }] } });
+  sain.c.genererDemandeReorgAuto_(() => false);
+  assert.strictEqual(sain.ajouts.length, 0);
+  assert.ok(sain.props.DriveAI_REORG_AUTO_JOUR, 'scan abouti sans cible : journée consommée');
+
+  // Interrupteur global.
+  const eteint = monter({});
+  eteint.c.CONFIG.REORG_AUTO_ACTIF = false;
+  eteint.c.genererDemandeReorgAuto_(() => false);
+  assert.strictEqual(eteint.ajouts.length, 0);
+});

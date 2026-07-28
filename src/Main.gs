@@ -471,6 +471,18 @@ function tickDriveAI() {
       catch (e) { journalErreur_('Reorg', 'Étape réorg différée : ' + e); }
     }
 
+    // 🤖 Campagne de réorg AUTOMATIQUE (C28-32, ADR-0029) : le moteur DÉPOSE lui-même une demande sur
+    // un dossier saturé (~7 sous-dossiers, ADR-0027) — Marc n'a plus à lancer l'analyse. Placée JUSTE
+    // APRÈS `etapeReorg_` : celle-ci vient d'APPLIQUER les actions validées et de solder la demande
+    // précédente, donc l'« assiette » est propre au bon moment (drainer avant d'alimenter). Elle ne
+    // fait que déposer une ligne : l'analyse LLM aura lieu au tick SUIVANT, avec son budget à elle —
+    // on n'enchaîne jamais un inventaire ET un appel Sonnet dans le même run. Gates : 1 scan/jour +
+    // aucune demande en cours. SECONDAIRE → enveloppée (jamais bloquer l'intake).
+    if (!estBudgetDepasse()) {
+      try { genererDemandeReorgAuto_(estBudgetDepasse); }
+      catch (e) { journalErreur_('Reorg', 'Demande auto différée : ' + e); }
+    }
+
     // Réconciliation Index↔Drive (C28-07, plan P3) : campagne de fond PERPÉTUELLE sur le
     // reliquat de budget — OBSERVE Drive (jamais ne le modifie) et aligne l'Index append-only
     // (statuts `déplacé`/`corbeillé`). SECONDAIRE → enveloppée : un échec ne bloque jamais l'intake.

@@ -68,7 +68,23 @@
 > INDÉPENDANT : la réorg pouvait les déplacer, le router les recréait) ; prompt Réorg qui RÉUTILISE un
 > regroupement existant au lieu d'en créer un second ; seuils interpolés depuis la CONFIG ; règle chat
 > conditionnée (le chat n'a aucun outil listant un dossier — il ne doit pas AFFIRMER une saturation) ;
-> décompte aligné sur ce que le LLM voit vraiment. 644 tests moteur.
+> décompte aligné sur ce que le LLM voit vraiment. **Verrous ajoutés en revue** : `fusionner` interdit
+> sur un dossier d'entité (il le DÉTRUIT et re-pointerait `Entités.Dossier ID` vers le fourre-tout —
+> le regroupement passe toujours par `deplacer`) ; année/type d'identité jamais CIBLE d'un déplacement.
+> **C28-31 MERGÉ (#215, #218).**
+>
+> **⚡ C28-32 — CAMPAGNE DE RÉORG AUTOMATIQUE (ADR-0029).** Constat déclencheur : la règle des ~7 ne
+> s'appliquait qu'À LA DEMANDE (`appliquerReorgIA_` sort sans ligne `demande`) → le Drive ne
+> convergeait jamais seul. Le moteur DÉPOSE désormais lui-même la demande sur un dossier saturé
+> (`genererDemandeReorgAuto_`) ; le pipeline existant fait le reste ; **rien ne s'applique sans la
+> validation de Marc**. Régulation « zéro spam » : **1 scan/jour** ET **« assiette propre »** (aucune
+> demande en cours) → séquentiel. Convergence : **skip-list 30 j** si le LLM ne propose aucun
+> regroupement (sinon même dossier re-choisi chaque jour), entrées expirées purgées. Le jour est
+> consommé dès qu'un scan ABOUTIT même sans cible (anti re-scan 288×/j), PAS si l'inventaire est
+> interrompu. Branché JUSTE APRÈS `etapeReorg_` (assiette fraîchement soldée ; l'analyse LLM a lieu au
+> tick SUIVANT — jamais inventaire + Sonnet dans le même run). **PR1 mergée (#219)** ; **PR2 = branche
+> courante**. 650 tests moteur. **Cadence réelle : ~1 dossier tous les 2 jours** (2 tours) —
+> `REORG_AUTO_MAX_JOUR` est le bouton pour accélérer une fois éprouvé.
 >
 > **2026-07-24 — C28-30 : onglet ASSISTANT (chatbot Claude), PR1/3 (plan architecte NotebookLM,
 > ADR-0026).** Marc veut un assistant conversationnel : (A) Q&A qui RETROUVE et LIT ses fichiers
