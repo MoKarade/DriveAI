@@ -149,6 +149,7 @@ const CONTRAT = [
   'entitesValideesParCle_', 'empreintesPlanConsolidation_',
   'sousCheminDomaine_', 'budgetJourConsolidation_', // règle unique flux↔plan + budget quotidien (revue flotte)
   'estCibleInterdite_', // C28-31 : année/type d'identité ne sont JAMAIS parents d'un regroupement
+  'compterSousDossiersRegroupables_', // C28-32 (ADR-0029) : mesure de la loi de Miller pour l'auto-scan
   'segmentsSousDomaine_', 'dossierEntiteParId_', // ADR-0028 : confinement + chemin réel, et le RÉSOLVEUR UNIQUE par ID — Router.gs, appelés AUSSI par ConsolidationExec.gs
   'seedEntitesMarc_', // seed one-shot des entités de Marc (décision 2026-07-17), appelé depuis Main
   // exécution du plan de consolidation (ADR-0024) — moveTo seul, §1 par mutation, cible recalculée

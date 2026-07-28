@@ -340,3 +340,25 @@ test('estCibleInterdite_ / parser : une ANNÉE ou un TYPE D\'IDENTITÉ n\'est ja
     c.parserPropositionReorg_(JSON.stringify({ actions: [{ type: 'deplacer', dossier: 2, vers: 3, raison: 'x' }] }), inv, {}),
     null, 'déplacer une entité dans un dossier d\'année : refusé');
 });
+
+/* ---------- C28-32 (ADR-0029) : mesure de la loi de Miller pour l'auto-scan ---------- */
+
+test('compterSousDossiersRegroupables_ : seules les ENTITÉS comptent (structurels et « _… » exclus)', () => {
+  const c = load(['Config.gs', 'Router.gs', 'Reorg.gs']); // Router.gs : TYPES_IDENTITE
+  const f = (nom) => ({ getName: () => nom });
+
+  assert.strictEqual(c.compterSousDossiersRegroupables_([f('Robovic'), f('Ubisoft')]), 2);
+  // Structurels : le moteur les find-or-crée PAR NOM → les regrouper ne convergerait pas.
+  assert.strictEqual(c.compterSousDossiersRegroupables_([f('2024'), f('2025')]), 0, 'années');
+  assert.strictEqual(c.compterSousDossiersRegroupables_([f('Factures'), f('Assurance')]), 0, 'schémas');
+  assert.strictEqual(c.compterSousDossiersRegroupables_([f('Passeport'), f('Permis de conduire')]), 0, 'types d\'identité');
+  assert.strictEqual(c.compterSousDossiersRegroupables_([f('_Doublons'), f('_Technique')]), 0, 'racines système');
+  // Mélange réaliste + entrées dégradées : jamais une saturation inventée, jamais un plantage.
+  const casse = { getName: () => { throw new Error('illisible'); } };
+  assert.strictEqual(c.compterSousDossiersRegroupables_(
+    [f('Robovic'), f('2024'), f('Factures'), f('_Doublons'), casse, f('Ubisoft')]), 2);
+  assert.strictEqual(c.compterSousDossiersRegroupables_([]), 0);
+  assert.strictEqual(c.compterSousDossiersRegroupables_(null), 0);
+  // Un dossier de REGROUPEMENT compte lui-même (règle récursive : un regroupement saturé sera reflaggé).
+  assert.strictEqual(c.compterSousDossiersRegroupables_([f('Anciens employeurs')]), 1);
+});
