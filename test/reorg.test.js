@@ -7,7 +7,7 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { load } = require('./harness');
+const { load, iter } = require('./harness');
 
 const ctx = load(['Config.gs', 'Reorg.gs']);
 const plat = (o) => JSON.parse(JSON.stringify(o));
@@ -48,6 +48,97 @@ test('resumeArborescence_ : flag « TROP DE DOSSIERS » au-delà de la TOLÉRANC
   const avecEx = ctx.resumeArborescence_(
     [{ id: 'i', chemin: 'X', nbFichiers: 1, exemples: ['CV.pdf'], nbSousDossiers: T }]);
   assert.strictEqual(avecEx, '#1 | X (1 fichiers, ' + T + ' sous-dossiers ⚠️ TROP DE DOSSIERS, À REGROUPER ; ex. CV.pdf)');
+});
+
+/**
+ * Faux dossier Drive complet (nom + contenu + parents) pour `inventaireDossiers_`.
+ * `parents` sert à la garde multi-parents (`aParentEtrangerProtege_`).
+ */
+const dossierFake = (id, nom, sousDossiers, parents) => {
+  const self = {
+    getId: () => id,
+    getName: () => nom,
+    getFiles: () => iter([]),
+    getFolders: () => iter(sousDossiers || []),
+    getParents: () => iter(parents || []),
+  };
+  return self;
+};
+
+test('inventaireDossiers_ : nbSousDossiers ne compte QUE les regroupables (années/schémas/_ exclus, ADR-0027)', () => {
+  const c = load(['Config.gs', 'Reorg.gs']);
+  const racine = dossierFake('idRacine', '05 · Carrière', []);
+  // 2 entités (regroupables) + 1 année + 1 schéma + 1 système « _… » → seules les 2 entités comptent.
+  const enfants = [
+    dossierFake('e1', 'Robovic', [], [racine]),
+    dossierFake('e2', 'Ubisoft', [], [racine]),
+    dossierFake('a1', '2024', [], [racine]),        // année : STRUCTURELLE (jamais regroupée)
+    dossierFake('s1', 'Factures', [], [racine]),    // schéma : le router route PAR NOM
+    dossierFake('x1', '_Doublons', [], [racine]),   // racine système
+  ];
+  racine.getFolders = () => iter(enfants);
+  c.ensembleDomainesProteges_ = () => ({});
+  c.DriveApp = { getFolderById: (id) => (id === 'idRacine' ? racine : null) };
+
+  const res = c.inventaireDossiers_('idRacine', () => false);
+  const parChemin = {};
+  res.dossiers.forEach((d) => { parChemin[d.chemin] = d; });
+  assert.strictEqual(parChemin['05 · Carrière'].nbSousDossiers, 2, 'seules les 2 entités comptent');
+  // Les enfants sont bien inventoriés (le comptage ne change pas la collecte) — sauf « _… ».
+  assert.strictEqual(parChemin['05 · Carrière/Robovic'].nbSousDossiers, 0);
+  assert.strictEqual(parChemin['05 · Carrière/2024'].nbSousDossiers, 0);
+  assert.ok(!parChemin['05 · Carrière/_Doublons'], 'racine système hors inventaire');
+  // Le champ alimente le flag du prompt (contrat entre les deux fonctions).
+  assert.ok(c.resumeArborescence_(res.dossiers).indexOf('⚠️') === -1, 'sous la tolérance : aucun flag');
+});
+
+test('inventaireDossiers_ : le flag SE DÉCLENCHE bien au-delà de la tolérance (test POSITIF, ADR-0027)', () => {
+  const c = load(['Config.gs', 'Reorg.gs']);
+  const T = c.CONFIG.REORG_MAX_SOUS_DOSSIERS_TOLERANCE; // dérivé de la CONFIG, jamais d'une valeur en dur
+  const racine = dossierFake('idRacine', '05 · Carrière', []);
+  // T entités regroupables → le flag DOIT apparaître. Sans ce test, élargir les exclusions
+  // neutraliserait la règle en silence (le test négatif seul resterait vert).
+  racine.getFolders = () => iter(Array.from({ length: T }, (_, i) => dossierFake('e' + i, 'Employeur ' + i, [], [racine])));
+  c.ensembleDomainesProteges_ = () => ({});
+  c.DriveApp = { getFolderById: (id) => (id === 'idRacine' ? racine : null) };
+
+  const res = c.inventaireDossiers_('idRacine', () => false);
+  const racineInv = res.dossiers.filter((d) => d.chemin === '05 · Carrière')[0];
+  assert.strictEqual(racineInv.nbSousDossiers, T);
+  assert.ok(c.resumeArborescence_(res.dossiers).includes('⚠️ TROP DE DOSSIERS'), 'le flag doit être émis');
+});
+
+test('inventaireDossiers_ : les dossiers de TYPE D\'IDENTITÉ ne comptent pas (créés par nom, jamais regroupables)', () => {
+  // Router.gs est chargé ICI parce que `estSegmentStructurel_` lit `TYPES_IDENTITE`, qui y est
+  // défini — comme en production (surface-moteur charge tout). Sans lui, la liste est vide et le
+  // test passerait à tort : c'est exactement la dépendance inter-module qu'on veut voir.
+  const c = load(['Config.gs', 'Router.gs', 'Reorg.gs']);
+  const racine = dossierFake('idRacine', '01 · Administratif & identité', []);
+  racine.getFolders = () => iter([
+    dossierFake('p1', 'Passeport', [], [racine]),
+    dossierFake('p2', 'Permis de conduire', [], [racine]),
+    dossierFake('e1', 'Revenu Québec', [], [racine]), // entité : seule regroupable
+  ]);
+  c.ensembleDomainesProteges_ = () => ({});
+  c.DriveApp = { getFolderById: (id) => (id === 'idRacine' ? racine : null) };
+
+  const res = c.inventaireDossiers_('idRacine', () => false);
+  const racineInv = res.dossiers.filter((d) => d.chemin === '01 · Administratif & identité')[0];
+  assert.strictEqual(racineInv.nbSousDossiers, 1, 'Passeport/Permis sont STRUCTURELS (le router les recrée par nom)');
+});
+
+test('inventaireDossiers_ : un sous-dossier au nom ILLISIBLE n’est pas compté et ne plante pas', () => {
+  const c = load(['Config.gs', 'Reorg.gs']);
+  const racine = dossierFake('idRacine', '05 · Carrière', []);
+  const casse = dossierFake('k1', 'x', [], [racine]);
+  casse.getName = () => { throw new Error('nom illisible (Drive vivant)'); };
+  racine.getFolders = () => iter([dossierFake('e1', 'Robovic', [], [racine]), casse]);
+  c.ensembleDomainesProteges_ = () => ({});
+  c.DriveApp = { getFolderById: (id) => (id === 'idRacine' ? racine : null) };
+
+  const res = c.inventaireDossiers_('idRacine', () => false);
+  const racineInv = res.dossiers.filter((d) => d.chemin === '05 · Carrière')[0];
+  assert.strictEqual(racineInv.nbSousDossiers, 1, 'illisible non compté, jamais une alerte inventée');
 });
 
 test('parserPropositionReorg_ : plan sain accepté, chaque type validé', () => {
@@ -207,4 +298,45 @@ test('actionsValidees_ : ne prend QUE les actions « validé » des 4 types, ave
   });
   assert.strictEqual(v[1].rang, 5);
   assert.strictEqual(v[1].cible, 'p');
+});
+
+/* ---------- Verrous de regroupement (revue C28-31) : fusion d'entité et cibles interdites ---------- */
+
+test('parserPropositionReorg_ : JAMAIS fusionner une ENTITÉ dans un dossier de REGROUPEMENT (destruction + Dossier ID re-pointé)', () => {
+  const c = load(['Config.gs', 'Router.gs', 'Reorg.gs']); // Router.gs : TYPES_IDENTITE
+  const inv = [
+    { id: 'r', chemin: '05 · Carrière', nbFichiers: 0, exemples: [] },
+    { id: 'ID_ROBO', chemin: '05 · Carrière/Robovic', nbFichiers: 8, exemples: [] },     // entité validée
+    { id: 'g', chemin: '05 · Carrière/Anciens employeurs', nbFichiers: 0, exemples: [] },// regroupement
+    { id: 'ID_ROBO2', chemin: '05 · Carrière/Robovic Inc.', nbFichiers: 2, exemples: [] },// doublon d'entité
+  ];
+  const idsEntites = { ID_ROBO: true, ID_ROBO2: true };
+  const plan = (actions) => c.parserPropositionReorg_(JSON.stringify({ actions, synthese: 's' }), inv, idsEntites);
+
+  // REFUSÉ : fusionner l'entité dans le regroupement — `fusionner` détruit la source et
+  // `repointerEntites_` ferait pointer l'entité sur le fourre-tout.
+  assert.strictEqual(plan([{ type: 'fusionner', dossier: 2, vers: 3, raison: 'regrouper' }]), null,
+    'seule action invalide → plan null');
+  // PERMIS : déplacer l'entité dans le regroupement (c'est LA façon de regrouper).
+  assert.strictEqual(plat(plan([{ type: 'deplacer', dossier: 2, vers: 3, raison: 'regrouper' }])).actions.length, 1);
+  // PERMIS : fusionner deux dossiers de la MÊME entité (doublons de graphie, C21-06).
+  assert.strictEqual(plat(plan([{ type: 'fusionner', dossier: 4, vers: 2, raison: 'doublon' }])).actions.length, 1);
+});
+
+test('estCibleInterdite_ / parser : une ANNÉE ou un TYPE D\'IDENTITÉ n\'est jamais parent d\'un regroupement', () => {
+  const c = load(['Config.gs', 'Router.gs', 'Reorg.gs']);
+  assert.strictEqual(c.estCibleInterdite_('2026'), true);
+  assert.strictEqual(c.estCibleInterdite_('Passeport'), true);
+  assert.strictEqual(c.estCibleInterdite_('Anciens employeurs'), false);
+  assert.strictEqual(c.estCibleInterdite_('Factures'), false, 'un schéma reste une cible de fusion légitime');
+
+  // ADR-0023 : « 02 · Finances/2026/Robovic » est interdit — le parser doit refuser l'action.
+  const inv = [
+    { id: 'r', chemin: '02 · Finances', nbFichiers: 0, exemples: [] },
+    { id: 'e', chemin: '02 · Finances/Desjardins', nbFichiers: 5, exemples: [] },
+    { id: 'a', chemin: '02 · Finances/2026', nbFichiers: 3, exemples: [] },
+  ];
+  assert.strictEqual(
+    c.parserPropositionReorg_(JSON.stringify({ actions: [{ type: 'deplacer', dossier: 2, vers: 3, raison: 'x' }] }), inv, {}),
+    null, 'déplacer une entité dans un dossier d\'année : refusé');
 });

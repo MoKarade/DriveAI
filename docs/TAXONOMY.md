@@ -86,6 +86,27 @@ dossier par émetteur ponctuel, dossier-catégorie (« Cours », « Devoirs », 
 squelettes de sous-dossiers d'entité (`SCHEMAS_ENTITE` — plus jamais créés),
 `SOUS_DOSSIERS_PAR_ANNEE` (mort avec le chemin v1).
 
+### Limite cognitive : ~7 sous-dossiers par dossier (ADR-0027)
+
+Un dossier ne devrait pas contenir plus de **~7 sous-dossiers** (`REORG_MAX_SOUS_DOSSIERS_IDEAL`) ;
+l'alerte ne se déclenche qu'à **9** (`…_TOLERANCE`, « 7 ± 2 »). Le décompte ne porte que sur les
+sous-dossiers **REGROUPABLES** : sont exemptés les **années** « AAAA », les **noms de schéma**, les
+**types de pièce d'identité** (`Passeport`, `Permis de conduire`, … — tous couverts par
+`estSegmentStructurel_`), les racines système `_…` et la zone protégée `04`.
+
+**Le dossier de REGROUPEMENT est un niveau structurel AUTORISÉ** (la seule exception aux « interdits »
+ci-dessus), sous conditions strictes :
+- il est **parent d'ENTITÉS uniquement** (« Anciens employeurs », « Anciens véhicules ») — **jamais**
+  un parent de documents, jamais un dossier-catégorie déguisé ;
+- il n'est **JAMAIS une cible de routage** : le flux vivant résout par `Entités.Dossier ID`
+  (ADR-0028), il ne crée ni ne cherche un regroupement ;
+- il n'est créé **qu'après validation de Marc**, sur proposition de la Réorg ou du chat ;
+- on y entre **uniquement par `deplacer`**. `fusionner` est INTERDIT sur un dossier d'entité (il le
+  détruit et re-pointerait `Entités.Dossier ID` vers le fourre-tout) — verrou codé dans
+  `parserPropositionReorg_` ;
+- il **compte lui-même** comme regroupable : un regroupement saturé sera à son tour signalé (règle
+  récursive, pas d'échappatoire).
+
 ## Campagne de consolidation (C28-26 — génération `src/Consolidation.gs`, exécution `src/ConsolidationExec.gs`)
 
 Le stock existant est ramené à cette taxonomie par une campagne en DEUX étages, tous deux ALLUMÉS
@@ -145,9 +166,13 @@ Les dossiers VIDÉS relèvent de la corbeille APP validée (ADR-0014), jamais du
   les files `00 ·` (À trier, À vérifier) et les racines `_…`, les **dossiers de catégorie à ID FIXE**
   (`CONFIG.CATEGORIES` : `Logement`/`Véhicule` — HÉRITAGE du chemin v1, plus une cible de routage
   depuis ADR-0023 ; la consolidation en drainera les fichiers, puis vidés → corbeille APP ADR-0014),
-  les sous-dossiers d'année `AAAA` et les **noms** des sous-dossiers de schéma hérités (plus jamais
+  les sous-dossiers d'année `AAAA`, les **noms** des sous-dossiers de schéma hérités (plus jamais
   créés depuis ADR-0023 — mais tant qu'ils portent des fichiers, les fusionner/renommer hors app
-  casserait le plan de consolidation). `creer` sert aux dossiers STRUCTURELS,
+  casserait le plan de consolidation) et les dossiers de **TYPE DE PIÈCE D'IDENTITÉ** (`Passeport`,
+  `Permis de conduire`, … — find-or-créés PAR NOM par le flux ET la consolidation : les muter les
+  ferait re-créer au document suivant). Une **année** et un **type d'identité** ne peuvent pas non
+  plus être la CIBLE d'un déplacement (`estCibleInterdite_` — sinon `02 · Finances/2026/Robovic`,
+  interdit par ADR-0023). `creer` sert aux dossiers STRUCTURELS,
   jamais à inventer une entité (le référentiel `Entités` route par `Dossier ID`). **Fusionner un dossier
   d'entité impose de re-pointer `Entités.Dossier ID`** (contrat C21-06). Zone protégée exclue de
   l'inventaire par remontée d'ancêtres (multi-parents, échec fermé) dès la collecte.

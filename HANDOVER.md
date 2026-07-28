@@ -33,6 +33,42 @@
 > cassait ; désormais tronqué). 634 tests moteur. NB : ré-exécuter `npm install` dans `app/` après un
 > checkout frais (#207 a re-pinné `@mokarade/hub-contract` v1.1 — sinon tsc casse sur `usage` ; et
 > react-markdown est désormais une dépendance à installer).
+> **SUITE UX COMPLÈTE ET MERGÉE : #210 (PR1) · #211 (PR2) · #212 (PR3)** — reste à confirmer par un
+> test RÉEL de Marc dans l'app.
+>
+> **⚡ C28-31 — LIMITE COGNITIVE DES DOSSIERS (~7), demande Marc 2026-07-28 : « je veux un maximum de
+> genre 7 dossiers par dossiers ».** Plan architecte NotebookLM, 2 PR. **ADR-0027** : règle des **7 ± 2**
+> appliquée de façon **ASYNCHRONE** — la Réorg IA et le Chat *proposent* un regroupement thématique
+> (ex. « Anciens employeurs »), **Marc valide** ; le **flux vivant n'est JAMAIS bloqué** (sinon deux
+> logiques de classement concurrentes divergent → re-déplacements en boucle, et « granularité =
+> enrichissement, jamais frein »). `Router.gs`/`Consolidation.gs` **INTOUCHÉS**. Exemptions : années
+> « AAAA », noms de schéma, zone `04 · Immigration`. **PR1 MERGÉE (#215)** : ADR-0027 + seuils
+> (`REORG_MAX_SOUS_DOSSIERS_IDEAL` 7 / `_TOLERANCE` 9) + flag pur dans `resumeArborescence_`
+> (« ⚠️ TROP DE DOSSIERS, À REGROUPER », émis au-delà de la tolérance SEULEMENT → 0 token de plus sur
+> un dossier sain ; champ absent ⇒ aucun flag). **PR2 (branche courante)** : `inventaireDossiers_`
+> calcule `nbSousDossiers` en ne comptant QUE les sous-dossiers **regroupables** (années/schémas exclus
+> via `estSegmentStructurel_` — la whitelist `parserPropositionReorg_` rejette toute mutation d'un
+> segment structurel, les compter ferait proposer des actions systématiquement rejetées) ; règle « loi
+> de Miller » ajoutée à `promptReorg_` et `promptChatAssistant_`. **LIMITE CONNUE (découverte à
+> l'implémentation)** : un dossier créé n'a pas encore de numéro (Réorg) ni d'ID (Chat) → « créer le
+> parent + y déplacer » est **impossible en un seul plan** ; le regroupement prend **2 tours** (tour 1 :
+> créer, validé par Marc ; tour 2 : déplacer dedans). Les deux prompts l'énoncent explicitement pour
+> éviter des actions invalides.
+>
+> **⚠️ C28-31 a été GELÉ puis REPRIS : la revue a trouvé que le regroupement ne pouvait pas converger.**
+> Le moteur retrouvait le dossier d'une entité **par NOM**, en enfant DIRECT du domaine → un dossier
+> regroupé était re-créé à plat par le flux vivant, la consolidation ressortait les fichiers, puis
+> proposait de **corbeiller le dossier vidé**. L'ADR-0027 §4 affirmait le contraire (corrigé, marqué
+> FAUX). Prérequis livré : **ADR-0028 — routage TOPOLOGIQUE** (#216 logique pure, #217 I/O + docs) :
+> le `Dossier ID` du référentiel prime sur le chemin ; **un seul résolveur** (`dossierEntiteParId_`)
+> pour le flux vivant ET l'exécution du plan (divergence impossible par construction) ; **4 replis par
+> nom** (pas d'ID, ID mort, dossier **CORBEILLÉ** — sinon perte silencieuse à 30 j —, hors domaine) ;
+> chemin RÉEL inscrit dans l'Index. **C28-31 repris ensuite** avec les corrections des deux revues :
+> `TYPES_IDENTITE` (Passeport, Permis…) ajoutés à `estSegmentStructurel_` (trou de convergence
+> INDÉPENDANT : la réorg pouvait les déplacer, le router les recréait) ; prompt Réorg qui RÉUTILISE un
+> regroupement existant au lieu d'en créer un second ; seuils interpolés depuis la CONFIG ; règle chat
+> conditionnée (le chat n'a aucun outil listant un dossier — il ne doit pas AFFIRMER une saturation) ;
+> décompte aligné sur ce que le LLM voit vraiment. 644 tests moteur.
 >
 > **2026-07-24 — C28-30 : onglet ASSISTANT (chatbot Claude), PR1/3 (plan architecte NotebookLM,
 > ADR-0026).** Marc veut un assistant conversationnel : (A) Q&A qui RETROUVE et LIT ses fichiers
