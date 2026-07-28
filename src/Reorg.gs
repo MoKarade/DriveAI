@@ -619,12 +619,23 @@ function aParentEtrangerProtege_(dossier, parentConnu, proteges) {
   }
 }
 
-/** Résumé texte de l'inventaire pour le prompt : « #n | chemin (x fichiers ; ex. a, b) ». PURE (testée). */
+/**
+ * Résumé texte de l'inventaire pour le prompt : « #n | chemin (x fichiers ; ex. a, b) ». PURE (testée).
+ * Loi de Miller (ADR-0027) : un dossier SATURÉ porte en plus un flag explicite
+ * « , y sous-dossiers ⚠️ TROP DE DOSSIERS, À REGROUPER » que `promptReorg_` sait interpréter.
+ * Le flag n'est émis QU'AU-DELÀ de la tolérance : un dossier sain ne coûte pas un token de plus
+ * (budget §2.6 — aucun appel LLM ajouté par ce chantier). `nbSousDossiers` absent ou non numérique
+ * (inventaire d'une version antérieure) ⇒ AUCUN flag : on n'invente jamais une alerte.
+ */
 function resumeArborescence_(inventaire) {
   return inventaire.map(function (d, i) {
     var noms = (d.exemples || []).map(function (n) { return String(n).slice(0, 60); });
     var exemples = noms.length ? ' ; ex. ' + noms.join(', ') : '';
-    return '#' + (i + 1) + ' | ' + d.chemin + ' (' + d.nbFichiers + ' fichiers' + exemples + ')';
+    var nb = Number(d.nbSousDossiers);
+    var sature = isFinite(nb) && nb >= CONFIG.REORG_MAX_SOUS_DOSSIERS_TOLERANCE
+      ? ', ' + nb + ' sous-dossiers ⚠️ TROP DE DOSSIERS, À REGROUPER'
+      : '';
+    return '#' + (i + 1) + ' | ' + d.chemin + ' (' + d.nbFichiers + ' fichiers' + sature + exemples + ')';
   }).join('\n');
 }
 
