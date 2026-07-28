@@ -402,6 +402,14 @@ test('choisirDossierSature_ : premier dossier ≥ tolérance, hors skip-list (si
   assert.strictEqual(c.choisirDossierSature_(dossiers, { plein: T0 + 1000, plein2: T0 + 1000 }, T0), null);
   // Expiration passée → le dossier redevient éligible (mise en sourdine, jamais définitive).
   assert.strictEqual(plat(c.choisirDossierSature_(dossiers, { plein: T0 - 1 }, T0)).id, 'plein');
+  // La campagne AUTO ne vise que les RACINES de domaine : un dossier de regroupement fraîchement
+  // rempli (profond) est saturé PAR CONSTRUCTION et redeviendrait la cible → sur-imbrication.
+  assert.strictEqual(c.choisirDossierSature_(
+    [{ id: 'g', chemin: '05 · Carrière/Anciens employeurs', nbSousDossiers: T + 3 }], {}, T0), null,
+    'dossier profond : hors campagne auto (une réorg MANUELLE le couvre)');
+  assert.strictEqual(plat(c.choisirDossierSature_(
+    [{ id: 'g', chemin: '05 · Carrière/Anciens employeurs', nbSousDossiers: T + 3 },
+     { id: 'racine', chemin: '05 · Carrière', nbSousDossiers: T }], {}, T0)).id, 'racine');
   // Aucun saturé, champ absent ou non numérique : jamais une cible inventée.
   assert.strictEqual(c.choisirDossierSature_([{ id: 'x', chemin: 'X', nbSousDossiers: T - 1 }], {}, T0), null);
   assert.strictEqual(c.choisirDossierSature_([{ id: 'x', chemin: 'X' }], {}, T0), null);
@@ -441,12 +449,30 @@ test('genererDemandeReorgAuto_ : les 3 gates (interrupteur, 1 scan/jour, assiett
   assert.ok(String(ok.ajouts[0][0]).indexOf('demande-auto') === 0, 'clé AUTO (pilote la skip-list)');
   assert.ok(ok.props.DriveAI_REORG_AUTO_JOUR, 'budget du jour consommé');
 
-  // Gate « assiette propre » : une demande déjà en cours → aucun dépôt.
-  for (const statut of ['analyse demandée', 'proposé']) {
-    const occupe = monter({ lignes: [['h'], ['demande-1', 'demande', '', '', '', statut, 'tout', '']] });
-    occupe.c.genererDemandeReorgAuto_(() => false);
-    assert.strictEqual(occupe.ajouts.length, 0, 'statut « ' + statut + ' » : on attend Marc');
+  // Gate « assiette propre ». ⚠ `proposé` sur une ligne DEMANDE est TERMINAL (l'app ne solde que
+  // les ACTIONS) : s'en servir comme signal d'occupation verrouillait la campagne À VIE dès la
+  // première analyse. L'occupation se mesure donc sur les ACTIONS restant à décider/appliquer.
+  const occupeAnalyse = monter({ lignes: [['h'], ['demande-1', 'demande', '', '', '', 'analyse demandée', 'tout', '']] });
+  occupeAnalyse.c.genererDemandeReorgAuto_(() => false);
+  assert.strictEqual(occupeAnalyse.ajouts.length, 0, 'analyse en attente : on n\'empile pas');
+
+  for (const statut of ['proposé', 'validé']) {
+    const occupeActions = monter({ lignes: [['h'],
+      ['demande-1', 'demande', '', '', '', 'proposé', 'tout', ''],
+      ['reorg|demande-1|1', 'creer', '→x', '', 'A/B', statut, 'r', '']] });
+    occupeActions.c.genererDemandeReorgAuto_(() => false);
+    assert.strictEqual(occupeActions.ajouts.length, 0, 'action « ' + statut + ' » : Marc a encore à traiter');
   }
+
+  // Plan PRÉCÉDENT entièrement traité (demande `proposé` terminale, actions `appliqué`/`écarté`) :
+  // l'assiette est LIBRE — c'est ce qui permet le TOUR 2 du regroupement (et la suite de la campagne).
+  const libre = monter({ lignes: [['h'],
+    ['demande-1', 'demande', '', '', '', 'proposé', 'tout', ''],
+    ['reorg|demande-1|1', 'creer', '→x', '', 'A/B', 'appliqué', 'r', ''],
+    ['reorg|demande-1|2', 'deplacer', 'a→b', '', 'A/B', 'écarté', 'r', ''],
+    ['videcandidat|z', 'dossier-vide', 'z', 'A/C', '', 'vide-candidat', '', '']] });
+  libre.c.genererDemandeReorgAuto_(() => false);
+  assert.strictEqual(libre.ajouts.length, 1, 'plan soldé → la campagne peut enchaîner (tour 2)');
 
   // Gate budget : le quota du jour est déjà consommé.
   const jour = new Date().toISOString().slice(0, 10);
@@ -454,11 +480,21 @@ test('genererDemandeReorgAuto_ : les 3 gates (interrupteur, 1 scan/jour, assiett
   epuise.c.genererDemandeReorgAuto_(() => false);
   assert.strictEqual(epuise.ajouts.length, 0);
 
-  // Inventaire interrompu (budget/trop large) : aucun dépôt ET le jour n'est PAS consommé (on retente).
+  // Inventaire INTERROMPU (tick chargé) : aucun dépôt ET le jour n'est PAS consommé (on retente).
   const coupe = monter({ inventaire: { raison: 'interrompu' } });
   coupe.c.genererDemandeReorgAuto_(() => false);
   assert.strictEqual(coupe.ajouts.length, 0);
   assert.ok(!coupe.props.DriveAI_REORG_AUTO_JOUR, 'un scan interrompu ne consomme pas la journée');
+
+  // Abandon DÉTERMINISTE (trop-large, protégé) : re-scanner referait le même BFS complet à chaque
+  // tick (288×/jour en pure perte) → la journée EST consommée.
+  for (const raison of ['trop-large', 'protege']) {
+    const det = monter({ inventaire: { raison } });
+    det.c.journalErreur_ = () => {};
+    det.c.genererDemandeReorgAuto_(() => false);
+    assert.strictEqual(det.ajouts.length, 0);
+    assert.ok(det.props.DriveAI_REORG_AUTO_JOUR, 'abandon « ' + raison + ' » : journée consommée');
+  }
 
   // Aucun dossier saturé : rien n'est déposé, mais le jour EST consommé (sinon re-scan à chaque tick).
   const sain = monter({ inventaire: { dossiers: [{ id: 'a', chemin: 'A', nbSousDossiers: T - 1 }] } });

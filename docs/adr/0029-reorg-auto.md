@@ -24,16 +24,42 @@ statut « analyse demandée » dans l'onglet `Réorg`. Le Drive ne converge donc
      1) dépôts automatiques par jour (≈ 0,06 $/j). **Doit rester ≤ `REORG_MAX_JOUR`** (5, le plafond
      des analyses LLM, compteur DISTINCT) : au-delà, les demandes s'empileraient sans être analysées —
      et il faut garder de la marge pour les réorgs MANUELLES de Marc ;
-   - **« assiette propre »** : aucune demande n'est déposée s'il en existe déjà une au statut
-     « analyse demandée » **ou** « proposé ». Le moteur ne propose un nouveau dossier que quand Marc
-     a traité le précédent. C'est aussi ce qui rend la campagne naturellement **séquentielle**.
+   - **« assiette propre »** : aucune demande n'est déposée tant que Marc a quelque chose à traiter —
+     une demande en attente d'**analyse**, ou des **ACTIONS** d'un plan encore `proposé`/`validé`.
+     Le moteur ne propose un nouveau dossier que quand le précédent est soldé : campagne
+     naturellement **séquentielle**.
+     **⚠ Correctif 2026-07-28 (revue quota) :** l'occupation se mesure sur les **ACTIONS**, jamais sur
+     le statut d'une ligne `demande`. `proposé` y est **TERMINAL** (`solderDemande_` est le dernier
+     écrivain moteur, l'app ne solde que les actions) — s'en servir verrouillait la campagne **à vie**
+     dès la première analyse, et interdisait le tour 2 du regroupement.
 
-3. **Skip-list (convergence).** Si le LLM répond « aucune action » sur un dossier saturé (il ne
-   trouve aucun regroupement sensé), le dossier est inscrit dans `DriveAI_REORG_SKIP` avec une
-   **expiration à 30 jours** et ignoré par l'auto-scan d'ici là. Sans ça, la campagne re-proposerait
-   le même dossier tous les jours — le piège « compteur qui ne converge pas » de §7.
+3. **Skip-list (convergence).** Un dossier désigné par la campagne est mis en sourdine
+   `REORG_AUTO_SKIP_JOURS` (30) jours — inscrit dans `DriveAI_REORG_SKIP`, entrées expirées purgées à
+   l'écriture — sur **TOUT solde terminal** : « aucune action proposée », mais aussi portée trop
+   large, zone protégée, aucun dossier analysable, abandon après N tentatives *(correctif revue
+   quota)*. Ne couvrir que le « 0 action » laissait le dossier éligible après un échec :
+   `choisirDossierSature_` re-choisissait **le même** le lendemain, en ré-armant les essais LLM à
+   chaque nouvelle demande — jusqu'à saturer le plafond quotidien et priver Marc de ses réorgs
+   manuelles. Mise en sourdine, jamais définitive.
 
-4. **Mécanique en 2 tours, assumée.** Un dossier créé n'a pas encore de numéro dans l'inventaire :
+4. **Cibles = RACINES de domaine seulement** *(correctif revue quota)*. La campagne AUTO ne
+   sélectionne qu'un dossier **sans « / » dans son chemin**. C'est là que la saturation arrive
+   vraiment (12 employeurs sous `05 · Carrière`). Un dossier de **regroupement** qu'on vient de
+   remplir de k ≥ tolérance entités est saturé **par construction** : il redeviendrait aussitôt la
+   cible et on demanderait au LLM de sous-grouper ce qu'il vient de grouper (sur-imbrication, ou
+   0 action au prix d'une analyse). Un dossier profond reste couvert par une réorg **manuelle**.
+
+5. **Abandon déterministe ⇒ la journée est consommée** *(correctif revue quota)*. `interrompu`
+   (tick chargé) ne consomme rien : on retente. Mais `trop-large` et `protege` sont **déterministes** —
+   re-scanner referait le même BFS complet **à chaque tick** (288×/jour, des milliers d'appels Drive
+   en pure perte). Ces abandons consomment donc le budget du jour, avec une trace au Journal.
+
+6. **BUDGET TAIL** *(correctif revue quota)*. L'étape est **pure I/O** Drive/Sheet (un BFS de lecture
+   + un `appendRow`, zéro LLM) : elle prend le garde étendu (`CONFIG.BUDGET_MS`, 4,5 min) comme la
+   consolidation, et non le budget de tick 3 min réservé aux appels Sonnet. Elle n'utilise que le
+   reliquat, sans jamais voler de temps au flux vivant.
+
+7. **Mécanique en 2 tours, assumée.** Un dossier créé n'a pas encore de numéro dans l'inventaire :
    « créer le parent **et** y déplacer » est impossible dans un même plan. Tour 1 crée
    « Anciens employeurs » (Marc valide) ; le dossier compte alors **13** enfants au lieu de 12, donc
    l'auto-scan le re-sélectionne ; tour 2 y déplace les entités. Une consigne **anti-synonyme** au

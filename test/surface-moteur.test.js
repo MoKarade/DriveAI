@@ -151,6 +151,7 @@ const CONTRAT = [
   'estCibleInterdite_', // C28-31 : année/type d'identité ne sont JAMAIS parents d'un regroupement
   'compterSousDossiersRegroupables_', 'genererDemandeReorgAuto_', // C28-32 (ADR-0029) : mesure + dépôt auto de la demande (appelé par Main.gs)
   'lireSkipReorg_', 'estIgnoreReorg_', 'ajouterSkipReorg_', 'choisirDossierSature_', // skip-list de convergence (PURES)
+  'assietteOccupee_', 'ignorerDossierAuto_', // C28-32 : occupation mesurée sur les ACTIONS (jamais le statut terminal d'une demande) + sourdine sur TOUT solde terminal
   'segmentsSousDomaine_', 'dossierEntiteParId_', // ADR-0028 : confinement + chemin réel, et le RÉSOLVEUR UNIQUE par ID — Router.gs, appelés AUSSI par ConsolidationExec.gs
   'seedEntitesMarc_', // seed one-shot des entités de Marc (décision 2026-07-17), appelé depuis Main
   // exécution du plan de consolidation (ADR-0024) — moveTo seul, §1 par mutation, cible recalculée

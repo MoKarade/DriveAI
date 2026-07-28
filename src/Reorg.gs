@@ -440,6 +440,7 @@ function appliquerReorgIA_(f, lignes, estBudgetDepasse) {
   if (essais >= CONFIG.REORG_ESSAIS_MAX) {
     solderDemande_(f, demande.rang, 'échec', 'analyse impossible après ' + essais + ' tentatives — voir Journal');
     journalErreur_('Reorg', 'Demande abandonnée après ' + essais + ' tentatives.');
+    ignorerDossierAuto_(props, demande, 'analyse impossible');
     return;
   }
   props.setProperty('DriveAI_REORG_ESSAIS', prefixe + (essais + 1));
@@ -452,16 +453,19 @@ function appliquerReorgIA_(f, lignes, estBudgetDepasse) {
   }
   if (resultat.raison === 'protege') {
     solderDemande_(f, demande.rang, 'échec', 'portée refusée : zone protégée (04 · Immigration)');
+    ignorerDossierAuto_(props, demande, 'zone protégée');
     return;
   }
   if (resultat.raison === 'trop-large') {
     // Déterministe : retenter referait le même abandon — échec immédiat, conseil actionnable.
     solderDemande_(f, demande.rang, 'échec', 'portée trop large (> ' + CONFIG.REORG_DOSSIERS_MAX + ' dossiers) — choisis un dossier');
+    ignorerDossierAuto_(props, demande, 'portée trop large');
     return;
   }
   var inventaire = resultat.dossiers;
   if (inventaire.length === 0) {
     solderDemande_(f, demande.rang, 'échec', 'aucun dossier analysable dans cette portée');
+    ignorerDossierAuto_(props, demande, 'aucun dossier analysable');
     return;
   }
 
@@ -512,22 +516,59 @@ function appliquerReorgIA_(f, lignes, estBudgetDepasse) {
   // avait désigné → on l'ignore REORG_AUTO_SKIP_JOURS jours. Sans ça, la campagne re-choisirait le
   // même dossier demain, et tous les jours (le compte de sous-dossiers, lui, n'a pas bougé).
   // Uniquement pour les demandes AUTO : une demande de Marc n'est jamais mise en sourdine.
-  if (proposition.actions.length === 0 && demande.cle.indexOf('demande-auto') === 0) {
-    try {
-      var maintenantSkip = Date.now();
-      props.setProperty('DriveAI_REORG_SKIP', ajouterSkipReorg_(
-        lireSkipReorg_(props.getProperty('DriveAI_REORG_SKIP')),
-        demande.portee, maintenantSkip, CONFIG.REORG_AUTO_SKIP_JOURS));
-      journalInfo_('Reorg', 'Aucun regroupement proposé : dossier ignoré ' +
-        CONFIG.REORG_AUTO_SKIP_JOURS + ' jours par la campagne auto.');
-    } catch (eSkip) { /* skip-list non persistée : au pire le dossier est re-proposé — jamais bloquant */ }
-  }
+  if (proposition.actions.length === 0) ignorerDossierAuto_(props, demande, 'aucun regroupement proposé');
   solderDemande_(f, demande.rang, 'proposé', proposition.synthese || '');
   try { props.deleteProperty('DriveAI_REORG_ESSAIS'); } catch (e) { /* résidu inoffensif */ }
   journalInfo_('Reorg', 'Proposition écrite : ' + proposition.actions.length + ' action(s) — à valider dans l’app.');
 }
 
 /* ================= C28-32 (ADR-0029) : demande de réorg AUTOMATIQUE ================= */
+
+/** Types de lignes d'ACTION de l'onglet Réorg (par opposition aux lignes `demande`/`dossier-vide`). */
+var REORG_TYPES_ACTION = ['deplacer', 'fusionner', 'creer', 'renommer', 'deplacer-fichier'];
+
+/**
+ * Vrai si Marc a encore quelque chose à traiter (« assiette » pas propre) : une demande en attente
+ * d'ANALYSE, ou des ACTIONS d'un plan encore `proposé`/`validé` (pas encore décidées ou pas encore
+ * appliquées). PURE (testée).
+ *
+ * ⚠ Le statut `proposé` d'une ligne **`demande`** est TERMINAL — `solderDemande_` est le dernier
+ * écrivain côté moteur et l'app n'écrit JAMAIS sur cette ligne (elle ne solde que les ACTIONS). S'en
+ * servir comme signal d'occupation verrouillait la campagne À VIE dès la première analyse (bug
+ * introduit puis corrigé le 2026-07-28, revue quota). On mesure donc l'occupation sur les ACTIONS.
+ */
+function assietteOccupee_(lignes) {
+  for (var i = 1; i < (lignes || []).length; i++) {
+    var type = String(lignes[i][1]);
+    var statut = String(lignes[i][5]);
+    if (type === 'demande') {
+      if (statut === 'analyse demandée') return true; // analyse en attente du prochain tick
+      continue;                                       // `proposé`/`échec` = terminal : n'occupe rien
+    }
+    if (REORG_TYPES_ACTION.indexOf(type) === -1) continue; // `dossier-vide` = constat, jamais bloquant
+    if (statut === 'proposé' || statut === 'validé') return true; // à décider / à appliquer
+  }
+  return false;
+}
+
+/**
+ * Met un dossier en sourdine pour la campagne AUTO (skip-list). Appelée sur TOUT solde terminal
+ * d'une demande `demande-auto…` — pas seulement « 0 action » : un échec (portée trop large,
+ * protégée, aucun dossier analysable, abandon après N tentatives) laisse sinon le dossier éligible,
+ * et `choisirDossierSature_` re-choisirait LE MÊME demain, en ré-armant les essais LLM à chaque fois.
+ * Sans effet sur une demande de Marc. Jamais bloquant (échec de persistance toléré).
+ */
+function ignorerDossierAuto_(props, demande, raison) {
+  if (!demande || String(demande.cle).indexOf('demande-auto') !== 0 || !demande.portee) return;
+  try {
+    var maintenant = Date.now();
+    props.setProperty('DriveAI_REORG_SKIP', ajouterSkipReorg_(
+      lireSkipReorg_(props.getProperty('DriveAI_REORG_SKIP')),
+      demande.portee, maintenant, CONFIG.REORG_AUTO_SKIP_JOURS));
+    journalInfo_('Reorg', 'Dossier ignoré ' + CONFIG.REORG_AUTO_SKIP_JOURS +
+      ' jours par la campagne auto (' + raison + ').');
+  } catch (e) { /* skip non persistée : au pire re-proposé — jamais bloquant */ }
+}
 
 /**
  * Skip-list de la campagne auto : {folderId: horodatage d'expiration}. Un dossier pour lequel le LLM
@@ -570,6 +611,12 @@ function choisirDossierSature_(dossiers, skip, maintenant) {
     var d = dossiers[i];
     var n = Number(d.nbSousDossiers);
     if (!isFinite(n) || n < CONFIG.REORG_MAX_SOUS_DOSSIERS_TOLERANCE) continue;
+    // RACINES de domaine SEULEMENT pour la campagne AUTO (revue quota) : c'est là que la saturation
+    // arrive vraiment (12 employeurs sous « 05 · Carrière »). Un dossier de REGROUPEMENT qu'on vient
+    // de remplir de k ≥ tolérance entités est saturé PAR CONSTRUCTION : il redeviendrait aussitôt la
+    // cible, et on demanderait au LLM de sous-grouper ce qu'il vient de grouper (sur-imbrication, ou
+    // 0 action au prix d'une analyse). Un dossier PROFOND reste couvert par une réorg MANUELLE.
+    if (String(d.chemin || '').indexOf('/') !== -1) continue;
     if (estIgnoreReorg_(skip, d.id, maintenant)) continue;
     return { id: d.id, chemin: d.chemin, nbSousDossiers: n };
   }
@@ -602,14 +649,19 @@ function genererDemandeReorgAuto_(estBudgetDepasse) {
 
   var f = feuille_('Réorg');
   var lignes = f.getDataRange().getValues();
-  for (var i = 1; i < lignes.length; i++) {
-    if (String(lignes[i][1]) !== 'demande') continue;
-    var statut = String(lignes[i][5]);
-    if (statut === 'analyse demandée' || statut === 'proposé') return; // assiette pas encore propre
-  }
+  if (assietteOccupee_(lignes)) return; // Marc a encore à décider/appliquer : on n'empile pas
 
   var inv = inventaireDossiers_('tout', estBudgetDepasse);
-  if (!inv.dossiers) return; // interrompu/trop large/protégé : on retentera, sans consommer le jour
+  if (!inv.dossiers) {
+    // « interrompu » = tick chargé : on retentera, sans consommer la journée. TOUT AUTRE abandon
+    // (`trop-large`, `protege`) est DÉTERMINISTE : re-scanner referait le même BFS complet à chaque
+    // tick (288×/jour, des milliers d'appels Drive en pure perte). On consomme la journée.
+    if (inv.raison !== 'interrompu') {
+      props.setProperty('DriveAI_REORG_AUTO_JOUR', jour + '|' + (faitsAujourdhui + 1));
+      journalErreur_('Reorg', 'Scan auto abandonné (' + inv.raison + ') — nouvelle tentative demain.');
+    }
+    return;
+  }
 
   var maintenant = Date.now();
   var skip = lireSkipReorg_(props.getProperty('DriveAI_REORG_SKIP'));
