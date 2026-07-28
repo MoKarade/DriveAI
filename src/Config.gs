@@ -447,6 +447,8 @@ var CONFIG = {
   REORG_ESSAIS_MAX: 3,                    // tentatives par demande (inventaire/LLM) avant « échec »
   REORG_MAX_JOUR: 5,                      // plafond quotidien d'appels LLM de réorg (borne une app boguée qui re-demanderait en boucle)
   REORG_FUSION_LOT: 40,                   // éléments déplacés par run lors d'une FUSION (reprenable — garde-temps partagé)
+  REORG_MAX_SOUS_DOSSIERS_IDEAL: 7,       // loi de Miller (ADR-0027) : au-delà, un dossier devient illisible. CIBLE affichée au LLM, jamais un blocage du flux vivant
+  REORG_MAX_SOUS_DOSSIERS_TOLERANCE: 9,   // 7 ± 2 : seuil à partir duquel la Réorg/le Chat PROPOSENT un regroupement thématique (on n'embête pas Marc pour un 8e dossier). Années « AAAA » exclues du décompte (ADR-0027 §3)
   LLM_MAX_TOKENS_REORG: 3000,             // 40 actions pretty-printées + synthèse SANS troncature (analyse ≈ 0,02 $, à la demande seulement)
 
   // --- Phase 2 : référentiel d'entités ---

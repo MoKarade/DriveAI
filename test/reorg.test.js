@@ -26,6 +26,30 @@ test('resumeArborescence_ : « #n | chemin (x fichiers ; ex. …) », exemples o
   assert.ok(long.length < 120); // nom d'exemple borné (entrée LLM bornée)
 });
 
+test('resumeArborescence_ : flag « TROP DE DOSSIERS » au-delà de la TOLÉRANCE seulement (ADR-0027)', () => {
+  const T = ctx.CONFIG.REORG_MAX_SOUS_DOSSIERS_TOLERANCE; // cas dérivés de la CONFIG, jamais de sa valeur du jour
+  const ligne = (nbSousDossiers) => ctx.resumeArborescence_(
+    [{ id: 'i', chemin: '05 · Carrière', nbFichiers: 12, exemples: [], nbSousDossiers: nbSousDossiers }]);
+
+  // Sous la tolérance : AUCUN flag (un dossier sain ne coûte pas un token de plus).
+  assert.strictEqual(ligne(T - 1), '#1 | 05 · Carrière (12 fichiers)');
+  // À la tolérance et au-delà : flag explicite, avec le compte réel.
+  assert.strictEqual(ligne(T), '#1 | 05 · Carrière (12 fichiers, ' + T + ' sous-dossiers ⚠️ TROP DE DOSSIERS, À REGROUPER)');
+  assert.ok(ligne(T + 5).includes(', ' + (T + 5) + ' sous-dossiers ⚠️ TROP DE DOSSIERS, À REGROUPER'));
+  // L'idéal (7) n'est PAS un seuil d'alerte : on n'embête pas Marc pour un 8e dossier (7 ± 2).
+  assert.ok(ctx.CONFIG.REORG_MAX_SOUS_DOSSIERS_IDEAL < T, 'idéal < tolérance');
+  assert.ok(!ligne(ctx.CONFIG.REORG_MAX_SOUS_DOSSIERS_IDEAL).includes('⚠️'));
+  // Champ absent / non numérique (inventaire d'une version antérieure) : jamais d'alerte inventée.
+  assert.strictEqual(ctx.resumeArborescence_([{ id: 'i', chemin: 'X', nbFichiers: 0, exemples: [] }]),
+    '#1 | X (0 fichiers)');
+  assert.ok(!ligne(null).includes('⚠️'));
+  assert.ok(!ligne('beaucoup').includes('⚠️'));
+  // Le flag se place AVANT les exemples (lisibilité du prompt).
+  const avecEx = ctx.resumeArborescence_(
+    [{ id: 'i', chemin: 'X', nbFichiers: 1, exemples: ['CV.pdf'], nbSousDossiers: T }]);
+  assert.strictEqual(avecEx, '#1 | X (1 fichiers, ' + T + ' sous-dossiers ⚠️ TROP DE DOSSIERS, À REGROUPER ; ex. CV.pdf)');
+});
+
 test('parserPropositionReorg_ : plan sain accepté, chaque type validé', () => {
   const p = ctx.parserPropositionReorg_(JSON.stringify({
     actions: [
