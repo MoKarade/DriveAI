@@ -479,6 +479,12 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   invariant de protocole (API Messages : 1er tour = user, alternance stricte), couper sur une frontière
   qui le PRÉSERVE (frontière PAIRE = un `user` en tête), jamais un `slice(-N)` naïf. La validation tourne
   APRÈS la troncature, sur le tableau EXACT envoyé (défense en profondeur).
+- **Un statut TERMINAL ne peut pas servir de signal d'OCCUPATION.** Un gate d'attente (« ne
+  recommence pas tant que X n'est pas traité ») doit lire un état qui REVIENT à la normale. Pour
+  chaque statut lu par un gate : « qui l'écrit ensuite, et est-ce que ça arrive ? » — si personne,
+  c'est un verrou définitif (vécu C28-32 : gate sur `proposé`, terminal ⇒ campagne morte dès la 1re
+  analyse). Et un gate se teste par sa LIBÉRATION (cycle occupé → traité → libre), pas seulement par
+  son blocage : un test qui n'asserte que le blocage VERROUILLE le bug.
 - **Message de commit avec des backticks ⇒ `git commit -F fichier`, jamais `-m "…"`.** Citer les
   identifiants entre backticks est la convention d'écriture du projet : en INLINE dans bash, ils
   déclenchent une SUBSTITUTION DE COMMANDE et l'identifiant DISPARAÎT du message — commit réussi

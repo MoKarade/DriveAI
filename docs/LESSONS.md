@@ -1340,3 +1340,26 @@ un FICHIER (`git commit -F fichier`), jamais par `-m \"…\"`. Corollaire : vér
 via shell en le RELISANT (`git log --format=%B`), pas en se fiant au code de sortie."
 
 **Règle durable ?** oui (ajouté à CLAUDE.md §7 — convention d'écriture des commits).
+
+## 2026-07-28 — Un statut TERMINAL ne peut pas servir de signal d'OCCUPATION
+
+**Contexte.** C28-32 : la campagne de réorg auto ne devait pas « spammer » Marc, donc
+`genererDemandeReorgAuto_` ne déposait une demande que si l'assiette était propre. J'ai codé ce gate
+sur le statut de la ligne `demande` : bloquer si `analyse demandée` OU `proposé`. Or `proposé` est
+TERMINAL pour une demande — `solderDemande_` est le dernier écrivain côté moteur et l'app ne solde
+QUE les lignes d'ACTION. Résultat : dès la PREMIÈRE analyse aboutie (auto ou manuelle), la campagne
+sortait au gate à chaque tick, à vie. Feature morte, et le test que j'avais écrit VERROUILLAIT le bug
+(il assertait le blocage). Découvert par la revue quota — rendue APRÈS le merge, parce que j'avais
+retiré `do-not-merge` en interprétant « accélère » comme « ne bloque pas sur la revue ».
+
+**Leçon.** "Un gate d'ATTENTE (« ne recommence pas tant que X n'est pas traité ») doit s'appuyer sur
+un état qui REVIENT à la normale, jamais sur un statut TERMINAL. Réflexe de conception : pour chaque
+statut lu par un gate, se demander « QUI l'écrit ensuite, et est-ce que ça arrive vraiment ? » — si
+personne, le gate est un verrou définitif. Ici l'occupation se mesure sur les lignes d'ACTION
+(`proposé`/`validé` → il reste à décider/appliquer), pas sur la ligne de demande. Corollaire test :
+un test qui ASSERTE le comportement du gate sans jouer le CYCLE COMPLET (occupé → traité → libre)
+verrouille le bug au lieu de l'attraper — tout gate se teste par sa LIBÉRATION, pas seulement par son
+blocage. Corollaire process : « accélère » veut dire accélérer la CADENCE du produit, pas sauter la
+revue ; ne jamais faire les deux dans le même geste."
+
+**Règle durable ?** oui (ajouté à CLAUDE.md §7).
