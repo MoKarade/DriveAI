@@ -698,6 +698,10 @@ function promptReorg_() {
     'DEUX dossiers de la MÊME entité (doublons de graphie). Pour REGROUPER, utilise TOUJOURS "deplacer".\n' +
     '- Ne déplace JAMAIS un dossier vers un dossier d\'ANNÉE (« 2026 ») ni de type de pièce ' +
     'd\'identité (« Passeport ») : ce ne sont jamais des parents de regroupement.\n' +
+    '- Anti-synonyme : si un dossier de regroupement thématique pertinent EXISTE DÉJÀ (même vide ou ' +
+    'partiellement rempli — il a un numéro dans la liste), tu DOIS l\'utiliser avec "deplacer" ' +
+    'plutôt que d\'en "creer" un nouveau. Deux regroupements synonymes côte à côte (« Anciens ' +
+    'employeurs » et « Employeurs passés ») sont une ERREUR.\n' +
     '- "creer" sert aux dossiers STRUCTURELS (sous-dossier de schéma, année) et aux dossiers de ' +
     'REGROUPEMENT thématique (règle suivante) — jamais à inventer une nouvelle entité.\n' +
     '- Loi de Miller (ADR-0027) : un dossier marqué « ⚠️ TROP DE DOSSIERS » a dépassé la limite ' +
@@ -734,6 +738,26 @@ function promptReorg_() {
  * @param {Array} inventaire  [{id, chemin, …}] — les indices du plan pointent dedans
  * @return {?{actions: Array, synthese: string}}
  */
+/**
+ * Nombre de sous-dossiers REGROUPABLES parmi `enfants` (objets Folder ou {getName}) — c'est la
+ * mesure de la loi de Miller (ADR-0027). Sont exclus, comme dans `inventaireDossiers_` : les
+ * segments STRUCTURELS (années « AAAA », schémas d'entité, types de pièce d'identité — le moteur
+ * les find-or-crée PAR NOM, les regrouper ne convergerait pas) et les racines système « _… ».
+ * Un nom illisible n'est jamais compté (on n'invente pas une saturation). PURE (testée).
+ * @param {Array} enfants
+ * @return {number}
+ */
+function compterSousDossiersRegroupables_(enfants) {
+  var n = 0;
+  for (var i = 0; i < (enfants || []).length; i++) {
+    var nom = '';
+    try { nom = String(enfants[i].getName()); } catch (e) { nom = ''; }
+    if (!nom || nom.charAt(0) === '_' || estSegmentStructurel_(nom)) continue;
+    n++;
+  }
+  return n;
+}
+
 /**
  * Vrai si `nom` ne peut JAMAIS être le PARENT d'un regroupement : dossier d'ANNÉE (« 2026 ») ou de
  * TYPE D'IDENTITÉ (« Passeport »). Y déplacer une entité fragmenterait la taxonomie (ADR-0023 :
