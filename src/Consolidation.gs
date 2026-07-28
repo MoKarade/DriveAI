@@ -63,11 +63,14 @@ function analyserNomClasse_(nom) {
  *  2. ENTITÉ VALIDÉE (le tiers du nom se canonise vers une entité validée de CE domaine) → dossier
  *     d'entité, sans année ;
  *  3. domaine par ANNÉE → « AAAA » ;  4. sinon '' = à plat.
- * PUR (les entités validées arrivent en paramètre : {cleCanonique → nom canonique}).
+ * PUR (les entités validées arrivent en paramètre : {cleCanonique → {nom, dossierId}}).
+ * ADR-0028 : renvoie le COUPLE `{nom, id}` de la règle unique — `id` (le `Dossier ID` de l'entité)
+ * permet de reconnaître un fichier DÉJÀ dans le bon dossier même s'il est imbriqué (regroupement
+ * ADR-0027), là où la seule comparaison de sous-chemin TEXTUEL proposait « Déplacer » en boucle.
  * @param {string} domaine
  * @param {string} nom  nom ACTUEL du fichier
- * @param {Object} validees  carte cleCanoniqueEntite_ → libellé canonique (entités VALIDÉES seules)
- * @return {string} sous-chemin relatif ('' = racine du domaine)
+ * @param {Object} validees  carte cleCanoniqueEntite_ → {nom, dossierId} (entités VALIDÉES seules)
+ * @return {{nom:string, id:string}} sous-chemin relatif ('' = racine du domaine) + ID de l'entité
  */
 function cheminCibleConsolidation_(domaine, nom, validees) {
   var seg = analyserNomClasse_(nom);
@@ -94,7 +97,10 @@ function cheminCibleConsolidation_(domaine, nom, validees) {
  *  - déjà en place → « OK » ;
  *  - sinon         → « Déplacer » vers `domaine[/sousCheminCible]`.
  * @param {{domaine:string, sousCheminActuel:string, sousCheminCible:string, protege:boolean,
- *          protegeIllisible:boolean, raccourci:boolean, doublonDe:?string}} d
+ *          protegeIllisible:boolean, raccourci:boolean, doublonDe:?string,
+ *          parentId:?string, dossierIdCible:?string}} d
+ *   parentId/dossierIdCible (ADR-0028) : égalité d'ID = « déjà au bon endroit », À TOUTE PROFONDEUR,
+ *   évaluée AVANT la comparaison textuelle des sous-chemins. Absents ⇒ comportement textuel d'avant.
  *   protege = zone protégée CONSTATÉE (détection positive) ; protegeIllisible = contrôle §1
  *   illisible (abstention prudente, raison HONNÊTE — le plan que Marc valide ne doit pas mentir).
  * @return {{action:string, cible:string, raison:string}}
@@ -115,6 +121,13 @@ function decisionConsolidation_(d) {
   if (d.raccourci) return { action: 'Ignoré', cible: '', raison: 'Raccourci Drive (artefact d\'entité, jamais déplacé)' };
   if (d.doublonDe) return { action: 'Doublon', cible: '_Doublons', raison: 'Même empreinte que ' + d.doublonDe + ' (déplacement seul, §2)' };
   var cible = d.domaine + (d.sousCheminCible ? '/' + d.sousCheminCible : '');
+  // ADR-0028 — TOPOLOGIE D'ABORD : si le fichier est DÉJÀ dans le dossier de son entité (égalité
+  // d'ID), il est bien rangé, quelle que soit sa PROFONDEUR. Sans cette règle, un dossier d'entité
+  // déplacé sous un regroupement (ADR-0027) verrait ses fichiers re-sortis à chaque passe — c'est
+  // le comparateur TEXTUEL qui mentait, pas le classement.
+  if (d.dossierIdCible && d.parentId && String(d.parentId) === String(d.dossierIdCible)) {
+    return { action: 'OK', cible: cible, raison: 'Déjà dans le dossier de l’entité (ID, ADR-0028)' };
+  }
   if (String(d.sousCheminActuel || '') === String(d.sousCheminCible || '')) {
     return { action: 'OK', cible: cible, raison: 'Déjà au bon endroit (taxonomie à plat, ADR-0023)' };
   }
@@ -242,10 +255,18 @@ function traiterUnConsolidation_(fileId, domaine, tag, ctx) {
   var cheminComplet = cheminActuelDryRunV2_(f, domaine); // « domaine[/sous/chemin] » (réutilisé tel quel)
   var sousCheminActuel = cheminComplet === domaine ? '' : cheminComplet.slice(domaine.length + 1);
 
+  var cibleConso = cheminCibleConsolidation_(domaine, nom, ctx.validees);
+  // ADR-0028 : parent RÉEL du fichier — comparé à l'ID de l'entité cible (« déjà au bon endroit »
+  // à toute profondeur). Illisible ⇒ '' : on retombe sur la comparaison textuelle, jamais un plantage.
+  var parentId = '';
+  try { var ps = f.getParents(); if (ps.hasNext()) parentId = ps.next().getId(); } catch (e3) { parentId = ''; }
+
   var d = decisionConsolidation_({
     domaine: domaine,
     sousCheminActuel: sousCheminActuel,
-    sousCheminCible: cheminCibleConsolidation_(domaine, nom, ctx.validees),
+    sousCheminCible: cibleConso.nom,
+    dossierIdCible: cibleConso.id,
+    parentId: parentId,
     protege: protegeConstate,
     protegeIllisible: protegeStrict && !protegeConstate,
     raccourci: raccourci,

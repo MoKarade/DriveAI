@@ -78,15 +78,18 @@ test('planRoutageV2_ : carte de résident permanent → domaine 04 (lié au stat
  * sous-dossier = entité VALIDÉE au référentiel (sans année), sinon AAAA pour les domaines par
  * année, sinon racine. Le verrou : SANS carte de validées, JAMAIS de dossier d'entité. ---------- */
 
-// Carte des entités VALIDÉES de test (comme entitesValideesParCle_).
+// Carte des entités VALIDÉES de test (comme entitesValideesParCle_ : {nom, dossierId}, ADR-0028).
 const validees = {};
-validees[ctx.cleCanoniqueEntite_('02 · Finances', 'Desjardins')] = 'Desjardins';
+validees[ctx.cleCanoniqueEntite_('02 · Finances', 'Desjardins')] = { nom: 'Desjardins', dossierId: 'ID_DESJ' };
 
 test('planRoutageV2_ : entité VALIDÉE → dossier d\'entité canonique SANS année ; NON validée → année (02)', () => {
   const classif = { domaine: '02 · Finances', type_doc: 'Relevé', emetteur: 'Desjardins', sousDossier: 'Desjardins Inc.', date_doc: '2026-03-15' };
   const avecCarte = ctx.planRoutageV2_(classif, meta('releve.pdf', { emetteur: 'Desjardins' }), '2026-03-15', '.pdf', validees);
   assert.strictEqual(avecCarte.sousDossier, 'Desjardins');            // validée → entité, jamais 2026/Desjardins
   assert.strictEqual(avecCarte.nom, '2026-03_Relevé_Desjardins.pdf'); // relevé = granularité mois
+  // ADR-0028 : le plan embarque l'ID du dossier d'entité → l'exécuteur y range le fichier À TOUTE
+  // PROFONDEUR (sinon il re-crée le dossier à plat dès que Marc l'a regroupé, ADR-0027).
+  assert.strictEqual(avecCarte.dossierIdCible, 'ID_DESJ');
 
   const sansCarte = ctx.planRoutageV2_(classif, meta('releve.pdf', { emetteur: 'Desjardins' }), '2026-03-15', '.pdf');
   assert.strictEqual(sansCarte.sousDossier, '2026',
