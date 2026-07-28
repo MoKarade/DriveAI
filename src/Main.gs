@@ -478,8 +478,11 @@ function tickDriveAI() {
     // fait que déposer une ligne : l'analyse LLM aura lieu au tick SUIVANT, avec son budget à elle —
     // on n'enchaîne jamais un inventaire ET un appel Sonnet dans le même run. Gates : 1 scan/jour +
     // aucune demande en cours. SECONDAIRE → enveloppée (jamais bloquer l'intake).
-    if (!estBudgetDepasse()) {
-      try { genererDemandeReorgAuto_(estBudgetDepasse); }
+    // « BUDGET TAIL » (leçon §7) : cette étape est PURE I/O Drive/Sheet (un BFS de lecture + un
+    // appendRow, ZÉRO appel LLM) → elle prend le garde ÉTENDU (estBudgetDepasseStandard, mur 4,5 min)
+    // et non le budget de tick 3 min réservé aux appels Sonnet. Elle n'utilise que le reliquat.
+    if (!estBudgetDepasseStandard()) {
+      try { genererDemandeReorgAuto_(estBudgetDepasseStandard); }
       catch (e) { journalErreur_('Reorg', 'Demande auto différée : ' + e); }
     }
 
