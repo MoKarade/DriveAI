@@ -486,7 +486,15 @@ function appliquerReorgIA_(f, lignes, estBudgetDepasse) {
     rendreEssai(); // panne de COMPTE détectée par cet appel — jamais imputée à la demande (leçon R1)
     return;
   }
-  var proposition = parserPropositionReorg_(texte, inventaire);
+  // IDs des dossiers d'entités VALIDÉES : alimentent le verrou « jamais fusionner une entité dans un
+  // dossier de regroupement » (une fusion détruit la source et re-pointe `Entités.Dossier ID`).
+  // Référentiel illisible ⇒ carte vide : les autres gardes tiennent, on ne bloque pas le plan.
+  var idsEntites = {};
+  try {
+    var vald = entitesValideesParCle_();
+    Object.keys(vald).forEach(function (k) { if (vald[k] && vald[k].dossierId) idsEntites[vald[k].dossierId] = true; });
+  } catch (e0) { idsEntites = {}; }
+  var proposition = parserPropositionReorg_(texte, inventaire, idsEntites);
   if (!proposition) {
     journalErreur_('Reorg', 'Plan LLM illisible ou vide (tentative ' + (essais + 1) + '/' + CONFIG.REORG_ESSAIS_MAX + ').');
     return;
@@ -685,7 +693,11 @@ function promptReorg_() {
     '- Les sous-dossiers d\'année « AAAA » sont STRUCTURELS : jamais fusionnés entre eux, jamais renommés.\n' +
     '- Les sous-dossiers de schéma (Bail & contrat, Factures, Assurance, Relevés, Correspondance, ' +
     'Entretien & réparations, …) gardent leur NOM exact — le classement route par nom.\n' +
-    '- Ne fusionne JAMAIS un dossier d\'entité (nom propre) dans la racine de son domaine.\n' +
+    '- Ne fusionne JAMAIS un dossier d\'ENTITÉ (nom propre) : ni dans la racine de son domaine, ni ' +
+    'dans un dossier de regroupement. "fusionner" DÉTRUIT le dossier source — il ne sert qu\'à réunir ' +
+    'DEUX dossiers de la MÊME entité (doublons de graphie). Pour REGROUPER, utilise TOUJOURS "deplacer".\n' +
+    '- Ne déplace JAMAIS un dossier vers un dossier d\'ANNÉE (« 2026 ») ni de type de pièce ' +
+    'd\'identité (« Passeport ») : ce ne sont jamais des parents de regroupement.\n' +
     '- "creer" sert aux dossiers STRUCTURELS (sous-dossier de schéma, année) et aux dossiers de ' +
     'REGROUPEMENT thématique (règle suivante) — jamais à inventer une nouvelle entité.\n' +
     '- Loi de Miller (ADR-0027) : un dossier marqué « ⚠️ TROP DE DOSSIERS » a dépassé la limite ' +
@@ -722,7 +734,25 @@ function promptReorg_() {
  * @param {Array} inventaire  [{id, chemin, …}] — les indices du plan pointent dedans
  * @return {?{actions: Array, synthese: string}}
  */
-function parserPropositionReorg_(texte, inventaire) {
+/**
+ * Vrai si `nom` ne peut JAMAIS être le PARENT d'un regroupement : dossier d'ANNÉE (« 2026 ») ou de
+ * TYPE D'IDENTITÉ (« Passeport »). Y déplacer une entité fragmenterait la taxonomie (ADR-0023 :
+ * une entité = UN dossier, jamais `2026/Robovic`). PURE (testée).
+ */
+function estCibleInterdite_(nom) {
+  var propre = String(nom).trim();
+  if (/^\d{4}$/.test(propre)) return true;
+  return (typeof TYPES_IDENTITE !== 'undefined' ? TYPES_IDENTITE : []).indexOf(propre) !== -1;
+}
+
+/**
+ * @param {?string} texte
+ * @param {Array} inventaire
+ * @param {Object} [idsEntites]  {dossierId: true} des entités VALIDÉES (référentiel) — sert au verrou
+ *   « jamais fusionner une entité ailleurs que dans une autre entité ». Absent ⇒ aucune action
+ *   `fusionner` sur un dossier non identifié n'est bloquée par ce verrou (les autres gardes tiennent).
+ */
+function parserPropositionReorg_(texte, inventaire, idsEntites) {
   if (!texte) return null;
   var brut = null;
   try {
@@ -747,6 +777,8 @@ function parserPropositionReorg_(texte, inventaire) {
   // — les muter rendrait le plan non convergent (re-créés au prochain classement).
   var estStructurel = function (n) { return estSegmentStructurel_(dernierSegment_(inventaire[n - 1].chemin)); };
   var nomReserve = function (nm) { return nm.charAt(0) === '_' || /^\d{2} · /.test(nm); };
+  // Un dossier d'ENTITÉ se reconnaît à son `Dossier ID` au référentiel (ADR-0028), jamais à son nom.
+  var estEntite = function (n) { return !!(idsEntites && idsEntites[inventaire[n - 1].id]); };
   var actions = [];
   for (var i = 0; i < brut.actions.length && actions.length < CONFIG.REORG_ACTIONS_MAX; i++) {
     var a = brut.actions[i];
@@ -762,6 +794,19 @@ function parserPropositionReorg_(texte, inventaire) {
       if (estRacine(dossier)) continue; // un domaine racine ne se déplace/fusionne jamais
       if (estStructurel(dossier)) continue; // année/schéma : jamais déplacé ni fusionné
       if (descendDe(vers, dossier)) continue; // cycle : cible à l'intérieur du dossier muté
+      // La CIBLE n'était pas contrôlée (asymétrie relevée en revue) : « deplacer #Entité vers #2026 »
+      // passait et produisait « 02 · Finances/2026/Robovic » — ce qu'ADR-0023 interdit (une entité =
+      // UN dossier, jamais fragmentée par année). Les dossiers d'ANNÉE et de TYPE D'IDENTITÉ ne sont
+      // jamais des parents de regroupement. (Les schémas restent des cibles légitimes de `fusionner`
+      // pour le drainage de l'existant.)
+      if (estCibleInterdite_(dernierSegment_(inventaire[vers - 1].chemin))) continue;
+      // VERROU §2 (revue C28-31) : `fusionner` DÉTRUIT le dossier source et re-pointe
+      // `Entités.Dossier ID` vers la cible (`repointerEntites_`). Fusionner un dossier d'ENTITÉ dans
+      // un dossier de REGROUPEMENT ferait donc disparaître l'entité et ferait pointer deux entités
+      // sur le même fourre-tout — sous une ligne d'apparence anodine que Marc validerait. Le
+      // regroupement se fait TOUJOURS par `deplacer`. Entité → entité (fusion de doublons, C21-06)
+      // reste permis : c'est le seul usage légitime de `fusionner` sur une entité.
+      if (a.type === 'fusionner' && estEntite(dossier) && !estEntite(vers)) continue;
       actions.push({ type: a.type, dossier: dossier, vers: vers, raison: raison });
     } else if (a.type === 'creer') {
       var parent = index(a.parent);

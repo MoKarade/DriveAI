@@ -299,3 +299,44 @@ test('actionsValidees_ : ne prend QUE les actions « validé » des 4 types, ave
   assert.strictEqual(v[1].rang, 5);
   assert.strictEqual(v[1].cible, 'p');
 });
+
+/* ---------- Verrous de regroupement (revue C28-31) : fusion d'entité et cibles interdites ---------- */
+
+test('parserPropositionReorg_ : JAMAIS fusionner une ENTITÉ dans un dossier de REGROUPEMENT (destruction + Dossier ID re-pointé)', () => {
+  const c = load(['Config.gs', 'Router.gs', 'Reorg.gs']); // Router.gs : TYPES_IDENTITE
+  const inv = [
+    { id: 'r', chemin: '05 · Carrière', nbFichiers: 0, exemples: [] },
+    { id: 'ID_ROBO', chemin: '05 · Carrière/Robovic', nbFichiers: 8, exemples: [] },     // entité validée
+    { id: 'g', chemin: '05 · Carrière/Anciens employeurs', nbFichiers: 0, exemples: [] },// regroupement
+    { id: 'ID_ROBO2', chemin: '05 · Carrière/Robovic Inc.', nbFichiers: 2, exemples: [] },// doublon d'entité
+  ];
+  const idsEntites = { ID_ROBO: true, ID_ROBO2: true };
+  const plan = (actions) => c.parserPropositionReorg_(JSON.stringify({ actions, synthese: 's' }), inv, idsEntites);
+
+  // REFUSÉ : fusionner l'entité dans le regroupement — `fusionner` détruit la source et
+  // `repointerEntites_` ferait pointer l'entité sur le fourre-tout.
+  assert.strictEqual(plan([{ type: 'fusionner', dossier: 2, vers: 3, raison: 'regrouper' }]), null,
+    'seule action invalide → plan null');
+  // PERMIS : déplacer l'entité dans le regroupement (c'est LA façon de regrouper).
+  assert.strictEqual(plat(plan([{ type: 'deplacer', dossier: 2, vers: 3, raison: 'regrouper' }])).actions.length, 1);
+  // PERMIS : fusionner deux dossiers de la MÊME entité (doublons de graphie, C21-06).
+  assert.strictEqual(plat(plan([{ type: 'fusionner', dossier: 4, vers: 2, raison: 'doublon' }])).actions.length, 1);
+});
+
+test('estCibleInterdite_ / parser : une ANNÉE ou un TYPE D\'IDENTITÉ n\'est jamais parent d\'un regroupement', () => {
+  const c = load(['Config.gs', 'Router.gs', 'Reorg.gs']);
+  assert.strictEqual(c.estCibleInterdite_('2026'), true);
+  assert.strictEqual(c.estCibleInterdite_('Passeport'), true);
+  assert.strictEqual(c.estCibleInterdite_('Anciens employeurs'), false);
+  assert.strictEqual(c.estCibleInterdite_('Factures'), false, 'un schéma reste une cible de fusion légitime');
+
+  // ADR-0023 : « 02 · Finances/2026/Robovic » est interdit — le parser doit refuser l'action.
+  const inv = [
+    { id: 'r', chemin: '02 · Finances', nbFichiers: 0, exemples: [] },
+    { id: 'e', chemin: '02 · Finances/Desjardins', nbFichiers: 5, exemples: [] },
+    { id: 'a', chemin: '02 · Finances/2026', nbFichiers: 3, exemples: [] },
+  ];
+  assert.strictEqual(
+    c.parserPropositionReorg_(JSON.stringify({ actions: [{ type: 'deplacer', dossier: 2, vers: 3, raison: 'x' }] }), inv, {}),
+    null, 'déplacer une entité dans un dossier d\'année : refusé');
+});
