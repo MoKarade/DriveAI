@@ -756,6 +756,10 @@ function promouvoirEntiteValidee_(corr) {
  * dossier au niveau 1 du domaine, aligné sur le find-or-create du routeur v2 — l'ancien parent
  * « catégorie » créait un DOUBLE dossier par entité et nourrissait la prolifération, revue
  * structure-keeper C28-26). Le paramètre catégorie est conservé pour compat d'appel mais IGNORÉ.
+ *
+ * ADR-0028 : « niveau 1 » vaut à la CRÉATION, plus à la RÉSOLUTION — une fois créé, le dossier peut
+ * être déplacé plus profond sous son domaine (regroupement ADR-0027 ou geste de Marc) ; le flux et la
+ * consolidation le retrouvent alors par `Entités.Dossier ID` (`dossierEntiteParId_`), pas par ce chemin.
  */
 function dossierParentEntite_(domaine, categorie) {
   if (CONFIG.DOMAINES[domaine]) return DriveApp.getFolderById(CONFIG.DOMAINES[domaine]);

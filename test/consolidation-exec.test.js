@@ -49,6 +49,10 @@ function ctxLigne(opts) {
   c.champ_ = (s) => String(s == null ? '' : s).trim();
   // La cible est RECALCULÉE via la règle unique — mockée ici (testée pour de vrai dans consolidation.test.js).
   c.cheminCibleConsolidation_ = () => ({ nom: opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : '2026', id: opts.dossierIdCible || '' }); // {nom,id} depuis l'ADR-0028
+  // ADR-0028 : le RÉSOLVEUR PARTAGÉ vit dans Router.gs (non chargé ici) — mocké. Par défaut null
+  // ⇒ repli par NOM, c'est-à-dire le comportement historique que ces tests verrouillent.
+  c.dossierEntiteParId_ = (id) => (id && opts.entiteResoluble !== false
+    ? { dossier: { getId: () => 'ENT:' + id }, segments: ['Anciens employeurs', 'Robovic'] } : null);
   const fichier = {
     // next() avance l'index LUI-MÊME (comme DriveApp) — un incrément caché dans getId() fausserait
     // le compteur de parents (vécu : hasNext éternel → faux « multi-parents »).
@@ -95,6 +99,24 @@ test('appliquerLigneConsolidation_ : recalcul « à plat » → racine du domain
   const r2 = enPlace.c.appliquerLigneConsolidation_({ fileId: 'F3', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, CTX_EXEC);
   assert.strictEqual(r2, 'fait');
   assert.deepStrictEqual(enPlace.moves, [], 'déjà en place : aucun moveTo (rejeu sûr)');
+});
+
+test('appliquerLigneConsolidation_ : dossier d\'entité REGROUPÉ → déplacé DEDANS par ID, jamais recréé à plat (ADR-0028)', () => {
+  // Le scénario du bug : le plan (écrit avant le regroupement) dit « Déplacer vers Robovic ».
+  // Sans résolution par ID, l'exécution find-or-create un « 02/Robovic » à PLAT tout neuf et sort le
+  // fichier du dossier regroupé — puis le dossier vidé part en vide-candidat. Avec l'ID : on ouvre
+  // le VRAI dossier, où qu'il soit sous le domaine.
+  const t = ctxLigne({ cibleRecalculee: 'Robovic', dossierIdCible: 'ID_ROBO' });
+  const r = t.c.appliquerLigneConsolidation_({ fileId: 'F9', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, CTX_EXEC);
+  assert.strictEqual(r, 'fait');
+  assert.deepStrictEqual(t.moves, ['ENT:ID_ROBO'], 'ouvert par ID, pas de dossier à plat recréé');
+
+  // Repli : le résolveur refuse l'ID (corbeillé, hors domaine, mort) → find-or-create par NOM,
+  // c'est-à-dire exactement le comportement d'avant l'ADR-0028.
+  const repli = ctxLigne({ cibleRecalculee: 'Robovic', dossierIdCible: 'ID_ROBO', entiteResoluble: false });
+  const r2 = repli.c.appliquerLigneConsolidation_({ fileId: 'F10', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, CTX_EXEC);
+  assert.strictEqual(r2, 'fait');
+  assert.deepStrictEqual(repli.moves, ['DOM/Robovic'], 'repli par nom sous le domaine');
 });
 
 test('appliquerLigneConsolidation_ : hors domaines (déplacé ailleurs par Marc) → saute, jamais ramené de force', () => {
@@ -148,6 +170,8 @@ function ctxVide(opts) {
   c.sousDossier_ = (parent, nom) => ({ getId: () => parent.getId() + '/' + nom });
   c.champ_ = (s) => String(s == null ? '' : s).trim();
   c.cheminCibleConsolidation_ = () => ({ nom: opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : '', id: opts.dossierIdCible || '' }); // {nom,id} depuis l'ADR-0028
+  c.dossierEntiteParId_ = (id) => (id && opts.entiteResoluble !== false
+    ? { dossier: { getId: () => 'ENT:' + id }, segments: ['Anciens employeurs', 'Robovic'] } : null);
   c.domaineActuelFichier_ = () => '02 · Finances';
   // Injections cross-module (Reorg.gs / Maintenance.gs non chargés dans ce contexte de test).
   c.ensembleIntouchables_ = () => (opts.intouchables || {});

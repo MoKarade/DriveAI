@@ -66,8 +66,13 @@ cet ordre (arbitrage Marc 2026-07-16 « entité OU année ») :
    (01/04/07, cf. `dossierIdentite_`) ; le titulaire vit dans le NOM, jamais un dossier par personne.
 2. **Entité MAJEURE VALIDÉE** au référentiel `Entités` (logement, véhicule, employeur, école —
    **JAMAIS une banque** : `02 · Finances` n'a plus d'entités validées, décision Marc 2026-07-17,
-   ADR-0024) — dossier au **niveau 1** du domaine, **nom canonique du référentiel**, **sans
-   année** : une entité = UN dossier (`05 · Carrière/Robovic`, jamais `2026/Robovic`). Le routage
+   ADR-0024) — dossier **CRÉÉ au niveau 1** du domaine, **nom canonique du référentiel**, **sans
+   année** : une entité = UN dossier (`05 · Carrière/Robovic`, jamais `2026/Robovic`).
+   **Son emplacement RÉEL peut être plus profond** (ADR-0028) : Marc — ou un regroupement de la Réorg
+   (ADR-0027, « Anciens employeurs ») — peut le déplacer n'importe où **sous son domaine**. Le
+   `Dossier ID` du référentiel est alors la **vérité topologique**, le nom n'étant qu'un **repli** :
+   le flux vivant ET la consolidation résolvent par ID, à toute profondeur, via le même résolveur
+   (`dossierEntiteParId_` — refus si le dossier est corbeillé ou sorti de son domaine). Le routage
    v2 ne consulte QUE les validées (`entitesValideesParCle_`) : une entité que Marc n'a pas validée
    ne crée JAMAIS de dossier (le prompt gate le champ `sousDossier`, le référentiel verrouille).
    Les entités de Marc sont posées par un SEED one-shot (`seedEntitesMarc_`, ADR-0024 : 4 logements,
@@ -97,6 +102,10 @@ d'ADR-0023 en validation globale + droit de suspension) :
    **cible RECALCULÉE au move** (règle unique + référentiel courant — la colonne Cible n'est
    qu'une trace), budgets 2 min/run + quotidien en ms réelles, échec compté ≤ 1×/jour (abandon
    tracé après `QUARANTAINE_MAX` jours distincts).
+   **ADR-0028** : un fichier **déjà dans le dossier de son entité est `OK` à TOUTE PROFONDEUR**
+   (égalité de `Dossier ID`, évaluée avant la comparaison textuelle des sous-chemins et après les
+   gardes §1) ; et le move **ouvre ce dossier par ID** au lieu de le re-créer à plat — même résolveur
+   que le flux vivant, donc décision et exécution ne peuvent pas diverger.
 Les dossiers VIDÉS relèvent de la corbeille APP validée (ADR-0014), jamais du moteur.
 
 ## Règles structurelles
