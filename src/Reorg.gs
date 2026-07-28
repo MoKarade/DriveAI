@@ -206,6 +206,13 @@ function ensembleIntouchables_() {
 function estSegmentStructurel_(nom) {
   var propre = String(nom).trim();
   if (/^\d{4}$/.test(propre)) return true;
+  // Dossiers de TYPE D'IDENTITÉ (« Passeport », « Permis de conduire », …) : find-or-créés PAR NOM
+  // au niveau 1 par le flux vivant ET par la consolidation (`dossierIdentite_`) — exactement comme
+  // les années et les schémas. Les muter (déplacer/renommer/fusionner) ferait re-créer l'original au
+  // document suivant : non convergent. Manquants jusqu'ici (revue structure C28-31) : `01 · …` en
+  // compte 6 à 8, donc ils saturaient le décompte de la loi de Miller et le LLM aurait proposé de les
+  // regrouper — des actions que la whitelist rejette de toute façon.
+  if ((typeof TYPES_IDENTITE !== 'undefined' ? TYPES_IDENTITE : []).indexOf(propre) !== -1) return true;
   var schemas = CONFIG.SCHEMAS_ENTITE || {};
   var types = Object.keys(schemas);
   for (var i = 0; i < types.length; i++) {
@@ -506,7 +513,7 @@ function solderDemande_(f, rang, statut, detail) {
 
 /**
  * Inventaire BORNÉ des dossiers (BFS, dédoublonné par ID — les multi-parents existent sur ce
- * Drive) : {dossiers: [{id, chemin, nbFichiers, exemples[]}]} ou {raison: 'interrompu' (budget)
+ * Drive) : {dossiers: [{id, chemin, nbFichiers, exemples[], nbSousDossiers}]} ou {raison: 'interrompu' (budget)
  * | 'trop-large' (cap) | 'protege' (portée en zone protégée)}.
  *
  * Zone protégée : EXCLUE PAR ASCENDANCE dès la collecte — pour chaque dossier, tout parent
@@ -580,6 +587,7 @@ function inventaireDossiers_(portee, estBudgetDepasse) {
 
     var nbFichiers = 0;
     var exemples = [];
+    var nbSousDossiers = 0; // loi de Miller (ADR-0027) — REGROUPABLES seulement, cf. ci-dessous
     try {
       var it = dossier.getFiles();
       while (it.hasNext()) {
@@ -591,12 +599,30 @@ function inventaireDossiers_(portee, estBudgetDepasse) {
       var sous = dossier.getFolders();
       while (sous.hasNext()) {
         var s = sous.next();
-        front.push({ dossier: s, id: s.getId(), chemin: chemin, parentId: courant.id });
+        // On ne compte QUE les sous-dossiers REGROUPABLES (typiquement les dossiers d'ENTITÉ —
+        // le cas de Marc : 12 employeurs sous « 05 · Carrière »). Sont exemptés : les segments
+        // STRUCTURELS (années « AAAA », noms de schéma) — le router les find-or-create PAR NOM et
+        // `parserPropositionReorg_` REJETTE toute mutation d'un tel segment : les compter ferait
+        // proposer au LLM des regroupements systématiquement rejetés (essais brûlés pour rien) —
+        // et les racines système « _… », hors inventaire de toute façon. MÊME prédicat que la
+        // whitelist du plan : une seule règle, deux consommateurs.
+        var nomSous = '';
+        var idSous = s.getId();
+        try { nomSous = s.getName(); } catch (e2) { nomSous = ''; } // illisible : non compté, jamais un plantage
+        // Le compte doit refléter ce que le LLM VERRA : on écarte aussi ce que la boucle de collecte
+        // écartera au dépilage (zone protégée, files d'arrivée/de revue) — sinon on flaggerait un
+        // dossier « trop plein » d'enfants absents de la liste, donc impossibles à regrouper.
+        if (nomSous && nomSous.charAt(0) !== '_' && !estSegmentStructurel_(nomSous) &&
+            !proteges[idSous] && idSous !== CONFIG.DOSSIERS.A_TRIER && idSous !== CONFIG.DOSSIERS.A_VERIFIER) {
+          nbSousDossiers++;
+        }
+        front.push({ dossier: s, id: idSous, chemin: chemin, parentId: courant.id });
       }
     } catch (e) {
       continue; // contenu illisible : dossier écarté de l'inventaire (jamais un plan sur du flou)
     }
-    dossiers.push({ id: courant.id, chemin: chemin, nbFichiers: nbFichiers, exemples: exemples });
+    dossiers.push({ id: courant.id, chemin: chemin, nbFichiers: nbFichiers, exemples: exemples,
+      nbSousDossiers: nbSousDossiers });
   }
   return { dossiers: dossiers };
 }
@@ -660,8 +686,19 @@ function promptReorg_() {
     '- Les sous-dossiers de schéma (Bail & contrat, Factures, Assurance, Relevés, Correspondance, ' +
     'Entretien & réparations, …) gardent leur NOM exact — le classement route par nom.\n' +
     '- Ne fusionne JAMAIS un dossier d\'entité (nom propre) dans la racine de son domaine.\n' +
-    '- "creer" sert aux dossiers STRUCTURELS (sous-dossier de schéma, année) — jamais à inventer ' +
-    'une nouvelle entité.\n' +
+    '- "creer" sert aux dossiers STRUCTURELS (sous-dossier de schéma, année) et aux dossiers de ' +
+    'REGROUPEMENT thématique (règle suivante) — jamais à inventer une nouvelle entité.\n' +
+    '- Loi de Miller (ADR-0027) : un dossier marqué « ⚠️ TROP DE DOSSIERS » a dépassé la limite ' +
+    'cognitive (~' + CONFIG.REORG_MAX_SOUS_DOSSIERS_IDEAL + ' sous-dossiers) et devient illisible. ' +
+    'D\'ABORD, REGARDE s\'il contient DÉJÀ un dossier de regroupement adapté (il a un numéro dans la ' +
+    'liste) : si oui, DÉPLACE dedans les dossiers concernés — n\'en crée PAS un second. Sinon, ' +
+    'propose d\'y CRÉER un dossier de regroupement thématique (ex. « Anciens employeurs », ' +
+    '« Anciens véhicules », « Projets passés »). ATTENTION : un dossier que tu viens de créer n\'a ' +
+    'PAS de numéro — tu ne peux donc PAS y déplacer les dossiers dans CE plan ; les déplacements ' +
+    'seront proposés au plan SUIVANT, une fois qu\'il aura un numéro. Un seul "creer" de regroupement ' +
+    'par dossier saturé. Ne regroupe QUE des dossiers d\'ENTITÉ (un nom propre : employeur, véhicule, ' +
+    'logement, école) : JAMAIS une année « AAAA », JAMAIS un sous-dossier de schéma (Factures, ' +
+    'Assurance, …), JAMAIS un dossier de type de pièce d\'identité (Passeport, Permis de conduire, …).\n' +
     'Au plus 40 actions, ordonnées de la plus importante à la moins importante ; peu d\'actions à ' +
     'fort impact (doublons de dossiers, noms incohérents). Si l\'arborescence est déjà saine : ' +
     '{"actions": [], "synthese": "Rien à changer."}. Ne référence les dossiers QUE par leur numéro.\n' +

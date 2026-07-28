@@ -479,6 +479,12 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   invariant de protocole (API Messages : 1er tour = user, alternance stricte), couper sur une frontière
   qui le PRÉSERVE (frontière PAIRE = un `user` en tête), jamais un `slice(-N)` naïf. La validation tourne
   APRÈS la troncature, sur le tableau EXACT envoyé (défense en profondeur).
+- **Message de commit avec des backticks ⇒ `git commit -F fichier`, jamais `-m "…"`.** Citer les
+  identifiants entre backticks est la convention d'écriture du projet : en INLINE dans bash, ils
+  déclenchent une SUBSTITUTION DE COMMANDE et l'identifiant DISPARAÎT du message — commit réussi
+  (exit 0), seul un discret `command not found` sur stderr (vécu C28-31). Idem pour `$`/`!`.
+  Corollaire : vérifier un artefact écrit via shell en le RELISANT (`git log --format=%B`), jamais
+  au seul code de sortie.
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 

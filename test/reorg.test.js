@@ -7,7 +7,7 @@
  */
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { load } = require('./harness');
+const { load, iter } = require('./harness');
 
 const ctx = load(['Config.gs', 'Reorg.gs']);
 const plat = (o) => JSON.parse(JSON.stringify(o));
@@ -48,6 +48,97 @@ test('resumeArborescence_ : flag « TROP DE DOSSIERS » au-delà de la TOLÉRANC
   const avecEx = ctx.resumeArborescence_(
     [{ id: 'i', chemin: 'X', nbFichiers: 1, exemples: ['CV.pdf'], nbSousDossiers: T }]);
   assert.strictEqual(avecEx, '#1 | X (1 fichiers, ' + T + ' sous-dossiers ⚠️ TROP DE DOSSIERS, À REGROUPER ; ex. CV.pdf)');
+});
+
+/**
+ * Faux dossier Drive complet (nom + contenu + parents) pour `inventaireDossiers_`.
+ * `parents` sert à la garde multi-parents (`aParentEtrangerProtege_`).
+ */
+const dossierFake = (id, nom, sousDossiers, parents) => {
+  const self = {
+    getId: () => id,
+    getName: () => nom,
+    getFiles: () => iter([]),
+    getFolders: () => iter(sousDossiers || []),
+    getParents: () => iter(parents || []),
+  };
+  return self;
+};
+
+test('inventaireDossiers_ : nbSousDossiers ne compte QUE les regroupables (années/schémas/_ exclus, ADR-0027)', () => {
+  const c = load(['Config.gs', 'Reorg.gs']);
+  const racine = dossierFake('idRacine', '05 · Carrière', []);
+  // 2 entités (regroupables) + 1 année + 1 schéma + 1 système « _… » → seules les 2 entités comptent.
+  const enfants = [
+    dossierFake('e1', 'Robovic', [], [racine]),
+    dossierFake('e2', 'Ubisoft', [], [racine]),
+    dossierFake('a1', '2024', [], [racine]),        // année : STRUCTURELLE (jamais regroupée)
+    dossierFake('s1', 'Factures', [], [racine]),    // schéma : le router route PAR NOM
+    dossierFake('x1', '_Doublons', [], [racine]),   // racine système
+  ];
+  racine.getFolders = () => iter(enfants);
+  c.ensembleDomainesProteges_ = () => ({});
+  c.DriveApp = { getFolderById: (id) => (id === 'idRacine' ? racine : null) };
+
+  const res = c.inventaireDossiers_('idRacine', () => false);
+  const parChemin = {};
+  res.dossiers.forEach((d) => { parChemin[d.chemin] = d; });
+  assert.strictEqual(parChemin['05 · Carrière'].nbSousDossiers, 2, 'seules les 2 entités comptent');
+  // Les enfants sont bien inventoriés (le comptage ne change pas la collecte) — sauf « _… ».
+  assert.strictEqual(parChemin['05 · Carrière/Robovic'].nbSousDossiers, 0);
+  assert.strictEqual(parChemin['05 · Carrière/2024'].nbSousDossiers, 0);
+  assert.ok(!parChemin['05 · Carrière/_Doublons'], 'racine système hors inventaire');
+  // Le champ alimente le flag du prompt (contrat entre les deux fonctions).
+  assert.ok(c.resumeArborescence_(res.dossiers).indexOf('⚠️') === -1, 'sous la tolérance : aucun flag');
+});
+
+test('inventaireDossiers_ : le flag SE DÉCLENCHE bien au-delà de la tolérance (test POSITIF, ADR-0027)', () => {
+  const c = load(['Config.gs', 'Reorg.gs']);
+  const T = c.CONFIG.REORG_MAX_SOUS_DOSSIERS_TOLERANCE; // dérivé de la CONFIG, jamais d'une valeur en dur
+  const racine = dossierFake('idRacine', '05 · Carrière', []);
+  // T entités regroupables → le flag DOIT apparaître. Sans ce test, élargir les exclusions
+  // neutraliserait la règle en silence (le test négatif seul resterait vert).
+  racine.getFolders = () => iter(Array.from({ length: T }, (_, i) => dossierFake('e' + i, 'Employeur ' + i, [], [racine])));
+  c.ensembleDomainesProteges_ = () => ({});
+  c.DriveApp = { getFolderById: (id) => (id === 'idRacine' ? racine : null) };
+
+  const res = c.inventaireDossiers_('idRacine', () => false);
+  const racineInv = res.dossiers.filter((d) => d.chemin === '05 · Carrière')[0];
+  assert.strictEqual(racineInv.nbSousDossiers, T);
+  assert.ok(c.resumeArborescence_(res.dossiers).includes('⚠️ TROP DE DOSSIERS'), 'le flag doit être émis');
+});
+
+test('inventaireDossiers_ : les dossiers de TYPE D\'IDENTITÉ ne comptent pas (créés par nom, jamais regroupables)', () => {
+  // Router.gs est chargé ICI parce que `estSegmentStructurel_` lit `TYPES_IDENTITE`, qui y est
+  // défini — comme en production (surface-moteur charge tout). Sans lui, la liste est vide et le
+  // test passerait à tort : c'est exactement la dépendance inter-module qu'on veut voir.
+  const c = load(['Config.gs', 'Router.gs', 'Reorg.gs']);
+  const racine = dossierFake('idRacine', '01 · Administratif & identité', []);
+  racine.getFolders = () => iter([
+    dossierFake('p1', 'Passeport', [], [racine]),
+    dossierFake('p2', 'Permis de conduire', [], [racine]),
+    dossierFake('e1', 'Revenu Québec', [], [racine]), // entité : seule regroupable
+  ]);
+  c.ensembleDomainesProteges_ = () => ({});
+  c.DriveApp = { getFolderById: (id) => (id === 'idRacine' ? racine : null) };
+
+  const res = c.inventaireDossiers_('idRacine', () => false);
+  const racineInv = res.dossiers.filter((d) => d.chemin === '01 · Administratif & identité')[0];
+  assert.strictEqual(racineInv.nbSousDossiers, 1, 'Passeport/Permis sont STRUCTURELS (le router les recrée par nom)');
+});
+
+test('inventaireDossiers_ : un sous-dossier au nom ILLISIBLE n’est pas compté et ne plante pas', () => {
+  const c = load(['Config.gs', 'Reorg.gs']);
+  const racine = dossierFake('idRacine', '05 · Carrière', []);
+  const casse = dossierFake('k1', 'x', [], [racine]);
+  casse.getName = () => { throw new Error('nom illisible (Drive vivant)'); };
+  racine.getFolders = () => iter([dossierFake('e1', 'Robovic', [], [racine]), casse]);
+  c.ensembleDomainesProteges_ = () => ({});
+  c.DriveApp = { getFolderById: (id) => (id === 'idRacine' ? racine : null) };
+
+  const res = c.inventaireDossiers_('idRacine', () => false);
+  const racineInv = res.dossiers.filter((d) => d.chemin === '05 · Carrière')[0];
+  assert.strictEqual(racineInv.nbSousDossiers, 1, 'illisible non compté, jamais une alerte inventée');
 });
 
 test('parserPropositionReorg_ : plan sain accepté, chaque type validé', () => {

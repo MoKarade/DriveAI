@@ -1321,3 +1321,22 @@ qui pourrait démarrer sur un `assistant`. Et la troncature n'assainit rien : la
 sur le tableau EXACT envoyé (défense en profondeur — un préfixe malformé droppé n'est jamais transmis)."
 
 **Règle durable ?** oui (ajouté à CLAUDE.md §7 — borne sur entrée croissante = troncature).
+
+## 2026-07-28 — Backticks dans un message de commit inline = identifiant AVALÉ en silence
+
+**Contexte.** C28-31 PR1. Message de commit écrit INLINE dans `git commit -m "…"` via bash, avec la
+convention du projet (identifiants cités entre backticks : `` `resumeArborescence_` (PURE) ``). Bash a
+interprété les backticks comme une SUBSTITUTION DE COMMANDE : `resumeArborescence_: command not found`
+sur stderr, mais **le commit a réussi (exit 0)** avec le nom de fonction **effacé** du message
+(« - Reorg.gs  (PURE) : … »). Détecté seulement en relisant `git log -1 --format=%B` ; corrigé par
+`git commit --amend -F fichier`.
+
+**Leçon.** "Un message de commit (ou tout texte long) écrit INLINE dans une commande shell ne doit
+JAMAIS contenir de backticks : bash les exécute en substitution de commande et l'identifiant cité
+DISPARAÎT du message — sans échec, exit 0, seul un discret `command not found` sur stderr. Or citer
+les identifiants entre backticks est la convention d'écriture de ce projet : le piège est structurel,
+pas accidentel. Règle : dès qu'un message multi-ligne contient un backtick (ou `$`, `!`), il passe par
+un FICHIER (`git commit -F fichier`), jamais par `-m \"…\"`. Corollaire : vérifier un artefact écrit
+via shell en le RELISANT (`git log --format=%B`), pas en se fiant au code de sortie."
+
+**Règle durable ?** oui (ajouté à CLAUDE.md §7 — convention d'écriture des commits).
