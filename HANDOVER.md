@@ -83,8 +83,10 @@
 > consommé dès qu'un scan ABOUTIT même sans cible (anti re-scan 288×/j), PAS si l'inventaire est
 > interrompu. Branché JUSTE APRÈS `etapeReorg_` (assiette fraîchement soldée ; l'analyse LLM a lieu au
 > tick SUIVANT — jamais inventaire + Sonnet dans le même run). **PR1 mergée (#219)** ; **PR2 = branche
-> courante**. 650 tests moteur. **Cadence réelle : ~1 dossier tous les 2 jours** (2 tours) —
-> `REORG_AUTO_MAX_JOUR` est le bouton pour accélérer une fois éprouvé.
+> courante**. 650 tests moteur. **Cadence : `REORG_AUTO_MAX_JOUR` = 3** (décision Marc « accélère »,
+> révise 1) — un dossier peut être aéré dans la JOURNÉE s'il valide au fil de l'eau. Doit rester
+> ≤ `REORG_MAX_JOUR` (5, plafond des analyses LLM, compteur distinct) : au-delà les demandes
+> s'empileraient sans être analysées. Le vrai facteur limitant reste la VALIDATION de Marc.
 >
 > **2026-07-24 — C28-30 : onglet ASSISTANT (chatbot Claude), PR1/3 (plan architecte NotebookLM,
 > ADR-0026).** Marc veut un assistant conversationnel : (A) Q&A qui RETROUVE et LIT ses fichiers
