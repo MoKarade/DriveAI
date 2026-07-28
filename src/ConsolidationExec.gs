@@ -148,11 +148,12 @@ function appliquerLigneConsolidation_(ligne, ctx) {
       indexAjouter_(cle, { statut: 'consolidé-hors-domaine', nom: nom, domaine: '', chemin: '' }, '');
       return 'saute';
     }
-    var sousCible = cheminCibleConsolidation_(domaine, nom, ctx.validees);
+    var sousCible = cheminCibleConsolidation_(domaine, nom, ctx.validees); // {nom, id} (ADR-0028)
     // Segments assainis comme le flux vivant (champ_ : caractères interdits → '-') — la règle
     // unique doit produire le MÊME nom de dossier des deux côtés (anti-divergence).
-    var segments = sousCible ? sousCible.split('/').map(function (s) { return champ_(s); }).filter(Boolean) : [];
-    c = { doublons: false, domaine: domaine, segments: segments };
+    var segments = sousCible.nom ? sousCible.nom.split('/').map(function (s) { return champ_(s); }).filter(Boolean) : [];
+    // `dossierIdCible` sera consommé par `dossierCiblePlan_` (résolution par ID) — PR2 de l'ADR-0028.
+    c = { doublons: false, domaine: domaine, segments: segments, dossierIdCible: sousCible.id || '' };
   }
 
   var cibleDossier = dossierCiblePlan_(c);

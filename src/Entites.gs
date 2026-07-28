@@ -450,7 +450,9 @@ function entitesCache_() {
  * cache/run. Consommée par le ROUTAGE v2 (verrou « dossier d'entité seulement si validée »,
  * ADR-0023 révisé) et par la CONSOLIDATION (cible du plan) — la MÊME carte des deux côtés, sinon le
  * plan contredirait le flux vivant. Un référentiel illisible rend {} (échec fermé : à plat).
- * @return {Object} {cleCanonique: libellé canonique}
+ * @return {Object} {cleCanonique: {nom: libellé canonique, dossierId: string}} — `dossierId` peut
+ *   être '' (entité validée dont le dossier n'a pas encore été créé) : les consommateurs REPLIENT
+ *   alors sur le nom (échec ouvert, jamais un blocage — ADR-0028).
  */
 function entitesValideesParCle_() {
   var validees = {};
@@ -460,7 +462,11 @@ function entitesValideesParCle_() {
       var l = cache.lignes[i];
       if (!estValidee_(l.statut)) continue;
       var cle = cleCanoniqueEntite_(l.domaine, l.entite);
-      if (cle) validees[cle] = canoniserEntite_(l.entite);
+      // ADR-0028 (routage TOPOLOGIQUE) : on expose le `Dossier ID` À CÔTÉ du libellé. Le nom seul
+      // ne suffit pas — il impose au dossier d'être enfant DIRECT du domaine (il était re-créé à
+      // plat dès qu'on le déplaçait). L'ID est stable aux déplacements/renommages Drive et déjà
+      // re-pointé par `repointerEntites_` lors d'une fusion : c'est LUI la vérité topologique.
+      if (cle) validees[cle] = { nom: canoniserEntite_(l.entite), dossierId: l.dossierId || '' };
     }
   } catch (e) {
     journalErreur_('Entités', 'Référentiel illisible (aucun dossier d\'entité ce run — à plat) : ' + e);

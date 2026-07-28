@@ -32,41 +32,42 @@ test('analyserNomClasse_ : nom au jour, au mois, à l\'année — et hors conven
 
 /* ---------- cheminCibleConsolidation_ : la formule du plan (année si domaine par année + entité VALIDÉE, sinon plat) ---------- */
 
-// Entités validées de test : carte cleCanoniqueEntite_ → libellé canonique (comme entitesValideesParCle_).
+// Entités validées de test : carte cleCanoniqueEntite_ → {nom, dossierId} (comme
+// entitesValideesParCle_ depuis l'ADR-0028 — l'ID est la vérité topologique, le nom un repli).
 const validees = {};
 [['02 · Finances', 'Desjardins'], ['05 · Carrière', 'Robovic']].forEach(([dom, ent]) => {
-  validees[ctx.cleCanoniqueEntite_(dom, ent)] = ent;
+  validees[ctx.cleCanoniqueEntite_(dom, ent)] = { nom: ent, dossierId: 'ID_' + ent };
 });
 
 test('cheminCibleConsolidation_ : arbitrage « entité OU année » (02) — entité validée SANS année, sinon AAAA', () => {
   // la CONSTANTE pilote le test (jamais la valeur du jour en dur)
   const domAnnee = ctx.CONFIG.DOMAINES_PAR_ANNEE[0];
-  assert.strictEqual(ctx.cheminCibleConsolidation_(domAnnee, '2026-03-01_Facture_EDF.pdf', validees),
+  assert.strictEqual(ctx.cheminCibleConsolidation_(domAnnee, '2026-03-01_Facture_EDF.pdf', validees).nom,
     '2026', 'émetteur non validé → année seule');
-  assert.strictEqual(ctx.cheminCibleConsolidation_(domAnnee, '2026-03_Relevé_Desjardins.pdf', validees),
+  assert.strictEqual(ctx.cheminCibleConsolidation_(domAnnee, '2026-03_Relevé_Desjardins.pdf', validees).nom,
     'Desjardins', 'entité validée → UN dossier d\'entité, JAMAIS fragmentée par année (2026/Desjardins interdit)');
 });
 
 test('cheminCibleConsolidation_ : domaine SANS année → entité validée seule, sinon À PLAT', () => {
-  assert.strictEqual(ctx.cheminCibleConsolidation_('05 · Carrière', '2026-06_Bulletin de paie_Robovic.pdf', validees),
+  assert.strictEqual(ctx.cheminCibleConsolidation_('05 · Carrière', '2026-06_Bulletin de paie_Robovic.pdf', validees).nom,
     'Robovic', 'entité validée → dossier d\'entité');
-  assert.strictEqual(ctx.cheminCibleConsolidation_('05 · Carrière', '2026-01-05_Lettre_Schneider Electric.pdf', validees),
+  assert.strictEqual(ctx.cheminCibleConsolidation_('05 · Carrière', '2026-01-05_Lettre_Schneider Electric.pdf', validees).nom,
     '', 'candidature (entité NON validée) → à plat');
-  assert.strictEqual(ctx.cheminCibleConsolidation_('08 · Perso & projets', 'PXL_20240101_123.jpg', validees),
+  assert.strictEqual(ctx.cheminCibleConsolidation_('08 · Perso & projets', 'PXL_20240101_123.jpg', validees).nom,
     '', 'hors convention → à plat au domaine');
   // une entité validée dans un AUTRE domaine ne crée pas de dossier ici (clé par domaine)
-  assert.strictEqual(ctx.cheminCibleConsolidation_('05 · Carrière', '2026-03_Relevé_Desjardins.pdf', validees),
+  assert.strictEqual(ctx.cheminCibleConsolidation_('05 · Carrière', '2026-03_Relevé_Desjardins.pdf', validees).nom,
     '', 'Desjardins est validée en 02, pas en 05');
 });
 
 test('cheminCibleConsolidation_ : pièce d\'identité → dossier de TYPE — UNIQUEMENT dans le domaine du type', () => {
-  assert.strictEqual(ctx.cheminCibleConsolidation_('01 · Administratif & identité', '2020-01-01_Passeport_Marc Richard.pdf', validees),
+  assert.strictEqual(ctx.cheminCibleConsolidation_('01 · Administratif & identité', '2020-01-01_Passeport_Marc Richard.pdf', validees).nom,
     'Passeport');
-  assert.strictEqual(ctx.cheminCibleConsolidation_('01 · Administratif & identité', '2023-02-01_Permis de conduire_Marc Richard.pdf', {}),
+  assert.strictEqual(ctx.cheminCibleConsolidation_('01 · Administratif & identité', '2023-02-01_Permis de conduire_Marc Richard.pdf', {}).nom,
     'Permis de conduire', 'même sans référentiel d\'entités');
   // Un passeport ÉGARÉ dans 02 ne fabrique pas de dossier « Passeport » hors 01 : ciblé par la règle
   // du domaine courant (année en 02) — le re-DOMAINE est hors périmètre de la consolidation (O2).
-  assert.strictEqual(ctx.cheminCibleConsolidation_('02 · Finances', '2020-01-01_Passeport_Marc Richard.pdf', validees),
+  assert.strictEqual(ctx.cheminCibleConsolidation_('02 · Finances', '2020-01-01_Passeport_Marc Richard.pdf', validees).nom,
     '2020', 'l\'exception identité est scopée à son domaine');
 });
 
@@ -87,8 +88,12 @@ test('TRIPWIRE flux vivant ↔ consolidation : pour un même document, le sous-c
     // Le fichier que le flux vivant vient de produire (plan.nom, dans plan.domaine) doit être « OK »
     // pour la consolidation : même sous-chemin par la règle unique.
     const cible = ctx.cheminCibleConsolidation_(plan.domaine, plan.nom, validees);
-    assert.strictEqual(cible, plan.sousDossier,
-      'divergence flux↔plan pour ' + plan.nom + ' (' + plan.domaine + ') : flux="' + plan.sousDossier + '" vs conso="' + cible + '"');
+    assert.strictEqual(cible.nom, plan.sousDossier,
+      'divergence flux↔plan pour ' + plan.nom + ' (' + plan.domaine + ') : flux="' + plan.sousDossier + '" vs conso="' + cible.nom + '"');
+    // ADR-0028 : l'ID cible doit AUSSI coïncider — sinon le flux rangerait par ID et la
+    // consolidation jugerait par nom (l'un déferait l'autre, à l'envers du bug corrigé).
+    assert.strictEqual(cible.id, plan.dossierIdCible || '',
+      'divergence d\'ID flux↔plan pour ' + plan.nom + ' (' + plan.domaine + ')');
   }
 });
 
@@ -121,6 +126,51 @@ test('decisionConsolidation_ : déjà au bon endroit → « OK » (le plan conve
   });
   assert.strictEqual(d.action, 'OK');
   assert.strictEqual(d.cible, '02 · Finances/2026/Desjardins');
+});
+
+test('decisionConsolidation_ : entité à la PROFONDEUR 2 → « OK » par ID, jamais « Déplacer » (ADR-0028)', () => {
+  // LE test de non-régression du chantier : le dossier d'entité « Robovic » a été déplacé sous un
+  // regroupement « Anciens employeurs » (ADR-0027, validé par Marc). Le sous-chemin TEXTUEL diffère
+  // de la cible à plat — avant l'ADR-0028, la consolidation ressortait les fichiers à chaque passe
+  // (puis proposait de corbeiller le dossier vidé). L'égalité d'ID doit primer.
+  const d = ctx.decisionConsolidation_({
+    domaine: '05 · Carrière',
+    sousCheminActuel: 'Anciens employeurs/Robovic',
+    sousCheminCible: 'Robovic',
+    dossierIdCible: 'ID_Robovic',
+    parentId: 'ID_Robovic',       // le fichier EST dans le dossier de l'entité, quelle que soit sa profondeur
+    protege: false, protegeIllisible: false, raccourci: false, doublonDe: null,
+  });
+  assert.strictEqual(d.action, 'OK');
+  assert.match(d.raison, /ID/);
+
+  // Contre-épreuve : même configuration mais le fichier est AILLEURS → « Déplacer » (on n'a pas
+  // neutralisé la consolidation en la rendant permissive).
+  const ailleurs = ctx.decisionConsolidation_({
+    domaine: '05 · Carrière',
+    sousCheminActuel: 'Vrac',
+    sousCheminCible: 'Robovic',
+    dossierIdCible: 'ID_Robovic',
+    parentId: 'ID_AUTRE',
+    protege: false, protegeIllisible: false, raccourci: false, doublonDe: null,
+  });
+  assert.strictEqual(ailleurs.action, 'Déplacer');
+
+  // Sans ID (entité validée dont le dossier n'existe pas encore) : comportement TEXTUEL d'avant.
+  const sansId = ctx.decisionConsolidation_({
+    domaine: '05 · Carrière', sousCheminActuel: 'Anciens employeurs/Robovic', sousCheminCible: 'Robovic',
+    dossierIdCible: '', parentId: 'ID_Robovic',
+    protege: false, protegeIllisible: false, raccourci: false, doublonDe: null,
+  });
+  assert.strictEqual(sansId.action, 'Déplacer', 'repli textuel : jamais un OK inventé sans ID');
+
+  // La zone protégée prime TOUJOURS sur la nouvelle règle (ordre des gardes inchangé, §1).
+  const protege = ctx.decisionConsolidation_({
+    domaine: '04 · Immigration', sousCheminActuel: 'X', sousCheminCible: 'Robovic',
+    dossierIdCible: 'ID_Robovic', parentId: 'ID_Robovic',
+    protege: true, protegeIllisible: false, raccourci: false, doublonDe: null,
+  });
+  assert.strictEqual(protege.action, 'Ignoré');
 });
 
 test('decisionConsolidation_ : hash déjà vu par la campagne → « Doublon », cible _Doublons (déplacement seul, §2)', () => {

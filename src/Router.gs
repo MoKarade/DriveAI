@@ -514,10 +514,10 @@ function planRoutageV2_(classif, meta, date, ext, validees) {
   // (3) Domaine introuvable (LLM hors-liste/malformé) → domaine par défaut (jamais de limbo).
   if (!domaineConnu_(c.domaine)) c.domaine = CONFIG.DOMAINE_DEFAUT;
 
-  var domaine, sousDossier;
+  var domaine, sousDossier, dossierIdCible = ''; // ADR-0028 : l'ID prime sur le nom quand il existe
   if (estDocumentIdentitePersonnel_(c)) {
     var di = dossierIdentite_(c);          // identité → domaine + sous-dossier de TYPE (04 possible : légitime)
-    domaine = di.domaine; sousDossier = di.sousDossier;
+    domaine = di.domaine; sousDossier = di.sousDossier; // dossier de TYPE : résolu par NOM (aucun ID)
   } else {
     domaine = c.domaine;
     // Candidat d'entité (champ gaté du prompt), retenu SEULEMENT s'il est VALIDÉ au référentiel —
@@ -526,12 +526,15 @@ function planRoutageV2_(classif, meta, date, ext, validees) {
     var candidat = sousDossierPourNom_(c);
     var cleEnt = candidat ? cleCanoniqueEntite_(domaine, candidat) : null;
     var entiteValidee = (cleEnt && validees && validees[cleEnt]) ? validees[cleEnt] : null;
-    sousDossier = sousCheminDomaine_({
+    var cible = sousCheminDomaine_({
       domaine: domaine, typeIdentite: null, entite: entiteValidee,
       annee: /^\d{4}/.test(date || '') ? date.substring(0, 4) : null,
     });
+    sousDossier = cible.nom;
+    dossierIdCible = cible.id;
   }
-  return { type: 'classé', domaine: domaine, sousDossier: sousDossier, nom: nommerDocument_(c, date, ext) };
+  return { type: 'classé', domaine: domaine, sousDossier: sousDossier,
+    dossierIdCible: dossierIdCible, nom: nommerDocument_(c, date, ext) };
 }
 
 /**
@@ -729,15 +732,27 @@ function sousDossierPourNom_(classif) {
  *  2. ENTITÉ (majeure, VALIDÉE) → dossier d'entité, SANS année (une entité = UN dossier) ;
  *  3. domaine par ANNÉE (DOMAINES_PAR_ANNEE) + année lisible → dossier « AAAA » ;
  *  4. sinon '' = racine du domaine (à plat). PUR.
- * @param {{domaine:string, typeIdentite:?string, entite:?string, annee:?string}} d
- * @return {string}
+ *
+ * ADR-0028 : renvoie un COUPLE `{nom, id}`. `id` n'est renseigné que pour une ENTITÉ VALIDÉE portant
+ * un `Dossier ID` — c'est ce qui permet au flux vivant ET à la consolidation de retrouver le dossier
+ * d'entité À N'IMPORTE QUELLE PROFONDEUR (ex. sous un regroupement « Anciens employeurs », ADR-0027)
+ * au lieu de le re-créer à plat. Les segments de TYPE et d'ANNÉE restent résolus par NOM (`id` vide) :
+ * le moteur les find-or-create sous le domaine, ils n'ont pas d'identité propre au référentiel.
+ * @param {{domaine:string, typeIdentite:?string, entite:?(string|{nom:string,dossierId:string}),
+ *   annee:?string}} d  `entite` : objet du référentiel (ADR-0028) ; une CHAÎNE reste tolérée
+ *   (appelant historique / test) et vaut alors un id vide → repli par nom.
+ * @return {{nom:string, id:string}}
  */
 function sousCheminDomaine_(d) {
   d = d || {};
-  if (d.typeIdentite) return d.typeIdentite;
-  if (d.entite) return d.entite;
-  if (d.annee && (CONFIG.DOMAINES_PAR_ANNEE || []).indexOf(d.domaine) !== -1) return d.annee;
-  return '';
+  if (d.typeIdentite) return { nom: d.typeIdentite, id: '' };
+  if (d.entite) {
+    return typeof d.entite === 'string'
+      ? { nom: d.entite, id: '' }
+      : { nom: d.entite.nom || '', id: d.entite.dossierId || '' };
+  }
+  if (d.annee && (CONFIG.DOMAINES_PAR_ANNEE || []).indexOf(d.domaine) !== -1) return { nom: d.annee, id: '' };
+  return { nom: '', id: '' };
 }
 
 /**

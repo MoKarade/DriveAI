@@ -48,7 +48,7 @@ function ctxLigne(opts) {
   c.sousDossier_ = (parent, nom) => ({ getId: () => parent.getId() + '/' + nom });
   c.champ_ = (s) => String(s == null ? '' : s).trim();
   // La cible est RECALCULÉE via la règle unique — mockée ici (testée pour de vrai dans consolidation.test.js).
-  c.cheminCibleConsolidation_ = () => (opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : '2026');
+  c.cheminCibleConsolidation_ = () => ({ nom: opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : '2026', id: opts.dossierIdCible || '' }); // {nom,id} depuis l'ADR-0028
   const fichier = {
     // next() avance l'index LUI-MÊME (comme DriveApp) — un incrément caché dans getId() fausserait
     // le compteur de parents (vécu : hasNext éternel → faux « multi-parents »).
@@ -147,7 +147,7 @@ function ctxVide(opts) {
   c.dossierDoublons_ = () => ({ getId: () => 'DOUBLONS' });
   c.sousDossier_ = (parent, nom) => ({ getId: () => parent.getId() + '/' + nom });
   c.champ_ = (s) => String(s == null ? '' : s).trim();
-  c.cheminCibleConsolidation_ = () => (opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : '');
+  c.cheminCibleConsolidation_ = () => ({ nom: opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : '', id: opts.dossierIdCible || '' }); // {nom,id} depuis l'ADR-0028
   c.domaineActuelFichier_ = () => '02 · Finances';
   // Injections cross-module (Reorg.gs / Maintenance.gs non chargés dans ce contexte de test).
   c.ensembleIntouchables_ = () => (opts.intouchables || {});
