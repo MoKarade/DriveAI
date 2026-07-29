@@ -581,6 +581,126 @@ test('placerReset_ / appliquerReset04Interne_ : même contrat manuel (gate + com
   }
 });
 
+/* ---------- Anti-spin : une ronde STÉRILE arrête la boucle un-clic (revue quota) ---------- */
+
+test('rondeSterileReset_ : rien examiné ET rien déplacé (ou phase muette) = stérile ; le moindre travail ne l\'est pas', () => {
+  assert.strictEqual(ctxPur.rondeSterileReset_(null), true, 'phase sortie tôt (undefined/null) → stérile');
+  assert.strictEqual(ctxPur.rondeSterileReset_({ examines: 0, deplaces: 0, complet: true }), true);
+  assert.strictEqual(ctxPur.rondeSterileReset_({ examines: 0, deplaces: 0, complet: false }), true,
+    'passe interrompue sans rien produire : stérile aussi (sinon spin sur une racine illisible)');
+  assert.strictEqual(ctxPur.rondeSterileReset_({ examines: 5, deplaces: 0, complet: true }), false,
+    'examiné sans déplacer (tout était déjà en place) = travail réel');
+  assert.strictEqual(ctxPur.rondeSterileReset_({ examines: 0, deplaces: 3, complet: true }), false);
+});
+
+// Contexte de boucle un-clic : verrou libre, phases injectées, Properties en mémoire.
+function ctxBoucle(phases) {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const store = {};
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in store ? store[k] : null),
+    setProperty: (k, v) => { store[k] = String(v); },
+    deleteProperty: (k) => { delete store[k]; },
+  }) };
+  c.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) };
+  c.journalInfo_ = () => {}; c.journalErreur_ = () => {}; c.notifierEchec_ = () => {};
+  const appels = { rass: 0, place: 0, i04: 0 };
+  c.rassemblerReset_ = () => { appels.rass++; return phases.rass; };
+  c.placerReset_ = () => { appels.place++; return phases.place; };
+  c.appliquerReset04Interne_ = () => { appels.i04++; return phases.i04; };
+  return { c, appels, store };
+}
+
+const STERILE = { examines: 0, deplaces: 0, complet: true };
+const TRAVAIL = { examines: 3, deplaces: 3, complet: false };
+
+test('lancerResetPlacement : ronde STÉRILE → sort IMMÉDIATEMENT (le tag ne peut pas servir de signal — il ne se pose qu\'après le rassemblement)', () => {
+  // Le bug corrigé : dans l'état STABLE « placement oisif, rassemblement non fini », le tag n'est
+  // JAMAIS posé → l'ancienne condition de break ne pouvait structurellement pas tirer et la boucle
+  // spinnait jusqu'au mur (4,5 min), en relisant tout PlanConsolidation à chaque ronde.
+  const t = ctxBoucle({ place: STERILE });
+  t.c.lancerResetPlacement();
+  assert.strictEqual(t.appels.place, 1, 'une seule passe : on ne re-scanne pas en boucle pour rien');
+  assert.strictEqual(t.store.DriveAI_RESET_PLACEMENT, undefined, 'et ce, SANS que le tag soit posé');
+});
+
+test('boucles un-clic : testées par leur LIBÉRATION — du travail fait continue, puis une ronde stérile arrête', () => {
+  // Leçon §7 : un gate se teste par sa libération, pas seulement par son blocage. Ici : la boucle
+  // doit ENCHAÎNER tant qu'il y a du travail, et ne s'arrêter que quand il n'y en a plus.
+  let restant = 3;
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const store = {};
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in store ? store[k] : null), setProperty: (k, v) => { store[k] = String(v); }, deleteProperty: () => {},
+  }) };
+  c.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) };
+  c.journalInfo_ = () => {}; c.journalErreur_ = () => {}; c.notifierEchec_ = () => {};
+  let passes = 0;
+  c.rassemblerReset_ = () => { passes++; return restant-- > 0 ? TRAVAIL : STERILE; };
+  c.lancerResetRassemblement();
+  assert.strictEqual(passes, 4, '3 passes productives enchaînées, puis la 4ᵉ (stérile) arrête');
+});
+
+test('lancerResetTout : s\'arrête quand les 3 phases sont stériles, mais CONTINUE si UNE seule travaille encore', () => {
+  const rienAFaire = ctxBoucle({ rass: STERILE, place: STERILE, i04: STERILE });
+  rienAFaire.c.lancerResetTout();
+  assert.strictEqual(rienAFaire.appels.rass, 1, 'une ronde et on sort');
+  assert.strictEqual(rienAFaire.appels.place, 1);
+  assert.strictEqual(rienAFaire.appels.i04, 1);
+
+  // Une seule phase productive → la boucle DOIT continuer (sinon on s'arrêterait trop tôt).
+  let reste = 2;
+  const t = ctxBoucle({ rass: STERILE, place: STERILE, i04: STERILE });
+  t.c.placerReset_ = () => { t.appels.place++; return reste-- > 0 ? TRAVAIL : STERILE; };
+  t.c.lancerResetTout();
+  assert.strictEqual(t.appels.place, 3, 'continue tant qu\'UNE phase produit du travail');
+});
+
+/* ---------- Un-clic : jamais par un déclencheur, et signal de vie pour le chien de garde ---------- */
+
+test('estAppelParDeclencheur_ : un event object de trigger est reconnu ; une exécution d\'éditeur non', () => {
+  assert.strictEqual(ctxPur.estAppelParDeclencheur_({ triggerUid: '123' }), true);
+  assert.strictEqual(ctxPur.estAppelParDeclencheur_(undefined), false, 'exécution manuelle depuis l\'éditeur');
+  assert.strictEqual(ctxPur.estAppelParDeclencheur_({}), false);
+});
+
+test('les 4 un-clic REFUSENT de tourner si un déclencheur les appelle (le drapeau manuel ne vaut que hors quota des déclencheurs)', () => {
+  for (const nom of ['lancerResetTout', 'lancerResetRassemblement', 'lancerResetPlacement', 'lancerReset04Interne']) {
+    const t = ctxBoucle({ rass: TRAVAIL, place: TRAVAIL, i04: TRAVAIL });
+    let verrouPris = false;
+    t.c.LockService = { getScriptLock: () => { verrouPris = true; return { tryLock: () => true, releaseLock: () => {} }; } };
+    t.c[nom]({ triggerUid: 'abc' }); // appelée COMME un handler de déclencheur
+    assert.strictEqual(verrouPris, false, nom + ' ne doit même pas prendre le verrou sous déclencheur');
+    assert.strictEqual(t.appels.rass + t.appels.place + t.appels.i04, 0, nom + ' ne doit RIEN exécuter sous déclencheur');
+  }
+});
+
+test('les un-clic écrivent DriveAI_LAST_MANUEL — sinon le chien de garde crie « moteur silencieux » à tort pendant une séance', () => {
+  const t = ctxBoucle({ rass: STERILE, place: STERILE, i04: STERILE });
+  t.c.lancerResetTout();
+  assert.ok(Number(t.store.DriveAI_LAST_MANUEL) > 0, 'signal de vie manuel persisté');
+});
+
+test('chienDeGarde : DriveAI_LAST_MANUEL frais compte comme un signal de VIE (pas d\'alerte pendant une séance manuelle)', () => {
+  const c = load(['Config.gs', 'Main.gs']);
+  const maintenant = Date.now();
+  const store = {
+    // Heartbeat de tick VIEUX (les ticks sautent : le verrou est tenu par la séance manuelle)…
+    DriveAI_LAST_TICK: String(maintenant - 3 * 60 * 60 * 1000),
+    // …mais une exécution manuelle vient d'avoir lieu.
+    DriveAI_LAST_MANUEL: String(maintenant - 60 * 1000),
+  };
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in store ? store[k] : null), setProperty: (k, v) => { store[k] = String(v); }, deleteProperty: () => {},
+  }) };
+  let repare = false;
+  c.installerTrigger = () => { repare = true; };
+  c.journalInfo_ = () => {}; c.journalErreur_ = () => {};
+  c.chienDeGarde();
+  assert.strictEqual(repare, false, 'aucune réparation : le moteur donne signe de vie par le canal manuel');
+  assert.strictEqual(store.DriveAI_WATCHDOG_ALERTE, undefined, 'et aucune alerte « moteur silencieux »');
+});
+
 test('les 4 fonctions UN-CLIC passent `true` (manuel) aux phases — sinon le budget du tick les brimerait à nouveau', () => {
   const fs = require('fs');
   const path = require('path');

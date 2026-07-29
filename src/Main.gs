@@ -115,7 +115,14 @@ function actionChienDeGarde_(maintenant, dernierTick, seuil, repareTick, alerteT
 function chienDeGarde() {
   try {
     var props = PropertiesService.getScriptProperties();
-    var dernierTick = Number(props.getProperty('DriveAI_LAST_TICK')) || 0;
+    // Signal de vie = le PLUS RÉCENT du heartbeat de tick ET d'une exécution MANUELLE (C28-33) : une
+    // séance de un-clic enchaînés tient le verrou du tick et fait sauter presque tous les ticks
+    // (TICK_MINUTES 5 vs boucle manuelle ~4,5 min) — sans ça, le chien de garde déclarerait « moteur
+    // silencieux » à tort au bout de 45 min, et l'épisode remonterait au résumé hebdo.
+    var dernierTick = Math.max(
+      Number(props.getProperty('DriveAI_LAST_TICK')) || 0,
+      Number(props.getProperty('DriveAI_LAST_MANUEL')) || 0
+    );
     var action = actionChienDeGarde_(
       Date.now(), dernierTick, CONFIG.WATCHDOG_SEUIL_MS,
       Number(props.getProperty('DriveAI_WATCHDOG_REPARE')) || 0,
