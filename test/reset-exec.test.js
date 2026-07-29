@@ -269,13 +269,74 @@ test('placerUnFichierReset_ : QUASI-doublon (même nom normalisé, taille diffé
   assert.strictEqual(quasi[0][5], 'doublon-probable');
 });
 
-test('placerUnFichierReset_ : re-pointe l\'entité VALIDÉE dont le Dossier ID pointait l\'ANCIEN emplacement', () => {
+test('placerUnFichierReset_ : QUASI-doublon — deux gros fichiers JAMAIS hashés (> OCR_TAILLE_MAX), MÊME taille → rapporté quand même (revue code C28-33)', () => {
+  // Une taille identique ne prouve « déjà couvert par le hash » QUE si les deux fichiers ont été
+  // RÉELLEMENT hashés (empreinteBlob_ n'est jamais appelée au-delà de OCR_TAILLE_MAX). Sans ce
+  // correctif, deux gros homonymes de même taille mais de contenu différent passaient inaperçus
+  // des DEUX dédups (ni le hash exact — jamais calculé — ni ce rapport, court-circuité à tort).
+  const ctx1 = ctxPlacement({ id: 'G1', nom: 'scan.pdf', taille: 500, empreinte: '', domaine: '08 · Perso & projets' });
+  const ctxObj = { proteges: {}, empreintesVues: {}, validees: {}, repointes: {} };
+  ctx1.c.placerUnFichierReset_(ctx1.fichier, '08 · Perso & projets', 'tri33p|tag|G1', ctxObj);
+
+  const fichier2 = fakeFichierReset({ id: 'G2', nom: 'scan.pdf', taille: 500, parents: [] });
+  ctx1.c.placerUnFichierReset_(fichier2, '08 · Perso & projets', 'tri33p|tag|G2', ctxObj); // empreinte '' aussi (opts.empreinte fige toute la fonction mockée)
+
+  const quasi = ctx1.ajoutsRapport.filter((r) => String(r[0]).indexOf('quasidoublon|') === 0);
+  assert.strictEqual(quasi.length, 1, 'même taille mais NON hashés → rapporté (pas de faux « déjà couvert »)');
+  assert.strictEqual(quasi[0][0], 'quasidoublon|G2');
+  assert.ok(String(quasi[0][6]).indexOf('NON confirmée par hash') !== -1);
+});
+
+test('placerUnFichierReset_ : QUASI-doublon — même taille, LES DEUX vraiment hashés (empreintes différentes → contenu réellement distinct) → aucun rapport', () => {
+  // Les deux fichiers SONT hashés (sous OCR_TAILLE_MAX) et ont des empreintes DIFFÉRENTES — le hash
+  // exact a donc déjà tranché « pas un doublon » : la coïncidence de taille seule n'a rien à ajouter.
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const index = {};
+  const ajouts = [];
+  const log = [];
+  let lignesReset = [['Clé']];
+  const ajoutsRapport = [];
+  c.indexContient_ = (cle) => !!index[cle];
+  c.indexAjouter_ = (cle, dec) => { index[cle] = true; ajouts.push({ statut: dec.statut }); };
+  c.journalInfo_ = () => {}; c.journalErreur_ = () => {};
+  c.aParentProtege_ = () => false; c.nbParentsBorne_ = () => 1;
+  c.empreinteBlob_ = (blob) => 'HASH:' + blob.id; // distincte par fichier — jamais un doublon exact
+  c.dossierDoublons_ = () => fakeDossierReset('DOUBLONS', log);
+  c.idDomaine_ = (dom) => 'DOM:' + dom;
+  c.sousDossier_ = (parent, nom) => fakeDossierReset(parent.getId() + '/' + nom, log);
+  c.cleCanoniqueEntite_ = () => null;
+  c.detecterDossierVide_ = () => {};
+  c.feuille_ = () => ({
+    getLastRow: () => lignesReset.length,
+    getRange: (r, col, nb) => ({ getValues: () => lignesReset.slice(r - 1, r - 1 + nb).map((row) => [row[0]]) }),
+    appendRow: (row) => { lignesReset.push([row[0]]); ajoutsRapport.push(row); },
+  });
+  c.DriveApp = { getFolderById: (id) => fakeDossierReset(id, log) };
+
+  const ctxObj = { proteges: {}, empreintesVues: {}, validees: {}, repointes: {} };
+  const f1 = fakeFichierReset({ id: 'H1', nom: 'petit.pdf', taille: 50, parents: [] });
+  c.placerUnFichierReset_(f1, '08 · Perso & projets', 'tri33p|tag|H1', ctxObj);
+  const f2 = fakeFichierReset({ id: 'H2', nom: 'petit.pdf', taille: 50, parents: [] });
+  c.placerUnFichierReset_(f2, '08 · Perso & projets', 'tri33p|tag|H2', ctxObj);
+
+  const quasi = ajoutsRapport.filter((r) => String(r[0]).indexOf('quasidoublon|') === 0);
+  assert.strictEqual(quasi.length, 0, 'même taille, tous deux RÉELLEMENT hashés, empreintes différentes → pas un faux positif');
+});
+
+test('placerUnFichierReset_ : re-pointe l\'entité VALIDÉE dont le Dossier ID pointait l\'ANCIEN emplacement — DÉDUP réellement exercée sur un 2ᵉ fichier', () => {
   const { c, repointages, fichier } = ctxPlacement({ id: 'F7', nom: '2022-08_Attestation_Boursorama Banque.pdf', domaine: '02 · Finances' });
-  const ctxObj = { empreintesVues: {}, validees: { CLE: { nom: 'Boursorama', dossierId: 'ANCIEN_BOURSO' } }, repointes: {} };
+  const ctxObj = { proteges: {}, empreintesVues: {}, validees: { CLE: { nom: 'Boursorama', dossierId: 'ANCIEN_BOURSO' } }, repointes: {} };
   c.cleCanoniqueEntite_ = () => 'CLE';
   c.placerUnFichierReset_(fichier, '02 · Finances', 'tri33p|tag|F7', ctxObj);
   assert.deepStrictEqual(repointages, [['ANCIEN_BOURSO', 'DOM:02 · Finances/Banques/Boursorama']]);
-  assert.deepStrictEqual(ctxObj.repointes, { ANCIEN_BOURSO: true }, 'dédup : un 2ᵉ fichier vers la même entité ne re-pointe pas');
+  assert.deepStrictEqual(ctxObj.repointes, { ANCIEN_BOURSO: true });
+
+  // 2ᵉ fichier, MÊME entité cible, MÊME ctxObj (même run) : la garde de dédup doit RÉELLEMENT
+  // empêcher un 2ᵉ appel — vérifié en rappelant placerUnFichierReset_, pas seulement en relisant l'état.
+  const fichier2 = fakeFichierReset({ id: 'F11', nom: '2023-05_Attestation_Boursorama.pdf', parents: [] });
+  c.placerUnFichierReset_(fichier2, '02 · Finances', 'tri33p|tag|F11', ctxObj);
+  assert.deepStrictEqual(repointages, [['ANCIEN_BOURSO', 'DOM:02 · Finances/Banques/Boursorama']],
+    'dédup : un 2ᵉ fichier vers la même entité ne re-pointe pas une 2ᵉ fois');
 });
 
 test('placerUnFichierReset_ : déjà en place (rejeu) → aucun addFile/removeFile, clé posée quand même', () => {

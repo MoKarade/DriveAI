@@ -33,7 +33,7 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
    produit mais ne route plus rien. Ce qui reste **NON négociable** : (a) **aucune suppression** (§2) ;
    (b) **`04 · Immigration` : réorganisation INTERNE permise, sortie JAMAIS automatique** *(révision
    ADR-0030 §4, ordre explicite de Marc 2026-07-29 — livrée ATOMIQUEMENT avec `src/Reset.gs`
-   `reorgInterneReset_`/`dossierInterne04_` et son tripwire de surface en C28-33 PR2)*. Un fichier déjà
+   `reorganiserInterne04_`/`dossierInterne04Reset_` et son tripwire de surface en C28-33 PR2)*. Un fichier déjà
    rangé sous 04 peut être **déplacé D'UN sous-dossier de 04 VERS UN AUTRE sous-dossier de 04** (fusion
    de graphies, nouvelle structure ≤ 7) — jamais hors de 04. Garde multi-parents `aParentProtege_`
    (remonte toute la chaîne d'ancêtres, appliquée à la collecte ET avant chaque mutation) + tout

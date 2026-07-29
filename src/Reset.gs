@@ -533,15 +533,22 @@ function inscrireLigneReset_(cle, type, nom, domaine, cible, statut, detail, ctx
  * d'origine (deux homonymes de domaines différents ne sont pas nécessairement liés). Mémoire de
  * campagne (`ctx.taillesVues`, ce run) — best-effort, jamais une preuve ; le hash exact reste la
  * SEULE dédup qui déplace un fichier.
+ *
+ * `hashee` (revue code C28-33) : une taille IDENTIQUE ne prouve « déjà couvert par le hash » que si
+ * LES DEUX fichiers comparés ont RÉELLEMENT été hashés (`empreinteBlob_` n'est jamais appelée
+ * au-delà de `CONFIG.OCR_TAILLE_MAX`, cf. `placerUnFichierReset_`) — sinon, deux gros fichiers
+ * homonymes de même taille mais de contenu DIFFÉRENT passeraient inaperçus des deux dédups (ni le
+ * hash exact, jamais calculé, ni ce rapport, court-circuité à tort par l'égalité de taille seule).
  */
-function signalerQuasiDoublonReset_(nom, taille, fileId, domaine, ctx) {
+function signalerQuasiDoublonReset_(nom, taille, hashee, fileId, domaine, ctx) {
   var cleTaille = domaine + '|' + normaliserCle_(nom);
   if (!ctx.taillesVues) ctx.taillesVues = {};
   var vu = ctx.taillesVues[cleTaille];
-  if (vu === undefined) { ctx.taillesVues[cleTaille] = taille; return; }
-  if (vu === taille) return; // même taille : très probablement le même contenu déjà couvert par le hash
+  if (vu === undefined) { ctx.taillesVues[cleTaille] = { taille: taille, hashee: hashee }; return; }
+  if (vu.taille === taille && vu.hashee && hashee) return; // tailles égales ET LES DEUX hashées → déjà couvert
   inscrireLigneReset_('quasidoublon|' + fileId, 'quasi-doublon', nom, domaine, '', 'doublon-probable',
-    'même nom, taille différente (' + taille + ' vs ' + vu + ' octets)', ctx);
+    'même nom, taille ' + (vu.taille === taille ? 'identique mais NON confirmée par hash' : 'différente') +
+    ' (' + taille + ' vs ' + vu.taille + ' octets)', ctx);
 }
 
 /** Fichier NON ROUTÉ (ADR-0030 §3) : reste dans `_TRI`, RAPPORTÉ — jamais deviné. */
@@ -623,7 +630,7 @@ function placerUnFichierReset_(f, domaine, cle, ctx) {
     statut = 'tri33-doublon';
     cheminFinal = '_Doublons';
   } else {
-    signalerQuasiDoublonReset_(nom, f.getSize(), f.getId(), domaine, ctx);
+    signalerQuasiDoublonReset_(nom, f.getSize(), !!empreinte, f.getId(), domaine, ctx);
     var sousChemin = cheminCibleReset_(domaine, nom);
     if (sousChemin) {
       var domaineDossier = DriveApp.getFolderById(idDomaine_(domaine));
