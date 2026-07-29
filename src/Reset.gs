@@ -149,7 +149,8 @@ function estExcluDuReset_(nom) {
  * @param {string} domaine  domaine d'ORIGINE (enregistré au rassemblement, clé `tri33|`)
  * @param {string} nom      nom actuel du fichier
  * @return {?string} chemin relatif au domaine (« Banques/Desjardins ») — null = NON ROUTÉ : le
- *   fichier RESTE dans `_TRI 2026` (rapport → affinage de table ou passe LLM). Jamais deviné.
+ *   fichier RESTE dans `_TRI 2026` (rapport → affinage de table ou passe LLM) ; pour 04 (jamais
+ *   rassemblée) null = reste À SA PLACE dans 04. Jamais deviné.
  */
 function cheminCibleReset_(domaine, nom) {
   var s = STRUCTURE_CIBLE_RESET[domaine];
@@ -167,7 +168,7 @@ function cheminCibleReset_(domaine, nom) {
       // ressemble à une personne rend null (revue PR1) : le contrat du module est « jamais deviné » —
       // le passeport d'un proche non listé doit RESTER en _TRI au rapport, pas finir chez Marc.
       if (e.indexOf('marc') !== -1 && e.indexOf('richard') !== -1) return 'Pièces d\'identité/Marc';
-      if (e === '' || resetContient_(e, ['prefecture', 'saaq', 'societe de l assurance', 'ramq', 'gouvernement', 'republique', 'mairie', 'ministere', 'service'])) {
+      if (e === '' || resetContient_(e, ['prefecture', 'saaq', 'societe de l assurance', 'ramq', 'gouvernement', 'republique', 'mairie', 'ministere', 'service', 'consulat', 'ambassade'])) {
         return 'Pièces d\'identité/Marc';
       }
       return null;
@@ -181,24 +182,30 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(e, ['tesco', 'transport scolaire'])) return 'Contrats & fournisseurs/Transport scolaire';
     if (e.indexOf('maif') !== -1) return 'Contrats & fournisseurs/Filia-MAIF';
     if (e === 'ino') return 'Contrats & fournisseurs/INO';
-    if (resetContient_(tout, ['code de securite', 'codes de securite', 'mot de passe', 'sauvegarde'])) return 'Sécurité & codes';
+    if (resetContient_(tout, ['code de securite', 'codes de securite', 'mot de passe']) ||
+        (tout.indexOf('sauvegarde') !== -1 && e.indexOf('gmf') === -1)) return 'Sécurité & codes'; // GMF La Sauvegarde = un ASSUREUR (revue)
     if (resetContient_(t, ['lettre', 'courrier', 'correspondance', 'mise en demeure'])) return 'Correspondance';
     return null;
   }
 
   if (domaine === '02 · Finances') {
-    if (t.indexOf('releve') !== -1) return 'Relevés/' + resetBucketAnnee_(seg.annee, s['Relevés']);
-    if (resetContient_(t, ['avis d imposition', 'declaration de revenus', 'impot', 'taxe'])) return 'Impôts & déclarations';
+    if (t.indexOf('releve') !== -1 && t.indexOf('releve d identite bancaire') === -1) return 'Relevés/' + resetBucketAnnee_(seg.annee, s['Relevés']);
+    // Fiscal (dont les feuillets québécois T4/Relevé 1) et remboursements d'IMPÔT (revue : 'bourse'
+    // ⊂ « remboursement » envoyait les remboursements en Placements — jamais de motif court sur tout).
+    if (resetContient_(t, ['avis d imposition', 'declaration de revenus', 'impot', 'taxe', 'feuillet', 't4']) ||
+        (t.indexOf('remboursement') !== -1 && e.indexOf('revenu') !== -1)) return 'Impôts & déclarations';
     if (resetContient_(tout, ['donation', 'succession'])) return 'Donations & successions';
-    if (resetContient_(tout, ['assurance vie', 'prevoyance'])) return 'Assurances & prévoyance';
-    if (resetContient_(tout, ['tether', 'usdt', 'crypto', 'securities', 'portefeuille', 'bourse'])) return 'Placements & crypto';
-    if (resetContient_(tout, ['coordonnees bancaires', 'rib', 'cheque'])) return 'Banques/Coordonnées & chèques';
-    if (resetContient_(t, ['recu', 'facture'])) return 'Reçus & factures/' + resetBucketAnnee_(seg.annee, s['Reçus & factures']);
+    // Assurance AVANT le rattrapage bancaire (revue : « Desjardins Assurance » partait en Banques).
+    if (resetContient_(tout, ['assurance vie', 'prevoyance']) || e.indexOf('assurance') !== -1) return 'Assurances & prévoyance';
+    if (resetContient_(tout, ['tether', 'usdt', 'crypto', 'securities', 'boursier', 'bourse de', 'portefeuille'])) return 'Placements & crypto';
+    // 'rib' n'est plus une sous-chaîne (revue : ⊂ « contribution »/« distribution ») : type exact.
+    if (t === 'rib' || resetContient_(tout, ['coordonnees bancaires', 'releve d identite bancaire', 'chequier']) || t.indexOf('cheque') !== -1) return 'Banques/Coordonnées & chèques';
+    if (resetContient_(t, ['recu', 'facture', 'remboursement'])) return 'Reçus & factures/' + resetBucketAnnee_(seg.annee, s['Reçus & factures']);
     if (e.indexOf('desjardins') !== -1) return 'Banques/Desjardins';
     if (e.indexOf('boursorama') !== -1) return 'Banques/Boursorama';
     if (e.indexOf('transatlantique') !== -1) return 'Banques/Banque Transatlantique';
-    if (e.indexOf('cic') !== -1) return 'Banques/CIC';
-    if (resetContient_(e, ['societe generale', 'banque de savoie', 'lyonnaise de banque', 'bcque', 'banque 10096', 'credit industriel'])) return 'Banques/Banques France';
+    if (e.indexOf('cic') !== -1 || e.indexOf('credit industriel') !== -1) return 'Banques/CIC'; // même banque, deux graphies (revue)
+    if (resetContient_(e, ['societe generale', 'banque de savoie', 'lyonnaise de banque', 'bcque', 'banque 10096'])) return 'Banques/Banques France';
     return null;
   }
 
@@ -210,6 +217,8 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(t, ['immatriculation', 'carte grise']) || e.indexOf('saaq') !== -1) return 'Véhicules';
     if (resetContient_(e, ['edf', 'engie', 'hydro'])) return 'Énergie & services';
     if (tout.indexOf('assurance habitation') !== -1 || e.indexOf('maif') !== -1) return 'Assurance habitation';
+    if (resetContient_(tout, ['trieste', 'moreau'])) return 'Logements/Anciens logements'; // stock réel (revue)
+    if (resetContient_(tout, ['jetta', 'fiesta'])) return 'Véhicules/Anciens véhicules';
     if (resetContient_(t, ['bail', 'etat des lieux', 'quittance', 'loyer'])) return 'Logements';
     return null;
   }
@@ -217,7 +226,7 @@ function cheminCibleReset_(domaine, nom) {
   // 04 : routage INTERNE seulement (ADR-0030 §4) — jamais appliqué à un fichier hors de 04, et
   // jamais de sortie : un fichier de 04 non routé reste À SA PLACE (pas dans _TRI).
   if (domaine === '04 · Immigration') {
-    if (resetContient_(tout, ['mifi', 'francisation'])) return 'MIFI (Québec)';
+    if (resetContient_(tout, ['mifi', 'francisation', 'caq', 'certificat d acceptation', 'diversite et de l inclusion'])) return 'MIFI (Québec)';
     if (resetContient_(tout, ['permis de travail', 'eimt', 'ptet'])) return 'Permis de travail & EIMT';
     if (resetContient_(tout, ['residence permanente', 'resident permanent'])) return 'Résidence permanente';
     if (resetContient_(tout, ['ircc', 'citoyennete', 'citizenship', 'immigration'])) return 'IRCC (fédéral)';
@@ -229,11 +238,12 @@ function cheminCibleReset_(domaine, nom) {
     if (t === 'cv' || tout.indexOf('cv') === 0 || resetContient_(tout, ['curriculum', 'lettre de motivation'])) return 'CV & lettres';
     if (t.indexOf('candidature') !== -1) return 'Recherche d\'emploi/Candidatures';
     if (tout.indexOf('suivi recherche') !== -1) return 'Recherche d\'emploi/Suivi';
+    if (tout.indexOf('archive candidatures') !== -1) return 'Recherche d\'emploi/Archive 2021-2025';
     if (e.indexOf('robovic') !== -1) return 'Employeurs/Robovic';
     if (e.indexOf('automatech') !== -1) return 'Employeurs/Automatech';
     if (resetContient_(e, ['mric', 'm ric'])) return 'Entreprise — MRic (SCI)';
     if (resetContient_(tout, ['alternance', 'stage'])) return 'Alternance & stages';
-    if (resetContient_(t, ['bilan', 'formation'])) return 'Formation & bilans';
+    if (t.indexOf('bilan') !== -1 || (' ' + t).indexOf(' formation') !== -1) return 'Formation & bilans'; // ' formation' : jamais « information » (revue)
     if (resetContient_(tout, ['linkedin', 'presentation', 'reseau'])) return 'Réseaux & présentations';
     // Décision Marc : les AUTRES entreprises = recherche d'emploi (jamais employeurs).
     if (e === 'ute' || resetContient_(e, ['arkema', 'eaton', 'siemens', 'schneider', 'wiio', 'bluewrist', 'pierre fabre', 'lactalis', 'gravelines', 'cnpe'])) return 'Recherche d\'emploi';
@@ -244,7 +254,10 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(t, ['diplome', 'releve de notes', 'bulletin', 'attestation de reussite'])) return 'Diplômes & relevés officiels';
     var ecole = null;
     if (resetContient_(tout, ['therese', 'avila'])) ecole = 'Lycée Thérèse d\'Avila';
-    else if (resetContient_(tout, ['gustave eiffel', 'ptsi', 'kholle', 'concours avenir', 'tetard', 'le meur', 'salwa', 'parcevaux', 'leroux'])) ecole = 'Prépa Gustave Eiffel (PTSI)';
+    // Le COLLÈGE Gustave Eiffel et le Hubhouse (ULCO-CEL) ne sont PAS la prépa/le DUT (revue) :
+    // testés AVANT leurs mots-pièges ('gustave eiffel', 'ulco').
+    else if (resetContient_(tout, ['college', 'hubhouse'])) ecole = 'Autres établissements';
+    else if (resetContient_(tout, ['gustave eiffel', 'ptsi', 'kholle', ' colles', 'concours avenir', 'tetard', 'le meur', 'salwa', 'parcevaux', 'leroux'])) ecole = 'Prépa Gustave Eiffel (PTSI)';
     else if (resetContient_(tout, ['iut', 'ulco', 'littoral', 'saint omer', 'cote d opale'])) ecole = 'DUT ULCO Saint-Omer';
     else if (tout.indexOf('sherbrooke') !== -1) ecole = 'Cégep de Sherbrooke';
     else if (tout.indexOf('imerir') !== -1) ecole = 'IMERIR';
@@ -252,7 +265,7 @@ function cheminCibleReset_(domaine, nom) {
     if (!ecole) return null;
     if (ecole === 'Autres établissements') return ecole; // à plat (rapport → affinage si volume)
     if (t.indexOf('concours') !== -1 && ecole === 'Prépa Gustave Eiffel (PTSI)') return ecole + '/Concours';
-    if (resetContient_(t, ['examen', 'devoir surveille', 'controle', 'partiel', 'kholle']) || t === 'ds') return ecole + '/Examens & khôlles';
+    if (resetContient_(t, ['examen', 'devoir surveille', 'controle', 'partiel', 'kholle', 'colles']) || t === 'ds') return ecole + '/Examens & khôlles';
     if (resetContient_(t, ['resultat', 'note', 'evaluation'])) return ecole + '/Résultats';
     if (resetContient_(t, ['certificat de scolarite', 'inscription', 'convention', 'attestation'])) return ecole + '/Administratif';
     if (resetContient_(t, ['cours', 'fiche', 'travaux', 'projet', 'memoire', 'devoir']) || t === 'td' || t === 'tp') return ecole + '/Cours & travaux';
@@ -263,7 +276,7 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(t, ['consultation', 'ordonnance', 'compte rendu'])) return 'Médecins & consultations';
     if (resetContient_(t, ['facture', 'recu'])) return 'Factures & reçus';
     if (resetContient_(t, ['resultat', 'analyse', 'examen', 'radiographie'])) return 'Examens & résultats';
-    if (resetContient_(tout, ['medecine scolaire', 'medecine du travail', 'aptitude', 'scolaire'])) return 'Médecine scolaire & travail';
+    if (resetContient_(tout, ['medecine scolaire', 'medecine du travail', 'aptitude'])) return 'Médecine scolaire & travail';
     if (resetContient_(e, ['hopital', 'chu', 'cisss', 'ciusss', 'clinique', 'centre hospitalier'])) return 'Hôpitaux & centres';
     if (resetContient_(tout, ['cnam', 'ramq', 'assurance'])) return 'Assurances santé';
     return null;
@@ -283,7 +296,9 @@ function cheminCibleReset_(domaine, nom) {
 
   if (domaine === '09 · Voyages') {
     if (resetContient_(tout, ['assurance', 'manuvie'])) return 'Assurances voyage';
-    if (resetContient_(tout, ['chine', 'zhongguo'])) return 'Par voyage/Chine';
+    // ' chine' : jamais « machine » (revue). Mais normaliserCle_ garde les underscores : un émetteur
+    // exact « _Chine.pdf » n'a PAS d'espace devant → l'égalité sur l'émetteur couvre ce cas.
+    if (resetContient_(tout, [' chine', 'zhongguo']) || tout.indexOf('chine') === 0 || e === 'chine') return 'Par voyage/Chine';
     if (resetContient_(tout, ['finlande', 'finnair', 'finnlines', 'viking line', 'eckero', 'vr group', 'vr yhtyma', 'chemins de fer finlandais', 'helsinki']) || e === 'vr') return 'Par voyage/Finlande';
     if (resetContient_(tout, ['perurail', 'perou', 'machu', 'cusco'])) return 'Par voyage/Pérou';
     if (tout.indexOf('new york') !== -1) return 'Par voyage/New York';

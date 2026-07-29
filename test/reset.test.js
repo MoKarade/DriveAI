@@ -30,7 +30,8 @@ test('verifierStructureCibleReset_ : détecte bien une violation (le validateur 
   for (let i = 0; i < MAX + 1; i++) trop['d' + i] = {};
   const v = JSON.parse(JSON.stringify(ctx.verifierStructureCibleReset_({ X: trop }, MAX)));
   assert.strictEqual(v.length, 1);
-  assert.match(v[0], /^X : 8 sous-dossiers$/);
+  // Dérivé de MAX (leçon §7 : jamais une valeur du jour en dur dans un test paramétré par la constante).
+  assert.match(v[0], new RegExp('^X : ' + (MAX + 1) + ' sous-dossiers$'));
 });
 
 /* ---------- Toute cible routée EXISTE dans la table (jamais un chemin inventé) ---------- */
@@ -107,6 +108,41 @@ const CAS = [
   ['09 · Voyages', '2025-01-20_Confirmation de réservation_PeruRail.pdf', 'Par voyage/Pérou'],
   ['09 · Voyages', '2024-08-01_Contrat d\'assurance_Manuvie.pdf', 'Assurances voyage'],
   ['09 · Voyages', '2026-07-01_Document de voyage_Document relatif à New York juillet 2026.jpg', 'Par voyage/New York'],
+  // ---- Non-régression revue PR1 (lentille « pièges par sous-chaîne ») : chaque cas ci-dessous a
+  // ---- été mal routé par une version antérieure de la table — il VERROUILLE le correctif.
+  // 'bourse' ⊂ « remboursement » : un remboursement d'IMPÔT partait en Placements & crypto.
+  ['02 · Finances', '2025-03_Avis de remboursement_Revenu Québec.pdf', 'Impôts & déclarations'],
+  // 'rib' ⊂ « contribution » : un reçu REER partait en Coordonnées & chèques (type EXACT désormais).
+  ['02 · Finances', '2024-02_Reçu de contribution REER_Desjardins.pdf', 'Reçus & factures/2024'],
+  // Feuillet T4/Relevé 1 québécois : fiscal, pas un « relevé » bancaire.
+  ['02 · Finances', '2025-02_Feuillet T4_Robovic.pdf', 'Impôts & déclarations'],
+  // « Desjardins Assurance » : l'ASSUREUR prime sur le rattrapage bancaire par émetteur.
+  ['02 · Finances', '2023-11_Contrat_Desjardins Assurance.pdf', 'Assurances & prévoyance'],
+  // « Crédit Industriel et Commercial » = CIC (deux graphies, même banque).
+  ['02 · Finances', '2013-04_Courrier_Crédit Industriel Et Commercial.pdf', 'Banques/CIC'],
+  // GMF « La Sauvegarde » = un ASSUREUR : ne part JAMAIS en Sécurité & codes → null (reste en _TRI).
+  ['01 · Administratif & identité', '2023-06_Conditions générales_GMF La Sauvegarde.pdf', null],
+  ['01 · Administratif & identité', '2022-01_Codes de sauvegarde_Google.pdf', 'Sécurité & codes'],
+  // Pièce délivrée par un consulat/une ambassade = autorité émettrice → Marc.
+  ['01 · Administratif & identité', '2018-07_Passeport_Consulat Général De France À Québec.pdf', 'Pièces d\'identité/Marc'],
+  // Anciens logements/véhicules du stock réel (Trieste, Jetta).
+  ['03 · Logement & véhicule', '2016-09_Bail_Résidence Trieste.pdf', 'Logements/Anciens logements'],
+  ['03 · Logement & véhicule', '2015-03_Facture_Volkswagen Jetta.pdf', 'Véhicules/Anciens véhicules'],
+  // CAQ (Certificat d'acceptation du Québec) = MIFI, pas IRCC.
+  ['04 · Immigration', '2022-05_CAQ_Gouvernement Du Québec.pdf', 'MIFI (Québec)'],
+  // 'formation' ⊂ « information » : une lettre d'information ne part pas en Formation & bilans.
+  ['05 · Carrière', '2023-02_Lettre d\'information_Desjardins.pdf', null],
+  ['05 · Carrière', '2021-06_Attestation de formation_AFPA.pdf', 'Formation & bilans'],
+  ['05 · Carrière', 'Archive candidatures 2021-2025', 'Recherche d\'emploi/Archive 2021-2025'],
+  // Le COLLÈGE Gustave Eiffel et le Hubhouse (ULCO-CEL) ne sont ni la prépa ni le DUT.
+  ['06 · Études & diplômes', '2013-09_Certificat de scolarité_Collège Gustave Eiffel.pdf', 'Autres établissements'],
+  ['06 · Études & diplômes', '2021-03_Attestation_ULCO CEL Hubhouse.pdf', 'Autres établissements'],
+  // ' colles' (programme de colles → prépa/examens) sans jamais matcher un autre mot.
+  ['06 · Études & diplômes', '2020-01_Programme de colles_Semaine 12.pdf', 'Prépa Gustave Eiffel (PTSI)/Examens & khôlles'],
+  // 'chine' ⊂ « machine » : un billet « La Machine » ne part pas en Chine… mais le VRAI cas
+  // « _Chine.pdf » (underscore, pas d'espace) route bien (égalité sur l'émetteur).
+  ['09 · Voyages', '2024-05-14_Billet_La Machine De l\'Île.pdf', 'Réservations & billets/2024'],
+  ['09 · Voyages', '2023-10-12_Visa_Chine.pdf', 'Par voyage/Chine'],
 ];
 
 test('cheminCibleReset_ : les noms RÉELS de l\'inventaire routent vers la cible attendue', () => {

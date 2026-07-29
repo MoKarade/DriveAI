@@ -73,24 +73,20 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
   *chemin*, jamais répétée dans le nom. Date absente → date de réception du mail.
 - **Discipline de scope** : on livre par phases. Ne pas anticiper une phase ultérieure.
   Voir `BACKLOG.md` pour le périmètre exact de chaque phase.
-- **Nouveau fichier ⇒ prévenir le PM** (décision PM/architecte 2026-07-08, miroir à plat) : le
-  miroir Drive écrit les fichiers à plat et NotebookLM n'ajoute PAS tout seul une nouvelle source.
-  Lorsque tu crées un NOUVEAU FICHIER dans le projet, tu dois impérativement avertir l'utilisateur
-  dans ta réponse texte avec ce message : « ⚠️ J'ai créé un nouveau fichier [NomDuFichier].
-  N'oublie pas de l'ajouter manuellement comme source dans ton NotebookLM une fois le code
-  mergé ! »
 
 ## 4. Workflow automatisé
 
-### Règle NotebookLM — ABROGÉE (décision Marc 2026-07-28)
+### NotebookLM — ABANDONNÉ COMPLÈTEMENT (décisions Marc 2026-07-28 et 2026-07-29)
 
 > L'ancienne règle « NotebookLM = analyse architecturale & décision ; Claude = exécution »
-> (décision Marc 2026-07-07) est **RÉVOQUÉE par Marc** : plus AUCUN passage obligé par NotebookLM
-> pour les tâches de code. **Claude conçoit ET exécute directement.** Ce qui REMPLACE le contrôle :
-> le protocole §8 (ADR d'abord pour tout changement de classement) reste OBLIGATOIRE, fonctions
-> pures testées, et **revue flotte adversariale AVANT merge** (code-reviewer + le spécialiste
-> concerné — leçon C28-32 : la revue se fait AVANT, jamais après). Le miroir Drive (ADR-0017)
-> continue d'être synchronisé au merge pour consultation éventuelle.
+> (décision Marc 2026-07-07) est **RÉVOQUÉE**, et Marc a confirmé le 2026-07-29 l'**abandon
+> COMPLET** de NotebookLM : plus aucun passage obligé, plus aucun rappel « ajouter comme source »
+> (l'ancienne règle « Nouveau fichier ⇒ prévenir le PM » est retirée avec). **Claude conçoit ET
+> exécute directement.** Ce qui REMPLACE le contrôle : le protocole §8 (ADR d'abord pour tout
+> changement de classement) reste OBLIGATOIRE, fonctions pures testées, et **revue flotte
+> adversariale AVANT merge** (code-reviewer + le spécialiste concerné — leçon C28-32 : la revue
+> se fait AVANT, jamais après). Le miroir Drive (ADR-0017) tourne encore au merge (inoffensif) ;
+> le déclasser (`sync-drive.yml`) est une option ouverte, sur demande de Marc.
 
 - **Push & merge auto** : Claude pousse sur une branche `claude/**`, ouvre une PR (draft),
   la CI valide, puis la PR se **merge automatiquement** (squash) quand la CI est verte.

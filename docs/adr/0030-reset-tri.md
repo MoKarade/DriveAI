@@ -46,6 +46,8 @@
    chaque déplacement intra-04 est VÉRIFIÉE descendante de 04 (échec fermé). Livraison ATOMIQUE :
    cette révision, le code, le tripwire bidirectionnel (intra-04 permis / sortie interdite) et la
    revue flotte partent dans la MÊME PR (leçon §7 « promesse de verrou = verrou codé »).
+   **La révision de CLAUDE.md §2.1(b) ne prend effet qu'à la PR2** — tant que code + tripwire ne
+   sont pas mergés, la règle actuelle (zone 04 intouchable) reste en vigueur telle quelle.
 5. **Structure cible ≤ 7 par niveau, récursif** *(exemption EXPLICITE : le niveau RACINE — les 9
    domaines 01→09, préexistants et validés par Marc avec la structure — n'est pas compté ; la
    contrainte porte sur l'intérieur des domaines)* — TABLE UNIQUE `STRUCTURE_CIBLE_RESET` (Reset.gs),
@@ -64,6 +66,26 @@
    ADR-0014, récupérable 30 j — jamais le moteur). Les dossiers-système restent intouchés
    (`00 ·`, `_…`, dossiers « DriveAI… »/« Rapports agent… », Sheet/Form/Guide).
 
+## Transition — une seule règle de cible à la fois (arbitrage revue PR1, prend effet à la PR2)
+
+Le reset introduit une DEUXIÈME règle de cible (`cheminCibleReset_` + table) à côté de celle du flux
+vivant (routage topologique ADR-0028 : `Entités.Dossier ID`) et de la consolidation. Sans arbitrage,
+le flux re-remplirait À PLAT les racines que la campagne vide (non-convergence structurelle — leçon
+§7 C28-26 : « campagne ⇒ MÊME fonction de cible que le flux, sinon boucle »). Décisions :
+
+1. **Pendant le reset, les campagnes concurrentes sont SUSPENDUES** : conso-2
+   (`CONSOLIDATION_ACTIF`/`EXEC`) et la réorg auto C28-32 ne tournent pas tant que le reset n'est
+   pas convergé (flag persisté, ré-armées automatiquement à la fin — jamais un état terminal, leçon
+   C28-32). Une seule main déplace à la fois.
+2. **Le flux vivant ne s'arrête JAMAIS** (garde-fou §2.6 : intake Gmail + dépôts continuent). Il
+   classe via ADR-0028 ; au PLACEMENT de chaque entité par le reset, son `Entités.Dossier ID` est
+   **RE-POINTÉ vers le nouveau dossier** — dès lors le résolveur `dossierEntiteParId_` sert la
+   nouvelle structure : les deux règles CONVERGENT vers les mêmes cibles au lieu de se défaire.
+3. **Après convergence** : la table du reset reste la référence de STRUCTURE ; le flux vivant place
+   par entité (Dossier ID re-pointés) ; un balayage périodique par nom (`cheminCibleReset_`, PURE,
+   quasi gratuit) rattrape ce qui atterrit à plat aux racines — même fonction de cible, deux
+   consommateurs, verrouillés par un tripwire « la sortie du flux est OK pour le reset ».
+
 ## Exécution & bornes
 
 - Patron « campagne bornée reprenable » (collecte lecture seule → mutation par lots, garde-temps,
@@ -73,7 +95,9 @@
   (`aParentProtege_` strict avant CHAQUE mutation).
 - Découpage : **PR1** = ADR + structure + routage PURS + tests (aucun I/O, aucun garde touché) ;
   **PR2** = campagnes I/O (rassemblement, dédup, placement, 04 interne + révision §2.1b + tripwires,
-  vide-candidats, rapport) ; **PR3** (si utile) = passe LLM du reliquat + affinages de table.
+  suspension/ré-armement conso-2 + réorg auto, re-pointage `Dossier ID`, vide-candidats, rapport) —
+  toute fonction appelée EN TRAVERS des modules s'ajoute au contrat `test/surface-moteur.test.js` ;
+  **PR3** (si utile) = passe LLM du reliquat + affinages de table.
 
 ## Garde-fous (§2)
 
