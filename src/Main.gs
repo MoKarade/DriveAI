@@ -464,7 +464,11 @@ function tickDriveAI() {
     // Campagne HISTORIQUE Gmail (#12, ADR-0010 §1) : remonte tout l'historique de PJ par tranches
     // ancrées. APRÈS le flux vivant (priorité stricte C28-15). Coût nul une fois finie.
     // SECONDAIRE → enveloppée : un échec Gmail ne bloque jamais la suite du tick.
-    if (!estBudgetDepasse() && !budgetCampagnesAtteint_()) {
+    // SUSPENDUE pendant le RESET (décision Marc 2026-07-29 « accélère l'automatique ») : son budget
+    // quotidien (20 min/j) est RÉALLOUÉ au reset — l'enveloppe totale du quota runtime ne bouge pas,
+    // donc aucun risque de gel des déclencheurs. C'est un RATTRAPAGE : quelques jours de retard sont
+    // sans conséquence, et elle reprend SEULE à la convergence du reset (`resetEnCours_` repasse à false).
+    if (!estBudgetDepasse() && !budgetCampagnesAtteint_() && !resetEnCours_()) {
       try { traiterGmailHistorique_(estBudgetDepasse); }
       catch (e) {
         if (!signalerPanneGmail_(e)) journalErreur_('Gmail', 'Campagne historique différée : ' + e);
@@ -528,7 +532,12 @@ function tickDriveAI() {
     // Réconciliation Index↔Drive (C28-07, plan P3) : campagne de fond PERPÉTUELLE sur le
     // reliquat de budget — OBSERVE Drive (jamais ne le modifie) et aligne l'Index append-only
     // (statuts `déplacé`/`corbeillé`). SECONDAIRE → enveloppée : un échec ne bloque jamais l'intake.
-    if (!estBudgetDepasse()) {
+    // SUSPENDUE pendant le RESET (décision Marc 2026-07-29) : son budget (12 min/j) est RÉALLOUÉ au
+    // reset. Doublement justifié ici — pendant le reset des milliers de fichiers CHANGENT de chemin
+    // par construction, donc elle passerait son budget à constater/écrire des « déplacé » sur des
+    // mouvements VOULUS que le reset a déjà inscrits lui-même (chemins réels dans ses propres clés).
+    // Elle rattrapera la vérité en une passe après la convergence (campagne perpétuelle : rien ne se perd).
+    if (!estBudgetDepasse() && !resetEnCours_()) {
       try { synchroniserIndex_(estBudgetDepasse); }
       catch (e) { journalErreur_('Maintenance', 'Réconciliation Index différée : ' + e); }
     }

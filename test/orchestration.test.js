@@ -76,6 +76,39 @@ test('orchestration RESET : conso-2 (génération + exécution) ET la réorg aut
   assert.ok(/!resetEnCours_\(\)/.test(ligneReorgAuto), 'genererDemandeReorgAuto_ doit être gatée par !resetEnCours_()');
 });
 
+/**
+ * RÉALLOCATION (décision Marc 2026-07-29 « fais-le automatiquement » → accélérer l'AUTO) : le reset
+ * reçoit le budget des campagnes qu'il suspend, SANS relever l'enveloppe totale. C'est l'invariant
+ * anti-gel : au-delà de ~90 min/j de runtime, TOUS les déclencheurs gèlent (chien de garde compris,
+ * cf. leçon §7 + redescente C28-29). Ce test verrouille les deux moitiés : les gates ET l'enveloppe.
+ */
+test('orchestration RESET : les 4 campagnes de fond réallouées sont TOUTES gatées par !resetEnCours_()', () => {
+  const avant = (motif) => {
+    const i = corps.indexOf(motif);
+    assert.ok(i !== -1, 'appel introuvable : ' + motif);
+    return corps.slice(Math.max(0, i - 300), i);
+  };
+  // Les 2 déjà en place (conso-2) + les 2 ajoutées par la réallocation.
+  assert.ok(/!resetEnCours_\(\)/.test(avant('appliquerPlanConsolidation_(estBudgetDepasseStandard)')), 'conso-2 exécution');
+  assert.ok(/!resetEnCours_\(\)/.test(avant('genererPlanConsolidation_(estBudgetDepasseStandard)')), 'conso-2 génération');
+  assert.ok(/!resetEnCours_\(\)/.test(avant('traiterGmailHistorique_(estBudgetDepasse)')), 'historique Gmail (budget réalloué)');
+  assert.ok(/!resetEnCours_\(\)/.test(avant('synchroniserIndex_(estBudgetDepasse)')), 'réconciliation Index (budget réalloué)');
+});
+
+test('budget RÉALLOUÉ, jamais AUGMENTÉ : le total du reset ne dépasse pas ce que les campagnes suspendues libèrent', () => {
+  const C = require('./harness').load(['Config.gs']).CONFIG;
+  const reset = C.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS + C.RESET_PLACEMENT_BUDGET_JOUR_MS + C.RESET_04_BUDGET_JOUR_MS;
+  const libere = C.CONSOLIDATION_BUDGET_JOUR_MS + C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS +
+    C.GMAIL_HISTO_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS;
+  assert.ok(reset <= libere,
+    'le budget du reset (' + Math.round(reset / 60000) + ' min/j) doit rester ≤ celui des campagnes qu\'il ' +
+    'suspend (' + Math.round(libere / 60000) + ' min/j) — sinon l\'enveloppe de runtime CROÎT et on ' +
+    'risque le gel de TOUS les déclencheurs, chien de garde inclus (leçon §7 / C28-29)');
+  // Et le reset doit réellement PROFITER de la réallocation (sinon le gate ne sert à rien).
+  assert.ok(reset > C.CONSOLIDATION_BUDGET_JOUR_MS + C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS,
+    'le reset doit consommer plus que le seul budget de conso-2, sinon la réallocation est inutile');
+});
+
 test('orchestration RESET : rassemblement → placement → 04 interne, dans cet ordre, en BUDGET TAIL (jamais le budget de tick 3 min)', () => {
   const rass = posAppel('rassemblerReset_(estBudgetDepasseStandard)');
   const place = posAppel('placerReset_(estBudgetDepasseStandard)');
