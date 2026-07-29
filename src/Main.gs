@@ -414,13 +414,37 @@ function tickDriveAI() {
     // a déjà eu sa part ; la consolidation n'utilise que le reliquat → GARANTIE à chaque tick sans
     // rien lui voler. EXÉCUTION avant GÉNÉRATION (drainer avant d'alimenter). Bornée par ses budgets
     // run + quotidien (12/20 min) + la contre-pression. SECONDAIRES → enveloppées (jamais bloquer l'intake).
-    if (CONFIG.CONSOLIDATION_EXEC_ACTIF && !estBudgetDepasseStandard()) {
+    // Suspendues pendant le RESET (C28-33, ADR-0030 « Transition ») : une seule main déplace à la
+    // fois, sinon le flux concurrent re-remplit ce que le reset vide (non-convergence structurelle,
+    // leçon §7 C28-26). `resetEnCours_()` = false dès que les 3 phases du reset sont terminées (ou
+    // si Marc suspend RESET_ACTIF) → conso-2 reprend automatiquement, sans geste manuel.
+    if (CONFIG.CONSOLIDATION_EXEC_ACTIF && !estBudgetDepasseStandard() && !resetEnCours_()) {
       try { appliquerPlanConsolidation_(estBudgetDepasseStandard); }
       catch (e) { journalErreur_('ConsolidationExec', 'Exécution du plan différée : ' + e); }
     }
-    if (CONFIG.CONSOLIDATION_ACTIF && !estBudgetDepasseStandard()) {
+    if (CONFIG.CONSOLIDATION_ACTIF && !estBudgetDepasseStandard() && !resetEnCours_()) {
       try { genererPlanConsolidation_(estBudgetDepasseStandard); }
       catch (e) { journalErreur_('Consolidation', 'Génération du plan différée : ' + e); }
+    }
+
+    // 🧹 RESET complet (C28-33, ADR-0030) : rassemblement → placement → 04 interne, dans cet ordre
+    // (drainer ce que le rassemblement vient d'alimenter, TÔT comme la consolidation qu'il remplace
+    // le temps de la campagne). « BUDGET TAIL » : PURE I/O Drive (moveTo + hash MD5, zéro LLM) →
+    // estBudgetDepasseStandard (mur 4,5 min), pas le budget de tick 3 min. Chaque étape est bornée +
+    // reprenable + convergente (clé dédiée par phase) ; SECONDAIRES → enveloppées (jamais bloquer
+    // l'intake). Suspendues automatiquement une fois `resetTermine_()` (plus rien à faire, lecture
+    // cheap de 3 Properties).
+    if (CONFIG.RESET_ACTIF && !estBudgetDepasseStandard()) {
+      try { rassemblerReset_(estBudgetDepasseStandard); }
+      catch (e) { journalErreur_('Reset', 'Rassemblement différé : ' + e); }
+    }
+    if (CONFIG.RESET_ACTIF && !estBudgetDepasseStandard()) {
+      try { placerReset_(estBudgetDepasseStandard); }
+      catch (e) { journalErreur_('Reset', 'Placement différé : ' + e); }
+    }
+    if (CONFIG.RESET_ACTIF && !estBudgetDepasseStandard()) {
+      try { appliquerReset04Interne_(estBudgetDepasseStandard); }
+      catch (e) { journalErreur_('Reset', '04 interne différé : ' + e); }
     }
 
     // Campagne HISTORIQUE Gmail (#12, ADR-0010 §1) : remonte tout l'historique de PJ par tranches
@@ -481,7 +505,8 @@ function tickDriveAI() {
     // « BUDGET TAIL » (leçon §7) : cette étape est PURE I/O Drive/Sheet (un BFS de lecture + un
     // appendRow, ZÉRO appel LLM) → elle prend le garde ÉTENDU (estBudgetDepasseStandard, mur 4,5 min)
     // et non le budget de tick 3 min réservé aux appels Sonnet. Elle n'utilise que le reliquat.
-    if (!estBudgetDepasseStandard()) {
+    // Suspendue pendant le RESET (ADR-0030 « Transition », même raison que conso-2 ci-dessus).
+    if (!estBudgetDepasseStandard() && !resetEnCours_()) {
       try { genererDemandeReorgAuto_(estBudgetDepasseStandard); }
       catch (e) { journalErreur_('Reorg', 'Demande auto différée : ' + e); }
     }

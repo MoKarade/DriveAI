@@ -4,6 +4,24 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **⚡ ÉTAT AU 2026-07-29 — C28-33 (RESET COMPLET DU DRIVE) : PR1 MERGÉE (#223), PR2 FAITE.** Décision
+> Marc : tout rassembler dans `_TRI 2026`, écarter les doublons, repartir sur une structure ≤ 7
+> sous-dossiers/niveau (ADR-0030). **PR1** (mergée) : structure cible validée par Marc + routage PUR
+> par le nom (`cheminCibleReset_`, zéro LLM — 97 % des fichiers conformes) + tests (revue adversariale
+> 3 lentilles intégrée avant merge, 18 cas de non-régression). **PR2** (branche courante) : campagnes
+> I/O DIRECTES — rassemblement 01-09 (04 exclu) → `_TRI 2026/<domaine>`, dédup par empreinte + rapport
+> quasi-doublons/non-routés (onglet `Reset`), placement par la règle PURE avec re-pointage des
+> `Entités.Dossier ID`, réorganisation INTERNE de 04 (**CLAUDE.md §2.1(b) révisé ATOMIQUEMENT** — la
+> sortie de 04 reste NON négociable, seul l'INTERNE est désormais permis, verrouillé par un tripwire
+> constitution↔code). **conso-2 et la réorg auto C28-32 sont AUTOMATIQUEMENT SUSPENDUES pendant le
+> reset** (`resetEnCours_`, ADR-0030 « Transition ») et reprennent seules à la fin. Fonctions UN-CLIC
+> pour Marc (`lancerResetTout()` dans l'éditeur Apps Script — hors quota des déclencheurs, le plus
+> rapide) + branchement tick automatique (budget tail, ~20 min/j au total le temps du reset).
+> **Reste à faire côté Marc une fois déployé** : lancer `lancerResetTout()` plusieurs fois dans
+> l'éditeur (ou laisser les ticks avancer seuls, plus lent) jusqu'à ce que le Journal dise « RESET
+> TERMINÉ » ; consulter l'onglet `Reset` (quasi-doublons + non-routés) et l'onglet `Réorg`
+> (`vide-candidat`) pour les décisions manuelles. 682 tests moteur.
+>
 > **⚡ ÉTAT AU 2026-07-24 (soir) — C28-30 COMPLET + LIVE.** Les 3 PR du chatbot sont MERGÉES
 > (#202 moteur · #203 opérations dossiers/épinglé · #204 UI onglet Assistant) ; le chat RÉPOND en prod.
 > Suivis mergés : **#206** (troncature corrigée `CHAT_MAX_TOKENS` 1500→4000 + itérations 4→6 + prompt

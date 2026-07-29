@@ -5,6 +5,21 @@
 
 ---
 
+## Chantier #33 — RESET complet du Drive (`_TRI 2026`, dédup, structure ≤ 7)  🟦
+
+> Décision Marc 2026-07-29 (ADR-0030) : tout rassembler dans `_TRI 2026`, écarter les doublons,
+> repartir sur une structure neuve ≤ 7 sous-dossiers par niveau (récursif). Structure amendée puis
+> validée par Marc. Conçu et exécuté directement par Claude (règle NotebookLM abrogée le 2026-07-28,
+> abandon complet confirmé le 2026-07-29).
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C28-33 PR1 | `docs/adr/0030-reset-tri.md` + `STRUCTURE_CIBLE_RESET` (≤ 7, dérivé par test) + `cheminCibleReset_` (routage PUR par le nom, zéro LLM, ~97 % des fichiers conformes) + `estExcluDuReset_`. Revue adversariale 3 lentilles intégrée (identité jamais devinée, pièges de sous-chaîne verrouillés par 18 cas de non-régression, section Transition de l'ADR) | ✅ (#223) |
+| C28-33 PR2 | Campagnes I/O DIRECTES (comme ConsolidationExec) : rassemblement récursif 01-09 (04 exclu) → `_TRI 2026/<domaine>` ; dédup par empreinte (+ rapport quasi-doublons/non-routés, onglet `Reset`) ; placement par `cheminCibleReset_` avec re-pointage des `Entités.Dossier ID` ; réorganisation INTERNE de 04 (CLAUDE.md §2.1b révisé ATOMIQUEMENT avec le code + tripwire de surface — jamais de sortie de 04) ; suspension automatique de conso-2/réorg-auto pendant le reset (`resetEnCours_`, ADR-0030 « Transition ») ; fonctions UN-CLIC (`lancerResetTout`/`lancerResetRassemblement`/`lancerResetPlacement`/`lancerReset04Interne`) + branchement tick (budget tail, enveloppé) | ✅ |
+| C28-33 PR3 | (si utile) passe LLM du reliquat non routé + affinages de `STRUCTURE_CIBLE_RESET` | ⬜ |
+
+---
+
 ## Chantier #28 — Retours produit de Marc du 2026-07-08 (13 points, triés contre le code réel)  🟦
 
 > Triage factuel fait (workflow 13 agents + contre-vérification adversariale). **Nouvelle règle

@@ -513,6 +513,24 @@ var CONFIG = {
   CONSOLIDATION_EXEC_MAX_PAR_RUN: 100,    // lignes du plan consommées par run au maximum (60 → 100 ; moveTo cheap)
   CONSOLIDATION_BACKLOG_MAX: 150,         // contre-pression : la GÉNÉRATION s'arrête si l'exécuteur a plus
                                           // de N lignes de retard (drainer avant d'alimenter, tôt + gated)
+
+  // ---- C28-33 (ADR-0030) : RESET complet — rassemblement `_TRI 2026`, dédup, placement, 04 interne ----
+  // Décision Marc 2026-07-29 (structure validée en PR1). Exécution DIRECTE (comme ConsolidationExec,
+  // « change tout live ») : déplacement seul (§2), jamais de suppression. Trois phases indépendantes,
+  // chacune bornée + reprenable + convergente (clé dédiée, « terminé » seulement sur une passe qui ne
+  // collecte plus rien). Pendant le reset (résetEnCours_ = true), conso-2 (génération + exécution) ET la
+  // réorg auto C28-32 sont SUSPENDUES (ADR-0030 « Transition ») — leur budget quotidien (12+6+réorg ≈
+  // 20 min/j) est donc LIBRE : les budgets ci-dessous ne s'AJOUTENT pas à l'enveloppe agrégée, ils la
+  // REMPLACENT le temps du reset (jamais un risque de gel du quota runtime ~90 min/j).
+  RESET_ACTIF: true,                      // false = suspension immédiate de TOUTES les phases (comme CONSOLIDATION_EXEC_ACTIF)
+  RESET_TAG: 'tri33',                     // bumper relance une campagne complète (re-parcourt tout, additive)
+  RESET_TRI_NOM: '_TRI 2026',             // racine de rassemblement, à côté de `_Doublons`/`_Technique` (préfixe _ = invisible des scans vivants)
+  RESET_RASSEMBLEMENT_MAX_PAR_RUN: 60,    // fichiers déplacés vers `_TRI 2026/<domaine>` par run
+  RESET_RASSEMBLEMENT_BUDGET_JOUR_MS: 8 * 60 * 1000,
+  RESET_PLACEMENT_MAX_PAR_RUN: 80,        // fichiers dédupliqués/routés depuis `_TRI 2026` par run (pas d'OCR/LLM — cheap)
+  RESET_PLACEMENT_BUDGET_JOUR_MS: 8 * 60 * 1000,
+  RESET_04_MAX_PAR_RUN: 40,               // fichiers réorganisés EN INTERNE sous 04 par run
+  RESET_04_BUDGET_JOUR_MS: 4 * 60 * 1000,
   SEED_ENTITES_TAG: 'seed-1',             // seed one-shot des entités de Marc (Entites.seedEntitesMarc_)
   ENTITES_AUTO_VALIDATION: false,         // auto-validation « vue ≥ 3 fois » COUPÉE (décision Marc
                                           // 2026-07-17 : « l'ajout de dossiers vraiment sécurisé,

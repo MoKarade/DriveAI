@@ -310,3 +310,635 @@ function cheminCibleReset_(domaine, nom) {
 
   return null;
 }
+
+/* =================================================================================================
+ * PR2 — CAMPAGNES I/O (C28-33, ADR-0030 §Exécution + §Transition) : rassemblement récursif vers
+ * `_TRI 2026/<domaine>`, dédup par empreinte (+ rapport quasi-doublons), placement par
+ * `cheminCibleReset_`, réorganisation INTERNE de 04 (CLAUDE.md §2.1b révisé, PR2). Exécution DIRECTE
+ * (décision Marc « change tout live », comme ConsolidationExec) : déplacement seul (§2, jamais de
+ * suppression), §1 re-vérifiée par mutation, multi-parents jamais déplacés. Patron « campagne bornée
+ * reprenable » partout : collecte lecture seule → mutation par lots, garde-temps, plafond/run, budget
+ * QUOTIDIEN en ms réelles persistées, tag de convergence (« passe qui ne collecte plus rien »).
+ * ================================================================================================= */
+
+/** Consommation du budget QUOTIDIEN d'une phase du reset (ms réelles persistées `AAAA-MM-JJ|ms`). PUR sur props. */
+function budgetJourReset_(props, cle, aujourdhui) {
+  var brut = String(props.getProperty(cle) || '');
+  var sep = brut.indexOf('|');
+  if (sep === -1) return 0;
+  return brut.slice(0, sep) === aujourdhui ? (Number(brut.slice(sep + 1)) || 0) : 0;
+}
+
+/** Domaines soumis au rassemblement/placement : tous SAUF 04 (ADR-0030 §4 — jamais rassemblée). PUR. */
+function domainesRassemblesReset_() {
+  return Object.keys(CONFIG.DOMAINES).concat(CONFIG.DOMAINES_AUTO || [])
+    .filter(function (d) { return d !== '04 · Immigration'; });
+}
+
+/** Vrai si TOUTES les phases du reset sont terminées pour le tag courant (lecture cheap, 3 Properties). */
+function resetTermine_() {
+  var props = PropertiesService.getScriptProperties();
+  var tag = CONFIG.RESET_TAG;
+  return props.getProperty('DriveAI_RESET_RASSEMBLEMENT') === tag &&
+    props.getProperty('DriveAI_RESET_PLACEMENT') === tag &&
+    props.getProperty('DriveAI_RESET_04') === tag;
+}
+
+/**
+ * Vrai si le reset est EN COURS (ADR-0030 « Transition ») : conso-2 (génération + exécution) et la
+ * réorg auto C28-32 doivent alors être SUSPENDUES — une seule main déplace à la fois, sinon le flux
+ * concurrent re-remplit ce que le reset vide (non-convergence structurelle, leçon §7 C28-26). Le
+ * flux VIVANT n'est JAMAIS suspendu (garde-fou §2.6) — seules les CAMPAGNES le sont. `RESET_ACTIF:
+ * false` (suspension manuelle par Marc) libère IMMÉDIATEMENT conso-2/réorg-auto.
+ */
+function resetEnCours_() {
+  return !!CONFIG.RESET_ACTIF && !resetTermine_();
+}
+
+/* ---------- Rassemblement : domaines 01-09 (04 exclu) → `_TRI 2026/<domaine>` ---------- */
+
+/** Renvoie (ou crée) la racine `_TRI 2026`, à côté de `_Doublons`/`_Technique` (racine DriveAI). */
+function dossierTriReset_() {
+  return dossierRacineParNom_(CONFIG.RESET_TRI_NOM, 'DriveAI_TRI_ID');
+}
+
+/** Renvoie (ou crée) le sous-dossier de provenance d'un domaine sous `_TRI 2026`. */
+function dossierTriDomaineReset_(domaine) {
+  return sousDossier_(dossierTriReset_(), domaine);
+}
+
+/**
+ * Collecte récursive des fichiers d'un domaine ENCORE à rassembler (clé `tri33|<tag>|id` absente —
+ * prédicat de convergence, filtré À LA COLLECTE : un mur de déjà-faits n'occupe aucune place de
+ * page). Lecture seule, bornée par `max` et le garde-temps. `etat.complet` passe à false dès que le
+ * walk s'arrête AVANT la fin de l'arbre (garde ou page pleine) — seule une passe entièrement
+ * parcourue peut déclarer la campagne terminée (patron `collecterConsolidation_`).
+ */
+function collecterRassemblementReset_(dossier, ids, max, estBudgetDepasse, tag, etat) {
+  var fi = dossier.getFiles();
+  while (fi.hasNext()) {
+    if (estBudgetDepasse() || ids.length >= max) { etat.complet = false; return; }
+    try {
+      var f = fi.next();
+      if (estExcluDuReset_(f.getName())) continue;
+      if (indexContient_('tri33|' + tag + '|' + f.getId())) continue;
+      ids.push(f.getId());
+    } catch (e) {
+      etat.complet = false;
+      journalErreur_('Reset', 'Fichier ignoré à la collecte du rassemblement (' + e + ')');
+    }
+  }
+  var fo = dossier.getFolders();
+  while (fo.hasNext()) {
+    if (estBudgetDepasse() || ids.length >= max) { etat.complet = false; return; }
+    try { collecterRassemblementReset_(fo.next(), ids, max, estBudgetDepasse, tag, etat); }
+    catch (e) { etat.complet = false; journalErreur_('Reset', 'Sous-dossier ignoré à la collecte (' + e + ')'); }
+  }
+}
+
+/**
+ * Déplace UN fichier depuis un domaine vers `_TRI 2026/<domaine>`. §1 STRICT re-vérifiée juste avant
+ * (échec-fermé — un fichier PARTAGÉ collecté hors 04 peut avoir un second parent sous 04) : abstention
+ * si indéterminable. MULTI-PARENTS jamais déplacé (prudence, patron ConsolidationExec — `moveTo`-style
+ * détacherait tous les autres parents). Clé `tri33|<tag>|id` posée APRÈS le déplacement (ordre des
+ * écritures d'état) — le domaine d'ORIGINE est en métadonnée (jamais le contenu, ADR-0007) : la phase
+ * de PLACEMENT le lit directement via le sous-dossier `_TRI 2026/<domaine>` parcouru, pas l'Index.
+ * @return {boolean} vrai si RÉELLEMENT déplacé ce call (faux si déjà en place, protégé ou multi-parents).
+ */
+function rassemblerUnFichier_(fileId, domaine, tag, proteges, ctx) {
+  var cle = 'tri33|' + tag + '|' + fileId;
+  if (indexContient_(cle)) return false; // déjà rassemblé (rejeu)
+  var f;
+  try { f = DriveApp.getFileById(fileId); }
+  catch (e) {
+    indexAjouter_(cle, { statut: 'tri33-absent', nom: fileId, domaine: domaine, chemin: '' }, '');
+    return false;
+  }
+  var nom = f.getName();
+  if (aParentProtege_(f, proteges, true)) {
+    journalInfo_('Reset', 'Fichier en zone protégée ignoré au rassemblement (non déplacé) : ' + nom);
+    indexAjouter_(cle, { statut: 'tri33-protege', nom: nom, domaine: domaine, chemin: '' }, '');
+    return false;
+  }
+  if (nbParentsBorne_(f) > 1) {
+    journalInfo_('Reset', 'Multi-parents, jamais déplacé au rassemblement : ' + nom);
+    indexAjouter_(cle, { statut: 'tri33-multiparents', nom: nom, domaine: domaine, chemin: '' }, '');
+    return false;
+  }
+
+  var cible = dossierTriDomaineReset_(domaine);
+  var cibleId = cible.getId();
+  var ancienParent = null;
+  try { var parents = f.getParents(); if (parents.hasNext()) ancienParent = parents.next(); } catch (e) { ancienParent = null; }
+
+  var deplace = false;
+  if (!(ancienParent && ancienParent.getId() === cibleId)) {
+    cible.addFile(f); // ajoute la cible AVANT de retirer (jamais orphelin)
+    if (ancienParent) {
+      try { ancienParent.removeFile(f); }
+      catch (e) { journalErreur_('Reset', 'Retrait de l\'ancien parent impossible (' + nom + ') : ' + e); }
+    }
+    deplace = true;
+  }
+  indexAjouter_(cle, { statut: 'tri33-rassemble', nom: nom, domaine: domaine, chemin: CONFIG.RESET_TRI_NOM + '/' + domaine }, '');
+  if (ancienParent && ancienParent.getId() !== cibleId) {
+    try { detecterDossierVide_(ancienParent, ctx); }
+    catch (e) { journalErreur_('Reset', 'Détection coquille vide (rassemblement) différée : ' + e); }
+  }
+  return deplace;
+}
+
+/** UNE passe bornée de rassemblement (tous domaines confondus). @return {{examines, deplaces, complet}} */
+function rassemblerUnePageReset_(estBudgetDepasse, proteges, ctx) {
+  var tag = CONFIG.RESET_TAG;
+  var domaines = domainesRassemblesReset_();
+  var ids = []; // [{id, domaine}]
+  var etat = { complet: true };
+  for (var i = 0; i < domaines.length; i++) {
+    if (estBudgetDepasse() || ids.length >= CONFIG.RESET_RASSEMBLEMENT_MAX_PAR_RUN) { etat.complet = false; break; }
+    var dom = domaines[i];
+    var racine;
+    try { racine = DriveApp.getFolderById(idDomaine_(dom)); }
+    catch (e) {
+      journalErreur_('Reset', 'Domaine illisible au rassemblement (' + dom + ') : ' + e);
+      etat.complet = false;
+      continue;
+    }
+    var idsDom = [];
+    collecterRassemblementReset_(racine, idsDom, CONFIG.RESET_RASSEMBLEMENT_MAX_PAR_RUN - ids.length, estBudgetDepasse, tag, etat);
+    for (var j = 0; j < idsDom.length; j++) ids.push({ id: idsDom[j], domaine: dom });
+  }
+  var deplaces = 0;
+  for (var k = 0; k < ids.length; k++) {
+    if (estBudgetDepasse()) { etat.complet = false; break; }
+    try { if (rassemblerUnFichier_(ids[k].id, ids[k].domaine, tag, proteges, ctx)) deplaces++; }
+    catch (e) { etat.complet = false; journalErreur_('Reset', 'Rassemblement différé (' + ids[k].id + ') : ' + e); }
+  }
+  return { examines: ids.length, deplaces: deplaces, complet: etat.complet };
+}
+
+/** ÉTAPE DE TICK : rassemblement, gatée flag + budgets (run + quotidien en ms réelles). */
+function rassemblerReset_(estBudgetDepasse) {
+  if (!CONFIG.RESET_ACTIF) return;
+  var props = PropertiesService.getScriptProperties();
+  var tag = CONFIG.RESET_TAG;
+  if (props.getProperty('DriveAI_RESET_RASSEMBLEMENT') === tag) return; // déjà terminé pour ce tag
+  var aujourdhui = dateGmail_(new Date());
+  var consommeJour = budgetJourReset_(props, 'DriveAI_RESET_RASS_JOUR', aujourdhui);
+  if (consommeJour >= CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS) return; // repris demain
+
+  var debut = Date.now();
+  var budgetRun = Math.min(CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS - consommeJour, 3 * 60 * 1000);
+  var garde = function () { return estBudgetDepasse() || (Date.now() - debut) > budgetRun; };
+  try {
+    var proteges = ensembleDomainesProteges_();
+    var ctx = { proteges: proteges };
+    var r = rassemblerUnePageReset_(garde, proteges, ctx);
+    if (r.deplaces) journalInfo_('Reset', r.deplaces + ' fichier(s) rassemblé(s) vers ' + CONFIG.RESET_TRI_NOM + ' (reset).');
+    if (r.complet && r.examines === 0) {
+      props.setProperty('DriveAI_RESET_RASSEMBLEMENT', tag);
+      journalInfo_('Reset', 'Rassemblement TERMINÉ (tag « ' + tag + ' ») — plus rien à déplacer vers ' + CONFIG.RESET_TRI_NOM + '.');
+    }
+  } finally {
+    props.setProperty('DriveAI_RESET_RASS_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
+  }
+}
+
+/* ---------- Placement : dédup + routage depuis `_TRI 2026/<domaine>` ---------- */
+
+/**
+ * Inscrit (DÉDUPLIQUÉ) une ligne au rapport `Reset` — même patron que `inscrireDossierVideCandidat_`
+ * (ConsolidationExec.gs) : le set des clés existantes est chargé UNE fois par run (lazy, sur `ctx`).
+ * Colonnes : Clé | Type | Nom | Domaine | Cible | Statut | Détail | Horodaté.
+ */
+function inscrireLigneReset_(cle, type, nom, domaine, cible, statut, detail, ctx) {
+  var feuille = feuille_('Reset');
+  if (!ctx.lignesConnues) {
+    ctx.lignesConnues = {};
+    var dern = feuille.getLastRow();
+    var cles = dern >= 1 ? feuille.getRange(1, 1, dern, 1).getValues() : [];
+    for (var i = 0; i < cles.length; i++) {
+      var k = String(cles[i][0]);
+      if (k) ctx.lignesConnues[k] = true;
+    }
+  }
+  if (ctx.lignesConnues[cle]) return;
+  feuille.appendRow([cle, type, nom, domaine, cible, statut, detail, new Date().toISOString()]);
+  ctx.lignesConnues[cle] = true;
+}
+
+/**
+ * QUASI-doublon probable (même nom NORMALISÉ, taille DIFFÉRENTE — hors de portée du hash exact,
+ * ADR-0030 §2) : jamais déplacé, RAPPORT seul, tranché par Marc. Comparaison bornée au MÊME domaine
+ * d'origine (deux homonymes de domaines différents ne sont pas nécessairement liés). Mémoire de
+ * campagne (`ctx.taillesVues`, ce run) — best-effort, jamais une preuve ; le hash exact reste la
+ * SEULE dédup qui déplace un fichier.
+ */
+function signalerQuasiDoublonReset_(nom, taille, fileId, domaine, ctx) {
+  var cleTaille = domaine + '|' + normaliserCle_(nom);
+  if (!ctx.taillesVues) ctx.taillesVues = {};
+  var vu = ctx.taillesVues[cleTaille];
+  if (vu === undefined) { ctx.taillesVues[cleTaille] = taille; return; }
+  if (vu === taille) return; // même taille : très probablement le même contenu déjà couvert par le hash
+  inscrireLigneReset_('quasidoublon|' + fileId, 'quasi-doublon', nom, domaine, '', 'doublon-probable',
+    'même nom, taille différente (' + taille + ' vs ' + vu + ' octets)', ctx);
+}
+
+/** Fichier NON ROUTÉ (ADR-0030 §3) : reste dans `_TRI`, RAPPORTÉ — jamais deviné. */
+function signalerNonRouteReset_(nom, fileId, domaine, ctx) {
+  inscrireLigneReset_('nonroute|' + fileId, 'non-routé', nom, domaine, CONFIG.RESET_TRI_NOM + '/' + domaine,
+    'reste en _TRI', 'aucune règle de STRUCTURE_CIBLE_RESET ne matche ce nom — affiner la table ou décision Marc', ctx);
+}
+
+/**
+ * Résout (find-or-create) le dossier cible d'un sous-chemin STRUCTUREL (`cheminCibleReset_`) sous un
+ * domaine. Quand le DERNIER segment correspond à une ENTITÉ VALIDÉE de ce domaine (ex. « Desjardins »,
+ * « Robovic ») dont le `Dossier ID` pointait encore l'ANCIEN emplacement, celui-ci est RE-POINTÉ vers
+ * le nouveau dossier (ADR-0030 « Transition » — sinon le flux vivant router route vers un dossier
+ * mort/vide dès le tick suivant, ADR-0028). Réutilise `repointerEntites_` (Reorg.gs, déjà testé pour
+ * la fusion) ; `ctx.repointes` déduplique les écritures Sheet redondantes dans le run.
+ */
+function resoudreCibleReset_(domaineDossier, domaine, sousChemin, ctx) {
+  var segments = sousChemin.split('/');
+  var dossier = domaineDossier;
+  for (var i = 0; i < segments.length; i++) dossier = sousDossier_(dossier, segments[i]);
+
+  var dernier = segments[segments.length - 1];
+  var cle = cleCanoniqueEntite_(domaine, dernier);
+  if (cle && ctx.validees && ctx.validees[cle] && ctx.validees[cle].dossierId &&
+      ctx.validees[cle].dossierId !== dossier.getId() && !ctx.repointes[ctx.validees[cle].dossierId]) {
+    try {
+      repointerEntites_(ctx.validees[cle].dossierId, dossier.getId());
+      ctx.repointes[ctx.validees[cle].dossierId] = true;
+    } catch (e) { journalErreur_('Reset', 'Re-pointage d\'entité différé (' + dernier + ') : ' + e); }
+  }
+  return dossier;
+}
+
+/**
+ * Traite UN fichier de `_TRI 2026/<domaine>` : dédup par empreinte (campagne, seedée depuis
+ * `empreintesPlanConsolidation_` — réutilisation des empreintes déjà connues de conso-2), puis
+ * routage PAR LE NOM (`cheminCibleReset_`, zéro LLM). Doublon EXACT → `_Doublons` (déplacement seul,
+ * §2). Non routé (null) → reste dans `_TRI`, rapporté. Clé `tri33p|<tag>|id` posée dans TOUS les cas
+ * (convergence : un fichier non-routé n'est jamais re-hashé à chaque run).
+ * @return {boolean} vrai si RÉELLEMENT déplacé ce call.
+ */
+function placerUnFichierReset_(f, domaine, cle, ctx) {
+  var nom = f.getName();
+  var statut = 'tri33-reste';
+  var cheminFinal = CONFIG.RESET_TRI_NOM + '/' + domaine;
+  var ancienParent = null;
+  try { var pp = f.getParents(); if (pp.hasNext()) ancienParent = pp.next(); } catch (e) { ancienParent = null; }
+
+  var empreinte = '';
+  try { if (f.getSize() <= CONFIG.OCR_TAILLE_MAX) empreinte = empreinteBlob_(f.getBlob()); }
+  catch (e) { empreinte = ''; }
+
+  var doublonDe = (empreinte && ctx.empreintesVues[empreinte] && ctx.empreintesVues[empreinte] !== f.getId())
+    ? ctx.empreintesVues[empreinte] : null;
+  if (empreinte && !ctx.empreintesVues[empreinte]) ctx.empreintesVues[empreinte] = f.getId();
+
+  var cibleDossier = null;
+  if (doublonDe) {
+    cibleDossier = dossierDoublons_();
+    statut = 'tri33-doublon';
+    cheminFinal = '_Doublons';
+  } else {
+    signalerQuasiDoublonReset_(nom, f.getSize(), f.getId(), domaine, ctx);
+    var sousChemin = cheminCibleReset_(domaine, nom);
+    if (sousChemin) {
+      var domaineDossier = DriveApp.getFolderById(idDomaine_(domaine));
+      cibleDossier = resoudreCibleReset_(domaineDossier, domaine, sousChemin, ctx);
+      statut = 'tri33-route';
+      cheminFinal = domaine + '/' + sousChemin;
+    } else {
+      signalerNonRouteReset_(nom, f.getId(), domaine, ctx);
+    }
+  }
+
+  var deplace = false;
+  if (cibleDossier) {
+    var cibleId = cibleDossier.getId();
+    if (!(ancienParent && ancienParent.getId() === cibleId)) {
+      cibleDossier.addFile(f);
+      if (ancienParent) {
+        try { ancienParent.removeFile(f); }
+        catch (e) { journalErreur_('Reset', 'Retrait ancien parent (placement) impossible (' + nom + ') : ' + e); }
+      }
+      deplace = true;
+    }
+  }
+  indexAjouter_(cle, { statut: statut, nom: nom, domaine: domaine, chemin: cheminFinal }, empreinte);
+  if (ancienParent && cibleDossier && ancienParent.getId() !== cibleDossier.getId()) {
+    try { detecterDossierVide_(ancienParent, ctx); }
+    catch (e) { journalErreur_('Reset', 'Détection coquille vide (placement) différée : ' + e); }
+  }
+  return deplace;
+}
+
+/** UNE passe bornée de placement (tous domaines confondus). @return {{examines, deplaces, complet}} */
+function placerUnePageReset_(estBudgetDepasse, ctx) {
+  var tag = CONFIG.RESET_TAG;
+  var racine = dossierTriReset_();
+  var domaines = domainesRassemblesReset_();
+  var examines = 0, deplaces = 0, complet = true;
+  for (var i = 0; i < domaines.length; i++) {
+    if (estBudgetDepasse() || examines >= CONFIG.RESET_PLACEMENT_MAX_PAR_RUN) { complet = false; break; }
+    var dom = domaines[i];
+    var sousTri;
+    try { sousTri = racine.getFoldersByName(dom); }
+    catch (e) { complet = false; continue; }
+    if (!sousTri.hasNext()) continue; // rien rassemblé pour ce domaine (ou déjà entièrement placé)
+    var dossierDom = sousTri.next();
+    var fi;
+    try { fi = dossierDom.getFiles(); } catch (e) { complet = false; continue; }
+    while (fi.hasNext()) {
+      if (estBudgetDepasse() || examines >= CONFIG.RESET_PLACEMENT_MAX_PAR_RUN) { complet = false; break; }
+      var f;
+      try { f = fi.next(); } catch (e) { complet = false; break; }
+      var cle = 'tri33p|' + tag + '|' + f.getId();
+      if (indexContient_(cle)) continue; // déjà tenté — gratuit, n'occupe pas la page
+      examines++;
+      try { if (placerUnFichierReset_(f, dom, cle, ctx)) deplaces++; }
+      catch (e) { complet = false; journalErreur_('Reset', 'Placement différé (' + f.getName() + ') : ' + e); }
+    }
+  }
+  return { examines: examines, deplaces: deplaces, complet: complet };
+}
+
+/**
+ * ÉTAPE DE TICK : placement, gatée flag + budgets. « Terminé » posé UNIQUEMENT si le rassemblement
+ * l'est AUSSI pour ce tag (patron `appliquerPlanConsolidation_` — l'exécution ne peut pas se figer
+ * « fini » tant que la génération peut encore alimenter la file, sinon de nouveaux fichiers rassemblés
+ * plus tard ne seraient plus jamais placés).
+ */
+function placerReset_(estBudgetDepasse) {
+  if (!CONFIG.RESET_ACTIF) return;
+  var props = PropertiesService.getScriptProperties();
+  var tag = CONFIG.RESET_TAG;
+  if (props.getProperty('DriveAI_RESET_PLACEMENT') === tag) return;
+  var aujourdhui = dateGmail_(new Date());
+  var consommeJour = budgetJourReset_(props, 'DriveAI_RESET_PLACE_JOUR', aujourdhui);
+  if (consommeJour >= CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS) return;
+
+  var debut = Date.now();
+  var budgetRun = Math.min(CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS - consommeJour, 3 * 60 * 1000);
+  var garde = function () { return estBudgetDepasse() || (Date.now() - debut) > budgetRun; };
+  try {
+    var ctx = {
+      proteges: ensembleDomainesProteges_(),
+      validees: entitesValideesParCle_(),
+      empreintesVues: empreintesPlanConsolidation_(), // seed : réutilise les empreintes déjà connues (conso-2)
+      repointes: {},
+    };
+    var r = placerUnePageReset_(garde, ctx);
+    if (r.deplaces) journalInfo_('Reset', r.deplaces + ' fichier(s) traité(s) au placement (reset).');
+    if (r.complet && r.examines === 0) {
+      if (props.getProperty('DriveAI_RESET_RASSEMBLEMENT') === tag) {
+        props.setProperty('DriveAI_RESET_PLACEMENT', tag);
+        journalInfo_('Reset', 'Placement TERMINÉ (tag « ' + tag + ' ») — rassemblement également fini.');
+      } else {
+        journalInfo_('Reset', 'Placement à jour pour cette passe — rassemblement encore en cours, repris au tick suivant.');
+      }
+    }
+  } finally {
+    props.setProperty('DriveAI_RESET_PLACE_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
+  }
+}
+
+/* ---------- 04 · Immigration : réorganisation INTERNE (CLAUDE.md §2.1b révisé, ADR-0030 §4) ---------- */
+
+/** Racine de 04 · Immigration — TOUTE cible interne est construite depuis CE dossier (jamais un chemin arbitraire). */
+function dossierRacine04Reset_() {
+  return DriveApp.getFolderById(CONFIG.DOMAINES['04 · Immigration']);
+}
+
+/**
+ * Résout (find-or-create) une cible INTERNE à 04. Construite STRUCTURELLEMENT depuis la racine 04
+ * (`dossierRacine04Reset_`, jamais depuis un ID/chemin fourni par l'appelant) : par construction, il
+ * est IMPOSSIBLE de renvoyer un dossier hors de 04 (CLAUDE.md §2.1b).
+ */
+function dossierInterne04Reset_(sousChemin) {
+  var segments = sousChemin.split('/');
+  var dossier = dossierRacine04Reset_();
+  for (var i = 0; i < segments.length; i++) dossier = sousDossier_(dossier, segments[i]);
+  return dossier;
+}
+
+function collecterInterne04Reset_(dossier, ids, max, estBudgetDepasse, tag, etat) {
+  var fi = dossier.getFiles();
+  while (fi.hasNext()) {
+    if (estBudgetDepasse() || ids.length >= max) { etat.complet = false; return; }
+    try {
+      var f = fi.next();
+      if (estExcluDuReset_(f.getName())) continue;
+      if (indexContient_('tri33-04|' + tag + '|' + f.getId())) continue;
+      ids.push(f.getId());
+    } catch (e) { etat.complet = false; journalErreur_('Reset', 'Fichier ignoré à la collecte 04 interne (' + e + ')'); }
+  }
+  var fo = dossier.getFolders();
+  while (fo.hasNext()) {
+    if (estBudgetDepasse() || ids.length >= max) { etat.complet = false; return; }
+    try { collecterInterne04Reset_(fo.next(), ids, max, estBudgetDepasse, tag, etat); }
+    catch (e) { etat.complet = false; journalErreur_('Reset', 'Sous-dossier ignoré à la collecte 04 interne (' + e + ')'); }
+  }
+}
+
+/**
+ * Réorganise UN fichier de 04 EN INTERNE (CLAUDE.md §2.1b, ADR-0030 §4). Cible résolue via
+ * `dossierInterne04Reset_` (construite depuis la racine 04) PUIS re-vérifiée par `segmentsSousDomaine_`
+ * (défense en profondeur, échec-fermé — ADR-0028) : un échec bloque le déplacement, ne le laisse
+ * jamais passer. `cheminCibleReset_('04 · Immigration', nom)` null ⇒ jamais touché (reste À SA PLACE,
+ * PAS de sortie — un doc ambigu, ex. « CIC » qui pourrait être la banque, n'est jamais déplacé
+ * d'office). MULTI-PARENTS jamais déplacé (même prudence que ConsolidationExec).
+ * @return {boolean} vrai si RÉELLEMENT déplacé ce call.
+ */
+function reorganiserInterne04_(fileId, tag, ctx) {
+  var cle = 'tri33-04|' + tag + '|' + fileId;
+  if (indexContient_(cle)) return false;
+  var f;
+  try { f = DriveApp.getFileById(fileId); }
+  catch (e) {
+    indexAjouter_(cle, { statut: 'tri33-04-absent', nom: fileId, domaine: '04 · Immigration', chemin: '' }, '');
+    return false;
+  }
+  var nom = f.getName();
+
+  if (nbParentsBorne_(f) > 1) {
+    indexAjouter_(cle, { statut: 'tri33-04-multiparents', nom: nom, domaine: '04 · Immigration', chemin: '' }, '');
+    return false;
+  }
+  var sousChemin = cheminCibleReset_('04 · Immigration', nom);
+  if (!sousChemin) {
+    indexAjouter_(cle, { statut: 'tri33-04-reste', nom: nom, domaine: '04 · Immigration', chemin: '' }, '');
+    return false;
+  }
+  var cible = dossierInterne04Reset_(sousChemin);
+  // Défense en profondeur (CLAUDE.md §2.1b, échec-fermé) : garanti par construction, re-vérifié quand même.
+  if (!segmentsSousDomaine_(cible, CONFIG.DOMAINES['04 · Immigration'])) {
+    journalErreur_('Reset', 'Cible 04-interne hors de 04 (refusé, ne devrait jamais arriver) : ' + nom);
+    indexAjouter_(cle, { statut: 'tri33-04-refus', nom: nom, domaine: '04 · Immigration', chemin: '' }, '');
+    return false;
+  }
+
+  var cibleId = cible.getId();
+  var ancienParent = null;
+  try { var ps = f.getParents(); if (ps.hasNext()) ancienParent = ps.next(); } catch (e) { ancienParent = null; }
+  var deplace = false;
+  if (!(ancienParent && ancienParent.getId() === cibleId)) {
+    cible.addFile(f);
+    if (ancienParent) {
+      try { ancienParent.removeFile(f); }
+      catch (e) { journalErreur_('Reset', 'Retrait ancien parent 04 impossible (' + nom + ') : ' + e); }
+    }
+    deplace = true;
+  }
+  indexAjouter_(cle, { statut: 'tri33-04-route', nom: nom, domaine: '04 · Immigration', chemin: '04 · Immigration/' + sousChemin }, '');
+  if (ancienParent && ancienParent.getId() !== cibleId) {
+    try { detecterDossierVide_(ancienParent, ctx); }
+    catch (e) { journalErreur_('Reset', 'Détection coquille vide 04 différée : ' + e); }
+  }
+  return deplace;
+}
+
+/** UNE passe bornée de réorg interne 04. @return {{examines, deplaces, complet}} */
+function reorganiserPageInterne04_(estBudgetDepasse, ctx) {
+  var tag = CONFIG.RESET_TAG;
+  var racine;
+  try { racine = dossierRacine04Reset_(); }
+  catch (e) {
+    journalErreur_('Reset', 'Racine 04 illisible (04 interne) : ' + e);
+    return { examines: 0, deplaces: 0, complet: false };
+  }
+  var ids = [];
+  var etat = { complet: true };
+  collecterInterne04Reset_(racine, ids, CONFIG.RESET_04_MAX_PAR_RUN, estBudgetDepasse, tag, etat);
+  var deplaces = 0;
+  for (var i = 0; i < ids.length; i++) {
+    if (estBudgetDepasse()) { etat.complet = false; break; }
+    try { if (reorganiserInterne04_(ids[i], tag, ctx)) deplaces++; }
+    catch (e) { etat.complet = false; journalErreur_('Reset', '04 interne différé (' + ids[i] + ') : ' + e); }
+  }
+  return { examines: ids.length, deplaces: deplaces, complet: etat.complet };
+}
+
+/** ÉTAPE DE TICK : réorganisation interne de 04, gatée flag + budgets. */
+function appliquerReset04Interne_(estBudgetDepasse) {
+  if (!CONFIG.RESET_ACTIF) return;
+  var props = PropertiesService.getScriptProperties();
+  var tag = CONFIG.RESET_TAG;
+  if (props.getProperty('DriveAI_RESET_04') === tag) return;
+  var aujourdhui = dateGmail_(new Date());
+  var consommeJour = budgetJourReset_(props, 'DriveAI_RESET_04_JOUR', aujourdhui);
+  if (consommeJour >= CONFIG.RESET_04_BUDGET_JOUR_MS) return;
+
+  var debut = Date.now();
+  var budgetRun = Math.min(CONFIG.RESET_04_BUDGET_JOUR_MS - consommeJour, 2 * 60 * 1000);
+  var garde = function () { return estBudgetDepasse() || (Date.now() - debut) > budgetRun; };
+  try {
+    var ctx = { proteges: ensembleDomainesProteges_() };
+    var r = reorganiserPageInterne04_(garde, ctx);
+    if (r.deplaces) journalInfo_('Reset', r.deplaces + ' fichier(s) réorganisé(s) EN INTERNE sous 04 (reset).');
+    if (r.complet && r.examines === 0) {
+      props.setProperty('DriveAI_RESET_04', tag);
+      journalInfo_('Reset', '04 interne TERMINÉ (tag « ' + tag + ' »).');
+    }
+  } finally {
+    props.setProperty('DriveAI_RESET_04_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
+  }
+}
+
+/* ---------- Fonctions UN-CLIC (éditeur Apps Script, hors quota ~90 min/j des déclencheurs) ---------- */
+
+/** Reste (ms) du budget QUOTIDIEN d'une phase du reset — pour que les fonctions un-clic sachent s'arrêter. */
+function budgetJourResteReset_(cle, budgetJourMs) {
+  var props = PropertiesService.getScriptProperties();
+  return budgetJourMs - budgetJourReset_(props, cle, dateGmail_(new Date()));
+}
+
+/**
+ * UN-CLIC combiné : rassemblement PUIS placement PUIS 04 interne, en boucle, jusqu'à épuisement du
+ * mur dur des 6 min d'une exécution manuelle OU des budgets QUOTIDIENS de chaque phase OU la fin du
+ * reset. Le moyen le plus rapide pour Marc de faire progresser le reset sans attendre les ticks
+ * (chaque tick n'avance QUE d'une page/phase, budget-gaté par le flux vivant). Relancer autant de
+ * fois que nécessaire (le Journal dit où ça en est) — chaque appel est repris là où le précédent
+ * s'est arrêté (clés de convergence persistées).
+ */
+function lancerResetTout() {
+  try {
+    var debut = Date.now();
+    var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
+    var rondes = 0;
+    while (!estBudgetDepasse() && !resetTermine_() && rondes < 500) {
+      var resteAvant = budgetJourResteReset_('DriveAI_RESET_RASS_JOUR', CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS) +
+        budgetJourResteReset_('DriveAI_RESET_PLACE_JOUR', CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS) +
+        budgetJourResteReset_('DriveAI_RESET_04_JOUR', CONFIG.RESET_04_BUDGET_JOUR_MS);
+      if (resteAvant <= 0) {
+        journalInfo_('Reset', 'lancerResetTout() : budget quotidien des 3 phases épuisé — reprise demain (ou relancer plus tard).');
+        break;
+      }
+      if (!estBudgetDepasse()) rassemblerReset_(estBudgetDepasse);
+      if (!estBudgetDepasse()) placerReset_(estBudgetDepasse);
+      if (!estBudgetDepasse()) appliquerReset04Interne_(estBudgetDepasse);
+      rondes++;
+    }
+    journalInfo_('Reset', 'lancerResetTout() : ' + rondes + ' ronde(s) — ' +
+      (resetTermine_() ? 'RESET TERMINÉ.' : 'relancer lancerResetTout() pour continuer.'));
+  } catch (e) {
+    notifierEchec_('Reset', 'Reset manuel interrompu : ' + e);
+  }
+}
+
+/** UN-CLIC ciblé : rassemblement seul, en boucle jusqu'au mur des 6 min ou son budget quotidien. */
+function lancerResetRassemblement() {
+  try {
+    var debut = Date.now();
+    var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
+    var rondes = 0;
+    while (!estBudgetDepasse() &&
+      budgetJourResteReset_('DriveAI_RESET_RASS_JOUR', CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS) > 0) {
+      rassemblerReset_(estBudgetDepasse);
+      rondes++;
+      if (PropertiesService.getScriptProperties().getProperty('DriveAI_RESET_RASSEMBLEMENT') === CONFIG.RESET_TAG) break;
+    }
+    journalInfo_('Reset', 'lancerResetRassemblement() : ' + rondes + ' passe(s).');
+  } catch (e) {
+    notifierEchec_('Reset', 'Rassemblement manuel interrompu : ' + e);
+  }
+}
+
+/** UN-CLIC ciblé : placement seul, en boucle jusqu'au mur des 6 min ou son budget quotidien. */
+function lancerResetPlacement() {
+  try {
+    var debut = Date.now();
+    var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
+    var rondes = 0;
+    while (!estBudgetDepasse() &&
+      budgetJourResteReset_('DriveAI_RESET_PLACE_JOUR', CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS) > 0) {
+      placerReset_(estBudgetDepasse);
+      rondes++;
+      if (PropertiesService.getScriptProperties().getProperty('DriveAI_RESET_PLACEMENT') === CONFIG.RESET_TAG) break;
+    }
+    journalInfo_('Reset', 'lancerResetPlacement() : ' + rondes + ' passe(s).');
+  } catch (e) {
+    notifierEchec_('Reset', 'Placement manuel interrompu : ' + e);
+  }
+}
+
+/** UN-CLIC ciblé : réorganisation interne de 04 seule, en boucle jusqu'au mur des 6 min ou son budget quotidien. */
+function lancerReset04Interne() {
+  try {
+    var debut = Date.now();
+    var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
+    var rondes = 0;
+    while (!estBudgetDepasse() &&
+      budgetJourResteReset_('DriveAI_RESET_04_JOUR', CONFIG.RESET_04_BUDGET_JOUR_MS) > 0) {
+      appliquerReset04Interne_(estBudgetDepasse);
+      rondes++;
+      if (PropertiesService.getScriptProperties().getProperty('DriveAI_RESET_04') === CONFIG.RESET_TAG) break;
+    }
+    journalInfo_('Reset', 'lancerReset04Interne() : ' + rondes + ' passe(s).');
+  } catch (e) {
+    notifierEchec_('Reset', '04 interne manuel interrompu : ' + e);
+  }
+}

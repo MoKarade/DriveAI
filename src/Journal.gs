@@ -44,6 +44,10 @@ function initialiserSheet_(ss) {
   // avant toute exécution. La colonne Empreinte est la mémoire de dédup de la campagne
   // (jamais en Script Properties : ~2 900 empreintes dépasseraient la limite ~9 Ko).
   creerOnglet_(ss, 'PlanConsolidation', COLONNES_PLAN_CONSOLIDATION);
+  // C28-33 (ADR-0030) : rapport du RESET — quasi-doublons probables (même nom, taille différente,
+  // hors de portée du hash exact) et fichiers NON ROUTÉS restés dans `_TRI 2026` — jamais une
+  // mutation, uniquement pour affiner STRUCTURE_CIBLE_RESET ou trancher au cas par cas (Marc).
+  creerOnglet_(ss, 'Reset', ['Clé', 'Type', 'Nom', 'Domaine', 'Cible', 'Statut', 'Détail', 'Horodaté']);
   creerOnglet_(ss, 'Santé', ['Santé DriveAI']);                             // vue lisible (heartbeat + métriques, ADR-0006)
   var defaut = ss.getSheetByName('Feuille 1') || ss.getSheetByName('Sheet1');
   if (defaut && ss.getSheets().length > 1) ss.deleteSheet(defaut);
