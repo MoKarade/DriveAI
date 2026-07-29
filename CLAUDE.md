@@ -82,28 +82,15 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
 
 ## 4. Workflow automatisé
 
-### ⛔ RÈGLE D'OPÉRATION STRICTE — analyse déléguée à NotebookLM (décision Marc 2026-07-07)
+### Règle NotebookLM — ABROGÉE (décision Marc 2026-07-28)
 
-> NotebookLM lit le code via le miroir Drive (`_Miroir du dépôt`, ADR-0017) et possède la vue
-> d'ensemble : **NotebookLM = analyse architecturale & décision ; Claude = exécution.**
-
-Pour toute NOUVELLE tâche de code (écrire, modifier ou planifier), IMPÉRATIVEMENT :
-
-1. **Aucune solution technique proposée, aucune modification de fichier amorcée** par Claude.
-2. Claude **génère un prompt NotebookLM** complet et précis, dans un **bloc de code copiable**,
-   qui : (a) décrit l'objectif de la tâche ; (b) demande d'identifier les fichiers concernés et
-   d'analyser les impacts sur l'existant (garde-fous §2 inclus) ; (c) demande une conception
-   technique / un plan d'implémentation.
-3. Claude **s'arrête immédiatement**, demande à Marc de soumettre le prompt à NotebookLM, et
-   **attend**.
-4. L'exécution (écriture du code) ne commence **qu'après** que Marc a collé la réponse et le plan
-   validé par NotebookLM.
-
-Notes de bord pour que la règle fonctionne : le miroir se synchronise **au merge sur `main`**
-(pas en continu) et NotebookLM doit **re-synchroniser ses sources** — vérifier la fraîcheur avant
-une analyse ; la vérification finale (tests, CI, garde-fous, revue flotte) reste du côté Claude à
-l'exécution ; le protocole §8 (ADR d'abord pour tout changement de classement) demeure — le plan
-NotebookLM en devient l'entrée, pas le remplacement.
+> L'ancienne règle « NotebookLM = analyse architecturale & décision ; Claude = exécution »
+> (décision Marc 2026-07-07) est **RÉVOQUÉE par Marc** : plus AUCUN passage obligé par NotebookLM
+> pour les tâches de code. **Claude conçoit ET exécute directement.** Ce qui REMPLACE le contrôle :
+> le protocole §8 (ADR d'abord pour tout changement de classement) reste OBLIGATOIRE, fonctions
+> pures testées, et **revue flotte adversariale AVANT merge** (code-reviewer + le spécialiste
+> concerné — leçon C28-32 : la revue se fait AVANT, jamais après). Le miroir Drive (ADR-0017)
+> continue d'être synchronisé au merge pour consultation éventuelle.
 
 - **Push & merge auto** : Claude pousse sur une branche `claude/**`, ouvre une PR (draft),
   la CI valide, puis la PR se **merge automatiquement** (squash) quand la CI est verte.
@@ -454,10 +441,6 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   JAMAIS le même préfixe de clé d'idempotence (`intention|<threadId>` serait entré en collision
   avec `intention|<messageId>` — fils entiers sautés à tort) : préfixe DÉDIÉ par entité + test de
   collision. Vérifier les identités de plateforme qu'un plan validé suppose distinctes.
-- **Prompt NotebookLM ≤ ~2 000 caractères, TOUJOURS.** La zone de question de NotebookLM a une
-  limite — un prompt §4 trop long ne peut physiquement pas être collé par Marc. Style
-  télégraphique, une ligne par décision, le détail vit déjà dans les sources du notebook ;
-  vérifier `wc -m` avant de livrer le bloc.
 - **Campagne de rangement ⇒ CIBLE calculée par LA MÊME fonction pure que le flux vivant +
   tripwire.** Deux formules « équivalentes » écrites séparément divergent toujours quelque part
   (année, canonisation, champ source) → la campagne re-déplace en boucle ce que le flux vient de
