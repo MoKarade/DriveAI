@@ -393,3 +393,66 @@ test('tripwire constitution : CLAUDE.md documente la réorg INTERNE de 04 SEULEM
   assert.ok(claudeMd.includes('sortie JAMAIS automatique') || claudeMd.includes('jamais hors de 04'),
     'la constitution doit continuer d\'interdire toute SORTIE automatique de 04');
 });
+
+/* ---------- Fonctions UN-CLIC : verrou partagé avec le tick (revue quota C28-33) ---------- */
+
+test('les 4 fonctions UN-CLIC prennent TOUTES le verrou partagé (source) — un oubli sur une seule romprait la garde', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'Reset.gs'), 'utf8');
+  ['lancerResetTout', 'lancerResetRassemblement', 'lancerResetPlacement', 'lancerReset04Interne'].forEach((nom) => {
+    const debut = src.indexOf('function ' + nom + '(');
+    assert.ok(debut !== -1, nom + ' introuvable');
+    const fin = src.indexOf('\n}', debut);
+    const corps = src.slice(debut, fin);
+    assert.ok(corps.includes('acquerirVerrouReset_('), nom + ' doit acquérir le verrou partagé du tick avant de muter');
+    assert.ok(corps.includes('verrou.releaseLock()'), nom + ' doit relâcher le verrou (finally)');
+  });
+});
+
+function fakeLock(disponible) {
+  const appels = { tryLock: 0, release: 0 };
+  return {
+    lock: {
+      tryLock: () => { appels.tryLock++; return disponible; },
+      releaseLock: () => { appels.release++; },
+    },
+    appels,
+  };
+}
+
+test('acquerirVerrouReset_ : verrou indisponible (tick en cours) → null, aucune mutation tentée', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const { lock, appels } = fakeLock(false);
+  c.LockService = { getScriptLock: () => lock };
+  c.journalInfo_ = () => {};
+  const r = c.acquerirVerrouReset_('lancerResetRassemblement');
+  assert.strictEqual(r, null);
+  assert.strictEqual(appels.tryLock, 1);
+  assert.strictEqual(appels.release, 0, 'un verrou jamais acquis ne doit jamais être relâché');
+});
+
+test('lancerResetRassemblement : verrou INDISPONIBLE → sort tôt, ne relance AUCUNE phase (course avec le tick évitée)', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const { lock, appels } = fakeLock(false);
+  c.LockService = { getScriptLock: () => lock };
+  c.journalInfo_ = () => {};
+  let appele = false;
+  c.rassemblerReset_ = () => { appele = true; };
+  c.notifierEchec_ = () => {};
+  c.lancerResetRassemblement();
+  assert.strictEqual(appele, false, 'rassemblerReset_ ne doit JAMAIS tourner sans le verrou');
+  assert.strictEqual(appels.release, 0);
+});
+
+test('lancerResetRassemblement : verrou acquis → relâché même si la phase LÈVE (finally)', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const { lock, appels } = fakeLock(true);
+  c.LockService = { getScriptLock: () => lock };
+  c.journalInfo_ = () => {};
+  c.notifierEchec_ = () => {};
+  c.rassemblerReset_ = () => { throw new Error('panne Drive'); };
+  c.lancerResetRassemblement();
+  assert.strictEqual(appels.tryLock, 1);
+  assert.strictEqual(appels.release, 1, 'le verrou doit être relâché malgré l\'exception');
+});

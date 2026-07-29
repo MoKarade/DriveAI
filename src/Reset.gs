@@ -876,6 +876,26 @@ function budgetJourResteReset_(cle, budgetJourMs) {
 }
 
 /**
+ * Acquiert le verrou partagé du tick avant une fonction UN-CLIC (revue quota C28-33) : sans lui, un
+ * `tickDriveAI` déclenché PENDANT les plusieurs minutes d'une boucle manuelle tournerait en PARALLÈLE
+ * sur les mêmes dossiers Drive et les mêmes Script Properties de budget — course sur
+ * `DriveAI_RESET_*_JOUR` (la dernière écriture du `finally` écrase l'autre, sous-comptant le budget
+ * réellement consommé) et appels Drive redondants sur un même fichier. Même patron que
+ * `reparerIncidentSheet`/`fusionnerDomaine07PersoVers08` (Maintenance.gs). `tickDriveAI` lui-même ne
+ * bloque JAMAIS sur ce verrou (`tryLock(5000)` puis saute le tick, cf. Main.gs) — le tenir ici pendant
+ * toute la boucle manuelle fait donc sauter au pire quelques ticks, jamais une famine du flux vivant.
+ * @return {?Lock} le verrou tenu, ou null si indisponible (tick en cours — appelant doit sortir tôt).
+ */
+function acquerirVerrouReset_(nomFonction) {
+  var verrou = LockService.getScriptLock();
+  if (!verrou.tryLock(30 * 1000)) {
+    journalInfo_('Reset', nomFonction + '() : tick en cours — réessaie dans une minute (jamais en même temps qu\'un tick).');
+    return null;
+  }
+  return verrou;
+}
+
+/**
  * UN-CLIC combiné : rassemblement PUIS placement PUIS 04 interne, en boucle, jusqu'à épuisement du
  * mur dur des 6 min d'une exécution manuelle OU des budgets QUOTIDIENS de chaque phase OU la fin du
  * reset. Le moyen le plus rapide pour Marc de faire progresser le reset sans attendre les ticks
@@ -884,6 +904,8 @@ function budgetJourResteReset_(cle, budgetJourMs) {
  * s'est arrêté (clés de convergence persistées).
  */
 function lancerResetTout() {
+  var verrou = acquerirVerrouReset_('lancerResetTout');
+  if (!verrou) return;
   try {
     var debut = Date.now();
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
@@ -905,11 +927,15 @@ function lancerResetTout() {
       (resetTermine_() ? 'RESET TERMINÉ.' : 'relancer lancerResetTout() pour continuer.'));
   } catch (e) {
     notifierEchec_('Reset', 'Reset manuel interrompu : ' + e);
+  } finally {
+    verrou.releaseLock();
   }
 }
 
 /** UN-CLIC ciblé : rassemblement seul, en boucle jusqu'au mur des 6 min ou son budget quotidien. */
 function lancerResetRassemblement() {
+  var verrou = acquerirVerrouReset_('lancerResetRassemblement');
+  if (!verrou) return;
   try {
     var debut = Date.now();
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
@@ -923,11 +949,15 @@ function lancerResetRassemblement() {
     journalInfo_('Reset', 'lancerResetRassemblement() : ' + rondes + ' passe(s).');
   } catch (e) {
     notifierEchec_('Reset', 'Rassemblement manuel interrompu : ' + e);
+  } finally {
+    verrou.releaseLock();
   }
 }
 
 /** UN-CLIC ciblé : placement seul, en boucle jusqu'au mur des 6 min ou son budget quotidien. */
 function lancerResetPlacement() {
+  var verrou = acquerirVerrouReset_('lancerResetPlacement');
+  if (!verrou) return;
   try {
     var debut = Date.now();
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
@@ -941,11 +971,15 @@ function lancerResetPlacement() {
     journalInfo_('Reset', 'lancerResetPlacement() : ' + rondes + ' passe(s).');
   } catch (e) {
     notifierEchec_('Reset', 'Placement manuel interrompu : ' + e);
+  } finally {
+    verrou.releaseLock();
   }
 }
 
 /** UN-CLIC ciblé : réorganisation interne de 04 seule, en boucle jusqu'au mur des 6 min ou son budget quotidien. */
 function lancerReset04Interne() {
+  var verrou = acquerirVerrouReset_('lancerReset04Interne');
+  if (!verrou) return;
   try {
     var debut = Date.now();
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
@@ -959,5 +993,7 @@ function lancerReset04Interne() {
     journalInfo_('Reset', 'lancerReset04Interne() : ' + rondes + ' passe(s).');
   } catch (e) {
     notifierEchec_('Reset', '04 interne manuel interrompu : ' + e);
+  } finally {
+    verrou.releaseLock();
   }
 }

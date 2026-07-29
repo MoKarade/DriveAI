@@ -446,6 +446,13 @@ function tickDriveAI() {
       try { appliquerReset04Interne_(estBudgetDepasseStandard); }
       catch (e) { journalErreur_('Reset', '04 interne différé : ' + e); }
     }
+    // NB (revue quota C28-33) : sur un tick où le reset consomme jusqu'au bord du mur 4,5 min, il
+    // peut faire sauter POUR CE TICK les campagnes ci-dessous (legacy + réconciliation, gatées par le
+    // budget de tick 3 min PLUS COURT) — contrairement à conso-2/réorg-auto, cette interaction n'est
+    // PAS explicitement suspendue. Bornée dans la pratique par les budgets QUOTIDIENS du reset
+    // (~20 min/j au total, cf. Config.gs), donc pas un gate supplémentaire — mais si Marc constate un
+    // jour un « creux » sur `synchroniserIndex_` (le point sensible de l'incident 2026-07-23) pendant
+    // un reset actif, la cause est ICI, pas un nouveau bug.
 
     // Campagne HISTORIQUE Gmail (#12, ADR-0010 §1) : remonte tout l'historique de PJ par tranches
     // ancrées. APRÈS le flux vivant (priorité stricte C28-15). Coût nul une fois finie.
