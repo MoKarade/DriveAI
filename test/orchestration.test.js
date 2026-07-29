@@ -109,6 +109,32 @@ test('budget RÉALLOUÉ, jamais AUGMENTÉ : le total du reset ne dépasse pas ce
     'le reset doit consommer plus que le seul budget de conso-2, sinon la réallocation est inutile');
 });
 
+/**
+ * RÉCIPROQUE VITALE (revue quota #226) : les phases du reset ne doivent JAMAIS être gatées par
+ * `!resetEnCours_()`. Le gate serait AUTO-VERROUILLANT — `resetEnCours_ = RESET_ACTIF && !resetTermine_()`
+ * et `resetTermine_()` exige que les 3 phases posent leur tag, ce qui n'arrive que si elles TOURNENT.
+ * Une seule ligne ajoutée par copie-collé (il y a maintenant 5 `!resetEnCours_()` dans le tick, dont
+ * deux juste autour du bloc reset) et : le reset ne démarre plus JAMAIS, `resetEnCours_` reste vrai à
+ * vie, donc conso-2 + réorg auto + historique Gmail + réconciliation Index restent suspendus
+ * indéfiniment. Tout l'étage campagnes meurt avec un heartbeat VERT et zéro erreur au Journal.
+ * Exactement le motif §7 « un statut TERMINAL ne peut pas servir de signal d'OCCUPATION » / « un gate
+ * se teste par sa LIBÉRATION » — déjà vécu en C28-32, et ce PR en multiplie la surface d'exposition.
+ */
+test('orchestration RESET : les 3 phases ne sont JAMAIS gatées par !resetEnCours_() (gate auto-verrouillant = mort silencieuse de TOUTES les campagnes)', () => {
+  const avant = (motif) => {
+    const i = corps.indexOf(motif);
+    assert.ok(i !== -1, 'appel introuvable : ' + motif);
+    return corps.slice(Math.max(0, i - 300), i);
+  };
+  ['rassemblerReset_(estBudgetDepasseStandard)', 'placerReset_(estBudgetDepasseStandard)',
+    'appliquerReset04Interne_(estBudgetDepasseStandard)'].forEach((motif) => {
+    assert.ok(!/!resetEnCours_\(\)/.test(avant(motif)),
+      motif + ' ne doit JAMAIS être gatée par !resetEnCours_() : resetTermine_ exige que la phase ' +
+      'TOURNE pour poser son tag, donc le reset ne démarrerait plus jamais ET toutes les campagnes ' +
+      'resteraient suspendues à vie (heartbeat vert, zéro erreur — panne invisible)');
+  });
+});
+
 test('orchestration RESET : rassemblement → placement → 04 interne, dans cet ordre, en BUDGET TAIL (jamais le budget de tick 3 min)', () => {
   const rass = posAppel('rassemblerReset_(estBudgetDepasseStandard)');
   const place = posAppel('placerReset_(estBudgetDepasseStandard)');

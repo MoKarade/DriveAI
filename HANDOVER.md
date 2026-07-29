@@ -54,7 +54,8 @@
 > constitution↔code). **conso-2 et la réorg auto C28-32 sont AUTOMATIQUEMENT SUSPENDUES pendant le
 > reset** (`resetEnCours_`, ADR-0030 « Transition ») et reprennent seules à la fin. Fonctions UN-CLIC
 > pour Marc (`lancerResetTout()` dans l'éditeur Apps Script — hors quota des déclencheurs, le plus
-> rapide) + branchement tick automatique (budget tail, ~20 min/j au total le temps du reset).
+> rapide) + branchement tick automatique (budget tail ; ~50 min/j le temps du reset depuis la
+> réallocation #226 — RÉALLOUÉS depuis les campagnes suspendues, enveloppe inchangée).
 > **Reste à faire côté Marc une fois déployé** : lancer `lancerResetTout()` plusieurs fois dans
 > l'éditeur (ou laisser les ticks avancer seuls, plus lent) jusqu'à ce que le Journal dise « RESET
 > TERMINÉ » ; consulter l'onglet `Reset` (quasi-doublons + non-routés) et l'onglet `Réorg`

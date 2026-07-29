@@ -648,9 +648,13 @@ var STATUTS_SYNC_INDEX = { 'classé': true, 'doublon': true, 'média': true, 'te
  * convergence que la passe produit elle-même). Auto-stabilisant : la ligne appendée devient la
  * plus récente de sa clé et porte le chemin RECALCULÉ — la re-visite suivante n'append rien.
  *
- * Bornes (leçon « une campagne de fond se budgète PAR JOUR ») : `SYNC_LIGNES_PAR_RUN` lignes
- * par tick, `SYNC_FICHIERS_PAR_JOUR` vérifications Drive par jour (l'unité de coût réelle est
- * la vérification, pas la ligne), garde-temps partagé vérifié entre chaque fichier.
+ * Bornes RÉELLES (leçon « une campagne de fond se budgète PAR JOUR ») : `SYNC_LIGNES_PAR_RUN`
+ * lignes par tick, `SYNC_BUDGET_JOUR_MS` en ms réelles persistées par jour, garde-temps partagé
+ * vérifié entre chaque fichier — plus la SUSPENSION pendant le reset (`!resetEnCours_()`, Main.gs).
+ * ⚠️ Cette docstring promettait un `SYNC_FICHIERS_PAR_JOUR` (plafond dans l'unité de coût réelle,
+ * la VÉRIFICATION Drive) qui n'a JAMAIS existé dans CONFIG — promesse retirée en revue #226 plutôt
+ * que laissée à croire (leçon §7 « promesse de verrou = verrou codé dans le même commit »). Si un
+ * jour le quota d'APPELS Drive devient le facteur limitant, c'est ce plafond-là qu'il faudra coder.
  * @param {function():boolean} estBudgetDepasse
  */
 function synchroniserIndex_(estBudgetDepasse) {

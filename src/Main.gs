@@ -453,13 +453,14 @@ function tickDriveAI() {
       try { appliquerReset04Interne_(estBudgetDepasseStandard); }
       catch (e) { journalErreur_('Reset', '04 interne différé : ' + e); }
     }
-    // NB (revue quota C28-33) : sur un tick où le reset consomme jusqu'au bord du mur 4,5 min, il
-    // peut faire sauter POUR CE TICK les campagnes ci-dessous (legacy + réconciliation, gatées par le
-    // budget de tick 3 min PLUS COURT) — contrairement à conso-2/réorg-auto, cette interaction n'est
-    // PAS explicitement suspendue. Bornée dans la pratique par les budgets QUOTIDIENS du reset
-    // (~20 min/j au total, cf. Config.gs), donc pas un gate supplémentaire — mais si Marc constate un
-    // jour un « creux » sur `synchroniserIndex_` (le point sensible de l'incident 2026-07-23) pendant
-    // un reset actif, la cause est ICI, pas un nouveau bug.
+    // NB (revue quota C28-33, RÉÉCRIT après la réallocation) : sur un tick où le reset consomme jusqu'au
+    // bord du mur 4,5 min, il peut faire sauter POUR CE TICK les campagnes gatées par le budget de tick
+    // 3 min PLUS COURT. Ne restent concernées que **migration / réanalyse / dry-run v2 / `etapeReorg_`**
+    // — l'historique Gmail et la réconciliation Index sont désormais SUSPENDUS EXPLICITEMENT pendant le
+    // reset (gate `!resetEnCours_()`, budget réalloué). Ampleur mesurée : le reset consomme ses
+    // 50 min/j en ~19 ticks sur 288, donc ~6 % des ticks « mangés » — pas un gate supplémentaire.
+    // ⚠️ DIAGNOSTIC : si un « creux » apparaît sur `synchroniserIndex_` ou l'historique Gmail pendant un
+    // reset actif, la cause est le GATE explicite (voir plus bas), PAS une famine de budget ici.
 
     // Campagne HISTORIQUE Gmail (#12, ADR-0010 §1) : remonte tout l'historique de PJ par tranches
     // ancrées. APRÈS le flux vivant (priorité stricte C28-15). Coût nul une fois finie.
@@ -533,10 +534,15 @@ function tickDriveAI() {
     // reliquat de budget — OBSERVE Drive (jamais ne le modifie) et aligne l'Index append-only
     // (statuts `déplacé`/`corbeillé`). SECONDAIRE → enveloppée : un échec ne bloque jamais l'intake.
     // SUSPENDUE pendant le RESET (décision Marc 2026-07-29) : son budget (12 min/j) est RÉALLOUÉ au
-    // reset. Doublement justifié ici — pendant le reset des milliers de fichiers CHANGENT de chemin
-    // par construction, donc elle passerait son budget à constater/écrire des « déplacé » sur des
-    // mouvements VOULUS que le reset a déjà inscrits lui-même (chemins réels dans ses propres clés).
-    // Elle rattrapera la vérité en une passe après la convergence (campagne perpétuelle : rien ne se perd).
+    // reset. Justification EXACTE (corrigée en revue — la 1ʳᵉ version prétendait à tort que le reset
+    // inscrit ces chemins sous la clé canonique : il écrit sous `tri33|`/`tri33p|`, que
+    // `fileIdDepuisCleMaintenance_` ne reconnaît même pas) : pendant le reset un fichier TRANSITE par
+    // `_TRI 2026/<domaine>` avant d'en sortir, donc la réconciliation écrirait DEUX lignes `déplacé`
+    // par fichier — dont une portant un chemin TRANSITOIRE, publié tel quel dans l'app — là où une
+    // seule passe après convergence donne la vérité. La suspension économise des écritures ET évite
+    // d'afficher un état faux. Aucun invariant cassé : `indexContient_` teste la PRÉSENCE d'une clé,
+    // jamais son statut (aucun re-traitement possible), curseur persistant + Index append-only ⇒ la
+    // dette se rattrape intégralement à la reprise (campagne perpétuelle, rien ne se perd).
     if (!estBudgetDepasse() && !resetEnCours_()) {
       try { synchroniserIndex_(estBudgetDepasse); }
       catch (e) { journalErreur_('Maintenance', 'Réconciliation Index différée : ' + e); }
