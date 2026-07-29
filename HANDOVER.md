@@ -4,7 +4,25 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **⚡ ÉTAT AU 2026-07-29 — C28-33 (RESET COMPLET DU DRIVE) : PR1 MERGÉE (#223), PR2 FAITE.** Décision
+> **⚡⚡ ÉTAT AU 2026-07-29 (soir) — LE RESET TOURNE EN PROD.** #223 (PR1) et #224 (PR2) sont MERGÉES
+> et déployées. Marc a lancé `lancerResetTout()` dans l'éditeur : **vérifié par signaux Drive
+> indépendants** — `_TRI 2026` créé (18:23:19), `_TRI 2026/01 · Administratif & identité` rempli, puis
+> la structure cible créée sous 01 (`État civil & notarial` 18:25:44, `Attestations & certificats`
+> 18:26:21) avec des fichiers réellement placés dedans. Un run manuel = ~4 min (mur Apps Script) et
+> n'a traité qu'une partie de **01** ; il reste 8 domaines. Les anciens dossiers de 01 (Passeport, EDF,
+> Correspondance**s**…) se vident au fur et à mesure — leurs coquilles vides ne partent à la corbeille
+> que sur le CLIC de Marc dans l'app (jamais le moteur, ADR-0014).
+> **PR #225 EN REVUE (do-not-merge)** — défaut révélé par ce 1ᵉʳ run réel : les fonctions UN-CLIC
+> étaient bornées par les budgets QUOTIDIENS du TICK (20 min/j), alors qu'une exécution d'éditeur est
+> HORS du quota des déclencheurs → (a) Marc bloqué jusqu'au lendemain après ~4-5 relances, (b) pire,
+> son run manuel consommait le budget du tick et affamait l'automatique. Correctif : drapeau `manuel`
+> sur les 3 phases (ni gaté, ni compté ; seul le mur 6 min de son exécution borne). 694 tests verts.
+> **PROCHAINE ACTION MARC (après merge + déploiement de #225)** : ouvrir `Reset.gs` → `lancerResetTout()`
+> → Exécuter, **en rafale autant de fois que voulu** (le Journal dit où ça en est, et « RESET TERMINÉ »
+> à la fin). Puis consulter l'onglet **`Reset`** (quasi-doublons probables + fichiers non routés restés
+> en `_TRI`) et l'onglet **`Réorg`** (`vide-candidat` → corbeille au clic).
+>
+> **ÉTAT AU 2026-07-29 — C28-33 (RESET COMPLET DU DRIVE) : PR1 MERGÉE (#223), PR2 FAITE.** Décision
 > Marc : tout rassembler dans `_TRI 2026`, écarter les doublons, repartir sur une structure ≤ 7
 > sous-dossiers/niveau (ADR-0030). **PR1** (mergée) : structure cible validée par Marc + routage PUR
 > par le nom (`cheminCibleReset_`, zéro LLM — 97 % des fichiers conformes) + tests (revue adversariale

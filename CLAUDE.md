@@ -486,6 +486,15 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   PREMIER objet construit — le 2ᵉ hérite silencieusement de la même valeur (vécu C28-33 : deux
   fichiers différents jugés « même empreinte »). Toute fonction mockée qui varie PAR OBJET lit sa
   variation dans son propre argument, jamais dans des `opts` figés à la construction.
+- **Un budget calibré pour UN CHEMIN d'exécution ne doit ni brider, ni être consommé par, un AUTRE
+  chemin.** Les budgets quotidiens protègent le quota RUNTIME des DÉCLENCHEURS (~90 min/j) ; une
+  exécution MANUELLE depuis l'éditeur en est HORS. Les appliquer quand même = DOUBLE peine (vécu
+  C28-33, 1ᵉʳ run réel) : (a) Marc bloqué jusqu'au lendemain sans qu'aucun quota réel soit en cause,
+  (b) pire, son run manuel CONSOMMAIT le budget du tick → l'automatique affamé toute la journée.
+  Dès qu'un ADR/commentaire écrit « hors quota X », le VÉRIFIER dans le code : drapeau explicite
+  (`manuel`) coupant À LA FOIS le gate ET le comptage, testé dans les DEUX sens. Ce défaut
+  n'apparaît qu'au PREMIER USAGE RÉEL — une suite verte ne le voit pas ; seule l'observation de ce
+  que l'utilisateur peut réellement FAIRE le révèle.
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 
