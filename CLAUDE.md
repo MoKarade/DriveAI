@@ -479,6 +479,13 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   (exit 0), seul un discret `command not found` sur stderr (vécu C28-31). Idem pour `$`/`!`.
   Corollaire : vérifier un artefact écrit via shell en le RELISANT (`git log --format=%B`), jamais
   au seul code de sortie.
+- **Un mock réutilisé sur plusieurs objets factices doit lire l'ARGUMENT reçu, jamais la fermeture
+  de construction du contexte.** Un test qui traite 2 fichiers factices avec le MÊME contexte `c`
+  (patron `ctxLigne`/`ctxPlacement`) et mocke une fonction cross-module par `() => 'X' + opts.id`
+  (au lieu de dériver de l'argument reçu, ex. `(blob) => 'X' + blob.id`) fige la valeur sur le
+  PREMIER objet construit — le 2ᵉ hérite silencieusement de la même valeur (vécu C28-33 : deux
+  fichiers différents jugés « même empreinte »). Toute fonction mockée qui varie PAR OBJET lit sa
+  variation dans son propre argument, jamais dans des `opts` figés à la construction.
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 
