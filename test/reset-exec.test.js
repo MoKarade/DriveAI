@@ -517,3 +517,202 @@ test('lancerResetRassemblement : verrou acquis → relâché même si la phase L
   assert.strictEqual(appels.tryLock, 1);
   assert.strictEqual(appels.release, 1, 'le verrou doit être relâché malgré l\'exception');
 });
+
+/* ---------- Budget QUOTIDIEN : le TICK est borné, l'UN-CLIC ne l'est PAS (incident 1er run réel) ---------- */
+
+// Monte une phase isolée : Properties en mémoire + la passe de travail mockée (on teste le GATE, pas le travail).
+function ctxPhase(opts) {
+  opts = opts || {};
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const store = Object.assign({}, opts.props);
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in store ? store[k] : null),
+    setProperty: (k, v) => { store[k] = String(v); },
+    deleteProperty: (k) => { delete store[k]; },
+  }) };
+  c.dateGmail_ = () => '2026/07/29';
+  c.journalInfo_ = () => {}; c.journalErreur_ = () => {};
+  c.ensembleDomainesProteges_ = () => ({});
+  let passes = 0;
+  c.rassemblerUnePageReset_ = () => { passes++; return { examines: 1, deplaces: 1, complet: false }; };
+  return { c, store, nbPasses: () => passes };
+}
+
+test('rassemblerReset_ (TICK) : budget quotidien ÉPUISÉ → ne travaille pas (le quota des déclencheurs reste protégé)', () => {
+  const c0 = load(['Config.gs', 'Reset.gs']);
+  const plein = '2026/07/29|' + c0.CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS; // dérivé de la CONFIG, jamais une valeur du jour
+  const t = ctxPhase({ props: { DriveAI_RESET_RASS_JOUR: plein } });
+  t.c.rassemblerReset_(() => false); // pas de `manuel` → chemin TICK, comportement inchangé
+  assert.strictEqual(t.nbPasses(), 0, 'le tick respecte le budget quotidien');
+});
+
+test('rassemblerReset_ (UN-CLIC) : budget quotidien épuisé → travaille QUAND MÊME et ne CONSOMME PAS le budget du tick', () => {
+  // Le budget quotidien protège le quota RUNTIME des DÉCLENCHEURS ; une exécution d'éditeur en est
+  // HORS. Sans ce correctif : (1) Marc bloqué jusqu'au lendemain après quelques relances manuelles,
+  // (2) pire — son run manuel consommait le budget du tick, donc l'AUTO ne faisait plus rien de la
+  // journée (le manuel affamait l'auto). Les deux sont verrouillés ici.
+  const c0 = load(['Config.gs', 'Reset.gs']);
+  const plein = '2026/07/29|' + c0.CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS;
+  const t = ctxPhase({ props: { DriveAI_RESET_RASS_JOUR: plein } });
+  t.c.rassemblerReset_(() => false, true); // manuel
+  assert.strictEqual(t.nbPasses(), 1, 'l\'un-clic n\'est PAS gaté par le budget quotidien');
+  assert.strictEqual(t.store.DriveAI_RESET_RASS_JOUR, plein,
+    'l\'un-clic ne consomme RIEN du budget quotidien — sinon il affamerait le tick automatique');
+});
+
+test('placerReset_ / appliquerReset04Interne_ : même contrat manuel (gate + comptage) que le rassemblement', () => {
+  const c0 = load(['Config.gs', 'Reset.gs']);
+  for (const cas of [
+    { fn: 'placerReset_', cle: 'DriveAI_RESET_PLACE_JOUR', budget: c0.CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS, passe: 'placerUnePageReset_' },
+    { fn: 'appliquerReset04Interne_', cle: 'DriveAI_RESET_04_JOUR', budget: c0.CONFIG.RESET_04_BUDGET_JOUR_MS, passe: 'reorganiserPageInterne04_' },
+  ]) {
+    const plein = '2026/07/29|' + cas.budget;
+    const t = ctxPhase({ props: { [cas.cle]: plein } });
+    let passes = 0;
+    t.c[cas.passe] = () => { passes++; return { examines: 1, deplaces: 1, complet: false }; };
+    t.c.entitesValideesParCle_ = () => ({});
+    t.c.empreintesPlanConsolidation_ = () => ({});
+
+    t.c[cas.fn](() => false);        // TICK : gaté
+    assert.strictEqual(passes, 0, cas.fn + ' (tick) doit respecter le budget quotidien');
+    t.c[cas.fn](() => false, true);  // UN-CLIC : libre
+    assert.strictEqual(passes, 1, cas.fn + ' (un-clic) ne doit PAS être gaté');
+    assert.strictEqual(t.store[cas.cle], plein, cas.fn + ' (un-clic) ne doit rien consommer du budget du tick');
+  }
+});
+
+/* ---------- Anti-spin : une ronde STÉRILE arrête la boucle un-clic (revue quota) ---------- */
+
+test('rondeSterileReset_ : rien examiné ET rien déplacé (ou phase muette) = stérile ; le moindre travail ne l\'est pas', () => {
+  assert.strictEqual(ctxPur.rondeSterileReset_(null), true, 'phase sortie tôt (undefined/null) → stérile');
+  assert.strictEqual(ctxPur.rondeSterileReset_({ examines: 0, deplaces: 0, complet: true }), true);
+  assert.strictEqual(ctxPur.rondeSterileReset_({ examines: 0, deplaces: 0, complet: false }), true,
+    'passe interrompue sans rien produire : stérile aussi (sinon spin sur une racine illisible)');
+  assert.strictEqual(ctxPur.rondeSterileReset_({ examines: 5, deplaces: 0, complet: true }), false,
+    'examiné sans déplacer (tout était déjà en place) = travail réel');
+  assert.strictEqual(ctxPur.rondeSterileReset_({ examines: 0, deplaces: 3, complet: true }), false);
+});
+
+// Contexte de boucle un-clic : verrou libre, phases injectées, Properties en mémoire.
+function ctxBoucle(phases) {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const store = {};
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in store ? store[k] : null),
+    setProperty: (k, v) => { store[k] = String(v); },
+    deleteProperty: (k) => { delete store[k]; },
+  }) };
+  c.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) };
+  c.journalInfo_ = () => {}; c.journalErreur_ = () => {}; c.notifierEchec_ = () => {};
+  const appels = { rass: 0, place: 0, i04: 0 };
+  c.rassemblerReset_ = () => { appels.rass++; return phases.rass; };
+  c.placerReset_ = () => { appels.place++; return phases.place; };
+  c.appliquerReset04Interne_ = () => { appels.i04++; return phases.i04; };
+  return { c, appels, store };
+}
+
+const STERILE = { examines: 0, deplaces: 0, complet: true };
+const TRAVAIL = { examines: 3, deplaces: 3, complet: false };
+
+test('lancerResetPlacement : ronde STÉRILE → sort IMMÉDIATEMENT (le tag ne peut pas servir de signal — il ne se pose qu\'après le rassemblement)', () => {
+  // Le bug corrigé : dans l'état STABLE « placement oisif, rassemblement non fini », le tag n'est
+  // JAMAIS posé → l'ancienne condition de break ne pouvait structurellement pas tirer et la boucle
+  // spinnait jusqu'au mur (4,5 min), en relisant tout PlanConsolidation à chaque ronde.
+  const t = ctxBoucle({ place: STERILE });
+  t.c.lancerResetPlacement();
+  assert.strictEqual(t.appels.place, 1, 'une seule passe : on ne re-scanne pas en boucle pour rien');
+  assert.strictEqual(t.store.DriveAI_RESET_PLACEMENT, undefined, 'et ce, SANS que le tag soit posé');
+});
+
+test('boucles un-clic : testées par leur LIBÉRATION — du travail fait continue, puis une ronde stérile arrête', () => {
+  // Leçon §7 : un gate se teste par sa libération, pas seulement par son blocage. Ici : la boucle
+  // doit ENCHAÎNER tant qu'il y a du travail, et ne s'arrêter que quand il n'y en a plus.
+  let restant = 3;
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const store = {};
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in store ? store[k] : null), setProperty: (k, v) => { store[k] = String(v); }, deleteProperty: () => {},
+  }) };
+  c.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) };
+  c.journalInfo_ = () => {}; c.journalErreur_ = () => {}; c.notifierEchec_ = () => {};
+  let passes = 0;
+  c.rassemblerReset_ = () => { passes++; return restant-- > 0 ? TRAVAIL : STERILE; };
+  c.lancerResetRassemblement();
+  assert.strictEqual(passes, 4, '3 passes productives enchaînées, puis la 4ᵉ (stérile) arrête');
+});
+
+test('lancerResetTout : s\'arrête quand les 3 phases sont stériles, mais CONTINUE si UNE seule travaille encore', () => {
+  const rienAFaire = ctxBoucle({ rass: STERILE, place: STERILE, i04: STERILE });
+  rienAFaire.c.lancerResetTout();
+  assert.strictEqual(rienAFaire.appels.rass, 1, 'une ronde et on sort');
+  assert.strictEqual(rienAFaire.appels.place, 1);
+  assert.strictEqual(rienAFaire.appels.i04, 1);
+
+  // Une seule phase productive → la boucle DOIT continuer (sinon on s'arrêterait trop tôt).
+  let reste = 2;
+  const t = ctxBoucle({ rass: STERILE, place: STERILE, i04: STERILE });
+  t.c.placerReset_ = () => { t.appels.place++; return reste-- > 0 ? TRAVAIL : STERILE; };
+  t.c.lancerResetTout();
+  assert.strictEqual(t.appels.place, 3, 'continue tant qu\'UNE phase produit du travail');
+});
+
+/* ---------- Un-clic : jamais par un déclencheur, et signal de vie pour le chien de garde ---------- */
+
+test('estAppelParDeclencheur_ : un event object de trigger est reconnu ; une exécution d\'éditeur non', () => {
+  assert.strictEqual(ctxPur.estAppelParDeclencheur_({ triggerUid: '123' }), true);
+  assert.strictEqual(ctxPur.estAppelParDeclencheur_(undefined), false, 'exécution manuelle depuis l\'éditeur');
+  assert.strictEqual(ctxPur.estAppelParDeclencheur_({}), false);
+});
+
+test('les 4 un-clic REFUSENT de tourner si un déclencheur les appelle (le drapeau manuel ne vaut que hors quota des déclencheurs)', () => {
+  for (const nom of ['lancerResetTout', 'lancerResetRassemblement', 'lancerResetPlacement', 'lancerReset04Interne']) {
+    const t = ctxBoucle({ rass: TRAVAIL, place: TRAVAIL, i04: TRAVAIL });
+    let verrouPris = false;
+    t.c.LockService = { getScriptLock: () => { verrouPris = true; return { tryLock: () => true, releaseLock: () => {} }; } };
+    t.c[nom]({ triggerUid: 'abc' }); // appelée COMME un handler de déclencheur
+    assert.strictEqual(verrouPris, false, nom + ' ne doit même pas prendre le verrou sous déclencheur');
+    assert.strictEqual(t.appels.rass + t.appels.place + t.appels.i04, 0, nom + ' ne doit RIEN exécuter sous déclencheur');
+  }
+});
+
+test('les un-clic écrivent DriveAI_LAST_MANUEL — sinon le chien de garde crie « moteur silencieux » à tort pendant une séance', () => {
+  const t = ctxBoucle({ rass: STERILE, place: STERILE, i04: STERILE });
+  t.c.lancerResetTout();
+  assert.ok(Number(t.store.DriveAI_LAST_MANUEL) > 0, 'signal de vie manuel persisté');
+});
+
+test('chienDeGarde : DriveAI_LAST_MANUEL frais compte comme un signal de VIE (pas d\'alerte pendant une séance manuelle)', () => {
+  const c = load(['Config.gs', 'Main.gs']);
+  const maintenant = Date.now();
+  const store = {
+    // Heartbeat de tick VIEUX (les ticks sautent : le verrou est tenu par la séance manuelle)…
+    DriveAI_LAST_TICK: String(maintenant - 3 * 60 * 60 * 1000),
+    // …mais une exécution manuelle vient d'avoir lieu.
+    DriveAI_LAST_MANUEL: String(maintenant - 60 * 1000),
+  };
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in store ? store[k] : null), setProperty: (k, v) => { store[k] = String(v); }, deleteProperty: () => {},
+  }) };
+  let repare = false;
+  c.installerTrigger = () => { repare = true; };
+  c.journalInfo_ = () => {}; c.journalErreur_ = () => {};
+  c.chienDeGarde();
+  assert.strictEqual(repare, false, 'aucune réparation : le moteur donne signe de vie par le canal manuel');
+  assert.strictEqual(store.DriveAI_WATCHDOG_ALERTE, undefined, 'et aucune alerte « moteur silencieux »');
+});
+
+test('les 4 fonctions UN-CLIC passent `true` (manuel) aux phases — sinon le budget du tick les brimerait à nouveau', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'Reset.gs'), 'utf8');
+  const debutUnClic = src.indexOf('Fonctions UN-CLIC');
+  assert.ok(debutUnClic !== -1);
+  const corps = src.slice(debutUnClic);
+  ['rassemblerReset_', 'placerReset_', 'appliquerReset04Interne_'].forEach((phase) => {
+    const appels = corps.match(new RegExp(phase + '\\(estBudgetDepasse[^)]*\\)', 'g')) || [];
+    assert.ok(appels.length > 0, 'aucun appel de ' + phase + ' dans les fonctions un-clic');
+    appels.forEach((appel) => {
+      assert.ok(/,\s*true\s*\)/.test(appel), 'appel un-clic sans le drapeau manuel : ' + appel);
+    });
+  });
+});

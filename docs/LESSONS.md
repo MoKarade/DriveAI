@@ -1386,3 +1386,27 @@ mockée qui varie logiquement PAR OBJET doit lire cette variation dans SON PROPR
 dans des `opts` figés à la construction."
 
 **Règle durable ?** oui (ajouté à CLAUDE.md §7).
+
+## 2026-07-29 — Un budget calibré pour un CHEMIN d'exécution ne doit pas brider (ni être consommé par) un autre chemin
+
+**Contexte.** C28-33 PR2, PREMIER run réel du reset par Marc (`lancerResetTout()` dans l'éditeur
+Apps Script). Le reset fonctionnait (vérifié par signaux Drive : `_TRI 2026` créé, structure cible
+créée, fichiers placés), mais j'avais borné les fonctions UN-CLIC par les MÊMES budgets QUOTIDIENS
+que le tick (`RESET_*_BUDGET_JOUR_MS`, 8+8+4 = 20 min/j). Or ces budgets existent pour protéger le
+quota RUNTIME des DÉCLENCHEURS (~90 min/j) — une exécution manuelle depuis l'éditeur en est HORS,
+et l'ADR le disait explicitement (« exécution manuelle éditeur = hors quota des déclencheurs »).
+L'intention était donc juste dans le DOCUMENT, fausse dans le CODE. Double peine : (1) après ~4-5
+relances, Marc était bloqué jusqu'au lendemain sans qu'aucun quota réel ne soit en cause, à rebours
+de son objectif explicite d'aller vite ; (2) pire, son run manuel CONSOMMAIT le budget du tick, donc
+l'automatique ne faisait plus rien de la journée — le manuel affamait l'auto.
+
+**Leçon.** "Un budget/plafond est calibré pour UN CHEMIN D'EXÉCUTION précis (ici le quota runtime des
+déclencheurs time-based). L'appliquer à un AUTRE chemin qui n'y est pas soumis (exécution manuelle
+depuis l'éditeur) produit une DOUBLE peine : le chemin libre est bridé sans raison, ET il consomme le
+budget du chemin contraint, qu'il affame. Règle : dès qu'un ADR ou un commentaire écrit « hors quota
+X », le VÉRIFIER dans le code — il faut un drapeau explicite (`manuel`) qui coupe À LA FOIS le gate ET
+le comptage, testé dans les DEUX sens (chemin contraint gaté / chemin libre non gaté ET non
+comptabilisé). Corollaire de vérification : ce défaut n'apparaît qu'au PREMIER USAGE RÉEL — une suite
+verte ne le voit pas, seule l'observation de ce que l'utilisateur peut réellement FAIRE le révèle."
+
+**Règle durable ?** oui (ajouté à CLAUDE.md §7).

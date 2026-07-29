@@ -321,6 +321,18 @@ function cheminCibleReset_(domaine, nom) {
  * QUOTIDIEN en ms réelles persistées, tag de convergence (« passe qui ne collecte plus rien »).
  * ================================================================================================= */
 
+/**
+ * Le budget QUOTIDIEN d'une phase (`RESET_*_BUDGET_JOUR_MS`) protège le quota RUNTIME des
+ * DÉCLENCHEURS (~90 min/j, compte gratuit) — il ne concerne QUE le tick. Une exécution UN-CLIC
+ * depuis l'éditeur Apps Script est HORS de ce quota (c'est sa raison d'être, ADR-0030 §Exécution) :
+ * lui appliquer le même budget causait DEUX effets pervers (constatés au 1ᵉʳ run réel de Marc,
+ * 2026-07-29) — (1) après quelques relances manuelles, Marc était BLOQUÉ jusqu'au lendemain sans
+ * qu'aucun quota réel ne soit en cause ; (2) pire, son run manuel CONSOMMAIT le budget du tick, donc
+ * l'automatique ne faisait plus rien de la journée : le manuel affamait l'auto. D'où le drapeau
+ * `manuel` porté par les 3 phases : ni gaté, ni compté — seul le mur des 6 min de l'exécution
+ * manuelle elle-même la borne (garde passé par l'appelant). Le tick, lui, est inchangé.
+ */
+
 /** Consommation du budget QUOTIDIEN d'une phase du reset (ms réelles persistées `AAAA-MM-JJ|ms`). PUR sur props. */
 function budgetJourReset_(props, cle, aujourdhui) {
   var brut = String(props.getProperty(cle) || '');
@@ -477,18 +489,27 @@ function rassemblerUnePageReset_(estBudgetDepasse, proteges, ctx) {
   return { examines: ids.length, deplaces: deplaces, complet: etat.complet };
 }
 
-/** ÉTAPE DE TICK : rassemblement, gatée flag + budgets (run + quotidien en ms réelles). */
-function rassemblerReset_(estBudgetDepasse) {
+/**
+ * ÉTAPE DE TICK : rassemblement, gatée flag + budgets (run + quotidien en ms réelles).
+ * @param {function():boolean} estBudgetDepasse
+ * @param {boolean} [manuel]  exécution UN-CLIC depuis l'éditeur — voir le bloc « budget QUOTIDIEN
+ *   vs exécution UN-CLIC » en tête de section (ni gaté, ni compté).
+ * @return {?{examines:number, deplaces:number, complet:boolean}} résultat de la passe (null si la
+ *   phase n'a rien tenté) — l'appelant UN-CLIC s'arrête sur une ronde stérile.
+ */
+function rassemblerReset_(estBudgetDepasse, manuel) {
   if (!CONFIG.RESET_ACTIF) return;
   var props = PropertiesService.getScriptProperties();
   var tag = CONFIG.RESET_TAG;
   if (props.getProperty('DriveAI_RESET_RASSEMBLEMENT') === tag) return; // déjà terminé pour ce tag
   var aujourdhui = dateGmail_(new Date());
   var consommeJour = budgetJourReset_(props, 'DriveAI_RESET_RASS_JOUR', aujourdhui);
-  if (consommeJour >= CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS) return; // repris demain
+  if (!manuel && consommeJour >= CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS) return; // repris demain
 
   var debut = Date.now();
-  var budgetRun = Math.min(CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS - consommeJour, 3 * 60 * 1000);
+  // En MANUEL, seul le garde de l'appelant (mur 6 min de SON exécution) borne le run.
+  var budgetRun = manuel ? Infinity
+    : Math.min(CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS - consommeJour, 3 * 60 * 1000);
   var garde = function () { return estBudgetDepasse() || (Date.now() - debut) > budgetRun; };
   try {
     var proteges = ensembleDomainesProteges_();
@@ -499,8 +520,9 @@ function rassemblerReset_(estBudgetDepasse) {
       props.setProperty('DriveAI_RESET_RASSEMBLEMENT', tag);
       journalInfo_('Reset', 'Rassemblement TERMINÉ (tag « ' + tag + ' ») — plus rien à déplacer vers ' + CONFIG.RESET_TRI_NOM + '.');
     }
+    return r; // l'appelant UN-CLIC s'arrête sur une ronde STÉRILE (revue quota : anti-spin)
   } finally {
-    props.setProperty('DriveAI_RESET_RASS_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
+    if (!manuel) props.setProperty('DriveAI_RESET_RASS_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
   }
 }
 
@@ -698,17 +720,18 @@ function placerUnePageReset_(estBudgetDepasse, ctx) {
  * « fini » tant que la génération peut encore alimenter la file, sinon de nouveaux fichiers rassemblés
  * plus tard ne seraient plus jamais placés).
  */
-function placerReset_(estBudgetDepasse) {
+function placerReset_(estBudgetDepasse, manuel) {
   if (!CONFIG.RESET_ACTIF) return;
   var props = PropertiesService.getScriptProperties();
   var tag = CONFIG.RESET_TAG;
   if (props.getProperty('DriveAI_RESET_PLACEMENT') === tag) return;
   var aujourdhui = dateGmail_(new Date());
   var consommeJour = budgetJourReset_(props, 'DriveAI_RESET_PLACE_JOUR', aujourdhui);
-  if (consommeJour >= CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS) return;
+  if (!manuel && consommeJour >= CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS) return;
 
   var debut = Date.now();
-  var budgetRun = Math.min(CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS - consommeJour, 3 * 60 * 1000);
+  var budgetRun = manuel ? Infinity
+    : Math.min(CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS - consommeJour, 3 * 60 * 1000);
   var garde = function () { return estBudgetDepasse() || (Date.now() - debut) > budgetRun; };
   try {
     var ctx = {
@@ -724,11 +747,15 @@ function placerReset_(estBudgetDepasse) {
         props.setProperty('DriveAI_RESET_PLACEMENT', tag);
         journalInfo_('Reset', 'Placement TERMINÉ (tag « ' + tag + ' ») — rassemblement également fini.');
       } else {
+        // État STABLE « oisif mais tag impossible » (le placement ne se fige qu'après le
+        // rassemblement) : c'est exactement le cas où une boucle un-clic spinnerait à vide — d'où
+        // la sortie sur ronde stérile côté appelant (le `return r` ci-dessous).
         journalInfo_('Reset', 'Placement à jour pour cette passe — rassemblement encore en cours, repris au tick suivant.');
       }
     }
+    return r;
   } finally {
-    props.setProperty('DriveAI_RESET_PLACE_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
+    if (!manuel) props.setProperty('DriveAI_RESET_PLACE_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
   }
 }
 
@@ -849,17 +876,18 @@ function reorganiserPageInterne04_(estBudgetDepasse, ctx) {
 }
 
 /** ÉTAPE DE TICK : réorganisation interne de 04, gatée flag + budgets. */
-function appliquerReset04Interne_(estBudgetDepasse) {
+function appliquerReset04Interne_(estBudgetDepasse, manuel) {
   if (!CONFIG.RESET_ACTIF) return;
   var props = PropertiesService.getScriptProperties();
   var tag = CONFIG.RESET_TAG;
   if (props.getProperty('DriveAI_RESET_04') === tag) return;
   var aujourdhui = dateGmail_(new Date());
   var consommeJour = budgetJourReset_(props, 'DriveAI_RESET_04_JOUR', aujourdhui);
-  if (consommeJour >= CONFIG.RESET_04_BUDGET_JOUR_MS) return;
+  if (!manuel && consommeJour >= CONFIG.RESET_04_BUDGET_JOUR_MS) return;
 
   var debut = Date.now();
-  var budgetRun = Math.min(CONFIG.RESET_04_BUDGET_JOUR_MS - consommeJour, 2 * 60 * 1000);
+  var budgetRun = manuel ? Infinity
+    : Math.min(CONFIG.RESET_04_BUDGET_JOUR_MS - consommeJour, 2 * 60 * 1000);
   var garde = function () { return estBudgetDepasse() || (Date.now() - debut) > budgetRun; };
   try {
     var ctx = { proteges: ensembleDomainesProteges_() };
@@ -869,18 +897,13 @@ function appliquerReset04Interne_(estBudgetDepasse) {
       props.setProperty('DriveAI_RESET_04', tag);
       journalInfo_('Reset', '04 interne TERMINÉ (tag « ' + tag + ' »).');
     }
+    return r;
   } finally {
-    props.setProperty('DriveAI_RESET_04_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
+    if (!manuel) props.setProperty('DriveAI_RESET_04_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
   }
 }
 
 /* ---------- Fonctions UN-CLIC (éditeur Apps Script, hors quota ~90 min/j des déclencheurs) ---------- */
-
-/** Reste (ms) du budget QUOTIDIEN d'une phase du reset — pour que les fonctions un-clic sachent s'arrêter. */
-function budgetJourResteReset_(cle, budgetJourMs) {
-  var props = PropertiesService.getScriptProperties();
-  return budgetJourMs - budgetJourReset_(props, cle, dateGmail_(new Date()));
-}
 
 /**
  * Acquiert le verrou partagé du tick avant une fonction UN-CLIC (revue quota C28-33) : sans lui, un
@@ -888,9 +911,16 @@ function budgetJourResteReset_(cle, budgetJourMs) {
  * sur les mêmes dossiers Drive et les mêmes Script Properties de budget — course sur
  * `DriveAI_RESET_*_JOUR` (la dernière écriture du `finally` écrase l'autre, sous-comptant le budget
  * réellement consommé) et appels Drive redondants sur un même fichier. Même patron que
- * `reparerIncidentSheet`/`fusionnerDomaine07PersoVers08` (Maintenance.gs). `tickDriveAI` lui-même ne
- * bloque JAMAIS sur ce verrou (`tryLock(5000)` puis saute le tick, cf. Main.gs) — le tenir ici pendant
- * toute la boucle manuelle fait donc sauter au pire quelques ticks, jamais une famine du flux vivant.
+ * `reparerIncidentSheet`/`fusionnerDomaine07PersoVers08` (Maintenance.gs).
+ *
+ * CE QUE ÇA COÛTE, honnêtement (correction de revue — le commentaire précédent datait d'avant le
+ * retrait du budget quotidien) : `TICK_MINUTES` vaut 5 et une boucle manuelle tient le verrou
+ * jusqu'à ~4,5 min, donc pendant une SÉANCE de relances enchaînées c'est **quasiment chaque tick**
+ * qui est sauté (`tryLock(5000)` échoue → retour immédiat) — pas « quelques ticks ». Le flux vivant
+ * (PJ Gmail, dépôts, intentions, tri) est donc EN PAUSE pendant la séance ; rien n'est perdu, tout
+ * est re-scanné ensuite. Pour que le chien de garde ne crie pas « moteur silencieux » à tort
+ * (seuil 45 min) pendant une longue séance, les un-clic écrivent `DriveAI_LAST_MANUEL` —
+ * `chienDeGarde` prend le PLUS RÉCENT des deux signaux de vie (cf. Main.gs).
  * @return {?Lock} le verrou tenu, ou null si indisponible (tick en cours — appelant doit sortir tôt).
  */
 function acquerirVerrouReset_(nomFonction) {
@@ -903,103 +933,147 @@ function acquerirVerrouReset_(nomFonction) {
 }
 
 /**
- * UN-CLIC combiné : rassemblement PUIS placement PUIS 04 interne, en boucle, jusqu'à épuisement du
- * mur dur des 6 min d'une exécution manuelle OU des budgets QUOTIDIENS de chaque phase OU la fin du
- * reset. Le moyen le plus rapide pour Marc de faire progresser le reset sans attendre les ticks
- * (chaque tick n'avance QUE d'une page/phase, budget-gaté par le flux vivant). Relancer autant de
- * fois que nécessaire (le Journal dit où ça en est) — chaque appel est repris là où le précédent
- * s'est arrêté (clés de convergence persistées).
+ * Un-clic lancé DEPUIS L'ÉDITEUR, jamais par un déclencheur : le drapeau `manuel` (ni gaté, ni
+ * compté) ne vaut que HORS du quota des déclencheurs. Un handler de trigger reçoit un event object
+ * (`e.triggerUid`) — une exécution d'éditeur, non. Garde de construction : si quelqu'un installait
+ * un jour un déclencheur sur une de ces fonctions, elle refuserait de tourner plutôt que de
+ * consommer le quota des déclencheurs en se croyant « hors quota » (angle mort relevé en revue).
  */
-function lancerResetTout() {
+function estAppelParDeclencheur_(e) {
+  return !!(e && e.triggerUid);
+}
+
+/**
+ * Vrai si une ronde de boucle un-clic n'a RIEN produit (ni examen, ni déplacement) — l'appelant
+ * s'arrête alors immédiatement. Sans cette sortie, `lancerResetPlacement` spinnait jusqu'au mur des
+ * 4,5 min dans l'état STABLE « placement oisif mais tag impossible » (le placement ne fige son tag
+ * qu'une fois le rassemblement terminé) : chaque ronde stérile relisait tout `PlanConsolidation`
+ * (~2 900 lignes) et écrivait une ligne de Journal identique — des centaines pour rien (revue quota :
+ * le retrait du budget quotidien a AGGRAVÉ ce spin, qui était coupé par lui avant). PURE.
+ */
+function rondeSterileReset_(r) {
+  return !r || (!r.examines && !r.deplaces);
+}
+
+/**
+ * Signal de VIE d'une exécution manuelle (revue quota) : une séance de relances enchaînées tient le
+ * verrou et fait sauter presque tous les ticks — au-delà de `WATCHDOG_SEUIL_MS` (45 min), le chien de
+ * garde verrait un heartbeat figé et déclarerait « moteur silencieux » À TORT (l'épisode remonterait
+ * jusqu'au résumé hebdo). `chienDeGarde` prend donc le PLUS RÉCENT de `DriveAI_LAST_TICK` et de cette
+ * Property. Jamais propagé : un échec d'écriture ne doit pas casser un run manuel réussi.
+ */
+function marquerVieManuelleReset_() {
+  try { PropertiesService.getScriptProperties().setProperty('DriveAI_LAST_MANUEL', String(Date.now())); }
+  catch (e) { /* best-effort : sans ça, au pire une fausse alerte watchdog */ }
+}
+
+/**
+ * UN-CLIC combiné : rassemblement PUIS placement PUIS 04 interne, en boucle, jusqu'au mur des 6 min
+ * de CETTE exécution manuelle OU la fin du reset. Le moyen le plus rapide pour Marc de faire
+ * progresser le reset sans attendre les ticks (chaque tick n'avance QUE d'une page/phase, budget-gaté
+ * par le flux vivant). Relancer autant de fois que nécessaire (le Journal dit où ça en est) — chaque
+ * appel est repris là où le précédent s'est arrêté (clés de convergence persistées). Les budgets
+ * QUOTIDIENS ne s'appliquent PAS ici (cf. le bloc « manuel » plus haut) : ils protègent le quota des
+ * DÉCLENCHEURS, dont une exécution d'éditeur ne fait pas partie.
+ */
+function lancerResetTout(e) {
+  if (estAppelParDeclencheur_(e)) return; // jamais par un déclencheur (cf. estAppelParDeclencheur_)
+  if (!CONFIG.RESET_ACTIF) { journalInfo_('Reset', 'lancerResetTout() : RESET_ACTIF est false — rien à faire.'); return; }
+  // `debut` AVANT le verrou (revue quota) : `tryLock` peut consommer 30 s — non comptées, elles
+  // rognaient la marge sous le mur dur des 6 min.
+  var debut = Date.now();
   var verrou = acquerirVerrouReset_('lancerResetTout');
   if (!verrou) return;
   try {
-    var debut = Date.now();
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
     var rondes = 0;
     while (!estBudgetDepasse() && !resetTermine_() && rondes < 500) {
-      var resteAvant = budgetJourResteReset_('DriveAI_RESET_RASS_JOUR', CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS) +
-        budgetJourResteReset_('DriveAI_RESET_PLACE_JOUR', CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS) +
-        budgetJourResteReset_('DriveAI_RESET_04_JOUR', CONFIG.RESET_04_BUDGET_JOUR_MS);
-      if (resteAvant <= 0) {
-        journalInfo_('Reset', 'lancerResetTout() : budget quotidien des 3 phases épuisé — reprise demain (ou relancer plus tard).');
-        break;
-      }
-      if (!estBudgetDepasse()) rassemblerReset_(estBudgetDepasse);
-      if (!estBudgetDepasse()) placerReset_(estBudgetDepasse);
-      if (!estBudgetDepasse()) appliquerReset04Interne_(estBudgetDepasse);
+      var progres = false;
+      if (!estBudgetDepasse() && !rondeSterileReset_(rassemblerReset_(estBudgetDepasse, true))) progres = true;
+      if (!estBudgetDepasse() && !rondeSterileReset_(placerReset_(estBudgetDepasse, true))) progres = true;
+      if (!estBudgetDepasse() && !rondeSterileReset_(appliquerReset04Interne_(estBudgetDepasse, true))) progres = true;
       rondes++;
+      if (!progres) break; // AUCUNE des 3 phases n'a rien à faire → inutile de re-scanner en boucle
     }
+    marquerVieManuelleReset_();
     journalInfo_('Reset', 'lancerResetTout() : ' + rondes + ' ronde(s) — ' +
       (resetTermine_() ? 'RESET TERMINÉ.' : 'relancer lancerResetTout() pour continuer.'));
-  } catch (e) {
-    notifierEchec_('Reset', 'Reset manuel interrompu : ' + e);
+  } catch (e2) {
+    notifierEchec_('Reset', 'Reset manuel interrompu : ' + e2);
   } finally {
     verrou.releaseLock();
   }
 }
 
-/** UN-CLIC ciblé : rassemblement seul, en boucle jusqu'au mur des 6 min ou son budget quotidien. */
-function lancerResetRassemblement() {
+/** UN-CLIC ciblé : rassemblement seul, en boucle jusqu'au mur des 6 min de cette exécution. */
+function lancerResetRassemblement(e) {
+  if (estAppelParDeclencheur_(e)) return;
+  if (!CONFIG.RESET_ACTIF) { journalInfo_('Reset', 'lancerResetRassemblement() : RESET_ACTIF est false — rien à faire.'); return; }
+  var debut = Date.now();
   var verrou = acquerirVerrouReset_('lancerResetRassemblement');
   if (!verrou) return;
   try {
-    var debut = Date.now();
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
     var rondes = 0;
-    while (!estBudgetDepasse() &&
-      budgetJourResteReset_('DriveAI_RESET_RASS_JOUR', CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS) > 0) {
-      rassemblerReset_(estBudgetDepasse);
+    while (!estBudgetDepasse() && rondes < 500) {
+      var r = rassemblerReset_(estBudgetDepasse, true);
       rondes++;
-      if (PropertiesService.getScriptProperties().getProperty('DriveAI_RESET_RASSEMBLEMENT') === CONFIG.RESET_TAG) break;
+      if (rondeSterileReset_(r)) break; // ronde stérile (ou phase terminée/inactive) → on sort
     }
+    marquerVieManuelleReset_();
     journalInfo_('Reset', 'lancerResetRassemblement() : ' + rondes + ' passe(s).');
-  } catch (e) {
-    notifierEchec_('Reset', 'Rassemblement manuel interrompu : ' + e);
+  } catch (e2) {
+    notifierEchec_('Reset', 'Rassemblement manuel interrompu : ' + e2);
   } finally {
     verrou.releaseLock();
   }
 }
 
-/** UN-CLIC ciblé : placement seul, en boucle jusqu'au mur des 6 min ou son budget quotidien. */
-function lancerResetPlacement() {
+/** UN-CLIC ciblé : placement seul, en boucle jusqu'au mur des 6 min de cette exécution. */
+function lancerResetPlacement(e) {
+  if (estAppelParDeclencheur_(e)) return;
+  if (!CONFIG.RESET_ACTIF) { journalInfo_('Reset', 'lancerResetPlacement() : RESET_ACTIF est false — rien à faire.'); return; }
+  var debut = Date.now();
   var verrou = acquerirVerrouReset_('lancerResetPlacement');
   if (!verrou) return;
   try {
-    var debut = Date.now();
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
     var rondes = 0;
-    while (!estBudgetDepasse() &&
-      budgetJourResteReset_('DriveAI_RESET_PLACE_JOUR', CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS) > 0) {
-      placerReset_(estBudgetDepasse);
+    while (!estBudgetDepasse() && rondes < 500) {
+      var r = placerReset_(estBudgetDepasse, true);
       rondes++;
-      if (PropertiesService.getScriptProperties().getProperty('DriveAI_RESET_PLACEMENT') === CONFIG.RESET_TAG) break;
+      // ⚠ NE PAS remplacer par un test de tag : le placement ne fige son tag qu'APRÈS la fin du
+      // rassemblement — l'état « oisif mais tag impossible » est stable et spinnait jusqu'au mur.
+      if (rondeSterileReset_(r)) break;
     }
+    marquerVieManuelleReset_();
     journalInfo_('Reset', 'lancerResetPlacement() : ' + rondes + ' passe(s).');
-  } catch (e) {
-    notifierEchec_('Reset', 'Placement manuel interrompu : ' + e);
+  } catch (e2) {
+    notifierEchec_('Reset', 'Placement manuel interrompu : ' + e2);
   } finally {
     verrou.releaseLock();
   }
 }
 
-/** UN-CLIC ciblé : réorganisation interne de 04 seule, en boucle jusqu'au mur des 6 min ou son budget quotidien. */
-function lancerReset04Interne() {
+/** UN-CLIC ciblé : réorganisation interne de 04 seule, en boucle jusqu'au mur des 6 min de cette exécution. */
+function lancerReset04Interne(e) {
+  if (estAppelParDeclencheur_(e)) return;
+  if (!CONFIG.RESET_ACTIF) { journalInfo_('Reset', 'lancerReset04Interne() : RESET_ACTIF est false — rien à faire.'); return; }
+  var debut = Date.now();
   var verrou = acquerirVerrouReset_('lancerReset04Interne');
   if (!verrou) return;
   try {
-    var debut = Date.now();
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
     var rondes = 0;
-    while (!estBudgetDepasse() &&
-      budgetJourResteReset_('DriveAI_RESET_04_JOUR', CONFIG.RESET_04_BUDGET_JOUR_MS) > 0) {
-      appliquerReset04Interne_(estBudgetDepasse);
+    while (!estBudgetDepasse() && rondes < 500) {
+      var r = appliquerReset04Interne_(estBudgetDepasse, true);
       rondes++;
-      if (PropertiesService.getScriptProperties().getProperty('DriveAI_RESET_04') === CONFIG.RESET_TAG) break;
+      if (rondeSterileReset_(r)) break;
     }
+    marquerVieManuelleReset_();
     journalInfo_('Reset', 'lancerReset04Interne() : ' + rondes + ' passe(s).');
-  } catch (e) {
-    notifierEchec_('Reset', '04 interne manuel interrompu : ' + e);
+  } catch (e2) {
+    notifierEchec_('Reset', '04 interne manuel interrompu : ' + e2);
   } finally {
     verrou.releaseLock();
   }

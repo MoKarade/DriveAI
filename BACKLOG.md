@@ -16,7 +16,8 @@
 |----|-------|--------|
 | C28-33 PR1 | `docs/adr/0030-reset-tri.md` + `STRUCTURE_CIBLE_RESET` (≤ 7, dérivé par test) + `cheminCibleReset_` (routage PUR par le nom, zéro LLM, ~97 % des fichiers conformes) + `estExcluDuReset_`. Revue adversariale 3 lentilles intégrée (identité jamais devinée, pièges de sous-chaîne verrouillés par 18 cas de non-régression, section Transition de l'ADR) | ✅ (#223) |
 | C28-33 PR2 | Campagnes I/O DIRECTES (comme ConsolidationExec) : rassemblement récursif 01-09 (04 exclu) → `_TRI 2026/<domaine>` ; dédup par empreinte (+ rapport quasi-doublons/non-routés, onglet `Reset`) ; placement par `cheminCibleReset_` avec re-pointage des `Entités.Dossier ID` ; réorganisation INTERNE de 04 (CLAUDE.md §2.1b révisé ATOMIQUEMENT avec le code + tripwire de surface — jamais de sortie de 04) ; suspension automatique de conso-2/réorg-auto pendant le reset (`resetEnCours_`, ADR-0030 « Transition ») ; fonctions UN-CLIC (`lancerResetTout`/`lancerResetRassemblement`/`lancerResetPlacement`/`lancerReset04Interne`) + branchement tick (budget tail, enveloppé) | ✅ |
-| C28-33 PR3 | (si utile) passe LLM du reliquat non routé + affinages de `STRUCTURE_CIBLE_RESET` | ⬜ |
+| C28-33 fix | **1ᵉʳ run réel** (Marc, `lancerResetTout()`) : reset confirmé fonctionnel par signaux Drive, MAIS les fonctions UN-CLIC étaient bornées par les budgets QUOTIDIENS du TICK — or une exécution d'éditeur est hors du quota des déclencheurs. Double peine corrigée (Marc bloqué à tort + son run manuel affamait l'automatique) : drapeau `manuel` sur les 3 phases (ni gaté, ni compté) | 🟦 PR #225 (revue) |
+| C28-33 PR3 | (si utile) passe LLM du reliquat non routé + affinages de `STRUCTURE_CIBLE_RESET` (source : onglet `Reset`, lignes `non-routé`) | ⬜ |
 
 ---
 

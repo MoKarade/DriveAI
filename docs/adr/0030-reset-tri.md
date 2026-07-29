@@ -93,6 +93,11 @@ le flux re-remplirait À PLAT les racines que la campagne vide (non-convergence 
 - **Fonctions UN-CLIC** pour Marc (exécution manuelle éditeur = hors quota ~90 min/j des
   déclencheurs) ; sinon le tick avance seul (étalé). Garde multi-parents/zone protégée réutilisée
   (`aParentProtege_` strict avant CHAQUE mutation).
+  **Corollaire tiré du 1ᵉʳ run réel (2026-07-29)** : « hors quota » doit être VRAI dans le code, pas
+  seulement dans l'intention. Les budgets QUOTIDIENS (`RESET_*_BUDGET_JOUR_MS`) ne s'appliquent qu'au
+  TICK ; l'un-clic porte un drapeau `manuel` et n'est ni gaté ni compté (seul le mur des 6 min de son
+  exécution le borne). Sans ça : Marc bloqué jusqu'au lendemain après quelques relances, ET son run
+  manuel consommait le budget du tick — le manuel affamait l'auto.
 - Découpage : **PR1** = ADR + structure + routage PURS + tests (aucun I/O, aucun garde touché) ;
   **PR2** = campagnes I/O (rassemblement, dédup, placement, 04 interne + révision §2.1b + tripwires,
   suspension/ré-armement conso-2 + réorg auto, re-pointage `Dossier ID`, vide-candidats, rapport) —
