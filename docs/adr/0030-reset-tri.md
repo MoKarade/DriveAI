@@ -31,7 +31,8 @@
 2. **Dédup en chemin** : empreinte identique (réutilisation PlanConsolidation/Index, hash sinon,
    borné `OCR_TAILLE_MAX`) → `_Doublons` (déplacement seul, §2). Même nom normalisé mais contenu
    différent → **rapport « doublons probables »**, tranché par Marc, jamais déplacé d'office.
-3. **Placement PAR LE NOM** : `cheminCibleReset_(domaineOrigine, nom)` (PURE, table
+3. **Placement PAR LE NOM** *(y compris pour l'identité : une pièce d'une personne INCONNUE n'est
+   JAMAIS devinée chez Marc — elle reste en `_TRI` au rapport)* : `cheminCibleReset_(domaineOrigine, nom)` (PURE, table
    `STRUCTURE_CIBLE_RESET` + routage par type/émetteur normalisés) place chaque fichier conforme dans
    la nouvelle structure — zéro LLM. **Non routé ⇒ le fichier RESTE dans `_TRI 2026`** (visible,
    compté au rapport ; la table s'affine puis on repasse — convergence : `_TRI` se draine vers le
@@ -45,7 +46,9 @@
    chaque déplacement intra-04 est VÉRIFIÉE descendante de 04 (échec fermé). Livraison ATOMIQUE :
    cette révision, le code, le tripwire bidirectionnel (intra-04 permis / sortie interdite) et la
    revue flotte partent dans la MÊME PR (leçon §7 « promesse de verrou = verrou codé »).
-5. **Structure cible ≤ 7 par niveau, récursif** — TABLE UNIQUE `STRUCTURE_CIBLE_RESET` (Reset.gs),
+5. **Structure cible ≤ 7 par niveau, récursif** *(exemption EXPLICITE : le niveau RACINE — les 9
+   domaines 01→09, préexistants et validés par Marc avec la structure — n'est pas compté ; la
+   contrainte porte sur l'intérieur des domaines)* — TABLE UNIQUE `STRUCTURE_CIBLE_RESET` (Reset.gs),
    verrouillée par un test qui DÉRIVE la contrainte de la table (aucun niveau > 7). Émetteur dans le
    NOM, dossiers par TYPE, années seulement où le volume l'exige. Amendements Marc intégrés :
    - 01 : `Pièces d'identité/Marc` + `Pièces d'identité/Autres/<personne>` ;

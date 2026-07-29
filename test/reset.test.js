@@ -129,6 +129,28 @@ test('cheminCibleReset_ : non routable → null (reste en _TRI, jamais deviné) 
   assert.strictEqual(ctx.cheminCibleReset_('99 · Inconnu', '2026-01_Facture_EDF.pdf'), null);
 });
 
+test('identité 01 : personne INCONNUE → null (jamais devinée chez Marc) ; autorité/Marc → Marc (revue PR1)', () => {
+  const d = '01 · Administratif & identité';
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2021-05_Passeport_Sophie Durand.pdf'), null,
+    'proche non listé : reste en _TRI au rapport, jamais dans le dossier de Marc');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2024-06_Permis de conduire_SAAQ.pdf'), 'Pièces d\'identité/Marc');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2020-01-01_Passeport_Marc Richard.pdf'), 'Pièces d\'identité/Marc');
+});
+
+test('05 : motif « ute » EXACT seulement — un émetteur qui le contient par hasard reste non routé (revue PR1)', () => {
+  assert.strictEqual(ctx.cheminCibleReset_('05 · Carrière', '2024-01_Lettre_Communauté Métropolitaine.pdf'), null);
+  assert.strictEqual(ctx.cheminCibleReset_('05 · Carrière', '2019-05_Lettre_UTE.pdf'), 'Recherche d\'emploi');
+});
+
+test('06 : la table des écoles se construit depuis SOUS_DOSSIERS_ECOLE_RESET (une seule source, revue PR1)', () => {
+  const table = JSON.parse(JSON.stringify(ctx.STRUCTURE_CIBLE_RESET['06 · Études & diplômes']));
+  const attendu = JSON.parse(JSON.stringify(ctx.SOUS_DOSSIERS_ECOLE_RESET));
+  for (const ecole of ['Lycée Thérèse d\'Avila', 'DUT ULCO Saint-Omer', 'Cégep de Sherbrooke', 'IMERIR']) {
+    assert.deepStrictEqual(Object.keys(table[ecole]), attendu, ecole);
+  }
+  assert.deepStrictEqual(Object.keys(table['Prépa Gustave Eiffel (PTSI)']), attendu.concat(['Concours']));
+});
+
 test('estExcluDuReset_ : artefacts du moteur jamais touchés ; documents normaux jamais exclus', () => {
   assert.strictEqual(ctx.estExcluDuReset_('DriveAI — État'), true);
   assert.strictEqual(ctx.estExcluDuReset_('DriveAI — Corriger un classement'), true);

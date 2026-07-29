@@ -18,6 +18,14 @@
 /** Sous-dossiers standard d'une ÉCOLE (06). Prépa reçoit en plus « Concours ». */
 var SOUS_DOSSIERS_ECOLE_RESET = ['Cours & travaux', 'Examens & khôlles', 'Résultats', 'Administratif'];
 
+/** Construit le nœud d'une école depuis la constante (UNE source — revue PR1). PURE. */
+function ecoleReset_(avecConcours) {
+  var n = {};
+  for (var i = 0; i < SOUS_DOSSIERS_ECOLE_RESET.length; i++) n[SOUS_DOSSIERS_ECOLE_RESET[i]] = {};
+  if (avecConcours) n['Concours'] = {};
+  return n;
+}
+
 var STRUCTURE_CIBLE_RESET = {
   '01 · Administratif & identité': {
     'Pièces d\'identité': { 'Marc': {}, 'Autres': {} }, // Autres/<personne> créé dynamiquement (≤ ~4 proches)
@@ -61,11 +69,11 @@ var STRUCTURE_CIBLE_RESET = {
     'Réseaux & présentations': {},
   },
   '06 · Études & diplômes': {
-    'Lycée Thérèse d\'Avila': { 'Cours & travaux': {}, 'Examens & khôlles': {}, 'Résultats': {}, 'Administratif': {} },
-    'Prépa Gustave Eiffel (PTSI)': { 'Cours & travaux': {}, 'Examens & khôlles': {}, 'Résultats': {}, 'Administratif': {}, 'Concours': {} },
-    'DUT ULCO Saint-Omer': { 'Cours & travaux': {}, 'Examens & khôlles': {}, 'Résultats': {}, 'Administratif': {} },
-    'Cégep de Sherbrooke': { 'Cours & travaux': {}, 'Examens & khôlles': {}, 'Résultats': {}, 'Administratif': {} },
-    'IMERIR': { 'Cours & travaux': {}, 'Examens & khôlles': {}, 'Résultats': {}, 'Administratif': {} },
+    'Lycée Thérèse d\'Avila': ecoleReset_(false),
+    'Prépa Gustave Eiffel (PTSI)': ecoleReset_(true),
+    'DUT ULCO Saint-Omer': ecoleReset_(false),
+    'Cégep de Sherbrooke': ecoleReset_(false),
+    'IMERIR': ecoleReset_(false),
     'Autres établissements': {},
     'Diplômes & relevés officiels': {},
   },
@@ -96,6 +104,10 @@ var STRUCTURE_CIBLE_RESET = {
  * Vérifie la contrainte « ≤ maxParNiveau enfants à CHAQUE niveau » sur toute la table. Rend la
  * liste des violations (chemin : n) — vide = conforme. PURE (le test dérive ses cas de la table,
  * jamais d'une valeur du jour — leçon §7).
+ * EXEMPTION EXPLICITE (revue PR1) : le niveau RACINE (les 9 domaines 01→09, préexistants et validés
+ * par Marc avec la structure) n'est PAS compté — la contrainte porte sur l'INTÉRIEUR des domaines.
+ * Les enfants DYNAMIQUES (« Pièces d'identité/Autres/<personne> ») sont bornés par la liste
+ * RESET_PERSONNES_AUTRES, pas par cette table.
  */
 function verifierStructureCibleReset_(structure, maxParNiveau) {
   var violations = [];
@@ -150,7 +162,15 @@ function cheminCibleReset_(domaine, nom) {
   if (domaine === '01 · Administratif & identité') {
     if (resetContient_(t, ['passeport', 'carte nationale d identite', 'carte d identite', 'permis de conduire', 'carte d assurance maladie', 'carte vitale', 'carte de resident'])) {
       for (var p in RESET_PERSONNES_AUTRES) { if (e.indexOf(p) !== -1) return 'Pièces d\'identité/Autres/' + RESET_PERSONNES_AUTRES[p]; }
-      return 'Pièces d\'identité/Marc'; // défaut : le Drive de Marc — émetteur = souvent l'AUTORITÉ (Préfecture, SAAQ)
+      // « Marc » SEULEMENT si le tiers est Marc lui-même OU une AUTORITÉ émettrice (cas majoritaire :
+      // Préfecture, SAAQ, RAMQ… — le titulaire n'est alors pas dans le nom). Un tiers INCONNU qui
+      // ressemble à une personne rend null (revue PR1) : le contrat du module est « jamais deviné » —
+      // le passeport d'un proche non listé doit RESTER en _TRI au rapport, pas finir chez Marc.
+      if (e.indexOf('marc') !== -1 && e.indexOf('richard') !== -1) return 'Pièces d\'identité/Marc';
+      if (e === '' || resetContient_(e, ['prefecture', 'saaq', 'societe de l assurance', 'ramq', 'gouvernement', 'republique', 'mairie', 'ministere', 'service'])) {
+        return 'Pièces d\'identité/Marc';
+      }
+      return null;
     }
     if (resetContient_(t, ['acte de naissance', 'acte de mariage', 'fiche d etat civil', 'fiche individuelle', 'livret de famille']) ||
         resetContient_(e, ['office notarial', 'notaire'])) return 'État civil & notarial';
@@ -216,7 +236,7 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(t, ['bilan', 'formation'])) return 'Formation & bilans';
     if (resetContient_(tout, ['linkedin', 'presentation', 'reseau'])) return 'Réseaux & présentations';
     // Décision Marc : les AUTRES entreprises = recherche d'emploi (jamais employeurs).
-    if (resetContient_(e, ['arkema', 'eaton', 'siemens', 'schneider', 'wiio', 'bluewrist', 'ute', 'pierre fabre', 'lactalis', 'gravelines', 'cnpe'])) return 'Recherche d\'emploi';
+    if (e === 'ute' || resetContient_(e, ['arkema', 'eaton', 'siemens', 'schneider', 'wiio', 'bluewrist', 'pierre fabre', 'lactalis', 'gravelines', 'cnpe'])) return 'Recherche d\'emploi';
     return null;
   }
 
