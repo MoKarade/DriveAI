@@ -157,6 +157,11 @@ const CONTRAT = [
   // exécution du plan de consolidation (ADR-0024) — moveTo seul, §1 par mutation, cible recalculée
   'appliquerPlanConsolidation_', 'appliquerLigneConsolidation_', 'domaineActuelFichier_',
   'ligneAAppliquer_', 'budgetJourConsoExec_', 'dossierCiblePlan_', 'nbParentsBorne_',
+  // RESET complet (C28-33, ADR-0030 PR2) — rassemblement/placement/04 interne, appelés depuis Main ;
+  // resetEnCours_ suspend conso-2/réorg-auto (ADR-0030 « Transition ») ; réutilisent detecterDossierVide_
+  // (ConsolidationExec.gs) et repointerEntites_ (Reorg.gs) EN TRAVERS des modules.
+  'rassemblerReset_', 'placerReset_', 'appliquerReset04Interne_', 'resetEnCours_', 'resetTermine_',
+  'detecterDossierVide_', 'repointerEntites_',
 ];
 
 test('surface du moteur : toutes les fonctions du contrat interne sont définies', () => {

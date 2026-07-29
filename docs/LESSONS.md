@@ -1363,3 +1363,26 @@ blocage. Corollaire process : « accélère » veut dire accélérer la CADENCE 
 revue ; ne jamais faire les deux dans le même geste."
 
 **Règle durable ?** oui (ajouté à CLAUDE.md §7).
+
+## 2026-07-29 — Un mock qui varie PAR OBJET doit lire l'argument reçu, jamais la fermeture de construction
+
+**Contexte.** C28-33 PR2, en écrivant `test/reset-exec.test.js` : le test « quasi-doublon » traite
+DEUX fichiers factices (F5 puis F6) avec le MÊME contexte `c` (patron `ctxPlacement`, comme
+`ctxLigne` dans `consolidation-exec.test.js`). Le mock `c.empreinteBlob_ = () => 'EMP:' + opts.id`
+dérivait l'empreinte des `opts` de CONSTRUCTION du contexte (figés à `ctxPlacement({id:'F5',...})`)
+au lieu de l'argument `blob` réellement passé à l'appel. Résultat : `empreinteBlob_` renvoyait
+TOUJOURS l'empreinte de F5, même pour F6 → F6 était classé DOUBLON EXACT de F5 par erreur, et le
+test échouait à 0 rapport au lieu de 1 (repéré par l'assertion elle-même — mais un autre agencement
+aurait pu passer à tort).
+
+**Leçon.** "Un mock qui dérive sa valeur de retour des `opts` de CONSTRUCTION du contexte de test
+(fermeture) plutôt que de l'ARGUMENT RÉEL reçu à l'appel produit un FAUX VERT silencieux dès que le
+même contexte `c` (mêmes mocks) est réutilisé pour traiter un 2ᵉ objet factice dans le même test.
+Correctif : dériver TOUJOURS la valeur mockée de l'argument reçu (ici, encoder l'id dans le blob
+factice — `getBlob: () => ({id: opts.id})` puis `c.empreinteBlob_ = (blob) => 'EMP:' + blob.id`),
+jamais de la fermeture de construction. Règle : dès qu'un test réutilise le MÊME contexte `c` pour
+plusieurs fichiers/objets factices successifs (patron `ctxLigne`/`ctxPlacement`), toute fonction
+mockée qui varie logiquement PAR OBJET doit lire cette variation dans SON PROPRE argument, jamais
+dans des `opts` figés à la construction."
+
+**Règle durable ?** oui (ajouté à CLAUDE.md §7).

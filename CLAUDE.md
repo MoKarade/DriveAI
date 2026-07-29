@@ -31,10 +31,19 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
    La conjonction **ET** est l'anti-saturation NON négociable (sinon la revue neutralise l'auto-rangement
    — leçon vécue) : la revue est l'exception rare, jamais la posture. Le flag `sensible` du LLM reste
    produit mais ne route plus rien. Ce qui reste **NON négociable** : (a) **aucune suppression** (§2) ;
-   (b) le grand rangement ne **détache jamais** un fichier déjà rangé sous `04 · Immigration` (garde
-   multi-parents `aParentProtege_`, remonte toute la chaîne d'ancêtres, appliquée à la collecte ET avant
-   chaque mutation) ; (c) un doublon, **même sensible**, va dans `_Doublons` (déplacement seul), jamais
-   effacé. *(Élargir la revue = assouplir `estClassificationVide_` ⇒ ré-audit anti-saturation obligatoire.)*
+   (b) **`04 · Immigration` : réorganisation INTERNE permise, sortie JAMAIS automatique** *(révision
+   ADR-0030 §4, ordre explicite de Marc 2026-07-29 — livrée ATOMIQUEMENT avec `src/Reset.gs`
+   `reorganiserInterne04_`/`dossierInterne04Reset_` et son tripwire de surface en C28-33 PR2)*. Un fichier déjà
+   rangé sous 04 peut être **déplacé D'UN sous-dossier de 04 VERS UN AUTRE sous-dossier de 04** (fusion
+   de graphies, nouvelle structure ≤ 7) — jamais hors de 04. Garde multi-parents `aParentProtege_`
+   (remonte toute la chaîne d'ancêtres, appliquée à la collecte ET avant chaque mutation) + tout
+   résolveur de cible pour 04 **construit STRUCTURELLEMENT depuis la racine 04** (jamais un chemin
+   arbitraire) : impossible par construction de cibler hors 04. Un candidat à la SORTIE de 04 (ex. un
+   doc « CIC » qui est peut-être la banque, pas l'immigration) est **PROPOSÉ** à Marc, **jamais déplacé
+   d'office**. Multi-parents à l'intérieur de 04 : jamais déplacé (prudence, comme la consolidation).
+   (c) un doublon, **même sensible**, va dans `_Doublons` (déplacement seul), jamais effacé.
+   *(Élargir la revue = assouplir `estClassificationVide_` ⇒ ré-audit anti-saturation obligatoire. Élargir
+   la sortie de 04 = nouvelle révision atomique, jamais un assouplissement silencieux.)*
 2. **Aucune suppression automatique.** Les doublons sont *écartés dans `_Doublons` (déplacement seul)*,
    jamais effacés. **Unique exception, ÉTROITE (ADR-0014, décision Marc 2026-07-06)** : un **DOSSIER
    devenu VIDE** après une réorg validée (#21) peut être mis à la **corbeille Drive** (récupérable 30 j)
@@ -470,6 +479,13 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   (exit 0), seul un discret `command not found` sur stderr (vécu C28-31). Idem pour `$`/`!`.
   Corollaire : vérifier un artefact écrit via shell en le RELISANT (`git log --format=%B`), jamais
   au seul code de sortie.
+- **Un mock réutilisé sur plusieurs objets factices doit lire l'ARGUMENT reçu, jamais la fermeture
+  de construction du contexte.** Un test qui traite 2 fichiers factices avec le MÊME contexte `c`
+  (patron `ctxLigne`/`ctxPlacement`) et mocke une fonction cross-module par `() => 'X' + opts.id`
+  (au lieu de dériver de l'argument reçu, ex. `(blob) => 'X' + blob.id`) fige la valeur sur le
+  PREMIER objet construit — le 2ᵉ hérite silencieusement de la même valeur (vécu C28-33 : deux
+  fichiers différents jugés « même empreinte »). Toute fonction mockée qui varie PAR OBJET lit sa
+  variation dans son propre argument, jamais dans des `opts` figés à la construction.
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 

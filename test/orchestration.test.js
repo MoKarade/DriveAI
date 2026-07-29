@@ -57,3 +57,32 @@ test('orchestration : la consolidation est gatée par le BUDGET TAIL (4,5 min), 
     !/Consolidation_\(estBudgetDepasse\)/.test(corps),
     'la consolidation ne doit JAMAIS être gatée par estBudgetDepasse (budget de tick 3 min) — elle se ferait affamer');
 });
+
+/**
+ * RESET complet (C28-33, ADR-0030 « Transition ») : une seule main déplace à la fois. Le reset et
+ * conso-2/réorg-auto ne doivent JAMAIS tourner en même temps (non-convergence structurelle, leçon §7
+ * C28-26) — vérifié ici en verrouillant le TEXTE du tick (patron ci-dessus), pas un comportement
+ * mocké : le garde `!resetEnCours_()` doit apparaître sur CHAQUE point d'entrée concurrent.
+ */
+test('orchestration RESET : conso-2 (génération + exécution) ET la réorg auto sont gatées par !resetEnCours_()', () => {
+  const ligneExec = corps.slice(corps.indexOf('appliquerPlanConsolidation_(estBudgetDepasseStandard)') - 200,
+    corps.indexOf('appliquerPlanConsolidation_(estBudgetDepasseStandard)'));
+  const ligneGen = corps.slice(corps.indexOf('genererPlanConsolidation_(estBudgetDepasseStandard)') - 200,
+    corps.indexOf('genererPlanConsolidation_(estBudgetDepasseStandard)'));
+  const ligneReorgAuto = corps.slice(corps.indexOf('genererDemandeReorgAuto_(estBudgetDepasseStandard)') - 200,
+    corps.indexOf('genererDemandeReorgAuto_(estBudgetDepasseStandard)'));
+  assert.ok(/!resetEnCours_\(\)/.test(ligneExec), 'appliquerPlanConsolidation_ doit être gatée par !resetEnCours_()');
+  assert.ok(/!resetEnCours_\(\)/.test(ligneGen), 'genererPlanConsolidation_ doit être gatée par !resetEnCours_()');
+  assert.ok(/!resetEnCours_\(\)/.test(ligneReorgAuto), 'genererDemandeReorgAuto_ doit être gatée par !resetEnCours_()');
+});
+
+test('orchestration RESET : rassemblement → placement → 04 interne, dans cet ordre, en BUDGET TAIL (jamais le budget de tick 3 min)', () => {
+  const rass = posAppel('rassemblerReset_(estBudgetDepasseStandard)');
+  const place = posAppel('placerReset_(estBudgetDepasseStandard)');
+  const interne04 = posAppel('appliquerReset04Interne_(estBudgetDepasseStandard)');
+  assert.ok(rass < place, 'le rassemblement doit précéder le placement (drainer ce qu\'il vient d\'alimenter)');
+  assert.ok(place < interne04, 'le placement doit précéder la réorg interne de 04 (ordre du branchement)');
+  assert.ok(!/rassemblerReset_\(estBudgetDepasse\)/.test(corps), 'rassemblerReset_ ne doit JAMAIS être gatée par le budget de tick 3 min');
+  assert.ok(!/placerReset_\(estBudgetDepasse\)/.test(corps), 'placerReset_ ne doit JAMAIS être gatée par le budget de tick 3 min');
+  assert.ok(!/appliquerReset04Interne_\(estBudgetDepasse\)/.test(corps), 'appliquerReset04Interne_ ne doit JAMAIS être gatée par le budget de tick 3 min');
+});
