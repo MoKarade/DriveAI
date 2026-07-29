@@ -495,6 +495,25 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   (`manuel`) coupant À LA FOIS le gate ET le comptage, testé dans les DEUX sens. Ce défaut
   n'apparaît qu'au PREMIER USAGE RÉEL — une suite verte ne le voit pas ; seule l'observation de ce
   que l'utilisateur peut réellement FAIRE le révèle.
+- **Accélérer une campagne sous plafond PARTAGÉ : RÉALLOUER, jamais AUGMENTER.** Relever un budget
+  quand un plafond protège une ressource partagée (quota runtime ~90 min/j) = le piège du GEL de TOUS
+  les déclencheurs, chien de garde inclus (C28-29). Patron : (1) gater les campagnes sacrifiables sur
+  le MÊME prédicat que la prioritaire (`!resetEnCours_()`) — elles reprennent SEULES à la convergence,
+  jamais un ré-armement manuel ; (2) choisir celles dont le retard est sans conséquence (rattrapage)
+  ou dont le travail serait de toute façon défait par la prioritaire (la réconciliation Index
+  constaterait des « déplacé » sur des mouvements VOULUS que le reset inscrit lui-même) ; (3)
+  VERROUILLER l'invariant par un test DÉRIVÉ des constantes (`budget(prioritaire) ≤ Σ budgets(suspendues)`)
+  et le prouver par MUTATION — gonfler un budget doit faire ÉCHOUER le test, sinon il ne protège rien.
+  Corollaire produit : « fais-le automatiquement » alors que c'est DÉJÀ automatique = la vraie demande
+  est la VITESSE — le dire, puis laisser à Marc l'arbitrage vitesse/risque plutôt que de relever un
+  plafond de sécurité à sa place.
+- **Test de MUTATION : restaurer par COPIE de sauvegarde, jamais `git checkout <fichier>`.** Prouver
+  qu'un test attrape bien sa régression (leçon C28-32) exige de remettre le code buggé puis de
+  restaurer. `git checkout`/`git restore <fichier>` restaure depuis l'index/HEAD et DÉTRUIT sans
+  avertir les modifications NON COMMITTÉES du même fichier (exit 0, aucune alerte — vécu C28-33 : la
+  réallocation des budgets effacée, le test d'invariant repassait au vert en mesurant les ANCIENNES
+  valeurs). Toujours `cp` avant / `cp` retour, puis RELIRE la constante (`grep`) — vérifier
+  l'artefact, jamais le code de sortie (même famille que les backticks dans `git commit -m`).
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 

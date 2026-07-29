@@ -12,15 +12,30 @@
 > n'a traité qu'une partie de **01** ; il reste 8 domaines. Les anciens dossiers de 01 (Passeport, EDF,
 > Correspondance**s**…) se vident au fur et à mesure — leurs coquilles vides ne partent à la corbeille
 > que sur le CLIC de Marc dans l'app (jamais le moteur, ADR-0014).
-> **PR #225 EN REVUE (do-not-merge)** — défaut révélé par ce 1ᵉʳ run réel : les fonctions UN-CLIC
-> étaient bornées par les budgets QUOTIDIENS du TICK (20 min/j), alors qu'une exécution d'éditeur est
-> HORS du quota des déclencheurs → (a) Marc bloqué jusqu'au lendemain après ~4-5 relances, (b) pire,
-> son run manuel consommait le budget du tick et affamait l'automatique. Correctif : drapeau `manuel`
-> sur les 3 phases (ni gaté, ni compté ; seul le mur 6 min de son exécution borne). 694 tests verts.
-> **PROCHAINE ACTION MARC (après merge + déploiement de #225)** : ouvrir `Reset.gs` → `lancerResetTout()`
-> → Exécuter, **en rafale autant de fois que voulu** (le Journal dit où ça en est, et « RESET TERMINÉ »
-> à la fin). Puis consulter l'onglet **`Reset`** (quasi-doublons probables + fichiers non routés restés
-> en `_TRI`) et l'onglet **`Réorg`** (`vide-candidat` → corbeille au clic).
+> **#225 MERGÉE** — défaut révélé par ce 1ᵉʳ run réel : les fonctions UN-CLIC étaient bornées par les
+> budgets QUOTIDIENS du TICK (20 min/j), alors qu'une exécution d'éditeur est HORS du quota des
+> déclencheurs → (a) Marc bloqué jusqu'au lendemain après ~4-5 relances, (b) pire, son run manuel
+> consommait le budget du tick et affamait l'automatique. Correctif : drapeau `manuel` sur les 3 phases
+> (ni gaté, ni compté ; seul le mur 6 min de son exécution borne). Revue quota intégrée avant merge :
+> anti-spin sur ronde stérile (le placement pouvait spinner 4,5 min à vide — son tag ne se pose
+> qu'après le rassemblement, donc le break ne tirait jamais), garde « jamais par un déclencheur »,
+> et `DriveAI_LAST_MANUEL` pour que le chien de garde ne crie pas « moteur silencieux » à tort.
+>
+> **⚡ PR #226 EN REVUE (do-not-merge) — LE RESET AUTO ~2,5× PLUS RAPIDE, ZÉRO CLIC.** Demande Marc
+> « je veux que tu le fasses toi automatiquement » : le reset EST déjà automatique (tick) — ce qui le
+> rendait lent était son budget de 20 min/j. Option choisie par Marc : **RÉALLOCATION**, jamais
+> augmentation. `traiterGmailHistorique_` (20) et `synchroniserIndex_` (12) rejoignent conso-2 (12+6) et
+> la réorg auto dans les campagnes gatées par `!resetEnCours_()` ; le reset passe à 20/22/8 = **50 min/j**
+> = EXACTEMENT les 50 min/j libérés. L'enveloppe de runtime ne bouge pas ⇒ aucun risque de gel des
+> déclencheurs (le piège C28-29). Invariant verrouillé par test **et vérifié par mutation**. Toutes les
+> campagnes suspendues reprennent SEULES à la convergence. 704 tests verts.
+>
+> **PROCHAINE ACTION MARC : AUCUNE.** Le reset avance seul à chaque tick. Optionnel pour accélérer
+> encore : `Reset.gs` → `lancerResetTout()` → Exécuter, en rafale (le Journal dit où ça en est, et
+> « RESET TERMINÉ » à la fin). À la fin, consulter l'onglet **`Reset`** (quasi-doublons probables +
+> fichiers non routés restés en `_TRI`) et l'onglet **`Réorg`** (`vide-candidat` → corbeille au clic).
+> ⚠️ **À VÉRIFIER après déploiement de #226 par signal INDÉPENDANT** (leçon §7) : le heartbeat ne doit
+> pas se figer l'après-midi (sinon le quota runtime est trop serré → redescendre les budgets du reset).
 > **À SAVOIR pendant une séance de relances** (revue quota #225) : chaque un-clic tient le verrou du
 > moteur ~4,5 min et le tick est à 5 min → pendant la séance, **le flux vivant est en pause** (PJ
 > Gmail, dépôts, tri) ; rien n'est perdu, tout est re-scanné après. Le chien de garde ne criera PAS
@@ -39,7 +54,8 @@
 > constitution↔code). **conso-2 et la réorg auto C28-32 sont AUTOMATIQUEMENT SUSPENDUES pendant le
 > reset** (`resetEnCours_`, ADR-0030 « Transition ») et reprennent seules à la fin. Fonctions UN-CLIC
 > pour Marc (`lancerResetTout()` dans l'éditeur Apps Script — hors quota des déclencheurs, le plus
-> rapide) + branchement tick automatique (budget tail, ~20 min/j au total le temps du reset).
+> rapide) + branchement tick automatique (budget tail ; ~50 min/j le temps du reset depuis la
+> réallocation #226 — RÉALLOUÉS depuis les campagnes suspendues, enveloppe inchangée).
 > **Reste à faire côté Marc une fois déployé** : lancer `lancerResetTout()` plusieurs fois dans
 > l'éditeur (ou laisser les ticks avancer seuls, plus lent) jusqu'à ce que le Journal dise « RESET
 > TERMINÉ » ; consulter l'onglet `Reset` (quasi-doublons + non-routés) et l'onglet `Réorg`

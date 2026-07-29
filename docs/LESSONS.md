@@ -1410,3 +1410,51 @@ comptabilisé). Corollaire de vérification : ce défaut n'apparaît qu'au PREMI
 verte ne le voit pas, seule l'observation de ce que l'utilisateur peut réellement FAIRE le révèle."
 
 **Règle durable ?** oui (ajouté à CLAUDE.md §7).
+
+## 2026-07-29 — Accélérer une campagne sous plafond de sécurité : RÉALLOUER, jamais AUGMENTER
+
+**Contexte.** Marc : « je veux que tu le fasses toi automatiquement » à propos du reset C28-33. Le
+reset était DÉJÀ 100 % automatique (branché dans `tickDriveAI`) — sa demande réelle était donc la
+VITESSE, pas l'automatisation. Ce qui le bridait : son budget quotidien de 20 min/j. Le réflexe
+tentant (relever les budgets) était exactement le piège documenté en C28-29 : au-delà de ~90 min/j de
+runtime, TOUS les déclencheurs Apps Script gèlent — chien de garde inclus, donc panne silencieuse et
+non signalable. Solution retenue : suspendre pendant le reset les campagnes de fond qui peuvent
+attendre (historique Gmail 20, réconciliation Index 12, en plus de conso-2 12+6 déjà gatée) et donner
+EXACTEMENT leur budget au reset (20/22/8 = 50 min/j = 50 min/j libérés). Enveloppe inchangée, débit
+×2,5, aucune décision de risque prise à la place de Marc.
+
+**Leçon.** "Quand un plafond protège une ressource PARTAGÉE (quota runtime, quota d'appels), accélérer
+une campagne ne se fait JAMAIS en relevant son budget : on RÉALLOUE celui d'une campagne qu'on
+suspend, en vérifiant que la somme ne croît pas. Le patron complet : (1) gater les campagnes
+sacrifiables sur le même prédicat que la campagne prioritaire (`!resetEnCours_()`), pour qu'elles
+reprennent SEULES à la convergence — jamais un ré-armement manuel ; (2) choisir des campagnes dont le
+retard est sans conséquence (rattrapage) ou dont le travail serait de toute façon défait par la
+campagne prioritaire (ici la réconciliation Index constaterait des « déplacé » sur des mouvements
+voulus que le reset inscrit lui-même) ; (3) VERROUILLER l'invariant par un test qui DÉRIVE des
+constantes (`budget(prioritaire) <= Σ budgets(suspendues)`) et le vérifier par MUTATION — gonfler un
+budget doit faire échouer le test, sinon il ne protège rien. Corollaire produit : quand l'utilisateur
+demande « fais-le automatiquement » alors que c'est déjà automatique, la vraie demande est la vitesse —
+le dire, puis lui laisser l'arbitrage vitesse/risque plutôt que de relever un plafond de sécurité
+à sa place."
+
+**Règle durable ?** oui (ajouté à CLAUDE.md §7).
+
+## 2026-07-29 — Test de MUTATION : restaurer par copie de sauvegarde, jamais par `git checkout <fichier>`
+
+**Contexte.** Pour prouver qu'un nouveau test attrapait bien la régression qu'il prétendait couvrir
+(leçon C28-32 : un test peut VERROUILLER le bug), j'ai temporairement remis le code buggé, lancé la
+suite (le test échouait bien ✅), puis restauré. Pour `src/Reset.gs` j'avais fait un `cp` de
+sauvegarde — correct. Pour `src/Config.gs` j'ai utilisé `git checkout src/Config.gs` : le fichier
+portait des modifications NON COMMITTÉES (la réallocation des budgets, cœur du chantier) et elles ont
+été SILENCIEUSEMENT écrasées par la version de HEAD. Le test d'invariant repassait au vert… en
+mesurant les ANCIENNES valeurs. Détecté en relisant le fichier juste après (« pourquoi 8/8/4 ? »).
+
+**Leçon.** "Un test de mutation modifie puis restaure un fichier de code : la restauration passe
+TOUJOURS par une copie de sauvegarde prise juste avant (`cp fichier /tmp/…` puis `cp` retour), JAMAIS
+par `git checkout <fichier>` / `git restore <fichier>` — ces commandes restaurent depuis l'index ou
+HEAD et DÉTRUISENT sans avertir les modifications non committées du même fichier (exit 0, aucune
+alerte). Corollaire : après toute manipulation destructive d'un fichier de travail, RELIRE la valeur
+qu'on croit y avoir mise (`grep` sur la constante) — vérifier l'artefact, jamais le code de sortie
+(même famille que la leçon des backticks dans `git commit -m`)."
+
+**Règle durable ?** oui (ajouté à CLAUDE.md §7).

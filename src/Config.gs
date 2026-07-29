@@ -518,19 +518,27 @@ var CONFIG = {
   // Décision Marc 2026-07-29 (structure validée en PR1). Exécution DIRECTE (comme ConsolidationExec,
   // « change tout live ») : déplacement seul (§2), jamais de suppression. Trois phases indépendantes,
   // chacune bornée + reprenable + convergente (clé dédiée, « terminé » seulement sur une passe qui ne
-  // collecte plus rien). Pendant le reset (résetEnCours_ = true), conso-2 (génération + exécution) ET la
-  // réorg auto C28-32 sont SUSPENDUES (ADR-0030 « Transition ») — leur budget quotidien (12+6+réorg ≈
-  // 20 min/j) est donc LIBRE : les budgets ci-dessous ne s'AJOUTENT pas à l'enveloppe agrégée, ils la
-  // REMPLACENT le temps du reset (jamais un risque de gel du quota runtime ~90 min/j).
+  // collecte plus rien). Pendant le reset (résetEnCours_ = true), conso-2 (génération + exécution), la
+  // réorg auto C28-32, l'historique Gmail ET la réconciliation Index sont SUSPENDUES (ADR-0030
+  // « Transition ») — leur budget quotidien est donc LIBRE : les budgets ci-dessous ne s'AJOUTENT pas à
+  // l'enveloppe agrégée, ils la REMPLACENT le temps du reset (jamais un risque de gel du quota ~90 min/j).
+  //
+  // ⚡ RÉALLOCATION (décision Marc 2026-07-29 : « je veux que tu le fasses toi automatiquement » — c'est
+  // déjà le cas via le tick ; ce qu'il demande, c'est que l'AUTO aille vite). On ne RELÈVE PAS
+  // l'enveloppe totale (ce serait le piège du gel documenté en C28-29) : on RÉALLOUE ce que les
+  // campagnes suspendues libèrent — conso-2 gen 12 + exec 6, histo Gmail 20, sync Index 12 = 50 min/j.
+  // Reset 20 → 50 min/j (≈ 2,5× plus rapide) en restant SOUS l'enveloppe d'avant (elle valait déjà 50).
+  // Invariant verrouillé par test (`test/orchestration.test.js` : reset ≤ somme des libérés).
+  // À VÉRIFIER par signal indépendant (heartbeat non figé l'après-midi) — leçon §7.
   RESET_ACTIF: true,                      // false = suspension immédiate de TOUTES les phases (comme CONSOLIDATION_EXEC_ACTIF)
   RESET_TAG: 'tri33',                     // bumper relance une campagne complète (re-parcourt tout, additive)
   RESET_TRI_NOM: '_TRI 2026',             // racine de rassemblement, à côté de `_Doublons`/`_Technique` (préfixe _ = invisible des scans vivants)
   RESET_RASSEMBLEMENT_MAX_PAR_RUN: 60,    // fichiers déplacés vers `_TRI 2026/<domaine>` par run
-  RESET_RASSEMBLEMENT_BUDGET_JOUR_MS: 8 * 60 * 1000,
+  RESET_RASSEMBLEMENT_BUDGET_JOUR_MS: 20 * 60 * 1000, // 8 → 20 (il ALIMENTE le placement : jamais l'affamer)
   RESET_PLACEMENT_MAX_PAR_RUN: 80,        // fichiers dédupliqués/routés depuis `_TRI 2026` par run (pas d'OCR/LLM — cheap)
-  RESET_PLACEMENT_BUDGET_JOUR_MS: 8 * 60 * 1000,
+  RESET_PLACEMENT_BUDGET_JOUR_MS: 22 * 60 * 1000,     // 8 → 22 (poste le plus lourd : il hashe les octets)
   RESET_04_MAX_PAR_RUN: 40,               // fichiers réorganisés EN INTERNE sous 04 par run
-  RESET_04_BUDGET_JOUR_MS: 4 * 60 * 1000,
+  RESET_04_BUDGET_JOUR_MS: 8 * 60 * 1000,             // 4 → 8 (04 est petite : elle convergera bien avant)
   SEED_ENTITES_TAG: 'seed-1',             // seed one-shot des entités de Marc (Entites.seedEntitesMarc_)
   ENTITES_AUTO_VALIDATION: false,         // auto-validation « vue ≥ 3 fois » COUPÉE (décision Marc
                                           // 2026-07-17 : « l'ajout de dossiers vraiment sécurisé,
