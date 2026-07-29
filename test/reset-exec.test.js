@@ -517,3 +517,82 @@ test('lancerResetRassemblement : verrou acquis → relâché même si la phase L
   assert.strictEqual(appels.tryLock, 1);
   assert.strictEqual(appels.release, 1, 'le verrou doit être relâché malgré l\'exception');
 });
+
+/* ---------- Budget QUOTIDIEN : le TICK est borné, l'UN-CLIC ne l'est PAS (incident 1er run réel) ---------- */
+
+// Monte une phase isolée : Properties en mémoire + la passe de travail mockée (on teste le GATE, pas le travail).
+function ctxPhase(opts) {
+  opts = opts || {};
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const store = Object.assign({}, opts.props);
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in store ? store[k] : null),
+    setProperty: (k, v) => { store[k] = String(v); },
+    deleteProperty: (k) => { delete store[k]; },
+  }) };
+  c.dateGmail_ = () => '2026/07/29';
+  c.journalInfo_ = () => {}; c.journalErreur_ = () => {};
+  c.ensembleDomainesProteges_ = () => ({});
+  let passes = 0;
+  c.rassemblerUnePageReset_ = () => { passes++; return { examines: 1, deplaces: 1, complet: false }; };
+  return { c, store, nbPasses: () => passes };
+}
+
+test('rassemblerReset_ (TICK) : budget quotidien ÉPUISÉ → ne travaille pas (le quota des déclencheurs reste protégé)', () => {
+  const c0 = load(['Config.gs', 'Reset.gs']);
+  const plein = '2026/07/29|' + c0.CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS; // dérivé de la CONFIG, jamais une valeur du jour
+  const t = ctxPhase({ props: { DriveAI_RESET_RASS_JOUR: plein } });
+  t.c.rassemblerReset_(() => false); // pas de `manuel` → chemin TICK, comportement inchangé
+  assert.strictEqual(t.nbPasses(), 0, 'le tick respecte le budget quotidien');
+});
+
+test('rassemblerReset_ (UN-CLIC) : budget quotidien épuisé → travaille QUAND MÊME et ne CONSOMME PAS le budget du tick', () => {
+  // Le budget quotidien protège le quota RUNTIME des DÉCLENCHEURS ; une exécution d'éditeur en est
+  // HORS. Sans ce correctif : (1) Marc bloqué jusqu'au lendemain après quelques relances manuelles,
+  // (2) pire — son run manuel consommait le budget du tick, donc l'AUTO ne faisait plus rien de la
+  // journée (le manuel affamait l'auto). Les deux sont verrouillés ici.
+  const c0 = load(['Config.gs', 'Reset.gs']);
+  const plein = '2026/07/29|' + c0.CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS;
+  const t = ctxPhase({ props: { DriveAI_RESET_RASS_JOUR: plein } });
+  t.c.rassemblerReset_(() => false, true); // manuel
+  assert.strictEqual(t.nbPasses(), 1, 'l\'un-clic n\'est PAS gaté par le budget quotidien');
+  assert.strictEqual(t.store.DriveAI_RESET_RASS_JOUR, plein,
+    'l\'un-clic ne consomme RIEN du budget quotidien — sinon il affamerait le tick automatique');
+});
+
+test('placerReset_ / appliquerReset04Interne_ : même contrat manuel (gate + comptage) que le rassemblement', () => {
+  const c0 = load(['Config.gs', 'Reset.gs']);
+  for (const cas of [
+    { fn: 'placerReset_', cle: 'DriveAI_RESET_PLACE_JOUR', budget: c0.CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS, passe: 'placerUnePageReset_' },
+    { fn: 'appliquerReset04Interne_', cle: 'DriveAI_RESET_04_JOUR', budget: c0.CONFIG.RESET_04_BUDGET_JOUR_MS, passe: 'reorganiserPageInterne04_' },
+  ]) {
+    const plein = '2026/07/29|' + cas.budget;
+    const t = ctxPhase({ props: { [cas.cle]: plein } });
+    let passes = 0;
+    t.c[cas.passe] = () => { passes++; return { examines: 1, deplaces: 1, complet: false }; };
+    t.c.entitesValideesParCle_ = () => ({});
+    t.c.empreintesPlanConsolidation_ = () => ({});
+
+    t.c[cas.fn](() => false);        // TICK : gaté
+    assert.strictEqual(passes, 0, cas.fn + ' (tick) doit respecter le budget quotidien');
+    t.c[cas.fn](() => false, true);  // UN-CLIC : libre
+    assert.strictEqual(passes, 1, cas.fn + ' (un-clic) ne doit PAS être gaté');
+    assert.strictEqual(t.store[cas.cle], plein, cas.fn + ' (un-clic) ne doit rien consommer du budget du tick');
+  }
+});
+
+test('les 4 fonctions UN-CLIC passent `true` (manuel) aux phases — sinon le budget du tick les brimerait à nouveau', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'Reset.gs'), 'utf8');
+  const debutUnClic = src.indexOf('Fonctions UN-CLIC');
+  assert.ok(debutUnClic !== -1);
+  const corps = src.slice(debutUnClic);
+  ['rassemblerReset_', 'placerReset_', 'appliquerReset04Interne_'].forEach((phase) => {
+    const appels = corps.match(new RegExp(phase + '\\(estBudgetDepasse[^)]*\\)', 'g')) || [];
+    assert.ok(appels.length > 0, 'aucun appel de ' + phase + ' dans les fonctions un-clic');
+    appels.forEach((appel) => {
+      assert.ok(/,\s*true\s*\)/.test(appel), 'appel un-clic sans le drapeau manuel : ' + appel);
+    });
+  });
+});
