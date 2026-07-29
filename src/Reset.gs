@@ -576,17 +576,36 @@ function resoudreCibleReset_(domaineDossier, domaine, sousChemin, ctx) {
 }
 
 /**
- * Traite UN fichier de `_TRI 2026/<domaine>` : dédup par empreinte (campagne, seedée depuis
- * `empreintesPlanConsolidation_` — réutilisation des empreintes déjà connues de conso-2), puis
- * routage PAR LE NOM (`cheminCibleReset_`, zéro LLM). Doublon EXACT → `_Doublons` (déplacement seul,
- * §2). Non routé (null) → reste dans `_TRI`, rapporté. Clé `tri33p|<tag>|id` posée dans TOUS les cas
- * (convergence : un fichier non-routé n'est jamais re-hashé à chaque run).
+ * Traite UN fichier de `_TRI 2026/<domaine>` : §1 RE-VÉRIFIÉE STRICTE (échec-fermé) + multi-parents
+ * EXCLUS (revue sécurité C28-33 : le rassemblement et le placement sont deux campagnes SÉPARÉES,
+ * bornées chacune par son propre budget quotidien — un fichier peut donc attendre des JOURS dans
+ * `_TRI` avant d'être placé ; pendant cette fenêtre, un geste Drive normal de Marc (« Ajouter à un
+ * dossier ») peut lui donner un second parent sous 04 · Immigration. Sans cette re-vérification, un
+ * `removeFile` sur le mauvais parent détacherait le fichier de la zone protégée — même garde que
+ * `rassemblerUnFichier_`/`reorganiserInterne04_`, jamais une exception de phase), PUIS dédup par
+ * empreinte (campagne, seedée depuis `empreintesPlanConsolidation_` — réutilisation des empreintes
+ * déjà connues de conso-2), PUIS routage PAR LE NOM (`cheminCibleReset_`, zéro LLM). Doublon EXACT →
+ * `_Doublons` (déplacement seul, §2). Non routé (null) → reste dans `_TRI`, rapporté. Clé
+ * `tri33p|<tag>|id` posée dans TOUS les cas (convergence : un fichier non-routé n'est jamais
+ * re-hashé à chaque run).
  * @return {boolean} vrai si RÉELLEMENT déplacé ce call.
  */
 function placerUnFichierReset_(f, domaine, cle, ctx) {
   var nom = f.getName();
+  var cheminTri = CONFIG.RESET_TRI_NOM + '/' + domaine;
+  if (aParentProtege_(f, ctx.proteges, true)) {
+    journalInfo_('Reset', 'Fichier en zone protégée ignoré au placement (non déplacé) : ' + nom);
+    indexAjouter_(cle, { statut: 'tri33p-protege', nom: nom, domaine: domaine, chemin: cheminTri }, '');
+    return false;
+  }
+  if (nbParentsBorne_(f) > 1) {
+    journalInfo_('Reset', 'Multi-parents, jamais déplacé au placement : ' + nom);
+    indexAjouter_(cle, { statut: 'tri33p-multiparents', nom: nom, domaine: domaine, chemin: cheminTri }, '');
+    return false;
+  }
+
   var statut = 'tri33-reste';
-  var cheminFinal = CONFIG.RESET_TRI_NOM + '/' + domaine;
+  var cheminFinal = cheminTri;
   var ancienParent = null;
   try { var pp = f.getParents(); if (pp.hasNext()) ancienParent = pp.next(); } catch (e) { ancienParent = null; }
 

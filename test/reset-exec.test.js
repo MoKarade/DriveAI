@@ -175,6 +175,8 @@ function ctxPlacement(opts) {
   c.indexAjouter_ = (cle, dec, emp) => { index[cle] = true; ajouts.push({ cle: cle, statut: dec.statut, domaine: dec.domaine, chemin: dec.chemin, empreinte: emp }); };
   c.journalInfo_ = () => {};
   c.journalErreur_ = () => {};
+  c.aParentProtege_ = () => !!opts.protege;
+  c.nbParentsBorne_ = () => (opts.multiParents ? 2 : 1);
   // Dérivée du BLOB (donc du fichier réellement passé) — jamais figée sur le fichier de construction du
   // contexte, sinon un 2ᵉ fichier traité avec le MÊME `c` (mêmes mocks) hériterait de la 1ʳᵉ empreinte.
   c.empreinteBlob_ = (blob) => (opts.empreinte !== undefined ? opts.empreinte : 'EMP:' + blob.id);
@@ -196,6 +198,29 @@ function ctxPlacement(opts) {
   return { c, ajouts, log, videAppels, repointages, ajoutsRapport, fichier };
 }
 
+test('placerUnFichierReset_ : zone protégée → JAMAIS déplacé (§1 re-vérifiée au PLACEMENT, pas seulement au rassemblement — revue sécurité C28-33)', () => {
+  // Le rassemblement et le placement sont deux campagnes SÉPARÉES, bornées par des budgets
+  // quotidiens INDÉPENDANTS : un fichier peut attendre des jours dans `_TRI` avant d'être placé.
+  // Pendant cette fenêtre, un geste Drive normal (« Ajouter à un dossier ») peut lui donner un
+  // second parent sous 04 · Immigration — la garde doit donc se re-vérifier ICI aussi, pas
+  // seulement à la collecte du rassemblement.
+  const { c, log, ajouts, fichier } = ctxPlacement({ id: 'F9', nom: 'x.pdf', domaine: '02 · Finances', protege: true });
+  const ctxObj = { proteges: {}, empreintesVues: {}, validees: {}, repointes: {} };
+  const r = c.placerUnFichierReset_(fichier, '02 · Finances', 'tri33p|tag|F9', ctxObj);
+  assert.strictEqual(r, false);
+  assert.deepStrictEqual(log, []);
+  assert.strictEqual(ajouts[0].statut, 'tri33p-protege');
+});
+
+test('placerUnFichierReset_ : multi-parents → jamais déplacé au placement (même prudence que le rassemblement)', () => {
+  const { c, log, ajouts, fichier } = ctxPlacement({ id: 'F10', nom: 'x.pdf', domaine: '02 · Finances', multiParents: true });
+  const ctxObj = { proteges: {}, empreintesVues: {}, validees: {}, repointes: {} };
+  const r = c.placerUnFichierReset_(fichier, '02 · Finances', 'tri33p|tag|F10', ctxObj);
+  assert.strictEqual(r, false);
+  assert.deepStrictEqual(log, []);
+  assert.strictEqual(ajouts[0].statut, 'tri33p-multiparents');
+});
+
 test('placerUnFichierReset_ : DOUBLON exact (empreinte déjà vue) → `_Doublons` (déplacement seul), jamais deviné par le nom', () => {
   const { c, log, ajouts, fichier } = ctxPlacement({ id: 'F2', nom: 'copie.pdf', domaine: '02 · Finances' });
   const ctxObj = { empreintesVues: { 'EMP:F2': 'F1' }, validees: {}, repointes: {} }; // F1 porte déjà cette empreinte
@@ -209,7 +234,7 @@ test('placerUnFichierReset_ : DOUBLON exact (empreinte déjà vue) → `_Doublon
 
 test('placerUnFichierReset_ : routé PAR LE NOM (règle PURE de PR1) → dossier structuré sous le domaine', () => {
   const { c, log, ajouts, fichier } = ctxPlacement({ id: 'F3', nom: '2026-03_Relevé_Desjardins.pdf', domaine: '02 · Finances' });
-  const ctxObj = { empreintesVues: {}, validees: {}, repointes: {} };
+  const ctxObj = { proteges: {}, empreintesVues: {}, validees: {}, repointes: {} };
   const r = c.placerUnFichierReset_(fichier, '02 · Finances', 'tri33p|tag|F3', ctxObj);
   assert.strictEqual(r, true);
   assert.deepStrictEqual(log.filter((l) => l.op === 'add'), [{ op: 'add', dossier: 'DOM:02 · Finances/Relevés/2026', file: 'F3' }]);
@@ -219,7 +244,7 @@ test('placerUnFichierReset_ : routé PAR LE NOM (règle PURE de PR1) → dossier
 
 test('placerUnFichierReset_ : NON routé → reste dans `_TRI`, rapporté (jamais déplacé, jamais deviné)', () => {
   const { c, log, ajouts, ajoutsRapport, fichier } = ctxPlacement({ id: 'F4', nom: 'IMG_20240101_123456.jpg', domaine: '08 · Perso & projets' });
-  const ctxObj = { empreintesVues: {}, validees: {}, repointes: {} };
+  const ctxObj = { proteges: {}, empreintesVues: {}, validees: {}, repointes: {} };
   const r = c.placerUnFichierReset_(fichier, '08 · Perso & projets', 'tri33p|tag|F4', ctxObj);
   assert.strictEqual(r, false);
   assert.deepStrictEqual(log, [], 'aucun mouvement Drive');
@@ -231,7 +256,7 @@ test('placerUnFichierReset_ : NON routé → reste dans `_TRI`, rapporté (jamai
 
 test('placerUnFichierReset_ : QUASI-doublon (même nom normalisé, taille différente) → RAPPORT seul, jamais déplacé d\'office', () => {
   const ctx1 = ctxPlacement({ id: 'F5', nom: 'export.jpg', taille: 100, domaine: '08 · Perso & projets' });
-  const ctxObj = { empreintesVues: {}, validees: {}, repointes: {} };
+  const ctxObj = { proteges: {}, empreintesVues: {}, validees: {}, repointes: {} };
   ctx1.c.placerUnFichierReset_(ctx1.fichier, '08 · Perso & projets', 'tri33p|tag|F5', ctxObj);
 
   // Même contexte c (mêmes mocks/feuille), 2ᵉ fichier : même nom normalisé, taille DIFFÉRENTE.
@@ -256,7 +281,7 @@ test('placerUnFichierReset_ : re-pointe l\'entité VALIDÉE dont le Dossier ID p
 test('placerUnFichierReset_ : déjà en place (rejeu) → aucun addFile/removeFile, clé posée quand même', () => {
   const cibleId = 'DOM:02 · Finances/Relevés/2026';
   const { c, log, ajouts, fichier } = ctxPlacement({ id: 'F8', nom: '2026-03_Relevé_Desjardins.pdf', domaine: '02 · Finances', ancienId: cibleId });
-  const ctxObj = { empreintesVues: {}, validees: {}, repointes: {} };
+  const ctxObj = { proteges: {}, empreintesVues: {}, validees: {}, repointes: {} };
   const r = c.placerUnFichierReset_(fichier, '02 · Finances', 'tri33p|tag|F8', ctxObj);
   assert.strictEqual(r, false);
   assert.deepStrictEqual(log, []);
