@@ -133,8 +133,18 @@ function resetBucketAnnee_(annee, noeudAnnees) {
   return (annee && noeudAnnees[annee]) ? annee : 'Archives';
 }
 
-/** Personnes « Autres » connues (pièces d'identité) : clé normalisée → libellé de dossier. */
-var RESET_PERSONNES_AUTRES = { 'francine richard': 'Francine Richard', 'leandre labyt': 'Léandre LABYT' };
+/**
+ * Personnes « Autres » connues (pièces d'identité) : clé normalisée → libellé de dossier.
+ * Liste EXPLICITE, jamais devinée : une pièce d'identité dont le titulaire n'est pas ici (et qui
+ * n'est pas émise par une autorité) reste en `_TRI` au rapport — c'est Marc qui tranche, à qui
+ * appartient le dossier. Anna Malaval ajoutée sur sa validation (2026-07-30, après remontée du
+ * reliquat réel : `2022-09-07_Passeport_Anna Malaval_2.pdf`).
+ */
+var RESET_PERSONNES_AUTRES = {
+  'francine richard': 'Francine Richard',
+  'leandre labyt': 'Léandre LABYT',
+  'anna malaval': 'Anna Malaval',
+};
 
 /**
  * Dossiers/fichiers JAMAIS touchés par le reset (en plus des `00 ·`, `_…` et de la zone gérée à
@@ -182,7 +192,11 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(e, ['tesco', 'transport scolaire'])) return 'Contrats & fournisseurs/Transport scolaire';
     if (e.indexOf('maif') !== -1) return 'Contrats & fournisseurs/Filia-MAIF';
     if (e === 'ino') return 'Contrats & fournisseurs/INO';
-    if (resetContient_(tout, ['code de securite', 'codes de securite', 'mot de passe']) ||
+    // Le pluriel n'est PAS couvert par le singulier (« codes de … » ne contient pas « code de … ») :
+    // chaque forme est listée. `codes de recuperation`/`double facteur` ajoutés sur le reliquat réel
+    // du 2026-07-30 (fichier resté en _TRI faute de règle).
+    if (resetContient_(tout, ['code de securite', 'codes de securite', 'code de recuperation',
+      'codes de recuperation', 'mot de passe', 'double facteur', 'authentification a deux facteurs']) ||
         (tout.indexOf('sauvegarde') !== -1 && e.indexOf('gmf') === -1)) return 'Sécurité & codes'; // GMF La Sauvegarde = un ASSUREUR (revue)
     if (resetContient_(t, ['lettre', 'courrier', 'correspondance', 'mise en demeure'])) return 'Correspondance';
     return null;
@@ -615,8 +629,9 @@ function resoudreCibleReset_(domaineDossier, domaine, sousChemin, ctx) {
  * empreinte (campagne, seedée depuis `empreintesPlanConsolidation_` — réutilisation des empreintes
  * déjà connues de conso-2), PUIS routage PAR LE NOM (`cheminCibleReset_`, zéro LLM). Doublon EXACT →
  * `_Doublons` (déplacement seul, §2). Non routé (null) → reste dans `_TRI`, rapporté. Clé
- * `tri33p|<tag>|id` posée dans TOUS les cas (convergence : un fichier non-routé n'est jamais
- * re-hashé à chaque run).
+ * `tri33p|<tag>|<versionTable>|id` posée dans TOUS les cas (convergence : un fichier non-routé n'est
+ * jamais re-hashé à chaque run) — la VERSION DE TABLE en fait partie pour que l'affinage des règles
+ * puisse re-tenter le reliquat, cf. `CONFIG.RESET_TABLE_VERSION`.
  * @return {boolean} vrai si RÉELLEMENT déplacé ce call.
  */
 function placerUnFichierReset_(f, domaine, cle, ctx) {
@@ -704,7 +719,11 @@ function placerUnePageReset_(estBudgetDepasse, ctx) {
       if (estBudgetDepasse() || examines >= CONFIG.RESET_PLACEMENT_MAX_PAR_RUN) { complet = false; break; }
       var f;
       try { f = fi.next(); } catch (e) { complet = false; break; }
-      var cle = 'tri33p|' + tag + '|' + f.getId();
+      // La VERSION DE TABLE entre dans la clé : bumper `RESET_TABLE_VERSION` re-tente le placement
+      // du RELIQUAT après un affinage des règles. Sans risque de défaire le travail fait : la
+      // collecte n'itère QUE sur `_TRI 2026/<domaine>` — un fichier déjà placé n'y est plus, donc
+      // il n'est jamais re-présenté, quelle que soit la version.
+      var cle = 'tri33p|' + tag + '|' + CONFIG.RESET_TABLE_VERSION + '|' + f.getId();
       if (indexContient_(cle)) continue; // déjà tenté — gratuit, n'occupe pas la page
       examines++;
       try { if (placerUnFichierReset_(f, dom, cle, ctx)) deplaces++; }

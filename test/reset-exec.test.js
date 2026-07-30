@@ -716,3 +716,64 @@ test('les 4 fonctions UN-CLIC passent `true` (manuel) aux phases — sinon le bu
     });
   });
 });
+
+/* ---------- Version de TABLE : un affinage des règles re-tente le RELIQUAT, jamais le rangé ---------- */
+
+// Page de placement isolée : un dossier `_TRI 2026/<domaine>` contenant N fichiers, clés en mémoire.
+function ctxPage(opts) {
+  opts = opts || {};
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const index = Object.assign({}, opts.index);
+  const traites = [];
+  c.indexContient_ = (cle) => !!index[cle];
+  c.journalInfo_ = () => {}; c.journalErreur_ = () => {};
+  c.dossierTriReset_ = () => ({
+    getFoldersByName: (nom) => {
+      if (nom !== (opts.domaine || '02 · Finances')) return { hasNext: () => false };
+      let rendu = false;
+      return {
+        hasNext: () => !rendu,
+        next: () => { rendu = true; return { getFiles: () => iterFichiers(opts.fichiers || []) }; },
+      };
+    },
+  });
+  c.placerUnFichierReset_ = (f, dom, cle) => { traites.push({ id: f.getId(), cle: cle }); return true; };
+  return { c, traites, index };
+}
+
+function iterFichiers(ids) {
+  let i = 0;
+  return {
+    hasNext: () => i < ids.length,
+    next: () => { const id = ids[i++]; return { getId: () => id, getName: () => id + '.pdf' }; },
+  };
+}
+
+test('placement : la clé porte la VERSION DE TABLE — bumper la version re-tente le reliquat resté en _TRI', () => {
+  const V = ctxPur.CONFIG.RESET_TABLE_VERSION;
+  const TAG = ctxPur.CONFIG.RESET_TAG;
+  // F1 a DÉJÀ été tenté sous la version COURANTE → sauté ; F2 jamais vu → traité.
+  const dejaVu = {};
+  dejaVu['tri33p|' + TAG + '|' + V + '|F1'] = true;
+  const t = ctxPage({ fichiers: ['F1', 'F2'], index: dejaVu });
+  t.c.placerUnePageReset_(() => false, { proteges: {}, empreintesVues: {}, validees: {}, repointes: {} });
+  assert.deepStrictEqual(t.traites.map((x) => x.id), ['F2'], 'un fichier déjà tenté sous CETTE version est sauté');
+  assert.ok(t.traites[0].cle.indexOf('|' + V + '|') !== -1, 'la clé posée porte bien la version de table');
+
+  // MÊME fichier, marqué sous une ANCIENNE version de table → RE-TENTÉ (c'est tout l'intérêt).
+  const ancienne = {};
+  ancienne['tri33p|' + TAG + '|v-ancienne|F1'] = true;
+  const t2 = ctxPage({ fichiers: ['F1'], index: ancienne });
+  t2.c.placerUnePageReset_(() => false, { proteges: {}, empreintesVues: {}, validees: {}, repointes: {} });
+  assert.deepStrictEqual(t2.traites.map((x) => x.id), ['F1'],
+    'affiner la table doit re-présenter le reliquat — sinon les non-routés resteraient « déjà tentés » à vie');
+});
+
+test('placement : la collecte n\'itère QUE sur `_TRI` — bumper la version ne peut PAS re-déplacer un fichier déjà rangé', () => {
+  // Le dossier `_TRI 2026/<domaine>` est VIDE (tout a été placé) : quelle que soit la version de
+  // table, il n'y a rien à re-présenter. C'est la garantie donnée à Marc (« sans rien re-déplacer »).
+  const t = ctxPage({ fichiers: [] });
+  const r = t.c.placerUnePageReset_(() => false, { proteges: {}, empreintesVues: {}, validees: {}, repointes: {} });
+  assert.deepStrictEqual(t.traites, [], 'rien dans _TRI ⇒ rien traité, quelle que soit la version de table');
+  assert.strictEqual(r.examines, 0);
+});
