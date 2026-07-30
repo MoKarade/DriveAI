@@ -173,6 +173,15 @@ test('identité 01 : personne INCONNUE → null (jamais devinée chez Marc) ; au
   assert.strictEqual(ctx.cheminCibleReset_(d, '2020-01-01_Passeport_Marc Richard.pdf'), 'Pièces d\'identité/Marc');
 });
 
+test('RESET_PERSONNES_AUTRES : bornée par la contrainte ≤ 7 (le validateur EXEMPTE ces enfants dynamiques — la promesse doit être CODÉE)', () => {
+  // `verifierStructureCibleReset_` exempte explicitement `Pièces d'identité/Autres/<personne>` en
+  // disant qu'ils sont « bornés par la liste RESET_PERSONNES_AUTRES ». Rien ne bornait cette liste :
+  // à 8 personnes, l'invariant constitutionnel « ≤ 7 par niveau » sautait SANS faire échouer la CI
+  // (leçon §7 « promesse de verrou = verrou codé dans le même commit », relevé en revue #227).
+  assert.ok(Object.keys(ctx.RESET_PERSONNES_AUTRES).length <= MAX,
+    'ajouter une 8ᵉ personne casserait le ≤ 7 de `Pièces d\'identité/Autres` : créer un regroupement d\'abord');
+});
+
 test('identité 01 : Anna Malaval a son dossier (validation Marc 2026-07-30) — le nom RÉEL du reliquat, suffixe `_2` inclus', () => {
   const d = '01 · Administratif & identité';
   // Nom EXACT resté en `_TRI 2026/01` (le suffixe `_2` de dédup fait partie du tiers analysé).

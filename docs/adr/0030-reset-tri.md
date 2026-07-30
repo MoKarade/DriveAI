@@ -86,6 +86,34 @@ le flux re-remplirait À PLAT les racines que la campagne vide (non-convergence 
    quasi gratuit) rattrape ce qui atterrit à plat aux racines — même fonction de cible, deux
    consommateurs, verrouillés par un tripwire « la sortie du flux est OK pour le reset ».
 
+## Affinage de la table après coup (PR3, #227)
+
+Le routage vit dans une TABLE de règles (`STRUCTURE_CIBLE_RESET` + `cheminCibleReset_`) qu'on affine
+au vu du reliquat réel. Or la clé d'idempotence du placement est posée **même sur un NON ROUTÉ** (pour
+ne pas le re-hasher à chaque run) : elle mémorise donc un **échec de RÈGLE**, révisable — pas un
+succès. D'où `CONFIG.RESET_TABLE_VERSION`, présente dans :
+
+1. la **clé par fichier** (`tri33p|<tag>|<version>|<fileId>`) ;
+2. le **drapeau de FIN DE PHASE** du placement (`DriveAI_RESET_PLACEMENT` = `<tag>|<version>`) — sans
+   quoi, une fois la phase convergée, le garde de fin court-circuiterait tout avant même que les clés
+   par fichier ne soient construites : le mécanisme serait mort en silence (trouvé en revue #227) ;
+3. les **clés du rapport** `Reset` (`nonroute|<version>|…`, `quasidoublon|<version>|…`) — chaque
+   version produit son instantané HONNÊTE du reliquat, sinon un cas résolu resterait affiché « à
+   trancher » à vie.
+
+**Dissymétrie VOULUE** : le rassemblement et 04 n'ont PAS la version (ni dans leurs clés par fichier,
+ni dans leur drapeau) — seul le placement dépend de la table. L'y ajouter relancerait un
+rassemblement complet, c'est-à-dire renverrait tout le Drive dans `_TRI`.
+
+**Portée exacte, à ne pas sur-vendre** : un bump ne re-présente que ce qui est PHYSIQUEMENT dans
+`_TRI 2026` (garantie « jamais re-déplacer le rangé », verrouillée par test). Conséquence : une règle
+**corrigée** ne s'applique donc jamais rétroactivement aux fichiers déjà placés par l'ancienne règle
+— seules les règles **additives** (qui rattrapent des `null`) ont un effet rétroactif complet.
+
+**Effet de bord assumé** : `resetTermine_()` repasse à faux sur un bump ⇒ conso-2, réorg auto,
+historique Gmail et réconciliation Index sont RE-SUSPENDUS le temps de la re-convergence
+(« une seule main déplace à la fois »). C'est le prix, court, d'un affinage.
+
 ## Exécution & bornes
 
 - Patron « campagne bornée reprenable » (collecte lecture seule → mutation par lots, garde-temps,
