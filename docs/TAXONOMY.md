@@ -3,6 +3,48 @@
 > Source de vérité de l'arborescence Drive. `structure-keeper` veille à ce que le code de
 > routage reste cohérent avec ce document. Les IDs alimenteront `Config.gs` (Phase 1).
 
+## ⚠️ STRUCTURE CIBLE 2026 (ADR-0030, chantier C28-33) — lis ceci en premier
+
+**Depuis le 2026-07-29, la source de vérité de l'ARBORESCENCE est la table
+`STRUCTURE_CIBLE_RESET` (`src/Reset.gs`)**, validée dossier par dossier par Marc, avec la contrainte
+NON négociable **≤ 7 sous-dossiers par niveau, récursif** (ADR-0027). La campagne de reset tourne en
+production et range dedans. **Tout ce qui suit cette section décrit la taxonomie À PLAT d'ADR-0023 —
+qu'ADR-0030 RÉVISE explicitement.** Elle ne décrit donc plus que l'héritage en cours de drainage :
+en particulier, la règle « un document se classe à la racine de son domaine, dossier-catégorie
+INTERDIT » **ne vaut plus** — la prod range désormais dans `Relevés/`, `Reçus & factures/`,
+`Attestations & certificats/`, `Contrats/`…
+
+| Domaine | Sous-dossiers cibles (niveau 1) | Places restantes |
+|---------|--------------------------------|------------------|
+| `01 · Administratif & identité` | Pièces d'identité · État civil & notarial · Attestations & certificats · Correspondance · Contrats & fournisseurs · Sécurité & codes | 1 |
+| `02 · Finances` | Banques · Relevés · Reçus & factures · Impôts & déclarations · Assurances & prévoyance · Placements & crypto · **Revenus & paie** | **0 — PLEIN** |
+| `03 · Logement & véhicule` | Logements · Véhicules · Énergie & services · Assurance habitation · **Contrats** · **Correspondance** | 1 |
+| `04 · Immigration` | IRCC (fédéral) · MIFI (Québec) · Permis de travail & EIMT · Résidence permanente · Formulaires & correspondance | 2 |
+| `05 · Carrière` | Employeurs · Recherche d'emploi · Alternance & stages · CV & lettres · Entreprise — MRic (SCI) · Formation & bilans · Réseaux & présentations | 0 |
+| `06 · Études & diplômes` | 5 écoles + Autres établissements + Diplômes & relevés officiels | 0 |
+| `07 · Santé` | Médecins & consultations · Hôpitaux & centres · Assurances santé · Factures & reçus · Examens & résultats · Médecine scolaire & travail | 1 |
+| `08 · Perso & projets` | Projets · Écrits & rédactions · Schémas & technique · Photos & loisirs · Notes · Données & exports | 1 |
+| `09 · Voyages` | Réservations & billets · Par voyage · Assurances voyage | 4 |
+
+**`02 · Finances` est PLEIN (7/7)** : toute règle future y exige un **regroupement**, jamais un
+nouveau nœud. *(Note : le flux vivant y crée aussi `02 · Finances/AAAA` — `DOMAINES_PAR_ANNEE`,
+`Config.gs` — nœud absent de la table ; exemption connue, voir BACKLOG C28-36.)*
+
+### Règles d'arbitrage entre domaines (à appliquer en cas de doute)
+
+- **`Contrats` / `Correspondance` existent dans `01` ET dans `03`.** `03` = ce qui concerne le
+  logement ou le véhicule mais dont l'entité n'est pas identifiable dans le nom ; `01` = tout le
+  reste. Le routage tranche par le **domaine d'ORIGINE** du fichier, jamais par le contenu.
+  ⚠️ Asymétrie connue : dans `03`, un `Contrat_<inconnu>` tombe dans le filet `Contrats` ; dans
+  `01`, le même nom rend `null` et reste au rapport (aucun filet contrat en 01, seule la liste de
+  fournisseurs route).
+- **Bulletins de paie : `02 · Finances/Revenus & paie`** (décision Marc 2026-07-30, logique
+  « revenu »). ⚠️ Des bulletins classés antérieurement sous `05 · Carrière/Employeurs/<employeur>`
+  y restent : le reset est INTRA-domaine par construction et ne les remontera pas. Split assumé,
+  signalé à Marc.
+- **Donations & successions** : versant **fiscal** → `02/Impôts & déclarations` ; versant
+  **notarial** (actes) → `01/État civil & notarial`.
+
 ## Racine
 
 **« Nouvelle structure 2026 »** — `1k5m1xbW90SCX2_IwPy3Xwquh30us6l02`

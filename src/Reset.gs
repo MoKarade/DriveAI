@@ -213,13 +213,23 @@ function cheminCibleReset_(domaine, nom) {
   }
 
   if (domaine === '02 · Finances') {
-    // PAIE — type EXACT ou locution complète, JAMAIS la sous-chaîne « paie » : elle est contenue
-    // dans « paiement » (« Confirmation de paiement », « Avis de paiement »…) qui n'a rien d'un
-    // bulletin de salaire. Placée AVANT « Relevés » : un « Relevé de paie » est une paie.
-    // (Les feuillets fiscaux T4/Relevé 1, eux, restent en « Impôts & déclarations » ci-dessous —
-    // ils sont testés sur leurs propres motifs et ne matchent pas ceux-ci.)
-    if (t === 'paie' || t === 'bulletin de paie' || t === 'fiche de paie' ||
-        resetContient_(t, ['bulletin de salaire', 'fiche de salaire', 'feuille de paie', 'releve de paie'])) return 'Revenus & paie';
+    // FEUILLETS FISCAUX québécois AVANT « Relevés » : le RL-1 (revenus d'emploi) et le RL-31
+    // (logement) sont des documents d'IMPÔT, pas des relevés bancaires — sans cette ligne,
+    // `t = 'releve 1'` partait dans `Relevés/AAAA` (correction du commentaire de revue : je l'avais
+    // affirmé couvert par la règle fiscale, à tort — elle est APRÈS). Motif ANCRÉ sur le nombre pour
+    // ne jamais toucher « Relevé 10 » ou un relevé bancaire ordinaire. « Relevé d'emploi » n'est PAS
+    // inclus : c'est un document de CARRIÈRE (05), à trancher avec Marc s'il s'en présente.
+    if (/(^| )releve (1|31)( |$)/.test(t)) return 'Impôts & déclarations';
+    // PAIE — motif ANCRÉ SUR LE MOT, jamais une sous-chaîne : « paie » est contenu dans
+    // « paiement », et un « Relevé de paiement » (Hydro-Québec, Retraite Québec, assureurs) n'est
+    // PAS un bulletin de salaire. Ma 1ʳᵉ version testait `t === 'paie'` (exact, correct) MAIS aussi
+    // `resetContient_(t, [… 'releve de paie'])` — qui rouvrait le piège en grand puisque
+    // « releve de paiement » COMMENCE par « releve de paie » (attrapé en revue #228).
+    // Même idiome que `Router.schemaNommage_`/`devinerTypeDepuisNom_`, et c'est précisément le motif
+    // qui produit le libellé `_Paie_` au renommage : une seule règle de mot aux deux bouts de la
+    // chaîne. Couvre paie / bulletin de paie / fiche de paie / feuille de paie / relevé de paie /
+    // bulletin de salaire / sommaire de paie… et exclut « paiement » par construction.
+    if (/(^| )(paie|salaire)( |$)/.test(t)) return 'Revenus & paie';
     if (t.indexOf('releve') !== -1 && t.indexOf('releve d identite bancaire') === -1) return 'Relevés/' + resetBucketAnnee_(seg.annee, s['Relevés']);
     // Fiscal (dont les feuillets québécois T4/Relevé 1) et remboursements d'IMPÔT (revue : 'bourse'
     // ⊂ « remboursement » envoyait les remboursements en Placements — jamais de motif court sur tout).
