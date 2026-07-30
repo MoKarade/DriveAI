@@ -173,6 +173,37 @@ test('identité 01 : personne INCONNUE → null (jamais devinée chez Marc) ; au
   assert.strictEqual(ctx.cheminCibleReset_(d, '2020-01-01_Passeport_Marc Richard.pdf'), 'Pièces d\'identité/Marc');
 });
 
+test('RESET_PERSONNES_AUTRES : bornée par la contrainte ≤ 7 (le validateur EXEMPTE ces enfants dynamiques — la promesse doit être CODÉE)', () => {
+  // `verifierStructureCibleReset_` exempte explicitement `Pièces d'identité/Autres/<personne>` en
+  // disant qu'ils sont « bornés par la liste RESET_PERSONNES_AUTRES ». Rien ne bornait cette liste :
+  // à 8 personnes, l'invariant constitutionnel « ≤ 7 par niveau » sautait SANS faire échouer la CI
+  // (leçon §7 « promesse de verrou = verrou codé dans le même commit », relevé en revue #227).
+  assert.ok(Object.keys(ctx.RESET_PERSONNES_AUTRES).length <= MAX,
+    'ajouter une 8ᵉ personne casserait le ≤ 7 de `Pièces d\'identité/Autres` : créer un regroupement d\'abord');
+});
+
+test('identité 01 : Anna Malaval a son dossier (validation Marc 2026-07-30) — le nom RÉEL du reliquat, suffixe `_2` inclus', () => {
+  const d = '01 · Administratif & identité';
+  // Nom EXACT resté en `_TRI 2026/01` (le suffixe `_2` de dédup fait partie du tiers analysé).
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2022-09-07_Passeport_Anna Malaval_2.pdf'),
+    'Pièces d\'identité/Autres/Anna Malaval');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2019-03_Carte d\'identité_Anna Malaval.pdf'),
+    'Pièces d\'identité/Autres/Anna Malaval');
+  // La garde reste ENTIÈRE pour les autres : ajouter une personne n'ouvre pas la porte aux inconnus.
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2021-05_Passeport_Sophie Durand.pdf'), null);
+});
+
+test('01 : codes de RÉCUPÉRATION → Sécurité & codes (le pluriel n\'est pas couvert par le singulier)', () => {
+  const d = '01 · Administratif & identité';
+  // Nom RÉEL resté en `_TRI 2026/01` faute de règle (constaté 2026-07-30).
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2026-06-29_Codes de récupération_Codes de récupération authentification double facteur.txt'),
+    'Sécurité & codes');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2025-01_Code de récupération_Google.txt'), 'Sécurité & codes');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2025-02_Mot de passe_Coffre.txt'), 'Sécurité & codes');
+  // Non-régression : « La Sauvegarde » reste un ASSUREUR, jamais un code de sécurité.
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2023-06_Conditions générales_GMF La Sauvegarde.pdf'), null);
+});
+
 test('05 : motif « ute » EXACT seulement — un émetteur qui le contient par hasard reste non routé (revue PR1)', () => {
   assert.strictEqual(ctx.cheminCibleReset_('05 · Carrière', '2024-01_Lettre_Communauté Métropolitaine.pdf'), null);
   assert.strictEqual(ctx.cheminCibleReset_('05 · Carrière', '2019-05_Lettre_UTE.pdf'), 'Recherche d\'emploi');

@@ -1458,3 +1458,30 @@ qu'on croit y avoir mise (`grep` sur la constante) — vérifier l'artefact, jam
 (même famille que la leçon des backticks dans `git commit -m`)."
 
 **Règle durable ?** oui (ajouté à CLAUDE.md §7).
+
+## 2026-07-30 — Une clé d'idempotence qui mémorise un ÉCHEC DE RÈGLE doit porter la version de la règle
+
+**Contexte.** C28-33, premier reliquat RÉEL après ~12 h de reset automatique : une dizaine de
+fichiers restés dans `_TRI 2026/01` faute de règle de routage. Marc valide l'un des cas (« Anna
+Malaval doit avoir un dossier »). J'ajoute la personne à `RESET_PERSONNES_AUTRES` et une règle pour
+les « codes de récupération »… et en relisant le chemin de placement je constate que ça n'aurait
+RIEN changé : `placerUnFichierReset_` pose sa clé `tri33p|<tag>|<fileId>` dans TOUS les cas, y
+compris quand le fichier n'est PAS routé (statut `tri33-reste`) — c'est voulu (ne pas re-hasher un
+non-routé à chaque run), mais ça fige aussi le VERDICT à vie. Le fichier d'Anna n'aurait jamais été
+re-présenté, et j'aurais annoncé à Marc « c'est fait » pour un correctif inopérant. Correctif livré
+dans le même PR : `CONFIG.RESET_TABLE_VERSION` entre dans la clé (`tri33p|<tag>|<version>|<fileId>`).
+
+**Leçon.** "Une clé d'idempotence peut mémoriser deux choses très différentes : un SUCCÈS (« ce
+fichier est rangé » — définitif, la clé doit le figer) ou un ÉCHEC DE RÈGLE (« je n'ai pas su le
+router » — révisable, car il dépend d'une TABLE DE RÈGLES qui vit dans le code). Dans le second cas,
+la VERSION de la table fait partie de l'état qui commande la décision (corollaire direct de « une clé
+encode TOUT l'état qui commande la décision ») : sans elle, affiner la règle est SANS EFFET et on
+annonce un correctif qui ne s'appliquera jamais. Mettre la version dans la clé rend l'affinage
+effectif ; c'est sûr à condition que la COLLECTE ne puisse re-présenter QUE le reliquat (ici le
+placement n'itère que sur `_TRI` — un fichier rangé n'y est plus, donc jamais re-déplacé), invariant
+à verrouiller par un test dédié. Réflexe de revue : pour chaque clé posée, se demander « SUCCÈS
+définitif ou ÉCHEC de règle révisable ? » — et pour le second, « qu'est-ce qui le fera re-tenter le
+jour où la règle change ? ». Corollaire produit : ce défaut ne se voit qu'au premier RELIQUAT réel,
+jamais en test — c'est en regardant ce que le moteur N'A PAS su faire qu'on le trouve."
+
+**Règle durable ?** oui (ajouté à CLAUDE.md §7, en corollaire de la règle sur les clés d'idempotence).

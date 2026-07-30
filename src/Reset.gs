@@ -133,8 +133,18 @@ function resetBucketAnnee_(annee, noeudAnnees) {
   return (annee && noeudAnnees[annee]) ? annee : 'Archives';
 }
 
-/** Personnes « Autres » connues (pièces d'identité) : clé normalisée → libellé de dossier. */
-var RESET_PERSONNES_AUTRES = { 'francine richard': 'Francine Richard', 'leandre labyt': 'Léandre LABYT' };
+/**
+ * Personnes « Autres » connues (pièces d'identité) : clé normalisée → libellé de dossier.
+ * Liste EXPLICITE, jamais devinée : une pièce d'identité dont le titulaire n'est pas ici (et qui
+ * n'est pas émise par une autorité) reste en `_TRI` au rapport — c'est Marc qui tranche, à qui
+ * appartient le dossier. Anna Malaval ajoutée sur sa validation (2026-07-30, après remontée du
+ * reliquat réel : `2022-09-07_Passeport_Anna Malaval_2.pdf`).
+ */
+var RESET_PERSONNES_AUTRES = {
+  'francine richard': 'Francine Richard',
+  'leandre labyt': 'Léandre LABYT',
+  'anna malaval': 'Anna Malaval',
+};
 
 /**
  * Dossiers/fichiers JAMAIS touchés par le reset (en plus des `00 ·`, `_…` et de la zone gérée à
@@ -182,7 +192,11 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(e, ['tesco', 'transport scolaire'])) return 'Contrats & fournisseurs/Transport scolaire';
     if (e.indexOf('maif') !== -1) return 'Contrats & fournisseurs/Filia-MAIF';
     if (e === 'ino') return 'Contrats & fournisseurs/INO';
-    if (resetContient_(tout, ['code de securite', 'codes de securite', 'mot de passe']) ||
+    // Le pluriel n'est PAS couvert par le singulier (« codes de … » ne contient pas « code de … ») :
+    // chaque forme est listée. `codes de recuperation`/`double facteur` ajoutés sur le reliquat réel
+    // du 2026-07-30 (fichier resté en _TRI faute de règle).
+    if (resetContient_(tout, ['code de securite', 'codes de securite', 'code de recuperation',
+      'codes de recuperation', 'mot de passe', 'double facteur', 'authentification a deux facteurs']) ||
         (tout.indexOf('sauvegarde') !== -1 && e.indexOf('gmf') === -1)) return 'Sécurité & codes'; // GMF La Sauvegarde = un ASSUREUR (revue)
     if (resetContient_(t, ['lettre', 'courrier', 'correspondance', 'mise en demeure'])) return 'Correspondance';
     return null;
@@ -347,12 +361,33 @@ function domainesRassemblesReset_() {
     .filter(function (d) { return d !== '04 · Immigration'; });
 }
 
-/** Vrai si TOUTES les phases du reset sont terminées pour le tag courant (lecture cheap, 3 Properties). */
+/**
+ * Valeur du drapeau de fin du PLACEMENT. Elle porte la VERSION DE TABLE, contrairement aux deux
+ * autres phases (revue #227 — BLOQUANT) : le drapeau de phase EST une clé d'idempotence, en gros.
+ * Sans la version, il est testé AVANT que les clés par fichier ne soient construites — une fois le
+ * placement convergé, bumper `RESET_TABLE_VERSION` ne re-présenterait plus RIEN, en silence, et le
+ * seul contournement (bumper `RESET_TAG`) serait DESTRUCTEUR (les clés du rassemblement n'ont pas de
+ * version : tout le Drive repartirait dans `_TRI` pour un cycle complet).
+ *
+ * DISSYMÉTRIE VOULUE : les drapeaux du RASSEMBLEMENT et de 04 ne prennent PAS la version — leurs
+ * clés PAR FICHIER n'en portent pas non plus, et l'y ajouter relancerait un rassemblement complet.
+ * Seul le placement dépend de la table de routage, donc seul son drapeau la suit.
+ *
+ * EFFET DE BORD ASSUMÉ d'un bump : `resetTermine_()` repasse à faux ⇒ conso-2, réorg auto,
+ * historique Gmail et réconciliation Index sont RE-SUSPENDUS le temps de la re-convergence
+ * (« une seule main déplace à la fois », ADR-0030 « Transition »). C'est une décision, pas une
+ * surprise : re-trancher le reliquat coûte une courte pause aux campagnes de fond.
+ */
+function finPlacementReset_() {
+  return CONFIG.RESET_TAG + '|' + CONFIG.RESET_TABLE_VERSION;
+}
+
+/** Vrai si TOUTES les phases du reset sont terminées pour le tag (et la version, côté placement). */
 function resetTermine_() {
   var props = PropertiesService.getScriptProperties();
   var tag = CONFIG.RESET_TAG;
   return props.getProperty('DriveAI_RESET_RASSEMBLEMENT') === tag &&
-    props.getProperty('DriveAI_RESET_PLACEMENT') === tag &&
+    props.getProperty('DriveAI_RESET_PLACEMENT') === finPlacementReset_() &&
     props.getProperty('DriveAI_RESET_04') === tag;
 }
 
@@ -568,14 +603,19 @@ function signalerQuasiDoublonReset_(nom, taille, hashee, fileId, domaine, ctx) {
   var vu = ctx.taillesVues[cleTaille];
   if (vu === undefined) { ctx.taillesVues[cleTaille] = { taille: taille, hashee: hashee }; return; }
   if (vu.taille === taille && vu.hashee && hashee) return; // tailles égales ET LES DEUX hashées → déjà couvert
-  inscrireLigneReset_('quasidoublon|' + fileId, 'quasi-doublon', nom, domaine, '', 'doublon-probable',
+  // Clé VERSIONNÉE (revue #227) : sans la version, un cas résolu par un affinage de table garderait
+  // sa ligne « à trancher » à vie et le rapport que Marc lit surévaluerait le reliquat.
+  inscrireLigneReset_('quasidoublon|' + CONFIG.RESET_TABLE_VERSION + '|' + fileId, 'quasi-doublon', nom, domaine, '', 'doublon-probable',
     'même nom, taille ' + (vu.taille === taille ? 'identique mais NON confirmée par hash' : 'différente') +
     ' (' + taille + ' vs ' + vu.taille + ' octets)', ctx);
 }
 
 /** Fichier NON ROUTÉ (ADR-0030 §3) : reste dans `_TRI`, RAPPORTÉ — jamais deviné. */
 function signalerNonRouteReset_(nom, fileId, domaine, ctx) {
-  inscrireLigneReset_('nonroute|' + fileId, 'non-routé', nom, domaine, CONFIG.RESET_TRI_NOM + '/' + domaine,
+  // Clé VERSIONNÉE (revue #227) : chaque version de table produit son instantané HONNÊTE du
+  // reliquat. Sans ça, un fichier non routé en t1 puis correctement placé en t2 resterait affiché
+  // « aucune règle ne matche » — on écrirait des règles t3 pour des cas déjà résolus.
+  inscrireLigneReset_('nonroute|' + CONFIG.RESET_TABLE_VERSION + '|' + fileId, 'non-routé', nom, domaine, CONFIG.RESET_TRI_NOM + '/' + domaine,
     'reste en _TRI', 'aucune règle de STRUCTURE_CIBLE_RESET ne matche ce nom — affiner la table ou décision Marc', ctx);
 }
 
@@ -615,8 +655,9 @@ function resoudreCibleReset_(domaineDossier, domaine, sousChemin, ctx) {
  * empreinte (campagne, seedée depuis `empreintesPlanConsolidation_` — réutilisation des empreintes
  * déjà connues de conso-2), PUIS routage PAR LE NOM (`cheminCibleReset_`, zéro LLM). Doublon EXACT →
  * `_Doublons` (déplacement seul, §2). Non routé (null) → reste dans `_TRI`, rapporté. Clé
- * `tri33p|<tag>|id` posée dans TOUS les cas (convergence : un fichier non-routé n'est jamais
- * re-hashé à chaque run).
+ * `tri33p|<tag>|<versionTable>|id` posée dans TOUS les cas (convergence : un fichier non-routé n'est
+ * jamais re-hashé à chaque run) — la VERSION DE TABLE en fait partie pour que l'affinage des règles
+ * puisse re-tenter le reliquat, cf. `CONFIG.RESET_TABLE_VERSION`.
  * @return {boolean} vrai si RÉELLEMENT déplacé ce call.
  */
 function placerUnFichierReset_(f, domaine, cle, ctx) {
@@ -704,7 +745,11 @@ function placerUnePageReset_(estBudgetDepasse, ctx) {
       if (estBudgetDepasse() || examines >= CONFIG.RESET_PLACEMENT_MAX_PAR_RUN) { complet = false; break; }
       var f;
       try { f = fi.next(); } catch (e) { complet = false; break; }
-      var cle = 'tri33p|' + tag + '|' + f.getId();
+      // La VERSION DE TABLE entre dans la clé : bumper `RESET_TABLE_VERSION` re-tente le placement
+      // du RELIQUAT après un affinage des règles. Sans risque de défaire le travail fait : la
+      // collecte n'itère QUE sur `_TRI 2026/<domaine>` — un fichier déjà placé n'y est plus, donc
+      // il n'est jamais re-présenté, quelle que soit la version.
+      var cle = 'tri33p|' + tag + '|' + CONFIG.RESET_TABLE_VERSION + '|' + f.getId();
       if (indexContient_(cle)) continue; // déjà tenté — gratuit, n'occupe pas la page
       examines++;
       try { if (placerUnFichierReset_(f, dom, cle, ctx)) deplaces++; }
@@ -724,7 +769,9 @@ function placerReset_(estBudgetDepasse, manuel) {
   if (!CONFIG.RESET_ACTIF) return;
   var props = PropertiesService.getScriptProperties();
   var tag = CONFIG.RESET_TAG;
-  if (props.getProperty('DriveAI_RESET_PLACEMENT') === tag) return;
+  // Drapeau VERSIONNÉ (cf. finPlacementReset_) : un bump de table RÉ-OUVRE la phase, sinon le
+  // mécanisme de version serait neutralisé ici, avant même la construction des clés par fichier.
+  if (props.getProperty('DriveAI_RESET_PLACEMENT') === finPlacementReset_()) return;
   var aujourdhui = dateGmail_(new Date());
   var consommeJour = budgetJourReset_(props, 'DriveAI_RESET_PLACE_JOUR', aujourdhui);
   if (!manuel && consommeJour >= CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS) return;
@@ -744,8 +791,8 @@ function placerReset_(estBudgetDepasse, manuel) {
     if (r.deplaces) journalInfo_('Reset', r.deplaces + ' fichier(s) traité(s) au placement (reset).');
     if (r.complet && r.examines === 0) {
       if (props.getProperty('DriveAI_RESET_RASSEMBLEMENT') === tag) {
-        props.setProperty('DriveAI_RESET_PLACEMENT', tag);
-        journalInfo_('Reset', 'Placement TERMINÉ (tag « ' + tag + ' ») — rassemblement également fini.');
+        props.setProperty('DriveAI_RESET_PLACEMENT', finPlacementReset_());
+        journalInfo_('Reset', 'Placement TERMINÉ (' + finPlacementReset_() + ') — rassemblement également fini.');
       } else {
         // État STABLE « oisif mais tag impossible » (le placement ne se fige qu'après le
         // rassemblement) : c'est exactement le cas où une boucle un-clic spinnerait à vide — d'où

@@ -4,6 +4,22 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **⚡⚡⚡ ÉTAT AU 2026-07-30 (soir) — LE RESET AVANCE SEUL, 1ᵉʳ RELIQUAT TRAITÉ.** Constaté par
+> signaux Drive : `_TRI 2026` contient 3 sous-dossiers de provenance (`01` 29/07 18:23, `02` 29/07
+> 18:41, `03` 30/07 06:11) — le rassemblement descend domaine par domaine. Le placement tourne
+> (`03 · Logement/Logements/3325 4e Avenue (LCP Groupe Immobilier)` créé 30/07 08:41 avec ses
+> contrats ; `Logements/Anciens logements` avec `Le Trieste`), et **04 a été réorganisée EN INTERNE**
+> (29/07 19:42 : `IRCC (fédéral)`, `MIFI (Québec)`, `Permis de travail & EIMT` ; `CIC Nord Ouest`
+> laissé en place — cas ambigu banque/immigration, jamais tranché d'office). Sheet d'état écrite à
+> 18:12 le 30/07 ⇒ **pas de gel du quota** (le point de surveillance C28-34 est bon pour l'instant).
+> **#225** (un-clic hors budget quotidien) et **#226** (réallocation ×2,5 : histo Gmail 20 + sync 12 +
+> conso 18 suspendus pendant le reset ⇒ 50 min/j au reset, enveloppe INCHANGÉE) sont MERGÉES.
+> **#227 (PR3) EN REVUE** : Anna Malaval (validation Marc) + « codes de récupération », et surtout la
+> **VERSION DE TABLE** dans la clé de placement — sans quoi tout affinage futur des règles serait
+> resté SANS EFFET (la clé fige aussi les verdicts « non routé »). Voir la leçon du 2026-07-30.
+> **Question ouverte pour Marc** : `Extrait Kbis`/`Registre des bénéficiaires effectifs` (SCI MRic)
+> — règle vers `01/Attestations & certificats`, ou déplacement manuel vers `05/Entreprise — MRic` ?
+>
 > **⚡⚡ ÉTAT AU 2026-07-29 (soir) — LE RESET TOURNE EN PROD.** #223 (PR1) et #224 (PR2) sont MERGÉES
 > et déployées. Marc a lancé `lancerResetTout()` dans l'éditeur : **vérifié par signaux Drive
 > indépendants** — `_TRI 2026` créé (18:23:19), `_TRI 2026/01 · Administratif & identité` rempli, puis

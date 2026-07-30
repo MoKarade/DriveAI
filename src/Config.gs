@@ -532,6 +532,14 @@ var CONFIG = {
   // À VÉRIFIER par signal indépendant (heartbeat non figé l'après-midi) — leçon §7.
   RESET_ACTIF: true,                      // false = suspension immédiate de TOUTES les phases (comme CONSOLIDATION_EXEC_ACTIF)
   RESET_TAG: 'tri33',                     // bumper relance une campagne complète (re-parcourt tout, additive)
+  // Version de la TABLE de routage (`STRUCTURE_CIBLE_RESET` + `cheminCibleReset_`). Entre dans la clé
+  // d'idempotence du PLACEMENT : la bumper re-tente le RELIQUAT resté dans `_TRI 2026` après un
+  // affinage des règles, SANS toucher à ce qui est déjà rangé (la collecte du placement n'itère que
+  // sur `_TRI 2026/<domaine>` — un fichier placé n'y est plus, il n'est donc jamais re-présenté).
+  // À bumper à CHAQUE modification des règles de routage, sinon les non-routés resteraient marqués
+  // « déjà tenté » à vie et l'affinage serait sans effet (constaté au 1ᵉʳ reliquat réel, 2026-07-30).
+  RESET_TABLE_VERSION: 't2',              // t2 : + Anna Malaval (pièces d'identité), + codes de récupération
+
   RESET_TRI_NOM: '_TRI 2026',             // racine de rassemblement, à côté de `_Doublons`/`_Technique` (préfixe _ = invisible des scans vivants)
   RESET_RASSEMBLEMENT_MAX_PAR_RUN: 60,    // fichiers déplacés vers `_TRI 2026/<domaine>` par run
   RESET_RASSEMBLEMENT_BUDGET_JOUR_MS: 20 * 60 * 1000, // 8 → 20 (il ALIMENTE le placement : jamais l'affamer)

@@ -298,7 +298,14 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   `tri|fil|ts|lu` — sans le flag lu/non-lu, un mail lu APRÈS son tri n'aurait jamais été archivé).
   Revue systématique : « quel changement d'état devrait re-déclencher l'action, est-il dans la
   clé ? » Et deux documents qui doivent bouger ensemble (manifeste ↔ constitution) se verrouillent
-  par un tripwire CI, pas par la discipline.
+  par un tripwire CI, pas par la discipline. **Corollaire VERDICT NÉGATIF (C28-33) : quand la
+  décision dépend d'une TABLE DE RÈGLES du code, la VERSION de cette table fait partie de l'état.**
+  Une clé posée sur un « je n'ai pas su faire » (non routé, non reconnu, ignoré) le fige À VIE :
+  affiner la règle devient sans effet, et on annonce à l'utilisateur un correctif qui ne s'applique
+  jamais. Mettre la version dans la clé (`…|<tableVersion>|<id>`) rend l'affinage effectif ; c'est
+  sûr tant que la COLLECTE ne re-présente que le reliquat (ici `_TRI` seul — le déjà-rangé n'y est
+  plus, donc jamais re-déplacé). Réflexe : « cette clé mémorise-t-elle un SUCCÈS (définitif) ou un
+  ÉCHEC de règle (révisable) ? » — le second exige la version.
 - **Promesse de verrou = verrou codé dans le même commit.** Écrire dans un document vivant « la
   surface X est verrouillée par tests » exige de VÉRIFIER (grep + test) que le test couvre bien X —
   un test voisin ne couvre pas par contagion (le verrou Gmail ne voyait pas les suppressions Drive).

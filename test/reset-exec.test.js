@@ -44,7 +44,7 @@ test('resetTermine_ / resetEnCours_ : les 3 phases doivent être au tag courant 
   assert.strictEqual(c.resetEnCours_(), true, 'RESET_ACTIF par défaut → en cours');
 
   props.DriveAI_RESET_RASSEMBLEMENT = tag;
-  props.DriveAI_RESET_PLACEMENT = tag;
+  props.DriveAI_RESET_PLACEMENT = tag + '|' + c.CONFIG.RESET_TABLE_VERSION; // drapeau VERSIONNÉ (revue #227)
   assert.strictEqual(c.resetTermine_(), false, '04 interne pas encore fait');
 
   props.DriveAI_RESET_04 = tag;
@@ -250,7 +250,8 @@ test('placerUnFichierReset_ : NON routé → reste dans `_TRI`, rapporté (jamai
   assert.deepStrictEqual(log, [], 'aucun mouvement Drive');
   assert.strictEqual(ajouts[0].statut, 'tri33-reste');
   assert.strictEqual(ajoutsRapport.length, 1);
-  assert.strictEqual(ajoutsRapport[0][0], 'nonroute|F4');
+  assert.strictEqual(ajoutsRapport[0][0], 'nonroute|' + ctxPur.CONFIG.RESET_TABLE_VERSION + '|F4',
+    'clé de rapport VERSIONNÉE : chaque version produit son instantané honnête du reliquat');
   assert.strictEqual(ajoutsRapport[0][5], 'reste en _TRI');
 });
 
@@ -265,7 +266,7 @@ test('placerUnFichierReset_ : QUASI-doublon (même nom normalisé, taille diffé
 
   const quasi = ctx1.ajoutsRapport.filter((r) => String(r[0]).indexOf('quasidoublon|') === 0);
   assert.strictEqual(quasi.length, 1, 'un seul signal quasi-doublon (F6, le 2ᵉ vu)');
-  assert.strictEqual(quasi[0][0], 'quasidoublon|F6');
+  assert.strictEqual(quasi[0][0], 'quasidoublon|' + ctxPur.CONFIG.RESET_TABLE_VERSION + '|F6');
   assert.strictEqual(quasi[0][5], 'doublon-probable');
 });
 
@@ -283,7 +284,7 @@ test('placerUnFichierReset_ : QUASI-doublon — deux gros fichiers JAMAIS hashé
 
   const quasi = ctx1.ajoutsRapport.filter((r) => String(r[0]).indexOf('quasidoublon|') === 0);
   assert.strictEqual(quasi.length, 1, 'même taille mais NON hashés → rapporté (pas de faux « déjà couvert »)');
-  assert.strictEqual(quasi[0][0], 'quasidoublon|G2');
+  assert.strictEqual(quasi[0][0], 'quasidoublon|' + ctxPur.CONFIG.RESET_TABLE_VERSION + '|G2');
   assert.ok(String(quasi[0][6]).indexOf('NON confirmée par hash') !== -1);
 });
 
@@ -715,4 +716,141 @@ test('les 4 fonctions UN-CLIC passent `true` (manuel) aux phases — sinon le bu
       assert.ok(/,\s*true\s*\)/.test(appel), 'appel un-clic sans le drapeau manuel : ' + appel);
     });
   });
+});
+
+/* ---------- Version de TABLE : un affinage des règles re-tente le RELIQUAT, jamais le rangé ---------- */
+
+// Page de placement isolée : un dossier `_TRI 2026/<domaine>` contenant N fichiers, clés en mémoire.
+function ctxPage(opts) {
+  opts = opts || {};
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const index = Object.assign({}, opts.index);
+  const traites = [];
+  c.indexContient_ = (cle) => !!index[cle];
+  c.journalInfo_ = () => {}; c.journalErreur_ = () => {};
+  c.dossierTriReset_ = () => ({
+    getFoldersByName: (nom) => {
+      if (nom !== (opts.domaine || '02 · Finances')) return { hasNext: () => false };
+      let rendu = false;
+      return {
+        hasNext: () => !rendu,
+        next: () => { rendu = true; return { getFiles: () => iterFichiers(opts.fichiers || []) }; },
+      };
+    },
+  });
+  c.placerUnFichierReset_ = (f, dom, cle) => { traites.push({ id: f.getId(), cle: cle }); return true; };
+  return { c, traites, index };
+}
+
+function iterFichiers(ids) {
+  let i = 0;
+  return {
+    hasNext: () => i < ids.length,
+    next: () => { const id = ids[i++]; return { getId: () => id, getName: () => id + '.pdf' }; },
+  };
+}
+
+test('placement : la clé porte la VERSION DE TABLE — bumper la version re-tente le reliquat resté en _TRI', () => {
+  const V = ctxPur.CONFIG.RESET_TABLE_VERSION;
+  const TAG = ctxPur.CONFIG.RESET_TAG;
+  // F1 a DÉJÀ été tenté sous la version COURANTE → sauté ; F2 jamais vu → traité.
+  const dejaVu = {};
+  dejaVu['tri33p|' + TAG + '|' + V + '|F1'] = true;
+  const t = ctxPage({ fichiers: ['F1', 'F2'], index: dejaVu });
+  t.c.placerUnePageReset_(() => false, { proteges: {}, empreintesVues: {}, validees: {}, repointes: {} });
+  assert.deepStrictEqual(t.traites.map((x) => x.id), ['F2'], 'un fichier déjà tenté sous CETTE version est sauté');
+  assert.ok(t.traites[0].cle.indexOf('|' + V + '|') !== -1, 'la clé posée porte bien la version de table');
+
+  // MÊME fichier, marqué sous une ANCIENNE version de table → RE-TENTÉ (c'est tout l'intérêt).
+  const ancienne = {};
+  ancienne['tri33p|' + TAG + '|v-ancienne|F1'] = true;
+  const t2 = ctxPage({ fichiers: ['F1'], index: ancienne });
+  t2.c.placerUnePageReset_(() => false, { proteges: {}, empreintesVues: {}, validees: {}, repointes: {} });
+  assert.deepStrictEqual(t2.traites.map((x) => x.id), ['F1'],
+    'affiner la table doit re-présenter le reliquat — sinon les non-routés resteraient « déjà tentés » à vie');
+});
+
+test('placement : la collecte n\'itère QUE sur `_TRI` — bumper la version ne peut PAS re-déplacer un fichier déjà rangé', () => {
+  // Le dossier `_TRI 2026/<domaine>` est VIDE (tout a été placé) : quelle que soit la version de
+  // table, il n'y a rien à re-présenter. C'est la garantie donnée à Marc (« sans rien re-déplacer »).
+  const t = ctxPage({ fichiers: [] });
+  const r = t.c.placerUnePageReset_(() => false, { proteges: {}, empreintesVues: {}, validees: {}, repointes: {} });
+  assert.deepStrictEqual(t.traites, [], 'rien dans _TRI ⇒ rien traité, quelle que soit la version de table');
+  assert.strictEqual(r.examines, 0);
+});
+
+/* ---------- Drapeau de FIN DE PHASE versionné : le bump ré-ouvre le placement (revue #227) ---------- */
+
+// Phase de placement isolée, avec la passe de travail mockée : on teste le GARDE de fin, pas le travail.
+function ctxPlacementPhase(props) {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const store = Object.assign({}, props);
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in store ? store[k] : null),
+    setProperty: (k, v) => { store[k] = String(v); },
+    deleteProperty: (k) => { delete store[k]; },
+  }) };
+  c.dateGmail_ = () => '2026/07/29';
+  c.journalInfo_ = () => {}; c.journalErreur_ = () => {};
+  c.ensembleDomainesProteges_ = () => ({});
+  c.entitesValideesParCle_ = () => ({});
+  c.empreintesPlanConsolidation_ = () => ({});
+  let passes = 0;
+  c.placerUnePageReset_ = () => { passes++; return { examines: 0, deplaces: 0, complet: true }; };
+  return { c, store, nbPasses: () => passes };
+}
+
+test('placerReset_ : drapeau de fin à la version COURANTE → phase close (aucune passe) — le blocage', () => {
+  const c0 = load(['Config.gs', 'Reset.gs']);
+  const t = ctxPlacementPhase({
+    DriveAI_RESET_PLACEMENT: c0.CONFIG.RESET_TAG + '|' + c0.CONFIG.RESET_TABLE_VERSION,
+    DriveAI_RESET_RASSEMBLEMENT: c0.CONFIG.RESET_TAG,
+  });
+  t.c.placerReset_(() => false);
+  assert.strictEqual(t.nbPasses(), 0, 'convergé pour CETTE version : rien à refaire');
+});
+
+test('placerReset_ : drapeau de fin à une ANCIENNE version → la phase SE RÉ-OUVRE (testé par la LIBÉRATION, leçon C28-32)', () => {
+  // LE bug que la revue #227 a trouvé : le drapeau de phase ne portait que le TAG et était testé
+  // AVANT la construction des clés versionnées. Une fois le placement convergé, bumper
+  // RESET_TABLE_VERSION ne re-présentait plus RIEN — en silence, sans erreur, et le seul
+  // contournement (bumper RESET_TAG) aurait renvoyé TOUT le Drive dans `_TRI` pour un cycle complet.
+  const c0 = load(['Config.gs', 'Reset.gs']);
+  const t = ctxPlacementPhase({
+    DriveAI_RESET_PLACEMENT: c0.CONFIG.RESET_TAG + '|v-ancienne',
+    DriveAI_RESET_RASSEMBLEMENT: c0.CONFIG.RESET_TAG,
+  });
+  t.c.placerReset_(() => false);
+  assert.strictEqual(t.nbPasses(), 1, 'un affinage de table DOIT ré-ouvrir le placement');
+  assert.strictEqual(t.store.DriveAI_RESET_PLACEMENT, c0.CONFIG.RESET_TAG + '|' + c0.CONFIG.RESET_TABLE_VERSION,
+    'et le drapeau se repose à la NOUVELLE version (convergence de la nouvelle passe)');
+});
+
+test('placerReset_ : drapeau LEGACY sans version (état de la prod avant ce PR) → se ré-ouvre UNE fois, puis converge', () => {
+  const c0 = load(['Config.gs', 'Reset.gs']);
+  const t = ctxPlacementPhase({
+    DriveAI_RESET_PLACEMENT: c0.CONFIG.RESET_TAG, // valeur écrite par le code déployé aujourd'hui
+    DriveAI_RESET_RASSEMBLEMENT: c0.CONFIG.RESET_TAG,
+  });
+  t.c.placerReset_(() => false);
+  assert.strictEqual(t.nbPasses(), 1, 'migration gratuite : une re-passe sur `_TRI`, inoffensive');
+  t.c.placerReset_(() => false);
+  assert.strictEqual(t.nbPasses(), 1, 'puis close — pas de ré-ouverture en boucle');
+});
+
+test('resetTermine_ : exige la VERSION côté placement (un bump rouvre le reset ⇒ campagnes re-suspendues, effet assumé)', () => {
+  const c0 = load(['Config.gs', 'Reset.gs']);
+  const TAG = c0.CONFIG.RESET_TAG;
+  const V = c0.CONFIG.RESET_TABLE_VERSION;
+  const monter = (placement) => {
+    const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+    const store = { DriveAI_RESET_RASSEMBLEMENT: TAG, DriveAI_RESET_04: TAG, DriveAI_RESET_PLACEMENT: placement };
+    c.PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => (k in store ? store[k] : null) }) };
+    return c;
+  };
+  assert.strictEqual(monter(TAG + '|' + V).resetTermine_(), true, 'version courante → terminé');
+  assert.strictEqual(monter(TAG + '|v-ancienne').resetTermine_(), false, 'version périmée → PAS terminé (le reliquat est à re-tenter)');
+  assert.strictEqual(monter(TAG).resetTermine_(), false, 'drapeau legacy sans version → PAS terminé');
+  // Conséquence directe : les campagnes suspendues le restent tant que la nouvelle passe n'a pas convergé.
+  assert.strictEqual(monter(TAG + '|v-ancienne').resetEnCours_(), true);
 });
