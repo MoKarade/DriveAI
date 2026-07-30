@@ -226,3 +226,44 @@ test('estExcluDuReset_ : artefacts du moteur jamais touchés ; documents normaux
   assert.strictEqual(ctx.estExcluDuReset_('2026-01_Facture_EDF.pdf'), false);
   assert.strictEqual(ctx.estExcluDuReset_(''), false);
 });
+
+/* ---------- t3 : décisions Marc du 2026-07-30 sur le RELIQUAT RÉEL (134 non routés) ---------- */
+
+test('02 : bulletins de paie → Revenus & paie — type EXACT, JAMAIS la sous-chaîne « paie » ⊂ « paiement »', () => {
+  const d = '02 · Finances';
+  // Noms RÉELS du reliquat (onglet Reset, 2026-07-30).
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2026-06_Paie_Robovic Inc..pdf'), 'Revenus & paie');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2025-01_Paie_Automatech Robotik Inc..pdf'), 'Revenus & paie');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2026-01_Paie_CIUSSS de la Capitale-Nationale.pdf'), 'Revenus & paie');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2025-03_Bulletin de paie_Robovic.pdf'), 'Revenus & paie');
+  // ⚠ LE piège : « paie » est une sous-chaîne de « paiement ». Un paiement n'est PAS un salaire.
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2026-07-01_Confirmation de paiement_Crédit Mutuel.pdf'), null,
+    'un « paiement » ne doit JAMAIS être pris pour un bulletin de paie');
+  // Non-régression : les feuillets FISCAUX restent fiscaux, pas de la paie.
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2025-02_Feuillet T4_Robovic.pdf'), 'Impôts & déclarations');
+});
+
+test('02 : donations/successions → Impôts & déclarations (le nœud dédié a cédé sa place, versant notarial couvert par 01)', () => {
+  assert.strictEqual(ctx.cheminCibleReset_('02 · Finances', '2025-12_Déclaration_Donation-partage.pdf'), 'Impôts & déclarations');
+  assert.strictEqual(ctx.cheminCibleReset_('02 · Finances', '2024-03_Attestation_Succession Richard.pdf'), 'Impôts & déclarations');
+  // La table ne doit PLUS porter le nœud retiré (sinon dossier fantôme jamais alimenté).
+  assert.ok(!ctx.STRUCTURE_CIBLE_RESET['02 · Finances']['Donations & successions'],
+    'nœud retiré de la table cible');
+  assert.ok(ctx.STRUCTURE_CIBLE_RESET['02 · Finances']['Revenus & paie'], 'et remplacé par Revenus & paie');
+});
+
+test('03 : filets Contrats / Correspondance — capturent le reliquat SANS voler ce qui est mieux routé', () => {
+  const d = '03 · Logement & véhicule';
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2026-03-09_Contrat_Inconnu.pdf'), 'Contrats');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2024-05_Consentement_Propriétaire.pdf'), 'Contrats');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2023-02_Correspondance_Syndic.pdf'), 'Correspondance');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2022-11_Avis de séjour_Camping.pdf'), 'Correspondance');
+  // PRIORITÉ : les règles par ENTITÉ passent AVANT les filets — un contrat LCP reste chez LCP.
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2025-07_Contrat_LCP Groupe Immobilier.pdf'),
+    'Logements/3325 4e Avenue (LCP Groupe Immobilier)');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2024-01_Contrat_1548 avenue de la Roselière.pdf'),
+    'Logements/1548 avenue de la Roselière');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2023-05_Contrat_KIA Québec.pdf'), 'Véhicules/KIA');
+  // Et les types spécifiques gardent leur priorité.
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2024-05_Bail_Résidence X.pdf'), 'Logements');
+});
