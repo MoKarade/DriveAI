@@ -162,6 +162,11 @@ const CONTRAT = [
   // (ConsolidationExec.gs) et repointerEntites_ (Reorg.gs) EN TRAVERS des modules.
   'rassemblerReset_', 'placerReset_', 'appliquerReset04Interne_', 'resetEnCours_', 'resetTermine_',
   'detecterDossierVide_', 'repointerEntites_',
+  // Débit du placement (revue #229) : `empreinteReutiliseeReset_` (Reset.gs) appelle
+  // `empreinteConnueParId_` (Journal.gs) et consomme `empreintesPlanDeuxSens_` (Consolidation.gs) —
+  // trois modules différents, donc INVISIBLES des tests unitaires mockés : d'où leur place ici.
+  'empreinteReutiliseeReset_', 'empreinteConnueParId_', 'fileIdDeCleIndex_',
+  'empreintesPlanDeuxSens_', 'dossierDomaineMemo_', 'gardePartReset_',
 ];
 
 test('surface du moteur : toutes les fonctions du contrat interne sont définies', () => {

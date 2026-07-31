@@ -60,7 +60,11 @@ export function FournisseurEtat({ children }: { children: ReactNode }) {
     try {
       if (forcer) viderCachePlages(); // relire VRAIMENT (le cache 60 s servirait la même photo)
       const [index, sante, journal, entites, triAppris, reglages, telemetrie] = await Promise.all([
-        lirePlage('Index', 'A2:H20000'),
+        // Fenêtre OUVERTE (`A2:H`, sans borne haute) — JAMAIS `A2:H<N>` : l'Index est append-only
+        // (garde-fou §2) et le reset C28-33 y écrit DEUX lignes par fichier (`tri33|` puis `tri33p|`).
+        // Une borne de TÊTE fige l'app EN SILENCE dès qu'elle est franchie (zéro erreur, zéro log :
+        // Marc croirait le moteur arrêté). Repéré en revue le 2026-07-31, à ~4 600 fichiers du seuil.
+        lirePlage('Index', 'A2:H'),
         lirePlage('Santé', 'A2:A10'),
         lirePlage('Journal', 'A2:D5000'),
         lirePlage('Entités', 'A1:Z10000'),

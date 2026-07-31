@@ -77,3 +77,64 @@ test('lignePourAction_ (Réorg) : 8 colonnes métadonnées, jamais un corps de d
   assert.strictEqual(row[5], 'proposé');
 });
 
+
+/* ---------- Réutilisation d'empreinte : la clé d'Index doit désigner le BON fichier (revue #229) ---------- */
+
+test('fileIdDeCleIndex_ (PURE) : n\'accepte QUE les clés qui identifient un fichier — jamais une clé Gmail', () => {
+  const c = load(['Config.gs', 'Journal.gs']);
+  const ID = '1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789';
+
+  // Clés DOCUMENTAIRES : le dernier segment est bien un fileId.
+  assert.strictEqual(c.fileIdDeCleIndex_('drive|' + ID), ID);
+  // `conso` est VOLONTAIREMENT hors whitelist : une de ses formes est `conso|<tag>|dom|<domaine>`,
+  // qui ne finit pas par un fileId — et conso n'inscrit jamais d'empreinte à l'Index (revue #229).
+  assert.strictEqual(c.fileIdDeCleIndex_('conso|conso-2|' + ID), '');
+  assert.strictEqual(c.fileIdDeCleIndex_('conso|conso-2|dom|02 · Finances'), '');
+  // `shared|<fileId>` : le fileId est celui de l'ORIGINAL chez le tiers (le partage dépose une COPIE)
+  // — sa forme passerait la regex, seul le préfixe l'exclut.
+  assert.strictEqual(c.fileIdDeCleIndex_('shared|' + ID), '');
+  assert.strictEqual(c.fileIdDeCleIndex_('tri33p|tri33|t3|' + ID), ID, 'clé versionnée du placement');
+  assert.strictEqual(c.fileIdDeCleIndex_('migre|m1|' + ID), ID);
+  assert.strictEqual(c.fileIdDeCleIndex_('reanalyse|c26-08|' + ID), ID);
+
+  // Clés GMAIL : attribuer une empreinte au « fileId » qu'on y lirait ferait partir un ORIGINAL
+  // dans `_Doublons`. Elles doivent être rejetées par le préfixe, pas par chance.
+  assert.strictEqual(c.fileIdDeCleIndex_('19abc123def456|0|facture.pdf|48213'), '', 'PJ Gmail');
+  assert.strictEqual(c.fileIdDeCleIndex_('tri|19abc123def456|1753900000000|lu'), '', 'état de tri d\'un fil');
+  assert.strictEqual(c.fileIdDeCleIndex_('intention|19abc123def456'), '', 'préfixe hors whitelist');
+  assert.strictEqual(c.fileIdDeCleIndex_('epingle|' + ID), '', 'épinglé : pas de colonne empreinte à réutiliser');
+
+  // Formes dégénérées.
+  assert.strictEqual(c.fileIdDeCleIndex_(''), '');
+  assert.strictEqual(c.fileIdDeCleIndex_(null), '');
+  assert.strictEqual(c.fileIdDeCleIndex_('drive'), '', 'un seul segment');
+  assert.strictEqual(c.fileIdDeCleIndex_('drive|trop-court'), '', 'ne ressemble pas à un ID Drive');
+});
+
+test('empreinteConnueParId_ : alimenté par le chargement de l\'Index ET par les écritures du run', () => {
+  const c = load(['Config.gs', 'Journal.gs']);
+  const ID1 = '1AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+  const ID2 = '1BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB';
+  const lignes = [
+    ['drive|' + ID1, '', '', '', '', 'natif', 'EMP-1', ''],
+    ['19zz|0|piece.pdf|1234', '', '', '', '', 'classé', 'EMP-PJ', ''], // clé Gmail : JAMAIS indexée par id
+  ];
+  const ajouts = [];
+  c.feuille_ = () => ({
+    getLastRow: () => lignes.length + 1,
+    getRange: (r, col, nb) => ({
+      getValue: () => 'Empreinte',
+      setValue: () => {},
+      getValues: () => lignes,
+    }),
+    appendRow: (row) => ajouts.push(row),
+  });
+
+  assert.strictEqual(c.empreinteConnueParId_(ID1), 'EMP-1', 'lu depuis l\'Index');
+  assert.strictEqual(c.empreinteConnueParId_('19zz'), '', 'une clé Gmail ne peuple pas la table par id');
+  assert.strictEqual(c.empreinteConnueParId_(ID2), '', 'inconnu → vide (le hash sera calculé)');
+
+  // Une écriture du run doit être immédiatement visible (sinon on re-hasherait dans le même run).
+  c.indexAjouter_('tri33p|tri33|t3|' + ID2, { statut: 'tri33-route', nom: 'x', domaine: '', chemin: '' }, 'EMP-2');
+  assert.strictEqual(c.empreinteConnueParId_(ID2), 'EMP-2');
+});

@@ -143,21 +143,36 @@ function decisionConsolidation_(d) {
  * @return {Object} {empreinte: fileId}
  */
 function empreintesPlanConsolidation_() {
-  var vues = {};
+  return empreintesPlanDeuxSens_().parEmpreinte;
+}
+
+/**
+ * UNE seule lecture du plan → les DEUX sens de l'index d'empreintes :
+ *  - `parEmpreinte` : empreinte → 1ᵉʳ porteur (détection de doublon, contrat historique) ;
+ *  - `parId`        : fileId → empreinte (RÉUTILISATION). `empreinteBlob_` télécharge les octets du
+ *    fichier : c'est de LOIN le poste le plus cher du placement du reset. Tout fichier déjà hashé par
+ *    conso-2 n'a donc plus à l'être (même fonction de hash des deux côtés — `Consolidation` et
+ *    `Reset` appellent tous deux `empreinteBlob_`, les valeurs sont interchangeables par
+ *    construction). Construire l'inverse dans la MÊME boucle est gratuit (revue #229).
+ */
+function empreintesPlanDeuxSens_() {
+  var res = { parEmpreinte: {}, parId: {} };
   try {
     var f = feuille_('PlanConsolidation');
     var dern = f.getLastRow();
-    if (dern < 2) return vues;
+    if (dern < 2) return res;
     var lignes = f.getRange(2, 1, dern - 1, COLONNES_PLAN_CONSOLIDATION.length).getValues();
     for (var i = 0; i < lignes.length; i++) {
       var emp = String(lignes[i][6] || ''); // colonne Empreinte
       var id = String(lignes[i][2] || '');  // colonne ID
-      if (emp && id && !vues[emp]) vues[emp] = id; // 1er porteur seulement
+      if (!emp || !id) continue;
+      if (!res.parEmpreinte[emp]) res.parEmpreinte[emp] = id; // 1er porteur seulement
+      if (!res.parId[id]) res.parId[id] = emp;
     }
   } catch (e) {
     journalErreur_('Consolidation', 'Plan existant illisible (dédup intra-run seule ce run) : ' + e);
   }
-  return vues;
+  return res;
 }
 
 /** Consommation du budget QUOTIDIEN de la campagne (ms réelles persistées `AAAA-MM-JJ|ms`). PUR sur props. */

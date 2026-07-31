@@ -697,6 +697,14 @@ function actionHubSummary_() {
 function majResumeHub_() {
   var props = PropertiesService.getScriptProperties();
   var lastTick = Number(props.getProperty('DriveAI_LAST_TICK')) || 0;
+  // THROTTLE (C28-34, 2026-07-31) : ce calcul relit l'Index ENTIER + le Journal entier. Le Journal
+  // est borné (20 000), l'Index NE L'EST PAS (append-only, §2) — il est à ~10 800 lignes et le reset
+  // en ajoute ~2 par fichier. Le faire à CHAQUE tick (×288/j) est devenu le plus gros poste du socle
+  // non budgété, au point de retarder le heartbeat (constaté : 24 min de retard le 2026-07-31).
+  // Le widget hub n'a aucun besoin d'une fraîcheur à la minute : on recalcule au plus 1×/15 min.
+  // La Property n'est écrite qu'APRÈS un calcul réussi (une panne rejoue au tick suivant).
+  var dernierCalcul = Number(props.getProperty('DriveAI_HUB_MAJ_MS')) || 0;
+  if (dernierCalcul && (Date.now() - dernierCalcul) < CONFIG.HUB_RESUME_INTERVALLE_MS) return;
   var compte = compterMetriquesHub_(
     feuille_('Index').getDataRange().getValues(),
     feuille_('Journal').getDataRange().getValues(),
@@ -730,6 +738,7 @@ function majResumeHub_() {
     gmailQuotaSuspended: gmailQuotaSuspended
   };
   props.setProperty('DriveAI_HUB_SUMMARY', JSON.stringify(etat));
+  props.setProperty('DriveAI_HUB_MAJ_MS', String(Date.now())); // APRÈS succès (cf. throttle en tête)
 }
 
 /**

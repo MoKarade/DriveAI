@@ -39,3 +39,63 @@ test('CONFIG cohérent : le plafond du Journal couvre la fenêtre du résumé he
     'JOURNAL_MAX_LIGNES doit être ≥ RESUME_MAX_LIGNES');
   assert.ok(ctx.CONFIG.JOURNAL_MARGE > 0, 'une marge > 0 évite une purge à chaque tick');
 });
+
+test('bornerJournal_ : la rotation est REPORTÉE quand le tick a déjà consommé son garde-temps (anti-mur 6 min)', () => {
+  // Le `deleteRows` en lot coûte 10-30 s et tombe en TOUTE FIN de `finally` : c'est lui qui
+  // franchirait le mur (revue #229). Le reporter d'un tick n'a aucune conséquence.
+  const c = load(['Config.gs', 'Journal.gs']);
+  const suppressions = [];
+  const store = {};
+  c.journalInfo_ = () => {};
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in store ? store[k] : null),
+    setProperty: (k, v) => { store[k] = v; },
+    deleteProperty: (k) => { delete store[k]; },
+  }) };
+  c.feuille_ = () => ({
+    getLastRow: () => c.CONFIG.JOURNAL_MAX_LIGNES + c.CONFIG.JOURNAL_MARGE + 500, // rotation DUE
+    deleteRows: (debut, nb) => suppressions.push(nb),
+  });
+
+  c.bornerJournal_(() => true);
+  assert.deepStrictEqual(suppressions, [], 'tick chargé → aucune rotation ce tick-ci');
+
+  c.bornerJournal_(() => false);
+  assert.strictEqual(suppressions.length, 1, 'tick tranquille → la rotation a bien lieu');
+
+  c.bornerJournal_(); // appelant historique sans garde : comportement inchangé
+  assert.strictEqual(suppressions.length, 2, 'sans garde fourni, on rotationne comme avant');
+});
+
+test('bornerJournal_ : FILET anti-report indéfini — au bout de JOURNAL_REPORTS_MAX, on rotationne quand même', () => {
+  // Un report silencieux et illimité figerait la rotation si une étape courait au mur à chaque tick
+  // (« un garde-fou qui met des items hors circuit exige un chemin de RETOUR », §7).
+  const c = load(['Config.gs', 'Journal.gs']);
+  const suppressions = [];
+  const store = {};
+  c.journalInfo_ = () => {};
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in store ? store[k] : null),
+    setProperty: (k, v) => { store[k] = v; },
+    deleteProperty: (k) => { delete store[k]; },
+  }) };
+  c.feuille_ = () => ({
+    getLastRow: () => c.CONFIG.JOURNAL_MAX_LIGNES + c.CONFIG.JOURNAL_MARGE + 500,
+    deleteRows: (debut, nb) => suppressions.push(nb),
+  });
+  const MAX = c.CONFIG.JOURNAL_REPORTS_MAX; // cas DÉRIVÉ de la constante, jamais de sa valeur du jour
+  for (let i = 0; i < MAX - 1; i++) c.bornerJournal_(() => true);
+  assert.deepStrictEqual(suppressions, [], `${MAX - 1} reports : toujours rien (le tick reste chargé)`);
+  c.bornerJournal_(() => true);
+  assert.strictEqual(suppressions.length, 1, 'au MAX-ième, la rotation est FORCÉE');
+  assert.ok(!('DriveAI_JOURNAL_REPORTS' in store), 'le compteur est remis à zéro après rotation');
+});
+
+test('bornerJournal_ : rien à supprimer → le garde n\'est même pas consulté (cas dominant, coût nul)', () => {
+  const c = load(['Config.gs', 'Journal.gs']);
+  let consulte = false;
+  c.journalInfo_ = () => {};
+  c.feuille_ = () => ({ getLastRow: () => 10, deleteRows: () => { throw new Error('ne doit pas rotationner'); } });
+  c.bornerJournal_(() => { consulte = true; return true; });
+  assert.strictEqual(consulte, false);
+});

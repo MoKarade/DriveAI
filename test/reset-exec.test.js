@@ -66,6 +66,10 @@ function fakeFichierReset(opts) {
     getName: () => opts.nom || 'f.pdf',
     getSize: () => (opts.taille !== undefined ? opts.taille : 100),
     getBlob: () => ({ id: opts.id || 'F1' }), // porte l'id pour que le mock empreinteBlob_ varie PAR FICHIER
+    // Par défaut un vrai fichier binaire : les Google natifs (`application/vnd.google-apps.*`) sont
+    // EXCLUS de la dédup par empreinte (revue sécurité #229) — leur hash d'Index est celui du texte
+    // exporté, pas du fichier. Les tests qui veulent ce cas passent `mime` explicitement.
+    getMimeType: () => (opts.mime !== undefined ? opts.mime : 'application/pdf'),
     getParents: () => {
       const arr = opts.parents || [];
       let i = 0;
@@ -180,6 +184,8 @@ function ctxPlacement(opts) {
   // Dérivée du BLOB (donc du fichier réellement passé) — jamais figée sur le fichier de construction du
   // contexte, sinon un 2ᵉ fichier traité avec le MÊME `c` (mêmes mocks) hériterait de la 1ʳᵉ empreinte.
   c.empreinteBlob_ = (blob) => (opts.empreinte !== undefined ? opts.empreinte : 'EMP:' + blob.id);
+  // Cross-module (Journal.gs) : par défaut AUCUNE empreinte déjà connue → le hash est bien calculé.
+  c.empreinteConnueParId_ = (id) => (opts.empreintesConnues || {})[id] || '';
   c.dossierDoublons_ = () => fakeDossierReset('DOUBLONS', log);
   c.idDomaine_ = (dom) => 'DOM:' + dom;
   c.sousDossier_ = (parent, nom) => fakeDossierReset(parent.getId() + '/' + nom, log);
@@ -270,9 +276,9 @@ test('placerUnFichierReset_ : QUASI-doublon (même nom normalisé, taille diffé
   assert.strictEqual(quasi[0][5], 'doublon-probable');
 });
 
-test('placerUnFichierReset_ : QUASI-doublon — deux gros fichiers JAMAIS hashés (> OCR_TAILLE_MAX), MÊME taille → rapporté quand même (revue code C28-33)', () => {
+test('placerUnFichierReset_ : QUASI-doublon — deux gros fichiers JAMAIS hashés (> RESET_HASH_TAILLE_MAX), MÊME taille → rapporté quand même (revue code C28-33)', () => {
   // Une taille identique ne prouve « déjà couvert par le hash » QUE si les deux fichiers ont été
-  // RÉELLEMENT hashés (empreinteBlob_ n'est jamais appelée au-delà de OCR_TAILLE_MAX). Sans ce
+  // RÉELLEMENT hashés (empreinteBlob_ n'est jamais appelee au-dela de RESET_HASH_TAILLE_MAX). Sans ce
   // correctif, deux gros homonymes de même taille mais de contenu différent passaient inaperçus
   // des DEUX dédups (ni le hash exact — jamais calculé — ni ce rapport, court-circuité à tort).
   const ctx1 = ctxPlacement({ id: 'G1', nom: 'scan.pdf', taille: 500, empreinte: '', domaine: '08 · Perso & projets' });
@@ -289,7 +295,7 @@ test('placerUnFichierReset_ : QUASI-doublon — deux gros fichiers JAMAIS hashé
 });
 
 test('placerUnFichierReset_ : QUASI-doublon — même taille, LES DEUX vraiment hashés (empreintes différentes → contenu réellement distinct) → aucun rapport', () => {
-  // Les deux fichiers SONT hashés (sous OCR_TAILLE_MAX) et ont des empreintes DIFFÉRENTES — le hash
+  // Les deux fichiers SONT hashés (sous RESET_HASH_TAILLE_MAX) et ont des empreintes DIFFÉRENTES — le hash
   // exact a donc déjà tranché « pas un doublon » : la coïncidence de taille seule n'a rien à ajouter.
   const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
   const index = {};
@@ -302,6 +308,7 @@ test('placerUnFichierReset_ : QUASI-doublon — même taille, LES DEUX vraiment 
   c.journalInfo_ = () => {}; c.journalErreur_ = () => {};
   c.aParentProtege_ = () => false; c.nbParentsBorne_ = () => 1;
   c.empreinteBlob_ = (blob) => 'HASH:' + blob.id; // distincte par fichier — jamais un doublon exact
+  c.empreinteConnueParId_ = () => '';
   c.dossierDoublons_ = () => fakeDossierReset('DOUBLONS', log);
   c.idDomaine_ = (dom) => 'DOM:' + dom;
   c.sousDossier_ = (parent, nom) => fakeDossierReset(parent.getId() + '/' + nom, log);
@@ -853,4 +860,166 @@ test('resetTermine_ : exige la VERSION côté placement (un bump rouvre le reset
   assert.strictEqual(monter(TAG).resetTermine_(), false, 'drapeau legacy sans version → PAS terminé');
   // Conséquence directe : les campagnes suspendues le restent tant que la nouvelle passe n'a pas convergé.
   assert.strictEqual(monter(TAG + '|v-ancienne').resetEnCours_(), true);
+});
+
+/* ---------- DÉBIT du placement (revue #229) : ne plus re-télécharger ce qui est déjà hashé ---------- */
+
+/** Contexte minimal pour `empreinteReutiliseeReset_` : compte les hashs RÉELLEMENT calculés. */
+function ctxEmpreinte(opts) {
+  opts = opts || {};
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const hashs = [];
+  c.empreinteBlob_ = (blob) => { hashs.push(blob.id); return 'CALC:' + blob.id; };
+  c.empreinteConnueParId_ = (id) => (opts.index || {})[id] || '';
+  return { c, hashs };
+}
+
+test('empreinteReutiliseeReset_ : empreinte connue du PLAN → réutilisée, AUCUN téléchargement d\'octets', () => {
+  const { c, hashs } = ctxEmpreinte();
+  const f = fakeFichierReset({ id: 'K1', nom: 'a.pdf', taille: 100, parents: [] });
+  const emp = c.empreinteReutiliseeReset_(f, { empreintesConnues: { K1: 'DEJA' } });
+  assert.strictEqual(emp, 'DEJA');
+  assert.deepStrictEqual(hashs, [], 'empreinteBlob_ ne doit PAS être appelée quand la valeur est connue');
+});
+
+test('empreinteReutiliseeReset_ : empreinte connue de l\'INDEX → réutilisée (un bump de RESET_TABLE_VERSION ne re-hashe rien)', () => {
+  const { c, hashs } = ctxEmpreinte({ index: { K2: 'INDEX' } });
+  const f = fakeFichierReset({ id: 'K2', nom: 'b.pdf', taille: 100, parents: [] });
+  assert.strictEqual(c.empreinteReutiliseeReset_(f, { empreintesConnues: {} }), 'INDEX');
+  assert.deepStrictEqual(hashs, []);
+});
+
+test('empreinteReutiliseeReset_ : inconnue → hashée pour de vrai (la dédup exacte reste possible)', () => {
+  const { c, hashs } = ctxEmpreinte();
+  const f = fakeFichierReset({ id: 'K3', nom: 'c.pdf', taille: 100, parents: [] });
+  assert.strictEqual(c.empreinteReutiliseeReset_(f, { empreintesConnues: {} }), 'CALC:K3');
+  assert.deepStrictEqual(hashs, ['K3']);
+});
+
+test('empreinteReutiliseeReset_ : un Google NATIF n\'est JAMAIS dédupliqué par empreinte (revue sécurité #229)', () => {
+  // 🔴 Le cas qui aurait envoyé des ORIGINAUX dans `_Doublons`. Pour un natif, l'empreinte d'Index
+  // est le MD5 du TEXTE EXPORTÉ (Intake.gs), pas du fichier : deux Sheets/Slides quasi vides y
+  // portent la MÊME valeur. L'intake s'en protège par `ignorerDoublon`, un flag qui NE SURVIT PAS
+  // dans l'Index — d'où l'exclusion ici, côté consommateur.
+  const { c, hashs } = ctxEmpreinte({ index: { N1: 'd41d8cd98f00b204e9800998ecf8427e' } });
+  const natif = fakeFichierReset({ id: 'N1', nom: 'Budget.gsheet', taille: 0, mime: 'application/vnd.google-apps.spreadsheet', parents: [] });
+  assert.strictEqual(c.empreinteReutiliseeReset_(natif, { empreintesConnues: { N1: 'PLAN' } }), '',
+    'ni le plan ni l\'Index ne doivent servir de source pour un natif');
+  assert.deepStrictEqual(hashs, [], 'et on ne hashe pas non plus son export (deux docs vides peuvent coïncider)');
+});
+
+test('placerUnFichierReset_ : deux Google NATIFS de même empreinte d\'Index restent CHACUN classé (aucun `_Doublons`)', () => {
+  // Preuve de bout en bout du garde-fou : c'est le scénario exact relevé en revue (deux tableurs
+  // quasi vides, même MD5 de texte exporté). Le second doit être ROUTÉ, jamais écarté.
+  const MEME = 'd41d8cd98f00b204e9800998ecf8427e';
+  const t = ctxPlacement({ id: 'N1', nom: '2026-01-01_Relevé_Desjardins.pdf', domaine: '02 · Finances',
+    empreintesConnues: { N1: MEME, N2: MEME } });
+  const ctxObj = { proteges: {}, empreintesVues: {}, validees: {}, repointes: {}, ciblesResolues: {} };
+  const f1 = fakeFichierReset({ id: 'N1', nom: '2026-01-01_Relevé_Desjardins.pdf', taille: 0, mime: 'application/vnd.google-apps.spreadsheet', parents: [] });
+  const f2 = fakeFichierReset({ id: 'N2', nom: '2026-02-01_Relevé_Desjardins.pdf', taille: 0, mime: 'application/vnd.google-apps.spreadsheet', parents: [] });
+  t.c.placerUnFichierReset_(f1, '02 · Finances', 'tri33p|tag|N1', ctxObj);
+  t.c.placerUnFichierReset_(f2, '02 · Finances', 'tri33p|tag|N2', ctxObj);
+  const statuts = t.ajouts.map((a) => a.statut);
+  assert.deepStrictEqual(statuts.filter((x) => x === 'tri33-doublon'), [], 'AUCUN natif ne part en _Doublons');
+  assert.strictEqual(statuts.length, 2);
+  statuts.forEach((x) => assert.strictEqual(x, 'tri33-route', 'chacun est routé normalement'));
+});
+
+test('empreinteReutiliseeReset_ : mime ILLISIBLE → abstention (échec-fermé, jamais un déplacement risqué)', () => {
+  const { c, hashs } = ctxEmpreinte({ index: { X1: 'EMP' } });
+  const casse = fakeFichierReset({ id: 'X1', nom: 'x.pdf', taille: 10, parents: [] });
+  casse.getMimeType = () => { throw new Error('Drive indisponible'); };
+  assert.strictEqual(c.empreinteReutiliseeReset_(casse, {}), '');
+  assert.deepStrictEqual(hashs, []);
+});
+
+test('empreinteReutiliseeReset_ : borne de taille DÉRIVÉE de CONFIG.RESET_HASH_TAILLE_MAX (seuil / seuil+1)', () => {
+  // Cas dérivés de la CONSTANTE, jamais de sa valeur du jour (leçon §7) : la rajuster ne doit pas
+  // rendre ce test menteur. Au-delà du seuil, empreinte vide ⇒ jamais déplacé comme doublon.
+  const SEUIL = load(['Config.gs']).CONFIG.RESET_HASH_TAILLE_MAX;
+  const a = ctxEmpreinte();
+  const sous = fakeFichierReset({ id: 'L1', nom: 'ok.pdf', taille: SEUIL, parents: [] });
+  assert.strictEqual(a.c.empreinteReutiliseeReset_(sous, {}), 'CALC:L1', 'au seuil exact → hashé');
+  const b = ctxEmpreinte();
+  const gros = fakeFichierReset({ id: 'L2', nom: 'gros.pdf', taille: SEUIL + 1, parents: [] });
+  assert.strictEqual(b.c.empreinteReutiliseeReset_(gros, {}), '', 'au-delà du seuil → vide');
+  assert.deepStrictEqual(b.hashs, [], 'et surtout : AUCUN téléchargement (c\'est le point du garde-fou 6 min)');
+});
+
+test('empreinteReutiliseeReset_ : la borne du reset est STRICTEMENT sous celle de l\'OCR (anti-mur 6 min)', () => {
+  const CFG = load(['Config.gs']).CONFIG;
+  assert.ok(CFG.RESET_HASH_TAILLE_MAX < CFG.OCR_TAILLE_MAX,
+    'hasher 20 Mo coûte 10-60 s : le placement doit avoir sa PROPRE borne, plus basse');
+});
+
+test('resoudreCibleReset_ : la cible d\'un même sous-chemin n\'est résolue qu\'UNE fois par run (mémoïsation)', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const appels = [];
+  const log = [];
+  c.sousDossier_ = (parent, nom) => { appels.push(nom); return fakeDossierReset(parent.getId() + '/' + nom, log); };
+  c.cleCanoniqueEntite_ = () => null;
+  const dom = fakeDossierReset('DOM:02 · Finances', log);
+  const ctxObj = { validees: {}, repointes: {}, ciblesResolues: {} };
+  const a = c.resoudreCibleReset_(dom, '02 · Finances', 'Banques/Desjardins', ctxObj);
+  const b = c.resoudreCibleReset_(dom, '02 · Finances', 'Banques/Desjardins', ctxObj);
+  assert.strictEqual(b, a, 'même objet dossier rendu');
+  assert.deepStrictEqual(appels, ['Banques', 'Desjardins'], '2 appels au 1er passage, ZÉRO au second');
+  // Un AUTRE sous-chemin reste résolu normalement (la mémoïsation ne doit pas confondre les cibles).
+  c.resoudreCibleReset_(dom, '02 · Finances', 'Impôts & déclarations', ctxObj);
+  assert.deepStrictEqual(appels, ['Banques', 'Desjardins', 'Impôts & déclarations']);
+});
+
+test('dossierDomaineMemo_ : un domaine n\'est résolu qu\'UNE fois par run, et sans ctx ça marche quand même', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const log = [];
+  let appels = 0;
+  c.idDomaine_ = (d) => { appels++; return 'DOM:' + d; };
+  c.DriveApp = { getFolderById: (id) => fakeDossierReset(id, log) };
+  const ctxObj = {};
+  c.dossierDomaineMemo_('02 · Finances', ctxObj);
+  c.dossierDomaineMemo_('02 · Finances', ctxObj);
+  assert.strictEqual(appels, 1, 'mémoïsé sur ctx');
+  c.dossierDomaineMemo_('03 · Santé', ctxObj);
+  assert.strictEqual(appels, 2, 'un autre domaine est bien résolu');
+  c.dossierDomaineMemo_('02 · Finances', null); // dégradation propre : pas de ctx → appel direct
+  assert.strictEqual(appels, 3);
+});
+
+/* ---------- UN-CLIC : partage du mur entre les 3 phases (revue #229) ---------- */
+
+test('partPhaseReset_ (PURE) : le temps restant se partage entre les phases NON encore servies', () => {
+  const c = load(['Config.gs', 'Reset.gs']);
+  // 1re phase sur 3 → un tiers seulement : c'est ça qui empêche `lancerResetTout` de dégénérer en
+  // rassemblement seul dès que le plafond d'items est haut (revue #229).
+  assert.strictEqual(c.partPhaseReset_(90000, 3), 30000);
+  // Adaptatif : une phase qui n'a rien eu à faire rend sa part aux suivantes.
+  assert.strictEqual(c.partPhaseReset_(88000, 2), 44000);
+  assert.strictEqual(c.partPhaseReset_(86000, 1), 86000, 'dernière phase → tout le reliquat');
+  // Plus rien à distribuer → 0 (la phase est coupée d'emblée, jamais une part négative).
+  assert.strictEqual(c.partPhaseReset_(0, 3), 0);
+  assert.strictEqual(c.partPhaseReset_(-5000, 3), 0);
+  assert.strictEqual(c.partPhaseReset_(90000, 0), 90000, 'garde anti-division par zéro');
+});
+
+test('gardePartReset_ : borné par la part ET par le mur GLOBAL de l\'exécution', () => {
+  const c = load(['Config.gs', 'Reset.gs']);
+  const MUR = c.CONFIG.BUDGET_MS;
+  // Exécution qui vient de démarrer : la phase peut travailler.
+  assert.strictEqual(c.gardePartReset_(Date.now(), 3)(), false);
+  // Mur global déjà dépassé : part nulle ET `maintenant - debut > MUR` → coupé, quelle que soit
+  // la phase. Sans cette borne, une part calculée sur un reliquat négatif laisserait tourner.
+  assert.strictEqual(c.gardePartReset_(Date.now() - MUR - 1000, 1)(), true);
+});
+
+test('lancerResetTout : les 3 phases sont appelées avec une PART, jamais avec le mur entier', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'Reset.gs'), 'utf8');
+  const i = src.indexOf('function lancerResetTout(');
+  const corps = src.slice(i, src.indexOf('\n}', i));
+  ['rassemblerReset_(gardePartReset_(debut, 3), true)', 'placerReset_(gardePartReset_(debut, 2), true)',
+    'appliquerReset04Interne_(gardePartReset_(debut, 1), true)'].forEach((appel) => {
+    assert.ok(corps.indexOf(appel) !== -1,
+      'sans partage, la 1re phase consomme les 4,5 min et le clic « tout faire » ne place plus rien : ' + appel);
+  });
 });

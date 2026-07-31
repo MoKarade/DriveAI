@@ -1511,3 +1511,72 @@ reçue comme un fait — annoncer l'écart explicitement quand on le découvre, 
 l'erreur."
 
 **Règle durable ?** oui (ajouté à CLAUDE.md §7).
+
+## 2026-07-31 — Deux bornes sur la même boucle : celle qui coupe en premier fixe le débit
+
+**Contexte.** C28-33, Marc veut le reset fini dans la journée et demande d'aller plus vite. Le
+réflexe interdit (leçon du 29/07) serait de relever un budget qui protège le quota runtime partagé
+(~90 min/j) — le gel de TOUS les déclencheurs, chien de garde inclus, est le risque connu. J'avais
+déjà réalloué tout le réallouable. En relisant les bornes, constat : chaque phase du reset porte
+DEUX bornes indépendantes sur la même boucle — un **garde-temps** par run (3 min, vérifié à chaque
+item) ET un **plafond d'ITEMS** par run (60, 80, 40). La revue quota #226 l'avait noté sans que j'en
+tire la conséquence : « ~60 moveTo en bien moins de 3 min → c'est le plafond d'items qui mord, pas
+le temps ». Autrement dit le moteur rendait la main avec du budget DÉJÀ ACCORDÉ non consommé, à
+chaque tick, depuis le début. Relever le plafond d'items (60→400) n'augmente donc AUCUN budget : le
+garde-temps reste la vraie borne, inchangé.
+
+**Leçon.** "Quand une boucle porte DEUX bornes de nature différente (temps ET nombre d'items), la
+seule qui compte est celle qui coupe EN PREMIER — et si c'est la mauvaise, on gaspille en silence la
+ressource qu'on croyait allouer. Avant d'envisager d'augmenter quoi que ce soit pour accélérer, se
+demander : « laquelle des bornes mord réellement, et est-ce celle qui PROTÈGE quelque chose ? » Un
+plafond d'items qui coupe avant le garde-temps ne protège plus le quota (le temps s'en charge) : il
+ne borne que la mémoire et la granularité de reprise, donc il se relève GRATUITEMENT. Condition de
+sûreté à vérifier explicitement : le garde-temps doit être évalué À CHAQUE ITEM de la boucle (pas
+seulement en tête), sinon relever le plafond d'items fait déborder le temps — le vérifier par un test
+qui lit le corps des boucles concernées. Corollaire : cet écart ne se voit pas dans les tests (qui
+mockent le temps) ni dans les logs — il se voit en comparant le PLAFOND au COÛT RÉEL par item mesuré
+en prod."
+
+**Règle durable ?** oui (ajouté à CLAUDE.md §7, en complément de « réallouer, jamais augmenter »).
+
+## 2026-07-31 — Correction : un plafond d'items ne « gaspille » pas un budget compté en ms
+
+**Contexte.** Le matin même, j'avais relevé les plafonds d'items par run du reset (60/80/40 → 400/300/150)
+en écrivant — dans `Config.gs`, dans `HANDOVER.md` et jusque dans une règle durable de `CLAUDE.md` §7 —
+que le moteur « rendait la main avec du budget déjà accordé non consommé, à chaque run ». La revue quota
+de la PR #229 a réfuté ça en lisant le comptage : `budgetJourReset_` crédite `Date.now() - debut`, donc
+des **ms réellement consommées**. Un run qui coupait à 45 s sur le plafond d'items ne perdait rien du
+tout — les ~2 min restantes étaient dépensées au tick suivant. Le débit journalier est fixé par les
+budgets/jour (20/22/8 min), point. Le gain réel du relèvement est l'amortissement du coût FIXE de setup
+par run (`ensembleDomainesProteges_`, lecture du plan, `entitesValideesParCle_`) : **≈ +5 %, pas ×5**.
+
+**Leçon.** "Avant de conclure qu'une borne 'gaspille' du budget, LIRE dans quelle unité le budget est
+compté. Un budget quotidien exprimé en ms CONSOMMÉES est conservatif : toute borne qui coupe un run plus
+tôt reporte le reliquat au run suivant, elle ne le détruit pas. Ce n'est que si le budget est compté en
+RUNS (ou en ticks) qu'un plafond d'items se traduit directement en débit. Corollaire opératoire : le
+levier de débit qui marche presque toujours n'est pas de relever une borne mais de réduire le TRAVAIL PAR
+ITEM — ici, ne plus re-télécharger les octets d'un fichier dont l'empreinte est déjà à l'Index ou au plan
+de consolidation (`empreinteBlob_` est le poste dominant du placement), et mémoïser les résolutions de
+dossier refaites pour chaque fichier alors qu'il n'y a que quelques dizaines de cibles distinctes.
+Corollaire de communication : un chiffre d'accélération ne s'annonce qu'après avoir été dérivé du modèle
+de coût (coût/item × budget/jour) ; sinon on vend à l'utilisateur un facteur qu'on n'a pas."
+
+**Règle durable ?** oui (remplace la version fausse de la règle « deux bornes sur une même boucle » dans CLAUDE.md §7).
+
+## 2026-07-31 — Une borne HAUTE sur une source append-only fige l'UI en silence
+
+**Contexte.** L'app lisait `Index!A2:H20000` — fenêtre dure, ancrée en TÊTE. L'Index est append-only
+(garde-fou §2) et le reset C28-33 y écrit DEUX lignes par fichier (`tri33|` puis `tri33p|`). À 10 830
+lignes et ~10 000 fichiers restants, le seuil allait être franchi *dans la journée* : à partir de là,
+l'app n'aurait plus vu AUCUNE ligne nouvelle — zéro erreur, zéro log, Marc aurait cru le moteur arrêté,
+le jour même où il regardait le résultat. C'est la PR d'accélération qui rendait la panne imminente.
+
+**Leçon.** "Toute borne HAUTE posée sur une source qui CROÎT (`A2:H<N>`, `LIMIT n` sans offset, tableau
+tronqué en tête) est une bombe à retardement silencieuse : au franchissement, elle ne lève rien, elle
+FIGE. Deux réflexes : (1) sur une source append-only, lire une fenêtre OUVERTE ou ancrée en QUEUE, jamais
+un plafond en tête ; (2) quand une modification AUGMENTE le taux de croissance d'une ressource, aller
+relire les bornes que d'autres composants ont posées dessus — c'est le changement de débit qui transforme
+un point de vigilance lointain en panne du jour. Ce type de défaut ne se voit ni en test ni en CI : il se
+voit en se demandant 'qu'est-ce qui, ailleurs, suppose que cette table est petite ?'"
+
+**Règle durable ?** oui (ajouté à CLAUDE.md §7).

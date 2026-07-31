@@ -84,6 +84,11 @@ var CONFIG = {
   // d'historique), jamais de documents ni de l'Index (§2 intact).
   JOURNAL_MAX_LIGNES: 20000,
   JOURNAL_MARGE: 5000,
+  JOURNAL_REPORTS_MAX: 20,                // la rotation du Journal peut être REPORTÉE quand le tick a
+                                          // déjà consommé son garde-temps (le deleteRows en lot coûte
+                                          // 10-30 s et tombe en fin de finally, cf. bornerJournal_).
+                                          // Au-delà de N reports consécutifs, on rotationne QUAND MÊME :
+                                          // un report silencieux et indéfini figerait la rotation.
 
   // Intervalle du déclencheur temporel (minutes). Valeurs Apps Script admises : 1, 5, 10, 15, 30.
   // Modifiable à chaud : au tick suivant un déploiement, le moteur réinstalle le déclencheur
@@ -530,6 +535,11 @@ var CONFIG = {
   // Reset 20 → 50 min/j (≈ 2,5× plus rapide) en restant SOUS l'enveloppe d'avant (elle valait déjà 50).
   // Invariant verrouillé par test (`test/orchestration.test.js` : reset ≤ somme des libérés).
   // À VÉRIFIER par signal indépendant (heartbeat non figé l'après-midi) — leçon §7.
+  // C28-34 (2026-07-31) : intervalle MINIMAL entre deux recalculs du résumé hub. Le calcul relit
+  // l'Index ENTIER (non borné, ~10 800 lignes et croissant) + le Journal ; à chaque tick (×288/j)
+  // il domine le socle non budgété et retarde le heartbeat. Le widget n'a pas besoin d'être à la
+  // minute — 15 min divisent le coût par ~3 sans perte perceptible.
+  HUB_RESUME_INTERVALLE_MS: 15 * 60 * 1000,
   RESET_ACTIF: true,                      // false = suspension immédiate de TOUTES les phases (comme CONSOLIDATION_EXEC_ACTIF)
   RESET_TAG: 'tri33',                     // bumper relance une campagne complète (re-parcourt tout, additive)
   // Version de la TABLE de routage (`STRUCTURE_CIBLE_RESET` + `cheminCibleReset_`). Entre dans la clé
@@ -544,11 +554,25 @@ var CONFIG = {
                                           // t2 : + Anna Malaval (pièces d'identité), + codes de récupération
 
   RESET_TRI_NOM: '_TRI 2026',             // racine de rassemblement, à côté de `_Doublons`/`_Technique` (préfixe _ = invisible des scans vivants)
-  RESET_RASSEMBLEMENT_MAX_PAR_RUN: 60,    // fichiers déplacés vers `_TRI 2026/<domaine>` par run
+  // PLAFONDS PAR RUN — relevés le 2026-07-31. Ce n'est PAS une augmentation de budget : le
+  // garde-temps (3 min/run, vérifié À CHAQUE item) reste la VRAIE borne, inchangé, et le budget
+  // QUOTIDIEN est compté en MS RÉELLEMENT CONSOMMÉES — un run qui coupait tôt sur le plafond
+  // d'items ne « perdait » donc rien : le reliquat de ms restait disponible au tick suivant.
+  // ⚠ CORRECTION d'une affirmation antérieure (revue #229) : relever ces plafonds n'augmente PAS
+  // le débit journalier (≈ +5 %, par simple amortissement du coût FIXE de setup par run —
+  // `ensembleDomainesProteges_`, lecture du plan, `entitesValideesParCle_`). Le débit reste fixé
+  // par les budgets/jour ci-dessous. Ces plafonds ne bornent que la mémoire (tableau d'IDs) et la
+  // granularité de reprise.
+  RESET_HASH_TAILLE_MAX: 5 * 1024 * 1024, // borne PROPRE au reset pour `empreinteBlob_` (< OCR_TAILLE_MAX
+                                          // = 20 Mo) : hasher un blob de 20 Mo coûte 10-60 s et peut
+                                          // franchir le mur des 6 min sur le DERNIER item d'un run (revue
+                                          // #229). Un doublon exact > 5 Mo reste RAPPORTÉ par
+                                          // `signalerQuasiDoublonReset_` — jamais perdu, juste non déplacé.
+  RESET_RASSEMBLEMENT_MAX_PAR_RUN: 400,   // fichiers déplacés vers `_TRI 2026/<domaine>` par run
   RESET_RASSEMBLEMENT_BUDGET_JOUR_MS: 20 * 60 * 1000, // 8 → 20 (il ALIMENTE le placement : jamais l'affamer)
-  RESET_PLACEMENT_MAX_PAR_RUN: 80,        // fichiers dédupliqués/routés depuis `_TRI 2026` par run (pas d'OCR/LLM — cheap)
+  RESET_PLACEMENT_MAX_PAR_RUN: 300,       // fichiers dédupliqués/routés depuis `_TRI 2026` par run (pas d'OCR/LLM — cheap)
   RESET_PLACEMENT_BUDGET_JOUR_MS: 22 * 60 * 1000,     // 8 → 22 (poste le plus lourd : il hashe les octets)
-  RESET_04_MAX_PAR_RUN: 40,               // fichiers réorganisés EN INTERNE sous 04 par run
+  RESET_04_MAX_PAR_RUN: 150,              // fichiers réorganisés EN INTERNE sous 04 par run
   RESET_04_BUDGET_JOUR_MS: 8 * 60 * 1000,             // 4 → 8 (04 est petite : elle convergera bien avant)
   SEED_ENTITES_TAG: 'seed-1',             // seed one-shot des entités de Marc (Entites.seedEntitesMarc_)
   ENTITES_AUTO_VALIDATION: false,         // auto-validation « vue ≥ 3 fois » COUPÉE (décision Marc

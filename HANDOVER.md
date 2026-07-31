@@ -4,6 +4,48 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (matin) — ACCÉLÉRATION (#229) + ÉTAT RÉEL MESURÉ.** Marc : « ça peut
+> pas aller plus vite ? je veux que tout soit fini avant la fin de la journée ». **Constaté dans les
+> ARTEFACTS** (onglet `Santé` + Index, jamais estimé — leçon du 30/07) : rassemblement entamé sur
+> **4 domaines** (`01`, `02`, `03`, `05` le 31/07 06:42) ; **rangement de l'ancien Drive TERMINÉ** ;
+> **10 830** documents au catalogue ; **coût LLM du mois 76,87 $** (11 112 appels — plafond campagnes
+> 110 $, le reset n'y contribue PAS : routage par le nom) ; **~160 non routés** sous `t2` en attente
+> des règles `t3` (#228). ⚠️ **Heartbeat à 24 min de retard** (dernier passage 08:12 pour un tick de
+> 5 min) — premier signe du poste C28-34.
+> **Livré dans #229, aucun levier n'augmente un budget** (leçon §7 « réallouer, jamais augmenter » —
+> le gel de TOUS les déclencheurs reste le risque à ne jamais prendre) :
+> (1) plafonds d'ITEMS par run 60→400 / 80→300 / 40→150 — le garde-temps (vérifié à CHAQUE item, y
+> compris dans les collectes récursives) reste la vraie borne, inchangé. ⚠️ **Gain réel ≈ +5 %, pas
+> ×5** : la revue #229 a réfuté mon raisonnement initial (« du budget accordé non consommé ») — les
+> budgets/jour sont comptés en **ms CONSOMMÉES**, donc un run qui coupait tôt ne perdait rien, le
+> reliquat partait au tick suivant. Le relèvement n'amortit que le coût FIXE de setup par run.
+> (2) migration/réanalyse/dry-run suspendues pendant le reset — gain de DÉBIT nul (elles étaient déjà
+> sautées par le budget de tick), mais gain réel de MARGE anti-gel et de COÛT LLM (`m2-inconnu`
+> facturait du Sonnet ×2 à 76,87 $/110 $) ; `etapeReorg_` reste libre (travail validé par Marc).
+> (3) **C28-34 fait** : `majResumeHub_` throttlé à 1×/15 min. C'est **le vrai levier** : il relisait
+> l'Index ENTIER + le Journal ×288/j, soit ~24-72 min/j sur une enveloppe de ~90 — le reset ne
+> recevait probablement pas ses 50 min/j. Vérification par signal indépendant : la Property
+> `DriveAI_RESET_PLACE_JOUR` doit désormais atteindre `22*60*1000` chaque jour ; sinon le quota mord
+> encore.
+> (4) **DÉBIT PAR ITEM (revue #229, le levier qui vaut plus que les 3 autres)** : `empreinteBlob_`
+> (téléchargement des octets) n'est plus appelée quand l'empreinte est déjà au plan de consolidation
+> ou à l'Index (`empreinteReutiliseeReset_`) — un bump de `RESET_TABLE_VERSION` ne re-hashe donc plus
+> rien ; cibles et dossiers de domaine mémoïsés par run (2-4 appels Drive/fichier économisés) ; borne
+> de hash propre au reset (`RESET_HASH_TAILLE_MAX` 5 Mo < OCR 20 Mo) pour ne pas franchir le mur 6 min
+> sur le dernier item ; rotation du Journal reportée si le tick est chargé.
+> (5) **`lancerResetTout` réparé** : avec des plafonds hauts, la 1ʳᵉ phase mangeait les 4,5 min et le
+> placement n'était JAMAIS atteint (le clic « tout faire » ne produisait plus aucune structure). Le
+> mur est maintenant PARTAGÉ entre les 3 phases (`gardePartReset_`/`partPhaseReset_`).
+> ✅ **CORRIGÉ dans #229** : l'app lisait `Index!A2:H20000` (fenêtre DURE, ancrée en TÊTE) alors que
+> l'Index est à 10 830 et grossit de 2 lignes par fichier traité — le seuil allait être franchi DANS
+> LA JOURNÉE et l'app aurait gelé EN SILENCE. Fenêtre désormais OUVERTE (`A2:H`).
+> **DIT À MARC honnêtement** : en automatique seul, « tout fini aujourd'hui » est hors d'atteinte
+> (placement ≈ 530-1 100 fichiers/jour pour ~10 000 restants). Le levier décisif reste
+> `lancerResetTout()` dans l'éditeur (HORS quota des déclencheurs, débridé depuis #225) : ~4,5 min de
+> travail plein par lancement, enchaînables ; ~13 lancements finissent le RASSEMBLEMENT (~1 h 30), le
+> placement complet demanderait ~6 h de clics et couperait Gmail/dépôts pendant toute la séance (le
+> verrou fait sauter les ticks).
+>
 > **⚡⚡⚡ ÉTAT AU 2026-07-30 (soir) — LE RESET AVANCE SEUL, 1ᵉʳ RELIQUAT TRAITÉ.** Constaté par
 > signaux Drive : `_TRI 2026` contient 3 sous-dossiers de provenance (`01` 29/07 18:23, `02` 29/07
 > 18:41, `03` 30/07 06:11) — le rassemblement descend domaine par domaine. Le placement tourne

@@ -98,14 +98,33 @@ function lignesJournalASupprimer_(dernLigne, max, marge) {
  * Borne le Journal : supprime en LOT les lignes de log les plus anciennes au-delà du plafond
  * (rotation d'historique — jamais de documents, §2 intact). Enveloppé par l'appelant (secondaire :
  * ne doit jamais bloquer l'intake). Cheap : la plupart des ticks ne font qu'un getLastRow().
+ *
+ * `reporterSiCharge` (revue #229) : le `deleteRows` de rotation coûte 10-30 s et tombe TOUT À LA FIN
+ * du tick — exactement là où il peut franchir le mur des 6 min (le kill perdrait le `finally`, donc
+ * `DriveAI_LAST_TICK`, et pourrait laisser un fichier à deux parents entre `addFile` et `removeFile`).
+ * La rotation n'a AUCUNE urgence : la reporter d'un tick est sans conséquence.
+ * @param {function():boolean} [reporterSiCharge]  vrai ⇒ on ne rotationne pas ce tick-ci
  */
-function bornerJournal_() {
+function bornerJournal_(reporterSiCharge) {
   var f = feuille_('Journal');
   var aSupprimer = lignesJournalASupprimer_(f.getLastRow(), CONFIG.JOURNAL_MAX_LIGNES, CONFIG.JOURNAL_MARGE);
-  if (aSupprimer > 0) {
-    f.deleteRows(2, aSupprimer); // supprime les plus vieilles, juste après l'en-tête
-    journalInfo_('Santé', 'Journal borné : ' + aSupprimer + ' vieille(s) ligne(s) purgée(s) (max ' + CONFIG.JOURNAL_MAX_LIGNES + ').');
+  if (aSupprimer <= 0) return; // cas dominant : rien à faire, le garde n'est même pas consulté
+  var props = null;
+  try { props = PropertiesService.getScriptProperties(); } catch (e) { props = null; }
+  if (reporterSiCharge && reporterSiCharge()) {
+    // FILET anti-report indéfini (revue sécurité #229) : si une étape prenait l'habitude de courir
+    // jusqu'au mur à chaque tick, le report ne journalise rien et le Journal cesserait de tourner EN
+    // SILENCE (« un garde-fou qui met des items hors circuit exige un chemin de RETOUR », §7).
+    var reports = props ? (Number(props.getProperty('DriveAI_JOURNAL_REPORTS')) || 0) + 1 : 0;
+    if (props && reports < CONFIG.JOURNAL_REPORTS_MAX) {
+      props.setProperty('DriveAI_JOURNAL_REPORTS', String(reports));
+      return; // repris au tick suivant
+    }
+    journalInfo_('Santé', 'Rotation du Journal FORCÉE après ' + reports + ' report(s) — le tick court au mur à chaque passage.');
   }
+  f.deleteRows(2, aSupprimer); // supprime les plus vieilles, juste après l'en-tête
+  if (props) { try { props.deleteProperty('DriveAI_JOURNAL_REPORTS'); } catch (e) { /* best-effort */ } }
+  journalInfo_('Santé', 'Journal borné : ' + aSupprimer + ' vieille(s) ligne(s) purgée(s) (max ' + CONFIG.JOURNAL_MAX_LIGNES + ').');
 }
 
 /**
@@ -458,23 +477,64 @@ function cleAttachement_(message, indexPj, pj) {
 }
 
 // Caches chargés une fois par run (évite une lecture Sheet par PJ) :
-//  _indexCache       : clés d'idempotence déjà traitées
-//  _empreintesCache  : empreintes de contenu déjà vues (détection de doublons)
-//  _echecsCache      : clé → { tentatives, ligne } (compteur de quarantaine)
+//  _indexCache          : clés d'idempotence déjà traitées
+//  _empreintesCache     : empreintes de contenu déjà vues (détection de doublons)
+//  _empreintesParIdCache: fileId → empreinte DÉJÀ CALCULÉE (évite de re-télécharger les octets)
+//  _echecsCache         : clé → { tentatives, ligne } (compteur de quarantaine)
 var _indexCache = null;
 var _empreintesCache = null;
+var _empreintesParIdCache = null;
 var _echecsCache = null;
 
 /** À appeler en tête de chaque run pour repartir de caches neufs. */
 function reinitialiserIndexCache_() {
   _indexCache = null;
   _empreintesCache = null;
+  _empreintesParIdCache = null;
   _echecsCache = null;
+}
+
+/**
+ * Préfixes de clé d'Index qui identifient UN FICHIER (leur dernier segment est un fileId Drive).
+ * Whitelist EXPLICITE — « périmètre défini par IDENTITÉ » (§7) : une clé Gmail
+ * (`messageId|i|nom|taille`, `tri|fil|ts|lu`) ne doit JAMAIS être lue comme un fileId, sinon une
+ * empreinte serait attribuée au MAUVAIS fichier et un original partirait dans `_Doublons`.
+ *
+ * `conso` en est VOLONTAIREMENT absent (revue sécurité #229) : une de ses formes est
+ * `conso|<tag>|dom|<domaine>`, qui ne finit PAS par un fileId. Elle n'échappe aujourd'hui que grâce
+ * aux espaces des noms de domaine — une propriété de `CONFIG.DOMAINES`, pas un invariant. Et conso
+ * n'inscrit JAMAIS d'empreinte à l'Index : l'y whitelister n'apportait rien.
+ * `shared|<fileId>` est exclu pour une autre raison : le fileId y est celui de l'ORIGINAL chez le
+ * tiers, jamais du fichier présent chez Marc (le partage dépose une COPIE).
+ */
+var PREFIXES_CLE_FICHIER_ = { drive: 1, tri33p: 1, migre: 1, reanalyse: 1 };
+
+/**
+ * fileId porté par une clé d'Index documentaire, ou '' si la clé n'en porte pas. PURE.
+ * Double garde : préfixe whitelisté ET dernier segment de la FORME d'un ID Drive.
+ */
+function fileIdDeCleIndex_(cle) {
+  var parts = String(cle == null ? '' : cle).split('|');
+  if (parts.length < 2) return '';
+  if (PREFIXES_CLE_FICHIER_[parts[0]] !== 1) return '';
+  var id = parts[parts.length - 1];
+  return /^[A-Za-z0-9_-]{20,}$/.test(id) ? id : '';
+}
+
+/**
+ * Empreinte DÉJÀ connue pour ce fichier, ou '' — permet de ne PAS re-télécharger ses octets
+ * (`empreinteBlob_`, poste le plus cher du placement du reset). Rend notamment quasi gratuit un bump
+ * de `CONFIG.RESET_TABLE_VERSION` : le reliquat re-tenté a déjà son empreinte à l'Index (revue #229).
+ */
+function empreinteConnueParId_(fileId) {
+  if (_empreintesParIdCache === null) chargerIndexCache_();
+  return _empreintesParIdCache[fileId] || '';
 }
 
 function chargerIndexCache_() {
   _indexCache = {};
   _empreintesCache = {};
+  _empreintesParIdCache = {};
   var f = feuille_('Index');
   // Auto-réparation : assure la colonne « Empreinte » (G) sur un Index existant.
   if (f.getRange(1, 7).getValue() !== 'Empreinte') f.getRange(1, 7).setValue('Empreinte');
@@ -484,7 +544,14 @@ function chargerIndexCache_() {
   var valeurs = f.getRange(2, 1, dern - 1, 7).getValues(); // colonnes A..G
   for (var i = 0; i < valeurs.length; i++) {
     if (valeurs[i][0]) _indexCache[valeurs[i][0]] = true;
-    if (valeurs[i][6]) _empreintesCache[valeurs[i][6]] = true;
+    if (!valeurs[i][6]) continue;
+    _empreintesCache[valeurs[i][6]] = true;
+    // DERNIÈRE ligne gagnante (revue sécurité #229) : l'Index est append-only, donc l'ordre des
+    // lignes est chronologique. Garder la PREMIÈRE ferait gagner l'empreinte la plus ANCIENNE — un
+    // fichier ré-analysé (`reanalyse|…`) après un `drive|…` aurait vu la périmée l'emporter. C'est
+    // aussi la sémantique de `indexAjouter_`, qui écrase avec la valeur la plus récente.
+    var fid = fileIdDeCleIndex_(valeurs[i][0]);
+    if (fid) _empreintesParIdCache[fid] = String(valeurs[i][6]);
   }
 }
 
@@ -526,6 +593,10 @@ function indexAjouter_(cle, resultat, empreinte) {
   ]);
   if (_indexCache !== null) _indexCache[cle] = true;
   if (_empreintesCache !== null && empreinte) _empreintesCache[empreinte] = true;
+  if (_empreintesParIdCache !== null && empreinte) {
+    var fid = fileIdDeCleIndex_(cle);
+    if (fid) _empreintesParIdCache[fid] = empreinte;
+  }
 }
 
 /**
