@@ -66,6 +66,10 @@ function fakeFichierReset(opts) {
     getName: () => opts.nom || 'f.pdf',
     getSize: () => (opts.taille !== undefined ? opts.taille : 100),
     getBlob: () => ({ id: opts.id || 'F1' }), // porte l'id pour que le mock empreinteBlob_ varie PAR FICHIER
+    // Par défaut un vrai fichier binaire : les Google natifs (`application/vnd.google-apps.*`) sont
+    // EXCLUS de la dédup par empreinte (revue sécurité #229) — leur hash d'Index est celui du texte
+    // exporté, pas du fichier. Les tests qui veulent ce cas passent `mime` explicitement.
+    getMimeType: () => (opts.mime !== undefined ? opts.mime : 'application/pdf'),
     getParents: () => {
       const arr = opts.parents || [];
       let i = 0;
@@ -890,6 +894,43 @@ test('empreinteReutiliseeReset_ : inconnue → hashée pour de vrai (la dédup e
   const f = fakeFichierReset({ id: 'K3', nom: 'c.pdf', taille: 100, parents: [] });
   assert.strictEqual(c.empreinteReutiliseeReset_(f, { empreintesConnues: {} }), 'CALC:K3');
   assert.deepStrictEqual(hashs, ['K3']);
+});
+
+test('empreinteReutiliseeReset_ : un Google NATIF n\'est JAMAIS dédupliqué par empreinte (revue sécurité #229)', () => {
+  // 🔴 Le cas qui aurait envoyé des ORIGINAUX dans `_Doublons`. Pour un natif, l'empreinte d'Index
+  // est le MD5 du TEXTE EXPORTÉ (Intake.gs), pas du fichier : deux Sheets/Slides quasi vides y
+  // portent la MÊME valeur. L'intake s'en protège par `ignorerDoublon`, un flag qui NE SURVIT PAS
+  // dans l'Index — d'où l'exclusion ici, côté consommateur.
+  const { c, hashs } = ctxEmpreinte({ index: { N1: 'd41d8cd98f00b204e9800998ecf8427e' } });
+  const natif = fakeFichierReset({ id: 'N1', nom: 'Budget.gsheet', taille: 0, mime: 'application/vnd.google-apps.spreadsheet', parents: [] });
+  assert.strictEqual(c.empreinteReutiliseeReset_(natif, { empreintesConnues: { N1: 'PLAN' } }), '',
+    'ni le plan ni l\'Index ne doivent servir de source pour un natif');
+  assert.deepStrictEqual(hashs, [], 'et on ne hashe pas non plus son export (deux docs vides peuvent coïncider)');
+});
+
+test('placerUnFichierReset_ : deux Google NATIFS de même empreinte d\'Index restent CHACUN classé (aucun `_Doublons`)', () => {
+  // Preuve de bout en bout du garde-fou : c'est le scénario exact relevé en revue (deux tableurs
+  // quasi vides, même MD5 de texte exporté). Le second doit être ROUTÉ, jamais écarté.
+  const MEME = 'd41d8cd98f00b204e9800998ecf8427e';
+  const t = ctxPlacement({ id: 'N1', nom: '2026-01-01_Relevé_Desjardins.pdf', domaine: '02 · Finances',
+    empreintesConnues: { N1: MEME, N2: MEME } });
+  const ctxObj = { proteges: {}, empreintesVues: {}, validees: {}, repointes: {}, ciblesResolues: {} };
+  const f1 = fakeFichierReset({ id: 'N1', nom: '2026-01-01_Relevé_Desjardins.pdf', taille: 0, mime: 'application/vnd.google-apps.spreadsheet', parents: [] });
+  const f2 = fakeFichierReset({ id: 'N2', nom: '2026-02-01_Relevé_Desjardins.pdf', taille: 0, mime: 'application/vnd.google-apps.spreadsheet', parents: [] });
+  t.c.placerUnFichierReset_(f1, '02 · Finances', 'tri33p|tag|N1', ctxObj);
+  t.c.placerUnFichierReset_(f2, '02 · Finances', 'tri33p|tag|N2', ctxObj);
+  const statuts = t.ajouts.map((a) => a.statut);
+  assert.deepStrictEqual(statuts.filter((x) => x === 'tri33-doublon'), [], 'AUCUN natif ne part en _Doublons');
+  assert.strictEqual(statuts.length, 2);
+  statuts.forEach((x) => assert.strictEqual(x, 'tri33-route', 'chacun est routé normalement'));
+});
+
+test('empreinteReutiliseeReset_ : mime ILLISIBLE → abstention (échec-fermé, jamais un déplacement risqué)', () => {
+  const { c, hashs } = ctxEmpreinte({ index: { X1: 'EMP' } });
+  const casse = fakeFichierReset({ id: 'X1', nom: 'x.pdf', taille: 10, parents: [] });
+  casse.getMimeType = () => { throw new Error('Drive indisponible'); };
+  assert.strictEqual(c.empreinteReutiliseeReset_(casse, {}), '');
+  assert.deepStrictEqual(hashs, []);
 });
 
 test('empreinteReutiliseeReset_ : borne de taille DÉRIVÉE de CONFIG.RESET_HASH_TAILLE_MAX (seuil / seuil+1)', () => {

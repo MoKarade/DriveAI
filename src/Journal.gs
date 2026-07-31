@@ -108,11 +108,23 @@ function lignesJournalASupprimer_(dernLigne, max, marge) {
 function bornerJournal_(reporterSiCharge) {
   var f = feuille_('Journal');
   var aSupprimer = lignesJournalASupprimer_(f.getLastRow(), CONFIG.JOURNAL_MAX_LIGNES, CONFIG.JOURNAL_MARGE);
-  if (aSupprimer > 0 && reporterSiCharge && reporterSiCharge()) return; // repris au tick suivant
-  if (aSupprimer > 0) {
-    f.deleteRows(2, aSupprimer); // supprime les plus vieilles, juste après l'en-tête
-    journalInfo_('Santé', 'Journal borné : ' + aSupprimer + ' vieille(s) ligne(s) purgée(s) (max ' + CONFIG.JOURNAL_MAX_LIGNES + ').');
+  if (aSupprimer <= 0) return; // cas dominant : rien à faire, le garde n'est même pas consulté
+  var props = null;
+  try { props = PropertiesService.getScriptProperties(); } catch (e) { props = null; }
+  if (reporterSiCharge && reporterSiCharge()) {
+    // FILET anti-report indéfini (revue sécurité #229) : si une étape prenait l'habitude de courir
+    // jusqu'au mur à chaque tick, le report ne journalise rien et le Journal cesserait de tourner EN
+    // SILENCE (« un garde-fou qui met des items hors circuit exige un chemin de RETOUR », §7).
+    var reports = props ? (Number(props.getProperty('DriveAI_JOURNAL_REPORTS')) || 0) + 1 : 0;
+    if (props && reports < CONFIG.JOURNAL_REPORTS_MAX) {
+      props.setProperty('DriveAI_JOURNAL_REPORTS', String(reports));
+      return; // repris au tick suivant
+    }
+    journalInfo_('Santé', 'Rotation du Journal FORCÉE après ' + reports + ' report(s) — le tick court au mur à chaque passage.');
   }
+  f.deleteRows(2, aSupprimer); // supprime les plus vieilles, juste après l'en-tête
+  if (props) { try { props.deleteProperty('DriveAI_JOURNAL_REPORTS'); } catch (e) { /* best-effort */ } }
+  journalInfo_('Santé', 'Journal borné : ' + aSupprimer + ' vieille(s) ligne(s) purgée(s) (max ' + CONFIG.JOURNAL_MAX_LIGNES + ').');
 }
 
 /**
@@ -487,8 +499,15 @@ function reinitialiserIndexCache_() {
  * Whitelist EXPLICITE — « périmètre défini par IDENTITÉ » (§7) : une clé Gmail
  * (`messageId|i|nom|taille`, `tri|fil|ts|lu`) ne doit JAMAIS être lue comme un fileId, sinon une
  * empreinte serait attribuée au MAUVAIS fichier et un original partirait dans `_Doublons`.
+ *
+ * `conso` en est VOLONTAIREMENT absent (revue sécurité #229) : une de ses formes est
+ * `conso|<tag>|dom|<domaine>`, qui ne finit PAS par un fileId. Elle n'échappe aujourd'hui que grâce
+ * aux espaces des noms de domaine — une propriété de `CONFIG.DOMAINES`, pas un invariant. Et conso
+ * n'inscrit JAMAIS d'empreinte à l'Index : l'y whitelister n'apportait rien.
+ * `shared|<fileId>` est exclu pour une autre raison : le fileId y est celui de l'ORIGINAL chez le
+ * tiers, jamais du fichier présent chez Marc (le partage dépose une COPIE).
  */
-var PREFIXES_CLE_FICHIER_ = { drive: 1, conso: 1, tri33p: 1, migre: 1, reanalyse: 1 };
+var PREFIXES_CLE_FICHIER_ = { drive: 1, tri33p: 1, migre: 1, reanalyse: 1 };
 
 /**
  * fileId porté par une clé d'Index documentaire, ou '' si la clé n'en porte pas. PURE.
@@ -527,8 +546,12 @@ function chargerIndexCache_() {
     if (valeurs[i][0]) _indexCache[valeurs[i][0]] = true;
     if (!valeurs[i][6]) continue;
     _empreintesCache[valeurs[i][6]] = true;
+    // DERNIÈRE ligne gagnante (revue sécurité #229) : l'Index est append-only, donc l'ordre des
+    // lignes est chronologique. Garder la PREMIÈRE ferait gagner l'empreinte la plus ANCIENNE — un
+    // fichier ré-analysé (`reanalyse|…`) après un `drive|…` aurait vu la périmée l'emporter. C'est
+    // aussi la sémantique de `indexAjouter_`, qui écrase avec la valeur la plus récente.
     var fid = fileIdDeCleIndex_(valeurs[i][0]);
-    if (fid && !_empreintesParIdCache[fid]) _empreintesParIdCache[fid] = String(valeurs[i][6]);
+    if (fid) _empreintesParIdCache[fid] = String(valeurs[i][6]);
   }
 }
 

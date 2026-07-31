@@ -86,7 +86,13 @@ test('fileIdDeCleIndex_ (PURE) : n\'accepte QUE les clés qui identifient un fic
 
   // Clés DOCUMENTAIRES : le dernier segment est bien un fileId.
   assert.strictEqual(c.fileIdDeCleIndex_('drive|' + ID), ID);
-  assert.strictEqual(c.fileIdDeCleIndex_('conso|conso-2|' + ID), ID);
+  // `conso` est VOLONTAIREMENT hors whitelist : une de ses formes est `conso|<tag>|dom|<domaine>`,
+  // qui ne finit pas par un fileId — et conso n'inscrit jamais d'empreinte à l'Index (revue #229).
+  assert.strictEqual(c.fileIdDeCleIndex_('conso|conso-2|' + ID), '');
+  assert.strictEqual(c.fileIdDeCleIndex_('conso|conso-2|dom|02 · Finances'), '');
+  // `shared|<fileId>` : le fileId est celui de l'ORIGINAL chez le tiers (le partage dépose une COPIE)
+  // — sa forme passerait la regex, seul le préfixe l'exclut.
+  assert.strictEqual(c.fileIdDeCleIndex_('shared|' + ID), '');
   assert.strictEqual(c.fileIdDeCleIndex_('tri33p|tri33|t3|' + ID), ID, 'clé versionnée du placement');
   assert.strictEqual(c.fileIdDeCleIndex_('migre|m1|' + ID), ID);
   assert.strictEqual(c.fileIdDeCleIndex_('reanalyse|c26-08|' + ID), ID);

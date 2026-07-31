@@ -84,6 +84,11 @@ var CONFIG = {
   // d'historique), jamais de documents ni de l'Index (§2 intact).
   JOURNAL_MAX_LIGNES: 20000,
   JOURNAL_MARGE: 5000,
+  JOURNAL_REPORTS_MAX: 20,                // la rotation du Journal peut être REPORTÉE quand le tick a
+                                          // déjà consommé son garde-temps (le deleteRows en lot coûte
+                                          // 10-30 s et tombe en fin de finally, cf. bornerJournal_).
+                                          // Au-delà de N reports consécutifs, on rotationne QUAND MÊME :
+                                          // un report silencieux et indéfini figerait la rotation.
 
   // Intervalle du déclencheur temporel (minutes). Valeurs Apps Script admises : 1, 5, 10, 15, 30.
   // Modifiable à chaud : au tick suivant un déploiement, le moteur réinstalle le déclencheur

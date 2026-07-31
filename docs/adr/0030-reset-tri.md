@@ -36,7 +36,10 @@
    lecture, les deux sens), Index ensuite (`empreinteConnueParId_`, dont la clé est décodée par
    `fileIdDeCleIndex_` — whitelist EXPLICITE de préfixes, car attribuer une empreinte au mauvais
    fichier enverrait un ORIGINAL dans `_Doublons`). Conséquence utile : un bump de
-   `RESET_TABLE_VERSION` ne re-hashe plus rien. La borne de hash passe d'`OCR_TAILLE_MAX` (20 Mo) à
+   `RESET_TABLE_VERSION` ne re-hashe plus rien. **Les fichiers Google NATIFS sont EXCLUS de la dédup
+   par empreinte** (revue sécurité #229) : pour eux l'empreinte d'Index est le MD5 du TEXTE EXPORTÉ,
+   pas du fichier — deux tableurs quasi vides la partagent, et le flag `ignorerDoublon` qui protège
+   l'intake ne survit pas dans l'Index. Empreinte vide ⇒ jamais déplacé comme doublon. La borne de hash passe d'`OCR_TAILLE_MAX` (20 Mo) à
    `RESET_HASH_TAILLE_MAX` (5 Mo) : hasher 20 Mo coûte 10-60 s et franchissait le mur des 6 min sur le
    dernier item d'un run. Au-delà de la borne, empreinte vide ⇒ le fichier n'est JAMAIS déplacé comme
    doublon (le sens sûr), et le cas reste RAPPORTÉ en quasi-doublon.)*

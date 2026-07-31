@@ -687,6 +687,20 @@ function signalerNonRouteReset_(nom, fileId, domaine, ctx) {
  * flag `hashee` transmet honnêtement « non hashé », donc aucun cas n'est court-circuité à tort).
  */
 function empreinteReutiliseeReset_(f, ctx) {
+  // 🔴 EXCLUSION des fichiers Google NATIFS (revue sécurité #229) — sans elle, ce commit enverrait
+  // des ORIGINAUX dans `_Doublons`. Pour un natif, l'empreinte inscrite à l'Index par l'intake N'EST
+  // PAS le hash du fichier : `Intake.gs` hashe le TEXTE EXPORTÉ (`Utilities.newBlob(texte, …)`).
+  // L'intake le sait — c'est la raison d'être de son flag `ignorerDoublon` (« deux exports vides
+  // partagent le même MD5 ») — mais ce flag NE SURVIT PAS dans l'Index. Deux Sheets quasi vides y
+  // portent donc le même MD5 : réutilisée ici, cette valeur ferait partir le second en `_Doublons`.
+  // On ne hashe pas non plus le blob d'un natif (export PDF : deux documents vides peuvent
+  // coïncider, et `getSize()` vaut 0 donc la borne de taille ne protège rien). Empreinte vide ⇒
+  // JAMAIS déplacé comme doublon — le sens sûr ; le quasi-doublon reste RAPPORTÉ par le nom.
+  // Illisible ⇒ traité comme natif (échec-fermé : on s'abstient plutôt que de risquer un déplacement).
+  var mime;
+  try { mime = String(f.getMimeType() || ''); } catch (e) { return ''; }
+  if (mime.indexOf('application/vnd.google-apps') === 0) return '';
+
   var id = f.getId();
   var connue = (ctx && ctx.empreintesConnues && ctx.empreintesConnues[id]) || empreinteConnueParId_(id);
   if (connue) return String(connue);
