@@ -27,8 +27,6 @@ function etatVierge(c) {
     migration: { termine: true, base: null, traites: 0, tag: c.CONFIG.MIGRATION_TAG },
     reanalyse: { termine: true, enAttente: false, base: null, traites: 0, tag: c.CONFIG.REANALYSE_TAG },
     histo: { termine: true, traites: 0 },
-    triDemande: { active: false, faits: 0, plafond: null, solde: null },
-    intentionsDemande: { active: false, traites: 0, solde: null },
   };
 }
 
@@ -61,13 +59,11 @@ test('lignesProgression_ : statuts dérivés — frein budget (campagnes) et quo
   etat.quotaGmail = true;
   etat.migration = { termine: false, base: 100, traites: 10, tag: 'm1' };
   etat.histo = { termine: false, traites: 50 };
-  etat.triDemande = { active: true, faits: 3, plafond: 100, solde: null };
   const parCle = {};
   c.lignesProgression_(etat, {}, Date.now(), c.CONFIG.PROGRESSION_PURGE_MS)
     .forEach((l) => { parCle[l[0]] = l; });
   assert.strictEqual(parCle['migration'][5], 'en pause (frein budget)');
   assert.strictEqual(parCle['histo-gmail'][5], 'suspendu (quota Gmail)', 'le quota prime sur le frein pour Gmail');
-  assert.strictEqual(parCle['tri-demande'][5], 'suspendu (quota Gmail)');
 });
 
 test('lignesProgression_ : « terminé » — horodatage de FIN figé, purge dérivée de la CONSTANTE, numérateur figé', () => {
@@ -95,30 +91,14 @@ test('lignesProgression_ : « terminé » — horodatage de FIN figé, purge dé
   assert.strictEqual(l3, undefined, 'terminé plus vieux que la purge → ligne purgée');
 });
 
-test('lignesProgression_ : demandes — active d\'abord, soldée visible via l\'instantané, purge du solde', () => {
+// ADR-0031 : les « demandes de Marc » (tri/intentions) n'existent plus — la progression ne
+// publie QUE les campagnes de fond, jamais une ligne fantôme d'une feature retirée.
+test('lignesProgression_ (ADR-0031) : plus JAMAIS de lignes tri-demande / intentions-demande', () => {
   const c = ctxJournal();
-  const PURGE = c.CONFIG.PROGRESSION_PURGE_MS;
-  const maintenant = Date.now();
   const etat = etatVierge(c);
-
-  etat.triDemande = { active: true, faits: 37, plafond: 100, solde: { faits: 5, quand: maintenant - 1000 } };
-  let l = c.lignesProgression_(etat, {}, maintenant, PURGE).find((x) => x[0] === 'tri-demande');
-  assert.deepStrictEqual([l[2], l[3], l[4], l[5]], [37, 100, 'fils', 'en cours'], 'demande ACTIVE prime sur un vieux solde');
-
-  // Demande servie en UN tick (Properties purgées avant le finally) : le solde la rend visible.
-  etat.triDemande = { active: false, faits: 0, plafond: null, solde: { faits: 37, quand: maintenant - 1000 } };
-  l = c.lignesProgression_(etat, {}, maintenant, PURGE).find((x) => x[0] === 'tri-demande');
-  assert.deepStrictEqual([l[2], l[5]], [37, 'terminé']);
-
-  // Solde plus vieux que la purge → plus de ligne.
-  etat.triDemande.solde.quand = maintenant - (PURGE + 60000);
-  l = c.lignesProgression_(etat, {}, maintenant, PURGE).find((x) => x[0] === 'tri-demande');
-  assert.strictEqual(l, undefined);
-
-  // Intentions à la demande : base inconnue (fenêtre), l'offset seul progresse (compté en FILS).
-  etat.intentionsDemande = { active: true, traites: 240, solde: null };
-  l = c.lignesProgression_(etat, {}, maintenant, PURGE).find((x) => x[0] === 'intentions-demande');
-  assert.deepStrictEqual([l[2], l[3], l[4], l[5]], [240, '', 'fils', 'en cours']);
+  etat.migration = { termine: false, base: 100, traites: 10, tag: 'm1' };
+  const cles = c.lignesProgression_(etat, {}, Date.now(), c.CONFIG.PROGRESSION_PURGE_MS).map((l) => l[0]);
+  assert.ok(cles.indexOf('tri-demande') === -1 && cles.indexOf('intentions-demande') === -1, 'clés retirées');
 });
 
 test('lignesProgression_ : compteur histo MONOTONE — l\'offset repart à 0 en passe de vérification, l\'affichage jamais', () => {
@@ -254,12 +234,11 @@ test('lignesTelemetrie_ : clés STABLES (contrat app), plafonds dérivés des CO
   lignes.forEach((l) => { parCle[l[0]] = l; });
   // Contrat avec interpreterTelemetrie (PR3) : ces clés ne doivent JAMAIS changer sans migration app.
   assert.deepStrictEqual(Object.keys(parCle).sort(), ['gmail_histo_fils_jour', 'llm_appels_mois',
-    'llm_cout_mois', 'quota_gmail_etat', 'tri_boite_fils_jour', 'tri_cyclique_fils_jour', 'tri_demande_fils_jour']);
+    'llm_cout_mois', 'quota_gmail_etat', 'tri_boite_fils_jour', 'tri_cyclique_fils_jour']);
   assert.deepStrictEqual([parCle['quota_gmail_etat'][1], parCle['quota_gmail_etat'][3]], ['actif', '']);
   // Plafonds affichés = les CONSTANTES du jour (l'app n'a pas à les connaître en dur).
   assert.strictEqual(parCle['gmail_histo_fils_jour'][3], 'Plafond ' + c.CONFIG.GMAIL_HISTO_MAX_FILS_JOUR + '/j');
   assert.strictEqual(parCle['tri_cyclique_fils_jour'][3], 'Plafond ' + c.CONFIG.TRI_CYCLIQUE_MAX_FILS_JOUR + '/j');
-  assert.strictEqual(parCle['tri_demande_fils_jour'][3], 'Plafond ' + c.CONFIG.TRI_DEMANDE_MAX_FILS_JOUR + '/j');
   assert.deepStrictEqual([parCle['tri_boite_fils_jour'][1], parCle['tri_boite_fils_jour'][3]],
     [45, 'Plafond ' + c.CONFIG.TRI_BOITE_MAX_FILS_JOUR + '/j']);
   assert.strictEqual(parCle['llm_cout_mois'][3], 'Frein campagnes à ' + c.CONFIG.LLM_BUDGET_CAMPAGNES + ' $');

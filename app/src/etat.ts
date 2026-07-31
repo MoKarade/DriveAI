@@ -433,13 +433,13 @@ export interface JaugeJour {
 /**
  * Miroir de l'onglet Télémétrie (COLONNES_TELEMETRIE, Journal.gs) — clés STABLES écrites par
  * `lignesTelemetrie_` côté moteur : quota_gmail_etat, gmail_histo_fils_jour,
- * tri_cyclique_fils_jour, tri_demande_fils_jour, tri_boite_fils_jour, llm_cout_mois, llm_appels_mois.
+ * tri_cyclique_fils_jour, tri_boite_fils_jour, llm_cout_mois, llm_appels_mois.
+ * (`tri_demande_fils_jour` a disparu avec le tri à la demande — ADR-0031.)
  */
 export interface Telemetrie {
   presente: boolean;        // l'onglet a des lignes (faux = moteur pas encore passé depuis le déploiement)
   quotaSuspendu: boolean;
   quotaDetail: string;      // « Reprise vers HH:mm » ('' quand actif)
-  demandeJour: JaugeJour;   // tri à la demande (in:inbox is:read)
   cycliqueJour: JaugeJour;  // balayage cyclique du tri
   histoJour: JaugeJour;     // campagne historique (PJ)
   boiteJour: JaugeJour;     // nettoyage profond de la boîte (mails lus > 30 j, C28-22)
@@ -471,7 +471,6 @@ export function interpreterTelemetrie(brut: string[][]): Telemetrie {
     presente: Object.keys(parCle).length > 0,
     quotaSuspendu: (quota?.[1] ?? '') === 'suspendu',
     quotaDetail: quota?.[3] ?? '',
-    demandeJour: jauge('tri_demande_fils_jour'),
     cycliqueJour: jauge('tri_cyclique_fils_jour'),
     histoJour: jauge('gmail_histo_fils_jour'),
     boiteJour: jauge('tri_boite_fils_jour'),

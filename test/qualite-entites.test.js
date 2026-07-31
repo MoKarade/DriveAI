@@ -113,23 +113,25 @@ test('entiteEnAttenteAjouter_ : GÉNÉRIQUE → aucune ligne, aucune I/O', () =>
   assert.strictEqual(calls.setValue.length, 0);
 });
 
-test('entiteEnAttenteAjouter_ : FUSIONNABLE avec une ligne existante → incrément Vu, pas d\'append', () => {
-  const existante = { ligneSheet: 2, entite: 'Desjardins', domaine: '02 · Finances', categorie: '', type: '', statut: 'en_attente', dossierId: '' };
-  const { c, calls } = ctxProposition([existante]);
-  c.entiteEnAttenteAjouter_({ entite: 'banque Desjardins', domaine: '02 · Finances' });
-  assert.strictEqual(calls.append.length, 0);
-  assert.strictEqual(calls.setValue.length, 1); // Vu N fois incrémenté (1 → 2)
-  assert.strictEqual(calls.setValue[0].v, 2);
+// TRIPWIRE ADR-0031 (décision Marc 2026-07-31 « plus RIEN tout seul ») : sans dossier Drive
+// existant, une entité inconnue n'écrit plus JAMAIS rien — ni ligne en_attente, ni incrément.
+test('entiteEnAttenteAjouter_ (ADR-0031) : entité INCONNUE sans dossier existant → ZÉRO écriture Sheet', () => {
+  const { c, calls } = ctxProposition([]);
+  c.entiteEnAttenteAjouter_({ entite: 'Wealthsimple', domaine: '02 · Finances' });
+  assert.strictEqual(calls.append.length, 0, 'plus aucune ligne en_attente (le doc reste classé au domaine)');
+  assert.strictEqual(calls.setValue.length, 0, 'aucun compteur touché');
 });
 
-test('entiteEnAttenteAjouter_ : canonique VALIDÉE → Vu incrémenté, AUCUN alias (pas de fusion de facto)', () => {
+test('entiteEnAttenteAjouter_ (ADR-0031) : entité DÉJÀ connue (validée ou héritée) → no-op, AUCUN alias', () => {
   const validee = { ligneSheet: 2, entite: 'Desjardins', domaine: '02 · Finances', categorie: '', type: '', statut: 'validee', dossierId: 'DOSSIER' };
   const { c, calls } = ctxProposition([validee]);
+  c.entiteEnAttenteAjouter_({ entite: 'Desjardins', domaine: '02 · Finances' });
+  assert.strictEqual(calls.append.length, 0);
+  assert.strictEqual(calls.setValue.length, 0, 'plus d\'incrément « Vu N fois » à l\'observation');
+  // PAS d'alias non plus : une VARIANTE inconnue (« banque Desjardins ») n'entre jamais dans parCle
+  // → resoudreEntite_ ne routera jamais une variante dans le dossier sans fusion explicite de Marc.
   c.entiteEnAttenteAjouter_({ entite: 'banque Desjardins', domaine: '02 · Finances' });
   assert.strictEqual(calls.append.length, 0);
-  assert.strictEqual(calls.setValue.length, 1); // Vu N fois
-  // PAS d'alias : la clé de la variante n'entre pas dans parCle → resoudreEntite_ ne routera JAMAIS
-  // « banque Desjardins » dans le dossier de « Desjardins » sans fusion explicite de Marc.
   const cleVariante = c.cleEntite_('02 · Finances', 'banque Desjardins');
   assert.strictEqual(c._entitesCache.parCle[cleVariante], undefined);
 });
@@ -176,24 +178,28 @@ test('appliquerCurationEntites_ : deux domaines DIFFÉRENTS ne se regroupent jam
   assert.strictEqual(variantes.length, 0);
 });
 
-test('entiteEnAttenteAjouter_ : entité INÉDITE → append avec Vu N fois = 1', () => {
-  const { c, calls } = ctxProposition([]);
-  c.entiteEnAttenteAjouter_({ entite: 'Wealthsimple', domaine: '02 · Finances' });
-  assert.strictEqual(calls.append.length, 1);
-  const ENTETES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?', 'Vu N fois'];
-  assert.strictEqual(calls.append[0][ENTETES.indexOf('Vu N fois')], 1);
-  assert.strictEqual(calls.append[0][ENTETES.indexOf('Statut')], 'en_attente');
-});
-
 /* ---------- P4 (C28-10) : canonicalisation à la SOURCE + « reality check » Drive ---------- */
 
-test('entiteEnAttenteAjouter_ : deux formes du MÊME véhicule → UNE seule ligne, sous la forme canonique', () => {
+test('entiteEnAttenteAjouter_ (ADR-0031) : deux formes du MÊME véhicule, dossier EXISTANT → UNE ligne canonique validée', () => {
   const { c, calls } = ctxProposition([]);
+  c.idDomaine_ = () => 'ID-DOMAINE-03';
+  c.DriveApp = {
+    getFolderById: () => {
+      let servi = false;
+      return {
+        getFolders: () => ({
+          hasNext: () => !servi,
+          next: () => { servi = true; return { getName: () => 'Ford Fiesta', getId: () => 'DOSSIER-FIESTA' }; },
+        }),
+      };
+    },
+  };
   c.entiteEnAttenteAjouter_({ entite: 'Ford Fiesta SE 2011', domaine: '03 · Logement & véhicule', categorie: 'Véhicule' });
   c.entiteEnAttenteAjouter_({ entite: 'Ford Fiesta 2011', domaine: '03 · Logement & véhicule', categorie: 'Véhicule' });
-  assert.strictEqual(calls.append.length, 1, 'la 2e forme rejoint la clé canonique de la 1re');
+  assert.strictEqual(calls.append.length, 1, 'la 2e forme rejoint la clé canonique de la 1re (cache du run)');
   const ENTETES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?', 'Vu N fois'];
-  assert.strictEqual(calls.append[0][ENTETES.indexOf('Entité')], 'Ford Fiesta', 'proposée sous sa forme canonique (années/finitions retirées)');
+  assert.strictEqual(calls.append[0][ENTETES.indexOf('Entité')], 'Ford Fiesta', 'sous sa forme canonique (années/finitions retirées)');
+  assert.strictEqual(calls.append[0][ENTETES.indexOf('Statut')], 'validée', 'ADR-0031 : seule l\'observation d\'un dossier EXISTANT écrit');
 });
 
 test('entiteEnAttenteAjouter_ : un dossier du domaine porte DÉJÀ ce nom → ligne directement VALIDÉE, liée au dossier', () => {

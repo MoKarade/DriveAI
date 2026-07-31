@@ -59,7 +59,6 @@ export function Moteur({ langue }: { langue: Langue }) {
   };
 
   const jauges: Array<{ cle: CleTexte; j: JaugeJour }> = [
-    { cle: 'jaugeTriDemande', j: tele.demandeJour },
     { cle: 'jaugeCyclique', j: tele.cycliqueJour },
     { cle: 'jaugeHisto', j: tele.histoJour },
     { cle: 'jaugeBoite', j: tele.boiteJour },

@@ -1580,3 +1580,25 @@ un point de vigilance lointain en panne du jour. Ce type de défaut ne se voit n
 voit en se demandant 'qu'est-ce qui, ailleurs, suppose que cette table est petite ?'"
 
 **Règle durable ?** oui (ajouté à CLAUDE.md §7).
+
+## 2026-07-31 — Supprimer une FEATURE à cheval app/moteur : inventaire par COUCHES, retrait ATOMIQUE des vitrines
+
+**Contexte.** C28-41 : Marc supprime des pans entiers de l'app (« et le code en lien aussi »). Chaque
+feature retirée traversait cinq couches : bouton UI → fonction app (google.ts) → action web app
+(doPost) → consommateur du tick (scanDemandeTri_, balayerAnalyseCiblee_…) → VITRINES d'état
+(lignes Progression/Télémétrie + jauge app). Retirer l'UI seule (PR1) a laissé deux semaines
+« virtuelles » de vitrines mortes possibles : une jauge « tri à la demande » figée à 0/500 aurait
+reproduit EXACTEMENT la plainte d'origine (« jamais à jour, semble pas marcher ») — un cadran qui
+mesure une feature morte est indistinguable d'une panne.
+
+**Leçon.** "Supprimer une feature se planifie par COUCHES, avec un grep par NOM à chaque étage
+(bouton, fonction client, action serveur, consommateur du tick, constantes CONFIG, Properties,
+lignes de télémétrie/progression, clés i18n, mocks, tests) — et les VITRINES d'état d'une feature
+(jauge, ligne de progression, compteur) se retirent ATOMIQUEMENT avec son producteur, dans la même
+PR : un cadran qui survit à sa feature affiche un zéro éternel que l'utilisateur lit comme une
+panne. Corollaire : les helpers partagés se vérifient par LEURS AUTRES APPELANTS avant retrait
+(chercherVariante_ servait aussi la correction ; compterSousDossiersRegroupables_ servait aussi
+les prompts à la demande — les retirer aurait cassé des features conservées)."
+
+**Règle durable ?** non (instance des règles §7 « retrait de code : frontières + filet de surface »
+et « vérifier la prod par un signal indépendant » — consignée ici pour le réflexe par couches).

@@ -208,14 +208,6 @@ var CONFIG = {
                                           // cyclique (sans lui : 1 page × 288 ticks ≈ 5 760
                                           // lectures/j) — le tour de la boîte s'étale sur ~2-3 j,
                                           // le scan AVANT garde sa latence ~5 min sur le neuf
-  TRI_DEMANDE_PLAFOND_MAX: 1000,          // borne DURE du plafond réglable au clic (C28-16) — la
-                                          // demande s'étale sur plusieurs ticks, jamais plus par run
-                                          // que TRI_MAX_FILS_PAR_RUN (le quota reste protégé)
-  TRI_DEMANDE_MAX_FILS_JOUR: 500,         // C28-24 : plafond QUOTIDIEN de fils LUS par le tri à la
-                                          // demande — la requête `in:inbox is:read` n'a plus de
-                                          // fenêtre (toute la boîte) : sans plafond dans SON unité,
-                                          // une grosse boîte drainerait le quota Gmail partagé en
-                                          // un jour (leçon C28-21) ; elle se draine sur plusieurs j
   TRI_MAX_ATTENTES: 20,                   // fils « en attente des intentions » chargés par run (borne
                                           // la re-facture de lecture — revue flotte, classe R2)
   TRI_BOITE_MAX_FILS_JOUR: 150,           // C28-22 (ADR-0022) : plafond QUOTIDIEN de fils LUS par le
@@ -246,7 +238,6 @@ var CONFIG = {
   TRI_NEWSLETTERS_SEUIL: 3,               // n fils promo non lus (30 j) pour qualifier un expéditeur
   INTENTIONS_MAX_PAR_RUN: 200,            // plafond de messages ANALYSÉS (pré-filtre inclus) par run
   CREATIONS_MAX_PAR_RUN: 30,              // plafond de tâches/événements CRÉÉS par run (pas de rafale)
-  CIBLEE_ECHECS_MAX: 3,                   // échecs de recherche CONSÉCUTIFS avant abandon tracé de l'analyse ciblée (C28-06)
   LLM_MAX_TOKENS_MINICHECK: 24,           // mini-check JSON {action, important} (expéditeur+sujet seuls)
   LLM_MAX_TOKENS_INTENTIONS: 500,
   EVENT_DUREE_MIN_DEFAUT: 60,             // durée par défaut d'un événement créé (minutes)
@@ -453,9 +444,6 @@ var CONFIG = {
   REORG_MAX_JOUR: 5,                      // plafond quotidien d'appels LLM de réorg (borne une app boguée qui re-demanderait en boucle)
   REORG_FUSION_LOT: 40,                   // éléments déplacés par run lors d'une FUSION (reprenable — garde-temps partagé)
   ROUTAGE_PROFONDEUR_MAX: 8,              // ADR-0028 : niveaux max remontés pour vérifier qu'un dossier d'entité est bien SOUS son domaine (anti-cycle multi-parents) — au-delà, repli par nom
-  REORG_AUTO_ACTIF: true,                 // ADR-0029 : le moteur DÉPOSE lui-même une demande de réorg quand un dossier dépasse la tolérance (false = retour au 100 % à la demande). Ne fait que PROPOSER : rien ne s'applique sans la validation de Marc
-  REORG_AUTO_MAX_JOUR: 3,                 // ADR-0029 : dépôts AUTOMATIQUES max par jour (≈ 0,06 $/j — décision Marc 2026-07-28 « accélère », révise 1). Avec la mécanique en 2 tours, un dossier peut être aéré dans la JOURNÉE si Marc valide au fil de l'eau. DOIT rester ≤ REORG_MAX_JOUR (5, plafond des analyses LLM) : au-delà, les demandes s'empileraient sans être analysées — et il faut garder de la marge pour les réorgs MANUELLES de Marc
-  REORG_AUTO_SKIP_JOURS: 30,              // ADR-0029 : un dossier pour lequel le LLM ne propose AUCUN regroupement est ignoré ce nombre de jours (convergence — sinon re-proposé chaque jour)
   REORG_MAX_SOUS_DOSSIERS_IDEAL: 7,       // loi de Miller (ADR-0027) : au-delà, un dossier devient illisible. CIBLE affichée au LLM, jamais un blocage du flux vivant
   REORG_MAX_SOUS_DOSSIERS_TOLERANCE: 9,   // 7 ± 2 : seuil à partir duquel la Réorg/le Chat PROPOSENT un regroupement thématique (on n'embête pas Marc pour un 8e dossier). Sont exclus du décompte TOUS les segments STRUCTURELS — années « AAAA », schémas d'entité, types de pièce d'identité (estSegmentStructurel_) — et les racines système (ADR-0027)
   LLM_MAX_TOKENS_REORG: 3000,             // 40 actions pretty-printées + synthèse SANS troncature (analyse ≈ 0,02 $, à la demande seulement)

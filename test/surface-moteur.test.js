@@ -43,9 +43,6 @@ const CONTRAT = [
   // panne de CONFIG d'API Google (C28-22 — Tasks/Calendar non activée, suspension persistée)
   'chargerPanneConfigApi_', 'estPanneConfigApi_', 'reinitialiserPanneConfigApi_',
   'estMessageApiDesactivee_', 'signalerPanneConfigApi_',
-  // tri & intentions À LA DEMANDE (C28-16 — panneau « Analyser & trier » de l'app)
-  'forcerSondeQuotaGmail_', 'scanDemandeTri_', 'effacerDemandeTri_',
-  'actionDemandeTri_', 'actionDemandeIntentions_', 'validerDemandeTri_',
   // curation des mails (C28-19, ADR-0020) : confiance, scan cyclique, « pas suspect » 1-clic
   'decisionSuspect_', 'confianceCache_', 'reinitialiserConfianceCache_', 'apprendreConfiance_',
   'scanCycliqueTri_', 'appliquerPasSuspect_', 'purgerClesTriIndex_',
@@ -57,7 +54,7 @@ const CONTRAT = [
   'estAReanalyser_', 'appliquerReanalyseCiblee_', 'reanalyserUnePage_', 'collecterAReanalyser_',
   'reanalyserFichier_',
   // progression LIVE des opérations (C28-18) : rendu centralisé (tick finally) + recensements
-  'majProgressions_', 'lignesProgression_', 'assurerEnteteProgression_', 'lireSoldeDemande_',
+  'majProgressions_', 'lignesProgression_', 'assurerEnteteProgression_',
   // télémétrie coûts & quotas (C28-24) : rendu centralisé (tick finally), lu par l'app (PR3)
   'majTelemetrie_', 'lignesTelemetrie_', 'compteurFilsJour_',
   // résumé hub (C28-27) : pré-calcul au tick finally (Main.gs) des 4 métriques du widget hubperso.com
@@ -111,8 +108,6 @@ const CONTRAT = [
   // fichier via le chemin GARDÉ (Reorg.appliquerUneAction_), épinglé Marc respecté des deux côtés
   'proposerReorgChat_', 'parserActionsChat_', 'ligneActionChat_', 'champsActionChat_',
   'appliquerDeplacerFichier_', // Reorg.gs — appliqué au chemin gardé (C21-06)
-  // analyse ciblée des mails (C28-06, plan P2)
-  'actionAnalyseCiblee_', 'validerRequeteCiblee_', 'balayerAnalyseCiblee_',
   // réorg IA (#21, C21-04 : proposition ; C21-06 : application)
   'appliquerReorgIA_', 'inventaireDossiers_', 'resumeArborescence_', 'promptReorg_',
   'parserPropositionReorg_', 'lignePourAction_', 'solderDemande_', 'aParentEtrangerProtege_',
@@ -149,9 +144,7 @@ const CONTRAT = [
   'entitesValideesParCle_', 'empreintesPlanConsolidation_',
   'sousCheminDomaine_', 'budgetJourConsolidation_', // règle unique flux↔plan + budget quotidien (revue flotte)
   'estCibleInterdite_', // C28-31 : année/type d'identité ne sont JAMAIS parents d'un regroupement
-  'compterSousDossiersRegroupables_', 'genererDemandeReorgAuto_', // C28-32 (ADR-0029) : mesure + dépôt auto de la demande (appelé par Main.gs)
-  'lireSkipReorg_', 'estIgnoreReorg_', 'ajouterSkipReorg_', 'choisirDossierSature_', // skip-list de convergence (PURES)
-  'assietteOccupee_', 'ignorerDossierAuto_', // C28-32 : occupation mesurée sur les ACTIONS (jamais le statut terminal d'une demande) + sourdine sur TOUT solde terminal
+  'compterSousDossiersRegroupables_', // C28-31 : décompte des regroupables (inventaire → prompts) — la campagne AUTO C28-32 est retirée (ADR-0031)
   'segmentsSousDomaine_', 'dossierEntiteParId_', // ADR-0028 : confinement + chemin réel, et le RÉSOLVEUR UNIQUE par ID — Router.gs, appelés AUSSI par ConsolidationExec.gs
   'seedEntitesMarc_', // seed one-shot des entités de Marc (décision 2026-07-17), appelé depuis Main
   // exécution du plan de consolidation (ADR-0024) — moveTo seul, §1 par mutation, cible recalculée

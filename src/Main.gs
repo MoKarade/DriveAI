@@ -514,21 +514,9 @@ function tickDriveAI() {
       catch (e) { journalErreur_('Reorg', 'Étape réorg différée : ' + e); }
     }
 
-    // 🤖 Campagne de réorg AUTOMATIQUE (C28-32, ADR-0029) : le moteur DÉPOSE lui-même une demande sur
-    // un dossier saturé (~7 sous-dossiers, ADR-0027) — Marc n'a plus à lancer l'analyse. Placée JUSTE
-    // APRÈS `etapeReorg_` : celle-ci vient d'APPLIQUER les actions validées et de solder la demande
-    // précédente, donc l'« assiette » est propre au bon moment (drainer avant d'alimenter). Elle ne
-    // fait que déposer une ligne : l'analyse LLM aura lieu au tick SUIVANT, avec son budget à elle —
-    // on n'enchaîne jamais un inventaire ET un appel Sonnet dans le même run. Gates : 1 scan/jour +
-    // aucune demande en cours. SECONDAIRE → enveloppée (jamais bloquer l'intake).
-    // « BUDGET TAIL » (leçon §7) : cette étape est PURE I/O Drive/Sheet (un BFS de lecture + un
-    // appendRow, ZÉRO appel LLM) → elle prend le garde ÉTENDU (estBudgetDepasseStandard, mur 4,5 min)
-    // et non le budget de tick 3 min réservé aux appels Sonnet. Elle n'utilise que le reliquat.
-    // Suspendue pendant le RESET (ADR-0030 « Transition », même raison que conso-2 ci-dessus).
-    if (!estBudgetDepasseStandard() && !resetEnCours_()) {
-      try { genererDemandeReorgAuto_(estBudgetDepasseStandard); }
-      catch (e) { journalErreur_('Reorg', 'Demande auto différée : ' + e); }
-    }
+    // (Campagne de réorg AUTOMATIQUE C28-32/ADR-0029 : ABROGÉE par l'ADR-0031 — décision Marc
+    // 2026-07-31 « plus RIEN tout seul ». L'analyse réorg n'a plus que deux déclencheurs, tous
+    // deux À LA DEMANDE : une demande déposée par l'app et l'outil `proposer_reorg` du chat.)
 
     // Réconciliation Index↔Drive (C28-07, plan P3) : campagne de fond PERPÉTUELLE sur le
     // reliquat de budget — OBSERVE Drive (jamais ne le modifie) et aligne l'Index append-only

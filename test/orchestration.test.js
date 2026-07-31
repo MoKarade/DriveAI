@@ -64,16 +64,16 @@ test('orchestration : la consolidation est gatée par le BUDGET TAIL (4,5 min), 
  * C28-26) — vérifié ici en verrouillant le TEXTE du tick (patron ci-dessus), pas un comportement
  * mocké : le garde `!resetEnCours_()` doit apparaître sur CHAQUE point d'entrée concurrent.
  */
-test('orchestration RESET : conso-2 (génération + exécution) ET la réorg auto sont gatées par !resetEnCours_()', () => {
+test('orchestration RESET : conso-2 (génération + exécution) est gatée par !resetEnCours_()', () => {
+  // (La réorg AUTO n'existe plus — ADR-0031 : le tick ne doit plus JAMAIS l'appeler.)
+  assert.strictEqual(corps.indexOf('genererDemandeReorgAuto_'), -1,
+    'ADR-0031 : plus aucun dépôt de demande de réorg par le tick');
   const ligneExec = corps.slice(corps.indexOf('appliquerPlanConsolidation_(estBudgetDepasseStandard)') - 200,
     corps.indexOf('appliquerPlanConsolidation_(estBudgetDepasseStandard)'));
   const ligneGen = corps.slice(corps.indexOf('genererPlanConsolidation_(estBudgetDepasseStandard)') - 200,
     corps.indexOf('genererPlanConsolidation_(estBudgetDepasseStandard)'));
-  const ligneReorgAuto = corps.slice(corps.indexOf('genererDemandeReorgAuto_(estBudgetDepasseStandard)') - 200,
-    corps.indexOf('genererDemandeReorgAuto_(estBudgetDepasseStandard)'));
   assert.ok(/!resetEnCours_\(\)/.test(ligneExec), 'appliquerPlanConsolidation_ doit être gatée par !resetEnCours_()');
   assert.ok(/!resetEnCours_\(\)/.test(ligneGen), 'genererPlanConsolidation_ doit être gatée par !resetEnCours_()');
-  assert.ok(/!resetEnCours_\(\)/.test(ligneReorgAuto), 'genererDemandeReorgAuto_ doit être gatée par !resetEnCours_()');
 });
 
 /**

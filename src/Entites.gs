@@ -517,48 +517,30 @@ function typeEntiteDevine_(classif) {
 }
 
 /**
- * Propose une nouvelle entité (ligne « en_attente », pré-remplie). Idempotent dans le run.
- * Écrire cette ligne n'est PAS créer un dossier → anti-prolifération respecté.
+ * OBSERVE une entité inconnue (ADR-0031, décision Marc 2026-07-31 « plus RIEN tout seul ») :
+ * le moteur ne PROPOSE plus jamais de ligne « en_attente ». Seul survit le « reality check »
+ * P4/C28-10 : si un dossier du domaine porte DÉJÀ le nom canonique (créé par Marc à la main,
+ * par une validation passée ou par la réorg #21), la ligne naît directement VALIDÉE et pointe
+ * vers lui — c'est l'apprentissage de ce que Marc a FAIT, pas une question qu'on lui pose.
+ * Sinon : RIEN n'est écrit, le document reste classé au domaine (« granularité = enrichissement,
+ * jamais frein » — routage inchangé). Idempotent dans le run.
  * @param {Object} classif
  */
 function entiteEnAttenteAjouter_(classif) {
   if (!classif.entite) return;
-  // P4 (C28-10) : la proposition naît sous sa forme CANONIQUE — « Ford Fiesta SE 2011 » et
-  // « Ford Fiesta 2011 » se réduisent au même nom AVANT d'entrer dans la file (fini les N formes
-  // du même appartement). Canonique null = générique ou propriétaire (subsume le filtre #10) :
-  // jamais proposé, le document reste classé au domaine.
+  // Canonique null = générique ou le propriétaire lui-même : jamais une entité (doc au domaine).
   var nomCanonique = canoniserEntite_(classif.entite);
   if (!nomCanonique) return;
   var cle = cleEntite_(classif.domaine, nomCanonique);
   var cache = entitesCache_();
-  if (cache.parCle[cle]) return; // déjà proposée ou connue
+  if (cache.parCle[cle]) return; // déjà connue (validée, héritée en_attente, refusée…)
 
-  // Consolidation (#10) : si une ligne du même domaine désigne déjà la MÊME entité (inclusion de
-  // jetons), pas de n-ième ligne — on incrémente son « Vu N fois » — signal de fréquence PARTIEL : seules les FORMES VARIANTES
-  // comptent (un hit de clé exacte sort plus haut sans I/O, discipline de lecture oblige).
-  // JAMAIS d'alias dans parCle (revue flotte) : aliaser vers une ligne VALIDÉE ferait router les
-  // documents suivants du run dans son dossier sous un autre libellé = fusion automatique de facto,
-  // interdite (TAXONOMY : « suggestion seulement »). Sans alias, chaque re-proposition re-scanne et
-  // re-incrémente — comptage de fréquence plus juste, et le document reste classé au domaine tant
-  // que Marc n'a pas fusionné/validé explicitement.
-  var canonique = chercherLigneFusionnable_(nomCanonique, cache, classif.domaine);
-  if (canonique) {
-    incrementerVuEntite_(canonique);
-    return;
-  }
+  // « Reality check » Drive (lecture seule, inventaire paresseux 1×/domaine/run) : sans dossier
+  // existant, on ne fait RIEN — plus aucune file de validation à alimenter (ADR-0031).
+  var idExistant = dossiersExistantsDomaine_(classif.domaine)[normaliserCle_(nomCanonique)] || '';
+  if (!idExistant) return;
 
   var type = typeEntiteDevine_(classif);
-  // Garde anti-variantes (ADR-0002 §4) : propose la plus proche entité EXISTANTE du même domaine —
-  // pour que Marc fusionne en 1 clic au lieu de créer un quasi-doublon. Suggestion seulement, jamais auto.
-  var variante = chercherVariante_(nomCanonique, entitesMemeDomaine_(cache, classif.domaine), CONFIG.SEUIL_VARIANTE);
-
-  // P4 (C28-10) — « reality check » Drive : si un dossier du domaine porte DÉJÀ ce nom (créé à la
-  // main par Marc, par une validation passée ou par la réorg #21), la proposition naît directement
-  // VALIDÉE et pointe vers lui — jamais une n-ième forme « en attente » d'un dossier qui existe.
-  // Lecture seule (inventaire paresseux 1×/domaine/run), aucun dossier créé ni déplacé ici.
-  var idExistant = dossiersExistantsDomaine_(classif.domaine)[normaliserCle_(nomCanonique)] || '';
-  var statut = idExistant ? 'validée' : 'en_attente';
-
   var f = feuille_('Entités');
   var idx = colonnesEntites_();
   var ligne = [];
@@ -566,21 +548,19 @@ function entiteEnAttenteAjouter_(classif) {
   ligne[idx['Domaine']] = classif.domaine || '';
   ligne[idx['Catégorie']] = classif.categorie || '';
   ligne[idx['Type']] = type;
-  ligne[idx['Statut']] = statut;
+  ligne[idx['Statut']] = 'validée';
   ligne[idx['Dossier ID']] = idExistant;
   ligne[idx['Ajoutée le']] = new Date();
-  ligne[idx['Variante possible ?']] = variante
-    ? '→ ' + variante.nom + ' (' + Math.round(variante.score * 100) + ' %) ?'
-    : '';
+  ligne[idx['Variante possible ?']] = '';
   ligne[idx['Vu N fois']] = 1;
   for (var i = 0; i < ligne.length; i++) if (ligne[i] === undefined) ligne[i] = '';
   f.appendRow(ligne);
-  if (idExistant) journalInfo_('Entités', 'Entité existante dans Drive auto-validée : ' + nomCanonique);
+  journalInfo_('Entités', 'Entité existante dans Drive auto-validée : ' + nomCanonique);
 
-  // Met le cache à jour (parCle + lignes) pour éviter une 2e proposition dans le même run.
+  // Met le cache à jour (parCle + lignes) : le run suivant route déjà vers ce dossier.
   var nouvelle = {
     ligneSheet: f.getLastRow(), entite: nomCanonique, domaine: classif.domaine || '',
-    categorie: classif.categorie || '', type: type, statut: statut, dossierId: idExistant
+    categorie: classif.categorie || '', type: type, statut: 'validée', dossierId: idExistant
   };
   cache.parCle[cle] = nouvelle;
   cache.lignes.push(nouvelle);
