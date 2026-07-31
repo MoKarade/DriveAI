@@ -19,6 +19,24 @@
 
 ---
 
+## Chantier #44 — AUDIT DE FOND + durcissement (demande Marc 2026-07-31 « empêcher tous les bugs, lags, faux positifs »)  🟦
+
+> Analyse adversariale par 6 agents (moteur, sécurité, app, intake, classement, taxonomie). Socle
+> §2 sain et prouvé (aucune suppression, zone 04, secrets, vie privée). Trois DÉCISIONS Marc cliquées :
+> (1) **unifier** le rangement (le flux vivant range dans la structure 2026) + couper la consolidation
+> qui la défait ; (2) **optimiser** le coût (2ᵉ passe conditionnelle + cache) ; (3) alertes **dans l'app**
+> seulement (pas de mail). Livraison par vagues, chaque vague = une PR revue avant merge.
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| Vague 1a | **2 bugs confirmés + 1 filet (ne changent PAS où vont les documents)** : (a) `promptChatAssistant_` tronqué en silence par ASI (2 `+` manquants WebApp.gs — chat privé de sa règle anti-FUSION, du « je ne fais que PROPOSER » et de la date ; test de CONTENU + mutation) ; (b) `auto-merge.yml` durci — `head_repository.full_name == github.repository` (un fork `claude/x` pouvait déclencher merge+deploy sur dépôt PUBLIC) ; (c) reset honore `epingle|` dans `collecterRassemblementReset_`/`collecterInterne04Reset_` (fichier rangé à la main ré-aspiré — ADR-0026). 741 tests, revue flotte en cours. | 🟦 PR #239 |
+| Vague 1b | Filets anti-blocage restants : fichier « empoisonné » du reset → quarantaine par passe (sinon reset jamais fini + campagnes suspendues à vie, workflow vert) ; re-dépôt manuel `drive|` re-traité ; doublon-après-corbeillage (porteur corbeillé ≠ « déjà vu ») ; passeport sans `domaine` toléré ; « Inconnu » neutralisé au NOMMAGE (`estRenseigne_`) ; panne réseau (throw) comptée dans la série systémique. | ⬜ |
+| Vague 1 app | Page Moteur lit la QUEUE du Journal (pas `A2:D5000` = les plus vieilles → « 0 erreur » faux) ; compteur du jour exclut les lignes `tri33*` ; chat survit au F5 (historique orphelin `user` assaini) ; double-clic création gardé ; agendas reprise sur erreur ; fenêtres `A2:H` ouvertes ; i18n MOIS/JOURS. | ⬜ |
+| Vague 2 | **Performance / anti-gel** : socle O(Index) allégé (colonnes A+G ; `majResumeHub_` en fenêtre de queue) ; scan Gmail vivant avec mur « page indexée » (relit 30 j entiers à chaque tick) ; mesure du temps de tick 1×/h (rendre la dérive visible avant le mur 90 min/j). | ⬜ |
+| Vague 3 | **Unification rangement (ADR §8)** : `cheminCibleVivant_` unique (table 2026 d'abord, `sousCheminDomaine_` repli) pour flux+conso+reset+PR5 + tripwire ; **couper la consolidation** avant convergence du reset ; **few-shot injecté en v2** (corrections de Marc enfin effectives) ; **2ᵉ passe conditionnelle + prompt caching** (`enregistrerUsage_` étendu au cache) ; frein budget encadré au 1er août ; re-pointage entités (graphies table↔seed). | ⬜ |
+
+---
+
 ## Chantier #42 — Passe LLM du RELIQUAT non-routable (ADR-0030 PR5, clic Marc 2026-07-31)  🟦
 
 > Marc : « ya encore beaucoup de fichiers en mode inconnu mais rien se passe pour eux » →

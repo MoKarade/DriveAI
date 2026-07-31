@@ -420,7 +420,12 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   retirer une fonction (elle avale les voisines — vécu ×2, dont `deciderRoutage_` entière) : analyse de
   frontières + assertions de présence des voisines. Les tests unitaires mockés ne voient PAS une fonction
   inter-module disparue → `test/surface-moteur.test.js` charge tout le moteur et vérifie le contrat
-  interne ; y ajouter toute nouvelle fonction appelée en travers des modules.
+  interne ; y ajouter toute nouvelle fonction appelée en travers des modules. **Corollaire (audit
+  2026-07-31) : un test de SURFACE ne voit que l'EXISTENCE, jamais le CONTENU.** Une chaîne longue
+  concaténée par `+` multi-lignes (prompt LLM, message) dont un `+` de fin de ligne manque est tronquée
+  EN SILENCE par l'ASI (`return A + B ⏎ C + D` ⇒ `return A + B;` puis statement mort) — zéro erreur,
+  surface verte. La verrouiller par un test de CONTENU qui asserte les marqueurs situés APRÈS chaque
+  point de coupure, dont le TOUT DERNIER fragment (dernière phrase, date interpolée) ; prouver par mutation.
 - **Allumer un flag qui change le modèle/coût du pipeline re-tarife AUSSI les campagnes déjà en
   cours** (elles re-passent leurs documents au pipeline COURANT — vécu : m1 basculée en Sonnet ×2
   par `ANALYSE_V2`, mois doublé en une nuit). Avant d'allumer : inventorier les consommateurs

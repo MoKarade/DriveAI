@@ -40,6 +40,23 @@
 > la branche par défaut ; ici sans conséquence (le fichier est sur les deux), mais à remettre sur
 > `main` un jour pour l'hygiène.
 >
+> **⚡⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (nuit) — AUDIT DE FOND (#44) + Vague 1a en revue.** Marc : « lance une
+> analyse approfondie pour empêcher tous les bugs, lags, faux positifs ». 6 agents adversariaux
+> (moteur, sécurité, app, intake, classement, taxonomie). **Socle §2 sain et PROUVÉ** (tests verts
+> exécutés) : aucune suppression possible, zone 04 inviolable, secrets cloisonnés, aucun contenu de
+> doc qui fuite. Vrais risques trouvés (croisés entre agents) : **règles de rangement divergentes**
+> (flux vivant vs reset vs conso — 10 cas/12 ; la conso va DÉFAIRE la structure validée dès la
+> convergence du reset) ; **corrections de Marc SANS effet** (few-shot mort sous v2) ; **prompt chat
+> tronqué** (ASI) ; **auto-merge détournable** (fork) ; **socle O(Index) + scan Gmail complet** →
+> risque de gel 90 min/j sans alarme ; **page Moteur lit le mauvais bout du Journal** (« 0 erreur »
+> faux — ta plainte « jamais à jour ») ; filets intake manquants (épinglage, re-dépôt manuel, fichier
+> empoisonné). **3 décisions Marc cliquées** : unifier le rangement + couper la conso ; optimiser le
+> coût (2ᵉ passe conditionnelle + cache) ; alertes dans l'app seulement. Livraison par VAGUES (BACKLOG
+> #44), chaque vague = 1 PR revue. **Vague 1a livrée (PR #239, revue en cours, do-not-merge)** : prompt
+> chat réparé (test contenu + mutation), auto-merge durci (origine PR), reset honore `epingle|`.
+> 741 tests. ⚠ Vercel rouge sur #239 = rate-limit du plan GRATUIT (>100 déploiements/j), PAS un bug,
+> ce diff ne touche pas l'app — se réinitialise en 24 h (peut retenir le merge si check requis).
+>
 > **⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (soir) — C28-42 : PASSE LLM DU RELIQUAT (ADR-0030 PR5, clic Marc).**
 > Marc : « ya encore beaucoup de fichiers en mode inconnu mais rien se passe pour eux ». Diagnostic :
 > deux populations — (a) les `_Inconnu` déjà CLASSÉS (la campagne m2-inconnu, suspendue pendant le

@@ -1633,3 +1633,26 @@ mutation (la gonfler doit faire échouer). Réflexe de conception : avant d'écr
 un ADR, montrer le calcul dans l'unité du quota (min/j), pas l'argument nominal."
 
 **Règle durable ?** oui (corollaire ajouté à la règle « réallouer, jamais augmenter » de CLAUDE.md §7).
+
+## 2026-07-31 — Une chaîne concaténée où un « + » de fin de ligne manque est tronquée EN SILENCE (ASI) ; seul un test de CONTENU l'attrape
+
+**Contexte.** Audit de fond (6 agents) demandé par Marc (« empêcher tous les bugs »). L'agent moteur
+a trouvé dans `promptChatAssistant_` (WebApp.gs) deux lignes d'une longue concaténation
+(`return 'a ' + 'b ' + …`) où le `+` de fin manquait sur deux lignes consécutives. En JavaScript,
+`return A + B \n C + D` (B ne finit pas par `+`, C est une string) déclenche l'insertion automatique
+de point-virgule : `return A + B;` puis `C + D;` — statement mort. **Aucune erreur de syntaxe.** Le
+prompt du chat était donc amputé de sa moitié : règle anti-FUSION (le chat pouvait proposer une
+fusion destructrice de dossier), « je ne fais que PROPOSER » (il pouvait prétendre avoir agi), date
+du jour. `test/surface-moteur.test.js` restait vert : il vérifie la PRÉSENCE de la fonction, jamais
+le CONTENU de ce qu'elle retourne.
+
+**Leçon.** "Toute chaîne longue construite par concaténation `+` multi-lignes (prompt LLM, message,
+requête) est une bombe à ASI : un seul `+` de fin de ligne oublié coupe le `return`/l'affectation à
+cette ligne et transforme le reste en code mort, SANS erreur ni test rouge. Un test de SURFACE
+(existence de la fonction) est structurellement aveugle. Réflexe : verrouiller ces chaînes par un
+test de CONTENU qui asserte la présence des marqueurs situés APRÈS chaque point de coupure possible —
+en particulier le TOUT DERNIER fragment (la dernière phrase, la date interpolée en fin) : s'il est
+présent, la chaîne n'a pas été tronquée en chemin. Prouver le test par mutation (retirer un `+` doit
+le faire échouer)."
+
+**Règle durable ?** oui (ajouté à CLAUDE.md §7).
