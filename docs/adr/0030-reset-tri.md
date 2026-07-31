@@ -28,9 +28,18 @@
    `00 · À trier`, sinon l'intake vivant re-analyserait tout au LLM). **La provenance de chaque
    fichier est enregistrée** dans l'Index sous la clé de campagne `tri33|<fileId>` (chemin d'origine
    en métadonnée — rien n'est perdu, ADR-0007 respecté : jamais de contenu).
-2. **Dédup en chemin** : empreinte identique (réutilisation PlanConsolidation/Index, hash sinon,
-   borné `OCR_TAILLE_MAX`) → `_Doublons` (déplacement seul, §2). Même nom normalisé mais contenu
-   différent → **rapport « doublons probables »**, tranché par Marc, jamais déplacé d'office.
+2. **Dédup en chemin** : empreinte identique → `_Doublons` (déplacement seul, §2). Même nom normalisé
+   mais contenu différent → **rapport « doublons probables »**, tranché par Marc, jamais déplacé d'office.
+   *(Amendement 2026-07-31, revue #229 — la réutilisation d'empreinte annoncée ici était PRÉVUE mais
+   pas implémentée : le placement re-téléchargeait les octets de chaque fichier. Elle l'est désormais,
+   via `empreinteReutiliseeReset_` : plan de consolidation d'abord (`empreintesPlanDeuxSens_`, une
+   lecture, les deux sens), Index ensuite (`empreinteConnueParId_`, dont la clé est décodée par
+   `fileIdDeCleIndex_` — whitelist EXPLICITE de préfixes, car attribuer une empreinte au mauvais
+   fichier enverrait un ORIGINAL dans `_Doublons`). Conséquence utile : un bump de
+   `RESET_TABLE_VERSION` ne re-hashe plus rien. La borne de hash passe d'`OCR_TAILLE_MAX` (20 Mo) à
+   `RESET_HASH_TAILLE_MAX` (5 Mo) : hasher 20 Mo coûte 10-60 s et franchissait le mur des 6 min sur le
+   dernier item d'un run. Au-delà de la borne, empreinte vide ⇒ le fichier n'est JAMAIS déplacé comme
+   doublon (le sens sûr), et le cas reste RAPPORTÉ en quasi-doublon.)*
 3. **Placement PAR LE NOM** *(y compris pour l'identité : une pièce d'une personne INCONNUE n'est
    JAMAIS devinée chez Marc — elle reste en `_TRI` au rapport)* : `cheminCibleReset_(domaineOrigine, nom)` (PURE, table
    `STRUCTURE_CIBLE_RESET` + routage par type/émetteur normalisés) place chaque fichier conforme dans
