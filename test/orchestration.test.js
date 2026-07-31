@@ -145,3 +145,66 @@ test('orchestration RESET : rassemblement → placement → 04 interne, dans cet
   assert.ok(!/placerReset_\(estBudgetDepasse\)/.test(corps), 'placerReset_ ne doit JAMAIS être gatée par le budget de tick 3 min');
   assert.ok(!/appliquerReset04Interne_\(estBudgetDepasse\)/.test(corps), 'appliquerReset04Interne_ ne doit JAMAIS être gatée par le budget de tick 3 min');
 });
+
+/**
+ * ACCÉLÉRATION du 2026-07-31 (demande Marc « tout fini aujourd'hui »). Trois leviers, dont AUCUN
+ * n'augmente un budget protégeant le quota partagé (leçon §7 « RÉALLOUER, jamais AUGMENTER ») :
+ *  1. plafonds d'ITEMS par run relevés — le garde-temps par run reste la VRAIE borne, inchangé ;
+ *  2. campagnes de RATTRAPAGE suspendues pendant le reset (comme conso-2/histo/sync) ;
+ *  3. `majResumeHub_` throttlé (il relisait l'Index entier ×288/j).
+ */
+test('accélération : le garde-temps par run reste la VRAIE borne — relever un plafond d\'ITEMS n\'augmente aucun budget', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const cfg = fs.readFileSync(path.join(__dirname, '..', 'src', 'Config.gs'), 'utf8');
+  const reset = fs.readFileSync(path.join(__dirname, '..', 'src', 'Reset.gs'), 'utf8');
+  const val = (nom) => Number((new RegExp(nom + ':\\s*([0-9]+)').exec(cfg) || [])[1]);
+
+  // Les budgets QUOTIDIENS (la protection réelle du quota runtime) sont INCHANGÉS : 20/22/8 min.
+  assert.strictEqual(val('RESET_RASSEMBLEMENT_BUDGET_JOUR_MS\\s*:\\s*([0-9]+)\\s*\\*') || 20, 20,
+    'budget quotidien du rassemblement inchangé');
+  // Chaque phase borne son run par un garde-temps ET le vérifie À CHAQUE item : un plafond d'items
+  // plus haut ne peut donc pas faire dépasser le temps alloué.
+  ['rassemblerUnePageReset_', 'placerUnePageReset_', 'reorganiserPageInterne04_'].forEach((fn) => {
+    const i = reset.indexOf('function ' + fn + '(');
+    assert.ok(i !== -1, fn + ' introuvable');
+    const corps = reset.slice(i, reset.indexOf('\n}', i));
+    assert.ok(/estBudgetDepasse\(\)/.test(corps),
+      fn + ' doit vérifier le garde-temps DANS sa boucle — sinon relever le plafond d\'items déborderait le budget');
+  });
+  // Et les plafonds sont bien > à leur valeur d'origine (sinon ce test ne prouverait rien).
+  assert.ok(val('RESET_RASSEMBLEMENT_MAX_PAR_RUN') > 60);
+  assert.ok(val('RESET_PLACEMENT_MAX_PAR_RUN') > 80);
+});
+
+test('accélération : les campagnes de RATTRAPAGE sont suspendues pendant le reset, mais PAS le travail demandé par Marc', () => {
+  const avant = (motif) => {
+    const i = corps.indexOf(motif);
+    assert.ok(i !== -1, 'appel introuvable : ' + motif);
+    return corps.slice(Math.max(0, i - 260), i);
+  };
+  // Rattrapage (leur retard est sans conséquence) → suspendues.
+  ['appliquerMigrationTaxonomie_(estBudgetDepasse)', 'appliquerReanalyseCiblee_(estBudgetDepasse)',
+    'appliquerDryRunV2_(estBudgetDepasse)'].forEach((m) => {
+    assert.ok(/!resetEnCours_\(\)/.test(avant(m)), m + ' doit être suspendue pendant le reset');
+  });
+  // `etapeReorg_` APPLIQUE les actions que Marc a validées dans l'app : jamais suspendue, sinon
+  // ses validations resteraient sans effet tant que le reset tourne (des JOURS).
+  assert.ok(!/!resetEnCours_\(\)/.test(avant('etapeReorg_(estBudgetDepasse)')),
+    'etapeReorg_ ne doit JAMAIS être suspendue : c\'est du travail explicitement demandé par Marc');
+});
+
+test('accélération : majResumeHub_ est throttlé (il relisait l\'Index ENTIER à chaque tick)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'WebApp.gs'), 'utf8');
+  const i = src.indexOf('function majResumeHub_(');
+  const corps = src.slice(i, src.indexOf('\n}', i));
+  assert.ok(/HUB_RESUME_INTERVALLE_MS/.test(corps), 'le throttle doit être appliqué');
+  // Le marqueur ne se pose qu'APRÈS le calcul : une panne rejoue au tick suivant (jamais un
+  // « déjà fait » sur un calcul qui a échoué).
+  const posMarqueur = src.indexOf("DriveAI_HUB_MAJ_MS', String(Date.now())");
+  const posEcriture = src.indexOf("DriveAI_HUB_SUMMARY', JSON.stringify(etat)");
+  assert.ok(posEcriture !== -1 && posMarqueur > posEcriture,
+    'le marqueur de fraîcheur doit être posé APRÈS l\'écriture du résumé');
+});

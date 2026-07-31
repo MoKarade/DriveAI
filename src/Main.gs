@@ -480,7 +480,7 @@ function tickDriveAI() {
     // taxonomie, EN PLACE, une page par tick. APRÈS l'intake (le flux vivant garde la priorité),
     // AVANT les intentions (la précision documentaire prime, cap produit ADR-0001). Campagne finie
     // → 1 Property lue, coût nul. ENVELOPPÉE : un échec ne doit jamais bloquer la suite du tick.
-    if (!estBudgetDepasse() && !budgetCampagnesAtteint_()) {
+    if (!estBudgetDepasse() && !budgetCampagnesAtteint_() && !resetEnCours_()) {
       try { appliquerMigrationTaxonomie_(estBudgetDepasse); }
       catch (e) { journalErreur_('Migration', 'Migration taxonomie différée : ' + e); }
     }
@@ -489,7 +489,7 @@ function tickDriveAI() {
     // (REANALYSE_CIBLES : 03, 08) au pipeline v2, EN PLACE, une page par tick. Ne démarre qu'après
     // la FIN de m1 (une seule campagne de masse à la fois — garde dans appliquerReanalyseCiblee_).
     // Même famille que la migration : après l'intake, gatée par le frein budget, enveloppée.
-    if (!estBudgetDepasse() && !budgetCampagnesAtteint_()) {
+    if (!estBudgetDepasse() && !budgetCampagnesAtteint_() && !resetEnCours_()) {
       try { appliquerReanalyseCiblee_(estBudgetDepasse); }
       catch (e) { journalErreur_('Réanalyse', 'Re-analyse ciblée différée : ' + e); }
     }
@@ -498,7 +498,7 @@ function tickDriveAI() {
     // Drive (planRoutageV2_ seul — jamais deciderRoutageV2_). Interrupteur DÉDIÉ (DRYRUN_V2_ACTIF,
     // OFF par défaut) : n'affecte JAMAIS le flux vivant ni CONFIG.ANALYSE_V2. Même famille que la
     // migration (après l'intake, gatée par le frein budget campagnes, enveloppée).
-    if (!estBudgetDepasse() && !budgetCampagnesAtteint_()) {
+    if (!estBudgetDepasse() && !budgetCampagnesAtteint_() && !resetEnCours_()) {
       try { appliquerDryRunV2_(estBudgetDepasse); }
       catch (e) { journalErreur_('DryRunV2', 'Dry-run v2 différé : ' + e); }
     }

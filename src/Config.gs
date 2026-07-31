@@ -530,6 +530,11 @@ var CONFIG = {
   // Reset 20 → 50 min/j (≈ 2,5× plus rapide) en restant SOUS l'enveloppe d'avant (elle valait déjà 50).
   // Invariant verrouillé par test (`test/orchestration.test.js` : reset ≤ somme des libérés).
   // À VÉRIFIER par signal indépendant (heartbeat non figé l'après-midi) — leçon §7.
+  // C28-34 (2026-07-31) : intervalle MINIMAL entre deux recalculs du résumé hub. Le calcul relit
+  // l'Index ENTIER (non borné, ~10 800 lignes et croissant) + le Journal ; à chaque tick (×288/j)
+  // il domine le socle non budgété et retarde le heartbeat. Le widget n'a pas besoin d'être à la
+  // minute — 15 min divisent le coût par ~3 sans perte perceptible.
+  HUB_RESUME_INTERVALLE_MS: 15 * 60 * 1000,
   RESET_ACTIF: true,                      // false = suspension immédiate de TOUTES les phases (comme CONSOLIDATION_EXEC_ACTIF)
   RESET_TAG: 'tri33',                     // bumper relance une campagne complète (re-parcourt tout, additive)
   // Version de la TABLE de routage (`STRUCTURE_CIBLE_RESET` + `cheminCibleReset_`). Entre dans la clé
@@ -544,11 +549,18 @@ var CONFIG = {
                                           // t2 : + Anna Malaval (pièces d'identité), + codes de récupération
 
   RESET_TRI_NOM: '_TRI 2026',             // racine de rassemblement, à côté de `_Doublons`/`_Technique` (préfixe _ = invisible des scans vivants)
-  RESET_RASSEMBLEMENT_MAX_PAR_RUN: 60,    // fichiers déplacés vers `_TRI 2026/<domaine>` par run
+  // PLAFONDS PAR RUN — relevés le 2026-07-31 (demande Marc : « tout fini aujourd'hui »). Ce n'est
+  // PAS une augmentation de budget : le garde-temps (3 min/run, vérifié À CHAQUE item) reste la
+  // VRAIE borne, et il est inchangé. À 60/80, le plafond d'ITEMS coupait AVANT le temps alloué — on
+  // rendait la main avec du budget déjà accordé non consommé (constat revue #226 : « ~60 moveTo en
+  // bien moins de 3 min → c'est le plafond d'items qui mord, pas le temps »). Les relever ne coûte
+  // donc RIEN au quota partagé : ça utilise ce qui est déjà budgété. Ils ne bornent plus que la
+  // mémoire (tableau d'IDs) et la granularité de reprise.
+  RESET_RASSEMBLEMENT_MAX_PAR_RUN: 400,   // fichiers déplacés vers `_TRI 2026/<domaine>` par run
   RESET_RASSEMBLEMENT_BUDGET_JOUR_MS: 20 * 60 * 1000, // 8 → 20 (il ALIMENTE le placement : jamais l'affamer)
-  RESET_PLACEMENT_MAX_PAR_RUN: 80,        // fichiers dédupliqués/routés depuis `_TRI 2026` par run (pas d'OCR/LLM — cheap)
+  RESET_PLACEMENT_MAX_PAR_RUN: 300,       // fichiers dédupliqués/routés depuis `_TRI 2026` par run (pas d'OCR/LLM — cheap)
   RESET_PLACEMENT_BUDGET_JOUR_MS: 22 * 60 * 1000,     // 8 → 22 (poste le plus lourd : il hashe les octets)
-  RESET_04_MAX_PAR_RUN: 40,               // fichiers réorganisés EN INTERNE sous 04 par run
+  RESET_04_MAX_PAR_RUN: 150,              // fichiers réorganisés EN INTERNE sous 04 par run
   RESET_04_BUDGET_JOUR_MS: 8 * 60 * 1000,             // 4 → 8 (04 est petite : elle convergera bien avant)
   SEED_ENTITES_TAG: 'seed-1',             // seed one-shot des entités de Marc (Entites.seedEntitesMarc_)
   ENTITES_AUTO_VALIDATION: false,         // auto-validation « vue ≥ 3 fois » COUPÉE (décision Marc
