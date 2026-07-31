@@ -579,6 +579,26 @@ var CONFIG = {
                                           // reset (placement 22→14, 04 8→4), sommé dans l'invariant
                                           // d'orchestration (prouvé par mutation). Reliquat ~70-134 docs
                                           // → drainé en ~3-4 jours
+  // --- PILOTE CI (ADR-0032, décision Marc 2026-07-31 « plus jamais lancer à la main, et plus vite ») ---
+  PILOTE_ACTIF: true,                     // interrupteur : false ⇒ l'action web app `pousser-reset` refuse
+                                          // (le tick continue seul, aux budgets quotidiens habituels)
+  PILOTE_BUDGET_MS: 3.5 * 60 * 1000,      // durée MAX d'UNE passe poussée. Sous le mur des 6 min avec de la
+                                          // marge (la réponse HTTP doit repartir avant le timeout /exec), et
+                                          // < PILOTE_PAUSE_S côté CI pour garantir une fenêtre au tick.
+  PILOTE_MARGE_DOC_MS: 60 * 1000,         // ne JAMAIS démarrer un document LLM dans la dernière minute :
+                                          // OCR + 2 appels Sonnet avec retry peuvent coûter 1-3 min et le
+                                          // garde n'est évalué qu'AVANT de prendre le document (sinon on
+                                          // dépasse le `--max-time` de la CI, voire le mur dur des 6 min)
+  PILOTE_BUDGET_JOUR_MS: 30 * 60 * 1000,  // BORNE DU PARI (revue flotte C28-43) : ADR-0032 suppose que le
+                                          // runtime d'une WEB APP est hors du quota « Triggers total runtime »
+                                          // (~90 min/j) — c'est un INDICE, pas une mesure, et CLAUDE.md §6bis
+                                          // (#235) tient ce quota pour PARTAGÉ. Si le pari est faux, cette
+                                          // constante borne la casse à ~30 min/j au lieu de ~13 h/j. Départ
+                                          // PRUDENT : à relever par Marc une fois le heartbeat observé sain
+                                          // plusieurs jours (les ms réelles sont journalisées à chaque passe)
+  PILOTE_STERILES_MAX: 20,                // passes consécutives sans progrès (≈ 2,5 h) avant alerte + veille :
+                                          // un état bloqué mais « non terminé » ferait sinon tourner ~192
+                                          // walks récursifs complets par jour pour rien, workflow tout vert
   SEED_ENTITES_TAG: 'seed-1',             // seed one-shot des entités de Marc (Entites.seedEntitesMarc_)
   ENTITES_AUTO_VALIDATION: false,         // auto-validation « vue ≥ 3 fois » COUPÉE (décision Marc
                                           // 2026-07-17 : « l'ajout de dossiers vraiment sécurisé,

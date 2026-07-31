@@ -1002,7 +1002,7 @@ function analyserFichierReliquat_(f, domaine, nom, cle, proteges) {
  * multi-parents) posent une clé VERSIONNÉE — un affinage de table les re-tente, jamais le déjà-sorti.
  * @return {{examines:number, complet:boolean}}
  */
-function analyserPageReliquatReset_(garde, proteges) {
+function analyserPageReliquatReset_(garde, proteges, tentes) {
   var tag = CONFIG.RESET_TAG;
   var racine = dossierTriReset_();
   var domaines = domainesRassemblesReset_();
@@ -1026,6 +1026,11 @@ function analyserPageReliquatReset_(garde, proteges) {
       if (cheminCibleReset_(dom, nom)) continue; // routable par la table → au placement, jamais au LLM
       var cle = 'tri33llm|' + tag + '|' + CONFIG.RESET_TABLE_VERSION + '|' + fid;
       if (indexContient_(cle)) continue; // déjà tenté (garde) — gratuit, n'occupe pas la page
+      // Déjà tenté dans CETTE exécution (pilote CI) : un échec transitoire ne doit pas consommer ses
+      // 3 essais en quelques minutes (quarantaine définitive, sans chemin de retour pour `tri33llm|`).
+      // Les essais suivants auront lieu aux passes SUIVANTES, espacées — leçon « compter par PASSE ».
+      if (tentes && tentes[cle]) continue;
+      if (tentes) tentes[cle] = true;
       examines++;
       try { analyserFichierReliquat_(f, dom, nom, cle, proteges); }
       catch (e) { complet = false; journalErreur_('Reset', 'Analyse du reliquat différée (' + nom + ') : ' + e); }
@@ -1048,31 +1053,36 @@ function analyserPageReliquatReset_(garde, proteges) {
  * alimenter `_TRI`) → coût nul ensuite (1 lecture de Property par tick) ; un bump de table le
  * ré-ouvre avec le placement.
  */
-function analyserReliquatReset_(estBudgetDepasse) {
+function analyserReliquatReset_(estBudgetDepasse, manuel, tentes) {
   if (!CONFIG.RESET_ACTIF) return;
   var props = PropertiesService.getScriptProperties();
   if (props.getProperty('DriveAI_RESET_LLM') === finPlacementReset_()) return; // reliquat drainé
   if (estPannePlateforme_()) return; // panne de COMPTE API : aucun doc touché, re-sonde ailleurs (R2)
   var aujourdhui = dateGmail_(new Date());
   var consommeJour = budgetJourReset_(props, 'DriveAI_RESET_LLM_JOUR', aujourdhui);
-  if (consommeJour >= CONFIG.RESET_LLM_BUDGET_JOUR_MS) return; // budget du jour épuisé — repris demain
+  // `manuel` (un-clic éditeur / PILOTE CI ADR-0032) : ni gaté, ni compté — le budget quotidien
+  // protège le quota des DÉCLENCHEURS, dont ces chemins ne font pas partie. Le coût $ est borné
+  // ailleurs et ne change PAS : plafond d'items par passe + clé versionnée (chaque doc payé une
+  // seule fois par version de table) + frein campagnes §2.6, tous conservés ci-dessous.
+  if (!manuel && consommeJour >= CONFIG.RESET_LLM_BUDGET_JOUR_MS) return; // budget du jour épuisé — repris demain
   var debut = Date.now();
-  var budgetRun = CONFIG.RESET_LLM_BUDGET_JOUR_MS - consommeJour;
+  var budgetRun = manuel ? Infinity : CONFIG.RESET_LLM_BUDGET_JOUR_MS - consommeJour;
   var garde = function () {
     return estBudgetDepasse() || budgetCampagnesAtteint_() || estPannePlateforme_() ||
       (Date.now() - debut) > budgetRun;
   };
   if (garde()) return; // avant `debut` compté : un tick sans créneau ne consomme rien
   try {
-    var r = analyserPageReliquatReset_(garde, ensembleDomainesProteges_());
+    var r = analyserPageReliquatReset_(garde, ensembleDomainesProteges_(), tentes);
     if (r.examines) journalInfo_('Reset', r.examines + ' fichier(s) du reliquat passés au pipeline (LLM).');
     if (r.complet && r.examines === 0 &&
         props.getProperty('DriveAI_RESET_PLACEMENT') === finPlacementReset_()) {
       props.setProperty('DriveAI_RESET_LLM', finPlacementReset_());
       journalInfo_('Reset', 'Reliquat LLM DRAINÉ (' + finPlacementReset_() + ') — plus rien de non-routable dans ' + CONFIG.RESET_TRI_NOM + '.');
     }
+    return r;
   } finally {
-    props.setProperty('DriveAI_RESET_LLM_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
+    if (!manuel) props.setProperty('DriveAI_RESET_LLM_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
   }
 }
 
@@ -1283,12 +1293,13 @@ function rondeSterileReset_(r) {
  * @param {number} phasesRestantes  cette phase incluse (3, 2, puis 1)
  * @return {function():boolean}
  */
-function gardePartReset_(debut, phasesRestantes) {
+function gardePartReset_(debut, phasesRestantes, murMs) {
+  var mur = murMs || CONFIG.BUDGET_MS; // le pilote CI (ADR-0032) passe un mur PLUS COURT
   var t0 = Date.now();
-  var part = partPhaseReset_(CONFIG.BUDGET_MS - (t0 - debut), phasesRestantes);
+  var part = partPhaseReset_(mur - (t0 - debut), phasesRestantes);
   return function () {
     var maintenant = Date.now();
-    return (maintenant - debut) > CONFIG.BUDGET_MS || (maintenant - t0) > part;
+    return (maintenant - debut) > mur || (maintenant - t0) > part;
   };
 }
 
@@ -1312,6 +1323,164 @@ function partPhaseReset_(restantMs, phasesRestantes) {
 function marquerVieManuelleReset_() {
   try { PropertiesService.getScriptProperties().setProperty('DriveAI_LAST_MANUEL', String(Date.now())); }
   catch (e) { /* best-effort : sans ça, au pire une fausse alerte watchdog */ }
+}
+
+/* ---------- PILOTE CI (ADR-0032) : le lancement n'est plus un geste de Marc ---------- */
+
+/**
+ * Le pilotage est TERMINÉ quand les 3 phases I/O ont posé leur tag ET que le reliquat LLM est
+ * drainé. `resetTermine_()` seul ne suffit PAS (le drapeau `DriveAI_RESET_LLM` n'y entre pas, à
+ * dessein : les campagnes suspendues reprennent dès la convergence I/O) — s'arrêter dessus
+ * laisserait le reliquat au ralenti du tick, exactement la plainte de Marc « rien ne se passe ».
+ * @return {boolean}
+ */
+function pilotageTermineReset_() {
+  if (!resetTermine_()) return false;
+  return PropertiesService.getScriptProperties().getProperty('DriveAI_RESET_LLM') === finPlacementReset_();
+}
+
+/**
+ * Alerte « déclencheurs muets » — au plus 1×/h (une alerte qui se répète toutes les 15 min devient
+ * du bruit, et le canal mail a ses propres quotas). C'est la contrepartie du refus de passe : le
+ * pilote ne masque plus le gel (ancienne écriture de `DriveAI_LAST_MANUEL`), il le SIGNALE.
+ */
+function alerterGelPilote_(props, lastTick) {
+  var derniere = Number(props.getProperty('DriveAI_PILOTE_ALERTE_GEL')) || 0;
+  if (Date.now() - derniere < 60 * 60 * 1000) return;
+  props.setProperty('DriveAI_PILOTE_ALERTE_GEL', String(Date.now()));
+  var minutes = Math.round((Date.now() - lastTick) / 60000);
+  notifierEchec_('Pilote', 'Aucun tick depuis ' + minutes + ' min : le flux vivant (mails, dépôts) est ' +
+    'probablement à l\'arrêt. Les passes de rangement sont REFUSÉES tant que ça dure — si ça persiste, ' +
+    'ré-examiner l\'hypothèse « web app hors quota des déclencheurs » (ADR-0032) et ré-exécuter installerTrigger.');
+}
+
+/**
+ * Compte les passes CONSÉCUTIVES sans progrès et alerte une fois passé le seuil. Sans ça, un état
+ * bloqué mais « non terminé » (précédent vécu : une racine devenue inaccessible ⇒ `complet` jamais
+ * vrai ⇒ drapeau jamais posé) ferait tourner ~192 passes/jour de walks récursifs complets pour zéro
+ * travail, indéfiniment, avec un workflow tout vert. PURE côté décision, l'état vit dans la Property.
+ * @return {boolean} vrai si la stagnation est avérée (la CI arrête d'insister)
+ */
+function suivreSteriliteReset_(props, aProgresse) {
+  if (aProgresse) { props.deleteProperty('DriveAI_PILOTE_STERILES'); return false; }
+  var n = (Number(props.getProperty('DriveAI_PILOTE_STERILES')) || 0) + 1;
+  props.setProperty('DriveAI_PILOTE_STERILES', String(n));
+  if (n !== CONFIG.PILOTE_STERILES_MAX) return n > CONFIG.PILOTE_STERILES_MAX; // alerte UNE seule fois
+  journalErreur_('Reset', n + ' passes pilotées consécutives sans aucun progrès — rangement BLOQUÉ (ni fini, ni avançant).');
+  notifierEchec_('Pilote', n + ' passes de rangement consécutives n\'ont rien produit alors que le reset n\'est pas ' +
+    'terminé : quelque chose bloque (dossier inaccessible ?). Le pilote se met en veille — voir l\'onglet Journal.');
+  return true;
+}
+
+/**
+ * UNE passe POUSSÉE par le pilote CI (ADR-0032) — le même travail que le clic `lancerResetTout` de
+ * Marc, plus la passe LLM du reliquat, déclenché par GitHub Actions au lieu de sa main.
+ *
+ * ⚠️ LE PARI, ÉCRIT NOIR SUR BLANC (revue flotte C28-43) : ce montage suppose que le runtime d'une
+ * exécution de WEB APP ne compte pas dans le quota « Triggers total runtime » (~90 min/j) dont le
+ * dépassement gèle TOUS les déclencheurs, chien de garde inclus (C28-29). C'est un INDICE, pas une
+ * mesure : le précédent C28-33 prouve seulement que les compteurs INTERNES de DriveAI bridaient à
+ * tort le chemin manuel, et CLAUDE.md §6bis (#235) tient ce quota pour PARTAGÉ. D'où les trois
+ * filets ci-dessous, qui rendent le pari SÛR même s'il est faux :
+ *   1. `PILOTE_BUDGET_JOUR_MS` — borne du RAYON D'EXPLOSION en ms réelles persistées ;
+ *   2. refus + alerte si les ticks sont silencieux — le pilote DÉTECTE le gel au lieu de le masquer
+ *      (il ne pose SURTOUT PAS `DriveAI_LAST_MANUEL` : ça rendrait le chien de garde muet pendant
+ *      toute la campagne — il n'en a pas besoin, la fenêtre de tick est garantie par la pause CI) ;
+ *   3. ms consommées journalisées — sans mesure, l'hypothèse resterait invérifiable.
+ *
+ * Le travail est fait ICI, SYNCHRONEMENT dans le `doPost` : passer par `actionTickPonctuel_` (qui
+ * CRÉE un déclencheur) consommerait le quota protégé (verrouillé par test).
+ *
+ * Contexte d'exécution web app ≠ tick (patron `actionRechercheIA_`/`actionChatAssistant_`) :
+ * `chargerPannePlateforme_()` + compteur d'usage PROPRE (`reinitialiserUsage_`/`flushUsage_`),
+ * sans quoi le coût Anthropic de la passe ne serait JAMAIS comptabilisé et le frein §2.6 (110 $)
+ * deviendrait aveugle sur le chemin dominant.
+ * @return {{ok:boolean, termine:boolean, rondes:number, progres:boolean, message:string}}
+ */
+function pousserResetPilote_() {
+  if (!CONFIG.PILOTE_ACTIF) return { ok: false, termine: false, rondes: 0, progres: false, message: 'pilote désactivé (CONFIG.PILOTE_ACTIF)' };
+  if (!CONFIG.RESET_ACTIF) return { ok: false, termine: false, rondes: 0, progres: false, message: 'RESET_ACTIF est false' };
+  if (pilotageTermineReset_()) return { ok: true, termine: true, rondes: 0, progres: false, message: 'reset terminé (I/O + reliquat LLM drainé)' };
+
+  var props = PropertiesService.getScriptProperties();
+  // FILET 2 — DÉTECTEUR DE GEL : si les déclencheurs sont muets depuis plus longtemps que le seuil
+  // du chien de garde, on REFUSE la passe et on alerte (le mail ne dépend d'aucun déclencheur).
+  // Deux raisons : ne pas alimenter un quota peut-être partagé au moment précis où il lâche, et
+  // rendre VISIBLE le scénario que ce chantier redoute — le rangement qui avance pendant que le
+  // flux vivant (Gmail, dépôts) est mort. `lastTick &&` : ne bloque pas une première installation.
+  var lastTick = Number(props.getProperty('DriveAI_LAST_TICK')) || 0;
+  if (lastTick && Date.now() - lastTick > CONFIG.WATCHDOG_SEUIL_MS) {
+    alerterGelPilote_(props, lastTick);
+    return { ok: true, termine: false, rondes: 0, progres: false, gel: true,
+      message: 'ticks silencieux — passe REFUSÉE (le flux vivant prime sur le rangement)' };
+  }
+  // FILET 1 — budget QUOTIDIEN en ms réelles (patron des phases du reset). Il ne protège pas le
+  // tick (autre compteur si le pari est bon) : il borne la CASSE si le pari est mauvais.
+  var aujourdhui = dateGmail_(new Date());
+  var consommeJour = budgetJourReset_(props, 'DriveAI_PILOTE_JOUR', aujourdhui);
+  if (consommeJour >= CONFIG.PILOTE_BUDGET_JOUR_MS) {
+    return { ok: true, termine: false, rondes: 0, progres: false,
+      message: 'budget quotidien du pilote épuisé — repris demain' };
+  }
+
+  var debut = Date.now();
+  var verrou = acquerirVerrouReset_('pousserResetPilote_');
+  if (!verrou) return { ok: true, termine: false, rondes: 0, progres: false, message: 'tick en cours — passe sautée (jamais en parallèle)' };
+  var rondes = 0, progres = false, echecs = 0;
+  // Mur de CETTE passe : le plus petit du mur par passe et du reliquat quotidien.
+  var murMs = Math.min(CONFIG.PILOTE_BUDGET_MS, CONFIG.PILOTE_BUDGET_JOUR_MS - consommeJour);
+  // Documents du reliquat déjà TENTÉS dans CETTE exécution : sans cette mémoire, la boucle de
+  // rondes re-présente le même fichier et `gererEchec_` brûle ses 3 essais en 2 min sur un blip
+  // transitoire → quarantaine DÉFINITIVE et silencieuse (la dé-quarantaine auto ne couvre pas la
+  // clé `tri33llm|`). C'est aussi ce qui rend vrai le plafond « RESET_LLM_MAX_PAR_RUN par passe ».
+  var tentesLlm = {};
+  chargerPannePlateforme_();
+  reinitialiserUsage_();
+  try {
+    var murAtteint = function () { return Date.now() - debut > murMs; };
+    // Ne JAMAIS démarrer un document LLM trop tard : un doc peut coûter OCR + 2 appels Sonnet avec
+    // retry (~1-3 min) et le garde n'est évalué qu'AVANT de le prendre. Sans cette marge, la passe
+    // dépasse le `--max-time` de la CI (réponse perdue, warning trompeur), voire le mur dur 6 min.
+    var murDemarrageLlm = Math.max(0, murMs - CONFIG.PILOTE_MARGE_DOC_MS);
+    var phase = function (fn, parts, murPhase) { // try/catch PAR phase (leçon « étape secondaire enveloppée »)
+      if (Date.now() - debut > murPhase) return false;
+      try { return !rondeSterileReset_(fn(gardePartReset_(debut, parts, murPhase))); }
+      catch (e) { echecs++; journalErreur_('Reset', 'Phase pilotée différée : ' + e); return false; }
+    };
+    while (!murAtteint() && !pilotageTermineReset_() && rondes < 500) {
+      var progresRonde = false;
+      // Part de temps PAR PHASE (revue #229) : sans ça la première phase mange tout le mur et les
+      // suivantes ne tournent jamais. 4 phases désormais — la passe LLM est la dernière servie.
+      if (phase(function (g) { return rassemblerReset_(g, true); }, 4, murMs)) progresRonde = true;
+      if (phase(function (g) { return placerReset_(g, true); }, 3, murMs)) progresRonde = true;
+      if (phase(function (g) { return appliquerReset04Interne_(g, true); }, 2, murMs)) progresRonde = true;
+      if (phase(function (g) { return analyserReliquatReset_(g, true, tentesLlm); }, 1, murDemarrageLlm)) progresRonde = true;
+      rondes++;
+      if (progresRonde) progres = true; else break; // aucune phase n'a rien à faire → inutile de re-scanner
+    }
+    journalInfo_('Reset', 'Pilote CI : ' + rondes + ' ronde(s), ' + (progres ? 'progrès' : 'rien à faire') +
+      ', ' + Math.round((Date.now() - debut) / 1000) + ' s consommées (mesure du pari ADR-0032).');
+  } catch (e) {
+    journalErreur_('Reset', 'Passe pilotée interrompue : ' + e);
+    // Message GÉNÉRIQUE : la réponse finit dans un log CI PUBLIC — le détail (noms de fichiers)
+    // reste au Journal privé. `erreur` absent ⇒ la CI sait que c'est TRANSITOIRE, pas permanent.
+    return { ok: false, termine: false, rondes: rondes, progres: progres, message: 'passe interrompue (détail au Journal)' };
+  } finally {
+    try { flushUsage_(); } catch (e2) { /* mesure de coût perdue pour cette passe — accepté */ }
+    props.setProperty('DriveAI_PILOTE_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
+    verrou.releaseLock();
+  }
+  var termine = pilotageTermineReset_();
+  var stagnation = suivreSteriliteReset_(props, progres || termine);
+  return {
+    ok: true,
+    termine: termine,
+    rondes: rondes,
+    progres: progres,
+    echecs: echecs,
+    stagnation: stagnation,
+    message: progres ? 'passe poussée' : 'rien à faire sur cette passe'
+  };
 }
 
 /**

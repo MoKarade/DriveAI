@@ -32,9 +32,15 @@ chaque fichier renommé en `.txt` (lisible par NotebookLM quelle que soit l'exte
 (celui de l'app, exposé côté navigateur PAR CONCEPTION — cf. `app/src/config.ts`, « la sécurité vient
 du login Google »). Réutiliser le secret app pour cette action aurait rendu la clé d'écriture Drive
 aussi faible que le secret déjà visible en clair dans le bundle JS servi au navigateur — inacceptable
-pour un secret connu de GitHub Actions. Pire abus si `DriveAI_SYNC_SECRET` fuit : écrire des fichiers
-texte dans UN dossier dédié — jamais lire/modifier/supprimer un document classé, jamais toucher à
-l'Index/Journal/Entités/Corrections.
+pour un secret connu de GitHub Actions. Pire abus si `DriveAI_SYNC_SECRET` fuit, **pour cette
+action** : écrire des fichiers texte dans UN dossier dédié.
+
+> ⚠️ **Périmètre élargi depuis l'ADR-0032 (C28-43)** — l'énoncé ci-dessus ne décrit plus le pouvoir
+> total de ce secret. Il garde désormais aussi `pousser-reset` et `assurer-trigger` : déplacer et
+> renommer des documents classés, écrire l'état (Index/Journal/Reset), déclencher OCR + appels
+> Anthropic (bornés par le frein §2.6 et `PILOTE_BUDGET_JOUR_MS`), réinstaller les déclencheurs.
+> Inventaire de référence : en-tête de `src/WebApp.gs`. Restent impossibles : toute suppression,
+> toute sortie de `04 · Immigration`, toute exfiltration de contenu.
 
 ## Analyse de risques (garde-fous, intégrité)
 
