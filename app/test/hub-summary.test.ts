@@ -14,10 +14,11 @@
  *    partiel (échec fermé, leçon « /exec : le succès se juge au CONTENU »).
  */
 
-import { afterEach, describe, it, expect, vi } from 'vitest';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { CONTRACT_VERSION, HUB_TOKEN_HEADER, buildingSummary, validateSummary } from '@mokarade/hub-contract';
 import handlerHub from '../../api/hub/summary';
+import { __resetEngineStateCache, getEngineState } from '../../api/hub/_engineState';
 
 const JETON = 'jeton-hub-de-test-0123456789';
 const URL_APP = 'https://drive.hubperso.com';
@@ -83,8 +84,15 @@ const ETAT_SAIN = {
   },
 };
 
+// Le cache broker (protection du quota Apps Script) vit au niveau MODULE : sans remise à zéro,
+// l'état lu par un test fuiterait dans le suivant et masquerait les régimes testés ici.
+beforeEach(() => {
+  __resetEngineStateCache();
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  __resetEngineStateCache();
 });
 
 describe('/api/hub/summary — auth (échec fermé)', () => {
@@ -264,4 +272,51 @@ describe('/api/hub/summary — panne du canal moteur (échec fermé)', () => {
       });
     });
   }
+});
+
+/**
+ * Cache broker — PROTECTION DE QUOTA (pas de la performance). Le hub poll toutes les 15 s ;
+ * le moteur ne recalcule qu'une fois par tick (5 min). Sans cache, chaque poll déclenchait une
+ * exécution Apps Script, sur un budget DUR de 90 min/jour partagé avec le tick lui-même.
+ */
+describe('_engineState — cache broker (quota Apps Script)', () => {
+  const ENV = { WEBAPP_URL: 'https://script.example/exec', WEBAPP_SECRET: 's' };
+
+  it('deux lectures rapprochées ne déclenchent QU’UNE exécution Apps Script', async () => {
+    await avecEnv(ENV, async () => {
+      const appels = fauxFetch(200, ETAT_SAIN);
+      vi.stubGlobal('fetch', appels);
+      const t0 = 1_000_000;
+      const a = await getEngineState(() => t0);
+      const b = await getEngineState(() => t0 + 15_000); // poll suivant du hub
+      expect(a).toEqual(b);
+      expect(appels).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('au-delà du TTL, le moteur est réinterrogé (la donnée ne se fige pas)', async () => {
+    await avecEnv(ENV, async () => {
+      const appels = fauxFetch(200, ETAT_SAIN);
+      vi.stubGlobal('fetch', appels);
+      const t0 = 1_000_000;
+      await getEngineState(() => t0);
+      await getEngineState(() => t0 + 61_000);
+      expect(appels).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('une PANNE n’est jamais mise en cache — le prochain appel réessaie', async () => {
+    await avecEnv(ENV, async () => {
+      vi.stubGlobal('fetch', fauxFetch(200, { ok: false, erreur: 'refusé' }));
+      const t0 = 1_000_000;
+      await expect(getEngineState(() => t0)).rejects.toThrow();
+
+      // Le moteur se rétablit : la lecture suivante doit repartir, pas resservir l'échec.
+      const sain = fauxFetch(200, ETAT_SAIN);
+      vi.stubGlobal('fetch', sain);
+      const etat = await getEngineState(() => t0 + 1_000);
+      expect(etat?.filedLast7d).toBe(14);
+      expect(sain).toHaveBeenCalledTimes(1);
+    });
+  });
 });

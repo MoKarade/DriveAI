@@ -47,6 +47,38 @@ export interface EngineState {
  */
 const TIMEOUT_MS = 8000;
 
+/**
+ * Durée de vie du cache broker — PROTECTION DE QUOTA, pas de la performance.
+ *
+ * Le hub interroge ce endpoint toutes les 15 s tant qu'un onglet est ouvert, et CHAQUE appel
+ * déclenchait une exécution Apps Script complète. Or le moteur ne recalcule le résumé qu'une
+ * fois par tick (`CONFIG.TICK_MINUTES = 5`) et le persiste dans la Property `DriveAI_HUB_SUMMARY` :
+ * 19 polls sur 20 renvoyaient donc des octets IDENTIQUES, au prix d'une exécution chacun.
+ *
+ * Le temps d'exécution Apps Script d'un compte Google grand public est plafonné à 90 min/jour,
+ * tous scripts confondus — un plafond DUR et partagé avec le tick lui-même. Un onglet du hub
+ * laissé ouvert consommait 240 exécutions/h uniquement pour réafficher la même chose.
+ *
+ * 60 s : 4× moins d'exécutions, et AUCUNE fraîcheur perdue puisque la donnée sous-jacente ne
+ * bouge que toutes les 5 min. Le hub affiche de toute façon `dataAsOf` (= `lastRunAt`), donc la
+ * fraîcheur RÉELLE reste visible et honnête — le cache ne masque rien.
+ *
+ * ⚠️ Portée : mémoire du PROCESS, comme tout cache serverless — vide à chaque démarrage à froid,
+ * non partagée entre instances. Le taux de succès est donc partiel. C'est acceptable ici : chaque
+ * succès est une exécution Apps Script économisée, et un échec de cache retombe simplement sur le
+ * comportement d'avant. Un cache partagé (Vercel KV) ferait mieux, au prix d'une dépendance —
+ * refusé, `api/` est zéro-dépendance par construction.
+ */
+const CACHE_TTL_MS = 60_000;
+
+/** Dernier état LU avec succès (y compris `null` = moteur non branché, qui est une réponse valide). */
+let cache: { at: number; etat: EngineState | null } | null = null;
+
+/** Vide le cache — pour les tests (isolation entre cas). */
+export function __resetEngineStateCache(): void {
+  cache = null;
+}
+
 /** Entier de compteur valide (fini, ≥ 0) — tout le reste est une réponse corrompue. */
 function compteurValide(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : null;
@@ -65,7 +97,18 @@ function nombrePositif(v: unknown): number | null {
  * ont deux signatures (non-200, OU 200 avec une page HTML à la place du JSON) — tout ce qui
  * n'est pas un JSON `ok:true` aux champs valides est traité en PANNE (throw).
  */
-export async function getEngineState(): Promise<EngineState | null> {
+export async function getEngineState(now: () => number = Date.now): Promise<EngineState | null> {
+  const frais = cache !== null && now() - cache.at < CACHE_TTL_MS;
+  if (frais && cache !== null) return cache.etat;
+
+  // Les PANNES ne sont jamais mises en cache : un `throw` doit rester une panne observable et
+  // le prochain appel doit réessayer (sinon une coupure de 3 s se figerait pour 60 s).
+  const etat = await lireMoteur_();
+  cache = { at: now(), etat };
+  return etat;
+}
+
+async function lireMoteur_(): Promise<EngineState | null> {
   const url = (process.env.WEBAPP_URL ?? '').trim();
   const secret = (process.env.WEBAPP_SECRET ?? '').trim();
   if (!url || !secret) return null; // intégration moteur pas branchée → « building » honnête
