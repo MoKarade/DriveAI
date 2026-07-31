@@ -590,11 +590,21 @@ function rassemblerUnFichier_(fileId, domaine, tag, proteges, ctx) {
  * Gmail, migration, réanalyse, conso, réconciliation) demeuraient suspendues À VIE, heartbeat vert
  * (revue de fond 2026-07-31). Ici on COMPTE l'échec (onglet Échecs, patron `gererEchec_`) et, au-delà
  * de `QUARANTAINE_MAX`, on inscrit la clé (même clé que le succès aurait posée) avec un statut
- * d'écart → la collecte le skippe → convergence. Récupérable : le compteur se remet à zéro sur un
- * succès, un bump de tag/version le re-présente. PAS de garde panne-plateforme (un échec `addFile`
- * Drive n'est pas une panne de compte LLM — sinon une panne LLM figerait aussi la convergence I/O).
+ * d'écart → la collecte le skippe → convergence. Récupérable : un bump de `RESET_TAG` (rassemblement)
+ * ou de `RESET_TABLE_VERSION` (placement) le re-présente. PAS de garde panne-plateforme (un échec
+ * `addFile` Drive n'est pas une panne de compte LLM — sinon une panne LLM figerait la convergence I/O).
+ *
+ * `tentes` (leçon §7, revue Vague 1b) : compter PAR PASSE, jamais PAR RE-RENCONTRE. Sous le pilote /
+ * les un-clic, un même fichier est re-collecté à CHAQUE ronde (sa clé n'est posée qu'à l'écart) — sans
+ * cette mémoire d'exécution, un blip Drive TRANSITOIRE brûlerait ses 3 essais en quelques secondes
+ * (écart à tort). Avec `tentes`, l'incrément est plafonné à 1 par exécution → atteindre `QUARANTAINE_MAX`
+ * exige 3 exécutions distinctes (ticks/invocations espacés). Le tick (1 passe/tick) est déjà correct.
  */
-function ecarterEchecMutationReset_(cle, nom, message) {
+function ecarterEchecMutationReset_(cle, nom, message, tentes) {
+  if (tentes) {
+    if (tentes[cle]) { journalErreur_('Reset', 'Échec mutation reset (déjà compté cette exécution, ' + (nom || '?') + ') : ' + message); return; }
+    tentes[cle] = true;
+  }
   var n = incrementerEchec_(cle);
   if (n >= CONFIG.QUARANTAINE_MAX) {
     indexAjouter_(cle, { statut: 'tri33-ecart', domaine: '', chemin: '', nom: nom || '' });
@@ -605,7 +615,7 @@ function ecarterEchecMutationReset_(cle, nom, message) {
 }
 
 /** UNE passe bornée de rassemblement (tous domaines confondus). @return {{examines, deplaces, complet}} */
-function rassemblerUnePageReset_(estBudgetDepasse, proteges, ctx) {
+function rassemblerUnePageReset_(estBudgetDepasse, proteges, ctx, tentes) {
   var tag = CONFIG.RESET_TAG;
   var domaines = domainesRassemblesReset_();
   var ids = []; // [{id, domaine}]
@@ -631,7 +641,7 @@ function rassemblerUnePageReset_(estBudgetDepasse, proteges, ctx) {
     catch (e) {
       etat.complet = false;
       // Compté + écarté après N échecs : sinon ce fichier bloquerait la convergence du reset À VIE.
-      ecarterEchecMutationReset_('tri33|' + tag + '|' + ids[k].id, ids[k].id, String(e));
+      ecarterEchecMutationReset_('tri33|' + tag + '|' + ids[k].id, ids[k].id, String(e), tentes);
     }
   }
   return { examines: ids.length, deplaces: deplaces, complet: etat.complet };
@@ -645,7 +655,7 @@ function rassemblerUnePageReset_(estBudgetDepasse, proteges, ctx) {
  * @return {?{examines:number, deplaces:number, complet:boolean}} résultat de la passe (null si la
  *   phase n'a rien tenté) — l'appelant UN-CLIC s'arrête sur une ronde stérile.
  */
-function rassemblerReset_(estBudgetDepasse, manuel) {
+function rassemblerReset_(estBudgetDepasse, manuel, tentes) {
   if (!CONFIG.RESET_ACTIF) return;
   var props = PropertiesService.getScriptProperties();
   var tag = CONFIG.RESET_TAG;
@@ -654,6 +664,9 @@ function rassemblerReset_(estBudgetDepasse, manuel) {
   var consommeJour = budgetJourReset_(props, 'DriveAI_RESET_RASS_JOUR', aujourdhui);
   if (!manuel && consommeJour >= CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS) return; // repris demain
 
+  // `tentes` (leçon §7) : mémoire des échecs de mutation PAR EXÉCUTION. Fourni par le pilote/un-clic
+  // (partagé entre rondes) ; en tick (1 passe) un local frais suffit.
+  tentes = tentes || {};
   var debut = Date.now();
   // En MANUEL, seul le garde de l'appelant (mur 6 min de SON exécution) borne le run.
   var budgetRun = manuel ? Infinity
@@ -662,7 +675,7 @@ function rassemblerReset_(estBudgetDepasse, manuel) {
   try {
     var proteges = ensembleDomainesProteges_();
     var ctx = { proteges: proteges };
-    var r = rassemblerUnePageReset_(garde, proteges, ctx);
+    var r = rassemblerUnePageReset_(garde, proteges, ctx, tentes);
     if (r.deplaces) journalInfo_('Reset', r.deplaces + ' fichier(s) rassemblé(s) vers ' + CONFIG.RESET_TRI_NOM + ' (reset).');
     if (r.complet && r.examines === 0) {
       props.setProperty('DriveAI_RESET_RASSEMBLEMENT', tag);
@@ -879,7 +892,7 @@ function placerUnFichierReset_(f, domaine, cle, ctx) {
 }
 
 /** UNE passe bornée de placement (tous domaines confondus). @return {{examines, deplaces, complet}} */
-function placerUnePageReset_(estBudgetDepasse, ctx) {
+function placerUnePageReset_(estBudgetDepasse, ctx, tentes) {
   var tag = CONFIG.RESET_TAG;
   var racine = dossierTriReset_();
   var domaines = domainesRassemblesReset_();
@@ -909,7 +922,7 @@ function placerUnePageReset_(estBudgetDepasse, ctx) {
       catch (e) {
         complet = false;
         var nomEch = ''; try { nomEch = f.getName(); } catch (e2) { /* nom best-effort */ }
-        ecarterEchecMutationReset_(cle, nomEch, String(e)); // sinon re-collecté à vie → placement jamais fini
+        ecarterEchecMutationReset_(cle, nomEch, String(e), tentes); // sinon re-collecté à vie → placement jamais fini
       }
     }
   }
@@ -922,7 +935,7 @@ function placerUnePageReset_(estBudgetDepasse, ctx) {
  * « fini » tant que la génération peut encore alimenter la file, sinon de nouveaux fichiers rassemblés
  * plus tard ne seraient plus jamais placés).
  */
-function placerReset_(estBudgetDepasse, manuel) {
+function placerReset_(estBudgetDepasse, manuel, tentes) {
   if (!CONFIG.RESET_ACTIF) return;
   var props = PropertiesService.getScriptProperties();
   var tag = CONFIG.RESET_TAG;
@@ -933,6 +946,7 @@ function placerReset_(estBudgetDepasse, manuel) {
   var consommeJour = budgetJourReset_(props, 'DriveAI_RESET_PLACE_JOUR', aujourdhui);
   if (!manuel && consommeJour >= CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS) return;
 
+  tentes = tentes || {}; // mémoire des échecs de mutation par exécution (leçon §7 ; cf. rassemblerReset_)
   var debut = Date.now();
   var budgetRun = manuel ? Infinity
     : Math.min(CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS - consommeJour, 3 * 60 * 1000);
@@ -947,7 +961,7 @@ function placerReset_(estBudgetDepasse, manuel) {
       repointes: {},
       ciblesResolues: {},                  // sous-chemin → dossier (mémoïsation, cf. resoudreCibleReset_)
     };
-    var r = placerUnePageReset_(garde, ctx);
+    var r = placerUnePageReset_(garde, ctx, tentes);
     if (r.deplaces) journalInfo_('Reset', r.deplaces + ' fichier(s) traité(s) au placement (reset).');
     if (r.complet && r.examines === 0) {
       if (props.getProperty('DriveAI_RESET_RASSEMBLEMENT') === tag) {
@@ -1466,6 +1480,9 @@ function pousserResetPilote_() {
   // transitoire → quarantaine DÉFINITIVE et silencieuse (la dé-quarantaine auto ne couvre pas la
   // clé `tri33llm|`). C'est aussi ce qui rend vrai le plafond « RESET_LLM_MAX_PAR_RUN par passe ».
   var tentesLlm = {};
+  // Même mémoire pour les échecs de MUTATION I/O (rassemblement/placement) : sans elle, un blip Drive
+  // transitoire brûlerait ses 3 essais en secondes sur les rondes du pilote (leçon §7, revue Vague 1b).
+  var tentesMut = {};
   chargerPannePlateforme_();
   reinitialiserUsage_();
   try {
@@ -1483,8 +1500,8 @@ function pousserResetPilote_() {
       var progresRonde = false;
       // Part de temps PAR PHASE (revue #229) : sans ça la première phase mange tout le mur et les
       // suivantes ne tournent jamais. 4 phases désormais — la passe LLM est la dernière servie.
-      if (phase(function (g) { return rassemblerReset_(g, true); }, 4, murMs)) progresRonde = true;
-      if (phase(function (g) { return placerReset_(g, true); }, 3, murMs)) progresRonde = true;
+      if (phase(function (g) { return rassemblerReset_(g, true, tentesMut); }, 4, murMs)) progresRonde = true;
+      if (phase(function (g) { return placerReset_(g, true, tentesMut); }, 3, murMs)) progresRonde = true;
       if (phase(function (g) { return appliquerReset04Interne_(g, true); }, 2, murMs)) progresRonde = true;
       if (phase(function (g) { return analyserReliquatReset_(g, true, tentesLlm); }, 1, murDemarrageLlm)) progresRonde = true;
       rondes++;
@@ -1534,6 +1551,7 @@ function lancerResetTout(e) {
   if (!verrou) return;
   try {
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
+    var tentesMut = {}; // mémoire des échecs de mutation par exécution (leçon §7)
     var rondes = 0;
     while (!estBudgetDepasse() && !resetTermine_() && rondes < 500) {
       var progres = false;
@@ -1542,8 +1560,8 @@ function lancerResetTout(e) {
       // atteintes — le clic « tout faire » de Marc dégénérait en rassemblement seul et ne produisait
       // plus AUCUNE structure finale visible. Chaque phase reçoit au plus sa part de ce qui reste,
       // donc le round-robin tient quel que soit le plafond d'items.
-      if (!estBudgetDepasse() && !rondeSterileReset_(rassemblerReset_(gardePartReset_(debut, 3), true))) progres = true;
-      if (!estBudgetDepasse() && !rondeSterileReset_(placerReset_(gardePartReset_(debut, 2), true))) progres = true;
+      if (!estBudgetDepasse() && !rondeSterileReset_(rassemblerReset_(gardePartReset_(debut, 3), true, tentesMut))) progres = true;
+      if (!estBudgetDepasse() && !rondeSterileReset_(placerReset_(gardePartReset_(debut, 2), true, tentesMut))) progres = true;
       if (!estBudgetDepasse() && !rondeSterileReset_(appliquerReset04Interne_(gardePartReset_(debut, 1), true))) progres = true;
       rondes++;
       if (!progres) break; // AUCUNE des 3 phases n'a rien à faire → inutile de re-scanner en boucle
@@ -1567,9 +1585,10 @@ function lancerResetRassemblement(e) {
   if (!verrou) return;
   try {
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
+    var tentesMut = {}; // mémoire des échecs de mutation par exécution (leçon §7)
     var rondes = 0;
     while (!estBudgetDepasse() && rondes < 500) {
-      var r = rassemblerReset_(estBudgetDepasse, true);
+      var r = rassemblerReset_(estBudgetDepasse, true, tentesMut);
       rondes++;
       if (rondeSterileReset_(r)) break; // ronde stérile (ou phase terminée/inactive) → on sort
     }
@@ -1591,9 +1610,10 @@ function lancerResetPlacement(e) {
   if (!verrou) return;
   try {
     var estBudgetDepasse = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
+    var tentesMut = {}; // mémoire des échecs de mutation par exécution (leçon §7)
     var rondes = 0;
     while (!estBudgetDepasse() && rondes < 500) {
-      var r = placerReset_(estBudgetDepasse, true);
+      var r = placerReset_(estBudgetDepasse, true, tentesMut);
       rondes++;
       // ⚠ NE PAS remplacer par un test de tag : le placement ne fige son tag qu'APRÈS la fin du
       // rassemblement — l'état « oisif mais tag impossible » est stable et spinnait jusqu'au mur.

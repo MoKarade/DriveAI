@@ -667,7 +667,11 @@ function nomsDansDossier_(dossierId) {
 
 /** `AAAA-MM-JJ_Type_Émetteur.ext` — format historique (granularité JOUR). */
 function nomNormalise_(date, type, emetteur, ext) {
-  var t = champ_(type) || 'Document';
+  // Un type SENTINELLE (« Inconnu »/« N/A ») ne doit jamais s'écrire dans le nom (revue Vague 1b — la
+  // correction de `nommerDocument_` ne couvrait que le tiers, pas le segment TYPE) → `estRenseigne_`,
+  // repli « Document ». L'émetteur, lui, est déjà filtré en amont par `nommerDocument_` ; le repli
+  // « Inconnu » ci-dessous ne subsiste que pour les appels BAS NIVEAU directs (émetteur vide).
+  var t = estRenseigne_(type) ? champ_(type) : 'Document';
   var e = champ_(emetteur) || 'Inconnu';
   return date + '_' + t + '_' + e + ext;
 }
@@ -743,7 +747,7 @@ function casseNomPersonne_(s) {
 /** Titulaire (personne concernée) nettoyé pour le NOM du fichier. Marc y est un titulaire VALIDE. null si absent. PUR. */
 function titulairePourNom_(classif) {
   var t = classif && classif.titulaire;
-  if (t == null || !String(t).trim()) return null;
+  if (!estRenseigne_(t)) return null; // sentinelle « Inconnu »/« N/A » ⇒ pas de titulaire (jamais « _Inconnu »)
   return casseNomPersonne_(String(t).replace(/\s+/g, ' ').trim()) || null;
 }
 
