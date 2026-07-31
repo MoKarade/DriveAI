@@ -134,6 +134,28 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
 - **Prérequis côté Marc** avant Phase 1 : projet Apps Script créé, clé Anthropic dans les
   Script Properties (`DriveAI_ANTHROPIC_KEY`), Google Sheet d'état créée. Voir `PLAN.md` §8.
 
+## 6 ter. En-têtes de sécurité (`vercel.json`)
+
+Ajoutés le 2026-07-31 — DriveAI n'en avait **aucun**. Ils vivent dans `vercel.json` (SPA Vite
+servi en statique, pas de config de framework où les mettre).
+
+⚠️ **`vercel.json` REFUSE les clés de commentaire `//…`** (contrairement à `package.json`) :
+son schéma rejette toute propriété additionnelle et le déploiement échoue avec
+`should NOT have additional property`. D'où cette note ici plutôt que dans le fichier.
+
+- **Enforcés** (aucun risque) : HSTS 1 an + `includeSubDomains`, `X-Content-Type-Options`,
+  `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`.
+- **CSP en `Report-Only`**, volontairement. DriveAI est le cas le plus délicat de
+  l'écosystème : par **ADR-0007**, l'app lit la Sheet d'état **depuis le NAVIGATEUR** avec le
+  jeton OAuth de Marc (le serverless n'y a aucun accès). `connect-src` doit donc autoriser
+  `sheets.googleapis.com` / `www.googleapis.com` / `accounts.google.com`. Une CSP trop serrée
+  couperait l'app de ses propres données — **silencieusement**, sans que le build ni les tests
+  ne le voient.
+- ➜ **Pour passer en enforcé** : ouvrir l'app, parcourir l'explorateur, la corbeille et
+  l'assistant, vérifier qu'aucune violation CSP n'apparaît en console, puis renommer la clé
+  `Content-Security-Policy-Report-Only` en `Content-Security-Policy`. Tant que ce n'est pas
+  fait, la CSP **observe** — elle ne protège pas.
+
 ## 6 bis. Intégration Hub (widget DriveAI sur hubperso.com)
 
 DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpoint** :
