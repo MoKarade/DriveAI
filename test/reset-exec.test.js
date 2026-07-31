@@ -137,6 +137,48 @@ test('rassemblerUnFichier_ : cas nominal → addFile(_TRI/<domaine>) PUIS remove
   assert.deepStrictEqual(videAppels, ['ENGIE'], 'le dossier QUITTÉ est vérifié pour un vide-candidat');
 });
 
+test('ecarterEchecMutationReset_ : un fichier « empoisonné » (mutation qui lève) est COMPTÉ puis ÉCARTÉ après N échecs → le reset converge (jamais bloqué à vie)', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const MAX = c.CONFIG.QUARANTAINE_MAX;
+  let compteur = 0;
+  c.incrementerEchec_ = () => ++compteur; // simule l'onglet Échecs
+  const ajouts = [];
+  c.indexAjouter_ = (cle, dec) => ajouts.push({ cle: cle, statut: dec.statut });
+  c.journalErreur_ = () => {};
+
+  // Sous le seuil : journalisé seulement, AUCUNE clé posée → le fichier reste re-tentable.
+  for (let i = 1; i < MAX; i++) c.ecarterEchecMutationReset_('tri33|t|POISON', 'permission-tiers.pdf', 'addFile a levé');
+  assert.strictEqual(ajouts.length, 0, 'sous le seuil : re-tenté, aucune clé');
+
+  // Au seuil : la clé (celle que le succès aurait posée) est inscrite avec un statut d'écart.
+  // La collecte teste `indexContient_(cle)` → elle skippera désormais ce fichier → convergence.
+  c.ecarterEchecMutationReset_('tri33|t|POISON', 'permission-tiers.pdf', 'addFile a levé');
+  assert.strictEqual(ajouts.length, 1);
+  assert.strictEqual(ajouts[0].cle, 'tri33|t|POISON', 'clé = celle testée par la collecte (skip garanti)');
+  assert.strictEqual(ajouts[0].statut, 'tri33-ecart');
+});
+
+test('ecarterEchecMutationReset_ : `tentes` déduplique le comptage PAR EXÉCUTION (leçon §7 — pilote/un-clic re-rencontrent le fichier à chaque ronde)', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const MAX = c.CONFIG.QUARANTAINE_MAX;
+  let compteur = 0;
+  c.incrementerEchec_ = () => ++compteur;
+  const ajouts = [];
+  c.indexAjouter_ = (cle, dec) => ajouts.push({ cle: cle });
+  c.journalErreur_ = () => {};
+
+  // Une exécution (pilote) = N rondes qui re-rencontrent le même fichier empoisonné. Avec `tentes`
+  // partagé, il n'est compté qu'UNE fois → jamais écarté sur un blip transitoire en quelques secondes.
+  const tentes = {};
+  for (let ronde = 0; ronde < MAX + 5; ronde++) c.ecarterEchecMutationReset_('tri33|t|POISON', 'f.pdf', 'blip', tentes);
+  assert.strictEqual(compteur, 1, 'un seul incrément pour toute l\'exécution, malgré ' + (MAX + 5) + ' rondes');
+  assert.strictEqual(ajouts.length, 0, 'jamais écarté en une seule exécution : atteindre le seuil exige 3 exécutions distinctes');
+
+  // Exécution SUIVANTE (nouveau `tentes`) → nouvel incrément ; après QUARANTAINE_MAX exécutions, écart.
+  for (let exe = 2; exe <= MAX; exe++) c.ecarterEchecMutationReset_('tri33|t|POISON', 'f.pdf', 'blip', {});
+  assert.strictEqual(ajouts.length, 1, 'écarté seulement après QUARANTAINE_MAX exécutions distinctes');
+});
+
 test('collecte : un fichier ÉPINGLÉ par Marc n\'est JAMAIS aspiré vers `_TRI` ni réorganisé dans 04 (ADR-0026 — les autres campagnes l\'immunisent déjà)', () => {
   const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
   const index = { 'epingle|EPINGLE': true };
@@ -759,7 +801,8 @@ test('les 4 fonctions UN-CLIC passent `true` (manuel) aux phases — sinon le bu
     const appels = corps.match(new RegExp(phase + '\\(estBudgetDepasse[^)]*\\)', 'g')) || [];
     assert.ok(appels.length > 0, 'aucun appel de ' + phase + ' dans les fonctions un-clic');
     appels.forEach((appel) => {
-      assert.ok(/,\s*true\s*\)/.test(appel), 'appel un-clic sans le drapeau manuel : ' + appel);
+      // `, true` suivi de `)` OU d'un 3e arg `, tentesMut)` (mémoire des échecs par exécution, Vague 1b).
+      assert.ok(/,\s*true\s*[,)]/.test(appel), 'appel un-clic sans le drapeau manuel : ' + appel);
     });
   });
 });
@@ -1056,7 +1099,7 @@ test('lancerResetTout : les 3 phases sont appelées avec une PART, jamais avec l
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'Reset.gs'), 'utf8');
   const i = src.indexOf('function lancerResetTout(');
   const corps = src.slice(i, src.indexOf('\n}', i));
-  ['rassemblerReset_(gardePartReset_(debut, 3), true)', 'placerReset_(gardePartReset_(debut, 2), true)',
+  ['rassemblerReset_(gardePartReset_(debut, 3), true, tentesMut)', 'placerReset_(gardePartReset_(debut, 2), true, tentesMut)',
     'appliquerReset04Interne_(gardePartReset_(debut, 1), true)'].forEach((appel) => {
     assert.ok(corps.indexOf(appel) !== -1,
       'sans partage, la 1re phase consomme les 4,5 min et le clic « tout faire » ne place plus rien : ' + appel);

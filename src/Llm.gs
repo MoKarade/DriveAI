@@ -628,7 +628,28 @@ function appelAnthropicChat_(systeme, messages, outils, executerOutil) {
 }
 
 /**
- * Appel avec un retry léger borné sur erreurs transitoires (429, 529, 5xx).
+ * Une exception réseau (DNS, TLS, hôte injoignable, UrlFetch en panne) n'a PAS de code HTTP mais
+ * est, comme un 5xx, une panne de PLATEFORME — jamais un échec du document. Sans la compter dans la
+ * série systémique (`_echecsSystemiques`, comme les 429/529/5xx), une coupure réseau prolongée
+ * mettait CHAQUE document en quarantaine à tort ET n'armait pas la re-sonde R3 : répétition de
+ * l'incident du 01/07 (~89 docs) par une porte NON couverte (revue de fond 2026-07-31).
+ * @return {boolean} vrai si la panne durable vient d'être posée.
+ */
+function noterEchecReseau_(modele) {
+  _echecsSystemiques++;
+  try { PropertiesService.getScriptProperties().setProperty('DriveAI_LLM_ECHECS_SYST', String(_echecsSystemiques)); } catch (e) { }
+  if (_echecsSystemiques >= CONFIG.LLM_ECHECS_SYST_MAX) {
+    poserPannePlateforme_('PANNE RÉSEAU DURABLE (×' + _echecsSystemiques + ' exceptions consécutives, ' +
+      modele + ') — API injoignable, sources suspendues (re-sonde auto dans ≤ ' +
+      Math.round(CONFIG.LLM_PANNE_RESONDE_MS / 3600000) + ' h). Reprise automatique au rétablissement.');
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Appel avec un retry léger borné sur erreurs transitoires (429, 529, 5xx). Une exception réseau
+ * est comptée comme panne systémique (voir `noterEchecReseau_`) avant de rendre `null`.
  * @return {HTTPResponse|null}
  */
 function fetchAvecRetry_(url, options, modele) {
@@ -637,6 +658,7 @@ function fetchAvecRetry_(url, options, modele) {
     reponse = UrlFetchApp.fetch(url, options);
   } catch (e) {
     journalErreur_('LLM', 'Appel réseau échoué (' + modele + ') : ' + e);
+    noterEchecReseau_(modele);
     return null;
   }
   var code = reponse.getResponseCode();
@@ -646,6 +668,7 @@ function fetchAvecRetry_(url, options, modele) {
       reponse = UrlFetchApp.fetch(url, options);
     } catch (e) {
       journalErreur_('LLM', 'Retry réseau échoué (' + modele + ') : ' + e);
+      noterEchecReseau_(modele);
       return null;
     }
   }
@@ -695,8 +718,13 @@ function parserClassification_(texte) {
   // (aucun champ v2) garde l'exigence STRICTE d'un domaine string — comportement OFF inchangé.
   var estNonDocV2 = !!(obj && (obj.estNonDocument === true ||
     obj.routageHorsDomaine === '_Technique' || obj.routageHorsDomaine === '_Médias'));
+  // Une pièce d'IDENTITÉ v2 est routée par son TYPE (`dossierIdentite_`), jamais par `domaine` : la
+  // passe 1 peut donc légitimement l'omettre. On la TOLÈRE comme le non-document — sinon un passeport
+  // `{estDocumentIdentite:true, sousDossierType:"Passeport", domaine:null}` était rejeté → quarantaine
+  // À TORT (revue de fond 2026-07-31 ; « un champ requis peut être optionnel sur un sous-chemin »).
+  var domaineFacultatif = estNonDocV2 || !!(obj && obj.estDocumentIdentite === true);
   if (!obj || typeof obj.confiance !== 'number' ||
-      (typeof obj.domaine !== 'string' && !estNonDocV2)) {
+      (typeof obj.domaine !== 'string' && !domaineFacultatif)) {
     journalErreur_('LLM', 'JSON de classification invalide : ' + tronquer_(texte, 300));
     return null;
   }

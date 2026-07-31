@@ -43,6 +43,22 @@ test('type inconnu → format historique jour, jamais un blocage', () => {
   assert.strictEqual(ctx.nomParType_(D, '', '', '.pdf'), '2024-03-15_Document_Inconnu.pdf');
 });
 
+test('nommerDocument_ : un émetteur SENTINELLE (« Inconnu »/« N/A ») ne s\'écrit JAMAIS dans le nom (revue de fond 2026-07-31)', () => {
+  // Le fail-safe neutralisait « Inconnu » (estRenseigne_), mais le nommeur testait champ_ → produisait
+  // « …_Facture_Inconnu.pdf », précisément le nom que la campagne m2-inconnu éradique.
+  const nInconnu = ctx.nommerDocument_({ type_doc: 'Facture', emetteur: 'Inconnu' }, '2024-03-15', '.pdf');
+  assert.ok(!/Inconnu/i.test(nInconnu), 'jamais « Inconnu » dans le nom, vu : ' + nInconnu);
+  assert.ok(/Facture/.test(nInconnu), 'le type reste présent');
+  assert.ok(!/N-?A|N\/A/i.test(ctx.nommerDocument_({ type_doc: 'Facture', emetteur: 'N/A' }, '2024-03-15', '.pdf')));
+  // Émetteur RÉEL conservé ; descripteur réel utilisé en repli quand l'émetteur est une sentinelle.
+  assert.strictEqual(
+    ctx.nommerDocument_({ type_doc: 'Facture', emetteur: 'Hydro-Québec' }, '2024-03-15', '.pdf'),
+    '2024-03-15_Facture_Hydro-Québec.pdf');
+  assert.strictEqual(
+    ctx.nommerDocument_({ type_doc: 'Facture', emetteur: 'Inconnu', descripteur: 'Achat en ligne' }, '2024-03-15', '.pdf'),
+    '2024-03-15_Facture_Achat en ligne.pdf');
+});
+
 test('schemaNommage_ : priorité des règles (releve de notes AVANT releve)', () => {
   assert.strictEqual(ctx.schemaNommage_('Relevé de notes').gran, 'annee');
   assert.strictEqual(ctx.schemaNommage_('Relevé bancaire').gran, 'mois');

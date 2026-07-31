@@ -667,7 +667,11 @@ function nomsDansDossier_(dossierId) {
 
 /** `AAAA-MM-JJ_Type_Émetteur.ext` — format historique (granularité JOUR). */
 function nomNormalise_(date, type, emetteur, ext) {
-  var t = champ_(type) || 'Document';
+  // Un type SENTINELLE (« Inconnu »/« N/A ») ne doit jamais s'écrire dans le nom (revue Vague 1b — la
+  // correction de `nommerDocument_` ne couvrait que le tiers, pas le segment TYPE) → `estRenseigne_`,
+  // repli « Document ». L'émetteur, lui, est déjà filtré en amont par `nommerDocument_` ; le repli
+  // « Inconnu » ci-dessous ne subsiste que pour les appels BAS NIVEAU directs (émetteur vide).
+  var t = estRenseigne_(type) ? champ_(type) : 'Document';
   var e = champ_(emetteur) || 'Inconnu';
   return date + '_' + t + '_' + e + ext;
 }
@@ -743,7 +747,7 @@ function casseNomPersonne_(s) {
 /** Titulaire (personne concernée) nettoyé pour le NOM du fichier. Marc y est un titulaire VALIDE. null si absent. PUR. */
 function titulairePourNom_(classif) {
   var t = classif && classif.titulaire;
-  if (t == null || !String(t).trim()) return null;
+  if (!estRenseigne_(t)) return null; // sentinelle « Inconnu »/« N/A » ⇒ pas de titulaire (jamais « _Inconnu »)
   return casseNomPersonne_(String(t).replace(/\s+/g, ' ').trim()) || null;
 }
 
@@ -770,8 +774,12 @@ function nommerDocument_(classif, dateReception, ext) {
     var titu = titulairePourNom_(classif);
     return titu ? nomParType_(date, type, titu, ext) : nomSansTiers_(date, type, ext);
   }
-  // Émetteur d'abord, sinon descripteur (jamais « Inconnu ») ; aucun des deux → type seul.
-  var tiers = champ_(classif.emetteur) ? classif.emetteur : (champ_(classif.descripteur) ? classif.descripteur : '');
+  // Émetteur d'abord, sinon descripteur ; aucun des deux → type seul. `estRenseigne_` (pas `champ_`)
+  // pour que les sentinelles « Inconnu »/« N/A » comptent comme ABSENTES — sinon un émetteur
+  // sentinelle produit « …_Facture_Inconnu.pdf », précisément le nom que la campagne m2-inconnu
+  // éradique (revue de fond 2026-07-31 : le fail-safe neutralisait « Inconnu », le nommeur non).
+  var tiers = estRenseigne_(classif.emetteur) ? classif.emetteur
+    : (estRenseigne_(classif.descripteur) ? classif.descripteur : '');
   return tiers ? nomParType_(date, classif.type_doc, tiers, ext) : nomSansTiers_(date, classif.type_doc, ext);
 }
 
