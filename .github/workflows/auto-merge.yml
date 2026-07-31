@@ -45,6 +45,17 @@ jobs:
           fi
           echo "PR concernée : #$number"
 
+          # ⚠️ SÉCURITÉ (revue Vague 1a) : le gate `if:` protège le DÉCLENCHEMENT du job, mais
+          # `gh pr list --head` filtre par NOM de branche seulement — sur un dépôt public, une PR de
+          # FORK portant la même branche `claude/x` pourrait être sélectionnée ici. On re-vérifie donc
+          # sur la PR RÉSOLUE qu'elle n'est PAS cross-repo avant tout merge (défense en profondeur,
+          # même esprit que le gate — la promesse « pas de code de fork déployé » codée de bout en bout).
+          crossrepo="$(gh pr view "$number" --repo "$REPO" --json isCrossRepository --jq .isCrossRepository)"
+          if [ "$crossrepo" != "false" ]; then
+            echo "PR #$number vient d'un fork (isCrossRepository=$crossrepo) → auto-merge REFUSÉ."
+            exit 0
+          fi
+
           labels="$(gh pr view "$number" --repo "$REPO" --json labels --jq '.labels[].name')"
           if echo "$labels" | grep -qx 'do-not-merge'; then
             echo "Label 'do-not-merge' présent → auto-merge ignoré."
