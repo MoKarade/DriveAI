@@ -19,6 +19,9 @@ const { load } = require('./harness');
 
 const FICHIERS = ['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs'];
 const SRC = (f) => fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8');
+const PHASES = ['rassemblerReset_', 'placerReset_', 'appliquerReset04Interne_', 'analyserReliquatReset_'];
+/** Seulement les appels de PHASE (le contexte web app en pousse d'autres : usage, panne…). */
+const phasesDe = (appels) => appels.filter((a) => PHASES.indexOf(a.phase) !== -1);
 
 /** Contexte : les 4 phases mockées, verrou disponible, Properties en mémoire. */
 function ctxPilote(opts) {
@@ -38,6 +41,13 @@ function ctxPilote(opts) {
   }) };
   c.journalInfo_ = () => {};
   c.journalErreur_ = (s, m) => appels.push({ phase: 'erreur', message: m });
+  c.notifierEchec_ = (s, m) => appels.push({ phase: 'alerte', message: m });
+  c.dateGmail_ = () => '2026/07/31'; // vit dans Gmail.gs (non chargé)
+  // Contexte d'exécution web app : compteur d'usage propre + panne plateforme (patron WebApp.gs).
+  c.chargerPannePlateforme_ = () => { appels.push({ phase: 'chargerPanne' }); };
+  c.reinitialiserUsage_ = () => { appels.push({ phase: 'initUsage' }); };
+  c.flushUsage_ = () => { appels.push({ phase: 'flushUsage' }); };
+  c.marquerVieManuelleReset_ = () => { appels.push({ phase: 'LAST_MANUEL' }); };
   // Chaque phase renvoie un résultat NON stérile une fois, puis stérile (convergence simulée).
   // `=== undefined`, jamais `||` : `{rondes: 0}` (cas « tout stérile ») doit valoir 0, pas le défaut.
   const restant = {
@@ -46,8 +56,10 @@ function ctxPilote(opts) {
     analyserReliquatReset_: opts.rondesLlm === undefined ? 0 : opts.rondesLlm,
   };
   ['rassemblerReset_', 'placerReset_', 'appliquerReset04Interne_', 'analyserReliquatReset_'].forEach((nom) => {
-    c[nom] = (garde, manuel) => {
-      appels.push({ phase: nom, manuel: manuel, garde: typeof garde });
+    // Le mock lit ses ARGUMENTS (jamais une fermeture) — sinon deux appels d'une même passe
+    // seraient indiscernables (leçon C28-33 sur les mocks partagés).
+    c[nom] = (garde, manuel, tentes) => {
+      appels.push({ phase: nom, manuel: manuel, garde: typeof garde, tentes: tentes });
       if (restant[nom] > 0) { restant[nom]--; return { examines: 1, deplaces: 1 }; }
       return { examines: 0, deplaces: 0 };
     };
@@ -80,11 +92,14 @@ test('SÛRETÉ SECRET : « pousser-reset » et « assurer-trigger » exigent le 
   ["action === 'pousser-reset'", "action === 'assurer-trigger'"].forEach((motif) => {
     const i = webapp.indexOf(motif);
     assert.ok(i !== -1, motif + ' introuvable');
-    const branche = webapp.slice(i, i + 220);
+    const branche = webapp.slice(i, i + 500);
     assert.ok(/verifierSecretSync_\(e\)/.test(branche),
       motif + ' doit être gardée par le secret CI (DriveAI_SYNC_SECRET), jamais par DriveAI_WEBAPP_SECRET ' +
       'qui est exposé côté navigateur par conception');
     assert.ok(/erreur: 'refusé'/.test(branche), 'échec fermé si le secret ne correspond pas');
+    assert.ok(/antiRafalePilote_\(/.test(branche),
+      'anti-rafale OBLIGATOIRE : l\'en-tête du fichier le promet pour toute action, et sans lui ' +
+      '`assurer-trigger` rappelé plus vite que TICK_MINUTES empêcherait le tick de jamais se déclencher');
   });
 });
 
@@ -94,7 +109,7 @@ test('les 4 phases sont appelées en mode MANUEL (ni gatées, ni comptées) — 
   const { c, appels } = ctxPilote({ rondes: 1 });
   const r = c.pousserResetPilote_();
   assert.strictEqual(r.ok, true);
-  const phases = appels.filter((a) => a.phase !== 'erreur');
+  const phases = phasesDe(appels);
   assert.ok(phases.length >= 4, 'les 4 phases doivent être servies (round-robin), vu : ' + phases.length);
   phases.forEach((a) => {
     assert.strictEqual(a.manuel, true,
@@ -111,8 +126,8 @@ test('analyserReliquatReset_ en mode manuel : ni gatée par le budget quotidien,
   const reset = SRC('Reset.gs');
   const i = reset.indexOf('function analyserReliquatReset_(');
   const corps = reset.slice(i, reset.indexOf('\n}\n', i));
-  assert.ok(/function analyserReliquatReset_\(estBudgetDepasse, manuel\)/.test(reset),
-    'la passe LLM accepte le drapeau manuel (ADR-0032 §2.3)');
+  assert.ok(/function analyserReliquatReset_\(estBudgetDepasse, manuel, tentes\)/.test(reset),
+    'la passe LLM accepte le drapeau manuel ET la mémoire des documents tentés (ADR-0032 §2.3)');
   assert.ok(/if \(!manuel && consommeJour >= CONFIG\.RESET_LLM_BUDGET_JOUR_MS\)/.test(corps),
     'gate quotidien coupé en manuel');
   assert.ok(/if \(!manuel\) props\.setProperty\('DriveAI_RESET_LLM_JOUR'/.test(corps),
@@ -155,13 +170,16 @@ test('anti-chevauchement : si le tick tient le verrou, la passe est SAUTÉE prop
   assert.strictEqual(appels.length, 0, 'aucune phase ne tourne sans le verrou');
 });
 
-test('le verrou est TOUJOURS relâché, même si une phase lève (sinon le tick suivant est bloqué 6 min)', () => {
+test('le verrou est TOUJOURS relâché, même sur une exception HORS phase (sinon le tick suivant est bloqué 6 min)', () => {
   const ctx = ctxPilote({});
-  ctx.c.rassemblerReset_ = () => { throw new Error('Drive indisponible'); };
+  // Une exception dans une PHASE est désormais isolée (test dédié plus bas) : on éprouve ici le
+  // `finally` du noyau avec un échec qui n'est PAS enveloppé par phase().
+  ctx.c.journalInfo_ = () => { throw new Error('Journal indisponible'); };
   const r = ctx.c.pousserResetPilote_();
   assert.strictEqual(r.ok, false);
   assert.strictEqual(ctx.relachesRef(), 1, 'releaseLock dans le finally');
   assert.ok(ctx.appels.some((a) => a.phase === 'erreur'), 'l\'échec est journalisé, jamais silencieux');
+  assert.ok(ctx.appels.some((a) => a.phase === 'flushUsage'), 'le coût déjà engagé est tout de même persisté');
 });
 
 test('interrupteur : PILOTE_ACTIF=false ou RESET_ACTIF=false ⇒ refus IMMÉDIAT, zéro phase, zéro verrou', () => {
@@ -183,7 +201,106 @@ test('une ronde entièrement stérile ARRÊTE la boucle (jamais de spin qui re-s
   const r = c.pousserResetPilote_();
   assert.strictEqual(r.rondes, 1, 'une seule ronde, puis sortie');
   assert.strictEqual(r.progres, false);
-  assert.strictEqual(appels.filter((a) => a.phase !== 'erreur').length, 4, 'exactement un tour des 4 phases');
+  assert.strictEqual(phasesDe(appels).length, 4, 'exactement un tour des 4 phases');
+});
+
+/* ---------- 6. Correctifs de la revue flotte C28-43 (chaque bloquant a son verrou) ---------- */
+
+test('BLOQUANT sécurité : le coût LLM d\'une passe poussée est COMPTÉ (sinon le frein 110 $ est aveugle sur le chemin dominant)', () => {
+  const { c, appels } = ctxPilote({ rondes: 1 });
+  c.pousserResetPilote_();
+  const noms = appels.map((a) => a.phase);
+  assert.ok(noms.includes('initUsage'),
+    'contexte web app ≠ tick : sans reinitialiserUsage_, l\'accumulateur reste null et AUCUNE dépense n\'est comptée');
+  assert.ok(noms.includes('flushUsage'), 'le coût doit être persisté en fin de passe (finally)');
+  assert.ok(noms.indexOf('initUsage') < noms.indexOf('rassemblerReset_'), 'initialisé AVANT tout travail');
+  assert.ok(noms.includes('chargerPanne'),
+    'sans chargerPannePlateforme_, la suspension persistée est ignorée → re-sondes en boucle pendant une panne de compte');
+});
+
+test('BLOQUANT sécurité : une passe poussée n\'écrit JAMAIS DriveAI_LAST_MANUEL (sinon le chien de garde est muet toute la campagne)', () => {
+  const { c, appels, props } = ctxPilote({ rondes: 1 });
+  c.pousserResetPilote_();
+  assert.ok(!appels.some((a) => a.phase === 'LAST_MANUEL'),
+    'le pilote tourne toutes les ~7 min pendant des jours : rafraîchir le signal de vie manuel rendrait ' +
+    'l\'alerte ET l\'auto-réparation mortes pendant toute la campagne — exactement le scénario à voir');
+  assert.strictEqual(props.DriveAI_LAST_MANUEL, undefined);
+});
+
+test('détecteur de GEL : ticks silencieux ⇒ passe REFUSÉE + alerte (le pilote signale le gel au lieu de le masquer)', () => {
+  const c0 = load(FICHIERS);
+  const vieux = String(Date.now() - (c0.CONFIG.WATCHDOG_SEUIL_MS + 60000));
+  const { c, appels } = ctxPilote({ rondes: 1, props: { DriveAI_LAST_TICK: vieux } });
+  const r = c.pousserResetPilote_();
+  assert.strictEqual(r.gel, true);
+  assert.strictEqual(r.rondes, 0);
+  assert.ok(!appels.some((a) => a.phase === 'rassemblerReset_'), 'aucun travail : le flux vivant prime sur le rangement');
+  assert.ok(appels.some((a) => a.phase === 'alerte'), 'une alerte part (canal mail, indépendant des déclencheurs)');
+
+  // Tick frais → la passe tourne normalement ; première installation (pas de LAST_TICK) → jamais bloquée.
+  const frais = ctxPilote({ rondes: 1, props: { DriveAI_LAST_TICK: String(Date.now()) } });
+  assert.notStrictEqual(frais.c.pousserResetPilote_().gel, true);
+  const neuf = ctxPilote({ rondes: 1 });
+  assert.notStrictEqual(neuf.c.pousserResetPilote_().gel, true);
+});
+
+test('BORNE DU PARI : budget QUOTIDIEN en ms réelles — épuisé ⇒ aucune passe, et la consommation est persistée', () => {
+  const c0 = load(FICHIERS);
+  const epuise = ctxPilote({ rondes: 1, props: { DriveAI_PILOTE_JOUR: '2026/07/31|' + c0.CONFIG.PILOTE_BUDGET_JOUR_MS } });
+  const r = epuise.c.pousserResetPilote_();
+  assert.strictEqual(r.rondes, 0);
+  assert.ok(!epuise.appels.some((a) => a.phase === 'rassemblerReset_'),
+    'si le pari « web app hors quota » est faux, cette borne est tout ce qui empêche le gel');
+
+  const actif = ctxPilote({ rondes: 1 });
+  actif.c.pousserResetPilote_();
+  assert.ok(String(actif.props.DriveAI_PILOTE_JOUR || '').indexOf('2026/07/31|') === 0,
+    'ms réelles persistées — c\'est aussi la MESURE qui permettra de trancher le pari');
+});
+
+test('quarantaine : un document du reliquat n\'est tenté qu\'UNE fois par exécution (3 essais en 2 min = perte définitive)', () => {
+  const { c, appels } = ctxPilote({ rondes: 3, rondesLlm: 3 });
+  c.pousserResetPilote_();
+  const llm = appels.filter((a) => a.phase === 'analyserReliquatReset_');
+  assert.ok(llm.length >= 2, 'plusieurs rondes ont bien appelé la phase LLM');
+  llm.forEach((a) => assert.ok(a.tentes && typeof a.tentes === 'object',
+    'la mémoire des documents tentés doit être passée à CHAQUE appel : sans elle, la même exécution ' +
+    'rejoue le même fichier et brûle ses 3 essais sur un blip transitoire → quarantaine sans retour'));
+  assert.strictEqual(llm[0].tentes, llm[1].tentes, 'la MÊME mémoire est partagée par les rondes d\'une passe');
+});
+
+test('anti-stagnation : après PILOTE_STERILES_MAX passes sans progrès ⇒ alerte + veille (jamais 192 walks/jour pour rien)', () => {
+  const c0 = load(FICHIERS);
+  const MAX = c0.CONFIG.PILOTE_STERILES_MAX;
+  const { c, appels, props } = ctxPilote({ rondes: 0, props: { DriveAI_PILOTE_STERILES: String(MAX - 1) } });
+  const r = c.pousserResetPilote_();
+  assert.strictEqual(r.stagnation, true, 'le workflow doit pouvoir arrêter d\'insister');
+  assert.ok(appels.some((a) => a.phase === 'alerte'), 'Marc est prévenu que le rangement est bloqué');
+
+  // Une passe qui PROGRESSE remet le compteur à zéro (le gate se teste par sa LIBÉRATION).
+  const repart = ctxPilote({ rondes: 1, props: { DriveAI_PILOTE_STERILES: String(MAX - 1) } });
+  assert.strictEqual(repart.c.pousserResetPilote_().stagnation, false);
+  assert.strictEqual(repart.props.DriveAI_PILOTE_STERILES, undefined, 'compteur remis à zéro');
+});
+
+test('isolation : une phase qui lève ne tue pas les autres (leçon « étape secondaire enveloppée »)', () => {
+  const ctx = ctxPilote({ rondes: 1 });
+  ctx.c.rassemblerReset_ = () => { throw new Error('blip Sheet'); };
+  const r = ctx.c.pousserResetPilote_();
+  assert.strictEqual(r.ok, true, 'la passe survit à l\'échec d\'UNE phase');
+  assert.ok(ctx.appels.some((a) => a.phase === 'placerReset_'), 'les phases suivantes tournent quand même');
+  assert.ok(r.echecs >= 1, 'l\'échec est compté et journalisé');
+  assert.strictEqual(ctx.relachesRef(), 1, 'verrou relâché');
+});
+
+test('la réponse renvoyée à la CI (log PUBLIC) ne porte JAMAIS le détail d\'une exception', () => {
+  const ctx = ctxPilote({ rondes: 1 });
+  ctx.c.journalInfo_ = () => { throw new Error('Fichier « Passeport Marc 2019.pdf » illisible'); };
+  const r = ctx.c.pousserResetPilote_();
+  assert.strictEqual(r.ok, false);
+  assert.ok(!/Passeport/.test(JSON.stringify(r)),
+    'le dépôt est PUBLIC : le détail (noms de fichiers) reste au Journal privé');
+  assert.ok(!('erreur' in r), 'pas de champ `erreur` sur un échec TRANSITOIRE — sinon la CI le croit permanent et abandonne');
 });
 
 /* ---------- 5. Bornes CI : la fenêtre du tick est ce qui protège le flux vivant ---------- */

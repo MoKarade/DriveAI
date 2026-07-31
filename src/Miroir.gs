@@ -11,9 +11,12 @@
  * Secret DÉDIÉ (`DriveAI_SYNC_SECRET`, Script Property) — DISTINCT de `DriveAI_WEBAPP_SECRET` (celui
  * de l'app, exposé côté navigateur PAR CONCEPTION, cf. app/src/config.ts : « la sécurité vient du
  * login Google, pas du secret »). Celui-ci ne doit JAMAIS être visible d'un navigateur — seulement
- * connu de GitHub Actions (secret CI) et du script. Pire abus si CE secret fuit : écrire des fichiers
- * TEXTE dans UN dossier dédié (`_Miroir du dépôt`, hors domaines) — jamais lire/modifier/supprimer un
- * document classé, jamais toucher à l'Index/Journal/Entités.
+ * connu de GitHub Actions (secret CI) et du script. Pire abus si CE secret fuit, POUR CETTE ACTION :
+ * écrire des fichiers TEXTE dans UN dossier dédié (`_Miroir du dépôt`, hors domaines).
+ * ⚠️ Depuis l'ADR-0032 (C28-43) le MÊME secret garde aussi `pousser-reset`/`assurer-trigger` : son
+ * pouvoir GLOBAL est donc plus large (déplacer/renommer des documents classés, écrire l'état,
+ * déclencher des appels LLM, réinstaller les déclencheurs) — voir l'inventaire complet en tête de
+ * `WebApp.gs`. Restent impossibles partout : toute suppression et toute sortie de la zone protégée.
  *
  * Garde-fous : AUCUNE suppression (§2) — un fichier retiré du dépôt laisse une copie obsolète dans le
  * miroir (limite assumée : à nettoyer à la main de temps en temps, comme `_Doublons`/`_Technique`).

@@ -20,7 +20,20 @@
 > `actionTickPonctuel_` (qui CRÉE un déclencheur) consommerait le quota que tout ce montage
 > protège. Workflow `pousser-reset.yml` : cron */15, 2 passes, **pause 6 min > TICK_MINUTES** (la
 > fenêtre de tick garantie = ce qui empêche d'affamer le flux vivant), arrêt seul à convergence,
-> dépôt PUBLIC (minutes Actions gratuites — vérifié). Débit ≈ 11 h/j de rangement vs 50 min/j ;
+> dépôt PUBLIC (minutes Actions gratuites — vérifié).
+> **⚠️ REVUE FLOTTE (🔴 sécurité, 🟠 quotas) — 5 BLOQUANTS corrigés avant merge, et le PARI requalifié.**
+> Le pari « runtime de web app hors du quota des déclencheurs » est un **INDICE, pas une mesure** :
+> le précédent C28-33 prouve seulement que des compteurs INTERNES bridaient à tort le chemin manuel,
+> et **CLAUDE.md §6bis (#235, mergé le même jour) tient ce quota pour PARTAGÉ**. D'où trois filets :
+> `PILOTE_BUDGET_JOUR_MS` **30 min/j** (borne la casse si le pari est faux), **détecteur de gel**
+> (ticks muets ⇒ passe refusée + alerte — le pilote ne masque plus, il révèle ; il n'écrit donc
+> JAMAIS `DriveAI_LAST_MANUEL`, qui aurait rendu le chien de garde muet des jours durant), et **ms
+> journalisées** pour trancher empiriquement. Autres bloquants : coût LLM du pilote jamais compté
+> (frein 110 $ aveugle → `reinitialiserUsage_`/`flushUsage_`), quarantaine prématurée du reliquat
+> (3 essais en 2 min ⇒ perte définitive et silencieuse → mémoire des tentés), anti-rafale absent
+> (`assurer-trigger` en boucle = tick jamais déclenché). Débit réel **×1,6**, pas ×13 — assumé et
+> documenté : la constante est faite pour être relevée par Marc, données à l'appui. 739 tests,
+> 2 bloquants prouvés par MUTATION ;
 > coût LLM TOTAL inchangé (clé versionnée : chaque doc payé une seule fois — pousser ne coûte pas
 > plus cher, ça arrive plus tôt). 731 tests. ⚠️ Note repo : la branche par DÉFAUT est
 > `claude/compassionate-brahmagupta-e49tqa`, pas `main` — les crons GitHub ne tournent que depuis

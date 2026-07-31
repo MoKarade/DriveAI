@@ -31,23 +31,47 @@ ne change dans le moteur** :
 | `assurer-trigger` | ré-installe le déclencheur (= ce que Marc faisait dans l'éditeur) | `deploy.yml`, après `clasp push` + `clasp deploy` |
 | `pousser-reset` | UNE passe de reset en mode **poussé** (les 3 phases I/O + la passe LLM du reliquat), bornée, verrou pris | `pousser-reset.yml` (cron + dispatch) |
 
-### 2.1 Pourquoi c'est PLUS RAPIDE que le manuel (et pourquoi ce n'est pas un dépassement de quota)
+### 2.1 Le pari sur le quota — énoncé, et BORNÉ (révisé par la revue flotte C28-43)
 
 Le quota qui gèlerait tout (C28-29 : « Triggers total runtime ~90 min/j », chien de garde inclus)
-borne les **déclencheurs**. Une exécution de **web app** n'est pas un déclencheur — c'est la même
-catégorie qu'une exécution d'éditeur, dont le projet a déjà constaté empiriquement qu'elle est hors
-de ce compteur (C28-33 fix : Marc bloqué à tort par les budgets quotidiens « sans qu'aucun quota
-réel ne soit en cause »). Le pilote **n'augmente donc aucun budget** et ne touche pas à l'enveloppe
-50 min/j du tick : il ouvre le MÊME robinet que les clics de Marc, mais sans Marc.
+est libellé pour les **déclencheurs**, et une exécution de **web app** n'en est pas un. Le projet a
+par ailleurs constaté qu'une exécution d'éditeur n'était pas concernée (C28-33 fix).
+
+**⚠️ Mais c'est un INDICE, pas une mesure — et la revue l'a démonté :**
+- Le précédent C28-33 prouve seulement que les **compteurs INTERNES de DriveAI** bridaient à tort le
+  chemin manuel (« bloqué sans qu'aucun quota réel ne soit en cause ») : c'est l'absence d'un quota
+  *DriveAI*, pas la mesure d'un quota *Google*. L'observation portait sur ~20 min d'exécutions
+  d'éditeur ; la version initiale de cet ADR l'extrapolait à **~11-13 h/jour** (facteur ~30).
+- **CLAUDE.md §6bis (#235, mergé le même jour) tient ce quota pour PARTAGÉ** : « un budget DUR de
+  90 min/jour de temps d'exécution, partagé avec le tick lui-même », à propos d'appels *web app*
+  déclenchés par le hub. La constitution du projet contredit donc le pari.
+- Le mode d'échec réel de Google (*Service using too much computer time for one day*) n'a pas de
+  périmètre documenté publiquement. **Personne hors Google ne peut trancher par la doc.**
+
+**Décision : on prend le pari, mais borné et instrumenté** — trois filets qui le rendent sûr *même
+s'il est faux* :
+1. **`PILOTE_BUDGET_JOUR_MS` (30 min/j au départ)** — ms réelles persistées (`DriveAI_PILOTE_JOUR`),
+   gate + comptage, patron des phases du reset. Si le pari est mauvais, la casse est bornée à
+   ~30 min/j au lieu de ~13 h/j. Valeur **volontairement prudente** : à relever par Marc une fois le
+   heartbeat observé sain plusieurs jours — c'est son arbitrage vitesse/risque, pas le mien.
+2. **Détecteur de gel** — si `DriveAI_LAST_TICK` dépasse le seuil du chien de garde, la passe est
+   **refusée** et une alerte part (canal mail, indépendant des déclencheurs). Le pilote **détecte**
+   le gel au lieu de le masquer. Corollaire : il n'écrit **jamais** `DriveAI_LAST_MANUEL` — le faire
+   toutes les 7 min rendrait le chien de garde muet pendant toute la campagne (défaut de la version
+   initiale, relevé par les deux revues). Il n'en a pas besoin : la pause CI garantit une fenêtre de
+   tick, donc `LAST_TICK` reste frais tout seul — et s'il ne l'est plus, c'est une VRAIE panne.
+3. **Mesure** — les ms consommées par passe sont journalisées : sans elles, l'hypothèse resterait
+   invérifiable (« vérifier par un signal indépendant »).
 
 ⚠️ **Ce que le pilote ne doit JAMAIS faire** : passer par l'action par défaut (`actionTickPonctuel_`),
 qui **crée un déclencheur** (`ScriptApp.newTrigger(...).after(1000)`) et consommerait, elle, le quota
 protégé. Le travail est exécuté **synchronement dans le `doPost`** — verrouillé par test.
 
-Débit obtenu, sans jamais affamer le flux vivant (voir 2.2) : ~3,5 min de reset par passe, 2 passes
-par run, un run par quart d'heure ⇒ **~7 min de reset toutes les 15 min ≈ 11 h/jour**, contre
-50 min/j aujourd'hui — et contre « autant de fois que Marc clique ». Le pilote s'**arrête tout seul**
-à la convergence (`termine:true` ⇒ le workflow ne fait plus rien), donc le coût retombe à zéro.
+**Débit attendu** : ~30 min/j de rangement poussé **en plus** des ~50 min/j du tick — soit environ
+**×1,6**, pas le ×13 annoncé initialement. C'est le prix de la prudence tant que le pari n'est pas
+mesuré ; la constante est faite pour être relevée. Le pilote s'**arrête tout seul** à la convergence
+(`termine:true`), et se met en **veille avec alerte** après `PILOTE_STERILES_MAX` passes sans progrès
+(sinon un état bloqué mais « non terminé » ferait tourner ~192 walks complets par jour pour rien).
 
 ### 2.2 Le flux vivant n'est jamais affamé (contrepartie assumée, bornée)
 
@@ -63,10 +87,24 @@ chien de garde de crier « moteur silencieux » à tort.
 L'amendement C28-42 écrivait « pas d'un-clic — voulu : jamais de boucle Sonnet non bornée en
 manuel ». **On lève cette limite pour le pilote SEULEMENT**, et la raison de sûreté tient toujours :
 la boucle n'est pas « non bornée », elle reste plafonnée par `RESET_LLM_MAX_PAR_RUN` (6 documents
-par passe) — c'est le plafond d'ITEMS, pas le budget quotidien, qui borne le coût par passe. Le coût
-TOTAL, lui, ne change pas d'un centime : la clé versionnée `tri33llm|…` fait payer chaque document
-**une fois par version de table** (≤ 3 tentatives puis quarantaine). Pousser ne coûte pas plus cher,
-ça arrive plus tôt. Le frein campagnes §2.6 (110 $) reste évalué au gate ET par item.
+par passe). ⚠️ **Ce plafond n'était pas vrai dans la version initiale** (relevé par les deux revues) :
+le compteur est local à `analyserPageReliquatReset_`, or la boucle de rondes rappelait la phase, donc
+le vrai plafond était « 6 × nombre de rondes ». Corrigé par une **mémoire des documents tentés dans
+l'exécution** — qui répare au passage un défaut plus grave : sans elle, un blip transitoire (5xx sur
+la conversion Drive) consommait les **3 essais de `gererEchec_` en deux minutes** ⇒ quarantaine
+**définitive et silencieuse** (la dé-quarantaine automatique ne couvre pas la clé `tri33llm|`, et le
+document restait invisible dans `_TRI` sans empêcher le drapeau « drainé »). Les essais suivants ont
+désormais lieu aux passes **suivantes**, espacées — leçon « compter par PASSE, jamais par
+re-rencontre ».
+
+Le coût TOTAL ne change pas d'un centime : la clé versionnée `tri33llm|…` fait payer chaque document
+**une fois par version de table**. Pousser ne coûte pas plus cher, ça arrive plus tôt. Le frein
+campagnes §2.6 (110 $) reste évalué au gate ET par item — **et il est désormais réellement alimenté**
+par ce chemin : le contexte web app exige `reinitialiserUsage_()`/`flushUsage_()` (patron
+`actionRechercheIA_`), sans quoi l'accumulateur d'usage reste `null` et **aucune dépense du pilote ne
+serait comptée** (défaut de la version initiale : le frein était évalué sur un compteur que le chemin
+dominant n'alimentait jamais). `chargerPannePlateforme_()` est appelé pour la même raison de
+contexte — sinon la suspension persistée en cas de panne de compte API serait ignorée.
 
 ## 3. Garde-fous (inchangés — c'est le point)
 

@@ -67,7 +67,8 @@ jobs:
             # redirection, or /exec redirige vers /macros/echo qui n'accepte que HEAD/GET → 405
             # systématique. `--data-binary` pose POST sur la 1ʳᵉ requête seulement (leçon vécue).
             # --max-time 300 : une passe dure jusqu'à ~3,5 min côté moteur, plus la latence.
-            CODE="$(curl -sS -L --max-time 300 -o /tmp/pousse.json -w '%{http_code}' \
+            # --max-time > mur moteur (3,5 min) + marge de démarrage d'un dernier document.
+            CODE="$(curl -sS -L --max-time 360 -o /tmp/pousse.json -w '%{http_code}' \
               "${URL}?action=pousser-reset&secret=${SECRET_ENC}" \
               -H 'Content-Type: text/plain;charset=utf-8' \
               --data-binary '{}' || echo "000")"
@@ -76,18 +77,27 @@ jobs:
             # transitoire d'Apps Script renvoie soit un non-200, soit un 200 avec une page HTML
             # (« Script function not found: doGet ») — les deux vécues en prod.
             if [ "$CODE" = "200" ] && jq -e '.ok == true' /tmp/pousse.json >/dev/null 2>&1; then
-              jq -c '{termine, rondes, progres, message}' /tmp/pousse.json
+              jq -c '{termine, rondes, progres, echecs, gel, stagnation, message}' /tmp/pousse.json
               if jq -e '.termine == true' /tmp/pousse.json >/dev/null 2>&1; then
                 echo "::notice::Rangement TERMINÉ (I/O + reliquat drainé) — le pilote n'a plus rien à pousser."
                 TERMINE=1
                 break
               fi
-            elif [ "$CODE" = "200" ] && jq -e 'has("ok")' /tmp/pousse.json >/dev/null 2>&1; then
-              # JSON propre mais ok:false → cause PERMANENTE (secret refusé, pilote désactivé,
-              # RESET_ACTIF false). Re-essayer ne changerait rien : on le dit et on sort en succès
-              # (ce n'est pas une panne d'infrastructure).
-              echo "::warning::Passe refusée par le moteur : $(jq -r '.erreur // .message' /tmp/pousse.json)"
+              # Le moteur demande l'arrêt : soit les déclencheurs sont muets (le flux vivant prime et
+              # une alerte est partie), soit le rangement stagne (alerte envoyée aussi). Insister
+              # brûlerait du quota pour rien — on sort en SUCCÈS, l'alerte est le canal.
+              if jq -e '.gel == true or .stagnation == true' /tmp/pousse.json >/dev/null 2>&1; then
+                echo "::warning::Le moteur demande la mise en veille du pilote (gel des ticks ou stagnation) — voir le Journal / l'alerte mail."
+                break
+              fi
+            elif [ "$CODE" = "200" ] && jq -e 'has("erreur")' /tmp/pousse.json >/dev/null 2>&1; then
+              # `erreur` présent = cause PERMANENTE (secret refusé). Re-essayer ne changerait rien.
+              # ⚠️ Ne PAS traiter tout `ok:false` ainsi : le moteur renvoie aussi ok:false sur une
+              # exception TRANSITOIRE — on perdrait la passe suivante du run pour un simple blip.
+              echo "::warning::Passe refusée (cause permanente) : $(jq -r '.erreur' /tmp/pousse.json)"
               break
+            elif [ "$CODE" = "200" ] && jq -e 'has("ok")' /tmp/pousse.json >/dev/null 2>&1; then
+              echo "::warning::Passe interrompue côté moteur (transitoire) — la passe suivante réessaie. Détail au Journal."
             else
               # Réponse sans `ok` = l'action est INCONNUE de la version servie par /exec (elle est
               # tombée dans le `else` du doPost) → web app pas redéployée. Panne SILENCIEUSE
@@ -96,8 +106,12 @@ jobs:
             fi
 
             if [ "$i" -lt "$PASSES" ]; then
-              echo "Pause ${PAUSE_S}s (fenêtre garantie pour le tick automatique : flux vivant jamais affamé)…"
-              sleep "$PAUSE_S"
+              # Jitter : sans lui, 5 min (tick) et 15 min (cron) sont commensurables et calés sur
+              # l'horloge murale — ce seraient TOUJOURS les mêmes créneaux de tick sacrifiés, et les
+              # passes perdraient toujours la même course. La borne PAUSE_S > TICK_MINUTES reste vraie.
+              ATTENTE=$((PAUSE_S + RANDOM % 90))
+              echo "Pause ${ATTENTE}s (fenêtre garantie pour le tick automatique : flux vivant jamais affamé)…"
+              sleep "$ATTENTE"
             fi
           done
 

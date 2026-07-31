@@ -22,11 +22,15 @@
  *  - `DriveAI_WEBAPP_SECRET` (défaut, recherche-ia) : exposé côté NAVIGATEUR par conception
  *    (app/src/config.ts — « la sécurité vient du login Google, pas du secret »).
  *  - `DriveAI_SYNC_SECRET` (sync-miroir, pousser-reset, assurer-trigger) : DÉDIÉ, JAMAIS exposé
- *    à un navigateur — connu seulement de GitHub Actions (secret CI) et du script. Pire abus s'il
- *    fuit : écrire des fichiers texte dans UN dossier dédié (`_Miroir du dépôt`) ; faire AVANCER
- *    plus vite un rangement que le moteur ferait de toute façon, et réinstaller un déclencheur —
- *    jamais une suppression, jamais une sortie de la zone protégée, jamais une lecture de document
- *    (ADR-0032 §3 : le pilote n'ajoute AUCUNE surface de mutation, il appelle le code déjà revu).
+ *    à un navigateur — connu seulement de GitHub Actions (secret CI) et du script.
+ *    ⚠️ POUVOIR RÉEL s'il fuit, énoncé sans euphémisme (corrigé en revue C28-43 — la version
+ *    précédente prétendait « jamais une lecture de document », ce qui était FAUX) : écrire des
+ *    fichiers texte dans `_Miroir du dépôt` ; faire avancer le rangement, donc DÉPLACER et RENOMMER
+ *    des documents classés ; écrire l'état (Index/Journal/Reset) ; déclencher un OCR et l'envoi de
+ *    TEXTE DE DOCUMENT à l'API Anthropic aux frais de Marc (borné par le frein §2.6 et par
+ *    `PILOTE_BUDGET_JOUR_MS`) ; réinstaller les déclencheurs ; monopoliser le verrou du moteur.
+ *    Restent IMPOSSIBLES : toute suppression, toute sortie de `04 · Immigration`, et toute
+ *    EXFILTRATION (les réponses ne portent que des compteurs — jamais un contenu de document).
  *
  * Garde-fous communs : anti-rafale par action, plafonds bornés, sortie whitelistée par un
  * parseur strict (fonctions PURES testées).
@@ -39,9 +43,17 @@ function doPost(e) {
     if (action === 'sync-miroir') {
       reponse = verifierSecretSync_(e) ? actionSyncMiroir_(e) : { ok: false, erreur: 'refusé' };
     } else if (action === 'pousser-reset') {
-      reponse = verifierSecretSync_(e) ? pousserResetPilote_() : { ok: false, erreur: 'refusé' };
+      reponse = verifierSecretSync_(e)
+        ? (antiRafalePilote_('DriveAI_DERNIER_PILOTE', CONFIG.TICK_MINUTES * 60 * 1000)
+          ? pousserResetPilote_()
+          : { ok: true, termine: false, rondes: 0, progres: false, message: 'passe trop rapprochée — ignorée' })
+        : { ok: false, erreur: 'refusé' };
     } else if (action === 'assurer-trigger') {
-      reponse = verifierSecretSync_(e) ? actionAssurerTrigger_() : { ok: false, erreur: 'refusé' };
+      reponse = verifierSecretSync_(e)
+        ? (antiRafalePilote_('DriveAI_DERNIER_ASSURE_TRIGGER', 10 * 60 * 1000)
+          ? actionAssurerTrigger_()
+          : { ok: true, version: versionPilote_(), message: 'déclencheur déjà assuré il y a moins de 10 min' })
+        : { ok: false, erreur: 'refusé' };
     } else {
       var attendu = PropertiesService.getScriptProperties().getProperty('DriveAI_WEBAPP_SECRET');
       var recu = e && e.parameter ? e.parameter.secret : '';
@@ -84,9 +96,30 @@ function actionAssurerTrigger_() {
   installerTrigger();
   return {
     ok: true,
-    version: String(CONFIG.TICK_MINUTES) + 'min|' + CONFIG.RESET_TABLE_VERSION,
+    version: versionPilote_(),
     message: 'déclencheur réinstallé (' + CONFIG.TICK_MINUTES + ' min) — plus aucun geste manuel requis'
   };
+}
+
+/** Empreinte de la version SERVIE par `/exec` — signal indépendant pour la CI (piège de déploiement (4)). */
+function versionPilote_() {
+  return String(CONFIG.TICK_MINUTES) + 'min|' + CONFIG.RESET_TABLE_VERSION;
+}
+
+/**
+ * Anti-rafale dédié aux actions du pilote (l'en-tête de ce fichier le promet pour TOUTE action —
+ * cette promesse doit être CODÉE, pas seulement écrite). Deux abus concrets qu'il ferme, pour qui
+ * détiendrait le secret CI : `assurer-trigger` en boucle fait `delete`+`create` du déclencheur, donc
+ * en le rappelant plus vite que `TICK_MINUTES` le tick ne se déclencherait JAMAIS (gel silencieux) ;
+ * `pousser-reset` en rafale monopoliserait le verrou et affamerait le flux vivant.
+ * @return {boolean} vrai si l'appel peut procéder (et la fenêtre est alors consommée).
+ */
+function antiRafalePilote_(cle, intervalleMs) {
+  var props = PropertiesService.getScriptProperties();
+  var dernier = Number(props.getProperty(cle)) || 0;
+  if (Date.now() - dernier < intervalleMs) return false;
+  props.setProperty(cle, String(Date.now()));
+  return true;
 }
 
 /* ---------- Action par défaut : passage immédiat (#20) ---------- */

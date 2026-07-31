@@ -153,6 +153,8 @@ const CONTRAT = [
   // resetEnCours_ suspend conso-2/réorg-auto (ADR-0030 « Transition ») ; réutilisent detecterDossierVide_
   // (ConsolidationExec.gs) et repointerEntites_ (Reorg.gs) EN TRAVERS des modules.
   'rassemblerReset_', 'placerReset_', 'appliquerReset04Interne_', 'resetEnCours_', 'resetTermine_',
+  // ADR-0032 (pilote CI) : appelées EN TRAVERS des modules (WebApp.gs → Reset.gs / Main.gs).
+  'pousserResetPilote_', 'pilotageTermineReset_', 'actionAssurerTrigger_', 'installerTrigger',
   'analyserReliquatReset_', 'analyserPageReliquatReset_', 'analyserFichierReliquat_', // ADR-0030 PR5 : passe LLM du reliquat (appelée par Main.gs)
   'detecterDossierVide_', 'repointerEntites_',
   // Débit du placement (revue #229) : `empreinteReutiliseeReset_` (Reset.gs) appelle
