@@ -80,16 +80,6 @@ export function etatCourantIndex(lignes: LigneIndex[]): LigneIndex[] {
   return [...parCle.values()];
 }
 
-/** Compte par domaine (pour le dashboard). */
-export function compterParDomaine(lignes: LigneIndex[]): Map<string, number> {
-  const compte = new Map<string, number>();
-  for (const l of lignes) {
-    const d = l.domaine || '—';
-    compte.set(d, (compte.get(d) ?? 0) + 1);
-  }
-  return compte;
-}
-
 /* ---------- Journal (dernières activités) ---------- */
 
 export interface LigneJournal {
@@ -105,102 +95,7 @@ export function interpreterJournal(brut: string[][]): LigneJournal[] {
     .map((l) => ({ date: l[0] ?? '', niveau: l[1] ?? '', source: l[2] ?? '', message: l[3] ?? '' }));
 }
 
-/* ---------- Entités (référentiel — la file de validation 1-clic) ---------- */
-
-export interface LigneEntite {
-  ligneSheet: number; // 1-based (en-tête = 1) — pour cibler la cellule Statut à l'écriture
-  entite: string;
-  domaine: string;
-  categorie: string;
-  type: string;
-  statut: string;
-  variante: string;
-  dossierId: string; // dossier matérialisé (entité validée) — sert de destination de reclassement
-  vuNFois: number;   // fréquence d'observation (#10) — sert au tri de la file de validation
-}
-
-/**
- * Interprète l'onglet Entités À PARTIR DE SES EN-TÊTES réels (1ʳᵉ ligne) — miroir de
- * `colonnesEntites_` : l'ordre des colonnes de la Sheet fait foi, jamais un index codé en dur.
- * Renvoie aussi la lettre de colonne du Statut (pour l'écriture 1-clic).
- */
-export function interpreterEntites(brut: string[][]): { lignes: LigneEntite[]; colonneStatut: string } {
-  if (brut.length === 0) return { lignes: [], colonneStatut: '' };
-  const entetes = brut[0];
-  const idx = (nom: string) => entetes.indexOf(nom);
-  const iStatut = idx('Statut');
-  const lignes: LigneEntite[] = [];
-  for (let i = 1; i < brut.length; i++) {
-    const l = brut[i];
-    if (!l[idx('Entité')]) continue;
-    lignes.push({
-      ligneSheet: i + 1,
-      entite: l[idx('Entité')] ?? '',
-      domaine: l[idx('Domaine')] ?? '',
-      categorie: l[idx('Catégorie')] ?? '',
-      type: l[idx('Type')] ?? '',
-      statut: normaliserCle(l[iStatut] ?? ''),
-      variante: l[idx('Variante possible ?')] ?? '',
-      dossierId: l[idx('Dossier ID')] ?? '',
-      vuNFois: Number(l[idx('Vu N fois')] ?? '') || 1,
-    });
-  }
-  return { lignes, colonneStatut: lettreColonne(iStatut) };
-}
-
-/** Index de colonne (0-based) → lettre A1 (0 → A, 25 → Z, 26 → AA). */
-export function lettreColonne(index: number): string {
-  if (index < 0) return '';
-  let n = index;
-  let lettres = '';
-  do {
-    lettres = String.fromCharCode(65 + (n % 26)) + lettres;
-    n = Math.floor(n / 26) - 1;
-  } while (n >= 0);
-  return lettres;
-}
-
-export function entitesEnAttente(lignes: LigneEntite[]): LigneEntite[] {
-  // Les plus VUES d'abord (#10) : Marc valide en priorité les entités les plus fréquentes.
-  return lignes
-    .filter((l) => l.statut === 'en attente' || l.statut === 'en_attente')
-    .slice()
-    .sort((a, b) => b.vuNFois - a.vuNFois);
-}
-
-/** Entités validées AVEC dossier matérialisé — destinations proposées au reclassement. */
-export function entitesValidees(lignes: LigneEntite[]): LigneEntite[] {
-  return lignes.filter((l) => (l.statut === 'validee' || l.statut.startsWith('validee (auto')) && l.dossierId);
-}
-
-/* ---------- Aides de saisie (pures, testées) ---------- */
-
-/**
- * Extrait l'ÉMETTEUR du nom conventionnel `AAAA…_Type_Émetteur.ext` (3ᵉ segment, sans extension).
- * '' si le nom ne suit pas la convention — le champ reste alors à saisir. Sert à pré-remplir la
- * journalisation Corrections (le few-shot du moteur sélectionne PAR émetteur : sans lui, la
- * correction serait une ligne morte).
- */
-export function emetteurDepuisNom(nom: string): string {
-  const sansExt = nom.replace(/\.[^.]+$/, '');
-  const segments = sansExt.split('_');
-  if (segments.length < 3 || !/^\d{4}(-\d{2}){0,2}$/.test(segments[0])) return '';
-  return segments.slice(2).join('_');
-}
-
-/**
- * Accepte un ID de dossier Drive OU une URL Drive collée telle quelle (« Obtenir le lien »)
- * et renvoie l'ID. '' si rien d'exploitable.
- */
-export function extraireIdDossier(texte: string): string {
-  const t = texte.trim();
-  const url = t.match(/\/folders\/([-\w]+)/);
-  if (url) return url[1];
-  if (/^[-\w]{20,}$/.test(t)) return t; // un ID Drive brut
-  return '';
-}
-
-/** Domaines distincts observés dans l'Index (pour la datalist du formulaire — zéro config dupliquée). */
+/** Domaines distincts observés dans l'Index (pour les sélecteurs — zéro config dupliquée). */
 export function domainesDepuisIndex(lignes: LigneIndex[]): string[] {
   return Array.from(new Set(lignes.map((l) => l.domaine).filter(Boolean))).sort();
 }
@@ -267,31 +162,7 @@ export function lienDrivePourLigne(l: LigneIndex): string {
   return `https://drive.google.com/drive/search?q=${encodeURIComponent(`"${l.fichier}"`)}`;
 }
 
-/* ---------- App v2 (C15, ADR-0011) : fusion, quarantaine, activité ---------- */
-
-/**
- * Extrait la CIBLE de fusion d'une suggestion de variante « → Desjardins (90 %) ? »
- * (colonne « Variante possible ? » écrite par le moteur). '' si pas de suggestion exploitable.
- */
-export function cibleFusion(variante: string): string {
-  const m = (variante ?? '').match(/^→ (.+) \(\d+ %\) \?$/);
-  return m ? m[1].trim() : '';
-}
-
-/** Lignes d'Index en QUARANTAINE (échecs répétés) — pour la liste « à relancer » du dashboard. */
-export function lignesQuarantaine(lignes: LigneIndex[]): LigneIndex[] {
-  return lignes.filter((l) => l.statut === 'quarantaine');
-}
-
-/* ---------- Phase 3 visible (C13, ADR-0010 §2) : actions & RDV, mails importants ---------- */
-
-/**
- * Actions & RDV créés par la Phase 3 (statuts `tache`/`evenement` — clés `tache|…`/`event|…`,
- * `fichier` = titre de l'intention). Les plus récents d'abord.
- */
-export function lignesActions(lignes: LigneIndex[]): LigneIndex[] {
-  return lignes.filter((l) => l.statut === 'tache' || l.statut === 'evenement').slice().reverse();
-}
+/* ---------- Phase 3 visible (C13, ADR-0010 §2) : mails importants ---------- */
 
 /** Mails marqués IMPORTANTS par le mini-check (#14) — clés `important|<messageId>`, `fichier` = sujet. */
 export function lignesImportants(lignes: LigneIndex[]): LigneIndex[] {
@@ -307,42 +178,7 @@ export function lienGmailPourLigne(l: LigneIndex): string {
   return m ? `https://mail.google.com/mail/#all/${m[1]}` : '';
 }
 
-export interface JourActivite {
-  jour: string; // AAAA-MM-JJ
-  n: number;
-}
-
-/**
- * Activité par JOUR sur les `jours` derniers jours (documents traités, toutes catégories).
- * `maintenant` est injecté (déterminisme des tests). Jours sans activité inclus (barres à 0).
- */
-export function activiteParJour(lignes: LigneIndex[], jours: number, maintenant: Date): JourActivite[] {
-  // Clés en date LOCALE (pas UTC) : `traiteLe` vient de la Sheet en heure locale — un traitement du
-  // soir (UTC-4) doit tomber sur la barre du bon jour calendaire.
-  const cleLocale = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const compte = new Map<string, number>();
-  for (let i = jours - 1; i >= 0; i--) {
-    compte.set(cleLocale(new Date(maintenant.getTime() - i * 24 * 60 * 60 * 1000)), 0);
-  }
-  for (const l of lignes) {
-    const t = Date.parse(l.traiteLe);
-    if (Number.isNaN(t)) continue;
-    const cle = cleLocale(new Date(t));
-    if (compte.has(cle)) compte.set(cle, (compte.get(cle) ?? 0) + 1);
-  }
-  return Array.from(compte, ([jour, n]) => ({ jour, n }));
-}
-
-/* ---------- App v3 (C19-04, ADR-0013) : tri Gmail visible + tuiles « Aujourd'hui » ---------- */
-
-/** Fils Gmail TRIÉS par le moteur (#16) — statuts `trié`/`tri-a-verifier`/`suspect`, récents d'abord. */
-export function lignesTri(lignes: LigneIndex[]): LigneIndex[] {
-  return lignes
-    .filter((l) => l.statut === 'trié' || l.statut === 'tri-a-verifier' || l.statut === 'suspect')
-    .slice()
-    .reverse();
-}
+/* ---------- App v3 (C19-04, ADR-0013) : signaux du tri Gmail ---------- */
 
 /** Fils suspects (⚠ phishing possible) — laissés en boîte par le moteur, récents d'abord. */
 export function lignesSuspects(lignes: LigneIndex[]): LigneIndex[] {
@@ -356,26 +192,6 @@ export function lignesSuspects(lignes: LigneIndex[]): LigneIndex[] {
  */
 export function lignesAVerifier(lignes: LigneIndex[]): LigneIndex[] {
   return lignes.filter((l) => l.statut === 'à vérifier').slice().reverse();
-}
-
-export interface StatsTri {
-  tries: number;      // total trié + à vérifier (fils passés par le tri)
-  aVerifier: number;
-  suspects: number;
-}
-
-/** Compte le tri des `jours` derniers jours (fenêtre glissante, `maintenant` injecté — testable). */
-export function statsTri(lignes: LigneIndex[], jours: number, maintenant: Date): StatsTri {
-  const seuil = maintenant.getTime() - jours * 24 * 60 * 60 * 1000;
-  const s: StatsTri = { tries: 0, aVerifier: 0, suspects: 0 };
-  for (const l of lignes) {
-    const t = Date.parse(l.traiteLe);
-    if (Number.isNaN(t) || t < seuil) continue;
-    if (l.statut === 'trié') s.tries++;
-    else if (l.statut === 'tri-a-verifier') { s.tries++; s.aVerifier++; }
-    else if (l.statut === 'suspect') s.suspects++;
-  }
-  return s;
 }
 
 /** Documents (hors lignes mail) traités un JOUR calendaire local donné. */
@@ -413,28 +229,39 @@ export function dernierPassageDepuisSante(lignesSante: string[]): string {
   return '';
 }
 
-/* ---------- TriAppris (#16) : table expéditeur → libellé, corrigeable depuis l'app ---------- */
+/* ---------- Fraîcheur du moteur (C28-41 : pastille topbar + page Moteur) ---------- */
 
-export interface LigneTriAppris {
-  ligneSheet: number; // 1-based (en-tête = 1) — cible du « Retirer » (vidage de cellules)
-  adresse: string;
-  libelle: string;
-  apprisLe: string;
+export type EtatMoteur = 'ok' | 'retard' | 'mort' | 'inconnu';
+
+/**
+ * Minutes écoulées depuis « Dernier passage OK : AAAA-MM-JJ HH:mm » (heure LOCALE du moteur —
+ * même fuseau que le navigateur de Marc). null si la ligne manque ou est illisible : la pastille
+ * dit alors « inconnu », jamais un faux vert.
+ */
+export function ageMoteurMinutes(lignesSante: string[], maintenant: Date): number | null {
+  const texte = dernierPassageDepuisSante(lignesSante);
+  const m = texte.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!m) return null;
+  const d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]);
+  const diff = (maintenant.getTime() - d.getTime()) / 60000;
+  if (Number.isNaN(diff)) return null;
+  return Math.max(0, Math.round(diff));
 }
 
 /**
- * Interprète l'onglet TriAppris (Adresse, Libellé, Appris le). Les lignes à adresse VIDE sont
- * ignorées — c'est justement l'état « retiré » (l'app vide les cellules, ne supprime jamais
- * de ligne : garde-fou §2 ; le moteur saute les adresses vides).
+ * État de la pastille moteur, DÉRIVÉ de la fréquence de tick RÉGLÉE (jamais des valeurs du jour —
+ * leçon §7 « cas dérivés de la constante ») : en retard au-delà de ~4 ticks manqués (min 20 min —
+ * un run manuel de Marc tient le verrou ~5 min), silencieux au-delà de ~18 ticks (min 90 min).
  */
-export function interpreterTriAppris(brut: string[][]): LigneTriAppris[] {
-  const lignes: LigneTriAppris[] = [];
-  for (let i = 0; i < brut.length; i++) {
-    const l = brut[i];
-    if (!l[0]) continue;
-    lignes.push({ ligneSheet: i + 2, adresse: l[0] ?? '', libelle: l[1] ?? '', apprisLe: l[2] ?? '' });
-  }
-  return lignes;
+export function fraicheurMoteur(lignesSante: string[], maintenant: Date, tickMinutes = 5): EtatMoteur {
+  const age = ageMoteurMinutes(lignesSante, maintenant);
+  if (age === null) return 'inconnu';
+  const tick = Number.isFinite(tickMinutes) && tickMinutes > 0 ? tickMinutes : 5;
+  const seuilRetard = Math.max(20, tick * 4);
+  const seuilMort = Math.max(90, tick * 18);
+  if (age <= seuilRetard) return 'ok';
+  if (age <= seuilMort) return 'retard';
+  return 'mort';
 }
 
 /* ---------- Confiance (#17, C19-07) ---------- */

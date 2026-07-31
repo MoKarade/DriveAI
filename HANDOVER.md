@@ -4,6 +4,27 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **⚡⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (après-midi) — C28-41 : REFONTE COMPLÈTE DE L'APP (décisions Marc,
+> 12 réponses cliquées).** Marc (photos) : « l'app est vraiment pas superbe… supprime [actions
+> rapides + opérations en cours] et le code en lien… plus de propositions de dossiers quand je
+> demande pas… supprime l'onglet apprentissage (garde la logique)… coûts & quotas jamais à jour…
+> santé me sert à rien… je veux mon agenda family… change l'UI en entier ». Plan en 3 PR
+> (BACKLOG #41). **PR1 (cette branche) : refonte UI complète** — design v6 sombre réécrit
+> (styles.css), **5 sections** (Aujourd'hui · Agenda · Documents · Assistant · **Moteur**),
+> nouvelle page `Moteur.tsx` (état + coût LLM **horodaté** « données du moteur · il y a X min » —
+> la vraie réponse au « jamais à jour » : pendant le reset, le quota runtime gèle des ticks
+> l'après-midi, la donnée VIEILLIT et maintenant ça se VOIT — + progression, quota Gmail,
+> dernières erreurs, réglage de fréquence), accueil v6 (ma journée Calendar/Tasks + derniers
+> classements + alertes SEULEMENT s'il y en a + tuile coût), **pastille moteur** dans la topbar
+> (`fraicheurMoteur`, seuils dérivés du tick réglé — jamais un faux vert). SUPPRIMÉS (app) :
+> PanneauActions, OperationsLive, Apprentissage (reclassement manuel compris — décision Marc :
+> il range dans Drive, le moteur apprend de ses corrections observées), Coûts & quotas, Santé ;
+> lectures Sheet `Entités`+`TriAppris` retirées du cycle (payload −). 167 tests app + build verts.
+> **À SUIVRE : PR2** agenda multi-agendas Family (scope `calendar.readonly` + reconnexion unique,
+> cases à cocher réelles, sélecteur à la création) ; **PR3 moteur** (ADR-0031 §8 : plus AUCUNE
+> proposition spontanée — entités `en_attente` + réorg auto OFF, l'Assistant propose sur demande ;
+> retrait des actions web app orphelines ; `majTelemetrie_`/`majProgressions_` conservés).
+>
 > **⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (matin) — ACCÉLÉRATION (#229) + ÉTAT RÉEL MESURÉ.** Marc : « ça peut
 > pas aller plus vite ? je veux que tout soit fini avant la fin de la journée ». **Constaté dans les
 > ARTEFACTS** (onglet `Santé` + Index, jamais estimé — leçon du 30/07) : rassemblement entamé sur
