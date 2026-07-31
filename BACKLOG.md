@@ -5,6 +5,28 @@
 
 ---
 
+## Chantier #41 — REFONTE COMPLÈTE de l'app (décisions Marc 2026-07-31, 12 réponses cliquées)  🟦
+
+> Marc (photos à l'appui) : « l'app est vraiment pas superbe… supprime [actions rapides +
+> opérations en cours] et le code en lien… je veux plus que ça me propose des dossiers quand je
+> demande pas… supprime tout l'onglet apprentissage mais garde la logique d'apprentissage…
+> [coûts & quotas] jamais à jour… santé du moteur me sert à rien… dans agenda je veux voir mon
+> agenda family… profite-en pour changer l'UI en entier ». Décisions cliquées : 4 onglets
+> (Aujourd'hui · Agenda · Documents · Assistant) + page « Moteur » technique ; sombre refait à
+> neuf ; accueil = ma journée + derniers classements + alertes conditionnelles + coût horodaté ;
+> reclassement manuel SUPPRIMÉ (Marc range dans Drive) ; le moteur n'émet PLUS AUCUNE proposition
+> spontanée (entités + réorg auto) — l'Assistant propose sur demande seulement ; pastille moteur
+> discrète ; tous les agendas Google (reconnexion unique) ; sélecteur d'agenda à la création ;
+> vue semaine par défaut ; livraison par étapes.
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C28-41 PR1 | **Refonte UI complète (app seule)** : design v6 (styles.css réécrit, sombre raffiné), 5 sections, NOUVELLE page `Moteur.tsx` (état + coût LLM horodaté « données du moteur · il y a X min » + progression + quota Gmail + dernières erreurs + réglage de fréquence), accueil v6 (`AujourdHui.tsx` réécrit), pastille moteur topbar (`fraicheurMoteur`, seuils dérivés du tick réglé). SUPPRIMÉS : `PanneauActions`, `OperationsLive`, `Corrections.tsx` (Apprentissage), `Quotas.tsx`, `Sante.tsx` + leurs fonctions app (`verifierMaintenant`, `demandeTriGmail`, `demandeIntentions`, `analyseCiblee`, `reclasserFichier`, `journaliserCorrection`, `chercherParNom`, `marquerIntentionManuelle`, interprètes Entités/TriAppris) + lectures Sheet `Entités`/`TriAppris` (payload allégé). 167 tests app + build verts. | 🟦 |
+| C28-41 PR2 | **Agenda multi-agendas (Family)** : scope app `calendar.readonly` (api/_lib.ts) + reconnexion unique gérée proprement ; `calendarList.list` → « Mes agendas » RÉEL (cases, couleurs) ; événements fusionnés multi-agendas ; sélecteur d'agenda à la création (principal par défaut) ; vue par défaut inchangée (semaine). | ⬜ |
+| C28-41 PR3 | **Moteur : plus AUCUNE proposition spontanée (ADR-0031, protocole §8)** : arrêt de la génération d'entités `en_attente` (le référentiel VALIDÉ continue de router — aucun changement de classement, `ENTITES_AUTO_VALIDATION` déjà false) + campagne réorg auto C28-32 éteinte (l'Assistant garde `proposer_reorg` SUR DEMANDE) + retrait des actions web app orphelines (`demande-tri`, `demande-intentions`, `analyse-ciblee`) et de la consommation des demandes dans le tick. `majTelemetrie_`/`majProgressions_` CONSERVÉS (la page Moteur les lit). Tripwire « le pipeline n'écrit plus de proposition » ; revue flotte adversariale AVANT merge. | ⬜ |
+
+---
+
 ## Chantier #33 — RESET complet du Drive (`_TRI 2026`, dédup, structure ≤ 7)  🟦
 
 > Décision Marc 2026-07-29 (ADR-0030) : tout rassembler dans `_TRI 2026`, écarter les doublons,

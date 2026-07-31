@@ -19,10 +19,8 @@ export interface DonneesEtat {
   index: LigneIndex[];       // état COURANT (dédoublonné) — les vues n'ont plus à le faire
   santeBrut: string[][];
   journalBrut: string[][];
-  entitesBrut: string[][];   // brut A1:… (interpreterEntites a besoin des en-têtes réels)
-  triApprisBrut: string[][];
   reglagesBrut: string[][];
-  telemetrieBrut: string[][]; // onglet Télémétrie (C28-24) — vue « Coûts & quotas »
+  telemetrieBrut: string[][]; // onglet Télémétrie (C28-24) — page Moteur
 }
 
 interface EtatGlobal {
@@ -59,7 +57,7 @@ export function FournisseurEtat({ children }: { children: ReactNode }) {
     enCours.current = true;
     try {
       if (forcer) viderCachePlages(); // relire VRAIMENT (le cache 60 s servirait la même photo)
-      const [index, sante, journal, entites, triAppris, reglages, telemetrie] = await Promise.all([
+      const [index, sante, journal, reglages, telemetrie] = await Promise.all([
         // Fenêtre OUVERTE (`A2:H`, sans borne haute) — JAMAIS `A2:H<N>` : l'Index est append-only
         // (garde-fou §2) et le reset C28-33 y écrit DEUX lignes par fichier (`tri33|` puis `tri33p|`).
         // Une borne de TÊTE fige l'app EN SILENCE dès qu'elle est franchie (zéro erreur, zéro log :
@@ -67,16 +65,14 @@ export function FournisseurEtat({ children }: { children: ReactNode }) {
         lirePlage('Index', 'A2:H'),
         lirePlage('Santé', 'A2:A10'),
         lirePlage('Journal', 'A2:D5000'),
-        lirePlage('Entités', 'A1:Z10000'),
         // Onglets créés par le moteur au premier usage — absents = table vide, pas une erreur.
-        lirePlage('TriAppris', 'A2:C1000').catch(() => [] as string[][]),
         lirePlage('Réglages', 'A2:B2').catch(() => [] as string[][]),
         lirePlage('Télémétrie', 'A2:D30').catch(() => [] as string[][]),
       ]);
       setDonnees({
         index: etatCourantIndex(interpreterIndex(index)),
-        santeBrut: sante, journalBrut: journal, entitesBrut: entites,
-        triApprisBrut: triAppris, reglagesBrut: reglages, telemetrieBrut: telemetrie,
+        santeBrut: sante, journalBrut: journal,
+        reglagesBrut: reglages, telemetrieBrut: telemetrie,
       });
       setErreur('');
       setSynchroA(new Date());

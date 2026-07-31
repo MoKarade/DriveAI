@@ -299,19 +299,6 @@ async function resoudreRacine(): Promise<string> {
   return r.id;
 }
 
-/** Recherche Drive par nom (contains). Sert à retrouver le fichier d'une ligne d'Index. */
-export async function chercherParNom(nom: string): Promise<FichierDrive[]> {
-  // Échappe le backslash AVANT l'apostrophe : sans ça, un nom contenant `\` réactiverait le `'`
-  // fermant de la requête (injection de clause — lecture seule, mais autant fermer proprement).
-  // Exclut les DOSSIERS : on reclasse des documents, jamais un dossier entier par mégarde.
-  const sain = nom.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-  const q = `name contains '${sain}' and trashed = false and mimeType != 'application/vnd.google-apps.folder'`;
-  const r = await api<{ files?: FichierDrive[] }>(
-    `${DRIVE}?q=${encodeURIComponent(q)}&fields=${encodeURIComponent('files(id,name,parents,webViewLink)')}&pageSize=20`,
-  );
-  return r.files ?? [];
-}
-
 /**
  * Recherche PLEIN TEXTE déléguée à l'index natif de Drive (`fullText contains`) — on cherche DANS
  * le contenu des documents sans que DriveAI ne stocke aucun corps (ADR-0007 : pas d'index plein
@@ -379,71 +366,6 @@ export async function remonterAscendance(fileId: string, profondeurMax = 50): Pr
   return { ids: Array.from(ids), complete };
 }
 
-/**
- * SEULE mutation Drive de l'app : déplacer + renommer un fichier — après verdict garde-fous VIDE.
- * Jamais de suppression ; le PATCH préserve l'ID (l'idempotence du moteur reste valable).
- * @throws si le verdict n'est pas vide (l'appelant affiche les violations).
- */
-export async function reclasserFichier(args: {
-  fileId: string;
-  nouveauParent: string;
-  nouveauNom: string;
-  racinesProtegees?: string[];
-}): Promise<void> {
-  const ascendance = await remonterAscendance(args.fileId);
-  const violations = verdictReclassement({
-    ascendanceActuelle: ascendance,
-    nouveauNom: args.nouveauNom,
-    racinesProtegees: args.racinesProtegees,
-  });
-  if (violations.length > 0) {
-    throw new Error(`Reclassement refusé (garde-fous) : ${violations.join(', ')}`);
-  }
-  const f = await lireFichier(args.fileId);
-  // La cible est RETIRÉE de removeParents : déjà dans le bon dossier (ex. re-clic après un échec
-  // de journalisation) ⇒ renommage seul — jamais un add+remove ambigu du même parent.
-  const anciens = (f.parents ?? []).filter((p) => p !== args.nouveauParent).join(',');
-  const dejaEnPlace = (f.parents ?? []).includes(args.nouveauParent);
-  const params = new URLSearchParams({ fields: 'id' });
-  if (!dejaEnPlace) params.set('addParents', args.nouveauParent);
-  if (anciens) params.set('removeParents', anciens);
-  await api(`${DRIVE}/${args.fileId}?${params.toString()}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ name: args.nouveauNom }),
-  });
-}
-
-/**
- * Journalise une correction dans l'onglet `Corrections` EN SUIVANT SES EN-TÊTES RÉELS (miroir de
- * `colonnesCorrections_` du moteur — jamais un ordre supposé). L'ÉMETTEUR et le DOMAINE sont
- * indispensables : le few-shot du moteur sélectionne par émetteur et saute les lignes sans
- * domaine/entité — sans eux, la ligne serait morte.
- */
-export async function journaliserCorrection(c: {
-  fichier: string;
-  emetteur: string;
-  domaine: string;
-  entite?: string;
-}): Promise<void> {
-  const ORDRE_DEFAUT = ['Fichier', 'Émetteur', 'Domaine', 'Catégorie', 'Entité', 'Type', 'Corrigé le'];
-  let entetes: string[] = [];
-  try {
-    entetes = (await lirePlage('Corrections', 'A1:Z1'))[0] ?? [];
-  } catch {
-    /* onglet illisible → ordre par défaut (celui que le moteur crée) */
-  }
-  if (entetes.length === 0) entetes = ORDRE_DEFAUT;
-  const valeurs: Record<string, string> = {
-    Fichier: c.fichier,
-    'Émetteur': c.emetteur,
-    Domaine: c.domaine,
-    'Entité': c.entite ?? '',
-    'Corrigé le': new Date().toISOString(),
-  };
-  const ligne = entetes.map((e) => valeurs[e] ?? '');
-  await ajouterLigne('Corrections', ligne);
-}
-
 /* ---------- Agenda (C19-05, ADR-0013) : Calendar + Tasks — création & coche SEULES ---------- */
 
 const CALENDAR = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
@@ -490,20 +412,6 @@ export async function creerEvenement(titre: string, debutISO: string, descriptio
       ...(description ? { description } : {}),
     }),
   });
-}
-
-/**
- * Marque un fil « intention traitée MANUELLEMENT » (C28-06, plan P2) : ligne Index
- * `intention-manuel|<threadId>` (statut `manuel`) — le moteur saute alors l'analyse
- * d'intentions de TOUT le fil (pas de tâche en double après une création à la main).
- * Préfixe DÉDIÉ, jamais `intention|<threadId>` : l'ID d'un fil Gmail EST l'ID de son premier
- * message, la clé moteur `intention|<messageId>` entrerait en collision (chaque fil dont le
- * 1er message a été analysé serait sauté en entier — régression silencieuse).
- */
-export async function marquerIntentionManuelle(threadId: string, sujet: string): Promise<void> {
-  await ajouterLigne('Index', [
-    `intention-manuel|${threadId}`, new Date().toISOString(), sujet, '', '', 'manuel', '', '',
-  ]);
 }
 
 /**
@@ -687,7 +595,7 @@ export async function deplacerFichierManuel(args: {
   const dejaIndexe = await indexContientCle(cleIndex).catch(() => false);
   const cibleATrier = estDossierATrier(args.nomCible ?? '');
   if (cibleATrier && dejaIndexe) {
-    throw new Error('Déjà traité par DriveAI — redéposer dans « À trier » n’aurait aucun effet. Passe par Apprentissage → Reclasser.');
+    throw new Error('Déjà traité par DriveAI — redéposer dans « À trier » n’aurait aucun effet. Déplace-le directement vers son dossier cible.');
   }
   // `'root'` est un alias : jamais présent dans f.parents — résolu avant toute comparaison.
   const cible = args.nouveauParent === 'root' ? await resoudreRacine() : args.nouveauParent;
@@ -738,19 +646,6 @@ async function ajouterLigneIndexManuelle_(cle: string, nom: string): Promise<voi
   await ajouterLigne('Index', entetes.map((e) => valeurs[e] ?? ''));
 }
 
-/* ---------- « Vérifier maintenant » (#20) : pont vers la web app Apps Script ---------- */
-
-/**
- * Demande un passage IMMÉDIAT du moteur (doPost Apps Script, secret partagé). Appel en `no-cors` :
- * la réponse est opaque (on ne lit rien) — le moteur journalise et l'anti-rafale (60 s) vit côté
- * script. Lève seulement si la config manque ou si le réseau échoue.
- */
-export async function verifierMaintenant(): Promise<void> {
-  const { webappUrl, webappSecret } = lireConfig();
-  if (!webappUrl || !webappSecret) throw new Error('Variables Vercel WEBAPP_URL / WEBAPP_SECRET manquantes (Settings → Environment Variables)');
-  await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}`, { method: 'POST', mode: 'no-cors' });
-}
-
 /* ---------- Recherche IA (C21-03) : question libre → plan de recherche ---------- */
 
 /** Plan renvoyé par le moteur — déjà WHITELISTÉ côté Apps Script (parserPlanIA_). */
@@ -787,33 +682,6 @@ export async function rechercheIA(question: string): Promise<PlanRechercheIA> {
   }
   if (!data.ok || !data.plan) throw new Error(data.erreur || 'recherche IA indisponible');
   return data.plan;
-}
-
-/* ---------- Analyse ciblée des mails (C28-06, plan P2) ---------- */
-
-/**
- * Demande au MOTEUR un balayage d'intentions sur une requête Gmail LIBRE (ex. `label:Factures
- * older_than:30d`). L'app ne lit aucun mail : elle dépose la requête (Script Property côté
- * moteur), le tick la consomme par pages — campagne bornée par les plafonds/run et le frein
- * budget (§2.6). Même canal lisible que `rechercheIA` (POST text/plain, corps JSON).
- */
-export async function analyseCiblee(requete: string): Promise<string> {
-  const { webappUrl, webappSecret } = lireConfig();
-  if (!webappUrl || !webappSecret) throw new Error('Variables Vercel WEBAPP_URL / WEBAPP_SECRET manquantes (Settings → Environment Variables)');
-  const rep = await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}&action=analyse-ciblee`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ requete }),
-  });
-  if (!rep.ok) throw new Error(`Web app ${rep.status}`);
-  let data: { ok: boolean; erreur?: string; message?: string };
-  try {
-    data = await rep.json();
-  } catch {
-    throw new Error('Réponse illisible — la web app a-t-elle été redéployée en nouvelle version ?');
-  }
-  if (!data.ok) throw new Error(data.erreur || 'analyse ciblée refusée');
-  return data.message ?? 'analyse programmée';
 }
 
 /* ---------- Assistant chat (C28-30) : Q&A + propositions d'opérations ---------- */
@@ -871,12 +739,11 @@ export async function envoyerMessageChat(historique: MessageChat[]): Promise<Rep
   return { reponse: data.reponse ?? '', actionsProposees: data.actionsProposees === true, coutJour: data.coutJour, plafond: data.plafond };
 }
 
-/* ---------- Tri & intentions à la demande (C28-16) ---------- */
+/* ---------- Demandes ponctuelles vers la web app ---------- */
 
 /**
- * POST générique vers la web app (mêmes canal et pièges que `analyseCiblee`). L'erreur
- * `QUOTA_GMAIL` du moteur remonte TELLE QUELLE — l'UI la traduit en message clair
- * (« quota épuisé, reprise vers ~3h ») au lieu d'un texte technique.
+ * POST générique vers la web app (mêmes canal et pièges que `rechercheIA`). L'erreur du moteur
+ * remonte TELLE QUELLE — l'UI la traduit en message clair au lieu d'un texte technique.
  */
 async function demandeWebApp(action: string, corps: unknown): Promise<string> {
   const { webappUrl, webappSecret } = lireConfig();
@@ -895,19 +762,6 @@ async function demandeWebApp(action: string, corps: unknown): Promise<string> {
   }
   if (!data.ok) throw new Error(data.erreur || `${action} refusé`);
   return data.message ?? 'demande programmée';
-}
-
-/**
- * Tri Gmail à la demande (C28-24 : plus de fenêtre — le moteur parcourt TOUS les mails LUS de
- * la boîte, requête `in:inbox is:read` figée côté moteur, plafond quotidien de lectures).
- */
-export async function demandeTriGmail(archiver: boolean, plafond: number): Promise<string> {
-  return demandeWebApp('demande-tri', { archiver, plafond });
-}
-
-/** Relance l'analyse des intentions (tâches/RDV) sur toute la fenêtre 30 j. */
-export async function demandeIntentions(): Promise<string> {
-  return demandeWebApp('demande-intentions', {});
 }
 
 /**

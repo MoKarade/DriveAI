@@ -5,116 +5,21 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  cibleFusion,
-  lignesQuarantaine,
-  activiteParJour,
-  interpreterEntites,
-  entitesEnAttente,
-  entitesValidees,
-  lettreColonne,
   interpreterIndex,
-  compterParDomaine,
-  emetteurDepuisNom,
-  extraireIdDossier,
   domainesDepuisIndex,
   filtrerIndex,
   statutsDepuisIndex,
   anneesDepuisIndex,
   fileIdDepuisCle,
   lienDrivePourLigne,
-  lignesActions,
   lignesImportants,
   lienGmailPourLigne,
+  ageMoteurMinutes,
+  fraicheurMoteur,
 } from '../src/etat';
 
-const ENTETES = ['Entité', 'Domaine', 'Catégorie', 'Type', 'Statut', 'Dossier ID', 'Ajoutée le', 'Variante possible ?'];
-
-describe('interpreterEntites', () => {
-  it('lit par en-têtes réels et repère la colonne Statut', () => {
-    const { lignes, colonneStatut } = interpreterEntites([
-      ENTETES,
-      ['EDF', '03 · Logement & véhicule', '', 'Logement', 'en_attente', '', '2026-07-01', ''],
-      ['Desjardins', '02 · Finances', '', 'Compte financier', 'validée', 'xyz', '2026-06-01', ''],
-    ]);
-    expect(colonneStatut).toBe('E');
-    expect(lignes).toHaveLength(2);
-    expect(lignes[0].ligneSheet).toBe(2); // 1-based, en-tête = ligne 1
-    expect(lignes[0].statut).toBe('en_attente');
-    expect(lignes[1].statut).toBe('validee'); // normalisé (accents)
-  });
-
-  it('ordre de colonnes DIFFÉRENT de la constante → suit les en-têtes (auto-réparation Sheet)', () => {
-    const { lignes, colonneStatut } = interpreterEntites([
-      ['Statut', 'Entité', 'Domaine'],
-      ['en_attente', 'IUT ULCO', '05 · Carrière'],
-    ]);
-    expect(colonneStatut).toBe('A');
-    expect(lignes[0].entite).toBe('IUT ULCO');
-  });
-
-  it('entitesEnAttente filtre les seules en_attente', () => {
-    const { lignes } = interpreterEntites([
-      ENTETES,
-      ['A', 'd', '', '', 'en_attente', '', '', ''],
-      ['B', 'd', '', '', 'validée', '', '', ''],
-      ['C', 'd', '', '', 'refusée', '', '', ''],
-    ]);
-    expect(entitesEnAttente(lignes).map((l) => l.entite)).toEqual(['A']);
-  });
-});
-
-describe('lettreColonne', () => {
-  it.each([
-    [0, 'A'],
-    [4, 'E'],
-    [25, 'Z'],
-    [26, 'AA'],
-    [27, 'AB'],
-  ])('%i → %s', (i, attendu) => {
-    expect(lettreColonne(i)).toBe(attendu);
-  });
-});
-
-describe('entitesValidees (destinations de reclassement)', () => {
-  it('ne garde que les validées AVEC dossier matérialisé', () => {
-    const { lignes } = interpreterEntites([
-      ENTETES,
-      ['A', 'd', '', '', 'validée', 'DOSSIER_A', '', ''],
-      ['B', 'd', '', '', 'validée', '', '', ''], // validée mais pas encore matérialisée
-      ['C', 'd', '', '', 'en_attente', '', '', ''],
-    ]);
-    expect(entitesValidees(lignes).map((l) => l.entite)).toEqual(['A']);
-    expect(entitesValidees(lignes)[0].dossierId).toBe('DOSSIER_A');
-  });
-});
-
-describe('emetteurDepuisNom (pré-remplissage few-shot)', () => {
-  it.each([
-    ['2024-03-05_Facture_Hydro-Québec.pdf', 'Hydro-Québec'],
-    ['2024-03_Relevé_Desjardins.pdf', 'Desjardins'],
-    ['2021_Diplôme_IUT-ULCO.pdf', 'IUT-ULCO'],
-    ['2024-03-05_Attestation_Revenu_Québec.pdf', 'Revenu_Québec'], // segments multiples conservés
-    ['IMG_2734.jpg', ''],           // hors convention → à saisir
-    ['scan.pdf', ''],
-  ])('%s → %s', (nom, attendu) => {
-    expect(emetteurDepuisNom(nom)).toBe(attendu);
-  });
-});
-
-describe('extraireIdDossier (ID brut OU lien Drive collé)', () => {
-  it.each([
-    ['1VBK_4pkJmIeTsRyz-MWpMBYaOhKYNfRC', '1VBK_4pkJmIeTsRyz-MWpMBYaOhKYNfRC'],
-    ['https://drive.google.com/drive/folders/1VBK_4pkJmIeTsRyz-MWpMBYaOhKYNfRC?usp=sharing', '1VBK_4pkJmIeTsRyz-MWpMBYaOhKYNfRC'],
-    ['  https://drive.google.com/drive/u/0/folders/1B9jNRpAKrAWdUs6Gn5_ojle3ZH7JbFDW  ', '1B9jNRpAKrAWdUs6Gn5_ojle3ZH7JbFDW'],
-    ['pas un id', ''],
-    ['', ''],
-  ])('%s → %s', (texte, attendu) => {
-    expect(extraireIdDossier(texte)).toBe(attendu);
-  });
-});
-
-describe('interpreterIndex + compterParDomaine', () => {
-  it('compte les documents par domaine', () => {
+describe('interpreterIndex + domainesDepuisIndex', () => {
+  it('lit les lignes non vides et liste les domaines observés', () => {
     const lignes = interpreterIndex([
       ['k1', '2026-01-01', 'a.pdf', '02 · Finances', 'chemin', 'classé'],
       ['k2', '2026-01-02', 'b.pdf', '02 · Finances', 'chemin', 'classé'],
@@ -122,9 +27,6 @@ describe('interpreterIndex + compterParDomaine', () => {
       ['', '', '', '', '', ''], // ligne vide ignorée
     ]);
     expect(lignes).toHaveLength(3);
-    const compte = compterParDomaine(lignes);
-    expect(compte.get('02 · Finances')).toBe(2);
-    expect(compte.get('03 · Logement & véhicule')).toBe(1);
     expect(domainesDepuisIndex(lignes)).toEqual(['02 · Finances', '03 · Logement & véhicule']);
   });
 });
@@ -180,40 +82,39 @@ describe('fileIdDepuisCle + lienDrivePourLigne', () => {
 });
 
 
-describe('app v2 (C15) — fusion, quarantaine, activité', () => {
-  it('cibleFusion : extrait la cible de « → Desjardins (90 %) ? »', () => {
-    expect(cibleFusion('→ Desjardins (90 %) ?')).toBe('Desjardins');
-    expect(cibleFusion('→ IUT du Littoral Côte d\'Opale (85 %) ?')).toBe('IUT du Littoral Côte d\'Opale');
-    expect(cibleFusion('')).toBe('');
-    expect(cibleFusion('libellé générique ?')).toBe('');
+describe('fraîcheur moteur (C28-41 : pastille topbar + page Moteur)', () => {
+  const maintenant = new Date(2026, 6, 31, 12, 0); // 2026-07-31 12:00 locale
+
+  it('ageMoteurMinutes : parse l’heure LOCALE du « Dernier passage OK », null si illisible', () => {
+    expect(ageMoteurMinutes(['Dernier passage OK : 2026-07-31 11:48'], maintenant)).toBe(12);
+    expect(ageMoteurMinutes(['Dernier passage OK : 2026-07-31 12:05'], maintenant)).toBe(0); // horloge en avance → jamais négatif
+    expect(ageMoteurMinutes(['autre ligne'], maintenant)).toBeNull();
+    expect(ageMoteurMinutes([], maintenant)).toBeNull();
   });
 
-  it('lignesQuarantaine : filtre le statut quarantaine', () => {
-    const lignes = interpreterIndex([
-      ['k1', '2026-07-01', 'a.pdf', '', '', 'quarantaine'],
-      ['k2', '2026-07-01', 'b.pdf', '02 · Finances', 'x', 'classé'],
-    ]);
-    expect(lignesQuarantaine(lignes).map((l) => l.cle)).toEqual(['k1']);
+  it('fraicheurMoteur : seuils DÉRIVÉS du tick réglé (jamais des valeurs du jour)', () => {
+    const tick = 5;
+    const seuilRetard = Math.max(20, tick * 4);
+    const seuilMort = Math.max(90, tick * 18);
+    const sante = (min: number) => {
+      const d = new Date(maintenant.getTime() - min * 60000);
+      const p = (n: number) => String(n).padStart(2, '0');
+      return [`Dernier passage OK : ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`];
+    };
+    expect(fraicheurMoteur(sante(seuilRetard - 1), maintenant, tick)).toBe('ok');
+    expect(fraicheurMoteur(sante(seuilRetard + 1), maintenant, tick)).toBe('retard');
+    expect(fraicheurMoteur(sante(seuilMort + 1), maintenant, tick)).toBe('mort');
+    expect(fraicheurMoteur([], maintenant, tick)).toBe('inconnu'); // données absentes ⇒ jamais un faux vert
   });
 
-  it('activiteParJour : buckets des N derniers jours, zéros inclus, hors-fenêtre ignoré', () => {
-    const maintenant = new Date('2026-07-02T12:00:00Z');
-    const lignes = interpreterIndex([
-      ['k1', '2026-07-02T08:00:00Z', 'a.pdf', '', '', 'classé'],
-      ['k2', '2026-07-02T09:00:00Z', 'b.pdf', '', '', 'classé'],
-      ['k3', '2026-07-01T09:00:00Z', 'c.pdf', '', '', 'doublon'],
-      ['k4', '2026-05-01T09:00:00Z', 'vieux.pdf', '', '', 'classé'], // hors fenêtre
-      ['k5', 'pas une date', 'x.pdf', '', '', 'classé'],             // ignorée
-    ]);
-    const a = activiteParJour(lignes, 3, maintenant);
-    expect(a).toHaveLength(3);
-    expect(a[2]).toEqual({ jour: '2026-07-02', n: 2 });
-    expect(a[1]).toEqual({ jour: '2026-07-01', n: 1 });
-    expect(a[0]).toEqual({ jour: '2026-06-30', n: 0 });
+  it('tick 30 min : les seuils s’étirent avec le réglage (pas de fausse alerte)', () => {
+    const sante = ['Dernier passage OK : 2026-07-31 11:00']; // il y a 60 min
+    expect(fraicheurMoteur(sante, maintenant, 5)).toBe('retard'); // 60 > 20
+    expect(fraicheurMoteur(sante, maintenant, 30)).toBe('ok');    // 60 ≤ 120
   });
 });
 
-describe('Phase 3 visible (C13) + mails importants (C14)', () => {
+describe('mails importants (C14)', () => {
   const lignes = interpreterIndex([
     ['tache|MA|h1', '2026-07-01', 'Payer Hydro', '', '', 'tache'],
     ['event|MB|h2', '2026-07-02', 'RDV garage', '', '', 'evenement'],
@@ -221,10 +122,6 @@ describe('Phase 3 visible (C13) + mails importants (C14)', () => {
     ['intention|MD', '2026-07-02', 'Newsletter', '', '', 'intention-ecartee'],
     ['drive|X', '2026-07-02', '2026-07-01_Facture_EDF.pdf', '02 · Finances', 'x', 'classé'],
   ]);
-
-  it('lignesActions : tâches + événements, plus récents d’abord', () => {
-    expect(lignesActions(lignes).map((l) => l.fichier)).toEqual(['RDV garage', 'Payer Hydro']);
-  });
 
   it('lignesImportants : seulement le statut important', () => {
     expect(lignesImportants(lignes).map((l) => l.cle)).toEqual(['important|MC']);
@@ -238,12 +135,10 @@ describe('Phase 3 visible (C13) + mails importants (C14)', () => {
   });
 });
 
-/* ---------- App v3 (C19-04) : tri visible + tuiles Aujourd'hui ---------- */
+/* ---------- App v3 (C19-04) : signaux du tri + tuiles Aujourd'hui ---------- */
 
 import {
-  lignesTri,
   lignesSuspects,
-  statsTri,
   traitesLeJour,
   coutDepuisSante,
   dernierPassageDepuisSante,
@@ -259,19 +154,9 @@ describe('tri Gmail visible (C19-04)', () => {
     ['drive|X', '2026-07-06 13:35', '2026-07-06_Attestation_DriveAI.txt', '08 · Perso & projets', '', 'classé'],
   ];
   const lignes = interpreterIndex(brut);
-  const maintenant = new Date('2026-07-06T18:00:00');
-
-  it('lignesTri : trié + à vérifier + suspect, récents d\'abord', () => {
-    const t = lignesTri(lignes);
-    expect(t.map((l) => l.cle)).toEqual(['tri|F5|500|nonlu', 'tri|F4|400|nonlu', 'tri|F3|300|lu', 'tri|F2|200|nonlu', 'tri|F1|100|lu']);
-  });
 
   it('lignesSuspects : seulement les ⚠, récents d\'abord', () => {
     expect(lignesSuspects(lignes).map((l) => l.fichier)).toEqual(['« Compte suspendu »']);
-  });
-
-  it('statsTri : fenêtre glissante 7 j — le vieux fil est exclu, l\'à-vérifier compte dans triés', () => {
-    expect(statsTri(lignes, 7, maintenant)).toEqual({ tries: 3, aVerifier: 1, suspects: 1 });
   });
 
   it('lienGmailPourLigne couvre les clés tri| (threadId, jamais le ts)', () => {
@@ -339,20 +224,6 @@ describe('lignesAVerifier (C28-17)', () => {
       ['drive|D', '2026-07-10', 'd.pdf', '', '', 'quarantaine'], // quarantaine ≠ à vérifier (sa propre liste)
     ]);
     expect(lignesAVerifier(lignes).map((l) => l.fichier)).toEqual(['photo_floue.jpg', 'scan_sans_faits.pdf']);
-  });
-});
-
-describe('TriAppris (C19-06)', () => {
-  it('interpreterTriAppris : ligneSheet 1-based (+1 en-tête), lignes vidées ignorées', async () => {
-    const { interpreterTriAppris } = await import('../src/etat');
-    const lignes = interpreterTriAppris([
-      ['conseiller@banque.com', '02 · Finances', '2026-07-06'],
-      ['', '', ''], // « retirée » (cellules vidées) — le moteur l'ignore aussi
-      ['rh@employeur.ca', '05 · Carrière', '2026-07-06'],
-    ]);
-    expect(lignes.map((l) => l.ligneSheet)).toEqual([2, 4]);
-    expect(lignes[0].adresse).toBe('conseiller@banque.com');
-    expect(lignes[1].libelle).toBe('05 · Carrière');
   });
 });
 
@@ -433,8 +304,7 @@ describe('etatCourantIndex : la section Suspects redevient honnête (C28-13)', (
     ]);
     const courant = etatCourantIndex(lignes);
     expect(courant).toHaveLength(1);
-    expect(courant[0].statut).toBe('classé');
-    expect(lignesQuarantaine(courant)).toEqual([]);
+    expect(courant[0].statut).toBe('classé'); // plus aucune trace « quarantaine » dans l'état courant
   });
 
   it('une entité re-traitée est RÉ-INSÉRÉE en fin de liste (ordre = chronologie, les vues « récents » en dépendent)', () => {

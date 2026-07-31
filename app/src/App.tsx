@@ -1,7 +1,8 @@
 /**
- * App.tsx — coquille v5 « Material Dark » (C28-23, plan architecte 2026-07-15) : topbar +
- * sidebar façon Google Agenda + contenu. Thème SOMBRE seul (décision Marc — theme.ts supprimé).
- * Réglages (langue, déconnexion) dans le MENU AVATAR ; badge Synchro dans la topbar.
+ * App.tsx — coquille v6 (C28-41, refonte complète — décisions Marc 2026-07-31) : topbar +
+ * sidebar + contenu, thème sombre redessiné. CINQ sections : Aujourd'hui · Agenda · Documents ·
+ * Assistant · Moteur (page technique unique — remplace « Coûts & quotas » et « Santé »).
+ * Une PASTILLE moteur (vert/ambre/rouge) vit dans la topbar de tous les écrans ; clic = Moteur.
  * Depuis C28-20 (ADR-0021) : pas d'écran de configuration — la config vient de /api/config
  * après connexion, seul le compte ALLOWED_EMAIL ouvre une session. Mobile : la sidebar est un
  * tiroir (☰) et la barre basse reste la navigation principale.
@@ -15,29 +16,27 @@ import { BanniereErreur } from './composants/UI';
 import { Sidebar, AgendasVisibles } from './composants/Sidebar';
 import { Creation } from './composants/Creation';
 import { Langue, langueCourante, changerLangue, t } from './i18n';
+import { EtatMoteur, fraicheurMoteur, dernierPassageDepuisSante, interpreterSante } from './etat';
 import { AujourdHui } from './vues/AujourdHui';
-import { SanteVue } from './vues/Sante';
-import { Corrections } from './vues/Corrections';
 import { Documents } from './vues/Documents';
 import { Assistant } from './vues/Assistant';
 import { Agenda } from './vues/Agenda';
-import { Quotas } from './vues/Quotas';
+import { Moteur } from './vues/Moteur';
 
 // Retour au hub perso (lien externe dans la topbar ; overridable au build via VITE_HUB_URL).
 const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined)?.replace(/\/+$/, '') || 'https://hubperso.com';
 
-// C28-25 (Cockpit Unique) : la section « mails » est SUPPRIMÉE — le seul bloc utile qui restait
-// (les derniers fils triés + création de tâche depuis un fil) a été rapatrié dans « aujourdhui »
-// en carte repliable. Les tuiles/suspects vivaient déjà là, la table apprise dans « apprentissage ».
-export type Section = 'aujourdhui' | 'agenda' | 'documents' | 'assistant' | 'apprentissage' | 'quotas' | 'sante';
+// C28-41 : « apprentissage », « quotas » et « sante » SUPPRIMÉS (décisions Marc 2026-07-31).
+// La page Moteur reprend le minimum technique utile ; la logique d'apprentissage du MOTEUR
+// (few-shot Corrections, TriAppris) continue côté Apps Script, simplement sans surface UI.
+export type Section = 'aujourdhui' | 'agenda' | 'documents' | 'assistant' | 'moteur';
 
-export const SECTIONS: Section[] = ['aujourdhui', 'agenda', 'documents', 'assistant', 'apprentissage', 'quotas', 'sante'];
+export const SECTIONS: Section[] = ['aujourdhui', 'agenda', 'documents', 'assistant', 'moteur'];
 export const ICONES: Record<Section, string> = {
-  aujourdhui: '◐', agenda: '▦', documents: '▤', assistant: '💬', apprentissage: '✎', quotas: '◔', sante: '♥',
+  aujourdhui: '◐', agenda: '▦', documents: '▤', assistant: '💬', moteur: '⚙',
 };
-/** Barre basse mobile : 4 sections directes + « Plus » (Quotas/Santé). Apprentissage promu ici
- * (C28-25) pour garder 4 boutons après le retrait de Mails. */
-const BARRE_BASSE: Section[] = ['aujourdhui', 'agenda', 'documents', 'apprentissage'];
+/** Barre basse mobile : les 4 sections du quotidien + « Plus » (Moteur). */
+const BARRE_BASSE: Section[] = ['aujourdhui', 'agenda', 'documents', 'assistant'];
 
 /**
  * Verrou d'identité (C28-20) : /api/callback renvoie ici avec `?erreur=acces_refuse` quand le
@@ -148,9 +147,9 @@ export function App() {
 }
 
 /**
- * Coquille connectée (dans le FournisseurEtat — le badge Synchro de la topbar lit l'état
- * global) : topbar ☰ + logo + Synchro + avatar, sidebar (tiroir sur mobile), contenu, barre
- * basse mobile + feuille « Plus » (Apprentissage/Santé — les réglages vivent au menu avatar).
+ * Coquille connectée (dans le FournisseurEtat — pastille moteur et badge Synchro lisent l'état
+ * global) : topbar ☰ + logo + pastille + Synchro + avatar, sidebar (tiroir sur mobile), contenu,
+ * barre basse mobile + feuille « Plus » (Moteur).
  */
 function Coquille({ langue, onLangue, onDeconnexion }: {
   langue: Langue;
@@ -160,17 +159,17 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
   const { rafraichir } = useEtatGlobal(); // création au FAB → l'Agenda affiché se rafraîchit
   const [section, setSection] = useState<Section>('aujourdhui');
   const [sidebarOuverte, setSidebarOuverte] = useState(false);
-  // C28-24 : sidebar REPLIABLE en rail d'icônes (desktop), persistée — même ☰ que le tiroir mobile.
+  // Sidebar REPLIABLE en rail d'icônes (desktop), persistée — même ☰ que le tiroir mobile.
   const [sidebarRepliee, setSidebarRepliee] = useState(
     () => localStorage.getItem('driveai_sidebar_repliee') === '1',
   );
   const [plusOuvert, setPlusOuvert] = useState(false);
-  const [creationOuverte, setCreationOuverte] = useState(false); // FAB « + Créer » (PR3)
-  // Date de référence de l'Agenda, REMONTÉE ici (PR3, plan architecte) : le mini-calendrier de
-  // la sidebar et la grande grille restent synchrones — un clic là-bas navigue ici.
+  const [creationOuverte, setCreationOuverte] = useState(false); // FAB « + Créer »
+  // Date de référence de l'Agenda, REMONTÉE ici : le mini-calendrier de la sidebar et la grande
+  // grille restent synchrones — un clic là-bas navigue ici.
   const [dateAgenda, setDateAgenda] = useState(new Date());
-  // « Mes agendas » (trompe-l'œil UI, §2.3) : l'état vit ici pour piloter le filtrage local de
-  // l'Agenda — la sidebar ne fait que l'afficher.
+  // « Mes agendas » : l'état vit ici pour piloter le filtrage local de l'Agenda (PR2 C28-41 le
+  // branche sur la vraie liste des agendas Google) — la sidebar ne fait que l'afficher.
   const [agendas, setAgendas] = useState<AgendasVisibles>({ evenements: true, taches: true });
 
   function allerA(s: Section) {
@@ -184,7 +183,7 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
     allerA('agenda'); // le mini-calendrier ouvre l'Agenda sur le jour choisi
   }
 
-  // ☰ à double emploi, comme dans Google Agenda : tiroir sur mobile, repli/dépli sur desktop.
+  // ☰ à double emploi : tiroir sur mobile, repli/dépli sur desktop.
   function clicMenu() {
     if (window.matchMedia('(max-width: 760px)').matches) {
       setSidebarOuverte(true);
@@ -203,6 +202,7 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
         <h1 className="logo"><b>Drive</b>AI</h1>
         <div className="header-actions">
           <a className="lien-hub" href={HUB_URL} title="Retour au hub">← Hub</a>
+          <PastilleMoteur langue={langue} onOuvrir={() => allerA('moteur')} />
           <BadgeSynchro langue={langue} />
           <MenuAvatar langue={langue} connecte onLangue={onLangue} onDeconnexion={onDeconnexion} />
         </div>
@@ -231,16 +231,14 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
             {section === 'aujourdhui' && <AujourdHui langue={langue} onAller={allerA} />}
             {section === 'documents' && <Documents langue={langue} />}
             {section === 'assistant' && <Assistant langue={langue} />}
-            {section === 'apprentissage' && <Corrections langue={langue} />}
             {section === 'agenda' && <Agenda langue={langue} dateRef={dateAgenda} agendas={agendas} />}
-            {section === 'quotas' && <Quotas langue={langue} />}
-            {section === 'sante' && <SanteVue langue={langue} />}
+            {section === 'moteur' && <Moteur langue={langue} />}
           </div>
           <footer>{t('gardeFous', langue)}</footer>
         </main>
       </div>
 
-      {/* FAB « + Créer » (PR3) : la création vit en dialogue — plus de carte en tête d'Agenda. */}
+      {/* FAB « + Créer » : la création vit en dialogue. */}
       {creationOuverte && (
         <>
           <button className="feuille-fond" aria-label={t('fermer', langue)} onClick={() => setCreationOuverte(false)} />
@@ -259,7 +257,7 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
           </button>
         ))}
         <button
-          className={section === 'quotas' || section === 'sante' ? 'actif' : ''}
+          className={section === 'moteur' ? 'actif' : ''}
           onClick={() => setPlusOuvert(true)}
         >
           <em aria-hidden="true">⋯</em>
@@ -271,11 +269,8 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
         <>
           <button className="feuille-fond" aria-label={t('fermer', langue)} onClick={() => setPlusOuvert(false)} />
           <div className="feuille-plus" role="dialog" aria-label={t('plus', langue)}>
-            <button className="discret" onClick={() => allerA('quotas')}>
-              {ICONES.quotas} {t('quotas', langue)}
-            </button>
-            <button className="discret" onClick={() => allerA('sante')}>
-              {ICONES.sante} {t('sante', langue)}
+            <button className="discret" onClick={() => allerA('moteur')}>
+              {ICONES.moteur} {t('moteur', langue)}
             </button>
           </div>
         </>
@@ -312,6 +307,36 @@ function MenuAvatar({ langue, connecte, onLangue, onDeconnexion }: {
 }
 
 /**
+ * Pastille moteur (C28-41, décision Marc « pastille discrète ») : point vert/ambre/rouge dérivé
+ * du « Dernier passage OK » de l'onglet Santé + de la fréquence de tick réglée. Discrète tant
+ * que tout va bien ; un clic ouvre la page Moteur pour le détail. Jamais un faux vert : données
+ * absentes ⇒ gris « inconnu ».
+ */
+function PastilleMoteur({ langue, onOuvrir }: { langue: Langue; onOuvrir: () => void }) {
+  const { donnees } = useEtatGlobal();
+  const lignes = donnees ? interpreterSante(donnees.santeBrut).lignes : [];
+  const tick = Number(donnees?.reglagesBrut?.[0]?.[1]) || 5;
+  const etat: EtatMoteur = donnees ? fraicheurMoteur(lignes, new Date(), tick) : 'inconnu';
+  const titres: Record<EtatMoteur, string> = {
+    ok: t('moteurVivant', langue),
+    retard: t('moteurRetard', langue),
+    mort: t('moteurSilencieux', langue),
+    inconnu: t('moteurInconnu', langue),
+  };
+  const passage = dernierPassageDepuisSante(lignes);
+  return (
+    <button
+      className={`pastille-moteur ${etat}`}
+      title={`${titres[etat]}${passage ? ` — ${t('dernierPassage', langue)} ${passage}` : ''}`}
+      onClick={onOuvrir}
+    >
+      <span className="pm-point" aria-hidden="true" />
+      <span className="pm-libelle">{t('moteur', langue)}</span>
+    </button>
+  );
+}
+
+/**
  * Badge « Synchro HH:MM » + bouton ⟳ (P1/C28-03) : indicateur GLOBAL de fraîcheur des données,
  * et rafraîchissement manuel qui invalide le cache (le périodique tourne déjà toutes les 5 min).
  * Affiche aussi l'erreur de lecture globale avec « Réessayer » — les vues n'ont plus chacune la leur.
@@ -325,7 +350,7 @@ function BadgeSynchro({ langue }: { langue: Langue }) {
         : (
           <button className="discret" onClick={() => void rafraichir(true)}
             title={t('synchro', langue)}>
-            ⟳ {t('synchro', langue)} {synchroA ? synchroA.toLocaleTimeString(langue === 'fr' ? 'fr-CA' : 'en-CA', { hour: '2-digit', minute: '2-digit' }) : '…'}
+            ⟳ {synchroA ? synchroA.toLocaleTimeString(langue === 'fr' ? 'fr-CA' : 'en-CA', { hour: '2-digit', minute: '2-digit' }) : '…'}
           </button>
         )}
     </span>
