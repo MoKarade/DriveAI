@@ -549,13 +549,20 @@ var CONFIG = {
                                           // t2 : + Anna Malaval (pièces d'identité), + codes de récupération
 
   RESET_TRI_NOM: '_TRI 2026',             // racine de rassemblement, à côté de `_Doublons`/`_Technique` (préfixe _ = invisible des scans vivants)
-  // PLAFONDS PAR RUN — relevés le 2026-07-31 (demande Marc : « tout fini aujourd'hui »). Ce n'est
-  // PAS une augmentation de budget : le garde-temps (3 min/run, vérifié À CHAQUE item) reste la
-  // VRAIE borne, et il est inchangé. À 60/80, le plafond d'ITEMS coupait AVANT le temps alloué — on
-  // rendait la main avec du budget déjà accordé non consommé (constat revue #226 : « ~60 moveTo en
-  // bien moins de 3 min → c'est le plafond d'items qui mord, pas le temps »). Les relever ne coûte
-  // donc RIEN au quota partagé : ça utilise ce qui est déjà budgété. Ils ne bornent plus que la
-  // mémoire (tableau d'IDs) et la granularité de reprise.
+  // PLAFONDS PAR RUN — relevés le 2026-07-31. Ce n'est PAS une augmentation de budget : le
+  // garde-temps (3 min/run, vérifié À CHAQUE item) reste la VRAIE borne, inchangé, et le budget
+  // QUOTIDIEN est compté en MS RÉELLEMENT CONSOMMÉES — un run qui coupait tôt sur le plafond
+  // d'items ne « perdait » donc rien : le reliquat de ms restait disponible au tick suivant.
+  // ⚠ CORRECTION d'une affirmation antérieure (revue #229) : relever ces plafonds n'augmente PAS
+  // le débit journalier (≈ +5 %, par simple amortissement du coût FIXE de setup par run —
+  // `ensembleDomainesProteges_`, lecture du plan, `entitesValideesParCle_`). Le débit reste fixé
+  // par les budgets/jour ci-dessous. Ces plafonds ne bornent que la mémoire (tableau d'IDs) et la
+  // granularité de reprise.
+  RESET_HASH_TAILLE_MAX: 5 * 1024 * 1024, // borne PROPRE au reset pour `empreinteBlob_` (< OCR_TAILLE_MAX
+                                          // = 20 Mo) : hasher un blob de 20 Mo coûte 10-60 s et peut
+                                          // franchir le mur des 6 min sur le DERNIER item d'un run (revue
+                                          // #229). Un doublon exact > 5 Mo reste RAPPORTÉ par
+                                          // `signalerQuasiDoublonReset_` — jamais perdu, juste non déplacé.
   RESET_RASSEMBLEMENT_MAX_PAR_RUN: 400,   // fichiers déplacés vers `_TRI 2026/<domaine>` par run
   RESET_RASSEMBLEMENT_BUDGET_JOUR_MS: 20 * 60 * 1000, // 8 → 20 (il ALIMENTE le placement : jamais l'affamer)
   RESET_PLACEMENT_MAX_PAR_RUN: 300,       // fichiers dédupliqués/routés depuis `_TRI 2026` par run (pas d'OCR/LLM — cheap)

@@ -578,7 +578,10 @@ function tickDriveAI() {
       // app ne fait plus que LIRE cette Property → réponse en ms (le calcul à la volée dépassait le
       // délai du broker Vercel — 500 en boucle). SECONDAIRE et enveloppée : un échec ne bloque rien.
       try { majResumeHub_(); } catch (e) { journalErreur_('Hub', 'MàJ résumé hub impossible : ' + e); }
-      try { bornerJournal_(); } catch (e) { journalErreur_('Santé', 'Journal borné impossible : ' + e); }
+      // La rotation (deleteRows en lot, 10-30 s) est REPORTÉE si le tick a déjà consommé son
+      // garde-temps standard : elle est en toute fin de `finally`, donc c'est elle qui franchirait
+      // le mur des 6 min (revue #229). Aucun coût à attendre le tick suivant.
+      try { bornerJournal_(estBudgetDepasseStandard); } catch (e) { journalErreur_('Santé', 'Journal borné impossible : ' + e); }
     } finally {
       verrou.releaseLock();
     }

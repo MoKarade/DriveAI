@@ -521,13 +521,27 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   Corollaire produit : « fais-le automatiquement » alors que c'est DÉJÀ automatique = la vraie demande
   est la VITESSE — le dire, puis laisser à Marc l'arbitrage vitesse/risque plutôt que de relever un
   plafond de sécurité à sa place.
-- **Deux bornes sur une même boucle : celle qui coupe en PREMIER fixe le débit.** Quand une boucle
-  porte un garde-TEMPS et un plafond d'ITEMS, se demander avant d'accélérer « laquelle mord vraiment,
-  et est-ce celle qui PROTÈGE ? ». Un plafond d'items qui coupe avant le garde-temps ne protège plus
-  le quota (le temps s'en charge) : il ne borne que la mémoire/la reprise, donc il se relève
-  GRATUITEMENT — c'est du budget déjà accordé, gaspillé en silence à chaque run (vécu C28-33 : 60
-  fichiers/run alors que 3 min en permettaient 400). Sûreté à vérifier explicitement : le garde-temps
-  doit être évalué À CHAQUE ITEM (pas seulement en tête), sinon relever le plafond déborde le temps.
+- **Deux bornes sur une même boucle : lire l'UNITÉ dans laquelle le budget est COMPTÉ avant d'en
+  déduire un débit.** Quand une boucle porte un garde-TEMPS et un plafond d'ITEMS, la question n'est
+  pas seulement « laquelle mord ? » mais « le budget qui plafonne la JOURNÉE est-il compté en ms
+  CONSOMMÉES ou en runs ? ». En ms consommées, un run qui coupe tôt sur le plafond d'items ne perd
+  RIEN : le reliquat reste disponible au tick suivant — relever le plafond n'achète que
+  l'amortissement du coût FIXE de setup par run (**quelques %**, jamais un facteur). *(Correction
+  d'une version antérieure de cette règle qui annonçait « du budget gaspillé à chaque run » : faux,
+  démontré en revue #229 le jour même.)* Le vrai levier de débit est de **réduire le travail PAR
+  ITEM** (ne pas re-télécharger des octets déjà hashés, mémoïser les résolutions de dossier), pas de
+  relever une borne. Sûreté qui reste vraie : le garde-temps doit être évalué À CHAQUE ITEM, **y
+  compris dans les COLLECTES récursives**, sinon relever le plafond déborde le temps. Et un chiffre
+  d'accélération s'annonce APRÈS l'avoir dérivé du modèle de coût, jamais depuis l'intuition
+  « la borne sautait, donc ça va plus vite ».
+- **Une borne HAUTE sur une source qui CROÎT fige l'UI EN SILENCE.** `A2:H20000`, `LIMIT n` sans
+  offset, tableau tronqué en TÊTE : au franchissement, rien ne lève — ça FIGE (vécu C28-34 : l'app
+  allait cesser de voir toute ligne neuve dans la journée, l'Index étant append-only et le reset y
+  écrivant 2 lignes par fichier). (1) Sur une source append-only, fenêtre OUVERTE ou ancrée en
+  QUEUE, jamais un plafond de tête. (2) Toute modif qui AUGMENTE le taux de croissance d'une
+  ressource oblige à relire les bornes que les AUTRES composants ont posées dessus — c'est le
+  changement de débit qui transforme un point de vigilance lointain en panne du jour. Invisible en
+  CI : se demander « qu'est-ce qui, ailleurs, suppose que cette table est petite ? ».
 - **Test de MUTATION : restaurer par COPIE de sauvegarde, jamais `git checkout <fichier>`.** Prouver
   qu'un test attrape bien sa régression (leçon C28-32) exige de remettre le code buggé puis de
   restaurer. `git checkout`/`git restore <fichier>` restaure depuis l'index/HEAD et DÉTRUIT sans

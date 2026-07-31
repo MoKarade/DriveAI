@@ -147,11 +147,13 @@ test('orchestration RESET : rassemblement → placement → 04 interne, dans cet
 });
 
 /**
- * ACCÉLÉRATION du 2026-07-31 (demande Marc « tout fini aujourd'hui »). Trois leviers, dont AUCUN
- * n'augmente un budget protégeant le quota partagé (leçon §7 « RÉALLOUER, jamais AUGMENTER ») :
+ * ACCÉLÉRATION du 2026-07-31 (demande Marc « tout fini aujourd'hui »). Aucun levier n'augmente un
+ * budget protégeant le quota partagé (leçon §7 « RÉALLOUER, jamais AUGMENTER ») :
  *  1. plafonds d'ITEMS par run relevés — le garde-temps par run reste la VRAIE borne, inchangé ;
  *  2. campagnes de RATTRAPAGE suspendues pendant le reset (comme conso-2/histo/sync) ;
- *  3. `majResumeHub_` throttlé (il relisait l'Index entier ×288/j).
+ *  3. `majResumeHub_` throttlé (il relisait l'Index entier ×288/j) ;
+ *  4. (revue #229) le vrai levier de DÉBIT : ne plus re-télécharger les octets d'un fichier déjà
+ *     hashé, et mémoïser les dossiers cibles — moins de travail par fichier, pas plus de budget.
  */
 test('accélération : le garde-temps par run reste la VRAIE borne — relever un plafond d\'ITEMS n\'augmente aucun budget', () => {
   const fs = require('fs');
@@ -161,11 +163,18 @@ test('accélération : le garde-temps par run reste la VRAIE borne — relever u
   const val = (nom) => Number((new RegExp(nom + ':\\s*([0-9]+)').exec(cfg) || [])[1]);
 
   // Les budgets QUOTIDIENS (la protection réelle du quota runtime) sont INCHANGÉS : 20/22/8 min.
-  assert.strictEqual(val('RESET_RASSEMBLEMENT_BUDGET_JOUR_MS\\s*:\\s*([0-9]+)\\s*\\*') || 20, 20,
-    'budget quotidien du rassemblement inchangé');
+  // ⚠ Assertion RÉPARÉE (revue #229) : la version précédente concaténait deux fois le motif, la
+  // regex ne matchait JAMAIS et `NaN || 20` la rendait toujours verte — elle passait même avec
+  // 90 min. Ici on lit la VRAIE valeur, donc gonfler la constante fait échouer le test.
+  assert.strictEqual(val('RESET_RASSEMBLEMENT_BUDGET_JOUR_MS'), 20, 'budget quotidien du rassemblement inchangé');
+  assert.strictEqual(val('RESET_PLACEMENT_BUDGET_JOUR_MS'), 22, 'budget quotidien du placement inchangé');
+  assert.strictEqual(val('RESET_04_BUDGET_JOUR_MS'), 8, 'budget quotidien de 04 inchangé');
   // Chaque phase borne son run par un garde-temps ET le vérifie À CHAQUE item : un plafond d'items
-  // plus haut ne peut donc pas faire dépasser le temps alloué.
-  ['rassemblerUnePageReset_', 'placerUnePageReset_', 'reorganiserPageInterne04_'].forEach((fn) => {
+  // plus haut ne peut donc pas faire dépasser le temps alloué. Les COLLECTES récursives comptent
+  // autant que les boucles de mutation (revue #229) : ce sont elles que le plafond relevé fait
+  // travailler plus longtemps.
+  ['rassemblerUnePageReset_', 'placerUnePageReset_', 'reorganiserPageInterne04_',
+    'collecterRassemblementReset_', 'collecterInterne04Reset_'].forEach((fn) => {
     const i = reset.indexOf('function ' + fn + '(');
     assert.ok(i !== -1, fn + ' introuvable');
     const corps = reset.slice(i, reset.indexOf('\n}', i));

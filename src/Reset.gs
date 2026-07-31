@@ -450,6 +450,26 @@ function dossierTriDomaineReset_(domaine) {
 }
 
 /**
+ * Mémoïsation PAR RUN des dossiers résolus par domaine (revue #229) : `dossierTriDomaineReset_` et
+ * `DriveApp.getFolderById(idDomaine_(…))` coûtent 2 appels Drive et étaient refaits POUR CHAQUE
+ * FICHIER, alors qu'il y a ≤ 9 domaines. Sans cache disponible (`ctx` absent), retombe sur l'appel
+ * direct — jamais un changement de comportement, seulement moins d'allers-retours.
+ * @param {string} domaine
+ * @param {Object} ctx
+ * @param {boolean} [tri]  vrai = dossier de provenance sous `_TRI 2026` ; faux = racine du domaine
+ */
+function dossierDomaineMemo_(domaine, ctx, tri) {
+  var cle = (tri ? 'tri:' : 'dom:') + domaine;
+  if (ctx && ctx.dossiersDomaine && ctx.dossiersDomaine[cle]) return ctx.dossiersDomaine[cle];
+  var d = tri ? dossierTriDomaineReset_(domaine) : DriveApp.getFolderById(idDomaine_(domaine));
+  if (ctx) {
+    if (!ctx.dossiersDomaine) ctx.dossiersDomaine = {};
+    ctx.dossiersDomaine[cle] = d;
+  }
+  return d;
+}
+
+/**
  * Collecte récursive des fichiers d'un domaine ENCORE à rassembler (clé `tri33|<tag>|id` absente —
  * prédicat de convergence, filtré À LA COLLECTE : un mur de déjà-faits n'occupe aucune place de
  * page). Lecture seule, bornée par `max` et le garde-temps. `etat.complet` passe à false dès que le
@@ -508,7 +528,7 @@ function rassemblerUnFichier_(fileId, domaine, tag, proteges, ctx) {
     return false;
   }
 
-  var cible = dossierTriDomaineReset_(domaine);
+  var cible = dossierDomaineMemo_(domaine, ctx, true);
   var cibleId = cible.getId();
   var ancienParent = null;
   try { var parents = f.getParents(); if (parents.hasNext()) ancienParent = parents.next(); } catch (e) { ancienParent = null; }
@@ -655,6 +675,27 @@ function signalerNonRouteReset_(nom, fileId, domaine, ctx) {
 }
 
 /**
+ * Empreinte du fichier SANS re-télécharger ses octets quand elle est DÉJÀ connue — d'abord le plan de
+ * consolidation (`ctx.empreintesConnues`, lu une fois par run), puis l'Index (`empreinteConnueParId_`,
+ * qui couvre le flux vivant `drive|…` ET les placements d'une version de table précédente : bumper
+ * `RESET_TABLE_VERSION` ne re-hashe donc RIEN). `empreinteBlob_` reste le SEUL producteur : toute
+ * valeur réutilisée en vient, la sémantique de dédup est inchangée (revue #229).
+ *
+ * Borne de taille PROPRE au reset (`RESET_HASH_TAILLE_MAX`, 5 Mo) et non `OCR_TAILLE_MAX` (20 Mo) :
+ * hasher 20 Mo coûte 10-60 s et peut franchir le mur des 6 min sur le dernier item d'un run. Au-delà,
+ * empreinte vide ⇒ jamais déplacé comme doublon, mais `signalerQuasiDoublonReset_` le RAPPORTE (le
+ * flag `hashee` transmet honnêtement « non hashé », donc aucun cas n'est court-circuité à tort).
+ */
+function empreinteReutiliseeReset_(f, ctx) {
+  var id = f.getId();
+  var connue = (ctx && ctx.empreintesConnues && ctx.empreintesConnues[id]) || empreinteConnueParId_(id);
+  if (connue) return String(connue);
+  try { if (f.getSize() <= CONFIG.RESET_HASH_TAILLE_MAX) return empreinteBlob_(f.getBlob()); }
+  catch (e) { return ''; }
+  return '';
+}
+
+/**
  * Résout (find-or-create) le dossier cible d'un sous-chemin STRUCTUREL (`cheminCibleReset_`) sous un
  * domaine. Quand le DERNIER segment correspond à une ENTITÉ VALIDÉE de ce domaine (ex. « Desjardins »,
  * « Robovic ») dont le `Dossier ID` pointait encore l'ANCIEN emplacement, celui-ci est RE-POINTÉ vers
@@ -663,9 +704,17 @@ function signalerNonRouteReset_(nom, fileId, domaine, ctx) {
  * la fusion) ; `ctx.repointes` déduplique les écritures Sheet redondantes dans le run.
  */
 function resoudreCibleReset_(domaineDossier, domaine, sousChemin, ctx) {
+  // Mémoïsation par run (revue #229) : `sousDossier_` fait 1-2 appels Drive PAR SEGMENT, refaits pour
+  // chaque fichier alors qu'il n'y a que quelques dizaines de chemins cibles distincts. Le re-pointage
+  // ci-dessous est déjà idempotent par `ctx.repointes` ; le sauter sur un chemin déjà résolu est donc
+  // sans effet de bord.
+  var cleMemo = domaine + '/' + sousChemin;
+  if (ctx.ciblesResolues && ctx.ciblesResolues[cleMemo]) return ctx.ciblesResolues[cleMemo];
+
   var segments = sousChemin.split('/');
   var dossier = domaineDossier;
   for (var i = 0; i < segments.length; i++) dossier = sousDossier_(dossier, segments[i]);
+  if (ctx.ciblesResolues) ctx.ciblesResolues[cleMemo] = dossier;
 
   var dernier = segments[segments.length - 1];
   var cle = cleCanoniqueEntite_(domaine, dernier);
@@ -714,9 +763,7 @@ function placerUnFichierReset_(f, domaine, cle, ctx) {
   var ancienParent = null;
   try { var pp = f.getParents(); if (pp.hasNext()) ancienParent = pp.next(); } catch (e) { ancienParent = null; }
 
-  var empreinte = '';
-  try { if (f.getSize() <= CONFIG.OCR_TAILLE_MAX) empreinte = empreinteBlob_(f.getBlob()); }
-  catch (e) { empreinte = ''; }
+  var empreinte = empreinteReutiliseeReset_(f, ctx);
 
   var doublonDe = (empreinte && ctx.empreintesVues[empreinte] && ctx.empreintesVues[empreinte] !== f.getId())
     ? ctx.empreintesVues[empreinte] : null;
@@ -731,8 +778,7 @@ function placerUnFichierReset_(f, domaine, cle, ctx) {
     signalerQuasiDoublonReset_(nom, f.getSize(), !!empreinte, f.getId(), domaine, ctx);
     var sousChemin = cheminCibleReset_(domaine, nom);
     if (sousChemin) {
-      var domaineDossier = DriveApp.getFolderById(idDomaine_(domaine));
-      cibleDossier = resoudreCibleReset_(domaineDossier, domaine, sousChemin, ctx);
+      cibleDossier = resoudreCibleReset_(dossierDomaineMemo_(domaine, ctx), domaine, sousChemin, ctx);
       statut = 'tri33-route';
       cheminFinal = domaine + '/' + sousChemin;
     } else {
@@ -816,11 +862,14 @@ function placerReset_(estBudgetDepasse, manuel) {
     : Math.min(CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS - consommeJour, 3 * 60 * 1000);
   var garde = function () { return estBudgetDepasse() || (Date.now() - debut) > budgetRun; };
   try {
+    var plan = empreintesPlanDeuxSens_(); // UNE lecture → les deux sens (revue #229)
     var ctx = {
       proteges: ensembleDomainesProteges_(),
       validees: entitesValideesParCle_(),
-      empreintesVues: empreintesPlanConsolidation_(), // seed : réutilise les empreintes déjà connues (conso-2)
+      empreintesVues: plan.parEmpreinte,   // empreinte → 1er porteur (dédup)
+      empreintesConnues: plan.parId,       // fileId → empreinte (ne PAS re-télécharger les octets)
       repointes: {},
+      ciblesResolues: {},                  // sous-chemin → dossier (mémoïsation, cf. resoudreCibleReset_)
     };
     var r = placerUnePageReset_(garde, ctx);
     if (r.deplaces) journalInfo_('Reset', r.deplaces + ' fichier(s) traité(s) au placement (reset).');
@@ -1038,6 +1087,36 @@ function rondeSterileReset_(r) {
 }
 
 /**
+ * Garde-temps d'UNE phase à l'intérieur d'une ronde UN-CLIC : elle reçoit au plus `1/phasesRestantes`
+ * du temps qui reste avant le mur de l'exécution (`CONFIG.BUDGET_MS` depuis `debut`). Sans ce partage,
+ * la première phase appelée consomme TOUT le mur dès que son plafond d'items est haut, et les phases
+ * suivantes ne tournent jamais (revue #229 : `lancerResetTout` dégénérait en rassemblement seul).
+ * Adaptatif : une phase qui n'a rien à faire rend sa part aux suivantes. La borne GLOBALE est toujours
+ * respectée (le `||` ci-dessous), donc ce partage ne peut pas retarder le mur, seulement le découper.
+ * @param {number} debut  horodatage du début de L'EXÉCUTION manuelle (pas de la phase)
+ * @param {number} phasesRestantes  cette phase incluse (3, 2, puis 1)
+ * @return {function():boolean}
+ */
+function gardePartReset_(debut, phasesRestantes) {
+  var t0 = Date.now();
+  var part = partPhaseReset_(CONFIG.BUDGET_MS - (t0 - debut), phasesRestantes);
+  return function () {
+    var maintenant = Date.now();
+    return (maintenant - debut) > CONFIG.BUDGET_MS || (maintenant - t0) > part;
+  };
+}
+
+/**
+ * Part de temps allouée à UNE phase. PURE (c'est l'arithmétique du partage, isolée pour être
+ * testable sans horloge). Plus rien à distribuer ⇒ 0, donc la phase est coupée immédiatement.
+ * @param {number} restantMs  temps restant avant le mur de l'exécution
+ * @param {number} phasesRestantes  cette phase incluse
+ */
+function partPhaseReset_(restantMs, phasesRestantes) {
+  return restantMs > 0 ? restantMs / Math.max(1, phasesRestantes) : 0;
+}
+
+/**
  * Signal de VIE d'une exécution manuelle (revue quota) : une séance de relances enchaînées tient le
  * verrou et fait sauter presque tous les ticks — au-delà de `WATCHDOG_SEUIL_MS` (45 min), le chien de
  * garde verrait un heartbeat figé et déclarerait « moteur silencieux » À TORT (l'épisode remonterait
@@ -1071,9 +1150,14 @@ function lancerResetTout(e) {
     var rondes = 0;
     while (!estBudgetDepasse() && !resetTermine_() && rondes < 500) {
       var progres = false;
-      if (!estBudgetDepasse() && !rondeSterileReset_(rassemblerReset_(estBudgetDepasse, true))) progres = true;
-      if (!estBudgetDepasse() && !rondeSterileReset_(placerReset_(estBudgetDepasse, true))) progres = true;
-      if (!estBudgetDepasse() && !rondeSterileReset_(appliquerReset04Interne_(estBudgetDepasse, true))) progres = true;
+      // ⚠ Garde PAR PHASE, pas seulement le mur global (revue #229) : avec des plafonds d'items
+      // hauts, la PREMIÈRE phase consomme les 4,5 min entières et les deux suivantes ne sont JAMAIS
+      // atteintes — le clic « tout faire » de Marc dégénérait en rassemblement seul et ne produisait
+      // plus AUCUNE structure finale visible. Chaque phase reçoit au plus sa part de ce qui reste,
+      // donc le round-robin tient quel que soit le plafond d'items.
+      if (!estBudgetDepasse() && !rondeSterileReset_(rassemblerReset_(gardePartReset_(debut, 3), true))) progres = true;
+      if (!estBudgetDepasse() && !rondeSterileReset_(placerReset_(gardePartReset_(debut, 2), true))) progres = true;
+      if (!estBudgetDepasse() && !rondeSterileReset_(appliquerReset04Interne_(gardePartReset_(debut, 1), true))) progres = true;
       rondes++;
       if (!progres) break; // AUCUNE des 3 phases n'a rien à faire → inutile de re-scanner en boucle
     }
