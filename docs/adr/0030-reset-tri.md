@@ -171,3 +171,54 @@ Aucune suppression nulle part (déplacements seuls) ; multi-parents jamais déta
 enregistrée pour tout fichier déplacé ; 04 : intra seulement, sortie = proposition ; l'intake vivant
 et Gmail continuent de tourner (le reset est une étape SECONDAIRE enveloppée) ; budget LLM ≈ 0 pour
 le placement (par nom), reliquat borné par le frein campagnes.
+
+## Amendement 2026-07-31 — PR5 : passe LLM du RELIQUAT (« beaucoup de fichiers Inconnu, rien ne se passe »)
+
+**Décision Marc 2026-07-31 (C28-41, option cliquée « Passe LLM ciblée »).** Constat : les fichiers
+de `_TRI 2026/<domaine>` que la table ne route PAS (noms `…_Inconnu.…`, sans indice) n'avaient
+AUCUN chemin de sortie — la PR5 esquissée ci-dessus n'était pas construite. La voici.
+
+- **Quoi** : `analyserReliquatReset_` — pour chaque fichier de `_TRI 2026/<domaine>` que
+  `cheminCibleReset_` ne route pas (prédicat PUR, gratuit), le PIPELINE COMPLET existant
+  (`traiterDocument_` : OCR → analyse v2 → routage v2 → fail-safe ADR-0016 → renommage
+  conventionnel) le lit et le place. AUCUNE nouvelle logique de classement : on réutilise le
+  pipeline déjà validé sur du réel (même patron que `reanalyserFichier_`, C26-08) — c'est
+  pourquoi il n'y a pas de nouvel audit §8.2 à refaire.
+- **Les 3 verrous du re-traitement** (leçon §7) : (1) clé de campagne DÉDIÉE
+  `tri33llm|<tag>|<version>|<fileId>` (version de table incluse : un affinage re-tente les
+  gardes restées en `_TRI`) ; (2) `ignorerDoublon: true` OBLIGATOIRE — le placement a écrit
+  l'empreinte à l'Index, sans bypass tout partirait en `_Doublons` comme « doublon de
+  lui-même » ; (3) jamais de transit par `00 · À trier` — `placer` déplace DIRECTEMENT
+  (`deplacerEtRenommer_`).
+- **Convergence** : un fichier traité SORT de `_TRI` (classé, `_Technique`, `_Médias` ou
+  `00 · À vérifier` par le fail-safe) → jamais re-collecté (la collecte n'itère que `_TRI`).
+  Gardes multi-parents / zone protégée : skip avec clé (mêmes prudences que le placement).
+  Drapeau terminal `DriveAI_RESET_LLM` = la MÊME chaîne versionnée que le placement
+  (`finPlacementReset_()`), posé sur passe vide UNIQUEMENT quand le placement est terminé
+  (avant, le rassemblement peut encore alimenter `_TRI`) → coût nul ensuite (1 Property/tick).
+- **Budgets (réalloués, jamais augmentés — RÉVISÉ par la revue flotte C28-42)** : la première
+  version de cet amendement disait « aucun budget quotidien ajouté, la passe prend le créneau
+  LLM libéré par migration/réanalyse/dry-run » — la revue (quotas 🔴, coût 🟠, code-reviewer 🟠)
+  a démontré que ce créneau libéré est une fiction en ms/JOUR : ces campagnes n'ont que des
+  sous-budgets par TICK et consommaient ~0 pendant le reset. Sans borne quotidienne, le drainage
+  concentrait 50-130 min de runtime sur UN jour — et `resetTermine_()` pouvant basculer AVANT le
+  drainage (le drapeau LLM n'y entre pas), histo+sync+conso reprenaient leurs 50 min/j en
+  parallèle → gel C28-29 de TOUS les déclencheurs, chien de garde inclus. Correctif : budget
+  QUOTIDIEN en ms réelles persistées `RESET_LLM_BUDGET_JOUR_MS` (12 min/j, Property
+  `DriveAI_RESET_LLM_JOUR`, patron des 3 autres phases), **réalloué DANS l'enveloppe 50 min/j du
+  reset** (placement 22→14, 04 8→4 — les deux quasi convergées) et sommé dans l'invariant
+  d'orchestration (prouvé par mutation). Drainage en ~3-4 jours au lieu d'un pic jour-1 ; coût $
+  inchangé. Par run : borne réelle = budget LLM du tick (`estBudgetDepasse` 3 min, vérifié à
+  CHAQUE item), plafond `RESET_LLM_MAX_PAR_RUN` (6) pour la granularité ; frein campagnes §2.6
+  (`budgetCampagnesAtteint_`) et panne plateforme (R2) au gate ET par item. Elle n'est JAMAIS
+  gatée par `resetEnCours_()` (réciproque vitale : elle doit tourner PENDANT le reset, et après,
+  jusqu'au drainage). PLACÉE AVANT toutes les campagnes LLM du tick, historique Gmail comprise :
+  à la reprise post-reset, le reliquat garde la priorité du créneau.
+- **Coût estimé** : reliquat ~70-134 fichiers (après bump de table) × analyse v2 Sonnet
+  (~0,03-0,04 $/doc mesuré) ≈ 2-5 $ one-shot ; borne haute honnête à 200 fichiers ≈ **8 $**
+  (revue coût C28-42). Sous le frein campagnes (110 $ ; mois à ~77 $) ; ≤ 3 paiements/doc/version
+  (quarantaine sous la clé versionnée). Aucun coût récurrent après drainage.
+- **Limites assumées** : (a) couper `CONFIG.RESET_ACTIF` gèle AUSSI le drainage du reliquat —
+  les `…_Inconnu` resteraient dans `_TRI 2026` sans signalement (suspension volontaire) ;
+  (b) `lancerResetTout` n'inclut PAS cette passe (voulu : jamais de boucle Sonnet non bornée en
+  manuel) — le drainage suit le tick, ~6 docs / 5 min dans la fenêtre du budget quotidien.

@@ -462,6 +462,21 @@ function tickDriveAI() {
     // ⚠️ DIAGNOSTIC : si un « creux » apparaît sur `synchroniserIndex_` ou l'historique Gmail pendant un
     // reset actif, la cause est le GATE explicite (voir plus bas), PAS une famine de budget ici.
 
+    // Passe LLM du RELIQUAT du reset (ADR-0030 PR5, décision Marc 2026-07-31 « fichiers Inconnu,
+    // rien ne se passe ») : les fichiers de `_TRI 2026` que la table ne route PAS passent au
+    // pipeline COMPLET (OCR + analyse v2), un petit lot par tick. Campagne de fond ⇒ budget
+    // QUOTIDIEN en ms réelles (`RESET_LLM_BUDGET_JOUR_MS`, revue flotte C28-42) RÉALLOUÉ dans
+    // l'enveloppe 50 min/j du reset (placement 22→14, 04 8→4 — jamais une augmentation, invariant
+    // testé par mutation) ; frein campagnes §2.6 ; JAMAIS gatée par resetEnCours_() (réciproque
+    // vitale : elle doit tourner PENDANT le reset, et après, jusqu'au drainage). PLACÉE AVANT
+    // TOUTES les campagnes LLM — historique Gmail comprise : à la reprise post-reset (le drapeau
+    // LLM n'entre pas dans resetTermine_), le reliquat garde la priorité du créneau 3 min.
+    // SECONDAIRE → enveloppée : un échec ne bloque jamais la suite du tick.
+    if (CONFIG.RESET_ACTIF && !estBudgetDepasse() && !budgetCampagnesAtteint_()) {
+      try { analyserReliquatReset_(estBudgetDepasse); }
+      catch (e) { journalErreur_('Reset', 'Passe LLM du reliquat différée : ' + e); }
+    }
+
     // Campagne HISTORIQUE Gmail (#12, ADR-0010 §1) : remonte tout l'historique de PJ par tranches
     // ancrées. APRÈS le flux vivant (priorité stricte C28-15). Coût nul une fois finie.
     // SECONDAIRE → enveloppée : un échec Gmail ne bloque jamais la suite du tick.

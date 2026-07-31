@@ -562,9 +562,23 @@ var CONFIG = {
   RESET_RASSEMBLEMENT_MAX_PAR_RUN: 400,   // fichiers déplacés vers `_TRI 2026/<domaine>` par run
   RESET_RASSEMBLEMENT_BUDGET_JOUR_MS: 20 * 60 * 1000, // 8 → 20 (il ALIMENTE le placement : jamais l'affamer)
   RESET_PLACEMENT_MAX_PAR_RUN: 300,       // fichiers dédupliqués/routés depuis `_TRI 2026` par run (pas d'OCR/LLM — cheap)
-  RESET_PLACEMENT_BUDGET_JOUR_MS: 22 * 60 * 1000,     // 8 → 22 (poste le plus lourd : il hashe les octets)
+  RESET_PLACEMENT_BUDGET_JOUR_MS: 14 * 60 * 1000,     // 22 → 14 (revue flotte C28-42 : quasi convergé — le
+                                          // reliquat n'existe que parce que le routable est PLACÉ ; le bump de
+                                          // table ne ré-ouvre qu'un petit lot) — les 8 min vont à la passe LLM
   RESET_04_MAX_PAR_RUN: 150,              // fichiers réorganisés EN INTERNE sous 04 par run
-  RESET_04_BUDGET_JOUR_MS: 8 * 60 * 1000,             // 4 → 8 (04 est petite : elle convergera bien avant)
+  RESET_04_BUDGET_JOUR_MS: 4 * 60 * 1000,             // 8 → 4 (revue flotte C28-42 : 04 est petite et converge
+                                          // la première) — les 4 min vont à la passe LLM
+  RESET_LLM_MAX_PAR_RUN: 6,               // ADR-0030 PR5 (décision Marc 2026-07-31) : fichiers du RELIQUAT
+                                          // non-routable passés au PIPELINE COMPLET (OCR + Sonnet v2) par
+                                          // run — ~20-30 s/doc ; le garde-temps du tick (3 min) reste la
+                                          // vraie borne par run, ce plafond ne règle que la granularité
+  RESET_LLM_BUDGET_JOUR_MS: 12 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (revue flotte
+                                          // C28-42 : « un plafond par RUN ne borne pas la JOURNÉE » — sans
+                                          // lui, le drainage du reliquat concentrait 50-130 min de runtime
+                                          // sur UN jour → gel C28-29). RÉALLOUÉ dans l'enveloppe 50 min/j du
+                                          // reset (placement 22→14, 04 8→4), sommé dans l'invariant
+                                          // d'orchestration (prouvé par mutation). Reliquat ~70-134 docs
+                                          // → drainé en ~3-4 jours
   SEED_ENTITES_TAG: 'seed-1',             // seed one-shot des entités de Marc (Entites.seedEntitesMarc_)
   ENTITES_AUTO_VALIDATION: false,         // auto-validation « vue ≥ 3 fois » COUPÉE (décision Marc
                                           // 2026-07-17 : « l'ajout de dossiers vraiment sécurisé,

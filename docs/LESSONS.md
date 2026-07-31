@@ -1605,3 +1605,31 @@ fonctions mortes de plus, et trois documents vivants qui gravaient une justifica
 
 **Règle durable ?** non (instance des règles §7 « retrait de code : frontières + filet de surface »
 et « vérifier la prod par un signal indépendant » — consignée ici pour le réflexe par couches).
+
+## 2026-07-31 — Une réallocation se prouve dans l'UNITÉ du quota protégé ; un invariant qui SOMME des constantes est aveugle à une étape SANS constante
+
+**Contexte.** C28-42 (ADR-0030 PR5) : passe LLM du reliquat non-routable. J'ai livré la passe avec
+pour seule justification budgétaire « elle prend le créneau LLM du tick (3 min) que
+migration/réanalyse/dry-run — suspendues pendant le reset — libèrent », et j'ai écrit dans l'ADR
+que « l'invariant reset ≤ campagnes suspendues (test par mutation) est intact : aucun budget
+quotidien ajouté ». La revue flotte (quotas 🔴, coût 🟠, code-reviewer 🟠 — trois lentilles, le
+même trou) a démonté l'argument : ces campagnes n'ont que des sous-budgets PAR TICK (2 min) et
+consommaient ~0 pendant le reset — le « créneau libéré » n'existe pas en ms/JOUR. Sans borne
+quotidienne, le drainage (~70-134 docs × 20-60 s) concentrait 50-130 min de runtime sur UN jour,
+pendant que `resetTermine_()` (qui n'inclut pas le drapeau LLM) pouvait rendre leurs 50 min/j à
+histo+sync+conso → gel C28-29 de tous les déclencheurs, chien de garde inclus. Et le test
+d'invariant restait VERT : il ne somme que les constantes `*_BUDGET_JOUR_MS` — une campagne sans
+constante lui échappe entièrement.
+
+**Leçon.** "Une RÉALLOCATION de budget se prouve dans l'UNITÉ du quota qu'elle prétend protéger :
+un créneau PAR TICK n'est jamais une enveloppe PAR JOUR — si les campagnes 'remplacées' ne
+portaient pas de constante quotidienne, leur consommation libérée est ~0 et la nouvelle étape est
+une ADDITION NETTE, pas une réallocation. Toute nouvelle campagne de fond reçoit donc SA constante
+`*_BUDGET_JOUR_MS` (ms réelles persistées), prélevée sur l'enveloppe existante (ici placement
+22→14, 04 8→4). Corollaire invariant : un test qui SOMME des constantes est structurellement
+AVEUGLE à une étape qui n'en a pas — il reste vert pendant que l'enveloppe croît. Ajouter une
+étape à une famille budgétée = ajouter sa constante À LA SOMME du test, et re-prouver par
+mutation (la gonfler doit faire échouer). Réflexe de conception : avant d'écrire 'réalloué' dans
+un ADR, montrer le calcul dans l'unité du quota (min/j), pas l'argument nominal."
+
+**Règle durable ?** oui (corollaire ajouté à la règle « réallouer, jamais augmenter » de CLAUDE.md §7).

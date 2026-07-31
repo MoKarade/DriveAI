@@ -520,7 +520,12 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   et le prouver par MUTATION — gonfler un budget doit faire ÉCHOUER le test, sinon il ne protège rien.
   Corollaire produit : « fais-le automatiquement » alors que c'est DÉJÀ automatique = la vraie demande
   est la VITESSE — le dire, puis laisser à Marc l'arbitrage vitesse/risque plutôt que de relever un
-  plafond de sécurité à sa place.
+  plafond de sécurité à sa place. **Corollaire (C28-42) : une réallocation se PROUVE dans l'UNITÉ du
+  quota protégé (min/JOUR), jamais par un « créneau par tick libéré »** — si les campagnes remplacées
+  n'avaient pas de constante quotidienne, rien n'est libéré et la nouvelle étape est une ADDITION
+  nette. Toute nouvelle campagne de fond reçoit SA constante `*_BUDGET_JOUR_MS` prélevée sur
+  l'enveloppe, ajoutée À LA SOMME du test d'invariant (qui est structurellement AVEUGLE à une étape
+  sans constante — il reste vert pendant que l'enveloppe croît), re-prouvée par mutation.
 - **Deux bornes sur une même boucle : lire l'UNITÉ dans laquelle le budget est COMPTÉ avant d'en
   déduire un débit.** Quand une boucle porte un garde-TEMPS et un plafond d'ITEMS, la question n'est
   pas seulement « laquelle mord ? » mais « le budget qui plafonne la JOURNÉE est-il compté en ms

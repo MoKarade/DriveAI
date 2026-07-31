@@ -935,6 +935,147 @@ function placerReset_(estBudgetDepasse, manuel) {
   }
 }
 
+/* ---------- Passe LLM du RELIQUAT (ADR-0030 PR5, décision Marc 2026-07-31) ---------- */
+
+/**
+ * Analyse UN fichier du reliquat par le PIPELINE COMPLET (patron `reanalyserFichier_`, C26-08) :
+ * OCR → analyse v2 → routage v2 → fail-safe ADR-0016 → renommage conventionnel. Les 3 verrous du
+ * re-traitement (leçon §7) : clé de campagne dédiée (posée par `traiterDocument_` sous `cle`),
+ * `ignorerDoublon: true` (le placement a écrit l'empreinte à l'Index — sans bypass, « doublon de
+ * lui-même » → tout partirait en `_Doublons`), placement DIRECT (`deplacerEtRenommer_`, jamais de
+ * transit par `00 · À trier`). Gardes de mutation IDENTIQUES au placement : zone protégée re-vérifiée
+ * ici (fenêtre multi-jours dans `_TRI`), multi-parents jamais déplacé.
+ * @return {boolean} vrai si le pipeline a été invoqué.
+ */
+function analyserFichierReliquat_(f, domaine, nom, cle, proteges) {
+  var cheminTri = CONFIG.RESET_TRI_NOM + '/' + domaine;
+  if (aParentProtege_(f, proteges, true)) { // STRICT : abstention si indéterminable (jamais détacher, §1)
+    indexAjouter_(cle, { statut: 'tri33llm-protege', nom: nom, domaine: domaine, chemin: cheminTri }, '');
+    journalInfo_('Reset', 'Reliquat en zone protégée ignoré (non touché) : ' + nom);
+    return false;
+  }
+  if (nbParentsBorne_(f) > 1) {
+    indexAjouter_(cle, { statut: 'tri33llm-multiparents', nom: nom, domaine: domaine, chemin: cheminTri }, '');
+    journalInfo_('Reset', 'Reliquat multi-parents, jamais déplacé : ' + nom);
+    return false;
+  }
+  var fileId, parentId, taille, date;
+  try {
+    // TOUTES les lectures de métadonnées dans le try : un fichier devenu illisible entre la collecte
+    // et ici est mis en quarantaine (compteur d'échecs), jamais re-collecté à vie ni bloquant.
+    fileId = f.getId();
+    var parents = f.getParents();
+    parentId = parents.hasNext() ? parents.next().getId() : '';
+    taille = f.getSize();
+    date = f.getLastUpdated();
+  } catch (e) {
+    gererEchec_({ cle: cle, nom: nom || 'reliquat' }, 'document illisible (reliquat reset) : ' + e);
+    return false;
+  }
+  var blobMemo = null;
+  function blobUneFois_() {
+    if (blobMemo === null) blobMemo = f.getBlob();
+    return blobMemo;
+  }
+  traiterDocument_({
+    cle: cle,
+    nom: nom,
+    taille: taille,
+    expediteur: '',
+    sujet: 'Reliquat reset (ADR-0030 PR5)',
+    date: date,
+    ignorerDoublon: true, // son empreinte est déjà à l'Index (écrite au placement) — pas « doublon de lui-même »
+    blob: blobUneFois_,
+    placer: function (dossierId, nouveauNom) {
+      if (dossierId === parentId) return renommer_(fileId, nouveauNom) ? fileId : ''; // déjà au bon endroit
+      return deplacerEtRenommer_(fileId, dossierId, parentId, nouveauNom) ? fileId : '';
+    }
+  });
+  return true;
+}
+
+/**
+ * UNE passe bornée sur le reliquat : les fichiers de `_TRI 2026/<domaine>` que la TABLE ne route
+ * PAS (`cheminCibleReset_` null — prédicat PUR, gratuit ; un routable est laissé au PLACEMENT,
+ * beaucoup moins cher). Convergence : un fichier traité SORT de `_TRI` (classé, `_Technique`,
+ * `_Médias` ou `00 · À vérifier` par le fail-safe) → jamais re-collecté ; les gardes (protégé,
+ * multi-parents) posent une clé VERSIONNÉE — un affinage de table les re-tente, jamais le déjà-sorti.
+ * @return {{examines:number, complet:boolean}}
+ */
+function analyserPageReliquatReset_(garde, proteges) {
+  var tag = CONFIG.RESET_TAG;
+  var racine = dossierTriReset_();
+  var domaines = domainesRassemblesReset_();
+  var examines = 0, complet = true;
+  for (var i = 0; i < domaines.length; i++) {
+    if (garde() || examines >= CONFIG.RESET_LLM_MAX_PAR_RUN) { complet = false; break; }
+    var dom = domaines[i];
+    var sousTri;
+    try { sousTri = racine.getFoldersByName(dom); }
+    catch (e) { complet = false; continue; }
+    if (!sousTri.hasNext()) continue;
+    var fi;
+    try { fi = sousTri.next().getFiles(); } catch (e) { complet = false; continue; }
+    while (fi.hasNext()) {
+      if (garde() || examines >= CONFIG.RESET_LLM_MAX_PAR_RUN) { complet = false; break; }
+      var f;
+      try { f = fi.next(); } catch (e) { complet = false; break; }
+      var nom = '', fid = '';
+      // Nom ET id dans le même try : un fichier devenu illisible ici ne doit jamais avorter la page.
+      try { nom = f.getName(); fid = f.getId(); } catch (e) { complet = false; continue; }
+      if (cheminCibleReset_(dom, nom)) continue; // routable par la table → au placement, jamais au LLM
+      var cle = 'tri33llm|' + tag + '|' + CONFIG.RESET_TABLE_VERSION + '|' + fid;
+      if (indexContient_(cle)) continue; // déjà tenté (garde) — gratuit, n'occupe pas la page
+      examines++;
+      try { analyserFichierReliquat_(f, dom, nom, cle, proteges); }
+      catch (e) { complet = false; journalErreur_('Reset', 'Analyse du reliquat différée (' + nom + ') : ' + e); }
+    }
+  }
+  return { examines: examines, complet: complet };
+}
+
+/**
+ * ÉTAPE DE TICK : passe LLM du reliquat. Campagne de FOND ⇒ budget QUOTIDIEN en ms réelles
+ * persistées (`DriveAI_RESET_LLM_JOUR`, patron des 3 autres phases — revue flotte C28-42 : « un
+ * plafond par RUN ne borne pas la JOURNÉE », sans lui le drainage concentrait 50-130 min de
+ * runtime sur UN jour → gel C28-29, chien de garde inclus). Budget RÉALLOUÉ dans l'enveloppe
+ * 50 min/j du reset (placement 22→14, 04 8→4), sommé dans l'invariant d'orchestration ; le frein
+ * campagnes §2.6 et la panne plateforme (R2) la suspendent. JAMAIS gatée par `resetEnCours_()`
+ * (réciproque vitale) : elle tourne PENDANT le reset et après, jusqu'au drainage. Pas de chemin
+ * UN-CLIC (voulu : jamais de boucle Sonnet non bornée en manuel — le drainage suit le tick).
+ * Drapeau terminal versionné = la MÊME chaîne que le placement (`finPlacementReset_`), posé sur
+ * passe vide UNIQUEMENT quand le placement est terminé (avant, le rassemblement peut encore
+ * alimenter `_TRI`) → coût nul ensuite (1 lecture de Property par tick) ; un bump de table le
+ * ré-ouvre avec le placement.
+ */
+function analyserReliquatReset_(estBudgetDepasse) {
+  if (!CONFIG.RESET_ACTIF) return;
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DriveAI_RESET_LLM') === finPlacementReset_()) return; // reliquat drainé
+  if (estPannePlateforme_()) return; // panne de COMPTE API : aucun doc touché, re-sonde ailleurs (R2)
+  var aujourdhui = dateGmail_(new Date());
+  var consommeJour = budgetJourReset_(props, 'DriveAI_RESET_LLM_JOUR', aujourdhui);
+  if (consommeJour >= CONFIG.RESET_LLM_BUDGET_JOUR_MS) return; // budget du jour épuisé — repris demain
+  var debut = Date.now();
+  var budgetRun = CONFIG.RESET_LLM_BUDGET_JOUR_MS - consommeJour;
+  var garde = function () {
+    return estBudgetDepasse() || budgetCampagnesAtteint_() || estPannePlateforme_() ||
+      (Date.now() - debut) > budgetRun;
+  };
+  if (garde()) return; // avant `debut` compté : un tick sans créneau ne consomme rien
+  try {
+    var r = analyserPageReliquatReset_(garde, ensembleDomainesProteges_());
+    if (r.examines) journalInfo_('Reset', r.examines + ' fichier(s) du reliquat passés au pipeline (LLM).');
+    if (r.complet && r.examines === 0 &&
+        props.getProperty('DriveAI_RESET_PLACEMENT') === finPlacementReset_()) {
+      props.setProperty('DriveAI_RESET_LLM', finPlacementReset_());
+      journalInfo_('Reset', 'Reliquat LLM DRAINÉ (' + finPlacementReset_() + ') — plus rien de non-routable dans ' + CONFIG.RESET_TRI_NOM + '.');
+    }
+  } finally {
+    props.setProperty('DriveAI_RESET_LLM_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
+  }
+}
+
 /* ---------- 04 · Immigration : réorganisation INTERNE (CLAUDE.md §2.1b révisé, ADR-0030 §4) ---------- */
 
 /** Racine de 04 · Immigration — TOUTE cible interne est construite depuis CE dossier (jamais un chemin arbitraire). */

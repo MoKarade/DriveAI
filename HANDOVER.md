@@ -4,6 +4,32 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (soir) — C28-42 : PASSE LLM DU RELIQUAT (ADR-0030 PR5, clic Marc).**
+> Marc : « ya encore beaucoup de fichiers en mode inconnu mais rien se passe pour eux ». Diagnostic :
+> deux populations — (a) les `_Inconnu` déjà CLASSÉS (la campagne m2-inconnu, suspendue pendant le
+> reset, les reprendra SEULE à la convergence) ; (b) les **non-routables de `_TRI 2026`** (~134 au
+> rapport `Reset`) qui n'avaient AUCUN chemin : la PR5 de l'ADR-0030 n'était jamais construite —
+> c'était le vrai trou. Marc a cliqué « **Passe LLM ciblée** » (~2-5 $ one-shot accepté). Livré
+> (cette branche) : amendement ADR-0030 + `analyserReliquatReset_`/`analyserPageReliquatReset_`/
+> `analyserFichierReliquat_` (src/Reset.gs) + bloc tick AVANT migration (Main.gs, try/catch, gates
+> `RESET_ACTIF` + `!estBudgetDepasse()` + `!budgetCampagnesAtteint_()`) + `RESET_LLM_MAX_PAR_RUN: 6`.
+> La TABLE d'abord (`cheminCibleReset_` non-null ⇒ jamais de LLM), pipeline COMPLET `traiterDocument_`
+> avec les 3 verrous du re-traitement (clé `tri33llm|<tag>|<version>|<fileId>`, `ignorerDoublon: true`,
+> placement DIRECT — jamais de transit par `00 · À trier`), gardes §1 re-vérifiées à la mutation,
+> drapeau terminal `DriveAI_RESET_LLM` aligné sur `finPlacementReset_()`. **Revue flotte (4 agents,
+> AVANT merge)** : sécurité 🟢 ; quotas 🔴/coût 🟠/code-reviewer 🟠 unanimes sur le même trou — ma
+> « réallocation du créneau LLM » était une fiction en ms/JOUR (migration/réanalyse/dry-run n'ont pas
+> de budget quotidien), le drainage aurait concentré 50-130 min de runtime sur UN jour → gel C28-29.
+> Corrigé : **`RESET_LLM_BUDGET_JOUR_MS` 12 min/j** (ms réelles persistées, patron des 3 phases),
+> réalloué DANS l'enveloppe 50 min/j du reset (placement 22→14, 04 8→4), sommé dans l'invariant
+> d'orchestration, **prouvé par mutation** (cp, jamais git checkout) ; bloc PR5 remonté AVANT
+> l'historique Gmail (priorité du créneau post-reset — `resetTermine_` peut basculer avant le
+> drainage) ; 🟡 : `nom`+`getId` dans le try, tripwire `reset-exec` amendé (indirections
+> `renommer_`/`deplacerEtRenommer_` réservées à la sous-section PR5), ADR honnête (borne 200
+> fichiers ≈ 8 $, couper `RESET_ACTIF` gèle aussi le drainage, pas d'un-clic — voulu). Drainage
+> ~3-4 j. 719 tests verts (9 dédiés `reset-llm.test.js`). ⚠ Déploiement : **Marc ré-exécute
+> `installerTrigger`** après ce merge moteur.
+>
 > **⚡⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (après-midi) — C28-41 : REFONTE COMPLÈTE DE L'APP (décisions Marc,
 > 12 réponses cliquées).** Marc (photos) : « l'app est vraiment pas superbe… supprime [actions
 > rapides + opérations en cours] et le code en lien… plus de propositions de dossiers quand je
@@ -27,7 +53,7 @@
 > sur chaque bloc ; sélecteur d'agenda à la CRÉATION (principal par défaut). ⚠ Jeton d'avant le
 > scope → calendarList 403 détecté (`SCOPE_AGENDAS`), repli agenda principal + invite « Se
 > reconnecter » dans la sidebar. **⚠ Marc : se reconnecter UNE fois pour voir Family.**
-> **PR3 (cette branche) : moteur — plus AUCUNE proposition spontanée (ADR-0031, §8 ; ABROGE
+> **PR3 MERGÉE (#233) : moteur — plus AUCUNE proposition spontanée (ADR-0031, §8 ; ABROGE
 > l'ADR-0029).** `entiteEnAttenteAjouter_` = OBSERVATION seule (dossier Drive existant → ligne
 > validée liée ; sinon ZÉRO écriture — tripwire) ; campagne réorg AUTO retirée (Main/Reorg/
 > Config + skip-list ; `compterSousDossiersRegroupables_` et `chercherLigneFusionnable_` retirés

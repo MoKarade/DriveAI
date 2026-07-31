@@ -431,7 +431,7 @@ test('dossierInterne04Reset_ : construit TOUJOURS depuis dossierRacine04Reset_ �
 
 /* ---------- Verrou de surface : addFile/removeFile sont les SEULES mutations (déplacement seul, §2) ---------- */
 
-test('Reset.gs (section I/O) : aucune mutation hors addFile/removeFile (jamais de suppression/renommage/copie/partage/REST)', () => {
+test('Reset.gs (section I/O) : aucune mutation hors addFile/removeFile — renommage par INDIRECTION permis dans la SEULE sous-section PR5', () => {
   const fs = require('fs');
   const path = require('path');
   const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'Reset.gs'), 'utf8');
@@ -445,6 +445,19 @@ test('Reset.gs (section I/O) : aucune mutation hors addFile/removeFile (jamais d
     });
   assert.ok(corpsIO.includes('.addFile('), 'addFile doit être présent (mécanisme de déplacement)');
   assert.ok(corpsIO.includes('.removeFile('), 'removeFile doit être présent (mécanisme de déplacement)');
+  // EXCEPTION PR5 (ADR-0030, revue sécurité C28-42 — promesse de verrou tenue À JOUR) : la passe LLM
+  // renomme/déplace par INDIRECTION (`renommer_`/`deplacerEtRenommer_`, DriveRest.gs — déplacement +
+  // rename REST, toujours SANS suppression). Ces indirections ne doivent apparaître QUE dans la
+  // sous-section PR5, jamais dans le rassemblement/placement/04 (qui restent addFile/removeFile purs).
+  const debutPR5 = corpsIO.indexOf('Passe LLM du RELIQUAT (ADR-0030 PR5');
+  const finPR5 = corpsIO.indexOf('04 · Immigration : réorganisation INTERNE');
+  assert.ok(debutPR5 !== -1, 'sous-section PR5 introuvable');
+  assert.ok(finPR5 > debutPR5, 'la sous-section 04 doit suivre la PR5 (borne de fin du périmètre)');
+  const horsPR5 = corpsIO.slice(0, debutPR5) + corpsIO.slice(finPR5);
+  ['renommer_(', 'deplacerEtRenommer_('].forEach((motif) => {
+    assert.ok(!horsPR5.includes(motif),
+      motif + ' est réservé à la sous-section PR5 — le reste de l\'I/O reset reste addFile/removeFile pur');
+  });
 });
 
 /* ---------- CLAUDE.md §2.1b : la révision et le code partent ATOMIQUEMENT (leçon « verrou codé ») ---------- */

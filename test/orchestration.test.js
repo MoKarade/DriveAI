@@ -97,7 +97,10 @@ test('orchestration RESET : les 4 campagnes de fond réallouées sont TOUTES gat
 
 test('budget RÉALLOUÉ, jamais AUGMENTÉ : le total du reset ne dépasse pas ce que les campagnes suspendues libèrent', () => {
   const C = require('./harness').load(['Config.gs']).CONFIG;
-  const reset = C.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS + C.RESET_PLACEMENT_BUDGET_JOUR_MS + C.RESET_04_BUDGET_JOUR_MS;
+  // La passe LLM PR5 (C28-42) entre dans la somme : une campagne de fond SANS constante quotidienne
+  // échapperait à cet invariant (revue flotte C28-42 — le test resterait vert pendant que l'enveloppe croît).
+  const reset = C.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS + C.RESET_PLACEMENT_BUDGET_JOUR_MS +
+    C.RESET_04_BUDGET_JOUR_MS + C.RESET_LLM_BUDGET_JOUR_MS;
   const libere = C.CONSOLIDATION_BUDGET_JOUR_MS + C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS +
     C.GMAIL_HISTO_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS;
   assert.ok(reset <= libere,
@@ -127,12 +130,35 @@ test('orchestration RESET : les 3 phases ne sont JAMAIS gatées par !resetEnCour
     return corps.slice(Math.max(0, i - 300), i);
   };
   ['rassemblerReset_(estBudgetDepasseStandard)', 'placerReset_(estBudgetDepasseStandard)',
-    'appliquerReset04Interne_(estBudgetDepasseStandard)'].forEach((motif) => {
+    'appliquerReset04Interne_(estBudgetDepasseStandard)',
+    'analyserReliquatReset_(estBudgetDepasse)'].forEach((motif) => { // + la passe LLM PR5 (ADR-0030)
     assert.ok(!/!resetEnCours_\(\)/.test(avant(motif)),
       motif + ' ne doit JAMAIS être gatée par !resetEnCours_() : resetTermine_ exige que la phase ' +
       'TOURNE pour poser son tag, donc le reset ne démarrerait plus jamais ET toutes les campagnes ' +
       'resteraient suspendues à vie (heartbeat vert, zéro erreur — panne invisible)');
   });
+});
+
+/**
+ * Passe LLM du RELIQUAT (ADR-0030 PR5, décision Marc 2026-07-31) : campagne de fond au budget
+ * QUOTIDIEN propre (`RESET_LLM_BUDGET_JOUR_MS`, sommé dans l'invariant ci-dessus), bornée par run
+ * au budget LLM du tick — jamais le budget tail I/O (elle appelle Sonnet), TOUJOURS le frein
+ * campagnes §2.6, et AVANT TOUTES les autres campagnes LLM, historique Gmail comprise : à la
+ * reprise post-reset (`resetTermine_` peut basculer AVANT le drainage — le drapeau LLM n'y entre
+ * pas), le reliquat garde la priorité du créneau 3 min (revue flotte C28-42).
+ */
+test('orchestration RESET : la passe LLM du reliquat est gatée budget de tick + frein campagnes, AVANT histo/migration/réanalyse', () => {
+  const i = corps.indexOf('analyserReliquatReset_(estBudgetDepasse)');
+  assert.ok(i !== -1, 'appel introuvable');
+  const garde = corps.slice(Math.max(0, i - 300), i);
+  assert.ok(/!estBudgetDepasse\(\)/.test(garde), 'budget LLM de tick (3 min), jamais le budget tail I/O');
+  assert.ok(/!budgetCampagnesAtteint_\(\)/.test(garde), 'frein campagnes §2.6 : la passe coûte du Sonnet');
+  assert.ok(!/analyserReliquatReset_\(estBudgetDepasseStandard\)/.test(corps),
+    'jamais le garde étendu 4,5 min : il est réservé à l\'I/O pur, pas aux appels LLM');
+  assert.ok(i < posAppel('traiterGmailHistorique_(estBudgetDepasse)'),
+    'AVANT l\'historique Gmail : à la reprise post-reset, l\'histo lui volerait le créneau LLM du tick');
+  assert.ok(i < posAppel('appliquerMigrationTaxonomie_(estBudgetDepasse)'),
+    'le reliquat garde la priorité du créneau LLM sur les campagnes qui reprennent après le reset');
 });
 
 test('orchestration RESET : rassemblement → placement → 04 interne, dans cet ordre, en BUDGET TAIL (jamais le budget de tick 3 min)', () => {
@@ -162,13 +188,16 @@ test('accélération : le garde-temps par run reste la VRAIE borne — relever u
   const reset = fs.readFileSync(path.join(__dirname, '..', 'src', 'Reset.gs'), 'utf8');
   const val = (nom) => Number((new RegExp(nom + ':\\s*([0-9]+)').exec(cfg) || [])[1]);
 
-  // Les budgets QUOTIDIENS (la protection réelle du quota runtime) sont INCHANGÉS : 20/22/8 min.
+  // Les budgets QUOTIDIENS (la protection réelle du quota runtime) : tripwire de VALEURS — toute
+  // retouche est une décision consciente, re-sommée dans l'invariant de réallocation ci-dessus.
+  // C28-42 : 20/22/8 → 20/14/4 + 12 pour la passe LLM du reliquat (enveloppe 50 min/j INCHANGÉE).
   // ⚠ Assertion RÉPARÉE (revue #229) : la version précédente concaténait deux fois le motif, la
   // regex ne matchait JAMAIS et `NaN || 20` la rendait toujours verte — elle passait même avec
   // 90 min. Ici on lit la VRAIE valeur, donc gonfler la constante fait échouer le test.
   assert.strictEqual(val('RESET_RASSEMBLEMENT_BUDGET_JOUR_MS'), 20, 'budget quotidien du rassemblement inchangé');
-  assert.strictEqual(val('RESET_PLACEMENT_BUDGET_JOUR_MS'), 22, 'budget quotidien du placement inchangé');
-  assert.strictEqual(val('RESET_04_BUDGET_JOUR_MS'), 8, 'budget quotidien de 04 inchangé');
+  assert.strictEqual(val('RESET_PLACEMENT_BUDGET_JOUR_MS'), 14, 'budget quotidien du placement (22→14, réalloué à la passe LLM — C28-42)');
+  assert.strictEqual(val('RESET_04_BUDGET_JOUR_MS'), 4, 'budget quotidien de 04 (8→4, réalloué à la passe LLM — C28-42)');
+  assert.strictEqual(val('RESET_LLM_BUDGET_JOUR_MS'), 12, 'budget quotidien de la passe LLM du reliquat (C28-42)');
   // Chaque phase borne son run par un garde-temps ET le vérifie À CHAQUE item : un plafond d'items
   // plus haut ne peut donc pas faire dépasser le temps alloué. Les COLLECTES récursives comptent
   // autant que les boucles de mutation (revue #229) : ce sont elles que le plafond relevé fait
