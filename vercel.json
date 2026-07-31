@@ -4,7 +4,6 @@
   "outputDirectory": "app/dist",
   "framework": null,
   "installCommand": "true",
-  "//headers": "En-têtes de sécurité (2026-07-31) : DriveAI n'en avait AUCUN. CSP en Report-Only volontairement — l'app lit la Sheet d'état DEPUIS LE NAVIGATEUR avec le jeton OAuth de Marc (ADR-0007), donc connect-src doit autoriser les API Google ; une CSP trop stricte casserait l'app SILENCIEUSEMENT, et ni le build ni les tests ne l'attraperaient. POUR PASSER EN ENFORCÉ : ouvrir l'app, parcourir explorateur/corbeille/assistant, vérifier qu'aucune violation CSP n'apparaît en console, puis renommer la clé Content-Security-Policy-Report-Only en Content-Security-Policy.",
   "headers": [
     {
       "source": "/(.*)",
