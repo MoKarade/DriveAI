@@ -4,7 +4,8 @@
  * Verrouille les décisions de l'amendement : prédicat de collecte (la table d'abord, le LLM en
  * dernier recours), les 3 verrous du re-traitement (clé versionnée, ignorerDoublon, placement
  * direct), les gardes de mutation (§1 re-vérifiée, multi-parents), le frein campagnes par item,
- * et le drapeau terminal ALIGNÉ sur le placement (jamais posé tant qu'il peut encore alimenter).
+ * le budget QUOTIDIEN en ms réelles (anti-gel C28-29, revue flotte C28-42), et le drapeau
+ * terminal ALIGNÉ sur le placement (jamais posé tant qu'il peut encore alimenter).
  */
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -46,6 +47,7 @@ function ctxLlm(opts) {
   c.ensembleDomainesProteges_ = () => ({});
   c.estPannePlateforme_ = () => !!opts.panneApi;
   c.budgetCampagnesAtteint_ = () => !!opts.frein;
+  c.dateGmail_ = () => '2026/07/31'; // vit dans Gmail.gs (non chargé) — jour fixe pour le budget quotidien
   // `_TRI 2026` : seuls les domaines listés existent, chacun avec ses fichiers.
   const parDomaine = opts.parDomaine || {};
   c.dossierTriReset_ = () => ({
@@ -117,7 +119,7 @@ test('analyserFichierReliquat_ : ignorerDoublon:true + placement DIRECT (jamais 
   const deplacements = [];
   c.deplacerEtRenommer_ = (id, cible, ancien, nom) => { deplacements.push([id, cible, ancien, nom]); return true; };
   const f = fakeFichierLlm({ id: 'FI', parents: [{ getId: () => 'TRI-02' }] });
-  c.analyserFichierReliquat_(f, '02 · Finances', 'cleX', {});
+  c.analyserFichierReliquat_(f, '02 · Finances', f.getName(), 'cleX', {});
   assert.strictEqual(pipeline.length, 1);
   const src = pipeline[0];
   assert.strictEqual(src.ignorerDoublon, true,
@@ -130,12 +132,12 @@ test('analyserFichierReliquat_ : ignorerDoublon:true + placement DIRECT (jamais 
 
 test('analyserFichierReliquat_ : zone protégée re-vérifiée ICI (§1) et multi-parents → skip AVEC clé, ZÉRO pipeline', () => {
   const protege = ctxLlm({ protege: true });
-  assert.strictEqual(protege.c.analyserFichierReliquat_(fakeFichierLlm({}), '02 · Finances', 'cleP', {}), false);
+  assert.strictEqual(protege.c.analyserFichierReliquat_(fakeFichierLlm({}), '02 · Finances', 'scan.pdf', 'cleP', {}), false);
   assert.strictEqual(protege.pipeline.length, 0);
   assert.strictEqual(protege.ajouts[0].statut, 'tri33llm-protege');
 
   const multi = ctxLlm({ multiParents: true });
-  assert.strictEqual(multi.c.analyserFichierReliquat_(fakeFichierLlm({}), '02 · Finances', 'cleM', {}), false);
+  assert.strictEqual(multi.c.analyserFichierReliquat_(fakeFichierLlm({}), '02 · Finances', 'scan.pdf', 'cleM', {}), false);
   assert.strictEqual(multi.pipeline.length, 0);
   assert.strictEqual(multi.ajouts[0].statut, 'tri33llm-multiparents');
 });
@@ -168,6 +170,36 @@ test('analyserReliquatReset_ : drapeau terminal posé sur passe VIDE seulement s
   assert.strictEqual(fini.props.DriveAI_RESET_LLM, finPlacement, 'drapeau ALIGNÉ sur la chaîne versionnée du placement');
   fini.c.dossierTriReset_ = () => { throw new Error('ne doit plus être appelé'); };
   fini.c.analyserReliquatReset_(() => false); // re-run : court-circuit total
+});
+
+test('analyserReliquatReset_ : budget QUOTIDIEN en ms réelles — épuisé ⇒ AUCUN doc du jour, et la consommation est PERSISTÉE', () => {
+  const c0 = load(FICHIERS);
+  const MAX_JOUR = c0.CONFIG.RESET_LLM_BUDGET_JOUR_MS;
+  const inconnu = fakeFichierLlm({ id: 'FI' });
+
+  // Budget du jour épuisé (dérivé de la CONSTANTE, jamais de sa valeur du jour) → passe suspendue,
+  // reprise demain — c'est LA borne anti-gel C28-29 (un plafond par run ne borne pas la journée).
+  const epuise = ctxLlm({
+    parDomaine: { '02 · Finances': [inconnu] },
+    props: { DriveAI_RESET_LLM_JOUR: '2026/07/31|' + MAX_JOUR },
+  });
+  epuise.c.analyserReliquatReset_(() => false);
+  assert.strictEqual(epuise.pipeline.length, 0, 'budget quotidien épuisé → rien, repris demain');
+
+  // Passe qui tourne → ms réelles AJOUTÉES à la Property du jour (patron des 3 autres phases).
+  const actif = ctxLlm({ parDomaine: { '02 · Finances': [inconnu] } });
+  actif.c.analyserReliquatReset_(() => false);
+  assert.strictEqual(actif.pipeline.length, 1);
+  const brut = String(actif.props.DriveAI_RESET_LLM_JOUR || '');
+  assert.ok(brut.indexOf('2026/07/31|') === 0, 'consommation persistée sous le jour courant : ' + brut);
+
+  // Un budget d'HIER ne bloque pas aujourd'hui (la fenêtre est quotidienne, pas cumulative).
+  const hier = ctxLlm({
+    parDomaine: { '02 · Finances': [fakeFichierLlm({ id: 'FI' })] },
+    props: { DriveAI_RESET_LLM_JOUR: '2026/07/30|' + MAX_JOUR },
+  });
+  hier.c.analyserReliquatReset_(() => false);
+  assert.strictEqual(hier.pipeline.length, 1, 'le compteur d\'hier est remis à zéro aujourd\'hui');
 });
 
 test('analyserReliquatReset_ : un bump de RESET_TABLE_VERSION RÉ-OUVRE la passe (drapeau d\'une vieille version ≠ courant)', () => {

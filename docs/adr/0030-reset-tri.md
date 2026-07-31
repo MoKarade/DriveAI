@@ -196,12 +196,29 @@ AUCUN chemin de sortie — la PR5 esquissée ci-dessus n'était pas construite. 
   Drapeau terminal `DriveAI_RESET_LLM` = la MÊME chaîne versionnée que le placement
   (`finPlacementReset_()`), posé sur passe vide UNIQUEMENT quand le placement est terminé
   (avant, le rassemblement peut encore alimenter `_TRI`) → coût nul ensuite (1 Property/tick).
-- **Budgets (réalloués, jamais augmentés)** : la passe prend le CRÉNEAU LLM du tick
-  (`estBudgetDepasse` 3 min) que migration/réanalyse/dry-run — suspendues pendant le reset —
-  ont libéré ; gatée par le frein campagnes §2.6 (`budgetCampagnesAtteint_`) et par la panne
-  plateforme (R2) ; plafond `RESET_LLM_MAX_PAR_RUN` par run. L'invariant « budget du reset ≤
-  budgets suspendus » (test par mutation) est INCHANGÉ : aucun budget quotidien I/O ajouté.
-  Elle n'est JAMAIS gatée par `resetEnCours_()` (réciproque vitale : elle doit tourner PENDANT
-  le reset, et après, jusqu'au drainage).
-- **Coût estimé** : reliquat ~100-200 fichiers × analyse v2 Sonnet ≈ 2-5 $ one-shot, sous le
-  frein campagnes (110 $ ; mois à ~77 $). Aucun coût récurrent après drainage.
+- **Budgets (réalloués, jamais augmentés — RÉVISÉ par la revue flotte C28-42)** : la première
+  version de cet amendement disait « aucun budget quotidien ajouté, la passe prend le créneau
+  LLM libéré par migration/réanalyse/dry-run » — la revue (quotas 🔴, coût 🟠, code-reviewer 🟠)
+  a démontré que ce créneau libéré est une fiction en ms/JOUR : ces campagnes n'ont que des
+  sous-budgets par TICK et consommaient ~0 pendant le reset. Sans borne quotidienne, le drainage
+  concentrait 50-130 min de runtime sur UN jour — et `resetTermine_()` pouvant basculer AVANT le
+  drainage (le drapeau LLM n'y entre pas), histo+sync+conso reprenaient leurs 50 min/j en
+  parallèle → gel C28-29 de TOUS les déclencheurs, chien de garde inclus. Correctif : budget
+  QUOTIDIEN en ms réelles persistées `RESET_LLM_BUDGET_JOUR_MS` (12 min/j, Property
+  `DriveAI_RESET_LLM_JOUR`, patron des 3 autres phases), **réalloué DANS l'enveloppe 50 min/j du
+  reset** (placement 22→14, 04 8→4 — les deux quasi convergées) et sommé dans l'invariant
+  d'orchestration (prouvé par mutation). Drainage en ~3-4 jours au lieu d'un pic jour-1 ; coût $
+  inchangé. Par run : borne réelle = budget LLM du tick (`estBudgetDepasse` 3 min, vérifié à
+  CHAQUE item), plafond `RESET_LLM_MAX_PAR_RUN` (6) pour la granularité ; frein campagnes §2.6
+  (`budgetCampagnesAtteint_`) et panne plateforme (R2) au gate ET par item. Elle n'est JAMAIS
+  gatée par `resetEnCours_()` (réciproque vitale : elle doit tourner PENDANT le reset, et après,
+  jusqu'au drainage). PLACÉE AVANT toutes les campagnes LLM du tick, historique Gmail comprise :
+  à la reprise post-reset, le reliquat garde la priorité du créneau.
+- **Coût estimé** : reliquat ~70-134 fichiers (après bump de table) × analyse v2 Sonnet
+  (~0,03-0,04 $/doc mesuré) ≈ 2-5 $ one-shot ; borne haute honnête à 200 fichiers ≈ **8 $**
+  (revue coût C28-42). Sous le frein campagnes (110 $ ; mois à ~77 $) ; ≤ 3 paiements/doc/version
+  (quarantaine sous la clé versionnée). Aucun coût récurrent après drainage.
+- **Limites assumées** : (a) couper `CONFIG.RESET_ACTIF` gèle AUSSI le drainage du reliquat —
+  les `…_Inconnu` resteraient dans `_TRI 2026` sans signalement (suspension volontaire) ;
+  (b) `lancerResetTout` n'inclut PAS cette passe (voulu : jamais de boucle Sonnet non bornée en
+  manuel) — le drainage suit le tick, ~6 docs / 5 min dans la fenêtre du budget quotidien.

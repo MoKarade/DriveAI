@@ -947,8 +947,7 @@ function placerReset_(estBudgetDepasse, manuel) {
  * ici (fenêtre multi-jours dans `_TRI`), multi-parents jamais déplacé.
  * @return {boolean} vrai si le pipeline a été invoqué.
  */
-function analyserFichierReliquat_(f, domaine, cle, proteges) {
-  var nom = f.getName();
+function analyserFichierReliquat_(f, domaine, nom, cle, proteges) {
   var cheminTri = CONFIG.RESET_TRI_NOM + '/' + domaine;
   if (aParentProtege_(f, proteges, true)) { // STRICT : abstention si indéterminable (jamais détacher, §1)
     indexAjouter_(cle, { statut: 'tri33llm-protege', nom: nom, domaine: domaine, chemin: cheminTri }, '');
@@ -1021,13 +1020,14 @@ function analyserPageReliquatReset_(garde, proteges) {
       if (garde() || examines >= CONFIG.RESET_LLM_MAX_PAR_RUN) { complet = false; break; }
       var f;
       try { f = fi.next(); } catch (e) { complet = false; break; }
-      var nom = '';
-      try { nom = f.getName(); } catch (e) { complet = false; continue; }
+      var nom = '', fid = '';
+      // Nom ET id dans le même try : un fichier devenu illisible ici ne doit jamais avorter la page.
+      try { nom = f.getName(); fid = f.getId(); } catch (e) { complet = false; continue; }
       if (cheminCibleReset_(dom, nom)) continue; // routable par la table → au placement, jamais au LLM
-      var cle = 'tri33llm|' + tag + '|' + CONFIG.RESET_TABLE_VERSION + '|' + f.getId();
+      var cle = 'tri33llm|' + tag + '|' + CONFIG.RESET_TABLE_VERSION + '|' + fid;
       if (indexContient_(cle)) continue; // déjà tenté (garde) — gratuit, n'occupe pas la page
       examines++;
-      try { analyserFichierReliquat_(f, dom, cle, proteges); }
+      try { analyserFichierReliquat_(f, dom, nom, cle, proteges); }
       catch (e) { complet = false; journalErreur_('Reset', 'Analyse du reliquat différée (' + nom + ') : ' + e); }
     }
   }
@@ -1035,28 +1035,44 @@ function analyserPageReliquatReset_(garde, proteges) {
 }
 
 /**
- * ÉTAPE DE TICK : passe LLM du reliquat. Budgets RÉALLOUÉS, jamais augmentés : elle prend le créneau
- * LLM du tick (3 min) que migration/réanalyse/dry-run — suspendues pendant le reset — libèrent ;
- * le frein campagnes §2.6 et la panne plateforme (R2) la suspendent ; AUCUN budget quotidien I/O
- * ajouté (l'invariant « reset ≤ campagnes suspendues » est intact). JAMAIS gatée par `resetEnCours_()`
- * (réciproque vitale) : elle tourne PENDANT le reset et après, jusqu'au drainage. Drapeau terminal
- * versionné = la MÊME chaîne que le placement (`finPlacementReset_`), posé sur passe vide UNIQUEMENT
- * quand le placement est terminé (avant, le rassemblement peut encore alimenter `_TRI`) → coût nul
- * ensuite (1 lecture de Property par tick) ; un bump de table le ré-ouvre avec le placement.
+ * ÉTAPE DE TICK : passe LLM du reliquat. Campagne de FOND ⇒ budget QUOTIDIEN en ms réelles
+ * persistées (`DriveAI_RESET_LLM_JOUR`, patron des 3 autres phases — revue flotte C28-42 : « un
+ * plafond par RUN ne borne pas la JOURNÉE », sans lui le drainage concentrait 50-130 min de
+ * runtime sur UN jour → gel C28-29, chien de garde inclus). Budget RÉALLOUÉ dans l'enveloppe
+ * 50 min/j du reset (placement 22→14, 04 8→4), sommé dans l'invariant d'orchestration ; le frein
+ * campagnes §2.6 et la panne plateforme (R2) la suspendent. JAMAIS gatée par `resetEnCours_()`
+ * (réciproque vitale) : elle tourne PENDANT le reset et après, jusqu'au drainage. Pas de chemin
+ * UN-CLIC (voulu : jamais de boucle Sonnet non bornée en manuel — le drainage suit le tick).
+ * Drapeau terminal versionné = la MÊME chaîne que le placement (`finPlacementReset_`), posé sur
+ * passe vide UNIQUEMENT quand le placement est terminé (avant, le rassemblement peut encore
+ * alimenter `_TRI`) → coût nul ensuite (1 lecture de Property par tick) ; un bump de table le
+ * ré-ouvre avec le placement.
  */
 function analyserReliquatReset_(estBudgetDepasse) {
   if (!CONFIG.RESET_ACTIF) return;
   var props = PropertiesService.getScriptProperties();
   if (props.getProperty('DriveAI_RESET_LLM') === finPlacementReset_()) return; // reliquat drainé
   if (estPannePlateforme_()) return; // panne de COMPTE API : aucun doc touché, re-sonde ailleurs (R2)
-  var garde = function () { return estBudgetDepasse() || budgetCampagnesAtteint_() || estPannePlateforme_(); };
-  if (garde()) return;
-  var r = analyserPageReliquatReset_(garde, ensembleDomainesProteges_());
-  if (r.examines) journalInfo_('Reset', r.examines + ' fichier(s) du reliquat passés au pipeline (LLM).');
-  if (r.complet && r.examines === 0 &&
-      props.getProperty('DriveAI_RESET_PLACEMENT') === finPlacementReset_()) {
-    props.setProperty('DriveAI_RESET_LLM', finPlacementReset_());
-    journalInfo_('Reset', 'Reliquat LLM DRAINÉ (' + finPlacementReset_() + ') — plus rien de non-routable dans ' + CONFIG.RESET_TRI_NOM + '.');
+  var aujourdhui = dateGmail_(new Date());
+  var consommeJour = budgetJourReset_(props, 'DriveAI_RESET_LLM_JOUR', aujourdhui);
+  if (consommeJour >= CONFIG.RESET_LLM_BUDGET_JOUR_MS) return; // budget du jour épuisé — repris demain
+  var debut = Date.now();
+  var budgetRun = CONFIG.RESET_LLM_BUDGET_JOUR_MS - consommeJour;
+  var garde = function () {
+    return estBudgetDepasse() || budgetCampagnesAtteint_() || estPannePlateforme_() ||
+      (Date.now() - debut) > budgetRun;
+  };
+  if (garde()) return; // avant `debut` compté : un tick sans créneau ne consomme rien
+  try {
+    var r = analyserPageReliquatReset_(garde, ensembleDomainesProteges_());
+    if (r.examines) journalInfo_('Reset', r.examines + ' fichier(s) du reliquat passés au pipeline (LLM).');
+    if (r.complet && r.examines === 0 &&
+        props.getProperty('DriveAI_RESET_PLACEMENT') === finPlacementReset_()) {
+      props.setProperty('DriveAI_RESET_LLM', finPlacementReset_());
+      journalInfo_('Reset', 'Reliquat LLM DRAINÉ (' + finPlacementReset_() + ') — plus rien de non-routable dans ' + CONFIG.RESET_TRI_NOM + '.');
+    }
+  } finally {
+    props.setProperty('DriveAI_RESET_LLM_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
   }
 }
 
