@@ -266,6 +266,13 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   la preuve ailleurs. Et un garde-fou « signaler en revue » (doublon, incertain) fin sur un flux normal **sature**
   la file de revue au volume d'un traitement de masse → router vers un dossier dédié (`_Doublons`, déplacement
   seul, jamais supprimé), en gardant le cas **sensible** prioritaire (un doublon sensible va toujours en revue).
+  **Corollaire (2026-07-30) : quand un RAPPORT EXHAUSTIF existe, ne jamais chiffrer depuis un échantillon.**
+  Tout volume/diagnostic annoncé à Marc se lit DANS l'artefact prévu pour ça (onglet de rapport, Index,
+  Journal), jamais par extrapolation du premier dossier venu (vécu : « une dizaine » de non-routés
+  annoncés d'après UN dossier, contre **134** au rapport — 13×). L'erreur de grandeur fixe la priorité
+  (anecdote vs chantier structurel) et surtout **masque la distribution** : c'est le COMPTAGE PAR
+  CATÉGORIE sur l'ENSEMBLE qui révèle la cause commune (ici « dossiers manquants », pas « règles
+  manquantes »), invisible sur un échantillon. Artefact trop gros ? l'AGRÉGER, jamais en lire le début.
 - **Maintenance auto dans le tick : protéger l'intake, drainer avant d'alimenter.** Toute étape SECONDAIRE
   (rejeu de version, grand rangement, ajustement de déclencheur) doit être **enveloppée d'un try/catch** —
   « un échec ne doit JAMAIS bloquer l'intake ». Le `try` de `tickDriveAI` n'a qu'un `finally` : une exception

@@ -538,7 +538,10 @@ var CONFIG = {
   // sur `_TRI 2026/<domaine>` — un fichier placé n'y est plus, il n'est donc jamais re-présenté).
   // À bumper à CHAQUE modification des règles de routage, sinon les non-routés resteraient marqués
   // « déjà tenté » à vie et l'affinage serait sans effet (constaté au 1ᵉʳ reliquat réel, 2026-07-30).
-  RESET_TABLE_VERSION: 't2',              // t2 : + Anna Malaval (pièces d'identité), + codes de récupération
+  RESET_TABLE_VERSION: 't3',              // t3 : 02 « Revenus & paie » (remplace le nœud jamais créé
+                                          // « Donations & successions ») + 03 « Contrats »/« Correspondance »
+                                          // — décisions Marc 2026-07-30 sur le reliquat réel (134 non routés).
+                                          // t2 : + Anna Malaval (pièces d'identité), + codes de récupération
 
   RESET_TRI_NOM: '_TRI 2026',             // racine de rassemblement, à côté de `_Doublons`/`_Technique` (préfixe _ = invisible des scans vivants)
   RESET_RASSEMBLEMENT_MAX_PAR_RUN: 60,    // fichiers déplacés vers `_TRI 2026/<domaine>` par run

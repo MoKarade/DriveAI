@@ -42,7 +42,13 @@ var STRUCTURE_CIBLE_RESET = {
     'Impôts & déclarations': {},
     'Assurances & prévoyance': {},
     'Placements & crypto': {},
-    'Donations & successions': {},
+    // « Revenus & paie » REMPLACE « Donations & successions » (décision Marc 2026-07-30, sur le
+    // reliquat réel : 10 bulletins de paie bloqués faute de dossier d'accueil). 02 était PLEIN à 7 :
+    // la place est prise sur le seul nœud que le reset n'avait JAMAIS créé (vérifié dans Drive —
+    // aucun fichier n'y a été routé), donc AUCUN dossier déjà rempli n'est touché. Les rares
+    // donations/successions vont désormais en « Impôts & déclarations » (leur versant fiscal) ;
+    // leur versant NOTARIAL est déjà couvert par `01 · État civil & notarial`.
+    'Revenus & paie': {},
   },
   '03 · Logement & véhicule': {
     // Fichiers À PLAT dans chaque logement (noms triables par date) — plus de squelettes de schéma.
@@ -50,6 +56,10 @@ var STRUCTURE_CIBLE_RESET = {
     'Véhicules': { 'KIA': {}, 'Anciens véhicules': {} },
     'Énergie & services': {},
     'Assurance habitation': {},
+    // Ajoutés sur le reliquat réel (décision Marc 2026-07-30) : 18 « Contrat » et 16
+    // « Correspondance » de 03 n'avaient aucun dossier d'accueil. 03 passe à 6 nœuds (≤ 7 ✔).
+    'Contrats': {},
+    'Correspondance': {},
   },
   // 04 : structure INTERNE (ADR-0030 §4) — les fichiers ne sortent JAMAIS de 04 automatiquement.
   '04 · Immigration': {
@@ -203,12 +213,31 @@ function cheminCibleReset_(domaine, nom) {
   }
 
   if (domaine === '02 · Finances') {
+    // FEUILLETS FISCAUX québécois AVANT « Relevés » : le RL-1 (revenus d'emploi) et le RL-31
+    // (logement) sont des documents d'IMPÔT, pas des relevés bancaires — sans cette ligne,
+    // `t = 'releve 1'` partait dans `Relevés/AAAA` (correction du commentaire de revue : je l'avais
+    // affirmé couvert par la règle fiscale, à tort — elle est APRÈS). Motif ANCRÉ sur le nombre pour
+    // ne jamais toucher « Relevé 10 » ou un relevé bancaire ordinaire. « Relevé d'emploi » n'est PAS
+    // inclus : c'est un document de CARRIÈRE (05), à trancher avec Marc s'il s'en présente.
+    if (/(^| )releve (1|31)( |$)/.test(t)) return 'Impôts & déclarations';
+    // PAIE — motif ANCRÉ SUR LE MOT, jamais une sous-chaîne : « paie » est contenu dans
+    // « paiement », et un « Relevé de paiement » (Hydro-Québec, Retraite Québec, assureurs) n'est
+    // PAS un bulletin de salaire. Ma 1ʳᵉ version testait `t === 'paie'` (exact, correct) MAIS aussi
+    // `resetContient_(t, [… 'releve de paie'])` — qui rouvrait le piège en grand puisque
+    // « releve de paiement » COMMENCE par « releve de paie » (attrapé en revue #228).
+    // Même idiome que `Router.schemaNommage_`/`devinerTypeDepuisNom_`, et c'est précisément le motif
+    // qui produit le libellé `_Paie_` au renommage : une seule règle de mot aux deux bouts de la
+    // chaîne. Couvre paie / bulletin de paie / fiche de paie / feuille de paie / relevé de paie /
+    // bulletin de salaire / sommaire de paie… et exclut « paiement » par construction.
+    if (/(^| )(paie|salaire)( |$)/.test(t)) return 'Revenus & paie';
     if (t.indexOf('releve') !== -1 && t.indexOf('releve d identite bancaire') === -1) return 'Relevés/' + resetBucketAnnee_(seg.annee, s['Relevés']);
     // Fiscal (dont les feuillets québécois T4/Relevé 1) et remboursements d'IMPÔT (revue : 'bourse'
     // ⊂ « remboursement » envoyait les remboursements en Placements — jamais de motif court sur tout).
     if (resetContient_(t, ['avis d imposition', 'declaration de revenus', 'impot', 'taxe', 'feuillet', 't4']) ||
         (t.indexOf('remboursement') !== -1 && e.indexOf('revenu') !== -1)) return 'Impôts & déclarations';
-    if (resetContient_(tout, ['donation', 'succession'])) return 'Donations & successions';
+    // Donations/successions → versant FISCAL (le versant notarial est couvert par `01 · État civil
+    // & notarial`, où les actes partent déjà). Le nœud dédié a cédé sa place à « Revenus & paie ».
+    if (resetContient_(tout, ['donation', 'succession'])) return 'Impôts & déclarations';
     // Assurance AVANT le rattrapage bancaire (revue : « Desjardins Assurance » partait en Banques).
     if (resetContient_(tout, ['assurance vie', 'prevoyance']) || e.indexOf('assurance') !== -1) return 'Assurances & prévoyance';
     if (resetContient_(tout, ['tether', 'usdt', 'crypto', 'securities', 'boursier', 'bourse de', 'portefeuille'])) return 'Placements & crypto';
@@ -234,6 +263,12 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(tout, ['trieste', 'moreau'])) return 'Logements/Anciens logements'; // stock réel (revue)
     if (resetContient_(tout, ['jetta', 'fiesta'])) return 'Véhicules/Anciens véhicules';
     if (resetContient_(t, ['bail', 'etat des lieux', 'quittance', 'loyer'])) return 'Logements';
+    // FILETS DE FIN (décision Marc 2026-07-30, sur le reliquat : 18 « Contrat » + 16
+    // « Correspondance » sans dossier d'accueil). Placés en DERNIER, APRÈS toutes les règles par
+    // entité (Roselière, Rivières, LCP, KIA…) et par type spécifique : un « Contrat_LCP » part donc
+    // toujours chez LCP, jamais dans le fourre-tout. Ne capturent que ce qui rendait `null`.
+    if (resetContient_(t, ['contrat', 'devis', 'consentement', 'formulaire de demande de location'])) return 'Contrats';
+    if (resetContient_(t, ['correspondance', 'lettre', 'courrier', 'avis de sejour', 'mise en demeure'])) return 'Correspondance';
     return null;
   }
 

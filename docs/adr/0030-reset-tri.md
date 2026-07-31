@@ -62,6 +62,16 @@
      sous-dossiers, + `Diplômes & relevés officiels` transverse ;
    - 07 : validé tel quel ; 04 : structure proposée (IRCC fédéral / MIFI / Permis & EIMT / RP /
      Formulaires & correspondance).
+   - **Amendement 2026-07-30 (t3), décidé sur le RELIQUAT RÉEL** (onglet `Reset` : 134 non routés —
+     le diagnostic n'était pas « règles manquantes » mais « dossiers manquants ») :
+     **02** → **`Revenus & paie`** (10 bulletins de paie bloqués), en REMPLACEMENT de
+     `Donations & successions` — 02 était plein à 7/7 et ce nœud n'avait JAMAIS été créé par le
+     reset, donc aucun dossier rempli n'est touché ; les donations partent au versant fiscal
+     (`Impôts & déclarations`), leur versant notarial étant déjà couvert par `01`.
+     **03** → **`Contrats`** + **`Correspondance`** (34 fichiers bloqués ; 03 passe à 6 nœuds),
+     filets placés EN DERNIER dans le routage pour ne rien voler aux règles par entité.
+     *Conséquence à connaître : les bulletins déjà classés sous `05/Employeurs/*` y RESTENT (le
+     reset est intra-domaine par construction) — la paie est donc split 02/05, assumé.*
 6. **Après-coup** : les squelettes VIDÉS sont recensés `vide-candidat` (corbeille par l'APP au clic,
    ADR-0014, récupérable 30 j — jamais le moteur). Les dossiers-système restent intouchés
    (`00 ·`, `_…`, dossiers « DriveAI… »/« Rapports agent… », Sheet/Form/Guide).

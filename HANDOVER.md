@@ -20,6 +20,23 @@
 > **Question ouverte pour Marc** : `Extrait Kbis`/`Registre des bénéficiaires effectifs` (SCI MRic)
 > — règle vers `01/Attestations & certificats`, ou déplacement manuel vers `05/Entreprise — MRic` ?
 >
+> **⚡⚡ ÉTAT AU 2026-07-30 (soir) — RELIQUAT LU EN PROD, STRUCTURE COMPLÉTÉE (#228, en revue).**
+> Lecture de l'onglet `Reset` de la Sheet d'état : **134 fichiers non routés** + 25 quasi-doublons.
+> ⚠️ CORRECTION d'une annonce erronée de la veille (« une dizaine ») — elle venait de l'inspection
+> d'UN SEUL dossier `_TRI` alors que le rapport exhaustif existait déjà. Répartition : `03` 63
+> (surtout `Contrat` 18 / `Correspondance` 16), `02` 36 (dont `Paie` 10), `01` 10.
+> **Diagnostic** : pas des règles manquantes — des **dossiers manquants dans la structure validée**.
+> Décisions de Marc (2026-07-30) implémentées en #228 : `02` → « Revenus & paie » (place prise sur
+> « Donations & successions », seul nœud JAMAIS créé — vérifié dans Drive, donc aucun dossier rempli
+> touché ; donations → « Impôts & déclarations ») ; `03` → « Contrats » + « Correspondance » (6 nœuds,
+> filets EN DERNIER pour ne rien voler aux règles par entité). Garde `paie` ⊂ `paiement` (type EXACT)
+> vérifiée par mutation. `RESET_TABLE_VERSION` → **t3** ⇒ le reliquat se re-tente TOUT SEUL au
+> prochain passage, sans re-déplacer le rangé. **#227 MERGÉE** au passage (mécanisme de version +
+> Anna Malaval + codes de récupération ; son correctif BLOQUANT : le drapeau de FIN DE PHASE devait
+> lui aussi porter la version, sinon le mécanisme mourait en silence à la convergence).
+> **Où lire le reliquat** : onglet **`Reset`** de la **Google Sheet « DriveAI — État »** (PAS une vue
+> de l'app — confusion créée par le mot « onglet », `Réorg` existant dans les deux).
+>
 > **⚡⚡ ÉTAT AU 2026-07-29 (soir) — LE RESET TOURNE EN PROD.** #223 (PR1) et #224 (PR2) sont MERGÉES
 > et déployées. Marc a lancé `lancerResetTout()` dans l'éditeur : **vérifié par signaux Drive
 > indépendants** — `_TRI 2026` créé (18:23:19), `_TRI 2026/01 · Administratif & identité` rempli, puis

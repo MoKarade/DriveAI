@@ -1485,3 +1485,29 @@ jour où la règle change ? ». Corollaire produit : ce défaut ne se voit qu'au
 jamais en test — c'est en regardant ce que le moteur N'A PAS su faire qu'on le trouve."
 
 **Règle durable ?** oui (ajouté à CLAUDE.md §7, en corollaire de la règle sur les clés d'idempotence).
+
+## 2026-07-30 — Quand un RAPPORT EXHAUSTIF existe, ne jamais chiffrer depuis un échantillon
+
+**Contexte.** C28-33, reset en production. J'ai annoncé à Marc « il reste une dizaine de fichiers non
+routés » après avoir inspecté le contenu d'UN SEUL dossier (`_TRI 2026/01`) via la recherche Drive.
+Or le moteur écrivait depuis le début un rapport EXHAUSTIF prévu exactement pour ça — l'onglet
+`Reset` de la Sheet d'état. En le lisant le lendemain : **134** non routés (63 en `03`, 36 en `02`,
+10 en `01`) + 25 quasi-doublons, soit 13× mon estimation. Pire que l'erreur de chiffre : le
+DIAGNOSTIC changeait. Sur 10 fichiers je voyais des cas particuliers (« il manque deux règles ») ; sur
+134, la structure des données saute aux yeux — `Contrat` ×18, `Correspondance` ×16, `Paie` ×10, tous
+bloqués par des **dossiers manquants dans la structure**, pas par des règles. Les deux questions
+posées à Marc n'auraient jamais existé si j'étais resté sur mon échantillon.
+
+**Leçon.** "Dès qu'un artefact de sortie EXHAUSTIF existe (onglet de rapport, journal, index), tout
+chiffre ou diagnostic donné à l'utilisateur se lit DEDANS — jamais par extrapolation d'un échantillon
+pratique d'accès (le premier dossier, les 10 derniers fichiers, une recherche Drive). Un ordre de
+grandeur faux se propage : il fixe la priorité (« une dizaine » = anecdote qu'on traite au cas par
+cas ; 134 = chantier structurel), et surtout il MASQUE la distribution — c'est le COMPTAGE PAR
+CATÉGORIE sur l'ensemble qui révèle la cause commune, invisible sur un échantillon. Réflexe : avant
+d'annoncer un volume, se demander « le système écrit-il déjà ce chiffre quelque part ? » ; si oui, le
+lire, et si l'artefact est trop gros pour être lu d'un bloc, l'agréger (compter par catégorie) plutôt
+que d'en regarder le début. Corollaire de communication : une estimation donnée sans sa source est
+reçue comme un fait — annoncer l'écart explicitement quand on le découvre, et dire d'où venait
+l'erreur."
+
+**Règle durable ?** oui (ajouté à CLAUDE.md §7).
