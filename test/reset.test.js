@@ -295,3 +295,110 @@ test('03 : filets Contrats / Correspondance — capturent le reliquat SANS voler
   // Et les types spécifiques gardent leur priorité.
   assert.strictEqual(ctx.cheminCibleReset_(d, '2024-05_Bail_Résidence X.pdf'), 'Logements');
 });
+
+/* ---------- t4 : nœuds AUTO sous 03/Véhicules (décision Marc 2026-07-31, reliquat réel) ---------- */
+
+/**
+ * TOUS les cas ci-dessous sont des noms de fichiers RÉELS lus dans l'onglet `Reset` (les 160
+ * non-routés sous t2) — jamais des exemples inventés : « prouver sur du réel, pas 2-3 cas
+ * choisis » (§8-2).
+ */
+test('t4 · 03 : entretien & réparations — routé par l\'ÉMETTEUR (l\'atelier), quel que soit le type', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const D = '03 · Logement & véhicule';
+  [
+    '2023-10-02_Facture_Garage Charlesbourg Certi-Pro.jpg',
+    '2023-08-24_Estimation_GARAGE CHARLESBOURG CERTI-PRO.PDF',
+    '2025-09-10_Devis_Centre Mécanique JF.PDF',
+    '2026-04-15_Devis_Carrossier Procolor Québec Centre.pdf',
+    '2023-04-18_Facture_Automobiles Jean Vezin.jpg',
+    '2023-11-24_Facture_Volkswagen Laurentides.pdf',
+    '2026-07-01_Facture_Toyota.jpg',
+    '2021-08-31_Courrier d\'expertise sinistre automobile_Azur Expertise Auto.pdf',
+    '2026-04-13_Rendez-vous_Carrossier ProColor Quebec Centre.ics',
+    '2026-07-16_Certificat de garantie pneus et roues_Toyota Road Hazard (iAP Marketing).pdf',
+  ].forEach((nom) => {
+    assert.strictEqual(c.cheminCibleReset_(D, nom), 'Véhicules/Entretien & réparations', nom);
+  });
+});
+
+test('t4 · 03 : le « Contrat de garantie prolongée » d\'un concessionnaire passe AVANT le filet « Contrats »', () => {
+  // Preuve que l'ORDRE des règles tient : le filet `Contrats` (t3) capturerait sinon ce type.
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  assert.strictEqual(
+    c.cheminCibleReset_('03 · Logement & véhicule', '2026-07-20_Contrat de garantie prolongée_Toyota Canada Inc..pdf'),
+    'Véhicules/Entretien & réparations');
+});
+
+test('t4 · 03 : assurance AUTO — exige le contexte « assurance », jamais une réclamation télécom', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const D = '03 · Logement & véhicule';
+  [
+    '2023-11-13_Soumission d\'assurance automobile_Desjardins Assurances.pdf',
+    '2023-11-20_Soumission d\'assurance_Desjardins Assurances.pdf',
+    '2023-11-24_Confirmation d\'assurance_Desjardins Assurances.pdf',
+    '2023-04-20_Attestation_Desjardins Assurances générales inc..pdf',
+    '2026-06-29_Carte d\'assurance_Desjardins Assurances.jpg',
+    '2026-06-29_Carte d\'assistance_Desjardins Assurances.jpg',
+    '2026-06-23_Réclamation d\'assurance_Desjardins Assurances Générales.pdf',
+    '2026-04-09_Correspondance de réclamation_Desjardins Assurances Générales.pdf',
+    '2025-04-13_Attestation_IGO Insurance - Manuvie.pdf',
+    '2025-04-13_Confirmation_IGO Insured.pdf',
+  ].forEach((nom) => assert.strictEqual(c.cheminCibleReset_(D, nom), 'Véhicules/Assurance auto', nom));
+
+  // CONTRE-EXEMPLE tiré du stock réel : une réclamation TÉLÉCOM ne doit pas devenir un sinistre auto.
+  assert.notStrictEqual(c.cheminCibleReset_(D, '2023-11-01_Réclamation_Virgin.png'), 'Véhicules/Assurance auto');
+  // Et l'assurance HABITATION reste où elle est (règle plus haute, non capturée par la nouvelle).
+  assert.strictEqual(c.cheminCibleReset_(D, '2025-01-01_Assurance habitation_Desjardins.pdf'), 'Assurance habitation');
+});
+
+test('t4 · 03 : recherche & achat — annonces, captures, comparatifs, catalogues', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const D = '03 · Logement & véhicule';
+  [
+    '2026-07-01_Annonce de vente_Facebook Marketplace.jpg',
+    '2026-07-01_Annonce_Marketplace.jpg',
+    '2026-07-01_Annonce & Correspondance_Facebook Marketplace.jpg',
+    '2026-07-01_Capture d\'écran_Drummondville Volkswagen.jpg',
+    '2026-07-01_Capture d\'écran navigation GPS_Inconnu.jpg',
+    '2026-07-06_Capture d\'écran cartographique_Ville de Québec.jpg',
+    '2026-06-30_Comparatif_Inconnu.jpg',
+    '2026-07-07_Catalogue_Canadian Tire.jpg',
+    '2026-07-06_Catalogue - Fiche produit_Galanz.jpg',
+    '2026-07-06_Simulation_HelloSafe.jpg',
+    // « Information commerciale » d'un garage = de la PUB, pas une réparation : le TYPE prime
+    // (même logique que la capture d'écran chez un concessionnaire).
+    '2026-07-06_Information commerciale_Garage Charlesbourg Certi-pro inc..jpg',
+  ].forEach((nom) => assert.strictEqual(c.cheminCibleReset_(D, nom), 'Véhicules/Recherche & achat', nom));
+});
+
+test('t4 · 03 : contraventions', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const D = '03 · Logement & véhicule';
+  ['2023-06-27_Constat d\'infraction_Ville de Québec.jpg',
+    '2026-07-06_Constat d\'infraction_Municipalité de Thetford Mines.jpg']
+    .forEach((nom) => assert.strictEqual(c.cheminCibleReset_(D, nom), 'Véhicules/Contraventions', nom));
+});
+
+test('t4 · 03 : le ferroviaire reste en _TRI — le reset ne peut PAS changer de domaine', () => {
+  // Marc veut ces fichiers en « 08 · Perso & projets/Voyages ». `cheminCibleReset_` rend un chemin
+  // RELATIF au domaine d'ORIGINE : un fichier venu de 03 ne peut aller que sous 03. On préfère donc
+  // null (reste en _TRI, RAPPORTÉ) à un mauvais rangement — « Recherche-Devis » contient « devis »
+  // et serait sinon capturé par le filet « Contrats ».
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const D = '03 · Logement & véhicule';
+  ['2026-07-01_Billet_SNCF.jpg', '2026-07-01_Billet de train_SNCF.jpg',
+    '2026-07-01_Confirmation de réservation_SNCF.jpg', '2026-07-01_Recherche-Devis_SNCF.jpg',
+    '2026-07-07_Résultats de recherche tarifaire_SNCF.jpg']
+    .forEach((nom) => assert.strictEqual(c.cheminCibleReset_(D, nom), null, nom));
+});
+
+test('t4 · 03 : les règles par ENTITÉ gardent la priorité sur les nouveaux nœuds auto', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const D = '03 · Logement & véhicule';
+  // Un document KIA reste chez KIA même s'il vient d'un garage.
+  assert.strictEqual(c.cheminCibleReset_(D, '2025-03-01_Facture_Garage KIA Sportage.pdf'), 'Véhicules/KIA');
+  // Un document LCP reste chez LCP même si son type est « Annonce ».
+  assert.strictEqual(c.cheminCibleReset_(D, '2026-01-01_Annonce_LCP Groupe Immobilier.pdf'),
+    'Logements/3325 4e Avenue (LCP Groupe Immobilier)');
+});

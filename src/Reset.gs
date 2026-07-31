@@ -53,7 +53,10 @@ var STRUCTURE_CIBLE_RESET = {
   '03 · Logement & véhicule': {
     // Fichiers À PLAT dans chaque logement (noms triables par date) — plus de squelettes de schéma.
     'Logements': { '1548 avenue de la Roselière': {}, '3987 route des Rivières': {}, '3325 4e Avenue (LCP Groupe Immobilier)': {}, 'Anciens logements': {} },
-    'Véhicules': { 'KIA': {}, 'Anciens véhicules': {} },
+    // 4 nœuds AUTO ajoutés sur le reliquat réel (décision Marc 2026-07-31, t4) : ~64 fichiers de 03
+    // n'avaient aucun dossier d'accueil. Ils sont placés SOUS « Véhicules » (6 enfants ≤ 7 ✔) et non
+    // au niveau de 03, qui est à 6/7 — la place restante y est ainsi préservée.
+    'Véhicules': { 'KIA': {}, 'Anciens véhicules': {}, 'Entretien & réparations': {}, 'Assurance auto': {}, 'Recherche & achat': {}, 'Contraventions': {} },
     'Énergie & services': {},
     'Assurance habitation': {},
     // Ajoutés sur le reliquat réel (décision Marc 2026-07-30) : 18 « Contrat » et 16
@@ -263,6 +266,34 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(tout, ['trieste', 'moreau'])) return 'Logements/Anciens logements'; // stock réel (revue)
     if (resetContient_(tout, ['jetta', 'fiesta'])) return 'Véhicules/Anciens véhicules';
     if (resetContient_(t, ['bail', 'etat des lieux', 'quittance', 'loyer'])) return 'Logements';
+
+    /* ---- AUTO (t4, décision Marc 2026-07-31 sur le reliquat réel) ----
+     * Ordre VOULU : ces règles passent APRÈS les règles par entité/logement ci-dessus (un
+     * « Contrat_LCP » reste chez LCP) et AVANT les filets « Contrats »/« Correspondance », qui
+     * captureraient sinon tout ce qui porte le type « contrat », « devis » ou « correspondance ».
+     */
+    // Ferroviaire : Marc les veut dans « 08 · Perso & projets/Voyages », ce que le reset NE PEUT PAS
+    // faire — il place toujours dans le domaine d'ORIGINE (ici 03). On les laisse donc en `_TRI`,
+    // rapportés, plutôt que de les mal ranger : « Recherche-Devis_SNCF » contient « devis » et
+    // partirait sinon dans « Contrats ». À lever si le déplacement inter-domaines est décidé.
+    if (resetContient_(tout, ['sncf', 'billet de train'])) return null;
+    if (resetContient_(t, ['constat d infraction', 'contravention', 'amende'])) return 'Véhicules/Contraventions';
+    // RECHERCHE & ACHAT par le TYPE, AVANT l'entretien par l'émetteur : une « Capture
+    // d'écran_Drummondville Volkswagen » (stock réel) est de la RECHERCHE chez un concessionnaire,
+    // pas une réparation — pour ces artefacts (annonce, capture, comparatif, catalogue), le type
+    // dit ce que c'est, l'émetteur dit seulement où ça a été pris.
+    if (resetContient_(t, ['annonce', 'capture d ecran', 'comparatif', 'catalogue', 'simulation',
+      'information commerciale'])) return 'Véhicules/Recherche & achat';
+    // ASSURANCE AUTO — l'habitation est déjà partie plus haut, donc le reste de l'assurance en 03 est
+    // automobile. Le contexte « assurance » est EXIGÉ sur le type OU l'émetteur : sans ça,
+    // « Réclamation_Virgin » (télécom, dans le stock réel) serait pris pour un sinistre auto.
+    // 'insurance'/'igo'/'manuvie' : le courtier écrit en anglais (« IGO Insurance - Manuvie »).
+    if (resetContient_(e, ['assurance', 'insurance', 'igo', 'manuvie']) || t.indexOf('assurance') !== -1) return 'Véhicules/Assurance auto';
+    // ENTRETIEN & RÉPARATIONS — routage par l'ÉMETTEUR (garage/concession/carrossier), qui est le
+    // signal stable : les types varient (facture, devis, estimation, rendez-vous, certificat de
+    // garantie) mais l'émetteur reste le même atelier.
+    if (resetContient_(e, ['garage', 'carrossier', 'procolor', 'mecanique', 'certi', 'vezin',
+      'volkswagen', 'toyota', 'expertise auto', 'yamaha'])) return 'Véhicules/Entretien & réparations';
     // FILETS DE FIN (décision Marc 2026-07-30, sur le reliquat : 18 « Contrat » + 16
     // « Correspondance » sans dossier d'accueil). Placés en DERNIER, APRÈS toutes les règles par
     // entité (Roselière, Rivières, LCP, KIA…) et par type spécifique : un « Contrat_LCP » part donc
