@@ -88,11 +88,45 @@ test('parserClassification_ : un NON-DOCUMENT v2 (domaine null) est ACCEPTÉ, pa
   assert.ok(parMedia, 'un média sans domaine ne doit pas être rejeté');
 });
 
+test('parserClassification_ : une PIÈCE D\'IDENTITÉ v2 (domaine null) est ACCEPTÉE (routée par TYPE, pas par domaine)', () => {
+  // Un passeport est routé par `dossierIdentite_` (sous-dossier de TYPE), jamais par `domaine` : la
+  // passe 1 peut légitimement l'omettre. Sans la tolérance, il était rejeté → quarantaine à tort
+  // (revue de fond 2026-07-31, « un champ requis peut être optionnel sur un sous-chemin »).
+  const passeport = ctx.parserClassification_(JSON.stringify(
+    { estDocumentIdentite: true, sousDossierType: 'Passeport', titulaire: 'Marc Richard', domaine: null, confiance: 0.9 }));
+  assert.ok(passeport, 'un passeport sans domaine ne doit pas être rejeté');
+  assert.strictEqual(passeport.estDocumentIdentite, true);
+  // Non-régression : un document ORDINAIRE (ni non-doc, ni identité) sans domaine reste rejeté.
+  assert.strictEqual(ctx.parserClassification_(JSON.stringify({ type_doc: 'Facture', confiance: 0.9 })), null);
+});
+
 test('parserClassification_ : chemin Haiku — domaine manquant SANS champ v2 → toujours rejeté (strictness préservée)', () => {
   assert.strictEqual(ctx.parserClassification_(JSON.stringify({ confiance: 0.9 })), null);
   assert.strictEqual(ctx.parserClassification_(JSON.stringify({ categorie: null, confiance: 0.7 })), null);
   // domaine string normal → accepté
   assert.ok(ctx.parserClassification_(JSON.stringify({ domaine: '02 · Finances', confiance: 0.8 })));
+});
+
+test('noterEchecReseau_ : une exception réseau compte comme panne SYSTÉMIQUE (pas un échec du document) → panne posée après N, quarantaine évitée', () => {
+  const props = {};
+  const c = load(['Config.gs', 'Llm.gs'], {
+    tronquer_: (s, n) => String(s == null ? '' : s).slice(0, n),
+    journalErreur_: () => {},
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: (k) => (k in props ? props[k] : null),
+      setProperty: (k, v) => { props[k] = String(v); },
+    }) },
+  });
+  c.reinitialiserPannePlateforme_();
+  const MAX = c.CONFIG.LLM_ECHECS_SYST_MAX;
+  for (let i = 1; i < MAX; i++) {
+    assert.strictEqual(c.noterEchecReseau_('sonnet'), false, 'sous le seuil : hoquet isolé, pas encore panne');
+    assert.strictEqual(c.estPannePlateforme_(), false);
+  }
+  assert.strictEqual(c.noterEchecReseau_('sonnet'), true, 'au seuil : panne durable posée');
+  assert.strictEqual(c.estPannePlateforme_(), true,
+    'panne active → gererEchec_ ne compte plus rien (aucune quarantaine à tort), sources suspendues (R2)');
+  assert.ok('DriveAI_LLM_PANNE' in props, 'panne PERSISTÉE (les ticks suivants suspendent leurs sources + re-sonde R3)');
 });
 
 /* ---------- budgetMsRun_ : garde-temps abaissé sous ANALYSE_V2 (fix quotas, ADR-0015) ---------- */

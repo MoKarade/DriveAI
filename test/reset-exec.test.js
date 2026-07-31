@@ -137,6 +137,27 @@ test('rassemblerUnFichier_ : cas nominal → addFile(_TRI/<domaine>) PUIS remove
   assert.deepStrictEqual(videAppels, ['ENGIE'], 'le dossier QUITTÉ est vérifié pour un vide-candidat');
 });
 
+test('ecarterEchecMutationReset_ : un fichier « empoisonné » (mutation qui lève) est COMPTÉ puis ÉCARTÉ après N échecs → le reset converge (jamais bloqué à vie)', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const MAX = c.CONFIG.QUARANTAINE_MAX;
+  let compteur = 0;
+  c.incrementerEchec_ = () => ++compteur; // simule l'onglet Échecs
+  const ajouts = [];
+  c.indexAjouter_ = (cle, dec) => ajouts.push({ cle: cle, statut: dec.statut });
+  c.journalErreur_ = () => {};
+
+  // Sous le seuil : journalisé seulement, AUCUNE clé posée → le fichier reste re-tentable.
+  for (let i = 1; i < MAX; i++) c.ecarterEchecMutationReset_('tri33|t|POISON', 'permission-tiers.pdf', 'addFile a levé');
+  assert.strictEqual(ajouts.length, 0, 'sous le seuil : re-tenté, aucune clé');
+
+  // Au seuil : la clé (celle que le succès aurait posée) est inscrite avec un statut d'écart.
+  // La collecte teste `indexContient_(cle)` → elle skippera désormais ce fichier → convergence.
+  c.ecarterEchecMutationReset_('tri33|t|POISON', 'permission-tiers.pdf', 'addFile a levé');
+  assert.strictEqual(ajouts.length, 1);
+  assert.strictEqual(ajouts[0].cle, 'tri33|t|POISON', 'clé = celle testée par la collecte (skip garanti)');
+  assert.strictEqual(ajouts[0].statut, 'tri33-ecart');
+});
+
 test('collecte : un fichier ÉPINGLÉ par Marc n\'est JAMAIS aspiré vers `_TRI` ni réorganisé dans 04 (ADR-0026 — les autres campagnes l\'immunisent déjà)', () => {
   const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
   const index = { 'epingle|EPINGLE': true };

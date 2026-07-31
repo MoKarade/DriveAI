@@ -770,8 +770,12 @@ function nommerDocument_(classif, dateReception, ext) {
     var titu = titulairePourNom_(classif);
     return titu ? nomParType_(date, type, titu, ext) : nomSansTiers_(date, type, ext);
   }
-  // Émetteur d'abord, sinon descripteur (jamais « Inconnu ») ; aucun des deux → type seul.
-  var tiers = champ_(classif.emetteur) ? classif.emetteur : (champ_(classif.descripteur) ? classif.descripteur : '');
+  // Émetteur d'abord, sinon descripteur ; aucun des deux → type seul. `estRenseigne_` (pas `champ_`)
+  // pour que les sentinelles « Inconnu »/« N/A » comptent comme ABSENTES — sinon un émetteur
+  // sentinelle produit « …_Facture_Inconnu.pdf », précisément le nom que la campagne m2-inconnu
+  // éradique (revue de fond 2026-07-31 : le fail-safe neutralisait « Inconnu », le nommeur non).
+  var tiers = estRenseigne_(classif.emetteur) ? classif.emetteur
+    : (estRenseigne_(classif.descripteur) ? classif.descripteur : '');
   return tiers ? nomParType_(date, classif.type_doc, tiers, ext) : nomSansTiers_(date, classif.type_doc, ext);
 }
 

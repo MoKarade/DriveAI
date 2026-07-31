@@ -582,6 +582,28 @@ function rassemblerUnFichier_(fileId, domaine, tag, proteges, ctx) {
   return deplace;
 }
 
+/**
+ * Échec de MUTATION Drive pendant le reset (rassemblement/placement). Sans ce compteur, un fichier
+ * qui lève SYSTÉMATIQUEMENT à `addFile`/`removeFile` (permission d'un tiers, blip Drive prolongé)
+ * était RE-COLLECTÉ à chaque passe — sa clé de succès n'étant jamais posée : le reset ne convergeait
+ * JAMAIS, `resetTermine_()` restait faux, et toutes les campagnes gatées `!resetEnCours_()` (histo
+ * Gmail, migration, réanalyse, conso, réconciliation) demeuraient suspendues À VIE, heartbeat vert
+ * (revue de fond 2026-07-31). Ici on COMPTE l'échec (onglet Échecs, patron `gererEchec_`) et, au-delà
+ * de `QUARANTAINE_MAX`, on inscrit la clé (même clé que le succès aurait posée) avec un statut
+ * d'écart → la collecte le skippe → convergence. Récupérable : le compteur se remet à zéro sur un
+ * succès, un bump de tag/version le re-présente. PAS de garde panne-plateforme (un échec `addFile`
+ * Drive n'est pas une panne de compte LLM — sinon une panne LLM figerait aussi la convergence I/O).
+ */
+function ecarterEchecMutationReset_(cle, nom, message) {
+  var n = incrementerEchec_(cle);
+  if (n >= CONFIG.QUARANTAINE_MAX) {
+    indexAjouter_(cle, { statut: 'tri33-ecart', domaine: '', chemin: '', nom: nom || '' });
+    journalErreur_('Reset', 'Fichier écarté du reset après ' + n + ' échecs de mutation (' + (nom || '?') + ') : ' + message);
+  } else {
+    journalErreur_('Reset', 'Échec mutation reset ' + n + '/' + CONFIG.QUARANTAINE_MAX + ' (' + (nom || '?') + ') : ' + message);
+  }
+}
+
 /** UNE passe bornée de rassemblement (tous domaines confondus). @return {{examines, deplaces, complet}} */
 function rassemblerUnePageReset_(estBudgetDepasse, proteges, ctx) {
   var tag = CONFIG.RESET_TAG;
@@ -606,7 +628,11 @@ function rassemblerUnePageReset_(estBudgetDepasse, proteges, ctx) {
   for (var k = 0; k < ids.length; k++) {
     if (estBudgetDepasse()) { etat.complet = false; break; }
     try { if (rassemblerUnFichier_(ids[k].id, ids[k].domaine, tag, proteges, ctx)) deplaces++; }
-    catch (e) { etat.complet = false; journalErreur_('Reset', 'Rassemblement différé (' + ids[k].id + ') : ' + e); }
+    catch (e) {
+      etat.complet = false;
+      // Compté + écarté après N échecs : sinon ce fichier bloquerait la convergence du reset À VIE.
+      ecarterEchecMutationReset_('tri33|' + tag + '|' + ids[k].id, ids[k].id, String(e));
+    }
   }
   return { examines: ids.length, deplaces: deplaces, complet: etat.complet };
 }
@@ -880,7 +906,11 @@ function placerUnePageReset_(estBudgetDepasse, ctx) {
       if (indexContient_(cle)) continue; // déjà tenté — gratuit, n'occupe pas la page
       examines++;
       try { if (placerUnFichierReset_(f, dom, cle, ctx)) deplaces++; }
-      catch (e) { complet = false; journalErreur_('Reset', 'Placement différé (' + f.getName() + ') : ' + e); }
+      catch (e) {
+        complet = false;
+        var nomEch = ''; try { nomEch = f.getName(); } catch (e2) { /* nom best-effort */ }
+        ecarterEchecMutationReset_(cle, nomEch, String(e)); // sinon re-collecté à vie → placement jamais fini
+      }
     }
   }
   return { examines: examines, deplaces: deplaces, complet: complet };
