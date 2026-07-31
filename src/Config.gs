@@ -548,7 +548,10 @@ var CONFIG = {
   // sur `_TRI 2026/<domaine>` — un fichier placé n'y est plus, il n'est donc jamais re-présenté).
   // À bumper à CHAQUE modification des règles de routage, sinon les non-routés resteraient marqués
   // « déjà tenté » à vie et l'affinage serait sans effet (constaté au 1ᵉʳ reliquat réel, 2026-07-30).
-  RESET_TABLE_VERSION: 't3',              // t3 : 02 « Revenus & paie » (remplace le nœud jamais créé
+  RESET_TABLE_VERSION: 't4',              // t4 : 03 « Véhicules/{Entretien & réparations, Assurance auto,
+                                          // Recherche & achat, Contraventions} » — décision Marc 2026-07-31
+                                          // sur le reliquat réel (~64 fichiers auto sans dossier d'accueil).
+                                          // t3 : 02 « Revenus & paie » (remplace le nœud jamais créé
                                           // « Donations & successions ») + 03 « Contrats »/« Correspondance »
                                           // — décisions Marc 2026-07-30 sur le reliquat réel (134 non routés).
                                           // t2 : + Anna Malaval (pièces d'identité), + codes de récupération

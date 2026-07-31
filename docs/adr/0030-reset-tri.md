@@ -84,6 +84,17 @@
      filets placés EN DERNIER dans le routage pour ne rien voler aux règles par entité.
      *Conséquence à connaître : les bulletins déjà classés sous `05/Employeurs/*` y RESTENT (le
      reset est intra-domaine par construction) — la paie est donc split 02/05, assumé.*
+   - **Amendement 2026-07-31 (t4), décidé sur le reliquat réel restant (160 non routés t2, dont
+     ~64 liés à l'automobile)** : **03** → 4 nœuds sous `Véhicules` (qui passe à 6 enfants ≤ 7,
+     préservant la place restante au niveau de 03) : `Entretien & réparations` (garages,
+     carrossiers, concessions — routé par l'ÉMETTEUR, signal stable), `Assurance auto` (contexte
+     « assurance » EXIGÉ — jamais une réclamation télécom), `Recherche & achat` (annonces,
+     captures d'écran, comparatifs, catalogues — routé par le TYPE, qui prime sur l'émetteur :
+     une capture chez un concessionnaire est de la recherche), `Contraventions`. Les documents
+     SNCF restent en `_TRI` : Marc les veut en `08/Voyages`, hors de portée du reset
+     (intra-domaine par construction) — plutôt rapportés que mal rangés. SCI MRic : décision
+     Marc, `05/Entreprise — MRic (SCI)` — même limite intra-domaine, fichiers actuellement
+     sous 01/02 : déplacement manuel ou levée de la limite à instruire.
 6. **Après-coup** : les squelettes VIDÉS sont recensés `vide-candidat` (corbeille par l'APP au clic,
    ADR-0014, récupérable 30 j — jamais le moteur). Les dossiers-système restent intouchés
    (`00 ·`, `_…`, dossiers « DriveAI… »/« Rapports agent… », Sheet/Form/Guide).
