@@ -3,5 +3,28 @@
   "buildCommand": "cd app && npm ci && npm run build",
   "outputDirectory": "app/dist",
   "framework": null,
-  "installCommand": "true"
+  "installCommand": "true",
+  "//headers": "En-têtes de sécurité (2026-07-31) : DriveAI n'en avait AUCUN. CSP en Report-Only volontairement — l'app lit la Sheet d'état DEPUIS LE NAVIGATEUR avec le jeton OAuth de Marc (ADR-0007), donc connect-src doit autoriser les API Google ; une CSP trop stricte casserait l'app SILENCIEUSEMENT, et ni le build ni les tests ne l'attraperaient. POUR PASSER EN ENFORCÉ : ouvrir l'app, parcourir explorateur/corbeille/assistant, vérifier qu'aucune violation CSP n'apparaît en console, puis renommer la clé Content-Security-Policy-Report-Only en Content-Security-Policy.",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy-Report-Only",
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://sheets.googleapis.com https://www.googleapis.com https://accounts.google.com; frame-src https://accounts.google.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com; object-src 'none'"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=31536000; includeSubDomains"
+        },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        }
+      ]
+    }
+  ]
 }
