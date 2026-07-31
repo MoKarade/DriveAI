@@ -4,6 +4,22 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (soir) — C28-42 : PASSE LLM DU RELIQUAT (ADR-0030 PR5, clic Marc).**
+> Marc : « ya encore beaucoup de fichiers en mode inconnu mais rien se passe pour eux ». Diagnostic :
+> deux populations — (a) les `_Inconnu` déjà CLASSÉS (la campagne m2-inconnu, suspendue pendant le
+> reset, les reprendra SEULE à la convergence) ; (b) les **non-routables de `_TRI 2026`** (~134 au
+> rapport `Reset`) qui n'avaient AUCUN chemin : la PR5 de l'ADR-0030 n'était jamais construite —
+> c'était le vrai trou. Marc a cliqué « **Passe LLM ciblée** » (~2-5 $ one-shot accepté). Livré
+> (cette branche) : amendement ADR-0030 + `analyserReliquatReset_`/`analyserPageReliquatReset_`/
+> `analyserFichierReliquat_` (src/Reset.gs) + bloc tick AVANT migration (Main.gs, try/catch, gates
+> `RESET_ACTIF` + `!estBudgetDepasse()` + `!budgetCampagnesAtteint_()`) + `RESET_LLM_MAX_PAR_RUN: 6`.
+> La TABLE d'abord (`cheminCibleReset_` non-null ⇒ jamais de LLM), pipeline COMPLET `traiterDocument_`
+> avec les 3 verrous du re-traitement (clé `tri33llm|<tag>|<version>|<fileId>`, `ignorerDoublon: true`,
+> placement DIRECT — jamais de transit par `00 · À trier`), gardes §1 re-vérifiées à la mutation,
+> drapeau terminal `DriveAI_RESET_LLM` aligné sur `finPlacementReset_()`, créneau LLM = celui des
+> campagnes suspendues par le reset (réallocation, invariant 50/50 intact). 718 tests verts (8 dédiés
+> `reset-llm.test.js`). ⚠ Déploiement : **Marc ré-exécute `installerTrigger`** après ce merge moteur.
+>
 > **⚡⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (après-midi) — C28-41 : REFONTE COMPLÈTE DE L'APP (décisions Marc,
 > 12 réponses cliquées).** Marc (photos) : « l'app est vraiment pas superbe… supprime [actions
 > rapides + opérations en cours] et le code en lien… plus de propositions de dossiers quand je
@@ -27,7 +43,7 @@
 > sur chaque bloc ; sélecteur d'agenda à la CRÉATION (principal par défaut). ⚠ Jeton d'avant le
 > scope → calendarList 403 détecté (`SCOPE_AGENDAS`), repli agenda principal + invite « Se
 > reconnecter » dans la sidebar. **⚠ Marc : se reconnecter UNE fois pour voir Family.**
-> **PR3 (cette branche) : moteur — plus AUCUNE proposition spontanée (ADR-0031, §8 ; ABROGE
+> **PR3 MERGÉE (#233) : moteur — plus AUCUNE proposition spontanée (ADR-0031, §8 ; ABROGE
 > l'ADR-0029).** `entiteEnAttenteAjouter_` = OBSERVATION seule (dossier Drive existant → ligne
 > validée liée ; sinon ZÉRO écriture — tripwire) ; campagne réorg AUTO retirée (Main/Reorg/
 > Config + skip-list ; `compterSousDossiersRegroupables_` et `chercherLigneFusionnable_` retirés

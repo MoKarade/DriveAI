@@ -127,12 +127,31 @@ test('orchestration RESET : les 3 phases ne sont JAMAIS gatées par !resetEnCour
     return corps.slice(Math.max(0, i - 300), i);
   };
   ['rassemblerReset_(estBudgetDepasseStandard)', 'placerReset_(estBudgetDepasseStandard)',
-    'appliquerReset04Interne_(estBudgetDepasseStandard)'].forEach((motif) => {
+    'appliquerReset04Interne_(estBudgetDepasseStandard)',
+    'analyserReliquatReset_(estBudgetDepasse)'].forEach((motif) => { // + la passe LLM PR5 (ADR-0030)
     assert.ok(!/!resetEnCours_\(\)/.test(avant(motif)),
       motif + ' ne doit JAMAIS être gatée par !resetEnCours_() : resetTermine_ exige que la phase ' +
       'TOURNE pour poser son tag, donc le reset ne démarrerait plus jamais ET toutes les campagnes ' +
       'resteraient suspendues à vie (heartbeat vert, zéro erreur — panne invisible)');
   });
+});
+
+/**
+ * Passe LLM du RELIQUAT (ADR-0030 PR5, décision Marc 2026-07-31) : elle prend le CRÉNEAU LLM du
+ * tick (3 min) libéré par les campagnes suspendues — jamais le budget tail I/O (elle appelle
+ * Sonnet), TOUJOURS le frein campagnes §2.6, et AVANT les autres campagnes LLM (priorité du
+ * reliquat à la reprise post-reset).
+ */
+test('orchestration RESET : la passe LLM du reliquat est gatée budget de tick + frein campagnes, AVANT migration/réanalyse', () => {
+  const i = corps.indexOf('analyserReliquatReset_(estBudgetDepasse)');
+  assert.ok(i !== -1, 'appel introuvable');
+  const garde = corps.slice(Math.max(0, i - 300), i);
+  assert.ok(/!estBudgetDepasse\(\)/.test(garde), 'budget LLM de tick (3 min), jamais le budget tail I/O');
+  assert.ok(/!budgetCampagnesAtteint_\(\)/.test(garde), 'frein campagnes §2.6 : la passe coûte du Sonnet');
+  assert.ok(!/analyserReliquatReset_\(estBudgetDepasseStandard\)/.test(corps),
+    'jamais le garde étendu 4,5 min : il est réservé à l\'I/O pur, pas aux appels LLM');
+  assert.ok(i < posAppel('appliquerMigrationTaxonomie_(estBudgetDepasse)'),
+    'le reliquat garde la priorité du créneau LLM sur les campagnes qui reprennent après le reset');
 });
 
 test('orchestration RESET : rassemblement → placement → 04 interne, dans cet ordre, en BUDGET TAIL (jamais le budget de tick 3 min)', () => {

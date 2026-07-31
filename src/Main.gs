@@ -476,6 +476,19 @@ function tickDriveAI() {
       }
     }
 
+    // Passe LLM du RELIQUAT du reset (ADR-0030 PR5, décision Marc 2026-07-31 « fichiers Inconnu,
+    // rien ne se passe ») : les fichiers de `_TRI 2026` que la table ne route PAS passent au
+    // pipeline COMPLET (OCR + analyse v2), un petit lot par tick. Elle prend le CRÉNEAU LLM que
+    // migration/réanalyse/dry-run — suspendues pendant le reset — libèrent (réallocation, jamais
+    // une augmentation) ; frein campagnes §2.6 ; JAMAIS gatée par resetEnCours_() (réciproque
+    // vitale : elle doit tourner PENDANT le reset, et après, jusqu'au drainage). PLACÉE AVANT les
+    // autres campagnes LLM : à la reprise post-reset, le reliquat garde la priorité du créneau.
+    // SECONDAIRE → enveloppée : un échec ne bloque jamais la suite du tick.
+    if (CONFIG.RESET_ACTIF && !estBudgetDepasse() && !budgetCampagnesAtteint_()) {
+      try { analyserReliquatReset_(estBudgetDepasse); }
+      catch (e) { journalErreur_('Reset', 'Passe LLM du reliquat différée : ' + e); }
+    }
+
     // Migration taxonomie (#8, ADR-0002) : re-classe l'EXISTANT (pré-refonte) vers la nouvelle
     // taxonomie, EN PLACE, une page par tick. APRÈS l'intake (le flux vivant garde la priorité),
     // AVANT les intentions (la précision documentaire prime, cap produit ADR-0001). Campagne finie

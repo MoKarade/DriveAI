@@ -565,6 +565,12 @@ var CONFIG = {
   RESET_PLACEMENT_BUDGET_JOUR_MS: 22 * 60 * 1000,     // 8 → 22 (poste le plus lourd : il hashe les octets)
   RESET_04_MAX_PAR_RUN: 150,              // fichiers réorganisés EN INTERNE sous 04 par run
   RESET_04_BUDGET_JOUR_MS: 8 * 60 * 1000,             // 4 → 8 (04 est petite : elle convergera bien avant)
+  RESET_LLM_MAX_PAR_RUN: 6,               // ADR-0030 PR5 (décision Marc 2026-07-31) : fichiers du RELIQUAT
+                                          // non-routable passés au PIPELINE COMPLET (OCR + Sonnet v2) par
+                                          // run — ~20-30 s/doc, tient dans le créneau LLM du tick (3 min)
+                                          // que migration/réanalyse/dry-run (suspendues pendant le reset)
+                                          // libèrent. PAS de budget quotidien I/O ajouté : l'invariant
+                                          // « reset ≤ campagnes suspendues » (test par mutation) est intact
   SEED_ENTITES_TAG: 'seed-1',             // seed one-shot des entités de Marc (Entites.seedEntitesMarc_)
   ENTITES_AUTO_VALIDATION: false,         // auto-validation « vue ≥ 3 fois » COUPÉE (décision Marc
                                           // 2026-07-17 : « l'ajout de dossiers vraiment sécurisé,
