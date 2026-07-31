@@ -37,6 +37,25 @@ test('validerHistoriqueChat_ : whitelist stricte (rôle, string bornée, dernier
     [{ role: 'user', content: 'q1' }, { role: 'user', content: 'q2' }]), null);    // alternance rompue
 });
 
+test('promptChatAssistant_ : le CONTENU porte tous les invariants (une fin de littéral sans « + » les tronque en silence via ASI)', () => {
+  const c = load(MODULES);
+  // Le harness peut ne pas fournir Utilities/Session : on les mocke pour isoler le CONTENU du prompt.
+  c.Utilities = { formatDate: () => '2026-07-31' };
+  c.Session = { getScriptTimeZone: () => 'America/Toronto' };
+  const p = c.promptChatAssistant_();
+  // Ces marqueurs vivent APRÈS le point exact où le bug ASI coupait la chaîne (« …Pour regrouper, utilise ; »).
+  // Un test de simple présence de la fonction (surface-moteur) ne les aurait jamais vus disparaître.
+  ['recherche_nom', 'proposer_reorg',
+    'FUSION détruit le dossier source',          // règle anti-fusion (sinon le chat propose une fusion destructrice)
+    'ne fais que PROPOSER',                       // le chat ne doit jamais prétendre avoir agi
+    'Ne prétends JAMAIS avoir déjà déplacé',
+    'jamais toucher les documents d\'immigration',
+    'Date du jour : 2026-07-31'                   // la date, tout à la fin — preuve que la chaîne n'est pas tronquée
+  ].forEach((marqueur) => {
+    assert.ok(p.includes(marqueur), 'prompt chat tronqué : marqueur manquant « ' + marqueur + ' »');
+  });
+});
+
 // Historique alternant : user aux indices PAIRS, assistant aux impairs (m0, m1, …).
 const roleA = (n) => Array.from({ length: n }, (_, i) => ({ role: i % 2 === 0 ? 'user' : 'assistant', content: 'm' + i }));
 

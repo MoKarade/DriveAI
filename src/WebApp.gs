@@ -489,8 +489,8 @@ function promptChatAssistant_() {
     'dossier dont tu viens de proposer la création n\'a pas encore d\'id, propose D\'ABORD sa création ' +
     'seule : les déplacements dedans se proposeront APRÈS validation de Marc, quand une recherche te ' +
     'rendra son id. Les sous-dossiers d\'année (« 2025 »), de schéma (Factures, Assurance, …) et de ' +
-    'type de pièce d\'identité (Passeport, …) ne se regroupent JAMAIS. Pour regrouper, utilise '
-    'TOUJOURS un DÉPLACEMENT : une FUSION détruit le dossier source et ferait disparaître l\'entité '
+    'type de pièce d\'identité (Passeport, …) ne se regroupent JAMAIS. Pour regrouper, utilise ' +
+    'TOUJOURS un DÉPLACEMENT : une FUSION détruit le dossier source et ferait disparaître l\'entité ' +
     '(elle ne sert qu\'à réunir deux dossiers de la MÊME entité).\n' +
     'IMPORTANT : tu ne fais que PROPOSER — c\'est MARC qui valide chaque opération dans l\'app, et le ' +
     'moteur les applique ensuite (avec ses garde-fous : jamais toucher les documents d\'immigration, ' +

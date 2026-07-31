@@ -16,9 +16,16 @@ permissions:
 
 jobs:
   automerge:
+    # ⚠️ SÉCURITÉ (revue de fond 2026-07-31) : le préfixe `claude/` est une CONVENTION, jamais une
+    # preuve d'origine — pour une PR de fork, `head_branch` est choisi par l'auteur de la PR. Sur un
+    # dépôt PUBLIC, sans le contrôle d'origine ci-dessous, n'importe qui pouvait ouvrir une PR depuis
+    # un fork sur une branche `claude/x`, faire passer la CI (lecture seule, sans secret) et déclencher
+    # merge + `deploy.yml` (clasp push dans le projet Apps Script de Marc, tous scopes). La condition
+    # `head_repository.full_name == github.repository` REJETTE tout fork : seul le dépôt lui-même merge.
     if: >
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
       startsWith(github.event.workflow_run.head_branch, 'claude/')
     runs-on: ubuntu-latest
     steps:
@@ -37,6 +44,17 @@ jobs:
             exit 0
           fi
           echo "PR concernée : #$number"
+
+          # ⚠️ SÉCURITÉ (revue Vague 1a) : le gate `if:` protège le DÉCLENCHEMENT du job, mais
+          # `gh pr list --head` filtre par NOM de branche seulement — sur un dépôt public, une PR de
+          # FORK portant la même branche `claude/x` pourrait être sélectionnée ici. On re-vérifie donc
+          # sur la PR RÉSOLUE qu'elle n'est PAS cross-repo avant tout merge (défense en profondeur,
+          # même esprit que le gate — la promesse « pas de code de fork déployé » codée de bout en bout).
+          crossrepo="$(gh pr view "$number" --repo "$REPO" --json isCrossRepository --jq .isCrossRepository)"
+          if [ "$crossrepo" != "false" ]; then
+            echo "PR #$number vient d'un fork (isCrossRepository=$crossrepo) → auto-merge REFUSÉ."
+            exit 0
+          fi
 
           labels="$(gh pr view "$number" --repo "$REPO" --json labels --jq '.labels[].name')"
           if echo "$labels" | grep -qx 'do-not-merge'; then
