@@ -155,3 +155,29 @@ export const EVENEMENTS_MOCK: unknown[] = [
     start: { date: '2026-07-13' }, end: { date: '2026-07-18' },
   },
 ];
+
+/* ---------- Multi-agendas (C28-41 PR2) : calendarList + événements Family ---------- */
+
+// Miroir de calendarList.list — le principal + un agenda « Family » (le cas de Marc).
+export const AGENDAS_MOCK: unknown[] = [
+  { id: 'marc@exemple.com', summary: 'Marc', primary: true, backgroundColor: '#4285f4', selected: true },
+  { id: 'family-mock@group.calendar.google.com', summary: 'Family', backgroundColor: '#33b679', selected: true },
+];
+
+const EVENEMENTS_FAMILY_MOCK: unknown[] = [
+  {
+    id: 'f-1', summary: 'Souper de famille', location: 'Chez maman',
+    start: { dateTime: '2026-07-10T18:00:00-04:00' }, end: { dateTime: '2026-07-10T21:00:00-04:00' },
+  },
+  {
+    id: 'f-2', summary: 'Anniversaire — Léa',
+    start: { date: '2026-07-16' }, end: { date: '2026-07-17' },
+  },
+];
+
+/** Événements par agenda (mock) : `primary` ET l'id réel du principal servent le même jeu. */
+export const EVENEMENTS_PAR_AGENDA: Record<string, unknown[]> = {
+  primary: EVENEMENTS_MOCK,
+  'marc@exemple.com': EVENEMENTS_MOCK,
+  'family-mock@group.calendar.google.com': EVENEMENTS_FAMILY_MOCK,
+};

@@ -24,12 +24,17 @@ export type Requete = IncomingMessage;
 export type Reponse = ServerResponse;
 
 /** Périmètre OAuth de l'APP (identique à l'ancien GIS de app/src/google.ts — Sheets inclus :
- * sans lui l'app ne lit plus la Sheet d'état). Toute extension = décision Marc (§2.3). */
+ * sans lui l'app ne lit plus la Sheet d'état). Toute extension = décision Marc (§2.3).
+ * `calendar.readonly` (C28-41 PR2, décision Marc 2026-07-31 « tous mes agendas Google ») :
+ * LECTURE de la liste des agendas (calendarList — Family…) pour l'affichage multi-agendas ;
+ * l'ÉCRITURE reste bornée aux événements (`calendar.events`). Les jetons déjà émis ne portent
+ * pas ce scope → l'app détecte le 403 et propose UNE reconnexion (jamais un échec silencieux). */
 export const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/tasks',
   'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/calendar.readonly',
 ].join(' ');
 
 /** Scopes d'IDENTITÉ (C28-20, ADR-0021) : `openid email` fait émettre un id_token par Google,

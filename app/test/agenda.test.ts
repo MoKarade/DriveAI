@@ -207,3 +207,52 @@ describe('titresDriveAI', () => {
     expect(s.has('Un document')).toBe(false);
   });
 });
+
+/* ---------- Multi-agendas (C28-41 PR2) ---------- */
+
+import { interpreterAgendas, COULEUR_AGENDA_DEFAUT } from '../src/agenda';
+
+describe('interpreterAgendas (calendarList)', () => {
+  it('principal d’abord puis alphabétique, renommage (summaryOverride) prioritaire, supprimés ignorés', () => {
+    const agendas = interpreterAgendas([
+      { id: 'family@group.calendar.google.com', summary: 'Family', backgroundColor: '#33b679', selected: true },
+      { id: 'marc@exemple.com', summary: 'marc@exemple.com', summaryOverride: 'Marc', primary: true, backgroundColor: '#4285f4', selected: true },
+      { id: 'archive@group.calendar.google.com', summary: 'Archives', selected: false },
+      { id: 'mort@group.calendar.google.com', summary: 'Mort', deleted: true },
+      { summary: 'sans id' }, // inexploitable
+    ]);
+    expect(agendas.map((a) => a.nom)).toEqual(['Marc', 'Archives', 'Family']);
+    expect(agendas[0].principal).toBe(true);
+    expect(agendas[0].couleur).toBe('#4285f4');
+    expect(agendas[1].couleur).toBe(COULEUR_AGENDA_DEFAUT); // sans backgroundColor → couleur de repli, jamais un bloc sans couleur
+  });
+
+  it('visibleParDefaut suit `selected` de Google Agenda (absent = visible)', () => {
+    const [a, b, c] = interpreterAgendas([
+      { id: 'a', summary: 'A', primary: true },
+      { id: 'b', summary: 'B', selected: false },
+      { id: 'c', summary: 'C', selected: true },
+    ]);
+    expect(a.visibleParDefaut).toBe(true);
+    expect(b.visibleParDefaut).toBe(false);
+    expect(c.visibleParDefaut).toBe(true);
+  });
+});
+
+describe('interpreterEvenements — étiquetage par agenda source (C28-41 PR2)', () => {
+  const ITEMS = [
+    { id: 'e1', summary: 'Souper', start: { dateTime: '2026-07-10T18:00:00-04:00' }, end: { dateTime: '2026-07-10T21:00:00-04:00' } },
+  ];
+
+  it('avec `source` : chaque événement porte agendaId + couleur (les blocs prennent la couleur)', () => {
+    const [e] = interpreterEvenements(ITEMS, new Set(), { id: 'family@x', couleur: '#33b679' });
+    expect(e.agendaId).toBe('family@x');
+    expect(e.couleur).toBe('#33b679');
+  });
+
+  it('sans `source` : comportement historique inchangé (aucun champ ajouté)', () => {
+    const [e] = interpreterEvenements(ITEMS, new Set());
+    expect(e.agendaId).toBeUndefined();
+    expect(e.couleur).toBeUndefined();
+  });
+});

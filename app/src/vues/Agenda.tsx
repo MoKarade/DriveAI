@@ -35,7 +35,7 @@ import {
 import { lignesImportants, lienGmailPourLigne, LigneIndex } from '../etat';
 import { formaterDateCourte } from '../explorateur';
 import { Langue, t } from '../i18n';
-import type { AgendasVisibles } from '../composants/Sidebar';
+import { useAgendas, agendasAffiches } from '../agendasStore';
 
 const JOURS_SEMAINE = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
@@ -56,7 +56,7 @@ function useEstEtroit(): boolean {
   return etroit;
 }
 
-export function Agenda({ langue, dateRef, agendas }: { langue: Langue; dateRef?: Date; agendas?: AgendasVisibles }) {
+export function Agenda({ langue, dateRef }: { langue: Langue; dateRef?: Date }) {
   const maintenant = new Date();
   const [mois, setMois] = useState(new Date(maintenant.getFullYear(), maintenant.getMonth(), 1));
   const [vueCal, setVueCal] = useState<VueCal>('semaine'); // Semaine par défaut (C28-23)
@@ -85,10 +85,14 @@ export function Agenda({ langue, dateRef, agendas }: { langue: Langue; dateRef?:
     // eslint-disable-next-line react-hooks/exhaustive-deps -- déclenché par le jour choisi dans App
   }, [dateRef]);
 
-  // « Mes agendas » (sidebar) filtre l'AFFICHAGE du calendrier — les données restent chargées
-  // (recocher = instantané) et la liste des tâches en bas de page reste complète.
-  const evenementsAffiches = agendas && !agendas.evenements ? [] : evenements;
-  const tachesAffichees = agendas && !agendas.taches ? [] : taches;
+  // « Mes agendas » RÉEL (C28-41 PR2) : les événements sont chargés PAR agenda coché (couleur
+  // de l'agenda sur chaque bloc) ; la case Tâches filtre l'affichage de la grille — la liste
+  // des tâches en bas de page reste complète.
+  const etatAgendas = useAgendas();
+  const affiches = agendasAffiches(etatAgendas);
+  const cleAgendas = affiches.map((a) => a.id).sort().join('|'); // dépendance STABLE du fetch
+  const evenementsAffiches = evenements;
+  const tachesAffichees = etatAgendas.taches ? taches : [];
 
   // La plage Tasks/Calendar chargée reste TOUJOURS celle de la grille du MOIS : jour/semaine
   // sont des sous-ensembles (la navigation garde `mois` aligné sur sa référence), donc changer
@@ -133,13 +137,19 @@ export function Agenda({ langue, dateRef, agendas }: { langue: Langue; dateRef?:
         const debut = semainesMois[0][0].date;
         const finJour = semainesMois[semainesMois.length - 1][6].date;
         const fin = new Date(finJour.getFullYear(), finJour.getMonth(), finJour.getDate() + 1);
-        const [evts, tks] = await Promise.all([
-          listerEvenements(debut.toISOString(), fin.toISOString()),
-          listerTaches(),
-        ]);
         const lignes = donnees.index;
         const marques = titresDriveAI(lignes);
-        setEvenements(interpreterEvenements(evts, marques));
+        // Un fetch PAR agenda coché (C28-41 PR2) : chaque événement est étiqueté de la couleur
+        // de son agenda ; fusion triée chronologiquement (même contrat qu'avant, multi-sources).
+        const [listes, tks] = await Promise.all([
+          Promise.all(affiches.map(async (a) => interpreterEvenements(
+            await listerEvenements(debut.toISOString(), fin.toISOString(), a.id),
+            marques,
+            { id: a.id, couleur: a.couleur },
+          ))),
+          listerTaches(),
+        ]);
+        setEvenements(listes.flat().sort((x, y) => x.debut.localeCompare(y.debut)));
         setTaches(interpreterTaches(tks, marques));
         setImportants(lignesImportants(lignes).slice(0, 8));
         setCharge(true);
@@ -148,8 +158,14 @@ export function Agenda({ langue, dateRef, agendas }: { langue: Langue; dateRef?:
         setErreur(String(e));
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mois, synchroA]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cleAgendas = photo stable des agendas cochés
+  }, [mois, synchroA, cleAgendas]);
+
+  /** Nom de l'agenda source d'un événement (popover) — '' si inconnu/principal sans nom. */
+  function nomAgendaDe(agendaId?: string): string {
+    if (!agendaId) return '';
+    return etatAgendas.liste.find((a) => a.id === agendaId)?.nom ?? '';
+  }
 
   async function basculerTache(tache: Tache) {
     try {
@@ -208,7 +224,8 @@ export function Agenda({ langue, dateRef, agendas }: { langue: Langue; dateRef?:
                         >
                           <span className="num">{j.date.getDate()}</span>
                           {evts.map((e) => (
-                            <span key={e.id} className={`ev ${e.parDriveAI ? 'ia' : ''}`}>
+                            <span key={e.id} className={`ev ${e.parDriveAI ? 'ia' : ''}`}
+                              style={!e.parDriveAI && e.couleur ? { background: `${e.couleur}33`, color: 'var(--texte)' } : undefined}>
                               {heureEvenement(e) && `${heureEvenement(e)} `}{e.titre}
                             </span>
                           ))}
@@ -322,6 +339,12 @@ export function Agenda({ langue, dateRef, agendas }: { langue: Langue; dateRef?:
                 </p>
                 <p className="pe-ligne">🕐 {popover.e.journee ? t('journee', langue) : libelleHoraire(popover.e, langue === 'fr')}</p>
                 {popover.e.lieu && <p className="pe-ligne">📍 {popover.e.lieu}</p>}
+                {nomAgendaDe(popover.e.agendaId) && (
+                  <p className="pe-ligne">
+                    <span className="puce" style={{ background: popover.e.couleur, display: 'inline-block', width: 10, height: 10, borderRadius: 3, marginRight: 6 }} aria-hidden="true" />
+                    {nomAgendaDe(popover.e.agendaId)}
+                  </p>
+                )}
                 {popover.e.parDriveAI && <p className="pe-ligne variante">{t('parDriveAI', langue)}</p>}
                 <div className="actions">
                   <a className="lien-bouton" href={popover.e.lien} target="_blank" rel="noreferrer">Agenda ↗</a>
@@ -398,7 +421,10 @@ function GrilleTemps({ langue, jours, evenements, taches, aujourdhuiCle, onEntet
           return (
             <div key={cleJour(j.date)} className="gt-tj-col">
               {journee.map((e) => (
-                <button key={e.id} className="gt-bloc-tj" onClick={() => onEvenement(e)}>{e.titre}</button>
+                <button key={e.id} className="gt-bloc-tj" onClick={() => onEvenement(e)}
+                  style={!e.parDriveAI && e.couleur ? { background: e.couleur, color: '#fff', borderColor: 'transparent' } : undefined}>
+                  {e.titre}
+                </button>
               ))}
               {dues.map((d) => (
                 <button key={d.id} className="gt-bloc-tj ia" onClick={() => onTache(d)}>☐ {d.titre}</button>
@@ -436,7 +462,11 @@ function GrilleTemps({ langue, jours, evenements, taches, aujourdhuiCle, onEntet
                   <button
                     key={e.id}
                     className={'gt-ev' + (e.parDriveAI ? ' ia' : '')}
-                    style={{ top: `${pos.top}%`, height: `${pos.hauteur}%` }}
+                    style={{
+                      top: `${pos.top}%`,
+                      height: `${pos.hauteur}%`,
+                      ...(!e.parDriveAI && e.couleur ? { background: e.couleur, color: '#fff' } : {}),
+                    }}
                     onClick={(ev) => { ev.stopPropagation(); onEvenement(e); }}
                   >
                     <b>{e.titre}</b>

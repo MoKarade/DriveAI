@@ -87,10 +87,20 @@ export interface Evenement {
   lieu: string;       // location Google Agenda ('' si absent) — affiché dans le bloc, façon GCal
   lien: string;       // htmlLink Google Agenda
   parDriveAI: boolean;
+  agendaId?: string;  // multi-agendas (C28-41 PR2) : agenda source ('' historique = principal)
+  couleur?: string;   // backgroundColor de l'agenda source — les blocs prennent sa couleur
 }
 
-/** Interprète `items` de calendar.events.list (singleEvents). PUR. */
-export function interpreterEvenements(items: unknown[], titresDriveAI: Set<string>): Evenement[] {
+/**
+ * Interprète `items` de calendar.events.list (singleEvents). PUR. `source` (C28-41 PR2) : quand
+ * les événements viennent d'un agenda précis (Family…), chaque événement est étiqueté de son
+ * agenda et de sa couleur — omis, comportement historique inchangé (agenda principal).
+ */
+export function interpreterEvenements(
+  items: unknown[],
+  titresDriveAI: Set<string>,
+  source?: { id: string; couleur: string },
+): Evenement[] {
   const evts: Evenement[] = [];
   for (const brut of items as {
     id?: string; summary?: string; htmlLink?: string; status?: string; location?: string;
@@ -110,9 +120,47 @@ export function interpreterEvenements(items: unknown[], titresDriveAI: Set<strin
       lieu: brut.location ?? '',
       lien: brut.htmlLink ?? 'https://calendar.google.com/',
       parDriveAI: titresDriveAI.has(titre),
+      ...(source ? { agendaId: source.id, couleur: source.couleur } : {}),
     });
   }
   return evts.sort((a, b) => a.debut.localeCompare(b.debut));
+}
+
+/* ---------- Liste des agendas (calendarList, C28-41 PR2) ---------- */
+
+export interface AgendaGoogle {
+  id: string;
+  nom: string;
+  couleur: string;           // backgroundColor Google ('#RRGGBB')
+  principal: boolean;
+  visibleParDefaut: boolean; // `selected` de Google Agenda (cases cochées là-bas) — repli : visible
+}
+
+export const COULEUR_AGENDA_DEFAUT = '#85a9ff'; // l'accent de l'app — jamais un bloc sans couleur
+
+/**
+ * Interprète `items` de calendarList.list. PUR. Le principal d'abord, puis alphabétique —
+ * l'ordre stable de la sidebar. `summaryOverride` (renommage côté Google Agenda) prime.
+ */
+export function interpreterAgendas(items: unknown[]): AgendaGoogle[] {
+  const agendas: AgendaGoogle[] = [];
+  for (const brut of items as {
+    id?: string; summary?: string; summaryOverride?: string;
+    backgroundColor?: string; primary?: boolean; selected?: boolean; deleted?: boolean;
+  }[]) {
+    if (!brut?.id || brut.deleted) continue;
+    agendas.push({
+      id: brut.id,
+      nom: brut.summaryOverride ?? brut.summary ?? brut.id,
+      couleur: brut.backgroundColor ?? COULEUR_AGENDA_DEFAUT,
+      principal: brut.primary === true,
+      visibleParDefaut: brut.selected !== false,
+    });
+  }
+  return agendas.sort((a, b) => {
+    if (a.principal !== b.principal) return a.principal ? -1 : 1;
+    return a.nom.localeCompare(b.nom, 'fr');
+  });
 }
 
 /**
