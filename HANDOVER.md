@@ -19,11 +19,21 @@
 > (`fraicheurMoteur`, seuils dérivés du tick réglé — jamais un faux vert). SUPPRIMÉS (app) :
 > PanneauActions, OperationsLive, Apprentissage (reclassement manuel compris — décision Marc :
 > il range dans Drive, le moteur apprend de ses corrections observées), Coûts & quotas, Santé ;
-> lectures Sheet `Entités`+`TriAppris` retirées du cycle (payload −). 167 tests app + build verts.
-> **À SUIVRE : PR2** agenda multi-agendas Family (scope `calendar.readonly` + reconnexion unique,
-> cases à cocher réelles, sélecteur à la création) ; **PR3 moteur** (ADR-0031 §8 : plus AUCUNE
-> proposition spontanée — entités `en_attente` + réorg auto OFF, l'Assistant propose sur demande ;
-> retrait des actions web app orphelines ; `majTelemetrie_`/`majProgressions_` conservés).
+> lectures Sheet `Entités`+`TriAppris` retirées du cycle (payload −). **PR1 MERGÉE (#231).**
+> **PR2 (cette branche) : agenda multi-agendas Family** — scope APP `calendar.readonly` ajouté
+> (api/_lib.ts, décision Marc « tous mes agendas » ; l'écriture reste bornée à `calendar.events`,
+> verrou bff.test) ; « Mes agendas » RÉEL dans la sidebar (calendarList : cases, couleurs, choix
+> persisté — `agendasStore.ts`, un seul chargement/session partagé Agenda/accueil/création) ;
+> événements fusionnés PAR agenda coché avec la couleur de l'agenda sur chaque bloc (grille +
+> mois + « Ma journée ») ; sélecteur d'agenda à la CRÉATION d'un RDV (principal par défaut).
+> ⚠ **Jeton d'avant le scope → calendarList 403** : détecté (`SCOPE_AGENDAS`), repli sur le seul
+> agenda principal (comportement historique) + invite « Se reconnecter » UNE fois dans la sidebar
+> (leçon §7 : un verrou posé à l'émission n'atteint pas le stock de jetons émis). **Marc devra se
+> reconnecter UNE fois** pour voir Family. 171 tests app + build verts.
+> **À SUIVRE : PR3 moteur** (ADR-0031 §8 : plus AUCUNE proposition spontanée — entités
+> `en_attente` + réorg auto OFF, l'Assistant propose sur demande ; retrait des actions web app
+> orphelines `demande-tri`/`demande-intentions`/`analyse-ciblee` ; `majTelemetrie_`/
+> `majProgressions_` conservés — la page Moteur les lit).
 >
 > **⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (matin) — ACCÉLÉRATION (#229) + ÉTAT RÉEL MESURÉ.** Marc : « ça peut
 > pas aller plus vite ? je veux que tout soit fini avant la fin de la journée ». **Constaté dans les

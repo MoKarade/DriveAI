@@ -13,7 +13,7 @@ import { chargerConfigServeur } from './config';
 import { seConnecter, estConnecte, seDeconnecter, abonnerSessionExpiree, tenterRestaurationSession } from './google';
 import { FournisseurEtat, useEtatGlobal } from './etatGlobal';
 import { BanniereErreur } from './composants/UI';
-import { Sidebar, AgendasVisibles } from './composants/Sidebar';
+import { Sidebar } from './composants/Sidebar';
 import { Creation } from './composants/Creation';
 import { Langue, langueCourante, changerLangue, t } from './i18n';
 import { EtatMoteur, fraicheurMoteur, dernierPassageDepuisSante, interpreterSante } from './etat';
@@ -166,11 +166,9 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
   const [plusOuvert, setPlusOuvert] = useState(false);
   const [creationOuverte, setCreationOuverte] = useState(false); // FAB « + Créer »
   // Date de référence de l'Agenda, REMONTÉE ici : le mini-calendrier de la sidebar et la grande
-  // grille restent synchrones — un clic là-bas navigue ici.
+  // grille restent synchrones — un clic là-bas navigue ici. (« Mes agendas » vit dans
+  // agendasStore, partagé sidebar/Agenda/accueil/création — C28-41 PR2.)
   const [dateAgenda, setDateAgenda] = useState(new Date());
-  // « Mes agendas » : l'état vit ici pour piloter le filtrage local de l'Agenda (PR2 C28-41 le
-  // branche sur la vraie liste des agendas Google) — la sidebar ne fait que l'afficher.
-  const [agendas, setAgendas] = useState<AgendasVisibles>({ evenements: true, taches: true });
 
   function allerA(s: Section) {
     setSection(s);
@@ -214,10 +212,8 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
           section={section}
           ouverte={sidebarOuverte}
           repliee={sidebarRepliee && !sidebarOuverte}
-          agendas={agendas}
           dateAgenda={dateAgenda}
           onDate={choisirDate}
-          onAgendas={setAgendas}
           onAller={allerA}
           onFermer={() => setSidebarOuverte(false)}
           onCreer={() => {
@@ -231,7 +227,7 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
             {section === 'aujourdhui' && <AujourdHui langue={langue} onAller={allerA} />}
             {section === 'documents' && <Documents langue={langue} />}
             {section === 'assistant' && <Assistant langue={langue} />}
-            {section === 'agenda' && <Agenda langue={langue} dateRef={dateAgenda} agendas={agendas} />}
+            {section === 'agenda' && <Agenda langue={langue} dateRef={dateAgenda} />}
             {section === 'moteur' && <Moteur langue={langue} />}
           </div>
           <footer>{t('gardeFous', langue)}</footer>

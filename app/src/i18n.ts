@@ -52,6 +52,10 @@ const TEXTES = {
     mesAgendas: 'Mes agendas',
     agendaEvenements: 'Événements',
     agendaTaches: 'Tâches',
+    agendaPrincipal: 'Principal',
+    agendaChamp: 'Agenda',
+    agendasReconnexion: 'Pour afficher tous tes agendas (Family…), une autorisation de LECTURE a été ajoutée — reconnecte-toi une fois.',
+    seReconnecter: 'Se reconnecter',
     precedent: 'Précédent',
     suivant: 'Suivant',
 
@@ -260,6 +264,10 @@ const TEXTES = {
     mesAgendas: 'My calendars',
     agendaEvenements: 'Events',
     agendaTaches: 'Tasks',
+    agendaPrincipal: 'Primary',
+    agendaChamp: 'Calendar',
+    agendasReconnexion: 'To show all your calendars (Family…), a READ permission was added — sign in again once.',
+    seReconnecter: 'Sign in again',
     precedent: 'Previous',
     suivant: 'Next',
 

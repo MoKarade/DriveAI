@@ -35,7 +35,7 @@ import {
   estDossierATrier,
 } from './explorateur';
 import { lireConfig } from './config';
-import { plageMock, ENFANTS_MOCK, TACHES_MOCK, EVENEMENTS_MOCK } from './mockData';
+import { plageMock, ENFANTS_MOCK, TACHES_MOCK, EVENEMENTS_MOCK, EVENEMENTS_PAR_AGENDA, AGENDAS_MOCK } from './mockData';
 
 /* ---------- Mode E2E MOCK (captures d'écran CI) ---------- */
 
@@ -368,13 +368,37 @@ export async function remonterAscendance(fileId: string, profondeurMax = 50): Pr
 
 /* ---------- Agenda (C19-05, ADR-0013) : Calendar + Tasks — création & coche SEULES ---------- */
 
-const CALENDAR = 'https://www.googleapis.com/calendar/v3/calendars/primary/events';
+const CALENDAR_BASE = 'https://www.googleapis.com/calendar/v3';
 const TASKS = 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks';
 
-/** Événements de l'agenda PRIMAIRE entre deux instants (occurrences dépliées, ordre chronologique). */
-export async function listerEvenements(timeMinISO: string, timeMaxISO: string): Promise<unknown[]> {
-  if (MODE_MOCK) return EVENEMENTS_MOCK;
-  const url = `${CALENDAR}?singleEvents=true&orderBy=startTime&maxResults=250` +
+/** URL des événements d'un agenda (C28-41 PR2 : multi-agendas — `primary` reste le défaut). */
+function urlEvenements(calendarId: string): string {
+  return `${CALENDAR_BASE}/calendars/${encodeURIComponent(calendarId)}/events`;
+}
+
+/**
+ * Liste des agendas du compte (calendarList — Family, jours fériés…). LECTURE seule
+ * (`calendar.readonly`, décision Marc 2026-07-31). Un jeton émis AVANT l'ajout du scope répond
+ * 403 : remonté comme `SCOPE_AGENDAS` pour que l'UI propose UNE reconnexion — jamais un échec
+ * silencieux (leçon §7 : un verrou posé à l'émission n'atteint pas le stock déjà émis).
+ */
+export async function listerAgendas(): Promise<unknown[]> {
+  if (MODE_MOCK) return AGENDAS_MOCK;
+  try {
+    const rep = await api<{ items?: unknown[] }>(
+      `${CALENDAR_BASE}/users/me/calendarList?minAccessRole=reader&fields=${encodeURIComponent('items(id,summary,summaryOverride,backgroundColor,primary,selected,deleted)')}`,
+    );
+    return rep.items ?? [];
+  } catch (e) {
+    if (String(e).includes('403')) throw new Error('SCOPE_AGENDAS');
+    throw e;
+  }
+}
+
+/** Événements d'UN agenda entre deux instants (occurrences dépliées, ordre chronologique). */
+export async function listerEvenements(timeMinISO: string, timeMaxISO: string, calendarId = 'primary'): Promise<unknown[]> {
+  if (MODE_MOCK) return EVENEMENTS_PAR_AGENDA[calendarId] ?? EVENEMENTS_MOCK;
+  const url = `${urlEvenements(calendarId)}?singleEvents=true&orderBy=startTime&maxResults=250` +
     `&timeMin=${encodeURIComponent(timeMinISO)}&timeMax=${encodeURIComponent(timeMaxISO)}`;
   const rep = await api<{ items?: unknown[] }>(url);
   return rep.items ?? [];
@@ -399,11 +423,11 @@ export async function creerTache(titre: string, echeance?: string, notes?: strin
   });
 }
 
-/** Crée un RDV d'une heure sur l'agenda primaire. `debutISO` : date-heure locale ISO. */
-export async function creerEvenement(titre: string, debutISO: string, description?: string): Promise<void> {
+/** Crée un RDV d'une heure. `calendarId` (C28-41 PR2) : choix à la création, principal par défaut. */
+export async function creerEvenement(titre: string, debutISO: string, description?: string, calendarId = 'primary'): Promise<void> {
   const debut = new Date(debutISO);
   const fin = new Date(debut.getTime() + 60 * 60 * 1000);
-  await api(CALENDAR, {
+  await api(urlEvenements(calendarId), {
     method: 'POST',
     body: JSON.stringify({
       summary: titre,

@@ -36,6 +36,7 @@ import {
   titresDriveAI,
 } from '../agenda';
 import { formaterDateCourte } from '../explorateur';
+import { useAgendas, agendasAffiches } from '../agendasStore';
 import { Langue, t } from '../i18n';
 
 const BUDGET_LLM = 10; // cible < 10 $/mois (CLAUDE.md §2.6)
@@ -49,9 +50,13 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
   const [taches, setTaches] = useState<Tache[]>([]);
   const [agendaCharge, setAgendaCharge] = useState(false);
   const suspects = useSuspectsVisibles(donnees ? lignesSuspects(donnees.index) : []);
+  // « Ma journée » couvre TOUS les agendas cochés (C28-41 PR2 — Family inclus).
+  const etatAgendas = useAgendas();
+  const affiches = agendasAffiches(etatAgendas);
+  const cleAgendas = affiches.map((a) => a.id).sort().join('|');
 
-  // « Ma journée » : Calendar/Tasks du jour, chargés une fois par montage (l'Agenda complet a son
-  // propre cycle) — un échec est SILENCIEUX ici (la brique s'affiche vide, l'accueil reste utile).
+  // « Ma journée » : Calendar/Tasks du jour (l'Agenda complet a son propre cycle) — un échec est
+  // SILENCIEUX ici (la brique s'affiche vide, l'accueil reste utile).
   useEffect(() => {
     if (!donnees) return;
     const auj = new Date();
@@ -59,12 +64,16 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
     const fin = new Date(auj.getFullYear(), auj.getMonth(), auj.getDate() + 1);
     (async () => {
       try {
-        const [evts, tks] = await Promise.all([
-          listerEvenements(debut.toISOString(), fin.toISOString()),
+        const marques = titresDriveAI(donnees.index);
+        const [listes, tks] = await Promise.all([
+          Promise.all(affiches.map(async (a) => interpreterEvenements(
+            await listerEvenements(debut.toISOString(), fin.toISOString(), a.id),
+            marques,
+            { id: a.id, couleur: a.couleur },
+          ))),
           listerTaches(),
         ]);
-        const marques = titresDriveAI(donnees.index);
-        setEvenements(interpreterEvenements(evts, marques));
+        setEvenements(listes.flat().sort((x, y) => x.debut.localeCompare(y.debut)));
         setTaches(interpreterTaches(tks, marques));
       } catch {
         /* silencieux : la brique agenda reste vide, le reste de l'accueil vit */
@@ -72,8 +81,8 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
         setAgendaCharge(true);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 1 chargement par montage (donnees prêtes)
-  }, [donnees === null]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- cleAgendas = photo stable des agendas cochés
+  }, [donnees === null, cleAgendas]);
 
   if (!donnees) return <IndicateurChargement langue={langue} />;
 
@@ -143,6 +152,7 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
           {evtsJour.map((e) => (
             <a key={e.id} className="jour-ligne" href={e.lien} target="_blank" rel="noreferrer">
               <span className="jour-heure">{e.journee ? t('journee', langue) : heureEvenement(e)}</span>
+              {e.couleur && <span className="jour-puce" style={{ background: e.couleur }} aria-hidden="true" />}
               <span className="jour-titre">{e.titre}</span>
               {e.lieu && <span className="jour-lieu">{e.lieu}</span>}
             </a>

@@ -109,10 +109,13 @@ describe('invariants de sécurité', () => {
 
   it('le périmètre OAuth serveur ne contient JAMAIS Gmail (§2.3 — moindre privilège)', () => {
     expect(SCOPES).not.toMatch(/gmail/i);
-    // Et il couvre exactement ce que l'app consomme (Sheets inclus : sans lui, plus de Sheet d'état).
-    for (const attendu of ['spreadsheets', 'auth/drive', 'auth/tasks', 'calendar.events']) {
+    // Et il couvre exactement ce que l'app consomme (Sheets inclus : sans lui, plus de Sheet
+    // d'état ; calendar.readonly = liste des agendas Family, C28-41 PR2 — décision Marc).
+    for (const attendu of ['spreadsheets', 'auth/drive', 'auth/tasks', 'calendar.events', 'calendar.readonly']) {
       expect(SCOPES).toContain(attendu);
     }
+    // L'écriture Calendar reste bornée aux ÉVÉNEMENTS : jamais le scope large `auth/calendar` seul.
+    expect(SCOPES).not.toMatch(/auth\/calendar(\s|$)/);
   });
 });
 
