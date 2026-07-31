@@ -1,6 +1,9 @@
 # ADR-0029 — Campagne de réorganisation AUTOMATIQUE (limites cognitives)
 
-- **Statut** : accepté (plan architecte NotebookLM, chantier C28-32, 2026-07-28)
+- **Statut** : ⛔ ABROGÉ par l'ADR-0031 (décision Marc 2026-07-31 « plus RIEN tout seul », C28-41) —
+  le code de la campagne auto est RETIRÉ ; l'analyse réorg ne se déclenche plus que SUR DEMANDE
+  (app ou chat). Historique conservé ci-dessous.
+- **Statut d'origine** : accepté (plan architecte NotebookLM, chantier C28-32, 2026-07-28)
 - **Décideur** : Marc (2026-07-28, après avoir constaté que la règle des ~7 ne s'appliquait qu'à la
   demande : « je veux que ça reclasse les dossiers actuels »)
 - **Complète** : ADR-0027 (limite cognitive) et ADR-0028 (routage topologique, son prérequis).

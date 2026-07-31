@@ -173,8 +173,7 @@ function assurerEnteteProgression_(f) {
  * Règles (leçons « barre de masse ») : le statut dérive des pannes/frein AVANT « en cours » ;
  * une opération « terminé » garde l'horodatage de sa FIN (sinon jamais purgée) et disparaît après
  * `purgeMs` ; une campagne finie AVANT d'avoir eu une ligne n'apparaît jamais (ex. rangement,
- * clos depuis des semaines). Les demandes soldées (tri/intentions) arrivent par leur instantané
- * `solde` — visibles même quand la demande s'est servie en un seul tick.
+ * clos depuis des semaines). (Les « demandes de Marc » tri/intentions ont disparu — ADR-0031.)
  *
  * @param {Object} etat  instantané des opérations (cf. majProgressions_)
  * @param {Object} existantes  clé → {traites:number, statut:string, horodateMs:number}
@@ -211,25 +210,8 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs) {
       unite, statut, new Date(horodateMs)]);
   }
 
-  // 1. Demandes de Marc d'abord (c'est ce qu'il vient de cliquer).
-  var td = etat.triDemande;
-  if (td.active) {
-    pousser('tri-demande', 'Tri Gmail à la demande', td.faits, td.plafond,
-      'fils', etat.quotaGmail ? 'suspendu (quota Gmail)' : 'en cours');
-  } else if (td.solde && maintenantMs - td.solde.quand <= purgeMs) {
-    lignes.push(['tri-demande', 'Tri Gmail à la demande', td.solde.faits, '',
-      'fils', 'terminé', new Date(td.solde.quand)]);
-  }
-  var idm = etat.intentionsDemande;
-  if (idm.active) {
-    pousser('intentions-demande', 'Analyse des intentions (30 j)', idm.traites, null,
-      'fils', etat.quotaGmail ? 'suspendu (quota Gmail)' : 'en cours');
-  } else if (idm.solde && maintenantMs - idm.solde.quand <= purgeMs) {
-    lignes.push(['intentions-demande', 'Analyse des intentions (30 j)', idm.solde.traites, '',
-      'fils', 'terminé', new Date(idm.solde.quand)]);
-  }
-
-  // 2. Campagnes de fond.
+  // (Les « demandes de Marc » tri/intentions n'existent plus — ADR-0031, boutons retirés en
+  // C28-41 PR1. Ne restent que les campagnes de fond.)
   pousser('migration', 'Migration taxonomie (' + etat.migration.tag + ')',
     etat.migration.traites, etat.migration.base, 'documents', statutCampagne(etat.migration));
   pousser('reanalyse', 'Re-analyse v2 (' + etat.reanalyse.tag + ')',
@@ -261,10 +243,6 @@ function majProgressions_() {
   assurerEnteteProgression_(f);
   var maintenant = Date.now();
 
-  var demandeTri = null;
-  try { demandeTri = JSON.parse(props.getProperty('DriveAI_TRI_DEMANDE') || 'null'); }
-  catch (e) { demandeTri = null; }
-
   var etat = {
     quotaGmail: estPanneGmail_(),
     panneApi: estPannePlateforme_(),
@@ -291,17 +269,6 @@ function majProgressions_() {
     histo: {
       termine: props.getProperty('DriveAI_GMAIL_HISTO') === 'terminé',
       traites: proprieteNombre_(props, 'DriveAI_GMAIL_HISTO_OFFSET') || 0
-    },
-    triDemande: {
-      active: !!demandeTri,
-      faits: proprieteNombre_(props, 'DriveAI_TRI_DEMANDE_FAITS') || 0,
-      plafond: demandeTri && demandeTri.plafond ? Number(demandeTri.plafond) : null,
-      solde: lireSoldeDemande_(props, 'DriveAI_TRI_DEMANDE_SOLDE', maintenant)
-    },
-    intentionsDemande: {
-      active: !!props.getProperty('DriveAI_INTENTIONS_DEMANDE'),
-      traites: proprieteNombre_(props, 'DriveAI_INTENTIONS_DEMANDE_OFFSET') || 0,
-      solde: lireSoldeDemande_(props, 'DriveAI_INTENTIONS_DEMANDE_SOLDE', maintenant)
     }
   };
 
@@ -317,23 +284,6 @@ function majProgressions_() {
 function proprieteNombre_(props, cle) {
   var v = props.getProperty(cle);
   return v === null ? null : (Number(v) || 0);
-}
-
-/**
- * Lit l'instantané « demande soldée » (JSON posé par effacerDemandeTri_ / balayerNouveauxMails_) ;
- * purge la Property au-delà de PROGRESSION_PURGE_MS (sinon la ligne « terminé » renaîtrait à vie).
- * @return {?{faits:number, traites:number, quand:number}}
- */
-function lireSoldeDemande_(props, cle, maintenantMs) {
-  var brut = props.getProperty(cle);
-  if (!brut) return null;
-  var solde = null;
-  try { solde = JSON.parse(brut); } catch (e) { }
-  if (!solde || !solde.quand || maintenantMs - solde.quand > CONFIG.PROGRESSION_PURGE_MS) {
-    props.deleteProperty(cle); // périmé ou illisible : purgé, jamais une erreur par tick
-    return null;
-  }
-  return solde;
 }
 
 /** Lit les lignes actuelles de Progression : clé → {traites, statut, horodateMs}. */
@@ -369,7 +319,7 @@ var COLONNES_PLAN_CONSOLIDATION = ['Horodaté', 'Fichier', 'ID', 'Action', 'Cibl
  * seuls les plafonds sont lus dans CONFIG (constantes). Ne jamais renommer une clé sans migrer
  * `interpreterTelemetrie` côté app.
  * @param {{quotaSuspendu:boolean, reprise:string, histoFilsJour:number, cycliqueFilsJour:number,
- *          demandeFilsJour:number, boiteFilsJour:number, coutDollars:number, coutAppels:number}} d
+ *          boiteFilsJour:number, coutDollars:number, coutAppels:number}} d
  * @return {Array[]} lignes [Clé, Valeur, Unité, Détail]
  */
 function lignesTelemetrie_(d) {
@@ -378,7 +328,6 @@ function lignesTelemetrie_(d) {
       d.quotaSuspendu ? d.reprise : ''],
     ['gmail_histo_fils_jour', d.histoFilsJour, 'fils', 'Plafond ' + CONFIG.GMAIL_HISTO_MAX_FILS_JOUR + '/j'],
     ['tri_cyclique_fils_jour', d.cycliqueFilsJour, 'fils', 'Plafond ' + CONFIG.TRI_CYCLIQUE_MAX_FILS_JOUR + '/j'],
-    ['tri_demande_fils_jour', d.demandeFilsJour, 'fils', 'Plafond ' + CONFIG.TRI_DEMANDE_MAX_FILS_JOUR + '/j'],
     ['tri_boite_fils_jour', d.boiteFilsJour, 'fils', 'Plafond ' + CONFIG.TRI_BOITE_MAX_FILS_JOUR + '/j'],
     ['llm_cout_mois', d.coutDollars, '$', 'Frein campagnes à ' + CONFIG.LLM_BUDGET_CAMPAGNES + ' $'],
     ['llm_appels_mois', d.coutAppels, 'appels', '']
@@ -419,7 +368,6 @@ function majTelemetrie_() {
     reprise: reprise,
     histoFilsJour: compteurFilsJour_(props, 'DriveAI_GMAIL_HISTO', aujourdhui),
     cycliqueFilsJour: compteurFilsJour_(props, 'DriveAI_TRI_CYCLIQUE', aujourdhui),
-    demandeFilsJour: compteurFilsJour_(props, 'DriveAI_TRI_DEMANDE', aujourdhui),
     boiteFilsJour: compteurFilsJour_(props, 'DriveAI_TRI_BOITE', aujourdhui),
     coutDollars: cout.dollars,
     coutAppels: cout.appels

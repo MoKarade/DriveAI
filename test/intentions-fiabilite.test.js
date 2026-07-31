@@ -167,7 +167,6 @@ test('traiterIntentionsMail_ : panne config active → retour immédiat, aucun s
   let scanne = false;
   c.balayerNouveauxMails_ = () => { scanne = true; };
   c.balayerArriereHistorique_ = () => { scanne = true; };
-  c.balayerAnalyseCiblee_ = () => { scanne = true; };
   c.traiterIntentionsMail_(() => false);
   assert.strictEqual(scanne, false, 'aucun balayage tant que l\'API est en panne de config');
 });

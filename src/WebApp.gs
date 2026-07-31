@@ -39,12 +39,6 @@ function doPost(e) {
         reponse = actionRechercheIA_(e);
       } else if (action === 'chat-assistant') {
         reponse = actionChatAssistant_(e);
-      } else if (action === 'analyse-ciblee') {
-        reponse = actionAnalyseCiblee_(e);
-      } else if (action === 'demande-tri') {
-        reponse = actionDemandeTri_(e);
-      } else if (action === 'demande-intentions') {
-        reponse = actionDemandeIntentions_(e);
       } else if (action === 'pas-suspect') {
         reponse = actionPasSuspect_(e);
       } else if (action === 'hub-summary') {
@@ -499,116 +493,9 @@ function actionChatAssistant_(e) {
   return { ok: true, reponse: reponse, actionsProposees: actionsProposees, coutJour: coutMaj, plafond: CONFIG.CHAT_COUT_JOUR_MAX };
 }
 
-/* ---------- Analyse ciblée des mails (C28-06, plan P2) ---------- */
-
-/**
- * Dépose une requête Gmail LIBRE que le tick balaiera par pages (`balayerAnalyseCiblee_`,
- * Intentions.gs). AUCUN coût ici : le dépôt écrit deux Script Properties — le vrai travail
- * (Gmail + LLM) est borné côté tick (plafonds/run + frein budget campagnes §2.6). Une nouvelle
- * requête REMPLACE la campagne en cours (offset remis à zéro). La requête voyage dans le CORPS
- * (JSON `{requete}` en text/plain) — jamais dans l'URL (les URL finissent dans des logs).
- */
-function actionAnalyseCiblee_(e) {
-  var props = PropertiesService.getScriptProperties();
-
-  // Anti-rafale (5 s) — même politique que la recherche IA : consommé après validation.
-  var derniere = Number(props.getProperty('DriveAI_DERNIERE_ANALYSE_CIBLEE')) || 0;
-  if (Date.now() - derniere < 5000) {
-    return { ok: false, erreur: 'trop de requêtes — réessaie dans quelques secondes' };
-  }
-
-  var requete = null;
-  try {
-    var corps = e && e.postData && e.postData.contents ? JSON.parse(e.postData.contents) : {};
-    requete = validerRequeteCiblee_(corps.requete);
-  } catch (err) {
-    requete = null;
-  }
-  if (requete === null) {
-    return { ok: false, erreur: 'requête invalide (3 à 200 caractères, une seule ligne, sans in:spam/in:trash/in:anywhere)' };
-  }
-  props.setProperty('DriveAI_DERNIERE_ANALYSE_CIBLEE', String(Date.now()));
-
-  // Progression/série d'échecs de l'ancienne campagne effacées AVANT de poser la nouvelle
-  // requête (ordre d'écritures : une coupure entre les deux donne un re-scan quasi gratuit,
-  // jamais une nouvelle requête accrochée à un vieil offset — revue quotas).
-  props.deleteProperty('DriveAI_CUSTOM_SCAN_OFFSET');
-  props.deleteProperty('DriveAI_CUSTOM_SCAN_ECHECS');
-  props.deleteProperty('DriveAI_CUSTOM_SCAN_PAUSE');
-  props.setProperty('DriveAI_CUSTOM_SCAN_QUERY', requete);
-  // La requête n'est PAS journalisée (comme la question de la recherche IA : elle peut révéler
-  // une intention personnelle — la réponse HTTP, elle, ne va qu'au navigateur de Marc).
-  journalInfo_('WebApp', 'Analyse ciblée programmée (requête de ' + requete.length + ' caractères).');
-  return { ok: true, message: 'analyse programmée — le moteur balaie « ' + requete + ' » à ses prochains passages' };
-}
-
-/* ---------- Tri & intentions À LA DEMANDE (C28-16) ---------- */
-
-/**
- * Dépose une demande de TRI paramétrée par Marc depuis l'app (archiver / plafond — C28-24 : plus
- * de fenêtre, la demande couvre TOUS les mails LUS de la boîte, requête figée côté moteur).
- * AUCUN travail ici : validation stricte + Property de demande — c'est `scanDemandeTri_`
- * (TriGmail.gs) qui exécute au tick, EN TÊTE du flux vivant. Si le quota Gmail est suspendu,
- * une sonde FORCÉE re-teste tout de suite (décision Marc : « tenter une fois quand même ») —
- * toujours mort → `QUOTA_GMAIL`, l'app affiche l'heure de reprise.
- */
-function actionDemandeTri_(e) {
-  var props = PropertiesService.getScriptProperties();
-
-  // Anti-rafale (5 s) — même politique que l'analyse ciblée : consommé après validation.
-  var derniere = Number(props.getProperty('DriveAI_DERNIERE_DEMANDE_TRI')) || 0;
-  if (Date.now() - derniere < 5000) {
-    return { ok: false, erreur: 'trop de requêtes — réessaie dans quelques secondes' };
-  }
-
-  var demande = null;
-  try {
-    var corps = e && e.postData && e.postData.contents ? JSON.parse(e.postData.contents) : {};
-    demande = validerDemandeTri_(corps);
-  } catch (err) {
-    demande = null;
-  }
-  if (demande === null) {
-    return { ok: false, erreur: 'paramètres invalides (archiver booléen, plafond 1..' + CONFIG.TRI_DEMANDE_PLAFOND_MAX + ')' };
-  }
-  props.setProperty('DriveAI_DERNIERE_DEMANDE_TRI', String(Date.now()));
-
-  if (!forcerSondeQuotaGmail_()) {
-    return { ok: false, erreur: 'QUOTA_GMAIL' };
-  }
-
-  // Progression d'une éventuelle demande précédente effacée AVANT la nouvelle (ordre d'écritures :
-  // une coupure donne au pire un re-scan quasi gratuit, jamais une demande accrochée à un vieil offset).
-  props.deleteProperty('DriveAI_TRI_DEMANDE_OFFSET');
-  props.deleteProperty('DriveAI_TRI_DEMANDE_FAITS');
-  props.setProperty('DriveAI_TRI_DEMANDE', JSON.stringify(demande));
-  journalInfo_('WebApp', 'Tri à la demande programmé (tous les mails LUS de la boîte, archiver : ' +
-    (demande.archiver ? 'oui' : 'non') + ', plafond ' + demande.plafond + ' fils).');
-  return actionTickPonctuel_(); // passage immédiat : le tri démarre dans la ~minute
-}
-
-/**
- * Relance l'analyse des INTENTIONS (tâches/RDV) sur toute la fenêtre 30 j, en ignorant le mur
- * « déjà vu » du scan avant (c'est tout l'intérêt du bouton). Même mécanique de demande.
- */
-function actionDemandeIntentions_(e) {
-  var props = PropertiesService.getScriptProperties();
-
-  var derniere = Number(props.getProperty('DriveAI_DERNIERE_DEMANDE_INTENTIONS')) || 0;
-  if (Date.now() - derniere < 5000) {
-    return { ok: false, erreur: 'trop de requêtes — réessaie dans quelques secondes' };
-  }
-  props.setProperty('DriveAI_DERNIERE_DEMANDE_INTENTIONS', String(Date.now()));
-
-  if (!forcerSondeQuotaGmail_()) {
-    return { ok: false, erreur: 'QUOTA_GMAIL' };
-  }
-
-  props.deleteProperty('DriveAI_INTENTIONS_DEMANDE_OFFSET');
-  props.setProperty('DriveAI_INTENTIONS_DEMANDE', String(Date.now()));
-  journalInfo_('WebApp', 'Analyse des intentions à la demande programmée (fenêtre 30 j complète).');
-  return actionTickPonctuel_();
-}
+/* (Actions « analyse-ciblee », « demande-tri », « demande-intentions » : RETIRÉES par
+   l'ADR-0031 — leurs boutons n'existent plus depuis la refonte C28-41 PR1. Les scans
+   AUTOMATIQUES du tick sont inchangés.) */
 
 /**
  * « PAS SUSPECT » 1-clic (C28-19, ADR-0020) : apprend l'expéditeur DE CONFIANCE (onglet
@@ -720,7 +607,6 @@ function majResumeHub_() {
     gmailThreadsToday =
       compteurFilsJour_(props, 'DriveAI_GMAIL_HISTO', aujourdhui) +
       compteurFilsJour_(props, 'DriveAI_TRI_CYCLIQUE', aujourdhui) +
-      compteurFilsJour_(props, 'DriveAI_TRI_DEMANDE', aujourdhui) +
       compteurFilsJour_(props, 'DriveAI_TRI_BOITE', aujourdhui);
     var quotaDepuis = Number(props.getProperty('DriveAI_GMAIL_QUOTA')) || 0;
     gmailQuotaSuspended = !!quotaDepuis && Date.now() - quotaDepuis < CONFIG.GMAIL_QUOTA_RESONDE_MS;
@@ -826,40 +712,6 @@ function tsCellule_(v) {
 function validerThreadId_(brut) {
   var t = String(brut || '').trim();
   return /^[a-zA-Z0-9]{8,32}$/.test(t) ? t : '';
-}
-
-/**
- * Valide les paramètres du tri à la demande (données UTILISATEUR via HTTP). PURE (testée).
- * C28-24 : plus de fenêtre — la requête `in:inbox is:read` est FIGÉE côté moteur ; un champ
- * `fenetre` envoyé par une vieille version de l'app est simplement IGNORÉ.
- * @param {*} corps  `{archiver, plafond}`
- * @return {?{archiver:boolean, plafond:number}} demande propre, ou null
- */
-function validerDemandeTri_(corps) {
-  if (!corps || typeof corps !== 'object') return null;
-  if (typeof corps.archiver !== 'boolean') return null;
-  var plafond = Number(corps.plafond);
-  if (!isFinite(plafond) || plafond !== Math.floor(plafond)) return null;
-  if (plafond < 1 || plafond > CONFIG.TRI_DEMANDE_PLAFOND_MAX) return null;
-  return { archiver: corps.archiver, plafond: plafond };
-}
-
-/**
- * Valide la requête Gmail de l'analyse ciblée (donnée UTILISATEUR via HTTP) : chaîne 3..200
- * caractères, une seule ligne (les caractères de contrôle sont refusés — une Property ne doit
- * jamais transporter autre chose qu'une requête de recherche), jamais de spam/corbeille
- * (`in:spam`/`in:trash`/`in:anywhere` refusés — les scans du moteur n'y mettent JAMAIS les
- * pieds ; le balayeur suffixe en plus `-in:spam -in:trash`, défense en profondeur). PURE (testée).
- * @param {*} q
- * @return {?string} requête nettoyée, ou null
- */
-function validerRequeteCiblee_(q) {
-  if (typeof q !== 'string') return null;
-  if (/[\u0000-\u001F\u007F]/.test(q)) return null; // saut de ligne, tab, contrôle → refus
-  var propre = q.replace(/\s+/g, ' ').trim();
-  if (propre.length < 3 || propre.length > 200) return null;
-  if (/(^|[\s(])-?in:(spam|trash|anywhere)\b/i.test(propre)) return null; // jamais de spam/corbeille
-  return propre;
 }
 
 /**

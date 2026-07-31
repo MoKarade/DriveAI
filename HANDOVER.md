@@ -20,20 +20,30 @@
 > PanneauActions, OperationsLive, Apprentissage (reclassement manuel compris — décision Marc :
 > il range dans Drive, le moteur apprend de ses corrections observées), Coûts & quotas, Santé ;
 > lectures Sheet `Entités`+`TriAppris` retirées du cycle (payload −). **PR1 MERGÉE (#231).**
-> **PR2 (cette branche) : agenda multi-agendas Family** — scope APP `calendar.readonly` ajouté
-> (api/_lib.ts, décision Marc « tous mes agendas » ; l'écriture reste bornée à `calendar.events`,
-> verrou bff.test) ; « Mes agendas » RÉEL dans la sidebar (calendarList : cases, couleurs, choix
-> persisté — `agendasStore.ts`, un seul chargement/session partagé Agenda/accueil/création) ;
-> événements fusionnés PAR agenda coché avec la couleur de l'agenda sur chaque bloc (grille +
-> mois + « Ma journée ») ; sélecteur d'agenda à la CRÉATION d'un RDV (principal par défaut).
-> ⚠ **Jeton d'avant le scope → calendarList 403** : détecté (`SCOPE_AGENDAS`), repli sur le seul
-> agenda principal (comportement historique) + invite « Se reconnecter » UNE fois dans la sidebar
-> (leçon §7 : un verrou posé à l'émission n'atteint pas le stock de jetons émis). **Marc devra se
-> reconnecter UNE fois** pour voir Family. 171 tests app + build verts.
-> **À SUIVRE : PR3 moteur** (ADR-0031 §8 : plus AUCUNE proposition spontanée — entités
-> `en_attente` + réorg auto OFF, l'Assistant propose sur demande ; retrait des actions web app
-> orphelines `demande-tri`/`demande-intentions`/`analyse-ciblee` ; `majTelemetrie_`/
-> `majProgressions_` conservés — la page Moteur les lit).
+> **PR2 MERGÉE (#232) : agenda multi-agendas Family** — scope APP `calendar.readonly`
+> (api/_lib.ts ; l'écriture reste bornée à `calendar.events`, verrou bff.test) ; « Mes agendas »
+> RÉEL (calendarList : cases, couleurs, choix persisté — `agendasStore.ts`, 1 chargement/session
+> partagé Agenda/accueil/création) ; événements fusionnés PAR agenda coché, couleur de l'agenda
+> sur chaque bloc ; sélecteur d'agenda à la CRÉATION (principal par défaut). ⚠ Jeton d'avant le
+> scope → calendarList 403 détecté (`SCOPE_AGENDAS`), repli agenda principal + invite « Se
+> reconnecter » dans la sidebar. **⚠ Marc : se reconnecter UNE fois pour voir Family.**
+> **PR3 (cette branche) : moteur — plus AUCUNE proposition spontanée (ADR-0031, §8 ; ABROGE
+> l'ADR-0029).** `entiteEnAttenteAjouter_` = OBSERVATION seule (dossier Drive existant → ligne
+> validée liée ; sinon ZÉRO écriture — tripwire) ; campagne réorg AUTO retirée (Main/Reorg/
+> Config + skip-list ; `compterSousDossiersRegroupables_` et `chercherLigneFusionnable_` retirés
+> aussi — ORPHELINS, le décompte des prompts est INLINE dans `inventaireDossiers_` [revue
+> flotte : mes docs les croyaient vivants, le grep a tranché]) ;
+> actions web app orphelines retirées (`demande-tri`/`demande-intentions`/`analyse-ciblee`) +
+> consommateurs tick (`scanDemandeTri_`, `balayerAnalyseCiblee_`, fenêtre forcée intentions,
+> `forcerSondeQuotaGmail_`) ; Progression/Télémétrie épurées (app alignée atomiquement).
+> ROUTAGE INTOUCHÉ (entités validées + ADR-0016 intacts) ; les ~98 lignes `en_attente` héritées
+> restent des données inertes (aucune suppression, la curation les assainit). 710 tests moteur ;
+> revue flotte faite AVANT merge : 🟢 sécurité · 🟢 quotas · code-reviewer « prêt après 2 🟠 »
+> (les 2 corrigés + 4 🟡). ⚠ Transition (revue) : une ligne `demande-auto-*` héritée encore au
+> statut « analyse demandée » dans l'onglet Réorg déclencherait UNE dernière analyse Sonnet
+> après déploiement (bornée, une fois) — la solder à la main si visible. ⚠ Déploiement :
+> `clasp push` auto au merge — **Marc : ré-exécuter `installerTrigger`** (Extensions →
+> Apps Script) pour prise d'effet certaine.
 >
 > **⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (matin) — ACCÉLÉRATION (#229) + ÉTAT RÉEL MESURÉ.** Marc : « ça peut
 > pas aller plus vite ? je veux que tout soit fini avant la fin de la journée ». **Constaté dans les
@@ -236,7 +246,9 @@
 > le regroupement passe toujours par `deplacer`) ; année/type d'identité jamais CIBLE d'un déplacement.
 > **C28-31 MERGÉ (#215, #218).**
 >
-> **⚡ C28-32 — CAMPAGNE DE RÉORG AUTOMATIQUE (ADR-0029).** Constat déclencheur : la règle des ~7 ne
+> **⚡ C28-32 — CAMPAGNE DE RÉORG AUTOMATIQUE (ADR-0029). ⛔ ABROGÉE le 2026-07-31 (ADR-0031,
+> C28-41 PR3 — code retiré, `REORG_AUTO_*` disparus de la CONFIG ; historique ci-dessous).**
+> Constat déclencheur : la règle des ~7 ne
 > s'appliquait qu'À LA DEMANDE (`appliquerReorgIA_` sort sans ligne `demande`) → le Drive ne
 > convergeait jamais seul. Le moteur DÉPOSE désormais lui-même la demande sur un dossier saturé
 > (`genererDemandeReorgAuto_`) ; le pipeline existant fait le reste ; **rien ne s'applique sans la

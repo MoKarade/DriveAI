@@ -733,7 +733,7 @@ export interface ErreurChat extends Error {
  * Envoie l'historique éphémère du chat au MOTEUR (doPost `chat-assistant`) — la clé Anthropic et
  * l'accès Drive vivent côté moteur (ADR-0007) ; l'app n'envoie que l'historique et n'affiche que la
  * réponse + le compteur de budget (coutJour/plafond, métadonnées SEULEMENT). Même canal LISIBLE que
- * `rechercheIA`/`analyseCiblee` (POST text/plain, corps JSON). L'erreur de budget quotidien (§2.6)
+ * `rechercheIA` (POST text/plain, corps JSON). L'erreur de budget quotidien (§2.6)
  * remonte TELLE QUELLE (« Budget… ») pour que l'UI la distingue d'une panne. Rien du contenu n'est
  * persisté (chat éphémère, State React).
  */

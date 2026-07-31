@@ -410,7 +410,6 @@ describe('interpreterTelemetrie', () => {
     ['quota_gmail_etat', 'suspendu', '', 'Reprise vers 16:45'],
     ['gmail_histo_fils_jour', '150', 'fils', 'Plafond 150/j'],
     ['tri_cyclique_fils_jour', '84', 'fils', 'Plafond 150/j'],
-    ['tri_demande_fils_jour', '120', 'fils', 'Plafond 500/j'],
     ['tri_boite_fils_jour', '45', 'fils', 'Plafond 150/j'],
     ['llm_cout_mois', '16.42', '$', 'Frein campagnes à 110 $'],
     ['llm_appels_mois', '5210', 'appels', ''],
@@ -421,7 +420,6 @@ describe('interpreterTelemetrie', () => {
     expect(t.presente).toBe(true);
     expect(t.quotaSuspendu).toBe(true);
     expect(t.quotaDetail).toBe('Reprise vers 16:45');
-    expect(t.demandeJour).toEqual({ lus: 120, plafond: 500 });
     expect(t.cycliqueJour).toEqual({ lus: 84, plafond: 150 });
     expect(t.histoJour).toEqual({ lus: 150, plafond: 150 });
     expect(t.boiteJour).toEqual({ lus: 45, plafond: 150 });
@@ -435,18 +433,17 @@ describe('interpreterTelemetrie', () => {
     expect(t.presente).toBe(false);
     expect(t.coutDollars).toBeNull();
     expect(t.appelsMois).toBeNull();
-    expect(t.demandeJour).toEqual({ lus: 0, plafond: null });
   });
 
   it('quota actif + lignes partielles/illisibles → valeurs sûres (jamais NaN)', () => {
     const t = interpreterTelemetrie([
       ['quota_gmail_etat', 'actif', '', ''],
-      ['tri_demande_fils_jour', 'zéro', 'fils', 'sans nombre'],
+      ['tri_cyclique_fils_jour', 'zéro', 'fils', 'sans nombre'],
       ['llm_cout_mois', '3,50', '$', 'Frein campagnes à 110 $'],
     ]);
     expect(t.quotaSuspendu).toBe(false);
     expect(t.quotaDetail).toBe('');
-    expect(t.demandeJour).toEqual({ lus: 0, plafond: null }); // illisible → 0 / sans borne
+    expect(t.cycliqueJour).toEqual({ lus: 0, plafond: null }); // illisible → 0 / sans borne
     expect(t.coutDollars).toBe(3.5); // virgule décimale FR tolérée
   });
 });
