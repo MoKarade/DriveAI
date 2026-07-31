@@ -1,0 +1,106 @@
+name: Pousser le rangement (pilote)
+
+# ADR-0032 — Marc ne lance PLUS RIEN à la main. Ce workflow fait, à sa place et plus souvent que
+# lui, ce qu'il faisait en cliquant `lancerResetTout()` dans l'éditeur Apps Script : il POSTe une
+# passe de rangement à la web app `/exec`, qui l'exécute SYNCHRONEMENT.
+#
+# Pourquoi c'est plus rapide sans rien casser : le travail arrive par la WEB APP, pas par un
+# déclencheur — il est donc hors du quota « Triggers total runtime » (~90 min/j) que les budgets
+# quotidiens du tick protègent (le franchir gèle TOUS les déclencheurs, chien de garde inclus —
+# C28-29). On n'augmente aucun budget : on ouvre le même robinet que les clics de Marc.
+#
+# Ne jamais raccourcir PAUSE_S en dessous de TICK_MINUTES (5) : c'est CE qui garantit une fenêtre
+# de tick complète entre deux passes, donc un flux vivant (mails, dépôts) jamais affamé.
+#
+# Le pilote s'ARRÊTE TOUT SEUL à la convergence (réponse `termine:true`) — plus aucun coût ensuite.
+# Secrets déjà configurés (ceux du miroir Drive) : DRIVEAI_WEBAPP_URL + DRIVEAI_SYNC_SECRET.
+
+on:
+  schedule:
+    - cron: '*/15 * * * *' # toutes les 15 min ; GitHub peut retarder — sans conséquence (chaque passe est indépendante)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pousser-reset
+  cancel-in-progress: false # deux passes ne doivent JAMAIS se chevaucher (le verrou côté moteur le refuserait de toute façon)
+
+jobs:
+  pousser:
+    name: Passes de rangement poussées
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Vérifier la configuration
+        id: guard
+        env:
+          DRIVEAI_WEBAPP_URL: ${{ secrets.DRIVEAI_WEBAPP_URL }}
+          DRIVEAI_SYNC_SECRET: ${{ secrets.DRIVEAI_SYNC_SECRET }}
+        run: |
+          if [ -z "$DRIVEAI_WEBAPP_URL" ] || [ -z "$DRIVEAI_SYNC_SECRET" ]; then
+            echo "::notice::Pilote non configuré (secrets DRIVEAI_WEBAPP_URL / DRIVEAI_SYNC_SECRET absents). Voir docs/DEPLOIEMENT.md. On saute."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Pousser le rangement
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          URL: ${{ secrets.DRIVEAI_WEBAPP_URL }}
+          SECRET: ${{ secrets.DRIVEAI_SYNC_SECRET }}
+          PASSES: '2'   # passes par run — 2 × 3,5 min de travail par quart d'heure
+          PAUSE_S: '360' # 6 min > TICK_MINUTES (5) : garantit une fenêtre de tick entre deux passes
+        run: |
+          set -euo pipefail
+
+          # Encodage URL du secret : une valeur aléatoire peut contenir &, +, = ou un espace, qui
+          # couperaient silencieusement la query string (même précaution que sync-drive.yml).
+          SECRET_ENC="$(jq -rn --arg s "$SECRET" '$s|@uri')"
+
+          TERMINE=0
+          for i in $(seq 1 "$PASSES"); do
+            echo "── Passe $i/$PASSES ──"
+            # PAS de `-X POST` avec `-L` : cette option verrouille la méthode sur TOUTE la chaîne de
+            # redirection, or /exec redirige vers /macros/echo qui n'accepte que HEAD/GET → 405
+            # systématique. `--data-binary` pose POST sur la 1ʳᵉ requête seulement (leçon vécue).
+            # --max-time 300 : une passe dure jusqu'à ~3,5 min côté moteur, plus la latence.
+            CODE="$(curl -sS -L --max-time 300 -o /tmp/pousse.json -w '%{http_code}' \
+              "${URL}?action=pousser-reset&secret=${SECRET_ENC}" \
+              -H 'Content-Type: text/plain;charset=utf-8' \
+              --data-binary '{}' || echo "000")"
+
+            # Le succès se juge au CONTENU (JSON ok:true), jamais au code HTTP : une panne
+            # transitoire d'Apps Script renvoie soit un non-200, soit un 200 avec une page HTML
+            # (« Script function not found: doGet ») — les deux vécues en prod.
+            if [ "$CODE" = "200" ] && jq -e '.ok == true' /tmp/pousse.json >/dev/null 2>&1; then
+              jq -c '{termine, rondes, progres, message}' /tmp/pousse.json
+              if jq -e '.termine == true' /tmp/pousse.json >/dev/null 2>&1; then
+                echo "::notice::Rangement TERMINÉ (I/O + reliquat drainé) — le pilote n'a plus rien à pousser."
+                TERMINE=1
+                break
+              fi
+            elif [ "$CODE" = "200" ] && jq -e 'has("ok")' /tmp/pousse.json >/dev/null 2>&1; then
+              # JSON propre mais ok:false → cause PERMANENTE (secret refusé, pilote désactivé,
+              # RESET_ACTIF false). Re-essayer ne changerait rien : on le dit et on sort en succès
+              # (ce n'est pas une panne d'infrastructure).
+              echo "::warning::Passe refusée par le moteur : $(jq -r '.erreur // .message' /tmp/pousse.json)"
+              break
+            else
+              # Réponse sans `ok` = l'action est INCONNUE de la version servie par /exec (elle est
+              # tombée dans le `else` du doPost) → web app pas redéployée. Panne SILENCIEUSE
+              # classique : on la rend bruyante plutôt que de compter une passe fantôme.
+              echo "::warning::Réponse inattendue (HTTP $CODE) — /exec sert peut-être une version sans l'action « pousser-reset ». Extrait : $(head -c 200 /tmp/pousse.json)"
+            fi
+
+            if [ "$i" -lt "$PASSES" ]; then
+              echo "Pause ${PAUSE_S}s (fenêtre garantie pour le tick automatique : flux vivant jamais affamé)…"
+              sleep "$PAUSE_S"
+            fi
+          done
+
+          if [ "$TERMINE" = "1" ]; then
+            echo "Convergence atteinte : les prochains runs ne feront rien (coût nul)."
+          fi

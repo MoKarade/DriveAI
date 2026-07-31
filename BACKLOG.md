@@ -5,6 +5,20 @@
 
 ---
 
+## Chantier #43 — PILOTE CI : plus AUCUN lancement à la main (ADR-0032, demande Marc 2026-07-31)  🟦
+
+> Marc : « je veux plus jamais avoir à lancer à la main, je veux que tu fasses toi le lancement
+> `lancerResetTout` et que ça marche encore plus vite que si je le faisais à la main ». Deux gestes
+> restaient : `installerTrigger` après chaque merge moteur, et `lancerResetTout()` — ce dernier
+> était AUSSI le plafond de vitesse (une exécution manuelle est hors du quota des déclencheurs,
+> donc seuls ses clics pouvaient dépasser les 50 min/j du tick).
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C28-43 | **GitHub Actions devient le pilote** (ADR-0032). Canal existant et prouvé (miroir Drive, 140 runs verts) : POST vers `/exec` avec le secret CI. **2 actions** : `assurer-trigger` (réinstalle le déclencheur — appelée par `deploy.yml` APRÈS `clasp deploy`, confirmée par un SIGNAL INDÉPENDANT `version`, ferme le piège de déploiement (3)) et `pousser-reset` (une passe exécutée **synchronement** dans le `doPost` — jamais via `actionTickPonctuel_` qui CRÉE un déclencheur et consommerait le quota protégé, verrouillé par test). Noyau `pousserResetPilote_` : les 3 phases I/O **+ la passe LLM du reliquat**, toutes en mode `manuel` (ni gatées ni comptées — hors quota déclencheurs, comme un clic), mur `PILOTE_BUDGET_MS` 3,5 min, verrou partagé, arrêt sur `pilotageTermineReset_()` (= I/O **et** reliquat drainé, pas `resetTermine_` seul). Workflow `pousser-reset.yml` : cron */15, 2 passes, **pause 6 min > TICK_MINUTES** (garantit une fenêtre de tick ⇒ flux vivant jamais affamé), arrêt seul à convergence, dépôt PUBLIC = minutes gratuites. Débit ≈ **11 h/j de rangement** contre 50 min/j. Coût LLM total INCHANGÉ (clé versionnée : chaque doc payé une fois). 12 tests dédiés, 731 verts. | 🟦 |
+
+---
+
 ## Chantier #42 — Passe LLM du RELIQUAT non-routable (ADR-0030 PR5, clic Marc 2026-07-31)  🟦
 
 > Marc : « ya encore beaucoup de fichiers en mode inconnu mais rien se passe pour eux » →
@@ -14,7 +28,7 @@
 
 | ID | Tâche | Statut |
 |----|-------|--------|
-| C28-42 | **Passe LLM du reliquat** (amendement ADR-0030 du 2026-07-31) : `analyserReliquatReset_` dans le tick (AVANT migration, gates `RESET_ACTIF` + `!estBudgetDepasse()` + `!budgetCampagnesAtteint_()`, try/catch) ; collecte = walk `_TRI/<domaine>`, la TABLE d'abord (`cheminCibleReset_` non-null ⇒ jamais de LLM), plafond `RESET_LLM_MAX_PAR_RUN` (6) ; pipeline COMPLET `traiterDocument_` avec les 3 verrous du re-traitement : clé versionnée `tri33llm\|<tag>\|<version>\|<fileId>`, `ignorerDoublon: true`, placement DIRECT (`deplacerEtRenommer_`/`renommer_`, jamais de transit par `00 · À trier`) ; gardes §1 re-vérifiées à la mutation (`aParentProtege_`, multi-parents ⇒ skip avec clé) ; drapeau terminal `DriveAI_RESET_LLM` aligné sur `finPlacementReset_()` (jamais posé tant que le placement alimente). **Revue flotte AVANT merge — 4 agents** : sécurité 🟢 ; quotas 🔴 + coût 🟠 + code-reviewer 🟠 sur le MÊME trou (aucun budget QUOTIDIEN — le « créneau LLM libéré » était une fiction en ms/jour, drainage jour-1 = gel C28-29) → corrigé : `RESET_LLM_BUDGET_JOUR_MS` 12 min/j (ms réelles persistées), **réalloué DANS l'enveloppe 50 min/j** (placement 22→14, 04 8→4), sommé dans l'invariant d'orchestration et **prouvé par mutation** ; bloc PR5 remonté AVANT l'historique Gmail (priorité du créneau post-reset) ; 🟡 intégrés (`nom`/`getId` dans le try, tripwire `reset-exec` amendé + verrou « indirections réservées à la PR5 », ADR honnête : borne 200 fichiers ≈ 8 $, limites `RESET_ACTIF`/un-clic). 9 tests dédiés (`reset-llm.test.js`) + orchestration + surface — 719 verts. | 🟦 |
+| C28-42 | **Passe LLM du reliquat** (amendement ADR-0030 du 2026-07-31) : `analyserReliquatReset_` dans le tick (AVANT migration, gates `RESET_ACTIF` + `!estBudgetDepasse()` + `!budgetCampagnesAtteint_()`, try/catch) ; collecte = walk `_TRI/<domaine>`, la TABLE d'abord (`cheminCibleReset_` non-null ⇒ jamais de LLM), plafond `RESET_LLM_MAX_PAR_RUN` (6) ; pipeline COMPLET `traiterDocument_` avec les 3 verrous du re-traitement : clé versionnée `tri33llm\|<tag>\|<version>\|<fileId>`, `ignorerDoublon: true`, placement DIRECT (`deplacerEtRenommer_`/`renommer_`, jamais de transit par `00 · À trier`) ; gardes §1 re-vérifiées à la mutation (`aParentProtege_`, multi-parents ⇒ skip avec clé) ; drapeau terminal `DriveAI_RESET_LLM` aligné sur `finPlacementReset_()` (jamais posé tant que le placement alimente). **Revue flotte AVANT merge — 4 agents** : sécurité 🟢 ; quotas 🔴 + coût 🟠 + code-reviewer 🟠 sur le MÊME trou (aucun budget QUOTIDIEN — le « créneau LLM libéré » était une fiction en ms/jour, drainage jour-1 = gel C28-29) → corrigé : `RESET_LLM_BUDGET_JOUR_MS` 12 min/j (ms réelles persistées), **réalloué DANS l'enveloppe 50 min/j** (placement 22→14, 04 8→4), sommé dans l'invariant d'orchestration et **prouvé par mutation** ; bloc PR5 remonté AVANT l'historique Gmail (priorité du créneau post-reset) ; 🟡 intégrés (`nom`/`getId` dans le try, tripwire `reset-exec` amendé + verrou « indirections réservées à la PR5 », ADR honnête : borne 200 fichiers ≈ 8 $, limites `RESET_ACTIF`/un-clic). 9 tests dédiés (`reset-llm.test.js`) + orchestration + surface — 719 verts. | ✅ (#234) |
 
 ---
 

@@ -4,6 +4,29 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **⚡⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (nuit) — C28-43 : LE PILOTE CI (ADR-0032) — Marc ne lance PLUS RIEN.**
+> Marc : « je veux plus jamais avoir à lancer à la main, je veux que TU fasses le lancement
+> `lancerResetTout`, et que ça marche encore plus vite que si je le faisais à la main ». Deux gestes
+> restaient, et le second était AUSSI le plafond de vitesse : `installerTrigger` après chaque merge
+> moteur, et `lancerResetTout()` (une exécution MANUELLE porte le drapeau `manuel` — ni gatée ni
+> comptée, car hors du quota des DÉCLENCHEURS ~90 min/j : seuls ses clics dépassaient les 50 min/j
+> du tick). **GitHub Actions devient le pilote**, par le canal `/exec` déjà prouvé (miroir Drive,
+> 140 runs verts, secrets déjà posés — ZÉRO configuration pour Marc). Livré : action
+> `assurer-trigger` (appelée par `deploy.yml` après `clasp deploy`, confirmée par un signal
+> INDÉPENDANT `version` — ferme le piège (3) « clasp push vert ≠ code pris en effet ») ; action
+> `pousser-reset` → `pousserResetPilote_` (4 phases dont la passe LLM du reliquat, mode `manuel`,
+> mur 3,5 min, verrou partagé, arrêt sur `pilotageTermineReset_()` = I/O **ET** reliquat drainé).
+> ⚠️ INVARIANT VITAL (testé) : le travail est exécuté SYNCHRONEMENT dans le `doPost` — passer par
+> `actionTickPonctuel_` (qui CRÉE un déclencheur) consommerait le quota que tout ce montage
+> protège. Workflow `pousser-reset.yml` : cron */15, 2 passes, **pause 6 min > TICK_MINUTES** (la
+> fenêtre de tick garantie = ce qui empêche d'affamer le flux vivant), arrêt seul à convergence,
+> dépôt PUBLIC (minutes Actions gratuites — vérifié). Débit ≈ 11 h/j de rangement vs 50 min/j ;
+> coût LLM TOTAL inchangé (clé versionnée : chaque doc payé une seule fois — pousser ne coûte pas
+> plus cher, ça arrive plus tôt). 731 tests. ⚠️ Note repo : la branche par DÉFAUT est
+> `claude/compassionate-brahmagupta-e49tqa`, pas `main` — les crons GitHub ne tournent que depuis
+> la branche par défaut ; ici sans conséquence (le fichier est sur les deux), mais à remettre sur
+> `main` un jour pour l'hygiène.
+>
 > **⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (soir) — C28-42 : PASSE LLM DU RELIQUAT (ADR-0030 PR5, clic Marc).**
 > Marc : « ya encore beaucoup de fichiers en mode inconnu mais rien se passe pour eux ». Diagnostic :
 > deux populations — (a) les `_Inconnu` déjà CLASSÉS (la campagne m2-inconnu, suspendue pendant le

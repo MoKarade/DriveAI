@@ -11,14 +11,22 @@
  *    « simple », pas de préflight) — Apps Script renvoie alors un CORS lisible (`*`).
  *  - `action=sync-miroir` (ADR-0017) : GitHub Actions y POSTe un lot de fichiers du dépôt →
  *    copiés en texte dans un dossier Drive dédié (`Miroir.gs`). Secret DÉDIÉ (voir ci-dessous).
+ *  - `action=pousser-reset` (ADR-0032) : GitHub Actions pousse UNE passe du grand rangement,
+ *    exécutée SYNCHRONEMENT ici — hors du quota des DÉCLENCHEURS, comme un clic de Marc dans
+ *    l'éditeur. ⚠️ Ne JAMAIS router vers `actionTickPonctuel_` (elle CRÉE un déclencheur, donc
+ *    consommerait le quota que tout ce montage protège). Secret CI.
+ *  - `action=assurer-trigger` (ADR-0032) : ré-installe le déclencheur après un déploiement —
+ *    remplace le dernier geste manuel de Marc. Secret CI.
  *
  * Secrets — DEUX, jamais confondus :
  *  - `DriveAI_WEBAPP_SECRET` (défaut, recherche-ia) : exposé côté NAVIGATEUR par conception
  *    (app/src/config.ts — « la sécurité vient du login Google, pas du secret »).
- *  - `DriveAI_SYNC_SECRET` (sync-miroir) : DÉDIÉ, JAMAIS exposé à un navigateur — connu
- *    seulement de GitHub Actions (secret CI) et du script. Pire abus s'il fuit : écrire des
- *    fichiers texte dans UN dossier dédié (`_Miroir du dépôt`), jamais toucher à un document
- *    classé ni à l'état (Index/Journal/Entités).
+ *  - `DriveAI_SYNC_SECRET` (sync-miroir, pousser-reset, assurer-trigger) : DÉDIÉ, JAMAIS exposé
+ *    à un navigateur — connu seulement de GitHub Actions (secret CI) et du script. Pire abus s'il
+ *    fuit : écrire des fichiers texte dans UN dossier dédié (`_Miroir du dépôt`) ; faire AVANCER
+ *    plus vite un rangement que le moteur ferait de toute façon, et réinstaller un déclencheur —
+ *    jamais une suppression, jamais une sortie de la zone protégée, jamais une lecture de document
+ *    (ADR-0032 §3 : le pilote n'ajoute AUCUNE surface de mutation, il appelle le code déjà revu).
  *
  * Garde-fous communs : anti-rafale par action, plafonds bornés, sortie whitelistée par un
  * parseur strict (fonctions PURES testées).
@@ -30,6 +38,10 @@ function doPost(e) {
     var action = e && e.parameter ? e.parameter.action : '';
     if (action === 'sync-miroir') {
       reponse = verifierSecretSync_(e) ? actionSyncMiroir_(e) : { ok: false, erreur: 'refusé' };
+    } else if (action === 'pousser-reset') {
+      reponse = verifierSecretSync_(e) ? pousserResetPilote_() : { ok: false, erreur: 'refusé' };
+    } else if (action === 'assurer-trigger') {
+      reponse = verifierSecretSync_(e) ? actionAssurerTrigger_() : { ok: false, erreur: 'refusé' };
     } else {
       var attendu = PropertiesService.getScriptProperties().getProperty('DriveAI_WEBAPP_SECRET');
       var recu = e && e.parameter ? e.parameter.secret : '';
@@ -52,6 +64,29 @@ function doPost(e) {
   }
   return ContentService.createTextOutput(JSON.stringify(reponse))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+/* ---------- Pilote CI (ADR-0032) : ré-installation du déclencheur, sans Marc ---------- */
+
+/**
+ * Ré-installe le déclencheur temporel — EXACTEMENT ce que Marc faisait à la main dans l'éditeur
+ * après chaque merge moteur (`Main.gs` → `installerTrigger`). Appelée par `deploy.yml` APRÈS
+ * `clasp push` + `clasp deploy`, elle ferme le piège de déploiement (3) : un `clasp push` vert ne
+ * garantit pas que le déclencheur exécute le NOUVEAU code — supprimer/recréer le déclencheur le
+ * force (prod figée ~4 j vécue, CI verte, zéro erreur).
+ *
+ * Le champ `version` de la réponse est le SIGNAL INDÉPENDANT attendu par la CI : s'il manque, c'est
+ * que la web app `/exec` sert encore une version qui ne connaît pas cette action (piège (4) : l'appel
+ * tombe alors dans le `else` du `doPost` et « réussit » en silence) — le workflow le détecte au lieu
+ * de conclure à tort que le déclencheur a été réinstallé.
+ */
+function actionAssurerTrigger_() {
+  installerTrigger();
+  return {
+    ok: true,
+    version: String(CONFIG.TICK_MINUTES) + 'min|' + CONFIG.RESET_TABLE_VERSION,
+    message: 'déclencheur réinstallé (' + CONFIG.TICK_MINUTES + ' min) — plus aucun geste manuel requis'
+  };
 }
 
 /* ---------- Action par défaut : passage immédiat (#20) ---------- */

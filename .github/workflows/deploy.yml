@@ -88,3 +88,35 @@ jobs:
           fi
           clasp deploy -i "$WEBAPP_DEPLOYMENT_ID" -d "auto ${GITHUB_SHA}" \
             || (sleep 5 && clasp deploy -i "$WEBAPP_DEPLOYMENT_ID" -d "auto ${GITHUB_SHA}")
+
+      # Ré-installe le DÉCLENCHEUR (ADR-0032) — c'était le DERNIER geste manuel de Marc : ouvrir
+      # l'éditeur → `Main.gs` → `installerTrigger`. Sans lui, `clasp push` peut être vert pendant que
+      # le déclencheur continue d'exécuter la version PRÉCÉDEMMENT chargée (piège de déploiement (3) :
+      # ~4 jours de prod figée vécus, CI verte, zéro erreur). Supprimer/recréer le déclencheur force
+      # le rechargement. Placé APRÈS le redéploiement de la web app : c'est la NOUVELLE version qui
+      # doit servir l'action. Jamais bloquant (le code est poussé de toute façon).
+      - name: Assurer le déclencheur (fin du geste manuel)
+        if: steps.guard.outputs.ready == 'true'
+        continue-on-error: true
+        env:
+          URL: ${{ secrets.DRIVEAI_WEBAPP_URL }}
+          SECRET: ${{ secrets.DRIVEAI_SYNC_SECRET }}
+        run: |
+          set -uo pipefail
+          if [ -z "${URL:-}" ] || [ -z "${SECRET:-}" ]; then
+            echo "::notice::DRIVEAI_WEBAPP_URL / DRIVEAI_SYNC_SECRET absents — déclencheur non réinstallé automatiquement."
+            exit 0
+          fi
+          SECRET_ENC="$(jq -rn --arg s "$SECRET" '$s|@uri')"
+          # PAS de `-X POST` avec `-L` (405 sur la redirection /macros/echo — leçon vécue).
+          CODE="$(curl -sS -L --max-time 120 -o /tmp/trigger.json -w '%{http_code}' \
+            "${URL}?action=assurer-trigger&secret=${SECRET_ENC}" \
+            -H 'Content-Type: text/plain;charset=utf-8' --data-binary '{}' || echo "000")"
+          # SIGNAL INDÉPENDANT (leçon « un déploiement vert ne prouve rien ») : le champ `version`
+          # n'existe que dans la version qui connaît l'action. Absent ⇒ /exec sert encore l'ancienne
+          # (piège (4) : l'appel tombe dans le `else` du doPost et « réussit » en silence).
+          if [ "$CODE" = "200" ] && jq -e '.ok == true and (.version | type == "string")' /tmp/trigger.json >/dev/null 2>&1; then
+            echo "Déclencheur réinstallé — version servie : $(jq -r '.version' /tmp/trigger.json)"
+          else
+            echo "::warning::Déclencheur NON confirmé (HTTP $CODE). Si ça persiste, la web app /exec n'est pas redéployée. Extrait : $(head -c 200 /tmp/trigger.json)"
+          fi

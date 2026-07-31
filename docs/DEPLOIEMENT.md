@@ -12,6 +12,20 @@
 > `clasp push`), et le moteur **rejoue automatiquement** les dépôts partis en revue quand la logique
 > de classement change (`CONFIG.VERSION`). Le scan tourne déjà tout seul toutes les 10 min
 > (`CONFIG.TICK_MINUTES` ; l'intervalle se ré-applique seul au déploiement, sans re-`installerTrigger`).
+>
+> **Depuis le 2026-07-31 (ADR-0032, C28-43) : le DERNIER geste manuel a disparu.**
+> - `installerTrigger` après un merge moteur : **fait par la CI** (`deploy.yml` appelle l'action
+>   `assurer-trigger` de la web app juste après le redéploiement, et confirme par un signal
+>   indépendant — un `ok:true` nu ne suffit pas). C'était le geste qui garantissait que le
+>   déclencheur exécute bien le NOUVEAU code (sans lui : prod figée ~4 jours vécue, CI verte).
+> - `lancerResetTout()` pour accélérer le grand rangement : **fait par la CI**
+>   (`pousser-reset.yml`, toutes les 15 min), qui pousse les mêmes passes que tes clics — hors du
+>   quota des déclencheurs, donc sans jamais rogner sur le budget du tick. Le pilote **s'arrête
+>   tout seul** à la convergence. Les fonctions un-clic restent disponibles comme filet, mais tu
+>   n'as plus aucune raison de les lancer.
+>
+> Aucun nouveau secret à configurer : le pilote réutilise `DRIVEAI_WEBAPP_URL` +
+> `DRIVEAI_SYNC_SECRET`, déjà en place pour le miroir Drive.
 
 **Pourquoi une config manuelle unique ?** Déployer dans *ton* compte Google exige un identifiant que
 toi seul peux générer — personne d'autre ne peut y accéder (c'est une protection). Tu le déposes une
@@ -96,7 +110,11 @@ l'API Drive du projet est désactivée : panneau **Services** (＋) → ajoute *
   signaux Drive indépendants (heartbeat Sheet, premiers libellés posés). Règle générale : toute PR
   qui étend un scope porte `do-not-merge` et ne se merge qu'avec Marc disponible dans la foulée.
 
-### 7. Installer le déclencheur (10 min)
+### 7. Installer le déclencheur (10 min) — PREMIÈRE INSTALLATION SEULEMENT
+> ⚠️ Cette étape ne vaut que pour la **toute première** mise en route (elle sert surtout à déclencher
+> l'écran de consentement OAuth, qu'un déclencheur automatique ne peut pas demander à ta place).
+> Ensuite, la CI réinstalle le déclencheur à chaque merge moteur (ADR-0032) — plus jamais à la main.
+
 Dans l'éditeur, sélectionne la fonction **`installerTrigger`** dans la barre d'outils → **Exécuter**.
 - Google affiche un écran de **consentement** listant les autorisations (Gmail lecture seule,
   Drive, requêtes externes, Sheets, envoi de mail, gestion des déclencheurs). **Autorise.**

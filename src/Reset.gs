@@ -1048,16 +1048,20 @@ function analyserPageReliquatReset_(garde, proteges) {
  * alimenter `_TRI`) → coût nul ensuite (1 lecture de Property par tick) ; un bump de table le
  * ré-ouvre avec le placement.
  */
-function analyserReliquatReset_(estBudgetDepasse) {
+function analyserReliquatReset_(estBudgetDepasse, manuel) {
   if (!CONFIG.RESET_ACTIF) return;
   var props = PropertiesService.getScriptProperties();
   if (props.getProperty('DriveAI_RESET_LLM') === finPlacementReset_()) return; // reliquat drainé
   if (estPannePlateforme_()) return; // panne de COMPTE API : aucun doc touché, re-sonde ailleurs (R2)
   var aujourdhui = dateGmail_(new Date());
   var consommeJour = budgetJourReset_(props, 'DriveAI_RESET_LLM_JOUR', aujourdhui);
-  if (consommeJour >= CONFIG.RESET_LLM_BUDGET_JOUR_MS) return; // budget du jour épuisé — repris demain
+  // `manuel` (un-clic éditeur / PILOTE CI ADR-0032) : ni gaté, ni compté — le budget quotidien
+  // protège le quota des DÉCLENCHEURS, dont ces chemins ne font pas partie. Le coût $ est borné
+  // ailleurs et ne change PAS : plafond d'items par passe + clé versionnée (chaque doc payé une
+  // seule fois par version de table) + frein campagnes §2.6, tous conservés ci-dessous.
+  if (!manuel && consommeJour >= CONFIG.RESET_LLM_BUDGET_JOUR_MS) return; // budget du jour épuisé — repris demain
   var debut = Date.now();
-  var budgetRun = CONFIG.RESET_LLM_BUDGET_JOUR_MS - consommeJour;
+  var budgetRun = manuel ? Infinity : CONFIG.RESET_LLM_BUDGET_JOUR_MS - consommeJour;
   var garde = function () {
     return estBudgetDepasse() || budgetCampagnesAtteint_() || estPannePlateforme_() ||
       (Date.now() - debut) > budgetRun;
@@ -1071,8 +1075,9 @@ function analyserReliquatReset_(estBudgetDepasse) {
       props.setProperty('DriveAI_RESET_LLM', finPlacementReset_());
       journalInfo_('Reset', 'Reliquat LLM DRAINÉ (' + finPlacementReset_() + ') — plus rien de non-routable dans ' + CONFIG.RESET_TRI_NOM + '.');
     }
+    return r;
   } finally {
-    props.setProperty('DriveAI_RESET_LLM_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
+    if (!manuel) props.setProperty('DriveAI_RESET_LLM_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
   }
 }
 
@@ -1283,12 +1288,13 @@ function rondeSterileReset_(r) {
  * @param {number} phasesRestantes  cette phase incluse (3, 2, puis 1)
  * @return {function():boolean}
  */
-function gardePartReset_(debut, phasesRestantes) {
+function gardePartReset_(debut, phasesRestantes, murMs) {
+  var mur = murMs || CONFIG.BUDGET_MS; // le pilote CI (ADR-0032) passe un mur PLUS COURT
   var t0 = Date.now();
-  var part = partPhaseReset_(CONFIG.BUDGET_MS - (t0 - debut), phasesRestantes);
+  var part = partPhaseReset_(mur - (t0 - debut), phasesRestantes);
   return function () {
     var maintenant = Date.now();
-    return (maintenant - debut) > CONFIG.BUDGET_MS || (maintenant - t0) > part;
+    return (maintenant - debut) > mur || (maintenant - t0) > part;
   };
 }
 
@@ -1312,6 +1318,75 @@ function partPhaseReset_(restantMs, phasesRestantes) {
 function marquerVieManuelleReset_() {
   try { PropertiesService.getScriptProperties().setProperty('DriveAI_LAST_MANUEL', String(Date.now())); }
   catch (e) { /* best-effort : sans ça, au pire une fausse alerte watchdog */ }
+}
+
+/* ---------- PILOTE CI (ADR-0032) : le lancement n'est plus un geste de Marc ---------- */
+
+/**
+ * Le pilotage est TERMINÉ quand les 3 phases I/O ont posé leur tag ET que le reliquat LLM est
+ * drainé. `resetTermine_()` seul ne suffit PAS (le drapeau `DriveAI_RESET_LLM` n'y entre pas, à
+ * dessein : les campagnes suspendues reprennent dès la convergence I/O) — s'arrêter dessus
+ * laisserait le reliquat au ralenti du tick, exactement la plainte de Marc « rien ne se passe ».
+ * @return {boolean}
+ */
+function pilotageTermineReset_() {
+  if (!resetTermine_()) return false;
+  return PropertiesService.getScriptProperties().getProperty('DriveAI_RESET_LLM') === finPlacementReset_();
+}
+
+/**
+ * UNE passe POUSSÉE par le pilote CI (ADR-0032) — le même travail que le clic `lancerResetTout` de
+ * Marc, plus la passe LLM du reliquat, déclenché par GitHub Actions au lieu de sa main.
+ *
+ * Hors quota des DÉCLENCHEURS : l'appel arrive par la web app (`doPost`), pas par un trigger — d'où
+ * le drapeau `manuel` sur chaque phase (ni gatée, ni comptée), exactement comme une exécution
+ * d'éditeur. ⚠️ Cette propriété tient parce que le travail est fait ICI, SYNCHRONEMENT dans le
+ * `doPost` : passer par `actionTickPonctuel_` (qui CRÉE un déclencheur) consommerait le quota
+ * protégé et rendrait le pilote dangereux (verrouillé par test).
+ *
+ * Bornes : mur `CONFIG.PILOTE_BUDGET_MS` (< mur HTTP), verrou partagé (jamais en parallèle d'un
+ * tick), sortie sur ronde stérile, plafonds d'items par phase inchangés (dont
+ * `RESET_LLM_MAX_PAR_RUN` qui borne le coût $ de la passe). Le coût TOTAL du reliquat ne change
+ * pas : la clé versionnée fait payer chaque document une seule fois.
+ * @return {{ok:boolean, termine:boolean, rondes:number, progres:boolean, message:string}}
+ */
+function pousserResetPilote_() {
+  if (!CONFIG.PILOTE_ACTIF) return { ok: false, termine: false, rondes: 0, progres: false, message: 'pilote désactivé (CONFIG.PILOTE_ACTIF)' };
+  if (!CONFIG.RESET_ACTIF) return { ok: false, termine: false, rondes: 0, progres: false, message: 'RESET_ACTIF est false' };
+  if (pilotageTermineReset_()) return { ok: true, termine: true, rondes: 0, progres: false, message: 'reset terminé (I/O + reliquat LLM drainé)' };
+
+  var debut = Date.now();
+  var verrou = acquerirVerrouReset_('pousserResetPilote_');
+  if (!verrou) return { ok: true, termine: false, rondes: 0, progres: false, message: 'tick en cours — passe sautée (jamais en parallèle)' };
+  var rondes = 0, progres = false;
+  try {
+    var murAtteint = function () { return Date.now() - debut > CONFIG.PILOTE_BUDGET_MS; };
+    while (!murAtteint() && !pilotageTermineReset_() && rondes < 500) {
+      var progresRonde = false;
+      // Part de temps PAR PHASE (revue #229) : sans ça la première phase mange tout le mur et les
+      // suivantes ne tournent jamais. 4 phases désormais — la passe LLM est la dernière servie.
+      if (!murAtteint() && !rondeSterileReset_(rassemblerReset_(gardePartReset_(debut, 4, CONFIG.PILOTE_BUDGET_MS), true))) progresRonde = true;
+      if (!murAtteint() && !rondeSterileReset_(placerReset_(gardePartReset_(debut, 3, CONFIG.PILOTE_BUDGET_MS), true))) progresRonde = true;
+      if (!murAtteint() && !rondeSterileReset_(appliquerReset04Interne_(gardePartReset_(debut, 2, CONFIG.PILOTE_BUDGET_MS), true))) progresRonde = true;
+      if (!murAtteint() && !rondeSterileReset_(analyserReliquatReset_(gardePartReset_(debut, 1, CONFIG.PILOTE_BUDGET_MS), true))) progresRonde = true;
+      rondes++;
+      if (progresRonde) progres = true; else break; // aucune phase n'a rien à faire → inutile de re-scanner
+    }
+    marquerVieManuelleReset_(); // sinon le chien de garde crierait « moteur silencieux » pendant une séance
+    journalInfo_('Reset', 'Pilote CI : ' + rondes + ' ronde(s), ' + (progres ? 'progrès' : 'rien à faire') + '.');
+  } catch (e) {
+    journalErreur_('Reset', 'Passe pilotée interrompue : ' + e);
+    return { ok: false, termine: false, rondes: rondes, progres: progres, message: String(e) };
+  } finally {
+    verrou.releaseLock();
+  }
+  return {
+    ok: true,
+    termine: pilotageTermineReset_(),
+    rondes: rondes,
+    progres: progres,
+    message: progres ? 'passe poussée' : 'rien à faire sur cette passe'
+  };
 }
 
 /**
