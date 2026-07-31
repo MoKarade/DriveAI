@@ -514,6 +514,7 @@ function collecterRassemblementReset_(dossier, ids, max, estBudgetDepasse, tag, 
     try {
       var f = fi.next();
       if (estExcluDuReset_(f.getName())) continue;
+      if (indexContient_('epingle|' + f.getId())) continue; // épinglé par Marc (chat) → immunisé (ADR-0026 ; les autres campagnes le testent déjà)
       if (indexContient_('tri33|' + tag + '|' + f.getId())) continue;
       ids.push(f.getId());
     } catch (e) {
@@ -1112,6 +1113,7 @@ function collecterInterne04Reset_(dossier, ids, max, estBudgetDepasse, tag, etat
     try {
       var f = fi.next();
       if (estExcluDuReset_(f.getName())) continue;
+      if (indexContient_('epingle|' + f.getId())) continue; // épinglé par Marc → jamais réorganisé même à l'intérieur de 04 (ADR-0026)
       if (indexContient_('tri33-04|' + tag + '|' + f.getId())) continue;
       ids.push(f.getId());
     } catch (e) { etat.complet = false; journalErreur_('Reset', 'Fichier ignoré à la collecte 04 interne (' + e + ')'); }

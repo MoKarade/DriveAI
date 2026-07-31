@@ -137,6 +137,32 @@ test('rassemblerUnFichier_ : cas nominal → addFile(_TRI/<domaine>) PUIS remove
   assert.deepStrictEqual(videAppels, ['ENGIE'], 'le dossier QUITTÉ est vérifié pour un vide-candidat');
 });
 
+test('collecte : un fichier ÉPINGLÉ par Marc n\'est JAMAIS aspiré vers `_TRI` ni réorganisé dans 04 (ADR-0026 — les autres campagnes l\'immunisent déjà)', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const index = { 'epingle|EPINGLE': true };
+  c.indexContient_ = (cle) => !!index[cle];
+  c.journalErreur_ = () => {};
+  const faireDossier = (files) => {
+    let i = 0;
+    return {
+      getFiles: () => ({ hasNext: () => i < files.length, next: () => files[i++] }),
+      getFolders: () => ({ hasNext: () => false, next: () => null }), // pas de sous-dossiers (04 récurse)
+    };
+  };
+  const epingle = () => fakeFichierReset({ id: 'EPINGLE', nom: '2026-03_Facture_EDF.pdf' });
+  const libre = () => fakeFichierReset({ id: 'LIBRE', nom: '2026-03_Facture_Hydro.pdf' });
+
+  // Rassemblement (aspiration depuis les domaines vers `_TRI`) : l'épinglé reste où Marc l'a rangé.
+  let ids = [];
+  c.collecterRassemblementReset_(faireDossier([epingle(), libre()]), ids, 100, () => false, 'tag', { complet: true });
+  assert.deepStrictEqual(ids, ['LIBRE'], 'rassemblement : seul le non-épinglé est collecté');
+
+  // Réorg interne 04 : idem, un fichier épinglé sous 04 n'est jamais déplacé entre sous-dossiers.
+  ids = [];
+  c.collecterInterne04Reset_(faireDossier([epingle(), libre()]), ids, 100, () => false, 'tag', { complet: true });
+  assert.deepStrictEqual(ids, ['LIBRE'], '04 interne : l\'épinglé est immunisé aussi');
+});
+
 test('rassemblerUnFichier_ : déjà dans `_TRI` (rejeu) → aucun mouvement, mais la clé se pose', () => {
   const c0 = load(['Config.gs', 'Reset.gs']);
   const cibleId = 'RACINE:' + c0.CONFIG.RESET_TRI_NOM + '/02 · Finances';

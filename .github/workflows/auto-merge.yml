@@ -16,9 +16,16 @@ permissions:
 
 jobs:
   automerge:
+    # ⚠️ SÉCURITÉ (revue de fond 2026-07-31) : le préfixe `claude/` est une CONVENTION, jamais une
+    # preuve d'origine — pour une PR de fork, `head_branch` est choisi par l'auteur de la PR. Sur un
+    # dépôt PUBLIC, sans le contrôle d'origine ci-dessous, n'importe qui pouvait ouvrir une PR depuis
+    # un fork sur une branche `claude/x`, faire passer la CI (lecture seule, sans secret) et déclencher
+    # merge + `deploy.yml` (clasp push dans le projet Apps Script de Marc, tous scopes). La condition
+    # `head_repository.full_name == github.repository` REJETTE tout fork : seul le dépôt lui-même merge.
     if: >
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
       startsWith(github.event.workflow_run.head_branch, 'claude/')
     runs-on: ubuntu-latest
     steps:
