@@ -4,6 +4,29 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (matin) — ACCÉLÉRATION (#229) + ÉTAT RÉEL MESURÉ.** Marc : « ça peut
+> pas aller plus vite ? je veux que tout soit fini avant la fin de la journée ». **Constaté dans les
+> ARTEFACTS** (onglet `Santé` + Index, jamais estimé — leçon du 30/07) : rassemblement entamé sur
+> **4 domaines** (`01`, `02`, `03`, `05` le 31/07 06:42) ; **rangement de l'ancien Drive TERMINÉ** ;
+> **10 830** documents au catalogue ; **coût LLM du mois 76,87 $** (11 112 appels — plafond campagnes
+> 110 $, le reset n'y contribue PAS : routage par le nom) ; **~160 non routés** sous `t2` en attente
+> des règles `t3` (#228). ⚠️ **Heartbeat à 24 min de retard** (dernier passage 08:12 pour un tick de
+> 5 min) — premier signe du poste C28-34.
+> **3 leviers livrés (#229), aucun n'augmente un budget** (leçon §7 « réallouer, jamais augmenter » —
+> le gel de TOUS les déclencheurs reste le risque à ne jamais prendre) : (1) plafonds d'ITEMS par run
+> 60→400 / 80→300 / 40→150 — le garde-temps par run (vérifié à CHAQUE item) reste la vraie borne et
+> est inchangé, à 60/80 c'est le plafond d'items qui coupait AVANT le temps déjà budgété ;
+> (2) migration/réanalyse/dry-run suspendues pendant le reset (budget par run mais AUCUN budget
+> quotidien) — `etapeReorg_` reste libre, c'est le travail que Marc valide dans l'app ;
+> (3) **C28-34 fait** : `majResumeHub_` throttlé à 1×/15 min (il relisait l'Index ENTIER + le Journal
+> à chaque tick, ×288/j).
+> **DIT À MARC honnêtement** : en automatique seul, « tout fini aujourd'hui » n'est pas garanti — le
+> plafond de 90 min/j de runtime ne se relève pas. Le levier décisif reste `lancerResetTout()` dans
+> l'éditeur (HORS quota des déclencheurs, débridé depuis #225) : ~5 min de travail plein par
+> lancement, enchaînables.
+> ⚠️ **Point de vigilance app** : elle lit `Index!A2:H20000` (fenêtre DURE) et l'Index est à 10 830,
+> +2 lignes par fichier traité. Au franchissement, l'app afficherait des états **périmés en silence**.
+>
 > **⚡⚡⚡ ÉTAT AU 2026-07-30 (soir) — LE RESET AVANCE SEUL, 1ᵉʳ RELIQUAT TRAITÉ.** Constaté par
 > signaux Drive : `_TRI 2026` contient 3 sous-dossiers de provenance (`01` 29/07 18:23, `02` 29/07
 > 18:41, `03` 30/07 06:11) — le rassemblement descend domaine par domaine. Le placement tourne

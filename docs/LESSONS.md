@@ -1511,3 +1511,30 @@ reçue comme un fait — annoncer l'écart explicitement quand on le découvre, 
 l'erreur."
 
 **Règle durable ?** oui (ajouté à CLAUDE.md §7).
+
+## 2026-07-31 — Deux bornes sur la même boucle : celle qui coupe en premier fixe le débit
+
+**Contexte.** C28-33, Marc veut le reset fini dans la journée et demande d'aller plus vite. Le
+réflexe interdit (leçon du 29/07) serait de relever un budget qui protège le quota runtime partagé
+(~90 min/j) — le gel de TOUS les déclencheurs, chien de garde inclus, est le risque connu. J'avais
+déjà réalloué tout le réallouable. En relisant les bornes, constat : chaque phase du reset porte
+DEUX bornes indépendantes sur la même boucle — un **garde-temps** par run (3 min, vérifié à chaque
+item) ET un **plafond d'ITEMS** par run (60, 80, 40). La revue quota #226 l'avait noté sans que j'en
+tire la conséquence : « ~60 moveTo en bien moins de 3 min → c'est le plafond d'items qui mord, pas
+le temps ». Autrement dit le moteur rendait la main avec du budget DÉJÀ ACCORDÉ non consommé, à
+chaque tick, depuis le début. Relever le plafond d'items (60→400) n'augmente donc AUCUN budget : le
+garde-temps reste la vraie borne, inchangé.
+
+**Leçon.** "Quand une boucle porte DEUX bornes de nature différente (temps ET nombre d'items), la
+seule qui compte est celle qui coupe EN PREMIER — et si c'est la mauvaise, on gaspille en silence la
+ressource qu'on croyait allouer. Avant d'envisager d'augmenter quoi que ce soit pour accélérer, se
+demander : « laquelle des bornes mord réellement, et est-ce celle qui PROTÈGE quelque chose ? » Un
+plafond d'items qui coupe avant le garde-temps ne protège plus le quota (le temps s'en charge) : il
+ne borne que la mémoire et la granularité de reprise, donc il se relève GRATUITEMENT. Condition de
+sûreté à vérifier explicitement : le garde-temps doit être évalué À CHAQUE ITEM de la boucle (pas
+seulement en tête), sinon relever le plafond d'items fait déborder le temps — le vérifier par un test
+qui lit le corps des boucles concernées. Corollaire : cet écart ne se voit pas dans les tests (qui
+mockent le temps) ni dans les logs — il se voit en comparant le PLAFOND au COÛT RÉEL par item mesuré
+en prod."
+
+**Règle durable ?** oui (ajouté à CLAUDE.md §7, en complément de « réallouer, jamais augmenter »).

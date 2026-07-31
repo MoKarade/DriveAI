@@ -521,6 +521,13 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   Corollaire produit : « fais-le automatiquement » alors que c'est DÉJÀ automatique = la vraie demande
   est la VITESSE — le dire, puis laisser à Marc l'arbitrage vitesse/risque plutôt que de relever un
   plafond de sécurité à sa place.
+- **Deux bornes sur une même boucle : celle qui coupe en PREMIER fixe le débit.** Quand une boucle
+  porte un garde-TEMPS et un plafond d'ITEMS, se demander avant d'accélérer « laquelle mord vraiment,
+  et est-ce celle qui PROTÈGE ? ». Un plafond d'items qui coupe avant le garde-temps ne protège plus
+  le quota (le temps s'en charge) : il ne borne que la mémoire/la reprise, donc il se relève
+  GRATUITEMENT — c'est du budget déjà accordé, gaspillé en silence à chaque run (vécu C28-33 : 60
+  fichiers/run alors que 3 min en permettaient 400). Sûreté à vérifier explicitement : le garde-temps
+  doit être évalué À CHAQUE ITEM (pas seulement en tête), sinon relever le plafond déborde le temps.
 - **Test de MUTATION : restaurer par COPIE de sauvegarde, jamais `git checkout <fichier>`.** Prouver
   qu'un test attrape bien sa régression (leçon C28-32) exige de remettre le code buggé puis de
   restaurer. `git checkout`/`git restore <fichier>` restaure depuis l'index/HEAD et DÉTRUIT sans
