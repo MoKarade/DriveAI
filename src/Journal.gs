@@ -173,8 +173,7 @@ function assurerEnteteProgression_(f) {
  * Règles (leçons « barre de masse ») : le statut dérive des pannes/frein AVANT « en cours » ;
  * une opération « terminé » garde l'horodatage de sa FIN (sinon jamais purgée) et disparaît après
  * `purgeMs` ; une campagne finie AVANT d'avoir eu une ligne n'apparaît jamais (ex. rangement,
- * clos depuis des semaines). Les demandes soldées (tri/intentions) arrivent par leur instantané
- * `solde` — visibles même quand la demande s'est servie en un seul tick.
+ * clos depuis des semaines). (Les « demandes de Marc » tri/intentions ont disparu — ADR-0031.)
  *
  * @param {Object} etat  instantané des opérations (cf. majProgressions_)
  * @param {Object} existantes  clé → {traites:number, statut:string, horodateMs:number}

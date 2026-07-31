@@ -1596,9 +1596,12 @@ mesure une feature morte est indistinguable d'une panne.
 lignes de télémétrie/progression, clés i18n, mocks, tests) — et les VITRINES d'état d'une feature
 (jauge, ligne de progression, compteur) se retirent ATOMIQUEMENT avec son producteur, dans la même
 PR : un cadran qui survit à sa feature affiche un zéro éternel que l'utilisateur lit comme une
-panne. Corollaire : les helpers partagés se vérifient par LEURS AUTRES APPELANTS avant retrait
-(chercherVariante_ servait aussi la correction ; compterSousDossiersRegroupables_ servait aussi
-les prompts à la demande — les retirer aurait cassé des features conservées)."
+panne. Corollaire : les helpers partagés se vérifient par LEURS AUTRES APPELANTS avant retrait, par
+GREP — jamais de mémoire : chercherVariante_/incrementerVuEntite_ étaient bien vivants
+(correction 1-clic, curation), mais j'ai d'abord cru vivants chercherLigneFusionnable_ et
+compterSousDossiersRegroupables_ (« les prompts s'en servent ») — le grep de la revue flotte a
+prouvé ZÉRO appelant (le décompte des prompts est INLINE dans inventaireDossiers_) : deux
+fonctions mortes de plus, et trois documents vivants qui gravaient une justification fausse."
 
 **Règle durable ?** non (instance des règles §7 « retrait de code : frontières + filet de surface »
 et « vérifier la prod par un signal indépendant » — consignée ici pour le réflexe par couches).

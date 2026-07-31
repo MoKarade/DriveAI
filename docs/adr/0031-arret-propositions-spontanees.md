@@ -30,11 +30,15 @@ validation par action — inchangé), et les demandes de réorg déposées par l
    c'est de l'apprentissage de ce que Marc a FAIT, pas une question qu'on lui pose). Sinon :
    RIEN n'est écrit — le document est classé au domaine (« granularité = enrichissement,
    jamais frein », inchangé). Suggestions de variante et incrément « Vu N fois » à la
-   proposition : retirés (leurs helpers restent — la correction 1-clic et la curation les
-   utilisent encore).
+   proposition : retirés. Helpers : `chercherVariante_` et `incrementerVuEntite_` RESTENT
+   (la correction 1-clic et la curation les appellent — vérifié par grep) ;
+   `chercherLigneFusionnable_`, devenu orphelin, est RETIRÉ (relevé en revue flotte).
 2. **Campagne de réorg AUTOMATIQUE abrogée** (ADR-0029) : `genererDemandeReorgAuto_`, son
    branchement dans le tick, la skip-list 30 j et les constantes `REORG_AUTO_*` sont
-   RETIRÉS. `REORG_MAX_JOUR` (plafond des analyses, demandes app/chat) demeure.
+   RETIRÉS — ainsi que `compterSousDossiersRegroupables_`, qui n'avait AUCUN appelant
+   (le décompte des regroupables servi aux prompts est fait INLINE dans
+   `inventaireDossiers_` — relevé en revue flotte, grep à l'appui). `REORG_MAX_JOUR`
+   (plafond des analyses, demandes app/chat) demeure.
 3. **Actions web app orphelines retirées** (l'UI a disparu en C28-41 PR1) :
    `analyse-ciblee`, `demande-tri`, `demande-intentions` — dispatch, fonctions d'action,
    validateurs purs, et leur CONSOMMATION côté tick (`scanDemandeTri_`,

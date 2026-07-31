@@ -743,26 +743,6 @@ function promptReorg_() {
  * @return {?{actions: Array, synthese: string}}
  */
 /**
- * Nombre de sous-dossiers REGROUPABLES parmi `enfants` (objets Folder ou {getName}) — c'est la
- * mesure de la loi de Miller (ADR-0027). Sont exclus, comme dans `inventaireDossiers_` : les
- * segments STRUCTURELS (années « AAAA », schémas d'entité, types de pièce d'identité — le moteur
- * les find-or-crée PAR NOM, les regrouper ne convergerait pas) et les racines système « _… ».
- * Un nom illisible n'est jamais compté (on n'invente pas une saturation). PURE (testée).
- * @param {Array} enfants
- * @return {number}
- */
-function compterSousDossiersRegroupables_(enfants) {
-  var n = 0;
-  for (var i = 0; i < (enfants || []).length; i++) {
-    var nom = '';
-    try { nom = String(enfants[i].getName()); } catch (e) { nom = ''; }
-    if (!nom || nom.charAt(0) === '_' || estSegmentStructurel_(nom)) continue;
-    n++;
-  }
-  return n;
-}
-
-/**
  * Vrai si `nom` ne peut JAMAIS être le PARENT d'un regroupement : dossier d'ANNÉE (« 2026 ») ou de
  * TYPE D'IDENTITÉ (« Passeport »). Y déplacer une entité fragmenterait la taxonomie (ADR-0023 :
  * une entité = UN dossier, jamais `2026/Robovic`). PURE (testée).

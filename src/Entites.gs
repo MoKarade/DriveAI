@@ -3,8 +3,9 @@
  *
  * L'onglet `Entités` est le référentiel CURÉ : une entité n'est routée vers son
  * dossier que si Marc l'a validée (Statut = « validée »). Une entité inconnue ne
- * crée JAMAIS de dossier automatiquement — elle est proposée en « en_attente » et
- * le document est CLASSÉ AU DOMAINE en attendant (anti-prolifération, jamais un blocage).
+ * crée JAMAIS de dossier ni de ligne « en_attente » (ADR-0031 — le moteur ne propose
+ * plus rien tout seul) : le document est CLASSÉ AU DOMAINE. Seule OBSERVATION écrite :
+ * un dossier du domaine porte déjà le nom canonique → ligne « validée » liée à lui.
  *
  * Colonnes (auto-réparées au besoin) :
  *   Entité | Domaine | Catégorie | Type | Statut | Dossier ID | Ajoutée le | Variante possible ? | Vu N fois
@@ -275,24 +276,6 @@ function canoniserEntite_(nom) {
 function cleCanoniqueEntite_(domaine, nom) {
   var c = canoniserEntite_(nom);
   return c ? normaliserCle_(domaine) + '|' + normaliserCle_(c) : null;
-}
-
-/**
- * Cherche une ligne EXISTANTE du même domaine fusionnable par inclusion avec `nom`. PUR (sur cache).
- * @param {string} nom
- * @param {Object} cache
- * @param {string} domaine
- * @return {?Object} la ligne canonique, ou null.
- */
-function chercherLigneFusionnable_(nom, cache, domaine) {
-  var d = normaliserCle_(domaine);
-  for (var i = 0; i < cache.lignes.length; i++) {
-    var l = cache.lignes[i];
-    if (normaliserCle_(l.domaine) !== d) continue;
-    if (l.statut.indexOf('refus') === 0 || l.statut.indexOf('variante') === 0) continue; // déjà écartée
-    if (estFusionnableEntite_(nom, l.entite)) return l;
-  }
-  return null;
 }
 
 /* ---------- Garde anti-variantes (ADR-0002 §4) — logique PURE, testée ----------

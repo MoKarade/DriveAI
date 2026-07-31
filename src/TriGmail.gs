@@ -741,7 +741,7 @@ function estHorsFenetreIntentions_(tsMs, maintenantMs) {
  * @param {boolean} verifierBoite  vrai pour le scan arrière : un fil déjà HORS boîte est sauté
  *   (l'objectif est « boîte propre » — pas de libellés/coût LLM pour l'archivé d'avant).
  */
-function trierFil_(fil, candidats, libelles, verifierBoite, forcerNonArchivage) {
+function trierFil_(fil, candidats, libelles, verifierBoite) {
   var filId = '';
   var ts = '';
   try {
@@ -858,12 +858,7 @@ function trierFil_(fil, candidats, libelles, verifierBoite, forcerNonArchivage) 
       promoDeterministe: promoDeterministe,
       entierementLu: !nonLu
     });
-    // Tri À LA DEMANDE (C28-16) : Marc a décoché « archiver » pour CE déclenchement — l'archivage
-    // est suspendu juste avant la mutation (libellés et clé Index INCHANGÉS). NB (revue flotte
-    // C28-24) : la clé posée est la même que celle du tri normal → le fil restera NON archivé
-    // tant que son état (nouveau message, lu/non-lu) ne change pas — assumé : « étiqueter sans
-    // archiver » est le sens du choix de Marc ; un fil qu'il relit/re-reçoit est re-trié normal.
-    if (forcerNonArchivage) decision.archiver = false;
+    // (Le forçage « sans archivage » du tri à la demande C28-16 est parti avec sa feature — ADR-0031.)
 
     // ÉCRITURES (les seules du module) : libellés existants + archivage réversible. Une panne ICI
     // est SYSTÉMIQUE (scope, API) : elle stoppe le run sans imputer d'échec au fil.

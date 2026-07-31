@@ -30,14 +30,20 @@
 > **PR3 (cette branche) : moteur — plus AUCUNE proposition spontanée (ADR-0031, §8 ; ABROGE
 > l'ADR-0029).** `entiteEnAttenteAjouter_` = OBSERVATION seule (dossier Drive existant → ligne
 > validée liée ; sinon ZÉRO écriture — tripwire) ; campagne réorg AUTO retirée (Main/Reorg/
-> Config + skip-list ; `compterSousDossiersRegroupables_` reste pour les prompts à la demande) ;
+> Config + skip-list ; `compterSousDossiersRegroupables_` et `chercherLigneFusionnable_` retirés
+> aussi — ORPHELINS, le décompte des prompts est INLINE dans `inventaireDossiers_` [revue
+> flotte : mes docs les croyaient vivants, le grep a tranché]) ;
 > actions web app orphelines retirées (`demande-tri`/`demande-intentions`/`analyse-ciblee`) +
 > consommateurs tick (`scanDemandeTri_`, `balayerAnalyseCiblee_`, fenêtre forcée intentions,
 > `forcerSondeQuotaGmail_`) ; Progression/Télémétrie épurées (app alignée atomiquement).
 > ROUTAGE INTOUCHÉ (entités validées + ADR-0016 intacts) ; les ~98 lignes `en_attente` héritées
 > restent des données inertes (aucune suppression, la curation les assainit). 710 tests moteur ;
-> revue flotte adversariale avant merge. ⚠ Déploiement : `clasp push` auto au merge — **Marc :
-> ré-exécuter `installerTrigger`** (Extensions → Apps Script) pour prise d'effet certaine.
+> revue flotte faite AVANT merge : 🟢 sécurité · 🟢 quotas · code-reviewer « prêt après 2 🟠 »
+> (les 2 corrigés + 4 🟡). ⚠ Transition (revue) : une ligne `demande-auto-*` héritée encore au
+> statut « analyse demandée » dans l'onglet Réorg déclencherait UNE dernière analyse Sonnet
+> après déploiement (bornée, une fois) — la solder à la main si visible. ⚠ Déploiement :
+> `clasp push` auto au merge — **Marc : ré-exécuter `installerTrigger`** (Extensions →
+> Apps Script) pour prise d'effet certaine.
 >
 > **⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (matin) — ACCÉLÉRATION (#229) + ÉTAT RÉEL MESURÉ.** Marc : « ça peut
 > pas aller plus vite ? je veux que tout soit fini avant la fin de la journée ». **Constaté dans les
@@ -240,7 +246,9 @@
 > le regroupement passe toujours par `deplacer`) ; année/type d'identité jamais CIBLE d'un déplacement.
 > **C28-31 MERGÉ (#215, #218).**
 >
-> **⚡ C28-32 — CAMPAGNE DE RÉORG AUTOMATIQUE (ADR-0029).** Constat déclencheur : la règle des ~7 ne
+> **⚡ C28-32 — CAMPAGNE DE RÉORG AUTOMATIQUE (ADR-0029). ⛔ ABROGÉE le 2026-07-31 (ADR-0031,
+> C28-41 PR3 — code retiré, `REORG_AUTO_*` disparus de la CONFIG ; historique ci-dessous).**
+> Constat déclencheur : la règle des ~7 ne
 > s'appliquait qu'À LA DEMANDE (`appliquerReorgIA_` sort sans ligne `demande`) → le Drive ne
 > convergeait jamais seul. Le moteur DÉPOSE désormais lui-même la demande sur un dossier saturé
 > (`genererDemandeReorgAuto_`) ; le pipeline existant fait le reste ; **rien ne s'applique sans la
