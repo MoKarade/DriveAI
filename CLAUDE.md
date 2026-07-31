@@ -157,6 +157,17 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   dans `getEngineState()` et faire passer le summary à `status:"ok"` (métadonnées **seulement**,
   ADR-0007). Ne **jamais** casser le schéma (toute évolution passe par `hub-contract`) ni publier de
   donnée fabriquée : `building` tant que rien de réel n'est disponible.
+- **QUOTA — le broker met en cache (60 s), et c'est structurel.** Le hub poll ce endpoint
+  **toutes les 15 s** tant qu'un onglet est ouvert, alors que le moteur ne recalcule le résumé
+  qu'**une fois par tick** (`CONFIG.TICK_MINUTES = 5`, persisté dans `DriveAI_HUB_SUMMARY`).
+  Sans cache, 19 polls sur 20 déclenchaient une exécution Apps Script pour renvoyer des octets
+  identiques — sur un budget **DUR de 90 min/jour** de temps d'exécution, partagé avec le tick
+  lui-même. `_engineState.ts` garde donc le dernier état lu pendant 60 s. Aucune fraîcheur perdue
+  (la donnée bouge toutes les 5 min) et `dataAsOf` continue d'exposer la fraîcheur réelle.
+  ⚠️ Les **pannes ne sont jamais mises en cache** — un `throw` doit rester observable et le
+  prochain appel doit réessayer. ⚠️ Cache de **process** : vide au démarrage à froid, non partagé
+  entre instances → taux de succès partiel, ce qui reste tout bénéfice (chaque succès = une
+  exécution économisée). Toute nouvelle voie d'appel depuis le hub doit se poser la même question.
 
 ## 7. Leçons apprises (règles durables)
 
