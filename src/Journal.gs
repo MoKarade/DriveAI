@@ -489,17 +489,23 @@ function chargerIndexCache_() {
 
   var dern = f.getLastRow();
   if (dern < 2) return;
-  var valeurs = f.getRange(2, 1, dern - 1, 7).getValues(); // colonnes A..G
-  for (var i = 0; i < valeurs.length; i++) {
-    if (valeurs[i][0]) _indexCache[valeurs[i][0]] = true;
-    if (!valeurs[i][6]) continue;
-    _empreintesCache[valeurs[i][6]] = true;
+  // PERF (Vague 2, anti-gel) : ce cache n'utilise QUE la colonne A (clé) et la colonne G (empreinte),
+  // jamais B..F (date/nom/domaine/chemin/statut). Lire les 7 colonnes chargeait 3,5× trop de cellules
+  // à CHAQUE tick sur un Index qui croît (>10 800 lignes) — l'un des postes du « socle » non budgété
+  // qui pousse vers le mur ~90 min/j (revue de fond 2026-07-31). Deux lectures d'UNE colonne (A puis G)
+  // transfèrent ÷3,5 de données ; le round-trip supplémentaire est négligeable devant le volume.
+  var cles = f.getRange(2, 1, dern - 1, 1).getValues();        // colonne A (clé)
+  var empreintes = f.getRange(2, 7, dern - 1, 1).getValues();  // colonne G (empreinte)
+  for (var i = 0; i < cles.length; i++) {
+    if (cles[i][0]) _indexCache[cles[i][0]] = true;
+    if (!empreintes[i][0]) continue;
+    _empreintesCache[empreintes[i][0]] = true;
     // DERNIÈRE ligne gagnante (revue sécurité #229) : l'Index est append-only, donc l'ordre des
     // lignes est chronologique. Garder la PREMIÈRE ferait gagner l'empreinte la plus ANCIENNE — un
     // fichier ré-analysé (`reanalyse|…`) après un `drive|…` aurait vu la périmée l'emporter. C'est
     // aussi la sémantique de `indexAjouter_`, qui écrase avec la valeur la plus récente.
-    var fid = fileIdDeCleIndex_(valeurs[i][0]);
-    if (fid) _empreintesParIdCache[fid] = String(valeurs[i][6]);
+    var fid = fileIdDeCleIndex_(cles[i][0]);
+    if (fid) _empreintesParIdCache[fid] = String(empreintes[i][0]);
   }
 }
 

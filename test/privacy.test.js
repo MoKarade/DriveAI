@@ -122,10 +122,12 @@ test('empreinteConnueParId_ : alimenté par le chargement de l\'Index ET par les
   const ajouts = [];
   c.feuille_ = () => ({
     getLastRow: () => lignes.length + 1,
+    // `chargerIndexCache_` lit désormais 2 colonnes SÉPARÉES (A=clé, G=empreinte) pour ne plus
+    // transférer B..F inutilement (perf Vague 2) — le mock rend donc la colonne DEMANDÉE.
     getRange: (r, col, nb) => ({
       getValue: () => 'Empreinte',
       setValue: () => {},
-      getValues: () => lignes,
+      getValues: () => lignes.map((l) => [l[col - 1]]),
     }),
     appendRow: (row) => ajouts.push(row),
   });

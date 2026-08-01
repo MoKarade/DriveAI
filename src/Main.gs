@@ -566,6 +566,18 @@ function tickDriveAI() {
       // unique, robuste ; un échec ici ne doit rien casser (enveloppé).
       try { PropertiesService.getScriptProperties().setProperty('DriveAI_LAST_TICK', String(Date.now())); }
       catch (e) { /* écriture Property impossible : rien de plus à faire */ }
+      // Observabilité anti-gel (Vague 2) : trace la DURÉE totale du tick au plus 1×/h. Le « socle »
+      // (relectures Index/Journal, campagnes) n'est budgété par rien ; s'il dérive vers le mur runtime
+      // ~90 min/j (×288 ticks), c'est INVISIBLE aujourd'hui jusqu'au gel. Cette trace horaire le rend
+      // observable AVANT (revue de fond 2026-07-31). Best-effort : un échec ne bloque jamais le tick.
+      try {
+        var pr = PropertiesService.getScriptProperties();
+        var derniereTrace = Number(pr.getProperty('DriveAI_TICK_TRACE_MS')) || 0;
+        if (Date.now() - derniereTrace > 60 * 60 * 1000) {
+          journalInfo_('Perf', 'Durée du tick : ' + Math.round((Date.now() - debut) / 1000) + ' s (trace horaire — dérive vers le mur 90 min/j à surveiller).');
+          pr.setProperty('DriveAI_TICK_TRACE_MS', String(Date.now()));
+        }
+      } catch (e) { /* observabilité best-effort */ }
       try { flushUsage_(); } catch (e) { journalErreur_('Cout', 'Flush usage impossible : ' + e); }
       // Observabilité (ADR-0006), SECONDAIRE et enveloppé : un échec ne doit jamais bloquer le tick.
       // Le heartbeat Santé s'écrit même si l'intake a partiellement échoué (d'où le finally).
@@ -795,7 +807,30 @@ function rejeuAutoDesDepots_(estBudgetDepasse) {
  */
 function traiterGmail_(estBudgetDepasse) {
   if (estPanneGmail_()) return; // quota Gmail épuisé (C28-15) : suspendu jusqu'à la re-sonde
+  // « RETARD PJ » (revue Vague 2, apps-script-quota) : le MUR « page à jour » plus bas suppose
+  // « PJ inédite ⇒ en page 0 ». Vrai en RÉGIME (rien n'attend), FAUX dès qu'un BACKLOG existe —
+  // reprise après une suspension quota/panne de crédit, rafale, ou budget épuisé en plein drainage
+  // laissent des PJ inédites sur les pages 1+, que le tri Gmail (par DERNIER message) ne remonte
+  // jamais en page 0. Sans filet, le mur les abandonnerait à vie (le TRI avait le même piège, fermé
+  // par `scanCycliqueTri_`). PJ ≠ tri : une PJ indexée est TERMINALE (jamais re-vue) → un cyclique
+  // perpétuel brûlerait le quota pour rien. On DÉSACTIVE donc juste le mur tant qu'un backlog est
+  // possible : on repagine toute la fenêtre (comme AVANT le mur) jusqu'à l'épuiser une fois
+  // (`!fils.length`), puis le mur reprend (perf en régime préservée). Le drapeau ne bouge qu'aux
+  // BORDS d'un backlog → ZÉRO écriture de Property en régime.
+  // I/O Property ENVELOPPÉE (revue code-reviewer) : `traiterGmail_` est appelé NU dans l'intake,
+  // JUSTE avant `traiterDepots_` — un blip Property transitoire ne doit jamais avorter le tick
+  // (leçon §7 « protéger l'intake : toute étape enveloppée d'un try/catch »). Indispo ⇒ défaut
+  // prudent `retard = true` : le mur est désactivé ce tick (COMPLÉTUDE privilégiée au perf ; l'état
+  // réel est relu au prochain tick, la logique converge). `props = null` coupe aussi les écritures.
+  var props = null;
+  var retard = true;
+  try {
+    props = PropertiesService.getScriptProperties();
+    retard = props.getProperty('DriveAI_GMAIL_PJ_RETARD') === '1';
+  } catch (e) { props = null; retard = true; }
   var debutPage = 0;
+  var scanne = false;       // a-t-on lu ≥ 1 page ? (sinon on n'a rien appris sur le backlog)
+  var fenetreAJour = false; // fin PROPRE atteinte (fin de fenêtre OU mur) ⇒ aucun backlog en attente
   // La panne de compte peut être détectée EN COURS de run (re-sonde qui échoue) : on sort tôt —
   // continuer à lister des fils dont chaque document sera sauté ne ferait que brûler du quota Gmail.
   while (!estBudgetDepasse() && !estPannePlateforme_() && !estPanneGmail_()) {
@@ -803,30 +838,50 @@ function traiterGmail_(estBudgetDepasse) {
     try {
       fils = pageFils_(debutPage);
     } catch (e) {
-      if (signalerPanneGmail_(e)) return; // quota épuisé : suspension posée, jamais un « échec »
-      notifierEchec_('Gmail', 'Recherche des mails impossible : ' + e);
-      return;
+      if (!signalerPanneGmail_(e)) notifierEchec_('Gmail', 'Recherche des mails impossible : ' + e);
+      break; // quota (suspension posée) ou erreur de page : fenêtre NON épuisée → le retard s'arme
     }
     signalerRetablissementGmail_(); // re-sonde concluante : la suspension persistée est levée
-    if (!fils.length) break; // fin de la fenêtre 30 jours
+    scanne = true;
+    if (!fils.length) { fenetreAJour = true; break; } // fin de la fenêtre 30 jours : tout est drainé
 
+    var ineditesPage = 0;
+    var coupe = false;
     for (var i = 0; i < fils.length; i++) {
       if (estBudgetDepasse()) {
         journalInfo_('Pipeline', 'Budget temps atteint — reprise au prochain tick.');
-        return;
+        coupe = true; break;
       }
-      if (estPannePlateforme_()) return; // détectée en cours de run → stop (cf. ci-dessus)
-      // Erreur isolée par fil (ex. getMessages/piecesJointes) : on saute ce fil sans
-      // interrompre le scan Gmail — chaque PJ est déjà protégée dans traiterDocument_.
-      // SAUF le quota (C28-15) : il frappe TOUS les fils suivants — suspension et sortie.
-      try { traiterFil_(fils[i], estBudgetDepasse); }
+      if (estPannePlateforme_()) { coupe = true; break; } // détectée en cours de run → stop
+      // Erreur isolée par fil (ex. getMessages/piecesJointes) : on saute ce fil sans interrompre le
+      // scan — chaque PJ est déjà protégée dans traiterDocument_. SAUF le quota (C28-15) qui frappe
+      // TOUS les fils suivants → coupe (suspension et sortie).
+      try { ineditesPage += traiterFil_(fils[i], estBudgetDepasse); }
       catch (e) {
-        if (signalerPanneGmail_(e)) return;
+        if (signalerPanneGmail_(e)) { coupe = true; break; }
         journalErreur_('Gmail', 'Fil ignoré (erreur) : ' + e);
       }
     }
+    if (coupe) break; // fenêtre NON épuisée → retard armé plus bas
+    // MUR « page à jour » (PERF Vague 2, patron des scans intentions/tri) — DÉSACTIVÉ tant qu'un
+    // backlog est possible (`retard`). Aucune PJ INÉDITE sur toute la page : les fils sont servis du
+    // PLUS RÉCENT au plus ancien, une PJ neuve remonte en page 0 → en RÉGIME, une page 0 à jour ⇒
+    // tout l'historique 30 j l'est aussi, inutile de re-paginer à CHAQUE tick (chaque fil coûte
+    // getMessages + getAttachments sur le quota Gmail PARTAGÉ, croissant avec la boîte).
+    if (!retard && ineditesPage === 0) { fenetreAJour = true; break; }
     debutPage += CONFIG.PAGE_FILS;
   }
+  // BORDS du backlog (aucune écriture en régime) : une fin PROPRE (fenêtre épuisée ou mur) LÈVE le
+  // retard — le mur reprend ; toute coupe AVANT la fin (budget, panne, erreur de page) l'ARME dès
+  // qu'on a scanné ≥ 1 page, pour que le prochain tick repagine SANS le mur et draine les pages 1+.
+  // Écritures ENVELOPPÉES (idem lecture) : un blip Property dégrade à « pas de changement de drapeau
+  // ce tick » (recalculé au prochain), jamais un tick avorté. `props` null (I/O indispo) ⇒ on saute.
+  try {
+    if (props) {
+      if (fenetreAJour) { if (retard) props.deleteProperty('DriveAI_GMAIL_PJ_RETARD'); }
+      else if (scanne && !retard) props.setProperty('DriveAI_GMAIL_PJ_RETARD', '1');
+    }
+  } catch (e) { /* blip Property : pas de changement de drapeau ce tick (l'état réel est relu ensuite) */ }
 }
 
 /**
@@ -838,15 +893,22 @@ function traiterGmail_(estBudgetDepasse) {
  */
 function traiterFil_(fil, estBudgetDepasse) {
   var messages = fil.getMessages();
+  var inedites = 0; // PJ NON encore indexées rencontrées (sert au mur « page à jour » de l'appelant)
   for (var m = 0; m < messages.length; m++) {
-    if (estBudgetDepasse()) return; // aussi PAR MESSAGE : un long fil sans PJ « réelles » ne doit
-    var message = messages[m];      // pas enchaîner les getAttachments après l'épuisement du budget
+    if (estBudgetDepasse()) return inedites; // aussi PAR MESSAGE : un long fil sans PJ « réelles » ne
+    var message = messages[m];               // doit pas enchaîner les getAttachments après le budget
     var pjs = piecesJointes_(message);
     for (var p = 0; p < pjs.length; p++) {
-      if (estBudgetDepasse()) return;
+      if (estBudgetDepasse()) return inedites;
+      // Déjà indexée (idempotence) → gratuit, ne compte pas comme inédite : sur une page 100 %
+      // indexée, `inedites` reste 0 et l'appelant arrête de paginer (test AVANT le dépôt, comme la
+      // campagne historique). `traiterDocument_` re-teste de toute façon — ici on évite juste l'appel.
+      if (indexContient_(cleAttachement_(message, p, pjs[p]))) continue;
+      inedites++;
       traiterPjGmail_(message, p, pjs[p]);
     }
   }
+  return inedites;
 }
 
 /**

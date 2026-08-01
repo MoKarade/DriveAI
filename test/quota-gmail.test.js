@@ -111,6 +111,114 @@ test('points d\'entrée sous suspension : tri, scans PJ et historique sortent SA
   assert.strictEqual(appels.gmail, 0, 'zéro appel Gmail pendant la suspension');
 });
 
+/** Contexte moteur Gmail avec un ScriptProperties mock (traiterGmail_ lit/écrit le drapeau RETARD). */
+function ctxGmailProps(props) {
+  props = props || {};
+  const ecritures = [];
+  const c = load(['Config.gs', 'Gmail.gs', 'Main.gs']);
+  c.PropertiesService = {
+    getScriptProperties: () => ({
+      getProperty: (k) => (k in props ? props[k] : null),
+      setProperty: (k, v) => { props[k] = String(v); ecritures.push(['set', k]); },
+      deleteProperty: (k) => { delete props[k]; ecritures.push(['del', k]); },
+    }),
+  };
+  c.signalerRetablissementGmail_ = () => {};
+  c.estPanneGmail_ = () => false;
+  c.estPannePlateforme_ = () => false;
+  c.journalInfo_ = () => {};
+  return { c, props, ecritures };
+}
+
+test('traiterGmail_ : MUR « page à jour » — une page 100 % indexée ARRÊTE la pagination, ZÉRO écriture de Property en régime (perf Vague 2)', () => {
+  const { c, props, ecritures } = ctxGmailProps();
+  let appelsPage = 0;
+  const fil = { getMessages: () => [{ getId: () => 'M1', getFrom: () => '', getSubject: () => '', getDate: () => new Date() }] };
+  c.piecesJointes_ = () => [{ getName: () => 'a.pdf', getSize: () => 100 }];
+  c.cleAttachement_ = () => 'M1|0|a.pdf|100';
+  c.indexContient_ = () => true;           // TOUT est déjà indexé → 0 PJ inédite
+  c.pageFils_ = () => { appelsPage++; return appelsPage === 1 ? [fil, fil] : []; };
+
+  c.traiterGmail_(() => false);
+  // Sans le mur, la boucle paginerait jusqu'à la page VIDE (appelsPage === 2). Avec le mur, elle
+  // s'arrête dès la page 0 (aucune PJ inédite) → une seule lecture de page.
+  assert.strictEqual(appelsPage, 1, 'le mur arrête la pagination dès qu\'une page ne porte aucune PJ inédite');
+  // Régime = aucun backlog : le drapeau RETARD ne doit JAMAIS être touché (sinon écriture Property
+  // 288×/jour pour rien — la leçon « ne bouge qu'aux BORDS d'un backlog »).
+  assert.strictEqual(ecritures.length, 0, 'aucune écriture de Property en régime');
+  assert.ok(!('DriveAI_GMAIL_PJ_RETARD' in props));
+});
+
+test('traiterGmail_ : RETARD armé → le MUR est DÉSACTIVÉ, une PJ inédite enfouie en page 1 est DRAINÉE puis le drapeau levé (filet anti-backlog, revue Vague 2)', () => {
+  // Backlog typique d'une reprise post-panne : page 0 = 100 % indexée (0 inédite), la PJ inédite
+  // dort en page 1. Le mur naïf s'arrêterait à la page 0 et l'abandonnerait À VIE.
+  const { c, props, ecritures } = ctxGmailProps({ DriveAI_GMAIL_PJ_RETARD: '1' });
+  const P = c.CONFIG.PAGE_FILS;
+  const filA = { id: 'A' };
+  const filB = { id: 'B' };
+  c.pageFils_ = (debut) => (debut === 0 ? [filA] : debut === P ? [filB] : []);
+  const deposees = [];
+  // filA (page 0) : 0 inédite ; filB (page 1) : 1 inédite déposée.
+  c.traiterFil_ = (fil) => { if (fil.id === 'B') { deposees.push('B'); return 1; } return 0; };
+
+  c.traiterGmail_(() => false);
+  assert.deepStrictEqual(deposees, ['B'], 'la PJ inédite de la page 1 est bien drainée malgré le mur');
+  // Fenêtre épuisée (page 2 vide) → le retard est LEVÉ : le mur reprendra au prochain tick.
+  assert.ok(!('DriveAI_GMAIL_PJ_RETARD' in props), 'backlog drainé → drapeau levé');
+  assert.ok(ecritures.some((e) => e[0] === 'del' && e[1] === 'DriveAI_GMAIL_PJ_RETARD'));
+});
+
+test('traiterGmail_ : un blip Property NE FAIT PAS avorter l\'intake — dégrade gracieusement (mur off, backlog drainé)', () => {
+  // `traiterGmail_` est appelé NU avant `traiterDepots_` : une exception Property non capturée
+  // sauterait tout le reste de l'intake (revue code-reviewer). L'I/O Property est enveloppée →
+  // aucun throw ne remonte, et le défaut prudent `retard=true` désactive le mur (COMPLÉTUDE).
+  const c = load(['Config.gs', 'Gmail.gs', 'Main.gs']);
+  c.PropertiesService = { getScriptProperties: () => ({ getProperty: () => { throw new Error('blip Property'); }, setProperty: () => {}, deleteProperty: () => {} }) };
+  c.signalerRetablissementGmail_ = () => {};
+  c.estPanneGmail_ = () => false;
+  c.estPannePlateforme_ = () => false;
+  c.journalInfo_ = () => {};
+  const P = c.CONFIG.PAGE_FILS;
+  const filA = { id: 'A' }, filB = { id: 'B' };
+  c.pageFils_ = (debut) => (debut === 0 ? [filA] : debut === P ? [filB] : []);
+  const deposees = [];
+  c.traiterFil_ = (fil) => { if (fil.id === 'B') { deposees.push('B'); return 1; } return 0; };
+
+  // Ne doit PAS lever (sinon l'intake avorte) ET doit dépasser le mur (retard=true par défaut).
+  assert.doesNotThrow(() => c.traiterGmail_(() => false));
+  assert.deepStrictEqual(deposees, ['B'], 'mur désactivé malgré le blip → la PJ de la page 1 est drainée');
+});
+
+test('traiterGmail_ : une COUPE budget en plein drainage ARME le retard (le prochain tick repaginera sans le mur)', () => {
+  const { c, props } = ctxGmailProps();
+  const fil = { id: 'X' };
+  c.pageFils_ = () => [fil, fil];
+  let vus = 0;
+  // Budget épuisé après le 1er fil : la fenêtre n'est PAS épuisée → retard doit s'armer.
+  const estBudgetDepasse = () => vus >= 1;
+  c.traiterFil_ = () => { vus++; return 1; };
+
+  c.traiterGmail_(estBudgetDepasse);
+  assert.strictEqual(props['DriveAI_GMAIL_PJ_RETARD'], '1', 'coupe avant la fin de fenêtre → retard armé');
+});
+
+test('traiterFil_ : retourne le nombre de PJ INÉDITES (0 si tout est déjà indexé, >0 sinon)', () => {
+  const c = load(['Config.gs', 'Gmail.gs', 'Main.gs']);
+  const fil = { getMessages: () => [{ getId: () => 'M1', getFrom: () => '', getSubject: () => '', getDate: () => new Date() }] };
+  c.piecesJointes_ = () => [{ getName: () => 'a.pdf', getSize: () => 100 }, { getName: () => 'b.pdf', getSize: () => 200 }];
+  c.cleAttachement_ = (m, p) => 'M1|' + p;
+  let deposees = 0;
+  c.traiterPjGmail_ = () => { deposees++; };
+
+  c.indexContient_ = () => true;  // les 2 PJ déjà indexées
+  assert.strictEqual(c.traiterFil_(fil, () => false), 0, 'aucune inédite → 0 (et rien déposé)');
+  assert.strictEqual(deposees, 0);
+
+  c.indexContient_ = (cle) => cle === 'M1|0'; // seule la 1re est indexée
+  assert.strictEqual(c.traiterFil_(fil, () => false), 1, 'une seule inédite');
+  assert.strictEqual(deposees, 1, 'seule l\'inédite est déposée');
+});
+
 test('traiterPageHistorique_ : le frein GMAIL_HISTO_MAX_FILS_PAR_RUN borne les fils PARCOURUS d\'un run', () => {
   const { c } = ctxQuota();
   // Contexte dédié : page de fils factices plus grande que le frein (cas dérivé de la CONSTANTE).
