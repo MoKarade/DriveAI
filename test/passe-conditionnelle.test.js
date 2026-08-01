@@ -19,8 +19,12 @@ test('passe1SuffisammentSure_ : passe 1 sûre + complète + non sensible → tru
   assert.strictEqual(ctx.passe1SuffisammentSure_(P1_SURE), true);
 });
 
-test('passe1SuffisammentSure_ : garde §2 — un doc SENSIBLE (immigration/fiscal) refuse TOUJOURS de sauter', () => {
+test('passe1SuffisammentSure_ : garde §2 — un doc SENSIBLE refuse de sauter, ET sensible ABSENT aussi (auto-suffisant)', () => {
   assert.strictEqual(ctx.passe1SuffisammentSure_(Object.assign({}, P1_SURE, { sensible: true })), false);
+  // Auto-suffisance §2 (revue code-reviewer) : on saute UNIQUEMENT si sensible === false explicite.
+  const sansFlag = Object.assign({}, P1_SURE); delete sansFlag.sensible;
+  assert.strictEqual(ctx.passe1SuffisammentSure_(sansFlag), false, 'sensible absent → 2 passes (jamais reposer sur le défaut parser)');
+  assert.strictEqual(ctx.passe1SuffisammentSure_(Object.assign({}, P1_SURE, { sensible: 'oui' })), false, 'sensible non-booléen → 2 passes');
 });
 
 test('passe1SuffisammentSure_ : non-document et pièce d\'identité → toujours 2 passes (cas à arbitrage)', () => {
@@ -39,10 +43,10 @@ test('passe1SuffisammentSure_ : confiance absente ou < seuil → 2 passes', () =
 test('passe1SuffisammentSure_ : un fait clé manquant → 2 passes (domaine, type, ou tout émetteur/titulaire/descripteur)', () => {
   assert.strictEqual(ctx.passe1SuffisammentSure_(Object.assign({}, P1_SURE, { domaine: null })), false);
   assert.strictEqual(ctx.passe1SuffisammentSure_(Object.assign({}, P1_SURE, { type_doc: null })), false);
-  // Ni émetteur, ni titulaire, ni descripteur → incomplet.
-  assert.strictEqual(ctx.passe1SuffisammentSure_({ domaine: '02 · Finances', type_doc: 'Relevé', confiance: 0.95 }), false);
-  // Mais un descripteur seul (ni émetteur ni titulaire) suffit à compléter.
-  assert.strictEqual(ctx.passe1SuffisammentSure_({ domaine: '06 · Études & diplômes', type_doc: 'Devoir', descripteur: 'TP Python', confiance: 0.95 }), true);
+  // Ni émetteur, ni titulaire, ni descripteur → incomplet (sensible:false pour isoler la cause « incomplet »).
+  assert.strictEqual(ctx.passe1SuffisammentSure_({ domaine: '02 · Finances', type_doc: 'Relevé', confiance: 0.95, sensible: false }), false);
+  // Mais un descripteur seul (ni émetteur ni titulaire) suffit à compléter (non sensible explicite).
+  assert.strictEqual(ctx.passe1SuffisammentSure_({ domaine: '06 · Études & diplômes', type_doc: 'Devoir', descripteur: 'TP Python', confiance: 0.95, sensible: false }), true);
   // Sentinelle « Inconnu » comptée comme ABSENTE (estRenseigne_).
   assert.strictEqual(ctx.passe1SuffisammentSure_({ domaine: '02 · Finances', type_doc: 'Relevé', emetteur: 'Inconnu', confiance: 0.95 }), false);
 });

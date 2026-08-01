@@ -48,8 +48,19 @@ l'allumage d'`ANALYSE_V2` lui-même, ADR-0018), jamais un commit silencieux.
 - Le flag prod reste **OFF** ; le test force le flag DANS son contexte (save/restore), jamais un
   invariant (leçon §7 : la position d'un flag de campagne est une décision de Marc).
 
-## 5. Suite
+## 5. Suite — CONDITIONS D'ALLUMAGE (revue code-reviewer, à remplir avant de passer le flag à ON)
 
-Dry-run de comparaison 1↔2 passes (à brancher dans `DryRunV2.gs` : compter les sauts + les
-divergences passe1/passe2 sur le corpus), rendu à Marc en avant/après VISIBLE. Activation après son
-feu vert.
+1. **Dry-run de comparaison 1↔2 passes** (à brancher dans `DryRunV2.gs` : compter les sauts + les
+   divergences passe1/passe2 sur un corpus RÉEL large et stratifié), rendu à Marc en avant/après
+   VISIBLE.
+2. **Mesurer spécifiquement les FAUX NÉGATIFS `sensible`** — les documents où la passe 1 dit
+   `sensible:false` et la passe 2 corrige en `true`. C'est la passe 2 qui re-vérifie la sensibilité ;
+   sauter la passe 2 sur un faux négatif enlève ce filet. Ce taux doit être prouvé négligeable (ou nul)
+   avant allumage — pas seulement le taux de divergence global.
+3. **Renforcer le gate avec le filet DÉTERMINISTE `toucheZoneProtegee_`** (`Prefiltre.gs`) AVANT
+   allumage : un document dont le NOM/EXTRAIT matche immigration/fiscal ne doit JAMAIS sauter la passe
+   2, même si le LLM a mis `sensible:false`. Cela suppose de passer `meta`/extrait au gate (PUR
+   aujourd'hui, ne voit que `p1`) — un léger changement de signature à livrer AVEC l'allumage, pas
+   avant. Le §2 ne repose alors plus sur le seul `sensible` du LLM.
+
+Activation = décision de Marc après ces trois preuves (comme l'allumage d'`ANALYSE_V2`, ADR-0018).

@@ -140,7 +140,10 @@ function classifierDeuxPasses_(meta) {
  */
 function passe1SuffisammentSure_(p1) {
   if (!p1) return false;
-  if (p1.sensible === true) return false;                                   // §2 : zone protégée → 2 passes
+  // §2 : on ne saute QUE si la passe 1 est EXPLICITEMENT non sensible. `!== false` (et non `=== true`)
+  // rend le garde AUTO-SUFFISANT (revue code-reviewer) : sensible absent/non-booléen → 2 passes, sans
+  // dépendre du défaut de `parserClassification_` (« on ne repose pas un garde-fou sur le seul LLM »).
+  if (p1.sensible !== false) return false;
   if (p1.estNonDocument === true || p1.estDocumentIdentite === true) return false;
   if (typeof p1.confiance !== 'number' || p1.confiance < CONFIG.ANALYSE_V2_SEUIL_1PASSE) return false;
   return estRenseigne_(p1.domaine) && estRenseigne_(p1.type_doc) &&
