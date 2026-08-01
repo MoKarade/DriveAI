@@ -10,7 +10,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { load } = require('./harness');
 
-const ctx = load(['Config.gs', 'Entites.gs', 'Router.gs', 'Consolidation.gs']);
+const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs']);
 const plat = (o) => JSON.parse(JSON.stringify(o)); // normalise les prototypes (frontière vm)
 
 /* ---------- analyserNomClasse_ : décomposition du nom AAAA[-MM[-JJ]]_Type_Tiers.ext ---------- */
@@ -39,36 +39,38 @@ const validees = {};
   validees[ctx.cleCanoniqueEntite_(dom, ent)] = { nom: ent, dossierId: 'ID_' + ent };
 });
 
-test('cheminCibleConsolidation_ : arbitrage « entité OU année » (02) — entité validée SANS année, sinon AAAA', () => {
-  // la CONSTANTE pilote le test (jamais la valeur du jour en dur)
-  const domAnnee = ctx.CONFIG.DOMAINES_PAR_ANNEE[0];
+test('cheminCibleConsolidation_ : DÉLÈGUE à la structure Reset (ADR-0033) — 02 par TYPE, plus par entité', () => {
+  // La consolidation calcule sa cible par la MÊME règle que le flux ET le Reset (`cheminCibleReset_`).
+  // Décision Marc « unifier sur la structure validée » : une facture/un relevé va dans l'arbre
+  // thématique du Reset, PAS dans un dossier d'entité — une banque validée regroupe par TYPE.
+  const domAnnee = ctx.CONFIG.DOMAINES_PAR_ANNEE[0]; // 02 · Finances
   assert.strictEqual(ctx.cheminCibleConsolidation_(domAnnee, '2026-03-01_Facture_EDF.pdf', validees).nom,
-    '2026', 'émetteur non validé → année seule');
+    'Reçus & factures/2026', 'facture → arbre thématique Reçus & factures/AAAA');
   assert.strictEqual(ctx.cheminCibleConsolidation_(domAnnee, '2026-03_Relevé_Desjardins.pdf', validees).nom,
-    'Desjardins', 'entité validée → UN dossier d\'entité, JAMAIS fragmentée par année (2026/Desjardins interdit)');
+    'Relevés/2026', 'relevé (même d\'une entité validée) → Relevés/AAAA, plus un dossier d\'entité (ADR-0033)');
 });
 
-test('cheminCibleConsolidation_ : domaine SANS année → entité validée seule, sinon À PLAT', () => {
+test('cheminCibleConsolidation_ : employeur/recherche via Reset ; REPLI à plat quand le Reset ne route pas', () => {
   assert.strictEqual(ctx.cheminCibleConsolidation_('05 · Carrière', '2026-06_Bulletin de paie_Robovic.pdf', validees).nom,
-    'Robovic', 'entité validée → dossier d\'entité');
+    'Employeurs/Robovic', 'paie d\'employeur → arbre Employeurs/X (Reset)');
   assert.strictEqual(ctx.cheminCibleConsolidation_('05 · Carrière', '2026-01-05_Lettre_Schneider Electric.pdf', validees).nom,
-    '', 'candidature (entité NON validée) → à plat');
+    'Recherche d\'emploi', 'une lettre de démarche 05 → Recherche d\'emploi (Reset), jamais un dossier d\'entreprise');
   assert.strictEqual(ctx.cheminCibleConsolidation_('08 · Perso & projets', 'PXL_20240101_123.jpg', validees).nom,
-    '', 'hors convention → à plat au domaine');
-  // une entité validée dans un AUTRE domaine ne crée pas de dossier ici (clé par domaine)
+    '', 'hors convention → le Reset rend null → repli à plat au domaine (jamais de limbo)');
+  // une entité validée dans un AUTRE domaine ne crée pas de dossier ici (le Reset ne route pas → repli)
   assert.strictEqual(ctx.cheminCibleConsolidation_('05 · Carrière', '2026-03_Relevé_Desjardins.pdf', validees).nom,
-    '', 'Desjardins est validée en 02, pas en 05');
+    '', 'Desjardins est validée en 02, pas en 05 : repli à plat');
 });
 
-test('cheminCibleConsolidation_ : pièce d\'identité → dossier de TYPE — UNIQUEMENT dans le domaine du type', () => {
+test('cheminCibleConsolidation_ : pièce d\'identité → arbre Reset (Pièces d\'identité/…) dans SON domaine', () => {
   assert.strictEqual(ctx.cheminCibleConsolidation_('01 · Administratif & identité', '2020-01-01_Passeport_Marc Richard.pdf', validees).nom,
-    'Passeport');
+    'Pièces d\'identité/Marc');
   assert.strictEqual(ctx.cheminCibleConsolidation_('01 · Administratif & identité', '2023-02-01_Permis de conduire_Marc Richard.pdf', {}).nom,
-    'Permis de conduire', 'même sans référentiel d\'entités');
-  // Un passeport ÉGARÉ dans 02 ne fabrique pas de dossier « Passeport » hors 01 : ciblé par la règle
-  // du domaine courant (année en 02) — le re-DOMAINE est hors périmètre de la consolidation (O2).
+    'Pièces d\'identité/Marc', 'même sans référentiel d\'entités');
+  // Un passeport ÉGARÉ dans 02 : le Reset ne route pas une identité hors 01 (null) → repli année en 02.
+  // Le re-DOMAINE reste hors périmètre de la consolidation (O2) — garde-fou préservé.
   assert.strictEqual(ctx.cheminCibleConsolidation_('02 · Finances', '2020-01-01_Passeport_Marc Richard.pdf', validees).nom,
-    '2020', 'l\'exception identité est scopée à son domaine');
+    '2020', 'l\'exception identité reste scopée à son domaine (repli année en 02)');
 });
 
 /* ---------- TRIPWIRE : la cible de consolidation == la sortie du flux vivant (règle UNIQUE) ---------- */

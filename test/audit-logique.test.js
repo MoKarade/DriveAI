@@ -10,7 +10,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { load } = require('./harness');
 
-const ctx = load(['Config.gs', 'Entites.gs', 'Router.gs']);
+const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs']);
 
 // 20 documents RÉELS (noms tels que lus dans le Drive lors de la preuve #26) + leur domaine classé.
 // L'émetteur/type sont dérivés du nom (« Inconnu » ⇒ champ absent, comme le produirait l'analyse).
@@ -78,14 +78,16 @@ test('AUDIT AXE 2 (ADR-0025) : une candidature (05, entreprise VISÉE) route à 
     meta, '2026-06-30', '.docx', {});
   console.table([{ cas: 'candidature Airbus', type: cand.type, sousDossier: cand.sousDossier === '' ? '(à plat)' : cand.sousDossier }]);
   assert.strictEqual(cand.type, 'classé');
-  assert.strictEqual(cand.sousDossier, '', 'candidature 05 → jamais un dossier d\'entreprise, à plat');
+  // ADR-0033 : la candidature va dans l'arbre Reset (CV & lettres), JAMAIS un dossier d'entreprise.
+  assert.strictEqual(cand.sousDossier, 'CV & lettres', 'candidature 05 → CV & lettres (Reset)');
+  assert.ok(cand.sousDossier.indexOf('Airbus') === -1, 'jamais un dossier au nom de l\'entreprise visée');
 
   // Contraste : un employeur RÉEL, lui, garde son dossier SI validé au référentiel (la granularité utile reste).
   const cle = ctx.cleCanoniqueEntite_('05 · Carrière', 'Robovic');
   const valide = ctx.planRoutageV2_(
     { domaine: '05 · Carrière', type_doc: 'Paie', emetteur: 'Robovic', sousDossier: 'Robovic' },
     { nomFichier: '2026-06_Paie_Robovic.pdf' }, '2026-06-01', '.pdf', { [cle]: 'Robovic' });
-  assert.strictEqual(valide.sousDossier, 'Robovic', 'un employeur VALIDÉ garde son dossier (granularité utile)');
+  assert.strictEqual(valide.sousDossier, 'Employeurs/Robovic', 'un employeur → arbre Reset Employeurs/X (granularité utile, structure validée)');
 });
 
 test('AUDIT AXE 2 (ADR-0025) : un export de MAIL n\'est plus dumpé en _Technique (classé au domaine)', () => {

@@ -141,9 +141,24 @@ function resetContient_(cle, motifs) {
   return false;
 }
 
-/** Année → nom de sous-dossier d'un nœud à années (l'année si elle existe dans le nœud, sinon Archives). */
+/**
+ * Année → nom de sous-dossier d'un nœud à années. L'année si elle existe dans le nœud ; sinon, une
+ * année POSTÉRIEURE au dernier bucket figé rend SON PROPRE segment (`2027`), une année ANTÉRIEURE
+ * tombe dans `Archives`.
+ * ADR-0033 (revue structure-keeper) : les buckets de `STRUCTURE_CIBLE_RESET` sont un instantané
+ * HISTORIQUE (2021-2026 + Archives) conçu pour le grand rangement one-shot. Depuis l'unification, le
+ * FLUX VIVANT délègue ici — et il AVANCE dans le temps : sans ce forward, tout relevé/reçu/billet de
+ * 2027+ atterrirait dans `Archives` (= « ancien », faux). On laisse donc l'année courante et à venir
+ * créer son dossier (léger dépassement ≤ 7 au fil des ans, ASSUMÉ vs un mauvais rangement ; la
+ * fenêtre glissante avec purge est une évolution possible, cf. ADR-0033 §6). Le PASSÉ reste borné.
+ */
 function resetBucketAnnee_(annee, noeudAnnees) {
-  return (annee && noeudAnnees[annee]) ? annee : 'Archives';
+  if (annee && noeudAnnees[annee]) return annee;
+  var a = parseInt(annee, 10);
+  if (!a || String(a) !== String(annee)) return 'Archives'; // année illisible → Archives (prudent)
+  var maxAnnee = 0;
+  for (var k in noeudAnnees) { var n = parseInt(k, 10); if (String(n) === k && n > maxAnnee) maxAnnee = n; }
+  return a > maxAnnee ? String(a) : 'Archives'; // postérieure aux buckets → son segment ; antérieure → Archives
 }
 
 /**

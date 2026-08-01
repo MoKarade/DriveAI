@@ -10,7 +10,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { load } = require('./harness');
 
-const ctx = load(['Config.gs', 'Entites.gs', 'Router.gs']);
+const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs']);
 const plat = (o) => JSON.parse(JSON.stringify(o)); // normalise les prototypes (frontière vm)
 
 // meta minimale attendue par decisionNonDocument_ (nom, taille, extrait OCR, émetteur).
@@ -66,12 +66,13 @@ test('planRoutageV2_ : passeport → 01 · Administratif, sous-dossier « Passep
   assert.strictEqual(p.nom, '2020-01-01_Passeport_Sophie Tremblay.pdf');
 });
 
-test('planRoutageV2_ : carte de résident permanent → domaine 04 (lié au statut)', () => {
+test('planRoutageV2_ : carte de résident permanent → domaine 04, arbre Reset (reste dans la zone protégée)', () => {
   const p = ctx.planRoutageV2_(
     { estDocumentIdentite: true, sousDossierType: 'Carte de résident permanent', titulaire: 'Marc Richard', date_doc: '2024-05-02' },
     meta('carte.pdf'), '2026-07-07', '.pdf');
   assert.strictEqual(p.domaine, '04 · Immigration');
-  assert.strictEqual(p.sousDossier, 'Carte de résident permanent');
+  // ADR-0033 : le flux délègue au Reset, DANS le domaine 04 (jamais une sortie de 04 — garde-fou §2).
+  assert.strictEqual(p.sousDossier, 'Résidence permanente');
 });
 
 /* ---------- Documents normaux (ADR-0023, arbitrage « entité OU année ») : à PLAT par défaut ;
@@ -82,18 +83,18 @@ test('planRoutageV2_ : carte de résident permanent → domaine 04 (lié au stat
 const validees = {};
 validees[ctx.cleCanoniqueEntite_('02 · Finances', 'Desjardins')] = { nom: 'Desjardins', dossierId: 'ID_DESJ' };
 
-test('planRoutageV2_ : entité VALIDÉE → dossier d\'entité canonique SANS année ; NON validée → année (02)', () => {
+test('planRoutageV2_ : ADR-0033 — un relevé va dans l\'arbre Reset (Relevés/AAAA), plus dans un dossier d\'entité', () => {
   const classif = { domaine: '02 · Finances', type_doc: 'Relevé', emetteur: 'Desjardins', sousDossier: 'Desjardins Inc.', date_doc: '2026-03-15' };
   const avecCarte = ctx.planRoutageV2_(classif, meta('releve.pdf', { emetteur: 'Desjardins' }), '2026-03-15', '.pdf', validees);
-  assert.strictEqual(avecCarte.sousDossier, 'Desjardins');            // validée → entité, jamais 2026/Desjardins
+  assert.strictEqual(avecCarte.sousDossier, 'Relevés/2026',      // délègue au Reset : banque regroupe par TYPE (décision Marc)
+    'une banque validée regroupe désormais par TYPE (Relevés/AAAA), plus par entité');
   assert.strictEqual(avecCarte.nom, '2026-03_Relevé_Desjardins.pdf'); // relevé = granularité mois
-  // ADR-0028 : le plan embarque l'ID du dossier d'entité → l'exécuteur y range le fichier À TOUTE
-  // PROFONDEUR (sinon il re-crée le dossier à plat dès que Marc l'a regroupé, ADR-0027).
-  assert.strictEqual(avecCarte.dossierIdCible, 'ID_DESJ');
+  assert.strictEqual(avecCarte.dossierIdCible, '',
+    'chemin thématique multi-niveaux → PAS d\'ID d\'entité (le chemin EST la structure, résolu segment par segment)');
 
+  // La validation de l'entité ne change plus le chemin d'un doc que le Reset sait router (convergence).
   const sansCarte = ctx.planRoutageV2_(classif, meta('releve.pdf', { emetteur: 'Desjardins' }), '2026-03-15', '.pdf');
-  assert.strictEqual(sansCarte.sousDossier, '2026',
-    'entité NON validée : le verrou référentiel dégrade vers l\'année (02 est par année) — jamais un dossier non validé');
+  assert.strictEqual(sansCarte.sousDossier, 'Relevés/2026', 'validé ou non, le relevé va au MÊME endroit (Reset)');
 });
 
 test('planRoutageV2_ : émetteur ponctuel → jamais un dossier par marchand (année en 02, racine ailleurs)', () => {
@@ -102,13 +103,13 @@ test('planRoutageV2_ : émetteur ponctuel → jamais un dossier par marchand (an
   const en02 = ctx.planRoutageV2_(
     { domaine: '02 · Finances', type_doc: 'Facture', emetteur: 'Cleverbridge', date_doc: '2026-01-10' },
     meta('facture.pdf', { emetteur: 'Cleverbridge' }), '2026-01-10', '.pdf', validees);
-  assert.strictEqual(en02.sousDossier, '2026', '02 est par ANNÉE : le tout-venant va dans AAAA');
+  assert.strictEqual(en02.sousDossier, 'Reçus & factures/2026', 'facture → arbre Reçus & factures/AAAA (Reset), jamais un dossier Cleverbridge');
   assert.ok(/Cleverbridge/.test(en02.nom), 'l\'émetteur reste dans le NOM : ' + en02.nom);
 
   const en05 = ctx.planRoutageV2_(
     { domaine: '05 · Carrière', type_doc: 'Lettre', emetteur: 'Schneider Electric', date_doc: '2026-01-05' },
     meta('lettre.pdf', { emetteur: 'Schneider Electric' }), '2026-01-05', '.pdf', validees);
-  assert.strictEqual(en05.sousDossier, '', 'domaine sans année : racine (une candidature ne crée pas de dossier)');
+  assert.strictEqual(en05.sousDossier, 'Recherche d\'emploi', 'une lettre de démarche → Recherche d\'emploi (Reset), jamais un dossier d\'entreprise');
 });
 
 test('planRoutageV2_ : ni émetteur ni titulaire → descripteur dans le nom (JAMAIS « Inconnu »), classé À PLAT (la catégorie LLM ne fait plus de dossier)', () => {
@@ -121,19 +122,19 @@ test('planRoutageV2_ : ni émetteur ni titulaire → descripteur dans le nom (JA
   assert.ok(/Devoir algorithmique Python/.test(p.nom), 'le descripteur doit être dans le nom : ' + p.nom);
 });
 
-test('planRoutageV2_ : rien d\'exploitable → à PLAT, plus jamais « Divers » ni un dossier de type', () => {
+test('planRoutageV2_ : ADR-0033 — un type reconnu par le Reset crée son dossier thématique (Note → Notes)', () => {
   const p = ctx.planRoutageV2_(
     { domaine: '08 · Perso & projets', type_doc: 'Note' },
     meta('note.pdf'), '2026-07-07', '.pdf');
   assert.strictEqual(p.type, 'classé');
-  assert.strictEqual(p.sousDossier, '', 'sans entité validée, 08 sans année : racine du domaine : ' + JSON.stringify(p));
+  assert.strictEqual(p.sousDossier, 'Notes', 'le Reset route « Note » → 08/Notes : ' + JSON.stringify(p));
 });
 
-test('planRoutageV2_ : une pièce d\'identité garde TOUJOURS son sous-dossier de TYPE (jamais à plat)', () => {
+test('planRoutageV2_ : une pièce d\'identité (personne reconnue) → arbre Reset Pièces d\'identité/…', () => {
   const p = ctx.planRoutageV2_(
     { estDocumentIdentite: true, sousDossierType: 'Permis de conduire', titulaire: 'Marc Richard', date_doc: '2023-02-01' },
     meta('permis.pdf'), '2026-07-07', '.pdf');
-  assert.strictEqual(p.sousDossier, 'Permis de conduire'); // l'identité reste l'exception au « à plat »
+  assert.strictEqual(p.sousDossier, 'Pièces d\'identité/Marc'); // ADR-0033 : identité rangée dans l'arbre Reset
 });
 
 /* ---------- Domaine hors-liste → domaine par défaut (jamais de limbo) ---------- */

@@ -73,6 +73,14 @@ function analyserNomClasse_(nom) {
  * @return {{nom:string, id:string}} sous-chemin relatif ('' = racine du domaine) + ID de l'entité
  */
 function cheminCibleConsolidation_(domaine, nom, validees) {
+  // ADR-0033 : MÊME délégation que le flux vivant (`planRoutageV2_`) — la cible se calcule par la
+  // MÊME fonction pure que le Reset (`cheminCibleReset_`) sur le nom courant → convergence
+  // flux↔conso↔reset par CONSTRUCTION. `id=''` : le chemin thématique EST la structure (pas d'ID
+  // d'entité ; l'exécuteur `dossierCiblePlan_` sait déjà résoudre un nom multi-segments). Repli sur
+  // la règle historique (entité validée / année / type d'identité) quand le Reset rend null.
+  var relReset = cheminCibleReset_(domaine, nom);
+  if (relReset) return { nom: relReset, id: '' };
+
   var seg = analyserNomClasse_(nom);
   var typeId = null;
   if (seg.type) {
