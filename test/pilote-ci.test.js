@@ -206,7 +206,7 @@ test('une ronde entièrement stérile ARRÊTE la boucle (jamais de spin qui re-s
 
 /* ---------- 6. Correctifs de la revue flotte C28-43 (chaque bloquant a son verrou) ---------- */
 
-test('BLOQUANT sécurité : le coût LLM d\'une passe poussée est COMPTÉ (sinon le frein 110 $ est aveugle sur le chemin dominant)', () => {
+test('BLOQUANT sécurité : le coût LLM d\'une passe poussée est COMPTÉ (sinon le frein budget §2.6 est aveugle sur le chemin dominant)', () => {
   const { c, appels } = ctxPilote({ rondes: 1 });
   c.pousserResetPilote_();
   const noms = appels.map((a) => a.phase);

@@ -1454,7 +1454,7 @@ function suivreSteriliteReset_(props, aProgresse) {
  *
  * Contexte d'exécution web app ≠ tick (patron `actionRechercheIA_`/`actionChatAssistant_`) :
  * `chargerPannePlateforme_()` + compteur d'usage PROPRE (`reinitialiserUsage_`/`flushUsage_`),
- * sans quoi le coût Anthropic de la passe ne serait JAMAIS comptabilisé et le frein §2.6 (110 $)
+ * sans quoi le coût Anthropic de la passe ne serait JAMAIS comptabilisé et le frein §2.6
  * deviendrait aveugle sur le chemin dominant.
  * @return {{ok:boolean, termine:boolean, rondes:number, progres:boolean, message:string}}
  */

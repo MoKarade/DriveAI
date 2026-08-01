@@ -558,6 +558,10 @@ function planRoutageV2_(classif, meta, date, ext, validees) {
  * @param {string} ext
  * @return {{statut:string, domaine:string, chemin:string, nom:string, dossierId:string, autresEntites:string[]}}
  */
+// Entités déjà re-pointées CE run (ADR-0033 Point 4, dédup — voir `deciderRoutageV2_`). Frais à
+// chaque exécution Apps Script (un tick = une exécution → variable de module ré-initialisée).
+var _repointesRun = {};
+
 function deciderRoutageV2_(classif, meta, dateReference, ext) {
   var date = dateNormalisee_(classif && classif.date_doc, dateReference);
   // Carte des entités VALIDÉES (1 lecture de cache/run — le cache Entités est déjà chargé par le
@@ -588,15 +592,19 @@ function deciderRoutageV2_(classif, meta, dateReference, ext) {
     // ADR-0033 Point 4 (revue structure-keeper) : si le DERNIER segment est une entité VALIDÉE dont
     // le référentiel pointe AILLEURS, re-pointer son `Dossier ID` vers ce nœud thématique — EXACTEMENT
     // comme `resoudreCibleReset_` (Reset.gs). Sans ça, une entité-table relocalisée (seed à plat,
-    // regroupement ADR-0027) laisserait un `Dossier ID` périmé et un dossier concurrent : les 3
-    // consommateurs (flux, conso, reset) re-pointent désormais À L'IDENTIQUE. ZÉRO I/O en régime : la
-    // garde `!== cible.getId()` est en mémoire ; `repointerEntites_` (lecture de l'onglet Entités) ne
-    // tourne QUE sur un ID réellement périmé, puis la carte en cache est mise à jour (jamais 2×/run).
+    // regroupement ADR-0027) laisserait un `Dossier ID` périmé et un dossier concurrent ; les 3
+    // consommateurs (flux, conso, reset) re-pointent désormais À L'IDENTIQUE.
+    // DÉDUP RUN-SCOPE (revue code-reviewer) : `entitesValideesParCle_` RECONSTRUIT sa carte à CHAQUE
+    // document depuis `_entitesCache` (jamais rechargé en cours de tick, ni mis à jour par
+    // `repointerEntites_` qui écrit la Sheet) — muter `ent.dossierId` ne déduperait donc RIEN d'un doc
+    // à l'autre. `_repointesRun` (set frais par exécution Apps Script) mémorise l'ancien ID déjà
+    // re-pointé → l'onglet Entités n'est relu QU'UNE fois par entité périmée et par run, jamais N fois.
     var dernierSeg = plan.segments[plan.segments.length - 1];
     var cleEnt = cleCanoniqueEntite_(plan.domaine, dernierSeg);
     var ent = cleEnt ? validees[cleEnt] : null;
-    if (ent && ent.dossierId && ent.dossierId !== cible.getId()) {
-      try { repointerEntites_(ent.dossierId, cible.getId()); ent.dossierId = cible.getId(); }
+    if (ent && ent.dossierId && ent.dossierId !== cible.getId() && !_repointesRun[ent.dossierId]) {
+      var ancienId = ent.dossierId;
+      try { repointerEntites_(ancienId, cible.getId()); _repointesRun[ancienId] = true; }
       catch (e) { journalErreur_('Router', 'Re-pointage d\'entité différé (' + dernierSeg + ') : ' + e); }
     }
   } else {
