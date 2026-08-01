@@ -42,9 +42,10 @@ test('coutDollarsDelta_ : différence de 2 relevés (dry-run C26-07, coût PAR d
   assert.strictEqual(ctx.coutDollarsDelta_(apres, apres), 0); // pas de progrès entre 2 relevés → 0
 });
 
-test('usageRunSnapshot_ : copie (jamais la référence), {} si aucun run en cours', () => {
+test('usageRunSnapshot_ : copie (jamais la référence), zéro si aucun run en cours', () => {
   const c = load(['Config.gs', 'Cout.gs']);
-  assert.deepStrictEqual(plat(c.usageRunSnapshot_()), { hin: 0, hout: 0, sin: 0, sout: 0, appels: 0 });
+  assert.deepStrictEqual(plat(c.usageRunSnapshot_()),
+    { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0, appels: 0 });
   c.reinitialiserUsage_();
   c.enregistrerUsage_('claude-sonnet-4-6', { input_tokens: 100, output_tokens: 20 });
   const s1 = c.usageRunSnapshot_();
@@ -52,6 +53,59 @@ test('usageRunSnapshot_ : copie (jamais la référence), {} si aucun run en cour
   c.enregistrerUsage_('claude-sonnet-4-6', { input_tokens: 900, output_tokens: 80 });
   assert.strictEqual(s1.sin, 100, 'le relevé pris AVANT le 2e appel ne doit pas bouger (copie)');
   assert.strictEqual(c.usageRunSnapshot_().sin, 1000);
+});
+
+// ---------------------------------------------------------------------------
+// Prompt caching (Vague 3) : tokens de cache comptés au bon prix (×1,25 écriture, ×0,10 lecture)
+// ---------------------------------------------------------------------------
+
+test('coutDollars_ : prix cache par MTok (Sonnet cw 3,75 / cr 0,30 ; Haiku cw 1,25 / cr 0,10)', () => {
+  assert.strictEqual(ctx.coutDollars_({ hin: 0, hout: 0, sin: 0, sout: 0, scw: M }), 3.75);
+  assert.strictEqual(ctx.coutDollars_({ hin: 0, hout: 0, sin: 0, sout: 0, scr: M }), 0.3);
+  assert.strictEqual(ctx.coutDollars_({ hin: 0, hout: 0, sin: 0, sout: 0, hcw: M }), 1.25);
+  assert.strictEqual(ctx.coutDollars_({ hin: 0, hout: 0, sin: 0, sout: 0, hcr: M }), 0.1);
+  // Une lecture de cache est ~30× moins chère qu'un input Sonnet plein tarif (0,30 vs 3) — le gain visé.
+  assert.ok(ctx.coutDollars_({ scr: M }) < ctx.coutDollars_({ sin: M }) / 9);
+});
+
+test('enregistrerUsage_ : ventile cache_creation / cache_read (Sonnet) — le budget ne les oublie pas', () => {
+  const c = load(['Config.gs', 'Cout.gs']);
+  c.reinitialiserUsage_();
+  c.enregistrerUsage_('claude-sonnet-4-6', {
+    input_tokens: 200, output_tokens: 50, cache_creation_input_tokens: 1500, cache_read_input_tokens: 0,
+  });
+  c.enregistrerUsage_('claude-sonnet-4-6', {
+    input_tokens: 200, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 1500,
+  });
+  const s = c.usageRunSnapshot_();
+  assert.strictEqual(s.scw, 1500, 'écriture de cache accumulée');
+  assert.strictEqual(s.scr, 1500, 'lecture de cache accumulée');
+  assert.strictEqual(s.sin, 400, 'input régulier (hors cache) séparé');
+  // Coût = 400 in + 100 out + 1500 cw + 1500 cr (Sonnet), en $.
+  const attendu = (400 * 3 + 100 * 15 + 1500 * 3.75 + 1500 * 0.3) / M;
+  assert.ok(Math.abs(c.coutDollarsDelta_({ hin: 0, hout: 0, sin: 0, sout: 0, scw: 0, scr: 0 }, s) - attendu) < 1e-12);
+});
+
+test('lireCoutMois_ : un JSON d\'AVANT la Vague 3 (sans champs cache) ne corrompt pas le flush (NaN)', () => {
+  const store = { };
+  const c = load(['Config.gs', 'Cout.gs'], {
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (k) => (k in store ? store[k] : null),
+        setProperty: (k, v) => { store[k] = String(v); },
+        deleteProperty: (k) => { delete store[k]; },
+      }),
+    },
+  });
+  // Ancien format : pas de hcw/hcr/scw/scr.
+  store[c.cleCoutMois_()] = JSON.stringify({ hin: 100, hout: 20, sin: 300, sout: 40, appels: 2 });
+  c.reinitialiserUsage_();
+  c.enregistrerUsage_('claude-sonnet-4-6', { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 1000 });
+  c.flushUsage_();
+  const t = JSON.parse(store[c.cleCoutMois_()]);
+  assert.strictEqual(t.sin, 310);
+  assert.strictEqual(t.scr, 1000, 'la lecture cache s\'ajoute proprement (pas de NaN sur un ancien total)');
+  assert.ok(Number.isFinite(c.coutDollars_(t)), 'coût fini (aucun NaN propagé)');
 });
 
 // ---------------------------------------------------------------------------

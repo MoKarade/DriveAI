@@ -49,7 +49,14 @@ var CONFIG = {
                                           // résultat Haiku (« classer au mieux », décision Marc). Débit ↑.
   // Prix Anthropic par MILLION de tokens (input/output), pour MESURER le coût réel (Cout.gs, P1-09).
   // À ajuster si la grille de prix change. Haiku 4.5 : 1$/5$ ; Sonnet 4.6 : 3$/15$.
-  LLM_PRIX: { haiku_in: 1, haiku_out: 5, sonnet_in: 3, sonnet_out: 15 },
+  // Prompt caching (Vague 3, décision Marc « Optimiser ») : écriture cache = ×1,25 du prix input,
+  // lecture cache = ×0,10. Le prompt SYSTÈME (constant, gros) est mis en cache → les appels suivants
+  // dans la fenêtre TTL (~5 min, campagnes/lots) ne repaient l'input système qu'à 10 %. Ces champs
+  // DOIVENT exister pour que `coutDollars_` compte les tokens cache (sinon budget sous-estimé §2.6).
+  LLM_PRIX: {
+    haiku_in: 1, haiku_out: 5, haiku_cw: 1.25, haiku_cr: 0.1,
+    sonnet_in: 3, sonnet_out: 15, sonnet_cw: 3.75, sonnet_cr: 0.3,
+  },
   // FREIN BUDGET des CAMPAGNES (R3, garde-fou §2.6 rendu EFFECTIF — vécu : 15,62 $ le 7 juillet,
   // le grand rangement churnait l'ancien Drive toute la nuit) : au-delà de ce coût MENSUEL mesuré,
   // les campagnes de MASSE (grand rangement, migration, historique Gmail) se mettent en pause

@@ -162,3 +162,36 @@ test('budgetMsRun_ : abaissé aussi sous DRYRUN_V2_ACTIF seul (le dry-run fait l
     ctx.CONFIG.DRYRUN_V2_ACTIF = sauvegarde.dry;
   }
 });
+
+/* ---------- Prompt caching (Vague 3) : le prompt SYSTÈME est un bloc `cache_control` ---------- */
+
+test('appelAnthropicV2_ : le prompt système part en bloc cache_control:ephemeral ; le contenu utilisateur reste hors cache', () => {
+  const c = load(['Config.gs', 'Llm.gs'], { tronquer_: (s, n) => String(s == null ? '' : s).slice(0, n) });
+  let payload = null;
+  c.estPannePlateforme_ = () => false;
+  c.getCleAnthropic_ = () => 'clé-test';
+  c.signalerRetablissement_ = () => {};
+  c.enregistrerUsage_ = () => {}; // vit dans Cout.gs (non chargé ici)
+  c.fetchAvecRetry_ = (url, options) => {
+    payload = JSON.parse(options.payload);
+    return {
+      getResponseCode: () => 200,
+      getContentText: () => JSON.stringify({
+        content: [{ type: 'text', text: '{"domaine":"02 · Finances","confiance":0.9}' }],
+        usage: { input_tokens: 10, output_tokens: 5, cache_read_input_tokens: 900 },
+        stop_reason: 'end_turn',
+      }),
+    };
+  };
+
+  const out = c.appelAnthropicV2_('claude-sonnet-4-6', { nomFichier: 'a.pdf', extrait: 'texte' }, c.PROMPT_PASSE1, null);
+  assert.ok(out, 'la réponse est bien parsée');
+  // Le SYSTÈME (constant) est un tableau de blocs avec cache_control → mis en cache.
+  assert.ok(Array.isArray(payload.system), 'system est un tableau de blocs (pré-requis du cache_control)');
+  assert.strictEqual(payload.system[0].type, 'text');
+  assert.strictEqual(payload.system[0].text, c.PROMPT_PASSE1, 'le texte système est INCHANGÉ (mêmes règles)');
+  assert.deepStrictEqual(payload.system[0].cache_control, { type: 'ephemeral' });
+  // Le CONTENU utilisateur (variable par doc) reste une string simple — jamais caché (cache miss garanti).
+  assert.strictEqual(typeof payload.messages[0].content, 'string');
+  assert.ok(payload.messages[0].content.indexOf('a.pdf') !== -1);
+});

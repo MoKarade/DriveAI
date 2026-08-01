@@ -155,7 +155,19 @@ function appelAnthropicV2_(modele, meta, systeme, propositionPasse1) {
     payload: JSON.stringify({
       model: modele,
       max_tokens: CONFIG.ANALYSE_V2_MAX_TOKENS,
-      system: systeme,
+      // Prompt caching (Vague 3, « Optimiser ») : le prompt SYSTÈME est CONSTANT et gros (domaines +
+      // REGLES_V2). En bloc `cache_control:ephemeral`, il n'est facturé plein tarif qu'à la 1ʳᵉ écriture
+      // du run ; les appels suivants dans la fenêtre TTL (~5 min : lots, campagnes de masse) le relisent
+      // à 10 % (`cache_read_input_tokens`, compté par `enregistrerUsage_`). Le CONTENU utilisateur (extrait
+      // du doc, variable) reste hors cache. Sous le minimum cacheable, l'API ignore le flag (no-op, sans erreur).
+      // GAIN HONNÊTE (revue llm-cost-optimizer, jamais un chiffre-titre non mesuré) : réel sur les
+      // CAMPAGNES batchées (~8-16 %/doc), ≈ NUL sur le flux vivant épars (TTL expiré entre 2 docs → surtout
+      // des écritures froides à 1,25×). ⚠ PASSE1 (~1,1-1,25 k tok) et PASSE2 (~0,8-0,9 k tok, préfixes
+      // DIFFÉRENTS) : la PASSE 2 est peut-être SOUS le minimum Sonnet (1024 tok) ⇒ cache no-op pour elle,
+      // gain ÷2. À VÉRIFIER EMPIRIQUEMENT (seul signal autoritaire) : `cache_creation_input_tokens` doit
+      // être > 0 sur le 1ᵉʳ appel P1 ET P2 d'un run ; sinon la passe concernée ne cache pas. Les 4 champs
+      // sont déjà persistés dans `DriveAI_COUT_AAAA-MM` (scw/scr) — lisibles sans instrumentation en plus.
+      system: [{ type: 'text', text: systeme, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: contenu }]
     }),
     muteHttpExceptions: true
