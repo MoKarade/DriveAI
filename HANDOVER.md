@@ -18,9 +18,19 @@
 > 🔴 : sans lui le backlog des pages 1+ était perdu après reprise post-panne/rafale — mur désactivé tant
 > qu'un backlog est possible, drainage complet puis reprise ; mutation prouvée) **+ I/O Property de ce
 > filet enveloppée** (revue `code-reviewer` 🟡 : `traiterGmail_` appelé nu dans l'intake, un blip Property
-> aurait avorté le tick — dégrade sans throw), trace horaire durée du tick. 751 tests. **Reste : Vague 3** (unification
-> du rangement + few-shot v2 effectif + optim coût + frein budget encadré 1er août) + un reliquat de
-> non-bloquants (BACKLOG #44). ⚠ Chaque merge moteur : le pilote CI ré-installe le déclencheur seul.
+> aurait avorté le tick — dégrade sans throw), trace horaire durée du tick.
+> **Vague 3a ✅ (#243, coût)** : prompt caching du prompt SYSTÈME v2 + comptabilité étendue aux tokens
+> cache (budget §2.6 honnête) ; gain honnête ~8-16 % campagnes / ≈ nul flux épars (revue `llm-cost-optimizer`).
+> **Vague 3b ✅ (#244, UNIFICATION)** — le gros morceau : le flux vivant ET la consolidation DÉLÈGUENT
+> leur sous-chemin à `cheminCibleReset_` (comme le reset) → convergence prouvée sur 20 docs réels
+> (100 %→0 divergence), tripwires flux↔reset + flux↔conso. 2 revues flotte (régression 2027→Archives
+> évitée ; **04 range en interne — RATIFIÉ Marc**, jamais de sortie de 04). **Vague 3c ✅** : frein
+> budget `LLM_BUDGET_CAMPAGNES` **110→10** (#245, cruise), re-pointage entités périmées (#245, dédup
+> run-scope réelle après revue), **few-shot v2 câblé** (#246 — les corrections de Marc atteignent enfin
+> le classement live), **2ᵉ passe conditionnelle** (#247, ADR-0034 — gate `passe1SuffisammentSure_`
+> **flag OFF**, garde §2 auto-suffisante ; activation subordonnée à un dry-run 1↔2 passes présenté à Marc).
+> **CHANTIER #44 CLÔTURÉ.** 772 tests. Reste seulement des non-bloquants (BACKLOG « Reliquat »).
+> ⚠ Chaque merge moteur : le pilote CI ré-installe le déclencheur seul.
 >
 > **⚡⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (nuit) — C28-43 : LE PILOTE CI (ADR-0032) — Marc ne lance PLUS RIEN.**
 > Marc : « je veux plus jamais avoir à lancer à la main, je veux que TU fasses le lancement
