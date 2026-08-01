@@ -112,3 +112,37 @@ test('REPLI flux↔conso : un doc que le Reset NE route pas converge encore (bra
   assert.strictEqual(conso.nom, plan.sousDossier, 'repli : flux↔conso convergent (« ' + plan.sousDossier + ' » vs « ' + conso.nom + ' »)');
   assert.strictEqual(conso.id, plan.dossierIdCible || '', 'repli : les IDs convergent aussi');
 });
+
+/* ---------- Point 4 (revue structure-keeper) : le flux délégué re-pointe le référentiel d'entité ---------- */
+
+test('deciderRoutageV2_ : entité-table au Dossier ID PÉRIMÉ → re-pointée vers le nœud thématique, UNE fois par run', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs']);
+  const cle = c.cleCanoniqueEntite_('05 · Carrière', 'Robovic');
+  const repoints = [];
+  // Mock RÉALISTE (revue code-reviewer, leçon §7) : la VRAIE `entitesValideesParCle_` RECONSTRUIT une
+  // carte neuve à CHAQUE appel depuis `_entitesCache` — que `repointerEntites_` (écriture Sheet) ne met
+  // PAS à jour en cours de run. Donc le `dossierId` reste périmé côté cache d'un doc à l'autre : un mock
+  // à objet PARTAGÉ masquerait ce comportement (et « prouverait » une dédup inexistante). On reconstruit.
+  c.entitesValideesParCle_ = () => { const v = {}; v[cle] = { nom: 'Robovic', dossierId: 'ANCIEN_ID' }; return v; };
+  c.idDomaine_ = () => 'DOM_05';
+  c.DriveApp = { getFolderById: () => ({ getId: () => 'DOM_05' }) };
+  c.sousDossier_ = (parent, name) => ({ getId: () => 'F_' + name }); // Employeurs → Robovic ⇒ F_Robovic
+  c.repointerEntites_ = (src, dst) => { repoints.push([src, dst]); };
+  c.garantirNomUnique_ = (n) => n;
+  c.nomsDansDossier_ = () => [];
+
+  const doc = (date) => c.deciderRoutageV2_(
+    { domaine: '05 · Carrière', type_doc: 'Paie', emetteur: 'Robovic', date_doc: date },
+    { nomFichier: 'paie.pdf', taille: 1000, extraitOcr: 'texte lisible '.repeat(5), emetteur: 'Robovic' },
+    new Date(date + 'T00:00:00Z'), '.pdf');
+
+  const r = doc('2026-06-01');
+  assert.strictEqual(r.chemin, '05 · Carrière/Employeurs/Robovic', 'doc placé dans le nœud thématique');
+  assert.deepStrictEqual(repoints, [['ANCIEN_ID', 'F_Robovic']], 'référentiel re-pointé de l\'ancien ID vers le dossier thématique');
+
+  // DÉDUP RUN-SCOPE : un 2ᵉ doc de la MÊME entité (carte reconstruite → dossierId TOUJOURS périmé côté
+  // cache) ne relit PLUS l'onglet Entités — le set `_repointesRun` mémorise l'ancien ID. C'est le VRAI
+  // mécanisme de dédup (pas la mutation morte de la carte reconstruite).
+  doc('2026-07-01');
+  assert.strictEqual(repoints.length, 1, 'aucun 2ᵉ re-pointage dans le même run (dédup run-scope réelle)');
+});

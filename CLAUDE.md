@@ -550,6 +550,15 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   PREMIER objet construit — le 2ᵉ hérite silencieusement de la même valeur (vécu C28-33 : deux
   fichiers différents jugés « même empreinte »). Toute fonction mockée qui varie PAR OBJET lit sa
   variation dans son propre argument, jamais dans des `opts` figés à la construction.
+  **Corollaire (Vague 3c) : une dédup « par run » ne peut PAS vivre dans une structure RECONSTRUITE à
+  chaque item.** Muter un objet d'une carte re-bâtie à chaque appel (`entitesValideesParCle_`
+  reconstruit son DTO par document, jamais rechargé en cours de tick) = code MORT : la mutation est
+  jetée avec l'objet, l'item suivant repart de l'ancienne valeur. La dédup doit vivre dans une
+  structure à portée RUN que la reconstruction ne réinitialise pas (set module-level frais par
+  exécution Apps Script, ou `ctx.repointes` passé explicitement comme le reset). Réflexe : « l'état
+  où j'écris ma dédup SURVIT-il jusqu'au prochain item ? » Et un mock qui rend un OBJET PARTAGÉ
+  (`() => memeObjet`) là où la vraie fonction RECONSTRUIT par appel prouve une propriété fausse — le
+  mock reconstruit par appel, prouvé par mutation (l'ancienne approche doit faire échouer le test).
 - **Un budget calibré pour UN CHEMIN d'exécution ne doit ni brider, ni être consommé par, un AUTRE
   chemin.** Les budgets quotidiens protègent le quota RUNTIME des DÉCLENCHEURS (~90 min/j) ; une
   exécution MANUELLE depuis l'éditeur en est HORS. Les appliquer quand même = DOUBLE peine (vécu

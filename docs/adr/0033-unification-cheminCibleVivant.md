@@ -107,15 +107,15 @@ Reset sait router, `planRoutageV2_(...).sousDossier === cheminCibleReset_(domain
   (`Relevés/2027`), Archives seulement pour le passé hors fenêtre (léger dépassement ≤ 7 au fil des
   ans, ASSUMÉ vs un mauvais rangement). **Évolution possible** : fenêtre glissante avec purge du plus
   ancien vers Archives (mutation) — à trancher avec Marc si le dépassement ≤ 7 devient gênant.
-- **Référentiel d'entités ↔ table Reset (revue structure-keeper — HORS PÉRIMÈTRE, suite Vague 3c)** :
-  le chemin délégué du flux pose `dossierIdCible: ''` et route les ~20 entités codées EN DUR dans la
-  table (EDF, CIC, Desjardins, Robovic…) **par NOM**, en ignorant le `Dossier ID` du référentiel
-  `Entités` (ADR-0028). `repointerEntites_` n'est appelé QUE côté reset/reorg, jamais dans
-  `deciderRoutageV2_`. Risque : dossier d'entité-table relocalisé (seed à plat, regroupement ADR-0027)
-  → doublon/orphelin + `Dossier ID` périmé. À réunifier (le chemin délégué consulte `dossierEntiteParId_`
-  pour le dernier segment quand c'est une entité validée, + re-pointe) OU à verrouiller par un test que
-  le flux ne recrée jamais un dossier concurrent d'un `Dossier ID` valide. Le repli, lui, respecte déjà
-  le référentiel (bypass circonscrit aux entités DE LA TABLE).
+- **Référentiel d'entités ↔ table Reset (revue structure-keeper — CORRIGÉ en Vague 3c)** : le chemin
+  délégué du flux routait les ~20 entités codées EN DUR dans la table (EDF, CIC, Desjardins, Robovic…)
+  **par NOM** en ignorant le `Dossier ID` du référentiel `Entités` (ADR-0028) → risque de dossier
+  concurrent + `Dossier ID` périmé si une entité-table était relocalisée (seed à plat, regroupement
+  ADR-0027). **`deciderRoutageV2_` re-pointe désormais** (comme `resoudreCibleReset_`) : si le dernier
+  segment du chemin thématique est une entité validée dont le `Dossier ID` pointe ailleurs, il est
+  re-pointé vers le nœud thématique — les 3 consommateurs (flux, conso, reset) re-pointent À
+  L'IDENTIQUE. Zéro I/O en régime (garde en mémoire ; lecture de l'onglet `Entités` seulement sur un ID
+  réellement périmé, puis carte en cache mise à jour). Verrouillé par `test/routage-unifie.test.js`.
 - **2ᵉ passe conditionnelle** (coût) et **few-shot injecté en v2** : changements de CLASSEMENT
   (§8) traités séparément, chacun avec son audit sur réel.
 - **Frein budget encadré au 1er août** (§2.6 / ADR-0018) : décision de plafond, séparée.

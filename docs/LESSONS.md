@@ -1692,3 +1692,29 @@ réponse choisit le filet. Et corollaire (déjà connu mais re-vécu) : tout NOU
 dégrade sans throw — un blip ne doit jamais avorter l'intake (leçon « protéger l'intake »)."
 
 **Règle durable ?** oui (ajouté à CLAUDE.md §7).
+
+---
+
+## 2026-08-01 — Une dédup « par run » qui MUTE une carte reconstruite à chaque appel est du code MORT ; et le test qui la « prouve » avec un objet partagé masque le trou
+
+**Contexte.** Vague 3c, re-pointage d'entité dans le flux (`deciderRoutageV2_`). J'avais écrit : après
+`repointerEntites_`, muter `ent.dossierId = cible.getId()` pour « ne jamais re-pointer 2× le même
+run ». La revue `code-reviewer` a montré que c'est faux : `entitesValideesParCle_` RECONSTRUIT sa
+carte à CHAQUE document depuis `_entitesCache` (jamais rechargé en cours de tick, ni mis à jour par
+`repointerEntites_` qui écrit la Sheet). L'objet `ent` muté est donc JETÉ en fin d'appel ; le doc
+suivant reconstruit `dossierId = ANCIEN_ID` → re-lit tout l'onglet Entités. La mutation était du code
+mort entre deux docs. Pire : mon test « verrouillait » l'idempotence avec `entitesValideesParCle_ =
+() => validees` — un objet PARTAGÉ, ce que la vraie fonction ne fait JAMAIS — donc il passait en
+« prouvant » une dédup inexistante en prod (l'anti-pattern mock-fermeture §7, exactement).
+
+**Leçon.** "Un mémo de déduplication « par run » ne peut PAS vivre dans une structure RECONSTRUITE à
+chaque item (cache re-bâti par appel, DTO neuf) : la mutation est jetée avec l'objet. Il doit vivre
+dans une structure à portée RUN que la reconstruction ne réinitialise pas — un set à portée
+exécution (variable de module fraîche par run Apps Script, ou `ctx.repointes` passé explicitement
+comme le fait le reset). Réflexe : « l'état où j'écris ma dédup SURVIT-il jusqu'au prochain item, ou
+est-il reconstruit ? » Corollaire test (renforce §7) : un test qui mocke une fonction-source par un
+OBJET PARTAGÉ (`() => memeObjet`) alors que la vraie reconstruit à chaque appel PROUVE une propriété
+fausse — le mock doit RECONSTRUIRE par appel pour être représentatif. Prouver par mutation que le
+test échoue sur l'ancienne approche."
+
+**Règle durable ?** oui (corollaire ajouté à la règle mock-fermeture de CLAUDE.md §7).
