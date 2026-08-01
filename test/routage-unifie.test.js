@@ -52,3 +52,63 @@ test('REPLI (jamais de limbo) : un doc que le Reset NE route PAS retombe sur le 
   assert.strictEqual(plan.type, 'classé', 'le flux le classe quand même (repli) — jamais laissé sans dossier');
   assert.ok(!/inconnu/i.test(plan.nom), 'et jamais « Inconnu » dans le nom : ' + plan.nom);
 });
+
+/* ---------- Forward des années (ADR-0033, revue structure-keeper) : le flux AVANCE dans le temps ---------- */
+
+test('resetBucketAnnee_ : une année POSTÉRIEURE aux buckets figés rend son propre segment (jamais Archives)', () => {
+  const noeud = { '2026': {}, '2025': {}, '2024': {}, '2023': {}, '2022': {}, '2021': {}, Archives: {} };
+  assert.strictEqual(ctx.resetBucketAnnee_('2026', noeud), '2026', 'année listée → elle-même');
+  assert.strictEqual(ctx.resetBucketAnnee_('2027', noeud), '2027', 'FORWARD : 2027+ crée son dossier (pas Archives)');
+  assert.strictEqual(ctx.resetBucketAnnee_('2031', noeud), '2031');
+  assert.strictEqual(ctx.resetBucketAnnee_('2018', noeud), 'Archives', 'PASSÉ hors fenêtre → Archives (borné)');
+  assert.strictEqual(ctx.resetBucketAnnee_('', noeud), 'Archives', 'année absente → Archives');
+});
+
+test('bout-en-bout : un relevé 2027 (flux vivant délégué) va dans Relevés/2027, plus jamais Archives (anti-régression 2027)', () => {
+  assert.strictEqual(ctx.cheminCibleReset_('02 · Finances', '2027-06_Relevé_Desjardins.pdf'), 'Relevés/2027');
+  assert.strictEqual(ctx.cheminCibleReset_('02 · Finances', '2027-01-10_Facture_Cleverbridge.pdf'), 'Reçus & factures/2027');
+});
+
+/* ---------- Invariance d'assainissement (revue code-reviewer) : flux(segment brut) == conso(champ_) ---------- */
+
+function cheminsPossiblesReset_(structure) {
+  const out = [];
+  const walk = (noeud, prefix) => {
+    const enfants = Object.keys(noeud || {});
+    if (!enfants.length) { if (prefix) out.push(prefix); return; }
+    for (const e of enfants) walk(noeud[e], prefix ? prefix + '/' + e : e);
+  };
+  for (const dom of Object.keys(structure || {})) {
+    for (const e of Object.keys(structure[dom] || {})) walk(structure[dom][e], e);
+  }
+  return out;
+}
+
+test('INVARIANCE : toute sortie de STRUCTURE_CIBLE_RESET est invariante par champ_ et sans segment vide', () => {
+  // Le flux/reset gardent les segments BRUTS ; la conso applique champ_ (ConsolidationExec.gs:163).
+  // Aujourd'hui tous les chemins de la table sont invariants — ce test le VERROUILLE : le jour où
+  // quelqu'un ajoute un dossier contenant un caractère interdit (_ / \ : * ? etc.), la conso le
+  // renommerait alors que flux+Reset garderaient le brut → « Déplacer » en boucle silencieux.
+  const chemins = cheminsPossiblesReset_(ctx.STRUCTURE_CIBLE_RESET);
+  assert.ok(chemins.length >= 40, 'la table doit produire de nombreux chemins : ' + chemins.length);
+  for (const ch of chemins) {
+    for (const seg of ch.split('/')) {
+      assert.ok(seg.length > 0, 'segment vide dans : ' + ch);
+      assert.strictEqual(ctx.champ_(seg), seg, 'segment non invariant par champ_ (flux brut ≠ conso assainie) : « ' + seg + ' » dans ' + ch);
+    }
+  }
+});
+
+/* ---------- Couverture REPLI du tripwire flux↔conso (revue code-reviewer) ---------- */
+
+test('REPLI flux↔conso : un doc que le Reset NE route pas converge encore (branche historique)', () => {
+  // Le tripwire consolidation ne couvre plus que la branche DÉLÉGUÉE (ses 4 cas y passent). Ici on
+  // exerce la branche REPLI (Reset null) : flux et conso doivent rendre le MÊME sous-chemin.
+  const validees = {};
+  const classif = { domaine: '06 · Études & diplômes', type_doc: 'Devoir', descripteur: 'TP Python', date_doc: '2026-06-30' };
+  const plan = ctx.planRoutageV2_(classif, meta('2026-06-30_Devoir_TP Python.docx'), '2026-06-30', '.docx', validees);
+  assert.strictEqual(ctx.cheminCibleReset_(plan.domaine, plan.nom), null, 'branche repli (le Reset ne route pas)');
+  const conso = ctx.cheminCibleConsolidation_(plan.domaine, plan.nom, validees);
+  assert.strictEqual(conso.nom, plan.sousDossier, 'repli : flux↔conso convergent (« ' + plan.sousDossier + ' » vs « ' + conso.nom + ' »)');
+  assert.strictEqual(conso.id, plan.dossierIdCible || '', 'repli : les IDs convergent aussi');
+});

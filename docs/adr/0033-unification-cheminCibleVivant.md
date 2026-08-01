@@ -56,10 +56,16 @@ Reset sait router, `planRoutageV2_(...).sousDossier === cheminCibleReset_(domain
 
 ## 3. Ce qui NE change PAS (garde-fous §2 préservés)
 
-- **Zone `04 · Immigration`** : `cheminCibleReset_('04 · Immigration', …)` renvoie null (routage
-  interne 04 réservé à la passe reliquat) → le flux **retombe** sur son routage actuel, à
-  l'INTÉRIEUR de 04. Le flux ne calcule jamais un chemin hors du domaine du LLM ⇒ **aucune sortie
-  automatique de 04**. Inchangé.
+- **Zone `04 · Immigration`** *(corrigé après revue code-reviewer — la description initiale « null →
+  inchangé » était FAUSSE)* : `cheminCibleReset_('04 · Immigration', …)` **route en INTERNE** les
+  documents reconnus (`IRCC (fédéral)`, `MIFI (Québec)`, `Permis de travail & EIMT`, `Résidence
+  permanente`, `Formulaires & correspondance`) et ne rend null que pour un doc 04 sans motif (→ repli,
+  à plat DANS 04). **Conséquence RÉELLE, à ratifier par Marc** : l'intake neuf de 04 est désormais
+  placé dans ces sous-dossiers thématiques (structure validée ADR-0030), plus à plat / `04/AAAA`.
+  Le garde-fou DUR §2.1b **tient** : le sous-chemin est TOUJOURS relatif au domaine (résolu sous
+  `idDomaine_(04)` par `sousDossier_`, aucune remontée), donc **aucune sortie automatique de 04** —
+  et §2.1b autorise explicitement la **réorganisation INTERNE** de 04. Le flux ne calcule jamais un
+  chemin hors du domaine arrêté par le LLM/l'identité.
 - **Fail-safe ADR-0016** (tout-NULL → `00 · À vérifier`) et **non-document** : gardes en TÊTE de
   `planRoutageV2_`, AVANT la délégation. La délégation ne s'applique qu'aux documents `classé`.
 - **Granularité = enrichissement, jamais frein** : `rel` null ne met JAMAIS en revue — il retombe
@@ -92,12 +98,24 @@ Reset sait router, `planRoutageV2_(...).sousDossier === cheminCibleReset_(domain
 - **Revue flotte adversariale AVANT merge** : `structure-keeper` (cohérence taxonomie/arbre) +
   `code-reviewer`.
 
-## 6. Suites (hors périmètre de cette PR, notées)
+## 6. Suites (notées, dont deux relevées par la revue flotte)
 
-- **Référentiel d'entités ↔ table Reset** : `STRUCTURE_CIBLE_RESET` porte des entités en dur
-  (EDF, CIC, Desjardins, Robovic…), hors du référentiel `Entités` que consultent flux et conso. Un
-  re-pointage / une alimentation croisée est une amélioration à part (le tripwire de cette PR ne la
-  couvre pas).
+- **Forward des années (revue structure-keeper — CORRIGÉ dans cette PR)** : les buckets d'année de
+  `STRUCTURE_CIBLE_RESET` étaient un instantané historique figé (2021-2026 + Archives). Comme le flux
+  vivant délègue désormais ici et AVANCE dans le temps, tout doc 2027+ serait tombé dans `Archives`.
+  `resetBucketAnnee_` rend maintenant son propre segment pour une année POSTÉRIEURE au dernier bucket
+  (`Relevés/2027`), Archives seulement pour le passé hors fenêtre (léger dépassement ≤ 7 au fil des
+  ans, ASSUMÉ vs un mauvais rangement). **Évolution possible** : fenêtre glissante avec purge du plus
+  ancien vers Archives (mutation) — à trancher avec Marc si le dépassement ≤ 7 devient gênant.
+- **Référentiel d'entités ↔ table Reset (revue structure-keeper — HORS PÉRIMÈTRE, suite Vague 3c)** :
+  le chemin délégué du flux pose `dossierIdCible: ''` et route les ~20 entités codées EN DUR dans la
+  table (EDF, CIC, Desjardins, Robovic…) **par NOM**, en ignorant le `Dossier ID` du référentiel
+  `Entités` (ADR-0028). `repointerEntites_` n'est appelé QUE côté reset/reorg, jamais dans
+  `deciderRoutageV2_`. Risque : dossier d'entité-table relocalisé (seed à plat, regroupement ADR-0027)
+  → doublon/orphelin + `Dossier ID` périmé. À réunifier (le chemin délégué consulte `dossierEntiteParId_`
+  pour le dernier segment quand c'est une entité validée, + re-pointe) OU à verrouiller par un test que
+  le flux ne recrée jamais un dossier concurrent d'un `Dossier ID` valide. Le repli, lui, respecte déjà
+  le référentiel (bypass circonscrit aux entités DE LA TABLE).
 - **2ᵉ passe conditionnelle** (coût) et **few-shot injecté en v2** : changements de CLASSEMENT
   (§8) traités séparément, chacun avec son audit sur réel.
 - **Frein budget encadré au 1er août** (§2.6 / ADR-0018) : décision de plafond, séparée.
