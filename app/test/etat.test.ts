@@ -16,6 +16,7 @@ import {
   lienGmailPourLigne,
   ageMoteurMinutes,
   fraicheurMoteur,
+  statutLisible,
 } from '../src/etat';
 
 describe('cleEtatIndex : dédup des familles reset/campagne (revue de fond 2026-07-31)', () => {
@@ -32,6 +33,21 @@ describe('cleEtatIndex : dédup des familles reset/campagne (revue de fond 2026-
     expect(cleEtatIndex('tri|FIL9|123|lu')).toBe('fil|FIL9');
     expect(cleEtatIndex('intention|MSG1')).toBe('intention|MSG1');
     expect(cleEtatIndex('tri-abandon|FIL9|123')).toBe('tri-abandon|FIL9|123');
+  });
+
+  it('statutLisible : un doc RANGÉ par le reset compte comme « classé » (sinon disparaît de « derniers classements »)', () => {
+    expect(statutLisible('tri33-route')).toBe('classé');
+    expect(statutLisible('tri33-04-route')).toBe('classé');
+    expect(statutLisible('tri33-doublon')).toBe('doublon');
+    expect(statutLisible('tri33-reste')).toBe('à trier');
+    // Statuts produit inchangés ; gardes rares gardent leur libellé technique.
+    expect(statutLisible('classé')).toBe('classé');
+    expect(statutLisible('tri33-protege')).toBe('tri33-protege');
+  });
+
+  it('interpreterIndex : un doc routé par le reset (tri33-route) est lu comme « classé »', () => {
+    const [l] = interpreterIndex([['tri33p|t3|v2|F1', '2026-01-03', 'a.pdf', '02 · Finances', 'Relevés', 'tri33-route']]);
+    expect(l.statut).toBe('classé');
   });
 
   it('etatCourantIndex : un fichier avec plusieurs états successifs n\'apparaît qu\'UNE fois (la plus récente) — plus de « +N » gonflé', () => {

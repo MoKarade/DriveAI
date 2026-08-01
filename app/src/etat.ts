@@ -30,6 +30,23 @@ export interface LigneIndex {
   confiance: string; // colonne H (#17) — '' pour les lignes sans classification LLM
 }
 
+/**
+ * Statut PRODUIT lisible : les statuts TECHNIQUES du reset (`tri33-route`, `tri33-04-route`,
+ * `tri33-doublon`, `tri33-reste`…) sont ramenés à leur sens fonctionnel. Nécessaire depuis que
+ * `cleEtatIndex` regroupe les états d'un fichier sur le fichier : sans ça, un doc RANGÉ par le reset
+ * (statut `tri33-route`) ne comptait plus comme « classé » → il disparaissait de « derniers
+ * classements » (accueil) et polluait le sélecteur de statuts (revue Vague 1 app 2026-07-31). Les
+ * gardes rares (protégé, multi-parents, écart, absent) gardent leur libellé technique. PURE.
+ */
+export function statutLisible(statut: string): string {
+  switch (statut) {
+    case 'tri33-route': case 'tri33-04-route': return 'classé';
+    case 'tri33-doublon': return 'doublon';
+    case 'tri33-reste': case 'tri33-04-reste': return 'à trier';
+    default: return statut;
+  }
+}
+
 export function interpreterIndex(brut: string[][]): LigneIndex[] {
   return brut
     .filter((l) => l[0])
@@ -39,7 +56,7 @@ export function interpreterIndex(brut: string[][]): LigneIndex[] {
       fichier: l[2] ?? '',
       domaine: l[3] ?? '',
       chemin: l[4] ?? '',
-      statut: l[5] ?? '',
+      statut: statutLisible(l[5] ?? ''),
       confiance: l[7] ?? '',
     }));
 }
