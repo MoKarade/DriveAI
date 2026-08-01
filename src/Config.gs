@@ -70,7 +70,11 @@ var CONFIG = {
   // coût one-shot ; la cible < 10 $/mois reste celle du régime de croisière — Marc REDESCEND ce
   // plafond à 10 (en éditant cette ligne) à la fin de C26-08. Jamais 0/Infinity : le frein reste
   // le filet anti-emballement (boucle de re-OCR, erreur de convergence).
-  LLM_BUDGET_CAMPAGNES: 110,
+  // 110 → 10 (décision Marc 2026-08-01, Vague 3c : ENCADRER au 1er août — le compteur mensuel est
+  // remis à 0 au nouveau mois, m1 + C26-08 sont finies, retour au régime de croisière < 10 $/mois ;
+  // la checklist ADR-0018 est bouclée). Si une campagne de rattrapage devait reprendre, Marc relève
+  // ponctuellement cette ligne (le frein est un FILET, jamais un gate du flux vivant).
+  LLM_BUDGET_CAMPAGNES: 10,
   // Résumé hebdomadaire automatique (mail récap à soi-même, scope script.send_mail existant).
   RESUME_JOUR: 'MONDAY',                  // jour du déclencheur hebdo (WeekDay Apps Script)
   RESUME_HEURE: 8,                        // heure locale d'envoi

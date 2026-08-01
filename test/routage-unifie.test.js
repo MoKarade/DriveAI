@@ -112,3 +112,36 @@ test('REPLI flux↔conso : un doc que le Reset NE route pas converge encore (bra
   assert.strictEqual(conso.nom, plan.sousDossier, 'repli : flux↔conso convergent (« ' + plan.sousDossier + ' » vs « ' + conso.nom + ' »)');
   assert.strictEqual(conso.id, plan.dossierIdCible || '', 'repli : les IDs convergent aussi');
 });
+
+/* ---------- Point 4 (revue structure-keeper) : le flux délégué re-pointe le référentiel d'entité ---------- */
+
+test('deciderRoutageV2_ : entité-table au Dossier ID PÉRIMÉ → re-pointée vers le nœud thématique (jamais orpheline)', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs']);
+  const cle = c.cleCanoniqueEntite_('05 · Carrière', 'Robovic');
+  const validees = {}; validees[cle] = { nom: 'Robovic', dossierId: 'ANCIEN_ID' }; // pointe AILLEURS
+  const repoints = [];
+  c.entitesValideesParCle_ = () => validees;
+  c.idDomaine_ = () => 'DOM_05';
+  c.DriveApp = { getFolderById: () => ({ getId: () => 'DOM_05' }) };
+  c.sousDossier_ = (parent, name) => ({ getId: () => 'F_' + name }); // Employeurs → Robovic ⇒ F_Robovic
+  c.repointerEntites_ = (src, dst) => { repoints.push([src, dst]); };
+  c.garantirNomUnique_ = (n) => n;
+  c.nomsDansDossier_ = () => [];
+
+  const r = c.deciderRoutageV2_(
+    { domaine: '05 · Carrière', type_doc: 'Paie', emetteur: 'Robovic', date_doc: '2026-06-01' },
+    { nomFichier: 'paie.pdf', taille: 1000, extraitOcr: 'texte lisible '.repeat(5), emetteur: 'Robovic' },
+    new Date('2026-06-01T00:00:00Z'), '.pdf');
+
+  assert.strictEqual(r.chemin, '05 · Carrière/Employeurs/Robovic', 'doc placé dans le nœud thématique');
+  assert.deepStrictEqual(repoints, [['ANCIEN_ID', 'F_Robovic']], 'référentiel re-pointé de l\'ancien ID vers le dossier thématique');
+  assert.strictEqual(validees[cle].dossierId, 'F_Robovic', 'carte en cache mise à jour → jamais re-pointé 2× le même run');
+
+  // Idempotence : un 2ᵉ doc de la même entité (Dossier ID déjà à jour) ne re-pointe PLUS.
+  repoints.length = 0;
+  c.deciderRoutageV2_(
+    { domaine: '05 · Carrière', type_doc: 'Paie', emetteur: 'Robovic', date_doc: '2026-07-01' },
+    { nomFichier: 'paie2.pdf', taille: 1000, extraitOcr: 'texte lisible '.repeat(5), emetteur: 'Robovic' },
+    new Date('2026-07-01T00:00:00Z'), '.pdf');
+  assert.deepStrictEqual(repoints, [], 'Dossier ID déjà thématique → aucun re-pointage (zéro I/O en régime)');
+});

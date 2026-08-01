@@ -585,6 +585,20 @@ function deciderRoutageV2_(classif, meta, dateReference, ext) {
     cible = dom;
     for (var s = 0; s < plan.segments.length; s++) cible = sousDossier_(cible, plan.segments[s]);
     segments = plan.segments;
+    // ADR-0033 Point 4 (revue structure-keeper) : si le DERNIER segment est une entité VALIDÉE dont
+    // le référentiel pointe AILLEURS, re-pointer son `Dossier ID` vers ce nœud thématique — EXACTEMENT
+    // comme `resoudreCibleReset_` (Reset.gs). Sans ça, une entité-table relocalisée (seed à plat,
+    // regroupement ADR-0027) laisserait un `Dossier ID` périmé et un dossier concurrent : les 3
+    // consommateurs (flux, conso, reset) re-pointent désormais À L'IDENTIQUE. ZÉRO I/O en régime : la
+    // garde `!== cible.getId()` est en mémoire ; `repointerEntites_` (lecture de l'onglet Entités) ne
+    // tourne QUE sur un ID réellement périmé, puis la carte en cache est mise à jour (jamais 2×/run).
+    var dernierSeg = plan.segments[plan.segments.length - 1];
+    var cleEnt = cleCanoniqueEntite_(plan.domaine, dernierSeg);
+    var ent = cleEnt ? validees[cleEnt] : null;
+    if (ent && ent.dossierId && ent.dossierId !== cible.getId()) {
+      try { repointerEntites_(ent.dossierId, cible.getId()); ent.dossierId = cible.getId(); }
+      catch (e) { journalErreur_('Router', 'Re-pointage d\'entité différé (' + dernierSeg + ') : ' + e); }
+    }
   } else {
     var sousNom = champ_(plan.sousDossier) || '';
     // ADR-0028 — TOPOLOGIE D'ABORD : si le plan porte l'ID du dossier d'entité, on y range le
