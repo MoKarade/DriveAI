@@ -514,15 +514,27 @@ function planRoutageV2_(classif, meta, date, ext, validees) {
   // (3) Domaine introuvable (LLM hors-liste/malformé) → domaine par défaut (jamais de limbo).
   if (!domaineConnu_(c.domaine)) c.domaine = CONFIG.DOMAINE_DEFAUT;
 
-  var domaine, sousDossier, dossierIdCible = ''; // ADR-0028 : l'ID prime sur le nom quand il existe
-  if (estDocumentIdentitePersonnel_(c)) {
-    var di = dossierIdentite_(c);          // identité → domaine + sous-dossier de TYPE (04 possible : légitime)
-    domaine = di.domaine; sousDossier = di.sousDossier; // dossier de TYPE : résolu par NOM (aucun ID)
+  var nom = nommerDocument_(c, date, ext);
+  var di = estDocumentIdentitePersonnel_(c) ? dossierIdentite_(c) : null; // identité → domaine dérivé du TYPE
+  var domaine = di ? di.domaine : c.domaine;
+
+  // (4) UNIFICATION (ADR-0033, décision Marc) : le flux DÉLÈGUE son sous-chemin à la MÊME fonction
+  // pure que le Reset (`cheminCibleReset_`) sur le nom FINAL → convergence flux↔reset par
+  // construction (tripwire). Le flux ne calcule jamais un chemin HORS du domaine (aucune sortie 04).
+  var relReset = cheminCibleReset_(domaine, nom);
+  if (relReset) {
+    var segs = relReset.split('/');
+    return { type: 'classé', domaine: domaine, sousDossier: segs.join('/'),
+      segments: segs, dossierIdCible: '', nom: nom };
+  }
+
+  // (5) REPLI historique (le Reset rend null → il laisserait ce doc à sa passe LLM du reliquat ; le
+  // flux, sans 2ᵉ passe LLM par doc, retombe sur son classement actuel — jamais de limbo) : identité
+  // par TYPE ; sinon entité VALIDÉE au référentiel (sinon année/racine, règle unique consolidation).
+  var sousDossier, dossierIdCible = ''; // ADR-0028 : l'ID prime sur le nom quand il existe
+  if (di) {
+    sousDossier = di.sousDossier; // dossier de TYPE : résolu par NOM (aucun ID)
   } else {
-    domaine = c.domaine;
-    // Candidat d'entité (champ gaté du prompt), retenu SEULEMENT s'il est VALIDÉ au référentiel —
-    // le libellé du référentiel prime (une seule graphie de dossier par entité). Sinon : année
-    // (DOMAINES_PAR_ANNEE) ou racine, via la règle UNIQUE partagée avec la consolidation.
     var candidat = sousDossierPourNom_(c);
     var cleEnt = candidat ? cleCanoniqueEntite_(domaine, candidat) : null;
     var entiteValidee = (cleEnt && validees && validees[cleEnt]) ? validees[cleEnt] : null;
@@ -534,7 +546,7 @@ function planRoutageV2_(classif, meta, date, ext, validees) {
     dossierIdCible = cible.id;
   }
   return { type: 'classé', domaine: domaine, sousDossier: sousDossier,
-    dossierIdCible: dossierIdCible, nom: nommerDocument_(c, date, ext) };
+    dossierIdCible: dossierIdCible, nom: nom };
 }
 
 /**
@@ -565,14 +577,24 @@ function deciderRoutageV2_(classif, meta, dateReference, ext) {
   // ADR-0023 : sous-dossier VIDE = classement à PLAT à la racine du domaine (plus de repli
   // « Divers »). Sinon, assainit le nom (caractères interdits Drive → '-', comme pour les noms
   // de fichiers) : `plan.sousDossier` vient d'une entité LLM libre, jamais d'un ID fixe.
-  var sousNom = champ_(plan.sousDossier) || '';
-  // ADR-0028 — TOPOLOGIE D'ABORD : si le plan porte l'ID du dossier d'entité, on y range le
-  // document LÀ OÙ IL EST (même imbriqué sous un regroupement, ADR-0027) au lieu de le re-créer à
-  // plat. Trois conditions pour l'utiliser, sinon repli par NOM (comportement historique) :
-  // l'ID s'ouvre, le dossier est TOUJOURS sous ce domaine, et sa chaîne est lisible.
-  var parId = dossierEntiteParId_(plan.dossierIdCible, dom); // null ⇒ repli par nom (voir la fonction)
-  var cible = parId ? parId.dossier : (sousNom ? sousDossier_(dom, sousNom) : dom);
-  var segments = parId ? parId.segments : (sousNom ? [sousNom] : []);
+  var cible, segments;
+  if (plan.segments) {
+    // ADR-0033 — chemin thématique MULTI-NIVEAUX délégué au Reset : créé segment par segment avec
+    // EXACTEMENT `sousDossier_` (comme `resoudreCibleReset_`, Reset.gs) → structure identique au
+    // Reset, donc convergence réelle sur le Drive (pas seulement dans la formule).
+    cible = dom;
+    for (var s = 0; s < plan.segments.length; s++) cible = sousDossier_(cible, plan.segments[s]);
+    segments = plan.segments;
+  } else {
+    var sousNom = champ_(plan.sousDossier) || '';
+    // ADR-0028 — TOPOLOGIE D'ABORD : si le plan porte l'ID du dossier d'entité, on y range le
+    // document LÀ OÙ IL EST (même imbriqué sous un regroupement, ADR-0027) au lieu de le re-créer à
+    // plat. Trois conditions pour l'utiliser, sinon repli par NOM (comportement historique) :
+    // l'ID s'ouvre, le dossier est TOUJOURS sous ce domaine, et sa chaîne est lisible.
+    var parId = dossierEntiteParId_(plan.dossierIdCible, dom); // null ⇒ repli par nom (voir la fonction)
+    cible = parId ? parId.dossier : (sousNom ? sousDossier_(dom, sousNom) : dom);
+    segments = parId ? parId.segments : (sousNom ? [sousNom] : []);
+  }
   var nom = garantirNomUnique_(plan.nom, nomsDansDossier_(cible.getId()));
   return {
     statut: 'classé', domaine: plan.domaine,

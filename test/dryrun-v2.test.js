@@ -61,7 +61,7 @@ test('stratifierEchantillonDryRunV2_ : déterministe — 2 appels identiques →
 /* ---------- ligneDryRunV2_ (PURE) ---------- */
 
 function ctxLigne() {
-  return load(['Config.gs', 'Entites.gs', 'Router.gs', 'DryRunV2.gs']);
+  return load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs', 'DryRunV2.gs']);
 }
 
 test('ligneDryRunV2_ : document CLASSÉ → domaine/sous-dossier/nom proposés remplis, fail-safe = non', () => {
@@ -339,7 +339,7 @@ test('cheminActuelDryRunV2_ : ancêtre illisible → dégrade sur ce qui a pu ê
 function ctxTraiter(opts) {
   opts = opts || {};
   const calls = { rows: [], index: [], journaux: [] };
-  const ctx = load(['Config.gs', 'Entites.gs', 'Router.gs', 'DryRunV2.gs']);
+  const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs', 'DryRunV2.gs']);
   ctx.journalInfo_ = (s, m) => calls.journaux.push(m);
   ctx.journalErreur_ = (s, m) => calls.journaux.push('ERR:' + m);
   ctx.indexAjouter_ = (cle, res, emp) => calls.index.push({ cle, res, emp });
@@ -386,7 +386,7 @@ test('traiterUnDryRunV2_ : échec LLM (classif null) → ligne « échec », tou
 });
 
 test('traiterUnDryRunV2_ : fichier illisible → jamais fatal, marqué ET une ligne écrite (jamais un no-op silencieux)', () => {
-  const ctx = load(['Config.gs', 'Entites.gs', 'Router.gs', 'DryRunV2.gs']);
+  const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs', 'DryRunV2.gs']);
   const calls = { index: [], journaux: [], rows: [] };
   ctx.journalErreur_ = (s, m) => calls.journaux.push(m);
   ctx.indexAjouter_ = (cle, res) => calls.index.push({ cle, res });
