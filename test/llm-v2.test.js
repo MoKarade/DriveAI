@@ -195,3 +195,39 @@ test('appelAnthropicV2_ : le prompt système part en bloc cache_control:ephemera
   assert.strictEqual(typeof payload.messages[0].content, 'string');
   assert.ok(payload.messages[0].content.indexOf('a.pdf') !== -1);
 });
+
+/* ---------- Few-shot v2 (Vague 3c) : les corrections de Marc atteignent enfin le prompt v2 ---------- */
+
+function ctxV2FewShot(corrections) {
+  const c = load(['Config.gs', 'Entites.gs', 'Corrections.gs', 'Llm.gs'],
+    { tronquer_: (s, n) => String(s == null ? '' : s).slice(0, n) });
+  c._correctionsCache = { lignes: corrections || [], cles: {} }; // seed sans lire d'onglet
+  c.estPannePlateforme_ = () => false;
+  c.getCleAnthropic_ = () => 'clé';
+  c.signalerRetablissement_ = () => {};
+  c.enregistrerUsage_ = () => {};
+  let payload = null;
+  c.fetchAvecRetry_ = (url, options) => {
+    payload = JSON.parse(options.payload);
+    return { getResponseCode: () => 200, getContentText: () => JSON.stringify({
+      content: [{ type: 'text', text: '{"domaine":"02 · Finances","confiance":0.9}' }],
+      usage: { input_tokens: 5, output_tokens: 3 }, stop_reason: 'end_turn' }) };
+  };
+  return { c, dernierPayload: () => payload };
+}
+
+test('appelAnthropicV2_ : une correction de Marc pour l\'émetteur est INJECTÉE en few-shot dans le prompt v2', () => {
+  const { c, dernierPayload } = ctxV2FewShot([{ emetteur: 'Desjardins', domaine: '02 · Finances', entite: 'Desjardins' }]);
+  c.appelAnthropicV2_('claude-sonnet-4-6', { nomFichier: '2026-03_Relevé_Desjardins.pdf', expediteur: 'Desjardins', sujet: '', extrait: 'x' }, c.PROMPT_PASSE1, null);
+  const contenu = dernierPayload().messages[0].content;
+  assert.ok(contenu.indexOf('Classements déjà corrigés') !== -1, 'le bloc few-shot préfixe le prompt : ' + contenu.slice(0, 80));
+  assert.ok(/Émetteur .*Desjardins.* domaine .*02 · Finances/.test(contenu), 'la correction (émetteur→domaine) est injectée');
+});
+
+test('appelAnthropicV2_ : aucune correction proche → prompt v2 INCHANGÉ (pas de bloc few-shot vide)', () => {
+  const { c, dernierPayload } = ctxV2FewShot([{ emetteur: 'EDF', domaine: '01 · Administratif & identité' }]);
+  c.appelAnthropicV2_('claude-sonnet-4-6', { nomFichier: '2026-03_Relevé_Desjardins.pdf', expediteur: 'Desjardins', sujet: '', extrait: 'x' }, c.PROMPT_PASSE1, null);
+  const contenu = dernierPayload().messages[0].content;
+  assert.ok(contenu.indexOf('Classements déjà corrigés') === -1, 'aucune correction d\'émetteur proche → aucun préfixe');
+  assert.ok(contenu.indexOf('Nom du fichier :') === 0, 'le prompt commence directement par le document');
+});

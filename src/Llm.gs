@@ -135,7 +135,16 @@ function classifierDeuxPasses_(meta) {
 function appelAnthropicV2_(modele, meta, systeme, propositionPasse1) {
   if (estPannePlateforme_()) return null; // panne de compte → échec rapide, sans réseau
 
+  // Apprentissage (ADR-0003, câblé en v2 — Vague 3c) : préfixe les corrections passées de Marc les
+  // plus proches (même émetteur, champs STABLES seulement — jamais le type) en exemples few-shot.
+  // Le chemin Haiku (`appelAnthropic_`) l'injectait déjà ; sous ANALYSE_V2 il était MORT (les
+  // corrections de Marc n'atteignaient plus le classement). Vide si aucune correction proche ; dégrade
+  // proprement (onglet illisible OU fonction absente en test unitaire ⇒ '').
+  var exemples = '';
+  try { exemples = exemplesFewShot_(meta); } catch (e) { exemples = ''; }
+
   var contenu =
+    (exemples ? exemples + '\n\n' : '') +
     'Nom du fichier : ' + meta.nomFichier + '\n' +
     'Expéditeur : ' + (meta.expediteur || '') + '\n' +
     'Sujet : ' + (meta.sujet || '') + '\n' +
