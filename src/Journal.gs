@@ -38,6 +38,13 @@ function initialiserSheet_(ss) {
   creerOnglet_(ss, 'DryRunV2', ['Horodaté', 'ID fichier', 'Nom actuel', 'Domaine actuel', 'Chemin actuel',
     'Type v2', 'Domaine proposé', 'Sous-dossier proposé', 'Nom proposé', 'Fail-safe déclenché',
     'Confiance', 'Coût $ mesuré']);
+  // ADR-0034 §5 : comparaison 1↔2 passes — PREUVE avant d'allumer la 2ᵉ passe conditionnelle.
+  // RAPPORT seul (idempotence dans Index via `dryruncmp|<tag>|fileId`). Pour chaque doc : le gate
+  // (sauterait la passe 2 ?), le placement 1 passe vs 2 passes, et les FAUX NÉGATIFS `sensible`.
+  creerOnglet_(ss, 'DryRunV2Compare', ['Horodaté', 'ID fichier', 'Nom actuel', 'Domaine actuel',
+    'Chemin actuel', 'Gate : sauterait passe 2', 'Placement 1 passe', 'Placement 2 passes',
+    'Placement identique', 'Champs corrigés par passe 2', 'Sensible 1p', 'Sensible 2p',
+    'Faux négatif sensible', 'Verdict du saut', 'Confiance 1p', 'Coût passe 1 $', 'Coût passe 2 $']);
   creerOnglet_(ss, 'Progression', COLONNES_PROGRESSION); // suivi LIVE des opérations (C28-18, cf. majProgressions_)
   creerOnglet_(ss, 'Télémétrie', COLONNES_TELEMETRIE); // coûts & quotas pour l'app (C28-24, cf. majTelemetrie_)
   // C28-26 (ADR-0023) : plan de CONSOLIDATION de l'arborescence — dry-run pur, validé par Marc

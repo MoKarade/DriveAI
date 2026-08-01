@@ -1718,3 +1718,31 @@ fausse — le mock doit RECONSTRUIRE par appel pour être représentatif. Prouve
 test échoue sur l'ancienne approche."
 
 **Règle durable ?** oui (corollaire ajouté à la règle mock-fermeture de CLAUDE.md §7).
+
+---
+
+## 2026-08-01 — Prouver qu'on peut SAUTER une étape de vérification : mesurer chaque invariant qu'elle protège sur SON PROPRE axe (un garde-fou qui ne change pas la sortie est invisible dans un diff avant/après)
+
+**Contexte.** Suite #44, harness de comparaison 1↔2 passes (`DryRunV2Compare`, ADR-0034 §5) : prouver,
+avant d'allumer la 2ᵉ passe conditionnelle, que sauter la passe 2 adversariale n'introduit pas
+d'erreurs. Le premier réflexe est de comparer le RÉSULTAT (le PLACEMENT : domaine/sous-dossier/nom)
+1 passe vs 2 passes et de compter les divergences. Mais la passe 2 protège AUSSI le flag `sensible`
+(re-vérification immigration/fiscal, §2) — et depuis la décision Marc 2026-07-01, `sensible` **ne
+route plus rien**. Donc un FAUX NÉGATIF `sensible` (passe 1 dit `false`, passe 2 corrige `true`) ne
+change PAS le placement : il est **invisible** dans un diff avant/après du résultat. Un harness qui ne
+regarderait que la divergence de placement conclurait « saut sûr » pour ce document, alors que sauter
+la passe 2 vient de perdre le filet §2. D'où une colonne + un compteur DÉDIÉS
+(`fauxNegatifSensibleV2_`), et un verdict qui met le faux négatif sensible AU-DESSUS du placement
+identique (priorité au plus sévère).
+
+**Leçon.** "Valider qu'une optimisation peut SAUTER une étape de vérification exige de mesurer CHAQUE
+invariant que l'étape protège sur son PROPRE axe — pas seulement la divergence de la sortie
+observable. Un garde-fou que l'étape produit mais qui n'influence PAS la sortie (ici `sensible`, qui
+ne route plus depuis §2) est INVISIBLE dans un diff avant/après du résultat : il faut le compter
+DIRECTEMENT (faux négatif `sensible` : passe 1 false → passe 2 true), jamais l'inférer de la
+divergence de placement. Réflexe : lister ce que l'étape à sauter PRODUIT, et pour chaque sortie se
+demander « change-t-elle le résultat observé ? si non, elle a besoin de sa propre métrique ». Et
+ranger les verdicts par SÉVÉRITÉ : un raté invisible-mais-grave (filet §2 perdu) prime sur un
+placement identique rassurant."
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).

@@ -606,6 +606,15 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   ressource oblige à relire les bornes que les AUTRES composants ont posées dessus — c'est le
   changement de débit qui transforme un point de vigilance lointain en panne du jour. Invisible en
   CI : se demander « qu'est-ce qui, ailleurs, suppose que cette table est petite ? ».
+- **Prouver qu'on peut SAUTER une étape de vérification ⇒ mesurer chaque invariant qu'elle protège
+  sur SON PROPRE axe, pas seulement la divergence de la sortie.** Un garde-fou que l'étape produit
+  mais qui n'influence PAS le résultat observable est INVISIBLE dans un diff avant/après (vécu :
+  dry-run 1↔2 passes ADR-0034 — un faux négatif `sensible` passe 1 `false`→passe 2 `true` ne change
+  pas le placement, puisque `sensible` ne route plus depuis §2 ; un harness qui ne comparerait que le
+  placement conclurait « saut sûr » alors que le filet §2 est perdu). Réflexe : lister ce que l'étape
+  à sauter PRODUIT, et pour chaque sortie « change-t-elle le résultat ? si non → métrique dédiée »
+  (`fauxNegatifSensibleV2_`, colonne + compteur séparés). Ranger les verdicts par SÉVÉRITÉ : le raté
+  invisible-mais-grave prime sur un résultat identique rassurant.
 - **Test de MUTATION : restaurer par COPIE de sauvegarde, jamais `git checkout <fichier>`.** Prouver
   qu'un test attrape bien sa régression (leçon C28-32) exige de remettre le code buggé puis de
   restaurer. `git checkout`/`git restore <fichier>` restaure depuis l'index/HEAD et DÉTRUIT sans

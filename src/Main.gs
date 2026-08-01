@@ -518,6 +518,15 @@ function tickDriveAI() {
       catch (e) { journalErreur_('DryRunV2', 'Dry-run v2 différé : ' + e); }
     }
 
+    // Comparaison 1↔2 passes (ADR-0034 §5) : PREUVE avant d'allumer la 2ᵉ passe conditionnelle —
+    // pour chaque doc, le gate (sauterait la passe 2 ?), la divergence de placement et les faux
+    // négatifs `sensible`. Interrupteur DÉDIÉ (DRYRUN_CMP_ACTIF, OFF), ZÉRO mutation, même famille
+    // que le dry-run (après l'intake, gatée par le frein budget campagnes, enveloppée).
+    if (!estBudgetDepasse() && !budgetCampagnesAtteint_() && !resetEnCours_()) {
+      try { appliquerComparaisonV2_(estBudgetDepasse); }
+      catch (e) { journalErreur_('DryRunV2', 'Comparaison 1↔2 passes différée : ' + e); }
+    }
+
     // (Intentions et tri Gmail : remontés AVANT les campagnes — ordre d'équité strict C28-15.)
 
     // Réorg IA (#21, C21-04/06) : APPLIQUE d'abord les actions validées par Marc (déplacements/
