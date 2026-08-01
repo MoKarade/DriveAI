@@ -60,7 +60,7 @@ Reset sait router, `planRoutageV2_(...).sousDossier === cheminCibleReset_(domain
   inchangé » était FAUSSE)* : `cheminCibleReset_('04 · Immigration', …)` **route en INTERNE** les
   documents reconnus (`IRCC (fédéral)`, `MIFI (Québec)`, `Permis de travail & EIMT`, `Résidence
   permanente`, `Formulaires & correspondance`) et ne rend null que pour un doc 04 sans motif (→ repli,
-  à plat DANS 04). **Conséquence RÉELLE, à ratifier par Marc** : l'intake neuf de 04 est désormais
+  à plat DANS 04). **Conséquence RÉELLE, RATIFIÉE par Marc (2026-08-01, « Oui, range 04 en interne »)** : l'intake neuf de 04 est désormais
   placé dans ces sous-dossiers thématiques (structure validée ADR-0030), plus à plat / `04/AAAA`.
   Le garde-fou DUR §2.1b **tient** : le sous-chemin est TOUJOURS relatif au domaine (résolu sous
   `idDomaine_(04)` par `sousDossier_`, aucune remontée), donc **aucune sortie automatique de 04** —
