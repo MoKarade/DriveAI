@@ -119,8 +119,32 @@ function classifierDeuxPasses_(meta) {
   var modele = CONFIG.ANALYSE_V2_MODELE;
   var p1 = appelAnthropicV2_(modele, meta, PROMPT_PASSE1, null);
   if (!p1) return null;
+  // 2ᵉ passe CONDITIONNELLE (Vague 3c, flag ÉTEINT par défaut — à valider sur du réel avant allumage,
+  // §8) : passe 1 sûre et complète ⇒ on économise l'appel adversarial. JAMAIS pour sensible/identité/
+  // non-doc (garde §2 dans `passe1SuffisammentSure_`).
+  if (CONFIG.ANALYSE_V2_2E_PASSE_CONDITIONNELLE && passe1SuffisammentSure_(p1)) return p1;
   var p2 = appelAnthropicV2_(modele, meta, PROMPT_PASSE2, p1);
   return p2 || p1;
+}
+
+/**
+ * Gate PUR de la 2ᵉ passe conditionnelle : vrai = la passe 1 est assez sûre pour SAUTER la passe 2.
+ * Conservateur — refuse de sauter dès qu'il y a un enjeu de correctness ou un garde-fou §2 :
+ *  - doc SENSIBLE (immigration/fiscal) → TOUJOURS 2 passes (§2, jamais un risque sur la zone protégée) ;
+ *  - non-document / pièce d'identité → cas à arbitrage → 2 passes ;
+ *  - confiance absente ou < CONFIG.ANALYSE_V2_SEUIL_1PASSE → 2 passes ;
+ *  - fait clé manquant (pas de domaine, pas de type, OU aucun émetteur/titulaire/descripteur) → 2 passes.
+ * `estRenseigne_` (Router.gs) traite les sentinelles « Inconnu »/« N/A » comme ABSENTES.
+ * @param {Object} p1  sortie de la passe 1 (schéma v2)
+ * @return {boolean}
+ */
+function passe1SuffisammentSure_(p1) {
+  if (!p1) return false;
+  if (p1.sensible === true) return false;                                   // §2 : zone protégée → 2 passes
+  if (p1.estNonDocument === true || p1.estDocumentIdentite === true) return false;
+  if (typeof p1.confiance !== 'number' || p1.confiance < CONFIG.ANALYSE_V2_SEUIL_1PASSE) return false;
+  return estRenseigne_(p1.domaine) && estRenseigne_(p1.type_doc) &&
+    (estRenseigne_(p1.emetteur) || estRenseigne_(p1.titulaire) || estRenseigne_(p1.descripteur));
 }
 
 /**
