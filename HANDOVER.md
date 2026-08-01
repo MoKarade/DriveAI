@@ -16,8 +16,9 @@
 > agendas reprise sur erreur. **Vague 2 ✅ (#242, perf/anti-gel)** : `chargerIndexCache_` A+G (payload
 > ÷3,5), scan PJ Gmail mur « page à jour » **+ filet `DriveAI_GMAIL_PJ_RETARD`** (revue `apps-script-quota`
 > 🔴 : sans lui le backlog des pages 1+ était perdu après reprise post-panne/rafale — mur désactivé tant
-> qu'un backlog est possible, drainage complet puis reprise ; mutation prouvée), trace horaire durée du
-> tick. **Reste : Vague 3** (unification
+> qu'un backlog est possible, drainage complet puis reprise ; mutation prouvée) **+ I/O Property de ce
+> filet enveloppée** (revue `code-reviewer` 🟡 : `traiterGmail_` appelé nu dans l'intake, un blip Property
+> aurait avorté le tick — dégrade sans throw), trace horaire durée du tick. 751 tests. **Reste : Vague 3** (unification
 > du rangement + few-shot v2 effectif + optim coût + frein budget encadré 1er août) + un reliquat de
 > non-bloquants (BACKLOG #44). ⚠ Chaque merge moteur : le pilote CI ré-installe le déclencheur seul.
 >

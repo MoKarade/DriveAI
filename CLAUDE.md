@@ -364,7 +364,19 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   RESTANTS : le travailleur rapporte l'effet réel dans son retour (`'archive'` vs `'traite'`),
   tous les appelants mis à jour, test sur la SUITE des offsets d'une page mixte. Toujours
   **tracer un scénario concret sur plusieurs ticks** avant de valider une pagination — c'est ce qui
-  révèle un plateau silencieux.
+  révèle un plateau silencieux. **Corollaire (Vague 2) : copier un « mur page à jour » d'un scan à
+  un autre exige AUSSI son backstop, et le TYPE de backstop se DÉRIVE de la sémantique de l'état
+  scanné, il ne se copie pas.** État MUTABLE (peut redevenir « à traiter » : lu/non-lu, statut
+  révisable) ⇒ balayage CYCLIQUE perpétuel (offset persistant + plafond quotidien dans l'unité du
+  quota, `scanCycliqueTri_`). État TERMINAL (traité = plus jamais re-vu : PJ indexée, fichier classé)
+  ⇒ PAS de cyclique (il re-lirait l'immuable et brûlerait le quota) mais un simple DRAPEAU qui
+  désactive le mur tant qu'un backlog est possible (armé aux coupes budget/panne/erreur AVANT la fin
+  de fenêtre, levé dès qu'une passe atteint la fin naturelle `!fils.length` ; `DriveAI_GMAIL_PJ_RETARD`)
+  — repagination complète pendant le drainage seulement, mur (perf) le reste du temps, zéro écriture
+  d'état en régime. Avant de copier un garde-fou de scan : « l'état que JE scanne peut-il redevenir
+  actif tout seul ? » — la réponse choisit le filet. Et tout NOUVEL accès d'état (Property/Sheet)
+  ajouté à une étape d'intake appelée NUE s'ENVELOPPE d'un try/catch qui dégrade sans throw (un blip
+  ne doit jamais avorter l'intake).
 - **Un garde-fou qui met des items HORS CIRCUIT exige un chemin de RETOUR auto.** Une quarantaine
   sans dé-quarantaine automatique transforme un incident transitoire (panne de crédit) en perte
   permanente et silencieuse (32 fichiers sautés à vie, R3 : one-shot gaté par tag, ré-armé par le

@@ -807,7 +807,6 @@ function rejeuAutoDesDepots_(estBudgetDepasse) {
  */
 function traiterGmail_(estBudgetDepasse) {
   if (estPanneGmail_()) return; // quota Gmail épuisé (C28-15) : suspendu jusqu'à la re-sonde
-  var props = PropertiesService.getScriptProperties();
   // « RETARD PJ » (revue Vague 2, apps-script-quota) : le MUR « page à jour » plus bas suppose
   // « PJ inédite ⇒ en page 0 ». Vrai en RÉGIME (rien n'attend), FAUX dès qu'un BACKLOG existe —
   // reprise après une suspension quota/panne de crédit, rafale, ou budget épuisé en plein drainage
@@ -818,7 +817,17 @@ function traiterGmail_(estBudgetDepasse) {
   // possible : on repagine toute la fenêtre (comme AVANT le mur) jusqu'à l'épuiser une fois
   // (`!fils.length`), puis le mur reprend (perf en régime préservée). Le drapeau ne bouge qu'aux
   // BORDS d'un backlog → ZÉRO écriture de Property en régime.
-  var retard = props.getProperty('DriveAI_GMAIL_PJ_RETARD') === '1';
+  // I/O Property ENVELOPPÉE (revue code-reviewer) : `traiterGmail_` est appelé NU dans l'intake,
+  // JUSTE avant `traiterDepots_` — un blip Property transitoire ne doit jamais avorter le tick
+  // (leçon §7 « protéger l'intake : toute étape enveloppée d'un try/catch »). Indispo ⇒ défaut
+  // prudent `retard = true` : le mur est désactivé ce tick (COMPLÉTUDE privilégiée au perf ; l'état
+  // réel est relu au prochain tick, la logique converge). `props = null` coupe aussi les écritures.
+  var props = null;
+  var retard = true;
+  try {
+    props = PropertiesService.getScriptProperties();
+    retard = props.getProperty('DriveAI_GMAIL_PJ_RETARD') === '1';
+  } catch (e) { props = null; retard = true; }
   var debutPage = 0;
   var scanne = false;       // a-t-on lu ≥ 1 page ? (sinon on n'a rien appris sur le backlog)
   var fenetreAJour = false; // fin PROPRE atteinte (fin de fenêtre OU mur) ⇒ aucun backlog en attente
@@ -865,8 +874,14 @@ function traiterGmail_(estBudgetDepasse) {
   // BORDS du backlog (aucune écriture en régime) : une fin PROPRE (fenêtre épuisée ou mur) LÈVE le
   // retard — le mur reprend ; toute coupe AVANT la fin (budget, panne, erreur de page) l'ARME dès
   // qu'on a scanné ≥ 1 page, pour que le prochain tick repagine SANS le mur et draine les pages 1+.
-  if (fenetreAJour) { if (retard) props.deleteProperty('DriveAI_GMAIL_PJ_RETARD'); }
-  else if (scanne && !retard) props.setProperty('DriveAI_GMAIL_PJ_RETARD', '1');
+  // Écritures ENVELOPPÉES (idem lecture) : un blip Property dégrade à « pas de changement de drapeau
+  // ce tick » (recalculé au prochain), jamais un tick avorté. `props` null (I/O indispo) ⇒ on saute.
+  try {
+    if (props) {
+      if (fenetreAJour) { if (retard) props.deleteProperty('DriveAI_GMAIL_PJ_RETARD'); }
+      else if (scanne && !retard) props.setProperty('DriveAI_GMAIL_PJ_RETARD', '1');
+    }
+  } catch (e) { /* blip Property : pas de changement de drapeau ce tick (l'état réel est relu ensuite) */ }
 }
 
 /**

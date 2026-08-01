@@ -1656,3 +1656,39 @@ présent, la chaîne n'a pas été tronquée en chemin. Prouver le test par muta
 le faire échouer)."
 
 **Règle durable ?** oui (ajouté à CLAUDE.md §7).
+
+---
+
+## 2026-08-01 — Copier un « mur page à jour » d'un scan Gmail à l'autre exige SON backstop — mais le TYPE de backstop dépend de la sémantique de l'état (mutable ⇒ cyclique perpétuel ; terminal ⇒ mur gaté par un drapeau de backlog)
+
+**Contexte.** Revue flotte `apps-script-quota` de la Vague 2 (perf/anti-gel). Le correctif #2 avait
+copié dans le scan PJ vivant (`traiterGmail_`) le « mur page à jour » du scan de tri
+(`scanAvantTri_`) : dès qu'une page 0 ne porte aucune PJ inédite, on arrête de paginer les pages
+1+ (économie de quota Gmail à chaque tick). Le raisonnement « PJ inédite ⇒ en page 0 » est vrai en
+RÉGIME mais FAUX dès qu'un BACKLOG existe (reprise après panne crédit/quota, rafale, budget épuisé
+en plein drainage) : les inédites dorment alors sur les pages 1+ que le tri Gmail (par DERNIER
+message) ne remonte jamais → abandon À VIE. Or le tri avait EXACTEMENT ce piège, fermé par
+`scanCycliqueTri_` : le mur avait été copié SANS son backstop. La tentation était de copier aussi le
+cyclique. Mais la sémantique diffère : l'état de tri est MUTABLE (un mail lu des jours après son tri
+change de clé → doit être re-trié → le cyclique doit tourner PERPÉTUELLEMENT). Une PJ indexée est
+TERMINALE (jamais re-traitée) → un cyclique perpétuel re-lirait à vie des fils déjà indexés et
+brûlerait le quota pour RIEN. Second piège trouvé par le `code-reviewer` : le filet ajoutait une
+I/O `PropertiesService` NON gardée dans `traiterGmail_`, lui-même appelé NU dans l'intake (juste
+avant `traiterDepots_`) — un blip Property aurait avorté tout le reste de l'intake du tick.
+
+**Leçon.** "Reproduire un mur « page à jour » d'un scan paginé à un autre n'est correct que si on
+reproduit AUSSI son filet de complétude — sinon on rouvre le trou que le filet fermait (un backlog
+enfoui sous une page 0 à jour, jamais atteint). Mais le TYPE de filet se DÉRIVE de la sémantique de
+l'état scanné, il ne se copie pas : état MUTABLE (peut redevenir « à traiter » : lu/non-lu, statut
+révisable) ⇒ balayage CYCLIQUE perpétuel à offset persistant + plafond quotidien dans l'unité du
+quota ; état TERMINAL (une fois traité, plus jamais re-vu : PJ indexée, fichier classé) ⇒ PAS de
+cyclique (il brûlerait le quota à re-lire l'immuable), mais un simple drapeau qui DÉSACTIVE le mur
+tant qu'un backlog est possible (armé aux coupes budget/panne/erreur AVANT la fin de fenêtre, levé
+dès qu'une passe atteint la fin naturelle) — repagination complète seulement pendant le drainage,
+mur (donc perf) le reste du temps, zéro écriture d'état en régime. Réflexe : avant de copier un
+garde-fou de scan, se demander « l'état que JE scanne peut-il redevenir actif tout seul ? » — la
+réponse choisit le filet. Et corollaire (déjà connu mais re-vécu) : tout NOUVEL accès d'état
+(Property/Sheet) ajouté à une étape d'intake appelée NUE doit être ENVELOPPÉ d'un try/catch qui
+dégrade sans throw — un blip ne doit jamais avorter l'intake (leçon « protéger l'intake »)."
+
+**Règle durable ?** oui (ajouté à CLAUDE.md §7).

@@ -168,6 +168,27 @@ test('traiterGmail_ : RETARD armé → le MUR est DÉSACTIVÉ, une PJ inédite e
   assert.ok(ecritures.some((e) => e[0] === 'del' && e[1] === 'DriveAI_GMAIL_PJ_RETARD'));
 });
 
+test('traiterGmail_ : un blip Property NE FAIT PAS avorter l\'intake — dégrade gracieusement (mur off, backlog drainé)', () => {
+  // `traiterGmail_` est appelé NU avant `traiterDepots_` : une exception Property non capturée
+  // sauterait tout le reste de l'intake (revue code-reviewer). L'I/O Property est enveloppée →
+  // aucun throw ne remonte, et le défaut prudent `retard=true` désactive le mur (COMPLÉTUDE).
+  const c = load(['Config.gs', 'Gmail.gs', 'Main.gs']);
+  c.PropertiesService = { getScriptProperties: () => ({ getProperty: () => { throw new Error('blip Property'); }, setProperty: () => {}, deleteProperty: () => {} }) };
+  c.signalerRetablissementGmail_ = () => {};
+  c.estPanneGmail_ = () => false;
+  c.estPannePlateforme_ = () => false;
+  c.journalInfo_ = () => {};
+  const P = c.CONFIG.PAGE_FILS;
+  const filA = { id: 'A' }, filB = { id: 'B' };
+  c.pageFils_ = (debut) => (debut === 0 ? [filA] : debut === P ? [filB] : []);
+  const deposees = [];
+  c.traiterFil_ = (fil) => { if (fil.id === 'B') { deposees.push('B'); return 1; } return 0; };
+
+  // Ne doit PAS lever (sinon l'intake avorte) ET doit dépasser le mur (retard=true par défaut).
+  assert.doesNotThrow(() => c.traiterGmail_(() => false));
+  assert.deepStrictEqual(deposees, ['B'], 'mur désactivé malgré le blip → la PJ de la page 1 est drainée');
+});
+
 test('traiterGmail_ : une COUPE budget en plein drainage ARME le retard (le prochain tick repaginera sans le mur)', () => {
   const { c, props } = ctxGmailProps();
   const fil = { id: 'X' };
