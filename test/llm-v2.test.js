@@ -163,6 +163,23 @@ test('budgetMsRun_ : abaissé aussi sous DRYRUN_V2_ACTIF seul (le dry-run fait l
   }
 });
 
+test('budgetMsRun_ : abaissé aussi sous DRYRUN_CMP_ACTIF seul (comparaison 1↔2 passes = Sonnet ×2, flag live OFF)', () => {
+  // La comparaison ADR-0034 exécute EXACTEMENT le même pipeline lourd (deux passes Sonnet) que le
+  // dry-run — sans ce OU, elle tournerait avec le budget Haiku et risquerait le mur 6 min.
+  const sauvegarde = { v2: ctx.CONFIG.ANALYSE_V2, dry: ctx.CONFIG.DRYRUN_V2_ACTIF, cmp: ctx.CONFIG.DRYRUN_CMP_ACTIF };
+  try {
+    ctx.CONFIG.ANALYSE_V2 = false;
+    ctx.CONFIG.DRYRUN_V2_ACTIF = false;
+    ctx.CONFIG.DRYRUN_CMP_ACTIF = true;
+    assert.strictEqual(ctx.budgetMsRun_(), ctx.CONFIG.ANALYSE_V2_BUDGET_MS,
+      'la comparaison fait le même travail lourd par doc → même garde-temps abaissé');
+  } finally {
+    ctx.CONFIG.ANALYSE_V2 = sauvegarde.v2;
+    ctx.CONFIG.DRYRUN_V2_ACTIF = sauvegarde.dry;
+    ctx.CONFIG.DRYRUN_CMP_ACTIF = sauvegarde.cmp;
+  }
+});
+
 /* ---------- Prompt caching (Vague 3) : le prompt SYSTÈME est un bloc `cache_control` ---------- */
 
 test('appelAnthropicV2_ : le prompt système part en bloc cache_control:ephemeral ; le contenu utilisateur reste hors cache', () => {

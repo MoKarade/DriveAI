@@ -138,6 +138,12 @@ const CONTRAT = [
   'stratifierEchantillonDryRunV2_', 'ligneDryRunV2_', 'cheminActuelDryRunV2_',
   'encoderEchantillonDryRunV2_', 'decoderEchantillonDryRunV2_',
   'usageRunSnapshot_', 'coutDollarsDelta_',
+  // comparaison 1↔2 passes (ADR-0034 §5) : preuve avant d'allumer la 2ᵉ passe conditionnelle
+  'appliquerComparaisonV2_', 'traiterUnComparaisonV2_', 'classifierComparaisonV2_',
+  'comparerPassesV2_', 'ligneComparaisonV2_', 'planPourClassifV2_',
+  'champsDivergentsV2_', 'fauxNegatifSensibleV2_', 'placementCanoniqueV2_',
+  'placementLisibleV2_', 'verdictSautV2_', 'passe1SuffisammentSure_',
+  'synthetiserComparaisonV2_', 'messageSyntheseComparaisonV2_', 'estPannePlateforme_',
   // consolidation de l'arborescence (C28-26, ADR-0023) : dry-run pur, appelé depuis Main
   'genererPlanConsolidation_', 'traiterUnConsolidation_', 'collecterConsolidation_',
   'analyserNomClasse_', 'cheminCibleConsolidation_', 'decisionConsolidation_',

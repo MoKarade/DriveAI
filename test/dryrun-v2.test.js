@@ -461,6 +461,11 @@ test('VERROU zéro-mutation : DryRunV2.gs n\'appelle JAMAIS une fonction de muta
     'garantirNomUnique_(', 'creerRaccourci_(',
     'setTrashed(', '.moveTo(', 'createFolder(', '.setName(', '.createFile(',
     '.addFile(', '.removeFile(', '.createShortcut(',
+    // Mutation Drive par REST (le patron du projet : `UrlFetchApp.fetch('/drive/v3/files/…', {method:…})`).
+    // DryRunV2.gs ne fait AUCUN appel réseau (OCR/LLM passent par des helpers d'autres modules) : on
+    // interdit donc TOUT `UrlFetchApp.fetch(` ici — plus simple et plus sûr qu'énumérer les verbes REST
+    // (revue security-auditor : la denylist native était aveugle à cette voie de mutation).
+    'UrlFetchApp.fetch(',
   ];
   const violations = INTERDITS.filter((motif) => contenu.includes(motif));
   assert.deepStrictEqual(violations, [],

@@ -32,6 +32,27 @@
 > **CHANTIER #44 CLÔTURÉ.** 772 tests. Reste seulement des non-bloquants (BACKLOG « Reliquat »).
 > ⚠ Chaque merge moteur : le pilote CI ré-installe le déclencheur seul.
 >
+> **SUITE #44 — DRY-RUN COMPARAISON 1↔2 PASSES LIVRÉ (ADR-0034 §5).** La preuve promise par le #247
+> existe : interrupteur DÉDIÉ `CONFIG.DRYRUN_CMP_ACTIF` (OFF) qui, allumé, rejoue **les deux passes**
+> sur l'échantillon réel du dry-run et écrit l'onglet **`DryRunV2Compare`** — par doc : gate
+> (sauterait la passe 2 ?), placement 1 passe vs 2 passes, champs corrigés, et surtout les **faux
+> négatifs `sensible`** (passe 1 `false` → passe 2 `true`, mesurés SÉPARÉMENT car `sensible` ne route
+> pas → invisible côté placement) + un **verdict** (`saut sûr` / `SAUT RISQUÉ — placement changé` /
+> `SAUT RISQUÉ — sensible raté` / `2 passes`). ZÉRO mutation (tripwire DryRunV2.gs inchangé), coût
+> Sonnet ×2/doc sous le frein `LLM_BUDGET_CAMPAGNES`, clé `dryruncmp|<tag>|fileId`, convergence
+> `DriveAI_DRYRUNCMP`. Logique PURE testée (`test/comparaison-passes.test.js`). **802 tests.**
+> **Revue flotte AVANT merge (4 spécialistes), 0 🔴, correctifs intégrés** : 🟠 panne plateforme
+> mid-tick jamais imputée au doc (`if estPannePlateforme_ → rien marqué` + break, leçon §7) ;
+> 🟠 passe 2 muette ≠ « saut sûr » (verdict `non concluant`, `p2` brut exposé) ; 🟠 GAIN mesuré
+> (snapshot inter-passes → colonnes « Coût passe 1/2 », gain réel = Σ coût p2 des sautés / Σ total,
+> jamais le « −50 % » nominal) ; 🟠 `validees` passé aux deux plans (une correction d'entité compte
+> comme placement changé) ; 🟡 agrégat de synthèse au convergence (taux avec bons dénominateurs,
+> leçon §7), `routageHorsDomaine` dans champs divergents, tripwire anti-`UrlFetchApp`. Le flag prod
+> `ANALYSE_V2_2E_PASSE_CONDITIONNELLE` reste OFF : Marc allume `DRYRUN_CMP_ACTIF`, lit la synthèse +
+> `DryRunV2Compare`, et n'active la 2ᵉ passe que si `SAUT RISQUÉ` (placement ET sensible, parmi les
+> SAUTÉS) est négligeable (§8). Reste condition d'allumage : le filet déterministe `toucheZoneProtegee_`
+> dans le gate (ADR-0034 §5-3), à livrer AVEC l'activation ; et vérifier la marge du frein avant lancer.
+>
 > **⚡⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (nuit) — C28-43 : LE PILOTE CI (ADR-0032) — Marc ne lance PLUS RIEN.**
 > Marc : « je veux plus jamais avoir à lancer à la main, je veux que TU fasses le lancement
 > `lancerResetTout`, et que ça marche encore plus vite que si je le faisais à la main ». Deux gestes

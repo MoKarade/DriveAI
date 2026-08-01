@@ -698,6 +698,19 @@ var CONFIG = {
   DRYRUN_V2_MAX_PAR_RUN: 8,               // docs traités (OCR + Sonnet ×2, lourds) par tick — flux vivant reste prioritaire
   DRYRUN_V2_BUDGET_MS: 2 * 60 * 1000,     // sous-budget PAR TICK (même famille que MIGRATION_BUDGET_MS)
 
+  // Dry-run de COMPARAISON 1↔2 passes (ADR-0034 §5, Vague 3c) : PREUVE avant d'allumer
+  // `ANALYSE_V2_2E_PASSE_CONDITIONNELLE`. Interrupteur DÉDIÉ (OFF par défaut) : quand ON, réutilise
+  // l'échantillon STRATIFIÉ du dry-run (même corpus, DRYRUN_V2_TAG) mais exécute TOUJOURS les DEUX
+  // passes par document (jamais le gate en prod), écrit dans l'onglet `DryRunV2Compare` — pour CHAQUE
+  // doc : décision du gate (sauterait la passe 2 ?), divergence de PLACEMENT 1 passe vs 2 passes, et
+  // surtout les FAUX NÉGATIFS `sensible` (passe 1 false → passe 2 true). ZÉRO mutation Drive (même
+  // garantie que le dry-run). Coût réel (Sonnet ×2/doc) : compté sous le frein LLM_BUDGET_CAMPAGNES.
+  // N'allumer qu'au feu vert de Marc (re-facture le corpus). Clé de convergence DÉDIÉE `dryruncmp|<tag>|fileId`.
+  DRYRUN_CMP_ACTIF: false,
+  DRYRUN_CMP_TAG: 'c1',                    // bumper relance une NOUVELLE comparaison (re-facture, décision explicite)
+  DRYRUN_CMP_MAX_PAR_RUN: 8,              // docs comparés (OCR + Sonnet ×2) par tick — flux vivant reste prioritaire
+  DRYRUN_CMP_BUDGET_MS: 2 * 60 * 1000,    // sous-budget PAR TICK (identique au dry-run : même coût-temps Sonnet ×2)
+
   // Schémas de sous-dossiers FIXES créés à la validation d'une entité (docs/TAXONOMY.md).
   // Clé = Type d'entité ; valeur = liste ordonnée de sous-dossiers.
   SCHEMAS_ENTITE: {
@@ -739,15 +752,16 @@ function domainesAutorises_() {
 /**
  * Garde-temps effectif du run : abaissé quand un document du tick peut passer par le pipeline
  * Sonnet ×2 (documents bien plus longs) pour tenir le mur dur des 6 min avec de la marge
- * (ADR-0015). Couvre `ANALYSE_V2` (flux vivant) ET `DRYRUN_V2_ACTIF` (C26-07) : le dry-run exécute
- * EXACTEMENT le même pipeline lourd (`classifierDeuxPasses_`) alors qu'`ANALYSE_V2` reste ÉTEINT
- * par construction (interrupteur dédié) — sans ce OU, le dry-run tournerait avec le budget
- * calibré Haiku (270 s) au lieu des 180 s prévus pour ce coût-temps, revue llm-cost-optimizer #26.
- * Haiku seul (aucun des deux ON) → budget nominal. PUR.
+ * (ADR-0015). Couvre `ANALYSE_V2` (flux vivant), `DRYRUN_V2_ACTIF` (C26-07) ET `DRYRUN_CMP_ACTIF`
+ * (comparaison 1↔2 passes, ADR-0034) : ces campagnes exécutent EXACTEMENT le même pipeline lourd
+ * (Sonnet ×2) alors qu'`ANALYSE_V2` reste ÉTEINT par construction (interrupteurs dédiés) — sans ce
+ * OU, elles tourneraient avec le budget calibré Haiku (270 s) au lieu des 180 s prévus pour ce
+ * coût-temps, revue llm-cost-optimizer #26. Haiku seul (aucun ON) → budget nominal. PUR.
  * @return {number} millisecondes
  */
 function budgetMsRun_() {
-  return (CONFIG.ANALYSE_V2 || CONFIG.DRYRUN_V2_ACTIF) ? CONFIG.ANALYSE_V2_BUDGET_MS : CONFIG.BUDGET_MS;
+  return (CONFIG.ANALYSE_V2 || CONFIG.DRYRUN_V2_ACTIF || CONFIG.DRYRUN_CMP_ACTIF)
+    ? CONFIG.ANALYSE_V2_BUDGET_MS : CONFIG.BUDGET_MS;
 }
 
 /** Catégories connues (Phase 1), pour borner la sortie du LLM. */
