@@ -16,7 +16,52 @@ import {
   lienGmailPourLigne,
   ageMoteurMinutes,
   fraicheurMoteur,
+  statutLisible,
 } from '../src/etat';
+
+describe('cleEtatIndex : dédup des familles reset/campagne (revue de fond 2026-07-31)', () => {
+  it('regroupe drive| et toutes les lignes tri33*/reanalyse/nonroute d\'un même fichier sur la même identité', () => {
+    const id = 'FILE123';
+    expect(cleEtatIndex('drive|' + id)).toBe('fichier|' + id);
+    expect(cleEtatIndex('tri33|t3|' + id)).toBe('fichier|' + id);
+    expect(cleEtatIndex('tri33p|t3|v2|' + id)).toBe('fichier|' + id);
+    expect(cleEtatIndex('tri33llm|t3|v2|' + id)).toBe('fichier|' + id);
+    expect(cleEtatIndex('tri33-04|t3|' + id)).toBe('fichier|' + id);
+    expect(cleEtatIndex('reanalyse|m2|' + id)).toBe('fichier|' + id);
+    expect(cleEtatIndex('nonroute|v2|' + id)).toBe('fichier|' + id);
+    // Non touchés : le tri Gmail reste par FIL, les marqueurs gardent leur propre identité.
+    expect(cleEtatIndex('tri|FIL9|123|lu')).toBe('fil|FIL9');
+    expect(cleEtatIndex('intention|MSG1')).toBe('intention|MSG1');
+    expect(cleEtatIndex('tri-abandon|FIL9|123')).toBe('tri-abandon|FIL9|123');
+  });
+
+  it('statutLisible : un doc RANGÉ par le reset compte comme « classé » (sinon disparaît de « derniers classements »)', () => {
+    expect(statutLisible('tri33-route')).toBe('classé');
+    expect(statutLisible('tri33-04-route')).toBe('classé');
+    expect(statutLisible('tri33-doublon')).toBe('doublon');
+    expect(statutLisible('tri33-reste')).toBe('à trier');
+    // Statuts produit inchangés ; gardes rares gardent leur libellé technique.
+    expect(statutLisible('classé')).toBe('classé');
+    expect(statutLisible('tri33-protege')).toBe('tri33-protege');
+  });
+
+  it('interpreterIndex : un doc routé par le reset (tri33-route) est lu comme « classé »', () => {
+    const [l] = interpreterIndex([['tri33p|t3|v2|F1', '2026-01-03', 'a.pdf', '02 · Finances', 'Relevés', 'tri33-route']]);
+    expect(l.statut).toBe('classé');
+  });
+
+  it('etatCourantIndex : un fichier avec plusieurs états successifs n\'apparaît qu\'UNE fois (la plus récente) — plus de « +N » gonflé', () => {
+    const lignes = interpreterIndex([
+      ['drive|F1', '2026-01-01', 'a.pdf', '00 · À trier', '', 'à trier'],
+      ['tri33|t3|F1', '2026-01-02', 'a.pdf', '02 · Finances', '_TRI', 'tri33-rassemble'],
+      ['tri33p|t3|v2|F1', '2026-01-03', 'a.pdf', '02 · Finances', 'Relevés', 'tri33-route'],
+    ]);
+    const courant = etatCourantIndex(lignes);
+    const pourF1 = courant.filter((l) => (l.cle || '').includes('F1'));
+    expect(pourF1.length).toBe(1); // une seule entrée pour le fichier (sinon compté 3× dans « +N aujourd'hui »)
+    expect(pourF1[0].cle).toBe('tri33p|t3|v2|F1'); // l'état le plus récent
+  });
+});
 
 describe('interpreterIndex + domainesDepuisIndex', () => {
   it('lit les lignes non vides et liste les domaines observés', () => {

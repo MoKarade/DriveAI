@@ -55,7 +55,9 @@ export function ReorgVue({ langue }: { langue: Langue }) {
         // Onglet créé par le moteur au premier tick après déploiement — ABSENT (400) = vide.
         // Toute autre erreur (réseau, 429) REMONTE : un faux « aucune demande » inviterait à
         // empiler des demandes dupliquées.
-        const brut = await lirePlage('Réorg', 'A2:H5000').catch((e) => {
+        // Fenêtre OUVERTE `A2:H` (jamais une borne de tête) : l'onglet Réorg croît (demandes + plans +
+        // chat) ; `ligneSheet = i + 2` reste valide car on lit depuis la ligne 2 (revue de fond 2026-07-31).
+        const brut = await lirePlage('Réorg', 'A2:H').catch((e) => {
           if (String(e).includes('Google API 400')) return [] as string[][];
           throw e;
         });

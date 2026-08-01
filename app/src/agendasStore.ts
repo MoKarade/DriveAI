@@ -117,3 +117,14 @@ export function reconnecterPourAgendas(): void {
   seDeconnecter();
   void seConnecter();
 }
+
+/**
+ * Réessaie le chargement de la liste après une panne TRANSITOIRE (statut 'erreur') : sans ça, un
+ * simple hoquet réseau au démarrage faisait disparaître Family jusqu'au reload complet (le
+ * chargement n'a lieu qu'une fois, `chargementLance`) — « jamais un échec silencieux » (en-tête du
+ * fichier). Repasse en 'chargement' puis relance `charger()`.
+ */
+export function rechargerAgendas(): void {
+  publier({ statut: 'chargement' });
+  void charger();
+}

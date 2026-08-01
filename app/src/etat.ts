@@ -30,6 +30,23 @@ export interface LigneIndex {
   confiance: string; // colonne H (#17) — '' pour les lignes sans classification LLM
 }
 
+/**
+ * Statut PRODUIT lisible : les statuts TECHNIQUES du reset (`tri33-route`, `tri33-04-route`,
+ * `tri33-doublon`, `tri33-reste`…) sont ramenés à leur sens fonctionnel. Nécessaire depuis que
+ * `cleEtatIndex` regroupe les états d'un fichier sur le fichier : sans ça, un doc RANGÉ par le reset
+ * (statut `tri33-route`) ne comptait plus comme « classé » → il disparaissait de « derniers
+ * classements » (accueil) et polluait le sélecteur de statuts (revue Vague 1 app 2026-07-31). Les
+ * gardes rares (protégé, multi-parents, écart, absent) gardent leur libellé technique. PURE.
+ */
+export function statutLisible(statut: string): string {
+  switch (statut) {
+    case 'tri33-route': case 'tri33-04-route': return 'classé';
+    case 'tri33-doublon': return 'doublon';
+    case 'tri33-reste': case 'tri33-04-reste': return 'à trier';
+    default: return statut;
+  }
+}
+
 export function interpreterIndex(brut: string[][]): LigneIndex[] {
   return brut
     .filter((l) => l[0])
@@ -39,7 +56,7 @@ export function interpreterIndex(brut: string[][]): LigneIndex[] {
       fichier: l[2] ?? '',
       domaine: l[3] ?? '',
       chemin: l[4] ?? '',
-      statut: l[5] ?? '',
+      statut: statutLisible(l[5] ?? ''),
       confiance: l[7] ?? '',
     }));
 }
@@ -53,11 +70,21 @@ export function interpreterIndex(brut: string[][]): LigneIndex[] {
  * dryrunv2|… — de simples marqueurs) restent leur propre identité : jamais fusionnées, et le
  * rapport dry-run n'écrase JAMAIS l'état réel d'un fichier. PURE.
  */
+// Familles de clés dont le fileId est TOUJOURS le DERNIER segment (reset C28-33 + campagnes) : un
+// même fichier y produit plusieurs lignes d'état successives (`drive|id`, puis `tri33|tag|id`,
+// `tri33p|tag|version|id`, `tri33llm|…`, `tri33-04|…`, `reanalyse|tag|id`, `nonroute|version|id`).
+// Sans les regrouper sur le fichier, un doc apparaissait 2-4 fois pendant le reset → « +N
+// aujourd'hui » gonflé ×2-3 et recherche polluée (revue de fond 2026-07-31).
+const PREFIXES_FICHIER_DERNIER_SEG = ['tri33', 'tri33p', 'tri33llm', 'tri33-04', 'reanalyse', 'nonroute'];
+
 export function cleEtatIndex(cle: string): string {
   const seg = cle.split('|');
   if (seg[0] === 'tri' && seg[1]) return 'fil|' + seg[1];
   if ((seg[0] === 'drive' || seg[0] === 'shared') && seg[1]) return 'fichier|' + seg[1];
   if (seg[0] === 'migre' && seg[2]) return 'fichier|' + seg[2];
+  if (PREFIXES_FICHIER_DERNIER_SEG.indexOf(seg[0]) !== -1 && seg.length >= 2) {
+    return 'fichier|' + seg[seg.length - 1]; // le fileId clôt toujours ces clés → même fichier regroupé
+  }
   return cle;
 }
 
