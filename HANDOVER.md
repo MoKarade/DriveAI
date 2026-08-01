@@ -13,8 +13,11 @@
 > (`ecarterEchecMutationReset_` + `tentes`), « Inconnu » éradiqué du nom, passeport accepté, panne
 > réseau comptée ; **app** : page Moteur honnête (Journal `A2:D` — plus « 0 erreur » à tort), chat
 > survit au F5, double-clic gardé, accueil rafraîchi, dédup clés reset (`cleEtatIndex`+`statutLisible`),
-> agendas reprise sur erreur. **Vague 2 EN REVUE** (perf/anti-gel) : `chargerIndexCache_` A+G (payload
-> ÷3,5), scan PJ Gmail mur « page à jour », trace horaire durée du tick. **Reste : Vague 3** (unification
+> agendas reprise sur erreur. **Vague 2 ✅ (#242, perf/anti-gel)** : `chargerIndexCache_` A+G (payload
+> ÷3,5), scan PJ Gmail mur « page à jour » **+ filet `DriveAI_GMAIL_PJ_RETARD`** (revue `apps-script-quota`
+> 🔴 : sans lui le backlog des pages 1+ était perdu après reprise post-panne/rafale — mur désactivé tant
+> qu'un backlog est possible, drainage complet puis reprise ; mutation prouvée), trace horaire durée du
+> tick. **Reste : Vague 3** (unification
 > du rangement + few-shot v2 effectif + optim coût + frein budget encadré 1er août) + un reliquat de
 > non-bloquants (BACKLOG #44). ⚠ Chaque merge moteur : le pilote CI ré-installe le déclencheur seul.
 >

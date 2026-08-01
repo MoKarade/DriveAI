@@ -246,6 +246,8 @@ test('traiterGmail_ : panne active → AUCUNE recherche Gmail', () => {
   const c = load(['Config.gs', 'Gmail.gs', 'Main.gs']);
   let recherches = 0;
   c.estPannePlateforme_ = () => true;
+  // traiterGmail_ lit le drapeau RETARD PJ (revue Vague 2) avant la boucle : ScriptProperties mocké.
+  c.PropertiesService = { getScriptProperties: () => ({ getProperty: () => null, setProperty: () => {}, deleteProperty: () => {} }) };
   c.pageFils_ = () => { recherches++; return []; };
   c.journalInfo_ = () => {};
   c.notifierEchec_ = () => {};
