@@ -28,9 +28,12 @@ export function Creation({ langue, onCree, titreInitial, note, typeInitial, date
   const [heure, setHeure] = useState(heureInitiale ?? '09:00');
   const [agendaId, setAgendaId] = useState(principal);
   const [statut, setStatut] = useState('');
+  const [enCours, setEnCours] = useState(false);
 
   async function creer() {
-    setStatut('');
+    if (enCours) return; // garde anti double-soumission : un double-clic (ou clic sur réseau lent)
+    setStatut('');           // créait DEUX événements/tâches (revue de fond 2026-07-31 — la seule
+    setEnCours(true);        // écriture de l'app sans garde en vol).
     try {
       if (type === 'tache') await creerTache(titre, date || undefined, note);
       else await creerEvenement(titre, `${date}T${heure}`, note, agendaId);
@@ -39,6 +42,8 @@ export function Creation({ langue, onCree, titreInitial, note, typeInitial, date
       onCree();
     } catch (e) {
       setStatut(String(e));
+    } finally {
+      setEnCours(false);
     }
   }
 
@@ -60,7 +65,7 @@ export function Creation({ langue, onCree, titreInitial, note, typeInitial, date
             ))}
           </select>
         )}
-        <button disabled={!titre || (type === 'rdv' && !date)} onClick={creer}>{t('creerBouton', langue)}</button>
+        <button disabled={enCours || !titre || (type === 'rdv' && !date)} onClick={creer}>{t('creerBouton', langue)}</button>
       </div>
       {statut === 'ok' && <p className="ok">{t('creeOk', langue)}</p>}
       {statut && statut !== 'ok' && <p className="erreur">{statut}</p>}

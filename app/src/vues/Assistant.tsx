@@ -23,20 +23,31 @@ import { Langue, t } from '../i18n';
 // localStorage : l'historique peut CITER du contenu de doc lu par Claude, on ne l'inscrit pas
 // durablement sur le disque (esprit ADR-0007 ; même politique que le jeton OAuth, cf. google.ts).
 const CLE_CHAT = 'driveai_chat';
-function lireHistorique(): MessageChat[] {
+function lireHistorique(): { messages: MessageChat[]; brouillon: string } {
   try {
     const arr = JSON.parse(sessionStorage.getItem(CLE_CHAT) || '[]');
-    return Array.isArray(arr)
+    const propres: MessageChat[] = Array.isArray(arr)
       ? arr.filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
       : [];
+    // Un tour `user` FINAL = réponse jamais reçue (F5 ou changement d'onglet PENDANT l'attente : la
+    // persistance a écrit le tour user, la réponse a été perdue au démontage). Le garder casserait le
+    // prochain envoi — deux `user` de suite → alternance rompue → chat mort jusqu'à « Effacer », sans
+    // que rien ne le suggère (revue de fond 2026-07-31). On le retire et on rend son texte comme
+    // BROUILLON pour que Marc puisse le renvoyer d'un clic.
+    if (propres.length && propres[propres.length - 1].role === 'user') {
+      const orphelin = propres.pop() as MessageChat;
+      return { messages: propres, brouillon: orphelin.content };
+    }
+    return { messages: propres, brouillon: '' };
   } catch {
-    return [];
+    return { messages: [], brouillon: '' };
   }
 }
 
 export function Assistant({ langue }: { langue: Langue }) {
-  const [messages, setMessages] = useState<MessageChat[]>(lireHistorique);
-  const [saisie, setSaisie] = useState('');
+  const [initial] = useState(lireHistorique); // lu UNE fois au montage (assainit un tour user orphelin)
+  const [messages, setMessages] = useState<MessageChat[]>(initial.messages);
+  const [saisie, setSaisie] = useState(initial.brouillon);
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState('');
   const [budget, setBudget] = useState<{ coutJour: number; plafond: number } | null>(null);

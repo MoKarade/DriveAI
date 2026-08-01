@@ -45,7 +45,7 @@ const SUSPECTS_MAX = 5;
 const A_VERIFIER_MAX = 5;
 
 export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: Section) => void }) {
-  const { donnees } = useEtatGlobal();
+  const { donnees, synchroA } = useEtatGlobal();
   const [evenements, setEvenements] = useState<Evenement[]>([]);
   const [taches, setTaches] = useState<Tache[]>([]);
   const [agendaCharge, setAgendaCharge] = useState(false);
@@ -81,8 +81,12 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
         setAgendaCharge(true);
       }
     })();
+    // `synchroA` (pas `donnees === null`) : « Ma journée » se recharge à CHAQUE lecture réussie —
+    // donc après une création de RDV (`onCree` → `rafraichir(true)` → nouveau `synchroA`), alignée sur
+    // l'Agenda (revue de fond 2026-07-31 : sinon le RDV créé n'apparaissait pas). La fenêtre `debut`/
+    // `fin` est recalculée à chaque exécution → « aujourd'hui » suit aussi le passage de minuit.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- cleAgendas = photo stable des agendas cochés
-  }, [donnees === null, cleAgendas]);
+  }, [synchroA, cleAgendas]);
 
   if (!donnees) return <IndicateurChargement langue={langue} />;
 

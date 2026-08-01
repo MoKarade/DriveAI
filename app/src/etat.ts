@@ -53,11 +53,21 @@ export function interpreterIndex(brut: string[][]): LigneIndex[] {
  * dryrunv2|… — de simples marqueurs) restent leur propre identité : jamais fusionnées, et le
  * rapport dry-run n'écrase JAMAIS l'état réel d'un fichier. PURE.
  */
+// Familles de clés dont le fileId est TOUJOURS le DERNIER segment (reset C28-33 + campagnes) : un
+// même fichier y produit plusieurs lignes d'état successives (`drive|id`, puis `tri33|tag|id`,
+// `tri33p|tag|version|id`, `tri33llm|…`, `tri33-04|…`, `reanalyse|tag|id`, `nonroute|version|id`).
+// Sans les regrouper sur le fichier, un doc apparaissait 2-4 fois pendant le reset → « +N
+// aujourd'hui » gonflé ×2-3 et recherche polluée (revue de fond 2026-07-31).
+const PREFIXES_FICHIER_DERNIER_SEG = ['tri33', 'tri33p', 'tri33llm', 'tri33-04', 'reanalyse', 'nonroute'];
+
 export function cleEtatIndex(cle: string): string {
   const seg = cle.split('|');
   if (seg[0] === 'tri' && seg[1]) return 'fil|' + seg[1];
   if ((seg[0] === 'drive' || seg[0] === 'shared') && seg[1]) return 'fichier|' + seg[1];
   if (seg[0] === 'migre' && seg[2]) return 'fichier|' + seg[2];
+  if (PREFIXES_FICHIER_DERNIER_SEG.indexOf(seg[0]) !== -1 && seg.length >= 2) {
+    return 'fichier|' + seg[seg.length - 1]; // le fileId clôt toujours ces clés → même fichier regroupé
+  }
   return cle;
 }
 

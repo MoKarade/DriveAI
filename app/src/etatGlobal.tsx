@@ -64,7 +64,12 @@ export function FournisseurEtat({ children }: { children: ReactNode }) {
         // Marc croirait le moteur arrêté). Repéré en revue le 2026-07-31, à ~4 600 fichiers du seuil.
         lirePlage('Index', 'A2:H'),
         lirePlage('Santé', 'A2:A10'),
-        lirePlage('Journal', 'A2:D5000'),
+        // MÊME piège que l'Index (ci-dessus) : le Journal est append-only avec rotation (le moteur
+        // supprime les PLUS VIEILLES au-delà de ~25 000). `A2:D5000` lisait donc les 5 000 lignes les
+        // plus ANCIENNES → « 0 erreur · 7 j » en vert alors que le moteur en accumule AUJOURD'HUI
+        // (revue de fond 2026-07-31). Fenêtre OUVERTE `A2:D` : les lignes récentes (en bas) sont vues.
+        // (Perf de la lecture entière : traitée en Vague 2 — ancrage en queue / compteur télémétrie.)
+        lirePlage('Journal', 'A2:D'),
         // Onglets créés par le moteur au premier usage — absents = table vide, pas une erreur.
         lirePlage('Réglages', 'A2:B2').catch(() => [] as string[][]),
         lirePlage('Télémétrie', 'A2:D30').catch(() => [] as string[][]),

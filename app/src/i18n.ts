@@ -56,6 +56,7 @@ const TEXTES = {
     agendaChamp: 'Agenda',
     agendasReconnexion: 'Pour afficher tous tes agendas (Family…), une autorisation de LECTURE a été ajoutée — reconnecte-toi une fois.',
     seReconnecter: 'Se reconnecter',
+    agendasErreur: 'Impossible de charger tes agendas (réseau ?). L\'agenda principal reste visible.',
     precedent: 'Précédent',
     suivant: 'Suivant',
 
@@ -267,6 +268,7 @@ const TEXTES = {
     agendaChamp: 'Calendar',
     agendasReconnexion: 'To show all your calendars (Family…), a READ permission was added — sign in again once.',
     seReconnecter: 'Sign in again',
+    agendasErreur: 'Could not load your calendars (network?). Your main calendar stays visible.',
     precedent: 'Previous',
     suivant: 'Next',
 

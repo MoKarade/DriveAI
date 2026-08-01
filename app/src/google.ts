@@ -575,7 +575,11 @@ export async function creerDossier(nom: string, parentId: string): Promise<Eleme
 
 /** L'Index (colonne Clé) contient-il cette clé ? Lecture d'une colonne, cache 60 s. */
 export async function indexContientCle(cle: string): Promise<boolean> {
-  const colonne = await lirePlage('Index', 'A2:A30000');
+  // Fenêtre OUVERTE `A2:A` — JAMAIS `A2:A<N>` : l'Index est append-only et le reset y écrit 2-3 lignes
+  // par fichier ; au franchissement de la borne de tête, cette vérif (parade « re-déposer un fichier
+  // déjà traité ») devenait silencieusement inopérante et des doublons `drive|` s'ajoutaient (revue
+  // de fond 2026-07-31 ; même famille que le Journal/Index de etatGlobal).
+  const colonne = await lirePlage('Index', 'A2:A');
   return colonne.some((l) => (l[0] ?? '') === cle);
 }
 

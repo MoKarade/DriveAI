@@ -11,7 +11,7 @@ import { Langue, t } from '../i18n';
 import type { Section } from '../App';
 import { SECTIONS, ICONES } from '../App';
 import { MiniCalendrier } from './MiniCalendrier';
-import { useAgendas, basculerAgenda, basculerTaches, reconnecterPourAgendas } from '../agendasStore';
+import { useAgendas, basculerAgenda, basculerTaches, reconnecterPourAgendas, rechargerAgendas } from '../agendasStore';
 
 export function Sidebar({ langue, section, ouverte, repliee, dateAgenda, onDate, onAller, onFermer, onCreer }: {
   langue: Langue;
@@ -69,6 +69,14 @@ export function Sidebar({ langue, section, ouverte, repliee, dateAgenda, onDate,
               <p className="explication">{t('agendasReconnexion', langue)}</p>
               <button className="discret" onClick={() => reconnecterPourAgendas()}>
                 {t('seReconnecter', langue)}
+              </button>
+            </div>
+          )}
+          {agendas.statut === 'erreur' && (
+            <div className="agendas-scope">
+              <p className="explication">{t('agendasErreur', langue)}</p>
+              <button className="discret" onClick={() => rechargerAgendas()}>
+                {t('reessayer', langue)}
               </button>
             </div>
           )}
