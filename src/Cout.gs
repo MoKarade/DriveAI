@@ -13,21 +13,27 @@
 // Accumulateur du run courant (remis à zéro au tick, vidé en fin de tick).
 var _usageRun = null;
 
-/** À appeler en tête de run. */
+/** À appeler en tête de run. `cw`/`cr` = tokens d'ÉCRITURE / LECTURE de cache (prompt caching, Vague 3). */
 function reinitialiserUsage_() {
-  _usageRun = { hin: 0, hout: 0, sin: 0, sout: 0, appels: 0 };
+  _usageRun = { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0, appels: 0 };
 }
 
 /**
- * Comptabilise l'usage d'un appel. Sépare Haiku et Sonnet (prix différents).
+ * Comptabilise l'usage d'un appel. Sépare Haiku et Sonnet (prix différents), et INPUT régulier /
+ * écriture cache / lecture cache (prompt caching, Vague 3 — sinon le budget §2.6 sous-estimerait :
+ * la réponse Anthropic met la part cachée dans `cache_read_input_tokens`, HORS `input_tokens`).
  * @param {string} modele
- * @param {{input_tokens:number, output_tokens:number}} usage  (champ `usage` de la réponse Anthropic)
+ * @param {{input_tokens:number, output_tokens:number, cache_creation_input_tokens:number, cache_read_input_tokens:number}} usage
  */
 function enregistrerUsage_(modele, usage) {
   if (!_usageRun || !usage) return;
   var inTok = usage.input_tokens || 0, outTok = usage.output_tokens || 0;
-  if (String(modele).indexOf('sonnet') !== -1) { _usageRun.sin += inTok; _usageRun.sout += outTok; }
-  else { _usageRun.hin += inTok; _usageRun.hout += outTok; }
+  var cwTok = usage.cache_creation_input_tokens || 0, crTok = usage.cache_read_input_tokens || 0;
+  if (String(modele).indexOf('sonnet') !== -1) {
+    _usageRun.sin += inTok; _usageRun.sout += outTok; _usageRun.scw += cwTok; _usageRun.scr += crTok;
+  } else {
+    _usageRun.hin += inTok; _usageRun.hout += outTok; _usageRun.hcw += cwTok; _usageRun.hcr += crTok;
+  }
   _usageRun.appels += 1;
 }
 
@@ -40,8 +46,8 @@ function flushUsage_() {
   var props = PropertiesService.getScriptProperties();
   var cle = cleCoutMois_();
   var t = lireCoutMois_(props, cle);
-  t.hin += _usageRun.hin; t.hout += _usageRun.hout;
-  t.sin += _usageRun.sin; t.sout += _usageRun.sout;
+  t.hin += _usageRun.hin; t.hout += _usageRun.hout; t.hcw += _usageRun.hcw; t.hcr += _usageRun.hcr;
+  t.sin += _usageRun.sin; t.sout += _usageRun.sout; t.scw += _usageRun.scw; t.scr += _usageRun.scr;
   t.appels += _usageRun.appels;
   props.setProperty(cle, JSON.stringify(t));
   _usageRun = null;
@@ -85,13 +91,20 @@ function cleCoutMois_() {
   return 'DriveAI_COUT_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
 }
 
-/** Lit (ou initialise) le total d'un mois. */
+/** Lit (ou initialise) le total d'un mois. Normalise les champs cache (absents des JSON d'AVANT
+ * la Vague 3) à 0 — sinon `flushUsage_` ferait `undefined + n = NaN` et corromprait le compteur. */
 function lireCoutMois_(props, cle) {
   var brut = props.getProperty(cle);
   if (brut) {
-    try { return JSON.parse(brut); } catch (e) { /* corrompu → on repart à zéro */ }
+    try {
+      var t = JSON.parse(brut);
+      t.hin = t.hin || 0; t.hout = t.hout || 0; t.hcw = t.hcw || 0; t.hcr = t.hcr || 0;
+      t.sin = t.sin || 0; t.sout = t.sout || 0; t.scw = t.scw || 0; t.scr = t.scr || 0;
+      t.appels = t.appels || 0;
+      return t;
+    } catch (e) { /* corrompu → on repart à zéro */ }
   }
-  return { hin: 0, hout: 0, sin: 0, sout: 0, appels: 0 };
+  return { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0, appels: 0 };
 }
 
 /**
@@ -101,8 +114,12 @@ function lireCoutMois_(props, cle) {
  */
 function coutDollars_(t) {
   var p = CONFIG.LLM_PRIX;
-  return (t.hin * p.haiku_in + t.hout * p.haiku_out +
-          t.sin * p.sonnet_in + t.sout * p.sonnet_out) / 1e6;
+  // Tous les champs gardés `|| 0` : un total partiel (delta, dry-run, objet sans cache) ne doit
+  // JAMAIS produire NaN — un budget NaN ne freinerait plus rien (§2.6).
+  return ((t.hin || 0) * p.haiku_in + (t.hout || 0) * p.haiku_out +
+          (t.hcw || 0) * p.haiku_cw + (t.hcr || 0) * p.haiku_cr +
+          (t.sin || 0) * p.sonnet_in + (t.sout || 0) * p.sonnet_out +
+          (t.scw || 0) * p.sonnet_cw + (t.scr || 0) * p.sonnet_cr) / 1e6;
 }
 
 /**
@@ -116,7 +133,9 @@ function coutDollars_(t) {
 function coutDollarsDelta_(avant, apres) {
   return coutDollars_({
     hin: apres.hin - avant.hin, hout: apres.hout - avant.hout,
-    sin: apres.sin - avant.sin, sout: apres.sout - avant.sout
+    hcw: (apres.hcw || 0) - (avant.hcw || 0), hcr: (apres.hcr || 0) - (avant.hcr || 0),
+    sin: apres.sin - avant.sin, sout: apres.sout - avant.sout,
+    scw: (apres.scw || 0) - (avant.scw || 0), scr: (apres.scr || 0) - (avant.scr || 0)
   });
 }
 
@@ -129,8 +148,9 @@ function coutDollarsDelta_(avant, apres) {
  */
 function usageRunSnapshot_() {
   return _usageRun
-    ? { hin: _usageRun.hin, hout: _usageRun.hout, sin: _usageRun.sin, sout: _usageRun.sout, appels: _usageRun.appels }
-    : { hin: 0, hout: 0, sin: 0, sout: 0, appels: 0 };
+    ? { hin: _usageRun.hin, hout: _usageRun.hout, hcw: _usageRun.hcw, hcr: _usageRun.hcr,
+        sin: _usageRun.sin, sout: _usageRun.sout, scw: _usageRun.scw, scr: _usageRun.scr, appels: _usageRun.appels }
+    : { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0, appels: 0 };
 }
 
 /**
@@ -142,6 +162,6 @@ function syntheseCoutMois_() {
   return {
     appels: t.appels,
     dollars: coutDollars_(t),
-    tokens: t.hin + t.hout + t.sin + t.sout
+    tokens: t.hin + t.hout + t.hcw + t.hcr + t.sin + t.sout + t.scw + t.scr
   };
 }

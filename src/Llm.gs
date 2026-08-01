@@ -155,7 +155,12 @@ function appelAnthropicV2_(modele, meta, systeme, propositionPasse1) {
     payload: JSON.stringify({
       model: modele,
       max_tokens: CONFIG.ANALYSE_V2_MAX_TOKENS,
-      system: systeme,
+      // Prompt caching (Vague 3, « Optimiser ») : le prompt SYSTÈME est CONSTANT et gros (domaines +
+      // REGLES_V2). En bloc `cache_control:ephemeral`, il n'est facturé plein tarif qu'à la 1ʳᵉ écriture
+      // du run ; les appels suivants dans la fenêtre TTL (~5 min : lots, campagnes de masse) le relisent
+      // à 10 % (`cache_read_input_tokens`, compté par `enregistrerUsage_`). Le CONTENU utilisateur (extrait
+      // du doc, variable) reste hors cache. Sous le minimum cacheable, l'API ignore le flag (no-op, sans erreur).
+      system: [{ type: 'text', text: systeme, cache_control: { type: 'ephemeral' } }],
       messages: [{ role: 'user', content: contenu }]
     }),
     muteHttpExceptions: true
