@@ -231,3 +231,15 @@ test('appelAnthropicV2_ : aucune correction proche → prompt v2 INCHANGÉ (pas 
   assert.ok(contenu.indexOf('Classements déjà corrigés') === -1, 'aucune correction d\'émetteur proche → aucun préfixe');
   assert.ok(contenu.indexOf('Nom du fichier :') === 0, 'le prompt commence directement par le document');
 });
+
+test('appelAnthropicV2_ (PASSE 2) : le few-shot ET la proposition de la passe 1 coexistent dans le prompt (défense contre override adversarial)', () => {
+  const { c, dernierPayload } = ctxV2FewShot([{ emetteur: 'Desjardins', domaine: '02 · Finances', entite: 'Desjardins' }]);
+  // propositionPasse1 non-null → chemin PASSE 2 : le few-shot doit rester injecté (sinon le vérificateur
+  // adversarial pourrait DÉFAIRE la préférence apprise de Marc que la passe 1 avait bien orientée).
+  c.appelAnthropicV2_('claude-sonnet-4-6',
+    { nomFichier: '2026-03_Relevé_Desjardins.pdf', expediteur: 'Desjardins', sujet: '', extrait: 'x' },
+    c.PROMPT_PASSE2, { domaine: '02 · Finances', confiance: 0.9 });
+  const contenu = dernierPayload().messages[0].content;
+  assert.ok(contenu.indexOf('Classements déjà corrigés') !== -1, 'few-shot présent aussi en passe 2');
+  assert.ok(contenu.indexOf('PROPOSITION DE LA PASSE 1') !== -1, 'la proposition de la passe 1 est jointe');
+});
