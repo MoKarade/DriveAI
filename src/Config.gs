@@ -39,6 +39,14 @@ var CONFIG = {
   ANALYSE_V2_MODELE: 'claude-sonnet-4-6',   // les 2 passes tournent sur Sonnet (fiabilité > coût, quand ON)
   ANALYSE_V2_MAX_TOKENS: 1000,              // schéma étendu (15 champs) → marge large (un JSON tronqué = doc en échec)
   ANALYSE_V2_OCR_MAX_CARS: 12000,           // texte envoyé au LLM moins tronqué qu'en Haiku (4000) — analyse plus fine
+  // 2ᵉ PASSE CONDITIONNELLE (Vague 3c, décision Marc « Optimiser ») : sauter la passe 2 adversariale
+  // quand la passe 1 est SÛRE et COMPLÈTE (économie ~moitié du coût v2). ÉTEINT par défaut : c'est un
+  // compromis de CORRECTNESS (la passe 2 conteste et corrige) → à VALIDER sur du réel (dry-run
+  // comparant 1 passe vs 2 passes) AVANT allumage, comme le flag ANALYSE_V2 lui-même (§8). Le gate
+  // `passe1SuffisammentSure_` refuse TOUJOURS de sauter pour un doc SENSIBLE (immigration/fiscal, §2),
+  // un non-document, une pièce d'identité, ou une confiance < seuil / des faits manquants.
+  ANALYSE_V2_2E_PASSE_CONDITIONNELLE: false,
+  ANALYSE_V2_SEUIL_1PASSE: 0.9,             // confiance MINIMALE de la passe 1 pour oser sauter la passe 2
   // Escalade : si Haiku rend une confiance < SEUIL (et doc NON sensible), on relance
   // une analyse approfondie avec Sonnet, plusieurs passes, et on garde la meilleure (consensus
   // de domaine puis confiance max). 3 passes (impair → vote utile). Borné pour le budget
