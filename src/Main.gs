@@ -566,6 +566,18 @@ function tickDriveAI() {
       // unique, robuste ; un échec ici ne doit rien casser (enveloppé).
       try { PropertiesService.getScriptProperties().setProperty('DriveAI_LAST_TICK', String(Date.now())); }
       catch (e) { /* écriture Property impossible : rien de plus à faire */ }
+      // Observabilité anti-gel (Vague 2) : trace la DURÉE totale du tick au plus 1×/h. Le « socle »
+      // (relectures Index/Journal, campagnes) n'est budgété par rien ; s'il dérive vers le mur runtime
+      // ~90 min/j (×288 ticks), c'est INVISIBLE aujourd'hui jusqu'au gel. Cette trace horaire le rend
+      // observable AVANT (revue de fond 2026-07-31). Best-effort : un échec ne bloque jamais le tick.
+      try {
+        var pr = PropertiesService.getScriptProperties();
+        var derniereTrace = Number(pr.getProperty('DriveAI_TICK_TRACE_MS')) || 0;
+        if (Date.now() - derniereTrace > 60 * 60 * 1000) {
+          journalInfo_('Perf', 'Durée du tick : ' + Math.round((Date.now() - debut) / 1000) + ' s (trace horaire — dérive vers le mur 90 min/j à surveiller).');
+          pr.setProperty('DriveAI_TICK_TRACE_MS', String(Date.now()));
+        }
+      } catch (e) { /* observabilité best-effort */ }
       try { flushUsage_(); } catch (e) { journalErreur_('Cout', 'Flush usage impossible : ' + e); }
       // Observabilité (ADR-0006), SECONDAIRE et enveloppé : un échec ne doit jamais bloquer le tick.
       // Le heartbeat Santé s'écrit même si l'intake a partiellement échoué (d'où le finally).
@@ -810,6 +822,7 @@ function traiterGmail_(estBudgetDepasse) {
     signalerRetablissementGmail_(); // re-sonde concluante : la suspension persistée est levée
     if (!fils.length) break; // fin de la fenêtre 30 jours
 
+    var ineditesPage = 0;
     for (var i = 0; i < fils.length; i++) {
       if (estBudgetDepasse()) {
         journalInfo_('Pipeline', 'Budget temps atteint — reprise au prochain tick.');
@@ -819,12 +832,18 @@ function traiterGmail_(estBudgetDepasse) {
       // Erreur isolée par fil (ex. getMessages/piecesJointes) : on saute ce fil sans
       // interrompre le scan Gmail — chaque PJ est déjà protégée dans traiterDocument_.
       // SAUF le quota (C28-15) : il frappe TOUS les fils suivants — suspension et sortie.
-      try { traiterFil_(fils[i], estBudgetDepasse); }
+      try { ineditesPage += traiterFil_(fils[i], estBudgetDepasse); }
       catch (e) {
         if (signalerPanneGmail_(e)) return;
         journalErreur_('Gmail', 'Fil ignoré (erreur) : ' + e);
       }
     }
+    // MUR « page à jour » (PERF Vague 2, patron des scans intentions/tri) : aucune PJ INÉDITE sur
+    // toute la page. Les fils sont servis du PLUS RÉCENT au plus ancien — une PJ neuve (fil ravivé
+    // par un message à PJ) remonte en page 0. Donc une page 0 à jour ⇒ tout l'historique 30 j l'est
+    // aussi → inutile de re-paginer les pages suivantes à CHAQUE tick (chaque fil coûte getMessages +
+    // getAttachments sur le quota Gmail PARTAGÉ, croissant avec la boîte — revue de fond 2026-07-31).
+    if (ineditesPage === 0) break;
     debutPage += CONFIG.PAGE_FILS;
   }
 }
@@ -838,15 +857,22 @@ function traiterGmail_(estBudgetDepasse) {
  */
 function traiterFil_(fil, estBudgetDepasse) {
   var messages = fil.getMessages();
+  var inedites = 0; // PJ NON encore indexées rencontrées (sert au mur « page à jour » de l'appelant)
   for (var m = 0; m < messages.length; m++) {
-    if (estBudgetDepasse()) return; // aussi PAR MESSAGE : un long fil sans PJ « réelles » ne doit
-    var message = messages[m];      // pas enchaîner les getAttachments après l'épuisement du budget
+    if (estBudgetDepasse()) return inedites; // aussi PAR MESSAGE : un long fil sans PJ « réelles » ne
+    var message = messages[m];               // doit pas enchaîner les getAttachments après le budget
     var pjs = piecesJointes_(message);
     for (var p = 0; p < pjs.length; p++) {
-      if (estBudgetDepasse()) return;
+      if (estBudgetDepasse()) return inedites;
+      // Déjà indexée (idempotence) → gratuit, ne compte pas comme inédite : sur une page 100 %
+      // indexée, `inedites` reste 0 et l'appelant arrête de paginer (test AVANT le dépôt, comme la
+      // campagne historique). `traiterDocument_` re-teste de toute façon — ici on évite juste l'appel.
+      if (indexContient_(cleAttachement_(message, p, pjs[p]))) continue;
+      inedites++;
       traiterPjGmail_(message, p, pjs[p]);
     }
   }
+  return inedites;
 }
 
 /**

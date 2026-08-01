@@ -4,6 +4,20 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **⚡⚡⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-08-01 — CHANTIER #44 : AUDIT DE FOND + correctifs par VAGUES.**
+> Marc : « analyse approfondie pour empêcher tous les bugs, lags, faux positifs… enchaîne tout
+> jusqu'à la fin ». 6 agents en parallèle → ~40 trouvailles. Décisions cliquées : rangement UNIFIER
+> (flux vivant = structure validée, conso coupée) ; coût OPTIMISER (2ᵉ passe conditionnelle + cache) ;
+> alertes tout dans l'app (pas de mail). **Vagues 1a/1b/1app MERGÉES** (#239/#240/#241) : prompt chat
+> réparé, auto-merge sécurisé (fork rejeté), reset honore l'épinglage + converge sur fichier empoisonné
+> (`ecarterEchecMutationReset_` + `tentes`), « Inconnu » éradiqué du nom, passeport accepté, panne
+> réseau comptée ; **app** : page Moteur honnête (Journal `A2:D` — plus « 0 erreur » à tort), chat
+> survit au F5, double-clic gardé, accueil rafraîchi, dédup clés reset (`cleEtatIndex`+`statutLisible`),
+> agendas reprise sur erreur. **Vague 2 EN REVUE** (perf/anti-gel) : `chargerIndexCache_` A+G (payload
+> ÷3,5), scan PJ Gmail mur « page à jour », trace horaire durée du tick. **Reste : Vague 3** (unification
+> du rangement + few-shot v2 effectif + optim coût + frein budget encadré 1er août) + un reliquat de
+> non-bloquants (BACKLOG #44). ⚠ Chaque merge moteur : le pilote CI ré-installe le déclencheur seul.
+>
 > **⚡⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-07-31 (nuit) — C28-43 : LE PILOTE CI (ADR-0032) — Marc ne lance PLUS RIEN.**
 > Marc : « je veux plus jamais avoir à lancer à la main, je veux que TU fasses le lancement
 > `lancerResetTout`, et que ça marche encore plus vite que si je le faisais à la main ». Deux gestes

@@ -111,6 +111,42 @@ test('points d\'entrée sous suspension : tri, scans PJ et historique sortent SA
   assert.strictEqual(appels.gmail, 0, 'zéro appel Gmail pendant la suspension');
 });
 
+test('traiterGmail_ : MUR « page à jour » — une page 100 % indexée ARRÊTE la pagination (perf Vague 2, quota Gmail)', () => {
+  const c = load(['Config.gs', 'Gmail.gs', 'Main.gs']);
+  let appelsPage = 0;
+  const fil = { getMessages: () => [{ getId: () => 'M1', getFrom: () => '', getSubject: () => '', getDate: () => new Date() }] };
+  c.piecesJointes_ = () => [{ getName: () => 'a.pdf', getSize: () => 100 }];
+  c.cleAttachement_ = () => 'M1|0|a.pdf|100';
+  c.indexContient_ = () => true;           // TOUT est déjà indexé → 0 PJ inédite
+  c.pageFils_ = () => { appelsPage++; return appelsPage === 1 ? [fil, fil] : []; };
+  c.signalerRetablissementGmail_ = () => {};
+  c.estPanneGmail_ = () => false;
+  c.estPannePlateforme_ = () => false;
+  c.journalInfo_ = () => {};
+
+  c.traiterGmail_(() => false);
+  // Sans le mur, la boucle paginerait jusqu'à la page VIDE (appelsPage === 2). Avec le mur, elle
+  // s'arrête dès la page 0 (aucune PJ inédite) → une seule lecture de page.
+  assert.strictEqual(appelsPage, 1, 'le mur arrête la pagination dès qu\'une page ne porte aucune PJ inédite');
+});
+
+test('traiterFil_ : retourne le nombre de PJ INÉDITES (0 si tout est déjà indexé, >0 sinon)', () => {
+  const c = load(['Config.gs', 'Gmail.gs', 'Main.gs']);
+  const fil = { getMessages: () => [{ getId: () => 'M1', getFrom: () => '', getSubject: () => '', getDate: () => new Date() }] };
+  c.piecesJointes_ = () => [{ getName: () => 'a.pdf', getSize: () => 100 }, { getName: () => 'b.pdf', getSize: () => 200 }];
+  c.cleAttachement_ = (m, p) => 'M1|' + p;
+  let deposees = 0;
+  c.traiterPjGmail_ = () => { deposees++; };
+
+  c.indexContient_ = () => true;  // les 2 PJ déjà indexées
+  assert.strictEqual(c.traiterFil_(fil, () => false), 0, 'aucune inédite → 0 (et rien déposé)');
+  assert.strictEqual(deposees, 0);
+
+  c.indexContient_ = (cle) => cle === 'M1|0'; // seule la 1re est indexée
+  assert.strictEqual(c.traiterFil_(fil, () => false), 1, 'une seule inédite');
+  assert.strictEqual(deposees, 1, 'seule l\'inédite est déposée');
+});
+
 test('traiterPageHistorique_ : le frein GMAIL_HISTO_MAX_FILS_PAR_RUN borne les fils PARCOURUS d\'un run', () => {
   const { c } = ctxQuota();
   // Contexte dédié : page de fils factices plus grande que le frein (cas dérivé de la CONSTANTE).

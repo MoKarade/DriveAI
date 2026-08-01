@@ -5,7 +5,27 @@
 
 ---
 
-## Chantier #43 — PILOTE CI : plus AUCUN lancement à la main (ADR-0032, demande Marc 2026-07-31)  🟦
+## Chantier #44 — AUDIT DE FOND + correctifs par vagues (demande Marc 2026-07-31 « empêcher tous les bugs, lags, faux positifs »)  🟦
+
+> Marc : « lance une analyse approfondie de l'app pour empêcher tous les bugs, lags, faux positifs,
+> toutes les erreurs, tout ce qui pourrait être mieux fait » puis « enchaîne tout jusqu'à la fin ».
+> **6 agents en parallèle** (robustesse moteur, sécurité, app web, intake, classement/coût,
+> taxonomie) → ~40 trouvailles classées. Correction par VAGUES, chacune en PR revue avant merge.
+> **3 décisions cliquées** : rangement → UNIFIER (flux vivant = structure validée, conso coupée) ;
+> coût → OPTIMISER (2ᵉ passe conditionnelle + cache) ; alertes → tout dans l'app (pas de mail).
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| Vague 1a | 2 bugs confirmés + 1 filet : prompt chat tronqué (ASI, 2 `+` manquants → règle anti-fusion perdue), auto-merge détournable par fork (`head_repository` + `isCrossRepository`), reset honore `epingle\|`. Revue flotte, mutation. | ✅ (#239) |
+| Vague 1b | Filets anti-blocage + faux positifs : fichier « empoisonné » → convergence (`ecarterEchecMutationReset_` + `tentes` par exécution), « Inconnu » éradiqué du nom (émetteur+type+titulaire), passeport sans domaine accepté, panne réseau comptée (`noterEchecReseau_`). Revue flotte (🟠×2 intégrés). | ✅ (#240) |
+| Vague 1 app | Page Moteur honnête (Journal `A2:D` ouvert, plus « 0 erreur » à tort), chat survit au F5 (`lireHistorique` assainit), double-clic création gardé, accueil rafraîchi (`synchroA`), dédup clés reset (`cleEtatIndex` + `statutLisible`), agendas reprise sur erreur. 178 tests app. Revue flotte. | ✅ (#241) |
+| Vague 2 | Performance / anti-gel : `chargerIndexCache_` lit A+G seulement (payload ÷3,5, chaque tick), scan PJ Gmail avec mur « page à jour » (arrête la pagination 30 j quand tout est indexé), trace horaire de la durée du tick (dérive vers le mur 90 min/j rendue visible). 748 tests. | 🟦 revue |
+| Vague 3 | Classement (décisions Marc) : ADR unification `cheminCibleVivant_` (flux+conso+reset une seule règle + tripwire), couper conso avant convergence reset, few-shot injecté en v2 (corrections effectives), 2ᵉ passe conditionnelle + prompt caching + `enregistrerUsage_` étendu au cache, frein budget encadré au 1er août, re-pointage entités graphies. | ⬜ |
+| Reliquat | Non-bloquants différés : re-dépôt manuel `drive\|` re-traité, doublon-après-corbeillage, `majResumeHub_` fenêtre queue, Agenda `Promise.allSettled`/AbortController, i18n MOIS/JOURS. | ⬜ |
+
+---
+
+## Chantier #43 — PILOTE CI : plus AUCUN lancement à la main (ADR-0032, demande Marc 2026-07-31)  ✅ (#236)
 
 > Marc : « je veux plus jamais avoir à lancer à la main, je veux que tu fasses toi le lancement
 > `lancerResetTout` et que ça marche encore plus vite que si je le faisais à la main ». Deux gestes
