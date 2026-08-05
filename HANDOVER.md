@@ -4,22 +4,26 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🚨🚨🚨 ÉTAT AU 2026-08-05 (le plus récent) — PROD ENCORE FIGÉE : les fix sont PUSHÉS mais le
-> déclencheur exécute encore l'ANCIEN code chargé (piège 3, §7).** Sonder Drive réel (MCP, lecture
-> exhaustive) : `00·À trier` VIDE (intake OK) MAIS les racines de domaine (`05·Carrière`, `08·Perso`…)
-> **regorgent de fichiers À PLAT** (`modifiedTime` figé au 27-31 juillet, **zéro mouvement depuis**),
-> alors que la Sheet `DriveAI — État` a été écrite AUJOURD'HUI 17:09 (le tick VIT). `deploy.yml` a
-> `clasp push` VERT sur `8dc7f4e` (le fix deadlock `RESET_ACTIF=false`, PR #250) à **14:17** — le code
-> EST dans le projet Apps Script, mais **aucun fichier n'a bougé dans les 3 h qui ont suivi**. Diagnostic :
-> le time-trigger tourne encore la version CHARGÉE avant (RESET_ACTIF=true) → `resetEnCours_()` true →
-> **consolidation suspendue → backlog racines JAMAIS drainé**. Heartbeat vert, prod cassée — le motif
-> EXACT du 07-15. **ACTION MARC (30 s, frontière d'exécution — je ne peux pas exécuter dans son compte) :
-> éditeur Apps Script → `Main.gs` → `installerTrigger` → Exécuter.** Ça force le chargement du code frais
-> (RESET_ACTIF=false) → la conso reprend → les racines se drainent en ~1-2 j (et ça active aussi #47).
-> Vérif : re-sonder les racines dans un jour. Si ça ne draine TOUJOURS pas après ça → bug plus profond,
-> re-diagnostiquer (pas juste piège 3). **Piste durable proposée** : automatiser le reload post-push
-> (`clasp run installerTrigger` dans `deploy.yml`) pour que piège 3 ne se reproduise plus — nécessite
-> l'API Apps Script activée (à confirmer avec Marc).
+> **✅ ÉTAT AU 2026-08-05 (le plus récent) — DEADLOCK LEVÉ, la consolidation DRAINE (prouvé).** Marc a
+> exécuté `installerTrigger` (~17:49 UTC) → le code frais (RESET_ACTIF=false) a chargé. Diagnostic un-clic
+> `diagnosticRangement2` (lecture seule, donné en chat, NON commité) : `resetEnCours_()=false`,
+> `CONSOLIDATION_ACTIF/EXEC_ACTIF=true`, `CONSO_TAG=conso-3`, budget conso du jour consommé
+> (`DriveAI_CONSO_JOUR=…|720672` ≈ 12 min), exec drainé (curseur 137/136 lignes). **Preuve du drainage** :
+> `05·Carrière/CV & lettres` (id `10mwjZ59…`) contient **~60 CV/lettres CORRECTEMENT rangés** — la conso
+> route bien 05 dans ses buckets. La racine 05 garde ~141 fichiers à plat : **reliquat en cours de
+> drainage PACÉ** (12 min/j de budget), pas un bug — mon estimation antérieure « backlog jamais drainé »
+> était FAUSSE (audit `cheminCibleReset_` sur 100 noms réels : 87 routent vers un bucket, ils bougeront).
+> L'ancien code (reset) re-gonflait les racines aujourd'hui (`RESET_RASS_JOUR=…|1200218` = 20 min) AVANT
+> le clic → 05 était monté 116→141 ; reset OFF, ça draine net. **Reste à Marc** : (1) NE PAS ré-activer le
+> reset (RESET_ACTIF reste false) ; (2) laisser tourner ~1-3 j (drainage pacé) ; (3) le « trop de
+> DOSSIERS » = doublons de dossiers (#47 fusion : `Robovic` racine vs `Employeurs/Robovic`, `Alternance`
+> ×4…) → `genererPlanFusion` + curer `PlanFusion` + `FUSION_EXEC_ACTIF`. **⚠️ NE PAS cranker les budgets
+> conso** pour accélérer : l'enveloppe reset-OFF est déjà à ~56 min/j (invariant plafond 65,
+> `orchestration.test.js`) + socle ~20 → marge FINE au mur ~90 (leçon C28-29, gel). **Piste durable
+> ouverte** : automatiser le reload post-`clasp push` (`clasp run installerTrigger` dans `deploy.yml`)
+> pour que le piège 3 ne se reproduise plus (nécessite l'API Apps Script activée — à confirmer avec Marc).
+> **À VÉRIFIER dans 1 j** : re-sonder la racine 05 (doit être &lt; 141, idéalement bien moins) ; si ça
+> PLAFONNE, alors bug de débit à creuser (§8).
 >
 > **⚡⚡⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-08-05 (suite) — CHANTIER #47 PR2 : EXÉCUTION DE LA FUSION (ADR-0037).**
 > Décision Marc « fais tout toi ». **`src/FusionExec.gs`** applique le `PlanFusion` curé : chaque ligne
