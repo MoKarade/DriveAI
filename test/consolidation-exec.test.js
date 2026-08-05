@@ -251,6 +251,9 @@ test('détection vide : dédup (déjà signalé) ; et un échec d\'inscription n
 function ctxPlan(opts) {
   opts = opts || {};
   const c = load(['Config.gs', 'ConsolidationExec.gs']);
+  c.CONFIG.CONSOLIDATION_TAG = 'conso-2'; // FORCÉ : ces fixtures encodent 'conso-2' ; le défaut prod
+  // est passé à 'conso-3' (2026-08-05, ADR-0035, bump anti-plan-périmé). Leçon §7 : forcer la valeur
+  // dans le contexte, jamais dépendre du défaut du jour.
   const store = Object.assign({}, opts.props);
   c.PropertiesService = { getScriptProperties: () => ({
     getProperty: (k) => (k in store ? store[k] : null),

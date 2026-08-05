@@ -33,6 +33,7 @@ function fakeFichierLlm(opts) {
 function ctxLlm(opts) {
   opts = opts || {};
   const c = load(FICHIERS);
+  c.CONFIG.RESET_ACTIF = true; // FORCÉ (défaut retiré à false 2026-08-05, ADR-0035)
   const index = Object.assign({}, opts.index);
   const ajouts = [];
   const pipeline = [];

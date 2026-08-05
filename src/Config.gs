@@ -489,10 +489,18 @@ var CONFIG = {
                                           // 2026-07-17 (« continue », post-correctifs revue flotte #183) :
                                           // le moteur remplit l'onglet PlanConsolidation (~12 min/j max,
                                           // AUCUNE mutation Drive). Repasser à false pour suspendre.
-  CONSOLIDATION_TAG: 'conso-2',           // tag de campagne (clé de convergence `conso|<tag>|<fileId>`).
+  CONSOLIDATION_TAG: 'conso-3',           // tag de campagne (clé de convergence `conso|<tag>|<fileId>`).
                                           // conso-1 → conso-2 (revue flotte 2026-07-21) : le plan conso-1
                                           // a pu se générer AVANT le seed des entités (cibles pré-seed :
                                           // dossiers de banque, noms périmés) — le bump purge et re-génère
+                                          // conso-2 → conso-3 (2026-08-05, incident rangement bloqué) : le
+                                          // plan conso-2 a été généré AVANT/pendant le deadlock reset — il a
+                                          // pu recenser les 305 fichiers legacy comme « OK » (sous une table
+                                          // antérieure à t4) ou dans des domaines déjà « épuisés » ⇒ jamais
+                                          // re-déplacés. Le bump purge le plan périmé + remet les curseurs et
+                                          // RE-ÉVALUE TOUT sous t4 ⇒ les 305 flat-mais-routables deviennent
+                                          // des lignes « Déplacer » (cible `cheminCibleReset_`, exécutées
+                                          // automatiquement, `moveTo` seul, §2 intact). Voir ADR-0035.
                                           // tout avec le référentiel courant (rotation dans genererPlan…)
   CONSOLIDATION_BUDGET_MS: 3 * 60 * 1000, // sous-budget PROPRE par run (le hash MD5 lit les octets — sans
                                           // cette borne, un run mangerait le budget des étapes suivantes)
@@ -547,7 +555,17 @@ var CONFIG = {
   // il domine le socle non budgété et retarde le heartbeat. Le widget n'a pas besoin d'être à la
   // minute — 15 min divisent le coût par ~3 sans perte perceptible.
   HUB_RESUME_INTERVALLE_MS: 15 * 60 * 1000,
-  RESET_ACTIF: true,                      // false = suspension immédiate de TOUTES les phases (comme CONSOLIDATION_EXEC_ACTIF)
+  // RETIRÉ 2026-08-05 (incident « rangement bloqué ») : le reset a matériellement fini sa migration
+  // one-time (bacs `_TRI 2026` vides, `04` convergé) MAIS il ne se clôt JAMAIS seul sur un Drive
+  // vivant — le rassemblement n'a aucun drapeau « domaine épuisé » (contrairement à la consolidation),
+  // sa seule fin est `examines===0` sur une passe complète, et l'intake tourne AVANT lui à chaque tick
+  // ⇒ il re-collecte les nouveaux fichiers ⇒ `examines≥1` perpétuel ⇒ `DriveAI_RESET_RASSEMBLEMENT`
+  // jamais posé ⇒ `resetEnCours_()` reste true À VIE ⇒ la consolidation (le seul re-rangeur des racines
+  // de domaine) reste suspendue à vie (deadlock, ~1 semaine, 305 fichiers legacy à plat non re-rangés).
+  // Le flux vivant + la consolidation rangent désormais seuls. ⚠️ NE PAS RE-PASSER à true sans corriger
+  // d'abord la convergence du rassemblement (drapeau « domaine épuisé », comme la conso), sinon le
+  // deadlock revient. Voir ADR-0035.
+  RESET_ACTIF: false,                     // false = suspension immédiate de TOUTES les phases (comme CONSOLIDATION_EXEC_ACTIF)
   RESET_TAG: 'tri33',                     // bumper relance une campagne complète (re-parcourt tout, additive)
   // Version de la TABLE de routage (`STRUCTURE_CIBLE_RESET` + `cheminCibleReset_`). Entre dans la clé
   // d'idempotence du PLACEMENT : la bumper re-tente le RELIQUAT resté dans `_TRI 2026` après un

@@ -39,9 +39,10 @@ test('resetTermine_ / resetEnCours_ : les 3 phases doivent être au tag courant 
   const props = {};
   c.PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null) }) };
   const tag = c.CONFIG.RESET_TAG;
+  c.CONFIG.RESET_ACTIF = true; // FORCÉ (défaut retiré à false 2026-08-05, ADR-0035) ; remis à false en fin de test
 
   assert.strictEqual(c.resetTermine_(), false, 'rien de fait → pas terminé');
-  assert.strictEqual(c.resetEnCours_(), true, 'RESET_ACTIF par défaut → en cours');
+  assert.strictEqual(c.resetEnCours_(), true, 'RESET_ACTIF (forcé true) + phases inachevées → en cours');
 
   props.DriveAI_RESET_RASSEMBLEMENT = tag;
   props.DriveAI_RESET_PLACEMENT = tag + '|' + c.CONFIG.RESET_TABLE_VERSION; // drapeau VERSIONNÉ (revue #227)
@@ -55,6 +56,16 @@ test('resetTermine_ / resetEnCours_ : les 3 phases doivent être au tag courant 
   delete props.DriveAI_RESET_04;
   c.CONFIG.RESET_ACTIF = false;
   assert.strictEqual(c.resetEnCours_(), false, 'suspension manuelle libère conso-2/réorg-auto immédiatement');
+});
+
+test('GARDE-FOU déploiement : RESET_ACTIF reste false (reset RETIRÉ 2026-08-05, ADR-0035)', () => {
+  // Tripwire de VALEUR (leçon §7 : exception qui verrouille la constante elle-même, et le dit). Le
+  // reset one-time NE CONVERGE JAMAIS sur un Drive vivant (le rassemblement re-collecte chaque intake
+  // ⇒ `examines` jamais 0 ⇒ `resetEnCours_()` true à vie ⇒ consolidation suspendue à vie = deadlock).
+  // RALLUMER exige D'ABORD un drapeau « domaine épuisé » sur le rassemblement (comme la conso) — sinon
+  // le deadlock revient. Si tu changes cette valeur en connaissance de cause, mets à jour ce test.
+  const c = load(['Config.gs']);
+  assert.strictEqual(c.CONFIG.RESET_ACTIF, false, 'reset retiré (ADR-0035) — voir le commentaire ci-dessus avant de rallumer');
 });
 
 /* ---------- Rassemblement : domaine → `_TRI 2026/<domaine>` ---------- */
@@ -584,6 +595,8 @@ test('acquerirVerrouReset_ : verrou indisponible (tick en cours) → null, aucun
 
 test('lancerResetRassemblement : verrou INDISPONIBLE → sort tôt, ne relance AUCUNE phase (course avec le tick évitée)', () => {
   const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  c.CONFIG.RESET_ACTIF = true; // FORCÉ (revue code-reviewer : sans ça, le défaut false ferait sortir
+  // AU FLAG, jamais au verrou — le test passerait pour la mauvaise raison ; ADR-0035).
   const { lock, appels } = fakeLock(false);
   c.LockService = { getScriptLock: () => lock };
   c.journalInfo_ = () => {};
@@ -597,6 +610,7 @@ test('lancerResetRassemblement : verrou INDISPONIBLE → sort tôt, ne relance A
 
 test('lancerResetRassemblement : verrou acquis → relâché même si la phase LÈVE (finally)', () => {
   const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  c.CONFIG.RESET_ACTIF = true; // FORCÉ (défaut retiré à false 2026-08-05, ADR-0035)
   const { lock, appels } = fakeLock(true);
   c.LockService = { getScriptLock: () => lock };
   c.journalInfo_ = () => {};
@@ -613,6 +627,7 @@ test('lancerResetRassemblement : verrou acquis → relâché même si la phase L
 function ctxPhase(opts) {
   opts = opts || {};
   const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  c.CONFIG.RESET_ACTIF = true; // FORCÉ (leçon §7 : défaut retiré à false 2026-08-05, ADR-0035)
   const store = Object.assign({}, opts.props);
   c.PropertiesService = { getScriptProperties: () => ({
     getProperty: (k) => (k in store ? store[k] : null),
@@ -685,6 +700,7 @@ test('rondeSterileReset_ : rien examiné ET rien déplacé (ou phase muette) = s
 // Contexte de boucle un-clic : verrou libre, phases injectées, Properties en mémoire.
 function ctxBoucle(phases) {
   const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  c.CONFIG.RESET_ACTIF = true; // FORCÉ (défaut retiré à false 2026-08-05, ADR-0035)
   const store = {};
   c.PropertiesService = { getScriptProperties: () => ({
     getProperty: (k) => (k in store ? store[k] : null),
@@ -718,6 +734,7 @@ test('boucles un-clic : testées par leur LIBÉRATION — du travail fait contin
   // doit ENCHAÎNER tant qu'il y a du travail, et ne s'arrêter que quand il n'y en a plus.
   let restant = 3;
   const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  c.CONFIG.RESET_ACTIF = true; // FORCÉ (défaut retiré à false 2026-08-05, ADR-0035)
   const store = {};
   c.PropertiesService = { getScriptProperties: () => ({
     getProperty: (k) => (k in store ? store[k] : null), setProperty: (k, v) => { store[k] = String(v); }, deleteProperty: () => {},
@@ -873,6 +890,7 @@ test('placement : la collecte n\'itère QUE sur `_TRI` — bumper la version ne 
 // Phase de placement isolée, avec la passe de travail mockée : on teste le GARDE de fin, pas le travail.
 function ctxPlacementPhase(props) {
   const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  c.CONFIG.RESET_ACTIF = true; // FORCÉ (défaut retiré à false 2026-08-05, ADR-0035)
   const store = Object.assign({}, props);
   c.PropertiesService = { getScriptProperties: () => ({
     getProperty: (k) => (k in store ? store[k] : null),
@@ -933,6 +951,8 @@ test('resetTermine_ : exige la VERSION côté placement (un bump rouvre le reset
   const V = c0.CONFIG.RESET_TABLE_VERSION;
   const monter = (placement) => {
     const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+    c.CONFIG.RESET_ACTIF = true; // FORCÉ (défaut retiré à false 2026-08-05, ADR-0035) : ce test isole
+    // l'effet de la VERSION sur resetTermine_/resetEnCours_, pas la suspension manuelle.
     const store = { DriveAI_RESET_RASSEMBLEMENT: TAG, DriveAI_RESET_04: TAG, DriveAI_RESET_PLACEMENT: placement };
     c.PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => (k in store ? store[k] : null) }) };
     return c;

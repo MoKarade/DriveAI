@@ -1746,3 +1746,39 @@ ranger les verdicts par SÉVÉRITÉ : un raté invisible-mais-grave (filet §2 p
 placement identique rassurant."
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-05 — Une campagne ONE-TIME dont la CONVERGENCE est inatteignable sur un flux VIVANT devient un DEADLOCK permanent qui gèle les campagnes voisines gatées sur elle
+
+**Contexte.** Incident « rangement bloqué » (Marc : « plusieurs jours sans avancer, tri 2026 vide,
+structure encore en vrac »). Diagnostic sur le Drive RÉEL (recherche par `parentId`, `modifiedTime`) +
+une fonction de diagnostic un-clic LECTURE SEULE (dump des Properties `DriveAI_RESET_*` / conso +
+comptage du backlog par domaine via le code DÉPLOYÉ) + 2 investigations flotte du code. Résultat :
+le reset (ADR-0030, `rassemblerReset_`) a pour SEULE condition de fin `examines===0` sur une passe qui
+re-parcourt tout l'arbre — mais il n'a AUCUN drapeau « domaine épuisé » (contrairement à la
+consolidation qui marque chaque domaine fini et le saute O(1)). Or l'intake tourne AVANT lui à chaque
+tick : chaque fichier fraîchement classé (non keyé) est re-collectable → `examines ≥ 1` **perpétuel**
+→ `DriveAI_RESET_RASSEMBLEMENT` jamais posé → `resetEnCours_()` true À VIE → la consolidation (gatée
+`!resetEnCours_()`), **seul mécanisme qui scanne les racines de domaine et re-range le vrac**, est
+suspendue à vie. Bilan : 305 fichiers legacy à plat non re-rangés, heartbeat pourtant vert. Ce n'était
+NI une lenteur, NI une logique de classement cassée (le moteur SAIT où va chaque fichier —
+`cheminCibleReset_` le prouve) : un **inter-blocage structurel**. Fix (décision Marc « applique
+directement ») : retirer le reset (`RESET_ACTIF=false` → `resetEnCours_` false → conso reprend) + bump
+`CONSOLIDATION_TAG` (le plan périmé avait recensé les 305 en « OK » sous une table antérieure → un
+simple redémarrage ne les draine pas ; le bump purge + re-évalue tout sous la table courante).
+
+**Leçon.** "Un flag de campagne ONE-TIME (migration, grand rangement) dont la CONDITION DE CONVERGENCE
+est « une passe complète ne collecte plus rien » NE CONVERGE JAMAIS si une source CONTINUE (intake,
+dépôts) réalimente le périmètre scanné avant chaque passe — et s'il gate une campagne PERPÉTUELLE
+voisine (le rattrapage), il la gèle définitivement, heartbeat vert. Symptôme : un `enCours_()` true
+depuis des JOURS + campagnes voisines à l'arrêt + backlog qui ne bouge pas ⇒ suspecter un DEADLOCK de
+convergence, PAS une lenteur ni un budget — vérifier la CONDITION DE FIN et ce qui la nourrit, pas le
+débit. Deux filets : (a) donner à toute campagne balayante un drapeau « unité (domaine) épuisée » qui
+isole les nouveaux arrivants du critère de fin (comme la conso) ; (b) ne JAMAIS gater une campagne
+PERPÉTUELLE sur l'état d'une campagne ONE-TIME structurellement non convergente. Et pour diagnostiquer
+la prod qu'on ne peut pas exécuter : une fonction de diagnostic UN-CLIC lecture seule qui lit l'état
+réel (Properties + comptage via le code DÉPLOYÉ, jamais un échantillon Drive) tranche un `INCERTAIN`
+runtime en `CERTAIN` — c'est le signal indépendant. Corollaire déjà connu, re-confirmé : re-lancer une
+campagne à clé de SUCCÈS ne re-traite pas ce qu'elle a figé « OK » — bumper la VERSION/tag pour
+re-évaluer sous les règles courantes."
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).
