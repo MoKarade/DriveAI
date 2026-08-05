@@ -4,6 +4,21 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **⚡⚡⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-08-05 — INCIDENT « RANGEMENT BLOQUÉ » (ADR-0035).** Marc : « ça fait
+> plusieurs jours, tri 2026 = 5 dossiers vides, nouvelle structure encore en vrac, ça marche pas ».
+> Diagnostic (Drive réel + fonction un-clic + 2 investigations) : **DEADLOCK structurel**. Le reset
+> (ADR-0030) ne converge JAMAIS sur un Drive vivant — le rassemblement re-collecte chaque intake ⇒
+> `examines` jamais 0 ⇒ `resetEnCours_()` true à vie ⇒ **la consolidation (seul re-rangeur des racines
+> de domaine) suspendue à vie** ⇒ **305 fichiers legacy à plat** non re-rangés (05·Carrière 116, 08 102,
+> 06 42, 09 32…) + doublons d'entité (Robovic : 4 lignes, `Dossier ID` vide → `estValidee_` false →
+> re-point mort). Décision Marc : **« applique directement »**. Fix (ADR-0035) : `RESET_ACTIF=false`
+> (casse le deadlock, la conso + histo/migration/réanalyse/réconciliation reprennent) + bump
+> `CONSOLIDATION_TAG conso-2→conso-3` (purge le plan périmé, re-évalue tout sous `t4` → les 305
+> deviennent des « Déplacer », `moveTo` seul, cible `cheminCibleReset_` partagée = zéro ping-pong, §2
+> intact). Tripwire de valeur `RESET_ACTIF===false` + « ne pas rallumer sans drapeau domaine-épuisé ».
+> **Suivi** : réparer l'onglet Entités (statut lu comme date) + fusionner les dossiers Robovic en double.
+> 802 tests. Frontière : Claude ne déploie pas — Marc merge/déploie, ça draine sur quelques ticks.
+>
 > **⚡⚡⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-08-01 — CHANTIER #44 : AUDIT DE FOND + correctifs par VAGUES.**
 > Marc : « analyse approfondie pour empêcher tous les bugs, lags, faux positifs… enchaîne tout
 > jusqu'à la fin ». 6 agents en parallèle → ~40 trouvailles. Décisions cliquées : rangement UNIFIER

@@ -16,8 +16,12 @@ name: Pousser le rangement (pilote)
 # Secrets déjà configurés (ceux du miroir Drive) : DRIVEAI_WEBAPP_URL + DRIVEAI_SYNC_SECRET.
 
 on:
-  schedule:
-    - cron: '*/15 * * * *' # toutes les 15 min ; GitHub peut retarder — sans conséquence (chaque passe est indépendante)
+  # CRON DÉSACTIVÉ 2026-08-05 (ADR-0035, reset RETIRÉ) : `pousserResetPilote_` refuse quand
+  # RESET_ACTIF=false, donc ces POST /15 min ne feraient que du bruit (~190 `::warning:: transitoire`
+  # trompeurs/jour + POST à vide). Rien à piloter tant que le reset est éteint. `workflow_dispatch`
+  # reste pour un lancement manuel si le reset est un jour ré-activé (voir tripwire RESET_ACTIF).
+  #  schedule:
+  #    - cron: '*/15 * * * *'
   workflow_dispatch: {}
 
 permissions:

@@ -27,6 +27,10 @@ const phasesDe = (appels) => appels.filter((a) => PHASES.indexOf(a.phase) !== -1
 function ctxPilote(opts) {
   opts = opts || {};
   const c = load(FICHIERS);
+  // RESET_ACTIF FORCÉ dans le contexte (leçon §7 : un test d'un chemin gaté par un flag de campagne
+  // FORCE ce flag ; la valeur GLOBALE — retirée à false 2026-08-05, ADR-0035 — est une décision de
+  // Marc, jamais un invariant de test). Le test « refus si RESET_ACTIF=false » le remet à false lui-même.
+  c.CONFIG.RESET_ACTIF = true;
   const appels = [];
   const props = Object.assign({}, opts.props);
   c.PropertiesService = { getScriptProperties: () => ({

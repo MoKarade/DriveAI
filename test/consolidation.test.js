@@ -234,3 +234,48 @@ test('Consolidation.gs : aucun appel de mutation Drive (dry-run PUR par construc
       assert.ok(!src.includes(motif), 'mutation interdite trouvée dans Consolidation.gs : ' + motif);
     });
 });
+
+/* ---------- ROTATION du plan au bump de CONSOLIDATION_TAG (fondement du fix ADR-0035) ---------- */
+
+// Contexte minimal pour n'exercer QUE la rotation en tête de `genererPlanConsolidation_` :
+// `estBudgetDepasse` renvoie true ⇒ on retourne juste APRÈS la rotation, avant toute collecte.
+function ctxRotationConso(store) {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs']);
+  c.COLONNES_PLAN_CONSOLIDATION = ['Horodaté', 'Fichier', 'ID', 'Action', 'Cible', 'Raison', 'Empreinte']; // vit dans Journal.gs
+  const suppr = [];
+  let cleared = 0;
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in store ? store[k] : null),
+    setProperty: (k, v) => { store[k] = String(v); },
+    deleteProperty: (k) => { suppr.push(k); delete store[k]; },
+  }) };
+  c.feuille_ = () => ({ getLastRow: () => 3, getRange: () => ({ clearContent: () => { cleared++; } }) });
+  c.journalInfo_ = () => {};
+  return { c, suppr, clearedRef: () => cleared };
+}
+
+test('genererPlanConsolidation_ : bump de CONSOLIDATION_TAG → ROTATION (plan périmé purgé + 3 curseurs remis à zéro)', () => {
+  // C'est LE mécanisme sur lequel repose ADR-0035 : conso-2 avait pu figer les 305 en « OK » ; le bump
+  // conso-3 doit purger le plan et remettre les curseurs pour re-évaluer TOUT sous t4.
+  const store = {
+    DriveAI_CONSO_PLAN_TAG: 'conso-2', DriveAI_CONSOLIDATION: 'conso-2',
+    DriveAI_CONSO_EXEC_LIGNE: '956', DriveAI_CONSO_EXEC_FINI: 'conso-2',
+  };
+  const { c, suppr, clearedRef } = ctxRotationConso(store);
+  c.CONFIG.CONSOLIDATION_TAG = 'conso-3'; // FORCÉ (le défaut EST déjà conso-3, mais on le dérive du contexte)
+  c.genererPlanConsolidation_(() => true);
+  assert.strictEqual(clearedRef(), 1, 'le plan périmé (conso-2) est purgé (clearContent)');
+  assert.ok(suppr.includes('DriveAI_CONSOLIDATION') && suppr.includes('DriveAI_CONSO_EXEC_LIGNE') && suppr.includes('DriveAI_CONSO_EXEC_FINI'),
+    'les 3 curseurs (campagne finie + exec ligne + exec fini) sont remis à zéro');
+  assert.strictEqual(store.DriveAI_CONSO_PLAN_TAG, 'conso-3', 'le tag courant est adopté');
+});
+
+test('genererPlanConsolidation_ : MÊME tag → PAS de rotation (un plan EN COURS n\'est jamais purgé — mutation-preuve du test ci-dessus)', () => {
+  const store = { DriveAI_CONSO_PLAN_TAG: 'conso-3', DriveAI_CONSO_EXEC_LIGNE: '956' };
+  const { c, suppr, clearedRef } = ctxRotationConso(store);
+  c.CONFIG.CONSOLIDATION_TAG = 'conso-3';
+  c.genererPlanConsolidation_(() => true);
+  assert.strictEqual(clearedRef(), 0, 'tag inchangé → aucune purge');
+  assert.strictEqual(suppr.length, 0, 'aucun curseur supprimé');
+  assert.strictEqual(store.DriveAI_CONSO_EXEC_LIGNE, '956', 'le curseur d\'exec en cours est préservé');
+});

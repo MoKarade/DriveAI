@@ -537,6 +537,20 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   c'est un verrou définitif (vécu C28-32 : gate sur `proposé`, terminal ⇒ campagne morte dès la 1re
   analyse). Et un gate se teste par sa LIBÉRATION (cycle occupé → traité → libre), pas seulement par
   son blocage : un test qui n'asserte que le blocage VERROUILLE le bug.
+- **Une campagne ONE-TIME dont la CONVERGENCE est inatteignable sur un flux VIVANT gèle les campagnes
+  voisines gatées sur elle (deadlock, heartbeat vert).** Un critère de fin « une passe complète ne
+  collecte plus rien » (`examines===0`) NE CONVERGE JAMAIS si une source CONTINUE (intake, dépôts)
+  réalimente le périmètre scanné avant chaque passe (vécu ADR-0035 : le reset, gaté AVANT le
+  rassemblement mais l'intake tournant AVANT lui, `resetEnCours_()` true à vie ⇒ consolidation
+  suspendue à vie ⇒ 305 fichiers legacy à plat, jamais re-rangés). Symptôme : `enCours_()` true depuis
+  des JOURS + campagnes voisines à l'arrêt + backlog figé ⇒ suspecter la CONDITION DE FIN, pas le
+  débit ni le budget. Filets : (a) drapeau « unité (domaine) épuisée » qui isole les nouveaux
+  arrivants du critère de fin (comme la conso) ; (b) ne JAMAIS gater une campagne PERPÉTUELLE (le
+  rattrapage) sur l'état d'une campagne ONE-TIME. Diagnostic prod (Claude ne peut pas exécuter le
+  moteur) : une fonction de DIAGNOSTIC UN-CLIC lecture seule (Properties + comptage via le code
+  DÉPLOYÉ) tranche un INCERTAIN runtime en CERTAIN — signal indépendant, jamais un échantillon Drive.
+  Corollaire : re-lancer une campagne à clé de SUCCÈS ne re-traite pas ce qu'elle a figé « OK » —
+  bumper la VERSION/tag pour re-évaluer sous les règles courantes.
 - **Message de commit avec des backticks ⇒ `git commit -F fichier`, jamais `-m "…"`.** Citer les
   identifiants entre backticks est la convention d'écriture du projet : en INLINE dans bash, ils
   déclenchent une SUBSTITUTION DE COMMANDE et l'identifiant DISPARAÎT du message — commit réussi
