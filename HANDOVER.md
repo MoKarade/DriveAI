@@ -4,7 +4,21 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **⚡⚡⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-08-05 (suite) — CHANTIER #47 : FUSION DES DOSSIERS EN DOUBLE (ADR-0036).**
+> **⚡⚡⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-08-05 (suite) — CHANTIER #47 PR2 : EXÉCUTION DE LA FUSION (ADR-0037).**
+> Décision Marc « fais tout toi ». **`src/FusionExec.gs`** applique le `PlanFusion` curé : chaque ligne
+> SOURCE `Fusionner` fond les FICHIERS DIRECTS du dossier dans la CIBLE de son groupe. **GATÉ OFF**
+> (`FUSION_EXEC_ACTIF=false`) : ne bouge un seul fichier qu'au feu vert de Marc. `moveTo` seule mutation
+> (verrou de surface). Garde-fous hérités de `ConsolidationExec` + §2.1b : 04 INTERNE (source ET cible
+> re-vérifiées sous 04, échec-fermé), multi-parents jamais déplacés, zone protégée hors-04 jamais détachée,
+> ancre STRUCTURELLE refusée en SOURCE (sauf dédup de même nom) ET jamais cible de re-pointage, entités
+> re-pointées (C21-06), coquilles vides → `vide-candidat` (app), idempotent par ID, borné/reprenable,
+> branché APRÈS la consolidation, gaté `!resetEnCours_()`. **Revue flotte 4 spécialistes AVANT merge,
+> intégrée** : security-auditor 🟢 conforme ; + garde source structurelle à la mutation (structure-keeper),
+> convergence sur move en échec + tests orchestrateur (code-reviewer), stall ≥cap + invariant d'enveloppe
+> C28-42 prouvé par mutation (quota/sécurité). **844 tests.** Reste à Marc : déployer, générer/curer le
+> plan (PR1), puis allumer `FUSION_EXEC_ACTIF`. Détails ADR-0037.
+>
+> **⚡⚡⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-08-05 (suite) — CHANTIER #47 PR1 : FUSION DES DOSSIERS EN DOUBLE (ADR-0036).**
 > Sondage post-incident du Drive réel (MCP + diagnostic un-clic exhaustif) : zones critiques SAINES
 > (`00·À trier` vide, `00·À vérifier` vide = §2 tient, `_Doublons` normal) MAIS pollution structurelle :
 > **83 dossiers en trop / 37 clusters** de doublons-synonymes d'entités (IRCC×5, MIFI×2, IUT du Littoral

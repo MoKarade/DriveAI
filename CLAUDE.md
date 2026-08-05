@@ -528,6 +528,13 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   (unification DOCUMENT→entité) ; `estFusionnableEntite_` la GARDE (distingue deux dossiers). Choisir
   celui qui correspond à la décision (identité de DOSSIER ⇒ celui qui DISTINGUE) et placer le veto AVANT
   le canonicaliseur qui écrase le signal. Réflexe de revue : « quel garde mes voisins ont-ils que je n'ai pas ? »
+  **Corollaire EXÉCUTION (#47 PR2) : un invariant « JAMAIS X » affiché au DRY-RUN comme un DÉFAUT
+  overridable n'est PAS un garde — il se RÉ-APPLIQUE à la MUTATION (fail-closed), avec le MÊME prédicat
+  que le plan (une seule fonction).** La curation opt-out (`Ignorer (structurel)` par défaut) ne remplace
+  pas le refus codé juste avant le `moveTo` : sinon l'override de Marc vide un bucket que le reset recrée
+  (ping-pong) sans qu'aucune ligne ne l'arrête. Et un effet de bord voisin (`repointerEntites_`) hérite
+  des MÊMES exclusions structurelles que la mutation (jamais re-pointer une entité vers un fourre-tout).
+  Réflexe : pour chaque « JAMAIS » promis par un plan, trouver la ligne qui le re-vérifie avant l'écriture.
 - **Un verrou posé à la CRÉATION d'un jeton longue durée n'arrête pas le stock déjà émis.** Un
   contrôle d'accès vérifié à l'ÉMISSION (pas à chaque utilisation) d'un cookie/jeton/clé se
   déploie AVEC l'invalidation de l'existant (rotation du secret qui les chiffre/signe — une

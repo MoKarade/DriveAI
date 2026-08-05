@@ -129,6 +129,20 @@ function lignesPlanFusion_(domaine, groupeId, cluster, cible, estAncre) {
   });
 }
 
+/**
+ * Vrai si `nom` est une ANCRE STRUCTURELLE de `domaine` : un segment `estSegmentStructurel_`
+ * (année/schéma/type d'identité) OU un bucket de `STRUCTURE_CIBLE_RESET[domaine]`. Ces dossiers sont
+ * find-or-créés PAR NOM par le reset/flux → JAMAIS une SOURCE de fusion (les vider serait non
+ * convergent, et corbeiller un dossier canonique est interdit), au mieux une CIBLE gardée. Réutilisé
+ * par le dry-run (préférence de cible) ET l'exécution (refus de source structurelle, pas de re-pointage
+ * d'entité vers un fourre-tout). @param {string} domaine @param {string} nom @return {boolean}
+ */
+function estAncreStructurelleFusion_(domaine, nom) {
+  if (estSegmentStructurel_(nom)) return true;
+  var t = (typeof STRUCTURE_CIBLE_RESET !== 'undefined') ? STRUCTURE_CIBLE_RESET[domaine] : null;
+  return !!(t && Object.prototype.hasOwnProperty.call(t, nom));
+}
+
 /* ---------- Dry-run I/O (lecture + écriture du RAPPORT seul, ZÉRO mutation Drive) ---------- */
 
 /** Domaines à examiner : 7 fixes + AUTO déjà nés (ID lu en Property, jamais créé). @return {{nom,id}[]} */
@@ -184,13 +198,7 @@ function genererPlanFusion() {
     // Une ANCRE STRUCTURELLE (bucket du reset pour CE domaine, ou segment `estSegmentStructurel_` :
     // année/schéma/type d'identité) est find-or-créée PAR NOM par le reset : la vider serait non
     // convergent. `cibleFusion_` la garde comme cible, `lignesPlanFusion_` écarte toute ancre-source.
-    var estAncre = (function (dom) {
-      return function (nom) {
-        if (estSegmentStructurel_(nom)) return true;
-        var t = (typeof STRUCTURE_CIBLE_RESET !== 'undefined') ? STRUCTURE_CIBLE_RESET[dom] : null;
-        return !!(t && Object.prototype.hasOwnProperty.call(t, nom));
-      };
-    })(domaineNom);
+    var estAncre = (function (dom) { return function (nom) { return estAncreStructurelleFusion_(dom, nom); }; })(domaineNom);
     var dossiers = collecterSousDossiersFusion_(domaines[i].id, garde);
     var clusters = clusteriserDossiers_(domaineNom, dossiers);
     for (var g = 0; g < clusters.length; g++) {

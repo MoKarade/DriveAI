@@ -434,6 +434,16 @@ function tickDriveAI() {
       catch (e) { journalErreur_('Consolidation', 'Génération du plan différée : ' + e); }
     }
 
+    // 🔗 FUSION des dossiers en double (#47 PR2, ADR-0037) — applique le PlanFusion CURÉ par Marc
+    // (lignes source `Fusionner`). GATÉE OFF (`FUSION_EXEC_ACTIF`) : one-shot au feu vert. « BUDGET
+    // TAIL » : pure I/O Drive (moveTo seul, zéro LLM) → estBudgetDepasseStandard (mur 4,5 min). APRÈS
+    // la consolidation (drain prioritaire du backlog) et gatée `!resetEnCours_()` (une seule main
+    // déplace — le reset consolide déjà 04 en interne). SECONDAIRE → enveloppée (jamais bloquer l'intake).
+    if (CONFIG.FUSION_EXEC_ACTIF && !estBudgetDepasseStandard() && !resetEnCours_()) {
+      try { appliquerPlanFusion_(estBudgetDepasseStandard); }
+      catch (e) { journalErreur_('FusionExec', 'Exécution du plan de fusion différée : ' + e); }
+    }
+
     // 🧹 RESET complet (C28-33, ADR-0030) : rassemblement → placement → 04 interne, dans cet ordre
     // (drainer ce que le rassemblement vient d'alimenter, TÔT comme la consolidation qu'il remplace
     // le temps de la campagne). « BUDGET TAIL » : PURE I/O Drive (moveTo + hash MD5, zéro LLM) →

@@ -733,6 +733,16 @@ var CONFIG = {
   // `genererPlanFusion` (LECTURE SEULE + écriture de l'onglet PlanFusion). Bornes du scan lecture.
   FUSION_MAX_SOUSDOSSIERS: 500,           // sous-dossiers directs listés par domaine (borne haute)
   FUSION_MAX_FICHIERS_COMPTE: 200,        // fichiers directs comptés par sous-dossier (assez pour « vide/peu/beaucoup »)
+  // Exécution du plan curé (FusionExec.gs, ADR-0037 — PR2). GATÉE OFF : ne tourne qu'au feu vert de
+  // Marc. `moveTo` seule mutation ; §1/04-interne/multi-parents gardés ; entités re-pointées ;
+  // coquilles vides → vide-candidat (app). Campagne ONE-SHOT (bump `FUSION_EXEC_TAG` pour re-évaluer).
+  FUSION_EXEC_ACTIF: false,               // false = suspension immédiate (comme CONSOLIDATION_EXEC_ACTIF)
+  FUSION_EXEC_TAG: 'fusionexec-1',        // tag de campagne (clés `fusionexec|<tag>|<fileId>` / `fusrow|<tag>|<sourceId>`)
+  FUSION_EXEC_BUDGET_MS: 2 * 60 * 1000,   // sous-budget par run — < garde-temps de tick (ne pas affamer le reste)
+  FUSION_EXEC_BUDGET_JOUR_MS: 6 * 60 * 1000, // budget QUOTIDIEN en ms réelles ; pure I/O (moveTo), tirée de
+                                          // l'enveloppe LIBÉRÉE par le reset OFF (ADR-0035), ordonnée APRÈS la conso
+  FUSION_EXEC_MAX_SOURCES_PAR_RUN: 40,    // dossiers source drainés par run au maximum (moveTo cheap, reprenable)
+  FUSION_EXEC_MAX_FICHIERS_PAR_SOURCE: 500, // fichiers directs collectés-puis-déplacés par source et par run
 
   // Schémas de sous-dossiers FIXES créés à la validation d'une entité (docs/TAXONOMY.md).
   // Clé = Type d'entité ; valeur = liste ordonnée de sous-dossiers.
