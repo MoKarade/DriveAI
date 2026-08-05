@@ -4,6 +4,23 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **🚨🚨🚨 ÉTAT AU 2026-08-05 (le plus récent) — PROD ENCORE FIGÉE : les fix sont PUSHÉS mais le
+> déclencheur exécute encore l'ANCIEN code chargé (piège 3, §7).** Sonder Drive réel (MCP, lecture
+> exhaustive) : `00·À trier` VIDE (intake OK) MAIS les racines de domaine (`05·Carrière`, `08·Perso`…)
+> **regorgent de fichiers À PLAT** (`modifiedTime` figé au 27-31 juillet, **zéro mouvement depuis**),
+> alors que la Sheet `DriveAI — État` a été écrite AUJOURD'HUI 17:09 (le tick VIT). `deploy.yml` a
+> `clasp push` VERT sur `8dc7f4e` (le fix deadlock `RESET_ACTIF=false`, PR #250) à **14:17** — le code
+> EST dans le projet Apps Script, mais **aucun fichier n'a bougé dans les 3 h qui ont suivi**. Diagnostic :
+> le time-trigger tourne encore la version CHARGÉE avant (RESET_ACTIF=true) → `resetEnCours_()` true →
+> **consolidation suspendue → backlog racines JAMAIS drainé**. Heartbeat vert, prod cassée — le motif
+> EXACT du 07-15. **ACTION MARC (30 s, frontière d'exécution — je ne peux pas exécuter dans son compte) :
+> éditeur Apps Script → `Main.gs` → `installerTrigger` → Exécuter.** Ça force le chargement du code frais
+> (RESET_ACTIF=false) → la conso reprend → les racines se drainent en ~1-2 j (et ça active aussi #47).
+> Vérif : re-sonder les racines dans un jour. Si ça ne draine TOUJOURS pas après ça → bug plus profond,
+> re-diagnostiquer (pas juste piège 3). **Piste durable proposée** : automatiser le reload post-push
+> (`clasp run installerTrigger` dans `deploy.yml`) pour que piège 3 ne se reproduise plus — nécessite
+> l'API Apps Script activée (à confirmer avec Marc).
+>
 > **⚡⚡⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-08-05 (suite) — CHANTIER #47 PR2 : EXÉCUTION DE LA FUSION (ADR-0037).**
 > Décision Marc « fais tout toi ». **`src/FusionExec.gs`** applique le `PlanFusion` curé : chaque ligne
 > SOURCE `Fusionner` fond les FICHIERS DIRECTS du dossier dans la CIBLE de son groupe. **GATÉ OFF**
