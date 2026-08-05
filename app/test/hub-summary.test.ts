@@ -276,8 +276,10 @@ describe('/api/hub/summary — panne du canal moteur (échec fermé)', () => {
 
 /**
  * Cache broker — PROTECTION DE QUOTA (pas de la performance). Le hub poll toutes les 15 s ;
- * le moteur ne recalcule qu'une fois par tick (5 min). Sans cache, chaque poll déclenchait une
- * exécution Apps Script, sur un budget DUR de 90 min/jour partagé avec le tick lui-même.
+ * le moteur, lui, ne recalcule le résumé qu'au plus une fois par `HUB_RESUME_INTERVALLE_MS`
+ * (15 min depuis C28-34 — PAS au rythme du tick, l'erreur qui avait fixé le TTL à 60 s).
+ * Sans cache suffisant, chaque poll coûte une exécution Apps Script, sur un budget DUR de
+ * 90 min/jour partagé avec le tick ET le pilote CI.
  */
 describe('_engineState — cache broker (quota Apps Script)', () => {
   const ENV = { WEBAPP_URL: 'https://script.example/exec', WEBAPP_SECRET: 's' };
@@ -294,13 +296,27 @@ describe('_engineState — cache broker (quota Apps Script)', () => {
     });
   });
 
-  it('au-delà du TTL, le moteur est réinterrogé (la donnée ne se fige pas)', async () => {
+  it('un poll une minute plus tard ne réinterroge PAS le moteur (la donnée bouge aux 15 min)', async () => {
+    // Verrou de la correction du 2026-08-05 : à 60 s de TTL, ce cas déclenchait une seconde
+    // exécution Apps Script pour des octets identiques. C'est ce gaspillage — 15× la cadence
+    // réelle de la donnée — qui vidait le quota quotidien.
     await avecEnv(ENV, async () => {
       const appels = fauxFetch(200, ETAT_SAIN);
       vi.stubGlobal('fetch', appels);
       const t0 = 1_000_000;
       await getEngineState(() => t0);
       await getEngineState(() => t0 + 61_000);
+      expect(appels).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('au-delà du TTL, le moteur est réinterrogé (la donnée ne se fige pas)', async () => {
+    await avecEnv(ENV, async () => {
+      const appels = fauxFetch(200, ETAT_SAIN);
+      vi.stubGlobal('fetch', appels);
+      const t0 = 1_000_000;
+      await getEngineState(() => t0);
+      await getEngineState(() => t0 + 5 * 60_000 + 1_000);
       expect(appels).toHaveBeenCalledTimes(2);
     });
   });

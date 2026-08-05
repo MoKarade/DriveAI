@@ -51,17 +51,29 @@ const TIMEOUT_MS = 8000;
  * Durée de vie du cache broker — PROTECTION DE QUOTA, pas de la performance.
  *
  * Le hub interroge ce endpoint toutes les 15 s tant qu'un onglet est ouvert, et CHAQUE appel
- * déclenchait une exécution Apps Script complète. Or le moteur ne recalcule le résumé qu'une
- * fois par tick (`CONFIG.TICK_MINUTES = 5`) et le persiste dans la Property `DriveAI_HUB_SUMMARY` :
- * 19 polls sur 20 renvoyaient donc des octets IDENTIQUES, au prix d'une exécution chacun.
+ * non servi par ce cache déclenche une exécution Apps Script complète. Le temps d'exécution
+ * Apps Script d'un compte Google grand public est plafonné à 90 min/JOUR, tous scripts
+ * confondus — un plafond DUR, partagé avec le tick (`CONFIG.TICK_MINUTES = 5`) ET avec le
+ * pilote CI (`pousser-reset`, cron toutes les 15 min, jusqu'à 6 min par passe).
  *
- * Le temps d'exécution Apps Script d'un compte Google grand public est plafonné à 90 min/jour,
- * tous scripts confondus — un plafond DUR et partagé avec le tick lui-même. Un onglet du hub
- * laissé ouvert consommait 240 exécutions/h uniquement pour réafficher la même chose.
+ * ⚠️ CORRECTION DU 2026-08-05. Ce TTL valait 60 s, calé sur l'hypothèse « la donnée bouge
+ * toutes les 5 min », c'est-à-dire au rythme du tick. C'EST FAUX DEPUIS C28-34 :
+ * `majResumeHub_` ne recalcule plus le résumé qu'au plus une fois par
+ * `CONFIG.HUB_RESUME_INTERVALLE_MS`, soit **15 minutes** (le calcul relit l'Index ENTIER, qui
+ * n'est pas borné, et retardait le heartbeat). Le broker demandait donc 15× plus souvent que
+ * la donnée ne change : un onglet du hub ouvert coûtait ~60 exécutions/heure pour une donnée
+ * qui bouge 4 fois — 56 exécutions gaspillées par heure, prélevées sur le plafond dur.
  *
- * 60 s : 4× moins d'exécutions, et AUCUNE fraîcheur perdue puisque la donnée sous-jacente ne
- * bouge que toutes les 5 min. Le hub affiche de toute façon `dataAsOf` (= `lastRunAt`), donc la
- * fraîcheur RÉELLE reste visible et honnête — le cache ne masque rien.
+ * Diagnostic à l'origine : `/api/hub/summary` a renvoyé 500 pendant 24 h (« canal moteur en
+ * panne : operation aborted due to timeout ») alors qu'`actionHubSummary_` n'est qu'une lecture
+ * de Property de quelques millisecondes — ce n'est pas l'action qui traîne, c'est le moteur qui
+ * ne DÉMARRE plus. Signature d'un quota à bout de souffle.
+ *
+ * 5 min : un tiers de la cadence réelle de la donnée (la règle « N/5 » écrite dans le modèle
+ * d'app donnerait 3 min ; 5 min reste conservateur et divise déjà les exécutions par 5). AUCUNE
+ * fraîcheur réelle n'est perdue — la donnée sous-jacente ne bouge pas plus vite. Le hub affiche
+ * `dataAsOf` (= `lastRunAt`), donc la fraîcheur VRAIE reste visible : ce cache ne masque rien,
+ * il cesse seulement de poser quinze fois la même question.
  *
  * ⚠️ Portée : mémoire du PROCESS, comme tout cache serverless — vide à chaque démarrage à froid,
  * non partagée entre instances. Le taux de succès est donc partiel. C'est acceptable ici : chaque
@@ -69,7 +81,7 @@ const TIMEOUT_MS = 8000;
  * comportement d'avant. Un cache partagé (Vercel KV) ferait mieux, au prix d'une dépendance —
  * refusé, `api/` est zéro-dépendance par construction.
  */
-const CACHE_TTL_MS = 60_000;
+const CACHE_TTL_MS = 5 * 60_000;
 
 /** Dernier état LU avec succès (y compris `null` = moteur non branché, qui est une réponse valide). */
 let cache: { at: number; etat: EngineState | null } | null = null;
@@ -102,7 +114,8 @@ export async function getEngineState(now: () => number = Date.now): Promise<Engi
   if (frais && cache !== null) return cache.etat;
 
   // Les PANNES ne sont jamais mises en cache : un `throw` doit rester une panne observable et
-  // le prochain appel doit réessayer (sinon une coupure de 3 s se figerait pour 60 s).
+  // le prochain appel doit réessayer (sinon une coupure de 3 s se figerait pour toute la durée
+  // du TTL — d'autant plus vrai qu'il est passé à 5 min).
   const etat = await lireMoteur_();
   cache = { at: now(), etat };
   return etat;
