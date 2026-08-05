@@ -64,10 +64,22 @@ const TIMEOUT_MS = 8000;
  * la donnée ne change : un onglet du hub ouvert coûtait ~60 exécutions/heure pour une donnée
  * qui bouge 4 fois — 56 exécutions gaspillées par heure, prélevées sur le plafond dur.
  *
- * Diagnostic à l'origine : `/api/hub/summary` a renvoyé 500 pendant 24 h (« canal moteur en
- * panne : operation aborted due to timeout ») alors qu'`actionHubSummary_` n'est qu'une lecture
- * de Property de quelques millisecondes — ce n'est pas l'action qui traîne, c'est le moteur qui
- * ne DÉMARRE plus. Signature d'un quota à bout de souffle.
+ * Circonstance de la découverte, énoncée SANS la surinterpréter (le premier jet de ce
+ * commentaire l'a fait, et se trompait) : le 2026-08-05 à 17 h 28, trois appels ont échoué en
+ * « operation aborted due to timeout » — puis trois autres ont répondu 200 à 17 h 34. Une
+ * indisponibilité de quelques MINUTES, pas une panne durable, et surtout PAS un quota quotidien
+ * épuisé : un plafond à plat ne se rétablit pas en six minutes. Le volume réel est d'ailleurs
+ * minuscule (11 requêtes sur 24 h — le hub n'interroge que si un onglet est ouvert), ce qui rend
+ * tout raisonnement statistique sur ces logs fragile.
+ *
+ * Ce que ce TTL corrige n'est donc PAS cet incident, mais une inefficacité indépendante qu'il a
+ * révélée. Le bénéfice est de la MARGE de quota, pas une réparation.
+ *
+ * Ce qui reste solide : `actionHubSummary_` n'est qu'une lecture de Property de quelques
+ * millisecondes. Quand elle dépasse les 8 s de `TIMEOUT_MS`, ce n'est jamais l'action qui traîne
+ * — c'est le moteur qui n'obtient pas d'exécution. Piste plausible et non prouvée pour une
+ * indisponibilité de quelques minutes : `pousser-reset` s'exécute SYNCHRONEMENT dans la web app,
+ * jusqu'à 6 min par passe, toutes les 15 min.
  *
  * 5 min : un tiers de la cadence réelle de la donnée (la règle « N/5 » écrite dans le modèle
  * d'app donnerait 3 min ; 5 min reste conservateur et divise déjà les exécutions par 5). AUCUNE
