@@ -4,6 +4,25 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **⚡⚡⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-08-05 (suite) — CHANTIER #47 : FUSION DES DOSSIERS EN DOUBLE (ADR-0036).**
+> Sondage post-incident du Drive réel (MCP + diagnostic un-clic exhaustif) : zones critiques SAINES
+> (`00·À trier` vide, `00·À vérifier` vide = §2 tient, `_Doublons` normal) MAIS pollution structurelle :
+> **83 dossiers en trop / 37 clusters** de doublons-synonymes d'entités (IRCC×5, MIFI×2, IUT du Littoral
+> éclaté ×10, Robovic/Robovic Inc., dossiers de banque VIDES à retirer…) + 181/353 sous-dossiers sans
+> fichier direct. Décision Marc : « dry-run de fusion que je valide ». **PR1 livrée (dry-run SEUL, ZÉRO
+> mutation)** : `src/Fusion.gs` — `genererPlanFusion` un-clic écrit l'onglet `PlanFusion` (clustering PUR
+> union-find : clé canonique + jetons + acronyme commun ; cible = dossier au plus de fichiers ; Action
+> défaut `À VALIDER`). RADAR à **faux positifs assumés** (IUT Lyon ≠ Littoral, groupés par « IUT ») →
+> Marc CURE la colonne Action LIGNE PAR LIGNE. Verrou de surface « zéro mutation dans Fusion.gs ».
+> **Revue flotte intégrée** (code-reviewer ✅ ; apps-script-quota : garde-temps par sous-dossier, purge
+> crash-safe, message honnête ; structure-keeper : (1) **veto millésime** `anneesDistinctes_` en tête de
+> `dossiersLies_` — `Honda Civic 2014` ≠ `2017`, sinon la clé canonique les fondait car `canoniserVehicule_`
+> retire l'année ; (2) **ancre structurelle non vidable** — `cibleFusion_` garde un bucket du reset comme
+> cible, `lignesPlanFusion_` écarte l'ancre-source `Ignorer (structurel)`). **819 tests**. **PR2 (à venir)** :
+> `appliquerPlanFusion_` gardé (moveTo seul, match STRICT `Fusionner` par ligne source, 04 INTERNE §2.1b,
+> §1 + multi-parents par mutation, **re-pointage `Entités.Dossier ID` C21-06**, cible = nom canonique,
+> coordination `reorganiserInterne04_`, vide-candidat) — détails dans ADR-0036 §4.
+>
 > **⚡⚡⚡⚡⚡⚡⚡⚡ ÉTAT AU 2026-08-05 — INCIDENT « RANGEMENT BLOQUÉ » (ADR-0035).** Marc : « ça fait
 > plusieurs jours, tri 2026 = 5 dossiers vides, nouvelle structure encore en vrac, ça marche pas ».
 > Diagnostic (Drive réel + fonction un-clic + 2 investigations) : **DEADLOCK structurel**. Le reset

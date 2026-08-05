@@ -221,6 +221,16 @@ Les dossiers VIDÉS relèvent de la corbeille APP validée (ADR-0014), jamais du
   **Dossier vidé par fusion** : inscrit `vide-candidat` ; sa mise à la **corbeille Drive** (récupérable
   30 j) n'arrive QUE par l'app, au clic de Marc, après re-vérification live (vacuité stricte corbeillés
   inclus, ascendance, racines système ET dossiers à ID fixe refusés) — jamais par le moteur (ADR-0014).
+- **Fusion de dossiers en double (chantier #47, ADR-0036)** — dry-run validé par Marc, jamais automatique :
+  - les **buckets de `STRUCTURE_CIBLE_RESET`**, les segments `estSegmentStructurel_` (année/schéma) et les
+    **types d'identité** ne sont JAMAIS une SOURCE de fusion (le reset les recrée PAR NOM → non convergent) :
+    ils sont GARDÉS comme cible (`cibleFusion_`) et une ancre-source est écartée d'office ;
+  - la **CIBLE** d'une fusion d'entité est le **nom CANONIQUE** (`canoniserEntite_`), et fondre un dossier
+    d'entité validée impose de **re-pointer `Entités.Dossier ID`** (contrat C21-06) — sinon le flux le recrée ;
+  - deux entités ne différant que par une **ANNÉE** (véhicule : `Honda Civic 2014` ≠ `2017`) ou un **NOMBRE**
+    (campus numéroté, numéro civique) ne se fusionnent pas — cohérent avec `estFusionnableEntite_` (le veto
+    `anneesDistinctes_` couvre déjà l'année) ; les autres jetons-communs (IUT, banques) sont des faux
+    positifs du radar que Marc tranche LIGNE PAR LIGNE.
 
 ## Documents sensibles 🔒 *(politique révisée 2026-07-01)*
 

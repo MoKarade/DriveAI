@@ -168,6 +168,9 @@ const CONTRAT = [
   // trois modules différents, donc INVISIBLES des tests unitaires mockés : d'où leur place ici.
   'empreinteReutiliseeReset_', 'empreinteConnueParId_', 'fileIdDeCleIndex_',
   'empreintesPlanDeuxSens_', 'dossierDomaineMemo_', 'gardePartReset_',
+  // fusion des dossiers en double (#47, ADR-0036) : dry-run un-clic, ZÉRO mutation (PR1)
+  'genererPlanFusion', 'clusteriserDossiers_', 'dossiersLies_', 'cibleFusion_', 'lignesPlanFusion_',
+  'acronymesFusion_', 'anneesDistinctes_', 'collecterSousDossiersFusion_', 'domainesFusion_',
 ];
 
 test('surface du moteur : toutes les fonctions du contrat interne sont définies', () => {

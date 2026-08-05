@@ -45,6 +45,9 @@ function initialiserSheet_(ss) {
     'Chemin actuel', 'Gate : sauterait passe 2', 'Placement 1 passe', 'Placement 2 passes',
     'Placement identique', 'Champs corrigés par passe 2', 'Sensible 1p', 'Sensible 2p',
     'Faux négatif sensible', 'Verdict du saut', 'Confiance 1p', 'Coût passe 1 $', 'Coût passe 2 $']);
+  // Chantier #47 (ADR-0036) : plan de FUSION des dossiers d'entité en double — dry-run pur, curé par
+  // Marc (colonne Action : Fusionner/Ignorer) avant toute exécution (PR2). Aucune mutation ici.
+  creerOnglet_(ss, 'PlanFusion', COLONNES_PLAN_FUSION);
   creerOnglet_(ss, 'Progression', COLONNES_PROGRESSION); // suivi LIVE des opérations (C28-18, cf. majProgressions_)
   creerOnglet_(ss, 'Télémétrie', COLONNES_TELEMETRIE); // coûts & quotas pour l'app (C28-24, cf. majTelemetrie_)
   // C28-26 (ADR-0023) : plan de CONSOLIDATION de l'arborescence — dry-run pur, validé par Marc
@@ -320,6 +323,10 @@ var COLONNES_TELEMETRIE = ['Clé', 'Valeur', 'Unité', 'Détail'];
 // Plan de consolidation C28-26 (ADR-0023, cf. Consolidation.gs). L'Empreinte (MD5) est une
 // MÉTADONNÉE (ADR-0007) : jamais de contenu de document dans l'état.
 var COLONNES_PLAN_CONSOLIDATION = ['Horodaté', 'Fichier', 'ID', 'Action', 'Cible', 'Raison', 'Empreinte'];
+
+// Plan de FUSION des dossiers d'entité en double (Chantier #47, ADR-0036, cf. Fusion.gs). Marc édite
+// la colonne `Action` (Fusionner/Ignorer) ; `Rôle` = CIBLE (dossier gardé) ou source (fondu dedans).
+var COLONNES_PLAN_FUSION = ['Horodaté', 'Domaine', 'Groupe', 'Rôle', 'Dossier', 'Nb fichiers', 'ID dossier', 'Action', 'Statut'];
 
 /**
  * Construit les lignes de l'onglet Télémétrie. PURE (testée) : tout l'état arrive en paramètres,

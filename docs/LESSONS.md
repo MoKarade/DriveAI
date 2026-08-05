@@ -14,6 +14,33 @@
 
 ---
 
+## 2026-08-05 — Un NOUVEAU module qui propose de muter/cibler des dossiers doit hériter du garde « segment structurel » que ses voisins portent déjà, sinon il propose des mouvements NON convergents
+**Contexte.** Chantier #47 PR1 : `Fusion.gs`, un dry-run qui détecte les dossiers d'entité en double
+(IRCC×5…) et propose une CIBLE de fusion. Revue structure-keeper : le radar listait les enfants directs
+de chaque domaine — or depuis ADR-0030 ce sont majoritairement les **buckets de `STRUCTURE_CIBLE_RESET`**
+(`Banques`, `Employeurs`, `CV & lettres`, `IRCC (fédéral)`…), des CATÉGORIES que le reset find-or-crée
+**PAR NOM**. Le radar les traitait comme des entités : `cibleFusion_` (« le plus de fichiers ») pouvait
+choisir un legacy plus gros comme CIBLE et proposer de VIDER le bucket — que le reset recrée au tick
+suivant (ping-pong). C'est exactement le piège que `estSegmentStructurel_` (Reorg) et les exclusions de
+la Consolidation protègent, et que TAXONOMY documente (« les muter les ferait re-créer au document
+suivant ») — **Fusion.gs était le seul module de manipulation de dossiers sans ce garde**. Second écart :
+le lien flou (jaccard/clé canonique) fondait `Honda Civic 2014` et `2017` (deux véhicules RÉELS), car
+`canoniserVehicule_` RETIRE l'année — alors que `estFusionnableEntite_` (règle OFFICIELLE) les sépare.
+**Leçon.** "Quand tu ajoutes un module qui **propose de déplacer/cibler/vider des dossiers**, inventorie
+d'abord les gardes que ses VOISINS (reset, consolidation, réorg) portent déjà et **hérite-les**, sinon tu
+réintroduis un bug qu'ils avaient résolu. Deux gardes récurrentes : (a) un **segment structurel** (bucket
+`STRUCTURE_CIBLE_RESET`, année/schéma `estSegmentStructurel_`, type d'identité) que le moteur find-or-crée
+PAR NOM n'est JAMAIS une SOURCE (jamais vidé) — au mieux une CIBLE gardée d'office ; sinon la mutation est
+défaite au tick suivant (non convergence). (b) La règle de fusion d'entités du moteur (`estFusionnableEntite_` :
+« une ANNÉE excédentaire distingue deux entités réelles ») doit être respectée par tout NOUVEAU rapprochement
+— et attention, deux canonicaliseurs du même projet peuvent DIVERGER (`canoniserEntite_`/`canoniserVehicule_`
+retire l'année pour unifier DOCUMENT→entité ; `estFusionnableEntite_` la garde pour distinguer deux dossiers
+d'entité) : choisir CELUI qui correspond à la décision qu'on prend (ici : identité de DOSSIER ⇒ la règle qui
+DISTINGUE), et placer le veto AVANT le canonicaliseur qui écrase le signal. Réflexe de revue d'un module de
+manipulation de dossiers : « quel garde mes voisins ont-ils que je n'ai pas ? »."
+**Règle durable ?** oui — ajoutée à `CLAUDE.md` §7 (famille « campagne de rangement ⇒ mêmes fonctions
+pures que le flux + garde zone protégée »).
+
 ## 2026-07-01 — Documenter une conception : vérifier les tensions entre les choix du propriétaire et les décisions déjà actées, et les surfacer AVANT de figer
 **Contexte.** Brainstorm produit « niveau pro » : je posais des questions à Marc et j'écrivais un ADR par axe.
 Deux fois, un choix qu'il venait de faire **contredisait une décision prise quelques minutes plus tôt dans la
