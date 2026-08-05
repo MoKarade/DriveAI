@@ -14,6 +14,36 @@
 
 ---
 
+## 2026-08-05 — Diagnostiquer « le backlog ne draine pas » : un instantané de la SOURCE ne distingue pas « bloqué » de « lent ». Vérifier la DESTINATION, la CADENCE et les alimenteurs concurrents AVANT de crier au bug
+**Contexte.** Incident « rangement bloqué » (suite d'ADR-0035). Deux diagnostics, un bon et un raté.
+(1) **Bon** : prod figée malgré les fix mergés → j'ai correctement identifié le **piège 3** (`clasp push`
+vert à 14:17 mais le time-trigger tournait encore l'ANCIEN code chargé → `resetEnCours_` true → conso
+suspendue). Signal : code poussé + heartbeat `État` écrit aujourd'hui + **zéro fichier bougé en 3 h**.
+Remède (frontière d'exécution) : Marc exécute `installerTrigger` → recharge → deadlock levé.
+(2) **Raté** : APRÈS le rechargement, j'ai conclu trop vite « 87 % des fichiers de 05 devraient bouger
+mais ne bougent pas ⇒ BUG », à partir d'un **instantané de la SOURCE** (compteur racine 05 = 141, en
+HAUSSE ; liste `list_recent_files` « vide » hors miroir). C'était FAUX : le rangement MARCHAIT — la
+preuve était dans la **DESTINATION** (`05·Carrière/CV & lettres` contenait déjà **~60 CV correctement
+rangés**). Ce que j'avais manqué : (a) le drainage est **PACÉ** (budget conso 12 min/j — `DriveAI_CONSO_JOUR`
+consommé à fond, c'est « lent », pas « bloqué ») ; (b) un **alimenteur concurrent** gonflait la source
+(l'ANCIEN code, avant le clic, faisait tourner le reset — `DriveAI_RESET_RASS_JOUR = …|1200218` = 20 min
+— qui déversait dans les racines : 05 était monté 116→141) ; (c) `modifiedTime` ne reflète pas
+fiablement un `moveTo` et l'index de `search_files` est en retard (déjà connu §7) — le COMPTAGE de la
+destination est le seul signal fiable. Le verdict CERTAIN est venu du **diagnostic un-clic**
+(`resetEnCours_`, tags, budgets, curseur exec) + du comptage de la destination, jamais d'un échantillon.
+**Leçon.** "Pour diagnostiquer un backlog qui semble ne pas se vider : un COMPTAGE DE LA SOURCE à un
+instant T ne distingue JAMAIS « bloqué » de « lent (pacé) ». Avant de conclure au bug : (1) regarder la
+DESTINATION — les items arrivent-ils là où ils doivent (bucket cible) ? un dossier cible qui se remplit
+prouve que le pipeline fonctionne ; (2) lire la CADENCE dans l'état (budget/jour consommé ? curseur qui
+avance ?) — un budget quotidien épuisé dit « repris demain », pas « cassé » ; (3) chercher un ALIMENTEUR
+CONCURRENT qui gonfle la source (une autre campagne, l'ancien code pas encore rechargé) et masque le
+drainage net ; (4) ne pas fonder la fraîcheur sur `modifiedTime`/`search_files` (index en retard,
+`moveTo` ne bumpe pas le contenu) — COMPTER la destination. Et la certitude runtime vient du diagnostic
+un-clic lecture seule (Properties + comptage via le code DÉPLOYÉ), jamais d'un instantané Drive. Corollaire
+humilité : après avoir eu raison sur un diagnostic dur (piège 3), ne pas enchaîner un second verdict à la
+va-vite sur un signal partiel — chaque conclusion se re-prouve sur son propre axe."
+**Règle durable ?** oui — ajoutée à `CLAUDE.md` §7 (famille « vérifier la prod par un signal indépendant »).
+
 ## 2026-08-05 — Un NOUVEAU module qui propose de muter/cibler des dossiers doit hériter du garde « segment structurel » que ses voisins portent déjà, sinon il propose des mouvements NON convergents
 **Contexte.** Chantier #47 PR1 : `Fusion.gs`, un dry-run qui détecte les dossiers d'entité en double
 (IRCC×5…) et propose une CIBLE de fusion. Revue structure-keeper : le radar listait les enfants directs

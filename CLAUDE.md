@@ -306,6 +306,17 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   (anecdote vs chantier structurel) et surtout **masque la distribution** : c'est le COMPTAGE PAR
   CATÉGORIE sur l'ENSEMBLE qui révèle la cause commune (ici « dossiers manquants », pas « règles
   manquantes »), invisible sur un échantillon. Artefact trop gros ? l'AGRÉGER, jamais en lire le début.
+  **Corollaire (2026-08-05, incident rangement) : un instantané de la SOURCE ne distingue pas « bloqué »
+  de « lent (pacé) ».** Pour diagnostiquer un backlog qui semble ne pas se vider, AVANT de crier au bug :
+  (1) regarder la **DESTINATION** — le dossier cible se remplit-il (ex. `05/CV & lettres` = 60 CV rangés
+  ⇒ le pipeline MARCHE) ; (2) lire la **CADENCE** dans l'état (budget/jour consommé ⇒ « repris demain »,
+  pas « cassé » ; curseur exec qui avance) ; (3) chercher un **ALIMENTEUR CONCURRENT** qui regonfle la
+  source et masque le drainage net (ancien code pas rechargé, autre campagne — vécu : le reset déversait
+  dans les racines pendant que je comptais « ça monte ») ; (4) ne PAS fonder la fraîcheur sur
+  `modifiedTime`/`search_files` (index en retard, `moveTo` ne bumpe pas le contenu) — COMPTER la
+  destination. La certitude runtime vient du **diagnostic un-clic** (Properties + comptage via le code
+  DÉPLOYÉ), jamais d'un échantillon Drive. Et après un diagnostic dur RÉUSSI (piège 3), ne pas enchaîner
+  un 2ᵉ verdict à la va-vite sur un signal partiel : chaque conclusion se re-prouve sur son propre axe.
 - **Maintenance auto dans le tick : protéger l'intake, drainer avant d'alimenter.** Toute étape SECONDAIRE
   (rejeu de version, grand rangement, ajustement de déclencheur) doit être **enveloppée d'un try/catch** —
   « un échec ne doit JAMAIS bloquer l'intake ». Le `try` de `tickDriveAI` n'a qu'un `finally` : une exception
