@@ -41,6 +41,31 @@ manipulation de dossiers : « quel garde mes voisins ont-ils que je n'ai pas ? �
 **Règle durable ?** oui — ajoutée à `CLAUDE.md` §7 (famille « campagne de rangement ⇒ mêmes fonctions
 pures que le flux + garde zone protégée »).
 
+## 2026-08-05 — Un invariant « JAMAIS X » posé au DRY-RUN (défaut opt-out) n'est pas un garde : il doit être RÉ-APPLIQUÉ à la MUTATION (fail-closed), sinon l'override le contourne en silence
+**Contexte.** Chantier #47 PR2 (`FusionExec.gs`, exécution du plan de fusion curé par Marc). Le dry-run PR1
+posait déjà `Ignorer (structurel)` par DÉFAUT sur une source-ancre (bucket du reset) — mais c'est un
+opt-OUT : Marc peut la repasser à `Fusionner`. La revue structure-keeper a relevé l'écart : `TAXONOMY.md`
+affirme « un bucket structurel n'est JAMAIS une SOURCE » (le reset le recrée PAR NOM → non convergent +
+corbeille possible d'un dossier canonique), mais l'EXÉCUTION ne re-testait QUE l'appartenance au domaine —
+aucun contrôle `estAncreStructurelleFusion_` à la mutation. Un override de Marc aurait donc vidé un bucket
+que le reset recrée (ping-pong), et le dossier vidé serait parti en `vide-candidat` (ni l'app ni le moteur
+ne le refusaient). Second écart voisin : `repointerEntites_` re-pointait une entité vers la cible SANS
+vérifier qu'elle n'est pas un fourre-tout structurel (taxonomie : « un regroupement n'est jamais une cible
+de routage »). Corrigé : garde `estAncreStructurelleFusion_` À LA MUTATION (refus source structurelle sauf
+dédup de même nom ; pas de re-pointage vers une cible structurelle), partagée avec le dry-run (une seule
+fonction). Autres correctifs de la revue : convergence sur move en échec (catch PAR FICHIER, le fichier
+reste, la source draine — pas de re-scan à vie), stall ≥cap → source `bloquée`, budget dans l'invariant
+d'enveloppe C28-42 (prouvé par mutation), tests de l'orchestrateur (`FINI`/`resteAFaire`/plafond).
+**Leçon.** "Un invariant de sûreté (« segment structurel JAMAIS une SOURCE », « zone protégée jamais
+détachée ») affiché dans un plan/dry-run comme un DÉFAUT que l'utilisateur peut overrider N'EST PAS un
+garde — c'est une suggestion. Le vrai garde se RÉ-APPLIQUE au point de MUTATION (fail-closed), avec le MÊME
+prédicat que le dry-run (une seule fonction, jamais deux). Réflexe de revue d'un module d'EXÉCUTION : pour
+chaque invariant « JAMAIS » que le plan promet, trouver la ligne qui le RÉ-VÉRIFIE juste avant le
+`moveTo`/`repointerEntites_` — si elle n'existe pas, l'override le franchit en silence (« promesse de
+verrou = verrou codé dans le même commit »). Corollaire : un effet de bord voisin de la mutation
+(re-pointage d'un référentiel) hérite des MÊMES exclusions structurelles que la mutation elle-même."
+**Règle durable ?** oui — corollaire ajouté à la règle #47 de `CLAUDE.md` §7.
+
 ## 2026-07-01 — Documenter une conception : vérifier les tensions entre les choix du propriétaire et les décisions déjà actées, et les surfacer AVANT de figer
 **Contexte.** Brainstorm produit « niveau pro » : je posais des questions à Marc et j'écrivais un ADR par axe.
 Deux fois, un choix qu'il venait de faire **contredisait une décision prise quelques minutes plus tôt dans la

@@ -102,7 +102,7 @@ test('budget RÉALLOUÉ, jamais AUGMENTÉ : le total du reset ne dépasse pas ce
   const reset = C.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS + C.RESET_PLACEMENT_BUDGET_JOUR_MS +
     C.RESET_04_BUDGET_JOUR_MS + C.RESET_LLM_BUDGET_JOUR_MS;
   const libere = C.CONSOLIDATION_BUDGET_JOUR_MS + C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS +
-    C.GMAIL_HISTO_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS;
+    C.GMAIL_HISTO_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS; // + fusion (#47, gatée !resetEnCours_)
   assert.ok(reset <= libere,
     'le budget du reset (' + Math.round(reset / 60000) + ' min/j) doit rester ≤ celui des campagnes qu\'il ' +
     'suspend (' + Math.round(libere / 60000) + ' min/j) — sinon l\'enveloppe de runtime CROÎT et on ' +
@@ -110,6 +110,24 @@ test('budget RÉALLOUÉ, jamais AUGMENTÉ : le total du reset ne dépasse pas ce
   // Et le reset doit réellement PROFITER de la réallocation (sinon le gate ne sert à rien).
   assert.ok(reset > C.CONSOLIDATION_BUDGET_JOUR_MS + C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS,
     'le reset doit consommer plus que le seul budget de conso-2, sinon la réallocation est inutile');
+});
+
+test('enveloppe reset-OFF : la somme des budgets QUOTIDIENS des campagnes concurrentes reste sous le mur runtime (leçon C28-42)', () => {
+  const C = require('./harness').load(['Config.gs']).CONFIG;
+  // Reset OFF (ADR-0035, état permanent depuis l'incident deadlock) : ces campagnes tournent
+  // CONCURREMMENT (toutes gatées `!resetEnCours_()`). Toute NOUVELLE campagne de fond DOIT être AJOUTÉE
+  // ICI (leçon §7 C28-42 : sans ça l'enveloppe croît EN SILENCE — test aveugle → risque de gel de TOUS
+  // les déclencheurs, chien de garde inclus, C28-29). C'est la moitié que l'invariant de réallocation
+  // ci-dessus ne voit pas (lui borne le reset ON, pas l'agrégat reset-OFF).
+  const concurrentesResetOff = C.GMAIL_HISTO_BUDGET_JOUR_MS + C.CONSOLIDATION_BUDGET_JOUR_MS +
+    C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS;
+  // Mur runtime Apps Script ~90 min/j ; on réserve ~25 min au socle NON budgété (flux vivant +
+  // `finally` ×288 ticks). Plafond dérivé = 65 min. Prouvé par MUTATION : gonfler une de ces
+  // constantes (ex. FUSION_EXEC 6→20) DOIT casser ce test (vérifié).
+  const PLAFOND_MS = 65 * 60 * 1000;
+  assert.ok(concurrentesResetOff <= PLAFOND_MS,
+    'budgets campagnes reset-OFF = ' + Math.round(concurrentesResetOff / 60000) + ' min/j > 65 min : ' +
+    'risque de dépassement du quota runtime ~90 min/j (gel de TOUS les déclencheurs, chien de garde inclus)');
 });
 
 /**

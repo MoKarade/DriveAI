@@ -171,6 +171,11 @@ const CONTRAT = [
   // fusion des dossiers en double (#47, ADR-0036) : dry-run un-clic, ZÉRO mutation (PR1)
   'genererPlanFusion', 'clusteriserDossiers_', 'dossiersLies_', 'cibleFusion_', 'lignesPlanFusion_',
   'acronymesFusion_', 'anneesDistinctes_', 'collecterSousDossiersFusion_', 'domainesFusion_',
+  'estAncreStructurelleFusion_',
+  // exécution du plan de fusion (#47 PR2, ADR-0037 — FusionExec.gs) : moveTo seul, gardé, gaté OFF
+  'appliquerPlanFusion_', 'fusionsAExecuter_', 'ligneFusionAAppliquer_', 'budgetJourFusionExec_',
+  'cibleFusionValide_', 'idDomaineFusion_', 'deplacerFichierFusion_', 'fondreSourceFichiers_',
+  'appliquerUneSourceFusion_',
 ];
 
 test('surface du moteur : toutes les fonctions du contrat interne sont définies', () => {
