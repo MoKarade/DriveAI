@@ -729,6 +729,11 @@ var CONFIG = {
   DRYRUN_CMP_MAX_PAR_RUN: 8,              // docs comparés (OCR + Sonnet ×2) par tick — flux vivant reste prioritaire
   DRYRUN_CMP_BUDGET_MS: 2 * 60 * 1000,    // sous-budget PAR TICK (identique au dry-run : même coût-temps Sonnet ×2)
 
+  // Fusion des dossiers d'entité en double (Chantier #47, ADR-0036). PR1 = dry-run un-clic
+  // `genererPlanFusion` (LECTURE SEULE + écriture de l'onglet PlanFusion). Bornes du scan lecture.
+  FUSION_MAX_SOUSDOSSIERS: 500,           // sous-dossiers directs listés par domaine (borne haute)
+  FUSION_MAX_FICHIERS_COMPTE: 200,        // fichiers directs comptés par sous-dossier (assez pour « vide/peu/beaucoup »)
+
   // Schémas de sous-dossiers FIXES créés à la validation d'une entité (docs/TAXONOMY.md).
   // Clé = Type d'entité ; valeur = liste ordonnée de sous-dossiers.
   SCHEMAS_ENTITE: {

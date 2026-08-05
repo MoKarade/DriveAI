@@ -517,6 +517,17 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   Une seule règle, deux consommateurs, verrouillée par un test « la sortie du flux est OK pour la
   campagne ». Corollaire : un référentiel (entités validées) consulté par la campagne doit l'être
   AUSSI par le flux — sinon l'un crée ce que l'autre défait.
+- **Nouveau module qui propose de muter/cibler des dossiers ⇒ hériter les gardes de ses VOISINS
+  (reset/conso/réorg), sinon mouvements NON convergents.** (Vécu #47 : `Fusion.gs` listait les buckets
+  de `STRUCTURE_CIBLE_RESET` comme des entités et pouvait proposer de VIDER un bucket que le reset recrée
+  PAR NOM — ping-pong.) Deux gardes récurrentes : (a) un **segment structurel** (bucket du reset, année/
+  schéma `estSegmentStructurel_`, type d'identité — find-or-créé PAR NOM) n'est JAMAIS une SOURCE (jamais
+  vidé), au mieux une CIBLE gardée d'office ; (b) tout NOUVEAU rapprochement respecte la règle de fusion
+  OFFICIELLE (`estFusionnableEntite_` : « une ANNÉE excédentaire distingue deux entités réelles »).
+  ⚠️ Deux canonicaliseurs du projet DIVERGENT : `canoniserEntite_`/`canoniserVehicule_` RETIRE l'année
+  (unification DOCUMENT→entité) ; `estFusionnableEntite_` la GARDE (distingue deux dossiers). Choisir
+  celui qui correspond à la décision (identité de DOSSIER ⇒ celui qui DISTINGUE) et placer le veto AVANT
+  le canonicaliseur qui écrase le signal. Réflexe de revue : « quel garde mes voisins ont-ils que je n'ai pas ? »
 - **Un verrou posé à la CRÉATION d'un jeton longue durée n'arrête pas le stock déjà émis.** Un
   contrôle d'accès vérifié à l'ÉMISSION (pas à chaque utilisation) d'un cookie/jeton/clé se
   déploie AVEC l'invalidation de l'existant (rotation du secret qui les chiffre/signe — une
