@@ -279,3 +279,52 @@ test('genererPlanConsolidation_ : MÊME tag → PAS de rotation (un plan EN COUR
   assert.strictEqual(suppr.length, 0, 'aucun curseur supprimé');
   assert.strictEqual(store.DriveAI_CONSO_EXEC_LIGNE, '956', 'le curseur d\'exec en cours est préservé');
 });
+
+/* ---------- RÉUTILISATION d'empreinte (perf, revue apps-script-quota) : pas de re-hash si déjà en Index ---------- */
+
+function ctxHashConso(opts) {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs']);
+  let blobAppels = 0;
+  const lignes = [];
+  const f = {
+    getId: () => opts.id || 'F1', getName: () => 'doc', getMimeType: () => (opts.mime || 'application/pdf'),
+    getSize: () => (opts.size || 1000),
+    getBlob: () => ({ getBytes: () => [1, 2, 3] }),
+    getParents: () => ({ hasNext: () => false, next: () => null }),
+  };
+  c.DriveApp = { getFileById: () => f };
+  c.empreinteConnueParId_ = () => (opts.connue !== undefined ? opts.connue : '');
+  c.empreinteBlob_ = () => { blobAppels++; return 'HASH-CALCULE'; };
+  c.aParentProtege_ = () => false;
+  c.cheminActuelDryRunV2_ = () => '05 · Carrière';           // sousCheminActuel = ''
+  c.cheminCibleConsolidation_ = () => ({ nom: 'CV & lettres', id: '' }); // ⇒ Déplacer
+  c.indexAjouter_ = () => {};
+  const ctx = { proteges: {}, empreintesVues: {}, validees: {}, feuille: { appendRow: (r) => lignes.push(r) } };
+  return { c, ctx, lignes, blobAppels: () => blobAppels };
+}
+
+test('traiterUnConsolidation_ : empreinte DÉJÀ en Index → réutilisée, AUCUN re-hash (getBlob/empreinteBlob_ jamais appelés)', () => {
+  const { c, ctx, lignes, blobAppels } = ctxHashConso({ connue: 'HASH-INDEX' });
+  c.traiterUnConsolidation_('F1', '05 · Carrière', 'conso-3', ctx);
+  assert.strictEqual(blobAppels(), 0, 'le hash n\'est PAS recalculé quand l\'empreinte est déjà connue (le goulot évité)');
+  assert.strictEqual(lignes[0][6], 'HASH-INDEX', 'la colonne Empreinte du plan porte l\'empreinte RÉUTILISÉE');
+  assert.strictEqual(lignes[0][3], 'Déplacer', 'la décision de routage est inchangée (réutilisation = perf seule)');
+});
+
+test('traiterUnConsolidation_ : empreinte INCONNUE → repli sur le hash (empreinteBlob_ appelé), comportement historique', () => {
+  const { c, ctx, lignes, blobAppels } = ctxHashConso({ connue: '' });
+  c.traiterUnConsolidation_('F2', '05 · Carrière', 'conso-3', ctx);
+  assert.strictEqual(blobAppels(), 1, 'sans empreinte connue, on hache (une seule fois)');
+  assert.strictEqual(lignes[0][6], 'HASH-CALCULE', 'la colonne Empreinte porte le hash fraîchement calculé');
+});
+
+test('traiterUnConsolidation_ : fichier Google NATIF → empreinte VIDE (jamais réutilisée ni hachée) — anti-faux-doublon', () => {
+  // Revue file-checker : pour un natif, l'empreinte de l'Index est le hash du TEXTE exporté ; deux natifs
+  // quasi vides partagent MD5("") → le 2ᵉ partirait à tort dans _Doublons (exec ON). `empreinteReutiliseeReset_`
+  // exclut les natifs → empreinte vide → JAMAIS marqué doublon. On NE réutilise PAS l'empreinte connue.
+  const { c, ctx, lignes, blobAppels } = ctxHashConso({ mime: 'application/vnd.google-apps.document', connue: 'HASH-TEXTE-EXPORTE' });
+  c.traiterUnConsolidation_('F3', '05 · Carrière', 'conso-3', ctx);
+  assert.strictEqual(lignes[0][6], '', 'un natif ne porte JAMAIS d\'empreinte (ni réutilisée ni hachée) — sens sûr');
+  assert.strictEqual(blobAppels(), 0, 'aucun hash de blob natif (export PDF ambigu)');
+  assert.notStrictEqual(lignes[0][3], 'Doublon', 'sans empreinte, jamais classé Doublon');
+});
