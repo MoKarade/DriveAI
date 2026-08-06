@@ -94,6 +94,8 @@ const CONTRAT = [
   'tickDriveAI', 'installerTrigger', 'chienDeGarde', 'resumeHebdo', 'rangerToutLeDrive', 'dequarantaine',
   'dequarantainerLignes_', // noyau appelé par le tick (R3) — JAMAIS dequarantaine() (réentrance)
   'rattraperMediasMalClasses', 'doPost', 'tickPonctuel', 'fileIdDepuisCleMaintenance_',
+  'etatCampagnesRangement', // diagnostic un-clic LECTURE SEULE (état campagnes rangement) — Diagnostic.gs
+
   'reparerIncidentSheet', 'estCleFichierIncident_', // réparation incident Sheet d'état (2026-07-08)
   'fusionnerDomaine07PersoVers08', 'remplacerColonneOnglet_', // fusion domaine erroné (anomalies 2026-07-08)
   'terminerFusionDomaine07', // fin de fusion (ré-étiquetage seul, idempotent)

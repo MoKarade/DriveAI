@@ -4,7 +4,29 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **✅ ÉTAT AU 2026-08-05 (le plus récent) — DEADLOCK LEVÉ, la consolidation DRAINE (prouvé).** Marc a
+> **🔎 ÉTAT AU 2026-08-06 (le plus récent) — RE-CHECK DU DRAIN : il n'avance PAS ; je livre le VRAI diagnostic un-clic.**
+> Re-sondage du Drive réel (aujourd'hui, `list_recent_files` + noms réels de `05·Carrière`). **Le moteur VIT**
+> (heartbeat Sheet 15:31 ; 2 PJ Smartcar auto-classées à 14:29 avec noms propres → intake OK). **MAIS le drain du
+> legacy dans `05·Carrière` N'AVANCE PAS** : la racine 05 garde **~150 fichiers GELÉS depuis le 27/07** (aucun
+> `modifiedTime` du 5–6/08), dont **~30–40 `Lettre de motivation`** (règle `Reset.gs:333` → `CV & lettres`) et une
+> pile de **`Paie_Robovic`** (`Robovic` = entité VALIDÉE → `Employeurs/Robovic`). Ils DEVRAIENT bouger et ne bougent
+> pas. Donc la note du 2026-08-05 « la consolidation DRAINE (prouvé) » était **TROP OPTIMISTE** — corrigée ici :
+> le drain est **incomplet et non visiblement progressif** depuis la levée du deadlock. **Cause de l'incertitude
+> récurrente** : la fonction `diagnosticRangement2` que je citais **n'a JAMAIS été commitée** — chaque « check »
+> retombait sur l'index de recherche Drive (qui RETARDE) → verdict incertain. **Correctif à la racine (ce commit)** :
+> `src/Diagnostic.gs` → **`etatCampagnesRangement()`** — VRAI diagnostic un-clic LECTURE SEULE (zéro mutation, zéro
+> budget consommé) qui dump reset / conso génération (tag fini ? budget jour, domaines épuisés) / conso exec
+> (curseur, plan par action, RESTE à appliquer) + comptage du vrac par racine de domaine. **Hypothèse la plus
+> probable** (à trancher par la fonction) : la génération `conso-3` (tag fraîchement bumpé ⇒ re-hachage total, MD5 =
+> goulot, 12 min/j) **n'a pas encore atteint 05** ; l'accélérateur **#258** (réutilise l'empreinte connue au lieu de
+> re-hacher) est **mergé mais PAS déployé** (piège 3). **Reste à Marc — UNE session éditeur** : (1) `Main.gs` →
+> `installerTrigger` → Exécuter (charge #258 + le diagnostic) ; (2) `Diagnostic.gs` → `etatCampagnesRangement` →
+> Exécuter → me coller le journal → il dira « lent (arrive à 05) » vs « bloqué » de façon CERTAINE. NE PAS ré-activer
+> le reset ; NE PAS cranker les budgets conso (marge de gel FINE, C28-29). Revue flotte 🟢/🟢
+> (apps-script-quota + code-reviewer) intégrée : émission défensive par section, lecture STRICTE
+> `getSheetByName` (rien créé), unités alignées. 853 tests.
+>
+> **✅ ÉTAT AU 2026-08-05 (CORRIGÉ le 2026-08-06, voir note du jour) — deadlock levé ; drainage NON confirmé.** Marc a
 > exécuté `installerTrigger` (~17:49 UTC) → le code frais (RESET_ACTIF=false) a chargé. Diagnostic un-clic
 > `diagnosticRangement2` (lecture seule, donné en chat, NON commité) : `resetEnCours_()=false`,
 > `CONSOLIDATION_ACTIF/EXEC_ACTIF=true`, `CONSO_TAG=conso-3`, budget conso du jour consommé
