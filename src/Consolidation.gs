@@ -263,12 +263,16 @@ function traiterUnConsolidation_(fileId, domaine, tag, ctx) {
   var protegeStrict = aParentProtege_(f, ctx.proteges, true);
   var protegeConstate = protegeStrict && aParentProtege_(f, ctx.proteges, false);
 
-  // Empreinte : même borne de taille que l'OCR (mémoire) ; Google Docs natifs / blob illisible → ''.
-  var empreinte = '';
-  if (!raccourci) {
-    try { if (f.getSize() <= CONFIG.OCR_TAILLE_MAX) empreinte = empreinteBlob_(f.getBlob()); }
-    catch (e) { empreinte = ''; }
-  }
+  // Empreinte : DÉLÉGUÉE à `empreinteReutiliseeReset_` (Reset.gs) — le patron VALIDÉ du reset, LITTÉRALEMENT
+  // la même fonction (revue flotte 2026-08-05, apps-script-quota + file-checker). Elle : (a) RÉUTILISE
+  // l'empreinte déjà connue par fileId (`empreinteConnueParId_`, Index) AVANT de re-télécharger les octets
+  // — le hash MD5 est le GOULOT du drainage, et un fichier déjà haché par le flux/reset n'a plus à l'être
+  // (accélère le legacy SANS toucher au budget quotidien, marge de gel préservée) ; (b) EXCLUT les fichiers
+  // Google NATIFS et raccourcis (mime `application/vnd.google-apps…` → '') — CRUCIAL : pour un natif,
+  // l'empreinte de l'Index est le hash du TEXTE exporté, deux natifs quasi vides partagent `MD5("")` et le
+  // second partirait à tort dans `_Doublons` (exec ON) ; (c) borne le hash de repli à `RESET_HASH_TAILLE_MAX`
+  // (protège le mur 6 min). `ctx.empreintesConnues` absent côté conso ⇒ repli propre sur l'Index.
+  var empreinte = empreinteReutiliseeReset_(f, ctx);
   // Doublon = même empreinte qu'un AUTRE fichier déjà recensé PAR LA CAMPAGNE (jamais l'Index —
   // auto-doublon ; jamais lui-même — rejeu après coupure entre la ligne et la clé).
   var doublonDe = (empreinte && ctx.empreintesVues[empreinte] && ctx.empreintesVues[empreinte] !== fileId)
