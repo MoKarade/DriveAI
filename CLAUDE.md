@@ -511,6 +511,14 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
 - **Consigne manuelle Apps Script = fichier .gs D'ABORD.** Toute instruction « exécute X dans
   l'éditeur » nomme le FICHIER puis la fonction (« ouvre `Maintenance.gs` → `fusionnerDomaine…` →
   Exécuter ») — l'éditeur choisit les fonctions PAR fichier, sans lui Marc doit fouiller le projet.
+  **Corollaire (2026-08-06) : un « diagnostic un-clic » n'est un signal de CERTITUDE que s'il est
+  COMMITTÉ ET déployé.** Avant de dire « exécute X », `grep` que X EXISTE réellement dans `src/` (une
+  fonction citée de mémoire mais jamais posée — vécu : `diagnosticRangement2` — fait retomber chaque
+  « check » sur l'index Drive qui RETARDE, verdict toujours incertain, et peut fonder un faux « prouvé »
+  dans un document vivant), puis rappeler qu'elle doit être DÉPLOYÉE (piège 3). Tout point d'observation
+  promis se COMMIT dans le même geste (comme « promesse de verrou = verrou codé dans le même commit »).
+  Et quand un re-check contredit un « prouvé/ça marche » antérieur, corriger le document vivant
+  IMMÉDIATEMENT — jamais laisser une conclusion périmée en tête.
 - **Un quota PARTAGÉ se répartit par PRIORITÉ, se borne dans SON unité, se suspend en panne.**
   L'ORDRE des étapes du tick est la politique d'allocation d'un quota partagé (appels Gmail/jour) :
   flux vivant AVANT campagnes, sinon le premier arrivé se sert (vécu : tri affamé à 8h10). Un

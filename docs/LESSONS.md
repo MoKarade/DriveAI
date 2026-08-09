@@ -14,6 +14,30 @@
 
 ---
 
+## 2026-08-06 — Un « signal de certitude runtime » n'existe que s'il est DANS le code committé ET déployé : ne jamais renvoyer l'utilisateur vers une fonction de diagnostic citée de mémoire
+**Contexte.** Suite du diagnostic « le drain de 05 avance-t-il ? ». Depuis plusieurs sessions je
+renvoyais Marc (et moi-même) vers une fonction un-clic `diagnosticRangement2` censée dumper l'état
+des campagnes (Properties conso/reset + comptage). Un `grep` a montré qu'elle **n'a JAMAIS été
+commitée** — elle avait été « donnée en chat » lors de l'incident deadlock, jamais posée dans `src/`.
+Résultat : chaque « check maintenant » retombait sur l'index de recherche Drive (qui RETARDE) →
+verdict toujours incertain, et une note HANDOVER « la consolidation DRAINE (prouvé) » qui s'appuyait
+sur cet outil fantôme. Le re-check du jour (noms réels de `05·Carrière`) a montré ~150 fichiers
+**gelés depuis le 27/07** (dont des `Lettre de motivation` → `CV & lettres` et `Paie_Robovic` →
+`Employeurs/Robovic` qui DEVRAIENT bouger) : le drain n'avançait pas, contredisant le « prouvé ».
+Correctif à la racine : j'ai VRAIMENT écrit l'outil (`src/Diagnostic.gs` → `etatCampagnesRangement()`,
+lecture seule, revue flotte 🟢/🟢, verrouillé en surface + tests), et corrigé le HANDOVER honnêtement.
+**Leçon.** "Un « diagnostic un-clic » n'est un signal de CERTITUDE que s'il est (a) réellement dans
+le code COMMITTÉ — le vérifier par `grep` AVANT de dire à l'utilisateur « exécute X » (leçon voisine :
+« consigne manuelle = fichier .gs D'ABORD » suppose que la fonction EXISTE) — ET (b) DÉPLOYÉ (piège 3 :
+un `clasp push`/merge vert ne charge pas le trigger ; nommer le geste de reload). Un outil cité de
+mémoire mais jamais posé transforme chaque « check » en incertitude et peut fonder une fausse preuve
+dans un document vivant. Deux réflexes : (1) tout point d'observation qu'on promet DOIT être committé
+dans le même geste (comme « promesse de verrou = verrou codé dans le même commit ») ; (2) quand un
+re-check contredit une affirmation antérieure « prouvé/ça marche », CORRIGER le document vivant
+IMMÉDIATEMENT — jamais laisser une conclusion périmée en tête (ici « draine (prouvé) » → « drainage
+NON confirmé, voici le vrai diagnostic »)."
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
 ## 2026-08-05 — Diagnostiquer « le backlog ne draine pas » : un instantané de la SOURCE ne distingue pas « bloqué » de « lent ». Vérifier la DESTINATION, la CADENCE et les alimenteurs concurrents AVANT de crier au bug
 **Contexte.** Incident « rangement bloqué » (suite d'ADR-0035). Deux diagnostics, un bon et un raté.
 (1) **Bon** : prod figée malgré les fix mergés → j'ai correctement identifié le **piège 3** (`clasp push`
