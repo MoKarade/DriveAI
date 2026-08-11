@@ -262,6 +262,9 @@ function ctxPlan(opts) {
   const c = load(['Config.gs', 'FusionExec.gs']);
   c.COLONNES_PLAN_FUSION = HEAD; // défini dans Journal.gs (non chargé) — seule sa .length sert (range)
   c.CONFIG.FUSION_EXEC_ACTIF = true; // FORCE le flag (décision de campagne, jamais un invariant de test)
+  c.CONFIG.FUSION_EXEC_BUDGET_JOUR_MS = 6 * 60 * 1000; // idem : le budget prod est PARKÉ à 0 (réalloc 2026-08-11
+  // → CONSOLIDATION_EXEC pendant que la fusion est OFF) ; ce test exerce la LOGIQUE de l'exécuteur, il force
+  // donc un budget de travail comme il force le flag (sinon `0 >= 0` court-circuiterait le chemin testé).
   const store = Object.assign({}, opts.props);
   const P = { getProperty: (k) => (k in store ? store[k] : null), setProperty: (k, v) => { store[k] = String(v); } };
   c.PropertiesService = { getScriptProperties: () => P };

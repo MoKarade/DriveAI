@@ -121,13 +121,37 @@ test('enveloppe reset-OFF : la somme des budgets QUOTIDIENS des campagnes concur
   // ci-dessus ne voit pas (lui borne le reset ON, pas l'agrégat reset-OFF).
   const concurrentesResetOff = C.GMAIL_HISTO_BUDGET_JOUR_MS + C.CONSOLIDATION_BUDGET_JOUR_MS +
     C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS;
+  // RÉALLOCATION 2026-08-11 (diagnostic prod : l'exec est le goulot) : exec 6→12, fusion 6→0 (parkée,
+  // campagne OFF) — la SOMME reste 56 min/j (20+12+12+12+0), enveloppe INCHANGÉE, pur transfert.
   // Mur runtime Apps Script ~90 min/j ; on réserve ~25 min au socle NON budgété (flux vivant +
   // `finally` ×288 ticks). Plafond dérivé = 65 min. Prouvé par MUTATION : gonfler une de ces
-  // constantes (ex. FUSION_EXEC 6→20) DOIT casser ce test (vérifié).
+  // constantes (ex. CONSOLIDATION_EXEC 12→30) DOIT casser ce test (vérifié).
   const PLAFOND_MS = 65 * 60 * 1000;
   assert.ok(concurrentesResetOff <= PLAFOND_MS,
     'budgets campagnes reset-OFF = ' + Math.round(concurrentesResetOff / 60000) + ' min/j > 65 min : ' +
     'risque de dépassement du quota runtime ~90 min/j (gel de TOUS les déclencheurs, chien de garde inclus)');
+});
+
+/**
+ * RÉALLOCATION 2026-08-11 (revue flotte apps-script-quota) : verrou du COUPLE exec↔fusion, PAS
+ * seulement de l'agrégat ≤ 65 — celui-ci est structurellement AVEUGLE au cas 62 min/j (near-gel :
+ * fusion réactivée à 6 SANS rendre les 6 min à l'exec) puisque 62 ≤ 65. C'est exactement le trou de
+ * la leçon C28-42 (l'invariant d'enveloppe reste vert pendant qu'un couple mal restauré grimpe). On
+ * verrouille donc la PAIRE (somme constante) + l'interdit « campagne active à budget 0 » (muette).
+ */
+test('réallocation exec↔fusion : le COUPLE somme 12 min ET une campagne active n\'a jamais un budget 0', () => {
+  const C = require('./harness').load(['Config.gs']).CONFIG;
+  // 6 min ont été TRANSFÉRÉS de FUSION_EXEC (OFF) vers CONSOLIDATION_EXEC : leur somme reste 12 min/j.
+  // Réactiver la fusion (0→6) SANS redescendre l'exec (12→6) casse ce test — rappel FORCÉ, jamais
+  // laissé à la seule discipline (leçon §7 : « promesse de verrou = verrou codé »).
+  assert.strictEqual((C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS) / 60000, 12,
+    'CONSOLIDATION_EXEC + FUSION_EXEC doit rester = 12 min/j (couple réalloué) : à la réactivation de ' +
+    'la fusion, rendre à l\'exec les 6 min prêtés (sinon enveloppe 62 = near-gel, non vu par l\'agrégat ≤65)');
+  // Une campagne ACTIVE avec un budget quotidien 0 tourne à VIDE en silence (`consommeJour 0 >= 0`
+  // court-circuite `appliquer…_` avant tout travail) : jamais autorisé.
+  assert.ok(!C.FUSION_EXEC_ACTIF || C.FUSION_EXEC_BUDGET_JOUR_MS > 0,
+    'FUSION_EXEC_ACTIF=true avec FUSION_EXEC_BUDGET_JOUR_MS=0 = campagne MUETTE (no-op silencieux) : ' +
+    'rends-lui son budget avant de l\'activer');
 });
 
 /**

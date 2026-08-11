@@ -4,7 +4,28 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🔎 ÉTAT AU 2026-08-06 (le plus récent) — RE-CHECK DU DRAIN : il n'avance PAS ; je livre le VRAI diagnostic un-clic.**
+> **🟢 ÉTAT AU 2026-08-11 (le plus récent) — DRAINAGE CONFIRMÉ (diagnostic prod) + ACCÉLÉRÉ ×2 par RÉALLOCATION sûre.**
+> Marc a déployé (`installerTrigger` le 09/08, PR #259 mergée) puis exécuté `etatCampagnesRangement` le 11/08. Verdict
+> **CERTAIN** (lecture de l'état DÉPLOYÉ, plus l'index Drive qui retarde) : **pas de deadlock** (`resetEnCours_()=false`) ;
+> génération conso **5/9 domaines épuisés** (01-05), reste 06/07/08/09 ; exec **budget jour 6/6 ÉPUISÉ** (draine à fond),
+> **1086/1236 lignes** appliquées (525 déplacements). **PREUVE du drainage : `05·Carrière` 155 → 26 fichiers à plat.**
+> (Ma note du 06/08 « n'avance pas » était vraie ALORS — le fix n'était pas encore déployé ; une fois déployé, ça draine.)
+> **Reste surtout `08·Perso` = 996 fichiers à plat** (pas encore examiné par la génération) + `06·Études` 155 ; les autres
+> domaines sont bas (01=7, 03=15, 05=26, 07=11, 09=35 ; 04=18 protégé ; 02=0). **Le goulot = l'EXÉCUTEUR** (6 min/j
+> épuisé) ; la génération est idle-throttlée par la contre-pression (2,3/12). Donc le levier de débit = l'exec.
+> **ACCÉLÉRATION (décision Marc « accélère, réalloc sûre ») :** `CONSOLIDATION_EXEC_BUDGET_JOUR_MS` **6 → 12 min/j**,
+> les +6 min PRIS sur `FUSION_EXEC_BUDGET_JOUR_MS` (parké **6 → 0**, campagne OFF, gate `!FUSION_EXEC_ACTIF` en tête) ⇒
+> **enveloppe reset-OFF INCHANGÉE (56 min/j ≤ 65**, invariant `orchestration.test.js`, **prouvé par mutation** : exec→30
+> casse le test). RÉALLOCATION, jamais AUGMENTATION (leçon §7 / C28-29 = gel de TOUS les déclencheurs). ⚠ **À la
+> RÉACTIVATION de la fusion** (#47) : remettre 6 à `FUSION_EXEC` **ET** redescendre `CONSOLIDATION_EXEC` à 6. **Reste à
+> Marc** : (1) **redéployer** (`Main.gs → installerTrigger`) pour charger le nouveau budget ; (2) re-`etatCampagnesRangement`
+> dans quelques jours → 05 doit rester bas et 08 commencer à descendre. **Levier ×N de plus, SI besoin** : réallouer
+> `GMAIL_HISTO` (20 min) **si** la campagne historique est finie — à CONFIRMER d'abord (étendre le diagnostic au histo,
+> ne jamais affamer une campagne encore active). Revue flotte AVANT merge (apps-script-quota 🟢 +
+> code-reviewer 🟢) : enveloppe INCHANGÉE prouvée par mutation + verrou du COUPLE exec↔fusion (=12 min,
+> ferme le trou near-gel 62 que l'agrégat ≤65 ne voit pas) + interdit « campagne active à budget 0 ». 854 tests.
+>
+> **🔎 ÉTAT AU 2026-08-06 (superseded — voir 2026-08-11) — RE-CHECK DU DRAIN : il n'avance PAS ; je livre le VRAI diagnostic un-clic.**
 > Re-sondage du Drive réel (aujourd'hui, `list_recent_files` + noms réels de `05·Carrière`). **Le moteur VIT**
 > (heartbeat Sheet 15:31 ; 2 PJ Smartcar auto-classées à 14:29 avec noms propres → intake OK). **MAIS le drain du
 > legacy dans `05·Carrière` N'AVANCE PAS** : la racine 05 garde **~150 fichiers GELÉS depuis le 27/07** (aucun
