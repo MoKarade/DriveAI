@@ -1888,3 +1888,32 @@ campagne à clé de SUCCÈS ne re-traite pas ce qu'elle a figé « OK » — bum
 re-évaluer sous les règles courantes."
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-11 — Réallocation de budget en PAIRE : l'agrégat ≤ plafond est AVEUGLE à un couple mal restauré
+
+**Contexte.** PR #260 : le diagnostic un-clic `etatCampagnesRangement` (#259) avait prouvé sur la prod
+que l'exécuteur de consolidation était le goulot (budget jour 6/6 épuisé, génération idle-throttlée).
+Décision Marc « accélère, réalloc sûre » : `CONSOLIDATION_EXEC_BUDGET_JOUR_MS` 6→12 min/j, les +6 min
+PRIS sur `FUSION_EXEC_BUDGET_JOUR_MS` (parké 6→0, campagne OFF) — pur transfert, enveloppe reset-OFF
+INCHANGÉE (56 min/j ≤ 65, invariant `orchestration.test.js`, prouvé par mutation). Revue
+apps-script-quota (🟢 avec réserve) : elle a identifié un footgun RÉEL que l'invariant existant ne
+voit PAS. Si la fusion est un jour réactivée (`FUSION_EXEC_ACTIF=true`) en lui rendant son budget (0→6)
+SANS redescendre l'exécuteur (12→6), l'enveloppe passe à 62 min/j — un near-gel — mais l'invariant
+« agrégat ≤ 65 » reste VERT, puisque 62 ≤ 65. L'agrégat protège contre une HAUSSE globale, jamais
+contre un TRANSFERT à moitié annulé : il est structurellement aveugle au couple. Corrigé par un test
+dédié qui verrouille (a) la SOMME DU COUPLE `exec + fusion = 12 min` constante — casse si l'un dérive
+sans que l'autre compense — et (b) l'interdit « campagne ACTIVE + budget quotidien 0 » (une campagne
+réactivée sans qu'on lui rende son budget tourne à vide en silence : `consommeJour 0 >= 0`
+court-circuite avant tout travail).
+
+**Leçon.** "Quand une réallocation prend le budget d'une campagne A (mise OFF) pour le donner à une
+campagne B, le test qui protège l'ENVELOPPE GLOBALE (agrégat ≤ plafond) ne suffit PAS — il ne voit
+qu'une hausse totale, jamais un transfert à moitié restauré. Il faut EN PLUS un test qui verrouille la
+PAIRE elle-même (A + B = constante) et qui interdit « campagne ACTIVE à budget 0 » (le signe d'un
+transfert non rendu). Réflexe de revue pour toute réallocation à deux campagnes : « si on ne restaure
+qu'une moitié du couple, quel test le voit ? » — si la seule réponse est « aucun, l'agrégat reste sous
+le plafond », le couple n'est pas verrouillé, seulement l'enveloppe. Même famille que « promesse de
+verrou = verrou codé dans le même commit » : le commentaire de restauration (remettre X, redescendre Y)
+n'est une garantie que si un test échoue quand l'une des deux moitiés est oubliée."
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).

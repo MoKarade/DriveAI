@@ -649,6 +649,13 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   compris dans les COLLECTES récursives**, sinon relever le plafond déborde le temps. Et un chiffre
   d'accélération s'annonce APRÈS l'avoir dérivé du modèle de coût, jamais depuis l'intuition
   « la borne sautait, donc ça va plus vite ».
+- **Réallocation en PAIRE (A→B) : verrouiller la SOMME DU COUPLE par un test dédié, pas seulement
+  l'agrégat ≤ plafond.** L'agrégat protège contre une hausse globale, jamais contre un transfert à
+  moitié annulé (A réactivée, son budget rendu, mais B pas redescendu) — ce cas reste sous le
+  plafond et le test global reste vert (vécu : 62 ≤ 65 invisible). Verrouiller (a) `A + B = constante`
+  et (b) l'interdit « campagne ACTIVE à budget quotidien 0 » (signe d'un transfert non rendu — elle
+  tournerait à vide en silence). Même famille que « promesse de verrou = verrou codé » : un
+  commentaire de restauration ne garantit rien sans un test qui échoue si une moitié est oubliée.
 - **Une borne HAUTE sur une source qui CROÎT fige l'UI EN SILENCE.** `A2:H20000`, `LIMIT n` sans
   offset, tableau tronqué en TÊTE : au franchissement, rien ne lève — ça FIGE (vécu C28-34 : l'app
   allait cesser de voir toute ligne neuve dans la journée, l'Index étant append-only et le reset y
