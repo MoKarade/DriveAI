@@ -519,17 +519,20 @@ var CONFIG = {
   CONSOLIDATION_EXEC_BUDGET_MS: 2 * 60 * 1000,        // sous-budget par run — reste STRICTEMENT < garde-temps de
                                           // tick (ANALYSE_V2_BUDGET_MS 3 min) pour ne pas affamer le reste du
                                           // tick ; le débit journalier vient du budget QUOTIDIEN (moveTo cheap)
-  CONSOLIDATION_EXEC_BUDGET_JOUR_MS: 6 * 60 * 1000,   // budget QUOTIDIEN en ms réelles persistées.
-                                          // 12 → 6 min (REDESCENTE, revue quota C28-29) : l'exécuteur N'EST PAS le
-                                          // goulot (la GÉNÉRATION l'est — exec draine bien plus vite qu'elle
-                                          // n'alimente), 6 min suffisent largement. ENVELOPPE agrégée ramenée à
-                                          // histo 20 + gen 12 + exec 6 + sync 12 = 50 min/j de campagnes ; + le
-                                          // socle non budgété (flux vivant + `finally` ×288 ticks ~15-25 min) ⇒
-                                          // marge CONFORTABLE sous le quota runtime ~90 min/j. À 20/12 (avant
-                                          // C28-29, quand la consolidation ne tournait PAS) l'agrégat aurait frôlé
-                                          // 90-100 min/j une fois le correctif famine actif = risque de gel total.
-                                          // À VÉRIFIER quand même par signal indépendant (heartbeat non figé
-                                          // l'après-midi) ; redescendre davantage si besoin
+  CONSOLIDATION_EXEC_BUDGET_JOUR_MS: 12 * 60 * 1000,  // budget QUOTIDIEN en ms réelles persistées.
+                                          // 6 → 12 min (RÉALLOCATION 2026-08-11, décision Marc « accélère, réalloc
+                                          // sûre »). Le diagnostic un-clic `etatCampagnesRangement` a PROUVÉ sur la
+                                          // prod que l'exécuteur EST désormais le goulot : budget jour 6/6 ÉPUISÉ,
+                                          // génération throttlée par la contre-pression (2,3/12 min seulement) — elle
+                                          // n'alimente plus car l'exec n'a pas rattrapé (plan de 1236 lignes, 525
+                                          // déplacements). C'est l'INVERSE de l'hypothèse C28-29 (« exec pas le
+                                          // goulot »), vraie quand la conso ne tournait pas encore. Preuve du
+                                          // drainage : 05·Carrière 155 → 26 fichiers à plat ; reste surtout 08·Perso
+                                          // (996). Les +6 min sont PRIS sur FUSION_EXEC (parké à 0, campagne OFF) ⇒
+                                          // enveloppe reset-OFF INCHANGÉE (histo 20 + gen 12 + exec 12 + sync 12 +
+                                          // fusion 0 = 56 min/j ≤ 65, invariant orchestration.test.js). RÉALLOCATION,
+                                          // jamais AUGMENTATION (leçon §7 / C28-29 : au-delà de ~90 min/j de runtime,
+                                          // gel de TOUS les déclencheurs, chien de garde inclus).
   CONSOLIDATION_EXEC_MAX_PAR_RUN: 100,    // lignes du plan consommées par run au maximum (60 → 100 ; moveTo cheap)
   CONSOLIDATION_BACKLOG_MAX: 150,         // contre-pression : la GÉNÉRATION s'arrête si l'exécuteur a plus
                                           // de N lignes de retard (drainer avant d'alimenter, tôt + gated)
@@ -739,8 +742,13 @@ var CONFIG = {
   FUSION_EXEC_ACTIF: false,               // false = suspension immédiate (comme CONSOLIDATION_EXEC_ACTIF)
   FUSION_EXEC_TAG: 'fusionexec-1',        // tag de campagne (clés `fusionexec|<tag>|<fileId>` / `fusrow|<tag>|<sourceId>`)
   FUSION_EXEC_BUDGET_MS: 2 * 60 * 1000,   // sous-budget par run — < garde-temps de tick (ne pas affamer le reste)
-  FUSION_EXEC_BUDGET_JOUR_MS: 6 * 60 * 1000, // budget QUOTIDIEN en ms réelles ; pure I/O (moveTo), tirée de
-                                          // l'enveloppe LIBÉRÉE par le reset OFF (ADR-0035), ordonnée APRÈS la conso
+  FUSION_EXEC_BUDGET_JOUR_MS: 0 * 60 * 1000, // PARKÉ à 0 (RÉALLOCATION 2026-08-11) : ses 6 min sont prêtés à
+                                          // CONSOLIDATION_EXEC tant que la fusion est OFF (le gate `!FUSION_EXEC_ACTIF`
+                                          // en TÊTE de `appliquerPlanFusion_` retourne AVANT toute lecture de ce
+                                          // budget — 0 est donc inoffensif ici). ⚠ À LA RÉACTIVATION de la fusion
+                                          // (FUSION_EXEC_ACTIF=true) : REMETTRE 6 ICI **ET** redescendre
+                                          // CONSOLIDATION_EXEC_BUDGET_JOUR_MS de 12 à 6 (rendre les 6 min prêtés) —
+                                          // sinon l'enveloppe reset-OFF passe à 62 min/j (near-gel). Pure I/O (moveTo).
   FUSION_EXEC_MAX_SOURCES_PAR_RUN: 40,    // dossiers source drainés par run au maximum (moveTo cheap, reprenable)
   FUSION_EXEC_MAX_FICHIERS_PAR_SOURCE: 500, // fichiers directs collectés-puis-déplacés par source et par run
 
