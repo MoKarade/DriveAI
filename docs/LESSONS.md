@@ -1966,3 +1966,47 @@ constater à la main. (4) Toute nouvelle surface qui ré-affiche un nombre déj�
 existante — sinon les deux divergent d'une unité et l'une ressemble à un bug."
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-12 — Séparer sélection (pure) et exécution (I/O) rend un garde-temps DÉCORATIF si le garde n'est vérifié que dans la boucle de sélection
+
+**Contexte.** `HistoriqueVrac.gs` (journal quotidien du vrac par domaine, demande Marc : « pour
+chaque dossier je veux un détail journalier de l'avancement jusqu'à la fin »). Première version,
+dans l'esprit « fonction pure testée + wrapper I/O » déjà établi dans le projet :
+`trancheHistoriqueVrac_` (PURE, testée) décidait de TOUTE la tranche de domaines à traiter en une
+boucle qui ne fait qu'un `push()` — donc en microsecondes, quel que soit le nombre de domaines. Le
+`garde()` qu'elle appelait n'avait jamais le temps de devenir vrai dans cette boucle. `majHistoriqueVrac_`
+exécutait ENSUITE `res.tranche.map(compterVracRacineDomaine_)` — le VRAI travail (listing Drive,
+jusqu'à 1000 fichiers/domaine) — SANS AUCUNE vérification de budget entre deux domaines. Résultat
+concret : soit 0 domaine traité (si le budget de tick était déjà dépassé en entrant), soit TOUS les
+domaines restants d'un coup, sans coupure possible — un domaine comme `08 · Perso` (~1000 fichiers)
+risquait de faire déborder le mur dur 6 min d'Apps Script juste avant `verrou.releaseLock()`, gelant
+le LockService jusqu'à expiration. Les tests passaient (12/12 verts) car le mock du garde était un
+COMPTEUR incrémenté à chaque appel — un artefact du test, pas une horloge murale réelle dans une
+boucle sans I/O : il ne révélait donc pas que le vrai goulot (le `.map()`) n'était jamais vérifié.
+Trouvé en revue flotte apps-script-quota (🔴), AVANT tout déploiement — jamais en production. Corrigé
+en fusionnant sélection et exécution dans UNE SEULE boucle qui vérifie `garde()` juste AVANT chaque
+appel I/O, reproduisant le patron déjà correct ailleurs dans ce même projet
+(`etatCampagnesRangement`, Diagnostic.gs : `for (...) { if (Date.now()-debut > ...) break;
+compterVracRacineDomaine_(...); }`). Corollaire budget, trouvé dans la même revue : le sous-budget
+PAR RUN (2 min) ne borne pas la JOURNÉE si la sweep doit reprendre sur plusieurs ticks — ajout d'un
+budget QUOTIDIEN persisté (`budgetJourHistoriqueVrac_`, même patron que `budgetJourConsolidation_`),
+compté dans l'invariant d'enveloppe reset-OFF et prouvé par mutation.
+
+**Leçon.** "Le patron « fonction PURE testée + wrapper I/O impur » (déjà la norme dans ce projet)
+cache un piège quand la fonction pure fait de la SÉLECTION sur un budget-temps : si la boucle qui
+CHOISIT quoi traiter ne fait AUCUNE I/O elle-même, elle s'exécute quasi instantanément et le
+garde-temps qu'elle vérifie ne peut JAMAIS couper en cours de route — toute la sélection passe d'un
+coup. Le VRAI travail (l'I/O), exécuté ENSUITE dans une boucle séparée (souvent un `.map()` sur le
+résultat de la sélection), se retrouve alors SANS AUCUNE protection de budget, même si le code
+« a l'air » gardé (un `garde()` existe bien, juste au mauvais endroit). Réflexe de conception : un
+garde-temps DOIT être vérifié DANS LA MÊME BOUCLE que l'opération qu'il protège, jamais dans une étape
+de sélection préalable qui, elle, ne coûte rien — sinon le budget est décoratif. Réflexe de test :
+un mock de `estBudgetDepasse()` qui est un simple COMPTEUR incrémenté par appel ne prouve PAS qu'un
+garde-temps coupe une boucle d'I/O réelle — il faut en plus vérifier le nombre d'appels RÉELS à
+l'opération protégée elle-même (pas seulement la taille du résultat final), sinon un test vert peut
+masquer exactement ce bug. Corollaire budget (déjà connu, re-confirmé) : tout sous-budget PAR RUN
+d'une nouvelle campagne de fond a besoin d'un budget QUOTIDIEN persisté à côté dès qu'elle peut
+reprendre sur plusieurs ticks, jamais seulement le plafond par run compté comme s'il bornait la
+journée."
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).

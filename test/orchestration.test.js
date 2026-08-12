@@ -120,9 +120,14 @@ test('enveloppe reset-OFF : la somme des budgets QUOTIDIENS des campagnes concur
   // les déclencheurs, chien de garde inclus, C28-29). C'est la moitié que l'invariant de réallocation
   // ci-dessus ne voit pas (lui borne le reset ON, pas l'agrégat reset-OFF).
   const concurrentesResetOff = C.GMAIL_HISTO_BUDGET_JOUR_MS + C.CONSOLIDATION_BUDGET_JOUR_MS +
-    C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS;
+    C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS +
+    C.HISTORIQUE_VRAC_BUDGET_JOUR_MS;
   // RÉALLOCATION 2026-08-11 (diagnostic prod : l'exec est le goulot) : exec 6→12, fusion 6→0 (parkée,
   // campagne OFF) — la SOMME reste 56 min/j (20+12+12+12+0), enveloppe INCHANGÉE, pur transfert.
+  // HISTORIQUE_VRAC (2026-08-12, demande Marc : suivi journalier par domaine) : +4 min → 60 min/j.
+  // Budget QUOTIDIEN en ms réelles persistées (comme les autres campagnes, PAS le sous-budget par
+  // run de 2 min — leçon C28-42 : un plafond par RUN ne borne pas la JOURNÉE si la sweep doit
+  // reprendre sur plusieurs ticks, revue flotte apps-script-quota).
   // Mur runtime Apps Script ~90 min/j ; on réserve ~25 min au socle NON budgété (flux vivant +
   // `finally` ×288 ticks). Plafond dérivé = 65 min. Prouvé par MUTATION : gonfler une de ces
   // constantes (ex. CONSOLIDATION_EXEC 12→30) DOIT casser ce test (vérifié).

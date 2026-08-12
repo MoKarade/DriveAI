@@ -752,6 +752,21 @@ var CONFIG = {
   FUSION_EXEC_MAX_SOURCES_PAR_RUN: 40,    // dossiers source drainés par run au maximum (moveTo cheap, reprenable)
   FUSION_EXEC_MAX_FICHIERS_PAR_SOURCE: 500, // fichiers directs collectés-puis-déplacés par source et par run
 
+  // Journal QUOTIDIEN du vrac par domaine (HistoriqueVrac.gs, demande Marc 2026-08-12 : suivi
+  // jour par jour jusqu'à la fin du drainage). LECTURE SEULE (comptage `compterVracRacineDomaine_`,
+  // Diagnostic.gs) — une seule sweep COMPLÈTE par jour (gardée par Property, jamais 2×/j), curseur
+  // de domaine reprenable si le budget coupe en cours de route (garde-temps vérifié AVANT CHAQUE
+  // domaine, jamais une sélection non bornée — revue flotte apps-script-quota). Onglet append-only
+  // (série temporelle, jamais écrasé — patron PlanConsolidation/PlanFusion, pas Progression/Santé
+  // qui réécrivent). Tourne MÊME pendant un reset (aucune mutation, pas de conflit avec « une seule
+  // main déplace »).
+  HISTORIQUE_VRAC_ACTIF: true,
+  HISTORIQUE_VRAC_BUDGET_MS: 2 * 60 * 1000,      // sous-budget par run — pur listing Drive, jamais de LLM
+  HISTORIQUE_VRAC_BUDGET_JOUR_MS: 4 * 60 * 1000, // budget QUOTIDIEN en ms réelles persistées (leçon §7 :
+                                          // un plafond par RUN ne borne pas la JOURNÉE si la sweep doit
+                                          // reprendre sur plusieurs ticks) — compté dans l'enveloppe
+                                          // reset-OFF (orchestration.test.js).
+
   // Schémas de sous-dossiers FIXES créés à la validation d'une entité (docs/TAXONOMY.md).
   // Clé = Type d'entité ; valeur = liste ordonnée de sous-dossiers.
   SCHEMAS_ENTITE: {

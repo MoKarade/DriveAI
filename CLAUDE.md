@@ -691,6 +691,15 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   rien » que son producteur (sinon elle devient, une fois la campagne finie, le seul poste qui continue
   de payer un rechargement coûteux) ; toute surface qui ré-affiche un nombre déjà affiché ailleurs
   réplique EXACTEMENT la même conversion d'unité (numérateur > dénominateur = divergence, pas un bug).
+- **Un garde-temps doit vivre DANS la boucle qu'il protège, jamais dans une étape de sélection
+  préalable.** Patron « fonction pure (sélection) + wrapper I/O (exécution) » : si la sélection ne
+  fait AUCUNE I/O, elle s'exécute en microsecondes et son `garde()` ne peut JAMAIS couper — toute la
+  tranche passe d'un coup, et le VRAI travail (exécuté ensuite, souvent un `.map()`) se retrouve SANS
+  AUCUNE protection malgré un `garde()` qui « a l'air » présent (vécu : `HistoriqueVrac.gs`, trouvé en
+  revue AVANT déploiement). Le check doit être DANS la même boucle que l'appel I/O qu'il protège
+  (patron `etatCampagnesRangement`, Diagnostic.gs). Corollaire test : un mock de `estBudgetDepasse()`
+  qui est un simple compteur d'appels ne prouve rien tant qu'on ne vérifie pas aussi le nombre
+  d'appels RÉELS à l'opération protégée elle-même (pas seulement la taille du résultat final).
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 

@@ -612,6 +612,11 @@ function tickDriveAI() {
       // app ne fait plus que LIRE cette Property → réponse en ms (le calcul à la volée dépassait le
       // délai du broker Vercel — 500 en boucle). SECONDAIRE et enveloppée : un échec ne bloque rien.
       try { majResumeHub_(); } catch (e) { journalErreur_('Hub', 'MàJ résumé hub impossible : ' + e); }
+      // Historique QUOTIDIEN du vrac par domaine (demande Marc 2026-08-12) : I/O pur (comptage
+      // Drive), jamais de LLM ⇒ budget TAIL (4,5 min), jamais le budget de tick 3 min. Une seule
+      // sweep complète par jour, curseur reprenable sur plusieurs ticks si besoin ; ne mute rien,
+      // tourne même pendant un reset. Enveloppée : un échec ne bloque jamais le reste.
+      try { majHistoriqueVrac_(estBudgetDepasseStandard); } catch (e) { journalErreur_('HistoriqueVrac', 'MàJ historique vrac impossible : ' + e); }
       // La rotation (deleteRows en lot, 10-30 s) est REPORTÉE si le tick a déjà consommé son
       // garde-temps standard : elle est en toute fin de `finally`, donc c'est elle qui franchirait
       // le mur des 6 min (revue #229). Aucun coût à attendre le tick suivant.
