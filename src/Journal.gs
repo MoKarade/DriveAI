@@ -59,6 +59,10 @@ function initialiserSheet_(ss) {
   // mutation, uniquement pour affiner STRUCTURE_CIBLE_RESET ou trancher au cas par cas (Marc).
   creerOnglet_(ss, 'Reset', ['Clé', 'Type', 'Nom', 'Domaine', 'Cible', 'Statut', 'Détail', 'Horodaté']);
   creerOnglet_(ss, 'Santé', ['Santé DriveAI']);                             // vue lisible (heartbeat + métriques, ADR-0006)
+  // Journal QUOTIDIEN du vrac par domaine (HistoriqueVrac.gs, demande Marc 2026-08-12) : APPEND-ONLY
+  // (jamais réécrit, contrairement à Progression/Santé) — construit une série temporelle jour après
+  // jour, jusqu'à la fin du drainage.
+  creerOnglet_(ss, 'HistoriqueVrac', COLONNES_HISTORIQUE_VRAC);
   var defaut = ss.getSheetByName('Feuille 1') || ss.getSheetByName('Sheet1');
   if (defaut && ss.getSheets().length > 1) ss.deleteSheet(defaut);
 }
@@ -386,6 +390,12 @@ var COLONNES_PLAN_CONSOLIDATION = ['Horodaté', 'Fichier', 'ID', 'Action', 'Cibl
 // Plan de FUSION des dossiers d'entité en double (Chantier #47, ADR-0036, cf. Fusion.gs). Marc édite
 // la colonne `Action` (Fusionner/Ignorer) ; `Rôle` = CIBLE (dossier gardé) ou source (fondu dedans).
 var COLONNES_PLAN_FUSION = ['Horodaté', 'Domaine', 'Groupe', 'Rôle', 'Dossier', 'Nb fichiers', 'ID dossier', 'Action', 'Statut'];
+
+// Journal QUOTIDIEN du vrac par domaine (demande Marc 2026-08-12, cf. HistoriqueVrac.gs). APPEND-ONLY
+// (jamais réécrit ni purgé) — une ligne par domaine, une fois par jour, jusqu'à la fin du drainage.
+// `Tronqué` = 'oui' si le comptage a atteint le plafond de sûreté (compterVracRacineDomaine_,
+// Diagnostic.gs) — jamais un chiffre exact au-delà, jamais un plantage.
+var COLONNES_HISTORIQUE_VRAC = ['Date', 'Domaine', 'Vrac', 'Tronqué'];
 
 /**
  * Construit les lignes de l'onglet Télémétrie. PURE (testée) : tout l'état arrive en paramètres,

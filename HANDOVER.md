@@ -4,7 +4,32 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🔭 ÉTAT AU 2026-08-12 (le plus récent) — OBSERVABILITÉ SELF-SERVE : la consolidation rejoint l'onglet
+> **📈 ÉTAT AU 2026-08-12 (le plus récent) — JOURNAL QUOTIDIEN DU VRAC PAR DOMAINE.** Marc : « pour
+> chaque dossier je veux un détail journalier de l'avancement jusqu'à la fin ». Nouveau
+> `src/HistoriqueVrac.gs` : sweep QUOTIDIENNE (Property de garde, une seule fois/jour, curseur de
+> domaine reprenable si le budget coupe), compte le vrac de CHAQUE domaine (réutilise
+> `compterVracRacineDomaine_`, Diagnostic.gs) et APPEND une ligne par domaine à un nouvel onglet
+> `HistoriqueVrac` (`[Date, Domaine, Vrac, Tronqué]`, jamais réécrit — c'est la série temporelle
+> elle-même, contrairement à `Progression`/`Santé` qui se réécrivent chaque tick). Tourne MÊME
+> pendant un reset (aucune mutation, zéro conflit avec « une seule main déplace »). Câblé dans le
+> `finally` du tick (Main.gs), budget TAIL (I/O pur, jamais de LLM). **Revue flotte AVANT merge,
+> intégrée** : apps-script-quota 🔴→🟢 a trouvé un bug RÉEL — ma première version SÉPARAIT la
+> sélection des domaines (pure, aucune I/O) de leur comptage (le vrai travail Drive), donc le
+> garde-temps de 2 min ne coupait JAMAIS réellement : soit 0 domaine, soit TOUS d'un coup sans
+> coupure — risque concret sur `08 · Perso` (~1000 fichiers) juste avant la libération du
+> LockService (mur dur 6 min). Corrigé : le garde-temps est vérifié AVANT CHAQUE domaine, DANS la
+> même boucle que le comptage (patron déjà correct de `etatCampagnesRangement`, Diagnostic.gs) ;
+> `trancheHistoriqueVrac_` supprimée, remplacée par `ligneHistoriqueVrac_` (formatage pur d'UNE
+> ligne). Ajouté aussi : budget QUOTIDIEN persisté (`budgetJourHistoriqueVrac_`, 4 min/j — comme
+> les autres campagnes, un plafond par RUN ne borne pas la journée si la sweep doit reprendre sur
+> plusieurs ticks) — compté dans l'enveloppe reset-OFF (60 min/j ≤ 65, prouvé par mutation).
+> **Démarre à partir d'AUJOURD'HUI** — aucune donnée rétroactive possible (pas de machine à remonter
+> le temps sur le Drive) ; la tendance jour par jour deviendra utile après quelques jours
+> d'accumulation. 867 tests.
+> Reste à Marc, comme toujours : redéployer (`Main.gs → installerTrigger`) pour que la 1ʳᵉ sweep
+> tourne dès le prochain tick.
+>
+> **🔭 ÉTAT AU 2026-08-12 — OBSERVABILITÉ SELF-SERVE : la consolidation rejoint l'onglet
 > `Progression`, plus besoin que Marc copie-colle un diagnostic.** Marc (« je veux rien avoir à faire à
 > la main, tu devrais pouvoir voir toi ») avait raison de pousser : `read_file_content` (Drive MCP) SAIT
 > lire la Sheet d'état en lecture seule — mais les gros onglets (`PlanConsolidation` 1236+ lignes,
