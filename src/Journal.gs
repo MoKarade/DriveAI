@@ -204,6 +204,19 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs) {
     return 'en cours';
   }
 
+  /**
+   * Statut de la consolidation (génération/exécution, C28-26/0024) : gardes DÉDIÉES, distinctes de
+   * `statutCampagne` — suspendue par `resetEnCours_()` (ADR-0030, une seule main déplace à la fois),
+   * jamais par le frein LLM `$` (elle ne coûte rien, pure I/O `moveTo`/hash) ; son propre budget
+   * QUOTIDIEN en ms (pas le frein `budgetCampagnesAtteint_`) la met « en pause » jusqu'à demain.
+   */
+  function statutConsolidation_(op) {
+    if (op.termine) return 'terminé';
+    if (etat.resetEnCours) return 'suspendu (reset en cours)';
+    if (op.budgetEpuise) return 'en pause (budget du jour épuisé)';
+    return 'en cours';
+  }
+
   /** Pousse une ligne en appliquant les règles « terminé » (horodatage figé, purge, jamais-né). */
   function pousser(cle, operation, traites, base, unite, statut) {
     var ex = existantes[cle];
@@ -237,6 +250,10 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs) {
   pousser('histo-gmail', 'Historique Gmail (PJ)', traitesHisto, null, 'fils', statutHisto);
   pousser('rangement', 'Rangement initial du Drive',
     etat.rangement.traites, etat.rangement.base, 'fichiers', statutCampagne(etat.rangement));
+  pousser('consolidation-gen', 'Consolidation — génération du plan (' + etat.consolidationGen.tag + ')',
+    etat.consolidationGen.traites, etat.consolidationGen.base, 'domaines', statutConsolidation_(etat.consolidationGen));
+  pousser('consolidation-exec', 'Consolidation — exécution du plan (' + etat.consolidationExec.tag + ')',
+    etat.consolidationExec.traites, etat.consolidationExec.base, 'lignes', statutConsolidation_(etat.consolidationExec));
 
   return lignes;
 }
@@ -253,10 +270,33 @@ function majProgressions_() {
   assurerEnteteProgression_(f);
   var maintenant = Date.now();
 
+  // Consolidation (C28-26/0024) — MÊME périmètre de domaines que `genererPlanConsolidation_`
+  // (Consolidation.gs) et le diagnostic un-clic (Diagnostic.gs) : fixes + auto DÉJÀ NÉS (jamais
+  // `domainesAutorises_()`, plus large, qui listerait aussi des auto pas encore créés). Ainsi
+  // « domaines épuisés / total » affiché ici correspond EXACTEMENT à ce que la génération itère.
+  var tagConso = CONFIG.CONSOLIDATION_TAG;
+  var domainesConso = Object.keys(CONFIG.DOMAINES);
+  (CONFIG.DOMAINES_AUTO || []).forEach(function (nom) {
+    if (props.getProperty('DriveAI_DOM_' + nom)) domainesConso.push(nom);
+  });
+  // Court-circuit (revue flotte apps-script-quota) : génération TERMINÉE ⇒ tous les domaines sont
+  // épuisés PAR CONSTRUCTION (Consolidation.gs, posé au moment où le tag est marqué fini) — jamais
+  // besoin de ré-interroger l'Index. Sans ce court-circuit, `majProgressions_` deviendrait en régime
+  // stationnaire le SEUL déclencheur restant de `chargerIndexCache_` à CHAQUE tick, juste pour
+  // recalculer une valeur qui ne change plus jamais (même piège anti-gel que celui déjà corrigé sur
+  // ce chemin — cf. commentaire de `chargerIndexCache_`).
+  var termineConso = props.getProperty('DriveAI_CONSOLIDATION') === tagConso;
+  var domainesEpuises = termineConso ? domainesConso.length : domainesConso.reduce(function (n, nom) {
+    return n + (indexContient_('conso|' + tagConso + '|dom|' + nom) ? 1 : 0);
+  }, 0);
+  var dernPlanConso = feuille_('PlanConsolidation').getLastRow();
+  var aujourdhuiConso = dateGmail_(new Date());
+
   var etat = {
     quotaGmail: estPanneGmail_(),
     panneApi: estPannePlateforme_(),
     freinBudget: budgetCampagnesAtteint_(),
+    resetEnCours: resetEnCours_(),
     rangement: {
       termine: props.getProperty('DriveAI_RANGEMENT') === CONFIG.RANGEMENT_TAG,
       base: proprieteNombre_(props, 'DriveAI_RANGEMENT_BASE'),
@@ -279,6 +319,25 @@ function majProgressions_() {
     histo: {
       termine: props.getProperty('DriveAI_GMAIL_HISTO') === 'terminé',
       traites: proprieteNombre_(props, 'DriveAI_GMAIL_HISTO_OFFSET') || 0
+    },
+    consolidationGen: {
+      termine: termineConso,
+      base: domainesConso.length,
+      traites: domainesEpuises,
+      budgetEpuise: budgetJourConsolidation_(props, aujourdhuiConso) >= CONFIG.CONSOLIDATION_BUDGET_JOUR_MS,
+      tag: tagConso
+    },
+    consolidationExec: {
+      termine: props.getProperty('DriveAI_CONSO_EXEC_FINI') === tagConso,
+      base: dernPlanConso > 1 ? dernPlanConso - 1 : 0,
+      // UNITÉS ALIGNÉES sur Diagnostic.gs (revue flotte code-reviewer) : `DriveAI_CONSO_EXEC_LIGNE`
+      // est un n° de ligne PHYSIQUE (en-tête = 1) ; lignes de DONNÉES consommées = curseur − 1 —
+      // sinon le numérateur dépasserait `base` d'une unité (« 7/6 » aurait l'air d'un bug), et les
+      // deux surfaces de diagnostic (celle-ci et le un-clic) afficheraient des chiffres DIFFÉRENTS
+      // pour la même réalité.
+      traites: Math.max(0, (Number(props.getProperty('DriveAI_CONSO_EXEC_LIGNE')) || 1) - 1),
+      budgetEpuise: budgetJourConsoExec_(props, aujourdhuiConso) >= CONFIG.CONSOLIDATION_EXEC_BUDGET_JOUR_MS,
+      tag: tagConso
     }
   };
 

@@ -4,7 +4,33 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🟢 ÉTAT AU 2026-08-11 (le plus récent) — DRAINAGE CONFIRMÉ (diagnostic prod) + ACCÉLÉRÉ ×2 par RÉALLOCATION sûre.**
+> **🔭 ÉTAT AU 2026-08-12 (le plus récent) — OBSERVABILITÉ SELF-SERVE : la consolidation rejoint l'onglet
+> `Progression`, plus besoin que Marc copie-colle un diagnostic.** Marc (« je veux rien avoir à faire à
+> la main, tu devrais pouvoir voir toi ») avait raison de pousser : `read_file_content` (Drive MCP) SAIT
+> lire la Sheet d'état en lecture seule — mais les gros onglets (`PlanConsolidation` 1236+ lignes,
+> `Index`) sont TRONQUÉS par cet outil (seules les ~356 premières lignes, les plus ANCIENNES, jamais les
+> plus récentes) ; le petit onglet clé/valeur ("Santé") passe intact et a révélé un piège : « Rangement
+> ancien Drive : terminé ✅ » parle de `rangementTermine_()` (l'ANCIENNE campagne R3, close depuis des
+> semaines) — **PAS** de la consolidation en cours (`conso-3`, qui draine encore `08 · Perso`, 996
+> fichiers à plat). Un statut mal lu aurait annoncé à tort « c'est fini ». Correctif DURABLE : `conso-gen`
+> et `conso-exec` rejoignent `Progression` (Journal.gs, `majProgressions_`/`lignesProgression_`) — MÊME
+> patron qu'existant (une seule écriture Sheet/tick, déjà budgétée, zéro coût supplémentaire), MÊMES
+> lectures que `etatCampagnesRangement` (domaines épuisés/total, curseur/total lignes du plan,
+> `resetEnCours_()`, budget du jour épuisé) — gardes DÉDIÉES (`statutConsolidation_`, jamais le frein LLM
+> `$`, jamais `estPannePlateforme_` : la conso est de l'I/O pur `moveTo`/hash, pas des appels Sonnet).
+> `Progression` est un petit onglet TOUJOURS lisible en entier (jamais tronqué) → je peux désormais lire
+> l'état de la consolidation MOI-MÊME, à tout moment, sans que Marc touche à quoi que ce soit. **Revue
+> flotte AVANT merge, intégrée** : apps-script-quota 🟠→🟢 (une version antérieure appelait
+> `indexContient_` par domaine à CHAQUE tick sans court-circuit — une fois la génération finie, ce
+> calcul devenait le SEUL déclencheur restant de `chargerIndexCache_` [scan >10 800 lignes] ; corrigé
+> par le MÊME court-circuit « déjà fini → ne relis plus rien » que `genererPlanConsolidation_`) ;
+> code-reviewer 🟠→🟢 (le curseur d'exécution omettait le `− 1`, n° de ligne physique vs lignes de
+> données — sans ça, Progression et le diagnostic un-clic auraient affiché des chiffres DIFFÉRENTS
+> pour la même réalité). 858 tests. Reste HORS de portée sans Marc (Script Properties, aucune API ne
+> les expose) : le détail ms du budget quotidien consommé — mais ce n'est plus nécessaire pour
+> répondre « ça avance ou c'est bloqué ? ».
+>
+> **🟢 ÉTAT AU 2026-08-11 — DRAINAGE CONFIRMÉ (diagnostic prod) + ACCÉLÉRÉ ×2 par RÉALLOCATION sûre.**
 > Marc a déployé (`installerTrigger` le 09/08, PR #259 mergée) puis exécuté `etatCampagnesRangement` le 11/08. Verdict
 > **CERTAIN** (lecture de l'état DÉPLOYÉ, plus l'index Drive qui retarde) : **pas de deadlock** (`resetEnCours_()=false`) ;
 > génération conso **5/9 domaines épuisés** (01-05), reste 06/07/08/09 ; exec **budget jour 6/6 ÉPUISÉ** (draine à fond),

@@ -680,6 +680,17 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   réallocation des budgets effacée, le test d'invariant repassait au vert en mesurant les ANCIENNES
   valeurs). Toujours `cp` avant / `cp` retour, puis RELIRE la constante (`grep`) — vérifier
   l'artefact, jamais le code de sortie (même famille que les backticks dans `git commit -m`).
+- **Observabilité self-serve (lecture Sheet sans geste de Marc).** `read_file_content` (Drive MCP)
+  TRONQUE les gros onglets (les lignes les plus ANCIENNES, jamais les plus récentes) — ne jamais lire
+  directement un gros onglet journal/plan ; mirer l'état dans un petit onglet-résumé EXISTANT
+  (clé/valeur, une écriture/tick — patron `majSante_`/`majTelemetrie_`/`majProgressions_`), qui passe
+  toujours intact, en réutilisant les MÊMES calculs qu'un éventuel diagnostic un-clic. Avant de
+  confier un libellé « terminé »/« OK » à Marc, remonter à la Property/fonction qu'il lit RÉELLEMENT —
+  deux campagnes au nom voisin (« rangement ») peuvent être des mécanismes distincts. Toute exposition
+  d'un diagnostic dans un résumé par-tick hérite le MÊME court-circuit « déjà fini → ne relis plus
+  rien » que son producteur (sinon elle devient, une fois la campagne finie, le seul poste qui continue
+  de payer un rechargement coûteux) ; toute surface qui ré-affiche un nombre déjà affiché ailleurs
+  réplique EXACTEMENT la même conversion d'unité (numérateur > dénominateur = divergence, pas un bug).
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 

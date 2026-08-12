@@ -22,11 +22,13 @@ function ctxJournal() {
 /** État de référence : tout inactif/terminé-sans-ligne — chaque test ne touche que son opération. */
 function etatVierge(c) {
   return {
-    quotaGmail: false, panneApi: false, freinBudget: false,
+    quotaGmail: false, panneApi: false, freinBudget: false, resetEnCours: false,
     rangement: { termine: true, base: null, traites: 0, tag: c.CONFIG.RANGEMENT_TAG },
     migration: { termine: true, base: null, traites: 0, tag: c.CONFIG.MIGRATION_TAG },
     reanalyse: { termine: true, enAttente: false, base: null, traites: 0, tag: c.CONFIG.REANALYSE_TAG },
     histo: { termine: true, traites: 0 },
+    consolidationGen: { termine: true, base: 0, traites: 0, budgetEpuise: false, tag: c.CONFIG.CONSOLIDATION_TAG },
+    consolidationExec: { termine: true, base: 0, traites: 0, budgetEpuise: false, tag: c.CONFIG.CONSOLIDATION_TAG },
   };
 }
 
@@ -110,6 +112,57 @@ test('lignesProgression_ : compteur histo MONOTONE — l\'offset repart à 0 en 
   const l = c.lignesProgression_(etat, existantes, maintenant, c.CONFIG.PROGRESSION_PURGE_MS)
     .find((x) => x[0] === 'histo-gmail');
   assert.strictEqual(l[2], 4520, 'le compteur affiché ne recule jamais (max avec la ligne existante)');
+});
+
+test('lignesProgression_ : consolidation en cours — Traités/Base/Unité reflètent domaines épuisés et lignes du plan', () => {
+  const c = ctxJournal();
+  const etat = etatVierge(c);
+  etat.consolidationGen = { termine: false, base: 9, traites: 5, budgetEpuise: false, tag: 'conso-3' };
+  etat.consolidationExec = { termine: false, base: 1236, traites: 1086, budgetEpuise: false, tag: 'conso-3' };
+  const parCle = {};
+  c.lignesProgression_(etat, {}, Date.now(), c.CONFIG.PROGRESSION_PURGE_MS).forEach((l) => { parCle[l[0]] = l; });
+  assert.deepStrictEqual(
+    [parCle['consolidation-gen'][2], parCle['consolidation-gen'][3], parCle['consolidation-gen'][4], parCle['consolidation-gen'][5]],
+    [5, 9, 'domaines', 'en cours']);
+  assert.deepStrictEqual(
+    [parCle['consolidation-exec'][2], parCle['consolidation-exec'][3], parCle['consolidation-exec'][4], parCle['consolidation-exec'][5]],
+    [1086, 1236, 'lignes', 'en cours']);
+  assert.ok(parCle['consolidation-gen'][1].indexOf('conso-3') !== -1, 'le tag de campagne apparaît dans le libellé');
+});
+
+test('lignesProgression_ : consolidation SUSPENDUE par resetEnCours_ — prime sur le budget épuisé', () => {
+  const c = ctxJournal();
+  const etat = etatVierge(c);
+  etat.resetEnCours = true;
+  etat.consolidationGen = { termine: false, base: 9, traites: 2, budgetEpuise: true, tag: 'conso-3' };
+  etat.consolidationExec = { termine: false, base: 1236, traites: 500, budgetEpuise: true, tag: 'conso-3' };
+  const parCle = {};
+  c.lignesProgression_(etat, {}, Date.now(), c.CONFIG.PROGRESSION_PURGE_MS).forEach((l) => { parCle[l[0]] = l; });
+  assert.strictEqual(parCle['consolidation-gen'][5], 'suspendu (reset en cours)');
+  assert.strictEqual(parCle['consolidation-exec'][5], 'suspendu (reset en cours)');
+});
+
+test('lignesProgression_ : consolidation en PAUSE (budget du jour épuisé) — jamais confondue avec le frein LLM $', () => {
+  const c = ctxJournal();
+  const etat = etatVierge(c);
+  etat.freinBudget = true; // frein LLM $ actif — ne doit PAS influencer la consolidation (pure I/O)
+  etat.consolidationGen = { termine: false, base: 9, traites: 5, budgetEpuise: true, tag: 'conso-3' };
+  etat.consolidationExec = { termine: false, base: 1236, traites: 1086, budgetEpuise: false, tag: 'conso-3' };
+  const parCle = {};
+  c.lignesProgression_(etat, {}, Date.now(), c.CONFIG.PROGRESSION_PURGE_MS).forEach((l) => { parCle[l[0]] = l; });
+  assert.strictEqual(parCle['consolidation-gen'][5], 'en pause (budget du jour épuisé)');
+  assert.strictEqual(parCle['consolidation-exec'][5], 'en cours', 'le frein LLM $ ne doit jamais suspendre la consolidation');
+});
+
+test('lignesProgression_ : consolidation TERMINÉE — prime sur reset en cours et budget épuisé', () => {
+  const c = ctxJournal();
+  const etat = etatVierge(c);
+  etat.resetEnCours = true;
+  etat.consolidationExec = { termine: true, base: 1236, traites: 1236, budgetEpuise: true, tag: 'conso-3' };
+  const existant = { 'consolidation-exec': { traites: 1200, statut: 'en cours', horodateMs: Date.now() - 60000 } };
+  const l = c.lignesProgression_(etat, existant, Date.now(), c.CONFIG.PROGRESSION_PURGE_MS)
+    .find((x) => x[0] === 'consolidation-exec');
+  assert.strictEqual(l[5], 'terminé');
 });
 
 /* ---------- majCompteurCampagne_ / finaliserCompteurCampagne_ (Maintenance.gs) ---------- */
