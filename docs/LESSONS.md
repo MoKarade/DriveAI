@@ -1917,3 +1917,52 @@ verrou = verrou codé dans le même commit » : le commentaire de restauration (
 n'est une garantie que si un test échoue quand l'une des deux moitiés est oubliée."
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-12 — Observabilité self-serve : la Sheet TRONQUE les gros onglets, un statut peut parler d'une AUTRE campagne, et l'exposition doit hériter le court-circuit du producteur
+
+**Contexte.** Marc, après plusieurs « check » où je ne pouvais que lire l'index Drive (qui retarde) ou
+demander à Marc de coller le journal de `etatCampagnesRangement` (#259) : « je veux rien avoir à faire
+à la main, tu devrais pouvoir voir toi ». J'ai testé si `read_file_content` (Drive MCP) pouvait lire la
+Sheet d'état DriveAI directement, en lecture seule, sans aucun geste de Marc. Trois découvertes :
+
+1. **Ça marche, mais l'outil TRONQUE les gros onglets.** `PlanConsolidation` (1236+ lignes réelles) n'a
+   rendu que les ~356 PREMIÈRES lignes, toutes datées du 5 août — jamais les plus récentes (celles qui
+   auraient dit quelque chose d'actuel). Les petits onglets clé/valeur (`Santé`, `Télémétrie`,
+   `Progression` — chacun écrit en UNE seule `setValues` par tick, patron déjà établi dans `Journal.gs`)
+   sont, eux, passés intacts.
+2. **Un statut peut mentir par CONFLATION de campagne, pas par erreur de calcul.** L'onglet `Santé`
+   affichait « Rangement ancien Drive : terminé ✅ » — j'ai failli le lire comme « le rangement est
+   fini, rien à faire ». En fait cette ligne lit `rangementTermine_()`, l'ANCIENNE campagne R3 (close
+   depuis des semaines), totalement DISTINCTE de la consolidation `conso-3` en cours (qui draine encore
+   `08 · Perso`, 996 fichiers à plat au moment du check). Sans remonter à la fonction/Property source,
+   j'aurais annoncé un faux « c'est fini » à Marc.
+3. **Fix durable choisi** : plutôt que de dépendre de la lecture fragile d'un gros onglet, j'ai étendu
+   `majProgressions_`/`lignesProgression_` (Journal.gs) — DÉJÀ appelées à chaque tick, DÉJÀ une seule
+   écriture Sheet — avec 2 lignes `consolidation-gen`/`consolidation-exec`, réutilisant les MÊMES
+   lectures que `etatCampagnesRangement` (une seule règle, deux consommateurs). Revue flotte AVANT
+   merge : apps-script-quota a trouvé qu'une version antérieure appelait `indexContient_` pour CHAQUE
+   domaine à CHAQUE tick sans court-circuit — une fois la génération terminée, ce calcul devient le
+   SEUL déclencheur restant de `chargerIndexCache_()` (scan >10 800 lignes) pour reconfirmer une valeur
+   qui ne bouge plus JAMAIS. Fix : répliquer le MÊME court-circuit « déjà fini → ne relis plus rien »
+   que `genererPlanConsolidation_` lui-même applique. code-reviewer a en plus trouvé que `traites` du
+   curseur d'exécution omettait le `− 1` (n° de ligne physique, en-tête = 1) que `Diagnostic.gs`
+   applique déjà — sans ce `− 1`, les deux surfaces (diagnostic manuel et Progression automatique)
+   auraient affiché des chiffres DIFFÉRENTS pour la même réalité, et le numérateur aurait pu dépasser
+   le dénominateur (« 7/6 », l'air d'un bug).
+
+**Leçon.** "Pour rendre un moteur observable SANS dépendre d'un geste manuel : (1) ne JAMAIS lire
+directement un gros onglet journal/plan via un outil de lecture générique — il tronque aux lignes les
+plus ANCIENNES, jamais les plus récentes ; mirer l'état dans un petit onglet-résumé EXISTANT
+(clé/valeur, une seule écriture par tick — patron `majSante_`/`majTelemetrie_`/`majProgressions_`), qui
+lui passe toujours intact. (2) Avant de faire confiance à un libellé de statut (« terminé », « OK »),
+remonter à la Property/fonction qu'il lit RÉELLEMENT — un statut peut être vrai pour une campagne
+ancienne et complètement hors sujet pour celle qu'on croit vérifier ; deux campagnes qui se ressemblent
+par le nom (« rangement ») peuvent être des mécanismes totalement distincts. (3) Exposer un diagnostic
+existant dans un résumé déjà écrit à chaque tick DOIT hériter le MÊME court-circuit « déjà fini → ne
+relis plus rien » que le producteur qu'il observe, sinon l'observabilité elle-même devient, une fois la
+campagne terminée, le dernier poste qui continue de payer le coût qu'elle était censée nous éviter de
+constater à la main. (4) Toute nouvelle surface qui ré-affiche un nombre déjà affiché ailleurs
+(curseur, lignes consommées) doit répliquer EXACTEMENT la même conversion d'unité que la surface
+existante — sinon les deux divergent d'une unité et l'une ressemble à un bug."
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).
