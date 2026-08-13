@@ -27,6 +27,8 @@ import {
   FamilleStatut,
   LigneProgression,
   JaugeJour,
+  ilYA,
+  dateActivite,
 } from '../etat';
 import { CleTexte, Langue, t } from '../i18n';
 
@@ -115,11 +117,7 @@ export function Moteur({ langue }: { langue: Langue }) {
       </section>
 
       {/* ---------- 3. Progression (campagnes & opérations) ---------- */}
-      <section className="carte large operations-live">
-        <h2>{t('progressionTitre', langue)}</h2>
-        {progression.length === 0 && <p className="explication">{t('progressionVide', langue)}</p>}
-        {progression.map((op) => <Operation key={op.cle} langue={langue} op={op} />)}
-      </section>
+      <ProgressionSection langue={langue} progression={progression} />
 
       {/* ---------- Quota Gmail du jour ---------- */}
       <section className="carte large">
@@ -173,20 +171,80 @@ export function Moteur({ langue }: { langue: Langue }) {
 }
 
 /**
+ * Section Progression (C28-45, retour Marc : « tout est en cours, rien n'est fini ») : les VRAIES
+ * campagnes (type campagne/demande) sont mises en avant ; les ROUTINES (flux vivant, maintenance,
+ * observabilité — elles tournent à chaque tick, « en cours » n'y veut rien dire) sont COMPACTÉES
+ * en une ligne « ✓ N routines en bonne santé », dépliable — seules celles qui vont MAL (erreur,
+ * suspension anormale) remontent en visible. Ancien moteur sans colonne Type (type '') → tout
+ * s'affiche à plat comme avant (transition sans casse).
+ */
+function ProgressionSection({ langue, progression }: { langue: Langue; progression: LigneProgression[] }) {
+  const estRoutine = (op: LigneProgression) =>
+    op.type === 'flux' || op.type === 'maintenance' || op.type === 'observabilite';
+  const anormale = (op: LigneProgression) => {
+    const f = familleStatut(op.statut);
+    return f === 'erreur' || f === 'suspendu';
+  };
+  const campagnes = progression.filter((op) => !estRoutine(op));
+  const routinesMal = progression.filter((op) => estRoutine(op) && anormale(op));
+  const routinesOk = progression.filter((op) => estRoutine(op) && !anormale(op));
+  // Max par TIMESTAMP PARSÉ — jamais un tri lexicographique de `dd/MM …` (ordre jour-major :
+  // « 31/07 » > « 13/08 », le résumé aurait affiché « il y a 13 j » à chaque début de mois alors
+  // que tout venait de tourner — revue C28-45, exactement la confusion que ce chantier corrige).
+  const maintenant = new Date();
+  const activiteMax = routinesOk
+    .map((op) => op.derniereActivite)
+    .filter(Boolean)
+    .reduce<{ texte: string; ts: number }>((max, texte) => {
+      const d = dateActivite(texte, maintenant);
+      return d && d.getTime() > max.ts ? { texte, ts: d.getTime() } : max;
+    }, { texte: '', ts: 0 }).texte;
+  const fraicheur = activiteMax ? (ilYA(activiteMax, maintenant, langue) ?? activiteMax) : '';
+  return (
+    <section className="carte large operations-live">
+      <h2>{t('progressionTitre', langue)}</h2>
+      {progression.length === 0 && <p className="explication">{t('progressionVide', langue)}</p>}
+      {campagnes.map((op) => <Operation key={op.cle} langue={langue} op={op} />)}
+      {routinesMal.map((op) => <Operation key={op.cle} langue={langue} op={op} />)}
+      {routinesOk.length > 0 && (
+        <details className="routines-repli">
+          <summary>
+            ✓ {routinesOk.length} {t('routinesOK', langue)}{fraicheur && <> · {t('derniereActivite', langue)} {fraicheur}</>}
+          </summary>
+          {routinesOk.map((op) => <Operation key={op.cle} langue={langue} op={op} />)}
+        </details>
+      )}
+    </section>
+  );
+}
+
+/**
  * Note d'explication d'un état non trivial. C28-44 : quand le moteur publie la RAISON EXACTE du
  * skip (colonne Détail — 'reset en cours', 'budget de tick épuisé'…), elle PRIME sur les gloses
  * génériques d'avant (qui devinaient « panne » depuis la famille — faux pour un simple frein).
+ * C28-45 : le budget du JOUR d'une campagne n'est JAMAIS glosé « frein budget LLM » (bug vu sur
+ * capture Marc — même confusion que celle qu'un test moteur interdit côté statut) ; « à jour »
+ * explique l'attente légitime (dépendance amont, one-shot accompli).
  */
 function noteStatut(op: LigneProgression, famille: FamilleStatut, langue: Langue): string {
   if (famille === 'recensement') return t('noteRecensement', langue);
   if (famille === 'attente') return t('noteAttente', langue);
+  if (famille === 'ajour') {
+    if (op.statut.includes('attend la génération')) return t('noteAttendGeneration', langue);
+    return t('noteDejaFait', langue);
+  }
   if (famille === 'suspendu' || famille === 'pause') {
+    // « Budget du jour » d'une campagne = SA pause quotidienne, reprise demain — jamais la glose
+    // du frein LLM $ (bug vu sur capture Marc : conso-gen en pause quotidienne affichait « frein
+    // budget des campagnes atteint »).
+    if (op.statut.includes('budget du jour')) return t('noteBudgetJour', langue);
     if (op.detail) {
       // La glose-CONSIGNE (« reprise ~3h », « rien à faire ») reste utile À CÔTÉ de la raison
       // brute (revue PR4) : consigne quand elle est reconnaissable, raison exacte toujours.
       const glose = op.detail.includes('quota') || op.statut.includes('quota') ? t('noteQuota', langue)
         : op.detail.includes('panne') || op.statut.includes('panne') ? t('notePanneApi', langue)
-          : op.detail.includes('budget') ? t('noteBudget', langue) : '';
+          : op.detail.includes('budget de tick') || op.detail.includes('budget standard') ? t('noteBudgetTick', langue)
+            : op.detail.includes('budget') ? t('noteBudget', langue) : '';
       const raison = t('noteSuspendueRaison', langue) + ' ' + op.detail;
       return glose ? glose + ' ' + raison : raison;
     }
@@ -201,12 +259,13 @@ function noteStatut(op: LigneProgression, famille: FamilleStatut, langue: Langue
 const LIBELLES_STATUT: Record<FamilleStatut, CleTexte> = {
   encours: 'stEnCours', recensement: 'stRecensement', attente: 'stEnAttente',
   suspendu: 'stSuspendu', pause: 'stPause', termine: 'stTermine',
-  erreur: 'stErreur', inactif: 'stInactif',
+  erreur: 'stErreur', inactif: 'stInactif', ajour: 'stAJour',
 };
 
 const CLASSE_PASTILLE: Record<FamilleStatut, string> = {
   termine: 'ok', suspendu: 'crit', erreur: 'crit', encours: 'douce',
   inactif: 'douce', recensement: 'attn', attente: 'attn', pause: 'attn',
+  ajour: 'ok',
 };
 
 /** Une opération de l'onglet Progression : nom (écrit par le moteur), compte, barre, notes de suivi. */
@@ -242,7 +301,7 @@ function Operation({ langue, op }: { langue: Langue; op: LigneProgression }) {
       {arret && <div className="op-barre rayee" />}
       {note && <p className="op-note">{note}</p>}
       {op.derniereActivite && famille !== 'termine' && (
-        <p className="op-note">{t('derniereActivite', langue)} {op.derniereActivite}</p>
+        <p className="op-note">{t('derniereActivite', langue)} {ilYA(op.derniereActivite, new Date(), langue) ?? op.derniereActivite}</p>
       )}
       {op.derniereErreur && (
         <p className="op-note op-erreur">{t('derniereErreur', langue)} {op.derniereErreur}</p>

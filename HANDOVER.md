@@ -4,6 +4,20 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **🚧 EN COURS AU 2026-08-13 (soir) — C28-45 : polish du suivi (retour Marc, captures à l'appui).**
+> Marc : « tellement de trucs en cours mais rien n'est fini, aucun indicateur d'où ça en est,
+> aucun indicateur si ça bloque d'autres tâches, c'est vraiment pas peaufiné ». Quatre reproches
+> fondés + 2 gloses FAUSSES sur ses captures (pause « budget du jour » de conso-gen glosée frein
+> LLM ; dé-quarantaine « déjà fait » en rouge-suspendu). Implémenté (moteur + app, une PR,
+> transition tolérante — en revue flotte) : colonne `Type` (K, append) publiée par le moteur pour
+> que l'app COMPACTE les ~25 routines (« ✓ N routines en bonne santé », dépliable — seules les
+> anormales remontent) ; `Dernière activité` en TEXTE contrôlé `dd/MM HH:mm` (la cellule Date
+> ressortait « 8/13/2026 » SANS heure en FORMATTED_VALUE) + « il y a X min » côté app (`ilYA`,
+> pur, passage d'année géré) ; statut conso-exec « à jour (plan drainé — attend la génération) »
+> au lieu de « en cours · 100 % » + note de dépendance ; famille `ajour` neutre-positive ; gates
+> CONFIG des dry-runs (« désactivée » au lieu d'« en cours » à vide) ; gloses budget du JOUR /
+> budget de TICK / frein LLM désormais distinctes. 897 moteur + 181 app + build verts.
+>
 > **🚧 CHANTIER EN COURS AU 2026-08-13 — C28-44 : suivi GÉNÉRIQUE et fiable de toutes les
 > opérations du tick (ADR-0038, plan product-manager en 5 PRs).** Demande Marc : « je veux que ça
 > marche pour tout type de tâche que l'app fait et je veux que ce soit beaucoup plus fiable » — le

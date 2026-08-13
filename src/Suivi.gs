@@ -177,6 +177,9 @@ function statutDepuisSuivi_(rec) {
     // « panne » ; un frein budget est une PAUSE normale, comme sur les campagnes riches).
     if (raison.indexOf('budget') !== -1) return 'en pause (' + raison + ')';
     if (raison === 'désactivée (CONFIG)') return 'désactivée';
+    // Un one-shot ACCOMPLI n'est ni suspendu ni en panne (retour Marc 2026-08-13 : la
+    // dé-quarantaine « déjà fait » s'affichait en rouge avec barre rayée) — famille neutre-positive.
+    if (raison.indexOf('déjà fait') === 0) return 'à jour (déjà fait)';
     return 'suspendu (' + raison + ')';
   }
   return 'en cours';

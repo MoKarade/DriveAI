@@ -529,7 +529,11 @@ function tickDriveAI() {
     // Drive (planRoutageV2_ seul — jamais deciderRoutageV2_). Interrupteur DÉDIÉ (DRYRUN_V2_ACTIF,
     // OFF par défaut) : n'affecte JAMAIS le flux vivant ni CONFIG.ANALYSE_V2. Même famille que la
     // migration (après l'intake, gatée par le frein budget campagnes, enveloppée).
-    etapeSuivie_('dryrun-v2', [gBudgetTick, gFreinCampagnes, gResetEnCours],
+    // Gate du flag EN TÊTE (retour Marc 2026-08-13 : « en cours » pour une campagne OFF est
+    // trompeur — le flag était vérifié À L'INTÉRIEUR de la fonction, invisible du wrapper : la
+    // ligne affichait un run à vide comme de l'activité). Le no-op interne reste (double garde).
+    etapeSuivie_('dryrun-v2',
+      [function () { return CONFIG.DRYRUN_V2_ACTIF ? null : 'désactivée (CONFIG)'; }, gBudgetTick, gFreinCampagnes, gResetEnCours],
       function () { appliquerDryRunV2_(estBudgetDepasse); },
       function (e) { journalErreur_('DryRunV2', 'Dry-run v2 différé : ' + e); });
 
@@ -537,7 +541,8 @@ function tickDriveAI() {
     // pour chaque doc, le gate (sauterait la passe 2 ?), la divergence de placement et les faux
     // négatifs `sensible`. Interrupteur DÉDIÉ (DRYRUN_CMP_ACTIF, OFF), ZÉRO mutation, même famille
     // que le dry-run (après l'intake, gatée par le frein budget campagnes, enveloppée).
-    etapeSuivie_('dryrun-cmp', [gBudgetTick, gFreinCampagnes, gResetEnCours],
+    etapeSuivie_('dryrun-cmp',
+      [function () { return CONFIG.DRYRUN_CMP_ACTIF ? null : 'désactivée (CONFIG)'; }, gBudgetTick, gFreinCampagnes, gResetEnCours],
       function () { appliquerComparaisonV2_(estBudgetDepasse); },
       function (e) { journalErreur_('DryRunV2', 'Comparaison 1↔2 passes différée : ' + e); });
 

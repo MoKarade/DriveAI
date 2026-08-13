@@ -199,10 +199,12 @@ test('lignesProgression_ (C28-44) : statut/Détail/Dernière activité/Dernière
   };
   const parCle = {};
   lignesV3(c, etatVierge(c), {}, maintenant, suivi).forEach((l) => { parCle[l[0]] = l; });
-  // Succès récent → en cours, Dernière activité = max(tentative, succès), aucune erreur affichée.
+  // Succès récent → en cours ; Dernière activité = max(tentative, succès), en TEXTE au format
+  // CONTRÔLÉ dd/MM HH:mm (PR6 : une cellule Date ressortait sans l'heure en FORMATTED_VALUE).
   assert.strictEqual(parCle['tri-gmail'][5], 'en cours');
-  assert.strictEqual(parCle['tri-gmail'][8].getTime(), maintenant - 900);
+  assert.ok(/^\d{2}\/\d{2} \d{2}:\d{2}$/.test(parCle['tri-gmail'][8]), 'activité au format dd/MM HH:mm : ' + parCle['tri-gmail'][8]);
   assert.strictEqual(parCle['tri-gmail'][9], '');
+  assert.strictEqual(parCle['tri-gmail'][10], 'flux', 'colonne Type (K) = type du registre');
   // Skip budget → en pause + raison en Détail.
   assert.strictEqual(parCle['intake-depots'][5], 'en pause (budget de tick épuisé)');
   assert.strictEqual(parCle['intake-depots'][7], 'budget de tick épuisé');
@@ -221,10 +223,10 @@ test('lignesProgression_ (C28-44) : statut/Détail/Dernière activité/Dernière
   assert.ok(lm[9].indexOf('boom') !== -1, 'mais la Dernière erreur du suivi est visible quand même');
 });
 
-test('assurerEnteteProgression_ (C28-44) : migration v2→v3 par la DERNIÈRE colonne — jamais A1, et SANS effacer les lignes', () => {
+test('assurerEnteteProgression_ (C28-44) : migration par la DERNIÈRE colonne — jamais A1, et SANS effacer les lignes', () => {
   const c = ctxJournal();
   const etats = { header: null, cleared: false, frozen: 0 };
-  const cellules = { A1: 'Clé', J1: '' }; // en-tête v2 (7 colonnes) : A1 correct, J1 vide
+  const cellules = { A1: 'Clé', J1: '', K1: '' }; // en-tête v2/v3 : A1 correct, dernière colonne vide
   const f = {
     getRange: (a, col, nb, larg) => {
       if (typeof a === 'string') return { getValue: () => cellules[a] };
@@ -237,23 +239,23 @@ test('assurerEnteteProgression_ (C28-44) : migration v2→v3 par la DERNIÈRE co
   c.assurerEnteteProgression_(f);
   assert.deepStrictEqual(JSON.parse(JSON.stringify(etats.header)), JSON.parse(JSON.stringify(c.COLONNES_PROGRESSION)),
     'en-tête réécrit en v3 (10 colonnes) alors que A1 était DÉJÀ « Clé » — le test A1 aurait été du code mort');
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(etats.coords)), [1, 1, 1, 10],
-    'écrit sur la LIGNE 1, 10 colonnes — les coordonnées, pas seulement le contenu');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(etats.coords)), [1, 1, 1, c.COLONNES_PROGRESSION.length],
+    'écrit sur la LIGNE 1, toutes les colonnes — dérivé de la constante, jamais sa valeur du jour');
   assert.strictEqual(etats.cleared, false,
     'v2→v3 ne vide JAMAIS les lignes (7 premières colonnes identiques — les « terminé » existants survivent)');
 
-  // Déjà en v3 → no-op total.
+  // En-tête COURANT déjà en place (dernière colonne présente) → no-op total.
   const etats2 = { header: null, cleared: false };
   const f2 = {
     getRange: (a) => {
-      if (typeof a === 'string') return { getValue: () => (a === 'J1' ? 'Dernière erreur' : 'Clé') };
+      if (typeof a === 'string') return { getValue: () => (a === 'K1' ? 'Type' : 'Clé') };
       return { setValues: () => { etats2.header = 'réécrit'; } };
     },
     clearContents: () => { etats2.cleared = true; },
     setFrozenRows: () => {},
   };
   c.assurerEnteteProgression_(f2);
-  assert.deepStrictEqual([etats2.header, etats2.cleared], [null, false], 'v3 en place → aucune écriture');
+  assert.deepStrictEqual([etats2.header, etats2.cleared], [null, false], 'en-tête courant en place → aucune écriture');
 
   // v1 (barre texte, A1 ≠ Clé) : table incompatible → clearContents (comportement historique conservé).
   const etats3 = { cleared: false, header: null };

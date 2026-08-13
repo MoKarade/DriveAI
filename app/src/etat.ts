@@ -421,8 +421,9 @@ export interface LigneProgression {
   statut: string;      // familles ci-dessous + 'erreur' | 'désactivée' | 'jamais vue' (C28-44)
   horodate: string;
   detail: string;          // raison du dernier SKIP ('reset en cours', 'budget de tick épuisé'…) ou ''
-  derniereActivite: string; // dernier passage RÉEL de l'opération (tentative/succès) — '' si jamais vue
+  derniereActivite: string; // dernier passage RÉEL, format contrôlé 'dd/MM HH:mm' — '' si jamais vue
   derniereErreur: string;   // 'dd/MM HH:mm — message' ou '' — reste visible même après un succès
+  type: string;            // type du registre (flux/campagne/maintenance/demande/observabilite) — '' si ancien moteur
 }
 
 /**
@@ -444,26 +445,60 @@ export function interpreterProgression(brut: string[][]): LigneProgression[] {
       detail: l[7] ?? '',
       derniereActivite: l[8] ?? '',
       derniereErreur: l[9] ?? '',
+      type: l[10] ?? '',
     }));
 }
 
 export type FamilleStatut = 'encours' | 'suspendu' | 'pause' | 'attente' | 'termine' | 'recensement'
-  | 'erreur' | 'inactif';
+  | 'erreur' | 'inactif' | 'ajour';
 
 /**
  * Famille visuelle d'un statut moteur (préfixe FR stable) — pilote la pastille du widget. PURE.
  * C28-44 : + 'erreur' (dernier passage en échec — pastille critique) et 'inactif' (« jamais vue »
  * après un déploiement, « désactivée » par CONFIG — neutre, ce n'est PAS un problème).
+ * C28-45 : + 'ajour' (« à jour (déjà fait) », « à jour (plan drainé — attend la génération) ») —
+ * neutre-POSITIF : le travail est fait, l'opération attend légitimement (jamais une alerte).
  */
 export function familleStatut(statut: string): FamilleStatut {
   if (statut === 'erreur') return 'erreur';
   if (statut === 'jamais vue' || statut === 'désactivée') return 'inactif';
+  if (statut.startsWith('à jour')) return 'ajour';
   if (statut.startsWith('suspendu')) return 'suspendu';
   if (statut.startsWith('en pause')) return 'pause';
   if (statut.startsWith('en attente')) return 'attente';
   if (statut.startsWith('terminé')) return 'termine';
   if (statut.startsWith('recensement')) return 'recensement';
   return 'encours';
+}
+
+/**
+ * Horodatage moteur `dd/MM HH:mm` (format CONTRÔLÉ — PR6 : le moteur écrit du TEXTE, jamais une
+ * cellule Date dont le rendu dépend de la locale de la Sheet) → Date. PURE. Année : celle de
+ * `maintenant`, ou la précédente si le résultat serait dans le futur (passage d'année) ; après
+ * bascule, un écart > ~360 j est un cas dégénéré (fuseau navigateur ≫ fuseau script — revue
+ * C28-45) → null. Non-match → null (repli : texte brut).
+ */
+export function dateActivite(texte: string, maintenant: Date): Date | null {
+  const m = /^(\d{2})\/(\d{2}) (\d{2}):(\d{2})$/.exec(texte);
+  if (!m) return null;
+  const d = new Date(maintenant.getFullYear(), Number(m[2]) - 1, Number(m[1]), Number(m[3]), Number(m[4]));
+  if (d.getTime() > maintenant.getTime() + 60 * 60 * 1000) {
+    d.setFullYear(d.getFullYear() - 1);
+    if (maintenant.getTime() - d.getTime() > 360 * 24 * 3600000) return null;
+  }
+  return d;
+}
+
+/** « il y a X » depuis un horodatage moteur `dd/MM HH:mm`. PURE. null si illisible (repli brut). */
+export function ilYA(texte: string, maintenant: Date, langue: 'fr' | 'en'): string | null {
+  const d = dateActivite(texte, maintenant);
+  if (!d) return null;
+  const min = Math.max(0, Math.round((maintenant.getTime() - d.getTime()) / 60000));
+  if (min < 60) return langue === 'fr' ? `il y a ${min} min` : `${min} min ago`;
+  const h = Math.round(min / 60);
+  if (h < 48) return langue === 'fr' ? `il y a ${h} h` : `${h} h ago`;
+  const j = Math.round(h / 24);
+  return langue === 'fr' ? `il y a ${j} j` : `${j} d ago`;
 }
 
 /* ---------- Télémétrie coûts & quotas (C28-24) ---------- */

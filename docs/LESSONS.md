@@ -2176,3 +2176,29 @@ migration d'en-tête non destructive (réécrire la ligne 1 suffit, les données
 lisibles)."
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-13 (sexies) — Un horodatage lu par API se publie en TEXTE contrôlé ; un max sur dates textuelles se prend par timestamp parsé
+
+**Contexte.** C28-45 (polish du suivi, retour Marc captures à l'appui) : la colonne « Dernière
+activité » écrite comme cellule DATE ressortait « 8/13/2026 » — SANS l'heure — via l'API Sheets en
+FORMATTED_VALUE (le rendu dépend du format de colonne et de la locale de la Sheet, pas du code) :
+inutilisable pour « il y a X min ». Corrigé en publiant du TEXTE au format contrôlé `dd/MM HH:mm`
+(via `Utilities.formatDate`), que l'app parse de façon fiable. Dans la même passe, la revue flotte
+a attrapé DEUX vraies prises : (1) la plage app `A2:J` n'incluait pas la nouvelle colonne K
+(`Type`) — la feature principale (compactage des routines) aurait été MORTE en silence, `l[10]`
+toujours undefined ; (2) le « max » des activités du résumé prenait `sort().pop()` sur des chaînes
+`dd/MM HH:mm` — ordre LEXICOGRAPHIQUE jour-major (« 31/07 » > « 13/08 ») : à chaque début de mois
+le résumé aurait affiché « il y a 13 j » alors que tout venait de tourner — précisément la
+confusion que le chantier corrigeait.
+
+**Leçon.** "Trois règles sœurs pour tout horodatage qui traverse une API : (1) une cellule DATE
+lue en FORMATTED_VALUE rend ce que le FORMAT DE COLONNE veut bien (souvent la date sans l'heure) —
+tout horodatage destiné à être LU par un autre système se publie en TEXTE à format CONTRÔLÉ par le
+producteur (`dd/MM HH:mm`), jamais en cellule Date ; (2) tout max/tri sur ces chaînes se fait par
+TIMESTAMP PARSÉ, jamais lexicographiquement — un format jour-major inverse l'ordre au passage de
+mois, et le bug ne se voit qu'à cheval sur deux mois (invisible en test naïf du jour même) ;
+(3) quand on AJOUTE une colonne à un contrat, vérifier CHAQUE plage de lecture existante
+(`A2:J` → `A2:K`) — un index au-delà de la plage rend `undefined` sans erreur et la feature qui en
+dépend est morte en silence (même famille que « borne haute qui fige l'UI », version colonne)."
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7, en compact).
