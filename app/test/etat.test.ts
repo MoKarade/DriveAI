@@ -242,6 +242,20 @@ describe('progression live (C28-18)', () => {
     expect(lignes[0]).toMatchObject({ cle: 'migration', traites: 812, base: 1209, unite: 'documents' });
     expect(lignes[1].base).toBeNull();
     expect(lignes[1].statut).toBe('suspendu (quota Gmail)');
+    // TOLÉRANCE 7 colonnes (C28-44 : transition moteur pas encore redéployé) : champs H-J vides.
+    expect(lignes[0]).toMatchObject({ detail: '', derniereActivite: '', derniereErreur: '' });
+  });
+
+  it('interpreterProgression (C28-44) : les 10 colonnes — Détail, Dernière activité, Dernière erreur', async () => {
+    const { interpreterProgression } = await import('../src/etat');
+    const [l] = interpreterProgression([
+      ['tri-gmail', 'Tri de la boîte Gmail', '', '', 'fils', 'suspendu (reset en cours)',
+        '2026-08-13T19:00:00', 'reset en cours', '2026-08-13 18:55', '13/08 07:12 — quota Gmail mort'],
+    ]);
+    expect(l).toMatchObject({
+      cle: 'tri-gmail', statut: 'suspendu (reset en cours)', detail: 'reset en cours',
+      derniereActivite: '2026-08-13 18:55', derniereErreur: '13/08 07:12 — quota Gmail mort',
+    });
   });
 
   it('familleStatut : préfixes FR stables → famille visuelle (pastille jamais couleur seule)', async () => {
@@ -252,7 +266,14 @@ describe('progression live (C28-18)', () => {
     expect(familleStatut('suspendu (quota Gmail)')).toBe('suspendu');
     expect(familleStatut('suspendu (panne API)')).toBe('suspendu');
     expect(familleStatut('en pause (frein budget)')).toBe('pause');
+    expect(familleStatut('en pause (budget de tick épuisé)')).toBe('pause'); // raisons C28-44
     expect(familleStatut('terminé')).toBe('termine');
+    // C28-44 : les statuts du suivi générique — erreur = pastille critique ; jamais vue /
+    // désactivée = neutres (ce n'est PAS un problème).
+    expect(familleStatut('erreur')).toBe('erreur');
+    expect(familleStatut('jamais vue')).toBe('inactif');
+    expect(familleStatut('désactivée')).toBe('inactif');
+    expect(familleStatut('suspendu (reset en cours)')).toBe('suspendu');
     expect(familleStatut('statut inconnu du futur')).toBe('encours'); // repli neutre
   });
 });

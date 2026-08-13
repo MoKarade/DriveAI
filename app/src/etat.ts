@@ -411,18 +411,25 @@ export function lignesVideCandidat(lignes: LigneReorg[]): LigneReorg[] {
 
 /* ---------- Progression LIVE des opérations (C28-18) ---------- */
 
-/** Miroir d'une ligne de l'onglet Progression (COLONNES_PROGRESSION, Journal.gs). */
+/** Miroir d'une ligne de l'onglet Progression (COLONNES_PROGRESSION, Journal.gs — 10 colonnes C28-44). */
 export interface LigneProgression {
-  cle: string;         // clé stable ('migration', 'tri-demande', …) — sélectionne le widget/libellé
+  cle: string;         // clé stable ('migration', 'tri-gmail', …) — sélectionne le widget/libellé
   operation: string;   // libellé FR écrit par le moteur (repli d'affichage)
   traites: number;
-  base: number | null; // null = total inconnu (historique Gmail, intentions) → barre indéterminée
-  unite: string;       // 'documents' | 'fils' | 'mails' | 'fichiers'
-  statut: string;      // 'en cours' | 'recensement' | 'en attente…' | 'suspendu…' | 'en pause…' | 'terminé'
+  base: number | null; // null = total inconnu (historique Gmail) OU opération sans compteur → pas de barre
+  unite: string;       // 'documents' | 'fils' | 'fichiers' | 'entités' | …
+  statut: string;      // familles ci-dessous + 'erreur' | 'désactivée' | 'jamais vue' (C28-44)
   horodate: string;
+  detail: string;          // raison du dernier SKIP ('reset en cours', 'budget de tick épuisé'…) ou ''
+  derniereActivite: string; // dernier passage RÉEL de l'opération (tentative/succès) — '' si jamais vue
+  derniereErreur: string;   // 'dd/MM HH:mm — message' ou '' — reste visible même après un succès
 }
 
-/** Interprète l'onglet Progression (Clé|Opération|Traités|Base|Unité|Statut|Horodaté). PURE. */
+/**
+ * Interprète l'onglet Progression (Clé|Opération|Traités|Base|Unité|Statut|Horodaté|Détail|
+ * Dernière activité|Dernière erreur). PURE. TOLÉRANTE aux lignes 7 colonnes (transition
+ * moteur pas encore redéployé → colonnes H-J absentes, champs vides).
+ */
 export function interpreterProgression(brut: string[][]): LigneProgression[] {
   return brut
     .filter((l) => l[0])
@@ -434,13 +441,23 @@ export function interpreterProgression(brut: string[][]): LigneProgression[] {
       unite: l[4] ?? '',
       statut: l[5] ?? '',
       horodate: l[6] ?? '',
+      detail: l[7] ?? '',
+      derniereActivite: l[8] ?? '',
+      derniereErreur: l[9] ?? '',
     }));
 }
 
-export type FamilleStatut = 'encours' | 'suspendu' | 'pause' | 'attente' | 'termine' | 'recensement';
+export type FamilleStatut = 'encours' | 'suspendu' | 'pause' | 'attente' | 'termine' | 'recensement'
+  | 'erreur' | 'inactif';
 
-/** Famille visuelle d'un statut moteur (préfixe FR stable) — pilote la pastille du widget. PURE. */
+/**
+ * Famille visuelle d'un statut moteur (préfixe FR stable) — pilote la pastille du widget. PURE.
+ * C28-44 : + 'erreur' (dernier passage en échec — pastille critique) et 'inactif' (« jamais vue »
+ * après un déploiement, « désactivée » par CONFIG — neutre, ce n'est PAS un problème).
+ */
 export function familleStatut(statut: string): FamilleStatut {
+  if (statut === 'erreur') return 'erreur';
+  if (statut === 'jamais vue' || statut === 'désactivée') return 'inactif';
   if (statut.startsWith('suspendu')) return 'suspendu';
   if (statut.startsWith('en pause')) return 'pause';
   if (statut.startsWith('en attente')) return 'attente';

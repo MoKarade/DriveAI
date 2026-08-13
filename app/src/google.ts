@@ -225,11 +225,14 @@ async function lirePlageDirecte(onglet: string, plage: string): Promise<string[]
 
 /**
  * Lecture LIVE de l'onglet Progression (C28-18) : CONTOURNE le cache 60 s — le poll dédié
- * (useProgressionLive, 15 s) doit voir chaque tick du moteur. Petite plage fixe : ~4 req/min,
- * ≈ 1 % du quota de lecture Sheets. Le rendu est écrit par le moteur en fin de tick.
+ * (useProgressionLive, 15 s) doit voir chaque tick du moteur. Le rendu est écrit par le moteur
+ * en fin de tick. Plage OUVERTE `A2:J` (C28-44 PR4) : le moteur publie désormais ~34 opérations
+ * × 10 colonnes — l'ancienne borne `A2:G30` aurait fait disparaître EN SILENCE tout ce qui
+ * dépasse 29 lignes (leçon §7 « une borne haute sur une source qui croît fige l'UI »).
+ * L'API ne renvoie que les lignes non vides : coût inchangé (~4 req/min, ≈ 1 % du quota).
  */
 export async function lireProgressionLive(): Promise<string[][]> {
-  return lirePlageDirecte('Progression', 'A2:G30');
+  return lirePlageDirecte('Progression', 'A2:J');
 }
 
 /** Écrit UNE cellule (ex. Statut d'une entité → « validée »). */

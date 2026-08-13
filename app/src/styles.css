@@ -412,6 +412,7 @@ a.jour-ligne:hover { background: color-mix(in srgb, var(--accent) 6%, transparen
   background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--attention) 30%, var(--rang)) 0 8px, var(--rang) 8px 16px);
 }
 .op-note { margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--texte-doux); }
+.op-note.op-erreur { color: var(--erreur); }
 
 /* ---------- vue Agenda (grille mois + grille horaire) ---------- */
 .agenda .cal-carte { grid-column: 1 / -1; }

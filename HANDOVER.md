@@ -41,10 +41,17 @@
 > réaligné ; nit « — » pendouillant corrigé ; coordonnées d'en-tête assertées). ⚠️ Transitoire
 > jusqu'à PR4 : l'app v6 affiche les ~23 nouvelles lignes avec une pastille NEUTRE (statuts
 > `erreur`/`jamais vue`/`désactivée` inconnus de `familleStatut`) — une op en erreur paraît « en
-> cours » dans l'APP (l'onglet Sheet, lui, dit vrai) → merger PR4 rapidement. **RESTE** : PR3bis→
-> PR4 (app : plage OUVERTE `A2:J`, rendu générique, familles de statut étendues,
-> fraîcheur/erreur/skip, tolérance colonnes absentes), PR5 (flux vivant via accumulateurs
-> Télémétrie). *(Anciennes notes PR3 ci-dessous conservées pour trace : )* PR3 (rendu Sheet 7→10
+> cours » dans l'APP (l'onglet Sheet, lui, dit vrai) → merger PR4 rapidement. **PR4 LIVRÉE** :
+> l'app lit la plage OUVERTE `A2:J` (fin de la borne `A2:G30` — leçon §7), interprète les
+> 10 colonnes (TOLÉRANTE aux 7 anciennes), familles de statut étendues (`erreur` → pastille
+> critique, `jamais vue`/`désactivée` → neutres), la RAISON EXACTE du skip publiée par le moteur
+> PRIME sur les gloses génériques (avec la glose-consigne en plus quand elle est reconnaissable —
+> quota/panne/budget), « Dernière activité » et « Dernière erreur » (rouge) affichées par
+> opération, les opérations sans compteur n'affichent ni compte ni barre (exception :
+> `recensement` garde sa barre indéterminée — revue). Revue code-reviewer 🟢 (2 suggestions 🟡
+> intégrées). 180 tests app + build + 897 moteur. **RESTE** : PR5 (compteurs du jour du flux
+> vivant via les accumulateurs Télémétrie — jamais un comptage parallèle — + BACKLOG/docs de
+> clôture du chantier). *(Anciennes notes PR3 ci-dessous conservées pour trace : )* PR3 (rendu Sheet 7→10
 > colonnes, migration d'en-tête sur chemin ATTEIGNABLE — `assurerEnteteProgression_` teste
 > `A1==='Clé'`, vrai avant/après : tester la DERNIÈRE colonne), PR4 (app : plage OUVERTE `A2:J`,
 > rendu générique, fraîcheur/erreur/skip, tolérance colonnes absentes), PR5 (flux vivant via les
