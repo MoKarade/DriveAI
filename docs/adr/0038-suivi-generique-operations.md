@@ -109,11 +109,19 @@ TOLÉRANTE aux colonnes absentes (déploiements moteur/app non atomiques — tra
 casse : l'app actuelle ignore proprement lignes et colonnes supplémentaires, d'où l'ordre
 MOTEUR D'ABORD).
 
-### f) Flux vivant : compteurs du jour
+### f) Flux vivant : compteurs du jour — ABANDONNÉ en PR5 (décision de clôture, 2026-08-13)
 
-Les lignes de type `flux` affichent l'activité du JOUR en RÉUTILISANT les accumulateurs de
-`majTelemetrie_` (même calcul, même conversion d'unité — leçon « toute surface qui ré-affiche un
-nombre réplique EXACTEMENT la même conversion ») — jamais un comptage parallèle.
+Le plan prévoyait d'afficher l'activité du jour des lignes `flux` en réutilisant les accumulateurs
+de `majTelemetrie_`. Constat à la clôture : ces compteurs (tri cyclique, tri boîte, histo) sont
+DÉJÀ affichés, avec leurs plafonds, dans la section « Coûts & quotas » de la MÊME page Moteur —
+les recopier dans les lignes Progression serait une DUPLICATION de surface (la leçon §7 « toute
+surface qui ré-affiche un nombre réplique exactement la même conversion » n'est jamais mieux
+respectée qu'en n'ayant qu'UNE surface). Et aucun compteur quotidien n'existe pour l'intake
+(PJ/dépôts/partagés/intentions) — en créer serait précisément le « comptage parallèle » que le
+plan interdisait. Les lignes `flux` portent donc : statut réel, raison de skip, dernière activité,
+dernière erreur (PR1-4) — et renvoient aux jauges Télémétrie pour les volumes du jour. Si un
+compteur par ligne devient souhaitable, ce sera un chantier d'instrumentation dédié, pas une
+recopie.
 
 ## 3. Coût & quotas
 
