@@ -741,6 +741,15 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   (« Advanced Deployment Protection »), à vérifier/acheter dans le dashboard, jamais supposé inclus.
   Et avant de recommander un mot de passe pour « protéger les previews », vérifier si la protection
   SSO Vercel (gratuite, souvent déjà active) ne couvre pas déjà le besoin.
+- **Étendre un contrat de colonnes lu par un consommateur DÉPLOYÉ SÉPARÉMENT : APPEND en queue,
+  jamais une insertion qui décale.** Pendant la fenêtre entre les deux déploiements (moteur vs
+  app), chaque position décalée est lue avec l'ANCIENNE sémantique — sans erreur ni warning (vécu
+  C28-44 : `Horodaté` gardé en G, les 3 colonnes nouvelles en H/I/J ; l'ordre « logique » de l'ADR
+  aurait mis une raison de skip là où l'app lisait un horodatage). Preuve mécanique : si la
+  conversion des tests existants du consommateur ne touche AUCUNE assertion indexée, la
+  compatibilité est prouvée ; si une assertion doit bouger, une prod mixte lira faux. Bonus : un
+  préfixe de colonnes identique rend la migration d'en-tête non destructive (réécrire la ligne 1
+  suffit).
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 

@@ -2150,3 +2150,29 @@ en documentant ce que le filet borne réellement (ici la part TEXTE ; la croissa
 est attrapée par le test au plafond dérivé, qui échoue bien avant)."
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-13 (quinquies) — Étendre un contrat de colonnes lu par un consommateur déployé séparément : APPEND en queue, jamais une insertion qui décale
+
+**Contexte.** C28-44 PR3 : l'onglet `Progression` passe de 7 à 10 colonnes pendant que l'app (un
+AUTRE déploiement, Vercel) continue de lire `A2:G30` jusqu'à sa propre PR4. L'ADR esquissait
+`…Statut | Détail | Dernière activité | Dernière erreur | Horodaté` — `Horodaté` déplacé de G en J.
+Avec cet ordre, dès le premier tick post-merge moteur, la colonne G lue par l'app aurait contenu
+une raison de skip à la place d'un horodatage : sémantique décalée SANS erreur, sur toutes les
+lignes, pendant toute la fenêtre entre les deux déploiements. En gardant `Horodaté` EN G et en
+AJOUTANT les 3 colonnes en H/I/J : l'app v6 lit exactement les 7 mêmes colonnes qu'avant, les
+consommateurs indexés 0-6 (`lireLignesProgression_`, 12 tests) restent valides TELS QUELS — la
+conversion des tests sans toucher UNE assertion a servi de preuve mécanique de compatibilité — et
+la migration d'en-tête n'a même pas besoin d'effacer les lignes v2 (préfixe de colonnes identique).
+
+**Leçon.** "Quand un contrat de colonnes (onglet Sheet, CSV, table) est lu par un consommateur
+DÉPLOYÉ SÉPARÉMENT (app vs moteur, deux merges distincts), toute extension se fait par AJOUT EN
+QUEUE — jamais une insertion ou un réordonnancement qui décale les positions existantes, même si
+l'ordre 'logique' voudrait autre chose : pendant la fenêtre entre les deux déploiements, chaque
+position décalée est lue avec l'ANCIENNE sémantique, sans erreur ni warning. Corollaire de preuve :
+si la conversion des tests existants du consommateur ne touche AUCUNE assertion indexée, la
+compatibilité est prouvée mécaniquement ; si une assertion doit bouger, c'est qu'un index a
+changé — et qu'une prod mixte lira faux. Bonus : un préfixe de colonnes identique rend la
+migration d'en-tête non destructive (réécrire la ligne 1 suffit, les données anciennes restent
+lisibles)."
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).

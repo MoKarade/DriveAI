@@ -49,9 +49,14 @@
 > quota/panne/budget), « Dernière activité » et « Dernière erreur » (rouge) affichées par
 > opération, les opérations sans compteur n'affichent ni compte ni barre (exception :
 > `recensement` garde sa barre indéterminée — revue). Revue code-reviewer 🟢 (2 suggestions 🟡
-> intégrées). 180 tests app + build + 897 moteur. **RESTE** : PR5 (compteurs du jour du flux
-> vivant via les accumulateurs Télémétrie — jamais un comptage parallèle — + BACKLOG/docs de
-> clôture du chantier). *(Anciennes notes PR3 ci-dessous conservées pour trace : )* PR3 (rendu Sheet 7→10
+> intégrées). 180 tests app + build + 897 moteur. **CHANTIER CLOS (PR5 = clôture)** : la moitié
+> « compteurs du jour du flux vivant » de la PR5 est ABANDONNÉE par décision documentée (ADR-0038
+> §2f) — les jauges Télémétrie affichent DÉJÀ ces compteurs avec leurs plafonds sur la MÊME page
+> Moteur ; recopier = duplication de surface, et l'intake n'a pas de compteur quotidien (en créer
+> = le « comptage parallèle » que le plan interdisait). BACKLOG C28-44 → ✅ (#268/#269/#270/#271).
+> **VÉRIFICATION PROD RESTANTE (self-serve, prochain check)** : lire l'onglet `Progression` réel
+> après quelques ticks — en-tête 10 colonnes (`J1 = Dernière erreur`), ~34 lignes, raisons de skip
+> plausibles — la seule preuve qui compte est la DONNÉE réelle post-merge, jamais le diff (§7). *(Anciennes notes PR3 ci-dessous conservées pour trace : )* PR3 (rendu Sheet 7→10
 > colonnes, migration d'en-tête sur chemin ATTEIGNABLE — `assurerEnteteProgression_` teste
 > `A1==='Clé'`, vrai avant/après : tester la DERNIÈRE colonne), PR4 (app : plage OUVERTE `A2:J`,
 > rendu générique, fraîcheur/erreur/skip, tolérance colonnes absentes), PR5 (flux vivant via les
