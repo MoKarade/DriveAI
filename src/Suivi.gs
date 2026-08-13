@@ -158,6 +158,30 @@ function etapeSuivie_(cle, gates, fn, onErreur) {
   }
 }
 
+/**
+ * PURE : statut d'affichage d'une opération SANS lecteur de campagne dédié, dérivé de son
+ * enregistrement (le DERNIER événement gagne — erreur prioritaire à égalité). Vocabulaire aligné
+ * sur les familles que l'app connaît (`familleStatut`) : « en cours », « en pause (…) »,
+ * « suspendu (…) », plus « erreur », « désactivée » et « jamais vue » (PR4 les affiche).
+ * @param {?Object} rec  entrée fusionnée {t, ok, d, et, e, st, s} — absente si jamais exécutée
+ * @return {string}
+ */
+function statutDepuisSuivi_(rec) {
+  if (!rec || (!rec.t && !rec.ok && !rec.et && !rec.st)) return 'jamais vue';
+  var dernier = Math.max(rec.ok || 0, rec.et || 0, rec.st || 0);
+  if (rec.et && rec.et >= dernier) return 'erreur';
+  if (rec.st && rec.st >= dernier) {
+    var raison = rec.s || '';
+    // `indexOf !== -1`, pas un préfixe : « frein budget campagnes » commence par « frein » (revue
+    // code-reviewer PR3 — en préfixe, il tombait dans la famille « suspendu », que l'app glose
+    // « panne » ; un frein budget est une PAUSE normale, comme sur les campagnes riches).
+    if (raison.indexOf('budget') !== -1) return 'en pause (' + raison + ')';
+    if (raison === 'désactivée (CONFIG)') return 'désactivée';
+    return 'suspendu (' + raison + ')';
+  }
+  return 'en cours';
+}
+
 /* ---------- Codec Property DriveAI_SUIVI_OPS (compact, borné ~9 Ko) ---------- */
 
 /**

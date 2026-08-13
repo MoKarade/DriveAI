@@ -91,6 +91,23 @@ test('etapeSuivie_ : erreur SANS onErreur → enregistrée ET RE-LEVÉE telle qu
   assert.strictEqual(e.e, 'panne API');
 });
 
+/* ---------- statutDepuisSuivi_ (PR3 — statut des opérations sans lecteur de campagne) ---------- */
+
+test('statutDepuisSuivi_ : jamais vue / en cours / en pause / suspendu / désactivée / erreur — le DERNIER événement gagne, erreur prioritaire à égalité', () => {
+  const c = ctx();
+  assert.strictEqual(c.statutDepuisSuivi_(null), 'jamais vue');
+  assert.strictEqual(c.statutDepuisSuivi_({}), 'jamais vue');
+  assert.strictEqual(c.statutDepuisSuivi_({ t: 100, ok: 101 }), 'en cours');
+  assert.strictEqual(c.statutDepuisSuivi_({ st: 200, s: 'budget de tick épuisé' }), 'en pause (budget de tick épuisé)');
+  assert.strictEqual(c.statutDepuisSuivi_({ st: 200, s: 'frein budget campagnes' }), 'en pause (frein budget campagnes)',
+    '« budget » en position NON-préfixe compte aussi (revue PR3 : un frein budget est une pause, jamais une « panne »)');
+  assert.strictEqual(c.statutDepuisSuivi_({ st: 200, s: 'reset en cours' }), 'suspendu (reset en cours)');
+  assert.strictEqual(c.statutDepuisSuivi_({ st: 200, s: 'désactivée (CONFIG)' }), 'désactivée');
+  assert.strictEqual(c.statutDepuisSuivi_({ ok: 100, et: 200, e: 'boom' }), 'erreur', 'l\'erreur est plus récente');
+  assert.strictEqual(c.statutDepuisSuivi_({ ok: 300, et: 200, e: 'boom' }), 'en cours', 'le succès est plus récent que l\'erreur');
+  assert.strictEqual(c.statutDepuisSuivi_({ ok: 200, et: 200, e: 'boom' }), 'erreur', 'à ÉGALITÉ, l\'erreur prime (prudence)');
+});
+
 /* ---------- Codec Property (tolérance, fusion, purge, plafond) ---------- */
 
 test('chargerSuiviOps_ : Property absente ou JSON illisible → {} sans throw (l\'observabilité ne casse jamais rien)', () => {

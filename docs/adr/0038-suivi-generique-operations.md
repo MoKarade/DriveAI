@@ -83,14 +83,21 @@ appel (2 `getProperty` par tick au plus — négligeable).
 
 ### d) Onglet `Progression` étendu (contrat app)
 
-Colonnes : `Clé | Opération | Traités | Base | Unité | Statut | Détail | Dernière activité |
-Dernière erreur | Horodaté` (7 → 10). `Détail` = raison de skip ou note ; `Dernière activité` =
-max(tentative, succès) ; `Dernière erreur` = « message (il y a X) » ou vide. Statuts dérivés des
-MÊMES prédicats que le tick (`resetEnCours_`, `estPannePlateforme_`, `estPanneGmail_`,
-`budgetCampagnesAtteint_`, budgets quotidiens) — jamais une re-formule. ⚠️ Migration d'en-tête :
+Colonnes (ordre RÉVISÉ en PR3, transition oblige) : `Clé | Opération | Traités | Base | Unité |
+Statut | Horodaté | Détail | Dernière activité | Dernière erreur` (7 → 10). **`Horodaté` RESTE en
+G**, position historique, et les 3 colonnes nouvelles s'AJOUTENT après — l'app v6 (qui lit
+`A2:G30` jusqu'à la PR4) continue ainsi de lire EXACTEMENT les 7 mêmes colonnes pendant la
+transition, et tous les consommateurs indexés 0-6 (`lireLignesProgression_`, tests) restent
+valides tels quels. `Détail` = raison de skip ; `Dernière activité` = max(tentative, succès) ;
+`Dernière erreur` = « dd/MM HH:mm — message » ou vide. Statuts : les campagnes à lecteurs riches
+gardent leurs statuts historiques (recensement / en attente / terminé + purge — dérivés des MÊMES
+prédicats que le tick, jamais une re-formule) ; toutes les autres opérations dérivent le leur du
+SUIVI réel (`statutDepuisSuivi_` : le dernier événement gagne, erreur prioritaire à égalité —
+« en cours », « en pause (raison) », « suspendu (raison) », « désactivée », « erreur »,
+« jamais vue »). ⚠️ Migration d'en-tête :
 `assurerEnteteProgression_` teste `A1 === 'Clé'`, VRAI avant et après l'extension → code mort pour
-cette migration (risque PM n° 1, leçon du 2026-08-13) ; le test portera sur la DERNIÈRE colonne
-attendue (`J1 === 'Horodaté'`), sur le chemin d'écriture réellement emprunté à chaque tick.
+cette migration (risque PM n° 1, leçon du 2026-08-13) ; le test porte sur la DERNIÈRE colonne
+attendue (`J1 === 'Dernière erreur'`), sur le chemin d'écriture réellement emprunté à chaque tick.
 `lireLignesProgression_` tolère les anciennes lignes 7 colonnes au premier tick post-déploiement
 (risque PM n° 5).
 
