@@ -2010,3 +2010,40 @@ reprendre sur plusieurs ticks, jamais seulement le plafond par run compté comme
 journée."
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-13 — Erreur de comptage avalée en 0 : indistinguable d'un vrai zéro, permanent dans un journal append-only
+
+**Contexte.** Suite directe de la leçon du 12/08 ci-dessus : une fois `HistoriqueVrac` déployé et
+lu en self-serve (sans geste de Marc), j'ai trouvé une anomalie DANS SES PROPRES DONNÉES le
+lendemain : `06 · Études & diplômes` affichait `0` le 2026-08-12, alors que ce domaine contenait
+**≥400 fichiers réels**, vus la veille par pagination Drive directe. Cause : `compterVracRacineDomaine_`
+(Diagnostic.gs) enveloppait le listing Drive dans un `try/catch` et rendait `{n:0, tronque:false}`
+sur TOUTE exception — exactement la même forme qu'un domaine réellement vide. `HistoriqueVrac` est
+**APPEND-ONLY** (contrairement à `Progression`/`Santé`, réécrits chaque tick) : ce faux 0 n'aurait
+jamais été corrigé, il serait resté dans la série temporelle pour toujours. Corrigé (revue flotte
+apps-script-quota 🟢 + code-reviewer 🟢, 869 tests) : la fonction rend désormais
+`{n, tronque, erreur:boolean}` ; le diagnostic un-clic affiche « ERREUR DE LECTURE » et exclut le
+domaine de `totalVrac` (jamais additionner un `n:0` d'erreur, ça recréerait le même faux total) ;
+`HistoriqueVrac` gagne une colonne `Erreur` et laisse `Vrac` VIDE (jamais `0`) sur ce cas — et la
+sweep continue sur les autres domaines (une erreur locale n'arrête jamais un balayage). Trouvé au
+passage (revue apps-script-quota) : ajouter une colonne à un onglet Sheet DÉJÀ CRÉÉ en prod ne fait
+PAS apparaître son en-tête — `creerOnglet_` ne pose les en-têtes qu'à la création, jamais en
+migration — réparé par le même patron que `Index!H1` (`if` cellule vide `then setValue`).
+
+**Leçon.** "Une fonction de comptage/agrégation qui dégrade toute exception vers son compte de repos
+(souvent `0`) rend une ERREUR indistinguable d'un ZÉRO RÉEL — le consommateur ne peut plus savoir
+si « rien à signaler » veut dire « rien trouvé » ou « je n'ai rien pu lire ». C'est d'autant plus
+dangereux quand la sortie nourrit un état qui ne se réécrit JAMAIS (journal append-only, historique) :
+un 0 muet écrit une fois là devient une fausse vérité PERMANENTE, alors que le même bug dans un état
+réécrit à chaque tick (Progression, Santé) se serait auto-corrigé au tick suivant. Réflexe de
+conception : exposer un champ `erreur:boolean` DÉDIÉ plutôt que de réutiliser la valeur de succès
+comme sentinelle d'échec ; propager ce flag jusqu'au consommateur final (afficher/marquer l'erreur
+EXPLICITEMENT, jamais l'agréger comme une donnée valide) ; laisser la boucle appelante CONTINUER sur
+les items suivants (une panne locale ne doit jamais stopper tout un balayage). Corollaire schéma :
+étendre les colonnes d'un onglet Sheet déjà créé en prod exige le MÊME patron de réparation d'en-tête
+que `Index!H1` (`creerOnglet_` ne migre rien, seulement la création). Réflexe de revue : pour toute
+fonction qui compte/agrège et peut échouer (I/O, réseau, permission), se demander « mon 0 de succès
+et mon 0 d'échec sont-ils LE MÊME 0 ? » — si oui, les séparer, surtout si la sortie alimente un état
+qui ne se réécrit jamais."
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).

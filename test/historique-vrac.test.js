@@ -25,11 +25,21 @@ function ctx() {
 test('ligneHistoriqueVrac_ : formate une ligne, colonne Tronqué vide sauf si plafonné', () => {
   const c = ctx();
   assert.deepStrictEqual(
-    plain(c.ligneHistoriqueVrac_('2026/08/12', { nom: '05 · Carrière', id: 'x' }, { n: 26, tronque: false })),
-    ['2026/08/12', '05 · Carrière', 26, '']);
+    plain(c.ligneHistoriqueVrac_('2026/08/12', { nom: '05 · Carrière', id: 'x' }, { n: 26, tronque: false, erreur: false })),
+    ['2026/08/12', '05 · Carrière', 26, '', '']);
   assert.deepStrictEqual(
-    plain(c.ligneHistoriqueVrac_('2026/08/12', { nom: '08 · Perso & projets', id: 'y' }, { n: 1000, tronque: true })),
-    ['2026/08/12', '08 · Perso & projets', 1000, 'oui']);
+    plain(c.ligneHistoriqueVrac_('2026/08/12', { nom: '08 · Perso & projets', id: 'y' }, { n: 1000, tronque: true, erreur: false })),
+    ['2026/08/12', '08 · Perso & projets', 1000, 'oui', '']);
+});
+
+test('ligneHistoriqueVrac_ : domaine illisible → Vrac VIDE + Erreur "oui", JAMAIS un faux 0 permanent', () => {
+  const c = ctx();
+  // Confirmé en prod 2026-08-12 : 06·Études avait affiché 0 dans ce journal APPEND-ONLY alors
+  // qu'il contenait ≥400 fichiers réels — un 0 écrit ici ne se corrige jamais (contrairement à
+  // Progression/Santé, réécrits chaque tick).
+  assert.deepStrictEqual(
+    plain(c.ligneHistoriqueVrac_('2026/08/12', { nom: '06 · Études & diplômes', id: 'z' }, { n: 0, tronque: false, erreur: true })),
+    ['2026/08/12', '06 · Études & diplômes', '', '', 'oui']);
 });
 
 /* ---------- budgetJourHistoriqueVrac_ (PURE sur props) ---------- */
@@ -71,11 +81,11 @@ function ctxMaj(opts) {
     dateGmail_: () => '2026/08/12',
     compterVracRacineDomaine_: (id) => {
       appelsComptage++;
-      return (opts.comptes && opts.comptes[id]) || { n: 0, tronque: false };
+      return (opts.comptes && opts.comptes[id]) || { n: 0, tronque: false, erreur: false };
     },
     // Injecté directement (jamais via Journal.gs : sa déclaration `function feuille_` écraserait
     // ce mock — patron déjà établi par fusion-exec.test.js/ctxPlan).
-    COLONNES_HISTORIQUE_VRAC: ['Date', 'Domaine', 'Vrac', 'Tronqué'],
+    COLONNES_HISTORIQUE_VRAC: ['Date', 'Domaine', 'Vrac', 'Tronqué', 'Erreur'],
     feuille_: () => ({
       getLastRow: () => opts.dernLigne || 1,
       getRange: (ligne, col, nb, larg) => ({
@@ -102,6 +112,22 @@ test('majHistoriqueVrac_ : sweep complète en un run → écrit toutes les ligne
   assert.strictEqual(store.DriveAI_VRAC_HISTO_JOUR, '2026/08/12');
   assert.strictEqual(store.DriveAI_VRAC_HISTO_IDX, '0', 'curseur remis à 0, prêt pour demain');
   assert.ok(store.DriveAI_VRAC_JOUR_MS.startsWith('2026/08/12|'), 'budget quotidien consommé persisté');
+});
+
+test('majHistoriqueVrac_ : un domaine en erreur n\'interrompt PAS la sweep — le curseur avance, le jour se termine, ligne Erreur écrite pour lui seul', () => {
+  const c0 = ctx();
+  const noms = Object.keys(c0.CONFIG.DOMAINES);
+  const idErreur = c0.CONFIG.DOMAINES[noms[0]];
+  const { c, store, ecritures, appelsComptage } = ctxMaj({
+    dernLigne: 1,
+    comptes: { [idErreur]: { n: 0, tronque: false, erreur: true } }, // les autres domaines gardent le défaut { n:0, erreur:false }
+  });
+  c.majHistoriqueVrac_(() => false);
+  const total = noms.length;
+  assert.strictEqual(appelsComptage(), total, 'TOUS les domaines comptés, y compris ceux après celui en erreur');
+  assert.strictEqual(store.DriveAI_VRAC_HISTO_JOUR, '2026/08/12', 'un domaine en erreur ne bloque jamais la fin de la sweep');
+  const ligneErreur = plain(ecritures[0].valeurs[0]); // 1er domaine = celui mocké en erreur
+  assert.deepStrictEqual(ligneErreur, ['2026/08/12', noms[0], '', '', 'oui'], 'Vrac VIDE + Erreur "oui", jamais un faux 0');
 });
 
 test('majHistoriqueVrac_ : le garde-temps est vérifié AVANT CHAQUE domaine — jamais une sélection non bornée suivie d\'un lot non gardé', () => {

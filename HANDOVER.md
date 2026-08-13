@@ -4,7 +4,19 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **📈 ÉTAT AU 2026-08-12 (le plus récent) — JOURNAL QUOTIDIEN DU VRAC PAR DOMAINE.** Marc : « pour
+> **🩹 ÉTAT AU 2026-08-13 (le plus récent) — CORRECTIF : erreur de lecture Drive ≠ vrai zéro dans le
+> vrac.** Confirmé en prod le jour même en lisant `HistoriqueVrac` (self-serve) : `06 · Études &
+> diplômes` avait inscrit **0** le 2026-08-12, alors que ce domaine contenait **≥400 fichiers réels**
+> observés la veille par pagination Drive directe. Cause : `compterVracRacineDomaine_`
+> (Diagnostic.gs) avalait toute exception et rendait `{n:0, tronque:false}` — indistinguable d'un
+> domaine réellement vide, et ce faux 0 s'écrivait pour TOUJOURS dans `HistoriqueVrac`
+> (append-only, jamais réécrit contrairement à `Progression`/`Santé`). Corrigé : la fonction rend
+> désormais `{n, tronque, erreur}` ; le diagnostic un-clic affiche « ERREUR DE LECTURE » au lieu
+> d'un chiffre pour ce domaine (exclu de `totalVrac`) ; `HistoriqueVrac` gagne une 5ᵉ colonne
+> `Erreur` et laisse `Vrac` VIDE (jamais `0`) quand `erreur:true` — un domaine en erreur n'interrompt
+> pas la sweep quotidienne des autres domaines. 869 tests.
+>
+> **📈 ÉTAT AU 2026-08-12 — JOURNAL QUOTIDIEN DU VRAC PAR DOMAINE.** Marc : « pour
 > chaque dossier je veux un détail journalier de l'avancement jusqu'à la fin ». Nouveau
 > `src/HistoriqueVrac.gs` : sweep QUOTIDIENNE (Property de garde, une seule fois/jour, curseur de
 > domaine reprenable si le budget coupe), compte le vrac de CHAQUE domaine (réutilise

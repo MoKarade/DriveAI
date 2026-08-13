@@ -700,6 +700,16 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   (patron `etatCampagnesRangement`, Diagnostic.gs). Corollaire test : un mock de `estBudgetDepasse()`
   qui est un simple compteur d'appels ne prouve rien tant qu'on ne vérifie pas aussi le nombre
   d'appels RÉELS à l'opération protégée elle-même (pas seulement la taille du résultat final).
+- **Une fonction de comptage/agrégation ne doit jamais dégrader une EXCEPTION vers son compte de
+  repos (`0`)** — sinon une erreur devient indistinguable d'un vrai zéro, et si la sortie nourrit un
+  état qui ne se réécrit JAMAIS (journal append-only, historique — contrairement à
+  Progression/Santé, réécrits chaque tick), ce faux 0 devient une vérité PERMANENTE (vécu :
+  `compterVracRacineDomaine_`, `06 · Études` affiché à 0 dans `HistoriqueVrac` avec ≥400 fichiers
+  réels). Exposer un champ `erreur:boolean` DÉDIÉ, le propager jusqu'au consommateur final (affiché
+  EXPLICITEMENT, jamais additionné comme une donnée valide), et laisser la boucle appelante
+  CONTINUER sur les autres items. Corollaire : étendre les colonnes d'un onglet Sheet déjà créé en
+  prod exige le même patron de réparation d'en-tête que `Index!H1` (`creerOnglet_` ne migre rien,
+  seulement la création).
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 

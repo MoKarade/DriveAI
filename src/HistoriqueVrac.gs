@@ -29,14 +29,18 @@ function domainesHistoriqueVrac_(props) {
 }
 
 /**
- * PURE : formate UNE ligne de `HistoriqueVrac` pour un domaine déjà compté.
+ * PURE : formate UNE ligne de `HistoriqueVrac` pour un domaine déjà compté. Un domaine illisible
+ * (`compte.erreur`) laisse `Vrac` VIDE plutôt qu'un faux 0 permanent dans ce journal APPEND-ONLY
+ * (confirmé en prod 2026-08-12 : `06 · Études` avait affiché 0 avec ≥400 fichiers réels — un 0
+ * écrit ici ne se corrige JAMAIS, contrairement à Progression/Santé qui se réécrivent chaque tick).
  * @param {string} date  `dateGmail_` du jour (format AAAA/MM/JJ, stable et trié)
  * @param {{nom:string, id:string}} domaine
- * @param {{n:number, tronque:boolean}} compte  résultat de `compterVracRacineDomaine_`
- * @return {Array} [Date, Domaine, Vrac, Tronqué]
+ * @param {{n:number, tronque:boolean, erreur:boolean}} compte  résultat de `compterVracRacineDomaine_`
+ * @return {Array} [Date, Domaine, Vrac, Tronqué, Erreur]
  */
 function ligneHistoriqueVrac_(date, domaine, compte) {
-  return [date, domaine.nom, compte.n, compte.tronque ? 'oui' : ''];
+  if (compte.erreur) return [date, domaine.nom, '', '', 'oui'];
+  return [date, domaine.nom, compte.n, compte.tronque ? 'oui' : '', ''];
 }
 
 /** Consommation du budget QUOTIDIEN (ms réelles persistées `AAAA/MM/JJ|ms`). PUR sur props. */

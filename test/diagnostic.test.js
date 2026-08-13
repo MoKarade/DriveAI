@@ -81,7 +81,7 @@ test('statPlanConsolidation_ : onglet PlanConsolidation ABSENT ⇒ zéros (lectu
   assert.strictEqual(r.restantAAppliquer, 0);
 });
 
-test('compterVracRacineDomaine_ : compte, tronque au plafond, dégrade à 0 si illisible', () => {
+test('compterVracRacineDomaine_ : compte, tronque au plafond, signale erreur (jamais un faux 0) si illisible', () => {
   const vingt = new Array(20).fill(0);
   const mille1 = new Array(1001).fill(0);
   const ctx = load(['Diagnostic.gs'], {
@@ -93,9 +93,11 @@ test('compterVracRacineDomaine_ : compte, tronque au plafond, dégrade à 0 si i
     },
   });
   const ok = ctx.compterVracRacineDomaine_('ok');
-  assert.strictEqual(ok.n, 20); assert.strictEqual(ok.tronque, false);
+  assert.strictEqual(ok.n, 20); assert.strictEqual(ok.tronque, false); assert.strictEqual(ok.erreur, false);
   const plein = ctx.compterVracRacineDomaine_('plein');
-  assert.strictEqual(plein.n, 1000); assert.strictEqual(plein.tronque, true); // plafond 1000, marqué « 1000+ »
+  assert.strictEqual(plein.n, 1000); assert.strictEqual(plein.tronque, true); assert.strictEqual(plein.erreur, false); // plafond 1000, marqué « 1000+ »
   const boom = ctx.compterVracRacineDomaine_('boom');
-  assert.strictEqual(boom.n, 0); assert.strictEqual(boom.tronque, false); // illisible ⇒ 0, jamais un plantage
+  // illisible ⇒ erreur:true, JAMAIS n:0 silencieux (indistinguable d'un domaine réellement vide —
+  // confirmé en prod 2026-08-12 : 06·Études affichait 0 avec ≥400 fichiers réels)
+  assert.strictEqual(boom.n, 0); assert.strictEqual(boom.tronque, false); assert.strictEqual(boom.erreur, true);
 });
