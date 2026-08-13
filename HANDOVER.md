@@ -28,7 +28,23 @@
 > gates, ordre registre=wraps sans `.sort()` — faits), file-checker 🟢 (intake strictement intact,
 > ordre C28-15 préservé ; résiduel assumé : une gate qui lève sort sans trace, trou PRÉ-existant
 > documenté — durcissement optionnel plus tard). Les tripwires d'orchestration historiques
-> convertis vers `gatesDe(cle)` : RENFORCÉS, pas affaiblis. **RESTE** : PR3 (rendu Sheet 7→10
+> convertis vers `gatesDe(cle)` : RENFORCÉS, pas affaiblis. **PR3 LIVRÉE** : l'onglet `Progression`
+> itère le REGISTRE (une ligne par opération, ordre d'exécution) — 7→10 colonnes avec `Horodaté`
+> MAINTENU en G (l'app v6 qui lit `A2:G30` continue de lire exactement les 7 mêmes colonnes
+> pendant la transition, consommateurs indexés 0-6 valides tels quels) ; migration d'en-tête sur
+> la DERNIÈRE colonne (`J1`), chemin atteignable (majProgressions_ chaque tick), SANS effacer les
+> lignes v2 (7 premières colonnes identiques) ; les 6 campagnes riches gardent leurs statuts
+> historiques, tout le reste dérive de `statutDepuisSuivi_` (dernier événement gagne, erreur
+> prioritaire à égalité). Revue flotte : quota 🟢 (5/5, migration auto-réparante), code-reviewer
+> 🟠→🟢 (vraie prise : `indexOf('budget') === 0` ratait « frein budget campagnes » → famille
+> « suspendu » glosée « panne » par l'app pour un simple frein — corrigé en `!== -1` + test ; ADR
+> réaligné ; nit « — » pendouillant corrigé ; coordonnées d'en-tête assertées). ⚠️ Transitoire
+> jusqu'à PR4 : l'app v6 affiche les ~23 nouvelles lignes avec une pastille NEUTRE (statuts
+> `erreur`/`jamais vue`/`désactivée` inconnus de `familleStatut`) — une op en erreur paraît « en
+> cours » dans l'APP (l'onglet Sheet, lui, dit vrai) → merger PR4 rapidement. **RESTE** : PR3bis→
+> PR4 (app : plage OUVERTE `A2:J`, rendu générique, familles de statut étendues,
+> fraîcheur/erreur/skip, tolérance colonnes absentes), PR5 (flux vivant via accumulateurs
+> Télémétrie). *(Anciennes notes PR3 ci-dessous conservées pour trace : )* PR3 (rendu Sheet 7→10
 > colonnes, migration d'en-tête sur chemin ATTEIGNABLE — `assurerEnteteProgression_` teste
 > `A1==='Clé'`, vrai avant/après : tester la DERNIÈRE colonne), PR4 (app : plage OUVERTE `A2:J`,
 > rendu générique, fraîcheur/erreur/skip, tolérance colonnes absentes), PR5 (flux vivant via les

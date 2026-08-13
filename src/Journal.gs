@@ -166,7 +166,12 @@ function majSante_() {
 /* ---------- Progression LIVE des opérations (C28-18) ---------- */
 
 // Contrat avec l'app (interpreterProgression côté React) : 7 colonnes, une ligne par opération.
-var COLONNES_PROGRESSION = ['Clé', 'Opération', 'Traités', 'Base', 'Unité', 'Statut', 'Horodaté'];
+// C28-44 (ADR-0038) : 7 → 10 colonnes. `Horodaté` RESTE en G (position historique) et les
+// nouvelles colonnes s'AJOUTENT après — l'app v6 (qui lit `A2:G30` jusqu'à la PR4) continue ainsi
+// de lire EXACTEMENT les 7 mêmes colonnes pendant la transition, et tous les consommateurs
+// indexés 0-6 restent valides (déviation assumée de l'ordre esquissé dans l'ADR §2d, pour ça).
+var COLONNES_PROGRESSION = ['Clé', 'Opération', 'Traités', 'Base', 'Unité', 'Statut', 'Horodaté',
+  'Détail', 'Dernière activité', 'Dernière erreur'];
 
 /**
  * L'onglet Progression v1 était une barre TEXTE mono-opération (rangement, cellules A2:A4).
@@ -175,8 +180,17 @@ var COLONNES_PROGRESSION = ['Clé', 'Opération', 'Traités', 'Base', 'Unité', 
  * @param {Sheet} f
  */
 function assurerEnteteProgression_(f) {
-  if (String(f.getRange('A1').getValue()) === 'Clé') return;
-  f.clearContents();
+  // Migration v2 (7 col) → v3 (10 col, C28-44) : le test porte sur la DERNIÈRE colonne attendue —
+  // jamais `A1 === 'Clé'`, VRAI avant ET après l'extension (la réparation serait du code mort,
+  // leçon 2026-08-13 « point d'attache »). Chemin ATTEIGNABLE garanti : appelée par
+  // `majProgressions_` à CHAQUE tick, pas par `initialiserSheet_` (qui ne retouche jamais un
+  // onglet existant).
+  if (String(f.getRange('J1').getValue()) === COLONNES_PROGRESSION[9]) return;
+  // v1 (barre TEXTE mono-opération, A1 ≠ 'Clé') : table incompatible → on repart de zéro (c'était
+  // un AFFICHAGE, pas un état). v2 → v3 : les 7 premières colonnes sont IDENTIQUES — les lignes
+  // v2 restent lisibles telles quelles (`lireLignesProgression_` lit les indices 0-6, inchangés)
+  // et sont réécrites au format v3 par ce même tick ; seul l'en-tête est réécrit.
+  if (String(f.getRange('A1').getValue()) !== 'Clé') f.clearContents();
   f.getRange(1, 1, 1, COLONNES_PROGRESSION.length).setValues([COLONNES_PROGRESSION]);
   f.setFrozenRows(1);
 }
@@ -184,19 +198,43 @@ function assurerEnteteProgression_(f) {
 /**
  * Construit les lignes de l'onglet Progression. PURE (testée) : tout l'état arrive en paramètres.
  *
- * Règles (leçons « barre de masse ») : le statut dérive des pannes/frein AVANT « en cours » ;
- * une opération « terminé » garde l'horodatage de sa FIN (sinon jamais purgée) et disparaît après
- * `purgeMs` ; une campagne finie AVANT d'avoir eu une ligne n'apparaît jamais (ex. rangement,
- * clos depuis des semaines). (Les « demandes de Marc » tri/intentions ont disparu — ADR-0031.)
+ * C28-44 (ADR-0038) : la fonction ITÈRE LE REGISTRE (Suivi.gs) — une ligne PAR opération du tick,
+ * dans l'ordre d'exécution, plus jamais une liste codée en dur. Les campagnes à lecteurs dédiés
+ * (migration, réanalyse, histo, rangement, conso gen/exec) gardent leurs Traités/Base/statuts
+ * RICHES (recensement, en attente, terminé + purge) ; toutes les autres opérations dérivent leur
+ * statut du SUIVI réel (`statutDepuisSuivi_` : erreur / suspendu+raison / en pause / en cours).
+ * Les 3 colonnes nouvelles (Détail, Dernière activité, Dernière erreur) viennent du suivi pour
+ * TOUTES les lignes, campagnes comprises.
+ *
+ * Règles conservées (leçons « barre de masse ») : le statut d'une campagne dérive des pannes/frein
+ * AVANT « en cours » ; une opération « terminé » garde l'horodatage de sa FIN (sinon jamais
+ * purgée) et disparaît après `purgeMs` ; une campagne finie AVANT d'avoir eu une ligne n'apparaît
+ * jamais. (Les « demandes de Marc » tri/intentions ont disparu — ADR-0031.)
  *
  * @param {Object} etat  instantané des opérations (cf. majProgressions_)
  * @param {Object} existantes  clé → {traites:number, statut:string, horodateMs:number}
  * @param {number} maintenantMs
  * @param {number} purgeMs  CONFIG.PROGRESSION_PURGE_MS
- * @return {Array[]} lignes [Clé, Opération, Traités, Base, Unité, Statut, Horodaté]
+ * @param {Object} suivi  vue fusionnée `suiviOpsFusionne_` — clé → {t, ok, d, et, e, st, s}
+ * @param {Array<Object>} registre  REGISTRE_OPERATIONS (Suivi.gs)
+ * @return {Array[]} lignes [Clé, Opération, Traités, Base, Unité, Statut, Horodaté, Détail, Dernière activité, Dernière erreur]
  */
-function lignesProgression_(etat, existantes, maintenantMs, purgeMs) {
+function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, registre) {
   var lignes = [];
+  var tz = Session.getScriptTimeZone();
+
+  /** Les 3 colonnes de SUIVI d'une opération (communes à toutes les lignes). */
+  function colonnesSuivi(cle) {
+    var rec = (suivi || {})[cle];
+    if (!rec) return ['', '', ''];
+    var dernierEvt = Math.max(rec.ok || 0, rec.et || 0, rec.st || 0);
+    var detail = rec.st && rec.st >= dernierEvt ? (rec.s || '') : '';
+    var activite = Math.max(rec.t || 0, rec.ok || 0);
+    var erreur = rec.et
+      ? Utilities.formatDate(new Date(rec.et), tz, 'dd/MM HH:mm') + (rec.e ? ' — ' + rec.e : '')
+      : '';
+    return [detail, activite ? new Date(activite) : '', erreur];
+  }
 
   /** Statut d'une CAMPAGNE Drive+LLM (migration, re-analyse, rangement). */
   function statutCampagne(op) {
@@ -233,31 +271,56 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs) {
       }
       if (traites === null || traites < ex.traites) traites = ex.traites; // numérateur figé à la fin
     }
+    var cs = colonnesSuivi(cle);
     lignes.push([cle, operation, traites === null ? '' : traites, base === null ? '' : base,
-      unite, statut, new Date(horodateMs)]);
+      unite, statut, new Date(horodateMs), cs[0], cs[1], cs[2]]);
   }
 
-  // (Les « demandes de Marc » tri/intentions n'existent plus — ADR-0031, boutons retirés en
-  // C28-41 PR1. Ne restent que les campagnes de fond.)
-  pousser('migration', 'Migration taxonomie (' + etat.migration.tag + ')',
-    etat.migration.traites, etat.migration.base, 'documents', statutCampagne(etat.migration));
-  pousser('reanalyse', 'Re-analyse v2 (' + etat.reanalyse.tag + ')',
-    etat.reanalyse.traites, etat.reanalyse.base, 'documents', statutCampagne(etat.reanalyse));
-  var statutHisto = etat.histo.termine ? 'terminé'
-    : etat.quotaGmail ? 'suspendu (quota Gmail)'
-      : etat.freinBudget ? 'en pause (frein budget)' : 'en cours';
-  // L'offset histo REPART À 0 aux passes de vérification (position de scan, pas un cumul) :
-  // affichage MONOTONE via le max avec la ligne existante — le compteur ne recule jamais.
-  var exHisto = existantes['histo-gmail'];
-  var traitesHisto = exHisto && !etat.histo.termine
-    ? Math.max(etat.histo.traites, exHisto.traites) : etat.histo.traites;
-  pousser('histo-gmail', 'Historique Gmail (PJ)', traitesHisto, null, 'fils', statutHisto);
-  pousser('rangement', 'Rangement initial du Drive',
-    etat.rangement.traites, etat.rangement.base, 'fichiers', statutCampagne(etat.rangement));
-  pousser('consolidation-gen', 'Consolidation — génération du plan (' + etat.consolidationGen.tag + ')',
-    etat.consolidationGen.traites, etat.consolidationGen.base, 'domaines', statutConsolidation_(etat.consolidationGen));
-  pousser('consolidation-exec', 'Consolidation — exécution du plan (' + etat.consolidationExec.tag + ')',
-    etat.consolidationExec.traites, etat.consolidationExec.base, 'lignes', statutConsolidation_(etat.consolidationExec));
+  // Constructeurs DÉDIÉS des campagnes à lecteurs riches — clés du registre, libellés dynamiques
+  // (tags de campagne) et statuts historiques conservés à l'identique.
+  var campagnes = {
+    'migration': function () {
+      pousser('migration', 'Migration taxonomie (' + etat.migration.tag + ')',
+        etat.migration.traites, etat.migration.base, 'documents', statutCampagne(etat.migration));
+    },
+    'reanalyse': function () {
+      pousser('reanalyse', 'Re-analyse v2 (' + etat.reanalyse.tag + ')',
+        etat.reanalyse.traites, etat.reanalyse.base, 'documents', statutCampagne(etat.reanalyse));
+    },
+    'histo-gmail': function () {
+      var statutHisto = etat.histo.termine ? 'terminé'
+        : etat.quotaGmail ? 'suspendu (quota Gmail)'
+          : etat.freinBudget ? 'en pause (frein budget)' : 'en cours';
+      // L'offset histo REPART À 0 aux passes de vérification (position de scan, pas un cumul) :
+      // affichage MONOTONE via le max avec la ligne existante — le compteur ne recule jamais.
+      var exHisto = existantes['histo-gmail'];
+      var traitesHisto = exHisto && !etat.histo.termine
+        ? Math.max(etat.histo.traites, exHisto.traites) : etat.histo.traites;
+      pousser('histo-gmail', 'Historique Gmail (PJ)', traitesHisto, null, 'fils', statutHisto);
+    },
+    'rangement': function () {
+      pousser('rangement', 'Rangement initial du Drive',
+        etat.rangement.traites, etat.rangement.base, 'fichiers', statutCampagne(etat.rangement));
+    },
+    'consolidation-gen': function () {
+      pousser('consolidation-gen', 'Consolidation — génération du plan (' + etat.consolidationGen.tag + ')',
+        etat.consolidationGen.traites, etat.consolidationGen.base, 'domaines', statutConsolidation_(etat.consolidationGen));
+    },
+    'consolidation-exec': function () {
+      pousser('consolidation-exec', 'Consolidation — exécution du plan (' + etat.consolidationExec.tag + ')',
+        etat.consolidationExec.traites, etat.consolidationExec.base, 'lignes', statutConsolidation_(etat.consolidationExec));
+    }
+  };
+
+  // UNE ligne par opération du registre, DANS L'ORDRE D'EXÉCUTION du tick. Les campagnes riches
+  // passent par leur constructeur dédié ; toutes les autres dérivent leur statut du suivi réel —
+  // sans Traités/Base (le suivi enregistre l'exécution, pas un compte ; PR5 branchera les
+  // compteurs du jour du flux vivant via les accumulateurs Télémétrie).
+  (registre || []).forEach(function (op) {
+    if (campagnes[op.cle]) { campagnes[op.cle](); return; }
+    pousser(op.cle, op.libelle, null, null, op.unite,
+      statutDepuisSuivi_((suivi || {})[op.cle]));
+  });
 
   return lignes;
 }
@@ -345,7 +408,10 @@ function majProgressions_() {
     }
   };
 
-  var lignes = lignesProgression_(etat, lireLignesProgression_(f), maintenant, CONFIG.PROGRESSION_PURGE_MS);
+  // C28-44 : la vue de SUIVI fusionnée (persisté + run courant) alimente statuts/Détail/activité/
+  // erreurs de TOUTES les lignes ; le registre donne la liste et l'ordre des opérations.
+  var lignes = lignesProgression_(etat, lireLignesProgression_(f), maintenant, CONFIG.PROGRESSION_PURGE_MS,
+    suiviOpsFusionne_(props), REGISTRE_OPERATIONS);
   if (lignes.length) f.getRange(2, 1, lignes.length, COLONNES_PROGRESSION.length).setValues(lignes);
   var dern = f.getLastRow();
   if (dern > lignes.length + 1) {
