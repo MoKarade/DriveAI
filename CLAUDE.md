@@ -724,6 +724,17 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   appliqué se RE-VÉRIFIE (relire le diff exact vu par l'agent, ou reproduire son raisonnement sur le
   code actuel) — ne jamais le classer « périmé » sans preuve ; ici l'agent avait raison. La seule
   preuve qui compte reste la DONNÉE RÉELLE post-merge, jamais la présence du code dans le diff.
+- **Vercel sans framework (`framework: null`) : les réglages « à la Next.js » se posent dans
+  `vercel.json`, jamais en `export const`.** `export const maxDuration = N` (et les autres Route
+  Segment Config) sont des conventions lues par le COMPILATEUR Next.js — sur ce projet (`framework:
+  null`, build custom), rien ne les lit : silencieusement ignorées, sans erreur. Le mécanisme
+  plateforme, indépendant du framework, est `vercel.json` → `"functions": { "<chemin réel du
+  fichier>": { "maxDuration": N } }`. Avant de configurer un réglage par route, vérifier le
+  `framework` déclaré. Corollaire achat : « Vercel Pro » n'inclut pas tout ce qui ressemble à une
+  fonctionnalité Pro — la protection par mot de passe des previews est un ADD-ON PAYANT séparé
+  (« Advanced Deployment Protection »), à vérifier/acheter dans le dashboard, jamais supposé inclus.
+  Et avant de recommander un mot de passe pour « protéger les previews », vérifier si la protection
+  SSO Vercel (gratuite, souvent déjà active) ne couvre pas déjà le besoin.
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 

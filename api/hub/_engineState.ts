@@ -40,12 +40,20 @@ export interface EngineState {
 /**
  * Budget d'attente de la web app. La réponse elle-même est instantanée (pré-calcul au tick) ; le
  * temps résiduel est le RÉVEIL à froid de la web app Apps Script (cold start), constaté en prod
- * à > 4,8 s → le broker abandonnait et renvoyait 500 (logs Vercel « aborted due to timeout »).
- * Porté à 8 s (sous le maxDuration Vercel par défaut, ~10 s) pour ABSORBER ces réveils lents :
- * mieux vaut une réponse en 6-8 s qu'un 500. Le hub coupe plus haut encore (9 s) et, s'il doit
- * quand même abandonner, ressert son dernier résumé en cache (jamais « injoignable » clignotant).
+ * à > 4,8 s → le broker abandonnait et renvoyait 500 (logs Vercel « aborted due to timeout »,
+ * ~27 occurrences sur 3 semaines au 2026-08-13, canal `/api/hub/summary`).
+ *
+ * Passage à Vercel Pro (2026-08-13) : `maxDuration` (vercel.json) est désormais épinglé
+ * explicitement à 20 s pour cette fonction (le plafond Hobby ~10 s, implicite, est ce qui bornait
+ * les 8 s précédents) — mais ÇA NE DÉPLACE PAS LE VRAI GOULOT : le hub (hubperso.com, un AUTRE
+ * dépôt, hors de portée de cette session) abandonne lui-même de son côté à 9 s. Au-delà de cette
+ * limite, peu importe le budget côté DriveAI : le hub a déjà renoncé et sert son dernier résumé en
+ * cache. Porté à 8,7 s (marge de ~300 ms sous les 9 s du hub — optimiste : elle ne couvre que la
+ * sérialisation JSON de ce côté-ci, pas l'aller-retour réseau hub→Vercel qui s'ajoute au budget
+ * perçu côté hub) — un gain modeste, PAS une résolution : la résolution complète exige de relever
+ * aussi le budget du hub, dans son propre dépôt.
  */
-const TIMEOUT_MS = 8000;
+const TIMEOUT_MS = 8700;
 
 /**
  * Durée de vie du cache broker — PROTECTION DE QUOTA, pas de la performance.
@@ -76,7 +84,7 @@ const TIMEOUT_MS = 8000;
  * révélée. Le bénéfice est de la MARGE de quota, pas une réparation.
  *
  * Ce qui reste solide : `actionHubSummary_` n'est qu'une lecture de Property de quelques
- * millisecondes. Quand elle dépasse les 8 s de `TIMEOUT_MS`, ce n'est jamais l'action qui traîne
+ * millisecondes. Quand elle dépasse les `TIMEOUT_MS` (8,7 s), ce n'est jamais l'action qui traîne
  * — c'est le moteur qui n'obtient pas d'exécution. Piste plausible et non prouvée pour une
  * indisponibilité de quelques minutes : `pousser-reset` s'exécute SYNCHRONEMENT dans la web app,
  * jusqu'à 6 min par passe, toutes les 15 min.
