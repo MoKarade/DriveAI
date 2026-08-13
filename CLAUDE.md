@@ -460,7 +460,13 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   Encodage COMPACT (table d'index pour les champs répétés, jamais le libellé en clair par item) +
   test au PLAFOND dérivé de la CONFIG (borne haute de la marge documentée, pas la valeur du jour) —
   sinon `setProperty` lève au premier rajustement et la collecte amont est refaite en boucle sans
-  jamais persister (repéré en revue C26-07 : 150 items naïfs ≈ 12,5 Ko > limite).
+  jamais persister (repéré en revue C26-07 : 150 items naïfs ≈ 12,5 Ko > limite). **Corollaire
+  (C28-44) : un plafond calculé en caractères MENT si l'encodage ÉCHAPPE** — `JSON.stringify`
+  transforme guillemets/antislash/contrôles (dont `\n`, réaliste dans un message d'exception) en
+  2-6 caractères chacun : le pire cas réel peut valoir le DOUBLE du pire cas naïf (vécu : plafond
+  vert, 13-16 Ko réels). Neutraliser les échappables à l'entrée ET au goulot d'encodage
+  (`suiviTexte_`), tester le plafond avec des entrées ÉCHAPPABLES, et poser un filet dur au point
+  d'écriture qui DÉGRADE (vider les textes, garder l'essentiel) au lieu de lever en boucle.
 - **Retrait de code : frontières de fonctions + filet de SURFACE.** Jamais de regex multi-lignes pour
   retirer une fonction (elle avale les voisines — vécu ×2, dont `deciderRoutage_` entière) : analyse de
   frontières + assertions de présence des voisines. Les tests unitaires mockés ne voient PAS une fonction

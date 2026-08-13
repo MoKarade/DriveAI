@@ -2117,3 +2117,36 @@ souvent déjà active) ne couvre pas déjà le besoin réel — un mot de passe 
 pour partager un lien preview avec quelqu'un HORS du compte Vercel du propriétaire."
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-13 (quater) — Un plafond « dérivé » calculé en caractères ment si l'encodage ÉCHAPPE
+
+**Contexte.** C28-44 PR1 (suivi générique des opérations, ADR-0038) : la Property `DriveAI_SUIVI_OPS`
+persiste ~34 entrées avec messages d'erreur et raisons de skip tronqués, verrouillée par un test au
+plafond DÉRIVÉ du registre (leçon §7 « borne contre ~9 Ko »). Le test a d'abord fait son travail une
+première fois (troncatures 60/40 → 9 751 octets au pire cas, resserrées à 40/28)… puis la revue
+apps-script-quota a montré que ce pire cas n'était PAS le pire : je mesurais des caractères 2 octets
+(`é`), mais `JSON.stringify` ÉCHAPPE les guillemets, l'antislash et les caractères de contrôle
+(dont le saut de ligne, fréquent dans les messages d'exception, et le guillemet dans les noms de
+fichiers cités) en 2 à 6 caractères CHACUN — 34 messages « hostiles » de 40 caractères auraient
+pesé 13-16 Ko une fois encodés, au-delà de la limite, avec un test au plafond pourtant VERT.
+Corrigé : neutralisation `suiviTexte_` (guillemets/antislash/contrôles → espace) AVANT troncature,
+appliquée AUSSI au goulot d'encodage (les textes hérités d'une vieille Property ne transitent pas
+par le wrapper), filet DUR au flush (> 8,9 Ko ⇒ textes vidés, horodatages conservés — jamais un
+`setProperty` qui lève en boucle), tests re-dérivés avec des caractères échappables et prouvés par
+mutation.
+
+**Leçon.** "Un test au plafond d'une valeur PERSISTÉE ENCODÉE (JSON dans une Script Property, ou
+tout sérialiseur qui échappe) doit mesurer la taille APRÈS encodage avec des entrées qui exercent
+l'ÉCHAPPEMENT (guillemets, antislashs, sauts de ligne — le contenu RÉALISTE d'un message
+d'exception), jamais un simple « longueur × nombre » calculé sur les chaînes brutes : chaque
+caractère échappable pèse 2 à 6 caractères une fois encodé et le pire cas réel peut valoir le
+DOUBLE du pire cas naïf. Deux défenses complémentaires : (1) NEUTRALISER les caractères
+échappables à l'entrée (taille encodée = nombre de caractères, le plafond redevient exact — et la
+neutralisation se pose AUSSI au goulot d'encodage, pas seulement au point de capture, pour couvrir
+les données héritées) ; (2) un filet DUR au point d'écriture qui dégrade (vider les champs texte,
+garder l'essentiel) plutôt que de laisser l'écriture lever en boucle. Et tout filet « inatteignable
+par construction » se teste quand même — en gonflant artificiellement la structure dans le test —
+en documentant ce que le filet borne réellement (ici la part TEXTE ; la croissance STRUCTURELLE
+est attrapée par le test au plafond dérivé, qui échoue bien avant)."
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).
