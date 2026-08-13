@@ -98,6 +98,10 @@ const CONTRAT = [
   // Journal QUOTIDIEN du vrac par domaine (demande Marc 2026-08-12) — HistoriqueVrac.gs, appelée
   // depuis Main.gs (finally du tick) ; réutilise compterVracRacineDomaine_ (Diagnostic.gs).
   'majHistoriqueVrac_', 'ligneHistoriqueVrac_', 'domainesHistoriqueVrac_', 'budgetJourHistoriqueVrac_',
+  // Suivi GÉNÉRIQUE des opérations du tick (C28-44, ADR-0038) — Suivi.gs : wrapper appelé par
+  // Main.gs (PR2), vue fusionnée lue par Journal.gs/majProgressions_ (PR3), flush au finally.
+  'etapeSuivie_', 'suiviReset_', 'suiviSkip_', 'suiviOpsFusionne_', 'flusherSuiviOps_',
+  'chargerSuiviOps_', 'fusionnerSuiviOps_', 'encoderSuiviOps_', 'clesRegistreSuivi_',
 
   'reparerIncidentSheet', 'estCleFichierIncident_', // réparation incident Sheet d'état (2026-07-08)
   'fusionnerDomaine07PersoVers08', 'remplacerColonneOnglet_', // fusion domaine erroné (anomalies 2026-07-08)

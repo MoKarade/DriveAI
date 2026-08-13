@@ -4,7 +4,28 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **⚙️ ÉTAT AU 2026-08-13 (le plus récent) — Vercel Pro : `maxDuration` épinglé + budget hub-summary
+> **🚧 CHANTIER EN COURS AU 2026-08-13 — C28-44 : suivi GÉNÉRIQUE et fiable de toutes les
+> opérations du tick (ADR-0038, plan product-manager en 5 PRs).** Demande Marc : « je veux que ça
+> marche pour tout type de tâche que l'app fait et je veux que ce soit beaucoup plus fiable » — le
+> suivi (onglet `Progression`) était codé en dur pour 6 campagnes alors que le tick exécute ~34
+> étapes ; aucune fraîcheur par opération (impossible de distinguer « en cours » de « gelé ») ;
+> erreurs par étape invisibles de l'app ; l'app lit une plage FIGÉE `A2:G30`. **PR1 LIVRÉE** :
+> fondations PURES non branchées (`src/Suivi.gs` : registre de 34 étapes, wrapper `etapeSuivie_`
+> — gates ordonnées, erreur vue AVANT les catch custom, re-levée identitaire sinon — codec Property
+> `DriveAI_SUIVI_OPS` borné) + ADR-0038 + 16 tests. Deux prises RÉELLES de la boucle
+> test/revue AVANT tout déploiement : (1) le test au plafond DÉRIVÉ a attrapé mes troncatures
+> initiales (60/40 → 9 751 octets > limite ~9 Ko ; resserrées à 40/28) ; (2) la revue
+> apps-script-quota a attrapé l'ÉCHAPPEMENT JSON qui faussait ce même plafond (`"`/`\`/contrôles
+> pèsent 2-6 caractères une fois échappés → neutralisation `suiviTexte_` + filet dur au flush +
+> test re-dérivé, prouvés par mutation). **RESTE** : PR2 (branchement du tick + tripwire de
+> couverture bidirectionnel — points de revue à honorer : flush en DERNIER du finally, gate
+> `estPannePlateforme_` traduite PAR étape, raisons de skip jamais vides), PR3 (rendu Sheet 7→10
+> colonnes, migration d'en-tête sur chemin ATTEIGNABLE — `assurerEnteteProgression_` teste
+> `A1==='Clé'`, vrai avant/après : tester la DERNIÈRE colonne), PR4 (app : plage OUVERTE `A2:J`,
+> rendu générique, fraîcheur/erreur/skip, tolérance colonnes absentes), PR5 (flux vivant via les
+> accumulateurs Télémétrie — jamais un comptage parallèle — + docs vivants).
+>
+> **⚙️ ÉTAT AU 2026-08-13 — Vercel Pro : `maxDuration` épinglé + budget hub-summary
 > ajusté (gain modeste, pas une résolution).** Marc a pris Vercel Pro. `GET /api/hub/summary` a un
 > incident réel et déjà documenté : ~27 timeouts sur 3 semaines (« aborted due to timeout »), causés
 > par des réveils à froid (cold start) de la web app Apps Script parfois > 4,8 s. L'ancien
