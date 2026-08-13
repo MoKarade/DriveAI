@@ -17,9 +17,18 @@
 > initiales (60/40 → 9 751 octets > limite ~9 Ko ; resserrées à 40/28) ; (2) la revue
 > apps-script-quota a attrapé l'ÉCHAPPEMENT JSON qui faussait ce même plafond (`"`/`\`/contrôles
 > pèsent 2-6 caractères une fois échappés → neutralisation `suiviTexte_` + filet dur au flush +
-> test re-dérivé, prouvés par mutation). **RESTE** : PR2 (branchement du tick + tripwire de
-> couverture bidirectionnel — points de revue à honorer : flush en DERNIER du finally, gate
-> `estPannePlateforme_` traduite PAR étape, raisons de skip jamais vides), PR3 (rendu Sheet 7→10
+> test re-dérivé, prouvés par mutation). **PR2 LIVRÉE** : les 34 étapes de `tickDriveAI` wrappées
+> (gates NOMMÉES aux prédicats identiques — verrouillées au caractère près + unicité —, catchs
+> custom préservés verbatim, étapes NUES de l'intake re-levées à identité d'objet, bloc R2 conservé
+> avec `else` de 19 skips enregistrés, gate `dequarantaine` anti-throw, flush EN DERNIER du
+> finally). Revue flotte ×3 : apps-script-quota 🟢 (équivalence des gates vérifiée + confirmation
+> git qu'aucun prédicat I/O n'a migré d'un try vers une gate ; a exigé le tripwire d'APPARTENANCE
+> au bloc R2 — fait, mutation-prouvé par déplacement réel d'une étape), code-reviewer 🟢 (a exigé :
+> fenêtre anti-`if` inline sur les invariants négatifs reset/reorg, unicité des définitions de
+> gates, ordre registre=wraps sans `.sort()` — faits), file-checker 🟢 (intake strictement intact,
+> ordre C28-15 préservé ; résiduel assumé : une gate qui lève sort sans trace, trou PRÉ-existant
+> documenté — durcissement optionnel plus tard). Les tripwires d'orchestration historiques
+> convertis vers `gatesDe(cle)` : RENFORCÉS, pas affaiblis. **RESTE** : PR3 (rendu Sheet 7→10
 > colonnes, migration d'en-tête sur chemin ATTEIGNABLE — `assurerEnteteProgression_` teste
 > `A1==='Clé'`, vrai avant/après : tester la DERNIÈRE colonne), PR4 (app : plage OUVERTE `A2:J`,
 > rendu générique, fraîcheur/erreur/skip, tolérance colonnes absentes), PR5 (flux vivant via les

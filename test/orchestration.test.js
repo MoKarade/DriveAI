@@ -64,16 +64,39 @@ test('orchestration : la consolidation est gatée par le BUDGET TAIL (4,5 min), 
  * C28-26) — vérifié ici en verrouillant le TEXTE du tick (patron ci-dessus), pas un comportement
  * mocké : le garde `!resetEnCours_()` doit apparaître sur CHAQUE point d'entrée concurrent.
  */
+/**
+ * C28-44 (ADR-0038) : les gardes du tick sont désormais des GATES NOMMÉES passées à `etapeSuivie_`
+ * (`gResetEnCours`, `gBudgetTick`…). Les tripwires ci-dessous vérifient donc (1) UNE FOIS que
+ * chaque nom porte EXACTEMENT son prédicat historique, puis (2) la présence du nom dans le tableau
+ * de gates RÉEL de chaque étape (`gatesDe`) — équivalent strict de l'ancien scan des `if` inline,
+ * en plus précis (plus de fenêtre de 300 caractères qui pouvait mordre sur l'étape voisine).
+ */
+const gatesDe = (cle) => {
+  const m = corps.match(new RegExp("etapeSuivie_\\('" + cle + "',\\s*\\[([^\\]]*)\\]"));
+  assert.ok(m, 'wrap etapeSuivie_ introuvable pour : ' + cle);
+  return m[1];
+};
+
+test('C28-44 : chaque gate nommée porte EXACTEMENT son prédicat historique, définie UNE SEULE fois (sans quoi les tripwires de gates ne prouvent rien)', () => {
+  assert.ok(corps.includes("var gBudgetTick = function () { return estBudgetDepasse() ? 'budget de tick épuisé' : null; };"));
+  assert.ok(corps.includes("var gBudgetStandard = function () { return estBudgetDepasseStandard() ? 'budget standard épuisé' : null; };"));
+  assert.ok(corps.includes("var gFreinCampagnes = function () { return budgetCampagnesAtteint_() ? 'frein budget campagnes' : null; };"));
+  assert.ok(corps.includes("var gResetEnCours = function () { return resetEnCours_() ? 'reset en cours' : null; };"));
+  assert.ok(corps.includes("var gResetActif = function () { return CONFIG.RESET_ACTIF ? null : 'désactivée (CONFIG)'; };"));
+  // UNICITÉ (revue code-reviewer PR2) : une RÉASSIGNATION ultérieure (`gResetEnCours = autreChose`)
+  // ferait mentir le nom partout — chaque gate est définie exactement une fois, jamais réassignée.
+  for (const nom of ['gBudgetTick', 'gBudgetStandard', 'gFreinCampagnes', 'gResetEnCours', 'gResetActif']) {
+    const assignations = [...corps.matchAll(new RegExp(nom + '\\s*=', 'g'))];
+    assert.strictEqual(assignations.length, 1, nom + ' doit être assignée EXACTEMENT une fois (' + assignations.length + ')');
+  }
+});
+
 test('orchestration RESET : conso-2 (génération + exécution) est gatée par !resetEnCours_()', () => {
   // (La réorg AUTO n'existe plus — ADR-0031 : le tick ne doit plus JAMAIS l'appeler.)
   assert.strictEqual(corps.indexOf('genererDemandeReorgAuto_'), -1,
     'ADR-0031 : plus aucun dépôt de demande de réorg par le tick');
-  const ligneExec = corps.slice(corps.indexOf('appliquerPlanConsolidation_(estBudgetDepasseStandard)') - 200,
-    corps.indexOf('appliquerPlanConsolidation_(estBudgetDepasseStandard)'));
-  const ligneGen = corps.slice(corps.indexOf('genererPlanConsolidation_(estBudgetDepasseStandard)') - 200,
-    corps.indexOf('genererPlanConsolidation_(estBudgetDepasseStandard)'));
-  assert.ok(/!resetEnCours_\(\)/.test(ligneExec), 'appliquerPlanConsolidation_ doit être gatée par !resetEnCours_()');
-  assert.ok(/!resetEnCours_\(\)/.test(ligneGen), 'genererPlanConsolidation_ doit être gatée par !resetEnCours_()');
+  assert.ok(/gResetEnCours/.test(gatesDe('consolidation-exec')), 'appliquerPlanConsolidation_ doit être gatée par gResetEnCours');
+  assert.ok(/gResetEnCours/.test(gatesDe('consolidation-gen')), 'genererPlanConsolidation_ doit être gatée par gResetEnCours');
 });
 
 /**
@@ -83,16 +106,11 @@ test('orchestration RESET : conso-2 (génération + exécution) est gatée par !
  * cf. leçon §7 + redescente C28-29). Ce test verrouille les deux moitiés : les gates ET l'enveloppe.
  */
 test('orchestration RESET : les 4 campagnes de fond réallouées sont TOUTES gatées par !resetEnCours_()', () => {
-  const avant = (motif) => {
-    const i = corps.indexOf(motif);
-    assert.ok(i !== -1, 'appel introuvable : ' + motif);
-    return corps.slice(Math.max(0, i - 300), i);
-  };
   // Les 2 déjà en place (conso-2) + les 2 ajoutées par la réallocation.
-  assert.ok(/!resetEnCours_\(\)/.test(avant('appliquerPlanConsolidation_(estBudgetDepasseStandard)')), 'conso-2 exécution');
-  assert.ok(/!resetEnCours_\(\)/.test(avant('genererPlanConsolidation_(estBudgetDepasseStandard)')), 'conso-2 génération');
-  assert.ok(/!resetEnCours_\(\)/.test(avant('traiterGmailHistorique_(estBudgetDepasse)')), 'historique Gmail (budget réalloué)');
-  assert.ok(/!resetEnCours_\(\)/.test(avant('synchroniserIndex_(estBudgetDepasse)')), 'réconciliation Index (budget réalloué)');
+  assert.ok(/gResetEnCours/.test(gatesDe('consolidation-exec')), 'conso-2 exécution');
+  assert.ok(/gResetEnCours/.test(gatesDe('consolidation-gen')), 'conso-2 génération');
+  assert.ok(/gResetEnCours/.test(gatesDe('histo-gmail')), 'historique Gmail (budget réalloué)');
+  assert.ok(/gResetEnCours/.test(gatesDe('reconciliation-index')), 'réconciliation Index (budget réalloué)');
 });
 
 test('budget RÉALLOUÉ, jamais AUGMENTÉ : le total du reset ne dépasse pas ce que les campagnes suspendues libèrent', () => {
@@ -171,18 +189,18 @@ test('réallocation exec↔fusion : le COUPLE somme 12 min ET une campagne activ
  * se teste par sa LIBÉRATION » — déjà vécu en C28-32, et ce PR en multiplie la surface d'exposition.
  */
 test('orchestration RESET : les 3 phases ne sont JAMAIS gatées par !resetEnCours_() (gate auto-verrouillant = mort silencieuse de TOUTES les campagnes)', () => {
-  const avant = (motif) => {
-    const i = corps.indexOf(motif);
-    assert.ok(i !== -1, 'appel introuvable : ' + motif);
-    return corps.slice(Math.max(0, i - 300), i);
-  };
-  ['rassemblerReset_(estBudgetDepasseStandard)', 'placerReset_(estBudgetDepasseStandard)',
-    'appliquerReset04Interne_(estBudgetDepasseStandard)',
-    'analyserReliquatReset_(estBudgetDepasse)'].forEach((motif) => { // + la passe LLM PR5 (ADR-0030)
-    assert.ok(!/!resetEnCours_\(\)/.test(avant(motif)),
-      motif + ' ne doit JAMAIS être gatée par !resetEnCours_() : resetTermine_ exige que la phase ' +
-      'TOURNE pour poser son tag, donc le reset ne démarrerait plus jamais ET toutes les campagnes ' +
-      'resteraient suspendues à vie (heartbeat vert, zéro erreur — panne invisible)');
+  ['reset-rassemblement', 'reset-placement', 'reset-04-interne',
+    'reset-llm'].forEach((cle) => { // + la passe LLM PR5 (ADR-0030)
+    assert.ok(!/gResetEnCours|resetEnCours_/.test(gatesDe(cle)),
+      cle + ' ne doit JAMAIS être gatée par resetEnCours_ (nommée OU inline) : resetTermine_ exige ' +
+      'que la phase TOURNE pour poser son tag, donc le reset ne démarrerait plus jamais ET toutes ' +
+      'les campagnes resteraient suspendues à vie (heartbeat vert, zéro erreur — panne invisible)');
+    // Et JAMAIS un `if (!resetEnCours_())` inline RÉ-ENVELOPPANT le wrap (revue code-reviewer PR2 :
+    // l'inspection du tableau de gates seule serait aveugle à cette forme — l'ancienne fenêtre de
+    // 300 caractères la voyait, on la garde ici pour les invariants NÉGATIFS).
+    const i = corps.indexOf("etapeSuivie_('" + cle + "'");
+    assert.ok(!/resetEnCours_/.test(corps.slice(Math.max(0, i - 150), i)),
+      cle + ' : un if inline resetEnCours_ ré-enveloppe le wrap — même gate auto-verrouillante, autre forme');
   });
 });
 
@@ -197,9 +215,9 @@ test('orchestration RESET : les 3 phases ne sont JAMAIS gatées par !resetEnCour
 test('orchestration RESET : la passe LLM du reliquat est gatée budget de tick + frein campagnes, AVANT histo/migration/réanalyse', () => {
   const i = corps.indexOf('analyserReliquatReset_(estBudgetDepasse)');
   assert.ok(i !== -1, 'appel introuvable');
-  const garde = corps.slice(Math.max(0, i - 300), i);
-  assert.ok(/!estBudgetDepasse\(\)/.test(garde), 'budget LLM de tick (3 min), jamais le budget tail I/O');
-  assert.ok(/!budgetCampagnesAtteint_\(\)/.test(garde), 'frein campagnes §2.6 : la passe coûte du Sonnet');
+  const garde = gatesDe('reset-llm');
+  assert.ok(/gBudgetTick/.test(garde), 'budget LLM de tick (3 min), jamais le budget tail I/O');
+  assert.ok(/gFreinCampagnes/.test(garde), 'frein campagnes §2.6 : la passe coûte du Sonnet');
   assert.ok(!/analyserReliquatReset_\(estBudgetDepasseStandard\)/.test(corps),
     'jamais le garde étendu 4,5 min : il est réservé à l\'I/O pur, pas aux appels LLM');
   assert.ok(i < posAppel('traiterGmailHistorique_(estBudgetDepasse)'),
@@ -263,20 +281,17 @@ test('accélération : le garde-temps par run reste la VRAIE borne — relever u
 });
 
 test('accélération : les campagnes de RATTRAPAGE sont suspendues pendant le reset, mais PAS le travail demandé par Marc', () => {
-  const avant = (motif) => {
-    const i = corps.indexOf(motif);
-    assert.ok(i !== -1, 'appel introuvable : ' + motif);
-    return corps.slice(Math.max(0, i - 260), i);
-  };
   // Rattrapage (leur retard est sans conséquence) → suspendues.
-  ['appliquerMigrationTaxonomie_(estBudgetDepasse)', 'appliquerReanalyseCiblee_(estBudgetDepasse)',
-    'appliquerDryRunV2_(estBudgetDepasse)'].forEach((m) => {
-    assert.ok(/!resetEnCours_\(\)/.test(avant(m)), m + ' doit être suspendue pendant le reset');
+  ['migration', 'reanalyse', 'dryrun-v2'].forEach((cle) => {
+    assert.ok(/gResetEnCours/.test(gatesDe(cle)), cle + ' doit être suspendue pendant le reset');
   });
   // `etapeReorg_` APPLIQUE les actions que Marc a validées dans l'app : jamais suspendue, sinon
   // ses validations resteraient sans effet tant que le reset tourne (des JOURS).
-  assert.ok(!/!resetEnCours_\(\)/.test(avant('etapeReorg_(estBudgetDepasse)')),
+  assert.ok(!/gResetEnCours|resetEnCours_/.test(gatesDe('reorg')),
     'etapeReorg_ ne doit JAMAIS être suspendue : c\'est du travail explicitement demandé par Marc');
+  const iReorg = corps.indexOf("etapeSuivie_('reorg'");
+  assert.ok(!/resetEnCours_/.test(corps.slice(Math.max(0, iReorg - 150), iReorg)),
+    'reorg : pas non plus un if inline resetEnCours_ ré-enveloppant le wrap (invariant négatif, les deux formes)');
 });
 
 test('accélération : majResumeHub_ est throttlé (il relisait l\'Index ENTIER à chaque tick)', () => {
