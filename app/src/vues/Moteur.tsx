@@ -172,46 +172,81 @@ export function Moteur({ langue }: { langue: Langue }) {
   );
 }
 
-/** Note d'explication d'un état non trivial (mêmes règles que l'ancien OperationsLive C28-18). */
+/**
+ * Note d'explication d'un état non trivial. C28-44 : quand le moteur publie la RAISON EXACTE du
+ * skip (colonne Détail — 'reset en cours', 'budget de tick épuisé'…), elle PRIME sur les gloses
+ * génériques d'avant (qui devinaient « panne » depuis la famille — faux pour un simple frein).
+ */
 function noteStatut(op: LigneProgression, famille: FamilleStatut, langue: Langue): string {
   if (famille === 'recensement') return t('noteRecensement', langue);
   if (famille === 'attente') return t('noteAttente', langue);
-  if (famille === 'suspendu') return op.statut.includes('quota') ? t('noteQuota', langue) : t('notePanneApi', langue);
-  if (famille === 'pause') return t('noteBudget', langue);
+  if (famille === 'suspendu' || famille === 'pause') {
+    if (op.detail) {
+      // La glose-CONSIGNE (« reprise ~3h », « rien à faire ») reste utile À CÔTÉ de la raison
+      // brute (revue PR4) : consigne quand elle est reconnaissable, raison exacte toujours.
+      const glose = op.detail.includes('quota') || op.statut.includes('quota') ? t('noteQuota', langue)
+        : op.detail.includes('panne') || op.statut.includes('panne') ? t('notePanneApi', langue)
+          : op.detail.includes('budget') ? t('noteBudget', langue) : '';
+      const raison = t('noteSuspendueRaison', langue) + ' ' + op.detail;
+      return glose ? glose + ' ' + raison : raison;
+    }
+    return famille === 'suspendu'
+      ? (op.statut.includes('quota') ? t('noteQuota', langue) : t('notePanneApi', langue))
+      : t('noteBudget', langue);
+  }
+  if (famille === 'inactif') return op.statut === 'désactivée' ? t('noteDesactivee', langue) : t('noteJamaisVue', langue);
   return '';
 }
 
 const LIBELLES_STATUT: Record<FamilleStatut, CleTexte> = {
   encours: 'stEnCours', recensement: 'stRecensement', attente: 'stEnAttente',
   suspendu: 'stSuspendu', pause: 'stPause', termine: 'stTermine',
+  erreur: 'stErreur', inactif: 'stInactif',
 };
 
-/** Une opération de l'onglet Progression : nom (écrit par le moteur), compte, barre, note. */
+const CLASSE_PASTILLE: Record<FamilleStatut, string> = {
+  termine: 'ok', suspendu: 'crit', erreur: 'crit', encours: 'douce',
+  inactif: 'douce', recensement: 'attn', attente: 'attn', pause: 'attn',
+};
+
+/** Une opération de l'onglet Progression : nom (écrit par le moteur), compte, barre, notes de suivi. */
 function Operation({ langue, op }: { langue: Langue; op: LigneProgression }) {
   const famille = familleStatut(op.statut);
   const pct = op.base ? Math.min(100, Math.round((op.traites / op.base) * 100)) : null;
   const arret = famille === 'suspendu' || famille === 'pause' || famille === 'attente';
   const note = noteStatut(op, famille, langue);
+  // Les opérations SANS compteur (flux vivant, maintenance — C28-44) n'affichent ni compte ni
+  // barre : leur information, c'est le statut + la dernière activité + l'éventuelle erreur.
+  // Exception `recensement` (revue PR4) : c'est une CAMPAGNE qui compte encore sa base — elle
+  // garde sa barre indéterminée. (Cas limite assumé : une campagne à compteur qui démarre
+  // exactement à 0 sans base, ex. histo au tout premier tick, est indistinguable d'une opération
+  // sans compteur pendant quelques minutes — pastille et notes restent.)
+  const sansCompteur = op.base === null && op.traites === 0 && famille !== 'recensement';
   return (
     <div className={`operation ${famille}`}>
       <div className="op-entete">
         <span className="op-nom">{op.operation}</span>
-        <span className={`pastille ${famille === 'termine' ? 'ok' : famille === 'suspendu' ? 'crit' : famille === 'encours' ? 'douce' : 'attn'}`}>
+        <span className={`pastille ${CLASSE_PASTILLE[famille]}`}>
           {t(LIBELLES_STATUT[famille], langue)}
         </span>
         <span className="op-compte">
           {op.base !== null
             ? <><b>{op.traites.toLocaleString('fr-CA')}</b> / {op.base.toLocaleString('fr-CA')} {op.unite}{pct !== null && <> · <b>{pct} %</b></>}</>
-            : <><b>{op.traites.toLocaleString('fr-CA')}</b> {op.unite}</>}
+            : !sansCompteur && <><b>{op.traites.toLocaleString('fr-CA')}</b> {op.unite}</>}
         </span>
       </div>
       {op.base !== null && !arret && (
         <div className={`op-barre ${pct === 100 ? 'pleine' : ''}`}><i style={{ width: `${pct}%` }} /></div>
       )}
-      {op.base === null && famille === 'encours' && <div className="op-barre indeterminee"><i /></div>}
-      {op.base === null && famille === 'recensement' && <div className="op-barre indeterminee"><i /></div>}
+      {op.base === null && !sansCompteur && (famille === 'encours' || famille === 'recensement') && <div className="op-barre indeterminee"><i /></div>}
       {arret && <div className="op-barre rayee" />}
       {note && <p className="op-note">{note}</p>}
+      {op.derniereActivite && famille !== 'termine' && (
+        <p className="op-note">{t('derniereActivite', langue)} {op.derniereActivite}</p>
+      )}
+      {op.derniereErreur && (
+        <p className="op-note op-erreur">{t('derniereErreur', langue)} {op.derniereErreur}</p>
+      )}
     </div>
   );
 }
