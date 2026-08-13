@@ -258,6 +258,30 @@ describe('progression live (C28-18)', () => {
     });
   });
 
+  it('ilYA (C28-45) : « il y a X » depuis le format CONTRÔLÉ dd/MM HH:mm — passage d\'année géré, non-match → null', async () => {
+    const { ilYA } = await import('../src/etat');
+    const maintenant = new Date(2026, 7, 13, 16, 30); // 13 août 2026, 16:30 locale
+    expect(ilYA('13/08 16:26', maintenant, 'fr')).toBe('il y a 4 min');
+    expect(ilYA('13/08 14:30', maintenant, 'en')).toBe('2 h ago');
+    expect(ilYA('11/08 16:30', maintenant, 'fr')).toBe('il y a 2 j');
+    // Passage d'année : « 31/12 » vu le 2 janvier = il y a 2 jours, jamais dans le futur.
+    expect(ilYA('31/12 12:00', new Date(2027, 0, 2, 12, 0), 'fr')).toBe('il y a 2 j');
+    expect(ilYA('8/13/2026', maintenant, 'fr')).toBeNull(); // ancien format Date → repli brut
+    expect(ilYA('', maintenant, 'fr')).toBeNull();
+    // Cas dégénéré (revue C28-45) : activité « future » de plus d'1 h (fuseau navigateur ≫ fuseau
+    // script) → la bascule année-1 donnerait « il y a ~365 j » — on rend null (repli brut honnête).
+    expect(ilYA('13/08 19:45', maintenant, 'fr')).toBeNull();
+  });
+
+  it('dateActivite (C28-45) : max par TIMESTAMP parsé — jamais un tri lexicographique jour-major', async () => {
+    const { dateActivite } = await import('../src/etat');
+    const maintenant = new Date(2026, 7, 13, 16, 30);
+    const juil = dateActivite('31/07 10:00', maintenant)!;
+    const aout = dateActivite('13/08 16:26', maintenant)!;
+    // Lexicographiquement '31/07…' > '13/08…' — par timestamp, août gagne (le bug qu'on interdit).
+    expect(aout.getTime()).toBeGreaterThan(juil.getTime());
+  });
+
   it('familleStatut : préfixes FR stables → famille visuelle (pastille jamais couleur seule)', async () => {
     const { familleStatut } = await import('../src/etat');
     expect(familleStatut('en cours')).toBe('encours');
@@ -273,6 +297,9 @@ describe('progression live (C28-18)', () => {
     expect(familleStatut('erreur')).toBe('erreur');
     expect(familleStatut('jamais vue')).toBe('inactif');
     expect(familleStatut('désactivée')).toBe('inactif');
+    // C28-45 : « à jour » = neutre-POSITIF (one-shot accompli, plan drainé en attente d'amont).
+    expect(familleStatut('à jour (déjà fait)')).toBe('ajour');
+    expect(familleStatut('à jour (plan drainé — attend la génération)')).toBe('ajour');
     expect(familleStatut('suspendu (reset en cours)')).toBe('suspendu');
     expect(familleStatut('statut inconnu du futur')).toBe('encours'); // repli neutre
   });

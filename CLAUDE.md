@@ -749,7 +749,12 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   conversion des tests existants du consommateur ne touche AUCUNE assertion indexée, la
   compatibilité est prouvée ; si une assertion doit bouger, une prod mixte lira faux. Bonus : un
   préfixe de colonnes identique rend la migration d'en-tête non destructive (réécrire la ligne 1
-  suffit).
+  suffit). Corollaires C28-45 : tout horodatage destiné à être LU par API se publie en TEXTE à
+  format contrôlé (`dd/MM HH:mm`) — une cellule Date en FORMATTED_VALUE rend ce que le format de
+  colonne veut (souvent sans l'heure) ; un max/tri sur ces chaînes se prend par TIMESTAMP PARSÉ
+  (l'ordre lexicographique jour-major s'inverse au passage de mois) ; et ajouter une colonne oblige
+  à vérifier CHAQUE plage de lecture existante (`A2:J` → `A2:K` — un index hors plage rend
+  `undefined` sans erreur, la feature dépendante meurt en silence).
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 

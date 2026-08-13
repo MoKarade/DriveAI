@@ -170,8 +170,11 @@ function majSante_() {
 // nouvelles colonnes s'AJOUTENT après — l'app v6 (qui lit `A2:G30` jusqu'à la PR4) continue ainsi
 // de lire EXACTEMENT les 7 mêmes colonnes pendant la transition, et tous les consommateurs
 // indexés 0-6 restent valides (déviation assumée de l'ordre esquissé dans l'ADR §2d, pour ça).
+// PR6 (retour Marc) : + `Type` (K, APPEND en queue — leçon §7) : le type du registre (flux/
+// campagne/maintenance/demande/observabilite) permet à l'app de COMPACTER les routines et de ne
+// mettre en avant que les vraies campagnes.
 var COLONNES_PROGRESSION = ['Clé', 'Opération', 'Traités', 'Base', 'Unité', 'Statut', 'Horodaté',
-  'Détail', 'Dernière activité', 'Dernière erreur'];
+  'Détail', 'Dernière activité', 'Dernière erreur', 'Type'];
 
 /**
  * L'onglet Progression v1 était une barre TEXTE mono-opération (rangement, cellules A2:A4).
@@ -180,16 +183,16 @@ var COLONNES_PROGRESSION = ['Clé', 'Opération', 'Traités', 'Base', 'Unité', 
  * @param {Sheet} f
  */
 function assurerEnteteProgression_(f) {
-  // Migration v2 (7 col) → v3 (10 col, C28-44) : le test porte sur la DERNIÈRE colonne attendue —
-  // jamais `A1 === 'Clé'`, VRAI avant ET après l'extension (la réparation serait du code mort,
-  // leçon 2026-08-13 « point d'attache »). Chemin ATTEIGNABLE garanti : appelée par
-  // `majProgressions_` à CHAQUE tick, pas par `initialiserSheet_` (qui ne retouche jamais un
-  // onglet existant).
-  if (String(f.getRange('J1').getValue()) === COLONNES_PROGRESSION[9]) return;
+  // Migration v2 (7 col) → v3 (10) → v4 (11, + Type — PR6) : le test porte sur la DERNIÈRE
+  // colonne attendue — jamais `A1 === 'Clé'`, VRAI avant ET après l'extension (la réparation
+  // serait du code mort, leçon 2026-08-13 « point d'attache »). Chemin ATTEIGNABLE garanti :
+  // appelée par `majProgressions_` à CHAQUE tick, pas par `initialiserSheet_` (qui ne retouche
+  // jamais un onglet existant).
+  if (String(f.getRange('K1').getValue()) === COLONNES_PROGRESSION[10]) return;
   // v1 (barre TEXTE mono-opération, A1 ≠ 'Clé') : table incompatible → on repart de zéro (c'était
-  // un AFFICHAGE, pas un état). v2 → v3 : les 7 premières colonnes sont IDENTIQUES — les lignes
-  // v2 restent lisibles telles quelles (`lireLignesProgression_` lit les indices 0-6, inchangés)
-  // et sont réécrites au format v3 par ce même tick ; seul l'en-tête est réécrit.
+  // un AFFICHAGE, pas un état). v2/v3 → v4 : préfixe de colonnes IDENTIQUE — les lignes
+  // existantes restent lisibles telles quelles (`lireLignesProgression_` lit les indices 0-6,
+  // inchangés) et sont réécrites au format courant par ce même tick ; seul l'en-tête est réécrit.
   if (String(f.getRange('A1').getValue()) !== 'Clé') f.clearContents();
   f.getRange(1, 1, 1, COLONNES_PROGRESSION.length).setValues([COLONNES_PROGRESSION]);
   f.setFrozenRows(1);
@@ -222,6 +225,8 @@ function assurerEnteteProgression_(f) {
 function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, registre) {
   var lignes = [];
   var tz = Session.getScriptTimeZone();
+  var typePar = {};
+  (registre || []).forEach(function (op) { typePar[op.cle] = op.type; });
 
   /** Les 3 colonnes de SUIVI d'une opération (communes à toutes les lignes). */
   function colonnesSuivi(cle) {
@@ -233,7 +238,10 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, regi
     var erreur = rec.et
       ? Utilities.formatDate(new Date(rec.et), tz, 'dd/MM HH:mm') + (rec.e ? ' — ' + rec.e : '')
       : '';
-    return [detail, activite ? new Date(activite) : '', erreur];
+    // Activité en TEXTE au format CONTRÔLÉ `dd/MM HH:mm` (retour Marc PR6 : une cellule Date
+    // ressortait « 8/13/2026 » sans l'heure via l'API en FORMATTED_VALUE — inutilisable ; le
+    // format contrôlé rend aussi le « il y a X min » de l'app fiable, jamais un parsing de locale).
+    return [detail, activite ? Utilities.formatDate(new Date(activite), tz, 'dd/MM HH:mm') : '', erreur];
   }
 
   /** Statut d'une CAMPAGNE Drive+LLM (migration, re-analyse, rangement). */
@@ -273,7 +281,7 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, regi
     }
     var cs = colonnesSuivi(cle);
     lignes.push([cle, operation, traites === null ? '' : traites, base === null ? '' : base,
-      unite, statut, new Date(horodateMs), cs[0], cs[1], cs[2]]);
+      unite, statut, new Date(horodateMs), cs[0], cs[1], cs[2], typePar[cle] || '']);
   }
 
   // Constructeurs DÉDIÉS des campagnes à lecteurs riches — clés du registre, libellés dynamiques
@@ -307,8 +315,16 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, regi
         etat.consolidationGen.traites, etat.consolidationGen.base, 'domaines', statutConsolidation_(etat.consolidationGen));
     },
     'consolidation-exec': function () {
-      pousser('consolidation-exec', 'Consolidation — exécution du plan (' + etat.consolidationExec.tag + ')',
-        etat.consolidationExec.traites, etat.consolidationExec.base, 'lignes', statutConsolidation_(etat.consolidationExec));
+      var ce = etat.consolidationExec;
+      var statut = statutConsolidation_(ce);
+      // Plan courant ENTIÈREMENT drainé mais campagne pas finie (la génération n'a pas couvert
+      // tous les domaines) : « en cours · 100 % » était trompeur (retour Marc 2026-08-13) — la
+      // vérité est « à jour, en ATTENTE de l'amont ». L'app affiche la dépendance depuis ce statut.
+      if (statut === 'en cours' && ce.base > 0 && ce.traites >= ce.base) {
+        statut = 'à jour (plan drainé — attend la génération)';
+      }
+      pousser('consolidation-exec', 'Consolidation — exécution du plan (' + ce.tag + ')',
+        ce.traites, ce.base, 'lignes', statut);
     }
   };
 
