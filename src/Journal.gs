@@ -63,11 +63,6 @@ function initialiserSheet_(ss) {
   // (jamais réécrit, contrairement à Progression/Santé) — construit une série temporelle jour après
   // jour, jusqu'à la fin du drainage.
   creerOnglet_(ss, 'HistoriqueVrac', COLONNES_HISTORIQUE_VRAC);
-  // Colonne `Erreur` ajoutée après coup (2026-08-13) — la Sheet existe déjà en prod depuis PR #263
-  // (4 colonnes) : `creerOnglet_` ne touche jamais un onglet existant, donc réparée ici comme
-  // `Index!H1` ci-dessus (coût nul en régime normal : ne réécrit qu'un en-tête vide).
-  var fVrac = ss.getSheetByName('HistoriqueVrac');
-  if (fVrac && String(fVrac.getRange('E1').getValue()) === '') fVrac.getRange('E1').setValue('Erreur');
   var defaut = ss.getSheetByName('Feuille 1') || ss.getSheetByName('Sheet1');
   if (defaut && ss.getSheets().length > 1) ss.deleteSheet(defaut);
 }

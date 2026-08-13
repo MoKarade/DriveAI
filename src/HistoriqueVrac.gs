@@ -90,6 +90,12 @@ function majHistoriqueVrac_(estBudgetDepasse) {
 
   if (lignes.length) {
     var f = feuille_('HistoriqueVrac');
+    // Colonne `Erreur` ajoutée après coup (2026-08-13) sur une Sheet DÉJÀ créée en prod (PR #263,
+    // 4 colonnes) : `initialiserSheet_`/`creerOnglet_` ne touchent JAMAIS un onglet existant, donc
+    // ce chemin (le seul qui écrit réellement dans cet onglet) est le seul endroit où réparer l'en-
+    // tête — même patron que `Index!H1` (Journal.gs). Coût marginal (une lecture de cellule par
+    // jour où la sweep écrit, contrairement à `Index!H1` borné à l'initialisation) mais négligeable.
+    if (String(f.getRange('E1').getValue()) === '') f.getRange('E1').setValue('Erreur');
     f.getRange(f.getLastRow() + 1, 1, lignes.length, COLONNES_HISTORIQUE_VRAC.length).setValues(lignes);
   }
 

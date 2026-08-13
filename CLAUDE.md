@@ -708,8 +708,22 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   réels). Exposer un champ `erreur:boolean` DÉDIÉ, le propager jusqu'au consommateur final (affiché
   EXPLICITEMENT, jamais additionné comme une donnée valide), et laisser la boucle appelante
   CONTINUER sur les autres items. Corollaire : étendre les colonnes d'un onglet Sheet déjà créé en
-  prod exige le même patron de réparation d'en-tête que `Index!H1` (`creerOnglet_` ne migre rien,
-  seulement la création).
+  prod exige un patron de réparation d'en-tête posé sur un chemin RÉELLEMENT atteignable (voir
+  corollaire ci-dessous — une réparation dans `initialiserSheet_` seule ne suffit PAS pour un onglet
+  déjà existant).
+- **Une réparation « comme `Index!H1` » doit copier le POINT D'ATTACHE (quand ça s'exécute), pas
+  juste la forme (`if` cellule vide `then setValue`).** Posée dans `initialiserSheet_`, une telle
+  réparation ne s'exécute QUE si cette fonction tourne — or elle n'est appelée qu'à la création
+  initiale de la Sheet ou via `feuille_(nom)` quand l'onglet est ABSENT ; sur un onglet déjà créé en
+  prod (le cas même où la réparation est nécessaire), c'est du code mort qui ne s'exécute jamais
+  (vécu : colonne `Erreur` de `HistoriqueVrac`, toujours absente en prod après merge). Poser la
+  réparation là où la ressource est RÉELLEMENT lue/écrite à chaque run (ici `majHistoriqueVrac_`,
+  pas `initialiserSheet_`). Réflexe : avant d'annoncer « réparé comme X », `grep` les call sites de
+  la fonction qui porte le correctif et vérifier qu'ils couvrent le cas déjà-existant, pas juste le
+  cas de création. Corollaire revue : un finding d'agent qui semble en décalage avec un diff déjà
+  appliqué se RE-VÉRIFIE (relire le diff exact vu par l'agent, ou reproduire son raisonnement sur le
+  code actuel) — ne jamais le classer « périmé » sans preuve ; ici l'agent avait raison. La seule
+  preuve qui compte reste la DONNÉE RÉELLE post-merge, jamais la présence du code dans le diff.
 
 ## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 

@@ -4,7 +4,21 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🩹 ÉTAT AU 2026-08-13 (le plus récent) — CORRECTIF : erreur de lecture Drive ≠ vrai zéro dans le
+> **🩹 ÉTAT AU 2026-08-13 (le plus récent) — CORRECTIF #2 : la réparation de l'en-tête `Erreur`
+> (colonne E de `HistoriqueVrac`) ne s'exécutait JAMAIS en prod.** Trouvé en vérifiant les données
+> RÉELLES juste après le merge du correctif #1 ci-dessous (self-serve, lecture directe du Sheet) :
+> l'en-tête était toujours à 4 colonnes malgré le correctif. Cause : la réparation vivait dans
+> `initialiserSheet_` (Journal.gs), qui n'est appelée QUE (a) à la création initiale de la Sheet
+> d'état, ou (b) via `feuille_(nom)` seulement si l'onglet nommé est ABSENT — or `HistoriqueVrac`
+> existe déjà en prod depuis PR #263, donc ce chemin ne se déclenche jamais pour lui. Code mort.
+> Déplacé dans `majHistoriqueVrac_` (HistoriqueVrac.gs), le SEUL endroit qui écrit réellement dans
+> cet onglet à chaque tick où il y a quelque chose à écrire — chemin confirmé atteignable (les
+> lignes du 12 et du 13/08 viennent d'être écrites par ce même chemin). Revue flotte 🟢🟢 (apps-
+> script-quota + code-reviewer). 871 tests. **Leçon** : une réparation d'en-tête promise « comme
+> `Index!H1` » doit être vérifiée sur le MÊME critère qu'`Index!H1` — être sur un chemin qui
+> s'exécute VRAIMENT, pas juste être présente dans le diff.
+>
+> **🩹 ÉTAT AU 2026-08-13 — CORRECTIF #1 : erreur de lecture Drive ≠ vrai zéro dans le
 > vrac.** Confirmé en prod le jour même en lisant `HistoriqueVrac` (self-serve) : `06 · Études &
 > diplômes` avait inscrit **0** le 2026-08-12, alors que ce domaine contenait **≥400 fichiers réels**
 > observés la veille par pagination Drive directe. Cause : `compterVracRacineDomaine_`
@@ -15,6 +29,19 @@
 > d'un chiffre pour ce domaine (exclu de `totalVrac`) ; `HistoriqueVrac` gagne une 5ᵉ colonne
 > `Erreur` et laisse `Vrac` VIDE (jamais `0`) quand `erreur:true` — un domaine en erreur n'interrompt
 > pas la sweep quotidienne des autres domaines. 869 tests.
+>
+> **Données réelles au 2026-08-13** (2 jours accumulés, trop tôt pour une tendance) : la plupart des
+> domaines sont stables (01, 02, 04, 05, 07, 09 inchangés), `03 · Logement` +1, `08 · Perso` (~998
+> fichiers, le plus gros) +2 — **le vrac ne baisse encore nulle part**, à surveiller sur plus de
+> jours avant de conclure.
+>
+> **Rappel déploiement (re-confirmé aujourd'hui) : AUCUN geste manuel de Marc.** `deploy.yml`
+> (ADR-0032/C28-43) redéploie le code, la web app ET réinstalle le déclencheur automatiquement à
+> CHAQUE merge sur `main`, vérifié par signal indépendant (champ `version` de la réponse). Le run
+> déclenché par le merge de PR #264 l'a reconfirmé (« Déclencheur réinstallé — version servie :
+> 5min|t4 »). Seule exception structurelle (contrainte Google, pas une lacune) : l'ajout d'un
+> NOUVEAU scope OAuth exige une ré-autorisation interactive que la CI ne peut pas scripter — Marc en
+> serait prévenu avant le merge le cas échéant.
 >
 > **📈 ÉTAT AU 2026-08-12 — JOURNAL QUOTIDIEN DU VRAC PAR DOMAINE.** Marc : « pour
 > chaque dossier je veux un détail journalier de l'avancement jusqu'à la fin ». Nouveau

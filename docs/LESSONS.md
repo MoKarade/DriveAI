@@ -2047,3 +2047,37 @@ et mon 0 d'échec sont-ils LE MÊME 0 ? » — si oui, les séparer, surtout si 
 qui ne se réécrit jamais."
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-13 (bis) — Une réparation d'en-tête « comme Index!H1 » doit copier le POINT D'ATTACHE, pas juste la forme
+
+**Contexte.** Correctif du jour même : j'avais ajouté la colonne `Erreur` à `HistoriqueVrac` et une
+réparation d'en-tête `E1` « comme `Index!H1` », posée dans `initialiserSheet_` (Journal.gs). La revue
+flotte (apps-script-quota ET code-reviewer, indépendamment) a soulevé le même point : rien ne prouvait
+que cette réparation s'exécuterait sur la Sheet DÉJÀ créée en prod. J'ai classé ça comme un rapport
+périmé (l'agent avait dû lire le fichier avant mon edit) sans le re-vérifier — erreur. En relisant les
+données RÉELLES de `HistoriqueVrac` après le merge (self-serve), l'en-tête était toujours à 4
+colonnes : la réparation n'avait JAMAIS tourné. Cause : `initialiserSheet_` n'est appelée que (a) à la
+création initiale de la Sheet d'état, ou (b) via `feuille_(nom)` SEULEMENT si l'onglet nommé est
+ABSENT. `HistoriqueVrac` existe déjà → aucun des deux chemins ne se déclenche → code mort. Le patron
+`Index!H1` que j'ai copié fonctionne, lui, parce qu'il est posé au même endroit où `Index` est déjà
+LU/ÉCRIT à chaque run (pas dans `initialiserSheet_`) — j'ai copié la FORME (« si cellule vide, poser
+la valeur ») sans vérifier que je la posais au même TYPE d'endroit (un chemin garanti atteignable).
+Corrigé en déplaçant la réparation dans `majHistoriqueVrac_`, le seul point du code qui écrit
+réellement dans cet onglet à chaque tick actif.
+
+**Leçon.** "Copier un patron de réparation d'en-tête (ou tout correctif « comme X ») sans vérifier
+QUAND `X` s'exécute réellement ne copie que la FORME, pas la GARANTIE — le nouveau code peut être
+syntaxiquement correct, testé, et pourtant ne JAMAIS s'exécuter en prod si son point d'attache
+(souvent une fonction d'initialisation à usage unique) n'est pas sur un chemin réellement emprunté
+pour la ressource déjà existante. Réflexe : avant de dire « réparé comme `Index!H1` », tracer
+QUAND cette fonction tourne (grep ses call sites, comme pour tout garde-temps ou toute promesse de
+verrou) et poser le nouveau correctif au même NIVEAU de garantie, pas au même NOM de fonction.
+Corollaire revue : quand un agent de revue signale un point qui semble en décalage avec le diff déjà
+appliqué, ne jamais le classer « périmé » sans re-vérification — soit relire le diff EXACT qu'il a vu
+(timestamp), soit reproduire son raisonnement sur le code actuel ; ici l'agent avait raison, pas moi.
+Corollaire observabilité : la seule preuve qui compte est la DONNÉE RÉELLE post-merge (ici : lire
+`HistoriqueVrac` en prod et constater que E1 est toujours vide), jamais la présence du code dans le
+diff — même famille que « déploiement vert ne prouve rien » (§7), mais appliqué à un état DONNÉES,
+pas à un déploiement CODE."
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).
