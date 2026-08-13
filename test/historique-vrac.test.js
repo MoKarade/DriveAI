@@ -76,6 +76,11 @@ function ctxMaj(opts) {
   const P = { getProperty: (k) => (k in store ? store[k] : null), setProperty: (k, v) => { store[k] = String(v); } };
   const ecritures = [];
   let appelsComptage = 0;
+  // Onglet DÉJÀ créé en prod (PR #263, 4 colonnes) : E1 VIDE par défaut, sauf `opts.enteteE1` fourni
+  // (simule une Sheet déjà réparée) — patron réel, jamais réécrit par `initialiserSheet_` (dead code
+  // pour un onglet existant, cf. Journal.gs).
+  let e1 = 'enteteE1' in opts ? opts.enteteE1 : '';
+  const e1Ecritures = [];
   const c = load(['Config.gs', 'HistoriqueVrac.gs'], {
     PropertiesService: { getScriptProperties: () => P },
     dateGmail_: () => '2026/08/12',
@@ -88,12 +93,15 @@ function ctxMaj(opts) {
     COLONNES_HISTORIQUE_VRAC: ['Date', 'Domaine', 'Vrac', 'Tronqué', 'Erreur'],
     feuille_: () => ({
       getLastRow: () => opts.dernLigne || 1,
-      getRange: (ligne, col, nb, larg) => ({
-        setValues: (v) => ecritures.push({ ligne: ligne, valeurs: v }),
-      }),
+      getRange: (a, col, nb, larg) => {
+        if (typeof a === 'string') { // notation A1 (ex. 'E1') : cellule unique
+          return { getValue: () => e1, setValue: (v) => { e1 = v; e1Ecritures.push(v); } };
+        }
+        return { setValues: (v) => ecritures.push({ ligne: a, valeurs: v }) };
+      },
     }),
   });
-  return { c, store, ecritures, appelsComptage: () => appelsComptage };
+  return { c, store, ecritures, appelsComptage: () => appelsComptage, e1: () => e1, e1Ecritures };
 }
 
 test('majHistoriqueVrac_ : jour déjà fait → no-op TOTAL (aucune I/O Drive/Sheet)', () => {
@@ -112,6 +120,20 @@ test('majHistoriqueVrac_ : sweep complète en un run → écrit toutes les ligne
   assert.strictEqual(store.DriveAI_VRAC_HISTO_JOUR, '2026/08/12');
   assert.strictEqual(store.DriveAI_VRAC_HISTO_IDX, '0', 'curseur remis à 0, prêt pour demain');
   assert.ok(store.DriveAI_VRAC_JOUR_MS.startsWith('2026/08/12|'), 'budget quotidien consommé persisté');
+});
+
+test('majHistoriqueVrac_ : répare l\'en-tête E1 « Erreur » sur l\'onglet DÉJÀ créé en prod (initialiserSheet_ ne le touche jamais)', () => {
+  const { c, e1, e1Ecritures } = ctxMaj({ dernLigne: 5 }); // E1 vide par défaut (état réel constaté en prod)
+  c.majHistoriqueVrac_(() => false);
+  assert.strictEqual(e1(), 'Erreur');
+  assert.deepStrictEqual(e1Ecritures, ['Erreur'], 'une seule écriture — pas de réparation répétée si déjà posée');
+});
+
+test('majHistoriqueVrac_ : E1 déjà réparé → aucune écriture d\'en-tête superflue', () => {
+  const { e1, e1Ecritures, c } = ctxMaj({ dernLigne: 5, enteteE1: 'Erreur' });
+  c.majHistoriqueVrac_(() => false);
+  assert.strictEqual(e1(), 'Erreur');
+  assert.deepStrictEqual(e1Ecritures, [], 'E1 déjà posé : jamais réécrit');
 });
 
 test('majHistoriqueVrac_ : un domaine en erreur n\'interrompt PAS la sweep — le curseur avance, le jour se termine, ligne Erreur écrite pour lui seul', () => {
