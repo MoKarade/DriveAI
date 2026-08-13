@@ -18,7 +18,21 @@
 > CONFIG des dry-runs (« désactivée » au lieu d'« en cours » à vide) ; gloses budget du JOUR /
 > budget de TICK / frein LLM désormais distinctes. 897 moteur + 181 app + build verts.
 >
-> **🚧 CHANTIER EN COURS AU 2026-08-13 — C28-44 : suivi GÉNÉRIQUE et fiable de toutes les
+> **✨ ITÉRATIONS PRODUIT AU 2026-08-13 SOIR — C28-45 (#273, mergée) et C28-46 (en cours) : le
+> suivi devient LISIBLE, sur retours directs de Marc (captures).** C28-45 : colonne `Type` (K),
+> « Dernière activité » en texte contrôlé `dd/MM HH:mm` (une cellule Date sortait sans l'heure en
+> FORMATTED_VALUE), conso-exec « à jour (plan drainé — attend la génération) » au lieu de « en
+> cours · 100 % », « déjà fait » plus jamais rouge, dry-runs OFF → « désactivée », gloses budget du
+> JOUR ≠ frein LLM (deux gloses FAUSSES sur captures corrigées) ; revue : 2 vraies prises (plage
+> `A2:K` sans laquelle le compactage était mort ; max lexicographique jour-major faux en début de
+> mois). C28-46 (demande : « seulement l'utile, regrouper l'inactif, cliquable, cachable, barres à
+> progrès réels ») : tri par UTILITÉ (`estUtileProgression`, PURE — problèmes/complétions/progrès
+> réels visibles ; à jour/désactivée/jamais vue/routines sans compteur → groupe VEILLE replié,
+> choix mémorisé localStorage, explication par tâche au CLIC ; barre indéterminée restreinte au
+> recensement). `<details open>` CONTRÔLÉ (state+onToggle — sinon le re-render du poll 15 s
+> refermait le groupe sous la souris).
+>
+> **🚧 CHANTIER CLOS AU 2026-08-13 — C28-44 : suivi GÉNÉRIQUE et fiable de toutes les
 > opérations du tick (ADR-0038, plan product-manager en 5 PRs).** Demande Marc : « je veux que ça
 > marche pour tout type de tâche que l'app fait et je veux que ce soit beaucoup plus fiable » — le
 > suivi (onglet `Progression`) était codé en dur pour 6 campagnes alors que le tick exécute ~34

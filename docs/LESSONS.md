@@ -2202,3 +2202,21 @@ mois, et le bug ne se voit qu'à cheval sur deux mois (invisible en test naïf d
 dépend est morte en silence (même famille que « borne haute qui fige l'UI », version colonne)."
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7, en compact).
+
+## 2026-08-13 (septies) — `<details open>` sous React : contrôlé des deux côtés, sinon le poll referme le groupe sous la souris
+
+**Contexte.** C28-46 : le groupe « tâches en veille » est un `<details>` dont l'état ouvert/fermé
+doit être mémorisé (localStorage). Premier jet : `open={veilleOuverte}` depuis un `useState`
+initialisé du localStorage mais JAMAIS mis à jour — or le composant re-rend toutes les 15 s (poll
+de Progression) : à chaque re-render, React re-force l'attribut `open` à la valeur INITIALE du
+state, refermant le groupe que l'utilisateur vient d'ouvrir à la main. Repéré avant revue.
+
+**Leçon.** "Sous React, un `<details>` dont on pose la prop `open` devient DE FAIT contrôlé : tout
+re-render re-force l'attribut à la valeur de la prop, écrasant les toggles manuels de
+l'utilisateur — et dans une app qui POLL (re-render périodique garanti), le bug est systématique
+(le groupe se referme sous la souris toutes les 15 s). Deux issues cohérentes : (a) contrôlé
+COMPLET — `open={state}` + `onToggle` qui met à jour le state (et persiste) ; le sync state↔DOM à
+la même valeur est un no-op, pas de boucle ; ou (b) ne PAS poser `open` du tout (non contrôlé) et
+perdre la restauration initiale. Jamais l'entre-deux (prop posée, state jamais mis à jour)."
+
+**Règle durable ?** non (piège React classique, consigné pour l'app — pas de règle CLAUDE.md).

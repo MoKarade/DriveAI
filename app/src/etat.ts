@@ -472,6 +472,22 @@ export function familleStatut(statut: string): FamilleStatut {
 }
 
 /**
+ * C28-46 (demande Marc : « seulement l'utile d'affiché, avec barres de progression à progrès
+ * RÉELS ; tout l'inactif regroupé, cliquable, cachable ») : une opération est UTILE — affichée en
+ * avant — si c'est un PROBLÈME (erreur, suspension), une COMPLÉTION récente (terminé — purgée
+ * ensuite par le moteur), un recensement transitoire, ou un travail à PROGRÈS RÉEL (compteur).
+ * Tout le reste est en VEILLE : accompli (« à jour »), désactivée, jamais vue, et les routines qui
+ * tournent sans compteur — regroupées, repliées, explication au clic. PURE.
+ */
+export function estUtileProgression(op: LigneProgression): boolean {
+  const f = familleStatut(op.statut);
+  if (f === 'erreur' || f === 'suspendu') return true; // un problème est TOUJOURS visible
+  if (f === 'ajour' || f === 'inactif') return false;  // accompli / désactivée / jamais vue → veille
+  if (f === 'termine' || f === 'recensement') return true;
+  return op.base !== null || op.traites > 0; // progrès réel à montrer — sinon routine qui tourne
+}
+
+/**
  * Horodatage moteur `dd/MM HH:mm` (format CONTRÔLÉ — PR6 : le moteur écrit du TEXTE, jamais une
  * cellule Date dont le rendu dépend de la locale de la Sheet) → Date. PURE. Année : celle de
  * `maintenant`, ou la précédente si le résultat serait dans le futur (passage d'année) ; après

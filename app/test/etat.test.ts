@@ -273,6 +273,27 @@ describe('progression live (C28-18)', () => {
     expect(ilYA('13/08 19:45', maintenant, 'fr')).toBeNull();
   });
 
+  it('estUtileProgression (C28-46) : problèmes/complétions/progrès réels VISIBLES — accompli, désactivé, jamais vu et routines sans compteur en VEILLE', async () => {
+    const { estUtileProgression } = await import('../src/etat');
+    const op = (statut: string, base: number | null, traites: number) =>
+      ({ cle: 'x', operation: 'X', traites, base, unite: '', statut, horodate: '', detail: '', derniereActivite: '', derniereErreur: '', type: '' });
+    // Toujours visibles : problèmes, complétions, recensement, progrès réel.
+    expect(estUtileProgression(op('erreur', null, 0))).toBe(true);
+    expect(estUtileProgression(op('suspendu (panne API (compte))', null, 0))).toBe(true);
+    expect(estUtileProgression(op('terminé', 100, 100))).toBe(true);
+    expect(estUtileProgression(op('recensement', null, 0))).toBe(true);
+    expect(estUtileProgression(op('en cours', 1207, 312))).toBe(true);
+    expect(estUtileProgression(op('en pause (budget du jour épuisé)', 9, 6))).toBe(true);
+    expect(estUtileProgression(op('en cours', null, 4520))).toBe(true); // compteur sans total (histo) = progrès réel
+    // Veille : accompli, désactivée, jamais vue — MÊME avec compteur (à jour prime) — et routines.
+    expect(estUtileProgression(op('à jour (plan drainé — attend la génération)', 1858, 1858))).toBe(false);
+    expect(estUtileProgression(op('à jour (déjà fait)', null, 0))).toBe(false);
+    expect(estUtileProgression(op('désactivée', null, 0))).toBe(false);
+    expect(estUtileProgression(op('jamais vue', null, 0))).toBe(false);
+    expect(estUtileProgression(op('en cours', null, 0))).toBe(false); // routine qui tourne sans compteur
+    expect(estUtileProgression(op('en pause (budget de tick épuisé)', null, 0))).toBe(false);
+  });
+
   it('dateActivite (C28-45) : max par TIMESTAMP parsé — jamais un tri lexicographique jour-major', async () => {
     const { dateActivite } = await import('../src/etat');
     const maintenant = new Date(2026, 7, 13, 16, 30);

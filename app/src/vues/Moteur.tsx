@@ -29,6 +29,7 @@ import {
   JaugeJour,
   ilYA,
   dateActivite,
+  estUtileProgression,
 } from '../etat';
 import { CleTexte, Langue, t } from '../i18n';
 
@@ -172,27 +173,33 @@ export function Moteur({ langue }: { langue: Langue }) {
 
 /**
  * Section Progression (C28-45, retour Marc : « tout est en cours, rien n'est fini ») : les VRAIES
- * campagnes (type campagne/demande) sont mises en avant ; les ROUTINES (flux vivant, maintenance,
- * observabilité — elles tournent à chaque tick, « en cours » n'y veut rien dire) sont COMPACTÉES
- * en une ligne « ✓ N routines en bonne santé », dépliable — seules celles qui vont MAL (erreur,
- * suspension anormale) remontent en visible. Ancien moteur sans colonne Type (type '') → tout
- * s'affiche à plat comme avant (transition sans casse).
+ * vue par défaut ne montre QUE l'utile (`estUtileProgression`) : problèmes, complétions, campagnes
+ * à progrès RÉEL. Tout le reste — accompli, désactivé, jamais vu, routines sans compteur — vit
+ * dans UN groupe VEILLE replié (choix mémorisé), où chaque tâche se clique pour son explication.
+ * Le tri par UTILITÉ ne dépend pas de la colonne Type : il marche aussi sur l'ancien format.
  */
+const CLE_VEILLE_OUVERTE = 'driveai.progression.veille';
+
 function ProgressionSection({ langue, progression }: { langue: Langue; progression: LigneProgression[] }) {
-  const estRoutine = (op: LigneProgression) =>
-    op.type === 'flux' || op.type === 'maintenance' || op.type === 'observabilite';
-  const anormale = (op: LigneProgression) => {
-    const f = familleStatut(op.statut);
-    return f === 'erreur' || f === 'suspendu';
-  };
-  const campagnes = progression.filter((op) => !estRoutine(op));
-  const routinesMal = progression.filter((op) => estRoutine(op) && anormale(op));
-  const routinesOk = progression.filter((op) => estRoutine(op) && !anormale(op));
+  // C28-46 (demande Marc) : la vue par défaut ne montre QUE l'utile — problèmes, complétions,
+  // campagnes à PROGRÈS RÉEL. Tout le reste (accompli, désactivé, jamais vu, routines sans
+  // compteur) part dans UN groupe replié, CACHABLE (choix mémorisé), où chaque tâche se CLIQUE
+  // pour son explication. Le tri est par UTILITÉ (`estUtileProgression`), plus par type — il
+  // marche donc aussi pendant la transition (ancien moteur sans colonne Type).
+  // CONTRÔLÉ (state + onToggle) : garde vdom et DOM cohérents — sans le setter, un REMOUNT du
+  // <details> (ex. `veille.length` passe par 0 puis revient) restaurerait la valeur initiale et
+  // perdrait le choix de la session (revue C28-46 : React ne réécrit `open` que si la prop CHANGE,
+  // le danger est le remount, pas le re-render du poll).
+  const [veilleOuverte, setVeilleOuverte] = useState(() => {
+    try { return localStorage.getItem(CLE_VEILLE_OUVERTE) === '1'; } catch { return false; }
+  });
+  const utiles = progression.filter(estUtileProgression);
+  const veille = progression.filter((op) => !estUtileProgression(op));
   // Max par TIMESTAMP PARSÉ — jamais un tri lexicographique de `dd/MM …` (ordre jour-major :
   // « 31/07 » > « 13/08 », le résumé aurait affiché « il y a 13 j » à chaque début de mois alors
   // que tout venait de tourner — revue C28-45, exactement la confusion que ce chantier corrige).
   const maintenant = new Date();
-  const activiteMax = routinesOk
+  const activiteMax = veille
     .map((op) => op.derniereActivite)
     .filter(Boolean)
     .reduce<{ texte: string; ts: number }>((max, texte) => {
@@ -203,18 +210,45 @@ function ProgressionSection({ langue, progression }: { langue: Langue; progressi
   return (
     <section className="carte large operations-live">
       <h2>{t('progressionTitre', langue)}</h2>
-      {progression.length === 0 && <p className="explication">{t('progressionVide', langue)}</p>}
-      {campagnes.map((op) => <Operation key={op.cle} langue={langue} op={op} />)}
-      {routinesMal.map((op) => <Operation key={op.cle} langue={langue} op={op} />)}
-      {routinesOk.length > 0 && (
-        <details className="routines-repli">
+      {utiles.length === 0 && <p className="explication">{t('progressionVide', langue)}</p>}
+      {utiles.map((op) => <Operation key={op.cle} langue={langue} op={op} />)}
+      {veille.length > 0 && (
+        <details
+          className="routines-repli"
+          open={veilleOuverte}
+          onToggle={(e) => {
+            const ouvert = (e.currentTarget as HTMLDetailsElement).open;
+            setVeilleOuverte(ouvert); // sync state ↔ DOM (même valeur = no-op, jamais de boucle)
+            try { localStorage.setItem(CLE_VEILLE_OUVERTE, ouvert ? '1' : '0'); } catch { /* stockage indisponible : choix non mémorisé */ }
+          }}
+        >
           <summary>
-            ✓ {routinesOk.length} {t('routinesOK', langue)}{fraicheur && <> · {t('derniereActivite', langue)} {fraicheur}</>}
+            ✓ {veille.length} {t('veilleTitre', langue)}{fraicheur && <> · {t('derniereActivite', langue)} {fraicheur}</>}
           </summary>
-          {routinesOk.map((op) => <Operation key={op.cle} langue={langue} op={op} />)}
+          {veille.map((op) => <OperationVeille key={op.cle} langue={langue} op={op} />)}
         </details>
       )}
     </section>
+  );
+}
+
+/** Une tâche EN VEILLE : ligne compacte (nom + pastille), l'EXPLICATION s'ouvre au CLIC (C28-46). */
+function OperationVeille({ langue, op }: { langue: Langue; op: LigneProgression }) {
+  const famille = familleStatut(op.statut);
+  const note = noteStatut(op, famille, langue);
+  const activite = op.derniereActivite
+    ? (ilYA(op.derniereActivite, new Date(), langue) ?? op.derniereActivite) : '';
+  return (
+    <details className="veille-item">
+      <summary>
+        <span className="op-nom">{op.operation}</span>
+        <span className={`pastille ${CLASSE_PASTILLE[famille]}`}>{t(LIBELLES_STATUT[famille], langue)}</span>
+      </summary>
+      {note && <p className="op-note">{note}</p>}
+      {activite && <p className="op-note">{t('derniereActivite', langue)} {activite}</p>}
+      {op.derniereErreur && <p className="op-note op-erreur">{t('derniereErreur', langue)} {op.derniereErreur}</p>}
+      {!note && !activite && !op.derniereErreur && <p className="op-note">{t('veilleRien', langue)}</p>}
+    </details>
   );
 }
 
@@ -297,7 +331,9 @@ function Operation({ langue, op }: { langue: Langue; op: LigneProgression }) {
       {op.base !== null && !arret && (
         <div className={`op-barre ${pct === 100 ? 'pleine' : ''}`}><i style={{ width: `${pct}%` }} /></div>
       )}
-      {op.base === null && !sansCompteur && (famille === 'encours' || famille === 'recensement') && <div className="op-barre indeterminee"><i /></div>}
+      {/* Barre indéterminée : recensement SEUL (transitoire) — jamais pour un « en cours » sans
+          total (C28-46 : « barres avec progrès réels » ; le compteur numérique suffit). */}
+      {op.base === null && !sansCompteur && famille === 'recensement' && <div className="op-barre indeterminee"><i /></div>}
       {arret && <div className="op-barre rayee" />}
       {note && <p className="op-note">{note}</p>}
       {op.derniereActivite && famille !== 'termine' && (
