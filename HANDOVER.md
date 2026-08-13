@@ -4,7 +4,31 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🩹 ÉTAT AU 2026-08-13 (le plus récent) — CORRECTIF #2 : la réparation de l'en-tête `Erreur`
+> **⚙️ ÉTAT AU 2026-08-13 (le plus récent) — Vercel Pro : `maxDuration` épinglé + budget hub-summary
+> ajusté (gain modeste, pas une résolution).** Marc a pris Vercel Pro. `GET /api/hub/summary` a un
+> incident réel et déjà documenté : ~27 timeouts sur 3 semaines (« aborted due to timeout »), causés
+> par des réveils à froid (cold start) de la web app Apps Script parfois > 4,8 s. L'ancien
+> `TIMEOUT_MS = 8000` était plafonné par le mur Hobby implicite (~10 s). Épinglé explicitement
+> `maxDuration: 20` (`vercel.json`, bloc `functions` — la bonne convention pour un projet SANS
+> framework Next.js, `export const maxDuration` étant une convention Next.js inerte ici) et remonté
+> `TIMEOUT_MS` à 8700. **Mais le vrai goulot reste ailleurs** : le hub (hubperso.com, un AUTRE
+> dépôt hors de portée de cette session) abandonne lui-même côté client à 9 s — au-delà, peu importe
+> le budget DriveAI, le hub a déjà renoncé. Gain réel : marge modeste (~700 ms), PAS une résolution
+> complète — celle-ci exige de relever aussi le budget du hub, dans son propre dépôt. Revue
+> code-reviewer 🟡→🟢 (1 commentaire périmé corrigé, ailleurs dans le même fichier). 18/18 tests
+> (`app/test/hub-summary.test.ts`).
+>
+> **Vercel Pro — ce qui a été vérifié/tenté et le résultat.** (1) Aucun geste manuel requis pour le
+> déploiement moteur/trigger (déjà automatisé, ADR-0032, re-confirmé). (2) Protection des previews
+> par MOT DE PASSE tentée → refusée par l'API (« Advanced Deployment Protection n'est pas activée »),
+> un add-on payant SÉPARÉ de Pro, non achetable via les outils MCP disponibles (seul `siem` l'est) —
+> à faire par Marc directement dans le dashboard Vercel s'il le souhaite vraiment. **Mais la
+> protection SSO Vercel (gratuite) est DÉJÀ active** sur tous les déploiements sauf le domaine custom
+> `drive.hubperso.com` — les previews `*.vercel.app` exigent déjà une connexion au compte Vercel de
+> Marc pour être vues. Un mot de passe n'apporterait de valeur que pour partager un lien preview avec
+> quelqu'un HORS de ce compte.
+>
+> **🩹 ÉTAT AU 2026-08-13 — CORRECTIF #2 : la réparation de l'en-tête `Erreur`
 > (colonne E de `HistoriqueVrac`) ne s'exécutait JAMAIS en prod.** Trouvé en vérifiant les données
 > RÉELLES juste après le merge du correctif #1 ci-dessous (self-serve, lecture directe du Sheet) :
 > l'en-tête était toujours à 4 colonnes malgré le correctif. Cause : la réparation vivait dans

@@ -4,6 +4,9 @@
   "outputDirectory": "app/dist",
   "framework": null,
   "installCommand": "true",
+  "functions": {
+    "api/hub/summary.ts": { "maxDuration": 20 }
+  },
   "headers": [
     {
       "source": "/(.*)",

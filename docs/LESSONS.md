@@ -2081,3 +2081,39 @@ diff — même famille que « déploiement vert ne prouve rien » (§7), mais ap
 pas à un déploiement CODE."
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-13 (ter) — Vercel sans framework : `maxDuration` se pose dans vercel.json, pas en `export const`
+
+**Contexte.** Marc passe en Vercel Pro et demande de vérifier si les limites Hobby bridaient
+quelque chose. Trouvé un incident réel : `GET /api/hub/summary` cumule ~27 timeouts sur 3 semaines
+(cold start de la web app Apps Script parfois > 4,8 s, contre un `TIMEOUT_MS` plafonné à 8 s pour
+rester sous le mur Hobby implicite ~10 s). Deux choses à corriger pour exploiter Pro : (1) épingler
+`maxDuration` EXPLICITEMENT plutôt que de compter sur le nouveau défaut implicite de Pro (~15 s) —
+mêmes principes que « tout geste manuel automatisé doit déclarer explicitement ce qu'il préservait
+implicitement » (piège webapp Apps Script, §7) ; (2) le faire au bon ENDROIT. Ce dépôt n'utilise PAS
+Next.js (`vercel.json` a `"framework": null`, build custom) — la convention `export const
+maxDuration = N` dans le fichier de route est une convention **Next.js** (Route Segment Config, lue
+par le compilateur Next), inerte silencieusement sur ce projet. Le bon mécanisme, indépendant du
+framework, est `vercel.json` → `"functions": { "<chemin réel du fichier>": { "maxDuration": N } }`.
+
+En creusant la piste « Pro débloque quoi d'autre », tentative de protection des previews par MOT DE
+PASSE (demande explicite de Marc) : refusée par l'API Vercel (« Advanced Deployment Protection n'est
+pas activée sur votre équipe ») — c'est un ADD-ON PAYANT séparé de Pro, non disponible via les outils
+MCP (seul `siem` est achetable par ce canal). Mais la protection SSO Vercel (gratuite, déjà active
+sur ce projet pour tout sauf le domaine custom) couvre déjà le besoin réel pour un projet solo.
+
+**Leçon.** "Sur un projet Vercel SANS framework (`framework: null`), configurer `maxDuration` (ou
+tout autre réglage par route habituellement exposé via une convention Next.js) passe par
+`vercel.json` → `functions` (glob sur le CHEMIN RÉEL du fichier), jamais par un `export const` dans
+le fichier de route — ce dernier est une convention de COMPILATEUR (Next.js la lit au build ;
+`framework: null` signifie qu'aucun compilateur ne la lit, donc elle est silencieusement ignorée,
+sans erreur). Avant de configurer un réglage 'à la Next.js' sur un projet 'Other', vérifier le
+`framework` déclaré dans `vercel.json`. Corollaire produit : 'Vercel Pro' n'inclut pas tout ce qui
+semble être une fonctionnalité Pro — la protection par mot de passe des previews (Password
+Protection) est un ADD-ON PAYANT séparé ('Advanced Deployment Protection'), à activer/acheter
+directement dans le dashboard Vercel, jamais supposé inclus sans vérification API. Et avant de
+recommander un mot de passe pour 'protéger les previews', vérifier si la protection SSO (gratuite,
+souvent déjà active) ne couvre pas déjà le besoin réel — un mot de passe n'apporte de valeur que
+pour partager un lien preview avec quelqu'un HORS du compte Vercel du propriétaire."
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).
