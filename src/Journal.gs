@@ -63,6 +63,11 @@ function initialiserSheet_(ss) {
   // (jamais réécrit, contrairement à Progression/Santé) — construit une série temporelle jour après
   // jour, jusqu'à la fin du drainage.
   creerOnglet_(ss, 'HistoriqueVrac', COLONNES_HISTORIQUE_VRAC);
+  // Colonne `Erreur` ajoutée après coup (2026-08-13) — la Sheet existe déjà en prod depuis PR #263
+  // (4 colonnes) : `creerOnglet_` ne touche jamais un onglet existant, donc réparée ici comme
+  // `Index!H1` ci-dessus (coût nul en régime normal : ne réécrit qu'un en-tête vide).
+  var fVrac = ss.getSheetByName('HistoriqueVrac');
+  if (fVrac && String(fVrac.getRange('E1').getValue()) === '') fVrac.getRange('E1').setValue('Erreur');
   var defaut = ss.getSheetByName('Feuille 1') || ss.getSheetByName('Sheet1');
   if (defaut && ss.getSheets().length > 1) ss.deleteSheet(defaut);
 }
@@ -394,8 +399,10 @@ var COLONNES_PLAN_FUSION = ['Horodaté', 'Domaine', 'Groupe', 'Rôle', 'Dossier'
 // Journal QUOTIDIEN du vrac par domaine (demande Marc 2026-08-12, cf. HistoriqueVrac.gs). APPEND-ONLY
 // (jamais réécrit ni purgé) — une ligne par domaine, une fois par jour, jusqu'à la fin du drainage.
 // `Tronqué` = 'oui' si le comptage a atteint le plafond de sûreté (compterVracRacineDomaine_,
-// Diagnostic.gs) — jamais un chiffre exact au-delà, jamais un plantage.
-var COLONNES_HISTORIQUE_VRAC = ['Date', 'Domaine', 'Vrac', 'Tronqué'];
+// Diagnostic.gs) — jamais un chiffre exact au-delà, jamais un plantage. `Erreur` = 'oui' si le
+// domaine était illisible ce jour-là : `Vrac` reste alors VIDE (jamais un faux 0 permanent —
+// confirmé en prod 2026-08-12, `06 · Études` avait affiché 0 avec ≥400 fichiers réels).
+var COLONNES_HISTORIQUE_VRAC = ['Date', 'Domaine', 'Vrac', 'Tronqué', 'Erreur'];
 
 /**
  * Construit les lignes de l'onglet Télémétrie. PURE (testée) : tout l'état arrive en paramètres,

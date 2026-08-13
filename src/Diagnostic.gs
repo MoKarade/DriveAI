@@ -109,6 +109,10 @@ function etatCampagnesRangement() {
       for (var j = 0; j < domaines.length; j++) {
         if (Date.now() - debut > 4 * 60 * 1000) { L.push('  … (comptage interrompu : garde-temps 4 min atteinte)'); break; }
         var res = compterVracRacineDomaine_(domaines[j].id);
+        if (res.erreur) {
+          L.push('  ' + domaines[j].nom + ' : ERREUR DE LECTURE (compte indisponible, jamais compté comme 0)');
+          continue;
+        }
         totalVrac += res.n;
         L.push('  ' + domaines[j].nom + ' : ' + res.n + (res.tronque ? '+' : '') + ' fichier(s) à plat');
       }
@@ -153,9 +157,11 @@ function statPlanConsolidation_(curseur) {
 /**
  * Compte les fichiers posés DIRECTEMENT à la racine d'un domaine (pas les sous-dossiers). LECTURE
  * SEULE, bornée par un plafond de sûreté (au-delà, marqué tronqué « n+ » — le chiffre exact
- * n'apporte rien au diagnostic). Un domaine illisible rend 0 plutôt qu'un plantage.
+ * n'apporte rien au diagnostic). Un domaine illisible rend `erreur:true` — JAMAIS un `n:0` muet,
+ * indistinguable d'un domaine réellement vide (confirmé en prod 2026-08-12 : `06 · Études` avait
+ * affiché 0 dans HistoriqueVrac alors qu'il contenait ≥400 fichiers réels).
  * @param {string} folderId
- * @return {{n:number, tronque:boolean}}
+ * @return {{n:number, tronque:boolean, erreur:boolean}}
  */
 function compterVracRacineDomaine_(folderId) {
   var PLAFOND = 1000;
@@ -165,10 +171,10 @@ function compterVracRacineDomaine_(folderId) {
     while (fi.hasNext()) {
       fi.next();
       n++;
-      if (n >= PLAFOND) return { n: n, tronque: true };
+      if (n >= PLAFOND) return { n: n, tronque: true, erreur: false };
     }
   } catch (e) {
-    return { n: 0, tronque: false };
+    return { n: 0, tronque: false, erreur: true };
   }
-  return { n: n, tronque: false };
+  return { n: n, tronque: false, erreur: false };
 }
