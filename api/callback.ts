@@ -17,10 +17,12 @@ import {
   effacerCookie,
   poserCookieRefresh,
   chiffrer,
+  encoderSession,
   echangerCode,
   emailDepuisIdToken,
   rediriger,
 } from './_lib';
+import { aLeDroitDEntrer } from './_accesHub';
 
 export default async function handler(req: Requete, res: Reponse): Promise<void> {
   const env = lireEnv();
@@ -47,17 +49,28 @@ export default async function handler(req: Requete, res: Reponse): Promise<void>
     return;
   }
 
-  // Verrou d'identité (C28-20, ADR-0021) : seule l'adresse ALLOWED_EMAIL peut ouvrir une
-  // session — l'app délivre ensuite la config serveur (/api/config) sans rien demander, ce
-  // verrou est donc la SEULE barrière d'accès. Échec FERMÉ : email absent/illisible/différent
-  // ⇒ AUCUN cookie posé, retour à l'écran de connexion avec l'explication.
-  const emailAttendu = (process.env.ALLOWED_EMAIL ?? '').trim().toLowerCase();
+  // Verrou d'identité (C28-20, ADR-0021 ; élargi par l'ADR 0001 de Hubperso, étape 3).
+  //
+  // CE QUI A CHANGÉ : ce n'est plus « seule ALLOWED_EMAIL entre », mais « le PROPRIÉTAIRE
+  // (ALLOWED_EMAIL, sans réseau) ou toute personne à qui le hub a accordé DriveAI ». La
+  // liste vit dans le hub et se gère depuis sa page d'administration — plus besoin d'éditer
+  // une variable Vercel pour inviter quelqu'un, ni de se souvenir de la remettre pour le
+  // retirer.
+  //
+  // CE QUI N'A PAS CHANGÉ : l'échec reste FERMÉ. Email absent, illisible, ou refusé ⇒ AUCUN
+  // cookie posé, retour à l'écran de connexion. Et ce n'est plus la SEULE barrière : la
+  // session porte désormais l'adresse, et /api/config comme /api/refresh la revérifient à
+  // chaque appel — sans quoi un accès retiré survivrait un an dans un cookie.
   const email = jetons.id_token ? emailDepuisIdToken(jetons.id_token) : null;
-  if (!emailAttendu || !email || email !== emailAttendu) {
+  if (!email || !(await aLeDroitDEntrer(email))) {
     rediriger(res, '/?erreur=acces_refuse');
     return;
   }
 
-  poserCookieRefresh(res, req, chiffrer(jetons.refresh_token, env.cookieSecret));
+  poserCookieRefresh(
+    res,
+    req,
+    chiffrer(encoderSession({ rt: jetons.refresh_token, email }), env.cookieSecret),
+  );
   rediriger(res, '/');
 }

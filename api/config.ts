@@ -15,10 +15,12 @@ import {
   lireEnv,
   lireCookies,
   dechiffrer,
+  lireSession,
   repondreJson,
 } from './_lib';
+import { aLeDroitDEntrer } from './_accesHub';
 
-export default function handler(req: Requete, res: Reponse): void {
+export default async function handler(req: Requete, res: Reponse): Promise<void> {
   const env = lireEnv();
   if (!env) {
     repondreJson(res, 500, { erreur: 'Configuration serveur incomplète (variables Vercel).' });
@@ -28,9 +30,19 @@ export default function handler(req: Requete, res: Reponse): void {
   // Session D'ABORD : un visiteur anonyme reçoit 401 sans rien apprendre — pas même si les
   // variables serveur sont complètes (le 500 ci-dessous n'est visible qu'authentifié).
   const cookie = lireCookies(req)[COOKIE_RT];
-  const session = cookie ? dechiffrer(cookie, env.cookieSecret) : null;
+  const clair = cookie ? dechiffrer(cookie, env.cookieSecret) : null;
+  const session = clair ? lireSession(clair) : null;
   if (!session) {
     repondreJson(res, 401, { erreur: 'Aucune session' });
+    return;
+  }
+
+  // REVÉRIFICATION À CHAQUE APPEL, et pas seulement à la connexion. C'est cet endpoint qui
+  // délivre WEBAPP_SECRET — la clé qui permet de déplacer des documents, de déclencher l'OCR
+  // et de faire écrire au LLM aux frais de Marc. Un accès retiré depuis l'administration du
+  // hub doit cesser de l'ouvrir en moins d'une minute, pas au bout de l'année du cookie.
+  if (!(await aLeDroitDEntrer(session.email))) {
+    repondreJson(res, 403, { erreur: 'Accès retiré pour ce compte' });
     return;
   }
 

@@ -16,10 +16,12 @@ import {
   effacerCookie,
   origine,
   emailDepuisIdToken,
+  encoderSession,
   COOKIE_RT,
   SCOPES,
   SCOPES_IDENTITE,
 } from '../../api/_lib';
+import { viderCacheAcces } from '../../api/_accesHub';
 import handlerConfig from '../../api/config';
 
 function fauxReq(headers: Record<string, string>): IncomingMessage {
@@ -164,26 +166,37 @@ function fauxResComplet(): ServerResponse & { corps: () => string } {
 
 describe('/api/config — la config ne sort qu\'à une session VALIDE (zéro configuration client)', () => {
   const CLES_ENV = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'COOKIE_SECRET',
-    'SPREADSHEET_ID', 'WEBAPP_URL', 'WEBAPP_SECRET'] as const;
+    'SPREADSHEET_ID', 'WEBAPP_URL', 'WEBAPP_SECRET', 'ALLOWED_EMAIL', 'HUB_TOKEN'] as const;
+  const PROPRIO = 'marc@exemple.test';
   const BASE: Record<string, string> = {
     GOOGLE_CLIENT_ID: 'id-test', GOOGLE_CLIENT_SECRET: 'secret-test', COOKIE_SECRET: 'cookie-secret-test',
     SPREADSHEET_ID: 'sheet-test', WEBAPP_URL: 'https://script.google.com/macros/s/x/exec', WEBAPP_SECRET: 'wa-secret',
+    ALLOWED_EMAIL: PROPRIO,
   };
 
-  function avecEnv(vars: Record<string, string>, fn: () => void): void {
+  /** Cookie au format ACTUEL : refresh token + adresse, sans quoi aucune révocation ne mord. */
+  function cookieDe(email: string): string {
+    const clair = encoderSession({ rt: 'refresh-token', email });
+    return `${COOKIE_RT}=${encodeURIComponent(chiffrer(clair, BASE.COOKIE_SECRET))}`;
+  }
+
+  async function avecEnv(vars: Record<string, string>, fn: () => Promise<void>): Promise<void> {
     const avant = CLES_ENV.map((k) => [k, process.env[k]] as const);
     for (const k of CLES_ENV) delete process.env[k];
     Object.assign(process.env, vars);
-    try { fn(); } finally {
+    // Le cache d'accès est un état de MODULE : sans le vider, un test hériterait de
+    // l'autorisation laissée par le précédent, et ce serait un faux positif.
+    viderCacheAcces();
+    try { await fn(); } finally {
       for (const [k, v] of avant) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
+      viderCacheAcces();
     }
   }
 
-  it('cookie de session déchiffrable → 200 avec la config des variables Vercel', () => {
-    avecEnv(BASE, () => {
+  it('session du propriétaire → 200 avec la config des variables Vercel', async () => {
+    await avecEnv(BASE, async () => {
       const res = fauxResComplet();
-      const cookie = `${COOKIE_RT}=${encodeURIComponent(chiffrer('refresh-token', BASE.COOKIE_SECRET))}`;
-      handlerConfig(fauxReq({ cookie, 'x-forwarded-proto': 'https', host: 'x' }), res);
+      await handlerConfig(fauxReq({ cookie: cookieDe(PROPRIO), 'x-forwarded-proto': 'https', host: 'x' }), res);
       expect(res.statusCode).toBe(200);
       expect(JSON.parse(res.corps())).toEqual({
         spreadsheetId: 'sheet-test', webappUrl: BASE.WEBAPP_URL, webappSecret: 'wa-secret',
@@ -191,26 +204,54 @@ describe('/api/config — la config ne sort qu\'à une session VALIDE (zéro con
     });
   });
 
-  it('sans cookie, ou cookie forgé → 401 et AUCUNE config dans la réponse (le secret ne fuit pas)', () => {
-    avecEnv(BASE, () => {
+  it('sans cookie, ou cookie forgé → 401 et AUCUNE config dans la réponse (le secret ne fuit pas)', async () => {
+    await avecEnv(BASE, async () => {
       const sans = fauxResComplet();
-      handlerConfig(fauxReq({ 'x-forwarded-proto': 'https', host: 'x' }), sans);
+      await handlerConfig(fauxReq({ 'x-forwarded-proto': 'https', host: 'x' }), sans);
       expect(sans.statusCode).toBe(401);
       expect(sans.corps()).not.toContain('wa-secret');
 
       const forge = fauxResComplet();
-      handlerConfig(fauxReq({ cookie: `${COOKIE_RT}=forge-par-un-tiers`, host: 'x' }), forge);
+      await handlerConfig(fauxReq({ cookie: `${COOKIE_RT}=forge-par-un-tiers`, host: 'x' }), forge);
       expect(forge.statusCode).toBe(401);
       expect(forge.corps()).not.toContain('wa-secret');
     });
   });
 
-  it('variables serveur incomplètes → 500, jamais une config partielle', () => {
-    const { SPREADSHEET_ID: _, ...sansSheet } = BASE;
-    avecEnv(sansSheet, () => {
+  // ⚠️ LE test de la bascule vers le hub (ADR 0001, étape 3). Un cookie de l'ANCIEN format —
+  // le refresh token nu, sans adresse — est déchiffrable mais ANONYME : impossible de savoir
+  // à qui il appartient, donc impossible de revérifier son accès. Le laisser passer
+  // garderait pour un an des sessions qu'aucune révocation n'atteint.
+  it('session à l\'ANCIEN format (sans adresse) → 401, même déchiffrable', async () => {
+    await avecEnv(BASE, async () => {
       const res = fauxResComplet();
-      const cookie = `${COOKIE_RT}=${encodeURIComponent(chiffrer('rt', BASE.COOKIE_SECRET))}`;
-      handlerConfig(fauxReq({ cookie, host: 'x' }), res);
+      const ancien = `${COOKIE_RT}=${encodeURIComponent(chiffrer('refresh-token-nu', BASE.COOKIE_SECRET))}`;
+      await handlerConfig(fauxReq({ cookie: ancien, 'x-forwarded-proto': 'https', host: 'x' }), res);
+      expect(res.statusCode).toBe(401);
+      expect(res.corps()).not.toContain('wa-secret');
+    });
+  });
+
+  // Sans HUB_TOKEN, `aAccesHub` refuse sans même toucher au réseau : une adresse qui n'est
+  // pas celle du propriétaire n'a donc aucun moyen d'entrer. C'est l'échec FERMÉ, et c'est
+  // ce qui rend la révocation réelle — le cookie reste valide, l'accès non.
+  it('session d\'une autre adresse, non autorisée → 403 et le secret ne sort pas', async () => {
+    await avecEnv(BASE, async () => {
+      const res = fauxResComplet();
+      await handlerConfig(
+        fauxReq({ cookie: cookieDe('quelquun@exemple.test'), 'x-forwarded-proto': 'https', host: 'x' }),
+        res,
+      );
+      expect(res.statusCode).toBe(403);
+      expect(res.corps()).not.toContain('wa-secret');
+    });
+  });
+
+  it('variables serveur incomplètes → 500, jamais une config partielle', async () => {
+    const { SPREADSHEET_ID: _, ...sansSheet } = BASE;
+    await avecEnv(sansSheet, async () => {
+      const res = fauxResComplet();
+      await handlerConfig(fauxReq({ cookie: cookieDe(PROPRIO), host: 'x' }), res);
       expect(res.statusCode).toBe(500);
       expect(res.corps()).not.toContain('wa-secret');
     });

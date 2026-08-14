@@ -13,9 +13,11 @@ import {
   lireCookies,
   effacerCookie,
   dechiffrer,
+  lireSession,
   rafraichirAccessToken,
   repondreJson,
 } from './_lib';
+import { aLeDroitDEntrer } from './_accesHub';
 
 export default async function handler(req: Requete, res: Reponse): Promise<void> {
   const env = lireEnv();
@@ -30,15 +32,26 @@ export default async function handler(req: Requete, res: Reponse): Promise<void>
     return;
   }
 
-  const refreshToken = dechiffrer(cookie, env.cookieSecret);
-  if (!refreshToken) {
-    // Cookie forgé ou COOKIE_SECRET changé : purge et reconnexion propre.
+  const clair = dechiffrer(cookie, env.cookieSecret);
+  const session = clair ? lireSession(clair) : null;
+  if (!session) {
+    // Cookie forgé, COOKIE_SECRET changé, ou session à l'ANCIEN format (sans adresse : on ne
+    // saurait pas à qui elle appartient, donc on ne peut pas la revérifier). Purge et
+    // reconnexion propre — le prix est un seul aller-retour, une seule fois.
     effacerCookie(res, req, COOKIE_RT);
     repondreJson(res, 401, { erreur: 'Session illisible — reconnexion nécessaire' });
     return;
   }
 
-  const jetons = await rafraichirAccessToken(env, refreshToken);
+  // Revérification à chaque appel : cet endpoint délivre un jeton d'accès Google frais, avec
+  // Drive et Sheets au bout. Un accès retiré doit s'arrêter là, pas à l'expiration du cookie.
+  if (!(await aLeDroitDEntrer(session.email))) {
+    effacerCookie(res, req, COOKIE_RT);
+    repondreJson(res, 403, { erreur: 'Accès retiré pour ce compte' });
+    return;
+  }
+
+  const jetons = await rafraichirAccessToken(env, session.rt);
   if (!jetons.access_token) {
     // `invalid_grant` = refresh token révoqué/expiré côté Google : la session est morte.
     effacerCookie(res, req, COOKIE_RT);
