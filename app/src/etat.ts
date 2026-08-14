@@ -424,6 +424,8 @@ export interface LigneProgression {
   derniereActivite: string; // dernier passage RÉEL, format contrôlé 'dd/MM HH:mm' — '' si jamais vue
   derniereErreur: string;   // 'dd/MM HH:mm — message' ou '' — reste visible même après un succès
   type: string;            // type du registre (flux/campagne/maintenance/demande/observabilite) — '' si ancien moteur
+  dernierePasse: string;   // « +23 documents · il y a 6 min » (dernière passe PRODUCTIVE) ou ''
+  finEstimee: string;      // « reste 885 documents · ~4 j · vers le 18/08 · reprise le 01/09 » ou ''
 }
 
 /**
@@ -446,6 +448,8 @@ export function interpreterProgression(brut: string[][]): LigneProgression[] {
       derniereActivite: l[8] ?? '',
       derniereErreur: l[9] ?? '',
       type: l[10] ?? '',
+      dernierePasse: l[11] ?? '',
+      finEstimee: l[12] ?? '',
     }));
 }
 

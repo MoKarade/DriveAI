@@ -223,10 +223,71 @@ test('lignesProgression_ (C28-44) : statut/Détail/Dernière activité/Dernière
   assert.ok(lm[9].indexOf('boom') !== -1, 'mais la Dernière erreur du suivi est visible quand même');
 });
 
+/* ---------- C28-47 : avancement (dernière passe + fin estimée) ---------- */
+
+/** Appel avec débits explicites (colonnes L/M). */
+function lignesAvancement(c, etat, maintenantMs, debits) {
+  return c.lignesProgression_(etat, {}, maintenantMs, c.CONFIG.PROGRESSION_PURGE_MS, {},
+    c.REGISTRE_OPERATIONS, debits || {});
+}
+
+test('colonnesAvancement (C28-47) : campagne qui AVANCE → dernière passe + horizon + date de fin', () => {
+  const c = ctxJournal();
+  const maintenant = 1755000000000;
+  const etat = etatVierge(c);
+  etat.migration = { termine: false, base: 1000, traites: 400, tag: 'm1' };
+  const debits = { migration: { t0: maintenant - 48 * 3600000, ts: maintenant, n: 400, r: 25, dn: 23, dts: maintenant - 6 * 60000 } };
+  const l = lignesAvancement(c, etat, maintenant, debits).find((x) => x[0] === 'migration');
+  assert.strictEqual(l[11], '+23 documents · il y a 6 min', 'dernière passe PRODUCTIVE avec son unité');
+  assert.ok(l[12].indexOf('reste 600 documents') === 0, 'reste chiffré : ' + l[12]);
+  assert.ok(/~24 h/.test(l[12]), '600 restants à 25/h = 24 h : ' + l[12]);
+  assert.ok(/vers le \d{2}\/\d{2}/.test(l[12]), 'date de fin projetée : ' + l[12]);
+});
+
+test('colonnesAvancement (C28-47) : EN PAUSE → JAMAIS de date de fin, mais le reste et la REPRISE (le cas prod de la ré-analyse)', () => {
+  const c = ctxJournal();
+  const maintenant = 1755000000000;
+  const etat = etatVierge(c);
+  // Cas RÉEL du 14/08 : ré-analyse 322/1207, gelée par le frein budget MENSUEL.
+  etat.freinBudget = true;
+  etat.reanalyse = { termine: false, enAttente: false, base: 1207, traites: 322, tag: 'c26-08' };
+  const debits = { reanalyse: { t0: maintenant - 72 * 3600000, ts: maintenant, n: 322, r: 12, dn: 40, dts: maintenant - 3600000 } };
+  const l = lignesAvancement(c, etat, maintenant, debits).find((x) => x[0] === 'reanalyse');
+  assert.strictEqual(l[5], 'en pause (frein budget)');
+  assert.ok(l[12].indexOf('reste 885 documents') === 0, 'le RESTE est dit : ' + l[12]);
+  assert.ok(!/vers le/.test(l[12]) && !/~\d/.test(l[12]),
+    'ni date ni horizon quand c\'est gelé — le débit ne connaît pas un gel FUTUR : ' + l[12]);
+  assert.ok(/reprise le \d{2}\/\d{2} \(frein mensuel\)/.test(l[12]), 'la REPRISE mensuelle est annoncée : ' + l[12]);
+
+  // Budget du JOUR (consolidation) : même règle, reprise demain.
+  const etat2 = etatVierge(c);
+  etat2.consolidationGen = { termine: false, base: 9, traites: 6, budgetEpuise: true, tag: 'conso-3' };
+  const d2 = { 'consolidation-gen': { t0: maintenant - 72 * 3600000, ts: maintenant, n: 6, r: 0.5, dn: 2, dts: maintenant - 7200000 } };
+  const l2 = lignesAvancement(c, etat2, maintenant, d2).find((x) => x[0] === 'consolidation-gen');
+  assert.strictEqual(l2[5], 'en pause (budget du jour épuisé)');
+  assert.ok(/reste 3 domaines/.test(l2[12]) && /reprise demain/.test(l2[12]), l2[12]);
+  assert.ok(!/vers le/.test(l2[12]), 'pas de date de fin en pause : ' + l2[12]);
+});
+
+test('colonnesAvancement (C28-47) : aucune estimation inventée — sans débit, à l\'arrêt, ou campagne finie', () => {
+  const c = ctxJournal();
+  const maintenant = 1755000000000;
+  const etat = etatVierge(c);
+  etat.migration = { termine: false, base: 1000, traites: 400, tag: 'm1' };
+  // Aucun débit connu → les deux colonnes restent VIDES (jamais un « ~? j »).
+  const vide = lignesAvancement(c, etat, maintenant, {}).find((x) => x[0] === 'migration');
+  assert.deepStrictEqual([vide[11], vide[12]], ['', '']);
+  // Débit nul (campagne à l'arrêt) → pas d'estimation, mais la dernière passe connue reste dite.
+  const arret = { migration: { t0: maintenant - 72 * 3600000, ts: maintenant, n: 400, r: 0, dn: 5, dts: maintenant - 3 * 86400000 } };
+  const l = lignesAvancement(c, etat, maintenant, arret).find((x) => x[0] === 'migration');
+  assert.ok(/il y a 3 j/.test(l[11]), 'dernière passe ancienne, dite honnêtement : ' + l[11]);
+  assert.strictEqual(l[12], '', 'aucune estimation quand le débit est nul');
+});
+
 test('assurerEnteteProgression_ (C28-44) : migration par la DERNIÈRE colonne — jamais A1, et SANS effacer les lignes', () => {
   const c = ctxJournal();
   const etats = { header: null, cleared: false, frozen: 0 };
-  const cellules = { A1: 'Clé', J1: '', K1: '' }; // en-tête v2/v3 : A1 correct, dernière colonne vide
+  const cellules = { A1: 'Clé', J1: '', K1: '', M1: '' }; // en-tête ancien : A1 correct, dernière colonne vide
   const f = {
     getRange: (a, col, nb, larg) => {
       if (typeof a === 'string') return { getValue: () => cellules[a] };
@@ -248,7 +309,7 @@ test('assurerEnteteProgression_ (C28-44) : migration par la DERNIÈRE colonne �
   const etats2 = { header: null, cleared: false };
   const f2 = {
     getRange: (a) => {
-      if (typeof a === 'string') return { getValue: () => (a === 'K1' ? 'Type' : 'Clé') };
+      if (typeof a === 'string') return { getValue: () => (a === 'M1' ? 'Fin estimée' : 'Clé') };
       return { setValues: () => { etats2.header = 'réécrit'; } };
     },
     clearContents: () => { etats2.cleared = true; },

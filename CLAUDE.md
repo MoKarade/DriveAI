@@ -741,6 +741,14 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   (« Advanced Deployment Protection »), à vérifier/acheter dans le dashboard, jamais supposé inclus.
   Et avant de recommander un mot de passe pour « protéger les previews », vérifier si la protection
   SSO Vercel (gratuite, souvent déjà active) ne couvre pas déjà le besoin.
+- **Une estimation de fin n'extrapole que le PASSÉ : en PAUSE, dire le RESTE et la REPRISE, jamais
+  une date de fin.** Un débit observé ne peut pas connaître un blocage FUTUR (gel mensuel, budget
+  qui se réarme, dépendance amont) — afficher les deux fait cohabiter une fin AVANT la reprise, et
+  l'utilisateur retient l'optimiste (vécu C28-47 : « ~4 j · vers le 18/08 · reprise le 01/09 »).
+  Le garde qui supprime la projection doit couvrir TOUTES les familles de pause du vocabulaire de
+  statuts RÉELLEMENT produit (`/^(suspendu|en pause)/`, testées une par une — un `indexOf(x) === 0`
+  sur une seule famille en rate la moitié). Corollaire : après une longue pause, RE-BASER la série
+  de mesure (un débit résiduel quasi nul survit au gel et rend un horizon absurde au redémarrage).
 - **Étendre un contrat de colonnes lu par un consommateur DÉPLOYÉ SÉPARÉMENT : APPEND en queue,
   jamais une insertion qui décale.** Pendant la fenêtre entre les deux déploiements (moteur vs
   app), chaque position décalée est lue avec l'ANCIENNE sémantique — sans erreur ni warning (vécu

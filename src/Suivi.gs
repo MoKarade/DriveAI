@@ -185,6 +185,122 @@ function statutDepuisSuivi_(rec) {
   return 'en cours';
 }
 
+/* ---------- DÉBIT & ESTIMATION DE FIN (C28-47, demande Marc : « combien en tout, combien
+   dernière passe, et un estimé de fin détaillé ») — PURES, état borné (Property dédiée) ---------- */
+
+// Constante de temps de la moyenne mobile du débit : 24 h. Le débit est mesuré en items par heure
+// de temps RÉEL (pauses comprises) — c'est ce qui rend l'estimation honnête pour une campagne qui
+// travaille par salves quotidiennes (budget/jour) : son débit moyen sur 24 h est le bon prédicteur,
+// là où un lissage par TICK oublierait la salve entre deux journées.
+var DEBIT_TAU_H = 24;
+// Sous une minute entre deux mesures, le rapport delta/durée est du bruit — on ignore.
+var DEBIT_DT_MIN_MS = 60 * 1000;
+// Aucune estimation avant 2 h d'observation : sur une seule salve, le débit n'a aucun sens
+// (mieux vaut « pas encore d'estimation » qu'un chiffre inventé).
+var DEBIT_OBS_MIN_MS = 2 * 60 * 60 * 1000;
+// Reprise après une LONGUE pause (gel mensuel, campagne rallumée) : au-delà de 36 h sans progrès,
+// la série précédente ne prédit plus rien — on RE-BASE (nouvelle observation) au lieu de laisser un
+// débit résiduel proche de zéro produire un horizon délirant pendant une journée (revue C28-47).
+// 36 h > TAU pour ne PAS re-baser une campagne à salve quotidienne (~24 h entre deux salves).
+var DEBIT_REBASE_MS = 36 * 60 * 60 * 1000;
+
+/**
+ * PURE : met à jour l'état de débit d'une opération à compteur.
+ * @param {?Object} prev  {t0, ts, n, r, dn, dts} ou null (première observation)
+ * @param {number} traites  compteur courant de la campagne
+ * @param {number} maintenantMs
+ * @return {Object} nouvel état — `r` = items/heure lissé, `dn`/`dts` = volume et date de la
+ *   DERNIÈRE passe productive (jamais écrasés par les passes à vide : « dernière passe » doit
+ *   rester lisible quand la campagne dort).
+ */
+function majDebit_(prev, traites, maintenantMs) {
+  // `ts === 0` signifie « jamais observé » — cohérent avec le codec (`Number(...) || 0` marque
+  // l'absence). Sans conséquence en prod : un horodatage réel vaut ~1,7e12, jamais 0.
+  if (!prev || !(prev.ts > 0)) {
+    return { t0: maintenantMs, ts: maintenantMs, n: traites, r: 0, dn: 0, dts: 0 };
+  }
+  var dtMs = maintenantMs - prev.ts;
+  if (dtMs < DEBIT_DT_MIN_MS) return prev; // trop rapproché : on garde l'état tel quel
+  var delta = traites - prev.n;
+  // Compteur qui RECULE (re-base d'une campagne, remise à zéro d'un offset) : on repart proprement
+  // plutôt que de compter un débit négatif.
+  if (delta < 0) return { t0: maintenantMs, ts: maintenantMs, n: traites, r: 0, dn: 0, dts: 0 };
+  // Reprise après une longue pause : la série d'avant ne prédit plus rien → nouvelle série.
+  if (delta > 0 && maintenantMs - (prev.dts || prev.t0 || prev.ts) > DEBIT_REBASE_MS) {
+    return { t0: maintenantMs, ts: maintenantMs, n: traites, r: 0, dn: delta, dts: maintenantMs };
+  }
+  var dtH = dtMs / 3600000;
+  var alpha = 1 - Math.exp(-dtH / DEBIT_TAU_H); // lissage par CONSTANTE DE TEMPS, pas par tick
+  var r = prev.r + alpha * ((delta / dtH) - prev.r);
+  return {
+    t0: prev.t0 || prev.ts,
+    ts: maintenantMs,
+    n: traites,
+    r: r,
+    dn: delta > 0 ? delta : (prev.dn || 0),
+    dts: delta > 0 ? maintenantMs : (prev.dts || 0)
+  };
+}
+
+/**
+ * PURE : temps restant estimé, ou null si aucune estimation HONNÊTE n'est possible (pas assez
+ * d'observation, débit nul — campagne à l'arrêt —, base inconnue, ou horizon absurde).
+ * @return {?{restant:number, msRestants:number}}
+ */
+function estimationFin_(debit, traites, base, maintenantMs) {
+  if (!debit || !base || !(base > 0) || !(traites < base)) return null;
+  if (!(debit.r > 0)) return null;                                   // à l'arrêt : le statut explique
+  if (maintenantMs - (debit.t0 || 0) < DEBIT_OBS_MIN_MS) return null; // trop tôt pour prédire
+  var heures = (base - traites) / debit.r;
+  if (!isFinite(heures) || heures > 24 * 365) return null;            // horizon absurde ⇒ rien
+  return { restant: base - traites, msRestants: Math.round(heures * 3600000) };
+}
+
+/** Charge l'état de débit (Property dédiée, tolérante — jamais une panne d'affichage bloquante). */
+function chargerDebits_(props) {
+  try {
+    var brut = props.getProperty('DriveAI_SUIVI_DEBIT');
+    if (!brut) return {};
+    var compact = JSON.parse(brut);
+    var etat = {};
+    Object.keys(compact).forEach(function (cle) {
+      var a = compact[cle];
+      if (!a || a.length < 4) return;
+      etat[cle] = { t0: Number(a[0]) || 0, ts: Number(a[1]) || 0, n: Number(a[2]) || 0,
+        r: Number(a[3]) || 0, dn: Number(a[4]) || 0, dts: Number(a[5]) || 0 };
+    });
+    return etat;
+  } catch (err) {
+    return {};
+  }
+}
+
+/**
+ * Met à jour et PERSISTE les débits des opérations à compteur. Bornée par construction : une
+ * entrée par clé PRÉSENTE dans `compteurs` (les campagnes du registre), 6 nombres chacune.
+ * @param {Object} props
+ * @param {Object} compteurs  clé → traites (nombre) — seules les campagnes à compteur
+ * @param {number} maintenantMs
+ * @return {Object} l'état à jour (lu par le rendu du même tick — aucune relecture)
+ */
+function majDebits_(props, compteurs, maintenantMs) {
+  var etat = chargerDebits_(props);
+  var sortie = {};
+  Object.keys(compteurs).forEach(function (cle) {
+    var traites = Number(compteurs[cle]);
+    if (!isFinite(traites)) return;
+    sortie[cle] = majDebit_(etat[cle], traites, maintenantMs);
+  });
+  var compact = {};
+  Object.keys(sortie).forEach(function (cle) {
+    var d = sortie[cle];
+    compact[cle] = [d.t0, d.ts, d.n, Math.round(d.r * 1000) / 1000, d.dn, d.dts];
+  });
+  try { props.setProperty('DriveAI_SUIVI_DEBIT', JSON.stringify(compact)); }
+  catch (e) { /* observabilité best-effort : jamais bloquer le tick pour une estimation */ }
+  return sortie;
+}
+
 /* ---------- Codec Property DriveAI_SUIVI_OPS (compact, borné ~9 Ko) ---------- */
 
 /**

@@ -413,6 +413,9 @@ a.jour-ligne:hover { background: color-mix(in srgb, var(--accent) 6%, transparen
 }
 .op-note { margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--texte-doux); }
 .op-note.op-erreur { color: var(--erreur); }
+.op-avancement { margin: 0.35rem 0 0; font-size: 0.82rem; display: flex; flex-wrap: wrap; gap: 0.25rem 1.1rem; }
+.op-avancement .op-passe { color: var(--texte-doux); }
+.op-avancement .op-fin { color: var(--accent); }
 .routines-repli { margin-top: 0.6rem; }
 .routines-repli > summary { cursor: pointer; font-size: 0.85rem; color: var(--texte-doux); padding: 0.35rem 0; }
 .routines-repli[open] > summary { margin-bottom: 0.4rem; }

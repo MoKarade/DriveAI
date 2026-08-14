@@ -173,8 +173,9 @@ function majSante_() {
 // PR6 (retour Marc) : + `Type` (K, APPEND en queue — leçon §7) : le type du registre (flux/
 // campagne/maintenance/demande/observabilite) permet à l'app de COMPACTER les routines et de ne
 // mettre en avant que les vraies campagnes.
+// C28-47 (demande Marc) : + `Dernière passe` (L) et `Fin estimée` (M) — toujours en APPEND.
 var COLONNES_PROGRESSION = ['Clé', 'Opération', 'Traités', 'Base', 'Unité', 'Statut', 'Horodaté',
-  'Détail', 'Dernière activité', 'Dernière erreur', 'Type'];
+  'Détail', 'Dernière activité', 'Dernière erreur', 'Type', 'Dernière passe', 'Fin estimée'];
 
 /**
  * L'onglet Progression v1 était une barre TEXTE mono-opération (rangement, cellules A2:A4).
@@ -188,7 +189,7 @@ function assurerEnteteProgression_(f) {
   // serait du code mort, leçon 2026-08-13 « point d'attache »). Chemin ATTEIGNABLE garanti :
   // appelée par `majProgressions_` à CHAQUE tick, pas par `initialiserSheet_` (qui ne retouche
   // jamais un onglet existant).
-  if (String(f.getRange('K1').getValue()) === COLONNES_PROGRESSION[10]) return;
+  if (String(f.getRange('M1').getValue()) === COLONNES_PROGRESSION[12]) return;
   // v1 (barre TEXTE mono-opération, A1 ≠ 'Clé') : table incompatible → on repart de zéro (c'était
   // un AFFICHAGE, pas un état). v2/v3 → v4 : préfixe de colonnes IDENTIQUE — les lignes
   // existantes restent lisibles telles quelles (`lireLignesProgression_` lit les indices 0-6,
@@ -222,11 +223,63 @@ function assurerEnteteProgression_(f) {
  * @param {Array<Object>} registre  REGISTRE_OPERATIONS (Suivi.gs)
  * @return {Array[]} lignes [Clé, Opération, Traités, Base, Unité, Statut, Horodaté, Détail, Dernière activité, Dernière erreur]
  */
-function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, registre) {
+function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, registre, debits) {
   var lignes = [];
   var tz = Session.getScriptTimeZone();
   var typePar = {};
   (registre || []).forEach(function (op) { typePar[op.cle] = op.type; });
+
+  /** « il y a X » (min/h/j) — même vocabulaire que l'app, calculé UNE fois ici. */
+  function depuis(ms) {
+    var min = Math.max(0, Math.round(ms / 60000));
+    if (min < 60) return 'il y a ' + min + ' min';
+    var h = Math.round(min / 60);
+    return h < 48 ? 'il y a ' + h + ' h' : 'il y a ' + Math.round(h / 24) + ' j';
+  }
+
+  /** Durée lisible d'un horizon (« ~3 h », « ~2 j ») — au plus 2 chiffres significatifs. */
+  function horizon(ms) {
+    var h = ms / 3600000;
+    if (h < 1) return '~' + Math.max(1, Math.round(ms / 60000)) + ' min';
+    if (h < 48) return '~' + Math.round(h) + ' h';
+    return '~' + Math.round(h / 24) + ' j';
+  }
+
+  /**
+   * Les 2 colonnes d'AVANCEMENT (C28-47) : volume de la dernière passe productive, et estimation
+   * de fin DÉTAILLÉE. L'estimation dit la vérité sur les PAUSES : une campagne bloquée par le
+   * frein mensuel annonce sa reprise au 1er du mois prochain (jamais une date « dans 3 h » qui
+   * ignorerait le blocage), une pause quotidienne annonce « reprise demain ».
+   */
+  function colonnesAvancement(cle, unite, traites, base, statut) {
+    var d = (debits || {})[cle];
+    var passe = d && d.dn > 0 && d.dts
+      ? '+' + d.dn + (unite ? ' ' + unite : '') + ' · ' + depuis(maintenantMs - d.dts) : '';
+    var est = estimationFin_(d, traites, base, maintenantMs);
+    // EN PAUSE (« suspendu … » OU « en pause … ») : on annonce le RESTE mais JAMAIS un horizon ni
+    // une date de fin — le débit amortit les pauses PASSÉES, il ne peut pas connaître un gel FUTUR
+    // (revue C28-47 : sans ce garde, la ré-analyse bloquée par le frein MENSUEL affichait « vers le
+    // 18/08 » à côté de « reprise le 01/09 » — une fin AVANT la reprise, exactement le mensonge que
+    // cette colonne doit empêcher).
+    var enPause = !!statut && /^(suspendu|en pause)/.test(statut);
+    var bouts = [];
+    if (est) {
+      bouts.push('reste ' + est.restant + (unite ? ' ' + unite : ''));
+      if (!enPause) {
+        bouts.push(horizon(est.msRestants));
+        bouts.push('vers le ' + Utilities.formatDate(new Date(maintenantMs + est.msRestants), tz, 'dd/MM'));
+      }
+    }
+    // Reprise : ce que la PAUSE implique réellement, en clair.
+    if (statut && statut.indexOf('frein budget') !== -1) {
+      var moisProchain = new Date(maintenantMs);
+      moisProchain.setMonth(moisProchain.getMonth() + 1, 1);
+      bouts.push('reprise le ' + Utilities.formatDate(moisProchain, tz, 'dd/MM') + ' (frein mensuel)');
+    } else if (statut && statut.indexOf('budget du jour') !== -1) {
+      bouts.push('reprise demain');
+    }
+    return [passe, bouts.join(' · ')];
+  }
 
   /** Les 3 colonnes de SUIVI d'une opération (communes à toutes les lignes). */
   function colonnesSuivi(cle) {
@@ -280,8 +333,9 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, regi
       if (traites === null || traites < ex.traites) traites = ex.traites; // numérateur figé à la fin
     }
     var cs = colonnesSuivi(cle);
+    var av = colonnesAvancement(cle, unite, traites, base, statut);
     lignes.push([cle, operation, traites === null ? '' : traites, base === null ? '' : base,
-      unite, statut, new Date(horodateMs), cs[0], cs[1], cs[2], typePar[cle] || '']);
+      unite, statut, new Date(horodateMs), cs[0], cs[1], cs[2], typePar[cle] || '', av[0], av[1]]);
   }
 
   // Constructeurs DÉDIÉS des campagnes à lecteurs riches — clés du registre, libellés dynamiques
@@ -424,10 +478,24 @@ function majProgressions_() {
     }
   };
 
+  // C28-47 : débits des campagnes à COMPTEUR (une entrée par clé — borné par construction), pour
+  // « dernière passe » et l'estimation de fin. Mis à jour et persisté ICI, une fois par tick.
+  // `histo-gmail` EXCLU volontairement (revue C28-47) : son « compteur » est une POSITION de scan
+  // qui repart à 0 aux passes de vérification — un delta calculé dessus n'est pas un volume traité
+  // (il n'a d'ailleurs pas de base, donc aucune estimation possible). Mieux vaut rien qu'un faux
+  // « +N fils » (l'affichage du compteur, lui, reste monotone via le max avec la ligne existante).
+  var debits = majDebits_(props, {
+    'migration': etat.migration.traites,
+    'reanalyse': etat.reanalyse.traites,
+    'rangement': etat.rangement.traites,
+    'consolidation-gen': etat.consolidationGen.traites,
+    'consolidation-exec': etat.consolidationExec.traites
+  }, maintenant);
+
   // C28-44 : la vue de SUIVI fusionnée (persisté + run courant) alimente statuts/Détail/activité/
   // erreurs de TOUTES les lignes ; le registre donne la liste et l'ordre des opérations.
   var lignes = lignesProgression_(etat, lireLignesProgression_(f), maintenant, CONFIG.PROGRESSION_PURGE_MS,
-    suiviOpsFusionne_(props), REGISTRE_OPERATIONS);
+    suiviOpsFusionne_(props), REGISTRE_OPERATIONS, debits);
   if (lignes.length) f.getRange(2, 1, lignes.length, COLONNES_PROGRESSION.length).setValues(lignes);
   var dern = f.getLastRow();
   if (dern > lignes.length + 1) {

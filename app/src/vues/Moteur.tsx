@@ -335,6 +335,14 @@ function Operation({ langue, op }: { langue: Langue; op: LigneProgression }) {
           total (C28-46 : « barres avec progrès réels » ; le compteur numérique suffit). */}
       {op.base === null && !sansCompteur && famille === 'recensement' && <div className="op-barre indeterminee"><i /></div>}
       {arret && <div className="op-barre rayee" />}
+      {/* Avancement (C28-47) : volume de la dernière passe + estimation de fin détaillée — deux
+          lignes calculées par le MOTEUR (source unique, jamais un second calcul ici). */}
+      {(op.dernierePasse || op.finEstimee) && (
+        <p className="op-avancement">
+          {op.dernierePasse && <span className="op-passe">{t('dernierePasse', langue)} {op.dernierePasse}</span>}
+          {op.finEstimee && <span className="op-fin">{t('finEstimee', langue)} {op.finEstimee}</span>}
+        </p>
+      )}
       {note && <p className="op-note">{note}</p>}
       {op.derniereActivite && famille !== 'termine' && (
         <p className="op-note">{t('derniereActivite', langue)} {ilYA(op.derniereActivite, new Date(), langue) ?? op.derniereActivite}</p>

@@ -276,7 +276,7 @@ describe('progression live (C28-18)', () => {
   it('estUtileProgression (C28-46) : problèmes/complétions/progrès réels VISIBLES — accompli, désactivé, jamais vu et routines sans compteur en VEILLE', async () => {
     const { estUtileProgression } = await import('../src/etat');
     const op = (statut: string, base: number | null, traites: number) =>
-      ({ cle: 'x', operation: 'X', traites, base, unite: '', statut, horodate: '', detail: '', derniereActivite: '', derniereErreur: '', type: '' });
+      ({ cle: 'x', operation: 'X', traites, base, unite: '', statut, horodate: '', detail: '', derniereActivite: '', derniereErreur: '', type: '', dernierePasse: '', finEstimee: '' });
     // Toujours visibles : problèmes, complétions, recensement, progrès réel.
     expect(estUtileProgression(op('erreur', null, 0))).toBe(true);
     expect(estUtileProgression(op('suspendu (panne API (compte))', null, 0))).toBe(true);
