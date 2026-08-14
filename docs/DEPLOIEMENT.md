@@ -279,13 +279,28 @@ son jeton d'accès en silence — plus jamais de reconnexion.
    - `GOOGLE_CLIENT_ID` — l'ID client OAuth de l'étape 1 ;
    - `GOOGLE_CLIENT_SECRET` — son code secret ;
    - `COOKIE_SECRET` — longue chaîne aléatoire (ex. `openssl rand -hex 32`) qui chiffre le cookie ;
-   - `ALLOWED_EMAIL` — `marc.richard4@gmail.com` : **verrou d'identité**, seul ce compte Google
-     peut ouvrir une session (tout autre compte → « accès refusé », aucun cookie posé) ;
+   - `ALLOWED_EMAIL` — `marc.richard4@gmail.com` : **le PROPRIÉTAIRE**. Depuis l'étape 3 de
+     l'ADR 0001 de Hubperso, ce n'est plus « la seule adresse admise » mais « celle qui entre
+     toujours, SANS dépendre du hub ». Indispensable : une panne du hub ne doit jamais enfermer
+     Marc dehors de sa propre app. Les autres personnes s'accordent depuis la page
+     d'administration du hub (`hubperso.com/administration`), app par app — elles n'apparaissent
+     jamais ici, et se retirent au même endroit ;
    - `SPREADSHEET_ID` — l'ID de la Google Sheet d'état ;
    - `WEBAPP_URL` — l'URL `/exec` de la web app Apps Script (bouton « Vérifier maintenant ») ;
    - `WEBAPP_SECRET` — la valeur de la Script Property `DriveAI_WEBAPP_SECRET`.
    Les anciennes `VITE_SPREADSHEET_ID` / `VITE_WEBAPP_*` ne servent plus (elles figeaient la
    config au BUILD ; supprime-les si présentes).
+
+   **`HUB_TOKEN` devient nécessaire pour inviter quelqu'un d'autre que le propriétaire.** Elle
+   restait optionnelle tant qu'elle ne servait qu'au widget du hub (voir plus bas) ; elle sert
+   désormais AUSSI dans l'autre sens — c'est le jeton avec lequel DriveAI demande au hub
+   « cette adresse a-t-elle le droit d'entrer chez moi ? » (`api/_accesHub.ts`). Sans elle,
+   DriveAI fonctionne normalement **pour le propriétaire seul** : toute autre adresse est
+   refusée, échec fermé. Aucun secret nouveau à créer, c'est la même valeur qu'en face
+   (`HUB_TOKEN_DRIVEAI` côté Hubperso).
+
+   **`HUB_URL`** — OPTIONNELLE, défaut `https://hubperso.com`. À ne poser que pour pointer un
+   déploiement de test du hub.
 
    **Variable OPTIONNELLE — intégration hub perso** (`GET /api/hub/summary`, widget DriveAI sur
    `hubperso.com`) :
@@ -304,6 +319,14 @@ son jeton d'accès en silence — plus jamais de reconnexion.
    `installerTrigger` (fichier `Main.gs`) — sinon la web app sert l'ANCIEN code et le widget
    reste « building ». Signal indépendant de réussite : `GET /api/hub/summary` (avec le jeton)
    renvoie `status:"ok"` et un `dataAsOf` frais.
+
+   > **⚠ Le déploiement de l'étape 3 coûte UNE reconnexion, une seule fois.** La session porte
+   > désormais l'adresse en plus du refresh token — sans elle, impossible de savoir à qui
+   > appartient un cookie, donc impossible de revérifier son accès à chaque appel. Les cookies
+   > de l'ANCIEN format sont donc refusés (401) : l'app rebascule toute seule sur l'écran de
+   > connexion, il n'y a rien à faire à la main. C'est ce qui rend la révocation réelle — sans
+   > ça, retirer un accès depuis l'administration du hub n'aurait mordu qu'à l'expiration du
+   > cookie, c'est-à-dire au bout d'un an.
 
    > **⚠ En posant ces variables (déploiement de C28-20), RÉGÉNÈRE aussi `COOKIE_SECRET`**
    > (nouvelle valeur `openssl rand -hex 32`). Les cookies de session posés AVANT le verrou

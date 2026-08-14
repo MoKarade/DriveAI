@@ -159,6 +159,52 @@ export function jetonAleatoire(): string {
   return randomBytes(16).toString('hex');
 }
 
+/* ---------- Contenu de la session (refresh token + adresse) ---------- */
+
+/**
+ * Ce que porte le cookie `driveai_rt`, une fois déchiffré.
+ *
+ * ── POURQUOI L'ADRESSE Y EST ENTRÉE ─────────────────────────────────────────────────
+ *
+ * Le cookie ne portait que le refresh token, et le verrou d'identité ne s'appliquait qu'UNE
+ * fois, au retour du consentement (`/api/callback`). Tant qu'une seule adresse était admise
+ * — `ALLOWED_EMAIL`, celle de Marc — ça suffisait : le seul porteur possible d'un cookie
+ * était le seul ayant le droit d'en avoir un.
+ *
+ * Depuis que la liste des personnes vit dans le hub (ADR 0001 de Hubperso, étape 2), ce
+ * n'est plus vrai. Un accès retiré depuis l'administration doit cesser de fonctionner ; or
+ * un cookie posé pour UN AN ne se retire pas tout seul. Sans savoir À QUI appartient une
+ * session, aucune revérification n'est possible — c'est pour ça que l'adresse est dedans.
+ */
+export interface Session {
+  rt: string;
+  email: string;
+}
+
+export function encoderSession(session: Session): string {
+  return JSON.stringify(session);
+}
+
+/**
+ * Relit le contenu déchiffré d'un cookie de session.
+ *
+ * ⚠️ REFUSE L'ANCIEN FORMAT (le refresh token nu, sans adresse), et c'est délibéré. On ne
+ * peut pas savoir à qui appartenait une telle session : la laisser passer reviendrait à
+ * garder pour un an des cookies qu'aucune révocation n'atteint. Le coût est UNE reconnexion,
+ * une seule fois — l'app la déclenche déjà toute seule sur 401, il n'y a rien à faire à la
+ * main.
+ */
+export function lireSession(clair: string): Session | null {
+  try {
+    const brut = JSON.parse(clair) as { rt?: unknown; email?: unknown };
+    if (typeof brut.rt !== 'string' || !brut.rt.trim()) return null;
+    if (typeof brut.email !== 'string' || !brut.email.trim()) return null;
+    return { rt: brut.rt, email: brut.email.trim().toLowerCase() };
+  } catch {
+    return null; // ancien format : déchiffrable, mais anonyme — donc inutilisable
+  }
+}
+
 /* ---------- Environnement ---------- */
 
 export interface EnvOAuth {
