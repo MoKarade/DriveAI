@@ -103,6 +103,8 @@ const CONTRAT = [
   'etapeSuivie_', 'suiviReset_', 'suiviSkip_', 'suiviOpsFusionne_', 'flusherSuiviOps_',
   'chargerSuiviOps_', 'fusionnerSuiviOps_', 'encoderSuiviOps_', 'clesRegistreSuivi_',
   'statutDepuisSuivi_', // PR3 : statut des opérations sans lecteur de campagne (Journal.gs l'appelle)
+  // C28-47 : débit & estimation de fin des campagnes à compteur (Journal.gs les appelle)
+  'majDebit_', 'estimationFin_', 'chargerDebits_', 'majDebits_',
 
   'reparerIncidentSheet', 'estCleFichierIncident_', // réparation incident Sheet d'état (2026-07-08)
   'fusionnerDomaine07PersoVers08', 'remplacerColonneOnglet_', // fusion domaine erroné (anomalies 2026-07-08)

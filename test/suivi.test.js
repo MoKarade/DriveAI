@@ -108,6 +108,73 @@ test('statutDepuisSuivi_ : jamais vue / en cours / en pause / suspendu / désact
   assert.strictEqual(c.statutDepuisSuivi_({ ok: 200, et: 200, e: 'boom' }), 'erreur', 'à ÉGALITÉ, l\'erreur prime (prudence)');
 });
 
+/* ---------- Débit & estimation de fin (C28-47) ---------- */
+
+const H = 3600000;
+const T0 = 1755000000000; // époque réaliste : `ts === 0` = « jamais observé » (codec)
+
+test('majDebit_ : première observation → débit nul (aucune estimation inventée sur un point unique)', () => {
+  const c = ctx();
+  const d = c.majDebit_(null, 100, T0);
+  assert.deepStrictEqual([d.t0, d.ts, d.n, d.r, d.dn], [T0, T0, 100, 0, 0]);
+});
+
+test('majDebit_ : lissage par CONSTANTE DE TEMPS (24 h) — une salve quotidienne n\'est pas oubliée entre deux jours', () => {
+  const c = ctx();
+  let t = T0;
+  let d = c.majDebit_(null, 0, t);
+  // Salve : 240 items en 1 h (240/h instantané) → le lissage n'en retient qu'une fraction…
+  t += H; d = c.majDebit_(d, 240, t);
+  const apresSalve = d.r;
+  assert.ok(apresSalve > 0 && apresSalve < 240, 'lissé, jamais le brut : ' + apresSalve);
+  // …puis 23 h sans rien : le débit DÉCROÎT mais ne s'effondre pas à 0 (la salve compte encore).
+  t += 23 * H; d = c.majDebit_(d, 240, t);
+  assert.ok(d.r > 0 && d.r < apresSalve, 'décroissance douce sur 24 h : ' + d.r);
+  // Le volume de la DERNIÈRE PASSE productive survit aux passes à vide.
+  assert.strictEqual(d.dn, 240, 'dernière passe productive conservée');
+  assert.strictEqual(d.dts, T0 + H, 'et son horodatage aussi');
+});
+
+test('majDebit_ : mesures trop rapprochées ignorées ; compteur qui RECULE → repart proprement', () => {
+  const c = ctx();
+  const d0 = c.majDebit_(null, 10, T0);
+  const rapproche = c.majDebit_(d0, 50, T0 + 10000); // 10 s → bruit
+  assert.strictEqual(rapproche, d0, 'état inchangé sous DEBIT_DT_MIN_MS');
+  const recul = c.majDebit_({ t0: T0, ts: T0, n: 500, r: 42, dn: 9, dts: T0 }, 12, T0 + 5 * H);
+  assert.deepStrictEqual([recul.n, recul.r, recul.dn], [12, 0, 0], 'compteur re-basé → repart de zéro, jamais un débit négatif');
+});
+
+test('estimationFin_ : rien tant que l\'observation est courte, rien à l\'arrêt, rien sans base — sinon restant + horizon', () => {
+  const c = ctx();
+  const maintenant = T0 + 100 * H;
+  const debit = { t0: maintenant - 10 * H, ts: maintenant, n: 300, r: 10, dn: 5, dts: maintenant }; // 10/h
+  const est = c.estimationFin_(debit, 300, 400, maintenant);
+  assert.strictEqual(est.restant, 100);
+  assert.strictEqual(Math.round(est.msRestants / H), 10, '100 restants à 10/h = 10 h');
+  // Garde-fous d'HONNÊTETÉ : pas assez observé, débit nul, base absente/atteinte, horizon absurde.
+  assert.strictEqual(c.estimationFin_({ t0: maintenant - 60000, ts: maintenant, n: 1, r: 10 }, 1, 400, maintenant), null,
+    'moins de 2 h d\'observation → aucune estimation');
+  assert.strictEqual(c.estimationFin_({ t0: 0, ts: maintenant, n: 1, r: 0 }, 1, 400, maintenant), null, 'à l\'arrêt → aucune estimation');
+  assert.strictEqual(c.estimationFin_(debit, 300, null, maintenant), null, 'base inconnue → aucune estimation');
+  assert.strictEqual(c.estimationFin_(debit, 400, 400, maintenant), null, 'déjà fini → aucune estimation');
+  assert.strictEqual(c.estimationFin_({ t0: T0, ts: maintenant, n: 1, r: 0.0000001 }, 1, 400, maintenant), null,
+    'horizon > 1 an → rien plutôt qu\'un chiffre absurde');
+});
+
+test('majDebits_ : persiste UNE entrée par campagne à compteur (borné), tolère une Property illisible', () => {
+  const c = ctx();
+  const store = {};
+  const props = { getProperty: (k) => store[k] ?? null, setProperty: (k, v) => { store[k] = v; } };
+  const etat1 = c.majDebits_(props, { migration: 10, reanalyse: 5 }, T0);
+  assert.deepStrictEqual(Object.keys(etat1).sort(), ['migration', 'reanalyse']);
+  assert.ok(store.DriveAI_SUIVI_DEBIT.length < 400, 'encodage compact : ' + store.DriveAI_SUIVI_DEBIT.length);
+  const etat2 = c.majDebits_(props, { migration: 130, reanalyse: 5 }, T0 + 2 * H);
+  assert.ok(etat2.migration.r > 0 && etat2.migration.dn === 120, 'débit et dernière passe calculés depuis le persisté');
+  assert.strictEqual(etat2.reanalyse.r, 0, 'campagne sans progrès : débit nul (pas d\'estimation inventée)');
+  store.DriveAI_SUIVI_DEBIT = '{cassé';
+  assert.deepStrictEqual(Object.keys(c.chargerDebits_(props)), [], 'Property illisible → repart à vide, jamais une exception');
+});
+
 /* ---------- Codec Property (tolérance, fusion, purge, plafond) ---------- */
 
 test('chargerSuiviOps_ : Property absente ou JSON illisible → {} sans throw (l\'observabilité ne casse jamais rien)', () => {

@@ -2220,3 +2220,30 @@ la même valeur est un no-op, pas de boucle ; ou (b) ne PAS poser `open` du tout
 perdre la restauration initiale. Jamais l'entre-deux (prop posée, state jamais mis à jour)."
 
 **Règle durable ?** non (piège React classique, consigné pour l'app — pas de règle CLAUDE.md).
+
+## 2026-08-14 — Une estimation de fin doit connaître les PAUSES FUTURES, pas seulement les passées
+
+**Contexte.** C28-47 : ajout d'une colonne « Fin estimée » par campagne. Le débit est lissé en
+items/heure de temps RÉEL (pauses comprises, constante de temps 24 h) — un choix correct pour
+amortir les salves quotidiennes. Mais le garde qui supprimait la date de fin projetée testait
+`statut.indexOf('suspendu') !== 0`, ce qui ne matche NI « en pause (frein budget) » NI « en pause
+(budget du jour épuisé) » — exactement les deux statuts qui déclenchent la ligne « reprise le … »
+juste à côté. Résultat sur le cas RÉEL de prod (ré-analyse 322/1207 gelée par le frein mensuel) :
+« reste 885 documents · ~4 j · vers le 18/08 · **reprise le 01/09** » — une date de fin AVANT la
+date de reprise. Trouvé en revue flotte avant merge ; corrigé (`/^(suspendu|en pause)/`), testé sur
+le cas prod exact, prouvé par mutation. Corollaire trouvé dans la même revue : au REDÉMARRAGE après
+un gel long, le débit résiduel proche de zéro produit un horizon délirant pendant ~24 h → re-base
+de la série au-delà de 36 h sans progrès (> TAU, pour ne pas re-baser une salve quotidienne).
+
+**Leçon.** "Une estimation de fin construite sur un débit OBSERVÉ n'extrapole que le PASSÉ : elle
+est structurellement incapable de connaître un blocage FUTUR (gel mensuel, budget qui se réarme,
+dépendance amont pas encore satisfaite). Dès qu'une opération est en PAUSE, il faut donc afficher
+le RESTE (fait objectif) et la DATE DE REPRISE (déductible de la règle de pause), mais JAMAIS un
+horizon ni une date de fin — sinon deux chiffres contradictoires cohabitent et c'est le plus
+optimiste que l'utilisateur retient. Deux corollaires : (1) le garde qui supprime la projection
+doit couvrir TOUTES les familles de pause du vocabulaire de statuts (les tester une par une, sur
+les statuts RÉELLEMENT produits par le code, pas ceux qu'on croit) ; (2) après une longue pause,
+re-baser la série de mesure — un débit résiduel quasi nul survit au gel et produit un horizon
+absurde au redémarrage."
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).

@@ -4,6 +4,29 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **📊 ÉTAT PROD AU 2026-08-14 09:51 (lu sur la DONNÉE, self-serve) — trois faits + deux points
+> Gmail ouverts.** (1) **La ré-analyse c26-08 est BLOQUÉE** à 322/1207 (27 %) : coût LLM du mois
+> **10,22 $** > frein campagnes **10 $** (`LLM_BUDGET_CAMPAGNES`, redescendu de 110 le 01/08 par la
+> checklist ADR-0018) ⇒ pas de reprise avant le 1er septembre sauf décision de Marc. (2) **Le vrac
+> baisse enfin** : `08 · Perso` 998 → **839** (−159 en un jour) ; la consolidation draine
+> (`consolidation-exec` 2221/2221 « à jour », `consolidation-gen` 6/9 en pause budget du jour).
+> (3) **C28-44/45/46 confirmés EN PROD sur la donnée** : en-tête 11 colonnes (`K1 = Type`), types
+> remplis, activité au format `dd/MM HH:mm`, statuts polis (« à jour (déjà fait) », « désactivée »,
+> « à jour (plan drainé — attend la génération) »).
+>
+> **📧 GMAIL — inventaire complet (2026-08-14).** 4 mécanismes ACTIFS, aucun interrupteur ON/OFF
+> Gmail : intake PJ (`traiterGmail_`), tri de boîte (`trierFilsGmail_`), intentions
+> (`traiterIntentionsMail_`), historique PJ (`traiterGmailHistorique_`). Écritures limitées à
+> « poser un libellé EXISTANT » + « archiver » (verrou CI `surface-gmail-ecriture`, 9 motifs ;
+> corbeille/spam/création-retrait de libellé/REST interdits à jamais). Campagnes : historique PJ
+> finit sur « 2 passes complètes sans rien collecter » ; scan cyclique du tri = PERPÉTUEL par
+> conception (état mutable) ; nettoyage profond de boîte finit sur 2 passes sans activité.
+> **DEUX POINTS OUVERTS** : (a) **intentions EN ERREUR depuis le 14/08 07:51** — « config-api
+> Calendar » ⇒ aucune tâche/RDV créée depuis les mails tant que ça dure (suspension propre +
+> re-sonde ; cause à trouver — tâche dédiée) ; (b) **historique Gmail probablement TERMINÉ**
+> (absent de Progression, 0 fil/j) mais NON confirmé — ses **20 min/j** resteraient immobilisées
+> pour rien (tâche dédiée : confirmer par signal indépendant PUIS réallouer, jamais augmenter).
+>
 > **🚧 EN COURS AU 2026-08-13 (soir) — C28-45 : polish du suivi (retour Marc, captures à l'appui).**
 > Marc : « tellement de trucs en cours mais rien n'est fini, aucun indicateur d'où ça en est,
 > aucun indicateur si ça bloque d'autres tâches, c'est vraiment pas peaufiné ». Quatre reproches
