@@ -56,7 +56,11 @@
   - *(Phase 3)* `.../auth/tasks` (créer des tâches — l'API Tasks n'offre pas de scope plus étroit) ;
     `.../auth/calendar.events` (créer des événements, **volontairement plus étroit** que
     `.../auth/calendar` complet — pas d'accès aux paramètres d'agenda). Création UNIQUEMENT,
-    jamais de lecture/modification/suppression des tâches ou événements existants de Marc.
+    jamais de modification/suppression ni de LECTURE des tâches ou événements EXISTANTS de Marc.
+    Unique exception, étroite (C28-48, révision ADR-0022) : la **sonde de configuration**
+    (`sonderApiConfig_`) fait un GET sur un identifiant LITTÉRAL et volontairement INEXISTANT —
+    elle attend un 404, n'énumère rien, ne lit aucune donnée de Marc, et sert uniquement à savoir
+    si l'API est activée dans le projet GCP. Verrouillé par `test/surface-tasks-calendar.test.js`.
   - *(Chantier #6, ADR-0003)* `.../auth/forms` — création + lecture du **mini-formulaire de correction**
     (`FormApp.create` + `getResponses`). `forms.currentonly` est **inapplicable** ici (il ne couvre que
     `getActiveForm()` d'un script *lié* à un formulaire, ni `create` ni `openById` en script standalone).
@@ -109,7 +113,8 @@ Base de données légère, lisible/éditable à la main, partagée entre Apps Sc
   avance strictement vers le passé — seule façon de garantir une couverture complète sans jamais
   stagner sur un gros volume.
 - Aucune suppression automatique. Aucune écriture hors des dossiers cibles (Drive) / aucune
-  modification des tâches/événements existants de Marc (Tasks/Calendar — création uniquement).
+  modification des tâches/événements existants de Marc (Tasks/Calendar — création uniquement ;
+  seule lecture tolérée : la sonde de configuration sur un identifiant inexistant, cf. plus haut).
 
 ## Sécurité
 - Moindre privilège (scopes ci-dessus). Gmail **lecture seule**.

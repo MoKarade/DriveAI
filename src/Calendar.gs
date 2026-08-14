@@ -9,8 +9,12 @@
  * `timeZone` (America/Toronto, déjà le fuseau du manifest) — c'est l'API Calendar qui calcule
  * l'instant UTC correct, DST inclus. On ne calcule JAMAIS l'offset nous-mêmes (piège DST).
  *
- * Garde-fou : CRÉATION uniquement — jamais de lecture, modification ou suppression des
- * événements existants de Marc. Échec d'API = dégradation propre (Journal + null).
+ * Garde-fou : CRÉATION uniquement — jamais de modification ni de suppression, et jamais de
+ * LECTURE d'un événement EXISTANT de Marc. UNIQUE exception, étroite (C28-48, révision ADR-0022) :
+ * la sonde de configuration `sonderApiConfig_` (GoogleApi.gs) fait un GET sur l'identifiant
+ * LITTÉRAL et volontairement INEXISTANT `SONDE_CONFIG_ID` — elle attend un 404, n'énumère rien et
+ * ne renvoie aucune donnée de Marc. Verrouillé par `test/surface-tasks-calendar.test.js`.
+ * Échec d'API = dégradation propre (Journal + null).
  */
 
 var FUSEAU_EVENEMENTS = 'America/Toronto';
@@ -66,8 +70,12 @@ function creerEvenement_(titre, dateHeureDebut, dureeMinutes, description, id) {
   var corps = rep.getContentText();
   // API Calendar non activée (403 permanent, C28-22) : LÈVE — classée en panne de CONFIG en amont
   // (suspension du run), jamais un échec qui ferait re-analyser le mail à chaque tick.
+  // `messageErreurGoogle_` (C28-48) plutôt que le corps BRUT : le JSON de Google est INDENTÉ, si
+  // bien que les vues tronquées de l'erreur (cellule de Progression : 40 caractères) n'affichaient
+  // que « config-api Calendar : {    error : {  » — zéro information. `error.message` nomme au
+  // contraire le PROJET GCP et l'URL d'activation, seul moyen de diagnostiquer sans la console.
   if (code === 403 && estMessageApiDesactivee_(corps)) {
-    throw new Error('config-api Calendar : ' + tronquer_(corps, 300));
+    throw new Error('config-api Calendar : ' + tronquer_(messageErreurGoogle_(corps), 300));
   }
   journalErreur_('Calendar', 'Création HTTP ' + code + ' (« ' + titre + ' ») : ' +
     tronquer_(corps, 300));

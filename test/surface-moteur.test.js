@@ -43,6 +43,9 @@ const CONTRAT = [
   // panne de CONFIG d'API Google (C28-22 — Tasks/Calendar non activée, suspension persistée)
   'chargerPanneConfigApi_', 'estPanneConfigApi_', 'reinitialiserPanneConfigApi_',
   'estMessageApiDesactivee_', 'signalerPanneConfigApi_',
+  // C28-48 : sonde légère + message exploitable + état lisible pour l'onglet Santé.
+  'sonderApiConfig_', 'verdictSondeApi_', 'messageErreurGoogle_', 'etatPanneConfigApi_',
+  'memoriserMessageConfigApi_', 'sonderEtLeverPanneConfig_', 'texteSanteConfigApi_',
   // curation des mails (C28-19, ADR-0020) : confiance, scan cyclique, « pas suspect » 1-clic
   'decisionSuspect_', 'confianceCache_', 'reinitialiserConfianceCache_', 'apprendreConfiance_',
   'scanCycliqueTri_', 'appliquerPasSuspect_', 'purgerClesTriIndex_',

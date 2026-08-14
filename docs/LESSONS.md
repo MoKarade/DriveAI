@@ -2247,3 +2247,63 @@ re-baser la série de mesure — un débit résiduel quasi nul survit au gel et 
 absurde au redémarrage."
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-14 — Un « chemin de retour » qui est un DÉLAI n'est pas un chemin de retour
+
+**Contexte.** C28-48. L'API Calendar n'était pas activée dans le projet GCP : le moteur détectait
+proprement le 403, suspendait la création d'intentions 24 h et… attendait. La re-sonde passait par
+le chemin de TRAVAIL (scan Gmail + appels LLM jusqu'à la première création) — si coûteuse qu'il
+fallait bien l'espacer de 24 h. Conséquence pratique : Marc pouvait activer l'API à 08:00, DriveAI
+ne le voyait pas avant le lendemain. Le garde-fou respectait pourtant la règle §7 (« un garde-fou
+qui met des items HORS CIRCUIT exige un chemin de RETOUR auto ») : le retour EXISTAIT, mais c'était
+un minuteur, pas une observation. Second défaut découvert en même temps : l'erreur conservée était
+le corps 403 BRUT, un JSON INDENTÉ ; tronquée pour l'affichage (cellule d'erreur de `Progression`,
+40 caractères) elle ne montrait que `config-api Calendar : {    error : {` — impossible de
+distinguer « API pas activée » de « API activée dans un AUTRE projet GCP ». Or `error.message`
+contient précisément le numéro de projet et l'URL d'activation.
+
+**Leçon.** "Quand la condition de sortie d'une suspension est un ÉTAT EXTERNE OBSERVABLE (une API
+activée, un crédit rechargé, un quota réarmé), le chemin de retour doit être une SONDE de cet
+état — pas l'expiration d'un minuteur. Et cette sonde doit emprunter un chemin PAS CHER, distinct
+du chemin de travail : re-sonder PAR le travail (ici un scan Gmail + des appels LLM) coûte si cher
+qu'on est forcé de l'espacer, ce qui reconvertit la sonde en délai. Une sonde bon marché se
+construit en cherchant la réponse la moins engageante qui distingue quand même les deux mondes
+(ici : un GET sur un identifiant volontairement INEXISTANT — 403 « service disabled » vs 404 —,
+qui ne lit aucune donnée de l'utilisateur, n'énumère rien, n'ajoute aucun scope). Trois exigences
+qui vont avec : verdict TRI-ÉTAT à échec FERMÉ (un doute réseau/5xx ne lève JAMAIS la suspension) ;
+horodatage de sonde posé AVANT l'appel (une sonde qui lève ne doit pas se rejouer à chaque tick) ;
+et enveloppe try/catch si l'étape est appelée NUE en tête de tick. Corollaire diagnostic : un
+message d'erreur de plateforme se conserve par son CHAMP EXPLOITABLE (`error.message`), jamais par
+son enveloppe brute — le JSON indenté de Google, une fois tronqué pour l'affichage, ne montre que
+sa ponctuation, et c'est exactement l'information qui manque pour trancher."
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7, en corollaire de « chemin de RETOUR auto »).
+
+## 2026-08-14 — Ne jamais RE-DÉRIVER un verdict déjà rendu à partir de sa forme affichable
+
+**Contexte.** C28-48, trouvé en revue de code AVANT merge (ni la revue sécurité ni la revue quotas
+ne l'ont vu). Chaîne réelle : `creerTache_`/`creerEvenement_` testent « API non activée » sur le
+corps 403 **BRUT** (`estMessageApiDesactivee_`, 4 signatures), puis lèvent une exception dont le
+message est le corps *rendu lisible* : `'config-api Tasks : ' + messageErreurGoogle_(corps)`, où
+`messageErreurGoogle_` extrait `error.message`. En aval, `signalerPanneConfigApi_` re-testait la
+MÊME fonction de détection sur cette chaîne. Or deux des quatre signatures
+(`accessNotConfigured`, `SERVICE_DISABLED`) ne vivent pas dans `error.message` mais dans
+`error.errors[].reason` / `error.status` : sur un 403 « Access Not Configured », la détection amont
+disait `true` et la détection aval `false`. Conséquence : aucune suspension posée → le mail
+re-analysé à CHAQUE tick (scan Gmail + LLM, exactement l'incident C28-22 qu'on avait corrigé) → et
+la nouvelle sonde de reprise jamais armée, puisqu'elle ne s'arme qu'à partir de la Property.
+Silencieux et CONDITIONNEL : le 403 observé en prod ce jour-là (« has not been used in project »)
+porte sa signature dans `error.message`, donc rien n'aurait cassé tout de suite.
+
+**Leçon.** "Quand une décision est prise en amont sur une donnée RICHE (corps HTTP complet, objet
+d'erreur), l'aval ne doit jamais la RE-DÉRIVER à partir de la forme APPAUVRIE qu'on a fabriquée
+pour l'affichage. Rendre un message lisible, c'est jeter de l'information — et si un détecteur
+tourne des deux côtés du rétrécissement, il ne rend pas le même verdict. Faire porter le verdict
+par un MARQUEUR EXPLICITE que l'amont pose lui-même (préfixe canonique `config-api <API> : `, code
+d'erreur typé, champ dédié), et n'utiliser le détecteur riche qu'à UN seul endroit. Réflexe de
+revue, généralisable à tout pipeline : « cette condition est-elle évaluée deux fois sur deux
+représentations différentes du même fait ? » Corollaire : améliorer un message d'erreur pour
+l'humain est un changement de CONTRAT quand du code lit ce message — inventorier ses lecteurs
+avant, comme pour un changement de schéma."
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).

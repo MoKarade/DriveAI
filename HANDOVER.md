@@ -4,6 +4,20 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **🔎 VERDICT « l'API Calendar est-elle activée ? » (question Marc, 2026-08-14) — NON, pas du
+> point de vue du SCRIPT, à 07:51 ce matin.** Démonstration par le code, pas par une impression :
+> `traiterIntentionsMail_` (`src/Intentions.gs:45`) sort IMMÉDIATEMENT tant que la suspension
+> court, et `signalerPanneConfigApi_` ne journalise qu'au PREMIER refus après la fenêtre de 24 h ;
+> une erreur horodatée **14/08 07:51** prouve donc que le moteur a bel et bien RAPPELÉ l'API à
+> 07:51 et repris un 403 « has not been used in project ». Deux lectures restaient possibles et
+> INDÉCIDABLES d'ici : activée APRÈS 07:51 (le moteur n'aurait pas réessayé avant ~07:51 le 15/08),
+> ou activée dans un AUTRE projet GCP que celui du script. ⚠️ Mon accès Calendar (MCP) passe par
+> une autre voie OAuth : ce que j'y vois ne prouve RIEN sur le projet du script — ne jamais
+> conclure de l'un à l'autre. **Livré (C28-48) pour trancher sans geste de Marc** : sonde légère
+> qui lève la suspension toute seule en ≤ 15 min dès que l'API répond, + le message exploitable
+> (numéro de projet GCP + URL d'activation) affiché dans l'onglet `Santé`. Au prochain tick après
+> déploiement, `Santé` répond à la question tout seul : ✅ actives, ou le projet fautif nommé.
+>
 > **📊 ÉTAT PROD AU 2026-08-14 09:51 (lu sur la DONNÉE, self-serve) — trois faits + deux points
 > Gmail ouverts.** (1) **La ré-analyse c26-08 est BLOQUÉE** à 322/1207 (27 %) : coût LLM du mois
 > **10,22 $** > frein campagnes **10 $** (`LLM_BUDGET_CAMPAGNES`, redescendu de 110 le 01/08 par la

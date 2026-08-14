@@ -393,6 +393,29 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   permanente et silencieuse (32 fichiers sautés à vie, R3 : one-shot gaté par tag, ré-armé par le
   rétablissement de panne). Et un frein budget (§2.6) met en pause les CAMPAGNES, jamais le flux
   vivant — sinon « le moteur marche » pendant que la boîte de dépôt de Marc est morte.
+  **Corollaire (C28-48) : un retour qui est un DÉLAI n'est pas un chemin de retour.** Quand la
+  sortie dépend d'un ÉTAT EXTERNE OBSERVABLE (API activée, crédit rechargé, quota réarmé), le
+  retour doit être une SONDE de cet état, sur un chemin PAS CHER distinct du chemin de travail :
+  re-sonder PAR le travail (scan Gmail + LLM) coûte si cher qu'on doit l'espacer, ce qui reconvertit
+  la sonde en minuteur (vécu : API Calendar activable à 08:00, vue le lendemain). Une sonde bon
+  marché cherche la réponse la moins engageante qui distingue quand même les deux mondes (GET sur
+  un identifiant volontairement INEXISTANT : 403 « disabled » vs 404 — aucune donnée lue, aucune
+  énumération, aucun scope ajouté). Avec : verdict TRI-ÉTAT à échec FERMÉ (5xx/réseau ne lèvent
+  JAMAIS la suspension), horodatage de sonde posé AVANT l'appel, try/catch si l'étape est appelée
+  NUE en tête de tick. Et le diagnostic se conserve par son CHAMP EXPLOITABLE (`error.message` :
+  projet GCP + URL d'activation), jamais par l'enveloppe brute — un JSON indenté, tronqué pour
+  l'affichage, ne montre que sa ponctuation.
+- **Un verdict pris en amont sur la donnée RICHE ne se RE-DÉRIVE jamais depuis sa forme
+  APPAUVRIE.** Rendre un message d'erreur lisible JETTE de l'information : si le même détecteur
+  tourne des deux côtés du rétrécissement, il ne rend pas le même verdict (vécu C28-48, trouvé en
+  revue : `accessNotConfigured`/`SERVICE_DISABLED` vivent dans `error.errors[].reason`, pas dans
+  `error.message` — la détection amont disait oui, l'aval non ⇒ suspension jamais posée, mail
+  re-analysé à chaque tick, sonde de reprise jamais armée ; silencieux ET conditionnel, donc pire
+  à diagnostiquer). Faire porter le verdict par un MARQUEUR EXPLICITE posé par l'amont (préfixe
+  canonique, code typé, champ dédié) et n'appeler le détecteur riche qu'à UN seul endroit. Réflexe
+  de revue : « cette condition est-elle évaluée deux fois sur deux représentations du même fait ? »
+  Corollaire : améliorer un message d'erreur POUR L'HUMAIN est un changement de CONTRAT dès que du
+  code lit ce message — inventorier ses lecteurs, comme pour un schéma.
 - **Campagne Gmail : requête figée ⇒ appartenance stable, mais l'ORDRE bouge quand même** (tri par
   DERNIER message, suppressions) — l'offset persistant sert à PROGRESSER, jamais à prouver la
   COMPLÉTUDE. Celle-ci vient de « terminé quand DEUX passes complètes consécutives ne collectent
