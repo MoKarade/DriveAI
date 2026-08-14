@@ -148,6 +148,24 @@ var CONFIG = {
   // évite la boucle infinie qui re-analysait chaque mail actionnable à chaque tick et drainait le
   // quota Gmail (vécu 07/07-14/07 : Tasks jamais activée, 79 erreurs/matin). Re-sonde ≤ 1×/24 h.
   PANNE_CONFIG_RESONDE_MS: 24 * 60 * 60 * 1000,
+  // C28-48 : les 24 h ci-dessus bornent la re-sonde COÛTEUSE (celle qui repasse par un scan Gmail +
+  // des appels LLM avant d'atteindre une création). Mais faire ATTENDRE Marc jusqu'à 24 h après
+  // qu'il a activé l'API est absurde : on sonde donc l'API elle-même par des appels LÉGERS (1 GET
+  // par API sur un identifiant INEXISTANT, aucune donnée lue), au plus une fois par fenêtre
+  // ci-dessous. Coût au pire ~110 sondes/jour × **2 requêtes** = ~220 UrlFetch/j sur un quota de
+  // 20 000 (≈ 1 %) — et UNIQUEMENT pendant une panne ; gain : reprise automatique en ~15 min au
+  // lieu de ≤ 24 h. 13 min et non 15 : le tick fait 5 min, une fenêtre de 15 min pile retomberait
+  // sur le 3ᵉ tick SEULEMENT si le déclencheur ne dérive pas — quelques secondes d'avance feraient
+  // sauter un tour (reprise à 20 min). 13 min garantit les 3 ticks (revue quotas C28-48).
+  PANNE_CONFIG_SONDE_MS: 13 * 60 * 1000,
+  // Garde-temps de la sonde elle-même : `UrlFetchApp` n'offre AUCUN timeout (plafond empirique
+  // ~60 s/appel) et la sonde tourne en tête de tick. Au-delà, on abandonne la passe (verdict
+  // indéterminé — rien n'est levé) plutôt que de manger la marge budget → mur des 6 min.
+  // ⚠️ CE QUE ÇA BORNE VRAIMENT (revue code C28-48) : le garde s'évalue ENTRE deux appels, jamais
+  // pendant. Le 1er fetch n'est donc pas borné du tout, et le pire cas réel vaut ce seuil + la
+  // durée d'UN appel (~60 s), soit ~80 s — pas 20 s. C'est un plafond sur le CUMUL, pas un
+  // timeout ; il supprime le cas « 2 × 60 s », ce qui est le but. Ne pas raisonner sur 20 s.
+  PANNE_CONFIG_SONDE_MAX_MS: 20 * 1000,
   // Panne API DURABLE (C28-12, plan NotebookLM P5) : une panne plateforme d'une AUTRE signature
   // que crédit/clé (529 « overloaded » Anthropic prolongé, 429 persistant, 5xx) doit finir par
   // déclencher la MÊME suspension que la panne de compte — sinon chaque document brûle ses essais

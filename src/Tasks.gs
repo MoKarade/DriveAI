@@ -5,9 +5,13 @@
  * robustesse après `clasp push` (cf. LESSONS « API Google via REST »). Le jeton OAuth
  * du script couvre tous les scopes déclarés dans `appsscript.json` (dont `tasks`).
  *
- * Garde-fou : CRÉATION uniquement — jamais de lecture, modification ou suppression
- * des tâches existantes de Marc. Échec d'API = dégradation propre (Journal + null),
- * jamais de plantage du tick.
+ * Garde-fou : CRÉATION uniquement — jamais de modification ni de suppression, et jamais de
+ * LECTURE d'une tâche EXISTANTE de Marc. UNIQUE exception, étroite (C28-48, révision ADR-0022) :
+ * la sonde de configuration `sonderApiConfig_` (GoogleApi.gs) fait un GET sur l'identifiant
+ * LITTÉRAL et volontairement INEXISTANT `SONDE_CONFIG_ID` — elle attend un 404, n'énumère rien et
+ * ne renvoie aucune donnée de Marc ; elle sert seulement à distinguer « API désactivée dans le
+ * projet GCP » de « API activée ». Verrouillé par `test/surface-tasks-calendar.test.js`.
+ * Échec d'API = dégradation propre (Journal + null), jamais de plantage du tick.
  */
 
 /**
@@ -40,8 +44,11 @@ function creerTache_(titre, echeance, notes) {
   // API non activée dans le projet GCP (403 permanent, C28-22) : LÈVE — l'appelant
   // (creerIntentionIdempotente_) la classe en panne de CONFIG et suspend le run, plutôt que de
   // renvoyer un échec qui ferait re-analyser le mail à chaque tick (boucle qui drainait le quota).
+  // Message EXPLOITABLE (C28-48, cf. Calendar.gs) : `error.message` nomme le projet GCP et l'URL
+  // d'activation, là où le JSON INDENTÉ de Google ne laissait voir, une fois tronqué pour
+  // l'affichage, que « { error : { ».
   if (rep.getResponseCode() === 403 && estMessageApiDesactivee_(corps)) {
-    throw new Error('config-api Tasks : ' + tronquer_(corps, 300));
+    throw new Error('config-api Tasks : ' + tronquer_(messageErreurGoogle_(corps), 300));
   }
   journalErreur_('Tasks', 'Création HTTP ' + rep.getResponseCode() + ' (« ' + titre + ' ») : ' +
     tronquer_(corps, 300));

@@ -261,6 +261,11 @@ function tickDriveAI() {
     reinitialiserEntitesCache_();
     reinitialiserCorrectionsCache_(); // référentiel d'apprentissage relu 1×/run (few-shot, ADR-0003)
     reinitialiserEscalades_(); // plafond d'escalades LLM par run (anti-emballement de coût)
+    // Horloge de budget démarrée AVANT les chargeurs de panne et les `assurer*` : ces étapes font
+    // des I/O (Properties, Sheet, et depuis C28-48 une SONDE réseau bornée). Les laisser HORS de
+    // l'horloge revenait à leur offrir un temps invisible du garde-temps, prélevé sur le mur dur
+    // de 6 min avant même que le budget ne commence à courir (revue sécurité C28-48).
+    var debut = Date.now();
     chargerPannePlateforme_(); // panne de compte PERSISTÉE (R2) : suspend les sources, re-sonde ≤ 1×/h
     chargerPanneGmail_();      // quota Gmail JOURNALIER épuisé (C28-15) : suspend les scans Gmail, re-sonde ≤ 2 h
     chargerPanneConfigApi_();  // API Tasks/Calendar non activée (C28-22) : suspend les intentions, re-sonde ≤ 24 h
@@ -284,7 +289,6 @@ function tickDriveAI() {
     try { assurerNomsDomaines_(); }
     catch (e) { journalErreur_('Setup', 'Sync des noms de domaines différée : ' + e); }
 
-    var debut = Date.now();
     var estBudgetDepasse = function () { return Date.now() - debut > budgetMsRun_(); };
     // « BUDGET TAIL » (incident 2026-07-23) : garde-temps ÉTENDU au VRAI mur Apps Script
     // (CONFIG.BUDGET_MS = 4,5 min) pour les tâches PURE I/O Drive/Sheet SANS risque LLM — la

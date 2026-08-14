@@ -30,27 +30,73 @@ test('estMessageApiDesactivee_ : signatures « API non activée » vraies ; tran
 
 /* ---------- suspension persistée (charge / sonde / signalement) ---------- */
 
-function ctxPanne(props) {
-  const c = load(['Config.gs', 'GoogleApi.gs']);
+/**
+ * @param {Object} props  Script Properties initiales
+ * @param {Object|Error} [reponses]  réponses de la sonde HTTP (C28-48), choisies d'après l'URL
+ *   REÇUE (jamais d'après l'ordre d'appel — leçon §7 « un mock lit son ARGUMENT ») :
+ *   soit `{code, corps}` / une `Error` appliquée aux DEUX API, soit `{Tasks: …, Calendar: …}`.
+ *   Les URL appelées sont enregistrées dans `fetchs`.
+ */
+function ctxPanne(props, reponses) {
+  // `Ocr.gs` pour `tronquer_` (utilisé par la mémorisation du message exploitable).
+  const c = load(['Config.gs', 'Ocr.gs', 'GoogleApi.gs']);
   const store = Object.assign({}, props);
   const journaux = [];
+  const infos = [];
+  const fetchs = [];
   c.PropertiesService = { getScriptProperties: () => ({
     getProperty: (k) => (k in store ? store[k] : null),
     setProperty: (k, v) => { store[k] = String(v); },
     deleteProperty: (k) => { delete store[k]; },
   }) };
   c.journalErreur_ = (s, m) => journaux.push(m);
-  return { c, store, journaux };
+  c.journalInfo_ = (s, m) => infos.push(m);
+  c.ScriptApp = { getOAuthToken: () => 'jeton-test' };
+  const opts = { retardMs: 0 }; // le test peut rendre la sonde LENTE (garde-temps)
+  /** L'URL REÇUE choisit la réponse — pas un compteur d'appels. */
+  const pourUrl = (url) => {
+    if (!reponses) return null;
+    if (reponses instanceof Error || !(reponses.Tasks || reponses.Calendar)) return reponses;
+    return url.indexOf('tasks.googleapis.com') !== -1 ? reponses.Tasks : reponses.Calendar;
+  };
+  c.UrlFetchApp = { fetch: (url) => {
+    fetchs.push(url);
+    if (opts.retardMs) { const t = Date.now(); while (Date.now() - t < opts.retardMs) { /* attente active */ } }
+    const r = pourUrl(url);
+    if (r instanceof Error) throw r;
+    if (!r) throw new Error('aucune réponse de sonde programmée pour ' + url);
+    return { getResponseCode: () => r.code, getContentText: () => r.corps || '' };
+  } };
+  return { c, store, journaux, infos, fetchs, opts };
+}
+
+/** Corps 403 réaliste d'une API Google non activée (indenté, comme le vrai). */
+function corps403(api, projet) {
+  return JSON.stringify({
+    error: {
+      code: 403,
+      message: 'Google ' + api + ' API has not been used in project ' + projet + ' before or it is ' +
+        'disabled. Enable it by visiting https://console.developers.google.com/apis/api/' +
+        api.toLowerCase() + '.googleapis.com/overview?project=' + projet + ' then retry.',
+      status: 'PERMISSION_DENIED',
+    },
+  }, null, 2);
 }
 
 test('chargerPanneConfigApi_ : Property FRAÎCHE → run suspendu ; fenêtre écoulée → run de re-sonde', () => {
-  const frais = ctxPanne({ DriveAI_PANNE_CONFIG_API: String(Date.now() - 1000) });
+  // Sonde RÉCENTE (C28-48) : pas de sonde ce tick-ci, la suspension tient sur la seule Property.
+  const frais = ctxPanne({
+    DriveAI_PANNE_CONFIG_API: String(Date.now() - 1000),
+    DriveAI_PANNE_CONFIG_SONDE: String(Date.now() - 1000),
+  });
   frais.c.chargerPanneConfigApi_();
   assert.strictEqual(frais.c.estPanneConfigApi_(), true);
+  assert.strictEqual(frais.fetchs.length, 0, 'aucune sonde tant que la fenêtre de sonde court');
 
   const vieux = ctxPanne({ DriveAI_PANNE_CONFIG_API: String(Date.now() - 25 * 3600 * 1000) }); // > 24 h
   vieux.c.chargerPanneConfigApi_();
   assert.strictEqual(vieux.c.estPanneConfigApi_(), false, 're-sonde après la fenêtre');
+  assert.ok(!('DriveAI_PANNE_CONFIG_API' in vieux.store), 'état PÉRIMÉ effacé (Santé ne doit pas mentir)');
 });
 
 test('signalerPanneConfigApi_ : erreur config → pose la suspension + 1 seule ligne Journal, retourne true', () => {
@@ -68,6 +114,254 @@ test('signalerPanneConfigApi_ : erreur TRANSITOIRE → false, aucune suspension 
   const { c, store } = ctxPanne({});
   assert.strictEqual(c.signalerPanneConfigApi_(new Error('HTTP 500 internal')), false);
   assert.ok(!('DriveAI_PANNE_CONFIG_API' in store));
+});
+
+/* ---------- C28-48 : message EXPLOITABLE + sonde légère + reprise automatique ---------- */
+
+test('messageErreurGoogle_ : extrait error.message (projet GCP + URL), sinon rend le brut compacté', () => {
+  const f = ctxPur.messageErreurGoogle_;
+  const msg = f(corps403('Calendar', '987654321'));
+  assert.ok(msg.includes('project 987654321'), 'le NUMÉRO DE PROJET survit — c\'est tout l\'intérêt');
+  assert.ok(msg.includes('console.developers.google.com'), 'l\'URL d\'activation aussi');
+  assert.ok(msg.indexOf('{') !== 0, 'plus de JSON indenté illisible');
+  // Le vrai gain porte sur les vues TRONQUÉES (cellule d'erreur de Progression : 40 caractères —
+  // en prod on n'y lisait que « config-api Calendar : {    error : {  »). Sur les 40 premiers
+  // caractères, le corps brut ne dit RIEN, le message extrait dit tout.
+  const brut = corps403('Calendar', '987654321');
+  assert.ok(!/[A-Za-z]{4,}/.test(brut.slice(0, 25).replace(/error|code/g, '')), 'brut : que de la ponctuation');
+  assert.ok(msg.slice(0, 40).includes('Calendar API'), 'extrait : l\'API fautive est lisible d\'emblée');
+  assert.strictEqual(f('<html>Sorry, unable to open</html>'), '<html>Sorry, unable to open</html>');
+  assert.strictEqual(f('  a\n b '), 'a b', 'brut compacté sur une ligne');
+  assert.strictEqual(f(''), '');
+  assert.strictEqual(f('{"error":{}}'), '{"error":{}}', 'JSON sans message → brut (jamais undefined)');
+});
+
+test('verdictSondeApi_ (PURE) : ALLOWLIST — seuls 404/2xx lèvent la suspension, tout le reste doute', () => {
+  const f = ctxPur.verdictSondeApi_;
+  assert.strictEqual(f(403, corps403('Tasks', '1')), 'desactivee');
+  assert.strictEqual(f(404, '{"error":{"message":"Not Found"}}'), 'active', 'réponse NOMINALE : l\'ID sondé n\'existe pas');
+  assert.strictEqual(f(200, '{}'), 'active');
+  // Le verdict `active` est le SEUL qui rouvre le scan Gmail + les analyses LLM : il exige une
+  // preuve POSITIVE. Se tromper ici rejoue la boucle que C28-22 a arrêtée ~96×/jour ; se tromper
+  // dans l'autre sens ne coûte que l'attente d'avant C28-48.
+  assert.strictEqual(f(400, 'Invalid id'), 'indetermine');
+  assert.strictEqual(f(401, 'invalid credentials'), 'indetermine');
+  assert.strictEqual(f(403, '{"error":{"message":"insufficient authentication scopes"}}'), 'indetermine',
+    'un 403 de DROITS prouve que l\'API répond, mais la création échouerait de toute façon');
+  assert.strictEqual(f(500, 'internal'), 'indetermine');
+  assert.strictEqual(f(429, 'rate'), 'indetermine');
+});
+
+test('sonderApiConfig_ : verdict global — les DEUX API doivent répondre pour conclure « active »', () => {
+  const ok = ctxPanne({}, { code: 404, corps: 'Not Found' });
+  assert.strictEqual(ok.c.sonderApiConfig_().etat, 'active');
+  assert.strictEqual(ok.fetchs.length, 2, 'Tasks ET Calendar sondées');
+
+  // Tasks répond, Calendar refuse → verdict « désactivée », avec l'API fautive et son message.
+  const ko = ctxPanne({}, { Tasks: { code: 404, corps: 'Not Found' }, Calendar: { code: 403, corps: corps403('Calendar', '42') } });
+  const v = ko.c.sonderApiConfig_();
+  assert.strictEqual(v.etat, 'desactivee');
+  assert.strictEqual(v.api, 'Calendar');
+  assert.ok(v.message.includes('project 42'));
+
+  // 5xx : on ne conclut RIEN (échec fermé) — surtout pas « active ».
+  const blip = ctxPanne({}, { Tasks: { code: 503, corps: 'backend error' }, Calendar: { code: 404, corps: '' } });
+  assert.strictEqual(blip.c.sonderApiConfig_().etat, 'indetermine');
+
+  // …y compris quand le doute vient de la SECONDE API (trou de couverture repéré en revue : la
+  // mutation « ne retenir le doute que pour i === 0 » survivait à toute la suite).
+  const blip2 = ctxPanne({}, { Tasks: { code: 404, corps: '' }, Calendar: { code: 503, corps: 'backend error' } });
+  assert.strictEqual(blip2.c.sonderApiConfig_().etat, 'indetermine',
+    'une seule API prouvée active ne suffit pas : les DEUX doivent répondre');
+
+  // Réseau coupé : même prudence.
+  const reseau = ctxPanne({}, new Error('DNS'));
+  assert.strictEqual(reseau.c.sonderApiConfig_().etat, 'indetermine');
+});
+
+test('sonderApiConfig_ : le garde-temps est DANS la boucle — une sonde lente ne mange pas le tick', () => {
+  // `UrlFetchApp` n'a AUCUN timeout en Apps Script : deux endpoints qui pendent, c'est ~2 min
+  // prélevées en tête de tick. Le garde doit couper ENTRE les deux appels, pas seulement avant
+  // le premier (leçon §7 : « un garde-temps vit DANS la boucle qu'il protège »).
+  const lent = ctxPanne({}, { code: 404, corps: '' });
+  lent.c.CONFIG.PANNE_CONFIG_SONDE_MAX_MS = 1;
+  lent.opts.retardMs = 5;
+  assert.strictEqual(lent.c.sonderApiConfig_().etat, 'indetermine', 'passe abandonnée, rien n\'est levé');
+  assert.strictEqual(lent.fetchs.length, 1, 'le 2e appel est coupé par le garde, pas exécuté');
+
+  // Sonde normale : les deux API sont bien interrogées.
+  const rapide = ctxPanne({}, { code: 404, corps: '' });
+  assert.strictEqual(rapide.c.sonderApiConfig_().etat, 'active');
+  assert.strictEqual(rapide.fetchs.length, 2);
+});
+
+test('chargerPanneConfigApi_ : anti-boucle NON armé (Property en panne) ⇒ aucune sonde du tout', () => {
+  const { c, fetchs } = ctxPanne({ DriveAI_PANNE_CONFIG_API: String(Date.now() - 3600 * 1000) },
+    { code: 404, corps: '' });
+  const props = c.PropertiesService.getScriptProperties();
+  const vrai = props.setProperty;
+  props.setProperty = (k, v) => { if (k === 'DriveAI_PANNE_CONFIG_SONDE') throw new Error('quota'); vrai(k, v); };
+  c.PropertiesService = { getScriptProperties: () => props };
+  c.chargerPanneConfigApi_();
+  assert.strictEqual(fetchs.length, 0, 'sans horodatage, la sonde repartirait à CHAQUE tick — donc on ne sonde pas');
+  assert.strictEqual(c.estPanneConfigApi_(), true, 'et la suspension tient');
+});
+
+test('chargerPanneConfigApi_ : API réactivée → la suspension se lève TOUTE SEULE dès le tick suivant', () => {
+  const { c, store, infos, fetchs } = ctxPanne({
+    DriveAI_PANNE_CONFIG_API: String(Date.now() - 3600 * 1000),
+    DriveAI_PANNE_CONFIG_MSG: 'Calendar — not been used in project 42',
+  }, { code: 404, corps: 'Not Found' });
+  c.chargerPanneConfigApi_();
+  assert.strictEqual(c.estPanneConfigApi_(), false, 'les intentions repartent DÈS CE TICK');
+  assert.ok(!('DriveAI_PANNE_CONFIG_API' in store), 'suspension effacée');
+  assert.ok(!('DriveAI_PANNE_CONFIG_MSG' in store), 'message périmé effacé');
+  assert.strictEqual(infos.filter((m) => m.includes('REPRISE')).length, 1);
+  assert.ok(fetchs.length > 0, 'la reprise vient d\'une SONDE réelle, jamais d\'un délai qui expire');
+  assert.ok(Number(store.DriveAI_PANNE_CONFIG_OK) > 0,
+    'la sonde POSITIVE est datée — c\'est la preuve qui autorise Santé à dire « actives »');
+});
+
+test('signalerPanneConfigApi_ : un message qui ne vient PAS du diagnostic d\'API ne fuite pas dans Santé', () => {
+  // Défense en profondeur (ADR-0007) : le `catch` de `creerIntentionIdempotente_` enveloppe toute
+  // la création — un futur `throw` ajouté là pourrait porter le TITRE d'un mail. Le filtre de
+  // PROVENANCE (préfixe `config-api <API> : `) dégrade alors vers un libellé générique.
+  const { c, store } = ctxPanne({});
+  c.signalerPanneConfigApi_(new Error('Facture EDF de Marc — accessNotConfigured'));
+  assert.ok(!store.DriveAI_PANNE_CONFIG_MSG.includes('Facture EDF'), 'aucun contenu utilisateur persisté');
+  assert.ok(store.DriveAI_PANNE_CONFIG_MSG.includes('non activée'));
+});
+
+test('chargerPanneConfigApi_ : toujours désactivée → reste suspendu et MÉMORISE le message exploitable', () => {
+  const { c, store } = ctxPanne({ DriveAI_PANNE_CONFIG_API: String(Date.now() - 3600 * 1000) },
+    { Tasks: { code: 404, corps: '' }, Calendar: { code: 403, corps: corps403('Calendar', '777') } });
+  c.chargerPanneConfigApi_();
+  assert.strictEqual(c.estPanneConfigApi_(), true);
+  assert.ok('DriveAI_PANNE_CONFIG_API' in store, 'suspension maintenue');
+  assert.ok(store.DriveAI_PANNE_CONFIG_MSG.includes('Calendar'), 'l\'API fautive est nommée');
+  assert.ok(store.DriveAI_PANNE_CONFIG_MSG.includes('project 777'), 'le projet GCP est lisible dans Santé');
+});
+
+test('chargerPanneConfigApi_ : sonde INDÉTERMINÉE → reste suspendu, et n\'ÉCRASE PAS le diagnostic connu', () => {
+  const { c, store } = ctxPanne({
+    DriveAI_PANNE_CONFIG_API: String(Date.now() - 3600 * 1000),
+    DriveAI_PANNE_CONFIG_MSG: 'Calendar — has not been used in project 777',
+  }, { code: 500, corps: 'oops' });
+  c.chargerPanneConfigApi_();
+  assert.strictEqual(c.estPanneConfigApi_(), true, 'un doute ne lève JAMAIS la suspension');
+  assert.ok(store.DriveAI_PANNE_CONFIG_MSG.includes('project 777'), 'le vrai diagnostic survit au blip');
+});
+
+test('chargerPanneConfigApi_ : la fenêtre de sonde est armée AVANT l\'appel, même si la sonde échoue', () => {
+  const { c, store, fetchs } = ctxPanne({ DriveAI_PANNE_CONFIG_API: String(Date.now() - 3600 * 1000) },
+    new Error('UrlFetch indisponible'));
+  // L'ORDRE est l'invariant : au moment où le réseau est sollicité, l'anti-boucle doit DÉJÀ être
+  // posé. Sans cette assertion, déplacer le `setProperty` après la sonde laissait la suite verte
+  // (mutation vérifiée en revue) — le test ne prouvait alors pas son propre titre.
+  let armeAuMomentDuFetch = null;
+  const fetchReel = c.UrlFetchApp.fetch;
+  c.UrlFetchApp = { fetch: (url) => {
+    if (armeAuMomentDuFetch === null) armeAuMomentDuFetch = 'DriveAI_PANNE_CONFIG_SONDE' in store;
+    return fetchReel(url);
+  } };
+  c.chargerPanneConfigApi_();
+  assert.strictEqual(armeAuMomentDuFetch, true, 'anti-boucle posé AVANT le premier appel réseau');
+  assert.strictEqual(c.estPanneConfigApi_(), true);
+  assert.ok('DriveAI_PANNE_CONFIG_SONDE' in store, 'la fenêtre reste armée malgré l\'échec');
+  const n = fetchs.length;
+  c.chargerPanneConfigApi_(); // tick suivant, immédiat
+  assert.strictEqual(fetchs.length, n, 'pas de re-sonde tant que la fenêtre court');
+});
+
+test('signalerPanneConfigApi_ : un 403 dont la signature n\'est PAS dans error.message suspend quand même', () => {
+  // 🔴 trouvé en revue AVANT merge. `creerTache_`/`creerEvenement_` testent la signature sur le
+  // corps BRUT, puis lèvent `'config-api X : ' + messageErreurGoogle_(corps)`. Or
+  // `accessNotConfigured` / `SERVICE_DISABLED` vivent dans `error.errors[].reason` / `error.status`,
+  // JAMAIS dans `error.message` : re-dériver le verdict sur le message EXTRAIT rendait `false` —
+  // aucune suspension posée, le mail re-analysé à chaque tick (l'incident C28-22 de retour) et la
+  // sonde jamais armée. Le PRÉFIXE canonique fait désormais foi.
+  const corpsESF = JSON.stringify({ error: { code: 403,
+    message: 'Access Not Configured. The API (tasks) is not enabled for your project.',
+    errors: [{ domain: 'usageLimits', reason: 'accessNotConfigured' }], status: 'PERMISSION_DENIED' } }, null, 2);
+  const c0 = ctxPur;
+  assert.strictEqual(c0.estMessageApiDesactivee_(corpsESF), true, 'le corps BRUT porte bien la signature');
+  const extrait = 'config-api Tasks : ' + c0.messageErreurGoogle_(corpsESF);
+  assert.strictEqual(c0.estMessageApiDesactivee_(extrait), false, 'mais le message EXTRAIT ne la porte plus');
+
+  const { c, store } = ctxPanne({});
+  assert.strictEqual(c.signalerPanneConfigApi_(new Error(extrait)), true, 'suspendu quand même');
+  assert.ok('DriveAI_PANNE_CONFIG_API' in store);
+});
+
+test('chargerPanneConfigApi_ : une sonde qui CONFIRME le refus garde la suspension (et la sonde) vivante', () => {
+  // Sans ce rafraîchissement, la fenêtre de 24 h expirait, l'état était effacé comme « périmé »,
+  // la sonde s'éteignait (elle n'existe que pendant une panne) et Santé repassait au vert alors
+  // que la sonde venait de prouver le contraire (revue code C28-48).
+  const t0 = Date.now() - 20 * 3600 * 1000; // panne posée il y a 20 h
+  const { c, store } = ctxPanne({ DriveAI_PANNE_CONFIG_API: String(t0) },
+    { Tasks: { code: 404, corps: '' }, Calendar: { code: 403, corps: corps403('Calendar', '42') } });
+  c.chargerPanneConfigApi_();
+  assert.strictEqual(c.estPanneConfigApi_(), true);
+  assert.ok(Number(store.DriveAI_PANNE_CONFIG_API) > t0, 'suspension rafraîchie par la sonde qui confirme');
+  assert.strictEqual(store.DriveAI_PANNE_CONFIG_SONDE_ETAT.indexOf('desactivee'), 0, 'verdict de sonde tracé');
+});
+
+test('sonde MUETTE impossible : un verdict indéterminé répété reste visible dans l\'état', () => {
+  // Avec l'allowlist, un 400 systématique (ex. Google resserre la validation de l'identifiant
+  // sondé) rendrait la reprise inopérante À VIE. Le verdict est donc persisté à chaque passe.
+  const { c, store } = ctxPanne({ DriveAI_PANNE_CONFIG_API: String(Date.now() - 3600 * 1000) },
+    { code: 400, corps: 'Invalid id' });
+  c.chargerPanneConfigApi_();
+  assert.strictEqual(store.DriveAI_PANNE_CONFIG_SONDE_ETAT.indexOf('indetermine'), 0);
+  assert.strictEqual(c.etatPanneConfigApi_().sonde.indexOf('indetermine'), 0, 'et remonté jusqu\'à Santé');
+});
+
+test('etatPanneConfigApi_ : une preuve positive PÉRIMÉE ne verdit plus Santé', () => {
+  // Panne #1 résolue il y a des semaines (OK ancien), puis panne #2 dont la fenêtre a expiré :
+  // `actif` est faux, mais afficher « actives (sondées le <vieille date>) » serait un mensonge.
+  const vieux = ctxPanne({ DriveAI_PANNE_CONFIG_OK: String(Date.now() - 30 * 24 * 3600 * 1000) });
+  assert.strictEqual(vieux.c.etatPanneConfigApi_().sondeOkMs, 0, 'preuve trop vieille = plus une preuve');
+  const frais = ctxPanne({ DriveAI_PANNE_CONFIG_OK: String(Date.now() - 60 * 1000) });
+  assert.ok(frais.c.etatPanneConfigApi_().sondeOkMs > 0);
+  // Et une panne constatée EFFACE la preuve positive précédente.
+  const apres = ctxPanne({ DriveAI_PANNE_CONFIG_OK: String(Date.now() - 60 * 1000) });
+  apres.c.signalerPanneConfigApi_(new Error('config-api Calendar : has not been used in project 42'));
+  assert.ok(!('DriveAI_PANNE_CONFIG_OK' in apres.store), 'preuve caduque supprimée');
+});
+
+test('chargerPanneConfigApi_ : appelée NUE en tête de tick, elle ne LÈVE JAMAIS (sinon le tick gèle)', () => {
+  const { c, store } = ctxPanne({ DriveAI_PANNE_CONFIG_API: String(Date.now() - 3600 * 1000) },
+    { code: 404, corps: '' });
+  c.journalInfo_ = () => { throw new Error('Sheet indisponible'); }; // pire cas : le Journal casse
+  assert.doesNotThrow(() => c.chargerPanneConfigApi_());
+  // …et la reprise a quand même eu lieu : l'état est levé AVANT l'écriture de confort.
+  assert.strictEqual(c.estPanneConfigApi_(), false);
+  assert.ok(!('DriveAI_PANNE_CONFIG_API' in store));
+});
+
+test('etatPanneConfigApi_ : n\'annonce une panne que DANS la fenêtre (même règle que la décision)', () => {
+  const dedans = ctxPanne({
+    DriveAI_PANNE_CONFIG_API: String(Date.now() - 3600 * 1000),
+    DriveAI_PANNE_CONFIG_MSG: 'Calendar — project 777',
+  });
+  const e1 = dedans.c.etatPanneConfigApi_();
+  assert.strictEqual(e1.actif, true);
+  assert.ok(e1.message.includes('777'));
+
+  const dehors = ctxPanne({
+    DriveAI_PANNE_CONFIG_API: String(Date.now() - 25 * 3600 * 1000),
+    DriveAI_PANNE_CONFIG_MSG: 'Calendar — project 777',
+  });
+  const e2 = dehors.c.etatPanneConfigApi_();
+  assert.strictEqual(e2.actif, false, 'fenêtre écoulée = plus de suspension, donc plus d\'alarme');
+  assert.strictEqual(e2.message, '', 'et surtout plus de message périmé');
+});
+
+test('signalerPanneConfigApi_ : mémorise aussi le message pour Santé (sans le préfixe d\'API vide)', () => {
+  const { c, store } = ctxPanne({});
+  c.signalerPanneConfigApi_(new Error('config-api Calendar : Google Calendar API has not been used in project 555'));
+  assert.ok(store.DriveAI_PANNE_CONFIG_MSG.indexOf('config-api Calendar') === 0);
+  assert.ok(store.DriveAI_PANNE_CONFIG_MSG.includes('project 555'));
 });
 
 /* ---------- creerIntentionIdempotente_ : classement des échecs ---------- */

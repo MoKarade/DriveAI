@@ -142,6 +142,38 @@ function bornerJournal_(reporterSiCharge) {
 }
 
 /**
+ * Ligne « API Tasks & Calendar » de l'onglet Santé. PURE (testée).
+ *
+ * C28-48 : sans elle, une API non activée dans le projet GCP n'était visible que par une erreur
+ * TRONQUÉE dans Progression (« config-api Calendar : { error : { ») et une ligne de Journal
+ * illisible à distance. Ici on affiche le message EXPLOITABLE (numéro de projet GCP + URL
+ * d'activation), donc de quoi trancher « pas activée » vs « activée dans un AUTRE projet ».
+ *
+ * HONNÊTETÉ (revue quotas C28-48) : hors panne, on n'affirme PAS que la création est
+ * « opérationnelle » — rien ne l'a vérifiée. On dit « aucune panne détectée », et on ne date le
+ * constat que si une SONDE a réellement répondu (`sondeOkMs`).
+ * @param {{actif:boolean, depuisMs:number, message:string, sondeOkMs:number}} etat  cf. `etatPanneConfigApi_`
+ * @param {string} tz
+ * @return {string}
+ */
+function texteSanteConfigApi_(etat, tz) {
+  if (!etat || !etat.actif) {
+    return etat && etat.sondeOkMs
+      ? '✅ actives (sondées le ' + Utilities.formatDate(new Date(etat.sondeOkMs), tz, 'dd/MM HH:mm') + ')'
+      : '✅ aucune panne détectée';
+  }
+  var depuis = etat.depuisMs
+    ? ' (depuis le ' + Utilities.formatDate(new Date(etat.depuisMs), tz, 'dd/MM HH:mm') + ')'
+    : '';
+  // Verdict de la dernière sonde affiché EXPLICITEMENT : une sonde qui ne conclut jamais
+  // (« indetermine » à répétition) doit se voir, sinon la reprise peut être morte en silence.
+  var sonde = etat.sonde ? '  ·  dernière sonde : ' + etat.sonde : '';
+  return '⚠️ NON ACTIVÉE dans le projet GCP — intentions mail suspendues' + depuis +
+    ', re-sonde automatique (au plus 1×/' + Math.round(CONFIG.PANNE_CONFIG_SONDE_MS / 60000) +
+    ' min)' + sonde + (etat.message ? '  ·  ' + etat.message : '');
+}
+
+/**
  * Met à jour l'onglet `Santé` — vue lisible de référence (heartbeat + métriques). Métadonnées
  * seulement (ADR-0007) : horodatage, compteurs, coût, statut — jamais de contenu de document.
  * Écrit après `flushUsage_` (le coût du mois inclut alors le run courant). Enveloppé par l'appelant.
@@ -158,6 +190,7 @@ function majSante_() {
     ['Documents au catalogue (Index) : ' + nbCatalogue],
     ['Coût LLM ' + mois + ' : ' + cout.dollars.toFixed(2) + ' $  (' + cout.appels + ' appels)  ·  cible < 10 $/mois' + (cout.dollars >= 10 ? '  ⚠️ DÉPASSÉE' : '  ✅')],
     ['Rangement ancien Drive : ' + rangement],
+    ['API Tasks & Calendar : ' + texteSanteConfigApi_(etatPanneConfigApi_(), tz)],
     ['Mis à jour : ' + new Date()]
   ];
   f.getRange(2, 1, lignes.length, 1).setValues(lignes); // une seule écriture Sheet (I/O borné/tick)
