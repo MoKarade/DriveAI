@@ -259,8 +259,8 @@ function assurerEnteteProgression_(f) {
 function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, registre, debits) {
   var lignes = [];
   var tz = Session.getScriptTimeZone();
-  var typePar = {};
-  (registre || []).forEach(function (op) { typePar[op.cle] = op.type; });
+  var typePar = {}, libellePar = {};
+  (registre || []).forEach(function (op) { typePar[op.cle] = op.type; libellePar[op.cle] = op.libelle; });
 
   /** « il y a X » (min/h/j) — même vocabulaire que l'app, calculé UNE fois ici. */
   function depuis(ms) {
@@ -371,6 +371,22 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, regi
       unite, statut, new Date(horodateMs), cs[0], cs[1], cs[2], typePar[cle] || '', av[0], av[1]]);
   }
 
+  /**
+   * Ligne d'une MISSION de curation (C28-49). Statut : terminé (passe vide) / à jour (N non
+   * appariés) — les refus versionnés attendent un affinage de règles, pas du débit — / sinon le
+   * SUIVI réel (en cours, en pause budget du jour + « reprise demain », skip reset…).
+   */
+  function pousserMission(cle, tag) {
+    var m = (etat.missions || {})[tag] || { traites: 0, base: 0, nonApparies: 0, termine: false };
+    var statut;
+    if (m.termine) {
+      statut = m.nonApparies > 0 ? 'à jour (' + m.nonApparies + ' non apparié(s))' : 'terminé';
+    } else {
+      statut = statutDepuisSuivi_((suivi || {})[cle]);
+    }
+    pousser(cle, libellePar[cle] || cle, m.traites, m.base > 0 ? m.base : null, 'fichiers', statut);
+  }
+
   // Constructeurs DÉDIÉS des campagnes à lecteurs riches — clés du registre, libellés dynamiques
   // (tags de campagne) et statuts historiques conservés à l'identique.
   var campagnes = {
@@ -401,6 +417,10 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, regi
       pousser('consolidation-gen', 'Consolidation — génération du plan (' + etat.consolidationGen.tag + ')',
         etat.consolidationGen.traites, etat.consolidationGen.base, 'domaines', statutConsolidation_(etat.consolidationGen));
     },
+    'mission-vehicule': function () { pousserMission('mission-vehicule', 'vehicule'); },
+    'mission-logement': function () { pousserMission('mission-logement', 'logement'); },
+    'mission-dispatch-03': function () { pousserMission('mission-dispatch-03', 'dispatch03'); },
+    'mission-archives-06': function () { pousserMission('mission-archives-06', 'archives06'); },
     'consolidation-exec': function () {
       var ce = etat.consolidationExec;
       var statut = statutConsolidation_(ce);
@@ -497,6 +517,19 @@ function majProgressions_() {
       budgetEpuise: budgetJourConsolidation_(props, aujourdhuiConso) >= CONFIG.CONSOLIDATION_BUDGET_JOUR_MS,
       tag: tagConso
     },
+    // Missions de curation (C28-49) : compteurs compacts + drapeau de convergence par tag.
+    missions: (function () {
+      var brut = chargerEtatMissions_(props);
+      var m = {};
+      ['vehicule', 'logement', 'dispatch03', 'archives06'].forEach(function (tag) {
+        var e = brut[tag] || { t: 0, b: 0, na: 0 };
+        m[tag] = {
+          traites: e.t || 0, base: e.b || 0, nonApparies: e.na || 0,
+          termine: props.getProperty('DriveAI_MISSION_FINI_' + tag) === CONFIG.MISSIONS_REGLES_VERSION,
+        };
+      });
+      return m;
+    })(),
     consolidationExec: {
       termine: props.getProperty('DriveAI_CONSO_EXEC_FINI') === tagConso,
       base: dernPlanConso > 1 ? dernPlanConso - 1 : 0,
@@ -522,7 +555,12 @@ function majProgressions_() {
     'reanalyse': etat.reanalyse.traites,
     'rangement': etat.rangement.traites,
     'consolidation-gen': etat.consolidationGen.traites,
-    'consolidation-exec': etat.consolidationExec.traites
+    'consolidation-exec': etat.consolidationExec.traites,
+    // Missions C28-49 : vrais volumes cumulés (jamais une position de scan) → débits/estimation OK.
+    'mission-vehicule': etat.missions.vehicule.traites,
+    'mission-logement': etat.missions.logement.traites,
+    'mission-dispatch-03': etat.missions.dispatch03.traites,
+    'mission-archives-06': etat.missions.archives06.traites
   }, maintenant);
 
   // C28-44 : la vue de SUIVI fusionnée (persisté + run courant) alimente statuts/Détail/activité/

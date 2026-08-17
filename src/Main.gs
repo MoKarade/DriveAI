@@ -451,6 +451,27 @@ function tickDriveAI() {
       function () { genererPlanConsolidation_(estBudgetDepasseStandard); },
       function (e) { journalErreur_('Consolidation', 'Génération du plan différée : ' + e); });
 
+    // 🎯 MISSIONS de curation (C28-49, ADR-0039 — brief Marc du 17/08) : le rangement FIN,
+    // dossier par dossier. « BUDGET TAIL » : pure I/O Drive (moveTo seul, zéro LLM) →
+    // estBudgetDepasseStandard. APRÈS la consolidation (dont elles héritent le budget réalloué),
+    // gatées `!resetEnCours_()` (une seule main déplace) + budget QUOTIDIEN partagé (l'ORDRE
+    // ci-dessous = la priorité). SECONDAIRES → enveloppées (jamais bloquer l'intake).
+    var gMissionsActif = function () { return CONFIG.MISSIONS_ACTIF ? null : 'désactivée (CONFIG)'; };
+    etapeSuivie_('mission-vehicule', [gMissionsActif, gBudgetStandard, gResetEnCours, gMissionsJour_],
+      function () { executerMission_('vehicule', estBudgetDepasseStandard); },
+      function (e) { journalErreur_('Missions', 'Mission véhicule différée : ' + e); });
+    etapeSuivie_('mission-logement', [gMissionsActif, gBudgetStandard, gResetEnCours, gMissionsJour_],
+      function () { executerMission_('logement', estBudgetDepasseStandard); },
+      function (e) { journalErreur_('Missions', 'Mission logement différée : ' + e); });
+    // `gMissionsAmont03_` : dispatch03 attend la convergence de vehicule+logement — ses verdicts
+    // s'appuient sur des cibles/fenêtres que ces deux missions sont en train de CONSTRUIRE.
+    etapeSuivie_('mission-dispatch-03', [gMissionsActif, gMissionsAmont03_, gBudgetStandard, gResetEnCours, gMissionsJour_],
+      function () { executerMission_('dispatch03', estBudgetDepasseStandard); },
+      function (e) { journalErreur_('Missions', 'Mission dispatch 03 différée : ' + e); });
+    etapeSuivie_('mission-archives-06', [gMissionsActif, gBudgetStandard, gResetEnCours, gMissionsJour_],
+      function () { executerMission_('archives06', estBudgetDepasseStandard); },
+      function (e) { journalErreur_('Missions', 'Mission archives 06 différée : ' + e); });
+
     // 🔗 FUSION des dossiers en double (#47 PR2, ADR-0037) — applique le PlanFusion CURÉ par Marc
     // (lignes source `Fusionner`). GATÉE OFF (`FUSION_EXEC_ACTIF`) : one-shot au feu vert. « BUDGET
     // TAIL » : pure I/O Drive (moveTo seul, zéro LLM) → estBudgetDepasseStandard (mur 4,5 min). APRÈS
@@ -590,7 +611,9 @@ function tickDriveAI() {
       // panne de compte (trou d'observabilité n° 1 de l'ADR-0038). Liste = les étapes DU BLOC,
       // couverte par le tripwire (chaque clé y est aussi wrappée `etapeSuivie_` ci-dessus).
       ['intake-gmail', 'intake-depots', 'intake-partages', 'intentions', 'tri-gmail',
-        'consolidation-exec', 'consolidation-gen', 'fusion-exec', 'reset-rassemblement',
+        'consolidation-exec', 'consolidation-gen',
+        'mission-vehicule', 'mission-logement', 'mission-dispatch-03', 'mission-archives-06',
+        'fusion-exec', 'reset-rassemblement',
         'reset-placement', 'reset-04-interne', 'reset-llm', 'histo-gmail', 'migration',
         'reanalyse', 'dryrun-v2', 'dryrun-cmp', 'reorg', 'reconciliation-index'
       ].forEach(function (cle) { suiviSkip_(cle, 'panne API (compte)'); });

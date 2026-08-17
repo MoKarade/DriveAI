@@ -522,14 +522,17 @@ var CONFIG = {
                                           // tout avec le référentiel courant (rotation dans genererPlan…)
   CONSOLIDATION_BUDGET_MS: 3 * 60 * 1000, // sous-budget PROPRE par run (le hash MD5 lit les octets — sans
                                           // cette borne, un run mangerait le budget des étapes suivantes)
-  CONSOLIDATION_BUDGET_JOUR_MS: 12 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
+  CONSOLIDATION_BUDGET_JOUR_MS: 2 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
                                           // un plafond par RUN ne borne pas la JOURNÉE — ×288 ticks > quota
                                           // runtime ~90 min/j ; patron GMAIL_HISTO/SYNC_BUDGET_JOUR_MS).
-                                          // 20 → 12 min (REDESCENTE, revue quota C28-29) : la consolidation
-                                          // tourne enfin VRAIMENT (correctif famine) ; à 20 l'agrégat journalier
-                                          // (flux + finally ×288 + campagnes) frôlait le quota runtime → risque de
-                                          // GEL de TOUS les déclencheurs (chien de garde inclus). 12 min planifie
-                                          // ~700 fichiers/j (la génération est le goulot) : drainage en ~2-3 j, safe.
+                                          // 20 → 12 min (REDESCENTE, revue quota C28-29) ; puis 12 → 2 min
+                                          // (RÉALLOCATION C28-49, ADR-0039) : la génération est TERMINÉE
+                                          // (9/9 domaines le 16/08) — ses 10 min partent aux MISSIONS de
+                                          // curation (MISSIONS_BUDGET_JOUR_MS). COUPLE verrouillé par test :
+                                          // conso-gen + missions = 12 min/j, enveloppe reset-OFF INCHANGÉE.
+                                          // 2 min suffisent à un redémarrage LENT si un nouveau plan naissait ;
+                                          // le jour où la conso doit VRAIMENT reprendre, rendre les 10 min
+                                          // (missions finies) — le test de couple force l'arbitrage.
   CONSOLIDATION_MAX_PAR_RUN: 60,          // fichiers ajoutés au plan par run (40 → 60 ; le coût réel = le hash)
   // Exécution du plan (ConsolidationExec.gs, ADR-0024 — décision Marc 2026-07-17 « change tout live ») :
   CONSOLIDATION_EXEC_ACTIF: true,         // applique Déplacer/Doublon du PlanConsolidation (moveTo seul,
@@ -784,6 +787,50 @@ var CONFIG = {
                                           // un plafond par RUN ne borne pas la JOURNÉE si la sweep doit
                                           // reprendre sur plusieurs ticks) — compté dans l'enveloppe
                                           // reset-OFF (orchestration.test.js).
+
+  // ---------- MISSIONS de curation (C28-49, ADR-0039 — brief Marc 2026-08-17) ----------
+  MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions
+  MISSIONS_REGLES_VERSION: 'c49-1',       // DANS la clé d'idempotence : un refus (non apparié) se fige
+                                          // sous CETTE version — affiner les règles = bump ⇒ ré-évaluation
+                                          // (leçon C28-33 « verdict négatif révisable, jamais figé à vie »)
+  MISSIONS_BUDGET_MS: 90 * 1000,          // sous-budget par run (pure I/O moveTo — reste < mur standard)
+  MISSIONS_BUDGET_JOUR_MS: 10 * 60 * 1000, // budget QUOTIDIEN partagé entre missions, ms RÉELLES persistées.
+                                          // RÉALLOUÉ (jamais ajouté) : les 10 min viennent de
+                                          // CONSOLIDATION_BUDGET_JOUR_MS (12 → 2, gen terminée le 16/08).
+                                          // Couple missions+conso-gen = 12 min/j verrouillé par test.
+  MISSIONS_MAX_PAR_RUN: 60,               // plafond d'items par passe (le garde-temps borne déjà le coût)
+  MISSIONS_ERREURS_MAX: 12,               // runs CONSÉCUTIFS en erreur de collecte avant de ne réessayer
+                                          // qu'1×/jour (revue quotas : un ID supprimé/mal épinglé brûlerait
+                                          // sinon 10 min/j à vie) — toute passe saine remet à zéro
+  MISSIONS_PROFONDEUR_MAX: 6,             // profondeur de collecte (revue code : à 2, des fichiers restaient
+                                          // INVISIBLES et la mission se déclarait « terminée » en les ignorant
+                                          // — au-delà de la borne, signalé + mission maintenue OUVERTE)
+  MISSIONS_FENETRE_MARGE_MS: 30 * 24 * 60 * 60 * 1000, // ± 30 j autour des dates observées d'un logement
+  MISSIONS_COULEUR_VIDE: '#f83a22',       // ROUGE Drive (palette standard) : « vidé, bon pour suppression »
+                                          // — un SIGNAL pour Marc, jamais une suppression (§2)
+  // IDs ÉPINGLÉS des dossiers de Marc (recon du 2026-08-17). Par ID et jamais par NOM : un renommage
+  // ne doit pas re-router les missions vers un autre dossier (identité = invariant, leçon getSheetEtat_).
+  MISSIONS_IDS: {
+    // 03 · Logement & véhicule — cibles GAGNANTES choisies par Marc :
+    vehiculeCible: '1Hqmg1eV4q28saCreUyrfUIfKLwV972Wc',   // « Véhicule » (Ford Fiesta, VW Jetta, + Toyota bZ créé)
+    logementCible: '13ISBh6ZrwK9YHgmIM20tWTgWh4x9wI79',   // « Logement » (5 adresses)
+    // sources à VIDER :
+    vehiculesPluriel: '1D8bYwR900-yU-bCZufhPucnQYUZtbS-i', // « Véhicules »
+    toyotaBzIsole: '10d8IOmxC7OSQqretWgl25ApgClhXCiJK',    // « Toyota bZ » posé à la racine de 03
+    logementsPluriel: '1hszX0MThgNLuxM975q1zPWU_ySQH74OX', // « Logements »
+    contrats03: '1pt6VlJfEtzErW95aFCQw3UUXPNsXX3hh',
+    correspondance03: '14qrPCSHsSLMT2XSJm1h6HOHGXNehx5uL',
+    assuranceHab03: '1V_tiKNtUfgdwwrfigeFM2saEgYuKGR9Q',
+    energieServices03: '1TBssvW9sSUVugsK8bNj-MQTtH6MT1-2s',
+    // 06 · Études — alias EXPLICITES dossier d'entité → Archives scolaires (jamais devinés ;
+    // Cégep de Sherbrooke n'a PAS d'archive → volontairement absent, rapporté par la mission) :
+    archives06: [
+      { src: '13pgIZArEdu3Ly-eHOJmTpdY0sj1qBwNb', cible: '1XdWSfTGZUj1HMgfRleI_9KunZFQb8TJV' }, // DUT ULCO → ULCO — DUT GIM
+      { src: '1NpsmzrQlZfFexVaTRtFaMefnErEvZDCL', cible: '1XQAMQXZOMxlFboIUVGSZVklWmuEvXodA' }, // Prépa G. Eiffel → Prépa PTSI
+      { src: '1Q0QBp3q_e9CqpKi6FZOwSvJg1ZbGR282', cible: '1pIIovCmN8o-GrROoyH8rfsziUUbcfeKK' }, // IMERIR → IMERIR — Ingénieur MSIR
+      { src: '157LXd0CwcPhc2S8C5Ftg_FFOqVuDfrZ9', cible: '1xcSm-mucmPSG-9jZHgvL_6Q_r3V6fath' }, // Thérèse d'Avila → Lycée — Thérèse Davila
+    ],
+  },
 
   // Schémas de sous-dossiers FIXES créés à la validation d'une entité (docs/TAXONOMY.md).
   // Clé = Type d'entité ; valeur = liste ordonnée de sous-dossiers.

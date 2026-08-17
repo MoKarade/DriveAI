@@ -2307,3 +2307,31 @@ l'humain est un changement de CONTRAT quand du code lit ce message — inventori
 avant, comme pour un changement de schéma."
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-17 — Une clé de SUCCÈS sur un item qui QUITTE sa source est irréversible de fait
+
+**Contexte.** C28-49 PR1 (missions de curation), trouvé par les TROIS agents de la flotte en
+convergence. `apparierUnique_` acceptait un jeton en SOUS-CHAÎNE (« moreau » matchait
+« Moreault », « 783 » matchait « 7834 », un jeton de 2 chiffres matchait le JJ/MM du préfixe de
+date des noms classés). Un faux appariement UNIQUE ne déclenche pas la garde d'ambiguïté : le
+fichier est DÉPLACÉ au mauvais endroit avec une clé de SUCCÈS. Or la collecte est SOURCE-scopée :
+parti de la source, le fichier n'est plus jamais re-vu — même un bump de `MISSIONS_REGLES_VERSION`
+(le mécanisme prévu pour ré-évaluer les verdicts) ne le rattrape pas. À l'inverse, un REFUS trop
+prudent est toujours rattrapable (le fichier reste en place, keyé sous version). Corollaire vu
+dans la même revue (dispatch-03) : des verdicts rendus pendant que la DONNÉE mûrit (fenêtres
+d'occupation dérivées de fichiers que la mission sœur est EN TRAIN d'ajouter) se figent pareil —
+la version ne protège pas quand c'est l'ÉTAT DRIVE qui bouge, pas la table de règles → gater
+l'aval sur la convergence de l'amont.
+
+**Leçon.** "Dans un pipeline idempotent, l'asymétrie des verdicts commande la sévérité du
+prédicat : un verdict NÉGATIF (refus, non-apparié) est RÉVISABLE (l'item reste à sa place, la clé
+versionnée se ré-évalue par bump), mais un verdict POSITIF qui DÉPLACE l'item hors du périmètre de
+collecte est DÉFINITIF DE FAIT — aucun bump ne re-présentera l'item. Le prédicat qui déclenche
+l'action irréversible doit donc être STRICT (mot entier, jamais de sous-chaîne ; retirer du texte
+les composants structurels comme le préfixe de date qui créent des collisions), et dans le doute
+REFUSER — le refus coûte un re-examen, le faux positif coûte un document égaré avec un statut de
+succès. Et quand les règles d'un aval dépendent d'un état que l'amont CONSTRUIT encore, l'aval se
+gate sur la convergence de l'amont : la version des règles ne protège pas contre une donnée
+mouvante."
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).

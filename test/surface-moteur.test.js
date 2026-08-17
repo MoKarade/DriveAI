@@ -46,6 +46,11 @@ const CONTRAT = [
   // C28-48 : sonde légère + message exploitable + état lisible pour l'onglet Santé.
   'sonderApiConfig_', 'verdictSondeApi_', 'messageErreurGoogle_', 'etatPanneConfigApi_',
   'memoriserMessageConfigApi_', 'sonderEtLeverPanneConfig_', 'texteSanteConfigApi_',
+  // C28-49 (ADR-0039) : missions de curation — appelées en travers des modules (Main/Journal).
+  'executerMission_', 'tableMissions_', 'gMissionsJour_', 'gMissionsAmont03_', 'chargerEtatMissions_',
+  'budgetJourMissions_', 'cleMission_', 'apparierUnique_', 'jetonsCible_', 'logementParDate_',
+  'dateDuNomMission_', 'fenetresOccupation_', 'ciblesAvecJetons_', 'collecterMission_',
+  'traiterItemMission_', 'peindreDossierRouge_', 'peindreSourcesVides_', 'estDossierVideMission_',
   // curation des mails (C28-19, ADR-0020) : confiance, scan cyclique, « pas suspect » 1-clic
   'decisionSuspect_', 'confianceCache_', 'reinitialiserConfianceCache_', 'apprendreConfiance_',
   'scanCycliqueTri_', 'appliquerPasSuspect_', 'purgerClesTriIndex_',

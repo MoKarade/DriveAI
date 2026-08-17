@@ -57,6 +57,11 @@ var REGISTRE_OPERATIONS = [
   // — Campagnes de fond (ordre du tick : drainer avant d'alimenter)
   { cle: 'consolidation-exec', libelle: 'Consolidation — exécution du plan', unite: 'lignes', type: 'campagne' },
   { cle: 'consolidation-gen', libelle: 'Consolidation — génération du plan', unite: 'domaines', type: 'campagne' },
+  // Missions de curation (C28-49, ADR-0039) — l'ordre suit celui du tick (= la priorité).
+  { cle: 'mission-vehicule', libelle: 'Mission — véhicules (Véhicules → Véhicule)', unite: 'fichiers', type: 'campagne' },
+  { cle: 'mission-logement', libelle: 'Mission — logements (Logements → Logement)', unite: 'fichiers', type: 'campagne' },
+  { cle: 'mission-dispatch-03', libelle: 'Mission — contrats, correspondance, assurances & énergie (03)', unite: 'fichiers', type: 'campagne' },
+  { cle: 'mission-archives-06', libelle: 'Mission — archives scolaires (06)', unite: 'fichiers', type: 'campagne' },
   { cle: 'fusion-exec', libelle: 'Fusion des dossiers en double', unite: 'lignes', type: 'campagne' },
   { cle: 'reset-rassemblement', libelle: 'Reset — rassemblement vers _TRI', unite: 'fichiers', type: 'campagne' },
   { cle: 'reset-placement', libelle: 'Reset — placement depuis _TRI', unite: 'fichiers', type: 'campagne' },
