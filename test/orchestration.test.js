@@ -120,7 +120,10 @@ test('budget RÉALLOUÉ, jamais AUGMENTÉ : le total du reset ne dépasse pas ce
   const reset = C.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS + C.RESET_PLACEMENT_BUDGET_JOUR_MS +
     C.RESET_04_BUDGET_JOUR_MS + C.RESET_LLM_BUDGET_JOUR_MS;
   const libere = C.CONSOLIDATION_BUDGET_JOUR_MS + C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS +
-    C.GMAIL_HISTO_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS; // + fusion (#47, gatée !resetEnCours_)
+    C.GMAIL_HISTO_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS +
+    C.MISSIONS_BUDGET_JOUR_MS; // + fusion (#47) et missions (C28-49) — TOUTES gatées !resetEnCours_
+                               // (vérifié par les tests de gates ci-dessus/dessous) : un reset ON les
+                               // suspend, leur budget est donc réellement LIBÉRÉ pour lui.
   assert.ok(reset <= libere,
     'le budget du reset (' + Math.round(reset / 60000) + ' min/j) doit rester ≤ celui des campagnes qu\'il ' +
     'suspend (' + Math.round(libere / 60000) + ' min/j) — sinon l\'enveloppe de runtime CROÎT et on ' +
@@ -139,7 +142,7 @@ test('enveloppe reset-OFF : la somme des budgets QUOTIDIENS des campagnes concur
   // ci-dessus ne voit pas (lui borne le reset ON, pas l'agrégat reset-OFF).
   const concurrentesResetOff = C.GMAIL_HISTO_BUDGET_JOUR_MS + C.CONSOLIDATION_BUDGET_JOUR_MS +
     C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS +
-    C.HISTORIQUE_VRAC_BUDGET_JOUR_MS;
+    C.HISTORIQUE_VRAC_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS; // missions C28-49 (partagé entre elles)
   // RÉALLOCATION 2026-08-11 (diagnostic prod : l'exec est le goulot) : exec 6→12, fusion 6→0 (parkée,
   // campagne OFF) — la SOMME reste 56 min/j (20+12+12+12+0), enveloppe INCHANGÉE, pur transfert.
   // HISTORIQUE_VRAC (2026-08-12, demande Marc : suivi journalier par domaine) : +4 min → 60 min/j.
@@ -175,6 +178,39 @@ test('réallocation exec↔fusion : le COUPLE somme 12 min ET une campagne activ
   assert.ok(!C.FUSION_EXEC_ACTIF || C.FUSION_EXEC_BUDGET_JOUR_MS > 0,
     'FUSION_EXEC_ACTIF=true avec FUSION_EXEC_BUDGET_JOUR_MS=0 = campagne MUETTE (no-op silencieux) : ' +
     'rends-lui son budget avant de l\'activer');
+});
+
+/**
+ * RÉALLOCATION C28-49 (ADR-0039) : la génération de consolidation est TERMINÉE (16/08, 9/9) —
+ * 10 de ses 12 min/j partent aux MISSIONS de curation. Même patron de verrou que exec↔fusion :
+ * la PAIRE (somme constante), pas seulement l'agrégat ≤ 65 (aveugle à un transfert à moitié
+ * annulé), + l'interdit « campagne active à budget 0 ». Prouvé par mutation.
+ */
+test('réallocation conso-gen↔missions : le COUPLE somme 12 min ET une mission active n\'a jamais un budget 0', () => {
+  const C = require('./harness').load(['Config.gs']).CONFIG;
+  assert.strictEqual((C.CONSOLIDATION_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS) / 60000, 12,
+    'CONSOLIDATION (gen) + MISSIONS doit rester = 12 min/j (couple réalloué C28-49) : le jour où la ' +
+    'consolidation doit VRAIMENT reprendre, rendre les 10 min prêtés (missions finies) — sinon ' +
+    'l\'enveloppe croît en silence (leçon C28-42)');
+  assert.ok(!C.MISSIONS_ACTIF || C.MISSIONS_BUDGET_JOUR_MS > 0,
+    'MISSIONS_ACTIF=true avec MISSIONS_BUDGET_JOUR_MS=0 = missions MUETTES (no-op silencieux)');
+});
+
+test('orchestration MISSIONS : les 4 missions sont gatées par !resetEnCours_() ET le budget quotidien', () => {
+  ['mission-vehicule', 'mission-logement', 'mission-dispatch-03', 'mission-archives-06'].forEach((cle) => {
+    assert.ok(/gResetEnCours/.test(gatesDe(cle)), cle + ' : une seule main déplace (reset)');
+    assert.ok(/gMissionsJour_/.test(gatesDe(cle)), cle + ' : la raison « budget du jour épuisé » doit ' +
+      'venir de la GATE (suivi C28-44 → statut « en pause » + « reprise demain »)');
+    assert.ok(/gBudgetStandard/.test(gatesDe(cle)), cle + ' : budget TAIL (pure I/O), jamais le budget de tick');
+  });
+  // dispatch03 attend la convergence de vehicule+logement (revue code C28-49) : ses fenêtres
+  // d'occupation et la cible Toyota bZ sont CONSTRUITES par ces deux missions — router avant,
+  // c'est figer des refus sur un état encore mouvant.
+  assert.ok(/gMissionsAmont03_/.test(gatesDe('mission-dispatch-03')),
+    'mission-dispatch-03 doit attendre vehicule+logement (gMissionsAmont03_)');
+  assert.ok(!/gMissionsAmont03_/.test(gatesDe('mission-vehicule')) &&
+    !/gMissionsAmont03_/.test(gatesDe('mission-archives-06')),
+    'la gate d\'amont ne s\'applique qu\'à dispatch03');
 });
 
 /**

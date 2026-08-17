@@ -4,22 +4,38 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🔎 VERDICT « l'API Calendar est-elle activée ? » (question Marc, 2026-08-14) — NON, pas du
-> point de vue du SCRIPT, à 07:51 ce matin.** Démonstration par le code, pas par une impression :
-> `traiterIntentionsMail_` (`src/Intentions.gs:45`) sort IMMÉDIATEMENT tant que la suspension
-> court, et `signalerPanneConfigApi_` ne journalise qu'au PREMIER refus après la fenêtre de 24 h ;
-> une erreur horodatée **14/08 07:51** prouve donc que le moteur a bel et bien RAPPELÉ l'API à
-> 07:51 et repris un 403 « has not been used in project ». Deux lectures restaient possibles et
-> INDÉCIDABLES d'ici : activée APRÈS 07:51 (le moteur n'aurait pas réessayé avant ~07:51 le 15/08),
-> ou activée dans un AUTRE projet GCP que celui du script. ⚠️ Mon accès Calendar (MCP) passe par
-> une autre voie OAuth : ce que j'y vois ne prouve RIEN sur le projet du script — ne jamais
-> conclure de l'un à l'autre. **Livré (C28-48) pour trancher sans geste de Marc** : sonde légère
-> qui lève la suspension toute seule en ≤ 15 min dès que l'API répond, + le message exploitable
-> (numéro de projet GCP + URL d'activation) affiché dans l'onglet `Santé`. Au prochain tick après
-> déploiement, `Santé` répond à la question tout seul : ✅ actives, ou le projet fautif nommé.
+> **🎯 CHANTIER EN COURS — C28-49 « Missions de curation » (brief Marc 2026-08-17, ADR-0039).**
+> Marc a spécifié le rangement FIN dossier par dossier (véhicules, logements, archives scolaires,
+> employeurs, paies, impôts, identité, _Technique/_Médias/_Doublons, vrac des racines) et veut
+> UNE MISSION PAR TÂCHE, visible dans l'app avec l'avancement réel, et les dossiers vidés peints
+> en ROUGE pour choisir lui-même ce qu'il supprime (le moteur ne supprime JAMAIS, §2). Ses trois
+> réponses d'arbitrage : (1) rouge = oui ; (2) paies = « je n'ai absolument pas toutes les
+> paies » + un sous-dossier PAR EMPLOYEUR (⇒ domicile UNIQUE `02/Revenus & paie/<Employeur>` +
+> rapport des mois MANQUANTS — PR2) ; (3) identité = permis + passeport + « tout ce que tu
+> pourras trouver d'autre » (PR3, 04 · Immigration = PROPOSITIONS seulement, jamais déplacé).
+> **PR1 (cette session)** : socle `src/Missions.gs` + 4 missions 03/06 (`mission-vehicule`,
+> `mission-logement`, `mission-dispatch-03`, `mission-archives-06`) — budget 10 min/j RÉALLOUÉ de
+> la conso-gen terminée (couple 12 min verrouillé), idempotence versionnée, convergence sur passe
+> vide, appariement par jetons + fenêtres de dates (ambigu = laissé + rapporté, jamais deviné),
+> re-pointage du référentiel d'entités à la convergence d'archives-06. PR2-PR4 : voir BACKLOG
+> C28-49 et les tâches #38-40. IDs des dossiers épinglés dans `CONFIG.MISSIONS_IDS` (recon du
+> 17/08). NB : Marc a déjà supprimé lui-même les dossiers vides + `_TRI 2026` + l'ancien dossier
+> `Automatech` (contenu déversé à la racine de 05 — la mission Carrière PR2 le re-range).
 >
-> **📊 ÉTAT PROD AU 2026-08-14 09:51 (lu sur la DONNÉE, self-serve) — trois faits + deux points
-> Gmail ouverts.** (1) **La ré-analyse c26-08 est BLOQUÉE** à 322/1207 (27 %) : coût LLM du mois
+> **⚠️ TOUJOURS BLOQUÉ CÔTÉ MARC — API Google Tasks NON ACTIVÉE (depuis le 14/08).** La sonde
+> C28-48 tourne et CONFIRME toutes les 13 min : `desactivee (Tasks)`, projet GCP **289462394116**
+> (lien d'activation affiché dans l'onglet `Santé`). Les intentions mail (tâches/RDV depuis les
+> mails) sont gelées tant que Marc n'a pas cliqué « ACTIVER » — Calendar sera sondée dans la
+> foulée (la sonde s'arrête à la première API refusée). Le mécanisme C28-48 s'est validé en prod :
+> suspension rafraîchie par sonde confirmante (affiche « depuis 17/08 09:41 », pas 14/08),
+> verdict de dernière sonde visible, reprise automatique ≤ 13 min après activation.
+>
+> **📊 ÉTAT PROD — rafraîchi au 2026-08-17 09:42 (lu sur la DONNÉE)** : consolidation TERMINÉE
+> (exec 2620/2620, gen 9/9 le 16/08) ; Index **15 706** docs (+615 en 3 j) ; vrac `08 · Perso`
+> 998 → **798** puis PLAT depuis le 16 (le drain s'est arrêté avec la conso — c'est la mission
+> « vrac des racines » PR3 qui prendra le relais) ; `06 · Études` figé à 447 ; coût LLM du mois
+> **10,43 $** (frein campagnes toujours actif). Instantané précédent (14/08), gardé pour la
+> traçabilité :** (1) **La ré-analyse c26-08 est BLOQUÉE** à 322/1207 (27 %) : coût LLM du mois
 > **10,22 $** > frein campagnes **10 $** (`LLM_BUDGET_CAMPAGNES`, redescendu de 110 le 01/08 par la
 > checklist ADR-0018) ⇒ pas de reprise avant le 1er septembre sauf décision de Marc. (2) **Le vrac
 > baisse enfin** : `08 · Perso` 998 → **839** (−159 en un jour) ; la consolidation draine

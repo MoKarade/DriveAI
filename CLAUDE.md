@@ -416,6 +416,19 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   de revue : « cette condition est-elle évaluée deux fois sur deux représentations du même fait ? »
   Corollaire : améliorer un message d'erreur POUR L'HUMAIN est un changement de CONTRAT dès que du
   code lit ce message — inventorier ses lecteurs, comme pour un schéma.
+- **L'asymétrie des verdicts commande la sévérité du prédicat.** Dans un pipeline idempotent, un
+  verdict NÉGATIF (refus keyé sous version) est RÉVISABLE — l'item reste en place, un bump le
+  ré-évalue ; un verdict POSITIF qui DÉPLACE l'item HORS du périmètre de collecte est DÉFINITIF DE
+  FAIT — aucun bump ne le re-présentera (vécu C28-49, les 3 agents en convergence : « moreau »
+  matchait « Moreault » en sous-chaîne ⇒ fichier égaré avec une clé de SUCCÈS). Le prédicat qui
+  déclenche l'action irréversible est STRICT (mot entier, composants structurels comme le préfixe
+  de date RETIRÉS du texte apparié) et dans le doute REFUSE — un refus coûte un re-examen, un faux
+  positif coûte un document perdu de vue. Corollaires de la même revue : quand les règles d'un
+  AVAL dépendent d'un état que l'AMONT construit encore (fenêtres dérivées de fichiers en cours de
+  déplacement), l'aval se GATE sur la convergence de l'amont — la version des règles ne protège
+  pas contre une donnée MOUVANTE ; et un échec PAR ITEM ne partage jamais le drapeau d'arrêt de la
+  BOUCLE (un poison affamerait les sources suivantes à vie — deux drapeaux : « arrêt » vs « passe
+  incomplète », essais bornés + abandon tracé).
 - **Campagne Gmail : requête figée ⇒ appartenance stable, mais l'ORDRE bouge quand même** (tri par
   DERNIER message, suppressions) — l'offset persistant sert à PROGRESSER, jamais à prouver la
   COMPLÉTUDE. Celle-ci vient de « terminé quand DEUX passes complètes consécutives ne collectent

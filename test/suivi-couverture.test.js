@@ -35,10 +35,13 @@ test('tripwire : aucune clé wrappée deux fois (une étape = un point d\'exécu
 });
 
 test('tripwire : la suspension R2 enregistre un skip pour CHAQUE étape du bloc (liste verrouillée)', () => {
-  // Les 19 étapes du bloc `if (!estPannePlateforme_())` — si une étape entre ou sort du bloc,
+  // Les 23 étapes du bloc `if (!estPannePlateforme_())` — si une étape entre ou sort du bloc,
   // cette liste DOIT bouger avec (sinon : soit un skip fantôme, soit une étape muette en panne).
+  // + les 4 missions de curation (C28-49) : dans le bloc, juste après la consolidation.
   const attendu = ['intake-gmail', 'intake-depots', 'intake-partages', 'intentions', 'tri-gmail',
-    'consolidation-exec', 'consolidation-gen', 'fusion-exec', 'reset-rassemblement',
+    'consolidation-exec', 'consolidation-gen',
+    'mission-vehicule', 'mission-logement', 'mission-dispatch-03', 'mission-archives-06',
+    'fusion-exec', 'reset-rassemblement',
     'reset-placement', 'reset-04-interne', 'reset-llm', 'histo-gmail', 'migration',
     'reanalyse', 'dryrun-v2', 'dryrun-cmp', 'reorg', 'reconciliation-index'];
   const bloc = MAIN.match(/\[([^\]]+)\]\.forEach\(function \(cle\) \{ suiviSkip_\(cle, 'panne API \(compte\)'\); \}\);/);
