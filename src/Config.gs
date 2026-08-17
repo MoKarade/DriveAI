@@ -830,7 +830,47 @@ var CONFIG = {
       { src: '1Q0QBp3q_e9CqpKi6FZOwSvJg1ZbGR282', cible: '1pIIovCmN8o-GrROoyH8rfsziUUbcfeKK' }, // IMERIR → IMERIR — Ingénieur MSIR
       { src: '157LXd0CwcPhc2S8C5Ftg_FFOqVuDfrZ9', cible: '1xcSm-mucmPSG-9jZHgvL_6Q_r3V6fath' }, // Thérèse d'Avila → Lycée — Thérèse Davila
     ],
+    // ---- PR2 (Carrière + Finances, recon du 17/08) ----
+    revenusPaie: '1nPL2rWJFASUIyxkS5zPdy0iMsnWqsI5f',       // 02/« Revenus & paie » (cible paies, par employeur)
+    employeursRobovic: '1XWsPLqY7ojiFaHprKMLLLvMTYLTXe-xG',  // 05/Employeurs/Robovic (vrac plat à trier)
+    employeursAutomatech: '1-hwFLhOJuKzQEnv9Bv4silbVGzAGe_0Z', // 05/Employeurs/Automatech
+    carriereRacine: '1BAg7k7RVrJ4ifoeh9U0XW5hKWXjRI1CC',     // racine 05 (ex-dump Automatech de Marc)
+    cvLettres: '10mwjZ59esSF5wQDgBZ3EAvgnnxxkO7j4',          // 05/« CV & lettres » (cible de la fusion)
+    rechercheEmploi: '1UMI5aDHLUzhKe_zlFVQDRY3wQ0ghTbAf',    // 05/« Recherche d'emploi » (fusionné → CV & lettres)
+    impotsDeclarations: '19vkVX0WnnCddUggvXimF9hcEthkTEdWN', // 02/« Impôts & déclarations » (par année)
+    banques02: '1rK1Ysm40xVzFUV8fu-1exYnxwE79yh-a',      // réservé PR3 (mission racines — routage bancaire)
+    releves02: '1BXpWAtWiVFYV_EH_7_gX4hr5C9VWzlal',
+    recusFactures02: '16YO7GojX3bjA3rt8K8oHBMfHVyuWWThk',
+    assurances02: '1IJQxGftcluI_6kF9mzyeORymd6MZqE-k',
+    // Les 12 dossiers-années à VIDER (racine de 02) — l'année ACCOMPAGNE l'ID : c'est le repli
+    // de routage des documents fiscaux dont le nom ne porte pas d'année.
+    annees02: [
+      { id: '1dcn-GrUdEROIii6XeFoWGAqj2gpHkBRK', annee: '2003' },
+      { id: '1pdrtXgQwxYPWEwMnyMQQcmAW38gSjwsK', annee: '2015' },
+      { id: '1RarwUV-ist2jp1HKTfRI4jaNBIAFeput', annee: '2016' },
+      { id: '12ZwGb9XdCg1UJ70LiCRzOFuPf6YfXPaH', annee: '2017' },
+      { id: '1NwCfbu9cxBafShV3bCQIGvtS8nycK4mf', annee: '2019' },
+      { id: '11c_gnxpXRnl3_rHk18OVkUJtLqpihOTR', annee: '2020' },
+      { id: '1u7uMFBZgRtELH1PUl3Pe1yDwpC-Je9Fo', annee: '2021' },
+      { id: '1TjpDGLvP2XjGIYjFTX6knBZHIWQrjiiD', annee: '2022' },
+      { id: '1m8tQ_VKftu7B_d7WYbzMPYc3hj8CBUbi', annee: '2023' },
+      { id: '1IvhLQ_L_SJHDNspG6pfzoME9qNnUskqr', annee: '2024' },
+      { id: '1ebWwHOctTr3TNPx9zROEE5IE1uayE6Qd', annee: '2025' },
+      { id: '1yUzugjlvto6LdxxBx5xKUvgNaO-PPPub', annee: '2026' },
+    ],
   },
+  // Employeurs CANONIQUES (PR2) : nom du sous-dossier de « Revenus & paie » / d'« Employeurs » +
+  // jetons d'appariement (MOT ENTIER, leçon C28-49). Un émetteur hors table = refus, jamais deviné.
+  // ⚠️ COUPLAGE DE VERSIONS (revue structure-keeper PR2) : cette table est lue par les MISSIONS
+  // (employeurDuNom_) ET par la table de routage du flux (cheminCibleReset_, branche paie) —
+  // toute modification exige de bumper MISSIONS_REGLES_VERSION (ré-évaluer les refus keyés), et
+  // RESET_TABLE_VERSION aussi si la campagne reset est relancée un jour (RESET_ACTIF).
+  // Bornée ≤ 7 par test (enfants dynamiques de « Revenus & paie », jumeau RESET_PERSONNES_AUTRES).
+  MISSIONS_EMPLOYEURS: [
+    { nom: 'Robovic', jetons: ['robovic'] },
+    { nom: 'Automatech', jetons: ['automatech', 'robotik'] },
+    { nom: 'CIUSSS', jetons: ['ciusss'] },
+  ],
 
   // Schémas de sous-dossiers FIXES créés à la validation d'une entité (docs/TAXONOMY.md).
   // Clé = Type d'entité ; valeur = liste ordonnée de sous-dossiers.

@@ -421,6 +421,10 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, regi
     'mission-logement': function () { pousserMission('mission-logement', 'logement'); },
     'mission-dispatch-03': function () { pousserMission('mission-dispatch-03', 'dispatch03'); },
     'mission-archives-06': function () { pousserMission('mission-archives-06', 'archives06'); },
+    'mission-paies': function () { pousserMission('mission-paies', 'paies'); },
+    'mission-carriere': function () { pousserMission('mission-carriere', 'carriere'); },
+    'mission-annees-02': function () { pousserMission('mission-annees-02', 'annees02'); },
+    'mission-impots': function () { pousserMission('mission-impots', 'impots'); },
     'consolidation-exec': function () {
       var ce = etat.consolidationExec;
       var statut = statutConsolidation_(ce);
@@ -521,7 +525,7 @@ function majProgressions_() {
     missions: (function () {
       var brut = chargerEtatMissions_(props);
       var m = {};
-      ['vehicule', 'logement', 'dispatch03', 'archives06'].forEach(function (tag) {
+      ['vehicule', 'logement', 'dispatch03', 'archives06', 'paies', 'carriere', 'annees02', 'impots'].forEach(function (tag) {
         var e = brut[tag] || { t: 0, b: 0, na: 0 };
         m[tag] = {
           traites: e.t || 0, base: e.b || 0, nonApparies: e.na || 0,
@@ -560,7 +564,11 @@ function majProgressions_() {
     'mission-vehicule': etat.missions.vehicule.traites,
     'mission-logement': etat.missions.logement.traites,
     'mission-dispatch-03': etat.missions.dispatch03.traites,
-    'mission-archives-06': etat.missions.archives06.traites
+    'mission-archives-06': etat.missions.archives06.traites,
+    'mission-paies': etat.missions.paies.traites,
+    'mission-carriere': etat.missions.carriere.traites,
+    'mission-annees-02': etat.missions.annees02.traites,
+    'mission-impots': etat.missions.impots.traites
   }, maintenant);
 
   // C28-44 : la vue de SUIVI fusionnée (persisté + run courant) alimente statuts/Détail/activité/

@@ -270,7 +270,7 @@ test('classifierComparaisonV2_ : passe 2 muette → p2 null, final = passe 1 (an
 function ctxTraiter(opts) {
   opts = opts || {};
   const calls = { rows: [], index: [], journaux: [] };
-  const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs', 'Llm.gs', 'DryRunV2.gs'],
+  const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs', 'Router.gs', 'Llm.gs', 'DryRunV2.gs'],
     { tronquer_: (s, n) => String(s == null ? '' : s).slice(0, n) });
   ctx.journalInfo_ = (s, m) => calls.journaux.push(m);
   ctx.journalErreur_ = (s, m) => calls.journaux.push('ERR:' + m);

@@ -73,10 +73,13 @@ var STRUCTURE_CIBLE_RESET = {
     'Formulaires & correspondance': {},
   },
   '05 · Carrière': {
-    'Employeurs': { 'Robovic': {}, 'Automatech': {} }, // décision Marc : les autres = recherche d'emploi
-    'Recherche d\'emploi': { 'Candidatures': {}, 'Suivi': {}, 'Archive 2021-2025': {} },
+    'Employeurs': { 'Robovic': {}, 'Automatech': {} }, // décision Marc : les autres = candidatures (CV & lettres)
+    // FUSION « Recherche d'emploi » → « CV & lettres » (décision Marc 2026-08-17, ADR-0039 §7).
+    // Le nœud « Recherche d'emploi » est RETIRÉ (pas renommé) : la mission `carriere` VIDE ce
+    // dossier (sourceJetable, peint en rouge une fois vide pour que Marc le supprime) — le garder
+    // ici le ferait RECRÉER par nom à chaque reset (ping-pong, leçon Fusion #47). 05 = 6 nœuds ≤ 7 ✔.
     'Alternance & stages': {},
-    'CV & lettres': {},
+    'CV & lettres': { 'Candidatures': {}, 'Suivi': {}, 'Archive 2021-2025': {} },
     'Entreprise — MRic (SCI)': {},
     'Formation & bilans': {},
     'Réseaux & présentations': {},
@@ -119,8 +122,10 @@ var STRUCTURE_CIBLE_RESET = {
  * jamais d'une valeur du jour — leçon §7).
  * EXEMPTION EXPLICITE (revue PR1) : le niveau RACINE (les 9 domaines 01→09, préexistants et validés
  * par Marc avec la structure) n'est PAS compté — la contrainte porte sur l'INTÉRIEUR des domaines.
- * Les enfants DYNAMIQUES (« Pièces d'identité/Autres/<personne> ») sont bornés par la liste
- * RESET_PERSONNES_AUTRES, pas par cette table.
+ * Trois familles d'enfants DYNAMIQUES vivent hors table (C28-49 PR2) : « Pièces d'identité/
+ * Autres/<personne> » (bornée par RESET_PERSONNES_AUTRES, testée ≤ 7), « Revenus & paie/
+ * <employeur> » (bornée par CONFIG.MISSIONS_EMPLOYEURS, testée ≤ 7) et « Impôts & déclarations/
+ * <AAAA> » (années réelles — > 7 ASSUMÉ, même statut structurel que les buckets Relevés/AAAA).
  */
 function verifierStructureCibleReset_(structure, maxParNiveau) {
   var violations = [];
@@ -159,6 +164,53 @@ function resetBucketAnnee_(annee, noeudAnnees) {
   var maxAnnee = 0;
   for (var k in noeudAnnees) { var n = parseInt(k, 10); if (String(n) === k && n > maxAnnee) maxAnnee = n; }
   return a > maxAnnee ? String(a) : 'Archives'; // postérieure aux buckets → son segment ; antérieure → Archives
+}
+
+/**
+ * Plausibilité d'une année (`AAAA`, 1990-2100) — LA règle PARTAGÉE flux ↔ missions (revue
+ * structure-keeper PR2 : deux fenêtres écrites séparément divergeaient déjà — 1900-2099 ici,
+ * 1990-2100 côté mission — la graine exacte de C28-26). Vit ICI (et pas dans Missions.gs) parce
+ * que Missions.gs dépend déjà de Reset.gs, jamais l'inverse : les contextes de test qui chargent
+ * Reset.gs seul restent autonomes. Consommateurs : `cheminImpotsReset_`, `anneeDuNomMission_` et
+ * `moisManquantsPaies_` (Missions.gs). PURE.
+ */
+function anneePlausible_(annee) {
+  var s = String(annee || '');
+  if (!/^\d{4}$/.test(s)) return false;
+  var a = Number(s);
+  return a >= 1990 && a <= 2100;
+}
+
+/* Prédicats de TYPE partagés flux ↔ missions (revue finale PR2 : `routerFinance02_` ré-écrivait
+ * séparément trois règles que le flux possédait déjà — RL-1/31, RIB, « salaire » — et divergeait
+ * sur chacune, à clé de SUCCÈS côté mission donc DÉFINITIF. Leçon C28-26 : une seule règle, deux
+ * consommateurs). Segment TYPE normalisé (minuscules sans accents, mots séparés par espaces). */
+
+/** Bulletin de paie/salaire — MOT entier, jamais « paiement » (piège #228). PURE. */
+function estTypePaieReset_(t) {
+  return /(^| )(paie|paye|salaire)( |$)/.test(t);
+}
+
+/** Feuillet fiscal québécois RL-1/RL-31 — ANCRÉ sur le nombre (jamais « Relevé 10 »). PURE. */
+function estFeuilletFiscalReset_(t) {
+  return /(^| )releve (1|31)( |$)/.test(t);
+}
+
+/** Relevé d'IDENTITÉ bancaire (RIB) — des coordonnées, jamais un relevé de compte. PURE. */
+function estRibReset_(t) {
+  return t.indexOf('releve d identite bancaire') !== -1;
+}
+
+/**
+ * « Impôts & déclarations »/<année> — PAR ANNÉE depuis C28-49 PR2 (décision Marc « séparé par
+ * années avec tous les documents pour chaque année ») : MÊME segment (AAAA nu) que mission-impots
+ * (`anneeDuNomMission_` côté mission, `seg.annee` côté flux — même valeur : l'année du NOM,
+ * même plausibilité : `anneePlausible_`).
+ * Année absente/implausible → racine (mission-impots la reprendra si une règle future l'éclaire).
+ */
+function cheminImpotsReset_(seg) {
+  var a = seg && seg.annee ? String(seg.annee) : '';
+  return anneePlausible_(a) ? 'Impôts & déclarations/' + a : 'Impôts & déclarations';
 }
 
 /**
@@ -237,7 +289,7 @@ function cheminCibleReset_(domaine, nom) {
     // affirmé couvert par la règle fiscale, à tort — elle est APRÈS). Motif ANCRÉ sur le nombre pour
     // ne jamais toucher « Relevé 10 » ou un relevé bancaire ordinaire. « Relevé d'emploi » n'est PAS
     // inclus : c'est un document de CARRIÈRE (05), à trancher avec Marc s'il s'en présente.
-    if (/(^| )releve (1|31)( |$)/.test(t)) return 'Impôts & déclarations';
+    if (estFeuilletFiscalReset_(t)) return cheminImpotsReset_(seg);
     // PAIE — motif ANCRÉ SUR LE MOT, jamais une sous-chaîne : « paie » est contenu dans
     // « paiement », et un « Relevé de paiement » (Hydro-Québec, Retraite Québec, assureurs) n'est
     // PAS un bulletin de salaire. Ma 1ʳᵉ version testait `t === 'paie'` (exact, correct) MAIS aussi
@@ -247,15 +299,21 @@ function cheminCibleReset_(domaine, nom) {
     // qui produit le libellé `_Paie_` au renommage : une seule règle de mot aux deux bouts de la
     // chaîne. Couvre paie / bulletin de paie / fiche de paie / feuille de paie / relevé de paie /
     // bulletin de salaire / sommaire de paie… et exclut « paiement » par construction.
-    if (/(^| )(paie|salaire)( |$)/.test(t)) return 'Revenus & paie';
-    if (t.indexOf('releve') !== -1 && t.indexOf('releve d identite bancaire') === -1) return 'Relevés/' + resetBucketAnnee_(seg.annee, s['Relevés']);
+    // PAR EMPLOYEUR depuis C28-49 PR2 (décision Marc « un sous-dossier par employeur ») : MÊME
+    // canon que mission-paies (`employeurDuNom_`, Missions.gs — une seule règle, deux
+    // consommateurs). Émetteur hors table → racine (comme avant), jamais deviné.
+    if (estTypePaieReset_(t)) {
+      var employeurPaie = employeurDuNom_(e);
+      return employeurPaie ? 'Revenus & paie/' + employeurPaie : 'Revenus & paie';
+    }
+    if (t.indexOf('releve') !== -1 && !estRibReset_(t)) return 'Relevés/' + resetBucketAnnee_(seg.annee, s['Relevés']);
     // Fiscal (dont les feuillets québécois T4/Relevé 1) et remboursements d'IMPÔT (revue : 'bourse'
     // ⊂ « remboursement » envoyait les remboursements en Placements — jamais de motif court sur tout).
     if (resetContient_(t, ['avis d imposition', 'declaration de revenus', 'impot', 'taxe', 'feuillet', 't4']) ||
-        (t.indexOf('remboursement') !== -1 && e.indexOf('revenu') !== -1)) return 'Impôts & déclarations';
+        (t.indexOf('remboursement') !== -1 && e.indexOf('revenu') !== -1)) return cheminImpotsReset_(seg);
     // Donations/successions → versant FISCAL (le versant notarial est couvert par `01 · État civil
     // & notarial`, où les actes partent déjà). Le nœud dédié a cédé sa place à « Revenus & paie ».
-    if (resetContient_(tout, ['donation', 'succession'])) return 'Impôts & déclarations';
+    if (resetContient_(tout, ['donation', 'succession'])) return cheminImpotsReset_(seg);
     // Assurance AVANT le rattrapage bancaire (revue : « Desjardins Assurance » partait en Banques).
     if (resetContient_(tout, ['assurance vie', 'prevoyance']) || e.indexOf('assurance') !== -1) return 'Assurances & prévoyance';
     if (resetContient_(tout, ['tether', 'usdt', 'crypto', 'securities', 'boursier', 'bourse de', 'portefeuille'])) return 'Placements & crypto';
@@ -331,17 +389,22 @@ function cheminCibleReset_(domaine, nom) {
 
   if (domaine === '05 · Carrière') {
     if (t === 'cv' || tout.indexOf('cv') === 0 || resetContient_(tout, ['curriculum', 'lettre de motivation'])) return 'CV & lettres';
-    if (t.indexOf('candidature') !== -1) return 'Recherche d\'emploi/Candidatures';
-    if (tout.indexOf('suivi recherche') !== -1) return 'Recherche d\'emploi/Suivi';
-    if (tout.indexOf('archive candidatures') !== -1) return 'Recherche d\'emploi/Archive 2021-2025';
+    // FUSION « Recherche d'emploi » → « CV & lettres » (décision Marc 2026-08-17, ADR-0039 §7,
+    // mission-carriere) : le flux VISE désormais la cible de la fusion — sinon il re-remplirait le
+    // dossier que la mission vide et peint en rouge (leçon C28-26 « une seule règle, deux
+    // consommateurs » ; trouvé par la revue flotte PR2, geste SYMÉTRIQUE livré avec la mission).
+    if (t.indexOf('candidature') !== -1) return 'CV & lettres/Candidatures';
+    if (tout.indexOf('suivi recherche') !== -1) return 'CV & lettres/Suivi';
+    if (tout.indexOf('archive candidatures') !== -1) return 'CV & lettres/Archive 2021-2025';
     if (e.indexOf('robovic') !== -1) return 'Employeurs/Robovic';
     if (e.indexOf('automatech') !== -1) return 'Employeurs/Automatech';
     if (resetContient_(e, ['mric', 'm ric'])) return 'Entreprise — MRic (SCI)';
     if (resetContient_(tout, ['alternance', 'stage'])) return 'Alternance & stages';
     if (t.indexOf('bilan') !== -1 || (' ' + t).indexOf(' formation') !== -1) return 'Formation & bilans'; // ' formation' : jamais « information » (revue)
     if (resetContient_(tout, ['linkedin', 'presentation', 'reseau'])) return 'Réseaux & présentations';
-    // Décision Marc : les AUTRES entreprises = recherche d'emploi (jamais employeurs).
-    if (e === 'ute' || resetContient_(e, ['arkema', 'eaton', 'siemens', 'schneider', 'wiio', 'bluewrist', 'pierre fabre', 'lactalis', 'gravelines', 'cnpe'])) return 'Recherche d\'emploi';
+    // Décision Marc : les AUTRES entreprises = candidatures (jamais employeurs) — cible de la
+    // FUSION « Recherche d'emploi » → « CV & lettres » (2026-08-17, cf. ci-dessus).
+    if (e === 'ute' || resetContient_(e, ['arkema', 'eaton', 'siemens', 'schneider', 'wiio', 'bluewrist', 'pierre fabre', 'lactalis', 'gravelines', 'cnpe'])) return 'CV & lettres';
     return null;
   }
 

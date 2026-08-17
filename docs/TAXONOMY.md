@@ -20,7 +20,7 @@ INTERDIT » **ne vaut plus** — la prod range désormais dans `Relevés/`, `Re�
 | `02 · Finances` | Banques · Relevés · Reçus & factures · Impôts & déclarations · Assurances & prévoyance · Placements & crypto · **Revenus & paie** | **0 — PLEIN** |
 | `03 · Logement & véhicule` | Logements · Véhicules · Énergie & services · Assurance habitation · **Contrats** · **Correspondance** | 1 |
 | `04 · Immigration` | IRCC (fédéral) · MIFI (Québec) · Permis de travail & EIMT · Résidence permanente · Formulaires & correspondance | 2 |
-| `05 · Carrière` | Employeurs · Recherche d'emploi · Alternance & stages · CV & lettres · Entreprise — MRic (SCI) · Formation & bilans · Réseaux & présentations | 0 |
+| `05 · Carrière` | Employeurs · Alternance & stages · CV & lettres (+ Candidatures · Suivi · Archive 2021-2025) · Entreprise — MRic (SCI) · Formation & bilans · Réseaux & présentations | 1 |
 | `06 · Études & diplômes` | 5 écoles + Autres établissements + Diplômes & relevés officiels | 0 |
 | `07 · Santé` | Médecins & consultations · Hôpitaux & centres · Assurances santé · Factures & reçus · Examens & résultats · Médecine scolaire & travail | 1 |
 | `08 · Perso & projets` | Projets · Écrits & rédactions · Schémas & technique · Photos & loisirs · Notes · Données & exports | 1 |
@@ -30,6 +30,20 @@ INTERDIT » **ne vaut plus** — la prod range désormais dans `Relevés/`, `Re�
 nouveau nœud. *(Note : le flux vivant y crée aussi `02 · Finances/AAAA` — `DOMAINES_PAR_ANNEE`,
 `Config.gs` — nœud absent de la table ; exemption connue, voir BACKLOG C28-36.)*
 
+**Enfants DYNAMIQUES hors table (C28-49 PR2, ADR-0039 §7)** — trois familles exemptées du
+validateur ≤ 7 (`verifierStructureCibleReset_`) : `Pièces d'identité/Autres/<personne>` (bornée
+par `RESET_PERSONNES_AUTRES`, testée ≤ 7), `Revenus & paie/<Employeur>` (bornée par
+`CONFIG.MISSIONS_EMPLOYEURS`, testée ≤ 7) et `Impôts & déclarations/<AAAA>` (années réelles,
+> 7 ASSUMÉ — même statut structurel que les buckets `Relevés/AAAA`). ⚠️ Les dossiers-employeurs
+sont formellement des « dossiers par émetteur » (interdits par la règle de granularité plus bas) :
+**exception voulue et bornée** — table canonique validée par Marc (« un sous-dossier par
+employeur »), jamais un dossier au premier émetteur venu.
+
+**Fusion « Recherche d'emploi » → « CV & lettres » (décision Marc 2026-08-17, ADR-0039 §7)** : le
+nœud a été RETIRÉ de la table (verrou d'absence testé) — la mission `carriere` vide le dossier
+Drive et le peint en rouge une fois vide ; ses enfants {Candidatures, Suivi, Archive 2021-2025}
+vivent désormais sous `CV & lettres`.
+
 ### Règles d'arbitrage entre domaines (à appliquer en cas de doute)
 
 - **`Contrats` / `Correspondance` existent dans `01` ET dans `03`.** `03` = ce qui concerne le
@@ -38,10 +52,11 @@ nouveau nœud. *(Note : le flux vivant y crée aussi `02 · Finances/AAAA` — `
   ⚠️ Asymétrie connue : dans `03`, un `Contrat_<inconnu>` tombe dans le filet `Contrats` ; dans
   `01`, le même nom rend `null` et reste au rapport (aucun filet contrat en 01, seule la liste de
   fournisseurs route).
-- **Bulletins de paie : `02 · Finances/Revenus & paie`** (décision Marc 2026-07-30, logique
-  « revenu »). ⚠️ Des bulletins classés antérieurement sous `05 · Carrière/Employeurs/<employeur>`
-  y restent : le reset est INTRA-domaine par construction et ne les remontera pas. Split assumé,
-  signalé à Marc.
+- **Bulletins de paie : `02 · Finances/Revenus & paie/<Employeur>`** (décisions Marc 2026-07-30
+  « logique revenu » puis 2026-08-17 « un sous-dossier par employeur ») — canon UNIQUE
+  `employeurDuNom_` (`MISSIONS_EMPLOYEURS`), émetteur hors table → racine `Revenus & paie`.
+  *(L'ancien « split assumé » — des bulletins restés sous `05/Employeurs/<employeur>` — n'est
+  PLUS vrai : `mission-carriere` (C28-49 PR2) les remonte vers le domicile unique en 02.)*
 - **Donations & successions** : versant **fiscal** → `02/Impôts & déclarations` ; versant
   **notarial** (actes) → `01/État civil & notarial`.
 

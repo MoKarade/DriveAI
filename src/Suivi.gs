@@ -24,11 +24,14 @@
  */
 
 // Troncatures des textes persistés — bornent la Property (test au plafond DÉRIVÉ du registre :
-// ~33 étapes × textes aux maxima en caractères 2 octets doit rester < ~8,5 Ko, limite Apps Script
-// ~9 Ko ; 60/40 donnaient 9 751 octets au pire cas — attrapé par le test avant tout déploiement).
-// Le message complet reste dans l'onglet Journal ; ici c'est un extrait d'affichage.
-var SUIVI_ERR_MAX = 40;
-var SUIVI_SKIP_MAX = 28;
+// les étapes × textes aux maxima en caractères 2 octets doivent rester < ~8,5 Ko, limite Apps
+// Script ~9 Ko ; 60/40 donnaient 9 751 octets au pire cas — attrapé par le test avant tout
+// déploiement ; 40/28 ont recassé le plafond à l'ajout des 8 missions C28-49, 42 étapes ⇒ 9 385
+// octets — le test dérivé a de nouveau mordu AVANT le déploiement, resserré à 32/24). 24 couvre
+// la plus longue raison de skip RÉELLE (« en attente (missions 03) »), vérifié par le tripwire
+// des raisons. Le message complet reste dans l'onglet Journal ; ici c'est un extrait d'affichage.
+var SUIVI_ERR_MAX = 32;
+var SUIVI_SKIP_MAX = 24;
 
 /**
  * Registre des opérations du tick — ORDRE = ordre d'exécution dans `tickDriveAI` (l'app l'affiche
@@ -62,6 +65,10 @@ var REGISTRE_OPERATIONS = [
   { cle: 'mission-logement', libelle: 'Mission — logements (Logements → Logement)', unite: 'fichiers', type: 'campagne' },
   { cle: 'mission-dispatch-03', libelle: 'Mission — contrats, correspondance, assurances & énergie (03)', unite: 'fichiers', type: 'campagne' },
   { cle: 'mission-archives-06', libelle: 'Mission — archives scolaires (06)', unite: 'fichiers', type: 'campagne' },
+  { cle: 'mission-paies', libelle: 'Mission — paies par employeur (02)', unite: 'fichiers', type: 'campagne' },
+  { cle: 'mission-carriere', libelle: 'Mission — employeurs & CV (05)', unite: 'fichiers', type: 'campagne' },
+  { cle: 'mission-annees-02', libelle: 'Mission — dossiers-années de Finances (02)', unite: 'fichiers', type: 'campagne' },
+  { cle: 'mission-impots', libelle: 'Mission — impôts par année (02)', unite: 'fichiers', type: 'campagne' },
   { cle: 'fusion-exec', libelle: 'Fusion des dossiers en double', unite: 'lignes', type: 'campagne' },
   { cle: 'reset-rassemblement', libelle: 'Reset — rassemblement vers _TRI', unite: 'fichiers', type: 'campagne' },
   { cle: 'reset-placement', libelle: 'Reset — placement depuis _TRI', unite: 'fichiers', type: 'campagne' },

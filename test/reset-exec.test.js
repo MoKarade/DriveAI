@@ -15,7 +15,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { load } = require('./harness');
 
-const ctxPur = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+const ctxPur = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
 
 /* ---------- Fonctions PURES ---------- */
 
@@ -35,7 +35,7 @@ test('domainesRassemblesReset_ : 04 EXCLU, les domaines AUTO (07/09) inclus', ()
 });
 
 test('resetTermine_ / resetEnCours_ : les 3 phases doivent être au tag courant ; RESET_ACTIF: false libère immédiatement', () => {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const props = {};
   c.PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => (k in props ? props[k] : null) }) };
   const tag = c.CONFIG.RESET_TAG;
@@ -99,7 +99,7 @@ function fakeDossierReset(id, log) {
 
 function ctxRassemblement(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const index = {};
   const ajouts = [];
   const log = [];
@@ -149,7 +149,7 @@ test('rassemblerUnFichier_ : cas nominal → addFile(_TRI/<domaine>) PUIS remove
 });
 
 test('ecarterEchecMutationReset_ : un fichier « empoisonné » (mutation qui lève) est COMPTÉ puis ÉCARTÉ après N échecs → le reset converge (jamais bloqué à vie)', () => {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const MAX = c.CONFIG.QUARANTAINE_MAX;
   let compteur = 0;
   c.incrementerEchec_ = () => ++compteur; // simule l'onglet Échecs
@@ -170,7 +170,7 @@ test('ecarterEchecMutationReset_ : un fichier « empoisonné » (mutation qui l�
 });
 
 test('ecarterEchecMutationReset_ : `tentes` déduplique le comptage PAR EXÉCUTION (leçon §7 — pilote/un-clic re-rencontrent le fichier à chaque ronde)', () => {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const MAX = c.CONFIG.QUARANTAINE_MAX;
   let compteur = 0;
   c.incrementerEchec_ = () => ++compteur;
@@ -191,7 +191,7 @@ test('ecarterEchecMutationReset_ : `tentes` déduplique le comptage PAR EXÉCUTI
 });
 
 test('collecte : un fichier ÉPINGLÉ par Marc n\'est JAMAIS aspiré vers `_TRI` ni réorganisé dans 04 (ADR-0026 — les autres campagnes l\'immunisent déjà)', () => {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const index = { 'epingle|EPINGLE': true };
   c.indexContient_ = (cle) => !!index[cle];
   c.journalErreur_ = () => {};
@@ -217,7 +217,7 @@ test('collecte : un fichier ÉPINGLÉ par Marc n\'est JAMAIS aspiré vers `_TRI`
 });
 
 test('rassemblerUnFichier_ : déjà dans `_TRI` (rejeu) → aucun mouvement, mais la clé se pose', () => {
-  const c0 = load(['Config.gs', 'Reset.gs']);
+  const c0 = load(['Config.gs', 'Reset.gs', 'Missions.gs']);
   const cibleId = 'RACINE:' + c0.CONFIG.RESET_TRI_NOM + '/02 · Finances';
   const { c, log, ajouts, videAppels } = ctxRassemblement({ ancienId: cibleId });
   const r = c.rassemblerUnFichier_('F1', '02 · Finances', 'tag', {}, {});
@@ -247,7 +247,7 @@ test('rassemblerUnFichier_ : fichier disparu (getFileById lève) → tracé, jam
 
 function ctxPlacement(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const index = {};
   const ajouts = [];
   const log = [];
@@ -376,7 +376,7 @@ test('placerUnFichierReset_ : QUASI-doublon — deux gros fichiers JAMAIS hashé
 test('placerUnFichierReset_ : QUASI-doublon — même taille, LES DEUX vraiment hashés (empreintes différentes → contenu réellement distinct) → aucun rapport', () => {
   // Les deux fichiers SONT hashés (sous RESET_HASH_TAILLE_MAX) et ont des empreintes DIFFÉRENTES — le hash
   // exact a donc déjà tranché « pas un doublon » : la coïncidence de taille seule n'a rien à ajouter.
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const index = {};
   const ajouts = [];
   const log = [];
@@ -440,7 +440,7 @@ test('placerUnFichierReset_ : déjà en place (rejeu) → aucun addFile/removeFi
 
 function ctxInterne04(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const index = {};
   const ajouts = [];
   const log = [];
@@ -583,7 +583,7 @@ function fakeLock(disponible) {
 }
 
 test('acquerirVerrouReset_ : verrou indisponible (tick en cours) → null, aucune mutation tentée', () => {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const { lock, appels } = fakeLock(false);
   c.LockService = { getScriptLock: () => lock };
   c.journalInfo_ = () => {};
@@ -594,7 +594,7 @@ test('acquerirVerrouReset_ : verrou indisponible (tick en cours) → null, aucun
 });
 
 test('lancerResetRassemblement : verrou INDISPONIBLE → sort tôt, ne relance AUCUNE phase (course avec le tick évitée)', () => {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   c.CONFIG.RESET_ACTIF = true; // FORCÉ (revue code-reviewer : sans ça, le défaut false ferait sortir
   // AU FLAG, jamais au verrou — le test passerait pour la mauvaise raison ; ADR-0035).
   const { lock, appels } = fakeLock(false);
@@ -609,7 +609,7 @@ test('lancerResetRassemblement : verrou INDISPONIBLE → sort tôt, ne relance A
 });
 
 test('lancerResetRassemblement : verrou acquis → relâché même si la phase LÈVE (finally)', () => {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   c.CONFIG.RESET_ACTIF = true; // FORCÉ (défaut retiré à false 2026-08-05, ADR-0035)
   const { lock, appels } = fakeLock(true);
   c.LockService = { getScriptLock: () => lock };
@@ -626,7 +626,7 @@ test('lancerResetRassemblement : verrou acquis → relâché même si la phase L
 // Monte une phase isolée : Properties en mémoire + la passe de travail mockée (on teste le GATE, pas le travail).
 function ctxPhase(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   c.CONFIG.RESET_ACTIF = true; // FORCÉ (leçon §7 : défaut retiré à false 2026-08-05, ADR-0035)
   const store = Object.assign({}, opts.props);
   c.PropertiesService = { getScriptProperties: () => ({
@@ -643,7 +643,7 @@ function ctxPhase(opts) {
 }
 
 test('rassemblerReset_ (TICK) : budget quotidien ÉPUISÉ → ne travaille pas (le quota des déclencheurs reste protégé)', () => {
-  const c0 = load(['Config.gs', 'Reset.gs']);
+  const c0 = load(['Config.gs', 'Reset.gs', 'Missions.gs']);
   const plein = '2026/07/29|' + c0.CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS; // dérivé de la CONFIG, jamais une valeur du jour
   const t = ctxPhase({ props: { DriveAI_RESET_RASS_JOUR: plein } });
   t.c.rassemblerReset_(() => false); // pas de `manuel` → chemin TICK, comportement inchangé
@@ -655,7 +655,7 @@ test('rassemblerReset_ (UN-CLIC) : budget quotidien épuisé → travaille QUAND
   // HORS. Sans ce correctif : (1) Marc bloqué jusqu'au lendemain après quelques relances manuelles,
   // (2) pire — son run manuel consommait le budget du tick, donc l'AUTO ne faisait plus rien de la
   // journée (le manuel affamait l'auto). Les deux sont verrouillés ici.
-  const c0 = load(['Config.gs', 'Reset.gs']);
+  const c0 = load(['Config.gs', 'Reset.gs', 'Missions.gs']);
   const plein = '2026/07/29|' + c0.CONFIG.RESET_RASSEMBLEMENT_BUDGET_JOUR_MS;
   const t = ctxPhase({ props: { DriveAI_RESET_RASS_JOUR: plein } });
   t.c.rassemblerReset_(() => false, true); // manuel
@@ -665,7 +665,7 @@ test('rassemblerReset_ (UN-CLIC) : budget quotidien épuisé → travaille QUAND
 });
 
 test('placerReset_ / appliquerReset04Interne_ : même contrat manuel (gate + comptage) que le rassemblement', () => {
-  const c0 = load(['Config.gs', 'Reset.gs']);
+  const c0 = load(['Config.gs', 'Reset.gs', 'Missions.gs']);
   for (const cas of [
     { fn: 'placerReset_', cle: 'DriveAI_RESET_PLACE_JOUR', budget: c0.CONFIG.RESET_PLACEMENT_BUDGET_JOUR_MS, passe: 'placerUnePageReset_' },
     { fn: 'appliquerReset04Interne_', cle: 'DriveAI_RESET_04_JOUR', budget: c0.CONFIG.RESET_04_BUDGET_JOUR_MS, passe: 'reorganiserPageInterne04_' },
@@ -699,7 +699,7 @@ test('rondeSterileReset_ : rien examiné ET rien déplacé (ou phase muette) = s
 
 // Contexte de boucle un-clic : verrou libre, phases injectées, Properties en mémoire.
 function ctxBoucle(phases) {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   c.CONFIG.RESET_ACTIF = true; // FORCÉ (défaut retiré à false 2026-08-05, ADR-0035)
   const store = {};
   c.PropertiesService = { getScriptProperties: () => ({
@@ -733,7 +733,7 @@ test('boucles un-clic : testées par leur LIBÉRATION — du travail fait contin
   // Leçon §7 : un gate se teste par sa libération, pas seulement par son blocage. Ici : la boucle
   // doit ENCHAÎNER tant qu'il y a du travail, et ne s'arrêter que quand il n'y en a plus.
   let restant = 3;
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   c.CONFIG.RESET_ACTIF = true; // FORCÉ (défaut retiré à false 2026-08-05, ADR-0035)
   const store = {};
   c.PropertiesService = { getScriptProperties: () => ({
@@ -829,7 +829,7 @@ test('les 4 fonctions UN-CLIC passent `true` (manuel) aux phases — sinon le bu
 // Page de placement isolée : un dossier `_TRI 2026/<domaine>` contenant N fichiers, clés en mémoire.
 function ctxPage(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const index = Object.assign({}, opts.index);
   const traites = [];
   c.indexContient_ = (cle) => !!index[cle];
@@ -889,7 +889,7 @@ test('placement : la collecte n\'itère QUE sur `_TRI` — bumper la version ne 
 
 // Phase de placement isolée, avec la passe de travail mockée : on teste le GARDE de fin, pas le travail.
 function ctxPlacementPhase(props) {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   c.CONFIG.RESET_ACTIF = true; // FORCÉ (défaut retiré à false 2026-08-05, ADR-0035)
   const store = Object.assign({}, props);
   c.PropertiesService = { getScriptProperties: () => ({
@@ -908,7 +908,7 @@ function ctxPlacementPhase(props) {
 }
 
 test('placerReset_ : drapeau de fin à la version COURANTE → phase close (aucune passe) — le blocage', () => {
-  const c0 = load(['Config.gs', 'Reset.gs']);
+  const c0 = load(['Config.gs', 'Reset.gs', 'Missions.gs']);
   const t = ctxPlacementPhase({
     DriveAI_RESET_PLACEMENT: c0.CONFIG.RESET_TAG + '|' + c0.CONFIG.RESET_TABLE_VERSION,
     DriveAI_RESET_RASSEMBLEMENT: c0.CONFIG.RESET_TAG,
@@ -922,7 +922,7 @@ test('placerReset_ : drapeau de fin à une ANCIENNE version → la phase SE RÉ-
   // AVANT la construction des clés versionnées. Une fois le placement convergé, bumper
   // RESET_TABLE_VERSION ne re-présentait plus RIEN — en silence, sans erreur, et le seul
   // contournement (bumper RESET_TAG) aurait renvoyé TOUT le Drive dans `_TRI` pour un cycle complet.
-  const c0 = load(['Config.gs', 'Reset.gs']);
+  const c0 = load(['Config.gs', 'Reset.gs', 'Missions.gs']);
   const t = ctxPlacementPhase({
     DriveAI_RESET_PLACEMENT: c0.CONFIG.RESET_TAG + '|v-ancienne',
     DriveAI_RESET_RASSEMBLEMENT: c0.CONFIG.RESET_TAG,
@@ -934,7 +934,7 @@ test('placerReset_ : drapeau de fin à une ANCIENNE version → la phase SE RÉ-
 });
 
 test('placerReset_ : drapeau LEGACY sans version (état de la prod avant ce PR) → se ré-ouvre UNE fois, puis converge', () => {
-  const c0 = load(['Config.gs', 'Reset.gs']);
+  const c0 = load(['Config.gs', 'Reset.gs', 'Missions.gs']);
   const t = ctxPlacementPhase({
     DriveAI_RESET_PLACEMENT: c0.CONFIG.RESET_TAG, // valeur écrite par le code déployé aujourd'hui
     DriveAI_RESET_RASSEMBLEMENT: c0.CONFIG.RESET_TAG,
@@ -946,11 +946,11 @@ test('placerReset_ : drapeau LEGACY sans version (état de la prod avant ce PR) 
 });
 
 test('resetTermine_ : exige la VERSION côté placement (un bump rouvre le reset ⇒ campagnes re-suspendues, effet assumé)', () => {
-  const c0 = load(['Config.gs', 'Reset.gs']);
+  const c0 = load(['Config.gs', 'Reset.gs', 'Missions.gs']);
   const TAG = c0.CONFIG.RESET_TAG;
   const V = c0.CONFIG.RESET_TABLE_VERSION;
   const monter = (placement) => {
-    const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+    const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
     c.CONFIG.RESET_ACTIF = true; // FORCÉ (défaut retiré à false 2026-08-05, ADR-0035) : ce test isole
     // l'effet de la VERSION sur resetTermine_/resetEnCours_, pas la suspension manuelle.
     const store = { DriveAI_RESET_RASSEMBLEMENT: TAG, DriveAI_RESET_04: TAG, DriveAI_RESET_PLACEMENT: placement };
@@ -969,7 +969,7 @@ test('resetTermine_ : exige la VERSION côté placement (un bump rouvre le reset
 /** Contexte minimal pour `empreinteReutiliseeReset_` : compte les hashs RÉELLEMENT calculés. */
 function ctxEmpreinte(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const hashs = [];
   c.empreinteBlob_ = (blob) => { hashs.push(blob.id); return 'CALC:' + blob.id; };
   c.empreinteConnueParId_ = (id) => (opts.index || {})[id] || '';
@@ -1055,7 +1055,7 @@ test('empreinteReutiliseeReset_ : la borne du reset est STRICTEMENT sous celle d
 });
 
 test('resoudreCibleReset_ : la cible d\'un même sous-chemin n\'est résolue qu\'UNE fois par run (mémoïsation)', () => {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const appels = [];
   const log = [];
   c.sousDossier_ = (parent, nom) => { appels.push(nom); return fakeDossierReset(parent.getId() + '/' + nom, log); };
@@ -1072,7 +1072,7 @@ test('resoudreCibleReset_ : la cible d\'un même sous-chemin n\'est résolue qu\
 });
 
 test('dossierDomaineMemo_ : un domaine n\'est résolu qu\'UNE fois par run, et sans ctx ça marche quand même', () => {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const log = [];
   let appels = 0;
   c.idDomaine_ = (d) => { appels++; return 'DOM:' + d; };
@@ -1090,7 +1090,7 @@ test('dossierDomaineMemo_ : un domaine n\'est résolu qu\'UNE fois par run, et s
 /* ---------- UN-CLIC : partage du mur entre les 3 phases (revue #229) ---------- */
 
 test('partPhaseReset_ (PURE) : le temps restant se partage entre les phases NON encore servies', () => {
-  const c = load(['Config.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Reset.gs', 'Missions.gs']);
   // 1re phase sur 3 → un tiers seulement : c'est ça qui empêche `lancerResetTout` de dégénérer en
   // rassemblement seul dès que le plafond d'items est haut (revue #229).
   assert.strictEqual(c.partPhaseReset_(90000, 3), 30000);
@@ -1104,7 +1104,7 @@ test('partPhaseReset_ (PURE) : le temps restant se partage entre les phases NON 
 });
 
 test('gardePartReset_ : borné par la part ET par le mur GLOBAL de l\'exécution', () => {
-  const c = load(['Config.gs', 'Reset.gs']);
+  const c = load(['Config.gs', 'Reset.gs', 'Missions.gs']);
   const MUR = c.CONFIG.BUDGET_MS;
   // Exécution qui vient de démarrer : la phase peut travailler.
   assert.strictEqual(c.gardePartReset_(Date.now(), 3)(), false);

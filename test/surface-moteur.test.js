@@ -51,6 +51,13 @@ const CONTRAT = [
   'budgetJourMissions_', 'cleMission_', 'apparierUnique_', 'jetonsCible_', 'logementParDate_',
   'dateDuNomMission_', 'fenetresOccupation_', 'ciblesAvecJetons_', 'collecterMission_',
   'traiterItemMission_', 'peindreDossierRouge_', 'peindreSourcesVides_', 'estDossierVideMission_',
+  // C28-49 PR2 : Carrière + Finances.
+  'employeurDuNom_', 'typeDuNomMission_', 'anneeDuNomMission_', 'typeContient_',
+  'routerFinance02_', 'sousDossierEmployeur_', 'routerCarriere_', 'moisManquantsPaies_',
+  'ecrireRapportPaies_',
+  // C28-49 PR2 (revue finale) : prédicats PARTAGÉS flux ↔ missions, définis dans Reset.gs et
+  // appelés depuis Missions.gs — une seule règle, deux consommateurs (leçon C28-26).
+  'anneePlausible_', 'estTypePaieReset_', 'estFeuilletFiscalReset_', 'estRibReset_',
   // curation des mails (C28-19, ADR-0020) : confiance, scan cyclique, « pas suspect » 1-clic
   'decisionSuspect_', 'confianceCache_', 'reinitialiserConfianceCache_', 'apprendreConfiance_',
   'scanCycliqueTri_', 'appliquerPasSuspect_', 'purgerClesTriIndex_',

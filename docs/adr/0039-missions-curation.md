@@ -113,3 +113,54 @@ Fonctions PURES isolées (jetons, appariement, fenêtres de dates, alias, prédi
 runner éprouvé sur mocks (idempotence, refus versionnés, garde par item, convergence, rouge
 uniquement sur vide, jamais de mutation d'un protégé/multi-parents) ; invariants d'enveloppe et de
 couple mis à jour + prouvés par MUTATION ; revue flotte adversariale AVANT merge.
+
+
+## 7. PR2 — Carrière + Finances (2026-08-17, réponses de Marc intégrées)
+
+4 missions de plus, même socle, MÊME budget quotidien partagé (aucune enveloppe ajoutée) :
+
+| Clé | Mission | Règle |
+|---|---|---|
+| `mission-paies` | Racine de « Revenus & paie » → un sous-dossier PAR EMPLOYEUR | `employeurDuNom_` (table canonique `MISSIONS_EMPLOYEURS` : Robovic, Automatech, CIUSSS — mot entier, ambigu/hors table = laissé). **`profondeurPar = 0`** : les sous-dossiers d'employeur sont la SORTIE de la mission, jamais son périmètre (sinon elle boucle sur sa propre production ; la borne VOULUE ne déclenche pas l'alerte « trop profond », distincte de la borne de sécurité). À la CONVERGENCE : **onglet `RapportPaies`** (mois manquants par employeur, entre premier et dernier mois observés — on ne devine pas les bornes d'emploi) — peut lever ⇒ pas de FINI sans rapport. |
+| `mission-carriere` | Employeurs/Robovic + /Automatech (vrac plat), racine 05 (ex-dump Automatech), fusion « Recherche d'emploi » → « CV & lettres » | Une PAIE part vers 02 (« domicile UNIQUE », décision Marc — même fonction canonique que `mission-paies`, jamais deux règles) ; types en table (`Contrats`, `Attestations & lettres`, `Formulaires`, `Évaluations`) ; type inconnu DANS Employeurs/<X> = laissé (le déplacer « à plat » = no-op déguisé) ; depuis la RACINE 05, un émetteur SÛR à type inconnu va au moins dans son dossier (l'enrichissement demandé) ; CV/lettre de motivation → « CV & lettres ». CIUSSS n'a pas de dossier sous 05 : on n'en CRÉE pas (paies seules routées). |
+| `mission-annees-02` | Les 12 dossiers-années de 02 vidés | Table type → cible sur le SEGMENT TYPE du nom (jamais le nom complet — l'émetteur « Banque CIC » ne doit pas faire d'un relevé d'impôt un document bancaire) : paie → Revenus & paie/<emp> ; fiscal (t4, impôt, cotisation, déclaration, feuillet) **AVANT** « relevé » générique → Impôts & déclarations/<année du NOM, repli = année du dossier source> ; relevé → Relevés ; reçu/facture → Reçus & factures ; assurance → Assurances & prévoyance ; hors table = laissé + rapporté. |
+| `mission-impots` | Racine d'« Impôts & déclarations » → sous-dossier par ANNÉE | `anneeDuNomMission_` (préfixe `AAAA-`/`AAAA_`, plage plausible) ; sans année = laissé. `profondeurPar = 0` (les sous-dossiers d'année sont la sortie). |
+
+Ordre du tick : `paies` avant `carriere` (priorité de drainage du domicile unique). Le plafond
+DÉRIVÉ de la Property de suivi a MORDU à l'ajout des 8 entrées (9 385 octets au pire cas) —
+troncatures resserrées à 32/24 (24 couvre la plus longue raison de skip réelle), la leçon §7
+« plafond dérivé de la constante » ayant fait exactement son travail, deux fois.
+
+Revue flotte PR2 (2 rondes), correctifs intégrés :
+
+- **`convergenceApres`** (nouveau au socle) : la CONCLUSION d'une mission (rapport, FINI) peut
+  dépendre d'un état que des missions SŒURS construisent encore — `paies` attend le FINI de
+  `carriere` et `annees-02` avant d'écrire `RapportPaies` (sinon rapport écrit puis FIGÉ pendant
+  que des paies arrivent encore). Le drainage, lui, n'attend personne.
+- **`sourcesJetables`** (nouveau au socle) : la peinture ROUGE ne vise que les dossiers que Marc
+  veut supprimer (ex. « Recherche d'emploi ») — jamais une racine pérenne (« Revenus & paie »,
+  « Employeurs ») momentanément vide.
+- **Compteur `errC` séparé** : un échec d'`apresConvergence` n'est pas effacé par une collecte
+  saine — le filet anti-brûlage (MISSIONS_ERREURS_MAX) garde sa mémoire jusqu'au succès.
+- **`RapportPaies` borné** : plausibilité des mois (1990-2100), cellule tronquée à 1 000 car.,
+  plafonds sous-dossiers/fichiers, `clearContent` du reliquat.
+- **Geste SYMÉTRIQUE sur la table du flux** (leçon C28-26 « une seule règle, deux
+  consommateurs ») : `cheminCibleReset_` route paie → `Revenus & paie/<employeur>` (MÊME canon
+  `employeurDuNom_`), fiscal → `Impôts & déclarations/<AAAA>` (`cheminImpotsReset_`, MÊME segment
+  que `mission-impots`), 05 → cibles de la fusion. Le nœud `« Recherche d'emploi »` est RETIRÉ de
+  `STRUCTURE_CIBLE_RESET` (ses enfants passent sous « CV & lettres ») : le garder le ferait
+  recréer PAR NOM à chaque reset le dossier que la mission vide et peint en rouge (ping-pong,
+  leçon Fusion #47). Verrou d'ABSENCE testé + `cibleExiste` étendu aux enfants dynamiques BORNÉS
+  (années d'Impôts, employeurs de `MISSIONS_EMPLOYEURS`) ; 4 mutations du geste attrapées.
+- **Plausibilité d'année UNIFIÉE** (`anneePlausible_`, Reset.gs — 1990-2100) : les deux fenêtres
+  écrites séparément (`cheminImpotsReset_` 1900-2099 vs `anneeDuNomMission_` 1990-2100)
+  divergeaient déjà — la graine exacte de C28-26, attrapée par la revue AVANT prod. Une seule
+  règle, trois consommateurs, les DEUX bornes testées. `MISSIONS_EMPLOYEURS` bornée ≤ 7 par test
+  (jumeau du verrou `RESET_PERSONNES_AUTRES`, revue #227) + couplage de versions documenté.
+
+Cas LIMITE accepté (documenté, pas gaté) : un fichier fiscal SANS année dans le nom sous un
+dossier-année de 02 — `mission-annees-02` cible `Impôts/<année du dossier source>` (enrichissement
+`anneeSource`), mais si la consolidation le déplace D'ABORD (elle recalcule par `cheminCibleReset_`
+sans connaître le dossier source), il atterrit à la RACINE d'Impôts, où `mission-impots` le refuse
+proprement (pas d'année au nom — refus keyé, ré-évaluable). Étroit (nom sans préfixe `AAAA` + type
+fiscal), aucune boucle, aucun égarement : au pire la racine au lieu du sous-dossier d'année.
