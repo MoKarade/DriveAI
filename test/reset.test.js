@@ -79,9 +79,15 @@ const CAS = [
   ['02 · Finances', '2022-08_Attestation_Boursorama Banque.pdf', 'Banques/Boursorama'],
   ['02 · Finances', '2010-04_Courrier_Lyonnaise De Banque.pdf', 'Banques/Banques France'],
   // 03 — logements par entité (dont le 3325 4e Avenue = LCP, amendement Marc)
-  ['03 · Logement & véhicule', '2024-05_Bail_1548 avenue de la Roselière.pdf', 'Logements/1548 avenue de la Roselière'],
-  ['03 · Logement & véhicule', '2025-07_Quittance_LCP Groupe Immobilier.pdf', 'Logements/3325 4e Avenue (LCP Groupe Immobilier)'],
-  ['03 · Logement & véhicule', '2023-01_Facture_KIA Québec.pdf', 'Véhicules/KIA'],
+  // 03 c49-2 (ADR-0040 §3c) : cibles SINGULIER aux noms RÉELS des dossiers Drive ; bailleurs et
+  // véhicules par les tables canoniques PARTAGÉES avec les missions.
+  ['03 · Logement & véhicule', '2024-05_Bail_1548 avenue de la Roselière.pdf', 'Logement/1548 avenue de la Roselière, Québec'],
+  ['03 · Logement & véhicule', '2025-07_Quittance_LCP Groupe Immobilier.pdf', 'Logement/3325 4e avenue'],
+  ['03 · Logement & véhicule', '2026-02-04_Convention de résiliation de bail_9478-5045 Québec inc.pdf', 'Logement/3987 rte des Rivières'],
+  ['03 · Logement & véhicule', '2023-01_Facture_KIA Québec.pdf', 'Véhicule/KIA'],
+  // Cible à 3 SEGMENTS versée dans CAS (revue structure C28-51) : `cibleExiste` verrouille alors
+  // route ↔ table — renommer une catégorie dans les constantes sans toucher la route casserait ICI.
+  ['03 · Logement & véhicule', '2025-03-01_Facture_Garage KIA Sportage.pdf', 'Véhicule/KIA/Entretien & réparations'],
   ['03 · Logement & véhicule', '2026-02_Facture_ENGIE.pdf', 'Énergie & services'],
   // 04 — routage INTERNE seulement ; un doc étranger (banque CIC) rend null = reste EN PLACE + rapport
   ['04 · Immigration', '2024-11_Permis de travail_IRCC.pdf', 'Permis de travail & EIMT'],
@@ -136,8 +142,8 @@ const CAS = [
   // Pièce délivrée par un consulat/une ambassade = autorité émettrice → Marc.
   ['01 · Administratif & identité', '2018-07_Passeport_Consulat Général De France À Québec.pdf', 'Pièces d\'identité/Marc'],
   // Anciens logements/véhicules du stock réel (Trieste, Jetta).
-  ['03 · Logement & véhicule', '2016-09_Bail_Résidence Trieste.pdf', 'Logements/Anciens logements'],
-  ['03 · Logement & véhicule', '2015-03_Facture_Volkswagen Jetta.pdf', 'Véhicules/Anciens véhicules'],
+  ['03 · Logement & véhicule', '2016-09_Bail_Résidence Trieste.pdf', 'Logement/Anciens logements'],
+  ['03 · Logement & véhicule', '2015-03_Facture_Volkswagen Jetta.pdf', 'Véhicule/VW Jetta'],
   // CAQ (Certificat d'acceptation du Québec) = MIFI, pas IRCC.
   ['04 · Immigration', '2022-05_CAQ_Gouvernement Du Québec.pdf', 'MIFI (Québec)'],
   // 'formation' ⊂ « information » : une lettre d'information ne part pas en Formation & bilans.
@@ -324,98 +330,59 @@ test('03 : filets Contrats / Correspondance — capturent le reliquat SANS voler
   assert.strictEqual(ctx.cheminCibleReset_(d, '2024-05_Consentement_Propriétaire.pdf'), 'Contrats');
   assert.strictEqual(ctx.cheminCibleReset_(d, '2023-02_Correspondance_Syndic.pdf'), 'Correspondance');
   assert.strictEqual(ctx.cheminCibleReset_(d, '2022-11_Avis de séjour_Camping.pdf'), 'Correspondance');
-  // PRIORITÉ : les règles par ENTITÉ passent AVANT les filets — un contrat LCP reste chez LCP.
+  // PRIORITÉ : les règles par ENTITÉ/BAILLEUR passent AVANT les filets — un contrat LCP part
+  // chez son logement (table bailleur, ADR-0040 §2), jamais dans le fourre-tout.
   assert.strictEqual(ctx.cheminCibleReset_(d, '2025-07_Contrat_LCP Groupe Immobilier.pdf'),
-    'Logements/3325 4e Avenue (LCP Groupe Immobilier)');
+    'Logement/3325 4e avenue');
   assert.strictEqual(ctx.cheminCibleReset_(d, '2024-01_Contrat_1548 avenue de la Roselière.pdf'),
-    'Logements/1548 avenue de la Roselière');
-  assert.strictEqual(ctx.cheminCibleReset_(d, '2023-05_Contrat_KIA Québec.pdf'), 'Véhicules/KIA');
-  // Et les types spécifiques gardent leur priorité.
-  assert.strictEqual(ctx.cheminCibleReset_(d, '2024-05_Bail_Résidence X.pdf'), 'Logements');
+    'Logement/1548 avenue de la Roselière, Québec');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2023-05_Contrat_KIA Québec.pdf'), 'Véhicule/KIA');
+  // Un bail SANS adresse ni bailleur reconnus : le filet « Contrats » (le pluriel « Logements »
+  // n'existe plus — c49-2), jamais un logement deviné.
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2024-05_Bail_Résidence X.pdf'), 'Contrats');
 });
 
-/* ---------- t4 : nœuds AUTO sous 03/Véhicules (décision Marc 2026-07-31, reliquat réel) ---------- */
+/* ---------- 03 c49-2 (ADR-0040 §3a/§3c) : catégories PAR VÉHICULE — le transversal t4 est
+ * RÉVOQUÉ par la décision Marc 2026-08-17. Un document de véhicule SANS véhicule identifiable
+ * n'a PLUS de fourre-tout : le flux (table pure) rend null (à plat au domaine + rapport) — la
+ * MISSION, elle, tranche par fenêtre de POSSESSION (état Drive). Mêmes noms RÉELS que t4. ---------- */
 
-/**
- * TOUS les cas ci-dessous sont des noms de fichiers RÉELS lus dans l'onglet `Reset` (les 160
- * non-routés sous t2) — jamais des exemples inventés : « prouver sur du réel, pas 2-3 cas
- * choisis » (§8-2).
- */
-test('t4 · 03 : entretien & réparations — routé par l\'ÉMETTEUR (l\'atelier), quel que soit le type', () => {
+test('c49-2 · 03 : un document de véhicule NOMMÉ va dans SON véhicule, catégorie par le type', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
+  const D = '03 · Logement & véhicule';
+  // Entretien : l'émetteur-atelier route la CATÉGORIE, le véhicule vient du nom.
+  assert.strictEqual(c.cheminCibleReset_(D, '2025-03-01_Facture_Garage KIA Sportage.pdf'),
+    'Véhicule/KIA/Entretien & réparations');
+  // Vente/achat : type transactionnel → Recherche & achat du véhicule nommé.
+  assert.strictEqual(c.cheminCibleReset_(D, '2023-06-20_Contrat de vente véhicule d\'occasion_KIA.pdf'),
+    'Véhicule/KIA/Recherche & achat');
+  // Assurance nommant le véhicule.
+  assert.strictEqual(c.cheminCibleReset_(D, '2023-11-13_Soumission d\'assurance automobile_Jetta Desjardins.pdf'),
+    'Véhicule/VW Jetta/Assurance auto');
+  // Sans type de catégorie : à plat dans le véhicule.
+  assert.strictEqual(c.cheminCibleReset_(D, '2015-03_Facture_Volkswagen Jetta.pdf'), 'Véhicule/VW Jetta');
+});
+
+test('c49-2 · 03 : SANS véhicule identifiable → null (jamais de fourre-tout, jamais deviné) — noms réels t4', () => {
   const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const D = '03 · Logement & véhicule';
   [
+    // Entretien/assurance génériques (ex-« Véhicules/<catégorie> » transversal, révoqué).
     '2023-10-02_Facture_Garage Charlesbourg Certi-Pro.jpg',
-    '2023-08-24_Estimation_GARAGE CHARLESBOURG CERTI-PRO.PDF',
-    '2025-09-10_Devis_Centre Mécanique JF.PDF',
-    '2026-04-15_Devis_Carrossier Procolor Québec Centre.pdf',
-    '2023-04-18_Facture_Automobiles Jean Vezin.jpg',
-    '2023-11-24_Facture_Volkswagen Laurentides.pdf',
-    '2026-07-01_Facture_Toyota.jpg',
-    '2021-08-31_Courrier d\'expertise sinistre automobile_Azur Expertise Auto.pdf',
-    '2026-04-13_Rendez-vous_Carrossier ProColor Quebec Centre.ics',
-    '2026-07-16_Certificat de garantie pneus et roues_Toyota Road Hazard (iAP Marketing).pdf',
-  ].forEach((nom) => {
-    assert.strictEqual(c.cheminCibleReset_(D, nom), 'Véhicules/Entretien & réparations', nom);
-  });
-});
-
-test('t4 · 03 : le « Contrat de garantie prolongée » d\'un concessionnaire passe AVANT le filet « Contrats »', () => {
-  // Preuve que l'ORDRE des règles tient : le filet `Contrats` (t3) capturerait sinon ce type.
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
-  assert.strictEqual(
-    c.cheminCibleReset_('03 · Logement & véhicule', '2026-07-20_Contrat de garantie prolongée_Toyota Canada Inc..pdf'),
-    'Véhicules/Entretien & réparations');
-});
-
-test('t4 · 03 : assurance AUTO — exige le contexte « assurance », jamais une réclamation télécom', () => {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
-  const D = '03 · Logement & véhicule';
-  [
     '2023-11-13_Soumission d\'assurance automobile_Desjardins Assurances.pdf',
-    '2023-11-20_Soumission d\'assurance_Desjardins Assurances.pdf',
-    '2023-11-24_Confirmation d\'assurance_Desjardins Assurances.pdf',
-    '2023-04-20_Attestation_Desjardins Assurances générales inc..pdf',
     '2026-06-29_Carte d\'assurance_Desjardins Assurances.jpg',
-    '2026-06-29_Carte d\'assistance_Desjardins Assurances.jpg',
-    '2026-06-23_Réclamation d\'assurance_Desjardins Assurances Générales.pdf',
-    '2026-04-09_Correspondance de réclamation_Desjardins Assurances Générales.pdf',
-    '2025-04-13_Attestation_IGO Insurance - Manuvie.pdf',
-    '2025-04-13_Confirmation_IGO Insured.pdf',
-  ].forEach((nom) => assert.strictEqual(c.cheminCibleReset_(D, nom), 'Véhicules/Assurance auto', nom));
-
-  // CONTRE-EXEMPLE tiré du stock réel : une réclamation TÉLÉCOM ne doit pas devenir un sinistre auto.
-  assert.notStrictEqual(c.cheminCibleReset_(D, '2023-11-01_Réclamation_Virgin.png'), 'Véhicules/Assurance auto');
-  // Et l'assurance HABITATION reste où elle est (règle plus haute, non capturée par la nouvelle).
-  assert.strictEqual(c.cheminCibleReset_(D, '2025-01-01_Assurance habitation_Desjardins.pdf'), 'Assurance habitation');
-});
-
-test('t4 · 03 : recherche & achat — annonces, captures, comparatifs, catalogues', () => {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
-  const D = '03 · Logement & véhicule';
-  [
-    '2026-07-01_Annonce de vente_Facebook Marketplace.jpg',
-    '2026-07-01_Annonce_Marketplace.jpg',
-    '2026-07-01_Annonce & Correspondance_Facebook Marketplace.jpg',
+    // ⚠️ le piège MARQUE ≠ MODÈLE : un concessionnaire Volkswagen/Toyota n'est PAS la Jetta/le bZ
+    // (la capture Corolla partirait sinon dans le bZ à clé de SUCCÈS — leçon C28-49).
     '2026-07-01_Capture d\'écran_Drummondville Volkswagen.jpg',
-    '2026-07-01_Capture d\'écran navigation GPS_Inconnu.jpg',
-    '2026-07-06_Capture d\'écran cartographique_Ville de Québec.jpg',
-    '2026-06-30_Comparatif_Inconnu.jpg',
-    '2026-07-07_Catalogue_Canadian Tire.jpg',
-    '2026-07-06_Catalogue - Fiche produit_Galanz.jpg',
-    '2026-07-06_Simulation_HelloSafe.jpg',
-    // « Information commerciale » d'un garage = de la PUB, pas une réparation : le TYPE prime
-    // (même logique que la capture d'écran chez un concessionnaire).
-    '2026-07-06_Information commerciale_Garage Charlesbourg Certi-pro inc..jpg',
-  ].forEach((nom) => assert.strictEqual(c.cheminCibleReset_(D, nom), 'Véhicules/Recherche & achat', nom));
-});
-
-test('t4 · 03 : contraventions', () => {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
-  const D = '03 · Logement & véhicule';
-  ['2023-06-27_Constat d\'infraction_Ville de Québec.jpg',
-    '2026-07-06_Constat d\'infraction_Municipalité de Thetford Mines.jpg']
-    .forEach((nom) => assert.strictEqual(c.cheminCibleReset_(D, nom), 'Véhicules/Contraventions', nom));
+    '2026-07-01_Facture_Toyota.jpg',
+    // Contraventions/immatriculation anonymes : la mission tranche par fenêtre, jamais la table.
+    '2023-06-27_Constat d\'infraction_Ville de Québec.jpg',
+    '2026-07-06_Constat d\'infraction_Municipalité de Thetford Mines.jpg',
+  ].forEach((nom) => assert.strictEqual(c.cheminCibleReset_(D, nom), null, nom));
+  // L'assurance HABITATION, elle, garde son nœud (règle plus haute).
+  assert.strictEqual(c.cheminCibleReset_(D, '2025-01-01_Assurance habitation_Desjardins.pdf'), 'Assurance habitation');
+  // Une réclamation TÉLÉCOM ne devient jamais un sinistre auto (contre-exemple réel conservé).
+  assert.strictEqual(c.cheminCibleReset_(D, '2023-11-01_Réclamation_Virgin.png'), null);
 });
 
 test('t4 · 03 : le ferroviaire reste en _TRI — le reset ne peut PAS changer de domaine', () => {
@@ -431,12 +398,20 @@ test('t4 · 03 : le ferroviaire reste en _TRI — le reset ne peut PAS changer d
     .forEach((nom) => assert.strictEqual(c.cheminCibleReset_(D, nom), null, nom));
 });
 
-test('t4 · 03 : les règles par ENTITÉ gardent la priorité sur les nouveaux nœuds auto', () => {
+test('c49-2 · 03 : les règles par ENTITÉ/BAILLEUR gardent la priorité sur les types génériques', () => {
   const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const D = '03 · Logement & véhicule';
-  // Un document KIA reste chez KIA même s'il vient d'un garage.
-  assert.strictEqual(c.cheminCibleReset_(D, '2025-03-01_Facture_Garage KIA Sportage.pdf'), 'Véhicules/KIA');
-  // Un document LCP reste chez LCP même si son type est « Annonce ».
+  // Un document KIA va chez KIA (catégorie par l'atelier), jamais dans un filet.
+  assert.strictEqual(c.cheminCibleReset_(D, '2025-03-01_Facture_Garage KIA Sportage.pdf'),
+    'Véhicule/KIA/Entretien & réparations');
+  // Un document LCP part chez SON logement (table bailleur) même si son type est « Annonce ».
   assert.strictEqual(c.cheminCibleReset_(D, '2026-01-01_Annonce_LCP Groupe Immobilier.pdf'),
-    'Logements/3325 4e Avenue (LCP Groupe Immobilier)');
+    'Logement/3325 4e avenue');
+  // Le nœud du split n'existe plus : verrous d'ABSENCE des pluriels (patron « Recherche d'emploi »).
+  const n03 = ctx.STRUCTURE_CIBLE_RESET['03 · Logement & véhicule'];
+  assert.ok(!n03['Logements'] && !n03['Véhicules'],
+    'les pluriels sont RETIRÉS de la table (les missions les vident — ping-pong sinon)');
+  assert.deepStrictEqual(Object.keys(JSON.parse(JSON.stringify(n03['Véhicule']['KIA']))),
+    JSON.parse(JSON.stringify(ctx.CONFIG.MISSIONS_CATEGORIES_VEHICULE)),
+    'tripwire : les catégories de la table = celles de la CONFIG (deux artefacts, un verrou)');
 });

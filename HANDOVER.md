@@ -24,9 +24,15 @@
 > page Moteur de l'app) : les missions convergées à reliquat (« à jour (N non apparié(s)) »)
 > restent EN AVANT au lieu de disparaître dans la veille repliée — c'était la réponse à « je ne
 > vois pas toutes les missions » — + note précise du reliquat, interrupteur « Masquer les finis »,
-> erreurs du Journal repliées par défaut. Incident
+> erreurs du Journal repliées par défaut. **C28-51 (ADR-0040)** enchaîné le soir même sur le
+> retour « je peux rien y faire » : les 89 non-appariés diagnostiqués sur PREUVES (bails nommés
+> par BAILLEUR — Kim Pinsonneault = 9420-3767 = LCP → 3325 ; 9478-5045 → 3987 —, KIA sans cible,
+> pluriels 03 encore dans la table du flux) → c49-2 : tables canoniques bailleurs/véhicules,
+> catégories PAR véhicule (décision Marc), fenêtres de possession, drainage du double LCP, geste
+> symétrique 03. Au déploiement, le bump ré-évalue TOUS les refus keyés. Incident
 > attrapé au merge de PR1 : dispatch de Deploy avalé par un 503 (#279 le durcit — retry + run
-> rouge sur échec final). Socle PR1 : 4 missions 03/06 (`mission-vehicule`,
+> rouge sur échec final ; un 503 jumeau sur `gh pr view` a ensuite tué l'automerge de #281 —
+> durcissement généralisé à TOUTES les commandes gh, mergé). Socle PR1 : 4 missions 03/06 (`mission-vehicule`,
 > `mission-logement`, `mission-dispatch-03`, `mission-archives-06`) — budget 10 min/j RÉALLOUÉ de
 > la conso-gen terminée (couple 12 min verrouillé), idempotence versionnée, convergence sur passe
 > vide, appariement par jetons + fenêtres de dates (ambigu = laissé + rapporté, jamais deviné),

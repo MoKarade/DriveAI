@@ -219,6 +219,10 @@ function estSegmentStructurel_(nom) {
     if (types[i] === propre) return true; // clés = catégories (Logement, Véhicule, …)
     if (schemas[types[i]].indexOf(propre) !== -1) return true;
   }
+  // Catégories PAR VÉHICULE (C28-51, ADR-0040 §3a) : find-or-créées PAR NOM par le flux ET les
+  // missions sous chaque `Véhicule/<véhicule>` — les muter les ferait re-créer au document
+  // suivant (ping-pong, leçon #47 « quel garde mes voisins ont-ils que je n'ai pas ? »).
+  if ((CONFIG.MISSIONS_CATEGORIES_VEHICULE || []).indexOf(propre) !== -1) return true;
   return false;
 }
 

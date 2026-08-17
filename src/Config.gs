@@ -597,7 +597,11 @@ var CONFIG = {
   // sur `_TRI 2026/<domaine>` — un fichier placé n'y est plus, il n'est donc jamais re-présenté).
   // À bumper à CHAQUE modification des règles de routage, sinon les non-routés resteraient marqués
   // « déjà tenté » à vie et l'affinage serait sans effet (constaté au 1ᵉʳ reliquat réel, 2026-07-30).
-  RESET_TABLE_VERSION: 't4',              // t4 : 03 « Véhicules/{Entretien & réparations, Assurance auto,
+  RESET_TABLE_VERSION: 't4',              // ⚠️ C28-51 (ADR-0040) a RÉVOQUÉ le transversal t4 de 03 (la table
+                                          // route désormais Logement/Véhicule par véhicule) SANS bump : la
+                                          // campagne reset est TERMINÉE et RESET_ACTIF=false — la relancer
+                                          // un jour exige t5 (ré-évaluer les refus keyés sous la table t4).
+                                          // t4 : 03 « Véhicules/{Entretien & réparations, Assurance auto,
                                           // Recherche & achat, Contraventions} » — décision Marc 2026-07-31
                                           // sur le reliquat réel (~64 fichiers auto sans dossier d'accueil).
                                           // t3 : 02 « Revenus & paie » (remplace le nœud jamais créé
@@ -790,9 +794,11 @@ var CONFIG = {
 
   // ---------- MISSIONS de curation (C28-49, ADR-0039 — brief Marc 2026-08-17) ----------
   MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions
-  MISSIONS_REGLES_VERSION: 'c49-1',       // DANS la clé d'idempotence : un refus (non apparié) se fige
+  MISSIONS_REGLES_VERSION: 'c49-2',       // DANS la clé d'idempotence : un refus (non apparié) se fige
                                           // sous CETTE version — affiner les règles = bump ⇒ ré-évaluation
                                           // (leçon C28-33 « verdict négatif révisable, jamais figé à vie »)
+                                          // c49-2 (C28-51, ADR-0040) : tables bailleurs + véhicules,
+                                          // catégories par véhicule — les 89 refus c49-1 se ré-évaluent.
   MISSIONS_BUDGET_MS: 90 * 1000,          // sous-budget par run (pure I/O moveTo — reste < mur standard)
   MISSIONS_BUDGET_JOUR_MS: 10 * 60 * 1000, // budget QUOTIDIEN partagé entre missions, ms RÉELLES persistées.
                                           // RÉALLOUÉ (jamais ajouté) : les 10 min viennent de
@@ -818,6 +824,10 @@ var CONFIG = {
     vehiculesPluriel: '1D8bYwR900-yU-bCZufhPucnQYUZtbS-i', // « Véhicules »
     toyotaBzIsole: '10d8IOmxC7OSQqretWgl25ApgClhXCiJK',    // « Toyota bZ » posé à la racine de 03
     logementsPluriel: '1hszX0MThgNLuxM975q1zPWU_ySQH74OX', // « Logements »
+    // C28-51 (ADR-0040 §3b) : le SPLIT LCP — même logement dans deux dossiers de la cible. La
+    // mission `logement` draine le double vers l'adresse (sous-dossiers homonymes fusionnés).
+    logement3325: '1sswxAKOvUD90DDY1aON_KeGHdJHGd2gb',     // Logement/« 3325 4e avenue » (l'adresse GAGNANTE)
+    lcpLogementDouble: '1wgsdyGMZNAgmHgdQHopRkSHgYEpWflcE', // Logement/« LCP Groupe Immobilier » (le double à vider)
     contrats03: '1pt6VlJfEtzErW95aFCQw3UUXPNsXX3hh',
     correspondance03: '14qrPCSHsSLMT2XSJm1h6HOHGXNehx5uL',
     assuranceHab03: '1V_tiKNtUfgdwwrfigeFM2saEgYuKGR9Q',
@@ -871,6 +881,32 @@ var CONFIG = {
     { nom: 'Automatech', jetons: ['automatech', 'robotik'] },
     { nom: 'CIUSSS', jetons: ['ciusss'] },
   ],
+  // Bailleurs CANONIQUES (C28-51, ADR-0040 §2) : les documents de logement sont nommés par
+  // BAILLEUR, jamais par adresse — chaque entrée est PROUVÉE par contenu (l'ADR porte la preuve
+  // datée ; « Kim Pinsonneault » = « 9420-3767 Québec inc » = « LCP Groupe Immobilier », même
+  // bailleur du 3325). Le canon = le NOM RÉEL du dossier sous « Logement » : résolu PAR NOM parmi
+  // les cibles listées — dossier renommé ⇒ refus (jamais un doublon créé par la table).
+  // Jetons MOT ENTIER (apparierUnique_) ; ambigu / hors table = refus, jamais deviné.
+  MISSIONS_BAILLEURS: [
+    { logement: '3325 4e avenue', jetons: ['lcp', '9420', '3767', 'pinsonneault'] },
+    { logement: '3987 rte des Rivières', jetons: ['9478', '5045'] },
+    { logement: '783 av. Moreau, Québec', jetons: ['soucy', 'ayotte'] },
+    { logement: 'Anciens logements', jetons: ['retta', 'isannointi', 'perpignan'] },
+  ],
+  // Véhicules CANONIQUES (C28-51, ADR-0040 §3a — décision Marc : un dossier PAR véhicule, les
+  // catégories DEDANS). Jetons = le MODÈLE, JAMAIS la marque : « toyota » matcherait la Corolla
+  // 2014 (essai, jamais achetée — décision Marc) vers le bZ, « volkswagen » enverrait la capture
+  // d'annonce d'un CONCESSIONNAIRE dans la Jetta — à clé de SUCCÈS, donc définitif (leçon C28-49).
+  // Sert AUSSI à créer une cible absente (KIA n'existait pas dans « Véhicule »).
+  MISSIONS_VEHICULES: [
+    { nom: 'Toyota bZ', jetons: ['bz', 'bz4x'] },
+    { nom: 'KIA', jetons: ['kia', 'sportage'] },
+    { nom: 'Ford Fiesta', jetons: ['fiesta'] },
+    { nom: 'VW Jetta', jetons: ['jetta'] },
+  ],
+  // Catégories PAR VÉHICULE (décision Marc) — sous-dossiers créés À LA DEMANDE, jamais 16
+  // squelettes vides. Ces noms sont AUSSI les sous-dossiers sources de « Véhicules » à dissoudre.
+  MISSIONS_CATEGORIES_VEHICULE: ['Contraventions', 'Assurance auto', 'Entretien & réparations', 'Recherche & achat'],
 
   // Schémas de sous-dossiers FIXES créés à la validation d'une entité (docs/TAXONOMY.md).
   // Clé = Type d'entité ; valeur = liste ordonnée de sous-dossiers.

@@ -18,7 +18,7 @@ INTERDIT » **ne vaut plus** — la prod range désormais dans `Relevés/`, `Re�
 |---------|--------------------------------|------------------|
 | `01 · Administratif & identité` | Pièces d'identité · État civil & notarial · Attestations & certificats · Correspondance · Contrats & fournisseurs · Sécurité & codes | 1 |
 | `02 · Finances` | Banques · Relevés · Reçus & factures · Impôts & déclarations · Assurances & prévoyance · Placements & crypto · **Revenus & paie** | **0 — PLEIN** |
-| `03 · Logement & véhicule` | Logements · Véhicules · Énergie & services · Assurance habitation · **Contrats** · **Correspondance** | 1 |
+| `03 · Logement & véhicule` | **Logement** (5 adresses aux noms RÉELS Drive) · **Véhicule** (Toyota bZ · KIA · Ford Fiesta · VW Jetta, chacun avec {Contraventions · Assurance auto · Entretien & réparations · Recherche & achat}) · Énergie & services · Assurance habitation · Contrats · Correspondance | 1 |
 | `04 · Immigration` | IRCC (fédéral) · MIFI (Québec) · Permis de travail & EIMT · Résidence permanente · Formulaires & correspondance | 2 |
 | `05 · Carrière` | Employeurs · Alternance & stages · CV & lettres (+ Candidatures · Suivi · Archive 2021-2025) · Entreprise — MRic (SCI) · Formation & bilans · Réseaux & présentations | 1 |
 | `06 · Études & diplômes` | 5 écoles + Autres établissements + Diplômes & relevés officiels | 0 |
@@ -73,8 +73,8 @@ vivent désormais sous `CV & lettres`.
 | `01 · Administratif & identité` | `1Bozg3oLNUVXehm1cQl4gTKs6_XpwolWx` |
 | `02 · Finances` | `1B9jNRpAKrAWdUs6Gn5_ojle3ZH7JbFDW` |
 | `03 · Logement & véhicule` | `1oI1inPX3nWr_1I74A3jDM-ovr6talQlN` |
-| → `Logement` *(héritage v1, en drainage — ADR-0023/0024)* | `13ISBh6ZrwK9YHgmIM20tWTgWh4x9wI79` |
-| → `Véhicule` *(héritage v1, en drainage — ADR-0023/0024)* | `1Hqmg1eV4q28saCreUyrfUIfKLwV972Wc` |
+| → `Logement` *(CIBLE CANONIQUE depuis ADR-0040 — 5 adresses aux noms Drive réels ; plus jamais « en drainage »)* | `13ISBh6ZrwK9YHgmIM20tWTgWh4x9wI79` |
+| → `Véhicule` *(CIBLE CANONIQUE depuis ADR-0040 — 4 véhicules × 4 catégories ; plus jamais « en drainage »)* | `1Hqmg1eV4q28saCreUyrfUIfKLwV972Wc` |
 | `04 · Immigration` *(zone protégée)* | `1VBK_4pkJmIeTsRyz-MWpMBYaOhKYNfRC` |
 | `05 · Carrière` | `1BAg7k7RVrJ4ifoeh9U0XW5hKWXjRI1CC` |
 | `06 · Études & diplômes` | `1PeeKG8XgZB6gJdZo03cO7F0s_iMgw6Ec` |
@@ -221,8 +221,12 @@ Les dossiers VIDÉS relèvent de la corbeille APP validée (ADR-0014), jamais du
 - **Réorg IA (#21, Reorg.gs)** : sont **immuables** pour la réorg — les domaines `NN · …` (deplacer/
   renommer/fusionner interdits ; le renommage de domaine appartient au self-healing `NOMS_DOMAINES_TAG`),
   les files `00 ·` (À trier, À vérifier) et les racines `_…`, les **dossiers de catégorie à ID FIXE**
-  (`CONFIG.CATEGORIES` : `Logement`/`Véhicule` — HÉRITAGE du chemin v1, plus une cible de routage
-  depuis ADR-0023 ; la consolidation en drainera les fichiers, puis vidés → corbeille APP ADR-0014),
+  (`CONFIG.CATEGORIES` : `Logement`/`Véhicule` — depuis **ADR-0040 (C28-51)** ce sont les CIBLES
+  CANONIQUES de 03, plus JAMAIS un héritage à drainer/corbeiller ; les 4 catégories PAR VÉHICULE
+  {Contraventions · Assurance auto · Entretien & réparations · Recherche & achat} sont
+  structurelles au même titre — find-or-créées PAR NOM par le flux et les missions, protégées par
+  `estSegmentStructurel_`. Le `SCHEMAS_ENTITE.Véhicule` d'époque v1 est un VOCABULAIRE HÉRITÉ
+  distinct, mort sous ANALYSE_V2 — les catégories officielles sont `MISSIONS_CATEGORIES_VEHICULE`),
   les sous-dossiers d'année `AAAA`, les **noms** des sous-dossiers de schéma hérités (plus jamais
   créés depuis ADR-0023 — mais tant qu'ils portent des fichiers, les fusionner/renommer hors app
   casserait le plan de consolidation) et les dossiers de **TYPE DE PIÈCE D'IDENTITÉ** (`Passeport`,
