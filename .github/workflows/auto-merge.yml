@@ -71,9 +71,31 @@ jobs:
           # IMPORTANT : un merge fait par le bot (GITHUB_TOKEN) NE déclenche PAS les workflows
           # `on: push` (sécurité anti-récursion de GitHub Actions). On dispatche donc Deploy
           # explicitement pour que chaque merge déploie le moteur dans le projet Apps Script.
-          gh workflow run deploy.yml --repo "$REPO" --ref main \
-            || echo "Dispatch de Deploy non effectué (workflow absent ou secrets manquants) — ignoré."
+          #
+          # RETRY (incident 2026-08-17, merge #278) : un 503 TRANSITOIRE de l'API GitHub sur le
+          # dispatch était avalé par le `|| echo … ignoré` → moteur NON déployé, EN SILENCE, run
+          # vert (le message parlait de « workflow absent ou secrets manquants », faux). Un
+          # dispatch CRITIQUE se rejoue (backoff 2/4/8/16 s, la politique git-push du projet) et
+          # un échec FINAL fait ÉCHOUER le run — un deploy perdu doit se VOIR, jamais s'ignorer.
+          dispatcher() {
+            local wf="$1"; local critique="$2"; local delai=2
+            for essai in 1 2 3 4 5; do
+              if gh workflow run "$wf" --repo "$REPO" --ref main; then
+                echo "Dispatch de $wf : OK (essai $essai)."
+                return 0
+              fi
+              echo "Dispatch de $wf raté (essai $essai/5) — nouvel essai dans ${delai}s."
+              sleep "$delai"; delai=$((delai * 2))
+            done
+            if [ "$critique" = "critique" ]; then
+              echo "::error::Dispatch de $wf IMPOSSIBLE après 5 essais — le moteur N'EST PAS déployé. Relancer deploy.yml à la main (Actions → Deploy → Run workflow)."
+              return 1
+            fi
+            echo "::warning::Dispatch de $wf raté après 5 essais — ignoré (non critique)."
+            return 0
+          }
+          dispatcher deploy.yml critique
 
-          # Même raison : dispatcher le miroir Drive (ADR-0017) après chaque merge.
-          gh workflow run sync-drive.yml --repo "$REPO" --ref main \
-            || echo "Dispatch de Sync Drive non effectué (workflow absent ou secrets manquants) — ignoré."
+          # Même raison : dispatcher le miroir Drive (ADR-0017) après chaque merge (non critique :
+          # le miroir se rattrape au merge suivant, lui).
+          dispatcher sync-drive.yml non-critique
