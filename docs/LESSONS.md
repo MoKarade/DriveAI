@@ -2335,3 +2335,27 @@ gate sur la convergence de l'amont : la version des règles ne protège pas cont
 mouvante."
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-17 — Mutualiser UNE dimension d'une règle ne couvre pas les autres dimensions de la même décision
+
+**Contexte.** C28-49 PR2 (missions Carrière/Finances), trouvé par la passe FINALE code-reviewer
+sur le diff assemblé — APRÈS que deux rondes de flotte avaient validé l'approche. Le routage 02
+partageait l'EMPLOYEUR (`employeurDuNom_`) et les BUCKETS d'année (`resetBucketAnnee_`) entre le
+flux vivant et les missions — « une seule règle, deux consommateurs », leçon C28-26 appliquée en
+apparence. Mais la détection de TYPE de la MÊME décision restait écrite DEUX fois, et divergeait
+sur 3 cas réels : RL-1/RL-31 (fiscal côté flux via un motif ancré, « relevé » bancaire côté
+mission — la table de mots ne sait pas exprimer « releve 1 »), le RIB (exclu côté flux, pris pour
+un relevé côté mission), et « salaire » (couvert par le flux, absent de la liste mission — un
+« Bulletin de salaire » partait dans `Employeurs/<X>` avec une clé de SUCCÈS, le mauvais domicile,
+définitif). Les deux fenêtres d'années (1900-2099 vs 1990-2100) divergeaient pareil.
+
+**Leçon.** "Mutualiser une règle partagée sur UNE dimension ne couvre pas les AUTRES dimensions
+de la même décision — la mutualisation VISIBLE d'une dimension (l'employeur, le bucket) crée une
+fausse assurance sur celles qui restent locales (le type, l'année, les exclusions), et les revues
+elles-mêmes s'y arrêtent (« une seule règle ✔ »). Réflexe au moment de partager une règle :
+INVENTORIER chaque prédicat que la décision consomme (type, année, émetteur, exclusions,
+fenêtres numériques) et trancher pour CHACUN : partagé, ou localité justifiée PAR ÉCRIT. Une
+divergence sur un chemin à clé de SUCCÈS est définitive (asymétrie des verdicts) — c'est le cas
+qui paie l'inventaire."
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).
