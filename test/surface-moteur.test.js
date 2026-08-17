@@ -58,6 +58,9 @@ const CONTRAT = [
   // C28-49 PR2 (revue finale) : prédicats PARTAGÉS flux ↔ missions, définis dans Reset.gs et
   // appelés depuis Missions.gs — une seule règle, deux consommateurs (leçon C28-26).
   'anneePlausible_', 'estTypePaieReset_', 'estFeuilletFiscalReset_', 'estRibReset_',
+  // C28-51 (ADR-0040) : canons bailleurs/véhicules partagés (Reset.gs ↔ Missions.gs) + cibles.
+  'vehiculeDuNom_', 'logementDuBailleur_', 'cibleBailleur_', 'categorieVehiculeMission_',
+  'ciblesLogement_', 'categoriesVehiculeReset_',
   // curation des mails (C28-19, ADR-0020) : confiance, scan cyclique, « pas suspect » 1-clic
   'decisionSuspect_', 'confianceCache_', 'reinitialiserConfianceCache_', 'apprendreConfiance_',
   'scanCycliqueTri_', 'appliquerPasSuspect_', 'purgerClesTriIndex_',

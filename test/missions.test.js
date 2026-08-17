@@ -69,12 +69,14 @@ test('dateDuNomMission_ + logementParDate_ : la date route vers EXACTEMENT une f
   assert.strictEqual(pur.logementParDate_('2023-08-01_X.pdf', chevauche), null, 'ambigu par dates');
 });
 
-test('routeur dispatch03 : véhicule prioritaire, puis adresse, puis date (Correspondance seulement)', () => {
+test('routeur dispatch03 : véhicule prioritaire, puis adresse, puis BAILLEUR, puis date (Correspondance seulement)', () => {
   const IDS = pur.CONFIG.MISSIONS_IDS;
   const spec = pur.tableMissions_().filter((m) => m.tag === 'dispatch03')[0];
   const ctx = {
-    vehicules: [{ nom: 'VW Jetta', id: 'vj', jetons: ['jetta', 'volkswagen'] }],
-    logements: [{ nom: '783 av. Moreau', id: 'lm', jetons: ['783', 'moreau'] }],
+    logements: [
+      { nom: '783 av. Moreau, Québec', id: 'lm', jetons: ['783', 'moreau'] },
+      { nom: '3987 rte des Rivières', id: 'l3987', jetons: ['3987', 'rivieres'] },
+    ],
     fenetres: [{ id: 'lm', min: Date.UTC(2023, 0, 1), max: Date.UTC(2023, 11, 31) }],
     themePar: (function () {
       const m = {};
@@ -82,20 +84,76 @@ test('routeur dispatch03 : véhicule prioritaire, puis adresse, puis date (Corre
       m[IDS.assuranceHab03] = 'Assurance habitation'; m[IDS.energieServices03] = 'Énergie & services';
       return m;
     })(),
+    // c49-2 : côté véhicule, le thème se traduit dans le vocabulaire des catégories de Marc.
+    themeVehiculePar: (function () {
+      const m = {};
+      m[IDS.contrats03] = 'Recherche & achat'; m[IDS.assuranceHab03] = 'Assurance auto';
+      return m;
+    })(),
   };
-  // Un contrat qui nomme le véhicule part côté Véhicule/<X>/Contrats.
+  // Un contrat qui nomme le véhicule part côté Véhicule/<X>/<catégorie de Marc> — le canon vient
+  // de la TABLE (c49-2 : une cible peut être créée), plus des dossiers existants.
   const v = spec.router('2024-01-01_Contrat_Jetta.pdf', { sourceId: IDS.contrats03, sousChemin: '' }, ctx);
   assert.strictEqual(v.cibleNom, 'VW Jetta');
-  assert.strictEqual(v.sousDossier, 'Contrats');
+  assert.strictEqual(v.cibleParentId, IDS.vehiculeCible);
+  assert.strictEqual(v.sousDossier, 'Recherche & achat', 'thème traduit en catégorie véhicule');
+  // Une assurance qui nomme un véhicule ABSENT de la cible (KIA) est quand même routée (find-or-create).
+  const kia = spec.router('2023-03-01_Contrat d\'assurance_KIA.pdf', { sourceId: IDS.assuranceHab03, sousChemin: '' }, ctx);
+  assert.deepStrictEqual(plain(kia), { cibleParentId: IDS.vehiculeCible, cibleNom: 'KIA', sousDossier: 'Assurance auto' });
   // Une facture d'énergie qui nomme l'adresse part vers Logement/<adresse>/Énergie & services.
   const l = spec.router('2023-02-01_Facture_Hydro 783 Moreau.pdf', { sourceId: IDS.energieServices03, sousChemin: '' }, ctx);
   assert.strictEqual(l.cibleId, 'lm');
   assert.strictEqual(l.sousDossier, 'Énergie & services');
+  // c49-2 : un bail nommé par BAILLEUR (jamais l'adresse — ADR-0040 §2) part vers son logement.
+  const bail = spec.router('2025-09-01_Bail de logement_9478-5045 Québec inc.pdf', { sourceId: IDS.contrats03, sousChemin: '' }, ctx);
+  assert.strictEqual(bail.cibleId, 'l3987', 'bailleur 9478-5045 → 3987 (preuve ADR-0040)');
+  assert.strictEqual(bail.sousDossier, 'Contrats');
   // Correspondance SANS indice : la date tranche (demande Marc) — pas les autres thèmes.
   const parDate = spec.router('2023-05-01_Lettre_Ville.pdf', { sourceId: IDS.correspondance03, sousChemin: '' }, ctx);
   assert.strictEqual(parDate.cibleId, 'lm');
   const pasParDate = spec.router('2023-05-01_Facture_Hydro.pdf', { sourceId: IDS.energieServices03, sousChemin: '' }, ctx);
   assert.strictEqual(pasParDate, null, 'la date ne route QUE la correspondance');
+  // Location ponctuelle (Enterprise) : aucun véhicule POSSÉDÉ nommé → refus (jamais deviné).
+  assert.strictEqual(spec.router('2026-04-10_Contrat de location de véhicule_Enterprise.pdf',
+    { sourceId: IDS.contrats03, sousChemin: '' }, ctx), null);
+});
+
+test('routeur vehicule (c49-2) : catégorie par sous-dossier SOURCE, fenêtre gatée sur jeu COMPLET, chevauchement = refus', () => {
+  const IDS = pur.CONFIG.MISSIONS_IDS;
+  const spec = pur.tableMissions_().filter((m) => m.tag === 'vehicule')[0];
+  const f2023 = { id: 'vkia', min: Date.UTC(2023, 0, 1), max: Date.UTC(2024, 11, 31) };
+  const f2026 = { id: 'vbz', min: Date.UTC(2026, 0, 1), max: Date.UTC(2026, 11, 31) };
+  // Véhicule nommé (sous-dossier source « KIA ») : catégorie absente → à plat dans le véhicule.
+  const kia = spec.router('2023-05-01_Facture_Garage.pdf', { sourceId: IDS.vehiculesPluriel, sousChemin: 'KIA' },
+    { fenetres: [], fenetresCompletes: false });
+  assert.deepStrictEqual(plain(kia), { cibleParentId: IDS.vehiculeCible, cibleNom: 'KIA', sousDossier: '' });
+  // Générique d'une CATÉGORIE, jeu de fenêtres COMPLET, date dans UNE seule fenêtre → routé,
+  // catégorie du sous-dossier source préservée.
+  const generique = spec.router('2023-06-27_Constat d\'infraction_Ville de Québec.jpg',
+    { sourceId: IDS.vehiculesPluriel, sousChemin: 'Contraventions' },
+    { fenetres: [f2023, f2026], fenetresCompletes: true });
+  assert.deepStrictEqual(plain(generique), { cibleId: 'vkia', sousDossier: 'Contraventions' });
+  // 🔴 revue finale : jeu de fenêtres INCOMPLET (KIA pas encore créé au run 1 — la mission
+  // construit elle-même cet état) → REFUS, jamais un verdict « une seule fenêtre » sur un jeu
+  // tronqué (le refus est révisable — bump c49-3 ; le faux positif serait définitif).
+  assert.strictEqual(spec.router('2023-06-27_Constat d\'infraction_Ville de Québec.jpg',
+    { sourceId: IDS.vehiculesPluriel, sousChemin: 'Contraventions' },
+    { fenetres: [f2023, f2026], fenetresCompletes: false }), null);
+  // Chevauchement de fenêtres → refus (jamais deviné).
+  const fChev = [{ id: 'vkia', min: Date.UTC(2023, 0, 1), max: Date.UTC(2026, 11, 31) }, f2026];
+  assert.strictEqual(spec.router('2026-03-01_Constat d\'infraction_Ville.jpg',
+    { sourceId: IDS.vehiculesPluriel, sousChemin: 'Contraventions' },
+    { fenetres: fChev, fenetresCompletes: true }), null);
+});
+
+test('cibleBailleur_ : dossier RENOMMÉ/absent ⇒ refus — la table ne crée JAMAIS un doublon', () => {
+  // La promesse du canon (Config) : résolution PAR NOM parmi les cibles réelles — si le dossier
+  // Drive a été renommé, on REFUSE (révisable) au lieu de find-or-créer un doublon.
+  assert.strictEqual(pur.cibleBailleur_('2025-09-01_Bail_9478-5045 Québec inc.pdf',
+    [{ nom: '3987 route des Rivières (RENOMMÉ)', id: 'x' }]), null);
+  const ok = pur.cibleBailleur_('2025-09-01_Bail_9478-5045 Québec inc.pdf',
+    [{ nom: '3987 rte des Rivières', id: 'l3987' }]);
+  assert.strictEqual(ok.id, 'l3987');
 });
 
 test('routeur archives06 : alias explicite = transfert ; source hors table = jamais une source', () => {
@@ -223,9 +281,10 @@ test('runner : NON APPARIÉ inscrit sous la version (re-collecté JAMAIS, ré-é
   const etatM = JSON.parse(h.store['DriveAI_MISSIONS_ETAT']);
   assert.strictEqual(etatM.logement.na, 1);
 
-  // BUMP de version : la clé ancienne ne masque plus le fichier — ré-évalué sous les nouvelles règles.
-  h.c.CONFIG.MISSIONS_REGLES_VERSION = 'c49-2';
-  assert.ok(!h.c.indexContient_('mission|logement|c49-2|fx'), 'nouvelle version = nouvelle chance');
+  // BUMP de version : la clé ancienne ne masque plus le fichier — ré-évalué sous les nouvelles
+  // règles. Valeur DÉRIVÉE de la constante (leçon §7 : « c49-2 » en dur a menti au premier bump réel).
+  h.c.CONFIG.MISSIONS_REGLES_VERSION = version + '-bump';
+  assert.ok(!h.c.indexContient_('mission|logement|' + version + '-bump|fx'), 'nouvelle version = nouvelle chance');
 });
 
 test('runner : un fichier PROTÉGÉ ou MULTI-PARENTS n\'est JAMAIS déplacé (refus inscrit)', () => {
@@ -379,12 +438,40 @@ test('peinture : un dossier NON vide n\'est JAMAIS peint (le rouge = « supprima
   // mission converge quand même, mais NI la source NI ce sous-dossier ne doivent passer au rouge.
   h.arbre['sousplein'] = { nom: 'Reste', files: [h.fichier('fr', 'sans-date-ni-indice.bin')], folders: {} };
   h.arbre[IDS.logementsPluriel] = { files: [], folders: { 'Reste': 'sousplein' } };
-  h.arbre[IDS.logementCible] = { files: [], folders: {} };
+  // c49-2 : le double LCP est aussi une source — son contenu part TOUT vers 3325 (drainage
+  // inconditionnel), donc lui devient VIDE et peint — c'est le comportement VOULU ; la source
+  // « Logements », elle, garde son non-apparié et ne doit JAMAIS passer au rouge.
+  h.arbre[IDS.lcpLogementDouble] = { nom: 'LCP Groupe Immobilier', files: [h.fichier('flcp', 'sans-indice.bin')], folders: {} };
+  h.arbre[IDS.logement3325] = { nom: '3325 4e avenue', files: [], folders: {} };
+  h.arbre[IDS.logementCible] = { files: [], folders: { '3325 4e avenue': IDS.logement3325 } };
 
-  h.c.executerMission_('logement', () => false); // le refus est inscrit
+  h.c.executerMission_('logement', () => false); // le refus est inscrit ; le LCP est drainé
   h.c.executerMission_('logement', () => false); // passe vide → convergence
   assert.strictEqual(h.store['DriveAI_MISSION_FINI_logement'], h.c.CONFIG.MISSIONS_REGLES_VERSION);
-  assert.strictEqual(h.peints.length, 0, 'rien de peint : le fichier non apparié est TOUJOURS dedans');
+  assert.deepStrictEqual(plain(h.peints), [IDS.lcpLogementDouble],
+    'seul le double VIDÉ est peint — jamais la source qui garde un non-apparié');
+});
+
+test('drainage LCP (c49-2) : le double part vers « 3325 4e avenue », segment préservé — et n\'est JAMAIS une cible', () => {
+  const h = ctxRunner();
+  const IDS = h.c.CONFIG.MISSIONS_IDS;
+  h.arbre['lcpbail'] = { nom: 'Bail & contrat', files: [h.fichier('fb', '2024-01-28_Avis de reconduction de bail_LCP Groupe Immobilier.pdf')], folders: {} };
+  h.arbre[IDS.lcpLogementDouble] = { nom: 'LCP Groupe Immobilier', files: [h.fichier('fa', '2026-07-06_Échange de courriels_LCP Groupe Immobilier.jpg')], folders: { 'Bail & contrat': 'lcpbail' } };
+  h.arbre[IDS.logementsPluriel] = { files: [h.fichier('fq', '2025-07_Quittance_LCP Groupe Immobilier.pdf')], folders: {} };
+  // La cible « Logement » contient l'adresse GAGNANTE **ET** le double — si `ciblesLogement_` ne
+  // filtrait pas, les jetons du double (« groupe », « immobilier ») capteraient la quittance et
+  // le split se RE-créerait pendant qu'on le vide.
+  h.arbre[IDS.logement3325] = { nom: '3325 4e avenue', files: [], folders: {} };
+  h.arbre[IDS.logementCible] = { files: [], folders: { '3325 4e avenue': IDS.logement3325, 'LCP Groupe Immobilier': IDS.lcpLogementDouble } };
+
+  h.c.executerMission_('logement', () => false);
+  const vers = plain(h.moves.filter((m) => m.vers).map((m) => m.vers)).sort();
+  // Contenu du double : à la MÊME place dans 3325 (racine → racine, Bail & contrat → Bail & contrat).
+  assert.deepStrictEqual(vers, [IDS.logement3325, IDS.logement3325, IDS.logement3325 + '/Bail & contrat'].sort());
+  // Et le fichier de la SOURCE « Logements » nommé par le bailleur va AUSSI au 3325 (table
+  // bailleur, ADR-0040 §2) — jamais dans le dossier double (exclu des cibles par ciblesLogement_).
+  assert.strictEqual(h.moves.filter((m) => String(m.vers).indexOf(IDS.lcpLogementDouble) !== -1).length, 0,
+    'AUCUN mouvement vers le double — le split ne se re-crée pas');
 });
 
 test('cleMission_ contient la VERSION elle-même (verrou direct, pas via le mock d\'index)', () => {

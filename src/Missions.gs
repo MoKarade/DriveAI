@@ -33,29 +33,63 @@ function tableMissions_() {
     {
       tag: 'vehicule', cle: 'mission-vehicule',
       sources: [IDS.vehiculesPluriel, IDS.toyotaBzIsole],
-      batirCtx: function () { return { cibles: ciblesAvecJetons_(IDS.vehiculeCible, EXTRA_JETONS_VEHICULES) }; },
+      // c49-2 (ADR-0040 §3a) : le canon des véhicules vient de la TABLE (MISSIONS_VEHICULES —
+      // une cible peut être CRÉÉE : KIA n'existait pas) ; les fenêtres de POSSESSION dérivées des
+      // dossiers de véhicules déjà remplis servent de filet aux documents génériques datés.
+      batirCtx: function () {
+        var cibles = ciblesAvecJetons_(IDS.vehiculeCible, {});
+        // Catégories INCLUSES (revue finale C28-51) : la mission range elle-même en catégories —
+        // des fenêtres lues « à plat » seulement s'assécheraient au fil de son propre drainage.
+        var fenetres = fenetresOccupation_(cibles, true);
+        // GATE DE COMPLÉTUDE (🔴 revue finale C28-51) : router par fenêtre alors qu'un véhicule
+        // de la TABLE n'a pas encore de fenêtre (KIA au run 1 — la mission construit elle-même
+        // cet état) = verdict « une seule fenêtre » rendu sur un jeu INCOMPLET → déplacement au
+        // mauvais véhicule à clé de SUCCÈS, définitif. Tant que CHAQUE véhicule de la table n'a
+        // pas sa fenêtre : refus (révisable — bump c49-3 planifié post-drainage, ADR-0040 §5).
+        var parNom = {};
+        cibles.forEach(function (c) { parNom[c.nom] = c.id; });
+        var fenetresPar = {};
+        fenetres.forEach(function (f) { fenetresPar[f.id] = true; });
+        var completes = (CONFIG.MISSIONS_VEHICULES || []).every(function (v) {
+          return parNom[v.nom] && fenetresPar[parNom[v.nom]];
+        });
+        return { fenetres: fenetres, fenetresCompletes: completes };
+      },
       router: function (nom, info, ctx) {
         // Le dossier `Toyota bZ` isolé part EN BLOC vers Véhicule/Toyota bZ (ordre explicite de Marc).
         if (info.sourceId === IDS.toyotaBzIsole) {
           return { cibleParentId: IDS.vehiculeCible, cibleNom: 'Toyota bZ', sousDossier: info.sousChemin };
         }
-        // `Véhicules/<X>/…` : le sous-dossier d'origine désigne le véhicule → contenu à plat.
-        var parSous = info.sousChemin ? apparierUnique_(info.sousChemin, ctx.cibles) : null;
-        if (parSous) return { cibleParentId: IDS.vehiculeCible, cibleNom: parSous.nom, sousDossier: '' };
-        // Sinon le NOM désigne le véhicule ; un sous-dossier d'origine NON-véhicule est un THÈME
-        // (« Véhicules/Assurance/… ») — préservé sous le véhicule, comme dispatch03 (revue code).
-        var parNom = apparierUnique_(nom, ctx.cibles);
-        return parNom
-          ? { cibleParentId: IDS.vehiculeCible, cibleNom: parNom.nom, sousDossier: info.sousChemin || '' }
-          : null;
+        // La CATÉGORIE du fichier = son sous-dossier SOURCE s'il est une catégorie déclarée
+        // (décision Marc : les catégories vivent DANS chaque véhicule) — sinon à plat.
+        var categorie = categorieVehiculeMission_(info.sousChemin);
+        // Le VÉHICULE : sous-dossier d'origine (« Véhicules/KIA/… »), sinon le nom du fichier,
+        // sinon — pour un document daté, si le jeu de fenêtres est COMPLET — la fenêtre de
+        // possession si UNE SEULE le contient (chevauchement/jeu incomplet = refus, jamais deviné).
+        var vehicule = vehiculeDuNom_(info.sousChemin) || vehiculeDuNom_(nom);
+        if (vehicule) {
+          return { cibleParentId: IDS.vehiculeCible, cibleNom: vehicule, sousDossier: categorie };
+        }
+        if (!ctx.fenetresCompletes) return null;
+        var parFenetre = logementParDate_(nom, ctx.fenetres); // générique : fenêtres + dates (id de cible)
+        return parFenetre ? { cibleId: parFenetre, sousDossier: categorie } : null;
       },
     },
     {
       tag: 'logement', cle: 'mission-logement',
-      sources: [IDS.logementsPluriel],
-      batirCtx: function () { return { cibles: ciblesAvecJetons_(IDS.logementCible, {}) }; },
+      // c49-2 (ADR-0040 §3b) : + le SPLIT LCP — `Logement/LCP Groupe Immobilier` (même logement
+      // que « 3325 4e avenue », prouvé par contenu) se draine vers l'adresse, sous-dossiers
+      // homonymes fusionnés (segment préservé → find-or-create par nom).
+      sources: [IDS.logementsPluriel, IDS.lcpLogementDouble],
+      batirCtx: function () { return { cibles: ciblesLogement_() }; },
       router: function (nom, info, ctx) {
-        var c = apparierUnique_(info.sousChemin || nom, ctx.cibles) || apparierUnique_(nom, ctx.cibles);
+        if (info.sourceId === IDS.lcpLogementDouble) {
+          return { cibleId: IDS.logement3325, sousDossier: info.sousChemin };
+        }
+        // Adresse dans le chemin/nom, sinon la table BAILLEUR (ADR-0040 §2 — les documents de
+        // logement sont nommés par bailleur, jamais par adresse ; entrées prouvées par contenu).
+        var c = apparierUnique_(info.sousChemin || nom, ctx.cibles) || apparierUnique_(nom, ctx.cibles) ||
+          cibleBailleur_(nom, ctx.cibles);
         return c ? { cibleId: c.id, sousDossier: '' } : null;
       },
     },
@@ -63,12 +97,11 @@ function tableMissions_() {
       tag: 'dispatch03', cle: 'mission-dispatch-03',
       sources: [IDS.contrats03, IDS.correspondance03, IDS.assuranceHab03, IDS.energieServices03],
       batirCtx: function () {
-        var logements = ciblesAvecJetons_(IDS.logementCible, {});
+        var logements = ciblesLogement_();
         return {
-          vehicules: ciblesAvecJetons_(IDS.vehiculeCible, EXTRA_JETONS_VEHICULES),
           logements: logements,
           fenetres: fenetresOccupation_(logements),
-          themePar: (function () { // le sous-dossier de destination = le THÈME du dossier source
+          themePar: (function () { // le sous-dossier de destination LOGEMENT = le thème du dossier source
             var m = {};
             m[IDS.contrats03] = 'Contrats';
             m[IDS.correspondance03] = 'Correspondance';
@@ -76,16 +109,33 @@ function tableMissions_() {
             m[IDS.energieServices03] = 'Énergie & services';
             return m;
           })(),
+          // c49-2 : côté VÉHICULE, le thème se traduit dans le vocabulaire des CATÉGORIES de
+          // Marc (ADR-0040 §3a) — un contrat d'achat va en « Recherche & achat », une assurance
+          // auto en « Assurance auto » ; correspondance/énergie n'ont pas d'équivalent → à plat.
+          themeVehiculePar: (function () {
+            var m = {};
+            m[IDS.contrats03] = 'Recherche & achat';
+            m[IDS.assuranceHab03] = 'Assurance auto';
+            return m;
+          })(),
         };
       },
       router: function (nom, info, ctx) {
         var theme = ctx.themePar[info.sourceId] || '';
-        // 1. Véhicule nommé dans le fichier (un contrat « …_Toyota » part côté véhicule).
-        var v = apparierUnique_(nom, ctx.vehicules);
-        if (v) return { cibleParentId: CONFIG.MISSIONS_IDS.vehiculeCible, cibleNom: v.nom, sousDossier: theme };
+        // 1. Véhicule nommé dans le fichier — par la TABLE canonique (c49-2 : une cible peut être
+        //    créée, KIA n'existait pas dans « Véhicule » ; « une seule règle » avec mission-vehicule).
+        var v = vehiculeDuNom_(nom);
+        if (v) {
+          return { cibleParentId: CONFIG.MISSIONS_IDS.vehiculeCible, cibleNom: v,
+            sousDossier: ctx.themeVehiculePar[info.sourceId] || '' };
+        }
         // 2. Adresse nommée dans le fichier.
         var l = apparierUnique_(nom, ctx.logements);
         if (l) return { cibleId: l.id, sousDossier: theme };
+        // 2 bis (c49-2). BAILLEUR nommé dans le fichier (ADR-0040 §2 : les bails sont nommés par
+        //    bailleur, jamais par adresse — table prouvée par contenu).
+        var b = cibleBailleur_(nom, ctx.logements);
+        if (b) return { cibleId: b.id, sousDossier: theme };
         // 3. Correspondance sans indice : la DATE tranche si elle tombe dans EXACTEMENT une
         //    fenêtre d'occupation (demande Marc « regarde les dates pour déterminer »).
         if (info.sourceId === CONFIG.MISSIONS_IDS.correspondance03) {
@@ -94,6 +144,11 @@ function tableMissions_() {
         }
         return null;
       },
+      // Revue finale C28-51 : les 4 sources (Contrats, Correspondance, Assurance habitation,
+      // Énergie & services) sont des nœuds PÉRENNES de la table du flux (les filets de 03) —
+      // vidées à la convergence, elles ne sont JAMAIS peintes en rouge : Marc les supprimerait
+      // et le flux les recréerait par nom au prochain document (ping-pong, leçon paies/impots).
+      sourcesJetables: [],
     },
     {
       tag: 'archives06', cle: 'mission-archives-06',
@@ -186,9 +241,6 @@ function tableMissions_() {
     },
   ];
 }
-
-/** Jetons SUPPLÉMENTAIRES par cible (synonymes de marque que le nom du dossier ne porte pas). */
-var EXTRA_JETONS_VEHICULES = { 'vw jetta': ['volkswagen'], 'toyota bz': ['bz4x'] };
 
 /* ================= Fonctions PURES (appariement, dates, jetons) ================= */
 
@@ -293,6 +345,70 @@ function employeurDuNom_(nom) {
   });
   var c = apparierUnique_(nom, cibles);
   return c ? c.nom : null;
+}
+
+/* ================= Fonctions PURES C28-51 / c49-2 (bailleurs, véhicules) ================= */
+
+/**
+ * Véhicule CANONIQUE d'un texte (`CONFIG.MISSIONS_VEHICULES`, mot entier). Ambigu ou hors table ⇒
+ * null. Le canon sert de NOM de cible (find-or-create : KIA n'existait pas). PURE (testée).
+ * @param {string} texte  nom de fichier OU sous-dossier d'origine
+ * @return {?string}
+ */
+function vehiculeDuNom_(texte) {
+  var cibles = (CONFIG.MISSIONS_VEHICULES || []).map(function (v) {
+    return { nom: v.nom, id: v.nom, jetons: v.jetons };
+  });
+  var c = apparierUnique_(texte, cibles);
+  return c ? c.nom : null;
+}
+
+/**
+ * Cible de LOGEMENT désignée par le BAILLEUR du nom (ADR-0040 §2 : les documents de logement
+ * sont nommés par bailleur, jamais par adresse — chaque entrée de `MISSIONS_BAILLEURS` est
+ * PROUVÉE par contenu). Le canon est le NOM RÉEL du dossier : résolu PAR NOM parmi les cibles
+ * fournies — dossier renommé/absent ⇒ null (refus, jamais un doublon créé). PURE (testée).
+ * @param {string} nom
+ * @param {Array<{nom:string,id:string}>} cibles  les enfants réels de « Logement »
+ * @return {?{nom:string,id:string}}
+ */
+function cibleBailleur_(nom, cibles) {
+  var canon = logementDuBailleur_(nom);
+  if (!canon) return null;
+  for (var i = 0; i < (cibles || []).length; i++) {
+    if (cibles[i].nom === canon) return cibles[i];
+  }
+  return null;
+}
+
+/**
+ * Nom CANONIQUE du logement désigné par le bailleur d'un texte — LA règle partagée missions ↔
+ * flux (`cheminCibleReset_` 03, geste symétrique ADR-0040 §3c). Ambigu/hors table ⇒ null. PURE.
+ * @param {string} texte
+ * @return {?string}
+ */
+function logementDuBailleur_(texte) {
+  var entrees = (CONFIG.MISSIONS_BAILLEURS || []).map(function (b) {
+    return { nom: b.logement, id: b.logement, jetons: b.jetons };
+  });
+  var e = apparierUnique_(texte, entrees);
+  return e ? e.nom : null;
+}
+
+/**
+ * Catégorie de véhicule d'un sous-dossier SOURCE (« Contraventions », « Assurance auto »… —
+ * `MISSIONS_CATEGORIES_VEHICULE`, comparaison NORMALISÉE). Hors liste ⇒ '' (à plat). PURE (testée).
+ * @param {string} sousChemin
+ * @return {string}
+ */
+function categorieVehiculeMission_(sousChemin) {
+  var n = normaliserMission_(String(sousChemin || ''));
+  if (!n) return '';
+  var cats = CONFIG.MISSIONS_CATEGORIES_VEHICULE || [];
+  for (var i = 0; i < cats.length; i++) {
+    if (normaliserMission_(cats[i]) === n) return cats[i];
+  }
+  return '';
 }
 
 /**
@@ -502,6 +618,19 @@ function ecrireRapportPaies_() {
 
 /* ================= I/O bornées (contextes, collecte, peinture) ================= */
 
+/**
+ * Cibles de LOGEMENT : les enfants de « Logement » SANS le double LCP (ADR-0040 §3b). Sans ce
+ * filtre, les jetons dérivés du nom du double (« groupe », « immobilier ») capteraient les
+ * documents LCP AVANT la table bailleur — et re-rempliraient le dossier que la mission vide
+ * (le split même qu'on corrige). Le double n'est ni une cible d'appariement, ni une fenêtre.
+ */
+function ciblesLogement_() {
+  var double_ = CONFIG.MISSIONS_IDS.lcpLogementDouble;
+  return ciblesAvecJetons_(CONFIG.MISSIONS_IDS.logementCible, {}).filter(function (c) {
+    return c.id !== double_;
+  });
+}
+
 /** Enfants-dossiers d'une cible, avec leurs jetons (+ extras par nom normalisé). */
 function ciblesAvecJetons_(parentId, extras) {
   var cibles = [];
@@ -528,18 +657,30 @@ function ciblesAvecJetons_(parentId, extras) {
  * @param {Array<{nom:string,id:string}>} logements
  * @return {Array<{id:string,min:number,max:number}>}
  */
-function fenetresOccupation_(logements) {
+function fenetresOccupation_(logements, avecSousDossiers) {
   var fenetres = [];
   (logements || []).forEach(function (l) {
     try {
-      var it = DriveApp.getFolderById(l.id).getFiles();
       var min = Infinity, max = -Infinity, lus = 0;
-      while (it.hasNext() && lus < 100) {
-        var ts = dateDuNomMission_(it.next().getName());
-        lus++;
-        if (ts === null) continue;
-        if (ts < min) min = ts;
-        if (ts > max) max = ts;
+      var lire = function (dossier) {
+        var it = dossier.getFiles();
+        while (it.hasNext() && lus < 100) {
+          var ts = dateDuNomMission_(it.next().getName());
+          lus++;
+          if (ts === null) continue;
+          if (ts < min) min = ts;
+          if (ts > max) max = ts;
+        }
+      };
+      var racine = DriveApp.getFolderById(l.id);
+      lire(racine);
+      // UN niveau de sous-dossiers (revue finale C28-51, borne 100 fichiers PARTAGÉE) : la
+      // mission vehicule range elle-même en CATÉGORIES — des fenêtres « à plat » seulement
+      // s'assécheraient au fil de son propre drainage (fenêtres dérivées d'un état que l'amont
+      // construit, leçon C28-49). Les logements y gagnent les mêmes dates (squelettes de Marc).
+      if (avecSousDossiers) {
+        var sous = racine.getFolders();
+        while (sous.hasNext() && lus < 100) lire(sous.next());
       }
       if (min !== Infinity) {
         fenetres.push({ id: l.id, min: min - CONFIG.MISSIONS_FENETRE_MARGE_MS, max: max + CONFIG.MISSIONS_FENETRE_MARGE_MS });

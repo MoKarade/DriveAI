@@ -1,7 +1,13 @@
 # ADR-0040 — Affinage des règles de missions : les 89 non-appariés (C28-51)
 
-- **Statut** : proposé (2026-08-17) — demande Marc : « je peux rien y faire… je veux pouvoir
-  régler ça direct ou que tu règles toi. »
+- **Statut** : accepté + implémenté (2026-08-17, même jour — décisions Marc intégrées, c49-2
+  livré) — demande Marc : « je peux rien y faire… je veux pouvoir régler ça direct ou que tu
+  règles toi. »
+- **Révision** : la structure PAR VÉHICULE (§3a) RÉVOQUE les catégories TRANSVERSES
+  `Véhicules/<catégorie>` du t4 (décision 2026-07-31) — un document de véhicule sans véhicule
+  identifiable n'a plus de fourre-tout : le flux (table pure) rend null (à plat au domaine +
+  rapport), la mission tranche par fenêtre de POSSESSION. Tests t4 réécrits sur les mêmes noms
+  réels, nouvelle intention.
 - **Décideur** : Marc (options structurelles ci-dessous) ; exécution Claude.
 - **Périmètre** : missions `vehicule` (50 refus), `logement` (18), `dispatch-03` (21) —
   `MISSIONS_REGLES_VERSION` c49-1 → **c49-2** (les refus keyés se ré-évaluent TOUS au bump).
@@ -111,7 +117,16 @@ le bump : si < 15 restants, le glisser-déposer manuel de Marc suffit (déjà po
 
 ## 5. Découpage
 
-- **PR1 (c49-2)** : table bailleur (preuves §2 complétées au PoC) + `bailleurDuNom_` partagé +
-  composition Véhicule (option retenue par Marc, défaut = A) + KIA + catégories transverses +
-  geste symétrique 03 + unification LCP + bump version + audit PoC + tests/mutations.
-- **PR2 (option)** : surface app « résolution manuelle » si le reliquat post-bump le justifie.
+- **PR1 (c49-2)** : table bailleur (preuves §2, dont 2 complétées par LECTURE DE CONTENU) +
+  canons partagés (`logementDuBailleur_`, `vehiculeDuNom_`) + structure PAR VÉHICULE (décision
+  Marc) + KIA + geste symétrique 03 + drainage LCP + bump version + tests/mutations. **Trace
+  §8-2** : l'audit sur du réel a eu lieu EN SESSION le 17/08 (listings Drive des 7 sources +
+  des 5 cibles logement, lecture du contenu des 2 bails ambigus) — les tests c49-2 encodent ces
+  MÊMES noms réels (CAS, t4 réécrits, reconduction/résiliation/quittance).
+- **BUMP c49-3 planifié (post-drainage)** : le gate de complétude des fenêtres véhicule (revue
+  finale — router par fenêtre sur un jeu incomplet aurait été un faux positif définitif) fait
+  que les génériques datés du run 1 sont REFUSÉS tant que KIA n'a pas sa fenêtre. Une fois le
+  drainage nominal convergé (KIA rempli par les fichiers nommés), bumper c49-3 re-présente ces
+  refus aux fenêtres mûres. Vérifier AUSSI au déploiement : aucune entité validée du référentiel
+  ne pointe encore (Dossier ID) le double LCP ou un ancien chemin pluriel.
+- **PR2 (option)** : surface app « résolution manuelle » si le reliquat post-c49-3 le justifie.

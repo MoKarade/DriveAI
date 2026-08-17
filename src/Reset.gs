@@ -18,6 +18,19 @@
 /** Sous-dossiers standard d'une ÉCOLE (06). Prépa reçoit en plus « Concours ». */
 var SOUS_DOSSIERS_ECOLE_RESET = ['Cours & travaux', 'Examens & khôlles', 'Résultats', 'Administratif'];
 
+/** Les 4 catégories PAR VÉHICULE (décision Marc 2026-08-17, ADR-0040 §3a). Littéral LOCAL et non
+ * CONFIG.MISSIONS_CATEGORIES_VEHICULE : la table se construit au CHARGEMENT du fichier, dont
+ * l'ordre n'est pas garanti face à Config.gs — l'ÉGALITÉ des deux listes est verrouillée par
+ * tripwire de test (deux artefacts qui doivent bouger ensemble, leçon §7). */
+var CATEGORIES_VEHICULE_RESET = ['Contraventions', 'Assurance auto', 'Entretien & réparations', 'Recherche & achat'];
+
+/** Construit le nœud d'un véhicule (les 4 catégories) depuis la constante. PURE. */
+function categoriesVehiculeReset_() {
+  var n = {};
+  for (var i = 0; i < CATEGORIES_VEHICULE_RESET.length; i++) n[CATEGORIES_VEHICULE_RESET[i]] = {};
+  return n;
+}
+
 /** Construit le nœud d'une école depuis la constante (UNE source — revue PR1). PURE. */
 function ecoleReset_(avecConcours) {
   var n = {};
@@ -51,16 +64,20 @@ var STRUCTURE_CIBLE_RESET = {
     'Revenus & paie': {},
   },
   '03 · Logement & véhicule': {
-    // Fichiers À PLAT dans chaque logement (noms triables par date) — plus de squelettes de schéma.
-    'Logements': { '1548 avenue de la Roselière': {}, '3987 route des Rivières': {}, '3325 4e Avenue (LCP Groupe Immobilier)': {}, 'Anciens logements': {} },
-    // 4 nœuds AUTO ajoutés sur le reliquat réel (décision Marc 2026-07-31, t4) : ~64 fichiers de 03
-    // n'avaient aucun dossier d'accueil. Ils sont placés SOUS « Véhicules » (6 enfants ≤ 7 ✔) et non
-    // au niveau de 03, qui est à 6/7 — la place restante y est ainsi préservée.
-    'Véhicules': { 'KIA': {}, 'Anciens véhicules': {}, 'Entretien & réparations': {}, 'Assurance auto': {}, 'Recherche & achat': {}, 'Contraventions': {} },
+    // GESTE SYMÉTRIQUE C28-51 (ADR-0040 §3c) : les nœuds PLURIELS « Logements »/« Véhicules »
+    // sont RETIRÉS — les missions 03 les VIDENT et les peignent en rouge ; les garder ici les
+    // ferait RECRÉER par nom à chaque classement (ping-pong, leçon Fusion #47 — même geste que
+    // « Recherche d'emploi » en 05). Le flux vise les cibles SINGULIER de Marc, aux NOMS RÉELS
+    // des dossiers Drive (find-or-create PAR NOM : un libellé de table divergent créerait un
+    // doublon — vécu : le flux a créé « 3987 route des Rivières » à côté du « 3987 rte des
+    // Rivières » réel). Fichiers À PLAT dans chaque logement ; dans chaque VÉHICULE, les 4
+    // catégories de Marc (décision 2026-08-17, créées à la demande).
+    'Logement': { '1548 avenue de la Roselière, Québec': {}, '3987 rte des Rivières': {}, '3325 4e avenue': {}, '783 av. Moreau, Québec': {}, 'Anciens logements': {} },
+    'Véhicule': { 'Toyota bZ': categoriesVehiculeReset_(), 'KIA': categoriesVehiculeReset_(), 'Ford Fiesta': categoriesVehiculeReset_(), 'VW Jetta': categoriesVehiculeReset_() },
     'Énergie & services': {},
     'Assurance habitation': {},
     // Ajoutés sur le reliquat réel (décision Marc 2026-07-30) : 18 « Contrat » et 16
-    // « Correspondance » de 03 n'avaient aucun dossier d'accueil. 03 passe à 6 nœuds (≤ 7 ✔).
+    // « Correspondance » de 03 n'avaient aucun dossier d'accueil. 03 reste à 6 nœuds (≤ 7 ✔).
     'Contrats': {},
     'Correspondance': {},
   },
@@ -329,49 +346,59 @@ function cheminCibleReset_(domaine, nom) {
   }
 
   if (domaine === '03 · Logement & véhicule') {
-    if (tout.indexOf('roseliere') !== -1) return 'Logements/1548 avenue de la Roselière';
-    if (tout.indexOf('rivieres') !== -1) return 'Logements/3987 route des Rivières';
-    if (resetContient_(tout, ['lcp', '3325', '4e avenue'])) return 'Logements/3325 4e Avenue (LCP Groupe Immobilier)';
-    if (resetContient_(tout, ['kia', 'sportage'])) return 'Véhicules/KIA';
-    if (resetContient_(t, ['immatriculation', 'carte grise']) || e.indexOf('saaq') !== -1) return 'Véhicules';
+    // GESTE SYMÉTRIQUE C28-51 (ADR-0040 §3c) : cibles SINGULIER aux noms RÉELS ; le canon des
+    // véhicules (`vehiculeDuNom_`) et des bailleurs (`logementDuBailleur_`, table PROUVÉE par
+    // contenu) est PARTAGÉ avec les missions — une seule règle, deux consommateurs (C28-26).
+    // LOGEMENT — par ADRESSE dans le texte, en MOT ENTIER (revue structure-keeper C28-51 :
+    // « moreau » en sous-chaîne matchait « Moreault » — la collision MÊME de la leçon C28-49,
+    // sur un verdict de FLUX donc définitif)…
+    // Frontières NON-ALPHANUMÉRIQUES (pas un padding d'espaces : `normaliserCle_` garde points
+    // et tirets — « moreau.pdf » doit matcher, « moreault » jamais). Mots alphanumériques only.
+    var motEntier = function (mot) {
+      return new RegExp('(^|[^a-z0-9])' + mot + '([^a-z0-9]|$)').test(tout);
+    };
+    if (motEntier('roseliere')) return 'Logement/1548 avenue de la Roselière, Québec';
+    if (motEntier('rivieres')) return 'Logement/3987 rte des Rivières';
+    if (motEntier('3325') || tout.indexOf('4e avenue') !== -1) return 'Logement/3325 4e avenue';
+    if (motEntier('moreau')) return 'Logement/783 av. Moreau, Québec';
+    if (motEntier('trieste')) return 'Logement/Anciens logements'; // stock réel (revue)
+    // …sinon par BAILLEUR (les bails sont nommés par bailleur, jamais par adresse — ADR-0040 §2).
+    var logementBailleur = logementDuBailleur_(tout);
+    if (logementBailleur) return 'Logement/' + logementBailleur;
+    // VÉHICULE — canon partagé ('toyota' n'est pas un jeton : la Corolla jamais achetée matcherait
+    // le bZ), puis la CATÉGORIE de Marc par le type (à plat dans le véhicule si aucune).
+    var vehicule = vehiculeDuNom_(tout);
+    if (vehicule) {
+      if (resetContient_(t, ['constat d infraction', 'contravention', 'amende'])) return 'Véhicule/' + vehicule + '/Contraventions';
+      // 'vente'/'achat' en MOT ENTIER (revue finale : « achat » ⊂ « rachat », « vente » ⊂
+      // « prévente » — mauvaise catégorie dans le bon véhicule).
+      if (resetContient_(t, ['annonce', 'capture d ecran', 'comparatif', 'catalogue', 'simulation',
+        'information commerciale']) || motEntier('vente') || motEntier('achat')) return 'Véhicule/' + vehicule + '/Recherche & achat';
+      if (t.indexOf('assurance') !== -1 || resetContient_(e, ['assurance', 'insurance', 'igo', 'manuvie'])) return 'Véhicule/' + vehicule + '/Assurance auto';
+      if (resetContient_(e, ['garage', 'carrossier', 'procolor', 'mecanique', 'certi', 'vezin',
+        'expertise auto']) || resetContient_(t, ['entretien', 'reparation', 'revision'])) return 'Véhicule/' + vehicule + '/Entretien & réparations';
+      return 'Véhicule/' + vehicule;
+    }
     if (resetContient_(e, ['edf', 'engie', 'hydro'])) return 'Énergie & services';
     if (tout.indexOf('assurance habitation') !== -1 || e.indexOf('maif') !== -1) return 'Assurance habitation';
-    if (resetContient_(tout, ['trieste', 'moreau'])) return 'Logements/Anciens logements'; // stock réel (revue)
-    if (resetContient_(tout, ['jetta', 'fiesta'])) return 'Véhicules/Anciens véhicules';
-    if (resetContient_(t, ['bail', 'etat des lieux', 'quittance', 'loyer'])) return 'Logements';
+    // Un document de VÉHICULE sans véhicule identifiable (immatriculation SAAQ, contravention
+    // anonyme…) n'a PLUS de fourre-tout : les catégories vivent DANS chaque véhicule (décision
+    // Marc). null ⇒ reste en `_TRI` + rapport — la MISSION, elle, sait trancher par FENÊTRE DE
+    // POSSESSION (état Drive, hors de portée d'une table pure). Jamais deviné.
+    if (resetContient_(t, ['immatriculation', 'carte grise', 'constat d infraction', 'contravention', 'amende']) ||
+        e.indexOf('saaq') !== -1) return null;
 
-    /* ---- AUTO (t4, décision Marc 2026-07-31 sur le reliquat réel) ----
-     * Ordre VOULU : ces règles passent APRÈS les règles par entité/logement ci-dessus (un
-     * « Contrat_LCP » reste chez LCP) et AVANT les filets « Contrats »/« Correspondance », qui
-     * captureraient sinon tout ce qui porte le type « contrat », « devis » ou « correspondance ».
-     */
+    /* ---- Ordre VOULU : les règles par entité/canon ci-dessus passent AVANT les filets
+     * « Contrats »/« Correspondance » (un « Contrat_LCP » part chez son bailleur, jamais dans le
+     * fourre-tout). Les filets ne capturent que ce qui rendait `null`. */
     // Ferroviaire : Marc les veut dans « 08 · Perso & projets/Voyages », ce que le reset NE PEUT PAS
     // faire — il place toujours dans le domaine d'ORIGINE (ici 03). On les laisse donc en `_TRI`,
     // rapportés, plutôt que de les mal ranger : « Recherche-Devis_SNCF » contient « devis » et
     // partirait sinon dans « Contrats ». À lever si le déplacement inter-domaines est décidé.
     if (resetContient_(tout, ['sncf', 'billet de train'])) return null;
-    if (resetContient_(t, ['constat d infraction', 'contravention', 'amende'])) return 'Véhicules/Contraventions';
-    // RECHERCHE & ACHAT par le TYPE, AVANT l'entretien par l'émetteur : une « Capture
-    // d'écran_Drummondville Volkswagen » (stock réel) est de la RECHERCHE chez un concessionnaire,
-    // pas une réparation — pour ces artefacts (annonce, capture, comparatif, catalogue), le type
-    // dit ce que c'est, l'émetteur dit seulement où ça a été pris.
-    if (resetContient_(t, ['annonce', 'capture d ecran', 'comparatif', 'catalogue', 'simulation',
-      'information commerciale'])) return 'Véhicules/Recherche & achat';
-    // ASSURANCE AUTO — l'habitation est déjà partie plus haut, donc le reste de l'assurance en 03 est
-    // automobile. Le contexte « assurance » est EXIGÉ sur le type OU l'émetteur : sans ça,
-    // « Réclamation_Virgin » (télécom, dans le stock réel) serait pris pour un sinistre auto.
-    // 'insurance'/'igo'/'manuvie' : le courtier écrit en anglais (« IGO Insurance - Manuvie »).
-    if (resetContient_(e, ['assurance', 'insurance', 'igo', 'manuvie']) || t.indexOf('assurance') !== -1) return 'Véhicules/Assurance auto';
-    // ENTRETIEN & RÉPARATIONS — routage par l'ÉMETTEUR (garage/concession/carrossier), qui est le
-    // signal stable : les types varient (facture, devis, estimation, rendez-vous, certificat de
-    // garantie) mais l'émetteur reste le même atelier.
-    if (resetContient_(e, ['garage', 'carrossier', 'procolor', 'mecanique', 'certi', 'vezin',
-      'volkswagen', 'toyota', 'expertise auto', 'yamaha'])) return 'Véhicules/Entretien & réparations';
-    // FILETS DE FIN (décision Marc 2026-07-30, sur le reliquat : 18 « Contrat » + 16
-    // « Correspondance » sans dossier d'accueil). Placés en DERNIER, APRÈS toutes les règles par
-    // entité (Roselière, Rivières, LCP, KIA…) et par type spécifique : un « Contrat_LCP » part donc
-    // toujours chez LCP, jamais dans le fourre-tout. Ne capturent que ce qui rendait `null`.
-    if (resetContient_(t, ['contrat', 'devis', 'consentement', 'formulaire de demande de location'])) return 'Contrats';
+    // Un bail/une quittance SANS adresse ni bailleur reconnus : les filets de fin (le pluriel
+    // « Logements » n'existe plus — la mission ou Marc trancheront depuis le rapport).
+    if (resetContient_(t, ['contrat', 'devis', 'consentement', 'formulaire de demande de location', 'bail'])) return 'Contrats';
     if (resetContient_(t, ['correspondance', 'lettre', 'courrier', 'avis de sejour', 'mise en demeure'])) return 'Correspondance';
     return null;
   }
