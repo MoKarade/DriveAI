@@ -152,8 +152,9 @@ var CONFIG = {
   // des appels LLM avant d'atteindre une création). Mais faire ATTENDRE Marc jusqu'à 24 h après
   // qu'il a activé l'API est absurde : on sonde donc l'API elle-même par des appels LÉGERS (1 GET
   // par API sur un identifiant INEXISTANT, aucune donnée lue), au plus une fois par fenêtre
-  // ci-dessous. Coût au pire ~110 sondes/jour × **2 requêtes** = ~220 UrlFetch/j sur un quota de
-  // 20 000 (≈ 1 %) — et UNIQUEMENT pendant une panne ; gain : reprise automatique en ~15 min au
+  // ci-dessous. Coût au pire ~110 sondes/jour × **2 requêtes** + ~1 refresh OAuth jobai/h
+  // (ADR-0041) ≈ ~245 UrlFetch/j sur un quota de 20 000 (≈ 1,2 %) — et UNIQUEMENT pendant une
+  // panne ; gain : reprise automatique en ~15 min au
   // lieu de ≤ 24 h. 13 min et non 15 : le tick fait 5 min, une fenêtre de 15 min pile retomberait
   // sur le 3ᵉ tick SEULEMENT si le déclencheur ne dérive pas — quelques secondes d'avance feraient
   // sauter un tour (reprise à 20 min). 13 min garantit les 3 ticks (revue quotas C28-48).
@@ -162,9 +163,12 @@ var CONFIG = {
   // ~60 s/appel) et la sonde tourne en tête de tick. Au-delà, on abandonne la passe (verdict
   // indéterminé — rien n'est levé) plutôt que de manger la marge budget → mur des 6 min.
   // ⚠️ CE QUE ÇA BORNE VRAIMENT (revue code C28-48) : le garde s'évalue ENTRE deux appels, jamais
-  // pendant. Le 1er fetch n'est donc pas borné du tout, et le pire cas réel vaut ce seuil + la
+  // pendant. Le 1er appel n'est donc pas borné du tout, et le pire cas réel vaut ce seuil + la
   // durée d'UN appel (~60 s), soit ~80 s — pas 20 s. C'est un plafond sur le CUMUL, pas un
   // timeout ; il supprime le cas « 2 × 60 s », ce qui est le but. Ne pas raisonner sur 20 s.
+  // Depuis l'ADR-0041 (revue quotas F1), le REFRESH OAuth jobai compte DANS ce cumul (l'horloge
+  // démarre avant `jetonJobai_()`) : un refresh lent abandonne la passe AVANT le 1er GET de sonde
+  // — sans perte, le token refreshé est déjà persisté et la sonde suivante est servie du cache.
   PANNE_CONFIG_SONDE_MAX_MS: 20 * 1000,
   // Panne API DURABLE (C28-12, plan NotebookLM P5) : une panne plateforme d'une AUTRE signature
   // que crédit/clé (529 « overloaded » Anthropic prolongé, 429 persistant, 5xx) doit finir par

@@ -637,6 +637,18 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   DÉPLOYÉ) tranche un INCERTAIN runtime en CERTAIN — signal indépendant, jamais un échantillon Drive.
   Corollaire : re-lancer une campagne à clé de SUCCÈS ne re-traite pas ce qu'elle a figé « OK » —
   bumper la VERSION/tag pour re-évaluer sous les règles courantes.
+- **Projet GCP par défaut d'Apps Script = CACHÉ (inadministrable, propriétaire compris) — une URL
+  d'activation `?project=<n°>` n'y sert jamais.** Deux issues seulement pour une API qui y manque :
+  (a) déclarer le service avancé (`dependencies` — DÉCLARER ≠ APPELER, les appels restent REST) ;
+  (b) ne pas utiliser le jeton du script pour cette API — jeton OAuth d'un projet standard de
+  l'utilisateur (**ADR-0041** : Tasks/Calendar via le projet jobai, `JetonJobai.gs`, consentement
+  unique, refresh token en Script Properties, échec fermé sur la mécanique config-api). La
+  CATÉGORIE des scopes borne la voie (b) : un scope RESTREINT (`gmail.modify`) sur un projet
+  standard exige une vérification Google (CASA) ou expire tous les 7 jours en mode Test — Gmail/
+  Drive restent donc à JAMAIS sur le projet caché ; vérifier la catégorie d'un scope AVANT de
+  proposer un changement de projet. Corollaire callback : toute action `doGet`/`doPost` qui LIE un
+  compte externe se garde par un `state` généré (comparaison constante, usage unique, validé AVANT
+  tout appel réseau) — l'URL `/exec` est publique.
 - **Message de commit avec des backticks ⇒ `git commit -F fichier`, jamais `-m "…"`.** Citer les
   identifiants entre backticks est la convention d'écriture du projet : en INLINE dans bash, ils
   déclenchent une SUBSTITUTION DE COMMANDE et l'identifiant DISPARAÎT du message — commit réussi

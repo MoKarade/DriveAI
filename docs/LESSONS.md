@@ -2359,3 +2359,49 @@ divergence sur un chemin à clé de SUCCÈS est définitive (asymétrie des verd
 qui paie l'inventaire."
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-17 — Projet GCP par défaut d'Apps Script : CACHÉ — deux issues seulement, et la catégorie des scopes choisit
+
+**Contexte.** C28-52. Les intentions mail échouaient en 403 « Tasks API has not been used in
+project 289462394116 » avec une URL d'activation. Consigne donnée à Marc : cliquer le lien —
+IMPOSSIBLE (« je ne peux ni sélectionner le bon projet, j'ai pas les autorisations ») : le projet
+par défaut d'Apps Script est CACHÉ et n'est administrable par PERSONNE en console, propriétaire
+compris. Première direction construite : déclarer les services avancés
+(`dependencies.enabledAdvancedServices`, déclarés jamais appelés) — techniquement valable, mais
+RÉVOQUÉE par Marc (« je veux utiliser le projet jobai hubperso uniquement ») : livrée à la place,
+l'ADR-0041 — le moteur n'utilise PLUS le jeton du script pour Tasks/Calendar mais un jeton OAuth
+du projet standard de Marc (consentement unique, refresh token en Script Properties). Le
+transfert COMPLET vers un projet standard restait, lui, piégé : `gmail.modify` est un scope
+RESTREINT — projet standard ⇒ vérification Google (CASA) ou mode Test avec autorisations qui
+expirent tous les 7 jours (moteur mort chaque semaine).
+
+**Leçon.** « Une URL d'activation `?project=<n°>` ne sert que si le projet est ADMINISTRABLE —
+pour le projet par défaut (caché) d'Apps Script, elle ne sert JAMAIS. Deux issues seulement :
+(a) DÉCLARER le service avancé correspondant (déclarer n'est pas APPELER — les appels restent en
+REST ; la leçon 'service avancé pas fiable après clasp push' vise le CALL) ; (b) ne PAS utiliser
+le jeton du script pour cette API — jeton OAuth d'un projet standard à soi (ADR-0041 : client
+OAuth + refresh token en Script Properties + échange REST), la voie qui laisse l'utilisateur
+administrer ses API dans SA console. Le choix appartient à l'utilisateur (c'est SA console) ;
+mais la CATÉGORIE des scopes borne la voie (b) : un scope RESTREINT (`gmail.modify`) sur un
+projet standard exige une vérification Google (CASA) ou meurt tous les 7 jours en mode Test —
+vérifier la catégorie AVANT de proposer tout changement de projet. »
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-17 — Une chaîne déclarée « morte » se re-prouve sur son CAS NOMINAL DU JOUR avant l'alerte
+
+**Contexte.** C28-52, fausse alerte corrigée en direct. Trois indices convergents disaient
+« intake PJ mort » : `00 · À trier` vide, compteur LLM figé (820 appels), aucun dépôt dans les
+fichiers récents. Tous trompeurs : vide = DRAINÉ (l'état sain), figé = aucun nouveau mail à PJ
+depuis, récents = noyés par les artefacts du miroir. Le re-check demandé par Marc (« vérifie plus
+en détail ») a consisté à chercher LE fichier attendu du jour (le talon de paie reçu à 11:17) —
+trouvé, classé à 11:42, rangé par la mission à 13:59 : la chaîne marchait parfaitement.
+
+**Leçon.** « Avant de déclarer une chaîne de traitement MORTE, prendre le cas nominal LE PLUS
+RÉCENT (le document arrivé aujourd'hui) et chercher SA trace de bout en bout — un artefact précis
+vaut plus que trois indices d'ambiance convergents. Les indices d'absence (file vide, compteur
+figé, liste de récents) sont ambigus par construction : vide peut dire drainé, figé peut dire
+aucun intrant, et une liste de récents est polluée par les producteurs techniques (miroir). »
+
+**Règle durable ?** non (instance des règles « compter la destination » et « signal indépendant »
+déjà en §7 — consignée ici pour le réflexe du cas nominal).

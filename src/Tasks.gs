@@ -2,8 +2,9 @@
  * Tasks.gs — Création de tâches Google Tasks via l'API REST (UrlFetchApp), Phase 3.
  *
  * Comme Drive (cf. DriveRest.gs) et l'OCR : REST plutôt que service avancé, pour la
- * robustesse après `clasp push` (cf. LESSONS « API Google via REST »). Le jeton OAuth
- * du script couvre tous les scopes déclarés dans `appsscript.json` (dont `tasks`).
+ * robustesse après `clasp push` (cf. LESSONS « API Google via REST »). Jeton : celui du projet
+ * JOBAI (`jetonJobai_`, ADR-0041) — jamais celui du script, dont le projet GCP caché n'a pas
+ * l'API Tasks activée (et ne peut pas l'avoir : aucune console n'y donne accès).
  *
  * Garde-fou : CRÉATION uniquement — jamais de modification ni de suppression, et jamais de
  * LECTURE d'une tâche EXISTANTE de Marc. UNIQUE exception, étroite (C28-48, révision ADR-0022) :
@@ -22,6 +23,12 @@
  * @return {string} l'ID de la tâche créée, ou '' en cas d'échec.
  */
 function creerTache_(titre, echeance, notes) {
+  // Pas de jeton jobai (jamais lié, révoqué, ou refresh en échec transitoire) : panne de CONFIG —
+  // même préfixe canonique que l'API désactivée, donc même mécanique de suspension + message
+  // Santé (ADR-0041). Le message dit HONNÊTEMENT laquelle des deux causes (revue quotas F2).
+  var jeton = jetonJobai_();
+  if (!jeton) throw new Error('config-api Tasks : ' + messageJetonJobaiIndisponible_());
+
   var payload = { title: titre };
   if (notes) payload.notes = notes;
   if (echeance) payload.due = echeance + 'T00:00:00.000Z'; // Tasks : seule la date compte (UTC)
@@ -32,7 +39,7 @@ function creerTache_(titre, echeance, notes) {
       method: 'post',
       contentType: 'application/json',
       payload: JSON.stringify(payload),
-      headers: { Authorization: 'Bearer ' + jetonGoogle_() },
+      headers: { Authorization: 'Bearer ' + jeton },
       muteHttpExceptions: true
     }
   );
@@ -50,6 +57,10 @@ function creerTache_(titre, echeance, notes) {
   if (rep.getResponseCode() === 403 && estMessageApiDesactivee_(corps)) {
     throw new Error('config-api Tasks : ' + tronquer_(messageErreurGoogle_(corps), 300));
   }
+  // 401 = le jeton porté est REFUSÉ (révocation pendant la durée de vie du cache — revue code
+  // 🟠2) : purger le cache force l'appel suivant à repasser par le refresh, qui tranche
+  // `invalid_grant` (purge + consigne) vs blip transitoire.
+  if (rep.getResponseCode() === 401) purgerCacheJetonJobai_();
   journalErreur_('Tasks', 'Création HTTP ' + rep.getResponseCode() + ' (« ' + titre + ' ») : ' +
     tronquer_(corps, 300));
   return '';

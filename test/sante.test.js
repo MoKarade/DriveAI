@@ -51,7 +51,7 @@ test('texteSanteConfigApi_ (PURE) : en panne, dit POURQUOI (projet GCP) et QUAND
     depuisMs: Date.UTC(2026, 7, 14, 11, 51),
     message: 'Calendar — Google Calendar API has not been used in project 987654321 before',
   }, 'UTC');
-  assert.ok(t.includes('NON ACTIVÉE'));
+  assert.ok(t.includes('INDISPONIBLES'), 'titre neutre sur la cause (API non activée OU compte jobai non lié — ADR-0041)');
   assert.ok(t.includes('14/08 11:51'), 'depuis quand');
   assert.ok(t.includes('project 987654321'), 'le projet GCP — ce qui distingue « pas activée » de « autre projet »');
   // Cadence DÉRIVÉE de la CONFIG (leçon §7) : codée « 15 min » en dur, l'assertion mentirait au
