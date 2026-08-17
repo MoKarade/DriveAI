@@ -416,6 +416,13 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   de revue : « cette condition est-elle évaluée deux fois sur deux représentations du même fait ? »
   Corollaire : améliorer un message d'erreur POUR L'HUMAIN est un changement de CONTRAT dès que du
   code lit ce message — inventorier ses lecteurs, comme pour un schéma.
+- **Mutualiser UNE dimension d'une règle ne couvre pas les autres : inventorier CHAQUE prédicat
+  de la décision.** Partager l'employeur et les buckets entre flux et missions (« une seule règle,
+  deux consommateurs » ✔ en revue) laissait la détection de TYPE écrite deux fois — 3 divergences
+  réelles à clé de SUCCÈS (RL-1/31, RIB, « salaire »), trouvées seulement par la passe finale
+  (C28-49 PR2). Au moment de partager une règle : lister chaque prédicat consommé par la décision
+  (type, année, émetteur, exclusions, fenêtres numériques) et trancher pour chacun — partagé, ou
+  localité justifiée par écrit. La dimension visiblement mutualisée est celle qui endort la revue.
 - **L'asymétrie des verdicts commande la sévérité du prédicat.** Dans un pipeline idempotent, un
   verdict NÉGATIF (refus keyé sous version) est RÉVISABLE — l'item reste en place, un bump le
   ré-évalue ; un verdict POSITIF qui DÉPLACE l'item HORS du périmètre de collecte est DÉFINITIF DE
