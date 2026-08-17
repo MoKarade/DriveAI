@@ -196,8 +196,9 @@ test('réallocation conso-gen↔missions : le COUPLE somme 12 min ET une mission
     'MISSIONS_ACTIF=true avec MISSIONS_BUDGET_JOUR_MS=0 = missions MUETTES (no-op silencieux)');
 });
 
-test('orchestration MISSIONS : les 4 missions sont gatées par !resetEnCours_() ET le budget quotidien', () => {
-  ['mission-vehicule', 'mission-logement', 'mission-dispatch-03', 'mission-archives-06'].forEach((cle) => {
+test('orchestration MISSIONS : les 8 missions sont gatées par !resetEnCours_() ET le budget quotidien', () => {
+  ['mission-vehicule', 'mission-logement', 'mission-dispatch-03', 'mission-archives-06',
+    'mission-paies', 'mission-carriere', 'mission-annees-02', 'mission-impots'].forEach((cle) => {
     assert.ok(/gResetEnCours/.test(gatesDe(cle)), cle + ' : une seule main déplace (reset)');
     assert.ok(/gMissionsJour_/.test(gatesDe(cle)), cle + ' : la raison « budget du jour épuisé » doit ' +
       'venir de la GATE (suivi C28-44 → statut « en pause » + « reprise demain »)');

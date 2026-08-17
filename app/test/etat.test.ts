@@ -292,6 +292,20 @@ describe('progression live (C28-18)', () => {
     expect(estUtileProgression(op('jamais vue', null, 0))).toBe(false);
     expect(estUtileProgression(op('en cours', null, 0))).toBe(false); // routine qui tourne sans compteur
     expect(estUtileProgression(op('en pause (budget de tick épuisé)', null, 0))).toBe(false);
+    // C28-50 (demande Marc « je ne vois pas toutes les missions ») : une mission convergée AVEC
+    // reliquat reste EN AVANT — N fichiers attendent un affinage de règles, ce n'est pas fini.
+    expect(estUtileProgression(op('à jour (50 non apparié(s))', 54, 4))).toBe(true);
+    expect(estUtileProgression(op('à jour (1 non apparié(s))', null, 0))).toBe(true);
+  });
+
+  it('complementStatut (C28-50) : la parenthèse terminale du statut, imbrication comprise — sinon vide', async () => {
+    const { complementStatut } = await import('../src/etat');
+    // Parenthèses IMBRIQUÉES : « apparié(s) » — une regex non-gourmande aurait coupé à « apparié(s ».
+    expect(complementStatut('à jour (50 non apparié(s))')).toBe('50 non apparié(s)');
+    expect(complementStatut('en pause (budget du jour épuisé)')).toBe('budget du jour épuisé');
+    expect(complementStatut('terminé')).toBe('');
+    expect(complementStatut('')).toBe('');
+    expect(complementStatut('à jour (x) puis du texte')).toBe(''); // parenthèse non TERMINALE → rien
   });
 
   it('dateActivite (C28-45) : max par TIMESTAMP parsé — jamais un tri lexicographique jour-major', async () => {

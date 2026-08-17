@@ -118,6 +118,72 @@ function tableMissions_() {
         (IDS.archives06 || []).forEach(function (p) { repointerEntites_(p.src, p.cible); });
       },
     },
+    /* ---- PR2 : Carrière + Finances (brief Marc §« paies / employeurs / impôts / années ») ---- */
+    {
+      // Paies éparses à la RACINE de « Revenus & paie » → un sous-dossier PAR EMPLOYEUR.
+      // `profondeurPar` = 0 : les sous-dossiers d'employeur que la mission CRÉE ne sont jamais
+      // son propre périmètre (sinon re-collecte de sa propre sortie à chaque passe).
+      tag: 'paies', cle: 'mission-paies',
+      sources: [IDS.revenusPaie],
+      profondeurPar: (function () { var m = {}; m[IDS.revenusPaie] = 0; return m; })(),
+      batirCtx: function () { return {}; },
+      router: function (nom) {
+        var emp = employeurDuNom_(nom);
+        return emp ? { cibleParentId: IDS.revenusPaie, cibleNom: emp } : null;
+      },
+      // À la convergence : le rapport des MOIS MANQUANTS par employeur (demande explicite de
+      // Marc « je n'ai absolument pas toutes les paies ») — onglet `RapportPaies`, self-serve.
+      // Peut lever (comme le re-pointage archives06) : pas de FINI sans rapport écrit.
+      // `convergenceApres` (revue quotas PR2) : `carriere` et `annees02` alimentent ENCORE
+      // « Revenus & paie » pendant des jours — écrire le rapport avant leur fin le FIGERAIT sur
+      // des « mois manquants » qu'elles vont combler (donnée MOUVANTE, corollaire C28-49). La
+      // mission draine sans attendre ; seule sa CONVERGENCE (et donc le rapport) attend.
+      convergenceApres: ['carriere', 'annees02'],
+      apresConvergence: function () { ecrireRapportPaies_(); },
+      sourcesJetables: [], // « Revenus & paie » est PÉRENNE : jamais peinte en rouge
+    },
+    {
+      // Employeurs/<X> (vrac plat) + racine 05 (ex-dump Automatech) + fusion Recherche d'emploi.
+      tag: 'carriere', cle: 'mission-carriere',
+      sources: [IDS.employeursRobovic, IDS.employeursAutomatech, IDS.carriereRacine, IDS.rechercheEmploi],
+      // Racine 05 : SEULS ses fichiers à plat sont le périmètre — ses sous-dossiers (Employeurs,
+      // CV & lettres, Réseaux…) sont des structures, jamais recollectés.
+      profondeurPar: (function () { var m = {}; m[IDS.carriereRacine] = 0; return m; })(),
+      batirCtx: function () {
+        var parSource = {};
+        parSource[IDS.employeursRobovic] = 'Robovic';
+        parSource[IDS.employeursAutomatech] = 'Automatech';
+        return { employeurParSource: parSource };
+      },
+      router: function (nom, info, ctx) { return routerCarriere_(nom, info, ctx); },
+      // Employeurs/<X> et la racine 05 sont PÉRENNES (revue quotas PR2 : peindre un sous-dossier
+      // de structure momentanément vide dirait « supprimable » à tort) ; seule la source de la
+      // FUSION est jetable.
+      sourcesJetables: [IDS.rechercheEmploi],
+    },
+    {
+      // Les 12 dossiers-années de 02 → les bons sous-dossiers thématiques (table type → cible).
+      tag: 'annees02', cle: 'mission-annees-02',
+      sources: (IDS.annees02 || []).map(function (p) { return p.id; }),
+      batirCtx: function () {
+        var anneePar = {};
+        (IDS.annees02 || []).forEach(function (p) { anneePar[p.id] = p.annee; });
+        return { anneePar: anneePar };
+      },
+      router: function (nom, info, ctx) { return routerFinance02_(nom, ctx.anneePar[info.sourceId] || ''); },
+    },
+    {
+      // Racine d'« Impôts & déclarations » → sous-dossier par ANNÉE (année du nom du fichier).
+      tag: 'impots', cle: 'mission-impots',
+      sources: [IDS.impotsDeclarations],
+      profondeurPar: (function () { var m = {}; m[IDS.impotsDeclarations] = 0; return m; })(),
+      batirCtx: function () { return {}; },
+      router: function (nom) {
+        var annee = anneeDuNomMission_(nom);
+        return annee ? { cibleParentId: IDS.impotsDeclarations, cibleNom: annee } : null;
+      },
+      sourcesJetables: [], // « Impôts & déclarations » est PÉRENNE : jamais peinte
+    },
   ];
 }
 
@@ -213,6 +279,227 @@ function logementParDate_(nom, fenetres) {
   return trouve;
 }
 
+/* ================= Fonctions PURES PR2 (employeurs, types, routage 02/05) ================= */
+
+/**
+ * Employeur CANONIQUE d'un nom de fichier (`CONFIG.MISSIONS_EMPLOYEURS`, mot entier, préfixe de
+ * date retiré par `apparierUnique_`). Ambigu ou hors table ⇒ null (jamais deviné). PURE (testée).
+ * @param {string} nom
+ * @return {?string} nom canonique du sous-dossier (« Robovic », « Automatech », « CIUSSS »)
+ */
+function employeurDuNom_(nom) {
+  var cibles = (CONFIG.MISSIONS_EMPLOYEURS || []).map(function (e) {
+    return { nom: e.nom, id: e.nom, jetons: e.jetons };
+  });
+  var c = apparierUnique_(nom, cibles);
+  return c ? c.nom : null;
+}
+
+/**
+ * Segment TYPE d'un nom classé `AAAA-MM[-JJ]_Type_Émetteur.ext`, normalisé. '' si le nom ne suit
+ * pas la convention (pas de préfixe de date). PURE (testée). Le routage 02/05 décide sur CE
+ * segment — jamais sur le nom complet, où l'ÉMETTEUR créerait des collisions (« Banque CIC »
+ * matcherait « banque » alors que le document est un relevé d'impôt).
+ * @param {string} nom
+ * @return {string}
+ */
+function typeDuNomMission_(nom) {
+  var m = /^\d{4}(?:-\d{2}){0,2}_([^_]+)/.exec(String(nom || ''));
+  return m ? normaliserMission_(m[1]) : '';
+}
+
+/** Année en tête d'un nom (`AAAA-…` ou `AAAA_…`) — plausibilité par LA règle partagée
+ * `anneePlausible_` (Reset.gs — une seule fenêtre flux ↔ missions). PURE (testée). */
+function anneeDuNomMission_(nom) {
+  var m = /^(\d{4})[-_]/.exec(String(nom || ''));
+  return m && anneePlausible_(m[1]) ? m[1] : null;
+}
+
+/** Vrai si le segment type contient l'un des mots donnés (mot entier sur le segment). PURE. */
+function typeContient_(typeNormalise, mots) {
+  var t = ' ' + typeNormalise + ' ';
+  return (mots || []).some(function (mot) { return t.indexOf(' ' + mot + ' ') !== -1; });
+}
+
+/** Mots-clés fiscaux du segment type (ordre AVANT « relevé » générique — « relevé d'impôt » est fiscal). */
+var TYPES_FISCAUX_MISSIONS = ['t4', 'impot', 'impots', 'cotisation', 'declaration', 'feuillet', 'fiscal', 'fiscale'];
+
+/**
+ * Routage d'un fichier de dossier-ANNÉE de 02 (table type → cible, brief Marc). L'année de la
+ * cible fiscale = l'année du NOM si présente, sinon celle du dossier source. Type hors table ⇒
+ * null (laissé + rapporté). PURE (testée).
+ * @param {string} nom
+ * @param {string} anneeSource  nom du dossier-année d'origine (repli)
+ * @return {?Object}
+ */
+function routerFinance02_(nom, anneeSource) {
+  var IDS = CONFIG.MISSIONS_IDS;
+  var type = typeDuNomMission_(nom);
+  if (!type) return null; // nom hors convention : on ne décide pas sur du bruit
+  // 1. Paies → « Revenus & paie »/<Employeur> — prédicat PARTAGÉ avec le flux (`estTypePaieReset_`,
+  //    revue finale PR2 : la liste locale ['paie','paye'] ratait « salaire » que le flux couvre —
+  //    un « Bulletin de salaire » aurait été déplacé au mauvais endroit à clé de SUCCÈS).
+  if (estTypePaieReset_(type)) {
+    var emp = employeurDuNom_(nom);
+    return emp ? { cibleParentId: IDS.revenusPaie, cibleNom: emp } : null;
+  }
+  // 2. Fiscal → « Impôts & déclarations »/<année> (AVANT le « relevé » générique : un relevé
+  //    d'impôt est fiscal, pas bancaire). RL-1/RL-31 par le prédicat PARTAGÉ (revue finale PR2 :
+  //    la table de mots ne peut pas exprimer « releve 1 » ancré — le feuillet partait en Relevés).
+  if (estFeuilletFiscalReset_(type) || typeContient_(type, TYPES_FISCAUX_MISSIONS)) {
+    var annee = anneeDuNomMission_(nom) || anneeSource;
+    return annee ? { cibleParentId: IDS.impotsDeclarations, cibleNom: annee } : null;
+  }
+  // 3. Relevés / reçus & factures : DANS LE BUCKET D'ANNÉE, par LA MÊME règle que le flux vivant
+  //    (`resetBucketAnnee_` + STRUCTURE_CIBLE_RESET — revue code PR2 : deux règles écrites
+  //    séparément divergent toujours, leçon C28-26 ; router à plat aurait créé un nouveau vrac à
+  //    côté des buckets que le flux alimente).
+  var anneeDoc = anneeDuNomMission_(nom) || anneeSource;
+  var noeuds02 = STRUCTURE_CIBLE_RESET['02 · Finances'];
+  // RIB (relevé d'IDENTITÉ bancaire) : des COORDONNÉES, pas un relevé de compte (prédicat partagé
+  // — le flux le range en Banques/Coordonnées & chèques ; côté mission, hors table ⇒ refus keyé,
+  // laissé + rapporté, jamais deviné).
+  if (estRibReset_(type)) return null;
+  if (typeContient_(type, ['releve', 'releves'])) {
+    return { cibleId: IDS.releves02, sousDossier: resetBucketAnnee_(anneeDoc, noeuds02['Relevés']) };
+  }
+  if (typeContient_(type, ['recu', 'recus', 'facture', 'factures'])) {
+    return { cibleId: IDS.recusFactures02, sousDossier: resetBucketAnnee_(anneeDoc, noeuds02['Reçus & factures']) };
+  }
+  if (typeContient_(type, ['assurance', 'assurances'])) return { cibleId: IDS.assurances02 };
+  return null;
+}
+
+/** Sous-dossier d'« Employeurs/<X> » par TYPE (table explicite — type inconnu ⇒ ''). PURE. */
+function sousDossierEmployeur_(typeNormalise) {
+  if (typeContient_(typeNormalise, ['contrat', 'contrats'])) return 'Contrats';
+  if (typeContient_(typeNormalise, ['attestation', 'attestations', 'lettre'])) return 'Attestations & lettres';
+  if (typeContient_(typeNormalise, ['formulaire', 'formulaires', 'autorisation'])) return 'Formulaires';
+  if (typeContient_(typeNormalise, ['evaluation', 'evaluations'])) return 'Évaluations';
+  return '';
+}
+
+/**
+ * Routage de la mission CARRIÈRE. PURE (testée). Par source :
+ *  - `Recherche d'emploi` → fusion EN BLOC vers « CV & lettres » (segment préservé) ;
+ *  - `Employeurs/<X>` : une PAIE part vers 02/« Revenus & paie »/<X> (le domicile UNIQUE des
+ *    paies — décision Marc) ; un type de la table → sous-dossier ; type inconnu → refus (laissé
+ *    à plat + rapporté, jamais deviné) ;
+ *  - racine 05 (ex-dump Automatech) : l'ÉMETTEUR (mot entier) désigne l'employeur ; un CV/lettre
+ *    de motivation part vers « CV & lettres » ; sans indice → refus.
+ */
+function routerCarriere_(nom, info, ctx) {
+  var IDS = CONFIG.MISSIONS_IDS;
+  if (info.sourceId === IDS.rechercheEmploi) {
+    return { cibleId: IDS.cvLettres, sousDossier: info.sousChemin };
+  }
+  var type = typeDuNomMission_(nom);
+  var employeur = (ctx.employeurParSource || {})[info.sourceId] || employeurDuNom_(nom);
+  if (typeContient_(type, ['cv', 'curriculum', 'motivation'])) {
+    return { cibleId: IDS.cvLettres };
+  }
+  if (!employeur) return null;
+  // Prédicat PARTAGÉ avec le flux (« salaire » compris — revue finale PR2) : le domicile UNIQUE
+  // des paies est 02, quelle que soit la graphie du type.
+  if (estTypePaieReset_(type)) {
+    return { cibleParentId: IDS.revenusPaie, cibleNom: employeur };
+  }
+  var dossierEmployeur = employeur === 'Robovic' ? IDS.employeursRobovic
+    : employeur === 'Automatech' ? IDS.employeursAutomatech : null;
+  if (!dossierEmployeur) return null; // employeur sans dossier sous 05 (ex. CIUSSS) : on ne crée pas
+  var sous = sousDossierEmployeur_(type);
+  // Depuis la RACINE 05, un type inconnu mais un employeur SÛR va au moins dans son dossier (à
+  // plat) — c'est l'enrichissement demandé (le dump ex-Automatech re-rangé). DEPUIS Employeurs/<X>
+  // même, un type inconnu reste où il est (refus) : le déplacer « à plat » serait un no-op déguisé.
+  if (!sous && info.sourceId !== IDS.carriereRacine) return null;
+  return { cibleId: dossierEmployeur, sousDossier: sous };
+}
+
+/* ================= Rapport des paies (onglet self-serve) ================= */
+
+/**
+ * Mois manquants par employeur, depuis les noms `AAAA-MM_Paie_…` observés. PURE (testée) :
+ * pour chaque employeur, la couverture va du premier au dernier mois OBSERVÉ — un trou = un mois
+ * sans aucune paie. (On ne devine pas les bornes d'emploi : avant la première paie connue et
+ * après la dernière, rien n'est « manquant ».)
+ * @param {Object} parEmployeur  { employeur: ['2025-06', '2025-08', …] }
+ * @return {Array<{employeur:string, presents:number, manquants:string[]}>}
+ */
+function moisManquantsPaies_(parEmployeur) {
+  return Object.keys(parEmployeur || {}).sort().map(function (emp) {
+    var mois = {};
+    (parEmployeur[emp] || []).forEach(function (m) {
+      // PLAUSIBILITÉ (revue quotas PR2) : sans elle, UN nom aberrant (« 0215-… », mois « 27 » —
+      // une date OCR ratée suffit) créait des dizaines de milliers de « mois manquants », un
+      // `join` > 50 Ko, un `setValues` qui lève… re-tenté à chaque tick. Même plage d'années que
+      // `anneeDuNomMission_` (une seule règle).
+      var p = /^(\d{4})-(\d{2})$/.exec(m);
+      if (!p) return;
+      var moisNum = Number(p[2]);
+      if (anneePlausible_(p[1]) && moisNum >= 1 && moisNum <= 12) mois[m] = true;
+    });
+    var tries = Object.keys(mois).sort();
+    var manquants = [];
+    if (tries.length > 1) {
+      var courant = tries[0];
+      while (courant < tries[tries.length - 1]) {
+        var a = Number(courant.slice(0, 4)), m = Number(courant.slice(5, 7));
+        m += 1; if (m > 12) { m = 1; a += 1; }
+        courant = a + '-' + (m < 10 ? '0' + m : m);
+        if (!mois[courant] && courant < tries[tries.length - 1]) manquants.push(courant);
+      }
+    }
+    return { employeur: emp, presents: tries.length, manquants: manquants };
+  });
+}
+
+/**
+ * Écrit l'onglet `RapportPaies` (une ligne par employeur : couverture + mois manquants) depuis
+ * l'état RÉEL de « Revenus & paie »/<Employeur>. Appelée à la CONVERGENCE de la mission paies
+ * (peut lever → pas de FINI sans rapport, comme le re-pointage archives06). Bornée : ≤ 300
+ * fichiers lus par employeur, pur `getName()`.
+ */
+function ecrireRapportPaies_() {
+  var parEmployeur = {};
+  var it = DriveApp.getFolderById(CONFIG.MISSIONS_IDS.revenusPaie).getFolders();
+  var sousDossiersLus = 0;
+  while (it.hasNext()) {
+    if (++sousDossiersLus > 20) break; // borne de symétrie (revue quotas) — 3 employeurs attendus
+    var d = it.next();
+    var mois = [];
+    var fs = d.getFiles();
+    var lus = 0;
+    while (fs.hasNext() && lus < 300) {
+      var m = /^(\d{4}-\d{2})/.exec(fs.next().getName());
+      lus++;
+      if (m) mois.push(m[1]);
+    }
+    parEmployeur[d.getName()] = mois;
+  }
+  var lignes = moisManquantsPaies_(parEmployeur);
+  var f = feuille_('RapportPaies');
+  // Réparation d'en-tête AU POINT D'ÉCRITURE (leçon « point d'attache », 2026-08-13) — jamais
+  // dans initialiserSheet_ (code mort pour un onglet déjà créé).
+  if (String(f.getRange('A1').getValue()) !== 'Employeur') {
+    f.getRange(1, 1, 1, 4).setValues([['Employeur', 'Mois présents', 'Mois manquants (nb)', 'Mois manquants']]);
+    f.setFrozenRows(1);
+  }
+  var valeurs = lignes.map(function (l) {
+    // Cellule bornée (revue quotas) : la LISTE s'affiche tronquée, le COMPTE reste exact.
+    var texte = l.manquants.join(', ');
+    if (texte.length > 1000) texte = texte.slice(0, 1000) + '… (' + l.manquants.length + ' au total)';
+    return [l.employeur, l.presents, l.manquants.length, texte];
+  });
+  if (valeurs.length) f.getRange(2, 1, valeurs.length, 4).setValues(valeurs);
+  var dern = f.getLastRow();
+  if (dern > valeurs.length + 1) {
+    f.getRange(valeurs.length + 2, 1, dern - valeurs.length - 1, 4).clearContent();
+  }
+  journalInfo_('Missions', 'RapportPaies écrit : ' + lignes.map(function (l) {
+    return l.employeur + ' ' + l.presents + ' mois, ' + l.manquants.length + ' manquant(s)';
+  }).join(' · '));
+}
+
 /* ================= I/O bornées (contextes, collecte, peinture) ================= */
 
 /** Enfants-dossiers d'une cible, avec leurs jetons (+ extras par nom normalisé). */
@@ -268,7 +555,13 @@ function fenetresOccupation_(logements) {
  * seulement) : clé d'idempotence absente, zone protégée exclue. Garde-temps À CHAQUE item.
  * @return {{items:Array, coupe:boolean}}  coupe = collecte interrompue (garde/plafond)
  */
-function collecterMission_(sourceId, tag, garde, proteges) {
+function collecterMission_(sourceId, tag, garde, proteges, profondeurMax) {
+  // PR2 : `profondeurMax` OPTIONNELLE par source (spec.profondeurPar). `0` = fichiers À PLAT
+  // seulement — les sous-dossiers sont une STRUCTURE assumée hors périmètre (ex. la racine de
+  // « Revenus & paie », dont les sous-dossiers d'employeur sont la SORTIE de la mission : les
+  // recollecter serait boucler sur sa propre production), donc pas de drapeau « trop profond ».
+  var borne = typeof profondeurMax === 'number' ? profondeurMax : CONFIG.MISSIONS_PROFONDEUR_MAX;
+  var borneVoulue = typeof profondeurMax === 'number';
   var items = [], coupe = false, profond = false;
   var pousse = function (fichier, sousChemin) {
     if (items.length >= CONFIG.MISSIONS_MAX_PAR_RUN) { coupe = true; return false; }
@@ -283,7 +576,12 @@ function collecterMission_(sourceId, tag, garde, proteges) {
   // niveau que les cibles préservent). Au-delà de la borne : signalé, et la passe reste INCOMPLÈTE
   // — jamais un « terminé » qui ignore des fichiers en silence.
   var descendre = function (dossier, premierSegment, profondeur) {
-    if (profondeur > CONFIG.MISSIONS_PROFONDEUR_MAX) { profond = true; return true; }
+    if (profondeur > borne) {
+      // Une borne VOULUE (profondeurPar) délimite le périmètre : rien d'anormal. La borne de
+      // SÉCURITÉ par défaut, elle, signale (fichiers hors portée = mission maintenue ouverte).
+      if (!borneVoulue) profond = true;
+      return true;
+    }
     var fs = dossier.getFiles();
     while (fs.hasNext()) { if (!pousse(fs.next(), premierSegment)) return false; }
     var ds = dossier.getFolders();
@@ -443,7 +741,11 @@ function executerMission_(tag, estBudgetDepasse) {
   // blip transitoire ne fige jamais rien : « chemin de retour », §7).
   var etatM0 = chargerEtatMissions_(props);
   var m0 = etatM0[tag] || {};
-  if ((m0.err || 0) >= CONFIG.MISSIONS_ERREURS_MAX && m0.errJour === aujourdhui) return;
+  // Deux compteurs DISTINCTS : `err` (collecte) est remis à zéro par une passe saine ; `errC`
+  // (après-convergence : rapport, re-pointage) ne l'est PAS — sinon chaque passe saine effacerait
+  // le compteur juste avant que la convergence ne re-lève, et le filet ne s'armerait jamais.
+  if (((m0.err || 0) >= CONFIG.MISSIONS_ERREURS_MAX || (m0.errC || 0) >= CONFIG.MISSIONS_ERREURS_MAX)
+    && m0.errJour === aujourdhui) return;
 
   var debut = Date.now();
   var budgetRun = Math.min(CONFIG.MISSIONS_BUDGET_MS, CONFIG.MISSIONS_BUDGET_JOUR_MS - consommeJour);
@@ -460,7 +762,8 @@ function executerMission_(tag, estBudgetDepasse) {
     var traites = 0, refus = 0, coupe = false, passeIncomplete = false, erreurCollecte = false;
 
     for (var s = 0; s < spec.sources.length && !coupe; s++) {
-      var collecte = collecterMission_(spec.sources[s], tag, garde, proteges);
+      var collecte = collecterMission_(spec.sources[s], tag, garde, proteges,
+        (spec.profondeurPar || {})[spec.sources[s]]);
       coupe = coupe || collecte.coupe;
       if (collecte.erreur) { erreurCollecte = true; passeIncomplete = true; }
       for (var i = 0; i < collecte.items.length; i++) {
@@ -491,23 +794,58 @@ function executerMission_(tag, estBudgetDepasse) {
     if (erreurCollecte) {
       m.err = (m.err || 0) + 1;
       if (m.err >= CONFIG.MISSIONS_ERREURS_MAX) m.errJour = aujourdhui;
-    } else { delete m.err; delete m.errJour; }
+    } else {
+      delete m.err;
+      // `errJour` n'est levé par une collecte saine QUE s'il vient de la collecte — un jour posé
+      // par les échecs de CONVERGENCE (errC) tient jusqu'à ce que la convergence réussisse.
+      if (!((m.errC || 0) >= CONFIG.MISSIONS_ERREURS_MAX)) delete m.errJour;
+    }
     etatM[tag] = m;
     try { props.setProperty('DriveAI_MISSIONS_ETAT', JSON.stringify(etatM)); } catch (e) { }
 
     // CONVERGENCE : passe COMPLÈTE (ni coupée, ni trouée par un transitoire/une erreur) qui n'a
     // plus RIEN déplacé ni refusé de neuf.
     if (!coupe && !passeIncomplete && traites === 0 && refus === 0) {
-      // `apresConvergence` (re-pointage du référentiel) AVANT le drapeau FINI (revue sécurité
-      // C28-49) : FINI posé d'abord + court-circuit terminal = un échec ici ne serait JAMAIS
-      // re-tenté (« un retour qui est un délai n'est pas un chemin de retour », §7) — le flux
-      // vivant re-remplirait le dossier vidé/peint que Marc s'apprête à corbeiller. En échouant
-      // AVANT le drapeau, la prochaine passe (vide, quasi gratuite : tout est keyé) re-tente.
-      if (spec.apresConvergence) spec.apresConvergence(); // peut lever → pas de FINI, re-tenté
+      // `convergenceApres` (revue quotas PR2) : la conclusion de CETTE mission (dont son rapport)
+      // dépend d'un état que des missions SŒURS construisent encore — on attend LEUR drapeau FINI
+      // avant de conclure (le drainage, lui, n'a pas attendu). Passe vide en attendant : 2-3 RPC.
+      var amontFini = (spec.convergenceApres || []).every(function (t) {
+        return props.getProperty('DriveAI_MISSION_FINI_' + t) === version;
+      });
+      if (!amontFini) return;
+      // `apresConvergence` (re-pointage du référentiel, rapport paies) AVANT le drapeau FINI
+      // (revue sécurité C28-49) : FINI posé d'abord + court-circuit terminal = un échec ici ne
+      // serait JAMAIS re-tenté (« un retour qui est un délai n'est pas un chemin de retour », §7).
+      // Un échec ici COMPTE aussi dans le filet anti-brûlage (revue quotas PR2) : sans ça, un
+      // rapport qui lève À CHAQUE tick (donnée aberrante) re-tenterait 288×/j hors de tout filet.
+      if (spec.apresConvergence) {
+        try { spec.apresConvergence(); }
+        catch (eConv) {
+          m.errC = (m.errC || 0) + 1;
+          if (m.errC >= CONFIG.MISSIONS_ERREURS_MAX) m.errJour = aujourdhui;
+          etatM[tag] = m;
+          try { props.setProperty('DriveAI_MISSIONS_ETAT', JSON.stringify(etatM)); } catch (e2) { }
+          throw eConv; // pas de FINI — re-tenté (borné par le filet ci-dessus)
+        }
+        // Convergence RÉUSSIE ⇒ le compteur d'échecs de convergence est LIBÉRÉ (revue finale PR2 :
+        // un errC ≥ MAX survivrait au succès et re-bloquerait une journée entière au PREMIER échec
+        // après un futur bump de version — « un gate se teste par sa libération », leçon §7).
+        if (m.errC || m.errJour) {
+          delete m.errC;
+          delete m.errJour;
+          etatM[tag] = m;
+          try { props.setProperty('DriveAI_MISSIONS_ETAT', JSON.stringify(etatM)); } catch (e3) { }
+        }
+      }
       props.setProperty('DriveAI_MISSION_FINI_' + tag, version);
-      peindreSourcesVides_(spec.sources, garde);
+      // Peinture ROUGE : seulement les sources JETABLES (revue quotas PR2 — peindre un sous-dossier
+      // momentanément vide d'une racine PÉRENNE comme 05 dirait « supprimable » à tort). Défaut =
+      // toutes les sources (les missions PR1 dissolvent leurs sources par construction).
+      var jetables = spec.sourcesJetables !== undefined ? spec.sourcesJetables : spec.sources;
+      peindreSourcesVides_(jetables, garde);
       journalInfo_('Missions', 'Mission « ' + tag + ' » TERMINÉE (version ' + version + ') : ' +
-        m.t + ' déplacé(s), ' + m.na + ' non apparié(s). Dossiers vidés peints en rouge.');
+        m.t + ' déplacé(s), ' + m.na + ' non apparié(s).' +
+        (jetables.length ? ' Dossiers vidés peints en rouge.' : ''));
     }
   } finally {
     // Budget quotidien : ms RÉELLES consommées, écrites même sur exception (jamais de fuite).
@@ -559,9 +897,10 @@ function traiterItemMission_(spec, item, ctx, proteges) {
     var dossier = cible.cibleId ? ouvrir(cible.cibleId) : sous(ouvrir(cible.cibleParentId), cible.cibleNom);
     if (cible.sousDossier) dossier = sous(dossier, cible.sousDossier);
     f.moveTo(dossier); // LA seule mutation — déplacement, jamais suppression
-    // NB (revue quotas) : un crash ENTRE le move et la clé laisse un déplacement sans trace Index —
-    // sans double traitement (le fichier a quitté la source, la collecte est source-scopée), la clé
-    // ne sera simplement jamais posée pour lui (compteur t −1, bruit possible en réconciliation).
+    // NB (revues quotas + code) : un crash ENTRE le move et la clé laisse un déplacement sans
+    // trace Index. Pour les missions dont la cible est HORS de la source : jamais re-vu (compteur
+    // t −1, bruit possible en réconciliation). Pour `carriere` (cible DANS la source) : re-collecté
+    // UNE fois au run suivant, re-routé vers la même place (moveTo no-op), keyé — sans danger.
     indexAjouter_(cle, { statut: 'mission', nom: nom, domaine: '', chemin: dossier.getName() }, '');
     return 'fait';
   } catch (e) {

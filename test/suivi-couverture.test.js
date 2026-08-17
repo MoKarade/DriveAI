@@ -35,12 +35,13 @@ test('tripwire : aucune clé wrappée deux fois (une étape = un point d\'exécu
 });
 
 test('tripwire : la suspension R2 enregistre un skip pour CHAQUE étape du bloc (liste verrouillée)', () => {
-  // Les 23 étapes du bloc `if (!estPannePlateforme_())` — si une étape entre ou sort du bloc,
+  // Les 27 étapes du bloc `if (!estPannePlateforme_())` — si une étape entre ou sort du bloc,
   // cette liste DOIT bouger avec (sinon : soit un skip fantôme, soit une étape muette en panne).
-  // + les 4 missions de curation (C28-49) : dans le bloc, juste après la consolidation.
+  // + les 8 missions de curation (C28-49 PR1+PR2) : dans le bloc, juste après la consolidation.
   const attendu = ['intake-gmail', 'intake-depots', 'intake-partages', 'intentions', 'tri-gmail',
     'consolidation-exec', 'consolidation-gen',
     'mission-vehicule', 'mission-logement', 'mission-dispatch-03', 'mission-archives-06',
+    'mission-paies', 'mission-carriere', 'mission-annees-02', 'mission-impots',
     'fusion-exec', 'reset-rassemblement',
     'reset-placement', 'reset-04-interne', 'reset-llm', 'histo-gmail', 'migration',
     'reanalyse', 'dryrun-v2', 'dryrun-cmp', 'reorg', 'reconciliation-index'];
@@ -76,14 +77,18 @@ test('tripwire : suiviReset_ en tête de tick, flush APRÈS la rotation du Journ
 });
 
 test('tripwire : les raisons de skip écrites dans Main.gs sont NON VIDES et tiennent dans SUIVI_SKIP_MAX', () => {
+  // + Missions.gs (revue code PR2) : `gMissionsJour_`/`gMissionsAmont03_` y produisent des raisons
+  // — dont LA plus longue du vocabulaire (« en attente (missions 03) », 24 = SUIVI_SKIP_MAX pile).
+  // Ne scanner que Main.gs était une promesse de verrou non codée exactement sur le cas limite.
+  const SOURCES = MAIN + '\n' + fs.readFileSync(path.join(__dirname, '..', 'src', 'Missions.gs'), 'utf8');
   const c = load(['Suivi.gs']);
   // Toute chaîne rendue par une gate ou passée à suiviSkip_ : capturées par leurs formes
   // syntaxiques (`? 'raison' : null`, `: 'raison';`, `suiviSkip_(cle, 'raison')`, `return 'raison';`).
   const raisons = new Set();
-  for (const m of MAIN.matchAll(/\?\s*'([^']+)'\s*:\s*null/g)) raisons.add(m[1]);
-  for (const m of MAIN.matchAll(/\?\s*null\s*:\s*'([^']+)'/g)) raisons.add(m[1]);
-  for (const m of MAIN.matchAll(/suiviSkip_\(cle,\s*'([^']+)'\)/g)) raisons.add(m[1]);
-  for (const m of MAIN.matchAll(/catch \(e\) \{ return '([^']+)'; \}/g)) raisons.add(m[1]);
+  for (const m of SOURCES.matchAll(/\?\s*'([^']+)'\s*:\s*null/g)) raisons.add(m[1]);
+  for (const m of SOURCES.matchAll(/\?\s*null\s*:\s*'([^']+)'/g)) raisons.add(m[1]);
+  for (const m of SOURCES.matchAll(/suiviSkip_\(cle,\s*'([^']+)'\)/g)) raisons.add(m[1]);
+  for (const m of SOURCES.matchAll(/catch \(e\) \{ return '([^']+)'; \}/g)) raisons.add(m[1]);
   assert.ok(raisons.size >= 8, 'les raisons standard sont bien détectées (' + raisons.size + ')');
   for (const r of raisons) {
     assert.ok(r.trim().length > 0, 'raison vide interdite (contrat : "" = gate passante)');

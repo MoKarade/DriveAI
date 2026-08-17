@@ -13,7 +13,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { load } = require('./harness');
 
-const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs']);
+const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs', 'Router.gs']);
 const meta = (nom) => ({ nomFichier: nom, taille: 100000, extraitOcr: 'texte lisible du document '.repeat(4), emetteur: '' });
 
 // Échantillon stratifié par domaine — des documents que le Reset route dans son arbre thématique.
@@ -116,7 +116,7 @@ test('REPLI flux↔conso : un doc que le Reset NE route pas converge encore (bra
 /* ---------- Point 4 (revue structure-keeper) : le flux délégué re-pointe le référentiel d'entité ---------- */
 
 test('deciderRoutageV2_ : entité-table au Dossier ID PÉRIMÉ → re-pointée vers le nœud thématique, UNE fois par run', () => {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs', 'Router.gs']);
   const cle = c.cleCanoniqueEntite_('05 · Carrière', 'Robovic');
   const repoints = [];
   // Mock RÉALISTE (revue code-reviewer, leçon §7) : la VRAIE `entitesValideesParCle_` RECONSTRUIT une

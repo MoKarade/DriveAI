@@ -10,7 +10,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { load } = require('./harness');
 
-const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs']);
+const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs', 'Router.gs']);
 const plat = (o) => JSON.parse(JSON.stringify(o)); // normalise les prototypes (frontière vm)
 
 // meta minimale attendue par decisionNonDocument_ (nom, taille, extrait OCR, émetteur).
@@ -109,7 +109,7 @@ test('planRoutageV2_ : émetteur ponctuel → jamais un dossier par marchand (an
   const en05 = ctx.planRoutageV2_(
     { domaine: '05 · Carrière', type_doc: 'Lettre', emetteur: 'Schneider Electric', date_doc: '2026-01-05' },
     meta('lettre.pdf', { emetteur: 'Schneider Electric' }), '2026-01-05', '.pdf', validees);
-  assert.strictEqual(en05.sousDossier, 'Recherche d\'emploi', 'une lettre de démarche → Recherche d\'emploi (Reset), jamais un dossier d\'entreprise');
+  assert.strictEqual(en05.sousDossier, 'CV & lettres', 'une lettre de démarche → CV & lettres (fusion 2026-08-17), jamais un dossier d\'entreprise');
 });
 
 test('planRoutageV2_ : ni émetteur ni titulaire → descripteur dans le nom (JAMAIS « Inconnu »), classé À PLAT (la catégorie LLM ne fait plus de dossier)', () => {

@@ -13,7 +13,7 @@ const plain = (x) => JSON.parse(JSON.stringify(x));
 
 /* ---------- PURES ---------- */
 
-const pur = load(['Config.gs', 'Missions.gs']);
+const pur = load(['Config.gs', 'Missions.gs', 'Reset.gs']); // Reset.gs : STRUCTURE_CIBLE_RESET + resetBucketAnnee_ (une seule règle de buckets)
 
 test('jetonsCible_ : nombres discriminants gardés, mots-outils d\'adresse exclus, accents neutralisés', () => {
   assert.deepStrictEqual(plain(pur.jetonsCible_('783 av. Moreau, Québec')), ['783', 'moreau']);
@@ -125,7 +125,7 @@ test('budgetJourMissions_ : jour courant compté, autre jour = 0 (patron conso)'
  */
 function ctxRunner(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'Missions.gs']);
+  const c = load(['Config.gs', 'Missions.gs', 'Reset.gs']);
   const store = Object.assign({}, opts.props);
   const index = Object.assign({}, opts.index); // clés déjà présentes
   const ajouts = [];
@@ -295,6 +295,12 @@ test('un re-pointage qui LÈVE empêche le drapeau FINI — re-tenté à la pass
   h.c.executerMission_('archives06', () => false);
   assert.strictEqual(h.store['DriveAI_MISSION_FINI_archives06'], h.c.CONFIG.MISSIONS_REGLES_VERSION);
   assert.strictEqual(h.moves.filter((m) => m.repointe).length, paires.length);
+  // LIBÉRATION du compteur (revue finale PR2 — « un gate se teste par sa libération », leçon §7) :
+  // l'échec a incrémenté errC ; le succès doit l'effacer, sinon un errC ≥ MAX survivrait au FINI
+  // et re-bloquerait une journée entière au PREMIER échec après un futur bump de version.
+  const etatApres = JSON.parse(h.store['DriveAI_MISSIONS_ETAT']).archives06;
+  assert.strictEqual(etatApres.errC, undefined, 'errC effacé par la convergence réussie');
+  assert.strictEqual(etatApres.errJour, undefined, 'errJour effacé avec lui');
 });
 
 test('ordre des écritures : un moveTo qui LÈVE ne pose PAS la clé (rejouer, jamais perdre)', () => {
@@ -466,4 +472,156 @@ test('mémoïsation à portée RUN : la même cible n\'est résolue qu\'UNE fois
   h.c.executerMission_('vehicule', () => false);
   assert.strictEqual(h.moves.length, 3);
   assert.strictEqual(resolutions, 1, '3 items, même cible « Toyota bZ » ⇒ UNE résolution find-or-create');
+});
+
+/* ================= PR2 : Carrière + Finances ================= */
+
+test('employeurDuNom_ : canonisation par MOT ENTIER, ambigu/hors table = null', () => {
+  assert.strictEqual(pur.employeurDuNom_('2025-11_Paie_Robovic Inc..pdf'), 'Robovic');
+  assert.strictEqual(pur.employeurDuNom_('2025-01-31_Bulletin de paie_AUTOMATECH ROBOTIK INC..pdf'), 'Automatech');
+  assert.strictEqual(pur.employeurDuNom_('2026-01_Paie_CIUSSS de la Capitale-Nationale.pdf'), 'CIUSSS');
+  assert.strictEqual(pur.employeurDuNom_('2026-01_Paie_Inconnu Corp.pdf'), null, 'hors table = jamais deviné');
+  assert.strictEqual(pur.employeurDuNom_('2026-01_Attestation_Robovic et Automatech.pdf'), null, 'deux employeurs = ambigu');
+});
+
+test('typeDuNomMission_ + anneeDuNomMission_ : segment TYPE et année de tête, robustes aux variantes', () => {
+  assert.strictEqual(pur.typeDuNomMission_('2025-06-16_Contrat de travail_Robovic Inc..pdf'), 'contrat de travail');
+  assert.strictEqual(pur.typeDuNomMission_('2026_Feuillet T4 – État de la rémunération payée_Robovic Inc..pdf'),
+    'feuillet t4 etat de la remuneration payee');
+  assert.strictEqual(pur.typeDuNomMission_('sans-date.pdf'), '', 'hors convention = pas de type');
+  assert.strictEqual(pur.anneeDuNomMission_('2026_Feuillet T4_X.pdf'), '2026');
+  assert.strictEqual(pur.anneeDuNomMission_('2025-12-12_Acte_X.pdf'), '2025');
+  assert.strictEqual(pur.anneeDuNomMission_('0123_Bidon.pdf'), null, 'année implausible rejetée');
+  assert.strictEqual(pur.anneeDuNomMission_('rapport 2024.pdf'), null, 'année pas en tête = pas un préfixe');
+});
+
+test('routerFinance02_ : paie→employeur, fiscal→Impôts/<année> (AVANT relevé générique), table stricte', () => {
+  const IDS = pur.CONFIG.MISSIONS_IDS;
+  const paie = pur.routerFinance02_('2025-11_Paie_Robovic Inc..pdf', '2025');
+  assert.deepStrictEqual(plain(paie), { cibleParentId: IDS.revenusPaie, cibleNom: 'Robovic' });
+  const t4 = pur.routerFinance02_('2026_Feuillet T4 – État de la rémunération payée_Robovic Inc..pdf', '2025');
+  assert.deepStrictEqual(plain(t4), { cibleParentId: IDS.impotsDeclarations, cibleNom: '2026' },
+    'année du NOM prioritaire sur celle du dossier source');
+  const releveImpot = pur.routerFinance02_('2024-03_Relevé d\'impôt_Revenu Québec.pdf', '2024');
+  assert.strictEqual(releveImpot.cibleParentId, IDS.impotsDeclarations, 'relevé D\'IMPÔT est fiscal, pas bancaire');
+  const releveBanque = pur.routerFinance02_('2024-03_Relevé de compte_Banque CIC.pdf', '2024');
+  assert.strictEqual(releveBanque.cibleId, IDS.releves02);
+  assert.strictEqual(releveBanque.sousDossier, '2024', 'bucket d\'année — LA MÊME règle que le flux (resetBucketAnnee_)');
+  const recu = pur.routerFinance02_('2023-05-01_Facture_Hydro.pdf', '2023');
+  assert.strictEqual(recu.cibleId, IDS.recusFactures02);
+  assert.strictEqual(recu.sousDossier, 'Archives', '2023 hors buckets Reçus (2024-2026) → Archives, comme le flux');
+  assert.strictEqual(pur.routerFinance02_('2023-05-01_Diplôme_ULCO.pdf', '2023'), null, 'type hors table = laissé');
+  assert.strictEqual(pur.routerFinance02_('photo de vacances.jpg', '2023'), null, 'hors convention = laissé');
+  const paieInconnue = pur.routerFinance02_('2025-11_Paie_Employeur Mystère.pdf', '2025');
+  assert.strictEqual(paieInconnue, null, 'paie d\'un employeur hors table = laissée, jamais devinée');
+});
+
+test('routerFinance02_ : prédicats PARTAGÉS avec le flux — RL-1/31 fiscal, RIB refusé, « salaire » = paie (revue finale PR2)', () => {
+  // Trois divergences flux ↔ mission attrapées par la passe finale (déplacements à clé de SUCCÈS,
+  // donc DÉFINITIFS) — verrouillées ici sur les prédicats partagés de Reset.gs.
+  const IDS = pur.CONFIG.MISSIONS_IDS;
+  // RL-1/RL-31 : feuillets FISCAUX québécois, jamais des relevés bancaires (motif ANCRÉ — le flux
+  // a la même règle AVANT son « relevé » générique, test/reset.test.js).
+  const rl1 = pur.routerFinance02_('2025-02_Relevé 1_Robovic.pdf', '2025');
+  assert.deepStrictEqual(plain(rl1), { cibleParentId: IDS.impotsDeclarations, cibleNom: '2025' });
+  const rl31 = pur.routerFinance02_('2025-02_Relevé 31_LCP Groupe Immobilier.pdf', '2025');
+  assert.strictEqual(rl31.cibleParentId, IDS.impotsDeclarations);
+  // « Relevé 10 » n'est PAS capturé par le motif ancré : relevé ordinaire → bucket.
+  assert.strictEqual(pur.routerFinance02_('2025-02_Relevé 10_Desjardins.pdf', '2025').cibleId, IDS.releves02);
+  // RIB : des COORDONNÉES bancaires, pas un relevé de compte — la mission REFUSE (laissé +
+  // rapporté ; le flux, lui, les range en Banques/Coordonnées & chèques).
+  assert.strictEqual(pur.routerFinance02_('2024-05_Relevé d\'identité bancaire_CIC.pdf', '2024'), null);
+  // « salaire » : même mot que le flux (bulletin/attestation de salaire = paie).
+  const salaire = pur.routerFinance02_('2024-02_Attestation de salaire_CIUSSS.pdf', '2024');
+  assert.deepStrictEqual(plain(salaire), { cibleParentId: IDS.revenusPaie, cibleNom: 'CIUSSS' });
+  // « paiement » reste exclu par construction (mot entier — piège #228).
+  assert.strictEqual(pur.routerFinance02_('2026-07_Confirmation de paiement_Crédit Mutuel.pdf', '2026'), null);
+});
+
+test('routerCarriere_ : fusion Recherche d\'emploi, paie→02, types en table, dump racine par émetteur', () => {
+  const IDS = pur.CONFIG.MISSIONS_IDS;
+  const ctx = { employeurParSource: (function () {
+    const m = {}; m[IDS.employeursRobovic] = 'Robovic'; m[IDS.employeursAutomatech] = 'Automatech'; return m;
+  })() };
+  // Fusion : TOUT le contenu de Recherche d'emploi part vers CV & lettres, segment préservé.
+  const fusion = pur.routerCarriere_('n-importe-quoi.docx', { sourceId: IDS.rechercheEmploi, sousChemin: 'Candidatures 2025' }, ctx);
+  assert.deepStrictEqual(plain(fusion), { cibleId: IDS.cvLettres, sousDossier: 'Candidatures 2025' });
+  // Une paie dans Employeurs/Robovic part vers 02 (domicile unique), SANS lire l'émetteur du nom.
+  const paie = pur.routerCarriere_('2025-11_Paie_Robovic Inc..pdf', { sourceId: IDS.employeursRobovic, sousChemin: '' }, ctx);
+  assert.deepStrictEqual(plain(paie), { cibleParentId: IDS.revenusPaie, cibleNom: 'Robovic' });
+  // Un contrat dans Employeurs/Robovic → sous-dossier Contrats.
+  const contrat = pur.routerCarriere_('2025-06-16_Contrat de travail_Robovic Inc..pdf', { sourceId: IDS.employeursRobovic, sousChemin: '' }, ctx);
+  assert.deepStrictEqual(plain(contrat), { cibleId: IDS.employeursRobovic, sousDossier: 'Contrats' });
+  // Type inconnu DANS Employeurs/<X> : laissé (le déplacer « à plat » serait un no-op déguisé).
+  assert.strictEqual(pur.routerCarriere_('2025-01-01_Badge_Robovic.pdf', { sourceId: IDS.employeursRobovic, sousChemin: '' }, ctx), null);
+  // Racine 05 (ex-dump Automatech) : émetteur SÛR + type inconnu → au moins Employeurs/<X> à plat.
+  const dump = pur.routerCarriere_('2025-01-01_Badge_Automatech Robotik.pdf', { sourceId: IDS.carriereRacine, sousChemin: '' }, ctx);
+  assert.deepStrictEqual(plain(dump), { cibleId: IDS.employeursAutomatech, sousDossier: '' });
+  // Racine 05 : un CV part vers CV & lettres même sans employeur.
+  const cv = pur.routerCarriere_('2026-01-01_CV_Marc Richard.pdf', { sourceId: IDS.carriereRacine, sousChemin: '' }, ctx);
+  assert.strictEqual(cv.cibleId, IDS.cvLettres);
+  // Racine 05 : aucun indice → laissé.
+  assert.strictEqual(pur.routerCarriere_('notes perso.txt', { sourceId: IDS.carriereRacine, sousChemin: '' }, ctx), null);
+  // CIUSSS (paie) depuis la racine : paie → 02 ; autre type CIUSSS → null (pas de dossier sous 05, on ne crée pas).
+  const paieCiusss = pur.routerCarriere_('2026-01_Paie_CIUSSS de la Capitale-Nationale.pdf', { sourceId: IDS.carriereRacine, sousChemin: '' }, ctx);
+  assert.deepStrictEqual(plain(paieCiusss), { cibleParentId: IDS.revenusPaie, cibleNom: 'CIUSSS' });
+  assert.strictEqual(pur.routerCarriere_('2026-01_Attestation_CIUSSS de la Capitale-Nationale.pdf', { sourceId: IDS.carriereRacine, sousChemin: '' }, ctx), null);
+  // « Bulletin de salaire » = une PAIE (prédicat partagé, revue finale PR2) : domicile unique 02,
+  // JAMAIS Employeurs/<X> à plat (l'ancienne liste ['paie','paye'] l'y aurait égaré à clé de succès).
+  const salaire = pur.routerCarriere_('2025-03_Bulletin de salaire_Robovic.pdf', { sourceId: IDS.carriereRacine, sousChemin: '' }, ctx);
+  assert.deepStrictEqual(plain(salaire), { cibleParentId: IDS.revenusPaie, cibleNom: 'Robovic' });
+});
+
+test('moisManquantsPaies_ : trous ENTRE premier et dernier mois observés, jamais au-delà des bornes', () => {
+  const r = pur.moisManquantsPaies_({
+    Robovic: ['2025-06', '2025-07', '2025-09', '2025-12', '2026-01'],
+    CIUSSS: ['2026-01'],
+  });
+  const robovic = r.filter((x) => x.employeur === 'Robovic')[0];
+  assert.deepStrictEqual(plain(robovic.manquants), ['2025-08', '2025-10', '2025-11'],
+    'trous internes seulement — rien avant 2025-06 ni après 2026-01');
+  assert.strictEqual(robovic.presents, 5);
+  const ciusss = r.filter((x) => x.employeur === 'CIUSSS')[0];
+  assert.deepStrictEqual(plain(ciusss.manquants), [], 'un seul mois = aucune borne à combler');
+  // Passage d'année : 2025-12 → 2026-01 est CONSÉCUTIF.
+  const cheval = pur.moisManquantsPaies_({ X: ['2025-11', '2026-02'] });
+  assert.deepStrictEqual(plain(cheval[0].manquants), ['2025-12', '2026-01']);
+});
+
+test('profondeurPar = 0 : les sous-dossiers de la source sont HORS périmètre, sans fausse alerte', () => {
+  const h = ctxRunner();
+  // `convergenceApres` : la conclusion de paies attend carriere + annees02 — on les pose FINI.
+  h.store['DriveAI_MISSION_FINI_carriere'] = h.c.CONFIG.MISSIONS_REGLES_VERSION;
+  h.store['DriveAI_MISSION_FINI_annees02'] = h.c.CONFIG.MISSIONS_REGLES_VERSION;
+  const IDS = h.c.CONFIG.MISSIONS_IDS;
+  // Racine de Revenus & paie : 1 paie à plat + un sous-dossier Robovic déjà rempli (la SORTIE de
+  // la mission) — celui-ci ne doit JAMAIS être recollecté, et la mission doit pouvoir CONVERGER.
+  h.arbre['sousrob'] = { nom: 'Robovic', files: [h.fichier('deja', '2025-06_Paie_Robovic Inc..pdf')], folders: {} };
+  h.arbre[IDS.revenusPaie] = { files: [h.fichier('fp', '2025-11_Paie_Robovic Inc..pdf')], folders: { 'Robovic': 'sousrob' } };
+  h.c.ecrireRapportPaies_ = () => { h.moves.push({ rapport: true }); };
+
+  h.c.executerMission_('paies', () => false);
+  assert.deepStrictEqual(plain(h.moves.filter((m) => m.id).map((m) => m.id)), ['fp'],
+    'seul le fichier À PLAT est traité — la sortie de la mission n\'est jamais re-collectée');
+  assert.strictEqual(h.moves[0].vers, IDS.revenusPaie + '/Robovic');
+
+  h.c.executerMission_('paies', () => false); // passe vide → convergence + rapport
+  assert.strictEqual(h.store['DriveAI_MISSION_FINI_paies'], h.c.CONFIG.MISSIONS_REGLES_VERSION,
+    'la profondeur 0 VOULUE ne bloque pas la convergence (pas de fausse alerte « trop profond »)');
+  assert.strictEqual(h.moves.filter((m) => m.rapport).length, 1, 'RapportPaies écrit à la convergence');
+});
+
+test('ecrireRapportPaies_ qui LÈVE empêche le FINI de la mission paies (rapport garanti)', () => {
+  const h = ctxRunner();
+  h.store['DriveAI_MISSION_FINI_carriere'] = h.c.CONFIG.MISSIONS_REGLES_VERSION;
+  h.store['DriveAI_MISSION_FINI_annees02'] = h.c.CONFIG.MISSIONS_REGLES_VERSION;
+  const IDS = h.c.CONFIG.MISSIONS_IDS;
+  h.arbre[IDS.revenusPaie] = { files: [], folders: {} };
+  let rate = true;
+  h.c.ecrireRapportPaies_ = () => { if (rate) throw new Error('Sheet indisponible'); };
+  assert.throws(() => h.c.executerMission_('paies', () => false), /Sheet indisponible/);
+  assert.ok(!h.store['DriveAI_MISSION_FINI_paies']);
+  rate = false;
+  h.c.executerMission_('paies', () => false);
+  assert.strictEqual(h.store['DriveAI_MISSION_FINI_paies'], h.c.CONFIG.MISSIONS_REGLES_VERSION);
 });

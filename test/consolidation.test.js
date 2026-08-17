@@ -10,7 +10,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { load } = require('./harness');
 
-const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs']);
+const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs', 'Router.gs']);
 const plat = (o) => JSON.parse(JSON.stringify(o)); // normalise les prototypes (frontière vm)
 
 /* ---------- analyserNomClasse_ : décomposition du nom AAAA[-MM[-JJ]]_Type_Tiers.ext ---------- */
@@ -54,7 +54,7 @@ test('cheminCibleConsolidation_ : employeur/recherche via Reset ; REPLI à plat 
   assert.strictEqual(ctx.cheminCibleConsolidation_('05 · Carrière', '2026-06_Bulletin de paie_Robovic.pdf', validees).nom,
     'Employeurs/Robovic', 'paie d\'employeur → arbre Employeurs/X (Reset)');
   assert.strictEqual(ctx.cheminCibleConsolidation_('05 · Carrière', '2026-01-05_Lettre_Schneider Electric.pdf', validees).nom,
-    'Recherche d\'emploi', 'une lettre de démarche 05 → Recherche d\'emploi (Reset), jamais un dossier d\'entreprise');
+    'CV & lettres', 'une lettre de démarche 05 → CV & lettres (fusion 2026-08-17), jamais un dossier d\'entreprise');
   assert.strictEqual(ctx.cheminCibleConsolidation_('08 · Perso & projets', 'PXL_20240101_123.jpg', validees).nom,
     '', 'hors convention → le Reset rend null → repli à plat au domaine (jamais de limbo)');
   // une entité validée dans un AUTRE domaine ne crée pas de dossier ici (le Reset ne route pas → repli)
@@ -240,7 +240,7 @@ test('Consolidation.gs : aucun appel de mutation Drive (dry-run PUR par construc
 // Contexte minimal pour n'exercer QUE la rotation en tête de `genererPlanConsolidation_` :
 // `estBudgetDepasse` renvoie true ⇒ on retourne juste APRÈS la rotation, avant toute collecte.
 function ctxRotationConso(store) {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs', 'Router.gs']);
   c.COLONNES_PLAN_CONSOLIDATION = ['Horodaté', 'Fichier', 'ID', 'Action', 'Cible', 'Raison', 'Empreinte']; // vit dans Journal.gs
   const suppr = [];
   let cleared = 0;
@@ -283,7 +283,7 @@ test('genererPlanConsolidation_ : MÊME tag → PAS de rotation (un plan EN COUR
 /* ---------- RÉUTILISATION d'empreinte (perf, revue apps-script-quota) : pas de re-hash si déjà en Index ---------- */
 
 function ctxHashConso(opts) {
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Router.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs', 'Router.gs']);
   let blobAppels = 0;
   const lignes = [];
   const f = {

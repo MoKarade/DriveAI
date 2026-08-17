@@ -471,6 +471,21 @@ function tickDriveAI() {
     etapeSuivie_('mission-archives-06', [gMissionsActif, gBudgetStandard, gResetEnCours, gMissionsJour_],
       function () { executerMission_('archives06', estBudgetDepasseStandard); },
       function (e) { journalErreur_('Missions', 'Mission archives 06 différée : ' + e); });
+    // PR2 (Carrière + Finances). `paies` AVANT `carriere` : le domicile UNIQUE des paies est
+    // 02/« Revenus & paie »/<Employeur> — les deux missions y routent par la MÊME fonction
+    // canonique (`employeurDuNom_`), l'ordre ne change que la priorité de drainage.
+    etapeSuivie_('mission-paies', [gMissionsActif, gBudgetStandard, gResetEnCours, gMissionsJour_],
+      function () { executerMission_('paies', estBudgetDepasseStandard); },
+      function (e) { journalErreur_('Missions', 'Mission paies différée : ' + e); });
+    etapeSuivie_('mission-carriere', [gMissionsActif, gBudgetStandard, gResetEnCours, gMissionsJour_],
+      function () { executerMission_('carriere', estBudgetDepasseStandard); },
+      function (e) { journalErreur_('Missions', 'Mission carrière différée : ' + e); });
+    etapeSuivie_('mission-annees-02', [gMissionsActif, gBudgetStandard, gResetEnCours, gMissionsJour_],
+      function () { executerMission_('annees02', estBudgetDepasseStandard); },
+      function (e) { journalErreur_('Missions', 'Mission années 02 différée : ' + e); });
+    etapeSuivie_('mission-impots', [gMissionsActif, gBudgetStandard, gResetEnCours, gMissionsJour_],
+      function () { executerMission_('impots', estBudgetDepasseStandard); },
+      function (e) { journalErreur_('Missions', 'Mission impôts différée : ' + e); });
 
     // 🔗 FUSION des dossiers en double (#47 PR2, ADR-0037) — applique le PlanFusion CURÉ par Marc
     // (lignes source `Fusionner`). GATÉE OFF (`FUSION_EXEC_ACTIF`) : one-shot au feu vert. « BUDGET
@@ -613,6 +628,7 @@ function tickDriveAI() {
       ['intake-gmail', 'intake-depots', 'intake-partages', 'intentions', 'tri-gmail',
         'consolidation-exec', 'consolidation-gen',
         'mission-vehicule', 'mission-logement', 'mission-dispatch-03', 'mission-archives-06',
+        'mission-paies', 'mission-carriere', 'mission-annees-02', 'mission-impots',
         'fusion-exec', 'reset-rassemblement',
         'reset-placement', 'reset-04-interne', 'reset-llm', 'histo-gmail', 'migration',
         'reanalyse', 'dryrun-v2', 'dryrun-cmp', 'reorg', 'reconciliation-index'

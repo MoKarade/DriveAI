@@ -245,6 +245,12 @@ input::placeholder { color: var(--texte-doux); }
   display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap;
 }
 .carte h2 .h2-note { margin-left: auto; font-size: 0.78rem; font-weight: 450; color: var(--texte-doux); font-variant-numeric: tabular-nums; }
+/* Interrupteur « masquer les finis » (C28-50) : discret, aligné à droite du titre Progression. */
+.carte h2 .masquer-finis {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 0.35rem;
+  font-size: 0.78rem; font-weight: 450; color: var(--texte-doux); cursor: pointer; user-select: none;
+}
+.carte h2 .masquer-finis input { accent-color: var(--accent); margin: 0; }
 
 .centre { text-align: center; padding: 2.5rem 0; }
 

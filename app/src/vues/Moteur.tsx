@@ -30,6 +30,7 @@ import {
   ilYA,
   dateActivite,
   estUtileProgression,
+  complementStatut,
 } from '../etat';
 import { CleTexte, Langue, t } from '../i18n';
 
@@ -146,11 +147,42 @@ export function Moteur({ langue }: { langue: Langue }) {
         <p className="explication">{t('quotaGmailNote', langue)}</p>
       </section>
 
-      {/* ---------- 1 bis. Dernières erreurs ---------- */}
-      <section className="carte large">
-        <h2>{t('erreursJournal', langue)}</h2>
-        {erreurs.length === 0 && <p className="explication">{t('aucuneErreur', langue)}</p>}
-        {erreurs.length > 0 && (
+      {/* ---------- 1 bis. Dernières erreurs (repliées — C28-50, demande Marc « cache les
+           erreurs ») : le compte reste visible dans le titre, le tableau s'ouvre au clic
+           (choix mémorisé). Aucune erreur → simple ligne ✅, rien à replier. ---------- */}
+      <ErreursSection langue={langue} erreurs={erreurs} />
+
+      {/* ---------- 4. Réglage de fréquence ---------- */}
+      <ReglagesSection langue={langue} valeurInitiale={donnees.reglagesBrut?.[0]?.[1] ?? ''} />
+    </div>
+  );
+}
+
+const CLE_ERREURS_OUVERTES = 'driveai.moteur.erreurs';
+
+function ErreursSection({ langue, erreurs }: { langue: Langue; erreurs: LigneJournal[] }) {
+  // CONTRÔLÉ (state + onToggle), même patron que la veille : un remount ne perd pas le choix.
+  const [ouvertes, setOuvertes] = useState(() => {
+    try { return localStorage.getItem(CLE_ERREURS_OUVERTES) === '1'; } catch { return false; }
+  });
+  return (
+    <section className="carte large">
+      <h2>
+        {t('erreursJournal', langue)}
+        <span className={`pastille ${erreurs.length ? 'attn' : 'ok'}`}>{erreurs.length}</span>
+      </h2>
+      {erreurs.length === 0 && <p className="explication">{t('aucuneErreur', langue)}</p>}
+      {erreurs.length > 0 && (
+        <details
+          className="routines-repli"
+          open={ouvertes}
+          onToggle={(e) => {
+            const ouvert = (e.currentTarget as HTMLDetailsElement).open;
+            setOuvertes(ouvert);
+            try { localStorage.setItem(CLE_ERREURS_OUVERTES, ouvert ? '1' : '0'); } catch { /* choix non mémorisé */ }
+          }}
+        >
+          <summary>{t(ouvertes ? 'erreursReplier' : 'erreursVoir', langue)}</summary>
           <table>
             <tbody>
               {erreurs.map((l: LigneJournal, i) => (
@@ -162,12 +194,9 @@ export function Moteur({ langue }: { langue: Langue }) {
               ))}
             </tbody>
           </table>
-        )}
-      </section>
-
-      {/* ---------- 4. Réglage de fréquence ---------- */}
-      <ReglagesSection langue={langue} valeurInitiale={donnees.reglagesBrut?.[0]?.[1] ?? ''} />
-    </div>
+        </details>
+      )}
+    </section>
   );
 }
 
@@ -179,6 +208,7 @@ export function Moteur({ langue }: { langue: Langue }) {
  * Le tri par UTILITÉ ne dépend pas de la colonne Type : il marche aussi sur l'ancien format.
  */
 const CLE_VEILLE_OUVERTE = 'driveai.progression.veille';
+const CLE_MASQUER_FINIS = 'driveai.progression.masquer-finis';
 
 function ProgressionSection({ langue, progression }: { langue: Langue; progression: LigneProgression[] }) {
   // C28-46 (demande Marc) : la vue par défaut ne montre QUE l'utile — problèmes, complétions,
@@ -193,8 +223,18 @@ function ProgressionSection({ langue, progression }: { langue: Langue; progressi
   const [veilleOuverte, setVeilleOuverte] = useState(() => {
     try { return localStorage.getItem(CLE_VEILLE_OUVERTE) === '1'; } catch { return false; }
   });
-  const utiles = progression.filter(estUtileProgression);
-  const veille = progression.filter((op) => !estUtileProgression(op));
+  // C28-50 (demande Marc : « la possibilité de cacher les finis ») : un interrupteur mémorisé
+  // rétrograde les accomplis — « terminé » et « à jour » (missions à reliquat comprises) — vers le
+  // groupe VEILLE. Rien ne disparaît : ils restent consultables dans le repli.
+  const [masquerFinis, setMasquerFinis] = useState(() => {
+    try { return localStorage.getItem(CLE_MASQUER_FINIS) === '1'; } catch { return false; }
+  });
+  const estFini = (op: LigneProgression) => {
+    const f = familleStatut(op.statut);
+    return f === 'termine' || f === 'ajour';
+  };
+  const utiles = progression.filter((op) => estUtileProgression(op) && !(masquerFinis && estFini(op)));
+  const veille = progression.filter((op) => !estUtileProgression(op) || (masquerFinis && estFini(op)));
   // Max par TIMESTAMP PARSÉ — jamais un tri lexicographique de `dd/MM …` (ordre jour-major :
   // « 31/07 » > « 13/08 », le résumé aurait affiché « il y a 13 j » à chaque début de mois alors
   // que tout venait de tourner — revue C28-45, exactement la confusion que ce chantier corrige).
@@ -209,7 +249,21 @@ function ProgressionSection({ langue, progression }: { langue: Langue; progressi
   const fraicheur = activiteMax ? (ilYA(activiteMax, maintenant, langue) ?? activiteMax) : '';
   return (
     <section className="carte large operations-live">
-      <h2>{t('progressionTitre', langue)}</h2>
+      <h2>
+        {t('progressionTitre', langue)}
+        <label className="masquer-finis">
+          <input
+            type="checkbox"
+            checked={masquerFinis}
+            onChange={(e) => {
+              const v = e.target.checked;
+              setMasquerFinis(v);
+              try { localStorage.setItem(CLE_MASQUER_FINIS, v ? '1' : '0'); } catch { /* choix non mémorisé */ }
+            }}
+          />
+          {t('masquerFinis', langue)}
+        </label>
+      </h2>
       {utiles.length === 0 && <p className="explication">{t('progressionVide', langue)}</p>}
       {utiles.map((op) => <Operation key={op.cle} langue={langue} op={op} />)}
       {veille.length > 0 && (
@@ -265,6 +319,12 @@ function noteStatut(op: LigneProgression, famille: FamilleStatut, langue: Langue
   if (famille === 'attente') return t('noteAttente', langue);
   if (famille === 'ajour') {
     if (op.statut.includes('attend la génération')) return t('noteAttendGeneration', langue);
+    // C28-50 (précision) : le reliquat exact d'une mission — « 50 non apparié(s) » — vit dans la
+    // parenthèse du statut moteur ; l'afficher tel quel (source unique) au lieu de la glose
+    // générique « travail accompli », fausse pour ces fichiers laissés en place.
+    if (op.statut.includes('non apparié')) {
+      return complementStatut(op.statut) + ' — ' + t('noteNonApparies', langue);
+    }
     return t('noteDejaFait', langue);
   }
   if (famille === 'suspendu' || famille === 'pause') {
