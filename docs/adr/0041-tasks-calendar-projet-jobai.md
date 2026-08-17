@@ -1,0 +1,78 @@
+# ADR-0041 — Tasks & Calendar via le projet GCP jobai/hubperso (jeton OAuth dédié)
+
+- **Statut** : accepté (décision Marc 2026-08-17, réitérée : « je veux utiliser le projet jobai
+  hubperso uniquement, fais en sorte que ça marche »).
+- **Contexte** : incident 14-17/08 — l'API Tasks n'est pas activée dans le projet GCP PAR DÉFAUT
+  d'Apps Script (289462394116). Ce projet est CACHÉ : aucune console n'y donne accès, à personne.
+  Marc a activé Tasks/Calendar dans SON projet (« job ai »/hubperso) et veut que DriveAI utilise
+  CELUI-LÀ.
+
+## 1. Décision
+
+Les appels **Tasks + Calendar** cessent d'utiliser le jeton du script (`ScriptApp.getOAuthToken()`,
+attribué au projet caché) et utilisent un **jeton OAuth du projet jobai** : client OAuth « Web »
+créé par Marc dans jobai, refresh token obtenu par un consentement UNIQUE, stocké en Script
+Properties, échangé en access token par REST (`oauth2.googleapis.com/token`). Les API activées
+par Marc dans SA console sont alors celles qui servent — plus jamais d'activation sur le projet
+caché pour ces deux API.
+
+**Gmail et Drive restent sur le projet par défaut** — NON NÉGOCIABLE techniquement : `gmail.modify`
+est un scope RESTREINT ; sur un projet standard il exige une vérification d'éditeur Google (CASA)
+ou le mode Test dont les autorisations expirent tous les 7 jours (moteur mort chaque semaine).
+L'exemption des scripts sur leur projet par défaut est ce qui permet à DriveAI d'exister.
+
+## 2. Architecture
+
+- `src/JetonJobai.gs` : `jetonJobai_()` rend un access token valide (cache Property avec expiration,
+  marge 5 min) ou `null` — ÉCHEC FERMÉ. Refresh via POST `oauth2.googleapis.com/token`
+  (`grant_type=refresh_token`, client id/secret depuis les Script Properties). Un `invalid_grant`
+  (révocation) efface le refresh token et journalise la consigne de re-consentement.
+- **Consentement une fois** : `lierCompteJobai` (un-clic éditeur) GÉNÈRE le `state` (UUID — jamais
+  choisi à la main), persiste l'URI de rappel réellement utilisée (`DriveAI_JOBAI_REDIRECT`, pour
+  que l'échange du code renvoie la même à l'octet près) et affiche l'URL de consentement. `doGet`
+  de la web app gagne le callback `?jobai=1&code=…&state=…` — vérifie `state` contre la Property
+  `DriveAI_JOBAI_STATE` en comparaison CONSTANTE, AVANT tout appel réseau (l'URL `/exec` est
+  publique : sans state, un tiers pourrait LIER SON compte Google au moteur et recevoir les
+  intentions de Marc), refuse un state de plus d'1 h (revue sécurité : une liaison abandonnée ne
+  laisse pas un state valable à vie), échange le code, VÉRIFIE le champ `scope` de la réponse
+  (consentement granulaire : une case décochée ⇒ liaison refusée EN ENTIER — un demi-consentement
+  ferait mourir les créations en 403 de droits, hors de portée de la panne config), stocke le
+  refresh token, page neutre (aucun paramètre reflété, refus muet). Scopes demandés : `tasks` +
+  `calendar.events` (SENSIBLES, pas restreints — autorisés sur une app perso en production non
+  vérifiée, jetons persistants).
+- `Tasks.gs` / `Calendar.gs` / la sonde config-api : jeton via `jetonJobai_()`. Sans jeton
+  configuré → même mécanique de suspension que config-api, message Santé explicite (« jeton jobai
+  absent — suivre docs/JOBAI.md »). La sonde teste l'API **du projet jobai** désormais.
+- `oauthScopes` du manifeste : INCHANGÉS ce coup-ci (retirer `tasks`/`calendar.events` = changement
+  de scopes = ré-autorisation = gel total, leçon C28-29 — à faire plus tard, regroupé et séquencé
+  avec Marc). Un scope déclaré non utilisé est inerte.
+- Prérequis MARC (une fois, tout dans SON projet) : client OAuth Web dans jobai + URI de
+  redirection `/exec` ; 2 Script Properties (`DriveAI_JOBAI_CLIENT_ID`,
+  `DriveAI_JOBAI_CLIENT_SECRET`) ; exécuter `lierCompteJobai` (JetonJobai.gs) puis un clic sur
+  l'URL de consentement affichée. Pas-à-pas : `docs/JOBAI.md`.
+  ⚠️ L'écran de consentement du projet jobai doit être « En production » (en mode Test, les
+  autorisations expirent tous les 7 jours — le piège qu'on évite).
+
+## 3. Garde-fous
+
+- Secrets : Script Properties uniquement (règle §2.4), jamais dans le code ni le dépôt ; le
+  `client_secret` ne transite que vers `oauth2.googleapis.com`.
+- Surface : les verrous Tasks/Calendar existants (POST-création seulement + UN GET de sonde,
+  `surface-tasks-calendar.test.js`) restent inchangés — seule la SOURCE du jeton change.
+- Échec fermé partout : pas de jeton → suspension propre (jamais de retry en boucle), `state`
+  invalide → refus muet, `invalid_grant` → purge + consigne (gardée par compare-avant-purge :
+  un `invalid_grant` d'un VIEUX refresh en vol ne détruit jamais la re-liaison fraîche). Verdicts
+  HONNÊTES (revue quotas) : credentials absents = « re-lier » (certain) ; refresh en échec 5xx =
+  « momentanément indisponible » (transitoire, la sonde ne conclut rien) ; 401 d'une création =
+  purge du cache d'access token (le refresh suivant tranche révocation vs blip).
+- Fonctions PURES testées : construction d'URL de consentement, validation du callback, cache/
+  expiration du jeton (I/O mockées).
+
+## 4. Conséquences
+
+- Marc administre les API Tasks/Calendar dans SA console (son souhait de centralisation) ; le
+  projet caché ne porte plus que Gmail/Drive/Sheets, qui n'exigent aucune activation manuelle.
+- Une révocation du consentement (sécurité Google, changement de mot de passe) suspend les
+  intentions proprement jusqu'à un re-clic (message Santé + résumé hebdo).
+- Le relais par le BACKEND hubperso (le hub crée les tâches lui-même) reste une évolution
+  possible — même projet GCP, un secret de moins côté moteur — hors périmètre de cette PR.

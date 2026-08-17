@@ -111,3 +111,46 @@ test('les en-têtes de Tasks.gs / Calendar.gs documentent l\'exception (doc ⇄ 
       `${nom} : l'en-tête doit nommer l'exception de sonde tant qu'elle existe`);
   }
 });
+
+/* ---------- ADR-0041 : jeton du projet jobai (JetonJobai.gs) ---------- */
+
+test('Tasks/Calendar/sonde utilisent le jeton JOBAI — jamais le jeton du script (ADR-0041)', () => {
+  // Le projet GCP par défaut du script est CACHÉ : un `ScriptApp.getOAuthToken()` présenté à
+  // Tasks/Calendar re-créerait EXACTEMENT l'incident 14-17/08 (403 config sur un projet
+  // qu'aucune console ne peut administrer). Ces trois fichiers n'ont AUCUN usage légitime du
+  // jeton du script.
+  for (const nom of ['Tasks.gs', 'Calendar.gs', 'GoogleApi.gs']) {
+    const f = FICHIERS.find((x) => x.nom === nom);
+    assert.ok(!/getOAuthToken/.test(f.texte),
+      `${nom} : jeton du script interdit sur Tasks/Calendar — utiliser jetonJobai_()`);
+    assert.ok(/jetonJobai_\(\)/.test(f.texte), `${nom} : doit obtenir son jeton via jetonJobai_()`);
+  }
+});
+
+test('le client_secret jobai ne transite QUE vers oauth2.googleapis.com (JetonJobai.gs)', () => {
+  // (a) Les TROIS secrets jobai (client_secret, refresh token, access token en cache — ce dernier
+  //     directement utilisable sur Tasks/Calendar depuis n'importe quel UrlFetchApp) ne se lisent
+  //     que dans JetonJobai.gs — un futur fichier qui les lirait pour les envoyer ailleurs doit
+  //     faire rougir ce verrou (revue sécurité B). Tasks/Calendar passent par
+  //     `purgerCacheJetonJobai_()`, jamais par la Property.
+  for (const f of FICHIERS) {
+    if (f.nom === 'JetonJobai.gs') continue;
+    for (const cle of ['DriveAI_JOBAI_CLIENT_SECRET', 'DriveAI_JOBAI_REFRESH', 'DriveAI_JOBAI_ACCES']) {
+      assert.ok(!f.texte.includes(cle), `${f.nom} : ${cle} ne se lit que dans JetonJobai.gs`);
+    }
+  }
+  // (b) Dans JetonJobai.gs, TOUT appel réseau vise `JOBAI_URL_JETON`, et cette constante est le
+  //     LITTÉRAL du endpoint de jeton Google — ni concaténation, ni variable (même exigence que
+  //     SONDE_CONFIG_ID : aucune interpolation ne peut détourner le secret vers un autre hôte).
+  const jj = FICHIERS.find((x) => x.nom === 'JetonJobai.gs');
+  assert.ok(jj, 'JetonJobai.gs présent');
+  const decl = jj.texte.match(/var JOBAI_URL_JETON\s*=\s*(.+);/);
+  assert.ok(decl, 'JOBAI_URL_JETON déclarée');
+  assert.strictEqual(decl[1].trim(), "'https://oauth2.googleapis.com/token'");
+  const fetchs = jj.texte.match(/UrlFetchApp\.fetch\(\s*[^,\s]+/g) || [];
+  assert.ok(fetchs.length >= 2, 'les deux appels (refresh + échange de code) sont bien scannés');
+  for (const appel of fetchs) {
+    assert.ok(appel.includes('JOBAI_URL_JETON'),
+      `appel réseau hors du endpoint de jeton dans JetonJobai.gs : ${appel}`);
+  }
+});

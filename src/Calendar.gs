@@ -2,8 +2,8 @@
  * Calendar.gs — Création d'événements Google Calendar via l'API REST (UrlFetchApp), Phase 3.
  *
  * Comme Tasks.gs / DriveRest.gs : REST plutôt que service avancé (cf. LESSONS « API Google
- * via REST »). Le jeton OAuth du script couvre tous les scopes déclarés (dont `calendar.events`,
- * volontairement plus étroit que `calendar` complet — pas d'accès aux paramètres d'agenda).
+ * via REST »). Jeton : celui du projet JOBAI (`jetonJobai_`, ADR-0041), scope `calendar.events`
+ * (volontairement plus étroit que `calendar` complet — pas d'accès aux paramètres d'agenda).
  *
  * Fuseau horaire : on envoie une date-heure LOCALE (« AAAA-MM-JJTHH:MM:SS », sans offset) +
  * `timeZone` (America/Toronto, déjà le fuseau du manifest) — c'est l'API Calendar qui calcule
@@ -45,6 +45,11 @@ function creerEvenement_(titre, dateHeureDebut, dureeMinutes, description, id) {
   }
   var fin = new Date(debut.getTime() + (dureeMinutes || 60) * 60 * 1000);
 
+  // Pas de jeton jobai : panne de CONFIG, même mécanique que l'API désactivée — le message dit
+  // honnêtement la cause (non lié vs refresh transitoire, revue quotas F2).
+  var jeton = jetonJobai_();
+  if (!jeton) throw new Error('config-api Calendar : ' + messageJetonJobaiIndisponible_());
+
   var payload = {
     summary: titre,
     start: { dateTime: formatLocalSansOffset_(debut), timeZone: FUSEAU_EVENEMENTS },
@@ -59,7 +64,7 @@ function creerEvenement_(titre, dateHeureDebut, dureeMinutes, description, id) {
       method: 'post',
       contentType: 'application/json',
       payload: JSON.stringify(payload),
-      headers: { Authorization: 'Bearer ' + jetonGoogle_() },
+      headers: { Authorization: 'Bearer ' + jeton },
       muteHttpExceptions: true
     }
   );
@@ -77,6 +82,8 @@ function creerEvenement_(titre, dateHeureDebut, dureeMinutes, description, id) {
   if (code === 403 && estMessageApiDesactivee_(corps)) {
     throw new Error('config-api Calendar : ' + tronquer_(messageErreurGoogle_(corps), 300));
   }
+  // 401 : jeton refusé (révocation en cours de cache) → purge du cache, cf. Tasks.gs (revue 🟠2).
+  if (code === 401) purgerCacheJetonJobai_();
   journalErreur_('Calendar', 'Création HTTP ' + code + ' (« ' + titre + ' ») : ' +
     tronquer_(corps, 300));
   return '';

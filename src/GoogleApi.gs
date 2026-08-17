@@ -1,15 +1,11 @@
 /**
- * GoogleApi.gs — Jeton OAuth + retry partagés pour les appels REST aux API Google
+ * GoogleApi.gs — Retry partagé + panne de CONFIG pour les appels REST aux API Google
  * (Tasks, Calendar — cf. Tasks.gs, Calendar.gs). Même schéma que DriveRest.gs.
  *
- * Un seul jeton OAuth de script couvre tous les scopes déclarés dans `appsscript.json`
- * (Drive, Tasks, Calendar...) — pas besoin d'un jeton par API.
+ * Jeton : depuis l'ADR-0041, Tasks/Calendar utilisent le jeton du projet JOBAI (`jetonJobai_`,
+ * JetonJobai.gs) — le projet GCP par défaut du script est CACHÉ (inadministrable, API jamais
+ * activables) ; Drive/Sheets/Gmail restent sur le jeton du script (`jetonDrive_`, DriveRest.gs).
  */
-
-/** @return {string} jeton OAuth du script (compte de Marc), valable pour tous les scopes déclarés. */
-function jetonGoogle_() {
-  return ScriptApp.getOAuthToken();
-}
 
 /**
  * Appel REST avec un retry léger borné sur erreurs transitoires (429, 5xx). Même politique
@@ -214,13 +210,35 @@ function verdictSondeApi_(code, corps) {
  * @return {{etat:string, api:string, message:string}}
  */
 function sonderApiConfig_() {
-  var doute = null;
   // GARDE-TEMPS **DANS** la boucle (leçon §7) : `UrlFetchApp` n'accepte AUCUN timeout en Apps
   // Script (plafond empirique ~60 s/appel) et la sonde tourne en tête de tick. Deux endpoints qui
   // pendent, c'est ~2 min prélevées sur la marge budget→mur de 6 min — et le jour où Google pend,
   // 96 sondes/jour dépasseraient à elles seules le quota DUR de runtime. On abandonne alors la
   // passe (verdict indéterminé : rien n'est levé), la suivante réessaiera.
+  // L'horloge démarre AVANT `jetonJobai_()` (revue quotas F1) : le refresh OAuth est lui aussi un
+  // fetch sans timeout — hors du cumul, il ré-introduisait le cas « 2 × 60 s » que ce garde a été
+  // écrit pour supprimer. Abandonner après un refresh lent ne perd rien : le token refreshé est
+  // persisté, la sonde suivante est servie du cache.
   var debutSonde = Date.now();
+  // ADR-0041 : la sonde teste les API DU PROJET JOBAI — celles que les créations utilisent
+  // réellement. C'est AUSSI le chemin de reprise : dès que Marc lie le compte, la sonde suivante
+  // (≤ 13 min) obtient un jeton, voit les API répondre et lève la suspension toute seule.
+  var jeton = jetonJobai_();
+  if (!jeton) {
+    // Credentials ABSENTS = verdict certain (jamais lié / révoqué-purgé) : les créations sont
+    // impossibles, la suspension se rafraîchit avec la consigne actionnable. Credentials PRÉSENTS
+    // = échec TRANSITOIRE du refresh (5xx, réseau) : on ne conclut RIEN (revue quotas F2 — dire
+    // « re-lier le compte » sur un blip Google enverrait Marc re-consentir pour rien).
+    if (etatLiaisonJobai_() === 'absent') {
+      return { etat: 'desactivee', api: 'jobai',
+        message: 'compte jobai non lié ou consentement révoqué — exécuter lierCompteJobai (docs/JOBAI.md)' };
+    }
+    return { etat: 'indetermine', api: 'jobai', message: 'refresh OAuth jobai momentanément impossible' };
+  }
+  if (Date.now() - debutSonde > CONFIG.PANNE_CONFIG_SONDE_MAX_MS) {
+    return { etat: 'indetermine', api: 'jobai', message: 'sonde interrompue (refresh OAuth trop lent)' };
+  }
+  var doute = null;
   for (var i = 0; i < SONDES_CONFIG_API.length; i++) {
     var s = SONDES_CONFIG_API[i];
     if (Date.now() - debutSonde > CONFIG.PANNE_CONFIG_SONDE_MAX_MS) {
@@ -230,7 +248,7 @@ function sonderApiConfig_() {
     try {
       var rep = UrlFetchApp.fetch(s.url, {
         method: 'get',
-        headers: { Authorization: 'Bearer ' + jetonGoogle_() },
+        headers: { Authorization: 'Bearer ' + jeton },
         muteHttpExceptions: true
       });
       code = rep.getResponseCode();
@@ -308,10 +326,14 @@ function signalerPanneConfigApi_(e) {
   // retour) ET la sonde C28-48 jamais armée. Panne SILENCIEUSE et conditionnelle.
   if (!PREFIXE_CONFIG_API.test(m) && !estMessageApiDesactivee_(m)) return false;
   if (!_panneConfigApiCeRun) {
-    journalErreur_('GoogleApi', 'PANNE CONFIG : une API Google (Tasks/Calendar) n\'est pas activée ' +
-      'dans le projet — création d\'intentions suspendue. Sonde automatique toutes les ' +
-      Math.round(CONFIG.PANNE_CONFIG_SONDE_MS / 60000) + ' min : la reprise sera automatique dès ' +
-      'que l\'API sera activée dans la console GCP.');
+    // Texte NEUTRE sur la cause (revue code 🟡3, comme le titre Santé) : depuis l'ADR-0041 la
+    // panne peut venir d'une API non activée dans jobai OU d'un compte jobai non lié — le détail
+    // vit dans Santé (message mémorisé), pas ici.
+    journalErreur_('GoogleApi', 'PANNE CONFIG : les créations Tasks/Calendar sont indisponibles ' +
+      '(API non activée dans le projet jobai, ou compte jobai non lié — détail dans Santé) : ' +
+      'création d\'intentions suspendue. Sonde automatique toutes les ' +
+      Math.round(CONFIG.PANNE_CONFIG_SONDE_MS / 60000) + ' min : reprise automatique dès que la ' +
+      'cause est levée.');
     try {
       var props = PropertiesService.getScriptProperties();
       props.setProperty('DriveAI_PANNE_CONFIG_API', String(Date.now()));
