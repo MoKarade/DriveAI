@@ -37,7 +37,24 @@ jobs:
         run: |
           set -euo pipefail
 
-          number="$(gh pr list --repo "$REPO" --head "$HEAD_BRANCH" --state open \
+          # RETRY GÉNÉRALISÉ (incident 2026-08-17, PR #281) : le durcissement #279 ne couvrait que
+          # le DISPATCH — un 503 transitoire de l'API GitHub sur le PREMIER `gh pr view` (une simple
+          # LECTURE) a tué le run en `bash -e` AVANT le merge, et comme l'événement workflow_run ne
+          # se rejoue pas, la PR restait ouverte EN SILENCE (CI verte, automerge rouge). TOUTE
+          # commande gh du script se rejoue donc (même politique 2/4/8/16 s que le dispatch et le
+          # git-push du projet). Les contrôles de SÉCURITÉ restent À ÉCHEC FERMÉ : à bout d'essais,
+          # le run ÉCHOUE — on ne merge JAMAIS sans avoir pu vérifier fork/label.
+          avec_retry() {
+            local delai=2
+            for essai in 1 2 3 4 5; do
+              if "$@"; then return 0; fi
+              echo "« $1 … » raté (essai $essai/5) — nouvel essai dans ${delai}s." >&2
+              sleep "$delai"; delai=$((delai * 2))
+            done
+            return 1
+          }
+
+          number="$(avec_retry gh pr list --repo "$REPO" --head "$HEAD_BRANCH" --state open \
             --json number --jq '.[0].number // empty')"
           if [ -z "$number" ]; then
             echo "Aucune PR ouverte pour $HEAD_BRANCH — rien à faire."
@@ -50,23 +67,41 @@ jobs:
           # FORK portant la même branche `claude/x` pourrait être sélectionnée ici. On re-vérifie donc
           # sur la PR RÉSOLUE qu'elle n'est PAS cross-repo avant tout merge (défense en profondeur,
           # même esprit que le gate — la promesse « pas de code de fork déployé » codée de bout en bout).
-          crossrepo="$(gh pr view "$number" --repo "$REPO" --json isCrossRepository --jq .isCrossRepository)"
+          # Échec FERMÉ : si la lecture échoue à bout d'essais, l'assignation échoue et `set -e` sort.
+          crossrepo="$(avec_retry gh pr view "$number" --repo "$REPO" --json isCrossRepository --jq .isCrossRepository)"
           if [ "$crossrepo" != "false" ]; then
             echo "PR #$number vient d'un fork (isCrossRepository=$crossrepo) → auto-merge REFUSÉ."
             exit 0
           fi
 
-          labels="$(gh pr view "$number" --repo "$REPO" --json labels --jq '.labels[].name')"
+          labels="$(avec_retry gh pr view "$number" --repo "$REPO" --json labels --jq '.labels[].name')"
           if echo "$labels" | grep -qx 'do-not-merge'; then
             echo "Label 'do-not-merge' présent → auto-merge ignoré."
             exit 0
           fi
 
           # Sortir du mode draft si nécessaire (ignore l'erreur si déjà ready).
-          gh pr ready "$number" --repo "$REPO" || true
+          avec_retry gh pr ready "$number" --repo "$REPO" || true
 
-          # Merge en squash + suppression de la branche.
-          gh pr merge "$number" --repo "$REPO" --squash --delete-branch
+          # Merge en squash + suppression de la branche. Un essai raté peut avoir RÉUSSI côté
+          # serveur (réponse perdue) : on juge par l'ÉTAT RÉEL de la PR, jamais par le seul code
+          # de sortie (la politique « vérifier l'artefact » du projet).
+          merger() {
+            local delai=2
+            for essai in 1 2 3 4 5; do
+              if gh pr merge "$number" --repo "$REPO" --squash --delete-branch; then return 0; fi
+              etat="$(gh pr view "$number" --repo "$REPO" --json state --jq .state 2>/dev/null || echo '')"
+              if [ "$etat" = "MERGED" ]; then
+                echo "PR #$number déjà mergée (l'essai précédent avait réussi côté serveur)."
+                return 0
+              fi
+              echo "Merge raté (essai $essai/5) — nouvel essai dans ${delai}s."
+              sleep "$delai"; delai=$((delai * 2))
+            done
+            echo "::error::Merge de la PR #$number IMPOSSIBLE après 5 essais — merger à la main puis relancer deploy.yml."
+            return 1
+          }
+          merger
 
           # IMPORTANT : un merge fait par le bot (GITHUB_TOKEN) NE déclenche PAS les workflows
           # `on: push` (sécurité anti-récursion de GitHub Actions). On dispatche donc Deploy
