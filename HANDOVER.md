@@ -13,7 +13,20 @@
 > paies » + un sous-dossier PAR EMPLOYEUR (⇒ domicile UNIQUE `02/Revenus & paie/<Employeur>` +
 > rapport des mois MANQUANTS — PR2) ; (3) identité = permis + passeport + « tout ce que tu
 > pourras trouver d'autre » (PR3, 04 · Immigration = PROPOSITIONS seulement, jamais déplacé).
-> **PR1 (cette session)** : socle `src/Missions.gs` + 4 missions 03/06 (`mission-vehicule`,
+> **PR1 ✅ (#278, mergée + déployée le 17/08, signal indépendant vérifié)** ; **PR2 livrée**
+> (paies par employeur + RapportPaies des mois manquants, carrière/employeurs, dossiers-années 02,
+> impôts par année — 4 missions de plus sur le MÊME budget partagé, ordre = priorité). Revue
+> flotte PR2 (2 rondes + passe finale code-reviewer/structure-keeper) appliquée : convergenceApres,
+> sourcesJetables, errC séparé, RapportPaies borné, geste SYMÉTRIQUE sur la table du flux (paie →
+> `Revenus & paie/<emp>`, fiscal → `Impôts/<AAAA>`, nœud « Recherche d'emploi » RETIRÉ + verrou
+> d'absence), `anneePlausible_` UNIFIÉE (1990-2100, les deux bornes testées), borne ≤ 7 des
+> employeurs CODÉE, TAXONOMY.md réaligné. La MÊME PR livre **C28-50** (retour Marc du 17/08 sur la
+> page Moteur de l'app) : les missions convergées à reliquat (« à jour (N non apparié(s)) »)
+> restent EN AVANT au lieu de disparaître dans la veille repliée — c'était la réponse à « je ne
+> vois pas toutes les missions » — + note précise du reliquat, interrupteur « Masquer les finis »,
+> erreurs du Journal repliées par défaut. Incident
+> attrapé au merge de PR1 : dispatch de Deploy avalé par un 503 (#279 le durcit — retry + run
+> rouge sur échec final). Socle PR1 : 4 missions 03/06 (`mission-vehicule`,
 > `mission-logement`, `mission-dispatch-03`, `mission-archives-06`) — budget 10 min/j RÉALLOUÉ de
 > la conso-gen terminée (couple 12 min verrouillé), idempotence versionnée, convergence sur passe
 > vide, appariement par jetons + fenêtres de dates (ambigu = laissé + rapporté, jamais deviné),

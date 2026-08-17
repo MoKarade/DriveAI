@@ -486,9 +486,25 @@ export function familleStatut(statut: string): FamilleStatut {
 export function estUtileProgression(op: LigneProgression): boolean {
   const f = familleStatut(op.statut);
   if (f === 'erreur' || f === 'suspendu') return true; // un problème est TOUJOURS visible
-  if (f === 'ajour' || f === 'inactif') return false;  // accompli / désactivée / jamais vue → veille
+  // C28-50 (demande Marc : « je ne vois pas toutes les missions ») : une mission convergée AVEC
+  // reliquat (« à jour (N non apparié(s)) ») n'est PAS un travail accompli — N fichiers attendent
+  // un affinage de règles. Elle reste EN AVANT ; seul l'« à jour » sans reste part en veille.
+  if (f === 'ajour') return op.statut.includes('non apparié');
+  if (f === 'inactif') return false;  // désactivée / jamais vue → veille
   if (f === 'termine' || f === 'recensement') return true;
   return op.base !== null || op.traites > 0; // progrès réel à montrer — sinon routine qui tourne
+}
+
+/**
+ * Complément PRÉCIS d'un statut moteur : le contenu de sa parenthèse terminale — « à jour (50 non
+ * apparié(s)) » → « 50 non apparié(s) ». La famille (pastille) perd ce détail ; l'afficher rend la
+ * ligne exacte sans re-dériver quoi que ce soit (source unique : le texte écrit par le moteur).
+ * Parenthèses IMBRIQUÉES gérées par « première ouvrante → fin » (jamais une regex non-gourmande,
+ * qui couperait « apparié(s » — C28-50). PURE. Sans parenthèse terminale → ''.
+ */
+export function complementStatut(statut: string): string {
+  const i = statut.indexOf('(');
+  return i >= 0 && statut.endsWith(')') ? statut.slice(i + 1, -1) : '';
 }
 
 /**
