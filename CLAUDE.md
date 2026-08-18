@@ -641,8 +641,8 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   d'activation `?project=<n°>` n'y sert jamais.** Deux issues seulement pour une API qui y manque :
   (a) déclarer le service avancé (`dependencies` — DÉCLARER ≠ APPELER, les appels restent REST) ;
   (b) ne pas utiliser le jeton du script pour cette API — jeton OAuth d'un projet standard de
-  l'utilisateur (**ADR-0041** : Tasks/Calendar via le projet jobai, `JetonJobai.gs`, consentement
-  unique, refresh token en Script Properties, échec fermé sur la mécanique config-api). La
+  l'utilisateur (**ADR-0041** : Tasks/Calendar via le projet hubperso, `JetonHubperso.gs`,
+  consentement unique, refresh token en Script Properties, échec fermé sur la mécanique config-api). La
   CATÉGORIE des scopes borne la voie (b) : un scope RESTREINT (`gmail.modify`) sur un projet
   standard exige une vérification Google (CASA) ou expire tous les 7 jours en mode Test — Gmail/
   Drive restent donc à JAMAIS sur le projet caché ; vérifier la catégorie d'un scope AVANT de

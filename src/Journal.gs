@@ -168,9 +168,9 @@ function texteSanteConfigApi_(etat, tz) {
   // Verdict de la dernière sonde affiché EXPLICITEMENT : une sonde qui ne conclut jamais
   // (« indetermine » à répétition) doit se voir, sinon la reprise peut être morte en silence.
   // Titre neutre sur la CAUSE (ADR-0041) : la panne peut venir d'une API non activée dans le
-  // projet jobai OU d'un compte jobai non lié/révoqué — c'est `etat.message` qui dit lequel.
+  // projet hubperso OU d'un compte hubperso non lié/révoqué — c'est `etat.message` qui dit lequel.
   var sonde = etat.sonde ? '  ·  dernière sonde : ' + etat.sonde : '';
-  return '⚠️ INDISPONIBLES (API jobai non activée, ou compte non lié) — intentions mail suspendues' + depuis +
+  return '⚠️ INDISPONIBLES (API hubperso non activée, ou compte non lié) — intentions mail suspendues' + depuis +
     ', re-sonde automatique (au plus 1×/' + Math.round(CONFIG.PANNE_CONFIG_SONDE_MS / 60000) +
     ' min)' + sonde + (etat.message ? '  ·  ' + etat.message : '');
 }

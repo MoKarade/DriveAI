@@ -1,7 +1,13 @@
-# ADR-0041 — Tasks & Calendar via le projet GCP jobai/hubperso (jeton OAuth dédié)
+# ADR-0041 — Tasks & Calendar via le projet GCP hubperso (jeton OAuth dédié)
 
 - **Statut** : accepté (décision Marc 2026-08-17, réitérée : « je veux utiliser le projet jobai
   hubperso uniquement, fais en sorte que ça marche »).
+- **Révision 2026-08-17 (soir), AVANT toute liaison** : Marc corrige le nom — « je me suis trompé,
+  je voulais dire le projet HUBPERSO seulement ». Le projet GCP visé est **hubperso** ; tout le
+  nommage (fichier `JetonHubperso.gs`, fonctions, Properties `DriveAI_HUBPERSO_*`, `?hubperso=1`,
+  `docs/HUBPERSO.md`, messages Santé) est aligné dans la foulée — renommage GRATUIT car aucune
+  Property n'était encore posée. Le moteur ne connaît aucun nom de projet : seul le client OAuth
+  fourni compte.
 - **Contexte** : incident 14-17/08 — l'API Tasks n'est pas activée dans le projet GCP PAR DÉFAUT
   d'Apps Script (289462394116). Ce projet est CACHÉ : aucune console n'y donne accès, à personne.
   Marc a activé Tasks/Calendar dans SON projet (« job ai »/hubperso) et veut que DriveAI utilise
@@ -10,8 +16,8 @@
 ## 1. Décision
 
 Les appels **Tasks + Calendar** cessent d'utiliser le jeton du script (`ScriptApp.getOAuthToken()`,
-attribué au projet caché) et utilisent un **jeton OAuth du projet jobai** : client OAuth « Web »
-créé par Marc dans jobai, refresh token obtenu par un consentement UNIQUE, stocké en Script
+attribué au projet caché) et utilisent un **jeton OAuth du projet hubperso** : client OAuth « Web »
+créé par Marc dans hubperso, refresh token obtenu par un consentement UNIQUE, stocké en Script
 Properties, échangé en access token par REST (`oauth2.googleapis.com/token`). Les API activées
 par Marc dans SA console sont alors celles qui servent — plus jamais d'activation sur le projet
 caché pour ces deux API.
@@ -23,15 +29,15 @@ L'exemption des scripts sur leur projet par défaut est ce qui permet à DriveAI
 
 ## 2. Architecture
 
-- `src/JetonJobai.gs` : `jetonJobai_()` rend un access token valide (cache Property avec expiration,
+- `src/JetonHubperso.gs` : `jetonHubperso_()` rend un access token valide (cache Property avec expiration,
   marge 5 min) ou `null` — ÉCHEC FERMÉ. Refresh via POST `oauth2.googleapis.com/token`
   (`grant_type=refresh_token`, client id/secret depuis les Script Properties). Un `invalid_grant`
   (révocation) efface le refresh token et journalise la consigne de re-consentement.
-- **Consentement une fois** : `lierCompteJobai` (un-clic éditeur) GÉNÈRE le `state` (UUID — jamais
-  choisi à la main), persiste l'URI de rappel réellement utilisée (`DriveAI_JOBAI_REDIRECT`, pour
+- **Consentement une fois** : `lierCompteHubperso` (un-clic éditeur) GÉNÈRE le `state` (UUID — jamais
+  choisi à la main), persiste l'URI de rappel réellement utilisée (`DriveAI_HUBPERSO_REDIRECT`, pour
   que l'échange du code renvoie la même à l'octet près) et affiche l'URL de consentement. `doGet`
-  de la web app gagne le callback `?jobai=1&code=…&state=…` — vérifie `state` contre la Property
-  `DriveAI_JOBAI_STATE` en comparaison CONSTANTE, AVANT tout appel réseau (l'URL `/exec` est
+  de la web app gagne le callback `?hubperso=1&code=…&state=…` — vérifie `state` contre la Property
+  `DriveAI_HUBPERSO_STATE` en comparaison CONSTANTE, AVANT tout appel réseau (l'URL `/exec` est
   publique : sans state, un tiers pourrait LIER SON compte Google au moteur et recevoir les
   intentions de Marc), refuse un state de plus d'1 h (revue sécurité : une liaison abandonnée ne
   laisse pas un state valable à vie), échange le code, VÉRIFIE le champ `scope` de la réponse
@@ -40,17 +46,17 @@ L'exemption des scripts sur leur projet par défaut est ce qui permet à DriveAI
   refresh token, page neutre (aucun paramètre reflété, refus muet). Scopes demandés : `tasks` +
   `calendar.events` (SENSIBLES, pas restreints — autorisés sur une app perso en production non
   vérifiée, jetons persistants).
-- `Tasks.gs` / `Calendar.gs` / la sonde config-api : jeton via `jetonJobai_()`. Sans jeton
-  configuré → même mécanique de suspension que config-api, message Santé explicite (« jeton jobai
-  absent — suivre docs/JOBAI.md »). La sonde teste l'API **du projet jobai** désormais.
+- `Tasks.gs` / `Calendar.gs` / la sonde config-api : jeton via `jetonHubperso_()`. Sans jeton
+  configuré → même mécanique de suspension que config-api, message Santé explicite (« jeton hubperso
+  absent — suivre docs/HUBPERSO.md »). La sonde teste l'API **du projet hubperso** désormais.
 - `oauthScopes` du manifeste : INCHANGÉS ce coup-ci (retirer `tasks`/`calendar.events` = changement
   de scopes = ré-autorisation = gel total, leçon C28-29 — à faire plus tard, regroupé et séquencé
   avec Marc). Un scope déclaré non utilisé est inerte.
-- Prérequis MARC (une fois, tout dans SON projet) : client OAuth Web dans jobai + URI de
-  redirection `/exec` ; 2 Script Properties (`DriveAI_JOBAI_CLIENT_ID`,
-  `DriveAI_JOBAI_CLIENT_SECRET`) ; exécuter `lierCompteJobai` (JetonJobai.gs) puis un clic sur
-  l'URL de consentement affichée. Pas-à-pas : `docs/JOBAI.md`.
-  ⚠️ L'écran de consentement du projet jobai doit être « En production » (en mode Test, les
+- Prérequis MARC (une fois, tout dans SON projet) : client OAuth Web dans hubperso + URI de
+  redirection `/exec` ; 2 Script Properties (`DriveAI_HUBPERSO_CLIENT_ID`,
+  `DriveAI_HUBPERSO_CLIENT_SECRET`) ; exécuter `lierCompteHubperso` (JetonHubperso.gs) puis un clic sur
+  l'URL de consentement affichée. Pas-à-pas : `docs/HUBPERSO.md`.
+  ⚠️ L'écran de consentement du projet hubperso doit être « En production » (en mode Test, les
   autorisations expirent tous les 7 jours — le piège qu'on évite).
 
 ## 3. Garde-fous
