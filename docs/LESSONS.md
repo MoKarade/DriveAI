@@ -2405,3 +2405,26 @@ aucun intrant, et une liste de récents est polluée par les producteurs techniq
 
 **Règle durable ?** non (instance des règles « compter la destination » et « signal indépendant »
 déjà en §7 — consignée ici pour le réflexe du cas nominal).
+
+
+## 2026-08-17 — PR sur branche réutilisée post-squash : un diff de CONTENU vide ne prouve PAS la mergeabilité
+
+**Contexte.** C28-52 PR1 (#284). Avant de committer, vérification faite : `git diff origin/main
+HEAD` VIDE (l'arbre de la branche == l'arbre de main après le squash de #283). Conclusion
+implicite : « la PR sera propre ». Faux : la PR est restée `mergeable_state: dirty` (conflit) et
+l'automerge n'a jamais tiré — 30 minutes de blocage SILENCIEUX (zéro check exécuté, zéro erreur),
+détecté seulement parce que le moniteur de merge a expiré. Cause : le merge 3-voies part du
+MERGE-BASE (l'histoire), pas des arbres — la branche portait encore le commit pré-squash, et
+main + branche avaient modifié les mêmes lignes depuis ce vieux merge-base. Remède appliqué :
+`git rebase origin/main` (le commit déjà squashé se VIDE et saute tout seul), push
+`--force-with-lease` ancré sur le tip vérifié — contenu identique à l'octet près, PR passée à
+`mergeable` en une minute.
+
+**Leçon.** « Un `git diff origin/main HEAD` vide prouve l'égalité des ARBRES, jamais la
+mergeabilité d'une PR : le merge 3-voies part du MERGE-BASE. Sur une branche `claude/**`
+réutilisée après un squash-merge, appliquer la règle existante (repartir d'`origin/main`) AVANT
+le premier commit ; et après CHAQUE ouverture de PR, lire `mergeable_state` — `dirty` = rebaser
+sur origin/main (le commit déjà mergé se vide au rebase) + force-with-lease, jamais attendre.
+Symptôme du piège : PR ouverte, AUCUN check ne démarre, aucun message d'erreur. »
+
+**Règle durable ?** oui (précision ajoutée à la règle Git de CLAUDE.md §7).
