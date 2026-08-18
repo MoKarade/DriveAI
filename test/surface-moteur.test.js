@@ -46,13 +46,13 @@ const CONTRAT = [
   // C28-48 : sonde légère + message exploitable + état lisible pour l'onglet Santé.
   'sonderApiConfig_', 'verdictSondeApi_', 'messageErreurGoogle_', 'etatPanneConfigApi_',
   'memoriserMessageConfigApi_', 'sonderEtLeverPanneConfig_', 'texteSanteConfigApi_',
-  // C28-52 (ADR-0041) : jeton OAuth du projet jobai — JetonJobai.gs, appelé par Tasks.gs/
+  // C28-52 (ADR-0041) : jeton OAuth du projet hubperso — JetonHubperso.gs, appelé par Tasks.gs/
   // Calendar.gs/GoogleApi.gs (jeton) et WebApp.gs (callback doGet) : pur cross-module.
-  'jetonJobai_', 'jetonCacheValide_', 'analyserReponseJetonJobai_', 'lierCompteJobai',
-  'urlConsentementJobai_', 'traiterCallbackJobai_', 'echangerCodeJobai_',
-  'validerCallbackJobai_', 'comparaisonConstante_', 'doGet',
+  'jetonHubperso_', 'jetonCacheValide_', 'analyserReponseJetonHubperso_', 'lierCompteHubperso',
+  'urlConsentementHubperso_', 'traiterCallbackHubperso_', 'echangerCodeHubperso_',
+  'validerCallbackHubperso_', 'comparaisonConstante_', 'doGet',
   // Revue flotte C28-52 : verdicts honnêtes (transitoire ≠ non lié), purge 401, scopes complets.
-  'etatLiaisonJobai_', 'messageJetonJobaiIndisponible_', 'purgerCacheJetonJobai_', 'scopesJobaiComplets_',
+  'etatLiaisonHubperso_', 'messageJetonHubpersoIndisponible_', 'purgerCacheJetonHubperso_', 'scopesHubpersoComplets_',
   // C28-49 (ADR-0039) : missions de curation — appelées en travers des modules (Main/Journal).
   'executerMission_', 'tableMissions_', 'gMissionsJour_', 'gMissionsAmont03_', 'chargerEtatMissions_',
   'budgetJourMissions_', 'cleMission_', 'apparierUnique_', 'jetonsCible_', 'logementParDate_',
@@ -227,7 +227,7 @@ test('surface du moteur : les fonctions RETIRÉES par l\'audit ne reviennent pas
     'curseurSuivantHisto_', 'miniVerifActionRdv_',
     'dossiersMiroir_', 'dossierMiroirPourChemin_', // miroir à plat 2026-07-08 : plus de sous-dossiers
     'ecrireRecensement_', 'ecrireProgression_', 'repeter_', // barre texte mono-op retirée (C28-18)
-    'jetonGoogle_']; // ADR-0041 : Tasks/Calendar passent par jetonJobai_ — le jeton du script ne doit pas revenir ici
+    'jetonGoogle_']; // ADR-0041 : Tasks/Calendar passent par jetonHubperso_ — le jeton du script ne doit pas revenir ici
   const revenues = retirees.filter((nom) => typeof ctx[nom] === 'function');
   assert.deepStrictEqual(revenues, [], `retirées mais présentes : ${revenues.join(', ')}`);
 });

@@ -3,7 +3,7 @@
  *
  * Comme Drive (cf. DriveRest.gs) et l'OCR : REST plutôt que service avancé, pour la
  * robustesse après `clasp push` (cf. LESSONS « API Google via REST »). Jeton : celui du projet
- * JOBAI (`jetonJobai_`, ADR-0041) — jamais celui du script, dont le projet GCP caché n'a pas
+ * HUBPERSO (`jetonHubperso_`, ADR-0041) — jamais celui du script, dont le projet GCP caché n'a pas
  * l'API Tasks activée (et ne peut pas l'avoir : aucune console n'y donne accès).
  *
  * Garde-fou : CRÉATION uniquement — jamais de modification ni de suppression, et jamais de
@@ -23,11 +23,11 @@
  * @return {string} l'ID de la tâche créée, ou '' en cas d'échec.
  */
 function creerTache_(titre, echeance, notes) {
-  // Pas de jeton jobai (jamais lié, révoqué, ou refresh en échec transitoire) : panne de CONFIG —
+  // Pas de jeton hubperso (jamais lié, révoqué, ou refresh en échec transitoire) : panne de CONFIG —
   // même préfixe canonique que l'API désactivée, donc même mécanique de suspension + message
   // Santé (ADR-0041). Le message dit HONNÊTEMENT laquelle des deux causes (revue quotas F2).
-  var jeton = jetonJobai_();
-  if (!jeton) throw new Error('config-api Tasks : ' + messageJetonJobaiIndisponible_());
+  var jeton = jetonHubperso_();
+  if (!jeton) throw new Error('config-api Tasks : ' + messageJetonHubpersoIndisponible_());
 
   var payload = { title: titre };
   if (notes) payload.notes = notes;
@@ -60,7 +60,7 @@ function creerTache_(titre, echeance, notes) {
   // 401 = le jeton porté est REFUSÉ (révocation pendant la durée de vie du cache — revue code
   // 🟠2) : purger le cache force l'appel suivant à repasser par le refresh, qui tranche
   // `invalid_grant` (purge + consigne) vs blip transitoire.
-  if (rep.getResponseCode() === 401) purgerCacheJetonJobai_();
+  if (rep.getResponseCode() === 401) purgerCacheJetonHubperso_();
   journalErreur_('Tasks', 'Création HTTP ' + rep.getResponseCode() + ' (« ' + titre + ' ») : ' +
     tronquer_(corps, 300));
   return '';

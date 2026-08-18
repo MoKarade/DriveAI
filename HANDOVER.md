@@ -27,11 +27,13 @@
 > erreurs du Journal repliées par défaut. **INCIDENT flux Gmail (14-17/08, diagnostiqué le 17 au soir)** : API Tasks jamais activée
 > dans le projet GCP par défaut CACHÉ → intentions suspendues → TRI mort par ricochet (il attend
 > `intention|` par fil) — l'intake PJ, lui, marche (talon Robovic classé en 25 min). Correctif
-> **C28-52 PR1 (ADR-0041, décision Marc « jobai uniquement »)** : Tasks/Calendar + sonde passent
-> par un jeton OAuth du PROJET JOBAI (`JetonJobai.gs` — consentement unique, refresh token en
-> Script Properties, échec fermé, scopes du manifeste INCHANGÉS). ⚠️ Reprise = **geste Marc
-> une fois** : suivre `docs/JOBAI.md` (client OAuth Web dans jobai, 2 Properties,
-> `lierCompteJobai`, 1 clic de consentement) — la sonde lève ensuite la suspension TOUTE SEULE
+> **C28-52 PR1 (ADR-0041, décision Marc corrigée le soir : « le projet HUBPERSO seulement »)** :
+> Tasks/Calendar + sonde passent par un jeton OAuth du PROJET HUBPERSO (`JetonHubperso.gs` —
+> consentement unique, refresh token en Script Properties, échec fermé, scopes du manifeste
+> INCHANGÉS ; renommage intégral jobai→hubperso livré AVANT toute liaison). ⚠️ Reprise =
+> **geste Marc une fois** : suivre `docs/HUBPERSO.md` (client OAuth Web dans hubperso,
+> 2 Properties, `lierCompteHubperso`, 1 clic de consentement) — la sonde lève ensuite la
+> suspension TOUTE SEULE
 > (≤ 13 min) et le tri Gmail repart avec les intentions. **C28-51 (ADR-0040)** enchaîné le soir même sur le
 > retour « je peux rien y faire » : les 89 non-appariés diagnostiqués sur PREUVES (bails nommés
 > par BAILLEUR — Kim Pinsonneault = 9420-3767 = LCP → 3325 ; 9478-5045 → 3987 —, KIA sans cible,

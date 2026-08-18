@@ -51,9 +51,9 @@ function ctxPanne(props, reponses) {
   }) };
   c.journalErreur_ = (s, m) => journaux.push(m);
   c.journalInfo_ = (s, m) => infos.push(m);
-  // ADR-0041 : la sonde utilise le jeton du projet JOBAI (JetonJobai.gs, non chargé ici). Le mock
+  // ADR-0041 : la sonde utilise le jeton du projet HUBPERSO (JetonHubperso.gs, non chargé ici). Le mock
   // rend un jeton valide — le cas « pas de jeton » a son test dédié plus bas.
-  c.jetonJobai_ = () => 'jeton-test';
+  c.jetonHubperso_ = () => 'jeton-test';
   const opts = { retardMs: 0 }; // le test peut rendre la sonde LENTE (garde-temps)
   /** L'URL REÇUE choisit la réponse — pas un compteur d'appels. */
   const pourUrl = (url) => {
@@ -181,40 +181,40 @@ test('sonderApiConfig_ : verdict global — les DEUX API doivent répondre pour 
   assert.strictEqual(reseau.c.sonderApiConfig_().etat, 'indetermine');
 });
 
-test('sonderApiConfig_ : SANS jeton jobai → « desactivee (jobai) », zéro appel réseau (ADR-0041)', () => {
+test('sonderApiConfig_ : SANS jeton hubperso → « desactivee (hubperso) », zéro appel réseau (ADR-0041)', () => {
   // Compte jamais lié ou consentement révoqué (credentials ABSENTS) : les créations sont
   // IMPOSSIBLES — le verdict doit être certain (la suspension se rafraîchit, Santé porte la
   // consigne actionnable), et la sonde ne doit toucher AUCUNE API (pas de jeton à présenter).
   const sansJeton = ctxPanne({}, { code: 404, corps: '' });
-  sansJeton.c.jetonJobai_ = () => null;
-  sansJeton.c.etatLiaisonJobai_ = () => 'absent';
+  sansJeton.c.jetonHubperso_ = () => null;
+  sansJeton.c.etatLiaisonHubperso_ = () => 'absent';
   const v = sansJeton.c.sonderApiConfig_();
   assert.strictEqual(v.etat, 'desactivee');
-  assert.strictEqual(v.api, 'jobai', 'la cause est nommée — Santé doit dire « lier le compte », pas « activer l\'API »');
-  assert.ok(v.message.includes('lierCompteJobai'), 'la consigne actionnable est dans le message');
+  assert.strictEqual(v.api, 'hubperso', 'la cause est nommée — Santé doit dire « lier le compte », pas « activer l\'API »');
+  assert.ok(v.message.includes('lierCompteHubperso'), 'la consigne actionnable est dans le message');
   assert.strictEqual(sansJeton.fetchs.length, 0, 'aucun appel réseau sans jeton');
 
   // …et la suspension déjà en cours se MAINTIENT avec ce diagnostic (chemin sonderEtLeverPanneConfig_).
   const suspendu = ctxPanne({ DriveAI_PANNE_CONFIG_API: String(Date.now() - 3600 * 1000) },
     { code: 404, corps: '' });
-  suspendu.c.jetonJobai_ = () => null;
-  suspendu.c.etatLiaisonJobai_ = () => 'absent';
+  suspendu.c.jetonHubperso_ = () => null;
+  suspendu.c.etatLiaisonHubperso_ = () => 'absent';
   suspendu.c.chargerPanneConfigApi_();
   assert.strictEqual(suspendu.c.estPanneConfigApi_(), true, 'pas de jeton ⇒ la suspension tient');
-  assert.ok(suspendu.store.DriveAI_PANNE_CONFIG_MSG.includes('jobai'), 'le diagnostic jobai est mémorisé pour Santé');
+  assert.ok(suspendu.store.DriveAI_PANNE_CONFIG_MSG.includes('hubperso'), 'le diagnostic hubperso est mémorisé pour Santé');
 });
 
 test('sonderApiConfig_ : refresh en échec TRANSITOIRE (creds présentes) → indéterminé, jamais « re-lier » (revue F2)', () => {
-  // Un blip 5xx du endpoint de jeton rend jetonJobai_() null alors que la liaison EXISTE : dire
+  // Un blip 5xx du endpoint de jeton rend jetonHubperso_() null alors que la liaison EXISTE : dire
   // « compte non lié » enverrait Marc re-consentir pour rien, et rafraîchirait la suspension sur
   // un doute. Le verdict indéterminé ne lève rien, n'affirme rien — la sonde suivante tranchera.
   for (const liaison of ['present', 'inconnu']) {
     const blip = ctxPanne({}, { code: 404, corps: '' });
-    blip.c.jetonJobai_ = () => null;
-    blip.c.etatLiaisonJobai_ = () => liaison;
+    blip.c.jetonHubperso_ = () => null;
+    blip.c.etatLiaisonHubperso_ = () => liaison;
     const v = blip.c.sonderApiConfig_();
     assert.strictEqual(v.etat, 'indetermine', 'liaison ' + liaison + ' : on ne conclut RIEN');
-    assert.ok(!v.message.includes('lierCompteJobai'), 'jamais la consigne de re-liaison sur un blip');
+    assert.ok(!v.message.includes('lierCompteHubperso'), 'jamais la consigne de re-liaison sur un blip');
     assert.strictEqual(blip.fetchs.length, 0);
   }
 });

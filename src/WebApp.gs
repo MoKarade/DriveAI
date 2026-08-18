@@ -35,13 +35,13 @@
  * Garde-fous communs : anti-rafale par action, plafonds bornés, sortie whitelistée par un
  * parseur strict (fonctions PURES testées).
  *
- * `doGet` (ADR-0041) : UNIQUE action GET — le callback de consentement OAuth du projet jobai
- * (`?jobai=1&code=…&state=…`, traité par JetonJobai.gs avec vérification de `state`). Tout autre
+ * `doGet` (ADR-0041) : UNIQUE action GET — le callback de consentement OAuth du projet hubperso
+ * (`?hubperso=1&code=…&state=…`, traité par JetonHubperso.gs avec vérification de `state`). Tout autre
  * GET rend une page neutre : l'app et la CI ne parlent au moteur qu'en POST.
  */
 
 function doGet(e) {
-  if (e && e.parameter && e.parameter.jobai === '1') return traiterCallbackJobai_(e.parameter);
+  if (e && e.parameter && e.parameter.hubperso === '1') return traiterCallbackHubperso_(e.parameter);
   return ContentService.createTextOutput('DriveAI');
 }
 

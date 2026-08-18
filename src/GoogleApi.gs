@@ -2,8 +2,8 @@
  * GoogleApi.gs — Retry partagé + panne de CONFIG pour les appels REST aux API Google
  * (Tasks, Calendar — cf. Tasks.gs, Calendar.gs). Même schéma que DriveRest.gs.
  *
- * Jeton : depuis l'ADR-0041, Tasks/Calendar utilisent le jeton du projet JOBAI (`jetonJobai_`,
- * JetonJobai.gs) — le projet GCP par défaut du script est CACHÉ (inadministrable, API jamais
+ * Jeton : depuis l'ADR-0041, Tasks/Calendar utilisent le jeton du projet HUBPERSO (`jetonHubperso_`,
+ * JetonHubperso.gs) — le projet GCP par défaut du script est CACHÉ (inadministrable, API jamais
  * activables) ; Drive/Sheets/Gmail restent sur le jeton du script (`jetonDrive_`, DriveRest.gs).
  */
 
@@ -215,28 +215,28 @@ function sonderApiConfig_() {
   // pendent, c'est ~2 min prélevées sur la marge budget→mur de 6 min — et le jour où Google pend,
   // 96 sondes/jour dépasseraient à elles seules le quota DUR de runtime. On abandonne alors la
   // passe (verdict indéterminé : rien n'est levé), la suivante réessaiera.
-  // L'horloge démarre AVANT `jetonJobai_()` (revue quotas F1) : le refresh OAuth est lui aussi un
+  // L'horloge démarre AVANT `jetonHubperso_()` (revue quotas F1) : le refresh OAuth est lui aussi un
   // fetch sans timeout — hors du cumul, il ré-introduisait le cas « 2 × 60 s » que ce garde a été
   // écrit pour supprimer. Abandonner après un refresh lent ne perd rien : le token refreshé est
   // persisté, la sonde suivante est servie du cache.
   var debutSonde = Date.now();
-  // ADR-0041 : la sonde teste les API DU PROJET JOBAI — celles que les créations utilisent
+  // ADR-0041 : la sonde teste les API DU PROJET HUBPERSO — celles que les créations utilisent
   // réellement. C'est AUSSI le chemin de reprise : dès que Marc lie le compte, la sonde suivante
   // (≤ 13 min) obtient un jeton, voit les API répondre et lève la suspension toute seule.
-  var jeton = jetonJobai_();
+  var jeton = jetonHubperso_();
   if (!jeton) {
     // Credentials ABSENTS = verdict certain (jamais lié / révoqué-purgé) : les créations sont
     // impossibles, la suspension se rafraîchit avec la consigne actionnable. Credentials PRÉSENTS
     // = échec TRANSITOIRE du refresh (5xx, réseau) : on ne conclut RIEN (revue quotas F2 — dire
     // « re-lier le compte » sur un blip Google enverrait Marc re-consentir pour rien).
-    if (etatLiaisonJobai_() === 'absent') {
-      return { etat: 'desactivee', api: 'jobai',
-        message: 'compte jobai non lié ou consentement révoqué — exécuter lierCompteJobai (docs/JOBAI.md)' };
+    if (etatLiaisonHubperso_() === 'absent') {
+      return { etat: 'desactivee', api: 'hubperso',
+        message: 'compte hubperso non lié ou consentement révoqué — exécuter lierCompteHubperso (docs/HUBPERSO.md)' };
     }
-    return { etat: 'indetermine', api: 'jobai', message: 'refresh OAuth jobai momentanément impossible' };
+    return { etat: 'indetermine', api: 'hubperso', message: 'refresh OAuth hubperso momentanément impossible' };
   }
   if (Date.now() - debutSonde > CONFIG.PANNE_CONFIG_SONDE_MAX_MS) {
-    return { etat: 'indetermine', api: 'jobai', message: 'sonde interrompue (refresh OAuth trop lent)' };
+    return { etat: 'indetermine', api: 'hubperso', message: 'sonde interrompue (refresh OAuth trop lent)' };
   }
   var doute = null;
   for (var i = 0; i < SONDES_CONFIG_API.length; i++) {
@@ -327,10 +327,10 @@ function signalerPanneConfigApi_(e) {
   if (!PREFIXE_CONFIG_API.test(m) && !estMessageApiDesactivee_(m)) return false;
   if (!_panneConfigApiCeRun) {
     // Texte NEUTRE sur la cause (revue code 🟡3, comme le titre Santé) : depuis l'ADR-0041 la
-    // panne peut venir d'une API non activée dans jobai OU d'un compte jobai non lié — le détail
+    // panne peut venir d'une API non activée dans hubperso OU d'un compte hubperso non lié — le détail
     // vit dans Santé (message mémorisé), pas ici.
     journalErreur_('GoogleApi', 'PANNE CONFIG : les créations Tasks/Calendar sont indisponibles ' +
-      '(API non activée dans le projet jobai, ou compte jobai non lié — détail dans Santé) : ' +
+      '(API non activée dans le projet hubperso, ou compte hubperso non lié — détail dans Santé) : ' +
       'création d\'intentions suspendue. Sonde automatique toutes les ' +
       Math.round(CONFIG.PANNE_CONFIG_SONDE_MS / 60000) + ' min : reprise automatique dès que la ' +
       'cause est levée.');
