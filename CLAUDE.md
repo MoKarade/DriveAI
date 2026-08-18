@@ -215,7 +215,11 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   *malformées*, jamais comme posture de classement.
 - **Git (squash-merge + branche réutilisée).** Avant chaque nouvelle tâche, repartir
   d'`origin/main` (reset/merge). Si la branche distante `claude/**` diverge après merge,
-  refusionner son tip plutôt que force-push (ruleset). Un check requis doit gater le merge vers
+  refusionner son tip plutôt que force-push (ruleset). Après ouverture d'une PR sur branche
+  réutilisée post-squash, lire son `mergeable_state` : un diff de CONTENU vide vs `origin/main`
+  ne prouve PAS la mergeabilité (le merge 3-voies part du MERGE-BASE) — `dirty` ⇒ rebaser sur
+  `origin/main` (le commit déjà squashé se vide) + force-with-lease ; symptôme : aucun check ne
+  démarre, zéro erreur. Un check requis doit gater le merge vers
   `main`, pas le push des branches de travail. Ne jamais juger un `git push` via `| tail` (l'exit
   code est masqué) — vérifier `git push; echo $?`. Après toute fusion de rattrapage post-squash,
   vérifier par `grep -c` l'UNICITÉ des blocs/appels DÉPLACÉS : l'auto-merge garde silencieusement
