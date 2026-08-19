@@ -569,6 +569,12 @@ function moisManquantsPaies_(parEmployeur) {
   });
 }
 
+// En-tête de l'onglet `RapportPaies` — constante PARTAGÉE (revue C28-53 🟡) : consommée par
+// `initialiserSheet_` (Journal.gs, création) ET la réparation d'en-tête ci-dessous (point
+// d'écriture). Deux littéraux qui doivent rester identiques se verrouillent par une constante,
+// jamais par la discipline (leçon §7).
+var COLONNES_RAPPORT_PAIES = ['Employeur', 'Mois présents', 'Mois manquants (nb)', 'Mois manquants'];
+
 /**
  * Écrit l'onglet `RapportPaies` (une ligne par employeur : couverture + mois manquants) depuis
  * l'état RÉEL de « Revenus & paie »/<Employeur>. Appelée à la CONVERGENCE de la mission paies
@@ -597,7 +603,7 @@ function ecrireRapportPaies_() {
   // Réparation d'en-tête AU POINT D'ÉCRITURE (leçon « point d'attache », 2026-08-13) — jamais
   // dans initialiserSheet_ (code mort pour un onglet déjà créé).
   if (String(f.getRange('A1').getValue()) !== 'Employeur') {
-    f.getRange(1, 1, 1, 4).setValues([['Employeur', 'Mois présents', 'Mois manquants (nb)', 'Mois manquants']]);
+    f.getRange(1, 1, 1, COLONNES_RAPPORT_PAIES.length).setValues([COLONNES_RAPPORT_PAIES]);
     f.setFrozenRows(1);
   }
   var valeurs = lignes.map(function (l) {

@@ -712,3 +712,74 @@ test('ecrireRapportPaies_ qui LÈVE empêche le FINI de la mission paies (rappor
   h.c.executerMission_('paies', () => false);
   assert.strictEqual(h.store['DriveAI_MISSION_FINI_paies'], h.c.CONFIG.MISSIONS_REGLES_VERSION);
 });
+
+/* ---------- Régression C28-53 : l'onglet RapportPaies doit être créé par feuille_ ----------
+ * Bug révélé par le MCP le 19/08 : `RapportPaies` manquait de `initialiserSheet_`, donc
+ * `feuille_('RapportPaies')` rendait null et `ecrireRapportPaies_` plantait à CHAQUE tick
+ * (`getRange of null`). Les tests existants MOCKENT `ecrireRapportPaies_` → ne voyaient pas ce
+ * chemin. Ici on exerce le VRAI chemin sur un classeur où l'onglet est ABSENT au départ.
+ */
+const fs = require('node:fs');
+const path = require('node:path');
+const TOUS_GS = fs.readdirSync(path.join(__dirname, '..', 'src')).filter((f) => f.endsWith('.gs'));
+
+test('ecrireRapportPaies_ : onglet RapportPaies ABSENT → créé par feuille_, aucun crash (régression MCP 19/08)', () => {
+  function fauxOnglet() {
+    const cells = {};
+    const rangees = []; // lignes écrites par setValues (pour vérifier le CONTENU, pas juste l'absence de crash)
+    let dernLigne = 1;
+    const o = {
+      rangees,
+      getRange: (a, b, h, w) => {
+        // getRange('A1') OU getRange(ligne, col, h, w)
+        const cle = typeof a === 'string' ? a : a + ',' + b;
+        return {
+          getValue: () => cells[cle] || '',
+          setValues: (v) => { v.forEach((ligne, i) => { rangees[(a || 1) + i] = ligne; }); dernLigne = Math.max(dernLigne, (a || 1) + (v.length - 1)); },
+          setValue: (x) => { cells[cle] = x; },
+          clearContent: () => {},
+        };
+      },
+      setFrozenRows: () => {},
+      getLastRow: () => dernLigne,
+      appendRow: () => { dernLigne++; },
+    };
+    return o;
+  }
+  const onglets = {};
+  const ss = {
+    getSheetByName: (nom) => onglets[nom] || null,
+    insertSheet: (nom) => { onglets[nom] = fauxOnglet(); return onglets[nom]; },
+    getSheets: () => Object.keys(onglets).map((k) => onglets[k]),
+    deleteSheet: () => {},
+  };
+  const c = load(TOUS_GS);
+  c.getSheetEtat_ = () => ss;
+  c.SpreadsheetApp = { getActiveSpreadsheet: () => ss };
+  const infos = [];
+  c.journalInfo_ = (s, m) => infos.push(m);
+  c.journalErreur_ = () => {};
+  // Un dossier employeur avec deux mois présents (2026-01, 2026-03).
+  c.DriveApp = { getFolderById: () => ({
+    getFolders: () => {
+      let servi = false;
+      return { hasNext: () => !servi, next: () => { servi = true; return {
+        getName: () => 'Robovic Inc.',
+        getFiles: () => {
+          const noms = ['2026-01_Paie_Robovic.pdf', '2026-03_Paie_Robovic.pdf']; let i = 0;
+          return { hasNext: () => i < noms.length, next: () => ({ getName: () => noms[i++] }) };
+        },
+      }; } };
+    },
+  }) };
+
+  assert.strictEqual(onglets.RapportPaies, undefined, 'onglet absent au départ (le cas prod)');
+  assert.doesNotThrow(() => c.ecrireRapportPaies_(),
+    'feuille_ doit CRÉER RapportPaies via initialiserSheet_ — jamais un getRange sur null');
+  assert.ok(onglets.RapportPaies, 'l\'onglet a bien été créé');
+  assert.strictEqual(infos.filter((m) => m.indexOf('RapportPaies écrit') === 0).length, 1, 'le rapport est écrit');
+  // Contenu : la ligne 2 porte l'employeur et sa couverture (2 mois présents, mois manquants comptés).
+  const ligne2 = onglets.RapportPaies.rangees[2];
+  assert.ok(ligne2 && ligne2[0] === 'Robovic Inc.', 'la ligne employeur est écrite (pas juste l\'en-tête)');
+  assert.strictEqual(ligne2[1], 2, '2 mois présents (2026-01, 2026-03)');
+});
