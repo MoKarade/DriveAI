@@ -29,11 +29,28 @@ function chargerAvecSanteMock(indexCache) {
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 6 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 7 lignes de métadonnées (une seule écriture Sheet)', () => {
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 6);
+  assert.strictEqual(captured.length, 7);
   assert.ok(captured.every((l) => typeof l === 'string'));
+});
+
+test('majSante_ : le mode DÉGRADÉ du tri se DIT (ADR-0043) — sinon « ça marche » masque « ça n\'archive plus »', () => {
+  const normal = chargerAvecSanteMock({});
+  normal.ctx.intentionsSuspendues_ = () => false;
+  normal.ctx.majSante_();
+  const ligneOk = normal.captured.find((l) => l.indexOf('Tri Gmail') === 0);
+  assert.ok(ligneOk && ligneOk.includes('✅'), 'hors panne : tri normal annoncé');
+
+  const degrade = chargerAvecSanteMock({});
+  degrade.ctx.intentionsSuspendues_ = () => true;
+  degrade.ctx.majSante_();
+  const ligneKo = degrade.captured.find((l) => l.indexOf('Tri Gmail') === 0);
+  assert.ok(ligneKo, 'la ligne existe aussi en panne');
+  assert.ok(ligneKo.includes('DÉGRADÉ'), 'le mode est nommé');
+  assert.ok(ligneKo.includes('AUCUN archivage'), 'la CONSÉQUENCE est dite, pas seulement l\'état');
+  assert.ok(ligneKo.includes('ré-évalués'), 'et le rattrapage automatique aussi (pas de dette invisible)');
 });
 
 test('majSante_ : sans panne de config, la ligne API annonce des API actives (C28-48)', () => {

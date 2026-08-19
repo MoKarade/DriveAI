@@ -23,8 +23,11 @@
 
 /**
  * Décision PURE du tri d'un fil (testée exhaustivement — c'est ELLE qui porte les règles).
+ * `analyseIndisponible` (ADR-0043) : le scan d'intentions est suspendu, donc `important` est
+ * INCONNU — on pose les libellés mais on n'ARCHIVE rien (dégrader, jamais deviner).
  * @param {{categorie:?string, important:boolean, suspect:boolean, zoneProtegee:boolean,
- *          promoDeterministe:boolean, entierementLu:boolean}} f
+ *          promoDeterministe:boolean, entierementLu:boolean,
+ *          analyseIndisponible:(boolean|undefined)}} f
  * @return {{libelles:string[], archiver:boolean, statut:string}}
  */
 function decisionTri_(f) {
@@ -39,7 +42,13 @@ function decisionTri_(f) {
   var libelles = [f.categorie];
   if (f.important) libelles.push(CONFIG.TRI_LIBELLES.A_TRAITER);
   var archiver;
-  if (f.important) {
+  if (f.analyseIndisponible) {
+    // MODE DÉGRADÉ (ADR-0043) : le scan d'intentions est suspendu, donc `important` est INCONNU —
+    // pas faux. Le traiter comme faux archiverait des fils que Marc devait traiter. On pose les
+    // libellés (travail utile et réversible) et on laisse le fil EN BOÎTE ; l'archivage sera
+    // décidé au retour des intentions, la clé d'idempotence dégradée rendant le fil ré-évaluable.
+    archiver = false;
+  } else if (f.important) {
     archiver = false; // ⏰ : la boîte de Marc sert de todo — seul MARC archive ces fils
   } else if (f.promoDeterministe && !f.zoneProtegee) {
     archiver = true;  // promo/newsletter : archivée même non lue (signaux DÉTERMINISTES uniquement)
@@ -705,6 +714,29 @@ function finaliserPasseBoite_(props, offset) {
 }
 
 /**
+ * Vrai si le scan d'intentions est SUSPENDU — donc si la clé `intention|` n'arrivera pas tant que
+ * la panne dure (ADR-0043). Miroir EXACT des `return` en tête de `traiterIntentionsMail_` qui
+ * peuvent durer plusieurs jours : panne de CONFIG d'API (Tasks/Calendar non activée, compte
+ * hubperso non lié) et panne de PLATEFORME LLM (crédit épuisé, 401).
+ *
+ * `estPanneGmail_` est volontairement EXCLU : quota Gmail épuisé, le TRI lui-même ne tourne pas —
+ * il n'a donc rien à dégrader (et l'inclure ferait croire à un mode dégradé pendant que rien
+ * ne tourne).
+ *
+ * ⚠️ Si un jour `traiterIntentionsMail_` gagne une nouvelle cause d'arrêt DURABLE, elle doit
+ * arriver ici : sinon le tri se remet à attendre une clé qui n'arrivera jamais (le bug de 5 jours
+ * des 14-19/08). Verrouillé par `test/tri-gmail.test.js` (inventaire des gardes).
+ * @return {boolean}
+ */
+function intentionsSuspendues_() {
+  try {
+    return !!(estPanneConfigApi_() || estPannePlateforme_());
+  } catch (e) {
+    return false; // état illisible : on garde le comportement nominal (on attend)
+  }
+}
+
+/**
  * Fenêtre (en jours) couverte par l'analyse des INTENTIONS, dérivée de la CONSTANTE
  * `CONFIG.GMAIL_REQUETE_ACTIONS` (jamais « 30 » en dur — leçon « cas dérivés de la constante »).
  * PURE. @return {?number} jours, ou null si la requête ne porte pas de fenêtre lisible.
@@ -755,8 +787,8 @@ function trierFil_(fil, candidats, libelles, verifierBoite) {
     var nonLu = fil.isUnread();
     // La clé d'état inclut le DERNIER MESSAGE et l'état LU : un nouveau message OU une lecture
     // re-déclenche le tri (revue flotte : sinon un mail lu après son tri n'était JAMAIS archivé).
-    var cle = 'tri|' + filId + '|' + ts + (nonLu ? '|nonlu' : '|lu');
-    if (indexContient_(cle)) return 'deja';
+    var cleNominale = 'tri|' + filId + '|' + ts + (nonLu ? '|nonlu' : '|lu');
+    if (indexContient_(cleNominale)) return 'deja';
 
     // Libellés DÉJÀ posés sur le fil : ⏰/⚠️ sont des décisions antérieures qui survivent aux
     // nouveaux messages (un fil marqué ⏰ ne doit JAMAIS être archivé, quel que soit le suivi).
@@ -771,11 +803,29 @@ function trierFil_(fil, candidats, libelles, verifierBoite) {
     var dernierId = dernier.getId();
     // Le tri passe APRÈS la Phase 3 : tant que le dernier message n'a pas été analysé (intentions),
     // on attend — c'est elle qui pose le flag `important|` dont dépend le ⏰/l'archivage.
-    // SAUF fil HORS fenêtre intentions (revue flotte C28-24) : la clé n'arrivera JAMAIS — on trie
-    // sans attendre (`important|` structurellement absent ; le ⏰ déjà posé reste honoré via
-    // dejaPoses, les gardes suspect/zone protégée s'appliquent au vif comme pour tout fil).
-    if (!indexContient_('intention|' + dernierId) &&
-        !estHorsFenetreIntentions_(Number(ts), Date.now())) return 'attend';
+    // DEUX sorties, pour deux façons dont la clé peut ne JAMAIS arriver :
+    //  (a) fil HORS fenêtre intentions (C28-24) — aucun scan ne le couvre, `important|` est
+    //      structurellement absent ⇒ on trie NORMALEMENT (archivage compris) ;
+    //  (b) scan d'intentions SUSPENDU (ADR-0043) — la clé n'arrivera pas tant que la panne dure
+    //      (vécu 14-19/08 : 5 jours de boîte non triée pour une API Google non activée) ⇒ on trie
+    //      en mode DÉGRADÉ : libellés oui, archivage NON (`important` est inconnu, pas faux).
+    // Dans les deux cas le ⏰ déjà posé reste honoré via `dejaPoses`, et les gardes suspect/zone
+    // protégée s'appliquent au vif comme pour tout fil.
+    var analyseIndisponible = false;
+    if (!indexContient_('intention|' + dernierId)) {
+      if (estHorsFenetreIntentions_(Number(ts), Date.now())) {
+        analyseIndisponible = false; // cas (a) : absence DÉFINITIVE et connue — tri complet
+      } else if (intentionsSuspendues_()) {
+        analyseIndisponible = true;  // cas (b) : absence TEMPORAIRE — tri dégradé, révisable
+      } else {
+        return 'attend';
+      }
+    }
+    // La clé porte le MODE : un tri dégradé doit rester RÉVISABLE (leçon C28-33). Au retour des
+    // intentions, la clé nominale est absente ⇒ le fil est ré-évalué avec son `important|` et
+    // archivé si la règle de Marc le dit. Sans ce suffixe, « non archivé » serait figé à vie.
+    var cle = analyseIndisponible ? cleNominale + '|deg' : cleNominale;
+    if (analyseIndisponible && indexContient_(cle)) return 'deja';
 
     // Message de RÉFÉRENCE pour la catégorisation : le plus récent qui ne vient PAS de Marc —
     // sinon un fil où il a répondu en dernier apprendrait « marc@… → libellé » et catégoriserait
@@ -856,7 +906,8 @@ function trierFil_(fil, candidats, libelles, verifierBoite) {
       suspect: suspect,
       zoneProtegee: zoneProtegee,
       promoDeterministe: promoDeterministe,
-      entierementLu: !nonLu
+      entierementLu: !nonLu,
+      analyseIndisponible: analyseIndisponible
     });
     // (Le forçage « sans archivage » du tri à la demande C28-16 est parti avec sa feature — ADR-0031.)
 

@@ -159,6 +159,140 @@ function filMock(calls, { id, ts, dernierMsgId, expediteur, sujet, nonLu, unsubs
   };
 }
 
+/* ---------- ADR-0043 : le tri survit à une suspension des intentions ---------- */
+
+test('decisionTri_ : analyse INDISPONIBLE → libellés posés, JAMAIS archivé (inconnu ≠ faux)', () => {
+  // Le cas dangereux : un fil LU, promo déterministe — donc archivable en régime normal. Si
+  // `important` (inconnu) était traité comme faux, un mail à traiter quitterait la boîte.
+  const deg = ctxPur.decisionTri_({ categorie: 'Finance', important: false, suspect: false,
+    zoneProtegee: false, promoDeterministe: true, entierementLu: true, analyseIndisponible: true });
+  const simple = (x) => JSON.parse(JSON.stringify(x)); // frontière vm : prototypes distincts
+  assert.strictEqual(deg.archiver, false, 'aucun archivage sans l\'analyse');
+  assert.deepStrictEqual(simple(deg.libelles), ['Finance'], 'le travail utile est fait quand même');
+
+  // Contrôle : le MÊME fil, analyse disponible, EST archivé (sinon le test ne prouverait rien).
+  const ok = ctxPur.decisionTri_({ categorie: 'Finance', important: false, suspect: false,
+    zoneProtegee: false, promoDeterministe: true, entierementLu: true, analyseIndisponible: false });
+  assert.strictEqual(ok.archiver, true);
+
+  // Les règles PRIORITAIRES restent intactes en mode dégradé.
+  const susp = ctxPur.decisionTri_({ categorie: 'Finance', important: false, suspect: true,
+    zoneProtegee: false, promoDeterministe: true, entierementLu: true, analyseIndisponible: true });
+  assert.deepStrictEqual(simple(susp.libelles), ['⚠️ Suspect']);
+  const flou = ctxPur.decisionTri_({ categorie: null, important: false, suspect: false,
+    zoneProtegee: false, promoDeterministe: false, entierementLu: true, analyseIndisponible: true });
+  assert.deepStrictEqual(simple(flou.libelles), ['À vérifier']);
+});
+
+test('tri : intentions SUSPENDUES → le fil est trié quand même (libellés), sans archivage, clé |deg', () => {
+  // LE bug des 14-19/08 : l'API Tasks n'était pas activée ⇒ intentions suspendues ⇒ la clé
+  // `intention|` n'arrivait jamais ⇒ la boîte n'était plus triée DU TOUT pendant 5 jours.
+  const { c, calls } = ctxTri({});
+  const tsS = Date.now(); // FIGÉ : dans le mock, `Date.now()` serait réévalué à chaque `search`
+  c.estPanneConfigApi_ = () => true; // scan d'intentions suspendu (ADR-0041)
+  c.GmailApp.search = (q, d) => (d === 0
+    ? [filMock(calls, { id: 'S1', ts: tsS, dernierMsgId: 'MS1', expediteur: 'a@b.c', sujet: 'x' })]
+    : []);
+  c.trierFilsGmail_(() => false);
+  assert.deepStrictEqual(calls.labels.map((l) => l.label), ['Finance'], 'le tri a bien eu lieu (une seule fois)');
+  assert.deepStrictEqual(calls.archives, [], 'mais RIEN n\'est archivé sans l\'analyse');
+  assert.ok(calls.ajouts.some((a) => /\|deg$/.test(a.cle)),
+    'la clé porte le mode dégradé — sinon « non archivé » serait figé à vie');
+});
+
+test('tri : intentions VIVANTES et clé absente → on attend (le cas nominal ne bouge pas)', () => {
+  const { c, calls } = ctxTri({});
+  const tsA = Date.now();
+  c.estPanneConfigApi_ = () => false;
+  c.GmailApp.search = (q, d) => (d === 0
+    ? [filMock(calls, { id: 'A1', ts: tsA, dernierMsgId: 'MA1', expediteur: 'a@b.c', sujet: 'x' })]
+    : []);
+  c.trierFilsGmail_(() => false);
+  assert.deepStrictEqual(calls.labels, [], 'aucun libellé : l\'analyse va arriver, on l\'attend');
+  assert.deepStrictEqual(calls.ajouts, [], 'et aucune clé posée');
+});
+
+test('tri : au RETOUR des intentions, le fil trié en dégradé est RÉ-ÉVALUÉ et archivé', () => {
+  // C'est la propriété qui rend le mode dégradé acceptable : il ne fige rien. Sans le suffixe
+  // `|deg`, la clé nominale existerait déjà et le fil ne serait JAMAIS archivé (leçon C28-33).
+  const ts = Date.now();
+  const { c, calls } = ctxTri({ index: {
+    ['tri|R1|' + ts + '|lu|deg']: true,   // trié pendant la panne
+    'intention|MR1': true,                 // …et l'analyse est arrivée depuis
+  } });
+  c.estPanneConfigApi_ = () => false;      // panne finie
+  c.GmailApp.search = (q, d) => (d === 0
+    ? [filMock(calls, { id: 'R1', ts: ts, dernierMsgId: 'MR1', expediteur: 'a@b.c', sujet: 'x' })]
+    : []);
+  c.trierFilsGmail_(() => false);
+  assert.deepStrictEqual(calls.archives, ['R1'], 'la décision d\'archivage est enfin prise');
+  assert.ok(calls.ajouts.some((a) => a.cle === 'tri|R1|' + ts + '|lu'), 'et la clé NOMINALE est posée');
+});
+
+test('tri dégradé : idempotent — un 2e passage pendant la MÊME panne ne re-travaille pas', () => {
+  const ts = Date.now();
+  const { c, calls } = ctxTri({ index: { ['tri|D1|' + ts + '|lu|deg']: true } });
+  c.estPanneConfigApi_ = () => true;
+  c.GmailApp.search = (q, d) => (d === 0
+    ? [filMock(calls, { id: 'D1', ts: ts, dernierMsgId: 'MD1', expediteur: 'a@b.c', sujet: 'x' })]
+    : []);
+  c.trierFilsGmail_(() => false);
+  assert.deepStrictEqual(calls.labels, [], 'déjà trié dans cet état ET ce mode');
+  assert.deepStrictEqual(calls.ajouts, []);
+});
+
+test('intentionsSuspendues_ : vrai sur CHAQUE panne durable, faux sinon, jamais d\'exception', () => {
+  const ctx = load(['Config.gs', 'Gmail.gs', 'TriGmail.gs']);
+  const cas = [
+    { config: false, llm: false, attendu: false },
+    { config: true, llm: false, attendu: true },   // API Tasks/Calendar non activée (ADR-0041)
+    { config: false, llm: true, attendu: true },   // crédit LLM épuisé / 401 (panne de compte)
+    { config: true, llm: true, attendu: true },
+  ];
+  for (const k of cas) {
+    ctx.estPanneConfigApi_ = () => k.config;
+    ctx.estPannePlateforme_ = () => k.llm;
+    assert.strictEqual(ctx.intentionsSuspendues_(), k.attendu,
+      'config=' + k.config + ' llm=' + k.llm);
+  }
+  // État illisible : on ne prétend RIEN de faux — on garde le comportement nominal (on attend).
+  ctx.estPanneConfigApi_ = () => { throw new Error('Properties HS'); };
+  assert.strictEqual(ctx.intentionsSuspendues_(), false, 'jamais d\'exception vers l\'appelant');
+});
+
+test('intentionsSuspendues_ : MIROIR des pannes durables de traiterIntentionsMail_ (inventaire)', () => {
+  // Le bug de fond n'était pas une ligne fausse, c'était un ÉCART entre « ce qui arrête les
+  // intentions » et « ce que le tri sait ». Si une nouvelle panne DURABLE apparaît dans
+  // `traiterIntentionsMail_` sans arriver ici, le tri se remettra à attendre pour rien.
+  // On scanne la fonction ENTIÈRE — pas seulement son en-tête : `estPannePlateforme_` vit dans la
+  // condition d'arrêt de la BOUCLE, et une première version de ce test la manquait (prouvé par
+  // mutation : retirer la panne LLM du prédicat laissait le test vert).
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'Intentions.gs'), 'utf8');
+  const debut = src.indexOf('function traiterIntentionsMail_');
+  assert.ok(debut > 0, 'fonction trouvée');
+  const fin = src.indexOf('\nfunction ', debut + 1);
+  const corps = src.slice(debut, fin === -1 ? undefined : fin);
+  // Convention de nommage du projet : une panne de plateforme s'appelle `estPanneXxx_`.
+  const pannes = Array.from(new Set((corps.match(/estPanne[A-Za-z]*_/g) || [])));
+  assert.ok(pannes.length >= 2, 'les pannes sont bien détectées (sinon le test passerait à vide)');
+
+  const tri = fs.readFileSync(path.join(__dirname, '..', 'src', 'TriGmail.gs'), 'utf8');
+  const iPred = tri.indexOf('function intentionsSuspendues_');
+  assert.ok(iPred > 0);
+  const corpsPred = tri.slice(iPred, tri.indexOf('\n}', iPred));
+  const docPred = tri.slice(Math.max(0, iPred - 1200), iPred); // le bloc de doc juste au-dessus
+  for (const nom of pannes) {
+    if (corpsPred.indexOf(nom) !== -1) continue;              // connue du prédicat
+    assert.ok(docPred.indexOf(nom) !== -1,
+      nom + ' arrête les intentions mais est ABSENTE du tri — il attendrait une clé qui ' +
+      'n\'arrivera jamais. Soit l\'ajouter au prédicat, soit JUSTIFIER l\'exclusion par écrit ' +
+      'juste au-dessus (le cas de estPanneGmail_ : quota épuisé, le tri ne tourne pas non plus).');
+  }
+});
+
+
 test('tri : fil déjà trié dans CET état (fil|ts|lu) → sauté SANS charger les messages', () => {
   const { c, calls } = (() => {
     const r = ctxTri({ index: { 'tri|F1|1000|lu': true }, fils: [] });
