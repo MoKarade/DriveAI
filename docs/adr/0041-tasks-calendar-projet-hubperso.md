@@ -103,3 +103,24 @@ n'exécute la vraie chaîne Google) :
    par API** (grammaire verrouillée par test), le verdict indéterminé **persiste le message de
    Google** (pas seulement le code), et une cause mémorisée que la sonde a **démentie** (jeton
    obtenu ⇒ « compte non lié » est faux) est remplacée — celles qu'elle n'a pas démenties, jamais.
+
+### 2026-08-19 (soir) — Retrait des scopes `tasks` et `calendar.events` du manifeste
+
+Conséquence logique d'ADR-0041, restée en suspens : `Tasks.gs`, `Calendar.gs` et la sonde
+`sonderApiConfig_` prennent tous leur jeton de `jetonHubperso_()`. Les scopes `auth/tasks` et
+`auth/calendar.events` déclarés dans `src/appsscript.json` n'étaient donc plus utilisés par aucune
+ligne de code — ils accordaient au script un pouvoir de **lecture, écriture ET suppression** sur
+les tâches et l'agenda de Marc, pour rien (§2.3, moindre privilège). Retirés le 19/08 à sa demande.
+
+**Pourquoi c'est sûr** (à la différence d'un AJOUT de scope, qui gèle tous les déclencheurs) :
+l'ensemble demandé devient un SOUS-ENSEMBLE de ce qui est déjà autorisé, donc Apps Script n'a pas
+de nouvelle permission à réclamer. Aucune ré-autorisation n'est attendue.
+
+**Ce que le retrait ne fait PAS** — même famille que la leçon « un verrou posé à la CRÉATION d'un
+jeton n'arrête pas le stock déjà émis » : l'autorisation DÉJÀ accordée survit dans le compte Google
+de Marc. Le manifeste ne fait que cesser de la demander. Pour la révoquer réellement, il faut
+retirer l'accès de l'application dans son compte Google — ce qui force alors une ré-autorisation
+des scopes restants (donc un gel volontaire, à faire quand il le décide).
+
+**Verrou** : `test/scopes.test.js` — chaque scope déclaré doit avoir un consommateur réel dans
+`src/`, et aucun code ne doit exiger un scope non déclaré. Prouvé par mutation dans les deux sens.
