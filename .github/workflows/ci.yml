@@ -5,6 +5,23 @@ on:
   push:
     branches: [main]
 
+# UN SEUL RUN VIVANT PAR BRANCHE. Sans ce groupe, un run devenu obsolète continue de tourner
+# en parallèle du nouveau — et si un de ses jobs se fige, il occupe un runner jusqu'aux SIX
+# HEURES du plafond GitHub, pour un commit que plus personne ne regarde.
+#
+# Vécu le 19/08/2026 sur la PR #294 : le job de captures s'est figé sur `playwright install`,
+# le commit suivant est arrivé, et l'ancien run tournait TOUJOURS 2 h 15 plus tard. Il a fallu
+# l'annuler à la main. `timeout-minutes` (ajouté au job) borne la casse ; ce groupe-ci
+# l'empêche d'exister.
+#
+# `main` est volontairement EXCLUE du groupe (`github.ref` en fait une clé distincte par
+# branche, et les pushs sur main se suivent rarement d'assez près pour se marcher dessus) —
+# mais surtout, annuler un run de `main` reviendrait à perdre la preuve qu'un commit déjà
+# intégré passe le gate.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 permissions:
   contents: read
 
