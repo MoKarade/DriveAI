@@ -90,7 +90,13 @@ function sonderEtLeverPanneConfig_(props) {
   // Verdict de la DERNIÈRE sonde, toujours persisté (revue code C28-48) : sans lui, une sonde qui
   // ne conclut JAMAIS (ex. Google resserre la validation de l'identifiant sondé ⇒ 400 systématique
   // ⇒ `indetermine` sous l'allowlist) rendrait la reprise inopérante À VIE et SANS AUCUNE TRACE.
-  try { props.setProperty('DriveAI_PANNE_CONFIG_SONDE_ETAT', tronquer_(verdict.etat + (verdict.api ? ' (' + verdict.api + ')' : ''), 60)); }
+  // Le POURQUOI est joint pour un verdict INDÉTERMINÉ (vécu 19/08 : « indetermine (Tasks) » sans
+  // le code HTTP ⇒ impossible de trancher « API non activée » / « 400 sur l'identifiant sondé » /
+  // « 401 » à distance — une observabilité qui ne dit pas POURQUOI ne sert à rien). Sur
+  // `desactivee`, le détail a déjà son canal dédié (`DriveAI_PANNE_CONFIG_MSG`) : pas de doublon.
+  var detailSonde = verdict.etat + (verdict.api ? ' (' + verdict.api + ')' : '') +
+    (verdict.etat === 'indetermine' && verdict.message ? ' — ' + verdict.message : '');
+  try { props.setProperty('DriveAI_PANNE_CONFIG_SONDE_ETAT', tronquer_(detailSonde, 160)); }
   catch (e) { }
 
   if (verdict.etat === 'desactivee') {

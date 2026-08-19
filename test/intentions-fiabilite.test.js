@@ -564,3 +564,26 @@ test('bouclier : mail sain (ni suspect ni promo) → mini-check appelé normalem
   c.traiterMessagePourIntentions_(messageBouclier({ sujet: 'Relevé mensuel' }), 'F1');
   assert.strictEqual(appelsLlm(), 1);
 });
+
+test('sonde INDÉTERMINÉE : le POURQUOI (code HTTP) est PERSISTÉ — sinon impossible de trancher à distance', () => {
+  // Vécu 19/08 : Santé affichait « indetermine (Tasks) » sans le code HTTP → impossible de savoir
+  // si l'API était non activée, si l'identifiant sondé était refusé (400) ou si le jeton était
+  // invalide (401). Une observabilité qui ne dit pas POURQUOI ne sert à rien.
+  const h = ctxPanne({ DriveAI_PANNE_CONFIG_API: String(Date.now() - 3600 * 1000) },
+    { Tasks: { code: 400, corps: 'Invalid task id' }, Calendar: { code: 404, corps: '' } });
+  h.c.chargerPanneConfigApi_();
+  const etat = String(h.store.DriveAI_PANNE_CONFIG_SONDE_ETAT || '');
+  assert.ok(etat.indexOf('indetermine') === 0, 'verdict conservé : ' + etat);
+  assert.ok(etat.includes('Tasks'), 'l\'API concernée est nommée');
+  assert.ok(etat.includes('400'), 'le code HTTP est LISIBLE dans Santé : ' + etat);
+  assert.strictEqual(h.c.estPanneConfigApi_(), true, 'un doute ne lève JAMAIS la suspension');
+});
+
+test('sonde DÉSACTIVÉE : pas de doublon du message (son canal dédié reste DriveAI_PANNE_CONFIG_MSG)', () => {
+  const h = ctxPanne({ DriveAI_PANNE_CONFIG_API: String(Date.now() - 3600 * 1000) },
+    { Tasks: { code: 403, corps: corps403('Tasks', '777') }, Calendar: { code: 404, corps: '' } });
+  h.c.chargerPanneConfigApi_();
+  const etat = String(h.store.DriveAI_PANNE_CONFIG_SONDE_ETAT || '');
+  assert.strictEqual(etat, 'desactivee (Tasks)', 'état court ; le détail vit dans _MSG');
+  assert.ok(String(h.store.DriveAI_PANNE_CONFIG_MSG).includes('project 777'));
+});
