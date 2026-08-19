@@ -197,9 +197,30 @@ function majSante_() {
     ['Coût LLM ' + mois + ' : ' + cout.dollars.toFixed(2) + ' $  (' + cout.appels + ' appels)  ·  cible < 10 $/mois' + (cout.dollars >= 10 ? '  ⚠️ DÉPASSÉE' : '  ✅')],
     ['Rangement ancien Drive : ' + rangement],
     ['API Tasks & Calendar : ' + texteSanteConfigApi_(etatPanneConfigApi_(), tz)],
+    // ADR-0043 : le mode DÉGRADÉ du tri doit se DIRE. Sans cette ligne, « le tri marche » masque
+    // « il n'archive plus » et la dette (fils à ré-évaluer au retour) reste invisible.
+    ['Tri Gmail : ' + texteSanteTriDegrade_()],
     ['Mis à jour : ' + new Date()]
   ];
   f.getRange(2, 1, lignes.length, 1).setValues(lignes); // une seule écriture Sheet (I/O borné/tick)
+}
+
+/**
+ * Ligne Santé du tri Gmail (ADR-0043). Lecture seule, aucune décision.
+ * Best-effort : si l'état est illisible, on ne prétend RIEN plutôt que d'affirmer « normal ».
+ * @return {string}
+ */
+function texteSanteTriDegrade_() {
+  var degrade;
+  try {
+    degrade = intentionsSuspendues_();
+  } catch (e) {
+    return 'état indéterminé (lecture de l\'état impossible)';
+  }
+  return degrade
+    ? '⚠️ mode DÉGRADÉ (analyse d\'intentions suspendue) — libellés posés, AUCUN archivage ; ' +
+      'les fils seront ré-évalués automatiquement au retour des intentions'
+    : '✅ normal (libellés + archivage)';
 }
 
 /* ---------- Progression LIVE des opérations (C28-18) ---------- */
