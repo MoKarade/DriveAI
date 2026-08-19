@@ -2497,4 +2497,11 @@ passe abandonnée par le garde-temps rendait exactement le même texte qu'une pa
 aurait affirmé « la 2ᵉ API n'a pas refusé » alors qu'elle n'avait peut-être jamais été appelée.
 L'abandon doit se DIRE dans l'état. »
 
+**Vérifié en prod (19/08 15:38, après déploiement).** Santé : « API Tasks & Calendar : ✅ actives
+(sondées le 19/08 15:38) », suspension levée SEULE, tri Gmail reparti (0 → 20 fils au tick
+suivant). La règle inférée (longueur ≡ 1 mod 4 impossible en base64) était la bonne cause — et
+le verdict `active` exigeant que LES DEUX API répondent 404, il prouve du même coup que Tasks ET
+Calendar sont activées dans hubperso, ce que l'état d'avant le correctif ne permettait pas de
+conclure.
+
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).

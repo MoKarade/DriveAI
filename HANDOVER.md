@@ -43,12 +43,13 @@
 > expirer d'elle-même après 24 h — jamais un blocage éternel, mais une reprise tardive et à
 > l'aveugle, avec un message Santé PÉRIMÉ entre-temps). Corrigé (un identifiant PAR API + le
 > POURQUOI persisté + la cause démentie remplacée, seulement par une RÉPONSE d'API et jamais par
-> un 401). PREUVE que la liaison marche : la sonde obtient un jeton et JOINT l'API Tasks (sans
-> jeton, le verdict serait `desactivee (hubperso)` sans aucun appel réseau). Sur **Calendar**, en
-> revanche, l'état persisté d'AVANT le correctif ne permet PAS de conclure : une passe abandonnée
-> par le garde-temps rendait exactement le même texte qu'une passe complète — c'est le prochain
-> verdict de sonde qui tranchera. Le rappel automatique (Routine
-> `trig_013kb7wpkm2pXqBRTq71MM13`) est devenu FAUX : à supprimer.** **C28-53 (ADR-0042) — MCP DriveAI** (demande Marc 2026-08-19 « je
+> un 401). ✅ **VÉRIFIÉ EN PROD le 19/08 15:38** (PR #291 déployée à 15:37) : Santé affiche
+> « API Tasks & Calendar : ✅ actives (sondées le 19/08 15:38) », `intentionsSuspendues:false`,
+> et le **tri Gmail est reparti** (`tri_cyclique_fils_jour` 0 → 20 dans le tick suivant). Les DEUX
+> API répondent 404 — le verdict `active` l'exige — donc Tasks ET Calendar sont bien activées dans
+> hubperso, ce que l'état d'avant le correctif ne permettait pas de conclure. La suspension s'est
+> levée SEULE, sans geste de Marc, comme prévu. Le rappel automatique (Routine
+> `trig_013kb7wpkm2pXqBRTq71MM13`) a été SUPPRIMÉ (liaison faite).** **C28-53 (ADR-0042) — MCP DriveAI** (demande Marc 2026-08-19 « je
 > veux un mcp ») : connecteur claude.ai servi par le Vercel existant (`api/mcp/*`, OAuth 2.1 porté
 > du patron FinanceAI éprouvé), 6 outils derrière un 3ᵉ secret `DriveAI_MCP_SECRET`/`MCP_ENGINE_SECRET`
 > (`src/Mcp.gs` : état moteur+missions+erreurs+mail+panne LLM, recherche/lecture, question, réorg
