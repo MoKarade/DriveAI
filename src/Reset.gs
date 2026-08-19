@@ -1549,6 +1549,11 @@ function suivreSteriliteReset_(props, aProgresse) {
  * @return {{ok:boolean, termine:boolean, rondes:number, progres:boolean, message:string}}
  */
 function pousserResetPilote_() {
+  // Le reset piloté par la CI est du travail AUTOMATIQUE : sans ce marquage, tout son coût LLM
+  // atterrirait sous `app:pousser-reset` (l'étiquette posée par `doPost`) — c'est-à-dire dans la
+  // famille « demandes de Marc », alors que docs/COUTS.md enseigne exactement l'inverse. Ses
+  // phases ne passent par aucun `etapeSuivie_`, d'où le marquage explicite (revue flotte C28-58).
+  try { poserOperationCourante_('reset-pilote'); } catch (eOp) { }
   if (!CONFIG.PILOTE_ACTIF) return { ok: false, termine: false, rondes: 0, progres: false, message: 'pilote désactivé (CONFIG.PILOTE_ACTIF)' };
   if (!CONFIG.RESET_ACTIF) return { ok: false, termine: false, rondes: 0, progres: false, message: 'RESET_ACTIF est false' };
   if (pilotageTermineReset_()) return { ok: true, termine: true, rondes: 0, progres: false, message: 'reset terminé (I/O + reliquat LLM drainé)' };

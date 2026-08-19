@@ -351,3 +351,18 @@ test('deploy.yml : le déclencheur est réinstallé APRÈS le redéploiement de 
     '(l\'action inconnue tombe dans le `else` du doPost et « réussit » en silence, piège (4))');
   assert.ok(/continue-on-error: true/.test(wf), 'ne jamais faire échouer un déploiement réussi sur ce confort');
 });
+
+/* ---------- C28-58 : le pilote est du travail AUTOMATIQUE, pas « une demande de Marc » ---------- */
+
+test('pousserResetPilote_ : son coût LLM porte sa propre clé, jamais l\'étiquette `app:` du doPost', () => {
+  // `doPost` étiquette la requête `app:pousser-reset` (famille « demandes de Marc »). Or les
+  // phases du pilote ne passent par AUCUN `etapeSuivie_` : sans marquage explicite, tout le coût
+  // du rangement lancé par la CI atterrissait dans `app:*` — et docs/COUTS.md enseigne
+  // littéralement l'inverse (« si les postes app:* dominent, c'est le chat qui coûte »).
+  const c = load([...FICHIERS, 'Suivi.gs']);
+  c.CONFIG.PILOTE_ACTIF = false; // sortie immédiate : on teste le MARQUAGE, pas le rangement
+  c.poserOperationCourante_('app:pousser-reset'); // ce que doPost vient de poser
+  c.pousserResetPilote_();
+  assert.strictEqual(c.operationCourante_(), 'reset-pilote',
+    'le pilote se nomme lui-même — sinon son coût est imputé aux demandes de Marc');
+});

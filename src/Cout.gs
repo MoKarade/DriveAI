@@ -48,14 +48,20 @@ function enregistrerUsage_(modele, usage) {
   _usageRun.appels += 1;
 
   // VENTILATION par opération (C28-58). On stocke des DOLLARS (déjà tarifés) et un compte
-  // d'appels, pas 8 compteurs de tokens par opération : la Property mensuelle reste petite, et
-  // le total ventilé se compare au total global — s'ils divergent, c'est un bug, pas un arrondi.
-  var op = _operationCouranteSure_();
-  var ligne = _usageRun.ops[op] || (_usageRun.ops[op] = { d: 0, n: 0 });
-  ligne.d += coutDollars_(sonnet
-    ? { sin: inTok, sout: outTok, scw: cwTok, scr: crTok }
-    : { hin: inTok, hout: outTok, hcw: cwTok, hcr: crTok });
-  ligne.n += 1;
+  // d'appels, pas 8 compteurs de tokens par opération : la Property mensuelle reste petite.
+  // TOUT le bloc est enveloppé (revue flotte) : `enregistrerUsage_` est appelée sur le chemin
+  // critique, juste après une réponse Anthropic DÉJÀ PAYÉE et sans try/catch chez l'appelant —
+  // une exception ici perdrait la classification qu'on vient d'acheter. Le détail est un CONFORT,
+  // les tokens ci-dessus sont la comptabilité : jamais l'un au prix de l'autre.
+  try {
+    if (!_usageRun.ops) _usageRun.ops = {};
+    var op = _operationCouranteSure_();
+    var ligne = _usageRun.ops[op] || (_usageRun.ops[op] = { d: 0, n: 0 });
+    ligne.d += coutDollars_(sonnet
+      ? { sin: inTok, sout: outTok, scw: cwTok, scr: crTok }
+      : { hin: inTok, hout: outTok, hcw: cwTok, hcr: crTok });
+    ligne.n += 1;
+  } catch (e) { /* détail perdu pour cet appel — les tokens, eux, sont comptés */ }
 }
 
 /**
@@ -84,7 +90,18 @@ function flushUsage_() {
   t.sin += _usageRun.sin; t.sout += _usageRun.sout; t.scw += _usageRun.scw; t.scr += _usageRun.scr;
   t.appels += _usageRun.appels;
   t.ops = fusionnerOps_(t.ops, _usageRun.ops);
-  props.setProperty(cle, JSON.stringify(t));
+  // FILET (revue flotte C28-58) : cette Property porte AUSSI les totaux que lit le frein budget
+  // §2.6. Si l'encodage venait à dépasser la limite (~9 Ko), un `setProperty` qui lève ferait
+  // perdre les TOKENS eux-mêmes : le frein relirait une valeur figée et ne s'enclencherait plus
+  // pendant que les campagnes dépensent. On dégrade donc comme sa fonction sœur `flusherSuiviOps_` :
+  // on sacrifie le DÉTAIL, jamais la comptabilité qui protège le budget.
+  try {
+    props.setProperty(cle, JSON.stringify(t));
+  } catch (e) {
+    t.ops = {};
+    props.setProperty(cle, JSON.stringify(t));
+    try { journalErreur_('Cout', 'Ventilation des coûts abandonnée ce mois-ci (Property trop grosse) : ' + e); } catch (e2) { }
+  }
   _usageRun = null;
 }
 

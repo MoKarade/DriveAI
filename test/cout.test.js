@@ -327,3 +327,51 @@ test('hors étape : un appel LLM non attribuable tombe dans une VRAIE catégorie
   assert.ok(ops[c.OP_HORS_ETAPE], 'l\'appel est compté sous « (hors étape) »');
   assert.strictEqual(ops[c.OP_HORS_ETAPE].n, 1);
 });
+
+test('câblage COMPLET : un appel LLM DANS une étape est facturé à cette étape (les deux moitiés reliées)', () => {
+  // Les deux moitiés du mécanisme étaient testées séparément (etapeSuivie_ pose ; enregistrerUsage_
+  // attribue) — jamais reliées. C'est pourtant la seule chose qui compte pour Marc.
+  const c = ctxVent();
+  c.etapeSuivie_('mission-paies', [], () => { c.enregistrerUsage_('haiku', usage(1e6, 0)); });
+  c.enregistrerUsage_('haiku', usage(1e6, 0)); // hors étape : ne doit PAS grossir la mission
+  const ops = plat(c.usageRunOpsSnapshot_());
+  assert.strictEqual(ops['mission-paies'].n, 1);
+  assert.strictEqual(ops[c.OP_HORS_ETAPE].n, 1);
+});
+
+test('flushUsage_ : Property trop grosse → on sacrifie le DÉTAIL, jamais les totaux du frein budget', () => {
+  // La ventilation partage la Property que lit `budgetCampagnesAtteint_` (§2.6). Un setProperty
+  // qui lève ferait perdre les TOKENS : le frein relirait une valeur figée et ne s'enclencherait
+  // plus pendant que les campagnes dépensent.
+  const c = load(['Config.gs', 'Suivi.gs', 'Cout.gs']);
+  const store = {};
+  let refus = 1; // le 1er setProperty lève (comme le ferait le dépassement de ~9 Ko)
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in store ? store[k] : null),
+    setProperty: (k, v) => {
+      if (refus-- > 0) throw new Error('Argument too large: value');
+      store[k] = String(v);
+    },
+  }) };
+  const journaux = [];
+  c.journalErreur_ = (s, m) => journaux.push(m);
+  c.reinitialiserUsage_();
+  c.poserOperationCourante_('tri-gmail');
+  c.enregistrerUsage_('haiku', usage(2e6, 0)); // 2 $
+
+  c.flushUsage_();
+  const cle = Object.keys(store)[0];
+  const ecrit = JSON.parse(store[cle]);
+  assert.strictEqual(ecrit.hin, 2e6, 'les TOKENS sont écrits : le frein budget voit toujours juste');
+  assert.deepStrictEqual(ecrit.ops, {}, 'seul le DÉTAIL est sacrifié');
+  assert.ok(journaux.some((m) => /[Vv]entilation/.test(m)), 'et l\'abandon est tracé, pas silencieux');
+});
+
+test('enregistrerUsage_ : une ventilation qui explose ne perd JAMAIS l\'appel déjà payé', () => {
+  // Appelée juste après une réponse Anthropic FACTURÉE, sans try/catch chez l'appelant : une
+  // exception ici jetterait la classification qu'on vient d'acheter.
+  const c = ctxVent();
+  c.coutDollars_ = () => { throw new Error('tarif cassé'); };
+  assert.doesNotThrow(() => c.enregistrerUsage_('haiku', usage(1e6, 0)));
+  assert.strictEqual(plat(c.usageRunSnapshot_()).hin, 1e6, 'les tokens sont comptés malgré tout');
+});

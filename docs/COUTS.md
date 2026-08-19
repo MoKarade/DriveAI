@@ -22,15 +22,20 @@ appel est **attribué à l'usage qui l'a déclenché**.
 total global — un test verrouille cette égalité.
 
 **Les postes** portent le nom de l'étape du tick (`intake-gmail`, `tri-gmail`, `intentions`,
-`mission-*`, `reanalyse-v2`…), plus :
-- `app:<action>` — ce que **tes** demandes coûtent (chat de l'assistant, recherche IA, MCP),
-  séparé du travail automatique ;
+`mission-*`, `reanalyse-v2`…) — plus `reset-pilote` pour le rangement lancé par la CI, qui reste du
+travail AUTOMATIQUE malgré son déclencheur externe. Et :
+- `app:<action>` — ce que **tes** demandes coûtent (chat de l'assistant, recherche IA), séparé du
+  travail automatique. ⚠️ Le **connecteur MCP ne consomme aucun LLM** : il lit des états déjà
+  calculés, il n'apparaît donc pas comme poste de coût ;
 - `(hors étape)` — un appel hors de tout contexte connu (ne devrait pas arriver : si ce poste
   grossit, c'est un signal, pas du bruit) ;
 - `(autres)` — au-delà de 60 postes distincts, le surplus y est agrégé : le total reste juste,
   seul le détail des plus petits se perd ;
-- `(non ventilé)` — dépensé **avant** la mise en place du détail. Ce mois-ci il portera presque
-  tout : la ventilation ne peut pas décrire le passé, et le prétendre serait mentir.
+- `(non ventilé — antérieur au détail, ou non attribué)` — l'essentiel vient de ce qui a été
+  dépensé **avant** la mise en place du détail (ce mois-ci : presque tout). Mais pas seulement :
+  les postes sont figés au prix de l'instant de l'appel, alors que le total est recalculé aux prix
+  COURANTS — changer `CONFIG.LLM_PRIX` en cours de mois creuse donc aussi cet écart. D'où un
+  libellé qui n'affirme pas une cause unique.
 
 **Garde-fou** — `CONFIG.LLM_BUDGET_CAMPAGNES` met en pause les campagnes de rattrapage au-delà du
 plafond mensuel. Il ne gate **jamais** le flux vivant (intake, tri, intentions) : une facture
@@ -61,5 +66,6 @@ répartir, ou à considérer comme un coût de plateforme commun à tout ton éc
 - **Un poste cher n'est pas un poste fautif.** L'intake et la re-analyse traitent des documents
   entiers (Sonnet, deux passes) ; le tri ne voit qu'un expéditeur et un sujet (Haiku, un appel
   court). Un écart de 100× entre eux est normal.
-- **Les postes `app:*` sont ton usage direct.** S'ils dominent, c'est le chat et la recherche qui
-  coûtent, pas le rangement automatique — et ce sont les seuls que tu contrôles à la minute.
+- **Les postes `app:*` sont ton usage direct** (chat, recherche IA) : les seuls que tu contrôles à
+  la minute. Le travail automatique déclenché de l'extérieur (le reset piloté par la CI) porte sa
+  propre clé `reset-pilote` — il ne se cache pas dans `app:*`.

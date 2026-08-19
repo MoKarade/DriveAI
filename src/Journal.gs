@@ -726,7 +726,11 @@ function lignesCouts_(mois, total, v) {
   // Seuil à 0,5 ¢ : sous cela, « non ventilé » n'est que du bruit d'arrondi et afficher une ligne
   // ferait douter d'un compte juste.
   if (v.restant > 0.005) {
-    lignes.push(['(non ventilé — dépensé avant la mise en place du détail)', '—',
+    // Libellé NEUTRE (revue flotte C28-58) : ce reliquat vient normalement de ce qui a été dépensé
+    // avant la mise en place du détail — mais pas seulement (un changement de `CONFIG.LLM_PRIX` en
+    // cours de mois re-tarife le total sans re-tarifer les postes déjà figés). Affirmer une cause
+    // unique serait faux précisément le jour où Marc regarde.
+    lignes.push(['(non ventilé — antérieur au détail, ou non attribué)', '—',
       Math.round(v.restant * 100) / 100, pct(v.restant)]);
   }
   return lignes;

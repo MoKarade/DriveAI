@@ -130,3 +130,37 @@ test('majSante_ : coût affiché à 0.00 $ quand aucune Property (jamais NaN/und
   const ligneCout = captured.find((l) => l.indexOf('Coût LLM') === 0);
   assert.ok(ligneCout && ligneCout.includes('0.00 $'), 'coût numérique formaté, pas NaN');
 });
+
+/* ---------- C28-58 : l'onglet `Coûts` (écriture + effacement du reliquat) ---------- */
+
+test('majCouts_ : écrit total + postes, et EFFACE le reliquat du mois précédent', () => {
+  // Le patron « setValues puis clearContent du reliquat » a déjà mordu deux fois (C28-45, C28-53) :
+  // sans l'effacement, d'anciennes lignes survivent SOUS les nouvelles et l'onglet ment.
+  const ctx = load(['Config.gs', 'Cout.gs', 'Journal.gs'], { PropertiesService: mockProps() });
+  const ecrits = [];
+  let efface = null;
+  let dernRang = 12; // l'onglet contenait 11 lignes de données le mois dernier
+  ctx.feuille_ = () => ({
+    getRange: (rang, col, nb) => ({
+      setValues: (rows) => { ecrits.push({ rang, nb, rows }); },
+      clearContent: () => { efface = { rang, nb }; },
+    }),
+    getLastRow: () => dernRang,
+  });
+  ctx.syntheseCoutMois_ = () => ({ appels: 10, dollars: 3 });
+  ctx.lireCoutMois_ = () => ({ ops: { 'tri-gmail': { d: 2, n: 8 } } });
+
+  ctx.majCouts_();
+  assert.strictEqual(ecrits.length, 1, 'UNE seule écriture Sheet par tick');
+  assert.strictEqual(ecrits[0].rang, 2, 'écrit sous l\'en-tête');
+  const rows = JSON.parse(JSON.stringify(ecrits[0].rows));
+  assert.ok(String(rows[0][0]).indexOf('TOTAL LLM') === 0);
+  assert.strictEqual(rows[1][0], 'tri-gmail');
+  assert.ok(efface, 'le reliquat des mois plus fournis est effacé');
+  assert.strictEqual(efface.rang, rows.length + 2, 'effacement à partir de la 1re ligne périmée');
+
+  // Onglet plus court que ce qu'on écrit : rien à effacer, et surtout aucun clearContent négatif.
+  ecrits.length = 0; efface = null; dernRang = 1;
+  ctx.majCouts_();
+  assert.strictEqual(efface, null, 'aucun effacement inutile');
+});

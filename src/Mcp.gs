@@ -136,7 +136,9 @@ function actionMcpEtat_() {
       moisAppels: totalCout.appels,
       // `nonVentile` : ce que le total porte EN PLUS de la somme des postes (dépensé avant la mise
       // en place du détail). L'exposer évite de laisser croire que les postes couvrent tout.
-      nonVentile: Math.round(vent.restant * 100) / 100,
+      // Jamais NÉGATIF (revue flotte) : une dérive d'arrondi publierait « -0.02 » sans explication.
+      // L'onglet le masque déjà sous 0,5 ¢ — le connecteur fait pareil.
+      nonVentile: Math.max(0, Math.round(vent.restant * 100) / 100),
       postes: vent.lignes.slice(0, MCP_COUTS_MAX)
     };
   } catch (e) { r.couts = null; r.coutsErreur = String(e); }

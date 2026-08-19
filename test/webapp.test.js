@@ -311,3 +311,56 @@ test('majResumeHub_ puis actionHubSummary_ : la lecture rend EXACTEMENT ce que l
     },
   });
 });
+
+/* ---------- C28-59 : le hub n'affiche plus une fraîcheur PÉRIMÉE ---------- */
+
+test('majResumeHub_ : les champs à coût nul sont rafraîchis à CHAQUE tick, les compteurs chers restent throttlés', () => {
+  // Retour Marc « dans hubperso c'est pas à jour » : `lastRunAt` (que le hub affiche comme
+  // `dataAsOf`, sa fraîcheur) était gelé par le throttle de 15 min du calcul CHER auquel il était
+  // attaché. Un indicateur de fraîcheur lui-même périmé ne sert à rien.
+  const t0 = Date.now() - 30 * 60 * 1000;
+  const feuilles = { Index: [['h']], Journal: [['h']] };
+  const { c, props } = ctxHub({
+    props: { DriveAI_LAST_TICK: String(t0) },
+    feuilles,
+    fichiersRevue: [fakeFile({}), fakeFile({})],
+  });
+  c.majResumeHub_();
+  const premier = JSON.parse(props.DriveAI_HUB_SUMMARY);
+  assert.strictEqual(premier.lastRunAt, new Date(t0).toISOString());
+  assert.strictEqual(premier.reviewQueueCount, 2);
+  const majCher = props.DriveAI_HUB_MAJ_MS;
+
+  // Tick suivant, DANS la fenêtre de throttle : nouveau passage du moteur, file de revue vidée.
+  const t1 = Date.now();
+  props.DriveAI_LAST_TICK = String(t1);
+  let comptagesDrive = 0;
+  c.compterDossierRevue_ = () => { comptagesDrive++; return 0; };
+  let scansIndex = 0;
+  c.compterMetriquesHub_ = () => { scansIndex++; return { classes7j: 99, erreurs7j: 99 }; };
+  c.majResumeHub_();
+
+  const second = JSON.parse(props.DriveAI_HUB_SUMMARY);
+  assert.strictEqual(second.lastRunAt, new Date(t1).toISOString(),
+    'la FRAÎCHEUR suit le moteur, sans attendre 15 min');
+  assert.strictEqual(scansIndex, 0, 'aucun re-scan de l\'Index/Journal (le throttle protège le quota)');
+  assert.strictEqual(comptagesDrive, 0, 'aucun comptage Drive non plus');
+  assert.strictEqual(second.reviewQueueCount, 2, 'les compteurs CHERS gardent leur valeur précédente');
+  assert.strictEqual(props.DriveAI_HUB_MAJ_MS, majCher,
+    'l\'horodatage du calcul cher n\'avance PAS — sinon le recalcul serait repoussé à vie');
+});
+
+test('majResumeHub_ : sans résumé antérieur, le calcul COMPLET a bien lieu (pas de trous publiés)', () => {
+  const feuilles = { Index: [['h']], Journal: [['h']] };
+  const { c, props } = ctxHub({
+    props: { DriveAI_LAST_TICK: String(Date.now()), DriveAI_HUB_MAJ_MS: String(Date.now()) },
+    feuilles,
+    fichiersRevue: [fakeFile({})],
+  });
+  // Throttle « actif » mais AUCUN résumé persisté : republier un résumé partiel serait pire que
+  // de refaire le calcul (no-fake-data).
+  c.majResumeHub_();
+  const ecrit = JSON.parse(props.DriveAI_HUB_SUMMARY);
+  assert.strictEqual(ecrit.reviewQueueCount, 1);
+  assert.strictEqual(typeof ecrit.filedLast7d, 'number');
+});
