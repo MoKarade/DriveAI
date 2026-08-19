@@ -56,6 +56,15 @@ function doPost(e) {
   var reponse = { ok: false };
   try {
     var action = e && e.parameter ? e.parameter.action : '';
+    // Ventilation du coût LLM (C28-58) : les appels déclenchés par l'app ou le MCP ne passent par
+    // AUCUNE étape de tick — sans ce marquage ils tomberaient tous dans « (hors étape) ». On les
+    // attribue à leur action (`chat-assistant`, `recherche-ia`…), ce qui est
+    // exactement la granularité utile : Marc voit ce que SES demandes coûtent, séparément du
+    // travail automatique. Aucune restauration nécessaire : une exécution de web app sert UNE
+    // requête, puis meurt.
+    // Enveloppé : la COMPTABILITÉ ne doit jamais pouvoir faire échouer une requête de Marc
+    // (et `Suivi.gs` peut ne pas être chargé dans un contexte de test ciblé).
+    try { poserOperationCourante_(action ? 'app:' + action : 'app:(sans action)'); } catch (eOp) { }
     if (action === 'sync-miroir') {
       reponse = verifierSecretSync_(e) ? actionSyncMiroir_(e) : { ok: false, erreur: 'refusé' };
     } else if (action === 'pousser-reset') {
@@ -699,12 +708,28 @@ function majResumeHub_() {
   // Le widget hub n'a aucun besoin d'une fraîcheur à la minute : on recalcule au plus 1×/15 min.
   // La Property n'est écrite qu'APRÈS un calcul réussi (une panne rejoue au tick suivant).
   var dernierCalcul = Number(props.getProperty('DriveAI_HUB_MAJ_MS')) || 0;
-  if (dernierCalcul && (Date.now() - dernierCalcul) < CONFIG.HUB_RESUME_INTERVALLE_MS) return;
-  var compte = compterMetriquesHub_(
-    feuille_('Index').getDataRange().getValues(),
-    feuille_('Journal').getDataRange().getValues(),
-    Date.now()
-  );
+  var precedent = lireResumeHubPersiste_(props);
+  // Le calcul CHER est dû s'il n'a jamais eu lieu, si l'intervalle est écoulé, OU s'il n'existe
+  // aucun résumé exploitable sur quoi bâtir un rafraîchissement partiel : republier un résumé
+  // troué serait pire que de refaire le calcul (no-fake-data). Ce dernier cas s'auto-guérit — une
+  // fois recalculé, l'horodatage repart et le throttle reprend.
+  var lourdDu = !dernierCalcul || !precedent ||
+    (Date.now() - dernierCalcul) >= CONFIG.HUB_RESUME_INTERVALLE_MS;
+  // SÉPARER LE CHER DU FRAIS (C28-59, retour Marc « dans hubperso c'est pas à jour ») : le throttle
+  // ci-dessus protégeait le quota, mais il gelait AUSSI les champs qui ne coûtent RIEN — dont
+  // `lastRunAt`, que le hub affiche comme la fraîcheur de la donnée (`dataAsOf`). Résultat : le
+  // widget annonçait un retard pouvant aller jusqu'à 15 min (+ 60 s de cache broker) alors que le
+  // moteur venait de passer. Un indicateur de FRAÎCHEUR qui est lui-même périmé ne sert à rien.
+  // Désormais : les compteurs CHERS (Index + Journal entiers, comptage Drive) restent throttlés à
+  // 15 min ; les champs à coût nul (dernier passage, coût LLM du mois, activité Gmail du jour,
+  // quota) sont rafraîchis à CHAQUE tick. L'écart résiduel ne porte donc plus que sur des
+  // agrégats à 7 JOURS, pour qui 15 min valent 0,15 % de la fenêtre.
+  var compte = lourdDu
+    ? compterMetriquesHub_(
+      feuille_('Index').getDataRange().getValues(),
+      feuille_('Journal').getDataRange().getValues(),
+      Date.now())
+    : { classes7j: precedent.filedLast7d, erreurs7j: precedent.errorsLast7d };
   // Coûts & quotas (bloc `usage` du hub) : coût LLM MENSUEL mesuré + activité Gmail du jour
   // + état du quota Gmail. Métadonnées agrégées seulement (ADR-0007). Enveloppé : une panne
   // de mesure ne doit pas priver le hub des 4 compteurs.
@@ -722,7 +747,7 @@ function majResumeHub_() {
     journalErreur_('Hub', 'Mesure usage indisponible : ' + e);
   }
   var etat = {
-    reviewQueueCount: compterDossierRevue_(),
+    reviewQueueCount: lourdDu ? compterDossierRevue_() : precedent.reviewQueueCount,
     filedLast7d: compte.classes7j,
     errorsLast7d: compte.erreurs7j,
     lastRunAt: lastTick ? new Date(lastTick).toISOString() : null,
@@ -732,7 +757,27 @@ function majResumeHub_() {
     gmailQuotaSuspended: gmailQuotaSuspended
   };
   props.setProperty('DriveAI_HUB_SUMMARY', JSON.stringify(etat));
-  props.setProperty('DriveAI_HUB_MAJ_MS', String(Date.now())); // APRÈS succès (cf. throttle en tête)
+  // L'horodatage du calcul CHER n'avance QUE quand il a réellement eu lieu : sinon un
+  // rafraîchissement bon marché repousserait indéfiniment le recalcul des compteurs 7 jours,
+  // qui ne seraient alors jamais mis à jour (le throttle deviendrait un gel).
+  if (lourdDu) props.setProperty('DriveAI_HUB_MAJ_MS', String(Date.now()));
+}
+
+/**
+ * Dernier résumé hub persisté, ou `null` s'il n'existe pas / est illisible. Lecture seule.
+ * @param {Properties} props
+ * @return {?Object}
+ */
+function lireResumeHubPersiste_(props) {
+  try {
+    var brut = props.getProperty('DriveAI_HUB_SUMMARY');
+    if (!brut) return null;
+    var o = JSON.parse(brut);
+    // Un résumé sans ses compteurs chers ne peut pas servir de base à un rafraîchissement partiel :
+    // on préfère refaire le calcul complet plutôt que de republier des trous (no-fake-data).
+    return o && typeof o.filedLast7d === 'number' && typeof o.errorsLast7d === 'number' &&
+      typeof o.reviewQueueCount === 'number' ? o : null;
+  } catch (e) { return null; }
 }
 
 /**

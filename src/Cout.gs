@@ -15,8 +15,18 @@ var _usageRun = null;
 
 /** À appeler en tête de run. `cw`/`cr` = tokens d'ÉCRITURE / LECTURE de cache (prompt caching, Vague 3). */
 function reinitialiserUsage_() {
-  _usageRun = { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0, appels: 0 };
+  _usageRun = { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0, appels: 0, ops: {} };
 }
+
+/**
+ * Nombre MAX d'opérations distinctes retenues dans la ventilation mensuelle (C28-58). Le surplus
+ * tombe dans `OP_AUTRES` : jamais perdu, jamais faussé. Borne DURE de la Script Property (~9 Ko,
+ * leçon §7) : ~60 × ~45 caractères ≈ 2,7 Ko, très en deçà — et le test au plafond le vérifie.
+ * Les clés viennent de `etapeSuivie_` (≈ 35 aujourd'hui) : la marge couvre les missions à venir.
+ */
+var COUT_OPS_MAX = 60;
+var OP_AUTRES = '(autres)';
+var OP_HORS_ETAPE = '(hors étape)';
 
 /**
  * Comptabilise l'usage d'un appel. Sépare Haiku et Sonnet (prix différents), et INPUT régulier /
@@ -29,12 +39,42 @@ function enregistrerUsage_(modele, usage) {
   if (!_usageRun || !usage) return;
   var inTok = usage.input_tokens || 0, outTok = usage.output_tokens || 0;
   var cwTok = usage.cache_creation_input_tokens || 0, crTok = usage.cache_read_input_tokens || 0;
-  if (String(modele).indexOf('sonnet') !== -1) {
+  var sonnet = String(modele).indexOf('sonnet') !== -1;
+  if (sonnet) {
     _usageRun.sin += inTok; _usageRun.sout += outTok; _usageRun.scw += cwTok; _usageRun.scr += crTok;
   } else {
     _usageRun.hin += inTok; _usageRun.hout += outTok; _usageRun.hcw += cwTok; _usageRun.hcr += crTok;
   }
   _usageRun.appels += 1;
+
+  // VENTILATION par opération (C28-58). On stocke des DOLLARS (déjà tarifés) et un compte
+  // d'appels, pas 8 compteurs de tokens par opération : la Property mensuelle reste petite.
+  // TOUT le bloc est enveloppé (revue flotte) : `enregistrerUsage_` est appelée sur le chemin
+  // critique, juste après une réponse Anthropic DÉJÀ PAYÉE et sans try/catch chez l'appelant —
+  // une exception ici perdrait la classification qu'on vient d'acheter. Le détail est un CONFORT,
+  // les tokens ci-dessus sont la comptabilité : jamais l'un au prix de l'autre.
+  try {
+    if (!_usageRun.ops) _usageRun.ops = {};
+    var op = _operationCouranteSure_();
+    var ligne = _usageRun.ops[op] || (_usageRun.ops[op] = { d: 0, n: 0 });
+    ligne.d += coutDollars_(sonnet
+      ? { sin: inTok, sout: outTok, scw: cwTok, scr: crTok }
+      : { hin: inTok, hout: outTok, hcw: cwTok, hcr: crTok });
+    ligne.n += 1;
+  } catch (e) { /* détail perdu pour cet appel — les tokens, eux, sont comptés */ }
+}
+
+/**
+ * Opération courante, robuste : `Suivi.gs` peut ne pas être chargé (tests unitaires ciblés) et un
+ * appel LLM peut venir de hors-tick (web app, MCP). Jamais d'exception ici — la comptabilité ne
+ * doit pas pouvoir casser un appel LLM réussi.
+ * @return {string}
+ */
+function _operationCouranteSure_() {
+  try {
+    var op = typeof operationCourante_ === 'function' ? operationCourante_() : '';
+    return op || OP_HORS_ETAPE;
+  } catch (e) { return OP_HORS_ETAPE; }
 }
 
 /**
@@ -49,7 +89,19 @@ function flushUsage_() {
   t.hin += _usageRun.hin; t.hout += _usageRun.hout; t.hcw += _usageRun.hcw; t.hcr += _usageRun.hcr;
   t.sin += _usageRun.sin; t.sout += _usageRun.sout; t.scw += _usageRun.scw; t.scr += _usageRun.scr;
   t.appels += _usageRun.appels;
-  props.setProperty(cle, JSON.stringify(t));
+  t.ops = fusionnerOps_(t.ops, _usageRun.ops);
+  // FILET (revue flotte C28-58) : cette Property porte AUSSI les totaux que lit le frein budget
+  // §2.6. Si l'encodage venait à dépasser la limite (~9 Ko), un `setProperty` qui lève ferait
+  // perdre les TOKENS eux-mêmes : le frein relirait une valeur figée et ne s'enclencherait plus
+  // pendant que les campagnes dépensent. On dégrade donc comme sa fonction sœur `flusherSuiviOps_` :
+  // on sacrifie le DÉTAIL, jamais la comptabilité qui protège le budget.
+  try {
+    props.setProperty(cle, JSON.stringify(t));
+  } catch (e) {
+    t.ops = {};
+    props.setProperty(cle, JSON.stringify(t));
+    try { journalErreur_('Cout', 'Ventilation des coûts abandonnée ce mois-ci (Property trop grosse) : ' + e); } catch (e2) { }
+  }
   _usageRun = null;
 }
 
@@ -101,10 +153,77 @@ function lireCoutMois_(props, cle) {
       t.hin = t.hin || 0; t.hout = t.hout || 0; t.hcw = t.hcw || 0; t.hcr = t.hcr || 0;
       t.sin = t.sin || 0; t.sout = t.sout || 0; t.scw = t.scw || 0; t.scr = t.scr || 0;
       t.appels = t.appels || 0;
+      // `ops` absent = mois entamé AVANT C28-58 : la ventilation démarre à zéro et ne prétend
+      // rien sur le passé (elle sera INCOMPLÈTE ce mois-ci — dit explicitement dans l'onglet).
+      t.ops = t.ops && typeof t.ops === 'object' ? t.ops : {};
       return t;
     } catch (e) { /* corrompu → on repart à zéro */ }
   }
-  return { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0, appels: 0 };
+  return { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0, appels: 0, ops: {} };
+}
+
+/**
+ * Fusionne la ventilation du run dans celle du mois. PURE (testée).
+ *
+ * BORNÉE (leçon §7 « une Property qui persiste une liste se borne ») : au-delà de `COUT_OPS_MAX`
+ * opérations distinctes, les nouvelles sont agrégées dans `(autres)` — le TOTAL reste juste, seul
+ * le détail des plus petites se perd. Les dollars sont arrondis à 6 décimales : sur un mois, l'écart
+ * cumulé est inférieur au centième de cent, et l'encodage reste compact.
+ * @param {?Object} mois
+ * @param {?Object} run
+ * @return {Object}
+ */
+function fusionnerOps_(mois, run) {
+  var out = {};
+  var k;
+  for (k in (mois || {})) if (Object.prototype.hasOwnProperty.call(mois, k)) {
+    out[k] = { d: Number(mois[k].d) || 0, n: Number(mois[k].n) || 0 };
+  }
+  for (k in (run || {})) if (Object.prototype.hasOwnProperty.call(run, k)) {
+    var cible = k;
+    // Nouvelle opération alors que le plafond est atteint ⇒ on la verse dans `(autres)` plutôt
+    // que de laisser la Property croître sans borne (ou pire, de perdre le montant).
+    if (!out[cible] && nbClefs_(out) >= COUT_OPS_MAX) cible = OP_AUTRES;
+    var ligne = out[cible] || (out[cible] = { d: 0, n: 0 });
+    ligne.d = Math.round((ligne.d + (Number(run[k].d) || 0)) * 1e6) / 1e6;
+    ligne.n += Number(run[k].n) || 0;
+  }
+  return out;
+}
+
+/** @param {Object} o @return {number} */
+function nbClefs_(o) {
+  var n = 0;
+  for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) n++;
+  return n;
+}
+
+/**
+ * Ventilation du mois, TRIÉE du plus cher au moins cher, avec la part en %. PURE (testée).
+ * `restant` = ce que le total mesuré porte EN PLUS de la somme ventilée : sur un mois entamé avant
+ * C28-58 il vaut presque tout, et c'est exactement ce qu'il faut DIRE plutôt que de laisser croire
+ * que la ventilation couvre tout (no-fake-data).
+ * @param {{ops:Object}} t  total mensuel (cf. `lireCoutMois_`)
+ * @param {number} totalDollars  coût total mesuré du mois
+ * @return {{lignes:Array<{op:string, dollars:number, appels:number, part:number}>,
+ *           ventile:number, restant:number}}
+ */
+function ventilationCoutMois_(t, totalDollars) {
+  var ops = (t && t.ops) || {};
+  var lignes = [];
+  var ventile = 0;
+  for (var k in ops) if (Object.prototype.hasOwnProperty.call(ops, k)) {
+    var d = Number(ops[k].d) || 0;
+    ventile += d;
+    lignes.push({ op: k, dollars: d, appels: Number(ops[k].n) || 0, part: 0 });
+  }
+  ventile = Math.round(ventile * 1e6) / 1e6;
+  var base = Number(totalDollars) || 0;
+  for (var i = 0; i < lignes.length; i++) {
+    lignes[i].part = base > 0 ? Math.round(lignes[i].dollars / base * 1000) / 10 : 0;
+  }
+  lignes.sort(function (a, b) { return b.dollars - a.dollars || (a.op < b.op ? -1 : 1); });
+  return { lignes: lignes, ventile: ventile, restant: Math.round((base - ventile) * 1e6) / 1e6 };
 }
 
 /**
@@ -151,6 +270,21 @@ function usageRunSnapshot_() {
     ? { hin: _usageRun.hin, hout: _usageRun.hout, hcw: _usageRun.hcw, hcr: _usageRun.hcr,
         sin: _usageRun.sin, sout: _usageRun.sout, scw: _usageRun.scw, scr: _usageRun.scr, appels: _usageRun.appels }
     : { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0, appels: 0 };
+}
+
+/**
+ * Copie de la VENTILATION du run courant (jamais la référence). Symétrique de
+ * `usageRunSnapshot_` : sert aux tests et à tout appelant qui veut le détail sans attendre le
+ * flush mensuel. Objet VIDE si aucun run en cours.
+ * @return {Object<string,{d:number,n:number}>}
+ */
+function usageRunOpsSnapshot_() {
+  var out = {};
+  if (!_usageRun || !_usageRun.ops) return out;
+  for (var k in _usageRun.ops) if (Object.prototype.hasOwnProperty.call(_usageRun.ops, k)) {
+    out[k] = { d: _usageRun.ops[k].d, n: _usageRun.ops[k].n };
+  }
+  return out;
 }
 
 /**
