@@ -2505,3 +2505,23 @@ Calendar sont activées dans hubperso, ce que l'état d'avant le correctif ne pe
 conclure.
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-19 — Un « draft » n'est pas un garde-fou : le seul frein est celui que la CI lit
+
+**Contexte.** C28-54/C28-55. Le mandat du projet est « revue flotte adversariale AVANT merge ».
+J'ai poussé deux PR **en draft** en annonçant qu'elles ne pourraient pas merger tant que la revue
+n'aurait pas rendu. Les deux ont été passées en « ready » par `github-actions[bot]` puis
+auto-mergées dans la minute — #293 est partie en prod **avant** que ses deux agents de revue
+n'aient rendu. La protection que je croyais avoir n'existait pas : le dépôt a un workflow qui
+convertit les drafts, et l'auto-merge ne regarde que la CI et le label `do-not-merge`
+(`.github/workflows/auto-merge.yml:78`).
+
+**Leçon.** « Un garde-fou n'existe que s'il est LU par le mécanisme qu'il prétend arrêter. Avant de
+s'appuyer sur un état (draft, brouillon, flag) pour retenir une action automatique, aller LIRE dans
+l'automatisation ce qu'elle vérifie réellement — ici `do-not-merge`, et rien d'autre. Le corollaire
+est le même que « promesse de verrou = verrou codé dans le même commit » : annoncer à
+l'utilisateur « ça ne mergera pas avant la revue » sans avoir vérifié le mécanisme, c'est une
+promesse qu'on ne tient pas. Et quand ça arrive, le dire — le code est parti sans sa revue, ce
+n'est pas un détail de procédure. »
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §4).

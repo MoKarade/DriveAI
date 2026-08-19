@@ -20,8 +20,12 @@ function mockProps() {
 }
 
 function chargerAvecSanteMock(indexCache) {
-  // `GoogleApi.gs` : `majSante_` lit désormais l'état de panne de config d'API (C28-48).
-  const ctx = load(['Config.gs', 'Cout.gs', 'GoogleApi.gs', 'Journal.gs'], { PropertiesService: mockProps() });
+  // `GoogleApi.gs` : `majSante_` lit l'état de panne de config d'API (C28-48). `Llm.gs` et
+  // `TriGmail.gs` : la ligne « Tri Gmail » (ADR-0043) interroge `estPannePlateforme_` et
+  // `estPanneConfigApi_`. Sans eux, le contexte par défaut exerçait le chemin d'ERREUR au lieu du
+  // chemin nominal — un test qui valide le catch en croyant valider le cas normal (revue flotte).
+  const ctx = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'GoogleApi.gs', 'TriGmail.gs', 'Journal.gs'],
+    { PropertiesService: mockProps() });
   const captured = [];
   // feuille_('Santé') mocké : capture l'unique setValues (6 lignes × 1 colonne).
   ctx.feuille_ = () => ({ getRange: () => ({ setValues: (rows) => rows.forEach((r) => captured.push(r[0])) }) });
@@ -36,21 +40,41 @@ test('majSante_ écrit exactement 7 lignes de métadonnées (une seule écriture
   assert.ok(captured.every((l) => typeof l === 'string'));
 });
 
-test('majSante_ : le mode DÉGRADÉ du tri se DIT (ADR-0043) — sinon « ça marche » masque « ça n\'archive plus »', () => {
-  const normal = chargerAvecSanteMock({});
-  normal.ctx.intentionsSuspendues_ = () => false;
-  normal.ctx.majSante_();
-  const ligneOk = normal.captured.find((l) => l.indexOf('Tri Gmail') === 0);
-  assert.ok(ligneOk && ligneOk.includes('✅'), 'hors panne : tri normal annoncé');
+test('majSante_ : la ligne « Tri Gmail » distingue NORMAL, DÉGRADÉ et À L\'ARRÊT (ADR-0043)', () => {
+  const ligneTri = (cfg) => {
+    const { ctx, captured } = chargerAvecSanteMock({});
+    ctx.estPanneConfigApi_ = () => cfg.config;
+    ctx.estPannePlateforme_ = () => cfg.llm;
+    ctx.majSante_();
+    return captured.find((l) => l.indexOf('Tri Gmail') === 0);
+  };
 
-  const degrade = chargerAvecSanteMock({});
-  degrade.ctx.intentionsSuspendues_ = () => true;
-  degrade.ctx.majSante_();
-  const ligneKo = degrade.captured.find((l) => l.indexOf('Tri Gmail') === 0);
-  assert.ok(ligneKo, 'la ligne existe aussi en panne');
-  assert.ok(ligneKo.includes('DÉGRADÉ'), 'le mode est nommé');
-  assert.ok(ligneKo.includes('AUCUN archivage'), 'la CONSÉQUENCE est dite, pas seulement l\'état');
-  assert.ok(ligneKo.includes('ré-évalués'), 'et le rattrapage automatique aussi (pas de dette invisible)');
+  const ok = ligneTri({ config: false, llm: false });
+  assert.ok(ok && ok.includes('✅'), 'hors panne : tri normal annoncé');
+
+  // Panne config-api : le tri TOURNE, en mode dégradé — il faut le dire ET dire sa conséquence,
+  // sinon « ça marche » masque « ça n'archive plus » et la dette reste invisible.
+  const deg = ligneTri({ config: true, llm: false });
+  assert.ok(deg.includes('DÉGRADÉ'), 'le mode est nommé');
+  assert.ok(deg.includes('AUCUN archivage'), 'la CONSÉQUENCE est dite, pas seulement l\'état');
+  assert.ok(deg.includes('ré-évalués'), 'et le rattrapage automatique aussi');
+
+  // Panne de compte LLM : `Main.gs` saute l'étape `tri-gmail` ENTIÈRE. Annoncer « libellés posés »
+  // serait un MENSONGE sur le seul canal que Marc lit (revue flotte C28-54, les deux agents).
+  for (const cfg of [{ config: false, llm: true }, { config: true, llm: true }]) {
+    const arret = ligneTri(cfg);
+    assert.ok(arret.includes('ARRÊT'), 'panne LLM : le tri est à l\'ARRÊT, pas dégradé');
+    assert.ok(!arret.includes('libellés posés'), 'et surtout : ne pas prétendre qu\'il travaille');
+  }
+
+  // État ILLISIBLE : on ne prétend RIEN — surtout pas « ✅ normal ». (Ce chemin était MORT :
+  // `intentionsSuspendues_` avale ses exceptions, donc l'ancienne version affichait « normal ».)
+  const { ctx, captured } = chargerAvecSanteMock({});
+  ctx.estPannePlateforme_ = () => { throw new Error('Properties HS'); };
+  ctx.majSante_();
+  const flou = captured.find((l) => l.indexOf('Tri Gmail') === 0);
+  assert.ok(flou.includes('indéterminé'), 'état illisible → aucune affirmation');
+  assert.ok(!flou.includes('✅'), 'et surtout pas un vert rassurant');
 });
 
 test('majSante_ : sans panne de config, la ligne API annonce des API actives (C28-48)', () => {

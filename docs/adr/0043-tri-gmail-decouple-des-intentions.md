@@ -39,8 +39,11 @@ l'amont est éteint.
 Le tri **continue** pendant une suspension des intentions, en **mode dégradé** :
 
 1. **Ne plus attendre l'impossible.** Si la clé `intention|` est absente ET que le scan
-   d'intentions est suspendu (`intentionsSuspendues_()` : panne config-api OU panne de plateforme
-   LLM), le fil est trié au mieux, sans attendre.
+   d'intentions est suspendu (`intentionsSuspendues_()`), le fil est trié au mieux, sans attendre.
+   En pratique la cause est la **panne config-api** : sous une panne de plateforme LLM, `Main.gs`
+   saute l'étape `tri-gmail` entière, donc le tri ne tourne pas du tout (le terme
+   `estPannePlateforme_` du prédicat est de la défense en profondeur, pas un chemin vivant — et
+   `Santé` distingue les deux, cf. §2.4).
 2. **Dégrader, jamais deviner : aucun archivage en mode dégradé.** `important` est *inconnu*, pas
    *faux* — le traiter comme faux archiverait des fils que Marc devait traiter. La décision pure
    `decisionTri_` reçoit `analyseIndisponible: true` et force `archiver: false`. Les libellés (la
@@ -51,9 +54,11 @@ Le tri **continue** pendant une suspension des intentions, en **mode dégradé**
    ⇒ le fil est ré-évalué avec son `important|`, et archivé si la règle de Marc le dit. Sans ce
    suffixe, le tri dégradé figerait à vie « non archivé » (leçon C28-33 : une clé posée sur un
    verdict révisable doit encoder ce qui le rend révisable).
-4. **Le mode dégradé se DIT.** L'onglet Santé annonce « tri en mode dégradé (analyse d'intentions
-   suspendue) — libellés posés, aucun archivage ». Sinon « le tri marche » masque « il n'archive
-   plus », et personne ne voit la dette.
+4. **Le mode dégradé se DIT — en TROIS états, pas deux.** L'onglet Santé annonce « ✅ normal »,
+   « ⚠️ mode DÉGRADÉ (analyse d'intentions suspendue) — libellés posés, AUCUN archivage », ou
+   « ⛔ À L'ARRÊT (panne de compte LLM) — aucun tri ce tick ». Confondre les deux derniers ferait
+   annoncer « libellés posés » pendant que le tri est entièrement sauté : une observabilité qui
+   ment, sur le seul canal que Marc lit. Un état illisible dit « indéterminé », jamais « ✅ ».
 
 Ce que la décision NE fait PAS : elle ne touche ni aux règles de tri de Marc (`decisionTri_`
 inchangée hors du nouveau champ), ni au flux d'intentions, ni aux scopes, ni au sens de
@@ -76,8 +81,23 @@ inchangée hors du nouveau champ), ni au flux d'intentions, ni aux scopes, ni au
 
 - Une panne d'API Google (ou de crédit LLM) ne peut plus arrêter le tri de la boîte : au pire elle
   suspend l'**archivage**, visible dans Santé, et rattrapé automatiquement au retour.
-- Coût : les fils triés en mode dégradé sont ré-évalués une fois au retour des intentions (2ᵉ
-  catégorisation possible). Borné au stock de la panne, et souvent gratuit (la table apprise répond
-  sans appel LLM).
-- À vérifier en prod par un signal indépendant : provoquer/observer une suspension et constater que
-  `tri_boite_fils_jour` continue d'avancer.
+- Coût : les fils triés en mode dégradé sont ré-évalués une fois au retour des intentions. Chiffré
+  par la revue quotas sur l'incident réel (panne de 5 j, fenêtre `TRI_REQUETE` ≈ 300-450 fils) :
+  **≈ 0,4 $ et 10-20 min de runtime par épisode** — une passe complète de la fenêtre. La glose
+  « souvent gratuit grâce à la table apprise » était **fausse** : `apprendreTri_` n'apprend que sur
+  fil LU, non-promo, non-suspect, et le chemin « promo non lue » re-demande toujours le mini-appel.
+- **Dette invisible hors fenêtre.** Un fil trié en dégradé qui sort de `newer_than:30d` avant le
+  retour des intentions n'est plus vu par aucun scan : il garde ses libellés, ne sera jamais archivé
+  ni ⏰, et Santé sera repassée au vert. Le mode d'échec est SÛR (le fil reste en boîte, sous les
+  yeux de Marc) mais il ne se rattrape pas tout seul.
+- **Le scan AVANT n'a aucun plafond QUOTIDIEN** (contrairement au cyclique, au nettoyage profond et
+  à l'historique). L'ADR ne l'introduit pas, mais elle allonge la période où il travaille : à
+  border dans son unité (fils/jour), comme ses pairs — inscrit au backlog.
+- À vérifier en prod par un signal indépendant : `DriveAI_TRI_CYCLIQUE_FILS_JOUR` doit continuer
+  d'avancer pendant une suspension. ⚠️ **Ne PAS utiliser `tri_boite_fils_jour`** : le nettoyage
+  profond se court-circuite définitivement sur `DriveAI_TRI_BOITE = 'terminé'` et il est gaté par le
+  frein campagnes — il peut rester à 0 sans que rien n'aille mal (faux négatif).
+- **Une campagne ne conclut jamais depuis du travail dégradé** : `scanArriereTri_` ne pose
+  `DriveAI_TRI_RATTRAPAGE = 'terminé'` que hors suspension. Avant ADR-0043 l'attente gelait
+  l'offset ; désormais il avance, la campagne pourrait donc se figer « terminé » sans avoir archivé
+  un seul fil (le verdict figé de C28-33, appliqué à la campagne).

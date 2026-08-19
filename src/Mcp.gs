@@ -109,8 +109,16 @@ function actionMcp_(action, e) {
 function actionMcpEtat_() {
   var r = { ok: true };
   try {
-    r.sante = feuille_('Santé').getRange(2, 1, 6, 1).getValues()
-      .map(function (l) { return String(l[0] || ''); }).filter(function (t) { return !!t; });
+    // Plage DÉRIVÉE de la feuille, jamais un nombre de lignes figé (revue quotas C28-54 : passer
+    // Santé de 6 à 7 lignes avait fait tomber « Mis à jour » en silence — leçon C28-45 « ajouter
+    // une ligne oblige à vérifier CHAQUE plage de lecture existante »). `majSante_` réécrit
+    // toujours à partir du rang 2 ; on lit donc tout ce qui existe.
+    var fSante = feuille_('Santé');
+    var nbSante = Math.max(0, fSante.getLastRow() - 1);
+    r.sante = nbSante
+      ? fSante.getRange(2, 1, nbSante, 1).getValues()
+        .map(function (l) { return String(l[0] || ''); }).filter(function (t) { return !!t; })
+      : [];
   } catch (e) { r.sante = null; r.santeErreur = String(e); }
   try {
     r.missions = missionsDepuisProgression_(lireOngletBorne_('Progression', MCP_PROGRESSION_MAX));

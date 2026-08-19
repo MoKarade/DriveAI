@@ -254,6 +254,46 @@ test('actionMcpIntention_ : compte hubperso non lié → erreur CLAIRE, jamais u
   assert.ok(!('DriveAI_PANNE_CONFIG_API' in store), 'un échec MCP ne pose JAMAIS la suspension du moteur');
 });
 
+test('actionMcpEtat_ : la section Santé lit TOUTES les lignes, pas un nombre figé (revue C28-54)', () => {
+  // Régression réelle introduite par ADR-0043 : `majSante_` est passée de 6 à 7 lignes pendant
+  // que le MCP lisait `getRange(2, 1, 6, 1)` — la dernière ligne tombait EN SILENCE. Leçon C28-45 :
+  // ajouter une ligne oblige à vérifier CHAQUE plage de lecture existante.
+  const lignes = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i']; // 9 lignes de données (rangs 2..10)
+  const { c } = ctxMcp({}, {
+    feuille_: (nom) => {
+      if (nom !== 'Santé') return { getLastRow: () => 1, getLastColumn: () => 1, getRange: () => ({ getValues: () => [] }) };
+      return {
+        getLastRow: () => lignes.length + 1, // +1 : la ligne de titre
+        getRange: (debut, col, nb) => ({
+          getValues: () => lignes.slice(debut - 2, debut - 2 + nb).map((x) => [x]),
+        }),
+      };
+    },
+    etatPanneConfigApi_: () => ({ actif: false }),
+  });
+  const r = c.actionMcpEtat_();
+  assert.strictEqual(r.sante.length, lignes.length,
+    'aucune ligne de Santé ne doit tomber — la plage se dérive de la feuille');
+
+  // …et le code ne doit plus contenir de compte de lignes EN DUR pour Santé (verrou de forme).
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'src', 'Mcp.gs'), 'utf8');
+  const iSante = src.indexOf("feuille_('Santé')");
+  assert.ok(iSante > 0, 'lecture de Santé trouvée');
+  assert.ok(/getLastRow\(\)/.test(src.slice(iSante, src.indexOf('r.missions'))),
+    'la plage Santé doit être dérivée de getLastRow()');
+});
+
+test('actionMcpEtat_ : une feuille Santé VIDE ne plante pas (getRange(…, 0) est invalide)', () => {
+  const { c } = ctxMcp({}, {
+    feuille_: () => ({ getLastRow: () => 1, getLastColumn: () => 1, getRange: () => ({ getValues: () => [] }) }),
+    etatPanneConfigApi_: () => ({ actif: false }),
+  });
+  const r = c.actionMcpEtat_();
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(r.sante)), [], 'section vide, jamais une erreur');
+  assert.ok(!r.santeErreur, 'et surtout pas une exception déguisée');
+});
+
 test('actionMcpEtat_ : une section illisible dégrade SA section, jamais toute la réponse', () => {
   const { c } = ctxMcp({}, {
     feuille_: (nom) => {
