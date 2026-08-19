@@ -2428,3 +2428,30 @@ sur origin/main (le commit déjà mergé se vide au rebase) + force-with-lease, 
 Symptôme du piège : PR ouverte, AUCUN check ne démarre, aucun message d'erreur. »
 
 **Règle durable ?** oui (précision ajoutée à la règle Git de CLAUDE.md §7).
+
+## 2026-08-19 — Un onglet lu par `feuille_()` DOIT être dans `initialiserSheet_` — et un test qui MOCKE la fonction sous test ne voit pas son bug
+
+**Contexte.** C28-53, révélé par le MCP dès son 1ᵉʳ usage réel. La mission « paies » plantait à
+CHAQUE tick depuis des jours : `Mission paies différée : TypeError: Cannot read properties of null
+(reading 'getRange')`. Cause : `ecrireRapportPaies_` lit `feuille_('RapportPaies')`, mais l'onglet
+`RapportPaies` n'était créé NULLE PART — oublié de `initialiserSheet_`. Or
+`feuille_(nom) = getSheetByName(nom) || (initialiserSheet_(ss), getSheetByName(nom))` : si
+`initialiserSheet_` ne connaît pas l'onglet, le 2ᵉ `getSheetByName` rend `null` → crash. Invisible
+en test : TOUS les tests de la mission `paies` MOCKAIENT `ecrireRapportPaies_` (`h.c.ecrireRapportPaies_ = …`)
+pour tester la sémantique du runner — donc le vrai chemin `feuille_('RapportPaies')` n'était jamais
+exercé. Deux campagnes de revue flotte (C28-49 PR1/PR2) ne l'ont pas vu non plus (revue de
+diff/logique, pas d'exécution du chemin Sheet).
+
+**Leçon.** « (1) Tout onglet lu par `feuille_('X')` DOIT figurer dans `initialiserSheet_` (via
+`creerOnglet_`) — sinon `feuille_` rend null et l'appelant plante. Vérifiable mécaniquement par
+INVENTAIRE : `grep feuille_('…')` vs `grep creerOnglet_(ss, '…')`, la différence doit être vide
+(ajouté au réflexe : tout nouvel onglet se livre AVEC sa ligne `creerOnglet_`). (2) Un test qui
+MOCKE la fonction qu'il devrait exercer ne verra JAMAIS un bug DANS cette fonction — le mock de
+confort (`ctxRunner` mockait `ecrireRapportPaies_` pour tester le runner) masque le chemin réel.
+Au moins UN test doit exercer la fonction POUR DE VRAI (ici : `ecrireRapportPaies_` sur un classeur
+où l'onglet est absent au départ, prouvé par mutation). (3) Corollaire observabilité : un crash
+attrapé par un `try/catch` d'étape (`journalErreur_('…différée…')`) et RÉPÉTÉ chaque tick est un
+bug de fond déguisé en bruit — c'est le MCP `etat_moteur` (dernières erreurs Journal) qui l'a rendu
+visible. Une erreur récurrente identique = un signal, pas du bruit. »
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).

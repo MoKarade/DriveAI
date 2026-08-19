@@ -641,6 +641,17 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   DÉPLOYÉ) tranche un INCERTAIN runtime en CERTAIN — signal indépendant, jamais un échantillon Drive.
   Corollaire : re-lancer une campagne à clé de SUCCÈS ne re-traite pas ce qu'elle a figé « OK » —
   bumper la VERSION/tag pour re-évaluer sous les règles courantes.
+- **Tout onglet lu par `feuille_('X')` DOIT être créé par `initialiserSheet_` — et un test qui
+  MOCKE la fonction sous test ne voit pas son bug.** `feuille_(nom) = getSheetByName(nom) ||
+  (initialiserSheet_(ss), getSheetByName(nom))` : un onglet absent de la liste `creerOnglet_` rend
+  `null` → l'appelant plante (`getRange of null`, vécu C28-53 : `RapportPaies` oublié, mission
+  paies crashée chaque tick pendant des jours). Vérifier par INVENTAIRE (`grep feuille_('…')` vs
+  `grep creerOnglet_(ss, '…')`, différence vide) ; livrer tout nouvel onglet AVEC sa ligne
+  `creerOnglet_`. Et au moins un test doit EXERCER la fonction pour de vrai : un mock de confort de
+  la fonction sous test (ici `ctxRunner` mockait `ecrireRapportPaies_`) masque à vie ses propres
+  bugs. Corollaire : une erreur RÉCURRENTE identique attrapée par un `try/catch` d'étape
+  (`journalErreur_('…différée…')`) est un bug de fond déguisé en bruit — un signal, pas du bruit
+  (révélé par le MCP `etat_moteur`).
 - **Projet GCP par défaut d'Apps Script = CACHÉ (inadministrable, propriétaire compris) — une URL
   d'activation `?project=<n°>` n'y sert jamais.** Deux issues seulement pour une API qui y manque :
   (a) déclarer le service avancé (`dependencies` — DÉCLARER ≠ APPELER, les appels restent REST) ;

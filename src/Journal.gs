@@ -50,6 +50,10 @@ function initialiserSheet_(ss) {
   creerOnglet_(ss, 'PlanFusion', COLONNES_PLAN_FUSION);
   creerOnglet_(ss, 'Progression', COLONNES_PROGRESSION); // suivi LIVE des opérations (C28-18, cf. majProgressions_)
   creerOnglet_(ss, 'Télémétrie', COLONNES_TELEMETRIE); // coûts & quotas pour l'app (C28-24, cf. majTelemetrie_)
+  // C28-49 PR2 : rapport des mois de PAIE manquants par employeur (mission `paies`, self-serve,
+  // cf. ecrireRapportPaies_). Onglet OUBLIÉ ici à la livraison → `feuille_('RapportPaies')` rendait
+  // null et la mission plantait à CHAQUE tick (`getRange of null`, révélé par le MCP le 19/08).
+  creerOnglet_(ss, 'RapportPaies', COLONNES_RAPPORT_PAIES); // constante partagée (Missions.gs)
   // C28-26 (ADR-0023) : plan de CONSOLIDATION de l'arborescence — dry-run pur, validé par Marc
   // avant toute exécution. La colonne Empreinte est la mémoire de dédup de la campagne
   // (jamais en Script Properties : ~2 900 empreintes dépasseraient la limite ~9 Ko).
