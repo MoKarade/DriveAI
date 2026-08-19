@@ -36,12 +36,19 @@
  * parseur strict (fonctions PURES testées).
  *
  * `doGet` (ADR-0041) : UNIQUE action GET — le callback de consentement OAuth du projet hubperso
- * (`?hubperso=1&code=…&state=…`, traité par JetonHubperso.gs avec vérification de `state`). Tout autre
- * GET rend une page neutre : l'app et la CI ne parlent au moteur qu'en POST.
+ * (`?code=…&state=…` tel que Google le renvoie ; traité par JetonHubperso.gs avec vérification du
+ * `state`). Tout autre GET rend une page neutre : l'app et la CI ne parlent au moteur qu'en POST.
  */
 
 function doGet(e) {
-  if (e && e.parameter && e.parameter.hubperso === '1') return traiterCallbackHubperso_(e.parameter);
+  // Routage du callback OAuth hubperso. ⚠️ Google redirige vers l'URI de rappel EXACTE déclarée
+  // dans le client OAuth, en n'y AJOUTANT que `code` et `state` : le marqueur `hubperso=1` n'y
+  // est donc PAS (bug trouvé au 1er usage réel, 19/08 — la liaison rendait la page neutre en
+  // silence). On route sur la PRÉSENCE de `code`+`state` ; le marqueur reste accepté en alias.
+  // Aucune perte de sécurité : le garde n'a JAMAIS été ce marqueur (un tiers peut l'ajouter) mais
+  // le `state` (comparaison constante, usage unique, péremption) vérifié dans le callback.
+  var p = e && e.parameter ? e.parameter : null;
+  if (p && (p.hubperso === '1' || (p.code && p.state))) return traiterCallbackHubperso_(p);
   return ContentService.createTextOutput('DriveAI');
 }
 

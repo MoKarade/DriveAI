@@ -102,10 +102,13 @@ test('validerCallbackHubperso_ : state vérifié, refus fermé sur toute forme i
   const attendu = 's-1|1000'; // Property « uuid|poseMs »
   const t = 2000; // bien avant la péremption
   assert.strictEqual(f({ hubperso: '1', code: 'c-1', state: 's-1' }, attendu, t), 'c-1');
+  // Le VRAI retour de Google n'a PAS le marqueur (bug du 1er usage réel) : code+state suffisent —
+  // le garde est le `state`, jamais un marqueur qu'un tiers pourrait ajouter lui-même.
+  assert.strictEqual(f({ code: 'c-1', state: 's-1' }, attendu, t), 'c-1', 'sans marqueur : accepté');
   assert.strictEqual(f({ hubperso: '1', code: 'c-1', state: 'AUTRE' }, attendu, t), '', 'state faux → refus');
   assert.strictEqual(f({ hubperso: '1', code: 'c-1' }, attendu, t), '', 'state absent → refus');
   assert.strictEqual(f({ hubperso: '1', state: 's-1' }, attendu, t), '', 'code absent → refus');
-  assert.strictEqual(f({ code: 'c-1', state: 's-1' }, attendu, t), '', 'pas l\'action hubperso → refus');
+  assert.strictEqual(f({}, attendu, t), '', 'ni code ni state → refus');
   assert.strictEqual(f({ hubperso: '1', code: 'c-1', state: 's-1' }, null, t), '',
     'aucun state attendu (liaison jamais lancée) → refus — jamais une comparaison à null qui passe');
   assert.strictEqual(f({ hubperso: '1', code: 'c-1', state: 's-1' }, 's-1', t), '',
@@ -311,17 +314,24 @@ test('purgerCacheJetonHubperso_ : efface le CACHE seul (jamais le refresh token)
   assert.doesNotThrow(() => c.purgerCacheJetonHubperso_(), 'best-effort — appelée depuis le chemin d\'échec des créations');
 });
 
-test('doGet : seul `?hubperso=1` route vers le callback — tout le reste rend une page neutre', () => {
+test('doGet : route le callback sur code+state (ce que Google renvoie VRAIMENT) — le reste est neutre', () => {
+  // 🔴 Bug trouvé au 1er usage réel (19/08) : Google redirige vers l'URI de rappel DÉCLARÉE en
+  // n'y ajoutant QUE `code` et `state` — jamais le marqueur `hubperso=1`. Exiger le marqueur
+  // faisait tomber le retour de consentement dans la page neutre : liaison impossible, EN SILENCE.
   const c = load(['Config.gs', 'WebApp.gs']);
   const appels = [];
   c.traiterCallbackHubperso_ = (p) => { appels.push(p); return { page: 'hubperso' }; };
   c.ContentService = { createTextOutput: (t) => ({ texte: t, setMimeType: () => ({ texte: t }) }) };
+  // Le VRAI retour de Google (sans marqueur) doit router.
+  assert.strictEqual(c.doGet({ parameter: { code: 'c', state: 's' } }).page, 'hubperso');
+  // Le marqueur reste accepté en alias (rétro-compatibilité des URL déjà distribuées).
   assert.strictEqual(c.doGet({ parameter: { hubperso: '1', code: 'c', state: 's' } }).page, 'hubperso');
-  assert.strictEqual(appels.length, 1);
-  for (const e of [null, undefined, {}, { parameter: {} }, { parameter: { hubperso: '2' } }, { parameter: { hubperso: 1 } }]) {
+  assert.strictEqual(appels.length, 2);
+  // Sans code NI state : page neutre (aucun appel au callback).
+  for (const e of [null, undefined, {}, { parameter: {} }, { parameter: { code: 'c' } }, { parameter: { state: 's' } }]) {
     assert.strictEqual(c.doGet(e).texte, 'DriveAI', 'page neutre pour ' + JSON.stringify(e && e.parameter));
   }
-  assert.strictEqual(appels.length, 1, 'le callback n\'est JAMAIS appelé hors ?hubperso=1 strict');
+  assert.strictEqual(appels.length, 2, 'le callback n\'est appelé que sur un retour de consentement plausible');
 });
 
 test('traiterCallbackHubperso_ : la page ne REFLÈTE jamais un paramètre reçu (pas d\'écho → pas d\'XSS)', () => {

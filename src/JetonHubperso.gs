@@ -307,7 +307,10 @@ function echangerCodeHubperso_(params) {
  * @return {string} le code d'autorisation, ou '' (refus).
  */
 function validerCallbackHubperso_(params, stateAttendu, maintenantMs) {
-  if (!params || params.hubperso !== '1') return '';
+  // Le marqueur `hubperso=1` n'est PAS exigé : Google ne le renvoie pas (il n'ajoute que `code`
+  // et `state` à l'URI de rappel déclarée). Il n'a jamais été un garde — c'est le `state` qui
+  // l'est, vérifié ci-dessous en temps constant, à usage unique et périmable.
+  if (!params) return '';
   var code = typeof params.code === 'string' ? params.code : '';
   var state = typeof params.state === 'string' ? params.state : '';
   if (!code || !state || !stateAttendu) return '';

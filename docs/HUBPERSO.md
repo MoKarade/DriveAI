@@ -45,7 +45,10 @@ Dans le projet Apps Script DriveAI : ⚙️ « Paramètres du projet » → « P
 2. Le journal d'exécution affiche **deux choses** :
    - **(1) l'URI de redirection** : copie-la **exactement** dans le client OAuth de l'étape 2
      (console GCP → ton client → « URI de redirection autorisés » → Ajouter → Enregistrer).
-     Elle doit **finir par `/exec`** — si ce n'est pas le cas, dis-le-moi avant de continuer ;
+     ℹ️ Exécutée depuis l'éditeur, la fonction rend souvent l'URL de développement (`…/dev`) plutôt
+     que `…/exec` : **c'est normal et ça convient** — `/dev` sert le dernier code poussé et n'est
+     accessible qu'à toi. Copie-la telle quelle, sans la modifier. (Pour forcer `/exec` : poser la
+     Script Property `DriveAI_HUBPERSO_REDIRECT` avec l'URL `/exec`, puis relancer la fonction.) ;
    - **(2) l'URL de consentement** : ouvre-la dans le navigateur, choisis ton compte, et
      **coche les DEUX autorisations** (Tasks **et** Agenda) si Google les présente en cases
      séparées — une seule cochée et la liaison sera refusée (exprès : à moitié liée, les
