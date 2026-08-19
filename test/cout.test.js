@@ -373,5 +373,107 @@ test('enregistrerUsage_ : une ventilation qui explose ne perd JAMAIS l\'appel d�
   const c = ctxVent();
   c.coutDollars_ = () => { throw new Error('tarif cassé'); };
   assert.doesNotThrow(() => c.enregistrerUsage_('haiku', usage(1e6, 0)));
-  assert.strictEqual(plat(c.usageRunSnapshot_()).hin, 1e6, 'les tokens sont comptés malgré tout');
+  assert.strictEqual(plat(c.usageRunSnapshot_()).hin, 1e6, 'les tokens sont comptés malgré tout');});
+
+// ---------------------------------------------------------------------------
+// syntheseCoutTotal_ — le cumul depuis toujours (publié au hub comme `cost.period = "total"`)
+// ---------------------------------------------------------------------------
+
+/**
+ * Contexte avec un magasin de Script Properties EN MÉMOIRE et `getProperties()` (l'appel en
+ * bloc), plus un compteur d'appels : le cumul tourne à CHAQUE rafraîchissement du résumé du hub,
+ * donc il ne doit jamais dégénérer en N lectures unitaires (le quota Properties est une
+ * ressource rare).
+ */
+function ctxCumul(store) {
+  let appelsGetProperties = 0;
+  const c = load(['Config.gs', 'Cout.gs'], {
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (k) => (k in store ? store[k] : null),
+        setProperty: (k, v) => { store[k] = String(v); },
+        deleteProperty: (k) => { delete store[k]; },
+        getProperties: () => { appelsGetProperties += 1; return Object.assign({}, store); },
+      }),
+    },
+  });
+  return { c, store, appels: () => appelsGetProperties };
+}
+
+/** 1 MTok Haiku in = 1 $ (haiku_in = 1 $/MTok) — le mois « vaut » exactement `dollars`. */
+const moisDe = (dollars) =>
+  JSON.stringify({ hin: dollars * 1e6, hout: 0, sin: 0, sout: 0, appels: 1 });
+
+test('cumul : somme TOUS les mois, pas seulement le courant', () => {
+  const { c } = ctxCumul({
+    'DriveAI_COUT_2026-06': moisDe(3),
+    'DriveAI_COUT_2026-07': moisDe(4),
+    'DriveAI_COUT_2026-08': moisDe(5),
+  });
+  const s = c.syntheseCoutTotal_();
+  assert.strictEqual(s.dollars, 12, '3 + 4 + 5 — un cumul qui ne rendrait que 5 serait le mois courant');
+  assert.strictEqual(s.mois, 3);
+  assert.strictEqual(s.ignores, 0);
+});
+
+test('cumul : aucun mois comptabilisé → 0 $ sur 0 mois (jamais NaN)', () => {
+  const { c } = ctxCumul({});
+  assert.deepStrictEqual(plat(c.syntheseCoutTotal_()), { dollars: 0, mois: 0, ignores: 0 });
+});
+
+test('cumul : ignore les Properties qui ne sont PAS de la comptabilité de coût', () => {
+  // Le magasin est partagé par tout le moteur (frein budget, curseurs, verrous…). Sans le
+  // filtre de préfixe, `JSON.parse` d'un curseur produirait soit une exception comptée en
+  // `ignores`, soit — pire — un objet dont les champs manquants passeraient à 0 et gonfleraient
+  // `mois` d'un mois qui n'a jamais existé.
+  const { c } = ctxCumul({
+    'DriveAI_COUT_2026-08': moisDe(7),
+    DriveAI_FREIN_BUDGET: 'DriveAI_COUT_2026-08|10',
+    DriveAI_CURSEUR: '{"hin":999000000}',
+    autre_chose: 'peu importe',
+  });
+  const s = c.syntheseCoutTotal_();
+  assert.strictEqual(s.dollars, 7, 'seules les clés DriveAI_COUT_* comptent');
+  assert.strictEqual(s.mois, 1);
+  assert.strictEqual(s.ignores, 0, 'ce qui est hors préfixe est écarté AVANT le parse, pas compté comme illisible');
+});
+
+test('cumul : un mois corrompu est COMPTÉ comme ignoré, jamais traité en zéro silencieux', () => {
+  const { c } = ctxCumul({
+    'DriveAI_COUT_2026-07': moisDe(4),
+    'DriveAI_COUT_2026-08': '{ceci n\'est pas du JSON',
+  });
+  const s = c.syntheseCoutTotal_();
+  assert.strictEqual(s.dollars, 4);
+  assert.strictEqual(s.mois, 1);
+  assert.strictEqual(s.ignores, 1, 'un cumul discrètement amputé serait pire qu\'une erreur visible');
+});
+
+test('cumul : un mois d\'AVANT la Vague 3 (sans champs cache) ne propage pas de NaN', () => {
+  // `undefined + nombre` = NaN, et un seul NaN empoisonnerait TOUT le cumul — pas seulement
+  // le mois concerné. C'est la même garde que `coutDollars_`, vérifiée au niveau du cumul.
+  const { c } = ctxCumul({
+    'DriveAI_COUT_2026-05': JSON.stringify({ hin: 2e6, hout: 0, sin: 0, sout: 0, appels: 1 }),
+    'DriveAI_COUT_2026-08': moisDe(1),
+  });
+  const s = c.syntheseCoutTotal_();
+  assert.ok(Number.isFinite(s.dollars), 'cumul fini');
+  assert.strictEqual(s.dollars, 3);
+});
+
+test('cumul : UN SEUL getProperties(), pas une lecture par mois', () => {
+  const store = {};
+  for (let i = 1; i <= 12; i += 1) store['DriveAI_COUT_2026-' + String(i).padStart(2, '0')] = moisDe(1);
+  const { c, appels } = ctxCumul(store);
+  assert.strictEqual(c.syntheseCoutTotal_().dollars, 12);
+  assert.strictEqual(appels(), 1, '12 mois → 1 seul appel (quota Properties)');
+});
+
+test('cumul ⊇ mois : la clé du mois courant est bien dans le périmètre du cumul', () => {
+  // Le verrou anti-dérive : si `cleCoutMois_` cessait de dériver de PREFIXE_COUT, le mois
+  // courant sortirait silencieusement du cumul — le total baisserait sans que rien n'échoue.
+  const { c, store } = ctxCumul({});
+  store[c.cleCoutMois_()] = moisDe(6);
+  assert.strictEqual(c.syntheseCoutTotal_().dollars, 6);
+  assert.strictEqual(c.syntheseCoutMois_().dollars, 6);
 });

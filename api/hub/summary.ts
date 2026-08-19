@@ -120,12 +120,39 @@ export default async function handler(req: Requete, res: Reponse): Promise<void>
     // Quota Gmail Apps Script épuisé (pause automatique) : représenté « au plafond ».
     quotas.push({ label: 'Quota Gmail', used: 1, limit: 1 });
   }
+  // COÛT PUBLIÉ = LE CUMUL, pas le mois. Le hub somme les coûts PAR PÉRIODE et refuse de
+  // fusionner « cumulé » avec « ce mois-ci » — additionner les deux donnerait un montant qui
+  // n'existe pas. Tant que DriveAI ne publiait que son mois courant, il était donc seul dans sa
+  // colonne et le hub ne pouvait afficher aucun total unique (FinanceAI et BatchChef publient un
+  // cumul). En publiant `total`, DriveAI rejoint la colonne des autres.
+  //
+  // Le mois n'est pas perdu, il change de place : il devient un QUOTA avec le seuil du frein des
+  // campagnes pour plafond — ce qui est plus juste qu'un « coût du mois » nu, puisque le nombre
+  // qui compte est sa DISTANCE au frein, pas sa valeur absolue.
+  //
+  // REPLI sur `mois` si le cumul est absent : la web app Apps Script peut être en retard d'un
+  // déploiement (champ additif). Un repli déclaré `total` afficherait le mois courant sous
+  // l'étiquette « cumulé » — un chiffre juste sous une étiquette fausse, donc un mensonge.
   const usage: {
-    cost?: { amount: number; currency: 'USD'; period: 'mois' };
+    cost?: { amount: number; currency: 'USD'; period: 'total' | 'mois' };
     quotas?: typeof quotas;
   } = {};
-  if (typeof etat.llmCostMonthUsd === 'number') {
-    usage.cost = { amount: Math.round(etat.llmCostMonthUsd * 100) / 100, currency: 'USD', period: 'mois' };
+  const cents = (v: number) => Math.round(v * 100) / 100;
+  if (typeof etat.llmCostTotalUsd === 'number') {
+    usage.cost = { amount: cents(etat.llmCostTotalUsd), currency: 'USD', period: 'total' };
+    if (typeof etat.llmCostMonthUsd === 'number') {
+      quotas.push({
+        label: 'Coût LLM du mois (frein campagnes)',
+        used: cents(etat.llmCostMonthUsd),
+        // Plafond publié par le moteur (CONFIG.LLM_BUDGET_CAMPAGNES), jamais recopié ici : Marc
+        // le rajuste en éditant Config.gs. `null` si le moteur ne l'a pas envoyé — une jauge sans
+        // plafond, jamais un plafond inventé.
+        limit: typeof etat.llmBudgetCampagnesUsd === 'number' ? etat.llmBudgetCampagnesUsd : null,
+        unit: 'USD',
+      });
+    }
+  } else if (typeof etat.llmCostMonthUsd === 'number') {
+    usage.cost = { amount: cents(etat.llmCostMonthUsd), currency: 'USD', period: 'mois' };
   }
   if (quotas.length > 0) usage.quotas = quotas;
 

@@ -139,8 +139,15 @@ function budgetCampagnesAtteint_() {
 }
 
 /** Clé de Script Property du mois courant. */
+/**
+ * Préfixe des Script Properties de comptabilité mensuelle. Une clé par mois, JAMAIS supprimée —
+ * c'est ce qui rend le cumul depuis toujours récupérable (`syntheseCoutTotal_`).
+ * `cleCoutMois_` en dérive : le lecteur du cumul et l'écrivain du mois ne peuvent pas diverger.
+ */
+var PREFIXE_COUT = 'DriveAI_COUT_';
+
 function cleCoutMois_() {
-  return 'DriveAI_COUT_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
+  return PREFIXE_COUT + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM');
 }
 
 /** Lit (ou initialise) le total d'un mois. Normalise les champs cache (absents des JSON d'AVANT
@@ -298,4 +305,54 @@ function syntheseCoutMois_() {
     dollars: coutDollars_(t),
     tokens: t.hin + t.hout + t.hcw + t.hcr + t.sin + t.sout + t.scw + t.scr
   };
+}
+
+/**
+ * Synthèse du coût CUMULÉ depuis toujours — la somme de tous les mois comptabilisés.
+ *
+ * ── POURQUOI C'EST POSSIBLE SANS RIEN STOCKER DE NEUF ───────────────────────────────
+ *
+ * `flushUsage_` écrit une Script Property PAR MOIS (`DriveAI_COUT_aaaa-MM`) et ne les
+ * supprime jamais. Le cumul depuis le premier jour est donc déjà là, éparpillé : il suffit
+ * de le rassembler. Aucun compteur supplémentaire à tenir — et surtout aucun qui pourrait
+ * DIVERGER de la comptabilité mensuelle, ce que ce fichier s'interdit déjà ailleurs
+ * (cf. `coutDollarsDelta_`, qui calcule par différence plutôt que par compteur dédié).
+ *
+ * ── POURQUOI LE HUB EN A BESOIN ─────────────────────────────────────────────────────
+ *
+ * Le hub refuse d'additionner des montants qui ne couvrent pas la même période : FinanceAI
+ * publie un cumul, DriveAI publiait le mois courant, et les additionner donnait un total
+ * faux et SOUS-ESTIMÉ (correctif du 31/07 côté hub — les mois passés de DriveAI manquaient).
+ * En publiant le cumul, DriveAI s'aligne et le hub peut enfin afficher UN seul montant
+ * honnête. Le budget mensuel n'est pas perdu : il devient un `quota` avec sa limite.
+ *
+ * ⚠️ UN SEUL appel `getProperties()`, pas N `getProperty()` : le quota Properties d'Apps
+ * Script est une ressource rare, et cette fonction tourne à chaque rafraîchissement du
+ * résumé du hub.
+ *
+ * Une clé illisible (JSON corrompu) est IGNORÉE et COMPTÉE, jamais traitée comme un zéro
+ * silencieux : le mois concerné manque au total, et l'appelant peut le dire. Un cumul
+ * discrètement amputé serait pire qu'une erreur visible.
+ *
+ * @return {{dollars:number, mois:number, ignores:number}}
+ */
+function syntheseCoutTotal_() {
+  var toutes = PropertiesService.getScriptProperties().getProperties();
+  var dollars = 0, mois = 0, ignores = 0;
+  for (var cle in toutes) {
+    if (cle.indexOf(PREFIXE_COUT) !== 0) continue;
+    try {
+      var t = JSON.parse(toutes[cle]);
+      // Mêmes normalisations que `lireCoutMois_` : un JSON d'AVANT la Vague 3 n'a pas les
+      // champs de cache, et `undefined` propagerait un NaN dans TOUT le cumul.
+      dollars += coutDollars_({
+        hin: t.hin || 0, hout: t.hout || 0, hcw: t.hcw || 0, hcr: t.hcr || 0,
+        sin: t.sin || 0, sout: t.sout || 0, scw: t.scw || 0, scr: t.scr || 0
+      });
+      mois += 1;
+    } catch (e) {
+      ignores += 1;
+    }
+  }
+  return { dollars: dollars, mois: mois, ignores: ignores };
 }

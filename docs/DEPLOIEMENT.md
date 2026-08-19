@@ -382,40 +382,38 @@ le refresh token reste dans son cookie HttpOnly chiffré (1 an). « Se déconnec
 3. Dans l'app → ⚙ Configuration : coller l'URL et le secret. Le bouton « ⟳ Vérifier maintenant »
    apparaît dans la barre : le moteur passe dans la minute (déclencheur ponctuel auto-nettoyé).
 
-> ⚠️ **Une web app est figée sur une VERSION.** Après un merge qui change `WebApp.gs` (ex. la
-> recherche IA du chantier #21), le `clasp push` automatique met le code à jour mais PAS le
-> déploiement : refaire **Déployer → Gérer les déploiements → ✏ Modifier → Version : Nouvelle
-> version → Déployer** (l'URL /exec ne change pas, rien à refaire dans l'app). La **recherche IA**
-> (Documents → Recherche DriveAI → « ✨ Recherche IA ») passe par cette même web app : même
-> secret, bornée à 50 questions/jour, ~0,002 $/question (Haiku) — ~3 $/mois au plafond.
-> **Confirmé une fois de plus (débogage miroir Drive, chantier #27)** : ce piège s'applique AUSSI
-> à un `clasp push` déclenché manuellement (`workflow_dispatch` de `deploy.yml` sur une branche,
-> pour itérer vite sans passer par `main`) — le code du projet est à jour, mais `/exec` sert
-> l'ancienne version tant que Marc n'a pas cliqué **Nouvelle version → Déployer**. Un test qui
-> renvoie une réponse SANS les derniers champs/comportements ajoutés = signal quasi certain d'un
-> redéploiement manquant, pas un bug de code.
-> **S'applique à l'« Analyse ciblée des mails » (C28-06, plan P2)** : la nouvelle action
-> `analyse-ciblee` du `doPost` n'existe pour l'app qu'après un redéploiement **Nouvelle version**
-> — avant ça, le formulaire de la vue Mails déclenchera l'action par défaut (un simple passage
-> immédiat) au lieu de programmer l'analyse.
-> **Re-confirmé C28-30 (chat assistant)** : les nouvelles actions `chat-assistant`/`proposer_reorg`
-> renvoyaient une réponse VIDE (l'ancienne version tombait sur l'action par défaut) tant que la web
-> app n'était pas redéployée — bulle vide, aucune erreur.
+### ⚡ Redéploiement de la web app : AUTOMATIQUE, et vérifié en prod
 
-### ⚡ Redéploiement AUTOMATIQUE de la web app (décision Marc 2026-07-24 — fini le geste manuel)
+> ✅ **Il n'y a plus de « Nouvelle version → Déployer » à faire à la main.** Le secret
+> `WEBAPP_DEPLOYMENT_ID` est en place, et `deploy.yml` enchaîne à chaque merge sur `main` :
+> `clasp push` → `clasp deploy -i $WEBAPP_DEPLOYMENT_ID` → réinstallation du déclencheur.
+> Vérifié sur le run du 19/08/2026 (commit `efcfd1b`) : les étapes « Redéployer la web app
+> (/exec inchangé) » et « Assurer le déclencheur (fin du geste manuel) » sont vertes toutes
+> les deux. **L'URL /exec ne change pas** — rien à retoucher dans l'app ni dans Vercel.
 
-Pour ne PLUS jamais faire le « Nouvelle version → Déployer » à la main, ajoute UN secret GitHub :
+**Pourquoi ce paragraphe existe encore.** Une web app Apps Script est figée sur une VERSION :
+`clasp push` met le CODE à jour, pas le déploiement servi par `/exec`. Tant que le redéploiement
+était manuel, ce décalage a coûté cher plusieurs fois — chantier #21 (recherche IA), #27 (miroir
+Drive), C28-06 (`analyse-ciblee` retombait sur l'action par défaut), C28-30 (le chat renvoyait une
+bulle VIDE, aucune erreur). Le symptôme est toujours le même et il ne ressemble pas à un problème
+de déploiement : une réponse **sans les derniers champs ou comportements ajoutés**, sans rien de
+rouge nulle part. C'est le mode de panne qu'il faut garder en tête, pas le geste qui le corrigeait.
 
-- **Settings → Secrets and variables → Actions → New repository secret** :
-  `WEBAPP_DEPLOYMENT_ID` = l'identifiant `AKfycb…` de ton URL /exec (la partie entre
-  `…/macros/s/` et `/exec` — c'est le même que dans « Gérer les déploiements »).
+**Ce qui reste vrai malgré l'automatisation** :
 
-Dès que ce secret existe, `deploy.yml` fait `clasp deploy -i <ID>` après chaque `clasp push` sur
-`main` : la web app est redéployée en **Nouvelle version automatiquement**, **l'URL /exec ne change
-pas** (rien à retoucher dans l'app ni Vercel). Vérifie la 1ʳᵉ fois par un **signal indépendant** (le
-chat répond / l'action nouvelle marche), pas seulement le vert du job. Sans le secret : comportement
-inchangé (redéploiement manuel, ci-dessus). `installerTrigger` reste requis si le *tick* time-based
-doit prendre un nouveau code (pas la web app, qui est sur-demande).
+- Le pipeline ne tourne que sur `main`. Un `clasp push` lancé à la main (`workflow_dispatch` de
+  `deploy.yml` sur une branche, pour itérer vite) pousse le code **sans** redéployer : sur une
+  branche, `/exec` sert toujours l'ancienne version. C'est le seul cas où le piège subsiste.
+- Si le secret `WEBAPP_DEPLOYMENT_ID` venait à disparaître, `deploy.yml` sauterait l'étape et on
+  reviendrait silencieusement au régime manuel : **Déployer → Gérer les déploiements → ✏ Modifier
+  → Version : Nouvelle version → Déployer**. Le job resterait VERT — c'est la seule raison de
+  garder la manœuvre écrite ici.
+- Devant un doute, juger par un **signal indépendant** (l'action nouvelle marche, le champ neuf
+  arrive), jamais par le vert du job : le vert dit « poussé », pas « servi ».
+
+Rappel de contexte : la **recherche IA** (Documents → Recherche DriveAI → « ✨ Recherche IA »)
+passe par cette même web app — même secret, bornée à 50 questions/jour, ~0,002 $/question (Haiku),
+~3 $/mois au plafond.
 
 ## Miroir Drive du dépôt (ADR-0017) — accès de partout + NotebookLM
 
