@@ -181,6 +181,59 @@ test('sonderApiConfig_ : verdict global — les DEUX API doivent répondre pour 
   assert.strictEqual(reseau.c.sonderApiConfig_().etat, 'indetermine');
 });
 
+test('sonderApiConfig_ : un doute HTTP porte le POURQUOI de Google, pas seulement le code', () => {
+  // Vécu 19/08 : « indetermine (Tasks) — HTTP 400 » ⇒ impossible de savoir À DISTANCE si c'est
+  // l'identifiant sondé, un paramètre ou le projet — donc impossible de corriger la sonde. Le
+  // message de Google tranche. Vie privée : la requête vise un ID INEXISTANT choisi par nous,
+  // le corps d'erreur ne peut porter aucune donnée de Marc.
+  const ctx = ctxPanne({}, {
+    Tasks: { code: 400, corps: '{"error":{"code":400,"message":"Invalid task ID value"}}' },
+    Calendar: { code: 404, corps: 'Not Found' },
+  });
+  const v = ctx.c.sonderApiConfig_();
+  assert.strictEqual(v.etat, 'indetermine');
+  assert.strictEqual(v.api, 'Tasks');
+  assert.ok(v.message.includes('HTTP 400'), 'le code reste');
+  assert.ok(v.message.includes('Invalid task ID value'), 'et la RAISON de Google est jointe');
+});
+
+test('sonde indéterminée APRÈS avoir joint l\'API : la cause affichée est rafraîchie (jamais périmée)', () => {
+  // Le message de Santé disait « compte hubperso non lié — exécuter lierCompteHubperso » alors
+  // que la sonde venait d'obtenir un jeton et d'appeler Tasks : une consigne PROUVÉE périmée, qui
+  // envoie Marc refaire un geste déjà fait (vécu 19/08). Un verdict indéterminé ne lève toujours
+  // RIEN — mais il corrige ce que Santé affirme.
+  const perime = 'hubperso — compte hubperso non lié ou consentement révoqué — exécuter lierCompteHubperso';
+  const ctx = ctxPanne(
+    { DriveAI_PANNE_CONFIG_API: String(Date.now() - 3600 * 1000), DriveAI_PANNE_CONFIG_MSG: perime },
+    { Tasks: { code: 400, corps: '{"error":{"message":"Invalid task ID value"}}' }, Calendar: { code: 404, corps: '' } });
+  ctx.c.chargerPanneConfigApi_();
+  assert.strictEqual(ctx.c.estPanneConfigApi_(), true, 'échec fermé : un doute ne lève RIEN');
+  assert.ok(!ctx.store.DriveAI_PANNE_CONFIG_MSG.includes('lierCompteHubperso'),
+    'la consigne périmée ne doit plus s\'afficher — la sonde l\'a démentie');
+  assert.ok(ctx.store.DriveAI_PANNE_CONFIG_MSG.includes('Tasks'), 'la cause observée la remplace');
+
+  // …mais un échec de REFRESH (api « hubperso ») n'apprend rien : l'ancienne cause reste la
+  // meilleure information disponible, on ne l'écrase pas avec « blip ».
+  const blip = ctxPanne(
+    { DriveAI_PANNE_CONFIG_API: String(Date.now() - 3600 * 1000), DriveAI_PANNE_CONFIG_MSG: perime },
+    { code: 404, corps: '' });
+  blip.c.jetonHubperso_ = () => null;
+  blip.c.etatLiaisonHubperso_ = () => 'present';
+  blip.c.chargerPanneConfigApi_();
+  assert.strictEqual(blip.store.DriveAI_PANNE_CONFIG_MSG, perime, 'un blip n\'efface pas le diagnostic');
+
+  // FRONTIÈRE : la seule cause qu'un jeton DÉMENT est « compte non lié ». Un diagnostic d'API non
+  // activée reste vrai tant qu'une sonde ne l'infirme pas — un doute ne doit JAMAIS l'effacer
+  // (sinon on perd le numéro de projet GCP et l'URL d'activation, seules infos actionnables).
+  const certain = 'Calendar — Google Calendar API has not been used in project 777 before';
+  const autre = ctxPanne(
+    { DriveAI_PANNE_CONFIG_API: String(Date.now() - 3600 * 1000), DriveAI_PANNE_CONFIG_MSG: certain },
+    { Tasks: { code: 400, corps: 'Invalid' }, Calendar: { code: 404, corps: '' } });
+  autre.c.chargerPanneConfigApi_();
+  assert.strictEqual(autre.store.DriveAI_PANNE_CONFIG_MSG, certain,
+    'un doute ne remplace QUE la cause qu\'il a démentie');
+});
+
 test('sonderApiConfig_ : SANS jeton hubperso → « desactivee (hubperso) », zéro appel réseau (ADR-0041)', () => {
   // Compte jamais lié ou consentement révoqué (credentials ABSENTS) : les créations sont
   // IMPOSSIBLES — le verdict doit être certain (la suspension se rafraîchit, Santé porte la

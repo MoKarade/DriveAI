@@ -409,6 +409,18 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   NUE en tête de tick. Et le diagnostic se conserve par son CHAMP EXPLOITABLE (`error.message` :
   projet GCP + URL d'activation), jamais par l'enveloppe brute — un JSON indenté, tronqué pour
   l'affichage, ne montre que sa ponctuation.
+  **Corollaire (19/08, 1ᵉʳ usage réel) : une sonde « ressource inexistante » doit parler la
+  GRAMMAIRE d'identifiant de CHAQUE API sondée — sinon 400 ≠ 404 et le verdict est STÉRILE À VIE.**
+  Un identifiant *malformé* fait répondre « je ne comprends pas ta requête » (400) au lieu de « ça
+  n'existe pas » (404) : le verdict tombe dans `indetermine`, l'échec fermé ne lève jamais rien, et
+  la reprise automatique est morte en silence (vécu : `driveaisondeconfigapi` partagé — valide en
+  base32hex pour Calendar, impossible en base64url pour Tasks, longueur ≡ 1 mod 4). Mutualiser UNE
+  valeur entre deux API, c'est supposer qu'elles partagent une grammaire : un identifiant PAR API,
+  verrouillé par un test sur la GRAMMAIRE (charset + contrainte de longueur), jamais sur la valeur.
+  Et tout verdict indéterminé persiste son POURQUOI (message de l'API, pas seulement le code) ;
+  une cause mémorisée que la sonde vient de DÉMENTIR (jeton obtenu ⇒ « compte non lié » est faux)
+  se remplace, celles qu'elle n'a PAS démenties (un 500 ne réfute pas « API non activée dans le
+  projet 777 ») ne s'écrasent jamais — frontière codée ET testée des deux côtés.
 - **Un verdict pris en amont sur la donnée RICHE ne se RE-DÉRIVE jamais depuis sa forme
   APPAUVRIE.** Rendre un message d'erreur lisible JETTE de l'information : si le même détecteur
   tourne des deux côtés du rétrécissement, il ne rend pas le même verdict (vécu C28-48, trouvé en

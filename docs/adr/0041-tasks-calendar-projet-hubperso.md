@@ -82,3 +82,22 @@ L'exemption des scripts sur leur projet par défaut est ce qui permet à DriveAI
   intentions proprement jusqu'à un re-clic (message Santé + résumé hebdo).
 - Le relais par le BACKEND hubperso (le hub crée les tâches lui-même) reste une évolution
   possible — même projet GCP, un secret de moins côté moteur — hors périmètre de cette PR.
+
+## 5. Révisions
+
+### 2026-08-19 — Correctifs révélés par le PREMIER usage réel
+
+La liaison faite par Marc a exposé deux défauts que ni la CI ni la revue n'avaient pu voir (aucune
+n'exécute la vraie chaîne Google) :
+
+1. **Callback** (#289) — Google redirige vers l'URI de rappel EXACTE déclarée dans le client OAuth
+   en n'y AJOUTANT que `code` et `state` : le marqueur `hubperso=1` n'y figure jamais. `doGet`
+   route désormais sur la présence de `code` **et** `state` ; le garde reste le `state` (comparé en
+   temps constant, à usage unique, périmable), jamais le marqueur.
+2. **Sonde stérile** — un identifiant sondé UNIQUE pour les deux API, valide pour Calendar
+   (base32hex) mais impossible pour Tasks (base64url, longueur ≡ 1 mod 4) ⇒ **HTTP 400** au lieu du
+   404 attendu ⇒ verdict `indetermine` perpétuel ⇒ la reprise automatique de la suspension était
+   morte À VIE, en silence, alors que le jeton hubperso fonctionnait. Désormais : **un identifiant
+   par API** (grammaire verrouillée par test), le verdict indéterminé **persiste le message de
+   Google** (pas seulement le code), et une cause mémorisée que la sonde a **démentie** (jeton
+   obtenu ⇒ « compte non lié » est faux) est remplacée — celles qu'elle n'a pas démenties, jamais.

@@ -112,7 +112,20 @@ function sonderEtLeverPanneConfig_(props) {
     try { props.setProperty('DriveAI_PANNE_CONFIG_API', String(Date.now())); } catch (e) { }
     return;
   }
-  if (verdict.etat !== 'active') return; // indéterminé (5xx, réseau) : on ne lève RIEN (échec fermé)
+  if (verdict.etat !== 'active') {
+    // Indéterminé (400/401/5xx, réseau) : on ne lève RIEN (échec fermé), et on n'ÉCRASE PAS le
+    // diagnostic connu — un blip 500 ne réfute pas un « API non activée dans le projet 777 ».
+    // UNE exception, étroite : la sonde a OBTENU un jeton (`verdict.jeton`) alors que la cause
+    // mémorisée est « compte hubperso non lié ». Là, la cause est PROUVÉE FAUSSE : la laisser
+    // s'afficher dans Santé enverrait Marc refaire un geste déjà fait (vécu 19/08, où Santé
+    // réclamait `lierCompteHubperso` pendant que la sonde appelait Tasks avec son jeton).
+    var connu = '';
+    try { connu = props.getProperty('DriveAI_PANNE_CONFIG_MSG') || ''; } catch (e) { }
+    if (verdict.jeton && causeLiaisonHubperso_(connu)) {
+      memoriserMessageConfigApi_(props, verdict.api, verdict.message);
+    }
+    return;
+  }
 
   // Les deux API répondent : la panne est finie. On efface la suspension → les intentions
   // reprennent DÈS CE TICK, sans aucun geste de Marc.
@@ -139,6 +152,16 @@ function sonderEtLeverPanneConfig_(props) {
  * dégrade vers un libellé générique (ADR-0007 : métadonnées seulement, jamais de contenu).
  */
 var PREFIXE_CONFIG_API = /^config-api [A-Za-z]+ : /;
+
+/**
+ * Vrai si la cause mémorisée est la LIAISON hubperso (« compte non lié / révoqué »). PURE.
+ * C'est nous qui écrivons ce préfixe (`memoriserMessageConfigApi_(props, 'hubperso', …)`) : c'est
+ * la SEULE cause qu'une sonde ayant obtenu un jeton peut DÉMENTIR — les autres (API non activée,
+ * blip) restent vraies tant qu'une sonde ne les infirme pas.
+ * @param {string} msg
+ * @return {boolean}
+ */
+function causeLiaisonHubperso_(msg) { return /^hubperso — /.test(String(msg || '')); }
 
 function memoriserMessageConfigApi_(props, api, message) {
   var txt = String(message || '').replace(/\s+/g, ' ').trim();
@@ -179,11 +202,24 @@ function etatPanneConfigApi_() {
 // le projet » (403 SERVICE_DISABLED) de « l'API répond » (n'importe quelle autre réponse métier).
 // Le garde-fou Tasks.gs/Calendar.gs (« création uniquement, jamais les éléments EXISTANTS de
 // Marc ») reste donc entier : aucun événement ni aucune tâche réelle n'est touché.
-var SONDE_CONFIG_ID = 'driveaisondeconfigapi';
+//
+// UN IDENTIFIANT PAR API (correctif 19/08, 1ᵉʳ usage réel) : les deux API n'ont PAS la même
+// GRAMMAIRE d'identifiant, et un identifiant syntaxiquement INVALIDE fait répondre 400 (verdict
+// « indéterminé » sous l'allowlist) au lieu du 404 NOMINAL que la sonde attend — elle ne conclut
+// alors JAMAIS et la reprise automatique est inopérante À VIE (vécu : `indetermine (Tasks) —
+// HTTP 400` à chaque sonde, suspension jamais levée alors que le compte hubperso était bien lié).
+//  - Calendar : « base32hex », lettres a-v et chiffres 0-9, 5 à 1024 caractères ⇒ le libellé en
+//    clair convient (aucune lettre au-delà de « v »).
+//  - Tasks : identifiant OPAQUE base64url — une longueur ≡ 1 (mod 4) est structurellement
+//    impossible, d'où le 400 sur les 21 caractères de l'ancien libellé partagé. On encode donc
+//    le même libellé en base64url (longueur 24 ≡ 0). Il reste INEXISTANT par construction : il
+//    décode en « DriveAISondeConfig », jamais la forme « <liste>:<n>:<n> » d'un vrai ID Tasks.
+var SONDE_CONFIG_ID_CALENDAR = 'driveaisondeconfigapi';
+var SONDE_CONFIG_ID_TASKS = 'RHJpdmVBSVNvbmRlQ29uZmln';
 
 var SONDES_CONFIG_API = [
-  { api: 'Tasks', url: 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks/' + SONDE_CONFIG_ID },
-  { api: 'Calendar', url: 'https://www.googleapis.com/calendar/v3/calendars/primary/events/' + SONDE_CONFIG_ID }
+  { api: 'Tasks', url: 'https://tasks.googleapis.com/tasks/v1/lists/@default/tasks/' + SONDE_CONFIG_ID_TASKS },
+  { api: 'Calendar', url: 'https://www.googleapis.com/calendar/v3/calendars/primary/events/' + SONDE_CONFIG_ID_CALENDAR }
 ];
 
 /**
@@ -213,7 +249,9 @@ function verdictSondeApi_(code, corps) {
  * Sonde les DEUX API dont dépendent les intentions (une seule suspension les couvre toutes deux).
  * Verdict global : 'desactivee' dès qu'une API refuse (avec son message exploitable), 'active'
  * seulement si les DEUX répondent, 'indetermine' sinon.
- * @return {{etat:string, api:string, message:string}}
+ * `jeton:true` marque les verdicts rendus APRÈS l'obtention d'un jeton hubperso : ceux-là — et
+ * eux seuls — PROUVENT que le compte est lié (cf. `causeLiaisonHubperso_`).
+ * @return {{etat:string, api:string, message:string, jeton:boolean}}
  */
 function sonderApiConfig_() {
   // GARDE-TEMPS **DANS** la boucle (leçon §7) : `UrlFetchApp` n'accepte AUCUN timeout en Apps
@@ -242,13 +280,13 @@ function sonderApiConfig_() {
     return { etat: 'indetermine', api: 'hubperso', message: 'refresh OAuth hubperso momentanément impossible' };
   }
   if (Date.now() - debutSonde > CONFIG.PANNE_CONFIG_SONDE_MAX_MS) {
-    return { etat: 'indetermine', api: 'hubperso', message: 'sonde interrompue (refresh OAuth trop lent)' };
+    return { etat: 'indetermine', api: 'hubperso', jeton: true, message: 'sonde interrompue (refresh OAuth trop lent)' };
   }
   var doute = null;
   for (var i = 0; i < SONDES_CONFIG_API.length; i++) {
     var s = SONDES_CONFIG_API[i];
     if (Date.now() - debutSonde > CONFIG.PANNE_CONFIG_SONDE_MAX_MS) {
-      return doute || { etat: 'indetermine', api: s.api, message: 'sonde interrompue (trop lente)' };
+      return doute || { etat: 'indetermine', api: s.api, jeton: true, message: 'sonde interrompue (trop lente)' };
     }
     var code = 0, corps = '';
     try {
@@ -260,18 +298,25 @@ function sonderApiConfig_() {
       code = rep.getResponseCode();
       corps = rep.getContentText();
     } catch (e) {
-      doute = doute || { etat: 'indetermine', api: s.api, message: 'sonde impossible : ' + tronquer_(String(e), 150) };
+      doute = doute || { etat: 'indetermine', api: s.api, jeton: true, message: 'sonde impossible : ' + tronquer_(String(e), 150) };
       continue;
     }
     var verdict = verdictSondeApi_(code, corps);
     if (verdict === 'desactivee') {
-      return { etat: 'desactivee', api: s.api, message: messageErreurGoogle_(corps) };
+      return { etat: 'desactivee', api: s.api, jeton: true, message: messageErreurGoogle_(corps) };
     }
     if (verdict === 'indetermine') {
-      doute = doute || { etat: 'indetermine', api: s.api, message: 'HTTP ' + code };
+      // Le CODE seul ne suffit pas à trancher (vécu 19/08 : « HTTP 400 » ⇒ identifiant sondé
+      // refusé ? paramètre ? projet ? — indécidable à distance, donc sonde non corrigeable). On
+      // joint le message EXPLOITABLE de Google. Vie privée : la requête porte sur un identifiant
+      // INEXISTANT choisi par nous — le corps d'erreur ne peut contenir aucune donnée de Marc.
+      doute = doute || {
+        etat: 'indetermine', api: s.api, jeton: true,
+        message: 'HTTP ' + code + ' — ' + tronquer_(messageErreurGoogle_(corps), 110)
+      };
     }
   }
-  return doute || { etat: 'active', api: '', message: '' };
+  return doute || { etat: 'active', api: '', jeton: true, message: '' };
 }
 
 /**

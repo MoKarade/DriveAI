@@ -12,7 +12,7 @@
  * Garde-fou : CRÉATION uniquement — jamais de modification ni de suppression, et jamais de
  * LECTURE d'un événement EXISTANT de Marc. UNIQUE exception, étroite (C28-48, révision ADR-0022) :
  * la sonde de configuration `sonderApiConfig_` (GoogleApi.gs) fait un GET sur l'identifiant
- * LITTÉRAL et volontairement INEXISTANT `SONDE_CONFIG_ID` — elle attend un 404, n'énumère rien et
+ * LITTÉRAL et volontairement INEXISTANT `SONDE_CONFIG_ID_CALENDAR` — elle attend un 404, n'énumère rien et
  * ne renvoie aucune donnée de Marc. Verrouillé par `test/surface-tasks-calendar.test.js`.
  * Échec d'API = dégradation propre (Journal + null).
  */

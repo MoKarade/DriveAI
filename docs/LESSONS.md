@@ -2455,3 +2455,33 @@ bug de fond déguisé en bruit — c'est le MCP `etat_moteur` (dernières erreur
 visible. Une erreur récurrente identique = un signal, pas du bruit. »
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).
+
+## 2026-08-19 — Une sonde « ressource inexistante » doit parler la GRAMMAIRE d'identifiant de CHAQUE API
+
+**Contexte.** C28-52, trouvé au 1ᵉʳ usage réel (liaison hubperso faite par Marc). La sonde
+config-api distingue « API activée » de « API désactivée » en faisant un GET sur un identifiant
+volontairement INEXISTANT : elle attend un **404** (verdict `active`), un 403+signature vaut
+`desactivee`, tout le reste `indetermine` (échec fermé, ne lève rien). Un SEUL identifiant,
+`driveaisondeconfigapi`, servait aux deux API. Il est valide pour Calendar (grammaire base32hex :
+a-v et 0-9, 5 à 1024 caractères) mais **structurellement impossible** pour Tasks (identifiant
+opaque base64url : 21 caractères ≡ 1 mod 4 ⇒ pas du base64) ⇒ **HTTP 400** à chaque sonde ⇒
+`indetermine` perpétuel ⇒ la reprise automatique de la suspension des intentions était **morte à
+vie, en silence**, alors que la liaison hubperso fonctionnait parfaitement. Aggravant : le verdict
+persisté ne portait que le CODE (`HTTP 400`), pas la raison — indiagnosticable à distance ; et la
+cause affichée dans Santé (« compte hubperso non lié — exécuter `lierCompteHubperso` ») datait
+d'avant la liaison, donc réclamait à Marc un geste qu'il venait de faire.
+
+**Leçon.** « (1) Une sonde qui interroge une ressource VOLONTAIREMENT INEXISTANTE ne prouve rien si
+l'identifiant est *malformé* : l'API répond alors 400 (« je ne comprends pas ta requête ») au lieu
+du 404 attendu (« ça n'existe pas »), et les deux réponses ne veulent PAS dire la même chose. Toute
+valeur mutualisée entre deux API suppose qu'elles partagent une grammaire — les grammaires
+d'identifiant sont propres à chaque API (Calendar = base32hex, Tasks = base64url) : un identifiant
+PAR API, et un test qui verrouille la GRAMMAIRE (charset + contrainte de longueur), pas la valeur.
+(2) Un verdict « indéterminé » persiste toujours son POURQUOI (le message de l'API, pas seulement
+le code) : sans lui, on ne peut ni corriger la sonde ni distinguer les causes à distance — une
+observabilité qui ne dit pas pourquoi ne sert à rien. (3) Une cause mémorisée que la sonde vient de
+DÉMENTIR (elle a obtenu un jeton ⇒ « compte non lié » est faux) doit être remplacée ; celles qu'elle
+n'a PAS démenties (un blip 500 ne réfute pas « API non activée dans le projet 777 ») ne doivent
+jamais être écrasées — la frontière se code et se teste des deux côtés. »
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §7).

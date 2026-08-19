@@ -54,8 +54,8 @@ test('aucune URL Tasks/Calendar inattendue : les seules sont les 2 créations + 
   const attendus = [
     /tasks\.googleapis\.com\/tasks\/v1\/lists\/@default\/tasks'/,          // création (Tasks.gs)
     /calendar\/v3\/calendars\/primary\/events'/,                           // création (Calendar.gs)
-    /tasks\/v1\/lists\/@default\/tasks\/' \+ SONDE_CONFIG_ID/,             // sonde (GoogleApi.gs)
-    /calendar\/v3\/calendars\/primary\/events\/' \+ SONDE_CONFIG_ID/,      // sonde (GoogleApi.gs)
+    /tasks\/v1\/lists\/@default\/tasks\/' \+ SONDE_CONFIG_ID_TASKS/,        // sonde (GoogleApi.gs)
+    /calendar\/v3\/calendars\/primary\/events\/' \+ SONDE_CONFIG_ID_CALENDAR/, // sonde (GoogleApi.gs)
   ];
   for (const l of lignes) {
     if (l.ligne.trim().startsWith('*') || l.ligne.trim().startsWith('//')) continue; // commentaires
@@ -84,10 +84,12 @@ test('le SEUL GET autorisé est la sonde, sur un identifiant LITTÉRAL et inexis
 
   // (a) l'identifiant est un littéral : aucune interpolation ne peut le faire pointer sur un
   //     élément RÉEL de Marc (c'est toute la raison pour laquelle le GET est acceptable).
-  const decl = googleApi.texte.match(/var SONDE_CONFIG_ID\s*=\s*(.+);/);
-  assert.ok(decl, 'SONDE_CONFIG_ID déclaré');
-  assert.match(decl[1].trim(), /^'[a-z0-9]+'$/,
-    'SONDE_CONFIG_ID doit rester un littéral simple — ni concaténation, ni template, ni variable');
+  for (const nom of ['SONDE_CONFIG_ID_TASKS', 'SONDE_CONFIG_ID_CALENDAR']) {
+    const decl = googleApi.texte.match(new RegExp('var ' + nom + '\\s*=\\s*(.+);'));
+    assert.ok(decl, nom + ' déclaré');
+    assert.match(decl[1].trim(), /^'[A-Za-z0-9_-]+'$/,
+      nom + ' doit rester un littéral simple — ni concaténation, ni template, ni variable');
+  }
 
   // (b) tout `method: 'get'` de src/ vers ces API vit dans le bloc de la sonde.
   const concernes = FICHIERS.filter((f) => HOTE_TASKS_CALENDAR.test(f.texte));
@@ -100,6 +102,35 @@ test('le SEUL GET autorisé est la sonde, sur un identifiant LITTÉRAL et inexis
       assert.strictEqual(gets, 0, `${f.nom} : aucune LECTURE des tâches/événements de Marc`);
     }
   }
+});
+
+test('chaque identifiant sondé est VALIDE pour la grammaire de SON API (sinon 400 ⇒ sonde stérile)', () => {
+  // Leçon du 19/08 (1ᵉʳ usage réel) : un SEUL identifiant partagé par les deux sondes. Il était
+  // valide pour Calendar (base32hex) mais IMPOSSIBLE pour Tasks (base64url, longueur ≡ 1 mod 4)
+  // ⇒ HTTP 400 à chaque sonde ⇒ verdict « indeterminé » perpétuel ⇒ la reprise automatique de la
+  // suspension était morte À VIE, en silence. Ce test verrouille la grammaire, pas la valeur.
+  const googleApi = FICHIERS.find((f) => f.nom === 'GoogleApi.gs');
+  const val = (nom) => googleApi.texte.match(new RegExp("var " + nom + "\\s*=\\s*'([^']+)'"))[1];
+
+  // Calendar : « base32hex » — lettres a-v et chiffres 0-9, 5 à 1024 caractères (doc Google).
+  const cal = val('SONDE_CONFIG_ID_CALENDAR');
+  assert.match(cal, /^[a-v0-9]{5,1024}$/,
+    'ID Calendar hors grammaire base32hex (a-v, 0-9) ⇒ 400 au lieu du 404 attendu');
+
+  // Tasks : identifiant OPAQUE base64url. Une longueur ≡ 1 (mod 4) ne peut PAS être du base64.
+  const tsk = val('SONDE_CONFIG_ID_TASKS');
+  assert.match(tsk, /^[A-Za-z0-9_-]+$/, 'ID Tasks hors alphabet base64url');
+  assert.notStrictEqual(tsk.length % 4, 1,
+    'longueur ≡ 1 (mod 4) : base64 impossible ⇒ HTTP 400 ⇒ la sonde ne conclurait jamais');
+
+  // …et il reste INEXISTANT par construction : décodé, ce n'est pas la forme d'un vrai ID Tasks
+  // (« <liste>:<n>:<n> ») mais notre propre libellé — impossible de viser une tâche de Marc.
+  const clair = Buffer.from(tsk.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+  assert.match(clair, /DriveAI/i, 'l\'ID Tasks doit rester notre libellé, jamais une valeur opaque');
+  assert.ok(clair.indexOf(':') === -1, 'un ID Tasks RÉEL contient des « : » — le nôtre ne doit pas');
+
+  // Les deux identifiants sont DISTINCTS : c'est tout l'objet du correctif.
+  assert.notStrictEqual(cal, tsk, 'un identifiant partagé re-crée le bug (grammaires différentes)');
 });
 
 test('les en-têtes de Tasks.gs / Calendar.gs documentent l\'exception (doc ⇄ code, bidirectionnel)', () => {

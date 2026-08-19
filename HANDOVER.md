@@ -34,9 +34,16 @@
 > **geste Marc une fois** : suivre `docs/HUBPERSO.md` (client OAuth Web dans hubperso,
 > 2 Properties, `lierCompteHubperso`, 1 clic de consentement) — la sonde lève ensuite la
 > suspension TOUTE SEULE
-> (≤ 13 min) et le tri Gmail repart avec les intentions. **Un rappel automatique (Routine
-> `trig_013kb7wpkm2pXqBRTq71MM13`) vérifie l'onglet Santé plusieurs fois/jour et s'auto-supprime
-> une fois la liaison faite.** **C28-53 (ADR-0042) — MCP DriveAI** (demande Marc 2026-08-19 « je
+> (≤ 13 min) et le tri Gmail repart avec les intentions. **Liaison FAITE par Marc le 19/08 vers 14:20**
+> (« ✅ Compte hubperso lié »), après deux correctifs trouvés au PREMIER usage réel : `doGet` ne
+> recevait jamais le marqueur `hubperso=1` (Google n'ajoute que `code`+`state` — #289), puis la
+> sonde restait `indetermine (Tasks) — HTTP 400` parce qu'un identifiant sondé UNIQUE servait aux
+> deux API (valide en base32hex pour Calendar, impossible en base64url pour Tasks) : verdict
+> stérile ⇒ reprise automatique morte EN SILENCE. Corrigé (un identifiant PAR API + le POURQUOI
+> persisté + la cause démentie remplacée). PREUVE que la liaison marche : la sonde obtient un
+> jeton et JOINT les API (sans jeton, le verdict serait `desactivee (hubperso)`) et Calendar ne
+> renvoie AUCUN 403 « API non activée ». Le rappel automatique (Routine
+> `trig_013kb7wpkm2pXqBRTq71MM13`) est devenu FAUX : à supprimer.** **C28-53 (ADR-0042) — MCP DriveAI** (demande Marc 2026-08-19 « je
 > veux un mcp ») : connecteur claude.ai servi par le Vercel existant (`api/mcp/*`, OAuth 2.1 porté
 > du patron FinanceAI éprouvé), 6 outils derrière un 3ᵉ secret `DriveAI_MCP_SECRET`/`MCP_ENGINE_SECRET`
 > (`src/Mcp.gs` : état moteur+missions+erreurs+mail+panne LLM, recherche/lecture, question, réorg

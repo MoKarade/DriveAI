@@ -126,6 +126,10 @@ function actionMcpEtat_() {
     var config = etatPanneConfigApi_();
     r.intentionsSuspendues = !!config.actif;
     r.intentionsDetail = config.actif ? String(config.message || '') : '';
+    // Verdict de la DERNIÈRE sonde (19/08) : c'est lui qui dit si la reprise automatique
+    // progresse ou tourne à vide (« indetermine … » à répétition = sonde stérile). Sans ce champ,
+    // il fallait aller le lire à la main dans l'onglet Santé — le MCP est justement là pour ça.
+    r.intentionsSonde = config.actif ? String(config.sonde || '') : '';
   } catch (e) { r.intentionsSuspendues = null; r.intentionsErreur = String(e); }
   // Panne PLATEFORME LLM (revue 🟠3) : LE scénario « le moteur tourne mais rien ne se classe »
   // (crédit épuisé, 401, 529 prolongé). Lue à la MÊME fenêtre que la décision (`chargerPannePlateforme_`,

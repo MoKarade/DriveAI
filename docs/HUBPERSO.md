@@ -82,5 +82,6 @@ Dans le projet Apps Script DriveAI : ⚙️ « Paramètres du projet » → « P
 | Page « Script function not found: doGet » au retour | Le déploiement de cette version n'est pas encore passé (`/exec` sert l'ancienne) | Attendre que la CI ait déployé (~2 min après le merge), re-cliquer l'URL de consentement |
 | `redirect_uri_mismatch` au consentement | URI de la console ≠ URI affichée en (1) | Recopier l'URI exacte, Enregistrer, réessayer |
 | Santé : « API … has not been used in project … » | API pas activée dans **hubperso** | Étape 1 (le numéro de projet dans le message doit être celui de hubperso) |
+| Santé : « dernière sonde : indetermine (…) — HTTP 4xx » | La sonde a bien un jeton (donc **le compte EST lié**) mais l'API répond autre chose qu'un 404 | Le message joint dit lequel : `401` ⇒ consentement révoqué (refaire l'étape 4) ; `403` ⇒ droits/API (étape 1) ; `400` ⇒ bug de la sonde elle-même (corrigé le 19/08 : un identifiant par API) |
 | Santé : « jeton hubperso momentanément indisponible » | Blip transitoire du serveur de jetons Google | Rien à faire — reprise automatique à la sonde suivante |
 | Ça marchait, puis « invalid_grant » chaque semaine | Écran de consentement resté « En test » | Étape 2.1 : publier « En production », refaire l'étape 4 |
