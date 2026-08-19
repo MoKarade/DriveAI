@@ -575,6 +575,12 @@ function scanArriereTri_(etat, plafondAtteint, candidats, libelles) {
     }
     signalerRetablissementGmail_();
     if (!fils.length) {
+      // « Terminé » est un verdict DÉFINITIF : on ne le pose JAMAIS depuis un travail dégradé
+      // (revue flotte C28-54). Avant ADR-0043, un fil sans analyse rendait 'attend' et GELAIT
+      // l'offset ; désormais il rend 'traite', donc l'offset avance et la campagne pourrait
+      // atteindre la page vide en n'ayant archivé aucun fil — le « verdict figé sur un
+      // je-n'ai-pas-su-faire » de la leçon C28-33, appliqué à la campagne au lieu du fil.
+      if (intentionsSuspendues_()) return; // on reprendra la conclusion une fois l'analyse revenue
       props.setProperty('DriveAI_TRI_RATTRAPAGE', 'terminé');
       journalInfo_('TriGmail', 'Rattrapage du stock TERMINÉ (' + offset + ' fils) — le scan avant suffit désormais.');
       return;
@@ -723,6 +729,13 @@ function finaliserPasseBoite_(props, offset) {
  * il n'a donc rien à dégrader (et l'inclure ferait croire à un mode dégradé pendant que rien
  * ne tourne).
  *
+ * ⚠️ HONNÊTETÉ sur `estPannePlateforme_` (revue flotte C28-54) : aujourd'hui ce terme est
+ * INATTEIGNABLE depuis le tick — `Main.gs` saute l'étape `tri-gmail` ENTIÈRE sous cette panne
+ * (et `plafondAtteint` la re-teste). Il est gardé en DÉFENSE EN PROFONDEUR : si un jour le tri
+ * tournait pendant une panne LLM, il dégraderait au lieu d'attendre une clé impossible. Ce qui
+ * en découle : la ligne Santé ne doit PAS déduire « mode dégradé » de ce prédicat sans distinguer
+ * l'arrêt (cf. `texteSanteTriDegrade_`, qui teste l'arrêt d'abord).
+ *
  * ⚠️ Si un jour `traiterIntentionsMail_` gagne une nouvelle cause d'arrêt DURABLE, elle doit
  * arriver ici : sinon le tri se remet à attendre une clé qui n'arrivera jamais (le bug de 5 jours
  * des 14-19/08). Verrouillé par `test/tri-gmail.test.js` (inventaire des gardes).
@@ -789,6 +802,12 @@ function trierFil_(fil, candidats, libelles, verifierBoite) {
     // re-déclenche le tri (revue flotte : sinon un mail lu après son tri n'était JAMAIS archivé).
     var cleNominale = 'tri|' + filId + '|' + ts + (nonLu ? '|nonlu' : '|lu');
     if (indexContient_(cleNominale)) return 'deja';
+    // Mur du mode DÉGRADÉ posé ICI, avant `getLabels()`/`getMessages()` (revue quotas C28-54) :
+    // la clé dégradée se dérive de `filId|ts|lu` sans avoir besoin du dernier messageId. Sans ce
+    // court-circuit, chaque tick d'une panne longue rechargeait intégralement les fils déjà triés
+    // en dégradé pour finir sur un 'deja'. Sûr : pendant que la panne dure, la ré-évaluation
+    // nominale est de toute façon impossible (c'est la clé `intention|` qui manque).
+    if (intentionsSuspendues_() && indexContient_(cleNominale + '|deg')) return 'deja';
 
     // Libellés DÉJÀ posés sur le fil : ⏰/⚠️ sont des décisions antérieures qui survivent aux
     // nouveaux messages (un fil marqué ⏰ ne doit JAMAIS être archivé, quel que soit le suivi).

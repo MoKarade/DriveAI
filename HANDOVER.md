@@ -1501,6 +1501,22 @@
 
 ---
 
+> **C28-54/55 (19/08 soir) — l'incident a livré ses deux chantiers.** (1) **ADR-0043** : le tri
+> Gmail ne meurt plus quand les intentions sont suspendues (mode DÉGRADÉ — libellés oui, archivage
+> non, clé `|deg` RÉVISABLE au retour ; Santé dit l'état en TROIS niveaux : normal / dégradé /
+> à l'arrêt). (2) **C28-55** : scopes `tasks` et `calendar.events` retirés du manifeste (inutilisés
+> depuis ADR-0041) + `test/scopes.test.js`, verrou bidirectionnel du moindre privilège.
+> ⚠️ Le retrait ne révoque PAS l'autorisation déjà accordée dans le compte Google de Marc — geste
+> à sa main (myaccount.google.com → connexions tierces → supprimer l'accès, puis `installerTrigger`
+> pour re-consentir ; le moteur est ARRÊTÉ entre les deux).
+> **Reste au backlog, remonté par la revue quotas :** le scan AVANT du tri n'a aucun plafond
+> QUOTIDIEN (théorique 8 640 fils/j) — à border dans son unité comme ses pairs ; et un fil trié en
+> dégradé qui sort de la fenêtre 30 j avant le retour des intentions garde ses libellés dégradés
+> sans jamais être archivé (mode d'échec SÛR, mais dette invisible).
+> **⚠️ Process :** un draft n'est PAS un frein dans ce dépôt — un workflow le passe en « ready » et
+> l'auto-merge fusionne (vécu ×2 : #293 et #295 sont partis en prod avant la fin de leur revue).
+> Pour tenir une PR, poser le label `do-not-merge`.
+
 ## 1. TL;DR (où on en est)
 
 - **Phase 0** (scaffolding & automatisation) : ✅ mergée.

@@ -207,15 +207,28 @@ function majSante_() {
 
 /**
  * Ligne Santé du tri Gmail (ADR-0043). Lecture seule, aucune décision.
- * Best-effort : si l'état est illisible, on ne prétend RIEN plutôt que d'affirmer « normal ».
+ *
+ * TROIS états, pas deux (revue flotte C28-54, les DEUX agents) : une panne de compte LLM ne
+ * DÉGRADE pas le tri, elle l'ARRÊTE — `Main.gs` saute l'étape `tri-gmail` entière sous
+ * `estPannePlateforme_()`. Annoncer « libellés posés » dans ce cas serait un mensonge sur le seul
+ * canal que Marc lit (no-fake-data, §7). On teste donc l'arrêt AVANT la dégradation.
+ *
+ * On interroge les prédicats de panne DIRECTEMENT plutôt que `intentionsSuspendues_()` : celui-ci
+ * avale ses exceptions et rend `false`, ce qui afficherait « ✅ normal » sur un état ILLISIBLE —
+ * exactement ce que ce try/catch veut éviter (revue code C28-54 : le catch était mort).
  * @return {string}
  */
 function texteSanteTriDegrade_() {
-  var degrade;
+  var arret, degrade;
   try {
-    degrade = intentionsSuspendues_();
+    arret = !!estPannePlateforme_();
+    degrade = !!estPanneConfigApi_();
   } catch (e) {
     return 'état indéterminé (lecture de l\'état impossible)';
+  }
+  if (arret) {
+    return '⛔ À L\'ARRÊT (panne de compte LLM) — aucun tri ce tick ; reprise automatique ' +
+      'dès que la re-sonde voit le compte rétabli';
   }
   return degrade
     ? '⚠️ mode DÉGRADÉ (analyse d\'intentions suspendue) — libellés posés, AUCUN archivage ; ' +

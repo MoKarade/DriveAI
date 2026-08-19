@@ -241,6 +241,39 @@ test('tri dégradé : idempotent — un 2e passage pendant la MÊME panne ne re-
   assert.deepStrictEqual(calls.ajouts, []);
 });
 
+test('rattrapage : une passe 100 % DÉGRADÉE ne se marque JAMAIS « terminé » (revue C28-54)', () => {
+  // Avant ADR-0043, un fil sans analyse rendait 'attend' ⇒ `lotComplet=false` ⇒ l'offset gelait et
+  // la dette était conservée. Le mode dégradé rend 'traite' ⇒ l'offset avance ⇒ la campagne
+  // pouvait atteindre la page vide et se figer « terminé » sans avoir archivé un seul fil : le
+  // « verdict figé sur un je-n'ai-pas-su-faire » (C28-33), appliqué à la CAMPAGNE.
+  const enPanne = ctxTri({ props: { DriveAI_TRI_RATTRAPAGE: '', DriveAI_TRI_BOITE: 'terminé' } });
+  enPanne.c.estPanneConfigApi_ = () => true;
+  enPanne.c.GmailApp.search = () => []; // page vide : la campagne « voudrait » conclure
+  enPanne.c.trierFilsGmail_(() => false);
+  assert.notStrictEqual(enPanne.calls.props.DriveAI_TRI_RATTRAPAGE, 'terminé',
+    'on ne conclut pas une campagne pendant que l\'analyse est suspendue');
+
+  // Contrôle : hors panne, la même page vide conclut bien (sinon le test verrouillerait un gel).
+  const normal = ctxTri({ props: { DriveAI_TRI_RATTRAPAGE: '', DriveAI_TRI_BOITE: 'terminé' } });
+  normal.c.estPanneConfigApi_ = () => false;
+  normal.c.GmailApp.search = () => [];
+  normal.c.trierFilsGmail_(() => false);
+  assert.strictEqual(normal.calls.props.DriveAI_TRI_RATTRAPAGE, 'terminé');
+});
+
+test('tri dégradé : le mur |deg court-circuite AVANT de charger les messages (quota)', () => {
+  // Pendant une panne longue, chaque tick re-présente les mêmes fils : sans mur posé tôt, on
+  // payait un `getMessages()` complet par fil et par tick pour finir sur un 'deja'.
+  const ts = Date.now();
+  const { c, calls } = ctxTri({ index: { ['tri|Q1|' + ts + '|lu|deg']: true } });
+  c.estPanneConfigApi_ = () => true;
+  c.GmailApp.search = (q, d) => (d === 0
+    ? [filMock(calls, { id: 'Q1', ts: ts, dernierMsgId: 'MQ1', expediteur: 'a@b.c', sujet: 'x' })]
+    : []);
+  c.trierFilsGmail_(() => false);
+  assert.strictEqual(calls.getMessages, 0, 'aucun chargement de messages pour un fil déjà dégradé');
+});
+
 test('intentionsSuspendues_ : vrai sur CHAQUE panne durable, faux sinon, jamais d\'exception', () => {
   const ctx = load(['Config.gs', 'Gmail.gs', 'TriGmail.gs']);
   const cas = [
@@ -273,7 +306,14 @@ test('intentionsSuspendues_ : MIROIR des pannes durables de traiterIntentionsMai
   const debut = src.indexOf('function traiterIntentionsMail_');
   assert.ok(debut > 0, 'fonction trouvée');
   const fin = src.indexOf('\nfunction ', debut + 1);
-  const corps = src.slice(debut, fin === -1 ? undefined : fin);
+  // La garde qui coupe RÉELLEMENT l'étape ne vit pas toute dans Intentions.gs : `Main.gs`
+  // enveloppe le bloc intake/intentions/tri dans un `if (!estPanne…_())`. Ne scanner que
+  // `traiterIntentionsMail_` rendait ce test aveugle à la moitié du problème (revue flotte).
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'Main.gs'), 'utf8');
+  const iTri = main.indexOf("etapeSuivie_('tri-gmail'");
+  assert.ok(iTri > 0, 'étape tri-gmail trouvée dans Main.gs');
+  const corps = src.slice(debut, fin === -1 ? undefined : fin) +
+    main.slice(Math.max(0, iTri - 3000), iTri); // les gardes qui enveloppent l'étape
   // Convention de nommage du projet : une panne de plateforme s'appelle `estPanneXxx_`.
   const pannes = Array.from(new Set((corps.match(/estPanne[A-Za-z]*_/g) || [])));
   assert.ok(pannes.length >= 2, 'les pannes sont bien détectées (sinon le test passerait à vide)');
