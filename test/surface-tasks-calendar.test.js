@@ -51,11 +51,14 @@ test('aucune URL Tasks/Calendar inattendue : les seules sont les 2 créations + 
   const lignes = lignesApi_();
   assert.ok(lignes.length > 0, 'garde-fou vivant : le test doit trouver les appels, pas passer à vide');
   // Chaque ligne doit être l'un des quatre points d'appel connus. Une 5ᵉ URL = revue obligatoire.
+  // ANCRÉS EN FIN (revue sécurité, mutation prouvée) : sans l'ancre, `… + SONDE_CONFIG_ID_TASKS +
+  // idTacheDeMarc` passait le test — le tripwire promettait « aucune interpolation ne peut viser un
+  // élément RÉEL » sans le prouver. L'URL doit donc se TERMINER là où le motif s'arrête.
   const attendus = [
-    /tasks\.googleapis\.com\/tasks\/v1\/lists\/@default\/tasks'/,          // création (Tasks.gs)
-    /calendar\/v3\/calendars\/primary\/events'/,                           // création (Calendar.gs)
-    /tasks\/v1\/lists\/@default\/tasks\/' \+ SONDE_CONFIG_ID_TASKS/,        // sonde (GoogleApi.gs)
-    /calendar\/v3\/calendars\/primary\/events\/' \+ SONDE_CONFIG_ID_CALENDAR/, // sonde (GoogleApi.gs)
+    /tasks\.googleapis\.com\/tasks\/v1\/lists\/@default\/tasks',?$/,          // création (Tasks.gs)
+    /calendar\/v3\/calendars\/primary\/events',?$/,                           // création (Calendar.gs)
+    /tasks\/v1\/lists\/@default\/tasks\/' \+ SONDE_CONFIG_ID_TASKS \},?$/,     // sonde (GoogleApi.gs)
+    /calendar\/v3\/calendars\/primary\/events\/' \+ SONDE_CONFIG_ID_CALENDAR \},?$/, // sonde
   ];
   for (const l of lignes) {
     if (l.ligne.trim().startsWith('*') || l.ligne.trim().startsWith('//')) continue; // commentaires
@@ -108,7 +111,11 @@ test('chaque identifiant sondé est VALIDE pour la grammaire de SON API (sinon 4
   // Leçon du 19/08 (1ᵉʳ usage réel) : un SEUL identifiant partagé par les deux sondes. Il était
   // valide pour Calendar (base32hex) mais IMPOSSIBLE pour Tasks (base64url, longueur ≡ 1 mod 4)
   // ⇒ HTTP 400 à chaque sonde ⇒ verdict « indeterminé » perpétuel ⇒ la reprise automatique de la
-  // suspension était morte À VIE, en silence. Ce test verrouille la grammaire, pas la valeur.
+  // reprise RAPIDE (≤ 13 min) était supprimée en silence — il ne restait que l'expiration de la
+  // fenêtre de 24 h, tardive et à l'aveugle, avec un message Santé périmé entre-temps. Ce test
+  // verrouille la GRAMMAIRE (charset + longueur), jamais la valeur. ⚠️ Il verrouille une RÈGLE
+  // INFÉRÉE d'une observation : la seule preuve qu'une sonde conclut vraiment reste le verdict
+  // `dernière sonde` en PROD (onglet Santé / `intentionsSonde` du MCP), jamais la CI.
   const googleApi = FICHIERS.find((f) => f.nom === 'GoogleApi.gs');
   const val = (nom) => googleApi.texte.match(new RegExp("var " + nom + "\\s*=\\s*'([^']+)'"))[1];
 
@@ -116,6 +123,9 @@ test('chaque identifiant sondé est VALIDE pour la grammaire de SON API (sinon 4
   const cal = val('SONDE_CONFIG_ID_CALENDAR');
   assert.match(cal, /^[a-v0-9]{5,1024}$/,
     'ID Calendar hors grammaire base32hex (a-v, 0-9) ⇒ 400 au lieu du 404 attendu');
+  // …et il reste NOTRE libellé (revue sécurité : sans ça, un ID d'aspect réel — donc possiblement
+  // un VRAI événement de Marc — passait le test, la grammaire seule ne prouvant pas l'inexistence).
+  assert.match(cal, /driveai/i, 'l\'ID Calendar doit rester notre libellé, jamais une valeur opaque');
 
   // Tasks : identifiant OPAQUE base64url. Une longueur ≡ 1 (mod 4) ne peut PAS être du base64.
   const tsk = val('SONDE_CONFIG_ID_TASKS');

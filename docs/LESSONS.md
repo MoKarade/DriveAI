@@ -2465,8 +2465,11 @@ volontairement INEXISTANT : elle attend un **404** (verdict `active`), un 403+si
 `driveaisondeconfigapi`, servait aux deux API. Il est valide pour Calendar (grammaire base32hex :
 a-v et 0-9, 5 à 1024 caractères) mais **structurellement impossible** pour Tasks (identifiant
 opaque base64url : 21 caractères ≡ 1 mod 4 ⇒ pas du base64) ⇒ **HTTP 400** à chaque sonde ⇒
-`indetermine` perpétuel ⇒ la reprise automatique de la suspension des intentions était **morte à
-vie, en silence**, alors que la liaison hubperso fonctionnait parfaitement. Aggravant : le verdict
+`indetermine` perpétuel ⇒ la reprise **rapide** (≤ 13 min) de la suspension des intentions était
+**supprimée en silence**, alors que la liaison hubperso fonctionnait parfaitement. Précision qui
+compte (trouvée en revue) : ce n'était PAS un blocage éternel — faute de rafraîchissement, la
+suspension expire d'elle-même après 24 h ; le coût réel est une reprise tardive et à l'aveugle,
+plus un message Santé périmé qui réclamait à Marc un geste déjà fait. Aggravant : le verdict
 persisté ne portait que le CODE (`HTTP 400`), pas la raison — indiagnosticable à distance ; et la
 cause affichée dans Santé (« compte hubperso non lié — exécuter `lierCompteHubperso` ») datait
 d'avant la liaison, donc réclamait à Marc un geste qu'il venait de faire.
@@ -2482,6 +2485,16 @@ le code) : sans lui, on ne peut ni corriger la sonde ni distinguer les causes à
 observabilité qui ne dit pas pourquoi ne sert à rien. (3) Une cause mémorisée que la sonde vient de
 DÉMENTIR (elle a obtenu un jeton ⇒ « compte non lié » est faux) doit être remplacée ; celles qu'elle
 n'a PAS démenties (un blip 500 ne réfute pas « API non activée dans le projet 777 ») ne doivent
-jamais être écrasées — la frontière se code et se teste des deux côtés. »
+jamais être écrasées — la frontière se code et se teste des deux côtés. (4) Le prédicat qui
+AUTORISE cet écrasement reconnaît la CAUSE démentie par son CONTENU (`/lierCompteHubperso/`),
+jamais un préfixe d'entité partagé par d'autres causes (`hubperso — `, porté aussi par « sonde
+interrompue ») : sinon il reste vrai à vie et finit par laisser un blip écraser un diagnostic
+certain. Et la « preuve » qui l'accompagne doit être la bonne : un jeton servi par un CACHE ne
+prouve pas que le consentement est encore valide — le 401 est justement le code qui le dément,
+donc il ne doit jamais effacer la consigne de re-liaison. (5) Toute conclusion tirée d'un ÉTAT
+PERSISTÉ exige de vérifier qu'aucun chemin de SORTIE ANTICIPÉE ne produit le même état : ici une
+passe abandonnée par le garde-temps rendait exactement le même texte qu'une passe complète — on
+aurait affirmé « la 2ᵉ API n'a pas refusé » alors qu'elle n'avait peut-être jamais été appelée.
+L'abandon doit se DIRE dans l'état. »
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §7).

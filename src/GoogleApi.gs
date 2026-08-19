@@ -89,7 +89,8 @@ function sonderEtLeverPanneConfig_(props) {
   var verdict = sonderApiConfig_();
   // Verdict de la DERNIÈRE sonde, toujours persisté (revue code C28-48) : sans lui, une sonde qui
   // ne conclut JAMAIS (ex. Google resserre la validation de l'identifiant sondé ⇒ 400 systématique
-  // ⇒ `indetermine` sous l'allowlist) rendrait la reprise inopérante À VIE et SANS AUCUNE TRACE.
+  // ⇒ `indetermine` sous l'allowlist) supprime la reprise RAPIDE (≤ 13 min) SANS AUCUNE TRACE —
+  // il ne reste alors que l'expiration de la fenêtre de 24 h, une reprise à l'aveugle et tardive.
   // Le POURQUOI est joint pour un verdict INDÉTERMINÉ (vécu 19/08 : « indetermine (Tasks) » sans
   // le code HTTP ⇒ impossible de trancher « API non activée » / « 400 sur l'identifiant sondé » /
   // « 401 » à distance — une observabilité qui ne dit pas POURQUOI ne sert à rien). Sur
@@ -115,13 +116,13 @@ function sonderEtLeverPanneConfig_(props) {
   if (verdict.etat !== 'active') {
     // Indéterminé (400/401/5xx, réseau) : on ne lève RIEN (échec fermé), et on n'ÉCRASE PAS le
     // diagnostic connu — un blip 500 ne réfute pas un « API non activée dans le projet 777 ».
-    // UNE exception, étroite : la sonde a OBTENU un jeton (`verdict.jeton`) alors que la cause
-    // mémorisée est « compte hubperso non lié ». Là, la cause est PROUVÉE FAUSSE : la laisser
-    // s'afficher dans Santé enverrait Marc refaire un geste déjà fait (vécu 19/08, où Santé
-    // réclamait `lierCompteHubperso` pendant que la sonde appelait Tasks avec son jeton).
+    // UNE exception, étroite : une API a RÉPONDU autre chose qu'un 401 (`verdict.preuveLiaison`)
+    // alors que la cause mémorisée réclame `lierCompteHubperso`. Là, la cause est PROUVÉE FAUSSE :
+    // la laisser s'afficher dans Santé enverrait Marc refaire un geste déjà fait (vécu 19/08, où
+    // Santé réclamait `lierCompteHubperso` pendant que la sonde appelait Tasks avec son jeton).
     var connu = '';
     try { connu = props.getProperty('DriveAI_PANNE_CONFIG_MSG') || ''; } catch (e) { }
-    if (verdict.jeton && causeLiaisonHubperso_(connu)) {
+    if (verdict.preuveLiaison && causeLiaisonHubperso_(connu)) {
       memoriserMessageConfigApi_(props, verdict.api, verdict.message);
     }
     return;
@@ -150,18 +151,30 @@ function sonderEtLeverPanneConfig_(props) {
  * elle est levée depuis un `try` qui enveloppe toute la création d'intention : un futur `throw`
  * ajouté là contiendrait le TITRE du mail. On n'accepte donc que le préfixe attendu, sinon on
  * dégrade vers un libellé générique (ADR-0007 : métadonnées seulement, jamais de contenu).
+ *
+ * ⚠️ INVARIANT DE L'AUTRE BRANCHE (revue sécurité M3) : quand `api` est RENSEIGNÉ, le filtre ne
+ * s'applique pas — l'appelant est alors, par construction, `sonderEtLeverPanneConfig_`, dont le
+ * message ne peut venir que d'un littéral à nous ou du corps d'erreur d'un GET sur un identifiant
+ * INEXISTANT (aucune donnée de Marc ne peut y transiter). Cet invariant n'est pas déductible du
+ * code de cette fonction : il est verrouillé par le tripwire des call sites
+ * (`test/intentions-fiabilite.test.js`). Tout NOUVEL appelant avec un `api` renseigné doit prouver
+ * la même provenance, ou passer `api = ''` pour retomber sous le filtre.
  */
 var PREFIXE_CONFIG_API = /^config-api [A-Za-z]+ : /;
 
 /**
- * Vrai si la cause mémorisée est la LIAISON hubperso (« compte non lié / révoqué »). PURE.
- * C'est nous qui écrivons ce préfixe (`memoriserMessageConfigApi_(props, 'hubperso', …)`) : c'est
- * la SEULE cause qu'une sonde ayant obtenu un jeton peut DÉMENTIR — les autres (API non activée,
- * blip) restent vraies tant qu'une sonde ne les infirme pas.
+ * Vrai si la cause mémorisée est « compte hubperso non lié / révoqué ». PURE.
+ *
+ * On reconnaît la CONSIGNE (`lierCompteHubperso`), pas le préfixe d'API (revue code 1) : le
+ * préfixe `hubperso — ` est partagé par d'AUTRES causes (« sonde interrompue », « refresh
+ * momentanément impossible ») qu'une sonde ne dément pas — s'y fier rendait le prédicat vrai à vie
+ * et laissait ensuite un blip 500 écraser un diagnostic certain. C'est la SEULE cause qu'une
+ * réponse d'API peut démentir : les autres (API non activée dans le projet, blip) restent vraies
+ * tant qu'une sonde ne les infirme pas.
  * @param {string} msg
  * @return {boolean}
  */
-function causeLiaisonHubperso_(msg) { return /^hubperso — /.test(String(msg || '')); }
+function causeLiaisonHubperso_(msg) { return /lierCompteHubperso/.test(String(msg || '')); }
 
 function memoriserMessageConfigApi_(props, api, message) {
   var txt = String(message || '').replace(/\s+/g, ' ').trim();
@@ -206,8 +219,11 @@ function etatPanneConfigApi_() {
 // UN IDENTIFIANT PAR API (correctif 19/08, 1ᵉʳ usage réel) : les deux API n'ont PAS la même
 // GRAMMAIRE d'identifiant, et un identifiant syntaxiquement INVALIDE fait répondre 400 (verdict
 // « indéterminé » sous l'allowlist) au lieu du 404 NOMINAL que la sonde attend — elle ne conclut
-// alors JAMAIS et la reprise automatique est inopérante À VIE (vécu : `indetermine (Tasks) —
-// HTTP 400` à chaque sonde, suspension jamais levée alors que le compte hubperso était bien lié).
+// alors JAMAIS, ce qui SUPPRIME la reprise rapide (vécu : `indetermine (Tasks) — HTTP 400` à
+// chaque sonde, alors que le compte hubperso était bien lié). La suspension finit certes par
+// expirer d'elle-même (fenêtre de 24 h, `PANNE_CONFIG_RESONDE_MS`) : ce que la sonde stérile coûte
+// n'est donc pas un blocage éternel mais la reprise ≤ 13 min — et, pire, un message Santé PÉRIMÉ
+// pendant ce temps, qui réclame à Marc un geste déjà fait.
 //  - Calendar : « base32hex », lettres a-v et chiffres 0-9, 5 à 1024 caractères ⇒ le libellé en
 //    clair convient (aucune lettre au-delà de « v »).
 //  - Tasks : identifiant OPAQUE base64url — une longueur ≡ 1 (mod 4) est structurellement
@@ -249,9 +265,11 @@ function verdictSondeApi_(code, corps) {
  * Sonde les DEUX API dont dépendent les intentions (une seule suspension les couvre toutes deux).
  * Verdict global : 'desactivee' dès qu'une API refuse (avec son message exploitable), 'active'
  * seulement si les DEUX répondent, 'indetermine' sinon.
- * `jeton:true` marque les verdicts rendus APRÈS l'obtention d'un jeton hubperso : ceux-là — et
- * eux seuls — PROUVENT que le compte est lié (cf. `causeLiaisonHubperso_`).
- * @return {{etat:string, api:string, message:string, jeton:boolean}}
+ * `preuveLiaison` (ABSENT le plus souvent — jamais tester `=== false`) n'est posé que sur un
+ * verdict issu d'une RÉPONSE HTTP RÉELLE d'une des API sondées, et jamais sur un 401 : ce sont les
+ * seules réponses qui PROUVENT que les credentials hubperso sont encore valides (revue code 1/2/5 —
+ * un abandon de passe, une exception réseau ou un 401 ne prouvent rien du tout).
+ * @return {{etat:string, api:string, message:string, preuveLiaison:(boolean|undefined)}}
  */
 function sonderApiConfig_() {
   // GARDE-TEMPS **DANS** la boucle (leçon §7) : `UrlFetchApp` n'accepte AUCUN timeout en Apps
@@ -280,13 +298,17 @@ function sonderApiConfig_() {
     return { etat: 'indetermine', api: 'hubperso', message: 'refresh OAuth hubperso momentanément impossible' };
   }
   if (Date.now() - debutSonde > CONFIG.PANNE_CONFIG_SONDE_MAX_MS) {
-    return { etat: 'indetermine', api: 'hubperso', jeton: true, message: 'sonde interrompue (refresh OAuth trop lent)' };
+    return { etat: 'indetermine', api: 'hubperso', message: 'sonde interrompue (refresh OAuth trop lent)' };
   }
   var doute = null;
   for (var i = 0; i < SONDES_CONFIG_API.length; i++) {
     var s = SONDES_CONFIG_API[i];
     if (Date.now() - debutSonde > CONFIG.PANNE_CONFIG_SONDE_MAX_MS) {
-      return doute || { etat: 'indetermine', api: s.api, jeton: true, message: 'sonde interrompue (trop lente)' };
+      // Une passe ABANDONNÉE rendait un état STRICTEMENT identique à une passe complète (revue
+      // code 3) : on ne pouvait donc pas conclure « l'autre API n'a pas refusé » — elle n'avait
+      // peut-être jamais été appelée. L'abandon se dit dans le verdict.
+      if (doute) return { etat: doute.etat, api: doute.api, message: doute.message + ' (passe abandonnée)' };
+      return { etat: 'indetermine', api: s.api, message: 'sonde interrompue (trop lente)' };
     }
     var code = 0, corps = '';
     try {
@@ -298,25 +320,29 @@ function sonderApiConfig_() {
       code = rep.getResponseCode();
       corps = rep.getContentText();
     } catch (e) {
-      doute = doute || { etat: 'indetermine', api: s.api, jeton: true, message: 'sonde impossible : ' + tronquer_(String(e), 150) };
+      doute = doute || { etat: 'indetermine', api: s.api, message: 'sonde impossible : ' + tronquer_(String(e), 150) };
       continue;
     }
     var verdict = verdictSondeApi_(code, corps);
     if (verdict === 'desactivee') {
-      return { etat: 'desactivee', api: s.api, jeton: true, message: messageErreurGoogle_(corps) };
+      return { etat: 'desactivee', api: s.api, preuveLiaison: true, message: messageErreurGoogle_(corps) };
     }
     if (verdict === 'indetermine') {
       // Le CODE seul ne suffit pas à trancher (vécu 19/08 : « HTTP 400 » ⇒ identifiant sondé
       // refusé ? paramètre ? projet ? — indécidable à distance, donc sonde non corrigeable). On
       // joint le message EXPLOITABLE de Google. Vie privée : la requête porte sur un identifiant
       // INEXISTANT choisi par nous — le corps d'erreur ne peut contenir aucune donnée de Marc.
+      // `preuveLiaison` sauf sur 401 (revue code 5) : `jetonHubperso_` sert un access token du
+      // CACHE jusqu'à ~53 min, donc un consentement révoqué reste invisible un temps — et c'est
+      // précisément le 401 qui le révèle. Un 401 ne doit donc jamais effacer la consigne
+      // « re-lier le compte » : ce serait effacer la seule information actionnable.
       doute = doute || {
-        etat: 'indetermine', api: s.api, jeton: true,
+        etat: 'indetermine', api: s.api, preuveLiaison: code !== 401,
         message: 'HTTP ' + code + ' — ' + tronquer_(messageErreurGoogle_(corps), 110)
       };
     }
   }
-  return doute || { etat: 'active', api: '', jeton: true, message: '' };
+  return doute || { etat: 'active', api: '', preuveLiaison: true, message: '' };
 }
 
 /**

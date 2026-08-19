@@ -96,8 +96,10 @@ n'exécute la vraie chaîne Google) :
    temps constant, à usage unique, périmable), jamais le marqueur.
 2. **Sonde stérile** — un identifiant sondé UNIQUE pour les deux API, valide pour Calendar
    (base32hex) mais impossible pour Tasks (base64url, longueur ≡ 1 mod 4) ⇒ **HTTP 400** au lieu du
-   404 attendu ⇒ verdict `indetermine` perpétuel ⇒ la reprise automatique de la suspension était
-   morte À VIE, en silence, alors que le jeton hubperso fonctionnait. Désormais : **un identifiant
+   404 attendu ⇒ verdict `indetermine` perpétuel ⇒ la reprise RAPIDE (≤ 13 min) était supprimée en
+   silence, alors que le jeton hubperso fonctionnait. (Pas un blocage éternel : faute de
+   rafraîchissement, la suspension expire d'elle-même au bout de 24 h — le coût réel est la reprise
+   tardive et à l'aveugle, plus un message Santé périmé entre-temps.) Désormais : **un identifiant
    par API** (grammaire verrouillée par test), le verdict indéterminé **persiste le message de
    Google** (pas seulement le code), et une cause mémorisée que la sonde a **démentie** (jeton
    obtenu ⇒ « compte non lié » est faux) est remplacée — celles qu'elle n'a pas démenties, jamais.
