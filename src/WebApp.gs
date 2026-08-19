@@ -18,7 +18,7 @@
  *  - `action=assurer-trigger` (ADR-0032) : ré-installe le déclencheur après un déploiement —
  *    remplace le dernier geste manuel de Marc. Secret CI.
  *
- * Secrets — DEUX, jamais confondus :
+ * Secrets — TROIS, jamais confondus (le 3ᵉ, MCP, vit dans Mcp.gs — ADR-0042) :
  *  - `DriveAI_WEBAPP_SECRET` (défaut, recherche-ia) : exposé côté NAVIGATEUR par conception
  *    (app/src/config.ts — « la sécurité vient du login Google, pas du secret »).
  *  - `DriveAI_SYNC_SECRET` (sync-miroir, pousser-reset, assurer-trigger) : DÉDIÉ, JAMAIS exposé
@@ -63,6 +63,9 @@ function doPost(e) {
           ? actionAssurerTrigger_()
           : { ok: true, version: versionPilote_(), message: 'déclencheur déjà assuré il y a moins de 10 min' })
         : { ok: false, erreur: 'refusé' };
+    } else if (action && String(action).indexOf('mcp-') === 0) {
+      // Connecteur MCP (ADR-0042) : secret DÉDIÉ serveur-à-serveur (3ᵉ secret — cf. Mcp.gs).
+      reponse = verifierSecretMcp_(e) ? actionMcp_(String(action), e) : { ok: false, erreur: 'refusé' };
     } else {
       var attendu = PropertiesService.getScriptProperties().getProperty('DriveAI_WEBAPP_SECRET');
       var recu = e && e.parameter ? e.parameter.secret : '';
@@ -400,6 +403,23 @@ function champsActionChat_(type) {
 }
 
 /**
+ * Neutralise une cellule d'onglet contre l'injection de FORMULE Sheets (revue sécurité C28-53 F1).
+ * PURE (testée). Une valeur `setValue`/`appendRow` commençant par `=`, `+`, `-`, `@` (ou une
+ * tabulation / un retour) est interprétée par Google comme une FORMULE, recalculée CÔTÉ SERVEUR
+ * (ex. `=IMPORTXML(...&JOIN(",",Index!A2:A500)...)` exfiltre les métadonnées de la Sheet vers un
+ * tiers — sans que Marc ouvre l'UI). Le texte du document (via `mcp-lire`/`lire_fichier`) et les
+ * champs proposés par le LLM sont de la donnée NON fiable : on préfixe d'une apostrophe (Sheets
+ * l'affiche en texte littéral, invisible à l'app qui raisonne par ID). Ferme le chat ET le MCP —
+ * une seule règle, deux consommateurs.
+ * @param {string} v
+ * @return {string}
+ */
+function neutraliserFormule_(v) {
+  var s = String(v == null ? '' : v);
+  return /^[=+\-@\t\r]/.test(s) ? "'" + s : s;
+}
+
+/**
  * WHITELISTE les actions proposées par le modèle (donnée NON fiable). PURE (testée). Ne valide QUE la
  * FORME (type connu, id requis non vides, nom sans « / » borné) — l'EXISTENCE des id et les gardes de
  * zone protégée sont re-vérifiées à l'APPLICATION (Reorg.gs, échec-fermé par mutation). Rejet PAR
@@ -415,17 +435,21 @@ function parserActionsChat_(brut) {
     if (!champs) { ignorees++; continue; }
     // « → » retiré : c'est le séparateur de la colonne ID de l'onglet Réorg — un id Drive n'en
     // contient jamais ; l'invariant « source→cible » reste non ambigu (défense en profondeur).
-    var source = typeof a.source === 'string' ? a.source.trim().replace(/→/g, '') : '';
-    var cible = typeof a.cible === 'string' ? a.cible.trim().replace(/→/g, '') : '';
+    // source/cible sont des id Drive : bornés (revue F1) — un vrai id fait ≤ 80 caractères
+    // alphanumériques ; tout ce qui déborde est une injection, pas un id.
+    var source = typeof a.source === 'string' ? a.source.trim().replace(/→/g, '').slice(0, 80) : '';
+    var cible = typeof a.cible === 'string' ? a.cible.trim().replace(/→/g, '').slice(0, 80) : '';
     var nom = typeof a.nom === 'string' ? a.nom.trim().slice(0, 80) : '';
     if (champs.src && !source) { ignorees++; continue; }
     if (champs.cib && !cible) { ignorees++; continue; }
     if (champs.nom && (!nom || nom.indexOf('/') !== -1)) { ignorees++; continue; }
+    // Neutralisation FORMULE sur TOUS les champs qui finissent dans une cellule (revue F1).
     actions.push({
-      type: String(a.type), source: source, cible: cible, nom: nom,
-      sourceNom: (typeof a.source_nom === 'string' ? a.source_nom : '').trim().slice(0, 120),
-      cibleNom: (typeof a.cible_nom === 'string' ? a.cible_nom : '').trim().slice(0, 120),
-      raison: (typeof a.raison === 'string' ? a.raison : '').trim().slice(0, 150),
+      type: String(a.type),
+      source: neutraliserFormule_(source), cible: neutraliserFormule_(cible), nom: neutraliserFormule_(nom),
+      sourceNom: neutraliserFormule_((typeof a.source_nom === 'string' ? a.source_nom : '').trim().slice(0, 120)),
+      cibleNom: neutraliserFormule_((typeof a.cible_nom === 'string' ? a.cible_nom : '').trim().slice(0, 120)),
+      raison: neutraliserFormule_((typeof a.raison === 'string' ? a.raison : '').trim().slice(0, 150)),
     });
   }
   if (!actions.length) return null;

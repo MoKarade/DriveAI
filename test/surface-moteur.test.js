@@ -53,6 +53,11 @@ const CONTRAT = [
   'validerCallbackHubperso_', 'comparaisonConstante_', 'doGet',
   // Revue flotte C28-52 : verdicts honnêtes (transitoire ≠ non lié), purge 401, scopes complets.
   'etatLiaisonHubperso_', 'messageJetonHubpersoIndisponible_', 'purgerCacheJetonHubperso_', 'scopesHubpersoComplets_',
+  // C28-53 (ADR-0042) : actions /exec du connecteur MCP — Mcp.gs, appelées par WebApp.gs (doPost)
+  // et consommant antiRafalePilote_ (WebApp.gs) / comparaisonConstante_ (JetonHubperso.gs) en travers.
+  'verifierSecretMcp_', 'actionMcp_', 'actionMcpEtat_', 'actionMcpRecherche_', 'actionMcpLire_',
+  'actionMcpReorg_', 'actionMcpIntention_', 'missionsDepuisProgression_', 'erreursDepuisJournal_',
+  'mailDepuisTelemetrie_', 'lireOngletBorne_', 'fenetreQueueJournal_', 'antiRafalePilote_',
   // C28-49 (ADR-0039) : missions de curation — appelées en travers des modules (Main/Journal).
   'executerMission_', 'tableMissions_', 'gMissionsJour_', 'gMissionsAmont03_', 'chargerEtatMissions_',
   'budgetJourMissions_', 'cleMission_', 'apparierUnique_', 'jetonsCible_', 'logementParDate_',
@@ -143,7 +148,7 @@ const CONTRAT = [
   'outilsChatAssistant_', 'executerOutilChatAssistant_', 'rechercheDriveChat_', 'lireFichierChat_',
   // opérations de dossiers via le chat (C28-30 PR2) : proposer_reorg → onglet Réorg, déplacement de
   // fichier via le chemin GARDÉ (Reorg.appliquerUneAction_), épinglé Marc respecté des deux côtés
-  'proposerReorgChat_', 'parserActionsChat_', 'ligneActionChat_', 'champsActionChat_',
+  'proposerReorgChat_', 'parserActionsChat_', 'ligneActionChat_', 'champsActionChat_', 'neutraliserFormule_',
   'appliquerDeplacerFichier_', // Reorg.gs — appliqué au chemin gardé (C21-06)
   // réorg IA (#21, C21-04 : proposition ; C21-06 : application)
   'appliquerReorgIA_', 'inventaireDossiers_', 'resumeArborescence_', 'promptReorg_',

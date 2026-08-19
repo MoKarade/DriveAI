@@ -34,7 +34,17 @@
 > **geste Marc une fois** : suivre `docs/HUBPERSO.md` (client OAuth Web dans hubperso,
 > 2 Properties, `lierCompteHubperso`, 1 clic de consentement) — la sonde lève ensuite la
 > suspension TOUTE SEULE
-> (≤ 13 min) et le tri Gmail repart avec les intentions. **C28-51 (ADR-0040)** enchaîné le soir même sur le
+> (≤ 13 min) et le tri Gmail repart avec les intentions. **Un rappel automatique (Routine
+> `trig_013kb7wpkm2pXqBRTq71MM13`) vérifie l'onglet Santé plusieurs fois/jour et s'auto-supprime
+> une fois la liaison faite.** **C28-53 (ADR-0042) — MCP DriveAI** (demande Marc 2026-08-19 « je
+> veux un mcp ») : connecteur claude.ai servi par le Vercel existant (`api/mcp/*`, OAuth 2.1 porté
+> du patron FinanceAI éprouvé), 6 outils derrière un 3ᵉ secret `DriveAI_MCP_SECRET`/`MCP_ENGINE_SECRET`
+> (`src/Mcp.gs` : état moteur+missions+erreurs+mail+panne LLM, recherche/lecture, question, réorg
+> proposée, intentions). Revue flotte PR1 appliquée (injection formule Sheets neutralisée dans
+> `parserActionsChat_` — ferme chat ET MCP ; anti-saturation Property ; `versionMcp` sur exception ;
+> en-tête « pouvoir réel »). Geste Marc : `docs/MCP.md` (2 clés Vercel + secret partagé + connecteur
+> claude.ai). PR2 (passerelle Vercel) EN REVUE flotte au moment du handover — pas encore poussée.
+> **C28-51 (ADR-0040)** enchaîné le soir même sur le
 > retour « je peux rien y faire » : les 89 non-appariés diagnostiqués sur PREUVES (bails nommés
 > par BAILLEUR — Kim Pinsonneault = 9420-3767 = LCP → 3325 ; 9478-5045 → 3987 —, KIA sans cible,
 > pluriels 03 encore dans la table du flux) → c49-2 : tables canoniques bailleurs/véhicules,
