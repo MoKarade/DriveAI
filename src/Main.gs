@@ -667,8 +667,12 @@ function tickDriveAI() {
         function (e) { journalErreur_('Progression', 'MàJ progression impossible : ' + e); });
       // Télémétrie coûts & quotas (C28-24) : même contrat que Progression — une seule écriture
       // par tick, lue en poll par l'app. Enveloppée : un échec ne bloque jamais le reste.
-      etapeSuivie_('telemetrie', [], function () { majTelemetrie_(); },
-        function (e) { journalErreur_('Télémétrie', 'MàJ télémétrie impossible : ' + e); });
+      // La VENTILATION du coût par usage (C28-58) est écrite DANS cette étape, pas dans une étape
+      // à elle : le registre de suivi est borné (~9 Ko de Property, tripwire `suivi.test.js`) et une
+      // 36ᵉ entrée le faisait déborder. Même famille (« coûts & quotas »), même contrat : une seule
+      // écriture par tick, enveloppée, jamais bloquante pour l'intake.
+      etapeSuivie_('telemetrie', [], function () { majTelemetrie_(); majCouts_(); },
+        function (e) { journalErreur_('Télémétrie', 'MàJ télémétrie/coûts impossible : ' + e); });
       // Résumé hub (C28-27) : les 4 métriques du widget hubperso.com sont PRÉ-CALCULÉES ici, une
       // fois par tick, et persistées (Property DriveAI_HUB_SUMMARY). L'action hub-summary de la web
       // app ne fait plus que LIRE cette Property → réponse en ms (le calcul à la volée dépassait le

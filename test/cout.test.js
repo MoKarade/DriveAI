@@ -197,3 +197,133 @@ test('frein : une panne de JOURNALISATION ne relève pas un frein correctement m
   c.journalInfo_ = () => { throw new Error('journal indisponible (simulé)'); };
   assert.strictEqual(c.budgetCampagnesAtteint_(), true, 'la mesure prime sur l\'annonce');
 });
+
+/* ---------- C28-58 : VENTILATION du coût par usage (demande Marc « le détail pour tout ») ---------- */
+
+/** Contexte avec `Suivi.gs` : c'est lui qui porte l'opération courante. */
+function ctxVent() {
+  const c = load(['Config.gs', 'Suivi.gs', 'Cout.gs']);
+  c.reinitialiserUsage_();
+  return c;
+}
+
+const usage = (i, o) => ({ input_tokens: i, output_tokens: o });
+
+test('ventilation : chaque appel est attribué à l\'opération COURANTE, et la somme = le total', () => {
+  const c = ctxVent();
+  c.poserOperationCourante_('tri-gmail');
+  c.enregistrerUsage_('haiku', usage(1e6, 0));      // 1 $
+  c.poserOperationCourante_('intake-gmail');
+  c.enregistrerUsage_('sonnet', usage(1e6, 0));     // 3 $
+  c.enregistrerUsage_('haiku', usage(0, 1e6));      // 5 $
+
+  const total = c.coutDollars_(plat(c.usageRunSnapshot_()));
+  assert.strictEqual(Math.round(total * 100) / 100, 9, 'total global : 1 + 3 + 5');
+
+  const ops = plat(c.usageRunOpsSnapshot_());
+  assert.strictEqual(Math.round(ops['tri-gmail'].d * 100) / 100, 1);
+  assert.strictEqual(ops['tri-gmail'].n, 1);
+  assert.strictEqual(Math.round(ops['intake-gmail'].d * 100) / 100, 8, '3 $ + 5 $ sur la même étape');
+  assert.strictEqual(ops['intake-gmail'].n, 2);
+
+  // INVARIANT central : la somme des postes = le total global. S'ils divergent, c'est un bug de
+  // comptabilité, pas un arrondi — et une ventilation fausse serait pire que pas de ventilation.
+  const somme = Object.keys(ops).reduce((s, k) => s + ops[k].d, 0);
+  assert.strictEqual(Math.round(somme * 1e6) / 1e6, Math.round(total * 1e6) / 1e6);
+});
+
+test('fusionnerOps_ (PURE) : fusion, arrondi, et PLAFOND qui verse dans « (autres) » sans rien perdre', () => {
+  const c = load(['Config.gs', 'Cout.gs']);
+  const somme = (o) => Object.keys(o).reduce((s, k) => s + o[k].d, 0);
+
+  // Fusion simple : les montants et les appels s'additionnent.
+  const a = c.fusionnerOps_({ tri: { d: 1, n: 2 } }, { tri: { d: 0.5, n: 1 }, intake: { d: 2, n: 3 } });
+  assert.strictEqual(plat(a).tri.d, 1.5);
+  assert.strictEqual(plat(a).tri.n, 3);
+  assert.strictEqual(plat(a).intake.d, 2);
+
+  // PLAFOND (leçon §7 : une Property qui persiste une liste se borne). Au-delà de COUT_OPS_MAX
+  // opérations distinctes, les nouvelles vont dans « (autres) » — le TOTAL reste juste.
+  let mois = {};
+  const run = {};
+  for (let i = 0; i < c.COUT_OPS_MAX + 25; i++) run['operation-numero-' + i] = { d: 0.01, n: 1 };
+  mois = c.fusionnerOps_(mois, run);
+  const plein = plat(mois);
+  assert.ok(Object.keys(plein).length <= c.COUT_OPS_MAX + 1,
+    'jamais plus que le plafond (+ la ligne « autres »)');
+  assert.ok(plein[c.OP_AUTRES], 'le surplus a bien un foyer');
+  assert.strictEqual(Math.round(somme(plein) * 100) / 100, Math.round((c.COUT_OPS_MAX + 25) * 0.01 * 100) / 100,
+    'AUCUN dollar perdu : le total ventilé est conservé');
+});
+
+test('fusionnerOps_ : au PLAFOND, l\'encodage reste très en deçà de la limite ~9 Ko d\'une Property', () => {
+  // Leçon §7 : le plafond se teste avec des entrées RÉALISTES-PIRES (noms longs, accents — qui
+  // pèsent 2 octets en UTF-8), pas avec les valeurs du jour.
+  const c = load(['Config.gs', 'Cout.gs']);
+  const run = {};
+  for (let i = 0; i < c.COUT_OPS_MAX; i++) {
+    run['mission-consolidation-des-répertoires-numéro-' + i] = { d: 1234.567891, n: 999999 };
+  }
+  const encode = JSON.stringify({ hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0,
+    appels: 0, ops: plat(c.fusionnerOps_({}, run)) });
+  assert.ok(Buffer.byteLength(encode, 'utf8') < 8500,
+    'encodage ' + Buffer.byteLength(encode, 'utf8') + ' octets ≥ 8500 — la Property lèverait en prod');
+});
+
+test('ventilationCoutMois_ (PURE) : trié du plus cher, part en %, et le NON VENTILÉ est dit', () => {
+  const c = load(['Config.gs', 'Cout.gs']);
+  const v = plat(c.ventilationCoutMois_({ ops: {
+    'tri-gmail': { d: 1, n: 10 },
+    'intake-gmail': { d: 4, n: 20 },
+    'app:chat-assistant': { d: 0.5, n: 2 },
+  } }, 10));
+  assert.deepStrictEqual(v.lignes.map((l) => l.op),
+    ['intake-gmail', 'tri-gmail', 'app:chat-assistant'], 'du plus cher au moins cher');
+  assert.strictEqual(v.lignes[0].part, 40, '4 $ sur 10 $ = 40 %');
+  assert.strictEqual(v.ventile, 5.5);
+  // Le mois avait DÉJÀ coûté 10 $ : 4,5 $ ont été dépensés avant que la ventilation n'existe.
+  // Le dire est le seul comportement honnête (no-fake-data).
+  assert.strictEqual(v.restant, 4.5);
+
+  // Aucun total (mois neuf) : pas de division par zéro, pas de NaN affiché.
+  const zero = plat(c.ventilationCoutMois_({ ops: { a: { d: 0, n: 0 } } }, 0));
+  assert.strictEqual(zero.lignes[0].part, 0);
+  assert.strictEqual(zero.restant, 0);
+});
+
+test('lignesCouts_ (PURE) : total en tête, et la ligne « non ventilé » n\'apparaît QUE si elle compte', () => {
+  const c = load(['Config.gs', 'Cout.gs', 'Journal.gs']);
+  const v = { lignes: [{ op: 'tri-gmail', dollars: 2, appels: 30, part: 20 }], ventile: 2, restant: 8 };
+  const lignes = plat(c.lignesCouts_('2026-08', { appels: 100, dollars: 10 }, v));
+  assert.ok(String(lignes[0][0]).indexOf('TOTAL LLM 2026-08') === 0, 'le total est en tête');
+  assert.strictEqual(lignes[0][2], 10);
+  assert.deepStrictEqual(lignes[1], ['tri-gmail', 30, 2, '20 %']);
+  assert.ok(String(lignes[2][0]).indexOf('(non ventilé') === 0, 'le reste est nommé, pas caché');
+
+  // Reliquat d'arrondi (< 0,5 ¢) : afficher une ligne ferait douter d'un compte juste.
+  const propre = plat(c.lignesCouts_('2026-08',
+    { appels: 100, dollars: 10 }, { lignes: [], ventile: 10, restant: 0.001 }));
+  assert.strictEqual(propre.length, 1, 'aucune ligne « non ventilé » pour du bruit d\'arrondi');
+});
+
+test('etapeSuivie_ : pose l\'opération le temps du corps, et la RESTAURE (même sur erreur)', () => {
+  const c = load(['Config.gs', 'Suivi.gs']);
+  let vueDedans = null;
+  c.etapeSuivie_('tri-gmail', [], () => { vueDedans = c.operationCourante_(); });
+  assert.strictEqual(vueDedans, 'tri-gmail', 'le corps sait à quelle étape il appartient');
+  assert.strictEqual(c.operationCourante_(), '', 'et l\'état est rendu après');
+
+  // Une étape qui ÉCHOUE ne doit pas laisser son nom collé : sinon les appels LLM des étapes
+  // suivantes lui seraient facturés (une comptabilité fausse est pire que pas de comptabilité).
+  c.etapeSuivie_('intake-gmail', [], () => { throw new Error('boum'); }, () => {});
+  assert.strictEqual(c.operationCourante_(), '', 'restaurée même après une erreur');
+});
+
+test('hors étape : un appel LLM non attribuable tombe dans une VRAIE catégorie, jamais dans le vide', () => {
+  const c = ctxVent();
+  c.poserOperationCourante_('');
+  c.enregistrerUsage_('haiku', usage(1e6, 0));
+  const ops = plat(c.usageRunOpsSnapshot_());
+  assert.ok(ops[c.OP_HORS_ETAPE], 'l\'appel est compté sous « (hors étape) »');
+  assert.strictEqual(ops[c.OP_HORS_ETAPE].n, 1);
+});

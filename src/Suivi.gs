@@ -158,6 +158,13 @@ function etapeSuivie_(cle, gates, fn, onErreur) {
   var entree = _suiviEntree_(cle);
   var debut = Date.now();
   entree.t = debut;
+  // VENTILATION DU COÛT LLM (C28-58, demande Marc « je veux le détail de coût pour tout ») : le
+  // nom de l'étape est posé le temps du corps, et `enregistrerUsage_` l'utilise pour attribuer
+  // chaque appel Anthropic. Aucun call site LLM à modifier — et toute étape FUTURE est ventilée
+  // d'office, sans qu'on ait à y penser. Sauvegarde/restauration : si un jour une étape en
+  // enveloppait une autre, l'attribution reviendrait proprement à l'englobante.
+  var operationPrecedente = operationCourante_();
+  poserOperationCourante_(cle);
   try {
     fn();
     entree.ok = Date.now();
@@ -167,8 +174,24 @@ function etapeSuivie_(cle, gates, fn, onErreur) {
     entree.e = suiviTexte_(err && err.message ? err.message : err, SUIVI_ERR_MAX);
     if (onErreur) onErreur(err);
     else throw err;
+  } finally {
+    poserOperationCourante_(operationPrecedente);
   }
 }
+
+/**
+ * Opération en cours, pour la ventilation du coût LLM (C28-58). Vit dans une variable de module :
+ * le run est sérialisé par le `LockService` de `tickDriveAI`, comme l'accumulateur de `Cout.gs`.
+ * Hors étape de tick (web app, MCP), l'appelant la pose lui-même — sinon l'appel tombe dans
+ * « (hors étape) », qui est une VRAIE catégorie, pas une perte.
+ */
+var _operationCourante = '';
+
+/** @param {string} cle */
+function poserOperationCourante_(cle) { _operationCourante = String(cle || ''); }
+
+/** @return {string} */
+function operationCourante_() { return _operationCourante; }
 
 /**
  * PURE : statut d'affichage d'une opération SANS lecteur de campagne dédié, dérivé de son

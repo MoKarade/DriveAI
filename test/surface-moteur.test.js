@@ -114,6 +114,8 @@ const CONTRAT = [
   // tri Gmail (#16)
   'trierFilsGmail_', 'trierFil_', 'decisionTri_', 'heuristiquePhishing_', 'adresseExpediteur_',
   'intentionsSuspendues_', 'texteSanteTriDegrade_',
+  'poserOperationCourante_', 'operationCourante_', 'fusionnerOps_', 'ventilationCoutMois_',
+  'lignesCouts_', 'majCouts_', 'usageRunOpsSnapshot_',
   'normaliserLibelle_', 'parserMiniCategorie_', 'miniCategorie_', 'triApprisCache_', 'apprendreTri_',
   'reinitialiserTriApprisCache_', 'libellesUtilisateur_', 'reinitialiserLibellesCache_',
   'estPromoGmail_', 'reinitialiserPromoSetCache_', 'signalerPanneEcriture_', 'reinitialiserPanneEcriture_',

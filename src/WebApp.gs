@@ -56,6 +56,15 @@ function doPost(e) {
   var reponse = { ok: false };
   try {
     var action = e && e.parameter ? e.parameter.action : '';
+    // Ventilation du coût LLM (C28-58) : les appels déclenchés par l'app ou le MCP ne passent par
+    // AUCUNE étape de tick — sans ce marquage ils tomberaient tous dans « (hors étape) ». On les
+    // attribue à leur action (`chat-assistant`, `recherche-ia`, `mcp-question`…), ce qui est
+    // exactement la granularité utile : Marc voit ce que SES demandes coûtent, séparément du
+    // travail automatique. Aucune restauration nécessaire : une exécution de web app sert UNE
+    // requête, puis meurt.
+    // Enveloppé : la COMPTABILITÉ ne doit jamais pouvoir faire échouer une requête de Marc
+    // (et `Suivi.gs` peut ne pas être chargé dans un contexte de test ciblé).
+    try { poserOperationCourante_(action ? 'app:' + action : 'app:(sans action)'); } catch (eOp) { }
     if (action === 'sync-miroir') {
       reponse = verifierSecretSync_(e) ? actionSyncMiroir_(e) : { ok: false, erreur: 'refusé' };
     } else if (action === 'pousser-reset') {

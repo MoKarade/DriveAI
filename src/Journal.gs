@@ -50,6 +50,7 @@ function initialiserSheet_(ss) {
   creerOnglet_(ss, 'PlanFusion', COLONNES_PLAN_FUSION);
   creerOnglet_(ss, 'Progression', COLONNES_PROGRESSION); // suivi LIVE des opérations (C28-18, cf. majProgressions_)
   creerOnglet_(ss, 'Télémétrie', COLONNES_TELEMETRIE); // coûts & quotas pour l'app (C28-24, cf. majTelemetrie_)
+  creerOnglet_(ss, 'Coûts', COLONNES_COUTS);          // ventilation du coût LLM par usage (C28-58)
   // C28-49 PR2 : rapport des mois de PAIE manquants par employeur (mission `paies`, self-serve,
   // cf. ecrireRapportPaies_). Onglet OUBLIÉ ici à la livraison → `feuille_('RapportPaies')` rendait
   // null et la mission plantait à CHAQUE tick (`getRange of null`, révélé par le MCP le 19/08).
@@ -697,6 +698,58 @@ function compteurFilsJour_(props, prefixe, aujourdhui) {
   return props.getProperty(prefixe + '_JOUR') === aujourdhui
     ? Number(props.getProperty(prefixe + '_FILS_JOUR')) || 0
     : 0;
+}
+
+var COLONNES_COUTS = ['Poste', 'Appels', 'Coût $', 'Part'];
+
+/**
+ * Lignes de l'onglet `Coûts` (C28-58, demande Marc « je veux le détail de coût pour tout »).
+ * PURE (testée) — aucune I/O, aucune décision.
+ *
+ * HONNÊTETÉ (no-fake-data, §7) : la ventilation ne peut pas décrire ce qui a été dépensé AVANT
+ * son déploiement. La ligne « non ventilé » l'expose au lieu de laisser croire que les postes
+ * affichés couvrent tout le mois — c'est le même principe que « status:building » du hub.
+ * @param {string} mois  AAAA-MM
+ * @param {{appels:number, dollars:number}} total  cf. `syntheseCoutMois_`
+ * @param {{lignes:Array, ventile:number, restant:number}} v  cf. `ventilationCoutMois_`
+ * @return {Array<Array>}
+ */
+function lignesCouts_(mois, total, v) {
+  var pct = function (d) { return total.dollars > 0 ? Math.round(d / total.dollars * 1000) / 10 + ' %' : '—'; };
+  var lignes = [[
+    'TOTAL LLM ' + mois, total.appels, Math.round(total.dollars * 100) / 100, '100 %'
+  ]];
+  for (var i = 0; i < v.lignes.length; i++) {
+    var l = v.lignes[i];
+    lignes.push([l.op, l.appels, Math.round(l.dollars * 10000) / 10000, l.part + ' %']);
+  }
+  // Seuil à 0,5 ¢ : sous cela, « non ventilé » n'est que du bruit d'arrondi et afficher une ligne
+  // ferait douter d'un compte juste.
+  if (v.restant > 0.005) {
+    lignes.push(['(non ventilé — dépensé avant la mise en place du détail)', '—',
+      Math.round(v.restant * 100) / 100, pct(v.restant)]);
+  }
+  return lignes;
+}
+
+/**
+ * Écrit l'onglet `Coûts` (C28-58) : où part l'argent, par usage. Une seule écriture par tick,
+ * comme Télémétrie. Enveloppée par l'appelant — un échec ne bloque JAMAIS l'intake.
+ */
+function majCouts_() {
+  var tz = Session.getScriptTimeZone();
+  var mois = Utilities.formatDate(new Date(), tz, 'yyyy-MM');
+  var total = syntheseCoutMois_();
+  var t = lireCoutMois_(PropertiesService.getScriptProperties(), cleCoutMois_());
+  var lignes = lignesCouts_(mois, total, ventilationCoutMois_(t, total.dollars));
+  var f = feuille_('Coûts');
+  f.getRange(2, 1, lignes.length, COLONNES_COUTS.length).setValues(lignes);
+  // Reliquat du mois précédent (moins de postes qu'avant) : effacé, sinon d'anciennes lignes
+  // survivraient sous les nouvelles et l'onglet mentirait (même patron que Télémétrie).
+  var dern = f.getLastRow();
+  if (dern > lignes.length + 1) {
+    f.getRange(lignes.length + 2, 1, dern - lignes.length - 1, COLONNES_COUTS.length).clearContent();
+  }
 }
 
 /**

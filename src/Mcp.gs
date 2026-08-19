@@ -42,6 +42,8 @@ var MCP_JOURNAL_FENETRE = 300;
 // sécurité (leçon « borne haute sur une source qui croît ») : au-delà, on tronque la tête plutôt
 // que de lire un onglet inattendu.
 var MCP_PROGRESSION_MAX = 60;
+/** Postes de coût renvoyés au plus (les plus chers d'abord — le reste est du bruit). */
+var MCP_COUTS_MAX = 25;
 
 /**
  * Vérifie le secret MCP dédié. FERMÉ : Property absente (MCP jamais activé) ou illisible ⇒ refus.
@@ -123,6 +125,21 @@ function actionMcpEtat_() {
   try {
     r.missions = missionsDepuisProgression_(lireOngletBorne_('Progression', MCP_PROGRESSION_MAX));
   } catch (e) { r.missions = null; r.missionsErreur = String(e); }
+  // Détail du coût par usage (C28-58, demande Marc) : la même ventilation que l'onglet `Coûts`,
+  // lisible depuis le connecteur — sans avoir à ouvrir la Sheet.
+  try {
+    var totalCout = syntheseCoutMois_();
+    var vent = ventilationCoutMois_(
+      lireCoutMois_(PropertiesService.getScriptProperties(), cleCoutMois_()), totalCout.dollars);
+    r.couts = {
+      moisDollars: Math.round(totalCout.dollars * 100) / 100,
+      moisAppels: totalCout.appels,
+      // `nonVentile` : ce que le total porte EN PLUS de la somme des postes (dépensé avant la mise
+      // en place du détail). L'exposer évite de laisser croire que les postes couvrent tout.
+      nonVentile: Math.round(vent.restant * 100) / 100,
+      postes: vent.lignes.slice(0, MCP_COUTS_MAX)
+    };
+  } catch (e) { r.couts = null; r.coutsErreur = String(e); }
   try {
     r.erreurs = erreursDepuisJournal_(fenetreQueueJournal_(), MCP_ERREURS_MAX);
   } catch (e) { r.erreurs = null; r.erreursErreur = String(e); }
