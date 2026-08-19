@@ -104,6 +104,13 @@ jobs:
   screenshots:
     name: Captures d'écran UI (E2E mode mock)
     runs-on: ubuntu-latest
+    # PLAFOND DE TEMPS — sinon un blocage tourne SIX HEURES (défaut GitHub) avant d'échouer.
+    # Vécu le 19/08/2026 : l'étape d'installation du navigateur s'est figée et le job est resté
+    # « in progress » plus de 75 minutes, laissant la PR en `unstable` sans rien de rouge à
+    # regarder. Le job entier prend normalement ~52 s (run 31836519884 du 14/08, dont 24 s pour
+    # cette étape) : 10 minutes laissent une marge de 10× sur un réseau lent, et transforment un
+    # blocage en échec visible et rejouable au lieu d'une attente muette.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -119,6 +126,10 @@ jobs:
 
       - name: Navigateur Playwright (Chromium seul)
         working-directory: app
+        # C'est CETTE étape qui s'est figée (téléchargement du binaire + apt-get des
+        # dépendances système) : son propre plafond dit lequel des deux a lâché, plutôt que
+        # de laisser le doute sur tout le job.
+        timeout-minutes: 5
         run: npx playwright install --with-deps chromium
 
       # VITE_E2E_MOCK=true est injectée par playwright.config.ts (webServer) : auth bouchonnée,
