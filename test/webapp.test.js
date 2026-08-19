@@ -296,6 +296,59 @@ test('majResumeHub_ : calcule les 4 métriques et les persiste dans DriveAI_HUB_
   assert.strictEqual(ecrit.lastRunAt, new Date(tick).toISOString());
 });
 
+/**
+ * Contexte hub avec la VRAIE comptabilité de coût chargée (Cout.gs), et des Script Properties
+ * dont on contrôle séparément `getProperty` (lecture unitaire, mois) et `getProperties` (lecture
+ * en bloc, cumul). C'est le seul montage qui distingue les deux mesures.
+ */
+function ctxHubCout(store, getPropertiesEnPanne) {
+  const c = load(['Config.gs', 'Cout.gs', 'WebApp.gs']);
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in store ? store[k] : null),
+    setProperty: (k, v) => { store[k] = String(v); },
+    deleteProperty: (k) => { delete store[k]; },
+    getProperties: () => {
+      if (getPropertiesEnPanne) throw new Error('quota Properties épuisé (simulé)');
+      return Object.assign({}, store);
+    },
+  }) };
+  c.feuille_ = (nom) => ({ getDataRange: () => ({ getValues: () => [[]] }) });
+  c.DriveApp = { getFolderById: () => ({ getFiles: () => iter([]) }) };
+  return { c, store };
+}
+
+test('majResumeHub_ : publie le CUMUL, le mois et le seuil du frein', () => {
+  const tick = Date.now() - 5 * 60 * 1000;
+  const store = { DriveAI_LAST_TICK: String(tick) };
+  const { c } = ctxHubCout(store, false);
+  // 1 MTok Haiku in = 1 $. Deux mois passés + le mois courant.
+  const mois = (d) => JSON.stringify({ hin: d * 1e6, hout: 0, sin: 0, sout: 0, appels: 1 });
+  store['DriveAI_COUT_2026-06'] = mois(3);
+  store['DriveAI_COUT_2026-07'] = mois(4);
+  store[c.cleCoutMois_()] = mois(5);
+  c.majResumeHub_();
+  const ecrit = JSON.parse(store.DriveAI_HUB_SUMMARY);
+  assert.strictEqual(ecrit.llmCostTotalUsd, 12, 'cumul = 3 + 4 + 5 (publié au hub comme period "total")');
+  assert.strictEqual(ecrit.llmCostMonthUsd, 5, 'le mois courant reste publié, il devient un quota');
+  assert.strictEqual(ecrit.llmBudgetCampagnesUsd, c.CONFIG.LLM_BUDGET_CAMPAGNES,
+    'le plafond vient de CONFIG — jamais recopié côté Vercel, sinon il dérive au premier rajustement');
+});
+
+test('majResumeHub_ : une panne du CUMUL n\'emporte pas le coût du mois', () => {
+  // Le cumul est la seule mesure qui lise les Properties EN BLOC. Sous un try commun, son échec
+  // aurait vidé tout le bloc `usage` — le hub aurait affiché « non suivie » alors que le mois
+  // était parfaitement mesurable. C'est ce test qui tient les deux try séparés.
+  const tick = Date.now() - 5 * 60 * 1000;
+  const store = { DriveAI_LAST_TICK: String(tick) };
+  const { c } = ctxHubCout(store, true);
+  store[c.cleCoutMois_()] = JSON.stringify({ hin: 5e6, hout: 0, sin: 0, sout: 0, appels: 1 });
+  c.majResumeHub_();
+  const ecrit = JSON.parse(store.DriveAI_HUB_SUMMARY);
+  assert.strictEqual(ecrit.llmCostTotalUsd, null, 'cumul absent : le broker retombera sur period "mois"');
+  assert.strictEqual(ecrit.llmCostMonthUsd, 5, 'le mois SURVIT à la panne du cumul');
+  assert.strictEqual(ecrit.reviewQueueCount, 0, 'les 4 compteurs ne sont jamais privés par une panne de mesure');
+});
+
 test('majResumeHub_ puis actionHubSummary_ : la lecture rend EXACTEMENT ce que le tick a écrit', () => {
   const feuilles = { Index: [['h']], Journal: [['h']] };
   const tick = Date.now() - 5 * 60 * 1000;
@@ -303,11 +356,14 @@ test('majResumeHub_ puis actionHubSummary_ : la lecture rend EXACTEMENT ce que l
   c.majResumeHub_();
   assert.deepStrictEqual(plat(c.actionHubSummary_()), {
     ok: true,
-    // #207 (bloc usage) : majResumeHub_ publie aussi ces 3 champs — null/false quand la métrique
+    // #207 (bloc usage) : majResumeHub_ publie aussi ces champs — null/false quand la métrique
     // n'est pas disponible (mock sans coût LLM ni fils Gmail). Le bloc `usage` côté api/ les omet alors.
+    // `llmCostTotalUsd` est null ici parce que le mock ne fournit pas `getProperties()` : c'est
+    // précisément la dégradation attendue — le cumul manque, RIEN d'autre n'est emporté avec lui.
     etat: {
       reviewQueueCount: 0, filedLast7d: 0, errorsLast7d: 0, lastRunAt: new Date(tick).toISOString(),
-      llmCostMonthUsd: null, gmailThreadsToday: null, gmailQuotaSuspended: false,
+      llmCostTotalUsd: null, llmCostMonthUsd: null, llmBudgetCampagnesUsd: null,
+      gmailThreadsToday: null, gmailQuotaSuspended: false,
     },
   });
 });

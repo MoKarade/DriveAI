@@ -78,7 +78,9 @@ const ETAT_SAIN = {
     errorsLast7d: 1,
     lastRunAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
     // Champs usage additifs (bloc coûts & quotas) publiés par le moteur.
+    llmCostTotalUsd: 118.4,
     llmCostMonthUsd: 2.37,
+    llmBudgetCampagnesUsd: 10,
     gmailThreadsToday: 41,
     gmailQuotaSuspended: false,
   },
@@ -208,10 +210,14 @@ describe('/api/hub/summary — métriques réelles (C28-27, canal sain)', () => 
         { label: '2 document(s) en attente dans la file de revue', severity: 'info' },
       ]);
       expect(summary.actions).toEqual([{ label: 'Ouvrir DriveAI', kind: 'link', href: URL_APP }]);
-      // Bloc usage (coûts & quotas) : coût LLM mensuel + activité Gmail du jour.
-      expect(summary.usage?.cost).toEqual({ amount: 2.37, currency: 'USD', period: 'mois' });
+      // Bloc usage : le coût publié est le CUMUL (`period: 'total'`), pas le mois. C'est ce qui
+      // permet au hub d'afficher UN total — il somme par période et refuse de fusionner « cumulé »
+      // avec « ce mois-ci ». Le mois n'est pas perdu : il devient un quota, avec le seuil du frein
+      // des campagnes pour plafond (2,37 $ sur 10 $).
+      expect(summary.usage?.cost).toEqual({ amount: 118.4, currency: 'USD', period: 'total' });
       expect(summary.usage?.quotas).toEqual([
         { label: 'Fils Gmail (aujourd’hui)', used: 41, limit: null, unit: 'fils' },
+        { label: 'Coût LLM du mois (frein campagnes)', used: 2.37, limit: 10, unit: 'USD' },
       ]);
     });
   });
@@ -229,6 +235,66 @@ describe('/api/hub/summary — métriques réelles (C28-27, canal sain)', () => 
       await handlerHub(fauxReq({ [HUB_TOKEN_HEADER]: JETON }), res);
       const summary = validateSummary(JSON.parse(res.corps()));
       expect(summary.usage).toBeUndefined();
+    });
+  });
+
+  it('cumul absent (web app en retard d\'un déploiement) → REPLI sur period "mois", jamais "total"', async () => {
+    // Le champ est additif : la web app Apps Script peut n'avoir pas encore été redéployée. Le
+    // repli publie le mois SOUS SON VRAI NOM. Le déclarer « total » afficherait un chiffre juste
+    // sous une étiquette fausse — le hub le rangerait avec les cumuls des autres apps et le
+    // total unique serait sous-estimé de tous les mois passés de DriveAI, sans rien de rouge.
+    await avecEnv({ HUB_TOKEN: JETON, WEBAPP_URL: 'https://script.example/exec', WEBAPP_SECRET: 's' }, async () => {
+      vi.stubGlobal('fetch', fauxFetch(200, {
+        ok: true,
+        etat: {
+          reviewQueueCount: 0, filedLast7d: 3, errorsLast7d: 0,
+          lastRunAt: new Date().toISOString(),
+          llmCostMonthUsd: 2.37,
+        },
+      }));
+      const res = fauxRes();
+      await handlerHub(fauxReq({ [HUB_TOKEN_HEADER]: JETON }), res);
+      const summary = validateSummary(JSON.parse(res.corps()));
+      expect(summary.usage?.cost).toEqual({ amount: 2.37, currency: 'USD', period: 'mois' });
+      // Et le mois n'est PAS aussi publié en quota : il est déjà le coût, ce serait le compter deux fois.
+      expect(summary.usage?.quotas).toBeUndefined();
+    });
+  });
+
+  it('cumul présent mais plafond absent → quota SANS limite, jamais un plafond inventé', async () => {
+    await avecEnv({ HUB_TOKEN: JETON, WEBAPP_URL: 'https://script.example/exec', WEBAPP_SECRET: 's' }, async () => {
+      vi.stubGlobal('fetch', fauxFetch(200, {
+        ok: true,
+        etat: {
+          reviewQueueCount: 0, filedLast7d: 3, errorsLast7d: 0,
+          lastRunAt: new Date().toISOString(),
+          llmCostTotalUsd: 118.4, llmCostMonthUsd: 2.37,
+        },
+      }));
+      const res = fauxRes();
+      await handlerHub(fauxReq({ [HUB_TOKEN_HEADER]: JETON }), res);
+      const summary = validateSummary(JSON.parse(res.corps()));
+      expect(summary.usage?.quotas).toEqual([
+        { label: 'Coût LLM du mois (frein campagnes)', used: 2.37, limit: null, unit: 'USD' },
+      ]);
+    });
+  });
+
+  it('le cumul est arrondi au cent, comme le mois (aucun flottant qui bave à l\'affichage)', async () => {
+    await avecEnv({ HUB_TOKEN: JETON, WEBAPP_URL: 'https://script.example/exec', WEBAPP_SECRET: 's' }, async () => {
+      vi.stubGlobal('fetch', fauxFetch(200, {
+        ok: true,
+        etat: {
+          reviewQueueCount: 0, filedLast7d: 3, errorsLast7d: 0,
+          lastRunAt: new Date().toISOString(),
+          llmCostTotalUsd: 118.40666666, llmCostMonthUsd: 2.3749,
+        },
+      }));
+      const res = fauxRes();
+      await handlerHub(fauxReq({ [HUB_TOKEN_HEADER]: JETON }), res);
+      const summary = validateSummary(JSON.parse(res.corps()));
+      expect(summary.usage?.cost?.amount).toBe(118.41);
+      expect(summary.usage?.quotas?.[0]?.used).toBe(2.37);
     });
   });
 

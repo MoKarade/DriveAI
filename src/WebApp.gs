@@ -705,12 +705,32 @@ function majResumeHub_() {
     feuille_('Journal').getDataRange().getValues(),
     Date.now()
   );
-  // Coûts & quotas (bloc `usage` du hub) : coût LLM MENSUEL mesuré + activité Gmail du jour
-  // + état du quota Gmail. Métadonnées agrégées seulement (ADR-0007). Enveloppé : une panne
-  // de mesure ne doit pas priver le hub des 4 compteurs.
-  var llmCostMonthUsd = null, gmailThreadsToday = null, gmailQuotaSuspended = false;
+  // Coûts & quotas (bloc `usage` du hub) : coût LLM CUMULÉ + coût du MOIS + activité Gmail
+  // du jour + état du quota Gmail. Métadonnées agrégées seulement (ADR-0007). Enveloppé :
+  // une panne de mesure ne doit pas priver le hub des 4 compteurs.
+  //
+  // LES DEUX, et pas seulement le mois : le hub refuse d'additionner des montants qui ne
+  // couvrent pas la même période. En ne publiant que le mois courant, DriveAI l'empêchait
+  // d'afficher un total unique (FinanceAI publie un cumul). Le cumul devient donc le COÛT
+  // publié, et le mois devient un QUOTA avec son budget pour limite — rien n'est perdu.
+  var llmCostTotalUsd = null, llmCostMonthUsd = null, llmBudgetCampagnesUsd = null;
+  var gmailThreadsToday = null, gmailQuotaSuspended = false;
+  // Le cumul a SON PROPRE try : il lit les Properties EN BLOC (`getProperties`), là où le reste
+  // les lit une par une. Sous le même try, une panne de cette lecture-là aurait emporté le coût
+  // du mois et l'activité Gmail avec elle — le hub aurait perdu tout le bloc `usage` pour une
+  // mesure qui n'en est qu'une partie.
+  try {
+    llmCostTotalUsd = syntheseCoutTotal_().dollars;
+  } catch (e) {
+    journalErreur_('Hub', 'Cumul de coût indisponible : ' + e);
+  }
   try {
     llmCostMonthUsd = syntheseCoutMois_().dollars;
+    // Le seuil vient de CONFIG, jamais recopié côté Vercel : Marc le rajuste en éditant
+    // Config.gs (10 → 30 → 65 → 110 → 10 depuis juillet). Une constante dupliquée dans le
+    // broker aurait dérivé au premier rajustement, en affichant une jauge fausse sans rien
+    // casser — exactement le genre de mensonge silencieux qu'on s'interdit.
+    llmBudgetCampagnesUsd = CONFIG.LLM_BUDGET_CAMPAGNES;
     var aujourdhui = dateGmail_(new Date());
     gmailThreadsToday =
       compteurFilsJour_(props, 'DriveAI_GMAIL_HISTO', aujourdhui) +
@@ -727,7 +747,11 @@ function majResumeHub_() {
     errorsLast7d: compte.erreurs7j,
     lastRunAt: lastTick ? new Date(lastTick).toISOString() : null,
     // Champs additifs (bloc usage) : le broker Vercel les mappe si présents, les ignore sinon.
+    // `llmCostTotalUsd` est ADDITIF : une web app pas encore redéployée ne le publie pas, et
+    // le broker retombe alors proprement sur le mois (aucune version à synchroniser).
+    llmCostTotalUsd: llmCostTotalUsd,
     llmCostMonthUsd: llmCostMonthUsd,
+    llmBudgetCampagnesUsd: llmBudgetCampagnesUsd,
     gmailThreadsToday: gmailThreadsToday,
     gmailQuotaSuspended: gmailQuotaSuspended
   };
