@@ -8,10 +8,18 @@ on:
 permissions:
   contents: read
 
+# Un nouveau push sur la MÊME branche annule le run précédent : sans ça, un job figé continue de
+# tourner (et de tenir un runner) pendant que le suivant démarre. `main` est exclu du groupe —
+# on ne veut jamais annuler la validation d'un commit déjà mergé.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   validate:
     name: Validation du scaffolding
     runs-on: ubuntu-latest
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
 
@@ -55,6 +63,7 @@ jobs:
   test:
     name: Tests unitaires (logique pure)
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -80,6 +89,7 @@ jobs:
   app:
     name: App web (garde-fous miroir + build)
     runs-on: ubuntu-latest
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
 
@@ -104,6 +114,7 @@ jobs:
   screenshots:
     name: Captures d'écran UI (E2E mode mock)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -117,8 +128,12 @@ jobs:
         working-directory: app
         run: npm ci
 
+      # Étape la plus FRAGILE de la CI : elle tire des paquets apt et le binaire Chromium. Vécu
+      # 2× le 19/08 — figée > 20 min sans rien produire, retenant le merge. Bornée pour qu'un
+      # blocage devienne un ÉCHEC VISIBLE et rejouable, au lieu d'une attente muette.
       - name: Navigateur Playwright (Chromium seul)
         working-directory: app
+        timeout-minutes: 6
         run: npx playwright install --with-deps chromium
 
       # VITE_E2E_MOCK=true est injectée par playwright.config.ts (webServer) : auth bouchonnée,
