@@ -67,11 +67,25 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
 6. **Budget LLM : < 10 $/mois en régime de croisière.** Depuis le 2026-07-09 (ADR-0018, feu vert
    Marc après la preuve C26-07), le flux vivant tourne en **Sonnet 2 passes** (`ANALYSE_V2`). Les
    campagnes de RATTRAPAGE (grand rangement, historique Gmail, migration, re-analyse C26-08) sont un
-   coût one-shot plafonné par le frein `CONFIG.LLM_BUDGET_CAMPAGNES` — **110 $ (décision Marc
-   2026-07-10, révision ADR-0018 : m1 basculée en v2 par l'allumage du flag, coût/doc ×10 ;
-   révise 65 du 2026-07-09 et 30 du 2026-07-07)**, à redescendre vers 10 une fois m1 + C26-08
-   finies (checklist dans l'ADR).
+   coût one-shot plafonné par le frein `CONFIG.LLM_BUDGET_CAMPAGNES`. Le plafond a suivi les
+   campagnes : 10 → 30 (07/07) → 65 (09/07) → 110 (10/07, ADR-0018 révisée), puis **redescendu à
+   10 le 2026-08-01** — m1 et C26-08 sont finies, la checklist de l'ADR est bouclée, on est
+   revenu au régime de croisière. **La valeur qui fait foi est `Config.gs`, pas cette ligne** :
+   Marc relève ponctuellement le plafond en éditant le fichier, et le résumé publié au hub lit
+   `CONFIG.LLM_BUDGET_CAMPAGNES` plutôt que de recopier un chiffre.
    Le frein ne se désactive JAMAIS (filet anti-emballement) et ne gate JAMAIS le flux vivant.
+
+7. **Le coût publié au hub est le CUMUL, pas le mois.** `majResumeHub_` publie
+   `llmCostTotalUsd` (somme de toutes les Properties `DriveAI_COUT_*`, cf. `syntheseCoutTotal_`)
+   et le broker le sert en `usage.cost.period = "total"`. Le mois courant devient un **quota**
+   avec le seuil du frein pour plafond. Raison : le hub somme les coûts PAR période et refuse de
+   fusionner « cumulé » et « ce mois-ci » — tant que DriveAI ne publiait que son mois, il était
+   seul dans sa colonne et empêchait tout total unique. Si le cumul manque (web app en retard
+   d'un déploiement), le broker retombe sur `period = "mois"` : le mois sous son vrai nom, jamais
+   étiqueté « cumulé ».
+   Où vont les autres chiffres : la VENTILATION par usage (C28-58) et le récapitulatif de tout
+   ce qui coûte quelque chose vivent dans [`docs/COUTS.md`](./docs/COUTS.md). Ce point-ci ne
+   traite que d'UNE question — sous quelle période le montant part au hub.
 
 ## 3. Conventions de code
 

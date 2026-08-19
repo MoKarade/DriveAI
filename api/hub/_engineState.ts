@@ -29,8 +29,17 @@ export interface EngineState {
   errorsLast7d: number;
   /** Dernier passage du moteur (ISO 8601) — sert d'alerte « moteur muet » côté hub. */
   lastRunAt: string;
+  /**
+   * Coût LLM CUMULÉ depuis toujours, en USD (bloc usage) — optionnel (absent avant redéploiement
+   * moteur). C'est LUI qui devient le `cost` publié : le hub refuse d'additionner des montants
+   * qui ne couvrent pas la même période, et tant que DriveAI ne publiait que le mois courant, il
+   * empêchait tout total unique honnête (cf. `syntheseCoutTotal_` dans src/Cout.gs).
+   */
+  llmCostTotalUsd?: number;
   /** Coût LLM MENSUEL mesuré en USD (bloc usage) — optionnel (absent avant redéploiement moteur). */
   llmCostMonthUsd?: number;
+  /** Seuil du frein des campagnes, en USD (CONFIG.LLM_BUDGET_CAMPAGNES) — plafond du quota mensuel. */
+  llmBudgetCampagnesUsd?: number;
   /** Fils Gmail traités aujourd'hui (bloc usage) — optionnel. */
   gmailThreadsToday?: number;
   /** Quota Gmail en pause (bloc usage) — optionnel. */
@@ -178,7 +187,9 @@ async function lireMoteur_(): Promise<EngineState | null> {
 
   // Champs usage ADDITIFS (absents tant que le moteur n'a pas été redéployé) : tolérés, jamais
   // bloquants — une valeur invalide est simplement ignorée (le bloc usage restera partiel).
+  const llmCostTotalUsd = nombrePositif(etat.llmCostTotalUsd);
   const llmCostMonthUsd = nombrePositif(etat.llmCostMonthUsd);
+  const llmBudgetCampagnesUsd = nombrePositif(etat.llmBudgetCampagnesUsd);
   const gmailThreadsToday = nombrePositif(etat.gmailThreadsToday);
   const gmailQuotaSuspended = etat.gmailQuotaSuspended === true ? true : undefined;
 
@@ -187,7 +198,9 @@ async function lireMoteur_(): Promise<EngineState | null> {
     filedLast7d,
     errorsLast7d,
     lastRunAt,
+    ...(llmCostTotalUsd !== null ? { llmCostTotalUsd } : {}),
     ...(llmCostMonthUsd !== null ? { llmCostMonthUsd } : {}),
+    ...(llmBudgetCampagnesUsd !== null ? { llmBudgetCampagnesUsd } : {}),
     ...(gmailThreadsToday !== null ? { gmailThreadsToday } : {}),
     ...(gmailQuotaSuspended ? { gmailQuotaSuspended } : {}),
   };
