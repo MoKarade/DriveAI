@@ -266,7 +266,7 @@ test('actionMcpEtat_ : une section illisible dégrade SA section, jamais toute l
         ] }),
       };
     },
-    etatPanneConfigApi_: () => ({ actif: true, message: 'hubperso — compte non lié' }),
+    etatPanneConfigApi_: () => ({ actif: true, message: 'hubperso — compte non lié', sonde: 'indetermine (Tasks) — HTTP 400' }),
   });
   const r = c.actionMcpEtat_();
   assert.strictEqual(r.ok, true);
@@ -275,4 +275,7 @@ test('actionMcpEtat_ : une section illisible dégrade SA section, jamais toute l
   assert.strictEqual(r.missions.length, 1, 'les autres sections vivent');
   assert.strictEqual(r.intentionsSuspendues, true);
   assert.ok(r.intentionsDetail.includes('hubperso'));
+  // Le VERDICT de la sonde voyage aussi : « indetermine » à répétition = reprise qui tourne à vide
+  // (vécu 19/08), invisible tant qu'on ne lisait que la cause mémorisée.
+  assert.ok(r.intentionsSonde.includes('HTTP 400'), 'le verdict de la dernière sonde est exposé');
 });

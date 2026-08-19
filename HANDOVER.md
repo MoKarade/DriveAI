@@ -34,9 +34,21 @@
 > **geste Marc une fois** : suivre `docs/HUBPERSO.md` (client OAuth Web dans hubperso,
 > 2 Properties, `lierCompteHubperso`, 1 clic de consentement) — la sonde lève ensuite la
 > suspension TOUTE SEULE
-> (≤ 13 min) et le tri Gmail repart avec les intentions. **Un rappel automatique (Routine
-> `trig_013kb7wpkm2pXqBRTq71MM13`) vérifie l'onglet Santé plusieurs fois/jour et s'auto-supprime
-> une fois la liaison faite.** **C28-53 (ADR-0042) — MCP DriveAI** (demande Marc 2026-08-19 « je
+> (≤ 13 min) et le tri Gmail repart avec les intentions. **Liaison FAITE par Marc le 19/08 vers 14:20**
+> (« ✅ Compte hubperso lié »), après deux correctifs trouvés au PREMIER usage réel : `doGet` ne
+> recevait jamais le marqueur `hubperso=1` (Google n'ajoute que `code`+`state` — #289), puis la
+> sonde restait `indetermine (Tasks) — HTTP 400` parce qu'un identifiant sondé UNIQUE servait aux
+> deux API (valide en base32hex pour Calendar, impossible en base64url pour Tasks) : verdict
+> stérile ⇒ **reprise RAPIDE (≤ 13 min) supprimée en silence** (la suspension finissait par
+> expirer d'elle-même après 24 h — jamais un blocage éternel, mais une reprise tardive et à
+> l'aveugle, avec un message Santé PÉRIMÉ entre-temps). Corrigé (un identifiant PAR API + le
+> POURQUOI persisté + la cause démentie remplacée, seulement par une RÉPONSE d'API et jamais par
+> un 401). PREUVE que la liaison marche : la sonde obtient un jeton et JOINT l'API Tasks (sans
+> jeton, le verdict serait `desactivee (hubperso)` sans aucun appel réseau). Sur **Calendar**, en
+> revanche, l'état persisté d'AVANT le correctif ne permet PAS de conclure : une passe abandonnée
+> par le garde-temps rendait exactement le même texte qu'une passe complète — c'est le prochain
+> verdict de sonde qui tranchera. Le rappel automatique (Routine
+> `trig_013kb7wpkm2pXqBRTq71MM13`) est devenu FAUX : à supprimer.** **C28-53 (ADR-0042) — MCP DriveAI** (demande Marc 2026-08-19 « je
 > veux un mcp ») : connecteur claude.ai servi par le Vercel existant (`api/mcp/*`, OAuth 2.1 porté
 > du patron FinanceAI éprouvé), 6 outils derrière un 3ᵉ secret `DriveAI_MCP_SECRET`/`MCP_ENGINE_SECRET`
 > (`src/Mcp.gs` : état moteur+missions+erreurs+mail+panne LLM, recherche/lecture, question, réorg
