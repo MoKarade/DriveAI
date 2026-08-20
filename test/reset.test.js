@@ -426,7 +426,17 @@ test('c49-2 · 03 : les règles par ENTITÉ/BAILLEUR gardent la priorité sur le
   const n03 = ctx.STRUCTURE_CIBLE_RESET['03 · Logement & véhicule'];
   assert.ok(!n03['Logements'] && !n03['Véhicules'],
     'les pluriels sont RETIRÉS de la table (les missions les vident — ping-pong sinon)');
-  assert.deepStrictEqual(Object.keys(JSON.parse(JSON.stringify(n03['Véhicule']['KIA']))),
+  assert.deepStrictEqual(Object.keys(JSON.parse(JSON.stringify(n03['Véhicule']['VW Jetta']))),
     JSON.parse(JSON.stringify(ctx.CONFIG.MISSIONS_CATEGORIES_VEHICULE)),
     'tripwire : les catégories de la table = celles de la CONFIG (deux artefacts, un verrou)');
+  // ADR-0044 — même patron que les pluriels : un bucket de cette table est RECRÉÉ PAR NOM, donc
+  // garder « KIA » ici pendant que la mission le dissout produirait un ping-pong.
+  assert.ok(!n03['Véhicule']['KIA'], 'KIA retiré de la table (sinon recréé par nom à chaque classement)');
+  // …et les 2 dossiers COMMUNS doivent y ÊTRE : c'est ce qui en fait des ancres structurelles,
+  // que `estAncreStructurelle_` (Fusion.gs) refuse de proposer comme SOURCE à vider.
+  assert.ok(n03['Véhicule']['Locations'] && n03['Véhicule']['Recherche & achat'],
+    'les communs sont des ancres structurelles, jamais des dossiers à vider');
+  const vehicules = JSON.parse(JSON.stringify(ctx.CONFIG.MISSIONS_VEHICULES)).map((v) => v.nom);
+  vehicules.forEach((v) => assert.ok(n03['Véhicule'][v], 'chaque véhicule du canon a son nœud : ' + v));
+  assert.ok(Object.keys(JSON.parse(JSON.stringify(n03['Véhicule']))).length <= 7, 'règle des ≤ 7 nœuds');
 });

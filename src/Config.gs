@@ -601,10 +601,14 @@ var CONFIG = {
   // sur `_TRI 2026/<domaine>` — un fichier placé n'y est plus, il n'est donc jamais re-présenté).
   // À bumper à CHAQUE modification des règles de routage, sinon les non-routés resteraient marqués
   // « déjà tenté » à vie et l'affinage serait sans effet (constaté au 1ᵉʳ reliquat réel, 2026-07-30).
-  RESET_TABLE_VERSION: 't4',              // ⚠️ C28-51 (ADR-0040) a RÉVOQUÉ le transversal t4 de 03 (la table
-                                          // route désormais Logement/Véhicule par véhicule) SANS bump : la
-                                          // campagne reset est TERMINÉE et RESET_ACTIF=false — la relancer
-                                          // un jour exige t5 (ré-évaluer les refus keyés sous la table t4).
+  RESET_TABLE_VERSION: 't5',              // t5 (ADR-0044, 2026-08-20) : « KIA » RETIRÉ du nœud Véhicule (il le
+                                          // faisait RECRÉER par nom pendant que la mission le dissout →
+                                          // ping-pong), + les 2 dossiers COMMUNS « Recherche & achat » et
+                                          // « Locations » déclarés comme ancres structurelles. Ce bump ACQUITTE
+                                          // aussi la dette laissée par C28-51 (ADR-0040), qui avait révoqué le
+                                          // transversal t4 de 03 SANS bump parce que la campagne était terminée
+                                          // et RESET_ACTIF=false : le jour où le reset repart, les refus keyés
+                                          // sous t4 seront enfin ré-évalués sous les règles courantes.
                                           // t4 : 03 « Véhicules/{Entretien & réparations, Assurance auto,
                                           // Recherche & achat, Contraventions} » — décision Marc 2026-07-31
                                           // sur le reliquat réel (~64 fichiers auto sans dossier d'accueil).

@@ -73,7 +73,16 @@ var STRUCTURE_CIBLE_RESET = {
     // Rivières » réel). Fichiers À PLAT dans chaque logement ; dans chaque VÉHICULE, les 4
     // catégories de Marc (décision 2026-08-17, créées à la demande).
     'Logement': { '1548 avenue de la Roselière, Québec': {}, '3987 rte des Rivières': {}, '3325 4e avenue': {}, '783 av. Moreau, Québec': {}, 'Anciens logements': {} },
-    'Véhicule': { 'Toyota bZ': categoriesVehiculeReset_(), 'KIA': categoriesVehiculeReset_(), 'Ford Fiesta': categoriesVehiculeReset_(), 'VW Jetta': categoriesVehiculeReset_() },
+    // ADR-0044 : « KIA » RETIRÉ (Marc : « c'était juste une recherche d'achat ») — le garder ici le
+    // ferait RECRÉER PAR NOM à chaque classement, pendant que la mission véhicule envoie son
+    // contenu dans « Recherche & achat » : exactement le ping-pong que le commentaire ci-dessus
+    // décrit pour les nœuds pluriels. Et les deux dossiers COMMUNS y entrent, pour que
+    // `estAncreStructurelle_` (Fusion.gs) les protège : un bucket de cette table n'est JAMAIS une
+    // SOURCE à vider. 5 nœuds sous « Véhicule » (≤ 7 ✔).
+    'Véhicule': {
+      'Toyota bZ': categoriesVehiculeReset_(), 'Ford Fiesta': categoriesVehiculeReset_(), 'VW Jetta': categoriesVehiculeReset_(),
+      'Recherche & achat': {}, 'Locations': {},
+    },
     'Énergie & services': {},
     'Assurance habitation': {},
     // Ajoutés sur le reliquat réel (décision Marc 2026-07-30) : 18 « Contrat » et 16
