@@ -1648,7 +1648,9 @@ test('C28-65 : un échec PERMANENT est abandonné après N essais (pas 288 rejeu
   // PANNE, donc on re-tente — mais sans borne, la boucle tournerait à chaque tick indéfiniment,
   // avec une ligne de Journal à chaque fois : l'historique de diagnostic (20 000 lignes) serait
   // chassé en ~17 jours, et les autres corrections resteraient « non finies » pour toujours.
-  c.appliquerDeplacerFichier_ = () => { appels++; return { statut: 'échec', detail: 'fichier introuvable' }; };
+  // Le mode d'échec le plus réaliste n'est pas un statut typé mais un THROW (« Access denied »
+  // permanent sur un fichier partagé) : il partait au catch externe, qui ne comptait rien.
+  c.appliquerDeplacerFichier_ = () => { appels++; throw new Error('Access denied'); };
   c.ensembleDomainesProteges_ = () => ({});
   c.PropertiesService = { getScriptProperties: () => ({
     getProperty: (k) => h.store[k] || null, setProperty: (k, v) => { h.store[k] = v; },

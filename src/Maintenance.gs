@@ -1116,7 +1116,13 @@ function appliquerCorrectionsManuelles_(estBudgetDepasse) {
       // l'ÉPINGLE qui immunise le fichier contre les campagnes de re-rangement. Écrire un second
       // chemin de mutation « presque pareil » était la faute que ce dépôt corrige partout ailleurs :
       // une seule règle, deux consommateurs (audit sécurité C28-65).
-      var r = appliquerDeplacerFichier_({ source: c.id, cible: c.cible }, proteges);
+      // ⚠️ Un THROW de la fonction déléguée (« Access denied » permanent sur un partagé — panne
+      // RÉELLE documentée dans ce Drive) partait au catch externe, qui ne comptait rien : 288
+      // rejeux/jour à vie, `DriveAI_CORR_FINI` jamais posé — exactement ce que l'abandon borné
+      // ci-dessous prétend fermer (audit final). Converti en `échec` typé, il passe par la borne.
+      var r;
+      try { r = appliquerDeplacerFichier_({ source: c.id, cible: c.cible }, proteges); }
+      catch (eMove) { r = { statut: 'échec', detail: String(eMove) }; }
       if (r.statut === 'appliqué') {
         indexAjouter_(cle, { statut: 'corr', nom: c.quoi, domaine: '', chemin: '' }, '');
         faits++;
@@ -1140,8 +1146,22 @@ function appliquerCorrectionsManuelles_(estBudgetDepasse) {
         indexAjouter_(cle, { statut: 'corr-abandon', nom: c.quoi, domaine: '', chemin: '' }, '');
         continue;
       }
+      // Une ligne par essai (patron `Missions.gs`) : sans elle, une boucle qui ne converge pas
+      // serait à la fois infinie ET MUETTE — seul symptôme observable, l'absence de tag « fait ».
+      journalErreur_('Corrections', 'Correction différée (essai ' + essais + '/' +
+        CONFIG.QUARANTAINE_MAX + ', ' + r.detail + ') : ' + c.quoi);
       reste++;
     } catch (e) {
+      // Même borne ici : ce catch ne voit plus que les échecs d'ÉTAT (Index illisible…), mais un
+      // compteur nu suffirait à reproduire la boucle infinie que le correctif ci-dessus ferme.
+      var essaisE = 0;
+      try { essaisE = incrementerEchec_(cle); } catch (e3) { /* compteur indisponible */ }
+      if (essaisE >= CONFIG.QUARANTAINE_MAX) {
+        journalErreur_('Corrections', 'ABANDON après ' + essaisE + ' essais : ' + c.quoi + ' — ' + e);
+        try { indexAjouter_(cle, { statut: 'corr-abandon', nom: c.quoi, domaine: '', chemin: '' }, ''); }
+        catch (e4) { /* Index illisible : on re-tentera, la borne rejouera */ }
+        continue;
+      }
       journalErreur_('Corrections', 'Correction différée (' + c.quoi + ') : ' + e);
       reste++;
     }
