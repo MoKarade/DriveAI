@@ -1130,3 +1130,37 @@ test('sousDossierEmployeur_ : normalise LUI-MÊME (2 consommateurs, 2 normalisat
   assert.strictEqual(pur.sousDossierEmployeur_('contrat-de-travail'), 'Contrats');
   assert.strictEqual(pur.sousDossierEmployeur_('badge'), '');
 });
+
+test('ADR-0044 §6 : formulaires GÉNÉRIQUES → « Modèles & formulaires », APRÈS les règles par entité', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
+  const D = '03 · Logement & véhicule';
+  const d03 = c.tableMissions_().filter((m) => m.tag === 'dispatch03')[0];
+  const ctx = { themePar: {}, themeVehiculePar: {}, logements: [
+    { nom: '3987 rte des Rivières', id: 'l3987', jetons: ['3987', 'rivieres'] },
+  ], fenetres: [] };
+  const infoC = { sourceId: c.CONFIG.MISSIONS_IDS.contrats03, sousChemin: '' };
+  const attendu = { cibleParentId: c.CONFIG.DOMAINES[D], cibleNom: 'Modèles & formulaires', sousDossier: '' };
+
+  // Les 8 fichiers RÉELS de `03 · Contrats` (4 CORPIQ, 2 MA8, 2 Proprio Expert).
+  ['2018-10-15_Formulaire de demande de location_CORPIQ.pdf',
+    '2018-10-15_Formulaire de demande de location_Immeubles MA8_2.pdf',
+    '2026-06-29_Formulaire de consentement communication électronique_Proprio Expert.pdf',
+  ].forEach((nom) => {
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(d03.router(nom, infoC, ctx))), attendu, 'MISSION — ' + nom);
+    // TRIPWIRE de convergence : le flux calcule la MÊME cible (sinon la conso défait).
+    assert.strictEqual(c.cheminCibleReset_(D, nom), 'Modèles & formulaires', 'FLUX — ' + nom);
+  });
+
+  // 🔴 LE SPÉCIFIQUE GAGNE : un formulaire ATTRIBUABLE part chez son entité, jamais dans les
+  // modèles. C'est ce qui rend la règle sûre — sinon elle volerait des documents identifiables.
+  const attribuable = '2024-05-01_Formulaire de demande de location_9478-5045 Québec inc.pdf';
+  assert.strictEqual(c.cheminCibleReset_(D, attribuable), 'Logement/3987 rte des Rivières',
+    'le bailleur connu gagne sur le filet « modèles »');
+  const rA = d03.router(attribuable, infoC, ctx);
+  assert.strictEqual(rA && rA.cibleId, 'l3987', 'idem côté mission');
+
+  // Le prédicat est ancré sur le MOT et normalise lui-même (2 consommateurs, 2 normalisations).
+  assert.strictEqual(c.estModeleOuFormulaire_('formulaire de consentement'), true);
+  assert.strictEqual(c.estModeleOuFormulaire_('formulaire-de-consentement'), true);
+  assert.strictEqual(c.estModeleOuFormulaire_('contrat de bail'), false);
+});

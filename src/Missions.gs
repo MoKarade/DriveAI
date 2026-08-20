@@ -177,7 +177,13 @@ function tableMissions_() {
         //    bailleur, jamais par adresse — table prouvée par contenu).
         var b = cibleBailleur_(nom, ctx.logements);
         if (b) return { cibleId: b.id, sousDossier: theme };
-        // 3. Correspondance sans indice : la DATE tranche si elle tombe dans EXACTEMENT une
+        // 3 bis. (ADR-0044 §6) Formulaire GÉNÉRIQUE, aucune entité identifiée → « Modèles &
+        //    formulaires ». MÊME prédicat que le flux, et MÊME position : après l'entité.
+        if (estModeleOuFormulaire_(typeDuNomMission_(nom))) {
+          return { cibleParentId: CONFIG.DOMAINES[MISSIONS_DOMAINE_03],
+            cibleNom: 'Modèles & formulaires', sousDossier: '' };
+        }
+        // 4. Correspondance sans indice : la DATE tranche si elle tombe dans EXACTEMENT une
         //    fenêtre d'occupation (demande Marc « regarde les dates pour déterminer »).
         if (info.sourceId === CONFIG.MISSIONS_IDS.correspondance03) {
           var parDate = logementParDate_(nom, ctx.fenetres);
@@ -725,6 +731,20 @@ function estReleveDePaie_(type) {
   // de SUCCÈS : dans le doute, on REFUSE.
   if (/(^| )releve (d |de |des )/.test(t)) return false;
   return typeContient_(t, ['releve', 'releves']);
+}
+
+/**
+ * Vrai si le document est un MODÈLE / FORMULAIRE générique (ADR-0044 §6) — cible
+ * `<domaine>/Modèles & formulaires`. PURE (testée), PARTAGÉE par le flux et `dispatch03`.
+ *
+ * Normalise ICI (les deux consommateurs n'appliquent pas la même normalisation amont) et exige un
+ * MOT ENTIER. ⚠️ Ce prédicat est un FILET : il ne doit être consulté qu'APRÈS les règles par
+ * entité, sinon un formulaire ATTRIBUABLE (« Formulaire de demande de location » adressé à un
+ * bailleur connu) partirait dans les modèles au lieu du dossier de son logement.
+ * @param {string} type  segment TYPE @return {boolean}
+ */
+function estModeleOuFormulaire_(type) {
+  return typeContient_(normaliserMission_(type), ['formulaire', 'formulaires', 'modele', 'modeles']);
 }
 
 /** Sous-dossier d'« Employeurs/<X> » par TYPE (table explicite — type inconnu ⇒ ''). PURE. */

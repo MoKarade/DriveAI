@@ -95,6 +95,11 @@ var STRUCTURE_CIBLE_RESET = {
     // « Correspondance » de 03 n'avaient aucun dossier d'accueil. 03 reste à 6 nœuds (≤ 7 ✔).
     'Contrats': {},
     'Correspondance': {},
+    // ADR-0044 §6 (décision 6) : les formulaires GÉNÉRIQUES/vierges — le générique reste près de
+    // son sujet plutôt que de polluer « Contrats ». 03 = 7 nœuds ≤ 7 ✔.
+    // ⚠️ Ce nœud n'existe QUE dans 03 : `02 · Finances` est déjà à 7 (PLEIN), et la règle des ≤ 7
+    // prime — la décision y reste ouverte, elle exige d'abord de libérer un nœud (choix de Marc).
+    'Modèles & formulaires': {},
   },
   // 04 : structure INTERNE (ADR-0030 §4) — les fichiers ne sortent JAMAIS de 04 automatiquement.
   '04 · Immigration': {
@@ -424,6 +429,11 @@ function cheminCibleReset_(domaine, nom) {
         'expertise auto']) || resetContient_(t, ['entretien', 'reparation', 'revision'])) return 'Véhicule/' + vehicule + '/Entretien & réparations';
       return 'Véhicule/' + vehicule;
     }
+    // (ADR-0044 §6) Formulaire GÉNÉRIQUE — filet placé APRÈS toutes les règles par ENTITÉ
+    // (adresse, bailleur, véhicule) : le SPÉCIFIQUE gagne toujours. Le jour où « Immeubles MA8 »
+    // entrerait dans MISSIONS_BAILLEURS, ses formulaires iraient chez le BAILLEUR — un formulaire
+    // attribuable n'est pas un modèle.
+    if (estModeleOuFormulaire_(t)) return 'Modèles & formulaires';
     if (resetContient_(e, ['edf', 'engie', 'hydro'])) return 'Énergie & services';
     if (tout.indexOf('assurance habitation') !== -1 || e.indexOf('maif') !== -1) return 'Assurance habitation';
     // Un document de VÉHICULE sans véhicule identifiable (immatriculation SAAQ, contravention

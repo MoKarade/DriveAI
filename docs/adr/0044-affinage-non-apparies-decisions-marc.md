@@ -309,3 +309,49 @@ REFUSE** — un refus coûte un re-examen, un faux positif coûte un document pe
 - **Sa COULEUR n'a pas pu être vérifiée** (l'outil de lecture Drive ne rend pas `folderColorRgb`).
   S'il a été peint en ROUGE quand il était vide, il crie « supprimable » alors qu'il redevient la
   cible officielle du recrutement — à dépeindre à la main, ou à traiter dans un geste ultérieur.
+
+
+## 6. PR3 — décision 6 : « Modèles & formulaires » (2026-08-20)
+
+Source relue avant d'écrire la règle. `03 · Contrats` contient **9 fichiers**, dont **8 formulaires** :
+4× `Formulaire de demande de location_CORPIQ` (même date, 2018-10-15), 2× le même pour
+`Immeubles MA8`, 2× `Formulaire de consentement communication…_Proprio Expert`. Le 9ᵉ est un
+`Contrat de vente véhicule d'occasion_Suprême Auto`, hors périmètre de cette décision.
+
+### 6.1 ⚠️ La décision n'est PAS applicable telle quelle à `02 · Finances`
+
+Décision 6 demandait un `Modèles & formulaires` **par domaine**, en citant `03` *et* `02`. Or la
+règle des **≤ 7 nœuds par niveau** — la contrainte que Marc a lui-même posée — l'interdit :
+
+| Domaine | Nœuds actuels | Place pour un nœud de plus ? |
+|---|---|---|
+| `03 · Logement & véhicule` | 6 | **oui** (→ 7) |
+| `02 · Finances` | **7 — PLEIN** | **non** |
+| `05 · Carrière` | 7 (depuis D10) | non |
+| `06 · Études & diplômes` | 7 | non |
+
+**Livré : `03` seulement**, là où les 8 fichiers sont et où la place existe. Pour `02`, la décision
+reste ouverte : elle exige d'abord de libérer un nœud (regrouper deux existants), ce qui est une
+décision de Marc, pas un arbitrage technique. Aucune preuve de besoin côté `02` pour l'instant :
+les 24 bloqués y sont des **fourre-tout d'année** (décision 7, PR4), pas des formulaires.
+
+### 6.2 Ordre : le SPÉCIFIQUE gagne toujours sur le générique
+
+La règle est un **filet**, placé APRÈS les règles par entité (adresse, bailleur, véhicule) et AVANT
+les filets `Contrats`/`Correspondance`. Conséquence voulue : le jour où `Immeubles MA8` entrerait
+dans `MISSIONS_BAILLEURS` (il n'y est pas), ses formulaires partiraient chez le **bailleur**, pas
+dans les modèles. Un formulaire attribuable n'est pas un modèle.
+
+### 6.3 Correctif transverse : les nœuds de NIVEAU 1 étaient mutables par la Réorg
+
+En posant ce nœud, la revue de PR2 (finding B-bis) devient concrète : `estAncreStructurelleFusion_`
+protège les buckets de niveau 1 **du côté Fusion**, mais `estSegmentStructurel_` — que consulte
+l'inventaire RÉCURSIF de la **Réorg** — ne les connaissait pas. Un plan LLM pouvait donc proposer de
+fusionner `Modèles & formulaires` (vide au départ, donc candidat idéal) ou `Recherche d'emploi` vers
+un voisin sémantique ; validé, le dossier partait en `vide-candidat` puis à la corbeille, pendant
+que le flux le recrée PAR NOM au document suivant — split-brain.
+
+`estSegmentStructurel_` reconnaît désormais **tout bucket de niveau 1 de `STRUCTURE_CIBLE_RESET`**,
+comme le fait déjà son jumeau côté Fusion. Bénéfice secondaire : le LLM ne reçoit plus ces dossiers
+comme « regroupables », donc plus d'essais brûlés sur des actions que la whitelist rejette de toute
+façon.

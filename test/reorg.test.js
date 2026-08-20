@@ -376,3 +376,21 @@ test('estSegmentStructurel_ : « Autres employeurs » est protégé (ADR-0044 D1
   assert.strictEqual(c.estSegmentStructurel_('Robovic'), false,
     'un dossier d\'employeur NOMMÉ reste mutable — seul le commun est structurel');
 });
+
+test('estSegmentStructurel_ : les buckets de NIVEAU 1 de STRUCTURE_CIBLE_RESET sont immuables (ADR-0044 §6.3)', () => {
+  // Reset.gs est REQUIS ici : c'est lui qui porte la table. Sans lui la protection est inerte —
+  // c'est d'ailleurs ce qui a fait passer la mutation correspondante en silence, et c'est la
+  // raison d'être de ce test (le contexte doit refléter le moteur, où tout est chargé).
+  const c = load(['Config.gs', 'Router.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs', 'Reorg.gs']);
+  // Ces dossiers sont find-or-créés PAR NOM par le flux : les fusionner/renommer est NON
+  // convergent (le flux les recrée au document suivant), et un bucket VIDE est justement le
+  // candidat idéal d'un plan de regroupement LLM.
+  ['Modèles & formulaires', 'Recherche d\'emploi', 'Contrats', 'Correspondance', 'Logement', 'Véhicule',
+  ].forEach((n) => assert.strictEqual(c.estSegmentStructurel_(n), true, 'bucket de niveau 1 : ' + n));
+  // Contre-épreuve : un dossier d'ENTITÉ reste mutable (sinon la Réorg n'aurait plus rien à faire).
+  assert.strictEqual(c.estSegmentStructurel_('Desjardins'), false);
+  assert.strictEqual(c.estSegmentStructurel_('Robovic'), false);
+  // …et la protection vient bien de la TABLE, pas d'une liste voisine.
+  const t = JSON.parse(JSON.stringify(c.STRUCTURE_CIBLE_RESET));
+  assert.ok(Object.keys(t).some((d) => Object.prototype.hasOwnProperty.call(t[d], 'Modèles & formulaires')));
+});
