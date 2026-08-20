@@ -716,6 +716,7 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
   dangereux (la peinture rouge, elle, exige la vacuité stricte).
 
 - 🟦 **C28-73 — Drainer `Documents ID` (15 fichiers) PAR LE PIPELINE, + le type `NAS` (ADR-0048).**
+  **LIVRÉ** (`src/DocumentsID.gs`) — reste le clic de Marc : `DocumentsID.gs` → `drainerDocumentsID`.
   Décision de Marc du 20/08 : « tout drainer vers `Pièces d'identité` ». ⚠️ **Un simple `moveTo` serait
   DÉFAIT** : aucun des 15 noms n'est au format canonique, donc `cheminCibleConsolidation_` les cible à
   la RACINE de `01` — la consolidation (active, récursive) viderait les passeports à plat dès le tick

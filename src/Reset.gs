@@ -352,7 +352,10 @@ function cheminCibleReset_(domaine, nom) {
   var tout = normaliserCle_(nom);
 
   if (domaine === '01 · Administratif & identité') {
-    if (resetContient_(t, ['passeport', 'carte nationale d identite', 'carte d identite', 'permis de conduire', 'carte d assurance maladie', 'carte vitale', 'carte de resident'])) {
+    // « numero d assurance sociale » ajouté avec `TYPES_IDENTITE` (ADR-0048) : sans lui, un NAS
+    // canoniquement nommé n'aurait PAS de cible ici et serait tombé au repli — le type et la table
+    // se livrent ensemble, c'est « une seule règle, deux consommateurs » appliqué au vocabulaire.
+    if (resetContient_(t, ['passeport', 'carte nationale d identite', 'carte d identite', 'permis de conduire', 'carte d assurance maladie', 'carte vitale', 'carte de resident', 'numero d assurance sociale'])) {
       for (var p in RESET_PERSONNES_AUTRES) { if (e.indexOf(p) !== -1) return 'Pièces d\'identité/Autres/' + RESET_PERSONNES_AUTRES[p]; }
       // « Marc » SEULEMENT si le tiers est Marc lui-même OU une AUTORITÉ émettrice (cas majoritaire :
       // Préfecture, SAAQ, RAMQ… — le titulaire n'est alors pas dans le nom). Un tiers INCONNU qui

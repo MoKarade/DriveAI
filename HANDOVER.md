@@ -58,7 +58,19 @@
 > anti-tautologie (on assert d'abord que la table REFUSE le nom).
 > **La mission identité (PR3) peut donc bien réutiliser la règle du flux : celle-ci EST la table.**
 
-> **➜ PROCHAIN CHANTIER — C28-73, drainage de `Documents ID` (ADR-0048).** Décisions de Marc du
+> **➜ 👉 UN GESTE T'ATTEND — C28-73 est LIVRÉ, il ne manque qu'un clic.**
+> Ouvre l'éditeur Apps Script → **`DocumentsID.gs`** → fonction **`drainerDocumentsID`** → Exécuter.
+> Elle draine les 15 fichiers de `Documents ID` vers `Pièces d'identité` en les faisant passer par
+> le pipeline (donc RENOMMÉS au format canonique). ~0,39 $, une seule fois, idempotente : la
+> relancer ne re-traite rien. Elle rend son bilan directement dans l'éditeur et dans le Journal.
+> ⚠️ Elle doit être **DÉPLOYÉE** pour exister dans ton éditeur (piège 3) — vérifier que le run
+> `deploy.yml` du merge est vert avant de chercher la fonction.
+> Pourquoi manuelle plutôt qu'automatique : le registre de suivi est SATURÉ (aucune 43ᵉ étape de
+> tick possible) et l'enveloppe runtime est à 63/65 min/j. Une campagne de tick pour 15 fichiers
+> one-shot consommerait les deux ressources les plus rares du moteur pour un travail qui tient en
+> une exécution.
+>
+> **➜ CHANTIER — C28-73, drainage de `Documents ID` (ADR-0048).** Décisions de Marc du
 > 20/08 obtenues (4 questions). Le fait qui commande la conception, mesuré AVANT tout code : les 15
 > noms hérités ne sont pas canoniques, donc `cheminCibleConsolidation_` les cible à la **racine de
 > `01`** — un simple déplacement vers `Pièces d'identité/Marc` serait défait au tick suivant par la

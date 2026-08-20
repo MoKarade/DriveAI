@@ -192,3 +192,30 @@ test('INVARIANT : dossierIdentite_ ne peut produire AUCUN domaine hors de la car
 test('repliIdentite_ : absence d\'identité → chaîne vide (jamais une exception dans le chemin de repli)', () => {
   assert.strictEqual(ctx.repliIdentite_(null), '');
 });
+
+test('INVARIANT type↔table : la TABLE sait router CHAQUE type d\'identité — sinon l\'ajout du type seul est inerte', () => {
+  // C'est le verrou qui manquait (prouvé par mutation : retirer « numero d assurance sociale » de
+  // `cheminCibleReset_` ne cassait AUCUN test, alors que le NAS serait tombé au repli). Ajouter un
+  // type à `TYPES_IDENTITE` sans l'ajouter à la table, c'est livrer une moitié de règle : le flux
+  // reconnaîtrait le document, la table ne saurait pas où le mettre. « Une seule règle, deux
+  // consommateurs » vaut aussi pour un ajout de VOCABULAIRE, pas seulement pour un refactoring.
+  const t = require('./harness').load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs',
+    'Missions.gs', 'Router.gs']);
+  t.TYPES_IDENTITE.forEach((type) => {
+    const di = t.dossierIdentite_({ sousDossierType: type });
+    const nom = '2024-01-17_' + type + '_Service Canada.pdf';
+    const cible = t.cheminCibleReset_(di.domaine, nom);
+    assert.ok(cible, 'la table ne route PAS « ' + type +' » dans ' + di.domaine +
+      ' : le document tomberait au repli au lieu de sa vraie place');
+  });
+});
+
+test('NAS : graphies reconnues, et `naissance`/`Thomas` NE matchent PAS (borne de mot)', () => {
+  const c = ctx;
+  ['NAS', 'nas', 'NAS_JUILLET2025', 'numéro d\'assurance sociale', 'SIN'].forEach((g) => {
+    assert.strictEqual(c.normaliserTypeIdentite_(g), 'Numéro d’assurance sociale', 'graphie : ' + g);
+  });
+  // `nas` en SOUS-CHAÎNE attraperait « naissance » et « Thomas » — d'où la borne de mot.
+  assert.strictEqual(c.normaliserTypeIdentite_('Acte de naissance'), 'Acte de naissance');
+  assert.strictEqual(c.normaliserTypeIdentite_('Thomas'), 'Thomas');
+});
