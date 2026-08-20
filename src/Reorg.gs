@@ -206,12 +206,17 @@ function ensembleIntouchables_() {
 function estSegmentStructurel_(nom) {
   var propre = String(nom).trim();
   if (/^\d{4}$/.test(propre)) return true;
-  // Dossiers de TYPE D'IDENTITÉ (« Passeport », « Permis de conduire », …) : find-or-créés PAR NOM
-  // au niveau 1 par le flux vivant ET par la consolidation (`dossierIdentite_`) — exactement comme
-  // les années et les schémas. Les muter (déplacer/renommer/fusionner) ferait re-créer l'original au
-  // document suivant : non convergent. Manquants jusqu'ici (revue structure C28-31) : `01 · …` en
-  // compte 6 à 8, donc ils saturaient le décompte de la loi de Miller et le LLM aurait proposé de les
-  // regrouper — des actions que la whitelist rejette de toute façon.
+  // Dossiers de TYPE D'IDENTITÉ (« Passeport », « Permis de conduire », …) au niveau 1 d'un domaine.
+  // ⚠️ La justification a CHANGÉ avec C28-72, et il faut le dire pour que la prochaine revue ne
+  // retire pas cette garde en la croyant périmée. AVANT : le flux vivant ET la consolidation les
+  // find-or-créaient par nom, donc les muter était non convergent. DEPUIS C28-72 : plus personne ne
+  // les crée (`repliIdentite_` dégrade vers un nœud de la table). La garde reste néanmoins JUSTE,
+  // pour une raison d'HÉRITAGE : `01 · Administratif/Permis de conduire` existe en prod (créé le
+  // 12/08 par l'ancien repli) et contient le permis d'un tiers.
+  // CONSÉQUENCE À ASSUMER : être « structurel » signifie être REFUSÉ COMME SOURCE par la Réorg
+  // (plus bas) et par Fusion.gs — donc **rien d'automatique ne résorbera jamais ce nœud**. C'est
+  // cohérent avec la décision de Marc du 2026-08-20 (ne pas toucher au document de tiers), mais
+  // c'est un choix, pas un effet de bord : seul Marc peut le vider.
   if ((typeof TYPES_IDENTITE !== 'undefined' ? TYPES_IDENTITE : []).indexOf(propre) !== -1) return true;
   var schemas = CONFIG.SCHEMAS_ENTITE || {};
   var types = Object.keys(schemas);

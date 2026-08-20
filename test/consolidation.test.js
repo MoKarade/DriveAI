@@ -73,6 +73,20 @@ test('cheminCibleConsolidation_ : pièce d\'identité → arbre Reset (Pièces d
     '2020', 'l\'exception identité reste scopée à son domaine (repli année en 02)');
 });
 
+test('cheminCibleConsolidation_ : identité d\'un TIERS non déclaré → `Pièces d\'identité`, JAMAIS un dossier de TYPE', () => {
+  const nom = '2023-11-06_Permis de conduire_Frederique Bolduc.pdf';
+  const D = '01 · Administratif & identité';
+  // ANTI-TAUTOLOGIE : on prouve d'abord que la TABLE refuse ce nom. Sans cette assertion, le cas
+  // glisserait dans la branche déléguée (`relReset`) et ce test ne verrouillerait rien du repli —
+  // le piège exact de C28-62 PR4 (un tripwire vrai par construction).
+  assert.strictEqual(ctx.cheminCibleReset_(D, nom), null,
+    'la table doit REFUSER ce nom (tiers non déclaré) — sinon ce test n\'exerce pas le repli');
+  assert.strictEqual(ctx.cheminCibleConsolidation_(D, nom, validees).nom, 'Pièces d\'identité',
+    'avant C28-72 la conso rendait « Permis de conduire » : la collecte étant RÉCURSIVE, elle voyait ' +
+    'le fichier posé par le flux dans `Pièces d\'identité`, décidait « Déplacer », et l\'exécuteur ' +
+    'RE-CRÉAIT le nœud parasite par nom — le correctif du flux annulé par la campagne voisine.');
+});
+
 /* ---------- TRIPWIRE : la cible de consolidation == la sortie du flux vivant (règle UNIQUE) ---------- */
 
 test('TRIPWIRE flux vivant ↔ consolidation : pour un même document, le sous-chemin est IDENTIQUE (sinon « Déplacer » en boucle)', () => {
@@ -82,7 +96,17 @@ test('TRIPWIRE flux vivant ↔ consolidation : pour un même document, le sous-c
     [{ domaine: '02 · Finances', type_doc: 'Relevé', emetteur: 'Desjardins', sousDossier: 'Desjardins Inc.', date_doc: '2026-03-15' }, '2026-03-15', '.pdf'],
     [{ domaine: '05 · Carrière', type_doc: 'Lettre', emetteur: 'Schneider Electric', date_doc: '2026-01-05' }, '2026-01-05', '.pdf'],
     [{ estDocumentIdentite: true, sousDossierType: 'Passeport', titulaire: 'Marc Richard', domaine: '01 · Administratif & identité', date_doc: '2020-01-01' }, '2020-01-01', '.pdf'],
+    // C28-72 — le SEUL cas de cette liste qui passe par le REPLI des deux côtés (la table refuse
+    // d'attribuer un tiers non déclaré). Les quatre autres passent par la délégation, donc ils
+    // étaient d'accord par construction : sans ce cas-ci, le tripwire était aveugle à la divergence
+    // qui a fabriqué `01 · Administratif/Permis de conduire` en prod.
+    [{ estDocumentIdentite: true, sousDossierType: 'Permis de conduire', titulaire: 'Frederique Bolduc', domaine: '01 · Administratif & identité', date_doc: '2023-11-06' }, '2023-11-06', '.pdf'],
   ];
+  // Garde anti-tautologie du cas ci-dessus : si la table se mettait un jour à router ce nom, il
+  // cesserait d'exercer le repli et ce tripwire redeviendrait vrai par construction.
+  assert.strictEqual(ctx.cheminCibleReset_('01 · Administratif & identité',
+    '2023-11-06_Permis de conduire_Frederique Bolduc.pdf'), null,
+    'le cas « tiers non déclaré » doit rester REFUSÉ par la table pour exercer le repli');
   for (const [classif, date, ext] of cas) {
     const meta = { nomFichier: 'f' + ext, taille: 100000, extraitOcr: 'texte lisible du document '.repeat(4), emetteur: classif.emetteur || '' };
     const plan = ctx.planRoutageV2_(classif, meta, date, ext, validees);

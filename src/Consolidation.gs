@@ -82,11 +82,21 @@ function cheminCibleConsolidation_(domaine, nom, validees) {
   if (relReset) return { nom: relReset, id: '' };
 
   var seg = analyserNomClasse_(nom);
-  var typeId = null;
+  // IDENTITÉ — MÊME repli que le flux vivant (`repliIdentite_`, Router.gs), jamais une seconde
+  // formule (C28-72, revue structure). Avant : cette branche rendait le TYPE via
+  // `sousCheminDomaine_({typeIdentite})`, c'est-à-dire un dossier de niveau 1 hors table. Comme la
+  // collecte de la consolidation est RÉCURSIVE, elle voyait le fichier que le flux venait de poser
+  // dans `Pièces d'identité`, calculait `Permis de conduire`, décidait « Déplacer », et
+  // l'exécuteur RE-CRÉAIT le nœud parasite par nom — le correctif du flux annulé par la campagne
+  // voisine, silencieusement, avec une CI verte. C'est la leçon §9 « une seule règle, deux
+  // consommateurs » prise en flagrant délit.
   if (seg.type) {
     var t = normaliserTypeIdentite_(seg.type);
-    if (TYPES_IDENTITE.indexOf(t) !== -1 && dossierIdentite_({ sousDossierType: seg.type }).domaine === domaine) {
-      typeId = t;
+    if (TYPES_IDENTITE.indexOf(t) !== -1) {
+      var di = dossierIdentite_({ sousDossierType: seg.type });
+      // Garde conservée : une pièce d'identité ÉGARÉE dans un autre domaine (un passeport en 02)
+      // n'est pas ciblée par cette règle — elle retombe sur l'année/l'entité, comme avant.
+      if (di.domaine === domaine) return { nom: repliIdentite_(di), id: '' };
     }
   }
   var entite = null;
@@ -94,7 +104,7 @@ function cheminCibleConsolidation_(domaine, nom, validees) {
     var cle = cleCanoniqueEntite_(domaine, seg.tiers);
     if (cle && validees && validees[cle]) entite = validees[cle];
   }
-  return sousCheminDomaine_({ domaine: domaine, typeIdentite: typeId, entite: entite, annee: seg.annee });
+  return sousCheminDomaine_({ domaine: domaine, entite: entite, annee: seg.annee });
 }
 
 /**

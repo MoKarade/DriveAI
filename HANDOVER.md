@@ -41,16 +41,22 @@
 > prouve rien (les `Relevé_Inconnu.mp4` sont des vidéos), mais **trois** fichiers démentent la
 > promesse de C20-01 (fiscal ARC, deux pièces d'identité) → constat écrit, backlog C28-69.
 >
-> **➜ PROCHAIN CHANTIER — et il ne commence PAS par PR3.** ADR-0046 annonçait que la mission
-> identité « réutiliserait la règle du flux ». C'est faux, vérifié dans le code ET dans le Drive :
-> le flux (`dossierIdentite_`) range en `01 · Administratif/<TYPE>`, la table
-> (`cheminCibleReset_`) en `01 · Administratif/Pièces d'identité/Marc`. `01/Permis de conduire` a
-> été **créé le 12/08**, deux semaines après `Pièces d'identité` (29/07) : le nœud que l'ADR
-> appelait « parasite » est **fabriqué par le flux**, et le sera encore à chaque pièce analysée.
-> Adopter la règle du flux dans la mission reproduirait le défaut C28-26 (deux formules
-> divergentes ⇒ la campagne re-déplace en boucle ce que le flux vient de classer).
-> **C28-72 (aligner le FLUX sur la table, sous tripwire) est un PRÉALABLE à PR3.** ADR-0046 §2 et
-> §4 corrigés en conséquence.
+> **➜ C28-72 — corrigé, et mon premier diagnostic était FAUX.** ⚠️ Cette section a affirmé que
+> « le flux range en `01/<TYPE>`, la table en `Pièces d'identité/Marc` : deux règles qui divergent ».
+> **Faux.** Le flux DÉLÈGUE à la table depuis ADR-0033 (`deciderRoutageV2_` étape 4, sous tripwire
+> de convergence) — vérifié en EXÉCUTANT la règle sur les noms réels. Le vrai défaut était le
+> **REPLI** (étape 5) : quand la table rend `null` — refus voulu, titulaire ni Marc ni autorité ni
+> personne déclarée — le flux retombait sur un dossier de TYPE au niveau 1 du domaine. D'où
+> `01 · Administratif/Permis de conduire`, créé le 12/08 pour un permis de tiers.
+> Correctif livré : `repliIdentite_`, règle PARTAGÉE par le flux ET la consolidation, qui dégrade
+> vers un nœud EXISTANT de `STRUCTURE_CIBLE_RESET` (`Pièces d'identité`, `Résidence permanente`,
+> `Assurances santé`) — jamais un frère de niveau 1 invisible du plafond ≤ 7.
+> ⚠️ **La revue flotte a trouvé que le correctif était INOPÉRANT sans un second geste** :
+> `cheminCibleConsolidation_` calculait encore la cible par TYPE, et la consolidation est ACTIVE et
+> auto-exécutante — elle aurait re-créé le nœud que la PR supprime, silencieusement, CI verte. Le
+> cas « tiers non déclaré » est désormais dans le corpus des deux tripwires, avec sa garde
+> anti-tautologie (on assert d'abord que la table REFUSE le nom).
+> **La mission identité (PR3) peut donc bien réutiliser la règle du flux : celle-ci EST la table.**
 
 > **🎯 CHANTIER PRÉCÉDENT — C28-62 « Affinage des non-appariés » (ADR-0044) : TERMINÉ.**
 > Les 4 PR sont mergées (#300, #304, #305) et **#307** (C28-65) l'est aussi, déployé à 15:32 EDT.
