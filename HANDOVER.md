@@ -4,21 +4,40 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🎯 CHANTIER EN COURS — C28-62 « Affinage des non-appariés » (ADR-0044, PR #300, `do-not-merge`).**
-> Marc : « y'en a beaucoup en attente d'affinage, pose-moi des questions » → 12 décisions (ADR-0044).
-> **PR1 (véhicules) en revue.** ⚠️ Son diagnostic initial (« KIA sans dossier ⇒ `fenetresCompletes`
-> faux à vie ⇒ 48 bloqués ») a été **contesté par la revue flotte et DÉMENTI par le Drive** :
-> `Véhicule/Ford Fiesta` est VIDE, donc sans fenêtre, donc la gate restait insatisfiable même sans
-> KIA — la PR ne débloquait rien. Et la fenêtre de la Jetta courait de 2019 à 2026 (comparatif KIA
-> mal rangé sous elle) : elle aurait avalé les documents de l'époque française. **Décision Marc
-> 2026-08-20 : repli par date RETIRÉ, remplacé par un commun « Véhicule/À attribuer »** qui conserve
-> la catégorie d'origine. Le FLUX apprend la même cible ⇒ flux, mission et consolidation d'accord
-> par construction. Restent PR2 (les 39 de « employeurs & CV », décisions 9-12 — dont le RETRAIT de
-> la fusion `Recherche d'emploi` → `CV & lettres`, indissociable), PR3 (« Modèles & formulaires »),
-> PR4 (dossiers-années 02). **Rien n'est déployé** tant que #300 n'est pas mergée : les compteurs
-> « N non apparié(s) » que Marc voit dans l'app sont ceux de c49-2.
-> **Piste ouverte** : si Marc donne ses PÉRIODES DE POSSESSION, les déclarer en CONFIG rouvrirait
-> une attribution fiable — sur une donnée FIXE, jamais dérivée d'un état que la mission déplace.
+> **🎯 CHANTIER EN COURS — C28-62 « Affinage des non-appariés » (ADR-0044).**
+> Marc : « y'en a beaucoup en attente d'affinage, pose-moi des questions » → **12 décisions**
+> (ADR-0044), découpées en 4 PR. **PR1 (#300) et PR2 (#304) sont MERGÉES *et* VÉRIFIÉES EN PROD**
+> par signal indépendant Drive le 2026-08-20 (pas par un déploiement vert — piège 3) :
+> `Véhicule/À attribuer` créé à 15:44, `Locations` a reçu les 3 contrats Enterprise à 16:21, les
+> **deux** dossiers `KIA` sont vides ; les **7 `Relevé_Automatech`** sont arrivés dans
+> `02/Revenus & paie/Automatech` à 16:29-16:30, et `05/Recherche d'emploi` **se REMPLIT** (offre
+> d'emploi + invitation d'entretien) au lieu de se vider — c'était le risque du geste symétrique.
+> **PR3 (décision 6) + PR4 (décision 7) vivent dans #305**, `do-not-merge` posé.
+>
+> **⚠️ Ce que PR4 a coûté en revue, à connaître avant d'y toucher.** Deux revues indépendantes ont
+> trouvé qu'un `Avis d'imposition_SCI MRic` **quittait `02 · Finances` pour `05 · Carrière`** sur le
+> seul jeton « mric », à clé de SUCCÈS donc définitivement. Correctif : `routerFinance02_` a
+> **deux étages et l'ORDRE est la règle** — (1) le FLUX fait autorité dans 02, (2) sortie
+> inter-domaines ; sinon refus keyé. Le repli local a été mesuré MORT (0 cas sur 11) et retiré. Une garde
+> par LISTE de types réservés a été écrite puis JETÉE (elle ratait ce cas même). Et le « tripwire de
+> convergence » livré au premier jet était **TAUTOLOGIQUE** (il comparait `cheminCibleReset_` avec
+> elle-même) : remplacé par un verrou d'ORDRE. Leçons consignées (CLAUDE.md §9).
+>
+> **⚠️ DEUX RÉPONSES DE MARC QUI INTERAGISSENT — à trancher avant de coder.** Le 20/08 il a demandé
+> (a) de **fondre « Reçus & factures » dans « Relevés »** pour libérer un nœud dans `02` (qui est
+> PLEIN à 7) et (b) d'y ranger la `Note de frais_Roque Rodriguez`. Or (a) fait **disparaître** la
+> cible de (b). Lecture cohérente proposée : faire (a) d'abord, puis (b) vise le nouvel emplacement.
+> ⚠️ (a) n'est PAS un changement de règle mais une **réorganisation de masse** (déplacement de
+> fichiers déjà classés, `IDS.recusFactures02`, buckets d'année, table + flux + mission) : à
+> séquencer avec Marc, jamais en effet de bord d'une PR de routage.
+>
+> **Autres gestes en attente de Marc** : (1) les **4 fichiers sur l'appartement** (SMS proprio, fuite
+> de bec de bain, coupure internet) que PR1 a déplacés vers `Véhicule/Recherche & achat` — ils y
+> étaient déjà mal rangés à la SOURCE et la règle « le dossier source fait foi » a rendu l'erreur
+> définitive ; décision de Marc : les remettre dans `03/Correspondance`. (2) `Immeubles MA8` =
+> **3325 4e avenue** (réponse de Marc) : l'ajouter à `MISSIONS_BAILLEURS` range son DPA *et* ses 2
+> formulaires de demande de location.
+
 >
 > **CHANTIER PRÉCÉDENT — C28-49 « Missions de curation » (brief Marc 2026-08-17, ADR-0039).**
 > Marc a spécifié le rangement FIN dossier par dossier (véhicules, logements, archives scolaires,

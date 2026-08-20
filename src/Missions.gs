@@ -177,7 +177,13 @@ function tableMissions_() {
         //    bailleur, jamais par adresse — table prouvée par contenu).
         var b = cibleBailleur_(nom, ctx.logements);
         if (b) return { cibleId: b.id, sousDossier: theme };
-        // 3. Correspondance sans indice : la DATE tranche si elle tombe dans EXACTEMENT une
+        // 3 bis. (ADR-0044 §6) Formulaire GÉNÉRIQUE, aucune entité identifiée → « Modèles &
+        //    formulaires ». MÊME prédicat que le flux, et MÊME position : après l'entité.
+        if (estModeleOuFormulaire_(typeDuNomMission_(nom))) {
+          return { cibleParentId: CONFIG.DOMAINES[MISSIONS_DOMAINE_03],
+            cibleNom: 'Modèles & formulaires', sousDossier: '' };
+        }
+        // 4. Correspondance sans indice : la DATE tranche si elle tombe dans EXACTEMENT une
         //    fenêtre d'occupation (demande Marc « regarde les dates pour déterminer »).
         if (info.sourceId === CONFIG.MISSIONS_IDS.correspondance03) {
           var parDate = logementParDate_(nom, ctx.fenetres);
@@ -234,7 +240,10 @@ function tableMissions_() {
       // « Revenus & paie » pendant des jours — écrire le rapport avant leur fin le FIGERAIT sur
       // des « mois manquants » qu'elles vont combler (donnée MOUVANTE, corollaire C28-49). La
       // mission draine sans attendre ; seule sa CONVERGENCE (et donc le rapport) attend.
-      convergenceApres: ['carriere', 'annees02'],
+      // ⚠️ `annees02` RETIRÉE (C28-64) : elle est devenue PERPÉTUELLE, donc elle n'écrira jamais son
+      // drapeau de convergence — la garder ici aurait bloqué le rapport des paies À VIE. « Un statut
+      // qui ne revient jamais ne peut pas servir de gate » (leçon C28-32, autre face).
+      convergenceApres: ['carriere'],
       apresConvergence: function () { ecrireRapportPaies_(); },
       sourcesJetables: [], // « Revenus & paie » est PÉRENNE : jamais peinte en rouge
     },
@@ -282,11 +291,46 @@ function tableMissions_() {
       tag: 'annees02', cle: 'mission-annees-02',
       sources: (IDS.annees02 || []).map(function (p) { return p.id; }),
       batirCtx: function () {
-        var anneePar = {};
-        (IDS.annees02 || []).forEach(function (p) { anneePar[p.id] = p.annee; });
-        return { anneePar: anneePar };
+        // (plus d'`anneePar` : le repli local qui l'utilisait a été retiré — cf. `routerFinance02_`)
+        // (ADR-0044 §7) IDs des domaines de SORTIE. 🔴 `CONFIG.DOMAINES` ne contient que les 7
+        // domaines FIXES : « 07 · Santé » et « 09 · Voyages » sont des domaines AUTO, dont l'ID vit
+        // en Script Property (`DriveAI_DOM_<nom>`) et PEUT être absent (domaine jamais né). Lire la
+        // CONFIG seule rendait `undefined` — un `cibleId` vide, donc un plantage au déplacement.
+        // I/O ICI (le routeur reste PUR) ; domaine sans ID ⇒ absent de la carte ⇒ le routeur REFUSE
+        // (clé versionnée, révisable dès que le domaine existe), jamais un déplacement à l'aveugle.
+        var domainesId = {};
+        // §2.1b : un domaine PROTÉGÉ n'entre même pas dans la carte des cibles — défense en
+        // profondeur, en plus du refus explicite du routeur (deux lignes, deux endroits).
+        var protege = function (d) { return (CONFIG.DOMAINES_PROTEGES || []).indexOf(d) !== -1; };
+        Object.keys(CONFIG.DOMAINES).forEach(function (d) { if (!protege(d)) domainesId[d] = CONFIG.DOMAINES[d]; });
+        try {
+          var props = PropertiesService.getScriptProperties();
+          (CONFIG.DOMAINES_AUTO || []).forEach(function (d) {
+            var id = props.getProperty('DriveAI_DOM_' + d);
+            if (id && !protege(d)) domainesId[d] = id;
+          });
+        } catch (e) { /* Properties illisibles : seuls les domaines FIXES sont ciblables ce run */ }
+        return { domainesId: domainesId };
       },
-      router: function (nom, info, ctx) { return routerFinance02_(nom, ctx.anneePar[info.sourceId] || ''); },
+      router: function (nom, info, ctx) {
+        return routerFinance02_(nom, ctx.domainesId);
+      },
+      // PERPÉTUELLE (décision Marc, C28-64) : `DOMAINES_PAR_ANNEE` fait recréer `02 · Finances/AAAA`
+      // par le flux vivant, et une mission one-shot vidait puis s'arrêtait — le nettoyage se
+      // défaisait en silence. Elle draine donc indéfiniment. ⚠️ Conséquence : elle n'écrit jamais
+      // `DriveAI_MISSION_FINI_annees02`, donc plus aucune mission ne peut la mettre en
+      // `convergenceApres` (`paies` l'a été jusqu'ici — retiré dans le même geste).
+      perpetuelle: true,
+      // ⚠️ PAS jetables (revue PR4). Le défaut aurait peint les 12 dossiers-années en ROUGE
+      // (« bon pour suppression ») ; Marc les supprime, et au prochain bump de version
+      // `collecterMission_` lève sur chaque source disparue ⇒ passe incomplète ⇒ `annees02` ne
+      // converge PLUS JAMAIS ⇒ la mission `paies`, gatée sur elle par `convergenceApres`, reste
+      // bloquée à vie.
+      // ⚠️ CORRECTION (re-revue) : j'avais écrit ici que « l'app les montre déjà en vide-candidat ».
+      // C'est FAUX — `detecterDossierVide_` écarte tout nom `^\d{4}$` via `estSegmentStructurel_`,
+      // et ces dossiers s'appellent 2003…2026. Il n'y a donc AUCUN signal automatique : Marc les
+      // verra vides dans Drive, c'est tout. Mieux vaut pas de signal qu'un signal piégé.
+      sourcesJetables: [],
     },
     {
       // Racine d'« Impôts & déclarations » → sous-dossier par ANNÉE (année du nom du fichier).
@@ -588,7 +632,8 @@ function typeContient_(typeNormalise, mots) {
 }
 
 /** Mots-clés fiscaux du segment type (ordre AVANT « relevé » générique — « relevé d'impôt » est fiscal). */
-var TYPES_FISCAUX_MISSIONS = ['t4', 'impot', 'impots', 'cotisation', 'declaration', 'feuillet', 'fiscal', 'fiscale'];
+// (`TYPES_FISCAUX_MISSIONS` retirée : le vocabulaire fiscal vit désormais dans
+// `estTypeFiscalReset_`, partagée par le flux ET la mission — c'était LA seconde formule.)
 
 /**
  * Routage d'un fichier de dossier-ANNÉE de 02 (table type → cible, brief Marc). L'année de la
@@ -598,41 +643,83 @@ var TYPES_FISCAUX_MISSIONS = ['t4', 'impot', 'impots', 'cotisation', 'declaratio
  * @param {string} anneeSource  nom du dossier-année d'origine (repli)
  * @return {?Object}
  */
-function routerFinance02_(nom, anneeSource) {
+/**
+ * Domaine de SORTIE d'un document d'un dossier-année de 02 (ADR-0044 §7). PURE (testée).
+ * Rend le nom du domaine, ou '' si le document reste en Finances. Ambigu (deux domaines
+ * candidats) ⇒ '' : on ne devine pas un mouvement INTER-DOMAINES, qui est irréversible de fait.
+ * @param {string} nom @return {string}
+ */
+function domaineHors02DuNom_(nom) {
+  var n = ' ' + normaliserMission_(String(nom || '').replace(/^\d{4}-\d{2}(-\d{2})?/, '')) + ' ';
+  var trouve = '';
+  (CONFIG.MISSIONS_ANNEES02_DOMAINES || []).forEach(function (r) {
+    var touche = (r.jetons || []).some(function (j) { return n.indexOf(' ' + j + ' ') !== -1; }) ||
+      (r.motifs || []).some(function (m) { return n.indexOf(m) !== -1; });
+    // EXCLUSIONS : « virgin » est une marque OMBRELLE (Atlantic, Radio, Mobile…). Un billet
+    // « Virgin Atlantic » serait parti chez le fournisseur TÉLÉCOM à clé de SUCCÈS, alors que
+    // `09 · Voyages` existe. Le prédicat qui déclenche l'irréversible refuse dans le doute.
+    if (touche && (r.exclusions || []).some(function (x) { return n.indexOf(x) !== -1; })) return;
+    if (!touche) return;
+    if (trouve && trouve !== r.domaine) trouve = '\u0000'; // ambigu
+    else if (!trouve) trouve = r.domaine;
+  });
+  return trouve === '\u0000' ? '' : trouve;
+}
+
+/**
+ * Routage d'un fichier de dossier-ANNÉE de 02 (ADR-0044 §7). PURE (testée).
+ * DEUX étages, dans cet ordre — l'ordre EST la règle :
+ *   1. le FLUX (`cheminCibleReset_`) fait autorité DANS 02 : ce qu'il sait placer y reste ;
+ *   2. sinon, SORTIE inter-domaines par `MISSIONS_ANNEES02_DOMAINES` (jamais un domaine protégé,
+ *      jamais si le flux est muet dans le domaine d'arrivée) ;
+ *   sinon refus keyé. DEUX étages : il n'y a pas de repli local (cf. commentaire en fin de corps).
+ * @param {string} nom
+ * @param {Object=} domainesId  { domaine: id } résolu par `batirCtx` (domaines AUTO compris)
+ * @return {?Object} cible de mission, ou null (refus keyé sous la version, donc révisable)
+ */
+function routerFinance02_(nom, domainesId) {
   var IDS = CONFIG.MISSIONS_IDS;
+  var idDomaine = function (d) { return (domainesId || CONFIG.DOMAINES)[d] || ''; };
   var type = typeDuNomMission_(nom);
-  if (!type) return null; // nom hors convention : on ne décide pas sur du bruit
-  // 1. Paies → « Revenus & paie »/<Employeur> — prédicat PARTAGÉ avec le flux (`estTypePaieReset_`,
-  //    revue finale PR2 : la liste locale ['paie','paye'] ratait « salaire » que le flux couvre —
-  //    un « Bulletin de salaire » aurait été déplacé au mauvais endroit à clé de SUCCÈS).
-  if (estTypePaieReset_(type)) {
-    var emp = employeurDuNom_(nom);
-    return emp ? { cibleParentId: IDS.revenusPaie, cibleNom: emp } : null;
+  // (ADR-0044 §7) SORTIE de 02 — un déplacement INTER-DOMAINES est DÉFINITIF de fait (le fichier
+  // quitte le périmètre de collecte : aucun bump de version ne le re-présentera). Trois gardes,
+  // toutes ajoutées par la revue PR4 qui a montré ce que leur absence coûtait :
+  //
+  //  (a) un TYPE que 02 revendique EN PROPRE ne sort JAMAIS. Sans ça, « Avis d'imposition_SCI
+  //      MRic » partait en `05 · Carrière` sur le seul jeton « mric » — un avis d'imposition
+  //      classé dans les documents de société, pour toujours. Idem « Relevé 1 », « Paie », RIB.
+  //      Ces prédicats sont exactement ceux que PR2 avait durcis : les court-circuiter était une
+  //      régression silencieuse (aucun test PR2 n'utilise un émetteur porteur d'un jeton de sortie).
+  //  (b) un domaine PROTÉGÉ (§2.1b : `04 · Immigration`) n'est JAMAIS une cible. Rien ne
+  //      l'interdisait à part le CONTENU d'une table de config — or `aParentProtege_` ne garde que
+  //      la SOURCE, jamais la cible. « Pour chaque JAMAIS promis, la ligne qui le re-vérifie. »
+  //  (c) flux muet dans le domaine d'arrivée ⇒ on RETOMBE sur les règles 02 ci-dessous, jamais un
+  //      refus : le flux choisit sur l'ÉMETTEUR, la table sur le nom entier — deux signaux
+  //      différents, donc le cas « muet » est banal, et refuser perdait un rangement qui marchait.
+  //
+  // La garde (a) s'exprime par UN test, pas par une liste de types à tenir à jour : **si le flux
+  // sait placer le document DANS 02, il y reste.** Une première version listait paie/fiscal/RIB —
+  // elle a laissé filer « Avis d'imposition_SCI MRic » vers `05` (le type n'était dans aucune des
+  // listes), ce qui est précisément le bug qu'elle prétendait fermer. Le flux, lui, connaît TOUTES
+  // les revendications de 02 par construction, et elles évolueront ensemble.
+  var cheminFlux = idDomaine('02 · Finances') ? cheminCibleReset_('02 · Finances', nom) : '';
+  if (cheminFlux) return { cibleId: idDomaine('02 · Finances'), sousDossier: cheminFlux };
+  {
+    var domaineSortie = domaineHors02DuNom_(nom);
+    if (domaineSortie && (CONFIG.DOMAINES_PROTEGES || []).indexOf(domaineSortie) === -1) {
+      var idSortie = idDomaine(domaineSortie);
+      var chemin = idSortie ? cheminCibleReset_(domaineSortie, nom) : '';
+      if (chemin) return { cibleId: idSortie, sousDossier: chemin };
+    }
   }
-  // 2. Fiscal → « Impôts & déclarations »/<année> (AVANT le « relevé » générique : un relevé
-  //    d'impôt est fiscal, pas bancaire). RL-1/RL-31 par le prédicat PARTAGÉ (revue finale PR2 :
-  //    la table de mots ne peut pas exprimer « releve 1 » ancré — le feuillet partait en Relevés).
-  if (estFeuilletFiscalReset_(type) || typeContient_(type, TYPES_FISCAUX_MISSIONS)) {
-    var annee = anneeDuNomMission_(nom) || anneeSource;
-    return annee ? { cibleParentId: IDS.impotsDeclarations, cibleNom: annee } : null;
-  }
-  // 3. Relevés / reçus & factures : DANS LE BUCKET D'ANNÉE, par LA MÊME règle que le flux vivant
-  //    (`resetBucketAnnee_` + STRUCTURE_CIBLE_RESET — revue code PR2 : deux règles écrites
-  //    séparément divergent toujours, leçon C28-26 ; router à plat aurait créé un nouveau vrac à
-  //    côté des buckets que le flux alimente).
-  var anneeDoc = anneeDuNomMission_(nom) || anneeSource;
-  var noeuds02 = STRUCTURE_CIBLE_RESET['02 · Finances'];
-  // RIB (relevé d'IDENTITÉ bancaire) : des COORDONNÉES, pas un relevé de compte (prédicat partagé
-  // — le flux le range en Banques/Coordonnées & chèques ; côté mission, hors table ⇒ refus keyé,
-  // laissé + rapporté, jamais deviné).
-  if (estRibReset_(type)) return null;
-  if (typeContient_(type, ['releve', 'releves'])) {
-    return { cibleId: IDS.releves02, sousDossier: resetBucketAnnee_(anneeDoc, noeuds02['Relevés']) };
-  }
-  if (typeContient_(type, ['recu', 'recus', 'facture', 'factures'])) {
-    return { cibleId: IDS.recusFactures02, sousDossier: resetBucketAnnee_(anneeDoc, noeuds02['Reçus & factures']) };
-  }
-  if (typeContient_(type, ['assurance', 'assurances'])) return { cibleId: IDS.assurances02 };
+  // ⛔️ PAS de repli local. Il en existait un (paie, fiscal, relevés, reçus, assurances, avec
+  // l'année du dossier SOURCE) : mesuré après la restructuration, il est **entièrement MORT** —
+  // 0 cas productif sur 11 testés. Ses règles sont un SOUS-ENSEMBLE STRICT de celles du flux, qui
+  // passe désormais en premier : chaque fois qu'une d'elles matcherait, le flux a déjà répondu.
+  // Le garder aurait été pire que rien : du code qui RESSEMBLE à un filet en invite à s'y fier.
+  // ⚠️ Capacité perdue, assumée et mesurée : l'année du dossier SOURCE servait de repli pour un nom
+  // sans année PLAUSIBLE (« 1899-01-01_Facture_Hydro.pdf » → bucket `2021` au lieu d'`Archives`).
+  // Aucun des 24 fichiers réels n'est dans ce cas — ils portent tous un préfixe de date valide.
   return null;
 }
 
@@ -725,6 +812,20 @@ function estReleveDePaie_(type) {
   // de SUCCÈS : dans le doute, on REFUSE.
   if (/(^| )releve (d |de |des )/.test(t)) return false;
   return typeContient_(t, ['releve', 'releves']);
+}
+
+/**
+ * Vrai si le document est un MODÈLE / FORMULAIRE générique (ADR-0044 §6) — cible
+ * `<domaine>/Modèles & formulaires`. PURE (testée), PARTAGÉE par le flux et `dispatch03`.
+ *
+ * Normalise ICI (les deux consommateurs n'appliquent pas la même normalisation amont) et exige un
+ * MOT ENTIER. ⚠️ Ce prédicat est un FILET : il ne doit être consulté qu'APRÈS les règles par
+ * entité, sinon un formulaire ATTRIBUABLE (« Formulaire de demande de location » adressé à un
+ * bailleur connu) partirait dans les modèles au lieu du dossier de son logement.
+ * @param {string} type  segment TYPE @return {boolean}
+ */
+function estModeleOuFormulaire_(type) {
+  return typeContient_(normaliserMission_(type), ['formulaire', 'formulaires', 'modele', 'modeles']);
 }
 
 /** Sous-dossier d'« Employeurs/<X> » par TYPE (table explicite — type inconnu ⇒ ''). PURE. */
@@ -1134,7 +1235,12 @@ function executerMission_(tag, estBudgetDepasse) {
   var version = CONFIG.MISSIONS_REGLES_VERSION;
   // Court-circuit TERMINAL : mission convergée = cette lecture + celle de la gate `gMissionsJour_`
   // (2 lectures Property par tick et par mission — chiffré en revue quotas, négligeable).
-  if (props.getProperty('DriveAI_MISSION_FINI_' + tag) === version) return;
+  // Une mission PERPÉTUELLE ne s'arrête jamais (décision Marc, C28-64) : sa source est réalimentée
+  // par le flux vivant, donc « converger » ne veut rien dire pour elle — s'arrêter, c'est laisser
+  // le nettoyage se défaire en silence. Elle n'écrit pas non plus `FINI` (voir plus bas), ce qui
+  // impose de ne JAMAIS la mettre en `convergenceApres` d'une autre mission : elle bloquerait
+  // l'aval à vie. Verrouillé par un test.
+  if (!spec.perpetuelle && props.getProperty('DriveAI_MISSION_FINI_' + tag) === version) return;
 
   var aujourdhui = dateGmail_(new Date());
   var consommeJour = budgetJourMissions_(props, aujourdhui);
@@ -1243,6 +1349,12 @@ function executerMission_(tag, estBudgetDepasse) {
           try { props.setProperty('DriveAI_MISSIONS_ETAT', JSON.stringify(etatM)); } catch (e3) { }
         }
       }
+      if (spec.perpetuelle) {
+        // Passe à vide : rien à faire, on repassera au prochain tick. Ni drapeau FINI, ni peinture
+        // rouge (les sources vont se re-remplir — les peindre inviterait à supprimer des dossiers
+        // que le flux recrée aussitôt).
+        return;
+      }
       props.setProperty('DriveAI_MISSION_FINI_' + tag, version);
       // Peinture ROUGE : seulement les sources JETABLES (revue quotas PR2 — peindre un sous-dossier
       // momentanément vide d'une racine PÉRENNE comme 05 dirait « supprimable » à tort). Défaut =
@@ -1301,7 +1413,15 @@ function traiterItemMission_(spec, item, ctx, proteges) {
       return memo[k] || (memo[k] = sousDossier_(parent, nomSous));
     };
     var dossier = cible.cibleId ? ouvrir(cible.cibleId) : sous(ouvrir(cible.cibleParentId), cible.cibleNom);
-    if (cible.sousDossier) dossier = sous(dossier, cible.sousDossier);
+    // CHEMIN (segments séparés par '/'), pas un nom simple : la cible d'un routage inter-domaines
+    // est calculée par `cheminCibleReset_`, qui rend des chemins (« Contrats & fournisseurs/Virgin
+    // Plus »). Sans le découpage, Drive créerait UN dossier portant la barre oblique dans son nom.
+    // Rétro-compatible : un segment unique donne exactement le comportement précédent.
+    if (cible.sousDossier) {
+      String(cible.sousDossier).split('/').forEach(function (seg) {
+        if (seg) dossier = sous(dossier, seg);
+      });
+    }
     f.moveTo(dossier); // LA seule mutation — déplacement, jamais suppression
     // NB (revues quotas + code) : un crash ENTRE le move et la clé laisse un déplacement sans
     // trace Index. Pour les missions dont la cible est HORS de la source : jamais re-vu (compteur

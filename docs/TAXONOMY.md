@@ -18,7 +18,7 @@ INTERDIT » **ne vaut plus** — la prod range désormais dans `Relevés/`, `Re�
 |---------|--------------------------------|------------------|
 | `01 · Administratif & identité` | Pièces d'identité · État civil & notarial · Attestations & certificats · Correspondance · Contrats & fournisseurs · Sécurité & codes | 1 |
 | `02 · Finances` | Banques · Relevés · Reçus & factures · Impôts & déclarations · Assurances & prévoyance · Placements & crypto · **Revenus & paie** | **0 — PLEIN** |
-| `03 · Logement & véhicule` | **Logement** (5 adresses aux noms RÉELS Drive) · **Véhicule** (Toyota bZ · Ford Fiesta · VW Jetta, chacun avec {Contraventions · Assurance auto · Entretien & réparations · Recherche & achat}) **+ 3 dossiers COMMUNS au même niveau que les véhicules — `Recherche & achat` (magasinage sans véhicule identifié, dont l'ex-« KIA »), `Locations` (voiture louée, jamais un véhicule de Marc) et `À attribuer` (aucun véhicule identifiable — ADR-0044)** · Énergie & services · Assurance habitation · Contrats · Correspondance | 1 |
+| `03 · Logement & véhicule` | **Logement** (5 adresses aux noms RÉELS Drive) · **Véhicule** (Toyota bZ · Ford Fiesta · VW Jetta, chacun avec {Contraventions · Assurance auto · Entretien & réparations · Recherche & achat}) **+ 3 dossiers COMMUNS au même niveau que les véhicules — `Recherche & achat` (magasinage sans véhicule identifié, dont l'ex-« KIA »), `Locations` (voiture louée, jamais un véhicule de Marc) et `À attribuer` (aucun véhicule identifiable — ADR-0044)** · Énergie & services · Assurance habitation · Contrats · Correspondance · **Modèles & formulaires** (formulaires génériques/vierges — ADR-0044 §6) | 0 — PLEIN |
 | `04 · Immigration` | IRCC (fédéral) · MIFI (Québec) · Permis de travail & EIMT · Résidence permanente · Formulaires & correspondance | 2 |
 | `05 · Carrière` | **Employeurs** (Robovic · Automatech · **Autres employeurs** — commun des employeurs occasionnels, ADR-0044 D11) · Alternance & stages · CV & lettres (+ Candidatures · Suivi · Archive 2021-2025) · **Recherche d'emploi** (recrutement reçu : offres, invitations d'entretien, descriptions de rôle, listes d'entreprises cibles — **RECRÉÉ par ADR-0044 D10, qui révoque la fusion du 2026-08-17 vers « CV & lettres »**) · Entreprise — MRic (SCI) · Formation & bilans · Réseaux & présentations | 0 — PLEIN |
 | `06 · Études & diplômes` | 5 écoles + Autres établissements + Diplômes & relevés officiels | 0 |
@@ -231,7 +231,10 @@ Les dossiers VIDÉS relèvent de la corbeille APP validée (ADR-0014), jamais du
   CANONIQUES de 03, plus JAMAIS un héritage à drainer/corbeiller ; les 4 catégories PAR VÉHICULE
   {Contraventions · Assurance auto · Entretien & réparations · Recherche & achat} sont
   structurelles au même titre — find-or-créées PAR NOM par le flux et les missions, protégées par
-  `estSegmentStructurel_` ; **le commun des employeurs `Autres employeurs` (ADR-0044 D11, imbriqué
+  `estSegmentStructurel_` ; **TOUS les buckets de NIVEAU 1 de `STRUCTURE_CIBLE_RESET`** (ADR-0044
+  §6.3 — ils étaient protégés côté Fusion mais PAS côté Réorg, dont l'inventaire est récursif :
+  un bucket VIDE est le candidat idéal d'un regroupement LLM, et le flux le recrée par nom) ;
+  **le commun des employeurs `Autres employeurs` (ADR-0044 D11, imbriqué
   sous `Employeurs`, donc invisible d'`estAncreStructurelleFusion_`) et les 3 dossiers COMMUNS
   `MISSIONS_VEHICULE_COMMUNS` {Recherche &
   achat · Locations · À attribuer} le sont aussi depuis ADR-0044** — et c'est leur SEULE
@@ -279,3 +282,25 @@ comme le reste — ils ne sont plus systématiquement dirigés vers `00 · À v�
 
 Le vieux Drive est **figé en archive** à côté de la nouvelle racine. Aucun reclassement
 automatique de l'ancien. (Sort précis du dossier `_Archive 2025` : voir `PLAN.md` §7.)
+
+## ADR-0044 §7 — ce que la décision 7 change dans l'arborescence
+
+- `01 · Administratif & identité/**Contrats & fournisseurs**` accueille **Cleverbridge** :
+  **7 nœuds — PLEIN** (EDF · ENGIE · Virgin Plus · Transport scolaire · Filia-MAIF · INO ·
+  Cleverbridge). Toute cible du flux doit figurer dans `STRUCTURE_CIBLE_RESET`, sinon
+  `verifierStructureCibleReset_` compte un ≤ 7 qui n'est pas celui de la prod.
+- `02 · Finances/**Relevés**` n'accueille plus seulement des relevés bancaires : les **budgets et
+  tableaux de bord** y vont aussi (décision de Marc), rangés par année comme le reste.
+- `02 · Finances/**Reçus & factures**` accueille les **captures d'achats en ligne** (suivi de
+  livraison, fiche produit) — une preuve d'achat reste une pièce de dépense.
+- `07 · Santé/**Assurances santé**` accueille la **Caisse des Français de l'Étranger**.
+- `05 · Carrière/**Entreprise — MRic (SCI)**` accueille les **statuts constitutifs**, quelle que
+  soit la graphie de l'entité (MRic, PRIGRIS, « SCI famille Richard » — décision de Marc : une
+  seule et même société).
+- Les **12 dossiers-années de 02** sont vidés par `mission-annees02`, mais **PAS peints en rouge**
+  (`sourcesJetables: []`) : les peindre invitait à les supprimer, et leur disparition empêcherait
+  la mission de converger — bloquant à vie la mission `paies` qui en dépend. ⚠️ Il n'existe **aucun
+  signal automatique** que ces 12 dossiers sont vides : `detecterDossierVide_` écarte les noms
+  `AAAA` par `estSegmentStructurel_`. Marc les verra vides dans Drive, c'est tout.
+- ⚠️ L'exemption `02 · Finances/AAAA` créée par le **flux vivant** (`DOMAINES_PAR_ANNEE`,
+  BACKLOG C28-36) **survit** à cette décision : vider les dossiers-années ne l'a pas fermée.

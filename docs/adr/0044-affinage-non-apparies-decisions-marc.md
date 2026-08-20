@@ -309,3 +309,164 @@ REFUSE** — un refus coûte un re-examen, un faux positif coûte un document pe
 - **Sa COULEUR n'a pas pu être vérifiée** (l'outil de lecture Drive ne rend pas `folderColorRgb`).
   S'il a été peint en ROUGE quand il était vide, il crie « supprimable » alors qu'il redevient la
   cible officielle du recrutement — à dépeindre à la main, ou à traiter dans un geste ultérieur.
+
+
+## 6. PR3 — décision 6 : « Modèles & formulaires » (2026-08-20)
+
+Source relue avant d'écrire la règle. `03 · Contrats` contient **9 fichiers**, dont **8 formulaires** :
+4× `Formulaire de demande de location_CORPIQ` (même date, 2018-10-15), 2× le même pour
+`Immeubles MA8`, 2× `Formulaire de consentement communication…_Proprio Expert`. Le 9ᵉ est un
+`Contrat de vente véhicule d'occasion_Suprême Auto`, hors périmètre de cette décision.
+
+### 6.1 ⚠️ La décision n'est PAS applicable telle quelle à `02 · Finances`
+
+Décision 6 demandait un `Modèles & formulaires` **par domaine**, en citant `03` *et* `02`. Or la
+règle des **≤ 7 nœuds par niveau** — la contrainte que Marc a lui-même posée — l'interdit :
+
+| Domaine | Nœuds actuels | Place pour un nœud de plus ? |
+|---|---|---|
+| `03 · Logement & véhicule` | 6 | **oui** (→ 7) |
+| `02 · Finances` | **7 — PLEIN** | **non** |
+| `05 · Carrière` | 7 (depuis D10) | non |
+| `06 · Études & diplômes` | 7 | non |
+
+**Livré : `03` seulement**, là où les 8 fichiers sont et où la place existe. Pour `02`, la décision
+reste ouverte : elle exige d'abord de libérer un nœud (regrouper deux existants), ce qui est une
+décision de Marc, pas un arbitrage technique. Aucune preuve de besoin côté `02` pour l'instant :
+les 24 bloqués y sont des **fourre-tout d'année** (décision 7, PR4), pas des formulaires.
+
+### 6.2 Ordre : le SPÉCIFIQUE gagne toujours sur le générique
+
+La règle est un **filet**, placé APRÈS les règles par entité (adresse, bailleur, véhicule) et AVANT
+les filets `Contrats`/`Correspondance`. Conséquence voulue : le jour où `Immeubles MA8` entrerait
+dans `MISSIONS_BAILLEURS` (il n'y est pas), ses formulaires partiraient chez le **bailleur**, pas
+dans les modèles. Un formulaire attribuable n'est pas un modèle.
+
+### 6.3 Correctif transverse : les nœuds de NIVEAU 1 étaient mutables par la Réorg
+
+En posant ce nœud, la revue de PR2 (finding B-bis) devient concrète : `estAncreStructurelleFusion_`
+protège les buckets de niveau 1 **du côté Fusion**, mais `estSegmentStructurel_` — que consulte
+l'inventaire RÉCURSIF de la **Réorg** — ne les connaissait pas. Un plan LLM pouvait donc proposer de
+fusionner `Modèles & formulaires` (vide au départ, donc candidat idéal) ou `Recherche d'emploi` vers
+un voisin sémantique ; validé, le dossier partait en `vide-candidat` puis à la corbeille, pendant
+que le flux le recrée PAR NOM au document suivant — split-brain.
+
+`estSegmentStructurel_` reconnaît désormais **tout bucket de niveau 1 de `STRUCTURE_CIBLE_RESET`**,
+comme le fait déjà son jumeau côté Fusion. Bénéfice secondaire : le LLM ne reçoit plus ces dossiers
+comme « regroupables », donc plus d'essais brûlés sur des actions que la whitelist rejette de toute
+façon.
+
+## 7. PR4 — décision 7 : vider les dossiers-années de 02 (2026-08-20)
+
+Les **12 dossiers-années ont été lus intégralement** (6 sont vides ; 24 fichiers dans les 6 autres).
+Jamais un échantillon : c'est le comptage exhaustif qui a montré que la décision 7 nommait 4 exemples
+pour un ensemble bien plus hétérogène.
+
+### 7.1 La conception : le FLUX fait autorité, la table ne choisit qu'une SORTIE
+
+Contrainte de Marc : « réutiliser la MÊME règle de routage que le flux vivant ». Or le flux n'a
+**aucune** règle pure de choix de DOMAINE — c'est le LLM qui tranche. Il n'y avait donc rien à
+réutiliser de ce côté. `routerFinance02_` a **deux étages, et l'ordre EST la règle** :
+
+1. **Le flux fait autorité DANS 02.** `cheminCibleReset_('02 · Finances', nom)` est essayé en
+   PREMIER : ce que 02 sait placer y reste.
+2. Sinon, **sortie inter-domaines** via `MISSIONS_ANNEES02_DOMAINES` (jetons MOT ENTIER, motifs et
+   exclusions multi-mots), avec le sous-chemin calculé par le flux du domaine d'arrivée. Jamais un
+   domaine **protégé** ; flux muet à l'arrivée ⇒ on redescend à l'étage 3.
+Sinon : **refus keyé** (révisable). Il n'y a **PAS** de repli local — un troisième étage existait
+(paie, fiscal, relevés, reçus, assurances, + année du dossier SOURCE) ; mesuré après la
+restructuration, il était productif sur **0 cas sur 11** et a été retiré. Ce qu'il coûte, dit :
+l'année du dossier source pour un nom sans année plausible (dégradation de bucket, jamais un
+refus), et le mot `declaration` nu — que le flux ne reprend PAS, volontairement (il volerait
+« Relevé de déclaration de sinistre ») ; les tournures fiscales réelles sont listées à la place.
+
+**Cet ordre a été payé par la revue.** La première version faisait l'inverse (table d'abord, flux
+en dernier recours) et deux défauts en découlaient, tous deux vérifiés par exécution :
+
+- un `Avis d'imposition_SCI MRic` **quittait les Finances pour `05 · Carrière`** sur le seul jeton
+  « mric », avec une clé de SUCCÈS — donc pour toujours. Une garde par liste de types réservés a
+  été essayée puis **jetée** : elle ratait ce cas précis (le type n'était dans aucune liste). Le bon
+  test n'est pas une liste à tenir à jour, c'est « le flux sait-il le placer dans 02 ? » ;
+- les règles locales imposaient leur propre arbitrage et **divergeaient du flux sur 5 familles
+  mesurées** (relevé de paie D9, assurance émise par une banque, facture d'un courtier, facture
+  d'un assureur, relevé d'impôt) — la consolidation défaisait chacune juste après.
+
+Deux erreurs du **flux lui-même** ont été corrigées au passage, sans quoi l'autorité qu'on lui donne
+aurait propagé ses fautes : « Assurance_Desjardins » partait en `Banques` (le TYPE ne comptait pas,
+seul l'émetteur) et « Relevé d'impôt » en `Relevés` (le générique « relevé » passait avant le fiscal).
+
+Mesure avant d'écrire la moindre règle : le flux savait déjà router un CONTRAT Virgin Plus vers
+`Contrats & fournisseurs/**Virgin Plus**` (dossier d'entité), plus finement que la cible envisagée.
+⚠️ Depuis que le flux fait autorité, cela ne vaut plus que si `02` est muet : une `Facture_Virgin
+Plus` reste désormais en `02/Reçus & factures` (c'est une dépense), et c'est voulu.
+
+**Résultat : 21 rangés, 1 refusé** (`Note de frais_Roque Rodriguez` — le domaine d'une note de
+frais nominative n'est pas décidable, un refus est révisable). Comptage : **24 fichiers** dans les
+6 dossiers-années non vides, **22 noms distincts** (2 doublons de forme sur Virgin et les statuts),
+dont 21 rangés + 1 refusé.
+
+### 7.2 Deux pièges trouvés en mesurant, invisibles en lecture
+
+1. **`CONFIG.DOMAINES` ne contient que les 7 domaines FIXES.** `07 · Santé` et `09 · Voyages` sont
+   des domaines **AUTO** dont l'ID vit en Script Property et peut être **absent**. Lire la CONFIG
+   seule rendait `undefined` — un `cibleId` vide, donc un plantage au `moveTo`. Résolution déplacée
+   dans `batirCtx` (I/O), routeur toujours PUR, et **échec fermé** : domaine sans ID ⇒ refus.
+2. **`sousDossier_` ne résout qu'UN niveau.** Passer `Contrats & fournisseurs/Virgin Plus` aurait
+   créé un dossier **portant la barre oblique dans son nom**. Le chemin est désormais découpé
+   segment par segment (rétro-compatible). ⚠️ Le mock de test concatène `parent + '/' + nom` : il
+   produit la MÊME chaîne dans les deux cas — seul le **nombre d'appels** distingue le correct du
+   faux, et c'est la mutation qui l'a révélé.
+
+### 7.3 Ce que PR4 ne fait PAS, et pourquoi
+
+- **Le DPA `Immeubles MA8`** part en `02/Banques` (un mandat de prélèvement est une autorisation
+  bancaire), et non « vers le logement » comme demandé : `Immeubles MA8` **n'est pas un bailleur
+  déclaré**, donc aucune adresse ne peut être visée. Le router vers `03` sans adresse produirait du
+  vrac. Dès que Marc donne l'adresse, l'entrée entre dans `MISSIONS_BAILLEURS` et ce document —
+  **ainsi que ses 2 formulaires de demande de location** (§6) — partent chez le bon logement.
+- Les nouvelles règles de flux (budgets, achats en ligne, courtage, banque, T1135, Cleverbridge,
+  statuts de société, CFE) profitent **aussi au flux vivant** : ces documents seront mieux classés
+  à l'avenir, pas seulement rattrapés.
+
+### 7.4 Versions : ce qui est bumpé, et ce qui ne l'est PAS (décision écrite)
+
+`MISSIONS_REGLES_VERSION` c49-5 → **c49-6** : les refus des missions sont keyés dessus, sans quoi
+l'affinage resterait sans effet.
+
+`RESET_TABLE_VERSION` reste **`t5`** et `CONSOLIDATION_TAG` reste **`conso-3`**, délibérément
+(§4.4 a créé le précédent d'écrire la décision plutôt que de laisser croire à un oubli) :
+
+- le reset est **éteint** (`RESET_ACTIF: false`) — bumper `t5` n'aurait aucun effet observable ;
+- bumper `CONSOLIDATION_TAG` ferait **re-marcher tout le Drive** pour ré-évaluer des fichiers déjà
+  marqués « OK ». Le gain (quelques budgets/XTB/T1135 déjà rangés ailleurs) ne vaut pas le coût en
+  quota, et les nouvelles règles s'appliquent de toute façon à **tout ce qui passe désormais**.
+- ⚠️ Conséquence assumée et à connaître : un fichier déjà classé sous les anciennes règles ne sera
+  pas repris. Si un jour on veut le rattrapage, c'est `CONSOLIDATION_TAG` qu'il faut bumper — pas
+  `RESET_TABLE_VERSION`, qui ne pilote rien tant que le reset dort.
+
+### 7.5 Ce que la décision 7 ne ferme PAS (dit, pas passé sous silence)
+
+**Les dossiers-années vont se remplir à nouveau.** `CONFIG.DOMAINES_PAR_ANNEE` contient
+`02 · Finances` : le flux vivant y crée `02 · Finances/AAAA` pour tout document dont l'entité n'est
+pas validée — **les mêmes dossiers**, retrouvés par nom. Et `executerMission_` s'arrête définitivement
+après convergence (`DriveAI_MISSION_FINI_<tag>`). Donc la mission vide les 12 dossiers, converge,
+s'arrête… et le flux les re-remplit **en silence**, sans re-drainage jusqu'au prochain bump de
+version. Le nettoyage sera défait.
+
+**DÉCISION DE MARC (2026-08-20) : la mission devient PERPÉTUELLE** (issue 2 sur les 3 proposées).
+Elle draine indéfiniment ; le flux peut recréer `02 · Finances/AAAA`, ils sont vidés au tick suivant.
+Deux conséquences livrées dans le même geste :
+- elle n'écrit **jamais** `DriveAI_MISSION_FINI_annees02` et n'est **jamais peinte en rouge** (peindre
+  des dossiers que le flux recrée inviterait à supprimer pour rien) ;
+- 🔴 `paies` était gatée sur elle par `convergenceApres` — **retiré**. Une mission qui n'écrit jamais
+  son drapeau bloquerait l'aval **à vie** (c'est la leçon C28-32 « un statut terminal ne peut pas
+  servir de signal d'occupation », vue par l'autre bout : ici le statut n'arrive jamais). Un test
+  interdit désormais à toute mission d'attendre la convergence d'une perpétuelle.
+
+*(Issues écartées : retirer `02` de `DOMAINES_PAR_ANNEE` — les documents sans entité validée iraient
+à plat dans 02, à étudier séparément ; re-bumper la version périodiquement — silencieux.)*
+
+**Correction d'une affirmation fausse.** Le premier jet de §7 écrivait que les 12 dossiers vidés
+seraient visibles « en `vide-candidat` dans l'app ». C'est faux : `detecterDossierVide_` écarte tout
+nom `AAAA` via `estSegmentStructurel_`. Il n'existe **aucun** signal automatique — c'était une
+compensation imaginaire, écrite dans trois documents vivants à la fois.

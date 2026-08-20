@@ -45,7 +45,9 @@ var STRUCTURE_CIBLE_RESET = {
     'État civil & notarial': {},
     'Attestations & certificats': {},
     'Correspondance': {},
-    'Contrats & fournisseurs': { 'EDF': {}, 'ENGIE': {}, 'Virgin Plus': {}, 'Transport scolaire': {}, 'Filia-MAIF': {}, 'INO': {} },
+    // 7 nœuds — PLEIN (ADR-0044 §7 : « Cleverbridge » ajouté avec sa règle de flux, même commit :
+    // une cible ABSENTE de la table rendait `verifierStructureCibleReset_` aveugle au ≤ 7 réel).
+    'Contrats & fournisseurs': { 'EDF': {}, 'ENGIE': {}, 'Virgin Plus': {}, 'Transport scolaire': {}, 'Filia-MAIF': {}, 'INO': {}, 'Cleverbridge': {} },
     'Sécurité & codes': {},
   },
   '02 · Finances': {
@@ -95,6 +97,11 @@ var STRUCTURE_CIBLE_RESET = {
     // « Correspondance » de 03 n'avaient aucun dossier d'accueil. 03 reste à 6 nœuds (≤ 7 ✔).
     'Contrats': {},
     'Correspondance': {},
+    // ADR-0044 §6 (décision 6) : les formulaires GÉNÉRIQUES/vierges — le générique reste près de
+    // son sujet plutôt que de polluer « Contrats ». 03 = 7 nœuds ≤ 7 ✔.
+    // ⚠️ Ce nœud n'existe QUE dans 03 : `02 · Finances` est déjà à 7 (PLEIN), et la règle des ≤ 7
+    // prime — la décision y reste ouverte, elle exige d'abord de libérer un nœud (choix de Marc).
+    'Modèles & formulaires': {},
   },
   // 04 : structure INTERNE (ADR-0030 §4) — les fichiers ne sortent JAMAIS de 04 automatiquement.
   '04 · Immigration': {
@@ -180,6 +187,63 @@ function verifierStructureCibleReset_(structure, maxParNiveau) {
 /** Vrai si la clé normalisée contient l'UN des motifs (déjà normalisés). PURE. */
 function resetContient_(cle, motifs) {
   for (var i = 0; i < motifs.length; i++) { if (cle.indexOf(motifs[i]) !== -1) return true; }
+  return false;
+}
+
+/**
+ * MOT ENTIER dans une clé normalisée. PURE. `resetContient_` est une SOUS-CHAÎNE (« rib » ⊂
+ * « contribution », « avis » ⊂ « avise ») : dès qu'un jeton est court, c'est celui-ci qu'il faut.
+ * @param {string} cle @param {string} mot @return {boolean}
+ */
+function resetMotEntier_(cle, mot) {
+  // ÉCHAPPEMENT obligatoire : la fonction est au contrat inter-modules, donc offerte à la
+  // réutilisation — sans lui, un motif contenant un métacaractère ('a.c') apparierait 'abc'
+  // (vérifié en revue). Le coût est nul, l'oubli serait silencieux.
+  var m = String(mot).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('(^|[^a-z0-9])' + m + '([^a-z0-9]|$)').test(String(cle || ''));
+}
+
+/**
+ * Exclusions déclarées pour un JETON de `MISSIONS_ANNEES02_DOMAINES` (ADR-0044 §7). PURE (testée).
+ * UNE table, DEUX consommateurs : la mission (sortie inter-domaines) et le flux (règle d'émetteur).
+ * @param {string} jeton @return {string[]}
+ */
+function exclusionsSortie02_(jeton) {
+  var sortie = [];
+  (CONFIG.MISSIONS_ANNEES02_DOMAINES || []).forEach(function (r) {
+    if ((r.jetons || []).indexOf(jeton) === -1) return;
+    (r.exclusions || []).forEach(function (x) { if (sortie.indexOf(x) === -1) sortie.push(x); });
+  });
+  return sortie;
+}
+
+/**
+ * Vrai si le TYPE est FISCAL (ADR-0044 §7, revue finale PR4). PURE (testée).
+ *
+ * ⚠️ UNE seule règle, DEUX consommateurs — c'est tout l'objet de cette fonction. Le vocabulaire
+ * fiscal était écrit deux fois : la table `TYPES_FISCAUX_MISSIONS` côté mission, et une liste en
+ * dur ici. Quand le flux est devenu l'autorité dans 02, c'est la version la plus PAUVRE qui a
+ * gagné : « Relevé fiscal », « Relevé annuel fiscal » et « Relevé de cotisation » partaient chez
+ * les relevés BANCAIRES (l'exclusion ne portait que sur le mot « impôt »), à clé de SUCCÈS donc
+ * définitivement. C'est la limite de la garde par CAPACITÉ : elle est complète SI la règle
+ * partagée est juste — sinon elle hérite de ses fautes en silence.
+ *
+ * « declaration » seul est VOLONTAIREMENT absent : il volerait « Relevé de déclaration de
+ * sinistre ». La locution complète « declaration de revenus » est là, elle, sans ambiguïté.
+ * @param {string} t  segment TYPE normalisé @return {boolean}
+ */
+function estTypeFiscalReset_(t) {
+  // LOCUTIONS d'abord — `resetContient_` est une SOUS-CHAÎNE, donc le singulier couvre le pluriel
+  // (« relevé de cotisationS », la forme la plus courante chez l'URSSAF et les mutuelles, est
+  // capturée par « releve de cotisation »). C'est justement ce que l'ancienne version, qui testait
+  // le MOT ENTIER « cotisation », ne faisait pas.
+  // ⚠️ « cotisation » NU est banni : il volait les appels de prime d'ASSURANCE (« Appel de
+  // cotisation_Filia-MAIF » partait dans les impôts) et ceux de la CFE, qui est de la santé.
+  // ⚠️ « declaration » NU est banni aussi : il volerait « Relevé de déclaration de sinistre ».
+  if (resetContient_(t, ['avis d imposition', 'avis de cotisation', 'releve de cotisation',
+    'declaration de revenus', 'declaration des revenus', 'declaration d impot'])) return true;
+  var mots = ['impot', 'impots', 'fiscal', 'fiscale', 'fiscaux', 'taxe', 'taxes', 'feuillet', 'feuillets', 't4'];
+  for (var i = 0; i < mots.length; i++) if (resetMotEntier_(t, mots[i])) return true;
   return false;
 }
 
@@ -305,7 +369,14 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(t, ['attestation', 'certificat'])) return 'Attestations & certificats';
     if (e.indexOf('edf') !== -1) return 'Contrats & fournisseurs/EDF';
     if (e.indexOf('engie') !== -1) return 'Contrats & fournisseurs/ENGIE';
-    if (e.indexOf('virgin') !== -1) return 'Contrats & fournisseurs/Virgin Plus';
+    // MÊME exclusion que la table des missions — et LUE DEPUIS ELLE, pas recopiée : deux listes
+    // écrites séparément divergent (une entrée ajoutée d'un côté serait invisible de l'autre),
+    // c'est la graine exacte du défaut que cette PR corrige ailleurs. « Virgin » est une marque
+    // OMBRELLE : Atlantic (aérien), Radio, Megastore n'ont rien du télécom — Mobile, si.
+    if (e.indexOf('virgin') !== -1 && !resetContient_(tout, exclusionsSortie02_('virgin'))) {
+      return 'Contrats & fournisseurs/Virgin Plus';
+    }
+    if (e.indexOf('cleverbridge') !== -1) return 'Contrats & fournisseurs/Cleverbridge';
     if (resetContient_(e, ['tesco', 'transport scolaire'])) return 'Contrats & fournisseurs/Transport scolaire';
     if (e.indexOf('maif') !== -1) return 'Contrats & fournisseurs/Filia-MAIF';
     if (e === 'ino') return 'Contrats & fournisseurs/INO';
@@ -320,6 +391,12 @@ function cheminCibleReset_(domaine, nom) {
   }
 
   if (domaine === '02 · Finances') {
+    // ⚠️ EN TÊTE, avant toute règle : la Caisse des Français de l'Étranger est un régime de SANTÉ
+    // (décision Marc). « 02 ne la revendique pas » ne se conditionne pas à sept règles amont — un
+    // « Appel de cotisation_CFE » tombait sinon dans la branche fiscale et restait en Finances,
+    // pendant qu'un « Bordereau de cotisations_CFE » sortait vers 07 : deux destins pour la même
+    // caisse, à un pluriel près (revue finale PR4).
+    if (tout.indexOf('caisse des francais de l etranger') !== -1) return null;
     // FEUILLETS FISCAUX québécois AVANT « Relevés » : le RL-1 (revenus d'emploi) et le RL-31
     // (logement) sont des documents d'IMPÔT, pas des relevés bancaires — sans cette ligne,
     // `t = 'releve 1'` partait dans `Relevés/AAAA` (correction du commentaire de revue : je l'avais
@@ -353,20 +430,52 @@ function cheminCibleReset_(domaine, nom) {
         (employeurAutreDuNom_(nom) ? CONFIG.MISSIONS_EMPLOYEURS_COMMUN : '');
       if (empReleve) return 'Revenus & paie/' + empReleve;
     }
-    if (t.indexOf('releve') !== -1 && !estRibReset_(t)) return 'Relevés/' + resetBucketAnnee_(seg.annee, s['Relevés']);
+    // ===== (ADR-0044 §7) Règles nées du reliquat RÉEL des dossiers-années — décisions de Marc.
+    // Budgets & tableaux de bord → « Relevés » par année (choix de Marc : ils restent en Finances).
+    if (resetContient_(t, ['tableau de bord budgetaire', 'tableau de suivi budgetaire',
+      'suivi budgetaire', 'budget previsionnel'])) return 'Relevés/' + resetBucketAnnee_(seg.annee, s['Relevés']);
+    // Achats en ligne (captures) → une preuve d'achat reste une pièce de dépense.
+    if (resetContient_(t, ['suivi de livraison', 'fiche produit', 'bon de commande'])) {
+      return 'Reçus & factures/' + resetBucketAnnee_(seg.annee, s['Reçus & factures']);
+    }
+    // Feuillet fiscal canadien de revenus étrangers — ni « impot » ni « t4 » dans son nom.
+    // Reste ICI (avant « relevé ») : c'est un FEUILLET fiscal, jamais un relevé de compte.
+    if (resetMotEntier_(tout, 't1135')) return cheminImpotsReset_(seg);
+    // ⚠️ « relevé d'IMPÔT » est FISCAL, pas bancaire : sans cette exclusion, il partait en
+    // « Relevés » ici alors que la mission le range en « Impôts » — divergence PRÉ-EXISTANTE
+    // trouvée par la revue PR4, que la consolidation aurait défaite à chaque passage.
+    if (t.indexOf('releve') !== -1 && !estRibReset_(t) && !estTypeFiscalReset_(t)) {
+      return 'Relevés/' + resetBucketAnnee_(seg.annee, s['Relevés']);
+    }
     // Fiscal (dont les feuillets québécois T4/Relevé 1) et remboursements d'IMPÔT (revue : 'bourse'
     // ⊂ « remboursement » envoyait les remboursements en Placements — jamais de motif court sur tout).
-    if (resetContient_(t, ['avis d imposition', 'declaration de revenus', 'impot', 'taxe', 'feuillet', 't4']) ||
+    if (estTypeFiscalReset_(t) ||
         (t.indexOf('remboursement') !== -1 && e.indexOf('revenu') !== -1)) return cheminImpotsReset_(seg);
     // Donations/successions → versant FISCAL (le versant notarial est couvert par `01 · État civil
     // & notarial`, où les actes partent déjà). Le nœud dédié a cédé sa place à « Revenus & paie ».
     if (resetContient_(tout, ['donation', 'succession'])) return cheminImpotsReset_(seg);
     // Assurance AVANT le rattrapage bancaire (revue : « Desjardins Assurance » partait en Banques).
-    if (resetContient_(tout, ['assurance vie', 'prevoyance']) || e.indexOf('assurance') !== -1) return 'Assurances & prévoyance';
+    if (resetContient_(tout, ['assurance vie', 'prevoyance']) || e.indexOf('assurance') !== -1 ||
+        t.indexOf('assurance') !== -1) return 'Assurances & prévoyance'; // le TYPE compte autant que l'émetteur (revue PR4 : « Assurance_Desjardins » partait en Banques)
     if (resetContient_(tout, ['tether', 'usdt', 'crypto', 'securities', 'boursier', 'bourse de', 'portefeuille'])) return 'Placements & crypto';
     // 'rib' n'est plus une sous-chaîne (revue : ⊂ « contribution »/« distribution ») : type exact.
     if (t === 'rib' || resetContient_(tout, ['coordonnees bancaires', 'releve d identite bancaire', 'chequier']) || t.indexOf('cheque') !== -1) return 'Banques/Coordonnées & chèques';
     if (resetContient_(t, ['recu', 'facture', 'remboursement'])) return 'Reçus & factures/' + resetBucketAnnee_(seg.annee, s['Reçus & factures']);
+    // Banque — placé ICI (après fiscal, assurance et reçus), jamais plus haut : testé trop tôt et
+    // sur le NOM COMPLET, « Reçu_Débit préautorisé Hydro-Québec » partait en Banques au lieu des
+    // reçus, le MODE DE PAIEMENT cité dans l'émetteur décidant du classement (revue PR4).
+    // Testés sur le NOM COMPLET : la POSITION suffit à empêcher le vol (mesuré en revue), et
+    // restreindre au seul TYPE faisait perdre tous les noms HORS CONVENTION — « Confirmation de
+    // virement CIC.pdf », « Spécimen de signature CIC.pdf » — qui sont précisément la matière du
+    // reset et de la consolidation.
+    if (resetContient_(tout, ['confirmation de virement', 'specimen de signature',
+      'bordereau de numerisation', 'simulation de pret', 'debit preautorise',
+      'retrait bancaire preautorise'])) return 'Banques';
+    // Courtage & courtier — placés ICI, tout en bas : « courtage » est un mot de MÉTIER partagé
+    // (assurance, immobilier), et une FACTURE d'un courtier reste une pièce de dépense. Testés
+    // après assurance ET après reçus, ils ne volent plus personne (revue PR4).
+    // « XTB » est une MARQUE, ancrée en MOT ENTIER (3 lettres : « NXTBank » la contiendrait).
+    if (t.indexOf('courtage') !== -1 || resetMotEntier_(tout, 'xtb')) return 'Placements & crypto';
     if (e.indexOf('desjardins') !== -1) return 'Banques/Desjardins';
     if (e.indexOf('boursorama') !== -1) return 'Banques/Boursorama';
     if (e.indexOf('transatlantique') !== -1) return 'Banques/Banque Transatlantique';
@@ -384,9 +493,7 @@ function cheminCibleReset_(domaine, nom) {
     // sur un verdict de FLUX donc définitif)…
     // Frontières NON-ALPHANUMÉRIQUES (pas un padding d'espaces : `normaliserCle_` garde points
     // et tirets — « moreau.pdf » doit matcher, « moreault » jamais). Mots alphanumériques only.
-    var motEntier = function (mot) {
-      return new RegExp('(^|[^a-z0-9])' + mot + '([^a-z0-9]|$)').test(tout);
-    };
+    var motEntier = function (mot) { return resetMotEntier_(tout, mot); }; // jumeau migré (revue PR4)
     if (motEntier('roseliere')) return 'Logement/1548 avenue de la Roselière, Québec';
     if (motEntier('rivieres')) return 'Logement/3987 rte des Rivières';
     if (motEntier('3325') || tout.indexOf('4e avenue') !== -1) return 'Logement/3325 4e avenue';
@@ -413,6 +520,12 @@ function cheminCibleReset_(domaine, nom) {
     // véhicule de Marc, pas la location d'une voiture tierce. Refus (révisable) plutôt qu'un
     // déplacement définitif au mauvais endroit — MÊME arbitrage que la mission (une seule règle).
     if (estLocationVehicule_(nom)) return vehicule ? null : 'Véhicule/Locations';
+    // Magasinage qui n'a PAS abouti (décision Marc 2026-08-20, sur le contrat « Suprême Auto ») :
+    // un contrat de VENTE dont aucun véhicule du canon n'est nommé n'appartient à aucun véhicule
+    // de Marc — il va au COMMUN, jamais deviné par la date. Conditionné à `!vehicule` : dès qu'un
+    // véhicule est reconnu, la règle par véhicule ci-dessous garde la priorité.
+    if (!vehicule && resetContient_(tout, ['vente vehicule', 'vente de vehicule',
+      'vehicule d occasion', 'voiture d occasion'])) return 'Véhicule/Recherche & achat';
     if (vehicule) {
       if (resetContient_(t, ['constat d infraction', 'contravention', 'amende'])) return 'Véhicule/' + vehicule + '/Contraventions';
       // 'vente'/'achat' en MOT ENTIER (revue finale : « achat » ⊂ « rachat », « vente » ⊂
@@ -424,6 +537,11 @@ function cheminCibleReset_(domaine, nom) {
         'expertise auto']) || resetContient_(t, ['entretien', 'reparation', 'revision'])) return 'Véhicule/' + vehicule + '/Entretien & réparations';
       return 'Véhicule/' + vehicule;
     }
+    // (ADR-0044 §6) Formulaire GÉNÉRIQUE — filet placé APRÈS toutes les règles par ENTITÉ
+    // (adresse, bailleur, véhicule) : le SPÉCIFIQUE gagne toujours. Le jour où « Immeubles MA8 »
+    // entrerait dans MISSIONS_BAILLEURS, ses formulaires iraient chez le BAILLEUR — un formulaire
+    // attribuable n'est pas un modèle.
+    if (estModeleOuFormulaire_(t)) return 'Modèles & formulaires';
     if (resetContient_(e, ['edf', 'engie', 'hydro'])) return 'Énergie & services';
     if (tout.indexOf('assurance habitation') !== -1 || e.indexOf('maif') !== -1) return 'Assurance habitation';
     // Un document de VÉHICULE sans véhicule identifiable (immatriculation SAAQ, contravention
@@ -491,7 +609,13 @@ function cheminCibleReset_(domaine, nom) {
       var sousEmp = sousDossierEmployeur_(t);
       return 'Employeurs/' + CONFIG.MISSIONS_EMPLOYEURS_COMMUN + (sousEmp ? '/' + sousEmp : '');
     }
-    if (resetContient_(e, ['mric', 'm ric'])) return 'Entreprise — MRic (SCI)';
+    // (ADR-0044 §7) Les statuts CONSTITUTIFS de la SCI : le nom de l'entité varie (« PRIGRIS »,
+    // « SCI famille Richard », « MRic »), le TYPE ne varie pas. Décision Marc : les 4 sont la même
+    // société. Testé sur le type, donc AVANT la règle par émetteur, qui n'en attrape que la moitié.
+    if (resetContient_(t, ['statuts de societe civile', 'statuts de constitution', 'statuts constitutifs'])) {
+      return 'Entreprise — MRic (SCI)';
+    }
+    if (resetMotEntier_(e, 'mric') || /(^|[^a-z0-9])m[ .]ric([^a-z0-9]|$)/.test(e)) return 'Entreprise — MRic (SCI)'; // ancré (revue PR4 : « m ric » ⊂ « wilhelm ricard »)
     if (resetContient_(tout, ['alternance', 'stage'])) return 'Alternance & stages';
     if (t.indexOf('bilan') !== -1 || (' ' + t).indexOf(' formation') !== -1) return 'Formation & bilans'; // ' formation' : jamais « information » (revue)
     if (resetContient_(tout, ['linkedin', 'presentation', 'reseau'])) return 'Réseaux & présentations';
@@ -529,6 +653,9 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(t, ['resultat', 'analyse', 'examen', 'radiographie'])) return 'Examens & résultats';
     if (resetContient_(tout, ['medecine scolaire', 'medecine du travail', 'aptitude'])) return 'Médecine scolaire & travail';
     if (resetContient_(e, ['hopital', 'chu', 'cisss', 'ciusss', 'clinique', 'centre hospitalier'])) return 'Hôpitaux & centres';
+    // (ADR-0044 §7) La Caisse des Français de l'Étranger est un régime d'ASSURANCE santé, mais
+    // son nom ne contient pas « assurance » : motif multi-mots (aucune collision possible).
+    if (tout.indexOf('caisse des francais de l etranger') !== -1) return 'Assurances santé';
     if (resetContient_(tout, ['cnam', 'ramq', 'assurance'])) return 'Assurances santé';
     return null;
   }

@@ -826,7 +826,7 @@ var CONFIG = {
   MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions
   // c49-3 (ADR-0044 §4, véhicules) puis c49-4 (§5, les 39 de « employeurs & CV ») — l'historique
   // inline s'arrêtait à c49-2 alors que la valeur avait bougé deux fois (revue code PR2).
-  MISSIONS_REGLES_VERSION: 'c49-4',       // DANS la clé d'idempotence : un refus (non apparié) se fige
+  MISSIONS_REGLES_VERSION: 'c49-6',       // DANS la clé d'idempotence : un refus (non apparié) se fige
                                           // sous CETTE version — affiner les règles = bump ⇒ ré-évaluation
                                           // (leçon C28-33 « verdict négatif révisable, jamais figé à vie »)
                                           // c49-2 (C28-51, ADR-0040) : tables bailleurs + véhicules,
@@ -918,6 +918,22 @@ var CONFIG = {
   // toute modification exige de bumper MISSIONS_REGLES_VERSION (ré-évaluer les refus keyés), et
   // RESET_TABLE_VERSION aussi si la campagne reset est relancée un jour (RESET_ACTIF).
   // Bornée ≤ 7 par test (enfants dynamiques de « Revenus & paie », jumeau RESET_PERSONNES_AUTRES).
+  // (ADR-0044 §7, décision 7) Les « dossiers-années » de 02 ne sont PAS fiscaux : ce sont des
+  // fourre-tout. Chaque non-fiscal part vers son VRAI domaine. Cette table ne choisit QUE le
+  // DOMAINE — le SOUS-CHEMIN est calculé par `cheminCibleReset_`, LA règle du flux vivant (contrainte
+  // explicite de Marc : jamais une seconde formule ; la convergence est alors garantie PAR
+  // CONSTRUCTION, pas asserée après coup). Le flux refuse ⇒ la mission refuse (clé versionnée,
+  // révisable), jamais un dépôt à la racine du domaine d'arrivée.
+  // `jetons` = MOT ENTIER ; `motifs` = sous-chaîne MULTI-MOTS (pour les noms sans sigle).
+  // Prouvée sur les 24 fichiers RÉELS des 12 dossiers-années, jamais sur un échantillon.
+  MISSIONS_ANNEES02_DOMAINES: [
+    { domaine: '01 · Administratif & identité', jetons: ['virgin', 'cleverbridge'], motifs: [],
+      // ⚠️ « virgin mobile » N'EST PAS exclu : c'est bien un opérateur télécom, donc la bonne
+      // cible. Ne sont exclues que les branches du groupe qui n'ont rien à voir.
+      exclusions: ['virgin atlantic', 'virgin radio', 'virgin megastore'] },
+    { domaine: '05 · Carrière', jetons: ['mric', 'prigris'], motifs: ['statuts de societe civile', 'statuts de constitution', 'statuts constitutifs'] },
+    { domaine: '07 · Santé', jetons: [], motifs: ['caisse des francais de l etranger'] },
+  ],
   MISSIONS_EMPLOYEURS: [
     { nom: 'Robovic', jetons: ['robovic'] },
     { nom: 'Automatech', jetons: ['automatech', 'robotik'] },
@@ -947,7 +963,10 @@ var CONFIG = {
   // les cibles listées — dossier renommé ⇒ refus (jamais un doublon créé par la table).
   // Jetons MOT ENTIER (apparierUnique_) ; ambigu / hors table = refus, jamais deviné.
   MISSIONS_BAILLEURS: [
-    { logement: '3325 4e avenue', jetons: ['lcp', '9420', '3767', 'pinsonneault'] },
+    // « ma8 » ajouté le 2026-08-20 (réponse de Marc) : `Immeubles MA8` est le bailleur du 3325,
+    // une graphie de plus du même. Range d'un coup son DPA et ses 2 formulaires de demande de
+    // location, jusqu'ici bloqués faute d'adresse connue (ADR-0044 §7.3).
+    { logement: '3325 4e avenue', jetons: ['lcp', '9420', '3767', 'pinsonneault', 'ma8'] },
     { logement: '3987 rte des Rivières', jetons: ['9478', '5045'] },
     { logement: '783 av. Moreau, Québec', jetons: ['soucy', 'ayotte'] },
     { logement: 'Anciens logements', jetons: ['retta', 'isannointi', 'perpignan'] },
