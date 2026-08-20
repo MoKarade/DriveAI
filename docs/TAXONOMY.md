@@ -95,10 +95,23 @@ assertées par un seul test ; en retirer une fait échouer la CI (prouvé par mu
 > **`09 · Voyages` (refonte)** : vols, trains, hôtels, réservations, locations de voyage — le domaine qui
 > manquait (les billets partaient dans Administratif/Perso). Auto-créé au premier document de voyage.
 >
-> **Pièces d'identité (refonte)** : rangées PAR TYPE (`01 · Administratif & identité/Passeport`, `…/Permis
-> de conduire`…) mêlant Marc ET les autres personnes ; le nom de la personne (titulaire) va dans le fichier
-> (`AAAA-MM-JJ_Type_Titulaire.ext`). Pas de dossier « Tiers ». Carte de résident permanent → `04 · Immigration` ;
-> carte d'assurance maladie → `07 · Santé`.
+> **Pièces d'identité (structure 2026 — ADR-0030, corrigé C28-72)** : rangées **PAR TITULAIRE** sous le
+> conteneur `01 · Administratif & identité/Pièces d'identité` → `Marc/` ou `Autres/<personne>`
+> (`RESET_PERSONNES_AUTRES`). Le TYPE vit dans le **nom du fichier**
+> (`AAAA-MM-JJ_Type_Titulaire.ext`), **jamais** dans un dossier.
+> ⚠️ Cette ligne a prescrit « rangées PAR TYPE (`01 · …/Passeport`, `…/Permis de conduire`) » jusqu'au
+> 2026-08-20 : c'est la phrase qui légitimait le **nœud parasite**. Un dossier de type au niveau 1 du
+> domaine est hors `STRUCTURE_CIBLE_RESET`, donc **invisible de `verifierStructureCibleReset_`** et du
+> plafond ≤ 7 — `01 · Administratif/Permis de conduire` a ainsi été créé le 12/08 sans qu'aucun
+> validateur ne bronche.
+> Quand le titulaire n'est **pas attribuable** (refus voulu de `cheminCibleReset_`, qui rend `null`
+> plutôt que de ranger le document d'un proche chez Marc), le fichier est posé **à plat à la racine de
+> `Pièces d'identité`** — `repliIdentite_` (Router.gs), règle PARTAGÉE par le flux vivant ET la
+> consolidation. Même idiome que `Revenus & paie` ou `Impôts & déclarations` : « je sais quel
+> conteneur, pas quelle subdivision ». Pas de dossier « Tiers ».
+> Carte de résident permanent → `04 · Immigration/Résidence permanente` ; carte d'assurance maladie →
+> `07 · Santé/Assurances santé` — ces deux domaines n'ont pas de conteneur d'identité, leur repli est
+> leur propre nœud de table.
 
 **Hors domaines** (préfixe `_`, à la racine, triés en tête ; ni domaine ni racine de rangement) :
 
@@ -122,12 +135,18 @@ assertées par un seul test ; en retirer une fait échouer la CI (prouvé par mu
 **Principe** : un document se classe **à la racine de son domaine**
 (`02 · Finances/2026-03-01_Facture_EDF.pdf`). La **RÈGLE UNIQUE** de sous-chemin
 (`sousCheminDomaine_`, Router.gs — partagée par le flux vivant ET la cible de consolidation,
-verrouillée par un tripwire test) n'accorde un sous-dossier que dans TROIS cas EXCLUSIFS, dans
+verrouillée par un tripwire test) n'accorde un sous-dossier que dans DEUX cas EXCLUSIFS, dans
 cet ordre (arbitrage Marc 2026-07-16 « entité OU année ») :
 
-1. **Type d'identité** (`Passeport`, `Permis de conduire`…) — dans le domaine du type seulement
-   (01/04/07, cf. `dossierIdentite_`) ; le titulaire vit dans le NOM, jamais un dossier par personne.
-2. **Entité MAJEURE VALIDÉE** au référentiel `Entités` (logement, véhicule, employeur, école —
+⚠️ Un troisième cas « **Type d'identité** → dossier de TYPE » figurait ici en tête jusqu'au
+2026-08-20. Il a été **retiré du code et de cette règle** (C28-72) : il rendait un nœud de niveau 1
+hors `STRUCTURE_CIBLE_RESET`, donc invisible du validateur ≤ 7. L'identité a désormais sa propre
+règle partagée, `repliIdentite_`, qui dégrade vers un nœud EXISTANT de la table (cf. la section
+« Pièces d'identité » plus haut) — et le paramètre `typeIdentite` a été **supprimé** de
+`sousCheminDomaine_`, pas neutralisé : un paramètre qui « ne sert plus » se remet à servir au
+premier appelant distrait.
+
+1. **Entité MAJEURE VALIDÉE** au référentiel `Entités` (logement, véhicule, employeur, école —
    **JAMAIS une banque** : `02 · Finances` n'a plus d'entités validées, décision Marc 2026-07-17,
    ADR-0024) — dossier **CRÉÉ au niveau 1** du domaine, **nom canonique du référentiel**, **sans
    année** : une entité = UN dossier (`05 · Carrière/Robovic`, jamais `2026/Robovic`).
@@ -141,7 +160,7 @@ cet ordre (arbitrage Marc 2026-07-16 « entité OU année ») :
    Les entités de Marc sont posées par un SEED one-shot (`seedEntitesMarc_`, ADR-0024 : 4 logements,
    3 véhicules, 2 employeurs, 6 écoles) ; l'auto-validation « vue ≥ 3 fois » est COUPÉE
    (`ENTITES_AUTO_VALIDATION: false`) — seuls le seed, le formulaire de correction et l'app valident.
-3. **Année** (`AAAA`) pour les domaines à volume (`CONFIG.DOMAINES_PAR_ANNEE` = `02 · Finances`),
+2. **Année** (`AAAA`) pour les domaines à volume (`CONFIG.DOMAINES_PAR_ANNEE` = `02 · Finances`),
    quand aucune entité validée ne s'applique : le tout-venant Finances va dans `02/2026`.
 
 Sinon : **racine du domaine**. **Interdits** (les mécanismes du bordel, recensement 2026-07-16) :

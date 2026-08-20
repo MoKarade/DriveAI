@@ -20,7 +20,8 @@ structures distinctes**, dont deux que la mission ne doit surtout pas traiter co
 Trois faits que l'inventaire seul révèle, et qu'aucune règle n'aurait devinés :
 
 1. **`01/Permis de conduire` est un nœud de niveau 1 parasite** — la taxonomie prévoit
-   `Pièces d'identité/<Type>`, pas un type promu au niveau du domaine. Et il ne contient **que** le
+   `Pièces d'identité/<titulaire>` (`Marc`, `Autres/<personne>`), pas un type promu au niveau du
+   domaine — ni d'ailleurs un `Pièces d'identité/<Type>`, que §2 explique pourquoi on ne crée pas. Et il ne contient **que** le
    permis d'une TIERCE personne, tandis que celui de Marc dort dans `_Doublons`. L'inversion exacte
    de ce qu'on attendrait.
 2. **Un document de TIERS est déjà présent.** `RESET_PERSONNES_AUTRES` existe précisément pour ça
@@ -104,8 +105,10 @@ la fonction citée ne l'était pas : `cheminCibleReset_` ne vise jamais `Permis 
 
 Décision de Marc du 2026-08-20 sur le point (a) : **ne pas toucher au document de tiers**, le
 rapporter seulement. `Frederique Bolduc` n'est donc PAS ajoutée aux personnes déclarées, le fichier
-reste où il est, et le nœud `01/Permis de conduire` reste non vide — il ne sera simplement plus
-alimenté.
+reste où il est, et le nœud `01/Permis de conduire` reste non vide — il ne sera plus alimenté
+**ni jamais résorbé automatiquement**. Il faut le dire : `estSegmentStructurel_` (Reorg.gs) le
+reconnaît comme structurel, donc la Réorg et la Fusion le REFUSENT comme source. C'est cohérent avec
+la décision — mais cela signifie que **seul Marc peut le vider**, à la main.
 
 ## 5. Ce qui reste à trancher par Marc
 

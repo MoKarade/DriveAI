@@ -541,7 +541,7 @@ function planRoutageV2_(classif, meta, date, ext, validees) {
     var cleEnt = candidat ? cleCanoniqueEntite_(domaine, candidat) : null;
     var entiteValidee = (cleEnt && validees && validees[cleEnt]) ? validees[cleEnt] : null;
     var cible = sousCheminDomaine_({
-      domaine: domaine, typeIdentite: null, entite: entiteValidee,
+      domaine: domaine, entite: entiteValidee,
       annee: /^\d{4}/.test(date || '') ? date.substring(0, 4) : null,
     });
     sousDossier = cible.nom;
@@ -775,9 +775,22 @@ function estDocumentIdentitePersonnel_(classif) {
   return TYPES_IDENTITE.indexOf(normaliserTypeIdentite_(classif.sousDossierType)) !== -1;
 }
 
-/** Domaine des pièces d'identité NON liées au statut ni à la santé, et son conteneur canonique. */
+/** Domaine des pièces d'identité NON liées au statut ni à la santé. */
 var DOMAINE_IDENTITE_01 = '01 · Administratif & identité';
-var CONTENEUR_IDENTITE_01 = 'Pièces d\'identité';
+
+/**
+ * Nœud de REPLI par domaine d'identité. Chaque valeur est un nœud QUI EXISTE DANS
+ * `STRUCTURE_CIBLE_RESET` — verrouillé par un test qui compare cette carte à la table (jamais une
+ * recopie libre : la résolution se fait par NOM, donc un libellé qui dérive de la table ferait
+ * naître un dossier jumeau, comme « 3987 route des Rivières » à côté de « 3987 rte des Rivières »).
+ * C'est aussi ce qui garantit que le repli reste VISIBLE de `verifierStructureCibleReset_` (≤ 7) :
+ * un nœud hors table est invisible du validateur.
+ */
+var REPLI_IDENTITE_PAR_DOMAINE = {
+  '01 · Administratif & identité': 'Pièces d\'identité',
+  '04 · Immigration': 'Résidence permanente',
+  '07 · Santé': 'Assurances santé',
+};
 
 /** Domaine + sous-dossier de type d'une pièce d'identité (jamais par personne, jamais « Tiers »). PUR. */
 function dossierIdentite_(classif) {
@@ -804,13 +817,20 @@ function dossierIdentite_(classif) {
  * une pièce d'identité que personne n'a su attribuer. C'est la leçon §9 « granularité =
  * enrichissement, jamais frein » : dégrader vers le niveau PRÉCÉDENT, jamais vers un nœud parallèle.
  *
- * Les domaines 04 et 07 n'ont pas ce conteneur : leur repli reste le type.
+ * 04 et 07 n'ont pas de conteneur d'identité, mais ils ont chacun LEUR nœud pour ces documents
+ * (`Résidence permanente`, `Assurances santé`) : le repli y atterrit aussi. Ces deux branches sont
+ * MORTES aujourd'hui — `nommerDocument_` produit un nom que la table sait router — et on les
+ * verrouille précisément pour qu'elles le restent sans danger : si un type d'identité était ajouté
+ * demain, l'ancien repli aurait créé `07 · Santé/Carte d'assurance maladie` au niveau 1, hors table,
+ * sur la seule place libre de 07. Le même défaut, sur le domaine d'à côté.
  * @param {?{domaine:string, sousDossier:string}} di  sortie de `dossierIdentite_`
  * @return {string}
  */
 function repliIdentite_(di) {
   if (!di) return '';
-  return di.domaine === DOMAINE_IDENTITE_01 ? CONTENEUR_IDENTITE_01 : di.sousDossier;
+  // Domaine inattendu (AUTO, défaut) : on rend le type plutôt que rien — mais aucun `dossierIdentite_`
+  // ne peut le produire aujourd'hui (test d'exhaustivité sur ses trois sorties possibles).
+  return REPLI_IDENTITE_PAR_DOMAINE[di.domaine] || di.sousDossier;
 }
 
 /** Casse Titre d'un NOM DE PERSONNE (contrairement aux entités, on normalise MÊME l'ALL-CAPS). PUR. */
@@ -885,24 +905,28 @@ function sousDossierPourNom_(classif) {
  * année ») — PARTAGÉE par le flux vivant (planRoutageV2_) et la cible de consolidation
  * (cheminCibleConsolidation_), verrouillée par un tripwire test : toute divergence entre les deux
  * ferait re-proposer « Déplacer » en boucle ce que le flux vivant vient de classer.
- *  1. type d'IDENTITÉ → dossier de TYPE (« Passeport ») ;
- *  2. ENTITÉ (majeure, VALIDÉE) → dossier d'entité, SANS année (une entité = UN dossier) ;
- *  3. domaine par ANNÉE (DOMAINES_PAR_ANNEE) + année lisible → dossier « AAAA » ;
- *  4. sinon '' = racine du domaine (à plat). PUR.
+ *  1. ENTITÉ (majeure, VALIDÉE) → dossier d'entité, SANS année (une entité = UN dossier) ;
+ *  2. domaine par ANNÉE (DOMAINES_PAR_ANNEE) + année lisible → dossier « AAAA » ;
+ *  3. sinon '' = racine du domaine (à plat). PUR.
+ *
+ * ⚠️ Le cas « type d'IDENTITÉ → dossier de TYPE » a été RETIRÉ (C28-72) : il rendait un dossier de
+ * niveau 1 HORS de `STRUCTURE_CIBLE_RESET`, donc invisible du validateur ≤ 7, et c'est lui qui a
+ * fabriqué `01 · Administratif/Permis de conduire` en prod. L'identité a désormais sa propre règle
+ * partagée, `repliIdentite_`, appelée par les DEUX consommateurs. Le paramètre a été supprimé plutôt
+ * que neutralisé : un paramètre qui « ne sert plus » se remet à servir au premier appelant distrait.
  *
  * ADR-0028 : renvoie un COUPLE `{nom, id}`. `id` n'est renseigné que pour une ENTITÉ VALIDÉE portant
  * un `Dossier ID` — c'est ce qui permet au flux vivant ET à la consolidation de retrouver le dossier
  * d'entité À N'IMPORTE QUELLE PROFONDEUR (ex. sous un regroupement « Anciens employeurs », ADR-0027)
  * au lieu de le re-créer à plat. Les segments de TYPE et d'ANNÉE restent résolus par NOM (`id` vide) :
  * le moteur les find-or-create sous le domaine, ils n'ont pas d'identité propre au référentiel.
- * @param {{domaine:string, typeIdentite:?string, entite:?(string|{nom:string,dossierId:string}),
+ * @param {{domaine:string, entite:?(string|{nom:string,dossierId:string}),
  *   annee:?string}} d  `entite` : objet du référentiel (ADR-0028) ; une CHAÎNE reste tolérée
  *   (appelant historique / test) et vaut alors un id vide → repli par nom.
  * @return {{nom:string, id:string}}
  */
 function sousCheminDomaine_(d) {
   d = d || {};
-  if (d.typeIdentite) return { nom: d.typeIdentite, id: '' };
   if (d.entite) {
     return typeof d.entite === 'string'
       ? { nom: d.entite, id: '' }

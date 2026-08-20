@@ -70,6 +70,14 @@ test('planRoutageV2_ : passeport d\'un TIERS non déclaré → `Pièces d\'ident
   assert.strictEqual(p.domaine, '01 · Administratif & identité');
   assert.strictEqual(p.sousDossier, 'Pièces d\'identité');
   assert.strictEqual(p.nom, '2020-01-01_Passeport_Sophie Tremblay.pdf');
+  // PRÉMISSE asservie (revue code F3) : le commentaire ci-dessus AFFIRME que la table refuse ce nom,
+  // rien ne le vérifiait. Si elle se mettait à l'attribuer, ce test passerait par la DÉLÉGATION et
+  // cesserait de verrouiller le repli — vert, et vide (patron §9 : la même ligne est un verrou ou
+  // une tautologie selon le code qu'elle observe).
+  assert.strictEqual(ctx.cheminCibleReset_('01 · Administratif & identité', p.nom), null,
+    'la table doit REFUSER ce nom, sinon ce test n\'exerce plus le repli');
+  // Et on observe le CHEMIN, pas seulement la valeur : la branche table pose `segments`, le repli non.
+  assert.ok(!p.segments, 'chemin REPLI — la branche déléguée aurait posé `segments`');
 });
 
 test('planRoutageV2_ : passeport de MARC → la TABLE attribue, le repli ne sert même pas', () => {
@@ -82,6 +90,8 @@ test('planRoutageV2_ : passeport de MARC → la TABLE attribue, le repli ne sert
     meta('passeport.pdf'), '2026-07-07', '.pdf');
   assert.strictEqual(p.domaine, '01 · Administratif & identité');
   assert.strictEqual(p.sousDossier, 'Pièces d\'identité/Marc');
+  assert.deepStrictEqual(plat(p.segments), ['Pièces d\'identité', 'Marc'],
+    'chemin TABLE — c\'est `segments` qui distingue les deux chemins d\'exécution, pas la valeur');
 });
 
 test('planRoutageV2_ : carte de résident permanent → domaine 04, arbre Reset (reste dans la zone protégée)', () => {
@@ -221,8 +231,13 @@ test('dossierEntiteParId_ : refuse un dossier CORBEILLÉ, hors domaine, ou un ID
 
 test('sousCheminDomaine_ : la RÈGLE UNIQUE rend {nom, id} — id SEULEMENT pour une entité validée', () => {
   const dom = ctx.CONFIG.DOMAINES_PAR_ANNEE[0];
+  // C28-72 : le cas « type d'identité → dossier de TYPE » a été RETIRÉ de cette règle. Il rendait un
+  // nœud de niveau 1 HORS `STRUCTURE_CIBLE_RESET`, invisible du validateur ≤ 7 — c'est lui qui a
+  // fabriqué `01 · Administratif/Permis de conduire` en prod. Le paramètre est supprimé, pas
+  // neutralisé : on vérifie ici qu'il est bel et bien IGNORÉ, pour qu'un appelant distrait qui le
+  // passerait encore ne ressuscite pas le dossier de type.
   assert.deepStrictEqual(plat(ctx.sousCheminDomaine_({ domaine: dom, typeIdentite: 'Passeport' })),
-    { nom: 'Passeport', id: '' }, 'type d\'identité : résolu par NOM (aucune identité au référentiel)');
+    { nom: '', id: '' }, 'paramètre retiré : un `typeIdentite` résiduel ne route plus rien');
   assert.deepStrictEqual(plat(ctx.sousCheminDomaine_({ domaine: dom, entite: { nom: 'Desjardins', dossierId: 'ID_D' } })),
     { nom: 'Desjardins', id: 'ID_D' });
   assert.deepStrictEqual(plat(ctx.sousCheminDomaine_({ domaine: dom, annee: '2026' })), { nom: '2026', id: '' });

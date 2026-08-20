@@ -127,6 +127,10 @@ test('repliIdentite_ : dans 01, on dégrade DANS `Pièces d\'identité` — jama
   // `01 · Administratif/Permis de conduire` est né comme ça le 2026-08-12 : la table a rendu null
   // (permis d'un tiers non déclaré, refus VOULU) et le repli a créé un dossier de TYPE au niveau 1
   // du domaine, à côté de `Pièces d'identité`. Il ne contient qu'un document de tiers.
+  // NB : tous ces types n'atteignent pas forcément le repli via `planRoutageV2_` — la table route
+  // `Acte de naissance` vers `État civil & notarial` et `Certificat de citoyenneté` vers
+  // `Attestations & certificats`. On teste ici la fonction PURE, pas son atteignabilité : c'est de
+  // la défense en profondeur, et le dire évite de croire ce code porteur d'un garde-fou.
   ['Passeport', 'Permis de conduire', 'Carte d’identité', 'Acte de naissance'].forEach((t) => {
     const di = c.dossierIdentite_({ sousDossierType: t });
     assert.strictEqual(c.repliIdentite_(di), 'Pièces d\'identité',
@@ -134,14 +138,55 @@ test('repliIdentite_ : dans 01, on dégrade DANS `Pièces d\'identité` — jama
   });
 });
 
-test('repliIdentite_ : 04 et 07 n\'ont pas ce conteneur — leur repli reste le TYPE', () => {
+test('repliIdentite_ : 04 et 07 atterrissent sur LEUR nœud de table, jamais sur un type de niveau 1', () => {
   const c = ctx;
+  // Branches MORTES aujourd'hui (`nommerDocument_` produit un nom que la table sait router) — on les
+  // verrouille pour qu'elles le restent SANS DANGER : l'ancien repli aurait créé
+  // `07 · Santé/Carte d'assurance maladie` au niveau 1, hors table, sur la seule place libre de 07.
   const res = c.dossierIdentite_({ sousDossierType: 'Carte de résident permanent' });
   assert.strictEqual(res.domaine, '04 · Immigration');
-  assert.strictEqual(c.repliIdentite_(res), 'Carte de résident permanent');
+  assert.strictEqual(c.repliIdentite_(res), 'Résidence permanente');
   const ram = c.dossierIdentite_({ sousDossierType: 'ramq' });
   assert.strictEqual(ram.domaine, '07 · Santé');
-  assert.strictEqual(c.repliIdentite_(ram), 'Carte d’assurance maladie');
+  assert.strictEqual(c.repliIdentite_(ram), 'Assurances santé');
+});
+
+test('INVARIANT : chaque repli d\'identité EXISTE dans STRUCTURE_CIBLE_RESET (jamais un libellé recopié à la main)', () => {
+  // La résolution se fait par NOM : un libellé qui dérive de la table ferait naître un dossier
+  // JUMEAU (vécu : « 3987 route des Rivières » à côté de « 3987 rte des Rivières »). Et un nœud hors
+  // table est invisible de `verifierStructureCibleReset_`, donc du plafond ≤ 7.
+  const t = require('./harness').load(['Config.gs', 'Reset.gs']);
+  const carte = ctx.REPLI_IDENTITE_PAR_DOMAINE;
+  const domaines = Object.keys(carte);
+  assert.ok(domaines.length >= 3, 'les trois domaines d\'identité sont couverts');
+  domaines.forEach((d) => {
+    const noeuds = t.STRUCTURE_CIBLE_RESET[d];
+    assert.ok(noeuds, 'domaine absent de la table : ' + d);
+    assert.ok(Object.prototype.hasOwnProperty.call(noeuds, carte[d]),
+      'le repli « ' + carte[d] + ' » de ' + d + ' n\'existe pas dans STRUCTURE_CIBLE_RESET');
+  });
+});
+
+test('INVARIANT : un repli est MONO-SEGMENT — un `/` deviendrait un tiret dans le nom du dossier', () => {
+  // La branche repli de `deciderRoutageV2_` ne découpe pas : elle passe par `champ_`, qui remplace
+  // `/` par `-`. Un repli « Pièces d'identité/Autres » créerait un dossier littéralement nommé
+  // `Pièces d'identité-Autres`, frère du vrai. Rien dans le code ne l'interdit — sauf ce test.
+  Object.keys(ctx.REPLI_IDENTITE_PAR_DOMAINE).forEach((d) => {
+    assert.ok(ctx.REPLI_IDENTITE_PAR_DOMAINE[d].indexOf('/') === -1,
+      'repli multi-segments pour ' + d + ' : ' + ctx.REPLI_IDENTITE_PAR_DOMAINE[d]);
+  });
+});
+
+test('INVARIANT : dossierIdentite_ ne peut produire AUCUN domaine hors de la carte de repli', () => {
+  // Sans ça, un futur type d'identité routé vers un 4e domaine retomberait sur `|| di.sousDossier`,
+  // c'est-à-dire le dossier de TYPE au niveau 1 — le défaut qu'on vient de retirer, réintroduit par
+  // la porte de derrière.
+  const vus = {};
+  ctx.TYPES_IDENTITE.forEach((t) => { vus[ctx.dossierIdentite_({ sousDossierType: t }).domaine] = true; });
+  Object.keys(vus).forEach((d) => {
+    assert.ok(Object.prototype.hasOwnProperty.call(ctx.REPLI_IDENTITE_PAR_DOMAINE, d),
+      'domaine « ' + d + ' » produit par dossierIdentite_ mais absent de REPLI_IDENTITE_PAR_DOMAINE');
+  });
 });
 
 test('repliIdentite_ : absence d\'identité → chaîne vide (jamais une exception dans le chemin de repli)', () => {
