@@ -242,7 +242,8 @@ test('budgetJourMissions_ : jour courant compté, autre jour = 0 (patron conso)'
  */
 function ctxRunner(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs',
+    'Router.gs', 'Reorg.gs', 'Maintenance.gs']);
   const store = Object.assign({}, opts.props);
   const index = Object.assign({}, opts.index); // clés déjà présentes
   const ajouts = [];
@@ -1553,4 +1554,121 @@ test('C28-65 : le dossier SOURCE ne fait plus foi contre le DOCUMENT (véto loge
     assert.strictEqual(x.cible, c.CONFIG.MISSIONS_IDS.correspondance03, 'cible = 03/Correspondance');
     assert.ok(x.quoi && x.quoi.length > 10, 'la RAISON est écrite : ce mécanisme déplace par identité');
   });
+});
+
+test('C28-65 : le véto logement ne bloque PAS le vocabulaire véhicule (bail/loyer/propriétaire)', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
+  // 🔴 Au Québec « bail » et « loyer » sont le vocabulaire STANDARD d'une location longue durée de
+  // voiture, « propriétaire » est le mot de la SAAQ, et « immeuble » vit dans l'adresse d'un
+  // assureur. Le premier jet les opposait sans réserve et bloquait de vrais documents de véhicule.
+  [['2022-03-10_Contrat de location longue durée_Loyer mensuel véhicule Peugeot 208.pdf', false],
+    ['2021-09-01_Attestation_Transfert de propriétaire véhicule SAAQ.pdf', false],
+    ['2024-06-06_Assurance auto_Immeuble Desjardins.pdf', false],
+    // ⚠️ LIMITE assumée : l'échappatoire exige un mot GÉNÉRIQUE de véhicule (« véhicule », « auto »,
+    // « voiture »). « Bail_Hyundai Elantra » n'en a aucun — une liste de MARQUES serait le retour
+    // du piège « Avis » (ADR-0044), donc le véto s'applique et le fichier est REFUSÉ. C'est le bon
+    // côté de l'asymétrie : un refus coûte un ré-examen, un faux positif coûte un document égaré.
+    ['2023-05-01_Bail_Hyundai Elantra 2019.pdf', true],
+    // …mais un mot AMBIGU sans aucun mot de véhicule reste un véto.
+    ['2024-01-01_Bail_LCP Groupe Immobilier.pdf', true],
+    ['2024-01-01_Quittance_Loyer de janvier.pdf', true],
+    // …et les mots SÛRS valent véto en toute circonstance.
+    ['2026-07-06_SMS_proprio plombier visite appartement.jpg', true],
+    ['2024-01-01_Attestation_Locataire.pdf', true],
+  ].forEach(([nom, attendu]) => assert.strictEqual(c.estDocumentLogement_(nom), attendu, nom));
+});
+
+test('C28-65 : les corrections manuelles DÉLÈGUENT la mutation, et respectent l\'épingle de Marc', () => {
+  const h = ctxRunner();
+  const c = h.c;
+  const tag = c.CONFIG.CORRECTIONS_MANUELLES_TAG;
+  const cible = c.CONFIG.MISSIONS_IDS.correspondance03;
+  const appels = [];
+  // On mocke le déplacement DÉLÉGUÉ : ce test vérifie le PILOTE (idempotence, épingle, statuts),
+  // pas la mutation — celle-ci a ses propres tests (chat-reorg.test.js), et c'est justement
+  // l'intérêt de déléguer plutôt que d'écrire un second chemin de mutation.
+  c.appliquerDeplacerFichier_ = (a) => { appels.push(a); return { statut: 'appliqué' }; };
+  c.ensembleDomainesProteges_ = () => ({});
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => h.store[k] || null,
+    setProperty: (k, v) => { h.store[k] = v; },
+  }) };
+
+  c.appliquerCorrectionsManuelles_(() => false);
+  assert.strictEqual(appels.length, 4, 'les 4 corrections déclarées sont déléguées');
+  appels.forEach((a) => assert.strictEqual(a.cible, cible));
+  assert.strictEqual(h.store['DriveAI_CORR_FINI'], tag, 'tag one-shot posé : tout est consommé');
+
+  // Rejeu : idempotent, plus aucun appel.
+  appels.length = 0;
+  h.store['DriveAI_CORR_FINI'] = null;
+  c.appliquerCorrectionsManuelles_(() => false);
+  assert.strictEqual(appels.length, 0, 'clés posées ⇒ aucun re-déplacement');
+
+  // 🔴 ÉPINGLE : Marc a rangé le fichier lui-même entre la décision et le déploiement. La
+  // correction ne doit PAS défaire son geste.
+  const h2 = ctxRunner();
+  const c2 = h2.c;
+  const ids = JSON.parse(JSON.stringify(c2.CONFIG.CORRECTIONS_MANUELLES)).map((x) => x.id);
+  h2.index['epingle|' + ids[0]] = true;
+  const appels2 = [];
+  c2.appliquerDeplacerFichier_ = (a) => { appels2.push(a); return { statut: 'appliqué' }; };
+  c2.ensembleDomainesProteges_ = () => ({});
+  c2.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => h2.store[k] || null, setProperty: (k, v) => { h2.store[k] = v; },
+  }) };
+  c2.appliquerCorrectionsManuelles_(() => false);
+  assert.strictEqual(appels2.length, 3, 'le fichier ÉPINGLÉ par Marc n\'est pas touché');
+  assert.ok(appels2.every((a) => a.source !== ids[0]));
+});
+
+test('C28-65 : les missions honorent l\'ÉPINGLE (sinon l\'immunité est un mot)', () => {
+  const h = ctxRunner();
+  const IDS = h.c.CONFIG.MISSIONS_IDS;
+  // Un fichier épinglé (rangé à la main, ou par une correction manuelle) ne doit JAMAIS être
+  // re-collecté par une campagne de rangement — c'était déjà vrai de la consolidation, du reset
+  // et de la migration ; les missions l'ignoraient, si bien que `dispatch03` aurait repris les
+  // fichiers corrigés au premier bump de version, pour les re-router PAR DATE.
+  h.index['epingle|fpin'] = true;
+  h.arbre[IDS.toyotaBzIsole] = {
+    files: [h.fichier('fpin', '2025-01-01_Facture_Garage.pdf'), h.fichier('flibre', '2025-02-01_SAAQ.pdf')],
+    folders: {},
+  };
+  h.arbre[IDS.vehiculesPluriel] = { files: [], folders: {} };
+  h.arbre[IDS.vehiculeCible] = { files: [], folders: {} };
+  h.c.executerMission_('vehicule', () => false);
+  assert.deepStrictEqual(h.moves.map((m) => m.id), ['flibre'], 'seul le NON épinglé bouge');
+});
+
+test('C28-65 : un échec PERMANENT est abandonné après N essais (pas 288 rejeux par jour, à vie)', () => {
+  const h = ctxRunner();
+  const c = h.c;
+  let appels = 0;
+  // `échec` = fichier ou cible introuvable (Marc a vidé sa corbeille, par exemple). C'est une
+  // PANNE, donc on re-tente — mais sans borne, la boucle tournerait à chaque tick indéfiniment,
+  // avec une ligne de Journal à chaque fois : l'historique de diagnostic (20 000 lignes) serait
+  // chassé en ~17 jours, et les autres corrections resteraient « non finies » pour toujours.
+  c.appliquerDeplacerFichier_ = () => { appels++; return { statut: 'échec', detail: 'fichier introuvable' }; };
+  c.ensembleDomainesProteges_ = () => ({});
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => h.store[k] || null, setProperty: (k, v) => { h.store[k] = v; },
+  }) };
+  // Le compteur d'essais vit dans `Journal.gs`, hors de ce contexte : sans lui, le `catch` du
+  // pilote l'avale et l'abandon ne se déclenche JAMAIS — ce qui rendait ce test faussement vert
+  // (24 essais au lieu de 12). En production les deux fichiers sont chargés ensemble.
+  const compteur = {};
+  c.incrementerEchec_ = (k) => { compteur[k] = (compteur[k] || 0) + 1; return compteur[k]; };
+
+  const max = c.CONFIG.QUARANTAINE_MAX;
+  for (let i = 0; i < max + 3; i++) c.appliquerCorrectionsManuelles_(() => false);
+
+  // 4 entrées × au plus `max` essais chacune : bornées, jamais infinies.
+  assert.ok(appels <= 4 * max, 'nombre d\'essais BORNÉ (' + appels + ' ≤ ' + (4 * max) + ')');
+  assert.ok(appels >= 4, 'et on a bien essayé');
+  // …et une fois abandonnées, les clés sont posées : plus aucun appel.
+  const avant = appels;
+  c.appliquerCorrectionsManuelles_(() => false);
+  assert.strictEqual(appels, avant, 'après abandon, plus AUCUN essai');
+  assert.strictEqual(h.store['DriveAI_CORR_FINI'], c.CONFIG.CORRECTIONS_MANUELLES_TAG,
+    'la campagne se referme au lieu de rester « non finie » à vie');
 });

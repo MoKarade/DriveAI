@@ -832,15 +832,24 @@ function estReleveDePaie_(type) {
  * Aucune règle ne peut les reconnaître ; ils passent par `CONFIG.CORRECTIONS_MANUELLES`.
  * @param {string} nom @return {boolean}
  */
-var MISSIONS_MOTS_LOGEMENT = ['proprio', 'proprietaire', 'appartement', 'logement', 'locataire',
-  'bail', 'loyer', 'plombier', 'concierge', 'immeuble', 'immeubles'];
+// SÛRS : aucun sens automobile. AMBIGUS : au Québec « bail » et « loyer » sont le vocabulaire
+// STANDARD d'une location longue durée de voiture, « propriétaire » est le mot de la SAAQ
+// (registre des véhicules), et « immeuble » apparaît dans l'adresse d'un assureur. Les opposer
+// sans réserve bloquait le rangement de vrais documents de véhicule (audit C28-65).
+var MISSIONS_MOTS_LOGEMENT = ['appartement', 'logement', 'locataire', 'plombier'];
+var MISSIONS_MOTS_LOGEMENT_AMBIGUS = ['proprio', 'proprietaire', 'bail', 'loyer', 'concierge',
+  'immeuble', 'immeubles'];
 function estDocumentLogement_(nom) {
   var n = normaliserMission_(String(nom || '').replace(/^\d{4}-\d{2}(-\d{2})?/, ''));
   var mots = n ? n.split(' ') : [];
-  for (var i = 0; i < mots.length; i++) {
-    if (MISSIONS_MOTS_LOGEMENT.indexOf(mots[i]) !== -1) return true;
-  }
-  return false;
+  var a = function (liste) {
+    for (var i = 0; i < mots.length; i++) if (liste.indexOf(mots[i]) !== -1) return true;
+    return false;
+  };
+  if (a(MISSIONS_MOTS_LOGEMENT)) return true;
+  // Un mot AMBIGU ne vaut véto que si RIEN dans le nom ne parle de véhicule — même arbitrage
+  // d'ambiguïté que pour les locations (`estLocationVehicule_`), au même endroit.
+  return a(MISSIONS_MOTS_LOGEMENT_AMBIGUS) && !a(MISSIONS_MOTS_VEHICULE);
 }
 
 /**
@@ -1104,6 +1113,12 @@ function collecterMission_(sourceId, tag, garde, proteges, profondeurMax) {
     if (garde()) { coupe = true; return false; }
     var cle = cleMission_(tag, fichier.getId());
     if (indexContient_(cle)) return true; // déjà traité (succès OU refus versionné)
+    // ÉPINGLE (ADR-0026) : un fichier rangé À LA MAIN par Marc, ou par une correction manuelle,
+    // est IMMUNISÉ contre les campagnes de re-rangement — c'est déjà le cas de la consolidation,
+    // du reset et de la migration ; les missions l'ignoraient (audit C28-65). Sans ça, poser
+    // l'épingle ne protégeait de rien et `dispatch03` reprenait les fichiers corrigés au premier
+    // bump de version, pour les re-router par INFÉRENCE sur la date.
+    if (indexContient_('epingle|' + fichier.getId())) return true;
     items.push({ fichier: fichier, sousChemin: sousChemin, sourceId: sourceId });
     return true;
   };

@@ -1095,29 +1095,54 @@ function appliquerCorrectionsManuelles_(estBudgetDepasse) {
   if (props.getProperty('DriveAI_CORR_FINI') === tag) return;
 
   var proteges = ensembleDomainesProteges_();
-  var reste = 0;
-  var faits = 0;
+  var reste = 0, faits = 0;
   for (var i = 0; i < liste.length; i++) {
     if (estBudgetDepasse()) { reste++; continue; }
     var c = liste[i];
     var cle = 'corrmanuelle|' + tag + '|' + c.id;
     try {
       if (indexContient_(cle)) continue;
-      var f = DriveApp.getFileById(c.id);
-      var cible = DriveApp.getFolderById(c.cible);
-      // §2.1b — ni la source ni la cible ne peuvent toucher la zone protégée. Échec FERMÉ :
-      // le refus est inscrit sous la clé pour ne pas re-tenter à l'infini, et il est tracé.
-      if (aParentProtege_(f, proteges, true) || chaineMonteVersProtege_(cible, proteges, 0, true)) {
-        journalErreur_('Corrections', 'REFUSÉ (zone protégée) : ' + c.quoi);
-        indexAjouter_(cle, { statut: 'corr-protege', nom: f.getName(), domaine: '', chemin: '' }, '');
+      // 🔴 Marc l'a peut-être déjà rangé LUI-MÊME (épinglé via le chat) entre la décision et le
+      // déploiement. On ne défait JAMAIS son geste : sans ce test, la correction ré-aspirait le
+      // fichier qu'il venait de remettre en place, à clé de succès donc sans retour (audit §7).
+      if (indexContient_('epingle|' + c.id)) {
+        indexAjouter_(cle, { statut: 'corr-epingle', nom: c.quoi, domaine: '', chemin: '' }, '');
         continue;
       }
-      f.moveTo(cible); // LA seule mutation — jamais de suppression
-      indexAjouter_(cle, { statut: 'corr', nom: f.getName(), domaine: '', chemin: cible.getName() }, '');
-      faits++;
+      // ⚠️ La mutation est DÉLÉGUÉE à `appliquerDeplacerFichier_` (Reorg.gs), le déplacement par
+      // identité déjà en service pour le chat : il refuse une source DOSSIER (un ID de dossier se
+      // copie exactement comme un ID de fichier, et `moveTo` relogerait tout le sous-arbre), une
+      // source en zone protégée, une cible protégée / système / `_…` / `00 · À trier`, et il pose
+      // l'ÉPINGLE qui immunise le fichier contre les campagnes de re-rangement. Écrire un second
+      // chemin de mutation « presque pareil » était la faute que ce dépôt corrige partout ailleurs :
+      // une seule règle, deux consommateurs (audit sécurité C28-65).
+      var r = appliquerDeplacerFichier_({ source: c.id, cible: c.cible }, proteges);
+      if (r.statut === 'appliqué') {
+        indexAjouter_(cle, { statut: 'corr', nom: c.quoi, domaine: '', chemin: '' }, '');
+        faits++;
+        continue;
+      }
+      if (String(r.statut).indexOf('refusé') === 0) {
+        // Refus MÉTIER (structure / zone protégée) : verdict sur le document, donc DÉFINITIF —
+        // inscrit sous la clé et tracé, pour ne pas re-tenter à l'infini.
+        journalErreur_('Corrections', 'REFUSÉ (' + r.detail + ') : ' + c.quoi);
+        indexAjouter_(cle, { statut: 'corr-refus', nom: c.quoi, domaine: '', chemin: '' }, '');
+        continue;
+      }
+      // `échec` = fichier ou cible introuvable/illisible : une PANNE de plateforme, jamais imputée
+      // au document (§9 « classer par ORIGINE avant de compter »). On RE-TENTE — mais borné, sinon
+      // un fichier supprimé par Marc ferait tourner la boucle 288×/jour à vie et chasserait
+      // l'historique du Journal en ~17 jours (audit §6).
+      var essais = 0;
+      try { essais = incrementerEchec_(cle); } catch (e2) { /* compteur indisponible : on re-tentera */ }
+      if (essais >= CONFIG.QUARANTAINE_MAX) {
+        journalErreur_('Corrections', 'ABANDON après ' + essais + ' essais (' + r.detail + ') : ' + c.quoi);
+        indexAjouter_(cle, { statut: 'corr-abandon', nom: c.quoi, domaine: '', chemin: '' }, '');
+        continue;
+      }
+      reste++;
     } catch (e) {
-      // Fichier illisible/supprimé, cible inaccessible : on RE-TENTERA (pas de clé posée).
-      journalErreur_('Corrections', 'Correction différée (« ' + c.quoi + ' ») : ' + e);
+      journalErreur_('Corrections', 'Correction différée (' + c.quoi + ') : ' + e);
       reste++;
     }
   }
