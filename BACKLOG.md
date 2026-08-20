@@ -733,7 +733,8 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 
 - ⬜ **C28-71 — Le registre de suivi C28-44 est SATURÉ : plus aucune étape de tick ne peut y entrer.**
   Pire cas mesuré : 8 377 des 8 500 octets du plafond dérivé (42 clés, ~199 octets chacune) — il
-  reste 123 octets, une 43ᵉ clé ferait lever `setProperty` en boucle. La validation des doublons
+  reste 123 octets, et une 43ᵉ clé ferait échouer le tripwire de plafond de `suivi.test.js` (le
+  flush, lui, a un filet qui dégrade — ce n'est pas `setProperty` qui lèverait, c'est le test). La validation des doublons
   (ADR-0047) a donc dû se rendre visible par une ligne **Santé** au lieu de Progression, et la
   ventilation des coûts (C28-58) avait déjà dû se loger DANS l'étape `telemetrie`. Ce n'est plus une
   exception, c'est la règle : le prochain qui ajoute une étape le découvrira en prod. Deux voies —

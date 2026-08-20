@@ -48,6 +48,19 @@ test('majSante_ écrit exactement 8 lignes de métadonnées (une seule écriture
   assert.ok(captured.every((l) => typeof l === 'string'));
 });
 
+test('majSante_ : la ligne « Doublons » exerce le chemin NOMINAL, pas le catch (ADR-0047)', () => {
+  // Le commentaire du harnais nomme le piège ; sans assertion, rien ne le vérifie. Prouvé par
+  // mutation : en retirant `getLastRow` du mock, la ligne devient « ⚠️ état illisible (TypeError…) »
+  // et les autres tests restent TOUS verts — on validerait le catch en croyant valider le nominal.
+  // C'est le même défaut que la ligne « Tri Gmail » avait avant son test dédié, juste en dessous.
+  const { ctx, captured } = chargerAvecSanteMock({});
+  ctx.majSante_();
+  const ligne = captured.find((l) => l.indexOf('Doublons') === 0);
+  assert.ok(ligne, 'la ligne existe');
+  assert.ok(!ligne.includes('illisible'), 'chemin nominal, pas le catch : ' + ligne);
+  assert.ok(ligne.includes('inventaire'), 'campagne pas encore lancée → phase inventaire : ' + ligne);
+});
+
 test('majSante_ : la ligne « Tri Gmail » distingue NORMAL, DÉGRADÉ et À L\'ARRÊT (ADR-0043)', () => {
   const ligneTri = (cfg) => {
     const { ctx, captured } = chargerAvecSanteMock({});

@@ -148,6 +148,7 @@ const CONTRAT = [
   'majValidationDoublons_', 'inventorierDoublons_', 'balayerExemplairesDoublons_',
   'ecrireVerdictsDoublons_', 'feuilleRapportDoublons_', 'texteSanteDoublons_', 'pageListeDrive_',
   'estExemplaireSurvivant_', 'verdictClotureDoublon_', 'urlListeDrive_', 'bilanDoublons_',
+  'idDoublonsSansCreer_', 'estJetonPaginationRefuse_',
   'ligneSanteDoublons_', 'budgetJourDoublons_',
   // Suivi GÉNÉRIQUE des opérations du tick (C28-44, ADR-0038) — Suivi.gs : wrapper appelé par
   // Main.gs (PR2), vue fusionnée lue par Journal.gs/majProgressions_ (PR3), flush au finally.

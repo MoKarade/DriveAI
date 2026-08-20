@@ -53,15 +53,26 @@ var PHASE_DOUBLONS_FINI = 'fini';
  * Sans `md5Checksum` (fichier Google natif), aucune comparaison de contenu n'est possible : on ne
  * confirme RIEN plutôt que de deviner.
  *
+ * Une ZONE DE TRANSIT ne compte pas non plus (revue sécurité, F4) : un fichier dont le seul parent
+ * est `00 · À trier` est en ATTENTE de traitement, pas classé — et l'intake du tick suivant, voyant
+ * son empreinte à l'Index, l'enverra précisément dans `_Doublons`. Le compter comme survivant
+ * ferait dire « confirmé » à une campagne qui reproduirait, une heure plus tard, le bug qu'elle
+ * mesure. `_Technique`/`_Médias`/`00 · À vérifier` restent des survivants : le fichier y est GARDÉ,
+ * même mal, alors qu'il n'est que de passage dans une zone de transit.
+ *
  * @param {{md5Checksum:string, parents:string[]}} fichier  entrée `files.list` de l'API Drive
  * @param {string} doublonsId  ID du dossier `_Doublons`
+ * @param {string[]} [transit]  parents qui ne PROUVENT pas la survie (zones d'attente)
  * @return {boolean}
  */
-function estExemplaireSurvivant_(fichier, doublonsId) {
+function estExemplaireSurvivant_(fichier, doublonsId, transit) {
   if (!fichier || !fichier.md5Checksum) return false;
+  var exclus = { };
+  exclus[doublonsId] = 1;
+  (transit || []).forEach(function (id) { if (id) exclus[id] = 1; });
   var parents = fichier.parents || [];
   for (var i = 0; i < parents.length; i++) {
-    if (parents[i] && parents[i] !== doublonsId) return true;
+    if (parents[i] && !exclus[parents[i]]) return true;
   }
   return false;
 }
@@ -130,19 +141,26 @@ function bilanDoublons_(verdicts) {
  * jamais une date de fin »).
  * @param {string} phase
  * @param {{total:number, confirmes:number, orphelins:number, indetermines:number, restants:number}} bilan
+ * @param {number} [passes]  balayages COMPLETS déjà accomplis
+ * @param {string} [erreur]  dernière erreur rencontrée, '' si aucune
  * @return {string}
  */
-function ligneSanteDoublons_(phase, bilan) {
+function ligneSanteDoublons_(phase, bilan, passes, erreur) {
   if (!CONFIG.DOUBLONS_ACTIF) return 'désactivée (CONFIG)';
+  passes = Number(passes) || 0;
+  // La campagne n'a PAS d'entrée dans le registre de suivi (saturé) : sans ce report explicite, une
+  // panne n'aurait aucun canal — ni « dernière erreur » dans l'app, ni ligne ici (revue quotas NB2).
+  var suffixe = erreur ? '  ⚠️ dernière erreur : ' + erreur : '';
   if (phase === PHASE_DOUBLONS_FINI) {
-    return 'terminée ✅ — ' + bilan.total + ' écartés : ' + bilan.confirmes + ' confirmés, ' +
-      bilan.orphelins + ' ORPHELINS (seul exemplaire), ' + bilan.indetermines + ' indéterminés';
+    return 'terminée ✅' + (bilan.le ? ' le ' + bilan.le : '') + ' — ' + bilan.total + ' écartés : ' +
+      bilan.confirmes + ' confirmés, ' + bilan.orphelins + ' ORPHELINS (seul exemplaire), ' +
+      bilan.indetermines + ' indéterminés' + suffixe;
   }
   if (phase === PHASE_DOUBLONS_BALAYAGE) {
-    return 'balayage du Drive en cours — ' + bilan.total + ' écartés inventoriés, ' +
-      bilan.confirmes + ' déjà confirmés';
+    return 'balayage du Drive ' + (passes + 1) + '/' + CONFIG.DOUBLONS_PASSES_MIN + ' — ' +
+      bilan.total + ' écartés inventoriés, ' + bilan.confirmes + ' déjà confirmés' + suffixe;
   }
-  return 'inventaire de _Doublons en cours — ' + bilan.total + ' fichiers recensés';
+  return 'inventaire de _Doublons en cours — ' + bilan.total + ' fichiers recensés' + suffixe;
 }
 
 /** Consommation du budget QUOTIDIEN (ms réelles persistées `AAAA/MM/JJ|ms`). PUR sur props. */
@@ -168,7 +186,12 @@ function pageListeDrive_(url) {
   });
   var code = rep.getResponseCode();
   if (code !== 200) {
-    throw new Error('files.list HTTP ' + code + ' : ' + tronquer_(rep.getContentText(), 300));
+    var err = new Error('files.list HTTP ' + code + ' : ' + tronquer_(rep.getContentText(), 300));
+    // Le code voyage dans un CHAMP DÉDIÉ, jamais re-dérivé du message en aval : rendre une erreur
+    // lisible JETTE de l'information, et un détecteur qui tourne des deux côtés du rétrécissement
+    // ne rend pas le même verdict (leçon §9).
+    err.codeHttp = code;
+    throw err;
   }
   var o = JSON.parse(rep.getContentText());
   return { files: o.files || [], nextPageToken: o.nextPageToken || '' };
@@ -197,10 +220,36 @@ function idDoublonsSansCreer_() {
   return it.hasNext() ? it.next().getId() : '';
 }
 
+/**
+ * PURE — cette erreur vient-elle d'un JETON DE PAGINATION refusé (donc irrécupérable en l'état) ?
+ *
+ * `DriveAI_DOUBLONS_PAGE` persiste entre des runs séparés de plusieurs heures ; Drive peut refuser
+ * un jeton périmé par un 400. Sans remise à zéro, la campagne rejoue le MÊME appel, échoue, et
+ * reste « balayage en cours » à VIE — une ligne d'erreur par jour pour seul signal (revue sécurité
+ * F6 / quotas NB2 : le seul mode de panne SANS ISSUE de cette campagne).
+ *
+ * 429 est EXCLU : c'est un throttling, le jeton est bon et le repartir de zéro coûterait une passe
+ * complète pour rien. 5xx aussi (panne serveur, on réessaie tel quel).
+ * @param {Error} err
+ * @return {boolean}
+ */
+function estJetonPaginationRefuse_(err) {
+  var code = err && err.codeHttp;
+  return typeof code === 'number' && code >= 400 && code < 500 && code !== 429;
+}
+
 /** Onglet `RapportDoublons`, en-tête réparé LÀ OÙ il est réellement écrit (leçon §9). */
 function feuilleRapportDoublons_() {
   var f = feuille_('RapportDoublons');
-  if (String(f.getRange(1, 1).getValue()) !== COLONNES_RAPPORT_DOUBLONS[0]) {
+  // La LIGNE ENTIÈRE, jamais la seule cellule A1 : le patron cité (`majHistoriqueVrac_`) teste la
+  // cellule de la colonne AJOUTÉE, pas la première. Un onglet resté à 5 colonnes a bien
+  // `A1 === 'Fichier'` — la condition serait fausse, rien ne serait réparé, et la 6ᵉ colonne
+  // resterait sans en-tête. C'est mot pour mot l'histoire de `HistoriqueVrac` (leçon §9 : copier le
+  // POINT D'ATTACHE ne suffit pas si le PRÉDICAT, lui, ne voit pas le cas à réparer).
+  var attendu = COLONNES_RAPPORT_DOUBLONS.join('\u0000');
+  var actuel = f.getRange(1, 1, 1, COLONNES_RAPPORT_DOUBLONS.length).getValues()[0]
+    .map(function (v) { return String(v == null ? '' : v); }).join('\u0000');
+  if (actuel !== attendu) {
     f.getRange(1, 1, 1, COLONNES_RAPPORT_DOUBLONS.length).setValues([COLONNES_RAPPORT_DOUBLONS]);
   }
   return f;
@@ -233,6 +282,16 @@ function majValidationDoublons_(estBudgetDepasse) {
     if (fRaz.getLastRow() > 1) fRaz.deleteRows(2, fRaz.getLastRow() - 1);
     props.setProperty('DriveAI_DOUBLONS_PHASE', PHASE_DOUBLONS_INVENTAIRE);
     props.setProperty('DriveAI_DOUBLONS_PAGE', '');
+    props.setProperty('DriveAI_DOUBLONS_PASSES', '0');
+    // Ceinture ET bretelles, et il faut dire laquelle porte : la GARANTIE est que TOUT chemin vers
+    // `fini` écrit d'abord son bilan (verrouillé structurellement par `doublons.test.js`) — sans
+    // elle, la ligne Santé annoncerait les orphelins de la version PRÉCÉDENTE au-dessus d'un onglet
+    // vide (no-fake-data, §10). Cette purge-ci est la bretelle : elle ne change rien tant que
+    // l'invariant tient, et elle limite les dégâts s'il cède un jour. Une mutation qui la retire ne
+    // fait donc échouer aucun test — c'est normal, et c'est écrit ici pour qu'on ne la croie pas
+    // load-bearing.
+    props.deleteProperty('DriveAI_DOUBLONS_BILAN');
+    props.deleteProperty('DriveAI_DOUBLONS_ERREUR');
     props.setProperty('DriveAI_DOUBLONS_VERSION', version);
   }
 
@@ -248,6 +307,11 @@ function majValidationDoublons_(estBudgetDepasse) {
   var garde = function () { return estBudgetDepasse() || (Date.now() - debut) > budgetRun; };
 
   try {
+    // Garde évalué AVANT toute I/O (revue quotas NB1) : sans lui, un tick déjà au mur payait quand
+    // même l'ouverture de la Sheet et la lecture de la colonne ID entière avant de couper — et le
+    // `finally` imputait ces ms au budget quotidien de 3 min. La branche balayage était gardée, pas
+    // celle-ci : une asymétrie invisible à la lecture.
+    if (garde()) return;
     var doublonsId = idDoublonsSansCreer_();
     if (!doublonsId) return; // pas de `_Doublons` : rien à valider (et surtout : rien à créer)
     if (phase === PHASE_DOUBLONS_INVENTAIRE) inventorierDoublons_(props, doublonsId, garde);
@@ -255,6 +319,21 @@ function majValidationDoublons_(estBudgetDepasse) {
     if (props.getProperty('DriveAI_DOUBLONS_PHASE') === PHASE_DOUBLONS_BALAYAGE && !garde()) {
       balayerExemplairesDoublons_(props, doublonsId, garde);
     }
+    // Passe SAINE : on efface la dernière erreur, sinon la ligne Santé garderait à vie le souvenir
+    // d'un blip transitoire (« un gate se teste par sa LIBÉRATION », leçon §9).
+    try { props.deleteProperty('DriveAI_DOUBLONS_ERREUR'); } catch (e) { }
+  } catch (err) {
+    if (estJetonPaginationRefuse_(err)) {
+      // Le balayage est idempotent : repartir de la page 1 ne coûte qu'une passe, et c'est la SEULE
+      // sortie de l'état coincé. Le compteur de passes COMPLÈTES n'est pas touché — une passe
+      // recommencée depuis le début reste une passe complète quand elle aboutira.
+      props.setProperty('DriveAI_DOUBLONS_PAGE', '');
+      journalErreur_('Doublons', 'Jeton de pagination refusé (HTTP ' + err.codeHttp +
+        ') — balayage repris depuis la première page.');
+    }
+    try { props.setProperty('DriveAI_DOUBLONS_ERREUR', tronquer_(String(err && err.message ? err.message : err), 160)); }
+    catch (e2) { /* l'erreur exposée est un confort, jamais un motif d'échec supplémentaire */ }
+    throw err; // l'appelant (Main.gs) journalise : une panne doit rester OBSERVABLE
   } finally {
     try { props.setProperty('DriveAI_DOUBLONS_JOUR_MS', aujourdhui + '|' + (consommeJour + (Date.now() - debut))); }
     catch (e) { /* budget best-effort : jamais une exception qui masque celle du corps */ }
@@ -289,6 +368,15 @@ function inventorierDoublons_(props, doublonsId, garde) {
       lignes.push([fi.name || '', fi.id, fi.md5Checksum || '', '', '', horodate]);
     });
     if (lignes.length) {
+      // La grille par défaut d'un onglet créé par `insertSheet` fait 1 000 lignes, et l'inventaire
+      // en écrit jusqu'à `DOUBLONS_TAILLE_PAGE` (1 000) d'un coup à partir de la ligne 2 : dès la
+      // première page, `getRange` sort de la grille et LÈVE (« those rows are out of bounds »).
+      // Symptôme qu'on aurait eu en prod : la même exception à chaque tick, avalée par le try/catch
+      // de `Main.gs` et prise pour du bruit, phase bloquée sur `inventaire`, et la ligne Santé qui
+      // annonce sereinement « inventaire en cours ». Réduire la taille de page ne règle rien — avec
+      // 1 076 fichiers, le franchissement de la ligne 1 000 est inévitable.
+      var manque = (f.getLastRow() + lignes.length) - f.getMaxRows();
+      if (manque > 0) f.insertRowsAfter(f.getMaxRows(), manque);
       f.getRange(f.getLastRow() + 1, 1, lignes.length, COLONNES_RAPPORT_DOUBLONS.length).setValues(lignes);
     }
     jeton = page.nextPageToken;
@@ -309,7 +397,13 @@ function balayerExemplairesDoublons_(props, doublonsId, garde) {
   var f = feuilleRapportDoublons_();
   var dern = f.getLastRow();
   if (dern < 2) { // rien à valider : `_Doublons` est vide
+    // Bilan figé À ZÉRO avant le drapeau : sans lui, `texteSanteDoublons_` retomberait sur le bilan
+    // de la version précédente (revue quotas, BLOQUANT) et annoncerait des orphelins fantômes.
+    var vide = bilanDoublons_([]);
+    vide.le = dateGmail_(new Date());
+    props.setProperty('DriveAI_DOUBLONS_BILAN', JSON.stringify(vide));
     props.setProperty('DriveAI_DOUBLONS_PHASE', PHASE_DOUBLONS_FINI);
+    journalInfo_('Doublons', 'Inventaire VIDE : aucun fichier dans `_Doublons` — rien à valider.');
     return;
   }
   var n = dern - 1;
@@ -326,7 +420,15 @@ function balayerExemplairesDoublons_(props, doublonsId, garde) {
     (parEmpreinte[e] || (parEmpreinte[e] = [])).push(i);
   }
 
-  var q = "trashed = false and mimeType != 'application/vnd.google-apps.folder'";
+  // `'me' in owners` (revue sécurité F3 / quotas NB3) : sans lui, `files.list` inclut les fichiers
+  // PARTAGÉS avec Marc — un exemplaire appartenant à un TIERS confirmerait un doublon, alors que le
+  // tiers peut révoquer le partage et laisser Marc sans aucune copie. L'ADR §2 en donne le cas
+  // concret : le seul autre fichier « Passeport » du Drive appartient à une tierce personne.
+  // Zones d'ATTENTE : un fichier qui n'y est que de passage ne prouve pas qu'un exemplaire est resté
+  // classé (cf. `estExemplaireSurvivant_`). `00 · À trier` est le cas vécu : l'intake du tick suivant
+  // l'enverra lui-même dans `_Doublons`.
+  var transit = [CONFIG.DOSSIERS.A_TRIER];
+  var q = "trashed = false and 'me' in owners and mimeType != 'application/vnd.google-apps.folder'";
   var champs = 'nextPageToken,files(id,md5Checksum,parents)';
   var jeton = props.getProperty('DriveAI_DOUBLONS_PAGE') || '';
 
@@ -335,7 +437,7 @@ function balayerExemplairesDoublons_(props, doublonsId, garde) {
     var page = pageListeDrive_(urlListeDrive_(q, champs, jeton, CONFIG.DOUBLONS_TAILLE_PAGE));
     var modifie = false;
     page.files.forEach(function (fi) {
-      if (!estExemplaireSurvivant_(fi, doublonsId)) return;
+      if (!estExemplaireSurvivant_(fi, doublonsId, transit)) return;
       var lignes = parEmpreinte[fi.md5Checksum];
       if (!lignes) return;
       lignes.forEach(function (idx) {
@@ -351,6 +453,21 @@ function balayerExemplairesDoublons_(props, doublonsId, garde) {
     jeton = page.nextPageToken;
     props.setProperty('DriveAI_DOUBLONS_PAGE', jeton);
     if (!jeton) {
+      // DEUX passes COMPLÈTES avant d'accorder « orphelin » (revue sécurité F5). `files.list` paginé
+      // n'est PAS un instantané et n'a pas d'ordre stable : pendant que le balayage s'étale sur
+      // plusieurs runs, le flux vivant et les missions déplacent des fichiers — un fichier déplacé
+      // entre la page k et la page k+1 peut n'apparaître dans AUCUNE page. S'il portait l'unique
+      // exemplaire survivant, on prononcerait « orphelin » sur une preuve d'absence trouée. La
+      // seconde passe ne cherche plus que les candidats restants (`parEmpreinte` a fondu) ; c'est le
+      // patron déjà en vigueur pour la campagne Gmail (« terminé quand DEUX passes consécutives ne
+      // collectent plus rien », §9). Le jeton vient d'être remis à '' : la reprise repart page 1.
+      var passes = (Number(props.getProperty('DriveAI_DOUBLONS_PASSES')) || 0) + 1;
+      props.setProperty('DriveAI_DOUBLONS_PASSES', String(passes));
+      if (passes < CONFIG.DOUBLONS_PASSES_MIN) {
+        journalInfo_('Doublons', 'Balayage complet ' + passes + '/' + CONFIG.DOUBLONS_PASSES_MIN +
+          ' — une seconde passe est exigée avant de prononcer le moindre « orphelin ».');
+        return;
+      }
       for (var j = 0; j < n; j++) {
         if (verdicts[j][0]) continue;
         var v = verdictClotureDoublon_(String(empreintes[j][0] || ''));
@@ -359,6 +476,8 @@ function balayerExemplairesDoublons_(props, doublonsId, garde) {
       }
       ecrireVerdictsDoublons_(f, n, verdicts, preuves);
       var b = bilanDoublons_(verdicts.map(function (l) { return l[0]; }));
+      b.le = dateGmail_(new Date()); // « terminée » sans date vieillit en silence : `_Doublons` reste
+                                     // alimenté par le flux, le total cesse d'être celui du dossier
       // Bilan FIGÉ dans une Property AVANT le drapeau : la ligne Santé s'en sert ensuite, au lieu de
       // relire ~1 076 cellules à CHAQUE tick (288×/j) pour un rapport qui ne bougera plus. Sans ce
       // court-circuit, la campagne TERMINÉE serait le seul poste qui continue de payer — c'est
@@ -374,10 +493,15 @@ function balayerExemplairesDoublons_(props, doublonsId, garde) {
   }
 }
 
-/** Écrit les colonnes Verdict + Preuve en UNE fois (I/O borné par run, pas par ligne). */
+/**
+ * Écrit Verdict + Preuve en UNE seule plage à DEUX colonnes. Deux `setValues` séparés divisaient
+ * l'I/O par rien et laissaient une fenêtre où un kill au mur 6 min aurait figé des lignes avec un
+ * verdict et une preuve vide — définitivement, puisque le run suivant saute les lignes déjà jugées.
+ */
 function ecrireVerdictsDoublons_(f, n, verdicts, preuves) {
-  f.getRange(2, 4, n, 1).setValues(verdicts);
-  f.getRange(2, 5, n, 1).setValues(preuves);
+  var deux = [];
+  for (var i = 0; i < n; i++) deux.push([verdicts[i][0], preuves[i][0]]);
+  f.getRange(2, 4, n, 2).setValues(deux);
 }
 
 /**
@@ -392,14 +516,16 @@ function texteSanteDoublons_() {
     var props = PropertiesService.getScriptProperties();
     var phase = props.getProperty('DriveAI_DOUBLONS_PHASE') || PHASE_DOUBLONS_INVENTAIRE;
     // Campagne terminée : le bilan est figé, on ne relit plus l'onglet (cf. la clôture ci-dessus).
+    var passes = Number(props.getProperty('DriveAI_DOUBLONS_PASSES')) || 0;
+    var erreur = props.getProperty('DriveAI_DOUBLONS_ERREUR') || '';
     if (phase === PHASE_DOUBLONS_FINI) {
       var fige = props.getProperty('DriveAI_DOUBLONS_BILAN');
-      if (fige) return ligneSanteDoublons_(phase, JSON.parse(fige));
+      if (fige) return ligneSanteDoublons_(phase, JSON.parse(fige), passes, erreur);
     }
     var f = feuille_('RapportDoublons');
     var dern = f.getLastRow();
     var verdicts = dern > 1 ? f.getRange(2, 4, dern - 1, 1).getValues().map(function (l) { return l[0]; }) : [];
-    return ligneSanteDoublons_(phase, bilanDoublons_(verdicts));
+    return ligneSanteDoublons_(phase, bilanDoublons_(verdicts), passes, erreur);
   } catch (e) {
     return '⚠️ état illisible (' + e + ')';
   }

@@ -833,7 +833,12 @@ var CONFIG = {
   DOUBLONS_TAILLE_PAGE: 1000,             // `files.list` — 1000 est le maximum de l'API ; ~17 pages pour
                                           // un Drive de 16 600 fichiers, sans télécharger un seul octet
                                           // (le md5Checksum vient des MÉTADONNÉES)
-  DOUBLONS_BUDGET_MS: 90 * 1000,          // sous-budget par run (pur listing REST + 2 écritures Sheet)
+  DOUBLONS_PASSES_MIN: 2,                 // balayages COMPLETS exigés avant de prononcer un « orphelin » :
+                                          // `files.list` paginé n'est pas un instantané et n'a pas
+                                          // d'ordre stable — un fichier déplacé entre deux pages peut
+                                          // n'apparaître dans AUCUNE, et une preuve d'ABSENCE trouée
+                                          // fabriquerait un faux orphelin (revue flotte, ADR-0047 §5)
+  DOUBLONS_BUDGET_MS: 90 * 1000,          // sous-budget par run (pur listing REST + 1 écriture Sheet/page)
   DOUBLONS_BUDGET_JOUR_MS: 3 * 60 * 1000, // budget QUOTIDIEN en ms réelles persistées — AJOUTÉ à la somme
                                           // de l'enveloppe reset-OFF (orchestration.test.js) : 60 → 63 min/j
                                           // pour un plafond dérivé de 65. Prélevé sur la MARGE, faute de

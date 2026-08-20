@@ -97,10 +97,32 @@ indépendante de l'Index et de ses trous. Deux balayages :
 
 - **Phase 1 — inventaire** : pagination de `_Doublons` (`'<id>' in parents`), une ligne par fichier
   dans l'onglet `RapportDoublons` : `[Fichier, ID, Empreinte, Verdict, Preuve, Horodaté]`.
-- **Phase 2 — balayage** : pagination du Drive entier hors `_Doublons` ; toute empreinte retrouvée
-  bascule ses lignes en `confirmé`.
-- **Phase 3 — clôture** : le balayage terminé, ce qui n'a pas de verdict devient `orphelin`
-  (ou `indéterminé` si l'empreinte est vide). Compteurs publiés dans Progression, drapeau FINI.
+- **Phase 2 — balayage** : pagination du Drive entier (`'me' in owners`, cf. ci-dessous) ; toute
+  empreinte retrouvée sur un exemplaire encore accessible **hors `_Doublons` et hors zone
+  d'attente** bascule ses lignes en `confirmé`.
+- **Phase 3 — clôture** : après **deux** balayages COMPLETS (cf. ci-dessous), ce qui n'a pas de
+  verdict devient `orphelin` (ou `indéterminé` si l'empreinte est vide). Bilan figé, drapeau FINI.
+
+Trois précisions que la revue de flotte a rendues nécessaires, et qui changent le mécanisme :
+
+**a) `'me' in owners`.** Sans ce filtre, `files.list` inclut les fichiers PARTAGÉS avec Marc — un
+exemplaire appartenant à un TIERS confirmerait le doublon, alors que le tiers peut révoquer le
+partage et laisser Marc sans aucune copie. §2 en donne le cas exact : le seul autre fichier
+« Passeport » du Drive appartient à une tierce personne.
+
+**b) Une ZONE D'ATTENTE ne prouve rien.** Un fichier dont le seul parent est `00 · À trier` est en
+attente de traitement, pas classé — et l'intake du tick suivant, voyant son empreinte à l'Index,
+l'enverra précisément dans `_Doublons`. Le compter comme survivant ferait dire « confirmé » à une
+campagne qui reproduirait, une heure plus tard, le défaut qu'elle mesure. `_Technique`, `_Médias` et
+`00 · À vérifier` restent des survivants : le fichier y est GARDÉ, même mal.
+
+**c) DEUX balayages complets avant tout « orphelin ».** `files.list` paginé n'est pas un instantané
+et n'a pas d'ordre stable ; pendant que le balayage s'étale sur plusieurs runs, le flux vivant et les
+missions déplacent des fichiers. Un fichier déplacé entre la page *k* et la page *k+1* peut
+n'apparaître dans **aucune** page — et l'on prononcerait « orphelin » sur une preuve d'absence
+trouée. La seconde passe ne cherche plus que les candidats restants. C'est le patron déjà en vigueur
+pour la campagne Gmail (« terminé quand DEUX passes consécutives ne collectent plus rien », §9).
+Coût : ~34 requêtes REST au lieu de ~17, toujours sans télécharger un octet.
 
 L'état vit dans l'ONGLET, pas dans une Property : 1 076 empreintes ≈ 43 Ko, très au-delà des ~9 Ko
 d'une Script Property (leçon §9). Seuls les jetons de pagination et les curseurs y sont persistés.
@@ -117,8 +139,16 @@ Enveloppe reset-OFF actuelle : 20 (Gmail histo) + 2 (conso) + 12 (conso exec) + 
 sous le plafond, et la constante est AJOUTÉE à la somme de l'invariant (leçon C28-42 : une
 campagne de fond sans constante quotidienne rend le test structurellement aveugle).
 
-3 min/j suffisent largement : ~17 requêtes REST de 1 000 fichiers, zéro téléchargement, zéro LLM.
-La campagne est **one-shot** — convergée, elle ne coûte plus que deux lectures de Property par tick.
+3 min/j suffisent largement : ~34 requêtes REST de 1 000 fichiers (deux passes, cf. §5c), zéro
+téléchargement, zéro LLM. La campagne est **one-shot** — convergée, elle ne coûte plus que deux
+lectures de Property par tick, et son bilan est FIGÉ dans une Property pour que la ligne Santé cesse
+de relire l'onglet à chaque tick.
+
+Elle n'a **pas** d'entrée dans le registre de suivi C28-44 : celui-ci est saturé (8 377 des 8 500
+octets du plafond dérivé, 42 clés à ~199 octets — 123 de marge). Une 43ᵉ ferait échouer le tripwire
+de plafond (`test/suivi.test.js`) ; le flush lui-même dégrade proprement, mais la place n'y est plus.
+La campagne se rend donc visible par une ligne **Santé** — qui porte aussi sa DERNIÈRE ERREUR, faute
+de « dernier skip » dans l'app.
 
 Ce n'est pas la bonne réallocation à terme : **`GMAIL_HISTO_BUDGET_JOUR_MS` (20 min/j) est le
 donneur évident** — `HANDOVER.md` le dit « probablement TERMINÉ » et son compteur du jour est à 0
@@ -127,8 +157,14 @@ campagne finie sans lire son compteur ») : la réallocation attend cette preuve
 
 ## 7. Ce que la campagne NE fait PAS
 
-- **Aucune mutation Drive.** Lecture seule de bout en bout. `§2` (aucune suppression) n'est même
-  pas sollicité : rien ne bouge.
+- **Aucune mutation Drive.** Lecture seule de bout en bout — y compris le résolveur : `_Doublons`
+  est retrouvé par `idDoublonsSansCreer_`, jamais par `dossierDoublons_()` qui est un
+  find-or-**CREATE** et ferait apparaître un dossier vide dès que la Script Property manque. Un
+  `_Doublons` vide fraîchement créé aurait donné « terminée — 0 écartés », verdict terminal et
+  inversé. Verrouillé par un tripwire en **liste blanche** : la seule méthode HTTP autorisée dans le
+  fichier est `get` (une liste noire de motifs `DriveApp` ne peut pas verrouiller un module qui parle
+  REST — un `method: 'patch'` avec `addParents` déplacerait un fichier sans écrire `moveTo`), plus
+  l'interdiction nominale des déplaceurs maison. `§2` n'est même pas sollicité : rien ne bouge.
 - **Aucun appel LLM.** Le coût de la campagne est nul.
 - **`_Technique` : aucune mission, et c'est un résultat, pas un oubli.** 398 fichiers, un seul nom
   documentaire, posé là exprès. La sur-capture d'exports de mails a été corrigée en C28-28 PR1
@@ -146,4 +182,9 @@ campagne finie sans lire son compteur ») : la réallocation attend cette preuve
 `orphelin` est un verdict, pas une action. Une fois le compte connu :
 - **ADR-0046 (mission identité)** peut rapatrier les orphelins dont la cible se déduit du TYPE
   (passeport → `Pièces d'identité/Marc`) : zéro LLM, cible connue, périmètre étroit.
+  ⚠️ **Un `orphelin` est un constat, pas un permis de déplacer.** Ici il ne coûte qu'une ligne de
+  rapport ; le jour où il déclenche un DÉPLACEMENT, le prédicat change de côté (leçon §9 : « le
+  prédicat qui déclenche l'action irréversible est STRICT et dans le doute REFUSE »). La double passe
+  (§5c) réduit le risque, elle ne l'annule pas — un rapatriement automatique doit RE-VÉRIFIER
+  l'absence de jumeau **au moment de l'acte**, jamais se fier au verdict figé dans le rapport.
 - Le rapatriement de MASSE (le reste) est une décision de Marc, chiffrée au coût réel.

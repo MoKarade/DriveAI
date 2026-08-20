@@ -702,7 +702,8 @@ function tickDriveAI() {
       // Validation de `_Doublons` par empreinte (C28-49 PR4, ADR-0047) : I/O pur (Drive REST +
       // Sheet), jamais de LLM, AUCUNE mutation ⇒ budget TAIL, tourne même pendant un reset. PAS
       // d'`etapeSuivie_` : le registre C28-44 est saturé (8 377/8 500 octets, ~199 par entrée) et
-      // une 43ᵉ clé ferait lever `setProperty` en boucle — la campagne se rend visible par sa ligne
+      // une 43ᵉ clé ferait échouer son tripwire de plafond (le flush, lui, dégrade proprement) — la
+      // campagne se rend donc visible par sa ligne
       // Santé et son onglet `RapportDoublons` (ADR-0047 §6). Enveloppée : un échec ne bloque rien.
       try { majValidationDoublons_(estBudgetDepasseStandard); }
       catch (e) { journalErreur_('Doublons', 'Validation des doublons impossible : ' + e); }
