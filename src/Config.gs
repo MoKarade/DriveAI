@@ -82,7 +82,26 @@ var CONFIG = {
   // remis à 0 au nouveau mois, m1 + C26-08 sont finies, retour au régime de croisière < 10 $/mois ;
   // la checklist ADR-0018 est bouclée). Si une campagne de rattrapage devait reprendre, Marc relève
   // ponctuellement cette ligne (le frein est un FILET, jamais un gate du flux vivant).
-  LLM_BUDGET_CAMPAGNES: 10,
+  //
+  // 10 → 30 (décision Marc 2026-08-20 : « monte le frein a 30 pour finir la campagne »).
+  //
+  // ⚠️ LA LIGNE DU 01/08 CI-DESSUS EST FAUSSE SUR UN POINT, et c'est ce qui a mené ici :
+  // « m1 + C26-08 sont finies ». C26-08 ne l'était pas. Elle était à 322 documents sur 1207 le
+  // 13/08 à 16 h 36, et le frein l'a mise en pause — constaté par le MCP le 20/08. Une campagne
+  // déclarée terminée qui ne l'est pas ne se signale pas toute seule : elle se met simplement à
+  // ne plus avancer, et le tableau de bord affiche « en pause » comme un état normal.
+  //
+  // ⚠️ 30 NE SUFFIT PAS À FINIR LA CAMPAGNE, et c'est délibéré — Marc a demandé 30 en le sachant.
+  // Le calcul, au coût MESURÉ de l'ADR-0018 (0,0261 $/doc, pas une estimation) :
+  //     885 documents restants × 0,0261 $ = 23,10 $
+  //   + 10,70 $ déjà dépensés au 20/08        = 33,80 $ pour aller au bout
+  // À 30 $, le frein retombe après ~739 des 885 documents : il en restera ~146, et la campagne
+  // se remettra en pause. S'y ajoute le flux vivant, < 0,50 $/jour, soit jusqu'à 5,50 $ sur les
+  // 11 jours restants du mois. Pour finir en une seule fois il faudrait 40.
+  //
+  // Ce qui se passe si on n'y revient pas : les ~146 documents reprennent le 1er septembre, quand
+  // le compteur mensuel repart à zéro. Rien n'est perdu, c'est un report.
+  LLM_BUDGET_CAMPAGNES: 30,
   // Résumé hebdomadaire automatique (mail récap à soi-même, scope script.send_mail existant).
   RESUME_JOUR: 'MONDAY',                  // jour du déclencheur hebdo (WeekDay Apps Script)
   RESUME_HEURE: 8,                        // heure locale d'envoi

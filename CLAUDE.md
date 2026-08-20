@@ -68,9 +68,14 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
    Marc après la preuve C26-07), le flux vivant tourne en **Sonnet 2 passes** (`ANALYSE_V2`). Les
    campagnes de RATTRAPAGE (grand rangement, historique Gmail, migration, re-analyse C26-08) sont un
    coût one-shot plafonné par le frein `CONFIG.LLM_BUDGET_CAMPAGNES`. Le plafond a suivi les
-   campagnes : 10 → 30 (07/07) → 65 (09/07) → 110 (10/07, ADR-0018 révisée), puis **redescendu à
-   10 le 2026-08-01** — m1 et C26-08 sont finies, la checklist de l'ADR est bouclée, on est
-   revenu au régime de croisière. **La valeur qui fait foi est `Config.gs`, pas cette ligne** :
+   campagnes : 10 → 30 (07/07) → 65 (09/07) → 110 (10/07, ADR-0018 révisée), redescendu à
+   **10 le 2026-08-01**, puis remonté à **30 le 2026-08-20** pour finir C26-08.
+   ⚠️ La note du 01/08 affirmait que « m1 et C26-08 sont finies ». **C'était faux pour C26-08** :
+   elle était à 322 documents sur 1207 le 13/08, mise en pause par le frein — constaté par le MCP
+   le 20/08, deux semaines plus tard. Une campagne déclarée terminée qui ne l'est pas ne se
+   signale pas : elle cesse d'avancer, et le tableau affiche « en pause » comme un état normal.
+   Ne pas déclarer une campagne finie sans lire son compteur.
+   **La valeur qui fait foi est `Config.gs`, pas cette ligne** :
    Marc relève ponctuellement le plafond en éditant le fichier, et le résumé publié au hub lit
    `CONFIG.LLM_BUDGET_CAMPAGNES` plutôt que de recopier un chiffre.
    Le frein ne se désactive JAMAIS (filet anti-emballement) et ne gate JAMAIS le flux vivant.
