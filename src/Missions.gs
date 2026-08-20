@@ -32,29 +32,21 @@ function tableMissions_() {
   return [
     {
       tag: 'vehicule', cle: 'mission-vehicule',
-      sources: [IDS.vehiculesPluriel, IDS.toyotaBzIsole],
-      // c49-2 (ADR-0040 §3a) : le canon des véhicules vient de la TABLE (MISSIONS_VEHICULES —
-      // une cible peut être CRÉÉE : KIA n'existait pas) ; les fenêtres de POSSESSION dérivées des
-      // dossiers de véhicules déjà remplis servent de filet aux documents génériques datés.
-      batirCtx: function () {
-        var cibles = ciblesAvecJetons_(IDS.vehiculeCible, {});
-        // Catégories INCLUSES (revue finale C28-51) : la mission range elle-même en catégories —
-        // des fenêtres lues « à plat » seulement s'assécheraient au fil de son propre drainage.
-        var fenetres = fenetresOccupation_(cibles, true);
-        // GATE DE COMPLÉTUDE (🔴 revue finale C28-51) : router par fenêtre alors qu'un véhicule
-        // de la TABLE n'a pas encore de fenêtre (KIA au run 1 — la mission construit elle-même
-        // cet état) = verdict « une seule fenêtre » rendu sur un jeu INCOMPLET → déplacement au
-        // mauvais véhicule à clé de SUCCÈS, définitif. Tant que CHAQUE véhicule de la table n'a
-        // pas sa fenêtre : refus (révisable — bump c49-3 planifié post-drainage, ADR-0040 §5).
-        var parNom = {};
-        cibles.forEach(function (c) { parNom[c.nom] = c.id; });
-        var fenetresPar = {};
-        fenetres.forEach(function (f) { fenetresPar[f.id] = true; });
-        var completes = (CONFIG.MISSIONS_VEHICULES || []).every(function (v) {
-          return parNom[v.nom] && fenetresPar[parNom[v.nom]];
-        });
-        return { fenetres: fenetres, fenetresCompletes: completes };
-      },
+      // + les deux dossiers « KIA » que le moteur a lui-même créés sous c49-2 : retirer KIA du
+      // canon sans les dissoudre les laisserait ORPHELINS à vie (revue C28-62, vérifié dans le
+      // Drive le 2026-08-20 : 3 fichiers).
+      sources: [IDS.vehiculesPluriel, IDS.toyotaBzIsole, IDS.vehiculeKia, IDS.vehiculeKiaJetta],
+      // ⚠️ PLUS DE FENÊTRES DE POSSESSION ICI (ADR-0044 §4, décision Marc 2026-08-20). Le repli
+      // par DATE est RETIRÉ : mesuré sur le Drive RÉEL, il ne pouvait pas fonctionner et, s'il
+      // avait fonctionné, il aurait mal rangé. (a) `Ford Fiesta` est VIDE — zéro fichier daté,
+      // donc zéro fenêtre, donc la gate de complétude était insatisfiable, AVANT comme APRÈS le
+      // retrait de KIA (c'est pour ça que le diagnostic initial « KIA bloquait les 48 » était
+      // FAUX : nécessaire, mais pas suffisant). (b) La fenêtre de la Jetta court de 2019-11 à
+      // 2026-07 : elle aurait avalé jusqu'aux documents de l'époque française. Une fenêtre
+      // dérivée d'un état que la mission DÉPLACE elle-même ne peut pas porter un verdict
+      // définitif (leçon C28-49, « donnée MOUVANTE »). `logementParDate_` reste en service pour
+      // la mission LOGEMENT, dont les squelettes sont, eux, remplis et disjoints.
+      batirCtx: function () { return {}; },
       router: function (nom, info, ctx) {
         // Le dossier `Toyota bZ` isolé part EN BLOC vers Véhicule/Toyota bZ (ordre explicite de Marc).
         if (info.sourceId === IDS.toyotaBzIsole) {
@@ -62,17 +54,50 @@ function tableMissions_() {
         }
         // La CATÉGORIE du fichier = son sous-dossier SOURCE s'il est une catégorie déclarée
         // (décision Marc : les catégories vivent DANS chaque véhicule) — sinon à plat.
+        // Les 2 dossiers « KIA » parasites sont dissous PAR IDENTITÉ (patron `toyotaBzIsole`), pas
+        // par le nommage : leurs fichiers sont à la RACINE de la source, donc `sousChemin` vaut ''
+        // et la règle `sources: ['KIA']` ne les voit pas — elle ne couvre que `Véhicules/KIA/…`
+        // (revue C28-62). Dépendre du mot « kia » dans le nom marcherait pour les 3 fichiers
+        // actuels, mais pas pour le suivant.
+        if (info.sourceId === IDS.vehiculeKia || info.sourceId === IDS.vehiculeKiaJetta) {
+          return { cibleParentId: IDS.vehiculeCible, cibleNom: 'Recherche & achat', sousDossier: '' };
+        }
         var categorie = categorieVehiculeMission_(info.sousChemin);
-        // Le VÉHICULE : sous-dossier d'origine (« Véhicules/KIA/… »), sinon le nom du fichier,
-        // sinon — pour un document daté, si le jeu de fenêtres est COMPLET — la fenêtre de
-        // possession si UNE SEULE le contient (chevauchement/jeu incomplet = refus, jamais deviné).
+        // (ADR-0044) Dossiers COMMUNS, par le sous-dossier SOURCE puis par le NOM du document —
+        // évalués AVANT toute attribution à un véhicule : ce sont précisément les cas où aucun
+        // véhicule ne doit être deviné. `sousDossier: ''` : ces dossiers sont plats.
+        var commun = communVehiculeDepuisSource_(info.sousChemin) || communVehiculeDuNom_(nom);
+        if (commun) return { cibleParentId: IDS.vehiculeCible, cibleNom: commun, sousDossier: '' };
         var vehicule = vehiculeDuNom_(info.sousChemin) || vehiculeDuNom_(nom);
+        // Une voiture LOUÉE n'est pas un véhicule de Marc : elle ne doit polluer ni Fiesta, ni
+        // Jetta, ni Toyota bZ. Mais si le document nomme AUSSI un véhicule du canon, c'est
+        // AMBIGU — au Québec « location » désigne couramment un BAIL automobile, et en France la
+        // LOA est le mode d'acquisition standard. Asymétrie des verdicts : le déplacement est
+        // définitif, le refus est révisable ⇒ dans le doute on REFUSE (revue C28-62).
+        if (estLocationVehicule_(nom)) {
+          if (vehicule) return null;
+          return { cibleParentId: IDS.vehiculeCible, cibleNom: 'Locations', sousDossier: '' };
+        }
         if (vehicule) {
           return { cibleParentId: IDS.vehiculeCible, cibleNom: vehicule, sousDossier: categorie };
         }
-        if (!ctx.fenetresCompletes) return null;
-        var parFenetre = logementParDate_(nom, ctx.fenetres); // générique : fenêtres + dates (id de cible)
-        return parFenetre ? { cibleId: parFenetre, sousDossier: categorie } : null;
+        // Le sous-dossier source porte le NOM d'un commun, et aucun véhicule n'est nommé.
+        var communNom = communVehiculeDepuisSource_(info.sousChemin, true);
+        if (communNom) return { cibleParentId: IDS.vehiculeCible, cibleNom: communNom, sousDossier: '' };
+        // FILET DE SÉCURITÉ (revue C28-62) : « À attribuer » est un DÉPLACEMENT, donc définitif de
+        // fait (le fichier quitte la source, aucun bump ne le re-présente). Or « Véhicules » n'est
+        // pas un dossier pur : Marc y a lui-même rangé 4 conversations de propriétaire/plombier.
+        // Avant d'avaler un document, on demande à la règle PARTAGÉE du flux si elle sait le
+        // placer AILLEURS que sous « Véhicule » — si oui, on REFUSE (révisable) plutôt que de
+        // deviner. Les 2 filets FAIBLES du flux (« Contrats »/« Correspondance ») ne comptent pas
+        // comme un savoir : ils attrapent par SOUS-CHAÎNE (« Contrat d'assurance » y tomberait).
+        var avisDuFlux = cheminCibleReset_(MISSIONS_DOMAINE_03, nom);
+        if (avisDuFlux && avisDuFlux.indexOf('Véhicule/') !== 0 &&
+            avisDuFlux !== 'Contrats' && avisDuFlux !== 'Correspondance') return null;
+        // Aucun véhicule identifiable ⇒ « À attribuer », en CONSERVANT la catégorie d'origine :
+        // c'est un dossier d'ATTENTE, et garder le regroupement de Marc (« Assurance auto »,
+        // « Entretien & réparations ») est ce qui rend sa répartition manuelle faisable.
+        return { cibleParentId: IDS.vehiculeCible, cibleNom: 'À attribuer', sousDossier: categorie };
       },
     },
     {
@@ -122,9 +147,25 @@ function tableMissions_() {
       },
       router: function (nom, info, ctx) {
         var theme = ctx.themePar[info.sourceId] || '';
-        // 1. Véhicule nommé dans le fichier — par la TABLE canonique (c49-2 : une cible peut être
-        //    créée, KIA n'existait pas dans « Véhicule » ; « une seule règle » avec mission-vehicule).
+        // 0. Dossier COMMUN reconnu par le NOM (ADR-0044, « KIA compris ») — MÊME table que le
+        //    flux et la mission véhicule. Manquait ici : un « KIA » égaré dans `03 · Contrats`
+        //    n'était routé par AUCUNE des 3 règles et restait à plat (revue C28-62 ; leçon
+        //    « mutualiser UNE dimension d'une règle ne couvre pas les autres »).
+        var communTiers = communVehiculeDuNom_(nom);
+        if (communTiers) {
+          return { cibleParentId: CONFIG.MISSIONS_IDS.vehiculeCible, cibleNom: communTiers, sousDossier: '' };
+        }
+        // 1. Véhicule nommé dans le fichier — par la TABLE canonique (« une seule règle » avec
+        //    mission-vehicule ; une cible peut être CRÉÉE si le dossier n'existe pas encore).
         var v = vehiculeDuNom_(nom);
+        // 2. LOCATION de véhicule (ADR-0044) — les 3 contrats Enterprise dormaient ici, dans
+        //    « 03 · Contrats ». MÊME arbitrage que les 2 autres consommateurs : si le document
+        //    nomme AUSSI un véhicule du canon, c'est AMBIGU (bail/LOA) ⇒ refus RÉVISABLE plutôt
+        //    qu'un déplacement DÉFINITIF au mauvais endroit.
+        if (estLocationVehicule_(nom)) {
+          if (v) return null;
+          return { cibleParentId: CONFIG.MISSIONS_IDS.vehiculeCible, cibleNom: 'Locations', sousDossier: '' };
+        }
         if (v) {
           return { cibleParentId: CONFIG.MISSIONS_IDS.vehiculeCible, cibleNom: v,
             sousDossier: ctx.themeVehiculePar[info.sourceId] || '' };
@@ -361,6 +402,95 @@ function vehiculeDuNom_(texte) {
   });
   var c = apparierUnique_(texte, cibles);
   return c ? c.nom : null;
+}
+
+/**
+ * Dossier COMMUN sous « Véhicule » désigné par le sous-dossier SOURCE (ADR-0044). PURE (testée).
+ * Ex. tout ce qui vient de « Véhicules/KIA/… » part dans « Véhicule/Recherche & achat », parce que
+ * KIA n'est PAS un véhicule de Marc. Sans ce court-circuit, ces documents tomberaient dans le repli
+ * par DATE et seraient rangés sous le véhicule possédé à l'époque — un faux positif DÉFINITIF
+ * (déplacé + clé de succès), exactement le cas que la leçon « l'asymétrie des verdicts commande la
+ * sévérité du prédicat » interdit.
+ * @param {string} sousChemin  chemin source relatif (le 1er segment porte le dossier d'origine)
+ * @return {string} nom du dossier commun, ou '' si aucun
+ */
+function communVehiculeDepuisSource_(sousChemin, avecNom) {
+  var segments = String(sousChemin || '').split('/');
+  var premier = normaliserMission_(segments[0] || '');
+  if (!premier) return '';
+  var communs = CONFIG.MISSIONS_VEHICULE_COMMUNS || [];
+  for (var i = 0; i < communs.length; i++) {
+    // `avecNom` : le sous-dossier source PORTE le nom d'un commun (« Véhicules/Recherche & achat »
+    // existe réellement, 11 fichiers). Testé APRÈS le véhicule nommé, car « Recherche & achat » est
+    // aussi une CATÉGORIE par véhicule : un magasinage qui nomme la Jetta va sous la Jetta, un
+    // magasinage sur une voiture jamais possédée va au commun (revue C28-62).
+    if (avecNom && normaliserMission_(communs[i].nom) === premier) return communs[i].nom;
+    var srcs = communs[i].sources || [];
+    for (var j = 0; j < srcs.length; j++) {
+      if (normaliserMission_(srcs[j]) === premier) return communs[i].nom;
+    }
+  }
+  return '';
+}
+
+/**
+ * Dossier COMMUN sous « Véhicule » désigné par le NOM du document (jetons de
+ * `MISSIONS_VEHICULE_COMMUNS`, MOT ENTIER, préfixe de date retiré par `apparierUnique_`). PURE.
+ *
+ * Pendant du précédent pour les documents qui n'arrivent PAS par un dossier source : sans lui, un
+ * document « KIA » entré par le FLUX VIVANT tombait à plat à la racine de `03` (revue C28-62) —
+ * une seule règle, consommée par le flux (`cheminCibleReset_`), la mission véhicule et dispatch03.
+ * @param {string} texte  nom de fichier
+ * @return {string} nom du dossier commun, ou '' si aucun
+ */
+function communVehiculeDuNom_(texte) {
+  var cibles = (CONFIG.MISSIONS_VEHICULE_COMMUNS || [])
+    .filter(function (c) { return (c.jetons || []).length; })
+    .map(function (c) { return { nom: c.nom, id: c.nom, jetons: c.jetons }; });
+  var c = apparierUnique_(texte, cibles);
+  return c ? c.nom : '';
+}
+
+// Domaine consulté par le filet de sécurité du routeur véhicule (règle PARTAGÉE avec le flux).
+var MISSIONS_DOMAINE_03 = '03 · Logement & véhicule';
+
+// Mots qui prouvent qu'il s'agit d'un VÉHICULE (et pas d'un logement). SINGULIER *ET* PLURIEL :
+// « Contrat de location de véhicules » ne matchait pas (revue C28-62 — `autos` était là, les
+// autres pluriels non ; asymétrie accidentelle, direction sûre mais faux négatifs réels).
+// ⚠️ Uniquement des jetons ALPHABÉTIQUES : `estLocationVehicule_` n'ôte PAS le préfixe de date,
+// qu'une normalisation transforme en « 2024 05 12 » — un jeton numérique matcherait la date.
+// Verrouillé par un test.
+var MISSIONS_MOTS_VEHICULE = ['vehicule', 'vehicules', 'auto', 'autos', 'voiture', 'voitures',
+  'automobile', 'automobiles'];
+
+// ⚠️ PAS de liste de marques de loueurs. Le premier jet en contenait une — avec « Avis », qui est
+// un LOUEUR mais surtout un mot français des plus courants : « Avis de séjour », « Avis de
+// paiement », « Avis d'imposition » seraient tous devenus des locations de voiture (attrapé par
+// `reset.test.js`). « Budget » et « Discount » ont le même défaut. Les 3 contrats Enterprise réels
+// du Drive de Marc portent tous « location » ET un mot de véhicule : la règle stricte ci-dessous
+// suffit, et une liste de marques n'ajouterait que du risque.
+
+/**
+ * Vrai si le document est une LOCATION de véhicule (ADR-0044) — destination : « Véhicule/Locations ».
+ * PURE (testée).
+ *
+ * PRÉDICAT STRICT, et il DOIT l'être : « location » tout seul est un piège avéré dans ce Drive —
+ * « Formulaire de demande de location_CORPIQ » est un document de LOGEMENT. On exige donc le mot
+ * « location » ACCOMPAGNÉ d'un mot de véhicule — et RIEN d'autre (aucune liste de marques, cf.
+ * le commentaire ci-dessus). Dans le doute : faux (le fichier reste en place et sera re-examiné),
+ * jamais un déplacement au hasard.
+ * @param {string} nom
+ * @return {boolean}
+ */
+function estLocationVehicule_(nom) {
+  var n = normaliserMission_(nom);
+  if (!n) return false;
+  var mots = n.split(' ');
+  var aMot = function (liste) {
+    for (var i = 0; i < mots.length; i++) if (liste.indexOf(mots[i]) !== -1) return true;
+    return false;
+  };
+  return aMot(['location', 'locations']) && aMot(MISSIONS_MOTS_VEHICULE);
 }
 
 /**
@@ -663,7 +793,7 @@ function ciblesAvecJetons_(parentId, extras) {
  * @param {Array<{nom:string,id:string}>} logements
  * @return {Array<{id:string,min:number,max:number}>}
  */
-function fenetresOccupation_(logements, avecSousDossiers) {
+function fenetresOccupation_(logements) {
   var fenetres = [];
   (logements || []).forEach(function (l) {
     try {
@@ -680,14 +810,9 @@ function fenetresOccupation_(logements, avecSousDossiers) {
       };
       var racine = DriveApp.getFolderById(l.id);
       lire(racine);
-      // UN niveau de sous-dossiers (revue finale C28-51, borne 100 fichiers PARTAGÉE) : la
-      // mission vehicule range elle-même en CATÉGORIES — des fenêtres « à plat » seulement
-      // s'assécheraient au fil de son propre drainage (fenêtres dérivées d'un état que l'amont
-      // construit, leçon C28-49). Les logements y gagnent les mêmes dates (squelettes de Marc).
-      if (avecSousDossiers) {
-        var sous = racine.getFolders();
-        while (sous.hasNext() && lus < 100) lire(sous.next());
-      }
+      // ⚠️ Le paramètre `avecSousDossiers` (UN niveau de sous-dossiers) a été RETIRÉ avec le repli
+      // par date de la mission véhicule, son unique appelant (ADR-0044 §4). Ne pas l'activer pour
+      // la mission LOGEMENT sans preuve : ça élargirait ses fenêtres, donc ses attributions.
       if (min !== Infinity) {
         fenetres.push({ id: l.id, min: min - CONFIG.MISSIONS_FENETRE_MARGE_MS, max: max + CONFIG.MISSIONS_FENETRE_MARGE_MS });
       }

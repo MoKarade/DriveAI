@@ -84,10 +84,22 @@ const CAS = [
   ['03 · Logement & véhicule', '2024-05_Bail_1548 avenue de la Roselière.pdf', 'Logement/1548 avenue de la Roselière, Québec'],
   ['03 · Logement & véhicule', '2025-07_Quittance_LCP Groupe Immobilier.pdf', 'Logement/3325 4e avenue'],
   ['03 · Logement & véhicule', '2026-02-04_Convention de résiliation de bail_9478-5045 Québec inc.pdf', 'Logement/3987 rte des Rivières'],
-  ['03 · Logement & véhicule', '2023-01_Facture_KIA Québec.pdf', 'Véhicule/KIA'],
+  ['03 · Logement & véhicule', '2023-01_Facture_Jetta Québec.pdf', 'Véhicule/VW Jetta'],
+  // ADR-0044 : KIA n'est PLUS un véhicule de Marc (« c'était juste une recherche d'achat ») — il
+  // va au dossier COMMUN « Recherche & achat », décision 3 « KIA compris ». Reconnu par le NOM
+  // (jetons de MISSIONS_VEHICULE_COMMUNS), donc AUSSI par le flux vivant : la version antérieure
+  // de ce cas attendait `null`, ce qui envoyait le document à PLAT à la racine de `03`, dans le
+  // vrac même que `HistoriqueVrac` compte comme dette (revue C28-62).
+  ['03 · Logement & véhicule', '2023-01_Facture_KIA Québec.pdf', 'Véhicule/Recherche & achat'],
+  // `sportage` : jeton hérité de l'ex-entrée KIA du canon. Le perdre en retirant KIA renvoyait
+  // « Garage Sportage » à plat dans `03` — trouvé par la revue C28-62, invisible autrement.
+  ['03 · Logement & véhicule', '2025-03-01_Facture_Garage Sportage.pdf', 'Véhicule/Recherche & achat'],
+  // Le dossier commun « Locations » doit exister dans la table : c'est ce CAS qui déclenche le
+  // tripwire `cibleExiste` (route ↔ table) sur lui.
+  ['03 · Logement & véhicule', '2026-04-10_Contrat de location de véhicule_Enterprise.pdf', 'Véhicule/Locations'],
   // Cible à 3 SEGMENTS versée dans CAS (revue structure C28-51) : `cibleExiste` verrouille alors
   // route ↔ table — renommer une catégorie dans les constantes sans toucher la route casserait ICI.
-  ['03 · Logement & véhicule', '2025-03-01_Facture_Garage KIA Sportage.pdf', 'Véhicule/KIA/Entretien & réparations'],
+  ['03 · Logement & véhicule', '2025-03-01_Facture_Garage Jetta.pdf', 'Véhicule/VW Jetta/Entretien & réparations'],
   ['03 · Logement & véhicule', '2026-02_Facture_ENGIE.pdf', 'Énergie & services'],
   // 04 — routage INTERNE seulement ; un doc étranger (banque CIC) rend null = reste EN PLACE + rapport
   ['04 · Immigration', '2024-11_Permis de travail_IRCC.pdf', 'Permis de travail & EIMT'],
@@ -336,7 +348,13 @@ test('03 : filets Contrats / Correspondance — capturent le reliquat SANS voler
     'Logement/3325 4e avenue');
   assert.strictEqual(ctx.cheminCibleReset_(d, '2024-01_Contrat_1548 avenue de la Roselière.pdf'),
     'Logement/1548 avenue de la Roselière, Québec');
-  assert.strictEqual(ctx.cheminCibleReset_(d, '2023-05_Contrat_KIA Québec.pdf'), 'Véhicule/KIA');
+  // ADR-0044 décision 3 : KIA retiré du canon → dossier COMMUN « Recherche & achat », jamais un
+  // véhicule créé, et jamais le filet « Contrats » (qui le noierait parmi les baux).
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2023-05_Contrat_KIA Québec.pdf'), 'Véhicule/Recherche & achat');
+  // AMBIGUÏTÉ location ↔ véhicule du canon : « location » + « VW Jetta », c'est peut-être un BAIL
+  // sur SON véhicule. Refus RÉVISABLE plutôt qu'un déplacement définitif (revue C28-62) — à
+  // comparer au cas Enterprise ci-dessus, qui ne nomme aucun véhicule de Marc et part en Locations.
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2024-01-01_Contrat de location de véhicule_VW Jetta.pdf'), null);
   // Un bail SANS adresse ni bailleur reconnus : le filet « Contrats » (le pluriel « Logements »
   // n'existe plus — c49-2), jamais un logement deviné.
   assert.strictEqual(ctx.cheminCibleReset_(d, '2024-05_Bail_Résidence X.pdf'), 'Contrats');
@@ -345,17 +363,26 @@ test('03 : filets Contrats / Correspondance — capturent le reliquat SANS voler
 /* ---------- 03 c49-2 (ADR-0040 §3a/§3c) : catégories PAR VÉHICULE — le transversal t4 est
  * RÉVOQUÉ par la décision Marc 2026-08-17. Un document de véhicule SANS véhicule identifiable
  * n'a PLUS de fourre-tout : le flux (table pure) rend null (à plat au domaine + rapport) — la
- * MISSION, elle, tranche par fenêtre de POSSESSION (état Drive). Mêmes noms RÉELS que t4. ---------- */
+ * MISSION ne devine plus non plus : le repli par date est RETIRÉ (ADR-0044 §4). Noms RÉELS. --- */
 
 test('c49-2 · 03 : un document de véhicule NOMMÉ va dans SON véhicule, catégorie par le type', () => {
   const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const D = '03 · Logement & véhicule';
   // Entretien : l'émetteur-atelier route la CATÉGORIE, le véhicule vient du nom.
-  assert.strictEqual(c.cheminCibleReset_(D, '2025-03-01_Facture_Garage KIA Sportage.pdf'),
-    'Véhicule/KIA/Entretien & réparations');
+  assert.strictEqual(c.cheminCibleReset_(D, '2025-03-01_Facture_Garage Jetta.pdf'),
+    'Véhicule/VW Jetta/Entretien & réparations');
   // Vente/achat : type transactionnel → Recherche & achat du véhicule nommé.
-  assert.strictEqual(c.cheminCibleReset_(D, '2023-06-20_Contrat de vente véhicule d\'occasion_KIA.pdf'),
-    'Véhicule/KIA/Recherche & achat');
+  assert.strictEqual(c.cheminCibleReset_(D, '2023-06-20_Contrat de vente véhicule d\'occasion_Jetta.pdf'),
+    'Véhicule/VW Jetta/Recherche & achat');
+  // ADR-0044 — LOCATION : dossier commun, jamais un véhicule de Marc (les 3 contrats Enterprise).
+  assert.strictEqual(c.cheminCibleReset_(D, '2026-04-10_Contrat de location de véhicule_Enterprise.pdf'),
+    'Véhicule/Locations');
+  // PIÈGES verrouillés — le 1er jet du prédicat les cassait tous les deux :
+  //  « Avis » est un loueur, mais surtout un mot français des plus courants ;
+  //  « demande de location » est du LOGEMENT, jamais une voiture.
+  assert.notStrictEqual(c.cheminCibleReset_(D, '2022-11_Avis de séjour_Camping.pdf'), 'Véhicule/Locations');
+  assert.notStrictEqual(c.cheminCibleReset_(D, '2018-10-15_Formulaire de demande de location_CORPIQ.pdf'),
+    'Véhicule/Locations');
   // Assurance nommant le véhicule.
   assert.strictEqual(c.cheminCibleReset_(D, '2023-11-13_Soumission d\'assurance automobile_Jetta Desjardins.pdf'),
     'Véhicule/VW Jetta/Assurance auto');
@@ -375,10 +402,18 @@ test('c49-2 · 03 : SANS véhicule identifiable → null (jamais de fourre-tout,
     // (la capture Corolla partirait sinon dans le bZ à clé de SUCCÈS — leçon C28-49).
     '2026-07-01_Capture d\'écran_Drummondville Volkswagen.jpg',
     '2026-07-01_Facture_Toyota.jpg',
-    // Contraventions/immatriculation anonymes : la mission tranche par fenêtre, jamais la table.
+  ].forEach((nom) => assert.strictEqual(c.cheminCibleReset_(D, nom), null, nom));
+  // Contraventions/immatriculation anonymes : documents de VÉHICULE typés, sans véhicule
+  // identifiable ⇒ dossier COMMUN « À attribuer » (ADR-0044 §4.2). Ils rendaient `null` jusqu'à la
+  // revue C28-62, au motif que « la mission tranche par fenêtre » — mécanisme retiré, et qui ne
+  // voyait de toute façon PAS ces documents (ils arrivent par le flux). `null` les envoyait à plat
+  // à la racine de `03`. Le flux, la mission et la consolidation calculent maintenant la MÊME
+  // cible : c'est ce qui rend le placement CONVERGENT.
+  [
     '2023-06-27_Constat d\'infraction_Ville de Québec.jpg',
     '2026-07-06_Constat d\'infraction_Municipalité de Thetford Mines.jpg',
-  ].forEach((nom) => assert.strictEqual(c.cheminCibleReset_(D, nom), null, nom));
+    '2026-07-20_Certificat d\'immatriculation_Société de l\'assurance automobile du Québec.jpg',
+  ].forEach((nom) => assert.strictEqual(c.cheminCibleReset_(D, nom), 'Véhicule/À attribuer', nom));
   // L'assurance HABITATION, elle, garde son nœud (règle plus haute).
   assert.strictEqual(c.cheminCibleReset_(D, '2025-01-01_Assurance habitation_Desjardins.pdf'), 'Assurance habitation');
   // Une réclamation TÉLÉCOM ne devient jamais un sinistre auto (contre-exemple réel conservé).
@@ -401,9 +436,9 @@ test('t4 · 03 : le ferroviaire reste en _TRI — le reset ne peut PAS changer d
 test('c49-2 · 03 : les règles par ENTITÉ/BAILLEUR gardent la priorité sur les types génériques', () => {
   const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const D = '03 · Logement & véhicule';
-  // Un document KIA va chez KIA (catégorie par l'atelier), jamais dans un filet.
-  assert.strictEqual(c.cheminCibleReset_(D, '2025-03-01_Facture_Garage KIA Sportage.pdf'),
-    'Véhicule/KIA/Entretien & réparations');
+  // Un document de véhicule va chez SON véhicule (catégorie par l'atelier), jamais dans un filet.
+  assert.strictEqual(c.cheminCibleReset_(D, '2025-03-01_Facture_Garage Jetta.pdf'),
+    'Véhicule/VW Jetta/Entretien & réparations');
   // Un document LCP part chez SON logement (table bailleur) même si son type est « Annonce ».
   assert.strictEqual(c.cheminCibleReset_(D, '2026-01-01_Annonce_LCP Groupe Immobilier.pdf'),
     'Logement/3325 4e avenue');
@@ -411,7 +446,30 @@ test('c49-2 · 03 : les règles par ENTITÉ/BAILLEUR gardent la priorité sur le
   const n03 = ctx.STRUCTURE_CIBLE_RESET['03 · Logement & véhicule'];
   assert.ok(!n03['Logements'] && !n03['Véhicules'],
     'les pluriels sont RETIRÉS de la table (les missions les vident — ping-pong sinon)');
-  assert.deepStrictEqual(Object.keys(JSON.parse(JSON.stringify(n03['Véhicule']['KIA']))),
+  assert.deepStrictEqual(Object.keys(JSON.parse(JSON.stringify(n03['Véhicule']['VW Jetta']))),
     JSON.parse(JSON.stringify(ctx.CONFIG.MISSIONS_CATEGORIES_VEHICULE)),
     'tripwire : les catégories de la table = celles de la CONFIG (deux artefacts, un verrou)');
+  // ADR-0044 — même patron que les pluriels : un bucket de cette table est RECRÉÉ PAR NOM, donc
+  // garder « KIA » ici pendant que la mission le dissout produirait un ping-pong.
+  assert.ok(!n03['Véhicule']['KIA'], 'KIA retiré de la table (sinon recréé par nom à chaque classement)');
+  const vehicules = JSON.parse(JSON.stringify(ctx.CONFIG.MISSIONS_VEHICULES)).map((v) => v.nom);
+  vehicules.forEach((v) => assert.ok(n03['Véhicule'][v], 'chaque véhicule du canon a son nœud : ' + v));
+  // TRIPWIRE : les communs de la TABLE == ceux de la CONFIG. Sans lui, renommer un commun dans la
+  // CONFIG créerait DEUX dossiers en prod, en silence (revue C28-62).
+  const communs = JSON.parse(JSON.stringify(ctx.CONFIG.MISSIONS_VEHICULE_COMMUNS)).map((c) => c.nom);
+  assert.deepStrictEqual(
+    Object.keys(JSON.parse(JSON.stringify(n03['Véhicule']))).filter((n) => !vehicules.includes(n)),
+    communs, 'tripwire : les communs de la table = ceux de la CONFIG');
+  // ⚠️ LE VRAI VERROU N'EST PAS LA TABLE. `estAncreStructurelleFusion_` ne regarde que le PREMIER
+  // NIVEAU de STRUCTURE_CIBLE_RESET[domaine] : un nœud imbriqué sous « Véhicule » n'y est jamais
+  // protégé (et la collecte de Fusion.gs n'est même pas récursive). Ce qui protège réellement les
+  // communs, c'est `estSegmentStructurel_` — l'inventaire de la RÉORG, lui, est récursif (BFS) et
+  // proposerait de fusionner un dossier que 2 producteurs recréent PAR NOM. Une version antérieure
+  // de ce test assertait la présence dans la table en la COMMENTANT « c'est ce qui en fait des
+  // ancres » : un proxy qui n'impliquait pas la propriété (leçon « promesse de verrou = verrou
+  // codé dans le même commit »).
+  // (le verrou lui-même est asserté dans `reorg.test.js`, où `estSegmentStructurel_` est chargé)
+
+  assert.ok(Object.keys(JSON.parse(JSON.stringify(n03['Véhicule']))).length <= MAX,
+    'règle des ≤ ' + MAX + ' nœuds (dérivée de la constante, jamais du littéral du jour)');
 });

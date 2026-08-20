@@ -344,3 +344,22 @@ test('estCibleInterdite_ / parser : une ANNÉE ou un TYPE D\'IDENTITÉ n\'est ja
 /* ---------- C28-32 (ADR-0029) : mesure de la loi de Miller pour l'auto-scan ---------- */
 
 /* (Skip-list + choix du dossier saturé + dépôt AUTO C28-32/ADR-0029 : RETIRÉS — ADR-0031.) */
+
+test('estSegmentStructurel_ : les dossiers COMMUNS de « Véhicule » sont protégés (ADR-0044)', () => {
+  const c = load(['Config.gs', 'Router.gs', 'Reorg.gs']); // Router.gs : TYPES_IDENTITE
+  // Ces 3 dossiers sont find-or-créés PAR NOM par le flux vivant (`cheminCibleReset_`) ET par la
+  // mission véhicule : les laisser passer pour « regroupables » ferait proposer au LLM de les
+  // fusionner, et l'exécution serait aussitôt défaite par le producteur suivant (ping-pong #47).
+  // ⚠️ C'est le SEUL verrou : `estAncreStructurelleFusion_` (Fusion.gs) ne consulte que le premier
+  // niveau de STRUCTURE_CIBLE_RESET, or ces nœuds sont imbriqués sous « Véhicule » (revue C28-62).
+  const communs = JSON.parse(JSON.stringify(c.CONFIG.MISSIONS_VEHICULE_COMMUNS)).map((x) => x.nom);
+  assert.ok(communs.length >= 3, 'la CONFIG porte bien les communs');
+  communs.forEach((nom) => assert.strictEqual(c.estSegmentStructurel_(nom), true,
+    'commun protégé de la Réorg : ' + nom));
+  // « Locations » et « À attribuer » n'étaient couverts par RIEN avant ce correctif : ni
+  // /^\d{4}$/, ni TYPES_IDENTITE, ni SCHEMAS_ENTITE, ni MISSIONS_CATEGORIES_VEHICULE.
+  assert.strictEqual((c.CONFIG.MISSIONS_CATEGORIES_VEHICULE || []).indexOf('Locations'), -1,
+    'preuve que la protection ne vient PAS de la liste voisine');
+  // Contre-épreuve : un nom quelconque n'est pas structurel (le prédicat ne dit pas oui à tout).
+  assert.strictEqual(c.estSegmentStructurel_('Desjardins'), false);
+});

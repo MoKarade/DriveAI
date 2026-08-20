@@ -623,10 +623,14 @@ var CONFIG = {
   // sur `_TRI 2026/<domaine>` — un fichier placé n'y est plus, il n'est donc jamais re-présenté).
   // À bumper à CHAQUE modification des règles de routage, sinon les non-routés resteraient marqués
   // « déjà tenté » à vie et l'affinage serait sans effet (constaté au 1ᵉʳ reliquat réel, 2026-07-30).
-  RESET_TABLE_VERSION: 't4',              // ⚠️ C28-51 (ADR-0040) a RÉVOQUÉ le transversal t4 de 03 (la table
-                                          // route désormais Logement/Véhicule par véhicule) SANS bump : la
-                                          // campagne reset est TERMINÉE et RESET_ACTIF=false — la relancer
-                                          // un jour exige t5 (ré-évaluer les refus keyés sous la table t4).
+  RESET_TABLE_VERSION: 't5',              // t5 (ADR-0044, 2026-08-20) : « KIA » RETIRÉ du nœud Véhicule (il le
+                                          // faisait RECRÉER par nom pendant que la mission le dissout →
+                                          // ping-pong), + les 3 dossiers COMMUNS « Recherche & achat »,
+                                          // « Locations » et « À attribuer » déclarés dans la table. Ce bump ACQUITTE
+                                          // aussi la dette laissée par C28-51 (ADR-0040), qui avait révoqué le
+                                          // transversal t4 de 03 SANS bump parce que la campagne était terminée
+                                          // et RESET_ACTIF=false : le jour où le reset repart, les refus keyés
+                                          // sous t4 seront enfin ré-évalués sous les règles courantes.
                                           // t4 : 03 « Véhicules/{Entretien & réparations, Assurance auto,
                                           // Recherche & achat, Contraventions} » — décision Marc 2026-07-31
                                           // sur le reliquat réel (~64 fichiers auto sans dossier d'accueil).
@@ -820,7 +824,7 @@ var CONFIG = {
 
   // ---------- MISSIONS de curation (C28-49, ADR-0039 — brief Marc 2026-08-17) ----------
   MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions
-  MISSIONS_REGLES_VERSION: 'c49-2',       // DANS la clé d'idempotence : un refus (non apparié) se fige
+  MISSIONS_REGLES_VERSION: 'c49-3',       // DANS la clé d'idempotence : un refus (non apparié) se fige
                                           // sous CETTE version — affiner les règles = bump ⇒ ré-évaluation
                                           // (leçon C28-33 « verdict négatif révisable, jamais figé à vie »)
                                           // c49-2 (C28-51, ADR-0040) : tables bailleurs + véhicules,
@@ -845,6 +849,12 @@ var CONFIG = {
   MISSIONS_IDS: {
     // 03 · Logement & véhicule — cibles GAGNANTES choisies par Marc :
     vehiculeCible: '1Hqmg1eV4q28saCreUyrfUIfKLwV972Wc',   // « Véhicule » (Ford Fiesta, VW Jetta, + Toyota bZ créé)
+    // Les deux dossiers « KIA » CRÉÉS PAR LE MOTEUR sous c49-2 (constatés dans le Drive le
+    // 2026-08-20, 3 fichiers au total) : sources à DISSOUDRE vers « Recherche & achat ». Sans
+    // ça, retirer KIA du canon les laisserait orphelins À VIE — aucune mission ne les couvre
+    // (revue C28-62). Une fois vidés, `sourcesJetables` les peint en rouge pour que Marc les ôte.
+    vehiculeKia: '1JYeg6vjYbcUmD83xmfuC0H39hRun8f3C',      // « Véhicule/KIA »
+    vehiculeKiaJetta: '1OZ1Ja_KgGAjuygtmt-clkfbHUYMekhne', // « Véhicule/VW Jetta/KIA » (comparatif d'occasion)
     logementCible: '13ISBh6ZrwK9YHgmIM20tWTgWh4x9wI79',   // « Logement » (5 adresses)
     // sources à VIDER :
     vehiculesPluriel: '1D8bYwR900-yU-bCZufhPucnQYUZtbS-i', // « Véhicules »
@@ -924,11 +934,26 @@ var CONFIG = {
   // 2014 (essai, jamais achetée — décision Marc) vers le bZ, « volkswagen » enverrait la capture
   // d'annonce d'un CONCESSIONNAIRE dans la Jetta — à clé de SUCCÈS, donc définitif (leçon C28-49).
   // Sert AUSSI à créer une cible absente (KIA n'existait pas dans « Véhicule »).
+  // ⚠️ KIA RETIRÉ le 19/08 (ADR-0044, décision Marc : « c'était juste une recherche d'achat »).
   MISSIONS_VEHICULES: [
     { nom: 'Toyota bZ', jetons: ['bz', 'bz4x'] },
-    { nom: 'KIA', jetons: ['kia', 'sportage'] },
     { nom: 'Ford Fiesta', jetons: ['fiesta'] },
     { nom: 'VW Jetta', jetons: ['jetta'] },
+  ],
+  // Dossiers COMMUNS sous « Véhicule » (ADR-0044) — au même niveau que les véhicules, pas sous eux.
+  //  - `sources` : sous-dossiers d'origine dont le contenu y va EN BLOC ;
+  //  - `jetons`  : MOT ENTIER dans le nom du document (`communVehiculeDuNom_`), consulté par le
+  //    FLUX VIVANT *et* par les missions — une seule règle, N consommateurs. Sans les jetons, un
+  //    document « KIA » arrivant par le flux tombait à PLAT à la racine de `03` (revue C28-62).
+  // « À attribuer » (décision Marc 2026-08-20) remplace le repli par DATE, retiré : mesuré sur le
+  // Drive réel, les fenêtres dérivées des fichiers déjà classés sont INUTILISABLES ici — « Ford
+  // Fiesta » est VIDE (aucune date ⇒ aucune fenêtre ⇒ la gate de complétude ne peut PAS être
+  // satisfaite) et celle de la Jetta court de 2019 à 2026. Grouper sans deviner plutôt que
+  // deviner mal : les documents sans véhicule identifiable attendent là que Marc les réparte.
+  MISSIONS_VEHICULE_COMMUNS: [
+    { nom: 'Recherche & achat', sources: ['KIA'], jetons: ['kia', 'sportage'] }, // `sportage` : jeton de l'ex-entrée KIA du canon — le PERDRE renvoyait « Garage Sportage » à plat dans 03 (revue C28-62)
+    { nom: 'Locations', sources: [], jetons: [] },   // alimenté par la DÉTECTION de location
+    { nom: 'À attribuer', sources: [], jetons: [] }, // filet : aucun véhicule identifiable
   ],
   // Catégories PAR VÉHICULE (décision Marc) — sous-dossiers créés À LA DEMANDE, jamais 16
   // squelettes vides. Ces noms sont AUSSI les sous-dossiers sources de « Véhicules » à dissoudre.

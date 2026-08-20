@@ -73,7 +73,22 @@ var STRUCTURE_CIBLE_RESET = {
     // Rivières » réel). Fichiers À PLAT dans chaque logement ; dans chaque VÉHICULE, les 4
     // catégories de Marc (décision 2026-08-17, créées à la demande).
     'Logement': { '1548 avenue de la Roselière, Québec': {}, '3987 rte des Rivières': {}, '3325 4e avenue': {}, '783 av. Moreau, Québec': {}, 'Anciens logements': {} },
-    'Véhicule': { 'Toyota bZ': categoriesVehiculeReset_(), 'KIA': categoriesVehiculeReset_(), 'Ford Fiesta': categoriesVehiculeReset_(), 'VW Jetta': categoriesVehiculeReset_() },
+    // ADR-0044 : « KIA » RETIRÉ (Marc : « c'était juste une recherche d'achat ») — le garder ici le
+    // ferait RECRÉER PAR NOM à chaque classement, pendant que la mission véhicule envoie son
+    // contenu dans « Recherche & achat » : exactement le ping-pong que le commentaire ci-dessus
+    // décrit pour les nœuds pluriels. Les 3 dossiers COMMUNS y figurent pour que la table reste
+    // COHÉRENTE avec les routes (tripwire `cibleExiste` des CAS de test) et pour documenter la
+    // structure réelle.
+    // ⚠️ Y FIGURER NE LES PROTÈGE PAS : `estAncreStructurelleFusion_` (Fusion.gs) ne consulte que
+    // le PREMIER NIVEAU de `STRUCTURE_CIBLE_RESET[domaine]`, et un nœud imbriqué sous « Véhicule »
+    // n'en fait pas partie (revue C28-62 — la version antérieure de ce commentaire l'affirmait à
+    // tort). Le VRAI verrou est `estSegmentStructurel_` (Reorg.gs), qui gouverne l'inventaire
+    // RÉCURSIF de la Réorg : c'est là que les communs sont déclarés, et c'est là que le test les
+    // vérifie. 6 nœuds sous « Véhicule » (≤ 7 ✔).
+    'Véhicule': {
+      'Toyota bZ': categoriesVehiculeReset_(), 'Ford Fiesta': categoriesVehiculeReset_(), 'VW Jetta': categoriesVehiculeReset_(),
+      'Recherche & achat': {}, 'Locations': {}, 'À attribuer': {},
+    },
     'Énergie & services': {},
     'Assurance habitation': {},
     // Ajoutés sur le reliquat réel (décision Marc 2026-07-30) : 18 « Contrat » et 16
@@ -367,7 +382,22 @@ function cheminCibleReset_(domaine, nom) {
     if (logementBailleur) return 'Logement/' + logementBailleur;
     // VÉHICULE — canon partagé ('toyota' n'est pas un jeton : la Corolla jamais achetée matcherait
     // le bZ), puis la CATÉGORIE de Marc par le type (à plat dans le véhicule si aucune).
+    // LOCATION de véhicule (ADR-0044) — AVANT le canon des véhicules, pour la même raison que
+    // dans les missions : une voiture louée n'est pas un véhicule de Marc. MÊME prédicat pur, pour
+    // que le reset et les missions ne se renvoient pas la balle (leçon « une seule règle »).
+    // Dossier COMMUN reconnu par le NOM (ADR-0044 : « KIA compris ») — MÊME table que les
+    // missions. Sans lui, un document « KIA » arrivant par le FLUX tombait à PLAT à la racine de
+    // `03`, c'est-à-dire dans le vrac que `HistoriqueVrac` compte comme dette (revue C28-62).
+    // Le nom BRUT est passé aux prédicats partagés (comme les missions) : `tout` est déjà passé
+    // par `normaliserCle_`, et faire dépendre un prédicat partagé d'une SECONDE normalisation en
+    // amont est un couplage fragile — les deux fonctions peuvent évoluer séparément.
+    var communNom = communVehiculeDuNom_(nom);
+    if (communNom) return 'Véhicule/' + communNom;
     var vehicule = vehiculeDuNom_(tout);
+    // AMBIGU : « location » + un véhicule DU CANON, c'est peut-être un BAIL/une LOA sur le
+    // véhicule de Marc, pas la location d'une voiture tierce. Refus (révisable) plutôt qu'un
+    // déplacement définitif au mauvais endroit — MÊME arbitrage que la mission (une seule règle).
+    if (estLocationVehicule_(nom)) return vehicule ? null : 'Véhicule/Locations';
     if (vehicule) {
       if (resetContient_(t, ['constat d infraction', 'contravention', 'amende'])) return 'Véhicule/' + vehicule + '/Contraventions';
       // 'vente'/'achat' en MOT ENTIER (revue finale : « achat » ⊂ « rachat », « vente » ⊂
@@ -382,11 +412,17 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(e, ['edf', 'engie', 'hydro'])) return 'Énergie & services';
     if (tout.indexOf('assurance habitation') !== -1 || e.indexOf('maif') !== -1) return 'Assurance habitation';
     // Un document de VÉHICULE sans véhicule identifiable (immatriculation SAAQ, contravention
-    // anonyme…) n'a PLUS de fourre-tout : les catégories vivent DANS chaque véhicule (décision
-    // Marc). null ⇒ reste en `_TRI` + rapport — la MISSION, elle, sait trancher par FENÊTRE DE
-    // POSSESSION (état Drive, hors de portée d'une table pure). Jamais deviné.
+    // anonyme…) : le dossier COMMUN « À attribuer » (ADR-0044 §4.2, décision Marc).
+    // ⚠️ Ce `return` valait `null` jusqu'à la revue C28-62, au motif que « la MISSION sait trancher
+    // par fenêtre de possession » — mécanisme désormais RETIRÉ (il ne pouvait pas fonctionner), et
+    // qui de toute façon ne voyait pas ces documents : ils arrivent par le FLUX, pas par les
+    // sources de la mission. `null` les envoyait au repli de `planRoutageV2_`, c'est-à-dire À PLAT
+    // à la racine de `03` — le vrac que `HistoriqueVrac` compte comme dette.
+    // Bénéfice de convergence : le flux, la mission ET la consolidation calculent maintenant la
+    // MÊME cible pour ces documents (la conso recalculerait « À attribuer » ⇒ ligne « OK », au
+    // lieu de proposer de les ramener à la racine du domaine).
     if (resetContient_(t, ['immatriculation', 'carte grise', 'constat d infraction', 'contravention', 'amende']) ||
-        e.indexOf('saaq') !== -1) return null;
+        e.indexOf('saaq') !== -1) return 'Véhicule/À attribuer';
 
     /* ---- Ordre VOULU : les règles par entité/canon ci-dessus passent AVANT les filets
      * « Contrats »/« Correspondance » (un « Contrat_LCP » part chez son bailleur, jamais dans le

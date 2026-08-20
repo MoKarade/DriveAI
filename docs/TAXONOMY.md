@@ -18,7 +18,7 @@ INTERDIT » **ne vaut plus** — la prod range désormais dans `Relevés/`, `Re�
 |---------|--------------------------------|------------------|
 | `01 · Administratif & identité` | Pièces d'identité · État civil & notarial · Attestations & certificats · Correspondance · Contrats & fournisseurs · Sécurité & codes | 1 |
 | `02 · Finances` | Banques · Relevés · Reçus & factures · Impôts & déclarations · Assurances & prévoyance · Placements & crypto · **Revenus & paie** | **0 — PLEIN** |
-| `03 · Logement & véhicule` | **Logement** (5 adresses aux noms RÉELS Drive) · **Véhicule** (Toyota bZ · KIA · Ford Fiesta · VW Jetta, chacun avec {Contraventions · Assurance auto · Entretien & réparations · Recherche & achat}) · Énergie & services · Assurance habitation · Contrats · Correspondance | 1 |
+| `03 · Logement & véhicule` | **Logement** (5 adresses aux noms RÉELS Drive) · **Véhicule** (Toyota bZ · Ford Fiesta · VW Jetta, chacun avec {Contraventions · Assurance auto · Entretien & réparations · Recherche & achat}) **+ 3 dossiers COMMUNS au même niveau que les véhicules — `Recherche & achat` (magasinage sans véhicule identifié, dont l'ex-« KIA »), `Locations` (voiture louée, jamais un véhicule de Marc) et `À attribuer` (aucun véhicule identifiable — ADR-0044)** · Énergie & services · Assurance habitation · Contrats · Correspondance | 1 |
 | `04 · Immigration` | IRCC (fédéral) · MIFI (Québec) · Permis de travail & EIMT · Résidence permanente · Formulaires & correspondance | 2 |
 | `05 · Carrière` | Employeurs · Alternance & stages · CV & lettres (+ Candidatures · Suivi · Archive 2021-2025) · Entreprise — MRic (SCI) · Formation & bilans · Réseaux & présentations | 1 |
 | `06 · Études & diplômes` | 5 écoles + Autres établissements + Diplômes & relevés officiels | 0 |
@@ -74,7 +74,7 @@ vivent désormais sous `CV & lettres`.
 | `02 · Finances` | `1B9jNRpAKrAWdUs6Gn5_ojle3ZH7JbFDW` |
 | `03 · Logement & véhicule` | `1oI1inPX3nWr_1I74A3jDM-ovr6talQlN` |
 | → `Logement` *(CIBLE CANONIQUE depuis ADR-0040 — 5 adresses aux noms Drive réels ; plus jamais « en drainage »)* | `13ISBh6ZrwK9YHgmIM20tWTgWh4x9wI79` |
-| → `Véhicule` *(CIBLE CANONIQUE depuis ADR-0040 — 4 véhicules × 4 catégories ; plus jamais « en drainage »)* | `1Hqmg1eV4q28saCreUyrfUIfKLwV972Wc` |
+| → `Véhicule` *(CIBLE CANONIQUE depuis ADR-0040 — **3** véhicules × 4 catégories + **3 communs** ; « KIA » retiré du canon par ADR-0044 ; plus jamais « en drainage »)* | `1Hqmg1eV4q28saCreUyrfUIfKLwV972Wc` |
 | `04 · Immigration` *(zone protégée)* | `1VBK_4pkJmIeTsRyz-MWpMBYaOhKYNfRC` |
 | `05 · Carrière` | `1BAg7k7RVrJ4ifoeh9U0XW5hKWXjRI1CC` |
 | `06 · Études & diplômes` | `1PeeKG8XgZB6gJdZo03cO7F0s_iMgw6Ec` |
@@ -225,7 +225,10 @@ Les dossiers VIDÉS relèvent de la corbeille APP validée (ADR-0014), jamais du
   CANONIQUES de 03, plus JAMAIS un héritage à drainer/corbeiller ; les 4 catégories PAR VÉHICULE
   {Contraventions · Assurance auto · Entretien & réparations · Recherche & achat} sont
   structurelles au même titre — find-or-créées PAR NOM par le flux et les missions, protégées par
-  `estSegmentStructurel_`. Le `SCHEMAS_ENTITE.Véhicule` d'époque v1 est un VOCABULAIRE HÉRITÉ
+  `estSegmentStructurel_` ; **les 3 dossiers COMMUNS `MISSIONS_VEHICULE_COMMUNS` {Recherche &
+  achat · Locations · À attribuer} le sont aussi depuis ADR-0044** — et c'est leur SEULE
+  protection : `estAncreStructurelleFusion_` ne consulte que le PREMIER niveau de
+  `STRUCTURE_CIBLE_RESET`, or ces nœuds sont imbriqués sous « Véhicule ». Le `SCHEMAS_ENTITE.Véhicule` d'époque v1 est un VOCABULAIRE HÉRITÉ
   distinct, mort sous ANALYSE_V2 — les catégories officielles sont `MISSIONS_CATEGORIES_VEHICULE`),
   les sous-dossiers d'année `AAAA`, les **noms** des sous-dossiers de schéma hérités (plus jamais
   créés depuis ADR-0023 — mais tant qu'ils portent des fichiers, les fusionner/renommer hors app
