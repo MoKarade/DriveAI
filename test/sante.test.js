@@ -24,20 +24,41 @@ function chargerAvecSanteMock(indexCache) {
   // `TriGmail.gs` : la ligne « Tri Gmail » (ADR-0043) interroge `estPannePlateforme_` et
   // `estPanneConfigApi_`. Sans eux, le contexte par défaut exerçait le chemin d'ERREUR au lieu du
   // chemin nominal — un test qui valide le catch en croyant valider le cas normal (revue flotte).
-  const ctx = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'GoogleApi.gs', 'TriGmail.gs', 'Journal.gs'],
+  // `Doublons.gs` : la ligne « Doublons (validation par empreinte) » (ADR-0047) appelle
+  // `texteSanteDoublons_`. Sans lui, `majSante_` lèverait — et surtout ce mock DOIT exposer
+  // `getLastRow` (cf. ci-dessous), sinon on exercerait le chemin d'ERREUR de cette ligne en croyant
+  // valider le chemin nominal : c'est exactement le piège corrigé plus haut pour la ligne Tri Gmail.
+  const ctx = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'GoogleApi.gs', 'TriGmail.gs', 'Doublons.gs', 'Journal.gs'],
     { PropertiesService: mockProps() });
   const captured = [];
-  // feuille_('Santé') mocké : capture l'unique setValues (6 lignes × 1 colonne).
-  ctx.feuille_ = () => ({ getRange: () => ({ setValues: (rows) => rows.forEach((r) => captured.push(r[0])) }) });
+  // feuille_ mocké : capture l'unique setValues de « Santé » ; `getLastRow: 1` = rapport des
+  // doublons encore vide (état réel avant la première passe de la campagne).
+  ctx.feuille_ = () => ({
+    getLastRow: () => 1,
+    getRange: () => ({ setValues: (rows) => rows.forEach((r) => captured.push(r[0])) }),
+  });
   if (indexCache !== undefined) ctx._indexCache = indexCache;
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 7 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 8 lignes de métadonnées (une seule écriture Sheet)', () => {
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 7);
+  assert.strictEqual(captured.length, 8);
   assert.ok(captured.every((l) => typeof l === 'string'));
+});
+
+test('majSante_ : la ligne « Doublons » exerce le chemin NOMINAL, pas le catch (ADR-0047)', () => {
+  // Le commentaire du harnais nomme le piège ; sans assertion, rien ne le vérifie. Prouvé par
+  // mutation : en retirant `getLastRow` du mock, la ligne devient « ⚠️ état illisible (TypeError…) »
+  // et les autres tests restent TOUS verts — on validerait le catch en croyant valider le nominal.
+  // C'est le même défaut que la ligne « Tri Gmail » avait avant son test dédié, juste en dessous.
+  const { ctx, captured } = chargerAvecSanteMock({});
+  ctx.majSante_();
+  const ligne = captured.find((l) => l.indexOf('Doublons') === 0);
+  assert.ok(ligne, 'la ligne existe');
+  assert.ok(!ligne.includes('illisible'), 'chemin nominal, pas le catch : ' + ligne);
+  assert.ok(ligne.includes('inventaire'), 'campagne pas encore lancée → phase inventaire : ' + ligne);
 });
 
 test('majSante_ : la ligne « Tri Gmail » distingue NORMAL, DÉGRADÉ et À L\'ARRÊT (ADR-0043)', () => {

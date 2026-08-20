@@ -4,7 +4,45 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🎯 CHANTIER EN COURS — C28-62 « Affinage des non-appariés » (ADR-0044).**
+> **🎯 CHANTIER EN COURS — C28-49 PR4 « Valider `_Doublons` par empreinte » (ADR-0047).**
+> Livré, en attente de merge. **Ce que l'inventaire EXHAUSTIF du 2026-08-20 a montré :
+> `_Doublons` contient 1 076 fichiers, et certains sont le SEUL exemplaire de leur contenu** —
+> les 3 passeports de Marc y sont, de tailles DIFFÉRENTES (donc pas copies l'un de l'autre) ;
+> le contenu d'un bulletin d'Avila y est en double et n'existe nulle part ailleurs.
+> Cause, lisible dans le code : `_empreintesCache` est un **ensemble** d'empreintes sans notion de
+> lieu, donc `estDoublon_` répond à « déjà vu ? » et jamais à « encore là ? » — un fichier déjà
+> indexé et re-présenté devient doublon de LUI-MÊME, et rien ne relit jamais `_Doublons`.
+>
+> La campagne `src/Doublons.gs` est **STRICTEMENT lecture seule** (tripwire de test : aucun
+> `moveTo`, aucun renommage, aucun LLM). Elle rend un verdict par fichier — `confirmé` / `orphelin`
+> / `indéterminé` — dans l'onglet `RapportDoublons`, à partir du `md5Checksum` de l'API Drive (et
+> **pas** de l'Index, qui n'attache une empreinte à un fileId que pour certaines clés : une PJ Gmail
+> y est invisible et son exemplaire classé aussi).
+> **Elle ne rapatrie RIEN, et c'est délibéré** (ADR-0047 §4) : un orphelin n'a pas de cible
+> calculable sans LLM, ce qui coûterait jusqu'à 28 $ — sur un cumul déjà à 12,28 $ — et passerait
+> SOUS le frein budgétaire (l'intake de `00 · À trier` est du flux vivant, jamais gaté). Le livrable
+> est le **compte exact**, pour que Marc décide avec le prix devant les yeux.
+>
+> ⚠️ **Deux mesures à connaître avant d'ajouter quoi que ce soit au tick.**
+> (1) Le **registre de suivi C28-44 est SATURÉ** : 8 377 des 8 500 octets, 42 clés à ~199 — il reste
+> 123 octets, une 43ᵉ étape le ferait déborder. La campagne se rend donc visible par une ligne
+> **Santé**, pas par Progression (backlog C28-71).
+> (2) L'**enveloppe reset-OFF passe de 60 à 63 min/j** pour un plafond de 65 : il ne reste que
+> 2 min/j. `GMAIL_HISTO_BUDGET_JOUR_MS` (20 min/j) est le donneur évident mais sa fin n'est que
+> « probable » — la prouver avant de réallouer (backlog C28-70).
+>
+> **Mesuré, donc PAS fait** : `_Technique` (398 fichiers) n'a **qu'un seul** nom documentaire, posé
+> exprès par la règle D12 — aucune mission à y construire. `_Médias` (1 308 fichiers) : le nom n'y
+> prouve rien (les `Relevé_Inconnu.mp4` sont des vidéos), mais **trois** fichiers démentent la
+> promesse de C20-01 (fiscal ARC, deux pièces d'identité) → constat écrit, backlog C28-69.
+
+> **🎯 CHANTIER PRÉCÉDENT — C28-62 « Affinage des non-appariés » (ADR-0044) : TERMINÉ.**
+> Les 4 PR sont mergées (#300, #304, #305) et **#307** (C28-65) l'est aussi, déployé à 15:32 EDT.
+> ⚠️ **L'effet de #305 et #307 n'est PAS encore observable en prod** : toutes les missions sont
+> « en pause — budget du jour épuisé » depuis 12:28 EDT, soit trois heures AVANT le merge. À
+> vérifier à la reprise de demain par signal Drive indépendant — jamais au déploiement vert
+> (piège 3). Compteurs du 20/08 : véhicules **57/57**, archives scolaires **131/131**,
+> employeurs & CV **114**, logements 25/35, dossiers-années 2/26.
 > Marc : « y'en a beaucoup en attente d'affinage, pose-moi des questions » → **12 décisions**
 > (ADR-0044), découpées en 4 PR. **PR1 (#300) et PR2 (#304) sont MERGÉES *et* VÉRIFIÉES EN PROD**
 > par signal indépendant Drive le 2026-08-20 (pas par un déploiement vert — piège 3) :
@@ -12,7 +50,7 @@
 > **deux** dossiers `KIA` sont vides ; les **7 `Relevé_Automatech`** sont arrivés dans
 > `02/Revenus & paie/Automatech` à 16:29-16:30, et `05/Recherche d'emploi` **se REMPLIT** (offre
 > d'emploi + invitation d'entretien) au lieu de se vider — c'était le risque du geste symétrique.
-> **PR3 (décision 6) + PR4 (décision 7) vivent dans #305**, `do-not-merge` posé.
+> PR3 (décision 6) et PR4 (décision 7) ont été livrées dans **#305**, mergée.
 >
 > **⚠️ Ce que PR4 a coûté en revue, à connaître avant d'y toucher.** Deux revues indépendantes ont
 > trouvé qu'un `Avis d'imposition_SCI MRic` **quittait `02 · Finances` pour `05 · Carrière`** sur le

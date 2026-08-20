@@ -699,6 +699,14 @@ function tickDriveAI() {
       // tourne même pendant un reset. Enveloppée : un échec ne bloque jamais le reste.
       etapeSuivie_('historique-vrac', [], function () { majHistoriqueVrac_(estBudgetDepasseStandard); },
         function (e) { journalErreur_('HistoriqueVrac', 'MàJ historique vrac impossible : ' + e); });
+      // Validation de `_Doublons` par empreinte (C28-49 PR4, ADR-0047) : I/O pur (Drive REST +
+      // Sheet), jamais de LLM, AUCUNE mutation ⇒ budget TAIL, tourne même pendant un reset. PAS
+      // d'`etapeSuivie_` : le registre C28-44 est saturé (8 377/8 500 octets, ~199 par entrée) et
+      // une 43ᵉ clé ferait échouer son tripwire de plafond (le flush, lui, dégrade proprement) — la
+      // campagne se rend donc visible par sa ligne
+      // Santé et son onglet `RapportDoublons` (ADR-0047 §6). Enveloppée : un échec ne bloque rien.
+      try { majValidationDoublons_(estBudgetDepasseStandard); }
+      catch (e) { journalErreur_('Doublons', 'Validation des doublons impossible : ' + e); }
       // La rotation (deleteRows en lot, 10-30 s) est REPORTÉE si le tick a déjà consommé son
       // garde-temps standard : elle est en toute fin de `finally`, donc c'est elle qui franchirait
       // le mur des 6 min (revue #229). Aucun coût à attendre le tick suivant.
