@@ -39,7 +39,40 @@ particuliers :
    XTB → placements, DPA Immeubles MA8 → le logement, CFE → santé). Les dossiers-années se vident
    pour de bon. ⚠️ Contrainte du projet : réutiliser **la même règle de routage que le flux vivant**
    (leçon §7 « une seule règle, deux consommateurs ») — jamais une seconde formule parallèle.
-8. **Non tranché : les 39 de « employeurs & CV »** — à instruire sur preuves avant de questionner.
+8. ~~Non tranché : les 39 de « employeurs & CV »~~ — **instruits le 20/08**, décisions 9 à 12.
+
+### Les 39 de « employeurs & CV » — 5 familles, 4 décisions (20/08)
+
+Les 3 sources de la mission (`Employeurs/Robovic`, `Employeurs/Automatech`, racine 05) ont été
+lues. Les refus viennent de `sousDossierEmployeur_`, qui ne connaît que 4 types (Contrats,
+Attestations & lettres, Formulaires, Évaluations), et de `employeurDuNom_` quand l'employeur n'a
+pas de dossier.
+
+9. **« Relevé_<employeur> » sans numéro = relevé de PAIE mensuel** → `02 · Revenus & paie/<employeur>`.
+   Cause du blocage : `estTypePaieReset_` ne matche que `paie|paye|salaire` et
+   `estFeuilletFiscalReset_` est ANCRÉ sur le nombre (`relevé 1|31`) — « Relevé » seul ne matchait
+   rien. La cadence MENSUELLE des fichiers (2023-04, 05, 07, 08 ; 2025-01) confirme la décision de
+   Marc : un RL-1 serait annuel. ⚠️ Élargir `estTypePaieReset_` à « relevé » nu serait DANGEREUX
+   (un relevé bancaire n'est pas une paie) : la règle doit exiger un EMPLOYEUR connu, ce que le
+   routeur carrière garantit déjà (`if (!employeur) return null` en amont).
+10. **Recrutement → dossier « Recherche d'emploi » RECRÉÉ sous 05** (offres d'emploi, invitations
+    d'entretien, descriptions de rôle, listes d'entreprises cibles, comparatifs de grilles).
+    ⚠️ **Conséquence à livrer dans le MÊME geste** : la mission `carriere` dissout aujourd'hui
+    `Recherche d'emploi` vers `CV & lettres` (`IDS.rechercheEmploi` en source, `sourcesJetables`).
+    Garder les deux, c'est un PING-PONG garanti — la fusion doit être retirée. Marc a été averti du
+    conflit et a confirmé son choix.
+11. **Employeur sans dossier → « Autres employeurs » commun** (Algopaie, Silver Crest,
+    Trajectoire-Emploi, Lilly France, Grant Thornton…), plutôt qu'un dossier par nom à un seul
+    fichier. Les PAIES continuent de partir en 02 quel que soit l'employeur (décision 9 + le
+    domicile unique des paies).
+12. **Documentation MÉTIER → `_Technique`** (bon de livraison SEW-EURODRIVE, rapport de maintenance
+    d'un robot convoyeur, plaque signalétique Rockwell, supports de cours, évaluation de
+    performance 2016) : ce n'est pas de l'administratif de carrière.
+
+**Restent hors périmètre, volontairement** : 3 fichiers `.p7s` « Contrat_Me Justine Basilio »
+(1 448 octets — des signatures cryptographiques, pas des documents), à traiter avec la mission
+`_Technique`/`_Doublons` ; et tout ce qui toucherait `04 · Immigration`, jamais déplacé
+automatiquement (§2).
 
 ## 3. Conséquences
 
@@ -50,5 +83,8 @@ particuliers :
   n'y est plus, donc rien ne sera re-déplacé.
 - Décision 7 fait SORTIR des documents de `02 · Finances` : c'est un mouvement inter-domaines,
   assumé et demandé. Les gardes §2 (zone protégée `04`, aucune suppression) restent entières.
-- Découpage livré : **PR1** = décisions 2/3/4 + bump (le plus fort levier, le plus faible risque) ;
-  **PR2** = décision 6 ; **PR3** = décision 7 ; **PR4** = instruire les 39 de 05 puis questionner.
+- Découpage : **PR1** (livrée) = décisions 2/3/4 + bump ; **PR2** = décisions 9/10/11/12 (les 39 de
+  05 — dont le RETRAIT de la fusion `Recherche d'emploi` → `CV & lettres`, indissociable de la
+  décision 10) ; **PR3** = décision 6 (Modèles & formulaires) ; **PR4** = décision 7 (dossiers-années).
+- Chaque PR qui touche une règle **bumpe à nouveau** `MISSIONS_REGLES_VERSION` : sans cela son
+  affinage reste sans effet sur les refus déjà keyés.
