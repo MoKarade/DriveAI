@@ -479,3 +479,29 @@ test('compteurFilsJour_ : la valeur ne vaut que si la date persistée est AUJOUR
     'rollover : le compteur de la veille ne s\'affiche jamais comme celui du jour');
   assert.strictEqual(c.compteurFilsJour_(props({}), 'X', '2026/07/15'), 0);
 });
+
+test('colonnesAvancement : une mission CONVERGÉE à reliquat n\'annonce JAMAIS de date (retour Marc 20/08)', () => {
+  const c = ctxJournal();
+  const maintenant = 1755000000000;
+  const etat = etatVierge(c);
+  // Cas RÉEL vu par Marc : « Mission — véhicules … à jour … Fin estimée : reste 48 fichiers ·
+  // ~92 j · vers le 20/11 ». La mission a FINI son passage ; ses 48 non-appariés sont des REFUS
+  // versionnés qui attendent une décision de Marc, pas du temps machine. Extrapoler le débit
+  // PASSÉ annonçait une date que rien ne produira — même mensonge que la pause (C28-47).
+  etat.missions = { vehicule: { traites: 6, base: 54, nonApparies: 48, termine: true } };
+  const debits = { 'mission-vehicule': { t0: maintenant - 72 * 3600000, ts: maintenant, n: 6, r: 0.08, dn: 2, dts: maintenant - 48 * 3600000 } };
+  const l = lignesAvancement(c, etat, maintenant, debits).find((x) => x[0] === 'mission-vehicule');
+  assert.strictEqual(l[5], 'à jour (48 non apparié(s))');
+  assert.ok(/reste 48 fichiers/.test(l[12]), 'le RESTE reste dit : ' + l[12]);
+  assert.ok(!/vers le/.test(l[12]) && !/~\d/.test(l[12]),
+    'ni date ni horizon sur un débit MORT : ' + l[12]);
+  assert.ok(/affinage des règles/.test(l[12]),
+    'on dit ce qui débloque réellement, pas une date : ' + l[12]);
+
+  // Contre-épreuve : la MÊME mission NON convergée garde bien son horizon (le garde ne doit pas
+  // éteindre l'estimation des campagnes qui, elles, avancent).
+  const etat2 = etatVierge(c);
+  etat2.missions = { vehicule: { traites: 6, base: 54, nonApparies: 0, termine: false } };
+  const l2 = lignesAvancement(c, etat2, maintenant, debits).find((x) => x[0] === 'mission-vehicule');
+  assert.ok(/vers le \d{2}\/\d{2}/.test(l2[12]), 'une mission qui AVANCE garde sa date : ' + l2[12]);
+});
