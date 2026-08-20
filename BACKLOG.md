@@ -715,6 +715,16 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
   Conséquence cosmétique du skip `epingle|` ajouté en C28-65 : le message est trompeur, jamais
   dangereux (la peinture rouge, elle, exige la vacuité stricte).
 
+- 🟦 **C28-73 — Drainer `Documents ID` (15 fichiers) PAR LE PIPELINE, + le type `NAS` (ADR-0048).**
+  Décision de Marc du 20/08 : « tout drainer vers `Pièces d'identité` ». ⚠️ **Un simple `moveTo` serait
+  DÉFAIT** : aucun des 15 noms n'est au format canonique, donc `cheminCibleConsolidation_` les cible à
+  la RACINE de `01` — la consolidation (active, récursive) viderait les passeports à plat dès le tick
+  suivant. Mesuré avant d'écrire le code. Le drainage passe donc par `traiterDocument_` (OCR → LLM →
+  nommage canonique → placement), patron `Migration.gs`, avec `ignorerDoublon: true` OBLIGATOIRE
+  (deux fichiers ont un contenu déjà à l'Index — sans le bypass ils partiraient dans `_Doublons`).
+  ~0,39 $ one-shot. `NAS` se livre dans le MÊME commit côté `TYPES_IDENTITE` (Router) **et** côté
+  table (`cheminCibleReset_`, branche 01) : sans les deux, un NAS canoniquement nommé irait au repli.
+
 - ⬜ **C28-69 — `_Médias` : trois rétrogradations qui démentent la promesse de C20-01.** Constaté en
   listant `_Médias` en ENTIER (1 308 fichiers) le 2026-08-20. C20-01 promet « exception zone
   protégée/sensible : jamais rétrogradée » ; ces trois-là y sont quand même :

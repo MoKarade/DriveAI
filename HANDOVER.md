@@ -58,6 +58,19 @@
 > anti-tautologie (on assert d'abord que la table REFUSE le nom).
 > **La mission identité (PR3) peut donc bien réutiliser la règle du flux : celle-ci EST la table.**
 
+> **➜ PROCHAIN CHANTIER — C28-73, drainage de `Documents ID` (ADR-0048).** Décisions de Marc du
+> 20/08 obtenues (4 questions). Le fait qui commande la conception, mesuré AVANT tout code : les 15
+> noms hérités ne sont pas canoniques, donc `cheminCibleConsolidation_` les cible à la **racine de
+> `01`** — un simple déplacement vers `Pièces d'identité/Marc` serait défait au tick suivant par la
+> consolidation, et les passeports finiraient à plat. Le drainage passe donc par `traiterDocument_`
+> (renommage + classement), avec `ignorerDoublon: true` obligatoire. ~0,39 $. `NAS` se livre en même
+> temps, des DEUX côtés (types + table).
+>
+> **Orphelins de `_Doublons` : Marc a choisi « tout rapatrier, quel que soit le prix ».** Le compte
+> réel change l'ordre de grandeur — au dernier relevé, **1 076 inventoriés, 1 054 déjà confirmés**,
+> donc **au plus 22 candidats**, soit moins d'un euro, pas les 28 $ annoncés. Attendre la clôture
+> (deux passes) avant d'agir.
+
 > **🎯 CHANTIER PRÉCÉDENT — C28-62 « Affinage des non-appariés » (ADR-0044) : TERMINÉ.**
 > Les 4 PR sont mergées (#300, #304, #305) et **#307** (C28-65) l'est aussi, déployé à 15:32 EDT.
 > ⚠️ **L'effet de #305 et #307 n'est PAS encore observable en prod** : toutes les missions sont
