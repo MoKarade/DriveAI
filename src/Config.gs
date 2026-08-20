@@ -826,7 +826,7 @@ var CONFIG = {
   MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions
   // c49-3 (ADR-0044 §4, véhicules) puis c49-4 (§5, les 39 de « employeurs & CV ») — l'historique
   // inline s'arrêtait à c49-2 alors que la valeur avait bougé deux fois (revue code PR2).
-  MISSIONS_REGLES_VERSION: 'c49-6',       // DANS la clé d'idempotence : un refus (non apparié) se fige
+  MISSIONS_REGLES_VERSION: 'c49-7',       // DANS la clé d'idempotence : un refus (non apparié) se fige
                                           // sous CETTE version — affiner les règles = bump ⇒ ré-évaluation
                                           // (leçon C28-33 « verdict négatif révisable, jamais figé à vie »)
                                           // c49-2 (C28-51, ADR-0040) : tables bailleurs + véhicules,
@@ -918,6 +918,31 @@ var CONFIG = {
   // toute modification exige de bumper MISSIONS_REGLES_VERSION (ré-évaluer les refus keyés), et
   // RESET_TABLE_VERSION aussi si la campagne reset est relancée un jour (RESET_ACTIF).
   // Bornée ≤ 7 par test (enfants dynamiques de « Revenus & paie », jumeau RESET_PERSONNES_AUTRES).
+  // ===== CORRECTIONS MANUELLES (C28-65) — « remets ces fichiers-là à cet endroit-là ».
+  // Le seul mécanisme du projet qui déplace par IDENTITÉ plutôt que par règle. Il existe parce
+  // qu'une règle ne peut PAS tout couvrir : sur les 4 conversations que la mission véhicule a
+  // emportées à tort, 2 ne portent aucun mot de logement dans leur nom — seulement un nom de
+  // personne. Marc SAIT de quoi elles parlent, le moteur non ; sa décision est donc déclarée ici,
+  // fichier par fichier, avec la raison.
+  // ⚠️ Ce mécanisme n'est PAS une porte dérobée : `moveTo` seul (jamais de suppression), zone
+  // protégée re-vérifiée à la SOURCE **et** à la CIBLE avant chaque mutation, clé d'idempotence
+  // par fichier, et un tag one-shot. Ajouter une entrée = une décision de Marc, jamais une
+  // inférence — sinon c'est du classement déguisé, qui échappe à toutes les règles testées.
+  CORRECTIONS_MANUELLES_TAG: 'corr-1',
+  CORRECTIONS_MANUELLES: [
+    // Les 4 conversations avec le propriétaire, parties dans « Véhicule/Recherche & achat » parce
+    // qu'elles dormaient déjà dans « Véhicules/Recherche & achat » (décision Marc 2026-08-20 :
+    // → `03 · Logement & véhicule/Correspondance`).
+    { id: '17Gf1yX78UtMy0j3TGmbO_INdK0-Qt9ke', cible: '14qrPCSHsSLMT2XSJm1h6HOHGXNehx5uL',
+      quoi: 'SMS proprio — fuite bec de bain, plombier, visite appartement' },
+    { id: '1jIzjQsYG4_gUWlOeyWRry6vgUm_3zoC5', cible: '14qrPCSHsSLMT2XSJm1h6HOHGXNehx5uL',
+      quoi: 'SMS propriétaire — visite appartement, coupure internet' },
+    { id: '1Yo14JYvC2zZVtyClezx4F7PfDFQgwaL5', cible: '14qrPCSHsSLMT2XSJm1h6HOHGXNehx5uL',
+      quoi: 'Conversation Jean-Paul Vereecque (aucun mot de logement dans le nom)' },
+    { id: '1VnMqOrK304tRUL2gsHim2TZEuWA7z3cd', cible: '14qrPCSHsSLMT2XSJm1h6HOHGXNehx5uL',
+      quoi: 'Conversation Véronique Proulx (aucun mot de logement dans le nom)' },
+  ],
+
   // (ADR-0044 §7, décision 7) Les « dossiers-années » de 02 ne sont PAS fiscaux : ce sont des
   // fourre-tout. Chaque non-fiscal part vers son VRAI domaine. Cette table ne choisit QUE le
   // DOMAINE — le SOUS-CHEMIN est calculé par `cheminCibleReset_`, LA règle du flux vivant (contrainte

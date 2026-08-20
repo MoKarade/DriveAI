@@ -81,6 +81,10 @@ function tableMissions_() {
         if (vehicule) {
           return { cibleParentId: IDS.vehiculeCible, cibleNom: vehicule, sousDossier: categorie };
         }
+        // 🔴 VETO LOGEMENT (C28-65) — AVANT le raccourci par nom de sous-dossier, qui est
+        // précisément celui qui a emporté 4 conversations de propriétaire vers
+        // « Véhicule/Recherche & achat ». Le dossier source ne fait plus foi contre le document.
+        if (estDocumentLogement_(nom)) return null; // refus keyé, donc RÉVISABLE
         // Le sous-dossier source porte le NOM d'un commun, et aucun véhicule n'est nommé.
         var communNom = communVehiculeDepuisSource_(info.sousChemin, true);
         if (communNom) return { cibleParentId: IDS.vehiculeCible, cibleNom: communNom, sousDossier: '' };
@@ -815,6 +819,40 @@ function estReleveDePaie_(type) {
 }
 
 /**
+ * Vrai si le nom parle de LOGEMENT (ADR-0044, correctif C28-65). PURE (testée).
+ *
+ * Sert de VETO dans la mission véhicule : « Véhicules » n'est pas un dossier pur — Marc y avait
+ * lui-même rangé des conversations avec son propriétaire, et le raccourci « le sous-dossier source
+ * fait foi » les a suivies jusqu'à `Véhicule/Recherche & achat`, à clé de SUCCÈS donc
+ * définitivement. Une règle qui route PAR DOSSIER SOURCE hérite des erreurs de rangement de la
+ * source : elle doit céder devant un indice tiré du DOCUMENT.
+ *
+ * ⚠️ PORTÉE LIMITÉE, dite honnêtement : sur les 4 fichiers réels, 2 ne portent AUCUN mot de
+ * logement (« Capture d'écran de message_Jean-Paul Vereecque ») — seulement un nom de personne.
+ * Aucune règle ne peut les reconnaître ; ils passent par `CONFIG.CORRECTIONS_MANUELLES`.
+ * @param {string} nom @return {boolean}
+ */
+// SÛRS : aucun sens automobile. AMBIGUS : au Québec « bail » et « loyer » sont le vocabulaire
+// STANDARD d'une location longue durée de voiture, « propriétaire » est le mot de la SAAQ
+// (registre des véhicules), et « immeuble » apparaît dans l'adresse d'un assureur. Les opposer
+// sans réserve bloquait le rangement de vrais documents de véhicule (audit C28-65).
+var MISSIONS_MOTS_LOGEMENT = ['appartement', 'logement', 'locataire', 'plombier'];
+var MISSIONS_MOTS_LOGEMENT_AMBIGUS = ['proprio', 'proprietaire', 'bail', 'loyer', 'concierge',
+  'immeuble', 'immeubles'];
+function estDocumentLogement_(nom) {
+  var n = normaliserMission_(String(nom || '').replace(/^\d{4}-\d{2}(-\d{2})?/, ''));
+  var mots = n ? n.split(' ') : [];
+  var a = function (liste) {
+    for (var i = 0; i < mots.length; i++) if (liste.indexOf(mots[i]) !== -1) return true;
+    return false;
+  };
+  if (a(MISSIONS_MOTS_LOGEMENT)) return true;
+  // Un mot AMBIGU ne vaut véto que si RIEN dans le nom ne parle de véhicule — même arbitrage
+  // d'ambiguïté que pour les locations (`estLocationVehicule_`), au même endroit.
+  return a(MISSIONS_MOTS_LOGEMENT_AMBIGUS) && !a(MISSIONS_MOTS_VEHICULE);
+}
+
+/**
  * Vrai si le document est un MODÈLE / FORMULAIRE générique (ADR-0044 §6) — cible
  * `<domaine>/Modèles & formulaires`. PURE (testée), PARTAGÉE par le flux et `dispatch03`.
  *
@@ -1075,6 +1113,12 @@ function collecterMission_(sourceId, tag, garde, proteges, profondeurMax) {
     if (garde()) { coupe = true; return false; }
     var cle = cleMission_(tag, fichier.getId());
     if (indexContient_(cle)) return true; // déjà traité (succès OU refus versionné)
+    // ÉPINGLE (ADR-0026) : un fichier rangé À LA MAIN par Marc, ou par une correction manuelle,
+    // est IMMUNISÉ contre les campagnes de re-rangement — c'est déjà le cas de la consolidation,
+    // du reset et de la migration ; les missions l'ignoraient (audit C28-65). Sans ça, poser
+    // l'épingle ne protégeait de rien et `dispatch03` reprenait les fichiers corrigés au premier
+    // bump de version, pour les re-router par INFÉRENCE sur la date.
+    if (indexContient_('epingle|' + fichier.getId())) return true;
     items.push({ fichier: fichier, sousChemin: sousChemin, sourceId: sourceId });
     return true;
   };

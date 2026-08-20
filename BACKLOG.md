@@ -697,3 +697,20 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
   re-draine jamais. Le nettoyage de la décision 7 sera défait **en silence**. Trois issues dans
   ADR-0044 §7.5 — arbitrage de Marc (retirer 02 de `DOMAINES_PAR_ANNEE`, ou rendre la mission
   perpétuelle, ou re-bumper périodiquement).
+
+- ⬜ **C28-66 — Le véto logement est court-circuité quand le sous-dossier SOURCE nomme un véhicule.**
+  Trouvé par l'audit final de C28-65, prouvé par exécution : dans la mission véhicule, le véto est
+  placé APRÈS `if (vehicule)`, et `vehicule` accepte le CHEMIN source. Donc
+  `SMS proprio plombier.jpg` déposé sous `Véhicules/VW Jetta/` part dans `Véhicule/VW Jetta` malgré
+  le véto — à clé de succès. Le titre de C28-65 (« le dossier source ne fait plus foi contre le
+  document ») n'est vrai que contre le raccourci « commun par nom ». Défaut PRÉEXISTANT, hors §2
+  (déplacement mal placé, jamais une suppression). ⚠️ Le bump c49-7 ré-arme ce chemin pour tout ce
+  qui dort encore sous `Véhicules/<véhicule>/…`.
+- ⬜ **C28-67 — Un mot AMBIGU levant le véto peut contredire la règle partagée du flux.**
+  `Bail_Stationnement voiture 3325 4e avenue` : « bail » (ambigu) + « voiture » (générique) ⇒ véto
+  levé ⇒ `Véhicule/Recherche & achat`, alors que `cheminCibleReset_` répond
+  `Logement/3325 4e avenue`. Le filet `avisDuFlux` existe mais n'est consulté qu'APRÈS la branche
+  « commun par nom ». Remède : quand le nom porte un mot ambigu, interroger le flux AVANT.
+- ⬜ **C28-68 — Une mission peut se déclarer « TERMINÉE, sources vidées » alors qu'un ÉPINGLÉ y reste.**
+  Conséquence cosmétique du skip `epingle|` ajouté en C28-65 : le message est trompeur, jamais
+  dangereux (la peinture rouge, elle, exige la vacuité stricte).

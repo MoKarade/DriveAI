@@ -1074,3 +1074,99 @@ function terminerFusionDomaine07() {
     verrou.releaseLock();
   }
 }
+
+/* ================= Corrections manuelles (C28-65) ================= */
+
+/**
+ * Applique `CONFIG.CORRECTIONS_MANUELLES` : des déplacements décidés PAR MARC, fichier par fichier,
+ * là où aucune règle ne peut trancher (cf. le commentaire de la CONFIG). ONE-SHOT par tag.
+ *
+ * Gardes, dans cet ordre : budget (reprenable), clé d'idempotence par fichier, zone protégée
+ * re-vérifiée à la SOURCE **et** à la CIBLE (échec fermé), `moveTo` seul. Un échec par item
+ * n'arrête pas la boucle et ne pose pas la clé : il sera re-tenté, et le tag n'est figé « fait »
+ * que lorsque TOUT est consommé (sinon un blip Drive clôturerait la campagne à moitié).
+ * @param {function():boolean} estBudgetDepasse
+ */
+function appliquerCorrectionsManuelles_(estBudgetDepasse) {
+  var liste = CONFIG.CORRECTIONS_MANUELLES || [];
+  if (!liste.length) return;
+  var tag = String(CONFIG.CORRECTIONS_MANUELLES_TAG || '');
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DriveAI_CORR_FINI') === tag) return;
+
+  var proteges = ensembleDomainesProteges_();
+  var reste = 0, faits = 0;
+  for (var i = 0; i < liste.length; i++) {
+    if (estBudgetDepasse()) { reste++; continue; }
+    var c = liste[i];
+    var cle = 'corrmanuelle|' + tag + '|' + c.id;
+    try {
+      if (indexContient_(cle)) continue;
+      // 🔴 Marc l'a peut-être déjà rangé LUI-MÊME (épinglé via le chat) entre la décision et le
+      // déploiement. On ne défait JAMAIS son geste : sans ce test, la correction ré-aspirait le
+      // fichier qu'il venait de remettre en place, à clé de succès donc sans retour (audit §7).
+      if (indexContient_('epingle|' + c.id)) {
+        indexAjouter_(cle, { statut: 'corr-epingle', nom: c.quoi, domaine: '', chemin: '' }, '');
+        continue;
+      }
+      // ⚠️ La mutation est DÉLÉGUÉE à `appliquerDeplacerFichier_` (Reorg.gs), le déplacement par
+      // identité déjà en service pour le chat : il refuse une source DOSSIER (un ID de dossier se
+      // copie exactement comme un ID de fichier, et `moveTo` relogerait tout le sous-arbre), une
+      // source en zone protégée, une cible protégée / système / `_…` / `00 · À trier`, et il pose
+      // l'ÉPINGLE qui immunise le fichier contre les campagnes de re-rangement. Écrire un second
+      // chemin de mutation « presque pareil » était la faute que ce dépôt corrige partout ailleurs :
+      // une seule règle, deux consommateurs (audit sécurité C28-65).
+      // ⚠️ Un THROW de la fonction déléguée (« Access denied » permanent sur un partagé — panne
+      // RÉELLE documentée dans ce Drive) partait au catch externe, qui ne comptait rien : 288
+      // rejeux/jour à vie, `DriveAI_CORR_FINI` jamais posé — exactement ce que l'abandon borné
+      // ci-dessous prétend fermer (audit final). Converti en `échec` typé, il passe par la borne.
+      var r;
+      try { r = appliquerDeplacerFichier_({ source: c.id, cible: c.cible }, proteges); }
+      catch (eMove) { r = { statut: 'échec', detail: String(eMove) }; }
+      if (r.statut === 'appliqué') {
+        indexAjouter_(cle, { statut: 'corr', nom: c.quoi, domaine: '', chemin: '' }, '');
+        faits++;
+        continue;
+      }
+      if (String(r.statut).indexOf('refusé') === 0) {
+        // Refus MÉTIER (structure / zone protégée) : verdict sur le document, donc DÉFINITIF —
+        // inscrit sous la clé et tracé, pour ne pas re-tenter à l'infini.
+        journalErreur_('Corrections', 'REFUSÉ (' + r.detail + ') : ' + c.quoi);
+        indexAjouter_(cle, { statut: 'corr-refus', nom: c.quoi, domaine: '', chemin: '' }, '');
+        continue;
+      }
+      // `échec` = fichier ou cible introuvable/illisible : une PANNE de plateforme, jamais imputée
+      // au document (§9 « classer par ORIGINE avant de compter »). On RE-TENTE — mais borné, sinon
+      // un fichier supprimé par Marc ferait tourner la boucle 288×/jour à vie et chasserait
+      // l'historique du Journal en ~17 jours (audit §6).
+      var essais = 0;
+      try { essais = incrementerEchec_(cle); } catch (e2) { /* compteur indisponible : on re-tentera */ }
+      if (essais >= CONFIG.QUARANTAINE_MAX) {
+        journalErreur_('Corrections', 'ABANDON après ' + essais + ' essais (' + r.detail + ') : ' + c.quoi);
+        indexAjouter_(cle, { statut: 'corr-abandon', nom: c.quoi, domaine: '', chemin: '' }, '');
+        continue;
+      }
+      // Une ligne par essai (patron `Missions.gs`) : sans elle, une boucle qui ne converge pas
+      // serait à la fois infinie ET MUETTE — seul symptôme observable, l'absence de tag « fait ».
+      journalErreur_('Corrections', 'Correction différée (essai ' + essais + '/' +
+        CONFIG.QUARANTAINE_MAX + ', ' + r.detail + ') : ' + c.quoi);
+      reste++;
+    } catch (e) {
+      // Même borne ici : ce catch ne voit plus que les échecs d'ÉTAT (Index illisible…), mais un
+      // compteur nu suffirait à reproduire la boucle infinie que le correctif ci-dessus ferme.
+      var essaisE = 0;
+      try { essaisE = incrementerEchec_(cle); } catch (e3) { /* compteur indisponible */ }
+      if (essaisE >= CONFIG.QUARANTAINE_MAX) {
+        journalErreur_('Corrections', 'ABANDON après ' + essaisE + ' essais : ' + c.quoi + ' — ' + e);
+        try { indexAjouter_(cle, { statut: 'corr-abandon', nom: c.quoi, domaine: '', chemin: '' }, ''); }
+        catch (e4) { /* Index illisible : on re-tentera, la borne rejouera */ }
+        continue;
+      }
+      journalErreur_('Corrections', 'Correction différée (' + c.quoi + ') : ' + e);
+      reste++;
+    }
+  }
+  if (faits) journalInfo_('Corrections', faits + ' correction(s) manuelle(s) appliquée(s) (tag ' + tag + ').');
+  // « Fait » SEULEMENT quand tout est consommé — sinon un blip clôturerait la campagne à moitié.
+  if (!reste) props.setProperty('DriveAI_CORR_FINI', tag);
+}
