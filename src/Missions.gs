@@ -239,9 +239,13 @@ function tableMissions_() {
       sourcesJetables: [], // « Revenus & paie » est PÉRENNE : jamais peinte en rouge
     },
     {
-      // Employeurs/<X> (vrac plat) + racine 05 (ex-dump Automatech) + fusion Recherche d'emploi.
+      // Employeurs/<X> (vrac plat) + racine 05 (ex-dump Automatech).
+      // ⚠️ `IDS.rechercheEmploi` N'EST PLUS UNE SOURCE (ADR-0044 D10) : ce dossier était DISSOUS
+      // vers « CV & lettres ». Marc a demandé de le RECRÉER — le garder en source le viderait
+      // pendant que le routage le remplit (ping-pong). Retrait SYMÉTRIQUE : ici, dans
+      // `sourcesJetables`, dans le routeur, et dans la table du FLUX (`cheminCibleReset_`).
       tag: 'carriere', cle: 'mission-carriere',
-      sources: [IDS.employeursRobovic, IDS.employeursAutomatech, IDS.carriereRacine, IDS.rechercheEmploi],
+      sources: [IDS.employeursRobovic, IDS.employeursAutomatech, IDS.carriereRacine],
       // Racine 05 : SEULS ses fichiers à plat sont le périmètre — ses sous-dossiers (Employeurs,
       // CV & lettres, Réseaux…) sont des structures, jamais recollectés.
       profondeurPar: (function () { var m = {}; m[IDS.carriereRacine] = 0; return m; })(),
@@ -249,13 +253,29 @@ function tableMissions_() {
         var parSource = {};
         parSource[IDS.employeursRobovic] = 'Robovic';
         parSource[IDS.employeursAutomatech] = 'Automatech';
-        return { employeurParSource: parSource };
+        // `_Technique` est find-or-créé PAR NOM (Router.gs) : l'I/O vit ici, une fois par run,
+        // et le routeur reste PUR (patron du projet : fonction pure + wrapper I/O).
+        // ⚠️ L'échec est porté PAR ITEM, jamais par la passe (2 revues successives sur ce point) :
+        //  - un `catch` qui rend '' puis un routeur qui rend `null` inscrirait un REFUS keyé sous
+        //    la version : les 6 documents métier écartés jusqu'au prochain bump, pour une panne
+        //    TRANSITOIRE (« classer les échecs par ORIGINE avant de compter ») ;
+        //  - laisser propager ICI avorterait la passe ENTIÈRE, privant les ~33 autres documents
+        //    de leur traitement à chaque tick, hors de tout filet de comptage.
+        // D'où : on retient l'échec, et le routeur LÈVE au seul item qui a besoin de `_Technique`.
+        // `traiterItemMission_` traduit ce throw en 'transitoire' — borné, aucune clé posée, les
+        // autres items continuent (« un échec PAR ITEM ne partage jamais le drapeau de la BOUCLE »).
+        var technique = '';
+        try { technique = dossierTechnique_().getId(); } catch (e) { technique = ''; }
+        return { employeurParSource: parSource, techniqueId: technique };
       },
       router: function (nom, info, ctx) { return routerCarriere_(nom, info, ctx); },
       // Employeurs/<X> et la racine 05 sont PÉRENNES (revue quotas PR2 : peindre un sous-dossier
       // de structure momentanément vide dirait « supprimable » à tort) ; seule la source de la
       // FUSION est jetable.
-      sourcesJetables: [IDS.rechercheEmploi],
+      // Plus AUCUNE source jetable : `Recherche d'emploi` est redevenu une CIBLE (ADR-0044 D10),
+      // et « Employeurs/<X> »/racine 05 sont PÉRENNES (peindre en rouge un dossier de structure
+      // momentanément vide dirait « supprimable » à tort).
+      sourcesJetables: [],
     },
     {
       // Les 12 dossiers-années de 02 → les bons sous-dossiers thématiques (table type → cible).
@@ -616,18 +636,115 @@ function routerFinance02_(nom, anneeSource) {
   return null;
 }
 
+/**
+ * Employeur OCCASIONNEL (sans dossier à lui) reconnu dans le nom — `MISSIONS_EMPLOYEURS_AUTRES`,
+ * MOT ENTIER, préfixe de date retiré. PURE (testée). Rend le NOM de l'employeur, pas la cible :
+ * la cible est le commun `MISSIONS_EMPLOYEURS_COMMUN` (ADR-0044 D11).
+ * @param {string} nom @return {?string}
+ */
+function employeurAutreDuNom_(nom) {
+  var cibles = (CONFIG.MISSIONS_EMPLOYEURS_AUTRES || []).map(function (e) {
+    return { nom: e.nom, id: e.nom, jetons: e.jetons };
+  });
+  var c = apparierUnique_(nom, cibles);
+  return c ? c.nom : null;
+}
+
+/**
+ * Vrai si le document relève du RECRUTEMENT (ADR-0044 D10) — cible `05/Recherche d'emploi`.
+ * PURE (testée), PARTAGÉE par la mission carrière ET la table du flux (`cheminCibleReset_`) :
+ * deux formules écrites séparément divergent toujours (leçon C28-26).
+ *
+ * Prédicats ÉTROITS, calibrés sur les fichiers RÉELS :
+ *  - « offre » SEUL ne suffit pas (une « offre de service » n'est pas une offre d'emploi) ;
+ *  - « entretien » SEUL est un piège avéré (« Entretien & réparations » est une catégorie
+ *    VÉHICULE) : on exige « invitation » ;
+ *  - « fiche comparative » est trop générique pour porter un déplacement DÉFINITIF : la règle
+ *    s'appuie sur le nom complet et exige un mot de SALAIRE (cas réel : « Comparatif grilles
+ *    salariales SPVQ et SQ police »).
+ * @param {string} type  segment TYPE normalisé
+ * @param {string} nom   nom complet (pour les cas qui ont besoin du contexte)
+ * @return {boolean}
+ */
+function estTypeRecrutement_(type, nom) {
+  // ⚠️ NORMALISE ICI, jamais chez l'appelant : les deux consommateurs n'appliquent PAS la même
+  // normalisation en amont (la mission passe par `normaliserMission_`, qui ramène toute
+  // ponctuation à un espace ; le flux par `normaliserCle_`, qui GARDE les traits d'union). Sans
+  // ça, « Liste d'entreprises-cibles » était du recrutement pour la mission et rien pour le flux
+  // — une seule règle, deux entrées, donc deux verdicts (revue structure C28-62 PR2 ; c'est la
+  // graine exacte de la leçon C28-26). Normaliser au SEUL point qui décide rend les appelants
+  // indifférents.
+  var t = ' ' + normaliserMission_(type) + ' ';
+  var a = function (mot) { return t.indexOf(' ' + mot + ' ') !== -1; };
+  // MRic = la SCI de Marc : sa prospection est COMMERCIALE, pas une recherche d'emploi.
+  if (apparierUnique_(nom, [{ nom: 'mric', id: 'mric', jetons: ['mric', 'm ric'] }])) return false;
+  if (a('offre') && a('emploi')) return true;
+  if (a('invitation') && (a('entretien') || a('entrevue'))) return true;
+  if (t.indexOf('description de role') !== -1) return true;
+  if (t.indexOf('liste de prospection') !== -1) return true;
+  if (t.indexOf('formulaire de reclassement') !== -1) return true;
+  if ((a('liste') || a('repertoire')) && a('entreprises')) return true;
+  if (t.indexOf('comparative') !== -1 || t.indexOf('comparatif') !== -1) {
+    return normaliserMission_(nom).indexOf('salarial') !== -1;
+  }
+  return false;
+}
+
+/**
+ * Vrai si le document est de la DOCUMENTATION MÉTIER (ADR-0044 D12) — cible `_Technique`.
+ * PURE (testée). ⚠️ « évaluation de performance » n'y figure PAS, bien que Marc l'ait citée :
+ * ce type entre en collision frontale avec `sousDossierEmployeur_`, qui range les ÉVALUATIONS
+ * dans le dossier de l'employeur. Une vraie évaluation RH partirait dans le fourre-tout technique
+ * — le fichier visé (un artefact de migration de 2016) reste REFUSÉ, donc révisable (ADR §5.2).
+ * @param {string} type  segment TYPE normalisé @return {boolean}
+ */
+function estDocumentationMetier_(type) {
+  var t = String(type || '');
+  return t.indexOf('bon de livraison') !== -1 || t.indexOf('plaque signaletique') !== -1 ||
+    t.indexOf('rapport de maintenance') !== -1 || t.indexOf('rapport de service') !== -1 ||
+    t.indexOf('support de cours') !== -1;
+}
+
+/**
+ * Vrai si le TYPE est un RELEVÉ DE PAIE mensuel (ADR-0044 D9). PURE (testée).
+ * ⚠️ Prédicat ÉTROIT, et il DOIT l'être : « relevé » nu couvre aussi les relevés BANCAIRES. On
+ * exige le type « relevé », NI feuillet fiscal (RL-1/RL-31 sont ANNUELS, `estFeuilletFiscalReset_`
+ * est ancré sur le nombre), NI RIB. L'appelant garantit en plus un EMPLOYEUR connu — c'est cette
+ * garantie qui rend la règle sûre, jamais le type seul.
+ * @param {string} type  segment TYPE normalisé @return {boolean}
+ */
+function estReleveDePaie_(type) {
+  var t = normaliserMission_(type); // normalise ICI : deux consommateurs, deux normalisations amont
+  if (estFeuilletFiscalReset_(t) || estRibReset_(t)) return false;
+  // 🔴 Un relevé QUALIFIÉ n'est PAS une paie (revue code C28-62 PR2). Sans cette deny-list,
+  // « Relevé d'emploi » (le ROE, remis par TOUT employeur québécois en fin de contrat — donc
+  // très plausible dans `Employeurs/Automatech`) partait en `02/Revenus & paie`, alors que
+  // `Reset.gs` porte la décision INVERSE noir sur blanc : « c'est un document de CARRIÈRE (05),
+  // à trancher avec Marc s'il s'en présente ». Le code contredisait son propre commentaire.
+  // Idem « relevé de notes » (études) et « relevé de compte » (banque). Le déplacement est à clé
+  // de SUCCÈS : dans le doute, on REFUSE.
+  if (/(^| )releve (d |de |des )/.test(t)) return false;
+  return typeContient_(t, ['releve', 'releves']);
+}
+
 /** Sous-dossier d'« Employeurs/<X> » par TYPE (table explicite — type inconnu ⇒ ''). PURE. */
 function sousDossierEmployeur_(typeNormalise) {
-  if (typeContient_(typeNormalise, ['contrat', 'contrats'])) return 'Contrats';
-  if (typeContient_(typeNormalise, ['attestation', 'attestations', 'lettre'])) return 'Attestations & lettres';
-  if (typeContient_(typeNormalise, ['formulaire', 'formulaires', 'autorisation'])) return 'Formulaires';
-  if (typeContient_(typeNormalise, ['evaluation', 'evaluations'])) return 'Évaluations';
+  // Normalise ICI : depuis cette PR le flux (`cheminCibleReset_`) en est un 2ᵉ consommateur, et il
+  // n'applique pas la même normalisation amont (`normaliserCle_` GARDE les traits d'union). Sans
+  // ça, « Attestation-employeur » rendait '' côté flux et « Attestations & lettres » côté mission
+  // — une divergence de cible, donc un « Déplacer » de la consolidation (revue code C28-62 PR2).
+  // La dimension VISIBLEMENT mutualisée (`estTypeRecrutement_`) est celle qui endort la revue :
+  // c'est le prédicat VOISIN, consommé par la même décision, qui manquait.
+  var typeNorm = normaliserMission_(typeNormalise); // idempotent pour l'appelant mission
+  if (typeContient_(typeNorm, ['contrat', 'contrats'])) return 'Contrats';
+  if (typeContient_(typeNorm, ['attestation', 'attestations', 'lettre'])) return 'Attestations & lettres';
+  if (typeContient_(typeNorm, ['formulaire', 'formulaires', 'autorisation'])) return 'Formulaires';
+  if (typeContient_(typeNorm, ['evaluation', 'evaluations'])) return 'Évaluations';
   return '';
 }
 
 /**
  * Routage de la mission CARRIÈRE. PURE (testée). Par source :
- *  - `Recherche d'emploi` → fusion EN BLOC vers « CV & lettres » (segment préservé) ;
  *  - `Employeurs/<X>` : une PAIE part vers 02/« Revenus & paie »/<X> (le domicile UNIQUE des
  *    paies — décision Marc) ; un type de la table → sous-dossier ; type inconnu → refus (laissé
  *    à plat + rapporté, jamais deviné) ;
@@ -636,23 +753,40 @@ function sousDossierEmployeur_(typeNormalise) {
  */
 function routerCarriere_(nom, info, ctx) {
   var IDS = CONFIG.MISSIONS_IDS;
-  if (info.sourceId === IDS.rechercheEmploi) {
-    return { cibleId: IDS.cvLettres, sousDossier: info.sousChemin };
-  }
   var type = typeDuNomMission_(nom);
+  // (ADR-0044 D10) RECRUTEMENT → « Recherche d'emploi ». AVANT l'employeur : une offre d'emploi
+  // d'Automatech est du recrutement, pas un document d'employeur. Et AVANT
+  // `sousDossierEmployeur_`, qui rangerait « Formulaire de reclassement » dans « Formulaires ».
+  if (estTypeRecrutement_(type, nom)) return { cibleId: IDS.rechercheEmploi };
+  // (ADR-0044 D12) DOCUMENTATION MÉTIER → `_Technique` (hors domaines). Si le dossier n'a pas pu
+  // être résolu, on REFUSE (révisable) plutôt que de router vers une cible vide.
+  if (estDocumentationMetier_(type)) {
+    // LÈVE au lieu de rendre `null` : un refus serait keyé sous la version (définitif jusqu'au
+    // prochain bump) pour une panne de plateforme. Le throw devient 'transitoire' par item.
+    if (!ctx.techniqueId) throw new Error('_Technique indisponible — re-tenté au prochain run');
+    return { cibleId: ctx.techniqueId };
+  }
   var employeur = (ctx.employeurParSource || {})[info.sourceId] || employeurDuNom_(nom);
   if (typeContient_(type, ['cv', 'curriculum', 'motivation'])) {
     return { cibleId: IDS.cvLettres };
   }
-  if (!employeur) return null;
-  // Prédicat PARTAGÉ avec le flux (« salaire » compris — revue finale PR2) : le domicile UNIQUE
-  // des paies est 02, quelle que soit la graphie du type.
-  if (estTypePaieReset_(type)) {
-    return { cibleParentId: IDS.revenusPaie, cibleNom: employeur };
+  // (ADR-0044 D11) Employeur OCCASIONNEL, sans dossier à lui → le commun, des deux côtés.
+  var employeurAutre = employeur ? null : employeurAutreDuNom_(nom);
+  if (!employeur && !employeurAutre) return null;
+  // Prédicat PARTAGÉ avec le flux (« salaire » compris) : le domicile UNIQUE des paies est 02,
+  // quelle que soit la graphie du type. (ADR-0044 D9) un « Relevé_<employeur> » SANS numéro est
+  // une paie MENSUELLE — sûr uniquement parce qu'un employeur est déjà garanti ci-dessus.
+  if (estTypePaieReset_(type) || estReleveDePaie_(type)) {
+    return { cibleParentId: IDS.revenusPaie,
+      cibleNom: employeur || CONFIG.MISSIONS_EMPLOYEURS_COMMUN };
+  }
+  if (employeurAutre) {
+    return { cibleParentId: IDS.employeurs05, cibleNom: CONFIG.MISSIONS_EMPLOYEURS_COMMUN,
+      sousDossier: sousDossierEmployeur_(type) };
   }
   var dossierEmployeur = employeur === 'Robovic' ? IDS.employeursRobovic
     : employeur === 'Automatech' ? IDS.employeursAutomatech : null;
-  if (!dossierEmployeur) return null; // employeur sans dossier sous 05 (ex. CIUSSS) : on ne crée pas
+  if (!dossierEmployeur) return null; // employeur CANONIQUE sans dossier sous 05 (CIUSSS) : on ne crée pas
   var sous = sousDossierEmployeur_(type);
   // Depuis la RACINE 05, un type inconnu mais un employeur SÛR va au moins dans son dossier (à
   // plat) — c'est l'enrichissement demandé (le dump ex-Automatech re-rangé). DEPUIS Employeurs/<X>

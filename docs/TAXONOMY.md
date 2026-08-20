@@ -20,7 +20,7 @@ INTERDIT » **ne vaut plus** — la prod range désormais dans `Relevés/`, `Re�
 | `02 · Finances` | Banques · Relevés · Reçus & factures · Impôts & déclarations · Assurances & prévoyance · Placements & crypto · **Revenus & paie** | **0 — PLEIN** |
 | `03 · Logement & véhicule` | **Logement** (5 adresses aux noms RÉELS Drive) · **Véhicule** (Toyota bZ · Ford Fiesta · VW Jetta, chacun avec {Contraventions · Assurance auto · Entretien & réparations · Recherche & achat}) **+ 3 dossiers COMMUNS au même niveau que les véhicules — `Recherche & achat` (magasinage sans véhicule identifié, dont l'ex-« KIA »), `Locations` (voiture louée, jamais un véhicule de Marc) et `À attribuer` (aucun véhicule identifiable — ADR-0044)** · Énergie & services · Assurance habitation · Contrats · Correspondance | 1 |
 | `04 · Immigration` | IRCC (fédéral) · MIFI (Québec) · Permis de travail & EIMT · Résidence permanente · Formulaires & correspondance | 2 |
-| `05 · Carrière` | Employeurs · Alternance & stages · CV & lettres (+ Candidatures · Suivi · Archive 2021-2025) · Entreprise — MRic (SCI) · Formation & bilans · Réseaux & présentations | 1 |
+| `05 · Carrière` | **Employeurs** (Robovic · Automatech · **Autres employeurs** — commun des employeurs occasionnels, ADR-0044 D11) · Alternance & stages · CV & lettres (+ Candidatures · Suivi · Archive 2021-2025) · **Recherche d'emploi** (recrutement reçu : offres, invitations d'entretien, descriptions de rôle, listes d'entreprises cibles — **RECRÉÉ par ADR-0044 D10, qui révoque la fusion du 2026-08-17 vers « CV & lettres »**) · Entreprise — MRic (SCI) · Formation & bilans · Réseaux & présentations | 0 — PLEIN |
 | `06 · Études & diplômes` | 5 écoles + Autres établissements + Diplômes & relevés officiels | 0 |
 | `07 · Santé` | Médecins & consultations · Hôpitaux & centres · Assurances santé · Factures & reçus · Examens & résultats · Médecine scolaire & travail | 1 |
 | `08 · Perso & projets` | Projets · Écrits & rédactions · Schémas & technique · Photos & loisirs · Notes · Données & exports | 1 |
@@ -39,10 +39,16 @@ sont formellement des « dossiers par émetteur » (interdits par la règle de g
 **exception voulue et bornée** — table canonique validée par Marc (« un sous-dossier par
 employeur »), jamais un dossier au premier émetteur venu.
 
-**Fusion « Recherche d'emploi » → « CV & lettres » (décision Marc 2026-08-17, ADR-0039 §7)** : le
-nœud a été RETIRÉ de la table (verrou d'absence testé) — la mission `carriere` vide le dossier
-Drive et le peint en rouge une fois vide ; ses enfants {Candidatures, Suivi, Archive 2021-2025}
-vivent désormais sous `CV & lettres`.
+**~~Fusion « Recherche d'emploi » → « CV & lettres »~~ — RÉVOQUÉE (ADR-0044 D10, décision Marc
+2026-08-20).** Marc a demandé de RECRÉER le dossier, averti que les deux ne peuvent pas coexister.
+Partage désormais en vigueur : `Recherche d'emploi` = le recrutement **reçu** (offres, invitations
+d'entretien, descriptions de rôle, listes d'entreprises cibles, comparatifs de grilles salariales) ;
+`CV & lettres` = ce que **Marc a produit ou envoyé** (CV, lettres de motivation, candidatures), avec
+ses enfants {Candidatures, Suivi, Archive 2021-2025}.
+⚠️ Le geste est **SYMÉTRIQUE ou il ne vaut rien** : nœud re-déclaré dans la table, mission qui cesse
+de dissoudre le dossier (plus une source, ni jetable), et FLUX qui route le recrutement vers lui —
+le même prédicat pur (`estTypeRecrutement_`) servant les deux consommateurs. Les 3 faces sont
+assertées par un seul test ; en retirer une fait échouer la CI (prouvé par mutation).
 
 ### Règles d'arbitrage entre domaines (à appliquer en cas de doute)
 
@@ -225,7 +231,9 @@ Les dossiers VIDÉS relèvent de la corbeille APP validée (ADR-0014), jamais du
   CANONIQUES de 03, plus JAMAIS un héritage à drainer/corbeiller ; les 4 catégories PAR VÉHICULE
   {Contraventions · Assurance auto · Entretien & réparations · Recherche & achat} sont
   structurelles au même titre — find-or-créées PAR NOM par le flux et les missions, protégées par
-  `estSegmentStructurel_` ; **les 3 dossiers COMMUNS `MISSIONS_VEHICULE_COMMUNS` {Recherche &
+  `estSegmentStructurel_` ; **le commun des employeurs `Autres employeurs` (ADR-0044 D11, imbriqué
+  sous `Employeurs`, donc invisible d'`estAncreStructurelleFusion_`) et les 3 dossiers COMMUNS
+  `MISSIONS_VEHICULE_COMMUNS` {Recherche &
   achat · Locations · À attribuer} le sont aussi depuis ADR-0044** — et c'est leur SEULE
   protection : `estAncreStructurelleFusion_` ne consulte que le PREMIER niveau de
   `STRUCTURE_CIBLE_RESET`, or ces nœuds sont imbriqués sous « Véhicule ». Le `SCHEMAS_ENTITE.Véhicule` d'époque v1 est un VOCABULAIRE HÉRITÉ

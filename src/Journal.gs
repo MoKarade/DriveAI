@@ -335,11 +335,18 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, regi
     // (revue C28-47 : sans ce garde, la ré-analyse bloquée par le frein MENSUEL affichait « vers le
     // 18/08 » à côté de « reprise le 01/09 » — une fin AVANT la reprise, exactement le mensonge que
     // cette colonne doit empêcher).
-    var enPause = !!statut && /^(suspendu|en pause)/.test(statut);
+    // ⚠️ « À JOUR » compte AUSSI (retour Marc du 2026-08-20 : « bizarre je vois encore des
+    // missions … Fin estimée : ~92 j · vers le 20/11 »). Une mission CONVERGÉE à reliquat a fini
+    // son passage : ses non-appariés sont des REFUS versionnés qui attendent un affinage de
+    // RÈGLES, pas du débit (c'est déjà ce que dit la doc de `pousserMission`). Extrapoler un débit
+    // MORT annonçait une date que rien ne produira — même famille de mensonge que la pause, qui
+    // avait motivé ce garde. Les 3 familles de statut sans débit attendu sont donc traitées
+    // ensemble, et testées une par une.
+    var sansDebit = !!statut && /^(suspendu|en pause|à jour)/.test(statut);
     var bouts = [];
     if (est) {
       bouts.push('reste ' + est.restant + (unite ? ' ' + unite : ''));
-      if (!enPause) {
+      if (!sansDebit) {
         bouts.push(horizon(est.msRestants));
         bouts.push('vers le ' + Utilities.formatDate(new Date(maintenantMs + est.msRestants), tz, 'dd/MM'));
       }
@@ -351,6 +358,10 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, regi
       bouts.push('reprise le ' + Utilities.formatDate(moisProchain, tz, 'dd/MM') + ' (frein mensuel)');
     } else if (statut && statut.indexOf('budget du jour') !== -1) {
       bouts.push('reprise demain');
+    } else if (statut && statut.indexOf('non apparié') !== -1) {
+      // Dire ce qui débloque RÉELLEMENT, au lieu d'une date : ces fichiers attendent une décision
+      // de Marc, pas du temps machine.
+      bouts.push('attend un affinage des règles');
     }
     return [passe, bouts.join(' · ')];
   }

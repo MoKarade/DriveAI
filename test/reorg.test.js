@@ -363,3 +363,16 @@ test('estSegmentStructurel_ : les dossiers COMMUNS de « Véhicule » sont prot�
   // Contre-épreuve : un nom quelconque n'est pas structurel (le prédicat ne dit pas oui à tout).
   assert.strictEqual(c.estSegmentStructurel_('Desjardins'), false);
 });
+
+test('estSegmentStructurel_ : « Autres employeurs » est protégé (ADR-0044 D11)', () => {
+  const c = load(['Config.gs', 'Router.gs', 'Reorg.gs']);
+  // Calque exact du trou `Locations`/`À attribuer` corrigé en PR1 : ce dossier est IMBRIQUÉ sous
+  // « Employeurs », donc invisible d'`estAncreStructurelleFusion_` (niveau 1 seulement). Il est
+  // find-or-créé PAR NOM par le flux ET la mission ; sans cette protection il était exposé à
+  // l'inventaire RÉCURSIF de la Réorg et à `detecterDossierVide_` — donc proposé à la corbeille.
+  assert.strictEqual(c.estSegmentStructurel_(c.CONFIG.MISSIONS_EMPLOYEURS_COMMUN), true);
+  // Contre-épreuve : la protection ne vient PAS de la liste voisine des employeurs canoniques.
+  assert.ok(c.CONFIG.MISSIONS_EMPLOYEURS.every((e) => e.nom !== c.CONFIG.MISSIONS_EMPLOYEURS_COMMUN));
+  assert.strictEqual(c.estSegmentStructurel_('Robovic'), false,
+    'un dossier d\'employeur NOMMÉ reste mutable — seul le commun est structurel');
+});

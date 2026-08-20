@@ -105,11 +105,16 @@ var STRUCTURE_CIBLE_RESET = {
     'Formulaires & correspondance': {},
   },
   '05 · Carrière': {
-    'Employeurs': { 'Robovic': {}, 'Automatech': {} }, // décision Marc : les autres = candidatures (CV & lettres)
-    // FUSION « Recherche d'emploi » → « CV & lettres » (décision Marc 2026-08-17, ADR-0039 §7).
-    // Le nœud « Recherche d'emploi » est RETIRÉ (pas renommé) : la mission `carriere` VIDE ce
-    // dossier (sourceJetable, peint en rouge une fois vide pour que Marc le supprime) — le garder
-    // ici le ferait RECRÉER par nom à chaque reset (ping-pong, leçon Fusion #47). 05 = 6 nœuds ≤ 7 ✔.
+    // « Autres employeurs » : commun des employeurs OCCASIONNELS (ADR-0044 D11) — un dossier par
+    // nom à un seul fichier ferait déborder la règle des ≤ 7, ici comme sous « Revenus & paie ».
+    'Employeurs': { 'Robovic': {}, 'Automatech': {}, 'Autres employeurs': {} },
+    // « Recherche d'emploi » RECRÉÉ (ADR-0044 D10, décision Marc 2026-08-20, qui RÉVOQUE la fusion
+    // du 2026-08-17 vers « CV & lettres »). Marc a été averti que les deux ne peuvent pas
+    // coexister et a confirmé. Le geste est SYMÉTRIQUE : le nœud revient ICI, la mission cesse de
+    // dissoudre le dossier, et le FLUX ci-dessous route le recrutement VERS lui — sinon le flux
+    // re-remplirait « CV & lettres » pendant que la mission remplit « Recherche d'emploi ».
+    // 05 = 7 nœuds ≤ 7 ✔.
+    'Recherche d\'emploi': {},
     'Alternance & stages': {},
     'CV & lettres': { 'Candidatures': {}, 'Suivi': {}, 'Archive 2021-2025': {} },
     'Entreprise — MRic (SCI)': {},
@@ -335,8 +340,18 @@ function cheminCibleReset_(domaine, nom) {
     // canon que mission-paies (`employeurDuNom_`, Missions.gs — une seule règle, deux
     // consommateurs). Émetteur hors table → racine (comme avant), jamais deviné.
     if (estTypePaieReset_(t)) {
-      var employeurPaie = employeurDuNom_(e);
+      var employeurPaie = employeurDuNom_(e) ||
+        (employeurAutreDuNom_(nom) ? CONFIG.MISSIONS_EMPLOYEURS_COMMUN : '');
       return employeurPaie ? 'Revenus & paie/' + employeurPaie : 'Revenus & paie';
+    }
+    // (ADR-0044 D9) Un « Relevé_<employeur> » SANS numéro est une PAIE mensuelle — MÊME règle que
+    // la mission carrière, sinon la consolidation recalculerait « Relevés/AAAA » et enverrait la
+    // paie chez les relevés BANCAIRES (revue structure C28-62 PR2 : divergence prouvée).
+    // La garantie de sûreté est l'EMPLOYEUR connu, jamais le type seul.
+    if (estReleveDePaie_(t)) {
+      var empReleve = employeurDuNom_(e) ||
+        (employeurAutreDuNom_(nom) ? CONFIG.MISSIONS_EMPLOYEURS_COMMUN : '');
+      if (empReleve) return 'Revenus & paie/' + empReleve;
     }
     if (t.indexOf('releve') !== -1 && !estRibReset_(t)) return 'Relevés/' + resetBucketAnnee_(seg.annee, s['Relevés']);
     // Fiscal (dont les feuillets québécois T4/Relevé 1) et remboursements d'IMPÔT (revue : 'bourse'
@@ -451,22 +466,37 @@ function cheminCibleReset_(domaine, nom) {
   }
 
   if (domaine === '05 · Carrière') {
+    // RECRUTEMENT (ADR-0044 D10) — MÊME prédicat PUR que la mission carrière : une seule règle,
+    // deux consommateurs (leçon C28-26). Testé AVANT « CV & lettres », sinon une « Offre d'emploi »
+    // y tomberait par le filet générique.
+    if (estTypeRecrutement_(t, nom)) return 'Recherche d\'emploi';
     if (t === 'cv' || tout.indexOf('cv') === 0 || resetContient_(tout, ['curriculum', 'lettre de motivation'])) return 'CV & lettres';
-    // FUSION « Recherche d'emploi » → « CV & lettres » (décision Marc 2026-08-17, ADR-0039 §7,
-    // mission-carriere) : le flux VISE désormais la cible de la fusion — sinon il re-remplirait le
-    // dossier que la mission vide et peint en rouge (leçon C28-26 « une seule règle, deux
-    // consommateurs » ; trouvé par la revue flotte PR2, geste SYMÉTRIQUE livré avec la mission).
     if (t.indexOf('candidature') !== -1) return 'CV & lettres/Candidatures';
     if (tout.indexOf('suivi recherche') !== -1) return 'CV & lettres/Suivi';
     if (tout.indexOf('archive candidatures') !== -1) return 'CV & lettres/Archive 2021-2025';
-    if (e.indexOf('robovic') !== -1) return 'Employeurs/Robovic';
-    if (e.indexOf('automatech') !== -1) return 'Employeurs/Automatech';
+    // Le SOUS-DOSSIER par type vient de la MÊME fonction que la mission (`sousDossierEmployeur_`).
+    // Sans lui, le flux rendait `Employeurs/<X>` tout court alors que la mission range dans
+    // `Employeurs/<X>/<type>` : la consolidation, qui compare les chemins, proposait de REMONTER
+    // chaque fichier d'un cran (divergence PRÉ-EXISTANTE, trouvée par la revue structure C28-62
+    // PR2 en même temps que celles de D9/D11 — le tripwire de convergence la couvre désormais).
+    var sousEmpCanon = sousDossierEmployeur_(t);
+    var suffixeEmp = sousEmpCanon ? '/' + sousEmpCanon : '';
+    if (e.indexOf('robovic') !== -1) return 'Employeurs/Robovic' + suffixeEmp;
+    if (e.indexOf('automatech') !== -1) return 'Employeurs/Automatech' + suffixeEmp;
+    // (ADR-0044 D11) Employeur OCCASIONNEL → le commun. Sans cette branche, le flux rendait `null`
+    // et la consolidation proposait de ramener le fichier à la RACINE de 05 — le vrac même que
+    // `HistoriqueVrac` compte comme dette (revue structure C28-62 PR2).
+    var empAutre = employeurAutreDuNom_(nom);
+    if (empAutre) {
+      var sousEmp = sousDossierEmployeur_(t);
+      return 'Employeurs/' + CONFIG.MISSIONS_EMPLOYEURS_COMMUN + (sousEmp ? '/' + sousEmp : '');
+    }
     if (resetContient_(e, ['mric', 'm ric'])) return 'Entreprise — MRic (SCI)';
     if (resetContient_(tout, ['alternance', 'stage'])) return 'Alternance & stages';
     if (t.indexOf('bilan') !== -1 || (' ' + t).indexOf(' formation') !== -1) return 'Formation & bilans'; // ' formation' : jamais « information » (revue)
     if (resetContient_(tout, ['linkedin', 'presentation', 'reseau'])) return 'Réseaux & présentations';
-    // Décision Marc : les AUTRES entreprises = candidatures (jamais employeurs) — cible de la
-    // FUSION « Recherche d'emploi » → « CV & lettres » (2026-08-17, cf. ci-dessus).
+    // Décision Marc : les AUTRES entreprises = candidatures (jamais employeurs). Elles restent en
+    // « CV & lettres » : ce sont les lettres que MARC a envoyées, pas du recrutement reçu.
     if (e === 'ute' || resetContient_(e, ['arkema', 'eaton', 'siemens', 'schneider', 'wiio', 'bluewrist', 'pierre fabre', 'lactalis', 'gravelines', 'cnpe'])) return 'CV & lettres';
     return null;
   }

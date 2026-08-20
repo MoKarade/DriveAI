@@ -200,3 +200,112 @@ Les dissoudre reste conforme à la décision 2 quelle qu'en soit l'origine (« K
 recherche d'achat ») ; si Marc les avait créés à la main, le geste est le même.
 
 Aucun document n'est attribué à un véhicule qui n'est pas nommé — c'est la décision de Marc.
+
+
+## 5. PR2 — les 39 de « employeurs & CV », instruits sur pièces (2026-08-20)
+
+Les 3 sources ont été relues avant d'écrire la moindre règle (protocole §8). Répartition RÉELLE :
+
+| Famille | Volume | Exemples réels | Destination (décision) |
+|---|---|---|---|
+| Relevés de paie mensuels | 7 | `2023-04_Relevé_Automatech.pdf` … `2025-01_` | `02 · Revenus & paie/<employeur>` (D9) |
+| Recrutement | ~15 | `Offre d'emploi_Cégep Garneau`, `Invitation d'entretien_Automatech`, `Description de rôle`, `Liste d'entreprises cibles`, `Liste de prospection`, `Répertoire d'entreprises industrielles`, `Formulaire de reclassement_Pôle emploi` | `05 · Carrière/Recherche d'emploi` (D10) |
+| Documentation métier | 6 | `Bon de livraison_SEW-EURODRIVE`, `Plaque signalétique_Rockwell`, `Rapport de maintenance_robot convoyeur`, `Rapport de service_Robovic`, `Support de cours` ×2 | `_Technique` (D12) |
+| Employeur sans dossier | 3 | `Attestation employeur_Algopaie`, `Attestation_Silver Crest`, `Paie_Trajectoire-Emploi` | `05/Employeurs/Autres employeurs` — et la PAIE en `02 · Revenus & paie/Autres employeurs` (D11) |
+
+### 5.1 Précisions de mise en œuvre
+
+- **D9, le prédicat est ÉTROIT.** Élargir `estTypePaieReset_` à « relevé » nu serait dangereux (un
+  relevé BANCAIRE n'est pas une paie). La règle exige les trois : type « relevé », **ni** feuillet
+  fiscal (`estFeuilletFiscalReset_`, ancré sur le nombre — RL-1/RL-31 sont ANNUELS), **ni** RIB
+  (`estRibReset_`), **et** un employeur CONNU. La cadence mensuelle observée (2023-04, 05, 07, 08 ;
+  2025-01) confirme la lecture de Marc.
+- **D11 borne le nombre de dossiers.** Un dossier par employeur ferait déborder la règle des ≤ 7
+  enfants de « Revenus & paie » (3 canoniques + 5 occasionnels). D'où **un seul** `Autres employeurs`,
+  des DEUX côtés (05 et 02) — c'est aussi ce que Marc demande (« plutôt qu'un dossier par nom à un
+  seul fichier »). Les employeurs sans dossier reconnus par une table dédiée
+  (`MISSIONS_EMPLOYEURS_AUTRES`), jamais devinés.
+- **D10 exige un geste SYMÉTRIQUE.** La mission `carriere` DISSOLVAIT `Recherche d'emploi` vers
+  `CV & lettres` ; la table du flux visait la cible de cette fusion. Recréer le dossier sans retirer
+  les deux serait un PING-PONG garanti. Livré dans le même commit : source + `sourcesJetables` +
+  branche du routeur retirées, nœud re-déclaré dans `STRUCTURE_CIBLE_RESET`, verrou d'ABSENCE
+  inversé en verrou de PRÉSENCE, et le FLUX apprend les types de recrutement (une seule règle, deux
+  consommateurs).
+
+### 5.2 Deux exceptions ASSUMÉES, contre la lettre de la décision
+
+1. **L'« Évaluation de performance » de 2016 n'ira PAS dans `_Technique`**, bien que Marc l'ait citée
+   en D12. Router le type « évaluation de performance » vers `_Technique` entrerait en collision
+   frontale avec `sousDossierEmployeur_`, qui range les **Évaluations** dans le dossier de
+   l'employeur : une vraie évaluation RH partirait dans le fourre-tout technique. Le fichier visé
+   (`…reclassement migration taxonomie 2016`) est un artefact isolé ; il reste REFUSÉ (révisable),
+   ce qui coûte un re-examen au lieu d'un document perdu de vue.
+2. **`Fiche comparative` exige un mot de SALAIRE.** Le type seul est trop générique pour porter un
+   déplacement définitif ; la règle s'appuie sur le nom complet (`salarial`), conformément au cas
+   réel (« Comparatif grilles salariales SPVQ et SQ police »).
+
+Restent volontairement REFUSÉS, faute de règle prouvée : `Document professionnel_Automatech`
+(type non informatif), `Attestation conformité algorithme calcul de paie` (aucun employeur),
+`Lettre de recommandation_IMERIR` (une ÉCOLE, pas un employeur — relève de `06 · Études`),
+`Note personnelle … Lyxor ETF`, et les 3 `.p7s` (signatures cryptographiques, hors périmètre §2).
+Un refus est keyé sous la version : il se ré-évaluera au prochain affinage.
+
+### 5.3 Bump
+
+`MISSIONS_REGLES_VERSION` **`c49-3` → `c49-4`** : sans lui, les 39 resteraient marqués « déjà
+tenté » sous c49-3 et l'affinage serait sans effet (leçon C28-33).
+
+
+### 5.4 Convergence flux ↔ mission ↔ consolidation (issu de la revue flotte)
+
+`ConsolidationExec` **recalcule** la cible d'un fichier au moment du déplacement, via
+`cheminCibleReset_`. Si le flux ne sait pas reproduire ce que la mission a décidé, **il défait le
+rangement, sans bruit**. C'est le défaut corrigé en §4.3 #10 pour `À attribuer` ; la revue en a
+trouvé quatre instances de plus dans PR2, toutes mesurées :
+
+| Décision | Cible mission | Ce que le flux rendait AVANT | État |
+|---|---|---|---|
+| D9 | `Revenus & paie/<employeur>` | `Relevés/AAAA` (relevés **bancaires**) | corrigé |
+| D11 (02) | `Revenus & paie/Autres employeurs` | `Revenus & paie` (racine) | corrigé |
+| D11 (05) | `Employeurs/Autres employeurs/<type>` | `null` ⇒ racine de `05` (vrac) | corrigé |
+| *(pré-existant)* | `Employeurs/<X>/<type>` | `Employeurs/<X>` (un cran au-dessus) | corrigé |
+
+Ces quatre-là sont désormais tenues par **un tripwire** (`test/missions.test.js`) : pour chaque cas
+de `routerCarriere_`, `cheminCibleReset_(domaine, nom)` doit rendre **le même sous-chemin**. C'est
+ce test qui rend la symétrie structurelle au lieu de dépendre de la vigilance d'un relecteur — et
+il aurait attrapé les quatre tout seul. Prouvé par mutation dans les deux sens.
+
+**Exception assumée — D12 est ASYMÉTRIQUE, et c'est structurel.** `_Technique` est **hors
+domaines** : le flux ne peut pas y router (`cheminCibleReset_` rend un chemin *dans* un domaine),
+et la consolidation ne parcourt que les domaines — elle ne verra donc jamais ces fichiers. Aucune
+divergence possible. Le revers : un futur « Bon de livraison » entrant par Gmail dans `05` rendra
+`null` et restera à plat, sans que la mission (convergée) le reprenne. D12 est un **one-shot** sur
+le stock, pas une règle de flux — écrit ici pour que la dette ne réapparaisse pas sans explication.
+
+### 5.5 Deux prédicats trop larges, rattrapés en revue
+
+1. **`estReleveDePaie_` avalait les relevés QUALIFIÉS.** « Relevé d'**emploi** » (le ROE, remis par
+   tout employeur québécois en fin de contrat — donc très plausible dans `Employeurs/Automatech`)
+   partait en `02 · Revenus & paie`, alors que `Reset.gs` porte la décision **inverse** en toutes
+   lettres : « c'est un document de CARRIÈRE (05) ». *Le code contredisait son propre commentaire.*
+   Idem « relevé de notes » (études) et « relevé de compte » (banque). Deny-list explicite ajoutée.
+2. **Les jetons `crest` et `trajectoire` sont des mots courants.** « Bilan — Trajectoire
+   professionnelle » (un document d'accompagnement carrière, dont le dossier `Formation & bilans`
+   existe précisément) partait chez « Autres employeurs ». Même collision que « moreau ⊂ Moreault »
+   (C28-49). Jetons passés en **multi-mots** (`silver crest`, `trajectoire emploi`), avec un
+   contre-exemple par employeur en test : le charset ne prouve pas la discrimination.
+
+Les deux produisaient un **déplacement définitif à clé de SUCCÈS**. Rappel de la règle qui les
+condamne : le prédicat qui déclenche l'action irréversible est STRICT, et **dans le doute il
+REFUSE** — un refus coûte un re-examen, un faux positif coûte un document perdu de vue.
+
+### 5.6 Reste ouvert (dit, pas caché)
+
+- **Le contenu de `Recherche d'emploi` est déjà parti.** Sous `c49-3` le dossier était une source
+  JETABLE : la mission l'a vidé vers `CV & lettres`, et le bump ne rouvre que les refus des sources
+  COURANTES — `CV & lettres` n'en est pas une. **Le rapatriement est donc MANUEL.** Le dossier
+  lui-même a été vérifié dans le Drive le 2026-08-20 : il existe, est bien sous `05 · Carrière`, et
+  n'est pas corbeillé.
+- **Sa COULEUR n'a pas pu être vérifiée** (l'outil de lecture Drive ne rend pas `folderColorRgb`).
+  S'il a été peint en ROUGE quand il était vide, il crie « supprimable » alors qu'il redevient la
+  cible officielle du recrutement — à dépeindre à la main, ou à traiter dans un geste ultérieur.

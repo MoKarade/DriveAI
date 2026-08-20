@@ -231,6 +231,11 @@ function estSegmentStructurel_(nom) {
   // achat » était déjà couvert par la ligne ci-dessus ; « Locations » et « À attribuer » ne
   // l'étaient par RIEN.
   if ((CONFIG.MISSIONS_VEHICULE_COMMUNS || []).some(function (c) { return c.nom === propre; })) return true;
+  // Commun des employeurs OCCASIONNELS (ADR-0044 D11) : find-or-créé PAR NOM par le flux ET la
+  // mission carrière, et IMBRIQUÉ sous « Employeurs » — donc invisible d'`estAncreStructurelle-
+  // Fusion_`, qui ne lit que le niveau 1. Sans cette ligne il n'était protégé par RIEN : exposé
+  // à l'inventaire RÉCURSIF de la Réorg et à `detecterDossierVide_` (proposé à la corbeille).
+  if (CONFIG.MISSIONS_EMPLOYEURS_COMMUN && propre === CONFIG.MISSIONS_EMPLOYEURS_COMMUN) return true;
   return false;
 }
 

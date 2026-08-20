@@ -11,7 +11,10 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { load } = require('./harness');
 
-const FICHIERS = ['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs'];
+// Missions.gs : `cheminCibleReset_` consomme ses prédicats PURS partagés (véhicule, location,
+// communs, recrutement, relevé de paie, employeur occasionnel) — une seule règle, deux
+// consommateurs. Dépendance RÉELLE, jamais un stub : c'est le contrat inter-module qu'on teste.
+const FICHIERS = ['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs'];
 
 function fakeFichierLlm(opts) {
   opts = opts || {};
