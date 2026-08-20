@@ -223,6 +223,14 @@ function estSegmentStructurel_(nom) {
   // missions sous chaque `Véhicule/<véhicule>` — les muter les ferait re-créer au document
   // suivant (ping-pong, leçon #47 « quel garde mes voisins ont-ils que je n'ai pas ? »).
   if ((CONFIG.MISSIONS_CATEGORIES_VEHICULE || []).indexOf(propre) !== -1) return true;
+  // Dossiers COMMUNS sous « Véhicule » (ADR-0044) : find-or-créés PAR NOM par le flux vivant
+  // (`cheminCibleReset_`) ET par la mission véhicule — les muter les ferait re-créer au document
+  // suivant. C'est ICI que se trouve leur seule protection : l'inventaire de la Réorg est
+  // RÉCURSIF (BFS), donc un nœud imbriqué sous « Véhicule » lui est bel et bien soumis, alors que
+  // `estAncreStructurelleFusion_` ne voit que le premier niveau (revue C28-62). « Recherche &
+  // achat » était déjà couvert par la ligne ci-dessus ; « Locations » et « À attribuer » ne
+  // l'étaient par RIEN.
+  if ((CONFIG.MISSIONS_VEHICULE_COMMUNS || []).some(function (c) { return c.nom === propre; })) return true;
   return false;
 }
 

@@ -129,39 +129,67 @@ test('routeur dispatch03 : véhicule prioritaire, puis adresse, puis BAILLEUR, p
   assert.ok(!corpiq || corpiq.cibleNom !== 'Locations', 'un bail n\'est pas une location de voiture');
 });
 
-test('routeur vehicule (c49-2) : catégorie par sous-dossier SOURCE, fenêtre gatée sur jeu COMPLET, chevauchement = refus', () => {
+test('routeur vehicule (c49-3, ADR-0044) : communs > véhicule nommé > « À attribuer » — JAMAIS par date', () => {
   const IDS = pur.CONFIG.MISSIONS_IDS;
   const spec = pur.tableMissions_().filter((m) => m.tag === 'vehicule')[0];
-  const f2023 = { id: 'vkia', min: Date.UTC(2023, 0, 1), max: Date.UTC(2024, 11, 31) };
-  const f2026 = { id: 'vbz', min: Date.UTC(2026, 0, 1), max: Date.UTC(2026, 11, 31) };
-  // ADR-0044 : le sous-dossier source « KIA » n'est plus un véhicule — son contenu va dans le
-  // dossier COMMUN « Recherche & achat », sans catégorie. CRUCIAL : ce court-circuit passe AVANT
-  // le repli par date, sinon ces documents seraient attribués au véhicule possédé à l'époque —
-  // un faux positif DÉFINITIF (déplacé + clé de succès).
-  const kia = spec.router('2023-05-01_Facture_Garage.pdf', { sourceId: IDS.vehiculesPluriel, sousChemin: 'KIA' },
-    { fenetres: [], fenetresCompletes: false });
-  assert.deepStrictEqual(plain(kia), { cibleParentId: IDS.vehiculeCible, cibleNom: 'Recherche & achat', sousDossier: '' });
-  // …y compris quand le jeu de fenêtres est COMPLET et que la date tomberait dans l'une d'elles.
-  const kiaDate = spec.router('2023-05-01_Facture_Garage.pdf', { sourceId: IDS.vehiculesPluriel, sousChemin: 'KIA/Entretien & réparations' },
-    { fenetres: [{ id: 'vjetta', min: Date.UTC(2023, 0, 1), max: Date.UTC(2023, 11, 31) }], fenetresCompletes: true });
-  assert.strictEqual(plain(kiaDate).cibleNom, 'Recherche & achat', 'jamais attribué à un véhicule par la date');
-  // Générique d'une CATÉGORIE, jeu de fenêtres COMPLET, date dans UNE seule fenêtre → routé,
-  // catégorie du sous-dossier source préservée.
-  const generique = spec.router('2023-06-27_Constat d\'infraction_Ville de Québec.jpg',
+  const ctx = spec.batirCtx ? {} : {}; // plus AUCUNE fenêtre : le repli par date est retiré
+  const rte = (nom, sousChemin, sourceId) =>
+    plain(spec.router(nom, { sourceId: sourceId || IDS.vehiculesPluriel, sousChemin: sousChemin }, ctx));
+
+  // 1. Le sous-dossier source « KIA » n'est plus un véhicule → dossier COMMUN, à plat.
+  assert.deepStrictEqual(rte('2023-05-01_Facture_Garage.pdf', 'KIA'),
+    { cibleParentId: IDS.vehiculeCible, cibleNom: 'Recherche & achat', sousDossier: '' });
+
+  // 2. Le sous-dossier source « Recherche & achat » : du MAGASINAGE, sur des véhicules que Marc
+  //    n'a jamais possédés. Cas RÉEL du Drive (11 fichiers). Router ça par date l'aurait rangé
+  //    sous le véhicule possédé cette année-là — faux positif DÉFINITIF (revue C28-62).
+  assert.deepStrictEqual(
+    rte('2026-07-01_Annonce de vente_Annonce vente Honda Civic 2017 104 998 km Shawinigan 16 999 $.jpg', 'Recherche & achat'),
+    { cibleParentId: IDS.vehiculeCible, cibleNom: 'Recherche & achat', sousDossier: '' });
+
+  // 3. Un document « KIA » qui n'arrive PAS par le dossier source (cas du flux vivant, et des 2
+  //    dossiers KIA parasites) : reconnu par le NOM, MÊME table.
+  assert.deepStrictEqual(rte('2026-07-01_Reçu de service_KIA Ste-Foy.jpg', '', IDS.vehiculeKia),
+    { cibleParentId: IDS.vehiculeCible, cibleNom: 'Recherche & achat', sousDossier: '' });
+
+  // 4. 🔴 LE CŒUR DE LA DÉCISION DE MARC (2026-08-20) : aucun véhicule identifiable ⇒ « À
+  //    attribuer », JAMAIS une attribution par date. Cas réel : 16 assurances Desjardins + 19
+  //    factures de garage ne nomment aucun véhicule du canon. La CATÉGORIE est conservée pour que
+  //    la répartition manuelle reste faisable.
+  assert.deepStrictEqual(rte('2023-06-27_Constat d\'infraction_Ville de Québec.jpg', 'Contraventions'),
+    { cibleParentId: IDS.vehiculeCible, cibleNom: 'À attribuer', sousDossier: 'Contraventions' });
+  assert.deepStrictEqual(rte('2023-10-02_Facture de réparation automobile_Garage Charlesbourg Certi-Pro.jpg', 'Entretien & réparations'),
+    { cibleParentId: IDS.vehiculeCible, cibleNom: 'À attribuer', sousDossier: 'Entretien & réparations' });
+
+  // 5. Véhicule NOMMÉ : son dossier, avec la catégorie du sous-dossier source.
+  assert.deepStrictEqual(rte('2024-02-01_Facture_Garage VW Jetta.pdf', 'Entretien & réparations'),
+    { cibleParentId: IDS.vehiculeCible, cibleNom: 'VW Jetta', sousDossier: 'Entretien & réparations' });
+
+  // 6. LOCATION + véhicule du canon = AMBIGU (bail/LOA sur SON véhicule ?) ⇒ refus RÉVISABLE,
+  //    jamais un déplacement définitif. Preuve par contraste avec le cas 7.
+  assert.strictEqual(spec.router('2024-01-01_Contrat de location de véhicule_VW Jetta.pdf',
+    { sourceId: IDS.vehiculesPluriel, sousChemin: '' }, ctx), null,
+  'location + véhicule nommé : ambigu ⇒ refus (le déplacement serait définitif)');
+
+  // 7. LOCATION sans véhicule du canon → « Locations » (les 3 contrats Enterprise réels).
+  assert.deepStrictEqual(rte('2019-03-01_Contrat de location de véhicule_Enterprise.pdf', ''),
+    { cibleParentId: IDS.vehiculeCible, cibleNom: 'Locations', sousDossier: '' });
+  // …au PLURIEL aussi (« véhicules » manquait à la liste des mots — revue C28-62).
+  assert.deepStrictEqual(rte('2019-03-01_Contrat de location de véhicules_Enterprise.pdf', ''),
+    { cibleParentId: IDS.vehiculeCible, cibleNom: 'Locations', sousDossier: '' });
+});
+
+test('ADR-0044 : le repli par DATE est RETIRÉ de la mission véhicule (fenêtres inutilisables sur le Drive réel)', () => {
+  const spec = pur.tableMissions_().filter((m) => m.tag === 'vehicule')[0];
+  // `batirCtx` ne construit plus AUCUNE fenêtre : « Ford Fiesta » est vide (⇒ gate insatisfiable)
+  // et la fenêtre de la Jetta courait de 2019 à 2026. Un ctx vide ne doit RIEN changer au verdict.
+  assert.deepStrictEqual(Object.keys(plain(spec.batirCtx())), [], 'plus de fenêtres ni de gate de complétude');
+  const IDS = pur.CONFIG.MISSIONS_IDS;
+  const avec = plain(spec.router('2023-06-27_Constat_Ville.jpg',
     { sourceId: IDS.vehiculesPluriel, sousChemin: 'Contraventions' },
-    { fenetres: [f2023, f2026], fenetresCompletes: true });
-  assert.deepStrictEqual(plain(generique), { cibleId: 'vkia', sousDossier: 'Contraventions' });
-  // 🔴 revue finale : jeu de fenêtres INCOMPLET (KIA pas encore créé au run 1 — la mission
-  // construit elle-même cet état) → REFUS, jamais un verdict « une seule fenêtre » sur un jeu
-  // tronqué (le refus est révisable — bump c49-3 ; le faux positif serait définitif).
-  assert.strictEqual(spec.router('2023-06-27_Constat d\'infraction_Ville de Québec.jpg',
-    { sourceId: IDS.vehiculesPluriel, sousChemin: 'Contraventions' },
-    { fenetres: [f2023, f2026], fenetresCompletes: false }), null);
-  // Chevauchement de fenêtres → refus (jamais deviné).
-  const fChev = [{ id: 'vkia', min: Date.UTC(2023, 0, 1), max: Date.UTC(2026, 11, 31) }, f2026];
-  assert.strictEqual(spec.router('2026-03-01_Constat d\'infraction_Ville.jpg',
-    { sourceId: IDS.vehiculesPluriel, sousChemin: 'Contraventions' },
-    { fenetres: fChev, fenetresCompletes: true }), null);
+    { fenetres: [{ id: 'vjetta', min: Date.UTC(2023, 0, 1), max: Date.UTC(2023, 11, 31) }], fenetresCompletes: true }));
+  assert.strictEqual(avec.cibleNom, 'À attribuer',
+    'même avec un ctx de fenêtres COMPLET et une date qui tombe dedans, plus aucune attribution par date');
 });
 
 test('cibleBailleur_ : dossier RENOMMÉ/absent ⇒ refus — la table ne crée JAMAIS un doublon', () => {
@@ -839,4 +867,15 @@ test('ADR-0044 : KIA a bien quitté le canon des véhicules (sinon rien n\'est d
   assert.ok(noms.length >= 3, 'les vrais véhicules restent');
   assert.strictEqual(pur.vehiculeDuNom_('2023-05-01_Facture_KIA Sportage.pdf'), null);
   assert.strictEqual(pur.vehiculeDuNom_('2023-05-01_Facture_VW Jetta.pdf'), 'VW Jetta');
+});
+
+test('MISSIONS_MOTS_VEHICULE : jetons ALPHABÉTIQUES seulement — invariant tacite verrouillé', () => {
+  // `estLocationVehicule_` n'ôte PAS le préfixe de date (contrairement à `apparierUnique_`) :
+  // normalisé, « 2024-05-12_ » devient « 2024 05 12 ». Ajouter un millésime ou un code modèle
+  // NUMÉRIQUE à cette liste matcherait instantanément un composant de date sur TOUS les documents
+  // classés. L'invariant tenait par chance ; il tient maintenant par test (revue C28-62).
+  pur.MISSIONS_MOTS_VEHICULE.forEach((m) => assert.match(m, /^[a-z]+$/,
+    'jeton non alphabétique = faux positif garanti sur les dates : ' + m));
+  // Contre-épreuve : la date seule ne fait jamais une location.
+  assert.strictEqual(pur.estLocationVehicule_('2024-05-12_Avis de cotisation_Revenu Québec.pdf'), false);
 });

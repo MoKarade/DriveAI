@@ -12,7 +12,7 @@ particuliers :
 
 | Mission | Bloqués | Cause réelle observée |
 |---|---|---|
-| véhicules | 48 | **Gate de complétude jamais satisfaite** : `KIA` figure dans `MISSIONS_VEHICULES` sans dossier cible, donc `fenetresCompletes` est faux À VIE et **toute** attribution par date est refusée (`Missions.gs`, `if (!ctx.fenetresCompletes) return null`). Ce n'était pas un manque de règles. |
+| véhicules | 48 | **Le repli par DATE ne pouvait pas fonctionner.** Diagnostic initial (« `KIA` figure dans `MISSIONS_VEHICULES` sans dossier cible ⇒ `fenetresCompletes` faux à vie ») : **nécessaire mais FAUX comme cause suffisante** — voir §4, corrigé le 20/08 sur preuve Drive. |
 | logements | 10 | Baux datés sans adresse dans le nom, annexes TAL génériques, et documents d'avant le Québec (Perpignan, Retta Isännöinti/Finlande). |
 | contrats 03 | 20 | Formulaires vierges/génériques (4× le même CORPIQ du 2018-10-15, 2× Immeubles MA8, consentements Proprio Expert) + des documents de VOITURE égarés (3× location Enterprise, vente Suprême Auto, carte verte MAIF). |
 | dossiers-années 02 | 24 | Les « dossiers-années » ne sont pas fiscaux, ce sont des **fourre-tout d'année** : Virgin Plus, courtage XTB, débit préautorisé Immeubles MA8, Caisse des Français de l'Étranger, tableau de bord budgétaire. La mission ne sait router que le fiscal → refuse tout le reste. |
@@ -88,3 +88,82 @@ automatiquement (§2).
   décision 10) ; **PR3** = décision 6 (Modèles & formulaires) ; **PR4** = décision 7 (dossiers-années).
 - Chaque PR qui touche une règle **bumpe à nouveau** `MISSIONS_REGLES_VERSION` : sans cela son
   affinage reste sans effet sur les refus déjà keyés.
+
+
+## 4. Correction du diagnostic « véhicules » et décision de Marc du 2026-08-20
+
+> Cette section **révise** la ligne « véhicules » du §1 et les décisions 2/3/4. Elle est écrite
+> après la revue flotte de la PR1 (structure-keeper + code-reviewer, convergents) et une
+> **vérification directe dans le Drive**, qui a démenti la cause annoncée.
+
+### 4.1 Ce que le Drive dit vraiment (lu le 2026-08-20)
+
+| Dossier | Contenu réel |
+|---|---|
+| `Véhicule/Ford Fiesta` | **VIDE** — racine et 4 sous-dossiers, zéro fichier |
+| `Véhicule/VW Jetta` | 2 fichiers datés (2019-11-09, 2023-11-24) **+ un sous-dossier `KIA`** portant un comparatif d'occasion daté 2026-07-31 |
+| `Véhicule/Toyota bZ` | 1 fichier daté (2026-07-16) |
+| `Véhicule/KIA` | **existe** (créé par le moteur le 18/08), 2 fichiers datés 2026-07-01 |
+
+Trois conséquences, toutes fatales au repli par date :
+
+1. **La gate n'était pas bloquée par KIA, mais par la Fiesta.** `fenetresOccupation_` ne rend une
+   fenêtre que pour un dossier contenant au moins un fichier daté. La Fiesta est vide : elle n'a
+   **jamais** eu de fenêtre, et n'en aura pas tant qu'elle est vide. `fenetresCompletes` restait
+   donc faux **après** le retrait de KIA — la PR1 initiale ne débloquait rien.
+2. **Les fenêtres étaient polluées.** Contrairement à ce que le code supposait, `ciblesAvecJetons_`
+   liste **tous** les enfants de « Véhicule » — donc aussi `Véhicule/KIA` et les dossiers communs.
+   Un générique daté aurait pu être rangé dans le dossier même que cet ADR retire.
+3. **Elles étaient inutilisables sur le fond.** La fenêtre de la Jetta court de 2019-11 à 2026-07
+   (à cause du comparatif KIA mal rangé sous elle) : elle aurait avalé jusqu'aux documents de
+   l'époque française. Une fenêtre dérivée d'un état que la mission **déplace elle-même** ne peut
+   pas porter un verdict définitif (leçon « donnée MOUVANTE », C28-49).
+
+Et surtout : sur les 48, **quasiment aucun ne nomme un véhicule du canon** — 16 assurances
+Desjardins, 19 factures de garage, 11 annonces de magasinage. Ils dépendaient TOUS du repli par
+date.
+
+### 4.2 Décision de Marc (2026-08-20) — un commun « À attribuer »
+
+Question posée : « comment attribuer les 37 documents qui ne nomment aucun de tes véhicules ? ».
+Réponse : **un dossier commun « À attribuer »**, plutôt que de deviner ou de laisser bloqué.
+
+- **Le repli par DATE est RETIRÉ de la mission véhicule** (`batirCtx` ne construit plus de fenêtre,
+  la gate de complétude disparaît). `logementParDate_` **reste** au service de la mission LOGEMENT,
+  dont les squelettes sont remplis et les périodes disjointes.
+- Ordre de décision : dossier source dissous (KIA) → commun reconnu par le **nom** → location →
+  véhicule **nommé** → sinon **`Véhicule/À attribuer`**, en conservant la catégorie d'origine
+  (« Assurance auto », « Entretien & réparations ») pour que la répartition manuelle reste faisable.
+- **Rien n'est deviné, rien n'est bloqué.** Marc répartit quand il veut.
+
+### 4.3 Autres correctifs issus de la revue (même geste)
+
+| # | Correctif |
+|---|---|
+| 1 | Les communs se reconnaissent aussi par **jetons de NOM** (`communVehiculeDuNom_`), consultés par le **flux vivant** ET les missions — sans quoi un document « KIA » entré par le flux tombait **à plat à la racine de `03`** (le vrac que `HistoriqueVrac` compte comme dette). Décision 3 « KIA compris » n'était tenue que pour le dossier source. |
+| 2 | Les **2 dossiers « KIA » créés par le moteur** (`Véhicule/KIA`, `Véhicule/VW Jetta/KIA`) deviennent des **sources** de la mission : sans ça, retirer KIA du canon les laissait orphelins à vie. |
+| 3 | `estLocationVehicule_` + véhicule **du canon** = **AMBIGU** ⇒ refus (révisable) au lieu d'un déplacement définitif : au Québec « location » désigne couramment un **bail** automobile, et la LOA est le mode d'acquisition standard en France. |
+| 4 | Les communs sont déclarés dans **`estSegmentStructurel_`** (Reorg.gs). ⚠️ La PR1 affirmait que leur présence dans `STRUCTURE_CIBLE_RESET` les protégeait via `estAncreStructurelleFusion_` : **c'est faux** — ce prédicat ne lit que le premier niveau du domaine, et la collecte de `Fusion.gs` n'est même pas récursive. L'exposition réelle est l'inventaire de la **Réorg**, lui bien récursif ; `Locations` et `À attribuer` n'étaient couverts par rien. |
+| 5 | `MISSIONS_MOTS_VEHICULE` : pluriels ajoutés (`véhicules`, `voitures`, `automobiles` manquaient alors qu'`autos` était là) + test verrouillant l'invariant tacite « jetons alphabétiques seulement » (le préfixe de date n'est pas retiré par ce prédicat). |
+| 6 | `docs/TAXONOMY.md` mis à jour dans le même commit. |
+
+### 4.4 Consolidation : décision explicite de NE PAS bumper `CONSOLIDATION_TAG`
+
+`RESET_TABLE_VERSION t4 → t5` est **inerte aujourd'hui** (`RESET_ACTIF: false`). Les vrais
+consommateurs de `cheminCibleReset_` en production sont le **flux vivant** (sans clé de règle) et
+la **consolidation**, dont la clé `conso|<tag>|<fileId>` ne porte **pas** la version de table.
+
+Bumper `conso-3 → conso-4` re-marcherait tout le Drive — et, la consolidation n'ayant aucun
+équivalent du routage par date, elle proposerait de **déplacer vers la racine du domaine** des
+fichiers que la mission vient de ranger. **Décision : pas de bump.** Le jour où la campagne reset
+sera relancée (`RESET_ACTIF`), ce couple devra être réexaminé — c'est noté ici plutôt que laissé
+à la mémoire.
+
+### 4.5 Ce que la PR livre réellement (chiffré, sans promesse)
+
+- **11 fichiers** de `Véhicules/Recherche & achat` → `Véhicule/Recherche & achat` ;
+- **3 fichiers** des 2 dossiers « KIA » parasites → même destination ;
+- **~35 fichiers** (assurances, garages, SAAQ) → `Véhicule/À attribuer`, groupés par catégorie ;
+- les documents « KIA » du **flux vivant** ne tombent plus à plat dans `03`.
+
+Aucun document n'est attribué à un véhicule qui n'est pas nommé — c'est la décision de Marc.

@@ -76,12 +76,18 @@ var STRUCTURE_CIBLE_RESET = {
     // ADR-0044 : « KIA » RETIRÉ (Marc : « c'était juste une recherche d'achat ») — le garder ici le
     // ferait RECRÉER PAR NOM à chaque classement, pendant que la mission véhicule envoie son
     // contenu dans « Recherche & achat » : exactement le ping-pong que le commentaire ci-dessus
-    // décrit pour les nœuds pluriels. Et les deux dossiers COMMUNS y entrent, pour que
-    // `estAncreStructurelle_` (Fusion.gs) les protège : un bucket de cette table n'est JAMAIS une
-    // SOURCE à vider. 5 nœuds sous « Véhicule » (≤ 7 ✔).
+    // décrit pour les nœuds pluriels. Les 3 dossiers COMMUNS y figurent pour que la table reste
+    // COHÉRENTE avec les routes (tripwire `cibleExiste` des CAS de test) et pour documenter la
+    // structure réelle.
+    // ⚠️ Y FIGURER NE LES PROTÈGE PAS : `estAncreStructurelleFusion_` (Fusion.gs) ne consulte que
+    // le PREMIER NIVEAU de `STRUCTURE_CIBLE_RESET[domaine]`, et un nœud imbriqué sous « Véhicule »
+    // n'en fait pas partie (revue C28-62 — la version antérieure de ce commentaire l'affirmait à
+    // tort). Le VRAI verrou est `estSegmentStructurel_` (Reorg.gs), qui gouverne l'inventaire
+    // RÉCURSIF de la Réorg : c'est là que les communs sont déclarés, et c'est là que le test les
+    // vérifie. 6 nœuds sous « Véhicule » (≤ 7 ✔).
     'Véhicule': {
       'Toyota bZ': categoriesVehiculeReset_(), 'Ford Fiesta': categoriesVehiculeReset_(), 'VW Jetta': categoriesVehiculeReset_(),
-      'Recherche & achat': {}, 'Locations': {},
+      'Recherche & achat': {}, 'Locations': {}, 'À attribuer': {},
     },
     'Énergie & services': {},
     'Assurance habitation': {},
@@ -379,8 +385,19 @@ function cheminCibleReset_(domaine, nom) {
     // LOCATION de véhicule (ADR-0044) — AVANT le canon des véhicules, pour la même raison que
     // dans les missions : une voiture louée n'est pas un véhicule de Marc. MÊME prédicat pur, pour
     // que le reset et les missions ne se renvoient pas la balle (leçon « une seule règle »).
-    if (estLocationVehicule_(tout)) return 'Véhicule/Locations';
+    // Dossier COMMUN reconnu par le NOM (ADR-0044 : « KIA compris ») — MÊME table que les
+    // missions. Sans lui, un document « KIA » arrivant par le FLUX tombait à PLAT à la racine de
+    // `03`, c'est-à-dire dans le vrac que `HistoriqueVrac` compte comme dette (revue C28-62).
+    // Le nom BRUT est passé aux prédicats partagés (comme les missions) : `tout` est déjà passé
+    // par `normaliserCle_`, et faire dépendre un prédicat partagé d'une SECONDE normalisation en
+    // amont est un couplage fragile — les deux fonctions peuvent évoluer séparément.
+    var communNom = communVehiculeDuNom_(nom);
+    if (communNom) return 'Véhicule/' + communNom;
     var vehicule = vehiculeDuNom_(tout);
+    // AMBIGU : « location » + un véhicule DU CANON, c'est peut-être un BAIL/une LOA sur le
+    // véhicule de Marc, pas la location d'une voiture tierce. Refus (révisable) plutôt qu'un
+    // déplacement définitif au mauvais endroit — MÊME arbitrage que la mission (une seule règle).
+    if (estLocationVehicule_(nom)) return vehicule ? null : 'Véhicule/Locations';
     if (vehicule) {
       if (resetContient_(t, ['constat d infraction', 'contravention', 'amende'])) return 'Véhicule/' + vehicule + '/Contraventions';
       // 'vente'/'achat' en MOT ENTIER (revue finale : « achat » ⊂ « rachat », « vente » ⊂

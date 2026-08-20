@@ -827,6 +827,12 @@ var CONFIG = {
   MISSIONS_IDS: {
     // 03 · Logement & véhicule — cibles GAGNANTES choisies par Marc :
     vehiculeCible: '1Hqmg1eV4q28saCreUyrfUIfKLwV972Wc',   // « Véhicule » (Ford Fiesta, VW Jetta, + Toyota bZ créé)
+    // Les deux dossiers « KIA » CRÉÉS PAR LE MOTEUR sous c49-2 (constatés dans le Drive le
+    // 2026-08-20, 3 fichiers au total) : sources à DISSOUDRE vers « Recherche & achat ». Sans
+    // ça, retirer KIA du canon les laisserait orphelins À VIE — aucune mission ne les couvre
+    // (revue C28-62). Une fois vidés, `sourcesJetables` les peint en rouge pour que Marc les ôte.
+    vehiculeKia: '1JYeg6vjYbcUmD83xmfuC0H39hRun8f3C',      // « Véhicule/KIA »
+    vehiculeKiaJetta: '1OZ1Ja_KgGAjuygtmt-clkfbHUYMekhne', // « Véhicule/VW Jetta/KIA » (comparatif d'occasion)
     logementCible: '13ISBh6ZrwK9YHgmIM20tWTgWh4x9wI79',   // « Logement » (5 adresses)
     // sources à VIDER :
     vehiculesPluriel: '1D8bYwR900-yU-bCZufhPucnQYUZtbS-i', // « Véhicules »
@@ -907,21 +913,25 @@ var CONFIG = {
   // d'annonce d'un CONCESSIONNAIRE dans la Jetta — à clé de SUCCÈS, donc définitif (leçon C28-49).
   // Sert AUSSI à créer une cible absente (KIA n'existait pas dans « Véhicule »).
   // ⚠️ KIA RETIRÉ le 19/08 (ADR-0044, décision Marc : « c'était juste une recherche d'achat »).
-  // Ce n'est pas cosmétique : `batirCtx` exige que CHAQUE véhicule de cette table ait un dossier
-  // ET une fenêtre de possession. KIA n'ayant jamais eu de dossier, `fenetresCompletes` était faux
-  // À VIE et TOUTE attribution par date était refusée — c'est ce qui bloquait 48 fichiers.
   MISSIONS_VEHICULES: [
     { nom: 'Toyota bZ', jetons: ['bz', 'bz4x'] },
     { nom: 'Ford Fiesta', jetons: ['fiesta'] },
     { nom: 'VW Jetta', jetons: ['jetta'] },
   ],
   // Dossiers COMMUNS sous « Véhicule » (ADR-0044) — au même niveau que les véhicules, pas sous eux.
-  // `sources` : sous-dossiers d'origine dont le contenu y va EN BLOC. Sans cette table, les
-  // documents de « KIA » (qui n'est plus un véhicule) tomberaient dans le repli par DATE et
-  // seraient attribués au véhicule possédé à l'époque — c'est-à-dire au MAUVAIS, définitivement.
+  //  - `sources` : sous-dossiers d'origine dont le contenu y va EN BLOC ;
+  //  - `jetons`  : MOT ENTIER dans le nom du document (`communVehiculeDuNom_`), consulté par le
+  //    FLUX VIVANT *et* par les missions — une seule règle, N consommateurs. Sans les jetons, un
+  //    document « KIA » arrivant par le flux tombait à PLAT à la racine de `03` (revue C28-62).
+  // « À attribuer » (décision Marc 2026-08-20) remplace le repli par DATE, retiré : mesuré sur le
+  // Drive réel, les fenêtres dérivées des fichiers déjà classés sont INUTILISABLES ici — « Ford
+  // Fiesta » est VIDE (aucune date ⇒ aucune fenêtre ⇒ la gate de complétude ne peut PAS être
+  // satisfaite) et celle de la Jetta court de 2019 à 2026. Grouper sans deviner plutôt que
+  // deviner mal : les documents sans véhicule identifiable attendent là que Marc les réparte.
   MISSIONS_VEHICULE_COMMUNS: [
-    { nom: 'Recherche & achat', sources: ['KIA'] },
-    { nom: 'Locations', sources: [] }, // alimenté par la DÉTECTION de location, pas par une source
+    { nom: 'Recherche & achat', sources: ['KIA'], jetons: ['kia'] },
+    { nom: 'Locations', sources: [], jetons: [] },   // alimenté par la DÉTECTION de location
+    { nom: 'À attribuer', sources: [], jetons: [] }, // filet : aucun véhicule identifiable
   ],
   // Catégories PAR VÉHICULE (décision Marc) — sous-dossiers créés À LA DEMANDE, jamais 16
   // squelettes vides. Ces noms sont AUSSI les sous-dossiers sources de « Véhicules » à dissoudre.

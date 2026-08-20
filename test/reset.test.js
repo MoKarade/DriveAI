@@ -85,11 +85,15 @@ const CAS = [
   ['03 · Logement & véhicule', '2025-07_Quittance_LCP Groupe Immobilier.pdf', 'Logement/3325 4e avenue'],
   ['03 · Logement & véhicule', '2026-02-04_Convention de résiliation de bail_9478-5045 Québec inc.pdf', 'Logement/3987 rte des Rivières'],
   ['03 · Logement & véhicule', '2023-01_Facture_Jetta Québec.pdf', 'Véhicule/VW Jetta'],
-  // ADR-0044 : KIA n'est PLUS un véhicule de Marc (« c'était juste une recherche d'achat »).
-  // Une FACTURE qui le nomme n'a plus AUCUNE cible : elle reste en place et sera rapportée,
-  // plutôt que d'être rangée sous un véhicule deviné. Seul le dossier SOURCE « KIA » est traité
-  // (→ « Véhicule/Recherche & achat », mission véhicule) : la décision de Marc portait sur LUI.
-  ['03 · Logement & véhicule', '2023-01_Facture_KIA Québec.pdf', null],
+  // ADR-0044 : KIA n'est PLUS un véhicule de Marc (« c'était juste une recherche d'achat ») — il
+  // va au dossier COMMUN « Recherche & achat », décision 3 « KIA compris ». Reconnu par le NOM
+  // (jetons de MISSIONS_VEHICULE_COMMUNS), donc AUSSI par le flux vivant : la version antérieure
+  // de ce cas attendait `null`, ce qui envoyait le document à PLAT à la racine de `03`, dans le
+  // vrac même que `HistoriqueVrac` compte comme dette (revue C28-62).
+  ['03 · Logement & véhicule', '2023-01_Facture_KIA Québec.pdf', 'Véhicule/Recherche & achat'],
+  // Le dossier commun « Locations » doit exister dans la table : c'est ce CAS qui déclenche le
+  // tripwire `cibleExiste` (route ↔ table) sur lui.
+  ['03 · Logement & véhicule', '2026-04-10_Contrat de location de véhicule_Enterprise.pdf', 'Véhicule/Locations'],
   // Cible à 3 SEGMENTS versée dans CAS (revue structure C28-51) : `cibleExiste` verrouille alors
   // route ↔ table — renommer une catégorie dans les constantes sans toucher la route casserait ICI.
   ['03 · Logement & véhicule', '2025-03-01_Facture_Garage Jetta.pdf', 'Véhicule/VW Jetta/Entretien & réparations'],
@@ -341,8 +345,13 @@ test('03 : filets Contrats / Correspondance — capturent le reliquat SANS voler
     'Logement/3325 4e avenue');
   assert.strictEqual(ctx.cheminCibleReset_(d, '2024-01_Contrat_1548 avenue de la Roselière.pdf'),
     'Logement/1548 avenue de la Roselière, Québec');
-  // ADR-0044 : KIA retiré du canon — il tombe dans le filet « Contrats », jamais un véhicule créé.
-  assert.strictEqual(ctx.cheminCibleReset_(d, '2023-05_Contrat_KIA Québec.pdf'), 'Contrats');
+  // ADR-0044 décision 3 : KIA retiré du canon → dossier COMMUN « Recherche & achat », jamais un
+  // véhicule créé, et jamais le filet « Contrats » (qui le noierait parmi les baux).
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2023-05_Contrat_KIA Québec.pdf'), 'Véhicule/Recherche & achat');
+  // AMBIGUÏTÉ location ↔ véhicule du canon : « location » + « VW Jetta », c'est peut-être un BAIL
+  // sur SON véhicule. Refus RÉVISABLE plutôt qu'un déplacement définitif (revue C28-62) — à
+  // comparer au cas Enterprise ci-dessus, qui ne nomme aucun véhicule de Marc et part en Locations.
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2024-01-01_Contrat de location de véhicule_VW Jetta.pdf'), null);
   // Un bail SANS adresse ni bailleur reconnus : le filet « Contrats » (le pluriel « Logements »
   // n'existe plus — c49-2), jamais un logement deviné.
   assert.strictEqual(ctx.cheminCibleReset_(d, '2024-05_Bail_Résidence X.pdf'), 'Contrats');
@@ -432,11 +441,23 @@ test('c49-2 · 03 : les règles par ENTITÉ/BAILLEUR gardent la priorité sur le
   // ADR-0044 — même patron que les pluriels : un bucket de cette table est RECRÉÉ PAR NOM, donc
   // garder « KIA » ici pendant que la mission le dissout produirait un ping-pong.
   assert.ok(!n03['Véhicule']['KIA'], 'KIA retiré de la table (sinon recréé par nom à chaque classement)');
-  // …et les 2 dossiers COMMUNS doivent y ÊTRE : c'est ce qui en fait des ancres structurelles,
-  // que `estAncreStructurelle_` (Fusion.gs) refuse de proposer comme SOURCE à vider.
-  assert.ok(n03['Véhicule']['Locations'] && n03['Véhicule']['Recherche & achat'],
-    'les communs sont des ancres structurelles, jamais des dossiers à vider');
   const vehicules = JSON.parse(JSON.stringify(ctx.CONFIG.MISSIONS_VEHICULES)).map((v) => v.nom);
   vehicules.forEach((v) => assert.ok(n03['Véhicule'][v], 'chaque véhicule du canon a son nœud : ' + v));
+  // TRIPWIRE : les communs de la TABLE == ceux de la CONFIG. Sans lui, renommer un commun dans la
+  // CONFIG créerait DEUX dossiers en prod, en silence (revue C28-62).
+  const communs = JSON.parse(JSON.stringify(ctx.CONFIG.MISSIONS_VEHICULE_COMMUNS)).map((c) => c.nom);
+  assert.deepStrictEqual(
+    Object.keys(JSON.parse(JSON.stringify(n03['Véhicule']))).filter((n) => !vehicules.includes(n)),
+    communs, 'tripwire : les communs de la table = ceux de la CONFIG');
+  // ⚠️ LE VRAI VERROU N'EST PAS LA TABLE. `estAncreStructurelleFusion_` ne regarde que le PREMIER
+  // NIVEAU de STRUCTURE_CIBLE_RESET[domaine] : un nœud imbriqué sous « Véhicule » n'y est jamais
+  // protégé (et la collecte de Fusion.gs n'est même pas récursive). Ce qui protège réellement les
+  // communs, c'est `estSegmentStructurel_` — l'inventaire de la RÉORG, lui, est récursif (BFS) et
+  // proposerait de fusionner un dossier que 2 producteurs recréent PAR NOM. Une version antérieure
+  // de ce test assertait la présence dans la table en la COMMENTANT « c'est ce qui en fait des
+  // ancres » : un proxy qui n'impliquait pas la propriété (leçon « promesse de verrou = verrou
+  // codé dans le même commit »).
+  // (le verrou lui-même est asserté dans `reorg.test.js`, où `estSegmentStructurel_` est chargé)
+
   assert.ok(Object.keys(JSON.parse(JSON.stringify(n03['Véhicule']))).length <= 7, 'règle des ≤ 7 nœuds');
 });
