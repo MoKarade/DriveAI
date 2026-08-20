@@ -1,20 +1,29 @@
 # CLAUDE.md — DriveAI
 
 > Mémoire de projet, chargée à chaque session. **Garde ce fichier court et à jour.**
-> Le détail vit dans `PLAN.md`, `BACKLOG.md` et `docs/`. Les leçons s'accumulent dans
-> `docs/LESSONS.md` et leurs règles durables remontent dans la section « Leçons » ci-dessous.
-
-## 1. Le projet en une phrase
+> L'état courant vit dans `HANDOVER.md`, le reste à faire dans `BACKLOG.md`, le détail dans
+> `docs/`. Les leçons s'accumulent dans `docs/LESSONS.md` et leurs règles durables remontent
+> en §9.
+>
+> Structure imposée par la convention commune aux huit dépôts
+> ([`claude-config/conventions/STRUCTURE-DEPOT.md`](https://github.com/MoKarade/claude-config/blob/main/conventions/STRUCTURE-DEPOT.md)).
+> **Les sections ont été renumérotées le 2026-08-20.** Le reste du dépôt — code, tests, ADR,
+> backlog — porte plus de 500 renvois à l'ancienne numérotation, qui n'ont PAS été réécrits :
+> une passe de `sed` sur autant de sites aurait cassé plus qu'elle n'aurait réparé, d'autant
+> que `§1` y désigne souvent le garde-fou n° 1 et non la section 1. Correspondance :
+> **ancien §2 (garde-fous) → §1** · **ancien §7 (leçons) → §9** · **ancien §8 (protocole) →
+> §11**. Les autres n'ont pas bougé de sens.
 
 **DriveAI** range Google Drive tout seul : les pièces jointes utiles des mails et les
-fichiers déposés à la main sont analysés par un LLM (Claude Haiku), renommés selon une
-convention stricte, et classés dans une arborescence granulaire — sans intervention, sauf
-une file de revue pour les cas incertains.
+fichiers déposés à la main sont analysés par un LLM, renommés selon une convention stricte, et
+classés dans une arborescence granulaire — sans intervention, sauf une file de revue pour les
+cas incertains. Le modèle a suivi le besoin (Haiku au départ, **Sonnet en 2 passes** depuis le
+2026-07-09, ADR-0018) : la valeur qui fait foi est `CONFIG`, pas cette phrase.
 
 Stack : **Google Apps Script** (moteur, Phases 1–3) + une **Google Sheet** (état) +
 **app web React/Vite/TS sur Vercel** (Phase 4). LLM via l'API Anthropic.
 
-## 2. Garde-fous NON NÉGOCIABLES
+## 1. Principes non négociables
 
 Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer la revue.
 
@@ -95,17 +104,15 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
    ce qui coûte quelque chose vivent dans [`docs/COUTS.md`](./docs/COUTS.md). Ce point-ci ne
    traite que d'UNE question — sous quelle période le montant part au hub.
 
-## 3. Conventions de code
+## 2. Conventions de code
 
 - **Langue** : code et commentaires en français ; interface produit bilingue FR/EN.
-- **Commits** : en français, préfixés par l'ID de tâche du backlog. Ex. `P1-03: extraction des PJ Gmail`.
-- **Branches** : `claude/<slug>` pour le travail automatisé. `main` est protégée par la CI.
 - **Nommage des fichiers classés** : `AAAA-MM-JJ_Type_Émetteur.ext`. L'entité est dans le
   *chemin*, jamais répétée dans le nom. Date absente → date de réception du mail.
 - **Discipline de scope** : on livre par phases. Ne pas anticiper une phase ultérieure.
   Voir `BACKLOG.md` pour le périmètre exact de chaque phase.
 
-## 4. Workflow automatisé
+## 3. Workflow git
 
 ### NotebookLM — ABANDONNÉ COMPLÈTEMENT (décisions Marc 2026-07-28 et 2026-07-29)
 
@@ -119,6 +126,13 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
 > se fait AVANT, jamais après). Le miroir Drive (ADR-0017) tourne encore au merge (inoffensif) ;
 > le déclasser (`sync-drive.yml`) est une option ouverte, sur demande de Marc.
 
+- **Branches** : `claude/<slug>` pour le travail automatisé, `feature/<slug>` pour Marc.
+  `main` est protégée par la CI.
+- **Commits** : en français, préfixés par l'ID de tâche du backlog. Ex. `P1-03: extraction des PJ Gmail`.
+- **`git fetch origin main` AVANT de commiter.** Plusieurs sessions travaillent sur ce dépôt en
+  parallèle : le 19-20/08, trois correctifs ont été écrits deux fois (même job CI borné dans #298
+  et dans une branche concurrente, même paragraphe de README dans deux PR). Le doublon ne se voit
+  qu'au merge, quand il est déjà payé.
 - **Push & merge auto** : Claude pousse sur une branche `claude/**`, ouvre une PR (draft),
   la CI valide, puis la PR se **merge automatiquement** (squash) quand la CI est verte.
   Voir `.github/workflows/`. Override : label `do-not-merge`.
@@ -144,7 +158,7 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
 | `apps-script-quota` | Triggers, quotas, lots, robustesse Drive/Gmail |
 | `llm-cost-optimizer` | Prompts, JSON strict, choix de modèle, cible budget |
 
-## 5. Commandes utiles
+## 4. Commandes utiles
 
 - `/phase <n>` — démarre une phase du backlog avec discipline de scope.
 - `/review` — passe le diff courant à la flotte d'agents via le `product-manager`.
@@ -152,14 +166,52 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
 - `/handover` — régénère `HANDOVER.md` à partir de l'état courant.
 - `/ship` — commit (FR, préfixe ID), push `-u origin`, ouvre la PR draft.
 
-## 6. État du projet
+## 5. Vérifications avant commit
 
-- **Phase courante** : 0 — scaffolding & automatisation. Le moteur Apps Script (Phase 1)
-  n'est **pas** encore écrit. Voir `BACKLOG.md`.
-- **Prérequis côté Marc** avant Phase 1 : projet Apps Script créé, clé Anthropic dans les
-  Script Properties (`DriveAI_ANTHROPIC_KEY`), Google Sheet d'état créée. Voir `PLAN.md` §8.
+```bash
+node --test test/*.test.js            # moteur : logique pure, zéro dépendance
+cd app && npm test && npm run build   # app web : vitest + tsc --noEmit + vite build
+```
 
-## 6 ter. En-têtes de sécurité (`vercel.json`)
+Plus, si un `.gs` a bougé — **un `.gs` à la syntaxe cassée fige le déploiement `clasp`**, et ça ne
+se voit ni dans les tests du moteur (qui ne chargent pas tous les fichiers) ni dans le build de
+l'app :
+
+```bash
+tmp=$(mktemp -d); for f in src/*.gs; do cp "$f" "$tmp/$(basename "$f" .gs).js"; done
+for j in "$tmp"/*.js; do node --check "$j" || echo "❌ $(basename "$j" .js).gs"; done
+```
+
+La **CI** (`.github/workflows/ci.yml`) rejoue exactement ce gate, plus les tripwires de surface
+(scan de secrets, `surface-gmail-ecriture`, `trashed: true` confiné à `app/src/corbeille.ts`) et
+les captures E2E en mode mock. Chaque job est borné par `timeout-minutes` : sans lui, le défaut
+GitHub est de **six heures** — vécu 2× le 19/08, `playwright install` figé > 20 min retenant le
+merge sans rien afficher.
+
+## 6. Après un merge : vérifier le DÉPLOIEMENT, pas seulement la CI
+
+**CI verte ne veut pas dire « en ligne ».** Ce sont deux systèmes indépendants : la CI juge le
+code, l'hébergeur construit et sert. Un merge peut passer le gate et ne jamais être déployé — la
+branche reste verte, le site continue de servir l'ancien build, et rien n'est rouge nulle part.
+
+Vécu le 31/07/2026 : quatre projets Vercel ont cessé de créer des déploiements pendant ~3 h.
+DriveAI et JobAI ont rattrapé au push suivant ; Hubperso et BatchChef n'en ont pas eu — leur commit
+d'en-têtes de sécurité est resté **cinq jours** en attente sans que personne ne le voie.
+
+Donc, après un merge qui change ce qui est SERVI : vérifier qu'un déploiement de production a bien
+été créé et qu'il est `READY`, puis **contrôler l'effet sur la réponse réelle** — un en-tête se lit
+dans la réponse, il ne se déduit pas du fichier source.
+
+Corollaire : un merge qui ne change QUE de la doc n'a pas de déploiement à vérifier. Le dire plutôt
+que de laisser croire qu'on a vérifié.
+
+**DriveAI a DEUX cibles, et la CI n'en garde qu'une.** Vercel déploie l'app + `api/` ; le moteur,
+lui, part sur Apps Script via `deploy.yml` (`clasp push` + `clasp deploy -i $WEBAPP_DEPLOYMENT_ID` +
+réinstallation des déclencheurs). Un merge qui touche `src/*.gs` n'est en ligne que quand CE
+workflow-là est vert : le moteur continue sinon d'exécuter l'ancienne version, en silence, tick
+après tick. Vérifier le run `deploy.yml`, pas seulement la CI ni Vercel.
+
+### En-têtes de sécurité (`vercel.json`)
 
 Ajoutés le 2026-07-31 — DriveAI n'en avait **aucun**. Ils vivent dans `vercel.json` (SPA Vite
 servi en statique, pas de config de framework où les mettre).
@@ -181,7 +233,7 @@ son schéma rejette toute propriété additionnelle et le déploiement échoue a
   `Content-Security-Policy-Report-Only` en `Content-Security-Policy`. Tant que ce n'est pas
   fait, la CSP **observe** — elle ne protège pas.
 
-## 6 bis. Intégration Hub (widget DriveAI sur hubperso.com)
+## 7. Intégration hub (widget DriveAI sur hubperso.com)
 
 DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpoint** :
 `GET /api/hub/summary` (`api/hub/summary.ts`, serverless Vercel). URL canonique de l'app :
@@ -197,13 +249,21 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   → **503** `hub disabled` ; jeton absent/faux → **401** ; méthode ≠ GET → **405**. Réponse toujours
   `Cache-Control: no-store`.
 - **HONNÊTETÉ (no-fake-data)** : le point de bascule est `api/hub/_engineState.ts` →
-  `getEngineState()`. **Phase 0 (aujourd'hui)** : il renvoie `null` ⇒ summary `status:"building"`
-  (zéro métrique inventée). Les données réelles vivent dans la Google Sheet, lue **côté navigateur**
-  avec le jeton OAuth de Marc (ADR-0007) — le serverless Vercel n'y a **aucun** accès.
-- **Règle de maintenance** : à chaque phase du moteur qui rend une métrique disponible, la brancher
-  dans `getEngineState()` et faire passer le summary à `status:"ok"` (métadonnées **seulement**,
-  ADR-0007). Ne **jamais** casser le schéma (toute évolution passe par `hub-contract`) ni publier de
-  donnée fabriquée : `building` tant que rien de réel n'est disponible.
+  `getEngineState()`, qui interroge la web app Apps Script (`action=hub-summary`, gardée par le
+  secret partagé `WEBAPP_SECRET` — aucun nouveau secret) et rend des **métadonnées seulement**
+  (compteurs + horodatage, ADR-0007), jamais un nom de fichier ni un contenu. Trois retours, trois
+  sens **distincts** : `null` (intégration non branchée, ou moteur jamais passé) ⇒ summary
+  `status:"building"` ; `throw` (canal branché mais EN PANNE — réseau, HTTP, JSON illisible) ⇒
+  **500**, jamais une donnée partielle ; sinon les vrais chiffres. Le serverless Vercel n'accède
+  toujours **pas** à la Sheet : c'est le moteur qui la lit, et l'app la lit côté navigateur avec le
+  jeton OAuth de Marc (ADR-0007).
+  *(Cette puce a affirmé « **Phase 0 (aujourd'hui)** : il renvoie `null` » jusqu'au 2026-08-20,
+  alors que le broker servait des métriques réelles depuis la Phase 1 — C28-27, 21/07. Un état
+  transitoire écrit au présent rote sans prévenir.)*
+- **Règle de maintenance** : toute nouvelle métrique se branche dans `getEngineState()` **et** passe
+  par le contrat. Ne **jamais** casser le schéma (toute évolution passe par `hub-contract` : bump de
+  version + re-pin, jamais une divergence locale) ni publier de donnée fabriquée — `building` tant
+  que rien de réel n'est disponible vaut mieux qu'un chiffre plausible.
 - **QUOTA — le broker met en cache (60 s), et c'est structurel.** Le hub poll ce endpoint
   **toutes les 15 s** tant qu'un onglet est ouvert, alors que le moteur ne recalcule le résumé
   qu'**une fois par tick** (`CONFIG.TICK_MINUTES = 5`, persisté dans `DriveAI_HUB_SUMMARY`).
@@ -216,7 +276,36 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   entre instances → taux de succès partiel, ce qui reste tout bénéfice (chaque succès = une
   exécution économisée). Toute nouvelle voie d'appel depuis le hub doit se poser la même question.
 
-## 7. Leçons apprises (règles durables)
+## 8. Documentation (où vit quoi)
+
+| Fichier | Contenu |
+|---|---|
+| `HANDOVER.md` | **L'état RÉEL** : chantier en cours, ce qui tourne, ce qui attend un geste de Marc. À lire en premier pour reprendre. |
+| `BACKLOG.md` | Ce qui est décidé mais pas fait. Chaque tâche a un ID, utilisé en préfixe de commit. |
+| `PLAN.md` | Le découpage en phases et le « pourquoi » de chacune. |
+| `docs/adr/` | Les décisions architecturales, `NNNN-slug.md`. Obligatoire AVANT toute modif du classement (§11). |
+| `docs/ARCHITECTURE.md` | Comment les morceaux tiennent ensemble : moteur, Sheet, app, broker. |
+| `docs/TAXONOMY.md` | L'arborescence cible et ses règles. |
+| `docs/NAMING.md` | La convention de nommage des fichiers classés. |
+| `docs/COUTS.md` | Tout ce qui coûte quelque chose, et la ventilation par usage. |
+| `docs/DEPLOIEMENT.md` · `docs/RUNBOOK.md` | Déployer, et quoi faire quand ça casse. |
+| `docs/HUBPERSO.md` | La liaison OAuth au projet hubperso — les gestes manuels de Marc. |
+| `docs/LESSONS.md` | Le journal brut des leçons ; les règles durables remontent en §9. |
+| `docs/WORKFLOW.md` · `docs/MCP.md` · `docs/GUIDE.md` | La flotte d'agents, le serveur MCP, le guide d'usage. |
+
+La structure est commune aux huit dépôts du hub — elle est fixée dans
+[`conventions/STRUCTURE-DEPOT.md`](https://github.com/MoKarade/claude-config/blob/main/conventions/STRUCTURE-DEPOT.md)
+du dépôt `claude-config`, et nulle part ailleurs.
+
+⚠️ **L'état courant ne s'écrit PAS dans ce fichier.** Il a porté « **Phase courante : 0 —
+scaffolding & automatisation. Le moteur Apps Script (Phase 1) n'est pas encore écrit** » jusqu'au
+2026-08-20, alors que le moteur tournait toutes les 5 minutes sur plus de 16 000 documents depuis
+des semaines et qu'on venait d'y merger de la comptabilité de coûts. Personne ne l'a vu : un
+fichier chargé à CHAQUE session est aussi un fichier que plus personne ne relit. L'état vit dans
+`HANDOVER.md`, qui a un rituel de mise à jour (`/handover`, hook `Stop`) ; `CLAUDE.md` ne porte que
+ce qui reste vrai d'une session à l'autre.
+
+## 9. Leçons apprises (règles durables)
 
 > Distillées depuis `docs/LESSONS.md`. N'ajouter ici que ce qui change la façon de coder.
 
@@ -881,7 +970,18 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   à vérifier CHAQUE plage de lecture existante (`A2:J` → `A2:K` — un index hors plage rend
   `undefined` sans erreur, la feature dépendante meurt en silence).
 
-## 8. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
+## 10. Style
+
+Hérité du `CLAUDE.md` global de Marc (`claude-config`) : réponses, commits et docs **en
+français** ; TypeScript strict côté app, pas de `any` silencieux ; nommage clair plutôt que
+commentaires verbeux ; **erreurs honnêtes** — ne pas avaler une panne, ne pas ajouter un
+`try/catch` qui cache un vrai bug (le broker distingue `null`, `throw` et données réelles pour
+exactement cette raison, §7).
+
+Pas d'emojis dans les réponses sauf demande explicite. Les statuts du backlog (⬜ 🟦 ✅ ⏸️) et les
+⚠️ des garde-fous sont des marqueurs de document, pas du décorum.
+
+## 11. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 
 > Règle d'or (demande Marc 2026-07-07). Obligatoire pour tout changement du **classement**.
 
