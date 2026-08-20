@@ -412,11 +412,17 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(e, ['edf', 'engie', 'hydro'])) return 'Énergie & services';
     if (tout.indexOf('assurance habitation') !== -1 || e.indexOf('maif') !== -1) return 'Assurance habitation';
     // Un document de VÉHICULE sans véhicule identifiable (immatriculation SAAQ, contravention
-    // anonyme…) n'a PLUS de fourre-tout : les catégories vivent DANS chaque véhicule (décision
-    // Marc). null ⇒ reste en `_TRI` + rapport — la MISSION, elle, sait trancher par FENÊTRE DE
-    // POSSESSION (état Drive, hors de portée d'une table pure). Jamais deviné.
+    // anonyme…) : le dossier COMMUN « À attribuer » (ADR-0044 §4.2, décision Marc).
+    // ⚠️ Ce `return` valait `null` jusqu'à la revue C28-62, au motif que « la MISSION sait trancher
+    // par fenêtre de possession » — mécanisme désormais RETIRÉ (il ne pouvait pas fonctionner), et
+    // qui de toute façon ne voyait pas ces documents : ils arrivent par le FLUX, pas par les
+    // sources de la mission. `null` les envoyait au repli de `planRoutageV2_`, c'est-à-dire À PLAT
+    // à la racine de `03` — le vrac que `HistoriqueVrac` compte comme dette.
+    // Bénéfice de convergence : le flux, la mission ET la consolidation calculent maintenant la
+    // MÊME cible pour ces documents (la conso recalculerait « À attribuer » ⇒ ligne « OK », au
+    // lieu de proposer de les ramener à la racine du domaine).
     if (resetContient_(t, ['immatriculation', 'carte grise', 'constat d infraction', 'contravention', 'amende']) ||
-        e.indexOf('saaq') !== -1) return null;
+        e.indexOf('saaq') !== -1) return 'Véhicule/À attribuer';
 
     /* ---- Ordre VOULU : les règles par entité/canon ci-dessus passent AVANT les filets
      * « Contrats »/« Correspondance » (un « Contrat_LCP » part chez son bailleur, jamais dans le

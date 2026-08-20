@@ -91,6 +91,9 @@ const CAS = [
   // de ce cas attendait `null`, ce qui envoyait le document à PLAT à la racine de `03`, dans le
   // vrac même que `HistoriqueVrac` compte comme dette (revue C28-62).
   ['03 · Logement & véhicule', '2023-01_Facture_KIA Québec.pdf', 'Véhicule/Recherche & achat'],
+  // `sportage` : jeton hérité de l'ex-entrée KIA du canon. Le perdre en retirant KIA renvoyait
+  // « Garage Sportage » à plat dans `03` — trouvé par la revue C28-62, invisible autrement.
+  ['03 · Logement & véhicule', '2025-03-01_Facture_Garage Sportage.pdf', 'Véhicule/Recherche & achat'],
   // Le dossier commun « Locations » doit exister dans la table : c'est ce CAS qui déclenche le
   // tripwire `cibleExiste` (route ↔ table) sur lui.
   ['03 · Logement & véhicule', '2026-04-10_Contrat de location de véhicule_Enterprise.pdf', 'Véhicule/Locations'],
@@ -360,7 +363,7 @@ test('03 : filets Contrats / Correspondance — capturent le reliquat SANS voler
 /* ---------- 03 c49-2 (ADR-0040 §3a/§3c) : catégories PAR VÉHICULE — le transversal t4 est
  * RÉVOQUÉ par la décision Marc 2026-08-17. Un document de véhicule SANS véhicule identifiable
  * n'a PLUS de fourre-tout : le flux (table pure) rend null (à plat au domaine + rapport) — la
- * MISSION, elle, tranche par fenêtre de POSSESSION (état Drive). Mêmes noms RÉELS que t4. ---------- */
+ * MISSION ne devine plus non plus : le repli par date est RETIRÉ (ADR-0044 §4). Noms RÉELS. --- */
 
 test('c49-2 · 03 : un document de véhicule NOMMÉ va dans SON véhicule, catégorie par le type', () => {
   const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
@@ -399,10 +402,18 @@ test('c49-2 · 03 : SANS véhicule identifiable → null (jamais de fourre-tout,
     // (la capture Corolla partirait sinon dans le bZ à clé de SUCCÈS — leçon C28-49).
     '2026-07-01_Capture d\'écran_Drummondville Volkswagen.jpg',
     '2026-07-01_Facture_Toyota.jpg',
-    // Contraventions/immatriculation anonymes : la mission tranche par fenêtre, jamais la table.
+  ].forEach((nom) => assert.strictEqual(c.cheminCibleReset_(D, nom), null, nom));
+  // Contraventions/immatriculation anonymes : documents de VÉHICULE typés, sans véhicule
+  // identifiable ⇒ dossier COMMUN « À attribuer » (ADR-0044 §4.2). Ils rendaient `null` jusqu'à la
+  // revue C28-62, au motif que « la mission tranche par fenêtre » — mécanisme retiré, et qui ne
+  // voyait de toute façon PAS ces documents (ils arrivent par le flux). `null` les envoyait à plat
+  // à la racine de `03`. Le flux, la mission et la consolidation calculent maintenant la MÊME
+  // cible : c'est ce qui rend le placement CONVERGENT.
+  [
     '2023-06-27_Constat d\'infraction_Ville de Québec.jpg',
     '2026-07-06_Constat d\'infraction_Municipalité de Thetford Mines.jpg',
-  ].forEach((nom) => assert.strictEqual(c.cheminCibleReset_(D, nom), null, nom));
+    '2026-07-20_Certificat d\'immatriculation_Société de l\'assurance automobile du Québec.jpg',
+  ].forEach((nom) => assert.strictEqual(c.cheminCibleReset_(D, nom), 'Véhicule/À attribuer', nom));
   // L'assurance HABITATION, elle, garde son nœud (règle plus haute).
   assert.strictEqual(c.cheminCibleReset_(D, '2025-01-01_Assurance habitation_Desjardins.pdf'), 'Assurance habitation');
   // Une réclamation TÉLÉCOM ne devient jamais un sinistre auto (contre-exemple réel conservé).
@@ -459,5 +470,6 @@ test('c49-2 · 03 : les règles par ENTITÉ/BAILLEUR gardent la priorité sur le
   // codé dans le même commit »).
   // (le verrou lui-même est asserté dans `reorg.test.js`, où `estSegmentStructurel_` est chargé)
 
-  assert.ok(Object.keys(JSON.parse(JSON.stringify(n03['Véhicule']))).length <= 7, 'règle des ≤ 7 nœuds');
+  assert.ok(Object.keys(JSON.parse(JSON.stringify(n03['Véhicule']))).length <= MAX,
+    'règle des ≤ ' + MAX + ' nœuds (dérivée de la constante, jamais du littéral du jour)');
 });

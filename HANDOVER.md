@@ -4,7 +4,23 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🎯 CHANTIER EN COURS — C28-49 « Missions de curation » (brief Marc 2026-08-17, ADR-0039).**
+> **🎯 CHANTIER EN COURS — C28-62 « Affinage des non-appariés » (ADR-0044, PR #300, `do-not-merge`).**
+> Marc : « y'en a beaucoup en attente d'affinage, pose-moi des questions » → 12 décisions (ADR-0044).
+> **PR1 (véhicules) en revue.** ⚠️ Son diagnostic initial (« KIA sans dossier ⇒ `fenetresCompletes`
+> faux à vie ⇒ 48 bloqués ») a été **contesté par la revue flotte et DÉMENTI par le Drive** :
+> `Véhicule/Ford Fiesta` est VIDE, donc sans fenêtre, donc la gate restait insatisfiable même sans
+> KIA — la PR ne débloquait rien. Et la fenêtre de la Jetta courait de 2019 à 2026 (comparatif KIA
+> mal rangé sous elle) : elle aurait avalé les documents de l'époque française. **Décision Marc
+> 2026-08-20 : repli par date RETIRÉ, remplacé par un commun « Véhicule/À attribuer »** qui conserve
+> la catégorie d'origine. Le FLUX apprend la même cible ⇒ flux, mission et consolidation d'accord
+> par construction. Restent PR2 (les 39 de « employeurs & CV », décisions 9-12 — dont le RETRAIT de
+> la fusion `Recherche d'emploi` → `CV & lettres`, indissociable), PR3 (« Modèles & formulaires »),
+> PR4 (dossiers-années 02). **Rien n'est déployé** tant que #300 n'est pas mergée : les compteurs
+> « N non apparié(s) » que Marc voit dans l'app sont ceux de c49-2.
+> **Piste ouverte** : si Marc donne ses PÉRIODES DE POSSESSION, les déclarer en CONFIG rouvrirait
+> une attribution fiable — sur une donnée FIXE, jamais dérivée d'un état que la mission déplace.
+>
+> **CHANTIER PRÉCÉDENT — C28-49 « Missions de curation » (brief Marc 2026-08-17, ADR-0039).**
 > Marc a spécifié le rangement FIN dossier par dossier (véhicules, logements, archives scolaires,
 > employeurs, paies, impôts, identité, _Technique/_Médias/_Doublons, vrac des racines) et veut
 > UNE MISSION PAR TÂCHE, visible dans l'app avec l'avancement réel, et les dossiers vidés peints

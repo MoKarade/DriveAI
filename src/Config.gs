@@ -625,8 +625,8 @@ var CONFIG = {
   // « déjà tenté » à vie et l'affinage serait sans effet (constaté au 1ᵉʳ reliquat réel, 2026-07-30).
   RESET_TABLE_VERSION: 't5',              // t5 (ADR-0044, 2026-08-20) : « KIA » RETIRÉ du nœud Véhicule (il le
                                           // faisait RECRÉER par nom pendant que la mission le dissout →
-                                          // ping-pong), + les 2 dossiers COMMUNS « Recherche & achat » et
-                                          // « Locations » déclarés comme ancres structurelles. Ce bump ACQUITTE
+                                          // ping-pong), + les 3 dossiers COMMUNS « Recherche & achat »,
+                                          // « Locations » et « À attribuer » déclarés dans la table. Ce bump ACQUITTE
                                           // aussi la dette laissée par C28-51 (ADR-0040), qui avait révoqué le
                                           // transversal t4 de 03 SANS bump parce que la campagne était terminée
                                           // et RESET_ACTIF=false : le jour où le reset repart, les refus keyés
@@ -951,7 +951,7 @@ var CONFIG = {
   // satisfaite) et celle de la Jetta court de 2019 à 2026. Grouper sans deviner plutôt que
   // deviner mal : les documents sans véhicule identifiable attendent là que Marc les réparte.
   MISSIONS_VEHICULE_COMMUNS: [
-    { nom: 'Recherche & achat', sources: ['KIA'], jetons: ['kia'] },
+    { nom: 'Recherche & achat', sources: ['KIA'], jetons: ['kia', 'sportage'] }, // `sportage` : jeton de l'ex-entrée KIA du canon — le PERDRE renvoyait « Garage Sportage » à plat dans 03 (revue C28-62)
     { nom: 'Locations', sources: [], jetons: [] },   // alimenté par la DÉTECTION de location
     { nom: 'À attribuer', sources: [], jetons: [] }, // filet : aucun véhicule identifiable
   ],

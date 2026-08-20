@@ -131,9 +131,21 @@ Réponse : **un dossier commun « À attribuer »**, plutôt que de deviner ou d
 - **Le repli par DATE est RETIRÉ de la mission véhicule** (`batirCtx` ne construit plus de fenêtre,
   la gate de complétude disparaît). `logementParDate_` **reste** au service de la mission LOGEMENT,
   dont les squelettes sont remplis et les périodes disjointes.
-- Ordre de décision : dossier source dissous (KIA) → commun reconnu par le **nom** → location →
-  véhicule **nommé** → sinon **`Véhicule/À attribuer`**, en conservant la catégorie d'origine
-  (« Assurance auto », « Entretien & réparations ») pour que la répartition manuelle reste faisable.
+- Ordre de décision **complet** (7 étapes — les deux dernières manquaient à une première rédaction
+  de cette section, alors que ce sont elles qui traitent le gros du volume) :
+  1. dossier `Toyota bZ` isolé → en bloc ;
+  2. **les 2 dossiers « KIA » parasites, par IDENTITÉ de source** (`sourceId`) — pas par le
+     nommage : leurs fichiers sont à la RACINE de la source, donc `sousChemin` vaut `''` et la
+     règle `sources: ['KIA']` ne les voit pas ;
+  3. commun par dossier source dissous (`Véhicules/KIA/…`) ou par **jeton de nom** (`kia`,
+     `sportage`) ;
+  4. **location** : + un véhicule du canon ⇒ refus (ambigu) ; sinon `Locations` ;
+  5. **véhicule nommé** → `Véhicule/<v>/<catégorie>` ;
+  6. **sous-dossier source PORTANT le nom d'un commun** (`Véhicules/Recherche & achat`) → ce
+     commun. **Après** l'étape 5, pour qu'un magasinage qui nomme la Jetta aille bien sous la
+     Jetta (décision 1) ;
+  7. sinon **`Véhicule/À attribuer`**, catégorie d'origine conservée — sauf si la règle partagée
+     du flux sait le placer ailleurs que sous « Véhicule » (filet de sécurité, §4.3 #9).
 - **Rien n'est deviné, rien n'est bloqué.** Marc répartit quand il veut.
 
 ### 4.3 Autres correctifs issus de la revue (même geste)
@@ -143,9 +155,14 @@ Réponse : **un dossier commun « À attribuer »**, plutôt que de deviner ou d
 | 1 | Les communs se reconnaissent aussi par **jetons de NOM** (`communVehiculeDuNom_`), consultés par le **flux vivant** ET les missions — sans quoi un document « KIA » entré par le flux tombait **à plat à la racine de `03`** (le vrac que `HistoriqueVrac` compte comme dette). Décision 3 « KIA compris » n'était tenue que pour le dossier source. |
 | 2 | Les **2 dossiers « KIA » créés par le moteur** (`Véhicule/KIA`, `Véhicule/VW Jetta/KIA`) deviennent des **sources** de la mission : sans ça, retirer KIA du canon les laissait orphelins à vie. |
 | 3 | `estLocationVehicule_` + véhicule **du canon** = **AMBIGU** ⇒ refus (révisable) au lieu d'un déplacement définitif : au Québec « location » désigne couramment un **bail** automobile, et la LOA est le mode d'acquisition standard en France. |
-| 4 | Les communs sont déclarés dans **`estSegmentStructurel_`** (Reorg.gs). ⚠️ La PR1 affirmait que leur présence dans `STRUCTURE_CIBLE_RESET` les protégeait via `estAncreStructurelleFusion_` : **c'est faux** — ce prédicat ne lit que le premier niveau du domaine, et la collecte de `Fusion.gs` n'est même pas récursive. L'exposition réelle est l'inventaire de la **Réorg**, lui bien récursif ; `Locations` et `À attribuer` n'étaient couverts par rien. |
+| 4 | Les communs sont déclarés dans **`estSegmentStructurel_`** (Reorg.gs). ⚠️ La PR1 affirmait que leur présence dans `STRUCTURE_CIBLE_RESET` les protégeait via `estAncreStructurelleFusion_` : **c'est faux** — ce prédicat ne lit que le premier niveau du domaine, et la collecte de `Fusion.gs` n'est même pas récursive. L'exposition réelle est l'inventaire de la **Réorg**, lui bien récursif ; `Locations` et `À attribuer` n'étaient couverts par rien. *(Nuance : `estAncreStructurelleFusion_` appelle `estSegmentStructurel_` en première ligne — le correctif couvre donc Fusion **aussi**, le jour où sa collecte deviendrait récursive.)* |
 | 5 | `MISSIONS_MOTS_VEHICULE` : pluriels ajoutés (`véhicules`, `voitures`, `automobiles` manquaient alors qu'`autos` était là) + test verrouillant l'invariant tacite « jetons alphabétiques seulement » (le préfixe de date n'est pas retiré par ce prédicat). |
 | 6 | `docs/TAXONOMY.md` mis à jour dans le même commit. |
+| 7 | **Le jeton `sportage` récupéré.** Il appartenait à l'entrée KIA du canon ; le retirer avec elle renvoyait « Garage Sportage » **à plat dans `03`**. Une suppression d'entrée emporte ses jetons — vérifier ce qu'ils couvraient. |
+| 8 | Les 2 dossiers KIA sont dissous **par identité de source**, pas par le nommage (cf. §4.2 étape 2). Dépendre du mot « kia » marchait pour les 3 fichiers actuels, pas pour le suivant. |
+| 9 | **Filet de sécurité sur `À attribuer`** : c'est un DÉPLACEMENT, donc définitif. Or « Véhicules » n'est pas un dossier pur (Marc y a rangé 4 conversations de propriétaire/plombier). Avant d'avaler un document, le routeur demande à la règle partagée du flux si elle sait le placer ailleurs que sous « Véhicule » — si oui, **refus** (révisable). Les 2 filets FAIBLES du flux (`Contrats`/`Correspondance`) sont exclus : ils attrapent par SOUS-CHAÎNE. |
+| 10 | **Le FLUX apprend `À attribuer`** (`Reset.gs`) pour les documents de véhicule typés sans véhicule identifiable (immatriculation, contravention, SAAQ). Ils rendaient `null`, donc partaient **à plat à la racine de `03`** — le vrac que `HistoriqueVrac` compte comme dette. Voir §4.4 : c'est ce correctif qui rend le placement CONVERGENT. |
+| 11 | **`dispatch03`, le 3ᵉ consommateur, était resté en arrière** : il filait les « location + véhicule du canon » dans `Locations` sans l'arbitrage d'ambiguïté (déplacement définitif) et ignorait `communVehiculeDuNom_`. Instance exacte de la leçon « mutualiser UNE dimension d'une règle ne couvre pas les autres » : le prédicat était partagé, la DÉCISION non. |
 
 ### 4.4 Consolidation : décision explicite de NE PAS bumper `CONSOLIDATION_TAG`
 
@@ -153,17 +170,33 @@ Réponse : **un dossier commun « À attribuer »**, plutôt que de deviner ou d
 consommateurs de `cheminCibleReset_` en production sont le **flux vivant** (sans clé de règle) et
 la **consolidation**, dont la clé `conso|<tag>|<fileId>` ne porte **pas** la version de table.
 
-Bumper `conso-3 → conso-4` re-marcherait tout le Drive — et, la consolidation n'ayant aucun
-équivalent du routage par date, elle proposerait de **déplacer vers la racine du domaine** des
-fichiers que la mission vient de ranger. **Décision : pas de bump.** Le jour où la campagne reset
-sera relancée (`RESET_ACTIF`), ce couple devra être réexaminé — c'est noté ici plutôt que laissé
-à la mémoire.
+Le risque d'un bump `conso-3 → conso-4` était que la consolidation, ne sachant pas reproduire la
+cible de la mission, propose de **déplacer vers la racine du domaine** ce que la mission vient de
+ranger — et `CONSOLIDATION_EXEC_ACTIF` l'aurait **exécuté**, sans validation ligne à ligne.
+
+**Le correctif #10 supprime ce risque à la racine** : le flux calcule désormais lui-même
+`Véhicule/À attribuer`, donc la consolidation recalcule la MÊME cible et inscrit « OK » au lieu de
+proposer un retour au vrac. Flux, mission et consolidation sont d'accord **par construction**,
+ce qui vaut mieux qu'un négatif tenu par de la prose (« promesse de verrou = verrou codé »).
+
+**Décision inchangée : pas de bump dans cette PR** — il n'apporte rien ici et coûterait une
+re-marche complète du Drive. Mais il redevient *sûr*, ce qui n'était pas le cas avant #10. Le jour
+où la campagne reset sera relancée (`RESET_ACTIF`), le couple `RESET_TABLE_VERSION` ↔
+`CONSOLIDATION_TAG` devra être réexaminé.
 
 ### 4.5 Ce que la PR livre réellement (chiffré, sans promesse)
 
-- **11 fichiers** de `Véhicules/Recherche & achat` → `Véhicule/Recherche & achat` ;
-- **3 fichiers** des 2 dossiers « KIA » parasites → même destination ;
+- **jusqu'à 11 fichiers** de `Véhicules/Recherche & achat` → `Véhicule/Recherche & achat`
+  (majorant : ceux qui nomment un véhicule du canon partent sous CE véhicule, étape 5 avant 6) ;
+- **3 fichiers** des 2 dossiers « KIA » → même destination ;
 - **~35 fichiers** (assurances, garages, SAAQ) → `Véhicule/À attribuer`, groupés par catégorie ;
-- les documents « KIA » du **flux vivant** ne tombent plus à plat dans `03`.
+- les documents « KIA », « Sportage », immatriculation/contravention/SAAQ du **flux vivant** ne
+  tombent plus à plat à la racine de `03`.
+
+⚠️ **Sur les 2 dossiers « KIA »** : leurs horodatages de création sont à vitesse machine
+(`Véhicule/VW Jetta/KIA` à 16:47:08 puis `Véhicule/Toyota bZ` 7 s plus tard), ce qui désigne le
+moteur — mais **je n'ai pas identifié le chemin de code** qui produit `Véhicule/VW Jetta/KIA`.
+Les dissoudre reste conforme à la décision 2 quelle qu'en soit l'origine (« KIA, c'était juste une
+recherche d'achat ») ; si Marc les avait créés à la main, le geste est le même.
 
 Aucun document n'est attribué à un véhicule qui n'est pas nommé — c'est la décision de Marc.
