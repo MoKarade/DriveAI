@@ -4,8 +4,13 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🎯 CHANTIER EN COURS — C28-49 PR4 « Valider `_Doublons` par empreinte » (ADR-0047).**
-> Livré, en attente de merge. **Ce que l'inventaire EXHAUSTIF du 2026-08-20 a montré :
+> **🎯 DERNIER CHANTIER — C28-49 PR4 « Valider `_Doublons` par empreinte » (ADR-0047).**
+> **#308 MERGÉE** (`294b270`) et `deploy.yml` vert à **16:21 EDT**. ⚠️ **Prise d'effet PAS ENCORE
+> VÉRIFIÉE** — le dernier tick observé (16:14) PRÉCÈDE le déploiement, donc l'absence de la ligne
+> Santé « Doublons (validation par empreinte) » ne prouve rien dans un sens ni dans l'autre. Le
+> signal à chercher, et le SEUL qui compte (piège 3, un déploiement vert ne prouve rien) : cette
+> ligne dans l'onglet Santé, et l'onglet `RapportDoublons` qui se remplit.
+> **Ce que l'inventaire EXHAUSTIF du 2026-08-20 a montré :
 > `_Doublons` contient 1 076 fichiers, et certains sont le SEUL exemplaire de leur contenu** —
 > les 3 passeports de Marc y sont, de tailles DIFFÉRENTES (donc pas copies l'un de l'autre) ;
 > le contenu d'un bulletin d'Avila y est en double et n'existe nulle part ailleurs.
@@ -35,6 +40,17 @@
 > exprès par la règle D12 — aucune mission à y construire. `_Médias` (1 308 fichiers) : le nom n'y
 > prouve rien (les `Relevé_Inconnu.mp4` sont des vidéos), mais **trois** fichiers démentent la
 > promesse de C20-01 (fiscal ARC, deux pièces d'identité) → constat écrit, backlog C28-69.
+>
+> **➜ PROCHAIN CHANTIER — et il ne commence PAS par PR3.** ADR-0046 annonçait que la mission
+> identité « réutiliserait la règle du flux ». C'est faux, vérifié dans le code ET dans le Drive :
+> le flux (`dossierIdentite_`) range en `01 · Administratif/<TYPE>`, la table
+> (`cheminCibleReset_`) en `01 · Administratif/Pièces d'identité/Marc`. `01/Permis de conduire` a
+> été **créé le 12/08**, deux semaines après `Pièces d'identité` (29/07) : le nœud que l'ADR
+> appelait « parasite » est **fabriqué par le flux**, et le sera encore à chaque pièce analysée.
+> Adopter la règle du flux dans la mission reproduirait le défaut C28-26 (deux formules
+> divergentes ⇒ la campagne re-déplace en boucle ce que le flux vient de classer).
+> **C28-72 (aligner le FLUX sur la table, sous tripwire) est un PRÉALABLE à PR3.** ADR-0046 §2 et
+> §4 corrigés en conséquence.
 
 > **🎯 CHANTIER PRÉCÉDENT — C28-62 « Affinage des non-appariés » (ADR-0044) : TERMINÉ.**
 > Les 4 PR sont mergées (#300, #304, #305) et **#307** (C28-65) l'est aussi, déployé à 15:32 EDT.

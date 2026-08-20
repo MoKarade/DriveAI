@@ -731,6 +731,19 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
   une preuve (§1.6 : « ne pas déclarer une campagne finie sans lire son compteur »). La marge
   restante est de 2 min/j : la PROCHAINE campagne de fond n'a plus de place. Prouver, puis réallouer.
 
+- ⬜ **C28-72 — Identité : le FLUX et la TABLE rangent à deux endroits différents (préalable à PR3).**
+  `dossierIdentite_` (Router.gs) range une pièce d'identité en `01 · Administratif & identité/<TYPE>` ;
+  `cheminCibleReset_` (Reset.gs, branche 01) la range en `Pièces d'identité/Marc` (ou
+  `Pièces d'identité/Autres/<personne>`). Preuve Drive du 2026-08-20 : `01/Permis de conduire` a été
+  **créé le 12/08**, deux semaines après `Pièces d'identité` (29/07), et les deux sont frères au
+  niveau 1 — le nœud « parasite » de l'ADR-0046 §4 est **fabriqué par le flux**, et le sera de
+  nouveau à chaque pièce analysée. C'est le patron C28-26 (deux formules équivalentes écrites
+  séparément divergent, la campagne re-déplace en boucle ce que le flux vient de classer).
+  ⚠️ **À faire AVANT C28-49 PR3** : la mission identité ne peut pas « réutiliser la règle du flux »
+  comme l'ADR-0046 l'annonçait — elle reproduirait le défaut. Aligner le FLUX sur la table
+  (cible canonique `Pièces d'identité/…`), sous tripwire, puis vider le nœud, puis laisser Marc
+  trancher sur le dossier vide. ADR-0046 §2 et §4 corrigés en conséquence.
+
 - ⬜ **C28-71 — Le registre de suivi C28-44 est SATURÉ : plus aucune étape de tick ne peut y entrer.**
   Pire cas mesuré : 8 377 des 8 500 octets du plafond dérivé (42 clés, ~199 octets chacune) — il
   reste 123 octets, et une 43ᵉ clé ferait échouer le tripwire de plafond de `suivi.test.js` (le

@@ -41,8 +41,26 @@ Déplacement autorisé **seulement** si le TITULAIRE est déterminé :
 - **sinon : REFUS keyé** (révisable par bump), rapporté. Un document d'identité rangé sous la
   mauvaise personne est pire que non rangé.
 
-La règle de cible est celle du flux (`dossierIdentite_`) — une seule règle, deux consommateurs,
-comme partout ailleurs depuis ADR-0044 §7.
+⚠️ **Correction du 2026-08-20 — il n'y a PAS de règle unique à réutiliser : il y en a DEUX, et elles
+divergent.** Cette section disait « la règle de cible est celle du flux (`dossierIdentite_`) — une
+seule règle, deux consommateurs ». Vérification faite dans le code ET dans le Drive :
+
+| Consommateur | Fonction | Cible produite |
+|---|---|---|
+| Flux vivant | `dossierIdentite_` (Router.gs) | `01 · Administratif & identité` + sous-dossier = **le TYPE** → `01/Permis de conduire` |
+| Table de rangement | `cheminCibleReset_` (Reset.gs, branche 01) | **`Pièces d'identité/Marc`** ou `Pièces d'identité/Autres/<personne>` |
+
+Preuve dans le Drive : `01 · Administratif/Permis de conduire` a été **créé le 2026-08-12**, soit
+deux semaines APRÈS `Pièces d'identité` (2026-07-29), et les deux sont frères au niveau 1. Le nœud
+que §4 appelle « parasite » n'est donc pas un résidu historique : **c'est le flux qui le fabrique**,
+et il le refabriquera à chaque pièce d'identité analysée.
+
+Conséquence pour la mission : **adopter `dossierIdentite_` telle quelle reproduirait le défaut**
+(un dossier de niveau 1 par type). C'est le patron exact que C28-26 a coûté cher à corriger — deux
+formules « équivalentes » écrites séparément divergent, et la campagne re-déplace en boucle ce que
+le flux vient de classer. La cible canonique est celle de la table (`Pièces d'identité/<Marc|Autres/…>`) ;
+c'est le FLUX qu'il faut aligner dessus, dans la même PR et sous un tripwire — pas la mission qu'il
+faut aligner sur le flux. Chantier : **C28-72**.
 
 ## 3. 🔴 `_Doublons` n'est PAS une source, et c'est la décision structurante
 
@@ -67,8 +85,11 @@ ordre : (a) le document de tiers part vers `Pièces d'identité/Autres/Frederiqu
 confirme l'identité de cette personne — sinon il RESTE et est rapporté ; (b) le nœud vidé n'est
 **pas** supprimé par le moteur (§2) : il apparaîtra en `vide-candidat` dans l'app, et Marc tranche.
 
-⚠️ Le nœud ne doit pas être re-créé par le flux entre-temps : il faut vérifier qu'aucune règle de
-`cheminCibleReset_` ne vise `Permis de conduire` au niveau 1 de `01`. À faire AVANT de le vider.
+⚠️ **Vérifié le 2026-08-20, et ce n'était pas la bonne fonction à regarder.** Cette ligne disait de
+vérifier `cheminCibleReset_` : c'est `dossierIdentite_` (le FLUX) qui vise `Permis de conduire` au
+niveau 1 de `01`, et qui a créé ce dossier le 2026-08-12. Vider le nœud sans aligner le flux d'abord
+ne sert à rien — il sera recréé à la prochaine pièce d'identité analysée. L'ordre est donc :
+aligner le flux (C28-72), PUIS vider, PUIS laisser Marc trancher sur le dossier vide.
 
 ## 5. Ce qui reste à trancher par Marc
 
