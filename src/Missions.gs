@@ -290,9 +290,26 @@ function tableMissions_() {
       batirCtx: function () {
         var anneePar = {};
         (IDS.annees02 || []).forEach(function (p) { anneePar[p.id] = p.annee; });
-        return { anneePar: anneePar };
+        // (ADR-0044 §7) IDs des domaines de SORTIE. 🔴 `CONFIG.DOMAINES` ne contient que les 7
+        // domaines FIXES : « 07 · Santé » et « 09 · Voyages » sont des domaines AUTO, dont l'ID vit
+        // en Script Property (`DriveAI_DOM_<nom>`) et PEUT être absent (domaine jamais né). Lire la
+        // CONFIG seule rendait `undefined` — un `cibleId` vide, donc un plantage au déplacement.
+        // I/O ICI (le routeur reste PUR) ; domaine sans ID ⇒ absent de la carte ⇒ le routeur REFUSE
+        // (clé versionnée, révisable dès que le domaine existe), jamais un déplacement à l'aveugle.
+        var domainesId = {};
+        Object.keys(CONFIG.DOMAINES).forEach(function (d) { domainesId[d] = CONFIG.DOMAINES[d]; });
+        try {
+          var props = PropertiesService.getScriptProperties();
+          (CONFIG.DOMAINES_AUTO || []).forEach(function (d) {
+            var id = props.getProperty('DriveAI_DOM_' + d);
+            if (id) domainesId[d] = id;
+          });
+        } catch (e) { /* Properties illisibles : seuls les domaines FIXES sont ciblables ce run */ }
+        return { anneePar: anneePar, domainesId: domainesId };
       },
-      router: function (nom, info, ctx) { return routerFinance02_(nom, ctx.anneePar[info.sourceId] || ''); },
+      router: function (nom, info, ctx) {
+        return routerFinance02_(nom, ctx.anneePar[info.sourceId] || '', ctx.domainesId);
+      },
     },
     {
       // Racine d'« Impôts & déclarations » → sous-dossier par ANNÉE (année du nom du fichier).
@@ -604,8 +621,38 @@ var TYPES_FISCAUX_MISSIONS = ['t4', 'impot', 'impots', 'cotisation', 'declaratio
  * @param {string} anneeSource  nom du dossier-année d'origine (repli)
  * @return {?Object}
  */
-function routerFinance02_(nom, anneeSource) {
+/**
+ * Domaine de SORTIE d'un document d'un dossier-année de 02 (ADR-0044 §7). PURE (testée).
+ * Rend le nom du domaine, ou '' si le document reste en Finances. Ambigu (deux domaines
+ * candidats) ⇒ '' : on ne devine pas un mouvement INTER-DOMAINES, qui est irréversible de fait.
+ * @param {string} nom @return {string}
+ */
+function domaineHors02DuNom_(nom) {
+  var n = ' ' + normaliserMission_(String(nom || '').replace(/^\d{4}-\d{2}(-\d{2})?/, '')) + ' ';
+  var trouve = '';
+  (CONFIG.MISSIONS_ANNEES02_DOMAINES || []).forEach(function (r) {
+    var touche = (r.jetons || []).some(function (j) { return n.indexOf(' ' + j + ' ') !== -1; }) ||
+      (r.motifs || []).some(function (m) { return n.indexOf(m) !== -1; });
+    if (!touche) return;
+    if (trouve && trouve !== r.domaine) trouve = '\u0000'; // ambigu
+    else if (!trouve) trouve = r.domaine;
+  });
+  return trouve === '\u0000' ? '' : trouve;
+}
+
+function routerFinance02_(nom, anneeSource, domainesId) {
   var IDS = CONFIG.MISSIONS_IDS;
+  var idDomaine = function (d) { return (domainesId || CONFIG.DOMAINES)[d] || ''; };
+  // (ADR-0044 §7) SORTIE de 02 — évaluée en PREMIER : un document de télécom ou de société n'a
+  // rien à faire dans les règles bancaires ci-dessous. Le sous-chemin vient du FLUX : une seule
+  // règle, deux consommateurs. Flux muet dans le domaine d'arrivée ⇒ refus, jamais un dépôt à
+  // la racine (ce serait remplacer un fourre-tout par un autre).
+  var domaineSortie = domaineHors02DuNom_(nom);
+  if (domaineSortie) {
+    var idSortie = idDomaine(domaineSortie);
+    var chemin = idSortie ? cheminCibleReset_(domaineSortie, nom) : '';
+    return chemin ? { cibleId: idSortie, sousDossier: chemin } : null;
+  }
   var type = typeDuNomMission_(nom);
   if (!type) return null; // nom hors convention : on ne décide pas sur du bruit
   // 1. Paies → « Revenus & paie »/<Employeur> — prédicat PARTAGÉ avec le flux (`estTypePaieReset_`,
@@ -639,6 +686,11 @@ function routerFinance02_(nom, anneeSource) {
     return { cibleId: IDS.recusFactures02, sousDossier: resetBucketAnnee_(anneeDoc, noeuds02['Reçus & factures']) };
   }
   if (typeContient_(type, ['assurance', 'assurances'])) return { cibleId: IDS.assurances02 };
+  // Repli sur LA règle du flux pour tout ce que la table ci-dessus ne couvre pas (budgets, achats
+  // en ligne, courtage, banque, T1135 — ADR-0044 §7). Sans lui, la mission refuserait des cas que
+  // le flux sait ranger, et la consolidation les déplacerait ensuite : deux verdicts, un fichier.
+  var cheminFlux = idDomaine('02 · Finances') ? cheminCibleReset_('02 · Finances', nom) : '';
+  if (cheminFlux) return { cibleId: idDomaine('02 · Finances'), sousDossier: cheminFlux };
   return null;
 }
 
@@ -1321,7 +1373,15 @@ function traiterItemMission_(spec, item, ctx, proteges) {
       return memo[k] || (memo[k] = sousDossier_(parent, nomSous));
     };
     var dossier = cible.cibleId ? ouvrir(cible.cibleId) : sous(ouvrir(cible.cibleParentId), cible.cibleNom);
-    if (cible.sousDossier) dossier = sous(dossier, cible.sousDossier);
+    // CHEMIN (segments séparés par '/'), pas un nom simple : la cible d'un routage inter-domaines
+    // est calculée par `cheminCibleReset_`, qui rend des chemins (« Contrats & fournisseurs/Virgin
+    // Plus »). Sans le découpage, Drive créerait UN dossier portant la barre oblique dans son nom.
+    // Rétro-compatible : un segment unique donne exactement le comportement précédent.
+    if (cible.sousDossier) {
+      String(cible.sousDossier).split('/').forEach(function (seg) {
+        if (seg) dossier = sous(dossier, seg);
+      });
+    }
     f.moveTo(dossier); // LA seule mutation — déplacement, jamais suppression
     // NB (revues quotas + code) : un crash ENTRE le move et la clé laisse un déplacement sans
     // trace Index. Pour les missions dont la cible est HORS de la source : jamais re-vu (compteur

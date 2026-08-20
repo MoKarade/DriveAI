@@ -1164,3 +1164,88 @@ test('ADR-0044 §6 : formulaires GÉNÉRIQUES → « Modèles & formulaires », 
   assert.strictEqual(c.estModeleOuFormulaire_('formulaire-de-consentement'), true);
   assert.strictEqual(c.estModeleOuFormulaire_('contrat de bail'), false);
 });
+
+test('ADR-0044 §7 : les dossiers-années de 02 sortent vers leur VRAI domaine, cible calculée par LE FLUX', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
+  const D = JSON.parse(JSON.stringify(c.CONFIG.DOMAINES));
+  const ids = {}; Object.keys(D).forEach((k) => { ids[k] = D[k]; });
+  ids['07 · Santé'] = 'ID07';  // domaine AUTO : ID en Property, simulé PRÉSENT ici
+  const inv = {}; Object.keys(ids).forEach((k) => { inv[ids[k]] = k; });
+
+  // Les 22 fichiers RÉELS des 12 dossiers-années (lus dans le Drive, jamais un échantillon).
+  const cas = [
+    ['01 · Administratif & identité', '2025-09-04_Contrat d\'adhésion et financement appareil_Virgin Plus.pdf'],
+    ['01 · Administratif & identité', '2023-11-01_Accusé de réclamation_Virgin.png'],
+    ['01 · Administratif & identité', '2022-12-14_Conditions générales de vente_Cleverbridge GmbH.pdf'],
+    ['05 · Carrière', '2026-03-09_Statuts de société civile_PRIGRIS.pdf'],
+    ['05 · Carrière', '2026-03-09_Statuts de société civile_Statuts constitutifs SCI famille Richard.pdf'],
+    ['05 · Carrière', '2026-06-29_Statuts de constitution_Statuts de constitution société civile familiale MRic.pdf'],
+    ['07 · Santé', '2025-11-15_Attestation de versement_Caisse des Français de l\'Étranger.pdf'],
+    ['02 · Finances', '2026-01-01_Budget prévisionnel_Budget prévisionnel annuel Marc Anna prorata'],
+    ['02 · Finances', '2026-07-06_Suivi de livraison_DoorDash.jpg'],
+    ['02 · Finances', '2025-06-01_Avenant aux conditions générales_XTB S.A..pdf'],
+    ['02 · Finances', '2026-07-01_Confirmation de virement_Crédit Mutuel.jpg'],
+    ['02 · Finances', '2025-12-31_Formulaire T1135 — Bilan de vérification du revenu étranger_Agence du revenu du Canada.pdf'],
+  ];
+  cas.forEach(([domaineAttendu, nom]) => {
+    const r = c.routerFinance02_(nom, '2025', ids);
+    assert.ok(r, 'doit être rangé : ' + nom);
+    assert.strictEqual(inv[r.cibleId], domaineAttendu, 'domaine de ' + nom);
+    // 🔴 LE tripwire : le FLUX, dans le domaine d'arrivée, calcule EXACTEMENT le même sous-chemin.
+    // Sans lui, la consolidation recalcule une autre cible et DÉFAIT le rangement (leçon C28-26).
+    assert.strictEqual(c.cheminCibleReset_(domaineAttendu, nom), r.sousDossier,
+      'convergence flux ↔ mission : ' + nom);
+  });
+
+  // Ambigu ⇒ REFUS keyé (révisable), jamais un mouvement inter-domaines deviné.
+  assert.strictEqual(c.routerFinance02_('2021-07-21_Note de frais_Roque Rodriguez.ods', '2021', ids), null);
+
+  // 🔴 ÉCHEC FERMÉ : un domaine AUTO dont l'ID est ABSENT (domaine jamais né) ne doit produire
+  // AUCUN déplacement — `CONFIG.DOMAINES` ne contient que les 7 domaines FIXES, lire la CONFIG
+  // seule rendait `undefined` et aurait planté au `moveTo`.
+  const sans07 = {}; Object.keys(D).forEach((k) => { sans07[k] = D[k]; });
+  assert.strictEqual(
+    c.routerFinance02_('2025-11-15_Attestation de versement_Caisse des Français de l\'Étranger.pdf', '2025', sans07),
+    null, 'domaine AUTO sans ID ⇒ refus, jamais un cibleId vide');
+
+  // Le domaine ne se devine pas non plus quand deux règles se contredisent.
+  assert.strictEqual(c.domaineHors02DuNom_('2024-01-01_Contrat_Virgin Plus et MRic.pdf'), '');
+  // …et le préfixe de date n'est jamais apparié (jetons alphabétiques uniquement).
+  (JSON.parse(JSON.stringify(c.CONFIG.MISSIONS_ANNEES02_DOMAINES))).forEach((r) => {
+    (r.jetons || []).forEach((j) => assert.match(j, /^[a-z]+$/, 'jeton alphabétique : ' + j));
+  });
+});
+
+test('ADR-0044 §7 : un sous-chemin MULTI-SEGMENTS crée un dossier PAR segment (jamais un nom à barre oblique)', () => {
+  const h = ctxRunner();
+  const IDS = h.c.CONFIG.MISSIONS_IDS;
+  // Mock qui ENREGISTRE chaque résolution : le mock d'origine concatène parent + '/' + nom, donc
+  // un chemin non découpé produirait la MÊME chaîne finale qu'un découpage correct — l'identifiant
+  // ne prouve rien, seul le NOMBRE d'appels distingue les deux (la mutation le montre).
+  const segments = [];
+  const vraiSous = h.c.sousDossier_;
+  h.c.sousDossier_ = (parent, nom) => { segments.push(nom); return vraiSous(parent, nom); };
+
+  const annee = (IDS.annees02 || [])[0];
+  h.arbre[annee.id] = { files: [h.fichier('fv', '2025-09-04_Contrat d\'adhésion et financement appareil_Virgin Plus.pdf')], folders: {} };
+  h.c.executerMission_('annees02', () => false);
+
+  assert.strictEqual(h.moves.length, 1, 'le document sort de son dossier-année');
+  assert.deepStrictEqual(segments, ['Contrats & fournisseurs', 'Virgin Plus'],
+    'un appel PAR segment — « Contrats & fournisseurs/Virgin Plus » n\'est pas un nom de dossier');
+  assert.strictEqual(h.moves[0].vers,
+    h.c.CONFIG.DOMAINES['01 · Administratif & identité'] + '/Contrats & fournisseurs/Virgin Plus');
+});
+
+test('ADR-0044 §7 : « xtb » est apparié en MOT ENTIER (une banque nommée NXTBank n\'est pas du courtage)', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
+  const D = '02 · Finances';
+  assert.strictEqual(c.cheminCibleReset_(D, '2025-06-01_Avenant aux conditions générales_XTB S.A..pdf'),
+    'Placements & crypto', 'le vrai courtier est reconnu');
+  // Contre-épreuve : en SOUS-CHAÎNE, « nxtbank » contient « xtb » — un relevé bancaire partirait
+  // dans les placements, à clé de SUCCÈS, donc définitivement.
+  assert.notStrictEqual(c.cheminCibleReset_(D, '2025-06-01_Relevé de compte_NXTBank.pdf'),
+    'Placements & crypto', 'un mot CONTENANT xtb ne doit pas matcher');
+  assert.strictEqual(c.resetMotEntier_('releve de compte nxtbank', 'xtb'), false);
+  assert.strictEqual(c.resetMotEntier_('conditions generales de courtage xtb s a', 'xtb'), true);
+});

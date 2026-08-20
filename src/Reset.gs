@@ -189,6 +189,15 @@ function resetContient_(cle, motifs) {
 }
 
 /**
+ * MOT ENTIER dans une clé normalisée. PURE. `resetContient_` est une SOUS-CHAÎNE (« rib » ⊂
+ * « contribution », « avis » ⊂ « avise ») : dès qu'un jeton est court, c'est celui-ci qu'il faut.
+ * @param {string} cle @param {string} mot @return {boolean}
+ */
+function resetMotEntier_(cle, mot) {
+  return new RegExp('(^|[^a-z0-9])' + mot + '([^a-z0-9]|$)').test(String(cle || ''));
+}
+
+/**
  * Année → nom de sous-dossier d'un nœud à années. L'année si elle existe dans le nœud ; sinon, une
  * année POSTÉRIEURE au dernier bucket figé rend SON PROPRE segment (`2027`), une année ANTÉRIEURE
  * tombe dans `Archives`.
@@ -311,6 +320,7 @@ function cheminCibleReset_(domaine, nom) {
     if (e.indexOf('edf') !== -1) return 'Contrats & fournisseurs/EDF';
     if (e.indexOf('engie') !== -1) return 'Contrats & fournisseurs/ENGIE';
     if (e.indexOf('virgin') !== -1) return 'Contrats & fournisseurs/Virgin Plus';
+    if (e.indexOf('cleverbridge') !== -1) return 'Contrats & fournisseurs/Cleverbridge';
     if (resetContient_(e, ['tesco', 'transport scolaire'])) return 'Contrats & fournisseurs/Transport scolaire';
     if (e.indexOf('maif') !== -1) return 'Contrats & fournisseurs/Filia-MAIF';
     if (e === 'ino') return 'Contrats & fournisseurs/INO';
@@ -358,6 +368,22 @@ function cheminCibleReset_(domaine, nom) {
         (employeurAutreDuNom_(nom) ? CONFIG.MISSIONS_EMPLOYEURS_COMMUN : '');
       if (empReleve) return 'Revenus & paie/' + empReleve;
     }
+    // ===== (ADR-0044 §7) Règles nées du reliquat RÉEL des dossiers-années — décisions de Marc.
+    // Budgets & tableaux de bord → « Relevés » par année (choix de Marc : ils restent en Finances).
+    if (resetContient_(t, ['tableau de bord budgetaire', 'tableau de suivi budgetaire',
+      'suivi budgetaire', 'budget previsionnel'])) return 'Relevés/' + resetBucketAnnee_(seg.annee, s['Relevés']);
+    // Achats en ligne (captures) → une preuve d'achat reste une pièce de dépense.
+    if (resetContient_(t, ['suivi de livraison', 'fiche produit', 'bon de commande'])) {
+      return 'Reçus & factures/' + resetBucketAnnee_(seg.annee, s['Reçus & factures']);
+    }
+    // Courtage : « XTB » en MOT ENTIER (3 lettres — `resetContient_` matcherait n'importe quoi).
+    if (resetMotEntier_(tout, 'xtb') || t.indexOf('courtage') !== -1) return 'Placements & crypto';
+    // Banque : motifs LONGS et non ambigus (jamais « virement » seul, qui vit aussi dans une paie).
+    if (resetContient_(tout, ['confirmation de virement', 'specimen de signature',
+      'bordereau de numerisation', 'debit preautorise', 'retrait bancaire preautorise',
+      'simulation de pret'])) return 'Banques';
+    // Feuillet fiscal canadien de revenus étrangers — ni « impot » ni « t4 » dans son nom.
+    if (resetMotEntier_(tout, 't1135')) return cheminImpotsReset_(seg);
     if (t.indexOf('releve') !== -1 && !estRibReset_(t)) return 'Relevés/' + resetBucketAnnee_(seg.annee, s['Relevés']);
     // Fiscal (dont les feuillets québécois T4/Relevé 1) et remboursements d'IMPÔT (revue : 'bourse'
     // ⊂ « remboursement » envoyait les remboursements en Placements — jamais de motif court sur tout).
@@ -501,6 +527,12 @@ function cheminCibleReset_(domaine, nom) {
       var sousEmp = sousDossierEmployeur_(t);
       return 'Employeurs/' + CONFIG.MISSIONS_EMPLOYEURS_COMMUN + (sousEmp ? '/' + sousEmp : '');
     }
+    // (ADR-0044 §7) Les statuts CONSTITUTIFS de la SCI : le nom de l'entité varie (« PRIGRIS »,
+    // « SCI famille Richard », « MRic »), le TYPE ne varie pas. Décision Marc : les 4 sont la même
+    // société. Testé sur le type, donc AVANT la règle par émetteur, qui n'en attrape que la moitié.
+    if (resetContient_(t, ['statuts de societe civile', 'statuts de constitution', 'statuts constitutifs'])) {
+      return 'Entreprise — MRic (SCI)';
+    }
     if (resetContient_(e, ['mric', 'm ric'])) return 'Entreprise — MRic (SCI)';
     if (resetContient_(tout, ['alternance', 'stage'])) return 'Alternance & stages';
     if (t.indexOf('bilan') !== -1 || (' ' + t).indexOf(' formation') !== -1) return 'Formation & bilans'; // ' formation' : jamais « information » (revue)
@@ -539,6 +571,9 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(t, ['resultat', 'analyse', 'examen', 'radiographie'])) return 'Examens & résultats';
     if (resetContient_(tout, ['medecine scolaire', 'medecine du travail', 'aptitude'])) return 'Médecine scolaire & travail';
     if (resetContient_(e, ['hopital', 'chu', 'cisss', 'ciusss', 'clinique', 'centre hospitalier'])) return 'Hôpitaux & centres';
+    // (ADR-0044 §7) La Caisse des Français de l'Étranger est un régime d'ASSURANCE santé, mais
+    // son nom ne contient pas « assurance » : motif multi-mots (aucune collision possible).
+    if (tout.indexOf('caisse des francais de l etranger') !== -1) return 'Assurances santé';
     if (resetContient_(tout, ['cnam', 'ramq', 'assurance'])) return 'Assurances santé';
     return null;
   }

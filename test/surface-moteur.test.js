@@ -69,6 +69,7 @@ const CONTRAT = [
   // ADR-0044 §5 : prédicats PURS partagés par la mission carrière ET la table du flux.
   'estTypeRecrutement_', 'estDocumentationMetier_', 'estReleveDePaie_', 'employeurAutreDuNom_',
   'estModeleOuFormulaire_',
+  'domaineHors02DuNom_', 'resetMotEntier_',
   // Appelé PAR `Missions.gs` (batirCtx de la mission carrière) et DÉFINI dans `Router.gs` :
   // appel inter-module, donc au contrat. Sa disparition serait invisible en CI sans ça.
   'dossierTechnique_',

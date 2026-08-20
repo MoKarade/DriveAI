@@ -355,3 +355,54 @@ que le flux le recrée PAR NOM au document suivant — split-brain.
 comme le fait déjà son jumeau côté Fusion. Bénéfice secondaire : le LLM ne reçoit plus ces dossiers
 comme « regroupables », donc plus d'essais brûlés sur des actions que la whitelist rejette de toute
 façon.
+
+## 7. PR4 — décision 7 : vider les dossiers-années de 02 (2026-08-20)
+
+Les **12 dossiers-années ont été lus intégralement** (6 sont vides ; 24 fichiers dans les 6 autres).
+Jamais un échantillon : c'est le comptage exhaustif qui a montré que la décision 7 nommait 4 exemples
+pour un ensemble bien plus hétérogène.
+
+### 7.1 La conception : la mission choisit le DOMAINE, le FLUX calcule le sous-chemin
+
+Contrainte de Marc : « réutiliser la MÊME règle de routage que le flux vivant ». Or le flux n'a
+**aucune** règle pure de choix de DOMAINE — c'est le LLM qui tranche. Il n'y avait donc rien à
+réutiliser de ce côté. La conception retenue sépare les deux moitiés :
+
+- `MISSIONS_ANNEES02_DOMAINES` (table déclarée, jetons MOT ENTIER + motifs multi-mots) ne choisit
+  **que le domaine** ;
+- le **sous-chemin** vient de `cheminCibleReset_(domaine, nom)` — LA règle du flux. La convergence
+  flux ↔ mission ↔ consolidation est donc vraie **par construction**, pas asserée après coup.
+- Le flux muet dans le domaine d'arrivée ⇒ la mission **refuse** (clé versionnée, révisable),
+  jamais un dépôt à la racine : ce serait remplacer un fourre-tout par un autre.
+
+Mesure avant d'écrire la moindre règle : le flux savait déjà router Virgin Plus vers
+`Contrats & fournisseurs/**Virgin Plus**` (dossier d'entité), plus finement que la cible envisagée.
+C'est le flux qui fait autorité, pas la table.
+
+**Résultat : 21 fichiers rangés, 0 divergence, 1 refus** (`Note de frais_Roque Rodriguez` — le
+domaine d'une note de frais nominative n'est pas décidable, un refus est révisable).
+
+### 7.2 Deux pièges trouvés en mesurant, invisibles en lecture
+
+1. **`CONFIG.DOMAINES` ne contient que les 7 domaines FIXES.** `07 · Santé` et `09 · Voyages` sont
+   des domaines **AUTO** dont l'ID vit en Script Property et peut être **absent**. Lire la CONFIG
+   seule rendait `undefined` — un `cibleId` vide, donc un plantage au `moveTo`. Résolution déplacée
+   dans `batirCtx` (I/O), routeur toujours PUR, et **échec fermé** : domaine sans ID ⇒ refus.
+2. **`sousDossier_` ne résout qu'UN niveau.** Passer `Contrats & fournisseurs/Virgin Plus` aurait
+   créé un dossier **portant la barre oblique dans son nom**. Le chemin est désormais découpé
+   segment par segment (rétro-compatible). ⚠️ Le mock de test concatène `parent + '/' + nom` : il
+   produit la MÊME chaîne dans les deux cas — seul le **nombre d'appels** distingue le correct du
+   faux, et c'est la mutation qui l'a révélé.
+
+### 7.3 Ce que PR4 ne fait PAS, et pourquoi
+
+- **Le DPA `Immeubles MA8`** part en `02/Banques` (un mandat de prélèvement est une autorisation
+  bancaire), et non « vers le logement » comme demandé : `Immeubles MA8` **n'est pas un bailleur
+  déclaré**, donc aucune adresse ne peut être visée. Le router vers `03` sans adresse produirait du
+  vrac. Dès que Marc donne l'adresse, l'entrée entre dans `MISSIONS_BAILLEURS` et ce document —
+  **ainsi que ses 2 formulaires de demande de location** (§6) — partent chez le bon logement.
+- Les nouvelles règles de flux (budgets, achats en ligne, courtage, banque, T1135, Cleverbridge,
+  statuts de société, CFE) profitent **aussi au flux vivant** : ces documents seront mieux classés
+  à l'avenir, pas seulement rattrapés.
+
+`MISSIONS_REGLES_VERSION` c49-5 → **c49-6**.
