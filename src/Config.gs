@@ -928,7 +928,9 @@ var CONFIG = {
   // Prouvée sur les 24 fichiers RÉELS des 12 dossiers-années, jamais sur un échantillon.
   MISSIONS_ANNEES02_DOMAINES: [
     { domaine: '01 · Administratif & identité', jetons: ['virgin', 'cleverbridge'], motifs: [],
-      exclusions: ['virgin atlantic', 'virgin radio', 'virgin mobile', 'virgin megastore'] },
+      // ⚠️ « virgin mobile » N'EST PAS exclu : c'est bien un opérateur télécom, donc la bonne
+      // cible. Ne sont exclues que les branches du groupe qui n'ont rien à voir.
+      exclusions: ['virgin atlantic', 'virgin radio', 'virgin megastore'] },
     { domaine: '05 · Carrière', jetons: ['mric', 'prigris'], motifs: ['statuts de societe civile', 'statuts de constitution', 'statuts constitutifs'] },
     { domaine: '07 · Santé', jetons: [], motifs: ['caisse des francais de l etranger'] },
   ],

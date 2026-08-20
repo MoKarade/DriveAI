@@ -311,13 +311,17 @@ function tableMissions_() {
         return { anneePar: anneePar, domainesId: domainesId };
       },
       router: function (nom, info, ctx) {
-        return routerFinance02_(nom, ctx.anneePar[info.sourceId] || '', ctx.domainesId);
+        return routerFinance02_(nom, ctx.domainesId);
       },
       // ⚠️ PAS jetables (revue PR4). Le défaut aurait peint les 12 dossiers-années en ROUGE
       // (« bon pour suppression ») ; Marc les supprime, et au prochain bump de version
       // `collecterMission_` lève sur chaque source disparue ⇒ passe incomplète ⇒ `annees02` ne
       // converge PLUS JAMAIS ⇒ la mission `paies`, gatée sur elle par `convergenceApres`, reste
-      // bloquée à vie. L'app les montre déjà en `vide-candidat` : le signal existe sans le piège.
+      // bloquée à vie.
+      // ⚠️ CORRECTION (re-revue) : j'avais écrit ici que « l'app les montre déjà en vide-candidat ».
+      // C'est FAUX — `detecterDossierVide_` écarte tout nom `^\d{4}$` via `estSegmentStructurel_`,
+      // et ces dossiers s'appellent 2003…2026. Il n'y a donc AUCUN signal automatique : Marc les
+      // verra vides dans Drive, c'est tout. Mieux vaut pas de signal qu'un signal piégé.
       sourcesJetables: [],
     },
     {
@@ -659,12 +663,12 @@ function domaineHors02DuNom_(nom) {
  *   1. le FLUX (`cheminCibleReset_`) fait autorité DANS 02 : ce qu'il sait placer y reste ;
  *   2. sinon, SORTIE inter-domaines par `MISSIONS_ANNEES02_DOMAINES` (jamais un domaine protégé,
  *      jamais si le flux est muet dans le domaine d'arrivée) ;
- *   3. sinon, repli LOCAL — seul étage qui connaisse l'année du dossier SOURCE.
- * @param {string} nom @param {string} anneeSource  année du dossier d'origine (repli)
+ *   3. sinon, refus keyé — il n'y a PAS de troisième étage (cf. le commentaire en fin de corps).
+ * @param {string} nom
  * @param {Object=} domainesId  { domaine: id } résolu par `batirCtx` (domaines AUTO compris)
  * @return {?Object} cible de mission, ou null (refus keyé sous la version, donc révisable)
  */
-function routerFinance02_(nom, anneeSource, domainesId) {
+function routerFinance02_(nom, domainesId) {
   var IDS = CONFIG.MISSIONS_IDS;
   var idDomaine = function (d) { return (domainesId || CONFIG.DOMAINES)[d] || ''; };
   var type = typeDuNomMission_(nom);
@@ -699,50 +703,14 @@ function routerFinance02_(nom, anneeSource, domainesId) {
       if (chemin) return { cibleId: idSortie, sousDossier: chemin };
     }
   }
-  // Repli LOCAL : uniquement ce que le flux ne sait pas router — essentiellement l'année du
-  // dossier SOURCE, information que le flux n'a pas (il ne voit que le nom). Ces règles ne sont
-  // plus une table concurrente : tant qu'elles passaient EN PREMIER, elles imposaient leur propre
-  // ordre d'arbitrage et divergeaient du flux sur 5 familles mesurées (relevé de paie D9,
-  // assurance émise par une banque, facture d'un courtier…), que la consolidation défaisait.
-  if (type) {
-  // 1. Paies → « Revenus & paie »/<Employeur> — prédicat PARTAGÉ avec le flux (`estTypePaieReset_`,
-  //    revue finale PR2 : la liste locale ['paie','paye'] ratait « salaire » que le flux couvre —
-  //    un « Bulletin de salaire » aurait été déplacé au mauvais endroit à clé de SUCCÈS).
-  if (estTypePaieReset_(type)) {
-    var emp = employeurDuNom_(nom);
-    // Employeur inconnu ⇒ on CHUTE vers le repli : le flux connaît les employeurs OCCASIONNELS
-    // (D11, `employeurAutreDuNom_` → « Autres employeurs ») que cette table ignore. Refuser ici
-    // contredisait la promesse « les paies partent en 02 quel que soit l'employeur ».
-    if (emp) return { cibleParentId: IDS.revenusPaie, cibleNom: emp };
-  }
-  // 2. Fiscal → « Impôts & déclarations »/<année> (AVANT le « relevé » générique : un relevé
-  //    d'impôt est fiscal, pas bancaire). RL-1/RL-31 par le prédicat PARTAGÉ (revue finale PR2 :
-  //    la table de mots ne peut pas exprimer « releve 1 » ancré — le feuillet partait en Relevés).
-  if (estFeuilletFiscalReset_(type) || typeContient_(type, TYPES_FISCAUX_MISSIONS)) {
-    var annee = anneeDuNomMission_(nom) || anneeSource;
-    if (annee) return { cibleParentId: IDS.impotsDeclarations, cibleNom: annee };
-  }
-  // 3. Relevés / reçus & factures : DANS LE BUCKET D'ANNÉE, par LA MÊME règle que le flux vivant
-  //    (`resetBucketAnnee_` + STRUCTURE_CIBLE_RESET — revue code PR2 : deux règles écrites
-  //    séparément divergent toujours, leçon C28-26 ; router à plat aurait créé un nouveau vrac à
-  //    côté des buckets que le flux alimente).
-  var anneeDoc = anneeDuNomMission_(nom) || anneeSource;
-  var noeuds02 = STRUCTURE_CIBLE_RESET['02 · Finances'];
-  // RIB (relevé d'IDENTITÉ bancaire) : des COORDONNÉES, pas un relevé de compte (prédicat partagé
-  // — le flux le range en Banques/Coordonnées & chèques ; côté mission, hors table ⇒ refus keyé,
-  // laissé + rapporté, jamais deviné).
-  // RIB : la mission n'a pas de cible propre — on chute vers le repli, où le flux le range en
-  // « Banques/Coordonnées & chèques ». (Le refus d'avant PR4 datait d'un temps sans repli.)
-  if (!estRibReset_(type)) {
-  if (typeContient_(type, ['releve', 'releves'])) {
-    return { cibleId: IDS.releves02, sousDossier: resetBucketAnnee_(anneeDoc, noeuds02['Relevés']) };
-  }
-  if (typeContient_(type, ['recu', 'recus', 'facture', 'factures'])) {
-    return { cibleId: IDS.recusFactures02, sousDossier: resetBucketAnnee_(anneeDoc, noeuds02['Reçus & factures']) };
-  }
-  if (typeContient_(type, ['assurance', 'assurances'])) return { cibleId: IDS.assurances02 };
-  }
-  }
+  // ⛔️ PAS de repli local. Il en existait un (paie, fiscal, relevés, reçus, assurances, avec
+  // l'année du dossier SOURCE) : mesuré après la restructuration, il est **entièrement MORT** —
+  // 0 cas productif sur 11 testés. Ses règles sont un SOUS-ENSEMBLE STRICT de celles du flux, qui
+  // passe désormais en premier : chaque fois qu'une d'elles matcherait, le flux a déjà répondu.
+  // Le garder aurait été pire que rien : du code qui RESSEMBLE à un filet en invite à s'y fier.
+  // ⚠️ Capacité perdue, assumée et mesurée : l'année du dossier SOURCE servait de repli pour un nom
+  // sans année PLAUSIBLE (« 1899-01-01_Facture_Hydro.pdf » → bucket `2021` au lieu d'`Archives`).
+  // Aucun des 24 fichiers réels n'est dans ce cas — ils portent tous un préfixe de date valide.
   return null;
 }
 

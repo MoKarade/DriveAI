@@ -688,3 +688,10 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | P4-03 | Dashboard santé/activité + file de corrections (valider/corriger en un clic) | ✅ (C9-03/04) |
 | P4-04 | Recherche structurée (filtres via `Index`) + plein texte délégué à Drive (`fullText contains`) | ✅ (C9-07) |
 | P4-05 | Bilingue FR/EN | ✅ (C9-01, i18n) |
+
+- ⬜ **C28-64 — Les dossiers-années de 02 se re-remplissent après le nettoyage.** `DOMAINES_PAR_ANNEE`
+  contient `02 · Finances`, donc le flux vivant recrée `02 · Finances/AAAA` par nom pour tout document
+  dont l'entité n'est pas validée ; et `annees02` est one-shot (`DriveAI_MISSION_FINI_`), donc elle ne
+  re-draine jamais. Le nettoyage de la décision 7 sera défait **en silence**. Trois issues dans
+  ADR-0044 §7.5 — arbitrage de Marc (retirer 02 de `DOMAINES_PAR_ANNEE`, ou rendre la mission
+  perpétuelle, ou re-bumper périodiquement).

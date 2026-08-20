@@ -390,8 +390,10 @@ Deux erreurs du **flux lui-même** ont été corrigées au passage, sans quoi l'
 aurait propagé ses fautes : « Assurance_Desjardins » partait en `Banques` (le TYPE ne comptait pas,
 seul l'émetteur) et « Relevé d'impôt » en `Relevés` (le générique « relevé » passait avant le fiscal).
 
-Mesure avant d'écrire la moindre règle : le flux savait déjà router Virgin Plus vers
+Mesure avant d'écrire la moindre règle : le flux savait déjà router un CONTRAT Virgin Plus vers
 `Contrats & fournisseurs/**Virgin Plus**` (dossier d'entité), plus finement que la cible envisagée.
+⚠️ Depuis que le flux fait autorité, cela ne vaut plus que si `02` est muet : une `Facture_Virgin
+Plus` reste désormais en `02/Reçus & factures` (c'est une dépense), et c'est voulu.
 
 **Résultat : 21 rangés, 1 refusé** (`Note de frais_Roque Rodriguez` — le domaine d'une note de
 frais nominative n'est pas décidable, un refus est révisable). Comptage : **24 fichiers** dans les
@@ -436,3 +438,22 @@ l'affinage resterait sans effet.
 - ⚠️ Conséquence assumée et à connaître : un fichier déjà classé sous les anciennes règles ne sera
   pas repris. Si un jour on veut le rattrapage, c'est `CONSOLIDATION_TAG` qu'il faut bumper — pas
   `RESET_TABLE_VERSION`, qui ne pilote rien tant que le reset dort.
+
+### 7.5 Ce que la décision 7 ne ferme PAS (dit, pas passé sous silence)
+
+**Les dossiers-années vont se remplir à nouveau.** `CONFIG.DOMAINES_PAR_ANNEE` contient
+`02 · Finances` : le flux vivant y crée `02 · Finances/AAAA` pour tout document dont l'entité n'est
+pas validée — **les mêmes dossiers**, retrouvés par nom. Et `executerMission_` s'arrête définitivement
+après convergence (`DriveAI_MISSION_FINI_<tag>`). Donc la mission vide les 12 dossiers, converge,
+s'arrête… et le flux les re-remplit **en silence**, sans re-drainage jusqu'au prochain bump de
+version. Le nettoyage sera défait.
+
+Trois issues, à trancher par Marc — aucune n'est faite ici :
+1. retirer `02 · Finances` de `DOMAINES_PAR_ANNEE` (le flux cesse de créer des fourre-tout d'année) ;
+2. rendre `annees02` **perpétuelle** plutôt que one-shot, comme le rattrapage ;
+3. ne rien faire et re-bumper la version périodiquement (le moins bon : silencieux).
+
+**Correction d'une affirmation fausse.** Le premier jet de §7 écrivait que les 12 dossiers vidés
+seraient visibles « en `vide-candidat` dans l'app ». C'est faux : `detecterDossierVide_` écarte tout
+nom `AAAA` via `estSegmentStructurel_`. Il n'existe **aucun** signal automatique — c'était une
+compensation imaginaire, écrite dans trois documents vivants à la fois.

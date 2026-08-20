@@ -70,6 +70,7 @@ const CONTRAT = [
   'estTypeRecrutement_', 'estDocumentationMetier_', 'estReleveDePaie_', 'employeurAutreDuNom_',
   'estModeleOuFormulaire_',
   'domaineHors02DuNom_', 'resetMotEntier_',
+  'estTypeFiscalReset_',
   // Appelé PAR `Missions.gs` (batirCtx de la mission carrière) et DÉFINI dans `Router.gs` :
   // appel inter-module, donc au contrat. Sa disparition serait invisible en CI sans ça.
   'dossierTechnique_',

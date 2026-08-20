@@ -299,7 +299,8 @@ automatique de l'ancien. (Sort précis du dossier `_Archive 2025` : voir `PLAN.m
   seule et même société).
 - Les **12 dossiers-années de 02** sont vidés par `mission-annees02`, mais **PAS peints en rouge**
   (`sourcesJetables: []`) : les peindre invitait à les supprimer, et leur disparition empêcherait
-  la mission de converger — bloquant à vie la mission `paies` qui en dépend. L'app les montre déjà
-  en `vide-candidat`, le signal existe sans le piège.
+  la mission de converger — bloquant à vie la mission `paies` qui en dépend. ⚠️ Il n'existe **aucun
+  signal automatique** que ces 12 dossiers sont vides : `detecterDossierVide_` écarte les noms
+  `AAAA` par `estSegmentStructurel_`. Marc les verra vides dans Drive, c'est tout.
 - ⚠️ L'exemption `02 · Finances/AAAA` créée par le **flux vivant** (`DOMAINES_PAR_ANNEE`,
   BACKLOG C28-36) **survit** à cette décision : vider les dossiers-années ne l'a pas fermée.

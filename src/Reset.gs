@@ -204,6 +204,28 @@ function resetMotEntier_(cle, mot) {
 }
 
 /**
+ * Vrai si le TYPE est FISCAL (ADR-0044 §7, revue finale PR4). PURE (testée).
+ *
+ * ⚠️ UNE seule règle, DEUX consommateurs — c'est tout l'objet de cette fonction. Le vocabulaire
+ * fiscal était écrit deux fois : la table `TYPES_FISCAUX_MISSIONS` côté mission, et une liste en
+ * dur ici. Quand le flux est devenu l'autorité dans 02, c'est la version la plus PAUVRE qui a
+ * gagné : « Relevé fiscal », « Relevé annuel fiscal » et « Relevé de cotisation » partaient chez
+ * les relevés BANCAIRES (l'exclusion ne portait que sur le mot « impôt »), à clé de SUCCÈS donc
+ * définitivement. C'est la limite de la garde par CAPACITÉ : elle est complète SI la règle
+ * partagée est juste — sinon elle hérite de ses fautes en silence.
+ *
+ * « declaration » seul est VOLONTAIREMENT absent : il volerait « Relevé de déclaration de
+ * sinistre ». La locution complète « declaration de revenus » est là, elle, sans ambiguïté.
+ * @param {string} t  segment TYPE normalisé @return {boolean}
+ */
+function estTypeFiscalReset_(t) {
+  if (resetContient_(t, ['avis d imposition', 'declaration de revenus'])) return true;
+  var mots = ['impot', 'impots', 'fiscal', 'fiscale', 'fiscaux', 'cotisation', 'taxe', 'taxes', 'feuillet', 't4'];
+  for (var i = 0; i < mots.length; i++) if (resetMotEntier_(t, mots[i])) return true;
+  return false;
+}
+
+/**
  * Année → nom de sous-dossier d'un nœud à années. L'année si elle existe dans le nœud ; sinon, une
  * année POSTÉRIEURE au dernier bucket figé rend SON PROPRE segment (`2027`), une année ANTÉRIEURE
  * tombe dans `Archives`.
@@ -325,7 +347,11 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(t, ['attestation', 'certificat'])) return 'Attestations & certificats';
     if (e.indexOf('edf') !== -1) return 'Contrats & fournisseurs/EDF';
     if (e.indexOf('engie') !== -1) return 'Contrats & fournisseurs/ENGIE';
-    if (e.indexOf('virgin') !== -1) return 'Contrats & fournisseurs/Virgin Plus';
+    // MÊME exclusion que la table des missions (une seule règle, deux consommateurs) : « Virgin »
+    // est une marque OMBRELLE — Atlantic (aérien), Radio, Megastore n'ont rien du télécom.
+    if (e.indexOf('virgin') !== -1 && !resetContient_(e, ['atlantic', 'radio', 'megastore'])) {
+      return 'Contrats & fournisseurs/Virgin Plus';
+    }
     if (e.indexOf('cleverbridge') !== -1) return 'Contrats & fournisseurs/Cleverbridge';
     if (resetContient_(e, ['tesco', 'transport scolaire'])) return 'Contrats & fournisseurs/Transport scolaire';
     if (e.indexOf('maif') !== -1) return 'Contrats & fournisseurs/Filia-MAIF';
@@ -388,17 +414,21 @@ function cheminCibleReset_(domaine, nom) {
     // ⚠️ « relevé d'IMPÔT » est FISCAL, pas bancaire : sans cette exclusion, il partait en
     // « Relevés » ici alors que la mission le range en « Impôts » — divergence PRÉ-EXISTANTE
     // trouvée par la revue PR4, que la consolidation aurait défaite à chaque passage.
-    if (t.indexOf('releve') !== -1 && !estRibReset_(t) && t.indexOf('impot') === -1) {
+    if (t.indexOf('releve') !== -1 && !estRibReset_(t) && !estTypeFiscalReset_(t)) {
       return 'Relevés/' + resetBucketAnnee_(seg.annee, s['Relevés']);
     }
     // Fiscal (dont les feuillets québécois T4/Relevé 1) et remboursements d'IMPÔT (revue : 'bourse'
     // ⊂ « remboursement » envoyait les remboursements en Placements — jamais de motif court sur tout).
-    if (resetContient_(t, ['avis d imposition', 'declaration de revenus', 'impot', 'taxe', 'feuillet', 't4']) ||
+    if (estTypeFiscalReset_(t) ||
         (t.indexOf('remboursement') !== -1 && e.indexOf('revenu') !== -1)) return cheminImpotsReset_(seg);
     // Donations/successions → versant FISCAL (le versant notarial est couvert par `01 · État civil
     // & notarial`, où les actes partent déjà). Le nœud dédié a cédé sa place à « Revenus & paie ».
     if (resetContient_(tout, ['donation', 'succession'])) return cheminImpotsReset_(seg);
     // Assurance AVANT le rattrapage bancaire (revue : « Desjardins Assurance » partait en Banques).
+    // La Caisse des Français de l'Étranger est un régime de SANTÉ (décision Marc) : 02 ne la
+    // revendique pas, sinon l'étage 1 de `routerFinance02_` la garderait en Finances et la
+    // sortie vers `07 · Santé` ne serait jamais atteinte. Une seule règle, deux consommateurs.
+    if (tout.indexOf('caisse des francais de l etranger') !== -1) return null;
     if (resetContient_(tout, ['assurance vie', 'prevoyance']) || e.indexOf('assurance') !== -1 ||
         t.indexOf('assurance') !== -1) return 'Assurances & prévoyance'; // le TYPE compte autant que l'émetteur (revue PR4 : « Assurance_Desjardins » partait en Banques)
     if (resetContient_(tout, ['tether', 'usdt', 'crypto', 'securities', 'boursier', 'bourse de', 'portefeuille'])) return 'Placements & crypto';
@@ -408,10 +438,13 @@ function cheminCibleReset_(domaine, nom) {
     // Banque — placé ICI (après fiscal, assurance et reçus), jamais plus haut : testé trop tôt et
     // sur le NOM COMPLET, « Reçu_Débit préautorisé Hydro-Québec » partait en Banques au lieu des
     // reçus, le MODE DE PAIEMENT cité dans l'émetteur décidant du classement (revue PR4).
-    // Les 4 premiers motifs sont des TYPES : testés sur `t`, jamais sur l'émetteur.
-    if (resetContient_(t, ['confirmation de virement', 'specimen de signature',
-      'bordereau de numerisation', 'simulation de pret']) ||
-        resetContient_(tout, ['debit preautorise', 'retrait bancaire preautorise'])) return 'Banques';
+    // Testés sur le NOM COMPLET : la POSITION suffit à empêcher le vol (mesuré en revue), et
+    // restreindre au seul TYPE faisait perdre tous les noms HORS CONVENTION — « Confirmation de
+    // virement CIC.pdf », « Spécimen de signature CIC.pdf » — qui sont précisément la matière du
+    // reset et de la consolidation.
+    if (resetContient_(tout, ['confirmation de virement', 'specimen de signature',
+      'bordereau de numerisation', 'simulation de pret', 'debit preautorise',
+      'retrait bancaire preautorise'])) return 'Banques';
     // Courtage & courtier — placés ICI, tout en bas : « courtage » est un mot de MÉTIER partagé
     // (assurance, immobilier), et une FACTURE d'un courtier reste une pièce de dépense. Testés
     // après assurance ET après reçus, ils ne volent plus personne (revue PR4).
