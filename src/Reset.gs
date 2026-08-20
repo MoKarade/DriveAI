@@ -204,6 +204,20 @@ function resetMotEntier_(cle, mot) {
 }
 
 /**
+ * Exclusions déclarées pour un JETON de `MISSIONS_ANNEES02_DOMAINES` (ADR-0044 §7). PURE (testée).
+ * UNE table, DEUX consommateurs : la mission (sortie inter-domaines) et le flux (règle d'émetteur).
+ * @param {string} jeton @return {string[]}
+ */
+function exclusionsSortie02_(jeton) {
+  var sortie = [];
+  (CONFIG.MISSIONS_ANNEES02_DOMAINES || []).forEach(function (r) {
+    if ((r.jetons || []).indexOf(jeton) === -1) return;
+    (r.exclusions || []).forEach(function (x) { if (sortie.indexOf(x) === -1) sortie.push(x); });
+  });
+  return sortie;
+}
+
+/**
  * Vrai si le TYPE est FISCAL (ADR-0044 §7, revue finale PR4). PURE (testée).
  *
  * ⚠️ UNE seule règle, DEUX consommateurs — c'est tout l'objet de cette fonction. Le vocabulaire
@@ -219,8 +233,16 @@ function resetMotEntier_(cle, mot) {
  * @param {string} t  segment TYPE normalisé @return {boolean}
  */
 function estTypeFiscalReset_(t) {
-  if (resetContient_(t, ['avis d imposition', 'declaration de revenus'])) return true;
-  var mots = ['impot', 'impots', 'fiscal', 'fiscale', 'fiscaux', 'cotisation', 'taxe', 'taxes', 'feuillet', 't4'];
+  // LOCUTIONS d'abord — `resetContient_` est une SOUS-CHAÎNE, donc le singulier couvre le pluriel
+  // (« relevé de cotisationS », la forme la plus courante chez l'URSSAF et les mutuelles, est
+  // capturée par « releve de cotisation »). C'est justement ce que l'ancienne version, qui testait
+  // le MOT ENTIER « cotisation », ne faisait pas.
+  // ⚠️ « cotisation » NU est banni : il volait les appels de prime d'ASSURANCE (« Appel de
+  // cotisation_Filia-MAIF » partait dans les impôts) et ceux de la CFE, qui est de la santé.
+  // ⚠️ « declaration » NU est banni aussi : il volerait « Relevé de déclaration de sinistre ».
+  if (resetContient_(t, ['avis d imposition', 'avis de cotisation', 'releve de cotisation',
+    'declaration de revenus', 'declaration des revenus', 'declaration d impot'])) return true;
+  var mots = ['impot', 'impots', 'fiscal', 'fiscale', 'fiscaux', 'taxe', 'taxes', 'feuillet', 'feuillets', 't4'];
   for (var i = 0; i < mots.length; i++) if (resetMotEntier_(t, mots[i])) return true;
   return false;
 }
@@ -347,9 +369,11 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(t, ['attestation', 'certificat'])) return 'Attestations & certificats';
     if (e.indexOf('edf') !== -1) return 'Contrats & fournisseurs/EDF';
     if (e.indexOf('engie') !== -1) return 'Contrats & fournisseurs/ENGIE';
-    // MÊME exclusion que la table des missions (une seule règle, deux consommateurs) : « Virgin »
-    // est une marque OMBRELLE — Atlantic (aérien), Radio, Megastore n'ont rien du télécom.
-    if (e.indexOf('virgin') !== -1 && !resetContient_(e, ['atlantic', 'radio', 'megastore'])) {
+    // MÊME exclusion que la table des missions — et LUE DEPUIS ELLE, pas recopiée : deux listes
+    // écrites séparément divergent (une entrée ajoutée d'un côté serait invisible de l'autre),
+    // c'est la graine exacte du défaut que cette PR corrige ailleurs. « Virgin » est une marque
+    // OMBRELLE : Atlantic (aérien), Radio, Megastore n'ont rien du télécom — Mobile, si.
+    if (e.indexOf('virgin') !== -1 && !resetContient_(tout, exclusionsSortie02_('virgin'))) {
       return 'Contrats & fournisseurs/Virgin Plus';
     }
     if (e.indexOf('cleverbridge') !== -1) return 'Contrats & fournisseurs/Cleverbridge';
@@ -367,6 +391,12 @@ function cheminCibleReset_(domaine, nom) {
   }
 
   if (domaine === '02 · Finances') {
+    // ⚠️ EN TÊTE, avant toute règle : la Caisse des Français de l'Étranger est un régime de SANTÉ
+    // (décision Marc). « 02 ne la revendique pas » ne se conditionne pas à sept règles amont — un
+    // « Appel de cotisation_CFE » tombait sinon dans la branche fiscale et restait en Finances,
+    // pendant qu'un « Bordereau de cotisations_CFE » sortait vers 07 : deux destins pour la même
+    // caisse, à un pluriel près (revue finale PR4).
+    if (tout.indexOf('caisse des francais de l etranger') !== -1) return null;
     // FEUILLETS FISCAUX québécois AVANT « Relevés » : le RL-1 (revenus d'emploi) et le RL-31
     // (logement) sont des documents d'IMPÔT, pas des relevés bancaires — sans cette ligne,
     // `t = 'releve 1'` partait dans `Relevés/AAAA` (correction du commentaire de revue : je l'avais
@@ -425,10 +455,6 @@ function cheminCibleReset_(domaine, nom) {
     // & notarial`, où les actes partent déjà). Le nœud dédié a cédé sa place à « Revenus & paie ».
     if (resetContient_(tout, ['donation', 'succession'])) return cheminImpotsReset_(seg);
     // Assurance AVANT le rattrapage bancaire (revue : « Desjardins Assurance » partait en Banques).
-    // La Caisse des Français de l'Étranger est un régime de SANTÉ (décision Marc) : 02 ne la
-    // revendique pas, sinon l'étage 1 de `routerFinance02_` la garderait en Finances et la
-    // sortie vers `07 · Santé` ne serait jamais atteinte. Une seule règle, deux consommateurs.
-    if (tout.indexOf('caisse des francais de l etranger') !== -1) return null;
     if (resetContient_(tout, ['assurance vie', 'prevoyance']) || e.indexOf('assurance') !== -1 ||
         t.indexOf('assurance') !== -1) return 'Assurances & prévoyance'; // le TYPE compte autant que l'émetteur (revue PR4 : « Assurance_Desjardins » partait en Banques)
     if (resetContient_(tout, ['tether', 'usdt', 'crypto', 'securities', 'boursier', 'bourse de', 'portefeuille'])) return 'Placements & crypto';
@@ -494,6 +520,12 @@ function cheminCibleReset_(domaine, nom) {
     // véhicule de Marc, pas la location d'une voiture tierce. Refus (révisable) plutôt qu'un
     // déplacement définitif au mauvais endroit — MÊME arbitrage que la mission (une seule règle).
     if (estLocationVehicule_(nom)) return vehicule ? null : 'Véhicule/Locations';
+    // Magasinage qui n'a PAS abouti (décision Marc 2026-08-20, sur le contrat « Suprême Auto ») :
+    // un contrat de VENTE dont aucun véhicule du canon n'est nommé n'appartient à aucun véhicule
+    // de Marc — il va au COMMUN, jamais deviné par la date. Conditionné à `!vehicule` : dès qu'un
+    // véhicule est reconnu, la règle par véhicule ci-dessous garde la priorité.
+    if (!vehicule && resetContient_(tout, ['vente vehicule', 'vente de vehicule',
+      'vehicule d occasion', 'voiture d occasion'])) return 'Véhicule/Recherche & achat';
     if (vehicule) {
       if (resetContient_(t, ['constat d infraction', 'contravention', 'amende'])) return 'Véhicule/' + vehicule + '/Contraventions';
       // 'vente'/'achat' en MOT ENTIER (revue finale : « achat » ⊂ « rachat », « vente » ⊂

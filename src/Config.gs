@@ -963,7 +963,10 @@ var CONFIG = {
   // les cibles listées — dossier renommé ⇒ refus (jamais un doublon créé par la table).
   // Jetons MOT ENTIER (apparierUnique_) ; ambigu / hors table = refus, jamais deviné.
   MISSIONS_BAILLEURS: [
-    { logement: '3325 4e avenue', jetons: ['lcp', '9420', '3767', 'pinsonneault'] },
+    // « ma8 » ajouté le 2026-08-20 (réponse de Marc) : `Immeubles MA8` est le bailleur du 3325,
+    // une graphie de plus du même. Range d'un coup son DPA et ses 2 formulaires de demande de
+    // location, jusqu'ici bloqués faute d'adresse connue (ADR-0044 §7.3).
+    { logement: '3325 4e avenue', jetons: ['lcp', '9420', '3767', 'pinsonneault', 'ma8'] },
     { logement: '3987 rte des Rivières', jetons: ['9478', '5045'] },
     { logement: '783 av. Moreau, Québec', jetons: ['soucy', 'ayotte'] },
     { logement: 'Anciens logements', jetons: ['retta', 'isannointi', 'perpignan'] },

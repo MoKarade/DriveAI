@@ -366,14 +366,19 @@ pour un ensemble bien plus hétérogène.
 
 Contrainte de Marc : « réutiliser la MÊME règle de routage que le flux vivant ». Or le flux n'a
 **aucune** règle pure de choix de DOMAINE — c'est le LLM qui tranche. Il n'y avait donc rien à
-réutiliser de ce côté. `routerFinance02_` a **trois étages, et l'ordre EST la règle** :
+réutiliser de ce côté. `routerFinance02_` a **deux étages, et l'ordre EST la règle** :
 
 1. **Le flux fait autorité DANS 02.** `cheminCibleReset_('02 · Finances', nom)` est essayé en
    PREMIER : ce que 02 sait placer y reste.
 2. Sinon, **sortie inter-domaines** via `MISSIONS_ANNEES02_DOMAINES` (jetons MOT ENTIER, motifs et
    exclusions multi-mots), avec le sous-chemin calculé par le flux du domaine d'arrivée. Jamais un
    domaine **protégé** ; flux muet à l'arrivée ⇒ on redescend à l'étage 3.
-3. Sinon, **repli local** — le seul étage qui connaisse l'année du dossier SOURCE.
+Sinon : **refus keyé** (révisable). Il n'y a **PAS** de repli local — un troisième étage existait
+(paie, fiscal, relevés, reçus, assurances, + année du dossier SOURCE) ; mesuré après la
+restructuration, il était productif sur **0 cas sur 11** et a été retiré. Ce qu'il coûte, dit :
+l'année du dossier source pour un nom sans année plausible (dégradation de bucket, jamais un
+refus), et le mot `declaration` nu — que le flux ne reprend PAS, volontairement (il volerait
+« Relevé de déclaration de sinistre ») ; les tournures fiscales réelles sont listées à la place.
 
 **Cet ordre a été payé par la revue.** La première version faisait l'inverse (table d'abord, flux
 en dernier recours) et deux défauts en découlaient, tous deux vérifiés par exécution :
@@ -448,10 +453,18 @@ après convergence (`DriveAI_MISSION_FINI_<tag>`). Donc la mission vide les 12 d
 s'arrête… et le flux les re-remplit **en silence**, sans re-drainage jusqu'au prochain bump de
 version. Le nettoyage sera défait.
 
-Trois issues, à trancher par Marc — aucune n'est faite ici :
-1. retirer `02 · Finances` de `DOMAINES_PAR_ANNEE` (le flux cesse de créer des fourre-tout d'année) ;
-2. rendre `annees02` **perpétuelle** plutôt que one-shot, comme le rattrapage ;
-3. ne rien faire et re-bumper la version périodiquement (le moins bon : silencieux).
+**DÉCISION DE MARC (2026-08-20) : la mission devient PERPÉTUELLE** (issue 2 sur les 3 proposées).
+Elle draine indéfiniment ; le flux peut recréer `02 · Finances/AAAA`, ils sont vidés au tick suivant.
+Deux conséquences livrées dans le même geste :
+- elle n'écrit **jamais** `DriveAI_MISSION_FINI_annees02` et n'est **jamais peinte en rouge** (peindre
+  des dossiers que le flux recrée inviterait à supprimer pour rien) ;
+- 🔴 `paies` était gatée sur elle par `convergenceApres` — **retiré**. Une mission qui n'écrit jamais
+  son drapeau bloquerait l'aval **à vie** (c'est la leçon C28-32 « un statut terminal ne peut pas
+  servir de signal d'occupation », vue par l'autre bout : ici le statut n'arrive jamais). Un test
+  interdit désormais à toute mission d'attendre la convergence d'une perpétuelle.
+
+*(Issues écartées : retirer `02` de `DOMAINES_PAR_ANNEE` — les documents sans entité validée iraient
+à plat dans 02, à étudier séparément ; re-bumper la version périodiquement — silencieux.)*
 
 **Correction d'une affirmation fausse.** Le premier jet de §7 écrivait que les 12 dossiers vidés
 seraient visibles « en `vide-candidat` dans l'app ». C'est faux : `detecterDossierVide_` écarte tout

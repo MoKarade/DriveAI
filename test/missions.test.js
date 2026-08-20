@@ -1163,8 +1163,11 @@ test('ADR-0044 §6 : formulaires GÉNÉRIQUES → « Modèles & formulaires », 
   const attendu = { cibleParentId: c.CONFIG.DOMAINES[D], cibleNom: 'Modèles & formulaires', sousDossier: '' };
 
   // Les 8 fichiers RÉELS de `03 · Contrats` (4 CORPIQ, 2 MA8, 2 Proprio Expert).
+  // ⚠️ « Immeubles MA8 » ne figure PLUS ici : Marc a donné son adresse le 2026-08-20, il est entré
+  // dans `MISSIONS_BAILLEURS`, et ses formulaires partent donc chez le BAILLEUR. C'est très
+  // exactement la propriété « le spécifique gagne » que ce test vérifie plus bas — le scénario
+  // hypothétique de l'ADR §6.2 s'est réalisé le jour même.
   ['2018-10-15_Formulaire de demande de location_CORPIQ.pdf',
-    '2018-10-15_Formulaire de demande de location_Immeubles MA8_2.pdf',
     '2026-06-29_Formulaire de consentement communication électronique_Proprio Expert.pdf',
   ].forEach((nom) => {
     assert.deepStrictEqual(JSON.parse(JSON.stringify(d03.router(nom, infoC, ctx))), attendu, 'MISSION — ' + nom);
@@ -1350,7 +1353,7 @@ test('ADR-0044 §7 : dans 02, LE FLUX FAIT AUTORITÉ — les règles locales ne 
     c.CONFIG.MISSIONS_ANNEES02_DOMAINES = [{ domaine: '04 · Immigration', jetons: ['ircc'], motifs: [] }];
     assert.strictEqual(c.domaineHors02DuNom_('2020-01-01_Correspondance_IRCC.pdf'), '04 · Immigration',
       'la table nomme bien 04 dans ce contexte de test');
-    assert.strictEqual(dest(c.routerFinance02_('2020-01-01_Correspondance_IRCC.pdf', '2020',
+    assert.strictEqual(dest(c.routerFinance02_('2020-01-01_Correspondance_IRCC.pdf',
       { '02 · Finances': ids['02 · Finances'], '04 · Immigration': 'ID04' })), null,
       '§2.1b : un domaine PROTÉGÉ n\'est JAMAIS une cible, même si la CONFIG le nomme');
   } finally { c.CONFIG.MISSIONS_ANNEES02_DOMAINES = vraieTable; }
@@ -1424,4 +1427,93 @@ test('ADR-0044 §7 : il n\'y a PAS de repli local dans 02 — le flux couvre tou
   assert.strictEqual(c.cheminCibleReset_('01 · Administratif & identité', '2019-08_Billet_Virgin Atlantic.pdf'), null);
   assert.strictEqual(c.cheminCibleReset_('01 · Administratif & identité', '2019-08_Contrat_Virgin Mobile.pdf'),
     'Contrats & fournisseurs/Virgin Plus');
+});
+
+test('ADR-0044 §7 (revue finale) : le vocabulaire fiscal par LOCUTIONS, et la CFE hors de 02', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
+  const f = (n) => c.cheminCibleReset_('02 · Finances', n);
+  // 🔴 Le PLURIEL manquait : « relevé de cotisationS » est la forme la plus courante (URSSAF,
+  // mutuelles) et partait chez les relevés BANCAIRES, à clé de SUCCÈS.
+  assert.strictEqual(f('2024-03_Relevé de cotisations_URSSAF.pdf'), 'Impôts & déclarations/2024');
+  assert.strictEqual(f('2024-03_Relevé de cotisation_URSSAF.pdf'), 'Impôts & déclarations/2024');
+  assert.strictEqual(f('2024-01_Avis de cotisation_ARC.pdf'), 'Impôts & déclarations/2024');
+  // …et « déclaration DES revenus » (la graphie de la DGFiP) rendait null, donc du vrac.
+  assert.strictEqual(f('2024-04-25_Déclaration des revenus 2023_DGFiP.pdf'), 'Impôts & déclarations/2024');
+  // 🔴 « cotisation » NU est banni : il volait les appels de prime d'ASSURANCE.
+  assert.notStrictEqual(f('2025-06_Appel de cotisation_Filia-MAIF.pdf'), 'Impôts & déclarations/2025');
+  // …et « déclaration » nu reste banni : un sinistre n'est pas fiscal.
+  assert.strictEqual(f('2024-01_Relevé de déclaration de sinistre_MAIF.pdf'), 'Relevés/2024');
+  // 🔴 La CFE est écartée EN TÊTE : conditionner « 02 ne la revendique pas » à sept règles amont
+  // faisait partir un « Appel de cotisation » chez les impôts et un « Bordereau de cotisations »
+  // vers 07 — deux destins pour la même caisse, à un pluriel près.
+  ['2026-01-12_Appel de cotisation_Caisse des Français de l\'Étranger.pdf',
+    '2026-01-12_Bordereau de cotisations_Caisse des Français de l\'Étranger.pdf',
+    '2025-11-15_Attestation de versement_Caisse des Français de l\'Étranger.pdf',
+  ].forEach((n) => {
+    assert.strictEqual(f(n), null, '02 ne revendique JAMAIS la CFE : ' + n);
+    assert.ok(c.cheminCibleReset_('07 · Santé', n), 'et 07 sait la placer : ' + n);
+  });
+  // Deny-list « Virgin » : UNE table, lue par les deux consommateurs (jamais recopiée).
+  // (comparaison par VALEUR : les tableaux viennent de deux realms VM différents)
+  assert.strictEqual(JSON.stringify(c.exclusionsSortie02_('virgin')),
+    JSON.stringify(JSON.parse(JSON.stringify(c.CONFIG.MISSIONS_ANNEES02_DOMAINES))
+      .filter((r) => (r.jetons || []).indexOf('virgin') !== -1)[0].exclusions),
+    'la deny-list du flux est LUE dans la table, jamais recopiée');
+  assert.strictEqual(c.cheminCibleReset_('01 · Administratif & identité', '2019-08_Billet_Virgin Atlantic.pdf'), null);
+});
+
+test('C28-64 : la mission des dossiers-années est PERPÉTUELLE (le flux les re-remplit)', () => {
+  const h = ctxRunner();
+  const IDS = h.c.CONFIG.MISSIONS_IDS;
+  const annee = (IDS.annees02 || [])[0];
+  h.arbre[annee.id] = { files: [h.fichier('fv', '2025-09-04_Contrat d\'adhésion_Virgin Plus.pdf')], folders: {} };
+
+  // Un drapeau FINI RÉSIDUEL (écrit sous une version antérieure, ou par un aller-retour du flag
+  // `perpetuelle`) ne doit pas la geler : la garde d'entrée l'ignore explicitement.
+  h.store['DriveAI_MISSION_FINI_annees02'] = h.c.CONFIG.MISSIONS_REGLES_VERSION;
+  h.c.executerMission_('annees02', () => false);
+  assert.strictEqual(h.moves.length, 1, 'elle draine MALGRÉ un drapeau FINI résiduel');
+  delete h.store['DriveAI_MISSION_FINI_annees02'];
+
+  // Passe suivante : plus rien à traiter. Une mission ORDINAIRE poserait son drapeau et
+  // s'arrêterait — celle-ci ne DOIT pas, sinon le nettoyage se défait en silence quand le flux
+  // recrée `02 · Finances/AAAA` (`DOMAINES_PAR_ANNEE`).
+  h.c.executerMission_('annees02', () => false);
+  assert.ok(!h.store['DriveAI_MISSION_FINI_annees02'], 'JAMAIS de drapeau de convergence');
+  assert.strictEqual(h.peints.length, 0, 'JAMAIS peinte en rouge : les sources vont se re-remplir');
+
+  // …et elle repart : un fichier déposé après la passe à vide est bien traité.
+  h.arbre[annee.id] = { files: [h.fichier('fw', '2025-06-01_Avenant_XTB S.A..pdf')], folders: {} };
+  h.c.executerMission_('annees02', () => false);
+  assert.strictEqual(h.moves.length, 2, 'une passe à vide ne l\'arrête pas');
+
+  // 🔴 Corollaire NON négociable : aucune mission ne doit être gatée sur elle — elle n'écrira
+  // jamais son drapeau, donc l'aval serait bloqué À VIE (« un statut terminal ne peut pas servir
+  // de signal d'occupation », leçon C28-32, vue par l'autre bout).
+  h.c.tableMissions_().forEach((spec) => {
+    assert.ok((spec.convergenceApres || []).indexOf('annees02') === -1,
+      'aucune mission ne peut attendre la convergence d\'une PERPÉTUELLE (ici : ' + spec.tag + ')');
+  });
+});
+
+test('ADR-0044 : contrat de vente sans véhicule nommé → le commun ; MA8 = 3325 4e avenue', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
+  const D = '03 · Logement & véhicule';
+  // Décision Marc : le contrat « Suprême Auto » est un achat NON abouti.
+  assert.strictEqual(c.cheminCibleReset_(D, '2023-06-20_Contrat de vente véhicule d\'occasion_Suprême Auto.jpg'),
+    'Véhicule/Recherche & achat');
+  // …mais un véhicule NOMMÉ garde la priorité, et un contrat de vente IMMOBILIER n'est pas volé.
+  assert.strictEqual(c.cheminCibleReset_(D, '2023-06-20_Contrat de vente véhicule d\'occasion_VW Jetta.jpg'),
+    'Véhicule/VW Jetta/Recherche & achat');
+  // (un contrat de vente d'`Immeubles MA8` part chez le BAILLEUR depuis que Marc a donné son
+  // adresse — c'est bien un document de son logement, pas un contrat générique.)
+  assert.strictEqual(c.cheminCibleReset_(D, '2024-01_Contrat de vente_Immeubles MA8.pdf'),
+    'Logement/3325 4e avenue');
+  // Un contrat de vente immobilier d'un TIERS, lui, n'est pas volé par la règle véhicule.
+  assert.strictEqual(c.cheminCibleReset_(D, '2024-01_Contrat de vente_Notaire Tremblay.pdf'), 'Contrats');
+  // Réponse de Marc : `Immeubles MA8` est le bailleur du 3325 — son DPA et ses formulaires suivent.
+  assert.strictEqual(c.cheminCibleReset_(D, '2025-06-03_Formulaire d\'adhésion au débit préautorisé (DPA)_Immeubles MA8.pdf'),
+    'Logement/3325 4e avenue');
+  assert.strictEqual(c.cheminCibleReset_(D, '2018-10-15_Formulaire de demande de location_Immeubles MA8_2.pdf'),
+    'Logement/3325 4e avenue', 'le SPÉCIFIQUE gagne : chez le bailleur, plus dans les modèles');
 });

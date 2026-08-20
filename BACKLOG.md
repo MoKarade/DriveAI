@@ -689,7 +689,9 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
 | P4-04 | Recherche structurée (filtres via `Index`) + plein texte délégué à Drive (`fullText contains`) | ✅ (C9-07) |
 | P4-05 | Bilingue FR/EN | ✅ (C9-01, i18n) |
 
-- ⬜ **C28-64 — Les dossiers-années de 02 se re-remplissent après le nettoyage.** `DOMAINES_PAR_ANNEE`
+- ✅ **C28-64 — Les dossiers-années de 02 se re-remplissent après le nettoyage.** *(Décision Marc
+  2026-08-20 : mission PERPÉTUELLE. Livré avec le retrait de `annees02` de `convergenceApres` de
+  `paies`, qui l'aurait bloquée à vie.)* `DOMAINES_PAR_ANNEE`
   contient `02 · Finances`, donc le flux vivant recrée `02 · Finances/AAAA` par nom pour tout document
   dont l'entité n'est pas validée ; et `annees02` est one-shot (`DriveAI_MISSION_FINI_`), donc elle ne
   re-draine jamais. Le nettoyage de la décision 7 sera défait **en silence**. Trois issues dans

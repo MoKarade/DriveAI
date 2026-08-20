@@ -240,7 +240,10 @@ function tableMissions_() {
       // « Revenus & paie » pendant des jours — écrire le rapport avant leur fin le FIGERAIT sur
       // des « mois manquants » qu'elles vont combler (donnée MOUVANTE, corollaire C28-49). La
       // mission draine sans attendre ; seule sa CONVERGENCE (et donc le rapport) attend.
-      convergenceApres: ['carriere', 'annees02'],
+      // ⚠️ `annees02` RETIRÉE (C28-64) : elle est devenue PERPÉTUELLE, donc elle n'écrira jamais son
+      // drapeau de convergence — la garder ici aurait bloqué le rapport des paies À VIE. « Un statut
+      // qui ne revient jamais ne peut pas servir de gate » (leçon C28-32, autre face).
+      convergenceApres: ['carriere'],
       apresConvergence: function () { ecrireRapportPaies_(); },
       sourcesJetables: [], // « Revenus & paie » est PÉRENNE : jamais peinte en rouge
     },
@@ -288,8 +291,7 @@ function tableMissions_() {
       tag: 'annees02', cle: 'mission-annees-02',
       sources: (IDS.annees02 || []).map(function (p) { return p.id; }),
       batirCtx: function () {
-        var anneePar = {};
-        (IDS.annees02 || []).forEach(function (p) { anneePar[p.id] = p.annee; });
+        // (plus d'`anneePar` : le repli local qui l'utilisait a été retiré — cf. `routerFinance02_`)
         // (ADR-0044 §7) IDs des domaines de SORTIE. 🔴 `CONFIG.DOMAINES` ne contient que les 7
         // domaines FIXES : « 07 · Santé » et « 09 · Voyages » sont des domaines AUTO, dont l'ID vit
         // en Script Property (`DriveAI_DOM_<nom>`) et PEUT être absent (domaine jamais né). Lire la
@@ -308,11 +310,17 @@ function tableMissions_() {
             if (id && !protege(d)) domainesId[d] = id;
           });
         } catch (e) { /* Properties illisibles : seuls les domaines FIXES sont ciblables ce run */ }
-        return { anneePar: anneePar, domainesId: domainesId };
+        return { domainesId: domainesId };
       },
       router: function (nom, info, ctx) {
         return routerFinance02_(nom, ctx.domainesId);
       },
+      // PERPÉTUELLE (décision Marc, C28-64) : `DOMAINES_PAR_ANNEE` fait recréer `02 · Finances/AAAA`
+      // par le flux vivant, et une mission one-shot vidait puis s'arrêtait — le nettoyage se
+      // défaisait en silence. Elle draine donc indéfiniment. ⚠️ Conséquence : elle n'écrit jamais
+      // `DriveAI_MISSION_FINI_annees02`, donc plus aucune mission ne peut la mettre en
+      // `convergenceApres` (`paies` l'a été jusqu'ici — retiré dans le même geste).
+      perpetuelle: true,
       // ⚠️ PAS jetables (revue PR4). Le défaut aurait peint les 12 dossiers-années en ROUGE
       // (« bon pour suppression ») ; Marc les supprime, et au prochain bump de version
       // `collecterMission_` lève sur chaque source disparue ⇒ passe incomplète ⇒ `annees02` ne
@@ -624,7 +632,8 @@ function typeContient_(typeNormalise, mots) {
 }
 
 /** Mots-clés fiscaux du segment type (ordre AVANT « relevé » générique — « relevé d'impôt » est fiscal). */
-var TYPES_FISCAUX_MISSIONS = ['t4', 'impot', 'impots', 'cotisation', 'declaration', 'feuillet', 'fiscal', 'fiscale'];
+// (`TYPES_FISCAUX_MISSIONS` retirée : le vocabulaire fiscal vit désormais dans
+// `estTypeFiscalReset_`, partagée par le flux ET la mission — c'était LA seconde formule.)
 
 /**
  * Routage d'un fichier de dossier-ANNÉE de 02 (table type → cible, brief Marc). L'année de la
@@ -659,11 +668,11 @@ function domaineHors02DuNom_(nom) {
 
 /**
  * Routage d'un fichier de dossier-ANNÉE de 02 (ADR-0044 §7). PURE (testée).
- * Trois étages, dans cet ordre — l'ordre EST la règle :
+ * DEUX étages, dans cet ordre — l'ordre EST la règle :
  *   1. le FLUX (`cheminCibleReset_`) fait autorité DANS 02 : ce qu'il sait placer y reste ;
  *   2. sinon, SORTIE inter-domaines par `MISSIONS_ANNEES02_DOMAINES` (jamais un domaine protégé,
  *      jamais si le flux est muet dans le domaine d'arrivée) ;
- *   3. sinon, refus keyé — il n'y a PAS de troisième étage (cf. le commentaire en fin de corps).
+ *   sinon refus keyé. DEUX étages : il n'y a pas de repli local (cf. commentaire en fin de corps).
  * @param {string} nom
  * @param {Object=} domainesId  { domaine: id } résolu par `batirCtx` (domaines AUTO compris)
  * @return {?Object} cible de mission, ou null (refus keyé sous la version, donc révisable)
@@ -1226,7 +1235,12 @@ function executerMission_(tag, estBudgetDepasse) {
   var version = CONFIG.MISSIONS_REGLES_VERSION;
   // Court-circuit TERMINAL : mission convergée = cette lecture + celle de la gate `gMissionsJour_`
   // (2 lectures Property par tick et par mission — chiffré en revue quotas, négligeable).
-  if (props.getProperty('DriveAI_MISSION_FINI_' + tag) === version) return;
+  // Une mission PERPÉTUELLE ne s'arrête jamais (décision Marc, C28-64) : sa source est réalimentée
+  // par le flux vivant, donc « converger » ne veut rien dire pour elle — s'arrêter, c'est laisser
+  // le nettoyage se défaire en silence. Elle n'écrit pas non plus `FINI` (voir plus bas), ce qui
+  // impose de ne JAMAIS la mettre en `convergenceApres` d'une autre mission : elle bloquerait
+  // l'aval à vie. Verrouillé par un test.
+  if (!spec.perpetuelle && props.getProperty('DriveAI_MISSION_FINI_' + tag) === version) return;
 
   var aujourdhui = dateGmail_(new Date());
   var consommeJour = budgetJourMissions_(props, aujourdhui);
@@ -1334,6 +1348,12 @@ function executerMission_(tag, estBudgetDepasse) {
           etatM[tag] = m;
           try { props.setProperty('DriveAI_MISSIONS_ETAT', JSON.stringify(etatM)); } catch (e3) { }
         }
+      }
+      if (spec.perpetuelle) {
+        // Passe à vide : rien à faire, on repassera au prochain tick. Ni drapeau FINI, ni peinture
+        // rouge (les sources vont se re-remplir — les peindre inviterait à supprimer des dossiers
+        // que le flux recrée aussitôt).
+        return;
       }
       props.setProperty('DriveAI_MISSION_FINI_' + tag, version);
       // Peinture ROUGE : seulement les sources JETABLES (revue quotas PR2 — peindre un sous-dossier

@@ -17,8 +17,8 @@
 > **⚠️ Ce que PR4 a coûté en revue, à connaître avant d'y toucher.** Deux revues indépendantes ont
 > trouvé qu'un `Avis d'imposition_SCI MRic` **quittait `02 · Finances` pour `05 · Carrière`** sur le
 > seul jeton « mric », à clé de SUCCÈS donc définitivement. Correctif : `routerFinance02_` a
-> **trois étages et l'ORDRE est la règle** — (1) le FLUX fait autorité dans 02, (2) sortie
-> inter-domaines, (3) repli local (seul étage qui connaisse l'année du dossier SOURCE). Une garde
+> **deux étages et l'ORDRE est la règle** — (1) le FLUX fait autorité dans 02, (2) sortie
+> inter-domaines ; sinon refus keyé. Le repli local a été mesuré MORT (0 cas sur 11) et retiré. Une garde
 > par LISTE de types réservés a été écrite puis JETÉE (elle ratait ce cas même). Et le « tripwire de
 > convergence » livré au premier jet était **TAUTOLOGIQUE** (il comparait `cheminCibleReset_` avec
 > elle-même) : remplacé par un verrou d'ORDRE. Leçons consignées (CLAUDE.md §9).
