@@ -142,10 +142,15 @@ test('enveloppe reset-OFF : la somme des budgets QUOTIDIENS des campagnes concur
   // ci-dessus ne voit pas (lui borne le reset ON, pas l'agrégat reset-OFF).
   const concurrentesResetOff = C.GMAIL_HISTO_BUDGET_JOUR_MS + C.CONSOLIDATION_BUDGET_JOUR_MS +
     C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS +
-    C.HISTORIQUE_VRAC_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS; // missions C28-49 (partagé entre elles)
+    C.HISTORIQUE_VRAC_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS + // missions C28-49 (partagé entre elles)
+    C.DOUBLONS_BUDGET_JOUR_MS; // validation de _Doublons (C28-49 PR4, ADR-0047) — lecture seule, zéro LLM
   // RÉALLOCATION 2026-08-11 (diagnostic prod : l'exec est le goulot) : exec 6→12, fusion 6→0 (parkée,
   // campagne OFF) — la SOMME reste 56 min/j (20+12+12+12+0), enveloppe INCHANGÉE, pur transfert.
   // HISTORIQUE_VRAC (2026-08-12, demande Marc : suivi journalier par domaine) : +4 min → 60 min/j.
+  // DOUBLONS (2026-08-20, ADR-0047 : valider `_Doublons` par empreinte) : +3 min → 63 min/j. Prélevé
+  // sur la MARGE et non sur une campagne vivante — `GMAIL_HISTO_BUDGET_JOUR_MS` (20 min/j) est le
+  // donneur évident, mais « probablement terminé » (HANDOVER) n'est pas une preuve (§1.6 : ne pas
+  // déclarer une campagne finie sans lire son compteur). Réallocation à faire, backlog C28-70.
   // Budget QUOTIDIEN en ms réelles persistées (comme les autres campagnes, PAS le sous-budget par
   // run de 2 min — leçon C28-42 : un plafond par RUN ne borne pas la JOURNÉE si la sweep doit
   // reprendre sur plusieurs ticks, revue flotte apps-script-quota).

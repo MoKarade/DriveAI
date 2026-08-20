@@ -55,6 +55,7 @@ function initialiserSheet_(ss) {
   // cf. ecrireRapportPaies_). Onglet OUBLIÉ ici à la livraison → `feuille_('RapportPaies')` rendait
   // null et la mission plantait à CHAQUE tick (`getRange of null`, révélé par le MCP le 19/08).
   creerOnglet_(ss, 'RapportPaies', COLONNES_RAPPORT_PAIES); // constante partagée (Missions.gs)
+  creerOnglet_(ss, 'RapportDoublons', COLONNES_RAPPORT_DOUBLONS); // constante partagée (Doublons.gs)
   // C28-26 (ADR-0023) : plan de CONSOLIDATION de l'arborescence — dry-run pur, validé par Marc
   // avant toute exécution. La colonne Empreinte est la mémoire de dédup de la campagne
   // (jamais en Script Properties : ~2 900 empreintes dépasseraient la limite ~9 Ko).
@@ -201,6 +202,11 @@ function majSante_() {
     // ADR-0043 : le mode DÉGRADÉ du tri doit se DIRE. Sans cette ligne, « le tri marche » masque
     // « il n'archive plus » et la dette (fils à ré-évaluer au retour) reste invisible.
     ['Tri Gmail : ' + texteSanteTriDegrade_()],
+    // Validation de `_Doublons` (ADR-0047) : le registre de suivi C28-44 est SATURÉ (8 377 des
+    // 8 500 octets du plafond dérivé, ~199 par entrée) — une 43ᵉ clé le ferait déborder. La
+    // campagne se rend donc visible ICI, comme « Rangement ancien Drive », sans coûter un octet
+    // de Property (ADR-0047 §6, backlog C28-71).
+    ['Doublons (validation par empreinte) : ' + texteSanteDoublons_()],
     ['Mis à jour : ' + new Date()]
   ];
   f.getRange(2, 1, lignes.length, 1).setValues(lignes); // une seule écriture Sheet (I/O borné/tick)

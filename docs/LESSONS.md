@@ -2625,3 +2625,48 @@ où il traînait). Et le contrôle qui le révèle n'est pas un test : c'est de 
 des dossiers après déploiement — la liste des fichiers déplacés, pas le compteur. »
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §9).
+
+## 2026-08-20 — Un ENSEMBLE d'empreintes répond à « déjà vu ? », jamais à « encore là ? »
+
+**Contexte.** C28-49 PR4. `_Doublons` contient **1 076 fichiers**, dont les 3 passeports de Marc
+(de TAILLES différentes : pas des copies l'un de l'autre) et un bulletin scolaire présent en double
+là-dedans et nulle part ailleurs. Cause lue dans le code, sans instrumentation : `chargerIndexCache_`
+construit `_empreintesCache` comme un **ensemble d'empreintes**, sans aucune notion de lieu.
+`estDoublon_(e)` répond donc à « ce contenu a-t-il déjà été vu ? ». Les deux questions coïncident
+tant qu'un fichier n'est présenté qu'une fois — et divergent dès qu'un fichier déjà indexé est
+re-présenté (reset, migration, rattrapage) : il devient **doublon de lui-même** et part dans
+`_Doublons` pendant que le dernier exemplaire classé quitte l'arborescence, sans que rien ne le
+remarque. Le piège « doublon de lui-même » était documenté à TROIS endroits (`Migration.gs`,
+`Intake.gs`, backlog C28-33 PR5). Ce qu'aucun ne disait : **le garde-fou ne se referme jamais**,
+personne ne relit `_Doublons`.
+
+**Leçon.** « Un état "déjà vu" qui sert à décider "donc j'écarte celui-ci" doit mémoriser **OÙ** est
+l'exemplaire gardé — sinon il ne peut pas distinguer "il y a une copie ailleurs" de "il n'y en a
+plus nulle part", et il vide la collection en silence. Réflexe de revue : pour tout index de dédup,
+demander "que répond-il si l'exemplaire conservé a été déplacé/écarté depuis ?". Corollaire de
+diagnostic : la source d'empreinte doit couvrir TOUTE la population — ici l'Index n'attache une
+empreinte à un fileId que pour les clés dont le dernier segment EST un fileId, donc une PJ Gmail
+(`messageId|i|nom|taille`) y est invisible et son exemplaire classé aussi ; on est passé au
+`md5Checksum` de l'API Drive, qui ne connaît pas ce trou et ne télécharge aucun octet. Et c'est le
+pendant exact de "un garde-fou qui met des items HORS CIRCUIT exige un chemin de RETOUR" : une
+quarantaine sans dé-quarantaine transforme une erreur de détection en perte définitive. »
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §9).
+
+## 2026-08-20 — Un registre BORNÉ finit par se fermer, et il se ferme SANS le dire
+
+**Contexte.** Même PR. Je voulais rendre la campagne visible dans Progression via `etapeSuivie_`.
+Mesure du pire cas dérivé du registre : **8 377 des 8 500 octets** du plafond, 42 clés à ~199 octets
+— **123 octets de marge**. Une 43ᵉ entrée faisait échouer le tripwire (et, en prod, `setProperty`
+en boucle). J'ai découvert au passage que C28-58 avait déjà buté dessus : la ventilation des coûts
+avait été logée DANS l'étape `telemetrie` « même famille, même contrat » — une formulation qui
+ressemble à un choix de conception et qui était une contrainte de place.
+
+**Leçon.** « Quand un tripwire de plafond passe encore mais que la marge est inférieure au coût
+d'UNE unité de plus, la ressource est PLEINE, pas "sous le plafond" : le prochain qui l'ignore le
+découvre en prod. Le rapporter comme une saturation (avec la marge chiffrée et le coût unitaire),
+pas comme un test vert. Et une contrainte de place contournée doit se DIRE dans le commentaire :
+sinon le contournement se lit comme une préférence d'architecture et personne ne va chercher la
+vraie cause. »
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §9).

@@ -1011,6 +1011,26 @@ ce qui reste vrai d'une session à l'autre.
   wrapper I/O (`batirCtx`), routeur pur, **échec fermé** (pas d'ID ⇒ refus keyé), et un domaine
   PROTÉGÉ jamais dans la carte des cibles : `aParentProtege_` ne garde que la SOURCE, jamais la cible.
 
+- **Un ENSEMBLE d'empreintes répond à « déjà vu ? », jamais à « encore là ? ».** Un état de dédup
+  qui sert à décider « donc j'écarte celui-ci » doit mémoriser **OÙ** est l'exemplaire gardé : sans
+  le lieu, il ne distingue pas « il y a une copie ailleurs » de « il n'y en a plus nulle part », et
+  il vide la collection EN SILENCE (vécu C28-49 PR4 : `_empreintesCache` est un Set, `estDoublon_`
+  a envoyé dans `_Doublons` **1 076 fichiers** dont les 3 passeports de Marc — un fichier déjà
+  indexé et re-présenté devient doublon de LUI-MÊME). Réflexe : pour tout index de dédup, demander
+  « que répond-il si l'exemplaire conservé a été déplacé/écarté depuis ? ». Et la source d'empreinte
+  doit couvrir TOUTE la population : l'Index n'attache une empreinte à un fileId que pour les clés
+  dont le dernier segment EST un fileId (`PREFIXES_CLE_FICHIER_`), donc une PJ Gmail y est
+  invisible — le `md5Checksum` de l'API Drive n'a pas ce trou et ne télécharge aucun octet. Enfin,
+  une quarantaine (`_Doublons`) sans dé-quarantaine est le même défaut vu de l'autre bout : un
+  garde-fou qui met des items hors circuit exige un chemin de RETOUR.
+- **Un registre BORNÉ finit par se fermer, et il se ferme sans le dire.** Quand un tripwire de
+  plafond passe encore mais que la MARGE est inférieure au coût d'UNE unité de plus, la ressource
+  est PLEINE, pas « sous le plafond » (vécu : registre de suivi C28-44 à 8 377/8 500 octets, 42
+  clés × ~199 — 123 octets restants, une 43ᵉ étape le faisait déborder). Le rapporter comme une
+  saturation, marge chiffrée et coût unitaire à l'appui ; et DIRE dans le commentaire qu'un
+  contournement en est un, sinon il se relit comme une préférence d'architecture et personne ne
+  remonte à la cause (C28-58 avait déjà buté dessus sans le nommer).
+
 ## 10. Style
 
 Hérité du `CLAUDE.md` global de Marc (`claude-config`) : réponses, commits et docs **en

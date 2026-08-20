@@ -822,6 +822,24 @@ var CONFIG = {
                                           // reprendre sur plusieurs ticks) — compté dans l'enveloppe
                                           // reset-OFF (orchestration.test.js).
 
+  // ---------- VALIDATION de `_Doublons` par empreinte (C28-49 PR4, ADR-0047) ----------
+  // Campagne STRICTEMENT lecture seule : aucun moveTo, aucun renommage, aucun appel LLM. Elle
+  // re-pose la question que `estDoublon_` ne pose pas — « un exemplaire est-il ENCORE classé ? » —
+  // et écrit un verdict par fichier écarté dans l'onglet `RapportDoublons`.
+  DOUBLONS_ACTIF: true,
+  DOUBLONS_TABLE_VERSION: 'd1',           // bump = rapport remis à zéro et TOUT re-validé (les verdicts
+                                          // dépendent d'un état MUTABLE — un jumeau peut avoir bougé
+                                          // depuis : « verdict révisable, jamais figé à vie », leçon §9)
+  DOUBLONS_TAILLE_PAGE: 1000,             // `files.list` — 1000 est le maximum de l'API ; ~17 pages pour
+                                          // un Drive de 16 600 fichiers, sans télécharger un seul octet
+                                          // (le md5Checksum vient des MÉTADONNÉES)
+  DOUBLONS_BUDGET_MS: 90 * 1000,          // sous-budget par run (pur listing REST + 2 écritures Sheet)
+  DOUBLONS_BUDGET_JOUR_MS: 3 * 60 * 1000, // budget QUOTIDIEN en ms réelles persistées — AJOUTÉ à la somme
+                                          // de l'enveloppe reset-OFF (orchestration.test.js) : 60 → 63 min/j
+                                          // pour un plafond dérivé de 65. Prélevé sur la MARGE, faute de
+                                          // pouvoir encore prouver que l'historique Gmail (20 min/j) est
+                                          // fini — c'est LE donneur à terme (ADR-0047 §6, backlog C28-70).
+
   // ---------- MISSIONS de curation (C28-49, ADR-0039 — brief Marc 2026-08-17) ----------
   MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions
   // c49-3 (ADR-0044 §4, véhicules) puis c49-4 (§5, les 39 de « employeurs & CV ») — l'historique

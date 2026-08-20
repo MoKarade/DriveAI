@@ -142,6 +142,13 @@ const CONTRAT = [
   // Journal QUOTIDIEN du vrac par domaine (demande Marc 2026-08-12) — HistoriqueVrac.gs, appelée
   // depuis Main.gs (finally du tick) ; réutilise compterVracRacineDomaine_ (Diagnostic.gs).
   'majHistoriqueVrac_', 'ligneHistoriqueVrac_', 'domainesHistoriqueVrac_', 'budgetJourHistoriqueVrac_',
+  // Validation de `_Doublons` par empreinte (C28-49 PR4, ADR-0047) — Doublons.gs, appelée depuis
+  // Main.gs (finally du tick, hors `etapeSuivie_` : registre C28-44 saturé) ; `texteSanteDoublons_`
+  // est appelée par `majSante_` (Journal.gs) et `COLONNES_RAPPORT_DOUBLONS` par `initialiserSheet_`.
+  'majValidationDoublons_', 'inventorierDoublons_', 'balayerExemplairesDoublons_',
+  'ecrireVerdictsDoublons_', 'feuilleRapportDoublons_', 'texteSanteDoublons_', 'pageListeDrive_',
+  'estExemplaireSurvivant_', 'verdictClotureDoublon_', 'urlListeDrive_', 'bilanDoublons_',
+  'ligneSanteDoublons_', 'budgetJourDoublons_',
   // Suivi GÉNÉRIQUE des opérations du tick (C28-44, ADR-0038) — Suivi.gs : wrapper appelé par
   // Main.gs (PR2), vue fusionnée lue par Journal.gs/majProgressions_ (PR3), flush au finally.
   'etapeSuivie_', 'suiviReset_', 'suiviSkip_', 'suiviOpsFusionne_', 'flusherSuiviOps_',
@@ -249,4 +256,32 @@ test('surface du moteur : les fonctions RETIRÉES par l\'audit ne reviennent pas
     'jetonGoogle_']; // ADR-0041 : Tasks/Calendar passent par jetonHubperso_ — le jeton du script ne doit pas revenir ici
   const revenues = retirees.filter((nom) => typeof ctx[nom] === 'function');
   assert.deepStrictEqual(revenues, [], `retirées mais présentes : ${revenues.join(', ')}`);
+});
+
+/**
+ * TRIPWIRE D'INVENTAIRE (leçon §9, incident C28-53) — `feuille_(nom)` rend `null` si l'onglet est
+ * absent de `initialiserSheet_` : `getSheetByName(nom) || (initialiserSheet_(ss), getSheetByName(nom))`
+ * ne crée QUE les onglets de la liste `creerOnglet_`. L'appelant plante alors sur `getRange of null`
+ * — vécu avec `RapportPaies`, oublié de la liste : la mission paies crashait à chaque tick pendant
+ * des jours, l'erreur avalée par le try/catch d'étape et prise pour du bruit.
+ *
+ * La leçon disait « vérifier par INVENTAIRE (grep) » ; un grep qu'on se rappelle de lancer n'est pas
+ * un verrou. Celui-ci échoue tout seul, dans les deux sens (un onglet créé que personne ne lit est
+ * du code mort tout aussi révélateur).
+ */
+test('INVENTAIRE : tout onglet lu par feuille_() est créé par initialiserSheet_, et réciproquement', () => {
+  const lus = new Set();
+  const crees = new Set();
+  for (const f of TOUS_LES_GS) {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8');
+    for (const m of src.matchAll(/feuille_\(\s*'([^']+)'/g)) lus.add(m[1]);
+    for (const m of src.matchAll(/creerOnglet_\(\s*ss\s*,\s*'([^']+)'/g)) crees.add(m[1]);
+  }
+  const manquants = [...lus].filter((n) => !crees.has(n));
+  assert.deepStrictEqual(manquants, [],
+    'onglet(s) lu(s) par feuille_() mais JAMAIS créé(s) par initialiserSheet_ → feuille_() rend null ' +
+    'et l\'appelant plante sur getRange of null (incident RapportPaies, C28-53) : ' + manquants.join(', '));
+  const orphelins = [...crees].filter((n) => !lus.has(n));
+  assert.deepStrictEqual(orphelins, [],
+    'onglet(s) créé(s) que personne ne lit — code mort ou lecteur supprimé : ' + orphelins.join(', '));
 });
