@@ -2525,3 +2525,103 @@ promesse qu'on ne tient pas. Et quand ça arrive, le dire — le code est parti 
 n'est pas un détail de procédure. »
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §4).
+
+## 2026-08-20 — Un tripwire de convergence peut être TAUTOLOGIQUE (C28-62 PR4)
+
+**Contexte.** ADR-0044 §7. Deux consommateurs doivent viser la même cible (la mission de curation et
+le flux vivant), sinon la consolidation défait le rangement — c'est la leçon C28-26. J'ai donc écrit
+ce que j'ai annoncé comme « 🔴 LE tripwire » :
+
+```js
+assert.strictEqual(c.cheminCibleReset_(domaineAttendu, nom), r.sousDossier, 'convergence');
+```
+
+Sauf que `r.sousDossier` **est** littéralement le retour de `cheminCibleReset_(domaineAttendu, nom)` :
+la mission adopte la cible du flux. L'assertion comparait une fonction **avec elle-même**. La revue
+l'a prouvé par mutation : elle a saboté la cible du flux, tous mes autres tests sont tombés, le
+tripwire est resté **vert**.
+
+**Leçon.** « Quand un consommateur CALCULE sa cible en appelant la règle de l'autre, une assertion
+d'égalité entre les deux ne prouve RIEN — elle est vraie par construction, y compris quand la règle
+est fausse. Ce qu'il faut verrouiller, c'est ce qui n'est PAS tautologique : (a) l'ORDRE qui fait que
+le consommateur appelle bien la règle partagée avant ses propres règles — un corpus qui traverse
+CHAQUE branche locale, et qui tombe si on remet les règles locales devant ; (b) les branches où le
+consommateur décide SEUL. Le test de mutation à faire n'est pas « je casse le consommateur » mais
+« je casse la RÈGLE PARTAGÉE » : si le tripwire reste vert, il est décoratif. Corollaire de la revue
+PR2, où la même assertion avait du contenu parce que `routerCarriere_` calculait sa cible lui-même :
+la même ligne de test est un verrou ou une tautologie selon le code qu'elle observe — donc elle se
+re-juge à chaque refonte, jamais copiée. »
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §9).
+
+## 2026-08-20 — Une garde par LISTE d'exceptions se périme ; préférer une garde par CAPACITÉ
+
+**Contexte.** Même PR. Une table faisait SORTIR des documents de `02 · Finances` vers leur vrai
+domaine. Il fallait empêcher un document que 02 revendique de sortir. Premier jet : une liste de
+types réservés — `estTypePaieReset_ || estFeuilletFiscalReset_ || TYPES_FISCAUX_MISSIONS ||
+estRibReset_`. Elle a laissé filer **le cas même pour lequel elle était écrite** : un
+`Avis d'imposition_SCI MRic` est parti en `05 · Carrière` sur le jeton « mric », parce que son type
+n'était dans aucune des quatre listes. Verdict POSITIF, donc définitif de fait.
+
+**Leçon.** « Une garde qui énumère les cas à protéger est fausse dès qu'un cas manque, et personne ne
+sait qu'il manque. Quand il existe déjà un composant qui SAIT répondre à la question — ici la règle de
+routage du domaine, qui connaît toutes ses revendications par construction — la garde s'exprime comme
+une CAPACITÉ (« sait-il le placer ici ? ») et non comme une énumération. Elle devient complète, et
+elle évolue avec le composant au lieu de dériver de lui. Réflexe : devant une liste de prédicats
+`A() || B() || C()` qui protège quelque chose, chercher qui d'autre dans le code répond déjà à la
+même question de façon exhaustive. »
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §9).
+
+## 2026-08-20 — Un défaut de configuration qui INVITE à un geste destructeur
+
+**Contexte.** Même PR. `sourcesJetables` vaut, par défaut, **toutes les sources** de la mission — ce
+qui les peint en ROUGE une fois vidées, signal « bon pour suppression ». Pour les 12 dossiers-années
+de 02, la chaîne complète était : Marc voit 12 dossiers rouges → les supprime (c'est le sens du
+signal) → au prochain bump de version, `collecterMission_` lève sur chaque source disparue → passe
+incomplète → la mission **ne converge plus jamais** → la mission `paies`, gatée sur elle par
+`convergenceApres`, reste bloquée **à vie**. Heartbeat vert du début à la fin.
+
+**Leçon.** « Un DÉFAUT hérité n'est pas une décision. Quand le défaut d'un paramètre déclenche un
+signal qui INVITE l'utilisateur à un geste irréversible (peindre en rouge = "supprime-moi"), il faut
+le trancher explicitement pour chaque nouvelle instance, et écrire pourquoi. Et avant de peindre :
+tracer ce qui se passe SI l'utilisateur obéit — ici la disparition d'une source transformait un
+succès en blocage perpétuel d'une autre campagne. Même famille que "un garde-fou qui met des items
+hors circuit exige un chemin de RETOUR", vu depuis l'autre bout : ici c'est l'utilisateur qui, en
+suivant docilement le signal, casse l'invariant. »
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §9).
+
+## 2026-08-20 — Un mock qui compose la même chaîne par deux chemins ne distingue pas les deux
+
+**Contexte.** Même PR. `sousDossier_` ne résout qu'UN niveau ; passer un chemin
+(`Contrats & fournisseurs/Virgin Plus`) aurait créé un dossier **portant la barre oblique dans son
+nom**. J'ai livré le découpage par segment avec son test — et la mutation qui retire le découpage
+n'a rien cassé. Cause : le mock du harnais rend `parent.getId() + '/' + nom`, donc
+`ID → ID/A → ID/A/B` (découpé) et `ID → ID/A/B` (non découpé) produisent **la même chaîne finale**.
+
+**Leçon.** « Quand le mock d'une résolution COMPOSE son résultat par concaténation, l'identifiant
+final ne distingue pas une résolution en N étapes d'une résolution en une seule. La propriété à
+asserter n'est pas la valeur produite mais le NOMBRE et la SÉQUENCE d'appels — enregistrer les
+arguments reçus. Générique : avant d'écrire l'assertion, se demander "quelle observation change si
+le bug revient ?" — si la réponse est "aucune valeur, seulement le chemin d'exécution", alors il faut
+instrumenter le chemin. Et la seule preuve reste la mutation, jamais la relecture. »
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §9).
+
+## 2026-08-20 — Une règle qui route PAR DOSSIER SOURCE hérite des erreurs de rangement de la source
+
+**Contexte.** C28-62 PR1, constaté dans le Drive APRÈS déploiement. La mission véhicule court-circuite
+tout repli quand le dossier SOURCE désigne un dossier commun. Quatre fichiers qui parlent de
+l'appartement de Marc (SMS avec le propriétaire, fuite de bec de bain, coupure internet) dormaient
+dans `Véhicules/Recherche & achat` : ils y étaient déjà mal rangés, et ma règle les a suivis vers
+`Véhicule/Recherche & achat` — avec une clé de SUCCÈS, donc plus jamais re-présentés.
+
+**Leçon.** « "Le dossier source fait foi" est un raccourci commode qui court-circuite aussi le bon
+sens : il propage les erreurs de rangement de la source et les rend DÉFINITIVES. Quand une règle
+prend le dossier d'origine comme preuve, elle doit rester subordonnée aux indices tirés du DOCUMENT
+lui-même (un nom qui parle d'un logement n'est pas un document de véhicule, quel que soit le dossier
+où il traînait). Et le contrôle qui le révèle n'est pas un test : c'est de REGARDER le contenu réel
+des dossiers après déploiement — la liste des fichiers déplacés, pas le compteur. »
+
+**Règle durable ?** oui (ajoutée à CLAUDE.md §9).

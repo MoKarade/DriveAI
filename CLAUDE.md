@@ -969,6 +969,47 @@ ce qui reste vrai d'une session à l'autre.
   (l'ordre lexicographique jour-major s'inverse au passage de mois) ; et ajouter une colonne oblige
   à vérifier CHAQUE plage de lecture existante (`A2:J` → `A2:K` — un index hors plage rend
   `undefined` sans erreur, la feature dépendante meurt en silence).
+- **Un tripwire de convergence peut être TAUTOLOGIQUE — le prouver en cassant la RÈGLE, pas le
+  consommateur.** Quand le consommateur B CALCULE sa cible en appelant la règle partagée A,
+  `assert(A(x) === B(x))` est vrai par construction, y compris quand A est fausse (vécu C28-62 PR4 :
+  mon « 🔴 LE tripwire » est resté vert alors que la revue sabotait la cible). Ce qui se verrouille,
+  c'est ce qui n'est PAS tautologique : (a) l'**ORDRE** qui fait que B appelle A avant ses propres
+  règles — un corpus traversant CHAQUE branche locale, qui tombe si on remet les règles locales
+  devant ; (b) les branches où B décide seul. La mutation à jouer est « je casse A » : si le tripwire
+  reste vert, il est décoratif. ⚠️ La MÊME ligne de test est un verrou ou une tautologie selon le
+  code qu'elle observe (elle avait du contenu en PR2, où le consommateur calculait sa cible) : elle
+  se re-juge à chaque refonte, jamais copiée.
+- **Une garde par LISTE d'exceptions se périme ; préférer une garde par CAPACITÉ.** Une garde qui
+  ÉNUMÈRE les cas à protéger est fausse dès qu'un cas manque, et personne ne sait qu'il manque (vécu :
+  `estTypePaieReset_ || estFeuilletFiscalReset_ || TYPES_FISCAUX_MISSIONS || estRibReset_` a laissé
+  filer « Avis d'imposition_SCI MRic » hors de 02 — le cas MÊME qu'elle protégeait). Quand un
+  composant SAIT déjà répondre à la question de façon exhaustive (ici la règle de routage du domaine,
+  qui connaît toutes ses revendications par construction), la garde s'exprime en CAPACITÉ (« sait-il
+  le placer ici ? ») : complète, et elle évolue avec lui. Réflexe : devant `A() || B() || C()` qui
+  protège quelque chose, chercher qui d'autre répond déjà à la même question.
+- **Un DÉFAUT de configuration n'est pas une décision — surtout s'il invite à un geste destructeur.**
+  `sourcesJetables` vaut par défaut TOUTES les sources, donc les peint en rouge (« bon pour
+  suppression ») une fois vidées. Chaîne complète non vue en revue de code : Marc supprime → au bump
+  suivant la collecte lève sur les sources disparues → passe incomplète → la mission ne converge PLUS
+  JAMAIS → la mission gatée dessus par `convergenceApres` est bloquée à vie, heartbeat vert. Trancher
+  explicitement chaque nouvelle instance, et **tracer ce qui se passe si l'utilisateur OBÉIT au
+  signal**.
+- **Un mock qui COMPOSE son résultat par concaténation ne distingue pas deux chemins d'exécution.**
+  `sousDossier_` mocké en `parent + '/' + nom` rend la MÊME chaîne qu'on découpe un chemin en
+  segments ou non — la mutation ne casse rien (vécu C28-62 PR4). Quand la propriété tient au CHEMIN
+  d'exécution et non à la valeur, instrumenter le chemin (enregistrer les arguments, compter les
+  appels). Avant d'écrire l'assertion : « quelle observation change si le bug revient ? ».
+- **Une règle qui route PAR DOSSIER SOURCE hérite des erreurs de rangement de la source, et les rend
+  définitives.** « Le dossier d'origine fait foi » court-circuite aussi le bon sens (vécu C28-62 PR1 :
+  4 fichiers sur l'appartement, mal rangés dans `Véhicules/Recherche & achat`, déplacés vers le
+  dossier véhicule à clé de SUCCÈS). Une telle règle reste subordonnée aux indices tirés du DOCUMENT.
+  Et ce qui le révèle n'est pas un test : c'est de LIRE le contenu réel des dossiers après
+  déploiement — la liste des fichiers déplacés, jamais le compteur.
+- **`CONFIG.DOMAINES` ne contient que les domaines FIXES.** Les domaines AUTO (`07 · Santé`,
+  `09 · Voyages`) ont leur ID en Script Property (`DriveAI_DOM_<nom>`) et peuvent être ABSENTS. Un
+  `CONFIG.DOMAINES[d]` rend alors `undefined` — cible vide, plantage au `moveTo`. Résolution dans le
+  wrapper I/O (`batirCtx`), routeur pur, **échec fermé** (pas d'ID ⇒ refus keyé), et un domaine
+  PROTÉGÉ jamais dans la carte des cibles : `aParentProtege_` ne garde que la SOURCE, jamais la cible.
 
 ## 10. Style
 
