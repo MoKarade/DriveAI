@@ -927,7 +927,8 @@ var CONFIG = {
   // `jetons` = MOT ENTIER ; `motifs` = sous-chaîne MULTI-MOTS (pour les noms sans sigle).
   // Prouvée sur les 24 fichiers RÉELS des 12 dossiers-années, jamais sur un échantillon.
   MISSIONS_ANNEES02_DOMAINES: [
-    { domaine: '01 · Administratif & identité', jetons: ['virgin', 'cleverbridge'], motifs: [] },
+    { domaine: '01 · Administratif & identité', jetons: ['virgin', 'cleverbridge'], motifs: [],
+      exclusions: ['virgin atlantic', 'virgin radio', 'virgin mobile', 'virgin megastore'] },
     { domaine: '05 · Carrière', jetons: ['mric', 'prigris'], motifs: ['statuts de societe civile', 'statuts de constitution', 'statuts constitutifs'] },
     { domaine: '07 · Santé', jetons: [], motifs: ['caisse des francais de l etranger'] },
   ],

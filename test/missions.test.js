@@ -641,25 +641,44 @@ test('typeDuNomMission_ + anneeDuNomMission_ : segment TYPE et année de tête, 
   assert.strictEqual(pur.anneeDuNomMission_('rapport 2024.pdf'), null, 'année pas en tête = pas un préfixe');
 });
 
-test('routerFinance02_ : paie→employeur, fiscal→Impôts/<année> (AVANT relevé générique), table stricte', () => {
+// Cible d'un routage 02, exprimée en CHEMIN — c'est la DESTINATION qui compte, pas la forme du
+// descripteur. Depuis ADR-0044 §7 le flux fait autorité dans 02 et rend « racine 02 + chemin » ;
+// les règles LOCALES de repli rendent encore « parent + nom ». Les deux désignent le même dossier.
+function chemin02(r) {
+  if (!r) return null;
   const IDS = pur.CONFIG.MISSIONS_IDS;
-  const paie = pur.routerFinance02_('2025-11_Paie_Robovic Inc..pdf', '2025');
-  assert.deepStrictEqual(plain(paie), { cibleParentId: IDS.revenusPaie, cibleNom: 'Robovic' });
+  if (r.cibleId === pur.CONFIG.DOMAINES['02 · Finances']) return r.sousDossier;
+  if (r.cibleParentId === IDS.revenusPaie) return 'Revenus & paie/' + r.cibleNom;
+  if (r.cibleParentId === IDS.impotsDeclarations) return 'Impôts & déclarations/' + r.cibleNom;
+  if (r.cibleId === IDS.releves02) return 'Relevés/' + r.sousDossier;
+  if (r.cibleId === IDS.recusFactures02) return 'Reçus & factures/' + r.sousDossier;
+  if (r.cibleId === IDS.assurances02) return 'Assurances & prévoyance';
+  return 'HORS 02';
+}
+
+test('routerFinance02_ : paie→employeur, fiscal→Impôts/<année> (AVANT relevé générique), table stricte', () => {
+  assert.strictEqual(chemin02(pur.routerFinance02_('2025-11_Paie_Robovic Inc..pdf', '2025')), 'Revenus & paie/Robovic');
   const t4 = pur.routerFinance02_('2026_Feuillet T4 – État de la rémunération payée_Robovic Inc..pdf', '2025');
-  assert.deepStrictEqual(plain(t4), { cibleParentId: IDS.impotsDeclarations, cibleNom: '2026' },
-    'année du NOM prioritaire sur celle du dossier source');
-  const releveImpot = pur.routerFinance02_('2024-03_Relevé d\'impôt_Revenu Québec.pdf', '2024');
-  assert.strictEqual(releveImpot.cibleParentId, IDS.impotsDeclarations, 'relevé D\'IMPÔT est fiscal, pas bancaire');
-  const releveBanque = pur.routerFinance02_('2024-03_Relevé de compte_Banque CIC.pdf', '2024');
-  assert.strictEqual(releveBanque.cibleId, IDS.releves02);
-  assert.strictEqual(releveBanque.sousDossier, '2024', 'bucket d\'année — LA MÊME règle que le flux (resetBucketAnnee_)');
-  const recu = pur.routerFinance02_('2023-05-01_Facture_Hydro.pdf', '2023');
-  assert.strictEqual(recu.cibleId, IDS.recusFactures02);
-  assert.strictEqual(recu.sousDossier, 'Archives', '2023 hors buckets Reçus (2024-2026) → Archives, comme le flux');
+  assert.strictEqual(chemin02(t4), 'Impôts & déclarations/2026', 'année du NOM prioritaire sur celle du dossier source');
+  assert.strictEqual(chemin02(pur.routerFinance02_('2024-03_Relevé d\'impôt_Revenu Québec.pdf', '2024')),
+    'Impôts & déclarations/2024', 'relevé D\'IMPÔT est fiscal, pas bancaire');
+  assert.strictEqual(chemin02(pur.routerFinance02_('2024-03_Relevé de compte_Banque CIC.pdf', '2024')),
+    'Relevés/2024', 'bucket d\'année — LA MÊME règle que le flux (resetBucketAnnee_)');
+  assert.strictEqual(chemin02(pur.routerFinance02_('2023-05-01_Facture_Hydro.pdf', '2023')),
+    'Reçus & factures/Archives', '2023 hors buckets Reçus (2024-2026) → Archives, comme le flux');
   assert.strictEqual(pur.routerFinance02_('2023-05-01_Diplôme_ULCO.pdf', '2023'), null, 'type hors table = laissé');
   assert.strictEqual(pur.routerFinance02_('photo de vacances.jpg', '2023'), null, 'hors convention = laissé');
-  const paieInconnue = pur.routerFinance02_('2025-11_Paie_Employeur Mystère.pdf', '2025');
-  assert.strictEqual(paieInconnue, null, 'paie d\'un employeur hors table = laissée, jamais devinée');
+  // ⚠️ RÉVISÉ par ADR-0044 §7 (revue PR4). Avant le repli, la mission REFUSAIT une paie dont
+  // l'employeur est hors table ; le FLUX, lui, savait la ranger à la racine de « Revenus & paie ».
+  // Deux verdicts pour un fichier : la consolidation déplaçait ensuite ce que la mission avait
+  // déclaré non apparié. Ce n'est PAS un assouplissement du « jamais deviné » — la cible n'est pas
+  // devinée, elle est CALCULÉE par le flux, qui fait autorité.
+  assert.strictEqual(chemin02(pur.routerFinance02_('2025-11_Paie_Employeur Mystère.pdf', '2025')),
+    'Revenus & paie', 'employeur hors table : la RACINE, jamais un employeur deviné');
+  // …et un employeur OCCASIONNEL (D11) atteint son commun — la promesse « les paies partent en 02
+  // quel que soit l'employeur » n'était pas tenue côté mission avant que le flux fasse autorité.
+  assert.strictEqual(chemin02(pur.routerFinance02_('2015-06_Paie_Algopaie.pdf', '2015')),
+    'Revenus & paie/Autres employeurs');
 });
 
 test('routerFinance02_ : prédicats PARTAGÉS avec le flux — RL-1/31 fiscal, RIB refusé, « salaire » = paie (revue finale PR2)', () => {
@@ -668,18 +687,20 @@ test('routerFinance02_ : prédicats PARTAGÉS avec le flux — RL-1/31 fiscal, R
   const IDS = pur.CONFIG.MISSIONS_IDS;
   // RL-1/RL-31 : feuillets FISCAUX québécois, jamais des relevés bancaires (motif ANCRÉ — le flux
   // a la même règle AVANT son « relevé » générique, test/reset.test.js).
-  const rl1 = pur.routerFinance02_('2025-02_Relevé 1_Robovic.pdf', '2025');
-  assert.deepStrictEqual(plain(rl1), { cibleParentId: IDS.impotsDeclarations, cibleNom: '2025' });
-  const rl31 = pur.routerFinance02_('2025-02_Relevé 31_LCP Groupe Immobilier.pdf', '2025');
-  assert.strictEqual(rl31.cibleParentId, IDS.impotsDeclarations);
+  assert.strictEqual(chemin02(pur.routerFinance02_('2025-02_Relevé 1_Robovic.pdf', '2025')), 'Impôts & déclarations/2025');
+  assert.strictEqual(chemin02(pur.routerFinance02_('2025-02_Relevé 31_LCP Groupe Immobilier.pdf', '2025')),
+    'Impôts & déclarations/2025');
   // « Relevé 10 » n'est PAS capturé par le motif ancré : relevé ordinaire → bucket.
-  assert.strictEqual(pur.routerFinance02_('2025-02_Relevé 10_Desjardins.pdf', '2025').cibleId, IDS.releves02);
-  // RIB : des COORDONNÉES bancaires, pas un relevé de compte — la mission REFUSE (laissé +
-  // rapporté ; le flux, lui, les range en Banques/Coordonnées & chèques).
-  assert.strictEqual(pur.routerFinance02_('2024-05_Relevé d\'identité bancaire_CIC.pdf', '2024'), null);
+  assert.strictEqual(chemin02(pur.routerFinance02_('2025-02_Relevé 10_Desjardins.pdf', '2025')), 'Relevés/2025');
+  // RIB : des COORDONNÉES bancaires, pas un relevé de compte. L'invariant qui compte est qu'il ne
+  // parte JAMAIS dans « Relevés » — c'est ce qui est verrouillé ici. ⚠️ RÉVISÉ par ADR-0044 §7 :
+  // la mission ne le REFUSE plus, elle adopte la cible du flux (`Banques/Coordonnées & chèques`)
+  // au lieu de laisser la consolidation l'y déplacer après coup.
+  assert.strictEqual(chemin02(pur.routerFinance02_('2024-05_Relevé d\'identité bancaire_CIC.pdf', '2024')),
+    'Banques/Coordonnées & chèques', 'un RIB n\'est JAMAIS un relevé de compte');
   // « salaire » : même mot que le flux (bulletin/attestation de salaire = paie).
-  const salaire = pur.routerFinance02_('2024-02_Attestation de salaire_CIUSSS.pdf', '2024');
-  assert.deepStrictEqual(plain(salaire), { cibleParentId: IDS.revenusPaie, cibleNom: 'CIUSSS' });
+  assert.strictEqual(chemin02(pur.routerFinance02_('2024-02_Attestation de salaire_CIUSSS.pdf', '2024')),
+    'Revenus & paie/CIUSSS');
   // « paiement » reste exclu par construction (mot entier — piège #228).
   assert.strictEqual(pur.routerFinance02_('2026-07_Confirmation de paiement_Crédit Mutuel.pdf', '2026'), null);
 });
@@ -1191,10 +1212,7 @@ test('ADR-0044 §7 : les dossiers-années de 02 sortent vers leur VRAI domaine, 
     const r = c.routerFinance02_(nom, '2025', ids);
     assert.ok(r, 'doit être rangé : ' + nom);
     assert.strictEqual(inv[r.cibleId], domaineAttendu, 'domaine de ' + nom);
-    // 🔴 LE tripwire : le FLUX, dans le domaine d'arrivée, calcule EXACTEMENT le même sous-chemin.
-    // Sans lui, la consolidation recalcule une autre cible et DÉFAIT le rangement (leçon C28-26).
-    assert.strictEqual(c.cheminCibleReset_(domaineAttendu, nom), r.sousDossier,
-      'convergence flux ↔ mission : ' + nom);
+    assert.strictEqual(c.cheminCibleReset_(domaineAttendu, nom), r.sousDossier, 'cible = celle du flux : ' + nom);
   });
 
   // Ambigu ⇒ REFUS keyé (révisable), jamais un mouvement inter-domaines deviné.
@@ -1248,4 +1266,113 @@ test('ADR-0044 §7 : « xtb » est apparié en MOT ENTIER (une banque nommée NX
     'Placements & crypto', 'un mot CONTENANT xtb ne doit pas matcher');
   assert.strictEqual(c.resetMotEntier_('releve de compte nxtbank', 'xtb'), false);
   assert.strictEqual(c.resetMotEntier_('conditions generales de courtage xtb s a', 'xtb'), true);
+});
+
+test('ADR-0044 §7 : dans 02, LE FLUX FAIT AUTORITÉ — les règles locales ne passent jamais avant', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
+  const D = JSON.parse(JSON.stringify(c.CONFIG.DOMAINES));
+  const ids = {}; Object.keys(D).forEach((k) => { ids[k] = D[k]; });
+  const IDS = c.CONFIG.MISSIONS_IDS;
+  const dest = (r) => {
+    if (!r) return null;
+    if (r.cibleId === ids['02 · Finances']) return r.sousDossier;
+    if (r.cibleParentId === IDS.revenusPaie) return 'Revenus & paie/' + r.cibleNom;
+    if (r.cibleParentId === IDS.impotsDeclarations) return 'Impôts & déclarations/' + r.cibleNom;
+    if (r.cibleId === IDS.releves02) return 'Relevés/' + r.sousDossier;
+    if (r.cibleId === IDS.recusFactures02) return 'Reçus & factures/' + r.sousDossier;
+    if (r.cibleId === IDS.assurances02) return 'Assurances & prévoyance';
+    return 'HORS 02';
+  };
+  // ⚠️ Ce test verrouille l'ORDRE, pas une égalité de façade. Le premier tripwire écrit pour PR4
+  // était TAUTOLOGIQUE (il comparait `cheminCibleReset_(X,n)` avec lui-même) et restait vert sous
+  // mutation — la revue l'a prouvé. Ici les cas traversent les 5 branches LOCALES : si elles
+  // repassent devant le flux, elles imposent leur propre arbitrage et ces égalités tombent.
+  [
+    '2023-04_Relevé_Automatech.pdf',                        // D9 : relevé de PAIE, pas bancaire
+    '2024-03_Relevé d\'impôt_Revenu Québec.pdf',             // fiscal, pas un relevé de compte
+    '2024-06_Assurance_Desjardins.pdf',                     // assurance émise par une BANQUE
+    '2023-11_Facture_Desjardins Assurance.pdf',             // facture d'un ASSUREUR
+    '2025-06-01_Facture_XTB S.A..pdf',                      // facture d'un COURTIER = dépense
+    '2025-11_Paie_Robovic Inc..pdf',
+    '2025-02_Relevé 1_Robovic.pdf',
+    '2024-03_Relevé de compte_Banque CIC.pdf',
+    '2023-05-01_Facture_Hydro.pdf',
+    '2024-05_Relevé d\'identité bancaire_CIC.pdf',
+  ].forEach((nom) => {
+    assert.strictEqual(dest(c.routerFinance02_(nom, '2024', ids)),
+      c.cheminCibleReset_('02 · Finances', nom), 'le flux fait autorité : ' + nom);
+  });
+
+  // 🔴 GARDE (a) — ce que 02 sait placer ne SORT JAMAIS. Une première version listait les types
+  // réservés (paie/fiscal/RIB) et laissait filer « Avis d'imposition_SCI MRic » vers 05 sur le
+  // seul jeton « mric » : un avis d'imposition dans les documents de société, à clé de SUCCÈS.
+  [['2024-09_Avis d\'imposition_SCI MRic.pdf', 'Impôts & déclarations/2024'],
+    ['2025-02_Relevé 1_MRic.pdf', 'Impôts & déclarations/2025'],
+    ['2025-11_Paie_MRic.pdf', 'Revenus & paie'],
+    ['2015-05-12_Déclaration de revenus fonciers_PRIGRIS.pdf', 'Impôts & déclarations/2015'],
+    ['2025-04_Relevé d\'identité bancaire_Virgin Plus.pdf', 'Banques/Coordonnées & chèques'],
+  ].forEach(([nom, attendu]) => {
+    assert.strictEqual(dest(c.routerFinance02_(nom, '2024', ids)), attendu, 'reste en 02 : ' + nom);
+  });
+
+  // 🔴 GARDE (b) — un domaine PROTÉGÉ (§2.1b) n'est JAMAIS une cible, dans les DEUX sens.
+  assert.ok((c.CONFIG.DOMAINES_PROTEGES || []).indexOf('04 · Immigration') !== -1);
+  const spec = c.tableMissions_().filter((m) => m.tag === 'annees02')[0];
+  c.PropertiesService = { getScriptProperties: () => ({ getProperty: () => null }) };
+  c.DriveApp = { getFolderById: () => ({ getId: () => 'x', getFolders: () => ({ hasNext: () => false }) }) };
+  const ctx = spec.batirCtx();
+  assert.ok(!ctx.domainesId['04 · Immigration'], '04 absent de la carte des cibles');
+  assert.ok(ctx.domainesId['02 · Finances'], '…mais les domaines ordinaires y sont');
+  // …et le routeur refuse même si un appelant lui passait 04 de force.
+  const table = JSON.parse(JSON.stringify(c.CONFIG.MISSIONS_ANNEES02_DOMAINES));
+  assert.ok(table.every((r) => (c.CONFIG.DOMAINES_PROTEGES || []).indexOf(r.domaine) === -1),
+    'aucune entrée de la table ne vise un domaine protégé');
+  // La table ne nomme PAS 04 aujourd'hui — donc pour EXERCER la garde il faut l'y mettre. Sans ça
+  // le test ne prouve rien : la mutation qui retire la garde reste verte (constaté).
+  const vraieTable = c.CONFIG.MISSIONS_ANNEES02_DOMAINES;
+  try {
+    c.CONFIG.MISSIONS_ANNEES02_DOMAINES = [{ domaine: '04 · Immigration', jetons: ['ircc'], motifs: [] }];
+    assert.strictEqual(c.domaineHors02DuNom_('2020-01-01_Correspondance_IRCC.pdf'), '04 · Immigration',
+      'la table nomme bien 04 dans ce contexte de test');
+    assert.strictEqual(dest(c.routerFinance02_('2020-01-01_Correspondance_IRCC.pdf', '2020',
+      { '02 · Finances': ids['02 · Finances'], '04 · Immigration': 'ID04' })), null,
+      '§2.1b : un domaine PROTÉGÉ n\'est JAMAIS une cible, même si la CONFIG le nomme');
+  } finally { c.CONFIG.MISSIONS_ANNEES02_DOMAINES = vraieTable; }
+
+  // 🔴 GARDE — « virgin » est une marque OMBRELLE : le billet d'avion ne part pas chez le télécom.
+  assert.strictEqual(c.domaineHors02DuNom_('2019-08-12_Billet_Virgin Atlantic.pdf'), '');
+  assert.strictEqual(c.domaineHors02DuNom_('2019-08-12_Contrat_Virgin Plus.pdf'), '01 · Administratif & identité');
+  // Les motifs aussi sont alphabétiques (sinon un motif numérique apparierait un résidu de date).
+  table.forEach((r) => {
+    (r.jetons || []).forEach((j) => assert.match(j, /^[a-z]+$/, 'jeton : ' + j));
+    (r.motifs || []).concat(r.exclusions || []).forEach((m) => assert.match(m, /^[a-z ]+$/, 'motif : ' + m));
+  });
+});
+
+test('ADR-0044 §7 : batirCtx lit VRAIMENT la Property des domaines AUTO (échec fermé si absente)', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
+  const spec = c.tableMissions_().filter((m) => m.tag === 'annees02')[0];
+  c.DriveApp = { getFolderById: () => ({ getId: () => 'x', getFolders: () => ({ hasNext: () => false }) }) };
+  // ⚠️ La vraie fonction est EXERCÉE ici : les autres tests injectent `domainesId` à la main, donc
+  // ils ne verraient jamais une faute de frappe dans la clé — la CFE serait refusée EN SILENCE
+  // (patron `RapportPaies`, §9 : « un test qui mocke la fonction sous test ne voit pas son bug »).
+  const lues = [];
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => { lues.push(k); return k === 'DriveAI_DOM_07 · Santé' ? 'ID07' : null; },
+  }) };
+  const ctx = spec.batirCtx();
+  assert.ok(lues.indexOf('DriveAI_DOM_07 · Santé') !== -1, 'clé exacte, préfixe compris');
+  assert.strictEqual(ctx.domainesId['07 · Santé'], 'ID07');
+  const cfe = '2025-11-15_Attestation de versement_Caisse des Français de l\'Étranger.pdf';
+  assert.strictEqual(c.routerFinance02_(cfe, '2025', ctx.domainesId).cibleId, 'ID07');
+
+  // Property ABSENTE (domaine jamais né) ⇒ refus, JAMAIS un cibleId vide qui planterait au moveTo.
+  c.PropertiesService = { getScriptProperties: () => ({ getProperty: () => null }) };
+  assert.ok(!spec.batirCtx().domainesId['07 · Santé']);
+  assert.strictEqual(c.routerFinance02_(cfe, '2025', spec.batirCtx().domainesId), null);
+
+  // Properties EN PANNE ⇒ on dégrade aux domaines fixes, sans lever (l'intake ne doit pas mourir).
+  c.PropertiesService = { getScriptProperties: () => { throw new Error('panne'); } };
+  const degrade = spec.batirCtx();
+  assert.ok(degrade.domainesId['02 · Finances'] && !degrade.domainesId['07 · Santé']);
 });

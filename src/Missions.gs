@@ -297,12 +297,15 @@ function tableMissions_() {
         // I/O ICI (le routeur reste PUR) ; domaine sans ID ⇒ absent de la carte ⇒ le routeur REFUSE
         // (clé versionnée, révisable dès que le domaine existe), jamais un déplacement à l'aveugle.
         var domainesId = {};
-        Object.keys(CONFIG.DOMAINES).forEach(function (d) { domainesId[d] = CONFIG.DOMAINES[d]; });
+        // §2.1b : un domaine PROTÉGÉ n'entre même pas dans la carte des cibles — défense en
+        // profondeur, en plus du refus explicite du routeur (deux lignes, deux endroits).
+        var protege = function (d) { return (CONFIG.DOMAINES_PROTEGES || []).indexOf(d) !== -1; };
+        Object.keys(CONFIG.DOMAINES).forEach(function (d) { if (!protege(d)) domainesId[d] = CONFIG.DOMAINES[d]; });
         try {
           var props = PropertiesService.getScriptProperties();
           (CONFIG.DOMAINES_AUTO || []).forEach(function (d) {
             var id = props.getProperty('DriveAI_DOM_' + d);
-            if (id) domainesId[d] = id;
+            if (id && !protege(d)) domainesId[d] = id;
           });
         } catch (e) { /* Properties illisibles : seuls les domaines FIXES sont ciblables ce run */ }
         return { anneePar: anneePar, domainesId: domainesId };
@@ -310,6 +313,12 @@ function tableMissions_() {
       router: function (nom, info, ctx) {
         return routerFinance02_(nom, ctx.anneePar[info.sourceId] || '', ctx.domainesId);
       },
+      // ⚠️ PAS jetables (revue PR4). Le défaut aurait peint les 12 dossiers-années en ROUGE
+      // (« bon pour suppression ») ; Marc les supprime, et au prochain bump de version
+      // `collecterMission_` lève sur chaque source disparue ⇒ passe incomplète ⇒ `annees02` ne
+      // converge PLUS JAMAIS ⇒ la mission `paies`, gatée sur elle par `convergenceApres`, reste
+      // bloquée à vie. L'app les montre déjà en `vide-candidat` : le signal existe sans le piège.
+      sourcesJetables: [],
     },
     {
       // Racine d'« Impôts & déclarations » → sous-dossier par ANNÉE (année du nom du fichier).
@@ -633,6 +642,10 @@ function domaineHors02DuNom_(nom) {
   (CONFIG.MISSIONS_ANNEES02_DOMAINES || []).forEach(function (r) {
     var touche = (r.jetons || []).some(function (j) { return n.indexOf(' ' + j + ' ') !== -1; }) ||
       (r.motifs || []).some(function (m) { return n.indexOf(m) !== -1; });
+    // EXCLUSIONS : « virgin » est une marque OMBRELLE (Atlantic, Radio, Mobile…). Un billet
+    // « Virgin Atlantic » serait parti chez le fournisseur TÉLÉCOM à clé de SUCCÈS, alors que
+    // `09 · Voyages` existe. Le prédicat qui déclenche l'irréversible refuse dans le doute.
+    if (touche && (r.exclusions || []).some(function (x) { return n.indexOf(x) !== -1; })) return;
     if (!touche) return;
     if (trouve && trouve !== r.domaine) trouve = '\u0000'; // ambigu
     else if (!trouve) trouve = r.domaine;
@@ -640,34 +653,74 @@ function domaineHors02DuNom_(nom) {
   return trouve === '\u0000' ? '' : trouve;
 }
 
+/**
+ * Routage d'un fichier de dossier-ANNÉE de 02 (ADR-0044 §7). PURE (testée).
+ * Trois étages, dans cet ordre — l'ordre EST la règle :
+ *   1. le FLUX (`cheminCibleReset_`) fait autorité DANS 02 : ce qu'il sait placer y reste ;
+ *   2. sinon, SORTIE inter-domaines par `MISSIONS_ANNEES02_DOMAINES` (jamais un domaine protégé,
+ *      jamais si le flux est muet dans le domaine d'arrivée) ;
+ *   3. sinon, repli LOCAL — seul étage qui connaisse l'année du dossier SOURCE.
+ * @param {string} nom @param {string} anneeSource  année du dossier d'origine (repli)
+ * @param {Object=} domainesId  { domaine: id } résolu par `batirCtx` (domaines AUTO compris)
+ * @return {?Object} cible de mission, ou null (refus keyé sous la version, donc révisable)
+ */
 function routerFinance02_(nom, anneeSource, domainesId) {
   var IDS = CONFIG.MISSIONS_IDS;
   var idDomaine = function (d) { return (domainesId || CONFIG.DOMAINES)[d] || ''; };
-  // (ADR-0044 §7) SORTIE de 02 — évaluée en PREMIER : un document de télécom ou de société n'a
-  // rien à faire dans les règles bancaires ci-dessous. Le sous-chemin vient du FLUX : une seule
-  // règle, deux consommateurs. Flux muet dans le domaine d'arrivée ⇒ refus, jamais un dépôt à
-  // la racine (ce serait remplacer un fourre-tout par un autre).
-  var domaineSortie = domaineHors02DuNom_(nom);
-  if (domaineSortie) {
-    var idSortie = idDomaine(domaineSortie);
-    var chemin = idSortie ? cheminCibleReset_(domaineSortie, nom) : '';
-    return chemin ? { cibleId: idSortie, sousDossier: chemin } : null;
-  }
   var type = typeDuNomMission_(nom);
-  if (!type) return null; // nom hors convention : on ne décide pas sur du bruit
+  // (ADR-0044 §7) SORTIE de 02 — un déplacement INTER-DOMAINES est DÉFINITIF de fait (le fichier
+  // quitte le périmètre de collecte : aucun bump de version ne le re-présentera). Trois gardes,
+  // toutes ajoutées par la revue PR4 qui a montré ce que leur absence coûtait :
+  //
+  //  (a) un TYPE que 02 revendique EN PROPRE ne sort JAMAIS. Sans ça, « Avis d'imposition_SCI
+  //      MRic » partait en `05 · Carrière` sur le seul jeton « mric » — un avis d'imposition
+  //      classé dans les documents de société, pour toujours. Idem « Relevé 1 », « Paie », RIB.
+  //      Ces prédicats sont exactement ceux que PR2 avait durcis : les court-circuiter était une
+  //      régression silencieuse (aucun test PR2 n'utilise un émetteur porteur d'un jeton de sortie).
+  //  (b) un domaine PROTÉGÉ (§2.1b : `04 · Immigration`) n'est JAMAIS une cible. Rien ne
+  //      l'interdisait à part le CONTENU d'une table de config — or `aParentProtege_` ne garde que
+  //      la SOURCE, jamais la cible. « Pour chaque JAMAIS promis, la ligne qui le re-vérifie. »
+  //  (c) flux muet dans le domaine d'arrivée ⇒ on RETOMBE sur les règles 02 ci-dessous, jamais un
+  //      refus : le flux choisit sur l'ÉMETTEUR, la table sur le nom entier — deux signaux
+  //      différents, donc le cas « muet » est banal, et refuser perdait un rangement qui marchait.
+  //
+  // La garde (a) s'exprime par UN test, pas par une liste de types à tenir à jour : **si le flux
+  // sait placer le document DANS 02, il y reste.** Une première version listait paie/fiscal/RIB —
+  // elle a laissé filer « Avis d'imposition_SCI MRic » vers `05` (le type n'était dans aucune des
+  // listes), ce qui est précisément le bug qu'elle prétendait fermer. Le flux, lui, connaît TOUTES
+  // les revendications de 02 par construction, et elles évolueront ensemble.
+  var cheminFlux = idDomaine('02 · Finances') ? cheminCibleReset_('02 · Finances', nom) : '';
+  if (cheminFlux) return { cibleId: idDomaine('02 · Finances'), sousDossier: cheminFlux };
+  {
+    var domaineSortie = domaineHors02DuNom_(nom);
+    if (domaineSortie && (CONFIG.DOMAINES_PROTEGES || []).indexOf(domaineSortie) === -1) {
+      var idSortie = idDomaine(domaineSortie);
+      var chemin = idSortie ? cheminCibleReset_(domaineSortie, nom) : '';
+      if (chemin) return { cibleId: idSortie, sousDossier: chemin };
+    }
+  }
+  // Repli LOCAL : uniquement ce que le flux ne sait pas router — essentiellement l'année du
+  // dossier SOURCE, information que le flux n'a pas (il ne voit que le nom). Ces règles ne sont
+  // plus une table concurrente : tant qu'elles passaient EN PREMIER, elles imposaient leur propre
+  // ordre d'arbitrage et divergeaient du flux sur 5 familles mesurées (relevé de paie D9,
+  // assurance émise par une banque, facture d'un courtier…), que la consolidation défaisait.
+  if (type) {
   // 1. Paies → « Revenus & paie »/<Employeur> — prédicat PARTAGÉ avec le flux (`estTypePaieReset_`,
   //    revue finale PR2 : la liste locale ['paie','paye'] ratait « salaire » que le flux couvre —
   //    un « Bulletin de salaire » aurait été déplacé au mauvais endroit à clé de SUCCÈS).
   if (estTypePaieReset_(type)) {
     var emp = employeurDuNom_(nom);
-    return emp ? { cibleParentId: IDS.revenusPaie, cibleNom: emp } : null;
+    // Employeur inconnu ⇒ on CHUTE vers le repli : le flux connaît les employeurs OCCASIONNELS
+    // (D11, `employeurAutreDuNom_` → « Autres employeurs ») que cette table ignore. Refuser ici
+    // contredisait la promesse « les paies partent en 02 quel que soit l'employeur ».
+    if (emp) return { cibleParentId: IDS.revenusPaie, cibleNom: emp };
   }
   // 2. Fiscal → « Impôts & déclarations »/<année> (AVANT le « relevé » générique : un relevé
   //    d'impôt est fiscal, pas bancaire). RL-1/RL-31 par le prédicat PARTAGÉ (revue finale PR2 :
   //    la table de mots ne peut pas exprimer « releve 1 » ancré — le feuillet partait en Relevés).
   if (estFeuilletFiscalReset_(type) || typeContient_(type, TYPES_FISCAUX_MISSIONS)) {
     var annee = anneeDuNomMission_(nom) || anneeSource;
-    return annee ? { cibleParentId: IDS.impotsDeclarations, cibleNom: annee } : null;
+    if (annee) return { cibleParentId: IDS.impotsDeclarations, cibleNom: annee };
   }
   // 3. Relevés / reçus & factures : DANS LE BUCKET D'ANNÉE, par LA MÊME règle que le flux vivant
   //    (`resetBucketAnnee_` + STRUCTURE_CIBLE_RESET — revue code PR2 : deux règles écrites
@@ -678,7 +731,9 @@ function routerFinance02_(nom, anneeSource, domainesId) {
   // RIB (relevé d'IDENTITÉ bancaire) : des COORDONNÉES, pas un relevé de compte (prédicat partagé
   // — le flux le range en Banques/Coordonnées & chèques ; côté mission, hors table ⇒ refus keyé,
   // laissé + rapporté, jamais deviné).
-  if (estRibReset_(type)) return null;
+  // RIB : la mission n'a pas de cible propre — on chute vers le repli, où le flux le range en
+  // « Banques/Coordonnées & chèques ». (Le refus d'avant PR4 datait d'un temps sans repli.)
+  if (!estRibReset_(type)) {
   if (typeContient_(type, ['releve', 'releves'])) {
     return { cibleId: IDS.releves02, sousDossier: resetBucketAnnee_(anneeDoc, noeuds02['Relevés']) };
   }
@@ -686,11 +741,8 @@ function routerFinance02_(nom, anneeSource, domainesId) {
     return { cibleId: IDS.recusFactures02, sousDossier: resetBucketAnnee_(anneeDoc, noeuds02['Reçus & factures']) };
   }
   if (typeContient_(type, ['assurance', 'assurances'])) return { cibleId: IDS.assurances02 };
-  // Repli sur LA règle du flux pour tout ce que la table ci-dessus ne couvre pas (budgets, achats
-  // en ligne, courtage, banque, T1135 — ADR-0044 §7). Sans lui, la mission refuserait des cas que
-  // le flux sait ranger, et la consolidation les déplacerait ensuite : deux verdicts, un fichier.
-  var cheminFlux = idDomaine('02 · Finances') ? cheminCibleReset_('02 · Finances', nom) : '';
-  if (cheminFlux) return { cibleId: idDomaine('02 · Finances'), sousDossier: cheminFlux };
+  }
+  }
   return null;
 }
 

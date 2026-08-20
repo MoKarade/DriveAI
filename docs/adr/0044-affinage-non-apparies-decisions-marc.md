@@ -362,25 +362,41 @@ Les **12 dossiers-années ont été lus intégralement** (6 sont vides ; 24 fich
 Jamais un échantillon : c'est le comptage exhaustif qui a montré que la décision 7 nommait 4 exemples
 pour un ensemble bien plus hétérogène.
 
-### 7.1 La conception : la mission choisit le DOMAINE, le FLUX calcule le sous-chemin
+### 7.1 La conception : le FLUX fait autorité, la table ne choisit qu'une SORTIE
 
 Contrainte de Marc : « réutiliser la MÊME règle de routage que le flux vivant ». Or le flux n'a
 **aucune** règle pure de choix de DOMAINE — c'est le LLM qui tranche. Il n'y avait donc rien à
-réutiliser de ce côté. La conception retenue sépare les deux moitiés :
+réutiliser de ce côté. `routerFinance02_` a **trois étages, et l'ordre EST la règle** :
 
-- `MISSIONS_ANNEES02_DOMAINES` (table déclarée, jetons MOT ENTIER + motifs multi-mots) ne choisit
-  **que le domaine** ;
-- le **sous-chemin** vient de `cheminCibleReset_(domaine, nom)` — LA règle du flux. La convergence
-  flux ↔ mission ↔ consolidation est donc vraie **par construction**, pas asserée après coup.
-- Le flux muet dans le domaine d'arrivée ⇒ la mission **refuse** (clé versionnée, révisable),
-  jamais un dépôt à la racine : ce serait remplacer un fourre-tout par un autre.
+1. **Le flux fait autorité DANS 02.** `cheminCibleReset_('02 · Finances', nom)` est essayé en
+   PREMIER : ce que 02 sait placer y reste.
+2. Sinon, **sortie inter-domaines** via `MISSIONS_ANNEES02_DOMAINES` (jetons MOT ENTIER, motifs et
+   exclusions multi-mots), avec le sous-chemin calculé par le flux du domaine d'arrivée. Jamais un
+   domaine **protégé** ; flux muet à l'arrivée ⇒ on redescend à l'étage 3.
+3. Sinon, **repli local** — le seul étage qui connaisse l'année du dossier SOURCE.
+
+**Cet ordre a été payé par la revue.** La première version faisait l'inverse (table d'abord, flux
+en dernier recours) et deux défauts en découlaient, tous deux vérifiés par exécution :
+
+- un `Avis d'imposition_SCI MRic` **quittait les Finances pour `05 · Carrière`** sur le seul jeton
+  « mric », avec une clé de SUCCÈS — donc pour toujours. Une garde par liste de types réservés a
+  été essayée puis **jetée** : elle ratait ce cas précis (le type n'était dans aucune liste). Le bon
+  test n'est pas une liste à tenir à jour, c'est « le flux sait-il le placer dans 02 ? » ;
+- les règles locales imposaient leur propre arbitrage et **divergeaient du flux sur 5 familles
+  mesurées** (relevé de paie D9, assurance émise par une banque, facture d'un courtier, facture
+  d'un assureur, relevé d'impôt) — la consolidation défaisait chacune juste après.
+
+Deux erreurs du **flux lui-même** ont été corrigées au passage, sans quoi l'autorité qu'on lui donne
+aurait propagé ses fautes : « Assurance_Desjardins » partait en `Banques` (le TYPE ne comptait pas,
+seul l'émetteur) et « Relevé d'impôt » en `Relevés` (le générique « relevé » passait avant le fiscal).
 
 Mesure avant d'écrire la moindre règle : le flux savait déjà router Virgin Plus vers
 `Contrats & fournisseurs/**Virgin Plus**` (dossier d'entité), plus finement que la cible envisagée.
-C'est le flux qui fait autorité, pas la table.
 
-**Résultat : 21 fichiers rangés, 0 divergence, 1 refus** (`Note de frais_Roque Rodriguez` — le
-domaine d'une note de frais nominative n'est pas décidable, un refus est révisable).
+**Résultat : 21 rangés, 1 refusé** (`Note de frais_Roque Rodriguez` — le domaine d'une note de
+frais nominative n'est pas décidable, un refus est révisable). Comptage : **24 fichiers** dans les
+6 dossiers-années non vides, **22 noms distincts** (2 doublons de forme sur Virgin et les statuts),
+dont 21 rangés + 1 refusé.
 
 ### 7.2 Deux pièges trouvés en mesurant, invisibles en lecture
 
@@ -405,4 +421,18 @@ domaine d'une note de frais nominative n'est pas décidable, un refus est révis
   statuts de société, CFE) profitent **aussi au flux vivant** : ces documents seront mieux classés
   à l'avenir, pas seulement rattrapés.
 
-`MISSIONS_REGLES_VERSION` c49-5 → **c49-6**.
+### 7.4 Versions : ce qui est bumpé, et ce qui ne l'est PAS (décision écrite)
+
+`MISSIONS_REGLES_VERSION` c49-5 → **c49-6** : les refus des missions sont keyés dessus, sans quoi
+l'affinage resterait sans effet.
+
+`RESET_TABLE_VERSION` reste **`t5`** et `CONSOLIDATION_TAG` reste **`conso-3`**, délibérément
+(§4.4 a créé le précédent d'écrire la décision plutôt que de laisser croire à un oubli) :
+
+- le reset est **éteint** (`RESET_ACTIF: false`) — bumper `t5` n'aurait aucun effet observable ;
+- bumper `CONSOLIDATION_TAG` ferait **re-marcher tout le Drive** pour ré-évaluer des fichiers déjà
+  marqués « OK ». Le gain (quelques budgets/XTB/T1135 déjà rangés ailleurs) ne vaut pas le coût en
+  quota, et les nouvelles règles s'appliquent de toute façon à **tout ce qui passe désormais**.
+- ⚠️ Conséquence assumée et à connaître : un fichier déjà classé sous les anciennes règles ne sera
+  pas repris. Si un jour on veut le rattrapage, c'est `CONSOLIDATION_TAG` qu'il faut bumper — pas
+  `RESET_TABLE_VERSION`, qui ne pilote rien tant que le reset dort.

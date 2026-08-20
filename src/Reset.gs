@@ -45,7 +45,9 @@ var STRUCTURE_CIBLE_RESET = {
     'État civil & notarial': {},
     'Attestations & certificats': {},
     'Correspondance': {},
-    'Contrats & fournisseurs': { 'EDF': {}, 'ENGIE': {}, 'Virgin Plus': {}, 'Transport scolaire': {}, 'Filia-MAIF': {}, 'INO': {} },
+    // 7 nœuds — PLEIN (ADR-0044 §7 : « Cleverbridge » ajouté avec sa règle de flux, même commit :
+    // une cible ABSENTE de la table rendait `verifierStructureCibleReset_` aveugle au ≤ 7 réel).
+    'Contrats & fournisseurs': { 'EDF': {}, 'ENGIE': {}, 'Virgin Plus': {}, 'Transport scolaire': {}, 'Filia-MAIF': {}, 'INO': {}, 'Cleverbridge': {} },
     'Sécurité & codes': {},
   },
   '02 · Finances': {
@@ -194,7 +196,11 @@ function resetContient_(cle, motifs) {
  * @param {string} cle @param {string} mot @return {boolean}
  */
 function resetMotEntier_(cle, mot) {
-  return new RegExp('(^|[^a-z0-9])' + mot + '([^a-z0-9]|$)').test(String(cle || ''));
+  // ÉCHAPPEMENT obligatoire : la fonction est au contrat inter-modules, donc offerte à la
+  // réutilisation — sans lui, un motif contenant un métacaractère ('a.c') apparierait 'abc'
+  // (vérifié en revue). Le coût est nul, l'oubli serait silencieux.
+  var m = String(mot).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp('(^|[^a-z0-9])' + m + '([^a-z0-9]|$)').test(String(cle || ''));
 }
 
 /**
@@ -376,15 +382,15 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(t, ['suivi de livraison', 'fiche produit', 'bon de commande'])) {
       return 'Reçus & factures/' + resetBucketAnnee_(seg.annee, s['Reçus & factures']);
     }
-    // Courtage : « XTB » en MOT ENTIER (3 lettres — `resetContient_` matcherait n'importe quoi).
-    if (resetMotEntier_(tout, 'xtb') || t.indexOf('courtage') !== -1) return 'Placements & crypto';
-    // Banque : motifs LONGS et non ambigus (jamais « virement » seul, qui vit aussi dans une paie).
-    if (resetContient_(tout, ['confirmation de virement', 'specimen de signature',
-      'bordereau de numerisation', 'debit preautorise', 'retrait bancaire preautorise',
-      'simulation de pret'])) return 'Banques';
     // Feuillet fiscal canadien de revenus étrangers — ni « impot » ni « t4 » dans son nom.
+    // Reste ICI (avant « relevé ») : c'est un FEUILLET fiscal, jamais un relevé de compte.
     if (resetMotEntier_(tout, 't1135')) return cheminImpotsReset_(seg);
-    if (t.indexOf('releve') !== -1 && !estRibReset_(t)) return 'Relevés/' + resetBucketAnnee_(seg.annee, s['Relevés']);
+    // ⚠️ « relevé d'IMPÔT » est FISCAL, pas bancaire : sans cette exclusion, il partait en
+    // « Relevés » ici alors que la mission le range en « Impôts » — divergence PRÉ-EXISTANTE
+    // trouvée par la revue PR4, que la consolidation aurait défaite à chaque passage.
+    if (t.indexOf('releve') !== -1 && !estRibReset_(t) && t.indexOf('impot') === -1) {
+      return 'Relevés/' + resetBucketAnnee_(seg.annee, s['Relevés']);
+    }
     // Fiscal (dont les feuillets québécois T4/Relevé 1) et remboursements d'IMPÔT (revue : 'bourse'
     // ⊂ « remboursement » envoyait les remboursements en Placements — jamais de motif court sur tout).
     if (resetContient_(t, ['avis d imposition', 'declaration de revenus', 'impot', 'taxe', 'feuillet', 't4']) ||
@@ -393,11 +399,24 @@ function cheminCibleReset_(domaine, nom) {
     // & notarial`, où les actes partent déjà). Le nœud dédié a cédé sa place à « Revenus & paie ».
     if (resetContient_(tout, ['donation', 'succession'])) return cheminImpotsReset_(seg);
     // Assurance AVANT le rattrapage bancaire (revue : « Desjardins Assurance » partait en Banques).
-    if (resetContient_(tout, ['assurance vie', 'prevoyance']) || e.indexOf('assurance') !== -1) return 'Assurances & prévoyance';
+    if (resetContient_(tout, ['assurance vie', 'prevoyance']) || e.indexOf('assurance') !== -1 ||
+        t.indexOf('assurance') !== -1) return 'Assurances & prévoyance'; // le TYPE compte autant que l'émetteur (revue PR4 : « Assurance_Desjardins » partait en Banques)
     if (resetContient_(tout, ['tether', 'usdt', 'crypto', 'securities', 'boursier', 'bourse de', 'portefeuille'])) return 'Placements & crypto';
     // 'rib' n'est plus une sous-chaîne (revue : ⊂ « contribution »/« distribution ») : type exact.
     if (t === 'rib' || resetContient_(tout, ['coordonnees bancaires', 'releve d identite bancaire', 'chequier']) || t.indexOf('cheque') !== -1) return 'Banques/Coordonnées & chèques';
     if (resetContient_(t, ['recu', 'facture', 'remboursement'])) return 'Reçus & factures/' + resetBucketAnnee_(seg.annee, s['Reçus & factures']);
+    // Banque — placé ICI (après fiscal, assurance et reçus), jamais plus haut : testé trop tôt et
+    // sur le NOM COMPLET, « Reçu_Débit préautorisé Hydro-Québec » partait en Banques au lieu des
+    // reçus, le MODE DE PAIEMENT cité dans l'émetteur décidant du classement (revue PR4).
+    // Les 4 premiers motifs sont des TYPES : testés sur `t`, jamais sur l'émetteur.
+    if (resetContient_(t, ['confirmation de virement', 'specimen de signature',
+      'bordereau de numerisation', 'simulation de pret']) ||
+        resetContient_(tout, ['debit preautorise', 'retrait bancaire preautorise'])) return 'Banques';
+    // Courtage & courtier — placés ICI, tout en bas : « courtage » est un mot de MÉTIER partagé
+    // (assurance, immobilier), et une FACTURE d'un courtier reste une pièce de dépense. Testés
+    // après assurance ET après reçus, ils ne volent plus personne (revue PR4).
+    // « XTB » est une MARQUE, ancrée en MOT ENTIER (3 lettres : « NXTBank » la contiendrait).
+    if (t.indexOf('courtage') !== -1 || resetMotEntier_(tout, 'xtb')) return 'Placements & crypto';
     if (e.indexOf('desjardins') !== -1) return 'Banques/Desjardins';
     if (e.indexOf('boursorama') !== -1) return 'Banques/Boursorama';
     if (e.indexOf('transatlantique') !== -1) return 'Banques/Banque Transatlantique';
@@ -415,9 +434,7 @@ function cheminCibleReset_(domaine, nom) {
     // sur un verdict de FLUX donc définitif)…
     // Frontières NON-ALPHANUMÉRIQUES (pas un padding d'espaces : `normaliserCle_` garde points
     // et tirets — « moreau.pdf » doit matcher, « moreault » jamais). Mots alphanumériques only.
-    var motEntier = function (mot) {
-      return new RegExp('(^|[^a-z0-9])' + mot + '([^a-z0-9]|$)').test(tout);
-    };
+    var motEntier = function (mot) { return resetMotEntier_(tout, mot); }; // jumeau migré (revue PR4)
     if (motEntier('roseliere')) return 'Logement/1548 avenue de la Roselière, Québec';
     if (motEntier('rivieres')) return 'Logement/3987 rte des Rivières';
     if (motEntier('3325') || tout.indexOf('4e avenue') !== -1) return 'Logement/3325 4e avenue';
@@ -533,7 +550,7 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(t, ['statuts de societe civile', 'statuts de constitution', 'statuts constitutifs'])) {
       return 'Entreprise — MRic (SCI)';
     }
-    if (resetContient_(e, ['mric', 'm ric'])) return 'Entreprise — MRic (SCI)';
+    if (resetMotEntier_(e, 'mric') || /(^|[^a-z0-9])m[ .]ric([^a-z0-9]|$)/.test(e)) return 'Entreprise — MRic (SCI)'; // ancré (revue PR4 : « m ric » ⊂ « wilhelm ricard »)
     if (resetContient_(tout, ['alternance', 'stage'])) return 'Alternance & stages';
     if (t.indexOf('bilan') !== -1 || (' ' + t).indexOf(' formation') !== -1) return 'Formation & bilans'; // ' formation' : jamais « information » (revue)
     if (resetContient_(tout, ['linkedin', 'presentation', 'reseau'])) return 'Réseaux & présentations';

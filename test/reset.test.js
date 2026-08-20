@@ -86,6 +86,23 @@ const CAS = [
   ['02 · Finances', '2024-01_Contrat_Desjardins Securities.pdf', 'Placements & crypto'],
   ['02 · Finances', '2022-08_Attestation_Boursorama Banque.pdf', 'Banques/Boursorama'],
   ['02 · Finances', '2010-04_Courrier_Lyonnaise De Banque.pdf', 'Banques/Banques France'],
+  // ADR-0044 §7 — les 8 routes NÉES du reliquat des dossiers-années. Versées ICI pour passer sous
+  // `cibleExiste` : c'est ce verrou qui a montré que « Contrats & fournisseurs/Cleverbridge »
+  // visait un nœud ABSENT de la table (donc `verifierStructureCibleReset_` aveugle au ≤ 7 réel).
+  ['02 · Finances', '2026-07-29_Tableau de suivi budgétaire_Marc et Anna.xlsx', 'Relevés/2026'],
+  ['02 · Finances', '2026-07-06_Suivi de livraison_DoorDash.jpg', 'Reçus & factures/2026'],
+  ['02 · Finances', '2025-06-01_Avenant aux conditions générales_XTB S.A..pdf', 'Placements & crypto'],
+  ['02 · Finances', '2026-07-01_Confirmation de virement_Crédit Mutuel.jpg', 'Banques'],
+  ['02 · Finances', '2025-12-31_Formulaire T1135 — Bilan de vérification du revenu étranger_ARC.pdf', 'Impôts & déclarations/2025'],
+  ['01 · Administratif & identité', '2022-12-14_Conditions générales de vente_Cleverbridge GmbH.pdf', 'Contrats & fournisseurs/Cleverbridge'],
+  ['05 · Carrière', '2026-03-09_Statuts de société civile_PRIGRIS.pdf', 'Entreprise — MRic (SCI)'],
+  ['07 · Santé', '2025-11-15_Attestation de versement_Caisse des Français de l\'Étranger.pdf', 'Assurances santé'],
+  // Non-régressions de la MÊME passe : les nouvelles règles ne volent personne.
+  ['02 · Finances', '2024-09-01_Reçu_Débit préautorisé Hydro-Québec.pdf', 'Reçus & factures/2024'],
+  ['02 · Finances', '2024-06-01_Mandat de courtage_Groupe Assurance Vézina.pdf', 'Assurances & prévoyance'],
+  ['02 · Finances', '2024-06_Assurance_Desjardins.pdf', 'Assurances & prévoyance'],
+  ['02 · Finances', '2024-03_Relevé d\'impôt_Revenu Québec.pdf', 'Impôts & déclarations/2024'],
+  ['02 · Finances', '2025-06-01_Relevé de compte_NXTBank.pdf', 'Relevés/2025'],
   // 03 — logements par entité (dont le 3325 4e Avenue = LCP, amendement Marc)
   // 03 c49-2 (ADR-0040 §3c) : cibles SINGULIER aux noms RÉELS des dossiers Drive ; bailleurs et
   // véhicules par les tables canoniques PARTAGÉES avec les missions.

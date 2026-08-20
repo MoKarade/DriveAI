@@ -282,3 +282,24 @@ comme le reste — ils ne sont plus systématiquement dirigés vers `00 · À v�
 
 Le vieux Drive est **figé en archive** à côté de la nouvelle racine. Aucun reclassement
 automatique de l'ancien. (Sort précis du dossier `_Archive 2025` : voir `PLAN.md` §7.)
+
+## ADR-0044 §7 — ce que la décision 7 change dans l'arborescence
+
+- `01 · Administratif & identité/**Contrats & fournisseurs**` accueille **Cleverbridge** :
+  **7 nœuds — PLEIN** (EDF · ENGIE · Virgin Plus · Transport scolaire · Filia-MAIF · INO ·
+  Cleverbridge). Toute cible du flux doit figurer dans `STRUCTURE_CIBLE_RESET`, sinon
+  `verifierStructureCibleReset_` compte un ≤ 7 qui n'est pas celui de la prod.
+- `02 · Finances/**Relevés**` n'accueille plus seulement des relevés bancaires : les **budgets et
+  tableaux de bord** y vont aussi (décision de Marc), rangés par année comme le reste.
+- `02 · Finances/**Reçus & factures**` accueille les **captures d'achats en ligne** (suivi de
+  livraison, fiche produit) — une preuve d'achat reste une pièce de dépense.
+- `07 · Santé/**Assurances santé**` accueille la **Caisse des Français de l'Étranger**.
+- `05 · Carrière/**Entreprise — MRic (SCI)**` accueille les **statuts constitutifs**, quelle que
+  soit la graphie de l'entité (MRic, PRIGRIS, « SCI famille Richard » — décision de Marc : une
+  seule et même société).
+- Les **12 dossiers-années de 02** sont vidés par `mission-annees02`, mais **PAS peints en rouge**
+  (`sourcesJetables: []`) : les peindre invitait à les supprimer, et leur disparition empêcherait
+  la mission de converger — bloquant à vie la mission `paies` qui en dépend. L'app les montre déjà
+  en `vide-candidat`, le signal existe sans le piège.
+- ⚠️ L'exemption `02 · Finances/AAAA` créée par le **flux vivant** (`DOMAINES_PAR_ANNEE`,
+  BACKLOG C28-36) **survit** à cette décision : vider les dossiers-années ne l'a pas fermée.
