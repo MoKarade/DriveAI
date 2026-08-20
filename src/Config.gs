@@ -824,6 +824,8 @@ var CONFIG = {
 
   // ---------- MISSIONS de curation (C28-49, ADR-0039 — brief Marc 2026-08-17) ----------
   MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions
+  // c49-3 (ADR-0044 §4, véhicules) puis c49-4 (§5, les 39 de « employeurs & CV ») — l'historique
+  // inline s'arrêtait à c49-2 alors que la valeur avait bougé deux fois (revue code PR2).
   MISSIONS_REGLES_VERSION: 'c49-4',       // DANS la clé d'idempotence : un refus (non apparié) se fige
                                           // sous CETTE version — affiner les règles = bump ⇒ ré-évaluation
                                           // (leçon C28-33 « verdict négatif révisable, jamais figé à vie »)
@@ -927,9 +929,15 @@ var CONFIG = {
   // ⚠️ C'est ce partage qui tient la règle des ≤ 7 enfants de « Revenus & paie » : 3 canoniques + 1
   // commun, au lieu de 3 + 5. Prouvés par les fichiers réels lus le 2026-08-20.
   MISSIONS_EMPLOYEURS_AUTRES: [
+    // 🔴 Jetons MULTI-MOTS, et il le faut (revue code C28-62 PR2) : `crest` et `trajectoire` seuls
+    // sont des mots courants — « Bilan_Trajectoire professionnelle » (un document
+    // d'accompagnement carrière, dont le dossier `Formation & bilans` existe précisément) partait
+    // chez « Autres employeurs », à clé de SUCCÈS des deux côtés. Même collision que
+    // « moreau ⊂ Moreault » (C28-49). `apparierUnique_` compare du texte normalisé espacé : un
+    // jeton multi-mots y fonctionne tel quel, et DISCRIMINE.
     { nom: 'Algopaie', jetons: ['algopaie'] },
-    { nom: 'Silver Crest', jetons: ['crest'] },
-    { nom: 'Trajectoire-Emploi', jetons: ['trajectoire'] },
+    { nom: 'Silver Crest', jetons: ['silver crest'] },
+    { nom: 'Trajectoire-Emploi', jetons: ['trajectoire emploi'] },
   ],
   MISSIONS_EMPLOYEURS_COMMUN: 'Autres employeurs',
   // Bailleurs CANONIQUES (C28-51, ADR-0040 §2) : les documents de logement sont nommés par

@@ -50,6 +50,11 @@ function cibleExiste(domaine, chemin) {
       // Employeurs DYNAMIQUES de « Revenus & paie » (C28-49 PR2, décision Marc « séparé par
       // employeur ») : bornés par CONFIG.MISSIONS_EMPLOYEURS — même canon que mission-paies
       // (`employeurDuNom_`, une seule règle deux consommateurs).
+      // Sous-dossiers PAR TYPE d'un dossier d'employeur (05) : créés À LA DEMANDE par
+      // `sousDossierEmployeur_`, jamais des squelettes vides — donc exemptés du validateur, comme
+      // les années et les employeurs. Bornés par la table explicite de la fonction.
+      if (i === segs.length - 1 && /^Employeurs\//.test(segs.slice(0, i).join('/')) &&
+        ['Contrats', 'Attestations & lettres', 'Formulaires', 'Évaluations'].indexOf(segs[i]) !== -1) return true;
       // + le COMMUN des employeurs occasionnels (ADR-0044 D11) : c'est LUI qui tient le ≤ 7 —
       // sans lui il faudrait un dossier par employeur (3 canoniques + 5 occasionnels = 8).
       return i === segs.length - 1 && segs.slice(0, i).join('/') === 'Revenus & paie' &&
@@ -112,7 +117,10 @@ const CAS = [
   // 05 — Employeurs = Robovic + Automatech SEULS (décision Marc) ; le reste = CV & lettres
   // (fusion « Recherche d'emploi » → « CV & lettres », décision Marc 2026-08-17, ADR-0039 §7).
   ['05 · Carrière', '2026-06_Bulletin de paie_Robovic.pdf', 'Employeurs/Robovic'],
-  ['05 · Carrière', '2024-03_Contrat de travail_AUTOMATECH ROBOTIK INC..pdf', 'Employeurs/Automatech'],
+  // Le SOUS-DOSSIER par type vient désormais de `sousDossierEmployeur_`, comme dans la mission :
+  // le flux rendait « Employeurs/Automatech » tout court, donc la consolidation remontait le
+  // fichier d'un cran hors de « Contrats » (divergence pré-existante, revue C28-62 PR2).
+  ['05 · Carrière', '2024-03_Contrat de travail_AUTOMATECH ROBOTIK INC..pdf', 'Employeurs/Automatech/Contrats'],
   ['05 · Carrière', '2026-01-05_Lettre_Schneider Electric.pdf', 'CV & lettres'],
   ['05 · Carrière', '2022-02_Candidature_Arkema Honfleur.pdf', 'CV & lettres/Candidatures'],
   ['05 · Carrière', 'CV — Marc Richard (modifiable)', 'CV & lettres'],
@@ -232,10 +240,21 @@ test('MISSIONS_EMPLOYEURS : bornée par la contrainte ≤ 7 (jumeau du verrou RE
   const canon = ctx.CONFIG.MISSIONS_EMPLOYEURS.map((e) => e.nom);
   ctx.CONFIG.MISSIONS_EMPLOYEURS_AUTRES.forEach((e) => assert.ok(canon.indexOf(e.nom) === -1,
     'un employeur occasionnel ne doit pas figurer AUSSI dans le canon : ' + e.nom));
-  // Jetons MOT ENTIER et alphabétiques (comme les communs véhicule) : `apparierUnique_` reçoit du
-  // texte brut, un jeton numérique matcherait un composant de date.
+  // Jetons alphabétiques, MULTI-MOTS AUTORISÉS : la contrainte porte sur le NUMÉRIQUE
+  // (`apparierUnique_` reçoit du texte brut, un jeton chiffré matcherait un composant de date),
+  // pas sur les espaces — et c'est justement le multi-mots qui rend `silver crest` /
+  // `trajectoire emploi` DISCRIMINANTS (revue code C28-62 PR2).
   ctx.CONFIG.MISSIONS_EMPLOYEURS_AUTRES.forEach((e) => e.jetons.forEach((j) =>
-    assert.match(j, /^[a-z]+$/, 'jeton non alphabétique : ' + j)));
+    assert.match(j, /^[a-z]+( [a-z]+)*$/, 'jeton non alphabétique : ' + j)));
+  // …et un CONTRE-EXEMPLE par employeur : le charset ne prouve pas la discrimination. Ces noms
+  // sont ceux qui partaient à tort chez « Autres employeurs » avec des jetons d'un seul mot.
+  [['2021-01_Bilan_Trajectoire professionnelle.pdf', 'Trajectoire-Emploi'],
+    ['2020-01_Facture_Crest Toothpaste.pdf', 'Silver Crest'],
+  ].forEach(([nom, emp]) => assert.strictEqual(ctx.employeurAutreDuNom_(nom), null,
+    'mot courant ⇒ jamais ' + emp + ' : ' + nom));
+  // Contre-épreuve positive : les vrais noms matchent toujours.
+  assert.strictEqual(ctx.employeurAutreDuNom_('2026-07-01_Attestation_Silver Crest.jpg'), 'Silver Crest');
+  assert.strictEqual(ctx.employeurAutreDuNom_('2026-01_Paie_Trajectoire-Emploi.PDF'), 'Trajectoire-Emploi');
 });
 
 test('identité 01 : Anna Malaval a son dossier (validation Marc 2026-07-30) — le nom RÉEL du reliquat, suffixe `_2` inclus', () => {

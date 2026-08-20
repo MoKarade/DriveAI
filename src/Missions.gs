@@ -255,6 +255,15 @@ function tableMissions_() {
         parSource[IDS.employeursAutomatech] = 'Automatech';
         // `_Technique` est find-or-créé PAR NOM (Router.gs) : l'I/O vit ici, une fois par run,
         // et le routeur reste PUR (patron du projet : fonction pure + wrapper I/O).
+        // ⚠️ L'échec est porté PAR ITEM, jamais par la passe (2 revues successives sur ce point) :
+        //  - un `catch` qui rend '' puis un routeur qui rend `null` inscrirait un REFUS keyé sous
+        //    la version : les 6 documents métier écartés jusqu'au prochain bump, pour une panne
+        //    TRANSITOIRE (« classer les échecs par ORIGINE avant de compter ») ;
+        //  - laisser propager ICI avorterait la passe ENTIÈRE, privant les ~33 autres documents
+        //    de leur traitement à chaque tick, hors de tout filet de comptage.
+        // D'où : on retient l'échec, et le routeur LÈVE au seul item qui a besoin de `_Technique`.
+        // `traiterItemMission_` traduit ce throw en 'transitoire' — borné, aucune clé posée, les
+        // autres items continuent (« un échec PAR ITEM ne partage jamais le drapeau de la BOUCLE »).
         var technique = '';
         try { technique = dossierTechnique_().getId(); } catch (e) { technique = ''; }
         return { employeurParSource: parSource, techniqueId: technique };
@@ -658,9 +667,18 @@ function employeurAutreDuNom_(nom) {
  * @return {boolean}
  */
 function estTypeRecrutement_(type, nom) {
-  var t = ' ' + String(type || '') + ' ';
+  // ⚠️ NORMALISE ICI, jamais chez l'appelant : les deux consommateurs n'appliquent PAS la même
+  // normalisation en amont (la mission passe par `normaliserMission_`, qui ramène toute
+  // ponctuation à un espace ; le flux par `normaliserCle_`, qui GARDE les traits d'union). Sans
+  // ça, « Liste d'entreprises-cibles » était du recrutement pour la mission et rien pour le flux
+  // — une seule règle, deux entrées, donc deux verdicts (revue structure C28-62 PR2 ; c'est la
+  // graine exacte de la leçon C28-26). Normaliser au SEUL point qui décide rend les appelants
+  // indifférents.
+  var t = ' ' + normaliserMission_(type) + ' ';
   var a = function (mot) { return t.indexOf(' ' + mot + ' ') !== -1; };
-  if (a('offre') && (a('emploi') || t.indexOf(' offre d emploi ') !== -1)) return true;
+  // MRic = la SCI de Marc : sa prospection est COMMERCIALE, pas une recherche d'emploi.
+  if (apparierUnique_(nom, [{ nom: 'mric', id: 'mric', jetons: ['mric', 'm ric'] }])) return false;
+  if (a('offre') && a('emploi')) return true;
   if (a('invitation') && (a('entretien') || a('entrevue'))) return true;
   if (t.indexOf('description de role') !== -1) return true;
   if (t.indexOf('liste de prospection') !== -1) return true;
@@ -696,17 +714,32 @@ function estDocumentationMetier_(type) {
  * @param {string} type  segment TYPE normalisé @return {boolean}
  */
 function estReleveDePaie_(type) {
-  var t = String(type || '');
+  var t = normaliserMission_(type); // normalise ICI : deux consommateurs, deux normalisations amont
   if (estFeuilletFiscalReset_(t) || estRibReset_(t)) return false;
+  // 🔴 Un relevé QUALIFIÉ n'est PAS une paie (revue code C28-62 PR2). Sans cette deny-list,
+  // « Relevé d'emploi » (le ROE, remis par TOUT employeur québécois en fin de contrat — donc
+  // très plausible dans `Employeurs/Automatech`) partait en `02/Revenus & paie`, alors que
+  // `Reset.gs` porte la décision INVERSE noir sur blanc : « c'est un document de CARRIÈRE (05),
+  // à trancher avec Marc s'il s'en présente ». Le code contredisait son propre commentaire.
+  // Idem « relevé de notes » (études) et « relevé de compte » (banque). Le déplacement est à clé
+  // de SUCCÈS : dans le doute, on REFUSE.
+  if (/(^| )releve (d |de |des )/.test(t)) return false;
   return typeContient_(t, ['releve', 'releves']);
 }
 
 /** Sous-dossier d'« Employeurs/<X> » par TYPE (table explicite — type inconnu ⇒ ''). PURE. */
 function sousDossierEmployeur_(typeNormalise) {
-  if (typeContient_(typeNormalise, ['contrat', 'contrats'])) return 'Contrats';
-  if (typeContient_(typeNormalise, ['attestation', 'attestations', 'lettre'])) return 'Attestations & lettres';
-  if (typeContient_(typeNormalise, ['formulaire', 'formulaires', 'autorisation'])) return 'Formulaires';
-  if (typeContient_(typeNormalise, ['evaluation', 'evaluations'])) return 'Évaluations';
+  // Normalise ICI : depuis cette PR le flux (`cheminCibleReset_`) en est un 2ᵉ consommateur, et il
+  // n'applique pas la même normalisation amont (`normaliserCle_` GARDE les traits d'union). Sans
+  // ça, « Attestation-employeur » rendait '' côté flux et « Attestations & lettres » côté mission
+  // — une divergence de cible, donc un « Déplacer » de la consolidation (revue code C28-62 PR2).
+  // La dimension VISIBLEMENT mutualisée (`estTypeRecrutement_`) est celle qui endort la revue :
+  // c'est le prédicat VOISIN, consommé par la même décision, qui manquait.
+  var typeNorm = normaliserMission_(typeNormalise); // idempotent pour l'appelant mission
+  if (typeContient_(typeNorm, ['contrat', 'contrats'])) return 'Contrats';
+  if (typeContient_(typeNorm, ['attestation', 'attestations', 'lettre'])) return 'Attestations & lettres';
+  if (typeContient_(typeNorm, ['formulaire', 'formulaires', 'autorisation'])) return 'Formulaires';
+  if (typeContient_(typeNorm, ['evaluation', 'evaluations'])) return 'Évaluations';
   return '';
 }
 
@@ -728,7 +761,10 @@ function routerCarriere_(nom, info, ctx) {
   // (ADR-0044 D12) DOCUMENTATION MÉTIER → `_Technique` (hors domaines). Si le dossier n'a pas pu
   // être résolu, on REFUSE (révisable) plutôt que de router vers une cible vide.
   if (estDocumentationMetier_(type)) {
-    return ctx.techniqueId ? { cibleId: ctx.techniqueId } : null;
+    // LÈVE au lieu de rendre `null` : un refus serait keyé sous la version (définitif jusqu'au
+    // prochain bump) pour une panne de plateforme. Le throw devient 'transitoire' par item.
+    if (!ctx.techniqueId) throw new Error('_Technique indisponible — re-tenté au prochain run');
+    return { cibleId: ctx.techniqueId };
   }
   var employeur = (ctx.employeurParSource || {})[info.sourceId] || employeurDuNom_(nom);
   if (typeContient_(type, ['cv', 'curriculum', 'motivation'])) {

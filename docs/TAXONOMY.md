@@ -231,7 +231,9 @@ Les dossiers VIDÉS relèvent de la corbeille APP validée (ADR-0014), jamais du
   CANONIQUES de 03, plus JAMAIS un héritage à drainer/corbeiller ; les 4 catégories PAR VÉHICULE
   {Contraventions · Assurance auto · Entretien & réparations · Recherche & achat} sont
   structurelles au même titre — find-or-créées PAR NOM par le flux et les missions, protégées par
-  `estSegmentStructurel_` ; **les 3 dossiers COMMUNS `MISSIONS_VEHICULE_COMMUNS` {Recherche &
+  `estSegmentStructurel_` ; **le commun des employeurs `Autres employeurs` (ADR-0044 D11, imbriqué
+  sous `Employeurs`, donc invisible d'`estAncreStructurelleFusion_`) et les 3 dossiers COMMUNS
+  `MISSIONS_VEHICULE_COMMUNS` {Recherche &
   achat · Locations · À attribuer} le sont aussi depuis ADR-0044** — et c'est leur SEULE
   protection : `estAncreStructurelleFusion_` ne consulte que le PREMIER niveau de
   `STRUCTURE_CIBLE_RESET`, or ces nœuds sont imbriqués sous « Véhicule ». Le `SCHEMAS_ENTITE.Véhicule` d'époque v1 est un VOCABULAIRE HÉRITÉ

@@ -1005,9 +1005,13 @@ test('routerCarriere_ (ADR-0044) : les 4 familles réelles des 39 de « employeu
     '2020_Support de cours_Romain Debuyser.pdf',
   ].forEach((n) => assert.deepStrictEqual(rte(n), { cibleId: 'TECH' }, n));
   assert.deepStrictEqual(rte('2026-01-28_Rapport de service_Robovic.pdf', IDS.employeursRobovic), { cibleId: 'TECH' });
-  // `_Technique` irrésolu ⇒ REFUS, jamais un routage vers une cible vide.
-  assert.strictEqual(pur.routerCarriere_('2025-08-20_Bon de livraison_SEW.jpg',
-    { sourceId: IDS.carriereRacine, sousChemin: '' }, { employeurParSource: {}, techniqueId: '' }), null);
+  // `_Technique` irrésolu ⇒ LÈVE, jamais un refus keyé ni une cible vide. Le throw est traduit en
+  // 'transitoire' PAR ITEM par `traiterItemMission_` : borné, aucune clé posée, et les ~33 autres
+  // documents de la passe continuent d'être traités. Un `null` aurait figé ces 6 fichiers jusqu'au
+  // prochain bump de version pour une panne Drive TRANSITOIRE (revues C28-62 PR2, les 2 passes).
+  assert.throws(() => pur.routerCarriere_('2025-08-20_Bon de livraison_SEW.jpg',
+    { sourceId: IDS.carriereRacine, sousChemin: '' }, { employeurParSource: {}, techniqueId: '' }),
+  /_Technique indisponible/);
 
   // D11 — employeur OCCASIONNEL → le commun, des DEUX côtés.
   assert.deepStrictEqual(rte('2025-02-12_Attestation employeur_Algopaie.pdf'),
@@ -1034,4 +1038,95 @@ test('estTypeRecrutement_ : prédicat ÉTROIT — les pièges du Drive de Marc n
   // « fiche comparative » sans mot de SALAIRE : trop générique pour un déplacement définitif.
   assert.strictEqual(t('2024-01-01_Fiche comparative_Comparatif forfaits Virgin.jpg'), false);
   assert.strictEqual(t('2026-07-06_Fiche comparative_Comparatif grilles salariales SPVQ.jpg'), true);
+});
+
+test('TRIPWIRE de convergence : pour chaque cas de routerCarriere_, le FLUX calcule la MÊME cible', () => {
+  // C'est LE test qui rend le geste symétrique par CONSTRUCTION plutôt que par relecture.
+  // Pourquoi il existe : `ConsolidationExec` recalcule la cible d'un fichier au moment du move,
+  // via `cheminCibleReset_`. Si le flux ne sait pas reproduire ce que la mission a décidé, il
+  // DÉFAIT le rangement — et sans bruit. La revue structure C28-62 PR2 a prouvé 3 divergences de
+  // cette famille (relevé de paie → « Relevés/AAAA » bancaires ; « Autres employeurs » → racine de
+  // 05 ; employeur occasionnel en 02 → racine). Un test par cas les aurait toutes attrapées.
+  const IDS = pur.CONFIG.MISSIONS_EMPLOYEURS_COMMUN ? pur.CONFIG.MISSIONS_IDS : pur.CONFIG.MISSIONS_IDS;
+  const ctx = { employeurParSource: (function () {
+    const m = {}; m[IDS.employeursRobovic] = 'Robovic'; m[IDS.employeursAutomatech] = 'Automatech'; return m;
+  })(), techniqueId: 'TECH' };
+  // [nom, source, domaine où le fichier ATTERRIT, sous-chemin attendu des DEUX côtés]
+  const CAS = [
+    ['2023-04_Relevé_Automatech.pdf', IDS.employeursAutomatech, '02 · Finances', 'Revenus & paie/Automatech'],
+    ['2025-11_Paie_Robovic Inc..pdf', IDS.employeursRobovic, '02 · Finances', 'Revenus & paie/Robovic'],
+    ['2026-01_Paie_Trajectoire-Emploi.PDF', IDS.carriereRacine, '02 · Finances', 'Revenus & paie/Autres employeurs'],
+    // D9 × D11 : un RELEVÉ d'un employeur OCCASIONNEL. Ce croisement n'était couvert par aucun
+    // cas — trouvé par la discipline de mutation elle-même (retirer l'employeur occasionnel du
+    // chemin « relevé » du flux ne faisait échouer AUCUN test).
+    ['2026-01_Relevé_Trajectoire-Emploi.pdf', IDS.carriereRacine, '02 · Finances', 'Revenus & paie/Autres employeurs'],
+    ['2026-07-01_Attestation_Silver Crest.jpg', IDS.carriereRacine, '05 · Carrière', 'Employeurs/Autres employeurs/Attestations & lettres'],
+    ['2025-02-12_Attestation employeur_Algopaie.pdf', IDS.carriereRacine, '05 · Carrière', 'Employeurs/Autres employeurs/Attestations & lettres'],
+    // Employeur CANONIQUE + sous-dossier par type : divergence PRÉ-EXISTANTE (le flux rendait
+    // « Employeurs/Robovic » tout court ⇒ la conso remontait le fichier d'un cran).
+    ['2025-06-16_Contrat de travail_Robovic Inc..pdf', IDS.employeursRobovic, '05 · Carrière', 'Employeurs/Robovic/Contrats'],
+    ['2026-07-06_Offre d\'emploi_Cégep Garneau.jpg', IDS.carriereRacine, '05 · Carrière', 'Recherche d\'emploi'],
+    ['2022-12-19_Invitation d\'entretien_Automatech Robotik.ics', IDS.employeursAutomatech, '05 · Carrière', 'Recherche d\'emploi'],
+    ['2021-05-21_Liste d\'entreprises cibles_Hauts-de-France.xlsx', IDS.carriereRacine, '05 · Carrière', 'Recherche d\'emploi'],
+    // …y compris avec un TRAIT D'UNION : les 2 consommateurs normalisent différemment en amont,
+    // c'est `estTypeRecrutement_` qui normalise, donc le verdict est le même (revue C28-62 PR2).
+    ['2021-05-21_Liste d\'entreprises-cibles_Hauts-de-France.xlsx', IDS.carriereRacine, '05 · Carrière', 'Recherche d\'emploi'],
+  ];
+  CAS.forEach(([nom, src, domaine, attendu]) => {
+    const r = plain(pur.routerCarriere_(nom, { sourceId: src, sousChemin: '' }, ctx));
+    assert.ok(r, 'la mission doit router : ' + nom);
+    // Sous-chemin tel que la MISSION le produit, dans le vocabulaire des chemins du flux.
+    const parNom = {};
+    parNom[IDS.revenusPaie] = 'Revenus & paie';
+    parNom[IDS.employeurs05] = 'Employeurs';
+    parNom[IDS.rechercheEmploi] = 'Recherche d\'emploi';
+    parNom[IDS.cvLettres] = 'CV & lettres';
+    parNom[IDS.employeursRobovic] = 'Employeurs/Robovic';
+    parNom[IDS.employeursAutomatech] = 'Employeurs/Automatech';
+    const base = r.cibleParentId ? parNom[r.cibleParentId] + '/' + r.cibleNom : parNom[r.cibleId];
+    const cheminMission = base + (r.sousDossier ? '/' + r.sousDossier : '');
+    assert.strictEqual(cheminMission, attendu, 'MISSION — ' + nom);
+    assert.strictEqual(pur.cheminCibleReset_(domaine, nom), attendu, 'FLUX (sinon la conso défait) — ' + nom);
+  });
+
+  // EXCEPTION documentée : `_Technique` est HORS domaines. La consolidation ne parcourt que les
+  // domaines, donc elle ne verra jamais ces fichiers — aucune divergence possible, et c'est
+  // pourquoi le flux n'a pas à savoir router vers `_Technique`.
+  const metier = '2025-08-20_Bon de livraison_SEW-EURODRIVE Co. of Canada Ltd..jpg';
+  assert.deepStrictEqual(plain(pur.routerCarriere_(metier, { sourceId: IDS.carriereRacine, sousChemin: '' }, ctx)),
+    { cibleId: 'TECH' });
+  assert.strictEqual(pur.cheminCibleReset_('05 · Carrière', metier), null,
+    '_Technique est hors domaines : le flux n\'y route pas, et la conso n\'y passe jamais');
+});
+
+test('estReleveDePaie_ : un relevé QUALIFIÉ n\'est PAS une paie (revue code C28-62 PR2)', () => {
+  // Le défaut : `typeContient_(['releve'])` matchait le mot entier n'importe où dans le segment.
+  // « Relevé d'emploi » (le ROE, remis par TOUT employeur québécois en fin de contrat) partait en
+  // `02/Revenus & paie` — alors que Reset.gs porte la décision INVERSE en toutes lettres :
+  // « c'est un document de CARRIÈRE (05) ». Le code contredisait son propre commentaire.
+  // Déplacement à clé de SUCCÈS ⇒ dans le doute, on REFUSE.
+  ['releve d emploi', 'releve de notes', 'releve de compte', 'releve des gains',
+    'releve 1', 'releve 31', 'releve d identite bancaire',
+  ].forEach((t) => assert.strictEqual(pur.estReleveDePaie_(t), false, 'jamais une paie : ' + t));
+  // …mais le cas RÉEL des 7 fichiers (type exactement « Relevé ») reste couvert.
+  assert.strictEqual(pur.estReleveDePaie_('releve'), true);
+  assert.strictEqual(pur.estReleveDePaie_('releves'), true);
+  // Bout en bout : le ROE n'est plus routé, ni par la mission ni par le flux.
+  const IDS = pur.CONFIG.MISSIONS_IDS;
+  const ctx = { employeurParSource: (function () { const m = {}; m[IDS.employeursAutomatech] = 'Automatech'; return m; })(), techniqueId: 'TECH' };
+  const roe = '2023-05_Relevé d\'emploi_Automatech.pdf';
+  const r = pur.routerCarriere_(roe, { sourceId: IDS.employeursAutomatech, sousChemin: '' }, ctx);
+  assert.ok(!r || r.cibleParentId !== IDS.revenusPaie, 'le ROE ne part pas en 02 : ' + JSON.stringify(plain(r)));
+  assert.notStrictEqual(pur.cheminCibleReset_('02 · Finances', roe), 'Revenus & paie/Automatech');
+});
+
+test('sousDossierEmployeur_ : normalise LUI-MÊME (2 consommateurs, 2 normalisations amont)', () => {
+  // Le flux passe par `normaliserCle_`, qui GARDE les traits d'union ; la mission par
+  // `normaliserMission_`, qui les ramène à un espace. Sans normalisation interne, le même
+  // document recevait deux sous-dossiers différents ⇒ la consolidation « Déplacerait » ce que la
+  // mission vient de ranger. C'est le prédicat VOISIN de celui qu'on venait de mutualiser.
+  assert.strictEqual(pur.sousDossierEmployeur_('attestation employeur'), 'Attestations & lettres');
+  assert.strictEqual(pur.sousDossierEmployeur_('attestation-employeur'), 'Attestations & lettres');
+  assert.strictEqual(pur.sousDossierEmployeur_('contrat-de-travail'), 'Contrats');
+  assert.strictEqual(pur.sousDossierEmployeur_('badge'), '');
 });

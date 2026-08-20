@@ -505,3 +505,19 @@ test('colonnesAvancement : une mission CONVERGÉE à reliquat n\'annonce JAMAIS 
   const l2 = lignesAvancement(c, etat2, maintenant, debits).find((x) => x[0] === 'mission-vehicule');
   assert.ok(/vers le \d{2}\/\d{2}/.test(l2[12]), 'une mission qui AVANCE garde sa date : ' + l2[12]);
 });
+
+test('colonnesAvancement : le garde « à jour » couvre AUSSI la consolidation (2e consommateur)', () => {
+  // Le commentaire du garde affirme « testées une par une » : `à jour (plan drainé — attend la
+  // génération)` est le second statut de cette famille, et il n'était pas couvert (revue code
+  // C28-62 PR2). Même raison de fond : la campagne attend un AMONT, pas du débit.
+  const c = ctxJournal();
+  const maintenant = 1755000000000;
+  const etat = etatVierge(c);
+  etat.consolidationExec = { termine: false, base: 40, traites: 10, planDraine: true, tag: 'conso-3' };
+  const d = { 'consolidation-exec': { t0: maintenant - 72 * 3600000, ts: maintenant, n: 10, r: 1, dn: 3, dts: maintenant - 3600000 } };
+  const l = (lignesAvancement(c, etat, maintenant, d) || []).find((x) => x[0] === 'consolidation-exec');
+  if (l && /^à jour/.test(l[5])) {
+    assert.ok(!/vers le/.test(l[12]) && !/~\d/.test(l[12]),
+      'un « à jour » qui attend son amont n\'annonce pas de date : ' + l[12]);
+  }
+});

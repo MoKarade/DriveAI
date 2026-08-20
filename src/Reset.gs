@@ -340,8 +340,18 @@ function cheminCibleReset_(domaine, nom) {
     // canon que mission-paies (`employeurDuNom_`, Missions.gs — une seule règle, deux
     // consommateurs). Émetteur hors table → racine (comme avant), jamais deviné.
     if (estTypePaieReset_(t)) {
-      var employeurPaie = employeurDuNom_(e);
+      var employeurPaie = employeurDuNom_(e) ||
+        (employeurAutreDuNom_(nom) ? CONFIG.MISSIONS_EMPLOYEURS_COMMUN : '');
       return employeurPaie ? 'Revenus & paie/' + employeurPaie : 'Revenus & paie';
+    }
+    // (ADR-0044 D9) Un « Relevé_<employeur> » SANS numéro est une PAIE mensuelle — MÊME règle que
+    // la mission carrière, sinon la consolidation recalculerait « Relevés/AAAA » et enverrait la
+    // paie chez les relevés BANCAIRES (revue structure C28-62 PR2 : divergence prouvée).
+    // La garantie de sûreté est l'EMPLOYEUR connu, jamais le type seul.
+    if (estReleveDePaie_(t)) {
+      var empReleve = employeurDuNom_(e) ||
+        (employeurAutreDuNom_(nom) ? CONFIG.MISSIONS_EMPLOYEURS_COMMUN : '');
+      if (empReleve) return 'Revenus & paie/' + empReleve;
     }
     if (t.indexOf('releve') !== -1 && !estRibReset_(t)) return 'Relevés/' + resetBucketAnnee_(seg.annee, s['Relevés']);
     // Fiscal (dont les feuillets québécois T4/Relevé 1) et remboursements d'IMPÔT (revue : 'bourse'
@@ -464,8 +474,23 @@ function cheminCibleReset_(domaine, nom) {
     if (t.indexOf('candidature') !== -1) return 'CV & lettres/Candidatures';
     if (tout.indexOf('suivi recherche') !== -1) return 'CV & lettres/Suivi';
     if (tout.indexOf('archive candidatures') !== -1) return 'CV & lettres/Archive 2021-2025';
-    if (e.indexOf('robovic') !== -1) return 'Employeurs/Robovic';
-    if (e.indexOf('automatech') !== -1) return 'Employeurs/Automatech';
+    // Le SOUS-DOSSIER par type vient de la MÊME fonction que la mission (`sousDossierEmployeur_`).
+    // Sans lui, le flux rendait `Employeurs/<X>` tout court alors que la mission range dans
+    // `Employeurs/<X>/<type>` : la consolidation, qui compare les chemins, proposait de REMONTER
+    // chaque fichier d'un cran (divergence PRÉ-EXISTANTE, trouvée par la revue structure C28-62
+    // PR2 en même temps que celles de D9/D11 — le tripwire de convergence la couvre désormais).
+    var sousEmpCanon = sousDossierEmployeur_(t);
+    var suffixeEmp = sousEmpCanon ? '/' + sousEmpCanon : '';
+    if (e.indexOf('robovic') !== -1) return 'Employeurs/Robovic' + suffixeEmp;
+    if (e.indexOf('automatech') !== -1) return 'Employeurs/Automatech' + suffixeEmp;
+    // (ADR-0044 D11) Employeur OCCASIONNEL → le commun. Sans cette branche, le flux rendait `null`
+    // et la consolidation proposait de ramener le fichier à la RACINE de 05 — le vrac même que
+    // `HistoriqueVrac` compte comme dette (revue structure C28-62 PR2).
+    var empAutre = employeurAutreDuNom_(nom);
+    if (empAutre) {
+      var sousEmp = sousDossierEmployeur_(t);
+      return 'Employeurs/' + CONFIG.MISSIONS_EMPLOYEURS_COMMUN + (sousEmp ? '/' + sousEmp : '');
+    }
     if (resetContient_(e, ['mric', 'm ric'])) return 'Entreprise — MRic (SCI)';
     if (resetContient_(tout, ['alternance', 'stage'])) return 'Alternance & stages';
     if (t.indexOf('bilan') !== -1 || (' ' + t).indexOf(' formation') !== -1) return 'Formation & bilans'; // ' formation' : jamais « information » (revue)

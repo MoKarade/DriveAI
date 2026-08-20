@@ -254,3 +254,58 @@ Un refus est keyé sous la version : il se ré-évaluera au prochain affinage.
 
 `MISSIONS_REGLES_VERSION` **`c49-3` → `c49-4`** : sans lui, les 39 resteraient marqués « déjà
 tenté » sous c49-3 et l'affinage serait sans effet (leçon C28-33).
+
+
+### 5.4 Convergence flux ↔ mission ↔ consolidation (issu de la revue flotte)
+
+`ConsolidationExec` **recalcule** la cible d'un fichier au moment du déplacement, via
+`cheminCibleReset_`. Si le flux ne sait pas reproduire ce que la mission a décidé, **il défait le
+rangement, sans bruit**. C'est le défaut corrigé en §4.3 #10 pour `À attribuer` ; la revue en a
+trouvé quatre instances de plus dans PR2, toutes mesurées :
+
+| Décision | Cible mission | Ce que le flux rendait AVANT | État |
+|---|---|---|---|
+| D9 | `Revenus & paie/<employeur>` | `Relevés/AAAA` (relevés **bancaires**) | corrigé |
+| D11 (02) | `Revenus & paie/Autres employeurs` | `Revenus & paie` (racine) | corrigé |
+| D11 (05) | `Employeurs/Autres employeurs/<type>` | `null` ⇒ racine de `05` (vrac) | corrigé |
+| *(pré-existant)* | `Employeurs/<X>/<type>` | `Employeurs/<X>` (un cran au-dessus) | corrigé |
+
+Ces quatre-là sont désormais tenues par **un tripwire** (`test/missions.test.js`) : pour chaque cas
+de `routerCarriere_`, `cheminCibleReset_(domaine, nom)` doit rendre **le même sous-chemin**. C'est
+ce test qui rend la symétrie structurelle au lieu de dépendre de la vigilance d'un relecteur — et
+il aurait attrapé les quatre tout seul. Prouvé par mutation dans les deux sens.
+
+**Exception assumée — D12 est ASYMÉTRIQUE, et c'est structurel.** `_Technique` est **hors
+domaines** : le flux ne peut pas y router (`cheminCibleReset_` rend un chemin *dans* un domaine),
+et la consolidation ne parcourt que les domaines — elle ne verra donc jamais ces fichiers. Aucune
+divergence possible. Le revers : un futur « Bon de livraison » entrant par Gmail dans `05` rendra
+`null` et restera à plat, sans que la mission (convergée) le reprenne. D12 est un **one-shot** sur
+le stock, pas une règle de flux — écrit ici pour que la dette ne réapparaisse pas sans explication.
+
+### 5.5 Deux prédicats trop larges, rattrapés en revue
+
+1. **`estReleveDePaie_` avalait les relevés QUALIFIÉS.** « Relevé d'**emploi** » (le ROE, remis par
+   tout employeur québécois en fin de contrat — donc très plausible dans `Employeurs/Automatech`)
+   partait en `02 · Revenus & paie`, alors que `Reset.gs` porte la décision **inverse** en toutes
+   lettres : « c'est un document de CARRIÈRE (05) ». *Le code contredisait son propre commentaire.*
+   Idem « relevé de notes » (études) et « relevé de compte » (banque). Deny-list explicite ajoutée.
+2. **Les jetons `crest` et `trajectoire` sont des mots courants.** « Bilan — Trajectoire
+   professionnelle » (un document d'accompagnement carrière, dont le dossier `Formation & bilans`
+   existe précisément) partait chez « Autres employeurs ». Même collision que « moreau ⊂ Moreault »
+   (C28-49). Jetons passés en **multi-mots** (`silver crest`, `trajectoire emploi`), avec un
+   contre-exemple par employeur en test : le charset ne prouve pas la discrimination.
+
+Les deux produisaient un **déplacement définitif à clé de SUCCÈS**. Rappel de la règle qui les
+condamne : le prédicat qui déclenche l'action irréversible est STRICT, et **dans le doute il
+REFUSE** — un refus coûte un re-examen, un faux positif coûte un document perdu de vue.
+
+### 5.6 Reste ouvert (dit, pas caché)
+
+- **Le contenu de `Recherche d'emploi` est déjà parti.** Sous `c49-3` le dossier était une source
+  JETABLE : la mission l'a vidé vers `CV & lettres`, et le bump ne rouvre que les refus des sources
+  COURANTES — `CV & lettres` n'en est pas une. **Le rapatriement est donc MANUEL.** Le dossier
+  lui-même a été vérifié dans le Drive le 2026-08-20 : il existe, est bien sous `05 · Carrière`, et
+  n'est pas corbeillé.
+- **Sa COULEUR n'a pas pu être vérifiée** (l'outil de lecture Drive ne rend pas `folderColorRgb`).
+  S'il a été peint en ROUGE quand il était vide, il crie « supprimable » alors qu'il redevient la
+  cible officielle du recrutement — à dépeindre à la main, ou à traiter dans un geste ultérieur.
