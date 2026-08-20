@@ -83,7 +83,9 @@ var CONFIG = {
   // la checklist ADR-0018 est bouclée). Si une campagne de rattrapage devait reprendre, Marc relève
   // ponctuellement cette ligne (le frein est un FILET, jamais un gate du flux vivant).
   //
-  // 10 → 30 (décision Marc 2026-08-20 : « monte le frein a 30 pour finir la campagne »).
+  // 10 → 30 puis 30 → 40 (décisions Marc 2026-08-20, à une demi-heure d'intervalle : « monte le
+  // frein a 30 pour finir la campagne », puis « monte a 40 » après avoir lu le calcul ci-dessous
+  // — 30 laissait ~146 documents sur le carreau).
   //
   // ⚠️ LA LIGNE DU 01/08 CI-DESSUS EST FAUSSE SUR UN POINT, et c'est ce qui a mené ici :
   // « m1 + C26-08 sont finies ». C26-08 ne l'était pas. Elle était à 322 documents sur 1207 le
@@ -91,17 +93,18 @@ var CONFIG = {
   // déclarée terminée qui ne l'est pas ne se signale pas toute seule : elle se met simplement à
   // ne plus avancer, et le tableau de bord affiche « en pause » comme un état normal.
   //
-  // ⚠️ 30 NE SUFFIT PAS À FINIR LA CAMPAGNE, et c'est délibéré — Marc a demandé 30 en le sachant.
-  // Le calcul, au coût MESURÉ de l'ADR-0018 (0,0261 $/doc, pas une estimation) :
+  // POURQUOI 40 ET PAS 30, au coût MESURÉ de l'ADR-0018 (0,0261 $/doc, pas une estimation) :
   //     885 documents restants × 0,0261 $ = 23,10 $
   //   + 10,70 $ déjà dépensés au 20/08        = 33,80 $ pour aller au bout
-  // À 30 $, le frein retombe après ~739 des 885 documents : il en restera ~146, et la campagne
-  // se remettra en pause. S'y ajoute le flux vivant, < 0,50 $/jour, soit jusqu'à 5,50 $ sur les
-  // 11 jours restants du mois. Pour finir en une seule fois il faudrait 40.
+  //   + flux vivant, < 0,50 $/j × 11 j        ≈ 39,30 $ au pire d'ici la fin du mois
+  // 30 aurait fait retomber le frein après ~739 des 885 documents restants — la campagne se
+  // serait remise en pause à ~146 du but, et il aurait fallu y revenir. 40 couvre la campagne
+  // ENTIÈRE plus le flux vivant du reste du mois, avec ~0,70 $ de marge.
   //
-  // Ce qui se passe si on n'y revient pas : les ~146 documents reprennent le 1er septembre, quand
-  // le compteur mensuel repart à zéro. Rien n'est perdu, c'est un report.
-  LLM_BUDGET_CAMPAGNES: 30,
+  // ⚠️ À REDESCENDRE À 10 UNE FOIS C26-08 TERMINÉE — mais cette fois en LISANT le compteur de la
+  // campagne, pas en la déclarant finie (c'est l'erreur du 01/08 documentée juste au-dessus).
+  // Le régime de croisière reste < 10 $/mois ; 40 est un plafond de rattrapage, pas une cible.
+  LLM_BUDGET_CAMPAGNES: 40,
   // Résumé hebdomadaire automatique (mail récap à soi-même, scope script.send_mail existant).
   RESUME_JOUR: 'MONDAY',                  // jour du déclencheur hebdo (WeekDay Apps Script)
   RESUME_HEURE: 8,                        // heure locale d'envoi
