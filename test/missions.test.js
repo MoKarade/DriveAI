@@ -1517,3 +1517,40 @@ test('ADR-0044 : contrat de vente sans véhicule nommé → le commun ; MA8 = 33
   assert.strictEqual(c.cheminCibleReset_(D, '2018-10-15_Formulaire de demande de location_Immeubles MA8_2.pdf'),
     'Logement/3325 4e avenue', 'le SPÉCIFIQUE gagne : chez le bailleur, plus dans les modèles');
 });
+
+test('C28-65 : le dossier SOURCE ne fait plus foi contre le DOCUMENT (véto logement)', () => {
+  const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
+  const IDS = c.CONFIG.MISSIONS_IDS;
+  const spec = c.tableMissions_().filter((m) => m.tag === 'vehicule')[0];
+  const ctx = { fenetres: [], fenetresCompletes: true };
+  // Ces deux-là dormaient dans `Véhicules/Recherche & achat` : le raccourci « le sous-dossier
+  // source porte le nom d'un commun » les a emportées vers `Véhicule/Recherche & achat`, à clé de
+  // SUCCÈS donc définitivement. Une règle qui route PAR DOSSIER SOURCE hérite des erreurs de
+  // rangement de la source — elle doit céder devant un indice tiré du document.
+  const info = { sourceId: IDS.vehiculesPluriel, sousChemin: 'Recherche & achat' };
+  ['2026-07-06_Capture d\'écran échange SMS_Échange SMS proprio fuite bec de bain plombier visite appartement.jpg',
+    '2024-08-31_Capture d\'écran de conversation SMS_Messages propriétaire visite appartement et coupure internet.jpg',
+  ].forEach((nom) => assert.strictEqual(spec.router(nom, info, ctx), null, 'véto logement : ' + nom));
+
+  // …sans jamais gêner un vrai document de véhicule venu du MÊME dossier source.
+  ['2026-07-01_Annonce de vente_Annonce vente Honda Civic 2014 Shawinigan.jpg',
+    '2026-07-01_Reçu de service_KIA Ste-Foy.jpg',
+    '2026-07-31_Tableau comparatif_Comparatif prix véhicules d\'occasion Mazda Kia Honda.xlsx',
+  ].forEach((nom) => assert.ok(spec.router(nom, info, ctx), 'reste rangé : ' + nom));
+
+  // MOT ENTIER, préfixe de date retiré : pas de faux positif par sous-chaîne.
+  assert.strictEqual(c.estDocumentLogement_('2024-01-01_Facture_Garage'), false);
+  assert.strictEqual(c.estDocumentLogement_('2024-01-01_Bail_LCP'), true);
+  assert.strictEqual(c.estDocumentLogement_('2024-01-01_Contrat_Bailleur X'), false, '« bailleur » ⊅ « bail »');
+
+  // ⚠️ PORTÉE LIMITÉE, assumée : 2 des 4 fichiers réels ne portent AUCUN mot de logement — la
+  // règle ne peut RIEN pour eux, et c'est pour ça que `CORRECTIONS_MANUELLES` existe.
+  assert.strictEqual(c.estDocumentLogement_('2026-07-06_Capture d\'écran de message_Jean-Paul Vereecque.jpg'), false);
+  const corr = JSON.parse(JSON.stringify(c.CONFIG.CORRECTIONS_MANUELLES || []));
+  assert.strictEqual(corr.length, 4, 'les 4 fichiers sont déclarés, décision de Marc');
+  corr.forEach((x) => {
+    assert.match(x.id, /^[A-Za-z0-9_-]{20,}$/, 'un identifiant Drive réel');
+    assert.strictEqual(x.cible, c.CONFIG.MISSIONS_IDS.correspondance03, 'cible = 03/Correspondance');
+    assert.ok(x.quoi && x.quoi.length > 10, 'la RAISON est écrite : ce mécanisme déplace par identité');
+  });
+});

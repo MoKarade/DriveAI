@@ -373,7 +373,16 @@ function tickDriveAI() {
     // que les documents classés dans ce même tick profitent des règles fraîchement apprises (few-shot).
     // SECONDAIRE → enveloppée : un formulaire absent/illisible ne doit jamais geler l'intake. Budget-gatée
     // comme ses pairs : si une étape amont a épuisé le budget, on ne lance pas la lecture (protège l'intake).
-    etapeSuivie_('corrections', [gBudgetTick], function () { lireEtAppliquerCorrections_(estBudgetDepasse); },
+    etapeSuivie_('corrections', [gBudgetTick], function () {
+      lireEtAppliquerCorrections_(estBudgetDepasse);
+      // Corrections MANUELLES (C28-65) — même famille, donc PAS d'étape dédiée : le registre du
+      // suivi est borné (~9 Ko de Property, leçon C28-44) et une étape de plus faisait dépasser
+      // le plafond de 84 octets. Payer du budget d'état PERMANENT pour un one-shot de 4 fichiers
+      // n'aurait pas de sens, et relever la borne de sécurité pour se faire de la place encore
+      // moins. Enveloppé : un échec ici ne doit pas emporter la lecture du formulaire.
+      try { appliquerCorrectionsManuelles_(estBudgetDepasse); }
+      catch (eCorr) { journalErreur_('Corrections', 'Corrections manuelles différées : ' + eCorr); }
+    },
       function (e) { journalErreur_('Corrections', 'Lecture des corrections différée : ' + e); });
 
     // Grand rangement (zéro clic, une fois par `CONFIG.RANGEMENT_TAG`) : COLLECTE une page de l'ancien

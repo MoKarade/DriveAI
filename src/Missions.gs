@@ -81,6 +81,10 @@ function tableMissions_() {
         if (vehicule) {
           return { cibleParentId: IDS.vehiculeCible, cibleNom: vehicule, sousDossier: categorie };
         }
+        // 🔴 VETO LOGEMENT (C28-65) — AVANT le raccourci par nom de sous-dossier, qui est
+        // précisément celui qui a emporté 4 conversations de propriétaire vers
+        // « Véhicule/Recherche & achat ». Le dossier source ne fait plus foi contre le document.
+        if (estDocumentLogement_(nom)) return null; // refus keyé, donc RÉVISABLE
         // Le sous-dossier source porte le NOM d'un commun, et aucun véhicule n'est nommé.
         var communNom = communVehiculeDepuisSource_(info.sousChemin, true);
         if (communNom) return { cibleParentId: IDS.vehiculeCible, cibleNom: communNom, sousDossier: '' };
@@ -812,6 +816,31 @@ function estReleveDePaie_(type) {
   // de SUCCÈS : dans le doute, on REFUSE.
   if (/(^| )releve (d |de |des )/.test(t)) return false;
   return typeContient_(t, ['releve', 'releves']);
+}
+
+/**
+ * Vrai si le nom parle de LOGEMENT (ADR-0044, correctif C28-65). PURE (testée).
+ *
+ * Sert de VETO dans la mission véhicule : « Véhicules » n'est pas un dossier pur — Marc y avait
+ * lui-même rangé des conversations avec son propriétaire, et le raccourci « le sous-dossier source
+ * fait foi » les a suivies jusqu'à `Véhicule/Recherche & achat`, à clé de SUCCÈS donc
+ * définitivement. Une règle qui route PAR DOSSIER SOURCE hérite des erreurs de rangement de la
+ * source : elle doit céder devant un indice tiré du DOCUMENT.
+ *
+ * ⚠️ PORTÉE LIMITÉE, dite honnêtement : sur les 4 fichiers réels, 2 ne portent AUCUN mot de
+ * logement (« Capture d'écran de message_Jean-Paul Vereecque ») — seulement un nom de personne.
+ * Aucune règle ne peut les reconnaître ; ils passent par `CONFIG.CORRECTIONS_MANUELLES`.
+ * @param {string} nom @return {boolean}
+ */
+var MISSIONS_MOTS_LOGEMENT = ['proprio', 'proprietaire', 'appartement', 'logement', 'locataire',
+  'bail', 'loyer', 'plombier', 'concierge', 'immeuble', 'immeubles'];
+function estDocumentLogement_(nom) {
+  var n = normaliserMission_(String(nom || '').replace(/^\d{4}-\d{2}(-\d{2})?/, ''));
+  var mots = n ? n.split(' ') : [];
+  for (var i = 0; i < mots.length; i++) {
+    if (MISSIONS_MOTS_LOGEMENT.indexOf(mots[i]) !== -1) return true;
+  }
+  return false;
 }
 
 /**

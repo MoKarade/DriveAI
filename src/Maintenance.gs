@@ -1074,3 +1074,54 @@ function terminerFusionDomaine07() {
     verrou.releaseLock();
   }
 }
+
+/* ================= Corrections manuelles (C28-65) ================= */
+
+/**
+ * Applique `CONFIG.CORRECTIONS_MANUELLES` : des déplacements décidés PAR MARC, fichier par fichier,
+ * là où aucune règle ne peut trancher (cf. le commentaire de la CONFIG). ONE-SHOT par tag.
+ *
+ * Gardes, dans cet ordre : budget (reprenable), clé d'idempotence par fichier, zone protégée
+ * re-vérifiée à la SOURCE **et** à la CIBLE (échec fermé), `moveTo` seul. Un échec par item
+ * n'arrête pas la boucle et ne pose pas la clé : il sera re-tenté, et le tag n'est figé « fait »
+ * que lorsque TOUT est consommé (sinon un blip Drive clôturerait la campagne à moitié).
+ * @param {function():boolean} estBudgetDepasse
+ */
+function appliquerCorrectionsManuelles_(estBudgetDepasse) {
+  var liste = CONFIG.CORRECTIONS_MANUELLES || [];
+  if (!liste.length) return;
+  var tag = String(CONFIG.CORRECTIONS_MANUELLES_TAG || '');
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DriveAI_CORR_FINI') === tag) return;
+
+  var proteges = ensembleDomainesProteges_();
+  var reste = 0;
+  var faits = 0;
+  for (var i = 0; i < liste.length; i++) {
+    if (estBudgetDepasse()) { reste++; continue; }
+    var c = liste[i];
+    var cle = 'corrmanuelle|' + tag + '|' + c.id;
+    try {
+      if (indexContient_(cle)) continue;
+      var f = DriveApp.getFileById(c.id);
+      var cible = DriveApp.getFolderById(c.cible);
+      // §2.1b — ni la source ni la cible ne peuvent toucher la zone protégée. Échec FERMÉ :
+      // le refus est inscrit sous la clé pour ne pas re-tenter à l'infini, et il est tracé.
+      if (aParentProtege_(f, proteges, true) || chaineMonteVersProtege_(cible, proteges, 0, true)) {
+        journalErreur_('Corrections', 'REFUSÉ (zone protégée) : ' + c.quoi);
+        indexAjouter_(cle, { statut: 'corr-protege', nom: f.getName(), domaine: '', chemin: '' }, '');
+        continue;
+      }
+      f.moveTo(cible); // LA seule mutation — jamais de suppression
+      indexAjouter_(cle, { statut: 'corr', nom: f.getName(), domaine: '', chemin: cible.getName() }, '');
+      faits++;
+    } catch (e) {
+      // Fichier illisible/supprimé, cible inaccessible : on RE-TENTERA (pas de clé posée).
+      journalErreur_('Corrections', 'Correction différée (« ' + c.quoi + ' ») : ' + e);
+      reste++;
+    }
+  }
+  if (faits) journalInfo_('Corrections', faits + ' correction(s) manuelle(s) appliquée(s) (tag ' + tag + ').');
+  // « Fait » SEULEMENT quand tout est consommé — sinon un blip clôturerait la campagne à moitié.
+  if (!reste) props.setProperty('DriveAI_CORR_FINI', tag);
+}
