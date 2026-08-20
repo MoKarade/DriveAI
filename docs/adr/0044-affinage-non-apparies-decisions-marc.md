@@ -200,3 +200,57 @@ Les dissoudre reste conforme à la décision 2 quelle qu'en soit l'origine (« K
 recherche d'achat ») ; si Marc les avait créés à la main, le geste est le même.
 
 Aucun document n'est attribué à un véhicule qui n'est pas nommé — c'est la décision de Marc.
+
+
+## 5. PR2 — les 39 de « employeurs & CV », instruits sur pièces (2026-08-20)
+
+Les 3 sources ont été relues avant d'écrire la moindre règle (protocole §8). Répartition RÉELLE :
+
+| Famille | Volume | Exemples réels | Destination (décision) |
+|---|---|---|---|
+| Relevés de paie mensuels | 7 | `2023-04_Relevé_Automatech.pdf` … `2025-01_` | `02 · Revenus & paie/<employeur>` (D9) |
+| Recrutement | ~15 | `Offre d'emploi_Cégep Garneau`, `Invitation d'entretien_Automatech`, `Description de rôle`, `Liste d'entreprises cibles`, `Liste de prospection`, `Répertoire d'entreprises industrielles`, `Formulaire de reclassement_Pôle emploi` | `05 · Carrière/Recherche d'emploi` (D10) |
+| Documentation métier | 6 | `Bon de livraison_SEW-EURODRIVE`, `Plaque signalétique_Rockwell`, `Rapport de maintenance_robot convoyeur`, `Rapport de service_Robovic`, `Support de cours` ×2 | `_Technique` (D12) |
+| Employeur sans dossier | 3 | `Attestation employeur_Algopaie`, `Attestation_Silver Crest`, `Paie_Trajectoire-Emploi` | `05/Employeurs/Autres employeurs` — et la PAIE en `02 · Revenus & paie/Autres employeurs` (D11) |
+
+### 5.1 Précisions de mise en œuvre
+
+- **D9, le prédicat est ÉTROIT.** Élargir `estTypePaieReset_` à « relevé » nu serait dangereux (un
+  relevé BANCAIRE n'est pas une paie). La règle exige les trois : type « relevé », **ni** feuillet
+  fiscal (`estFeuilletFiscalReset_`, ancré sur le nombre — RL-1/RL-31 sont ANNUELS), **ni** RIB
+  (`estRibReset_`), **et** un employeur CONNU. La cadence mensuelle observée (2023-04, 05, 07, 08 ;
+  2025-01) confirme la lecture de Marc.
+- **D11 borne le nombre de dossiers.** Un dossier par employeur ferait déborder la règle des ≤ 7
+  enfants de « Revenus & paie » (3 canoniques + 5 occasionnels). D'où **un seul** `Autres employeurs`,
+  des DEUX côtés (05 et 02) — c'est aussi ce que Marc demande (« plutôt qu'un dossier par nom à un
+  seul fichier »). Les employeurs sans dossier reconnus par une table dédiée
+  (`MISSIONS_EMPLOYEURS_AUTRES`), jamais devinés.
+- **D10 exige un geste SYMÉTRIQUE.** La mission `carriere` DISSOLVAIT `Recherche d'emploi` vers
+  `CV & lettres` ; la table du flux visait la cible de cette fusion. Recréer le dossier sans retirer
+  les deux serait un PING-PONG garanti. Livré dans le même commit : source + `sourcesJetables` +
+  branche du routeur retirées, nœud re-déclaré dans `STRUCTURE_CIBLE_RESET`, verrou d'ABSENCE
+  inversé en verrou de PRÉSENCE, et le FLUX apprend les types de recrutement (une seule règle, deux
+  consommateurs).
+
+### 5.2 Deux exceptions ASSUMÉES, contre la lettre de la décision
+
+1. **L'« Évaluation de performance » de 2016 n'ira PAS dans `_Technique`**, bien que Marc l'ait citée
+   en D12. Router le type « évaluation de performance » vers `_Technique` entrerait en collision
+   frontale avec `sousDossierEmployeur_`, qui range les **Évaluations** dans le dossier de
+   l'employeur : une vraie évaluation RH partirait dans le fourre-tout technique. Le fichier visé
+   (`…reclassement migration taxonomie 2016`) est un artefact isolé ; il reste REFUSÉ (révisable),
+   ce qui coûte un re-examen au lieu d'un document perdu de vue.
+2. **`Fiche comparative` exige un mot de SALAIRE.** Le type seul est trop générique pour porter un
+   déplacement définitif ; la règle s'appuie sur le nom complet (`salarial`), conformément au cas
+   réel (« Comparatif grilles salariales SPVQ et SQ police »).
+
+Restent volontairement REFUSÉS, faute de règle prouvée : `Document professionnel_Automatech`
+(type non informatif), `Attestation conformité algorithme calcul de paie` (aucun employeur),
+`Lettre de recommandation_IMERIR` (une ÉCOLE, pas un employeur — relève de `06 · Études`),
+`Note personnelle … Lyxor ETF`, et les 3 `.p7s` (signatures cryptographiques, hors périmètre §2).
+Un refus est keyé sous la version : il se ré-évaluera au prochain affinage.
+
+### 5.3 Bump
+
+`MISSIONS_REGLES_VERSION` **`c49-3` → `c49-4`** : sans lui, les 39 resteraient marqués « déjà
+tenté » sous c49-3 et l'affinage serait sans effet (leçon C28-33).

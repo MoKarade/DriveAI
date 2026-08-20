@@ -824,7 +824,7 @@ var CONFIG = {
 
   // ---------- MISSIONS de curation (C28-49, ADR-0039 — brief Marc 2026-08-17) ----------
   MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions
-  MISSIONS_REGLES_VERSION: 'c49-3',       // DANS la clé d'idempotence : un refus (non apparié) se fige
+  MISSIONS_REGLES_VERSION: 'c49-4',       // DANS la clé d'idempotence : un refus (non apparié) se fige
                                           // sous CETTE version — affiner les règles = bump ⇒ ré-évaluation
                                           // (leçon C28-33 « verdict négatif révisable, jamais figé à vie »)
                                           // c49-2 (C28-51, ADR-0040) : tables bailleurs + véhicules,
@@ -881,8 +881,12 @@ var CONFIG = {
     employeursRobovic: '1XWsPLqY7ojiFaHprKMLLLvMTYLTXe-xG',  // 05/Employeurs/Robovic (vrac plat à trier)
     employeursAutomatech: '1-hwFLhOJuKzQEnv9Bv4silbVGzAGe_0Z', // 05/Employeurs/Automatech
     carriereRacine: '1BAg7k7RVrJ4ifoeh9U0XW5hKWXjRI1CC',     // racine 05 (ex-dump Automatech de Marc)
-    cvLettres: '10mwjZ59esSF5wQDgBZ3EAvgnnxxkO7j4',          // 05/« CV & lettres » (cible de la fusion)
-    rechercheEmploi: '1UMI5aDHLUzhKe_zlFVQDRY3wQ0ghTbAf',    // 05/« Recherche d'emploi » (fusionné → CV & lettres)
+    cvLettres: '10mwjZ59esSF5wQDgBZ3EAvgnnxxkO7j4',          // 05/« CV & lettres » (CV, lettres, candidatures)
+    employeurs05: '1vNnloG4JERa_nHgHwky9oKRHhER7zUZB',       // 05/« Employeurs » (parent de Robovic/Automatech/Autres employeurs)
+    rechercheEmploi: '1UMI5aDHLUzhKe_zlFVQDRY3wQ0ghTbAf',    // 05/« Recherche d'emploi » — CIBLE du recrutement
+    // (ADR-0044 D10, 2026-08-20) : ce dossier était DISSOUS vers « CV & lettres ». Marc a été
+    // averti du conflit et a confirmé son choix de le RECRÉER — le geste est donc SYMÉTRIQUE :
+    // la fusion est retirée de la mission ET de la table du flux, sinon ping-pong garanti.
     impotsDeclarations: '19vkVX0WnnCddUggvXimF9hcEthkTEdWN', // 02/« Impôts & déclarations » (par année)
     banques02: '1rK1Ysm40xVzFUV8fu-1exYnxwE79yh-a',      // réservé PR3 (mission racines — routage bancaire)
     releves02: '1BXpWAtWiVFYV_EH_7_gX4hr5C9VWzlal',
@@ -917,6 +921,17 @@ var CONFIG = {
     { nom: 'Automatech', jetons: ['automatech', 'robotik'] },
     { nom: 'CIUSSS', jetons: ['ciusss'] },
   ],
+  // Employeurs OCCASIONNELS, sans dossier à eux (ADR-0044 D11, décision Marc 2026-08-20 : « plutôt
+  // qu'un dossier par nom à un seul fichier »). Ils partagent UN commun, des DEUX côtés :
+  // `05/Employeurs/Autres employeurs` et, pour les PAIES, `02/Revenus & paie/Autres employeurs`.
+  // ⚠️ C'est ce partage qui tient la règle des ≤ 7 enfants de « Revenus & paie » : 3 canoniques + 1
+  // commun, au lieu de 3 + 5. Prouvés par les fichiers réels lus le 2026-08-20.
+  MISSIONS_EMPLOYEURS_AUTRES: [
+    { nom: 'Algopaie', jetons: ['algopaie'] },
+    { nom: 'Silver Crest', jetons: ['crest'] },
+    { nom: 'Trajectoire-Emploi', jetons: ['trajectoire'] },
+  ],
+  MISSIONS_EMPLOYEURS_COMMUN: 'Autres employeurs',
   // Bailleurs CANONIQUES (C28-51, ADR-0040 §2) : les documents de logement sont nommés par
   // BAILLEUR, jamais par adresse — chaque entrée est PROUVÉE par contenu (l'ADR porte la preuve
   // datée ; « Kim Pinsonneault » = « 9420-3767 Québec inc » = « LCP Groupe Immobilier », même

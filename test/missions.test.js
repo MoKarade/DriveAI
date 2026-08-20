@@ -684,14 +684,11 @@ test('routerFinance02_ : prédicats PARTAGÉS avec le flux — RL-1/31 fiscal, R
   assert.strictEqual(pur.routerFinance02_('2026-07_Confirmation de paiement_Crédit Mutuel.pdf', '2026'), null);
 });
 
-test('routerCarriere_ : fusion Recherche d\'emploi, paie→02, types en table, dump racine par émetteur', () => {
+test('routerCarriere_ : recrutement, paie→02, types en table, dump racine par émetteur', () => {
   const IDS = pur.CONFIG.MISSIONS_IDS;
   const ctx = { employeurParSource: (function () {
     const m = {}; m[IDS.employeursRobovic] = 'Robovic'; m[IDS.employeursAutomatech] = 'Automatech'; return m;
-  })() };
-  // Fusion : TOUT le contenu de Recherche d'emploi part vers CV & lettres, segment préservé.
-  const fusion = pur.routerCarriere_('n-importe-quoi.docx', { sourceId: IDS.rechercheEmploi, sousChemin: 'Candidatures 2025' }, ctx);
-  assert.deepStrictEqual(plain(fusion), { cibleId: IDS.cvLettres, sousDossier: 'Candidatures 2025' });
+  })(), techniqueId: 'TECH' };
   // Une paie dans Employeurs/Robovic part vers 02 (domicile unique), SANS lire l'émetteur du nom.
   const paie = pur.routerCarriere_('2025-11_Paie_Robovic Inc..pdf', { sourceId: IDS.employeursRobovic, sousChemin: '' }, ctx);
   assert.deepStrictEqual(plain(paie), { cibleParentId: IDS.revenusPaie, cibleNom: 'Robovic' });
@@ -973,4 +970,68 @@ test('MISSIONS_VEHICULE_COMMUNS : identités et jetons — invariants verrouill�
   const ids = [IDS.vehiculeKia, IDS.vehiculeKiaJetta, IDS.vehiculeCible, IDS.vehiculesPluriel, IDS.toyotaBzIsole];
   assert.strictEqual(new Set(ids).size, ids.length, 'les IDs source/cible du véhicule sont tous distincts');
   ids.forEach((id) => assert.match(String(id), /^[A-Za-z0-9_-]{20,}$/, 'ID Drive plausible : ' + id));
+});
+
+test('routerCarriere_ (ADR-0044) : les 4 familles réelles des 39 de « employeurs & CV »', () => {
+  const IDS = pur.CONFIG.MISSIONS_IDS;
+  const ctx = { employeurParSource: (function () {
+    const m = {}; m[IDS.employeursRobovic] = 'Robovic'; m[IDS.employeursAutomatech] = 'Automatech'; return m;
+  })(), techniqueId: 'TECH' };
+  const rte = (nom, src) => plain(pur.routerCarriere_(nom, { sourceId: src || IDS.carriereRacine, sousChemin: '' }, ctx));
+
+  // D9 — « Relevé_<employeur> » SANS numéro = paie MENSUELLE (cadence 2023-04/05/07/08, 2025-01).
+  assert.deepStrictEqual(rte('2023-04_Relevé_Automatech.pdf', IDS.employeursAutomatech),
+    { cibleParentId: IDS.revenusPaie, cibleNom: 'Automatech' });
+  // …et le prédicat reste ÉTROIT : un RL-1 est ANNUEL (fiscal), un RIB n'est pas un relevé de compte.
+  assert.strictEqual(pur.estReleveDePaie_('releve 1'), false, 'RL-1 = feuillet FISCAL, jamais une paie');
+  assert.strictEqual(pur.estReleveDePaie_('releve d identite bancaire'), false, 'RIB = coordonnées');
+  assert.strictEqual(pur.estReleveDePaie_('releve'), true);
+
+  // D10 — RECRUTEMENT → « Recherche d'emploi », y compris quand l'émetteur est un employeur connu.
+  ['2023-01-09_Offre d\'emploi_AutomaTech Robotik Inc..pdf',
+    '2022-12-19_Invitation d\'entretien_Automatech Robotik.ics',
+    '2023-02-08_Description de rôle_AutomaTech Robotik.docx',
+    '2021-05-21_Liste d\'entreprises cibles_Hauts-de-France.xlsx',
+    '2026-06-29_Répertoire d\'entreprises industrielles_Nord-Pas-de-Calais.xlsx',
+    '2024-07-08_Liste de prospection_Claude Richard.docx',
+    '2026-07-06_Formulaire de reclassement_Pôle emploi.png',
+    '2026-07-06_Fiche comparative_Comparatif grilles salariales SPVQ et SQ police.jpg',
+  ].forEach((n) => assert.deepStrictEqual(rte(n), { cibleId: IDS.rechercheEmploi }, n));
+
+  // D12 — DOCUMENTATION MÉTIER → `_Technique` (résolu par batirCtx, le routeur reste PUR).
+  ['2025-08-20_Bon de livraison_SEW-EURODRIVE Co. of Canada Ltd..jpg',
+    '2018-11-17_Plaque signalétique_Rockwell Automation.jpg',
+    '2026-06-15_Rapport de maintenance_robot convoyeur job 111796.jpg',
+    '2020_Support de cours_Romain Debuyser.pdf',
+  ].forEach((n) => assert.deepStrictEqual(rte(n), { cibleId: 'TECH' }, n));
+  assert.deepStrictEqual(rte('2026-01-28_Rapport de service_Robovic.pdf', IDS.employeursRobovic), { cibleId: 'TECH' });
+  // `_Technique` irrésolu ⇒ REFUS, jamais un routage vers une cible vide.
+  assert.strictEqual(pur.routerCarriere_('2025-08-20_Bon de livraison_SEW.jpg',
+    { sourceId: IDS.carriereRacine, sousChemin: '' }, { employeurParSource: {}, techniqueId: '' }), null);
+
+  // D11 — employeur OCCASIONNEL → le commun, des DEUX côtés.
+  assert.deepStrictEqual(rte('2025-02-12_Attestation employeur_Algopaie.pdf'),
+    { cibleParentId: IDS.employeurs05, cibleNom: 'Autres employeurs', sousDossier: 'Attestations & lettres' });
+  assert.deepStrictEqual(rte('2026-07-01_Attestation_Silver Crest.jpg'),
+    { cibleParentId: IDS.employeurs05, cibleNom: 'Autres employeurs', sousDossier: 'Attestations & lettres' });
+  assert.deepStrictEqual(rte('2026-01_Paie_Trajectoire-Emploi.PDF'),
+    { cibleParentId: IDS.revenusPaie, cibleNom: 'Autres employeurs' }, 'la PAIE part en 02, quel que soit l\'employeur');
+
+  // §5.2 — les 2 exceptions ASSUMÉES restent REFUSÉES (révisables), et c'est voulu.
+  assert.strictEqual(rte('2016-04-16_Évaluation de performance_migration taxonomie 2016.odt'), null,
+    'router « évaluation » vers _Technique enverrait une vraie évaluation RH au fourre-tout');
+  assert.strictEqual(rte('2026-02-02_Attestation_conformité algorithme calcul de paie.pdf'), null,
+    'aucun employeur ⇒ jamais deviné');
+});
+
+test('estTypeRecrutement_ : prédicat ÉTROIT — les pièges du Drive de Marc ne matchent PAS', () => {
+  const t = (nom) => pur.estTypeRecrutement_(pur.typeDuNomMission_(nom), nom);
+  // « entretien » SEUL est une catégorie VÉHICULE : sans « invitation », jamais du recrutement.
+  assert.strictEqual(t('2023-10-02_Entretien & réparations_Garage Charlesbourg.pdf'), false);
+  assert.strictEqual(pur.estTypeRecrutement_('entretien', 'x'), false);
+  // « offre » SEUL ne suffit pas.
+  assert.strictEqual(pur.estTypeRecrutement_('offre de service', 'x'), false);
+  // « fiche comparative » sans mot de SALAIRE : trop générique pour un déplacement définitif.
+  assert.strictEqual(t('2024-01-01_Fiche comparative_Comparatif forfaits Virgin.jpg'), false);
+  assert.strictEqual(t('2026-07-06_Fiche comparative_Comparatif grilles salariales SPVQ.jpg'), true);
 });

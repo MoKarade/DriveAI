@@ -50,8 +50,11 @@ function cibleExiste(domaine, chemin) {
       // Employeurs DYNAMIQUES de « Revenus & paie » (C28-49 PR2, décision Marc « séparé par
       // employeur ») : bornés par CONFIG.MISSIONS_EMPLOYEURS — même canon que mission-paies
       // (`employeurDuNom_`, une seule règle deux consommateurs).
+      // + le COMMUN des employeurs occasionnels (ADR-0044 D11) : c'est LUI qui tient le ≤ 7 —
+      // sans lui il faudrait un dossier par employeur (3 canoniques + 5 occasionnels = 8).
       return i === segs.length - 1 && segs.slice(0, i).join('/') === 'Revenus & paie' &&
-        ctx.CONFIG.MISSIONS_EMPLOYEURS.some((emp) => emp.nom === segs[i]);
+        (ctx.CONFIG.MISSIONS_EMPLOYEURS.some((emp) => emp.nom === segs[i]) ||
+          segs[i] === ctx.CONFIG.MISSIONS_EMPLOYEURS_COMMUN);
     }
     noeud = noeud[segs[i]];
   }
@@ -221,8 +224,18 @@ test('RESET_PERSONNES_AUTRES : bornée par la contrainte ≤ 7 (le validateur EX
 test('MISSIONS_EMPLOYEURS : bornée par la contrainte ≤ 7 (jumeau du verrou RESET_PERSONNES_AUTRES — revue structure-keeper PR2)', () => {
   // « Revenus & paie/<employeur> » est la 2ᵉ famille d'enfants dynamiques exemptée du validateur :
   // même promesse, même verrou codé — un 8ᵉ employeur casserait le ≤ 7 sans faire échouer la CI.
-  assert.ok(ctx.CONFIG.MISSIONS_EMPLOYEURS.length <= MAX,
-    'ajouter un 8ᵉ employeur casserait le ≤ 7 de `Revenus & paie` : regrouper d\'abord');
+  assert.ok(ctx.CONFIG.MISSIONS_EMPLOYEURS.length + 1 <= MAX,
+    'canoniques + le commun « Autres employeurs » : un 7ᵉ canonique casserait le ≤ 7');
+  // ADR-0044 D11 : les employeurs OCCASIONNELS ne comptent PAS dans cette borne, justement parce
+  // qu'ils partagent UN dossier. Le verrou : ils ne doivent jamais être promus canoniques en
+  // douce (sinon la borne saute sans que rien n'échoue).
+  const canon = ctx.CONFIG.MISSIONS_EMPLOYEURS.map((e) => e.nom);
+  ctx.CONFIG.MISSIONS_EMPLOYEURS_AUTRES.forEach((e) => assert.ok(canon.indexOf(e.nom) === -1,
+    'un employeur occasionnel ne doit pas figurer AUSSI dans le canon : ' + e.nom));
+  // Jetons MOT ENTIER et alphabétiques (comme les communs véhicule) : `apparierUnique_` reçoit du
+  // texte brut, un jeton numérique matcherait un composant de date.
+  ctx.CONFIG.MISSIONS_EMPLOYEURS_AUTRES.forEach((e) => e.jetons.forEach((j) =>
+    assert.match(j, /^[a-z]+$/, 'jeton non alphabétique : ' + j)));
 });
 
 test('identité 01 : Anna Malaval a son dossier (validation Marc 2026-07-30) — le nom RÉEL du reliquat, suffixe `_2` inclus', () => {
@@ -252,15 +265,30 @@ test('05 : motif « ute » EXACT seulement — un émetteur qui le contient par 
   assert.strictEqual(ctx.cheminCibleReset_('05 · Carrière', '2019-05_Lettre_UTE.pdf'), 'CV & lettres');
 });
 
-test('05 : fusion « Recherche d\'emploi » → « CV & lettres » (C28-49 PR2) — le nœud retiré ne revient JAMAIS dans la table', () => {
-  // La mission `carriere` VIDE « Recherche d'emploi » (sourceJetable, peinte en rouge une fois
-  // vide) : le nœud réintroduit ici serait RECRÉÉ par nom à chaque reset — ping-pong avec la
-  // mission (leçon Fusion #47 « segment structurel jamais une source »). Verrou d'ABSENCE, comme
-  // « Donations & successions » en 02.
+test('05 : « Recherche d\'emploi » RECRÉÉ (ADR-0044 D10) — le geste est SYMÉTRIQUE ou il ne vaut rien', () => {
+  // RÉVOQUE la fusion du 2026-08-17 : Marc a demandé de recréer le dossier, averti du conflit.
+  // Le verrou d'ABSENCE devient un verrou de PRÉSENCE — mais la présence dans la table ne suffit
+  // PAS : si la mission continuait de dissoudre le dossier, ou si le flux continuait de router le
+  // recrutement vers « CV & lettres », on aurait un ping-pong. Les 3 faces sont donc assertées.
   const n05 = ctx.STRUCTURE_CIBLE_RESET['05 · Carrière'];
-  assert.ok(!n05['Recherche d\'emploi'], 'nœud retiré de la table cible (la mission vide ce dossier)');
+  assert.ok(n05['Recherche d\'emploi'], 'le nœud est de retour dans la table cible');
   assert.deepStrictEqual(Object.keys(JSON.parse(JSON.stringify(n05['CV & lettres']))),
-    ['Candidatures', 'Suivi', 'Archive 2021-2025'], 'les enfants ont suivi la fusion');
+    ['Candidatures', 'Suivi', 'Archive 2021-2025'], 'CV & lettres garde ses enfants');
+  // Face 2 — la mission ne le dissout plus : ni source, ni source JETABLE.
+  const carriere = ctx.tableMissions_().filter((m) => m.tag === 'carriere')[0];
+  const IDS = ctx.CONFIG.MISSIONS_IDS;
+  assert.ok(carriere.sources.indexOf(IDS.rechercheEmploi) === -1,
+    'le dossier n\'est plus une SOURCE (sinon la mission le vide pendant que le flux le remplit)');
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(carriere.sourcesJetables)), [],
+    'plus aucune source peinte en rouge');
+  // Face 3 — le FLUX y route le recrutement (et plus vers la cible de l'ex-fusion).
+  const D = '05 · Carrière';
+  assert.strictEqual(ctx.cheminCibleReset_(D, '2026-07-06_Offre d\'emploi_Cégep Garneau.jpg'), 'Recherche d\'emploi');
+  assert.strictEqual(ctx.cheminCibleReset_(D, '2022-12-19_Invitation d\'entretien_Automatech Robotik.ics'), 'Recherche d\'emploi');
+  // …et une vraie candidature de Marc reste bien en « CV & lettres » (ce n'est pas du recrutement).
+  assert.strictEqual(ctx.cheminCibleReset_(D, '2026-01-01_CV_Marc Richard.pdf'), 'CV & lettres');
+  // ≤ 7 : 05 passe à 7 nœuds pile.
+  assert.ok(Object.keys(JSON.parse(JSON.stringify(n05))).length <= MAX, 'règle des ≤ ' + MAX);
 });
 
 test('06 : la table des écoles se construit depuis SOUS_DOSSIERS_ECOLE_RESET (une seule source, revue PR1)', () => {
