@@ -69,7 +69,10 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
    campagnes de RATTRAPAGE (grand rangement, historique Gmail, migration, re-analyse C26-08) sont un
    coût one-shot plafonné par le frein `CONFIG.LLM_BUDGET_CAMPAGNES`. Le plafond a suivi les
    campagnes : 10 → 30 (07/07) → 65 (09/07) → 110 (10/07, ADR-0018 révisée), redescendu à
-   **10 le 2026-08-01**, puis remonté à **30 le 2026-08-20** pour finir C26-08.
+   **10 le 2026-08-01**, puis remonté à **40 le 2026-08-20** pour finir C26-08 — 40 et non 30,
+   parce que 885 documents restants × 0,0261 $ (coût mesuré) + 10,70 $ déjà dépensés = 33,80 $,
+   et qu'un plafond à 30 aurait remis la campagne en pause à ~146 documents du but.
+   À redescendre à 10 une fois C26-08 terminée, en LISANT son compteur (cf. ci-dessous).
    ⚠️ La note du 01/08 affirmait que « m1 et C26-08 sont finies ». **C'était faux pour C26-08** :
    elle était à 322 documents sur 1207 le 13/08, mise en pause par le frein — constaté par le MCP
    le 20/08, deux semaines plus tard. Une campagne déclarée terminée qui ne l'est pas ne se
