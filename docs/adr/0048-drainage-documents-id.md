@@ -71,9 +71,25 @@ partiraient dans `_Doublons` — précisément le défaut qu'ADR-0047 vient de m
 Le résultat correct est : l'exemplaire de `Documents ID` est classé, celui de `_Doublons` reste
 écarté et la campagne le confirme.
 
-**Coût** : 15 documents × ~0,026 $ ≈ **0,39 $**, one-shot, sous le frein campagnes (40 $). C'est la
-raison pour laquelle on peut se permettre le pipeline plutôt qu'un déplacement : à cette échelle, le
-« bon » chemin coûte moins qu'une heure de mise au point du mauvais.
+**Coût** : 15 documents × ~0,026 $ ≈ **0,39 $**, one-shot, sous le frein campagnes (40 $) — et
+DANS ce frein : le drainage appelle `budgetCampagnesAtteint_()` et `reinitialiserUsage_()`/
+`flushUsage_()`. Hors tick, `_usageRun` vaut `null` et `enregistrerUsage_` sort en silence : sans
+ces appels, ces dollars n'auraient existé nulle part — ni au compteur du mois, ni à la ventilation,
+ni au cumul publié au hub, ni au frein §1.6. C'est la raison pour laquelle on peut se permettre le
+pipeline plutôt qu'un déplacement : à cette échelle, le « bon » chemin coûte moins qu'une heure de
+mise au point du mauvais.
+
+**Durée : 2 à 3 clics, pas un.** Sous `ANALYSE_V2` (Sonnet 2 passes), le coût-temps mesuré est de
+~20-30 s par document, soit 5 à 7,5 min pour 15 — au-delà du budget d'un run. La fonction est
+reprenable (idempotence par `drainid|`) et le dit dans son bilan ; il faut simplement la relancer
+jusqu'à « TERMINÉ ».
+
+⚠️ **Ce que la décision « tout drainer » implique et qui n'était pas dans la question.** Marc a
+choisi une DESTINATION ; le MOYEN, lui, est que le contenu de ces 15 fichiers — 2 NAS, 4 passeports,
+cartes d'identité, permis — soit lu par l'OCR puis **envoyé à l'API Anthropic** pour classement. Ces
+fichiers étaient hors arborescence, donc jamais lus par le moteur jusqu'ici. Le transit est celui
+qu'ADR-0007 assume déjà pour tout document (rien n'est persisté hors métadonnées), mais c'est une
+extension de fait du périmètre, et elle doit être dite plutôt que déduite.
 
 **Ce qui n'est PAS drainé** : rien. Marc a répondu « tout drainer ». Le dossier `Documents ID` vidé
 n'est PAS supprimé (§2 du projet) — il apparaîtra en `vide-candidat` dans l'app, et Marc tranche.
@@ -93,6 +109,14 @@ refactoring. `normaliserTypeIdentite_` doit aussi reconnaître les graphies : `N
 classé comme les autres pièces d'identité, jamais supprimé, jamais détaché, et son contenu ne
 transite que vers l'API d'analyse comme tout document (ADR-0007). Le nommer, c'est justement cesser
 de le traiter comme un papier administratif quelconque.
+
+**Un TROISIÈME consommateur, en amont des deux autres** (trouvé en revue sécurité) : `TYPES_IDENTITE`
+et la table ne servent que si le LLM répond `estDocumentIdentite: true`. Or le prompt définissait la
+pièce d'identité comme « passeport, permis, acte, carte » — un NAS, souvent une LETTRE de Service
+Canada, n'y entrait pas. L'ajout aurait donc été **inerte sur les deux fichiers qu'il visait**. Pire :
+sans reconnaissance, `nommerDocument_` retombe sur le `descripteur`, « 2 à 6 mots précis » — rien
+n'empêchait d'y recopier le NUMÉRO, qui serait alors devenu visible dans le nom du fichier, dans
+l'Index et dans le Journal. Le prompt nomme désormais le NAS explicitement.
 
 ## 6. Le document de tiers
 

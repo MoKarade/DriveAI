@@ -61,8 +61,14 @@
 > **➜ 👉 UN GESTE T'ATTEND — C28-73 est LIVRÉ, il ne manque qu'un clic.**
 > Ouvre l'éditeur Apps Script → **`DocumentsID.gs`** → fonction **`drainerDocumentsID`** → Exécuter.
 > Elle draine les 15 fichiers de `Documents ID` vers `Pièces d'identité` en les faisant passer par
-> le pipeline (donc RENOMMÉS au format canonique). ~0,39 $, une seule fois, idempotente : la
-> relancer ne re-traite rien. Elle rend son bilan directement dans l'éditeur et dans le Journal.
+> le pipeline (donc RENOMMÉS au format canonique). ~0,39 $, idempotente : la relancer ne re-traite
+> rien. Elle écrit son bilan dans le **journal d'exécution de l'éditeur** (`Logger.log`) et dans la
+> Sheet. ⚠️ **Compte 2 ou 3 clics, pas un** : sous Sonnet 2 passes, 15 documents prennent 5 à 7,5 min
+> et un run est borné — relance jusqu'à lire « TERMINÉ ».
+> ⚠️ **Ce que ça implique** : le contenu de ces 15 fichiers (2 NAS, 4 passeports, cartes d'identité,
+> permis) sera lu par l'OCR puis envoyé à l'API Anthropic pour classement. Ils étaient hors
+> arborescence, donc jamais lus jusqu'ici. C'est le transit qu'ADR-0007 assume pour tout document —
+> mais tu as choisi une destination, pas un moyen, alors autant que ce soit dit.
 > ⚠️ Elle doit être **DÉPLOYÉE** pour exister dans ton éditeur (piège 3) — vérifier que le run
 > `deploy.yml` du merge est vert avant de chercher la fonction.
 > Pourquoi manuelle plutôt qu'automatique : le registre de suivi est SATURÉ (aucune 43ᵉ étape de

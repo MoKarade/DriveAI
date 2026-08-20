@@ -829,6 +829,10 @@ var CONFIG = {
   // tromper de périmètre n'y est pas rattrapable d'un clic. Vider la liste = campagne inerte.
   DOCUMENTS_ID: {
     tag: 'd1',                                          // bump = re-drainage complet
+    maxParRun: 30,                                      // plafond d'items par run — toutes les campagnes
+                                                        // voisines en ont un (MIGRATION_MAX_PAR_RUN,
+                                                        // RESET_LLM_MAX_PAR_RUN…). 15 fichiers réels,
+                                                        // mais rien n'empêche Marc d'en déposer 500.
     racine: '1jMWgQCUi8slttOutsMc6TUgFyXw6ShwX',        // `Documents ID` (fiche d'état civil à sa racine)
     sousDossiers: [
       '1jT6_EQh_emzh6WNRTXpJlrfbz9el2cj-',              // Carte ID (3)

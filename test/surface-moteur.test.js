@@ -155,6 +155,8 @@ const CONTRAT = [
   // tick) ; `traiterDocument_` + `deplacerEtRenommer_`/`renommer_` sont les appels inter-modules.
   'drainerDocumentsID', 'drainerUnFichierDocumentsID_', 'dossiersDrainageDocumentsID_',
   'estDrainableDocumentsID_', 'bilanDrainageDocumentsID_', 'cleDrainageDocumentsID_',
+  'collecterDrainageDocumentsID_', 'finDrainageDocumentsID_',
+  'estPossedeParMarcDocumentsID_',
   'ligneSanteDoublons_', 'budgetJourDoublons_',
   // Suivi GÉNÉRIQUE des opérations du tick (C28-44, ADR-0038) — Suivi.gs : wrapper appelé par
   // Main.gs (PR2), vue fusionnée lue par Journal.gs/majProgressions_ (PR3), flush au finally.
