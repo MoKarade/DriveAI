@@ -31,6 +31,8 @@ const CONTRAT = [
   'entitesCache_', 'reinitialiserEntitesCache_', 'resoudreEntite_', 'entiteEnAttenteAjouter_',
   'creerDossiersEntitesValidees_', 'promouvoirEntiteValidee_', 'appliquerCurationEntites_',
   'estEntiteGenerique_', 'estFusionnableEntite_', 'incrementerVuEntite_',
+  // Identité : repli quand la table REFUSE d'attribuer (C28-72) — appelé par deciderRoutageV2_.
+  'repliIdentite_',
   // canonicalisation & fusion d'entités (refonte 2026-07-07 ; branchée sur le chemin VIVANT P4/C28-10)
   'canoniserEntite_', 'cleCanoniqueEntite_', 'estProprietaireMarc_', 'estJetonGenerique_',
   'retirerSuffixeJuridique_', 'canoniserVehicule_', 'canoniserAdresse_', 'corrigerOcrConnu_',

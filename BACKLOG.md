@@ -731,18 +731,15 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
   une preuve (§1.6 : « ne pas déclarer une campagne finie sans lire son compteur »). La marge
   restante est de 2 min/j : la PROCHAINE campagne de fond n'a plus de place. Prouver, puis réallouer.
 
-- ⬜ **C28-72 — Identité : le FLUX et la TABLE rangent à deux endroits différents (préalable à PR3).**
-  `dossierIdentite_` (Router.gs) range une pièce d'identité en `01 · Administratif & identité/<TYPE>` ;
-  `cheminCibleReset_` (Reset.gs, branche 01) la range en `Pièces d'identité/Marc` (ou
-  `Pièces d'identité/Autres/<personne>`). Preuve Drive du 2026-08-20 : `01/Permis de conduire` a été
-  **créé le 12/08**, deux semaines après `Pièces d'identité` (29/07), et les deux sont frères au
-  niveau 1 — le nœud « parasite » de l'ADR-0046 §4 est **fabriqué par le flux**, et le sera de
-  nouveau à chaque pièce analysée. C'est le patron C28-26 (deux formules équivalentes écrites
-  séparément divergent, la campagne re-déplace en boucle ce que le flux vient de classer).
-  ⚠️ **À faire AVANT C28-49 PR3** : la mission identité ne peut pas « réutiliser la règle du flux »
-  comme l'ADR-0046 l'annonçait — elle reproduirait le défaut. Aligner le FLUX sur la table
-  (cible canonique `Pièces d'identité/…`), sous tripwire, puis vider le nœud, puis laisser Marc
-  trancher sur le dossier vide. ADR-0046 §2 et §4 corrigés en conséquence.
+- ✅ **C28-72 — Le REPLI du flux inventait un nœud de niveau 1 quand la table refusait d'attribuer.**
+  ⚠️ *Premier diagnostic (faux, corrigé le jour même) : « le flux et la table rangent à deux endroits
+  différents ». Faux — le flux DÉLÈGUE à `cheminCibleReset_` (Router, étape 4, sous tripwire de
+  convergence). Vérifié en exécutant la règle sur les noms réels.* Le vrai défaut est le **repli**
+  (étape 5) : quand la table rend `null` — refus VOULU, titulaire ni Marc ni autorité ni personne
+  déclarée — le flux retombait sur un dossier de TYPE au niveau 1 du domaine. D'où
+  `01 · Administratif/Permis de conduire`, créé le 12/08, qui ne contient que le permis d'un tiers.
+  Correctif : `repliIdentite_` dégrade DANS `Pièces d'identité` (le nom du fichier porte déjà type et
+  titulaire) ; 04 et 07 n'ont pas ce conteneur, leur repli reste le type. Prouvé par mutation.
 
 - ⬜ **C28-71 — Le registre de suivi C28-44 est SATURÉ : plus aucune étape de tick ne peut y entrer.**
   Pire cas mesuré : 8 377 des 8 500 octets du plafond dérivé (42 clés, ~199 octets chacune) — il

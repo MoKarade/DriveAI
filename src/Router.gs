@@ -533,7 +533,9 @@ function planRoutageV2_(classif, meta, date, ext, validees) {
   // par TYPE ; sinon entité VALIDÉE au référentiel (sinon année/racine, règle unique consolidation).
   var sousDossier, dossierIdCible = ''; // ADR-0028 : l'ID prime sur le nom quand il existe
   if (di) {
-    sousDossier = di.sousDossier; // dossier de TYPE : résolu par NOM (aucun ID)
+    // REPLI IDENTITÉ (C28-72) : la table vient de REFUSER d'attribuer ce document. On dégrade DANS
+    // `Pièces d'identité`, jamais vers un frère de niveau 1 — cf. `repliIdentite_`.
+    sousDossier = repliIdentite_(di);
   } else {
     var candidat = sousDossierPourNom_(c);
     var cleEnt = candidat ? cleCanoniqueEntite_(domaine, candidat) : null;
@@ -773,13 +775,42 @@ function estDocumentIdentitePersonnel_(classif) {
   return TYPES_IDENTITE.indexOf(normaliserTypeIdentite_(classif.sousDossierType)) !== -1;
 }
 
+/** Domaine des pièces d'identité NON liées au statut ni à la santé, et son conteneur canonique. */
+var DOMAINE_IDENTITE_01 = '01 · Administratif & identité';
+var CONTENEUR_IDENTITE_01 = 'Pièces d\'identité';
+
 /** Domaine + sous-dossier de type d'une pièce d'identité (jamais par personne, jamais « Tiers »). PUR. */
 function dossierIdentite_(classif) {
   var t = normaliserTypeIdentite_(classif && classif.sousDossierType);
-  var domaine = '01 · Administratif & identité';
+  var domaine = DOMAINE_IDENTITE_01;
   if (t === 'Carte de résident permanent') domaine = '04 · Immigration';       // lié au statut (protégé)
   else if (t === 'Carte d’assurance maladie') domaine = '07 · Santé';
   return { domaine: domaine, sousDossier: t };
+}
+
+/**
+ * PURE — sous-chemin de REPLI d'une pièce d'identité, utilisé UNIQUEMENT quand la table
+ * (`cheminCibleReset_`) a rendu `null`, c'est-à-dire quand elle a **refusé d'attribuer** le
+ * document : titulaire ni Marc, ni une autorité émettrice, ni une personne déclarée dans
+ * `RESET_PERSONNES_AUTRES`. Ce refus est VOULU (« jamais deviné » — le passeport d'un proche non
+ * listé ne doit pas finir chez Marc).
+ *
+ * Le flux, lui, ne peut pas laisser le document en limbo. Mais il ne doit pas non plus **inventer
+ * un FRÈRE** de `Pièces d'identité` au niveau 1 du domaine : c'est ainsi qu'est né
+ * `01 · Administratif/Permis de conduire` le 2026-08-12, qui ne contient qu'un permis de TIERS
+ * pendant que celui de Marc dormait dans `_Doublons` (C28-72). On dégrade d'un cran **DANS** le
+ * conteneur canonique — le nom du fichier porte déjà le type ET le titulaire, et un fichier posé à
+ * la racine de `Pièces d'identité` (à côté de `Marc/` et `Autres/…`) dit exactement ce qu'il est :
+ * une pièce d'identité que personne n'a su attribuer. C'est la leçon §9 « granularité =
+ * enrichissement, jamais frein » : dégrader vers le niveau PRÉCÉDENT, jamais vers un nœud parallèle.
+ *
+ * Les domaines 04 et 07 n'ont pas ce conteneur : leur repli reste le type.
+ * @param {?{domaine:string, sousDossier:string}} di  sortie de `dossierIdentite_`
+ * @return {string}
+ */
+function repliIdentite_(di) {
+  if (!di) return '';
+  return di.domaine === DOMAINE_IDENTITE_01 ? CONTENEUR_IDENTITE_01 : di.sousDossier;
 }
 
 /** Casse Titre d'un NOM DE PERSONNE (contrairement aux entités, on normalise MÊME l'ALL-CAPS). PUR. */

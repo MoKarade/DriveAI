@@ -54,16 +54,34 @@ test('planRoutageV2_ : un vrai scan (facture + émetteur), même OCR pauvre, res
 
 /* ---------- Pièces d'identité : par TYPE, titulaire dans le nom, domaine dérivé du type ---------- */
 
-test('planRoutageV2_ : passeport → 01 · Administratif, sous-dossier « Passeport », titulaire dans le nom', () => {
-  // Même si le LLM propose 04, le passeport se range en 01 (dossier partagé Marc + proches).
+test('planRoutageV2_ : passeport d\'un TIERS non déclaré → `Pièces d\'identité` (repli), titulaire dans le nom', () => {
+  // Même si le LLM propose 04, le passeport se range en 01 (conteneur partagé Marc + proches).
+  // « Sophie Tremblay » n'est pas dans `RESET_PERSONNES_AUTRES` : `cheminCibleReset_` rend `null`
+  // — refus VOULU (« jamais deviné » : le passeport d'un proche non listé ne finit pas chez Marc).
+  // Le flux retombe donc sur son repli. Cette assertion attendait `'Passeport'`, c'est-à-dire un
+  // dossier de TYPE au niveau 1 du domaine : elle ENCODAIT le défaut C28-72, celui qui a fabriqué
+  // `01 · Administratif/Permis de conduire` le 2026-08-12 pour un permis de tiers. Le repli dégrade
+  // désormais DANS le conteneur canonique — le nom du fichier porte déjà le type et le titulaire.
   const p = ctx.planRoutageV2_(
     { estDocumentIdentite: true, sousDossierType: 'Passeport', titulaire: 'Sophie Tremblay',
       domaine: '04 · Immigration', date_doc: '2020-01-01' },
     meta('passeport.pdf'), '2026-07-07', '.pdf');
   assert.strictEqual(p.type, 'classé');
   assert.strictEqual(p.domaine, '01 · Administratif & identité');
-  assert.strictEqual(p.sousDossier, 'Passeport');
+  assert.strictEqual(p.sousDossier, 'Pièces d\'identité');
   assert.strictEqual(p.nom, '2020-01-01_Passeport_Sophie Tremblay.pdf');
+});
+
+test('planRoutageV2_ : passeport de MARC → la TABLE attribue, le repli ne sert même pas', () => {
+  // Contre-épreuve du test précédent : quand la table SAIT attribuer, c'est elle qui décide (étape 4,
+  // délégation sous tripwire), et la cible est le dossier de la personne — pas le conteneur nu.
+  // Sans ce test, on ne saurait pas si `Pièces d'identité` ci-dessus vient du repli ou de la table.
+  const p = ctx.planRoutageV2_(
+    { estDocumentIdentite: true, sousDossierType: 'Passeport', titulaire: 'Marc Richard',
+      emetteur: 'Marc Richard', date_doc: '2020-01-01' },
+    meta('passeport.pdf'), '2026-07-07', '.pdf');
+  assert.strictEqual(p.domaine, '01 · Administratif & identité');
+  assert.strictEqual(p.sousDossier, 'Pièces d\'identité/Marc');
 });
 
 test('planRoutageV2_ : carte de résident permanent → domaine 04, arbre Reset (reste dans la zone protégée)', () => {

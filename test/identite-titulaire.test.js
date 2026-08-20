@@ -119,3 +119,31 @@ test('sousDossierPourNom_ (ADR-0023 révisé) : identité → type ; CANDIDAT d\
   assert.strictEqual(ctx.sousDossierPourNom_({ type_doc: 'Devoir' }), '');
   assert.strictEqual(ctx.sousDossierPourNom_({}), '');
 });
+
+/* ---------- REPLI quand la table REFUSE d'attribuer (C28-72) ---------- */
+
+test('repliIdentite_ : dans 01, on dégrade DANS `Pièces d\'identité` — jamais vers un frère de niveau 1', () => {
+  const c = ctx;
+  // `01 · Administratif/Permis de conduire` est né comme ça le 2026-08-12 : la table a rendu null
+  // (permis d'un tiers non déclaré, refus VOULU) et le repli a créé un dossier de TYPE au niveau 1
+  // du domaine, à côté de `Pièces d'identité`. Il ne contient qu'un document de tiers.
+  ['Passeport', 'Permis de conduire', 'Carte d’identité', 'Acte de naissance'].forEach((t) => {
+    const di = c.dossierIdentite_({ sousDossierType: t });
+    assert.strictEqual(c.repliIdentite_(di), 'Pièces d\'identité',
+      t + ' : le repli doit rester dans le conteneur canonique');
+  });
+});
+
+test('repliIdentite_ : 04 et 07 n\'ont pas ce conteneur — leur repli reste le TYPE', () => {
+  const c = ctx;
+  const res = c.dossierIdentite_({ sousDossierType: 'Carte de résident permanent' });
+  assert.strictEqual(res.domaine, '04 · Immigration');
+  assert.strictEqual(c.repliIdentite_(res), 'Carte de résident permanent');
+  const ram = c.dossierIdentite_({ sousDossierType: 'ramq' });
+  assert.strictEqual(ram.domaine, '07 · Santé');
+  assert.strictEqual(c.repliIdentite_(ram), 'Carte d’assurance maladie');
+});
+
+test('repliIdentite_ : absence d\'identité → chaîne vide (jamais une exception dans le chemin de repli)', () => {
+  assert.strictEqual(ctx.repliIdentite_(null), '');
+});
