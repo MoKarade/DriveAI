@@ -63,7 +63,17 @@ function tableMissions_() {
         // La CATÉGORIE du fichier = son sous-dossier SOURCE s'il est une catégorie déclarée
         // (décision Marc : les catégories vivent DANS chaque véhicule) — sinon à plat.
         var categorie = categorieVehiculeMission_(info.sousChemin);
-        // Le VÉHICULE : sous-dossier d'origine (« Véhicules/KIA/… »), sinon le nom du fichier,
+        // (ADR-0044) Dossiers COMMUNS — évalués AVANT toute attribution à un véhicule, y compris
+        // avant le repli par date : ce sont précisément les cas où aucun véhicule ne doit être
+        // deviné. `sousDossier: ''` : ces dossiers sont plats, pas de catégorie sous eux.
+        var commun = communVehiculeDepuisSource_(info.sousChemin);
+        if (commun) return { cibleParentId: IDS.vehiculeCible, cibleNom: commun, sousDossier: '' };
+        // Une voiture LOUÉE n'est pas un véhicule de Marc : elle ne doit polluer ni Fiesta, ni
+        // Jetta, ni Toyota bZ — même si le contrat nomme un modèle. D'où ce test AVANT le nom.
+        if (estLocationVehicule_(nom)) {
+          return { cibleParentId: IDS.vehiculeCible, cibleNom: 'Locations', sousDossier: '' };
+        }
+        // Le VÉHICULE : sous-dossier d'origine, sinon le nom du fichier,
         // sinon — pour un document daté, si le jeu de fenêtres est COMPLET — la fenêtre de
         // possession si UNE SEULE le contient (chevauchement/jeu incomplet = refus, jamais deviné).
         var vehicule = vehiculeDuNom_(info.sousChemin) || vehiculeDuNom_(nom);
@@ -122,8 +132,15 @@ function tableMissions_() {
       },
       router: function (nom, info, ctx) {
         var theme = ctx.themePar[info.sourceId] || '';
-        // 1. Véhicule nommé dans le fichier — par la TABLE canonique (c49-2 : une cible peut être
-        //    créée, KIA n'existait pas dans « Véhicule » ; « une seule règle » avec mission-vehicule).
+        // 0. LOCATION de véhicule (ADR-0044) — AVANT le nom : une voiture louée n'est pas un
+        //    véhicule de Marc, même si le contrat en nomme le modèle. Les 3 contrats Enterprise
+        //    dormaient ici, dans « 03 · Contrats ». MÊME prédicat que la mission véhicule
+        //    (« une seule règle, deux consommateurs » — leçon §7).
+        if (estLocationVehicule_(nom)) {
+          return { cibleParentId: CONFIG.MISSIONS_IDS.vehiculeCible, cibleNom: 'Locations', sousDossier: '' };
+        }
+        // 1. Véhicule nommé dans le fichier — par la TABLE canonique (« une seule règle » avec
+        //    mission-vehicule ; une cible peut être CRÉÉE si le dossier n'existe pas encore).
         var v = vehiculeDuNom_(nom);
         if (v) {
           return { cibleParentId: CONFIG.MISSIONS_IDS.vehiculeCible, cibleNom: v,
@@ -361,6 +378,62 @@ function vehiculeDuNom_(texte) {
   });
   var c = apparierUnique_(texte, cibles);
   return c ? c.nom : null;
+}
+
+/**
+ * Dossier COMMUN sous « Véhicule » désigné par le sous-dossier SOURCE (ADR-0044). PURE (testée).
+ * Ex. tout ce qui vient de « Véhicules/KIA/… » part dans « Véhicule/Recherche & achat », parce que
+ * KIA n'est PAS un véhicule de Marc. Sans ce court-circuit, ces documents tomberaient dans le repli
+ * par DATE et seraient rangés sous le véhicule possédé à l'époque — un faux positif DÉFINITIF
+ * (déplacé + clé de succès), exactement le cas que la leçon « l'asymétrie des verdicts commande la
+ * sévérité du prédicat » interdit.
+ * @param {string} sousChemin  chemin source relatif (le 1er segment porte le dossier d'origine)
+ * @return {string} nom du dossier commun, ou '' si aucun
+ */
+function communVehiculeDepuisSource_(sousChemin) {
+  var segments = String(sousChemin || '').split('/');
+  var premier = normaliserMission_(segments[0] || '');
+  if (!premier) return '';
+  var communs = CONFIG.MISSIONS_VEHICULE_COMMUNS || [];
+  for (var i = 0; i < communs.length; i++) {
+    var srcs = communs[i].sources || [];
+    for (var j = 0; j < srcs.length; j++) {
+      if (normaliserMission_(srcs[j]) === premier) return communs[i].nom;
+    }
+  }
+  return '';
+}
+
+// Mots qui prouvent qu'il s'agit d'un VÉHICULE (et pas d'un logement).
+var MISSIONS_MOTS_VEHICULE = ['vehicule', 'auto', 'autos', 'voiture', 'automobile'];
+
+// ⚠️ PAS de liste de marques de loueurs. Le premier jet en contenait une — avec « Avis », qui est
+// un LOUEUR mais surtout un mot français des plus courants : « Avis de séjour », « Avis de
+// paiement », « Avis d'imposition » seraient tous devenus des locations de voiture (attrapé par
+// `reset.test.js`). « Budget » et « Discount » ont le même défaut. Les 3 contrats Enterprise réels
+// du Drive de Marc portent tous « location » ET un mot de véhicule : la règle stricte ci-dessous
+// suffit, et une liste de marques n'ajouterait que du risque.
+
+/**
+ * Vrai si le document est une LOCATION de véhicule (ADR-0044) — destination : « Véhicule/Locations ».
+ * PURE (testée).
+ *
+ * PRÉDICAT STRICT, et il DOIT l'être : « location » tout seul est un piège avéré dans ce Drive —
+ * « Formulaire de demande de location_CORPIQ » est un document de LOGEMENT. On exige donc le mot
+ * « location » ACCOMPAGNÉ d'un mot de véhicule, ou une marque de loueur reconnue. Dans le doute :
+ * faux (le fichier reste en place et sera re-examiné), jamais un déplacement au hasard.
+ * @param {string} nom
+ * @return {boolean}
+ */
+function estLocationVehicule_(nom) {
+  var n = normaliserMission_(nom);
+  if (!n) return false;
+  var mots = n.split(' ');
+  var aMot = function (liste) {
+    for (var i = 0; i < mots.length; i++) if (liste.indexOf(mots[i]) !== -1) return true;
+    return false;
+  };
+  return aMot(['location', 'locations']) && aMot(MISSIONS_MOTS_VEHICULE);
 }
 
 /**

@@ -367,6 +367,10 @@ function cheminCibleReset_(domaine, nom) {
     if (logementBailleur) return 'Logement/' + logementBailleur;
     // VÉHICULE — canon partagé ('toyota' n'est pas un jeton : la Corolla jamais achetée matcherait
     // le bZ), puis la CATÉGORIE de Marc par le type (à plat dans le véhicule si aucune).
+    // LOCATION de véhicule (ADR-0044) — AVANT le canon des véhicules, pour la même raison que
+    // dans les missions : une voiture louée n'est pas un véhicule de Marc. MÊME prédicat pur, pour
+    // que le reset et les missions ne se renvoient pas la balle (leçon « une seule règle »).
+    if (estLocationVehicule_(tout)) return 'Véhicule/Locations';
     var vehicule = vehiculeDuNom_(tout);
     if (vehicule) {
       if (resetContient_(t, ['constat d infraction', 'contravention', 'amende'])) return 'Véhicule/' + vehicule + '/Contraventions';

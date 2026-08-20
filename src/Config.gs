@@ -798,7 +798,7 @@ var CONFIG = {
 
   // ---------- MISSIONS de curation (C28-49, ADR-0039 — brief Marc 2026-08-17) ----------
   MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions
-  MISSIONS_REGLES_VERSION: 'c49-2',       // DANS la clé d'idempotence : un refus (non apparié) se fige
+  MISSIONS_REGLES_VERSION: 'c49-3',       // DANS la clé d'idempotence : un refus (non apparié) se fige
                                           // sous CETTE version — affiner les règles = bump ⇒ ré-évaluation
                                           // (leçon C28-33 « verdict négatif révisable, jamais figé à vie »)
                                           // c49-2 (C28-51, ADR-0040) : tables bailleurs + véhicules,
@@ -902,11 +902,22 @@ var CONFIG = {
   // 2014 (essai, jamais achetée — décision Marc) vers le bZ, « volkswagen » enverrait la capture
   // d'annonce d'un CONCESSIONNAIRE dans la Jetta — à clé de SUCCÈS, donc définitif (leçon C28-49).
   // Sert AUSSI à créer une cible absente (KIA n'existait pas dans « Véhicule »).
+  // ⚠️ KIA RETIRÉ le 19/08 (ADR-0044, décision Marc : « c'était juste une recherche d'achat »).
+  // Ce n'est pas cosmétique : `batirCtx` exige que CHAQUE véhicule de cette table ait un dossier
+  // ET une fenêtre de possession. KIA n'ayant jamais eu de dossier, `fenetresCompletes` était faux
+  // À VIE et TOUTE attribution par date était refusée — c'est ce qui bloquait 48 fichiers.
   MISSIONS_VEHICULES: [
     { nom: 'Toyota bZ', jetons: ['bz', 'bz4x'] },
-    { nom: 'KIA', jetons: ['kia', 'sportage'] },
     { nom: 'Ford Fiesta', jetons: ['fiesta'] },
     { nom: 'VW Jetta', jetons: ['jetta'] },
+  ],
+  // Dossiers COMMUNS sous « Véhicule » (ADR-0044) — au même niveau que les véhicules, pas sous eux.
+  // `sources` : sous-dossiers d'origine dont le contenu y va EN BLOC. Sans cette table, les
+  // documents de « KIA » (qui n'est plus un véhicule) tomberaient dans le repli par DATE et
+  // seraient attribués au véhicule possédé à l'époque — c'est-à-dire au MAUVAIS, définitivement.
+  MISSIONS_VEHICULE_COMMUNS: [
+    { nom: 'Recherche & achat', sources: ['KIA'] },
+    { nom: 'Locations', sources: [] }, // alimenté par la DÉTECTION de location, pas par une source
   ],
   // Catégories PAR VÉHICULE (décision Marc) — sous-dossiers créés À LA DEMANDE, jamais 16
   // squelettes vides. Ces noms sont AUSSI les sous-dossiers sources de « Véhicules » à dissoudre.

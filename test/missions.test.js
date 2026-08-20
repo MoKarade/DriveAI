@@ -97,9 +97,14 @@ test('routeur dispatch03 : véhicule prioritaire, puis adresse, puis BAILLEUR, p
   assert.strictEqual(v.cibleNom, 'VW Jetta');
   assert.strictEqual(v.cibleParentId, IDS.vehiculeCible);
   assert.strictEqual(v.sousDossier, 'Recherche & achat', 'thème traduit en catégorie véhicule');
-  // Une assurance qui nomme un véhicule ABSENT de la cible (KIA) est quand même routée (find-or-create).
-  const kia = spec.router('2023-03-01_Contrat d\'assurance_KIA.pdf', { sourceId: IDS.assuranceHab03, sousChemin: '' }, ctx);
-  assert.deepStrictEqual(plain(kia), { cibleParentId: IDS.vehiculeCible, cibleNom: 'KIA', sousDossier: 'Assurance auto' });
+  // Une assurance qui nomme un véhicule de la TABLE est routée par find-or-create (le dossier
+  // cible peut ne pas exister encore — le canon est la table, pas les dossiers présents).
+  const fiesta = spec.router('2023-03-01_Contrat d\'assurance_Ford Fiesta.pdf', { sourceId: IDS.assuranceHab03, sousChemin: '' }, ctx);
+  assert.deepStrictEqual(plain(fiesta), { cibleParentId: IDS.vehiculeCible, cibleNom: 'Ford Fiesta', sousDossier: 'Assurance auto' });
+  // ADR-0044 : KIA n'est PLUS un véhicule (décision Marc — c'était une recherche d'achat). Un
+  // document qui le nomme ne doit donc plus créer « Véhicule/KIA »…
+  assert.strictEqual(spec.router('2023-03-01_Contrat d\'assurance_KIA.pdf',
+    { sourceId: IDS.assuranceHab03, sousChemin: '' }, ctx), null, 'KIA retiré du canon des véhicules');
   // Une facture d'énergie qui nomme l'adresse part vers Logement/<adresse>/Énergie & services.
   const l = spec.router('2023-02-01_Facture_Hydro 783 Moreau.pdf', { sourceId: IDS.energieServices03, sousChemin: '' }, ctx);
   assert.strictEqual(l.cibleId, 'lm');
@@ -113,9 +118,15 @@ test('routeur dispatch03 : véhicule prioritaire, puis adresse, puis BAILLEUR, p
   assert.strictEqual(parDate.cibleId, 'lm');
   const pasParDate = spec.router('2023-05-01_Facture_Hydro.pdf', { sourceId: IDS.energieServices03, sousChemin: '' }, ctx);
   assert.strictEqual(pasParDate, null, 'la date ne route QUE la correspondance');
-  // Location ponctuelle (Enterprise) : aucun véhicule POSSÉDÉ nommé → refus (jamais deviné).
-  assert.strictEqual(spec.router('2026-04-10_Contrat de location de véhicule_Enterprise.pdf',
-    { sourceId: IDS.contrats03, sousChemin: '' }, ctx), null);
+  // ADR-0044 : une LOCATION va dans « Véhicule/Locations » — elle n'est plus refusée, mais elle
+  // ne rejoint JAMAIS un véhicule de Marc (les 3 contrats Enterprise dormaient dans 03·Contrats).
+  assert.deepStrictEqual(plain(spec.router('2026-04-10_Contrat de location de véhicule_Enterprise.pdf',
+    { sourceId: IDS.contrats03, sousChemin: '' }, ctx)),
+    { cibleParentId: IDS.vehiculeCible, cibleNom: 'Locations', sousDossier: '' });
+  // …et le PIÈGE que ce prédicat doit éviter : « demande de location » est du LOGEMENT.
+  const corpiq = spec.router('2018-10-15_Formulaire de demande de location_CORPIQ.pdf',
+    { sourceId: IDS.contrats03, sousChemin: '' }, ctx);
+  assert.ok(!corpiq || corpiq.cibleNom !== 'Locations', 'un bail n\'est pas une location de voiture');
 });
 
 test('routeur vehicule (c49-2) : catégorie par sous-dossier SOURCE, fenêtre gatée sur jeu COMPLET, chevauchement = refus', () => {
@@ -123,10 +134,17 @@ test('routeur vehicule (c49-2) : catégorie par sous-dossier SOURCE, fenêtre ga
   const spec = pur.tableMissions_().filter((m) => m.tag === 'vehicule')[0];
   const f2023 = { id: 'vkia', min: Date.UTC(2023, 0, 1), max: Date.UTC(2024, 11, 31) };
   const f2026 = { id: 'vbz', min: Date.UTC(2026, 0, 1), max: Date.UTC(2026, 11, 31) };
-  // Véhicule nommé (sous-dossier source « KIA ») : catégorie absente → à plat dans le véhicule.
+  // ADR-0044 : le sous-dossier source « KIA » n'est plus un véhicule — son contenu va dans le
+  // dossier COMMUN « Recherche & achat », sans catégorie. CRUCIAL : ce court-circuit passe AVANT
+  // le repli par date, sinon ces documents seraient attribués au véhicule possédé à l'époque —
+  // un faux positif DÉFINITIF (déplacé + clé de succès).
   const kia = spec.router('2023-05-01_Facture_Garage.pdf', { sourceId: IDS.vehiculesPluriel, sousChemin: 'KIA' },
     { fenetres: [], fenetresCompletes: false });
-  assert.deepStrictEqual(plain(kia), { cibleParentId: IDS.vehiculeCible, cibleNom: 'KIA', sousDossier: '' });
+  assert.deepStrictEqual(plain(kia), { cibleParentId: IDS.vehiculeCible, cibleNom: 'Recherche & achat', sousDossier: '' });
+  // …y compris quand le jeu de fenêtres est COMPLET et que la date tomberait dans l'une d'elles.
+  const kiaDate = spec.router('2023-05-01_Facture_Garage.pdf', { sourceId: IDS.vehiculesPluriel, sousChemin: 'KIA/Entretien & réparations' },
+    { fenetres: [{ id: 'vjetta', min: Date.UTC(2023, 0, 1), max: Date.UTC(2023, 11, 31) }], fenetresCompletes: true });
+  assert.strictEqual(plain(kiaDate).cibleNom, 'Recherche & achat', 'jamais attribué à un véhicule par la date');
   // Générique d'une CATÉGORIE, jeu de fenêtres COMPLET, date dans UNE seule fenêtre → routé,
   // catégorie du sous-dossier source préservée.
   const generique = spec.router('2023-06-27_Constat d\'infraction_Ville de Québec.jpg',
@@ -782,4 +800,43 @@ test('ecrireRapportPaies_ : onglet RapportPaies ABSENT → créé par feuille_, 
   const ligne2 = onglets.RapportPaies.rangees[2];
   assert.ok(ligne2 && ligne2[0] === 'Robovic Inc.', 'la ligne employeur est écrite (pas juste l\'en-tête)');
   assert.strictEqual(ligne2[1], 2, '2 mois présents (2026-01, 2026-03)');
+});
+
+/* ---------- ADR-0044 : dossiers communs sous « Véhicule » + détection de location ---------- */
+
+test('communVehiculeDepuisSource_ (PURE) : le dossier SOURCE décide, jamais la date', () => {
+  const f = pur.communVehiculeDepuisSource_;
+  assert.strictEqual(f('KIA'), 'Recherche & achat');
+  assert.strictEqual(f('kia/Entretien & réparations'), 'Recherche & achat', 'insensible à la casse et au sous-chemin');
+  assert.strictEqual(f('Contraventions'), '', 'une CATÉGORIE n\'est pas un commun');
+  assert.strictEqual(f(''), '');
+  assert.strictEqual(f('Ford Fiesta'), '', 'un vrai véhicule reste un véhicule');
+});
+
+test('estLocationVehicule_ (PURE) : strict — « location » SEUL ne suffit jamais', () => {
+  const f = pur.estLocationVehicule_;
+  // Vrai : les 3 contrats réellement présents dans le Drive de Marc.
+  assert.strictEqual(f('2026-07-02_Contrat de location de véhicule_Enterprise (Location d\'autos).pdf'), true);
+  assert.strictEqual(f('2026-04-10_Contrat de location de véhicule_Location d\'autos Enterprise.pdf'), true);
+  assert.strictEqual(f('2026-04-13_Contrat de location de véhicule_Enterprise.pdf'), true);
+
+  // FAUX — les pièges. Le 1er jet du prédicat (liste de marques de loueurs) cassait les deux
+  // premiers : « Avis » est un loueur mais surtout un mot français des plus courants, et
+  // « demande de location » désigne un LOGEMENT.
+  assert.strictEqual(f('2022-11_Avis de séjour_Camping.pdf'), false);
+  assert.strictEqual(f('2018-10-15_Formulaire de demande de location_CORPIQ.pdf'), false);
+  assert.strictEqual(f('2024-03-01_Avis de paiement_Ville de Québec.pdf'), false);
+  assert.strictEqual(f('2023-05-01_Bail de logement_Tribunal administratif du logement.pdf'), false);
+  assert.strictEqual(f('2025-01-01_Budget mensuel.pdf'), false, '« budget » est aussi un loueur — et un mot courant');
+  assert.strictEqual(f(''), false);
+});
+
+test('ADR-0044 : KIA a bien quitté le canon des véhicules (sinon rien n\'est débloqué)', () => {
+  // C'est LE correctif à fort levier : tant que KIA figurait dans la table sans dossier cible,
+  // `fenetresCompletes` était faux à vie et TOUTE attribution par date était refusée.
+  const noms = (pur.CONFIG.MISSIONS_VEHICULES || []).map((v) => v.nom);
+  assert.ok(noms.indexOf('KIA') === -1, 'KIA ne doit plus être un véhicule (décision Marc)');
+  assert.ok(noms.length >= 3, 'les vrais véhicules restent');
+  assert.strictEqual(pur.vehiculeDuNom_('2023-05-01_Facture_KIA Sportage.pdf'), null);
+  assert.strictEqual(pur.vehiculeDuNom_('2023-05-01_Facture_VW Jetta.pdf'), 'VW Jetta');
 });
