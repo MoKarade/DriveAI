@@ -27,6 +27,9 @@ concurrency:
 
 jobs:
   deploy:
+    # Plafond : sans lui, un job fige tourne SIX HEURES avant d'echouer (vecu sur
+    # DriveAI le 19/08/2026). Calibre sur la duree reelle — non observe - pousse vers Apps Script.
+    timeout-minutes: 20
     name: clasp push (Apps Script)
     runs-on: ubuntu-latest
     steps:

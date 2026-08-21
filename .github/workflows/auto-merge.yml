@@ -16,6 +16,9 @@ permissions:
 
 jobs:
   automerge:
+    # Plafond : sans lui, un job fige tourne SIX HEURES avant d'echouer (vecu sur
+    # DriveAI le 19/08/2026). Calibre sur la duree reelle — non observe - appels API.
+    timeout-minutes: 10
     # ⚠️ SÉCURITÉ (revue de fond 2026-07-31) : le préfixe `claude/` est une CONVENTION, jamais une
     # preuve d'origine — pour une PR de fork, `head_branch` est choisi par l'auteur de la PR. Sur un
     # dépôt PUBLIC, sans le contrôle d'origine ci-dessous, n'importe qui pouvait ouvrir une PR depuis
