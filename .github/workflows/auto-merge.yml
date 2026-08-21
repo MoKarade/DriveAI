@@ -80,8 +80,26 @@ jobs:
             exit 0
           fi
 
-          # Sortir du mode draft si nécessaire (ignore l'erreur si déjà ready).
-          avec_retry gh pr ready "$number" --repo "$REPO" || true
+          # ⚠️ LE BROUILLON EST UN FREIN, ET IL L'EST DEPUIS LE 2026-08-21 SEULEMENT.
+          #
+          # Cette ligne faisait exactement l'inverse : `gh pr ready` RETIRAIT le brouillon avant
+          # de merger. Conséquence vécue le 20/08 — l'ADR-0045, ouverte en brouillon avec écrit
+          # noir sur blanc « statut Proposé, demande ta ratification avant toute implémentation »,
+          # a été fusionnée SOIXANTE-TROIS SECONDES après sa création. L'avertissement posé dans
+          # le corps de la PR (« ne la laisse pas se merger, pose do-not-merge ») est arrivé après
+          # la course : le seul frein d'alors était opt-in, et il se posait à la main, après coup.
+          #
+          # Un frein qui demande un geste plus rapide que l'automatisation n'est pas un frein.
+          # Le brouillon, lui, se pose À LA CRÉATION de la PR, par celui qui l'ouvre.
+          #
+          # ÉCHEC FERMÉ : si la lecture échoue à bout d'essais, la variable est vide, la
+          # comparaison est vraie, et on REFUSE de merger. On ne fusionne jamais sans avoir pu
+          # vérifier — même politique que le contrôle de fork ci-dessus.
+          brouillon="$(avec_retry gh pr view "$number" --repo "$REPO" --json isDraft --jq .isDraft)"
+          if [ "$brouillon" != "false" ]; then
+            echo "PR #$number est en BROUILLON (isDraft=$brouillon) → auto-merge REFUSÉ."
+            exit 0
+          fi
 
           # Merge en squash + suppression de la branche. Un essai raté peut avoir RÉUSSI côté
           # serveur (réponse perdue) : on juge par l'ÉTAT RÉEL de la PR, jamais par le seul code
