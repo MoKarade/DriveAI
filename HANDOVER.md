@@ -5,11 +5,16 @@
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
 > **🎯 DERNIER CHANTIER — C28-49 PR4 « Valider `_Doublons` par empreinte » (ADR-0047).**
-> **#308 MERGÉE** (`294b270`) et `deploy.yml` vert à **16:21 EDT**. ⚠️ **Prise d'effet PAS ENCORE
-> VÉRIFIÉE** — le dernier tick observé (16:14) PRÉCÈDE le déploiement, donc l'absence de la ligne
-> Santé « Doublons (validation par empreinte) » ne prouve rien dans un sens ni dans l'autre. Le
-> signal à chercher, et le SEUL qui compte (piège 3, un déploiement vert ne prouve rien) : cette
-> ligne dans l'onglet Santé, et l'onglet `RapportDoublons` qui se remplit.
+> **#308 MERGÉE** (`294b270`), déployée, et **PRISE D'EFFET VÉRIFIÉE** par signal indépendant :
+> la ligne Santé « Doublons (validation par empreinte) » existe et **progresse** — au 21/08 08:51,
+> « balayage du Drive **2/2** — 1076 écartés inventoriés, 1054 déjà confirmés ». Le **1076**
+> recoupe EXACTEMENT le comptage Drive fait à la main avant la livraison.
+> ⚠️ **La campagne n'a PAS prononcé son verdict.** `ligneSanteDoublons_` affiche `passes + 1` :
+> « 2/2 » veut dire *une* passe complète faite, la seconde EN COURS. Le mot « ORPHELINS » n'apparaît
+> qu'en phase `PHASE_DOUBLONS_FINI` (« terminée ✅ … X confirmés, Y ORPHELINS, Z indéterminés »), et
+> le code EXIGE deux passes complètes avant d'accorder le moindre orphelin — `files.list` étant
+> paginé, une passe seule prononcerait sur une preuve d'absence trouée. Donc : **au plus 22
+> candidats, aucun orphelin établi à ce jour.**
 > **Ce que l'inventaire EXHAUSTIF du 2026-08-20 a montré :
 > `_Doublons` contient 1 076 fichiers, et certains sont le SEUL exemplaire de leur contenu** —
 > les 3 passeports de Marc y sont, de tailles DIFFÉRENTES (donc pas copies l'un de l'autre) ;
@@ -69,13 +74,36 @@
 > permis) sera lu par l'OCR puis envoyé à l'API Anthropic pour classement. Ils étaient hors
 > arborescence, donc jamais lus jusqu'ici. C'est le transit qu'ADR-0007 assume pour tout document —
 > mais tu as choisi une destination, pas un moyen, alors autant que ce soit dit.
-> ⚠️ Elle doit être **DÉPLOYÉE** pour exister dans ton éditeur (piège 3) — vérifier que le run
-> `deploy.yml` du merge est vert avant de chercher la fonction.
+> ✅ **DÉPLOYÉE** — #311 mergée (`e45788d`) et `deploy.yml` vert le 21/08 à 12:56 UTC, vérifié sur
+> trois signaux : `src/DocumentsID.gs` figure NOMMÉMENT dans les 42 fichiers poussés ; la web app
+> est redéployée `@113` ; et le champ `version` rendu par `assurer-trigger` (`5min|t5`) — qui
+> n'existe QUE dans une version connaissant l'action — prouve que `/exec` sert le nouveau code et
+> non l'ancien (piège 4). Ouvrir l'éditeur est par ailleurs le remède exact au piège 3.
 > Pourquoi manuelle plutôt qu'automatique : le registre de suivi est SATURÉ (aucune 43ᵉ étape de
 > tick possible) et l'enveloppe runtime est à 63/65 min/j. Une campagne de tick pour 15 fichiers
-> one-shot consommerait les deux ressources les plus rares du moteur pour un travail qui tient en
-> une exécution.
+> one-shot consommerait les deux ressources les plus rares du moteur — pour un travail qui tient en
+> deux ou trois clics.
 >
+> **⚠️ MESURE DU 21/08 — le plafond de 40 $ arrêtera c26-08 AVANT la fin, à ~74 documents du but.**
+> Le plafond a été porté à 40 $ le 20/08 (§1.6) sur un coût unitaire **mesuré alors à 0,0261 $/doc**.
+> Ce coût est aujourd'hui de **0,0361 $/doc — +38 %**. Trois routes indépendantes, dont un contrôle
+> croisé exact :
+> - ventilation : 6,52557 $ / (362 appels ÷ 2 par doc) = **0,0361 $/doc** ;
+> - delta du mois : (17,27 − 10,70) $ / 181 docs = **0,0363 $/doc** ;
+> - **recoupement** : le compteur d'APPELS (362 ÷ 2 = 181) et le compteur de PROGRESSION
+>   (503 − 322 = 181) donnent le même nombre de documents. C'est ce qui valide l'hypothèse
+>   « 2 appels par document » sur laquelle repose le calcul, et exclut les retries.
+>
+> Conséquence arithmétique : 40 − 17,27 = 22,73 $ de marge ⇒ **630 documents finançables** ⇒ le frein
+> tombe à **1 133 / 1 207**, soit **74 documents avant la fin**. Finir les 704 restants demanderait
+> **25,38 $**, donc un plafond d'environ **43 $**.
+> ⚠️ Et l'app continuera d'afficher « ~7 j · vers le 27/08 » : une projection extrapole le PASSÉ et
+> ne peut pas connaître un blocage FUTUR (leçon C28-47). Le garde ne supprime la projection que
+> lorsque le statut est DÉJÀ `suspendu|en pause`. La campagne s'arrêtera donc un ou deux jours avant
+> la date affichée, et « en pause » se lira comme un état normal.
+> **Décision de Marc** (le plafond vit dans `Config.gs`, §1.6) : relever à ~43 $ pour finir c26-08,
+> ou laisser le frein faire son office et terminer en septembre. Rien n'a été touché.
+
 > **➜ CHANTIER — C28-73, drainage de `Documents ID` (ADR-0048).** Décisions de Marc du
 > 20/08 obtenues (4 questions). Le fait qui commande la conception, mesuré AVANT tout code : les 15
 > noms hérités ne sont pas canoniques, donc `cheminCibleConsolidation_` les cible à la **racine de
@@ -84,10 +112,12 @@
 > (renommage + classement), avec `ignorerDoublon: true` obligatoire. ~0,39 $. `NAS` se livre en même
 > temps, des DEUX côtés (types + table).
 >
-> **Orphelins de `_Doublons` : Marc a choisi « tout rapatrier, quel que soit le prix ».** Le compte
-> réel change l'ordre de grandeur — au dernier relevé, **1 076 inventoriés, 1 054 déjà confirmés**,
-> donc **au plus 22 candidats**, soit moins d'un euro, pas les 28 $ annoncés. Attendre la clôture
-> (deux passes) avant d'agir.
+> **`_Doublons` : Marc a choisi « tout rapatrier, quel que soit le prix ».** Le compte réel change
+> l'ordre de grandeur — **1 076 inventoriés, 1 054 confirmés**, donc **au plus 22 candidats**, soit
+> moins d'un euro et non les 28 $ annoncés. ⚠️ **« Candidats », pas « orphelins »** : la campagne en
+> est à sa 2ᵉ passe et n'a rien prononcé (cf. plus haut). Ne pas chiffrer le rapatriement sur 22
+> avant de lire la ligne « terminée ✅ » — c'est exactement la faute que §1.6 documente (« ne pas
+> déclarer une campagne finie sans lire son compteur »).
 
 > **🎯 CHANTIER PRÉCÉDENT — C28-62 « Affinage des non-appariés » (ADR-0044) : TERMINÉ.**
 > Les 4 PR sont mergées (#300, #304, #305) et **#307** (C28-65) l'est aussi, déployé à 15:32 EDT.
