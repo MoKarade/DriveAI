@@ -5,14 +5,30 @@
   "framework": null,
   "installCommand": "true",
   "functions": {
-    "api/hub/summary.ts": { "maxDuration": 20 },
-    "api/mcp/index.ts": { "maxDuration": 90 }
+    "api/hub/summary.ts": {
+      "maxDuration": 20
+    },
+    "api/mcp/index.ts": {
+      "maxDuration": 90
+    }
   },
   "rewrites": [
-    { "source": "/.well-known/oauth-authorization-server", "destination": "/api/mcp/meta?type=as" },
-    { "source": "/.well-known/oauth-authorization-server/:suffixe*", "destination": "/api/mcp/meta?type=as" },
-    { "source": "/.well-known/oauth-protected-resource", "destination": "/api/mcp/meta?type=pr" },
-    { "source": "/.well-known/oauth-protected-resource/:suffixe*", "destination": "/api/mcp/meta?type=pr" }
+    {
+      "source": "/.well-known/oauth-authorization-server",
+      "destination": "/api/mcp/meta?type=as"
+    },
+    {
+      "source": "/.well-known/oauth-authorization-server/:suffixe*",
+      "destination": "/api/mcp/meta?type=as"
+    },
+    {
+      "source": "/.well-known/oauth-protected-resource",
+      "destination": "/api/mcp/meta?type=pr"
+    },
+    {
+      "source": "/.well-known/oauth-protected-resource/:suffixe*",
+      "destination": "/api/mcp/meta?type=pr"
+    }
   ],
   "headers": [
     {
@@ -26,14 +42,24 @@
           "key": "Strict-Transport-Security",
           "value": "max-age=31536000; includeSubDomains"
         },
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "DENY" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
         {
           "key": "Permissions-Policy",
           "value": "camera=(), microphone=(), geolocation=()"
         }
       ]
     }
-  ]
+  ],
+  "ignoreCommand": "bash scripts/build-necessaire.sh"
 }
