@@ -716,7 +716,9 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
   dangereux (la peinture rouge, elle, exige la vacuité stricte).
 
 - 🟦 **C28-73 — Drainer `Documents ID` (15 fichiers) PAR LE PIPELINE, + le type `NAS` (ADR-0048).**
-  **LIVRÉ** (`src/DocumentsID.gs`) — reste le clic de Marc : `DocumentsID.gs` → `drainerDocumentsID`.
+  **LIVRÉ ET DÉPLOYÉ** (#311 `e45788d`, `deploy.yml` vert le 21/08 12:56 UTC — `src/DocumentsID.gs`
+  nommément dans les 42 fichiers poussés, web app `@113`, `version` confirmée `5min|t5`). Reste le
+  clic de Marc : `DocumentsID.gs` → `drainerDocumentsID`, 2 ou 3 fois jusqu'à « TERMINÉ ».
   Décision de Marc du 20/08 : « tout drainer vers `Pièces d'identité` ». ⚠️ **Un simple `moveTo` serait
   DÉFAIT** : aucun des 15 noms n'est au format canonique, donc `cheminCibleConsolidation_` les cible à
   la RACINE de `01` — la consolidation (active, récursive) viderait les passeports à plat dès le tick
@@ -725,6 +727,19 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
   (deux fichiers ont un contenu déjà à l'Index — sans le bypass ils partiraient dans `_Doublons`).
   ~0,39 $ one-shot. `NAS` se livre dans le MÊME commit côté `TYPES_IDENTITE` (Router) **et** côté
   table (`cheminCibleReset_`, branche 01) : sans les deux, un NAS canoniquement nommé irait au repli.
+
+- ⬜ **C28-74 — Une estimation de fin doit connaître le PLAFOND BUDGÉTAIRE, pas seulement le débit.**
+  Mesuré le 21/08 : c26-08 affiche « reste 704 documents · ~7 j · vers le 27/08 » alors que le frein
+  à 40 $ l'arrêtera à **1 133 / 1 207**, ~74 documents et un ou deux jours AVANT cette date. Le garde
+  existant ne supprime la projection que si le statut est DÉJÀ `suspendu|en pause` — il ne peut pas
+  voir un blocage FUTUR (c'est exactement le cas C28-47, vu de l'autre bout : là c'était un gel connu
+  d'avance, ici un plafond dont la date de rencontre est CALCULABLE).
+  Ce qui est calculable doit être dit : `(plafond − dépensé) ÷ coût unitaire mesuré` donne le nombre
+  de documents finançables ; s'il est inférieur au reste, afficher « le frein tombera à X/Y » au lieu
+  d'une date que la campagne n'atteindra pas. Le coût unitaire est déjà là (ventilation C28-58).
+  ⚠️ Poser aussi la question du **coût unitaire qui DÉRIVE** : 0,0261 → 0,0361 $/doc en un jour
+  (+38 %), donc un plafond dimensionné une fois se périme. Une projection qui relit le coût MESURÉ
+  ne se périme pas.
 
 - ⬜ **C28-69 — `_Médias` : trois rétrogradations qui démentent la promesse de C20-01.** Constaté en
   listant `_Médias` en ENTIER (1 308 fichiers) le 2026-08-20. C20-01 promet « exception zone
