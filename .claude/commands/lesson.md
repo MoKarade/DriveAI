@@ -16,7 +16,7 @@ Consigne la leçon suivante : **$ARGUMENTS**
 
 2. Décide si c'est une **règle durable** (elle change la façon de coder à l'avenir :
    convention, piège de quota, format de prompt, garde-fou). Si **oui**, ajoute une puce
-   concise à la section « 7. Leçons apprises (règles durables) » de `CLAUDE.md`.
+   concise à la section « 9. Leçons apprises (règles durables) » de `CLAUDE.md`.
    Si **non**, laisse-la seulement dans `LESSONS.md`.
 
 3. Garde `CLAUDE.md` court : reformule la règle en une phrase actionnable, ne copie pas tout le
