@@ -822,6 +822,27 @@ var CONFIG = {
                                           // reprendre sur plusieurs ticks) — compté dans l'enveloppe
                                           // reset-OFF (orchestration.test.js).
 
+  // ---------- DRAINAGE de `Documents ID` (C28-73, ADR-0048 — décision Marc 2026-08-20) ----------
+  // Structure créée à la main en 2023, HORS arborescence DriveAI, qui double partiellement
+  // `01 · Administratif & identité/Pièces d'identité` : 15 fichiers dont les 2 NAS et 4 passeports.
+  // Périmètre par IDENTITÉ (IDs fixes), jamais par nom : cette campagne RENOMME et DÉPLACE, se
+  // tromper de périmètre n'y est pas rattrapable d'un clic. Vider la liste = campagne inerte.
+  DOCUMENTS_ID: {
+    tag: 'd1',                                          // bump = re-drainage complet
+    maxParRun: 30,                                      // plafond d'items par run — toutes les campagnes
+                                                        // voisines en ont un (MIGRATION_MAX_PAR_RUN,
+                                                        // RESET_LLM_MAX_PAR_RUN…). 15 fichiers réels,
+                                                        // mais rien n'empêche Marc d'en déposer 500.
+    racine: '1jMWgQCUi8slttOutsMc6TUgFyXw6ShwX',        // `Documents ID` (fiche d'état civil à sa racine)
+    sousDossiers: [
+      '1jT6_EQh_emzh6WNRTXpJlrfbz9el2cj-',              // Carte ID (3)
+      '1jaCPsdxczHLPxnRkzM5NiEKzpFKEpJLw',              // NAS (2)
+      '1jWLgzurmSCWNQ197Y_8A_l4Eq5Y6oNa_',              // Passeport (4)
+      '1jZ6rWCxph1WZRggh5-eyeyuJ335CgOnN',              // Carte vitale (1)
+      '1UdLx7VQd8W1E2WFtgxnCtNPQQMlUtMkN',              // Permis (4)
+    ],
+  },
+
   // ---------- VALIDATION de `_Doublons` par empreinte (C28-49 PR4, ADR-0047) ----------
   // Campagne STRICTEMENT lecture seule : aucun moveTo, aucun renommage, aucun appel LLM. Elle
   // re-pose la question que `estDoublon_` ne pose pas — « un exemplaire est-il ENCORE classé ? » —

@@ -151,6 +151,12 @@ const CONTRAT = [
   'ecrireVerdictsDoublons_', 'feuilleRapportDoublons_', 'texteSanteDoublons_', 'pageListeDrive_',
   'estExemplaireSurvivant_', 'verdictClotureDoublon_', 'urlListeDrive_', 'bilanDoublons_',
   'idDoublonsSansCreer_', 'estJetonPaginationRefuse_',
+  // Drainage de `Documents ID` (C28-73, ADR-0048) — DocumentsID.gs, un-clic manuel (aucun budget de
+  // tick) ; `traiterDocument_` + `deplacerEtRenommer_`/`renommer_` sont les appels inter-modules.
+  'drainerDocumentsID', 'drainerUnFichierDocumentsID_', 'dossiersDrainageDocumentsID_',
+  'estDrainableDocumentsID_', 'bilanDrainageDocumentsID_', 'cleDrainageDocumentsID_',
+  'collecterDrainageDocumentsID_', 'finDrainageDocumentsID_',
+  'estPossedeParMarcDocumentsID_',
   'ligneSanteDoublons_', 'budgetJourDoublons_',
   // Suivi GÉNÉRIQUE des opérations du tick (C28-44, ADR-0038) — Suivi.gs : wrapper appelé par
   // Main.gs (PR2), vue fusionnée lue par Journal.gs/majProgressions_ (PR3), flush au finally.

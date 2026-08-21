@@ -74,7 +74,7 @@ var PROMPT_PASSE1 =
   '{\n' +
   '  "estNonDocument": <bool — export de données / capture sans texte / fichier système, PAS un document à classer>,\n' +
   '  "routageHorsDomaine": <"_Technique" | "_Médias" | null — seulement si estNonDocument>,\n' +
-  '  "estDocumentIdentite": <bool — pièce d\'identité (passeport, permis, acte, carte)>,\n' +
+  '  "estDocumentIdentite": <bool — pièce d\'identité (passeport, permis, acte, carte, NAS/numéro d\'assurance sociale)>,\n' +
   '  "sousDossierType": <type d\'identité si estDocumentIdentite ("Passeport", "Permis de conduire"…), sinon null>,\n' +
   '  "titulaire": <personne concernée par la pièce d\'identité (Marc OU un proche), sinon null>,\n' +
   '  "domaine": <un des domaines autorisés, EXACTEMENT>,\n' +

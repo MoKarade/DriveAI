@@ -751,7 +751,12 @@ function nomParType_(date, type, emetteur, ext) {
 // Types d'identité CANONIQUES : un même type (variantes du LLM incluses) tombe dans le MÊME dossier,
 // que le titulaire soit Marc ou un proche.
 var TYPES_IDENTITE = ['Passeport', 'Carte d’identité', 'Permis de conduire', 'Acte de naissance',
-  'Acte de mariage', 'Certificat de citoyenneté', 'Carte d’assurance maladie', 'Carte de résident permanent'];
+  'Acte de mariage', 'Certificat de citoyenneté', 'Carte d’assurance maladie', 'Carte de résident permanent',
+  // NAS (ADR-0048) : le document le plus sensible du Drive, et il n'était nommé nulle part — donc
+  // classé comme un papier administratif quelconque. Ajouté ICI **et** dans la table
+  // (`cheminCibleReset_`, branche 01) dans le MÊME commit : le type seul enverrait un NAS
+  // canoniquement nommé au repli, puisque c'est la TABLE qui décide de la cible depuis ADR-0033.
+  'Numéro d’assurance sociale'];
 
 /** Ramène un type d'identité à sa forme canonique (dossier partagé). Type inconnu → nettoyé, jamais rejeté. PUR. */
 function normaliserTypeIdentite_(sousDossierType) {
@@ -766,6 +771,12 @@ function normaliserTypeIdentite_(sousDossierType) {
   if (k.indexOf('assurance maladie') !== -1 || k.indexOf('ramq') !== -1 || k.indexOf('carte soleil') !== -1) return 'Carte d’assurance maladie';
   if (k.indexOf('resident permanent') !== -1 || k.indexOf('residence permanente') !== -1 || k.indexOf('permanent resident') !== -1) return 'Carte de résident permanent';
   if (k.indexOf('carte d identite') !== -1 || k.indexOf('carte identite') !== -1 || k === 'cni' || k.indexOf('identity card') !== -1) return 'Carte d’identité';
+  // Graphies réelles rencontrées dans `Documents ID` : « NAS », « NAS_JUILLET2025 ». `nas` est testé
+  // en MOT ENTIER (jamais en sous-chaîne) — sinon « naissance » et « Thomas » matcheraient.
+  if (k.indexOf('assurance sociale') !== -1 || k.indexOf('social insurance') !== -1 ||
+      /(^|[^a-z])nas([^a-z]|$)/.test(k) || /(^|[^a-z])sin([^a-z]|$)/.test(k)) {
+    return 'Numéro d’assurance sociale';
+  }
   return casseTitreEntite_(String(sousDossierType == null ? '' : sousDossierType).replace(/\s+/g, ' ').trim());
 }
 
