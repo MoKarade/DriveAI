@@ -29,7 +29,7 @@ jobs:
       # variante locale en silence : c'est le mode de panne que ce pas rend bruyant.
       # Pour la faire évoluer : modifier la SOURCE, propager, mettre à jour cette empreinte.
       - name: La convention de compte-rendu n'a pas dérivé
-        run: echo "dded2ce92eee0e8e0e61aac58d8510488437bab114f35f26aa1c0bdb9602959b  docs/COMPTE-RENDU.md" | sha256sum -c -
+        run: echo "97e36acba8770c9614b6295773267b9690d07bc5bcd130b3bc0d03da996ab62b  docs/COMPTE-RENDU.md" | sha256sum -c -
 
       - name: JSON parseable
         run: |
