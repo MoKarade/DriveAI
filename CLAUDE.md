@@ -1031,16 +1031,25 @@ ce qui reste vrai d'une session à l'autre.
   contournement en est un, sinon il se relit comme une préférence d'architecture et personne ne
   remonte à la cause (C28-58 avait déjà buté dessus sans le nommer).
 
-## 10. Style
+## 10. Style et compte-rendu
 
-Hérité du `CLAUDE.md` global de Marc (`claude-config`) : réponses, commits et docs **en
-français** ; TypeScript strict côté app, pas de `any` silencieux ; nommage clair plutôt que
-commentaires verbeux ; **erreurs honnêtes** — ne pas avaler une panne, ne pas ajouter un
-`try/catch` qui cache un vrai bug (le broker distingue `null`, `throw` et données réelles pour
-exactement cette raison, §7).
+> 📣 Forme des comptes-rendus, des commits, des PR et des docs générées :
+> [convention commune aux neuf dépôts](https://github.com/MoKarade/claude-config/blob/main/conventions/COMPTE-RENDU.md).
+> Elle régit **la forme** ; ce fichier garde **le contenu métier**. Sur la forme, c'est la
+> convention qui gagne ; sur le métier, c'est ce fichier.
 
-Pas d'emojis dans les réponses sauf demande explicite. Les statuts du backlog (⬜ 🟦 ✅ ⏸️) et les
-⚠️ des garde-fous sont des marqueurs de document, pas du décorum.
+@docs/COMPTE-RENDU.md
+
+⚠️ **Pourquoi une COPIE et pas seulement un lien.** Un `CLAUDE.md` ne charge rien hors de son
+propre arbre : le lien ci-dessus est lisible par un humain, il n'arrive jamais dans la session.
+C'est exactement le mode de panne du 20/08/2026 — les règles de cadrage écrites dans un
+`~/.claude/CLAUDE.md` local ne descendaient nulle part, et Marc constatait « je ne vois pas la
+différence » alors que rien n'était jamais arrivé. `docs/COMPTE-RENDU.md` est donc une copie
+**synchronisée**, importée ci-dessus, et la CI échoue si elle a dérivé de la source.
+
+Pour changer la convention : la changer dans `claude-config`, propager les huit copies, mettre
+à jour les huit empreintes. La friction est le garde-fou — une copie qu'on peut modifier sur
+place redevient huit conventions différentes en trois mois.
 
 ## 11. Protocole de précision (toute modif de Router.gs / Llm.gs / logique de tri)
 
