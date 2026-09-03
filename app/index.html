@@ -12,6 +12,11 @@
     />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icone.svg" type="image/svg+xml" />
+    <!-- iOS ignore le manifeste pour l'icône d'accueil : il lui faut celle-ci, OPAQUE
+         (Safari ne gère pas la transparence et la remplacerait par du noir). -->
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="DriveAI" />
     <meta name="theme-color" content="#131314" />
     <title>DriveAI</title>
   </head>
