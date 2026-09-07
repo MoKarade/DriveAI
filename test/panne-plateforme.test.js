@@ -306,7 +306,7 @@ test('notifierEchec_ : JAMAIS de mail immédiat (décision Marc 2026-07-06) — 
   assert.deepStrictEqual(sans.calls.mails, []);
 });
 
-test('emailAlerte_ reste utilisée par le RÉSUMÉ HEBDO (seul mail restant du moteur)', () => {
+test('emailAlerte_ reste lisible (le résumé hebdo l\'utilise — envoi coupé par CONFIG.MAILS_ACTIFS, C28-75)', () => {
   const { c } = ctxAlerte({ DriveAI_EMAIL: 'marc@exemple.com' }, false);
   assert.strictEqual(c.emailAlerte_(), 'marc@exemple.com');
 });

@@ -185,6 +185,19 @@ function alerterChienDeGarde_(dernierTick, err) {
  */
 function assurerTriggerResume_() {
   var triggers = ScriptApp.getProjectTriggers();
+  // C28-75 (décision Marc 2026-09-07) : mails coupés ⇒ le déclencheur est RETIRÉ s'il existe, et
+  // jamais recréé. C'est la moitié qui compte : sans elle, « ne plus créer » laissait partir le
+  // déclencheur déjà posé chaque lundi — et Marc ne pouvait pas le supprimer à la main, ce tick le
+  // réinstallait. Idempotent : zéro écriture si rien à retirer.
+  if (!CONFIG.MAILS_ACTIFS) {
+    for (var k = 0; k < triggers.length; k++) {
+      if (triggers[k].getHandlerFunction() === 'resumeHebdo') {
+        ScriptApp.deleteTrigger(triggers[k]);
+        journalInfo_('Setup', 'Déclencheur du résumé hebdo RETIRÉ (mails désactivés, CONFIG.MAILS_ACTIFS).');
+      }
+    }
+    return;
+  }
   for (var i = 0; i < triggers.length; i++) {
     if (triggers[i].getHandlerFunction() === 'resumeHebdo') return; // déjà installé
   }

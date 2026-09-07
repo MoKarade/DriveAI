@@ -742,8 +742,15 @@ function finaliserPasseBoite_(props, offset) {
  * @return {boolean}
  */
 function intentionsSuspendues_() {
+  // ADR-0049 (C28-76) — `estPanneConfigApi_` N'EST PLUS ici, et c'est voulu : une panne de CONFIG
+  // (Tasks/Calendar, jeton hubperso) ne suspend plus que la CRÉATION ; l'ANALYSE tourne et la clé
+  // que le tri attend (`intention|`, ou `analyse|` pour un différé) ARRIVE. La suspension totale qui
+  // justifiait le mode dégradé gelait l'archivage de la boîte à chaque panne d'agenda (six jours en
+  // septembre 2026). `estPanneGmail_` : quota épuisé, le tri ne tourne pas non plus. Reste
+  // `estPannePlateforme_` : sans compte LLM, le mini-check ne peut pas rendre `important` — mais
+  // `Main.gs` saute alors l'étape tri entière ; ce terme est de la défense en profondeur (ADR-0043).
   try {
-    return !!(estPanneConfigApi_() || estPannePlateforme_());
+    return !!estPannePlateforme_();
   } catch (e) {
     return false; // état illisible : on garde le comportement nominal (on attend)
   }
@@ -831,7 +838,8 @@ function trierFil_(fil, candidats, libelles, verifierBoite) {
     // Dans les deux cas le ⏰ déjà posé reste honoré via `dejaPoses`, et les gardes suspect/zone
     // protégée s'appliquent au vif comme pour tout fil.
     var analyseIndisponible = false;
-    if (!indexContient_('intention|' + dernierId)) {
+    // ADR-0049 : `analyse|` (analysé, création différée) vaut verdict — `important|` est posé.
+    if (!indexContient_('intention|' + dernierId) && !indexContient_('analyse|' + dernierId)) {
       if (estHorsFenetreIntentions_(Number(ts), Date.now())) {
         analyseIndisponible = false; // cas (a) : absence DÉFINITIVE et connue — tri complet
       } else if (intentionsSuspendues_()) {

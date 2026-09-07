@@ -105,6 +105,13 @@ var CONFIG = {
   // campagne, pas en la déclarant finie (c'est l'erreur du 01/08 documentée juste au-dessus).
   // Le régime de croisière reste < 10 $/mois ; 40 est un plafond de rattrapage, pas une cible.
   LLM_BUDGET_CAMPAGNES: 40,
+  // C28-75 (décision Marc 2026-09-07) : plus AUCUN mail du moteur. Le résumé hebdo était le seul
+  // envoi restant (les alertes de panne sont muettes depuis le 2026-07-06, `notifierEchec_`). À
+  // `false`, `resumeHebdo` n'envoie rien ET `assurerTriggerResume_` SUPPRIME le déclencheur
+  // existant — sans cette seconde moitié, un déclencheur déjà posé continuerait de partir chaque
+  // lundi, et le tick le réinstallait de toute façon (Main.gs). Le calcul du résumé reste
+  // disponible dans l'app (onglet Santé / Progression) ; seul le MAIL disparaît.
+  MAILS_ACTIFS: false,
   // Résumé hebdomadaire automatique (mail récap à soi-même, scope script.send_mail existant).
   RESUME_JOUR: 'MONDAY',                  // jour du déclencheur hebdo (WeekDay Apps Script)
   RESUME_HEURE: 8,                        // heure locale d'envoi
@@ -192,6 +199,11 @@ var CONFIG = {
   // démarre avant `jetonHubperso_()`) : un refresh lent abandonne la passe AVANT le 1er GET de sonde
   // — sans perte, le token refreshé est déjà persisté et la sonde suivante est servie du cache.
   PANNE_CONFIG_SONDE_MAX_MS: 20 * 1000,
+  // C28-77 : durée au-delà de laquelle une SÉRIE d'échecs identiques du refresh OAuth hubperso cesse
+  // d'être annoncée « momentanée » dans Santé (vécu 02-07/09/2026 : six jours de « échec transitoire »
+  // pendant que la boîte n'était plus archivée). 24 h : une sonde toutes les 13 min laisse ~110 essais,
+  // aucun blip Google ne dure autant. Au-delà, Santé donne la RAISON (code OAuth) et la consigne.
+  HUBPERSO_ECHEC_DURABLE_MS: 24 * 60 * 60 * 1000,
   // Panne API DURABLE (C28-12, plan NotebookLM P5) : une panne plateforme d'une AUTRE signature
   // que crédit/clé (529 « overloaded » Anthropic prolongé, 429 persistant, 5xx) doit finir par
   // déclencher la MÊME suspension que la panne de compte — sinon chaque document brûle ses essais
@@ -299,7 +311,7 @@ var CONFIG = {
   RESUME_SUSPECTS_MAX: 10,                // « ⚠️ Suspects » listés au résumé hebdo (en tête)
   RESUME_NEWSLETTERS_MAX: 10,             // « newsletters jamais ouvertes » listées au résumé
   TRI_NEWSLETTERS_SEUIL: 3,               // n fils promo non lus (30 j) pour qualifier un expéditeur
-  INTENTIONS_MAX_PAR_RUN: 200,            // plafond de messages ANALYSÉS (pré-filtre inclus) par run
+  INTENTIONS_MAX_PAR_RUN: 200,            // plafond de messages INÉDITS analysés (pré-filtre inclus) par run — un déjà-vu ne compte pas (ADR-0049)
   CREATIONS_MAX_PAR_RUN: 30,              // plafond de tâches/événements CRÉÉS par run (pas de rafale)
   LLM_MAX_TOKENS_MINICHECK: 24,           // mini-check JSON {action, important} (expéditeur+sujet seuls)
   LLM_MAX_TOKENS_INTENTIONS: 500,

@@ -210,6 +210,85 @@ test('jetonHubperso_ : échec TRANSITOIRE (5xx, réseau) → null sans RIEN dét
   assert.strictEqual(reseau.store.DriveAI_HUBPERSO_REFRESH, 'rt-1');
 });
 
+/* ---------- C28-77 : une série d'échecs « transitoires » qui DURE doit le dire, avec sa raison ---------- */
+
+test('analyserReponseJetonHubperso_ : un échec non-révocation porte sa RAISON (code OAuth, sinon code HTTP)', () => {
+  const { c } = ctxHubperso({});
+  const f = c.analyserReponseJetonHubperso_;
+  assert.strictEqual(f(400, JSON.stringify({ error: 'invalid_client' }), 0).raison, 'invalid_client');
+  assert.strictEqual(f(500, 'Internal Server Error', 0).raison, 'HTTP 500');
+  assert.strictEqual(f(200, JSON.stringify({}), 0).raison, 'HTTP 200'); // 200 sans jeton : illisible
+  // Bornée : un `error` fantaisiste de 500 caractères ne remplit pas la Property.
+  assert.ok(f(400, JSON.stringify({ error: 'x'.repeat(500) }), 0).raison.length <= 40);
+});
+
+test('memoriserEchecJetonHubperso_ / echecJetonHubperso_ : le TS du PREMIER échec tient, la raison suit le dernier', () => {
+  const { c, store } = ctxHubperso({});
+  const props = c.PropertiesService.getScriptProperties();
+  c.memoriserEchecJetonHubperso_(props, 'HTTP 500', 1000);
+  c.memoriserEchecJetonHubperso_(props, 'invalid_client', 5000);
+  const e = c.echecJetonHubperso_(store.DriveAI_HUBPERSO_ECHEC);
+  assert.strictEqual(e.depuisMs, 1000, 'sinon une série de 6 jours se lirait comme un échec d\'il y a 5 minutes');
+  assert.strictEqual(e.raison, 'invalid_client', 'la raison la plus récente est la plus utile');
+  // Séparateur et sauts de ligne neutralisés (la Property est « ts|raison ») ; illisible → null.
+  c.memoriserEchecJetonHubperso_(props, 'a|b\nc', 6000);
+  assert.strictEqual(c.echecJetonHubperso_(store.DriveAI_HUBPERSO_ECHEC).raison, 'a b c');
+  assert.strictEqual(c.echecJetonHubperso_(''), null);
+  assert.strictEqual(c.echecJetonHubperso_('abc|x'), null);
+  assert.strictEqual(c.echecJetonHubperso_(null), null);
+});
+
+test('texteEchecJetonHubperso_ (PURE) : « momentanément » sous le seuil, « EN ÉCHEC depuis … (raison) » au-delà — bornes DÉRIVÉES de la constante', () => {
+  const { c } = ctxHubperso({});
+  const seuil = c.CONFIG.HUBPERSO_ECHEC_DURABLE_MS;
+  const f = c.texteEchecJetonHubperso_;
+  assert.ok(f(null, 0, seuil).includes('momentanément'), 'aucune série : blip');
+  const court = f({ depuisMs: 0, raison: 'HTTP 500' }, seuil - 1, seuil);
+  assert.ok(court.includes('momentanément') && court.includes('HTTP 500'), 'sous le seuil : blip, raison jointe');
+  const long = f({ depuisMs: 0, raison: 'invalid_client' }, seuil + 1, seuil);
+  assert.ok(!long.includes('momentanément'), 'au-delà : on cesse de dire « momentanément »');
+  assert.ok(long.includes('EN ÉCHEC') && long.includes('invalid_client'), 'la vérité et sa raison : ' + long);
+  assert.ok(long.includes('lierCompteHubperso') && long.includes('CLIENT_SECRET'), 'et la consigne actionnable');
+  // Durée lisible : jours entiers, sinon heures.
+  const sixJours = f({ depuisMs: 0, raison: 'x' }, 6 * 24 * 3600 * 1000 + 1, seuil);
+  assert.ok(sixJours.includes('depuis 6 j'), sixJours);
+});
+
+test('jetonHubperso_ : un échec transitoire MÉMORISE la série (raison) ; un succès la CLÔT', () => {
+  const base = {
+    DriveAI_HUBPERSO_CLIENT_ID: 'id-1', DriveAI_HUBPERSO_CLIENT_SECRET: 'secret-1', DriveAI_HUBPERSO_REFRESH: 'rt-1',
+  };
+  const h = ctxHubperso(base, [{ code: 400, corps: JSON.stringify({ error: 'invalid_client' }) }]);
+  assert.strictEqual(h.c.jetonHubperso_(), null);
+  const e = h.c.echecJetonHubperso_(h.store.DriveAI_HUBPERSO_ECHEC);
+  assert.ok(e && e.raison === 'invalid_client', 'la raison est persistée : ' + JSON.stringify(e));
+  assert.strictEqual(h.store.DriveAI_HUBPERSO_REFRESH, 'rt-1', 'et le refresh token n\'est PAS détruit');
+
+  const ok = ctxHubperso(Object.assign({ DriveAI_HUBPERSO_ECHEC: '1000|HTTP 500' }, base),
+    [{ code: 200, corps: JSON.stringify({ access_token: 'at', expires_in: 3600 }) }]);
+  assert.strictEqual(ok.c.jetonHubperso_(), 'at');
+  assert.ok(!('DriveAI_HUBPERSO_ECHEC' in ok.store), 'série close au premier succès');
+});
+
+test('messageJetonHubpersoIndisponible_ : après 6 jours d\'échecs identiques, Santé dit la VÉRITÉ (plus « momentanément »)', () => {
+  // Vécu 02-07/09/2026 : six jours de « échec transitoire du refresh OAuth » pendant que la boîte
+  // n'était plus archivée — un message qui, à force d'être vrai localement, mentait globalement.
+  const base = {
+    DriveAI_HUBPERSO_CLIENT_ID: 'id-1', DriveAI_HUBPERSO_CLIENT_SECRET: 'secret-1', DriveAI_HUBPERSO_REFRESH: 'rt-1',
+  };
+  const sixJours = Date.now() - 6 * 24 * 3600 * 1000;
+  const durable = ctxHubperso(Object.assign({ DriveAI_HUBPERSO_ECHEC: sixJours + '|invalid_client' }, base));
+  const m = durable.c.messageJetonHubpersoIndisponible_();
+  assert.ok(m.includes('EN ÉCHEC depuis 6 j') && m.includes('invalid_client'), m);
+  assert.ok(!m.includes('momentanément'), m);
+
+  const recent = ctxHubperso(Object.assign({ DriveAI_HUBPERSO_ECHEC: (Date.now() - 60000) + '|HTTP 503' }, base));
+  assert.ok(recent.c.messageJetonHubpersoIndisponible_().includes('momentanément'), 'une minute : blip');
+  // Creds ABSENTES : la consigne « re-lier » prime, quelle que soit la série.
+  const vide = ctxHubperso({ DriveAI_HUBPERSO_ECHEC: sixJours + '|invalid_client' });
+  assert.ok(vide.c.messageJetonHubpersoIndisponible_().includes('non lié'));
+});
+
 /* ---------- echangerCodeHubperso_ (callback de consentement) ---------- */
 
 const SCOPES_COMPLETS = 'https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/calendar.events';

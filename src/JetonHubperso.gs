@@ -90,10 +90,49 @@ function jetonHubperso_() {
     } catch (e) { }
     return null;
   }
-  if (!resultat.jeton) return null; // transitoire (5xx, réponse illisible) : échec fermé
+  if (!resultat.jeton) {
+    // Transitoire (5xx, réponse illisible, `invalid_client`…) : échec FERMÉ, rien détruit — mais
+    // MÉMORISÉ (C28-77) : « depuis quand » (horodatage du PREMIER échec de la série, jamais écrasé
+    // tant que la série dure) et « pourquoi » (la raison du DERNIER). C'est ce qui permet à
+    // `messageJetonHubpersoIndisponible_` de cesser de dire « momentanément » au-delà de
+    // `CONFIG.HUBPERSO_ECHEC_DURABLE_MS`. Écriture enveloppée : un blip Property ne change rien au verdict.
+    try { memoriserEchecJetonHubperso_(props, resultat.raison || 'inconnue', Date.now()); } catch (e) { }
+    return null;
+  }
 
-  try { props.setProperty('DriveAI_HUBPERSO_ACCES', resultat.expireMs + '|' + resultat.jeton); } catch (e) { }
+  try {
+    props.setProperty('DriveAI_HUBPERSO_ACCES', resultat.expireMs + '|' + resultat.jeton);
+    props.deleteProperty('DriveAI_HUBPERSO_ECHEC'); // la série d'échecs est close
+  } catch (e) { }
   return resultat.jeton;
+}
+
+/**
+ * Mémorise une série d'échecs de refresh : `DriveAI_HUBPERSO_ECHEC` = « <ts du 1er échec>|<raison du
+ * dernier> ». Le TS n'est posé qu'au premier échec (sinon une série de 6 jours se relirait comme un
+ * échec d'il y a 5 minutes) ; la raison, elle, suit le dernier constat. PURE sur `props`.
+ * @param {Properties} props
+ * @param {string} raison
+ * @param {number} maintenantMs
+ */
+function memoriserEchecJetonHubperso_(props, raison, maintenantMs) {
+  var brut = String(props.getProperty('DriveAI_HUBPERSO_ECHEC') || '');
+  var sep = brut.indexOf('|');
+  var depuis = sep > 0 ? Number(brut.slice(0, sep)) : 0;
+  if (!(depuis > 0) || depuis > maintenantMs) depuis = maintenantMs;
+  props.setProperty('DriveAI_HUBPERSO_ECHEC', depuis + '|' + String(raison).replace(/[|\n\r]/g, ' ').slice(0, 40));
+}
+
+/**
+ * Lit la série d'échecs mémorisée. PURE (testée). @return {?{depuisMs:number, raison:string}}
+ */
+function echecJetonHubperso_(brut) {
+  var texte = String(brut || '');
+  var sep = texte.indexOf('|');
+  if (sep <= 0) return null;
+  var depuis = Number(texte.slice(0, sep));
+  if (!(depuis > 0)) return null;
+  return { depuisMs: depuis, raison: texte.slice(sep + 1) || 'inconnue' };
 }
 
 /**
@@ -134,9 +173,37 @@ function etatLiaisonHubperso_() {
  * @return {string}
  */
 function messageJetonHubpersoIndisponible_() {
-  return etatLiaisonHubperso_() === 'absent'
-    ? 'compte hubperso non lié — exécuter lierCompteHubperso (docs/HUBPERSO.md)'
-    : 'jeton hubperso momentanément indisponible (échec transitoire du refresh OAuth)';
+  if (etatLiaisonHubperso_() === 'absent') {
+    return 'compte hubperso non lié — exécuter lierCompteHubperso (docs/HUBPERSO.md)';
+  }
+  // C28-77 : « momentanément » ne se dit QUE tant que la série d'échecs est courte. Au-delà de
+  // `HUBPERSO_ECHEC_DURABLE_MS`, un échec identique qui se répète n'est plus un blip, c'est une
+  // cause à lever — et la RAISON mémorisée (`invalid_client`, `HTTP 500`…) est ce qui distingue
+  // « secret changé côté hubperso » (geste de Marc) d'une vraie panne Google (attendre).
+  var echec = null;
+  try { echec = echecJetonHubperso_(PropertiesService.getScriptProperties().getProperty('DriveAI_HUBPERSO_ECHEC')); }
+  catch (e) { echec = null; }
+  return texteEchecJetonHubperso_(echec, Date.now(), CONFIG.HUBPERSO_ECHEC_DURABLE_MS);
+}
+
+/**
+ * Texte de panne du refresh, dérivé de la série mémorisée. PURE (testée).
+ * @param {?{depuisMs:number, raison:string}} echec
+ * @param {number} maintenantMs
+ * @param {number} dureeDurableMs
+ * @return {string}
+ */
+function texteEchecJetonHubperso_(echec, maintenantMs, dureeDurableMs) {
+  if (!echec) return 'jeton hubperso momentanément indisponible (échec transitoire du refresh OAuth)';
+  var dureeMs = Math.max(0, maintenantMs - echec.depuisMs);
+  if (dureeMs < dureeDurableMs) {
+    return 'jeton hubperso momentanément indisponible (échec transitoire du refresh OAuth : ' + echec.raison + ')';
+  }
+  var jours = Math.floor(dureeMs / (24 * 60 * 60 * 1000));
+  var depuis = jours >= 1 ? jours + ' j' : Math.floor(dureeMs / (60 * 60 * 1000)) + ' h';
+  return 'refresh OAuth hubperso EN ÉCHEC depuis ' + depuis + ' (raison : ' + echec.raison + ') — ce n\'est plus ' +
+    'transitoire : vérifier DriveAI_HUBPERSO_CLIENT_ID / _CLIENT_SECRET (client OAuth du projet hubperso) ' +
+    'puis exécuter lierCompteHubperso (docs/HUBPERSO.md)';
 }
 
 /**
@@ -169,7 +236,13 @@ function analyserReponseJetonHubperso_(code, corps, maintenantMs) {
     return { jeton: j.access_token, expireMs: maintenantMs + dureeS * 1000 };
   }
   if ((code === 400 || code === 401) && j && j.error === 'invalid_grant') return { revoque: true };
-  return {};
+  // C28-77 : l'échec NON-révocation porte sa RAISON (leçon §9 « tout verdict indéterminé persiste son
+  // POURQUOI »). Six jours d'« échec transitoire » identiques (02-07/09/2026) n'ont jamais dit s'il
+  // s'agissait d'un `invalid_client` (secret changé côté hubperso — permanent, geste de Marc) ou
+  // d'un 5xx (vraiment transitoire). Le code OAuth (`error`) est un littéral de Google, jamais une
+  // donnée de Marc ; à défaut, le code HTTP. Le verdict « transitoire » (rien détruit) ne change pas.
+  var raison = (j && typeof j.error === 'string' && j.error) ? j.error : ('HTTP ' + code);
+  return { raison: raison.slice(0, 40) };
 }
 
 /* ---------- Liaison (consentement UNIQUE de Marc) ---------- */

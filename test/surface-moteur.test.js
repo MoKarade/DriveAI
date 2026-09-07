@@ -55,6 +55,7 @@ const CONTRAT = [
   'validerCallbackHubperso_', 'comparaisonConstante_', 'doGet',
   // Revue flotte C28-52 : verdicts honnêtes (transitoire ≠ non lié), purge 401, scopes complets.
   'etatLiaisonHubperso_', 'messageJetonHubpersoIndisponible_', 'purgerCacheJetonHubperso_', 'scopesHubpersoComplets_',
+  'memoriserEchecJetonHubperso_', 'echecJetonHubperso_', 'texteEchecJetonHubperso_', // C28-77 : série d'échecs du refresh
   // C28-53 (ADR-0042) : actions /exec du connecteur MCP — Mcp.gs, appelées par WebApp.gs (doPost)
   // et consommant antiRafalePilote_ (WebApp.gs) / comparaisonConstante_ (JetonHubperso.gs) en travers.
   'verifierSecretMcp_', 'actionMcp_', 'actionMcpEtat_', 'actionMcpRecherche_', 'actionMcpLire_',
@@ -118,7 +119,7 @@ const CONTRAT = [
   'lireEtAppliquerCorrections_', 'enregistrerCorrection_', 'reinitialiserCorrectionsCache_',
   'blocFewShot_', 'assurerFormulaireCorrection_',
   // intentions (Phase 3) & mails importants (#14)
-  'traiterIntentionsMail_', 'reinitialiserEscalades_', 'reinitialiserUsage_', 'flushUsage_',
+  'traiterIntentionsMail_', 'extraireEtCreer_', 'reinitialiserEscalades_', 'reinitialiserUsage_', 'flushUsage_',
   'reinitialiserPannePlateforme_', 'estPannePlateforme_', 'detecterPannePlateforme_',
   'signalerPannePlateforme_', 'chargerPannePlateforme_', 'signalerRetablissement_',
   'estCodeSystemique_', 'poserPannePlateforme_', // panne durable 429/529/5xx (C28-12)
