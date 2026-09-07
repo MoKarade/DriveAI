@@ -38,18 +38,25 @@
 > fils ⏰ ou « À vérifier » (14, tous voulus). Et la sonde a capté la RAISON de l'échec OAuth dès ce
 > tick : **`invalid_client`** — le client OAuth hubperso (ID/secret) n'est plus reconnu par Google.
 > C28-77 dira « EN ÉCHEC depuis 1 j (invalid_client) » dans Santé à partir du 08/09 ~20:47 UTC.
-> 🟡 **Cadence des ticks dégradée depuis le déploiement (constat 21:47 UTC, cause NON établie).**
-> Avant : passages toutes les ~5 min (télémétrie 16:03 → 16:34 EDT). Après : passages OK à 20:47,
-> 21:10, 21:21 UTC, puis AUCUN jusqu'à 21:47 au moins — zéro appel LLM et zéro ligne d'Index
-> entre-temps. Santé s'écrit dans le `finally` du tick : un passage manquant = déclencheur en
-> retard, verrou occupé (`journalInfo_` « Run précédent encore actif », invisible au MCP qui ne
-> montre que les erreurs) ou run TUÉ au mur des 6 min (le finally ne s'exécute pas). Pas « bloqué » :
-> les passages qui aboutissent font leur travail. Filet automatique : le chien de garde ré-installe
-> le déclencheur après 45 min de silence (`WATCHDOG_SEUIL_MS`, prochain examen ≥ 22:06 UTC). **Ce
-> qui tranche** : le panneau « Exécutions » de l'éditeur Apps Script — durée des runs `tickDriveAI`
-> et présence de « Exceeded maximum execution time ». La suspension config-api a expiré à 21:33 UTC
-> (24 h) : le prochain passage tentera UNE extraction de différé puis se re-suspendra
-> (`invalid_client`). Contrôle suivant armé à 22:32 UTC.
+> 🟡 **Cadence des ticks : passages espacés de 11 à 31 min depuis le déploiement, runs LONGS, cause
+> NON établie (constat 22:35 UTC).** Passages OK : 20:47, 21:10, 21:21, 21:52, 22:21 UTC. Fait qui
+> pèse : la télémétrie s'écrit à CHAQUE tick mais en toute fin du `finally`, derrière le garde-temps
+> standard — elle a été SAUTÉE à 3 passages sur 5 (20:47, 21:10, 22:21), donc ces runs ont dépassé
+> `CONFIG.BUDGET_MS` (4,5 min). Des runs de 4,5-6 min avec un déclencheur à 5 min ⇒ ticks sautés
+> (« Run précédent encore actif », ligne INFO invisible au MCP) ou runs TUÉS au mur des 6 min.
+> ⚠️ Correction d'une affirmation de #323 : « avant, ~5 min prouvée par la télémétrie » était FAUX —
+> la télémétrie ne prouve rien sur la cadence d'avant, je n'ai AUCUNE mesure de la cadence
+> pré-déploiement. Trois hypothèses, non départagées d'ici : (a) réglage app — `assurerIntervalleTick_`
+> ré-applique `Réglages!B2` (5/10/15/30) au premier tick après que `deploy.yml` a réinstallé un 5 min,
+> une cadence de 15-30 min serait alors VOULUE ; (b) travail de queue par design (réconciliation,
+> BUDGET TAIL jusqu'au mur 4,5 min) + verrou ⇒ cadence effective 10 min, pas 30 ; (c) une étape
+> rallongée par #320 (tri : le court-circuit `|deg` est levé hors panne, borné à 20 attentes/run —
+> ne devrait pas coûter des minutes). Pas « bloqué » : les passages aboutissent, archivent,
+> cataloguent (Index 18128 → 18144). La suspension config-api a expiré à 21:33 UTC et s'est
+> RE-POSÉE à 21:51 (`invalid_client`) après une extraction de différé, comme prévu par ADR-0049.
+> **Ce qui tranche, deux clics de Marc** : (1) éditeur Apps Script → « Exécutions » : durée des runs
+> `tickDriveAI` et « Exceeded maximum execution time » ; (2) app → Moteur → Réglages (ou éditeur →
+> Déclencheurs) : l'intervalle réellement installé. Contrôle suivant armé à 23:35 UTC.
 >
 > **➜ 👉 UN GESTE T'ATTEND (+ une décision).**
 > **La panne OAuth elle-même — raison connue : `invalid_client`.** Le client OAuth hubperso n'est
