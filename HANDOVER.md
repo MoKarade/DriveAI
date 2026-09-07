@@ -56,7 +56,14 @@
 > RE-POSÉE à 21:51 (`invalid_client`) après une extraction de différé, comme prévu par ADR-0049.
 > **Ce qui tranche, deux clics de Marc** : (1) éditeur Apps Script → « Exécutions » : durée des runs
 > `tickDriveAI` et « Exceeded maximum execution time » ; (2) app → Moteur → Réglages (ou éditeur →
-> Déclencheurs) : l'intervalle réellement installé. Contrôle suivant armé à 23:35 UTC.
+> Déclencheurs) : l'intervalle réellement installé.
+> **3ᵉ contrôle (23:36 UTC) : rythme ~30 min identifié.** Passages OK : 20:47, 21:10, 21:21, 21:52,
+> 22:21, 22:41, 23:11 UTC — depuis 21:21, des écarts de 29-31 min (et deux de 20). C'est la signature
+> de l'hypothèse (a) : un déclencheur à 30 min, valeur admise par `validerTickMinutes_`, ré-appliqué
+> depuis `Réglages!B2` au premier tick d'après-déploiement. [Probable] Les runs restent longs
+> (télémétrie encore sautée à 23:11). Rien de perdu. Contrôles automatiques ARRÊTÉS : la confirmation
+> est à Marc (app → Moteur → Réglages, ou éditeur → Déclencheurs). Si le réglage dit 5 min, alors
+> l'hypothèse tombe et le panneau « Exécutions » redevient le seul juge.
 >
 > **➜ 👉 UN GESTE T'ATTEND (+ une décision).**
 > **La panne OAuth elle-même — raison connue : `invalid_client`.** Le client OAuth hubperso n'est
