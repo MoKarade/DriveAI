@@ -119,7 +119,7 @@ const CONTRAT = [
   'lireEtAppliquerCorrections_', 'enregistrerCorrection_', 'reinitialiserCorrectionsCache_',
   'blocFewShot_', 'assurerFormulaireCorrection_',
   // intentions (Phase 3) & mails importants (#14)
-  'traiterIntentionsMail_', 'extraireEtCreer_', 'reinitialiserEscalades_', 'reinitialiserUsage_', 'flushUsage_',
+  'traiterIntentionsMail_', 'extraireEtCreer_', 'armerOuLeverRetardIntentions_', 'marquerCoupeIntentions_', 'lireRetardIntentions_', 'reinitialiserEscalades_', 'reinitialiserUsage_', 'flushUsage_',
   'reinitialiserPannePlateforme_', 'estPannePlateforme_', 'detecterPannePlateforme_',
   'signalerPannePlateforme_', 'chargerPannePlateforme_', 'signalerRetablissement_',
   'estCodeSystemique_', 'poserPannePlateforme_', // panne durable 429/529/5xx (C28-12)

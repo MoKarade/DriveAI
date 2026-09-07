@@ -64,19 +64,36 @@ L'analyse continue, et le tri redevient exact.**
    panne de compte LLM (la seule qui empêche l'analyse) — et sous celle-ci, `Main.gs` saute l'étape
    tri entière : le mode dégradé d'ADR-0043 n'a plus de chemin vivant. Il est conservé (testé) comme
    défense en profondeur, et **retiré de l'onglet Santé** (ne jamais annoncer un état impossible).
-5. **Le quota Gmail est protégé autrement** que par la suspension totale :
+5. **Le quota Gmail est protégé autrement** que par la suspension totale, et le drainage est
+   **reprenable** (revue flotte — quotas 🔴, file-checker 🔴 F1/F2/F5, code-reviewer 🟠) :
    - pendant la panne, un différé compte comme « déjà vu » pour le mur « page à jour » du scan
      avant — la fenêtre n'est pas repaginée à chaque tick ;
-   - dès que l'API répond, il redevient inédit — et c'est un **drapeau de retard**
-     (`DriveAI_INTENTIONS_RETARD`, même filet que `DriveAI_GMAIL_PJ_RETARD`, leçon §9 « état
-     TERMINAL ⇒ un DRAPEAU qui désactive le mur tant qu'un backlog est possible ») qui garantit
-     qu'on revient le chercher : armé quand un run diffère ou est coupé avant la fin de fenêtre
-     (budget, plafond/run, panne, erreur de page), il désactive le mur ; levé à la fin naturelle
-     (`!fils.length`). Zéro écriture de Property en régime ; lecture enveloppée, défaut prudent
-     `retard = true`.
-   - le plafond `INTENTIONS_MAX_PAR_RUN` compte désormais les messages **inédits** — un déjà-vu
+   - un **drapeau de retard** (`DriveAI_INTENTIONS_RETARD`) porte DEUX natures de backlog :
+     `'c:<offset>'` — des pages **non analysées** sont derrière le mur (scan coupé par le budget, le
+     plafond/run, une panne relevée, une erreur de page) : à drainer **panne ou pas** (sinon, le jour
+     du déploiement, six jours de mails jamais analysés attendraient derrière le mur le geste de Marc
+     sur l'OAuth, et l'incident persisterait sur l'essentiel de la boîte) ; `'d'` — seulement des
+     différés en attente de l'API : mur ouvert **hors panne seulement**, drainage depuis le début ;
+   - **reprenable** : à chaque coupe, la page atteinte est persistée (`c:<offset>`, jamais en
+     arrière). Le tick suivant relit la page 0 (le neuf), puis **saute** une page avant l'offset
+     (recouvrement : une insertion en tête ne fait que re-lire du déjà-vu ; un fil remonté en tête ou
+     supprimé décale d'un cran, absorbé) et continue. Un drapeau booléen aurait repaginé de zéro à
+     chaque tick sans progrès — avec 300-450 fils et le seul reliquat de budget (l'étape passe après
+     l'intake), 86-130 k appels Gmail/jour contre ~20 k, quota épuisé en ~4 h, tri affamé : le
+     correctif aurait recréé le symptôme ;
+   - **levée** seulement à la fin de fenêtre, API répondant, sous `'d'`, sans différé ni **reprise**
+     dans le run ; une fin de fenêtre sous `'c'` redescend à `'d'` (les pages sautées peuvent cacher
+     des différés) ; sous panne, rien n'est jamais levé (les différés y sont invisibles) ;
+   - une **reprise** = un message laissé sans clé terminale au drainage (échec LLM, création
+     partielle) : il est profond dans la fenêtre, lever le drapeau l'aurait caché à vie derrière le
+     mur, tâche jamais créée et rien pour le montrer. **Borné** : un échec LLM déterministe est
+     abandonné après `QUARANTAINE_MAX` essais (`intention-abandonnee`, tracé), comme la création ;
+   - le bloc drapeau s'exécute en `finally` : une panne **relevée** depuis une création (patron
+     ADR-0022) arme la coupe au lieu de la sauter ;
+   - le plafond `INTENTIONS_MAX_PAR_RUN` compte les messages **inédits** du scan avant — un déjà-vu
      n'est qu'une lecture d'Index en mémoire. Compter les déjà-vus figeait un scan sans mur au même
-     point (200 premiers messages) à chaque tick.
+     point (200 premiers messages) à chaque tick. Le scan arrière, lui, compte tout (borne de lecture
+     utile au rattrapage initial, mort en régime).
 6. **Le message de panne dit la durée et la raison** (C28-77, `JetonHubperso.gs`) : la série
    d'échecs du refresh est mémorisée (`DriveAI_HUBPERSO_ECHEC` = `<ts du 1er>|<raison du dernier>`,
    close au premier succès) ; au-delà de `CONFIG.HUBPERSO_ECHEC_DURABLE_MS` (24 h), Santé cesse de
@@ -88,10 +105,12 @@ L'analyse continue, et le tri redevient exact.**
 - **LLM** : identique au régime — le mini-check (Haiku, expéditeur + sujet) tournait déjà pour
   chaque mail inédit ; l'extraction est différée, pas dupliquée. Pendant la panne : **0 appel** sur
   un différé.
-- **Gmail** : pendant la panne, coût du régime (mur actif). Au retour : **une repagination de la
-  fenêtre** (≈ 300-450 fils, un `getMessages` chacun), bornée par le budget de tick et les plafonds
-  par run, jusqu'à la fin de fenêtre — du même ordre que la ré-évaluation qu'ADR-0043 chiffrait
-  pour le tri (~10-20 min de runtime par épisode). Une fois, pas à chaque tick.
+- **Gmail** : pendant la panne, coût du régime sous `'d'` (mur actif) ; sous `'c'`, le drainage des
+  pages non analysées coûte page 0 + les pages entre le point de reprise et la coupe, par tick.
+  Au retour : **≈ 1× la fenêtre** (300-450 fils, un `getMessages` chacun) + un recouvrement d'une
+  page par tick, étalé sur autant de ticks que le budget l'impose — jamais repaginé de zéro. Puis
+  une passe `'d'` (une fois) pour les différés que les sauts auraient cachés. Du même ordre que la
+  ré-évaluation qu'ADR-0043 chiffrait pour le tri (~10-20 min de runtime par épisode).
 - **Properties** : une clé (`DriveAI_INTENTIONS_RETARD`) écrite aux bords seulement ; une clé
   (`DriveAI_HUBPERSO_ECHEC`) ≤ 60 octets.
 
@@ -106,8 +125,14 @@ L'analyse continue, et le tri redevient exact.**
   révélé la panne n'est pas indexé (exception relevée, patron ADR-0022) et sera ré-analysé une
   fois au tick suivant — un mini-check, accepté.
 - **Le prédicat `intentionsSuspendues_` reste le MIROIR des pannes qui suspendent l'analyse**
-  (tripwire d'inventaire de `test/tri-gmail.test.js`) : `estPanneConfigApi_` y est justifié par
-  écrit, comme `estPanneGmail_`.
+  (tripwire d'inventaire de `test/tri-gmail.test.js`). Le tripwire ne lit que le CODE du corps (un
+  nom cité en commentaire ne vaut pas justification — vérifié par mutation) ; `estPanneConfigApi_`,
+  encore lu par `traiterIntentionsMail_` pour l'état de fin de run, y est justifié dans les lignes
+  qui précèdent immédiatement la fonction, comme `estPanneGmail_`.
+- **Re-sonde « par le scan » à 24 h** (`PANNE_CONFIG_RESONDE_MS`) : la suspension expirée rend les
+  différés inédits, le premier re-tente une création, échoue, re-suspend — **une extraction LLM et
+  quelques pages Gmail par 24 h de panne**, sans conséquence (le retard n'est pas réécrit, le tick
+  avorté n'a rien perdu). Accepté, à connaître.
 
 ## 6. Alternatives écartées
 
@@ -119,12 +144,19 @@ L'analyse continue, et le tri redevient exact.**
 
 ## 7. Tests
 
-`test/intentions-fiabilite.test.js` (différé, revisite pendant/après, zone protégée au retour, mur
-pendant/après, régime sans écriture, drapeau armé sur différé et sur coupe, plafond sur inédits,
-Properties illisibles), `test/tri-gmail.test.js` (`analyse|` = verdict, important ⇒ ⏰ sans API,
+`test/intentions-fiabilite.test.js` (différé, revisite pendant/après, zone protégée au retour sur les
+trois surfaces, mur pendant/après, régime sans écriture, drapeau armé sur différé et sur coupe —
+scans avant ET arrière —, drainage reprenable : offset persisté, saut au point de reprise, jamais
+en arrière, chemin d'exception, `'c'` ouvert sous panne, levée interdite sous panne, reprise sur
+échec LLM et sur création partielle, abandon borné, table de transition PURE, lecture du drapeau,
+plafond sur inédits, Properties illisibles, texte durable qui survit à la troncature de Santé), `test/tri-gmail.test.js` (`analyse|` = verdict, important ⇒ ⏰ sans API,
 attente d'un tick, table de vérité du prédicat, défense en profondeur ADR-0043 conservée),
 `test/sante.test.js` (la ligne Tri dit « normal + création suspendue », jamais un mode impossible),
 `test/jeton-hubperso.test.js` (raison, série, seuil dérivé de la constante, message durable). Prouvés
-par mutation : retirer `analyse|` du verdict du tri, remettre la sortie anticipée de
-`traiterIntentionsMail_`, compter les déjà-vus dans le plafond, retirer le drapeau — chacun fait
-échouer au moins un test.
+par mutation (vingt, restaurées par copie mémoire) : retirer `analyse|` du verdict du tri, remettre
+la sortie anticipée, compter les déjà-vus, mur inconditionnel, différé sans marqueur, ne pas retirer
+le déclencheur, ne pas mémoriser la série, ré-annoncer « dégradé », élargir le prédicat à la panne
+config, mur fermé sous `'c'` + panne, ne pas compter les reprises (×2), échec LLM non borné, levée
+sous panne, `'c'` levé sans passe `'d'`, offset qui recule, pas de saut, drapeau hors `finally`,
+justification retirée du bloc de doc, série non close à la re-liaison — chacune fait échouer au
+moins un test.

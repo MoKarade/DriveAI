@@ -176,7 +176,7 @@ function texteSanteConfigApi_(etat, tz) {
   // Titre neutre sur la CAUSE (ADR-0041) : la panne peut venir d'une API non activée dans le
   // projet hubperso OU d'un compte hubperso non lié/révoqué — c'est `etat.message` qui dit lequel.
   var sonde = etat.sonde ? '  ·  dernière sonde : ' + etat.sonde : '';
-  return '⚠️ INDISPONIBLES (API hubperso non activée, ou compte non lié) — intentions mail suspendues' + depuis +
+  return '⚠️ INDISPONIBLES (API hubperso non activée, ou compte non lié) — création Tâches/Agenda suspendue (analyse et tri continuent, ADR-0049)' + depuis +
     ', re-sonde automatique (au plus 1×/' + Math.round(CONFIG.PANNE_CONFIG_SONDE_MS / 60000) +
     ' min)' + sonde + (etat.message ? '  ·  ' + etat.message : '');
 }

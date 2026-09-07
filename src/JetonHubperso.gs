@@ -84,6 +84,7 @@ function jetonHubperso_() {
       if (props.getProperty('DriveAI_HUBPERSO_REFRESH') === refresh) {
         props.deleteProperty('DriveAI_HUBPERSO_REFRESH');
         props.deleteProperty('DriveAI_HUBPERSO_ACCES');
+        props.deleteProperty('DriveAI_HUBPERSO_ECHEC'); // la série de refresh meurt avec la liaison
         journalErreur_('Hubperso', 'Consentement hubperso RÉVOQUÉ (invalid_grant) — re-lier le compte : ' +
           'exécuter lierCompteHubperso (JetonHubperso.gs) et suivre docs/HUBPERSO.md.');
       }
@@ -201,9 +202,10 @@ function texteEchecJetonHubperso_(echec, maintenantMs, dureeDurableMs) {
   }
   var jours = Math.floor(dureeMs / (24 * 60 * 60 * 1000));
   var depuis = jours >= 1 ? jours + ' j' : Math.floor(dureeMs / (60 * 60 * 1000)) + ' h';
-  return 'refresh OAuth hubperso EN ÉCHEC depuis ' + depuis + ' (raison : ' + echec.raison + ') — ce n\'est plus ' +
-    'transitoire : vérifier DriveAI_HUBPERSO_CLIENT_ID / _CLIENT_SECRET (client OAuth du projet hubperso) ' +
-    'puis exécuter lierCompteHubperso (docs/HUBPERSO.md)';
+  // COURT (revue quotas 🟡) : la ligne de sonde de Santé est tronquée à 160 caractères après un
+  // préfixe de 25 — au-delà de ~130, la consigne disparaissait. Le détail vit dans docs/HUBPERSO.md.
+  return 'refresh OAuth hubperso EN ÉCHEC depuis ' + depuis + ' (' + echec.raison + '), pas un blip : ' +
+    'vérifier le client OAuth hubperso puis lierCompteHubperso';
 }
 
 /**
@@ -364,6 +366,10 @@ function echangerCodeHubperso_(params) {
     return false;
   }
   props.setProperty('DriveAI_HUBPERSO_REFRESH', j.refresh_token);
+  // Nouvelle liaison = nouvelle série (revue code) : sans ça, un 503 une heure après que Marc a
+  // corrigé le secret afficherait « EN ÉCHEC depuis 6 j … lierCompteHubperso » — le geste qu'il
+  // vient de faire.
+  try { props.deleteProperty('DriveAI_HUBPERSO_ECHEC'); } catch (e) { }
   if (typeof j.access_token === 'string' && j.access_token && Number(j.expires_in) > 0) {
     props.setProperty('DriveAI_HUBPERSO_ACCES', (Date.now() + Number(j.expires_in) * 1000) + '|' + j.access_token);
   }

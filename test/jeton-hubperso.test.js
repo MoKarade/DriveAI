@@ -248,7 +248,8 @@ test('texteEchecJetonHubperso_ (PURE) : « momentanément » sous le seuil, « E
   const long = f({ depuisMs: 0, raison: 'invalid_client' }, seuil + 1, seuil);
   assert.ok(!long.includes('momentanément'), 'au-delà : on cesse de dire « momentanément »');
   assert.ok(long.includes('EN ÉCHEC') && long.includes('invalid_client'), 'la vérité et sa raison : ' + long);
-  assert.ok(long.includes('lierCompteHubperso') && long.includes('CLIENT_SECRET'), 'et la consigne actionnable');
+  assert.ok(long.includes('lierCompteHubperso') && long.includes('client OAuth'), 'et la consigne actionnable');
+  assert.ok(long.length <= 135, 'court : la ligne de sonde de Santé tronque à 160 après un préfixe de 25 (' + long.length + ')');
   // Durée lisible : jours entiers, sinon heures.
   const sixJours = f({ depuisMs: 0, raison: 'x' }, 6 * 24 * 3600 * 1000 + 1, seuil);
   assert.ok(sixJours.includes('depuis 6 j'), sixJours);
@@ -289,6 +290,16 @@ test('messageJetonHubpersoIndisponible_ : après 6 jours d\'échecs identiques, 
   assert.ok(vide.c.messageJetonHubpersoIndisponible_().includes('non lié'));
 });
 
+test('jetonHubperso_ : la purge sur invalid_grant CLÔT aussi la série d\'échecs (une liaison morte n\'a plus d\'historique)', () => {
+  const h = ctxHubperso({
+    DriveAI_HUBPERSO_CLIENT_ID: 'id-1', DriveAI_HUBPERSO_CLIENT_SECRET: 'secret-1', DriveAI_HUBPERSO_REFRESH: 'rt-1',
+    DriveAI_HUBPERSO_ECHEC: '1000|HTTP 500',
+  }, [{ code: 400, corps: JSON.stringify({ error: 'invalid_grant' }) }]);
+  assert.strictEqual(h.c.jetonHubperso_(), null);
+  assert.ok(!('DriveAI_HUBPERSO_REFRESH' in h.store), 'refresh purgé');
+  assert.ok(!('DriveAI_HUBPERSO_ECHEC' in h.store), 'série close avec la liaison');
+});
+
 /* ---------- echangerCodeHubperso_ (callback de consentement) ---------- */
 
 const SCOPES_COMPLETS = 'https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/calendar.events';
@@ -309,6 +320,13 @@ test('echangerCodeHubperso_ : state valide → refresh token persisté, state co
   assert.strictEqual(fetchs[0].options.payload.redirect_uri, PROPS_LIAISON.DriveAI_HUBPERSO_REDIRECT,
     'l\'URI de l\'échange est CELLE du consentement (persistée) — à l\'octet près');
   assert.strictEqual(infos.length, 1, 'liaison annoncée au Journal');
+});
+
+test('echangerCodeHubperso_ : une NOUVELLE liaison CLÔT la série d\'échecs (sinon un 503 une heure après le geste de Marc dirait « EN ÉCHEC depuis 6 j … re-lier »)', () => {
+  const { c, store } = ctxHubperso(Object.assign({ DriveAI_HUBPERSO_ECHEC: '1000|invalid_client' }, PROPS_LIAISON),
+    [{ code: 200, corps: JSON.stringify({ refresh_token: 'rt-neuf', access_token: 'at-1', expires_in: 3599, scope: SCOPES_COMPLETS }) }]);
+  assert.strictEqual(c.echangerCodeHubperso_({ hubperso: '1', code: 'code-1', state: 'state-attendu' }), true);
+  assert.ok(!('DriveAI_HUBPERSO_ECHEC' in store), 'nouvelle liaison = nouvelle série');
 });
 
 test('echangerCodeHubperso_ : state faux/absent → refus AVANT tout appel réseau, rien d\'écrit', () => {

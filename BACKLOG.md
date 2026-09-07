@@ -743,9 +743,13 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
   Désormais seule la CRÉATION est suspendue : l'analyse continue, un mail actionnable est DIFFÉRÉ
   (`analyse|<id>`, zéro LLM tant que l'API est en panne, reprise à l'extraction au retour), le tri
   accepte `analyse|` comme verdict et archive normalement. Quota Gmail protégé par le mur (différé =
-  « vu » pendant la panne) + un drapeau de retard `DriveAI_INTENTIONS_RETARD` (même filet que
-  `DriveAI_GMAIL_PJ_RETARD`) qui ferme AUSSI un trou préexistant : un scan coupé par le plafond/run
-  laissait les pages suivantes orphelines derrière le mur. Le découplage était planifié depuis C28-52
+  « vu » pendant la panne) + un drapeau de retard `DriveAI_INTENTIONS_RETARD` à deux natures
+  (`c:<offset>` pages non analysées, drainées panne ou pas et REPRENABLES ; `d` différés, drainés au
+  retour de l'API) qui ferme AUSSI un trou préexistant : un scan coupé par le plafond/run laissait
+  les pages suivantes orphelines derrière le mur. La revue flotte (4 agents, 2 tours) a écarté mon
+  premier drapeau booléen copié de `DriveAI_GMAIL_PJ_RETARD` : sans offset, 300-450 fils et le
+  reliquat de budget faisaient repaginer de zéro à chaque tick (quota Gmail brûlé, tri affamé — le
+  correctif aurait recréé le symptôme). Le découplage était planifié depuis C28-52
   (« PR2 ») et jamais fait. ⚠️ **Reste un geste de Marc** : la panne OAuth elle-même (le refresh
   échoue depuis le 02/09, raison inconnue tant que C28-77 n'est pas déployé) — re-lier via
   `JetonHubperso.gs` → `lierCompteHubperso` ; si ça échoue au consentement, le client OAuth a changé

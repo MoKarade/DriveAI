@@ -377,7 +377,9 @@ test('intentionsSuspendues_ : MIROIR des pannes durables de traiterIntentionsMai
   const tri = fs.readFileSync(path.join(__dirname, '..', 'src', 'TriGmail.gs'), 'utf8');
   const iPred = tri.indexOf('function intentionsSuspendues_');
   assert.ok(iPred > 0);
-  const corpsPred = tri.slice(iPred, tri.indexOf('\n}', iPred));
+  // CODE seulement (revue flotte) : un nom cité dans un COMMENTAIRE du corps ne vaut pas « connue du
+  // prédicat » — sinon la justification du bloc de doc n'est plus exigée (mutation : la retirer restait vert).
+  const corpsPred = tri.slice(iPred, tri.indexOf('\n}', iPred)).replace(/\/\/.*$/gm, '');
   const docPred = tri.slice(Math.max(0, iPred - 1200), iPred); // le bloc de doc juste au-dessus
   for (const nom of pannes) {
     if (corpsPred.indexOf(nom) !== -1) continue;              // connue du prédicat
