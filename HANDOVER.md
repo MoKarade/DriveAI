@@ -24,8 +24,11 @@
 >
 > **➜ 👉 DEUX GESTES T'ATTENDENT.**
 > (1) **Après merge ET `deploy.yml` vert (piège 3)** : rien à cliquer pour le tri — au tick suivant,
-> l'analyse reprend sur les six jours de retard (~1-3 ticks, plafond 200 messages/run), puis le tri
-> ré-évalue les fils `|deg` et archive. Vérifier par un signal indépendant : la ligne Santé « Tri
+> l'analyse reprend sur les six jours de retard sous un drapeau `c:<offset>` reprenable (plafond
+> 10 pages et 200 inédits par run : quelques ticks, PANNE OU PAS), puis le tri ré-évalue les fils
+> `|deg` et archive les fils LUS. La revue flotte a rejeté DEUX fois mon drapeau (2 tours, 4 agents) :
+> booléen il repaginait de zéro à chaque tick ; à offset il cyclait `d ↔ c` au retour de l'API. Le
+> modèle final est dans ADR-0049 §3.5 — ne pas le « simplifier » sans relire ce paragraphe. Vérifier par un signal indépendant : la ligne Santé « Tri
 > Gmail » doit dire « ✅ normal … création suspendue », et la boîte doit se vider des fils LUS.
 > (2) **La panne OAuth elle-même** : `JetonHubperso.gs` → `lierCompteHubperso` → Exécuter, suivre
 > l'URL. Si le consentement échoue, le client OAuth hubperso a changé : reposer
