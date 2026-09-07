@@ -39,11 +39,58 @@
  */
 function traiterIntentionsMail_(estBudgetDepasse) {
   if (estPanneGmail_()) return; // quota Gmail épuisé (C28-15) : suspendu jusqu'à la re-sonde
-  // Panne de CONFIG d'API (C28-22, ADR-0022) : Tasks/Calendar non activée → aucune création
-  // possible. Suspendre TOUT le scan (pas seulement les créations) : re-lire les mails pour
-  // échouer à créer brûlerait le quota Gmail en pure perte (patron panne de plateforme, R2).
-  if (estPanneConfigApi_()) return;
-  var etat = { analyses: 0, creations: 0 };
+  // ADR-0049 (C28-76) : une panne de CONFIG d'API (Tasks/Calendar hors service, jeton hubperso
+  // indisponible) ne suspend PLUS le scan — seulement la CRÉATION. L'ANALYSE (pré-filtre + mini-check
+  // Haiku, qui pose `important|`) continue, parce que c'est elle que le TRI attend pour archiver :
+  // l'ancienne suspension totale gelait l'archivage de toute la boîte pendant chaque panne d'agenda
+  // (vécu 14-19/08 puis 02-07/09/2026, six jours). Le quota Gmail que la suspension protégeait est
+  // préservé autrement : un message analysé-mais-différé (`analyse|`) compte comme « déjà vu » pour
+  // le mur tant que la panne dure (voir `balayerNouveauxMails_`), et aucun appel LLM n'est fait sur
+  // un différé tant que l'API ne répond pas (voir `traiterMessagePourIntentions_`).
+  //
+  // « RETARD INTENTIONS » — même filet que `DriveAI_GMAIL_PJ_RETARD` (Main.gs, leçon §9 « état
+  // TERMINAL ⇒ un DRAPEAU qui désactive le mur tant qu'un backlog est possible ») : le mur « page à
+  // jour » suppose « message inédit ⇒ en page 0 ». Faux dès qu'un backlog existe — messages DIFFÉRÉS
+  // pendant une panne (ils sont derrière le mur quand l'API revient), ou scan COUPÉ avant la fin
+  // (budget, plafond/run, panne, erreur de page : les pages suivantes ne remontent jamais en page 0).
+  // Le drapeau s'ARME à ces bords, désactive le mur (repagination complète, bornée par le budget et
+  // les plafonds/run) et se LÈVE à la fin naturelle de la fenêtre (`!fils.length`). Zéro écriture en
+  // régime. Lecture ENVELOPPÉE, défaut prudent `retard = true` (complétude avant perf) : l'étape est
+  // enveloppée dans le tick, mais un blip Property ne doit pas avorter l'analyse.
+  //
+  // DEUX NATURES de backlog, un seul drapeau (revue flotte — file-checker 🔴, quotas 🔴) :
+  //  - `'c:<offset>'` (COUPE) : des pages NON ANALYSÉES sont derrière le mur — scan coupé par le
+  //    budget, le plafond/run, une panne relevée ou une erreur de page. À drainer PANNE OU PAS :
+  //    sinon, le jour du déploiement, six jours de mails jamais analysés resteraient derrière le mur
+  //    jusqu'au geste de Marc sur l'OAuth, et l'incident persisterait sur l'essentiel de la boîte.
+  //    REPRENABLE : l'offset atteint est persisté à chaque coupe. Avec 300-450 fils et le seul
+  //    reliquat de budget (l'étape passe après l'intake), aucun tick n'est certain de lire la fenêtre
+  //    entière — un drapeau booléen aurait repaginé de zéro À CHAQUE tick sans progrès (86-130 k
+  //    appels Gmail/j contre ~20 k, quota épuisé en ~4 h, tri affamé : le correctif aurait recréé le
+  //    symptôme). Le tick suivant relit la page 0 (le neuf), puis SAUTE une page avant l'offset
+  //    (recouvrement : une insertion en tête ne fait que re-lire du déjà-vu ; un fil remonté en tête
+  //    ou supprimé décale d'un cran, absorbé) et continue. Coût total ≈ 1× fenêtre + recouvrements.
+  //  - `'d'` (DIFFÉRÉS) : seulement des `analyse|` en attente de l'API — invisibles du mur pendant la
+  //    panne (comptés « vus », c'est le quota qu'ADR-0022 protégeait). Mur ouvert SEULEMENT hors
+  //    panne, drainage depuis le début (ils sont dispersés dans la fenêtre).
+  //  Une coupe pendant un drainage `'d'` devient `'c:<offset>'`. Un `'c'` porte un bit SALE
+  //  (`'cp:<offset>'`) dès qu'un de ses ticks a tourné sous panne : ses pages sautées peuvent cacher
+  //  des différés, sa fin de fenêtre redescend à `'d'`. Un `'c'` PROPRE (tous ses ticks hors panne —
+  //  une panne ne se lève qu'en tête de tick, donc « pas en panne à la fin » = « tout le run hors
+  //  panne », et ses pages sautées ont été lues par des ticks propres du même épisode) se LÈVE
+  //  directement à la fin de fenêtre. Sans ce bit (revue quotas, 2ᵉ tour 🔴) : `d` coupée ⇒ `c` ⇒ fin
+  //  ⇒ `d` depuis 0 ⇒ coupée ⇒ `c` … un cycle sans fin dès que l'intake occupe le budget — 55-85 k
+  //  appels Gmail/j, le 🔴 initial déplacé au retour de chaque panne. Chaîne bornée : `d → c → levée`.
+  //  `'d'` se lève à la fin de fenêtre, API répondant, sans différé ni reprise dans le run.
+  //  Absent = aucun retard. Lecture enveloppée ; défaut prudent sur Properties illisibles : `'cp:0'`.
+  var props = null;
+  var lu = { retard: 'c', offset: 0, sale: true, canonique: true };
+  try {
+    props = PropertiesService.getScriptProperties();
+    lu = lireRetardIntentions_(props.getProperty('DriveAI_INTENTIONS_RETARD'));
+  } catch (e) { props = null; lu = { retard: 'c', offset: 0, sale: true, canonique: true }; }
+  var etat = { analyses: 0, creations: 0, differes: 0, reprises: 0, retard: lu.retard, retardOffset: lu.offset,
+    sale: lu.sale, canonique: lu.canonique, coupe: false, coupeA: -1, pageCourante: -1, fenetreAJour: false, panne: false };
   var plafondAtteint = function () {
     // `estPannePlateforme_` : pendant une panne de compte API, scanner ne produirait rien (aucun
     // message ne peut être marqué traité) et re-parcourir la fenêtre brûle le quota Gmail (R2).
@@ -53,10 +100,88 @@ function traiterIntentionsMail_(estBudgetDepasse) {
       etat.creations >= CONFIG.CREATIONS_MAX_PAR_RUN;
   };
 
-  balayerNouveauxMails_(etat, plafondAtteint);
-  if (!plafondAtteint()) balayerArriereHistorique_(etat, plafondAtteint);
-  // (Analyse CIBLÉE C28-06 : RETIRÉE par l'ADR-0031 — son bouton n'existe plus depuis C28-41 PR1.)
+  try {
+    balayerNouveauxMails_(etat, plafondAtteint);
+    if (!plafondAtteint()) balayerArriereHistorique_(etat, plafondAtteint);
+    // (Analyse CIBLÉE C28-06 : RETIRÉE par l'ADR-0031 — son bouton n'existe plus depuis C28-41 PR1.)
+  } catch (e) {
+    // Panne de config RELEVÉE depuis une création (patron ADR-0022), `getMessages()` qui lève, quota :
+    // la fenêtre n'a pas été épuisée. Sans ce `catch`, le drapeau n'était jamais armé sur ce chemin
+    // (revue quotas, 🟠) : le message qui a révélé la panne et ses suivants de page restaient
+    // derrière le mur au tick suivant — orphelins jusqu'à sortie de fenêtre après une panne courte.
+    marquerCoupeIntentions_(etat, Math.max(0, etat.pageCourante)); // à la page courante — pas à 0 (2ᵉ tour 🟡)
+    throw e;
+  } finally {
+    // BORDS du backlog (aucune écriture en régime), écrits MÊME si le scan a levé. Enveloppé : un
+    // blip Property dégrade à « pas de changement ce tick », jamais une exception qui en masque une autre.
+    try { etat.panne = !!estPanneConfigApi_(); } catch (e3) { etat.panne = true; }
+    try { if (props) armerOuLeverRetardIntentions_(props, etat); }
+    catch (e2) { /* l'état réel est relu au prochain tick */ }
+  }
 }
+
+/**
+ * Lit le drapeau de retard. PURE (testée).
+ * @return {{retard:(''|'d'|'c'), offset:number, sale:boolean}} `sale` : ce `'c'` a tourné sous panne.
+ */
+function lireRetardIntentions_(brut) {
+  var t = String(brut == null ? '' : brut);
+  if (!t) return { retard: '', offset: 0, sale: false, canonique: true };
+  if (t === 'd') return { retard: 'd', offset: 0, sale: false, canonique: true };
+  if (t.indexOf('c:') === 0) return { retard: 'c', offset: Math.max(0, Number(t.slice(2)) || 0), sale: false, canonique: true };
+  if (t.indexOf('cp:') === 0) return { retard: 'c', offset: Math.max(0, Number(t.slice(3)) || 0), sale: true, canonique: true };
+  // Valeur inconnue (ancien format) : le plus prudent — tout drainer, sale. `canonique: false` force la
+  // réécriture à la première transition (sinon une coupe à 0 la laissait telle quelle, trompeuse).
+  return { retard: 'c', offset: 0, sale: true, canonique: false };
+}
+
+/**
+ * Transition du drapeau de retard (ADR-0049), PURE sur `props` + `etat` (testée). Une écriture au
+ * plus, et seulement si la valeur change. `etat.panne` = l'API est en panne À LA FIN du run.
+ *  - fin de fenêtre : LEVÉ seulement si `'d'`/aucun, API répondant, sans différé ni reprise dans le
+ *    run — sinon `'d'` (sous panne rien n'est prouvé : les différés sont invisibles ; sous `'c'` les
+ *    pages sautées peuvent en cacher ; une reprise = un différé toujours en attente) ;
+ *  - coupe : `'c:<max(offset connu, page atteinte)>'` — jamais en arrière, panne ou pas ;
+ *  - différés ou reprises sans coupe (arrêt sur le mur sous panne) : `'d'` si rien n'était armé ;
+ *  - arrêt sur le mur en régime : rien.
+ * @param {Properties} props
+ * @param {{retard:string, retardOffset:number, differes:number, reprises:number, coupe:boolean,
+ *          coupeA:number, fenetreAJour:boolean, panne:boolean}} etat
+ */
+function armerOuLeverRetardIntentions_(props, etat) {
+  var K = 'DriveAI_INTENTIONS_RETARD';
+  var propre = !etat.panne && !etat.differes && !etat.reprises;
+  if (etat.fenetreAJour) {
+    // Levable : rien en attente, ET (pas un `c`, ou un `c` PROPRE — ses pages sautées ont été lues
+    // hors panne). Un `cp` redescend à `d` : ses pages sautées peuvent cacher des différés.
+    if (propre && (etat.retard !== 'c' || !etat.sale)) {
+      if (etat.retard) props.deleteProperty(K);
+    } else if (etat.retard !== 'd') {
+      props.setProperty(K, 'd');
+    }
+    return;
+  }
+  if (etat.coupe) {
+    var off = Math.max(etat.retard === 'c' ? etat.retardOffset : 0, etat.coupeA);
+    // Souillé par : une panne, un différé, une REPRISE (un message encore en attente dans un tick
+    // antérieur de la chaîne — 2ᵉ tour file-checker : sans elle, un `c` « propre » lèverait dessus),
+    // ou une souillure héritée.
+    var sale = (etat.retard === 'c' && etat.sale) || !!etat.panne || etat.differes > 0 || etat.reprises > 0;
+    if (etat.retard !== 'c' || off !== etat.retardOffset || sale !== etat.sale || etat.canonique === false) {
+      props.setProperty(K, (sale ? 'cp:' : 'c:') + off);
+    }
+    return;
+  }
+  if ((etat.differes || etat.reprises) && !etat.retard) props.setProperty(K, 'd');
+}
+
+/** Enregistre une coupe du scan avant au FIL `fil` (granularité fil : reprenable sans plateau). */
+function marquerCoupeIntentions_(etat, fil) {
+  etat.coupe = true;
+  etat.coupeA = Math.max(etat.coupeA, fil);
+}
+
+
 
 /**
  * Scan « avant » : pages successives depuis l'offset 0, tant qu'il reste du budget. S'arrête dès
@@ -69,17 +194,32 @@ function balayerNouveauxMails_(etat, plafondAtteint) {
   // (La fenêtre FORCÉE « Analyser 30 j » C28-16 est RETIRÉE par l'ADR-0031 — son bouton n'existe
   // plus depuis C28-41 PR1. Le scan redevient purement automatique : pages depuis 0 jusqu'au mur.)
   var debutPage = 0;
+  // Point de REPRISE d'un drainage (ADR-0049) : quelques FILS avant l'offset persisté — recouvrement
+  // qui absorbe un fil remonté en tête ou supprimé entre deux ticks (décalage d'un cran vers le haut).
+  // En fils et non en pages : une page de relecture faisait un plateau à la page de reprise.
+  var reprise = etat.retard === 'c' ? Math.max(0, etat.retardOffset - CONFIG.INTENTIONS_RECOUVREMENT_FILS) : 0;
+  var pagesLues = 0;
   while (!plafondAtteint()) {
+    // Borne de LECTURE par run, dans l'unité du quota (pages ⇒ appels), quand le mur est ouvert. En
+    // régime le mur ferme en page 0-1, jamais atteinte. Une COUPE comme une autre : reprenable.
+    if (pagesLues >= CONFIG.INTENTIONS_PAGES_MAX_PAR_RUN) {
+      marquerCoupeIntentions_(etat, debutPage);
+      journalInfo_('Intentions', 'Plafond de pages par run atteint (drainage) — reprise au prochain tick.');
+      return;
+    }
     var fils;
+    etat.pageCourante = debutPage; // pour le chemin d'exception (coupe à la page courante)
     try {
       fils = pageFilsActions_(debutPage);
     } catch (e) {
+      marquerCoupeIntentions_(etat, debutPage); // fenêtre NON épuisée : le retard s'arme
       if (signalerPanneGmail_(e)) return; // quota épuisé (C28-15) : suspension, jamais une alerte
       notifierEchec_('Intentions', 'Recherche des mails (actions/rdv) impossible : ' + e);
       return;
     }
     signalerRetablissementGmail_();
-    if (!fils.length) return; // fin de la fenêtre 30 jours
+    pagesLues++;
+    if (!fils.length) { etat.fenetreAJour = true; return; } // fin de la fenêtre 30 jours : rien derrière
 
     var pageEntierementIndexee = true;
     for (var i = 0; i < fils.length; i++) {
@@ -90,16 +230,35 @@ function balayerNouveauxMails_(etat, plafondAtteint) {
       var messages = fils[i].getMessages();
       for (var m = 0; m < messages.length; m++) {
         if (plafondAtteint()) {
+          marquerCoupeIntentions_(etat, debutPage + i); // reprenable au FIL : les fils 0..i-1 sont faits
           journalInfo_('Intentions', 'Budget/plafond atteint (mail récent) — reprise au prochain tick.');
-          return; // offset non avancé : la page rejouera (déjà-vus gratuits)
+          return;
         }
-        var inedit = !filManuel && !indexContient_('intention|' + messages[m].getId());
+        var idMessage = messages[m].getId();
+        // ADR-0049 : un message ANALYSÉ mais DIFFÉRÉ (création en attente de l'API) compte comme
+        // « déjà vu » TANT QUE la panne dure — sinon chaque tick de panne repaginerait la fenêtre
+        // entière (c'est le quota que l'ancienne suspension totale protégeait). Dès que l'API répond,
+        // il redevient inédit : c'est le retard (mur ouvert) qui garantit qu'on revient le chercher.
+        var inedit = !filManuel && !indexContient_('intention|' + idMessage) &&
+          !(estPanneConfigApi_() && indexContient_('analyse|' + idMessage));
         if (inedit) pageEntierementIndexee = false;
-        etat.analyses++;
-        etat.creations += traiterMessagePourIntentions_(messages[m], threadId);
+        // Le plafond/run compte les messages qui COÛTENT (pré-filtre, mini-check, extraction) — un
+        // déjà-vu n'est qu'une lecture d'Index en mémoire. Compter les déjà-vus figeait un scan sans
+        // mur au même point à chaque tick (200 premiers messages, jamais au-delà).
+        if (inedit) etat.analyses++;
+        etat.creations += traiterMessagePourIntentions_(messages[m], threadId, etat);
       }
     }
-    if (pageEntierementIndexee) return; // mur de mail déjà vu → main au scan arrière
+    if (pageEntierementIndexee) {
+      // MUR « page à jour » — DÉSACTIVÉ sous `'c'` (des pages non analysées attendent, panne ou pas)
+      // et sous `'d'` quand l'API répond (les différés sont redevenus inédits). Sous `'d'` + panne le
+      // mur tient : les différés sont « vus », voir ci-dessus — c'est le quota.
+      var drainage = etat.retard === 'c' || (etat.retard === 'd' && !estPanneConfigApi_());
+      if (!drainage) return; // → main au scan arrière
+      // DRAINAGE : le neuf (pages 0..k) est lu ; une page entièrement vue AVANT le point de reprise
+      // ⇒ on SAUTE au point de reprise au lieu de relire tout l'intervalle déjà drainé.
+      if (debutPage + CONFIG.PAGE_FILS_ACTIONS <= reprise) { debutPage = reprise; continue; }
+    }
     debutPage += CONFIG.PAGE_FILS_ACTIONS;
   }
 }
@@ -147,8 +306,13 @@ function balayerArriereHistorique_(etat, plafondAtteint) {
         }
         var date = messages[m].getDate();
         if (!plusAncienne || date < plusAncienne) plusAncienne = date;
+        // Ici `etat.analyses` compte TOUS les messages (déjà-vus compris), à la différence du scan
+        // avant (ADR-0049) : ce scan n'a pas de mur, le plafond est sa seule borne de LECTURE au
+        // rattrapage initial. Mort en régime (requête vide). Volontaire, ne pas harmoniser.
         etat.analyses++;
-        etat.creations += traiterMessagePourIntentions_(messages[m], threadId);
+        // `etat` transmis (ADR-0049) : un différé posé par CE scan doit armer le retard comme
+        // ceux du scan avant — le curseur `before:` avance et ne repassera jamais dessus.
+        etat.creations += traiterMessagePourIntentions_(messages[m], threadId, etat);
       }
     }
     if (plusAncienne) avancerCurseurHistorique_(props, plusAncienne);
@@ -172,7 +336,7 @@ function avancerCurseurHistorique_(props, datePlusAncienne) {
  * @param {string} [threadId]  ID du fil (fourni par les balayeurs — évite un getThread() par message)
  * @return {number} nombre de tâches/événements RÉELLEMENT créés (pour le plafond/run).
  */
-function traiterMessagePourIntentions_(message, threadId) {
+function traiterMessagePourIntentions_(message, threadId, etat) {
   var messageId = message.getId();
   var cleMessage = 'intention|' + messageId;
   if (indexContient_(cleMessage)) return 0; // déjà entièrement traité
@@ -182,8 +346,30 @@ function traiterMessagePourIntentions_(message, threadId) {
   // entrerait en collision et ferait sauter des fils entiers à tort dès le 1er message analysé.
   if (threadId && indexContient_('intention-manuel|' + threadId)) return 0;
 
+  // ADR-0049 : `analyse|<messageId>` = « pré-filtre + mini-check FAITS (donc `important|` posé si
+  // besoin), extraction + création EN ATTENTE de l'API ». Préfixe DÉDIÉ (jamais `intention|`, qui
+  // signifie « entièrement traité ») ; hors de `PREFIXES_CLE_FICHIER_` (un messageId n'est pas un
+  // fileId). Tant que l'API est en panne, un différé ne coûte RIEN : ni corps, ni LLM.
+  var cleAnalyse = 'analyse|' + messageId;
+  var analyseFaite = indexContient_(cleAnalyse);
+  if (analyseFaite && estPanneConfigApi_()) return 0;
+
   var expediteur = message.getFrom() || '';
   var sujet = message.getSubject() || '';
+  var corps = '';
+  if (analyseFaite) {
+    // L'API est revenue : on reprend à l'EXTRACTION. Le corps est relu et la garde zone protégée
+    // re-vérifiée dessus (défense en profondeur, gratuite — un règlement de garde entre-temps
+    // s'applique). Le mini-check n'est PAS rejoué : son verdict (`important|`) est déjà à l'Index.
+    try { corps = tronquer_(message.getPlainBody(), CONFIG.LLM_CORPS_MAX_CARS); } catch (e) { corps = ''; }
+    // Les TROIS surfaces (revue sécurité) : expéditeur/sujet aussi, pas seulement le corps — une
+    // règle de zone protégée ajoutée pendant la panne s'applique au retour.
+    if (toucheZoneProtegee_(expediteur + ' ' + sujet) || toucheZoneProtegee_(corps)) {
+      indexAjouter_(cleMessage, { statut: 'intention-zone-protegee', nom: sujet });
+      return 0;
+    }
+    return extraireEtCreer_(messageId, cleMessage, expediteur, sujet, corps, etat);
+  }
 
   // Étage 1 (gratuit) : mots-clés évidents (newsletter, notif...) → écarté, jamais ré-analysé.
   if (ecarteParMotsCles_(expediteur, sujet)) {
@@ -250,12 +436,49 @@ function traiterMessagePourIntentions_(message, threadId) {
     return 0;
   }
 
+  // ADR-0049 : création IMPOSSIBLE (API en panne) ⇒ on mémorise « analysé, création en attente »
+  // et on s'arrête AVANT l'extraction — un appel LLM dont le résultat ne pourrait aboutir à rien.
+  // Le tri, lui, a tout ce qu'il lui faut (`important|` est posé) : il archive normalement.
+  if (estPanneConfigApi_()) {
+    indexAjouter_(cleAnalyse, { statut: 'intention-en-attente-api', nom: sujet });
+    if (etat) etat.differes++;
+    return 0;
+  }
+  return extraireEtCreer_(messageId, cleMessage, expediteur, sujet, corps, etat);
+}
+
+/**
+ * Extraction (LLM) + création idempotente des intentions d'un message dont l'analyse amont est
+ * faite. Séparée de `traiterMessagePourIntentions_` (ADR-0049) pour être reprise TELLE QUELLE au
+ * retour de l'API sur un message différé (`analyse|`).
+ *
+ * `etat.reprises` (revue flotte, file-checker 🔴 F2) : un message laissé SANS clé terminale (échec
+ * LLM, création partielle) doit être RE-PRÉSENTÉ. En régime il est en page 0, le tick suivant le
+ * revoit. Un différé, lui, est PROFOND dans la fenêtre : si le drainage se lève sur « fin de fenêtre
+ * sans différé », le mur le cache au tick suivant et son `analyse|` reste orphelin À VIE — la tâche
+ * jamais créée, et rien ne le montre (le tri, lui, est juste). Compter la reprise garde le drapeau.
+ * BORNÉ : un échec LLM DÉTERMINISTE (refus, JSON invalide) tenu sous drapeau repaginerait la fenêtre
+ * 30 jours — après `QUARANTAINE_MAX` essais le message est ABANDONNÉ (tracé), comme la création.
+ * @return {number} nombre de tâches/événements RÉELLEMENT créés.
+ */
+function extraireEtCreer_(messageId, cleMessage, expediteur, sujet, corps, etat) {
   var intentions = extraireIntentions_({ expediteur: expediteur, sujet: sujet, corps: corps });
   if (intentions === null) {
-    // Échec LLM total : on NE marque PAS le message fait → re-tenté au prochain tick.
-    // Panne de COMPTE API : pas de notification par message (elle spammerait à chaque tick de
-    // panne — la panne est déjà journalisée une fois par run), le re-essai suffit.
-    if (!estPannePlateforme_()) notifierEchec_('Intentions', 'Extraction impossible pour « ' + sujet + ' »');
+    // Échec LLM total : on NE marque PAS le message fait → re-tenté au prochain tick, borné.
+    // Panne de COMPTE API : ni notification par message (elle spammerait à chaque tick de panne —
+    // la panne est déjà journalisée une fois par run) ni essai décompté (l'échec n'est pas le sien).
+    if (!estPannePlateforme_()) {
+      var essais = 0;
+      try { essais = incrementerEchec_('llm-intention|' + messageId); } catch (e2) { }
+      if (essais >= CONFIG.QUARANTAINE_MAX) {
+        journalErreur_('Intentions', 'Extraction ABANDONNÉE après ' + essais + ' échecs LLM (« ' +
+          tronquer_(sujet, 120) + ' ») — message débloqué.');
+        indexAjouter_(cleMessage, { statut: 'intention-abandonnee', nom: sujet });
+        return 0;
+      }
+      notifierEchec_('Intentions', 'Extraction impossible pour « ' + sujet + ' »');
+    }
+    if (etat) etat.reprises++;
     return 0;
   }
   if (!intentions.length) {
@@ -273,6 +496,7 @@ function traiterMessagePourIntentions_(message, threadId) {
   // Le message n'est marqué « fait » que si TOUTES ses intentions sont créées (ou l'étaient
   // déjà) : un échec partiel laisse le message en reprise, sans recréer les sous-clés réussies.
   if (toutReussi) indexAjouter_(cleMessage, { statut: 'intention-traitee', nom: sujet });
+  else if (etat) etat.reprises++; // toujours en attente : le drapeau ne doit pas se lever sur lui
   return creees;
 }
 
@@ -309,7 +533,7 @@ function creerIntentionIdempotente_(messageId, intention) {
   } catch (e) {
     // Panne de CONFIG d'API (C28-22, ADR-0022) : API non activée → suspension du run, rien imputé
     // au mail. On RELÈVE pour stopper le traitement d'intentions immédiatement (Main enveloppe le
-    // scan ; les ticks suivants sont coupés en tête par estPanneConfigApi_).
+    // scan ; aux ticks suivants, la CRÉATION reste suspendue mais l'analyse continue — ADR-0049).
     if (signalerPanneConfigApi_(e)) throw e;
     // Tout autre throw inattendu : traité comme un échec transitoire (3-strikes ci-dessous).
     id = '';

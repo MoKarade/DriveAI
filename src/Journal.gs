@@ -176,7 +176,7 @@ function texteSanteConfigApi_(etat, tz) {
   // Titre neutre sur la CAUSE (ADR-0041) : la panne peut venir d'une API non activée dans le
   // projet hubperso OU d'un compte hubperso non lié/révoqué — c'est `etat.message` qui dit lequel.
   var sonde = etat.sonde ? '  ·  dernière sonde : ' + etat.sonde : '';
-  return '⚠️ INDISPONIBLES (API hubperso non activée, ou compte non lié) — intentions mail suspendues' + depuis +
+  return '⚠️ INDISPONIBLES (API hubperso non activée, ou compte non lié) — création Tâches/Agenda suspendue (analyse et tri continuent, ADR-0049)' + depuis +
     ', re-sonde automatique (au plus 1×/' + Math.round(CONFIG.PANNE_CONFIG_SONDE_MS / 60000) +
     ' min)' + sonde + (etat.message ? '  ·  ' + etat.message : '');
 }
@@ -226,10 +226,10 @@ function majSante_() {
  * @return {string}
  */
 function texteSanteTriDegrade_() {
-  var arret, degrade;
+  var arret, creationSuspendue;
   try {
     arret = !!estPannePlateforme_();
-    degrade = !!estPanneConfigApi_();
+    creationSuspendue = !!estPanneConfigApi_();
   } catch (e) {
     return 'état indéterminé (lecture de l\'état impossible)';
   }
@@ -237,9 +237,13 @@ function texteSanteTriDegrade_() {
     return '⛔ À L\'ARRÊT (panne de compte LLM) — aucun tri ce tick ; reprise automatique ' +
       'dès que la re-sonde voit le compte rétabli';
   }
-  return degrade
-    ? '⚠️ mode DÉGRADÉ (analyse d\'intentions suspendue) — libellés posés, AUCUN archivage ; ' +
-      'les fils seront ré-évalués automatiquement au retour des intentions'
+  // ADR-0049 : une panne de CONFIG d'API ne dégrade plus le tri (l'analyse continue, l'archivage
+  // aussi) — elle ne suspend que la création Tâches/Agenda, dite sur SA ligne. On le rappelle ici
+  // pour qu'un lecteur qui ne voit que cette ligne ne déduise pas « boîte non triée » de la panne
+  // au-dessus. L'ancien état « mode DÉGRADÉ » n'a plus de chemin vivant : ne pas l'afficher.
+  return creationSuspendue
+    ? '✅ normal (libellés + archivage) — la création Tâches/Agenda est suspendue (ligne API ci-dessus), ' +
+      'l\'analyse « important » continue et les créations reprendront seules'
     : '✅ normal (libellés + archivage)';
 }
 

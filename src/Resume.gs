@@ -11,6 +11,12 @@
 
 /** Point d'entrée du déclencheur hebdomadaire. */
 function resumeHebdo() {
+  // C28-75 : mails coupés (décision Marc 2026-09-07). On sort AVANT tout calcul — un déclencheur
+  // résiduel (posé avant le déploiement, ou recréé à la main) ne doit rien envoyer ni rien coûter.
+  if (!CONFIG.MAILS_ACTIFS) {
+    journalInfo_('Résumé', 'Résumé hebdo NON envoyé : mails désactivés (CONFIG.MAILS_ACTIFS).');
+    return;
+  }
   try {
     var jours = CONFIG.RESUME_JOURS;
     var stats = statsSemaine_(jours);

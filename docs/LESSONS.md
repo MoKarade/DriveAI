@@ -2670,3 +2670,52 @@ sinon le contournement se lit comme une préférence d'architecture et personne 
 vraie cause. »
 
 **Règle durable ?** oui (ajoutée à CLAUDE.md §9).
+
+## 2026-09-07 — Une panne d'agenda a gelé l'archivage de la boîte pendant six jours, et le message disait « momentanément »
+
+**Contexte.** Marc : « ça trie toujours pas mes mails ». Santé : « Tri Gmail : mode DÉGRADÉ —
+libellés posés, AUCUN archivage » et « API Tasks & Calendar : INDISPONIBLES ». Journal : chaque
+jour depuis le 02/09, `config-api Calendar : jeton hubperso momentanément indisponible (échec
+transitoire du refresh OAuth)`. Six occurrences identiques. Cause lue dans le code :
+`traiterIntentionsMail_` sortait sur `estPanneConfigApi_()` — décision ADR-0022 prise pour le
+QUOTA Gmail (« re-lire pour échouer à créer ») — ce qui coupait aussi le mini-check qui pose
+`important|`, la clé que le tri attend pour archiver. ADR-0043 avait rendu le tri tolérant
+(dégradé, pas gelé), mais un dégradé sans borne devient l'état normal. Le découplage était
+planifié depuis C28-52 et jamais fait. Mon premier relevé d'état datait d'il y a 17 jours : je
+l'ai refait avant de conclure — la conclusion aurait été fausse sinon.
+
+**Leçon.** « Un `if (panne) return;` en tête d'étape suspend TOUT ce que l'étape produit, pas
+seulement ce qui dépend de la panne. Lister les productions de l'étape et leurs consommateurs
+aval avant de couper ; ne suspendre que la partie dépendante ; protéger le quota par un mécanisme
+dédié. Et un message de panne doit porter le "depuis quand" : six "transitoire" consécutifs
+étaient chacun vrais et collectivement faux. »
+
+**Règle durable ?** oui (CLAUDE.md §9).
+
+## 2026-09-07 — Le déclencheur du récap revenait tout seul
+
+**Contexte.** Marc : « je veux plus que ça m'envoie de mail de récap ». `assurerTriggerResume_`
+est appelé en tête de CHAQUE tick et recrée le déclencheur s'il manque : Marc pouvait le supprimer
+dans l'éditeur, il revenait cinq minutes plus tard. Couper = un flag CONFIG qui empêche la
+création ET supprime l'existant, sinon la moitié visible du problème persiste.
+
+**Leçon.** « Pour tout `assurerX_` idempotent, écrire la branche "X désactivé après avoir été
+installé" — la désactivation est une opération, pas l'absence d'une autre. »
+
+**Règle durable ?** oui (CLAUDE.md §9).
+
+## 2026-09-07 — Le conteneur a été recyclé entre deux tours : l'arbre était reparti d'un instantané vieux de 17 jours
+
+**Contexte.** Après une pause de plusieurs jours, mes éditions `src/` s'appliquaient mais les
+ancres de `BACKLOG.md`/`CLAUDE.md` ne matchaient plus, et `git log -1` affichait un commit
+d'avant le rebase du matin — que j'avais IMPRIMÉ une heure plus tôt sans le lire. `origin/main`
+n'existait plus, le reflog n'avait que quatre entrées : clone frais d'un instantané. Les fichiers
+`src/` étant identiques entre les deux bases, la greffe par `stash` a été propre — mais une seule
+divergence aurait fait committer du code sur une base fantôme.
+
+**Leçon.** « Après toute reprise de session (pause, "continue"), la PREMIÈRE commande est
+`git rev-parse --short HEAD origin/main` — et on la LIT. Un environnement éphémère peut repartir
+d'un instantané ; rien dans le prompt ne le dit. »
+
+**Règle durable ?** oui — ajouté au §3 (workflow git) plutôt qu'au §9 : c'est un réflexe de
+session, pas de code.

@@ -23,7 +23,7 @@ rien supprimer**.
 
 ## Corriger une erreur
 Deux chemins, DriveAI **retient** dans les deux cas (il apprend de tes corrections) :
-- **Le formulaire** ([DriveAI — Corriger un classement](https://docs.google.com/forms/d/1gIftqqRwRs2XslhKbbmNMUTdFEqJ1AMB2H6Q0ahnc8A/viewform), lien aussi dans le résumé hebdo) :
+- **Le formulaire** ([DriveAI — Corriger un classement](https://docs.google.com/forms/d/1gIftqqRwRs2XslhKbbmNMUTdFEqJ1AMB2H6Q0ahnc8A/viewform), lien aussi dans l'app — le résumé hebdo par mail est coupé depuis le 2026-09-07) :
   tu nommes l'émetteur + le bon domaine (et l'entité si tu veux) → les **prochains** documents de cet
   émetteur seront bien classés, et l'entité nommée est **validée** (son dossier se crée tout seul).
 - **L'app web, onglet Corrections** (immédiat) : tu retrouves le document, tu donnes son bon nom/dossier →

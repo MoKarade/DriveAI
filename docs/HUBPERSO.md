@@ -78,6 +78,7 @@ Dans le projet Apps Script DriveAI : ⚙️ « Paramètres du projet » → « P
 |---|---|---|
 | Santé : « compte hubperso non lié » | Étape 4 jamais faite, ou consentement révoqué | Étape 4 |
 | Page « ❌ Liaison non aboutie » | `state` périmé (URL de + d'1 h), ou Properties manquantes | Relancer `lierCompteHubperso`, utiliser la NOUVELLE URL |
+| Santé : « refresh OAuth hubperso **EN ÉCHEC depuis N j** (raison : `invalid_client`…) » | La série d'échecs du refresh dure > 24 h (C28-77) : ce n'est plus un blip Google. `invalid_client` = le client OAuth hubperso a changé (secret régénéré, client supprimé) ; `HTTP 5xx` répété = panne Google, attendre | Reposer `DriveAI_HUBPERSO_CLIENT_ID` / `_CLIENT_SECRET` depuis la console GCP (projet hubperso), puis relancer `lierCompteHubperso`. Pendant la panne, le tri de la boîte continue et archive (ADR-0049) — seules les créations attendent |
 | Journal : « autorisations incomplètes » | Une des deux cases décochée au consentement | Étape 4.2 : re-consentir en cochant Tasks ET Agenda |
 | Page « Script function not found: doGet » au retour | Le déploiement de cette version n'est pas encore passé (`/exec` sert l'ancienne) | Attendre que la CI ait déployé (~2 min après le merge), re-cliquer l'URL de consentement |
 | `redirect_uri_mismatch` au consentement | URI de la console ≠ URI affichée en (1) | Recopier l'URI exacte, Enregistrer, réessayer |

@@ -720,14 +720,10 @@ function finaliserPasseBoite_(props, offset) {
 }
 
 /**
- * Vrai si le scan d'intentions est SUSPENDU — donc si la clé `intention|` n'arrivera pas tant que
- * la panne dure (ADR-0043). Miroir EXACT des `return` en tête de `traiterIntentionsMail_` qui
- * peuvent durer plusieurs jours : panne de CONFIG d'API (Tasks/Calendar non activée, compte
- * hubperso non lié) et panne de PLATEFORME LLM (crédit épuisé, 401).
- *
- * `estPanneGmail_` est volontairement EXCLU : quota Gmail épuisé, le TRI lui-même ne tourne pas —
- * il n'a donc rien à dégrader (et l'inclure ferait croire à un mode dégradé pendant que rien
- * ne tourne).
+ * Vrai si l'ANALYSE des intentions est SUSPENDUE — donc si la clé que le tri attend (`intention|`,
+ * ou `analyse|` pour un différé) n'arrivera pas tant que la panne dure (ADR-0043). Miroir des
+ * `return` durables de `traiterIntentionsMail_` : il n'en reste qu'un qui suspende l'analyse, la
+ * panne de PLATEFORME LLM (crédit épuisé, 401).
  *
  * ⚠️ HONNÊTETÉ sur `estPannePlateforme_` (revue flotte C28-54) : aujourd'hui ce terme est
  * INATTEIGNABLE depuis le tick — `Main.gs` saute l'étape `tri-gmail` ENTIÈRE sous cette panne
@@ -738,12 +734,23 @@ function finaliserPasseBoite_(props, offset) {
  *
  * ⚠️ Si un jour `traiterIntentionsMail_` gagne une nouvelle cause d'arrêt DURABLE, elle doit
  * arriver ici : sinon le tri se remet à attendre une clé qui n'arrivera jamais (le bug de 5 jours
- * des 14-19/08). Verrouillé par `test/tri-gmail.test.js` (inventaire des gardes).
+ * des 14-19/08). Verrouillé par `test/tri-gmail.test.js` (inventaire des gardes) — qui exige que
+ * chaque exclusion soit justifiée ICI, dans les lignes qui précèdent immédiatement la fonction :
+ *
+ * EXCLU `estPanneConfigApi_` (ADR-0049, C28-76) : une panne de config (Tasks/Calendar, jeton
+ * hubperso) ne suspend plus que la CRÉATION ; l'analyse tourne et la clé ARRIVE. L'y garder faisait
+ * dégrader le tri (aucun archivage) pendant chaque panne d'agenda — six jours en septembre 2026.
+ *
+ * EXCLU `estPanneGmail_` : quota Gmail épuisé, le TRI lui-même ne tourne pas — rien à dégrader
+ * (l'inclure ferait croire à un mode dégradé pendant que rien ne tourne).
  * @return {boolean}
  */
 function intentionsSuspendues_() {
+  // Les exclusions (config d'API, quota Gmail) sont JUSTIFIÉES dans l'en-tête ci-dessus, jamais ici :
+  // le tripwire d'inventaire ne lit que le CODE de ce corps (un nom cité en commentaire ne vaut pas
+  // justification — revue flotte).
   try {
-    return !!(estPanneConfigApi_() || estPannePlateforme_());
+    return !!estPannePlateforme_();
   } catch (e) {
     return false; // état illisible : on garde le comportement nominal (on attend)
   }
@@ -831,7 +838,8 @@ function trierFil_(fil, candidats, libelles, verifierBoite) {
     // Dans les deux cas le ⏰ déjà posé reste honoré via `dejaPoses`, et les gardes suspect/zone
     // protégée s'appliquent au vif comme pour tout fil.
     var analyseIndisponible = false;
-    if (!indexContient_('intention|' + dernierId)) {
+    // ADR-0049 : `analyse|` (analysé, création différée) vaut verdict — `important|` est posé.
+    if (!indexContient_('intention|' + dernierId) && !indexContient_('analyse|' + dernierId)) {
       if (estHorsFenetreIntentions_(Number(ts), Date.now())) {
         analyseIndisponible = false; // cas (a) : absence DÉFINITIVE et connue — tri complet
       } else if (intentionsSuspendues_()) {

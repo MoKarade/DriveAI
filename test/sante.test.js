@@ -61,7 +61,7 @@ test('majSante_ : la ligne « Doublons » exerce le chemin NOMINAL, pas le catch
   assert.ok(ligne.includes('inventaire'), 'campagne pas encore lancée → phase inventaire : ' + ligne);
 });
 
-test('majSante_ : la ligne « Tri Gmail » distingue NORMAL, DÉGRADÉ et À L\'ARRÊT (ADR-0043)', () => {
+test('majSante_ : la ligne « Tri Gmail » distingue NORMAL, création SUSPENDUE et À L\'ARRÊT (ADR-0043 → ADR-0049)', () => {
   const ligneTri = (cfg) => {
     const { ctx, captured } = chargerAvecSanteMock({});
     ctx.estPanneConfigApi_ = () => cfg.config;
@@ -73,12 +73,15 @@ test('majSante_ : la ligne « Tri Gmail » distingue NORMAL, DÉGRADÉ et À L\'
   const ok = ligneTri({ config: false, llm: false });
   assert.ok(ok && ok.includes('✅'), 'hors panne : tri normal annoncé');
 
-  // Panne config-api : le tri TOURNE, en mode dégradé — il faut le dire ET dire sa conséquence,
-  // sinon « ça marche » masque « ça n'archive plus » et la dette reste invisible.
-  const deg = ligneTri({ config: true, llm: false });
-  assert.ok(deg.includes('DÉGRADÉ'), 'le mode est nommé');
-  assert.ok(deg.includes('AUCUN archivage'), 'la CONSÉQUENCE est dite, pas seulement l\'état');
-  assert.ok(deg.includes('ré-évalués'), 'et le rattrapage automatique aussi');
+  // ADR-0049 : une panne config-api ne suspend plus que la CRÉATION Tâches/Agenda — l'analyse et
+  // l'archivage continuent. La ligne doit dire « normal » ET rappeler la suspension de création,
+  // sans JAMAIS annoncer un « mode DÉGRADÉ » qui n'a plus de chemin vivant (no-fake-data).
+  const cfgApi = ligneTri({ config: true, llm: false });
+  assert.ok(cfgApi.includes('✅'), 'le tri est normal sous une panne de config : ' + cfgApi);
+  assert.ok(!cfgApi.includes('DÉGRADÉ') && !cfgApi.includes('AUCUN archivage'),
+    'ne plus annoncer un mode qui ne peut plus se produire : ' + cfgApi);
+  assert.ok(cfgApi.includes('création') && cfgApi.includes('suspendue'), 'la suspension de création est dite : ' + cfgApi);
+  assert.ok(cfgApi.includes('important'), 'et le fait que l\'analyse continue aussi : ' + cfgApi);
 
   // Panne de compte LLM : `Main.gs` saute l'étape `tri-gmail` ENTIÈRE. Annoncer « libellés posés »
   // serait un MENSONGE sur le seul canal que Marc lit (revue flotte C28-54, les deux agents).
@@ -114,6 +117,7 @@ test('texteSanteConfigApi_ (PURE) : en panne, dit POURQUOI (projet GCP) et QUAND
     message: 'Calendar — Google Calendar API has not been used in project 987654321 before',
   }, 'UTC');
   assert.ok(t.includes('INDISPONIBLES'), 'titre neutre sur la cause (API non activée OU compte hubperso non lié — ADR-0041)');
+  assert.ok(!t.includes('intentions mail suspendues') && t.includes('création'), 'ADR-0049 : seule la CRÉATION est suspendue, la ligne le dit : ' + t);
   assert.ok(t.includes('14/08 11:51'), 'depuis quand');
   assert.ok(t.includes('project 987654321'), 'le projet GCP — ce qui distingue « pas activée » de « autre projet »');
   // Cadence DÉRIVÉE de la CONFIG (leçon §7) : codée « 15 min » en dur, l'assertion mentirait au

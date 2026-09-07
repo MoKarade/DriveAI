@@ -295,7 +295,11 @@ function sonderApiConfig_() {
       return { etat: 'desactivee', api: 'hubperso',
         message: 'compte hubperso non lié ou consentement révoqué — exécuter lierCompteHubperso (docs/HUBPERSO.md)' };
     }
-    return { etat: 'indetermine', api: 'hubperso', message: 'refresh OAuth hubperso momentanément impossible' };
+    // C28-77 : le message vient de `messageJetonHubpersoIndisponible_` — le MÊME que celui de la
+    // création, qui sait dire « momentanément » OU « EN ÉCHEC depuis N j (raison) » selon la durée
+    // de la série d'échecs mémorisée. Deux canaux, un seul texte : jamais l'un « transitoire »
+    // pendant que l'autre a compris.
+    return { etat: 'indetermine', api: 'hubperso', message: messageJetonHubpersoIndisponible_() };
   }
   if (Date.now() - debutSonde > CONFIG.PANNE_CONFIG_SONDE_MAX_MS) {
     return { etat: 'indetermine', api: 'hubperso', message: 'sonde interrompue (refresh OAuth trop lent)' };

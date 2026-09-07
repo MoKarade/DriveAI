@@ -184,12 +184,58 @@ test('decisionTri_ : analyse INDISPONIBLE → libellés posés, JAMAIS archivé 
   assert.deepStrictEqual(simple(flou.libelles), ['À vérifier']);
 });
 
-test('tri : intentions SUSPENDUES → le fil est trié quand même (libellés), sans archivage, clé |deg', () => {
-  // LE bug des 14-19/08 : l'API Tasks n'était pas activée ⇒ intentions suspendues ⇒ la clé
-  // `intention|` n'arrivait jamais ⇒ la boîte n'était plus triée DU TOUT pendant 5 jours.
+test('ADR-0049 — panne de CRÉATION (config-api) + message ANALYSÉ-DIFFÉRÉ (analyse|) → tri NORMAL, archivé, clé NOMINALE', () => {
+  // Le bug de septembre 2026 : six jours de « libellés posés, AUCUN archivage » parce qu'une panne
+  // d'agenda suspendait l'analyse entière. Désormais l'analyse continue et pose `analyse|` (création
+  // différée) : le tri a son verdict `important|` (absent ⇒ pas important) et archive un fil LU.
+  const { c, calls } = ctxTri({ index: { 'analyse|MS1': true } });
+  const tsS = Date.now();
+  c.estPanneConfigApi_ = () => true;
+  c.GmailApp.search = (q, d) => (d === 0
+    ? [filMock(calls, { id: 'S1', ts: tsS, dernierMsgId: 'MS1', expediteur: 'a@b.c', sujet: 'x' })]
+    : []);
+  c.trierFilsGmail_(() => false);
+  assert.deepStrictEqual(calls.labels.map((l) => l.label), ['Finance']);
+  assert.deepStrictEqual(calls.archives, ['S1'], 'archivé : la panne d\'agenda ne bloque plus la boîte');
+  assert.ok(calls.ajouts.some((a) => a.cle === 'tri|S1|' + tsS + '|lu'), 'clé NOMINALE (rien à ré-évaluer)');
+  assert.ok(!calls.ajouts.some((a) => /\|deg$/.test(a.cle)), 'aucune clé dégradée');
+});
+
+test('ADR-0049 — panne de CRÉATION + message DIFFÉRÉ mais IMPORTANT → ⏰, jamais archivé (le verdict est là)', () => {
+  const { c, calls } = ctxTri({ index: { 'analyse|MI1': true, 'important|MI1': true } });
+  const ts = Date.now();
+  c.estPanneConfigApi_ = () => true;
+  c.GmailApp.search = (q, d) => (d === 0
+    ? [filMock(calls, { id: 'I1', ts: ts, dernierMsgId: 'MI1', expediteur: 'a@b.c', sujet: 'x' })]
+    : []);
+  c.trierFilsGmail_(() => false);
+  assert.deepStrictEqual(calls.labels.map((l) => l.label), ['Finance', '⏰ À traiter']);
+  assert.deepStrictEqual(calls.archives, [], 'la boîte de Marc sert de todo — le ⏰ tient sans l\'API');
+});
+
+test('ADR-0049 — panne de CRÉATION + message PAS ENCORE analysé → on ATTEND (la clé arrive au tick suivant)', () => {
+  // Avant : la panne config rendait « suspendu » ⇒ tri dégradé immédiat. Maintenant l'analyse
+  // tourne malgré la panne, donc la clé (`intention|` ou `analyse|`) ARRIVE : on attend, comme en
+  // régime nominal. Un « attend » n'est plus un gel, il ne dure qu'un tick.
   const { c, calls } = ctxTri({});
-  const tsS = Date.now(); // FIGÉ : dans le mock, `Date.now()` serait réévalué à chaque `search`
-  c.estPanneConfigApi_ = () => true; // scan d'intentions suspendu (ADR-0041)
+  const ts = Date.now();
+  c.estPanneConfigApi_ = () => true;
+  c.GmailApp.search = (q, d) => (d === 0
+    ? [filMock(calls, { id: 'N1', ts: ts, dernierMsgId: 'MN1', expediteur: 'a@b.c', sujet: 'x' })]
+    : []);
+  c.trierFilsGmail_(() => false);
+  assert.deepStrictEqual(calls.labels, [], 'aucun libellé : l\'analyse va arriver');
+  assert.deepStrictEqual(calls.ajouts, [], 'aucune clé — ni nominale ni dégradée');
+});
+
+test('défense en profondeur (ADR-0043) : panne de COMPTE LLM + clé absente → libellés, sans archivage, clé |deg', () => {
+  // Chemin théorique : `Main.gs` saute l\'étape tri entière sous cette panne. Si un jour ce garde
+  // tombait, le tri ne doit toujours pas archiver sur un `important` INCONNU.
+  const { c, calls } = ctxTri({});
+  const tsS = Date.now();
+  // Le prédicat est FORCÉ : sous la vraie panne de compte, `plafondAtteint` (et `Main.gs`) coupent
+  // le tri AVANT tout fil — la mécanique |deg n'a plus de chemin vivant, on la teste pour elle-même.
+  c.intentionsSuspendues_ = () => true;
   c.GmailApp.search = (q, d) => (d === 0
     ? [filMock(calls, { id: 'S1', ts: tsS, dernierMsgId: 'MS1', expediteur: 'a@b.c', sujet: 'x' })]
     : []);
@@ -232,7 +278,7 @@ test('tri : au RETOUR des intentions, le fil trié en dégradé est RÉ-ÉVALUÉ
 test('tri dégradé : idempotent — un 2e passage pendant la MÊME panne ne re-travaille pas', () => {
   const ts = Date.now();
   const { c, calls } = ctxTri({ index: { ['tri|D1|' + ts + '|lu|deg']: true } });
-  c.estPanneConfigApi_ = () => true;
+  c.intentionsSuspendues_ = () => true; // prédicat forcé (défense en profondeur, cf. test ci-dessus)
   c.GmailApp.search = (q, d) => (d === 0
     ? [filMock(calls, { id: 'D1', ts: ts, dernierMsgId: 'MD1', expediteur: 'a@b.c', sujet: 'x' })]
     : []);
@@ -247,7 +293,7 @@ test('rattrapage : une passe 100 % DÉGRADÉE ne se marque JAMAIS « terminé »
   // pouvait atteindre la page vide et se figer « terminé » sans avoir archivé un seul fil : le
   // « verdict figé sur un je-n'ai-pas-su-faire » (C28-33), appliqué à la CAMPAGNE.
   const enPanne = ctxTri({ props: { DriveAI_TRI_RATTRAPAGE: '', DriveAI_TRI_BOITE: 'terminé' } });
-  enPanne.c.estPanneConfigApi_ = () => true;
+  enPanne.c.intentionsSuspendues_ = () => true; // prédicat forcé (défense en profondeur)
   enPanne.c.GmailApp.search = () => []; // page vide : la campagne « voudrait » conclure
   enPanne.c.trierFilsGmail_(() => false);
   assert.notStrictEqual(enPanne.calls.props.DriveAI_TRI_RATTRAPAGE, 'terminé',
@@ -259,6 +305,13 @@ test('rattrapage : une passe 100 % DÉGRADÉE ne se marque JAMAIS « terminé »
   normal.c.GmailApp.search = () => [];
   normal.c.trierFilsGmail_(() => false);
   assert.strictEqual(normal.calls.props.DriveAI_TRI_RATTRAPAGE, 'terminé');
+
+  // ADR-0049 : une panne de CONFIG n'est plus une suspension de l'analyse — elle conclut aussi.
+  const cfg = ctxTri({ props: { DriveAI_TRI_RATTRAPAGE: '', DriveAI_TRI_BOITE: 'terminé' } });
+  cfg.c.estPanneConfigApi_ = () => true;
+  cfg.c.GmailApp.search = () => [];
+  cfg.c.trierFilsGmail_(() => false);
+  assert.strictEqual(cfg.calls.props.DriveAI_TRI_RATTRAPAGE, 'terminé', 'la création suspendue ne gèle pas la campagne');
 });
 
 test('tri dégradé : le mur |deg court-circuite AVANT de charger les messages (quota)', () => {
@@ -266,7 +319,7 @@ test('tri dégradé : le mur |deg court-circuite AVANT de charger les messages (
   // payait un `getMessages()` complet par fil et par tick pour finir sur un 'deja'.
   const ts = Date.now();
   const { c, calls } = ctxTri({ index: { ['tri|Q1|' + ts + '|lu|deg']: true } });
-  c.estPanneConfigApi_ = () => true;
+  c.intentionsSuspendues_ = () => true; // prédicat forcé (défense en profondeur)
   c.GmailApp.search = (q, d) => (d === 0
     ? [filMock(calls, { id: 'Q1', ts: ts, dernierMsgId: 'MQ1', expediteur: 'a@b.c', sujet: 'x' })]
     : []);
@@ -274,11 +327,14 @@ test('tri dégradé : le mur |deg court-circuite AVANT de charger les messages (
   assert.strictEqual(calls.getMessages, 0, 'aucun chargement de messages pour un fil déjà dégradé');
 });
 
-test('intentionsSuspendues_ : vrai sur CHAQUE panne durable, faux sinon, jamais d\'exception', () => {
+test('intentionsSuspendues_ : vrai sur la SEULE panne qui suspend l\'ANALYSE (compte LLM), jamais d\'exception', () => {
+  // ADR-0049 : une panne de CONFIG (Tasks/Calendar, jeton hubperso) ne suspend plus que la
+  // CRÉATION — l'analyse tourne et la clé arrive. La confondre avec une suspension faisait
+  // dégrader le tri (aucun archivage) pendant chaque panne d'agenda : six jours en septembre 2026.
   const ctx = load(['Config.gs', 'Gmail.gs', 'TriGmail.gs']);
   const cas = [
     { config: false, llm: false, attendu: false },
-    { config: true, llm: false, attendu: true },   // API Tasks/Calendar non activée (ADR-0041)
+    { config: true, llm: false, attendu: false },  // panne de CONFIG : l'analyse continue (ADR-0049)
     { config: false, llm: true, attendu: true },   // crédit LLM épuisé / 401 (panne de compte)
     { config: true, llm: true, attendu: true },
   ];
@@ -289,7 +345,7 @@ test('intentionsSuspendues_ : vrai sur CHAQUE panne durable, faux sinon, jamais 
       'config=' + k.config + ' llm=' + k.llm);
   }
   // État illisible : on ne prétend RIEN de faux — on garde le comportement nominal (on attend).
-  ctx.estPanneConfigApi_ = () => { throw new Error('Properties HS'); };
+  ctx.estPannePlateforme_ = () => { throw new Error('Properties HS'); };
   assert.strictEqual(ctx.intentionsSuspendues_(), false, 'jamais d\'exception vers l\'appelant');
 });
 
@@ -321,7 +377,9 @@ test('intentionsSuspendues_ : MIROIR des pannes durables de traiterIntentionsMai
   const tri = fs.readFileSync(path.join(__dirname, '..', 'src', 'TriGmail.gs'), 'utf8');
   const iPred = tri.indexOf('function intentionsSuspendues_');
   assert.ok(iPred > 0);
-  const corpsPred = tri.slice(iPred, tri.indexOf('\n}', iPred));
+  // CODE seulement (revue flotte) : un nom cité dans un COMMENTAIRE du corps ne vaut pas « connue du
+  // prédicat » — sinon la justification du bloc de doc n'est plus exigée (mutation : la retirer restait vert).
+  const corpsPred = tri.slice(iPred, tri.indexOf('\n}', iPred)).replace(/\/\/.*$/gm, '');
   const docPred = tri.slice(Math.max(0, iPred - 1200), iPred); // le bloc de doc juste au-dessus
   for (const nom of pannes) {
     if (corpsPred.indexOf(nom) !== -1) continue;              // connue du prédicat

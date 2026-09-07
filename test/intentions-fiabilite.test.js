@@ -54,6 +54,7 @@ function ctxPanne(props, reponses) {
   // ADR-0041 : la sonde utilise le jeton du projet HUBPERSO (JetonHubperso.gs, non chargé ici). Le mock
   // rend un jeton valide — le cas « pas de jeton » a son test dédié plus bas.
   c.jetonHubperso_ = () => 'jeton-test';
+  c.messageJetonHubpersoIndisponible_ = () => 'refresh OAuth hubperso momentanément impossible'; // JetonHubperso.gs non chargé
   const opts = { retardMs: 0 }; // le test peut rendre la sonde LENTE (garde-temps)
   /** L'URL REÇUE choisit la réponse — pas un compteur d'appels. */
   const pourUrl = (url) => {
@@ -613,16 +614,479 @@ test('creerIntentionIdempotente_ : déjà indexée → « deja-faite » sans app
 
 /* ---------- traiterIntentionsMail_ suspendu pendant la panne config ---------- */
 
-test('traiterIntentionsMail_ : panne config active → retour immédiat, aucun scan Gmail', () => {
+test('traiterIntentionsMail_ : panne config active → le scan TOURNE quand même (ADR-0049 : seule la création est suspendue)', () => {
+  // Avant ADR-0049 : « retour immédiat, aucun scan » — et donc aucune clé `important|`, donc un tri
+  // qui n'archivait plus rien pendant toute la panne (six jours en septembre 2026).
   const c = load(['Config.gs', 'GoogleApi.gs', 'Intentions.gs']);
   c.estPanneGmail_ = () => false;
   c.chargerPanneConfigApi_ = () => {};
   c.estPanneConfigApi_ = () => true; // panne active
+  c.estPannePlateforme_ = () => false;
+  c.PropertiesService = { getScriptProperties: () => ({ getProperty: () => null, setProperty: () => {}, deleteProperty: () => {} }) };
   let scanne = false;
   c.balayerNouveauxMails_ = () => { scanne = true; };
   c.balayerArriereHistorique_ = () => { scanne = true; };
   c.traiterIntentionsMail_(() => false);
-  assert.strictEqual(scanne, false, 'aucun balayage tant que l\'API est en panne de config');
+  assert.strictEqual(scanne, true, 'l\'analyse continue pendant une panne de config');
+});
+
+/* ---------- ADR-0049 (C28-76) : l'analyse continue pendant une panne de création ---------- */
+
+/**
+ * Contexte du scan avant + traitement par message, avec Index/Properties en mémoire et TOUS les
+ * coûts comptés (mini-check, extraction, lecture du corps, pages Gmail, créations).
+ * @param {Object} opts  { pages: [[fil…], …], index: {…}, props: {…}, panneConfig: bool,
+ *   check: {action,important}, zoneProtegee: fn }
+ */
+function ctxDiffere(opts) {
+  opts = opts || {};
+  const c = load(['Config.gs', 'Gmail.gs', 'TriGmail.gs', 'Intentions.gs']);
+  const calls = { index: { ...(opts.index || {}) }, ajouts: [], props: { ...(opts.props || {}) }, ecritures: [],
+    miniChecks: 0, extractions: 0, corps: 0, pages: [], creations: [], importants: [], infos: [] };
+  let panne = !!opts.panneConfig;
+  c.estPanneConfigApi_ = () => panne;
+  c.estPannePlateforme_ = () => false;
+  c.estPanneGmail_ = () => false;
+  c.signalerPanneGmail_ = () => false;
+  c.signalerRetablissementGmail_ = () => {};
+  c.indexContient_ = (cle) => !!calls.index[cle];
+  c.indexAjouter_ = (cle, r) => { calls.index[cle] = true; calls.ajouts.push({ cle, statut: r.statut }); };
+  c.ecarteParMotsCles_ = () => false;
+  c.toucheZoneProtegee_ = opts.zoneProtegee || (() => false);
+  c.piecesJointes_ = () => [];
+  c.estPromoGmail_ = () => false;
+  c.miniCheckMail_ = () => { calls.miniChecks++; return opts.check || { action: true, important: false }; };
+  c.marquerMailImportant_ = (id) => { calls.importants.push(id); calls.index['important|' + id] = true; };
+  c.extraireIntentions_ = () => { calls.extractions++; return [{ type: 'tache', titre: 'T', date: null, heure: null, confiance: 1 }]; };
+  c.creerIntentionIdempotente_ = (id) => { calls.creations.push(id); return 'creee'; };
+  c.tronquer_ = (t) => t;
+  c.journalInfo_ = (s, m) => calls.infos.push(m);
+  c.journalErreur_ = () => {};
+  c.notifierEchec_ = () => {};
+  c.libellesUtilisateur_ = () => ({});
+  c.PropertiesService = { getScriptProperties: () => {
+    if (opts.propsHS) throw new Error('Properties HS');
+    return {
+      getProperty: (k) => calls.props[k] ?? null,
+      setProperty: (k, v) => { calls.props[k] = v; calls.ecritures.push(['set', k]); },
+      deleteProperty: (k) => { delete calls.props[k]; calls.ecritures.push(['del', k]); },
+    };
+  } };
+  const pages = opts.pages || []; // même tableau : le test peut le remplir APRÈS la construction
+  c.pageFilsActions_ = (debut) => { calls.pages.push(debut); return pages[debut / c.CONFIG.PAGE_FILS_ACTIONS] || []; };
+  c.balayerArriereHistorique_ = () => {}; // isolé : on teste le scan AVANT
+  return { c, calls, setPanne: (v) => { panne = v; } };
+}
+
+function msgD(id, calls) {
+  return {
+    getId: () => id, getFrom: () => 'x@y.z', getSubject: () => 'Facture à payer',
+    getPlainBody: () => { calls.corps++; return 'corps'; }, getHeader: () => '', isUnread: () => false,
+  };
+}
+function filD(id, messages) { return { getId: () => id, getMessages: () => messages }; }
+
+test('différé : panne de création + mail actionnable → analyse| posé, important| posé, AUCUNE extraction', () => {
+  const { c, calls } = ctxDiffere({ panneConfig: true, check: { action: true, important: true } });
+  const etat = { differes: 0 };
+  assert.strictEqual(c.traiterMessagePourIntentions_(msgD('M1', calls), 'F1', etat), 0);
+  assert.strictEqual(calls.miniChecks, 1, 'l\'analyse a bien eu lieu');
+  assert.deepStrictEqual(calls.importants, ['M1'], 'le verdict que le TRI attend est posé');
+  assert.ok(calls.ajouts.some((a) => a.cle === 'analyse|M1' && a.statut === 'intention-en-attente-api'));
+  assert.ok(!calls.ajouts.some((a) => a.cle === 'intention|M1'), 'PAS « entièrement traité » : la création attend');
+  assert.strictEqual(calls.extractions, 0, 'aucun appel LLM dont le résultat ne pourrait servir');
+  assert.strictEqual(calls.creations.length, 0);
+  assert.strictEqual(etat.differes, 1, 'le bord du backlog est rapporté à l\'orchestrateur');
+});
+
+test('différé : mail SANS action pendant la panne → écarté définitivement (intention|), comme d\'habitude', () => {
+  const { c, calls } = ctxDiffere({ panneConfig: true, check: { action: false, important: true } });
+  c.traiterMessagePourIntentions_(msgD('M2', calls), 'F1', { differes: 0 });
+  assert.deepStrictEqual(calls.importants, ['M2']);
+  assert.ok(calls.ajouts.some((a) => a.cle === 'intention|M2' && a.statut === 'intention-ecartee'));
+  assert.ok(!calls.ajouts.some((a) => a.cle === 'analyse|M2'), 'rien à différer : aucune création attendue');
+});
+
+test('différé : revisite PENDANT la panne → zéro mini-check, zéro corps, zéro extraction (quota et coût nuls)', () => {
+  const { c, calls } = ctxDiffere({ panneConfig: true, index: { 'analyse|M1': true } });
+  assert.strictEqual(c.traiterMessagePourIntentions_(msgD('M1', calls), 'F1', { differes: 0 }), 0);
+  assert.strictEqual(calls.miniChecks + calls.corps + calls.extractions, 0);
+  assert.deepStrictEqual(calls.ajouts, []);
+});
+
+test('différé : revisite au RETOUR de l\'API → pas de mini-check, extraction + création, intention| posé', () => {
+  const { c, calls } = ctxDiffere({ panneConfig: false, index: { 'analyse|M1': true } });
+  assert.strictEqual(c.traiterMessagePourIntentions_(msgD('M1', calls), 'F1', { differes: 0 }), 1);
+  assert.strictEqual(calls.miniChecks, 0, 'le verdict de l\'analyse est déjà à l\'Index');
+  assert.strictEqual(calls.extractions, 1);
+  assert.deepStrictEqual(calls.creations, ['M1']);
+  assert.ok(calls.ajouts.some((a) => a.cle === 'intention|M1' && a.statut === 'intention-traitee'));
+});
+
+test('différé : au retour, la garde ZONE PROTÉGÉE est re-vérifiée sur le corps (défense en profondeur)', () => {
+  const { c, calls } = ctxDiffere({ panneConfig: false, index: { 'analyse|M1': true }, zoneProtegee: () => true });
+  assert.strictEqual(c.traiterMessagePourIntentions_(msgD('M1', calls), 'F1', { differes: 0 }), 0);
+  assert.strictEqual(calls.extractions, 0, 'jamais d\'extraction sur un corps protégé');
+  assert.ok(calls.ajouts.some((a) => a.cle === 'intention|M1' && a.statut === 'intention-zone-protegee'));
+});
+
+test('mur : PENDANT la panne, une page faite de intention| et analyse| est un MUR (1 seule page lue)', () => {
+  // C'est le quota que l'ancienne suspension totale protégeait : pendant une panne longue, les
+  // différés ne doivent pas faire repaginer la fenêtre entière à chaque tick.
+  const { c, calls } = ctxDiffere({ panneConfig: true,
+    index: { 'intention|A': true, 'analyse|B': true },
+    pages: [[filD('F1', [msgD('A', {}), msgD('B', {})])], [filD('F2', [msgD('C', {})])]] });
+  c.traiterIntentionsMail_(() => false);
+  assert.deepStrictEqual(calls.pages, [0], 'mur en page 0');
+  assert.strictEqual(calls.miniChecks, 0);
+});
+
+test('mur : au RETOUR de l\'API avec un retard armé, analyse| redevient INÉDIT, le mur s\'OUVRE, la fenêtre est vidée et le retard LEVÉ', () => {
+  const pages = [];
+  const { c, calls } = ctxDiffere({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'd' },
+    index: { 'intention|A': true, 'intention|C': true, 'analyse|D': true }, pages });
+  pages.push([filD('F1', [msgD('A', calls)])], [filD('F2', [msgD('C', calls), msgD('D', calls)])], []);
+  c.traiterIntentionsMail_(() => false);
+  assert.deepStrictEqual(calls.pages, [0, 20, 40], 'page 0 « à jour » n\'arrête PLUS le scan : D est en page 1');
+  assert.deepStrictEqual(calls.creations, ['D'], 'le différé derrière le mur est enfin créé');
+  assert.ok(!('DriveAI_INTENTIONS_RETARD' in calls.props), 'fin de fenêtre atteinte → retard levé');
+  assert.ok(calls.ecritures.some((e) => e[0] === 'del'));
+});
+
+test('mur : PENDANT la panne avec un retard déjà armé, l\'arrêt sur le mur ne LÈVE pas le drapeau (les différés attendent)', () => {
+  const { c, calls } = ctxDiffere({ panneConfig: true, props: { DriveAI_INTENTIONS_RETARD: 'd' },
+    index: { 'analyse|B': true },
+    pages: [[filD('F1', [msgD('B', {})])], [filD('F2', [msgD('Z', {})])]] });
+  c.traiterIntentionsMail_(() => false);
+  assert.deepStrictEqual(calls.pages, [0], 'mur : la fenêtre n\'est pas repaginée pendant la panne');
+  assert.strictEqual(calls.props.DriveAI_INTENTIONS_RETARD, 'd', 'et le retard reste armé pour le retour de l\'API');
+  assert.deepStrictEqual(calls.ecritures, []);
+});
+
+test('mur : en RÉGIME (pas de retard, pas de panne), page 0 à jour = mur, et AUCUNE écriture de Property', () => {
+  const { c, calls } = ctxDiffere({ panneConfig: false,
+    index: { 'intention|A': true },
+    pages: [[filD('F1', [msgD('A', {})])], [filD('F2', [msgD('Z', {})])]] });
+  c.traiterIntentionsMail_(() => false);
+  assert.deepStrictEqual(calls.pages, [0]);
+  assert.deepStrictEqual(calls.ecritures, [], 'zéro écriture en régime — le drapeau ne bouge qu\'aux bords');
+});
+
+test('drapeau : un DIFFÉRÉ dans ce run ARME le retard, même si la fenêtre a été vidée (il attend l\'API)', () => {
+  const pages = [];
+  const { c, calls } = ctxDiffere({ panneConfig: true, pages });
+  pages.push([filD('F1', [msgD('N', calls)])], []);
+  c.traiterIntentionsMail_(() => false);
+  assert.ok(calls.ajouts.some((a) => a.cle === 'analyse|N'));
+  assert.strictEqual(calls.props.DriveAI_INTENTIONS_RETARD, 'd', 'sans ça, au retour de l\'API le mur cacherait N ; « d » = différés à drainer');
+});
+
+test('drapeau : un scan COUPÉ avant la fin (plafond/run) ARME le retard — les pages suivantes ne remontent jamais en page 0', () => {
+  // Trou PRÉEXISTANT rendu visible par l\'ADR-0049 : après une coupe, le tick suivant repartait de
+  // la page 0 (désormais à jour) et s\'arrêtait au mur — les messages des pages 1+ étaient orphelins.
+  const pages = [];
+  const { c, calls } = ctxDiffere({ panneConfig: false, pages });
+  pages.push([filD('F1', [msgD('P', calls), msgD('Q', calls), msgD('R', calls)])], [filD('F2', [msgD('S', calls)])], []);
+  c.CONFIG.INTENTIONS_MAX_PAR_RUN = 2;
+  c.traiterIntentionsMail_(() => false);
+  assert.ok(calls.infos.some((m) => /plafond/.test(m)), 'coupé par le plafond/run');
+  assert.strictEqual(calls.props.DriveAI_INTENTIONS_RETARD, 'c:0', 'armé en COUPE à la page 0 : pages non analysées, à drainer panne ou pas');
+});
+
+test('plafond/run : les DÉJÀ-VUS ne comptent pas — sinon un scan sans mur se figeait au même point à chaque tick', () => {
+  const dejaVus = {};
+  const msgs = [];
+  for (let i = 0; i < 5; i++) { dejaVus['intention|V' + i] = true; msgs.push(msgD('V' + i, {})); }
+  msgs.push(msgD('X1', {}), msgD('X2', {}));
+  const { c, calls } = ctxDiffere({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'd' },
+    index: dejaVus, pages: [[filD('F1', msgs)], []] });
+  c.CONFIG.INTENTIONS_MAX_PAR_RUN = 2; // strictement < 5 déjà-vus + 2 inédits
+  c.traiterIntentionsMail_(() => false);
+  assert.strictEqual(calls.miniChecks, 2, 'les DEUX inédits sont analysés malgré 5 déjà-vus devant eux');
+});
+
+test('drapeau : un différé posé par le scan ARRIÈRE arme aussi le retard (son curseur ne repasse jamais dessus)', () => {
+  const { c, calls } = ctxDiffere({ panneConfig: true, pages: [[]] }); // scan avant : fenêtre vide
+  // Scan arrière RÉEL (pas mocké ici) : une page, puis plus rien.
+  const fils = [filD('FA', [Object.assign(msgD('H1', calls), { getDate: () => new Date(2026, 8, 1) })])];
+  let appels = 0;
+  c.GmailApp = { search: () => (appels++ === 0 ? fils : []) };
+  c.Utilities = { formatDate: () => '2026/09/01' };
+  c.Session = { getScriptTimeZone: () => 'UTC' };
+  delete c.balayerArriereHistorique_; // remet la vraie fonction du module
+  c.traiterIntentionsMail_(() => false);
+  assert.ok(calls.ajouts.some((a) => a.cle === 'analyse|H1'), 'différé par le scan arrière');
+  assert.strictEqual(calls.props.DriveAI_INTENTIONS_RETARD, 'd', 'sans ça, H1 resterait orphelin derrière le mur');
+});
+
+test('drainage REPRENABLE : offset persisté 60 → le neuf (page 0), puis SAUT à la page 40, puis jusqu\'à la fin, puis LEVÉ', () => {
+  // Le 🔴 de la revue quotas : avec 300-450 fils, aucun tick n'est certain de lire toute la fenêtre.
+  // Un drapeau booléen repartait de zéro à chaque tick — quota Gmail brûlé, tri affamé, zéro progrès.
+  const pages = [];
+  const { c, calls } = ctxDiffere({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'c:65' }, // reprise = 65 − 5 = 60
+    index: { 'intention|A': true, 'intention|B': true, 'intention|C': true, 'intention|D': true, 'analyse|E': true }, pages });
+  pages.push(
+    [filD('F0', [msgD('NEUF', calls), msgD('A', calls)])], // page 0 : du neuf
+    [filD('F1', [msgD('B', calls)])],                      // page 20 : entièrement vue ⇒ saut (20+20 < 40 ? non : 40 < 40 faux) …
+    [filD('F2', [msgD('C', calls)])],                      // page 40 = point de reprise (60 − 20)
+    [filD('F3', [msgD('D', calls)])],                      // page 60
+    [filD('F4', [msgD('E', calls)])],                      // page 80 : le différé
+    []);
+  c.traiterIntentionsMail_(() => false);
+  assert.deepStrictEqual(calls.pages, [0, 20, 60, 80, 100], 'page 1 vue ⇒ SAUT au point de reprise (60), puis jusqu\'à la fin');
+  assert.ok(calls.creations.includes('E'), 'le différé derrière le mur est créé (NEUF, actionnable, l\'est aussi)');
+  assert.ok(!('DriveAI_INTENTIONS_RETARD' in calls.props), 'un « c » PROPRE (jamais sous panne) LÈVE directement à la fin de fenêtre');
+  // Variante SALE (« cp ») : ses pages sautées peuvent cacher des différés ⇒ redescend à « d », et un
+  // 2e tick « d » (API toujours là) relit tout depuis 0 et, sans différé ni reprise, LÈVE.
+  const t2 = ctxDiffere({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'd' },
+    index: { 'intention|A': true, 'intention|B': true, 'intention|C': true, 'intention|D': true, 'intention|E': true, 'intention|NEUF': true },
+    pages: [[filD('F0', [msgD('A', {})])], [filD('F1', [msgD('B', {})])], []] });
+  t2.calls.props.DriveAI_INTENTIONS_RETARD = 'cp:65';
+  t2.c.traiterIntentionsMail_(() => false);
+  assert.strictEqual(t2.calls.props.DriveAI_INTENTIONS_RETARD, 'd', '« cp » ⇒ « d »');
+  t2.c.traiterIntentionsMail_(() => false);
+  assert.ok(!('DriveAI_INTENTIONS_RETARD' in t2.calls.props), 'puis « d » complet ⇒ levé');
+});
+
+test('drainage REPRENABLE : page 1 vue AVANT le point de reprise ⇒ on SAUTE (les pages déjà drainées ne sont pas relues)', () => {
+  const pages = [];
+  const { c, calls } = ctxDiffere({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'c:185' }, // reprise = 180
+    index: { 'intention|A': true, 'intention|B': true }, pages });
+  pages.push([filD('F0', [msgD('A', calls)])], [filD('F1', [msgD('B', calls)])]);
+  for (let p = 2; p < 9; p++) pages.push([filD('F' + p, [msgD('V' + p, calls)])]); // pages 40..160 : déjà drainées
+  pages.push([filD('F9', [msgD('Z', calls)])], []);                                // 180 = reprise (200 − 20)
+  for (let p = 2; p < 9; p++) calls.index['intention|V' + p] = true;
+  c.traiterIntentionsMail_(() => false);
+  assert.deepStrictEqual(calls.pages, [0, 180, 200], 'saut de la page 0 (vue) au point de reprise 180');
+});
+
+test('drainage REPRENABLE : coupé par le plafond à la page 60 ⇒ l\'offset persisté AVANCE à 60 (jamais ne recule)', () => {
+  const pages = [];
+  const { c, calls } = ctxDiffere({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'c:25' }, // reprise = 20
+    index: { 'intention|A': true }, pages });
+  pages.push([filD('F0', [msgD('A', calls)])]); // page 0 vue ; reprise = 0
+  pages.push([filD('F1', [msgD('X1', calls)])], [filD('F2', [msgD('X2', calls)])], [filD('F3', [msgD('X3', calls), msgD('X4', calls)])], []);
+  c.CONFIG.INTENTIONS_MAX_PAR_RUN = 3; // X1, X2, X3 puis coupe sur X4 (page 60)
+  c.traiterIntentionsMail_(() => false);
+  assert.strictEqual(calls.props.DriveAI_INTENTIONS_RETARD, 'c:60', 'progrès persisté AU FIL (page 60, fil 0) : le tick suivant reprend à 55');
+  // Et un tick où la coupe tombe AVANT l'offset connu ne fait pas reculer.
+  const r2 = ctxDiffere({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'c:105' }, pages: [[filD('G0', [msgD('Y', {})])]] });
+  r2.c.CONFIG.INTENTIONS_MAX_PAR_RUN = 0; // coupe immédiate en page 0
+  r2.c.traiterIntentionsMail_(() => false);
+  assert.strictEqual(r2.calls.props.DriveAI_INTENTIONS_RETARD, 'c:105', 'max(105, 0) : jamais en arrière');
+});
+
+test('drapeau : une création qui RELÈVE (panne détectée en cours de run) arme quand même le retard, puis re-lève', () => {
+  // Le 🟠 de la revue quotas : sans `finally`, ce chemin sautait le bloc drapeau — le message qui a
+  // révélé la panne et ses suivants de page restaient derrière le mur au tick suivant.
+  const pages = [];
+  const { c, calls, setPanne } = ctxDiffere({ panneConfig: false, pages });
+  pages.push([filD('F0', [msgD('K1', calls)])]);
+  // Comme `signalerPanneConfigApi_` : la création qui relève POSE la panne avant de jeter.
+  c.creerIntentionIdempotente_ = () => { setPanne(true); throw new Error('config-api Tasks : boum'); };
+  assert.throws(() => c.traiterIntentionsMail_(() => false), /boum/, 'l\'exception est bien RE-LEVÉE (patron ADR-0022)');
+  assert.strictEqual(calls.props.DriveAI_INTENTIONS_RETARD, 'cp:0', 'armé malgré l\'exception, à la page COURANTE (0) — et souillé : la création qui relève pose la panne');
+});
+
+test('drapeau : différé PENDANT un drainage (l\'API rebascule en panne) ⇒ offset remis à 0 (prudent)', () => {
+  const pages = [];
+  const { c, calls } = ctxDiffere({ panneConfig: true, props: { DriveAI_INTENTIONS_RETARD: 'c:85' }, pages });
+  pages.push([filD('F0', [msgD('N', calls)])], []);
+  c.traiterIntentionsMail_(() => false);
+  assert.strictEqual(calls.props.DriveAI_INTENTIONS_RETARD, 'd', 'fin de fenêtre sous panne : les pages sautées peuvent cacher des différés ⇒ « d »');
+});
+
+test('armerOuLeverRetardIntentions_ (PURE) : table de transition, une écriture au plus, seulement si la valeur change', () => {
+  const c = load(['Config.gs', 'Intentions.gs']);
+  const ecritures = [];
+  const props = { setProperty: (k, v) => ecritures.push(v), deleteProperty: () => ecritures.push('del') };
+  const b = { retard: 'c', retardOffset: 40, sale: false, canonique: true, differes: 0, reprises: 0, coupe: false, coupeA: -1, fenetreAJour: false, panne: false };
+  // Rien à écrire :
+  c.armerOuLeverRetardIntentions_(props, b);                                        // arrêt sur le mur
+  c.armerOuLeverRetardIntentions_(props, { ...b, coupe: true, coupeA: 20 });        // max(40,20)=40, inchangé
+  c.armerOuLeverRetardIntentions_(props, { ...b, retard: '', });                     // régime, mur
+  c.armerOuLeverRetardIntentions_(props, { ...b, retard: 'd', differes: 1 });        // déjà « d »
+  c.armerOuLeverRetardIntentions_(props, { ...b, retard: 'd', fenetreAJour: true, panne: true }); // reste « d »
+  assert.deepStrictEqual(ecritures, []);
+  c.armerOuLeverRetardIntentions_(props, { ...b, coupe: true, coupeA: 60 });                        // c:60
+  c.armerOuLeverRetardIntentions_(props, { ...b, fenetreAJour: true, sale: true });                 // cp → d
+  c.armerOuLeverRetardIntentions_(props, { ...b, fenetreAJour: true });                             // c PROPRE ⇒ levé
+  c.armerOuLeverRetardIntentions_(props, { ...b, coupe: true, coupeA: 60, panne: true });           // cp:60 (sali par la panne)
+  c.armerOuLeverRetardIntentions_(props, { ...b, sale: true, coupe: true, coupeA: 20 });            // cp:40 inchangé : rien
+  c.armerOuLeverRetardIntentions_(props, { ...b, coupe: true, coupeA: 20, reprises: 1 });          // une REPRISE souille : cp:40
+  c.armerOuLeverRetardIntentions_(props, { ...b, coupe: true, coupeA: 20, canonique: false });      // format inconnu ⇒ réécrit c:40
+  c.armerOuLeverRetardIntentions_(props, { ...b, retard: 'd', fenetreAJour: true });                // levé
+  c.armerOuLeverRetardIntentions_(props, { ...b, retard: 'd', fenetreAJour: true, reprises: 1 });   // reste d : rien
+  c.armerOuLeverRetardIntentions_(props, { ...b, retard: '', fenetreAJour: true, differes: 1 });    // d
+  c.armerOuLeverRetardIntentions_(props, { ...b, retard: '', coupe: true, coupeA: 0 });             // c:0
+  c.armerOuLeverRetardIntentions_(props, { ...b, retard: 'd', coupe: true, coupeA: 80 });           // d + coupe ⇒ c:80
+  c.armerOuLeverRetardIntentions_(props, { ...b, retard: '', reprises: 1 });                        // d
+  assert.deepStrictEqual(ecritures, ['c:60', 'd', 'del', 'cp:60', 'cp:40', 'c:40', 'del', 'd', 'c:0', 'c:80', 'd']);
+});
+
+test('lireRetardIntentions_ (PURE) : « d », « c:<n> », absent, valeur inconnue (ancien format) ⇒ le plus prudent', () => {
+  const c = load(['Config.gs', 'Intentions.gs']);
+  const lire = (v) => JSON.parse(JSON.stringify(c.lireRetardIntentions_(v))); // objets d'un autre contexte vm
+  assert.deepStrictEqual(lire(null), { retard: '', offset: 0, sale: false, canonique: true });
+  assert.deepStrictEqual(lire(''), { retard: '', offset: 0, sale: false, canonique: true });
+  assert.deepStrictEqual(lire('d'), { retard: 'd', offset: 0, sale: false, canonique: true });
+  assert.deepStrictEqual(lire('c:120'), { retard: 'c', offset: 120, sale: false, canonique: true });
+  assert.deepStrictEqual(lire('c:-5'), { retard: 'c', offset: 0, sale: false, canonique: true });
+  assert.deepStrictEqual(lire('cp:12'), { retard: 'c', offset: 12, sale: true, canonique: true });
+  assert.deepStrictEqual(lire('1'), { retard: 'c', offset: 0, sale: true, canonique: false }, 'un format inconnu draine tout, SALE, et sera réécrit');
+});
+
+test('🔴 F1 : sous « c » PENDANT la panne, le mur est OUVERT — le backlog jamais analysé est drainé sans attendre l\'API', () => {
+  // Le scénario du déploiement : six jours de mails sans aucune clé. Tick 1 analyse page 0 puis
+  // coupe ; tick 2, page 0 est à clé ⇒ sans ce correctif, mur ⇒ le reste du backlog n'était analysé
+  // qu'au retour de l'API — le tri de ces fils restait « attend » et l'incident persistait.
+  const { c, calls } = ctxDiffere({ panneConfig: true, props: { DriveAI_INTENTIONS_RETARD: 'c:0' },
+    index: { 'intention|A': true },
+    pages: [[filD('F0', [msgD('A', {})])], [filD('F1', [msgD('Z', {})])], []] });
+  c.traiterIntentionsMail_(() => false);
+  assert.deepStrictEqual(calls.pages, [0, 20, 40], 'page 0 à clé n\'arrête pas sous « c »');
+  assert.ok(calls.ajouts.some((a) => a.cle === 'analyse|Z'), 'Z est analysé (et différé) PENDANT la panne');
+  assert.strictEqual(calls.props.DriveAI_INTENTIONS_RETARD, 'd', 'fin de fenêtre sous panne : redescend à « d »');
+});
+
+test('levée INTERDITE sous panne : fenêtre vidée sans nouveau différé, mais un analyse| antérieur attend ⇒ le drapeau reste', () => {
+  // code-reviewer 🟠1 : sous panne un différé antérieur compte « vu » (pas de `differes`), donc
+  // « fenêtre vidée ∧ 0 différé » ne prouve rien. Le lever cachait D derrière le mur au retour.
+  const { c, calls } = ctxDiffere({ panneConfig: true, props: { DriveAI_INTENTIONS_RETARD: 'd' },
+    index: { 'analyse|D': true }, check: { action: false, important: false },
+    pages: [[filD('F0', [msgD('N1', {})])], []] }); // N1 inédit non actionnable ⇒ page 0 pas à jour ⇒ page 20 vide
+  c.traiterIntentionsMail_(() => false);
+  assert.deepStrictEqual(calls.pages, [0, 20], 'fenêtre vidée');
+  assert.strictEqual(calls.props.DriveAI_INTENTIONS_RETARD, 'd', 'JAMAIS levé sous panne');
+  assert.deepStrictEqual(calls.ecritures, [], 'et rien de réécrit (déjà « d »)');
+});
+
+test('🔴 F2 : au drainage, un différé dont l\'EXTRACTION échoue reste en attente ⇒ le drapeau ne se lève pas', () => {
+  const pages = [];
+  const { c, calls } = ctxDiffere({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'd' },
+    index: { 'analyse|M': true, 'intention|A': true }, pages });
+  pages.push([filD('F0', [msgD('A', {})])], [filD('F1', [msgD('M', calls)])], []);
+  c.extraireIntentions_ = () => null; // refus LLM / JSON invalide / 5xx hors panne de compte
+  c.incrementerEchec_ = () => 1;
+  c.traiterIntentionsMail_(() => false);
+  assert.ok(!calls.ajouts.some((a) => a.cle === 'intention|M'), 'pas de clé terminale : M attend encore');
+  assert.strictEqual(calls.props.DriveAI_INTENTIONS_RETARD, 'd', 'reste armé — sinon M, profond dans la fenêtre, était orphelin À VIE');
+});
+
+test('🔴 F2 : un échec LLM DÉTERMINISTE est BORNÉ — après QUARANTAINE_MAX essais le message est abandonné (tracé), le drapeau se lève', () => {
+  const pages = [];
+  const { c, calls } = ctxDiffere({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'd' },
+    index: { 'analyse|M': true }, pages });
+  pages.push([filD('F0', [msgD('M', calls)])], []);
+  const journaux = [];
+  c.journalErreur_ = (s, m) => journaux.push(m);
+  c.extraireIntentions_ = () => null;
+  c.incrementerEchec_ = () => c.CONFIG.QUARANTAINE_MAX;
+  c.traiterIntentionsMail_(() => false);
+  assert.ok(calls.ajouts.some((a) => a.cle === 'intention|M' && a.statut === 'intention-abandonnee'), 'abandon TRACÉ par une clé terminale');
+  assert.ok(journaux.some((m) => /ABANDONNÉE/.test(m)));
+  assert.ok(!('DriveAI_INTENTIONS_RETARD' in calls.props), 'plus rien en attente ⇒ levé (sinon repagination 30 jours)');
+});
+
+test('F2 : une création PARTIELLE au drainage compte comme reprise (le drapeau reste)', () => {
+  const pages = [];
+  const { c, calls } = ctxDiffere({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'd' },
+    index: { 'analyse|M': true }, pages });
+  pages.push([filD('F0', [msgD('M', calls)])], []);
+  c.creerIntentionIdempotente_ = () => 'echec';
+  c.traiterIntentionsMail_(() => false);
+  assert.strictEqual(calls.props.DriveAI_INTENTIONS_RETARD, 'd');
+});
+
+/** Mock PLAT : `pageFilsActions_(debut)` = tranche de 20 fils à partir de n'importe quel offset. */
+function ctxPlat(opts, fils) {
+  const r = ctxDiffere(opts);
+  r.c.pageFilsActions_ = (debut) => { r.calls.pages.push(debut); return fils.slice(debut, debut + r.c.CONFIG.PAGE_FILS_ACTIONS); };
+  return r;
+}
+
+test('🔴 (2ᵉ tour) : au retour de l\'API, une passe « d » coupée par le budget à CHAQUE tick converge quand même — d → c propre → LEVÉE, jamais un cycle', () => {
+  // 90 fils tous vus sauf un différé au fil 75. Plafond de 2 pages par run : aucune passe ne tient en un tick.
+  const fils = []; const index = {};
+  for (let i = 0; i < 90; i++) { fils.push(filD('F' + i, [msgD('M' + i, {})])); index['intention|M' + i] = true; }
+  delete index['intention|M75']; index['analyse|M75'] = true;
+  const t1 = ctxPlat({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'd' }, index }, fils);
+  t1.c.CONFIG.INTENTIONS_PAGES_MAX_PAR_RUN = 2;
+  t1.c.traiterIntentionsMail_(() => false);
+  assert.deepStrictEqual(t1.calls.pages, [0, 20], 'plafond de pages : coupe');
+  assert.strictEqual(t1.calls.props.DriveAI_INTENTIONS_RETARD, 'c:40', 'd coupée ⇒ c PROPRE à la page atteinte');
+  const t2 = ctxPlat({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'c:40' }, index }, fils);
+  t2.c.CONFIG.INTENTIONS_PAGES_MAX_PAR_RUN = 2;
+  t2.c.traiterIntentionsMail_(() => false);
+  assert.deepStrictEqual(t2.calls.pages, [0, 35], 'page 0 puis SAUT à 40 − 5 fils');
+  assert.strictEqual(t2.calls.props.DriveAI_INTENTIONS_RETARD, 'c:55');
+  const t3 = ctxPlat({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'c:55' }, index }, fils);
+  t3.c.CONFIG.INTENTIONS_PAGES_MAX_PAR_RUN = 2;
+  t3.c.traiterIntentionsMail_(() => false);
+  assert.deepStrictEqual(t3.calls.pages, [0, 50], '50..69 lus (M75 pas encore)');
+  assert.strictEqual(t3.calls.props.DriveAI_INTENTIONS_RETARD, 'c:70');
+  const t4 = ctxPlat({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'c:70' }, index }, fils);
+  t4.c.CONFIG.INTENTIONS_PAGES_MAX_PAR_RUN = 4; // ce tick a du budget : il atteint la fin
+  t4.c.traiterIntentionsMail_(() => false);
+  assert.deepStrictEqual(t4.calls.pages, [0, 65, 85, 105], '65..84 (M75 extrait), 85..89, puis page vide');
+  assert.deepStrictEqual(t4.calls.creations, ['M75']);
+  assert.ok(!('DriveAI_INTENTIONS_RETARD' in t4.calls.props), 'c PROPRE + fin de fenêtre ⇒ LEVÉ directement (pas de nouvelle passe d)');
+});
+
+test('plateau à la page de reprise : la coupe est enregistrée AU FIL — deux ticks courts progressent quand même', () => {
+  // Avant (granularité page) : offset 100, reprise 80, coupe pendant la page 80 ou 100 ⇒ max(100, page)
+  // = 100, zéro progrès, 40-60 appels/tick pour rien tant que le reliquat tenait entre 8 et 23 s.
+  const fils = []; const index = {};
+  for (let i = 0; i < 130; i++) { fils.push(filD('F' + i, [msgD('M' + i, {})])); if (i < 100) index['intention|M' + i] = true; }
+  const t = ctxPlat({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'c:100' }, index }, fils);
+  t.c.CONFIG.INTENTIONS_MAX_PAR_RUN = 3; // trois inédits puis coupe : M100, M101, M102 ⇒ coupe au fil 103
+  t.c.traiterIntentionsMail_(() => false);
+  assert.deepStrictEqual(t.calls.pages, [0, 95]);
+  assert.strictEqual(t.calls.props.DriveAI_INTENTIONS_RETARD, 'c:103', 'progrès de 3 fils, pas de retour à 100');
+});
+
+test('un « c » qui tourne sous PANNE devient « cp » et sa fin de fenêtre redescend à « d » (ses sauts peuvent cacher des différés)', () => {
+  const fils = []; const index = {};
+  for (let i = 0; i < 30; i++) { fils.push(filD('F' + i, [msgD('M' + i, {})])); if (i !== 27) index['intention|M' + i] = true; }
+  const t1 = ctxPlat({ panneConfig: true, props: { DriveAI_INTENTIONS_RETARD: 'c:25' }, index }, fils);
+  t1.c.CONFIG.INTENTIONS_MAX_PAR_RUN = 1; // M27 analysé (différé), coupe au fil 28 : la panne salit
+  t1.c.traiterIntentionsMail_(() => false);
+  assert.strictEqual(t1.calls.props.DriveAI_INTENTIONS_RETARD, 'cp:28', 'sali par la panne, offset avancé au fil 28');
+  index['analyse|M27'] = true;
+  const t2 = ctxPlat({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'cp:28' }, index }, fils);
+  t2.c.traiterIntentionsMail_(() => false);
+  assert.strictEqual(t2.calls.props.DriveAI_INTENTIONS_RETARD, 'd', 'fin de fenêtre sous cp ⇒ d, même API revenue');
+});
+
+test('chemin d\'exception : la coupe est enregistrée à la page COURANTE, pas à 0 (2ᵉ tour 🟡)', () => {
+  const fils = []; const index = {};
+  for (let i = 0; i < 60; i++) { fils.push(filD('F' + i, [msgD('M' + i, {})])); if (i !== 45) index['intention|M' + i] = true; }
+  const t = ctxPlat({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'd' }, index }, fils);
+  t.c.creerIntentionIdempotente_ = () => { t.setPanne(true); throw new Error('config-api Tasks : boum'); }; // pose la panne, comme signalerPanneConfigApi_
+  assert.throws(() => t.c.traiterIntentionsMail_(() => false), /boum/);
+  assert.strictEqual(t.calls.props.DriveAI_INTENTIONS_RETARD, 'cp:40', 'page courante 40 (M45 y est), souillée — pas un retour à 0');
+});
+
+test('une REPRISE dans un tick antérieur de la chaîne « c » la souille : la fin de fenêtre redescend à « d » au lieu de lever', () => {
+  const fils = []; const index = {};
+  for (let i = 0; i < 40; i++) { fils.push(filD('F' + i, [msgD('M' + i, {})])); if (i !== 25) index['intention|M' + i] = true; }
+  index['analyse|M25'] = true;
+  const t1 = ctxPlat({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'd' }, index }, fils);
+  t1.c.extraireIntentions_ = () => null; t1.c.incrementerEchec_ = () => 1;   // M25 : échec transitoire ⇒ reprise
+  t1.c.CONFIG.INTENTIONS_PAGES_MAX_PAR_RUN = 2;                              // puis coupe avant la fin
+  t1.c.traiterIntentionsMail_(() => false);
+  assert.strictEqual(t1.calls.props.DriveAI_INTENTIONS_RETARD, 'cp:40', 'la reprise souille la chaîne');
+  const t2 = ctxPlat({ panneConfig: false, props: { DriveAI_INTENTIONS_RETARD: 'cp:40' }, index }, fils);
+  t2.c.traiterIntentionsMail_(() => false); // page 0, saut à 35, 35..39, fin : M25 n'est PAS relu ici
+  assert.strictEqual(t2.calls.props.DriveAI_INTENTIONS_RETARD, 'd', 'jamais levé sur M25 encore en attente : « d » le relira');
+});
+
+test('drapeau : Properties ILLISIBLES → « cp:0 » par défaut (complétude : tout drainer, sale), aucune exception, aucune écriture', () => {
+  const { c, calls } = ctxDiffere({ panneConfig: false, propsHS: true,
+    index: { 'intention|A': true }, pages: [[filD('F1', [msgD('A', {})])], []] });
+  assert.doesNotThrow(() => c.traiterIntentionsMail_(() => false));
+  assert.deepStrictEqual(calls.pages, [0, 20], 'mur désactivé ce tick (défaut prudent) : la fenêtre est repaginée');
+  assert.deepStrictEqual(calls.ecritures, []);
 });
 
 /* ---------- bouclier ANTI-ARNAQUES (heuristiquePhishing_ / promo non lue, AVANT le LLM) ---------- */
@@ -645,6 +1109,7 @@ function ctxBouclier(opts) {
   c.journalInfo_ = () => {};
   c.notifierEchec_ = () => {};
   c.estPannePlateforme_ = () => false;
+  c.estPanneConfigApi_ = () => false; // ADR-0049 : création possible par défaut
   c.libellesUtilisateur_ = () => ({});
   return { c, ajouts, appelsLlm: () => miniCheckAppels };
 }
@@ -697,6 +1162,26 @@ test('sonde INDÉTERMINÉE : le POURQUOI (code HTTP) est PERSISTÉ — sinon imp
   assert.ok(etat.includes('Tasks'), 'l\'API concernée est nommée');
   assert.ok(etat.includes('400'), 'le code HTTP est LISIBLE dans Santé : ' + etat);
   assert.strictEqual(h.c.estPanneConfigApi_(), true, 'un doute ne lève JAMAIS la suspension');
+});
+
+test('sonde INDÉTERMINÉE (hubperso) : le texte DURABLE de C28-77 survit à la troncature 160 de Santé, consigne comprise', () => {
+  const h = ctxPanne({ DriveAI_PANNE_CONFIG_API: String(Date.now() - 3600 * 1000) }, { code: 404, corps: '' });
+  h.c.jetonHubperso_ = () => null;
+  h.c.etatLiaisonHubperso_ = () => 'present';
+  const jh = load(['Config.gs', 'JetonHubperso.gs']);
+  const durable = jh.texteEchecJetonHubperso_({ depuisMs: 0, raison: 'invalid_client' }, 6 * 24 * 3600 * 1000 + 1, jh.CONFIG.HUBPERSO_ECHEC_DURABLE_MS);
+  h.c.messageJetonHubpersoIndisponible_ = () => durable;
+  h.c.chargerPanneConfigApi_();
+  const etat = String(h.store.DriveAI_PANNE_CONFIG_SONDE_ETAT || '');
+  assert.ok(etat.includes('EN ÉCHEC depuis 6 j') && etat.includes('invalid_client'), etat);
+  assert.ok(etat.includes('lierCompteHubperso'), 'la CONSIGNE n\'est pas coupée : ' + etat);
+  // Cas DÉRIVÉ de la borne : une raison à HUBPERSO_RAISON_MAX caractères et 30 jours — c'est la raison
+  // qui se tronque, jamais la consigne (revue quotas, 2ᵉ tour).
+  const pire = jh.texteEchecJetonHubperso_({ depuisMs: 0, raison: 'x'.repeat(jh.HUBPERSO_RAISON_MAX) }, 30 * 24 * 3600 * 1000 + 1, jh.CONFIG.HUBPERSO_ECHEC_DURABLE_MS);
+  h.c.messageJetonHubpersoIndisponible_ = () => pire;
+  h.store.DriveAI_PANNE_CONFIG_SONDE = '0';
+  h.c.chargerPanneConfigApi_();
+  assert.ok(String(h.store.DriveAI_PANNE_CONFIG_SONDE_ETAT).includes('lierCompteHubperso'), 'consigne intacte au pire cas : ' + h.store.DriveAI_PANNE_CONFIG_SONDE_ETAT);
 });
 
 test('sonde DÉSACTIVÉE : pas de doublon du message (son canal dédié reste DriveAI_PANNE_CONFIG_MSG)', () => {

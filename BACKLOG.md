@@ -728,6 +728,56 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
   ~0,39 $ one-shot. `NAS` se livre dans le MÊME commit côté `TYPES_IDENTITE` (Router) **et** côté
   table (`cheminCibleReset_`, branche 01) : sans les deux, un NAS canoniquement nommé irait au repli.
 
+- ✅ **C28-75 — Plus AUCUN mail du moteur (décision Marc 2026-09-07).** `CONFIG.MAILS_ACTIFS = false` :
+  `resumeHebdo` sort avant tout calcul, et `assurerTriggerResume_` **RETIRE** le déclencheur existant
+  (sans quoi il continuait de partir chaque lundi — et le tick le réinstallait derrière Marc). Les
+  alertes de panne étaient déjà muettes depuis le 2026-07-06 (`notifierEchec_`) ; le seul envoi
+  restant était le récap. Tripwire : `MailApp.sendEmail` n'existe que dans `Resume.gs`, derrière le flag.
+  Suite (revue sécurité, à séquencer AVEC Marc — toute modif du manifeste) : le scope `script.send_mail`
+  est désormais DORMANT (seul consommateur derrière un flag à faux) — le retirer, avec l'envoi dans
+  `Resume.gs` et la preuve de `test/scopes.test.js`. Retirer n'étend pas : aucun gel attendu.
+
+- ✅ **C28-76 — Une panne d'agenda ne gèle plus l'archivage de la boîte (ADR-0049).** Incident 02-07/09 :
+  six jours de « libellés posés, AUCUN archivage » parce qu'une panne du jeton OAuth hubperso
+  (création Tâches/Agenda) suspendait TOUTE l'analyse, donc la clé `important|` que le tri attend.
+  Désormais seule la CRÉATION est suspendue : l'analyse continue, un mail actionnable est DIFFÉRÉ
+  (`analyse|<id>`, zéro LLM tant que l'API est en panne, reprise à l'extraction au retour), le tri
+  accepte `analyse|` comme verdict et archive normalement. Quota Gmail protégé par le mur (différé =
+  « vu » pendant la panne) + un drapeau de retard `DriveAI_INTENTIONS_RETARD` à deux natures
+  (`c:<offset>` pages non analysées, drainées panne ou pas et REPRENABLES au fil près, avec un bit
+  propre/souillé `cp:` — un `c` propre lève directement, sinon `d` coupée ⇒ `c` ⇒ `d`… cyclait à vie ;
+  `d` différés, drainés au retour de l'API ; plafond de 10 pages/run) qui ferme AUSSI un trou préexistant : un scan coupé par le plafond/run laissait
+  les pages suivantes orphelines derrière le mur. La revue flotte (4 agents, 2 tours) a écarté mon
+  premier drapeau booléen copié de `DriveAI_GMAIL_PJ_RETARD` : sans offset, 300-450 fils et le
+  reliquat de budget faisaient repaginer de zéro à chaque tick (quota Gmail brûlé, tri affamé — le
+  correctif aurait recréé le symptôme). Le découplage était planifié depuis C28-52
+  (« PR2 ») et jamais fait. ⚠️ **Reste un geste de Marc** : la panne OAuth elle-même (le refresh
+  échoue depuis le 02/09, raison inconnue tant que C28-77 n'est pas déployé) — re-lier via
+  `JetonHubperso.gs` → `lierCompteHubperso` ; si ça échoue au consentement, le client OAuth a changé
+  côté hubperso (reposer `DriveAI_HUBPERSO_CLIENT_ID/_SECRET`, `docs/HUBPERSO.md`).
+
+- ✅ **C28-77 — Un échec OAuth « transitoire » qui dure six jours doit le dire, avec sa raison.**
+  `analyserReponseJetonHubperso_` rend la RAISON (code OAuth `error`, sinon code HTTP) ;
+  `jetonHubperso_` mémorise la série (`DriveAI_HUBPERSO_ECHEC` = `<ts du 1er>|<raison du dernier>`,
+  close au succès) ; au-delà de `CONFIG.HUBPERSO_ECHEC_DURABLE_MS` (24 h), Santé et la sonde disent
+  « EN ÉCHEC depuis N j (raison : invalid_client) » + la consigne, au lieu de « momentanément ».
+  Leçon : un message vrai à chaque tick peut mentir sur la durée — l'observabilité doit porter le
+  « depuis quand », pas seulement le « quoi ».
+
+- ⬜ **C28-78 — Trois PR (#313, #314, #315) fusionnées le 21/08 DANS la branche `claude/compassionate-brahmagupta-e49tqa`, jamais dans `main`.**
+  Constaté le 2026-09-07 : leur `base.ref` était ma branche désignée, leurs branches sources ont été
+  supprimées au merge, et `main` n'a rien reçu. ⚠️ J'ai tenté de préserver le tip `e6430bc` par un
+  tag : **refusé (HTTP 403, identifiants limités à la branche désignée)**. Le contenu reste lisible
+  sur les pages fermées des trois PR (onglet « Files changed »), et `e6430bc` est cité ici pour
+  qu'un `git fetch origin e6430bc` le retrouve tant que GitHub le garde. Ce qui compte : **#314 « le brouillon devient un
+  vrai frein à l'auto-merge » (décision Marc du 21/08) n'a jamais pris effet** — `auto-merge.yml`
+  sur `main` a toujours `gh pr ready … || true`, et #311/#312 ont été sorties du brouillon et
+  fusionnées ce matin même. #313 (règles de cadrage en §10) est remplacé par #316 (convention
+  `docs/COMPTE-RENDU.md`, §7 porte le cadrage) ; #315 (`build-necessaire.sh`) est remplacé par #317
+  (`git.deploymentEnabled`, qui dit explicitement que le script ne protégeait pas le quota). À faire,
+  sur feu vert de Marc : ré-ouvrir #314 contre `main` (le diff est sur le tag), rien d'autre.
+  Réflexe (§9) : `pull_request_read` avant tout push sur une branche `claude/**` partagée.
+
 - ⬜ **C28-74 — Une estimation de fin doit connaître le PLAFOND BUDGÉTAIRE, pas seulement le débit.**
   Mesuré le 21/08 : c26-08 affiche « reste 704 documents · ~7 j · vers le 27/08 » alors que le frein
   à 40 $ l'arrêtera à **1 133 / 1 207**, ~74 documents et un ou deux jours AVANT cette date. Le garde
