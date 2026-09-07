@@ -312,6 +312,16 @@ var CONFIG = {
   RESUME_NEWSLETTERS_MAX: 10,             // « newsletters jamais ouvertes » listées au résumé
   TRI_NEWSLETTERS_SEUIL: 3,               // n fils promo non lus (30 j) pour qualifier un expéditeur
   INTENTIONS_MAX_PAR_RUN: 200,            // plafond de messages INÉDITS analysés (pré-filtre inclus) par run — un déjà-vu ne compte pas (ADR-0049)
+  // ADR-0049, drainage REPRENABLE (revue quotas, 2 tours) : borne de LECTURE Gmail par run quand le mur
+  // est ouvert — sans elle la seule borne était le temps (jusqu'à 1 500 appels en un tick sur une boîte
+  // chargée). 10 pages ≈ 210 appels ≈ 25-75 s ; une fenêtre de 450 fils se draine en 3 ticks. En régime
+  // le mur ferme en page 0-1 : jamais atteint. Traité comme une COUPE (offset persisté).
+  INTENTIONS_PAGES_MAX_PAR_RUN: 10,
+  // Recouvrement du point de reprise, en FILS (pas en pages) : entre deux ticks, quelques fils au plus
+  // remontent en tête ou disparaissent — une page entière de relecture faisait un plateau (coupe à la
+  // page de reprise elle-même = zéro progrès, 40-60 appels/tick pour rien) quand le reliquat de budget
+  // tenait entre 8 et 23 s. Cinq fils : le plateau exigerait un reliquat < page 0 + 6 fils, déjà coupé.
+  INTENTIONS_RECOUVREMENT_FILS: 5,
   CREATIONS_MAX_PAR_RUN: 30,              // plafond de tâches/événements CRÉÉS par run (pas de rafale)
   LLM_MAX_TOKENS_MINICHECK: 24,           // mini-check JSON {action, important} (expéditeur+sujet seuls)
   LLM_MAX_TOKENS_INTENTIONS: 500,

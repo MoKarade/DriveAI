@@ -744,8 +744,9 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
   (`analyse|<id>`, zéro LLM tant que l'API est en panne, reprise à l'extraction au retour), le tri
   accepte `analyse|` comme verdict et archive normalement. Quota Gmail protégé par le mur (différé =
   « vu » pendant la panne) + un drapeau de retard `DriveAI_INTENTIONS_RETARD` à deux natures
-  (`c:<offset>` pages non analysées, drainées panne ou pas et REPRENABLES ; `d` différés, drainés au
-  retour de l'API) qui ferme AUSSI un trou préexistant : un scan coupé par le plafond/run laissait
+  (`c:<offset>` pages non analysées, drainées panne ou pas et REPRENABLES au fil près, avec un bit
+  propre/souillé `cp:` — un `c` propre lève directement, sinon `d` coupée ⇒ `c` ⇒ `d`… cyclait à vie ;
+  `d` différés, drainés au retour de l'API ; plafond de 10 pages/run) qui ferme AUSSI un trou préexistant : un scan coupé par le plafond/run laissait
   les pages suivantes orphelines derrière le mur. La revue flotte (4 agents, 2 tours) a écarté mon
   premier drapeau booléen copié de `DriveAI_GMAIL_PJ_RETARD` : sans offset, 300-450 fils et le
   reliquat de budget faisaient repaginer de zéro à chaque tick (quota Gmail brûlé, tri affamé — le

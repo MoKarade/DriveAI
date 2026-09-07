@@ -73,21 +73,24 @@ function traiterIntentionsMail_(estBudgetDepasse) {
   //  - `'d'` (DIFFÉRÉS) : seulement des `analyse|` en attente de l'API — invisibles du mur pendant la
   //    panne (comptés « vus », c'est le quota qu'ADR-0022 protégeait). Mur ouvert SEULEMENT hors
   //    panne, drainage depuis le début (ils sont dispersés dans la fenêtre).
-  //  Une coupe pendant un drainage `'d'` devient `'c:<offset>'` ; une fin de fenêtre sous `'c'`
-  //  redescend à `'d'` (les pages sautées peuvent cacher des différés) ; `'d'` se lève à la fin de
-  //  fenêtre, API répondant, sans différé ni reprise dans le run. Absent = aucun retard.
-  //  Lecture enveloppée ; défaut prudent sur Properties illisibles : `'c:0'` (tout drainer).
+  //  Une coupe pendant un drainage `'d'` devient `'c:<offset>'`. Un `'c'` porte un bit SALE
+  //  (`'cp:<offset>'`) dès qu'un de ses ticks a tourné sous panne : ses pages sautées peuvent cacher
+  //  des différés, sa fin de fenêtre redescend à `'d'`. Un `'c'` PROPRE (tous ses ticks hors panne —
+  //  une panne ne se lève qu'en tête de tick, donc « pas en panne à la fin » = « tout le run hors
+  //  panne », et ses pages sautées ont été lues par des ticks propres du même épisode) se LÈVE
+  //  directement à la fin de fenêtre. Sans ce bit (revue quotas, 2ᵉ tour 🔴) : `d` coupée ⇒ `c` ⇒ fin
+  //  ⇒ `d` depuis 0 ⇒ coupée ⇒ `c` … un cycle sans fin dès que l'intake occupe le budget — 55-85 k
+  //  appels Gmail/j, le 🔴 initial déplacé au retour de chaque panne. Chaîne bornée : `d → c → levée`.
+  //  `'d'` se lève à la fin de fenêtre, API répondant, sans différé ni reprise dans le run.
+  //  Absent = aucun retard. Lecture enveloppée ; défaut prudent sur Properties illisibles : `'cp:0'`.
   var props = null;
-  var retard = 'c';
-  var retardOffset = 0;
+  var lu = { retard: 'c', offset: 0, sale: true, canonique: true };
   try {
     props = PropertiesService.getScriptProperties();
-    var lu = lireRetardIntentions_(props.getProperty('DriveAI_INTENTIONS_RETARD'));
-    retard = lu.retard;
-    retardOffset = lu.offset;
-  } catch (e) { props = null; retard = 'c'; retardOffset = 0; }
-  var etat = { analyses: 0, creations: 0, differes: 0, reprises: 0, retard: retard, retardOffset: retardOffset,
-    coupe: false, coupeA: -1, fenetreAJour: false, panne: false };
+    lu = lireRetardIntentions_(props.getProperty('DriveAI_INTENTIONS_RETARD'));
+  } catch (e) { props = null; lu = { retard: 'c', offset: 0, sale: true, canonique: true }; }
+  var etat = { analyses: 0, creations: 0, differes: 0, reprises: 0, retard: lu.retard, retardOffset: lu.offset,
+    sale: lu.sale, canonique: lu.canonique, coupe: false, coupeA: -1, pageCourante: -1, fenetreAJour: false, panne: false };
   var plafondAtteint = function () {
     // `estPannePlateforme_` : pendant une panne de compte API, scanner ne produirait rien (aucun
     // message ne peut être marqué traité) et re-parcourir la fenêtre brûle le quota Gmail (R2).
@@ -106,7 +109,7 @@ function traiterIntentionsMail_(estBudgetDepasse) {
     // la fenêtre n'a pas été épuisée. Sans ce `catch`, le drapeau n'était jamais armé sur ce chemin
     // (revue quotas, 🟠) : le message qui a révélé la panne et ses suivants de page restaient
     // derrière le mur au tick suivant — orphelins jusqu'à sortie de fenêtre après une panne courte.
-    etat.coupe = true;
+    marquerCoupeIntentions_(etat, Math.max(0, etat.pageCourante)); // à la page courante — pas à 0 (2ᵉ tour 🟡)
     throw e;
   } finally {
     // BORDS du backlog (aucune écriture en régime), écrits MÊME si le scan a levé. Enveloppé : un
@@ -118,14 +121,18 @@ function traiterIntentionsMail_(estBudgetDepasse) {
 }
 
 /**
- * Lit le drapeau de retard. PURE (testée). @return {{retard:(''|'d'|'c'), offset:number}}
+ * Lit le drapeau de retard. PURE (testée).
+ * @return {{retard:(''|'d'|'c'), offset:number, sale:boolean}} `sale` : ce `'c'` a tourné sous panne.
  */
 function lireRetardIntentions_(brut) {
   var t = String(brut == null ? '' : brut);
-  if (!t) return { retard: '', offset: 0 };
-  if (t === 'd') return { retard: 'd', offset: 0 };
-  if (t.indexOf('c:') === 0) return { retard: 'c', offset: Math.max(0, Number(t.slice(2)) || 0) };
-  return { retard: 'c', offset: 0 }; // valeur inconnue (ancien format) : le plus prudent, tout drainer
+  if (!t) return { retard: '', offset: 0, sale: false, canonique: true };
+  if (t === 'd') return { retard: 'd', offset: 0, sale: false, canonique: true };
+  if (t.indexOf('c:') === 0) return { retard: 'c', offset: Math.max(0, Number(t.slice(2)) || 0), sale: false, canonique: true };
+  if (t.indexOf('cp:') === 0) return { retard: 'c', offset: Math.max(0, Number(t.slice(3)) || 0), sale: true, canonique: true };
+  // Valeur inconnue (ancien format) : le plus prudent — tout drainer, sale. `canonique: false` force la
+  // réécriture à la première transition (sinon une coupe à 0 la laissait telle quelle, trompeuse).
+  return { retard: 'c', offset: 0, sale: true, canonique: false };
 }
 
 /**
@@ -143,8 +150,11 @@ function lireRetardIntentions_(brut) {
  */
 function armerOuLeverRetardIntentions_(props, etat) {
   var K = 'DriveAI_INTENTIONS_RETARD';
+  var propre = !etat.panne && !etat.differes && !etat.reprises;
   if (etat.fenetreAJour) {
-    if (etat.retard !== 'c' && !etat.panne && !etat.differes && !etat.reprises) {
+    // Levable : rien en attente, ET (pas un `c`, ou un `c` PROPRE — ses pages sautées ont été lues
+    // hors panne). Un `cp` redescend à `d` : ses pages sautées peuvent cacher des différés.
+    if (propre && (etat.retard !== 'c' || !etat.sale)) {
       if (etat.retard) props.deleteProperty(K);
     } else if (etat.retard !== 'd') {
       props.setProperty(K, 'd');
@@ -153,17 +163,25 @@ function armerOuLeverRetardIntentions_(props, etat) {
   }
   if (etat.coupe) {
     var off = Math.max(etat.retard === 'c' ? etat.retardOffset : 0, etat.coupeA);
-    if (etat.retard !== 'c' || off !== etat.retardOffset) props.setProperty(K, 'c:' + off);
+    // Souillé par : une panne, un différé, une REPRISE (un message encore en attente dans un tick
+    // antérieur de la chaîne — 2ᵉ tour file-checker : sans elle, un `c` « propre » lèverait dessus),
+    // ou une souillure héritée.
+    var sale = (etat.retard === 'c' && etat.sale) || !!etat.panne || etat.differes > 0 || etat.reprises > 0;
+    if (etat.retard !== 'c' || off !== etat.retardOffset || sale !== etat.sale || etat.canonique === false) {
+      props.setProperty(K, (sale ? 'cp:' : 'c:') + off);
+    }
     return;
   }
   if ((etat.differes || etat.reprises) && !etat.retard) props.setProperty(K, 'd');
 }
 
-/** Enregistre une coupe du scan avant à la page `debutPage` (reprenable). */
-function marquerCoupeIntentions_(etat, debutPage) {
+/** Enregistre une coupe du scan avant au FIL `fil` (granularité fil : reprenable sans plateau). */
+function marquerCoupeIntentions_(etat, fil) {
   etat.coupe = true;
-  etat.coupeA = Math.max(etat.coupeA, debutPage);
+  etat.coupeA = Math.max(etat.coupeA, fil);
 }
+
+
 
 /**
  * Scan « avant » : pages successives depuis l'offset 0, tant qu'il reste du budget. S'arrête dès
@@ -176,11 +194,21 @@ function balayerNouveauxMails_(etat, plafondAtteint) {
   // (La fenêtre FORCÉE « Analyser 30 j » C28-16 est RETIRÉE par l'ADR-0031 — son bouton n'existe
   // plus depuis C28-41 PR1. Le scan redevient purement automatique : pages depuis 0 jusqu'au mur.)
   var debutPage = 0;
-  // Point de REPRISE d'un drainage (ADR-0049) : une page AVANT l'offset persisté — recouvrement qui
-  // absorbe un fil remonté en tête ou supprimé entre deux ticks (décalage d'un cran vers le haut).
-  var reprise = etat.retard === 'c' ? Math.max(0, etat.retardOffset - CONFIG.PAGE_FILS_ACTIONS) : 0;
+  // Point de REPRISE d'un drainage (ADR-0049) : quelques FILS avant l'offset persisté — recouvrement
+  // qui absorbe un fil remonté en tête ou supprimé entre deux ticks (décalage d'un cran vers le haut).
+  // En fils et non en pages : une page de relecture faisait un plateau à la page de reprise.
+  var reprise = etat.retard === 'c' ? Math.max(0, etat.retardOffset - CONFIG.INTENTIONS_RECOUVREMENT_FILS) : 0;
+  var pagesLues = 0;
   while (!plafondAtteint()) {
+    // Borne de LECTURE par run, dans l'unité du quota (pages ⇒ appels), quand le mur est ouvert. En
+    // régime le mur ferme en page 0-1, jamais atteinte. Une COUPE comme une autre : reprenable.
+    if (pagesLues >= CONFIG.INTENTIONS_PAGES_MAX_PAR_RUN) {
+      marquerCoupeIntentions_(etat, debutPage);
+      journalInfo_('Intentions', 'Plafond de pages par run atteint (drainage) — reprise au prochain tick.');
+      return;
+    }
     var fils;
+    etat.pageCourante = debutPage; // pour le chemin d'exception (coupe à la page courante)
     try {
       fils = pageFilsActions_(debutPage);
     } catch (e) {
@@ -190,6 +218,7 @@ function balayerNouveauxMails_(etat, plafondAtteint) {
       return;
     }
     signalerRetablissementGmail_();
+    pagesLues++;
     if (!fils.length) { etat.fenetreAJour = true; return; } // fin de la fenêtre 30 jours : rien derrière
 
     var pageEntierementIndexee = true;
@@ -201,7 +230,7 @@ function balayerNouveauxMails_(etat, plafondAtteint) {
       var messages = fils[i].getMessages();
       for (var m = 0; m < messages.length; m++) {
         if (plafondAtteint()) {
-          marquerCoupeIntentions_(etat, debutPage); // reprenable : la page atteinte est persistée
+          marquerCoupeIntentions_(etat, debutPage + i); // reprenable au FIL : les fils 0..i-1 sont faits
           journalInfo_('Intentions', 'Budget/plafond atteint (mail récent) — reprise au prochain tick.');
           return;
         }
@@ -228,7 +257,7 @@ function balayerNouveauxMails_(etat, plafondAtteint) {
       if (!drainage) return; // → main au scan arrière
       // DRAINAGE : le neuf (pages 0..k) est lu ; une page entièrement vue AVANT le point de reprise
       // ⇒ on SAUTE au point de reprise au lieu de relire tout l'intervalle déjà drainé.
-      if (debutPage + CONFIG.PAGE_FILS_ACTIONS < reprise) { debutPage = reprise; continue; }
+      if (debutPage + CONFIG.PAGE_FILS_ACTIONS <= reprise) { debutPage = reprise; continue; }
     }
     debutPage += CONFIG.PAGE_FILS_ACTIONS;
   }

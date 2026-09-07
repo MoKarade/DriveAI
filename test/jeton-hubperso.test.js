@@ -249,7 +249,9 @@ test('texteEchecJetonHubperso_ (PURE) : « momentanément » sous le seuil, « E
   assert.ok(!long.includes('momentanément'), 'au-delà : on cesse de dire « momentanément »');
   assert.ok(long.includes('EN ÉCHEC') && long.includes('invalid_client'), 'la vérité et sa raison : ' + long);
   assert.ok(long.includes('lierCompteHubperso') && long.includes('client OAuth'), 'et la consigne actionnable');
-  assert.ok(long.length <= 135, 'court : la ligne de sonde de Santé tronque à 160 après un préfixe de 25 (' + long.length + ')');
+  assert.ok(long.indexOf('lierCompteHubperso') < long.indexOf('invalid_client'), 'la RAISON est en queue : c\'est elle qui se tronque, jamais la consigne');
+  const pire = f({ depuisMs: 0, raison: 'x'.repeat(c.HUBPERSO_RAISON_MAX) }, 30 * 24 * 3600 * 1000 + 1, seuil);
+  assert.ok(pire.slice(0, 160 - 25).includes('lierCompteHubperso'), 'même au pire cas (raison à la borne, 30 j), la consigne tient dans les 160 de Santé');
   // Durée lisible : jours entiers, sinon heures.
   const sixJours = f({ depuisMs: 0, raison: 'x' }, 6 * 24 * 3600 * 1000 + 1, seuil);
   assert.ok(sixJours.includes('depuis 6 j'), sixJours);

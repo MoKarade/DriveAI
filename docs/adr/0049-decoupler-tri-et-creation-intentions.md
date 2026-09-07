@@ -81,9 +81,28 @@ L'analyse continue, et le tri redevient exact.**
      chaque tick sans progrès — avec 300-450 fils et le seul reliquat de budget (l'étape passe après
      l'intake), 86-130 k appels Gmail/jour contre ~20 k, quota épuisé en ~4 h, tri affamé : le
      correctif aurait recréé le symptôme ;
-   - **levée** seulement à la fin de fenêtre, API répondant, sous `'d'`, sans différé ni **reprise**
-     dans le run ; une fin de fenêtre sous `'c'` redescend à `'d'` (les pages sautées peuvent cacher
-     des différés) ; sous panne, rien n'est jamais levé (les différés y sont invisibles) ;
+   - **propre ou souillé** (2ᵉ tour, quotas 🔴 et file-checker 🔴 convergents) : un `'c'` dont AUCUN
+     tick n'a tourné sous panne, ni différé, ni laissé une reprise, est **propre** (`c:<offset>`) et
+     **lève directement** à la fin de fenêtre — ses pages sautées ont été lues, API répondant, par des
+     ticks propres de la même chaîne (une panne ne se lève qu'en tête de tick, donc « pas en panne à
+     la fin » vaut « tout le run hors panne »). Un `'c'` **souillé** (`cp:<offset>`) redescend à `'d'`.
+     Sans ce bit : `d` coupée ⇒ `c` ⇒ fin ⇒ `d` depuis 0 ⇒ coupée ⇒ `c` … un cycle SANS FIN dès que
+     l'intake occupe le budget — 55-85 k appels Gmail/jour et le tri affamé en permanence : le 🔴
+     initial, déplacé de la panne à son retour. Chaîne bornée : `d → c → levée` ;
+   - **levée** seulement à la fin de fenêtre, API répondant, sans différé ni **reprise** dans le run,
+     sous `'d'` ou sous un `'c'` propre ; sous panne, rien n'est jamais levé (les différés y sont
+     invisibles) ;
+   - **granularité fil** : la coupe enregistre le FIL atteint (`debutPage + i`), la reprise se fait
+     `INTENTIONS_RECOUVREMENT_FILS` (5) fils avant — pas une page. Avec une page de relecture, une
+     coupe pendant la page de reprise elle-même ne progressait pas (40-60 appels/tick pour rien tant
+     que le reliquat de budget tenait entre 8 et 23 s, ce qu'un grand rangement laisse). Le
+     recouvrement en fils absorbe le décalage réel entre deux ticks (quelques fils remontés en tête
+     ou supprimés), le plateau exigerait un reliquat < page 0 + 6 fils, déjà coupé par le budget ;
+   - **plafond de pages par run** (`INTENTIONS_PAGES_MAX_PAR_RUN`, 10 ≈ 210 appels) quand le mur est
+     ouvert : la borne de lecture Gmail dans l'unité du quota (leçon §9), traitée comme une coupe —
+     une fenêtre de 450 fils se draine en 3 ticks. Jamais atteinte en régime (mur en page 0-1) ;
+   - le chemin d'exception enregistre la coupe à la **page courante** (pas à 0 : depuis `'d'`, une
+     fenêtre entière aurait été relue sous panne pour rien) ;
    - une **reprise** = un message laissé sans clé terminale au drainage (échec LLM, création
      partielle) : il est profond dans la fenêtre, lever le drapeau l'aurait caché à vie derrière le
      mur, tâche jamais créée et rien pour le montrer. **Borné** : un échec LLM déterministe est
@@ -116,6 +135,13 @@ L'analyse continue, et le tri redevient exact.**
 
 ## 5. Risques et gardes
 
+- **Recouvrement de 5 fils — le cas limite** (2ᵉ tour file-checker 🟡, documenté, pas corrigé) :
+  ≥ 6 fils **supprimés** (corbeille/spam — l'archivage ne sort pas de `newer_than:30d`) au-dessus du
+  point de reprise entre deux ticks, ou une suppression entre deux lectures de pages d'un même run,
+  font glisser la fenêtre vers le haut au-delà du recouvrement : les fils décalés ne sont pas lus par
+  la phase `c`. Filet : une passe `d` (chaîne souillée) ou le retour du neuf en page 0 les relit tant
+  qu'une chaîne suit ; orphelin définitif seulement si la suppression frappe la passe qui lève —
+  `attend` du tri jusqu'à sortie de fenêtre. Élargir le recouvrement ne déplacerait que le seuil.
 - **Un différé qui sort de la fenêtre `newer_than:30d` avant le retour de l'API** ne créera jamais
   sa tâche (même « dette invisible hors fenêtre » qu'ADR-0043 §4). Son `important|` est posé, donc
   le tri, lui, est juste. Accepté : une panne de 30 jours est un incident à part entière.
@@ -153,10 +179,11 @@ plafond sur inédits, Properties illisibles, texte durable qui survit à la tron
 attente d'un tick, table de vérité du prédicat, défense en profondeur ADR-0043 conservée),
 `test/sante.test.js` (la ligne Tri dit « normal + création suspendue », jamais un mode impossible),
 `test/jeton-hubperso.test.js` (raison, série, seuil dérivé de la constante, message durable). Prouvés
-par mutation (vingt, restaurées par copie mémoire) : retirer `analyse|` du verdict du tri, remettre
+par mutation (vingt-sept, restaurées par copie mémoire) : retirer `analyse|` du verdict du tri, remettre
 la sortie anticipée, compter les déjà-vus, mur inconditionnel, différé sans marqueur, ne pas retirer
 le déclencheur, ne pas mémoriser la série, ré-annoncer « dégradé », élargir le prédicat à la panne
 config, mur fermé sous `'c'` + panne, ne pas compter les reprises (×2), échec LLM non borné, levée
 sous panne, `'c'` levé sans passe `'d'`, offset qui recule, pas de saut, drapeau hors `finally`,
-justification retirée du bloc de doc, série non close à la re-liaison — chacune fait échouer au
-moins un test.
+justification retirée du bloc de doc, série non close à la re-liaison et à la purge, `c` propre qui
+ne lève pas (le cycle), reprise qui ne souille pas, plafond de pages absent, coupe à la page au lieu
+du fil, chemin d'exception à 0, format inconnu non réécrit — chacune fait échouer au moins un test.

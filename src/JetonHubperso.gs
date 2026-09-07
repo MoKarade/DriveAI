@@ -39,6 +39,10 @@ var HUBPERSO_MARGE_EXPIRATION_MS = 7 * 60 * 1000;
 // laisser un state valable À VIE dans le journal d'exécution / l'historique navigateur. 1 h
 // couvre large, y compris « redéploiement pas encore passé, re-clic un peu plus tard ».
 var HUBPERSO_STATE_MAX_AGE_MS = 60 * 60 * 1000;
+// C28-77 : borne de la RAISON d'échec persistée (code OAuth Google, ou `HTTP <code>`). Nommée parce que
+// le texte durable de Santé se tronque à 160 après un préfixe de 25 : la raison est en QUEUE du texte,
+// c'est elle qui se coupe, jamais la consigne (revue quotas, 2ᵉ tour).
+var HUBPERSO_RAISON_MAX = 40;
 
 /**
  * Rend un access token VALIDE du projet hubperso, ou `null` — ÉCHEC FERMÉ (l'appelant suspend via la
@@ -121,7 +125,7 @@ function memoriserEchecJetonHubperso_(props, raison, maintenantMs) {
   var sep = brut.indexOf('|');
   var depuis = sep > 0 ? Number(brut.slice(0, sep)) : 0;
   if (!(depuis > 0) || depuis > maintenantMs) depuis = maintenantMs;
-  props.setProperty('DriveAI_HUBPERSO_ECHEC', depuis + '|' + String(raison).replace(/[|\n\r]/g, ' ').slice(0, 40));
+  props.setProperty('DriveAI_HUBPERSO_ECHEC', depuis + '|' + String(raison).replace(/[|\n\r]/g, ' ').slice(0, HUBPERSO_RAISON_MAX));
 }
 
 /**
@@ -202,10 +206,11 @@ function texteEchecJetonHubperso_(echec, maintenantMs, dureeDurableMs) {
   }
   var jours = Math.floor(dureeMs / (24 * 60 * 60 * 1000));
   var depuis = jours >= 1 ? jours + ' j' : Math.floor(dureeMs / (60 * 60 * 1000)) + ' h';
-  // COURT (revue quotas 🟡) : la ligne de sonde de Santé est tronquée à 160 caractères après un
-  // préfixe de 25 — au-delà de ~130, la consigne disparaissait. Le détail vit dans docs/HUBPERSO.md.
-  return 'refresh OAuth hubperso EN ÉCHEC depuis ' + depuis + ' (' + echec.raison + '), pas un blip : ' +
-    'vérifier le client OAuth hubperso puis lierCompteHubperso';
+  // COURT, et la RAISON EN QUEUE (revue quotas, 2 tours) : la ligne de sonde de Santé est tronquée à
+  // 160 caractères après un préfixe de 25. Ce qui dépasse, c'est la raison (≤ HUBPERSO_RAISON_MAX) —
+  // jamais la consigne, qui nommerait sinon une fonction amputée. Le détail vit dans docs/HUBPERSO.md.
+  return 'refresh OAuth hubperso EN ÉCHEC depuis ' + depuis + ', pas un blip : vérifier le client OAuth ' +
+    'hubperso puis lierCompteHubperso (' + echec.raison + ')';
 }
 
 /**
@@ -247,7 +252,7 @@ function analyserReponseJetonHubperso_(code, corps, maintenantMs) {
   // l'invariant « jamais une donnée de Marc » tient par la structure, pas par la confiance dans
   // le endpoint.
   var raison = (j && typeof j.error === 'string' && j.error) ? j.error : ('HTTP ' + code);
-  return { raison: raison.replace(/[^A-Za-z0-9_ .-]/g, '').slice(0, 40) };
+  return { raison: raison.replace(/[^A-Za-z0-9_ .-]/g, '').slice(0, HUBPERSO_RAISON_MAX) };
 }
 
 /* ---------- Liaison (consentement UNIQUE de Marc) ---------- */
