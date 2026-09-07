@@ -22,18 +22,27 @@
 > - **C28-77** — la série d'échecs du refresh est mémorisée ; au-delà de 24 h, Santé dit « EN ÉCHEC
 >   depuis N j (raison : invalid_client) » + consigne, au lieu de « momentanément ».
 >
-> **➜ 👉 DEUX GESTES T'ATTENDENT.**
-> (1) **Après merge ET `deploy.yml` vert (piège 3)** : rien à cliquer pour le tri — au tick suivant,
-> l'analyse reprend sur les six jours de retard sous un drapeau `c:<offset>` reprenable (plafond
-> 10 pages et 200 inédits par run : quelques ticks, PANNE OU PAS), puis le tri ré-évalue les fils
-> `|deg` et archive les fils LUS. La revue flotte a rejeté DEUX fois mon drapeau (2 tours, 4 agents) :
-> booléen il repaginait de zéro à chaque tick ; à offset il cyclait `d ↔ c` au retour de l'API. Le
-> modèle final est dans ADR-0049 §3.5 — ne pas le « simplifier » sans relire ce paragraphe. Vérifier par un signal indépendant : la ligne Santé « Tri
-> Gmail » doit dire « ✅ normal … création suspendue », et la boîte doit se vider des fils LUS.
-> (2) **La panne OAuth elle-même** : `JetonHubperso.gs` → `lierCompteHubperso` → Exécuter, suivre
+> **✅ PRISE D'EFFET DE #320 VÉRIFIÉE (07/09, signal indépendant — pas le run vert, piège 3).**
+> Merge `b073ae7` à 20:43 UTC, `deploy.yml` vert à 20:44 (42 fichiers, web app `@123`, déclencheur
+> réinstallé). Passage moteur suivant à **20:47 UTC** : la ligne Santé « Tri Gmail » dit désormais
+> « ✅ normal (libellés + archivage) — la création Tâches/Agenda est suspendue … », la ligne API
+> « création Tâches/Agenda suspendue (analyse et tri continuent, ADR-0049) ». Compteur `intentions`
+> passé de 17 à 52 appels en un passage (35 mini-checks sous panne, +0,014 $). Côté boîte, lu par le
+> MCP Gmail à 20:51 UTC : **15 fils lus archivés en rafale** dans ce passage (historyId contigus
+> 4881502→4881851, fils du 02 au 06/09 restés en boîte pendant la panne) et ⏰ posé sur les fils
+> jugés importants (Airbnb express, selfiecheckin) — ceux-là restent en boîte PAR DESIGN (seul Marc
+> archive un ⏰). Un compte « fils lus en boîte » ne mesure donc PAS l'archivage : mesurer la
+> destination (fils archivés), jamais la source. Drainage du retard sous drapeau `c:<offset>`
+> (10 pages / 200 inédits par run) : quelques ticks. C28-77 dira la RAISON exacte de l'échec OAuth
+> dans Santé à partir du 08/09 ~20:47 UTC (24 h après le premier échec mémorisé par le nouveau code).
+>
+> **➜ 👉 UN GESTE T'ATTEND (+ une décision).**
+> **La panne OAuth elle-même** : `JetonHubperso.gs` → `lierCompteHubperso` → Exécuter, suivre
 > l'URL. Si le consentement échoue, le client OAuth hubperso a changé : reposer
-> `DriveAI_HUBPERSO_CLIENT_ID` / `_CLIENT_SECRET` (`docs/HUBPERSO.md`). Une fois déployé, C28-77 te
+> `DriveAI_HUBPERSO_CLIENT_ID` / `_CLIENT_SECRET` (`docs/HUBPERSO.md`). C28-77 est déployé : il te
 > dira la RAISON exacte dans Santé au bout de 24 h — attends-la si tu veux savoir avant d'agir.
+> **Décision** : C28-78 — la PR #314 (mergée dans ma branche le 21/08 par une autre session, jamais
+> dans `main`, branche source supprimée) : la rouvrir contre `main`, ou l'abandonner.
 >
 > **Aussi appris ce jour** : la campagne `_Doublons` est **terminée** (22/08) — verdict définitif
 > **19 ORPHELINS**, 1 054 confirmés, 3 indéterminés. « Tout rapatrier » porte donc sur 19 fichiers
