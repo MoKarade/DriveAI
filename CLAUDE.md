@@ -129,6 +129,10 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
 - **Branches** : `claude/<slug>` pour le travail automatisé, `feature/<slug>` pour Marc.
   `main` est protégée par la CI.
 - **Commits** : en français, préfixés par l'ID de tâche du backlog. Ex. `P1-03: extraction des PJ Gmail`.
+- **Après toute reprise de session, LIRE `git rev-parse --short HEAD origin/main` avant tout.** Le
+  conteneur distant est éphémère : le 2026-09-07, l'arbre était reparti d'un instantané vieux de
+  17 jours (commit d'avant un rebase, plus d'`origin/main`, reflog à 4 entrées) et j'ai édité une
+  heure dessus. Une base fantôme ne se voit qu'aux ancres de doc qui ne matchent plus.
 - **`git fetch origin main` AVANT de commiter.** Plusieurs sessions travaillent sur ce dépôt en
   parallèle : le 19-20/08, trois correctifs ont été écrits deux fois (même job CI borné dans #298
   et dans une branche concurrente, même paragraphe de README dans deux PR). Le doublon ne se voit
@@ -1030,6 +1034,24 @@ ce qui reste vrai d'une session à l'autre.
   saturation, marge chiffrée et coût unitaire à l'appui ; et DIRE dans le commentaire qu'un
   contournement en est un, sinon il se relit comme une préférence d'architecture et personne ne
   remonte à la cause (C28-58 avait déjà buté dessus sans le nommer).
+
+- **Suspendre « tout le scan » pour protéger un quota couple des fonctions sans rapport — et un
+  message vrai à chaque tick peut mentir sur la DURÉE.** (Incident 02-07/09/2026, ADR-0049.) La
+  suspension totale des intentions sur panne de config d'API (ADR-0022, « re-lire pour échouer à
+  créer brûlerait le quota ») coupait AUSSI l'analyse qui pose `important|` — donc l'archivage de
+  la boîte, six jours, pour une panne d'autorisation sur la création d'agenda. Réflexe : devant un
+  `if (panneX) return;` en tête d'étape, lister CE QUE l'étape produit et QUI le consomme en aval ;
+  ne suspendre que la partie qui dépend réellement de X (ici la création), et protéger le quota par
+  un mécanisme dédié (marqueur « déjà vu » pendant la panne + drapeau de retard au retour). Et
+  toute observabilité de panne porte le **depuis quand** et le **pourquoi** (`<ts du 1er
+  échec>|<raison du dernier>`, seuil dérivé de CONFIG au-delà duquel « momentanément » est
+  interdit) : « échec transitoire » répété six jours n'est pas du bruit, c'est le signal — et
+  personne ne l'a vu parce que chaque occurrence, prise seule, était exacte.
+- **Un déclencheur que le tick RÉINSTALLE ne se coupe pas à la main.** « Ne plus créer » ne
+  suffit pas : la coupure livre AUSSI la suppression de l'existant (`deleteTrigger` sous le même
+  flag), sinon l'ancien continue de partir et l'utilisateur, qui l'a supprimé une fois, le voit
+  revenir sans comprendre (C28-75). Réflexe pour tout `assurerX_` idempotent : « que se passe-t-il
+  quand X est DÉSACTIVÉ après avoir été installé ? ».
 
 ## 10. Style et compte-rendu
 

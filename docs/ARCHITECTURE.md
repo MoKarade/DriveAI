@@ -39,7 +39,7 @@
   étages : mots-clés → zone protégée → mini-check Haiku), `Intentions.gs` (orchestration : scan de
   tous les mails récents, extraction d'intentions, création idempotente Tasks/Calendar).
 - **Modules observabilité** : `Cout.gs` (mesure réelle du coût LLM — tokens `usage` agrégés par mois
-  dans une Script Property), `Resume.gs` (résumé hebdomadaire automatique par mail : docs classés / en
+  dans une Script Property), `Resume.gs` (résumé hebdomadaire par mail — **envoi coupé** depuis le 2026-09-07, `CONFIG.MAILS_ACTIFS`, C28-75 : docs classés / en
   revue / tâches / événements / erreurs / coût mesuré du mois ; déclencheur hebdo auto-installé, scope
   `script.send_mail` existant).
 - **Scopes** (`appsscript.json` → `oauthScopes`), moindre privilège — chaque scope est justifié :

@@ -4,7 +4,41 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🎯 DERNIER CHANTIER — C28-49 PR4 « Valider `_Doublons` par empreinte » (ADR-0047).**
+> **🎯 DERNIER CHANTIER — 2026-09-07 : « ça trie toujours pas mes mails » + « plus de mail de récap »**
+> **(C28-75, C28-76 / ADR-0049, C28-77).** Diagnostic par le MCP `etat_moteur` RELU le jour même (mon
+> relevé précédent datait de 17 jours — il aurait fait conclure faux) : le moteur tourne, pose les
+> libellés, mais **n'archive plus rien depuis six jours** — « mode DÉGRADÉ » parce que la création
+> Tâches/Agenda est en panne (refresh OAuth hubperso en échec « transitoire » chaque jour depuis le
+> 02/09) et que cette panne suspendait TOUTE l'analyse, donc la clé `important|` que le tri attend.
+> Deux décisions de Marc (07/09) : **garder l'analyse, ne suspendre que la création** ; **couper TOUS
+> les mails**. Livré dans une seule PR (trois lots, revue flotte AVANT push) :
+> - **C28-75** — `CONFIG.MAILS_ACTIFS = false` : `resumeHebdo` inerte et `assurerTriggerResume_`
+>   RETIRE le déclencheur existant (le tick le réinstallait derrière Marc). Les alertes étaient déjà
+>   muettes depuis le 06/07.
+> - **C28-76 (ADR-0049)** — une panne de config d'API ne suspend plus que la création. Mail actionnable
+>   pendant la panne ⇒ DIFFÉRÉ (`analyse|<id>`, zéro LLM), repris à l'extraction au retour. Le tri
+>   accepte `analyse|` comme verdict et archive normalement. Quota Gmail : différé = « vu » pendant la
+>   panne, drapeau `DriveAI_INTENTIONS_RETARD` au retour (ferme aussi un trou préexistant du mur).
+> - **C28-77** — la série d'échecs du refresh est mémorisée ; au-delà de 24 h, Santé dit « EN ÉCHEC
+>   depuis N j (raison : invalid_client) » + consigne, au lieu de « momentanément ».
+>
+> **➜ 👉 DEUX GESTES T'ATTENDENT.**
+> (1) **Après merge ET `deploy.yml` vert (piège 3)** : rien à cliquer pour le tri — au tick suivant,
+> l'analyse reprend sur les six jours de retard (~1-3 ticks, plafond 200 messages/run), puis le tri
+> ré-évalue les fils `|deg` et archive. Vérifier par un signal indépendant : la ligne Santé « Tri
+> Gmail » doit dire « ✅ normal … création suspendue », et la boîte doit se vider des fils LUS.
+> (2) **La panne OAuth elle-même** : `JetonHubperso.gs` → `lierCompteHubperso` → Exécuter, suivre
+> l'URL. Si le consentement échoue, le client OAuth hubperso a changé : reposer
+> `DriveAI_HUBPERSO_CLIENT_ID` / `_CLIENT_SECRET` (`docs/HUBPERSO.md`). Une fois déployé, C28-77 te
+> dira la RAISON exacte dans Santé au bout de 24 h — attends-la si tu veux savoir avant d'agir.
+>
+> **Aussi appris ce jour** : la campagne `_Doublons` est **terminée** (22/08) — verdict définitif
+> **19 ORPHELINS**, 1 054 confirmés, 3 indéterminés. « Tout rapatrier » porte donc sur 19 fichiers
+> (chantier distinct, non entamé). Et mon alerte du 21/08 sur le plafond de 40 $ est **périmée** :
+> le mois a tourné, compteur à 0,16 $ ; `Re-analyse v2 (c26-08)` n'apparaît plus dans les missions
+> — à vérifier (finie ou coupée ?) avant d'y toucher, jamais déduit.
+
+> **CHANTIER PRÉCÉDENT — C28-49 PR4 « Valider `_Doublons` par empreinte » (ADR-0047).**
 > **#308 MERGÉE** (`294b270`), déployée, et **PRISE D'EFFET VÉRIFIÉE** par signal indépendant :
 > la ligne Santé « Doublons (validation par empreinte) » existe et **progresse** — au 21/08 08:51,
 > « balayage du Drive **2/2** — 1076 écartés inventoriés, 1054 déjà confirmés ». Le **1076**
