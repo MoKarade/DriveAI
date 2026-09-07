@@ -33,14 +33,18 @@
 > jugés importants (Airbnb express, selfiecheckin) — ceux-là restent en boîte PAR DESIGN (seul Marc
 > archive un ⏰). Un compte « fils lus en boîte » ne mesure donc PAS l'archivage : mesurer la
 > destination (fils archivés), jamais la source. Drainage du retard sous drapeau `c:<offset>`
-> (10 pages / 200 inédits par run) : quelques ticks. C28-77 dira la RAISON exacte de l'échec OAuth
-> dans Santé à partir du 08/09 ~20:47 UTC (24 h après le premier échec mémorisé par le nouveau code).
+> (10 pages / 200 inédits par run) : quelques ticks. **Confirmé au passage de 21:10 UTC** : les trois
+> derniers fils lus sans ⏰ (Canon, Vapours Canada, Fintable) archivés, il ne reste en boîte que des
+> fils ⏰ ou « À vérifier » (14, tous voulus). Et la sonde a capté la RAISON de l'échec OAuth dès ce
+> tick : **`invalid_client`** — le client OAuth hubperso (ID/secret) n'est plus reconnu par Google.
+> C28-77 dira « EN ÉCHEC depuis 1 j (invalid_client) » dans Santé à partir du 08/09 ~20:47 UTC.
 >
 > **➜ 👉 UN GESTE T'ATTEND (+ une décision).**
-> **La panne OAuth elle-même** : `JetonHubperso.gs` → `lierCompteHubperso` → Exécuter, suivre
-> l'URL. Si le consentement échoue, le client OAuth hubperso a changé : reposer
-> `DriveAI_HUBPERSO_CLIENT_ID` / `_CLIENT_SECRET` (`docs/HUBPERSO.md`). C28-77 est déployé : il te
-> dira la RAISON exacte dans Santé au bout de 24 h — attends-la si tu veux savoir avant d'agir.
+> **La panne OAuth elle-même — raison connue : `invalid_client`.** Le client OAuth hubperso n'est
+> plus reconnu (supprimé ou régénéré côté Google Cloud). Dans l'ordre : (1) reposer
+> `DriveAI_HUBPERSO_CLIENT_ID` / `_CLIENT_SECRET` dans les Script Properties depuis le client courant
+> du projet hubperso (`docs/HUBPERSO.md`) ; (2) `JetonHubperso.gs` → `lierCompteHubperso` → Exécuter,
+> suivre l'URL. Lancer (2) sans (1) échouera au consentement avec la même raison.
 > **Décision** : C28-78 — la PR #314 (mergée dans ma branche le 21/08 par une autre session, jamais
 > dans `main`, branche source supprimée) : la rouvrir contre `main`, ou l'abandonner.
 >

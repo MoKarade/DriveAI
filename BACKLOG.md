@@ -752,7 +752,7 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
   reliquat de budget faisaient repaginer de zéro à chaque tick (quota Gmail brûlé, tri affamé — le
   correctif aurait recréé le symptôme). Le découplage était planifié depuis C28-52
   (« PR2 ») et jamais fait. ⚠️ **Reste un geste de Marc** : la panne OAuth elle-même (le refresh
-  échoue depuis le 02/09, raison inconnue tant que C28-77 n'est pas déployé) — re-lier via
+  échoue depuis le 02/09, raison CONNUE depuis le 07/09 21:10 UTC, premier tick de C28-77 : `invalid_client`) — re-lier via
   `JetonHubperso.gs` → `lierCompteHubperso` ; si ça échoue au consentement, le client OAuth a changé
   côté hubperso (reposer `DriveAI_HUBPERSO_CLIENT_ID/_SECRET`, `docs/HUBPERSO.md`).
 
@@ -777,6 +777,14 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
   (`git.deploymentEnabled`, qui dit explicitement que le script ne protégeait pas le quota). À faire,
   sur feu vert de Marc : ré-ouvrir #314 contre `main` (le diff est sur le tag), rien d'autre.
   Réflexe (§9) : `pull_request_read` avant tout push sur une branche `claude/**` partagée.
+- ⬜ **C28-79 — Une erreur OAuth PERMANENTE doit dire « EN ÉCHEC » tout de suite, pas après 24 h.**
+  Constaté le 2026-09-07 au premier tick de C28-77 : la sonde a capté `invalid_client` (le client
+  OAuth hubperso n'existe plus côté Google) et Santé affiche pourtant « momentanément indisponible
+  (échec transitoire du refresh OAuth : invalid_client) » jusqu'à ce que `HUBPERSO_ECHEC_DURABLE_MS`
+  (24 h) soit écoulé. `invalid_client`, comme `invalid_grant` (déjà traité en purge), n'est jamais
+  transitoire : la classe de l'erreur suffit, le délai ne sert que pour les 5xx/réseau. Trouvé en
+  passant, NON corrigé (proposer ≠ faire) : demande un feu vert et un test de la frontière
+  « permanent tout de suite / transitoire après délai », prouvé par mutation.
 
 - ⬜ **C28-74 — Une estimation de fin doit connaître le PLAFOND BUDGÉTAIRE, pas seulement le débit.**
   Mesuré le 21/08 : c26-08 affiche « reste 704 documents · ~7 j · vers le 27/08 » alors que le frein
