@@ -733,6 +733,9 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
   (sans quoi il continuait de partir chaque lundi — et le tick le réinstallait derrière Marc). Les
   alertes de panne étaient déjà muettes depuis le 2026-07-06 (`notifierEchec_`) ; le seul envoi
   restant était le récap. Tripwire : `MailApp.sendEmail` n'existe que dans `Resume.gs`, derrière le flag.
+  Suite (revue sécurité, à séquencer AVEC Marc — toute modif du manifeste) : le scope `script.send_mail`
+  est désormais DORMANT (seul consommateur derrière un flag à faux) — le retirer, avec l'envoi dans
+  `Resume.gs` et la preuve de `test/scopes.test.js`. Retirer n'étend pas : aucun gel attendu.
 
 - ✅ **C28-76 — Une panne d'agenda ne gèle plus l'archivage de la boîte (ADR-0049).** Incident 02-07/09 :
   six jours de « libellés posés, AUCUN archivage » parce qu'une panne du jeton OAuth hubperso

@@ -241,8 +241,11 @@ function analyserReponseJetonHubperso_(code, corps, maintenantMs) {
   // s'agissait d'un `invalid_client` (secret changé côté hubperso — permanent, geste de Marc) ou
   // d'un 5xx (vraiment transitoire). Le code OAuth (`error`) est un littéral de Google, jamais une
   // donnée de Marc ; à défaut, le code HTTP. Le verdict « transitoire » (rien détruit) ne change pas.
+  // Liste BLANCHE de caractères (revue sécurité) : un code OAuth n'a besoin de rien d'autre —
+  // l'invariant « jamais une donnée de Marc » tient par la structure, pas par la confiance dans
+  // le endpoint.
   var raison = (j && typeof j.error === 'string' && j.error) ? j.error : ('HTTP ' + code);
-  return { raison: raison.slice(0, 40) };
+  return { raison: raison.replace(/[^A-Za-z0-9_ .-]/g, '').slice(0, 40) };
 }
 
 /* ---------- Liaison (consentement UNIQUE de Marc) ---------- */

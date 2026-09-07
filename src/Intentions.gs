@@ -245,7 +245,9 @@ function traiterMessagePourIntentions_(message, threadId, etat) {
     // re-vérifiée dessus (défense en profondeur, gratuite — un règlement de garde entre-temps
     // s'applique). Le mini-check n'est PAS rejoué : son verdict (`important|`) est déjà à l'Index.
     try { corps = tronquer_(message.getPlainBody(), CONFIG.LLM_CORPS_MAX_CARS); } catch (e) { corps = ''; }
-    if (toucheZoneProtegee_(corps)) {
+    // Les TROIS surfaces (revue sécurité) : expéditeur/sujet aussi, pas seulement le corps — une
+    // règle de zone protégée ajoutée pendant la panne s'applique au retour.
+    if (toucheZoneProtegee_(expediteur + ' ' + sujet) || toucheZoneProtegee_(corps)) {
       indexAjouter_(cleMessage, { statut: 'intention-zone-protegee', nom: sujet });
       return 0;
     }
