@@ -124,3 +124,13 @@ export function formaterDateCourte(iso?: string, locale = 'fr-CA'): string {
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
 }
+
+/**
+ * Recherche IA (v7) : le moteur rend un PLAN (mots-clés, texte, domaine, année) pensé pour les
+ * anciens filtres d'Index ; la v7 n'a plus qu'UNE recherche Drive — on en tire la requête : les
+ * mots-clés d'abord, sinon le texte du plan, sinon la question telle quelle. PURE.
+ */
+export function requeteDepuisPlan(plan: { motsCles?: string[]; texte?: string }, question: string): string {
+  const mots = (plan.motsCles ?? []).map((m) => m.trim()).filter(Boolean).join(' ');
+  return mots || (plan.texte ?? '').trim() || question.trim();
+}

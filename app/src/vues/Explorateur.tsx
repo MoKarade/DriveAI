@@ -1,18 +1,20 @@
 /**
- * Explorateur.tsx — explorateur façon Google Drive (chantier #21).
- * C21-01 : navigation par dossiers (fil d'Ariane), recherche nom + plein texte, portée limitable
- * au dossier courant (collecte bornée — l'UI dit si elle est tronquée).
- * C21-02 : création rapide de dossiers + déplacement MANUEL de fichiers — drag-and-drop (souris)
- * et mode « Déplacer → Déposer ici » (tactile/clavier). Nom conservé, verdict garde-fous
- * `deplacementSeul` (zone protégée inconditionnelle). Les DOSSIERS ne se déplacent pas ici
- * (réorg de masse = moteur, C21-04+). Aucune suppression nulle part.
+ * Explorateur.tsx — DOCUMENTS v7 (C28-82 PR2, ADR-0051) : UNE recherche, des dossiers en liste.
+ * Le champ unique cherche dans Drive par nom OU contenu (`rechercherDrive`, index natif de Drive —
+ * DriveAI ne stocke aucun corps) ; « IA » transforme une question en mots-clés (`rechercheIA`,
+ * moteur) puis lance la MÊME recherche. Les deux sous-onglets de la v6 (« Drive » / « Recherche
+ * DriveAI » avec ses filtres domaine / année / statut / confiance) disparaissent — Marc, 09/09 :
+ * « quelques boutons simples, moins de déchets ». Reste : navigation par dossiers (fil d'Ariane),
+ * création rapide de dossier (« + »), déplacement MANUEL d'un fichier (glisser-déposer à la souris,
+ * « Déplacer → Déposer ici » au doigt), demande d'analyse IA du dossier courant (✨). Nom conservé,
+ * verdict garde-fous `deplacementSeul` (zone protégée inconditionnelle). Aucune suppression nulle part.
  */
 
 import { useEffect, useState } from 'react';
 import {
   listerEnfants,
-  collecterSousDossiers,
   rechercherDrive,
+  rechercheIA,
   creerDossier,
   deplacerFichierManuel,
   ajouterLigne,
@@ -24,36 +26,44 @@ import {
   estDossier,
   estDossierATrier,
   trierElements,
-  iconePourMime,
   pousserEtape,
   couperA,
   formaterTaille,
   formaterDateCourte,
+  requeteDepuisPlan,
 } from '../explorateur';
+import { Icone } from '../composants/Icone';
+import { BanniereErreur } from '../composants/UI';
 import { Langue, t } from '../i18n';
 
+// Type MIME PROPRIÉTAIRE : un drag venu d'ailleurs (autre onglet, autre app) est structurellement
+// invisible — seul un drag démarré ICI porte ce type.
+const TYPE_DRAG = 'application/x-driveai-fichier';
+
 export function Explorateur({ langue }: { langue: Langue }) {
+  const locale = langue === 'fr' ? 'fr-CA' : 'en-CA';
   const [ariane, setAriane] = useState<Etape[]>([{ id: 'root', nom: t('monDrive', langue) }]);
   const [elements, setElements] = useState<ElementDrive[]>([]);
   const [suivant, setSuivant] = useState<string | undefined>();
   const [charge, setCharge] = useState(false);
   const [erreur, setErreur] = useState('');
   const [rafraichir, setRafraichir] = useState(0); // re-liste le dossier courant après une écriture
+  const [enChargementPlus, setEnChargementPlus] = useState(false);
 
-  // Recherche (remplace le listage tant qu'elle est active).
+  // Recherche unique (remplace le listage tant qu'elle est active).
   const [texte, setTexte] = useState('');
-  const [dansDossier, setDansDossier] = useState(false);
   const [resultats, setResultats] = useState<ElementDrive[] | null>(null);
   const [enCours, setEnCours] = useState(false);
-  const [porteeTronquee, setPorteeTronquee] = useState(false);
+  const [iaEnCours, setIaEnCours] = useState(false);
+  const [iaExplication, setIaExplication] = useState('');
 
-  // C21-02 : création de dossier + déplacement. C21-05 : demande d'analyse IA.
+  // Création de dossier, analyse IA du dossier, déplacement.
   const [creation, setCreation] = useState<'' | 'ouvert' | 'encours'>('');
   const [nomDossier, setNomDossier] = useState('');
   const [analyse, setAnalyse] = useState<'' | 'encours' | 'ok'>('');
   const [aDeplacer, setADeplacer] = useState<ElementDrive | null>(null); // mode « Déplacer → Déposer ici »
   const [survolDepot, setSurvolDepot] = useState(''); // id du dossier survolé pendant un drag
-  const [statutDepot, setStatutDepot] = useState(''); // '' | 'ok' | message d'erreur
+  const [statutDepot, setStatutDepot] = useState(''); // '' | 'ok:…' | message d'erreur
 
   const dossier = ariane[ariane.length - 1];
 
@@ -80,8 +90,6 @@ export function Explorateur({ langue }: { langue: Langue }) {
     return () => { actif = false; };
   }, [dossier.id, rafraichir]);
 
-  const [enChargementPlus, setEnChargementPlus] = useState(false);
-
   async function chargerPlus() {
     if (!suivant || enChargementPlus) return;
     setEnChargementPlus(true);
@@ -96,19 +104,14 @@ export function Explorateur({ langue }: { langue: Langue }) {
     }
   }
 
-  async function chercher() {
-    if (!texte.trim()) return;
+  /** La recherche : nom OU contenu, tout le Drive (index natif de Google, aucun corps stocké). */
+  async function chercher(requete = texte) {
+    const propre = requete.trim();
+    if (!propre) return;
     setEnCours(true);
     setErreur('');
-    setPorteeTronquee(false);
     try {
-      let portee: string[] | undefined;
-      if (dansDossier && dossier.id !== 'root') {
-        const c = await collecterSousDossiers(dossier.id);
-        portee = c.ids;
-        setPorteeTronquee(c.tronque);
-      }
-      setResultats(await rechercherDrive(texte.trim(), portee));
+      setResultats(await rechercherDrive(propre));
     } catch (e) {
       setErreur(String(e));
     } finally {
@@ -116,22 +119,36 @@ export function Explorateur({ langue }: { langue: Langue }) {
     }
   }
 
+  /** « IA » : la question devient des mots-clés (moteur, whitelistés), puis la MÊME recherche. */
+  async function chercherIA() {
+    const question = texte.trim();
+    if (!question || iaEnCours) return;
+    setIaEnCours(true);
+    setIaExplication('');
+    setErreur('');
+    try {
+      const plan = await rechercheIA(question);
+      setIaExplication(plan.explication ?? '');
+      await chercher(requeteDepuisPlan(plan, question));
+    } catch (e) {
+      setErreur(String(e));
+    } finally {
+      setIaEnCours(false);
+    }
+  }
+
   function effacerRecherche() {
     setTexte('');
     setResultats(null);
-    setPorteeTronquee(false);
+    setIaExplication('');
   }
 
-  function ouvrir(e: ElementDrive) {
-    if (estDossier(e)) {
-      // Approximation assumée : un dossier trouvé par recherche GLOBALE est poussé au bout de
-      // l'Ariane courant, même s'il vit ailleurs dans le Drive — la navigation (par id) reste
-      // juste, seul le chemin affiché est approximatif. Chemin réel (walk des parents) : C21-04+.
-      setResultats(null);
-      setAriane((a) => pousserEtape(a, { id: e.id, nom: e.name }));
-    } else {
-      window.open(e.webViewLink ?? `https://drive.google.com/file/d/${e.id}/view`, '_blank', 'noopener');
-    }
+  function ouvrirDossier(e: ElementDrive) {
+    // Approximation assumée : un dossier trouvé par recherche GLOBALE est poussé au bout de
+    // l'Ariane courant, même s'il vit ailleurs dans le Drive — la navigation (par id) reste
+    // juste, seul le chemin affiché est approximatif.
+    setResultats(null);
+    setAriane((a) => pousserEtape(a, { id: e.id, nom: e.name }));
   }
 
   /** Dépose une demande d'analyse IA (onglet Réorg) — portée = dossier courant, racine = tout. */
@@ -171,11 +188,7 @@ export function Explorateur({ langue }: { langue: Langue }) {
     setStatutDepot('');
     setErreur('');
     try {
-      const deplace = await deplacerFichierManuel({
-        fileId: fichier.id,
-        nouveauParent: cibleId,
-        nomCible: cibleNom,
-      });
+      const deplace = await deplacerFichierManuel({ fileId: fichier.id, nouveauParent: cibleId, nomCible: cibleNom });
       setADeplacer(null);
       if (!deplace) return; // déjà en place — rien à annoncer, rien à rafraîchir
       setStatutDepot(`ok:${fichier.name} → ${cibleNom}`);
@@ -185,10 +198,6 @@ export function Explorateur({ langue }: { langue: Langue }) {
       setStatutDepot(String(e));
     }
   }
-
-  // Type MIME PROPRIÉTAIRE : un drag venu d'ailleurs (autre onglet, autre app) est
-  // structurellement invisible — seul un drag démarré ICI porte ce type.
-  const TYPE_DRAG = 'application/x-driveai-fichier';
 
   function surDragStart(ev: React.DragEvent, e: ElementDrive) {
     ev.dataTransfer.setData(TYPE_DRAG, JSON.stringify({ id: e.id, name: e.name }));
@@ -212,157 +221,161 @@ export function Explorateur({ langue }: { langue: Langue }) {
     }
   }
 
+  /** Cible de dépôt (dossier ou étape de l'Ariane) : les mêmes trois gestionnaires partout. */
+  function propsDepot(cible: ElementDrive | Etape) {
+    return {
+      onDragOver: (ev: React.DragEvent) => { ev.preventDefault(); setSurvolDepot(cible.id); },
+      onDragLeave: () => setSurvolDepot(''),
+      onDrop: (ev: React.DragEvent) => surDrop(ev, cible),
+    };
+  }
+
   const affiches = resultats ?? elements;
 
   return (
-    <div className="colonnes">
-      <section className="carte large explorateur">
-        <div className="ligne-formulaire expl-recherche">
-          <input
-            value={texte}
-            onChange={(e) => setTexte(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && chercher()}
-            placeholder={t('rechercherDansDrive', langue)}
-          />
-          <label className="filtre-confiance" title={t('dansCeDossierTitre', langue)}>
-            <input
-              type="checkbox"
-              checked={dansDossier}
-              onChange={(e) => setDansDossier(e.target.checked)}
-              disabled={dossier.id === 'root'}
-            />
-            {t('dansCeDossier', langue)}
-          </label>
-          <button onClick={chercher} disabled={enCours || !texte.trim()}>
-            {enCours ? t('chargement', langue) : t('rechercher', langue)}
-          </button>
-          {resultats && (
-            <button className="discret" onClick={effacerRecherche}>✕ {t('effacer', langue)}</button>
-          )}
-        </div>
+    <div className="documents">
+      <h2 className="titre-liste">
+        {t('documents', langue)}
+        <span className="sp" />
+        <button
+          className="icone-bouton"
+          aria-label={t('nouveauDossier', langue)}
+          title={t('nouveauDossier', langue)}
+          onClick={() => setCreation((c) => (c === '' ? 'ouvert' : ''))}
+        >
+          <Icone nom="plus" />
+        </button>
+      </h2>
 
+      <form className="recherche" onSubmit={(e) => { e.preventDefault(); void chercher(); }}>
+        <Icone nom="recherche" />
+        <input
+          value={texte}
+          onChange={(e) => setTexte(e.target.value)}
+          placeholder={t('rechercherPlaceholder', langue)}
+          aria-label={t('rechercher', langue)}
+        />
+        {texte && (
+          <button type="button" className="icone-bouton petit" aria-label={t('effacer', langue)} onClick={effacerRecherche}>
+            <Icone nom="fermer" />
+          </button>
+        )}
+        <button type="button" className="bouton-ligne" disabled={!texte.trim() || iaEnCours || enCours}
+          title={t('demanderIA', langue)} onClick={() => void chercherIA()}>
+          <Icone nom="etincelle" /> {iaEnCours ? '…' : 'IA'}
+        </button>
+      </form>
+
+      {creation !== '' && (
+        <div className="ligne-formulaire creation-dossier">
+          <input
+            autoFocus
+            value={nomDossier}
+            onChange={(e) => setNomDossier(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void creer();
+              if (e.key === 'Escape') { setCreation(''); setNomDossier(''); }
+            }}
+            placeholder={t('nomDossierPlaceholder', langue)}
+            aria-label={t('nouveauDossier', langue)}
+          />
+          <button onClick={() => void creer()} disabled={!nomDossier.trim() || creation === 'encours'}>
+            {creation === 'encours' ? t('chargement', langue) : t('creerBouton', langue)}
+          </button>
+          <button className="discret" onClick={() => { setCreation(''); setNomDossier(''); }} aria-label={t('annulerBouton', langue)}>✕</button>
+        </div>
+      )}
+
+      {aDeplacer && (
+        <p className="bandeau-deplacement">
+          <Icone nom="deplacer" /> <b>{aDeplacer.name}</b>
+          <span className="sp" />
+          <button onClick={() => void deposer(aDeplacer, dossier.id, dossier.nom)}>
+            {t('deposerIci', langue)} · {dossier.nom}
+          </button>
+          <button className="discret" onClick={() => setADeplacer(null)}>{t('annulerBouton', langue)}</button>
+        </p>
+      )}
+      {statutDepot.startsWith('ok:') && <p className="ok">✓ {t('deplaceOk', langue)} : {statutDepot.slice(3)}</p>}
+      {statutDepot && !statutDepot.startsWith('ok:') && <p className="erreur">{statutDepot}</p>}
+      <BanniereErreur langue={langue} erreur={erreur} onReessayer={() => setErreur('')} />
+      {iaExplication && <p className="variante ia-explication">✨ {iaExplication}</p>}
+
+      {resultats ? (
+        <div className="ariane">
+          <b>{resultats.length} {t('resultats', langue)}</b>
+          <span className="sp" />
+          <button className="discret" onClick={effacerRecherche}>✕ {t('effacer', langue)}</button>
+        </div>
+      ) : (
         <nav className="ariane" aria-label={t('cheminAriane', langue)}>
           {ariane.map((e, i) => (
-            <span key={e.id}>
+            <span key={e.id} className="ariane-etape">
               {i > 0 && <span className="ariane-sep" aria-hidden="true">›</span>}
-              {i === ariane.length - 1 && !resultats ? (
-                <b
-                  className={survolDepot === e.id ? 'depot-survol' : ''}
-                  onDragOver={(ev) => { ev.preventDefault(); setSurvolDepot(e.id); }}
-                  onDragLeave={() => setSurvolDepot('')}
-                  onDrop={(ev) => surDrop(ev, e)}
-                >{e.nom}</b>
+              {i === ariane.length - 1 ? (
+                <b className={survolDepot === e.id ? 'depot-survol' : ''} {...propsDepot(e)}>{e.nom}</b>
               ) : (
-                <button
-                  className={`discret ${survolDepot === e.id ? 'depot-survol' : ''}`}
-                  onClick={() => { setResultats(null); setAriane((a) => couperA(a, e.id)); }}
-                  onDragOver={(ev) => { ev.preventDefault(); setSurvolDepot(e.id); }}
-                  onDragLeave={() => setSurvolDepot('')}
-                  onDrop={(ev) => surDrop(ev, e)}
-                >
+                <button className={`discret ${survolDepot === e.id ? 'depot-survol' : ''}`}
+                  onClick={() => setAriane((a) => couperA(a, e.id))} {...propsDepot(e)}>
                   {e.nom}
                 </button>
               )}
             </span>
           ))}
-          {resultats && <span className="ariane-sep" aria-hidden="true">›</span>}
-          {resultats && <b>{resultats.length} {t('resultats', langue)}</b>}
-          {!resultats && !estDossierATrier(dossier.nom) && (
-            <span className="ariane-actions">
-              {analyse === 'ok' ? (
-                <span className="ok">✨ {t('demandeEnvoyee', langue)}</span>
-              ) : (
-                <button className="discret" onClick={analyserStructure} disabled={analyse === 'encours'}>
-                  ✨ {analyse === 'encours' ? t('chargement', langue) : t('analyserStructure', langue)}
+          <span className="sp" />
+          {!estDossierATrier(dossier.nom) && (
+            analyse === 'ok'
+              ? <span className="ok" title={t('demandeEnvoyee', langue)}>✓</span>
+              : (
+                <button className="icone-bouton petit" aria-label={t('analyserStructure', langue)}
+                  title={t('analyserStructure', langue)} disabled={analyse === 'encours'} onClick={() => void analyserStructure()}>
+                  <Icone nom="etincelle" />
                 </button>
-              )}
-              {creation === '' ? (
-                <button className="discret" onClick={() => setCreation('ouvert')}>+ {t('nouveauDossier', langue)}</button>
-              ) : (
-                <span className="ligne-formulaire creation-dossier">
-                  <input
-                    autoFocus
-                    value={nomDossier}
-                    onChange={(e) => setNomDossier(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') creer();
-                      if (e.key === 'Escape') { setCreation(''); setNomDossier(''); }
-                    }}
-                    placeholder={t('nomDossierPlaceholder', langue)}
-                  />
-                  <button onClick={creer} disabled={!nomDossier.trim() || creation === 'encours'}>
-                    {creation === 'encours' ? t('chargement', langue) : t('creerBouton', langue)}
-                  </button>
-                  <button className="discret" onClick={() => { setCreation(''); setNomDossier(''); }}>✕</button>
-                </span>
-              )}
-            </span>
+              )
           )}
         </nav>
+      )}
 
-        {aDeplacer && (
-          <p className="bandeau-deplacement">
-            ✥ {t('deplacementDe', langue)} <b>{aDeplacer.name}</b> — {t('deplacementConsigne', langue)}{' '}
-            <button onClick={() => deposer(aDeplacer, dossier.id, dossier.nom)}>
-              {t('deposerIci', langue)} ({dossier.nom})
-            </button>{' '}
-            <button className="discret" onClick={() => setADeplacer(null)}>{t('annulerBouton', langue)}</button>
-          </p>
+      <div className="carte lignes">
+        {!charge && !resultats && !erreur && <p className="ligne vide">{enCours ? '…' : t('chargement', langue)}</p>}
+        {(charge || resultats) && affiches.length === 0 && (
+          <p className="ligne vide">{resultats ? t('aucunResultat', langue) : t('dossierVide', langue)}</p>
         )}
-        {statutDepot.startsWith('ok:') && <p className="ok">✓ {t('deplaceOk', langue)} : {statutDepot.slice(3)}</p>}
-        {statutDepot && !statutDepot.startsWith('ok:') && <p className="erreur">{statutDepot}</p>}
-
-        {erreur && <p className="erreur">{t('erreur', langue)} : {erreur}</p>}
-        {resultats && porteeTronquee && <p className="explication">⚠ {t('porteeTronquee', langue)}</p>}
-        {!charge && !erreur && <p>{t('chargement', langue)}</p>}
-        {charge && affiches.length === 0 && (
-          <p className="explication">{resultats ? t('aucunResultat', langue) : t('dossierVide', langue)}</p>
-        )}
-
-        <table className="expl-table">
-          <tbody>
-            {affiches.map((e) => (
-              <tr
-                key={e.id}
-                className={`ligne-clic ${survolDepot === e.id ? 'depot-survol' : ''}`}
-                onClick={() => ouvrir(e)}
-                tabIndex={0}
-                // ev.target === ev.currentTarget : Entrée sur le bouton ✥ ne doit PAS aussi ouvrir la ligne.
-                onKeyDown={(ev) => ev.key === 'Enter' && ev.target === ev.currentTarget && ouvrir(e)}
-                title={estDossier(e) ? t('ouvrirDossier', langue) : t('ouvrirDansDrive', langue)}
-                draggable={!estDossier(e)}
-                onDragStart={(ev) => !estDossier(e) && surDragStart(ev, e)}
-                onDragEnd={() => setSurvolDepot('')}
-                onDragOver={estDossier(e) ? (ev) => { ev.preventDefault(); setSurvolDepot(e.id); } : undefined}
-                onDragLeave={estDossier(e) ? () => setSurvolDepot('') : undefined}
-                onDrop={estDossier(e) ? (ev) => surDrop(ev, e) : undefined}
-              >
-                <td className="expl-ic" aria-hidden="true">{iconePourMime(e.mimeType)}</td>
-                <td>{e.name}</td>
-                <td className="date">{formaterDateCourte(e.modifiedTime, langue === 'fr' ? 'fr-CA' : 'en-CA')}</td>
-                <td className="date nombre">{formaterTaille(e.size)}</td>
-                <td className="nombre expl-actions">
-                  {!estDossier(e) && (
-                    <button
-                      className="discret"
-                      title={t('deplacerTitre', langue)}
-                      onClick={(ev) => { ev.stopPropagation(); setADeplacer(e); setStatutDepot(''); }}
-                    >✥</button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {!resultats && suivant && (
-          <div className="actions">
-            <button className="discret" onClick={chargerPlus} disabled={enChargementPlus}>
-              {enChargementPlus ? t('chargement', langue) : t('chargerPlus', langue)}
+        {affiches.map((e) => estDossier(e) ? (
+          <div
+            key={e.id}
+            className={`ligne clic ${survolDepot === e.id ? 'depot-survol' : ''}`}
+            role="button"
+            tabIndex={0}
+            onClick={() => ouvrirDossier(e)}
+            onKeyDown={(ev) => ev.key === 'Enter' && ouvrirDossier(e)}
+            {...propsDepot(e)}
+          >
+            <Icone nom="dossier" className="accent" />
+            <span className="t"><b>{e.name}</b></span>
+            <Icone nom="chevron" className="chev" />
+          </div>
+        ) : (
+          <div key={e.id} className="ligne" draggable onDragStart={(ev) => surDragStart(ev, e)} onDragEnd={() => setSurvolDepot('')}>
+            <Icone nom="fichier" />
+            <a className="t lien-ligne" href={e.webViewLink ?? `https://drive.google.com/file/d/${e.id}/view`}
+              target="_blank" rel="noreferrer noopener" title={t('ouvrirDansDrive', langue)}>
+              <b className="mono">{e.name}</b>
+              <small>{formaterDateCourte(e.modifiedTime, locale)} · {formaterTaille(e.size)}</small>
+            </a>
+            <button className="icone-bouton petit" aria-label={`${t('deplacer', langue)} : ${e.name}`} title={t('deplacerTitre', langue)}
+              onClick={() => { setADeplacer(e); setStatutDepot(''); }}>
+              <Icone nom="deplacer" />
             </button>
           </div>
-        )}
-      </section>
+        ))}
+      </div>
+
+      {!resultats && suivant && (
+        <button className="discret charger-plus" onClick={() => void chargerPlus()} disabled={enChargementPlus}>
+          {enChargementPlus ? t('chargement', langue) : t('chargerPlus', langue)}
+        </button>
+      )}
     </div>
   );
 }
