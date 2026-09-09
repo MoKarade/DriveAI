@@ -284,4 +284,12 @@ describe('planningParJour (agenda v7 : liste par jour sur téléphone)', () => {
     expect(plan[1].evenements).toHaveLength(0); // aujourd’hui, vide mais présent
     expect(plan[3].taches).toHaveLength(1);
   });
+  it('journée entière MULTI-JOURS : présente chaque jour couvert, jamais le jour de fin (exclusif)', () => {
+    const jours = grilleSemaine(new Date(2026, 8, 9)); // semaine du 7 au 13
+    const long = { id: 'v', titre: 'v', debut: '2026-09-08', fin: '2026-09-11', journee: true, lien: '', parDriveAI: false } as Evenement;
+    const plan = planningParJour(jours, [long], [], '2026-09-13');
+    expect(plan.map((j) => cleJour(j.date))).toEqual(['2026-09-08', '2026-09-09', '2026-09-10', '2026-09-13']);
+    expect(plan.slice(0, 3).every((j) => j.evenements.map((e) => e.id).join() === 'v')).toBe(true);
+    expect(plan[3].evenements).toHaveLength(0); // aujourd’hui (13), après la fin : présent mais vide
+  });
 });

@@ -120,6 +120,9 @@ nav.barre-basse { display: none; }
 .feuille-fond { position: fixed; inset: 0; z-index: 25; background: rgba(0, 0, 0, 0.55); border: none; }
 
 @media (max-width: 760px) {
+  /* hauteur RÉELLE de la barre basse (0,45 + 0,5 rem + icône 24 px + 3 px + libellé + bordure ≈ 4 rem) :
+     tout ce qui doit s'arrêter au-dessus d'elle lit cette variable, jamais un chiffre recopié. */
+  :root { --barre-basse-h: 4.1rem; }
   .corps-app { grid-template-columns: 1fr; }
   .rail { display: none; }
   .barre-haute {
@@ -129,7 +132,7 @@ nav.barre-basse { display: none; }
     background: var(--fond-haut); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--bord);
   }
-  .contenu { padding: 1rem 1rem calc(5.8rem + env(safe-area-inset-bottom)); }
+  .contenu { padding: 1rem 1rem calc(var(--barre-basse-h) + 1.7rem + env(safe-area-inset-bottom)); }
   nav.barre-basse {
     display: grid; grid-template-columns: repeat(4, 1fr);
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
@@ -289,18 +292,13 @@ tr:first-child > td { border-top: none; }
 .pastille.attn { background: color-mix(in srgb, var(--attention) 15%, transparent); color: var(--attention); }
 .pastille.cat { background: var(--cat-fond); color: var(--cat-texte); }
 .lien-ligne { color: var(--texte); text-decoration: none; }
-.ligne-clic:hover .lien-ligne { color: var(--accent); }
 
-/* ---------- accueil v6 : agenda du jour + alertes + derniers classements + coût ---------- */
+/* ---------- accueil ---------- */
 .accueil { display: flex; flex-direction: column; gap: 1rem; }
-.jour-heure.douce { color: var(--texte-doux); font-weight: 450; }
 
 /* invite de reconnexion « Mes agendas » (C28-41 PR2 : jeton d'avant le scope calendar.readonly) */
 .agendas-scope { margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.35rem; }
 .agendas-scope .explication { font-size: 0.78rem; }
-.ligne-attention .date { margin-left: auto; }
-.cout-tuile .v { font-size: 1.5rem; font-weight: 650; font-variant-numeric: tabular-nums; }
-.cout-tuile .v small { font-size: 0.85rem; color: var(--texte-doux); font-weight: 500; }
 
 /* ---------- page Moteur (C28-41) ---------- */
 .moteur-etat { display: flex; align-items: center; gap: 0.6rem; margin: 0 0 0.6rem; font-size: 0.95rem; }
@@ -343,9 +341,6 @@ tr:first-child > td { border-top: none; }
 }
 .op-note { margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--texte-doux); }
 .op-note.op-erreur { color: var(--erreur); }
-/* `display:flex` sur un summary SUPPRIME le triangle natif (le marqueur exige list-item) —
-   chevron ::before en remplacement{ cursor: pointer; display: flex; align-items: center; gap: 0.6rem; list-style: none; }
-.veille-item .op-note { margin-left: 1.2rem; }
 
 /* ---------- vue Agenda (grille mois + grille horaire) ---------- */
 .agenda .cal-carte { grid-column: 1 / -1; }
@@ -445,16 +440,6 @@ button.coche { border: 1px solid var(--bord); background: transparent; color: va
 .creation { flex-wrap: wrap; }
 .creation select, .creation input[type='date'], .creation input[type='time'] { width: auto; }
 .creation input:not([type]) { flex: 1 1 220px; }
-.conf-badge.basse { color: var(--attention); }
-
-/* sous-onglets (Documents) */
-nav.sous-onglets { display: flex; gap: 0.3rem; margin-bottom: 0.9rem; }
-nav.sous-onglets button {
-  border: 1px solid var(--bord); background: none; border-radius: 999px;
-  font-size: 0.8rem; font-weight: 550; color: var(--texte-doux); padding: 0.35rem 0.95rem;
-  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
-}
-nav.sous-onglets button.actif { color: var(--accent-fort); border-color: transparent; background: var(--tonal); }
 
 /* explorateur Drive */
 .explorateur .expl-recherche input:not([type]) { flex: 1 1 240px; }
@@ -473,8 +458,6 @@ nav.sous-onglets button.actif { color: var(--accent-fort); border-color: transpa
 }
 .bandeau-deplacement button { padding: 0.25rem 0.7rem; font-size: 0.82rem; }
 
-/* recherche IA */
-.recherche-ia input:not([type]) { flex: 1 1 260px; }
 .ia-explication { color: var(--accent); }
 .chat-fil {
   display: flex; flex-direction: column; gap: 0.6rem;
@@ -664,7 +647,9 @@ form.recherche .bouton-ligne .icone { width: 16px; height: 16px; }
 .bande-jours button.auj b, .bande-jours button.auj i { color: var(--sur-accent); background: var(--sur-accent); }
 .bande-jours button.auj b { background: none; }
 .bande-jours button:not(:disabled):hover { filter: none; }
-.jour-carte { margin-bottom: 0.9rem; }
+/* `scroll-margin-top` : `scrollIntoView` depuis la bande amenait le titre du jour SOUS la barre
+   haute collante (≈ 3,5 rem + encoche) — revue flotte PR 3. */
+.jour-carte { margin-bottom: 0.9rem; scroll-margin-top: calc(4rem + env(safe-area-inset-top)); }
 .jour-carte h3 { margin: 0 0.1rem 0.4rem; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--texte-doux); font-weight: 700; }
 button.ligne.texte, .ligne button.t.texte {
   border: none; background: none; color: inherit; font: inherit; text-align: left; border-radius: 0; cursor: pointer;
@@ -690,8 +675,12 @@ button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):ho
   background: var(--accent); color: var(--sur-accent); border: none; display: inline-grid; place-items: center;
 }
 .chat-saisie .envoyer .icone { width: 20px; height: 20px; }
+/* la sentinelle de fin de fil : `scrollIntoView({ block: 'end' })` la cale au bas de l'écran, la marge
+   la sort de sous la saisie collante (et de sous la barre basse sur téléphone). */
+.chat-fin { scroll-margin-bottom: 4rem; }
 @media (max-width: 760px) {
-  .chat-saisie { bottom: calc(5.4rem + env(safe-area-inset-bottom)); }
+  .chat-saisie { bottom: calc(var(--barre-basse-h) + env(safe-area-inset-bottom)); }
+  .chat-fin { scroll-margin-bottom: calc(var(--barre-basse-h) + 4rem + env(safe-area-inset-bottom)); }
 }
 .puces-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .puce-action {
@@ -711,6 +700,9 @@ button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):ho
 .prop-carte > b { font-size: 0.95rem; }
 .prop-carte small { color: var(--texte-doux); }
 .prop-carte.vides { border-left-color: var(--attention); }
+.prop-carte.refus { border-left-color: var(--erreur); }
+.prop-refus { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.prop-refus .prop-chemin { flex: 1 1 12rem; }
 .prop-chemin { font-family: var(--mono); font-size: 0.82rem; color: var(--texte-doux); overflow-wrap: anywhere; }
 .prop-chemin .fleche { color: var(--accent); }
 .prop-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }

@@ -25,7 +25,7 @@ import {
   verdictReclassement,
   RACINES_PROTEGEES_DEFAUT,
 } from './garde-fous';
-import { ElementDrive, MIME_DOSSIER, qEnfants, qRecherche, decouperEnLots, estDossierATrier } from './explorateur';
+import { ElementDrive, MIME_DOSSIER, qEnfants, qRecherche, estDossierATrier } from './explorateur';
 import { lireConfig } from './config';
 import { plageMock, ENFANTS_MOCK, TACHES_MOCK, EVENEMENTS_MOCK, EVENEMENTS_PAR_AGENDA, AGENDAS_MOCK } from './mockData';
 
@@ -186,14 +186,12 @@ export function viderCachePlages(onglet?: string): void {
   }
   cachePlages.clear();
   cacheDossiers.clear(); // les listages Drive suivent le même cycle de vie (C21-01)
-  cachePortee.clear();
   cacheAscendanceDossier.clear(); // l'ascendance peut avoir changé (réorg moteur) — re-vérifiée
 }
 
 /** Invalide les seuls caches DRIVE (déplacement/création : les listages changent, pas la Sheet). */
 function viderCachesDrive(): void {
   cacheDossiers.clear();
-  cachePortee.clear();
 }
 
 /** Lit une plage (valeurs brutes, lignes de tableaux). */
@@ -465,35 +463,20 @@ export async function listerEnfants(dossierId: string, pageToken?: string): Prom
 }
 
 /**
- * Collecte BORNÉE des sous-dossiers d'une racine (BFS, multi-parents dédoublonnés) — la portée
- * « dans ce dossier » de la recherche : `in parents` ne voit que les enfants DIRECTS, il faut
- * donc énumérer les descendants. Plafond dur (quota + taille de `q`) ; `tronque` le signale
- * honnêtement à l'UI au lieu de laisser croire à une couverture complète.
- */
-const cachePortee = new Map<string, { t: number; portee: { ids: string[]; tronque: boolean } }>();
-
-
-/**
- * Recherche façon barre Google Drive (nom OU plein texte natif). `portee` (liste de dossiers,
- * v7 : plus de portée par dossier — la recherche est globale) découpe en lots — fusion dédoublonnée par id.
+ * Recherche façon barre Google Drive (nom OU plein texte natif), GLOBALE (v7 : plus de portée
+ * « dans ce dossier » — la collecte bornée des sous-dossiers est partie avec). Une page de
+ * `RECHERCHE_PAGE` résultats ; `tronque` dit honnêtement qu'il y en avait d'autres.
  */
 export const RECHERCHE_PAGE = 50;
-export async function rechercherDrive(texte: string, portee?: string[]): Promise<{ elements: ElementDrive[]; tronque: boolean }> {
-  const lots: (string[] | undefined)[] =
-    portee && portee.length > 0 ? decouperEnLots(portee, 10) : [undefined];
-  const vus = new Map<string, ElementDrive>();
-  let tronque = false; // v7 : une recherche globale sur tout le Drive doit DIRE qu'elle s'arrête à 50
-  for (const lot of lots) {
-    const params = new URLSearchParams({
-      q: qRecherche(texte, lot),
-      fields: `nextPageToken,files(${CHAMPS_ELEMENT})`,
-      pageSize: String(RECHERCHE_PAGE),
-    });
-    const r = await api<{ files?: ElementDrive[]; nextPageToken?: string }>(`${DRIVE}?${params.toString()}`);
-    for (const f of r.files ?? []) vus.set(f.id, f);
-    if (r.nextPageToken) tronque = true;
-  }
-  return { elements: Array.from(vus.values()), tronque };
+export async function rechercherDrive(texte: string): Promise<{ elements: ElementDrive[]; tronque: boolean }> {
+  const params = new URLSearchParams({
+    q: qRecherche(texte),
+    fields: `nextPageToken,files(${CHAMPS_ELEMENT})`,
+    pageSize: String(RECHERCHE_PAGE),
+  });
+  const r = await api<{ files?: ElementDrive[]; nextPageToken?: string }>(`${DRIVE}?${params.toString()}`);
+  // v7 : une recherche globale sur tout le Drive doit DIRE qu'elle s'arrête à 50.
+  return { elements: r.files ?? [], tronque: Boolean(r.nextPageToken) };
 }
 
 /* ---------- Explorateur (C21-02) : création de dossier + déplacement MANUEL ---------- */

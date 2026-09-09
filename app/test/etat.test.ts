@@ -475,6 +475,7 @@ import {
   derniereDemandeReorg,
   actionsDuPlan,
   actionsProposeesChat,
+  actionsRefuseesReorg,
   plagesContigues,
 } from '../src/etat';
 
@@ -520,6 +521,24 @@ describe('Réorg IA (C21-05)', () => {
     // N’attrape jamais les lignes du plan réorg classique (préfixe reorg|…).
     expect(chat.every((c) => c.cle.startsWith('chatreorg|'))).toBe(true);
     expect(actionsProposeesChat(interpreterReorg(brut))).toHaveLength(0);
+  });
+
+  it('actionsRefuseesReorg : refus/échecs du plan courant + chat, jamais les proposées/validées/appliquées', () => {
+    const lignes = interpreterReorg([
+      ...brut,
+      ['reorg|demande-1|3', 'deplacer', 'idD', '04/Visa', '01/Visa', 'refusé (zone protégée)', 'parent protégé ou système', 'T1'],
+      ['reorg|demande-1|4', 'creer', '→P', '', '03/Garage', 'appliqué', '', 'T1'],
+      ['reorg|demande-0|1', 'deplacer', 'idE', 'a', 'b', 'échec', 'vieux plan', 'T0'], // autre plan → exclu
+      ['chatreorg|1799999999100|1', 'deplacer-fichier', 'F1→D1', 'nas.txt', 'Réseau', 'échec', 'fichier introuvable', 'T3'],
+      ['chatreorg|1799999999200|1', 'renommer', 'idF', '03/KIA', '03/Kia', 'refusé (structure)', 'nom réservé', 'T4'],
+      ['chatreorg|1799999999300|1', 'creer', '→P2', '', 'X', 'proposé', '', 'T5'],
+    ]);
+    expect(actionsRefuseesReorg(lignes, 'demande-1').map((l) => l.cle)).toEqual([
+      'chatreorg|1799999999200|1', 'chatreorg|1799999999100|1', 'reorg|demande-1|3',
+    ]);
+    // Sans plan courant : le chat seul.
+    expect(actionsRefuseesReorg(lignes, null).map((l) => l.cle)).toEqual(['chatreorg|1799999999200|1', 'chatreorg|1799999999100|1']);
+    expect(actionsRefuseesReorg(interpreterReorg(brut), 'demande-1')).toHaveLength(0);
   });
 
   it('plagesContigues : regroupe, dédoublonne, trie — jamais une ligne non ciblée', () => {

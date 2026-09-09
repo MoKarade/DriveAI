@@ -1,12 +1,13 @@
 /**
- * Agenda.tsx — vue v5 « clone Google Agenda » (C28-23 PR2+PR3, plan architecte) : grille
- * HORAIRE absolue Jour/Semaine/Mois (Semaine par défaut), rangée « toute la journée »,
- * gouttière d'heures, blocs à la minute, couleurs PAR TYPE, ligne « maintenant », 3 jours
- * glissants sur mobile. Un clic sur un CRÉNEAU vide ouvre la création pré-remplie ; un clic sur
- * un BLOC ouvre un popover façon GCal. v7 (ADR-0051) : plus de mini-calendrier ni de barre
- * latérale — la date se pilote ici (‹ › Aujourd'hui), « Mes agendas » devient une rangée de
- * puces sous le titre, et le « + » de l'en-tête ouvre la création libre (ex-bouton « Créer » de
- * la barre latérale). Écritures : créer et cocher — jamais supprimer ni modifier.
+ * Agenda.tsx — v7 (ADR-0051, C28-82 PR3). Téléphone : vue LISTE par défaut (bande de 7 jours,
+ * un bloc par jour qui a quelque chose) et bascule GRILLE (3 jours glissants). PC : grille
+ * HORAIRE absolue Jour/Semaine/Mois (Semaine par défaut, C28-23) — rangée « toute la journée »,
+ * gouttière d'heures, blocs à la minute, couleurs par agenda, ligne « maintenant » —, dans un
+ * conteneur défilant OUVERT À 7 H (rien de caché : la nuit reste au-dessus). Un clic sur un
+ * CRÉNEAU vide ouvre la création pré-remplie ; un clic sur un BLOC ouvre un popover façon GCal.
+ * La date se pilote ici (‹ › Aujourd'hui), « Mes agendas » est une rangée de puces sous le titre,
+ * le « + » de l'en-tête ouvre la création libre. Tâches ouvertes en lignes (case = « Fait »), les
+ * faites disparaissent. Écritures : créer et cocher — jamais supprimer ni modifier.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -72,6 +73,7 @@ export function Agenda({ langue }: { langue: Langue }) {
   const [charge, setCharge] = useState(false);
   const [erreur, setErreur] = useState('');
   const etroit = useEstEtroit();
+  const enListe = etroit && modeTel === 'liste'; // téléphone en vue Liste : la bande est la SEMAINE
 
   // La grille s'ouvre à 7 h : sur téléphone, huit heures vides défilaient avant le premier RDV
   // (captures v7). Rien n'est caché — la nuit reste au-dessus, il suffit de remonter.
@@ -100,7 +102,11 @@ export function Agenda({ langue }: { langue: Langue }) {
       : etroit ? grilleTroisJours(semaineRef)
         : grilleSemaine(semaineRef);
 
-  /** Navigation ‹ › : ±1 mois, ±7 j (±3 sur mobile) ou ±1 jour — `mois` suit la référence. */
+  /**
+   * Navigation ‹ › : ±1 mois, ±7 j (±3 en grille mobile) ou ±1 jour — `mois` suit la référence.
+   * En vue Liste, le pas est TOUJOURS la semaine : la bande affiche `grilleSemaine(semaineRef)`,
+   * un pas de 3 jours depuis mercredi ne changeait rien à l'écran (revue flotte PR 3).
+   */
   function naviguer(sens: 1 | -1) {
     if (vueCal === 'mois') {
       const m = new Date(mois.getFullYear(), mois.getMonth() + sens, 1);
@@ -108,7 +114,7 @@ export function Agenda({ langue }: { langue: Langue }) {
       setSemaineRef(m); // la date focalisée SUIT la vue Mois (revue flotte, comportement GCal)
       return;
     }
-    const pas = vueCal === 'jour' ? 1 : etroit ? 3 : 7;
+    const pas = enListe ? 7 : vueCal === 'jour' ? 1 : etroit ? 3 : 7;
     const ref = new Date(semaineRef.getFullYear(), semaineRef.getMonth(), semaineRef.getDate() + pas * sens);
     setSemaineRef(ref);
     if (ref.getMonth() !== mois.getMonth() || ref.getFullYear() !== mois.getFullYear()) {
@@ -179,7 +185,7 @@ export function Agenda({ langue }: { langue: Langue }) {
 
   return (
     <div className="colonnes agenda">
-      <section className={'carte cal-carte' + (etroit && modeTel === 'liste' ? ' liste' : '')}>
+      <section className={'carte cal-carte' + (enListe ? ' liste' : '')}>
         <h2>
           <span className="cal-titre">{MOIS[(vueCal === 'mois' ? mois : semaineRef).getMonth()]} {(vueCal === 'mois' ? mois : semaineRef).getFullYear()}</span>
           <span className="cal-nav">
@@ -241,7 +247,7 @@ export function Agenda({ langue }: { langue: Langue }) {
           )}
         </div>
 
-        {etroit && modeTel === 'liste' ? (
+        {enListe ? (
           <ListeJours
             langue={langue}
             jours={grilleSemaine(semaineRef)}

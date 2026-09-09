@@ -1,16 +1,16 @@
 /**
- * Assistant.tsx — onglet ASSISTANT (C28-30 PR3, ADR-0026). REMPLACE la page réorg.
+ * Assistant.tsx — onglet ASSISTANT (C28-30 PR3, ADR-0026 ; v7 C28-82 PR4). REMPLACE la page réorg.
  *
- * Deux moitiés, un onglet :
- *  - GAUCHE : le CHAT. Marc pose des questions sur ses fichiers (« donne mon NAS ») OU demande de
- *    ranger (« crée un dossier Garage dans Véhicule », « organise mes photos »). Le moteur (doPost
- *    `chat-assistant`) cherche/lit et répond ; la clé Claude et l'accès Drive vivent CÔTÉ MOTEUR
- *    (ADR-0007) — l'app n'envoie que l'historique et n'affiche que la réponse + un compteur de budget.
- *    L'historique persiste en sessionStorage (survit au F5, meurt à la fermeture d'onglet ; jamais
- *    localStorage — esprit ADR-0007). Plafond quotidien §2.6 : au-delà, refus honnête.
- *  - DROITE : le PLAN à valider (`ReorgVue`). Les opérations que l'assistant PROPOSE arrivent dans
- *    l'onglet Réorg ; Marc les valide PAR ACTION ici. Le moteur applique ensuite (chemin GARDÉ
- *    C21-06). Rien n'est jamais supprimé ni appliqué sans la validation de Marc.
+ * Un seul fil, plein écran : le CHAT. Marc pose des questions sur ses fichiers (« donne mon NAS »)
+ * OU demande de ranger (« crée un dossier Garage dans Véhicule », « organise mes photos »). Le
+ * moteur (doPost `chat-assistant`) cherche/lit et répond ; la clé Claude et l'accès Drive vivent
+ * CÔTÉ MOTEUR (ADR-0007) — l'app n'envoie que l'historique et n'affiche que la réponse + un compteur
+ * de budget. L'historique persiste en sessionStorage (survit au F5, meurt à la fermeture d'onglet ;
+ * jamais localStorage — esprit ADR-0007). Plafond quotidien §2.6 : au-delà, refus honnête.
+ * Les opérations que l'assistant PROPOSE (et le plan « Analyser tout le Drive ») arrivent dans
+ * l'onglet Réorg et s'affichent en CARTES dans le fil (`ReorgVue`), juste au-dessus de la saisie
+ * collée en bas ; Marc les valide PAR ACTION. Le moteur applique ensuite (chemin GARDÉ C21-06).
+ * Rien n'est jamais supprimé ni appliqué sans la validation de Marc.
  */
 
 import { useEffect, useRef, useState } from 'react';
@@ -60,8 +60,10 @@ export function Assistant({ langue }: { langue: Langue }) {
     try { sessionStorage.setItem(CLE_CHAT, JSON.stringify(messages)); } catch { /* stockage indispo : le chat reste en mémoire */ }
   }, [messages]);
 
-  // Auto-scroll vers le dernier message.
-  useEffect(() => { finRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, enCours]);
+  // Auto-scroll vers le dernier message. `block: 'end'` (revue PR 4) : avec des cartes de propositions
+  // SOUS la sentinelle, `'start'` la calait en haut de l'écran et la dernière réponse passait au-dessus
+  // du pli ; `.chat-fin` porte la marge qui la sort de sous la saisie collante.
+  useEffect(() => { finRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [messages, enCours]);
 
   function effacer() {
     setMessages([]); // l'effet de persistance ci-dessus réécrit alors '[]' → historique vidé
@@ -141,7 +143,7 @@ export function Assistant({ langue }: { langue: Langue }) {
             <span>{t('assistantAnalyse', langue)}</span>
           </div>
         )}
-        <div ref={finRef} />
+        <div ref={finRef} className="chat-fin" />
       </div>
 
       {/* Les propositions (chat + plan) et les dossiers vides, dans le fil, juste au-dessus de la saisie. */}

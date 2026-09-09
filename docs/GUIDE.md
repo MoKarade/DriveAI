@@ -36,7 +36,8 @@ devenu vide** peut être mis à la corbeille Drive (récupérable 30 jours) — 
 ## Corriger une erreur de classement
 Le formulaire [DriveAI — Corriger un classement](https://docs.google.com/forms/d/1gIftqqRwRs2XslhKbbmNMUTdFEqJ1AMB2H6Q0ahnc8A/viewform) :
 tu nommes l'émetteur et le bon domaine → les prochains documents de cet émetteur seront bien classés.
-Ou déplace le fichier toi-même (Drive ou écran Documents) : DriveAI ne le re-déplace pas.
+Ou déplace le fichier toi-même (Drive ou écran Documents) : une fois le grand rangement terminé
+(Réglages → Avancé), DriveAI ne le re-déplace pas.
 
 ## Si quelque chose cloche
 La pastille en haut (téléphone) ou en bas du rail (PC) : vert = moteur en marche, ambre = en retard,

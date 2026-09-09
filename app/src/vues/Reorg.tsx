@@ -14,6 +14,7 @@ import {
   derniereDemandeReorg,
   actionsDuPlan,
   actionsProposeesChat,
+  actionsRefuseesReorg,
   lignesVideCandidat,
   plagesContigues,
 } from '../etat';
@@ -170,6 +171,8 @@ export function ReorgVue({ langue }: { langue: Langue }) {
   // Une seule liste de propositions dans le fil (chat + plan) ; ce qui est décidé n'apparaît plus
   // (Marc, 09/09 : « tout ce qui est fini à la poubelle » — plus d'historique à l'écran).
   const toutes = [...chatProposees, ...proposees];
+  // …sauf ce que le moteur a REFUSÉ ou RATÉ après validation : ça reste visible, une ligne, jusqu'à « OK ».
+  const refus = actionsRefuseesReorg(lignes, demande?.cle ?? null);
   const analyseEnCours = demande?.statut === 'analyse demandée';
 
   return (
@@ -206,7 +209,23 @@ export function ReorgVue({ langue }: { langue: Langue }) {
         </div>
       ))}
 
-      {demande && demande.statut === 'proposé' && demande.detail && toutes.length > 0 && (
+      {refus.length > 0 && (
+        <div className="prop-carte refus">
+          {refus.map((a) => (
+            <div key={a.cle} className="prop-refus">
+              <span className="pastille crit">{t(a.statut.startsWith('échec') ? 'reorgEchec' : 'reorgRefuse', langue)}</span>
+              <span className="prop-chemin">
+                {a.cheminActuel && <>{a.cheminActuel} <span className="fleche">→</span> </>}{a.cheminPropose}
+                {a.detail && <small> · {a.detail}</small>}
+              </span>
+              <button className="bouton-ligne" disabled={enCours} onClick={() => poserStatut(a, 'écarté')}>{t('compris', langue)}</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* L'explication du PLAN ne s'affiche que sous des cartes du plan (jamais sous des propositions chat seules). */}
+      {demande && demande.statut === 'proposé' && demande.detail && proposees.length > 0 && (
         <p className="variante ia-explication">✨ {demande.detail}</p>
       )}
       {demande && demande.statut === 'proposé' && actions.length === 0 && (

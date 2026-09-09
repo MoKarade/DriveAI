@@ -431,6 +431,22 @@ export function actionsProposeesChat(lignes: LigneReorg[]): LigneReorg[] {
 }
 
 /**
+ * Les actions que Marc a VALIDÉES et que le moteur a ensuite REFUSÉES (`refusé (zone protégée)`,
+ * `refusé (structure)`) ou RATÉES (`échec`) — plan courant + chat. La v7 n'affiche plus l'historique
+ * des actions décidées (fini = poubelle), mais un refus n'est PAS une action finie : une carte validée
+ * qui disparaît à l'instant puis échoue en silence laisserait croire qu'elle est appliquée (revue
+ * flotte PR 4). Elles restent visibles jusqu'à ce que Marc les écarte (« OK ») ou qu'une nouvelle
+ * analyse remplace le plan. Ordre du plan, chat en tête (plus récent d'abord).
+ */
+export function actionsRefuseesReorg(lignes: LigneReorg[], cleDemande: string | null): LigneReorg[] {
+  const refus = (l: LigneReorg) => /^(refusé|échec)/.test(l.statut);
+  const prefixe = cleDemande ? `reorg|${cleDemande}|` : null;
+  const chat = lignes.filter((l) => l.cle.startsWith('chatreorg|') && refus(l)).sort((a, b) => b.cle.localeCompare(a.cle));
+  const plan = prefixe ? lignes.filter((l) => l.cle.startsWith(prefixe) && refus(l)) : [];
+  return [...chat, ...plan];
+}
+
+/**
  * Regroupe des numéros de lignes Sheet en PLAGES CONTIGUËS (écriture par lot de la colonne
  * Statut : une plage = un PUT — jamais un batchUpdate, jamais une ligne non sélectionnée
  * écrasée). Entrée dédupliquée et triée ici (copie).

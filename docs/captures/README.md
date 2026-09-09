@@ -1,7 +1,8 @@
 # Captures d'écran de l'app (v7)
 
 Trois captures de référence (mode mock E2E, données de démonstration — jamais les données réelles
-de Marc), prises par `app/e2e/screenshots.spec.ts` : `v7-tel-aujourdhui.png` et
+de Marc), prises par `app/e2e/screenshots.spec.ts` puis RENOMMÉES à la copie (le spec produit
+`tel-1-aujourdhui.png`, `tel-3-documents.png`, `pc-1-aujourdhui.png`) : `v7-tel-aujourdhui.png` et
 `v7-tel-documents.png` (téléphone, 390 px), `v7-pc-aujourdhui.png` (PC, 1 280 px).
 
 Les captures COMPLÈTES (5 écrans × 2 tailles) sont l'artefact `e2e-screenshots` de chaque run CI.
