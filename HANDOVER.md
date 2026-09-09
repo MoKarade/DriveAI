@@ -97,10 +97,14 @@
 > est à Marc (app → Moteur → Réglages, ou éditeur → Déclencheurs). Si le réglage dit 5 min, alors
 > l'hypothèse tombe et le panneau « Exécutions » redevient le seul juge.
 >
-> **➜ 👉 UNE DÉCISION T'ATTEND** (la panne OAuth, elle, est CLOSE — cf. en tête de fichier :
-> secret reposé + `lierCompteHubperso` le 09/09, suspension levée vérifiée à 15:26).
-> **Décision** : C28-78 — la PR #314 (mergée dans ma branche le 21/08 par une autre session, jamais
-> dans `main`, branche source supprimée) : la rouvrir contre `main`, ou l'abandonner.
+> **✅ RIEN NE T'ATTEND** — la panne OAuth est CLOSE (secret reposé + `lierCompteHubperso` le 09/09,
+> suspension levée vérifiée à 15:26), et C28-78 est tranchée : #314 ROUVERTE contre `main` (Marc,
+> 09/09) — le brouillon est enfin un vrai frein à l'auto-merge ; #313 abandonnée (remplacée par #316) ;
+> #315 non reprise, à rouvrir par `git cherry-pick -n e6430bc` si le quota Vercel redevient un sujet.
+> ⚠️ **Conséquence immédiate du retour de #314** : une PR ouverte en BROUILLON ne se fusionnera plus
+> toute seule. C'est voulu (décision du 21/08), mais ça change le rythme de cette session, où chaque
+> PR draft partait en moins d'une minute : il faudra désormais la sortir du brouillon pour qu'elle
+> merge, ou l'ouvrir directement « ready ».
 >
 > **Aussi appris ce jour** : la campagne `_Doublons` est **terminée** (22/08) — verdict définitif
 > **19 ORPHELINS**, 1 054 confirmés, 3 indéterminés. « Tout rapatrier » porte donc sur 19 fichiers

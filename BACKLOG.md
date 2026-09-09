@@ -764,42 +764,19 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
   Leçon : un message vrai à chaque tick peut mentir sur la durée — l'observabilité doit porter le
   « depuis quand », pas seulement le « quoi ».
 
-- ⬜ **C28-78 — Trois PR (#313, #314, #315) fusionnées le 21/08 DANS la branche `claude/compassionate-brahmagupta-e49tqa`, jamais dans `main`.**
-  Constaté le 2026-09-07 : leur `base.ref` était ma branche désignée, leurs branches sources ont été
-  supprimées au merge, et `main` n'a rien reçu. ⚠️ J'ai tenté de préserver le tip `e6430bc` par un
-  tag : **refusé (HTTP 403, identifiants limités à la branche désignée)**. Le contenu reste lisible
-  sur les pages fermées des trois PR (onglet « Files changed »), et `e6430bc` est cité ici pour
-  qu'un `git fetch origin e6430bc` le retrouve tant que GitHub le garde. Ce qui compte : **#314 « le brouillon devient un
-  vrai frein à l'auto-merge » (décision Marc du 21/08) n'a jamais pris effet** — `auto-merge.yml`
-  sur `main` a toujours `gh pr ready … || true`, et #311/#312 ont été sorties du brouillon et
-  fusionnées ce matin même. #313 (règles de cadrage en §10) est remplacé par #316 (convention
-  `docs/COMPTE-RENDU.md`, §7 porte le cadrage) ; #315 (`build-necessaire.sh`) est remplacé par #317
-  (`git.deploymentEnabled`, qui dit explicitement que le script ne protégeait pas le quota). À faire,
-  sur feu vert de Marc : ré-ouvrir #314 contre `main` (le diff est sur le tag), rien d'autre.
-  Réflexe (§9) : `pull_request_read` avant tout push sur une branche `claude/**` partagée.
-- ⬜ **C28-79 — Une erreur OAuth PERMANENTE doit dire « EN ÉCHEC » tout de suite, pas après 24 h.**
-  Constaté le 2026-09-07 au premier tick de C28-77 : la sonde a capté `invalid_client` (le client
-  OAuth hubperso n'existe plus côté Google) et Santé affiche pourtant « momentanément indisponible
-  (échec transitoire du refresh OAuth : invalid_client) » jusqu'à ce que `HUBPERSO_ECHEC_DURABLE_MS`
-  (24 h) soit écoulé. `invalid_client`, comme `invalid_grant` (déjà traité en purge), n'est jamais
-  transitoire : la classe de l'erreur suffit, le délai ne sert que pour les 5xx/réseau. Trouvé en
-  passant, NON corrigé (proposer ≠ faire) : demande un feu vert et un test de la frontière
-  « permanent tout de suite / transitoire après délai », prouvé par mutation.
-- ✅ **C28-80 — Un fil LU sort de la boîte : ⏰ et « À vérifier » deviennent des libellés (ADR-0050).**
-  Marc, 09/09 : « mes mails sont toujours pas triés ni archivés ». Comptage exhaustif des 50 premiers fils :
-  21 non lus, 14 ⏰, 17 « À vérifier », 3 suspects — le tri posait ses libellés, le seul cas archivable
-  (lu + catégorisé + sans ⏰) était vide. Décisions Marc (questions groupées) : tout archiver sauf les
-  non-lus ; suspects laissés en boîte (prudence) ; vieux stock > 30 j repassé. Livré : `decisionTri_`,
-  `TRI_REGLES_VERSION` dans la clé `tri|fil|ts|lu|<v>` (rétroactif sur les fils déjà triés — leçon §9),
-  `rearmerBoiteHistorique_`. 10 mutations attrapées, revue flotte (3 agents). Prise d'effet VÉRIFIÉE le
-  09/09 13:49 UTC : boîte 95 → 87 fils au premier passage (8 archivés, 30 clés posées = plafond/tick).
-- ⬜ **C28-81 — Scan cyclique du tri : l'offset avance de la page ENTIÈRE, archivés compris (leçon C28-24 non appliquée ici).**
-  Trouvé en revue flotte de C28-80 (apps-script-quota), préexistant : `scanCycliqueTri_` écrit
-  `offset + fils.length` alors que les fils archivés ont quitté `in:inbox` — il saute autant de fils par
-  page qu'il en archive, revus seulement au tour suivant (offset remis à 0 en fin de fenêtre). Bénin
-  (retard ≤ 1 tour), amplifié par ADR-0050 le jour de la rafale. Correctif minimal : compter `restants`
-  (tout `r !== 'archive'`) et écrire `offset + restants`, comme `nettoyerBoiteHistorique_`. Signalé,
-  NON corrigé (proposer ≠ faire) : demande un feu vert + un test sur la suite des offsets d'une page mixte.
+- ✅ **C28-78 — #314 récupérée et rouverte contre `main` (décision Marc, 09/09) ; #313 et #315 tranchées.**
+  Les trois PR avaient été fusionnées le 21/08 dans `claude/compassionate-brahmagupta-e49tqa`, jamais
+  dans `main` (branches sources supprimées, tag de préservation refusé en 403). Leurs commits vivaient
+  quand même dans l'historique local de la branche : `git cherry-pick -n 1d09007` a rendu #314 sans
+  rien retaper — la « perte » n'était qu'une absence de chemin vers `main`.
+  · **#314 (`le brouillon devient un vrai frein`) : ROUVERTE** — `auto-merge.yml` refuse désormais de
+  fusionner une PR en brouillon (échec fermé : lecture d'`isDraft` impossible ⇒ refus). C'était la
+  seule des trois qui comptait encore.
+  · **#313 (règles de cadrage en §10) : ABANDONNÉE** — remplacée par #316 (convention de compte-rendu),
+  déjà dans `main`.
+  · **#315 (`build-necessaire.sh`, ne pas déployer Vercel quand rien de servi ne change) : NON reprise**
+  — hors du « rouvrir » demandé, et le quota Vercel n'a plus été un problème depuis. À rouvrir de la
+  même façon (`git cherry-pick -n e6430bc`) si le sujet revient : c'est un feu vert, pas un oubli.
 
 - ⬜ **C28-74 — Une estimation de fin doit connaître le PLAFOND BUDGÉTAIRE, pas seulement le débit.**
   Mesuré le 21/08 : c26-08 affiche « reste 704 documents · ~7 j · vers le 27/08 » alors que le frein
