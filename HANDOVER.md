@@ -4,7 +4,25 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🎯 DERNIER CHANTIER — 2026-09-07 : « ça trie toujours pas mes mails » + « plus de mail de récap »**
+> **🎯 DERNIER CHANTIER — 2026-09-09 : « mes mails sont toujours pas triés ni archivés » (C28-80 / ADR-0050).**
+> Comptage exhaustif des 50 premiers fils de la boîte (MCP Gmail, 13:20 UTC) : 21 non lus, 14 ⏰,
+> 17 « À vérifier », 3 suspects — le tri POSAIT ses libellés, mais le seul cas archivable (lu +
+> catégorisé + sans ⏰) était vide. Chaque règle était juste ; leur union couvrait 100 % du réel.
+> Décisions Marc (questions groupées) : **un fil LU sort de la boîte**, ⏰ et « À vérifier » compris
+> (ils deviennent des libellés — le libellé ⏰ est la liste de tâches, plus la boîte) ; non lus
+> inchangés ; ⚠️ Suspect laissé en boîte (prudence, non contredit) ; vieux stock > 30 j repassé.
+> Livré : `decisionTri_` (règle), `TRI_REGLES_VERSION = 'r2'` dans la clé `tri|fil|ts|lu|r2` (sans ça
+> les ~90 fils déjà triés n'auraient JAMAIS été réévalués — leçon §9), `rearmerBoiteHistorique_`
+> (nettoyage profond ré-armé par version, ancre re-posée). 62 tests tri (1 204 au total), 9 mutations
+> attrapées, revue flotte avant merge.
+> **➜ Prise d'effet : ⬜ à vérifier par signal indépendant** après `deploy.yml` vert — la boîte doit se
+> vider en 1-2 jours (plafonds 150 fils/jour ; `tri_cyclique` était déjà à 150/150 le matin du 09/09).
+> Compter la DESTINATION : `in:inbox is:read` (référence 09/09 13:20 UTC : ~29 fils lus sur les 50
+> premiers), jamais déduire du run vert (piège 3).
+> **Geste de Marc toujours en attente** : client OAuth hubperso (`invalid_client`) — reposer
+> `DriveAI_HUBPERSO_CLIENT_ID`/`_CLIENT_SECRET`, puis `lierCompteHubperso`. Sans effet sur le tri désormais.
+
+> **CHANTIER PRÉCÉDENT — 2026-09-07 : « ça trie toujours pas mes mails » + « plus de mail de récap »**
 > **(C28-75, C28-76 / ADR-0049, C28-77).** Diagnostic par le MCP `etat_moteur` RELU le jour même (mon
 > relevé précédent datait de 17 jours — il aurait fait conclure faux) : le moteur tourne, pose les
 > libellés, mais **n'archive plus rien depuis six jours** — « mode DÉGRADÉ » parce que la création

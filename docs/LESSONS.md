@@ -2719,3 +2719,21 @@ d'un instantané ; rien dans le prompt ne le dit. »
 
 **Règle durable ?** oui — ajouté au §3 (workflow git) plutôt qu'au §9 : c'est un réflexe de
 session, pas de code.
+
+## 2026-09-09 — Chaque règle était juste, et la fonction était morte
+
+**Contexte.** Marc : « mes mails sont toujours pas triés ni archivés », deux jours après ADR-0049 qui
+avait rétabli l'archivage. Le tri posait bien ses libellés. Comptage exhaustif des 50 premiers fils de
+la boîte : 21 non lus, 14 ⏰, 17 « À vérifier », 3 suspects — quatre familles que les règles excluent
+de l'archivage, et qui font ~100 % de la boîte réelle. Le seul cas archivable était vide. Aucune règle
+n'était fausse ; leur UNION couvrait tout. Deux cliquets aggravaient : ⏰ ne se retire jamais (le moteur
+n'a pas le droit, §1.3), et « À vérifier » attrape par construction les mails de Marc à Marc (le message
+de référence exclut les siens).
+
+**Leçon.** « Une fonction gouvernée par des règles d'exclusion se vérifie par la DISTRIBUTION de la
+population réelle, pas règle par règle : compter, sur l'ensemble, combien d'items tombent dans CHAQUE
+exclusion et combien restent éligibles. Éligible vide = fonction morte, quel que soit le vert des tests.
+Et une exclusion portée par un libellé que le moteur ne peut pas retirer est un cliquet : elle ne décrit
+pas un état, elle le fige. »
+
+**Règle durable ?** oui — corollaire ajouté à « Garde-fou étroit, calibré sur du réel » (§9).

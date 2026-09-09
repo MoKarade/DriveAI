@@ -293,6 +293,13 @@ var CONFIG = {
                                           // le flux vivant garde le quota. (Pas de budget ms dédié :
                                           // le deep clean n'a ni OCR ni hash — la borne en FILS + le
                                           // garde-temps partagé + le frein campagnes §2.6 suffisent.)
+  TRI_REGLES_VERSION: 'r2',               // ADR-0050 (2026-09-09) : VERSION des règles du tri, dans la clé
+                                          // d'idempotence `tri|fil|ts|lu|<v>` ET dans le ré-armement du
+                                          // nettoyage profond (`DriveAI_TRI_BOITE_VERSION`). r1 = implicite
+                                          // (⏰ / « À vérifier » jamais archivés) ; r2 = « un fil LU sort de
+                                          // la boîte ». Bumper = chaque fil de la fenêtre est réévalué UNE
+                                          // fois (leçon §9 « verdict keyé sous version ») — tout changement
+                                          // de RÈGLE d'archivage sans bump ne toucherait aucun fil déjà trié.
   LLM_MAX_TOKENS_MINICAT: 64,             // mini-appel catégorie : JSON {categorie, suspect} — marge pour le plus long libellé + clôture markdown
   // Noms EXACTS des libellés spéciaux existants dans le Gmail de Marc (vérifiés le 2026-07-06).
   TRI_LIBELLES: { A_VERIFIER: 'À vérifier', SUSPECT: '⚠️ Suspect', A_TRAITER: '⏰ À traiter' },

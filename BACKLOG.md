@@ -785,6 +785,13 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
   transitoire : la classe de l'erreur suffit, le délai ne sert que pour les 5xx/réseau. Trouvé en
   passant, NON corrigé (proposer ≠ faire) : demande un feu vert et un test de la frontière
   « permanent tout de suite / transitoire après délai », prouvé par mutation.
+- ✅ **C28-80 — Un fil LU sort de la boîte : ⏰ et « À vérifier » deviennent des libellés (ADR-0050).**
+  Marc, 09/09 : « mes mails sont toujours pas triés ni archivés ». Comptage exhaustif des 50 premiers fils :
+  21 non lus, 14 ⏰, 17 « À vérifier », 3 suspects — le tri posait ses libellés, le seul cas archivable
+  (lu + catégorisé + sans ⏰) était vide. Décisions Marc (questions groupées) : tout archiver sauf les
+  non-lus ; suspects laissés en boîte (prudence) ; vieux stock > 30 j repassé. Livré : `decisionTri_`,
+  `TRI_REGLES_VERSION` dans la clé `tri|fil|ts|lu|<v>` (rétroactif sur les fils déjà triés — leçon §9),
+  `rearmerBoiteHistorique_`. 9 mutations attrapées. Prise d'effet : voir HANDOVER.
 
 - ⬜ **C28-74 — Une estimation de fin doit connaître le PLAFOND BUDGÉTAIRE, pas seulement le débit.**
   Mesuré le 21/08 : c26-08 affiche « reste 704 documents · ~7 j · vers le 27/08 » alors que le frein

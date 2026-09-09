@@ -12,6 +12,8 @@
  *   - scan AVANT (`TRI_REQUETE` = boîte, 30 j) : le courrier NEUF + les fils dont l'état a changé
  *     (nouveau message OU passage lu/non-lu — la clé d'idempotence inclut les deux) ; s'arrête au
  *     mur de fils déjà à jour. C'est lui qui archive un mail LU APRÈS son tri initial.
+ *     ADR-0050 : la règle est « un fil LU sort de la boîte » — ⏰ et « À vérifier » sont des
+ *     libellés, pas des ancres ; la version des règles (`TRI_REGLES_VERSION`) est dans la clé.
  *   - scan ARRIÈRE (rattrapage du STOCK une seule fois) : ancre FIXE posée au déploiement +
  *     OFFSET persistant sur l'ensemble figé `after:<ancre−31j> before:<ancre>` (leçon C12 :
  *     l'appartenance d'un ensemble borné par des dates fixes est stable → l'offset y est sûr ;
@@ -23,8 +25,15 @@
 
 /**
  * Décision PURE du tri d'un fil (testée exhaustivement — c'est ELLE qui porte les règles).
- * `analyseIndisponible` (ADR-0043) : le scan d'intentions est suspendu, donc `important` est
- * INCONNU — on pose les libellés mais on n'ARCHIVE rien (dégrader, jamais deviner).
+ * ADR-0050 (décision Marc 2026-09-09) : « tout archiver sauf les mails non lus ». Un fil LU sort de
+ * la boîte ; ⏰ « À traiter » et « À vérifier » ne sont plus que des LIBELLÉS (retrouvables en un
+ * clic) — la boîte n'est plus la liste de tâches, le libellé ⏰ l'est. Révise ADR-0010 §3 et
+ * ADR-0012 : jusque-là ⏰ / « À vérifier » ancraient le fil en boîte à vie (le moteur ne retire
+ * jamais un libellé, §1.3), et ces deux familles + les non-lus faisaient ~100 % de la boîte réelle
+ * — la règle était juste, plus rien n'y passait.
+ * Restent en boîte : NON LU (inchangé), ⚠️ SUSPECT (un avertissement caché ne sert à rien —
+ * tranché par prudence, non contredit par Marc), et le mode DÉGRADÉ `analyseIndisponible`
+ * (ADR-0043) : `important` INCONNU ⇒ ⏰ ne peut pas être posé ⇒ archiver perdrait le marqueur.
  * @param {{categorie:?string, important:boolean, suspect:boolean, zoneProtegee:boolean,
  *          promoDeterministe:boolean, entierementLu:boolean,
  *          analyseIndisponible:(boolean|undefined)}} f
@@ -35,27 +44,19 @@ function decisionTri_(f) {
   if (f.suspect) {
     return { libelles: [CONFIG.TRI_LIBELLES.SUSPECT], archiver: false, statut: 'suspect' };
   }
-  // 2. Catégorie introuvable/incertaine → À vérifier, jamais archivé (règle de sûreté Cowork).
-  if (!f.categorie) {
-    return { libelles: [CONFIG.TRI_LIBELLES.A_VERIFIER], archiver: false, statut: 'tri-a-verifier' };
-  }
-  var libelles = [f.categorie];
+  // 2. Catégorie introuvable/incertaine → « À vérifier » (jamais « le plus probable »). ⏰ s'y
+  //    ajoute comme sur un fil catégorisé : c'est le SEUL marqueur qui survit à l'archivage.
+  var libelles = [f.categorie || CONFIG.TRI_LIBELLES.A_VERIFIER];
   if (f.important) libelles.push(CONFIG.TRI_LIBELLES.A_TRAITER);
   var archiver;
   if (f.analyseIndisponible) {
-    // MODE DÉGRADÉ (ADR-0043) : le scan d'intentions est suspendu, donc `important` est INCONNU —
-    // pas faux. Le traiter comme faux archiverait des fils que Marc devait traiter. On pose les
-    // libellés (travail utile et réversible) et on laisse le fil EN BOÎTE ; l'archivage sera
-    // décidé au retour des intentions, la clé d'idempotence dégradée rendant le fil ré-évaluable.
-    archiver = false;
-  } else if (f.important) {
-    archiver = false; // ⏰ : la boîte de Marc sert de todo — seul MARC archive ces fils
-  } else if (f.promoDeterministe && !f.zoneProtegee) {
-    archiver = true;  // promo/newsletter : archivée même non lue (signaux DÉTERMINISTES uniquement)
+    archiver = false; // ⏰ indécidable : on attend le verdict plutôt qu'archiver sans marqueur
+  } else if (f.categorie && f.promoDeterministe && !f.zoneProtegee) {
+    archiver = true;  // promo/newsletter CATÉGORISÉE : archivée même non lue (signaux déterministes)
   } else {
-    archiver = f.entierementLu; // règle générale de Marc : archivé seulement s'il l'a OUVERT
+    archiver = f.entierementLu; // ADR-0050 : lu ⇒ archivé — ⏰ ou pas, catégorie ou pas
   }
-  return { libelles: libelles, archiver: archiver, statut: 'trié' };
+  return { libelles: libelles, archiver: archiver, statut: f.categorie ? 'trié' : 'tri-a-verifier' };
 }
 
 /**
@@ -605,8 +606,8 @@ function scanArriereTri_(etat, plafondAtteint, candidats, libelles) {
  * DERNIER du tri, gatée sur le frein campagnes §2.6). Requête FIGÉE `in:inbox before:<ancre>`
  * (ancre = aujourd'hui −29 j, posée une fois : `before:` exclusif + `newer_than:30d` glissant ⇒
  * 1 jour de chevauchement idempotent avec le vivant, jamais de trou). Passe par `trierFil_`
- * (libellés existants + archivage réversible SEULS, §2.3) — suspects ⚠/importants ⏰/non-lus/zone
- * protégée non lue restent en boîte (jamais archivés).
+ * (libellés existants + archivage réversible SEULS, §2.3) — suspects ⚠ et non-lus restent en boîte
+ * (ADR-0050 : un fil LU sort, ⏰ ou « À vérifier » compris).
  *
  * FILE MOUVANTE (leçon C28-24) : chaque fil ARCHIVÉ quitte le résultat `in:inbox` → l'offset
  * n'avance que des fils RESTÉS en boîte ('archive' exclu) ; les archivés « consomment » leur place
@@ -622,6 +623,7 @@ function scanArriereTri_(etat, plafondAtteint, candidats, libelles) {
  */
 function nettoyerBoiteHistorique_(etat, plafondAtteint, candidats, libelles) {
   var props = PropertiesService.getScriptProperties();
+  rearmerBoiteHistorique_(props);
   if (props.getProperty('DriveAI_TRI_BOITE') === 'terminé') return; // campagne finie (1 lecture)
 
   var aujourdhui = dateGmail_(new Date());
@@ -691,6 +693,26 @@ function nettoyerBoiteHistorique_(etat, plafondAtteint, candidats, libelles) {
       props.setProperty('DriveAI_TRI_BOITE_FILS_JOUR', String(filsJour + filsLus));
     }
   }
+}
+
+/**
+ * RÉ-ARMEMENT par VERSION des règles (ADR-0050 §4) : un « terminé » figé sous d'anciennes règles ne
+ * vaut plus rien quand la règle d'archivage change — le vieux stock (> 30 j, hors fenêtre du tri
+ * vivant) doit être repassé UNE fois. Tout l'état de la campagne est effacé, l'ANCRE comprise :
+ * l'ancienne (posée au premier run) laisserait un trou entre elle et −30 j, couvert par aucun scan.
+ * Ordre des écritures (leçon « écritures d'état ») : effacements D'ABORD, version ENSUITE — une
+ * coupure entre les deux rejoue les effacements au tick suivant (idempotents), jamais l'inverse.
+ * @param {Properties} props
+ */
+function rearmerBoiteHistorique_(props) {
+  var version = String(CONFIG.TRI_REGLES_VERSION);
+  if (props.getProperty('DriveAI_TRI_BOITE_VERSION') === version) return;
+  ['DriveAI_TRI_BOITE', 'DriveAI_TRI_BOITE_ANCRE', 'DriveAI_TRI_BOITE_OFFSET',
+    'DriveAI_TRI_BOITE_PASSE_SALE', 'DriveAI_TRI_BOITE_PASSES_PROPRES'].forEach(function (k) {
+    props.deleteProperty(k);
+  });
+  props.setProperty('DriveAI_TRI_BOITE_VERSION', version);
+  journalInfo_('TriGmail', 'Nettoyage profond RÉ-ARMÉ (règles ' + version + ') : le vieux stock de la boîte est repassé.');
 }
 
 /**
@@ -807,7 +829,9 @@ function trierFil_(fil, candidats, libelles, verifierBoite) {
     var nonLu = fil.isUnread();
     // La clé d'état inclut le DERNIER MESSAGE et l'état LU : un nouveau message OU une lecture
     // re-déclenche le tri (revue flotte : sinon un mail lu après son tri n'était JAMAIS archivé).
-    var cleNominale = 'tri|' + filId + '|' + ts + (nonLu ? '|nonlu' : '|lu');
+    // ADR-0050 : la VERSION des règles entre dans la clé — bumper `TRI_REGLES_VERSION` rend chaque
+    // ancienne clé invisible, le fil est réévalué UNE fois sous les règles courantes (leçon §9).
+    var cleNominale = 'tri|' + filId + '|' + ts + (nonLu ? '|nonlu' : '|lu') + '|' + CONFIG.TRI_REGLES_VERSION;
     if (indexContient_(cleNominale)) return 'deja';
     // Mur du mode DÉGRADÉ posé ICI, avant `getLabels()`/`getMessages()` (revue quotas C28-54) :
     // la clé dégradée se dérive de `filId|ts|lu` sans avoir besoin du dernier messageId. Sans ce
