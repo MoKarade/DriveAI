@@ -625,7 +625,8 @@ tr:hover .expl-actions button, .expl-actions button:focus-visible { opacity: 1; 
   font-family: var(--mono); font-size: 0.8rem; font-weight: 600;
   display: inline-flex; align-items: center; justify-content: center;
 }
-.titre-liste .h2-note { margin-left: auto; font-size: 0.8rem; font-weight: 450; color: var(--texte-doux); text-transform: capitalize; }
+.titre-liste .h2-note { margin-left: auto; font-size: 0.8rem; font-weight: 450; color: var(--texte-doux); }
+.titre-liste .h2-note::first-letter { text-transform: uppercase; }
 .titre-liste .h2-note.ok { color: var(--ok); text-transform: none; }
 .titre-liste .lien { margin-left: auto; border: none; background: none; color: var(--accent); font-size: 0.85rem; font-weight: 700; padding: 0.2rem 0.4rem; }
 .titre-liste .lien:not(:disabled):hover { filter: none; text-decoration: underline; }
@@ -649,7 +650,8 @@ a.ligne:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .ligne .t small { display: block; color: var(--texte-doux); font-size: 0.8rem; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ligne .chev { color: var(--texte-doux); opacity: 0.7; width: 18px; height: 18px; }
 .ligne.vide { color: var(--texte-doux); }
-.ligne time { font-family: var(--mono); font-size: 0.85rem; color: var(--texte-doux); width: 3.2rem; flex: 0 0 auto; }
+.ligne .heure { font-family: var(--mono); font-size: 0.85rem; color: var(--texte-doux); width: 3.2rem; flex: 0 0 auto; }
+.ligne a.t { color: inherit; text-decoration: none; }
 .ligne .barre { width: 4px; align-self: stretch; border-radius: 2px; background: var(--accent); flex: 0 0 auto; }
 .bouton-ligne {
   border: 1px solid var(--bord); background: var(--carte-2); color: var(--texte);
@@ -669,7 +671,7 @@ a.ligne:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 
 .tuiles-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; }
 .tuiles-3 .tuile { padding: 0.8rem 0.8rem 0.7rem; min-width: 0; }
-.tuiles-3 .tuile b { display: block; font-family: var(--mono); font-size: 1.35rem; font-weight: 600; letter-spacing: -0.02em; white-space: nowrap; }
+.tuiles-3 .tuile b { display: block; font-family: var(--mono); font-size: clamp(1rem, 4.6vw, 1.35rem); font-weight: 600; letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tuiles-3 .tuile small { display: block; color: var(--texte-doux); font-size: 0.78rem; margin-top: 2px; }
 @media (max-width: 420px) { .tuiles-3 .tuile b { font-size: 1.15rem; } .tuiles-3 { gap: 0.45rem; } }
 

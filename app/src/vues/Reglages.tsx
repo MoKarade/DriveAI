@@ -24,9 +24,9 @@ import {
   fraicheurMoteur,
   ageMoteurMinutes,
   dernierPassageDepuisSante,
-  documentsDepuisSante,
-  triDepuisSante,
+  compteursIndex,
   coutDepuisSante,
+  erreursDesDerniersJours,
   familleStatut,
   FamilleStatut,
   LigneProgression,
@@ -58,7 +58,8 @@ export function Reglages({ langue, onLangue, onDeconnexion }: {
   const carteReglages = (
     <section className="carte">
       <div className="reglage-lignes">
-        <FrequenceLigne langue={langue} valeurInitiale={donnees?.reglagesBrut?.[0]?.[1] ?? ''} />
+        {/* `key` : remonté quand la valeur réelle arrive (le composant existe déjà avant les données). */}
+        <FrequenceLigne key={donnees?.reglagesBrut?.[0]?.[1] ?? ''} langue={langue} valeurInitiale={donnees?.reglagesBrut?.[0]?.[1] ?? ''} />
         <div className="reglage-ligne">
           <span>{t('langueLibelle', langue)}</span>
           <button className="discret" onClick={onLangue}>{langue === 'fr' ? 'English' : 'Français'}</button>
@@ -100,17 +101,19 @@ export function Reglages({ langue, onLangue, onDeconnexion }: {
     ok: 'moteurVivant', retard: 'moteurRetard', mort: 'moteurSilencieux', inconnu: 'moteurInconnu',
   };
 
-  // Trois chiffres — la télémétrie (horodatée) prime pour le coût, la Santé sert de repli.
-  const docs = documentsDepuisSante(sante.lignes);
-  const tri = triDepuisSante(sante.lignes);
+  // Trois chiffres — documents et mails depuis l'Index (état courant) ; pour le coût, la
+  // télémétrie (horodatée) prime, la ligne Santé sert de repli.
+  const compteurs = compteursIndex(donnees.index);
   const cout = tele.presente && tele.coutDollars !== null ? tele.coutDollars : (coutDepuisSante(sante.lignes)?.dollars ?? null);
 
-  // Avancé : seulement ce qui bouge ou coince. Fini, à jour, désactivé ⇒ absent.
+  // Avancé : seulement ce qui bouge ou coince. Fini, à jour, désactivé ⇒ absent — sauf une
+  // mission « à jour » qui laisse un reliquat (« N non apparié(s) », C28-50) : ce n'est pas fini.
   const actives = progression.filter((op) => {
     const f = familleStatut(op.statut);
-    return f !== 'termine' && f !== 'ajour' && f !== 'inactif';
+    if (f === 'ajour') return complementStatut(op.statut) !== '';
+    return f !== 'termine' && f !== 'inactif';
   });
-  const erreurs = journal.filter((l) => l.niveau === 'ERREUR').slice(-ERREURS_MAX).reverse();
+  const erreurs = erreursDesDerniersJours(journal, 7, maintenant).slice(-ERREURS_MAX).reverse();
   const jauges: Array<{ cle: CleTexte; j: JaugeJour }> = [
     { cle: 'jaugeCyclique', j: tele.cycliqueJour },
     { cle: 'jaugeHisto', j: tele.histoJour },
@@ -126,8 +129,8 @@ export function Reglages({ langue, onLangue, onDeconnexion }: {
       </p>
 
       <div className="tuiles-3">
-        <div className="tuile"><b>{docs ? docs.classes.toLocaleString(locale) : '—'}</b><small>{t('documentsClasses', langue)}</small></div>
-        <div className="tuile"><b>{tri ? tri.tries.toLocaleString(locale) : '—'}</b><small>{t('filsTries', langue)}</small></div>
+        <div className="tuile"><b>{compteurs.documentsClasses.toLocaleString(locale)}</b><small>{t('documentsClasses', langue)}</small></div>
+        <div className="tuile"><b>{compteurs.mailsTries.toLocaleString(locale)}</b><small>{t('filsTries', langue)}</small></div>
         <div className="tuile">
           <b>{cout !== null ? `${cout.toFixed(2)} $` : '—'}</b>
           <small>{t('coutMoisCourt', langue)} · {BUDGET_CROISIERE} $</small>
@@ -139,9 +142,9 @@ export function Reglages({ langue, onLangue, onDeconnexion }: {
       <details className="avance">
         <summary>
           {t('avance', langue)}
-          {actives.length > 0 && <span className="pastille douce">{actives.length}</span>}
-          {tele.quotaSuspendu && <span className="pastille crit">{t('quotaEtatSuspendu', langue)}</span>}
-          {erreurs.length > 0 && <span className="pastille attn">{erreurs.length}</span>}
+          {actives.length > 0 && <span className="pastille douce" title={t('campagnesEnCours', langue)}>{actives.length}</span>}
+          {tele.quotaSuspendu && <span className="pastille crit" title={t('quotaGmail', langue)}>{t('quotaEtatSuspendu', langue)}</span>}
+          {erreurs.length > 0 && <span className="pastille attn" title={t('erreurs7j', langue)}>{erreurs.length}</span>}
         </summary>
         <div className="avance-corps">
           <div>
@@ -223,7 +226,7 @@ function FrequenceLigne({ langue, valeurInitiale }: { langue: Langue; valeurInit
     <div className="reglage-ligne">
       <span>
         {t('frequenceTick', langue)}
-        {statut === 'ok' && <span className="ok"> ✓</span>}
+        {statut === 'ok' && <span className="ok"> {t('reglageOk', langue)}</span>}
         {statut && statut !== 'ok' && <span className="erreur"> {statut.slice(0, 80)}</span>}
       </span>
       <select value={tick} onChange={(e) => changer(e.target.value)} aria-label={t('frequenceTick', langue)}>

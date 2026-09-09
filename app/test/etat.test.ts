@@ -576,19 +576,42 @@ describe('interpreterTelemetrie', () => {
   });
 });
 
-import { documentsDepuisSante, triDepuisSante } from '../src/etat';
+import { compteursIndex, importantsAFaire, erreursDesDerniersJours, STATUT_IMPORTANT_FAIT, LigneIndex as LI, LigneJournal as LJ } from '../src/etat';
 
-describe('compteurs Santé (v7 Réglages : trois chiffres)', () => {
-  it('documentsDepuisSante : « 📄 1 842 documents classés · 12 en attente », les deux ordres, null si absent', () => {
-    expect(documentsDepuisSante(['✅ Moteur actif', '📄 1 842 documents classés · 12 en attente'])).toEqual({ classes: 1842, attente: 12 });
-    expect(documentsDepuisSante(['📄 3 documents classés'])).toEqual({ classes: 3, attente: 0 });
-    expect(documentsDepuisSante(['Documents classés : 1\u202f842'])).toEqual({ classes: 1842, attente: 0 });
-    expect(documentsDepuisSante(['rien ici'])).toBeNull();
+const li = (cle: string, statut: string, traiteLe = '2026-09-09 10:00'): LI =>
+  ({ cle, traiteLe, fichier: cle, domaine: '', chemin: '', statut, confiance: '' });
+
+describe('compteursIndex (v7 Réglages : trois chiffres depuis l’Index, pas depuis Santé)', () => {
+  it('compte les documents classés et les fils triés, ignore le reste', () => {
+    const lignes = [
+      li('drive|F1', 'classé'), li('1a|0|x.pdf|12', 'classé'), li('drive|F2', 'à vérifier'), li('drive|F3', 'doublon'),
+      li('tri|T1|1|lu', 'trié'), li('tri|T2|2|lu', 'tri-a-verifier'), li('tri|T3|3|lu', 'suspect'),
+      li('important|M1', 'important'), li('intention|M2', 'classé'), li('tri-abandon|T4', 'classé'),
+    ];
+    expect(compteursIndex(lignes)).toEqual({ documentsClasses: 2, mailsTries: 2 });
+    expect(compteursIndex([])).toEqual({ documentsClasses: 0, mailsTries: 0 });
   });
+});
 
-  it('triDepuisSante : « 📬 Tri Gmail : 214 fils triés · 1 suspect », singulier toléré, null si absent', () => {
-    expect(triDepuisSante(['📬 Tri Gmail : 214 fils triés · 1 suspect'])).toEqual({ tries: 214, suspects: 1 });
-    expect(triDepuisSante(['Tri Gmail : 1 fil trié'])).toEqual({ tries: 1, suspects: 0 });
-    expect(triDepuisSante(['rien ici'])).toBeNull();
+describe('importantsAFaire (accueil v7 : fenêtre 7 j + « fait »)', () => {
+  const maintenant = new Date('2026-09-09T12:00:00');
+  it('garde les ⏰ récents non faits, récents d’abord ; écarte les vieux et les « fait »', () => {
+    const lignes = [
+      li('important|A', 'important', '2026-09-08 09:00'),
+      li('important|B', 'important', '2026-08-20 09:00'),     // > 7 j : sorti tout seul
+      li('important|C', STATUT_IMPORTANT_FAIT, '2026-09-09 09:00'), // marqué fait par l’app
+      li('important|D', 'important', '2026-09-09 08:00'),
+    ];
+    expect(importantsAFaire(lignes, maintenant).map((l) => l.cle)).toEqual(['important|D', 'important|A']);
+    expect(importantsAFaire(lignes, maintenant, 30).map((l) => l.cle)).toEqual(['important|D', 'important|B', 'important|A']);
+  });
+});
+
+describe('erreursDesDerniersJours (Réglages · Avancé)', () => {
+  it('ne garde que les ERREUR datées dans la fenêtre', () => {
+    const maintenant = new Date('2026-09-09T12:00:00');
+    const lj = (date: string, niveau: string): LJ => ({ date, niveau, source: 's', message: 'm' } as LJ);
+    const journal = [lj('2026-09-08 10:00', 'ERREUR'), lj('2026-08-01 10:00', 'ERREUR'), lj('2026-09-09 10:00', 'INFO'), lj('n/a', 'ERREUR')];
+    expect(erreursDesDerniersJours(journal, 7, maintenant)).toHaveLength(1);
   });
 });

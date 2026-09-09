@@ -273,7 +273,7 @@ export function ReorgVue({ langue }: { langue: Langue }) {
           {erreurCorbeille && <p className="erreur">{erreurCorbeille}</p>}
           {videsCandidats.length >= 2 && (
             <div className="actions" style={{ margin: '0.6rem 0' }}>
-              <button onClick={() => toutCorbeiller(videsCandidats)} disabled={enCours}>
+              <button onClick={() => toutCorbeiller(videsCandidats)} disabled={enCours} title={t('corbeilleNote', langue)}>
                 🗑 {t('toutCorbeiller', langue)} ({videsCandidats.length})
               </button>
             </div>
@@ -284,7 +284,7 @@ export function ReorgVue({ langue }: { langue: Langue }) {
                 <tr key={l.cle}>
                   <td>{l.cheminActuel}</td>
                   <td className="nombre">
-                    <button className="discret" disabled={enCours} onClick={() => corbeiller(l)}>
+                    <button className="discret" disabled={enCours} title={t('corbeilleNote', langue)} onClick={() => corbeiller(l)}>
                       🗑 {t('corbeiller', langue)}
                     </button>
                   </td>

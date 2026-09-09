@@ -196,6 +196,23 @@ export function lignesImportants(lignes: LigneIndex[]): LigneIndex[] {
   return lignes.filter((l) => l.statut === 'important').slice().reverse();
 }
 
+/** Statut posé PAR L'APP (v7, bouton « Fait ») sur la clé `important|<id>` : le mail sort de « À faire ». */
+export const STATUT_IMPORTANT_FAIT = 'important-fait';
+
+/**
+ * Mails ⏰ encore À FAIRE (accueil v7) : importants, PAS marqués « fait » (une ligne `important-fait`
+ * ajoutée par l'app remplace l'état courant de la clé), et vus depuis moins de `jours` jours — sans
+ * fenêtre, `important|` n'étant jamais mis à jour par le moteur, la liste ne se viderait jamais
+ * (revue flotte PR 1 : « déchets permanents »). Récents d'abord. PURE.
+ */
+export function importantsAFaire(lignes: LigneIndex[], maintenant: Date, jours = 7): LigneIndex[] {
+  const seuil = maintenant.getTime() - jours * 24 * 60 * 60 * 1000;
+  return lignesImportants(lignes).filter((l) => {
+    const t = Date.parse(l.traiteLe);
+    return !Number.isNaN(t) && t >= seuil;
+  });
+}
+
 /**
  * Lien Gmail d'une ligne dont la clé porte un messageId (`important|<id>`, `tache|<id>|<hash>`,
  * `event|<id>|<hash>`, `intention|<id>`) — '' sinon. `#all` couvre aussi les mails archivés.
@@ -247,37 +264,24 @@ export function coutDepuisSante(lignesSante: string[]): { dollars: number; appel
   return null;
 }
 
-/** « 1 842 » → 1842 (espaces fines, insécables ou normales tolérées dans les milliers). */
-function entierLisible_(s: string): number {
-  return Number(s.replace(/[^\d]/g, ''));
-}
-
-const GROUPE_NOMBRE_ = '(\\d[\\d\\s\\u00a0\\u202f]*)';
-
 /**
- * Documents classés / en attente depuis l'onglet Santé (v7 Réglages, trois chiffres) :
- * « 📄 1 842 documents classés · 12 en attente » ou « Documents classés : 1 842 ». null si la
- * ligne manque — la tuile affiche « — », jamais un faux 0.
+ * Les trois chiffres de Réglages (v7) — calculés depuis l'Index en ÉTAT COURANT (dédoublonné), pas
+ * depuis l'onglet Santé : ses lignes sont du texte libre (« Documents au catalogue (Index) : N »
+ * compte AUSSI les clés tri/important) et changent avec le moteur — revue flotte PR 1. PURE.
+ *  - documentsClasses : documents (hors lignes mail) au statut « classé » ;
+ *  - mailsTries : fils `tri|…` triés (catégorisés ou « À vérifier »).
  */
-export function documentsDepuisSante(lignesSante: string[]): { classes: number; attente: number } | null {
-  for (const l of lignesSante) {
-    const m = l.match(new RegExp(GROUPE_NOMBRE_ + '\\s*documents? class[ée]s?(?:\\s*·\\s*' + GROUPE_NOMBRE_ + '\\s*en attente)?', 'i'))
-      ?? l.match(new RegExp('documents? class[ée]s?\\s*:\\s*' + GROUPE_NOMBRE_, 'i'));
-    if (m) return { classes: entierLisible_(m[1]), attente: m[2] ? entierLisible_(m[2]) : 0 };
+export function compteursIndex(lignes: LigneIndex[]): { documentsClasses: number; mailsTries: number } {
+  let documentsClasses = 0;
+  let mailsTries = 0;
+  for (const l of lignes) {
+    if (/^tri\|/.test(l.cle)) {
+      if (l.statut === 'trié' || l.statut === 'tri-a-verifier') mailsTries++;
+    } else if (!/^(intention|tache|event|important|tri-abandon)\|/.test(l.cle) && l.statut === 'classé') {
+      documentsClasses++;
+    }
   }
-  return null;
-}
-
-/**
- * Fils triés / suspects depuis l'onglet Santé : « 📬 Tri Gmail : 214 fils triés · 1 suspect ».
- * null si la ligne manque.
- */
-export function triDepuisSante(lignesSante: string[]): { tries: number; suspects: number } | null {
-  for (const l of lignesSante) {
-    const m = l.match(new RegExp(GROUPE_NOMBRE_ + '\\s*fils? tri[ée]s?(?:\\s*·\\s*' + GROUPE_NOMBRE_ + '\\s*suspects?)?', 'i'));
-    if (m) return { tries: entierLisible_(m[1]), suspects: m[2] ? entierLisible_(m[2]) : 0 };
-  }
-  return null;
+  return { documentsClasses, mailsTries };
 }
 
 /** « Dernier passage OK : … » depuis l'onglet Santé — '' si absent. */
@@ -350,14 +354,19 @@ export function quotaGmailEpuise(journal: LigneJournal[], maintenant: Date): boo
   });
 }
 
-/** Nombre d'ERREURS du Journal sur les `jours` derniers jours. */
-export function erreursRecentes(journal: LigneJournal[], jours: number, maintenant: Date): number {
+/** ERREURS du Journal des `jours` derniers jours, dans l'ordre du Journal. PURE. */
+export function erreursDesDerniersJours(journal: LigneJournal[], jours: number, maintenant: Date): LigneJournal[] {
   const seuil = maintenant.getTime() - jours * 24 * 60 * 60 * 1000;
   return journal.filter((l) => {
     if (l.niveau !== 'ERREUR') return false;
     const t = Date.parse(l.date);
     return !Number.isNaN(t) && t >= seuil;
-  }).length;
+  });
+}
+
+/** Nombre d'ERREURS du Journal sur les `jours` derniers jours. */
+export function erreursRecentes(journal: LigneJournal[], jours: number, maintenant: Date): number {
+  return erreursDesDerniersJours(journal, jours, maintenant).length;
 }
 
 /* ---------- Réorg IA (#21, C21-05) : plan proposé par le moteur, validé ici ---------- */

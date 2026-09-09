@@ -256,3 +256,14 @@ describe('interpreterEvenements — étiquetage par agenda source (C28-41 PR2)',
     expect(e.couleur).toBeUndefined();
   });
 });
+
+import { tachesAFaire, Tache as TacheT } from '../src/agenda';
+
+describe('tachesAFaire (accueil v7 : jour + retard, jamais les faites)', () => {
+  const tk = (id: string, echeance: string, faite = false): TacheT => ({ id, titre: id, echeance, faite, parDriveAI: false });
+  it('garde les tâches du jour et en retard, exclut faites, futures et sans échéance ; anciennes d’abord', () => {
+    const jour = new Date(2026, 8, 9);
+    const liste = [tk('auj', '2026-09-09'), tk('retard', '2026-09-07'), tk('faite', '2026-09-08', true), tk('demain', '2026-09-10'), tk('sans', '')];
+    expect(tachesAFaire(liste, jour).map((t) => t.id)).toEqual(['retard', 'auj']);
+  });
+});

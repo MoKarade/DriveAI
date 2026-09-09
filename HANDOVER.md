@@ -24,7 +24,11 @@
 > état + 3 chiffres + lignes + « Avancé » replié (fini/à jour/désactivé = ABSENT) ; tâches cochées
 > cachées dans l'Agenda ; 10 paragraphes d'explication retirés. Revue flotte PR 0 intégrée (1 🟠 :
 > les réglages langue/synchro/déconnexion rendus même sans données). Captures envoyées à Marc.
-> Reste dans #331 avant merge : revue flotte de la PR 1, puis sortie du brouillon.
+> Revue flotte PR 1 intégrée (1 🔴 : les chiffres de Réglages venaient de parseurs qui ne lisaient
+> que le MOCK — le vrai onglet Santé écrit « Documents au catalogue (Index) : N » ; désormais
+> `compteursIndex` sur l'Index — leçon : un test qui verrouille le format du mock ne prouve rien
+> sur la prod ; 3 🟠 : ⏰ fenêtrés 7 j + « Fait » (`important-fait` dans l'Index, append-only),
+> erreurs vraiment sur 7 j, tâches en retard gardées). #331 sortie du brouillon → auto-merge.
 > ⚠️ Pour les PR suivantes : le socle de données (`google.ts`, `etat.ts`, `agenda.ts`, `corbeille.ts`)
 > ne bouge pas ; chaque PR part en brouillon, passe la revue flotte, puis SORT du brouillon (sinon
 > elle ne merge jamais — #329).

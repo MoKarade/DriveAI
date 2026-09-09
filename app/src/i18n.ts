@@ -247,6 +247,7 @@ const TEXTES = {
     agendasAutoriser: 'Autoriser la lecture de tes agendas',
     rienAFaire: 'Rien à faire',
     fait: 'Fait',
+    enRetard: 'en retard',
     aVerifierCourt: 'À vérifier',
     mailATraiter: 'Mail à traiter',
     documentsClasses: 'documents classés',
@@ -263,7 +264,7 @@ const TEXTES = {
     frequenceTick: 'Fréquence des passages',
     toutesLes: 'Toutes les',
     reglageNote: 'Appliqué au prochain passage du moteur.',
-    reglageOk: 'Enregistré ✓',
+    reglageOk: '✓ au prochain passage',
   },
   en: {
     /* ---- shell & sign-in ---- */
@@ -495,6 +496,7 @@ const TEXTES = {
     agendasAutoriser: 'Allow reading your calendars',
     rienAFaire: 'Nothing to do',
     fait: 'Done',
+    enRetard: 'overdue',
     aVerifierCourt: 'To check',
     mailATraiter: 'Email to handle',
     documentsClasses: 'documents filed',
@@ -511,7 +513,7 @@ const TEXTES = {
     frequenceTick: 'Sweep frequency',
     toutesLes: 'Every',
     reglageNote: 'Applied on the engine’s next sweep.',
-    reglageOk: 'Saved ✓',
+    reglageOk: '✓ next sweep',
   },
 } as const;
 

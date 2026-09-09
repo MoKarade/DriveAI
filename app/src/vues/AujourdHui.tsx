@@ -13,7 +13,7 @@
 
 import { useEffect, useState } from 'react';
 import type { Section } from '../App';
-import { listerEvenements, listerTaches, cocherTache } from '../google';
+import { listerEvenements, listerTaches, cocherTache, ajouterLigne } from '../google';
 import { useEtatGlobal } from '../etatGlobal';
 import { IndicateurChargement, BanniereErreur } from '../composants/UI';
 import { ListeSuspects, useSuspectsVisibles } from '../composants/Suspects';
@@ -22,7 +22,8 @@ import {
   LigneIndex,
   lignesSuspects,
   lignesAVerifier,
-  lignesImportants,
+  importantsAFaire,
+  STATUT_IMPORTANT_FAIT,
   traitesLeJour,
   lienDrivePourLigne,
   lienGmailPourLigne,
@@ -33,7 +34,7 @@ import {
   interpreterEvenements,
   interpreterTaches,
   evenementsDuJour,
-  tachesDuJour,
+  tachesAFaire,
   heureEvenement,
   titresDriveAI,
 } from '../agenda';
@@ -45,12 +46,14 @@ const CLASSEMENTS_RECENTS = 5;
 const SUSPECTS_MAX = 5;
 const A_VERIFIER_MAX = 5;
 const IMPORTANTS_MAX = 5;
+const IMPORTANTS_JOURS = 7; // au-delà, un ⏰ sort tout seul de « À faire » (même fenêtre que le résumé)
 
 export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: Section) => void }) {
   const { donnees, synchroA } = useEtatGlobal();
   const [evenements, setEvenements] = useState<Evenement[]>([]);
   const [taches, setTaches] = useState<Tache[]>([]);
   const [erreur, setErreur] = useState('');
+  const [importantsFaits, setImportantsFaits] = useState<Set<string>>(new Set()); // « Fait » optimiste
   const suspects = useSuspectsVisibles(donnees ? lignesSuspects(donnees.index) : []);
   // « Ma journée » couvre TOUS les agendas cochés (C28-41 PR2 — Family inclus).
   const etatAgendas = useAgendas();
@@ -92,7 +95,26 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
     try {
       await cocherTache(tache.id, true);
     } catch (e) {
-      setTaches((ts) => [...ts, tache]); // échec réel → la tâche revient, l'erreur s'affiche
+      // échec réel → la tâche revient (sans doublon si un rechargement l'a déjà remise), l'erreur s'affiche
+      setTaches((ts) => (ts.some((x) => x.id === tache.id) ? ts : [...ts, tache]));
+      setErreur(String(e));
+    }
+  }
+
+  /**
+   * « Fait » sur un mail ⏰ : l'app n'a pas de scope Gmail (elle ne peut ni lire ni archiver le
+   * fil) — elle ajoute une ligne `important|<id>` au statut `important-fait` dans l'Index : l'état
+   * courant de la clé change, le mail sort de « À faire » ; le moteur, qui ne juge que la présence
+   * de la clé, ne re-marque jamais ce mail. Aucune suppression, une ligne ajoutée (append-only).
+   */
+  async function importantFait(l: LigneIndex) {
+    setErreur('');
+    setImportantsFaits((f) => new Set(f).add(l.cle)); // OPTIMISTE
+    try {
+      const quand = new Date().toISOString().slice(0, 16).replace('T', ' ');
+      await ajouterLigne('Index', [l.cle, quand, l.fichier, '', '', STATUT_IMPORTANT_FAIT, '', '']);
+    } catch (e) {
+      setImportantsFaits((f) => { const g = new Set(f); g.delete(l.cle); return g; });
       setErreur(String(e));
     }
   }
@@ -107,8 +129,10 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
   const classements = docs.filter((l) => l.statut === 'classé').slice(-CLASSEMENTS_RECENTS).reverse();
   const aujourdhui = traitesLeJour(docs, maintenant);
   const aVerifier = lignesAVerifier(docs).slice(0, A_VERIFIER_MAX);
-  const importants = lignesImportants(donnees.index).slice(0, IMPORTANTS_MAX);
-  const tachesJour = tachesDuJour(taches, maintenant).filter((tk) => !tk.faite);
+  const importants = importantsAFaire(donnees.index, maintenant, IMPORTANTS_JOURS)
+    .filter((l) => !importantsFaits.has(l.cle)).slice(0, IMPORTANTS_MAX);
+  const cleAujourdhui = `${maintenant.getFullYear()}-${String(maintenant.getMonth() + 1).padStart(2, '0')}-${String(maintenant.getDate()).padStart(2, '0')}`;
+  const tachesJour = tachesAFaire(taches, maintenant); // du jour ET en retard, jamais les faites
   const evtsJour = evenementsDuJour(evenements, maintenant);
   // Jeton d'avant le scope `calendar.readonly` : sans ça « Ma journée » resterait vide sans un mot
   // — l'autorisation est une chose À FAIRE, avec son bouton (revue flotte PR 0).
@@ -139,23 +163,29 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
             </a>
           ))}
           {importants.map((l: LigneIndex) => (
-            <a key={l.cle} className="ligne" href={lienGmailPourLigne(l)} target="_blank" rel="noreferrer">
+            <div key={l.cle} className="ligne">
               <Icone nom="horloge" className="accent" />
-              <span className="t">
+              <a className="t lien-ligne" href={lienGmailPourLigne(l)} target="_blank" rel="noreferrer">
                 <b>{l.fichier}</b>
                 <small>{t('mailATraiter', langue)} · {formaterDateCourte(l.traiteLe, locale)}</small>
-              </span>
-              <Icone nom="externe" className="chev" />
-            </a>
+              </a>
+              <button className="bouton-ligne" aria-label={`${t('fait', langue)} : ${l.fichier}`} onClick={() => void importantFait(l)}>
+                ✓ {t('fait', langue)}
+              </button>
+            </div>
           ))}
           {tachesJour.map((tk) => (
             <div key={tk.id} className="ligne">
               <Icone nom="aujourdhui" />
               <span className="t">
                 <b>{tk.titre}</b>
-                <small>{t('tache', langue)}{tk.parDriveAI ? ` · ${t('parDriveAI', langue)}` : ''}</small>
+                <small>
+                  {t('tache', langue)}
+                  {tk.echeance < cleAujourdhui && <> · <span className="erreur">{t('enRetard', langue)} · {tk.echeance}</span></>}
+                  {tk.parDriveAI ? ` · ${t('parDriveAI', langue)}` : ''}
+                </small>
               </span>
-              <button className="bouton-ligne principal" onClick={() => void fait(tk)}>
+              <button className="bouton-ligne principal" aria-label={`${t('fait', langue)} : ${tk.titre}`} onClick={() => void fait(tk)}>
                 ✓ {t('fait', langue)}
               </button>
             </div>
@@ -181,7 +211,7 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
           <div className="carte lignes">
             {evtsJour.map((e) => (
               <a key={e.id} className="ligne" href={e.lien} target="_blank" rel="noreferrer">
-                <time>{e.journee ? '—' : heureEvenement(e)}</time>
+                {e.journee ? <span className="heure">—</span> : <time className="heure" dateTime={e.debut}>{heureEvenement(e)}</time>}
                 <span className="barre" style={e.couleur ? { background: e.couleur } : undefined} aria-hidden="true" />
                 <span className="t">
                   <b>{e.titre}</b>
