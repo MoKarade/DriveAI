@@ -15,11 +15,12 @@
 > les ~90 fils déjà triés n'auraient JAMAIS été réévalués — leçon §9), `rearmerBoiteHistorique_`
 > (nettoyage profond ré-armé par version, ancre re-posée). 62 tests tri (1 204 au total), 9 mutations
 > attrapées, revue flotte avant merge.
-> **➜ Prise d'effet : ⬜ à vérifier par signal indépendant** après `deploy.yml` vert — la fenêtre 30 j
-> (~90 fils) se vide en ~3 ticks (scan AVANT, 30 écritures/tick, pas de plafond quotidien — revue
-> apps-script-quota) ; le stock > 30 j suit à 150 fils/jour au nettoyage profond.
-> Compter la DESTINATION : `in:inbox is:read` (référence 09/09 13:20 UTC : ~29 fils lus sur les 50
-> premiers), jamais déduire du run vert (piège 3).
+> **➜ Prise d'effet : ✅ VÉRIFIÉE par signal indépendant.** Merge `63818ea` 13:45 UTC, `deploy.yml`
+> vert 13:46, premier passage du nouveau code à **13:49 UTC** : la boîte est passée de **95 fils
+> (23 non lus) à 87 (23 non lus)** en un seul passage — 8 fils lus archivés, 30 clés `r2` posées
+> (le plafond `TRI_MAX_FILS_PAR_RUN`, Index 18 193 → 18 223), +7 catégorisations LLM. À la cadence
+> observée (~30 min par passage, pas 5), la fenêtre 30 j finit de se vider en ~2 h ; le stock > 30 j
+> suit au nettoyage profond (150 fils/jour). Cible : ~26 fils en boîte (non lus + suspects).
 > **Geste de Marc toujours en attente** : client OAuth hubperso (`invalid_client`) — reposer
 > `DriveAI_HUBPERSO_CLIENT_ID`/`_CLIENT_SECRET`, puis `lierCompteHubperso`. Sans effet sur le tri désormais.
 
