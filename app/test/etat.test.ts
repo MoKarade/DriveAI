@@ -575,3 +575,20 @@ describe('interpreterTelemetrie', () => {
     expect(t.coutDollars).toBe(3.5); // virgule décimale FR tolérée
   });
 });
+
+import { documentsDepuisSante, triDepuisSante } from '../src/etat';
+
+describe('compteurs Santé (v7 Réglages : trois chiffres)', () => {
+  it('documentsDepuisSante : « 📄 1 842 documents classés · 12 en attente », les deux ordres, null si absent', () => {
+    expect(documentsDepuisSante(['✅ Moteur actif', '📄 1 842 documents classés · 12 en attente'])).toEqual({ classes: 1842, attente: 12 });
+    expect(documentsDepuisSante(['📄 3 documents classés'])).toEqual({ classes: 3, attente: 0 });
+    expect(documentsDepuisSante(['Documents classés : 1\u202f842'])).toEqual({ classes: 1842, attente: 0 });
+    expect(documentsDepuisSante(['rien ici'])).toBeNull();
+  });
+
+  it('triDepuisSante : « 📬 Tri Gmail : 214 fils triés · 1 suspect », singulier toléré, null si absent', () => {
+    expect(triDepuisSante(['📬 Tri Gmail : 214 fils triés · 1 suspect'])).toEqual({ tries: 214, suspects: 1 });
+    expect(triDepuisSante(['Tri Gmail : 1 fil trié'])).toEqual({ tries: 1, suspects: 0 });
+    expect(triDepuisSante(['rien ici'])).toBeNull();
+  });
+});

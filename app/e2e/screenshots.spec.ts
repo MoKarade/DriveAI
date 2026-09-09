@@ -25,7 +25,7 @@ test('captures des 5 écrans (mode mock, app "connectée")', async ({ page }, te
   // Le mode mock rend estConnecte() vrai : la nav des sections doit être là, PAS le bouton Connexion.
   // Sur téléphone c'est la barre basse ; sur PC, le rail. Réglages n'est dans aucune des deux sur
   // téléphone : on y va par l'engrenage de la barre haute.
-  const nav = page.getByRole('navigation', { name: tel ? 'Sections (mobile)' : 'Sections' });
+  const nav = page.getByRole('navigation', { name: tel ? 'Sections (mobile)' : 'Sections', exact: true });
   await expect(nav).toBeVisible();
 
   for (const { fichier, libelle } of SECTIONS) {
@@ -34,10 +34,14 @@ test('captures des 5 écrans (mode mock, app "connectée")', async ({ page }, te
       : nav.getByRole('button', { name: libelle, exact: true });
     // `dispatchEvent` plutôt que `click` : sur le projet tactile, la barre basse (position fixe)
     // fait attendre Playwright « scrolling into view » sans fin — vécu à la première capture v7.
+    // `toBeVisible` d'abord : dispatchEvent saute les contrôles d'actionnabilité (revue PR 0).
+    await expect(bouton).toBeVisible();
     await bouton.dispatchEvent('click');
     // Chaque vue charge ses données mockées au montage : on attend le squelette de la vue active
     // (les mocks sont synchrones côté données, un petit délai couvre le rendu React).
     await page.waitForTimeout(400);
-    await page.screenshot({ path: `e2e-screenshots/${testInfo.project.name}-${fichier}.png`, fullPage: true });
+    // Téléphone : la fenêtre seule — ce que Marc voit ; une capture pleine page y peindrait la barre
+    // d'onglets (position fixe) au milieu de l'image. PC : la page entière.
+    await page.screenshot({ path: `e2e-screenshots/${testInfo.project.name}-${fichier}.png`, fullPage: !tel });
   }
 });

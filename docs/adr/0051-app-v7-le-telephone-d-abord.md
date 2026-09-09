@@ -78,7 +78,7 @@ Réglages ou dans l'Agenda) ; PWA conservée ; animations courtes, aucune sous
   dès PR 0 — la première chose que la refonte livre est l'œil qui manquait.
 - **Polices** : auto-hébergées (latin + latin-ext, 168 Ko pour 12 fichiers, `font-display: swap`)
   parce que la CSP de `index.html` est `default-src 'self'` ; `fonts.gstatic.com` n'y entrera pas.
-- **Les tests app (167) ne couvrent que la logique** (`etat`, `agenda`, `explorateur`, BFF…) :
+- **Les tests app (243) ne couvrent que la logique** (`etat`, `agenda`, `explorateur`, BFF…) :
   aucune vue n'est testée par rendu. La preuve visuelle reste la capture, la preuve
   fonctionnelle reste Marc sur son téléphone après chaque PR.
 

@@ -247,6 +247,39 @@ export function coutDepuisSante(lignesSante: string[]): { dollars: number; appel
   return null;
 }
 
+/** « 1 842 » → 1842 (espaces fines, insécables ou normales tolérées dans les milliers). */
+function entierLisible_(s: string): number {
+  return Number(s.replace(/[^\d]/g, ''));
+}
+
+const GROUPE_NOMBRE_ = '(\\d[\\d\\s\\u00a0\\u202f]*)';
+
+/**
+ * Documents classés / en attente depuis l'onglet Santé (v7 Réglages, trois chiffres) :
+ * « 📄 1 842 documents classés · 12 en attente » ou « Documents classés : 1 842 ». null si la
+ * ligne manque — la tuile affiche « — », jamais un faux 0.
+ */
+export function documentsDepuisSante(lignesSante: string[]): { classes: number; attente: number } | null {
+  for (const l of lignesSante) {
+    const m = l.match(new RegExp(GROUPE_NOMBRE_ + '\\s*documents? class[ée]s?(?:\\s*·\\s*' + GROUPE_NOMBRE_ + '\\s*en attente)?', 'i'))
+      ?? l.match(new RegExp('documents? class[ée]s?\\s*:\\s*' + GROUPE_NOMBRE_, 'i'));
+    if (m) return { classes: entierLisible_(m[1]), attente: m[2] ? entierLisible_(m[2]) : 0 };
+  }
+  return null;
+}
+
+/**
+ * Fils triés / suspects depuis l'onglet Santé : « 📬 Tri Gmail : 214 fils triés · 1 suspect ».
+ * null si la ligne manque.
+ */
+export function triDepuisSante(lignesSante: string[]): { tries: number; suspects: number } | null {
+  for (const l of lignesSante) {
+    const m = l.match(new RegExp(GROUPE_NOMBRE_ + '\\s*fils? tri[ée]s?(?:\\s*·\\s*' + GROUPE_NOMBRE_ + '\\s*suspects?)?', 'i'));
+    if (m) return { tries: entierLisible_(m[1]), suspects: m[2] ? entierLisible_(m[2]) : 0 };
+  }
+  return null;
+}
+
 /** « Dernier passage OK : … » depuis l'onglet Santé — '' si absent. */
 export function dernierPassageDepuisSante(lignesSante: string[]): string {
   for (const l of lignesSante) {

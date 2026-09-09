@@ -613,3 +613,78 @@ tr:hover .expl-actions button, .expl-actions button:focus-visible { opacity: 1; 
   .carte:hover, .tuile:hover { border-color: var(--bord-fort); }
 }
 
+
+/* ---------- v7 (PR1) : listes d'actions, trois chiffres, « Avancé » ---------- */
+.titre-liste {
+  display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+  font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em; margin: 0.2rem 0.1rem 0.6rem;
+}
+.titre-liste .badge {
+  min-width: 24px; height: 24px; border-radius: 12px; padding: 0 0.5rem;
+  background: var(--accent); color: var(--sur-accent);
+  font-family: var(--mono); font-size: 0.8rem; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.titre-liste .h2-note { margin-left: auto; font-size: 0.8rem; font-weight: 450; color: var(--texte-doux); text-transform: capitalize; }
+.titre-liste .h2-note.ok { color: var(--ok); text-transform: none; }
+.titre-liste .lien { margin-left: auto; border: none; background: none; color: var(--accent); font-size: 0.85rem; font-weight: 700; padding: 0.2rem 0.4rem; }
+.titre-liste .lien:not(:disabled):hover { filter: none; text-decoration: underline; }
+.titre-liste .h2-note + .lien { margin-left: 0; }
+
+.carte.lignes { padding: 0; overflow: hidden; }
+.ligne {
+  display: flex; align-items: center; gap: 0.75rem; min-width: 0;
+  padding: 0.75rem 0.9rem; border-top: 1px solid var(--rang);
+  color: inherit; text-decoration: none; margin: 0; font-size: 0.95rem;
+}
+.ligne:first-child, .alerte-suspect:first-child { border-top: none; }
+a.ligne:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.ligne > .icone { color: var(--texte-doux); }
+.ligne > .icone.attention { color: var(--attention); }
+.ligne > .icone.erreur { color: var(--erreur); }
+.ligne > .icone.accent { color: var(--accent); }
+.ligne .t { flex: 1; min-width: 0; }
+.ligne .t b { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 700; line-height: 1.25; }
+.ligne .t b.mono { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-weight: 600; font-size: 0.86rem; letter-spacing: -0.01em; }
+.ligne .t small { display: block; color: var(--texte-doux); font-size: 0.8rem; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ligne .chev { color: var(--texte-doux); opacity: 0.7; width: 18px; height: 18px; }
+.ligne.vide { color: var(--texte-doux); }
+.ligne time { font-family: var(--mono); font-size: 0.85rem; color: var(--texte-doux); width: 3.2rem; flex: 0 0 auto; }
+.ligne .barre { width: 4px; align-self: stretch; border-radius: 2px; background: var(--accent); flex: 0 0 auto; }
+.bouton-ligne {
+  border: 1px solid var(--bord); background: var(--carte-2); color: var(--texte);
+  border-radius: 10px; padding: 0.4rem 0.75rem; font-size: 0.85rem; font-weight: 700; white-space: nowrap;
+}
+.bouton-ligne.principal { background: var(--accent); color: var(--sur-accent); border-color: transparent; }
+
+/* la ligne « suspect » (Suspects.tsx) devient une ligne comme les autres */
+.alerte-suspect {
+  border: none; border-top: 1px solid var(--rang); border-radius: 0; background: transparent;
+  margin: 0; padding: 0.75rem 0.9rem; align-items: center; gap: 0.75rem;
+}
+.alerte-suspect:hover { border-color: var(--rang); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.alerte-suspect .ic { background: var(--attention); color: var(--sur-accent); }
+.alerte-suspect a.corps b { font-weight: 700; }
+.alerte-suspect .ps { font-size: 0.85rem; font-weight: 700; color: var(--texte); background: var(--carte-2); border-color: var(--bord); border-radius: 10px; padding: 0.4rem 0.75rem; }
+
+.tuiles-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; }
+.tuiles-3 .tuile { padding: 0.8rem 0.8rem 0.7rem; min-width: 0; }
+.tuiles-3 .tuile b { display: block; font-family: var(--mono); font-size: 1.35rem; font-weight: 600; letter-spacing: -0.02em; white-space: nowrap; }
+.tuiles-3 .tuile small { display: block; color: var(--texte-doux); font-size: 0.78rem; margin-top: 2px; }
+@media (max-width: 420px) { .tuiles-3 .tuile b { font-size: 1.15rem; } .tuiles-3 { gap: 0.45rem; } }
+
+.moteur-etat { font-size: 0.95rem; margin: 0 0.1rem; }
+.reglage-ligne select { width: auto; max-width: 55%; }
+.reglage-ligne > span { min-width: 0; }
+
+details.avance { border: 1px solid var(--bord); border-radius: var(--r-l); background: var(--carte); }
+details.avance > summary {
+  cursor: pointer; padding: 0.85rem 1rem; font-weight: 700; list-style: none;
+  display: flex; align-items: center; gap: 0.5rem;
+}
+details.avance > summary::-webkit-details-marker { display: none; }
+details.avance > summary::after { content: '›'; margin-left: auto; color: var(--texte-doux); font-size: 1.2rem; transition: transform 0.15s; }
+details.avance[open] > summary::after { transform: rotate(90deg); }
+details.avance > .avance-corps { padding: 0 1rem 1rem; display: flex; flex-direction: column; gap: 1.1rem; }
+.avance-corps h3 { margin: 0 0 0.4rem; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--texte-doux); font-weight: 700; }
+.avance-corps .variante { margin: 0; }

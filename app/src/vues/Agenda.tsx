@@ -33,8 +33,6 @@ import {
   positionMaintenant,
   titresDriveAI,
 } from '../agenda';
-import { lignesImportants, lienGmailPourLigne, LigneIndex } from '../etat';
-import { formaterDateCourte } from '../explorateur';
 import { Langue, t } from '../i18n';
 import { useAgendas, agendasAffiches, basculerAgenda, basculerTaches, reconnecterPourAgendas, rechargerAgendas } from '../agendasStore';
 import { Icone } from '../composants/Icone';
@@ -65,7 +63,6 @@ export function Agenda({ langue }: { langue: Langue }) {
   const [semaineRef, setSemaineRef] = useState(maintenant);
   const [evenements, setEvenements] = useState<Evenement[]>([]);
   const [taches, setTaches] = useState<Tache[]>([]);
-  const [importants, setImportants] = useState<LigneIndex[]>([]);
   const [popover, setPopover] = useState<Popover | null>(null);
   const [creneau, setCreneau] = useState<{ date: string; heure: string } | null>(null);
   const [creationLibre, setCreationLibre] = useState(false); // « + » de l'en-tête (v7)
@@ -139,7 +136,6 @@ export function Agenda({ langue }: { langue: Langue }) {
         ]);
         setEvenements(listes.flat().sort((x, y) => x.debut.localeCompare(y.debut)));
         setTaches(interpreterTaches(tks, marques));
-        setImportants(lignesImportants(lignes).slice(0, 8));
         setCharge(true);
         setErreur('');
       } catch (e) {
@@ -260,10 +256,6 @@ export function Agenda({ langue }: { langue: Langue }) {
                 ))}
               </tbody>
             </table>
-            <p className="explication legende">
-              <span className="ev ia">{t('legDriveAI', langue)}</span> <span className="ev">{t('legAgenda', langue)}</span>{' '}
-              <span className="ev tache">☐ {t('legEcheance', langue)}</span>
-            </p>
           </>
         ) : (
           <GrilleTemps
@@ -282,10 +274,10 @@ export function Agenda({ langue }: { langue: Langue }) {
 
       <section className="carte">
         <h2>{t('tachesOuvertes', langue)}</h2>
-        {taches.length === 0 && <p className="explication">{t('aucuneTache', langue)}</p>}
+        {taches.every((tk) => tk.faite) && <p className="explication">{t('aucuneTache', langue)}</p>}
         <table>
           <tbody>
-            {taches.map((tk) => (
+            {taches.filter((tk) => !tk.faite).map((tk) => (
               <tr key={tk.id} className="ligne-clic">
                 <td style={{ width: '1.8rem' }}>
                   <button
@@ -309,25 +301,6 @@ export function Agenda({ langue }: { langue: Langue }) {
         </table>
       </section>
 
-      <section className="carte">
-        <h2>⏰ {t('aTraiter', langue)}</h2>
-        {importants.length === 0 && <p className="explication">{t('aucunATraiter', langue)}</p>}
-        <table>
-          <tbody>
-            {importants.map((l) => (
-              <tr key={l.cle} className="ligne-clic" title={t('ouvrirMail', langue)}>
-                <td>
-                  <a className="lien-ligne" href={lienGmailPourLigne(l)} target="_blank" rel="noreferrer">
-                    {l.fichier}
-                  </a>
-                  <div className="variante">{formaterDateCourte(l.traiteLe, langue === 'fr' ? 'fr-CA' : 'en-CA')}</div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        <p className="explication">{t('aTraiterNote', langue)}</p>
-      </section>
 
       {/* « + » de l'en-tête (v7) : création libre — tâche ou RDV, sans pré-remplissage. */}
       {creationLibre && (

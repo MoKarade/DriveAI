@@ -111,10 +111,8 @@ export function Assistant({ langue }: { langue: Langue }) {
             </button>
           )}
         </div>
-        <p className="explication">{t('assistantIntro', langue)}</p>
 
         <div className="chat-fil" role="log" aria-live="polite">
-          {messages.length === 0 && <p className="explication">{t('assistantVide', langue)}</p>}
           {messages.map((m, i) =>
             m.role === 'user' ? (
               <div key={i} className="chat-bulle chat-moi">{m.content}</div>

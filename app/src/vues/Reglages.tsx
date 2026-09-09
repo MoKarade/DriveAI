@@ -1,14 +1,13 @@
 /**
- * Reglages.tsx — RÉGLAGES (v7, ADR-0051) : l'ancienne page technique « Moteur » (C28-41), atteinte
- * par l'engrenage sur téléphone et le bas du rail sur PC, plus la carte COMPTE (langue, synchro,
- * retour au hub, déconnexion) qui vivait dans l'en-tête et le menu avatar de la v6. PR 1 de la
- * refonte la réduira à trois chiffres + un « Avancé » replié. Quatre briques (C28-41) :
- *  1. ÉTAT — pastille + dernier passage + lignes Santé + dernières ERREURS du Journal ;
- *  2. COÛT LLM fiable — Télémétrie horodatée par le dernier passage (fini le « ça semble
- *     cassé » : quand le moteur n'a pas écrit depuis X min, on LE DIT au lieu d'afficher un
- *     chiffre qui a l'air figé) + quota Gmail du jour ;
- *  3. PROGRESSION — campagnes & opérations (onglet Progression, poll léger 15 s) ;
- *  4. RÉGLAGE — fréquence des passages (déplacé de l'ancienne page Santé).
+ * Reglages.tsx — RÉGLAGES v7 (C28-82 PR1, ADR-0051 — décision Marc : « Réglages : 3 chiffres +
+ * « Avancé » replié »). Remplace la page technique « Moteur » (C28-41, huit blocs) :
+ *  - une ligne d'état (pastille + « dernier passage il y a N min ») ;
+ *  - TROIS chiffres : documents classés, mails triés, coût LLM du mois / cible ;
+ *  - les réglages en lignes : fréquence des passages, langue, synchro, hub, déconnexion ;
+ *  - « Avancé », REPLIÉ : campagnes EN COURS ou en difficulté seulement (tout ce qui est fini,
+ *    à jour ou désactivé n'est plus affiché — « à la poubelle », Marc 2026-09-09), quotas Gmail
+ *    du jour, erreurs des 7 derniers jours SEULEMENT s'il y en a.
+ * Honnêteté conservée : donnée absente ⇒ « — », jamais un faux 0 ; état inconnu ⇒ gris.
  */
 
 import { useState } from 'react';
@@ -25,31 +24,70 @@ import {
   fraicheurMoteur,
   ageMoteurMinutes,
   dernierPassageDepuisSante,
-  erreursRecentes,
+  documentsDepuisSante,
+  triDepuisSante,
+  coutDepuisSante,
   familleStatut,
   FamilleStatut,
   LigneProgression,
   JaugeJour,
   ilYA,
-  dateActivite,
-  estUtileProgression,
   complementStatut,
 } from '../etat';
 import { CleTexte, Langue, t } from '../i18n';
 
-const BUDGET_CROISIERE = 10; // cible < 10 $/mois en croisière (CLAUDE.md §2.6)
-const ERREURS_MAX = 12;
+const BUDGET_CROISIERE = 10; // cible < 10 $/mois en croisière (CLAUDE.md §1.6)
+const ERREURS_MAX = 8;
+// Whitelist 5/10/15/30 — les mêmes valeurs que le moteur accepte (validerTickMinutes_).
+const TICKS_MINUTES = [5, 10, 15, 30];
 
 export function Reglages({ langue, onLangue, onDeconnexion }: {
   langue: Langue;
   onLangue: () => void;
   onDeconnexion: () => void;
 }) {
-  const { donnees } = useEtatGlobal();
+  const { donnees, synchroA, rafraichir } = useEtatGlobal();
   const progression = useProgressionLive();
-  if (!donnees) return <IndicateurChargement langue={langue} />;
-
   const maintenant = new Date();
+  const locale = langue === 'fr' ? 'fr-CA' : 'en-CA';
+  const heureSynchro = synchroA ? synchroA.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) : '…';
+
+  // Les réglages qui ne dépendent PAS de la Sheet (langue, synchro, hub, déconnexion) restent
+  // accessibles même quand la première lecture échoue (403 de scope, quota) — se déconnecter pour
+  // re-consentir est justement le remède (revue flotte PR 0, 🟠).
+  const carteReglages = (
+    <section className="carte">
+      <div className="reglage-lignes">
+        <FrequenceLigne langue={langue} valeurInitiale={donnees?.reglagesBrut?.[0]?.[1] ?? ''} />
+        <div className="reglage-ligne">
+          <span>{t('langueLibelle', langue)}</span>
+          <button className="discret" onClick={onLangue}>{langue === 'fr' ? 'English' : 'Français'}</button>
+        </div>
+        <div className="reglage-ligne">
+          <span>{t('synchro', langue)}</span>
+          <button className="discret" onClick={() => void rafraichir(true)} title={t('rafraichir', langue)}>⟳ {heureSynchro}</button>
+        </div>
+        <div className="reglage-ligne">
+          <span>Hub</span>
+          <a className="lien-bouton" href={HUB_URL}>{t('retourHub', langue)} ↗</a>
+        </div>
+        <div className="reglage-ligne">
+          <span>{t('session', langue)}</span>
+          <button className="discret danger" onClick={onDeconnexion}>{t('deconnexion', langue)}</button>
+        </div>
+      </div>
+    </section>
+  );
+
+  if (!donnees) {
+    return (
+      <div className="colonnes">
+        <IndicateurChargement langue={langue} />
+        {carteReglages}
+      </div>
+    );
+  }
+
   const sante = interpreterSante(donnees.santeBrut);
   const journal = interpreterJournal(donnees.journalBrut);
   const tele = interpreterTelemetrie(donnees.telemetrieBrut);
@@ -58,17 +96,21 @@ export function Reglages({ langue, onLangue, onDeconnexion }: {
   const etat: EtatMoteur = fraicheurMoteur(sante.lignes, maintenant, tick);
   const passage = dernierPassageDepuisSante(sante.lignes);
   const age = ageMoteurMinutes(sante.lignes, maintenant);
-  const erreurs7j = erreursRecentes(journal, 7, maintenant);
-  const erreurs = journal.filter((l) => l.niveau === 'ERREUR').slice(-ERREURS_MAX).reverse();
-
-  const horodatage = passage
-    ? `${t('donneesMoteur', langue)}${age !== null ? (langue === 'fr' ? ` · il y a ${age} min` : ` · ${age} min ago`) : ''}`
-    : '';
-
   const titresEtat: Record<EtatMoteur, CleTexte> = {
     ok: 'moteurVivant', retard: 'moteurRetard', mort: 'moteurSilencieux', inconnu: 'moteurInconnu',
   };
 
+  // Trois chiffres — la télémétrie (horodatée) prime pour le coût, la Santé sert de repli.
+  const docs = documentsDepuisSante(sante.lignes);
+  const tri = triDepuisSante(sante.lignes);
+  const cout = tele.presente && tele.coutDollars !== null ? tele.coutDollars : (coutDepuisSante(sante.lignes)?.dollars ?? null);
+
+  // Avancé : seulement ce qui bouge ou coince. Fini, à jour, désactivé ⇒ absent.
+  const actives = progression.filter((op) => {
+    const f = familleStatut(op.statut);
+    return f !== 'termine' && f !== 'ajour' && f !== 'inactif';
+  });
+  const erreurs = journal.filter((l) => l.niveau === 'ERREUR').slice(-ERREURS_MAX).reverse();
   const jauges: Array<{ cle: CleTexte; j: JaugeJour }> = [
     { cle: 'jaugeCyclique', j: tele.cycliqueJour },
     { cle: 'jaugeHisto', j: tele.histoJour },
@@ -77,404 +119,89 @@ export function Reglages({ langue, onLangue, onDeconnexion }: {
 
   return (
     <div className="colonnes">
-      {/* ---------- 1. État ---------- */}
-      <section className="carte">
-        <h2>{t('etatMoteur', langue)}{horodatage && <span className="h2-note">{horodatage}</span>}</h2>
-        <p className={`moteur-etat ${etat}`}>
-          <span className="pm-point" aria-hidden="true" />
-          {t(titresEtat[etat], langue)}
-          {passage && <span className="variante"> — {t('dernierPassage', langue)} {passage}</span>}
-        </p>
-        <ul className="sante">
-          {sante.lignes
-            .filter((l) => !l.startsWith('Dernier passage') && !l.startsWith('Mis à jour'))
-            .map((l, i) => <li key={i}>{l}</li>)}
-        </ul>
-        <p className="statut-quota" style={{ marginTop: '0.7rem' }}>
-          <span className={`pastille ${erreurs7j ? 'attn' : 'ok'}`}>{erreurs7j}</span>{' '}
-          {langue === 'fr' ? 'erreurs au Journal · 7 j' : 'Journal errors · 7d'}
-        </p>
-      </section>
+      <p className={`moteur-etat ${etat}`} title={passage ? `${t('dernierPassage', langue)} ${passage}` : undefined}>
+        <span className="pm-point" aria-hidden="true" />
+        {t(titresEtat[etat], langue)}
+        {age !== null && <span className="variante"> · {langue === 'fr' ? `il y a ${age} min` : `${age} min ago`}</span>}
+      </p>
 
-      {/* ---------- 2. Coût LLM fiable ---------- */}
-      <section className="carte">
-        <h2>{t('coutLlmTitre', langue)}{horodatage && <span className="h2-note">{horodatage}</span>}</h2>
-        {!tele.presente && <p className="explication">{t('telemetrieVide', langue)}</p>}
-        {tele.presente && (
-          <>
-            <div className="cout-tuile">
-              <span className="v">{tele.coutDollars !== null ? tele.coutDollars.toFixed(2) : '—'} <small>$</small></span>
-              <span className="variante">{t('coutCeMois', langue)}</span>
-              {tele.appelsMois !== null && (
-                <span className="variante">· {tele.appelsMois.toLocaleString(langue === 'fr' ? 'fr-CA' : 'en-CA')} {t('appelsCeMois', langue)}</span>
-              )}
+      <div className="tuiles-3">
+        <div className="tuile"><b>{docs ? docs.classes.toLocaleString(locale) : '—'}</b><small>{t('documentsClasses', langue)}</small></div>
+        <div className="tuile"><b>{tri ? tri.tries.toLocaleString(locale) : '—'}</b><small>{t('filsTries', langue)}</small></div>
+        <div className="tuile">
+          <b>{cout !== null ? `${cout.toFixed(2)} $` : '—'}</b>
+          <small>{t('coutMoisCourt', langue)} · {BUDGET_CROISIERE} $</small>
+        </div>
+      </div>
+
+      {carteReglages}
+
+      <details className="avance">
+        <summary>
+          {t('avance', langue)}
+          {actives.length > 0 && <span className="pastille douce">{actives.length}</span>}
+          {tele.quotaSuspendu && <span className="pastille crit">{t('quotaEtatSuspendu', langue)}</span>}
+          {erreurs.length > 0 && <span className="pastille attn">{erreurs.length}</span>}
+        </summary>
+        <div className="avance-corps">
+          <div>
+            <h3>{t('campagnesEnCours', langue)}</h3>
+            {actives.length === 0 && <p className="variante">{t('rienEnCours', langue)}</p>}
+            <div className="operations-live">
+              {actives.map((op) => <Operation key={op.cle} langue={langue} op={op} />)}
             </div>
-            {tele.coutDollars !== null && tele.freinDollars !== null && tele.freinDollars > 0 && (
-              <div className="jauge" role="img" aria-label={`${tele.coutDollars.toFixed(2)} $ / ${tele.freinDollars} $`}>
-                <i style={{ width: `${Math.min(100, (tele.coutDollars / tele.freinDollars) * 100)}%` }} />
-              </div>
-            )}
-            <p className="statut-quota" style={{ marginTop: '0.6rem' }}>
-              {tele.freinDollars !== null && (
-                <span className="pastille douce">{t('freinCampagnes', langue)} : {tele.freinDollars} $</span>
-              )}
-              <span className="pastille douce">{t('cibleCroisiere', langue)} : {BUDGET_CROISIERE} $</span>
-            </p>
-            <p className="explication">{t('coutLlmNote', langue)}</p>
-          </>
-        )}
-      </section>
-
-      {/* ---------- 3. Progression (campagnes & opérations) ---------- */}
-      <ProgressionSection langue={langue} progression={progression} />
-
-      {/* ---------- Quota Gmail du jour ---------- */}
-      <section className="carte large">
-        <h2>
-          {t('quotaGmailTitre', langue)}
-          <span className={`pastille ${tele.quotaSuspendu ? 'crit' : 'ok'}`}>
-            {tele.quotaSuspendu ? t('quotaEtatSuspendu', langue) : t('quotaEtatActif', langue)}
-          </span>
-        </h2>
-        {tele.quotaSuspendu && tele.quotaDetail && <p className="erreur">{tele.quotaDetail}</p>}
-        {!tele.presente && <p className="explication">{t('telemetrieVide', langue)}</p>}
-        {tele.presente && jauges.map(({ cle, j }) => (
-          <div key={cle} className="ligne-jauge">
-            <span className="lj-nom">{t(cle, langue)}</span>
-            <span className="lj-compte">
-              {j.lus.toLocaleString('fr-CA')}{j.plafond !== null && <> / {j.plafond.toLocaleString('fr-CA')}</>} {t('filsLusJour', langue)}
-            </span>
-            {j.plafond !== null && (
-              <div className="jauge" role="img" aria-label={`${j.lus} / ${j.plafond}`}>
-                <i style={{ width: `${Math.min(100, (j.lus / j.plafond) * 100)}%` }} />
-              </div>
-            )}
           </div>
-        ))}
-        <p className="explication">{t('quotaGmailNote', langue)}</p>
-      </section>
 
-      {/* ---------- 1 bis. Dernières erreurs (repliées — C28-50, demande Marc « cache les
-           erreurs ») : le compte reste visible dans le titre, le tableau s'ouvre au clic
-           (choix mémorisé). Aucune erreur → simple ligne ✅, rien à replier. ---------- */}
-      <ErreursSection langue={langue} erreurs={erreurs} />
-
-      {/* ---------- 4. Réglage de fréquence ---------- */}
-      <ReglagesSection langue={langue} valeurInitiale={donnees.reglagesBrut?.[0]?.[1] ?? ''} />
-
-      {/* ---------- 5. Compte (v7) : ce que l'en-tête et le menu avatar portaient ---------- */}
-      <CompteSection langue={langue} onLangue={onLangue} onDeconnexion={onDeconnexion} />
-    </div>
-  );
-}
-
-/**
- * Compte (v7, ADR-0051) : langue, synchro manuelle (invalide le cache — le périodique tourne
- * déjà toutes les 5 min), retour au hub perso et déconnexion. La ligne des garde-fous, qui
- * était un pied de page répété sur chaque écran, ne vit plus qu'ici.
- */
-function CompteSection({ langue, onLangue, onDeconnexion }: {
-  langue: Langue;
-  onLangue: () => void;
-  onDeconnexion: () => void;
-}) {
-  const { synchroA, rafraichir } = useEtatGlobal();
-  const heure = synchroA
-    ? synchroA.toLocaleTimeString(langue === 'fr' ? 'fr-CA' : 'en-CA', { hour: '2-digit', minute: '2-digit' })
-    : '…';
-  return (
-    <section className="carte">
-      <h2>{t('compte', langue)}</h2>
-      <div className="reglage-lignes">
-        <div className="reglage-ligne">
-          <span>{t('langueLibelle', langue)}</span>
-          <button className="discret" onClick={onLangue}>{langue === 'fr' ? 'English' : 'Français'}</button>
-        </div>
-        <div className="reglage-ligne">
-          <span>{t('synchro', langue)}</span>
-          <button className="discret" onClick={() => void rafraichir(true)} title={t('rafraichir', langue)}>
-            ⟳ {heure}
-          </button>
-        </div>
-        <div className="reglage-ligne">
-          <span>Hub</span>
-          <a className="lien-bouton" href={HUB_URL}>{t('retourHub', langue)} ↗</a>
-        </div>
-        <div className="reglage-ligne">
-          <span>{t('compte', langue)}</span>
-          <button className="discret danger" onClick={onDeconnexion}>{t('deconnexion', langue)}</button>
-        </div>
-      </div>
-      <p className="explication">{t('gardeFous', langue)}</p>
-    </section>
-  );
-}
-
-const CLE_ERREURS_OUVERTES = 'driveai.moteur.erreurs';
-
-function ErreursSection({ langue, erreurs }: { langue: Langue; erreurs: LigneJournal[] }) {
-  // CONTRÔLÉ (state + onToggle), même patron que la veille : un remount ne perd pas le choix.
-  const [ouvertes, setOuvertes] = useState(() => {
-    try { return localStorage.getItem(CLE_ERREURS_OUVERTES) === '1'; } catch { return false; }
-  });
-  return (
-    <section className="carte large">
-      <h2>
-        {t('erreursJournal', langue)}
-        <span className={`pastille ${erreurs.length ? 'attn' : 'ok'}`}>{erreurs.length}</span>
-      </h2>
-      {erreurs.length === 0 && <p className="explication">{t('aucuneErreur', langue)}</p>}
-      {erreurs.length > 0 && (
-        <details
-          className="routines-repli"
-          open={ouvertes}
-          onToggle={(e) => {
-            const ouvert = (e.currentTarget as HTMLDetailsElement).open;
-            setOuvertes(ouvert);
-            try { localStorage.setItem(CLE_ERREURS_OUVERTES, ouvert ? '1' : '0'); } catch { /* choix non mémorisé */ }
-          }}
-        >
-          <summary>{t(ouvertes ? 'erreursReplier' : 'erreursVoir', langue)}</summary>
-          <table>
-            <tbody>
-              {erreurs.map((l: LigneJournal, i) => (
-                <tr key={i} className="ligne-erreur">
-                  <td className="date">{l.date}</td>
-                  <td>{l.source}</td>
-                  <td>{l.message}</td>
-                </tr>
+          {tele.presente && (
+            <div>
+              <h3>
+                {t('quotaGmail', langue)}
+                {tele.quotaSuspendu && <> · <span className="erreur">{tele.quotaDetail || t('quotaEtatSuspendu', langue)}</span></>}
+              </h3>
+              {jauges.map(({ cle, j }) => (
+                <div key={cle} className="ligne-jauge">
+                  <span className="lj-nom">{t(cle, langue)}</span>
+                  <span className="lj-compte">
+                    {j.lus.toLocaleString(locale)}{j.plafond !== null && <> / {j.plafond.toLocaleString(locale)}</>}
+                  </span>
+                  {j.plafond !== null && (
+                    <div className="jauge" role="img" aria-label={`${j.lus} / ${j.plafond}`}>
+                      <i style={{ width: `${Math.min(100, (j.lus / j.plafond) * 100)}%` }} />
+                    </div>
+                  )}
+                </div>
               ))}
-            </tbody>
-          </table>
-        </details>
-      )}
-    </section>
-  );
-}
+            </div>
+          )}
 
-/**
- * Section Progression (C28-45, retour Marc : « tout est en cours, rien n'est fini ») : les VRAIES
- * vue par défaut ne montre QUE l'utile (`estUtileProgression`) : problèmes, complétions, campagnes
- * à progrès RÉEL. Tout le reste — accompli, désactivé, jamais vu, routines sans compteur — vit
- * dans UN groupe VEILLE replié (choix mémorisé), où chaque tâche se clique pour son explication.
- * Le tri par UTILITÉ ne dépend pas de la colonne Type : il marche aussi sur l'ancien format.
- */
-const CLE_VEILLE_OUVERTE = 'driveai.progression.veille';
-const CLE_MASQUER_FINIS = 'driveai.progression.masquer-finis';
-
-function ProgressionSection({ langue, progression }: { langue: Langue; progression: LigneProgression[] }) {
-  // C28-46 (demande Marc) : la vue par défaut ne montre QUE l'utile — problèmes, complétions,
-  // campagnes à PROGRÈS RÉEL. Tout le reste (accompli, désactivé, jamais vu, routines sans
-  // compteur) part dans UN groupe replié, CACHABLE (choix mémorisé), où chaque tâche se CLIQUE
-  // pour son explication. Le tri est par UTILITÉ (`estUtileProgression`), plus par type — il
-  // marche donc aussi pendant la transition (ancien moteur sans colonne Type).
-  // CONTRÔLÉ (state + onToggle) : garde vdom et DOM cohérents — sans le setter, un REMOUNT du
-  // <details> (ex. `veille.length` passe par 0 puis revient) restaurerait la valeur initiale et
-  // perdrait le choix de la session (revue C28-46 : React ne réécrit `open` que si la prop CHANGE,
-  // le danger est le remount, pas le re-render du poll).
-  const [veilleOuverte, setVeilleOuverte] = useState(() => {
-    try { return localStorage.getItem(CLE_VEILLE_OUVERTE) === '1'; } catch { return false; }
-  });
-  // C28-50 (demande Marc : « la possibilité de cacher les finis ») : un interrupteur mémorisé
-  // rétrograde les accomplis — « terminé » et « à jour » (missions à reliquat comprises) — vers le
-  // groupe VEILLE. Rien ne disparaît : ils restent consultables dans le repli.
-  const [masquerFinis, setMasquerFinis] = useState(() => {
-    try { return localStorage.getItem(CLE_MASQUER_FINIS) === '1'; } catch { return false; }
-  });
-  const estFini = (op: LigneProgression) => {
-    const f = familleStatut(op.statut);
-    return f === 'termine' || f === 'ajour';
-  };
-  const utiles = progression.filter((op) => estUtileProgression(op) && !(masquerFinis && estFini(op)));
-  const veille = progression.filter((op) => !estUtileProgression(op) || (masquerFinis && estFini(op)));
-  // Max par TIMESTAMP PARSÉ — jamais un tri lexicographique de `dd/MM …` (ordre jour-major :
-  // « 31/07 » > « 13/08 », le résumé aurait affiché « il y a 13 j » à chaque début de mois alors
-  // que tout venait de tourner — revue C28-45, exactement la confusion que ce chantier corrige).
-  const maintenant = new Date();
-  const activiteMax = veille
-    .map((op) => op.derniereActivite)
-    .filter(Boolean)
-    .reduce<{ texte: string; ts: number }>((max, texte) => {
-      const d = dateActivite(texte, maintenant);
-      return d && d.getTime() > max.ts ? { texte, ts: d.getTime() } : max;
-    }, { texte: '', ts: 0 }).texte;
-  const fraicheur = activiteMax ? (ilYA(activiteMax, maintenant, langue) ?? activiteMax) : '';
-  return (
-    <section className="carte large operations-live">
-      <h2>
-        {t('progressionTitre', langue)}
-        <label className="masquer-finis">
-          <input
-            type="checkbox"
-            checked={masquerFinis}
-            onChange={(e) => {
-              const v = e.target.checked;
-              setMasquerFinis(v);
-              try { localStorage.setItem(CLE_MASQUER_FINIS, v ? '1' : '0'); } catch { /* choix non mémorisé */ }
-            }}
-          />
-          {t('masquerFinis', langue)}
-        </label>
-      </h2>
-      {utiles.length === 0 && <p className="explication">{t('progressionVide', langue)}</p>}
-      {utiles.map((op) => <Operation key={op.cle} langue={langue} op={op} />)}
-      {veille.length > 0 && (
-        <details
-          className="routines-repli"
-          open={veilleOuverte}
-          onToggle={(e) => {
-            const ouvert = (e.currentTarget as HTMLDetailsElement).open;
-            setVeilleOuverte(ouvert); // sync state ↔ DOM (même valeur = no-op, jamais de boucle)
-            try { localStorage.setItem(CLE_VEILLE_OUVERTE, ouvert ? '1' : '0'); } catch { /* stockage indisponible : choix non mémorisé */ }
-          }}
-        >
-          <summary>
-            ✓ {veille.length} {t('veilleTitre', langue)}{fraicheur && <> · {t('derniereActivite', langue)} {fraicheur}</>}
-          </summary>
-          {veille.map((op) => <OperationVeille key={op.cle} langue={langue} op={op} />)}
-        </details>
-      )}
-    </section>
-  );
-}
-
-/** Une tâche EN VEILLE : ligne compacte (nom + pastille), l'EXPLICATION s'ouvre au CLIC (C28-46). */
-function OperationVeille({ langue, op }: { langue: Langue; op: LigneProgression }) {
-  const famille = familleStatut(op.statut);
-  const note = noteStatut(op, famille, langue);
-  const activite = op.derniereActivite
-    ? (ilYA(op.derniereActivite, new Date(), langue) ?? op.derniereActivite) : '';
-  return (
-    <details className="veille-item">
-      <summary>
-        <span className="op-nom">{op.operation}</span>
-        <span className={`pastille ${CLASSE_PASTILLE[famille]}`}>{t(LIBELLES_STATUT[famille], langue)}</span>
-      </summary>
-      {note && <p className="op-note">{note}</p>}
-      {activite && <p className="op-note">{t('derniereActivite', langue)} {activite}</p>}
-      {op.derniereErreur && <p className="op-note op-erreur">{t('derniereErreur', langue)} {op.derniereErreur}</p>}
-      {!note && !activite && !op.derniereErreur && <p className="op-note">{t('veilleRien', langue)}</p>}
-    </details>
-  );
-}
-
-/**
- * Note d'explication d'un état non trivial. C28-44 : quand le moteur publie la RAISON EXACTE du
- * skip (colonne Détail — 'reset en cours', 'budget de tick épuisé'…), elle PRIME sur les gloses
- * génériques d'avant (qui devinaient « panne » depuis la famille — faux pour un simple frein).
- * C28-45 : le budget du JOUR d'une campagne n'est JAMAIS glosé « frein budget LLM » (bug vu sur
- * capture Marc — même confusion que celle qu'un test moteur interdit côté statut) ; « à jour »
- * explique l'attente légitime (dépendance amont, one-shot accompli).
- */
-function noteStatut(op: LigneProgression, famille: FamilleStatut, langue: Langue): string {
-  if (famille === 'recensement') return t('noteRecensement', langue);
-  if (famille === 'attente') return t('noteAttente', langue);
-  if (famille === 'ajour') {
-    if (op.statut.includes('attend la génération')) return t('noteAttendGeneration', langue);
-    // C28-50 (précision) : le reliquat exact d'une mission — « 50 non apparié(s) » — vit dans la
-    // parenthèse du statut moteur ; l'afficher tel quel (source unique) au lieu de la glose
-    // générique « travail accompli », fausse pour ces fichiers laissés en place.
-    if (op.statut.includes('non apparié')) {
-      return complementStatut(op.statut) + ' — ' + t('noteNonApparies', langue);
-    }
-    return t('noteDejaFait', langue);
-  }
-  if (famille === 'suspendu' || famille === 'pause') {
-    // « Budget du jour » d'une campagne = SA pause quotidienne, reprise demain — jamais la glose
-    // du frein LLM $ (bug vu sur capture Marc : conso-gen en pause quotidienne affichait « frein
-    // budget des campagnes atteint »).
-    if (op.statut.includes('budget du jour')) return t('noteBudgetJour', langue);
-    if (op.detail) {
-      // La glose-CONSIGNE (« reprise ~3h », « rien à faire ») reste utile À CÔTÉ de la raison
-      // brute (revue PR4) : consigne quand elle est reconnaissable, raison exacte toujours.
-      const glose = op.detail.includes('quota') || op.statut.includes('quota') ? t('noteQuota', langue)
-        : op.detail.includes('panne') || op.statut.includes('panne') ? t('notePanneApi', langue)
-          : op.detail.includes('budget de tick') || op.detail.includes('budget standard') ? t('noteBudgetTick', langue)
-            : op.detail.includes('budget') ? t('noteBudget', langue) : '';
-      const raison = t('noteSuspendueRaison', langue) + ' ' + op.detail;
-      return glose ? glose + ' ' + raison : raison;
-    }
-    return famille === 'suspendu'
-      ? (op.statut.includes('quota') ? t('noteQuota', langue) : t('notePanneApi', langue))
-      : t('noteBudget', langue);
-  }
-  if (famille === 'inactif') return op.statut === 'désactivée' ? t('noteDesactivee', langue) : t('noteJamaisVue', langue);
-  return '';
-}
-
-const LIBELLES_STATUT: Record<FamilleStatut, CleTexte> = {
-  encours: 'stEnCours', recensement: 'stRecensement', attente: 'stEnAttente',
-  suspendu: 'stSuspendu', pause: 'stPause', termine: 'stTermine',
-  erreur: 'stErreur', inactif: 'stInactif', ajour: 'stAJour',
-};
-
-const CLASSE_PASTILLE: Record<FamilleStatut, string> = {
-  termine: 'ok', suspendu: 'crit', erreur: 'crit', encours: 'douce',
-  inactif: 'douce', recensement: 'attn', attente: 'attn', pause: 'attn',
-  ajour: 'ok',
-};
-
-/** Une opération de l'onglet Progression : nom (écrit par le moteur), compte, barre, notes de suivi. */
-function Operation({ langue, op }: { langue: Langue; op: LigneProgression }) {
-  const famille = familleStatut(op.statut);
-  const pct = op.base ? Math.min(100, Math.round((op.traites / op.base) * 100)) : null;
-  const arret = famille === 'suspendu' || famille === 'pause' || famille === 'attente';
-  const note = noteStatut(op, famille, langue);
-  // Les opérations SANS compteur (flux vivant, maintenance — C28-44) n'affichent ni compte ni
-  // barre : leur information, c'est le statut + la dernière activité + l'éventuelle erreur.
-  // Exception `recensement` (revue PR4) : c'est une CAMPAGNE qui compte encore sa base — elle
-  // garde sa barre indéterminée. (Cas limite assumé : une campagne à compteur qui démarre
-  // exactement à 0 sans base, ex. histo au tout premier tick, est indistinguable d'une opération
-  // sans compteur pendant quelques minutes — pastille et notes restent.)
-  const sansCompteur = op.base === null && op.traites === 0 && famille !== 'recensement';
-  return (
-    <div className={`operation ${famille}`}>
-      <div className="op-entete">
-        <span className="op-nom">{op.operation}</span>
-        <span className={`pastille ${CLASSE_PASTILLE[famille]}`}>
-          {t(LIBELLES_STATUT[famille], langue)}
-        </span>
-        <span className="op-compte">
-          {op.base !== null
-            ? <><b>{op.traites.toLocaleString('fr-CA')}</b> / {op.base.toLocaleString('fr-CA')} {op.unite}{pct !== null && <> · <b>{pct} %</b></>}</>
-            : !sansCompteur && <><b>{op.traites.toLocaleString('fr-CA')}</b> {op.unite}</>}
-        </span>
-      </div>
-      {op.base !== null && !arret && (
-        <div className={`op-barre ${pct === 100 ? 'pleine' : ''}`}><i style={{ width: `${pct}%` }} /></div>
-      )}
-      {/* Barre indéterminée : recensement SEUL (transitoire) — jamais pour un « en cours » sans
-          total (C28-46 : « barres avec progrès réels » ; le compteur numérique suffit). */}
-      {op.base === null && !sansCompteur && famille === 'recensement' && <div className="op-barre indeterminee"><i /></div>}
-      {arret && <div className="op-barre rayee" />}
-      {/* Avancement (C28-47) : volume de la dernière passe + estimation de fin détaillée — deux
-          lignes calculées par le MOTEUR (source unique, jamais un second calcul ici). */}
-      {(op.dernierePasse || op.finEstimee) && (
-        <p className="op-avancement">
-          {op.dernierePasse && <span className="op-passe">{t('dernierePasse', langue)} {op.dernierePasse}</span>}
-          {op.finEstimee && <span className="op-fin">{t('finEstimee', langue)} {op.finEstimee}</span>}
-        </p>
-      )}
-      {note && <p className="op-note">{note}</p>}
-      {op.derniereActivite && famille !== 'termine' && (
-        <p className="op-note">{t('derniereActivite', langue)} {ilYA(op.derniereActivite, new Date(), langue) ?? op.derniereActivite}</p>
-      )}
-      {op.derniereErreur && (
-        <p className="op-note op-erreur">{t('derniereErreur', langue)} {op.derniereErreur}</p>
-      )}
+          {erreurs.length > 0 && (
+            <div>
+              <h3>{t('erreurs7j', langue)}</h3>
+              <table>
+                <tbody>
+                  {erreurs.map((l: LigneJournal, i) => (
+                    <tr key={i} className="ligne-erreur">
+                      <td className="date">{l.date}</td>
+                      <td>{l.source}</td>
+                      <td>{l.message}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </details>
     </div>
   );
 }
 
 /**
- * Réglages (#22, choix Marc : UN réglage global) : fréquence des passages du moteur.
- * L'app écrit `Réglages!A2:B2` (contrat de position fixe) ; le moteur relit au tick suivant
- * et ré-installe son déclencheur (assurerIntervalleTick_). Whitelist 5/10/15/30 — les mêmes
- * valeurs que le moteur accepte (validerTickMinutes_), jamais de saisie libre.
+ * Fréquence des passages (#22, choix Marc : UN réglage global). L'app écrit `Réglages!A2:B2`
+ * (contrat de position fixe) ; le moteur relit au tick suivant et ré-installe son déclencheur
+ * (assurerIntervalleTick_). Jamais de saisie libre.
  */
-const TICKS_MINUTES = [5, 10, 15, 30];
-
-function ReglagesSection({ langue, valeurInitiale }: { langue: Langue; valeurInitiale: string }) {
+function FrequenceLigne({ langue, valeurInitiale }: { langue: Langue; valeurInitiale: string }) {
   const initiale = TICKS_MINUTES.includes(Number(valeurInitiale)) ? String(Number(valeurInitiale)) : '5';
   const [tick, setTick] = useState(initiale);
   const [statut, setStatut] = useState('');
@@ -493,19 +220,84 @@ function ReglagesSection({ langue, valeurInitiale }: { langue: Langue; valeurIni
   }
 
   return (
-    <section className="carte">
-      <h2>{t('reglages', langue)}</h2>
-      <p className="statut-quota">{t('frequenceTick', langue)}</p>
-      <div className="ligne-formulaire">
-        <select value={tick} onChange={(e) => changer(e.target.value)} aria-label={t('frequenceTick', langue)}>
-          {TICKS_MINUTES.map((m) => (
-            <option key={m} value={String(m)}>{t('toutesLes', langue)} {m} min</option>
-          ))}
-        </select>
-        {statut === 'ok' && <span className="ok">{t('reglageOk', langue)}</span>}
+    <div className="reglage-ligne">
+      <span>
+        {t('frequenceTick', langue)}
+        {statut === 'ok' && <span className="ok"> ✓</span>}
+        {statut && statut !== 'ok' && <span className="erreur"> {statut.slice(0, 80)}</span>}
+      </span>
+      <select value={tick} onChange={(e) => changer(e.target.value)} aria-label={t('frequenceTick', langue)}>
+        {TICKS_MINUTES.map((m) => (
+          <option key={m} value={String(m)}>{t('toutesLes', langue)} {m} min</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+/**
+ * Note d'explication d'un état non trivial (C28-44/45) : la RAISON EXACTE publiée par le moteur
+ * (colonne Détail) prime sur les gloses génériques ; le budget du JOUR d'une campagne n'est
+ * jamais glosé « frein budget LLM ».
+ */
+function noteStatut(op: LigneProgression, famille: FamilleStatut, langue: Langue): string {
+  if (famille === 'recensement') return t('noteRecensement', langue);
+  if (famille === 'attente') return t('noteAttente', langue);
+  if (famille === 'ajour') {
+    if (op.statut.includes('non apparié')) return complementStatut(op.statut) + ' — ' + t('noteNonApparies', langue);
+    return t('noteDejaFait', langue);
+  }
+  if (famille === 'suspendu' || famille === 'pause') {
+    if (op.statut.includes('budget du jour')) return t('noteBudgetJour', langue);
+    if (op.detail) return t('noteSuspendueRaison', langue) + ' ' + op.detail;
+    return famille === 'suspendu'
+      ? (op.statut.includes('quota') ? t('noteQuota', langue) : t('notePanneApi', langue))
+      : t('noteBudget', langue);
+  }
+  return '';
+}
+
+const LIBELLES_STATUT: Record<FamilleStatut, CleTexte> = {
+  encours: 'stEnCours', recensement: 'stRecensement', attente: 'stEnAttente',
+  suspendu: 'stSuspendu', pause: 'stPause', termine: 'stTermine',
+  erreur: 'stErreur', inactif: 'stInactif', ajour: 'stAJour',
+};
+
+const CLASSE_PASTILLE: Record<FamilleStatut, string> = {
+  termine: 'ok', suspendu: 'crit', erreur: 'crit', encours: 'douce',
+  inactif: 'douce', recensement: 'attn', attente: 'attn', pause: 'attn',
+  ajour: 'ok',
+};
+
+/** Une opération de l'onglet Progression : nom, statut, compte, barre, raison si elle coince. */
+function Operation({ langue, op }: { langue: Langue; op: LigneProgression }) {
+  const famille = familleStatut(op.statut);
+  const pct = op.base ? Math.min(100, Math.round((op.traites / op.base) * 100)) : null;
+  const arret = famille === 'suspendu' || famille === 'pause' || famille === 'attente';
+  const note = noteStatut(op, famille, langue);
+  const sansCompteur = op.base === null && op.traites === 0 && famille !== 'recensement';
+  return (
+    <div className={`operation ${famille}`}>
+      <div className="op-entete">
+        <span className="op-nom">{op.operation}</span>
+        <span className={`pastille ${CLASSE_PASTILLE[famille]}`}>{t(LIBELLES_STATUT[famille], langue)}</span>
+        <span className="op-compte">
+          {op.base !== null
+            ? <><b>{op.traites.toLocaleString('fr-CA')}</b> / {op.base.toLocaleString('fr-CA')} {op.unite}{pct !== null && <> · <b>{pct} %</b></>}</>
+            : !sansCompteur && <><b>{op.traites.toLocaleString('fr-CA')}</b> {op.unite}</>}
+        </span>
       </div>
-      {statut && statut !== 'ok' && <p className="erreur">{statut}</p>}
-      <p className="explication">{t('reglageNote', langue)}</p>
-    </section>
+      {op.base !== null && !arret && (
+        <div className={`op-barre ${pct === 100 ? 'pleine' : ''}`}><i style={{ width: `${pct}%` }} /></div>
+      )}
+      {op.base === null && !sansCompteur && famille === 'recensement' && <div className="op-barre indeterminee"><i /></div>}
+      {arret && <div className="op-barre rayee" />}
+      {op.finEstimee && <p className="op-note">{t('finEstimee', langue)} {op.finEstimee}</p>}
+      {note && <p className="op-note">{note}</p>}
+      {op.derniereActivite && (
+        <p className="op-note">{t('derniereActivite', langue)} {ilYA(op.derniereActivite, new Date(), langue) ?? op.derniereActivite}</p>
+      )}
+      {op.derniereErreur && <p className="op-note op-erreur">{t('derniereErreur', langue)} {op.derniereErreur}</p>}
+    </div>
   );
 }

@@ -69,7 +69,6 @@ export function Creation({ langue, onCree, titreInitial, note, typeInitial, date
       </div>
       {statut === 'ok' && <p className="ok">{t('creeOk', langue)}</p>}
       {statut && statut !== 'ok' && <p className="erreur">{statut}</p>}
-      <p className="explication">{t('creerNote', langue)}</p>
     </section>
   );
 }

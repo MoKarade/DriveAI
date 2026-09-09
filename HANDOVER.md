@@ -18,8 +18,13 @@
 > colonne 760 px), `Icone.tsx`, polices auto-hébergées (CSP `'self'`), `Sidebar`/`MiniCalendrier`
 > supprimés (« Mes agendas » en puces + « + » dans l'Agenda), `Moteur.tsx` → `Reglages.tsx` + carte
 > Compte (langue, synchro, hub, déconnexion, garde-fous), tokens v7, **captures CI à deux tailles**.
-> 243 tests app, build, captures verts ; revue flotte lancée. Les VUES gardent leur contenu v6
-> jusqu'aux PR 1-4 — c'est voulu (une PR = une différence visible).
+> **PR 1 (accueil + réglages) livrée dans la MÊME PR #331** — Marc, 21:50 : « encore trop de texte
+> trop de blabla, quelques boutons simples qui fonctionnent, toutes les tâches finies à la poubelle ».
+> Accueil = À faire (une ligne, un bouton) + Ma journée (si RDV) + Derniers classements ; Réglages =
+> état + 3 chiffres + lignes + « Avancé » replié (fini/à jour/désactivé = ABSENT) ; tâches cochées
+> cachées dans l'Agenda ; 10 paragraphes d'explication retirés. Revue flotte PR 0 intégrée (1 🟠 :
+> les réglages langue/synchro/déconnexion rendus même sans données). Captures envoyées à Marc.
+> Reste dans #331 avant merge : revue flotte de la PR 1, puis sortie du brouillon.
 > ⚠️ Pour les PR suivantes : le socle de données (`google.ts`, `etat.ts`, `agenda.ts`, `corbeille.ts`)
 > ne bouge pas ; chaque PR part en brouillon, passe la revue flotte, puis SORT du brouillon (sinon
 > elle ne merge jamais — #329).

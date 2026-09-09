@@ -46,7 +46,7 @@ export function Icone({ nom, className, titre }: { nom: NomIcone; className?: st
       viewBox="0 0 24 24"
       aria-hidden={titre ? undefined : true}
       role={titre ? 'img' : undefined}
-      strokeWidth={nom === 'menu' ? 3.2 : undefined}
+      style={nom === 'menu' ? { strokeWidth: 3.2 } : undefined} // inline : la règle .icone écraserait l'attribut
     >
       {titre && <title>{titre}</title>}
       <path d={TRACES[nom]} />
