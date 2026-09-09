@@ -25,15 +25,7 @@ import {
   verdictReclassement,
   RACINES_PROTEGEES_DEFAUT,
 } from './garde-fous';
-import {
-  ElementDrive,
-  MIME_DOSSIER,
-  qEnfants,
-  qRecherche,
-  qSousDossiers,
-  decouperEnLots,
-  estDossierATrier,
-} from './explorateur';
+import { ElementDrive, MIME_DOSSIER, qEnfants, qRecherche, decouperEnLots, estDossierATrier } from './explorateur';
 import { lireConfig } from './config';
 import { plageMock, ENFANTS_MOCK, TACHES_MOCK, EVENEMENTS_MOCK, EVENEMENTS_PAR_AGENDA, AGENDAS_MOCK } from './mockData';
 
@@ -303,19 +295,6 @@ async function resoudreRacine(): Promise<string> {
   return r.id;
 }
 
-/**
- * Recherche PLEIN TEXTE déléguée à l'index natif de Drive (`fullText contains`) — on cherche DANS
- * le contenu des documents sans que DriveAI ne stocke aucun corps (ADR-0007 : pas d'index plein
- * texte propre à l'app). Lecture seule, dossiers exclus.
- */
-export async function rechercheFullText(texte: string): Promise<FichierDrive[]> {
-  const sain = texte.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-  const q = `fullText contains '${sain}' and trashed = false and mimeType != 'application/vnd.google-apps.folder'`;
-  const r = await api<{ files?: FichierDrive[] }>(
-    `${DRIVE}?q=${encodeURIComponent(q)}&fields=${encodeURIComponent('files(id,name,webViewLink)')}&pageSize=25`,
-  );
-  return r.files ?? [];
-}
 
 // Cache SESSION des ascendances de DOSSIERS (C28-08, plan P3) : l'ascendance d'un dossier ne
 // bouge pas pendant une session de tri (l'app ne déplace jamais de dossier ; la réorg MOTEUR
@@ -493,52 +472,10 @@ export async function listerEnfants(dossierId: string, pageToken?: string): Prom
  */
 const cachePortee = new Map<string, { t: number; portee: { ids: string[]; tronque: boolean } }>();
 
-export async function collecterSousDossiers(
-  racineId: string,
-  plafond = 80,
-): Promise<{ ids: string[]; tronque: boolean }> {
-  // Mémoïsée 60 s : chaque Enter dans le même dossier ne re-paye pas la collecte (jusqu'à
-  // ~plafond appels au pire sur une arborescence très profonde).
-  const memo = cachePortee.get(racineId);
-  if (memo && Date.now() - memo.t < CACHE_MS) return memo.portee;
-  const ids = [racineId];
-  let front = [racineId];
-  let tronque = false;
-  while (front.length > 0 && !tronque) {
-    const decouverts: string[] = [];
-    for (const lot of decouperEnLots(front, 10)) {
-      const params = new URLSearchParams({
-        q: qSousDossiers(lot),
-        fields: 'files(id)',
-        pageSize: '100',
-      });
-      const r = await api<{ files?: { id: string }[] }>(`${DRIVE}?${params.toString()}`);
-      const fichiers = r.files ?? [];
-      // Page PLEINE sans lire nextPageToken = couverture non garantie → dit honnêtement.
-      if (fichiers.length >= 100) tronque = true;
-      for (const f of fichiers) decouverts.push(f.id);
-    }
-    const ajoutes: string[] = [];
-    for (const id of decouverts) {
-      if (ids.length >= plafond) {
-        tronque = true;
-        break;
-      }
-      if (!ids.includes(id)) {
-        ids.push(id);
-        ajoutes.push(id);
-      }
-    }
-    front = ajoutes;
-  }
-  const portee = { ids, tronque };
-  cachePortee.set(racineId, { t: Date.now(), portee });
-  return portee;
-}
 
 /**
  * Recherche façon barre Google Drive (nom OU plein texte natif). `portee` (liste de dossiers,
- * cf. `collecterSousDossiers`) découpe en lots — fusion dédoublonnée par id.
+ * v7 : plus de portée par dossier — la recherche est globale) découpe en lots — fusion dédoublonnée par id.
  */
 export const RECHERCHE_PAGE = 50;
 export async function rechercherDrive(texte: string, portee?: string[]): Promise<{ elements: ElementDrive[]; tronque: boolean }> {

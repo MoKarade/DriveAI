@@ -1,62 +1,44 @@
 # Guide utilisateur — DriveAI (pour Marc)
 
-> Comment t'en servir au quotidien. DriveAI range ton Google Drive tout seul ; ce guide explique
-> comment l'**alimenter**, le **corriger** et **retrouver** tes documents.
-> (🔜 = fonction prévue, pas encore active — cf. `docs/ROADMAP.md`.)
+> DriveAI range ton Google Drive tout seul et trie tes mails. Ce guide dit comment l'alimenter,
+> comment le corriger, et ce que fait chaque écran de l'app (**https://drive.hubperso.com**).
+> App v7 (2026-09-09) : quatre écrans, une action par ligne, pas de blabla.
 
 ## En bref
-DriveAI lit les **pièces jointes de tes mails** et les fichiers que tu **déposes**, les analyse
-(lecture du contenu + IA), les **renomme** proprement et les **range** au bon endroit — **sans jamais
-rien supprimer**.
+Les **pièces jointes de tes mails** et les fichiers que tu **déposes** sont lus, renommés
+(`AAAA-MM-JJ_Type_Émetteur`) et rangés dans le bon domaine — **sans jamais rien supprimer**.
+Tes mails sont triés (libellés) et les fils lus sont archivés ; tes rendez-vous et tâches détectés
+dans les mails sont créés dans Google Agenda / Tasks.
 
 ## Déposer un document
-- **Glisse-le dans le dossier « 00 · À trier »** de ton Drive → traité au prochain passage (≤ ~10 min).
-- **Ou envoie-le en pièce jointe** par mail → détecté automatiquement (boîte en lecture seule).
+- Glisse-le dans **`00 · À trier`** de ton Drive → traité au passage suivant.
+- Ou envoie-le en pièce jointe par mail → détecté tout seul.
 
 ## Où vont tes fichiers
-- Dans les **domaines** (`01 · Administratif` … `08 · Perso`), sous l'**entité** (banque, école,
-  employeur…), avec un **nom clair** (`AAAA-MM-JJ_Type_Émetteur`, adapté au type de doc).
-- Les **doublons** → dossier **`_Doublons`** (jamais supprimés — tu le vides d'un coup quand tu veux).
-- Le **code / CAO** → **`_Technique`** ; les **médias personnels** (photos/vidéos sans texte, exports Facebook…) → **`_Médias`**, sans analyse IA (rapide et gratuit) (pour ne pas polluer tes domaines).
-- Les documents **sensibles** (immigration, fiscal) sont **classés** comme le reste (décision 2026-07-01),
-  mais jamais supprimés ni détachés de `04 · Immigration`.
+- Dans les **domaines** (`01 · Administratif` … `09 · Voyages`), sous l'**entité** (banque, école,
+  employeur…), avec un **nom clair**.
+- Les **doublons** → `_Doublons` (jamais supprimés). Le code → `_Technique`, les médias → `_Médias`.
+- `04 · Immigration` : rangé comme le reste, **jamais sorti** de son dossier.
 
-## Corriger une erreur
-Deux chemins, DriveAI **retient** dans les deux cas (il apprend de tes corrections) :
-- **Le formulaire** ([DriveAI — Corriger un classement](https://docs.google.com/forms/d/1gIftqqRwRs2XslhKbbmNMUTdFEqJ1AMB2H6Q0ahnc8A/viewform), lien aussi dans l'app — le résumé hebdo par mail est coupé depuis le 2026-09-07) :
-  tu nommes l'émetteur + le bon domaine (et l'entité si tu veux) → les **prochains** documents de cet
-  émetteur seront bien classés, et l'entité nommée est **validée** (son dossier se crée tout seul).
-- **L'app web, onglet Corrections** (immédiat) : tu retrouves le document, tu donnes son bon nom/dossier →
-  il est **déplacé sur-le-champ** (jamais supprimé) et la correction est apprise.
+## L'app : quatre écrans et un engrenage
+| Écran | Ce que tu y fais |
+|---|---|
+| **Aujourd'hui** | La liste **À faire** — chaque ligne, un bouton : mail suspect → *Pas suspect* ; document à vérifier → s'ouvre dans Drive ; mail ⏰ à traiter → s'ouvre dans Gmail, *Fait* quand c'est réglé ; tâche du jour → *Fait*. Puis **Ma journée** (s'il y a un rendez-vous) et les **derniers classements**. |
+| **Agenda** | Sur téléphone : la **liste** de la semaine (un point sous les jours qui ont quelque chose) ; *Grille* d'un tap. Sur PC : la semaine, ouverte à 7 h. **+** crée une tâche ou un rendez-vous ; les puces filtrent tes agendas. Une tâche cochée disparaît. |
+| **Documents** | **Un champ** : nom ou contenu d'un fichier. **IA** pour poser une question (« les factures Hydro de 2025 »). Dossiers et fichiers en liste ; **+** crée un dossier ; **✥** déplace un fichier (ou glisse-le sur un dossier) ; **✨** demande à l'IA d'analyser le dossier. |
+| **Assistant** | Écris ce que tu veux (« range les factures Hydro », « donne mon adresse de NAS »). Les propositions arrivent en **cartes** : *Valider* ou *Écarter* — rien n'est appliqué sans toi. |
+| **Réglages** (engrenage) | L'état du moteur, trois chiffres (documents classés, mails triés, coût du mois), la fréquence des passages, la langue, la synchro, le retour au hub, la déconnexion. « Avancé » replié : campagnes en cours, quotas, erreurs des 7 derniers jours. |
 
-## L'app web (Phase 4)
-Ton poste de pilotage, en 3 onglets (login Google, rien de public) :
-- **Tableau de bord** — santé du moteur, coût du mois, activité récente, nombre de documents par domaine.
-- **Corrections** — ① les **entités proposées** par DriveAI se valident **en 1 clic** (le dossier se crée
-  au tick suivant et les prochains documents s'y rangent) ; ② **reclasser un document** mal rangé :
-  recherche par nom → nouveau nom pré-rempli → destination = un **lien Drive collé tel quel** ou une
-  entité validée dans la liste → appliqué immédiatement + appris.
-- **Recherche** — filtres instantanés (nom, domaine, année du document, statut) sur tout le catalogue,
-  chaque résultat ouvre le fichier dans Drive ; bouton « chercher dans le contenu » = la recherche
-  plein-texte native de Drive (DriveAI ne stocke jamais le contenu de tes documents).
+Ce que l'app **ne fait jamais** : supprimer un fichier ou un mail, sortir un document de
+`04 · Immigration`, appliquer une réorganisation sans ta validation. Seule exception : un **dossier
+devenu vide** peut être mis à la corbeille Drive (récupérable 30 jours) — par toi, dans l'Assistant.
 
-Garde-fous embarqués : l'app **ne peut rien supprimer** (verrouillé par test), ne touche jamais à
-`04 · Immigration`, et journalise chaque geste. Mise en route (une fois, ~10 min) : `docs/DEPLOIEMENT.md`
-§Phase 4 — importe le repo dans Vercel (zéro config, `vercel.json` fourni) + crée le Client ID OAuth.
-
-## Retrouver un document
-Quatre façons, toutes soignées : **navigation** dans l'arbo · **nom** de fichier · **date** · **émetteur** ·
-et l'onglet **Recherche** de l'app web (filtres + plein texte).
-
-## Suivre l'activité
-- **Résumé hebdomadaire** par mail : ce qui a été rangé, le coût du mois, l'état de santé du système,
-  **« 📌 À traiter »** (les mails importants de la semaine — question directe, échéance, courrier
-  officiel — avec lien direct) et **« 🗓️ Actions & RDV détectés »** (chaque tâche/rendez-vous que le
-  moteur a créé dans Tasks/Calendar, nommément). Ces deux listes sont aussi sur le tableau de bord
-  de l'app web.
-- Onglet **`Progression`** de la Sheet : avancement d'un grand rangement en cours.
+## Corriger une erreur de classement
+Le formulaire [DriveAI — Corriger un classement](https://docs.google.com/forms/d/1gIftqqRwRs2XslhKbbmNMUTdFEqJ1AMB2H6Q0ahnc8A/viewform) :
+tu nommes l'émetteur et le bon domaine → les prochains documents de cet émetteur seront bien classés.
+Ou déplace le fichier toi-même (Drive ou écran Documents) : DriveAI ne le re-déplace pas.
 
 ## Si quelque chose cloche
-- En général : **rien à faire**, ça reprend tout seul (même après le quota quotidien).
-- Au pire, tu reçois un **mail d'alerte** avec le geste exact (souvent : un clic sur `installerTrigger`).
-  Détail technique : `docs/RUNBOOK.md`.
+La pastille en haut (téléphone) ou en bas du rail (PC) : vert = moteur en marche, ambre = en retard,
+rouge = silencieux. Le détail est dans **Réglages → Avancé**. En général ça reprend tout seul ;
+sinon `docs/RUNBOOK.md`.
