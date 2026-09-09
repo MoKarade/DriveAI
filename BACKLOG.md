@@ -5,7 +5,7 @@
 
 ---
 
-## Chantier #45 — Refonte app v7 « le téléphone d'abord » (ADR-0051, décisions Marc 2026-09-09)  🟦
+## Chantier #45 — Refonte app v7 « le téléphone d'abord » (ADR-0051, décisions Marc 2026-09-09)  ✅
 
 > Marc : « l'interface est pas du tout intuitive, trop de texte, trop de déchets, trop moche, pas
 > assez simple, pas assez beau — je veux une full refonte visuelle et utilitaire, parfaite pour
