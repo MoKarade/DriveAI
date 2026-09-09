@@ -21,8 +21,20 @@
 > (le plafond `TRI_MAX_FILS_PAR_RUN`, Index 18 193 → 18 223), +7 catégorisations LLM. À la cadence
 > observée (~30 min par passage, pas 5), la fenêtre 30 j finit de se vider en ~2 h ; le stock > 30 j
 > suit au nettoyage profond (150 fils/jour). Cible : ~26 fils en boîte (non lus + suspects).
-> **Geste de Marc toujours en attente** : client OAuth hubperso (`invalid_client`) — reposer
-> `DriveAI_HUBPERSO_CLIENT_ID`/`_CLIENT_SECRET`, puis `lierCompteHubperso`. Sans effet sur le tri désormais.
+>
+> **✅ PANNE OAuth HUBPERSO CLOSE (09/09 ~15:10 EDT) — la panne du 02→09/09 est finie.** Marc a reposé
+> `DriveAI_HUBPERSO_CLIENT_SECRET` puis exécuté `lierCompteHubperso` (« ✅ Compte hubperso lié »).
+> Vérifié par signal indépendant à 15:26 : `etat_moteur` rend `intentionsSuspendues: false`,
+> `intentionsDetail` et `intentionsSonde` VIDES — lecture LIVE des Properties, pas l'onglet Santé
+> (dont le texte reste celui du passage de 15:16 jusqu'à la prochaine réécriture : un instantané
+> figé n'est pas un état, piège classique de cette ligne). Les intentions différées pendant la panne
+> (clés `analyse|`, verdict déjà pris, zéro LLM à repayer) se créent au rattrapage.
+> ⚠️ **Deux frictions vécues, à savoir avant de redire « pose la propriété »** : (1) le bouton
+> « Ajouter une propriété de script » n'apparaît plus au-delà de ~50 propriétés — il faut passer par
+> `PropertiesService.getScriptProperties().setProperty(...)` exécuté une fois depuis l'éditeur ;
+> (2) sur téléphone, l'éditeur auto-ferme les accolades et duplique celles d'un collage
+> (`SyntaxError: Unexpected token '}'`) — la parade est de coller UNIQUEMENT le corps entre les
+> accolades déjà présentes du `function myFunction() { }` par défaut.
 
 > **CHANTIER PRÉCÉDENT — 2026-09-07 : « ça trie toujours pas mes mails » + « plus de mail de récap »**
 > **(C28-75, C28-76 / ADR-0049, C28-77).** Diagnostic par le MCP `etat_moteur` RELU le jour même (mon
@@ -85,12 +97,8 @@
 > est à Marc (app → Moteur → Réglages, ou éditeur → Déclencheurs). Si le réglage dit 5 min, alors
 > l'hypothèse tombe et le panneau « Exécutions » redevient le seul juge.
 >
-> **➜ 👉 UN GESTE T'ATTEND (+ une décision).**
-> **La panne OAuth elle-même — raison connue : `invalid_client`.** Le client OAuth hubperso n'est
-> plus reconnu (supprimé ou régénéré côté Google Cloud). Dans l'ordre : (1) reposer
-> `DriveAI_HUBPERSO_CLIENT_ID` / `_CLIENT_SECRET` dans les Script Properties depuis le client courant
-> du projet hubperso (`docs/HUBPERSO.md`) ; (2) `JetonHubperso.gs` → `lierCompteHubperso` → Exécuter,
-> suivre l'URL. Lancer (2) sans (1) échouera au consentement avec la même raison.
+> **➜ 👉 UNE DÉCISION T'ATTEND** (la panne OAuth, elle, est CLOSE — cf. en tête de fichier :
+> secret reposé + `lierCompteHubperso` le 09/09, suspension levée vérifiée à 15:26).
 > **Décision** : C28-78 — la PR #314 (mergée dans ma branche le 21/08 par une autre session, jamais
 > dans `main`, branche source supprimée) : la rouvrir contre `main`, ou l'abandonner.
 >
