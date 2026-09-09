@@ -1,8 +1,13 @@
 name: Auto-merge
 
-# Quand la CI réussit sur une PR d'une branche claude/**, on la marque "ready" puis on la
-# merge en squash. Déclenché via workflow_run : ce workflow est lu depuis la branche par
-# défaut (main), il ne s'active donc qu'une fois présent sur main.
+# Quand la CI réussit sur une PR d'une branche claude/**, on la merge en squash — SAUF si
+# elle est en brouillon, d'un fork, ou porte `do-not-merge` (voir les gardes ci-dessous).
+#
+# ⚠️ OBSERVÉ le 2026-09-09, contre la lecture qu'on avait de `workflow_run` : le job a exécuté
+# la version de CE fichier portée par la PR (#329), PAS celle de `main` — `main` portait encore
+# `gh pr ready` à la seconde près, et le log du run affiche le refus de brouillon introduit par
+# la PR elle-même. Une PR qui modifie ce workflow s'applique donc À ELLE-MÊME : la tester, c'est
+# la subir. (Ce qui reste vrai : l'événement ne se déclenche que si le fichier existe sur main.)
 
 on:
   workflow_run:

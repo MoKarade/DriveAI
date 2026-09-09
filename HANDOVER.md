@@ -99,12 +99,17 @@
 >
 > **✅ RIEN NE T'ATTEND** — la panne OAuth est CLOSE (secret reposé + `lierCompteHubperso` le 09/09,
 > suspension levée vérifiée à 15:26), et C28-78 est tranchée : #314 ROUVERTE contre `main` (Marc,
-> 09/09) — le brouillon est enfin un vrai frein à l'auto-merge ; #313 abandonnée (remplacée par #316) ;
-> #315 non reprise, à rouvrir par `git cherry-pick -n e6430bc` si le quota Vercel redevient un sujet.
-> ⚠️ **Conséquence immédiate du retour de #314** : une PR ouverte en BROUILLON ne se fusionnera plus
-> toute seule. C'est voulu (décision du 21/08), mais ça change le rythme de cette session, où chaque
-> PR draft partait en moins d'une minute : il faudra désormais la sortir du brouillon pour qu'elle
-> merge, ou l'ouvrir directement « ready ».
+> 09/09) — le brouillon est enfin un vrai frein à l'auto-merge, **dans `main` depuis 6871a68** ;
+> #313 abandonnée (remplacée par #316) ; #315 non reprise, à rouvrir par `git cherry-pick -n e6430bc`
+> si le quota Vercel redevient un sujet.
+> ⚠️ **Conséquence immédiate, déjà vécue** : une PR ouverte en BROUILLON ne se fusionne plus toute
+> seule — **#329 s'est bloquée elle-même**. Le run auto-merge #412 est sorti VERT en refusant :
+> « PR #329 est en BROUILLON (isDraft=true) → auto-merge REFUSÉ ». J'avais écrit l'inverse (« elle
+> sera la dernière à sortir du brouillon toute seule ») en me fiant à `on: workflow_run` = « lit la
+> version de `main` » : le log prouve que le job a exécuté la version portée par la PR, alors que
+> `main` portait encore `gh pr ready`. Sortie du brouillon puis mergée à la main.
+> ➜ **Pour toute PR à venir** : la sortir du brouillon quand la CI est verte et la revue passée,
+> sinon elle reste ouverte indéfiniment, sans rien de rouge nulle part.
 >
 > **Aussi appris ce jour** : la campagne `_Doublons` est **terminée** (22/08) — verdict définitif
 > **19 ORPHELINS**, 1 054 confirmés, 3 indéterminés. « Tout rapatrier » porte donc sur 19 fichiers

@@ -140,9 +140,12 @@ Ces règles priment sur toute optimisation. Toute PR qui les viole doit échouer
 - **Push & merge auto** : Claude pousse sur une branche `claude/**`, ouvre une PR (draft),
   la CI valide, puis la PR se **merge automatiquement** (squash) quand la CI est verte.
   Voir `.github/workflows/`. Override : label `do-not-merge`.
-  ⚠️ **Un draft n'est PAS un frein** (vécu 19/08, ×2 : #293 et #295) : un workflow repasse les PR
-  en « ready » puis l'auto-merge les fusionne. Pour tenir une PR le temps d'une revue flotte, poser
-  le label **`do-not-merge`** — c'est le SEUL mécanisme que la CI respecte.
+  ⚠️ **Depuis le 2026-09-09 (#329), le BROUILLON EST le frein** — l'auto-merge refuse une PR
+  `isDraft` (échec fermé : lecture impossible ⇒ refus). *Révise l'ancienne règle « un draft n'est
+  PAS un frein » (vécu 19/08, #293 et #295), où un workflow repassait les PR en « ready ».*
+  Conséquence pour chaque session : une PR ouverte en brouillon **ne partira jamais toute seule** —
+  il faut la sortir du brouillon (`isDraft=false`) une fois la CI verte et la revue flotte passée.
+  `do-not-merge` reste le second verrou, pour tenir une PR déjà sortie du brouillon.
 - **Flotte d'agents** (`.claude/agents/`) : un `product-manager` planifie et répartit le
   travail vers les spécialistes. Lance `/review` pour passer un diff au crible.
 - **Boucle de leçons** : après chaque session qui touche du code, un hook `Stop` invite à
