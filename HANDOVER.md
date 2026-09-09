@@ -31,7 +31,9 @@
 > erreurs vraiment sur 7 j, tâches en retard gardées). **#331 MERGÉE (auto-merge, 22:07 UTC)** :
 > socle + accueil + réglages sont dans `main` → Vercel. **PR 2 (Documents)** : un champ unique
 > (nom OU contenu) + « IA », dossiers/fichiers en lignes, « + », ✨ ; sous-onglets et filtres
-> d'Index retirés (`Recherche.tsx` supprimé). Suivent PR 3 (Agenda) et PR 4 (Assistant).
+> d'Index retirés (`Recherche.tsx` supprimé) — **#332 en revue flotte**. **PR 3 (Agenda)** codée sur
+> `wip/pr3` (locale, poussée après #332) : liste par jour sur téléphone, grille ouverte à 7 h, tâches
+> en lignes. Suit PR 4 (Assistant).
 > ⚠️ Pour les PR suivantes : le socle de données (`google.ts`, `etat.ts`, `agenda.ts`, `corbeille.ts`)
 > ne bouge pas ; chaque PR part en brouillon, passe la revue flotte, puis SORT du brouillon (sinon
 > elle ne merge jamais — #329).

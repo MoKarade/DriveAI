@@ -267,3 +267,21 @@ describe('tachesAFaire (accueil v7 : jour + retard, jamais les faites)', () => {
     expect(tachesAFaire(liste, jour).map((t) => t.id)).toEqual(['retard', 'auj']);
   });
 });
+
+import { planningParJour } from '../src/agenda';
+
+describe('planningParJour (agenda v7 : liste par jour sur téléphone)', () => {
+  // Journée entière : fin EXCLUSIVE au lendemain (sémantique Google) ; horaire : fin une heure après.
+  const ev = (id: string, debut: string, journee = false): Evenement =>
+    ({ id, titre: id, debut, fin: journee ? '2026-09-10' : debut.replace('T14', 'T15').replace('T09', 'T10'), journee, lien: '', parDriveAI: false } as Evenement);
+  it('ne garde que les jours avec contenu (+ aujourd’hui), journée entière avant les horaires', () => {
+    const jours = grilleSemaine(new Date(2026, 8, 9)); // semaine du 7 au 13
+    const evts = [ev('b', '2026-09-09T14:00:00'), ev('a', '2026-09-09', true), ev('c', '2026-09-11T09:30:00')];
+    const taches = [{ id: 't', titre: 't', echeance: '2026-09-12', faite: false, parDriveAI: false }];
+    const plan = planningParJour(jours, evts, taches, '2026-09-10');
+    expect(plan.map((j) => cleJour(j.date))).toEqual(['2026-09-09', '2026-09-10', '2026-09-11', '2026-09-12']);
+    expect(plan[0].evenements.map((e) => e.id)).toEqual(['a', 'b']);
+    expect(plan[1].evenements).toHaveLength(0); // aujourd’hui, vide mais présent
+    expect(plan[3].taches).toHaveLength(1);
+  });
+});

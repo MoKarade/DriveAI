@@ -720,3 +720,35 @@ form.recherche .bouton-ligne .icone { width: 16px; height: 16px; }
 .documents .creation-dossier input { flex: 1; width: auto; }
 .documents .charger-plus { align-self: center; }
 .documents .ia-explication { margin: 0; font-size: 0.9rem; }
+
+/* ---------- v7 (PR3) : Agenda — liste par jour, grille ouverte à 7 h ---------- */
+.cal-nav .segment { display: inline-flex; background: var(--carte-2); border-radius: 10px; padding: 3px; }
+.cal-nav .segment button { border: none; background: none; color: var(--texte-doux); border-radius: 8px; padding: 0.25rem 0.7rem; font-weight: 700; font-size: 0.85rem; }
+.cal-nav .segment button.on { background: var(--carte); color: var(--texte); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
+.cal-nav .segment button:not(:disabled):hover { filter: none; }
+.agenda .cal-carte.liste { background: none; border: none; padding: 0; }
+.agenda .cal-carte.liste > h2 { margin-bottom: 0.5rem; }
+.gt-defilant { max-height: 68vh; overflow-y: auto; border-top: 1px solid var(--rang); scrollbar-width: thin; }
+.bande-jours { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 0.2rem 0 0.9rem; }
+.bande-jours button {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  border: none; background: none; border-radius: 12px; padding: 6px 0 7px;
+  color: var(--texte-doux); font-size: 0.64rem; font-weight: 700; letter-spacing: 0.06em; min-height: 3.4rem;
+}
+.bande-jours button b { font-family: var(--mono); font-size: 1.1rem; font-weight: 600; color: var(--texte); }
+.bande-jours button i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.bande-jours button.sel:not(.auj) { background: var(--tonal); }
+.bande-jours button.auj { background: var(--accent); color: var(--sur-accent); }
+.bande-jours button.auj b, .bande-jours button.auj i { color: var(--sur-accent); background: var(--sur-accent); }
+.bande-jours button.auj b { background: none; }
+.bande-jours button:not(:disabled):hover { filter: none; }
+.jour-carte { margin-bottom: 0.9rem; }
+.jour-carte h3 { margin: 0 0.1rem 0.4rem; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--texte-doux); font-weight: 700; }
+button.ligne.texte, .ligne button.t.texte {
+  border: none; background: none; color: inherit; font: inherit; text-align: left; border-radius: 0; cursor: pointer;
+}
+button.ligne.texte { width: 100%; }
+.ligne button.t.texte { padding: 0; flex: 1; min-width: 0; }
+button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):hover { filter: none; transform: none; background: color-mix(in srgb, var(--accent) 6%, transparent); }
+/* la rangée des jours reste visible pendant le défilement de la grille (ouverte à 7 h) */
+.gt-defilant .gt-rang:first-child { position: sticky; top: 0; z-index: 2; background: var(--carte); }
