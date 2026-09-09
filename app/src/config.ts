@@ -8,6 +8,9 @@
  * /api/callback qu'après le verrou d'identité ALLOWED_EMAIL. Marc se connecte, c'est tout.
  */
 
+// Retour au hub perso (lien dans Réglages ; overridable au build via VITE_HUB_URL).
+export const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined)?.replace(/\/+$/, '') || 'https://hubperso.com';
+
 export interface ConfigApp {
   spreadsheetId: string;
   webappUrl: string;    // URL /exec de la web app Apps Script (« Vérifier maintenant »)

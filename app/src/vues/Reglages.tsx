@@ -1,6 +1,8 @@
 /**
- * Moteur.tsx — page TECHNIQUE unique (C28-41, décisions Marc 2026-07-31). Remplace les onglets
- * « Coûts & quotas » et « Santé du moteur ». Quatre briques choisies par Marc :
+ * Reglages.tsx — RÉGLAGES (v7, ADR-0051) : l'ancienne page technique « Moteur » (C28-41), atteinte
+ * par l'engrenage sur téléphone et le bas du rail sur PC, plus la carte COMPTE (langue, synchro,
+ * retour au hub, déconnexion) qui vivait dans l'en-tête et le menu avatar de la v6. PR 1 de la
+ * refonte la réduira à trois chiffres + un « Avancé » replié. Quatre briques (C28-41) :
  *  1. ÉTAT — pastille + dernier passage + lignes Santé + dernières ERREURS du Journal ;
  *  2. COÛT LLM fiable — Télémétrie horodatée par le dernier passage (fini le « ça semble
  *     cassé » : quand le moteur n'a pas écrit depuis X min, on LE DIT au lieu d'afficher un
@@ -11,6 +13,7 @@
 
 import { useState } from 'react';
 import { ecrireCellule } from '../google';
+import { HUB_URL } from '../config';
 import { useEtatGlobal, useProgressionLive } from '../etatGlobal';
 import { IndicateurChargement } from '../composants/UI';
 import {
@@ -37,7 +40,11 @@ import { CleTexte, Langue, t } from '../i18n';
 const BUDGET_CROISIERE = 10; // cible < 10 $/mois en croisière (CLAUDE.md §2.6)
 const ERREURS_MAX = 12;
 
-export function Moteur({ langue }: { langue: Langue }) {
+export function Reglages({ langue, onLangue, onDeconnexion }: {
+  langue: Langue;
+  onLangue: () => void;
+  onDeconnexion: () => void;
+}) {
   const { donnees } = useEtatGlobal();
   const progression = useProgressionLive();
   if (!donnees) return <IndicateurChargement langue={langue} />;
@@ -154,7 +161,52 @@ export function Moteur({ langue }: { langue: Langue }) {
 
       {/* ---------- 4. Réglage de fréquence ---------- */}
       <ReglagesSection langue={langue} valeurInitiale={donnees.reglagesBrut?.[0]?.[1] ?? ''} />
+
+      {/* ---------- 5. Compte (v7) : ce que l'en-tête et le menu avatar portaient ---------- */}
+      <CompteSection langue={langue} onLangue={onLangue} onDeconnexion={onDeconnexion} />
     </div>
+  );
+}
+
+/**
+ * Compte (v7, ADR-0051) : langue, synchro manuelle (invalide le cache — le périodique tourne
+ * déjà toutes les 5 min), retour au hub perso et déconnexion. La ligne des garde-fous, qui
+ * était un pied de page répété sur chaque écran, ne vit plus qu'ici.
+ */
+function CompteSection({ langue, onLangue, onDeconnexion }: {
+  langue: Langue;
+  onLangue: () => void;
+  onDeconnexion: () => void;
+}) {
+  const { synchroA, rafraichir } = useEtatGlobal();
+  const heure = synchroA
+    ? synchroA.toLocaleTimeString(langue === 'fr' ? 'fr-CA' : 'en-CA', { hour: '2-digit', minute: '2-digit' })
+    : '…';
+  return (
+    <section className="carte">
+      <h2>{t('compte', langue)}</h2>
+      <div className="reglage-lignes">
+        <div className="reglage-ligne">
+          <span>{t('langueLibelle', langue)}</span>
+          <button className="discret" onClick={onLangue}>{langue === 'fr' ? 'English' : 'Français'}</button>
+        </div>
+        <div className="reglage-ligne">
+          <span>{t('synchro', langue)}</span>
+          <button className="discret" onClick={() => void rafraichir(true)} title={t('rafraichir', langue)}>
+            ⟳ {heure}
+          </button>
+        </div>
+        <div className="reglage-ligne">
+          <span>Hub</span>
+          <a className="lien-bouton" href={HUB_URL}>{t('retourHub', langue)} ↗</a>
+        </div>
+        <div className="reglage-ligne">
+          <span>{t('compte', langue)}</span>
+          <button className="discret danger" onClick={onDeconnexion}>{t('deconnexion', langue)}</button>
+        </div>
+      </div>
+      <p className="explication">{t('gardeFous', langue)}</p>
+    </section>
   );
 }
 

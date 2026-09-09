@@ -4,7 +4,27 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🎯 DERNIER CHANTIER — 2026-09-09 : « mes mails sont toujours pas triés ni archivés » (C28-80 / ADR-0050).**
+> **🎯 CHANTIER EN COURS — 2026-09-09 (soir) : REFONTE APP v7 « le téléphone d'abord » (C28-82 / ADR-0051).**
+> Marc : « l'interface est pas du tout intuitive, trop de texte, trop de déchets, trop moche, pas
+> assez simple, pas assez beau — refonte visuelle et utilitaire, parfaite pour téléphone et PC ».
+> Diagnostic sur captures RÉELLES (mode mock, 390 px et 1 280 px — la CI ne photographiait qu'à
+> 1 280 : l'heure sur trois lignes, le champ « Rec », l'agenda ouvert à minuit n'avaient jamais été
+> vus) ; maquettes des cinq écrans publiées (artefact « Refonte DriveAI v7 »,
+> https://claude.ai/code/artifact/77f96d5a-5b6c-4ce4-8239-4c1205b9ec93) ; **4 réponses cliquées** :
+> ambiance **B « Nuit »** (sombre nettoyé — PAS la recommandation A claire) · PC en **une colonne +
+> rail** · accueil **comme aujourd'hui, en plus propre** · Moteur → **Réglages, 3 chiffres +
+> « Avancé » replié**. Plan : six PR livrables seules (BACKLOG chantier refonte v7).
+> **PR 0 (socle) livrée sur la branche** : coquille `App.tsx` (barre haute + onglets bas / rail +
+> colonne 760 px), `Icone.tsx`, polices auto-hébergées (CSP `'self'`), `Sidebar`/`MiniCalendrier`
+> supprimés (« Mes agendas » en puces + « + » dans l'Agenda), `Moteur.tsx` → `Reglages.tsx` + carte
+> Compte (langue, synchro, hub, déconnexion, garde-fous), tokens v7, **captures CI à deux tailles**.
+> 243 tests app, build, captures verts ; revue flotte lancée. Les VUES gardent leur contenu v6
+> jusqu'aux PR 1-4 — c'est voulu (une PR = une différence visible).
+> ⚠️ Pour les PR suivantes : le socle de données (`google.ts`, `etat.ts`, `agenda.ts`, `corbeille.ts`)
+> ne bouge pas ; chaque PR part en brouillon, passe la revue flotte, puis SORT du brouillon (sinon
+> elle ne merge jamais — #329).
+>
+> **🎯 CHANTIER PRÉCÉDENT (matin) — 2026-09-09 : « mes mails sont toujours pas triés ni archivés » (C28-80 / ADR-0050).**
 > Comptage exhaustif des 50 premiers fils de la boîte (MCP Gmail, 13:20 UTC) : 21 non lus, 14 ⏰,
 > 17 « À vérifier », 3 suspects — le tri POSAIT ses libellés, mais le seul cas archivable (lu +
 > catégorisé + sans ⏰) était vide. Chaque règle était juste ; leur union couvrait 100 % du réel.

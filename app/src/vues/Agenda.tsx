@@ -2,10 +2,11 @@
  * Agenda.tsx — vue v5 « clone Google Agenda » (C28-23 PR2+PR3, plan architecte) : grille
  * HORAIRE absolue Jour/Semaine/Mois (Semaine par défaut), rangée « toute la journée »,
  * gouttière d'heures, blocs à la minute, couleurs PAR TYPE, ligne « maintenant », 3 jours
- * glissants sur mobile. PR3 : la date de référence est PILOTÉE par le mini-calendrier de la
- * sidebar (prop `dateRef` remontée dans App) ; un clic sur un CRÉNEAU vide ouvre la création
- * pré-remplie ; un clic sur un BLOC ouvre un popover façon GCal (les panneaux Détail du bas de
- * page sont supprimés). Écritures : créer et cocher — jamais supprimer ni modifier.
+ * glissants sur mobile. Un clic sur un CRÉNEAU vide ouvre la création pré-remplie ; un clic sur
+ * un BLOC ouvre un popover façon GCal. v7 (ADR-0051) : plus de mini-calendrier ni de barre
+ * latérale — la date se pilote ici (‹ › Aujourd'hui), « Mes agendas » devient une rangée de
+ * puces sous le titre, et le « + » de l'en-tête ouvre la création libre (ex-bouton « Créer » de
+ * la barre latérale). Écritures : créer et cocher — jamais supprimer ni modifier.
  */
 
 import { useEffect, useState } from 'react';
@@ -35,7 +36,8 @@ import {
 import { lignesImportants, lienGmailPourLigne, LigneIndex } from '../etat';
 import { formaterDateCourte } from '../explorateur';
 import { Langue, t } from '../i18n';
-import { useAgendas, agendasAffiches } from '../agendasStore';
+import { useAgendas, agendasAffiches, basculerAgenda, basculerTaches, reconnecterPourAgendas, rechargerAgendas } from '../agendasStore';
+import { Icone } from '../composants/Icone';
 
 const JOURS_SEMAINE = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
 const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
@@ -56,34 +58,20 @@ function useEstEtroit(): boolean {
   return etroit;
 }
 
-export function Agenda({ langue, dateRef }: { langue: Langue; dateRef?: Date }) {
+export function Agenda({ langue }: { langue: Langue }) {
   const maintenant = new Date();
   const [mois, setMois] = useState(new Date(maintenant.getFullYear(), maintenant.getMonth(), 1));
   const [vueCal, setVueCal] = useState<VueCal>('semaine'); // Semaine par défaut (C28-23)
-  const [semaineRef, setSemaineRef] = useState(dateRef ?? maintenant);
+  const [semaineRef, setSemaineRef] = useState(maintenant);
   const [evenements, setEvenements] = useState<Evenement[]>([]);
   const [taches, setTaches] = useState<Tache[]>([]);
   const [importants, setImportants] = useState<LigneIndex[]>([]);
   const [popover, setPopover] = useState<Popover | null>(null);
   const [creneau, setCreneau] = useState<{ date: string; heure: string } | null>(null);
+  const [creationLibre, setCreationLibre] = useState(false); // « + » de l'en-tête (v7)
   const [charge, setCharge] = useState(false);
   const [erreur, setErreur] = useState('');
   const etroit = useEstEtroit();
-
-  // Le MINI-CALENDRIER de la sidebar pilote la référence (PR3, « remonter dateRef ») : un clic
-  // là-bas déplace la grille ici, quel que soit le mois — la vue courante est conservée.
-  // Dépendance sur l'IDENTITÉ de dateRef (revue flotte) : App crée un objet NEUF à chaque clic,
-  // donc RE-CLIQUER le même jour après une navigation locale ‹ › ramène bien la grille dessus
-  // (une clé AAAA-MM-JJ identique aurait avalé le clic) — et rien ne remonte vers App (pas de
-  // boucle possible).
-  useEffect(() => {
-    if (!dateRef) return;
-    setSemaineRef(dateRef);
-    if (dateRef.getMonth() !== mois.getMonth() || dateRef.getFullYear() !== mois.getFullYear()) {
-      setMois(new Date(dateRef.getFullYear(), dateRef.getMonth(), 1));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- déclenché par le jour choisi dans App
-  }, [dateRef]);
 
   // « Mes agendas » RÉEL (C28-41 PR2) : les événements sont chargés PAR agenda coché (couleur
   // de l'agenda sur chaque bloc) ; la case Tâches filtre l'affichage de la grille — la liste
@@ -200,8 +188,41 @@ export function Agenda({ langue, dateRef }: { langue: Langue; dateRef?: Date }) 
                 setSemaineRef(auj);
               }}>{t('aujourdhui', langue)}</button>
             <button className="discret" aria-label={t('suivant', langue)} onClick={() => naviguer(1)}>›</button>
+            <button className="icone-bouton" aria-label={t('creerBouton', langue)} title={t('creerBouton', langue)}
+              onClick={() => setCreationLibre(true)}>
+              <Icone nom="plus" />
+            </button>
           </span>
         </h2>
+
+        {/* « Mes agendas » (C28-41 PR2) en puces, ici et plus dans une barre latérale (v7) :
+            cases à cocher stylées, couleur de l'agenda, plus la case Tâches. */}
+        <div className="agendas-puces" role="group" aria-label={t('mesAgendas', langue)}>
+          {etatAgendas.liste.map((a) => (
+            <label key={a.id} className={etatAgendas.visibles.has(a.id) ? 'on' : ''}>
+              <input type="checkbox" checked={etatAgendas.visibles.has(a.id)} onChange={() => basculerAgenda(a.id)} />
+              <span className="puce" style={{ background: a.couleur }} aria-hidden="true" />
+              {a.nom || t('agendaPrincipal', langue)}
+            </label>
+          ))}
+          <label className={etatAgendas.taches ? 'on' : ''}>
+            <input type="checkbox" checked={etatAgendas.taches} onChange={() => basculerTaches()} />
+            <span className="puce" style={{ background: 'var(--attention)' }} aria-hidden="true" />
+            {t('agendaTaches', langue)}
+          </label>
+          {etatAgendas.statut === 'scope' && (
+            <span className="agendas-scope">
+              <span className="explication">{t('agendasReconnexion', langue)}</span>
+              <button className="discret" onClick={() => reconnecterPourAgendas()}>{t('seReconnecter', langue)}</button>
+            </span>
+          )}
+          {etatAgendas.statut === 'erreur' && (
+            <span className="agendas-scope">
+              <span className="explication">{t('agendasErreur', langue)}</span>
+              <button className="discret" onClick={() => rechargerAgendas()}>{t('reessayer', langue)}</button>
+            </span>
+          )}
+        </div>
 
         {vueCal === 'mois' ? (
           <>
@@ -307,6 +328,17 @@ export function Agenda({ langue, dateRef }: { langue: Langue; dateRef?: Date }) 
         </table>
         <p className="explication">{t('aTraiterNote', langue)}</p>
       </section>
+
+      {/* « + » de l'en-tête (v7) : création libre — tâche ou RDV, sans pré-remplissage. */}
+      {creationLibre && (
+        <>
+          <button className="feuille-fond" aria-label={t('fermer', langue)} onClick={() => setCreationLibre(false)} />
+          <div className="dialogue" role="dialog" aria-label={t('creer', langue)}>
+            <Creation langue={langue} onCree={() => { setCreationLibre(false); void rafraichir(true); }} />
+            <button className="discret" onClick={() => setCreationLibre(false)}>{t('fermer', langue)}</button>
+          </div>
+        </>
+      )}
 
       {/* Clic sur un créneau vide (PR3) : création pré-remplie date+heure, en dialogue. */}
       {creneau && (
