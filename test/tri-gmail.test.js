@@ -208,6 +208,7 @@ test('decisionTri_ : analyse INDISPONIBLE → libellés posés, JAMAIS archivé 
   const flou = ctxPur.decisionTri_({ categorie: null, important: false, suspect: false,
     zoneProtegee: false, promoDeterministe: false, entierementLu: true, analyseIndisponible: true });
   assert.deepStrictEqual(simple(flou.libelles), ['À vérifier']);
+  assert.strictEqual(flou.archiver, false, 'ADR-0050 : « À vérifier » LU s\'archive, SAUF sans verdict (⏰ indécidable)');
 });
 
 test('ADR-0049 — panne de CRÉATION (config-api) + message ANALYSÉ-DIFFÉRÉ (analyse|) → tri NORMAL, archivé, clé NOMINALE', () => {
@@ -782,13 +783,15 @@ function ctxBoite(opts) {
   let inbox = (opts.inbox || []).slice(); // [{ id, action }]
   const props = Object.assign({ DriveAI_TRI_BOITE_VERSION: String(c.CONFIG.TRI_REGLES_VERSION) }, opts.props);
   const recherches = [];
+  const effacements = []; // clés passées à deleteProperty (le ré-armement s'y prouve, pas sur l'état final)
   c.PropertiesService = { getScriptProperties: () => ({
     getProperty: (k) => (k in props ? props[k] : null),
     setProperty: (k, v) => { props[k] = String(v); },
-    deleteProperty: (k) => { delete props[k]; },
+    deleteProperty: (k) => { delete props[k]; effacements.push(k); },
   }) };
   c.GmailApp = { search: (req, offset, n) => {
     recherches.push({ req, offset, n });
+    effacements.push('<recherche>'); // jalon : ce qui est effacé AVANT la 1re recherche vient du ré-armement
     return inbox.slice(offset, offset + n).map((x) => ({ getId: () => x.id }));
   } };
   c.trierFil_ = (fil) => {
@@ -803,7 +806,7 @@ function ctxBoite(opts) {
   c.journalErreur_ = () => {};
   c.journalInfo_ = () => {};
   c.dateGmail_ = () => opts.jour || '2026/07/15';
-  return { c, props, recherches, inbox: () => inbox };
+  return { c, props, recherches, effacements, inbox: () => inbox };
 }
 
 const etatBoite = () => ({ traites: 0, attentes: 0 });
@@ -897,7 +900,7 @@ test('ADR-0050 : la clé VERSIONNÉE présente → « deja », rien rechargé (l
 
 test('ADR-0050 : nettoyage profond RÉ-ARMÉ quand la version des règles change — tout l\'état effacé, ANCRE comprise', () => {
   const infos = [];
-  const { c, props, recherches } = ctxBoite({
+  const { c, props, recherches, effacements } = ctxBoite({
     props: { DriveAI_TRI_BOITE: 'terminé', DriveAI_TRI_BOITE_ANCRE: '2026/06/01', DriveAI_TRI_BOITE_OFFSET: '7',
       DriveAI_TRI_BOITE_PASSE_SALE: 'oui', DriveAI_TRI_BOITE_PASSES_PROPRES: '1', DriveAI_TRI_BOITE_VERSION: 'r1-perimee' },
     inbox: [{ id: 'A', action: 'archive' }],
@@ -908,8 +911,15 @@ test('ADR-0050 : nettoyage profond RÉ-ARMÉ quand la version des règles change
   assert.strictEqual(recherches[0].req, 'in:inbox before:2026/07/15', 'ANCRE re-posée (l\'ancienne aurait laissé un trou)');
   assert.strictEqual(recherches[0].offset, 0, 'offset reparti de zéro');
   assert.notStrictEqual(props.DriveAI_TRI_BOITE, 'terminé', 'le « terminé » d\'anciennes règles ne vaut plus');
-  assert.ok(!('DriveAI_TRI_BOITE_PASSES_PROPRES' in props) && !('DriveAI_TRI_BOITE_PASSE_SALE' in props) || props.DriveAI_TRI_BOITE_PASSE_SALE === 'oui',
-    'compteurs de passes effacés (PASSE_SALE peut être re-posé par l\'activité de cette passe)');
+  // Revue flotte : l'état FINAL ne prouve rien (l'activité de la passe re-pose PASSE_SALE, et la fin de
+  // passe efface PASSES_PROPRES de toute façon) — on vérifie les APPELS deleteProperty faits AVANT la
+  // première recherche, une clé par une : c'est le ré-armement, et lui seul, qui est prouvé.
+  const avantRecherche = effacements.slice(0, effacements.indexOf('<recherche>'));
+  for (const k of ['DriveAI_TRI_BOITE', 'DriveAI_TRI_BOITE_ANCRE', 'DriveAI_TRI_BOITE_OFFSET',
+    'DriveAI_TRI_BOITE_PASSE_SALE', 'DriveAI_TRI_BOITE_PASSES_PROPRES']) {
+    assert.ok(avantRecherche.includes(k), 'effacé par le ré-armement, avant toute recherche : ' + k +
+      ' (sans PASSES_PROPRES, « terminé » tomberait après UNE passe propre au lieu de deux)');
+  }
   assert.ok(infos.some((m) => /RÉ-ARMÉ/.test(m)), 'journalisé');
 });
 

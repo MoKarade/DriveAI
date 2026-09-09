@@ -66,14 +66,19 @@ sur un verdict de règle le fige à vie ; la version de la table fait partie de 
 
 - **Clé** : `tri|<fil>|<ts>|lu` → `tri|<fil>|<ts>|lu|<CONFIG.TRI_REGLES_VERSION>` (`r2`). Les anciennes
   clés (sans version, ou `|deg`) deviennent invisibles ⇒ chaque fil de la fenêtre 30 j est réévalué UNE
-  fois sous les règles courantes, puis sa clé versionnée le fige comme avant. `purgerClesTriIndex_`
+  fois sous les règles courantes, puis sa clé versionnée le fige comme avant. Exception voulue :
+  `tri-abandon|<fil>|<ts>` (fil ILLISIBLE après `QUARANTAINE_MAX` essais) n'est pas versionnée — un échec
+  de LECTURE n'est pas un verdict de RÈGLE ; un nouveau message lui redonne sa chance, comme avant. `purgerClesTriIndex_`
   (« pas suspect ») travaille par préfixe `tri|<fil>|` : inchangé.
 - **Nettoyage profond** (`nettoyerBoiteHistorique_`) : ré-armé quand `DriveAI_TRI_BOITE_VERSION` ≠ version —
   marqueur « terminé », ancre, offset et compteurs de passes effacés, version posée. L'ANCRE doit être
   re-posée : l'ancienne (juillet) laisserait un trou entre elle et −30 j, couvert par aucun des deux scans.
 - **Coût** : une relecture par fil (libellés + messages), catégorie par la table apprise (LLM seulement pour
   un expéditeur inconnu), écritures bornées par `TRI_MAX_FILS_PAR_RUN` = 30 et les plafonds de 150 fils/jour
-  (cyclique, nettoyage) ⇒ la boîte se vide en 1 à 2 jours. Estimation LLM < 0,20 $ [Supposition]. Frein §2.6
+  (cyclique, nettoyage). Vitesse réelle (revue apps-script-quota) : c'est le scan AVANT qui porte la rafale
+  et il n'a pas de plafond quotidien — pendant la réévaluation aucune page n'est « à jour », il descend
+  page après page à 30 écritures par tick ⇒ la fenêtre 30 j (~90 fils) en **3 ticks, ~15 min** ; le stock
+  > 30 j suit au nettoyage profond, à 150 fils lus par jour. Estimation LLM < 0,20 $ [Supposition]. Frein §2.6
   inchangé. Réversible : un fil archivé garde tous ses libellés.
 
 ## 5. Risques
@@ -108,5 +113,6 @@ Exécutées sur `test/tri-gmail.test.js` (62 tests), copie de sauvegarde restaur
 | M7 | promo sans catégorie archivée (garde `f.categorie` retirée) | 1 |
 | M8 | mode dégradé archive quand même | 2 |
 | M9 | ré-armement n'écrit pas la version (boucle à chaque tick) | 1 |
+| M10 | ré-armement n'efface pas `PASSES_PROPRES` (revue flotte : l'assertion initiale était tautologique, la fin de passe l'effaçait de toute façon — désormais prouvé sur les appels faits AVANT la première recherche) | 1 |
 
-9/9 attrapées.
+10/10 attrapées.

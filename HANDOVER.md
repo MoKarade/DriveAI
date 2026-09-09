@@ -15,8 +15,9 @@
 > les ~90 fils déjà triés n'auraient JAMAIS été réévalués — leçon §9), `rearmerBoiteHistorique_`
 > (nettoyage profond ré-armé par version, ancre re-posée). 62 tests tri (1 204 au total), 9 mutations
 > attrapées, revue flotte avant merge.
-> **➜ Prise d'effet : ⬜ à vérifier par signal indépendant** après `deploy.yml` vert — la boîte doit se
-> vider en 1-2 jours (plafonds 150 fils/jour ; `tri_cyclique` était déjà à 150/150 le matin du 09/09).
+> **➜ Prise d'effet : ⬜ à vérifier par signal indépendant** après `deploy.yml` vert — la fenêtre 30 j
+> (~90 fils) se vide en ~3 ticks (scan AVANT, 30 écritures/tick, pas de plafond quotidien — revue
+> apps-script-quota) ; le stock > 30 j suit à 150 fils/jour au nettoyage profond.
 > Compter la DESTINATION : `in:inbox is:read` (référence 09/09 13:20 UTC : ~29 fils lus sur les 50
 > premiers), jamais déduire du run vert (piège 3).
 > **Geste de Marc toujours en attente** : client OAuth hubperso (`invalid_client`) — reposer

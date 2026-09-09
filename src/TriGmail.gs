@@ -427,7 +427,7 @@ function scanAvantTri_(etat, plafondAtteint, candidats, libelles) {
  * quota partagé C28-15 : les lectures se bornent dans LEUR unité — ici PAGES/tick, plafond
  * `TRI_CYCLIQUE_PAGES_PAR_RUN`). File MOUVANTE assumée : une insertion en tête décale l'offset
  * (fils sautés/revus) — sans gravité, le cycle repasse en boucle et les revisites sont
- * gratuites (idempotence par clé `tri|fil|ts|lu`).
+ * gratuites (idempotence par clé `tri|fil|ts|lu|<version des règles>`).
  */
 function scanCycliqueTri_(etat, plafondAtteint, candidats, libelles) {
   var props = PropertiesService.getScriptProperties();
@@ -841,7 +841,8 @@ function trierFil_(fil, candidats, libelles, verifierBoite) {
     if (intentionsSuspendues_() && indexContient_(cleNominale + '|deg')) return 'deja';
 
     // Libellés DÉJÀ posés sur le fil : ⏰/⚠️ sont des décisions antérieures qui survivent aux
-    // nouveaux messages (un fil marqué ⏰ ne doit JAMAIS être archivé, quel que soit le suivi).
+    // nouveaux messages — honorées (jamais retirées, jamais ré-écrites). ADR-0050 : ⏰ n'empêche
+    // plus l'archivage d'un fil LU, il reste son marqueur ; ⚠️ garde le fil en boîte.
     var dejaPoses = {};
     try {
       var poses = fil.getLabels();
@@ -935,7 +936,7 @@ function trierFil_(fil, candidats, libelles, verifierBoite) {
     }
 
     var important = indexContient_('important|' + dernierId) ||
-      !!dejaPoses[CONFIG.TRI_LIBELLES.A_TRAITER]; // ⏰ déjà posé (message antérieur) → jamais archivé
+      !!dejaPoses[CONFIG.TRI_LIBELLES.A_TRAITER]; // ⏰ déjà posé (message antérieur) → honoré, jamais ré-écrit
 
     // SUSPECT : décision PURE `decisionSuspect_` (C28-19) — la table Confiance (clic « pas
     // suspect » de Marc) outrepasse tout, y compris le libellé ⚠ déjà posé (qui reste sur le
