@@ -540,20 +540,23 @@ export async function collecterSousDossiers(
  * Recherche façon barre Google Drive (nom OU plein texte natif). `portee` (liste de dossiers,
  * cf. `collecterSousDossiers`) découpe en lots — fusion dédoublonnée par id.
  */
-export async function rechercherDrive(texte: string, portee?: string[]): Promise<ElementDrive[]> {
+export const RECHERCHE_PAGE = 50;
+export async function rechercherDrive(texte: string, portee?: string[]): Promise<{ elements: ElementDrive[]; tronque: boolean }> {
   const lots: (string[] | undefined)[] =
     portee && portee.length > 0 ? decouperEnLots(portee, 10) : [undefined];
   const vus = new Map<string, ElementDrive>();
+  let tronque = false; // v7 : une recherche globale sur tout le Drive doit DIRE qu'elle s'arrête à 50
   for (const lot of lots) {
     const params = new URLSearchParams({
       q: qRecherche(texte, lot),
-      fields: `files(${CHAMPS_ELEMENT})`,
-      pageSize: '50',
+      fields: `nextPageToken,files(${CHAMPS_ELEMENT})`,
+      pageSize: String(RECHERCHE_PAGE),
     });
-    const r = await api<{ files?: ElementDrive[] }>(`${DRIVE}?${params.toString()}`);
+    const r = await api<{ files?: ElementDrive[]; nextPageToken?: string }>(`${DRIVE}?${params.toString()}`);
     for (const f of r.files ?? []) vus.set(f.id, f);
+    if (r.nextPageToken) tronque = true;
   }
-  return Array.from(vus.values());
+  return { elements: Array.from(vus.values()), tronque };
 }
 
 /* ---------- Explorateur (C21-02) : création de dossier + déplacement MANUEL ---------- */

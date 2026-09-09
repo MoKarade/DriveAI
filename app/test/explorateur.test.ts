@@ -132,3 +132,17 @@ describe('estDossierATrier (parades intake C21-02 — reconnu par NOM, accents/c
     expect(estDossierATrier(nom)).toBe(attendu);
   });
 });
+
+import { requeteDepuisPlan } from '../src/explorateur';
+
+describe('requeteDepuisPlan (v7 : une seule recherche Drive derrière la question IA)', () => {
+  it('mots-clés d’abord, sinon le texte du plan, sinon la question', () => {
+    expect(requeteDepuisPlan({ motsCles: [' Hydro ', 'facture', ''], texte: 'x' }, 'q')).toBe('Hydro facture');
+    expect(requeteDepuisPlan({ motsCles: [], texte: ' relevé ' }, 'q')).toBe('relevé');
+    expect(requeteDepuisPlan({}, ' les factures Hydro ')).toBe('les factures Hydro');
+  });
+  it('l’année du plan entre dans la requête, une seule fois', () => {
+    expect(requeteDepuisPlan({ motsCles: ['facture', 'Hydro'], annee: '2025' }, 'q')).toBe('facture Hydro 2025');
+    expect(requeteDepuisPlan({ motsCles: ['facture', '2025'], annee: '2025' }, 'q')).toBe('facture 2025');
+  });
+});
