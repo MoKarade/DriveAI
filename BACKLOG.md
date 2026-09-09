@@ -5,6 +5,24 @@
 
 ---
 
+## Chantier #45 — Refonte app v7 « le téléphone d'abord » (ADR-0051, décisions Marc 2026-09-09)  🟦
+
+> Marc : « l'interface est pas du tout intuitive, trop de texte, trop de déchets, trop moche, pas
+> assez simple, pas assez beau — je veux une full refonte visuelle et utilitaire, parfaite pour
+> téléphone et pour PC ». Diagnostic sur captures réelles (390 px / 1 280 px), maquettes des cinq
+> écrans, **4 réponses cliquées** : ambiance **B « Nuit »** (sombre nettoyé) · PC en **une colonne +
+> rail** · accueil **comme aujourd'hui, en plus propre** · Moteur → **Réglages, 3 chiffres +
+> « Avancé » replié**. Six PR, chacune livrable seule ; le socle de données ne bouge pas.
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C28-82 PR0 — socle v7 | ADR-0051 ; revue flotte : 1 🟠 (réglages compte hors du gate `donnees`) + 🟡 appliqués (licences OFL, `toBeVisible` avant `dispatchEvent`, invite d'autorisation des agendas sur l'accueil) ; polices auto-hébergées (Atkinson Hyperlegible + IBM Plex Mono, CSP `'self'`) ; `Icone.tsx` (un seul jeu SVG) ; coquille `App.tsx` : barre haute + onglets bas (téléphone), rail + colonne 760 px (PC) ; `Sidebar.tsx`/`MiniCalendrier.tsx` supprimés — « Mes agendas » en puces et « + » de création dans l'Agenda ; `Moteur.tsx` → `Reglages.tsx` + carte Compte (langue, synchro, hub, déconnexion, garde-fous) ; tokens v7 (noms v6 conservés) ; **captures CI à deux tailles** (`pc`, `tel`) — c'est l'œil qui manquait. 243 tests app, build, captures verts. | 🟦 |
+| C28-82 PR1 — Accueil + Réglages | Marc (09/09, soir) : « encore trop de texte, quelques boutons simples qui fonctionnent, toutes les tâches finies à la poubelle ». Accueil = **À faire** (suspects → « Pas suspect », docs à vérifier → Drive, mails ⏰ → Gmail, tâches du jour → « Fait », agendas à autoriser → « Se reconnecter »), **Ma journée** seulement s'il y a un RDV, **Derniers classements** ; le coût quitte l'accueil. Réglages = état + **3 chiffres** (`documentsDepuisSante`, `triDepuisSante` — purs, testés) + lignes + **« Avancé » replié** où seules les campagnes en cours ou en difficulté apparaissent (fini / à jour / désactivé = absent, plus d'interrupteur « masquer »), erreurs seulement s'il y en a. Agenda : tâches cochées cachées, carte « À traiter » retirée (vit dans À faire). 10 paragraphes d'explication retirés (Assistant, Explorateur, Réorg, Recherche, Création). Revue flotte : 1 🔴 (mes parseurs Santé ne lisaient que le MOCK — le moteur écrit « Documents au catalogue (Index) : N » ; remplacés par `compteursIndex` sur l'Index) + 3 🟠 (⏰ jamais vidés → fenêtre 7 j + bouton « Fait » qui pose `important-fait` ; erreurs « 7 jours » non filtrées ; tâches en retard perdues à minuit → `tachesAFaire`) intégrés. 247 tests. | 🟦 (#331) |
+| C28-82 PR2 — Documents | Recherche unique (nom / contenu / IA), dossiers en liste avec compte, cadenas 04, arbre + contenu sur PC, déplacement conservé ; tests du sélecteur de recherche (pur). | ⬜ |
+| C28-82 PR3 — Agenda | Liste par jour sur téléphone (bande 7 jours), grille dès 7 h avec défilement sur « maintenant », filtres dans la page ; tests purs grille/liste. | ⬜ |
+| C28-82 PR4 — Assistant | Fil plein écran, propositions Réorg en cartes Valider / Écarter dans le fil, raccourcis quand le fil est vide, « Analyser la structure » rapatrié ; tests d'assemblage. | ⬜ |
+| C28-82 PR5 — Nettoyage | Paragraphes `.explication` retirés (aide « ? »), i18n 134 → ~80 clés, GUIDE.md + captures docs, revue flotte finale. | ⬜ |
+
 ## Chantier #44 — AUDIT DE FOND + correctifs par vagues (demande Marc 2026-07-31 « empêcher tous les bugs, lags, faux positifs »)  🟦
 
 > Marc : « lance une analyse approfondie de l'app pour empêcher tous les bugs, lags, faux positifs,

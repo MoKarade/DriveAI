@@ -147,7 +147,7 @@ jobs:
       # VITE_E2E_MOCK=true est injectée par playwright.config.ts (webServer) : auth bouchonnée,
       # données locales (mockData.ts), AUCUN appel aux vraies API Google (api() lève en mock).
       # La variable n'existe nulle part ailleurs (ni Vercel, ni dev normal) — zéro fuite en prod.
-      - name: Captures des 6 sections (Playwright, serveur de dev Vite mocké)
+      - name: Captures des 5 écrans × 2 tailles — pc et tel (Playwright, serveur de dev Vite mocké)
         working-directory: app
         run: npm run test:e2e
 

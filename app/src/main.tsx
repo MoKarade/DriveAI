@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Analytics } from '@vercel/analytics/react';
 import { App } from './App';
+import './fonts.css';
 import './styles.css';
 
 // PWA : enregistrement du service worker minimal (installabilité — passe-plat réseau, zéro cache).

@@ -1,29 +1,32 @@
 /**
- * AujourdHui.tsx — accueil v6 (C28-41, décisions Marc 2026-07-31). Quatre briques, rien d'autre :
- *  1. ALERTES — seulement s'il y en a (mails suspects, documents « à vérifier » ADR-0016) ;
- *  2. MA JOURNÉE — les RDV et tâches du jour (Calendar/Tasks, lecture seule) ;
- *  3. DERNIERS CLASSEMENTS — la preuve que le moteur range, avec lien Drive ;
- *  4. COÛT LLM — une tuile sobre, horodatée par le dernier passage moteur (honnêteté : on voit
- *     l'ÂGE de la donnée, plus jamais un chiffre figé qui « semble cassé »).
- * Les actions rapides, opérations en cours et entités à valider sont SUPPRIMÉES (photos Marc).
+ * AujourdHui.tsx — accueil v7 (C28-82 PR1, ADR-0051 ; Marc 2026-09-09 : « quelques boutons simples
+ * à comprendre et qui fonctionnent, moins de déchets, tout ce qui est fini à la poubelle »).
+ * Trois listes, aucune phrase :
+ *  1. À FAIRE — ce qui demande sa main : mails suspects (« Pas suspect »), documents « à vérifier »
+ *     (lien Drive), mails ⏰ à traiter (lien Gmail), tâches du jour (« Fait »). Une ligne = une
+ *     chose, au plus un bouton. Vide ⇒ une seule ligne « Rien à faire ».
+ *  2. MA JOURNÉE — les RDV du jour, lecture seule ; la section DISPARAÎT s'il n'y a rien.
+ *  3. CLASSÉ RÉCEMMENT — la preuve que le moteur range (lien Drive).
+ * Le coût LLM a quitté l'accueil (Réglages). Ce qui est FINI n'est jamais affiché : une tâche
+ * cochée disparaît, un suspect marqué « pas suspect » disparaît (masquage optimiste, Suspects.tsx).
  */
 
 import { useEffect, useState } from 'react';
 import type { Section } from '../App';
-import { listerEvenements, listerTaches } from '../google';
+import { listerEvenements, listerTaches, cocherTache, ajouterLigne } from '../google';
 import { useEtatGlobal } from '../etatGlobal';
-import { IndicateurChargement } from '../composants/UI';
+import { IndicateurChargement, BanniereErreur } from '../composants/UI';
 import { ListeSuspects, useSuspectsVisibles } from '../composants/Suspects';
+import { Icone } from '../composants/Icone';
 import {
   LigneIndex,
-  interpreterSante,
   lignesSuspects,
   lignesAVerifier,
+  importantsAFaire,
+  STATUT_IMPORTANT_FAIT,
   traitesLeJour,
-  coutDepuisSante,
-  dernierPassageDepuisSante,
-  ageMoteurMinutes,
   lienDrivePourLigne,
+  lienGmailPourLigne,
 } from '../etat';
 import {
   Evenement,
@@ -31,32 +34,33 @@ import {
   interpreterEvenements,
   interpreterTaches,
   evenementsDuJour,
-  tachesDuJour,
+  tachesAFaire,
   heureEvenement,
   titresDriveAI,
 } from '../agenda';
 import { formaterDateCourte } from '../explorateur';
-import { useAgendas, agendasAffiches } from '../agendasStore';
+import { useAgendas, agendasAffiches, reconnecterPourAgendas } from '../agendasStore';
 import { Langue, t } from '../i18n';
 
-const BUDGET_LLM = 10; // cible < 10 $/mois (CLAUDE.md §2.6)
-const CLASSEMENTS_RECENTS = 8;
+const CLASSEMENTS_RECENTS = 5;
 const SUSPECTS_MAX = 5;
 const A_VERIFIER_MAX = 5;
+const IMPORTANTS_MAX = 5;
+const IMPORTANTS_JOURS = 7; // au-delà, un ⏰ sort tout seul de « À faire » (même fenêtre que le résumé)
 
 export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: Section) => void }) {
   const { donnees, synchroA } = useEtatGlobal();
   const [evenements, setEvenements] = useState<Evenement[]>([]);
   const [taches, setTaches] = useState<Tache[]>([]);
-  const [agendaCharge, setAgendaCharge] = useState(false);
+  const [erreur, setErreur] = useState('');
+  const [importantsFaits, setImportantsFaits] = useState<Set<string>>(new Set()); // « Fait » optimiste
   const suspects = useSuspectsVisibles(donnees ? lignesSuspects(donnees.index) : []);
   // « Ma journée » couvre TOUS les agendas cochés (C28-41 PR2 — Family inclus).
   const etatAgendas = useAgendas();
   const affiches = agendasAffiches(etatAgendas);
   const cleAgendas = affiches.map((a) => a.id).sort().join('|');
 
-  // « Ma journée » : Calendar/Tasks du jour (l'Agenda complet a son propre cycle) — un échec est
-  // SILENCIEUX ici (la brique s'affiche vide, l'accueil reste utile).
+  // RDV et tâches du jour — un échec est SILENCIEUX ici (les listes restent vides, l'accueil vit).
   useEffect(() => {
     if (!donnees) return;
     const auj = new Date();
@@ -76,150 +80,170 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
         setEvenements(listes.flat().sort((x, y) => x.debut.localeCompare(y.debut)));
         setTaches(interpreterTaches(tks, marques));
       } catch {
-        /* silencieux : la brique agenda reste vide, le reste de l'accueil vit */
-      } finally {
-        setAgendaCharge(true);
+        /* silencieux : la journée reste vide, le reste de l'accueil vit */
       }
     })();
-    // `synchroA` (pas `donnees === null`) : « Ma journée » se recharge à CHAQUE lecture réussie —
-    // donc après une création de RDV (`onCree` → `rafraichir(true)` → nouveau `synchroA`), alignée sur
-    // l'Agenda (revue de fond 2026-07-31 : sinon le RDV créé n'apparaissait pas). La fenêtre `debut`/
-    // `fin` est recalculée à chaque exécution → « aujourd'hui » suit aussi le passage de minuit.
+    // `synchroA` : rechargé à CHAQUE lecture réussie (création de RDV comprise), fenêtre du jour
+    // recalculée à chaque exécution — « aujourd'hui » suit le passage de minuit.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- cleAgendas = photo stable des agendas cochés
   }, [synchroA, cleAgendas]);
+
+  /** « Fait » : coche la tâche dans Google Tasks et la retire de la liste — fini = disparu. */
+  async function fait(tache: Tache) {
+    setErreur('');
+    setTaches((ts) => ts.filter((x) => x.id !== tache.id)); // OPTIMISTE
+    try {
+      await cocherTache(tache.id, true);
+    } catch (e) {
+      // échec réel → la tâche revient (sans doublon si un rechargement l'a déjà remise), l'erreur s'affiche
+      setTaches((ts) => (ts.some((x) => x.id === tache.id) ? ts : [...ts, tache]));
+      setErreur(String(e));
+    }
+  }
+
+  /**
+   * « Fait » sur un mail ⏰ : l'app n'a pas de scope Gmail (elle ne peut ni lire ni archiver le
+   * fil) — elle ajoute une ligne `important|<id>` au statut `important-fait` dans l'Index : l'état
+   * courant de la clé change, le mail sort de « À faire » ; le moteur, qui ne juge que la présence
+   * de la clé, ne re-marque jamais ce mail. Aucune suppression, une ligne ajoutée (append-only).
+   */
+  async function importantFait(l: LigneIndex) {
+    setErreur('');
+    setImportantsFaits((f) => new Set(f).add(l.cle)); // OPTIMISTE
+    try {
+      const quand = new Date().toISOString().slice(0, 16).replace('T', ' ');
+      await ajouterLigne('Index', [l.cle, quand, l.fichier, '', '', STATUT_IMPORTANT_FAIT, '', '']);
+    } catch (e) {
+      setImportantsFaits((f) => { const g = new Set(f); g.delete(l.cle); return g; });
+      setErreur(String(e));
+    }
+  }
 
   if (!donnees) return <IndicateurChargement langue={langue} />;
 
   const maintenant = new Date();
   const locale = langue === 'fr' ? 'fr-CA' : 'en-CA';
-  const sante = interpreterSante(donnees.santeBrut);
 
   // Documents seuls (les lignes mail — intention/tache/event/important/tri — ne sont pas des docs).
   const docs = donnees.index.filter((l) => !/^(intention|tache|event|important|tri(-abandon)?)\|/.test(l.cle));
-  const classes = docs.filter((l) => l.statut === 'classé');
-  const classements = classes.slice(-CLASSEMENTS_RECENTS).reverse();
+  const classements = docs.filter((l) => l.statut === 'classé').slice(-CLASSEMENTS_RECENTS).reverse();
   const aujourdhui = traitesLeJour(docs, maintenant);
-  const aVerifier = lignesAVerifier(docs);
-  const cout = coutDepuisSante(sante.lignes);
-  const passage = dernierPassageDepuisSante(sante.lignes);
-  const age = ageMoteurMinutes(sante.lignes, maintenant);
-
+  const aVerifier = lignesAVerifier(docs).slice(0, A_VERIFIER_MAX);
+  const importants = importantsAFaire(donnees.index, maintenant, IMPORTANTS_JOURS)
+    .filter((l) => !importantsFaits.has(l.cle)).slice(0, IMPORTANTS_MAX);
+  const cleAujourdhui = `${maintenant.getFullYear()}-${String(maintenant.getMonth() + 1).padStart(2, '0')}-${String(maintenant.getDate()).padStart(2, '0')}`;
+  const tachesJour = tachesAFaire(taches, maintenant); // du jour ET en retard, jamais les faites
   const evtsJour = evenementsDuJour(evenements, maintenant);
-  const tachesJour = tachesDuJour(taches, maintenant);
-  const alertes = suspects.length > 0 || aVerifier.length > 0;
+  // Jeton d'avant le scope `calendar.readonly` : sans ça « Ma journée » resterait vide sans un mot
+  // — l'autorisation est une chose À FAIRE, avec son bouton (revue flotte PR 0).
+  const agendasAAutoriser = etatAgendas.statut === 'scope';
+  const nbAFaire = Math.min(suspects.length, SUSPECTS_MAX) + aVerifier.length + importants.length + tachesJour.length
+    + (agendasAAutoriser ? 1 : 0);
 
   return (
     <div className="accueil">
-      {/* ---------- 1. Alertes — UNIQUEMENT quand il y en a ---------- */}
-      {alertes && (
-        <section className="carte zone-attention">
-          <h2>{t('zoneAttention', langue)}</h2>
-
-          {suspects.length > 0 && (
-            <div className="attention-bloc">
-              <h3>⚠ {t('suspectsTitre', langue)} ({suspects.length})</h3>
-              <ListeSuspects langue={langue} suspects={suspects} max={SUSPECTS_MAX} />
-              <p className="explication">{t('suspectsNote', langue)}</p>
+      {/* ---------- 1. À faire ---------- */}
+      <section>
+        <h2 className="titre-liste">
+          {t('aFaire', langue)}
+          {nbAFaire > 0 && <span className="badge">{nbAFaire}</span>}
+          <span className="h2-note">{maintenant.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })}</span>
+        </h2>
+        <BanniereErreur langue={langue} erreur={erreur} onReessayer={() => setErreur('')} />
+        <div className="carte lignes">
+          {suspects.length > 0 && <ListeSuspects langue={langue} suspects={suspects} max={SUSPECTS_MAX} />}
+          {aVerifier.map((l: LigneIndex) => (
+            <a key={l.cle} className="ligne" href={lienDrivePourLigne(l)} target="_blank" rel="noreferrer">
+              <Icone nom="fichier" className="erreur" />
+              <span className="t">
+                <b className="mono">{l.fichier}</b>
+                <small>{t('aVerifierCourt', langue)} · {formaterDateCourte(l.traiteLe, locale)}</small>
+              </span>
+              <Icone nom="externe" className="chev" />
+            </a>
+          ))}
+          {importants.map((l: LigneIndex) => (
+            <div key={l.cle} className="ligne">
+              <Icone nom="horloge" className="accent" />
+              <a className="t lien-ligne" href={lienGmailPourLigne(l)} target="_blank" rel="noreferrer">
+                <b>{l.fichier}</b>
+                <small>{t('mailATraiter', langue)} · {formaterDateCourte(l.traiteLe, locale)}</small>
+              </a>
+              <button className="bouton-ligne" aria-label={`${t('fait', langue)} : ${l.fichier}`} onClick={() => void importantFait(l)}>
+                ✓ {t('fait', langue)}
+              </button>
+            </div>
+          ))}
+          {tachesJour.map((tk) => (
+            <div key={tk.id} className="ligne">
+              <Icone nom="aujourdhui" />
+              <span className="t">
+                <b>{tk.titre}</b>
+                <small>
+                  {t('tache', langue)}
+                  {tk.echeance < cleAujourdhui && <> · <span className="erreur">{t('enRetard', langue)} · {tk.echeance}</span></>}
+                  {tk.parDriveAI ? ` · ${t('parDriveAI', langue)}` : ''}
+                </small>
+              </span>
+              <button className="bouton-ligne principal" aria-label={`${t('fait', langue)} : ${tk.titre}`} onClick={() => void fait(tk)}>
+                ✓ {t('fait', langue)}
+              </button>
+            </div>
+          ))}
+          {agendasAAutoriser && (
+            <div className="ligne">
+              <Icone nom="agenda" className="attention" />
+              <span className="t"><b>{t('agendasAutoriser', langue)}</b></span>
+              <button className="bouton-ligne principal" onClick={() => reconnecterPourAgendas()}>{t('seReconnecter', langue)}</button>
             </div>
           )}
+          {nbAFaire === 0 && <p className="ligne vide">{t('rienAFaire', langue)}</p>}
+        </div>
+      </section>
 
-          {aVerifier.length > 0 && (
-            <div className="attention-bloc">
-              <h3>{t('docsAVerifier', langue)} ({aVerifier.length})</h3>
-              {aVerifier.slice(0, A_VERIFIER_MAX).map((l) => (
-                <div key={l.cle} className="ligne-attention">
-                  <a href={lienDrivePourLigne(l)} target="_blank" rel="noreferrer" className="lien-ligne">
-                    {l.fichier}
-                  </a>
-                  <span className="date">{formaterDateCourte(l.traiteLe, locale)}</span>
-                </div>
-              ))}
-              <p className="explication">{t('docsAVerifierNote', langue)}</p>
-            </div>
-          )}
+      {/* ---------- 2. Ma journée — seulement s'il y a quelque chose ---------- */}
+      {evtsJour.length > 0 && (
+        <section>
+          <h2 className="titre-liste">
+            {t('agendaDuJour', langue)}
+            <button className="lien" onClick={() => onAller('agenda')}>{t('agenda', langue)} ›</button>
+          </h2>
+          <div className="carte lignes">
+            {evtsJour.map((e) => (
+              <a key={e.id} className="ligne" href={e.lien} target="_blank" rel="noreferrer">
+                {e.journee ? <span className="heure">—</span> : <time className="heure" dateTime={e.debut}>{heureEvenement(e)}</time>}
+                <span className="barre" style={e.couleur ? { background: e.couleur } : undefined} aria-hidden="true" />
+                <span className="t">
+                  <b>{e.titre}</b>
+                  {e.lieu && <small>{e.lieu}</small>}
+                </span>
+              </a>
+            ))}
+          </div>
         </section>
       )}
 
-      <div className="accueil-grille">
-        {/* ---------- 2. Ma journée ---------- */}
-        <section className="carte">
-          <h2>
-            {t('agendaDuJour', langue)}
-            <span className="h2-note">
-              {maintenant.toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })}
-            </span>
-          </h2>
-          {agendaCharge && evtsJour.length === 0 && tachesJour.length === 0 && (
-            <p className="jour-vide">{t('rienAujourdhui', langue)}</p>
-          )}
-          {!agendaCharge && <p className="jour-vide">{t('chargement', langue)}</p>}
-          {evtsJour.map((e) => (
-            <a key={e.id} className="jour-ligne" href={e.lien} target="_blank" rel="noreferrer">
-              <span className="jour-heure">{e.journee ? t('journee', langue) : heureEvenement(e)}</span>
-              {e.couleur && <span className="jour-puce" style={{ background: e.couleur }} aria-hidden="true" />}
-              <span className="jour-titre">{e.titre}</span>
-              {e.lieu && <span className="jour-lieu">{e.lieu}</span>}
+      {/* ---------- 3. Classé récemment ---------- */}
+      <section>
+        <h2 className="titre-liste">
+          {t('derniersClassements', langue)}
+          {aujourdhui > 0 && <span className="h2-note ok">+{aujourdhui} {t('aujourdhuiCourt', langue)}</span>}
+          <button className="lien" onClick={() => onAller('documents')}>{t('documents', langue)} ›</button>
+        </h2>
+        <div className="carte lignes">
+          {classements.length === 0 && <p className="ligne vide">{t('aucunClassement', langue)}</p>}
+          {classements.map((l: LigneIndex) => (
+            <a key={l.cle} className="ligne" href={lienDrivePourLigne(l)} target="_blank" rel="noreferrer">
+              <Icone nom="fichier" />
+              <span className="t">
+                <b className="mono">{l.fichier}</b>
+                <small>{l.domaine}</small>
+              </span>
+              <Icone nom="externe" className="chev" />
             </a>
           ))}
-          {tachesJour.map((tk) => (
-            <div key={tk.id} className="jour-ligne">
-              <span className="jour-heure douce">☐ {t('tache', langue).toLowerCase()}</span>
-              <span className="jour-titre">{tk.titre}</span>
-            </div>
-          ))}
-          <p style={{ margin: '0.7rem 0 0' }}>
-            <button className="discret" onClick={() => onAller('agenda')}>{t('voirAgenda', langue)} →</button>
-          </p>
-        </section>
-
-        <div className="accueil-droite">
-          {/* ---------- 4. Coût LLM (tuile sobre, horodatée) ---------- */}
-          <section className="carte">
-            <h2>
-              {t('coutLlm', langue)}
-              {passage && (
-                <span className="h2-note" title={`${t('dernierPassage', langue)} ${passage}`}>
-                  {t('donneesMoteur', langue)}{age !== null ? (langue === 'fr' ? ` · il y a ${age} min` : ` · ${age} min ago`) : ''}
-                </span>
-              )}
-            </h2>
-            <div className="cout-tuile">
-              <span className="v">{cout ? cout.dollars.toFixed(2) : '—'} <small>$ / {BUDGET_LLM} $</small></span>
-              {cout && <span className="variante">{cout.appels.toLocaleString(locale)} appels</span>}
-            </div>
-            {cout && (
-              <div className="jauge" role="img" aria-label={`${cout.dollars.toFixed(2)} $ / ${BUDGET_LLM} $`}>
-                <i className={cout.dollars >= BUDGET_LLM ? 'pleine' : ''}
-                  style={{ width: `${Math.min(100, (cout.dollars / BUDGET_LLM) * 100)}%` }} />
-              </div>
-            )}
-          </section>
-
-          {/* ---------- 3. Derniers classements ---------- */}
-          <section className="carte">
-            <h2>
-              {t('derniersClassements', langue)}
-              {aujourdhui > 0 && <span className="h2-note ok">+{aujourdhui} {t('aujourdhuiCourt', langue)}</span>}
-            </h2>
-            {classements.length === 0 && <p className="explication">{t('aucunClassement', langue)}</p>}
-            <table>
-              <tbody>
-                {classements.map((l: LigneIndex) => (
-                  <tr key={l.cle} className="ligne-clic" title="Drive">
-                    <td>
-                      <a href={lienDrivePourLigne(l)} target="_blank" rel="noreferrer" className="lien-ligne">
-                        {l.fichier}
-                      </a>
-                      <div className="variante">{l.domaine}</div>
-                    </td>
-                    <td className="date">{formaterDateCourte(l.traiteLe, locale)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

@@ -182,7 +182,6 @@ export function Recherche({ langue }: { langue: Langue }) {
 
       <section className="carte large">
         <h2>{t('rechercheContenu', langue)}</h2>
-        <p className="explication">{t('rechercheContenuExplication', langue)}</p>
         <div className="ligne-formulaire">
           <button onClick={() => chercherContenu()} disabled={enCours || !texte.trim()}>
             {enCours ? t('chargement', langue) : `${t('chercherDansContenu', langue)}${texte.trim() ? ` : « ${texte.trim()} »` : ''}`}

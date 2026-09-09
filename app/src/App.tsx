@@ -1,11 +1,13 @@
 /**
- * App.tsx — coquille v6 (C28-41, refonte complète — décisions Marc 2026-07-31) : topbar +
- * sidebar + contenu, thème sombre redessiné. CINQ sections : Aujourd'hui · Agenda · Documents ·
- * Assistant · Moteur (page technique unique — remplace « Coûts & quotas » et « Santé »).
- * Une PASTILLE moteur (vert/ambre/rouge) vit dans la topbar de tous les écrans ; clic = Moteur.
+ * App.tsx — coquille v7 (C28-82, ADR-0051 — décisions Marc 2026-09-09) : le téléphone d'abord.
+ * QUATRE sections dans la navigation (Aujourd'hui · Agenda · Documents · Assistant) et une page
+ * RÉGLAGES (l'ancienne page Moteur), atteinte par l'engrenage de la barre haute sur téléphone et
+ * par le bas du rail sur PC. Téléphone : barre haute minimale (logo · pastille moteur · engrenage)
+ * + onglets bas. PC : rail à gauche, colonne centrale — la même app, plus large. Plus de barre
+ * latérale, de mini-calendrier, de menu avatar ni de lien Hub dans l'en-tête : les agendas se
+ * filtrent dans l'Agenda, la langue, la synchro, le hub et la déconnexion vivent dans Réglages.
  * Depuis C28-20 (ADR-0021) : pas d'écran de configuration — la config vient de /api/config
- * après connexion, seul le compte ALLOWED_EMAIL ouvre une session. Mobile : la sidebar est un
- * tiroir (☰) et la barre basse reste la navigation principale.
+ * après connexion, seul le compte ALLOWED_EMAIL ouvre une session.
  */
 
 import { useEffect, useState } from 'react';
@@ -13,30 +15,22 @@ import { chargerConfigServeur } from './config';
 import { seConnecter, estConnecte, seDeconnecter, abonnerSessionExpiree, tenterRestaurationSession } from './google';
 import { FournisseurEtat, useEtatGlobal } from './etatGlobal';
 import { BanniereErreur } from './composants/UI';
-import { Sidebar } from './composants/Sidebar';
-import { Creation } from './composants/Creation';
+import { Icone, NomIcone } from './composants/Icone';
 import { Langue, langueCourante, changerLangue, t } from './i18n';
 import { EtatMoteur, fraicheurMoteur, dernierPassageDepuisSante, interpreterSante } from './etat';
 import { AujourdHui } from './vues/AujourdHui';
 import { Documents } from './vues/Documents';
 import { Assistant } from './vues/Assistant';
 import { Agenda } from './vues/Agenda';
-import { Moteur } from './vues/Moteur';
+import { Reglages } from './vues/Reglages';
 
-// Retour au hub perso (lien externe dans la topbar ; overridable au build via VITE_HUB_URL).
-const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined)?.replace(/\/+$/, '') || 'https://hubperso.com';
+export type Section = 'aujourdhui' | 'agenda' | 'documents' | 'assistant' | 'reglages';
 
-// C28-41 : « apprentissage », « quotas » et « sante » SUPPRIMÉS (décisions Marc 2026-07-31).
-// La page Moteur reprend le minimum technique utile ; la logique d'apprentissage du MOTEUR
-// (few-shot Corrections, TriAppris) continue côté Apps Script, simplement sans surface UI.
-export type Section = 'aujourdhui' | 'agenda' | 'documents' | 'assistant' | 'moteur';
-
-export const SECTIONS: Section[] = ['aujourdhui', 'agenda', 'documents', 'assistant', 'moteur'];
-export const ICONES: Record<Section, string> = {
-  aujourdhui: '◐', agenda: '▦', documents: '▤', assistant: '💬', moteur: '⚙',
+/** Les quatre entrées de la navigation ; Réglages est à part (engrenage / bas du rail). */
+export const SECTIONS_NAV: Section[] = ['aujourdhui', 'agenda', 'documents', 'assistant'];
+export const ICONES: Record<Section, NomIcone> = {
+  aujourdhui: 'aujourdhui', agenda: 'agenda', documents: 'documents', assistant: 'assistant', reglages: 'reglages',
 };
-/** Barre basse mobile : les 4 sections du quotidien + « Plus » (Moteur). */
-const BARRE_BASSE: Section[] = ['aujourdhui', 'agenda', 'documents', 'assistant'];
 
 /**
  * Verrou d'identité (C28-20) : /api/callback renvoie ici avec `?erreur=acces_refuse` quand le
@@ -120,18 +114,12 @@ export function App() {
     );
   }
 
-  // Écran de connexion / chargement : topbar minimale, même matériau.
+  // Écran de connexion / chargement : le logo, une phrase, un bouton. Rien d'autre.
   return (
-    <div className="app">
-      <header className="barre-haute">
-        <h1 className="logo"><b>Drive</b>AI</h1>
-        <p className="sous-titre">{t('sousTitre', langue)}</p>
-        <div className="header-actions">
-          <a className="lien-hub" href={HUB_URL} title="Retour au hub">← Hub</a>
-          <MenuAvatar langue={langue} connecte={false} onLangue={basculerLangue} onDeconnexion={deconnexion} />
-        </div>
-      </header>
+    <div className="app connexion">
       <div className="centre">
+        <p className="logo grand"><b>Drive</b>AI</p>
+        <p className="sous-titre">{t('sousTitre', langue)}</p>
         {!connecte && (
           <>
             <button className="principal" onClick={connexion}>{t('connexion', langue)}</button>
@@ -139,165 +127,93 @@ export function App() {
             {erreur && <p className="erreur">{erreur}</p>}
           </>
         )}
-        {connecte && !pret && <p>{t('chargement', langue)}</p>}
+        {connecte && !pret && <p className="chargement">{t('chargement', langue)}</p>}
+        <button className="discret lien-langue" onClick={basculerLangue}>
+          {langue === 'fr' ? 'English' : 'Français'}
+        </button>
       </div>
-      <footer>{t('gardeFous', langue)}</footer>
     </div>
   );
 }
 
 /**
- * Coquille connectée (dans le FournisseurEtat — pastille moteur et badge Synchro lisent l'état
- * global) : topbar ☰ + logo + pastille + Synchro + avatar, sidebar (tiroir sur mobile), contenu,
- * barre basse mobile + feuille « Plus » (Moteur).
+ * Coquille connectée (dans le FournisseurEtat — la pastille moteur et la bannière d'erreur
+ * globale lisent l'état partagé) : barre haute (téléphone), rail (PC), contenu, onglets bas.
  */
 function Coquille({ langue, onLangue, onDeconnexion }: {
   langue: Langue;
   onLangue: () => void;
   onDeconnexion: () => void;
 }) {
-  const { rafraichir } = useEtatGlobal(); // création au FAB → l'Agenda affiché se rafraîchit
+  const { erreur, rafraichir } = useEtatGlobal();
   const [section, setSection] = useState<Section>('aujourdhui');
-  const [sidebarOuverte, setSidebarOuverte] = useState(false);
-  // Sidebar REPLIABLE en rail d'icônes (desktop), persistée — même ☰ que le tiroir mobile.
-  const [sidebarRepliee, setSidebarRepliee] = useState(
-    () => localStorage.getItem('driveai_sidebar_repliee') === '1',
-  );
-  const [plusOuvert, setPlusOuvert] = useState(false);
-  const [creationOuverte, setCreationOuverte] = useState(false); // FAB « + Créer »
-  // Date de référence de l'Agenda, REMONTÉE ici : le mini-calendrier de la sidebar et la grande
-  // grille restent synchrones — un clic là-bas navigue ici. (« Mes agendas » vit dans
-  // agendasStore, partagé sidebar/Agenda/accueil/création — C28-41 PR2.)
-  const [dateAgenda, setDateAgenda] = useState(new Date());
 
   function allerA(s: Section) {
     setSection(s);
-    setSidebarOuverte(false);
-    setPlusOuvert(false);
-  }
-
-  function choisirDate(d: Date) {
-    setDateAgenda(d);
-    allerA('agenda'); // le mini-calendrier ouvre l'Agenda sur le jour choisi
-  }
-
-  // ☰ à double emploi : tiroir sur mobile, repli/dépli sur desktop.
-  function clicMenu() {
-    if (window.matchMedia('(max-width: 760px)').matches) {
-      setSidebarOuverte(true);
-      return;
-    }
-    setSidebarRepliee((r) => {
-      localStorage.setItem('driveai_sidebar_repliee', r ? '0' : '1');
-      return !r;
-    });
+    window.scrollTo({ top: 0 });
   }
 
   return (
-    <div className={'app' + (sidebarRepliee ? ' sidebar-repliee' : '')}>
+    <div className="app">
+      {/* Téléphone seulement (le rail porte le logo sur PC). */}
       <header className="barre-haute">
-        <button className="hamburger discret" aria-label={t('menu', langue)} onClick={clicMenu}>☰</button>
-        <h1 className="logo"><b>Drive</b>AI</h1>
+        <p className="logo"><b>Drive</b>AI</p>
         <div className="header-actions">
-          <a className="lien-hub" href={HUB_URL} title="Retour au hub">← Hub</a>
-          <PastilleMoteur langue={langue} onOuvrir={() => allerA('moteur')} />
-          <BadgeSynchro langue={langue} />
-          <MenuAvatar langue={langue} connecte onLangue={onLangue} onDeconnexion={onDeconnexion} />
+          <PastilleMoteur langue={langue} onOuvrir={() => allerA('reglages')} />
+          <button
+            className={'icone-bouton' + (section === 'reglages' ? ' actif' : '')}
+            aria-label={t('reglages', langue)}
+            title={t('reglages', langue)}
+            onClick={() => allerA('reglages')}
+          >
+            <Icone nom="reglages" />
+          </button>
         </div>
       </header>
 
       <div className="corps-app">
-        <Sidebar
-          langue={langue}
-          section={section}
-          ouverte={sidebarOuverte}
-          repliee={sidebarRepliee && !sidebarOuverte}
-          dateAgenda={dateAgenda}
-          onDate={choisirDate}
-          onAller={allerA}
-          onFermer={() => setSidebarOuverte(false)}
-          onCreer={() => {
-            setSidebarOuverte(false); // mobile : le tiroir (z-index 35) couvrirait le dialogue (30)
-            setCreationOuverte(true);
-          }}
-        />
+        {/* PC seulement. */}
+        <nav className="rail" aria-label="Sections">
+          <p className="logo"><b>Drive</b>AI</p>
+          {SECTIONS_NAV.map((s) => (
+            <button key={s} className={section === s ? 'actif' : ''} onClick={() => allerA(s)}>
+              <Icone nom={ICONES[s]} />
+              <span>{t(s, langue)}</span>
+            </button>
+          ))}
+          <div className="rail-espace" />
+          <button className={section === 'reglages' ? 'actif' : ''} onClick={() => allerA('reglages')}>
+            <Icone nom="reglages" />
+            <span>{t('reglages', langue)}</span>
+          </button>
+          <PastilleMoteur langue={langue} onOuvrir={() => allerA('reglages')} etendue />
+        </nav>
 
         <main className="contenu">
           <div className="vue-active" key={section}>
+            {erreur && (
+              <div className="bandeau-global">
+                <BanniereErreur langue={langue} erreur={erreur} onReessayer={() => void rafraichir(true)} />
+              </div>
+            )}
             {section === 'aujourdhui' && <AujourdHui langue={langue} onAller={allerA} />}
             {section === 'documents' && <Documents langue={langue} />}
             {section === 'assistant' && <Assistant langue={langue} />}
-            {section === 'agenda' && <Agenda langue={langue} dateRef={dateAgenda} />}
-            {section === 'moteur' && <Moteur langue={langue} />}
+            {section === 'agenda' && <Agenda langue={langue} />}
+            {section === 'reglages' && <Reglages langue={langue} onLangue={onLangue} onDeconnexion={onDeconnexion} />}
           </div>
-          <footer>{t('gardeFous', langue)}</footer>
         </main>
       </div>
 
-      {/* FAB « + Créer » : la création vit en dialogue. */}
-      {creationOuverte && (
-        <>
-          <button className="feuille-fond" aria-label={t('fermer', langue)} onClick={() => setCreationOuverte(false)} />
-          <div className="dialogue" role="dialog" aria-label={t('creer', langue)}>
-            <Creation langue={langue} onCree={() => { setCreationOuverte(false); void rafraichir(true); }} />
-            <button className="discret" onClick={() => setCreationOuverte(false)}>{t('fermer', langue)}</button>
-          </div>
-        </>
-      )}
-
+      {/* Téléphone seulement : les quatre sections, toujours au pouce. */}
       <nav className="barre-basse" aria-label="Sections (mobile)">
-        {BARRE_BASSE.map((s) => (
+        {SECTIONS_NAV.map((s) => (
           <button key={s} className={section === s ? 'actif' : ''} onClick={() => allerA(s)}>
-            <em aria-hidden="true">{ICONES[s]}</em>
-            {t(s, langue)}
+            <Icone nom={ICONES[s]} />
+            <span>{t(s, langue)}</span>
           </button>
         ))}
-        <button
-          className={section === 'moteur' ? 'actif' : ''}
-          onClick={() => setPlusOuvert(true)}
-        >
-          <em aria-hidden="true">⋯</em>
-          {t('plus', langue)}
-        </button>
       </nav>
-
-      {plusOuvert && (
-        <>
-          <button className="feuille-fond" aria-label={t('fermer', langue)} onClick={() => setPlusOuvert(false)} />
-          <div className="feuille-plus" role="dialog" aria-label={t('plus', langue)}>
-            <button className="discret" onClick={() => allerA('moteur')}>
-              {ICONES.moteur} {t('moteur', langue)}
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/** Menu avatar (réglages v5) : langue + déconnexion — comme le menu de compte Google. */
-function MenuAvatar({ langue, connecte, onLangue, onDeconnexion }: {
-  langue: Langue;
-  connecte: boolean;
-  onLangue: () => void;
-  onDeconnexion: () => void;
-}) {
-  const [ouvert, setOuvert] = useState(false);
-  return (
-    <div className="menu-avatar">
-      <button className="avatar" title={t('compte', langue)} onClick={() => setOuvert((o) => !o)}>M</button>
-      {ouvert && (
-        <div className="menu" role="menu">
-          <button onClick={() => { onLangue(); setOuvert(false); }}>
-            {langue === 'fr' ? 'English' : 'Français'}
-          </button>
-          {connecte && (
-            <button onClick={() => { setOuvert(false); onDeconnexion(); }}>
-              {t('deconnexion', langue)}
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -305,10 +221,10 @@ function MenuAvatar({ langue, connecte, onLangue, onDeconnexion }: {
 /**
  * Pastille moteur (C28-41, décision Marc « pastille discrète ») : point vert/ambre/rouge dérivé
  * du « Dernier passage OK » de l'onglet Santé + de la fréquence de tick réglée. Discrète tant
- * que tout va bien ; un clic ouvre la page Moteur pour le détail. Jamais un faux vert : données
- * absentes ⇒ gris « inconnu ».
+ * que tout va bien ; un clic ouvre Réglages pour le détail. Jamais un faux vert : données
+ * absentes ⇒ gris « inconnu ». `etendue` (rail PC) affiche l'état en toutes lettres.
  */
-function PastilleMoteur({ langue, onOuvrir }: { langue: Langue; onOuvrir: () => void }) {
+function PastilleMoteur({ langue, onOuvrir, etendue }: { langue: Langue; onOuvrir: () => void; etendue?: boolean }) {
   const { donnees } = useEtatGlobal();
   const lignes = donnees ? interpreterSante(donnees.santeBrut).lignes : [];
   const tick = Number(donnees?.reglagesBrut?.[0]?.[1]) || 5;
@@ -327,28 +243,7 @@ function PastilleMoteur({ langue, onOuvrir }: { langue: Langue; onOuvrir: () => 
       onClick={onOuvrir}
     >
       <span className="pm-point" aria-hidden="true" />
-      <span className="pm-libelle">{t('moteur', langue)}</span>
+      <span className="pm-libelle">{etendue ? titres[etat] : t('moteur', langue)}</span>
     </button>
-  );
-}
-
-/**
- * Badge « Synchro HH:MM » + bouton ⟳ (P1/C28-03) : indicateur GLOBAL de fraîcheur des données,
- * et rafraîchissement manuel qui invalide le cache (le périodique tourne déjà toutes les 5 min).
- * Affiche aussi l'erreur de lecture globale avec « Réessayer » — les vues n'ont plus chacune la leur.
- */
-function BadgeSynchro({ langue }: { langue: Langue }) {
-  const { synchroA, erreur, rafraichir } = useEtatGlobal();
-  return (
-    <span className="badge-synchro">
-      {erreur
-        ? <BanniereErreur langue={langue} erreur={erreur} onReessayer={() => void rafraichir(true)} />
-        : (
-          <button className="discret" onClick={() => void rafraichir(true)}
-            title={t('synchro', langue)}>
-            ⟳ {synchroA ? synchroA.toLocaleTimeString(langue === 'fr' ? 'fr-CA' : 'en-CA', { hour: '2-digit', minute: '2-digit' }) : '…'}
-          </button>
-        )}
-    </span>
   );
 }

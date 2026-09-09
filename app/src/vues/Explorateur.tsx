@@ -362,7 +362,6 @@ export function Explorateur({ langue }: { langue: Langue }) {
             </button>
           </div>
         )}
-        <p className="explication">{t('explorateurNote', langue)}</p>
       </section>
     </div>
   );

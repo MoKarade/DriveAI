@@ -254,6 +254,18 @@ export function tachesDuJour(taches: Tache[], jour: Date): Tache[] {
   return taches.filter((t) => !t.faite && t.echeance === cle);
 }
 
+/**
+ * Tâches À FAIRE pour l'accueil (v7) : non faites, échues AUJOURD'HUI ou EN RETARD (échéance passée)
+ * — une tâche d'hier non cochée reste « à faire », elle ne disparaît pas à minuit (revue flotte
+ * PR 1). Les plus anciennes d'abord. Sans échéance : pas ici (elles vivent dans l'Agenda). PUR.
+ */
+export function tachesAFaire(taches: Tache[], jour: Date): Tache[] {
+  const cle = cleJour(jour);
+  return taches
+    .filter((t) => !t.faite && t.echeance !== '' && t.echeance <= cle)
+    .sort((a, b) => a.echeance.localeCompare(b.echeance));
+}
+
 /* ---------- marquage « créé par DriveAI » ---------- */
 
 /**
