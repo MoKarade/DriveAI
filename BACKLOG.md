@@ -791,7 +791,8 @@ doublon au rejeu (même compromis déjà accepté pour la copie Gmail). Granular
   (lu + catégorisé + sans ⏰) était vide. Décisions Marc (questions groupées) : tout archiver sauf les
   non-lus ; suspects laissés en boîte (prudence) ; vieux stock > 30 j repassé. Livré : `decisionTri_`,
   `TRI_REGLES_VERSION` dans la clé `tri|fil|ts|lu|<v>` (rétroactif sur les fils déjà triés — leçon §9),
-  `rearmerBoiteHistorique_`. 9 mutations attrapées. Prise d'effet : voir HANDOVER.
+  `rearmerBoiteHistorique_`. 10 mutations attrapées, revue flotte (3 agents). Prise d'effet VÉRIFIÉE le
+  09/09 13:49 UTC : boîte 95 → 87 fils au premier passage (8 archivés, 30 clés posées = plafond/tick).
 - ⬜ **C28-81 — Scan cyclique du tri : l'offset avance de la page ENTIÈRE, archivés compris (leçon C28-24 non appliquée ici).**
   Trouvé en revue flotte de C28-80 (apps-script-quota), préexistant : `scanCycliqueTri_` écrit
   `offset + fils.length` alors que les fils archivés ont quitté `in:inbox` — il saute autant de fils par
