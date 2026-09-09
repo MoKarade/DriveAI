@@ -552,9 +552,7 @@ tr:hover .expl-actions button, .expl-actions button:focus-visible { opacity: 1; 
 .chat-entete h2 { margin: 0; }
 .chat-fil {
   display: flex; flex-direction: column; gap: 0.6rem;
-  min-height: 240px; max-height: 58vh; overflow-y: auto;
-  padding: 0.8rem; margin: 0.4rem 0;
-  background: var(--fond); border: 1px solid var(--bord); border-radius: var(--r-l);
+  min-height: 30vh; padding: 0.2rem 0; margin: 0;
   scroll-behavior: smooth;
 }
 .chat-bulle {
@@ -752,3 +750,44 @@ button.ligne.texte { width: 100%; }
 button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):hover { filter: none; transform: none; background: color-mix(in srgb, var(--accent) 6%, transparent); }
 /* la rangée des jours reste visible pendant le défilement de la grille (ouverte à 7 h) */
 .gt-defilant .gt-rang:first-child { position: sticky; top: 0; z-index: 2; background: var(--carte); }
+
+/* ---------- v7 (PR4) : Assistant — le fil occupe l'écran, la saisie reste au pouce ---------- */
+.assistant { display: flex; flex-direction: column; gap: 0.8rem; }
+.assistant .titre-liste { margin-bottom: 0; }
+.chat-bulle { font-size: 0.98rem; }
+.chat-saisie {
+  position: sticky; bottom: 0; z-index: 5;
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.5rem 0 0.6rem; background: var(--fond);
+}
+.chat-saisie input { flex: 1; border-radius: 22px; padding: 0.7rem 1rem; font-size: 1rem; background: var(--carte); }
+.chat-saisie .envoyer {
+  width: 42px; height: 42px; border-radius: 50%; padding: 0; flex: 0 0 auto;
+  background: var(--accent); color: var(--sur-accent); border: none; display: inline-grid; place-items: center;
+}
+.chat-saisie .envoyer .icone { width: 20px; height: 20px; }
+@media (max-width: 760px) {
+  .chat-saisie { bottom: calc(5.4rem + env(safe-area-inset-bottom)); }
+}
+.puces-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.puce-action {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  border: 1px solid var(--bord); background: var(--carte); color: var(--accent);
+  border-radius: 20px; padding: 0.5rem 0.85rem; font-size: 0.88rem; font-weight: 700;
+}
+.puce-action .icone { width: 16px; height: 16px; }
+.puce-action.attente { color: var(--texte-doux); }
+.propositions { display: flex; flex-direction: column; gap: 0.6rem; }
+.prop-tete { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.95rem; }
+.prop-tete .sp { flex: 1; }
+.prop-carte {
+  background: var(--carte); border: 1px solid var(--bord); border-left: 4px solid var(--accent);
+  border-radius: 12px; padding: 0.7rem 0.85rem; display: flex; flex-direction: column; gap: 0.45rem; min-width: 0;
+}
+.prop-carte > b { font-size: 0.95rem; }
+.prop-carte small { color: var(--texte-doux); }
+.prop-carte.vides { border-left-color: var(--attention); }
+.prop-chemin { font-family: var(--mono); font-size: 0.82rem; color: var(--texte-doux); overflow-wrap: anywhere; }
+.prop-chemin .fleche { color: var(--accent); }
+.prop-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.prop-vide { display: flex; align-items: center; gap: 0.6rem; justify-content: space-between; }

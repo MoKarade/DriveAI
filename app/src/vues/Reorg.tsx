@@ -160,162 +160,92 @@ export function ReorgVue({ langue }: { langue: Langue }) {
   }
 
   if (erreur && !charge) return <p className="erreur">{t('erreur', langue)} : {erreur}</p>;
-  if (!charge) return <p>{t('chargement', langue)}</p>;
+  if (!charge) return null; // rien à montrer tant que l'onglet n'est pas lu — le fil du chat, lui, s'affiche
 
   const demande = derniereDemandeReorg(lignes);
   const actions = demande ? actionsDuPlan(lignes, demande.cle) : [];
   const proposees = actions.filter((a) => a.statut === 'proposé');
-  const decidees = actions.filter((a) => a.statut !== 'proposé');
   const videsCandidats = lignesVideCandidat(lignes);
   const chatProposees = actionsProposeesChat(lignes);
+  // Une seule liste de propositions dans le fil (chat + plan) ; ce qui est décidé n'apparaît plus
+  // (Marc, 09/09 : « tout ce qui est fini à la poubelle » — plus d'historique à l'écran).
+  const toutes = [...chatProposees, ...proposees];
+  const analyseEnCours = demande?.statut === 'analyse demandée';
 
   return (
-    <div className="colonnes">
-      {chatProposees.length > 0 && (
-        <section className="carte large">
-          <h2>💬 {t('chatPropTitre', langue)}</h2>
-          <div className="actions" style={{ margin: '0.6rem 0' }}>
-            <button onClick={() => poserStatutEnMasse(chatProposees, 'validé')} disabled={enCours}>
-              ✓ {t('toutValider', langue)} ({chatProposees.length})
-            </button>
-            <button className="discret" onClick={() => poserStatutEnMasse(chatProposees, 'écarté')} disabled={enCours}>
-              ✕ {t('toutEcarter', langue)}
-            </button>
-          </div>
-          <table>
-            <tbody>
-              {chatProposees.map((a) => (
-                <tr key={a.cle}>
-                  <td className="expl-ic" aria-hidden="true">{TYPES[a.type] ?? '·'}</td>
-                  <td>
-                    <b>{libelleType(a.type, langue)}</b>
-                    <div className="variante">
-                      {a.cheminActuel && <>{a.cheminActuel} {'→'} </>}{a.cheminPropose}
-                    </div>
-                    {a.detail && <div className="variante">{a.detail}</div>}
-                  </td>
-                  <td className="nombre reorg-boutons">
-                    <button className="discret" disabled={enCours} onClick={() => poserStatut(a, 'validé')}>✓ {t('valider', langue)}</button>
-                    <button className="discret" disabled={enCours} onClick={() => poserStatut(a, 'écarté')}>✕ {t('ecarter', langue)}</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
-      <section className="carte large">
-        <h2>{t('reorgTitre', langue)}</h2>
-        {erreur && <p className="erreur">{t('erreur', langue)} : {erreur}</p>}
-
-        {!demande && (
-          <button onClick={() => demanderAnalyse('tout')} disabled={enCours}>
-            ✨ {t('demanderAnalyse', langue)}
-          </button>
-        )}
-        {demande && demande.statut === 'analyse demandée' && (
-          <p className="statut-quota"><span className="pastille douce">⏳</span> {t('analyseEnCours', langue)}</p>
-        )}
-        {demande && demande.statut === 'échec' && (
-          <>
-            <p className="statut-quota"><span className="pastille crit">✕</span> {demande.detail}</p>
-            <button onClick={() => demanderAnalyse('tout')} disabled={enCours}>
-              ✨ {t('demanderAnalyse', langue)}
-            </button>
-          </>
-        )}
-        {demande && demande.statut === 'proposé' && (
-          <>
-            {demande.detail && <p className="ia-explication">✨ {demande.detail}</p>}
-            {actions.length === 0 && <p className="explication">{t('reorgRien', langue)}</p>}
-            <div className="actions" style={{ margin: '0.6rem 0' }}>
-              {proposees.length > 0 && (
-                <>
-                  <button onClick={() => poserStatutEnMasse(proposees, 'validé')} disabled={enCours}>
-                    ✓ {t('toutValider', langue)} ({proposees.length})
-                  </button>
-                  <button className="discret" onClick={() => poserStatutEnMasse(proposees, 'écarté')} disabled={enCours}>
-                    ✕ {t('toutEcarter', langue)}
-                  </button>
-                </>
-              )}
-              <button className="discret" onClick={() => demanderAnalyse('tout')} disabled={enCours}>
-                ↺ {t('reAnalyser', langue)}
+    <div className="propositions">
+      {erreur && <p className="erreur">{t('erreur', langue)} : {erreur}</p>}
+      {toutes.length > 0 && (
+        <div className="prop-tete">
+          <b>{t('propositionsTitre', langue)}</b>
+          <span className="pastille douce">{toutes.length}</span>
+          <span className="sp" />
+          {toutes.length >= 2 && (
+            <>
+              <button className="bouton-ligne principal" onClick={() => poserStatutEnMasse(toutes, 'validé')} disabled={enCours}>
+                ✓ {t('toutValider', langue)}
               </button>
-            </div>
-            <table>
-              <tbody>
-                {proposees.map((a) => (
-                  <tr key={a.cle}>
-                    <td className="expl-ic" aria-hidden="true">{TYPES[a.type] ?? '·'}</td>
-                    <td>
-                      <b>{libelleType(a.type, langue)}</b>
-                      <div className="variante">
-                        {a.cheminActuel && <>{a.cheminActuel} {'→'} </>}{a.cheminPropose}
-                      </div>
-                      {a.detail && <div className="variante">{a.detail}</div>}
-                    </td>
-                    <td className="nombre reorg-boutons">
-                      <button className="discret" disabled={enCours} onClick={() => poserStatut(a, 'validé')}>✓ {t('valider', langue)}</button>
-                      <button className="discret" disabled={enCours} onClick={() => poserStatut(a, 'écarté')}>✕ {t('ecarter', langue)}</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </>
-        )}
-      </section>
+              <button className="bouton-ligne" onClick={() => poserStatutEnMasse(toutes, 'écarté')} disabled={enCours}>
+                {t('toutEcarter', langue)}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {toutes.map((a) => (
+        <div key={a.cle} className="prop-carte">
+          <b>{TYPES[a.type] ?? '·'} {libelleType(a.type, langue)}</b>
+          <div className="prop-chemin">
+            {a.cheminActuel && <>{a.cheminActuel} <span className="fleche">→</span> </>}{a.cheminPropose}
+          </div>
+          {a.detail && <small>{a.detail}</small>}
+          <div className="prop-actions">
+            <button className="bouton-ligne principal" disabled={enCours} onClick={() => poserStatut(a, 'validé')}>✓ {t('valider', langue)}</button>
+            <button className="bouton-ligne" disabled={enCours} onClick={() => poserStatut(a, 'écarté')}>{t('ecarter', langue)}</button>
+          </div>
+        </div>
+      ))}
+
+      {demande && demande.statut === 'proposé' && demande.detail && toutes.length > 0 && (
+        <p className="variante ia-explication">✨ {demande.detail}</p>
+      )}
+      {demande && demande.statut === 'proposé' && actions.length === 0 && (
+        <p className="variante">✓ {t('reorgRien', langue)}</p>
+      )}
+      {demande && demande.statut === 'échec' && <p className="erreur">{demande.detail}</p>}
 
       {videsCandidats.length > 0 && (
-        <section className="carte large">
-          <h2>🗑 {t('dossiersVides', langue)}</h2>
+        <div className="prop-carte vides">
+          <b>{t('dossiersVides', langue)}</b>
           {erreurCorbeille && <p className="erreur">{erreurCorbeille}</p>}
+          {videsCandidats.map((l) => (
+            <div key={l.cle} className="prop-vide">
+              <span className="prop-chemin">{l.cheminActuel}</span>
+              <button className="bouton-ligne" disabled={enCours} title={t('corbeilleNote', langue)} onClick={() => corbeiller(l)}>
+                🗑 {t('corbeiller', langue)}
+              </button>
+            </div>
+          ))}
           {videsCandidats.length >= 2 && (
-            <div className="actions" style={{ margin: '0.6rem 0' }}>
-              <button onClick={() => toutCorbeiller(videsCandidats)} disabled={enCours} title={t('corbeilleNote', langue)}>
+            <div className="prop-actions">
+              <button className="bouton-ligne" onClick={() => toutCorbeiller(videsCandidats)} disabled={enCours} title={t('corbeilleNote', langue)}>
                 🗑 {t('toutCorbeiller', langue)} ({videsCandidats.length})
               </button>
             </div>
           )}
-          <table>
-            <tbody>
-              {videsCandidats.map((l) => (
-                <tr key={l.cle}>
-                  <td>{l.cheminActuel}</td>
-                  <td className="nombre">
-                    <button className="discret" disabled={enCours} title={t('corbeilleNote', langue)} onClick={() => corbeiller(l)}>
-                      🗑 {t('corbeiller', langue)}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
+        </div>
       )}
 
-      {decidees.length > 0 && (
-        <section className="carte large">
-          <h2>{t('reorgHistorique', langue)}</h2>
-          <table>
-            <tbody>
-              {decidees.map((a) => (
-                <tr key={a.cle}>
-                  <td>
-                    {a.cheminActuel && <>{a.cheminActuel} {'→'} </>}{a.cheminPropose}
-                  </td>
-                  <td className="nombre">
-                    <span className={`pastille ${a.statut === 'validé' ? 'douce' : a.statut === 'appliqué' ? 'ok' : a.statut.startsWith('refusé') ? 'crit' : 'cat'}`}>
-                      {a.statut}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-      )}
+      {/* L'analyse de tout le Drive : une puce, comme les raccourcis du chat. En cours ⇒ le dire. */}
+      <div className="puces-actions">
+        {analyseEnCours
+          ? <span className="puce-action attente">⏳ {t('analyseEnCours', langue)}</span>
+          : (
+            <button className="puce-action" onClick={() => demanderAnalyse('tout')} disabled={enCours}>
+              ✨ {t(demande ? 'reAnalyser' : 'analyserToutDrive', langue)}
+            </button>
+          )}
+      </div>
     </div>
   );
 }

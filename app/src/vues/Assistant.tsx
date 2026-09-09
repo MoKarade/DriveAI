@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { envoyerMessageChat, viderCachePlages, MessageChat } from '../google';
 import { ReorgVue } from './Reorg';
+import { Icone } from '../composants/Icone';
 import { Langue, t } from '../i18n';
 
 // Historique du chat en sessionStorage (survit au F5, DÉTRUIT à la fermeture de l'onglet) — jamais
@@ -101,80 +102,76 @@ export function Assistant({ langue }: { langue: Langue }) {
   }
 
   return (
-    <div className="accueil">
-      <section className="carte large">
-        <div className="chat-entete">
-          <h2>💬 {t('assistant', langue)}</h2>
-          {messages.length > 0 && (
-            <button className="discret" onClick={effacer} disabled={enCours} title={t('assistantEffacer', langue)}>
-              🗑 {t('assistantEffacer', langue)}
-            </button>
-          )}
-        </div>
+    <div className="assistant">
+      <h2 className="titre-liste">
+        {t('assistant', langue)}
+        {budget && <span className="h2-note">{budget.coutJour.toFixed(2)} $ / {budget.plafond} $</span>}
+        {messages.length > 0 && (
+          <button className="icone-bouton petit" onClick={effacer} disabled={enCours}
+            aria-label={t('assistantEffacer', langue)} title={t('assistantEffacer', langue)}>
+            <Icone nom="fermer" />
+          </button>
+        )}
+      </h2>
 
-        <div className="chat-fil" role="log" aria-live="polite">
-          {messages.map((m, i) =>
-            m.role === 'user' ? (
-              <div key={i} className="chat-bulle chat-moi">{m.content}</div>
-            ) : (
-              // Réponse de l'assistant en Markdown (listes, gras, liens). react-markdown NE rend PAS
-              // le HTML brut par défaut (pas de rehype-raw) → un contenu de doc cité reste inerte (XSS
-              // impossible ; esprit ADR-0007). Les URLs javascript: sont neutralisées par défaut.
-              <div key={i} className="chat-bulle chat-ia chat-markdown">
-                <ReactMarkdown
-                  components={{
-                    a: ({ node: _n, ...p }) => <a {...p} target="_blank" rel="noopener noreferrer" />,
-                  }}
-                >
-                  {m.content}
-                </ReactMarkdown>
-              </div>
-            ),
-          )}
-          {enCours && (
-            // Indicateur de charge BIEN VISIBLE (retour Marc : « on voit pas qu'il charge »).
-            // Un tour peut durer jusqu'à ~1 min (2 passes + Tool Use) → on l'annonce. Pas de
-            // role/aria-live ici : la fenêtre parente (role="log" aria-live) annonce déjà l'ajout.
-            <div className="chat-loader">
-              <span className="chat-loader-points" aria-hidden="true"><span /><span /><span /></span>
-              <span>{t('assistantAnalyse', langue)}</span>
+      <div className="chat-fil" role="log" aria-live="polite">
+        {messages.map((m, i) =>
+          m.role === 'user' ? (
+            <div key={i} className="chat-bulle chat-moi">{m.content}</div>
+          ) : (
+            // Réponse de l'assistant en Markdown (listes, gras, liens). react-markdown NE rend PAS
+            // le HTML brut par défaut (pas de rehype-raw) → un contenu de doc cité reste inerte (XSS
+            // impossible ; esprit ADR-0007). Les URLs javascript: sont neutralisées par défaut.
+            <div key={i} className="chat-bulle chat-ia chat-markdown">
+              <ReactMarkdown
+                components={{
+                  a: ({ node: _n, ...p }) => <a {...p} target="_blank" rel="noopener noreferrer" />,
+                }}
+              >
+                {m.content}
+              </ReactMarkdown>
             </div>
-          )}
-          <div ref={finRef} />
-        </div>
-
-        {erreur && <p className="erreur">{t('erreur', langue)} : {erreur}</p>}
-
-        <div className="ligne-formulaire recherche-ia">
-          <input
-            value={saisie}
-            onChange={(e) => setSaisie(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && envoyer(saisie)}
-            placeholder={t('assistantPlaceholder', langue)}
-            disabled={enCours}
-          />
-          <button onClick={() => envoyer(saisie)} disabled={enCours || !saisie.trim()}>
-            {enCours ? t('chargement', langue) : `➤ ${t('assistantEnvoyer', langue)}`}
-          </button>
-        </div>
-
-        <div className="actions" style={{ margin: '0.4rem 0' }}>
-          <button className="discret" disabled={enCours} onClick={() => envoyer(t('assistantSuggererPrompt', langue))}>
-            ✨ {t('assistantSuggererDossiers', langue)}
-          </button>
-          <button className="discret" disabled={enCours} onClick={() => envoyer(t('assistantOrganiserPrompt', langue))}>
-            🗂 {t('assistantOrganiser', langue)}
-          </button>
-        </div>
-
-        {budget && (
-          <div className="chat-budget">
-            <span className="explication">{t('assistantBudget', langue)} : {budget.coutJour.toFixed(2)} $</span>
+          ),
+        )}
+        {enCours && (
+          // Indicateur de charge BIEN VISIBLE (retour Marc : « on voit pas qu'il charge »). Un tour
+          // peut durer jusqu'à ~1 min (2 passes + Tool Use).
+          <div className="chat-loader">
+            <span className="chat-loader-points" aria-hidden="true"><span /><span /><span /></span>
+            <span>{t('assistantAnalyse', langue)}</span>
           </div>
         )}
-      </section>
+        <div ref={finRef} />
+      </div>
 
+      {/* Les propositions (chat + plan) et les dossiers vides, dans le fil, juste au-dessus de la saisie. */}
       <ReorgVue key={cleReorg} langue={langue} />
+
+      {erreur && <p className="erreur">{t('erreur', langue)} : {erreur}</p>}
+
+      {messages.length === 0 && !enCours && (
+        <div className="puces-actions">
+          <button className="puce-action" disabled={enCours} onClick={() => envoyer(t('assistantSuggererPrompt', langue))}>
+            <Icone nom="etincelle" /> {t('assistantSuggererDossiers', langue)}
+          </button>
+          <button className="puce-action" disabled={enCours} onClick={() => envoyer(t('assistantOrganiserPrompt', langue))}>
+            <Icone nom="dossier" /> {t('assistantOrganiser', langue)}
+          </button>
+        </div>
+      )}
+
+      <form className="chat-saisie" onSubmit={(e) => { e.preventDefault(); void envoyer(saisie); }}>
+        <input
+          value={saisie}
+          onChange={(e) => setSaisie(e.target.value)}
+          placeholder={t('assistantPlaceholder', langue)}
+          aria-label={t('assistantPlaceholder', langue)}
+          disabled={enCours}
+        />
+        <button type="submit" className="envoyer" disabled={enCours || !saisie.trim()} aria-label={t('assistantEnvoyer', langue)} title={t('assistantEnvoyer', langue)}>
+          <Icone nom="envoyer" />
+        </button>
+      </form>
     </div>
   );
 }

@@ -33,7 +33,8 @@
 > (nom OU contenu) + « IA », dossiers/fichiers en lignes, « + », ✨ ; sous-onglets et filtres
 > d'Index retirés (`Recherche.tsx` supprimé) — **#332 en revue flotte**. **PR 3 (Agenda)** codée sur
 > `wip/pr3` (locale, poussée après #332) : liste par jour sur téléphone, grille ouverte à 7 h, tâches
-> en lignes. Suit PR 4 (Assistant).
+> en lignes. **PR 4 (Assistant)** codée sur `wip/pr4` : fil plein écran, propositions en cartes
+> dans le fil, historique retiré, saisie collante. PR 3 + PR 4 seront poussées ensemble après #332.
 > ⚠️ Pour les PR suivantes : le socle de données (`google.ts`, `etat.ts`, `agenda.ts`, `corbeille.ts`)
 > ne bouge pas ; chaque PR part en brouillon, passe la revue flotte, puis SORT du brouillon (sinon
 > elle ne merge jamais — #329).
