@@ -1,15 +1,16 @@
 /**
- * Agenda.tsx — vue v5 « clone Google Agenda » (C28-23 PR2+PR3, plan architecte) : grille
- * HORAIRE absolue Jour/Semaine/Mois (Semaine par défaut), rangée « toute la journée »,
- * gouttière d'heures, blocs à la minute, couleurs PAR TYPE, ligne « maintenant », 3 jours
- * glissants sur mobile. Un clic sur un CRÉNEAU vide ouvre la création pré-remplie ; un clic sur
- * un BLOC ouvre un popover façon GCal. v7 (ADR-0051) : plus de mini-calendrier ni de barre
- * latérale — la date se pilote ici (‹ › Aujourd'hui), « Mes agendas » devient une rangée de
- * puces sous le titre, et le « + » de l'en-tête ouvre la création libre (ex-bouton « Créer » de
- * la barre latérale). Écritures : créer et cocher — jamais supprimer ni modifier.
+ * Agenda.tsx — v7 (ADR-0051, C28-82 PR3). Téléphone : vue LISTE par défaut (bande de 7 jours,
+ * un bloc par jour qui a quelque chose) et bascule GRILLE (3 jours glissants). PC : grille
+ * HORAIRE absolue Jour/Semaine/Mois (Semaine par défaut, C28-23) — rangée « toute la journée »,
+ * gouttière d'heures, blocs à la minute, couleurs par agenda, ligne « maintenant » —, dans un
+ * conteneur défilant OUVERT À 7 H (rien de caché : la nuit reste au-dessus). Un clic sur un
+ * CRÉNEAU vide ouvre la création pré-remplie ; un clic sur un BLOC ouvre un popover façon GCal.
+ * La date se pilote ici (‹ › Aujourd'hui), « Mes agendas » est une rangée de puces sous le titre,
+ * le « + » de l'en-tête ouvre la création libre. Tâches ouvertes en lignes (case = « Fait »), les
+ * faites disparaissent. Écritures : créer et cocher — jamais supprimer ni modifier.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { listerEvenements, listerTaches, cocherTache } from '../google';
 import { useEtatGlobal } from '../etatGlobal';
 import { IndicateurChargement, BanniereErreur } from '../composants/UI';
@@ -27,6 +28,7 @@ import {
   interpreterTaches,
   evenementsDuJour,
   tachesDuJour,
+  planningParJour,
   heureEvenement,
   libelleHoraire,
   positionEvenement,
@@ -66,9 +68,21 @@ export function Agenda({ langue }: { langue: Langue }) {
   const [popover, setPopover] = useState<Popover | null>(null);
   const [creneau, setCreneau] = useState<{ date: string; heure: string } | null>(null);
   const [creationLibre, setCreationLibre] = useState(false); // « + » de l'en-tête (v7)
+  const [modeTel, setModeTel] = useState<'liste' | 'grille'>('liste'); // téléphone (PR 3) : liste par défaut
+  const defilantRef = useRef<HTMLDivElement>(null);
   const [charge, setCharge] = useState(false);
   const [erreur, setErreur] = useState('');
   const etroit = useEstEtroit();
+  const enListe = etroit && modeTel === 'liste'; // téléphone en vue Liste : la bande est la SEMAINE
+
+  // La grille s'ouvre à 7 h : sur téléphone, huit heures vides défilaient avant le premier RDV
+  // (captures v7). Rien n'est caché — la nuit reste au-dessus, il suffit de remonter.
+  // `charge` dans les dépendances : la grille n'existe qu'après la première lecture (avant, c'est le
+  // chargement) — sans lui, l'effet tournait sur un conteneur absent et la grille restait à 0 h.
+  useEffect(() => {
+    const el = defilantRef.current;
+    if (el) el.scrollTop = (7 / 24) * el.scrollHeight;
+  }, [vueCal, modeTel, etroit, charge]);
 
   // « Mes agendas » RÉEL (C28-41 PR2) : les événements sont chargés PAR agenda coché (couleur
   // de l'agenda sur chaque bloc) ; la case Tâches filtre l'affichage de la grille — la liste
@@ -88,7 +102,11 @@ export function Agenda({ langue }: { langue: Langue }) {
       : etroit ? grilleTroisJours(semaineRef)
         : grilleSemaine(semaineRef);
 
-  /** Navigation ‹ › : ±1 mois, ±7 j (±3 sur mobile) ou ±1 jour — `mois` suit la référence. */
+  /**
+   * Navigation ‹ › : ±1 mois, ±7 j (±3 en grille mobile) ou ±1 jour — `mois` suit la référence.
+   * En vue Liste, le pas est TOUJOURS la semaine : la bande affiche `grilleSemaine(semaineRef)`,
+   * un pas de 3 jours depuis mercredi ne changeait rien à l'écran (revue flotte PR 3).
+   */
   function naviguer(sens: 1 | -1) {
     if (vueCal === 'mois') {
       const m = new Date(mois.getFullYear(), mois.getMonth() + sens, 1);
@@ -96,7 +114,7 @@ export function Agenda({ langue }: { langue: Langue }) {
       setSemaineRef(m); // la date focalisée SUIT la vue Mois (revue flotte, comportement GCal)
       return;
     }
-    const pas = vueCal === 'jour' ? 1 : etroit ? 3 : 7;
+    const pas = enListe ? 7 : vueCal === 'jour' ? 1 : etroit ? 3 : 7;
     const ref = new Date(semaineRef.getFullYear(), semaineRef.getMonth(), semaineRef.getDate() + pas * sens);
     setSemaineRef(ref);
     if (ref.getMonth() !== mois.getMonth() || ref.getFullYear() !== mois.getFullYear()) {
@@ -167,15 +185,24 @@ export function Agenda({ langue }: { langue: Langue }) {
 
   return (
     <div className="colonnes agenda">
-      <section className="carte cal-carte">
+      <section className={'carte cal-carte' + (enListe ? ' liste' : '')}>
         <h2>
           <span className="cal-titre">{MOIS[(vueCal === 'mois' ? mois : semaineRef).getMonth()]} {(vueCal === 'mois' ? mois : semaineRef).getFullYear()}</span>
           <span className="cal-nav">
-            {(['jour', 'semaine', 'mois'] as VueCal[]).map((v) => (
-              <button key={v} className={vueCal === v ? '' : 'discret'} onClick={() => setVueCal(v)}>
-                {t(v === 'jour' ? 'vueJour' : v === 'semaine' ? 'vueSemaine' : 'vueMois', langue)}
-              </button>
-            ))}
+            {etroit ? (
+              <span className="segment" role="group">
+                <button className={modeTel === 'liste' ? 'on' : ''} onClick={() => setModeTel('liste')}>{t('vueListe', langue)}</button>
+                <button className={modeTel === 'grille' ? 'on' : ''} onClick={() => setModeTel('grille')}>{t('vueGrille', langue)}</button>
+              </span>
+            ) : (
+              <span className="segment" role="group">
+                {(['jour', 'semaine', 'mois'] as VueCal[]).map((v) => (
+                  <button key={v} className={vueCal === v ? 'on' : ''} onClick={() => setVueCal(v)}>
+                    {t(v === 'jour' ? 'vueJour' : v === 'semaine' ? 'vueSemaine' : 'vueMois', langue)}
+                  </button>
+                ))}
+              </span>
+            )}
             <button className="discret" aria-label={t('precedent', langue)} onClick={() => naviguer(-1)}>‹</button>
             <button className="discret"
               onClick={() => {
@@ -220,7 +247,20 @@ export function Agenda({ langue }: { langue: Langue }) {
           )}
         </div>
 
-        {vueCal === 'mois' ? (
+        {enListe ? (
+          <ListeJours
+            langue={langue}
+            jours={grilleSemaine(semaineRef)}
+            reference={semaineRef}
+            evenements={evenementsAffiches}
+            taches={tachesAffichees}
+            aujourdhuiCle={aujourdhuiCle}
+            onJour={(j) => setSemaineRef(j)}
+            onEvenement={(e) => setPopover({ genre: 'evenement', e })}
+            onTache={(tache) => setPopover({ genre: 'tache', tache })}
+            onCocher={(tache) => void basculerTache(tache)}
+          />
+        ) : vueCal === 'mois' ? (
           <>
             <table className="cal">
               <thead>
@@ -258,47 +298,39 @@ export function Agenda({ langue }: { langue: Langue }) {
             </table>
           </>
         ) : (
-          <GrilleTemps
-            langue={langue}
-            jours={joursGrille}
-            evenements={evenementsAffiches}
-            taches={tachesAffichees}
-            aujourdhuiCle={aujourdhuiCle}
-            onEntete={ouvrirJour}
-            onCreneau={(j, h) => setCreneau({ date: cleJour(j), heure: `${String(h).padStart(2, '0')}:00` })}
-            onEvenement={(e) => setPopover({ genre: 'evenement', e })}
-            onTache={(tache) => setPopover({ genre: 'tache', tache })}
-          />
+          <div className="gt-defilant" ref={defilantRef}>
+            <GrilleTemps
+              langue={langue}
+              jours={joursGrille}
+              evenements={evenementsAffiches}
+              taches={tachesAffichees}
+              aujourdhuiCle={aujourdhuiCle}
+              onEntete={ouvrirJour}
+              onCreneau={(j, h) => setCreneau({ date: cleJour(j), heure: `${String(h).padStart(2, '0')}:00` })}
+              onEvenement={(e) => setPopover({ genre: 'evenement', e })}
+              onTache={(tache) => setPopover({ genre: 'tache', tache })}
+            />
+          </div>
         )}
       </section>
 
-      <section className="carte">
-        <h2>{t('tachesOuvertes', langue)}</h2>
-        {taches.every((tk) => tk.faite) && <p className="explication">{t('aucuneTache', langue)}</p>}
-        <table>
-          <tbody>
-            {taches.filter((tk) => !tk.faite).map((tk) => (
-              <tr key={tk.id} className="ligne-clic">
-                <td style={{ width: '1.8rem' }}>
-                  <button
-                    className="discret coche"
-                    aria-label={tk.faite ? t('decocher', langue) : t('cocher', langue)}
-                    onClick={() => basculerTache(tk)}
-                  >
-                    {tk.faite ? '☑' : '☐'}
-                  </button>
-                </td>
-                <td onClick={() => setPopover({ genre: 'tache', tache: tk })}>
-                  <span className={tk.faite ? 'faite' : ''}>{tk.titre}</span>
-                  <div className="variante">
-                    {tk.echeance && `${t('echeance', langue)} ${tk.echeance}`}
-                    {tk.parDriveAI && ` · ${t('parDriveAI', langue)}`}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <section>
+        <h2 className="titre-liste">{t('tachesOuvertes', langue)}</h2>
+        <div className="carte lignes">
+          {taches.every((tk) => tk.faite) && <p className="ligne vide">{t('aucuneTache', langue)}</p>}
+          {taches.filter((tk) => !tk.faite).map((tk) => (
+            <div key={tk.id} className="ligne">
+              <button className="icone-bouton petit" aria-label={`${t('cocher', langue)} : ${tk.titre}`} title={t('marquerFaite', langue)}
+                onClick={() => void basculerTache(tk)}>
+                <Icone nom="coche" />
+              </button>
+              <button className="t texte" onClick={() => setPopover({ genre: 'tache', tache: tk })}>
+                <b>{tk.titre}</b>
+                <small>{tk.echeance ? `${t('echeance', langue)} ${tk.echeance}` : t('sansEcheance', langue)}{tk.parDriveAI && ` · ${t('parDriveAI', langue)}`}</small>
+              </button>
+            </div>
+          ))}
+        </div>
       </section>
 
 
@@ -387,6 +419,84 @@ export function Agenda({ langue }: { langue: Langue }) {
  * RDV perso, ambre = DriveAI, gris = journée entière. Ligne rouge « maintenant ». Un clic sur
  * un CRÉNEAU vide remonte le jour + l'heure (créés depuis la position Y du clic, plan PR3).
  */
+/**
+ * Vue LISTE (téléphone, v7 PR 3) : une bande de 7 jours (point = quelque chose ce jour-là), puis un
+ * bloc par jour qui a du contenu — aujourd'hui toujours, avec « rien ce jour » s'il est vide.
+ * Un tap sur un jour de la bande y fait défiler la liste. Aucune grille horaire à parcourir.
+ */
+function ListeJours({ langue, jours, reference, evenements, taches, aujourdhuiCle, onJour, onEvenement, onTache, onCocher }: {
+  langue: Langue;
+  jours: JourGrille[];
+  reference: Date;
+  evenements: Evenement[];
+  taches: Tache[];
+  aujourdhuiCle: string;
+  onJour: (j: Date) => void;
+  onEvenement: (e: Evenement) => void;
+  onTache: (t: Tache) => void;
+  onCocher: (t: Tache) => void;
+}) {
+  const locale = langue === 'fr' ? 'fr-CA' : 'en-CA';
+  const plan = planningParJour(jours, evenements, taches, aujourdhuiCle);
+  const avecContenu = new Set(plan.filter((j) => j.evenements.length + j.taches.length > 0).map((j) => cleJour(j.date)));
+  const refCle = cleJour(reference);
+  return (
+    <div className="liste-jours">
+      <div className="bande-jours" role="group">
+        {jours.map((j) => {
+          const cle = cleJour(j.date);
+          return (
+            <button
+              key={cle}
+              className={(cle === aujourdhuiCle ? 'auj' : '') + (cle === refCle ? ' sel' : '')}
+              onClick={() => { onJour(j.date); document.getElementById(`jour-${cle}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }}
+            >
+              <span>{JOURS_SEMAINE[(j.date.getDay() + 6) % 7]}</span>
+              <b>{j.date.getDate()}</b>
+              {avecContenu.has(cle) && <i aria-hidden="true" />}
+            </button>
+          );
+        })}
+      </div>
+      {plan.map((j) => {
+        const cle = cleJour(j.date);
+        return (
+          <div key={cle} id={`jour-${cle}`} className="jour-carte">
+            <h3>
+              {j.date.toLocaleDateString(locale, { weekday: 'long', day: 'numeric' })}
+              {cle === aujourdhuiCle && ` · ${t('aujourdhui', langue).toLowerCase()}`}
+            </h3>
+            <div className="carte lignes">
+              {j.evenements.length + j.taches.length === 0 && <p className="ligne vide">{t('rienCeJour', langue)}</p>}
+              {j.evenements.map((e) => (
+                <button key={e.id} className="ligne texte" onClick={() => onEvenement(e)}>
+                  <span className="heure">{e.journee ? '—' : heureEvenement(e)}</span>
+                  <span className="barre" style={{ background: e.parDriveAI ? 'var(--attention)' : (e.couleur || 'var(--accent)') }} aria-hidden="true" />
+                  <span className="t">
+                    <b>{e.titre}</b>
+                    {(e.lieu || e.journee) && <small>{e.journee ? t('journee', langue) : ''}{e.journee && e.lieu ? ' · ' : ''}{e.lieu ?? ''}</small>}
+                  </span>
+                </button>
+              ))}
+              {j.taches.map((tk) => (
+                <div key={tk.id} className="ligne">
+                  <button className="icone-bouton petit" aria-label={`${t('cocher', langue)} : ${tk.titre}`} title={t('marquerFaite', langue)} onClick={() => onCocher(tk)}>
+                    <Icone nom="coche" />
+                  </button>
+                  <button className="t texte" onClick={() => onTache(tk)}>
+                    <b>{tk.titre}</b>
+                    <small>{t('tache', langue)}{tk.parDriveAI && ` · ${t('parDriveAI', langue)}`}</small>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function GrilleTemps({ langue, jours, evenements, taches, aujourdhuiCle, onEntete, onCreneau, onEvenement, onTache }: {
   langue: Langue;
   jours: JourGrille[];

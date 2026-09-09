@@ -25,15 +25,7 @@ import {
   verdictReclassement,
   RACINES_PROTEGEES_DEFAUT,
 } from './garde-fous';
-import {
-  ElementDrive,
-  MIME_DOSSIER,
-  qEnfants,
-  qRecherche,
-  qSousDossiers,
-  decouperEnLots,
-  estDossierATrier,
-} from './explorateur';
+import { ElementDrive, MIME_DOSSIER, qEnfants, qRecherche, estDossierATrier } from './explorateur';
 import { lireConfig } from './config';
 import { plageMock, ENFANTS_MOCK, TACHES_MOCK, EVENEMENTS_MOCK, EVENEMENTS_PAR_AGENDA, AGENDAS_MOCK } from './mockData';
 
@@ -194,14 +186,12 @@ export function viderCachePlages(onglet?: string): void {
   }
   cachePlages.clear();
   cacheDossiers.clear(); // les listages Drive suivent le même cycle de vie (C21-01)
-  cachePortee.clear();
   cacheAscendanceDossier.clear(); // l'ascendance peut avoir changé (réorg moteur) — re-vérifiée
 }
 
 /** Invalide les seuls caches DRIVE (déplacement/création : les listages changent, pas la Sheet). */
 function viderCachesDrive(): void {
   cacheDossiers.clear();
-  cachePortee.clear();
 }
 
 /** Lit une plage (valeurs brutes, lignes de tableaux). */
@@ -303,19 +293,6 @@ async function resoudreRacine(): Promise<string> {
   return r.id;
 }
 
-/**
- * Recherche PLEIN TEXTE déléguée à l'index natif de Drive (`fullText contains`) — on cherche DANS
- * le contenu des documents sans que DriveAI ne stocke aucun corps (ADR-0007 : pas d'index plein
- * texte propre à l'app). Lecture seule, dossiers exclus.
- */
-export async function rechercheFullText(texte: string): Promise<FichierDrive[]> {
-  const sain = texte.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-  const q = `fullText contains '${sain}' and trashed = false and mimeType != 'application/vnd.google-apps.folder'`;
-  const r = await api<{ files?: FichierDrive[] }>(
-    `${DRIVE}?q=${encodeURIComponent(q)}&fields=${encodeURIComponent('files(id,name,webViewLink)')}&pageSize=25`,
-  );
-  return r.files ?? [];
-}
 
 // Cache SESSION des ascendances de DOSSIERS (C28-08, plan P3) : l'ascendance d'un dossier ne
 // bouge pas pendant une session de tri (l'app ne déplace jamais de dossier ; la réorg MOTEUR
@@ -486,77 +463,20 @@ export async function listerEnfants(dossierId: string, pageToken?: string): Prom
 }
 
 /**
- * Collecte BORNÉE des sous-dossiers d'une racine (BFS, multi-parents dédoublonnés) — la portée
- * « dans ce dossier » de la recherche : `in parents` ne voit que les enfants DIRECTS, il faut
- * donc énumérer les descendants. Plafond dur (quota + taille de `q`) ; `tronque` le signale
- * honnêtement à l'UI au lieu de laisser croire à une couverture complète.
- */
-const cachePortee = new Map<string, { t: number; portee: { ids: string[]; tronque: boolean } }>();
-
-export async function collecterSousDossiers(
-  racineId: string,
-  plafond = 80,
-): Promise<{ ids: string[]; tronque: boolean }> {
-  // Mémoïsée 60 s : chaque Enter dans le même dossier ne re-paye pas la collecte (jusqu'à
-  // ~plafond appels au pire sur une arborescence très profonde).
-  const memo = cachePortee.get(racineId);
-  if (memo && Date.now() - memo.t < CACHE_MS) return memo.portee;
-  const ids = [racineId];
-  let front = [racineId];
-  let tronque = false;
-  while (front.length > 0 && !tronque) {
-    const decouverts: string[] = [];
-    for (const lot of decouperEnLots(front, 10)) {
-      const params = new URLSearchParams({
-        q: qSousDossiers(lot),
-        fields: 'files(id)',
-        pageSize: '100',
-      });
-      const r = await api<{ files?: { id: string }[] }>(`${DRIVE}?${params.toString()}`);
-      const fichiers = r.files ?? [];
-      // Page PLEINE sans lire nextPageToken = couverture non garantie → dit honnêtement.
-      if (fichiers.length >= 100) tronque = true;
-      for (const f of fichiers) decouverts.push(f.id);
-    }
-    const ajoutes: string[] = [];
-    for (const id of decouverts) {
-      if (ids.length >= plafond) {
-        tronque = true;
-        break;
-      }
-      if (!ids.includes(id)) {
-        ids.push(id);
-        ajoutes.push(id);
-      }
-    }
-    front = ajoutes;
-  }
-  const portee = { ids, tronque };
-  cachePortee.set(racineId, { t: Date.now(), portee });
-  return portee;
-}
-
-/**
- * Recherche façon barre Google Drive (nom OU plein texte natif). `portee` (liste de dossiers,
- * cf. `collecterSousDossiers`) découpe en lots — fusion dédoublonnée par id.
+ * Recherche façon barre Google Drive (nom OU plein texte natif), GLOBALE (v7 : plus de portée
+ * « dans ce dossier » — la collecte bornée des sous-dossiers est partie avec). Une page de
+ * `RECHERCHE_PAGE` résultats ; `tronque` dit honnêtement qu'il y en avait d'autres.
  */
 export const RECHERCHE_PAGE = 50;
-export async function rechercherDrive(texte: string, portee?: string[]): Promise<{ elements: ElementDrive[]; tronque: boolean }> {
-  const lots: (string[] | undefined)[] =
-    portee && portee.length > 0 ? decouperEnLots(portee, 10) : [undefined];
-  const vus = new Map<string, ElementDrive>();
-  let tronque = false; // v7 : une recherche globale sur tout le Drive doit DIRE qu'elle s'arrête à 50
-  for (const lot of lots) {
-    const params = new URLSearchParams({
-      q: qRecherche(texte, lot),
-      fields: `nextPageToken,files(${CHAMPS_ELEMENT})`,
-      pageSize: String(RECHERCHE_PAGE),
-    });
-    const r = await api<{ files?: ElementDrive[]; nextPageToken?: string }>(`${DRIVE}?${params.toString()}`);
-    for (const f of r.files ?? []) vus.set(f.id, f);
-    if (r.nextPageToken) tronque = true;
-  }
-  return { elements: Array.from(vus.values()), tronque };
+export async function rechercherDrive(texte: string): Promise<{ elements: ElementDrive[]; tronque: boolean }> {
+  const params = new URLSearchParams({
+    q: qRecherche(texte),
+    fields: `nextPageToken,files(${CHAMPS_ELEMENT})`,
+    pageSize: String(RECHERCHE_PAGE),
+  });
+  const r = await api<{ files?: ElementDrive[]; nextPageToken?: string }>(`${DRIVE}?${params.toString()}`);
+  // v7 : une recherche globale sur tout le Drive doit DIRE qu'elle s'arrête à 50.
+  return { elements: r.files ?? [], tronque: Boolean(r.nextPageToken) };
 }
 
 /* ---------- Explorateur (C21-02) : création de dossier + déplacement MANUEL ---------- */

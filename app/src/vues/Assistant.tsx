@@ -1,22 +1,23 @@
 /**
- * Assistant.tsx — onglet ASSISTANT (C28-30 PR3, ADR-0026). REMPLACE la page réorg.
+ * Assistant.tsx — onglet ASSISTANT (C28-30 PR3, ADR-0026 ; v7 C28-82 PR4). REMPLACE la page réorg.
  *
- * Deux moitiés, un onglet :
- *  - GAUCHE : le CHAT. Marc pose des questions sur ses fichiers (« donne mon NAS ») OU demande de
- *    ranger (« crée un dossier Garage dans Véhicule », « organise mes photos »). Le moteur (doPost
- *    `chat-assistant`) cherche/lit et répond ; la clé Claude et l'accès Drive vivent CÔTÉ MOTEUR
- *    (ADR-0007) — l'app n'envoie que l'historique et n'affiche que la réponse + un compteur de budget.
- *    L'historique persiste en sessionStorage (survit au F5, meurt à la fermeture d'onglet ; jamais
- *    localStorage — esprit ADR-0007). Plafond quotidien §2.6 : au-delà, refus honnête.
- *  - DROITE : le PLAN à valider (`ReorgVue`). Les opérations que l'assistant PROPOSE arrivent dans
- *    l'onglet Réorg ; Marc les valide PAR ACTION ici. Le moteur applique ensuite (chemin GARDÉ
- *    C21-06). Rien n'est jamais supprimé ni appliqué sans la validation de Marc.
+ * Un seul fil, plein écran : le CHAT. Marc pose des questions sur ses fichiers (« donne mon NAS »)
+ * OU demande de ranger (« crée un dossier Garage dans Véhicule », « organise mes photos »). Le
+ * moteur (doPost `chat-assistant`) cherche/lit et répond ; la clé Claude et l'accès Drive vivent
+ * CÔTÉ MOTEUR (ADR-0007) — l'app n'envoie que l'historique et n'affiche que la réponse + un compteur
+ * de budget. L'historique persiste en sessionStorage (survit au F5, meurt à la fermeture d'onglet ;
+ * jamais localStorage — esprit ADR-0007). Plafond quotidien §2.6 : au-delà, refus honnête.
+ * Les opérations que l'assistant PROPOSE (et le plan « Analyser tout le Drive ») arrivent dans
+ * l'onglet Réorg et s'affichent en CARTES dans le fil (`ReorgVue`), juste au-dessus de la saisie
+ * collée en bas ; Marc les valide PAR ACTION. Le moteur applique ensuite (chemin GARDÉ C21-06).
+ * Rien n'est jamais supprimé ni appliqué sans la validation de Marc.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { envoyerMessageChat, viderCachePlages, MessageChat } from '../google';
 import { ReorgVue } from './Reorg';
+import { Icone } from '../composants/Icone';
 import { Langue, t } from '../i18n';
 
 // Historique du chat en sessionStorage (survit au F5, DÉTRUIT à la fermeture de l'onglet) — jamais
@@ -59,8 +60,10 @@ export function Assistant({ langue }: { langue: Langue }) {
     try { sessionStorage.setItem(CLE_CHAT, JSON.stringify(messages)); } catch { /* stockage indispo : le chat reste en mémoire */ }
   }, [messages]);
 
-  // Auto-scroll vers le dernier message.
-  useEffect(() => { finRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, enCours]);
+  // Auto-scroll vers le dernier message. `block: 'end'` (revue PR 4) : avec des cartes de propositions
+  // SOUS la sentinelle, `'start'` la calait en haut de l'écran et la dernière réponse passait au-dessus
+  // du pli ; `.chat-fin` porte la marge qui la sort de sous la saisie collante.
+  useEffect(() => { finRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [messages, enCours]);
 
   function effacer() {
     setMessages([]); // l'effet de persistance ci-dessus réécrit alors '[]' → historique vidé
@@ -101,80 +104,76 @@ export function Assistant({ langue }: { langue: Langue }) {
   }
 
   return (
-    <div className="accueil">
-      <section className="carte large">
-        <div className="chat-entete">
-          <h2>💬 {t('assistant', langue)}</h2>
-          {messages.length > 0 && (
-            <button className="discret" onClick={effacer} disabled={enCours} title={t('assistantEffacer', langue)}>
-              🗑 {t('assistantEffacer', langue)}
-            </button>
-          )}
-        </div>
+    <div className="assistant">
+      <h2 className="titre-liste">
+        {t('assistant', langue)}
+        {budget && <span className="h2-note">{budget.coutJour.toFixed(2)} $ / {budget.plafond} $</span>}
+        {messages.length > 0 && (
+          <button className="icone-bouton petit" onClick={effacer} disabled={enCours}
+            aria-label={t('assistantEffacer', langue)} title={t('assistantEffacer', langue)}>
+            <Icone nom="fermer" />
+          </button>
+        )}
+      </h2>
 
-        <div className="chat-fil" role="log" aria-live="polite">
-          {messages.map((m, i) =>
-            m.role === 'user' ? (
-              <div key={i} className="chat-bulle chat-moi">{m.content}</div>
-            ) : (
-              // Réponse de l'assistant en Markdown (listes, gras, liens). react-markdown NE rend PAS
-              // le HTML brut par défaut (pas de rehype-raw) → un contenu de doc cité reste inerte (XSS
-              // impossible ; esprit ADR-0007). Les URLs javascript: sont neutralisées par défaut.
-              <div key={i} className="chat-bulle chat-ia chat-markdown">
-                <ReactMarkdown
-                  components={{
-                    a: ({ node: _n, ...p }) => <a {...p} target="_blank" rel="noopener noreferrer" />,
-                  }}
-                >
-                  {m.content}
-                </ReactMarkdown>
-              </div>
-            ),
-          )}
-          {enCours && (
-            // Indicateur de charge BIEN VISIBLE (retour Marc : « on voit pas qu'il charge »).
-            // Un tour peut durer jusqu'à ~1 min (2 passes + Tool Use) → on l'annonce. Pas de
-            // role/aria-live ici : la fenêtre parente (role="log" aria-live) annonce déjà l'ajout.
-            <div className="chat-loader">
-              <span className="chat-loader-points" aria-hidden="true"><span /><span /><span /></span>
-              <span>{t('assistantAnalyse', langue)}</span>
+      <div className="chat-fil" role="log" aria-live="polite">
+        {messages.map((m, i) =>
+          m.role === 'user' ? (
+            <div key={i} className="chat-bulle chat-moi">{m.content}</div>
+          ) : (
+            // Réponse de l'assistant en Markdown (listes, gras, liens). react-markdown NE rend PAS
+            // le HTML brut par défaut (pas de rehype-raw) → un contenu de doc cité reste inerte (XSS
+            // impossible ; esprit ADR-0007). Les URLs javascript: sont neutralisées par défaut.
+            <div key={i} className="chat-bulle chat-ia chat-markdown">
+              <ReactMarkdown
+                components={{
+                  a: ({ node: _n, ...p }) => <a {...p} target="_blank" rel="noopener noreferrer" />,
+                }}
+              >
+                {m.content}
+              </ReactMarkdown>
             </div>
-          )}
-          <div ref={finRef} />
-        </div>
-
-        {erreur && <p className="erreur">{t('erreur', langue)} : {erreur}</p>}
-
-        <div className="ligne-formulaire recherche-ia">
-          <input
-            value={saisie}
-            onChange={(e) => setSaisie(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && !e.nativeEvent.isComposing && envoyer(saisie)}
-            placeholder={t('assistantPlaceholder', langue)}
-            disabled={enCours}
-          />
-          <button onClick={() => envoyer(saisie)} disabled={enCours || !saisie.trim()}>
-            {enCours ? t('chargement', langue) : `➤ ${t('assistantEnvoyer', langue)}`}
-          </button>
-        </div>
-
-        <div className="actions" style={{ margin: '0.4rem 0' }}>
-          <button className="discret" disabled={enCours} onClick={() => envoyer(t('assistantSuggererPrompt', langue))}>
-            ✨ {t('assistantSuggererDossiers', langue)}
-          </button>
-          <button className="discret" disabled={enCours} onClick={() => envoyer(t('assistantOrganiserPrompt', langue))}>
-            🗂 {t('assistantOrganiser', langue)}
-          </button>
-        </div>
-
-        {budget && (
-          <div className="chat-budget">
-            <span className="explication">{t('assistantBudget', langue)} : {budget.coutJour.toFixed(2)} $</span>
+          ),
+        )}
+        {enCours && (
+          // Indicateur de charge BIEN VISIBLE (retour Marc : « on voit pas qu'il charge »). Un tour
+          // peut durer jusqu'à ~1 min (2 passes + Tool Use).
+          <div className="chat-loader">
+            <span className="chat-loader-points" aria-hidden="true"><span /><span /><span /></span>
+            <span>{t('assistantAnalyse', langue)}</span>
           </div>
         )}
-      </section>
+        <div ref={finRef} className="chat-fin" />
+      </div>
 
+      {/* Les propositions (chat + plan) et les dossiers vides, dans le fil, juste au-dessus de la saisie. */}
       <ReorgVue key={cleReorg} langue={langue} />
+
+      {erreur && <p className="erreur">{t('erreur', langue)} : {erreur}</p>}
+
+      {messages.length === 0 && !enCours && (
+        <div className="puces-actions">
+          <button className="puce-action" disabled={enCours} onClick={() => envoyer(t('assistantSuggererPrompt', langue))}>
+            <Icone nom="etincelle" /> {t('assistantSuggererDossiers', langue)}
+          </button>
+          <button className="puce-action" disabled={enCours} onClick={() => envoyer(t('assistantOrganiserPrompt', langue))}>
+            <Icone nom="dossier" /> {t('assistantOrganiser', langue)}
+          </button>
+        </div>
+      )}
+
+      <form className="chat-saisie" onSubmit={(e) => { e.preventDefault(); void envoyer(saisie); }}>
+        <input
+          value={saisie}
+          onChange={(e) => setSaisie(e.target.value)}
+          placeholder={t('assistantPlaceholder', langue)}
+          aria-label={t('assistantPlaceholder', langue)}
+          disabled={enCours}
+        />
+        <button type="submit" className="envoyer" disabled={enCours || !saisie.trim()} aria-label={t('assistantEnvoyer', langue)} title={t('assistantEnvoyer', langue)}>
+          <Icone nom="envoyer" />
+        </button>
+      </form>
     </div>
   );
 }

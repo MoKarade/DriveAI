@@ -31,10 +31,22 @@
 > erreurs vraiment sur 7 j, tâches en retard gardées). **#331 MERGÉE (auto-merge, 22:07 UTC)** :
 > socle + accueil + réglages sont dans `main` → Vercel. **PR 2 (Documents)** : un champ unique
 > (nom OU contenu) + « IA », dossiers/fichiers en lignes, « + », ✨ ; sous-onglets et filtres
-> d'Index retirés (`Recherche.tsx` supprimé). Suivent PR 3 (Agenda) et PR 4 (Assistant).
-> ⚠️ Pour les PR suivantes : le socle de données (`google.ts`, `etat.ts`, `agenda.ts`, `corbeille.ts`)
-> ne bouge pas ; chaque PR part en brouillon, passe la revue flotte, puis SORT du brouillon (sinon
-> elle ne merge jamais — #329).
+> d'Index retirés (`Recherche.tsx` supprimé) — **#332 en revue flotte**. **PR 3 (Agenda)** codée sur
+> `wip/pr3` (locale, poussée après #332) : liste par jour sur téléphone, grille ouverte à 7 h, tâches
+> en lignes. **PR 4 (Assistant)** codée sur `wip/pr4` : fil plein écran, propositions en cartes
+> dans le fil, historique retiré, saisie collante. **#332 (PR 2) MERGÉE 22:22 UTC** (revue : 5 🟠
+> intégrés). **PR 3 + PR 4 + PR 5 (nettoyage : 82 clés i18n, CSS mort, code mort, GUIDE.md, captures
+> docs) poussées ensemble dans #333** ; revue flotte : 4 🟠 intégrés (‹ › en vue Liste avançaient de
+> 3 jours sur une bande de 7 ; titre du jour sous la barre haute après un tap ; commentaire CSS non
+> fermé laissé par la purge ; **une action validée que le moteur refuse/rate disparaissait sans
+> trace** → `actionsRefuseesReorg`, ligne rouge jusqu'à « OK ») + 🟡 (reliquats `google.ts`, 8 règles
+> CSS, en-têtes, GUIDE, README captures, test journée entière multi-jours). 252 tests. **#333 sortie
+> du brouillon → auto-merge.** Une fois mergée : vérifier le déploiement Vercel `READY` (§6 CLAUDE.md)
+> et fermer le chantier ici. Ce qui reste HORS périmètre v7 (non demandé) : les vues non réécrites
+> gardent quelques `.explication` ; `qSousDossiers`/`decouperEnLots` (purs, testés) n'ont plus de
+> consommateur ; `_Doublons` orphelins, C28-79/81/74/70/71, #315, Lot C inchangés.
+> ⚠️ Règle de session : chaque PR part en brouillon, passe la revue flotte, puis SORT du brouillon
+> (sinon elle ne merge jamais — #329).
 >
 > **🎯 CHANTIER PRÉCÉDENT (matin) — 2026-09-09 : « mes mails sont toujours pas triés ni archivés » (C28-80 / ADR-0050).**
 > Comptage exhaustif des 50 premiers fils de la boîte (MCP Gmail, 13:20 UTC) : 21 non lus, 14 ⏰,

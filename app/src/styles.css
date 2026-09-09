@@ -120,6 +120,9 @@ nav.barre-basse { display: none; }
 .feuille-fond { position: fixed; inset: 0; z-index: 25; background: rgba(0, 0, 0, 0.55); border: none; }
 
 @media (max-width: 760px) {
+  /* hauteur RÉELLE de la barre basse (0,45 + 0,5 rem + icône 24 px + 3 px + libellé + bordure ≈ 4 rem) :
+     tout ce qui doit s'arrêter au-dessus d'elle lit cette variable, jamais un chiffre recopié. */
+  :root { --barre-basse-h: 4.1rem; }
   .corps-app { grid-template-columns: 1fr; }
   .rail { display: none; }
   .barre-haute {
@@ -129,7 +132,7 @@ nav.barre-basse { display: none; }
     background: var(--fond-haut); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--bord);
   }
-  .contenu { padding: 1rem 1rem calc(5.8rem + env(safe-area-inset-bottom)); }
+  .contenu { padding: 1rem 1rem calc(var(--barre-basse-h) + 1.7rem + env(safe-area-inset-bottom)); }
   nav.barre-basse {
     display: grid; grid-template-columns: repeat(4, 1fr);
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
@@ -259,14 +262,8 @@ tr:first-child > td { border-top: none; }
 .erreur { color: var(--erreur); }
 .chargement { color: var(--texte-doux); }
 
-
-
 .actions { display: flex; gap: 0.35rem; flex-wrap: wrap; }
 .actions button { padding: 0.3rem 0.6rem; font-size: 0.85rem; }
-
-/* tuiles de chiffres */
-.tuiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; grid-column: 1 / -1; }
-@media (max-width: 720px) { .tuiles { grid-template-columns: 1fr 1fr; } }
 .tuile { background: var(--carte); border: 1px solid var(--bord); border-radius: var(--r-l); padding: 1rem 1.2rem; }
 .tuile .v { font-size: 1.7rem; font-weight: 650; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .tuile .v small { font-size: 0.85rem; color: var(--texte-doux); font-weight: 500; }
@@ -277,9 +274,6 @@ tr:first-child > td { border-top: none; }
 .jauge { height: 6px; border-radius: 99px; background: var(--rang); margin-top: 0.5rem; overflow: hidden; }
 .jauge i { display: block; height: 100%; border-radius: 99px; background: var(--accent); transition: width 0.4s ease; }
 .jauge i.pleine { background: var(--attention); }
-
-.point-ok { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ok);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ok) 22%, transparent); margin-right: 0.35rem; }
 
 /* alertes (suspects) */
 .alerte-suspect { display: flex; gap: 0.6rem; align-items: baseline; padding: 0.6rem 0.7rem;
@@ -297,51 +291,14 @@ tr:first-child > td { border-top: none; }
 .pastille.crit { background: color-mix(in srgb, var(--erreur) 15%, transparent); color: var(--erreur); }
 .pastille.attn { background: color-mix(in srgb, var(--attention) 15%, transparent); color: var(--attention); }
 .pastille.cat { background: var(--cat-fond); color: var(--cat-texte); }
-
-.ligne-clic td { transition: background 0.15s ease; }
-.ligne-clic:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .lien-ligne { color: var(--texte); text-decoration: none; }
-.ligne-clic:hover .lien-ligne { color: var(--accent); }
 
-/* ---------- accueil v6 : agenda du jour + alertes + derniers classements + coût ---------- */
+/* ---------- accueil ---------- */
 .accueil { display: flex; flex-direction: column; gap: 1rem; }
-.accueil-grille { display: grid; grid-template-columns: 1fr; gap: 1rem; align-items: start; }
-.accueil-droite { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
-
-.jour-ligne {
-  display: flex; gap: 0.7rem; align-items: baseline;
-  padding: 0.5rem 0.2rem; border-top: 1px solid var(--rang); font-size: 0.92rem;
-  color: inherit; text-decoration: none; border-radius: 6px;
-}
-.jour-ligne:first-of-type { border-top: none; }
-a.jour-ligne:hover { background: color-mix(in srgb, var(--accent) 6%, transparent); }
-.jour-heure { flex: 0 0 4.6rem; font-variant-numeric: tabular-nums; color: var(--accent-fort); font-weight: 600; font-size: 0.85rem; }
-.jour-heure.douce { color: var(--texte-doux); font-weight: 450; }
-.jour-titre { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.jour-lieu { margin-left: auto; color: var(--texte-doux); font-size: 0.8rem; white-space: nowrap; }
-.jour-vide { color: var(--texte-doux); font-size: 0.9rem; padding: 0.6rem 0.2rem; }
-.jour-puce { width: 10px; height: 10px; border-radius: 3px; flex: 0 0 auto; align-self: center; }
 
 /* invite de reconnexion « Mes agendas » (C28-41 PR2 : jeton d'avant le scope calendar.readonly) */
 .agendas-scope { margin-top: 0.5rem; display: flex; flex-direction: column; gap: 0.35rem; }
 .agendas-scope .explication { font-size: 0.78rem; }
-
-.zone-attention { border-left: 3px solid var(--attention); }
-.zone-attention > h2 { color: var(--attention); }
-.attention-bloc { margin-top: 0.9rem; }
-.attention-bloc:first-of-type { margin-top: 0.2rem; }
-.attention-bloc h3 { margin: 0 0 0.45rem; font-size: 0.92rem; font-weight: 600; }
-.ligne-attention {
-  display: flex; gap: 0.6rem; align-items: baseline;
-  padding: 0.35rem 0; border-top: 1px solid var(--rang); font-size: 0.9rem;
-}
-.ligne-attention:first-of-type { border-top: none; }
-.ligne-attention .date { margin-left: auto; }
-
-/* tuile coût compacte (accueil) */
-.cout-tuile { display: flex; align-items: baseline; gap: 0.6rem; }
-.cout-tuile .v { font-size: 1.5rem; font-weight: 650; font-variant-numeric: tabular-nums; }
-.cout-tuile .v small { font-size: 0.85rem; color: var(--texte-doux); font-weight: 500; }
 
 /* ---------- page Moteur (C28-41) ---------- */
 .moteur-etat { display: flex; align-items: center; gap: 0.6rem; margin: 0 0 0.6rem; font-size: 0.95rem; }
@@ -350,7 +307,6 @@ a.jour-ligne:hover { background: color-mix(in srgb, var(--accent) 6%, transparen
 .moteur-etat.retard .pm-point { background: var(--attention); box-shadow: 0 0 0 3px color-mix(in srgb, var(--attention) 22%, transparent); }
 .moteur-etat.mort .pm-point { background: var(--erreur); box-shadow: 0 0 0 3px color-mix(in srgb, var(--erreur) 22%, transparent); }
 .moteur-etat.inconnu .pm-point { background: var(--texte-doux); }
-.statut-quota { margin: 0.2rem 0; font-size: 0.88rem; display: flex; align-items: center; gap: 0.45rem; }
 .ligne-jauge { padding: 0.55rem 0; border-bottom: 1px solid var(--rang); }
 .ligne-jauge:last-of-type { border-bottom: none; }
 .ligne-jauge .lj-nom { font-weight: 550; }
@@ -385,20 +341,6 @@ a.jour-ligne:hover { background: color-mix(in srgb, var(--accent) 6%, transparen
 }
 .op-note { margin: 0.35rem 0 0; font-size: 0.8rem; color: var(--texte-doux); }
 .op-note.op-erreur { color: var(--erreur); }
-.op-avancement { margin: 0.35rem 0 0; font-size: 0.82rem; display: flex; flex-wrap: wrap; gap: 0.25rem 1.1rem; }
-.op-avancement .op-passe { color: var(--texte-doux); }
-.op-avancement .op-fin { color: var(--accent); }
-.routines-repli { margin-top: 0.6rem; }
-.routines-repli > summary { cursor: pointer; font-size: 0.85rem; color: var(--texte-doux); padding: 0.35rem 0; }
-.routines-repli[open] > summary { margin-bottom: 0.4rem; }
-.veille-item { padding: 0.25rem 0 0.25rem 0.9rem; border-top: 1px solid var(--rang); }
-/* `display:flex` sur un summary SUPPRIME le triangle natif (le marqueur exige list-item) —
-   chevron ::before en remplacement, tourné à l'ouverture (revue C28-46 : cursor seul = affordance faible). */
-.veille-item > summary { cursor: pointer; display: flex; align-items: center; gap: 0.6rem; list-style: none; }
-.veille-item > summary::-webkit-details-marker { display: none; }
-.veille-item > summary::before { content: '›'; color: var(--texte-doux); transition: transform 0.15s; }
-.veille-item[open] > summary::before { transform: rotate(90deg); }
-.veille-item .op-note { margin-left: 1.2rem; }
 
 /* ---------- vue Agenda (grille mois + grille horaire) ---------- */
 .agenda .cal-carte { grid-column: 1 / -1; }
@@ -477,7 +419,6 @@ table.cal { table-layout: fixed; border-collapse: collapse; }
   width: 10px; height: 10px; border-radius: 50%; background: var(--erreur);
 }
 
-
 /* dialogue centré (création, popover d'événement) */
 .dialogue {
   position: fixed; z-index: 30; left: 50%; top: 16%; transform: translateX(-50%);
@@ -500,22 +441,6 @@ button.coche { border: 1px solid var(--bord); background: transparent; color: va
 .creation select, .creation input[type='date'], .creation input[type='time'] { width: auto; }
 .creation input:not([type]) { flex: 1 1 220px; }
 
-/* recherche (Documents) */
-.filtre-confiance { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.85rem;
-  color: var(--texte-doux); white-space: nowrap; }
-.filtre-confiance input { width: auto; }
-.conf-badge { font-family: var(--mono); font-size: 0.8rem; color: var(--ok); }
-.conf-badge.basse { color: var(--attention); }
-
-/* sous-onglets (Documents) */
-nav.sous-onglets { display: flex; gap: 0.3rem; margin-bottom: 0.9rem; }
-nav.sous-onglets button {
-  border: 1px solid var(--bord); background: none; border-radius: 999px;
-  font-size: 0.8rem; font-weight: 550; color: var(--texte-doux); padding: 0.35rem 0.95rem;
-  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
-}
-nav.sous-onglets button.actif { color: var(--accent-fort); border-color: transparent; background: var(--tonal); }
-
 /* explorateur Drive */
 .explorateur .expl-recherche input:not([type]) { flex: 1 1 240px; }
 .ariane { margin: 0.2rem 0 0.7rem; font-size: 0.9rem; color: var(--texte-doux);
@@ -523,9 +448,6 @@ nav.sous-onglets button.actif { color: var(--accent-fort); border-color: transpa
 .ariane button { padding: 0.15rem 0.4rem; font-size: 0.9rem; }
 .ariane b { color: var(--texte); font-weight: 600; padding: 0 0.4rem; }
 .ariane-sep { padding: 0 0.15rem; }
-table.expl-table td { padding-top: 0.55rem; padding-bottom: 0.55rem; }
-.expl-ic { width: 1.6rem; font-size: 1rem; }
-.ariane-actions { margin-left: auto; display: inline-flex; align-items: center; gap: 0.3rem; }
 .creation-dossier { display: inline-flex; gap: 0.3rem; margin: 0; }
 .creation-dossier input { width: 12rem; padding: 0.25rem 0.5rem; font-size: 0.85rem; }
 .creation-dossier button { padding: 0.25rem 0.6rem; font-size: 0.82rem; }
@@ -535,26 +457,11 @@ table.expl-table td { padding-top: 0.55rem; padding-bottom: 0.55rem; }
   font-size: 0.88rem; display: flex; align-items: center; gap: 0.45rem; flex-wrap: wrap;
 }
 .bandeau-deplacement button { padding: 0.25rem 0.7rem; font-size: 0.82rem; }
-.expl-actions { width: 2rem; }
-.expl-actions button { opacity: 0.35; transition: opacity 0.15s ease; }
-tr:hover .expl-actions button, .expl-actions button:focus-visible { opacity: 1; }
 
-/* recherche IA */
-.recherche-ia input:not([type]) { flex: 1 1 260px; }
 .ia-explication { color: var(--accent); }
-
-/* Réorg (embarquée dans l'Assistant) */
-.reorg-boutons { white-space: nowrap; }
-.reorg-boutons button { margin-left: 0.25rem; }
-
-/* ---------- Assistant (chat) ---------- */
-.chat-entete { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
-.chat-entete h2 { margin: 0; }
 .chat-fil {
   display: flex; flex-direction: column; gap: 0.6rem;
-  min-height: 240px; max-height: 58vh; overflow-y: auto;
-  padding: 0.8rem; margin: 0.4rem 0;
-  background: var(--fond); border: 1px solid var(--bord); border-radius: var(--r-l);
+  min-height: 30vh; padding: 0.2rem 0; margin: 0;
   scroll-behavior: smooth;
 }
 .chat-bulle {
@@ -602,7 +509,6 @@ tr:hover .expl-actions button, .expl-actions button:focus-visible { opacity: 1; 
 @media (prefers-reduced-motion: reduce) {
   .chat-loader-points span { animation: none; opacity: 0.7; }
 }
-.chat-budget { margin-top: 0.4rem; }
 
 /* ---------- micro-animations ---------- */
 @media (prefers-reduced-motion: no-preference) {
@@ -612,7 +518,6 @@ tr:hover .expl-actions button, .expl-actions button:focus-visible { opacity: 1; 
   .carte, .tuile { transition: border-color 0.2s ease; }
   .carte:hover, .tuile:hover { border-color: var(--bord-fort); }
 }
-
 
 /* ---------- v7 (PR1) : listes d'actions, trois chiffres, « Avancé » ---------- */
 .titre-liste {
@@ -720,3 +625,85 @@ form.recherche .bouton-ligne .icone { width: 16px; height: 16px; }
 .documents .creation-dossier input { flex: 1; width: auto; }
 .documents .charger-plus { align-self: center; }
 .documents .ia-explication { margin: 0; font-size: 0.9rem; }
+
+/* ---------- v7 (PR3) : Agenda — liste par jour, grille ouverte à 7 h ---------- */
+.cal-nav .segment { display: inline-flex; background: var(--carte-2); border-radius: 10px; padding: 3px; }
+.cal-nav .segment button { border: none; background: none; color: var(--texte-doux); border-radius: 8px; padding: 0.25rem 0.7rem; font-weight: 700; font-size: 0.85rem; }
+.cal-nav .segment button.on { background: var(--carte); color: var(--texte); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35); }
+.cal-nav .segment button:not(:disabled):hover { filter: none; }
+.agenda .cal-carte.liste { background: none; border: none; padding: 0; }
+.agenda .cal-carte.liste > h2 { margin-bottom: 0.5rem; }
+.gt-defilant { max-height: 68vh; overflow-y: auto; border-top: 1px solid var(--rang); scrollbar-width: thin; }
+.bande-jours { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 0.2rem 0 0.9rem; }
+.bande-jours button {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  border: none; background: none; border-radius: 12px; padding: 6px 0 7px;
+  color: var(--texte-doux); font-size: 0.64rem; font-weight: 700; letter-spacing: 0.06em; min-height: 3.4rem;
+}
+.bande-jours button b { font-family: var(--mono); font-size: 1.1rem; font-weight: 600; color: var(--texte); }
+.bande-jours button i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+.bande-jours button.sel:not(.auj) { background: var(--tonal); }
+.bande-jours button.auj { background: var(--accent); color: var(--sur-accent); }
+.bande-jours button.auj b, .bande-jours button.auj i { color: var(--sur-accent); background: var(--sur-accent); }
+.bande-jours button.auj b { background: none; }
+.bande-jours button:not(:disabled):hover { filter: none; }
+/* `scroll-margin-top` : `scrollIntoView` depuis la bande amenait le titre du jour SOUS la barre
+   haute collante (≈ 3,5 rem + encoche) — revue flotte PR 3. */
+.jour-carte { margin-bottom: 0.9rem; scroll-margin-top: calc(4rem + env(safe-area-inset-top)); }
+.jour-carte h3 { margin: 0 0.1rem 0.4rem; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--texte-doux); font-weight: 700; }
+button.ligne.texte, .ligne button.t.texte {
+  border: none; background: none; color: inherit; font: inherit; text-align: left; border-radius: 0; cursor: pointer;
+}
+button.ligne.texte { width: 100%; }
+.ligne button.t.texte { padding: 0; flex: 1; min-width: 0; }
+button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):hover { filter: none; transform: none; background: color-mix(in srgb, var(--accent) 6%, transparent); }
+/* la rangée des jours reste visible pendant le défilement de la grille (ouverte à 7 h) */
+.gt-defilant .gt-rang:first-child { position: sticky; top: 0; z-index: 2; background: var(--carte); }
+
+/* ---------- v7 (PR4) : Assistant — le fil occupe l'écran, la saisie reste au pouce ---------- */
+.assistant { display: flex; flex-direction: column; gap: 0.8rem; }
+.assistant .titre-liste { margin-bottom: 0; }
+.chat-bulle { font-size: 0.98rem; }
+.chat-saisie {
+  position: sticky; bottom: 0; z-index: 5;
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.5rem 0 0.6rem; background: var(--fond);
+}
+.chat-saisie input { flex: 1; border-radius: 22px; padding: 0.7rem 1rem; font-size: 1rem; background: var(--carte); }
+.chat-saisie .envoyer {
+  width: 42px; height: 42px; border-radius: 50%; padding: 0; flex: 0 0 auto;
+  background: var(--accent); color: var(--sur-accent); border: none; display: inline-grid; place-items: center;
+}
+.chat-saisie .envoyer .icone { width: 20px; height: 20px; }
+/* la sentinelle de fin de fil : `scrollIntoView({ block: 'end' })` la cale au bas de l'écran, la marge
+   la sort de sous la saisie collante (et de sous la barre basse sur téléphone). */
+.chat-fin { scroll-margin-bottom: 4rem; }
+@media (max-width: 760px) {
+  .chat-saisie { bottom: calc(var(--barre-basse-h) + env(safe-area-inset-bottom)); }
+  .chat-fin { scroll-margin-bottom: calc(var(--barre-basse-h) + 4rem + env(safe-area-inset-bottom)); }
+}
+.puces-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.puce-action {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  border: 1px solid var(--bord); background: var(--carte); color: var(--accent);
+  border-radius: 20px; padding: 0.5rem 0.85rem; font-size: 0.88rem; font-weight: 700;
+}
+.puce-action .icone { width: 16px; height: 16px; }
+.puce-action.attente { color: var(--texte-doux); }
+.propositions { display: flex; flex-direction: column; gap: 0.6rem; }
+.prop-tete { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.95rem; }
+.prop-tete .sp { flex: 1; }
+.prop-carte {
+  background: var(--carte); border: 1px solid var(--bord); border-left: 4px solid var(--accent);
+  border-radius: 12px; padding: 0.7rem 0.85rem; display: flex; flex-direction: column; gap: 0.45rem; min-width: 0;
+}
+.prop-carte > b { font-size: 0.95rem; }
+.prop-carte small { color: var(--texte-doux); }
+.prop-carte.vides { border-left-color: var(--attention); }
+.prop-carte.refus { border-left-color: var(--erreur); }
+.prop-refus { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.prop-refus .prop-chemin { flex: 1 1 12rem; }
+.prop-chemin { font-family: var(--mono); font-size: 0.82rem; color: var(--texte-doux); overflow-wrap: anywhere; }
+.prop-chemin .fleche { color: var(--accent); }
+.prop-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+.prop-vide { display: flex; align-items: center; gap: 0.6rem; justify-content: space-between; }

@@ -279,3 +279,23 @@ export function titresDriveAI(lignes: LigneIndex[]): Set<string> {
   }
   return s;
 }
+
+/**
+ * Vue LISTE de l'Agenda sur téléphone (v7, PR 3) : pour chaque jour de la bande, ses événements
+ * (journée entière d'abord, puis par heure) et ses tâches dues — un jour sans rien n'apparaît pas,
+ * sauf `toujours` (aujourd'hui), pour dire « rien ce jour » plutôt qu'une page vide. PUR.
+ */
+export interface JourPlanning {
+  date: Date;
+  evenements: Evenement[];
+  taches: Tache[];
+}
+export function planningParJour(jours: JourGrille[], evts: Evenement[], taches: Tache[], toujours: string): JourPlanning[] {
+  return jours
+    .map((j) => ({
+      date: j.date,
+      evenements: evenementsDuJour(evts, j.date).slice().sort((a, b) => Number(b.journee) - Number(a.journee) || a.debut.localeCompare(b.debut)),
+      taches: tachesDuJour(taches, j.date),
+    }))
+    .filter((j) => j.evenements.length > 0 || j.taches.length > 0 || cleJour(j.date) === toujours);
+}
