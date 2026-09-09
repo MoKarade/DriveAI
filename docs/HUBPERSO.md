@@ -72,6 +72,20 @@ Dans le projet Apps Script DriveAI : ⚙️ « Paramètres du projet » → « P
   moteur le détecte (`invalid_grant`), suspend proprement les intentions, l'écrit dans Santé et le
   Journal — il suffit de refaire l'étape 4.
 
+## Poser une propriété quand le bouton « Ajouter » a disparu (> ~50 propriétés)
+
+Au-delà d'une cinquantaine de propriétés, l'éditeur Apps Script cesse d'afficher le bouton
+« Ajouter une propriété de script » (Paramètres du projet). Vécu le 2026-09-09. La parade est
+l'API, exécutée UNE fois depuis l'éditeur — jamais un secret commité dans `src/` (§1.4) :
+
+1. Nouveau fichier script (le `+` à côté de « Fichiers »).
+2. **Ne colle QUE le corps** entre les accolades du `function myFunction() { }` déjà présent :
+   `PropertiesService.getScriptProperties().setProperty('DriveAI_HUBPERSO_CLIENT_SECRET','…');`
+   ⚠️ Sur téléphone, l'éditeur auto-ferme les accolades : coller un bloc complet en duplique une
+   et donne `SyntaxError: Unexpected token '}'`. Coller le corps seul évite tout `{`/`}`.
+3. Sélectionner `myFunction` dans le menu déroulant → Exécuter.
+4. **Supprimer le fichier** juste après (le secret ne reste pas en clair dans l'éditeur).
+
 ## Dépannage
 
 | Symptôme | Cause probable | Remède |
