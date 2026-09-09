@@ -4,7 +4,7 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🎯 CHANTIER EN COURS — 2026-09-09 (soir) : REFONTE APP v7 « le téléphone d'abord » (C28-82 / ADR-0051).**
+> **✅ CHANTIER TERMINÉ — 2026-09-09 (soir) : REFONTE APP v7 « le téléphone d'abord » (C28-82 / ADR-0051), en ligne.**
 > Marc : « l'interface est pas du tout intuitive, trop de texte, trop de déchets, trop moche, pas
 > assez simple, pas assez beau — refonte visuelle et utilitaire, parfaite pour téléphone et PC ».
 > Diagnostic sur captures RÉELLES (mode mock, 390 px et 1 280 px — la CI ne photographiait qu'à
@@ -40,9 +40,10 @@
 > 3 jours sur une bande de 7 ; titre du jour sous la barre haute après un tap ; commentaire CSS non
 > fermé laissé par la purge ; **une action validée que le moteur refuse/rate disparaissait sans
 > trace** → `actionsRefuseesReorg`, ligne rouge jusqu'à « OK ») + 🟡 (reliquats `google.ts`, 8 règles
-> CSS, en-têtes, GUIDE, README captures, test journée entière multi-jours). 252 tests. **#333 sortie
-> du brouillon → auto-merge.** Une fois mergée : vérifier le déploiement Vercel `READY` (§6 CLAUDE.md)
-> et fermer le chantier ici. Ce qui reste HORS périmètre v7 (non demandé) : les vues non réécrites
+> CSS, en-têtes, GUIDE, README captures, test journée entière multi-jours). 252 tests. **#333 MERGÉE
+> 22:45 UTC (auto-merge) ; déploiement Vercel de production `READY` 22:45:39 pour `3c43912`, alias
+> `drive.hubperso.com` — CHANTIER #45 TERMINÉ, les cinq écrans v7 sont en ligne.** Ce qui reste HORS
+> périmètre v7 (non demandé) : les vues non réécrites
 > gardent quelques `.explication` ; `qSousDossiers`/`decouperEnLots` (purs, testés) n'ont plus de
 > consommateur ; `_Doublons` orphelins, C28-79/81/74/70/71, #315, Lot C inchangés.
 > ⚠️ Règle de session : chaque PR part en brouillon, passe la revue flotte, puis SORT du brouillon
