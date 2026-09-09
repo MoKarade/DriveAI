@@ -2737,3 +2737,22 @@ Et une exclusion portée par un libellé que le moteur ne peut pas retirer est u
 pas un état, elle le fige. »
 
 **Règle durable ?** oui — corollaire ajouté à « Garde-fou étroit, calibré sur du réel » (§9).
+
+## 2026-09-09 — Une PR qui modifie `auto-merge.yml` s'applique à ELLE-MÊME : `workflow_run` a exécuté la version de la PR, pas celle de `main`
+**Contexte.** #329 (retour de #314 : le brouillon devient un frein à l'auto-merge) restait ouverte,
+CI verte, `mergeable_state: clean`, run auto-merge #412 sorti **VERT**. J'avais annoncé à Marc
+« elle sera la dernière PR à sortir du brouillon toute seule », en raisonnant sur `on: workflow_run`
+= « le fichier est lu depuis la branche par défaut, donc la PR ne peut pas se bloquer elle-même ».
+Le log du run dit l'inverse, mot pour mot : « PR #329 est en BROUILLON (isDraft=true) → auto-merge
+REFUSÉ » — c'est le refus introduit PAR la PR. Preuve croisée : `main` valait 4771e39 (dernier
+commit 19:28:57) et portait encore `avec_retry gh pr ready … || true` ; le run a tourné à 20:53.
+
+**Leçon.** « Un raisonnement sur le comportement d'un déclencheur CI (quelle version du fichier
+s'exécute, quel `ref`) est une SUPPOSITION tant qu'un log ne l'a pas montrée. Avant d'annoncer
+qu'un changement de workflow ne s'applique pas encore, comparer le CONTENU échoé dans le log du run
+au contenu réel de `main` à cet instant : le log est le seul artefact qui dit ce qui a tourné. Et
+un run **vert** peut être un run qui a REFUSÉ d'agir — conclusion ≠ effet. »
+
+**Règle durable ?** oui — CLAUDE.md §3 (la règle « un draft n'est pas un frein » est révisée : il
+l'est désormais, et une PR ouverte en brouillon ne partira jamais toute seule) + note en tête de
+`auto-merge.yml`.
