@@ -12,6 +12,7 @@ const { load } = require('./harness');
 
 const plain = (o) => JSON.parse(JSON.stringify(o));
 const ctxPur = load(['Config.gs', 'Gmail.gs', 'TriGmail.gs']);
+const V = '|' + ctxPur.CONFIG.TRI_REGLES_VERSION; // ADR-0050 : la version des règles clôt chaque clé `tri|…|lu`
 
 /* ---------- decisionTri_ (pure — les règles de Marc) ---------- */
 
@@ -21,10 +22,14 @@ test('decisionTri_ : SUSPECT prime sur tout — libellé ⚠️ seul, jamais arc
   assert.deepStrictEqual(plain(d), { libelles: ['⚠️ Suspect'], archiver: false, statut: 'suspect' });
 });
 
-test('decisionTri_ : catégorie introuvable → À vérifier, jamais archivé (jamais « le plus probable »)', () => {
+test('decisionTri_ : catégorie introuvable → À vérifier (jamais « le plus probable ») ; ADR-0050 : archivé si LU, reste si non lu', () => {
+  const nonLu = ctxPur.decisionTri_({ categorie: null, important: false, suspect: false,
+    zoneProtegee: false, promoDeterministe: false, entierementLu: false });
+  assert.deepStrictEqual(plain(nonLu.libelles), ['À vérifier']);
+  assert.strictEqual(nonLu.archiver, false, 'non lu : reste sous les yeux');
   const d = ctxPur.decisionTri_({ categorie: null, important: false, suspect: false,
     zoneProtegee: false, promoDeterministe: false, entierementLu: true });
-  assert.deepStrictEqual(plain(d), { libelles: ['À vérifier'], archiver: false, statut: 'tri-a-verifier' });
+  assert.deepStrictEqual(plain(d), { libelles: ['À vérifier'], archiver: true, statut: 'tri-a-verifier' }, 'ADR-0050 : lu ⇒ archivé, la catégorie inconnue reste un libellé');
 });
 
 test('decisionTri_ : mail LU → libellé + archivé (règle générale de Marc)', () => {
@@ -54,10 +59,29 @@ test('decisionTri_ : ZONE PROTÉGÉE — jamais archivée par le chemin promo, m
   assert.strictEqual(lue.archiver, true);     // « archivés seulement si ouverts par moi »
 });
 
-test('decisionTri_ : IMPORTANT → ⏰ ajouté et JAMAIS archivé, même lu, même promo', () => {
-  const d = ctxPur.decisionTri_({ categorie: 'Administration', important: true, suspect: false,
+test('decisionTri_ : IMPORTANT → ⏰ ajouté ; ADR-0050 : archivé si LU (⏰ n\'ancre plus), reste si non lu', () => {
+  const lu = ctxPur.decisionTri_({ categorie: 'Administration', important: true, suspect: false,
     zoneProtegee: false, promoDeterministe: true, entierementLu: true });
-  assert.deepStrictEqual(plain(d.libelles), ['Administration', '⏰ À traiter']);
+  assert.deepStrictEqual(plain(lu.libelles), ['Administration', '⏰ À traiter']);
+  assert.strictEqual(lu.archiver, true, 'le libellé ⏰ est la liste de tâches, plus la boîte');
+  const nonLu = ctxPur.decisionTri_({ categorie: 'Administration', important: true, suspect: false,
+    zoneProtegee: false, promoDeterministe: false, entierementLu: false });
+  assert.deepStrictEqual(plain(nonLu.libelles), ['Administration', '⏰ À traiter']);
+  assert.strictEqual(nonLu.archiver, false, 'non lu : inchangé');
+});
+
+test('decisionTri_ ADR-0050 : « À vérifier » + IMPORTANT → ⏰ ajouté (le seul marqueur qui survit à l\'archivage)', () => {
+  const d = ctxPur.decisionTri_({ categorie: null, important: true, suspect: false,
+    zoneProtegee: false, promoDeterministe: false, entierementLu: true });
+  assert.deepStrictEqual(plain(d.libelles), ['À vérifier', '⏰ À traiter']);
+  assert.strictEqual(d.archiver, true);
+  assert.strictEqual(d.statut, 'tri-a-verifier');
+});
+
+test('decisionTri_ ADR-0050 : promo déterministe SANS catégorie, non lue → reste en boîte (jamais archivée sur un doute)', () => {
+  const d = ctxPur.decisionTri_({ categorie: null, important: false, suspect: false,
+    zoneProtegee: false, promoDeterministe: true, entierementLu: false });
+  assert.deepStrictEqual(plain(d.libelles), ['À vérifier']);
   assert.strictEqual(d.archiver, false);
 });
 
@@ -108,7 +132,8 @@ function ctxTri(opts) {
   const calls = { index: { ...(opts.index || {}) }, ajouts: [], labels: [], archives: [], journaux: [], getMessages: 0,
     // rattrapage ET nettoyage profond (C28-22) OFF par défaut : les tests des scans AVANT/cyclique/
     // demande ne doivent pas les déclencher (comme DriveAI_TRI_RATTRAPAGE, on pose leur « terminé »).
-    props: { DriveAI_TRI_RATTRAPAGE: 'terminé', DriveAI_TRI_BOITE: 'terminé', ...(opts.props || {}) } };
+    props: { DriveAI_TRI_RATTRAPAGE: 'terminé', DriveAI_TRI_BOITE: 'terminé',
+      DriveAI_TRI_BOITE_VERSION: String(c.CONFIG.TRI_REGLES_VERSION), ...(opts.props || {}) } };
   c.journalErreur_ = (s, m) => calls.journaux.push(m);
   c.journalInfo_ = () => {};
   c.budgetCampagnesAtteint_ = opts.budgetCampagnesAtteint_ || (() => false); // frein §2.6 (Cout.gs non chargé)
@@ -124,6 +149,7 @@ function ctxTri(opts) {
   c.PropertiesService = { getScriptProperties: () => ({
     getProperty: (k) => calls.props[k] ?? null,
     setProperty: (k, v) => { calls.props[k] = v; },
+    deleteProperty: (k) => { delete calls.props[k]; },
   }) };
   c.feuille_ = () => ({ getLastRow: () => 1, getRange: () => ({ getValues: () => [] }), appendRow: () => {} });
   const labelObjs = {};
@@ -182,6 +208,7 @@ test('decisionTri_ : analyse INDISPONIBLE → libellés posés, JAMAIS archivé 
   const flou = ctxPur.decisionTri_({ categorie: null, important: false, suspect: false,
     zoneProtegee: false, promoDeterministe: false, entierementLu: true, analyseIndisponible: true });
   assert.deepStrictEqual(simple(flou.libelles), ['À vérifier']);
+  assert.strictEqual(flou.archiver, false, 'ADR-0050 : « À vérifier » LU s\'archive, SAUF sans verdict (⏰ indécidable)');
 });
 
 test('ADR-0049 — panne de CRÉATION (config-api) + message ANALYSÉ-DIFFÉRÉ (analyse|) → tri NORMAL, archivé, clé NOMINALE', () => {
@@ -197,11 +224,11 @@ test('ADR-0049 — panne de CRÉATION (config-api) + message ANALYSÉ-DIFFÉRÉ 
   c.trierFilsGmail_(() => false);
   assert.deepStrictEqual(calls.labels.map((l) => l.label), ['Finance']);
   assert.deepStrictEqual(calls.archives, ['S1'], 'archivé : la panne d\'agenda ne bloque plus la boîte');
-  assert.ok(calls.ajouts.some((a) => a.cle === 'tri|S1|' + tsS + '|lu'), 'clé NOMINALE (rien à ré-évaluer)');
+  assert.ok(calls.ajouts.some((a) => a.cle === 'tri|S1|' + tsS + '|lu' + V), 'clé NOMINALE (rien à ré-évaluer)');
   assert.ok(!calls.ajouts.some((a) => /\|deg$/.test(a.cle)), 'aucune clé dégradée');
 });
 
-test('ADR-0049 — panne de CRÉATION + message DIFFÉRÉ mais IMPORTANT → ⏰, jamais archivé (le verdict est là)', () => {
+test('ADR-0049 — panne de CRÉATION + message DIFFÉRÉ mais IMPORTANT → ⏰ posé (le verdict est là) ; ADR-0050 : archivé car LU', () => {
   const { c, calls } = ctxTri({ index: { 'analyse|MI1': true, 'important|MI1': true } });
   const ts = Date.now();
   c.estPanneConfigApi_ = () => true;
@@ -210,7 +237,7 @@ test('ADR-0049 — panne de CRÉATION + message DIFFÉRÉ mais IMPORTANT → ⏰
     : []);
   c.trierFilsGmail_(() => false);
   assert.deepStrictEqual(calls.labels.map((l) => l.label), ['Finance', '⏰ À traiter']);
-  assert.deepStrictEqual(calls.archives, [], 'la boîte de Marc sert de todo — le ⏰ tient sans l\'API');
+  assert.deepStrictEqual(calls.archives, ['I1'], 'ADR-0050 : le ⏰ tient sans l\'API, et le fil LU sort de la boîte');
 });
 
 test('ADR-0049 — panne de CRÉATION + message PAS ENCORE analysé → on ATTEND (la clé arrive au tick suivant)', () => {
@@ -263,7 +290,7 @@ test('tri : au RETOUR des intentions, le fil trié en dégradé est RÉ-ÉVALUÉ
   // `|deg`, la clé nominale existerait déjà et le fil ne serait JAMAIS archivé (leçon C28-33).
   const ts = Date.now();
   const { c, calls } = ctxTri({ index: {
-    ['tri|R1|' + ts + '|lu|deg']: true,   // trié pendant la panne
+    ['tri|R1|' + ts + '|lu' + V + '|deg']: true,   // trié pendant la panne
     'intention|MR1': true,                 // …et l'analyse est arrivée depuis
   } });
   c.estPanneConfigApi_ = () => false;      // panne finie
@@ -272,12 +299,12 @@ test('tri : au RETOUR des intentions, le fil trié en dégradé est RÉ-ÉVALUÉ
     : []);
   c.trierFilsGmail_(() => false);
   assert.deepStrictEqual(calls.archives, ['R1'], 'la décision d\'archivage est enfin prise');
-  assert.ok(calls.ajouts.some((a) => a.cle === 'tri|R1|' + ts + '|lu'), 'et la clé NOMINALE est posée');
+  assert.ok(calls.ajouts.some((a) => a.cle === 'tri|R1|' + ts + '|lu' + V), 'et la clé NOMINALE est posée');
 });
 
 test('tri dégradé : idempotent — un 2e passage pendant la MÊME panne ne re-travaille pas', () => {
   const ts = Date.now();
-  const { c, calls } = ctxTri({ index: { ['tri|D1|' + ts + '|lu|deg']: true } });
+  const { c, calls } = ctxTri({ index: { ['tri|D1|' + ts + '|lu' + V + '|deg']: true } });
   c.intentionsSuspendues_ = () => true; // prédicat forcé (défense en profondeur, cf. test ci-dessus)
   c.GmailApp.search = (q, d) => (d === 0
     ? [filMock(calls, { id: 'D1', ts: ts, dernierMsgId: 'MD1', expediteur: 'a@b.c', sujet: 'x' })]
@@ -318,7 +345,7 @@ test('tri dégradé : le mur |deg court-circuite AVANT de charger les messages (
   // Pendant une panne longue, chaque tick re-présente les mêmes fils : sans mur posé tôt, on
   // payait un `getMessages()` complet par fil et par tick pour finir sur un 'deja'.
   const ts = Date.now();
-  const { c, calls } = ctxTri({ index: { ['tri|Q1|' + ts + '|lu|deg']: true } });
+  const { c, calls } = ctxTri({ index: { ['tri|Q1|' + ts + '|lu' + V + '|deg']: true } });
   c.intentionsSuspendues_ = () => true; // prédicat forcé (défense en profondeur)
   c.GmailApp.search = (q, d) => (d === 0
     ? [filMock(calls, { id: 'Q1', ts: ts, dernierMsgId: 'MQ1', expediteur: 'a@b.c', sujet: 'x' })]
@@ -393,7 +420,7 @@ test('intentionsSuspendues_ : MIROIR des pannes durables de traiterIntentionsMai
 
 test('tri : fil déjà trié dans CET état (fil|ts|lu) → sauté SANS charger les messages', () => {
   const { c, calls } = (() => {
-    const r = ctxTri({ index: { 'tri|F1|1000|lu': true }, fils: [] });
+    const r = ctxTri({ index: { ['tri|F1|1000|lu' + V]: true }, fils: [] });
     r.c.GmailApp.search = (q, d) => (d === 0 ? [filMock(r.calls, { id: 'F1', ts: 1000, dernierMsgId: 'M1', expediteur: 'a@b.c', sujet: 'x' })] : []);
     return r;
   })();
@@ -403,11 +430,11 @@ test('tri : fil déjà trié dans CET état (fil|ts|lu) → sauté SANS charger 
 });
 
 test('tri : mail LU APRÈS son tri initial → RE-trié (clé |nonlu ≠ |lu) et cette fois ARCHIVÉ', () => {
-  const { c, calls } = ctxTri({ index: { 'tri|G1|500|nonlu': true, 'intention|MG1': true } });
+  const { c, calls } = ctxTri({ index: { ['tri|G1|500|nonlu' + V]: true, 'intention|MG1': true } });
   c.GmailApp.search = (q, d) => (d === 0 ? [filMock(calls, { id: 'G1', ts: 500, dernierMsgId: 'MG1', expediteur: 'a@b.c', sujet: 'x' })] : []); // isUnread=false : Marc l'a ouvert
   c.trierFilsGmail_(() => false);
   assert.deepStrictEqual(plain(calls.archives), ['G1']); // le cœur du rôle Cowork : lu ⇒ boîte propre
-  assert.deepStrictEqual(plain(calls.ajouts), [{ cle: 'tri|G1|500|lu', statut: 'trié' }]);
+  assert.deepStrictEqual(plain(calls.ajouts), [{ cle: 'tri|G1|500|lu' + V, statut: 'trié' }]);
 });
 
 test('tri : le dernier message PAS ENCORE analysé par les intentions → on ATTEND (clé non consommée)', () => {
@@ -418,7 +445,7 @@ test('tri : le dernier message PAS ENCORE analysé par les intentions → on ATT
   c.GmailApp.search = (q, d) => (d === 0 ? [filMock(calls, { id: 'F2', ts, dernierMsgId: 'M2', expediteur: 'a@b.c', sujet: 'x' })] : []);
   c.trierFilsGmail_(() => false);
   assert.deepStrictEqual(calls.labels, []);                 // rien écrit
-  assert.strictEqual(calls.index[`tri|F2|${ts}|lu`], undefined); // re-tenté au prochain tick
+  assert.strictEqual(calls.index[`tri|F2|${ts}|lu${V}`], undefined); // re-tenté au prochain tick
 });
 
 test('tri : fil HORS fenêtre intentions (clé impossible à jamais) → trié SANS attendre — jamais un « attend » permanent (revue C28-24)', () => {
@@ -430,7 +457,7 @@ test('tri : fil HORS fenêtre intentions (clé impossible à jamais) → trié S
   c.trierFilsGmail_(() => false);
   assert.deepStrictEqual(calls.labels.map((l) => l.label), ['Finance'], 'libellé posé sans clé intention|');
   assert.deepStrictEqual(calls.archives, ['FV'], 'fil LU ancien → archivé (l\'objectif C28-24 sur le stock)');
-  assert.ok(calls.ajouts.some((a) => a.cle === `tri|FV|${ts}|lu` && a.statut === 'trié'));
+  assert.ok(calls.ajouts.some((a) => a.cle === `tri|FV|${ts}|lu${V}` && a.statut === 'trié'));
 });
 
 test('estHorsFenetreIntentions_ : bornes dérivées de la CONSTANTE ; requête sans fenêtre → statu quo (attendre)', () => {
@@ -450,15 +477,15 @@ test('tri : fil lu + catégorie sûre → libellé posé + archivé + indexé «
   c.trierFilsGmail_(() => false);
   assert.deepStrictEqual(plain(calls.labels), [{ label: 'Finance', fil: 'F3' }]);
   assert.deepStrictEqual(plain(calls.archives), ['F3']);
-  assert.deepStrictEqual(plain(calls.ajouts), [{ cle: 'tri|F3|3000|lu', statut: 'trié' }]);
+  assert.deepStrictEqual(plain(calls.ajouts), [{ cle: 'tri|F3|3000|lu' + V, statut: 'trié' }]);
 });
 
-test('tri : mail IMPORTANT (flag Index posé par les intentions) → ⏰ ajouté, jamais archivé', () => {
+test('tri : mail IMPORTANT (flag Index posé par les intentions) → ⏰ ajouté ; ADR-0050 : archivé car LU', () => {
   const { c, calls } = ctxTri({ index: { 'intention|M4': true, 'important|M4': true } });
   c.GmailApp.search = (q, d) => (d === 0 ? [filMock(calls, { id: 'F4', ts: 4000, dernierMsgId: 'M4', expediteur: 'x@y.z', sujet: 'Réponds-moi' })] : []);
   c.trierFilsGmail_(() => false);
   assert.deepStrictEqual(plain(calls.labels.map((l) => l.label)), ['Finance', '⏰ À traiter']);
-  assert.deepStrictEqual(calls.archives, []);
+  assert.deepStrictEqual(calls.archives, ['F4'], 'ADR-0050 : ⏰ est un libellé, plus une ancre');
 });
 
 test('tri : promo déterministe (header + catégorie Gmail) NON LUE → archivée ; en zone protégée → JAMAIS', () => {
@@ -480,13 +507,13 @@ test('tri : header List-Unsubscribe SEUL (forgeable) sans catégorie Gmail → P
   assert.deepStrictEqual(calls.archives, []); // un phishing « déguisé en newsletter » n'est jamais masqué
 });
 
-test('tri : catégorie LLM inconnue → À vérifier, pas d\'archivage, pas d\'apprentissage', () => {
+test('tri : catégorie LLM inconnue → À vérifier, pas d\'apprentissage ; ADR-0050 : archivé car LU', () => {
   const { c, calls } = ctxTri({ index: { 'intention|M7': true }, miniCategorie_: () => ({ categorie: null, suspect: false }) });
   c.GmailApp.search = (q, d) => (d === 0 ? [filMock(calls, { id: 'F7', ts: 7000, dernierMsgId: 'M7', expediteur: 'inconnu@x.y', sujet: 'Divers' })] : []);
   c.trierFilsGmail_(() => false);
   assert.deepStrictEqual(plain(calls.labels.map((l) => l.label)), ['À vérifier']);
-  assert.deepStrictEqual(calls.archives, []);
-  assert.deepStrictEqual(plain(calls.ajouts), [{ cle: 'tri|F7|7000|lu', statut: 'tri-a-verifier' }]);
+  assert.deepStrictEqual(calls.archives, ['F7'], 'ADR-0050 : « À vérifier » est un libellé, plus une ancre');
+  assert.deepStrictEqual(plain(calls.ajouts), [{ cle: 'tri|F7|7000|lu' + V, statut: 'tri-a-verifier' }]);
 });
 
 test('tri : table apprise → catégorie SANS appel LLM', () => {
@@ -580,7 +607,7 @@ test('rattrapage : un fil du lot ATTEND les intentions → OFFSET inchangé (le 
   c.trierFilsGmail_(() => false);
   assert.strictEqual(calls.props.DriveAI_TRI_OFFSET, undefined);      // pas d'avance
   assert.strictEqual(calls.props.DriveAI_TRI_RATTRAPAGE, undefined);  // pas de faux « terminé »
-  assert.strictEqual(calls.index[`tri|B1|${tsB1}|lu`], true);         // l'acquis du lot est gardé (rejeu gratuit)
+  assert.strictEqual(calls.index[`tri|B1|${tsB1}|lu${V}`], true);         // l'acquis du lot est gardé (rejeu gratuit)
 });
 
 test('rattrapage : fil déjà HORS boîte → sauté sans chargement ni coût, l\'offset avance quand même', () => {
@@ -601,13 +628,14 @@ test('rattrapage : fil déjà HORS boîte → sauté sans chargement ni coût, l
 
 /* ---------- durcissements revue flotte ---------- */
 
-test('fil portant DÉJÀ ⏰ (message antérieur important) → JAMAIS archivé, même lu', () => {
+test('fil portant DÉJÀ ⏰ (message antérieur important) → ⏰ honoré (jamais re-posé) ; ADR-0050 : archivé car LU', () => {
   const { c, calls } = ctxTri({ index: { 'intention|MC1': true } });
   const fil = filMock(calls, { id: 'C1', ts: 100, dernierMsgId: 'MC1', expediteur: 'a@b.c', sujet: 'Re: suivi' });
   fil.getLabels = () => [{ getName: () => '⏰ À traiter' }];
   c.GmailApp.search = (q, d) => (d === 0 ? [fil] : []);
   c.trierFilsGmail_(() => false);
-  assert.deepStrictEqual(calls.archives, []); // la décision antérieure survit aux nouveaux messages
+  assert.deepStrictEqual(calls.archives, ['C1'], 'ADR-0050 : le ⏰ déjà posé reste, le fil lu sort');
+  assert.deepStrictEqual(calls.labels.map((l) => l.label), ['Finance'], 'le ⏰ n\'est pas ré-écrit (déjà posé)');
 });
 
 test('SUSPECT recalibré — G1 : un signal suspect du LLM sur le PROPRE mail de Marc est IGNORÉ (on ne se phishe pas)', () => {
@@ -753,15 +781,17 @@ test('trierFil_ (catch) : quota Gmail mort EN COURS de page → panne de PLATEFO
 function ctxBoite(opts) {
   const c = load(['Config.gs', 'Gmail.gs', 'TriGmail.gs']);
   let inbox = (opts.inbox || []).slice(); // [{ id, action }]
-  const props = Object.assign({}, opts.props);
+  const props = Object.assign({ DriveAI_TRI_BOITE_VERSION: String(c.CONFIG.TRI_REGLES_VERSION) }, opts.props);
   const recherches = [];
+  const effacements = []; // clés passées à deleteProperty (le ré-armement s'y prouve, pas sur l'état final)
   c.PropertiesService = { getScriptProperties: () => ({
     getProperty: (k) => (k in props ? props[k] : null),
     setProperty: (k, v) => { props[k] = String(v); },
-    deleteProperty: (k) => { delete props[k]; },
+    deleteProperty: (k) => { delete props[k]; effacements.push(k); },
   }) };
   c.GmailApp = { search: (req, offset, n) => {
     recherches.push({ req, offset, n });
+    effacements.push('<recherche>'); // jalon : ce qui est effacé AVANT la 1re recherche vient du ré-armement
     return inbox.slice(offset, offset + n).map((x) => ({ getId: () => x.id }));
   } };
   c.trierFil_ = (fil) => {
@@ -776,7 +806,7 @@ function ctxBoite(opts) {
   c.journalErreur_ = () => {};
   c.journalInfo_ = () => {};
   c.dateGmail_ = () => opts.jour || '2026/07/15';
-  return { c, props, recherches, inbox: () => inbox };
+  return { c, props, recherches, effacements, inbox: () => inbox };
 }
 
 const etatBoite = () => ({ traites: 0, attentes: 0 });
@@ -844,4 +874,62 @@ test('trierFilsGmail_ : le nettoyage profond est GATÉ sur le frein campagnes §
   c.GmailApp.search = () => [];
   c.trierFilsGmail_(() => false);
   assert.strictEqual(deepCleanAppele, false, 'frein campagnes atteint → pas de nettoyage profond');
+});
+
+/* ---------- ADR-0050 : rétroactivité par la VERSION des règles ---------- */
+
+test('ADR-0050 : ancienne clé SANS version à l\'Index → le fil est RE-TRIÉ sous les règles courantes (archivé) et la clé VERSIONNÉE posée', () => {
+  // Le piège §9 « verdict keyé » : sans version dans la clé, les ~90 fils déjà triés n\'auraient
+  // JAMAIS été réévalués et Marc n\'aurait vu aucune différence.
+  const { c, calls } = ctxTri({ index: { 'tri|F1|1000|lu': true, 'tri|F1|1000|lu|deg': true, 'intention|M1': true } });
+  c.GmailApp.search = (q, d) => (d === 0 ? [filMock(calls, { id: 'F1', ts: 1000, dernierMsgId: 'M1', expediteur: 'a@b.c', sujet: 'x' })] : []);
+  c.trierFilsGmail_(() => false);
+  assert.deepStrictEqual(calls.archives, ['F1'], 'réévalué : archivé sous ADR-0050');
+  assert.deepStrictEqual(plain(calls.ajouts), [{ cle: 'tri|F1|1000|lu' + V, statut: 'trié' }]);
+  assert.ok(calls.getMessages >= 1, 'le fil a bien été rechargé (pas un « deja »)');
+});
+
+test('ADR-0050 : la clé VERSIONNÉE présente → « deja », rien rechargé (le cliquet tient sous la version courante)', () => {
+  const { c, calls } = ctxTri({ index: { ['tri|F1|1000|lu' + V]: true, 'intention|M1': true } });
+  c.GmailApp.search = (q, d) => (d === 0 ? [filMock(calls, { id: 'F1', ts: 1000, dernierMsgId: 'M1', expediteur: 'a@b.c', sujet: 'x' })] : []);
+  c.trierFilsGmail_(() => false);
+  assert.deepStrictEqual(calls.archives, []);
+  assert.deepStrictEqual(calls.ajouts, []);
+  assert.strictEqual(calls.getMessages, 0, 'aucun chargement');
+});
+
+test('ADR-0050 : nettoyage profond RÉ-ARMÉ quand la version des règles change — tout l\'état effacé, ANCRE comprise', () => {
+  const infos = [];
+  const { c, props, recherches, effacements } = ctxBoite({
+    props: { DriveAI_TRI_BOITE: 'terminé', DriveAI_TRI_BOITE_ANCRE: '2026/06/01', DriveAI_TRI_BOITE_OFFSET: '7',
+      DriveAI_TRI_BOITE_PASSE_SALE: 'oui', DriveAI_TRI_BOITE_PASSES_PROPRES: '1', DriveAI_TRI_BOITE_VERSION: 'r1-perimee' },
+    inbox: [{ id: 'A', action: 'archive' }],
+  });
+  c.journalInfo_ = (src, m) => infos.push(m);
+  c.nettoyerBoiteHistorique_(etatBoite(), () => false, [], {});
+  assert.strictEqual(props.DriveAI_TRI_BOITE_VERSION, String(c.CONFIG.TRI_REGLES_VERSION), 'version courante posée');
+  assert.strictEqual(recherches[0].req, 'in:inbox before:2026/07/15', 'ANCRE re-posée (l\'ancienne aurait laissé un trou)');
+  assert.strictEqual(recherches[0].offset, 0, 'offset reparti de zéro');
+  assert.notStrictEqual(props.DriveAI_TRI_BOITE, 'terminé', 'le « terminé » d\'anciennes règles ne vaut plus');
+  // Revue flotte : l'état FINAL ne prouve rien (l'activité de la passe re-pose PASSE_SALE, et la fin de
+  // passe efface PASSES_PROPRES de toute façon) — on vérifie les APPELS deleteProperty faits AVANT la
+  // première recherche, une clé par une : c'est le ré-armement, et lui seul, qui est prouvé.
+  const avantRecherche = effacements.slice(0, effacements.indexOf('<recherche>'));
+  for (const k of ['DriveAI_TRI_BOITE', 'DriveAI_TRI_BOITE_ANCRE', 'DriveAI_TRI_BOITE_OFFSET',
+    'DriveAI_TRI_BOITE_PASSE_SALE', 'DriveAI_TRI_BOITE_PASSES_PROPRES']) {
+    assert.ok(avantRecherche.includes(k), 'effacé par le ré-armement, avant toute recherche : ' + k +
+      ' (sans PASSES_PROPRES, « terminé » tomberait après UNE passe propre au lieu de deux)');
+  }
+  assert.ok(infos.some((m) => /RÉ-ARMÉ/.test(m)), 'journalisé');
+});
+
+test('ADR-0050 : même version → le « terminé » est respecté, ZÉRO recherche (le ré-armement n\'est pas une boucle)', () => {
+  const { c, props, recherches } = ctxBoite({
+    props: { DriveAI_TRI_BOITE: 'terminé', DriveAI_TRI_BOITE_ANCRE: '2026/06/01' },
+    inbox: [{ id: 'A', action: 'archive' }],
+  });
+  c.nettoyerBoiteHistorique_(etatBoite(), () => false, [], {});
+  assert.strictEqual(recherches.length, 0);
+  assert.strictEqual(props.DriveAI_TRI_BOITE, 'terminé');
+  assert.strictEqual(props.DriveAI_TRI_BOITE_ANCRE, '2026/06/01', 'rien effacé');
 });

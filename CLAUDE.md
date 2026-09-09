@@ -330,7 +330,12 @@ ce qui reste vrai d'une session à l'autre.
 - **Garde-fou étroit, calibré sur du réel.** Un flag de protection (ex. `sensible`) doit viser
   des catégories précises (immigration + fiscal), pas « true par défaut » — sinon tout part en
   revue et l'auto-rangement est neutralisé. Le défaut prudent ne sert que pour les réponses LLM
-  *malformées*, jamais comme posture de classement.
+  *malformées*, jamais comme posture de classement. **Corollaire (ADR-0050, 2026-09-09) : des
+  exclusions chacune juste peuvent, ENSEMBLE, couvrir 100 % du réel** (tri Gmail : non lus + ⏰ +
+  « À vérifier » + suspects = toute la boîte, archivage mort, tests verts). Une règle d'exclusion se
+  vérifie par la DISTRIBUTION de la population (combien tombent dans chaque exclusion, combien restent
+  éligibles), jamais règle par règle ; et une exclusion portée par un libellé que le moteur ne peut pas
+  retirer est un cliquet, pas un état.
 - **Git (squash-merge + branche réutilisée).** Avant chaque nouvelle tâche, repartir
   d'`origin/main` (reset/merge). Si la branche distante `claude/**` diverge après merge,
   refusionner son tip plutôt que force-push (ruleset). Après ouverture d'une PR sur branche
