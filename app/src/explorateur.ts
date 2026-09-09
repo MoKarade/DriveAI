@@ -130,7 +130,12 @@ export function formaterDateCourte(iso?: string, locale = 'fr-CA'): string {
  * anciens filtres d'Index ; la v7 n'a plus qu'UNE recherche Drive — on en tire la requête : les
  * mots-clés d'abord, sinon le texte du plan, sinon la question telle quelle. PURE.
  */
-export function requeteDepuisPlan(plan: { motsCles?: string[]; texte?: string }, question: string): string {
-  const mots = (plan.motsCles ?? []).map((m) => m.trim()).filter(Boolean).join(' ');
-  return mots || (plan.texte ?? '').trim() || question.trim();
+export function requeteDepuisPlan(plan: { motsCles?: string[]; texte?: string; annee?: string }, question: string): string {
+  const mots = (plan.motsCles ?? []).map((m) => m.trim()).filter(Boolean);
+  const base = mots.join(' ') || (plan.texte ?? '').trim() || question.trim();
+  // L'année du plan filtrait l'Index en v6 ; ici elle devient un mot de la recherche plein texte
+  // (la date figure dans les documents) — sans ça, l'explication de l'IA annoncerait un filtre
+  // que rien n'applique (revue flotte PR 2).
+  const annee = (plan.annee ?? '').trim();
+  return annee && !base.includes(annee) ? `${base} ${annee}` : base;
 }

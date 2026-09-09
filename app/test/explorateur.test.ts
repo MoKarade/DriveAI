@@ -141,4 +141,8 @@ describe('requeteDepuisPlan (v7 : une seule recherche Drive derrière la questio
     expect(requeteDepuisPlan({ motsCles: [], texte: ' relevé ' }, 'q')).toBe('relevé');
     expect(requeteDepuisPlan({}, ' les factures Hydro ')).toBe('les factures Hydro');
   });
+  it('l’année du plan entre dans la requête, une seule fois', () => {
+    expect(requeteDepuisPlan({ motsCles: ['facture', 'Hydro'], annee: '2025' }, 'q')).toBe('facture Hydro 2025');
+    expect(requeteDepuisPlan({ motsCles: ['facture', '2025'], annee: '2025' }, 'q')).toBe('facture 2025');
+  });
 });

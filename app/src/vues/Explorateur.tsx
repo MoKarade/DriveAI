@@ -53,6 +53,8 @@ export function Explorateur({ langue }: { langue: Langue }) {
   // Recherche unique (remplace le listage tant qu'elle est active).
   const [texte, setTexte] = useState('');
   const [resultats, setResultats] = useState<ElementDrive[] | null>(null);
+  const [tronque, setTronque] = useState(false);         // la page Drive (50) n'a pas tout rendu
+  const [requeteLancee, setRequeteLancee] = useState(''); // ce qui a VRAIMENT été cherché (IA ⇒ mots-clés)
   const [enCours, setEnCours] = useState(false);
   const [iaEnCours, setIaEnCours] = useState(false);
   const [iaExplication, setIaExplication] = useState('');
@@ -107,11 +109,14 @@ export function Explorateur({ langue }: { langue: Langue }) {
   /** La recherche : nom OU contenu, tout le Drive (index natif de Google, aucun corps stocké). */
   async function chercher(requete = texte) {
     const propre = requete.trim();
-    if (!propre) return;
+    if (!propre || enCours) return; // deux Entrée rapides = une seule recherche
     setEnCours(true);
     setErreur('');
     try {
-      setResultats(await rechercherDrive(propre));
+      const r = await rechercherDrive(propre);
+      setResultats(r.elements);
+      setTronque(r.tronque);
+      setRequeteLancee(propre);
     } catch (e) {
       setErreur(String(e));
     } finally {
@@ -140,6 +145,8 @@ export function Explorateur({ langue }: { langue: Langue }) {
   function effacerRecherche() {
     setTexte('');
     setResultats(null);
+    setTronque(false);
+    setRequeteLancee('');
     setIaExplication('');
   }
 
@@ -148,6 +155,7 @@ export function Explorateur({ langue }: { langue: Langue }) {
     // l'Ariane courant, même s'il vit ailleurs dans le Drive — la navigation (par id) reste
     // juste, seul le chemin affiché est approximatif.
     setResultats(null);
+    setIaExplication('');
     setAriane((a) => pousserEtape(a, { id: e.id, nom: e.name }));
   }
 
@@ -193,6 +201,7 @@ export function Explorateur({ langue }: { langue: Langue }) {
       if (!deplace) return; // déjà en place — rien à annoncer, rien à rafraîchir
       setStatutDepot(`ok:${fichier.name} → ${cibleNom}`);
       setResultats(null);
+      setIaExplication('');
       setRafraichir((n) => n + 1);
     } catch (e) {
       setStatutDepot(String(e));
@@ -200,6 +209,9 @@ export function Explorateur({ langue }: { langue: Langue }) {
   }
 
   function surDragStart(ev: React.DragEvent, e: ElementDrive) {
+    // La ligne porte un LIEN : sans ça le navigateur y met `text/uri-list` et un dépôt manqué
+    // (hors dossier) NAVIGUE vers le fichier Drive (revue flotte PR 2).
+    ev.dataTransfer.clearData();
     ev.dataTransfer.setData(TYPE_DRAG, JSON.stringify({ id: e.id, name: e.name }));
     ev.dataTransfer.effectAllowed = 'move';
   }
@@ -254,6 +266,7 @@ export function Explorateur({ langue }: { langue: Langue }) {
           onChange={(e) => setTexte(e.target.value)}
           placeholder={t('rechercherPlaceholder', langue)}
           aria-label={t('rechercher', langue)}
+          enterKeyHint="search"
         />
         {texte && (
           <button type="button" className="icone-bouton petit" aria-label={t('effacer', langue)} onClick={effacerRecherche}>
@@ -298,12 +311,13 @@ export function Explorateur({ langue }: { langue: Langue }) {
       )}
       {statutDepot.startsWith('ok:') && <p className="ok">✓ {t('deplaceOk', langue)} : {statutDepot.slice(3)}</p>}
       {statutDepot && !statutDepot.startsWith('ok:') && <p className="erreur">{statutDepot}</p>}
-      <BanniereErreur langue={langue} erreur={erreur} onReessayer={() => setErreur('')} />
+      <BanniereErreur langue={langue} erreur={erreur} onReessayer={() => setRafraichir((n) => n + 1)} />
       {iaExplication && <p className="variante ia-explication">✨ {iaExplication}</p>}
 
       {resultats ? (
         <div className="ariane">
-          <b>{resultats.length} {t('resultats', langue)}</b>
+          <b>{resultats.length} {t('resultats', langue)}{tronque && ` · ${t('resultatsTronques', langue)}`}</b>
+          {requeteLancee && requeteLancee !== texte.trim() && <span className="variante">« {requeteLancee} »</span>}
           <span className="sp" />
           <button className="discret" onClick={effacerRecherche}>✕ {t('effacer', langue)}</button>
         </div>
@@ -337,7 +351,8 @@ export function Explorateur({ langue }: { langue: Langue }) {
       )}
 
       <div className="carte lignes">
-        {!charge && !resultats && !erreur && <p className="ligne vide">{enCours ? '…' : t('chargement', langue)}</p>}
+        {enCours && <p className="ligne vide">{t('chargement', langue)}</p>}
+        {!charge && !resultats && !erreur && !enCours && <p className="ligne vide">{t('chargement', langue)}</p>}
         {(charge || resultats) && affiches.length === 0 && (
           <p className="ligne vide">{resultats ? t('aucunResultat', langue) : t('dossierVide', langue)}</p>
         )}
@@ -348,7 +363,7 @@ export function Explorateur({ langue }: { langue: Langue }) {
             role="button"
             tabIndex={0}
             onClick={() => ouvrirDossier(e)}
-            onKeyDown={(ev) => ev.key === 'Enter' && ouvrirDossier(e)}
+            onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); ouvrirDossier(e); } }}
             {...propsDepot(e)}
           >
             <Icone nom="dossier" className="accent" />
@@ -359,7 +374,7 @@ export function Explorateur({ langue }: { langue: Langue }) {
           <div key={e.id} className="ligne" draggable onDragStart={(ev) => surDragStart(ev, e)} onDragEnd={() => setSurvolDepot('')}>
             <Icone nom="fichier" />
             <a className="t lien-ligne" href={e.webViewLink ?? `https://drive.google.com/file/d/${e.id}/view`}
-              target="_blank" rel="noreferrer noopener" title={t('ouvrirDansDrive', langue)}>
+              target="_blank" rel="noreferrer noopener" title={t('ouvrirDansDrive', langue)} draggable={false}>
               <b className="mono">{e.name}</b>
               <small>{formaterDateCourte(e.modifiedTime, locale)} · {formaterTaille(e.size)}</small>
             </a>

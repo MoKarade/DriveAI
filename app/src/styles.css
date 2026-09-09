@@ -702,7 +702,7 @@ form.recherche {
   background: var(--carte); border: 1px solid var(--bord); border-radius: 14px;
   padding: 0.35rem 0.5rem 0.35rem 0.8rem;
 }
-form.recherche:focus-within { border-color: var(--accent); }
+form.recherche:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 30%, transparent); }
 form.recherche > .icone { color: var(--texte-doux); width: 20px; height: 20px; }
 form.recherche input { border: none; background: none; padding: 0.45rem 0.2rem; font-size: 1rem; flex: 1; min-width: 0; }
 form.recherche input:focus-visible { border: none; outline: none; }
