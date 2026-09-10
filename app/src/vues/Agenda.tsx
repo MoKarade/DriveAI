@@ -46,11 +46,18 @@ const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
 type VueCal = 'jour' | 'semaine' | 'mois';
 type Popover = { genre: 'evenement'; e: Evenement } | { genre: 'tache'; tache: Tache };
 
-/** Écran étroit (mobile) : la vue Semaine passe en 3 jours glissants (décision Marc). */
+/**
+ * Écran étroit (mobile) : la vue Semaine passe en 3 jours glissants (décision Marc), et le segment
+ * Liste/Grille remplace Jour/Semaine/Mois. Le seuil est le MÊME que celui de la coquille téléphone
+ * dans `styles.css` (barre d'onglets basse, en-tête compact) : entre les deux valeurs, les styles
+ * compacts habillaient un segment PC à trois boutons (revue flotte 2026-09-10).
+ */
+const SEUIL_TELEPHONE = '(max-width: 760px)';
+
 function useEstEtroit(): boolean {
-  const [etroit, setEtroit] = useState(() => window.matchMedia('(max-width: 720px)').matches);
+  const [etroit, setEtroit] = useState(() => window.matchMedia(SEUIL_TELEPHONE).matches);
   useEffect(() => {
-    const mq = window.matchMedia('(max-width: 720px)');
+    const mq = window.matchMedia(SEUIL_TELEPHONE);
     const suivre = (e: MediaQueryListEvent) => setEtroit(e.matches);
     mq.addEventListener('change', suivre);
     return () => mq.removeEventListener('change', suivre);

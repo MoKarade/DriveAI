@@ -117,7 +117,17 @@ jobs:
 
       - name: Typecheck + build (tsc --noEmit && vite build)
         working-directory: app
-        run: npm run build
+        # Un AVERTISSEMENT CSS d'esbuild n'échoue pas le build : une accolade en trop a passé la CI
+        # au vert alors qu'elle faisait AVALER la règle suivante par le parseur (revue flotte
+        # 2026-09-10). En prod le minifieur rattrapait l'erreur, mais pas en dev ni dans les captures
+        # E2E — l'artefact que Marc regarde ne montrait donc pas ce que Vercel sert. On échoue dessus.
+        run: |
+          set -o pipefail
+          npm run build 2>&1 | tee /tmp/build-app.log
+          if grep -q 'css-syntax-error' /tmp/build-app.log; then
+            echo "::error::CSS invalide (css-syntax-error) — une règle est silencieusement avalée"
+            exit 1
+          fi
 
   screenshots:
     name: Captures d'écran UI (E2E mode mock)
