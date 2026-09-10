@@ -45,3 +45,42 @@ test('captures des 5 écrans (mode mock, app "connectée")', async ({ page }, te
     await page.screenshot({ path: `e2e-screenshots/${testInfo.project.name}-${fichier}.png`, fullPage: !tel });
   }
 });
+
+/**
+ * Garde-fou du retour de Marc (2026-09-10, « la page agenda me fait dézoomer sinon je vois pas
+ * tout ») : sur téléphone, en vue GRILLE, la grille horaire doit tenir À L'ÉCRAN. Ce qui est
+ * verrouillé ici est la propriété RÉELLEMENT corrigée — plus un seul pixel de la grille derrière la
+ * barre d'onglets fixe (mesuré avant correctif : 40 px cachés en 390 × 844, 87 en 390 × 700, 106 en
+ * 360 × 640, 119 en 320 × 600 ; le défilement de la grille et celui de la page se disputaient le
+ * pouce). Prouvé par MUTATION : retirer le bloc téléphone de `styles.css` fait échouer ce test.
+ * Le plancher de hauteur visible est dérivé de `--gt-haut` (1152 px / 24 h), jamais d'un chiffre du
+ * jour ; il tient sur le petit écran de référence du projet (320 × 600 → 5,5 h).
+ */
+test('téléphone : la grille de l’Agenda tient à l’écran (rien sous la barre d’onglets)', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'tel', 'garde-fou propre au téléphone');
+  await page.goto('/');
+  const nav = page.getByRole('navigation', { name: 'Sections (mobile)', exact: true });
+  const agenda = nav.getByRole('button', { name: 'Agenda', exact: true });
+  await expect(agenda).toBeVisible();
+  await agenda.dispatchEvent('click');
+  const grille = page.getByRole('button', { name: 'Grille', exact: true });
+  await expect(grille).toBeVisible();
+  await grille.dispatchEvent('click');
+  await page.waitForTimeout(400);
+
+  const mesure = await page.evaluate(() => {
+    const defilant = document.querySelector('.gt-defilant');
+    const barre = document.querySelector('nav.barre-basse');
+    if (!defilant || !barre) return null;
+    const d = defilant.getBoundingClientRect();
+    const b = barre.getBoundingClientRect();
+    return {
+      cache: Math.max(0, d.bottom - b.top),          // grille passant DERRIÈRE la barre d'onglets
+      visible: Math.min(d.bottom, b.top) - Math.max(d.top, 0),
+      heure: 1152 / 24,                              // --gt-haut / 24 h
+    };
+  });
+  expect(mesure).not.toBeNull();
+  expect(mesure!.cache).toBe(0);
+  expect(mesure!.visible).toBeGreaterThanOrEqual(5 * mesure!.heure);
+});

@@ -660,6 +660,31 @@ button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):ho
 /* la rangée des jours reste visible pendant le défilement de la grille (ouverte à 7 h) */
 .gt-defilant .gt-rang:first-child { position: sticky; top: 0; z-index: 2; background: var(--carte); }
 
+/* Téléphone (retour Marc 2026-09-10 : « ça me fait dézoomer, sinon je vois pas tout »). Mesuré au
+   navigateur, mode Grille, avant/après (haut de la grille · hauteur cachée derrière la barre
+   d'onglets fixe) : 390 × 844 → 250 px · 40 px cachés, puis 186 px · 0 ; 390 × 700 → 87 px cachés,
+   puis 0 ; 360 × 640 → 106, puis 0 ; 320 × 600 → 119, puis 0. Autrement dit la grille défilante
+   dépassait TOUJOURS sous la barre d'onglets : son propre défilement et celui de la page se
+   disputaient le pouce, et le bas de la journée n'était atteignable qu'en faisant les deux.
+   Deux corrections : un en-tête compact (titre + segment + ‹ Aujourd'hui › + « + » + puces d'agendas
+   passent de 177 px à 114 px) et une grille bornée à la place qui reste RÉELLEMENT à l'écran —
+   `dvh` et non `vh`, car sur mobile `vh` ignore la barre d'URL et surestime la hauteur. */
+@media (max-width: 760px) {
+  .agenda .cal-carte { padding: 0.75rem 0.75rem 0.85rem; }
+  .agenda .cal-carte > h2 { margin-bottom: 0.45rem; align-items: center; row-gap: 0.35rem; }
+  .agenda .cal-titre { font-size: 0.95rem; }
+  .cal-nav { gap: 0.25rem; flex-wrap: nowrap; }
+  .cal-nav button { padding: 0.2rem 0.5rem; font-size: 0.8rem; }
+  .cal-nav .segment { padding: 2px; }
+  .cal-nav .segment button { padding: 0.2rem 0.55rem; font-size: 0.78rem; }
+  .cal-nav .icone-bouton { width: 2rem; height: 2rem; }
+  .agendas-puces { gap: 0.3rem; margin: 0 0 0.5rem; }
+  .agendas-puces label { font-size: 0.75rem; padding: 0.2rem 0.6rem 0.2rem 0.45rem; gap: 0.3rem; }
+  .agendas-puces .puce { width: 8px; height: 8px; }
+  .gt-defilant { max-height: calc(100vh - 21rem); }
+  .gt-defilant { max-height: calc(100dvh - 21rem); }
+}
+
 /* ---------- v7 (PR4) : Assistant — le fil occupe l'écran, la saisie reste au pouce ---------- */
 .assistant { display: flex; flex-direction: column; gap: 0.8rem; }
 .assistant .titre-liste { margin-bottom: 0; }
