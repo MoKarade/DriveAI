@@ -81,6 +81,12 @@ function majHistoriqueVrac_(estBudgetDepasse) {
   var garde = function () { return estBudgetDepasse() || (Date.now() - debut) > budgetRun; };
 
   var lignes = [];
+  // Le budget consommé et le curseur se posent dans un `finally` (patron de TOUTES les autres
+  // campagnes : Doublons, Consolidation, Missions, Reset…). Sans lui, une exception à l'écriture
+  // Sheet laissait la Property à 0 : l'étape recomptait les 9 racines de domaine à CHAQUE tick
+  // (288×/jour) au lieu d'une fois par jour, sans que son budget de 4 min/j s'applique jamais
+  // (audit moteur 2026-09-10).
+  try {
   while (idx < domaines.length) {
     if (garde()) break; // vérifié AVANT chaque comptage — jamais un lot non borné
     var compte = compterVracRacineDomaine_(domaines[idx].id);
@@ -96,13 +102,20 @@ function majHistoriqueVrac_(estBudgetDepasse) {
     // tête — même patron que `Index!H1` (Journal.gs). Coût marginal (une lecture de cellule par
     // jour où la sweep écrit, contrairement à `Index!H1` borné à l'initialisation) mais négligeable.
     if (String(f.getRange('E1').getValue()) === '') f.getRange('E1').setValue('Erreur');
+    // La grille d'un onglet créé par `insertSheet` fait 1 000 lignes et `getRange` ne l'agrandit
+    // PAS (contrairement à `appendRow`) : cet onglet est append-only, 9 lignes/jour depuis le
+    // 2026-08-12 — le mur tombait vers fin novembre 2026, et l'exception aurait enclenché le défaut
+    // ci-dessus. Même patron que `Doublons.gs` (qui l'avait déjà rencontré).
+    var manque = (f.getLastRow() + lignes.length) - f.getMaxRows();
+    if (manque > 0) f.insertRowsAfter(f.getMaxRows(), manque);
     f.getRange(f.getLastRow() + 1, 1, lignes.length, COLONNES_HISTORIQUE_VRAC.length).setValues(lignes);
   }
-
-  props.setProperty('DriveAI_VRAC_HISTO_IDX', String(idx));
-  props.setProperty('DriveAI_VRAC_JOUR_MS', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
-  if (idx >= domaines.length) {
-    props.setProperty('DriveAI_VRAC_HISTO_JOUR', aujourdhui);
-    props.setProperty('DriveAI_VRAC_HISTO_IDX', '0'); // prêt pour la sweep de demain
+  } finally {
+    props.setProperty('DriveAI_VRAC_HISTO_IDX', String(idx));
+    props.setProperty('DriveAI_VRAC_JOUR_MS', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
+    if (idx >= domaines.length) {
+      props.setProperty('DriveAI_VRAC_HISTO_JOUR', aujourdhui);
+      props.setProperty('DriveAI_VRAC_HISTO_IDX', '0'); // prêt pour la sweep de demain
+    }
   }
 }

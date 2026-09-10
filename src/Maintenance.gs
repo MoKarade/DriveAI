@@ -572,8 +572,13 @@ function rattraperMediasMalClasses(depuisISO) {
   var dern = f.getLastRow();
   if (dern < 2) { journalInfo_('Rattrapage', 'Index vide.'); return; }
   var v = f.getRange(2, 1, dern - 1, 6).getValues(); // A=Clé, B=Traité le, C=Fichier, F=Statut
-  var vus = 0, demis = 0, restants = 0;
+  var vus = 0, demis = 0, restants = 0, proteges04 = 0;
   var medias = dossierMedias_().getId();
+  // §1 : cet outil DÉPLACE (removeParents) — il doit porter la même garde que ses neuf voisins.
+  // Le seul contrôle présent (`toucheZoneProtegee_`) vit sous `texte.length >= MEDIAS_OCR_MAX_CARS`,
+  // or la fonction vise justement les photos SANS texte : le cas nominal le sautait (audit sécurité
+  // 2026-09-10). Une photo de permis/passeport rangée sous 04 pouvait donc en sortir vers _Médias.
+  var proteges = ensembleDomainesProteges_();
   for (var i = 0; i < v.length; i++) {
     if (v[i][5] !== 'classé') continue;
     var cle = String(v[i][0]);
@@ -602,6 +607,10 @@ function rattraperMediasMalClasses(depuisISO) {
         if (verdict.sensible === true) continue;
         if (typeof verdict.confiance === 'number' && verdict.confiance >= CONFIG.MEDIAS_CONFIANCE_MIN) continue;
       }
+      // Domaine inscrit à l'Index (colonne D) : premier filet, avant même de toucher à Drive.
+      if (CONFIG.DOMAINES_PROTEGES.indexOf(String(v[i][3])) !== -1) { proteges04++; continue; }
+      // Garde structurelle, STRICTE : remonte toute la chaîne d'ancêtres, abstention si indéterminable.
+      if (aParentProtege_(fichier, proteges, true)) { proteges04++; continue; }
       var parent = fichier.getParents().hasNext() ? fichier.getParents().next().getId() : '';
       if (parent === medias) continue; // déjà au bon endroit
       if (!deplacerEtRenommer_(fileId, medias, parent, nom)) { restants++; continue; }
@@ -614,6 +623,7 @@ function rattraperMediasMalClasses(depuisISO) {
     }
   }
   journalInfo_('Rattrapage', 'Terminé : ' + vus + ' image(s) re-jugée(s), ' + demis + ' → _Médias' +
+    (proteges04 ? ', ' + proteges04 + ' laissée(s) en zone protégée (§1)' : '') +
     (restants ? ', ' + restants + ' reste(nt) à traiter — RELANCE rattraperMediasMalClasses()' : '.'));
 }
 
@@ -1001,16 +1011,28 @@ function fusionnerDomaine07PersoVers08() {
   try {
     var source = DriveApp.getFolderById(idSource);
     var cible = DriveApp.getFolderById(idCible);
-    var fichiers = 0, dossiers = 0;
+    var fichiers = 0, dossiers = 0, proteges = 0;
+    // §1 : `moveTo` retire TOUS les parents — un élément aussi rattaché à un domaine protégé en
+    // serait détaché. Garde stricte, comme partout ailleurs (audit sécurité 2026-09-10).
+    var zonesProtegees = ensembleDomainesProteges_();
     var fi = source.getFiles();
-    while (fi.hasNext()) { fi.next().moveTo(cible); fichiers++; }
+    while (fi.hasNext()) {
+      var fich = fi.next();
+      if (aParentProtege_(fich, zonesProtegees, true)) { proteges++; continue; }
+      fich.moveTo(cible); fichiers++;
+    }
     var fo = source.getFolders();
-    while (fo.hasNext()) { fo.next().moveTo(cible); dossiers++; }
+    while (fo.hasNext()) {
+      var doss = fo.next();
+      if (aParentProtege_(doss, zonesProtegees, true)) { proteges++; continue; }
+      doss.moveTo(cible); dossiers++;
+    }
     props.deleteProperty('DriveAI_DOM_' + NOM_ERRONE);
     var corrEntites = remplacerColonneOnglet_('Entités', 'Domaine', NOM_ERRONE, NOM_CIBLE);
     var corrIndex = remplacerColonneOnglet_('Index', 'Domaine', NOM_ERRONE, NOM_CIBLE);
     var resume = 'Fusion « ' + NOM_ERRONE + ' » → « ' + NOM_CIBLE + ' » : ' + fichiers + ' fichier(s) et ' +
-      dossiers + ' sous-dossier(s) déplacés, Property effacée, ' + corrEntites + ' ligne(s) Entités et ' +
+      dossiers + ' sous-dossier(s) déplacés' + (proteges ? ', ' + proteges + ' laissé(s) en zone protégée (§1)' : '') +
+      ', Property effacée, ' + corrEntites + ' ligne(s) Entités et ' +
       corrIndex + ' ligne(s) Index ré-étiquetées. Dossier vide restant : ADR-0014 (app).';
     journalInfo_('Maintenance', resume);
     Logger.log(resume);

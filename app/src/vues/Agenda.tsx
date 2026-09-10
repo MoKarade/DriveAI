@@ -35,14 +35,31 @@ import {
   positionMaintenant,
   titresDriveAI,
 } from '../agenda';
-import { formaterDateCourte } from '../explorateur';
+import { formaterDateSeule, texteSurFond } from '../explorateur';
 import { Langue, t } from '../i18n';
 import { useAgendas, agendasAffiches, basculerAgenda, basculerTaches, reconnecterPourAgendas, rechargerAgendas } from '../agendasStore';
 import { Icone } from '../composants/Icone';
 
-const JOURS_SEMAINE = ['LUN', 'MAR', 'MER', 'JEU', 'VEN', 'SAM', 'DIM'];
-const MOIS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin',
-  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+/**
+ * Jours et mois viennent de la LANGUE de l'interface, jamais d'une table française : en anglais,
+ * l'en-tête affichait « septembre 2026 » et la grille « LUN MAR MER » (audit app 2026-09-10).
+ * Les jours sont dérivés d'une semaine de référence qui COMMENCE un lundi (2024-01-01), comme la
+ * grille du projet ; mémoïsés par locale (l'`Intl.DateTimeFormat` est le poste coûteux, pas le map).
+ */
+const CACHE_JOURS = new Map<string, string[]>();
+
+function joursSemaine(locale: string): string[] {
+  const connu = CACHE_JOURS.get(locale);
+  if (connu) return connu;
+  const fmt = new Intl.DateTimeFormat(locale, { weekday: 'short' });
+  const noms = Array.from({ length: 7 }, (_, i) => fmt.format(new Date(2024, 0, 1 + i)).replace('.', '').toUpperCase());
+  CACHE_JOURS.set(locale, noms);
+  return noms;
+}
+
+function moisAnnee(d: Date, locale: string): string {
+  return d.toLocaleDateString(locale, { month: 'long', year: 'numeric' });
+}
 
 type VueCal = 'jour' | 'semaine' | 'mois';
 type Popover = { genre: 'evenement'; e: Evenement } | { genre: 'tache'; tache: Tache };
@@ -80,7 +97,8 @@ export function Agenda({ langue }: { langue: Langue }) {
   const [modeTel, setModeTel] = useState<'liste' | 'grille'>('liste'); // téléphone (PR 3) : liste par défaut
   const defilantRef = useRef<HTMLDivElement>(null);
   const [charge, setCharge] = useState(false);
-  const [erreur, setErreur] = useState('');
+  const [erreur, setErreur] = useState('');        // erreur de CHARGEMENT : la vue ne peut rien montrer
+  const [erreurAction, setErreurAction] = useState(''); // erreur d'une action (coche, création) : bannière EN PLACE
   const etroit = useEstEtroit();
   const enListe = etroit && modeTel === 'liste'; // téléphone en vue Liste : la bande est la SEMAINE
 
@@ -183,7 +201,9 @@ export function Agenda({ langue }: { langue: Langue }) {
       await cocherTache(tache.id, !tache.faite);
       setTaches((ts) => ts.map((x) => (x.id === tache.id ? { ...x, faite: !tache.faite } : x)));
     } catch (e) {
-      setErreur(String(e));
+      // Une coche ratée (429, réseau) ne remplace PAS l'écran : elle s'affiche EN PLACE, la grille,
+      // les tâches et les puces restent là (audit app 2026-09-10).
+      setErreurAction(String(e));
     }
   }
 
@@ -194,9 +214,12 @@ export function Agenda({ langue }: { langue: Langue }) {
 
   return (
     <div className="colonnes agenda">
+      {erreurAction && (
+        <BanniereErreur langue={langue} erreur={erreurAction} onReessayer={() => setErreurAction('')} />
+      )}
       <section className={'carte cal-carte' + (enListe ? ' liste' : '')}>
         <h2>
-          <span className="cal-titre">{MOIS[(vueCal === 'mois' ? mois : semaineRef).getMonth()]} {(vueCal === 'mois' ? mois : semaineRef).getFullYear()}</span>
+          <span className="cal-titre">{moisAnnee(vueCal === 'mois' ? mois : semaineRef, locale)}</span>
           <span className="cal-nav">
             {etroit ? (
               <span className="segment" role="group">
@@ -273,7 +296,7 @@ export function Agenda({ langue }: { langue: Langue }) {
           <>
             <table className="cal">
               <thead>
-                <tr>{JOURS_SEMAINE.map((j) => <th key={j}>{j}</th>)}</tr>
+                <tr>{joursSemaine(locale).map((j) => <th key={j}>{j}</th>)}</tr>
               </thead>
               <tbody>
                 {semainesMois.map((semaine, i) => (
@@ -335,7 +358,7 @@ export function Agenda({ langue }: { langue: Langue }) {
               </button>
               <button className="t texte" onClick={() => setPopover({ genre: 'tache', tache: tk })}>
                 <b>{tk.titre}</b>
-                <small>{tk.echeance ? `${t('echeance', langue)} ${formaterDateCourte(tk.echeance, locale)}` : t('sansEcheance', langue)}{tk.parDriveAI && ` · ${t('parDriveAI', langue)}`}</small>
+                <small>{tk.echeance ? `${t('echeance', langue)} ${formaterDateSeule(tk.echeance, locale)}` : t('sansEcheance', langue)}{tk.parDriveAI && ` · ${t('parDriveAI', langue)}`}</small>
               </button>
             </div>
           ))}
@@ -401,7 +424,7 @@ export function Agenda({ langue }: { langue: Langue }) {
                 <h3>{popover.tache.titre}</h3>
                 <p className="pe-ligne">
                   🕐 {popover.tache.echeance
-                    ? `${t('echeance', langue)} ${formaterDateCourte(popover.tache.echeance, locale)}`
+                    ? `${t('echeance', langue)} ${formaterDateSeule(popover.tache.echeance, locale)}`
                     : t('sansEcheance', langue)}
                 </p>
                 {popover.tache.parDriveAI && <p className="pe-ligne variante">{t('parDriveAI', langue)}</p>}
@@ -460,7 +483,7 @@ function ListeJours({ langue, jours, reference, evenements, taches, aujourdhuiCl
               className={(cle === aujourdhuiCle ? 'auj' : '') + (cle === refCle ? ' sel' : '')}
               onClick={() => { onJour(j.date); document.getElementById(`jour-${cle}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }}
             >
-              <span>{JOURS_SEMAINE[(j.date.getDay() + 6) % 7]}</span>
+              <span>{joursSemaine(locale)[(j.date.getDay() + 6) % 7]}</span>
               <b>{j.date.getDate()}</b>
               {avecContenu.has(cle) && <i aria-hidden="true" />}
             </button>
@@ -517,6 +540,7 @@ function GrilleTemps({ langue, jours, evenements, taches, aujourdhuiCle, onEntet
   onEvenement: (e: Evenement) => void;
   onTache: (t: Tache) => void;
 }) {
+  const locale = langue === 'fr' ? 'fr-CA' : 'en-CA';
   const fr = langue === 'fr';
   const heures = Array.from({ length: 23 }, (_, i) => i + 1);
   const pctMaintenant = positionMaintenant(new Date());
@@ -530,7 +554,7 @@ function GrilleTemps({ langue, jours, evenements, taches, aujourdhuiCle, onEntet
           const auj = cleJour(j.date) === aujourdhuiCle;
           return (
             <button key={cleJour(j.date)} className={'gt-entete' + (auj ? ' auj' : '')} onClick={() => onEntete(j.date)}>
-              <span className="gt-nom">{JOURS_SEMAINE[(j.date.getDay() + 6) % 7]}</span>
+              <span className="gt-nom">{joursSemaine(locale)[(j.date.getDay() + 6) % 7]}</span>
               <span className="gt-num">{j.date.getDate()}</span>
             </button>
           );
@@ -546,7 +570,7 @@ function GrilleTemps({ langue, jours, evenements, taches, aujourdhuiCle, onEntet
             <div key={cleJour(j.date)} className="gt-tj-col">
               {journee.map((e) => (
                 <button key={e.id} className="gt-bloc-tj" onClick={() => onEvenement(e)}
-                  style={!e.parDriveAI && e.couleur ? { background: e.couleur, color: '#fff', borderColor: 'transparent' } : undefined}>
+                  style={!e.parDriveAI && e.couleur ? { background: e.couleur, color: texteSurFond(e.couleur), borderColor: 'transparent' } : undefined}>
                   {e.titre}
                 </button>
               ))}
@@ -589,7 +613,7 @@ function GrilleTemps({ langue, jours, evenements, taches, aujourdhuiCle, onEntet
                     style={{
                       top: `${pos.top}%`,
                       height: `${pos.hauteur}%`,
-                      ...(!e.parDriveAI && e.couleur ? { background: e.couleur, color: '#fff' } : {}),
+                      ...(!e.parDriveAI && e.couleur ? { background: e.couleur, color: texteSurFond(e.couleur) } : {}),
                     }}
                     onClick={(ev) => { ev.stopPropagation(); onEvenement(e); }}
                   >

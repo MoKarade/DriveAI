@@ -11,7 +11,7 @@
  * cochée disparaît, un suspect marqué « pas suspect » disparaît (masquage optimiste, Suspects.tsx).
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import type { Section } from '../App';
 import { listerEvenements, listerTaches, cocherTache, ajouterLigne } from '../google';
 import { useEtatGlobal } from '../etatGlobal';
@@ -38,7 +38,7 @@ import {
   heureEvenement,
   titresDriveAI,
 } from '../agenda';
-import { formaterDateCourte } from '../explorateur';
+import { formaterDateCourte, formaterDateSeule } from '../explorateur';
 import { useAgendas, agendasAffiches, reconnecterPourAgendas } from '../agendasStore';
 import { Langue, t } from '../i18n';
 
@@ -48,19 +48,47 @@ const A_VERIFIER_MAX = 5;
 const IMPORTANTS_MAX = 5;
 const IMPORTANTS_JOURS = 7; // au-delà, un ⏰ sort tout seul de « À faire » (même fenêtre que le résumé)
 
+/**
+ * « Fait » sur un mail ⏰ : masqué à toute la SESSION, pas au composant. En `useState`, le masque
+ * mourait au changement d'onglet (`key={section}` remonte la vue) et le mail réapparaissait, l'Index
+ * n'étant relu que toutes les 5 minutes — le clic n'avait pas l'air de tenir (audit app 2026-09-10).
+ * Même patron que `masquesSession` de `Suspects.tsx`, avec son mini-store abonné.
+ */
+const faitsSession = new Set<string>();
+const abonnesFaits = new Set<() => void>();
+let versionFaits = 0;
+
+function marquerFait(cle: string, fait: boolean) {
+  if (fait) faitsSession.add(cle); else faitsSession.delete(cle);
+  versionFaits++;
+  abonnesFaits.forEach((cb) => cb());
+}
+
+function useFaitsSession(): Set<string> {
+  useSyncExternalStore(
+    (cb) => { abonnesFaits.add(cb); return () => { abonnesFaits.delete(cb); }; },
+    () => versionFaits,
+  );
+  return faitsSession;
+}
+
 export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: Section) => void }) {
   const { donnees, synchroA } = useEtatGlobal();
   const [evenements, setEvenements] = useState<Evenement[]>([]);
   const [taches, setTaches] = useState<Tache[]>([]);
   const [erreur, setErreur] = useState('');
-  const [importantsFaits, setImportantsFaits] = useState<Set<string>>(new Set()); // « Fait » optimiste
+  const [agendaHS, setAgendaHS] = useState(false); // lecture Tasks/Calendar en échec : ne pas dire « rien à faire »
+  const importantsFaits = useFaitsSession(); // « Fait » optimiste, à l'échelle de la session
   const suspects = useSuspectsVisibles(donnees ? lignesSuspects(donnees.index) : []);
   // « Ma journée » couvre TOUS les agendas cochés (C28-41 PR2 — Family inclus).
   const etatAgendas = useAgendas();
   const affiches = agendasAffiches(etatAgendas);
   const cleAgendas = affiches.map((a) => a.id).sort().join('|');
 
-  // RDV et tâches du jour — un échec est SILENCIEUX ici (les listes restent vides, l'accueil vit).
+  // RDV et tâches du jour. Un échec ne doit PAS passer pour « rien à faire » : sans agenda ni
+  // tâches, l'accueil affichait une journée vide et une liste vide, c'est-à-dire un mensonge sur
+  // l'écran que Marc regarde en premier (audit app 2026-09-10). Le reste de l'accueil (documents,
+  // suspects, classements) vit toujours — seule la bannière apparaît en plus.
   useEffect(() => {
     if (!donnees) return;
     const auj = new Date();
@@ -79,8 +107,9 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
         ]);
         setEvenements(listes.flat().sort((x, y) => x.debut.localeCompare(y.debut)));
         setTaches(interpreterTaches(tks, marques));
-      } catch {
-        /* silencieux : la journée reste vide, le reste de l'accueil vit */
+      } catch (e) {
+        setAgendaHS(true);
+        setErreur(String(e));
       }
     })();
     // `synchroA` : rechargé à CHAQUE lecture réussie (création de RDV comprise), fenêtre du jour
@@ -109,12 +138,12 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
    */
   async function importantFait(l: LigneIndex) {
     setErreur('');
-    setImportantsFaits((f) => new Set(f).add(l.cle)); // OPTIMISTE
+    marquerFait(l.cle, true); // OPTIMISTE
     try {
       const quand = new Date().toISOString().slice(0, 16).replace('T', ' ');
       await ajouterLigne('Index', [l.cle, quand, l.fichier, '', '', STATUT_IMPORTANT_FAIT, '', '']);
     } catch (e) {
-      setImportantsFaits((f) => { const g = new Set(f); g.delete(l.cle); return g; });
+      marquerFait(l.cle, false);
       setErreur(String(e));
     }
   }
@@ -128,16 +157,20 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
   const docs = donnees.index.filter((l) => !/^(intention|tache|event|important|tri(-abandon)?)\|/.test(l.cle));
   const classements = docs.filter((l) => l.statut === 'classé').slice(-CLASSEMENTS_RECENTS).reverse();
   const aujourdhui = traitesLeJour(docs, maintenant);
-  const aVerifier = lignesAVerifier(docs).slice(0, A_VERIFIER_MAX);
-  const importants = importantsAFaire(donnees.index, maintenant, IMPORTANTS_JOURS)
-    .filter((l) => !importantsFaits.has(l.cle)).slice(0, IMPORTANTS_MAX);
+  // Compter AVANT de tronquer : le badge annonçait 5 là où 30 documents attendaient, et rien dans
+  // l'app ne montrait les 25 autres depuis que les filtres d'Index ont disparu (audit app 2026-09-10).
+  const aVerifierTous = lignesAVerifier(docs);
+  const aVerifier = aVerifierTous.slice(0, A_VERIFIER_MAX);
+  const importantsTous = importantsAFaire(donnees.index, maintenant, IMPORTANTS_JOURS)
+    .filter((l) => !importantsFaits.has(l.cle));
+  const importants = importantsTous.slice(0, IMPORTANTS_MAX);
   const cleAujourdhui = `${maintenant.getFullYear()}-${String(maintenant.getMonth() + 1).padStart(2, '0')}-${String(maintenant.getDate()).padStart(2, '0')}`;
   const tachesJour = tachesAFaire(taches, maintenant); // du jour ET en retard, jamais les faites
   const evtsJour = evenementsDuJour(evenements, maintenant);
   // Jeton d'avant le scope `calendar.readonly` : sans ça « Ma journée » resterait vide sans un mot
   // — l'autorisation est une chose À FAIRE, avec son bouton (revue flotte PR 0).
   const agendasAAutoriser = etatAgendas.statut === 'scope';
-  const nbAFaire = Math.min(suspects.length, SUSPECTS_MAX) + aVerifier.length + importants.length + tachesJour.length
+  const nbAFaire = suspects.length + aVerifierTous.length + importantsTous.length + tachesJour.length
     + (agendasAAutoriser ? 1 : 0);
 
   return (
@@ -162,6 +195,13 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
               <Icone nom="externe" className="chev" />
             </a>
           ))}
+          {aVerifierTous.length > aVerifier.length && (
+            <button className="ligne texte" onClick={() => onAller('documents')}>
+              <Icone nom="fichier" className="erreur" />
+              <span className="t"><b>{t('autresAVerifier', langue).replace('{n}', String(aVerifierTous.length - aVerifier.length))}</b></span>
+              <Icone nom="chevron" className="chev" />
+            </button>
+          )}
           {importants.map((l: LigneIndex) => (
             <div key={l.cle} className="ligne">
               <Icone nom="horloge" className="accent" />
@@ -174,6 +214,12 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
               </button>
             </div>
           ))}
+          {importantsTous.length > importants.length && (
+            <div className="ligne">
+              <Icone nom="horloge" className="accent" />
+              <span className="t"><b>{t('autresMails', langue).replace('{n}', String(importantsTous.length - importants.length))}</b></span>
+            </div>
+          )}
           {tachesJour.map((tk) => (
             <div key={tk.id} className="ligne">
               <Icone nom="aujourdhui" />
@@ -181,7 +227,7 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
                 <b>{tk.titre}</b>
                 <small>
                   {t('tache', langue)}
-                  {tk.echeance < cleAujourdhui && <> · <span className="erreur">{t('enRetard', langue)} · {formaterDateCourte(tk.echeance, locale)}</span></>}
+                  {tk.echeance < cleAujourdhui && <> · <span className="erreur">{t('enRetard', langue)} · {formaterDateSeule(tk.echeance, locale)}</span></>}
                   {tk.parDriveAI ? ` · ${t('parDriveAI', langue)}` : ''}
                 </small>
               </span>
@@ -197,7 +243,10 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
               <button className="bouton-ligne principal" onClick={() => reconnecterPourAgendas()}>{t('seReconnecter', langue)}</button>
             </div>
           )}
-          {nbAFaire === 0 && <p className="ligne vide">{t('rienAFaire', langue)}</p>}
+          {/* « Rien à faire » seulement si on a VRAIMENT pu tout lire (sinon c'est une affirmation
+              fausse : agenda et tâches manquent à l'appel). */}
+          {nbAFaire === 0 && !agendaHS && <p className="ligne vide">{t('rienAFaire', langue)}</p>}
+          {nbAFaire === 0 && agendaHS && <p className="ligne vide">{t('agendaIndispo', langue)}</p>}
         </div>
       </section>
 

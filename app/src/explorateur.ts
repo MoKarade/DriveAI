@@ -126,12 +126,41 @@ export function formaterDateCourte(iso?: string, locale = 'fr-CA'): string {
 }
 
 /**
+ * Couleur de texte lisible sur un fond donné (couleur d'agenda Google). Le blanc en dur donnait
+ * 1,69:1 sur « Banana » (#f6bf26) et 2,59 sur « Sage » (#33b679) — quatre couleurs de la palette
+ * sous 2:1, très loin des 4,5 du niveau AA (audit app 2026-09-10). Luminance relative WCAG.
+ */
+export function texteSurFond(hex?: string): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec((hex ?? '').trim());
+  if (!m) return '#fff';
+  const canal = (v: number) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+  const [r, v, b] = [0, 2, 4].map((i) => canal(parseInt(m[1].slice(i, i + 2), 16) / 255));
+  const luminance = 0.2126 * r + 0.7152 * v + 0.0722 * b;
+  // Seuil issu du contraste : au-dessus, le noir passe (≥ 4,5), en dessous le blanc passe.
+  return luminance > 0.18 ? '#101317' : '#fff';
+}
+
+/**
+ * Date SEULE `AAAA-MM-JJ` (échéance de tâche Google) — construite en heure LOCALE, jamais par
+ * `new Date('2026-07-15')` : cette forme-là est parsée en UTC, et à l'ouest de Greenwich elle rend
+ * la VEILLE (mesuré : « 14 juill. 2026 » à Toronto pour une échéance du 15). L'app faisait déjà le
+ * détour ailleurs (`+ 'T12:00:00'` pour les événements journée entière) ; ici la construction par
+ * composants est exacte sous tous les fuseaux.
+ */
+export function formaterDateSeule(cle?: string, locale = 'fr-CA'): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(cle ?? '');
+  if (!m) return '—';
+  return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/**
  * Montant en dollars, dans la langue de l'interface : « 16,42 $ » en français (virgule décimale,
  * espace insécable avant le symbole), « $16.42 » en anglais. `toFixed(2) + ' $'` rendait « 16.42 $ »
  * même en français — repéré en relisant l'écran Réglages (2026-09-10).
  */
-export function formaterMontant(valeur: number, locale = 'fr-CA'): string {
-  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'CAD', currencyDisplay: 'narrowSymbol' }).format(valeur);
+export function formaterMontant(valeur: number, locale = 'fr-CA', decimales = 2): string {
+  // USD : les coûts viennent de l'API Anthropic, jamais d'un montant canadien.
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'USD', currencyDisplay: 'narrowSymbol', minimumFractionDigits: decimales, maximumFractionDigits: decimales }).format(valeur);
 }
 
 /**

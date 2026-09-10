@@ -134,7 +134,7 @@ export function Reglages({ langue, onLangue, onDeconnexion }: {
         <div className="tuile"><b>{compteurs.mailsTries.toLocaleString(locale)}</b><small>{t('filsTries', langue)}</small></div>
         <div className="tuile">
           <b>{cout !== null ? formaterMontant(cout, locale) : '—'}</b>
-          <small>{t('coutMoisCourt', langue)} · {formaterMontant(BUDGET_CROISIERE, locale)}</small>
+          <small>{t('coutMoisCourt', langue)} · {formaterMontant(BUDGET_CROISIERE, locale, 0)}</small>
         </div>
       </div>
 

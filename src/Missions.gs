@@ -1403,7 +1403,11 @@ function executerMission_(tag, estBudgetDepasse) {
       // Peinture ROUGE : seulement les sources JETABLES (revue quotas PR2 — peindre un sous-dossier
       // momentanément vide d'une racine PÉRENNE comme 05 dirait « supprimable » à tort). Défaut =
       // toutes les sources (les missions PR1 dissolvent leurs sources par construction).
-      var jetables = spec.sourcesJetables !== undefined ? spec.sourcesJetables : spec.sources;
+      // Le défaut est VIDE, jamais `spec.sources` : une source « jetable » est peinte en ROUGE, donc
+  // proposée à la suppression. Un défaut ne décide pas d'un geste destructeur — une mission qui omet
+  // le champ ne doit rien proposer (leçon §9 « Un DÉFAUT de configuration n'est pas une décision »,
+  // consignée le 2026-09-09 mais jamais appliquée au code ; audit sécurité 2026-09-10).
+  var jetables = spec.sourcesJetables !== undefined ? spec.sourcesJetables : [];
       peindreSourcesVides_(jetables, garde);
       journalInfo_('Missions', 'Mission « ' + tag + ' » TERMINÉE (version ' + version + ') : ' +
         m.t + ' déplacé(s), ' + m.na + ' non apparié(s).' +

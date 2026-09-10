@@ -12,6 +12,8 @@ import {
   qRecherche,
   qSousDossiers,
   decouperEnLots,
+  formaterDateSeule,
+  texteSurFond,
   estDossier,
   estDossierATrier,
   trierElements,
@@ -53,6 +55,27 @@ describe('clauses q', () => {
     expect(qSousDossiers(['x'])).toBe(
       `('x' in parents) and mimeType = '${MIME_DOSSIER}' and trashed = false`,
     );
+  });
+});
+
+describe('formaterDateSeule (échéance AAAA-MM-JJ, jamais la veille)', () => {
+  // `new Date('2026-07-15')` est parsé en UTC : à l'ouest de Greenwich il rend le 14 (mesuré à
+  // Toronto avant correctif). Le test tourne dans le fuseau du système ; il vérifie l'invariant qui
+  // compte — le JOUR affiché est celui de la chaîne, quel que soit le fuseau.
+  it('rend le jour de la chaîne, pas celui de son interprétation UTC', () => {
+    expect(formaterDateSeule('2026-07-15', 'fr-CA')).toContain('15');
+    expect(formaterDateSeule('2026-01-01', 'fr-CA')).toContain('1');
+    expect(formaterDateSeule('2026-01-01', 'fr-CA')).toContain('2026');
+    // La preuve par la mutation : l'ancienne implémentation passait par `new Date(chaîne)`.
+    const ancienne = new Date('2026-07-15').getDate();
+    const nouvelle = Number(/\d+/.exec(formaterDateSeule('2026-07-15', 'fr-CA'))![0]);
+    expect(nouvelle).toBe(15);
+    if (new Date().getTimezoneOffset() > 0) expect(ancienne).toBe(14); // fuseau à l'ouest : l'ancien code se trompait
+  });
+  it('vide ou malformé → tiret', () => {
+    expect(formaterDateSeule(undefined)).toBe('—');
+    expect(formaterDateSeule('')).toBe('—');
+    expect(formaterDateSeule('15/07/2026')).toBe('—');
   });
 });
 
@@ -144,5 +167,36 @@ describe('requeteDepuisPlan (v7 : une seule recherche Drive derrière la questio
   it('l’année du plan entre dans la requête, une seule fois', () => {
     expect(requeteDepuisPlan({ motsCles: ['facture', 'Hydro'], annee: '2025' }, 'q')).toBe('facture Hydro 2025');
     expect(requeteDepuisPlan({ motsCles: ['facture', '2025'], annee: '2025' }, 'q')).toBe('facture 2025');
+  });
+});
+
+describe('texteSurFond (lisibilité sur une couleur d’agenda Google)', () => {
+  // Les quatre couleurs les plus claires de la palette Google : le blanc y donnait 1,7 à 2,6:1.
+  it('rend un texte SOMBRE sur les fonds clairs', () => {
+    for (const clair of ['#f6bf26', '#e4c441', '#c0ca33', '#33b679']) {
+      expect(texteSurFond(clair)).toBe('#101317');
+    }
+  });
+  it('rend du BLANC sur les fonds foncés, et par défaut si la couleur est absente ou illisible', () => {
+    for (const fonce of ['#3f51b5', '#0b8043', '#d50000', '#8e24aa']) {
+      expect(texteSurFond(fonce)).toBe('#fff');
+    }
+    expect(texteSurFond(undefined)).toBe('#fff');
+    expect(texteSurFond('bleu')).toBe('#fff');
+  });
+  it('le couple fond/texte atteint AA (4,5:1) sur toute la palette', () => {
+    const lum = (hex: string) => {
+      const plein = hex.length === 4 ? '#' + [...hex.slice(1)].map((x) => x + x).join('') : hex; // #fff → #ffffff
+      const c = (v: number) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
+      const [r, v, b] = [1, 3, 5].map((i) => c(parseInt(plein.slice(i, i + 2), 16) / 255));
+      return 0.2126 * r + 0.7152 * v + 0.0722 * b;
+    };
+    const contraste = (a: string, b: string) => {
+      const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+      return (x + 0.05) / (y + 0.05);
+    };
+    for (const fond of ['#f6bf26', '#e4c441', '#c0ca33', '#33b679', '#e67c73', '#3f51b5', '#0b8043', '#d50000', '#8e24aa', '#039be5']) {
+      expect(contraste(fond, texteSurFond(fond))).toBeGreaterThanOrEqual(4.5);
+    }
   });
 });
