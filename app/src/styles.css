@@ -69,7 +69,12 @@ h1, h2, h3 { text-wrap: balance; }
 /* ---------- coquille ---------- */
 .app { display: flex; flex-direction: column; min-height: 100vh; }
 .corps-app { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); flex: 1; align-items: start; }
-.contenu { padding: 1.6rem 2rem 3rem; min-width: 0; }
+/* `anywhere` (et non `break-word`) : seul lui compte dans le calcul de la largeur MIN-CONTENT, donc
+   seul lui empêche un mot insécable — nom de fichier, n° de police d'assurance, URL, adresse mail —
+   d'élargir sa piste de grille et, de proche en proche, TOUTE la page. Mesuré : un titre de tâche de
+   53 caractères sans espace donnait 441 px de min-content sur un écran de 390 px, et il fallait
+   faire glisser la page latéralement pour tout voir (retour de Marc, 2026-09-10). */
+.contenu { padding: 1.6rem 2rem 3rem; min-width: 0; overflow-wrap: anywhere; }
 .contenu > .vue-active { max-width: var(--largeur-colonne); margin: 0 auto; }
 .bandeau-global { margin-bottom: 1rem; }
 
@@ -212,7 +217,11 @@ input:focus-visible, select:focus-visible { outline: none; border-color: var(--a
 input::placeholder { color: var(--texte-doux); }
 
 /* ---------- cartes, grilles & tables ---------- */
-.colonnes { display: grid; grid-template-columns: 1fr; gap: 1rem; align-items: start; }
+/* `minmax(0, 1fr)` et non `1fr` : une piste `1fr` vaut `minmax(auto, 1fr)`, donc elle s'ÉLARGIT pour
+   contenir le min-content de ses cartes — un titre long, une police système agrandie, et c'est toute
+   la page qui devient plus large que l'écran (« je dois slide à droite pour tout voir », 2026-09-10).
+   Avec 0 pour minimum, le contenu s'arrange DANS sa carte au lieu de pousser la page. */
+.colonnes { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; align-items: start; }
 .carte {
   background: var(--carte);
   border: 1px solid var(--bord);
@@ -660,29 +669,56 @@ button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):ho
 /* la rangée des jours reste visible pendant le défilement de la grille (ouverte à 7 h) */
 .gt-defilant .gt-rang:first-child { position: sticky; top: 0; z-index: 2; background: var(--carte); }
 
-/* Téléphone (retour Marc 2026-09-10 : « ça me fait dézoomer, sinon je vois pas tout »). Mesuré au
-   navigateur, mode Grille, avant/après (haut de la grille · hauteur cachée derrière la barre
-   d'onglets fixe) : 390 × 844 → 250 px · 40 px cachés, puis 186 px · 0 ; 390 × 700 → 87 px cachés,
-   puis 0 ; 360 × 640 → 106, puis 0 ; 320 × 600 → 119, puis 0. Autrement dit la grille défilante
-   dépassait TOUJOURS sous la barre d'onglets : son propre défilement et celui de la page se
-   disputaient le pouce, et le bas de la journée n'était atteignable qu'en faisant les deux.
-   Deux corrections : un en-tête compact (titre + segment + ‹ Aujourd'hui › + « + » + puces d'agendas
-   passent de 177 px à 114 px) et une grille bornée à la place qui reste RÉELLEMENT à l'écran —
-   `dvh` et non `vh`, car sur mobile `vh` ignore la barre d'URL et surestime la hauteur. */
+/* Téléphone (retour Marc 2026-09-10 : « ça me fait dézoomer, sinon je vois pas tout » — puis, à la
+   question posée : « je dois slide à droite pour tout voir »). Deux défauts distincts, mesurés au
+   navigateur en mode mock :
+   1. DÉBORDEMENT HORIZONTAL — traité plus haut par `overflow-wrap: anywhere` sur `.contenu` : un mot
+      insécable élargissait toute la page.
+   2. La grille horaire dépassait TOUJOURS sous la barre d'onglets fixe (40 px cachés en 390 × 844,
+      87 en 390 × 700, 106 en 360 × 640, 119 en 320 × 600) : son défilement propre et celui de la page
+      se disputaient le pouce, et le bas de la journée n'était atteignable qu'en faisant les deux.
+   D'où un en-tête un peu plus dense — SANS descendre sous 24 × 24 px de zone tactile (WCAG 2.5.8 AA :
+   répondre à « je ne vois pas » en rétrécissant les boutons échangerait un problème contre un autre) —
+   et une grille bornée à la place qui reste RÉELLEMENT à l'écran : `dvh` et non `vh` (sur mobile, `vh`
+   ignore la barre d'URL et surestime la hauteur), composée à partir de `--barre-basse-h` plutôt que
+   d'un total recopié, et avec un PLANCHER : le media query est borné en largeur, donc un téléphone en
+   PAYSAGE y entre avec 375 px de haut — sans plancher la soustraction rendait 39 px, voire 0 avec une
+   police système agrandie, c'est-à-dire une grille vide (revue flotte). */
 @media (max-width: 760px) {
   .agenda .cal-carte { padding: 0.75rem 0.75rem 0.85rem; }
-  .agenda .cal-carte > h2 { margin-bottom: 0.45rem; align-items: center; row-gap: 0.35rem; }
-  .agenda .cal-titre { font-size: 0.95rem; }
-  .cal-nav { gap: 0.25rem; flex-wrap: nowrap; }
-  .cal-nav button { padding: 0.2rem 0.5rem; font-size: 0.8rem; }
+  .agenda .cal-carte > h2 { margin-bottom: 0.4rem; align-items: center; row-gap: 0.3rem; }
+  .agenda .cal-titre { font-size: 0.98rem; }
+  /* JAMAIS `nowrap` sur cette rangée : à police système agrandie elle déborde de la page (mesuré
+     394 px pour 390 à 20 px de racine, 470 à 24 px) — soit exactement le symptôme rapporté. */
+  .cal-nav { gap: 0.3rem; row-gap: 0.3rem; }
+  .cal-nav button { padding: 0.25rem 0.6rem; font-size: 0.84rem; min-height: 26px; }
+  .cal-nav button.discret { min-width: 26px; }
   .cal-nav .segment { padding: 2px; }
-  .cal-nav .segment button { padding: 0.2rem 0.55rem; font-size: 0.78rem; }
-  .cal-nav .icone-bouton { width: 2rem; height: 2rem; }
-  .agendas-puces { gap: 0.3rem; margin: 0 0 0.5rem; }
-  .agendas-puces label { font-size: 0.75rem; padding: 0.2rem 0.6rem 0.2rem 0.45rem; gap: 0.3rem; }
-  .agendas-puces .puce { width: 8px; height: 8px; }
-  .gt-defilant { max-height: calc(100vh - 21rem); }
-  .gt-defilant { max-height: calc(100dvh - 21rem); }
+  .cal-nav .segment button { padding: 0.25rem 0.7rem; font-size: 0.82rem; }
+  .cal-nav .icone-bouton { width: 2.1rem; height: 2.1rem; }
+  .agendas-puces { gap: 0.35rem; margin: 0 0 0.45rem; }
+  .agendas-puces label { font-size: 0.79rem; padding: 0.28rem 0.7rem 0.28rem 0.55rem; gap: 0.35rem; min-height: 26px; }
+  .gt-defilant {
+    max-height: max(24vh, calc(100vh - var(--barre-basse-h) - 16.9rem));
+    max-height: max(24dvh, calc(100dvh - var(--barre-basse-h) - 16.9rem));
+    overscroll-behavior: contain; /* le défilement de la grille ne « contamine » plus la page */
+  }
+}
+
+/* Téléphone COUCHÉ (regarder une journée en tournant l'appareil est le geste attendu sur un agenda) :
+   il ne reste que ~375 px de haut, et l'en-tête en mangeait presque tout — la grille tombait à 90 px,
+   deux heures. On resserre encore l'en-tête et on relève le plancher : mesuré 667 × 375 → 90 px puis
+   150 px (≈ 3 h), sans rien cacher sous la barre d'onglets. À police système fortement agrandie, un
+   téléphone couché ne peut de toute façon pas tout tenir : la page défile, la grille reste lisible. */
+@media (max-width: 900px) and (max-height: 520px) {
+  .agenda .cal-carte { padding: 0.5rem 0.6rem 0.6rem; }
+  .agenda .cal-carte > h2 { margin-bottom: 0.3rem; }
+  .agendas-puces { margin-bottom: 0.3rem; }
+  .gt-defilant {
+    max-height: max(40vh, calc(100vh - var(--barre-basse-h) - 13rem));
+    max-height: max(40dvh, calc(100dvh - var(--barre-basse-h) - 13rem));
+  }
+}
 }
 
 /* ---------- v7 (PR4) : Assistant — le fil occupe l'écran, la saisie reste au pouce ---------- */

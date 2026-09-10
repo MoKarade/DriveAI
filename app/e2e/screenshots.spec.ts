@@ -47,40 +47,99 @@ test('captures des 5 écrans (mode mock, app "connectée")', async ({ page }, te
 });
 
 /**
- * Garde-fou du retour de Marc (2026-09-10, « la page agenda me fait dézoomer sinon je vois pas
- * tout ») : sur téléphone, en vue GRILLE, la grille horaire doit tenir À L'ÉCRAN. Ce qui est
- * verrouillé ici est la propriété RÉELLEMENT corrigée — plus un seul pixel de la grille derrière la
- * barre d'onglets fixe (mesuré avant correctif : 40 px cachés en 390 × 844, 87 en 390 × 700, 106 en
- * 360 × 640, 119 en 320 × 600 ; le défilement de la grille et celui de la page se disputaient le
- * pouce). Prouvé par MUTATION : retirer le bloc téléphone de `styles.css` fait échouer ce test.
- * Le plancher de hauteur visible est dérivé de `--gt-haut` (1152 px / 24 h), jamais d'un chiffre du
- * jour ; il tient sur le petit écran de référence du projet (320 × 600 → 5,5 h).
+ * Garde-fou n° 1 du retour de Marc (2026-09-10) : « je dois slide à droite pour tout voir ».
+ * La page ne doit JAMAIS déborder horizontalement sur un téléphone, sur AUCUNE section. Cause
+ * trouvée : un mot insécable (nom de fichier, n° de police d'assurance, URL) impose sa largeur
+ * min-content à sa piste de grille, qui élargit la carte, puis la page — mesuré 441 px de
+ * min-content pour un titre de tâche de 53 caractères sur un écran de 390 px. Deux correctifs dans
+ * `styles.css` : `overflow-wrap: anywhere` sur `.contenu` et `minmax(0, 1fr)` sur `.colonnes`.
+ * Les données de démonstration portent exprès une chaîne longue réaliste (police d'assurance), sinon
+ * ce test ne mordrait sur rien. Prouvé par mutation : retirer l'un des deux correctifs le fait échouer.
  */
-test('téléphone : la grille de l’Agenda tient à l’écran (rien sous la barre d’onglets)', async ({ page }, testInfo) => {
+test('téléphone : aucune section ne déborde en largeur (petit écran, police agrandie)', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'tel', 'garde-fou propre au téléphone');
-  await page.goto('/');
-  const nav = page.getByRole('navigation', { name: 'Sections (mobile)', exact: true });
-  const agenda = nav.getByRole('button', { name: 'Agenda', exact: true });
-  await expect(agenda).toBeVisible();
-  await agenda.dispatchEvent('click');
-  const grille = page.getByRole('button', { name: 'Grille', exact: true });
-  await expect(grille).toBeVisible();
-  await grille.dispatchEvent('click');
-  await page.waitForTimeout(400);
+  for (const largeur of [390, 320]) {
+    for (const policeRacine of ['16px', '24px']) { // 24 px = réglage « texte plus grand » du système
+      await page.setViewportSize({ width: largeur, height: 844 });
+      await page.goto('/');
+      await page.evaluate((p) => { document.documentElement.style.fontSize = p; }, policeRacine);
+      const nav = page.getByRole('navigation', { name: 'Sections (mobile)', exact: true });
+      for (const libelle of ['Aujourd’hui', 'Agenda', 'Documents', 'Assistant']) {
+        const bouton = nav.getByRole('button', { name: libelle, exact: true });
+        await expect(bouton).toBeVisible();
+        await bouton.dispatchEvent('click');
+        await page.waitForTimeout(300);
+        const mesure = await page.evaluate(() => {
+          const de = document.documentElement;
+          // Deux symptômes du même défaut : la PAGE qui s'élargit (on fait glisser l'écran) et le
+          // TEXTE qui sort de sa carte (mot insécable non coupé). Les deux correctifs de `styles.css`
+          // en traitent un chacun, donc les deux se mesurent.
+          let horsCarte = 0;
+          const rogne = (el: Element, carte: Element) => {
+            // Un texte tronqué à l'ellipse (`overflow: hidden` sur un parent) garde une BOÎTE large
+            // alors qu'il ne peint rien dehors : ce n'est pas un débordement, c'est le design.
+            for (let p = el.parentElement; p && p !== carte; p = p.parentElement) {
+              if (getComputedStyle(p).overflowX !== 'visible') return true;
+            }
+            return false;
+          };
+          for (const el of document.querySelectorAll('.carte *')) {
+            const carte = el.closest('.carte');
+            if (!carte || el.children.length > 0 || rogne(el, carte)) continue;
+            const debord = el.getBoundingClientRect().right - carte.getBoundingClientRect().right;
+            if (debord > horsCarte) horsCarte = debord;
+          }
+          return { page: de.scrollWidth - de.clientWidth, horsCarte };
+        });
+        expect(mesure.page, `${libelle} : la page déborde de ${mesure.page} px en ${largeur} px de large (police ${policeRacine})`).toBeLessThanOrEqual(0);
+        expect(mesure.horsCarte, `${libelle} : du texte sort de sa carte de ${Math.round(mesure.horsCarte)} px`).toBeLessThanOrEqual(1);
+      }
+    }
+  }
+});
 
-  const mesure = await page.evaluate(() => {
-    const defilant = document.querySelector('.gt-defilant');
-    const barre = document.querySelector('nav.barre-basse');
-    if (!defilant || !barre) return null;
-    const d = defilant.getBoundingClientRect();
-    const b = barre.getBoundingClientRect();
-    return {
-      cache: Math.max(0, d.bottom - b.top),          // grille passant DERRIÈRE la barre d'onglets
-      visible: Math.min(d.bottom, b.top) - Math.max(d.top, 0),
-      heure: 1152 / 24,                              // --gt-haut / 24 h
-    };
-  });
-  expect(mesure).not.toBeNull();
-  expect(mesure!.cache).toBe(0);
-  expect(mesure!.visible).toBeGreaterThanOrEqual(5 * mesure!.heure);
+/**
+ * Garde-fou n° 2 : sur téléphone, en vue GRILLE, la grille horaire tient À L'ÉCRAN. Avant correctif,
+ * elle dépassait toujours sous la barre d'onglets fixe (40 px cachés en 390 × 844, 87 en 390 × 700,
+ * 106 en 360 × 640, 119 en 320 × 600) : son défilement et celui de la page se disputaient le pouce.
+ * Le PAYSAGE est testé aussi — c'est le geste attendu sur un agenda, et une première version du
+ * correctif y réduisait la grille à 39 px, voire à rien (revue flotte). Les seuils sont dérivés de
+ * `--gt-haut` lue dans le CSS, jamais d'un chiffre du jour, et la mesure est prise page en HAUT
+ * (après défilement, « rien de caché » deviendrait vrai gratuitement).
+ */
+test('téléphone : la grille de l’Agenda tient à l’écran (portrait et paysage)', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'tel', 'garde-fou propre au téléphone');
+  for (const [largeur, hauteur] of [[390, 844], [320, 600], [667, 375]] as const) {
+    await page.setViewportSize({ width: largeur, height: hauteur });
+    await page.goto('/');
+    const nav = page.getByRole('navigation', { name: 'Sections (mobile)', exact: true });
+    const agenda = nav.getByRole('button', { name: 'Agenda', exact: true });
+    await expect(agenda).toBeVisible();
+    await agenda.dispatchEvent('click');
+    const grille = page.getByRole('button', { name: 'Grille', exact: true });
+    await expect(grille).toBeVisible();
+    await grille.dispatchEvent('click');
+    await page.waitForTimeout(400);
+
+    const mesure = await page.evaluate(() => {
+      window.scrollTo(0, 0); // la mesure ne vaut que page en haut
+      const defilant = document.querySelector('.gt-defilant');
+      const barre = document.querySelector('nav.barre-basse');
+      const grilleTemps = document.querySelector('.grille-temps');
+      if (!defilant || !barre || !grilleTemps) return null;
+      const d = defilant.getBoundingClientRect();
+      const b = barre.getBoundingClientRect();
+      // Hauteur d'UNE heure dérivée de la constante CSS `--gt-haut` (jamais sa valeur recopiée).
+      const haut = parseFloat(getComputedStyle(grilleTemps).getPropertyValue('--gt-haut'));
+      return {
+        cache: Math.max(0, d.bottom - b.top),        // grille passant DERRIÈRE la barre d'onglets
+        visible: Math.min(d.bottom, b.top) - Math.max(d.top, 0),
+        heure: haut / 24,
+      };
+    });
+    expect(mesure, `grille introuvable en ${largeur}×${hauteur}`).not.toBeNull();
+    expect(mesure!.heure).toBeGreaterThan(0); // la dérivation a bien lu --gt-haut
+    expect(mesure!.cache, `${largeur}×${hauteur} : ${Math.round(mesure!.cache)} px de grille sous la barre`).toBe(0);
+    expect(mesure!.visible, `${largeur}×${hauteur} : ${Math.round(mesure!.visible)} px visibles`).toBeGreaterThanOrEqual(3 * mesure!.heure);
+  }
 });

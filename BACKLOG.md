@@ -7,6 +7,10 @@
 
 ## Chantier #45 — Refonte app v7 « le téléphone d'abord » (ADR-0051, décisions Marc 2026-09-09)  ✅
 
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C28-83 — l'app ne déborde plus sur téléphone | Retour Marc (10/09) : « la page agenda marche pas bien pour le tel, ça me fait dézoomer sinon je vois pas tout » puis, à la question posée, « je dois slide à droite pour tout voir » — dans les DEUX vues. Deux défauts distincts, mesurés au navigateur. (1) **Débordement horizontal de toute la page** : une piste `1fr` vaut `minmax(auto, 1fr)` et s'élargit au min-content de son contenu — un titre de tâche de 53 caractères sans espace pesait 441 px de min-content sur un écran de 390 px, et la page entière devenait plus large que l'écran (aggravé par le réglage « texte plus grand » du système : +67 px à 24 px de police racine). Correctifs : `minmax(0, 1fr)` sur `.colonnes` et `overflow-wrap: anywhere` sur `.contenu`. (2) **La grille de l'Agenda passait sous la barre d'onglets** (40 px cachés en 390 × 844, 87 en 390 × 700, 106 en 360 × 640, 119 en 320 × 600) : deux défilements se disputaient le pouce. Correctifs : en-tête plus dense (177 → 114 px) SANS descendre sous 24 × 24 px de zone tactile, grille bornée à la place réellement disponible (`dvh`, composée depuis `--barre-basse-h`), plancher pour le mode PAYSAGE (sans lui, la soustraction rendait 39 px, voire une grille vide), `overscroll-behavior: contain`, et seuil téléphone JS aligné sur le CSS (720 → 760 px). Deux garde-fous E2E téléphone (aucun débordement en largeur sur les 4 sections × 2 largeurs × 2 tailles de police ; grille à l'écran en portrait ET en paysage, seuils dérivés de `--gt-haut`), prouvés par mutation. | ✅ (#335) |
+
 > Marc : « l'interface est pas du tout intuitive, trop de texte, trop de déchets, trop moche, pas
 > assez simple, pas assez beau — je veux une full refonte visuelle et utilitaire, parfaite pour
 > téléphone et pour PC ». Diagnostic sur captures réelles (390 px / 1 280 px), maquettes des cinq

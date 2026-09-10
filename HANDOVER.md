@@ -4,6 +4,21 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **🎯 SUITE — 2026-09-10 : C28-83, l'app ne déborde plus sur téléphone (#335).** Marc : « la page
+> agenda marche pas bien pour le tel, ça me fait dézoomer sinon je vois pas tout », puis « je dois
+> slide à droite pour tout voir », dans les deux vues. DEUX défauts distincts, tous deux mesurés au
+> navigateur avant/après (jamais déduits du code) : (a) la PAGE ENTIÈRE s'élargissait — une piste
+> `1fr` vaut `minmax(auto, 1fr)`, donc un mot insécable (titre de tâche, nom de fichier, n° de police
+> d'assurance) lui impose sa largeur min-content : 441 px pour 390 px d'écran, +67 px de débordement
+> avec le réglage système « texte plus grand » ; corrigé par `minmax(0, 1fr)` sur `.colonnes` +
+> `overflow-wrap: anywhere` sur `.contenu` ; (b) la grille de l'Agenda passait sous la barre
+> d'onglets (40 à 119 px selon l'écran), deux défilements pour une seule journée ; corrigé par un
+> en-tête plus dense (177 → 114 px, zones tactiles gardées ≥ 24 px) et une hauteur bornée à la place
+> réellement disponible en `dvh`, avec un plancher pour le PAYSAGE. Deux garde-fous E2E téléphone
+> prouvés par mutation. ⚠️ Leçon du jour, à ne pas perdre : **une capture d'écran à 2× fait lire des
+> pixels d'image pour des pixels CSS** — mon premier diagnostic (« en-tête de 485 px ») était faux
+> d'un facteur 2 et a été corrigé en mesurant dans le navigateur.
+>
 > **✅ CHANTIER TERMINÉ — 2026-09-09 (soir) : REFONTE APP v7 « le téléphone d'abord » (C28-82 / ADR-0051), en ligne.**
 > Marc : « l'interface est pas du tout intuitive, trop de texte, trop de déchets, trop moche, pas
 > assez simple, pas assez beau — refonte visuelle et utilitaire, parfaite pour téléphone et PC ».

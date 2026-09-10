@@ -134,7 +134,7 @@ export const ENFANTS_MOCK: Record<string, unknown[]> = {
 /* ---------- Tasks / Calendar (vue Agenda) ---------- */
 
 export const TACHES_MOCK: unknown[] = [
-  { id: 't-1', title: 'Renouveler l’assurance habitation', status: 'needsAction', due: '2026-07-10T00:00:00.000Z' },
+  { id: 't-1', title: 'Renouveler l’assurance habitation — police AXA20260098765432QCRENOUVELLEMENT', status: 'needsAction', due: '2026-07-10T00:00:00.000Z' },
   { id: 't-2', title: 'RDV garage — pneus été', status: 'needsAction', due: '2026-07-15T00:00:00.000Z' },
   { id: 't-3', title: 'Payer la facture Hydro', status: 'completed', due: '2026-07-03T00:00:00.000Z' },
 ];
