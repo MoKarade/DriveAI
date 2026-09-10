@@ -126,6 +126,15 @@ export function formaterDateCourte(iso?: string, locale = 'fr-CA'): string {
 }
 
 /**
+ * Montant en dollars, dans la langue de l'interface : « 16,42 $ » en français (virgule décimale,
+ * espace insécable avant le symbole), « $16.42 » en anglais. `toFixed(2) + ' $'` rendait « 16.42 $ »
+ * même en français — repéré en relisant l'écran Réglages (2026-09-10).
+ */
+export function formaterMontant(valeur: number, locale = 'fr-CA'): string {
+  return new Intl.NumberFormat(locale, { style: 'currency', currency: 'CAD', currencyDisplay: 'narrowSymbol' }).format(valeur);
+}
+
+/**
  * Recherche IA (v7) : le moteur rend un PLAN (mots-clés, texte, domaine, année) pensé pour les
  * anciens filtres d'Index ; la v7 n'a plus qu'UNE recherche Drive — on en tire la requête : les
  * mots-clés d'abord, sinon le texte du plan, sinon la question telle quelle. PURE.

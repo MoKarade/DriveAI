@@ -181,7 +181,7 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
                 <b>{tk.titre}</b>
                 <small>
                   {t('tache', langue)}
-                  {tk.echeance < cleAujourdhui && <> · <span className="erreur">{t('enRetard', langue)} · {tk.echeance}</span></>}
+                  {tk.echeance < cleAujourdhui && <> · <span className="erreur">{t('enRetard', langue)} · {formaterDateCourte(tk.echeance, locale)}</span></>}
                   {tk.parDriveAI ? ` · ${t('parDriveAI', langue)}` : ''}
                 </small>
               </span>

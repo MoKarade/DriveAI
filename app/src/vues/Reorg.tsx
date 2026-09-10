@@ -18,6 +18,7 @@ import {
   lignesVideCandidat,
   plagesContigues,
 } from '../etat';
+import { Icone } from '../composants/Icone';
 import { Langue, t } from '../i18n';
 
 const TYPES: Record<string, string> = { deplacer: '→', fusionner: '⇒', creer: '+', renommer: '✎', 'deplacer-fichier': '↳' };
@@ -261,7 +262,7 @@ export function ReorgVue({ langue }: { langue: Langue }) {
           ? <span className="puce-action attente">⏳ {t('analyseEnCours', langue)}</span>
           : (
             <button className="puce-action" onClick={() => demanderAnalyse('tout')} disabled={enCours}>
-              ✨ {t(demande ? 'reAnalyser' : 'analyserToutDrive', langue)}
+              <Icone nom="etincelle" /> {t(demande ? 'reAnalyser' : 'analyserToutDrive', langue)}
             </button>
           )}
       </div>

@@ -470,7 +470,7 @@ button.coche { border: 1px solid var(--bord); background: transparent; color: va
 .ia-explication { color: var(--accent); }
 .chat-fil {
   display: flex; flex-direction: column; gap: 0.6rem;
-  min-height: 30vh; padding: 0.2rem 0; margin: 0;
+  flex: 1 1 auto; min-height: 0; padding: 0.2rem 0; margin: 0;
   scroll-behavior: smooth;
 }
 .chat-bulle {
@@ -726,7 +726,15 @@ button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):ho
 }
 
 /* ---------- v7 (PR4) : Assistant — le fil occupe l'écran, la saisie reste au pouce ---------- */
-.assistant { display: flex; flex-direction: column; gap: 0.8rem; }
+/* La colonne occupe la hauteur qui reste : sans ça, un fil VIDE laissait 30 vh de trou puis la
+   saisie flottait au milieu de l'écran, avec un grand vide en dessous (relu à l'écran le
+   2026-09-10). Le fil grandit, la saisie reste en bas. `var(--barre-basse-h, 0rem)` : la barre
+   d'onglets n'existe que sur téléphone (repli 0 ailleurs). */
+.assistant {
+  display: flex; flex-direction: column; gap: 0.8rem;
+  min-height: calc(100vh - var(--barre-basse-h, 0rem) - 6.2rem);
+  min-height: calc(100dvh - var(--barre-basse-h, 0rem) - 6.2rem);
+}
 .assistant .titre-liste { margin-bottom: 0; }
 .chat-bulle { font-size: 0.98rem; }
 .chat-saisie {

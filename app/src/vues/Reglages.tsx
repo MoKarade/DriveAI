@@ -34,6 +34,7 @@ import {
   ilYA,
   complementStatut,
 } from '../etat';
+import { formaterMontant } from '../explorateur';
 import { CleTexte, Langue, t } from '../i18n';
 
 const BUDGET_CROISIERE = 10; // cible < 10 $/mois en croisière (CLAUDE.md §1.6)
@@ -132,8 +133,8 @@ export function Reglages({ langue, onLangue, onDeconnexion }: {
         <div className="tuile"><b>{compteurs.documentsClasses.toLocaleString(locale)}</b><small>{t('documentsClasses', langue)}</small></div>
         <div className="tuile"><b>{compteurs.mailsTries.toLocaleString(locale)}</b><small>{t('filsTries', langue)}</small></div>
         <div className="tuile">
-          <b>{cout !== null ? `${cout.toFixed(2)} $` : '—'}</b>
-          <small>{t('coutMoisCourt', langue)} · {BUDGET_CROISIERE} $</small>
+          <b>{cout !== null ? formaterMontant(cout, locale) : '—'}</b>
+          <small>{t('coutMoisCourt', langue)} · {formaterMontant(BUDGET_CROISIERE, locale)}</small>
         </div>
       </div>
 

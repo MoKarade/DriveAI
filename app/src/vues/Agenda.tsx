@@ -35,6 +35,7 @@ import {
   positionMaintenant,
   titresDriveAI,
 } from '../agenda';
+import { formaterDateCourte } from '../explorateur';
 import { Langue, t } from '../i18n';
 import { useAgendas, agendasAffiches, basculerAgenda, basculerTaches, reconnecterPourAgendas, rechargerAgendas } from '../agendasStore';
 import { Icone } from '../composants/Icone';
@@ -66,6 +67,7 @@ function useEstEtroit(): boolean {
 }
 
 export function Agenda({ langue }: { langue: Langue }) {
+  const locale = langue === 'fr' ? 'fr-CA' : 'en-CA';
   const maintenant = new Date();
   const [mois, setMois] = useState(new Date(maintenant.getFullYear(), maintenant.getMonth(), 1));
   const [vueCal, setVueCal] = useState<VueCal>('semaine'); // Semaine par défaut (C28-23)
@@ -333,7 +335,7 @@ export function Agenda({ langue }: { langue: Langue }) {
               </button>
               <button className="t texte" onClick={() => setPopover({ genre: 'tache', tache: tk })}>
                 <b>{tk.titre}</b>
-                <small>{tk.echeance ? `${t('echeance', langue)} ${tk.echeance}` : t('sansEcheance', langue)}{tk.parDriveAI && ` · ${t('parDriveAI', langue)}`}</small>
+                <small>{tk.echeance ? `${t('echeance', langue)} ${formaterDateCourte(tk.echeance, locale)}` : t('sansEcheance', langue)}{tk.parDriveAI && ` · ${t('parDriveAI', langue)}`}</small>
               </button>
             </div>
           ))}
@@ -379,7 +381,7 @@ export function Agenda({ langue }: { langue: Langue }) {
                 <h3>{popover.e.titre}</h3>
                 <p className="pe-ligne">
                   📅 {new Date(popover.e.journee ? popover.e.debut + 'T12:00:00' : popover.e.debut)
-                    .toLocaleDateString(langue === 'fr' ? 'fr-CA' : 'en-CA', { weekday: 'long', day: 'numeric', month: 'long' })}
+                    .toLocaleDateString(locale, { weekday: 'long', day: 'numeric', month: 'long' })}
                 </p>
                 <p className="pe-ligne">🕐 {popover.e.journee ? t('journee', langue) : libelleHoraire(popover.e, langue === 'fr')}</p>
                 {popover.e.lieu && <p className="pe-ligne">📍 {popover.e.lieu}</p>}
@@ -399,7 +401,7 @@ export function Agenda({ langue }: { langue: Langue }) {
                 <h3>{popover.tache.titre}</h3>
                 <p className="pe-ligne">
                   🕐 {popover.tache.echeance
-                    ? `${t('echeance', langue)} ${popover.tache.echeance}`
+                    ? `${t('echeance', langue)} ${formaterDateCourte(popover.tache.echeance, locale)}`
                     : t('sansEcheance', langue)}
                 </p>
                 {popover.tache.parDriveAI && <p className="pe-ligne variante">{t('parDriveAI', langue)}</p>}
