@@ -715,10 +715,14 @@ button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):ho
   .agenda .cal-carte > h2 { margin-bottom: 0.3rem; }
   .agendas-puces { margin-bottom: 0.3rem; }
   .gt-defilant {
-    max-height: max(40vh, calc(100vh - var(--barre-basse-h) - 13rem));
-    max-height: max(40dvh, calc(100dvh - var(--barre-basse-h) - 13rem));
+    /* Repli `0rem` OBLIGATOIRE : `--barre-basse-h` n'est déclarée que sous 760 px, et ce bloc-ci monte
+       à 900 px (un iPhone récent couché fait 812 ou 844 px de large). Sans repli, la `var()` est
+       indéfinie, tout le `calc()` devient invalide à la compilation de la valeur, et `max-height`
+       retombe à `none` — grille de 1244 px, pire qu'avant le correctif (revue flotte, mesuré).
+       Au-dessus de 760 px il n'y a de toute façon pas de barre d'onglets : 0 est la bonne valeur. */
+    max-height: max(40vh, calc(100vh - var(--barre-basse-h, 0rem) - 13rem));
+    max-height: max(40dvh, calc(100dvh - var(--barre-basse-h, 0rem) - 13rem));
   }
-}
 }
 
 /* ---------- v7 (PR4) : Assistant — le fil occupe l'écran, la saisie reste au pouce ---------- */

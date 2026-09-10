@@ -64,10 +64,20 @@ test('téléphone : aucune section ne déborde en largeur (petit écran, police 
       await page.goto('/');
       await page.evaluate((p) => { document.documentElement.style.fontSize = p; }, policeRacine);
       const nav = page.getByRole('navigation', { name: 'Sections (mobile)', exact: true });
-      for (const libelle of ['Aujourd’hui', 'Agenda', 'Documents', 'Assistant']) {
-        const bouton = nav.getByRole('button', { name: libelle, exact: true });
+      // Réglages n'est pas dans la barre d'onglets (engrenage de la barre haute) ; la vue GRILLE de
+      // l'Agenda est un écran à part entière, et c'est le plus dense — les deux se testent aussi
+      // (revue flotte : sans ça, le garde-fou ne voyait ni l'un ni l'autre).
+      for (const libelle of ['Aujourd’hui', 'Agenda', 'Agenda/grille', 'Documents', 'Assistant', 'Réglages']) {
+        const bouton = libelle === 'Réglages'
+          ? page.getByRole('button', { name: libelle, exact: true })
+          : nav.getByRole('button', { name: libelle.split('/')[0], exact: true });
         await expect(bouton).toBeVisible();
         await bouton.dispatchEvent('click');
+        if (libelle === 'Agenda/grille') {
+          const grille = page.getByRole('button', { name: 'Grille', exact: true });
+          await expect(grille).toBeVisible();
+          await grille.dispatchEvent('click');
+        }
         await page.waitForTimeout(300);
         const mesure = await page.evaluate(() => {
           const de = document.documentElement;
