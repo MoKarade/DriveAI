@@ -103,6 +103,12 @@ function tableMissions_() {
         // « Entretien & réparations ») est ce qui rend sa répartition manuelle faisable.
         return { cibleParentId: IDS.vehiculeCible, cibleNom: 'À attribuer', sousDossier: categorie };
       },
+      // Les 4 sources sont des dossiers LEGACY, destinés à disparaître une fois vidés : « Véhicules »
+      // (pluriel, remplacé par « Véhicule »), le bZ isolé, et les deux « KIA » que le moteur avait
+      // créés sous c49-2 avant que Marc ne retire KIA du canon. Déclaré EXPLICITEMENT depuis le
+      // 2026-09-12 : le défaut est « rien n'est jetable » (audit sécurité — un défaut ne décide pas
+      // d'un geste destructeur).
+      sourcesJetables: [IDS.vehiculesPluriel, IDS.toyotaBzIsole, IDS.vehiculeKia, IDS.vehiculeKiaJetta],
     },
     {
       tag: 'logement', cle: 'mission-logement',
@@ -121,6 +127,11 @@ function tableMissions_() {
           cibleBailleur_(nom, ctx.cibles);
         return c ? { cibleId: c.id, sousDossier: '' } : null;
       },
+      // Les deux sources sont des dossiers LEGACY à faire disparaître : « Logements » (pluriel,
+      // remplacé par « Logement ») et le double LCP. Vidées, elles n'ont plus de raison d'être —
+      // le flux ne les recrée pas (la table du flux vise « Logement »). Déclaré EXPLICITEMENT
+      // depuis le 2026-09-12 : le défaut est désormais « rien n'est jetable » (audit sécurité).
+      sourcesJetables: [IDS.logementsPluriel, IDS.lcpLogementDouble],
     },
     {
       tag: 'dispatch03', cle: 'mission-dispatch-03',
@@ -193,6 +204,17 @@ function tableMissions_() {
           var parDate = logementParDate_(nom, ctx.fenetres);
           if (parDate) return { cibleId: parDate, sousDossier: theme };
         }
+        // 5. (2026-09-12) Filet de SECOND rang, après toutes les règles d'entité : un document qui
+        //    ne nomme aucun logement ni véhicule se range PAR ÉMETTEUR, DANS son dossier filet.
+        //    C'est ce qui sortait les 4 assurances (Desjardins, MAIF ×3) et les 3 documents
+        //    d'énergie (Hydro-Québec ×2, ENGIE) de l'état « non apparié » où ils dormaient.
+        var tableEmetteur = info.sourceId === CONFIG.MISSIONS_IDS.assuranceHab03 ? CONFIG.MISSIONS_ASSUREURS
+          : info.sourceId === CONFIG.MISSIONS_IDS.energieServices03 ? CONFIG.MISSIONS_FOURNISSEURS_ENERGIE
+            : null;
+        if (tableEmetteur) {
+          var bucket = bucketEmetteur_(nom, tableEmetteur);
+          if (bucket) return { cibleParentId: info.sourceId, cibleNom: bucket, sousDossier: '' };
+        }
         return null;
       },
       // Revue finale C28-51 : les 4 sources (Contrats, Correspondance, Assurance habitation,
@@ -223,6 +245,10 @@ function tableMissions_() {
       apresConvergence: function () {
         (IDS.archives06 || []).forEach(function (p) { repointerEntites_(p.src, p.cible); });
       },
+      // La mission EXISTE pour vider ces dossiers vers leur archive : une fois vides, ils n'ont
+      // plus d'objet et le flux ne les recrée pas (il vise l'archive, cf. `apresConvergence`).
+      // Déclaré explicitement depuis le 2026-09-12 (le défaut ne décide plus à leur place).
+      sourcesJetables: (IDS.archives06 || []).map(function (p) { return p.src; }),
     },
     /* ---- PR2 : Carrière + Finances (brief Marc §« paies / employeurs / impôts / années ») ---- */
     {
@@ -580,6 +606,82 @@ function cibleBailleur_(nom, cibles) {
 }
 
 /**
+ * Vrai si l'erreur dit que le dossier N'EXISTE PLUS (supprimé, corbeillé, ou jamais créé), par
+ * opposition à une panne transitoire (réseau, quota, permission). Apps Script rend ici un message
+ * non typé : on reconnaît les formulations de `getFolderById` sur une ressource absente, dans les
+ * deux langues de l'éditeur. Volontairement ÉTROIT — dans le doute, c'est une erreur (échec
+ * fermé : mieux vaut une mission qui reste ouverte qu'une passe déclarée complète à tort). PURE.
+ * @param {*} e
+ * @return {boolean}
+ */
+function estSourceDisparue_(e) {
+  var m = String((e && e.message) || e || '').toLowerCase();
+  // Un refus de PERMISSION n'est PAS une disparition : le dossier existe, on n'y accède pas — la
+  // mission doit rester OUVERTE. Testé dans les deux sens.
+  if (m.indexOf('permission') !== -1 || m.indexOf('autorisation') !== -1) return false;
+  return m.indexOf('no item with the given id') !== -1 ||  // « No item with the given ID could be found »
+    m.indexOf('not found') !== -1 ||
+    m.indexOf('aucun élément') !== -1 ||                    // variantes FR de l'éditeur
+    m.indexOf('introuvable') !== -1;
+}
+
+/**
+ * PLACEMENT MANUEL d'un fichier : décision prise avec Marc pour CE fichier précis (table
+ * `CONFIG.MISSIONS_EPINGLES`, clé = fileId). Prime sur les règles de `routerCarriere_` — le seul
+ * moyen honnête de placer un document qui ne porte aucun signal généralisable, sans inventer une
+ * règle qui en égarerait d'autres (leçon : « un verdict POSITIF qui déplace est définitif de fait »).
+ * ⚠️ À NE PAS CONFONDRE avec la clé d'Index `epingle|<fileId>` (ADR-0026), qui INTERDIT au contraire
+ * tout déplacement : celle-ci FORCE une destination, celle-là gèle le fichier. Deux mécanismes de
+ * sens opposé ; `collecterMission_` applique le gel AVANT, donc un fichier gelé n'arrive jamais ici.
+ * ⚠️ Câblé dans `routerCarriere_` UNIQUEMENT : une entrée visant un fichier de `dispatch03` ou
+ * `logement` ne ferait rien (à remonter dans `traiterItemMission_` le jour où le besoin existe).
+ * `cibleId` accepte une CLÉ de `CONFIG.MISSIONS_IDS` (lisible dans la table) ou un ID Drive brut.
+ * PURE (testée).
+ * @param {string} fileId
+ * @return {?{cibleId?:string, cibleParentId?:string, cibleNom?:string, sousDossier?:string}}
+ */
+function epingleMission_(fileId) {
+  var e = (CONFIG.MISSIONS_EPINGLES || {})[fileId];
+  if (!e) return null;
+  // Une épingle qui EXISTE mais ne résout pas (domaine AUTO absent, clé inconnue) ne doit pas
+  // rendre la main à la règle générale : celle-ci déplacerait le fichier AILLEURS, à clé de
+  // SUCCÈS, et la décision de Marc serait perdue en silence (revue flotte 2026-09-12).
+  // `domaine:<nom>` lit `CONFIG.DOMAINES` — qui ne contient QUE les domaines fixes : un domaine
+  // AUTO absent rend `undefined`, et la cible doit alors être REFUSÉE (échec fermé), jamais vide.
+  var resoudre = function (v) {
+    if (!v) return '';
+    if (String(v).indexOf('domaine:') === 0) return CONFIG.DOMAINES[String(v).slice(8)] || '';
+    return CONFIG.MISSIONS_IDS[v] || v;
+  };
+  var r = { sousDossier: e.sousDossier || '' };
+  if (e.cibleId) r.cibleId = resoudre(e.cibleId);
+  if (e.cibleParentId) r.cibleParentId = resoudre(e.cibleParentId);
+  if (e.cibleNom) r.cibleNom = e.cibleNom;
+  if (r.cibleId || (r.cibleParentId && r.cibleNom)) return r;
+  // Même patron que `_Technique` indisponible : le throw devient 'transitoire' par item — aucune
+  // clé posée, le fichier reste en place, et la passe suivante re-tentera.
+  throw new Error('Épingle irrésolvable pour ' + fileId + ' — cible absente de la CONFIG');
+}
+
+/**
+ * Bucket d'ÉMETTEUR (assureur, fournisseur d'énergie) désigné par un nom de fichier — filet de
+ * SECOND rang du dispatch 03 : il ne s'applique qu'après les règles logement et véhicule, pour les
+ * documents qui ne nomment aucune entité (décisions Marc du 2026-09-12 : « par assureur », « par
+ * fournisseur »). MOT ENTIER via `apparierUnique_` : ambigu ou hors table ⇒ null, jamais deviné.
+ * PURE (testée).
+ * @param {string} nom
+ * @param {Array<{bucket:string,jetons:Array<string>}>} table
+ * @return {?string}  le nom du sous-dossier, ou null
+ */
+function bucketEmetteur_(nom, table) {
+  var entrees = (table || []).map(function (b) {
+    return { nom: b.bucket, id: b.bucket, jetons: b.jetons };
+  });
+  var e = apparierUnique_(nom, entrees);
+  return e ? e.nom : null;
+}
+
+/**
  * Nom CANONIQUE du logement désigné par le bailleur d'un texte — LA règle partagée missions ↔
  * flux (`cheminCibleReset_` 03, geste symétrique ADR-0040 §3c). Ambigu/hors table ⇒ null. PURE.
  * @param {string} texte
@@ -892,6 +994,9 @@ function sousDossierEmployeur_(typeNormalise) {
  */
 function routerCarriere_(nom, info, ctx) {
   var IDS = CONFIG.MISSIONS_IDS;
+  // Décision prise AVEC Marc pour ce fichier précis : elle prime sur toutes les règles ci-dessous.
+  var epingle = epingleMission_(info.fileId);
+  if (epingle) return epingle;
   var type = typeDuNomMission_(nom);
   // (ADR-0044 D10) RECRUTEMENT → « Recherche d'emploi ». AVANT l'employeur : une offre d'emploi
   // d'Automatech est du recrutement, pas un document d'employeur. Et AVANT
@@ -1157,6 +1262,16 @@ function collecterMission_(sourceId, tag, garde, proteges, profondeurMax) {
       return { items: items, coupe: coupe, erreur: true };
     }
   } catch (e) {
+    // Source DISPARUE (supprimée ou corbeillée par Marc) : ce n'est pas une panne, c'est le
+    // RÉSULTAT ATTENDU d'une source jetable qu'on lui a proposé de supprimer une fois vidée.
+    // La compter en erreur interdisait toute passe complète — donc toute convergence — à VIE,
+    // avec une ligne de journal par source et par tick. Vérifié le 2026-09-12 : les 4 sources de
+    // la mission véhicule et les 2 de la mission logement n'existent PLUS dans le Drive de Marc.
+    // Une source absente est une source VIDE : la passe continue et la mission peut se terminer.
+    if (estSourceDisparue_(e)) {
+      journalInfo_('Missions', 'Source ' + sourceId + ' absente (supprimée/corbeillée) — traitée comme vide.');
+      return { items: items, coupe: coupe };
+    }
     journalErreur_('Missions', 'Collecte impossible (source ' + sourceId + ') : ' + e);
     return { items: items, coupe: coupe, erreur: true }; // jamais « passe complète » sur une erreur
   }
@@ -1401,9 +1516,13 @@ function executerMission_(tag, estBudgetDepasse) {
       }
       props.setProperty('DriveAI_MISSION_FINI_' + tag, version);
       // Peinture ROUGE : seulement les sources JETABLES (revue quotas PR2 — peindre un sous-dossier
-      // momentanément vide d'une racine PÉRENNE comme 05 dirait « supprimable » à tort). Défaut =
-      // toutes les sources (les missions PR1 dissolvent leurs sources par construction).
-      var jetables = spec.sourcesJetables !== undefined ? spec.sourcesJetables : spec.sources;
+      // momentanément vide d'une racine PÉRENNE comme 05 dirait « supprimable » à tort).
+      // Le défaut est VIDE, jamais `spec.sources` : une source « jetable » est peinte en ROUGE, donc
+      // proposée à la suppression. Un défaut ne décide pas d'un geste destructeur — une mission qui
+      // omet le champ ne doit rien proposer (leçon §9 « Un DÉFAUT de configuration n'est pas une
+      // décision », consignée le 2026-09-09, appliquée au code le 2026-09-12). Chaque spec tranche,
+      // et un test échoue si l'une oublie.
+      var jetables = spec.sourcesJetables || [];
       peindreSourcesVides_(jetables, garde);
       journalInfo_('Missions', 'Mission « ' + tag + ' » TERMINÉE (version ' + version + ') : ' +
         m.t + ' déplacé(s), ' + m.na + ' non apparié(s).' +
@@ -1426,7 +1545,7 @@ function traiterItemMission_(spec, item, ctx, proteges) {
   var cle = cleMission_(spec.tag, f.getId());
 
   var cible = null;
-  try { cible = spec.router(nom, { sousChemin: item.sousChemin, sourceId: item.sourceId }, ctx); }
+  try { cible = spec.router(nom, { sousChemin: item.sousChemin, sourceId: item.sourceId, fileId: f.getId() }, ctx); }
   catch (e) { journalErreur_('Missions', 'Routage impossible (« ' + nom + ' ») : ' + e); return 'transitoire'; }
 
   // MULTI-PARENTS (moveTo retirerait TOUS les parents = détachement interdit) et NON-APPARIÉ :

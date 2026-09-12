@@ -18,6 +18,7 @@ import ReactMarkdown from 'react-markdown';
 import { envoyerMessageChat, viderCachePlages, MessageChat } from '../google';
 import { ReorgVue } from './Reorg';
 import { Icone } from '../composants/Icone';
+import { formaterMontant } from '../explorateur';
 import { Langue, t } from '../i18n';
 
 // Historique du chat en sessionStorage (survit au F5, DÉTRUIT à la fermeture de l'onglet) — jamais
@@ -46,6 +47,7 @@ function lireHistorique(): { messages: MessageChat[]; brouillon: string } {
 }
 
 export function Assistant({ langue }: { langue: Langue }) {
+  const locale = langue === 'fr' ? 'fr-CA' : 'en-CA';
   const [initial] = useState(lireHistorique); // lu UNE fois au montage (assainit un tour user orphelin)
   const [messages, setMessages] = useState<MessageChat[]>(initial.messages);
   const [saisie, setSaisie] = useState(initial.brouillon);
@@ -107,7 +109,7 @@ export function Assistant({ langue }: { langue: Langue }) {
     <div className="assistant">
       <h2 className="titre-liste">
         {t('assistant', langue)}
-        {budget && <span className="h2-note">{budget.coutJour.toFixed(2)} $ / {budget.plafond} $</span>}
+        {budget && <span className="h2-note">{formaterMontant(budget.coutJour, locale)} / {formaterMontant(budget.plafond, locale)}</span>}
         {messages.length > 0 && (
           <button className="icone-bouton petit" onClick={effacer} disabled={enCours}
             aria-label={t('assistantEffacer', langue)} title={t('assistantEffacer', langue)}>

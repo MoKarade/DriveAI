@@ -85,6 +85,7 @@ const CONTRAT = [
   'anneePlausible_', 'estTypePaieReset_', 'estFeuilletFiscalReset_', 'estRibReset_',
   // C28-51 (ADR-0040) : canons bailleurs/véhicules partagés (Reset.gs ↔ Missions.gs) + cibles.
   'vehiculeDuNom_', 'logementDuBailleur_', 'cibleBailleur_', 'categorieVehiculeMission_',
+  'bucketEmetteur_', 'epingleMission_', 'estSourceDisparue_',
   'ciblesLogement_', 'categoriesVehiculeReset_',
   // curation des mails (C28-19, ADR-0020) : confiance, scan cyclique, « pas suspect » 1-clic
   'decisionSuspect_', 'confianceCache_', 'reinitialiserConfianceCache_', 'apprendreConfiance_',

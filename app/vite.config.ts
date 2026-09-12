@@ -12,5 +12,10 @@ export default defineConfig({
     // sans cette borne, vitest ramasse e2e/*.spec.ts (motif par défaut) et plante sur
     // @playwright/test.
     include: ['test/**/*.test.ts'],
+    // FUSEAU ÉPINGLÉ. Le bug corrigé le 2026-09-12 — une échéance `AAAA-MM-JJ` affichée la VEILLE
+    // parce que `new Date(chaîne)` est parsé en UTC — est INVISIBLE sous UTC, qui est justement le
+    // fuseau des runners CI : le test aurait passé des deux côtés du correctif (revue flotte).
+    // Toronto est le fuseau de Marc, et il est à l'ouest de Greenwich : c'est là que ça se voit.
+    env: { TZ: 'America/Toronto' },
   },
 });

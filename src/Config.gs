@@ -899,11 +899,15 @@ var CONFIG = {
   MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions
   // c49-3 (ADR-0044 §4, véhicules) puis c49-4 (§5, les 39 de « employeurs & CV ») — l'historique
   // inline s'arrêtait à c49-2 alors que la valeur avait bougé deux fois (revue code PR2).
-  MISSIONS_REGLES_VERSION: 'c49-7',       // DANS la clé d'idempotence : un refus (non apparié) se fige
+  MISSIONS_REGLES_VERSION: 'c50-1',       // DANS la clé d'idempotence : un refus (non apparié) se fige
                                           // sous CETTE version — affiner les règles = bump ⇒ ré-évaluation
                                           // (leçon C28-33 « verdict négatif révisable, jamais figé à vie »)
                                           // c49-2 (C28-51, ADR-0040) : tables bailleurs + véhicules,
                                           // catégories par véhicule — les 89 refus c49-1 se ré-évaluent.
+                                          // c50-1 (2026-09-12, réponses de Marc) : alias de bailleurs
+                                          // (gestipro, vereecque → 3325 ; proulx → 3987) et filet par
+                                          // ÉMETTEUR pour assurances et énergie — les ~28 refus des
+                                          // missions logement/dispatch03/carrière se ré-évaluent.
   MISSIONS_BUDGET_MS: 90 * 1000,          // sous-budget par run (pure I/O moveTo — reste < mur standard)
   MISSIONS_BUDGET_JOUR_MS: 10 * 60 * 1000, // budget QUOTIDIEN partagé entre missions, ms RÉELLES persistées.
                                           // RÉALLOUÉ (jamais ajouté) : les 10 min viennent de
@@ -959,6 +963,7 @@ var CONFIG = {
     cvLettres: '10mwjZ59esSF5wQDgBZ3EAvgnnxxkO7j4',          // 05/« CV & lettres » (CV, lettres, candidatures)
     employeurs05: '1vNnloG4JERa_nHgHwky9oKRHhER7zUZB',       // 05/« Employeurs » (parent de Robovic/Automatech/Autres employeurs)
     rechercheEmploi: '1UMI5aDHLUzhKe_zlFVQDRY3wQ0ghTbAf',    // 05/« Recherche d'emploi » — CIBLE du recrutement
+    alternanceStages: '1p3N78EqeRCvmaHAtwgSJt0bQpmE9bYNq',   // 05/« Alternance & stages » — CIBLE (école, projets d'études)
     // (ADR-0044 D10, 2026-08-20) : ce dossier était DISSOUS vers « CV & lettres ». Marc a été
     // averti du conflit et a confirmé son choix de le RECRÉER — le geste est donc SYMÉTRIQUE :
     // la fusion est retirée de la mission ET de la table du flux, sinon ping-pong garanti.
@@ -1036,6 +1041,12 @@ var CONFIG = {
     { nom: 'Robovic', jetons: ['robovic'] },
     { nom: 'Automatech', jetons: ['automatech', 'robotik'] },
     { nom: 'CIUSSS', jetons: ['ciusss'] },
+    // « Lyxor » ajouté le 2026-09-12 : Marc a demandé un dossier à son nom (note de démission).
+    // Au CANON et pas dans « Autres employeurs » pour que ses éventuelles paies aillent dans
+    // `02/Revenus & paie/Lyxor` plutôt que dans le commun — sinon le dossier de 05 et les paies de
+    // 02 raconteraient deux histoires. Comme CIUSSS, il n'a pas d'ID de dossier sous 05 : le
+    // routeur refuse (révisable) plutôt que de créer, et c'est l'épingle qui place LE document.
+    { nom: 'Lyxor', jetons: ['lyxor'] },
   ],
   // Employeurs OCCASIONNELS, sans dossier à eux (ADR-0044 D11, décision Marc 2026-08-20 : « plutôt
   // qu'un dossier par nom à un seul fichier »). Ils partagent UN commun, des DEUX côtés :
@@ -1060,12 +1071,71 @@ var CONFIG = {
   // bailleur du 3325). Le canon = le NOM RÉEL du dossier sous « Logement » : résolu PAR NOM parmi
   // les cibles listées — dossier renommé ⇒ refus (jamais un doublon créé par la table).
   // Jetons MOT ENTIER (apparierUnique_) ; ambigu / hors table = refus, jamais deviné.
+  // ASSUREURS et FOURNISSEURS d'énergie (décisions Marc, 2026-09-12 : « par assureur », « par
+  // fournisseur »). Ces documents-là ne nomment AUCUN logement — ils dormaient à plat dans les
+  // filets `03 · Assurance habitation` et `03 · Énergie & services` faute de règle. Le bucket est
+  // créé SOUS le dossier filet lui-même (nœud pérenne, jamais peint en rouge) : le classement par
+  // logement reste prioritaire, ceci n'est que le filet de second rang.
+  // Jetons = MOT ENTIER (`apparierUnique_`), jamais une sous-chaîne : « maif » ne doit pas matcher
+  // un mot plus long, et « filia-maif » est une graphie du même assureur.
+  // ÉPINGLES — décisions prises FICHIER PAR FICHIER avec Marc (2026-09-12), par IDENTITÉ Drive et
+  // non par règle : ces documents ne portent aucun signal généralisable, et une règle déduite de
+  // trois cas en égarerait d'autres. Clé = fileId (stable), valeur = { cibleId } ou
+  // { cibleParentId, cibleNom } + sousDossier optionnel. Une épingle prime sur toute règle.
+  // ⚠️ Un fichier absent (supprimé, déplacé à la main) ne gêne rien : l'épingle ne s'applique que
+  // si la collecte le présente encore.
+  MISSIONS_EPINGLES: {
+    // Les 3 documents « C26-08 » (notes d'automatisme, graphique d'expéditions, mémo de
+    // maintenance) : documentation métier que la règle enverrait dans `_Technique` — Marc les veut
+    // chez l'employeur concerné. La règle `_Technique` reste inchangée pour tout le reste.
+    '1Yw7tl0AtwYzKziIaAuSGh9HryonyDNRc': { cibleId: 'employeursRobovic' },
+    '14JqlKatP6OmXJNf7g8JAwNya7PfEub0V': { cibleId: 'employeursRobovic' },
+    '1Nv32AckAIGOUasae6cf3BmGffdqlPxGz': { cibleId: 'employeursRobovic' },
+    // Les 3 signatures détachées « Me Justine Basilio » : ce n'est pas de la carrière — c'est un
+    // virement familial passé devant avocat (réponse de Marc, 2026-09-12). Rien dans le fichier ne
+    // le disait : 1,4 ko de PKCS#7, aucun texte. D'où l'épingle plutôt qu'une règle.
+    // ⚠️ Marc avait dit « 02 · Finances / Donation » ; ce N'EST PAS ce qui est codé, et c'est
+    // volontaire : `02 · Finances` est PLEIN (7/7, docs/TAXONOMY.md — contrainte ≤ 7 non
+    // négociable, ADR-0027), le nœud « Donations & successions » y a justement été RETIRÉ le
+    // 2026-07-30, et la taxonomie tranche déjà ce cas : versant FISCAL → `02/Impôts &
+    // déclarations`, versant NOTARIAL (les actes, donc ces signatures) → `01/État civil &
+    // notarial`, qui existe dans la structure cible. Créer « Donation » aurait fait 8 nœuds dans
+    // 02, hors table — donc invisible du test ≤ 7 et proposable à la corbeille par la Réorg.
+    '1xhaCTA2uQ3GS7R3ZnKasthGF4Q5x3xrl': { cibleParentId: 'domaine:01 · Administratif & identité', cibleNom: 'État civil & notarial' },
+    '1H88QayKncTp3xj-uFkXacwouK_S1QY72': { cibleParentId: 'domaine:01 · Administratif & identité', cibleNom: 'État civil & notarial' },
+    '1ytTtCHIvyWefICb6aB3pCbsOlua7dACQ': { cibleParentId: 'domaine:01 · Administratif & identité', cibleNom: 'État civil & notarial' },
+    // Déductions tirées du CONTENU et validées par Marc : projet d'études (sprint Scrum en équipe,
+    // Java/C/SQL/Web) et documents d'école → « Alternance & stages ».
+    '1usi7i6qOHidnRA67eWnl4_evonCL8Jcu': { cibleId: 'alternanceStages' }, // planning de sprint FitCo
+    '1k0BvSlahZ8bVy_tKB6a7UuhYTpEvXH97': { cibleId: 'alternanceStages' }, // lettre de recommandation IMERIR
+    '1KAN2950vFzGsn159HeStefSAaZHUXqUt': { cibleId: 'alternanceStages' }, // invitation d'un professeur d'IMERIR
+    // Recrutement (test de personnalité passé en entretien, prospection d'employeurs).
+    '1Al51mqv5sLDgLsw8vGPSjThoa6naZLdw': { cibleId: 'rechercheEmploi' },  // questionnaire TM MECA
+    '1WxneSilF1AsNkt1-WPcHqye_8btgJXK-': { cibleId: 'rechercheEmploi' },  // prospection employeurs
+    // Note manuscrite « raisons de démission » : Marc veut un dossier Lyxor (réponse du
+    // 2026-09-12). Pour que ce ne soit pas un dossier ORPHELIN à un seul fichier — ce que la
+    // règle ADR-0044 D11 refuse — « lyxor » est AUSSI ajouté au canon des employeurs ci-dessus :
+    // les prochains documents Lyxor y tomberont par la règle, sans épingle.
+    '1xKdLuzNL6kZNlCpZU-Zhw4_GIEtSr5AN': { cibleParentId: 'employeurs05', cibleNom: 'Lyxor' },
+  },
+  MISSIONS_ASSUREURS: [
+    { bucket: 'Desjardins', jetons: ['desjardins'] },
+    { bucket: 'MAIF', jetons: ['maif', 'filia'] },
+  ],
+  MISSIONS_FOURNISSEURS_ENERGIE: [
+    { bucket: 'Hydro-Québec', jetons: ['hydro'] }, // `normaliserMission_` réduit à [a-z0-9] espacés :
+                                                  // un jeton accentué ou tireté ne matcherait jamais.
+    { bucket: 'ENGIE', jetons: ['engie'] },
+  ],
   MISSIONS_BAILLEURS: [
     // « ma8 » ajouté le 2026-08-20 (réponse de Marc) : `Immeubles MA8` est le bailleur du 3325,
     // une graphie de plus du même. Range d'un coup son DPA et ses 2 formulaires de demande de
     // location, jusqu'ici bloqués faute d'adresse connue (ADR-0044 §7.3).
-    { logement: '3325 4e avenue', jetons: ['lcp', '9420', '3767', 'pinsonneault', 'ma8'] },
-    { logement: '3987 rte des Rivières', jetons: ['9478', '5045'] },
+    // « gestipro » et « vereecque » ajoutés le 2026-09-12 (réponses de Marc) : l'agence et le
+    // proprio du 3325 — 3 captures de correspondance bloquées faute d'adresse dans le nom.
+    { logement: '3325 4e avenue', jetons: ['lcp', '9420', '3767', 'pinsonneault', 'ma8', 'gestipro', 'vereecque'] },
+    // « proulx » ajouté le 2026-09-12 (réponse de Marc) : la gestionnaire du 3987.
+    { logement: '3987 rte des Rivières', jetons: ['9478', '5045', 'proulx'] },
     { logement: '783 av. Moreau, Québec', jetons: ['soucy', 'ayotte'] },
     { logement: 'Anciens logements', jetons: ['retta', 'isannointi', 'perpignan'] },
   ],

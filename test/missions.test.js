@@ -124,7 +124,9 @@ test('routeur dispatch03 : véhicule prioritaire, puis adresse, puis BAILLEUR, p
   // Correspondance SANS indice : la date tranche (demande Marc) — pas les autres thèmes.
   const parDate = spec.router('2023-05-01_Lettre_Ville.pdf', { sourceId: IDS.correspondance03, sousChemin: '' }, ctx);
   assert.strictEqual(parDate.cibleId, 'lm');
-  const pasParDate = spec.router('2023-05-01_Facture_Hydro.pdf', { sourceId: IDS.energieServices03, sousChemin: '' }, ctx);
+  // (2026-09-12) Le fichier d'origine de cette assertion nommait « Hydro » : il est désormais
+  // routé par le filet ÉMETTEUR. On garde l'invariant en le testant sur un nom SANS émetteur.
+  const pasParDate = spec.router('2023-05-01_Facture_Électricité.pdf', { sourceId: IDS.energieServices03, sousChemin: '' }, ctx);
   assert.strictEqual(pasParDate, null, 'la date ne route QUE la correspondance');
   // ADR-0044 : une LOCATION va dans « Véhicule/Locations » — elle n'est plus refusée, mais elle
   // ne rejoint JAMAIS un véhicule de Marc (les 3 contrats Enterprise dormaient dans 03·Contrats).
@@ -135,6 +137,56 @@ test('routeur dispatch03 : véhicule prioritaire, puis adresse, puis BAILLEUR, p
   const corpiq = spec.router('2018-10-15_Formulaire de demande de location_CORPIQ.pdf',
     { sourceId: IDS.contrats03, sousChemin: '' }, ctx);
   assert.ok(!corpiq || corpiq.cibleNom !== 'Locations', 'un bail n\'est pas une location de voiture');
+});
+
+test('routeur dispatch03 (c50-1, décisions Marc 2026-09-12) : filet par ÉMETTEUR, APRÈS toutes les règles d\'entité', () => {
+  const IDS = pur.CONFIG.MISSIONS_IDS;
+  const spec = pur.tableMissions_().filter((m) => m.tag === 'dispatch03')[0];
+  const ctx = {
+    logements: [{ nom: '783 av. Moreau, Québec', id: 'lm', jetons: ['783', 'moreau'] }],
+    fenetres: [],
+    themePar: (function () {
+      const m = {};
+      m[IDS.assuranceHab03] = 'Assurance habitation'; m[IDS.energieServices03] = 'Énergie & services';
+      return m;
+    })(),
+    themeVehiculePar: {},
+  };
+  const rte = (nom, sourceId) => plain(spec.router(nom, { sourceId: sourceId, sousChemin: '' }, ctx));
+
+  // Assurances : un bucket PAR ASSUREUR, créé SOUS le dossier filet lui-même.
+  assert.deepStrictEqual(rte('2026-02-26_Contrat d\'assurance habitation_Desjardins Assurances.pdf', IDS.assuranceHab03),
+    { cibleParentId: IDS.assuranceHab03, cibleNom: 'Desjardins', sousDossier: '' });
+  assert.deepStrictEqual(rte('2023-04_Relevé_MAIF_2.pdf', IDS.assuranceHab03),
+    { cibleParentId: IDS.assuranceHab03, cibleNom: 'MAIF', sousDossier: '' });
+  assert.deepStrictEqual(rte('2020-09-17_Attestation d\'assurance responsabilité civile_FILIA-MAIF_2.pdf', IDS.assuranceHab03),
+    { cibleParentId: IDS.assuranceHab03, cibleNom: 'MAIF', sousDossier: '' }, 'FILIA-MAIF est une graphie de MAIF');
+
+  // Énergie : un bucket PAR FOURNISSEUR.
+  assert.deepStrictEqual(rte('2024-12-06_Facture d\'électricité_Hydro-Québec.pdf', IDS.energieServices03),
+    { cibleParentId: IDS.energieServices03, cibleNom: 'Hydro-Québec', sousDossier: '' });
+  assert.deepStrictEqual(rte('2020-12-04_Attestation de contrat d\'énergie_ENGIE_2.pdf', IDS.energieServices03),
+    { cibleParentId: IDS.energieServices03, cibleNom: 'ENGIE', sousDossier: '' });
+
+  // ORDRE : l'ENTITÉ prime toujours. Une facture Hydro qui nomme l'adresse part au LOGEMENT,
+  // jamais dans le bucket du fournisseur — c'est la propriété que le filet ne doit pas casser.
+  const chezMarc = spec.router('2023-02-01_Facture_Hydro 783 Moreau.pdf', { sourceId: IDS.energieServices03, sousChemin: '' }, ctx);
+  assert.strictEqual(chezMarc.cibleId, 'lm', 'l\'adresse prime sur le fournisseur');
+  assert.strictEqual(chezMarc.sousDossier, 'Énergie & services');
+
+  // Le filet ne déborde JAMAIS sur les autres sources : un contrat « Desjardins » reste non apparié.
+  assert.strictEqual(spec.router('2026-02-26_Contrat_Desjardins.pdf', { sourceId: IDS.contrats03, sousChemin: '' }, ctx), null);
+  // Émetteur inconnu ⇒ refus RÉVISABLE (jamais un bucket deviné).
+  assert.strictEqual(rte('2021-05-05_Facture_Un fournisseur inconnu.pdf', IDS.energieServices03), null);
+});
+
+test('bucketEmetteur_ : MOT ENTIER, ambigu ⇒ null (aucun bucket deviné)', () => {
+  const table = [{ bucket: 'MAIF', jetons: ['maif'] }, { bucket: 'Desjardins', jetons: ['desjardins'] }];
+  assert.strictEqual(pur.bucketEmetteur_('2023-04_Relevé_MAIF.pdf', table), 'MAIF');
+  assert.strictEqual(pur.bucketEmetteur_('2023-04_Relevé_maifestation.pdf', table), null, 'sous-chaîne refusée');
+  assert.strictEqual(pur.bucketEmetteur_('2023-04_Relevé_MAIF et Desjardins.pdf', table), null, 'ambigu ⇒ refus');
+  assert.strictEqual(pur.bucketEmetteur_('2023-04_Relevé_.pdf', table), null);
+  assert.strictEqual(pur.bucketEmetteur_('x', null), null);
 });
 
 test('routeur vehicule (c49-3, ADR-0044) : communs > véhicule nommé > « À attribuer » — JAMAIS par date', () => {
@@ -1673,4 +1725,112 @@ test('C28-65 : un échec PERMANENT est abandonné après N essais (pas 288 rejeu
   assert.strictEqual(appels, avant, 'après abandon, plus AUCUN essai');
   assert.strictEqual(h.store['DriveAI_CORR_FINI'], c.CONFIG.CORRECTIONS_MANUELLES_TAG,
     'la campagne se referme au lieu de rester « non finie » à vie');
+});
+
+test('sourcesJetables : CHAQUE spec tranche explicitement (un défaut ne décide pas d’un geste destructeur)', () => {
+  // Le défaut valait « toutes les sources » : une mission écrite sans ce champ peignait ses
+  // dossiers en ROUGE (= « bon pour suppression »). Marc obéit au signal, la collecte lève ensuite
+  // sur les dossiers disparus, la mission ne converge plus jamais, et celle gatée dessus par
+  // `convergenceApres` est bloquée à vie — heartbeat vert (audit sécurité 2026-09-10).
+  const specs = pur.tableMissions_();
+  assert.ok(specs.length >= 8);
+  for (const s of specs) {
+    assert.ok(Object.prototype.hasOwnProperty.call(s, 'sourcesJetables'),
+      `la mission « ${s.tag} » doit déclarer sourcesJetables (ne serait-ce que [])`);
+    assert.ok(Array.isArray(s.sourcesJetables), `sourcesJetables de « ${s.tag} » doit être un tableau`);
+    // Une source jetable est forcément une SOURCE de la mission : jamais un dossier tiers.
+    for (const j of s.sourcesJetables) {
+      assert.ok(s.sources.indexOf(j) !== -1, `« ${s.tag} » : ${j} est déclaré jetable sans être une source`);
+    }
+  }
+});
+
+test('épingles (décisions fichier par fichier avec Marc) : priment sur la règle, et seulement pour l’identité visée', () => {
+  const IDS = pur.CONFIG.MISSIONS_IDS;
+  // Les 3 documents « C26-08 » : la règle les enverrait dans `_Technique` (documentation métier) ;
+  // Marc les veut chez Robovic. L'épingle les y envoie SANS toucher à la règle des autres.
+  const ctx = { employeurParSource: {}, techniqueId: 'ID_TECHNIQUE' };
+  const epingles = Object.keys(pur.CONFIG.MISSIONS_EPINGLES || {});
+  assert.ok(epingles.length >= 3);
+  // Chaque épingle rend une cible COMPLÈTE (jamais un dossier vide) et prime sur la règle.
+  // Le nom choisi est routé par une VRAIE règle (documentation métier → `_Technique`) : sans ça
+  // l'assertion serait vide de sens — déplacer l'épingle après les règles laisserait le test vert
+  // (défaut trouvé en revue, prouvé par mutation).
+  const NOM_ROUTE = '2025-11-07_Rapport de maintenance_Atelier.pdf';
+  assert.strictEqual(plain(pur.routerCarriere_(NOM_ROUTE,
+    { sourceId: IDS.carriereRacine, sousChemin: '', fileId: 'sans-epingle' }, ctx)).cibleId, 'ID_TECHNIQUE',
+  'pré-condition : ce nom EST routé par une règle');
+  for (const id of epingles) {
+    const r = plain(pur.routerCarriere_(NOM_ROUTE, { sourceId: IDS.carriereRacine, sousChemin: '', fileId: id }, ctx));
+    assert.ok(r && (r.cibleId || (r.cibleParentId && r.cibleNom)), `épingle ${id} : cible complète`);
+    assert.notStrictEqual(r.cibleId, 'ID_TECHNIQUE', `épingle ${id} : la règle a été court-circuitée`);
+  }
+  // Toute cible d'épingle est un ID Drive plausible : une clé de `MISSIONS_IDS` mal orthographiée
+  // passerait sinon pour un ID et ne se verrait qu'en prod, par un échec de `getFolderById`.
+  for (const id of epingles) {
+    const r = pur.epingleMission_(id);
+    const cible = r.cibleId || r.cibleParentId;
+    assert.ok(/^[A-Za-z0-9_-]{25,}$/.test(cible), `épingle ${id} : cible « ${cible} » n'est pas un ID Drive`);
+  }
+  // Les 3 documents « C26-08 » partent chez Robovic.
+  for (const id of ['1Yw7tl0AtwYzKziIaAuSGh9HryonyDNRc', '14JqlKatP6OmXJNf7g8JAwNya7PfEub0V', '1Nv32AckAIGOUasae6cf3BmGffdqlPxGz']) {
+    assert.strictEqual(pur.epingleMission_(id).cibleId, IDS.employeursRobovic);
+  }
+  // `domaine:<nom>` résout un domaine FIXE. Les 3 signatures notariales vont dans `01/État civil &
+  // notarial` (nœud EXISTANT) et surtout PAS dans un 8ᵉ nœud de `02 · Finances`, qui est plein 7/7.
+  const notarial = pur.epingleMission_('1xhaCTA2uQ3GS7R3ZnKasthGF4Q5x3xrl');
+  assert.strictEqual(notarial.cibleParentId, pur.CONFIG.DOMAINES['01 · Administratif & identité']);
+  assert.strictEqual(notarial.cibleNom, 'État civil & notarial');
+  // Aucune épingle ne vise `02 · Finances` : la contrainte ≤ 7 y interdit tout nouveau nœud.
+  for (const id of Object.keys(pur.CONFIG.MISSIONS_EPINGLES)) {
+    const r = pur.epingleMission_(id);
+    if (r.cibleParentId === pur.CONFIG.DOMAINES['02 · Finances']) {
+      assert.fail(`épingle ${id} : créerait un nœud dans 02 · Finances, plein (docs/TAXONOMY.md)`);
+    }
+  }
+  // Sans épingle, la règle générale s'applique inchangée : un rapport de maintenance reste de la
+  // documentation métier et part dans `_Technique` — l'épingle n'a pas élargi le routage.
+  const sansEpingle = plain(pur.routerCarriere_('2025-11-07_Rapport de maintenance_Atelier.pdf',
+    { sourceId: IDS.carriereRacine, sousChemin: '', fileId: 'un-autre-fichier' }, ctx));
+  assert.strictEqual(sansEpingle.cibleId, 'ID_TECHNIQUE', 'la règle générale n\'a pas bougé');
+  // Et un document SANS épingle ni règle reste un refus révisable (jamais une cible devinée).
+  assert.strictEqual(pur.routerCarriere_('2025-11-07_Notes techniques d\'automatisme_x.jpg',
+    { sourceId: IDS.carriereRacine, sousChemin: '', fileId: 'encore-un-autre' }, ctx), null);
+  // Table vide ou clé inconnue ⇒ null (jamais une cible devinée).
+  assert.strictEqual(pur.epingleMission_('inconnu'), null);
+  assert.strictEqual(pur.epingleMission_(undefined), null);
+});
+
+test('épingles : un domaine AUTO absent ⇒ REFUS, jamais une cible vide (échec fermé)', () => {
+  // `CONFIG.DOMAINES` ne porte que les domaines FIXES : « 07 · Santé » et « 09 · Voyages » vivent
+  // en Script Property et peuvent manquer. Une épingle qui les viserait doit refuser, pas rendre
+  // un parent vide — un `moveTo` vers '' détacherait le fichier (leçon C28-62 PR5).
+  const sauve = pur.CONFIG.MISSIONS_EPINGLES;
+  try {
+    pur.CONFIG.MISSIONS_EPINGLES = { zz: { cibleParentId: 'domaine:07 · Santé', cibleNom: 'X' } };
+    assert.throws(() => pur.epingleMission_('zz'), /irrésolvable/, 'domaine absent ⇒ LEVÉE, pas une cible vide');
+    // …et surtout : la règle générale ne reprend PAS la main (sinon la décision de Marc serait
+    // remplacée en silence par un déplacement à clé de succès).
+    assert.throws(() => pur.routerCarriere_('2025-11-07_Rapport de maintenance_Atelier.pdf',
+      { sourceId: pur.CONFIG.MISSIONS_IDS.carriereRacine, sousChemin: '', fileId: 'zz' },
+      { employeurParSource: {}, techniqueId: 'ID_TECHNIQUE' }), /irrésolvable/);
+  } finally {
+    pur.CONFIG.MISSIONS_EPINGLES = sauve;
+  }
+});
+
+test('estSourceDisparue_ : un dossier SUPPRIMÉ est une source vide, une PANNE reste une erreur', () => {
+  // Vérifié dans le Drive de Marc le 2026-09-12 : les 4 sources de la mission véhicule et les 2 de
+  // la mission logement n'existent plus — elles avaient été proposées à la suppression une fois
+  // vidées. Sans ce prédicat, la collecte les compte en ERREUR : plus aucune passe complète, donc
+  // plus aucune convergence, et une ligne de journal par source et par tick (288/jour).
+  for (const msg of ['No item with the given ID could be found, or you do not have permission to access it.'.replace(', or you do not have permission to access it.', ''),
+    'Not Found', 'Aucun élément trouvé avec cet ID', 'Dossier introuvable']) {
+    assert.strictEqual(pur.estSourceDisparue_(new Error(msg)), true, msg);
+  }
+  for (const msg of ['Service Drive indisponible', 'Quota exceeded', 'Timeout',
+    'You do not have permission to access the requested document']) {
+    assert.strictEqual(pur.estSourceDisparue_(new Error(msg)), false, msg);
+  }
+  assert.strictEqual(pur.estSourceDisparue_(null), false);
 });

@@ -81,6 +81,9 @@ function ctxMaj(opts) {
   // pour un onglet existant, cf. Journal.gs).
   let e1 = 'enteteE1' in opts ? opts.enteteE1 : '';
   const e1Ecritures = [];
+  // Grille de l'onglet : `opts.maxLignes` permet de se placer JUSTE sous le mur des 1 000 lignes.
+  let maxLignes = opts.maxLignes || 1000;
+  const insertions = [];
   const c = load(['Config.gs', 'HistoriqueVrac.gs'], {
     PropertiesService: { getScriptProperties: () => P },
     dateGmail_: () => '2026/08/12',
@@ -93,15 +96,23 @@ function ctxMaj(opts) {
     COLONNES_HISTORIQUE_VRAC: ['Date', 'Domaine', 'Vrac', 'Tronqué', 'Erreur'],
     feuille_: () => ({
       getLastRow: () => opts.dernLigne || 1,
+      // Grille FINIE, comme un onglet réel créé par `insertSheet` (1 000 lignes par défaut) :
+      // `getRange` au-delà LÈVE en vrai. C'est le mur que l'onglet append-only allait franchir.
+      getMaxRows: () => maxLignes,
+      insertRowsAfter: (apres, combien) => {
+        if (opts.echecEcriture) throw new Error('Service Sheets indisponible');
+        maxLignes += combien; insertions.push({ apres, combien });
+      },
       getRange: (a, col, nb, larg) => {
         if (typeof a === 'string') { // notation A1 (ex. 'E1') : cellule unique
           return { getValue: () => e1, setValue: (v) => { e1 = v; e1Ecritures.push(v); } };
         }
+        if (a + (nb || 1) - 1 > maxLignes) throw new Error('Those rows are out of bounds.');
         return { setValues: (v) => ecritures.push({ ligne: a, valeurs: v }) };
       },
     }),
   });
-  return { c, store, ecritures, appelsComptage: () => appelsComptage, e1: () => e1, e1Ecritures };
+  return { c, store, ecritures, appelsComptage: () => appelsComptage, e1: () => e1, e1Ecritures, insertions, maxLignes: () => maxLignes };
 }
 
 test('majHistoriqueVrac_ : jour déjà fait → no-op TOTAL (aucune I/O Drive/Sheet)', () => {
@@ -191,4 +202,23 @@ test('majHistoriqueVrac_ : CONFIG.HISTORIQUE_VRAC_ACTIF=false → suspension imm
   c.CONFIG.HISTORIQUE_VRAC_ACTIF = false;
   c.majHistoriqueVrac_(() => false);
   assert.strictEqual(ecritures.length, 0);
+});
+
+test('majHistoriqueVrac_ : la grille est AGRANDIE avant d’écrire (l’onglet append-only franchit ses 1 000 lignes)', () => {
+  // Onglet réel : 1 000 lignes de grille, dernière ligne écrite 998 → la sweep de 9 domaines
+  // déborde. `getRange` LÈVE en vrai dans ce cas ; le mock reproduit la levée.
+  const { c, ecritures, insertions, maxLignes } = ctxMaj({ dernLigne: 998, maxLignes: 1000 });
+  c.majHistoriqueVrac_(() => false);
+  assert.strictEqual(ecritures.length, 1, 'les lignes du jour sont écrites');
+  assert.strictEqual(insertions.length, 1, 'la grille a été agrandie une fois, juste avant l’écriture');
+  assert.ok(maxLignes() >= 998 + ecritures[0].valeurs.length, 'la grille couvre désormais les lignes écrites');
+});
+
+test('majHistoriqueVrac_ : une écriture qui LÈVE persiste quand même le budget et le curseur (sinon recompte à chaque tick)', () => {
+  // Le vrai défaut du 2026-09-10 : sans `finally`, l'exception laissait `DriveAI_VRAC_JOUR_MS` à 0
+  // et l'étape recomptait les 9 racines de domaine 288 fois par jour.
+  const { c, store } = ctxMaj({ dernLigne: 998, maxLignes: 1000, echecEcriture: true });
+  assert.throws(() => c.majHistoriqueVrac_(() => false));
+  assert.ok(store.DriveAI_VRAC_JOUR_MS, 'le budget du jour est persisté malgré l’échec');
+  assert.ok('DriveAI_VRAC_HISTO_IDX' in store, 'le curseur est persisté malgré l’échec');
 });
