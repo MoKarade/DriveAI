@@ -618,9 +618,16 @@ function cibleBailleur_(nom, cibles) {
 function epingleMission_(fileId) {
   var e = (CONFIG.MISSIONS_EPINGLES || {})[fileId];
   if (!e) return null;
+  // `domaine:<nom>` lit `CONFIG.DOMAINES` — qui ne contient QUE les domaines fixes : un domaine
+  // AUTO absent rend `undefined`, et la cible doit alors être REFUSÉE (échec fermé), jamais vide.
+  var resoudre = function (v) {
+    if (!v) return '';
+    if (String(v).indexOf('domaine:') === 0) return CONFIG.DOMAINES[String(v).slice(8)] || '';
+    return CONFIG.MISSIONS_IDS[v] || v;
+  };
   var r = { sousDossier: e.sousDossier || '' };
-  if (e.cibleId) r.cibleId = CONFIG.MISSIONS_IDS[e.cibleId] || e.cibleId;
-  if (e.cibleParentId) r.cibleParentId = CONFIG.MISSIONS_IDS[e.cibleParentId] || e.cibleParentId;
+  if (e.cibleId) r.cibleId = resoudre(e.cibleId);
+  if (e.cibleParentId) r.cibleParentId = resoudre(e.cibleParentId);
   if (e.cibleNom) r.cibleNom = e.cibleNom;
   return (r.cibleId || (r.cibleParentId && r.cibleNom)) ? r : null;
 }

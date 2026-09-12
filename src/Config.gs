@@ -963,6 +963,7 @@ var CONFIG = {
     cvLettres: '10mwjZ59esSF5wQDgBZ3EAvgnnxxkO7j4',          // 05/« CV & lettres » (CV, lettres, candidatures)
     employeurs05: '1vNnloG4JERa_nHgHwky9oKRHhER7zUZB',       // 05/« Employeurs » (parent de Robovic/Automatech/Autres employeurs)
     rechercheEmploi: '1UMI5aDHLUzhKe_zlFVQDRY3wQ0ghTbAf',    // 05/« Recherche d'emploi » — CIBLE du recrutement
+    alternanceStages: '1p3N78EqeRCvmaHAtwgSJt0bQpmE9bYNq',   // 05/« Alternance & stages » — CIBLE (école, projets d'études)
     // (ADR-0044 D10, 2026-08-20) : ce dossier était DISSOUS vers « CV & lettres ». Marc a été
     // averti du conflit et a confirmé son choix de le RECRÉER — le geste est donc SYMÉTRIQUE :
     // la fusion est retirée de la mission ET de la table du flux, sinon ping-pong garanti.
@@ -1084,6 +1085,22 @@ var CONFIG = {
     '1Yw7tl0AtwYzKziIaAuSGh9HryonyDNRc': { cibleId: 'employeursRobovic' },
     '14JqlKatP6OmXJNf7g8JAwNya7PfEub0V': { cibleId: 'employeursRobovic' },
     '1Nv32AckAIGOUasae6cf3BmGffdqlPxGz': { cibleId: 'employeursRobovic' },
+    // Les 3 signatures détachées « Me Justine Basilio » : ce n'est pas de la carrière — c'est un
+    // virement familial passé devant avocat (réponse de Marc, 2026-09-12). Rien dans le fichier ne
+    // le disait : 1,4 ko de PKCS#7, aucun texte. D'où l'épingle plutôt qu'une règle.
+    '1xhaCTA2uQ3GS7R3ZnKasthGF4Q5x3xrl': { cibleParentId: 'domaine:02 · Finances', cibleNom: 'Donation' },
+    '1H88QayKncTp3xj-uFkXacwouK_S1QY72': { cibleParentId: 'domaine:02 · Finances', cibleNom: 'Donation' },
+    '1ytTtCHIvyWefICb6aB3pCbsOlua7dACQ': { cibleParentId: 'domaine:02 · Finances', cibleNom: 'Donation' },
+    // Déductions tirées du CONTENU et validées par Marc : projet d'études (sprint Scrum en équipe,
+    // Java/C/SQL/Web) et documents d'école → « Alternance & stages ».
+    '1usi7i6qOHidnRA67eWnl4_evonCL8Jcu': { cibleId: 'alternanceStages' }, // planning de sprint FitCo
+    '1k0BvSlahZ8bVy_tKB6a7UuhYTpEvXH97': { cibleId: 'alternanceStages' }, // lettre de recommandation IMERIR
+    '1KAN2950vFzGsn159HeStefSAaZHUXqUt': { cibleId: 'alternanceStages' }, // invitation d'un professeur d'IMERIR
+    // Recrutement (test de personnalité passé en entretien, prospection d'employeurs).
+    '1Al51mqv5sLDgLsw8vGPSjThoa6naZLdw': { cibleId: 'rechercheEmploi' },  // questionnaire TM MECA
+    '1WxneSilF1AsNkt1-WPcHqye_8btgJXK-': { cibleId: 'rechercheEmploi' },  // prospection employeurs
+    // Note manuscrite « raisons de démission » : Lyxor est un employeur PASSÉ, sans dossier → créé.
+    '1xKdLuzNL6kZNlCpZU-Zhw4_GIEtSr5AN': { cibleParentId: 'employeurs05', cibleNom: 'Lyxor' },
   },
   MISSIONS_ASSUREURS: [
     { bucket: 'Desjardins', jetons: ['desjardins'] },

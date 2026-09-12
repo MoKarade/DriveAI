@@ -1752,11 +1752,22 @@ test('épingles (décisions fichier par fichier avec Marc) : priment sur la règ
   const ctx = { employeurParSource: {}, techniqueId: 'ID_TECHNIQUE' };
   const epingles = Object.keys(pur.CONFIG.MISSIONS_EPINGLES || {});
   assert.ok(epingles.length >= 3);
+  // Chaque épingle rend une cible COMPLÈTE (jamais un dossier vide) et prime sur la règle.
   for (const id of epingles) {
     const r = plain(pur.routerCarriere_('2025-11-07_Notes techniques d\'automatisme_x.jpg',
       { sourceId: IDS.carriereRacine, sousChemin: '', fileId: id }, ctx));
-    assert.strictEqual(r.cibleId, IDS.employeursRobovic, 'l\'épingle place le fichier chez Robovic');
+    assert.ok(r && (r.cibleId || (r.cibleParentId && r.cibleNom)), `épingle ${id} : cible complète`);
+    assert.notStrictEqual(r.cibleId, 'ID_TECHNIQUE', 'l\'épingle a bien court-circuité la règle');
   }
+  // Les 3 documents « C26-08 » partent chez Robovic.
+  for (const id of ['1Yw7tl0AtwYzKziIaAuSGh9HryonyDNRc', '14JqlKatP6OmXJNf7g8JAwNya7PfEub0V', '1Nv32AckAIGOUasae6cf3BmGffdqlPxGz']) {
+    assert.strictEqual(pur.epingleMission_(id).cibleId, IDS.employeursRobovic);
+  }
+  // `domaine:<nom>` résout un domaine FIXE ; un domaine inconnu est refusé (jamais une cible vide).
+  const donation = pur.epingleMission_('1xhaCTA2uQ3GS7R3ZnKasthGF4Q5x3xrl');
+  assert.strictEqual(donation.cibleParentId, pur.CONFIG.DOMAINES['02 · Finances']);
+  assert.strictEqual(donation.cibleNom, 'Donation');
+  assert.ok(donation.cibleParentId, 'le domaine 02 est bien résolu');
   // Sans épingle, la règle générale s'applique inchangée : un rapport de maintenance reste de la
   // documentation métier et part dans `_Technique` — l'épingle n'a pas élargi le routage.
   const sansEpingle = plain(pur.routerCarriere_('2025-11-07_Rapport de maintenance_Atelier.pdf',
@@ -1768,4 +1779,17 @@ test('épingles (décisions fichier par fichier avec Marc) : priment sur la règ
   // Table vide ou clé inconnue ⇒ null (jamais une cible devinée).
   assert.strictEqual(pur.epingleMission_('inconnu'), null);
   assert.strictEqual(pur.epingleMission_(undefined), null);
+});
+
+test('épingles : un domaine AUTO absent ⇒ REFUS, jamais une cible vide (échec fermé)', () => {
+  // `CONFIG.DOMAINES` ne porte que les domaines FIXES : « 07 · Santé » et « 09 · Voyages » vivent
+  // en Script Property et peuvent manquer. Une épingle qui les viserait doit refuser, pas rendre
+  // un parent vide — un `moveTo` vers '' détacherait le fichier (leçon C28-62 PR5).
+  const sauve = pur.CONFIG.MISSIONS_EPINGLES;
+  try {
+    pur.CONFIG.MISSIONS_EPINGLES = { zz: { cibleParentId: 'domaine:07 · Santé', cibleNom: 'X' } };
+    assert.strictEqual(pur.epingleMission_('zz'), null, 'domaine absent ⇒ aucune cible');
+  } finally {
+    pur.CONFIG.MISSIONS_EPINGLES = sauve;
+  }
 });
