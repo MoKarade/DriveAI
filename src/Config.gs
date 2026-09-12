@@ -1071,6 +1071,20 @@ var CONFIG = {
   // logement reste prioritaire, ceci n'est que le filet de second rang.
   // Jetons = MOT ENTIER (`apparierUnique_`), jamais une sous-chaîne : « maif » ne doit pas matcher
   // un mot plus long, et « filia-maif » est une graphie du même assureur.
+  // ÉPINGLES — décisions prises FICHIER PAR FICHIER avec Marc (2026-09-12), par IDENTITÉ Drive et
+  // non par règle : ces documents ne portent aucun signal généralisable, et une règle déduite de
+  // trois cas en égarerait d'autres. Clé = fileId (stable), valeur = { cibleId } ou
+  // { cibleParentId, cibleNom } + sousDossier optionnel. Une épingle prime sur toute règle.
+  // ⚠️ Un fichier absent (supprimé, déplacé à la main) ne gêne rien : l'épingle ne s'applique que
+  // si la collecte le présente encore.
+  MISSIONS_EPINGLES: {
+    // Les 3 documents « C26-08 » (notes d'automatisme, graphique d'expéditions, mémo de
+    // maintenance) : documentation métier que la règle enverrait dans `_Technique` — Marc les veut
+    // chez l'employeur concerné. La règle `_Technique` reste inchangée pour tout le reste.
+    '1Yw7tl0AtwYzKziIaAuSGh9HryonyDNRc': { cibleId: 'employeursRobovic' },
+    '14JqlKatP6OmXJNf7g8JAwNya7PfEub0V': { cibleId: 'employeursRobovic' },
+    '1Nv32AckAIGOUasae6cf3BmGffdqlPxGz': { cibleId: 'employeursRobovic' },
+  },
   MISSIONS_ASSUREURS: [
     { bucket: 'Desjardins', jetons: ['desjardins'] },
     { bucket: 'MAIF', jetons: ['maif', 'filia', 'filia-maif'] },

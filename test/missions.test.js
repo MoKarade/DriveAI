@@ -1744,3 +1744,28 @@ test('sourcesJetables : CHAQUE spec tranche explicitement (un défaut ne décide
     }
   }
 });
+
+test('épingles (décisions fichier par fichier avec Marc) : priment sur la règle, et seulement pour l’identité visée', () => {
+  const IDS = pur.CONFIG.MISSIONS_IDS;
+  // Les 3 documents « C26-08 » : la règle les enverrait dans `_Technique` (documentation métier) ;
+  // Marc les veut chez Robovic. L'épingle les y envoie SANS toucher à la règle des autres.
+  const ctx = { employeurParSource: {}, techniqueId: 'ID_TECHNIQUE' };
+  const epingles = Object.keys(pur.CONFIG.MISSIONS_EPINGLES || {});
+  assert.ok(epingles.length >= 3);
+  for (const id of epingles) {
+    const r = plain(pur.routerCarriere_('2025-11-07_Notes techniques d\'automatisme_x.jpg',
+      { sourceId: IDS.carriereRacine, sousChemin: '', fileId: id }, ctx));
+    assert.strictEqual(r.cibleId, IDS.employeursRobovic, 'l\'épingle place le fichier chez Robovic');
+  }
+  // Sans épingle, la règle générale s'applique inchangée : un rapport de maintenance reste de la
+  // documentation métier et part dans `_Technique` — l'épingle n'a pas élargi le routage.
+  const sansEpingle = plain(pur.routerCarriere_('2025-11-07_Rapport de maintenance_Atelier.pdf',
+    { sourceId: IDS.carriereRacine, sousChemin: '', fileId: 'un-autre-fichier' }, ctx));
+  assert.strictEqual(sansEpingle.cibleId, 'ID_TECHNIQUE', 'la règle générale n\'a pas bougé');
+  // Et un document SANS épingle ni règle reste un refus révisable (jamais une cible devinée).
+  assert.strictEqual(pur.routerCarriere_('2025-11-07_Notes techniques d\'automatisme_x.jpg',
+    { sourceId: IDS.carriereRacine, sousChemin: '', fileId: 'encore-un-autre' }, ctx), null);
+  // Table vide ou clé inconnue ⇒ null (jamais une cible devinée).
+  assert.strictEqual(pur.epingleMission_('inconnu'), null);
+  assert.strictEqual(pur.epingleMission_(undefined), null);
+});

@@ -285,9 +285,6 @@ function tableMissions_() {
       // `sourcesJetables`, dans le routeur, et dans la table du FLUX (`cheminCibleReset_`).
       tag: 'carriere', cle: 'mission-carriere',
       sources: [IDS.employeursRobovic, IDS.employeursAutomatech, IDS.carriereRacine],
-      // PÉRENNES, toutes : la racine 05 est un domaine, et « Employeurs/<X> » porte des
-      // sous-dossiers de structure. Vides un instant, elles ne sont pas « supprimables ».
-      sourcesJetables: [],
       // Racine 05 : SEULS ses fichiers à plat sont le périmètre — ses sous-dossiers (Employeurs,
       // CV & lettres, Réseaux…) sont des structures, jamais recollectés.
       profondeurPar: (function () { var m = {}; m[IDS.carriereRacine] = 0; return m; })(),
@@ -606,6 +603,26 @@ function cibleBailleur_(nom, cibles) {
     if (cibles[i].nom === canon) return cibles[i];
   }
   return null;
+}
+
+/**
+ * ÉPINGLE d'un fichier : décision prise avec Marc pour CE fichier précis (table
+ * `CONFIG.MISSIONS_EPINGLES`, clé = fileId). Prime sur toutes les règles — c'est le seul moyen
+ * honnête de placer un document qui ne porte aucun signal généralisable, sans inventer une règle
+ * qui en égarerait d'autres (leçon : « un verdict POSITIF qui déplace est définitif de fait »).
+ * `cibleId` accepte une CLÉ de `CONFIG.MISSIONS_IDS` (lisible dans la table) ou un ID Drive brut.
+ * PURE (testée).
+ * @param {string} fileId
+ * @return {?{cibleId?:string, cibleParentId?:string, cibleNom?:string, sousDossier?:string}}
+ */
+function epingleMission_(fileId) {
+  var e = (CONFIG.MISSIONS_EPINGLES || {})[fileId];
+  if (!e) return null;
+  var r = { sousDossier: e.sousDossier || '' };
+  if (e.cibleId) r.cibleId = CONFIG.MISSIONS_IDS[e.cibleId] || e.cibleId;
+  if (e.cibleParentId) r.cibleParentId = CONFIG.MISSIONS_IDS[e.cibleParentId] || e.cibleParentId;
+  if (e.cibleNom) r.cibleNom = e.cibleNom;
+  return (r.cibleId || (r.cibleParentId && r.cibleNom)) ? r : null;
 }
 
 /**
@@ -939,6 +956,9 @@ function sousDossierEmployeur_(typeNormalise) {
  */
 function routerCarriere_(nom, info, ctx) {
   var IDS = CONFIG.MISSIONS_IDS;
+  // Décision prise AVEC Marc pour ce fichier précis : elle prime sur toutes les règles ci-dessous.
+  var epingle = epingleMission_(info.fileId);
+  if (epingle) return epingle;
   var type = typeDuNomMission_(nom);
   // (ADR-0044 D10) RECRUTEMENT → « Recherche d'emploi ». AVANT l'employeur : une offre d'emploi
   // d'Automatech est du recrutement, pas un document d'employeur. Et AVANT
@@ -1477,7 +1497,7 @@ function traiterItemMission_(spec, item, ctx, proteges) {
   var cle = cleMission_(spec.tag, f.getId());
 
   var cible = null;
-  try { cible = spec.router(nom, { sousChemin: item.sousChemin, sourceId: item.sourceId }, ctx); }
+  try { cible = spec.router(nom, { sousChemin: item.sousChemin, sourceId: item.sourceId, fileId: f.getId() }, ctx); }
   catch (e) { journalErreur_('Missions', 'Routage impossible (« ' + nom + ' ») : ' + e); return 'transitoire'; }
 
   // MULTI-PARENTS (moveTo retirerait TOUS les parents = détachement interdit) et NON-APPARIÉ :
