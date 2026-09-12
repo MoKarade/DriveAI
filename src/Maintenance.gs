@@ -587,12 +587,18 @@ function rattraperMediasMalClasses(depuisISO) {
     if (!(d instanceof Date) || d.getTime() < depuis.getTime()) continue;
     var nom = String(v[i][2]);
     if (!estPhoto_(nom)) continue; // seules les images sont concernées
+    // §1 AVANT tout coût : le domaine inscrit à l'Index (colonne D) écarte la zone protégée sans
+    // même ouvrir le fichier — donc sans OCR ni appel LLM facturé (revue flotte 2026-09-12).
+    if (CONFIG.DOMAINES_PROTEGES.indexOf(String(v[i][3])) !== -1) { proteges04++; continue; }
     if (Date.now() - debut > CONFIG.BUDGET_MS || vus >= PLAFOND) { restants++; continue; }
     vus++;
     try {
       var fileId = fileIdDepuisCleMaintenance_(cle);
       if (!fileId) continue;
       var fichier = DriveApp.getFileById(fileId);
+      // Garde structurelle STRICTE (remontée d'ancêtres, abstention si indéterminable) : elle aussi
+      // avant l'OCR et le LLM.
+      if (aParentProtege_(fichier, proteges, true)) { proteges04++; continue; }
       var blob = fichier.getBlob();
       if (fichier.getSize() > CONFIG.OCR_TAILLE_MAX) continue; // trop gros pour re-juger : laissé
       var texte = extraireTexte_(blob);
@@ -607,10 +613,6 @@ function rattraperMediasMalClasses(depuisISO) {
         if (verdict.sensible === true) continue;
         if (typeof verdict.confiance === 'number' && verdict.confiance >= CONFIG.MEDIAS_CONFIANCE_MIN) continue;
       }
-      // Domaine inscrit à l'Index (colonne D) : premier filet, avant même de toucher à Drive.
-      if (CONFIG.DOMAINES_PROTEGES.indexOf(String(v[i][3])) !== -1) { proteges04++; continue; }
-      // Garde structurelle, STRICTE : remonte toute la chaîne d'ancêtres, abstention si indéterminable.
-      if (aParentProtege_(fichier, proteges, true)) { proteges04++; continue; }
       var parent = fichier.getParents().hasNext() ? fichier.getParents().next().getId() : '';
       if (parent === medias) continue; // déjà au bon endroit
       if (!deplacerEtRenommer_(fileId, medias, parent, nom)) { restants++; continue; }

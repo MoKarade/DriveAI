@@ -205,3 +205,13 @@ test('fusionnerDomaine07PersoVers08 : un élément rattaché à un domaine PROT�
   assert.deepStrictEqual(deplaces.map((d) => d.nom).sort(), ['Vrac', 'ordinaire.pdf']);
   assert.ok(String(resume).includes('zone protégée'), 'le bilan DIT ce qui a été laissé');
 });
+
+test('fusionnerDomaine07PersoVers08 : un SOUS-DOSSIER protégé n’est pas déplacé non plus (la garde couvre les deux boucles)', () => {
+  const { c, deplaces } = ctxFusion({
+    fichiers: ['ordinaire.pdf'],
+    dossiers: ['Vrac', 'Dossier immigration'],
+    proteges: ['Dossier immigration'],
+  });
+  c.fusionnerDomaine07PersoVers08();
+  assert.deepStrictEqual(deplaces.map((d) => d.nom).sort(), ['Vrac', 'ordinaire.pdf']);
+});

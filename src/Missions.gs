@@ -606,10 +606,15 @@ function cibleBailleur_(nom, cibles) {
 }
 
 /**
- * ÉPINGLE d'un fichier : décision prise avec Marc pour CE fichier précis (table
- * `CONFIG.MISSIONS_EPINGLES`, clé = fileId). Prime sur toutes les règles — c'est le seul moyen
- * honnête de placer un document qui ne porte aucun signal généralisable, sans inventer une règle
- * qui en égarerait d'autres (leçon : « un verdict POSITIF qui déplace est définitif de fait »).
+ * PLACEMENT MANUEL d'un fichier : décision prise avec Marc pour CE fichier précis (table
+ * `CONFIG.MISSIONS_EPINGLES`, clé = fileId). Prime sur les règles de `routerCarriere_` — le seul
+ * moyen honnête de placer un document qui ne porte aucun signal généralisable, sans inventer une
+ * règle qui en égarerait d'autres (leçon : « un verdict POSITIF qui déplace est définitif de fait »).
+ * ⚠️ À NE PAS CONFONDRE avec la clé d'Index `epingle|<fileId>` (ADR-0026), qui INTERDIT au contraire
+ * tout déplacement : celle-ci FORCE une destination, celle-là gèle le fichier. Deux mécanismes de
+ * sens opposé ; `collecterMission_` applique le gel AVANT, donc un fichier gelé n'arrive jamais ici.
+ * ⚠️ Câblé dans `routerCarriere_` UNIQUEMENT : une entrée visant un fichier de `dispatch03` ou
+ * `logement` ne ferait rien (à remonter dans `traiterItemMission_` le jour où le besoin existe).
  * `cibleId` accepte une CLÉ de `CONFIG.MISSIONS_IDS` (lisible dans la table) ou un ID Drive brut.
  * PURE (testée).
  * @param {string} fileId
@@ -618,6 +623,9 @@ function cibleBailleur_(nom, cibles) {
 function epingleMission_(fileId) {
   var e = (CONFIG.MISSIONS_EPINGLES || {})[fileId];
   if (!e) return null;
+  // Une épingle qui EXISTE mais ne résout pas (domaine AUTO absent, clé inconnue) ne doit pas
+  // rendre la main à la règle générale : celle-ci déplacerait le fichier AILLEURS, à clé de
+  // SUCCÈS, et la décision de Marc serait perdue en silence (revue flotte 2026-09-12).
   // `domaine:<nom>` lit `CONFIG.DOMAINES` — qui ne contient QUE les domaines fixes : un domaine
   // AUTO absent rend `undefined`, et la cible doit alors être REFUSÉE (échec fermé), jamais vide.
   var resoudre = function (v) {
@@ -629,7 +637,10 @@ function epingleMission_(fileId) {
   if (e.cibleId) r.cibleId = resoudre(e.cibleId);
   if (e.cibleParentId) r.cibleParentId = resoudre(e.cibleParentId);
   if (e.cibleNom) r.cibleNom = e.cibleNom;
-  return (r.cibleId || (r.cibleParentId && r.cibleNom)) ? r : null;
+  if (r.cibleId || (r.cibleParentId && r.cibleNom)) return r;
+  // Même patron que `_Technique` indisponible : le throw devient 'transitoire' par item — aucune
+  // clé posée, le fichier reste en place, et la passe suivante re-tentera.
+  throw new Error('Épingle irrésolvable pour ' + fileId + ' — cible absente de la CONFIG');
 }
 
 /**
@@ -1475,13 +1486,13 @@ function executerMission_(tag, estBudgetDepasse) {
       }
       props.setProperty('DriveAI_MISSION_FINI_' + tag, version);
       // Peinture ROUGE : seulement les sources JETABLES (revue quotas PR2 — peindre un sous-dossier
-      // momentanément vide d'une racine PÉRENNE comme 05 dirait « supprimable » à tort). Défaut =
-      // toutes les sources (les missions PR1 dissolvent leurs sources par construction).
+      // momentanément vide d'une racine PÉRENNE comme 05 dirait « supprimable » à tort).
       // Le défaut est VIDE, jamais `spec.sources` : une source « jetable » est peinte en ROUGE, donc
-  // proposée à la suppression. Un défaut ne décide pas d'un geste destructeur — une mission qui omet
-  // le champ ne doit rien proposer (leçon §9 « Un DÉFAUT de configuration n'est pas une décision »,
-  // consignée le 2026-09-09 mais jamais appliquée au code ; audit sécurité 2026-09-10).
-  var jetables = spec.sourcesJetables !== undefined ? spec.sourcesJetables : [];
+      // proposée à la suppression. Un défaut ne décide pas d'un geste destructeur — une mission qui
+      // omet le champ ne doit rien proposer (leçon §9 « Un DÉFAUT de configuration n'est pas une
+      // décision », consignée le 2026-09-09, appliquée au code le 2026-09-12). Chaque spec tranche,
+      // et un test échoue si l'une oublie.
+      var jetables = spec.sourcesJetables || [];
       peindreSourcesVides_(jetables, garde);
       journalInfo_('Missions', 'Mission « ' + tag + ' » TERMINÉE (version ' + version + ') : ' +
         m.t + ' déplacé(s), ' + m.na + ' non apparié(s).' +

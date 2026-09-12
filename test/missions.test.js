@@ -1753,21 +1753,41 @@ test('épingles (décisions fichier par fichier avec Marc) : priment sur la règ
   const epingles = Object.keys(pur.CONFIG.MISSIONS_EPINGLES || {});
   assert.ok(epingles.length >= 3);
   // Chaque épingle rend une cible COMPLÈTE (jamais un dossier vide) et prime sur la règle.
+  // Le nom choisi est routé par une VRAIE règle (documentation métier → `_Technique`) : sans ça
+  // l'assertion serait vide de sens — déplacer l'épingle après les règles laisserait le test vert
+  // (défaut trouvé en revue, prouvé par mutation).
+  const NOM_ROUTE = '2025-11-07_Rapport de maintenance_Atelier.pdf';
+  assert.strictEqual(plain(pur.routerCarriere_(NOM_ROUTE,
+    { sourceId: IDS.carriereRacine, sousChemin: '', fileId: 'sans-epingle' }, ctx)).cibleId, 'ID_TECHNIQUE',
+  'pré-condition : ce nom EST routé par une règle');
   for (const id of epingles) {
-    const r = plain(pur.routerCarriere_('2025-11-07_Notes techniques d\'automatisme_x.jpg',
-      { sourceId: IDS.carriereRacine, sousChemin: '', fileId: id }, ctx));
+    const r = plain(pur.routerCarriere_(NOM_ROUTE, { sourceId: IDS.carriereRacine, sousChemin: '', fileId: id }, ctx));
     assert.ok(r && (r.cibleId || (r.cibleParentId && r.cibleNom)), `épingle ${id} : cible complète`);
-    assert.notStrictEqual(r.cibleId, 'ID_TECHNIQUE', 'l\'épingle a bien court-circuité la règle');
+    assert.notStrictEqual(r.cibleId, 'ID_TECHNIQUE', `épingle ${id} : la règle a été court-circuitée`);
+  }
+  // Toute cible d'épingle est un ID Drive plausible : une clé de `MISSIONS_IDS` mal orthographiée
+  // passerait sinon pour un ID et ne se verrait qu'en prod, par un échec de `getFolderById`.
+  for (const id of epingles) {
+    const r = pur.epingleMission_(id);
+    const cible = r.cibleId || r.cibleParentId;
+    assert.ok(/^[A-Za-z0-9_-]{25,}$/.test(cible), `épingle ${id} : cible « ${cible} » n'est pas un ID Drive`);
   }
   // Les 3 documents « C26-08 » partent chez Robovic.
   for (const id of ['1Yw7tl0AtwYzKziIaAuSGh9HryonyDNRc', '14JqlKatP6OmXJNf7g8JAwNya7PfEub0V', '1Nv32AckAIGOUasae6cf3BmGffdqlPxGz']) {
     assert.strictEqual(pur.epingleMission_(id).cibleId, IDS.employeursRobovic);
   }
-  // `domaine:<nom>` résout un domaine FIXE ; un domaine inconnu est refusé (jamais une cible vide).
-  const donation = pur.epingleMission_('1xhaCTA2uQ3GS7R3ZnKasthGF4Q5x3xrl');
-  assert.strictEqual(donation.cibleParentId, pur.CONFIG.DOMAINES['02 · Finances']);
-  assert.strictEqual(donation.cibleNom, 'Donation');
-  assert.ok(donation.cibleParentId, 'le domaine 02 est bien résolu');
+  // `domaine:<nom>` résout un domaine FIXE. Les 3 signatures notariales vont dans `01/État civil &
+  // notarial` (nœud EXISTANT) et surtout PAS dans un 8ᵉ nœud de `02 · Finances`, qui est plein 7/7.
+  const notarial = pur.epingleMission_('1xhaCTA2uQ3GS7R3ZnKasthGF4Q5x3xrl');
+  assert.strictEqual(notarial.cibleParentId, pur.CONFIG.DOMAINES['01 · Administratif & identité']);
+  assert.strictEqual(notarial.cibleNom, 'État civil & notarial');
+  // Aucune épingle ne vise `02 · Finances` : la contrainte ≤ 7 y interdit tout nouveau nœud.
+  for (const id of Object.keys(pur.CONFIG.MISSIONS_EPINGLES)) {
+    const r = pur.epingleMission_(id);
+    if (r.cibleParentId === pur.CONFIG.DOMAINES['02 · Finances']) {
+      assert.fail(`épingle ${id} : créerait un nœud dans 02 · Finances, plein (docs/TAXONOMY.md)`);
+    }
+  }
   // Sans épingle, la règle générale s'applique inchangée : un rapport de maintenance reste de la
   // documentation métier et part dans `_Technique` — l'épingle n'a pas élargi le routage.
   const sansEpingle = plain(pur.routerCarriere_('2025-11-07_Rapport de maintenance_Atelier.pdf',
@@ -1788,7 +1808,12 @@ test('épingles : un domaine AUTO absent ⇒ REFUS, jamais une cible vide (éche
   const sauve = pur.CONFIG.MISSIONS_EPINGLES;
   try {
     pur.CONFIG.MISSIONS_EPINGLES = { zz: { cibleParentId: 'domaine:07 · Santé', cibleNom: 'X' } };
-    assert.strictEqual(pur.epingleMission_('zz'), null, 'domaine absent ⇒ aucune cible');
+    assert.throws(() => pur.epingleMission_('zz'), /irrésolvable/, 'domaine absent ⇒ LEVÉE, pas une cible vide');
+    // …et surtout : la règle générale ne reprend PAS la main (sinon la décision de Marc serait
+    // remplacée en silence par un déplacement à clé de succès).
+    assert.throws(() => pur.routerCarriere_('2025-11-07_Rapport de maintenance_Atelier.pdf',
+      { sourceId: pur.CONFIG.MISSIONS_IDS.carriereRacine, sousChemin: '', fileId: 'zz' },
+      { employeurParSource: {}, techniqueId: 'ID_TECHNIQUE' }), /irrésolvable/);
   } finally {
     pur.CONFIG.MISSIONS_EPINGLES = sauve;
   }

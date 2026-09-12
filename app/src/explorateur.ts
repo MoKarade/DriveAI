@@ -136,8 +136,10 @@ export function texteSurFond(hex?: string): string {
   const canal = (v: number) => (v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4));
   const [r, v, b] = [0, 2, 4].map((i) => canal(parseInt(m[1].slice(i, i + 2), 16) / 255));
   const luminance = 0.2126 * r + 0.7152 * v + 0.0722 * b;
-  // Seuil issu du contraste : au-dessus, le noir passe (≥ 4,5), en dessous le blanc passe.
-  return luminance > 0.18 ? '#101317' : '#fff';
+  // Seuil et couleurs choisis pour qu'AA (4,5:1) soit garanti sur TOUT l'espace de couleurs, pas
+  // seulement sur la palette Google : avec un gris #101317, la bande L ∈ [0,180 ; 0,2035] n'atteint
+  // 4,5 avec AUCUNE des deux couleurs (revue flotte 2026-09-12). Le noir pur ferme ce trou.
+  return luminance > 0.179 ? '#000' : '#fff';
 }
 
 /**

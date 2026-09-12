@@ -81,6 +81,7 @@ function majHistoriqueVrac_(estBudgetDepasse) {
   var garde = function () { return estBudgetDepasse() || (Date.now() - debut) > budgetRun; };
 
   var lignes = [];
+  var ecrit = false; // l'écriture Sheet a-t-elle abouti ? (le drapeau de jour en dépend)
   // Le budget consommé et le curseur se posent dans un `finally` (patron de TOUTES les autres
   // campagnes : Doublons, Consolidation, Missions, Reset…). Sans lui, une exception à l'écriture
   // Sheet laissait la Property à 0 : l'étape recomptait les 9 racines de domaine à CHAQUE tick
@@ -109,11 +110,15 @@ function majHistoriqueVrac_(estBudgetDepasse) {
     var manque = (f.getLastRow() + lignes.length) - f.getMaxRows();
     if (manque > 0) f.insertRowsAfter(f.getMaxRows(), manque);
     f.getRange(f.getLastRow() + 1, 1, lignes.length, COLONNES_HISTORIQUE_VRAC.length).setValues(lignes);
+    ecrit = true;
   }
   } finally {
+    // Budget et curseur : TOUJOURS (sinon recomptage à chaque tick). Le DRAPEAU DE JOUR : seulement
+    // si l'écriture a réussi — cet onglet est append-only et rien ne le réécrit, donc un jour marqué
+    // « fait » sans sa ligne est un trou DÉFINITIF dans la série (revue flotte 2026-09-12).
     props.setProperty('DriveAI_VRAC_HISTO_IDX', String(idx));
     props.setProperty('DriveAI_VRAC_JOUR_MS', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
-    if (idx >= domaines.length) {
+    if (idx >= domaines.length && (ecrit || !lignes.length)) {
       props.setProperty('DriveAI_VRAC_HISTO_JOUR', aujourdhui);
       props.setProperty('DriveAI_VRAC_HISTO_IDX', '0'); // prêt pour la sweep de demain
     }

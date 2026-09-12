@@ -70,7 +70,11 @@ describe('formaterDateSeule (échéance AAAA-MM-JJ, jamais la veille)', () => {
     const ancienne = new Date('2026-07-15').getDate();
     const nouvelle = Number(/\d+/.exec(formaterDateSeule('2026-07-15', 'fr-CA'))![0]);
     expect(nouvelle).toBe(15);
-    if (new Date().getTimezoneOffset() > 0) expect(ancienne).toBe(14); // fuseau à l'ouest : l'ancien code se trompait
+    // Le fuseau est ÉPINGLÉ à America/Toronto (vite.config.ts) : la preuve de régression s'exécute
+    // vraiment, y compris en CI — sous UTC, l'ancienne implémentation rendait le bon jour et le
+    // verrou n'existait nulle part (revue flotte 2026-09-12).
+    expect(new Date().getTimezoneOffset()).toBeGreaterThan(0);
+    expect(ancienne).toBe(14); // l'ancien code rendait la VEILLE
   });
   it('vide ou malformé → tiret', () => {
     expect(formaterDateSeule(undefined)).toBe('—');
@@ -174,7 +178,7 @@ describe('texteSurFond (lisibilité sur une couleur d’agenda Google)', () => {
   // Les quatre couleurs les plus claires de la palette Google : le blanc y donnait 1,7 à 2,6:1.
   it('rend un texte SOMBRE sur les fonds clairs', () => {
     for (const clair of ['#f6bf26', '#e4c441', '#c0ca33', '#33b679']) {
-      expect(texteSurFond(clair)).toBe('#101317');
+      expect(texteSurFond(clair)).toBe('#000');
     }
   });
   it('rend du BLANC sur les fonds foncés, et par défaut si la couleur est absente ou illisible', () => {
@@ -197,6 +201,16 @@ describe('texteSurFond (lisibilité sur une couleur d’agenda Google)', () => {
     };
     for (const fond of ['#f6bf26', '#e4c441', '#c0ca33', '#33b679', '#e67c73', '#3f51b5', '#0b8043', '#d50000', '#8e24aa', '#039be5']) {
       expect(contraste(fond, texteSurFond(fond))).toBeGreaterThanOrEqual(4.5);
+    }
+    // …et sur TOUT l'espace, pas seulement la palette Google : une couleur d'agenda personnalisée
+    // peut tomber dans la bande étroite où ni le blanc ni un gris foncé ne passent (revue flotte).
+    for (let r = 0; r <= 255; r += 17) {
+      for (let v = 0; v <= 255; v += 17) {
+        for (let b = 0; b <= 255; b += 17) {
+          const hex = '#' + [r, v, b].map((x) => x.toString(16).padStart(2, '0')).join('');
+          expect(contraste(hex, texteSurFond(hex)), `contraste insuffisant sur ${hex}`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
     }
   });
 });

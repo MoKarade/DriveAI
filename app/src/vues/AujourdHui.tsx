@@ -107,6 +107,8 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
         ]);
         setEvenements(listes.flat().sort((x, y) => x.debut.localeCompare(y.debut)));
         setTaches(interpreterTaches(tks, marques));
+        setAgendaHS(false); // la lecture repasse : ne pas rester bloqué sur « indisponible »
+        setErreur('');
       } catch (e) {
         setAgendaHS(true);
         setErreur(String(e));
@@ -185,6 +187,12 @@ export function AujourdHui({ langue, onAller }: { langue: Langue; onAller: (s: S
         <BanniereErreur langue={langue} erreur={erreur} onReessayer={() => setErreur('')} />
         <div className="carte lignes">
           {suspects.length > 0 && <ListeSuspects langue={langue} suspects={suspects} max={SUSPECTS_MAX} />}
+          {suspects.length > SUSPECTS_MAX && (
+            <div className="ligne">
+              <Icone nom="alerte" className="attention" />
+              <span className="t"><b>{t('autresSuspects', langue).replace('{n}', String(suspects.length - SUSPECTS_MAX))}</b></span>
+            </div>
+          )}
           {aVerifier.map((l: LigneIndex) => (
             <a key={l.cle} className="ligne" href={lienDrivePourLigne(l)} target="_blank" rel="noreferrer">
               <Icone nom="fichier" className="erreur" />

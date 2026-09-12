@@ -1041,6 +1041,12 @@ var CONFIG = {
     { nom: 'Robovic', jetons: ['robovic'] },
     { nom: 'Automatech', jetons: ['automatech', 'robotik'] },
     { nom: 'CIUSSS', jetons: ['ciusss'] },
+    // « Lyxor » ajouté le 2026-09-12 : Marc a demandé un dossier à son nom (note de démission).
+    // Au CANON et pas dans « Autres employeurs » pour que ses éventuelles paies aillent dans
+    // `02/Revenus & paie/Lyxor` plutôt que dans le commun — sinon le dossier de 05 et les paies de
+    // 02 raconteraient deux histoires. Comme CIUSSS, il n'a pas d'ID de dossier sous 05 : le
+    // routeur refuse (révisable) plutôt que de créer, et c'est l'épingle qui place LE document.
+    { nom: 'Lyxor', jetons: ['lyxor'] },
   ],
   // Employeurs OCCASIONNELS, sans dossier à eux (ADR-0044 D11, décision Marc 2026-08-20 : « plutôt
   // qu'un dossier par nom à un seul fichier »). Ils partagent UN commun, des DEUX côtés :
@@ -1088,9 +1094,16 @@ var CONFIG = {
     // Les 3 signatures détachées « Me Justine Basilio » : ce n'est pas de la carrière — c'est un
     // virement familial passé devant avocat (réponse de Marc, 2026-09-12). Rien dans le fichier ne
     // le disait : 1,4 ko de PKCS#7, aucun texte. D'où l'épingle plutôt qu'une règle.
-    '1xhaCTA2uQ3GS7R3ZnKasthGF4Q5x3xrl': { cibleParentId: 'domaine:02 · Finances', cibleNom: 'Donation' },
-    '1H88QayKncTp3xj-uFkXacwouK_S1QY72': { cibleParentId: 'domaine:02 · Finances', cibleNom: 'Donation' },
-    '1ytTtCHIvyWefICb6aB3pCbsOlua7dACQ': { cibleParentId: 'domaine:02 · Finances', cibleNom: 'Donation' },
+    // ⚠️ Marc avait dit « 02 · Finances / Donation » ; ce N'EST PAS ce qui est codé, et c'est
+    // volontaire : `02 · Finances` est PLEIN (7/7, docs/TAXONOMY.md — contrainte ≤ 7 non
+    // négociable, ADR-0027), le nœud « Donations & successions » y a justement été RETIRÉ le
+    // 2026-07-30, et la taxonomie tranche déjà ce cas : versant FISCAL → `02/Impôts &
+    // déclarations`, versant NOTARIAL (les actes, donc ces signatures) → `01/État civil &
+    // notarial`, qui existe dans la structure cible. Créer « Donation » aurait fait 8 nœuds dans
+    // 02, hors table — donc invisible du test ≤ 7 et proposable à la corbeille par la Réorg.
+    '1xhaCTA2uQ3GS7R3ZnKasthGF4Q5x3xrl': { cibleParentId: 'domaine:01 · Administratif & identité', cibleNom: 'État civil & notarial' },
+    '1H88QayKncTp3xj-uFkXacwouK_S1QY72': { cibleParentId: 'domaine:01 · Administratif & identité', cibleNom: 'État civil & notarial' },
+    '1ytTtCHIvyWefICb6aB3pCbsOlua7dACQ': { cibleParentId: 'domaine:01 · Administratif & identité', cibleNom: 'État civil & notarial' },
     // Déductions tirées du CONTENU et validées par Marc : projet d'études (sprint Scrum en équipe,
     // Java/C/SQL/Web) et documents d'école → « Alternance & stages ».
     '1usi7i6qOHidnRA67eWnl4_evonCL8Jcu': { cibleId: 'alternanceStages' }, // planning de sprint FitCo
@@ -1099,15 +1112,19 @@ var CONFIG = {
     // Recrutement (test de personnalité passé en entretien, prospection d'employeurs).
     '1Al51mqv5sLDgLsw8vGPSjThoa6naZLdw': { cibleId: 'rechercheEmploi' },  // questionnaire TM MECA
     '1WxneSilF1AsNkt1-WPcHqye_8btgJXK-': { cibleId: 'rechercheEmploi' },  // prospection employeurs
-    // Note manuscrite « raisons de démission » : Lyxor est un employeur PASSÉ, sans dossier → créé.
+    // Note manuscrite « raisons de démission » : Marc veut un dossier Lyxor (réponse du
+    // 2026-09-12). Pour que ce ne soit pas un dossier ORPHELIN à un seul fichier — ce que la
+    // règle ADR-0044 D11 refuse — « lyxor » est AUSSI ajouté au canon des employeurs ci-dessus :
+    // les prochains documents Lyxor y tomberont par la règle, sans épingle.
     '1xKdLuzNL6kZNlCpZU-Zhw4_GIEtSr5AN': { cibleParentId: 'employeurs05', cibleNom: 'Lyxor' },
   },
   MISSIONS_ASSUREURS: [
     { bucket: 'Desjardins', jetons: ['desjardins'] },
-    { bucket: 'MAIF', jetons: ['maif', 'filia', 'filia-maif'] },
+    { bucket: 'MAIF', jetons: ['maif', 'filia'] },
   ],
   MISSIONS_FOURNISSEURS_ENERGIE: [
-    { bucket: 'Hydro-Québec', jetons: ['hydro', 'hydro-quebec', 'hydro québec'] },
+    { bucket: 'Hydro-Québec', jetons: ['hydro'] }, // `normaliserMission_` réduit à [a-z0-9] espacés :
+                                                  // un jeton accentué ou tireté ne matcherait jamais.
     { bucket: 'ENGIE', jetons: ['engie'] },
   ],
   MISSIONS_BAILLEURS: [
