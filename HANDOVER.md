@@ -4,6 +4,25 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **🎯 EN COURS — 2026-09-12 : C28-84 / C28-85 (chantier #46), branche `claude/compassionate-brahmagupta-e49tqa`.**
+> Marc : « analyse tout et peaufine », puis « toutes les missions qui ont pas fini, finis-les ; pose
+> des questions pour tout ». Trois audits en parallèle (app, moteur, sécurité) sur tout le dépôt,
+> leurs correctifs, puis les 4 missions de rangement bloquées sur ~28 fichiers « non appariés ».
+> **Ce qui a été DÉCIDÉ par Marc** (jamais deviné — les fichiers ont été lus dans Drive d'abord) :
+> alias de bailleurs GestiPro/Vereecque → 3325 et Proulx → 3987 ; assurances et énergie rangées par
+> ÉMETTEUR quand aucun logement n'est nommé ; 12 placements manuels par identité pour les documents
+> sans signal (dont les 3 signatures notariales → `01/État civil & notarial`, PAS un nœud « Donation »
+> dans 02, qui est plein 7/7) ; les paies restent dans `02 · Revenus & paie`.
+> ⚠️ **Correction importante** : les 3 « paies en double » de Robovic n'en étaient pas — ce sont
+> trois semaines d'août. La vérification d'empreinte annoncée avant écartement est ce qui a évité de
+> supprimer deux vraies paies ; l'option que ma question proposait était fausse.
+> ⚠️ **Constat prod du 12/09** : 6 des sources « jetables » (4 véhicule, 2 logement) N'EXISTENT PLUS
+> dans le Drive — Marc les a supprimées après que le moteur les a peintes en rouge. Sans le correctif
+> « source disparue = source vide », le bump `c50-1` condamnait ces 2 missions à ne jamais converger.
+> **Reste à faire** : PR + revue flotte (une passe déjà intégrée, 1 🔴 + 6 🟠), puis vérifier le
+> déploiement `deploy.yml` (le moteur change) ET Vercel (l'app change). Marc doit encore dire à quoi
+> correspondent 2 fichiers illisibles de 05. Le détail du reliquat d'audit est en C28-86.
+>
 > **🎯 SUITE — 2026-09-10 : C28-83, l'app ne déborde plus sur téléphone (#335).** Marc : « la page
 > agenda marche pas bien pour le tel, ça me fait dézoomer sinon je vois pas tout », puis « je dois
 > slide à droite pour tout voir », dans les deux vues. DEUX défauts distincts, tous deux mesurés au

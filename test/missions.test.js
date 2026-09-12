@@ -1818,3 +1818,19 @@ test('épingles : un domaine AUTO absent ⇒ REFUS, jamais une cible vide (éche
     pur.CONFIG.MISSIONS_EPINGLES = sauve;
   }
 });
+
+test('estSourceDisparue_ : un dossier SUPPRIMÉ est une source vide, une PANNE reste une erreur', () => {
+  // Vérifié dans le Drive de Marc le 2026-09-12 : les 4 sources de la mission véhicule et les 2 de
+  // la mission logement n'existent plus — elles avaient été proposées à la suppression une fois
+  // vidées. Sans ce prédicat, la collecte les compte en ERREUR : plus aucune passe complète, donc
+  // plus aucune convergence, et une ligne de journal par source et par tick (288/jour).
+  for (const msg of ['No item with the given ID could be found, or you do not have permission to access it.'.replace(', or you do not have permission to access it.', ''),
+    'Not Found', 'Aucun élément trouvé avec cet ID', 'Dossier introuvable']) {
+    assert.strictEqual(pur.estSourceDisparue_(new Error(msg)), true, msg);
+  }
+  for (const msg of ['Service Drive indisponible', 'Quota exceeded', 'Timeout',
+    'You do not have permission to access the requested document']) {
+    assert.strictEqual(pur.estSourceDisparue_(new Error(msg)), false, msg);
+  }
+  assert.strictEqual(pur.estSourceDisparue_(null), false);
+});

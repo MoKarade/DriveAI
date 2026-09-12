@@ -606,6 +606,26 @@ function cibleBailleur_(nom, cibles) {
 }
 
 /**
+ * Vrai si l'erreur dit que le dossier N'EXISTE PLUS (supprimé, corbeillé, ou jamais créé), par
+ * opposition à une panne transitoire (réseau, quota, permission). Apps Script rend ici un message
+ * non typé : on reconnaît les formulations de `getFolderById` sur une ressource absente, dans les
+ * deux langues de l'éditeur. Volontairement ÉTROIT — dans le doute, c'est une erreur (échec
+ * fermé : mieux vaut une mission qui reste ouverte qu'une passe déclarée complète à tort). PURE.
+ * @param {*} e
+ * @return {boolean}
+ */
+function estSourceDisparue_(e) {
+  var m = String((e && e.message) || e || '').toLowerCase();
+  // Un refus de PERMISSION n'est PAS une disparition : le dossier existe, on n'y accède pas — la
+  // mission doit rester OUVERTE. Testé dans les deux sens.
+  if (m.indexOf('permission') !== -1 || m.indexOf('autorisation') !== -1) return false;
+  return m.indexOf('no item with the given id') !== -1 ||  // « No item with the given ID could be found »
+    m.indexOf('not found') !== -1 ||
+    m.indexOf('aucun élément') !== -1 ||                    // variantes FR de l'éditeur
+    m.indexOf('introuvable') !== -1;
+}
+
+/**
  * PLACEMENT MANUEL d'un fichier : décision prise avec Marc pour CE fichier précis (table
  * `CONFIG.MISSIONS_EPINGLES`, clé = fileId). Prime sur les règles de `routerCarriere_` — le seul
  * moyen honnête de placer un document qui ne porte aucun signal généralisable, sans inventer une
@@ -1242,6 +1262,16 @@ function collecterMission_(sourceId, tag, garde, proteges, profondeurMax) {
       return { items: items, coupe: coupe, erreur: true };
     }
   } catch (e) {
+    // Source DISPARUE (supprimée ou corbeillée par Marc) : ce n'est pas une panne, c'est le
+    // RÉSULTAT ATTENDU d'une source jetable qu'on lui a proposé de supprimer une fois vidée.
+    // La compter en erreur interdisait toute passe complète — donc toute convergence — à VIE,
+    // avec une ligne de journal par source et par tick. Vérifié le 2026-09-12 : les 4 sources de
+    // la mission véhicule et les 2 de la mission logement n'existent PLUS dans le Drive de Marc.
+    // Une source absente est une source VIDE : la passe continue et la mission peut se terminer.
+    if (estSourceDisparue_(e)) {
+      journalInfo_('Missions', 'Source ' + sourceId + ' absente (supprimée/corbeillée) — traitée comme vide.');
+      return { items: items, coupe: coupe };
+    }
     journalErreur_('Missions', 'Collecte impossible (source ' + sourceId + ') : ' + e);
     return { items: items, coupe: coupe, erreur: true }; // jamais « passe complète » sur une erreur
   }
