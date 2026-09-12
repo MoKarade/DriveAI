@@ -4,7 +4,7 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🎯 EN COURS — 2026-09-12 : C28-84 / C28-85 (chantier #46), branche `claude/compassionate-brahmagupta-e49tqa`.**
+> **✅ TERMINÉ — 2026-09-12 : C28-84 / C28-85 (chantier #46), mergé en #336 et VÉRIFIÉ EN PROD.**
 > Marc : « analyse tout et peaufine », puis « toutes les missions qui ont pas fini, finis-les ; pose
 > des questions pour tout ». Trois audits en parallèle (app, moteur, sécurité) sur tout le dépôt,
 > leurs correctifs, puis les 4 missions de rangement bloquées sur ~28 fichiers « non appariés ».
@@ -19,9 +19,17 @@
 > ⚠️ **Constat prod du 12/09** : 6 des sources « jetables » (4 véhicule, 2 logement) N'EXISTENT PLUS
 > dans le Drive — Marc les a supprimées après que le moteur les a peintes en rouge. Sans le correctif
 > « source disparue = source vide », le bump `c50-1` condamnait ces 2 missions à ne jamais converger.
-> **Reste à faire** : PR + revue flotte (une passe déjà intégrée, 1 🔴 + 6 🟠), puis vérifier le
-> déploiement `deploy.yml` (le moteur change) ET Vercel (l'app change). Marc doit encore dire à quoi
-> correspondent 2 fichiers illisibles de 05. Le détail du reliquat d'audit est en C28-86.
+> **Déploiement vérifié sur les DEUX cibles** : `deploy.yml` run #322 vert (clasp push + redéploiement
+> de la web app + déclencheur réinstallé) et Vercel `dpl_CUJ5Xqf…` READY pour `8f48115`, alias
+> `drive.hubperso.com`. Et surtout le **signal INDÉPENDANT** (piège 3 : un run vert ne prouve pas que
+> le tick exécute le nouveau code) — l'état lu par le MCP à 15:20, soit 5 minutes après :
+> mission logements **terminé** (25/25, elle avait 10 non appariés), dispatch03 20/20 avec
+> « +8 fichiers il y a 0 min » après 22 jours sans bouger, archives06 (139/139) et paies (10/10)
+> réapparues, carrière 166/169 « +23 fichiers il y a 0 min », Index 18 462 → 18 504. Les règles c50-1
+> tournent.
+> **Reste ouvert** : 3 fichiers en carrière (dont les 2 illisibles — Marc doit dire à quoi ils
+> correspondent) et tout C28-86. ⚠️ La mission paies porte encore une erreur du 19/08
+> (« Cannot read properties of null ») : antérieure à ce chantier, à re-regarder si elle revient.
 >
 > **🎯 SUITE — 2026-09-10 : C28-83, l'app ne déborde plus sur téléphone (#335).** Marc : « la page
 > agenda marche pas bien pour le tel, ça me fait dézoomer sinon je vois pas tout », puis « je dois
