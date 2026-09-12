@@ -899,11 +899,15 @@ var CONFIG = {
   MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions
   // c49-3 (ADR-0044 §4, véhicules) puis c49-4 (§5, les 39 de « employeurs & CV ») — l'historique
   // inline s'arrêtait à c49-2 alors que la valeur avait bougé deux fois (revue code PR2).
-  MISSIONS_REGLES_VERSION: 'c49-7',       // DANS la clé d'idempotence : un refus (non apparié) se fige
+  MISSIONS_REGLES_VERSION: 'c50-1',       // DANS la clé d'idempotence : un refus (non apparié) se fige
                                           // sous CETTE version — affiner les règles = bump ⇒ ré-évaluation
                                           // (leçon C28-33 « verdict négatif révisable, jamais figé à vie »)
                                           // c49-2 (C28-51, ADR-0040) : tables bailleurs + véhicules,
                                           // catégories par véhicule — les 89 refus c49-1 se ré-évaluent.
+                                          // c50-1 (2026-09-12, réponses de Marc) : alias de bailleurs
+                                          // (gestipro, vereecque → 3325 ; proulx → 3987) et filet par
+                                          // ÉMETTEUR pour assurances et énergie — les ~28 refus des
+                                          // missions logement/dispatch03/carrière se ré-évaluent.
   MISSIONS_BUDGET_MS: 90 * 1000,          // sous-budget par run (pure I/O moveTo — reste < mur standard)
   MISSIONS_BUDGET_JOUR_MS: 10 * 60 * 1000, // budget QUOTIDIEN partagé entre missions, ms RÉELLES persistées.
                                           // RÉALLOUÉ (jamais ajouté) : les 10 min viennent de
@@ -1060,12 +1064,30 @@ var CONFIG = {
   // bailleur du 3325). Le canon = le NOM RÉEL du dossier sous « Logement » : résolu PAR NOM parmi
   // les cibles listées — dossier renommé ⇒ refus (jamais un doublon créé par la table).
   // Jetons MOT ENTIER (apparierUnique_) ; ambigu / hors table = refus, jamais deviné.
+  // ASSUREURS et FOURNISSEURS d'énergie (décisions Marc, 2026-09-12 : « par assureur », « par
+  // fournisseur »). Ces documents-là ne nomment AUCUN logement — ils dormaient à plat dans les
+  // filets `03 · Assurance habitation` et `03 · Énergie & services` faute de règle. Le bucket est
+  // créé SOUS le dossier filet lui-même (nœud pérenne, jamais peint en rouge) : le classement par
+  // logement reste prioritaire, ceci n'est que le filet de second rang.
+  // Jetons = MOT ENTIER (`apparierUnique_`), jamais une sous-chaîne : « maif » ne doit pas matcher
+  // un mot plus long, et « filia-maif » est une graphie du même assureur.
+  MISSIONS_ASSUREURS: [
+    { bucket: 'Desjardins', jetons: ['desjardins'] },
+    { bucket: 'MAIF', jetons: ['maif', 'filia', 'filia-maif'] },
+  ],
+  MISSIONS_FOURNISSEURS_ENERGIE: [
+    { bucket: 'Hydro-Québec', jetons: ['hydro', 'hydro-quebec', 'hydro québec'] },
+    { bucket: 'ENGIE', jetons: ['engie'] },
+  ],
   MISSIONS_BAILLEURS: [
     // « ma8 » ajouté le 2026-08-20 (réponse de Marc) : `Immeubles MA8` est le bailleur du 3325,
     // une graphie de plus du même. Range d'un coup son DPA et ses 2 formulaires de demande de
     // location, jusqu'ici bloqués faute d'adresse connue (ADR-0044 §7.3).
-    { logement: '3325 4e avenue', jetons: ['lcp', '9420', '3767', 'pinsonneault', 'ma8'] },
-    { logement: '3987 rte des Rivières', jetons: ['9478', '5045'] },
+    // « gestipro » et « vereecque » ajoutés le 2026-09-12 (réponses de Marc) : l'agence et le
+    // proprio du 3325 — 3 captures de correspondance bloquées faute d'adresse dans le nom.
+    { logement: '3325 4e avenue', jetons: ['lcp', '9420', '3767', 'pinsonneault', 'ma8', 'gestipro', 'vereecque'] },
+    // « proulx » ajouté le 2026-09-12 (réponse de Marc) : la gestionnaire du 3987.
+    { logement: '3987 rte des Rivières', jetons: ['9478', '5045', 'proulx'] },
     { logement: '783 av. Moreau, Québec', jetons: ['soucy', 'ayotte'] },
     { logement: 'Anciens logements', jetons: ['retta', 'isannointi', 'perpignan'] },
   ],

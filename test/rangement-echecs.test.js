@@ -98,9 +98,22 @@ function ctxFusion(options) {
   const deplaces = [];
   const iter = (items) => { let i = 0; return { hasNext: () => i < items.length, next: () => items[i++] }; };
   const cible = { getId: () => 'ID_CIBLE_08' };
+  // Ascendance : `moveTo` retire TOUS les parents, donc la fusion porte la garde §1 comme ses
+  // voisines. Les doubles fournissent `getParents` ; `options.proteges` liste les noms rattachés à
+  // un domaine protégé (ils ne doivent JAMAIS bouger).
+  const proteges = options.proteges || [];
+  const parentsDe = (nom) => iter(proteges.indexOf(nom) !== -1
+    ? [{ getId: () => 'ID_04_IMMIGRATION', getParents: () => iter([]) }]
+    : [{ getId: () => 'ID_SOURCE', getParents: () => iter([]) }]);
   const source = {
-    getFiles: () => iter((options.fichiers || []).map((n) => ({ moveTo: (d) => deplaces.push({ type: 'fichier', nom: n, vers: d.getId() }) }))),
-    getFolders: () => iter((options.dossiers || []).map((n) => ({ moveTo: (d) => deplaces.push({ type: 'dossier', nom: n, vers: d.getId() }) }))),
+    getFiles: () => iter((options.fichiers || []).map((n) => ({
+      getParents: () => parentsDe(n),
+      moveTo: (d) => deplaces.push({ type: 'fichier', nom: n, vers: d.getId() }),
+    }))),
+    getFolders: () => iter((options.dossiers || []).map((n) => ({
+      getParents: () => parentsDe(n),
+      moveTo: (d) => deplaces.push({ type: 'dossier', nom: n, vers: d.getId() }),
+    }))),
   };
   const onglets = {
     'Entités': fauxOngletColonnes(['Entité', 'Domaine', 'Statut'], options.entites || []),
@@ -118,6 +131,8 @@ function ctxFusion(options) {
     LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
     Logger: { log: () => {} },
   });
+  // Le domaine protégé pointe sur l'ID que portent les ancêtres « protégés » ci-dessus.
+  c.CONFIG.DOMAINES[c.CONFIG.DOMAINES_PROTEGES[0]] = 'ID_04_IMMIGRATION';
   c.feuille_ = (nom) => onglets[nom];
   c.journalInfo_ = () => {};
   return { c, props, deplaces, onglets };
@@ -176,4 +191,17 @@ test('terminerFusionDomaine07 : ré-étiquette Domaine (Entités+Index) et Chemi
   assert.ok(String(resume).includes('ré-étiquetés'));
   // Idempotence : un 2e passage ne change plus rien.
   assert.ok(String(ctx.c.terminerFusionDomaine07()).includes('0 ligne(s) Entités'));
+});
+
+test('fusionnerDomaine07PersoVers08 : un élément rattaché à un domaine PROTÉGÉ n’est JAMAIS déplacé (§1)', () => {
+  // `moveTo` retire TOUS les parents : sans cette garde, un fichier de 07 également multi-parenté
+  // sous `04 · Immigration` en aurait été détaché (audit sécurité 2026-09-10).
+  const { c, deplaces } = ctxFusion({
+    fichiers: ['ordinaire.pdf', 'permis-immigration.pdf'],
+    dossiers: ['Vrac'],
+    proteges: ['permis-immigration.pdf'],
+  });
+  const resume = c.fusionnerDomaine07PersoVers08();
+  assert.deepStrictEqual(deplaces.map((d) => d.nom).sort(), ['Vrac', 'ordinaire.pdf']);
+  assert.ok(String(resume).includes('zone protégée'), 'le bilan DIT ce qui a été laissé');
 });

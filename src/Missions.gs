@@ -103,6 +103,12 @@ function tableMissions_() {
         // « Entretien & réparations ») est ce qui rend sa répartition manuelle faisable.
         return { cibleParentId: IDS.vehiculeCible, cibleNom: 'À attribuer', sousDossier: categorie };
       },
+      // Les 4 sources sont des dossiers LEGACY, destinés à disparaître une fois vidés : « Véhicules »
+      // (pluriel, remplacé par « Véhicule »), le bZ isolé, et les deux « KIA » que le moteur avait
+      // créés sous c49-2 avant que Marc ne retire KIA du canon. Déclaré EXPLICITEMENT depuis le
+      // 2026-09-12 : le défaut est « rien n'est jetable » (audit sécurité — un défaut ne décide pas
+      // d'un geste destructeur).
+      sourcesJetables: [IDS.vehiculesPluriel, IDS.toyotaBzIsole, IDS.vehiculeKia, IDS.vehiculeKiaJetta],
     },
     {
       tag: 'logement', cle: 'mission-logement',
@@ -121,6 +127,11 @@ function tableMissions_() {
           cibleBailleur_(nom, ctx.cibles);
         return c ? { cibleId: c.id, sousDossier: '' } : null;
       },
+      // Les deux sources sont des dossiers LEGACY à faire disparaître : « Logements » (pluriel,
+      // remplacé par « Logement ») et le double LCP. Vidées, elles n'ont plus de raison d'être —
+      // le flux ne les recrée pas (la table du flux vise « Logement »). Déclaré EXPLICITEMENT
+      // depuis le 2026-09-12 : le défaut est désormais « rien n'est jetable » (audit sécurité).
+      sourcesJetables: [IDS.logementsPluriel, IDS.lcpLogementDouble],
     },
     {
       tag: 'dispatch03', cle: 'mission-dispatch-03',
@@ -193,6 +204,17 @@ function tableMissions_() {
           var parDate = logementParDate_(nom, ctx.fenetres);
           if (parDate) return { cibleId: parDate, sousDossier: theme };
         }
+        // 5. (2026-09-12) Filet de SECOND rang, après toutes les règles d'entité : un document qui
+        //    ne nomme aucun logement ni véhicule se range PAR ÉMETTEUR, DANS son dossier filet.
+        //    C'est ce qui sortait les 4 assurances (Desjardins, MAIF ×3) et les 3 documents
+        //    d'énergie (Hydro-Québec ×2, ENGIE) de l'état « non apparié » où ils dormaient.
+        var tableEmetteur = info.sourceId === CONFIG.MISSIONS_IDS.assuranceHab03 ? CONFIG.MISSIONS_ASSUREURS
+          : info.sourceId === CONFIG.MISSIONS_IDS.energieServices03 ? CONFIG.MISSIONS_FOURNISSEURS_ENERGIE
+            : null;
+        if (tableEmetteur) {
+          var bucket = bucketEmetteur_(nom, tableEmetteur);
+          if (bucket) return { cibleParentId: info.sourceId, cibleNom: bucket, sousDossier: '' };
+        }
         return null;
       },
       // Revue finale C28-51 : les 4 sources (Contrats, Correspondance, Assurance habitation,
@@ -223,6 +245,10 @@ function tableMissions_() {
       apresConvergence: function () {
         (IDS.archives06 || []).forEach(function (p) { repointerEntites_(p.src, p.cible); });
       },
+      // La mission EXISTE pour vider ces dossiers vers leur archive : une fois vides, ils n'ont
+      // plus d'objet et le flux ne les recrée pas (il vise l'archive, cf. `apresConvergence`).
+      // Déclaré explicitement depuis le 2026-09-12 (le défaut ne décide plus à leur place).
+      sourcesJetables: (IDS.archives06 || []).map(function (p) { return p.src; }),
     },
     /* ---- PR2 : Carrière + Finances (brief Marc §« paies / employeurs / impôts / années ») ---- */
     {
@@ -259,6 +285,9 @@ function tableMissions_() {
       // `sourcesJetables`, dans le routeur, et dans la table du FLUX (`cheminCibleReset_`).
       tag: 'carriere', cle: 'mission-carriere',
       sources: [IDS.employeursRobovic, IDS.employeursAutomatech, IDS.carriereRacine],
+      // PÉRENNES, toutes : la racine 05 est un domaine, et « Employeurs/<X> » porte des
+      // sous-dossiers de structure. Vides un instant, elles ne sont pas « supprimables ».
+      sourcesJetables: [],
       // Racine 05 : SEULS ses fichiers à plat sont le périmètre — ses sous-dossiers (Employeurs,
       // CV & lettres, Réseaux…) sont des structures, jamais recollectés.
       profondeurPar: (function () { var m = {}; m[IDS.carriereRacine] = 0; return m; })(),
@@ -577,6 +606,24 @@ function cibleBailleur_(nom, cibles) {
     if (cibles[i].nom === canon) return cibles[i];
   }
   return null;
+}
+
+/**
+ * Bucket d'ÉMETTEUR (assureur, fournisseur d'énergie) désigné par un nom de fichier — filet de
+ * SECOND rang du dispatch 03 : il ne s'applique qu'après les règles logement et véhicule, pour les
+ * documents qui ne nomment aucune entité (décisions Marc du 2026-09-12 : « par assureur », « par
+ * fournisseur »). MOT ENTIER via `apparierUnique_` : ambigu ou hors table ⇒ null, jamais deviné.
+ * PURE (testée).
+ * @param {string} nom
+ * @param {Array<{bucket:string,jetons:Array<string>}>} table
+ * @return {?string}  le nom du sous-dossier, ou null
+ */
+function bucketEmetteur_(nom, table) {
+  var entrees = (table || []).map(function (b) {
+    return { nom: b.bucket, id: b.bucket, jetons: b.jetons };
+  });
+  var e = apparierUnique_(nom, entrees);
+  return e ? e.nom : null;
 }
 
 /**

@@ -124,7 +124,9 @@ test('routeur dispatch03 : véhicule prioritaire, puis adresse, puis BAILLEUR, p
   // Correspondance SANS indice : la date tranche (demande Marc) — pas les autres thèmes.
   const parDate = spec.router('2023-05-01_Lettre_Ville.pdf', { sourceId: IDS.correspondance03, sousChemin: '' }, ctx);
   assert.strictEqual(parDate.cibleId, 'lm');
-  const pasParDate = spec.router('2023-05-01_Facture_Hydro.pdf', { sourceId: IDS.energieServices03, sousChemin: '' }, ctx);
+  // (2026-09-12) Le fichier d'origine de cette assertion nommait « Hydro » : il est désormais
+  // routé par le filet ÉMETTEUR. On garde l'invariant en le testant sur un nom SANS émetteur.
+  const pasParDate = spec.router('2023-05-01_Facture_Électricité.pdf', { sourceId: IDS.energieServices03, sousChemin: '' }, ctx);
   assert.strictEqual(pasParDate, null, 'la date ne route QUE la correspondance');
   // ADR-0044 : une LOCATION va dans « Véhicule/Locations » — elle n'est plus refusée, mais elle
   // ne rejoint JAMAIS un véhicule de Marc (les 3 contrats Enterprise dormaient dans 03·Contrats).
@@ -135,6 +137,56 @@ test('routeur dispatch03 : véhicule prioritaire, puis adresse, puis BAILLEUR, p
   const corpiq = spec.router('2018-10-15_Formulaire de demande de location_CORPIQ.pdf',
     { sourceId: IDS.contrats03, sousChemin: '' }, ctx);
   assert.ok(!corpiq || corpiq.cibleNom !== 'Locations', 'un bail n\'est pas une location de voiture');
+});
+
+test('routeur dispatch03 (c50-1, décisions Marc 2026-09-12) : filet par ÉMETTEUR, APRÈS toutes les règles d\'entité', () => {
+  const IDS = pur.CONFIG.MISSIONS_IDS;
+  const spec = pur.tableMissions_().filter((m) => m.tag === 'dispatch03')[0];
+  const ctx = {
+    logements: [{ nom: '783 av. Moreau, Québec', id: 'lm', jetons: ['783', 'moreau'] }],
+    fenetres: [],
+    themePar: (function () {
+      const m = {};
+      m[IDS.assuranceHab03] = 'Assurance habitation'; m[IDS.energieServices03] = 'Énergie & services';
+      return m;
+    })(),
+    themeVehiculePar: {},
+  };
+  const rte = (nom, sourceId) => plain(spec.router(nom, { sourceId: sourceId, sousChemin: '' }, ctx));
+
+  // Assurances : un bucket PAR ASSUREUR, créé SOUS le dossier filet lui-même.
+  assert.deepStrictEqual(rte('2026-02-26_Contrat d\'assurance habitation_Desjardins Assurances.pdf', IDS.assuranceHab03),
+    { cibleParentId: IDS.assuranceHab03, cibleNom: 'Desjardins', sousDossier: '' });
+  assert.deepStrictEqual(rte('2023-04_Relevé_MAIF_2.pdf', IDS.assuranceHab03),
+    { cibleParentId: IDS.assuranceHab03, cibleNom: 'MAIF', sousDossier: '' });
+  assert.deepStrictEqual(rte('2020-09-17_Attestation d\'assurance responsabilité civile_FILIA-MAIF_2.pdf', IDS.assuranceHab03),
+    { cibleParentId: IDS.assuranceHab03, cibleNom: 'MAIF', sousDossier: '' }, 'FILIA-MAIF est une graphie de MAIF');
+
+  // Énergie : un bucket PAR FOURNISSEUR.
+  assert.deepStrictEqual(rte('2024-12-06_Facture d\'électricité_Hydro-Québec.pdf', IDS.energieServices03),
+    { cibleParentId: IDS.energieServices03, cibleNom: 'Hydro-Québec', sousDossier: '' });
+  assert.deepStrictEqual(rte('2020-12-04_Attestation de contrat d\'énergie_ENGIE_2.pdf', IDS.energieServices03),
+    { cibleParentId: IDS.energieServices03, cibleNom: 'ENGIE', sousDossier: '' });
+
+  // ORDRE : l'ENTITÉ prime toujours. Une facture Hydro qui nomme l'adresse part au LOGEMENT,
+  // jamais dans le bucket du fournisseur — c'est la propriété que le filet ne doit pas casser.
+  const chezMarc = spec.router('2023-02-01_Facture_Hydro 783 Moreau.pdf', { sourceId: IDS.energieServices03, sousChemin: '' }, ctx);
+  assert.strictEqual(chezMarc.cibleId, 'lm', 'l\'adresse prime sur le fournisseur');
+  assert.strictEqual(chezMarc.sousDossier, 'Énergie & services');
+
+  // Le filet ne déborde JAMAIS sur les autres sources : un contrat « Desjardins » reste non apparié.
+  assert.strictEqual(spec.router('2026-02-26_Contrat_Desjardins.pdf', { sourceId: IDS.contrats03, sousChemin: '' }, ctx), null);
+  // Émetteur inconnu ⇒ refus RÉVISABLE (jamais un bucket deviné).
+  assert.strictEqual(rte('2021-05-05_Facture_Un fournisseur inconnu.pdf', IDS.energieServices03), null);
+});
+
+test('bucketEmetteur_ : MOT ENTIER, ambigu ⇒ null (aucun bucket deviné)', () => {
+  const table = [{ bucket: 'MAIF', jetons: ['maif'] }, { bucket: 'Desjardins', jetons: ['desjardins'] }];
+  assert.strictEqual(pur.bucketEmetteur_('2023-04_Relevé_MAIF.pdf', table), 'MAIF');
+  assert.strictEqual(pur.bucketEmetteur_('2023-04_Relevé_maifestation.pdf', table), null, 'sous-chaîne refusée');
+  assert.strictEqual(pur.bucketEmetteur_('2023-04_Relevé_MAIF et Desjardins.pdf', table), null, 'ambigu ⇒ refus');
+  assert.strictEqual(pur.bucketEmetteur_('2023-04_Relevé_.pdf', table), null);
+  assert.strictEqual(pur.bucketEmetteur_('x', null), null);
 });
 
 test('routeur vehicule (c49-3, ADR-0044) : communs > véhicule nommé > « À attribuer » — JAMAIS par date', () => {
@@ -1673,4 +1725,22 @@ test('C28-65 : un échec PERMANENT est abandonné après N essais (pas 288 rejeu
   assert.strictEqual(appels, avant, 'après abandon, plus AUCUN essai');
   assert.strictEqual(h.store['DriveAI_CORR_FINI'], c.CONFIG.CORRECTIONS_MANUELLES_TAG,
     'la campagne se referme au lieu de rester « non finie » à vie');
+});
+
+test('sourcesJetables : CHAQUE spec tranche explicitement (un défaut ne décide pas d’un geste destructeur)', () => {
+  // Le défaut valait « toutes les sources » : une mission écrite sans ce champ peignait ses
+  // dossiers en ROUGE (= « bon pour suppression »). Marc obéit au signal, la collecte lève ensuite
+  // sur les dossiers disparus, la mission ne converge plus jamais, et celle gatée dessus par
+  // `convergenceApres` est bloquée à vie — heartbeat vert (audit sécurité 2026-09-10).
+  const specs = pur.tableMissions_();
+  assert.ok(specs.length >= 8);
+  for (const s of specs) {
+    assert.ok(Object.prototype.hasOwnProperty.call(s, 'sourcesJetables'),
+      `la mission « ${s.tag} » doit déclarer sourcesJetables (ne serait-ce que [])`);
+    assert.ok(Array.isArray(s.sourcesJetables), `sourcesJetables de « ${s.tag} » doit être un tableau`);
+    // Une source jetable est forcément une SOURCE de la mission : jamais un dossier tiers.
+    for (const j of s.sourcesJetables) {
+      assert.ok(s.sources.indexOf(j) !== -1, `« ${s.tag} » : ${j} est déclaré jetable sans être une source`);
+    }
+  }
 });
