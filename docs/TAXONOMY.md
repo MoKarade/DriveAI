@@ -12,19 +12,21 @@ production et range dedans. **Tout ce qui suit cette section décrit la taxonomi
 qu'ADR-0030 RÉVISE explicitement.** Elle ne décrit donc plus que l'héritage en cours de drainage :
 en particulier, la règle « un document se classe à la racine de son domaine, dossier-catégorie
 INTERDIT » **ne vaut plus** — la prod range désormais dans `Relevés/`, `Reçus & factures/`,
-`Attestations & certificats/`, `Contrats/`…
+`Attestations & certificats/`, `Contrats/`… **ADR-0052 (2026-09-13) achève ce basculement** : la
+racine d'un domaine n'est plus une cible de classement du tout, et la section « Granularité »
+plus bas décrit la cascade de replis à jour, pas l'héritage.
 
 | Domaine | Sous-dossiers cibles (niveau 1) | Places restantes |
 |---------|--------------------------------|------------------|
 | `01 · Administratif & identité` | Pièces d'identité · État civil & notarial · Attestations & certificats · Correspondance · Contrats & fournisseurs · Sécurité & codes | 1 |
 | `02 · Finances` | Banques · Relevés · Reçus & factures · Impôts & déclarations · Assurances & prévoyance · Placements & crypto · **Revenus & paie** | **0 — PLEIN** |
 | `03 · Logement & véhicule` | **Logement** (5 adresses aux noms RÉELS Drive) · **Véhicule** (Toyota bZ · Ford Fiesta · VW Jetta, chacun avec {Contraventions · Assurance auto · Entretien & réparations · Recherche & achat}) **+ 3 dossiers COMMUNS au même niveau que les véhicules — `Recherche & achat` (magasinage sans véhicule identifié, dont l'ex-« KIA »), `Locations` (voiture louée, jamais un véhicule de Marc) et `À attribuer` (aucun véhicule identifiable — ADR-0044)** · Énergie & services · Assurance habitation · Contrats · Correspondance · **Modèles & formulaires** (formulaires génériques/vierges — ADR-0044 §6) | 0 — PLEIN |
-| `04 · Immigration` | IRCC (fédéral) · MIFI (Québec) · Permis de travail & EIMT · Résidence permanente · Formulaires & correspondance | 2 |
+| `04 · Immigration` | IRCC (fédéral) · MIFI (Québec) · Permis de travail & EIMT · Résidence permanente · Formulaires & correspondance · **Pièces d'identité** 🆕 *(ADR-0052)* | 1 |
 | `05 · Carrière` | **Employeurs** (Robovic · Automatech · **Autres employeurs** — commun des employeurs occasionnels, ADR-0044 D11) · Alternance & stages · CV & lettres (+ Candidatures · Suivi · Archive 2021-2025) · **Recherche d'emploi** (recrutement reçu : offres, invitations d'entretien, descriptions de rôle, listes d'entreprises cibles — **RECRÉÉ par ADR-0044 D10, qui révoque la fusion du 2026-08-17 vers « CV & lettres »**) · Entreprise — MRic (SCI) · Formation & bilans · Réseaux & présentations | 0 — PLEIN |
 | `06 · Études & diplômes` | 5 écoles + Autres établissements + Diplômes & relevés officiels | 0 |
 | `07 · Santé` | Médecins & consultations · Hôpitaux & centres · Assurances santé · Factures & reçus · Examens & résultats · Médecine scolaire & travail | 1 |
 | `08 · Perso & projets` | Projets · Écrits & rédactions · Schémas & technique · Photos & loisirs · Notes · Données & exports | 1 |
-| `09 · Voyages` | Réservations & billets · Par voyage · Assurances voyage | 4 |
+| `09 · Voyages` | Réservations & billets · Par voyage · Assurances voyage · **Préparation & guides** 🆕 *(ADR-0052)* | 3 |
 
 **`02 · Finances` est PLEIN (7/7)** : toute règle future y exige un **regroupement**, jamais un
 nouveau nœud. *(Note : le flux vivant y crée aussi `02 · Finances/AAAA` — `DOMAINES_PAR_ANNEE`,
@@ -34,7 +36,13 @@ nouveau nœud. *(Note : le flux vivant y crée aussi `02 · Finances/AAAA` — `
 validateur ≤ 7 (`verifierStructureCibleReset_`) : `Pièces d'identité/Autres/<personne>` (bornée
 par `RESET_PERSONNES_AUTRES`, testée ≤ 7), `Revenus & paie/<Employeur>` (bornée par
 `CONFIG.MISSIONS_EMPLOYEURS`, testée ≤ 7) et `Impôts & déclarations/<AAAA>` (années réelles,
-> 7 ASSUMÉ — même statut structurel que les buckets `Relevés/AAAA`). ⚠️ Les dossiers-employeurs
+> 7 ASSUMÉ). **Les buckets d'ANNÉE eux-mêmes sont la quatrième famille** et n'étaient pas déclarés
+ici : `Relevés/AAAA`, `Reçus & factures/AAAA` et `Réservations & billets/AAAA` sont figés dans la
+table à 7, 4 et 4 entrées, mais `resetBucketAnnee_` crée le dossier de toute année POSTÉRIEURE au
+dernier bucket (sans quoi un relevé de 2027 partirait dans `Archives`, ce qui serait faux). En 2027,
+`Relevés` aura donc 8 enfants réels là où le validateur en comptera 7. Dépassement ASSUMÉ et
+documenté (ADR-0033 §6 : une fenêtre glissante avec purge reste l'évolution possible) — mais il doit
+être ÉCRIT, sinon la prochaine revue le découvre en prod. ⚠️ Les dossiers-employeurs
 sont formellement des « dossiers par émetteur » (interdits par la règle de granularité plus bas) :
 **exception voulue et bornée** — table canonique validée par Marc (« un sous-dossier par
 employeur »), jamais un dossier au premier émetteur venu.
@@ -110,8 +118,14 @@ assertées par un seul test ; en retirer une fait échouer la CI (prouvé par mu
 > consolidation. Même idiome que `Revenus & paie` ou `Impôts & déclarations` : « je sais quel
 > conteneur, pas quelle subdivision ». Pas de dossier « Tiers ».
 > Carte de résident permanent → `04 · Immigration/Résidence permanente` ; carte d'assurance maladie →
-> `07 · Santé/Assurances santé` — ces deux domaines n'ont pas de conteneur d'identité, leur repli est
-> leur propre nœud de table.
+> `07 · Santé/Assurances santé` — leur repli est leur propre nœud de table.
+> ⚠️ **Depuis ADR-0052, `04` a AUSSI un nœud `Pièces d'identité`, et les deux ne se recouvrent pas.**
+> `Résidence permanente` reçoit la carte de RP, parce que c'est un document de STATUT et que c'est
+> LUI qui fait entrer le document dans `04`. `Pièces d'identité` reçoit les passeports/CNI/permis
+> **qui étaient déjà dans `04`** — des copies versées au dossier d'immigration, rangées par la
+> réorganisation INTERNE (§1.1b), jamais routées là par le flux. L'ORDRE des deux règles dans
+> `cheminCibleReset_` est le garde-fou : la règle de statut passe avant celle d'identité (une carte
+> de RP est les deux à la fois, et un test le verrouille).
 
 **Hors domaines** (préfixe `_`, à la racine, triés en tête ; ni domaine ni racine de rangement) :
 
@@ -125,18 +139,20 @@ assertées par un seul test ; en retirer une fait échouer la CI (prouvé par mu
 > ⚠️ Ces IDs sont des données de configuration, pas des secrets, mais ils ne doivent vivre que
 > dans `Config.gs` (Phase 1) et ici. Ne pas les disperser dans le code.
 
-## Granularité : classement à PLAT par défaut (ADR-0023 — RÉVISION 2026-07-16)
+## Granularité : la cascade de replis (ADR-0023 → ADR-0052)
 
-> **Révise l'ancienne règle « un dossier par entité + schémas de sous-dossiers »** (retour Marc
-> 2026-07-16 : ~499 dossiers dont ~102 vides pour ~2 880 fichiers — recensement
-> `docs/diagnostics/2026-07-16-recensement-drive.md`). Le nom `AAAA-MM-JJ_Type_Tiers.ext` porte
-> déjà toute l'information : le dossier n'ajoutait que du bruit.
+> **ADR-0023 (2026-07-16) révisait** « un dossier par entité + schémas de sous-dossiers » (~499
+> dossiers dont ~102 vides pour ~2 880 fichiers — recensement
+> `docs/diagnostics/2026-07-16-recensement-drive.md`) en posant « à plat par défaut ».
+> **ADR-0052 (2026-09-13) révise le DÉFAUT**, pas le principe : « à plat » avait produit
+> 683 fichiers libres aux racines de domaine, dont 475 dans `06`. Le nom porte l'information,
+> mais un dossier plein de 475 fichiers ne se parcourt pas.
 
-**Principe** : un document se classe **à la racine de son domaine**
-(`02 · Finances/2026-03-01_Facture_EDF.pdf`). La **RÈGLE UNIQUE** de sous-chemin
-(`sousCheminDomaine_`, Router.gs — partagée par le flux vivant ET la cible de consolidation,
-verrouillée par un tripwire test) n'accorde un sous-dossier que dans DEUX cas EXCLUSIFS, dans
-cet ordre (arbitrage Marc 2026-07-16 « entité OU année ») :
+**Principe** : un document se classe dans le nœud le plus précis que l'on sache justifier, et
+**jamais à la racine du domaine** tant qu'un nœud existant peut l'accueillir. La **RÈGLE UNIQUE** de
+sous-chemin (`sousCheminDomaine_`, Router.gs — partagée par le flux vivant ET la cible de
+consolidation) accorde un sous-dossier dans TROIS cas EXCLUSIFS, dans cet ordre
+(arbitrage Marc 2026-07-16 « entité OU année », étendu par ADR-0052) :
 
 ⚠️ Un troisième cas « **Type d'identité** → dossier de TYPE » figurait ici en tête jusqu'au
 2026-08-20. Il a été **retiré du code et de cette règle** (C28-72) : il rendait un nœud de niveau 1
@@ -163,10 +179,24 @@ premier appelant distrait.
 2. **Année** (`AAAA`) pour les domaines à volume (`CONFIG.DOMAINES_PAR_ANNEE` = `02 · Finances`),
    quand aucune entité validée ne s'applique : le tout-venant Finances va dans `02/2026`.
 
-Sinon : **racine du domaine**. **Interdits** (les mécanismes du bordel, recensement 2026-07-16) :
-dossier par émetteur ponctuel, dossier-catégorie (« Cours », « Devoirs », « Reçus »), « Divers »,
-squelettes de sous-dossiers d'entité (`SCHEMAS_ENTITE` — plus jamais créés),
-`SOUS_DOSSIERS_PAR_ANNEE` (mort avec le chemin v1).
+3. **Type de document** (ADR-0052, 2026-09-13 — **RÉVISE le « sinon : racine du domaine »**) :
+   `bucketTypeDomaine_` (Reset.gs, PURE) rend un nœud **qui existe déjà** dans
+   `STRUCTURE_CIBLE_RESET[domaine]` quand on ne sait ni À QUI ni À QUOI le document se rattache,
+   mais qu'on sait encore CE QUE C'EST (« Attestation » → `01/Attestations & certificats`,
+   « Reçu » en 09 → `09/Réservations & billets/AAAA`). Elle ne peut pas inventer de dossier
+   (verrouillé par test) ni changer de domaine — donc pas davantage faire sortir un fichier de `04`.
+
+Sinon seulement : **racine du domaine** — et c'est désormais un CONSTAT MESURÉ, pas un défaut :
+`test/racine-domaine.test.js` rejoue les 683 fichiers qui y étaient réellement au recensement du
+2026-09-13 et fige le compte PAR DOMAINE (0 partout, sauf 2 décisions en attente de Marc : `06` et
+`03`, tous deux PLEINS à 7 nœuds — ADR-0052 D6/D7). Un chiffre qui monte fait échouer la CI.
+
+**Interdits** (les mécanismes du bordel, recensement 2026-07-16) : dossier par émetteur ponctuel,
+dossier-catégorie **CRÉÉ À LA VOLÉE** (« Cours », « Devoirs », « Reçus »), « Divers », squelettes de
+sous-dossiers d'entité (`SCHEMAS_ENTITE` — plus jamais créés), `SOUS_DOSSIERS_PAR_ANNEE` (mort avec
+le chemin v1). ⚠️ La nuance ajoutée par ADR-0052 : ce qui était interdit, c'est de **fabriquer** un
+dossier de catégorie au fil des documents — pas de ranger dans un nœud que Marc a validé dans la
+structure cible. Le bordel de 2026-07-16 venait de la création, jamais du rangement.
 
 ### Limite cognitive : ~7 sous-dossiers par dossier (ADR-0027)
 
@@ -214,7 +244,7 @@ Les dossiers VIDÉS relèvent de la corbeille APP validée (ADR-0014), jamais du
 ## Règles structurelles
 
 - **Nouvelle entité** (plus de file de revue, décision Marc 2026-07-01) : le document est **classé au
-  niveau du domaine** (règle unique ci-dessus : année ou racine) et l'entité est **proposée**
+  niveau du domaine** (règle unique ci-dessus : année, bucket par TYPE, ou racine) et l'entité est **proposée**
   (`en_attente`) dans l'onglet `Entités` — jamais un blocage. Le dossier d'entité n'est matérialisé
   qu'**après validation** de Marc (anti-prolifération), **à la racine du domaine, SANS schéma de
   sous-dossiers** (ADR-0023 — l'ancien parent « catégorie » + squelette créait un double dossier et
@@ -239,7 +269,8 @@ Les dossiers VIDÉS relèvent de la corbeille APP validée (ADR-0014), jamais du
   `deciderRoutageV2_` renvoie `autresEntites: []` — `creerRaccourcisEntites_` n'est plus appelé).
   Les raccourcis HÉRITÉS restent en place (« Ignoré » par la consolidation, jamais déplacés) ;
   re-brancher les raccourcis sur les entités validées serait un chantier explicite, pas un défaut.
-- **Document transverse** (sans entité validée) → année (02) ou racine du domaine (règle unique).
+- **Document transverse** (sans entité validée) → année (02), sinon **bucket par TYPE**
+  (`bucketTypeDomaine_`, ADR-0052), sinon seulement la racine du domaine (règle unique).
 - **Doublon** (non sensible) : **déplacé** dans `_Doublons` (jamais effacé, jamais en revue — au volume
   du grand rangement, signaler chaque doublon en revue la saturerait). S'applique **aussi** aux doublons
   sensibles (1 exemplaire classé, les autres dans `_Doublons`) — cf. Zone protégée ci-dessous.

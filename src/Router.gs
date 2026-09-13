@@ -543,9 +543,35 @@ function planRoutageV2_(classif, meta, date, ext, validees) {
     var cible = sousCheminDomaine_({
       domaine: domaine, entite: entiteValidee,
       annee: /^\d{4}/.test(date || '') ? date.substring(0, 4) : null,
+      nom: nom, // ADR-0052 : ouvre le repli PAR TYPE, dernier échelon avant la racine
     });
     sousDossier = cible.nom;
     dossierIdCible = cible.id;
+  }
+  // ADR-0052 — un sous-chemin MULTI-SEGMENTS (« Reçus & factures/2025 ») doit être créé NIVEAU PAR
+  // NIVEAU. Sans cette conversion, la branche `else` de `deciderRoutageV2_` appliquait `champ_` au
+  // chemin ENTIER — et `champ_` remplace `/` par `-` : on obtenait UN dossier nommé
+  // « Reçus & factures-2025 », là où `ConsolidationExec` (`src/ConsolidationExec.gs`) découpe puis
+  // assainit segment par segment et vise « Reçus & factures/2025 ». Deux dossiers concurrents, et
+  // la consolidation qui re-propose « Déplacer » à chaque passe.
+  //
+  // ⚠️ `.map(champ_).filter(Boolean)` est EXACTEMENT le traitement du jumeau : c'est ce qui rend les
+  // deux côtés identiques, et c'est aussi ce qui protège des entrées dégénérées. Le cas n'est PAS
+  // théorique (trouvé par la revue sécurité) : `entitesValideesParCle_` rend `dossierId: ''` pour une
+  // entité validée dont le dossier n'existe pas encore, donc une entité au libellé « Banques//X »
+  // arrive ici — sans `filter(Boolean)`, `sousDossier_(cible, '')` lève `createFolder('')` EN PLEIN
+  // INTAKE. Si le découpage ne laisse rien (libellé fait de barres obliques), on retombe sur le
+  // comportement historique plutôt que de viser la racine.
+  // `!dossierIdCible` : une entité qui PORTE un ID de dossier se résout par cet ID (ADR-0028,
+  // topologie d'abord, à n'importe quelle profondeur) — la découper par son nom la re-créerait à
+  // plat. Le découpage ne concerne donc que les chemins SANS identité propre : repli par type,
+  // buckets d'année, et entité validée dont le dossier n'existe pas encore.
+  if (!dossierIdCible && sousDossier.indexOf('/') !== -1) {
+    var segsRepli = segmentsChemin_(sousDossier);
+    if (segsRepli.length) {
+      return { type: 'classé', domaine: domaine, sousDossier: segsRepli.join('/'),
+        segments: segsRepli, dossierIdCible: '', nom: nom };
+    }
   }
   return { type: 'classé', domaine: domaine, sousDossier: sousDossier,
     dossierIdCible: dossierIdCible, nom: nom };
@@ -944,6 +970,21 @@ function sousCheminDomaine_(d) {
       : { nom: d.entite.nom || '', id: d.entite.dossierId || '' };
   }
   if (d.annee && (CONFIG.DOMAINES_PAR_ANNEE || []).indexOf(d.domaine) !== -1) return { nom: d.annee, id: '' };
+  // ADR-0052 D1/D2 — DERNIER échelon avant la racine. On ne sait ni À QUI ni À QUOI le document se
+  // rattache, mais on sait peut-être CE QUE C'EST : `bucketTypeDomaine_` (Reset.gs, PURE) rend un
+  // nœud EXISTANT du domaine, ou '' si le type lui-même n'apprend rien. Branché ICI et nulle part
+  // ailleurs : c'est le point que le flux vivant ET la consolidation partagent déjà, donc une seule
+  // règle pour les deux (leçon §9). Le domaine n'est jamais remis en cause ⇒ aucune sortie de 04.
+  // `faible: true` — ADR-0052 D8. Ce dernier échelon ne sait PAS à qui le document se rattache : il
+  // ne lit que son TYPE. C'est assez pour éviter la racine, ce n'est PAS assez pour contredire un
+  // rangement existant. Le drapeau voyage jusqu'à `decisionConsolidation_`, qui refuse alors de
+  // DÉPLACER un fichier déjà posé dans un sous-dossier (mesuré : sans lui, 2 des 8 fichiers de
+  // `03/Logement/3325 4e avenue` seraient remontés dans `Contrats`/`Correspondance` à la première
+  // passe de consolidation — la mission qui les y avait mis n'a pas d'équivalent dans la table).
+  if (d.nom) {
+    var bucket = bucketTypeDomaine_(d.domaine, d.nom) || '';
+    if (bucket) return { nom: bucket, id: '', faible: true };
+  }
   return { nom: '', id: '' };
 }
 
@@ -1062,6 +1103,33 @@ function champ_(valeur) {
     .replace(/[\/\\:*?"<>|]/g, '-')
     .replace(/_/g, '-')
     .trim();
+}
+
+/**
+ * DÉCOUPAGE + ASSAINISSEMENT d'un sous-chemin en segments de dossiers — LA règle, partagée par le
+ * flux vivant (`planRoutageV2_`) et par l'exécuteur de consolidation (`ConsolidationExec.gs`).
+ *
+ * Elle existait en DEUX exemplaires : l'exécuteur découpait puis assainissait segment par segment,
+ * le flux appliquait `champ_` au chemin ENTIER — or `champ_` remplace `/` par `-`. Le flux créait
+ * donc `A-B` là où l'exécuteur visait `A/B` : deux dossiers concurrents, et la consolidation qui
+ * re-propose « Déplacer » à chaque passe. Une seule fonction, deux consommateurs (leçon §9).
+ *
+ * Trois familles de segments sont ÉCARTÉES, pas assainies — aucune ne peut nommer un dossier :
+ *  - le segment VIDE (« A//B », ou un libellé qui commence par `/`) : `createFolder('')` LÈVE, et
+ *    ce serait en plein intake ;
+ *  - `.` et `..` : ils ressemblent à un chemin relatif. Drive s'adresse par ID et ne traverse pas,
+ *    donc `..` ne sort de nulle part — mais il créerait un dossier littéralement nommé `..`, visible
+ *    dans l'Index et dans l'app, que rien ne viendrait résorber ;
+ *  - un segment qui ne survit pas à `champ_` (fait de caractères interdits).
+ * Le cas n'est pas théorique : `entitesValideesParCle_` rend `dossierId: ''` pour une entité validée
+ * dont le dossier n'existe pas encore, et son libellé est du texte LIBRE saisi par Marc.
+ * @param {string} chemin  sous-chemin relatif au domaine (« Reçus & factures/2025 »)
+ * @return {string[]} segments assainis, éventuellement vide
+ */
+function segmentsChemin_(chemin) {
+  return String(chemin == null ? '' : chemin).split('/')
+    .map(champ_)
+    .filter(function (seg) { return seg !== '' && seg !== '.' && seg !== '..'; });
 }
 
 /** Extension d'origine (casse préservée), point inclus (ex ".pdf"), ou '' si absente. */
