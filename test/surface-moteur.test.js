@@ -223,6 +223,9 @@ const CONTRAT = [
   'analyserNomClasse_', 'cheminCibleConsolidation_', 'decisionConsolidation_',
   'entitesValideesParCle_', 'empreintesPlanConsolidation_',
   'sousCheminDomaine_', 'budgetJourConsolidation_', // règle unique flux↔plan + budget quotidien (revue flotte)
+  // ADR-0052 : `bucketTypeDomaine_` vit dans Reset.gs et est appelée depuis Router.gs — contrat
+  // INTER-MODULE, donc invisible des tests unitaires mockés si elle disparaissait.
+  'bucketTypeDomaine_', 'estDocumentIdentiteReset_',
   'estCibleInterdite_', // C28-31 : année/type d'identité ne sont JAMAIS parents d'un regroupement
   'segmentsSousDomaine_', 'dossierEntiteParId_', // ADR-0028 : confinement + chemin réel, et le RÉSOLVEUR UNIQUE par ID — Router.gs, appelés AUSSI par ConsolidationExec.gs
   'seedEntitesMarc_', // seed one-shot des entités de Marc (décision 2026-07-17), appelé depuis Main

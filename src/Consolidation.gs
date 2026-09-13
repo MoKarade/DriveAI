@@ -104,7 +104,10 @@ function cheminCibleConsolidation_(domaine, nom, validees) {
     var cle = cleCanoniqueEntite_(domaine, seg.tiers);
     if (cle && validees && validees[cle]) entite = validees[cle];
   }
-  return sousCheminDomaine_({ domaine: domaine, entite: entite, annee: seg.annee });
+  // ADR-0052 : `nom` ouvre le repli PAR TYPE (dernier échelon avant la racine du domaine) — le
+  // MÊME que le flux vivant, puisque c'est la MÊME fonction. L'oublier ici ferait re-proposer
+  // « Déplacer vers la racine » exactement ce que le flux vient de ranger dans un sous-dossier.
+  return sousCheminDomaine_({ domaine: domaine, entite: entite, annee: seg.annee, nom: nom });
 }
 
 /**
@@ -147,9 +150,18 @@ function decisionConsolidation_(d) {
     return { action: 'OK', cible: cible, raison: 'Déjà dans le dossier de l’entité (ID, ADR-0028)' };
   }
   if (String(d.sousCheminActuel || '') === String(d.sousCheminCible || '')) {
-    return { action: 'OK', cible: cible, raison: 'Déjà au bon endroit (taxonomie à plat, ADR-0023)' };
+    return { action: 'OK', cible: cible, raison: 'Déjà au bon endroit' };
   }
-  return { action: 'Déplacer', cible: cible, raison: 'Taxonomie à plat (ADR-0023) : ' + (d.sousCheminCible ? 'entité/année validée' : 'racine du domaine') };
+  // La RAISON est lue par Marc dans le plan qu'il valide : elle doit dire la vérité de la règle qui
+  // a décidé. Depuis ADR-0052, « pas de sous-chemin » ne veut plus dire « à la racine par défaut »
+  // mais « aucune règle, pas même le type, n'a su placer ce document » — ce qui est un constat très
+  // différent, et le seul cas où Marc doit intervenir lui-même.
+  return {
+    action: 'Déplacer', cible: cible,
+    raison: d.sousCheminCible
+      ? 'Entité/année validée, ou type de document (ADR-0052)'
+      : 'Aucune règle ne sait le placer — racine du domaine (ADR-0052 : à trancher avec Marc)',
+  };
 }
 
 /* ---------- I/O (lecture Drive + rapport Sheet, ZÉRO mutation Drive) ---------- */

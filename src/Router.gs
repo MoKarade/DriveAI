@@ -543,9 +543,22 @@ function planRoutageV2_(classif, meta, date, ext, validees) {
     var cible = sousCheminDomaine_({
       domaine: domaine, entite: entiteValidee,
       annee: /^\d{4}/.test(date || '') ? date.substring(0, 4) : null,
+      nom: nom, // ADR-0052 : ouvre le repli PAR TYPE, dernier échelon avant la racine
     });
     sousDossier = cible.nom;
     dossierIdCible = cible.id;
+  }
+  // ADR-0052 — un repli par TYPE peut rendre un chemin MULTI-SEGMENTS (« Reçus & factures/2025 »).
+  // Sans cette conversion, la branche `else` de `deciderRoutageV2_` appellerait `sousDossier_(dom,
+  // 'Reçus & factures/2025')` et créerait un dossier dont le NOM contient une barre oblique — un
+  // faux jumeau, invisible en test unitaire et impossible à réconcilier ensuite. On repasse donc par
+  // le MÊME chemin `segments` que la table `cheminCibleReset_`, qui crée les niveaux un par un.
+  // Conditionné à l'absence de `dossierIdCible` : un dossier d'ENTITÉ se résout par son ID, jamais
+  // par découpage de son nom (une entité peut légitimement porter une barre oblique).
+  if (!dossierIdCible && sousDossier.indexOf('/') !== -1) {
+    var segsRepli = sousDossier.split('/');
+    return { type: 'classé', domaine: domaine, sousDossier: sousDossier,
+      segments: segsRepli, dossierIdCible: '', nom: nom };
   }
   return { type: 'classé', domaine: domaine, sousDossier: sousDossier,
     dossierIdCible: dossierIdCible, nom: nom };
@@ -944,6 +957,12 @@ function sousCheminDomaine_(d) {
       : { nom: d.entite.nom || '', id: d.entite.dossierId || '' };
   }
   if (d.annee && (CONFIG.DOMAINES_PAR_ANNEE || []).indexOf(d.domaine) !== -1) return { nom: d.annee, id: '' };
+  // ADR-0052 D1/D2 — DERNIER échelon avant la racine. On ne sait ni À QUI ni À QUOI le document se
+  // rattache, mais on sait peut-être CE QUE C'EST : `bucketTypeDomaine_` (Reset.gs, PURE) rend un
+  // nœud EXISTANT du domaine, ou '' si le type lui-même n'apprend rien. Branché ICI et nulle part
+  // ailleurs : c'est le point que le flux vivant ET la consolidation partagent déjà, donc une seule
+  // règle pour les deux (leçon §9). Le domaine n'est jamais remis en cause ⇒ aucune sortie de 04.
+  if (d.nom) return { nom: bucketTypeDomaine_(d.domaine, d.nom) || '', id: '' };
   return { nom: '', id: '' };
 }
 

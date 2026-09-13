@@ -5,6 +5,20 @@
 
 ---
 
+## Chantier #47 — « pas de fichiers libres » : la racine d'un domaine n'est plus une cible (Marc, 2026-09-13)  🟦
+
+> Marc : « J'ai encore trop de fichiers non classés dans des sous dossiers, en bref je veux mes
+> 01 02 03 etc et pour chaque des sous dossiers mais **pas de fichiers libres** » ; à la question
+> « et quand il hésite ? » : « Jveux que ça aille dans les bons sous dossiers **ou que ça me propose
+> des sous sous dossiers à créer** ». Il a aussi approuvé une campagne LLM de rattrapage à
+> « ~8-10 $ une fois » et le rangement interne de `04`.
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C28-87 — la racine n'est plus une cible (ADR-0052) | Recensement EXHAUSTIF des racines de domaine (API Drive, 13/09) : **683** fichiers libres, pas ~300 — dont **475 dans `06 · Études`**. La table de routage actuelle n'en plaçait que **13 (1,9 %)**. Deux causes, pas 683 cas : (a) la dégradation finale de `sousCheminDomaine_` EST la racine du domaine (ADR-0023) ; (b) en `06`, toute la table est gatée sur l'identification de l'ÉCOLE — mesuré : **0 nom sur 475** en porte un jeton. Correctif : `bucketTypeDomaine_` (PURE, Reset.gs), repli PAR TYPE vers un nœud **qui existe déjà**, branché dans `sousCheminDomaine_` donc partagé par le flux vivant ET la consolidation ; deux nœuds ajoutés là où le domaine avait de la place (`09/Préparation & guides`, `04/Pièces d'identité` — interne, aucune sortie) ; conversion multi-segments dans `planRoutageV2_` (sans elle, un repli « Reçus & factures/2025 » aurait créé un dossier dont le NOM porte la barre oblique). **198 des 683 placés, 95 % hors `06`, coût LLM zéro.** 12 tests sur le corpus réel figé, 4 mutations prouvées. | 🟦 |
+| C28-88 — la campagne LLM de rattrapage n'aurait PAS marché | Avant de dépenser, deux des 475 documents de `06` ont été LUS : en-tête = prénoms d'élèves + date, corps = la matière. **Aucun établissement, ni dans le nom ni dans le contenu.** Une campagne Sonnet sur les 475 (≈ 12,4 $) aurait rendu le même `null` en ayant payé. La campagne est donc **reportée**, pas lancée — le frein reste à 40 $. Ce qui rattacherait ces 475 à une école est l'ANNÉE croisée au parcours de Marc, que DriveAI ne connaît pas et ne doit pas deviner (§1). | ⬜ |
+| C28-89 — deux arbitrages de Marc (ADR-0052 D6/D7) | **D6 · `06 · Études` (475 fichiers)** : le domaine est PLEIN à 7 nœuds. Option A — regrouper les 5 écoles sous `Établissements` et ouvrir `Cours & travaux/{Notes de cours, Exercices & devoirs, TP & comptes rendus, Examens & corrigés, Projets & mémoires, Fiches & schémas}` (déplace aussi les ~139 déjà classés, réversible) ; option B — tout sous `Autres établissements/<famille>` (rien ne bouge, mais « autres » veut dire « un AUTRE établissement », pas « inconnu »). **D7 · `03 · Logement` (8 fichiers)** : documents d'ÉQUIPEMENT du logement (étiquette produit, liste de matériaux, plan de revêtements, inventaire, rapport de dégradation) ; `03` est PLEIN aussi, ouvrir `Travaux & équipements` exige d'en libérer un. | ⬜ |
+
 ## Chantier #46 — « analyse tout et peaufine » puis « finis les missions » (Marc, 2026-09-10 et 12)  ✅
 
 | ID | Tâche | Statut |

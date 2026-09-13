@@ -4,6 +4,39 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **🟦 EN COURS — 2026-09-13 : C28-87 (chantier #47), « pas de fichiers libres » — ADR-0052.**
+> Marc : « je veux mes 01 02 03 etc et pour chaque des sous dossiers **mais pas de fichiers
+> libres** » ; en cas d'hésitation : « qu'ça aille dans les bons sous dossiers **ou que ça me
+> propose des sous sous dossiers à créer** ». Il avait aussi approuvé une campagne LLM de
+> rattrapage « ~8-10 $ une fois » et le rangement interne de `04`.
+>
+> **Le recensement a changé le problème.** Comptage EXHAUSTIF des enfants directs de chaque racine
+> de domaine (API Drive, 13/09) : **683** fichiers libres, pas ~300 — et **475 sont dans
+> `06 · Études`**. La table de routage actuelle n'en plaçait que **13 (1,9 %)**.
+>
+> ⚠️ **La campagne LLM approuvée n'aurait PAS marché, et elle n'a pas été lancée.** En `06`, toute
+> la table est gatée sur l'identification de l'ÉCOLE. Mesure : **0 nom sur 475** porte un jeton
+> d'établissement — et deux documents ont été LUS avant de chiffrer quoi que ce soit (« TP Physique
+> raideur ressort », « Notes de cours biologie végétale ») : en-tête = prénoms d'élèves + date,
+> corps = la matière, **aucun établissement non plus dans le contenu**. Les 475 × 0,0261 $ ≈ 12,4 $
+> auraient rendu le même `null`. Le seul signal qui les rattacherait à une école est l'ANNÉE croisée
+> au parcours de Marc (lycée → prépa → DUT → cégep → IMERIR), que DriveAI ne connaît pas et ne doit
+> pas deviner (§1).
+>
+> **Ce qui est livré** : `bucketTypeDomaine_` (PURE, `src/Reset.gs`) — un repli PAR TYPE vers un
+> nœud **qui existe déjà** dans `STRUCTURE_CIBLE_RESET`, intercalé entre le repli par entité validée
+> et la racine. Branché dans `sousCheminDomaine_`, donc UNE règle pour ses deux consommateurs (flux
+> vivant + consolidation). Volontairement **hors** de `cheminCibleReset_`, qui sert aussi de garde
+> par CAPACITÉ aux missions (« le flux fait autorité DANS 02 ») : lui apprendre à tout placer aurait
+> tué les sorties inter-domaines, en silence. Deux nœuds ajoutés là où il y avait de la place :
+> `09/Préparation & guides` et `04/Pièces d'identité` (INTERNE à 04, aucune sortie représentable).
+> **198 des 683 placés — 95 % hors `06` — pour zéro appel LLM.**
+>
+> **Reste à Marc (2 arbitrages, ADR-0052 D6/D7)** : `06` et `03` sont tous deux PLEINS à 7 nœuds,
+> donc accueillir leurs 475 + 8 fichiers demande une décision de structure. Tant qu'elle n'est pas
+> prise, ces fichiers restent à plat et `test/racine-domaine.test.js` le CONSTATE (compteurs 475 et
+> 8, chacun commenté avec sa décision) plutôt que de le masquer par une exception.
+>
 > **✅ TERMINÉ — 2026-09-12 : C28-84 / C28-85 (chantier #46), mergé en #336 et VÉRIFIÉ EN PROD.**
 > Marc : « analyse tout et peaufine », puis « toutes les missions qui ont pas fini, finis-les ; pose
 > des questions pour tout ». Trois audits en parallèle (app, moteur, sécurité) sur tout le dépôt,

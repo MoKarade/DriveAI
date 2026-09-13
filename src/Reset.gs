@@ -110,6 +110,10 @@ var STRUCTURE_CIBLE_RESET = {
     'Permis de travail & EIMT': {},
     'Résidence permanente': {},
     'Formulaires & correspondance': {},
+    // ADR-0052 D3 : 7 passeports et 3 attestations étaient À PLAT dans 04 (recensement 13/09).
+    // Nœud INTERNE — il ne crée aucun chemin de SORTIE (§1.1b) : la cible est construite
+    // structurellement depuis la racine 04, comme tous ses frères. 04 = 6 nœuds ≤ 7 ✔.
+    'Pièces d\'identité': {},
   },
   '05 · Carrière': {
     // « Autres employeurs » : commun des employeurs OCCASIONNELS (ADR-0044 D11) — un dossier par
@@ -157,6 +161,9 @@ var STRUCTURE_CIBLE_RESET = {
     'Réservations & billets': { '2026': {}, '2025': {}, '2024': {}, 'Archives': {} },
     'Par voyage': { 'Chine': {}, 'Finlande': {}, 'Pérou': {}, 'New York': {}, 'Autres': {} },
     'Assurances voyage': {},
+    // ADR-0052 D3 : guides d'accueil, programmes de séjour, conditions générales, fiches
+    // pratiques — 6 fichiers sans aucun dossier d'accueil au recensement du 13/09. 09 = 4 ≤ 7 ✔.
+    'Préparation & guides': {},
   },
 };
 
@@ -355,7 +362,9 @@ function cheminCibleReset_(domaine, nom) {
     // « numero d assurance sociale » ajouté avec `TYPES_IDENTITE` (ADR-0048) : sans lui, un NAS
     // canoniquement nommé n'aurait PAS de cible ici et serait tombé au repli — le type et la table
     // se livrent ensemble, c'est « une seule règle, deux consommateurs » appliqué au vocabulaire.
-    if (resetContient_(t, ['passeport', 'carte nationale d identite', 'carte d identite', 'permis de conduire', 'carte d assurance maladie', 'carte vitale', 'carte de resident', 'numero d assurance sociale'])) {
+    // Vocabulaire EXTRAIT dans `estDocumentIdentiteReset_` (ADR-0052 D3) : la branche `04` du repli
+    // par type le consomme aussi. Deux listes écrites séparément divergent au premier ajout.
+    if (estDocumentIdentiteReset_(t)) {
       for (var p in RESET_PERSONNES_AUTRES) { if (e.indexOf(p) !== -1) return 'Pièces d\'identité/Autres/' + RESET_PERSONNES_AUTRES[p]; }
       // « Marc » SEULEMENT si le tiers est Marc lui-même OU une AUTORITÉ émettrice (cas majoritaire :
       // Préfecture, SAAQ, RAMQ… — le titulaire n'est alors pas dans le nom). Un tiers INCONNU qui
@@ -690,6 +699,217 @@ function cheminCibleReset_(domaine, nom) {
   }
 
   return null;
+}
+
+/* =================================================================================================
+ * ADR-0052 — REPLI PAR TYPE : la racine d'un domaine n'est plus une cible de classement.
+ * ================================================================================================= */
+
+/**
+ * Familles de TYPE communes à plusieurs domaines. Déclarées UNE fois : le même mot
+ * (« attestation », « courriel ») se retrouvait sinon recopié domaine par domaine, et c'est
+ * exactement la graine des divergences qu'ADR-0044 §7 a dû corriger ailleurs. PURE.
+ *
+ * ⚠️ Testées sur le segment TYPE normalisé par `normaliserCle_`, qui **conserve les traits
+ * d'union** : « rendez-vous » s'écrit donc avec son trait d'union ici (vérifié — la variante
+ * « rendez vous » n'apparie rien, et son absence a coûté 2 fichiers au premier jet du PoC).
+ */
+var BUCKET_TYPE_CORRESPONDANCE = ['courriel', 'courrier', 'lettre', 'correspondance', 'message',
+  'echange', 'avis', 'notification', 'convocation', 'mise en demeure', 'reponse', 'demande',
+  'relance', 'confirmation', 'rappel', 'constat', 'contravention', 'amende', 'note juridique',
+  'capture de conversation', 'capture de message', 'capture d ecran de conversation'];
+var BUCKET_TYPE_ATTESTATION = ['attestation', 'certificat', 'justificatif', 'extrait', 'registre',
+  'kbis', 'carte de membre'];
+var BUCKET_TYPE_FORMULAIRE = ['formulaire', 'guide', 'notice', 'mentions legales', 'annexe',
+  'reglement', 'tableau informatif', 'modele', 'questionnaire', 'fiche de renseignements',
+  'manuel', 'procedure', 'protocole'];
+
+/**
+ * REPLI PAR TYPE (ADR-0052 D2) — dernier échelon de dégradation AVANT la racine du domaine.
+ *
+ * Appelée par `sousCheminDomaine_` (Router.gs), donc par le flux vivant ET par la consolidation :
+ * **une seule règle, deux consommateurs** (leçon §9). Elle s'exécute quand tout ce qui précède a
+ * échoué — table `cheminCibleReset_`, repli d'identité, entité VALIDÉE, année — c'est-à-dire quand
+ * on ne sait pas À QUI ni À QUOI le document se rattache, mais qu'on sait encore CE QUE C'EST.
+ *
+ * ⚠️ Volontairement **hors** de `cheminCibleReset_`, bien que ce soit le point le plus naturel :
+ * cette fonction-là sert aussi de garde par CAPACITÉ aux missions (« le flux fait autorité DANS 02 :
+ * ce qu'il sait placer y reste », Missions.gs). Lui apprendre à tout placer rendrait la garde
+ * toujours vraie et tuerait les SORTIES inter-domaines des missions, en silence. On élargit ici la
+ * capacité de CLASSEMENT, jamais celle de REVENDICATION.
+ *
+ * CONTRAT : le chemin rendu EXISTE dans `STRUCTURE_CIBLE_RESET[domaine]` (verrouillé par test — la
+ * fonction ne peut pas inventer de dossier), ou `''` quand le type lui-même n'apprend rien. Elle ne
+ * change JAMAIS de domaine : elle ne peut donc pas faire sortir un fichier de `04` (§1.1b). PURE.
+ *
+ * @param {string} domaine  domaine DÉJÀ décidé (le repli ne le remet jamais en cause)
+ * @param {string} nom      nom FINAL du document (`AAAA-MM-JJ_Type_Émetteur.ext`)
+ * @return {string} chemin relatif au domaine, ou '' si le type n'apprend rien
+ */
+function bucketTypeDomaine_(domaine, nom) {
+  var s = STRUCTURE_CIBLE_RESET[domaine];
+  if (!s) return '';
+  var seg = analyserNomClasse_(nom);
+  var t = normaliserCle_(seg.type || '');
+  var tout = normaliserCle_(nom);
+  // ARTEFACTS D'AGENT déposés dans `08` (« Journal de tri (agent) », « Rapport de passe »,
+  // « Rapport global cumulatif », « Registre documents » — 22 au recensement du 13/09). Ils sont
+  // hors convention de nommage : `analyserNomClasse_` ne leur trouve NI date NI type, donc ils
+  // passeraient la garde `!t` ci-dessous et resteraient à plat. Reconnus sur le NOM COMPLET, le
+  // seul cas de cette fonction — c'est assumé : ce sont des PRODUCTIONS de machine, un ensemble
+  // clos dont les libellés ne varient pas (par opposition à un document reçu, dont le vocabulaire
+  // évolue et pour lequel une liste de noms se périmerait).
+  if (domaine === '08 · Perso & projets' &&
+      /^(Journal de tri|Rapport de passe|Rapport global cumulatif|Registre documents)\b/.test(String(nom || '').trim())) {
+    return 'Données & exports';
+  }
+
+  // 04 · Immigration : CATCH-ALL assumé (voir la branche plus bas) — évalué AVANT la garde `!t`,
+  // parce que dans un domaine d'où rien ne sort jamais, un nœud général vaut mieux que la racine,
+  // y compris pour un nom hors convention.
+  if (domaine === '04 · Immigration') {
+    return estDocumentIdentiteReset_(t) ? 'Pièces d\'identité' : 'Formulaires & correspondance';
+  }
+
+  if (!t) return ''; // sans segment TYPE lisible, le nom n'apprend rien — jamais deviné
+  var annee = function (noeud) { return resetBucketAnnee_(seg.annee, s[noeud]); };
+
+  if (domaine === '01 · Administratif & identité') {
+    if (resetContient_(t, ['etat civil', 'naissance', 'mariage', 'filiation', 'livret de famille',
+      'notari'])) return 'État civil & notarial';
+    if (resetContient_(t, BUCKET_TYPE_ATTESTATION)) return 'Attestations & certificats';
+    if (resetContient_(t, BUCKET_TYPE_CORRESPONDANCE)) return 'Correspondance';
+    // Un formulaire administratif (CERFA, recensement) est une PIÈCE justificative, pas du courrier.
+    if (resetContient_(t, BUCKET_TYPE_FORMULAIRE)) return 'Attestations & certificats';
+    return '';
+  }
+
+  if (domaine === '02 · Finances') {
+    // 02 n'avait AUCUN fichier à plat au recensement du 13/09 : ces deux lignes sont un filet pour
+    // l'avenir, pas un rattrapage. Les buckets d'ANNÉE sont ceux de la table (jamais recalculés).
+    if (resetContient_(t, ['recu', 'facture', 'ticket', 'bon de commande', 'paiement', 'depense'])) {
+      return 'Reçus & factures/' + annee('Reçus & factures');
+    }
+    if (resetContient_(t, ['releve', 'extrait de compte', 'avis d operation', 'solde'])) {
+      return 'Relevés/' + annee('Relevés');
+    }
+    return '';
+  }
+
+  if (domaine === '03 · Logement & véhicule') {
+    if (resetContient_(t, ['bail', 'contrat', 'acte', 'caution', 'garantie', 'surete', 'signature',
+      'engagement', 'devis', 'consentement', 'quittance'])) return 'Contrats';
+    if (t.indexOf('assurance') !== -1) return 'Assurance habitation';
+    if (resetContient_(t, ['energie', 'electricite', 'gaz', 'hydro'])) return 'Énergie & services';
+    if (resetContient_(t, BUCKET_TYPE_CORRESPONDANCE)) return 'Correspondance';
+    if (resetContient_(t, BUCKET_TYPE_FORMULAIRE)) return 'Modèles & formulaires';
+    // ⚠️ Les documents d'ÉQUIPEMENT du logement (étiquette produit, liste de matériaux, plan de
+    // revêtements, inventaire, rapport de dégradation — 8 au recensement) n'ont PAS de nœud : 03
+    // est PLEIN à 7. En ouvrir un exige d'en libérer un — arbitrage de Marc, ADR-0052 D7.
+    return '';
+  }
+
+  /* 04 · Immigration est traitée PLUS HAUT (avant la garde `!t`). RÉORGANISATION INTERNE (§1.1b) :
+   * pièce d'identité → `Pièces d'identité`, tout le reste → `Formulaires & correspondance`. Les deux
+   * cibles sont des nœuds DE 04 : aucune sortie n'est représentable ici, pas même par erreur.
+   * Le catch-all est une DÉCISION, pas une facilité : 04 est le domaine d'où rien ne sort jamais
+   * automatiquement, donc y laisser un fichier à la racine n'a aucune contrepartie de prudence —
+   * contrairement à 06, où entasser sous un mauvais libellé aurait un coût réel. */
+
+  if (domaine === '05 · Carrière') {
+    if (resetContient_(t, ['cv', 'lettre de motivation', 'candidature'])) return 'CV & lettres';
+    if (resetContient_(t, ['bilan', 'formation', 'evaluation', 'attestation', 'certificat'])) {
+      return 'Formation & bilans';
+    }
+    if (resetContient_(t, ['presentation', 'reseau', 'portfolio', 'profil'])) return 'Réseaux & présentations';
+    return '';
+  }
+
+  // 06 : domaine PLEIN (7 nœuds), et les 475 travaux scolaires du recensement n'ont PAS d'école
+  // identifiable — ni dans le nom (0/475), ni dans le contenu (deux documents lus). Leur accueil
+  // demande un nœud de plus, donc un arbitrage de Marc (ADR-0052 D6, options A/B). Tant qu'il n'a
+  // pas tranché, le repli REFUSE plutôt que de les entasser dans « Autres établissements », qui
+  // veut dire « un autre établissement », pas « établissement inconnu ».
+  if (domaine === '06 · Études & diplômes') return '';
+
+  if (domaine === '07 · Santé') {
+    if (resetContient_(t, ['consultation', 'ordonnance', 'rendez-vous', 'compte rendu', 'carnet',
+      'vaccination', 'prescription', 'suivi medical'])) return 'Médecins & consultations';
+    if (resetContient_(t, ['facture', 'recu', 'remboursement'])) return 'Factures & reçus';
+    if (resetContient_(t, ['resultat', 'analyse', 'examen', 'radiographie', 'bilan', 'depistage'])) {
+      return 'Examens & résultats';
+    }
+    // Testé sur le NOM COMPLET : « Fiche santé voyage SCOLAIRE », « Formulaire de signalement
+    // COVID-19_ULCO » portent leur contexte dans l'émetteur ou le descripteur, pas dans le type.
+    if (resetContient_(tout, ['scolaire', 'du travail', 'aptitude', 'covid', 'sensibilisation'])) {
+      return 'Médecine scolaire & travail';
+    }
+    if (resetContient_(t, ['assurance', 'mutuelle', 'cotisation'])) return 'Assurances santé';
+    // Filet de fin : en santé, un courrier ou une fiche produit se rattache au suivi médical —
+    // 07 n'a pas de nœud « Correspondance » et n'en aura pas (6 nœuds, la place restante est
+    // réservée à un besoin réel, pas à un fourre-tout).
+    if (resetContient_(t, BUCKET_TYPE_CORRESPONDANCE) || resetContient_(t, BUCKET_TYPE_FORMULAIRE) ||
+        resetContient_(t, ['etiquette', 'document informatif', 'fiche produit'])) {
+      return 'Médecins & consultations';
+    }
+    return '';
+  }
+
+  if (domaine === '08 · Perso & projets') {
+    if (resetContient_(t, ['note', 'carnet', 'memo'])) return 'Notes';
+    if (resetContient_(t, ['schema', 'plan de', 'diagramme', 'carte mentale', 'catalogue technique',
+      'patron', 'croquis', 'fiche produit', 'fiche technique', 'fiche d installation',
+      'fiche de dimensions', 'document technique', 'code source', 'liste d inventaire',
+      'infographie', 'dessin', 'maquette'])) return 'Schémas & technique';
+    // Les artefacts d'agent déposés dans 08 (« Journal de tri (agent) », « Rapport de passe »,
+    // « Rapport global cumulatif », « Registre documents » — 22 au recensement) n'ont PAS de
+    // segment TYPE : ils sont reconnus sur le NOM COMPLET, seul cas de ce bloc.
+    if (resetContient_(t, ['tableur', 'feuille de calcul', 'export', 'registre', 'rapport',
+      'donnees', 'base de donnees', 'journal', 'classeur', 'simulation', 'budget', 'fichier',
+      'statistique', 'releve'])) return 'Données & exports';
+    if (resetContient_(t, ['memoire', 'article', 'redaction', 'essai', 'ecrit', 'lettre', 'script',
+      'presentation', 'texte', 'poeme', 'discours', 'dialogue', 'profil', 'questionnaire'])) {
+      return 'Écrits & rédactions';
+    }
+    // Un courriel ou une capture de conversation personnelle est une NOTE : 08 n'a pas de nœud
+    // « Correspondance » (6 nœuds, la place restante n'est pas un fourre-tout) et le contenu de
+    // ces captures est bien une trace d'échange que Marc garde, pas un écrit qu'il a produit.
+    if (resetContient_(t, BUCKET_TYPE_CORRESPONDANCE)) return 'Notes';
+    if (resetContient_(t, ['photo', 'billet', 'ticket', 'coupon', 'bon de reduction', 'grille',
+      'regles', 'jeu', 'menu', 'reservation', 'promotionnel', 'recette', 'conditions generales',
+      'loisir', 'evenement', 'abonnement', 'adhesion', 'tournoi', 'partie d echecs', 'meme',
+      'image humoristique', 'commande', 'livraison', 'annonce', 'capture d ecran',
+      'capture de profil'])) return 'Photos & loisirs';
+    return '';
+  }
+
+  if (domaine === '09 · Voyages') {
+    if (resetContient_(t, ['billet', 'e-ticket', 'e tickets', 'reservation', 'itineraire',
+      'carte d embarquement', 'recu', 'facture', 'confirmation', 'capture etat du vol', 'bagage',
+      'vol', 'sejour'])) return 'Réservations & billets/' + annee('Réservations & billets');
+    if (t.indexOf('assurance') !== -1) return 'Assurances voyage';
+    // ADR-0052 D3 — nœud NEUF : tout ce qui prépare ou accompagne un voyage sans être un titre de
+    // transport (guide d'accueil, programme, conditions générales, fiche pratique, invitation).
+    if (resetContient_(t, BUCKET_TYPE_FORMULAIRE) || resetContient_(t, BUCKET_TYPE_CORRESPONDANCE) ||
+        resetContient_(t, ['programme', 'notes touristiques', 'conditions', 'fiche', 'invitation',
+          'permis'])) return 'Préparation & guides';
+    return '';
+  }
+
+  return '';
+}
+
+/**
+ * Vrai si le TYPE désigne une PIÈCE D'IDENTITÉ. MÊME vocabulaire que la branche `01` de
+ * `cheminCibleReset_` — extrait ici pour que `04` (ADR-0052 D3) le consomme au lieu de le recopier :
+ * une seconde liste divergerait au premier ajout (leçon §9, « une seule règle, deux consommateurs »).
+ * PURE.
+ * @param {string} t  segment TYPE normalisé @return {boolean}
+ */
+function estDocumentIdentiteReset_(t) {
+  return resetContient_(t, ['passeport', 'carte nationale d identite', 'carte d identite',
+    'permis de conduire', 'carte d assurance maladie', 'carte vitale', 'carte de resident',
+    'numero d assurance sociale']);
 }
 
 /* =================================================================================================
