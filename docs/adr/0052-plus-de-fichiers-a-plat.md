@@ -587,8 +587,14 @@ Deux 🟠 restaient, tous deux sur le même garde-fou.
    rouge : le précédent est documenté) bouclait à vie, 200 relectures de l'onglet `Entités` en
    50 ticks, et affamait les 5 autres missions sur le budget partagé de 2 min/jour.
 3. **Sonde QUOTIDIENNE indépendante** (retenu) : `assurerDepeintureCibles_`, appelée **avant** le
-   court-circuit terminal, bornée à **une passe par jour** (≈ 30 appels Drive) tant qu'elle n'a pas
-   fini. Elle se déclare terminée quand plus aucun dossier cible n'est vide — donc plus rien à
+   court-circuit terminal, bornée à **une passe par jour** tant qu'elle n'a pas fini, et son
+   balayage borné par le **garde-temps du tick** — il coûte `16 + 12 × <sous-dossiers directs>`
+   appels Drive, et l'étape peut démarrer à 4,4 min du mur DUR de 6 min, que ne capture aucun `try`
+   (revue quotas, 4ᵉ passe : le premier jet passait `null` comme garde). ⚠️ « Indépendante » vaut à
+   l'intérieur de l'étape : la sonde passe devant le court-circuit terminal et devant la gate de
+   budget interne, mais la gate d'ÉTAPE (`gMissionsJour_`, 2 min/jour partagées) la saute comme le
+   reste — ce qui est sans conséquence, puisque `passes` compte les jours SONDÉS et non les jours
+   calendaires : le plafond ne peut pas expirer à vide. Elle se déclare terminée quand plus aucun dossier cible n'est vide — donc plus rien à
    dé-peindre plus tard — ou après `MISSIONS_DEPEINTURE_MAX_JOURS` passes, parce qu'un chemin de
    retour sans fin est un coût sans fin, et qu'un dossier vide depuis un mois l'est pour de bon :
    son rouge est alors VRAI. Un PATCH refusé ne conclut jamais. Quatre mutations le prouvent, dont

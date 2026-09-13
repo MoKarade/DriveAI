@@ -1419,12 +1419,18 @@ function depeindreCiblesRemplies_(cibles, garde) {
  * à dé-peindre plus tard), ou après `MISSIONS_DEPEINTURE_MAX_JOURS` passes — un dossier qui reste
  * vide des semaines l'est pour de bon, et son rouge est alors VRAI.
  * État : `DriveAI_DEPEINTURE_<tag>` = 'fait' | '<jour>|<passes>'. Horodatage posé AVANT l'appel
- * (une exception ne doit pas faire re-sonder 288 fois le même jour).
+ * (une exception ne doit pas faire re-sonder 288 fois le même jour) — `passes` compte donc les
+ * jours SONDÉS, jamais les jours calendaires : le plafond ne peut pas expirer à vide.
+ * ⚠️ Le balayage est BORNÉ par le garde-temps du tick, comme tout lot Drive (§9). Il coûte
+ * `16 + 12 × <sous-dossiers directs>` appels : quelques dizaines sur les 4 dossiers d'école
+ * d'aujourd'hui, mais rien ne garantit qu'un dossier cible reste petit — et l'étape peut démarrer
+ * à 4,4 min du mur DUR de 6 min, qui n'est capturable par aucun `try` (revue quotas).
  * @param {{tag:string, ciblesADepeindre:string[]}} spec
  * @param {Properties} props
  * @param {string} aujourdhui
+ * @param {function():boolean} estBudgetDepasse  garde-temps du tick (jamais null)
  */
-function assurerDepeintureCibles_(spec, props, aujourdhui) {
+function assurerDepeintureCibles_(spec, props, aujourdhui, estBudgetDepasse) {
   var cibles = spec.ciblesADepeindre || [];
   if (!cibles.length) return;
   var cle = 'DriveAI_DEPEINTURE_' + spec.tag;
@@ -1436,7 +1442,11 @@ function assurerDepeintureCibles_(spec, props, aujourdhui) {
   if (dernierJour === aujourdhui) return; // déjà sondé aujourd'hui
   passes++;
   props.setProperty(cle, aujourdhui + '|' + passes); // AVANT l'appel
-  var r = depeindreCiblesRemplies_(cibles, null); // pas de garde : ~30 appels, 1×/jour
+  // Coupé par le garde ⇒ `complet:false` ⇒ jamais « fait » : la passe reprend demain, là où le
+  // balayage est stable (même ordre de cibles). Au pire, le plafond de passes conclut avec du rouge
+  // restant — infiniment mieux qu'un tick TUÉ au mur des 6 min, qui emporterait tout ce qui suit
+  // les missions dans le tick (fusion, reset, historique Gmail).
+  var r = depeindreCiblesRemplies_(cibles, estBudgetDepasse);
   if (r.complet && r.vides === 0) {
     props.setProperty(cle, 'fait');
     journalInfo_('Missions', 'Dé-peinture TERMINÉE pour « ' + spec.tag +
@@ -1554,7 +1564,7 @@ function executerMission_(tag, estBudgetDepasse) {
   // DÉ-PEINTURE : AVANT le court-circuit terminal, et indépendante de la convergence (voir
   // `assurerDepeintureCibles_` — la consolidation remplit ces dossiers longtemps après la mission).
   // ENVELOPPÉE : une couleur ne remet jamais en cause le drainage ni la convergence.
-  try { assurerDepeintureCibles_(spec, props, aujourdhui); }
+  try { assurerDepeintureCibles_(spec, props, aujourdhui, estBudgetDepasse); }
   catch (eDep) { journalInfo_('Missions', 'Sonde de dé-peinture différée : ' + eDep); }
   if (!spec.perpetuelle && props.getProperty('DriveAI_MISSION_FINI_' + tag) === version) return;
 

@@ -345,7 +345,15 @@ function ctxRunner(opts) {
     let i = 0;
     return { hasNext: () => i < items.length, next: () => items[i++] };
   };
-  c.DriveApp = { getFolderById: (id) => dossierFactice(id) };
+  // Compteur d'ouvertures : ce qui distingue « la sonde a balayé » de « la sonde a dormi »,
+  // indépendamment de ce que le balayage trouve (leçon C28-62 : instrumenter le CHEMIN quand la
+  // propriété tient au chemin d'exécution et non à la valeur).
+  // Compteur d'ouvertures PAR ID : ce qui distingue « la sonde a balayé » de « la sonde a dormi »,
+  // indépendamment de ce que le balayage trouve (leçon C28-62 : instrumenter le CHEMIN quand la
+  // propriété tient au chemin d'exécution et non à la valeur). Par ID, parce que la collecte de la
+  // mission ouvre elle aussi des dossiers — compter le total mélangerait les deux.
+  const ouvertures = {};
+  c.DriveApp = { getFolderById: (id) => { ouvertures[id] = (ouvertures[id] || 0) + 1; return dossierFactice(id); } };
   c.sousDossier_ = (parent, nom) => dossierFactice(parent.getId() + '/' + nom);
 
   const fichier = (id, nom, extra) => Object.assign({
@@ -354,7 +362,7 @@ function ctxRunner(opts) {
     moveTo: function (dossier) { this.__deplace = true; moves.push({ id, vers: dossier.getId() }); },
   }, extra || {});
 
-  return { c, store, index, ajouts, moves, peints, depeints, infos, fichier, arbre };
+  return { c, store, index, ajouts, moves, peints, depeints, infos, fichier, arbre, ouvertures };
 }
 
 test('runner : déplace, pose la clé VERSIONNÉE après, converge sur la passe vide, peint le vide en rouge', () => {
@@ -410,9 +418,15 @@ test('runner : DÉ-PEINTURE — sonde QUOTIDIENNE, indépendante de la convergen
   assert.notStrictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait', 'donc surtout pas « terminé »');
 
   // Même jour, 10 ticks : la sonde ne re-balaie pas Drive (budget partagé).
-  const appelsAvant = h.depeints.length;
+  // ⚠️ Compter les DÉ-PEINTURES ne prouverait rien ici — les 4 cibles sont vides, donc aucune n'est
+  // possible, que la sonde balaie 1 fois ou 11 (tautologie attrapée en revue quotas). Ce qui se
+  // mesure, c'est le BALAYAGE lui-même (appels Drive) et l'état persisté.
+  const balayages = () => paires.reduce((n, p) => n + (h.ouvertures[p.cible] || 0), 0);
+  const avant = balayages(); // (la mission ouvre aussi ses cibles pour y déposer : on mesure le DELTA)
   for (let i = 0; i < 10; i++) h.c.executerMission_('retour-ecoles06', () => false);
-  assert.strictEqual(h.depeints.length, appelsAvant, '1 passe par jour, pas 288');
+  assert.strictEqual(balayages(), avant, '1 passe par jour, pas 288 : aucun nouvel appel Drive');
+  assert.strictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], jour + '|1',
+    'une seule passe comptée ce jour-là (mutation : retirer le garde de jour ⇒ « |11 »)');
 
   // La mission converge (les archives sont vides) ET pose son drapeau FINI…
   h.c.executerMission_('retour-ecoles06', () => false);
@@ -430,6 +444,33 @@ test('runner : DÉ-PEINTURE — sonde QUOTIDIENNE, indépendante de la convergen
   jour = '2026-09-21';
   h.c.executerMission_('retour-ecoles06', () => false);
   assert.strictEqual(h.depeints.length, 4);
+});
+
+test('runner : le balayage de la sonde est BORNÉ par le garde-temps du tick', () => {
+  // §9 « garde-temps sur TOUT lot Drive » : le balayage coûte 16 + 12 × sous-dossiers appels, et
+  // l'étape peut démarrer à 4,4 min du mur DUR de 6 min — qu'aucun `try` ne capture. Un tick tué
+  // emporterait tout ce qui suit les missions (fusion, reset, historique Gmail).
+  // Mutation : repasser `null` au lieu de `estBudgetDepasse` ⇒ ce test tombe.
+  const h = ctxRunner();
+  const paires = h.c.CONFIG.MISSIONS_IDS.archives06;
+  h.c.dateGmail_ = () => '2026-09-13';
+  paires.forEach((p) => {
+    h.arbre[p.src] = { files: [], folders: {} };
+    h.arbre[p.cible] = { files: [h.fichier('z' + p.cible, 'x.pdf')], folders: {} };
+  });
+  const ouvertesCibles = () => paires.reduce((n, p) => n + (h.ouvertures[p.cible] || 0), 0);
+
+  h.c.executerMission_('retour-ecoles06', () => true); // budget déjà épuisé à l'entrée
+  assert.strictEqual(ouvertesCibles(), 0, 'aucune cible ouverte : le balayage est coupé AVANT l\'appel Drive');
+  assert.deepStrictEqual(h.depeints, []);
+  assert.strictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], '2026-09-13|1',
+    'la passe est comptée (sinon on re-sonderait 288×) mais ne conclut pas');
+
+  // Le lendemain, avec du budget : la sonde reprend et termine.
+  h.c.dateGmail_ = () => '2026-09-14';
+  h.c.executerMission_('retour-ecoles06', () => false);
+  assert.strictEqual(h.depeints.length, 4);
+  assert.strictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait');
 });
 
 test('runner : la sonde de dé-peinture s\'arrête d\'elle-même, et un PATCH refusé ne conclut jamais', () => {
