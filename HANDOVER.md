@@ -43,7 +43,35 @@
 > Deux tests ne prouvaient rien : l'un asserte `String(null).length > 0` (toujours vrai), l'autre
 > était devenu tautologique en changeant sa valeur attendue.
 
-> **🟦 EN COURS — 2026-09-13 : C28-90, le rattrapage du stock est LANCÉ.**
+> **✅ MERGÉ, DÉPLOYÉ ET VÉRIFIÉ EN PRODUCTION — 2026-09-13 19:25 UTC : le rattrapage TOURNE.**
+> PR #339 mergée (`a2f4373`), `deploy.yml` run #325 vert (clasp push + redéploiement de la web app
+> + réinstallation du déclencheur). Et le signal INDÉPENDANT, lu 1 h après le merge — parce qu'un
+> run vert ne prouve pas que le tick exécute le nouveau code (piège 3) :
+>
+> | signal | avant | après 1 h |
+> |---|---:|---:|
+> | racine `01 · Administratif & identité` | 13 fichiers | **1** |
+> | racine `08 · Perso & projets` | 116 | ≥ 100 (son domaine n'est pas encore passé) |
+> | Index (documents au catalogue) | 18 525 | **18 701** |
+>
+> `etat_moteur` montre les deux étapes de la campagne sous le NOUVEAU tag : « Consolidation —
+> génération du plan (**conso-4**) » à 1/9 domaines, « exécution du plan (**conso-4**) » à
+> 102/162 lignes avec « +60 lignes · il y a 0 min ». Le plan a donc bien été purgé puis re-généré,
+> et l'exécuteur applique. La liste d'erreurs du moteur est VIDE, et la panne de config Calendar du
+> 08/09 ne s'y trouve plus.
+>
+> ⚠️ **La mission `retour-ecoles06` n'a pas encore tourné** : elle apparaît bien (donc le renommage
+> et l'inversion sont déployés) mais à « en pause (budget du jour épuisé) — reprise demain ». C'est
+> attendu et c'est le prix de la réallocation : les missions sont passées à 2 min/jour, et le
+> budget du 13/09 était consommé avant le déploiement. Les 139 fichiers repartent vers les écoles
+> demain. ⚠️ Tant qu'elle n'est pas passée, le corpus `deja-ranges` ne peut pas couvrir les
+> 4 marquages « signal faible » (la population est encore dans les archives) — à régénérer ensuite.
+>
+> ⚠️ Le battement de cœur affichait 29 min de retard juste avant le déploiement (13:57 local à
+> 14:26). Après, il est reparti (15:11 pour une lecture à 15:25). À re-regarder si l'écart
+> réapparaît : le tick est censé passer toutes les 5 minutes.
+
+> **🟦 HISTORIQUE — 2026-09-13 : C28-90, le rattrapage du stock est LANCÉ.**
 > Marc : « fais la préparation de C28-90 et lance le rattrapage ». La préparation d'abord, le
 > conflit de structure de `06` tranché par Marc ensuite, et le bump `conso-3 → conso-4` seulement
 > après. Marc a aussi choisi « lance direct » plutôt que de relire le plan.
