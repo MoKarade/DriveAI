@@ -1,6 +1,7 @@
 # ADR-0052 — Plus aucun fichier à plat à la racine d'un domaine (2026-09-13)
 
-- **Statut** : accepté (2026-09-13) pour les décisions D1→D5 · **D6 et D7 en attente d'arbitrage de Marc**
+- **Statut** : accepté (2026-09-13). D1→D5 et D8 livrés en #338 ; **D6 et D7 tranchés par Marc le
+  même jour** et livrés à leur suite (§7).
 - **Demande de Marc** : « J'ai encore trop de fichiers non classés dans des sous dossiers, en bref je
   veux mes 01 02 03 etc et pour chaque des sous dossiers mais **pas de fichiers libres** » ·
   « Jveux que ça aille dans les bons sous dossiers **ou que ça me propose des sous sous dossiers à
@@ -240,3 +241,63 @@ hyacinthe » et « saint omer » ne matchaient pas (`normaliserCle_` conserve le
 4. Preuve par MUTATION : remettre la dégradation à `''` doit faire ÉCHOUER le test de comptage.
 5. Non-régression §11.5 : les faux-positifs historiques (CV sans émetteur, note perso, export) ne
    partent toujours pas en revue — le repli classe, il ne dévie jamais vers `00 · À vérifier`.
+
+## 7. Les arbitrages de Marc (2026-09-13, après #338)
+
+### D6 — RETENUE : l'option C, avec les périodes de Marc
+Réponse de Marc, mot pour mot : « Imerir 2020 2023 ulco saint omer 2018 2020 Eiffel 2017 2018 »,
+puis « Cegep de Sherbrooke c'est 2019 en même temps que ULCO et lycée Thérèse davilla c'est genre
+2014 2017 ».
+
+`RESET_FENETRES_ECOLE` (Reset.gs) + `ecoleParDateReset_` (PURE). Bornes en MOIS, à la convention de
+l'année SCOLAIRE (septembre → août) : c'est ce qui rend les fenêtres disjointes alors que les années
+nues de Marc se chevauchent aux charnières. Sans ce découpage, 83 fichiers tombaient dans deux
+fenêtres et étaient refusés pour rien.
+
+⚠️ **La fenêtre du Cégep de Sherbrooke ne sert pas à PLACER, elle sert à EMPÊCHER de placer.** Marc
+y était « en même temps que l'ULCO » : tout document de 2019 tombe donc dans deux fenêtres et est
+REFUSÉ. C'est 28 fichiers de moins placés — et zéro mal placé. Sans cette ligne, l'omission aurait
+été SILENCIEUSE : le moteur aurait rangé les documents de Sherbrooke chez l'ULCO avec une clé de
+SUCCÈS, donc sans retour possible. C'est la question qui a valu d'être posée.
+
+Ordre de décision dans la branche `06`, du FAIT vers la DÉDUCTION — et jamais l'inverse :
+1. le NOM de l'école (fait écrit) ;
+2. un marqueur de NIVEAU ou de FILIÈRE (« 2nde », « GIM1 », « khôlle ») — fait écrit lui aussi,
+   15 fichiers sur 349 ;
+3. la FENÊTRE de scolarité (déduction), refus dès qu'il y a deux fenêtres ou aucune.
+
+**Mesuré : 147 des 475 placés dans `06`, répartis sur les 5 écoles.**
+
+### D6 bis — le reliquat : « lit et classe mieux »
+Reste 328 fichiers, dont **239 portent la date `2026`** — la date de RÉCEPTION, faute de date
+lisible au moment de l'import. Le nom est épuisé (mesuré : 15 marqueurs sur 349). Marc : « lit et
+classe mieux ».
+
+La lecture LLM a bien un travail utile ici, mais **ce n'est pas celui qu'on croyait** : elle ne
+trouvera pas l'école (prouvé §2), elle trouvera la **DATE**. Le TP de physique lu au §2 porte
+« 09/10/2017 » dans son en-tête, à côté des prénoms. Re-dater ces 239 documents suffit à les faire
+tomber dans les fenêtres ci-dessus. C'est la campagne `reanalyse` existante, pas un mécanisme neuf.
+328 × 0,0261 $ ≈ **8,6 $** — dans l'enveloppe que Marc avait approuvée (« ~8-10 $ une fois »).
+Suivi : **C28-92**, à livrer après C28-90 (sans le rattrapage du stock, un document re-daté resterait
+là où il est).
+
+### D7 — RETENUE : fusionner, pas ajouter
+Réponse de Marc : « Fusionner Contrats + Modèles ». `Modèles & formulaires` disparaît de `03` et sa
+place va à **`Travaux & équipements`**. Les 6 formulaires réellement présents dans l'ancien nœud sont
+tous locatifs (4 demandes de location CORPIQ, 2 consentements Proprio Expert) : `Contrats` est leur
+place. `03` reste à 7 nœuds — il a échangé, pas gagné.
+
+⚠️ **La mission `dispatch03` visait le même nœud** (`Missions.gs`) : elle suit dans le même commit,
+sinon elle RE-CRÉAIT `Modèles & formulaires` PAR NOM à chaque passage pendant que le flux range dans
+`Contrats` — le ping-pong exact de la leçon « une seule règle, deux consommateurs ».
+
+**Mesuré : 6 des 8 restants de `03` placés.** Les 2 derniers ne sont pas de l'équipement (une capture
+d'annonce, une liste d'achats pour le VÉHICULE) — c'est la revue flotte qui avait corrigé l'étiquette.
+
+### Bilan après D6/D7
+| | À plat | Placés | Restants |
+|---|---:|---:|---:|
+| Hors `06` | 208 | 204 | **4** |
+| `06` | 475 | 147 | 328 *(C28-92)* |
+| **Total** | **683** | **351** | **332** |
+

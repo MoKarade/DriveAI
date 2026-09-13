@@ -1205,7 +1205,7 @@ test('sousDossierEmployeur_ : normalise LUI-MÊME (2 consommateurs, 2 normalisat
   assert.strictEqual(pur.sousDossierEmployeur_('badge'), '');
 });
 
-test('ADR-0044 §6 : formulaires GÉNÉRIQUES → « Modèles & formulaires », APRÈS les règles par entité', () => {
+test('ADR-0044 §6 (cible révisée ADR-0052 D7) : formulaires GÉNÉRIQUES → « Contrats », APRÈS les règles par entité', () => {
   const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const D = '03 · Logement & véhicule';
   const d03 = c.tableMissions_().filter((m) => m.tag === 'dispatch03')[0];
@@ -1213,7 +1213,9 @@ test('ADR-0044 §6 : formulaires GÉNÉRIQUES → « Modèles & formulaires », 
     { nom: '3987 rte des Rivières', id: 'l3987', jetons: ['3987', 'rivieres'] },
   ], fenetres: [] };
   const infoC = { sourceId: c.CONFIG.MISSIONS_IDS.contrats03, sousChemin: '' };
-  const attendu = { cibleParentId: c.CONFIG.DOMAINES[D], cibleNom: 'Modèles & formulaires', sousDossier: '' };
+  // D7 : le nœud « Modèles & formulaires » a cédé sa place à « Travaux & équipements » ; ce qui
+  // compte reste que la mission et le FLUX visent la MÊME cible — c'est l'objet de ce test.
+  const attendu = { cibleParentId: c.CONFIG.DOMAINES[D], cibleNom: 'Contrats', sousDossier: '' };
 
   // Les 8 fichiers RÉELS de `03 · Contrats` (4 CORPIQ, 2 MA8, 2 Proprio Expert).
   // ⚠️ « Immeubles MA8 » ne figure PLUS ici : Marc a donné son adresse le 2026-08-20, il est entré
@@ -1225,7 +1227,7 @@ test('ADR-0044 §6 : formulaires GÉNÉRIQUES → « Modèles & formulaires », 
   ].forEach((nom) => {
     assert.deepStrictEqual(JSON.parse(JSON.stringify(d03.router(nom, infoC, ctx))), attendu, 'MISSION — ' + nom);
     // TRIPWIRE de convergence : le flux calcule la MÊME cible (sinon la conso défait).
-    assert.strictEqual(c.cheminCibleReset_(D, nom), 'Modèles & formulaires', 'FLUX — ' + nom);
+    assert.strictEqual(c.cheminCibleReset_(D, nom), 'Contrats', 'FLUX — ' + nom);
   });
 
   // 🔴 LE SPÉCIFIQUE GAGNE : un formulaire ATTRIBUABLE part chez son entité, jamais dans les

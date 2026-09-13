@@ -4,7 +4,42 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🟦 EN COURS — 2026-09-13 : C28-87 (chantier #47), « pas de fichiers libres » — ADR-0052.**
+> **🟦 EN COURS — 2026-09-13 (suite) : C28-89, les deux arbitrages de Marc appliqués (ADR-0052 §7).**
+> #338 est **mergé** (`main` = 0d53c8a) et **déployé** : `deploy.yml` run #324 vert sur les deux
+> cibles. Marc a ensuite tranché D6 et D7, et ce lot les livre.
+>
+> **D6 · `06 · Études`** — Marc a donné son parcours : « Imerir 2020 2023 ulco saint omer 2018 2020
+> Eiffel 2017 2018 », puis, à la question sur les deux écoles manquantes, « Cegep de Sherbrooke
+> c'est 2019 **en même temps que ULCO** et lycée Thérèse davilla c'est genre 2014 2017 ».
+> `RESET_FENETRES_ECOLE` + `ecoleParDateReset_` (PURE) — même idiome que les fenêtres d'occupation
+> des logements (ADR-0040), bornées au MOIS à la convention sept → août : sans ce découpage,
+> 83 fichiers tombaient dans deux fenêtres et étaient refusés pour rien.
+> ⚠️ **La fenêtre de Sherbrooke ne sert pas à PLACER, elle sert à EMPÊCHER de placer.** Tout
+> document de 2019 tombe dans deux fenêtres et reste non attribué : 28 fichiers de moins placés,
+> et zéro mal placé. C'est LA raison pour laquelle la question valait d'être posée — sans elle, les
+> documents de Sherbrooke seraient partis chez l'ULCO avec une clé de SUCCÈS, en silence et sans
+> retour. Ordre de décision : nom de l'école → marqueur de niveau/filière (« 2nde », « GIM1 »,
+> « khôlle ») → fenêtre. **147 des 475 placés, sur les 5 écoles.**
+>
+> **D7 · `03 · Logement`** — « fusionner Contrats + Modèles ». `Modèles & formulaires` disparaît de
+> la structure, sa place va à `Travaux & équipements`. Les 6 formulaires réellement présents dans
+> l'ancien nœud sont tous locatifs : `Contrats` est leur place. La mission `dispatch03` suit dans le
+> MÊME commit, sinon elle recréait le nœud PAR NOM à chaque passage pendant que le flux rangeait
+> ailleurs. **6 des 8 restants placés** (les 2 derniers ne sont pas de l'équipement : une capture
+> d'annonce, une liste d'achats pour le VÉHICULE).
+>
+> **Bilan : 351 des 683 — et 204 sur 208 hors `06`.**
+>
+> **Ce qui reste, et ce que « lit et classe mieux » veut dire (C28-92).** 328 fichiers de `06`, dont
+> **239 datés `2026`** : la date de RÉCEPTION, faute de date lisible à l'import. Le nom est épuisé
+> (15 marqueurs sur 349 mesurés). La lecture LLM a bien un travail utile ici, mais **pas celui qu'on
+> croyait** : elle ne trouvera pas l'école (prouvé sur deux documents ouverts), elle trouvera la
+> **DATE** — le TP de physique lu pendant l'analyse porte « 09/10/2017 » dans son en-tête. Re-dater
+> suffit à les faire tomber dans les fenêtres de D6. C'est la campagne `reanalyse` existante,
+> ≈ 8,6 $, dans l'enveloppe approuvée. À livrer APRÈS C28-90 (sans rattrapage du stock, un document
+> re-daté resterait là où il est).
+>
+> **✅ MERGÉ ET DÉPLOYÉ — 2026-09-13 : C28-87 (chantier #47), « pas de fichiers libres » — ADR-0052 (#338).**
 > Marc : « je veux mes 01 02 03 etc et pour chaque des sous dossiers **mais pas de fichiers
 > libres** » ; en cas d'hésitation : « qu'ça aille dans les bons sous dossiers **ou que ça me
 > propose des sous sous dossiers à créer** ». Il avait aussi approuvé une campagne LLM de

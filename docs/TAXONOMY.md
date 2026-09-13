@@ -20,10 +20,24 @@ plus bas décrit la cascade de replis à jour, pas l'héritage.
 |---------|--------------------------------|------------------|
 | `01 · Administratif & identité` | Pièces d'identité · État civil & notarial · Attestations & certificats · Correspondance · Contrats & fournisseurs · Sécurité & codes | 1 |
 | `02 · Finances` | Banques · Relevés · Reçus & factures · Impôts & déclarations · Assurances & prévoyance · Placements & crypto · **Revenus & paie** | **0 — PLEIN** |
-| `03 · Logement & véhicule` | **Logement** (5 adresses aux noms RÉELS Drive) · **Véhicule** (Toyota bZ · Ford Fiesta · VW Jetta, chacun avec {Contraventions · Assurance auto · Entretien & réparations · Recherche & achat}) **+ 3 dossiers COMMUNS au même niveau que les véhicules — `Recherche & achat` (magasinage sans véhicule identifié, dont l'ex-« KIA »), `Locations` (voiture louée, jamais un véhicule de Marc) et `À attribuer` (aucun véhicule identifiable — ADR-0044)** · Énergie & services · Assurance habitation · Contrats · Correspondance · **Modèles & formulaires** (formulaires génériques/vierges — ADR-0044 §6) | 0 — PLEIN |
+| `03 · Logement & véhicule` | **Logement** (5 adresses aux noms RÉELS Drive) · **Véhicule** (Toyota bZ · Ford Fiesta · VW Jetta, chacun avec {Contraventions · Assurance auto · Entretien & réparations · Recherche & achat}) **+ 3 dossiers COMMUNS au même niveau que les véhicules — `Recherche & achat` (magasinage sans véhicule identifié, dont l'ex-« KIA »), `Locations` (voiture louée, jamais un véhicule de Marc) et `À attribuer` (aucun véhicule identifiable — ADR-0044)** · Énergie & services · Assurance habitation · Contrats (les formulaires génériques/vierges y sont depuis ADR-0052 D7) · Correspondance · **Travaux & équipements** 🆕 *(ce qu'il y a DANS le logement : étiquettes produit, matériaux, revêtements, inventaires, dégradations — ADR-0052 D7, qui RÉVISE ADR-0044 §6)* | 0 — PLEIN |
 | `04 · Immigration` | IRCC (fédéral) · MIFI (Québec) · Permis de travail & EIMT · Résidence permanente · Formulaires & correspondance · **Pièces d'identité** 🆕 *(ADR-0052)* | 1 |
 | `05 · Carrière` | **Employeurs** (Robovic · Automatech · **Autres employeurs** — commun des employeurs occasionnels, ADR-0044 D11) · Alternance & stages · CV & lettres (+ Candidatures · Suivi · Archive 2021-2025) · **Recherche d'emploi** (recrutement reçu : offres, invitations d'entretien, descriptions de rôle, listes d'entreprises cibles — **RECRÉÉ par ADR-0044 D10, qui révoque la fusion du 2026-08-17 vers « CV & lettres »**) · Entreprise — MRic (SCI) · Formation & bilans · Réseaux & présentations | 0 — PLEIN |
 | `06 · Études & diplômes` | 5 écoles + Autres établissements + Diplômes & relevés officiels | 0 |
+
+> **`06 · Études & diplômes` — comment une école est attribuée** (ADR-0052 D6, décisions Marc
+> 2026-09-13). Du FAIT vers la DÉDUCTION, jamais l'inverse : (1) le NOM de l'école ; (2) un marqueur
+> de NIVEAU ou de FILIÈRE écrit dans le nom (« 2nde », « GIM1 », « khôlle ») ; (3) la FENÊTRE de
+> scolarité (`RESET_FENETRES_ECOLE`, bornée au MOIS à la convention sept → août), qui refuse dès
+> qu'il y a deux fenêtres ou aucune. Le parcours validé par Marc : Lycée Thérèse d'Avila 2014-2017,
+> Prépa Gustave Eiffel 2017-2018, DUT ULCO Saint-Omer 2018-2020, **Cégep de Sherbrooke 2019 — EN
+> MÊME TEMPS que l'ULCO**, IMERIR 2020-2023.
+> ⚠️ La fenêtre de Sherbrooke ne sert pas à placer : elle sert à **empêcher** de placer. Tout
+> document de 2019 tombe dans deux fenêtres et reste non attribué, au lieu de partir chez l'ULCO
+> avec une clé de succès — c'est-à-dire sans retour possible. Même idiome que les fenêtres
+> d'occupation des logements (`fenetresOccupation_`, ADR-0040) : une table que Marc a validée, pas
+> une inférence du moteur.
+
 | `07 · Santé` | Médecins & consultations · Hôpitaux & centres · Assurances santé · Factures & reçus · Examens & résultats · Médecine scolaire & travail | 1 |
 | `08 · Perso & projets` | Projets · Écrits & rédactions · Schémas & technique · Photos & loisirs · Notes · Données & exports | 1 |
 | `09 · Voyages` | Réservations & billets · Par voyage · Assurances voyage · **Préparation & guides** 🆕 *(ADR-0052)* | 3 |

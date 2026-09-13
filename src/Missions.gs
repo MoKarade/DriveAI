@@ -192,11 +192,15 @@ function tableMissions_() {
         //    bailleur, jamais par adresse — table prouvée par contenu).
         var b = cibleBailleur_(nom, ctx.logements);
         if (b) return { cibleId: b.id, sousDossier: theme };
-        // 3 bis. (ADR-0044 §6) Formulaire GÉNÉRIQUE, aucune entité identifiée → « Modèles &
-        //    formulaires ». MÊME prédicat que le flux, et MÊME position : après l'entité.
+        // 3 bis. (ADR-0044 §6, cible RÉVISÉE par ADR-0052 D7) Formulaire GÉNÉRIQUE, aucune entité
+        //    identifiée → « Contrats ». MÊME prédicat que le flux, MÊME position (après l'entité) et
+        //    MÊME cible : le nœud « Modèles & formulaires » n'existe plus en 03, sa place est allée
+        //    aux documents d'ÉQUIPEMENT. Laisser l'ancienne cible ici ferait RECRÉER le nœud PAR NOM
+        //    à chaque passage de la mission, pendant que le flux range dans « Contrats » — le
+        //    ping-pong exact de la leçon « une seule règle, deux consommateurs ».
         if (estModeleOuFormulaire_(typeDuNomMission_(nom))) {
           return { cibleParentId: CONFIG.DOMAINES[MISSIONS_DOMAINE_03],
-            cibleNom: 'Modèles & formulaires', sousDossier: '' };
+            cibleNom: 'Contrats', sousDossier: '' };
         }
         // 4. Correspondance sans indice : la DATE tranche si elle tombe dans EXACTEMENT une
         //    fenêtre d'occupation (demande Marc « regarde les dates pour déterminer »).
@@ -955,8 +959,9 @@ function estDocumentLogement_(nom) {
 }
 
 /**
- * Vrai si le document est un MODÈLE / FORMULAIRE générique (ADR-0044 §6) — cible
- * `<domaine>/Modèles & formulaires`. PURE (testée), PARTAGÉE par le flux et `dispatch03`.
+ * Vrai si le document est un MODÈLE / FORMULAIRE générique (ADR-0044 §6). PURE (testée),
+ * PARTAGÉE par le flux et `dispatch03`, qui visent la MÊME cible — `03 · …/Contrats` depuis
+ * ADR-0052 D7 (le nœud « Modèles & formulaires » a cédé sa place à « Travaux & équipements »).
  *
  * Normalise ICI (les deux consommateurs n'appliquent pas la même normalisation amont) et exige un
  * MOT ENTIER. ⚠️ Ce prédicat est un FILET : il ne doit être consulté qu'APRÈS les règles par

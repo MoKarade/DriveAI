@@ -97,11 +97,15 @@ var STRUCTURE_CIBLE_RESET = {
     // « Correspondance » de 03 n'avaient aucun dossier d'accueil. 03 reste à 6 nœuds (≤ 7 ✔).
     'Contrats': {},
     'Correspondance': {},
-    // ADR-0044 §6 (décision 6) : les formulaires GÉNÉRIQUES/vierges — le générique reste près de
-    // son sujet plutôt que de polluer « Contrats ». 03 = 7 nœuds ≤ 7 ✔.
-    // ⚠️ Ce nœud n'existe QUE dans 03 : `02 · Finances` est déjà à 7 (PLEIN), et la règle des ≤ 7
-    // prime — la décision y reste ouverte, elle exige d'abord de libérer un nœud (choix de Marc).
-    'Modèles & formulaires': {},
+    // ADR-0052 D7 (décision Marc 2026-09-13) — « Modèles & formulaires » est FUSIONNÉ dans
+    // « Contrats » et sa place va aux documents d'ÉQUIPEMENT du logement, qui n'en avaient aucune
+    // (6 fichiers à plat au recensement du 13/09 : étiquette produit, document électroménager,
+    // liste de matériaux, plan de revêtements de sol, inventaire d'équipements, rapport de
+    // dégradation). Les 6 formulaires réellement présents dans l'ancien nœud sont tous locatifs
+    // (4 demandes de location CORPIQ, 2 consentements Proprio Expert) : « Contrats » est leur
+    // place. ⚠️ REVOIT ADR-0044 §6 (« le générique reste près de son sujet ») : 03 était PLEIN,
+    // et Marc a tranché en faveur de l'équipement. 03 = 7 nœuds ≤ 7 ✔.
+    'Travaux & équipements': {},
   },
   // 04 : structure INTERNE (ADR-0030 §4) — les fichiers ne sortent JAMAIS de 04 automatiquement.
   '04 · Immigration': {
@@ -343,6 +347,64 @@ function estExcluDuReset_(nom) {
 }
 
 /**
+ * FENÊTRES DE SCOLARITÉ de Marc (ADR-0052 D6, décision du 2026-09-13 : « Imerir 2020 2023 ulco
+ * saint omer 2018 2020 Eiffel 2017 2018 »). MÊME IDIOME que `fenetresOccupation_`/`logementParDate_`
+ * (Missions.gs, ADR-0040, demande de Marc « regarde les dates pour déterminer ») : une table que
+ * MARC a validée, pas une inférence du moteur — au même titre que `MISSIONS_BAILLEURS` ou
+ * `RESET_PERSONNES_AUTRES`.
+ *
+ * Bornes en MOIS, à la convention de l'année SCOLAIRE (septembre → août) : c'est ce qui rend les
+ * fenêtres DISJOINTES, alors que les années nues de Marc se chevauchent aux charnières (2018 est à
+ * la fois la fin d'Eiffel et le début de l'ULCO). Sans ce découpage, 83 des 464 fichiers de `06`
+ * tombaient dans deux fenêtres et étaient refusés pour rien.
+ */
+var RESET_FENETRES_ECOLE = [
+  { ecole: 'Lycée Thérèse d\'Avila', debut: 2014 * 12 + 9, fin: 2017 * 12 + 8 },
+  { ecole: 'Prépa Gustave Eiffel (PTSI)', debut: 2017 * 12 + 9, fin: 2018 * 12 + 8 },
+  { ecole: 'DUT ULCO Saint-Omer', debut: 2018 * 12 + 9, fin: 2020 * 12 + 8 },
+  // ⚠️ SHERBROOKE CHEVAUCHE L'ULCO, ET C'EST VOULU. Marc : « Cégep de Sherbrooke c'est 2019 en même
+  // temps que ULCO » (échange). La fenêtre n'est donc PAS là pour placer — elle est là pour
+  // EMPÊCHER de placer : tout document de 2019 tombe dans deux fenêtres et se voit REFUSÉ, au lieu
+  // d'être attribué à l'ULCO par défaut. C'est 28 fichiers de moins placés, et zéro mal placé.
+  // Sans cette ligne, l'omission de Sherbrooke aurait été SILENCIEUSE : le moteur aurait rangé ses
+  // documents chez l'ULCO avec une clé de SUCCÈS, donc sans retour possible.
+  { ecole: 'Cégep de Sherbrooke', debut: 2019 * 12 + 1, fin: 2019 * 12 + 12 },
+  { ecole: 'IMERIR', debut: 2020 * 12 + 9, fin: 2023 * 12 + 8 },
+];
+
+/**
+ * ÉCOLE déduite de la DATE du nom — `null` dès qu'il y a le moindre doute. PURE.
+ *
+ * Le verdict est POSITIF et DÉPLACE le fichier hors du périmètre de collecte : il est donc
+ * définitif de fait, et le prédicat doit être STRICT (leçon §9, « l'asymétrie des verdicts commande
+ * la sévérité du prédicat »). D'où deux niveaux de sévérité selon ce que le nom porte :
+ *  - date COMPLÈTE (`AAAA-MM`) → le mois doit tomber dans EXACTEMENT une fenêtre ;
+ *  - ANNÉE SEULE → l'année CIVILE ENTIÈRE doit tenir dans une seule fenêtre. Une année à cheval sur
+ *    deux écoles (2017, 2018, 2020, 2023) refuse — on ne devine pas de quel semestre il s'agit.
+ * Hors de toute fenêtre ⇒ `null` : c'est ce qui protège les 239 fichiers datés `2026` (la date de
+ * RÉCEPTION, faute de date lisible dans le document) d'être rattachés à une école au hasard.
+ * @param {string} nom @return {?string} libellé d'école de `STRUCTURE_CIBLE_RESET['06 · …']`
+ */
+function ecoleParDateReset_(nom) {
+  var m = /^(\d{4})(?:-(\d{2}))?/.exec(String(nom == null ? '' : nom).trim());
+  if (!m || !anneePlausible_(m[1])) return null;
+  var an = Number(m[1]);
+  var trouve = null;
+  for (var i = 0; i < RESET_FENETRES_ECOLE.length; i++) {
+    var f = RESET_FENETRES_ECOLE[i], dedans;
+    if (m[2]) {
+      var mois = Number(m[2]);
+      if (mois < 1 || mois > 12) return null; // mois illisible : on ne retombe pas sur l'année
+      dedans = (an * 12 + mois) >= f.debut && (an * 12 + mois) <= f.fin;
+    } else {
+      dedans = (an * 12 + 1) >= f.debut && (an * 12 + 12) <= f.fin; // l'année ENTIÈRE dans la fenêtre
+    }
+    if (dedans) { if (trouve) return null; trouve = f.ecole; } // deux fenêtres ⇒ ambigu ⇒ refus
+  }
+  return trouve;
+}
+
+/**
  * CHEMIN CIBLE d'un fichier dans la NOUVELLE structure — par le NOM seul, zéro LLM.
  * @param {string} domaine  domaine d'ORIGINE (enregistré au rassemblement, clé `tri33|`)
  * @param {string} nom      nom actuel du fichier
@@ -553,7 +615,15 @@ function cheminCibleReset_(domaine, nom) {
     // (adresse, bailleur, véhicule) : le SPÉCIFIQUE gagne toujours. Le jour où « Immeubles MA8 »
     // entrerait dans MISSIONS_BAILLEURS, ses formulaires iraient chez le BAILLEUR — un formulaire
     // attribuable n'est pas un modèle.
-    if (estModeleOuFormulaire_(t)) return 'Modèles & formulaires';
+    // ADR-0052 D7 : le nœud « Modèles & formulaires » n'existe plus en 03 — un formulaire vierge
+    // rejoint « Contrats », comme les 6 qui y étaient déjà (tous locatifs).
+    if (estModeleOuFormulaire_(t)) return 'Contrats';
+    // ÉQUIPEMENT du logement (ADR-0052 D7) : ce que Marc garde sur ce qu'il y a DANS le logement,
+    // par opposition au bail qui porte sur le logement lui-même. Testé APRÈS les règles par entité
+    // (une étiquette produit qui nomme une adresse part chez le logement).
+    if (resetContient_(t, ['etiquette', 'appareil', 'electromenager', 'materiaux', 'revetement',
+      'inventaire d equipement', 'degradation', 'notice d utilisation', 'garantie constructeur',
+      'fiche produit', 'fiche technique'])) return 'Travaux & équipements';
     if (resetContient_(e, ['edf', 'engie', 'hydro'])) return 'Énergie & services';
     if (tout.indexOf('assurance habitation') !== -1 || e.indexOf('maif') !== -1) return 'Assurance habitation';
     // Un document de VÉHICULE sans véhicule identifiable (immatriculation SAAQ, contravention
@@ -673,6 +743,22 @@ function cheminCibleReset_(domaine, nom) {
     else if (resetContient_(toutSansTiret, ['hamk', 'hame', 'erasmus', 'esiee', 'hei campus',
       'limoilou', 'saint hyacinthe', 'hubhouse', 'lycee hugo', 'armentieres', 'academie de lille',
       'centre universitaire descartes'])) ecole = 'Autres établissements';
+    // ADR-0052 D6 — dernier recours AVANT le refus : la DATE. Les fenêtres de scolarité sont une
+    // table validée par Marc, appliquée comme les fenêtres d'occupation des logements. Placée ICI,
+    // après TOUTE la reconnaissance par le NOM : un document qui nomme son école va chez elle, même
+    // si sa date dit autre chose (le nom est un fait, la fenêtre une déduction).
+    // NIVEAU ou FILIÈRE écrit dans le nom (ADR-0052 D6) : « 2nde », « GIM1 », « khôlle » sont des
+    // FAITS, au même titre que le nom de l'école — ils passent donc AVANT la déduction par la date.
+    // Couverture mesurée : 15 des 349 restants. Faible, mais gratuite et sans risque.
+    if (!ecole) {
+      if (resetMotEntier_(toutSansTiret, 'ptsi') || resetContient_(toutSansTiret, ['kholle', 'concours avenir']) ||
+          resetMotEntier_(toutSansTiret, 'colle') || resetMotEntier_(toutSansTiret, 'colles')) ecole = 'Prépa Gustave Eiffel (PTSI)';
+      else if (/(^|[^a-z0-9])gim ?[12]?([^a-z0-9]|$)/.test(toutSansTiret) ||
+               resetMotEntier_(toutSansTiret, 'iut') || resetMotEntier_(toutSansTiret, 'dut')) ecole = 'DUT ULCO Saint-Omer';
+      else if (resetContient_(toutSansTiret, ['2nde', 'seconde', 'terminale']) ||
+               resetMotEntier_(toutSansTiret, 'svt') || /(^|[^a-z0-9])1 ?ere([^a-z0-9]|$)/.test(toutSansTiret)) ecole = 'Lycée Thérèse d\'Avila';
+    }
+    if (!ecole) ecole = ecoleParDateReset_(nom);
     if (!ecole) return null;
     if (ecole === 'Autres établissements') return ecole; // à plat (rapport → affinage si volume)
     if (t.indexOf('concours') !== -1 && ecole === 'Prépa Gustave Eiffel (PTSI)') return ecole + '/Concours';
@@ -846,7 +932,7 @@ function bucketTypeDomaine_(domaine, nom) {
     if (t.indexOf('assurance') !== -1) return 'Assurance habitation';
     if (resetContient_(t, ['energie', 'electricite', 'gaz', 'hydro'])) return 'Énergie & services';
     if (resetContient_(t, BUCKET_TYPE_CORRESPONDANCE)) return 'Correspondance';
-    if (resetContient_(t, BUCKET_TYPE_FORMULAIRE)) return 'Modèles & formulaires';
+    if (resetContient_(t, BUCKET_TYPE_FORMULAIRE)) return 'Contrats'; // ADR-0052 D7
     // ⚠️ Les documents d'ÉQUIPEMENT du logement (étiquette produit, liste de matériaux, plan de
     // revêtements, inventaire, rapport de dégradation — 8 au recensement) n'ont PAS de nœud : 03
     // est PLEIN à 7. En ouvrir un exige d'en libérer un — arbitrage de Marc, ADR-0052 D7.
