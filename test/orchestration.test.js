@@ -202,7 +202,7 @@ test('réallocation conso-gen↔missions : le COUPLE somme 12 min ET une mission
 });
 
 test('orchestration MISSIONS : les 8 missions sont gatées par !resetEnCours_() ET le budget quotidien', () => {
-  ['mission-vehicule', 'mission-logement', 'mission-dispatch-03', 'mission-archives-06',
+  ['mission-vehicule', 'mission-logement', 'mission-dispatch-03', 'mission-retour-ecoles-06',
     'mission-paies', 'mission-carriere', 'mission-annees-02', 'mission-impots'].forEach((cle) => {
     assert.ok(/gResetEnCours/.test(gatesDe(cle)), cle + ' : une seule main déplace (reset)');
     assert.ok(/gMissionsJour_/.test(gatesDe(cle)), cle + ' : la raison « budget du jour épuisé » doit ' +
@@ -215,7 +215,7 @@ test('orchestration MISSIONS : les 8 missions sont gatées par !resetEnCours_() 
   assert.ok(/gMissionsAmont03_/.test(gatesDe('mission-dispatch-03')),
     'mission-dispatch-03 doit attendre vehicule+logement (gMissionsAmont03_)');
   assert.ok(!/gMissionsAmont03_/.test(gatesDe('mission-vehicule')) &&
-    !/gMissionsAmont03_/.test(gatesDe('mission-archives-06')),
+    !/gMissionsAmont03_/.test(gatesDe('mission-retour-ecoles-06')),
     'la gate d\'amont ne s\'applique qu\'à dispatch03');
 });
 

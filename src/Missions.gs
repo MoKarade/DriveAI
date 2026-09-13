@@ -228,7 +228,11 @@ function tableMissions_() {
       sourcesJetables: [],
     },
     {
-      tag: 'archives06', cle: 'mission-archives-06',
+      // SENS INVERSÉ le 2026-09-13 (décision Marc) : l'archive rend son contenu à l'école.
+      // Le TAG et la CLÉ changent avec le sens — sinon les fichiers déjà déplacés dans l'autre
+      // sens portent une clé de SUCCÈS sous `mission-archives-06` et ne seraient jamais repris
+      // (leçon §9 : « re-lancer une campagne à clé de SUCCÈS ne re-traite pas ce qu'elle a figé »).
+      tag: 'retour-ecoles06', cle: 'mission-retour-ecoles-06',
       sources: (IDS.archives06 || []).map(function (p) { return p.src; }),
       batirCtx: function () {
         var parSource = {};
@@ -241,18 +245,22 @@ function tableMissions_() {
         var cible = ctx.parSource[info.sourceId];
         return cible ? { cibleId: cible, sousDossier: info.sousChemin } : null;
       },
-      // Après le transfert, le flux vivant doit VISER l'archive, pas le dossier vidé (sinon il
-      // re-remplit ce que la mission vide — leçon §7 « référentiel consulté par les deux »).
+      // Après le transfert, le référentiel doit VISER le dossier d'école, pas l'archive vidée —
+      // c'est la même règle qu'avant, dans l'autre sens : le flux (`cheminCibleReset_`) et le
+      // référentiel doivent désigner le MÊME dossier, sinon l'un remplit ce que l'autre vide.
       // PEUT LEVER, volontairement (revue sécurité C28-49) : un échec doit EMPÊCHER le drapeau
       // FINI pour être re-tenté à la passe suivante — `repointerEntites_` est idempotent (une
       // ligne déjà re-pointée ne matche plus la source), rejouer la boucle est sans danger.
       apresConvergence: function () {
         (IDS.archives06 || []).forEach(function (p) { repointerEntites_(p.src, p.cible); });
       },
-      // La mission EXISTE pour vider ces dossiers vers leur archive : une fois vides, ils n'ont
-      // plus d'objet et le flux ne les recrée pas (il vise l'archive, cf. `apresConvergence`).
-      // Déclaré explicitement depuis le 2026-09-12 (le défaut ne décide plus à leur place).
-      sourcesJetables: (IDS.archives06 || []).map(function (p) { return p.src; }),
+      // ⚠️ `sourcesJetables: []` — VOLONTAIRE, et c'est le cœur de l'inversion. Les archives vidées
+      // NE SONT PAS peintes en rouge : `Archives scolaires` contient trois autres dossiers que
+      // cette mission ne touche pas (« Collège & Lycée — divers », « Lycée — Gustave Eiffel —
+      // Physique-Chimie (TP) », « Online course — AI Essentials »), et un signal « bon pour
+      // suppression » sur un parent partiellement vidé est exactement le défaut relevé en revue :
+      // « tracer ce qui se passe si l'utilisateur OBÉIT au signal ».
+      sourcesJetables: [],
     },
     /* ---- PR2 : Carrière + Finances (brief Marc §« paies / employeurs / impôts / années ») ---- */
     {

@@ -490,8 +490,8 @@ function tickDriveAI() {
     etapeSuivie_('mission-dispatch-03', [gMissionsActif, gMissionsAmont03_, gBudgetStandard, gResetEnCours, gMissionsJour_],
       function () { executerMission_('dispatch03', estBudgetDepasseStandard); },
       function (e) { journalErreur_('Missions', 'Mission dispatch 03 différée : ' + e); });
-    etapeSuivie_('mission-archives-06', [gMissionsActif, gBudgetStandard, gResetEnCours, gMissionsJour_],
-      function () { executerMission_('archives06', estBudgetDepasseStandard); },
+    etapeSuivie_('mission-retour-ecoles-06', [gMissionsActif, gBudgetStandard, gResetEnCours, gMissionsJour_],
+      function () { executerMission_('retour-ecoles06', estBudgetDepasseStandard); },
       function (e) { journalErreur_('Missions', 'Mission archives 06 différée : ' + e); });
     // PR2 (Carrière + Finances). `paies` AVANT `carriere` : le domicile UNIQUE des paies est
     // 02/« Revenus & paie »/<Employeur> — les deux missions y routent par la MÊME fonction
@@ -649,7 +649,7 @@ function tickDriveAI() {
       // couverte par le tripwire (chaque clé y est aussi wrappée `etapeSuivie_` ci-dessus).
       ['intake-gmail', 'intake-depots', 'intake-partages', 'intentions', 'tri-gmail',
         'consolidation-exec', 'consolidation-gen',
-        'mission-vehicule', 'mission-logement', 'mission-dispatch-03', 'mission-archives-06',
+        'mission-vehicule', 'mission-logement', 'mission-dispatch-03', 'mission-retour-ecoles-06',
         'mission-paies', 'mission-carriere', 'mission-annees-02', 'mission-impots',
         'fusion-exec', 'reset-rassemblement',
         'reset-placement', 'reset-04-interne', 'reset-llm', 'histo-gmail', 'migration',

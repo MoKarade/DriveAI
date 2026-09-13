@@ -43,9 +43,10 @@
 > Deux tests ne prouvaient rien : l'un asserte `String(null).length > 0` (toujours vrai), l'autre
 > était devenu tautologique en changeant sa valeur attendue.
 
-> **🟦 EN COURS — 2026-09-13 : C28-90, la préparation du rattrapage. LE BUMP N'A PAS ÉTÉ FAIT.**
-> Marc : « fais la préparation de C28-90 et lance le rattrapage ». La préparation est faite ; le
-> bump de `CONSOLIDATION_TAG` ne l'est pas, et c'est un refus motivé.
+> **🟦 EN COURS — 2026-09-13 : C28-90, le rattrapage du stock est LANCÉ.**
+> Marc : « fais la préparation de C28-90 et lance le rattrapage ». La préparation d'abord, le
+> conflit de structure de `06` tranché par Marc ensuite, et le bump `conso-3 → conso-4` seulement
+> après. Marc a aussi choisi « lance direct » plutôt que de relire le plan.
 >
 > **Fait** : (1) budget réalloué, consolidation 2 → 10 min/j repris aux missions (10 → 2, toutes
 > terminées) — le couple reste à 12 min/j, réallocation et non hausse d'enveloppe ; (2) les règles
@@ -56,13 +57,33 @@
 > garde, les 6 sous-dossiers thématiques de `Logement/3325 4e avenue` et les 4 buckets d'émetteur
 > créés le 12/09 étaient remontés d'un cran, sans validation ligne à ligne.
 >
-> **Ce qui bloque** : les 4 nœuds d'école visés par D6 sont EXACTEMENT les 4 sources de la mission
-> `archives06`, dont l'objet est de les VIDER vers des archives aux autres noms (`ULCO — DUT GIM`,
-> `Prépa PTSI`…) et qui les déclare `sourcesJetables` — donc peints en rouge pour suppression. Son
-> commentaire dit « le flux ne les recrée pas, il vise l'archive » : vrai du chemin par ENTITÉ, FAUX
-> du chemin par TABLE, qui résout par NOM. Avant D6 la contradiction portait sur 11 fichiers ; D6 la
-> porterait à 143, et le bump la rendrait effective d'un coup. **Marc doit dire laquelle des deux
-> structures de `06` est la sienne** avant qu'on lance quoi que ce soit.
+> **Le conflit qui a fait attendre le bump.** Les 4 nœuds d'école visés par D6 étaient EXACTEMENT
+> les 4 sources de la mission `archives06`, dont l'objet était de les VIDER vers des archives aux
+> autres noms (`ULCO — DUT GIM`, `Prépa PTSI`…) et qui les déclarait `sourcesJetables` — donc peints
+> en rouge pour suppression. Son commentaire disait « le flux ne les recrée pas, il vise l'archive » :
+> vrai du chemin par ENTITÉ, FAUX du chemin par TABLE, qui résout par NOM. Avant D6 la contradiction
+> portait sur 11 fichiers ; D6 la portait à 143.
+> **Marc a tranché : « mes 5 dossiers d'école ».** La mission est INVERSÉE dans le même commit —
+> l'archive rend son contenu à l'école — avec un tag et une clé NEUFS (`retour-ecoles06`), sans quoi
+> les fichiers déjà déplacés dans l'autre sens portaient une clé de SUCCÈS et n'auraient jamais été
+> repris. `sourcesJetables` passe à `[]` : `Archives scolaires` contient trois autres dossiers que la
+> mission ne touche pas, et peindre en rouge un parent partiellement vidé est le défaut « tracer ce
+> qui se passe si l'utilisateur OBÉIT au signal ».
+>
+> **`CONSOLIDATION_TAG` : conso-3 → conso-4.** Les 683 sont ré-évalués sous les règles courantes ;
+> 347 ont une cible. `CONSOLIDATION_EXEC_ACTIF` reste à `true` (déplacement seul, aucune suppression).
+>
+> ⚠️ **À CONFIRMER par Marc** : il a dit « lycée Thérèse davilla c'est **genre** 2014 2017 », mais
+> deux dossiers qu'il a nommés lui-même disent `Lycée — Thérèse Davila (2017-2018)` et
+> `Collège & Lycée — divers (2014-2017)`. Si la seconde lecture est la bonne, ~26 fichiers de
+> 2014-2016 partent chez Avila alors qu'ils sont du collège. La fenêtre retenue est celle qu'il a
+> ÉNONCÉE ; le doute est écrit. Conséquence bornée : 26 fichiers dans le mauvais dossier, tous
+> dans `06`, récupérables par un bump de règles.
+>
+> ⚠️ **À VÉRIFIER EN PROD après déploiement** (le vrai signal, jamais le statut du run) : le plan de
+> consolidation doit se REMPLIR (onglet `PlanConsolidation` purgé puis re-généré sous `conso-4`),
+> puis les racines de domaine doivent se VIDER — `08 · Perso & projets` (115 au 13/09) et
+> `01 · Administratif & identité` (13) sont les deux compteurs les plus lisibles.
 >
 > **Ce qui reste, et ce que « lit et classe mieux » veut dire (C28-92).** 328 fichiers de `06`, dont
 > **239 datés `2026`** : la date de RÉCEPTION, faute de date lisible à l'import. Le nom est épuisé

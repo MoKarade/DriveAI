@@ -267,8 +267,11 @@ test('cibleBailleur_ : dossier RENOMMÉ/absent ⇒ refus — la table ne crée J
   assert.strictEqual(ok.id, 'l3987');
 });
 
-test('routeur archives06 : alias explicite = transfert ; source hors table = jamais une source', () => {
-  const spec = pur.tableMissions_().filter((m) => m.tag === 'archives06')[0];
+test('routeur retour-ecoles06 : alias explicite = transfert ; source hors table = jamais une source', () => {
+  // SENS INVERSÉ le 2026-09-13 (décision Marc) : la source est l'ARCHIVE, la cible l'ÉCOLE.
+  // Le tag a changé AVEC le sens — sinon les fichiers déjà déplacés dans l'autre sens
+  // portaient une clé de SUCCÈS et n'auraient jamais été repris.
+  const spec = pur.tableMissions_().filter((m) => m.tag === 'retour-ecoles06')[0];
   const paires = pur.CONFIG.MISSIONS_IDS.archives06;
   assert.ok(paires.length >= 4, 'les 4 alias du brief');
   const ctx = spec.batirCtx();
@@ -432,16 +435,16 @@ test('runner : budget du jour épuisé → aucune I/O ; garde-temps → passe IN
   assert.ok(!coupe.store['DriveAI_MISSION_FINI_vehicule'], 'passe coupée ≠ passe vide');
 });
 
-test('runner archives06 : transfert par alias + RE-POINTAGE des entités à la convergence', () => {
+test('runner retour-ecoles06 : transfert par alias + RE-POINTAGE des entités à la convergence', () => {
   const h = ctxRunner();
   const paires = h.c.CONFIG.MISSIONS_IDS.archives06;
   paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
   h.arbre[paires[0].src].files = [h.fichier('fd', '2019-05-01_Relevé_ULCO.pdf')];
 
-  h.c.executerMission_('archives06', () => false);
+  h.c.executerMission_('retour-ecoles06', () => false);
   assert.deepStrictEqual(plain(h.moves.filter((m) => m.vers)), [{ id: 'fd', vers: paires[0].cible }]);
 
-  h.c.executerMission_('archives06', () => false); // passe vide → convergence
+  h.c.executerMission_('retour-ecoles06', () => false); // passe vide → convergence
   const repointes = h.moves.filter((m) => m.repointe);
   assert.strictEqual(repointes.length, paires.length, 'chaque entité re-pointée vers son archive');
 });
@@ -456,20 +459,20 @@ test('un re-pointage qui LÈVE empêche le drapeau FINI — re-tenté à la pass
   let rate = true;
   h.c.repointerEntites_ = () => { if (rate) throw new Error('Sheet indisponible'); h.moves.push({ repointe: 'ok' }); };
 
-  assert.throws(() => h.c.executerMission_('archives06', () => false), /Sheet indisponible/,
+  assert.throws(() => h.c.executerMission_('retour-ecoles06', () => false), /Sheet indisponible/,
     'l\'échec REMONTE (etapeSuivie_ le journalise) au lieu d\'être avalé');
-  assert.ok(!h.store['DriveAI_MISSION_FINI_archives06'], 'pas de FINI sur un re-pointage raté');
+  assert.ok(!h.store['DriveAI_MISSION_FINI_retour-ecoles06'], 'pas de FINI sur un re-pointage raté');
   assert.ok(h.store['DriveAI_MISSIONS_JOUR'], 'le budget consommé est écrit malgré le throw (finally)');
 
   // La Sheet revient : la passe suivante (vide, quasi gratuite) re-tente et conclut.
   rate = false;
-  h.c.executerMission_('archives06', () => false);
-  assert.strictEqual(h.store['DriveAI_MISSION_FINI_archives06'], h.c.CONFIG.MISSIONS_REGLES_VERSION);
+  h.c.executerMission_('retour-ecoles06', () => false);
+  assert.strictEqual(h.store['DriveAI_MISSION_FINI_retour-ecoles06'], h.c.CONFIG.MISSIONS_REGLES_VERSION);
   assert.strictEqual(h.moves.filter((m) => m.repointe).length, paires.length);
   // LIBÉRATION du compteur (revue finale PR2 — « un gate se teste par sa libération », leçon §7) :
   // l'échec a incrémenté errC ; le succès doit l'effacer, sinon un errC ≥ MAX survivrait au FINI
   // et re-bloquerait une journée entière au PREMIER échec après un futur bump de version.
-  const etatApres = JSON.parse(h.store['DriveAI_MISSIONS_ETAT']).archives06;
+  const etatApres = JSON.parse(h.store['DriveAI_MISSIONS_ETAT'])['retour-ecoles06'];
   assert.strictEqual(etatApres.errC, undefined, 'errC effacé par la convergence réussie');
   assert.strictEqual(etatApres.errJour, undefined, 'errJour effacé avec lui');
 });

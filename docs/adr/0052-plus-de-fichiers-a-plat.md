@@ -321,10 +321,11 @@ d'annonce, une liste d'achats pour le VÉHICULE) — c'est la revue flotte qui a
 
 Sur les 332 restants de `06`, **237 portent la date `2026`** (la date de réception).
 
-## 8. C28-90 — la préparation du rattrapage, et pourquoi le bump N'A PAS eu lieu
+## 8. C28-90 — la préparation du rattrapage
 
-Marc, 2026-09-13 : « fais la préparation de C28-90 et lance le rattrapage ». La préparation est
-faite ; **le bump de `CONSOLIDATION_TAG` ne l'est pas**, et c'est un refus motivé, pas un oubli.
+Marc, 2026-09-13 : « fais la préparation de C28-90 et lance le rattrapage ». La préparation a été
+faite d'abord, le conflit de structure de `06` tranché par Marc ensuite (§9), **et le bump
+`conso-3 → conso-4` seulement après**.
 
 ### Ce qui EST fait
 1. **Budget réalloué** : `CONSOLIDATION_BUDGET_JOUR_MS` 2 → 10 min/j, repris aux missions (10 → 2),
@@ -342,26 +343,30 @@ faite ; **le bump de `CONSOLIDATION_TAG` ne l'est pas**, et c'est un refus motiv
    remontés d'un cran. `ConsolidationExec` applique sans validation ligne à ligne — l'erreur aurait
    été muette et massive.
 
-### Ce qui BLOQUE le bump — une contradiction de structure, pas un détail technique
+### Le conflit qui a fait attendre le bump — et sa résolution
 Les 4 nœuds d'école visés par D6 (`DUT ULCO Saint-Omer`, `Prépa Gustave Eiffel (PTSI)`, `IMERIR`,
-`lycée Thérèse d'Avila`) sont **exactement les 4 sources de la mission `archives06`**
-(`CONFIG.MISSIONS_IDS.archives06`), dont l'objet est de les VIDER vers des archives aux autres noms
-(`ULCO — DUT GIM`, `Prépa PTSI`, `IMERIR — Ingénieur MSIR`, `Lycée — Thérèse Davila`) — et qui les
-déclare `sourcesJetables`, c'est-à-dire **peints en rouge pour suppression une fois vides**.
+`lycée Thérèse d'Avila`) étaient **exactement les 4 sources de la mission `archives06`**, dont
+l'objet était de les VIDER vers des archives aux autres noms (`ULCO — DUT GIM`, `Prépa PTSI`,
+`IMERIR — Ingénieur MSIR`, `Lycée — Thérèse Davila`) — et qui les déclarait `sourcesJetables`,
+c'est-à-dire **peints en rouge pour suppression une fois vides**.
 
-Son commentaire affirme : « une fois vides, ils n'ont plus d'objet et le flux ne les recrée pas (il
+Son commentaire affirmait : « une fois vides, ils n'ont plus d'objet et le flux ne les recrée pas (il
 vise l'archive) ». C'est vrai du chemin par ENTITÉ (re-pointé par `apresConvergence`), **faux du
 chemin par TABLE** : `cheminCibleReset_` résout ces nœuds PAR NOM. Avant D6 la contradiction portait
-sur 11 fichiers ; D6 la porterait à 143, et le bump la rendrait effective d'un coup.
+sur 11 fichiers ; D6 la portait à 143, et le bump l'aurait rendue effective d'un coup.
 
-Deux structures de `06` coexistent donc, et il faut que Marc tranche laquelle est la sienne :
-ses documents d'études vont-ils dans `06/<École>` (et `archives06` n'a plus lieu d'être), ou dans
-`06/Archives scolaires/<École — filière>` (et c'est la table qui doit viser les archives) ?
-Tant que ce n'est pas tranché, bumper le tag ferait travailler le flux contre une mission active.
+**Marc a tranché (§9) : la structure, ce sont ses 5 dossiers d'école.** La mission a donc été
+INVERSÉE dans le même commit — l'archive rend son contenu à l'école. Tag et clé changent avec le
+sens (`retour-ecoles06` / `mission-retour-ecoles-06`) : sans ça, les fichiers déjà déplacés dans
+l'autre sens portaient une clé de SUCCÈS et n'auraient jamais été repris. Et `sourcesJetables`
+devient `[]` : `Archives scolaires` contient trois autres dossiers que la mission ne touche pas, et
+peindre en rouge un parent partiellement vidé est exactement le défaut « tracer ce qui se passe si
+l'utilisateur OBÉIT au signal ».
 
-*(Constat de passage, hors périmètre : `06` a **9 enfants réels** — les 7 de la table, plus
-`Archives scolaires` et `IUT Du Littoral`, un doublon d'entité laissé par le seed. Le validateur
-≤ 7 ne lit que la table, il ne pouvait pas le voir.)*
+### Le bump
+`CONSOLIDATION_TAG` : `conso-3` → `conso-4`. Les 683 fichiers sont ré-évalués sous les règles
+courantes ; 347 ont désormais une cible. Marc a choisi « lance direct » plutôt que de relire le plan :
+`CONSOLIDATION_EXEC_ACTIF` reste à `true`, déplacement seul, aucune suppression (§2).
 
 ### Ce qui a failli passer, et que seule la vérification a arrêté
 `STRUCTURE_CIBLE_RESET` écrivait `Lycée Thérèse d'Avila` ; le dossier RÉEL de Marc s'appelle
@@ -369,3 +374,19 @@ Tant que ce n'est pas tranché, bumper le tag ferait travailler le flux contre u
 est **sensible à la casse** : un second dossier serait né à côté du sien, et 143 fichiers y seraient
 partis. C'est exactement « 3987 route des Rivières » à côté de « 3987 rte des Rivières », déjà vécu
 en `03`. Un test fige désormais les libellés de la table sur les noms réels relevés dans Drive.
+
+## 9. La structure de `06`, tranchée par Marc (2026-09-13)
+
+Question posée avec les deux structures en conflit ; réponse : **« Mes 5 dossiers d'école »**.
+`06/DUT ULCO Saint-Omer`, `06/Prépa Gustave Eiffel (PTSI)`, `06/IMERIR`,
+`06/lycée Thérèse d'Avila`, `06/Cégep de Sherbrooke` — ce que sa structure validée disait déjà.
+La mission qui les vidait est inversée (§8) ; les archives leur rendent leur contenu.
+
+⚠️ **Un point reste à confirmer, et il est signalé plutôt que tranché tout seul.** Marc a donné
+« lycée Thérèse davilla c'est genre 2014 2017 » (le « genre » est de lui). Or deux dossiers qu'il a
+nommés lui-même disent autre chose : `Lycée — Thérèse Davila (2017-2018)` et
+`Collège & Lycée — divers (2014-2017)`. Si la seconde lecture est la bonne, les ~26 fichiers de
+2014-2016 que la fenêtre envoie chez Avila sont en réalité du collège. La fenêtre retenue est celle
+que Marc a ÉNONCÉE — c'est sa décision, prise aujourd'hui en réponse à cette question précise — mais
+le doute est écrit ici. Conséquence bornée si elle se révèle fausse : 26 fichiers dans le mauvais
+dossier d'école, tous à l'intérieur de `06`, récupérables par un bump de règles.
