@@ -267,8 +267,11 @@ test('cibleBailleur_ : dossier RENOMMÉ/absent ⇒ refus — la table ne crée J
   assert.strictEqual(ok.id, 'l3987');
 });
 
-test('routeur archives06 : alias explicite = transfert ; source hors table = jamais une source', () => {
-  const spec = pur.tableMissions_().filter((m) => m.tag === 'archives06')[0];
+test('routeur retour-ecoles06 : alias explicite = transfert ; source hors table = jamais une source', () => {
+  // SENS INVERSÉ le 2026-09-13 (décision Marc) : la source est l'ARCHIVE, la cible l'ÉCOLE.
+  // Le tag a changé AVEC le sens — sinon les fichiers déjà déplacés dans l'autre sens
+  // portaient une clé de SUCCÈS et n'auraient jamais été repris.
+  const spec = pur.tableMissions_().filter((m) => m.tag === 'retour-ecoles06')[0];
   const paires = pur.CONFIG.MISSIONS_IDS.archives06;
   assert.ok(paires.length >= 4, 'les 4 alias du brief');
   const ctx = spec.batirCtx();
@@ -301,6 +304,7 @@ function ctxRunner(opts) {
   const ajouts = [];
   const moves = [];
   const peints = [];
+  const depeints = [];
   const infos = [];
 
   c.PropertiesService = { getScriptProperties: () => ({
@@ -318,6 +322,12 @@ function ctxRunner(opts) {
   c.dateGmail_ = () => '2026-08-17';
   c.repointerEntites_ = (src, cible) => { moves.push({ repointe: src + '→' + cible }); };
   c.peindreDossierRouge_ = (id) => peints.push(id);
+  c.depeindreDossier_ = (id) => {
+    // Rend son SUCCÈS (comme la vraie) : un PATCH refusé doit empêcher l'appelant de CONCLURE.
+    if ((opts.patchRefuse || []).indexOf(id) !== -1) return false;
+    depeints.push(id);
+    return true;
+  };
   c.fetchDriveAvecRetry_ = () => ({ getResponseCode: () => 200, getContentText: () => '{}' });
   c.jetonDrive_ = () => 'jeton';
 
@@ -335,7 +345,15 @@ function ctxRunner(opts) {
     let i = 0;
     return { hasNext: () => i < items.length, next: () => items[i++] };
   };
-  c.DriveApp = { getFolderById: (id) => dossierFactice(id) };
+  // Compteur d'ouvertures : ce qui distingue « la sonde a balayé » de « la sonde a dormi »,
+  // indépendamment de ce que le balayage trouve (leçon C28-62 : instrumenter le CHEMIN quand la
+  // propriété tient au chemin d'exécution et non à la valeur).
+  // Compteur d'ouvertures PAR ID : ce qui distingue « la sonde a balayé » de « la sonde a dormi »,
+  // indépendamment de ce que le balayage trouve (leçon C28-62 : instrumenter le CHEMIN quand la
+  // propriété tient au chemin d'exécution et non à la valeur). Par ID, parce que la collecte de la
+  // mission ouvre elle aussi des dossiers — compter le total mélangerait les deux.
+  const ouvertures = {};
+  c.DriveApp = { getFolderById: (id) => { ouvertures[id] = (ouvertures[id] || 0) + 1; return dossierFactice(id); } };
   c.sousDossier_ = (parent, nom) => dossierFactice(parent.getId() + '/' + nom);
 
   const fichier = (id, nom, extra) => Object.assign({
@@ -344,7 +362,7 @@ function ctxRunner(opts) {
     moveTo: function (dossier) { this.__deplace = true; moves.push({ id, vers: dossier.getId() }); },
   }, extra || {});
 
-  return { c, store, index, ajouts, moves, peints, infos, fichier, arbre };
+  return { c, store, index, ajouts, moves, peints, depeints, infos, fichier, arbre, ouvertures };
 }
 
 test('runner : déplace, pose la clé VERSIONNÉE après, converge sur la passe vide, peint le vide en rouge', () => {
@@ -373,6 +391,114 @@ test('runner : déplace, pose la clé VERSIONNÉE après, converge sur la passe 
   assert.strictEqual(etatM.vehicule.t, 2);
   assert.strictEqual(etatM.vehicule.na, 0);
   assert.strictEqual(etatM.vehicule.b, 2, 'base = t + na après une passe complète');
+});
+
+test('runner : DÉ-PEINTURE — sonde QUOTIDIENNE, indépendante de la convergence, qui se termine', () => {
+  // Troisième écriture de ce garde-fou, et les deux premières expliquent celle-ci :
+  //  1. one-shot au PREMIER run → les cibles sont encore VIDES (c'est pourquoi elles sont rouges) :
+  //     la passe ne faisait rien et le drapeau était consommé quand même ;
+  //  2. à la CONVERGENCE → la mission n'est pas la seule à remplir ces dossiers : la CONSOLIDATION
+  //     y enverra 143 fichiers pendant des semaines APRÈS, et le court-circuit terminal fait
+  //     qu'aucun run n'y revient. Mesuré par la revue : 20 ticks après remplissage, 0 dé-peint.
+  // D'où une sonde appelée AVANT le court-circuit terminal, bornée à 1 passe/jour.
+  const h = ctxRunner();
+  const IDS = h.c.CONFIG.MISSIONS_IDS;
+  const version = h.c.CONFIG.MISSIONS_REGLES_VERSION;
+  const paires = IDS.archives06;
+  let jour = '2026-09-13';
+  h.c.dateGmail_ = () => jour;
+  // Départ RÉEL : archives pleines, écoles VIDES (l'ancienne mission les avait vidées et peintes).
+  paires.forEach((p) => {
+    h.arbre[p.src] = { files: [h.fichier('a' + p.src, '2021-05-05_Cours_IMERIR.pdf')], folders: {} };
+    h.arbre[p.cible] = { files: [], folders: {} };
+  });
+
+  h.c.executerMission_('retour-ecoles06', () => false);
+  assert.deepStrictEqual(h.depeints, [], 'tout est vide : rien à dé-peindre, et le rouge y est VRAI');
+  assert.notStrictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait', 'donc surtout pas « terminé »');
+
+  // Même jour, 10 ticks : la sonde ne re-balaie pas Drive (budget partagé).
+  // ⚠️ Compter les DÉ-PEINTURES ne prouverait rien ici — les 4 cibles sont vides, donc aucune n'est
+  // possible, que la sonde balaie 1 fois ou 11 (tautologie attrapée en revue quotas). Ce qui se
+  // mesure, c'est le BALAYAGE lui-même (appels Drive) et l'état persisté.
+  const balayages = () => paires.reduce((n, p) => n + (h.ouvertures[p.cible] || 0), 0);
+  const avant = balayages(); // (la mission ouvre aussi ses cibles pour y déposer : on mesure le DELTA)
+  for (let i = 0; i < 10; i++) h.c.executerMission_('retour-ecoles06', () => false);
+  assert.strictEqual(balayages(), avant, '1 passe par jour, pas 288 : aucun nouvel appel Drive');
+  assert.strictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], jour + '|1',
+    'une seule passe comptée ce jour-là (mutation : retirer le garde de jour ⇒ « |11 »)');
+
+  // La mission converge (les archives sont vides) ET pose son drapeau FINI…
+  h.c.executerMission_('retour-ecoles06', () => false);
+  assert.strictEqual(h.store['DriveAI_MISSION_FINI_retour-ecoles06'], version);
+
+  // …puis la CONSOLIDATION remplit les dossiers, des jours plus tard. La sonde doit encore agir,
+  // alors que la mission, elle, est court-circuitée depuis longtemps.
+  paires.forEach((p) => { h.arbre[p.cible] = { files: [h.fichier('c' + p.cible, 'x.pdf')], folders: {} }; });
+  jour = '2026-09-20';
+  h.c.executerMission_('retour-ecoles06', () => false);
+  assert.strictEqual(h.depeints.length, 4, 'les 4 dossiers remplis perdent leur rouge, après le FINI');
+  assert.strictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait', 'plus rien de vide ⇒ terminé');
+
+  // …et une fois terminée, elle ne coûte plus rien.
+  jour = '2026-09-21';
+  h.c.executerMission_('retour-ecoles06', () => false);
+  assert.strictEqual(h.depeints.length, 4);
+});
+
+test('runner : le balayage de la sonde est BORNÉ par le garde-temps du tick', () => {
+  // §9 « garde-temps sur TOUT lot Drive » : le balayage coûte 16 + 12 × sous-dossiers appels, et
+  // l'étape peut démarrer à 4,4 min du mur DUR de 6 min — qu'aucun `try` ne capture. Un tick tué
+  // emporterait tout ce qui suit les missions (fusion, reset, historique Gmail).
+  // Mutation : repasser `null` au lieu de `estBudgetDepasse` ⇒ ce test tombe.
+  const h = ctxRunner();
+  const paires = h.c.CONFIG.MISSIONS_IDS.archives06;
+  h.c.dateGmail_ = () => '2026-09-13';
+  paires.forEach((p) => {
+    h.arbre[p.src] = { files: [], folders: {} };
+    h.arbre[p.cible] = { files: [h.fichier('z' + p.cible, 'x.pdf')], folders: {} };
+  });
+  const ouvertesCibles = () => paires.reduce((n, p) => n + (h.ouvertures[p.cible] || 0), 0);
+
+  h.c.executerMission_('retour-ecoles06', () => true); // budget déjà épuisé à l'entrée
+  assert.strictEqual(ouvertesCibles(), 0, 'aucune cible ouverte : le balayage est coupé AVANT l\'appel Drive');
+  assert.deepStrictEqual(h.depeints, []);
+  assert.strictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], '2026-09-13|1',
+    'la passe est comptée (sinon on re-sonderait 288×) mais ne conclut pas');
+
+  // Le lendemain, avec du budget : la sonde reprend et termine.
+  h.c.dateGmail_ = () => '2026-09-14';
+  h.c.executerMission_('retour-ecoles06', () => false);
+  assert.strictEqual(h.depeints.length, 4);
+  assert.strictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait');
+});
+
+test('runner : la sonde de dé-peinture s\'arrête d\'elle-même, et un PATCH refusé ne conclut jamais', () => {
+  // Un « chemin de retour » sans fin est un coût sans fin : au bout de MISSIONS_DEPEINTURE_MAX_JOURS
+  // passes, un dossier encore vide l'est pour de bon et son rouge est VRAI. Valeur DÉRIVÉE de la
+  // constante, jamais écrite en dur (leçon §7).
+  const MAX = ctxRunner().c.CONFIG.MISSIONS_DEPEINTURE_MAX_JOURS;
+  const h = ctxRunner();
+  const paires = h.c.CONFIG.MISSIONS_IDS.archives06;
+  let n = 0;
+  h.c.dateGmail_ = () => '2026-10-' + String(1 + (n % 28)).padStart(2, '0');
+  paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; h.arbre[p.cible] = { files: [], folders: {} }; });
+  for (n = 0; n < MAX - 1; n++) h.c.executerMission_('retour-ecoles06', () => false);
+  assert.notStrictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait', 'avant le plafond : on sonde encore');
+  h.c.executerMission_('retour-ecoles06', () => false);
+  assert.strictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait', 'au plafond : on arrête');
+  assert.ok(h.infos.some((m) => m.indexOf('ARRÊTÉE') !== -1), 'et on le DIT, avec le nombre de dossiers vides');
+
+  // PATCH refusé (403 quota, permission) : la passe n'est pas complète ⇒ jamais « terminé », même
+  // si plus rien n'est vide. Mutation : ignorer `complet` dans `assurerDepeintureCibles_`.
+  const refus = ctxRunner({ patchRefuse: [paires[0].cible] });
+  paires.forEach((p) => {
+    refus.arbre[p.src] = { files: [], folders: {} };
+    refus.arbre[p.cible] = { files: [refus.fichier('y' + p.cible, 'x.pdf')], folders: {} };
+  });
+  refus.c.executerMission_('retour-ecoles06', () => false);
+  assert.strictEqual(refus.depeints.length, 3, '3 dé-peints sur 4');
+  assert.notStrictEqual(refus.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait', 'un PATCH refusé ne conclut pas');
 });
 
 test('runner : NON APPARIÉ inscrit sous la version (re-collecté JAMAIS, ré-évaluable par bump)', () => {
@@ -432,16 +558,16 @@ test('runner : budget du jour épuisé → aucune I/O ; garde-temps → passe IN
   assert.ok(!coupe.store['DriveAI_MISSION_FINI_vehicule'], 'passe coupée ≠ passe vide');
 });
 
-test('runner archives06 : transfert par alias + RE-POINTAGE des entités à la convergence', () => {
+test('runner retour-ecoles06 : transfert par alias + RE-POINTAGE des entités à la convergence', () => {
   const h = ctxRunner();
   const paires = h.c.CONFIG.MISSIONS_IDS.archives06;
   paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
   h.arbre[paires[0].src].files = [h.fichier('fd', '2019-05-01_Relevé_ULCO.pdf')];
 
-  h.c.executerMission_('archives06', () => false);
+  h.c.executerMission_('retour-ecoles06', () => false);
   assert.deepStrictEqual(plain(h.moves.filter((m) => m.vers)), [{ id: 'fd', vers: paires[0].cible }]);
 
-  h.c.executerMission_('archives06', () => false); // passe vide → convergence
+  h.c.executerMission_('retour-ecoles06', () => false); // passe vide → convergence
   const repointes = h.moves.filter((m) => m.repointe);
   assert.strictEqual(repointes.length, paires.length, 'chaque entité re-pointée vers son archive');
 });
@@ -456,20 +582,20 @@ test('un re-pointage qui LÈVE empêche le drapeau FINI — re-tenté à la pass
   let rate = true;
   h.c.repointerEntites_ = () => { if (rate) throw new Error('Sheet indisponible'); h.moves.push({ repointe: 'ok' }); };
 
-  assert.throws(() => h.c.executerMission_('archives06', () => false), /Sheet indisponible/,
+  assert.throws(() => h.c.executerMission_('retour-ecoles06', () => false), /Sheet indisponible/,
     'l\'échec REMONTE (etapeSuivie_ le journalise) au lieu d\'être avalé');
-  assert.ok(!h.store['DriveAI_MISSION_FINI_archives06'], 'pas de FINI sur un re-pointage raté');
+  assert.ok(!h.store['DriveAI_MISSION_FINI_retour-ecoles06'], 'pas de FINI sur un re-pointage raté');
   assert.ok(h.store['DriveAI_MISSIONS_JOUR'], 'le budget consommé est écrit malgré le throw (finally)');
 
   // La Sheet revient : la passe suivante (vide, quasi gratuite) re-tente et conclut.
   rate = false;
-  h.c.executerMission_('archives06', () => false);
-  assert.strictEqual(h.store['DriveAI_MISSION_FINI_archives06'], h.c.CONFIG.MISSIONS_REGLES_VERSION);
+  h.c.executerMission_('retour-ecoles06', () => false);
+  assert.strictEqual(h.store['DriveAI_MISSION_FINI_retour-ecoles06'], h.c.CONFIG.MISSIONS_REGLES_VERSION);
   assert.strictEqual(h.moves.filter((m) => m.repointe).length, paires.length);
   // LIBÉRATION du compteur (revue finale PR2 — « un gate se teste par sa libération », leçon §7) :
   // l'échec a incrémenté errC ; le succès doit l'effacer, sinon un errC ≥ MAX survivrait au FINI
   // et re-bloquerait une journée entière au PREMIER échec après un futur bump de version.
-  const etatApres = JSON.parse(h.store['DriveAI_MISSIONS_ETAT']).archives06;
+  const etatApres = JSON.parse(h.store['DriveAI_MISSIONS_ETAT'])['retour-ecoles06'];
   assert.strictEqual(etatApres.errC, undefined, 'errC effacé par la convergence réussie');
   assert.strictEqual(etatApres.errJour, undefined, 'errJour effacé avec lui');
 });
@@ -1205,7 +1331,7 @@ test('sousDossierEmployeur_ : normalise LUI-MÊME (2 consommateurs, 2 normalisat
   assert.strictEqual(pur.sousDossierEmployeur_('badge'), '');
 });
 
-test('ADR-0044 §6 : formulaires GÉNÉRIQUES → « Modèles & formulaires », APRÈS les règles par entité', () => {
+test('ADR-0044 §6 (cible révisée ADR-0052 D7) : formulaires GÉNÉRIQUES → « Contrats », APRÈS les règles par entité', () => {
   const c = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs']);
   const D = '03 · Logement & véhicule';
   const d03 = c.tableMissions_().filter((m) => m.tag === 'dispatch03')[0];
@@ -1213,7 +1339,9 @@ test('ADR-0044 §6 : formulaires GÉNÉRIQUES → « Modèles & formulaires », 
     { nom: '3987 rte des Rivières', id: 'l3987', jetons: ['3987', 'rivieres'] },
   ], fenetres: [] };
   const infoC = { sourceId: c.CONFIG.MISSIONS_IDS.contrats03, sousChemin: '' };
-  const attendu = { cibleParentId: c.CONFIG.DOMAINES[D], cibleNom: 'Modèles & formulaires', sousDossier: '' };
+  // D7 : le nœud « Modèles & formulaires » a cédé sa place à « Travaux & équipements » ; ce qui
+  // compte reste que la mission et le FLUX visent la MÊME cible — c'est l'objet de ce test.
+  const attendu = { cibleParentId: c.CONFIG.DOMAINES[D], cibleNom: 'Contrats', sousDossier: '' };
 
   // Les 8 fichiers RÉELS de `03 · Contrats` (4 CORPIQ, 2 MA8, 2 Proprio Expert).
   // ⚠️ « Immeubles MA8 » ne figure PLUS ici : Marc a donné son adresse le 2026-08-20, il est entré
@@ -1225,7 +1353,7 @@ test('ADR-0044 §6 : formulaires GÉNÉRIQUES → « Modèles & formulaires », 
   ].forEach((nom) => {
     assert.deepStrictEqual(JSON.parse(JSON.stringify(d03.router(nom, infoC, ctx))), attendu, 'MISSION — ' + nom);
     // TRIPWIRE de convergence : le flux calcule la MÊME cible (sinon la conso défait).
-    assert.strictEqual(c.cheminCibleReset_(D, nom), 'Modèles & formulaires', 'FLUX — ' + nom);
+    assert.strictEqual(c.cheminCibleReset_(D, nom), 'Contrats', 'FLUX — ' + nom);
   });
 
   // 🔴 LE SPÉCIFIQUE GAGNE : un formulaire ATTRIBUABLE part chez son entité, jamais dans les
@@ -1240,6 +1368,14 @@ test('ADR-0044 §6 : formulaires GÉNÉRIQUES → « Modèles & formulaires », 
   assert.strictEqual(c.estModeleOuFormulaire_('formulaire de consentement'), true);
   assert.strictEqual(c.estModeleOuFormulaire_('formulaire-de-consentement'), true);
   assert.strictEqual(c.estModeleOuFormulaire_('contrat de bail'), false);
+  // ⚠️ CAS DISCRIMINANT (revue flotte) : les deux noms ci-dessus sont AUSSI captés par le filet
+  // générique de fin de branche ('formulaire de demande de location', 'consentement'), qui rend le
+  // même « Contrats » — depuis que D7 a aligné les deux cibles, le test était devenu TAUTOLOGIQUE
+  // (mutation jouée : retirer `estModeleOuFormulaire_` du flux laissait le test vert). Celui-ci,
+  // réel et présent au corpus, n'est capté QUE par `estModeleOuFormulaire_`.
+  assert.ok(c.estModeleOuFormulaire_('Formulaire de dépôt de garantie'));
+  assert.strictEqual(c.cheminCibleReset_(D, '2023-05-27_Formulaire de dépôt de garantie_CORPIQ.pdf'),
+    'Contrats', 'FLUX — seul `estModeleOuFormulaire_` capte ce nom');
 });
 
 test('ADR-0044 §7 : les dossiers-années de 02 sortent vers leur VRAI domaine, cible calculée par LE FLUX', () => {

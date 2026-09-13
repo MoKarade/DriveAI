@@ -4,7 +4,158 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🟦 EN COURS — 2026-09-13 : C28-87 (chantier #47), « pas de fichiers libres » — ADR-0052.**
+> **🟦 EN COURS — 2026-09-13 (suite) : C28-89, les deux arbitrages de Marc appliqués (ADR-0052 §7).**
+> #338 est **mergé** (`main` = 0d53c8a) et **déployé** : `deploy.yml` run #324 vert sur les deux
+> cibles. Marc a ensuite tranché D6 et D7, et ce lot les livre.
+>
+> **D6 · `06 · Études`** — Marc a donné son parcours : « Imerir 2020 2023 ulco saint omer 2018 2020
+> Eiffel 2017 2018 », puis, à la question sur les deux écoles manquantes, « Cegep de Sherbrooke
+> c'est 2019 **en même temps que ULCO** et lycée Thérèse davilla c'est genre 2014 2017 ».
+> `RESET_FENETRES_ECOLE` + `ecoleParDateReset_` (PURE) — même idiome que les fenêtres d'occupation
+> des logements (ADR-0040), bornées au MOIS à la convention sept → août : sans ce découpage,
+> 83 fichiers tombaient dans deux fenêtres et étaient refusés pour rien.
+> ⚠️ **La fenêtre de Sherbrooke ne sert pas à PLACER, elle sert à EMPÊCHER de placer.** Tout
+> document de 2019 tombe dans deux fenêtres et reste non attribué : 28 fichiers de moins placés,
+> et zéro mal placé. C'est LA raison pour laquelle la question valait d'être posée — sans elle, les
+> documents de Sherbrooke seraient partis chez l'ULCO avec une clé de SUCCÈS, en silence et sans
+> retour. Ordre de décision : nom de l'école → marqueur de niveau/filière (« 2nde », « GIM1 »,
+> « GIM », « 1ʳᵉ année ») → fenêtre. **143 des 475 placés, sur les 5 écoles** : 34 par un FAIT
+> écrit dans le nom, 109 par les fenêtres.
+>
+> **D7 · `03 · Logement`** — « fusionner Contrats + Modèles ». `Modèles & formulaires` disparaît de
+> la structure, sa place va à `Travaux & équipements`. Les 6 formulaires réellement présents dans
+> l'ancien nœud sont tous locatifs : `Contrats` est leur place. La mission `dispatch03` suit dans le
+> MÊME commit, sinon elle recréait le nœud PAR NOM à chaque passage pendant que le flux rangeait
+> ailleurs. **6 des 8 restants placés** (les 2 derniers ne sont pas de l'équipement : une capture
+> d'annonce, une liste d'achats pour le VÉHICULE).
+>
+> **Bilan : 347 des 683 — et 204 sur 208 hors `06`.**
+>
+> **Revue flotte sur D6/D7 : 2 agents, 2 🔴 + 10 🟠/🟡 intégrés.** Ce qui a failli passer :
+> `STRUCTURE_CIBLE_RESET` écrivait `Lycée Thérèse d'Avila` alors que le dossier RÉEL de Marc
+> s'appelle `lycée Thérèse d'Avila` — **l minuscule**. `getFoldersByName` est sensible à la casse :
+> un second dossier serait né à côté du sien et 143 fichiers y seraient partis (le « 3987 route »
+> vs « 3987 rte » de `03`, en pire). Et la fenêtre de Sherbrooke ne suffisait pas : le dossier réel
+> contient des fichiers de 2018 à 2025, donc 5 documents de cégep de 2020-2023 partaient chez
+> l'ULCO et l'IMERIR. D'où `vetoCollegialReset_`. Sept marqueurs sur neuf avaient une contribution
+> NULLE mesurée (dont `svt`, qui produisait une contradiction dans le corpus : deux fichiers du même
+> jour, même événement, deux écoles) et quatre étaient INATTEIGNABLES — il n'en reste que deux.
+> Deux tests ne prouvaient rien : l'un asserte `String(null).length > 0` (toujours vrai), l'autre
+> était devenu tautologique en changeant sa valeur attendue.
+
+> **🟦 EN COURS — 2026-09-13 : C28-90, le rattrapage du stock est LANCÉ.**
+> Marc : « fais la préparation de C28-90 et lance le rattrapage ». La préparation d'abord, le
+> conflit de structure de `06` tranché par Marc ensuite, et le bump `conso-3 → conso-4` seulement
+> après. Marc a aussi choisi « lance direct » plutôt que de relire le plan.
+>
+> **Fait** : (1) budget réalloué, consolidation 2 → 10 min/j repris aux missions (10 → 2, toutes
+> terminées) — le couple reste à 12 min/j, réallocation et non hausse d'enveloppe ; (2) les règles
+> que les missions étaient seules à connaître sont remontées dans la règle partagée — le flux vise
+> désormais `Assurance habitation/<Assureur>` et `Énergie & services/<Fournisseur>` via le MÊME
+> `bucketEmetteur_` que `dispatch03`, et les 4 buckets sont déclarés dans la table ; (3) **D9 — on
+> ne remonte jamais un fichier vers un de ses ancêtres**. Mesuré sur le Drive réel : sans cette
+> garde, les 6 sous-dossiers thématiques de `Logement/3325 4e avenue` et les 4 buckets d'émetteur
+> créés le 12/09 étaient remontés d'un cran, sans validation ligne à ligne.
+>
+> **Le conflit qui a fait attendre le bump.** Les 4 nœuds d'école visés par D6 étaient EXACTEMENT
+> les 4 sources de la mission `archives06`, dont l'objet était de les VIDER vers des archives aux
+> autres noms (`ULCO — DUT GIM`, `Prépa PTSI`…) et qui les déclarait `sourcesJetables` — donc peints
+> en rouge pour suppression. Son commentaire disait « le flux ne les recrée pas, il vise l'archive » :
+> vrai du chemin par ENTITÉ, FAUX du chemin par TABLE, qui résout par NOM. Avant D6 la contradiction
+> portait sur 11 fichiers ; D6 la portait à 143.
+> **Marc a tranché : « mes 5 dossiers d'école ».** La mission est INVERSÉE dans le même commit —
+> l'archive rend son contenu à l'école — avec un tag et une clé NEUFS (`retour-ecoles06`), sans quoi
+> les fichiers déjà déplacés dans l'autre sens portaient une clé de SUCCÈS et n'auraient jamais été
+> repris. `sourcesJetables` passe à `[]` : `Archives scolaires` contient trois autres dossiers que la
+> mission ne touche pas, et peindre en rouge un parent partiellement vidé est le défaut « tracer ce
+> qui se passe si l'utilisateur OBÉIT au signal ».
+>
+> **`CONSOLIDATION_TAG` : conso-3 → conso-4.** Les 683 sont ré-évalués sous les règles courantes ;
+> 347 ont une cible. `CONSOLIDATION_EXEC_ACTIF` reste à `true` (déplacement seul, aucune suppression).
+>
+> ⚠️ **À CONFIRMER par Marc** : il a dit « lycée Thérèse davilla c'est **genre** 2014 2017 », mais
+> deux dossiers qu'il a nommés lui-même disent `Lycée — Thérèse Davila (2017-2018)` et
+> `Collège & Lycée — divers (2014-2017)`. Si la seconde lecture est la bonne, ~26 fichiers de
+> 2014-2016 partent chez Avila alors qu'ils sont du collège. La fenêtre retenue est celle qu'il a
+> ÉNONCÉE ; le doute est écrit. Conséquence bornée : 26 fichiers dans le mauvais dossier, tous
+> dans `06`, récupérables par un bump de règles.
+>
+> **La revue sécurité a BLOQUÉ le merge, et c'est elle qui a rendu le lancement sûr.** Verdict 🔴
+> sur trois défauts, tous reproduits sur le code réel, tous corrigés avant le merge :
+> (1) le drapeau « signal faible » (D8) n'était posé que sur DEUX des chemins décidés par le seul
+> TYPE — les filets internes de la table (`Contrats`, `Correspondance`, `Travaux & équipements`,
+> `Véhicule/À attribuer`) rendaient une cible non marquée, donc gagnante contre un rangement
+> existant : **16 des 36 fichiers ciblés de `03`, soit 44 %**, traversaient la garde sans être vus ;
+> (2) **ni D8 ni D9 n'étaient rejouées au moment du `moveTo`** — l'exécuteur recalculait la cible
+> mais jugeait la position sur l'instantané du plan : les deux gardes n'existaient qu'au dry-run,
+> alors que les missions et le flux tournent APRÈS lui dans le même tick ; (3) **D9 n'avait aucun
+> test** — neutralisée, la suite restait verte à 1241/1241, et son jsdoc annonçait « (testée) ».
+> Correctifs : le drapeau est posé PAR la ligne qui décide (`faibleReset_`) et recueilli, jamais
+> re-dérivé ; `decisionConsolidation_` — la MÊME fonction que le plan — est rappelée avant chaque
+> mutation ; D8/D9 sont testées aux deux niveaux. **Les cinq correctifs sont prouvés par mutation.**
+>
+> Quatre 🟠 corrigés dans la foulée : le rouge « bon pour suppression » posé sur les 4 dossiers
+> d'école par l'ancienne mission n'avait **aucun chemin de retour** (`depeindreCiblesRemplies_` le
+> retire au premier run, sur les dossiers qui ne sont plus vides) ; l'exécuteur pouvait appliquer les
+> lignes de `conso-3` sous la clé `conso-4` au premier tick du bump (garde de tag) ; le vocabulaire
+> des cours volait `<école>/Administratif` (« Fiche d'inscription », « Convention de stage ») ; et le
+> corpus de preuve ne contenait pas la population que D9 protège — les 2 sous-dossiers thématiques
+> réels de `3325 4e avenue` y sont, et neutraliser D9 fait désormais tomber le test de corpus.
+>
+> **La contre-revue a rouvert le dossier, et c'est la bonne nouvelle.** Les trois 🔴 du premier tour
+> étaient bien fermés, mais deux portes restaient ouvertes — dont une plus large que celles qu'on
+> venait de fermer. (1) **Une cible VIDE remontait les fichiers à la RACINE du domaine** : quand
+> aucune règle ne sait placer un document, la décision proposait de le sortir de son dossier pour
+> le mettre à plat — l'inverse exact de ce que tu as demandé. Mesuré sur le corpus réel, en plaçant
+> les 475 noms de `06` dans un dossier d'école (ce que `retour-ecoles06` est en train de faire) :
+> **332 repartaient à la racine ; maintenant 0**. Défaut pré-existant, mais ce lot en faisait
+> l'autorité au moment du déplacement — et un test ajouté au premier tour le figeait en contrat.
+> (2) **Le retrait du rouge ne s'exécutait jamais** : il était posé au premier run, avant le
+> drainage, alors que les dossiers sont rouges *parce qu'*ils sont vides — la passe ne faisait rien
+> et le drapeau « c'est fait » était consommé quand même. Il vit désormais à la CONVERGENCE de la
+> mission (quand elle a fini de verser), avant le drapeau de fin, et une passe coupée ne conclut
+> pas. (3) Quatre filets par type de `01`/`06` n'étaient pas marqués « signal faible », dont celui
+> qui envoyait **le passeport d'un proche rangé sous `Autres/<personne>` dans le dossier d'identité
+> de Marc** dès que son prénom n'est pas dans le nom.
+>
+> **Troisième passe : 🟢 sur les garde-fous, et le retrait du rouge réécrit une fois de plus.** §1
+> (04, aucune suppression) et la convergence de la campagne vérifiés par exécution ; les 4 marquages
+> « signal faible » ne coûtent **aucun** rangement attendu (mesuré sur les 683 : 0 régression). Mais
+> le retrait du rouge, posé à la convergence de la mission, ne pouvait toujours pas marcher : **la
+> mission n'est pas la seule à remplir ces dossiers** — la consolidation y enverra 143 fichiers
+> pendant des semaines APRÈS, quand plus aucun run n'y revient (reproduit : 20 ticks après
+> remplissage, 0 dé-peint). C'est maintenant une **sonde quotidienne** indépendante de la mission,
+> qui s'arrête quand plus rien n'est vide (ou après un mois — un dossier vide depuis un mois l'est
+> pour de bon, et son rouge est alors VRAI). Au passage : ce chemin-là était le seul à pouvoir
+> boucler sans filet anti-brûlage et à affamer les 5 autres missions.
+>
+> ⚠️ **Honnêteté sur la preuve** : les 4 marquages n'ont aucune couverture sur données RÉELLES —
+> 0 des 683 noms du corpus les déclenche, et les fichiers qu'ils protègent (ceux déjà dans tes
+> dossiers d'école) sont aujourd'hui **absents de Drive**, l'ancienne mission les ayant tous envoyés
+> aux archives. La preuve tient sur des noms réalistes en test. Quand `retour-ecoles06` aura rendu
+> leur contenu aux écoles, le corpus pourra être régénéré et cette classe deviendra mesurable.
+>
+> Vérifié dans Drive plutôt que déduit : le libellé `lycée Thérèse d'Avila` de la table et le dossier
+> réel de Marc sont **identiques octet pour octet** (NFC, apostrophe droite) — pas de dossier jumeau
+> par normalisation Unicode. La couleur réelle des 4 dossiers, elle, **n'est pas lisible** par l'API
+> dont je dispose (`folderColorRgb` n'est pas exposé) : la dé-peinture est donc posée sans condition
+> préalable, ce qui est sans risque (elle ne touche que des dossiers NON vides).
+>
+> ⚠️ **À VÉRIFIER EN PROD après déploiement** (le vrai signal, jamais le statut du run) : le plan de
+> consolidation doit se REMPLIR (onglet `PlanConsolidation` purgé puis re-généré sous `conso-4`),
+> puis les racines de domaine doivent se VIDER — `08 · Perso & projets` (115 au 13/09) et
+> `01 · Administratif & identité` (13) sont les deux compteurs les plus lisibles.
+>
+> **Ce qui reste, et ce que « lit et classe mieux » veut dire (C28-92).** 328 fichiers de `06`, dont
+> **239 datés `2026`** : la date de RÉCEPTION, faute de date lisible à l'import. Le nom est épuisé
+> (15 marqueurs sur 349 mesurés). La lecture LLM a bien un travail utile ici, mais **pas celui qu'on
+> croyait** : elle ne trouvera pas l'école (prouvé sur deux documents ouverts), elle trouvera la
+> **DATE** — le TP de physique lu pendant l'analyse porte « 09/10/2017 » dans son en-tête. Re-dater
+> suffit à les faire tomber dans les fenêtres de D6. C'est la campagne `reanalyse` existante,
+> ≈ 8,6 $, dans l'enveloppe approuvée. À livrer APRÈS C28-90 (sans rattrapage du stock, un document
+> re-daté resterait là où il est).
+>
+> **✅ MERGÉ ET DÉPLOYÉ — 2026-09-13 : C28-87 (chantier #47), « pas de fichiers libres » — ADR-0052 (#338).**
 > Marc : « je veux mes 01 02 03 etc et pour chaque des sous dossiers **mais pas de fichiers
 > libres** » ; en cas d'hésitation : « qu'ça aille dans les bons sous dossiers **ou que ça me
 > propose des sous sous dossiers à créer** ». Il avait aussi approuvé une campagne LLM de

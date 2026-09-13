@@ -14,6 +14,35 @@
 
 ---
 
+## 2026-09-13 — Une garde n'existe qu'aux endroits qui la CONSULTENT : instrumenter un chemin ne couvre pas ses frères, et un plan n'est pas une mutation
+**Contexte.** Lancement du rattrapage du stock (C28-90, ADR-0052). Deux gardes neuves, D8 (« un
+signal faible ne déplace pas ce qui est déjà rangé ») et D9 (« on ne remonte jamais un fichier vers
+un de ses ancêtres »), écrites, testées sur corpus, annoncées à Marc comme ce qui rend le bump sûr.
+La revue sécurité adversariale, passée AVANT le merge, a rendu 🔴 sur les trois mêmes lignes de
+faille. (1) Le drapeau `faible` n'était posé qu'à DEUX endroits — le repli `bucketTypeDomaine_` et
+la fenêtre d'école — alors que la table de routage porte SES PROPRES filets par type (`Contrats`,
+`Correspondance`, `Travaux & équipements`, `Véhicule/À attribuer`) : 16 des 36 fichiers ciblés de
+`03` (44 %) traversaient D8 sans être vus, et la frontière entre protégé et déplacé était
+arbitraire (« Échange de messages » sauvé, « Lettre » non). Pire, le drapeau école se RE-DÉRIVAIT du
+nom au lieu d'être posé par la règle qui décide — il se posait donc aussi sur une branche qui rend
+AVANT tout calcul d'école. (2) `ConsolidationExec` recalculait la CIBLE à l'état courant (garde
+existante) mais jugeait la POSITION sur l'instantané du plan : ni D8 ni D9 n'étaient consultées
+avant le `moveTo` — elles n'existaient qu'au dry-run, alors que les missions et le flux tournent
+APRÈS l'exécuteur dans le même tick. (3) D9 n'avait AUCUN test : neutralisée en `if (false && …)`,
+la suite restait verte à 1241/1241, et son jsdoc annonçait « PURE (testée) ».
+**Leçon.** « Trois questions à poser à toute garde qu'on vient d'écrire, avant de l'annoncer comme
+telle. (a) *Qui la POSE ?* — un marqueur de qualification (faible/fort, raison, trace) se pose PAR
+la ligne qui décide, jamais re-dérivé du résultat rendu ; et il faut inventorier les FRÈRES de cette
+ligne : instrumenter le repli générique ne couvre pas les filets écrits ailleurs qui rendent le même
+GENRE de verdict. (b) *Qui la CONSULTE ?* — une garde affichée au plan/dry-run n'est pas une garde ;
+elle se ré-applique au point de MUTATION, en appelant la MÊME fonction, sinon elle décore. (c) *Que
+se passe-t-il si je la neutralise ?* — si la suite reste verte, elle n'est pas testée, quel que soit
+ce que son jsdoc affirme. Et le corpus de preuve doit contenir la population que la garde PROTÈGE :
+un corpus dont chaque ligne est sauvée par une autre règle ne peut rien détecter. »
+**Règle durable ?** oui — CLAUDE.md §9.
+
+---
+
 ## 2026-08-06 — Un « signal de certitude runtime » n'existe que s'il est DANS le code committé ET déployé : ne jamais renvoyer l'utilisateur vers une fonction de diagnostic citée de mémoire
 **Contexte.** Suite du diagnostic « le drain de 05 avance-t-il ? ». Depuis plusieurs sessions je
 renvoyais Marc (et moi-même) vers une fonction un-clic `diagnosticRangement2` censée dumper l'état

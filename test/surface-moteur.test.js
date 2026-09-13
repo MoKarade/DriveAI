@@ -66,6 +66,7 @@ const CONTRAT = [
   'budgetJourMissions_', 'cleMission_', 'apparierUnique_', 'jetonsCible_', 'logementParDate_',
   'dateDuNomMission_', 'fenetresOccupation_', 'ciblesAvecJetons_', 'collecterMission_',
   'traiterItemMission_', 'peindreDossierRouge_', 'peindreSourcesVides_', 'estDossierVideMission_',
+  'depeindreDossier_', 'depeindreCiblesRemplies_', 'assurerDepeintureCibles_',
   // C28-49 PR2 : Carrière + Finances.
   'employeurDuNom_', 'typeDuNomMission_', 'anneeDuNomMission_', 'typeContient_',
   'routerFinance02_', 'sousDossierEmployeur_', 'routerCarriere_', 'moisManquantsPaies_',
@@ -227,12 +228,12 @@ const CONTRAT = [
   // INTER-MODULE, donc invisible des tests unitaires mockés si elle disparaissait.
   'bucketTypeDomaine_', 'estDocumentIdentiteReset_',
   // `segmentsChemin_` vit dans Router.gs et est appelée depuis ConsolidationExec.gs.
-  'segmentsChemin_',
+  'segmentsChemin_', 'estSousCheminDe_', 'ecoleParDateReset_',
   'estCibleInterdite_', // C28-31 : année/type d'identité ne sont JAMAIS parents d'un regroupement
   'segmentsSousDomaine_', 'dossierEntiteParId_', // ADR-0028 : confinement + chemin réel, et le RÉSOLVEUR UNIQUE par ID — Router.gs, appelés AUSSI par ConsolidationExec.gs
   'seedEntitesMarc_', // seed one-shot des entités de Marc (décision 2026-07-17), appelé depuis Main
   // exécution du plan de consolidation (ADR-0024) — moveTo seul, §1 par mutation, cible recalculée
-  'appliquerPlanConsolidation_', 'appliquerLigneConsolidation_', 'domaineActuelFichier_',
+  'appliquerPlanConsolidation_', 'appliquerLigneConsolidation_', 'positionActuelleFichier_',
   'ligneAAppliquer_', 'budgetJourConsoExec_', 'dossierCiblePlan_', 'nbParentsBorne_',
   // RESET complet (C28-33, ADR-0030 PR2) — rassemblement/placement/04 interne, appelés depuis Main ;
   // resetEnCours_ suspend conso-2/réorg-auto (ADR-0030 « Transition ») ; réutilisent detecterDossierVide_

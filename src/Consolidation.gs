@@ -78,8 +78,20 @@ function cheminCibleConsolidation_(domaine, nom, validees) {
   // flux↔conso↔reset par CONSTRUCTION. `id=''` : le chemin thématique EST la structure (pas d'ID
   // d'entité ; l'exécuteur `dossierCiblePlan_` sait déjà résoudre un nom multi-segments). Repli sur
   // la règle historique (entité validée / année / type d'identité) quand le Reset rend null.
-  var relReset = cheminCibleReset_(domaine, nom);
-  if (relReset) return { nom: relReset, id: '' };
+  // C28-90 (revue sécurité) — `detail` recueille le drapeau FAIBLE posé PAR la ligne de la table
+  // qui a décidé (`faibleReset_`, Reset.gs) : filet par TYPE (un « Contrat » sans bailleur, une
+  // « Lettre » sans émetteur connu) ou école DÉDUITE d'une fenêtre de scolarité. Ces cibles-là
+  // sortent un fichier de la RACINE d'un domaine, jamais d'un sous-dossier où une mission — ou
+  // Marc — l'a rangé (D8, `decisionConsolidation_`).
+  // ⚠️ Ce drapeau ne se RE-DÉRIVE pas du chemin rendu : `'Contrats'` ne dit pas si c'est l'entité
+  // ou le type qui a répondu. La 1ʳᵉ version le re-calculait depuis le nom et le posait aussi sur
+  // la branche `Diplômes & relevés officiels`, qui rend AVANT tout calcul d'école (leçon §9 :
+  // « un verdict pris sur la donnée RICHE ne se re-dérive jamais depuis sa forme APPAUVRIE »).
+  var detail = {};
+  var relReset = cheminCibleReset_(domaine, nom, detail);
+  if (relReset) {
+    return detail.faible ? { nom: relReset, id: '', faible: true } : { nom: relReset, id: '' };
+  }
 
   var seg = analyserNomClasse_(nom);
   // IDENTITÉ — MÊME repli que le flux vivant (`repliIdentite_`, Router.gs), jamais une seconde
@@ -90,6 +102,10 @@ function cheminCibleConsolidation_(domaine, nom, validees) {
   // l'exécuteur RE-CRÉAIT le nœud parasite par nom — le correctif du flux annulé par la campagne
   // voisine, silencieusement, avec une CI verte. C'est la leçon §9 « une seule règle, deux
   // consommateurs » prise en flagrant délit.
+  // FORT, volontairement (arbitrage C28-90, revue de code 🟠 3) : le repli d'identité vise
+  // `Pièces d'identité/<titulaire>` — le domicile THÉMATIQUE d'un passeport, pas un fourre-tout.
+  // Comme `État civil & notarial` et `Diplômes & relevés officiels`, il garde le pouvoir de
+  // rassembler depuis un sous-dossier (critère détaillé sur `marquerFaibleReset_`, Reset.gs).
   if (seg.type) {
     var t = normaliserTypeIdentite_(seg.type);
     if (TYPES_IDENTITE.indexOf(t) !== -1) {
@@ -120,14 +136,35 @@ function cheminCibleConsolidation_(domaine, nom, validees) {
  * @param {{domaine:string, sousCheminActuel:string, sousCheminCible:string, protege:boolean,
  *          protegeIllisible:boolean, raccourci:boolean, doublonDe:?string,
  *          parentId:?string, dossierIdCible:?string, cibleFaible:?boolean}} d
- *   cibleFaible (ADR-0052 D8) : la cible ne vient QUE du type du document (repli `bucketTypeDomaine_`)
- *   — elle suffit à sortir un fichier de la racine, jamais à le déplacer d'un sous-dossier.
+ *   cibleFaible (ADR-0052 D8) : la cible ne vient QUE du type du document — repli
+ *   `bucketTypeDomaine_`, filets par type de la table (`faibleReset_`, Reset.gs) et école déduite
+ *   d'une fenêtre de scolarité. Elle suffit à sortir un fichier de la racine d'un domaine, jamais
+ *   à le déplacer d'un sous-dossier.
  *   parentId/dossierIdCible (ADR-0028) : égalité d'ID = « déjà au bon endroit », À TOUTE PROFONDEUR,
  *   évaluée AVANT la comparaison textuelle des sous-chemins. Absents ⇒ comportement textuel d'avant.
  *   protege = zone protégée CONSTATÉE (détection positive) ; protegeIllisible = contrôle §1
  *   illisible (abstention prudente, raison HONNÊTE — le plan que Marc valide ne doit pas mentir).
  * @return {{action:string, cible:string, raison:string}}
  */
+/**
+ * Vrai si `actuel` est STRICTEMENT PLUS PROFOND que `cible` et commence par elle, segment par
+ * segment — c'est-à-dire si la cible est un ANCÊTRE de la position actuelle. PURE.
+ *
+ * La comparaison est faite SEGMENT par SEGMENT, jamais par `indexOf` de chaîne : « Contrats » est
+ * un préfixe de chaîne de « Contrats divers », qui est un dossier DIFFÉRENT. Le piège est le même
+ * que celui des motifs en sous-chaîne du routage, et il coûterait ici un fichier qui ne bouge plus.
+ * @param {string} actuel  sous-chemin actuel, relatif au domaine
+ * @param {string} cible   sous-chemin calculé, relatif au domaine
+ * @return {boolean}
+ */
+function estSousCheminDe_(actuel, cible) {
+  var a = String(actuel || '').split('/').filter(Boolean);
+  var c = String(cible || '').split('/').filter(Boolean);
+  if (!c.length || a.length <= c.length) return false; // cible vide ⇒ D8 s'en charge ; pas plus profond ⇒ rien à dire
+  for (var i = 0; i < c.length; i++) if (a[i] !== c[i]) return false;
+  return true;
+}
+
 function decisionConsolidation_(d) {
   if (d.protege) {
     return {
@@ -154,6 +191,28 @@ function decisionConsolidation_(d) {
   if (String(d.sousCheminActuel || '') === String(d.sousCheminCible || '')) {
     return { action: 'OK', cible: cible, raison: 'Déjà au bon endroit' };
   }
+  // C28-90 / ADR-0052 D9 — ON NE REMONTE JAMAIS UN FICHIER VERS UN DE SES ANCÊTRES.
+  // Quand la cible calculée est un PRÉFIXE du chemin actuel, le fichier est déjà là où on veut
+  // l'envoyer, en PLUS PRÉCIS. Cela ne veut pas dire qu'il est mal rangé : cela veut dire que la
+  // règle générale en sait MOINS que celui qui l'a rangé — une mission qui range par thème
+  // (`Logement/3325 4e avenue/Correspondance`) ou par émetteur
+  // (`Assurance habitation/Desjardins`), ou Marc lui-même.
+  //
+  // C'est la garde qui rend le BUMP DE CAMPAGNE sûr (C28-90). Sans elle, la passe fraîche
+  // proposait de remonter d'un cran TOUT ce que les missions de C28-84/85 venaient de classer :
+  // mesuré sur le Drive réel, les 6 sous-dossiers thématiques de `Logement/3325 4e avenue` et les
+  // 4 buckets d'émetteur créés le 12/09. `ConsolidationExec` applique sans validation ligne à
+  // ligne : l'erreur aurait été muette, massive, et exactement l'inverse du travail demandé.
+  //
+  // Ce que la garde N'EMPÊCHE PAS : un déplacement LATÉRAL (`Contrats` → `Logement/<adresse>`) ni
+  // un approfondissement (`Assurance habitation` → `Assurance habitation/MAIF`). Le rattrapage
+  // garde donc tout son pouvoir ; il perd seulement celui de défaire un rangement plus fin.
+  if (estSousCheminDe_(d.sousCheminActuel, d.sousCheminCible)) {
+    return {
+      action: 'OK', cible: d.domaine + '/' + d.sousCheminActuel,
+      raison: 'Déjà rangé plus finement (' + d.sousCheminActuel + ') — jamais remonté (C28-90)',
+    };
+  }
   // ADR-0052 D8 — UN SIGNAL FAIBLE NE DÉPLACE PAS CE QUI EST DÉJÀ RANGÉ. Le repli par TYPE ne lit
   // que le type du document : il ignore tout ce qui a pu justifier le rangement actuel (une mission
   // qui range par bailleur ou par fenêtre d'occupation, un geste de Marc, un dossier d'entité pas
@@ -169,15 +228,29 @@ function decisionConsolidation_(d) {
       raison: 'Déjà dans un sous-dossier — le repli par type ne déplace pas (ADR-0052 D8)',
     };
   }
+  // C28-90 (trouvé en vérifiant la revue) — UNE CIBLE VIDE NE REMONTE JAMAIS UN FICHIER À LA RACINE.
+  // « Aucune règle, pas même le type, n'a su placer ce document » est un constat d'IGNORANCE : il ne
+  // dit rien du rangement actuel, et il ne peut donc pas le défaire. Or la collecte est RÉCURSIVE
+  // sur tout le domaine : sans cette ligne, un fichier bien rangé dont le nom n'apprend rien (ex.
+  // « Attestation_Coursera » sous `06/Archives scolaires/Online course — AI Essentials ») recevait
+  // un « Déplacer » vers la RACINE du domaine — c'est-à-dire vers le vrac que cette campagne existe
+  // pour vider, et que `HistoriqueVrac` compte comme dette. Le constat reste DIT dans la raison,
+  // pour que Marc puisse trancher ; c'est le déplacement qui disparaît.
+  if (!String(d.sousCheminCible || '') && String(d.sousCheminActuel || '') !== '') {
+    return {
+      action: 'OK', cible: d.domaine + '/' + d.sousCheminActuel,
+      raison: 'Aucune règle ne sait le placer — laissé où il est, jamais remonté à la racine (C28-90)',
+    };
+  }
   // La RAISON est lue par Marc dans le plan qu'il valide : elle doit dire la vérité de la règle qui
-  // a décidé. Depuis ADR-0052, « pas de sous-chemin » ne veut plus dire « à la racine par défaut »
-  // mais « aucune règle, pas même le type, n'a su placer ce document » — ce qui est un constat très
-  // différent, et le seul cas où Marc doit intervenir lui-même.
+  // a décidé. ⚠️ Arrivé ici, `sousCheminCible` est TOUJOURS non vide : les deux sorties `OK`
+  // ci-dessus (déjà au bon endroit / jamais remonté à la racine) couvrent l'intégralité des cibles
+  // vides. Le ternaire qui s'y trouvait — et sa raison « racine du domaine, à trancher avec
+  // Marc » — était devenu du code MORT (vérifié par balayage exhaustif des couples possibles,
+  // 3ᵉ passe de revue) ; le garder aurait laissé croire à un chemin qui n'existe plus.
   return {
     action: 'Déplacer', cible: cible,
-    raison: d.sousCheminCible
-      ? 'Entité/année validée, ou type de document (ADR-0052)'
-      : 'Aucune règle ne sait le placer — racine du domaine (ADR-0052 : à trancher avec Marc)',
+    raison: 'Entité/année validée, ou type de document (ADR-0052)',
   };
 }
 

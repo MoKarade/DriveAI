@@ -562,7 +562,26 @@ var CONFIG = {
                                           // 2026-07-17 (« continue », post-correctifs revue flotte #183) :
                                           // le moteur remplit l'onglet PlanConsolidation (~12 min/j max,
                                           // AUCUNE mutation Drive). Repasser à false pour suspendre.
-  CONSOLIDATION_TAG: 'conso-3',           // tag de campagne (clé de convergence `conso|<tag>|<fileId>`).
+  CONSOLIDATION_TAG: 'conso-4',           // tag de campagne (clé de convergence `conso|<tag>|<fileId>`).
+                                          // conso-3 → conso-4 (2026-09-13, C28-90, demande de Marc
+                                          // « lance le rattrapage ») : les 683 fichiers à plat aux
+                                          // racines de domaine portent une clé de SUCCÈS conso-3
+                                          // posée avec « OK — racine du domaine », donc ADR-0052 ne
+                                          // les aurait JAMAIS revus. Le bump les ré-évalue sous les
+                                          // règles courantes : 347 d'entre eux ont désormais une
+                                          // cible. TROIS gardes rendent ce bump sûr, toutes posées
+                                          // dans ce chantier et prouvées par mutation :
+                                          //  · D8 — une cible issue du seul TYPE ne déplace jamais
+                                          //    un fichier déjà rangé dans un sous-dossier ;
+                                          //  · D9 — on ne REMONTE jamais un fichier vers un de ses
+                                          //    ancêtres (mesuré : sans elle, les 6 thèmes de
+                                          //    `Logement/3325 4e avenue` et les 4 buckets d'émetteur
+                                          //    du 12/09 remontaient d'un cran) ;
+                                          //  · une école DÉDUITE d'une fenêtre de scolarité est un
+                                          //    signal FAIBLE, au même titre que le repli par type.
+                                          // Et le conflit de structure de `06` a été tranché par
+                                          // Marc AVANT le bump (ADR-0052 §9) : la mission qui vidait
+                                          // ses dossiers d'école a été INVERSÉE, elle les remplit.
                                           // conso-1 → conso-2 (revue flotte 2026-07-21) : le plan conso-1
                                           // a pu se générer AVANT le seed des entités (cibles pré-seed :
                                           // dossiers de banque, noms périmés) — le bump purge et re-génère
@@ -577,7 +596,7 @@ var CONFIG = {
                                           // tout avec le référentiel courant (rotation dans genererPlan…)
   CONSOLIDATION_BUDGET_MS: 3 * 60 * 1000, // sous-budget PROPRE par run (le hash MD5 lit les octets — sans
                                           // cette borne, un run mangerait le budget des étapes suivantes)
-  CONSOLIDATION_BUDGET_JOUR_MS: 2 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
+  CONSOLIDATION_BUDGET_JOUR_MS: 10 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
                                           // un plafond par RUN ne borne pas la JOURNÉE — ×288 ticks > quota
                                           // runtime ~90 min/j ; patron GMAIL_HISTO/SYNC_BUDGET_JOUR_MS).
                                           // 20 → 12 min (REDESCENTE, revue quota C28-29) ; puis 12 → 2 min
@@ -585,9 +604,12 @@ var CONFIG = {
                                           // (9/9 domaines le 16/08) — ses 10 min partent aux MISSIONS de
                                           // curation (MISSIONS_BUDGET_JOUR_MS). COUPLE verrouillé par test :
                                           // conso-gen + missions = 12 min/j, enveloppe reset-OFF INCHANGÉE.
-                                          // 2 min suffisent à un redémarrage LENT si un nouveau plan naissait ;
-                                          // le jour où la conso doit VRAIMENT reprendre, rendre les 10 min
-                                          // (missions finies) — le test de couple force l'arbitrage.
+                                          // 2026-09-13, C28-90 : LE JOUR EST VENU. 2 → 10 min, repris aux
+                                          // missions (10 → 2), qui sont toutes terminées ou à jour. Le
+                                          // couple reste à 12 min/j — c'est une RÉALLOCATION, jamais une
+                                          // hausse de l'enveloppe (leçon §9). Les missions gardent 2 min :
+                                          // assez pour réagir à un fichier neuf, et `MISSIONS_BUDGET_JOUR_MS`
+                                          // à 0 avec `MISSIONS_ACTIF` vrai serait un no-op silencieux.
   CONSOLIDATION_MAX_PAR_RUN: 60,          // fichiers ajoutés au plan par run (40 → 60 ; le coût réel = le hash)
   // Exécution du plan (ConsolidationExec.gs, ADR-0024 — décision Marc 2026-07-17 « change tout live ») :
   CONSOLIDATION_EXEC_ACTIF: true,         // applique Déplacer/Doublon du PlanConsolidation (moveTo seul,
@@ -909,7 +931,7 @@ var CONFIG = {
                                           // ÉMETTEUR pour assurances et énergie — les ~28 refus des
                                           // missions logement/dispatch03/carrière se ré-évaluent.
   MISSIONS_BUDGET_MS: 90 * 1000,          // sous-budget par run (pure I/O moveTo — reste < mur standard)
-  MISSIONS_BUDGET_JOUR_MS: 10 * 60 * 1000, // budget QUOTIDIEN partagé entre missions, ms RÉELLES persistées.
+  MISSIONS_BUDGET_JOUR_MS: 2 * 60 * 1000, // budget QUOTIDIEN partagé entre missions, ms RÉELLES persistées.
                                           // RÉALLOUÉ (jamais ajouté) : les 10 min viennent de
                                           // CONSOLIDATION_BUDGET_JOUR_MS (12 → 2, gen terminée le 16/08).
                                           // Couple missions+conso-gen = 12 min/j verrouillé par test.
@@ -921,6 +943,8 @@ var CONFIG = {
                                           // INVISIBLES et la mission se déclarait « terminée » en les ignorant
                                           // — au-delà de la borne, signalé + mission maintenue OUVERTE)
   MISSIONS_FENETRE_MARGE_MS: 30 * 24 * 60 * 60 * 1000, // ± 30 j autour des dates observées d'un logement
+  MISSIONS_DEPEINTURE_MAX_JOURS: 30,      // sonde de dé-peinture : passes AVANT d'abandonner (§9 —
+                                          // un « chemin de retour » sans fin est un coût sans fin)
   MISSIONS_COULEUR_VIDE: '#f83a22',       // ROUGE Drive (palette standard) : « vidé, bon pour suppression »
                                           // — un SIGNAL pour Marc, jamais une suppression (§2)
   // IDs ÉPINGLÉS des dossiers de Marc (recon du 2026-08-17). Par ID et jamais par NOM : un renommage
@@ -947,13 +971,20 @@ var CONFIG = {
     correspondance03: '14qrPCSHsSLMT2XSJm1h6HOHGXNehx5uL',
     assuranceHab03: '1V_tiKNtUfgdwwrfigeFM2saEgYuKGR9Q',
     energieServices03: '1TBssvW9sSUVugsK8bNj-MQTtH6MT1-2s',
-    // 06 · Études — alias EXPLICITES dossier d'entité → Archives scolaires (jamais devinés ;
-    // Cégep de Sherbrooke n'a PAS d'archive → volontairement absent, rapporté par la mission) :
+    // 06 · Études — SENS INVERSÉ le 2026-09-13 (décision Marc, ADR-0052 §9 : « mes 5 dossiers
+    // d'école »). La mission `archives06` VIDAIT les dossiers d'école vers `Archives scolaires` et
+    // les peignait en rouge pour suppression ; or la table du flux les vise PAR NOM, et D6 y envoie
+    // désormais 143 fichiers. Les deux se seraient battus, et le rattrapage du stock (C28-90)
+    // aurait rendu le conflit effectif d'un coup.
+    // Marc a tranché : la structure, ce sont ses 5 dossiers d'école. La mission draine donc
+    // maintenant DANS L'AUTRE SENS — l'archive rend son contenu à l'école. `Cégep de Sherbrooke`
+    // n'a pas d'archive (il n'est pas listé) : rien à rapatrier pour lui.
+    // ⚠️ Le libellé de gauche est l'ARCHIVE (source), celui de droite le dossier d'ÉCOLE (cible).
     archives06: [
-      { src: '13pgIZArEdu3Ly-eHOJmTpdY0sj1qBwNb', cible: '1XdWSfTGZUj1HMgfRleI_9KunZFQb8TJV' }, // DUT ULCO → ULCO — DUT GIM
-      { src: '1NpsmzrQlZfFexVaTRtFaMefnErEvZDCL', cible: '1XQAMQXZOMxlFboIUVGSZVklWmuEvXodA' }, // Prépa G. Eiffel → Prépa PTSI
-      { src: '1Q0QBp3q_e9CqpKi6FZOwSvJg1ZbGR282', cible: '1pIIovCmN8o-GrROoyH8rfsziUUbcfeKK' }, // IMERIR → IMERIR — Ingénieur MSIR
-      { src: '157LXd0CwcPhc2S8C5Ftg_FFOqVuDfrZ9', cible: '1xcSm-mucmPSG-9jZHgvL_6Q_r3V6fath' }, // Thérèse d'Avila → Lycée — Thérèse Davila
+      { src: '1XdWSfTGZUj1HMgfRleI_9KunZFQb8TJV', cible: '13pgIZArEdu3Ly-eHOJmTpdY0sj1qBwNb' }, // ULCO — DUT GIM (2018-2020) → DUT ULCO Saint-Omer
+      { src: '1XQAMQXZOMxlFboIUVGSZVklWmuEvXodA', cible: '1NpsmzrQlZfFexVaTRtFaMefnErEvZDCL' }, // Prépa PTSI (2017-2018) → Prépa Gustave Eiffel (PTSI)
+      { src: '1pIIovCmN8o-GrROoyH8rfsziUUbcfeKK', cible: '1Q0QBp3q_e9CqpKi6FZOwSvJg1ZbGR282' }, // IMERIR — Ingénieur MSIR (2020-2023) → IMERIR
+      { src: '1xcSm-mucmPSG-9jZHgvL_6Q_r3V6fath', cible: '157LXd0CwcPhc2S8C5Ftg_FFOqVuDfrZ9' }, // Lycée — Thérèse Davila (2017-2018) → lycée Thérèse d'Avila
     ],
     // ---- PR2 (Carrière + Finances, recon du 17/08) ----
     revenusPaie: '1nPL2rWJFASUIyxkS5zPdy0iMsnWqsI5f',       // 02/« Revenus & paie » (cible paies, par employeur)

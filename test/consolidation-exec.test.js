@@ -10,7 +10,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { load } = require('./harness');
 
-const ctxPur = load(['Config.gs', 'Router.gs', 'ConsolidationExec.gs']);
+const ctxPur = load(['Config.gs', 'Router.gs', 'Consolidation.gs', 'ConsolidationExec.gs']);
 
 test('ligneAAppliquer_ : Déplacer/Doublon seulement — OK et Ignoré ne se touchent JAMAIS', () => {
   assert.strictEqual(ctxPur.ligneAAppliquer_('Déplacer'), true);
@@ -34,7 +34,7 @@ const PAR_ID = { DOMID: '02 · Finances' };
 
 function ctxLigne(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'Router.gs', 'ConsolidationExec.gs']);
+  const c = load(['Config.gs', 'Router.gs', 'Consolidation.gs', 'ConsolidationExec.gs']);
   const index = {};
   const ajouts = [];
   const moves = [];
@@ -49,25 +49,31 @@ function ctxLigne(opts) {
   // (plus de stub `champ_` : Router.gs est chargé, donc `segmentsChemin_` — la règle de
   // découpage partagée avec le flux vivant — s'exécute POUR DE VRAI ici.)
   // La cible est RECALCULÉE via la règle unique — mockée ici (testée pour de vrai dans consolidation.test.js).
-  c.cheminCibleConsolidation_ = () => ({ nom: opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : '2026', id: opts.dossierIdCible || '' }); // {nom,id} depuis l'ADR-0028
+  c.cheminCibleConsolidation_ = () => ({
+    nom: opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : '2026',
+    id: opts.dossierIdCible || '', faible: !!opts.cibleFaible, // {nom,id,faible} — ADR-0028 + D8
+  });
   // ADR-0028 : le RÉSOLVEUR PARTAGÉ vit dans Router.gs (non chargé ici) — mocké. Par défaut null
   // ⇒ repli par NOM, c'est-à-dire le comportement historique que ces tests verrouillent.
   c.dossierEntiteParId_ = (id) => (id && opts.entiteResoluble !== false
     ? { dossier: { getId: () => 'ENT:' + id }, segments: ['Anciens employeurs', 'Robovic'] } : null);
+  // ANCÊTRES : { id: { nom, parent } } — la chaîne que `positionActuelleFichier_` remonte POUR DE
+  // VRAI (nom des dossiers traversés = sous-chemin actuel). Sans elle, un parent n'avait jamais de
+  // parent : impossible de tester un fichier rangé PLUS PROFOND que la racine du domaine, donc
+  // impossible de voir que D8/D9 n'étaient pas rejouées à la mutation (revue sécurité C28-90).
+  const ancetres = opts.ancetres || {};
+  const iter = (ids) => { let i = 0; return { hasNext: () => i < ids.length, next: () => dossierMock(ids[i++]) }; };
+  function dossierMock(id) {
+    return {
+      getId: () => id,
+      getName: () => (ancetres[id] ? ancetres[id].nom : id),
+      getParents: () => iter(ancetres[id] ? [ancetres[id].parent] : []),
+    };
+  }
   const fichier = {
     // next() avance l'index LUI-MÊME (comme DriveApp) — un incrément caché dans getId() fausserait
     // le compteur de parents (vécu : hasNext éternel → faux « multi-parents »).
-    getParents: () => {
-      let i = 0; const p = opts.parents || ['DOMID'];
-      return {
-        hasNext: () => i < p.length,
-        next: () => {
-          const id = p[i++];
-          // Le parent-dossier expose aussi getParents (chaîne) : vide par défaut (racine atteinte).
-          return { getId: () => id, getParents: () => ({ hasNext: () => false, next: () => null }) };
-        },
-      };
-    },
+    getParents: () => iter(opts.parents || ['DOMID']),
     getName: () => opts.nom || 'f.pdf',
     getMimeType: () => opts.mime || 'application/pdf',
     moveTo: (dossier) => moves.push(dossier.getId()),
@@ -88,18 +94,81 @@ test('appliquerLigneConsolidation_ : Déplacer → cible RECALCULÉE (la colonne
   assert.strictEqual(ajouts[0].chemin, '02 · Finances/2026');
 });
 
-test('appliquerLigneConsolidation_ : recalcul « à plat » → racine du domaine ; recalcul = position actuelle → no-op', () => {
-  const plat = ctxLigne({ cibleRecalculee: '' });
+test('appliquerLigneConsolidation_ : une cible VIDE ne remonte JAMAIS un fichier rangé à la racine', () => {
+  // ⚠️ Ce test assertait l'INVERSE jusqu'au 13/09 (`moves === ['DOM']`) : il figeait en contrat un
+  // défaut latent — la consolidation, récursive sur tout le domaine, proposait de remonter à la
+  // RACINE tout fichier bien rangé dont le nom n'apprend rien. Mesuré par la revue sécurité sur le
+  // corpus réel : 332 des 475 noms de `06` placés dans un dossier d'école repartaient à la racine,
+  // c'est-à-dire l'exact inverse du mandat de la campagne (revue sécurité C28-90, 🔴).
+  const plat = ctxLigne({ cibleRecalculee: '', parents: ['SOUS'], ancetres: { SOUS: { nom: 'Relevés', parent: 'DOMID' } } });
   const r1 = plat.c.appliquerLigneConsolidation_({ fileId: 'F2', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, CTX_EXEC);
-  assert.strictEqual(r1, 'fait');
-  assert.deepStrictEqual(plat.moves, ['DOM'], 'sous-chemin vide = racine du domaine');
+  assert.strictEqual(r1, 'saute');
+  assert.deepStrictEqual(plat.moves, [], 'aucune règle ne sait le placer ⇒ on ne défait pas le rangement');
+  assert.strictEqual(plat.ajouts[0].statut, 'consolidé-sur-place');
+  assert.strictEqual(plat.ajouts[0].chemin, '02 · Finances/Relevés');
 
-  // Fichier DÉJÀ à la racine du domaine (parent = idDomaine_ 'DOM') et recalcul '' → aucun moveTo.
-  const enPlace = ctxLigne({ cibleRecalculee: '', parents: ['DOM'] });
-  enPlace.c.domaineActuelFichier_ = () => '02 · Finances'; // parent 'DOM' n'est pas dans PAR_ID — court-circuité
+  // Fichier DÉJÀ à la racine du domaine et recalcul '' → aucun moveTo, et plus aucune I/O : c'est
+  // `decisionConsolidation_` (« Déjà au bon endroit ») qui tranche, avant même de résoudre la cible.
+  const enPlace = ctxLigne({ cibleRecalculee: '' });
   const r2 = enPlace.c.appliquerLigneConsolidation_({ fileId: 'F3', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, CTX_EXEC);
-  assert.strictEqual(r2, 'fait');
+  assert.strictEqual(r2, 'saute');
   assert.deepStrictEqual(enPlace.moves, [], 'déjà en place : aucun moveTo (rejeu sûr)');
+  assert.strictEqual(enPlace.ajouts[0].statut, 'consolidé-sur-place');
+});
+
+/* ---------- D8 / D9 RE-APPLIQUÉES À LA MUTATION (revue sécurité C28-90, 🔴 2) ----------
+ * Le plan est un INSTANTANÉ : entre sa génération et son exécution, les missions et le flux
+ * tournent (dans le MÊME tick, APRÈS l'exécuteur). Un fichier peut donc avoir été rangé PLUS
+ * FINEMENT entre-temps. L'exécuteur recalculait la CIBLE à l'état courant mais jugeait la
+ * POSITION sur l'instantané : les deux gardes n'existaient qu'au dry-run.
+ * Mutation qui doit faire tomber ces trois tests : retirer l'appel à `decisionConsolidation_`
+ * dans `appliquerLigneConsolidation_` (le `moveTo` redevient inconditionnel). */
+test('appliquerLigneConsolidation_ : D9 à la MUTATION — un fichier rangé plus finement n\'est JAMAIS remonté', () => {
+  // Position réelle : « Assurance habitation/Desjardins » (bucket par émetteur créé par la mission
+  // le 12/09). Cible recalculée : « Assurance habitation » — un ANCÊTRE de la position, atteint par
+  // une règle FORTE (le thème est dans le nom, mais pas l'assureur). Le plan disait « Déplacer ».
+  const t = ctxLigne({
+    cibleRecalculee: 'Assurance habitation', parents: ['DESJ'],
+    ancetres: {
+      DESJ: { nom: 'Desjardins', parent: 'ASSUR' },
+      ASSUR: { nom: 'Assurance habitation', parent: 'DOMID' },
+    },
+  });
+  const r = t.c.appliquerLigneConsolidation_({ fileId: 'F20', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, CTX_EXEC);
+  assert.strictEqual(r, 'saute');
+  assert.deepStrictEqual(t.moves, [], 'D9 : la cible est un ancêtre de la position — zéro mutation');
+  assert.strictEqual(t.ajouts[0].statut, 'consolidé-sur-place');
+  assert.strictEqual(t.ajouts[0].chemin, '02 · Finances/Assurance habitation/Desjardins');
+});
+
+test('appliquerLigneConsolidation_ : D8 à la MUTATION — un repli par TYPE ne sort pas un fichier d\'un sous-dossier', () => {
+  // Cible FAIBLE (filet par type) et position LATÉRALE (pas un ancêtre) : seul D8 peut l'arrêter.
+  const t = ctxLigne({
+    cibleRecalculee: 'Contrats', cibleFaible: true, parents: ['ACHAT'],
+    ancetres: {
+      ACHAT: { nom: 'Recherche & achat', parent: 'VEHIC' },
+      VEHIC: { nom: 'Véhicule', parent: 'DOMID' },
+    },
+  });
+  const r = t.c.appliquerLigneConsolidation_({ fileId: 'F21', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, CTX_EXEC);
+  assert.strictEqual(r, 'saute');
+  assert.deepStrictEqual(t.moves, [], 'D8 : le type seul ne déplace pas ce qui est déjà rangé');
+
+  // MÊME cible faible, fichier à la RACINE du domaine → il DOIT partir (D8 ne gèle pas le vrac :
+  // c'est tout l'objet de la campagne — « plus aucun fichier à plat »).
+  const racine = ctxLigne({ cibleRecalculee: 'Contrats', cibleFaible: true });
+  assert.strictEqual(racine.c.appliquerLigneConsolidation_({ fileId: 'F22', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, CTX_EXEC), 'fait');
+  assert.deepStrictEqual(racine.moves, ['DOM/Contrats']);
+});
+
+test('appliquerLigneConsolidation_ : un déplacement LATÉRAL à signal FORT reste appliqué (la garde ne gèle pas le rattrapage)', () => {
+  const t = ctxLigne({
+    cibleRecalculee: 'Logement/3325 4e avenue', parents: ['CONTRATS'],
+    ancetres: { CONTRATS: { nom: 'Contrats', parent: 'DOMID' } },
+  });
+  const r = t.c.appliquerLigneConsolidation_({ fileId: 'F23', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, CTX_EXEC);
+  assert.strictEqual(r, 'fait');
+  assert.deepStrictEqual(t.moves, ['DOM/Logement/3325 4e avenue'], 'ni ancêtre ni signal faible : le rattrapage garde son pouvoir');
 });
 
 test('appliquerLigneConsolidation_ : dossier d\'entité REGROUPÉ → déplacé DEDANS par ID, jamais recréé à plat (ADR-0028)', () => {
@@ -158,7 +227,7 @@ test('appliquerLigneConsolidation_ : Doublon → moveTo vers _Doublons (décisio
 // les fonctions cross-module (Reorg.gs non chargé ici) sont injectées ; feuille_ capte les appendRow.
 function ctxVide(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'Router.gs', 'ConsolidationExec.gs']);
+  const c = load(['Config.gs', 'Router.gs', 'Consolidation.gs', 'ConsolidationExec.gs']);
   const appends = [];
   const reorgData = [['Clé', 'Type', 'ID', 'CheminA', 'CheminP', 'Statut', 'Détail', 'H']].concat(opts.reorgData || []);
   c.indexContient_ = () => false;
@@ -171,10 +240,11 @@ function ctxVide(opts) {
   c.sousDossier_ = (parent, nom) => ({ getId: () => parent.getId() + '/' + nom });
   // (plus de stub `champ_` : Router.gs est chargé, donc `segmentsChemin_` — la règle de
   // découpage partagée avec le flux vivant — s'exécute POUR DE VRAI ici.)
-  c.cheminCibleConsolidation_ = () => ({ nom: opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : '', id: opts.dossierIdCible || '' }); // {nom,id} depuis l'ADR-0028
+  // Cible NON vide par défaut : depuis C28-90, une cible vide sur un fichier déjà rangé ne
+  // déplace plus rien — et ces tests ont besoin d'un déplacement pour qu'un dossier se vide.
+  c.cheminCibleConsolidation_ = () => ({ nom: opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : 'Relevés', id: opts.dossierIdCible || '', faible: false });
   c.dossierEntiteParId_ = (id) => (id && opts.entiteResoluble !== false
     ? { dossier: { getId: () => 'ENT:' + id }, segments: ['Anciens employeurs', 'Robovic'] } : null);
-  c.domaineActuelFichier_ = () => '02 · Finances';
   // Injections cross-module (Reorg.gs / Maintenance.gs non chargés dans ce contexte de test).
   c.ensembleIntouchables_ = () => (opts.intouchables || {});
   c.estSegmentStructurel_ = () => !!opts.structurel;
@@ -190,7 +260,12 @@ function ctxVide(opts) {
   const ancienParent = {
     getId: () => opts.parentId || 'PARENT',
     getName: () => opts.parentNom || 'ENGIE',
-    getParents: () => ({ hasNext: () => false, next: () => null }),
+    // Chaîne RÉELLE jusqu'à la racine du domaine : `positionActuelleFichier_` s'exécute pour de
+    // vrai (le fichier est dans 02/<ENGIE>, la cible recalculée est à plat → il remonte).
+    getParents: () => {
+      let i = 0; const p = ['DOMID'];
+      return { hasNext: () => i < p.length, next: () => ({ getId: () => p[i++], getName: () => 'DOM', getParents: () => ({ hasNext: () => false, next: () => null }) }) };
+    },
     getFiles: () => ({ hasNext: () => !!opts.resteFichier }),
     getFolders: () => ({ hasNext: () => !!opts.resteDossier }),
   };
@@ -252,11 +327,13 @@ test('détection vide : dédup (déjà signalé) ; et un échec d\'inscription n
 
 function ctxPlan(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'Router.gs', 'ConsolidationExec.gs']);
+  const c = load(['Config.gs', 'Router.gs', 'Consolidation.gs', 'ConsolidationExec.gs']);
   c.CONFIG.CONSOLIDATION_TAG = 'conso-2'; // FORCÉ : ces fixtures encodent 'conso-2' ; le défaut prod
   // est passé à 'conso-3' (2026-08-05, ADR-0035, bump anti-plan-périmé). Leçon §7 : forcer la valeur
   // dans le contexte, jamais dépendre du défaut du jour.
-  const store = Object.assign({}, opts.props);
+  // Le plan de l'onglet est posé SOUS LE TAG COURANT — sans quoi l'exécuteur refuse d'appliquer
+  // quoi que ce soit (garde de campagne, revue sécurité C28-90 🟠 6). Surchargeable par `props`.
+  const store = Object.assign({ DriveAI_CONSO_PLAN_TAG: 'conso-2' }, opts.props);
   c.PropertiesService = { getScriptProperties: () => ({
     getProperty: (k) => (k in store ? store[k] : null),
     setProperty: (k, v) => { store[k] = String(v); },
@@ -323,6 +400,28 @@ test('appliquerPlanConsolidation_ : l\'abandon exige QUARANTAINE_MAX JOURS disti
   assert.strictEqual(echecs['consoexec|essai|conso-2|D'], MAX, 'strike du jour porté au seuil');
   // D abandonnée (consommée) PUIS la boucle continue : E traitée → curseur = 3 (jamais gelé à vie).
   assert.strictEqual(store.DriveAI_CONSO_EXEC_LIGNE, '3', 'abandon consommé ET la page continue derrière');
+});
+
+test('appliquerPlanConsolidation_ : un plan posé sous un AUTRE tag n\'est JAMAIS appliqué', () => {
+  // Revue sécurité C28-90 (🟠 6) : l'exécuteur tourne AVANT le générateur dans le tick, et c'est le
+  // GÉNÉRATEUR qui purge le plan périmé au changement de tag. Au premier tick d'un bump, l'onglet
+  // porte donc encore les lignes de la campagne précédente. Pour un « Déplacer », la cible est
+  // recalculée (atténué) ; pour un « Doublon », la décision par CONTENU serait appliquée telle
+  // quelle, sur une comparaison d'empreintes vieille d'un mois — et sous la clé du NOUVEAU tag,
+  // donc jamais rejouée. Mutation : retirer la garde de tag → ce test tombe.
+  const { c, store, tentatives } = ctxPlan({
+    props: { DriveAI_CONSO_PLAN_TAG: 'conso-1' }, // plan de la campagne PRÉCÉDENTE
+    lignes: [L('A', 'Déplacer'), L('B', 'Doublon')],
+  });
+  c.feuille_ = () => { throw new Error('feuille_ ne doit JAMAIS être appelée sur un plan périmé'); };
+  c.appliquerPlanConsolidation_(() => false); // ne lève pas : on sort avant toute I/O Sheet
+  assert.deepStrictEqual(tentatives, [], 'aucune ligne du plan périmé n\'est appliquée');
+  assert.strictEqual(store.DriveAI_CONSO_EXEC_LIGNE, undefined, 'aucun curseur posé');
+
+  // …et dès que le générateur a purgé/reposé le plan sous le tag courant, l'exécution reprend.
+  const ok = ctxPlan({ lignes: [L('A', 'Déplacer')] }); // DriveAI_CONSO_PLAN_TAG = 'conso-2' par défaut
+  ok.c.appliquerPlanConsolidation_(() => false);
+  assert.deepStrictEqual(ok.tentatives, ['A']);
 });
 
 test('appliquerPlanConsolidation_ : plan consommé + génération finie → FINI posé, puis COURT-CIRCUIT total (aucune I/O Sheet)', () => {

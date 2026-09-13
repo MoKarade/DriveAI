@@ -1055,6 +1055,18 @@ ce qui reste vrai d'une session à l'autre.
   échec>|<raison du dernier>`, seuil dérivé de CONFIG au-delà duquel « momentanément » est
   interdit) : « échec transitoire » répété six jours n'est pas du bruit, c'est le signal — et
   personne ne l'a vu parce que chaque occurrence, prise seule, était exacte.
+- **Une garde n'existe qu'aux endroits qui la CONSULTENT — trois questions avant de l'annoncer.**
+  (a) *Qui la POSE ?* Un marqueur de qualification (faible/fort, raison, trace) se pose **par la
+  ligne qui décide**, jamais re-dérivé du résultat rendu (`'Contrats'` ne dit pas si c'est l'entité
+  ou le type qui a répondu) — et il faut inventorier les **frères** de cette ligne : instrumenter le
+  repli générique ne couvre pas les filets écrits ailleurs qui rendent le même GENRE de verdict
+  (vécu C28-90 : 44 % des cibles de `03` hors couverture, frontière arbitraire entre « Échange de
+  messages » protégé et « Lettre » déplacé). (b) *Qui la CONSULTE ?* Une garde affichée au plan
+  n'est pas une garde : elle se **ré-applique au point de MUTATION**, en appelant la MÊME fonction
+  (corollaire de #47 PR2, re-vécu à l'identique). (c) *Que se passe-t-il si je la neutralise ?* Si
+  la suite reste verte, elle n'est pas testée — quoi qu'en dise son jsdoc. Et le corpus de preuve
+  doit contenir la population que la garde PROTÈGE : un corpus dont chaque ligne est sauvée par une
+  AUTRE règle ne peut rien détecter.
 - **Un déclencheur que le tick RÉINSTALLE ne se coupe pas à la main.** « Ne plus créer » ne
   suffit pas : la coupure livre AUSSI la suppression de l'existant (`deleteTrigger` sous le même
   flag), sinon l'ancien continue de partir et l'utilisateur, qui l'a supprimé une fois, le voit

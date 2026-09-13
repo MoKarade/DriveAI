@@ -683,7 +683,7 @@ function segmentsSousDomaine_(dossier, domaineId) {
       segments.unshift(courant.getName());
       var parents = courant.getParents();
       if (!parents.hasNext()) return null; // racine atteinte sans croiser le domaine
-      courant = parents.next();            // premier parent (même convention que domaineActuelFichier_)
+      courant = parents.next();            // premier parent (même convention que positionActuelleFichier_)
     }
   } catch (e) {
     return null; // chaîne illisible → repli par nom (jamais un classement sur du flou)

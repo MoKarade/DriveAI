@@ -244,7 +244,7 @@ function estSegmentStructurel_(nom) {
   // Buckets de NIVEAU 1 de `STRUCTURE_CIBLE_RESET` (ADR-0044 §6.3) : find-or-créés PAR NOM par le
   // flux, donc non convergents si on les mute. `estAncreStructurelleFusion_` les protège déjà
   // côté Fusion ; l'inventaire RÉCURSIF de la Réorg, lui, ne les connaissait pas — un plan LLM
-  // pouvait proposer de fusionner un bucket VIDE (« Modèles & formulaires », « Recherche
+  // pouvait proposer de fusionner un bucket VIDE (« Travaux & équipements », « Recherche
   // d'emploi ») vers un voisin sémantique, puis la corbeille au clic, pendant que le flux le
   // recrée au document suivant. Bénéfice secondaire : le LLM ne les reçoit plus comme
   // regroupables, donc plus d'essais brûlés sur des actions que la whitelist rejette déjà.

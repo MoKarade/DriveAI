@@ -1,5 +1,5 @@
 {
- "_lisezmoi": "Fichiers RÉELLEMENT déjà rangés dans un sous-dossier, relevés dans Drive le 2026-09-13. Ils servent à mesurer ce que le repli par TYPE (ADR-0052) ferait de la population sur laquelle il agira VRAIMENT le jour où la consolidation repassera : ~15 700 documents déjà classés, et non les 683 de la racine. Deux dossiers RÉELS, pris entiers (jamais un échantillon choisi).",
+ "_lisezmoi": "Fichiers RÉELLEMENT déjà rangés dans un sous-dossier, relevés dans Drive le 13/09. Ils mesurent ce que le rangement ferait de la population sur laquelle il agira VRAIMENT quand la consolidation repassera (C28-90) : ~15 700 documents déjà classés, et non les 683 de la racine. Dossiers RÉELS, pris entiers — dont les 4 buckets par émetteur que les missions ont créés le 12/09, et les 2 sous-dossiers THÉMATIQUES de « 3325 4e avenue » qui ont du contenu. ⚠️ Ce que ces 3 derniers fichiers exercent est D9 (« jamais remonté vers un ancêtre »), PAS D8 : leur nom porte le bailleur (« GestiPro », « Immeubles MA8 », tous deux dans la table), donc la cible vient d'une règle par ENTITÉ, forte. Neutraliser D9 fait tomber le test de corpus — c'est la preuve qu'ils servent à quelque chose ; ne pas leur prêter une couverture de D8 qu'ils n'ont pas (corrigé après la revue de code du 13/09, qui a mesuré l'inverse de ce que ce texte affirmait).",
  "03 · Logement & véhicule": {
   "Logement/3325 4e avenue": [
    "2024-01-28_Avis de reconduction de bail_LCP Groupe Immobilier_2.pdf",
@@ -18,8 +18,39 @@
    "2024-01-28_Avis de reconduction de bail_LCP Groupe Immobilier_3.pdf",
    "2024-01-28_Avis de reconduction de bail_9420-3767 Québec inc. LCP Groupe Immobilier.pdf"
   ],
+  "Logement/3325 4e avenue/Correspondance": [
+   "2026-07-06_Correspondance_GestiPro_2.jpg"
+  ],
+  "Logement/3325 4e avenue/Contrats": [
+   "2018-10-15_Formulaire de demande de location_Immeubles MA8_2.pdf",
+   "2018-10-15_Formulaire de demande de location_Immeubles MA8_3.pdf"
+  ],
   "Logement/783 av. Moreau, Québec": [
    "2023-03-22_Contrat de location_Contrat location chambre 783 avenue Moreau Québec.pdf"
+  ],
+  "Assurance habitation/Desjardins": [
+   "2026-02-26_Contrat d'assurance habitation_Desjardins Assurances.pdf"
+  ],
+  "Assurance habitation/MAIF": [
+   "2023-04_Relevé_MAIF_2.pdf",
+   "2020-09-17_Attestation d'assurance responsabilité civile_FILIA-MAIF_2.pdf",
+   "2020-09-28_Carte internationale d'assurance automobile (carte verte)_MAIF.jpg"
+  ],
+  "Énergie & services/Hydro-Québec": [
+   "2024-12-06_Facture d'électricité_Hydro-Québec.pdf",
+   "2023-07-15_Confirmation d'ajout d'adresse_Hydro-Québec.PNG"
+  ],
+  "Énergie & services/ENGIE": [
+   "2020-12-04_Attestation de contrat d'énergie_ENGIE_2.pdf"
+  ]
+ },
+ "06 · Études & diplômes": {
+  "Cégep de Sherbrooke": [
+   "2018-08-01_Guide d'installation logiciel_Cegep de Sherbrooke.jpg",
+   "2025-01-17_Feuille de présence_Cégep de Sherbrooke.xlsx",
+   "2020-10-13_Capture d'écran_Cégep de Sherbrooke.jpg",
+   "2020-03-13_Avis de fermeture COVID-19_Cégep de Sherbrooke.jpg",
+   "2020-04-03_Correspondance_Cégep de Sherbrooke.jpg"
   ]
  }
 }

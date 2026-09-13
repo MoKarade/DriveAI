@@ -192,11 +192,15 @@ function tableMissions_() {
         //    bailleur, jamais par adresse — table prouvée par contenu).
         var b = cibleBailleur_(nom, ctx.logements);
         if (b) return { cibleId: b.id, sousDossier: theme };
-        // 3 bis. (ADR-0044 §6) Formulaire GÉNÉRIQUE, aucune entité identifiée → « Modèles &
-        //    formulaires ». MÊME prédicat que le flux, et MÊME position : après l'entité.
+        // 3 bis. (ADR-0044 §6, cible RÉVISÉE par ADR-0052 D7) Formulaire GÉNÉRIQUE, aucune entité
+        //    identifiée → « Contrats ». MÊME prédicat que le flux, MÊME position (après l'entité) et
+        //    MÊME cible : le nœud « Modèles & formulaires » n'existe plus en 03, sa place est allée
+        //    aux documents d'ÉQUIPEMENT. Laisser l'ancienne cible ici ferait RECRÉER le nœud PAR NOM
+        //    à chaque passage de la mission, pendant que le flux range dans « Contrats » — le
+        //    ping-pong exact de la leçon « une seule règle, deux consommateurs ».
         if (estModeleOuFormulaire_(typeDuNomMission_(nom))) {
           return { cibleParentId: CONFIG.DOMAINES[MISSIONS_DOMAINE_03],
-            cibleNom: 'Modèles & formulaires', sousDossier: '' };
+            cibleNom: 'Contrats', sousDossier: '' };
         }
         // 4. Correspondance sans indice : la DATE tranche si elle tombe dans EXACTEMENT une
         //    fenêtre d'occupation (demande Marc « regarde les dates pour déterminer »).
@@ -224,7 +228,11 @@ function tableMissions_() {
       sourcesJetables: [],
     },
     {
-      tag: 'archives06', cle: 'mission-archives-06',
+      // SENS INVERSÉ le 2026-09-13 (décision Marc) : l'archive rend son contenu à l'école.
+      // Le TAG et la CLÉ changent avec le sens — sinon les fichiers déjà déplacés dans l'autre
+      // sens portent une clé de SUCCÈS sous `mission-archives-06` et ne seraient jamais repris
+      // (leçon §9 : « re-lancer une campagne à clé de SUCCÈS ne re-traite pas ce qu'elle a figé »).
+      tag: 'retour-ecoles06', cle: 'mission-retour-ecoles-06',
       sources: (IDS.archives06 || []).map(function (p) { return p.src; }),
       batirCtx: function () {
         var parSource = {};
@@ -237,18 +245,28 @@ function tableMissions_() {
         var cible = ctx.parSource[info.sourceId];
         return cible ? { cibleId: cible, sousDossier: info.sousChemin } : null;
       },
-      // Après le transfert, le flux vivant doit VISER l'archive, pas le dossier vidé (sinon il
-      // re-remplit ce que la mission vide — leçon §7 « référentiel consulté par les deux »).
+      // Après le transfert, le référentiel doit VISER le dossier d'école, pas l'archive vidée —
+      // c'est la même règle qu'avant, dans l'autre sens : le flux (`cheminCibleReset_`) et le
+      // référentiel doivent désigner le MÊME dossier, sinon l'un remplit ce que l'autre vide.
       // PEUT LEVER, volontairement (revue sécurité C28-49) : un échec doit EMPÊCHER le drapeau
       // FINI pour être re-tenté à la passe suivante — `repointerEntites_` est idempotent (une
       // ligne déjà re-pointée ne matche plus la source), rejouer la boucle est sans danger.
       apresConvergence: function () {
         (IDS.archives06 || []).forEach(function (p) { repointerEntites_(p.src, p.cible); });
       },
-      // La mission EXISTE pour vider ces dossiers vers leur archive : une fois vides, ils n'ont
-      // plus d'objet et le flux ne les recrée pas (il vise l'archive, cf. `apresConvergence`).
-      // Déclaré explicitement depuis le 2026-09-12 (le défaut ne décide plus à leur place).
-      sourcesJetables: (IDS.archives06 || []).map(function (p) { return p.src; }),
+      // ⚠️ Les 4 dossiers d'ÉCOLE étaient les SOURCES de l'ancienne mission, donc ses
+      // `sourcesJetables` : vidés puis PEINTS EN ROUGE (« bon pour suppression »), eux et leurs
+      // sous-dossiers vides. L'inversion en fait la STRUCTURE que Marc a choisie — et le
+      // rattrapage va y verser 143 fichiers. Le rouge se retire donc explicitement : rien d'autre
+      // dans le moteur ne le retirait, jamais (leçon §9 « chemin de RETOUR »).
+      ciblesADepeindre: (IDS.archives06 || []).map(function (p) { return p.cible; }),
+      // ⚠️ `sourcesJetables: []` — VOLONTAIRE, et c'est le cœur de l'inversion. Les archives vidées
+      // NE SONT PAS peintes en rouge : `Archives scolaires` contient trois autres dossiers que
+      // cette mission ne touche pas (« Collège & Lycée — divers », « Lycée — Gustave Eiffel —
+      // Physique-Chimie (TP) », « Online course — AI Essentials »), et un signal « bon pour
+      // suppression » sur un parent partiellement vidé est exactement le défaut relevé en revue :
+      // « tracer ce qui se passe si l'utilisateur OBÉIT au signal ».
+      sourcesJetables: [],
     },
     /* ---- PR2 : Carrière + Finances (brief Marc §« paies / employeurs / impôts / années ») ---- */
     {
@@ -955,8 +973,9 @@ function estDocumentLogement_(nom) {
 }
 
 /**
- * Vrai si le document est un MODÈLE / FORMULAIRE générique (ADR-0044 §6) — cible
- * `<domaine>/Modèles & formulaires`. PURE (testée), PARTAGÉE par le flux et `dispatch03`.
+ * Vrai si le document est un MODÈLE / FORMULAIRE générique (ADR-0044 §6). PURE (testée),
+ * PARTAGÉE par le flux et `dispatch03`, qui visent la MÊME cible — `03 · …/Contrats` depuis
+ * ADR-0052 D7 (le nœud « Modèles & formulaires » a cédé sa place à « Travaux & équipements »).
  *
  * Normalise ICI (les deux consommateurs n'appliquent pas la même normalisation amont) et exige un
  * MOT ENTIER. ⚠️ Ce prédicat est un FILET : il ne doit être consulté qu'APRÈS les règles par
@@ -1304,10 +1323,152 @@ function peindreDossierRouge_(folderId) {
   } catch (e) { journalInfo_('Missions', 'Peinture rouge différée : ' + e); }
 }
 
-/** Vrai si le dossier est STRICTEMENT vide (aucun fichier, aucun sous-dossier non corbeillés). */
+/**
+ * Rend sa couleur PAR DÉFAUT à un dossier (`folderColorRgb: null`) — l'inverse EXACT de
+ * `peindreDossierRouge_`. Métadonnée, jamais une mutation de contenu.
+ * ⚠️ Rend son SUCCÈS, contrairement à la peinture : un PATCH refusé (403 quota, permission) laisse
+ * un dossier plein marqué « bon pour suppression », et l'appelant doit pouvoir re-tenter. Best-effort
+ * au sens où il ne lève jamais, pas au sens où l'échec est sans conséquence.
+ * @param {string} folderId @return {boolean} vrai si la couleur a bien été retirée
+ */
+function depeindreDossier_(folderId) {
+  try {
+    var rep = fetchDriveAvecRetry_(
+      'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(folderId) + '?fields=id',
+      {
+        method: 'patch', contentType: 'application/json',
+        payload: JSON.stringify({ folderColorRgb: null }),
+        headers: { Authorization: 'Bearer ' + jetonDrive_() },
+        muteHttpExceptions: true,
+      }
+    );
+    if (rep.getResponseCode() !== 200) {
+      journalInfo_('Missions', 'Dé-peinture refusée (HTTP ' + rep.getResponseCode() + ') pour ' + folderId);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    journalInfo_('Missions', 'Dé-peinture du dossier ' + folderId + ' différée : ' + e);
+    return false;
+  }
+}
+
+/**
+ * CHEMIN DE RETOUR du signal rouge (revue sécurité C28-90, 🟠 7) — rend leur couleur par défaut
+ * aux dossiers qui ne sont PLUS vides : eux ET leurs sous-dossiers directs.
+ *
+ * Pourquoi il manquait : le rouge se posait à la convergence d'une mission qui VIDAIT un dossier,
+ * et rien ne le retirait jamais. Quand la mission s'est INVERSÉE (C28-90 — les archives rendent
+ * leur contenu aux 4 dossiers d'école), ces mêmes dossiers sont redevenus LA structure que Marc
+ * a choisie, et ils affichaient toujours « bon pour suppression » — au moment précis où le
+ * rattrapage allait y verser 143 fichiers de plus. C'est la leçon §9 « un garde-fou qui met des
+ * items HORS CIRCUIT exige un chemin de RETOUR auto », appliquée au signal lui-même : sans retour,
+ * un état transitoire (dossier momentanément vide) devient un verdict permanent.
+ * ⚠️ Sens de l'échec VOLONTAIREMENT inverse de la peinture : un dossier ILLISIBLE est dé-peint
+ * (`estDossierVideMission_` rend `false` sur erreur). Peindre à tort invite à supprimer ; dé-peindre
+ * à tort ne coûte qu'une couleur.
+ * ⚠️ Rend la COMPLÉTUDE de la passe, et l'appelant s'en sert pour NE PAS conclure (revue de code
+ * C28-90, 🔴) : un « chemin de retour » coupé par le garde-temps laisserait le rouge à vie sur un
+ * dossier plein, et un drapeau one-shot consommé pour une passe qui n'a rien fait est pire que pas
+ * de chemin de retour du tout — il en donne l'apparence.
+ * @param {string[]} cibles  dossiers à re-vérifier (les CIBLES d'une mission, jamais ses sources)
+ * @param {function():boolean} garde
+ * @return {{complet:boolean, vides:number}} `complet` = toutes les cibles et leurs sous-dossiers
+ *   ont été examinés (aucune coupure, aucune source illisible) ET chaque PATCH a abouti ;
+ *   `vides` = combien de dossiers sont ENCORE VIDES, donc légitimement rouges — ils ne rendent pas
+ *   la passe incomplète, mais ils empêchent de la déclarer TERMINÉE (un dossier vide aujourd'hui
+ *   peut être rempli demain par la consolidation, longtemps après la mission).
+ */
+function depeindreCiblesRemplies_(cibles, garde) {
+  var complet = true;
+  var vides = 0;
+  (cibles || []).forEach(function (id) {
+    if (garde && garde()) { complet = false; return; }
+    try {
+      var racine = DriveApp.getFolderById(id);
+      if (estDossierVideMission_(racine)) vides++;
+      else if (!depeindreDossier_(id)) complet = false;
+      var ds = racine.getFolders();
+      while (ds.hasNext()) {
+        if (garde && garde()) { complet = false; return; }
+        var sous = ds.next();
+        if (estDossierVideMission_(sous)) vides++;
+        else if (!depeindreDossier_(sous.getId())) complet = false;
+      }
+    } catch (e) {
+      complet = false; // source illisible : on ne conclut pas, on re-tentera
+      journalInfo_('Missions', 'Dé-peinture de la cible ' + id + ' différée : ' + e);
+    }
+  });
+  return { complet: complet, vides: vides };
+}
+
+/**
+ * SONDE QUOTIDIENNE de dé-peinture — le chemin de retour du signal rouge, détaché de la mission.
+ *
+ * Troisième écriture de ce garde-fou, et les deux premières disent pourquoi celle-ci a cette forme :
+ *  1. au PREMIER run, sous drapeau one-shot → les cibles étaient encore vides (c'est justement
+ *     pourquoi elles sont rouges), la passe ne faisait RIEN et le drapeau était consommé quand même ;
+ *  2. à la CONVERGENCE de la mission → mieux, mais la mission n'est pas la seule à remplir ces
+ *     dossiers : la CONSOLIDATION y enverra 143 fichiers pendant des semaines APRÈS la convergence,
+ *     et le court-circuit terminal fait qu'aucun run n'y revient jamais.
+ * D'où une sonde INDÉPENDANTE : bon marché (≈ 30 appels Drive), appelée AVANT le court-circuit
+ * terminal, et bornée à UNE passe par jour tant qu'elle n'a pas fini — « un retour qui est un DÉLAI
+ * n'est pas un chemin de retour », mais un retour qui coûte un balayage par tick affamerait le
+ * budget partagé (§9). Elle se déclare TERMINÉE quand plus aucun dossier n'est vide (donc plus rien
+ * à dé-peindre plus tard), ou après `MISSIONS_DEPEINTURE_MAX_JOURS` passes — un dossier qui reste
+ * vide des semaines l'est pour de bon, et son rouge est alors VRAI.
+ * État : `DriveAI_DEPEINTURE_<tag>` = 'fait' | '<jour>|<passes>'. Horodatage posé AVANT l'appel
+ * (une exception ne doit pas faire re-sonder 288 fois le même jour) — `passes` compte donc les
+ * jours SONDÉS, jamais les jours calendaires : le plafond ne peut pas expirer à vide.
+ * ⚠️ Le balayage est BORNÉ par le garde-temps du tick, comme tout lot Drive (§9). Il coûte
+ * `16 + 12 × <sous-dossiers directs>` appels : quelques dizaines sur les 4 dossiers d'école
+ * d'aujourd'hui, mais rien ne garantit qu'un dossier cible reste petit — et l'étape peut démarrer
+ * à 4,4 min du mur DUR de 6 min, qui n'est capturable par aucun `try` (revue quotas).
+ * @param {{tag:string, ciblesADepeindre:string[]}} spec
+ * @param {Properties} props
+ * @param {string} aujourdhui
+ * @param {function():boolean} estBudgetDepasse  garde-temps du tick (jamais null)
+ */
+function assurerDepeintureCibles_(spec, props, aujourdhui, estBudgetDepasse) {
+  var cibles = spec.ciblesADepeindre || [];
+  if (!cibles.length) return;
+  var cle = 'DriveAI_DEPEINTURE_' + spec.tag;
+  var etat = String(props.getProperty(cle) || '');
+  if (etat === 'fait') return;
+  var sep = etat.indexOf('|');
+  var dernierJour = sep === -1 ? '' : etat.slice(0, sep);
+  var passes = sep === -1 ? 0 : (Number(etat.slice(sep + 1)) || 0);
+  if (dernierJour === aujourdhui) return; // déjà sondé aujourd'hui
+  passes++;
+  props.setProperty(cle, aujourdhui + '|' + passes); // AVANT l'appel
+  // Coupé par le garde ⇒ `complet:false` ⇒ jamais « fait » : la passe reprend demain, là où le
+  // balayage est stable (même ordre de cibles). Au pire, le plafond de passes conclut avec du rouge
+  // restant — infiniment mieux qu'un tick TUÉ au mur des 6 min, qui emporterait tout ce qui suit
+  // les missions dans le tick (fusion, reset, historique Gmail).
+  var r = depeindreCiblesRemplies_(cibles, estBudgetDepasse);
+  if (r.complet && r.vides === 0) {
+    props.setProperty(cle, 'fait');
+    journalInfo_('Missions', 'Dé-peinture TERMINÉE pour « ' + spec.tag +
+      ' » : plus aucun dossier cible vide, plus aucun signal « bon pour suppression » à retirer.');
+  } else if (passes >= CONFIG.MISSIONS_DEPEINTURE_MAX_JOURS) {
+    props.setProperty(cle, 'fait');
+    journalInfo_('Missions', 'Dé-peinture ARRÊTÉE pour « ' + spec.tag + ' » après ' + passes +
+      ' passes : ' + r.vides + ' dossier(s) encore vide(s) — leur rouge est VRAI, ils sont vides.');
+  }
+}
+
+/**
+ * Vrai si le dossier est STRICTEMENT vide (aucun fichier, aucun sous-dossier non corbeillés).
+ * ⚠️ DEUX consommateurs de polarité OPPOSÉE : `peindreSourcesVides_` peint quand c'est `true`,
+ * `depeindreCiblesRemplies_` dé-peint quand c'est `false`. Le repli sur erreur (`false`) est donc
+ * prudent des deux côtés — et c'est un hasard heureux, pas une propriété : ne peint jamais à tort
+ * (peindre invite à supprimer), dé-peint au pire à tort (une couleur). Toute inversion future de ce
+ * repli doit se relire depuis LES DEUX appelants.
+ */
 function estDossierVideMission_(dossier) {
   try { return !dossier.getFiles().hasNext() && !dossier.getFolders().hasNext(); }
-  catch (e) { return false; } // illisible → on ne peint pas (prudence)
+  catch (e) { return false; } // illisible → on ne peint pas, et on dé-peint (cf. ⚠️ ci-dessus)
 }
 
 /**
@@ -1399,9 +1560,14 @@ function executerMission_(tag, estBudgetDepasse) {
   // le nettoyage se défaire en silence. Elle n'écrit pas non plus `FINI` (voir plus bas), ce qui
   // impose de ne JAMAIS la mettre en `convergenceApres` d'une autre mission : elle bloquerait
   // l'aval à vie. Verrouillé par un test.
+  var aujourdhui = dateGmail_(new Date());
+  // DÉ-PEINTURE : AVANT le court-circuit terminal, et indépendante de la convergence (voir
+  // `assurerDepeintureCibles_` — la consolidation remplit ces dossiers longtemps après la mission).
+  // ENVELOPPÉE : une couleur ne remet jamais en cause le drainage ni la convergence.
+  try { assurerDepeintureCibles_(spec, props, aujourdhui, estBudgetDepasse); }
+  catch (eDep) { journalInfo_('Missions', 'Sonde de dé-peinture différée : ' + eDep); }
   if (!spec.perpetuelle && props.getProperty('DriveAI_MISSION_FINI_' + tag) === version) return;
 
-  var aujourdhui = dateGmail_(new Date());
   var consommeJour = budgetJourMissions_(props, aujourdhui);
   if (consommeJour >= CONFIG.MISSIONS_BUDGET_JOUR_MS) return; // repris demain (gate + re-vérif)
 
