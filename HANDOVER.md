@@ -80,6 +80,34 @@
 > ÉNONCÉE ; le doute est écrit. Conséquence bornée : 26 fichiers dans le mauvais dossier, tous
 > dans `06`, récupérables par un bump de règles.
 >
+> **La revue sécurité a BLOQUÉ le merge, et c'est elle qui a rendu le lancement sûr.** Verdict 🔴
+> sur trois défauts, tous reproduits sur le code réel, tous corrigés avant le merge :
+> (1) le drapeau « signal faible » (D8) n'était posé que sur DEUX des chemins décidés par le seul
+> TYPE — les filets internes de la table (`Contrats`, `Correspondance`, `Travaux & équipements`,
+> `Véhicule/À attribuer`) rendaient une cible non marquée, donc gagnante contre un rangement
+> existant : **16 des 36 fichiers ciblés de `03`, soit 44 %**, traversaient la garde sans être vus ;
+> (2) **ni D8 ni D9 n'étaient rejouées au moment du `moveTo`** — l'exécuteur recalculait la cible
+> mais jugeait la position sur l'instantané du plan : les deux gardes n'existaient qu'au dry-run,
+> alors que les missions et le flux tournent APRÈS lui dans le même tick ; (3) **D9 n'avait aucun
+> test** — neutralisée, la suite restait verte à 1241/1241, et son jsdoc annonçait « (testée) ».
+> Correctifs : le drapeau est posé PAR la ligne qui décide (`faibleReset_`) et recueilli, jamais
+> re-dérivé ; `decisionConsolidation_` — la MÊME fonction que le plan — est rappelée avant chaque
+> mutation ; D8/D9 sont testées aux deux niveaux. **Les cinq correctifs sont prouvés par mutation.**
+>
+> Quatre 🟠 corrigés dans la foulée : le rouge « bon pour suppression » posé sur les 4 dossiers
+> d'école par l'ancienne mission n'avait **aucun chemin de retour** (`depeindreCiblesRemplies_` le
+> retire au premier run, sur les dossiers qui ne sont plus vides) ; l'exécuteur pouvait appliquer les
+> lignes de `conso-3` sous la clé `conso-4` au premier tick du bump (garde de tag) ; le vocabulaire
+> des cours volait `<école>/Administratif` (« Fiche d'inscription », « Convention de stage ») ; et le
+> corpus de preuve ne contenait pas la population que D9 protège — les 2 sous-dossiers thématiques
+> réels de `3325 4e avenue` y sont, et neutraliser D9 fait désormais tomber le test de corpus.
+>
+> Vérifié dans Drive plutôt que déduit : le libellé `lycée Thérèse d'Avila` de la table et le dossier
+> réel de Marc sont **identiques octet pour octet** (NFC, apostrophe droite) — pas de dossier jumeau
+> par normalisation Unicode. La couleur réelle des 4 dossiers, elle, **n'est pas lisible** par l'API
+> dont je dispose (`folderColorRgb` n'est pas exposé) : la dé-peinture est donc posée sans condition
+> préalable, ce qui est sans risque (elle ne touche que des dossiers NON vides).
+>
 > ⚠️ **À VÉRIFIER EN PROD après déploiement** (le vrai signal, jamais le statut du run) : le plan de
 > consolidation doit se REMPLIR (onglet `PlanConsolidation` purgé puis re-généré sous `conso-4`),
 > puis les racines de domaine doivent se VIDER — `08 · Perso & projets` (115 au 13/09) et

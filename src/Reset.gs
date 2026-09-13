@@ -479,14 +479,40 @@ function vetoCollegialReset_(nom) {
 }
 
 /**
+ * Pose le marqueur « cible FAIBLE » (ADR-0052 D8) PUIS rend le chemin — un seul geste, pour que le
+ * drapeau ne puisse jamais se désolidariser du `return` qu'il qualifie. PURE : elle écrit dans
+ * l'objet `detail` que l'APPELANT lui passe, jamais dans un état global.
+ *
+ * FAIBLE = « ce chemin ne vient QUE du TYPE du document ». Un filet par type sait CE QUE C'EST,
+ * jamais À QUI ni À QUOI le document se rattache : il a le droit de sortir un fichier de la RACINE
+ * d'un domaine, jamais de le retirer d'un sous-dossier où une mission — ou Marc — l'a rangé.
+ *
+ * ⚠️ Pourquoi un marqueur et pas une re-lecture du chemin rendu : `'Contrats'` ne dit pas si c'est
+ * l'entité ou le type qui a répondu. Re-dériver le verdict de sa forme appauvrie est la leçon §9
+ * (« un verdict pris sur la donnée RICHE ne se re-dérive jamais depuis sa forme APPAUVRIE ») — et
+ * c'est exactement ce que faisait la 1ʳᵉ version du drapeau « école » (revue sécurité C28-90 : il
+ * se posait aussi sur la branche `Diplômes & relevés officiels`, qui rend AVANT tout calcul d'école).
+ * @param {?Object} detail  objet de sortie passé à `cheminCibleReset_` (absent = personne n'écoute)
+ * @param {string} chemin
+ * @return {string} `chemin`, inchangé
+ */
+function faibleReset_(detail, chemin) {
+  if (detail) detail.faible = true;
+  return chemin;
+}
+
+/**
  * CHEMIN CIBLE d'un fichier dans la NOUVELLE structure — par le NOM seul, zéro LLM.
  * @param {string} domaine  domaine d'ORIGINE (enregistré au rassemblement, clé `tri33|`)
  * @param {string} nom      nom actuel du fichier
+ * @param {Object=} detail  objet de SORTIE optionnel : reçoit `faible = true` quand la cible ne
+ *   vient que du TYPE du document (ADR-0052 D8, `faibleReset_`). Les appelants qui n'en passent pas
+ *   (le reset, les missions) voient exactement le comportement d'avant.
  * @return {?string} chemin relatif au domaine (« Banques/Desjardins ») — null = NON ROUTÉ : le
  *   fichier RESTE dans `_TRI 2026` (rapport → affinage de table ou passe LLM) ; pour 04 (jamais
  *   rassemblée) null = reste À SA PLACE dans 04. Jamais deviné.
  */
-function cheminCibleReset_(domaine, nom) {
+function cheminCibleReset_(domaine, nom, detail) {
   var s = STRUCTURE_CIBLE_RESET[domaine];
   if (!s) return null;
   var seg = analyserNomClasse_(nom);
@@ -534,7 +560,7 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(tout, ['code de securite', 'codes de securite', 'code de recuperation',
       'codes de recuperation', 'mot de passe', 'double facteur', 'authentification a deux facteurs']) ||
         (tout.indexOf('sauvegarde') !== -1 && e.indexOf('gmf') === -1)) return 'Sécurité & codes'; // GMF La Sauvegarde = un ASSUREUR (revue)
-    if (resetContient_(t, ['lettre', 'courrier', 'correspondance', 'mise en demeure'])) return 'Correspondance';
+    if (resetContient_(t, ['lettre', 'courrier', 'correspondance', 'mise en demeure'])) return faibleReset_(detail, 'Correspondance');
     return null;
   }
 
@@ -691,7 +717,7 @@ function cheminCibleReset_(domaine, nom) {
     // attribuable n'est pas un modèle.
     // ADR-0052 D7 : le nœud « Modèles & formulaires » n'existe plus en 03 — un formulaire vierge
     // rejoint « Contrats », comme les 6 qui y étaient déjà (tous locatifs).
-    if (estModeleOuFormulaire_(t)) return 'Contrats';
+    if (estModeleOuFormulaire_(t)) return faibleReset_(detail, 'Contrats');
     // C28-90 — MÊME règle que la mission `dispatch03` (`bucketEmetteur_`, Missions.gs) : le flux
     // range DANS le bucket par émetteur, pas seulement dans le filet. Avant, le flux visait
     // « Énergie & services » pendant que la mission remplissait « Énergie & services/ENGIE » : la
@@ -716,7 +742,7 @@ function cheminCibleReset_(domaine, nom) {
     // MÊME cible pour ces documents (la conso recalculerait « À attribuer » ⇒ ligne « OK », au
     // lieu de proposer de les ramener à la racine du domaine).
     if (resetContient_(t, ['immatriculation', 'carte grise', 'constat d infraction', 'contravention', 'amende']) ||
-        e.indexOf('saaq') !== -1) return 'Véhicule/À attribuer';
+        e.indexOf('saaq') !== -1) return faibleReset_(detail, 'Véhicule/À attribuer');
 
     /* ---- Ordre VOULU : les règles par entité/canon ci-dessus passent AVANT les filets
      * « Contrats »/« Correspondance » (un « Contrat_LCP » part chez son bailleur, jamais dans le
@@ -737,9 +763,9 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(t, ['etiquette', 'electromenager', 'materiaux', 'revetement',
       'inventaire d equipement', 'degradation', 'notice d utilisation', 'notice d installation',
       'mode d emploi', 'garantie constructeur', 'fiche produit', 'fiche technique']) ||
-        resetMotEntier_(t, 'appareil')) return 'Travaux & équipements';
-    if (resetContient_(t, ['contrat', 'devis', 'consentement', 'formulaire de demande de location', 'bail'])) return 'Contrats';
-    if (resetContient_(t, ['correspondance', 'lettre', 'courrier', 'avis de sejour', 'mise en demeure'])) return 'Correspondance';
+        resetMotEntier_(t, 'appareil')) return faibleReset_(detail, 'Travaux & équipements');
+    if (resetContient_(t, ['contrat', 'devis', 'consentement', 'formulaire de demande de location', 'bail'])) return faibleReset_(detail, 'Contrats');
+    if (resetContient_(t, ['correspondance', 'lettre', 'courrier', 'avis de sejour', 'mise en demeure'])) return faibleReset_(detail, 'Correspondance');
     return null;
   }
 
@@ -815,11 +841,26 @@ function cheminCibleReset_(domaine, nom) {
     // contredit jamais un fait. Le VETO québécois s'intercale entre les deux : quand le nom crie
     // « cégep » sans nommer l'établissement, aucune fenêtre n'a le droit de trancher.
     var ecole = ecoleParNomReset_(nom);
-    if (!ecole && !vetoCollegialReset_(nom)) ecole = ecoleParDateReset_(nom);
+    // Le drapeau FAIBLE est posé ICI, par la ligne qui DÉDUIT — pas plus haut (la branche
+    // `Diplômes & relevés officiels` rend avant tout calcul d'école : elle ne le portera jamais),
+    // pas plus bas (les quatre sous-dossiers de fin l'héritent tous, quel que soit le type).
+    if (!ecole && !vetoCollegialReset_(nom)) {
+      ecole = ecoleParDateReset_(nom);
+      if (ecole) ecole = faibleReset_(detail, ecole);
+    }
     if (!ecole) return null;
     if (ecole === 'Autres établissements') return ecole; // à plat (rapport → affinage si volume)
     if (t.indexOf('concours') !== -1 && ecole === 'Prépa Gustave Eiffel (PTSI)') return ecole + '/Concours';
     if (resetContient_(t, ['examen', 'devoir surveille', 'controle', 'partiel', 'kholle', 'colles']) || t === 'ds') return ecole + '/Examens & khôlles';
+    // ⚠️ ADMINISTRATIF AVANT COURS & TRAVAUX (revue sécurité C28-90) : le vocabulaire des cours
+    // contient « fiche » et « cours » en SOUS-CHAÎNE, et il est passé devant `Résultats` dans ce
+    // même lot — « Fiche d'inscription_IMERIR » et « Attestation de suivi de cours » quittaient
+    // donc `<école>/Administratif` pour `<école>/Cours & travaux`. Une inscription, une convention
+    // de stage ou une attestation sont des actes ADMINISTRATIFS, quel que soit le mot « cours »
+    // qu'ils citent ; l'ordre est ce qui l'exprime. MESURÉ sur les 480 noms de 06 du corpus :
+    // ZÉRO document bascule (aucun n'est à la fois administratif et « cours ») — le réordonnancement
+    // ferme une classe démontrée sur des noms réalistes, il ne rejoue pas le corpus existant.
+    if (resetContient_(t, ['certificat de scolarite', 'inscription', 'convention', 'attestation'])) return ecole + '/Administratif';
     // ⚠️ COURS & TRAVAUX AVANT RÉSULTATS. « note » est une sous-chaîne, et « Notes de cours » —
     // 68 fichiers du corpus — atterrissait dans `/Résultats`. Défaut PRÉ-EXISTANT, mais ce chantier
     // fait passer ~110 fichiers de plus dans cette cascade : le corriger ici coûte une ligne, le
@@ -833,7 +874,6 @@ function cheminCibleReset_(domaine, nom) {
       'laboratoire', 'protocole']) || t === 'td' || t === 'tp' ||
         /(^| )tp\d*( |$)/.test(t) || /(^| )tps?( |$)/.test(t)) return ecole + '/Cours & travaux';
     if (resetContient_(t, ['resultat', 'note', 'evaluation'])) return ecole + '/Résultats';
-    if (resetContient_(t, ['certificat de scolarite', 'inscription', 'convention', 'attestation'])) return ecole + '/Administratif';
     return ecole; // racine de l'école : mieux que _TRI, l'école est sûre
   }
 

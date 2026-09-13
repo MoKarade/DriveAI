@@ -390,3 +390,90 @@ nommés lui-même disent autre chose : `Lycée — Thérèse Davila (2017-2018)`
 que Marc a ÉNONCÉE — c'est sa décision, prise aujourd'hui en réponse à cette question précise — mais
 le doute est écrit ici. Conséquence bornée si elle se révèle fausse : 26 fichiers dans le mauvais
 dossier d'école, tous à l'intérieur de `06`, récupérables par un bump de règles.
+
+## 10. La revue sécurité du lancement (2026-09-13) — ce qu'elle a bloqué
+
+La revue adversariale passée AVANT le merge a rendu un verdict **🔴 bloquant** sur le lancement.
+Trois défauts, tous reproduits sur le code réel, tous corrigés ici. Ils partagent une même forme :
+**une garde affichée au plan et absente là où elle compte.**
+
+### 🔴 1 — D8 ne couvrait que deux des chemins « décidés par le seul TYPE »
+
+Le drapeau `faible` n'était posé qu'à deux endroits : le repli `bucketTypeDomaine_` (Router.gs) et
+la fenêtre d'école. Or `cheminCibleReset_` porte **ses propres filets par type** —
+`Travaux & équipements`, `Contrats`, `Correspondance`, `Véhicule/À attribuer` en `03`,
+`Correspondance` en `01` — qui rendaient une cible NON marquée et gagnaient donc contre un rangement
+existant. Mesuré par la revue : **16 des 36 fichiers ciblés de `03` (44 %) traversaient D8 sans être
+vus**, et la frontière était arbitraire — « Échange de messages » protégé, « Lettre » déplacé.
+
+Correctif : `faibleReset_(detail, chemin)` pose le marqueur **sur la ligne qui décide**, et
+`cheminCibleConsolidation_` le RECUEILLE au lieu de le recalculer. Le drapeau ne se re-dérive plus
+du chemin rendu (`'Contrats'` ne dit pas QUI a répondu) — c'est la leçon §9 « un verdict pris sur la
+donnée RICHE ne se re-dérive jamais depuis sa forme APPAUVRIE », et c'est aussi ce qui corrige, dans
+le même geste, la fuite du drapeau « école » sur la branche `Diplômes & relevés officiels` (elle rend
+AVANT tout calcul d'école : la DATE décidait d'une garde qui n'a rien à voir avec elle).
+
+**Portée VOLONTAIREMENT bornée à `01`, `03` et `06`.** Les filets par type de `02`, `07`, `08` et
+`09` gardent tout leur pouvoir : `conso-3` a déjà passé le Drive entier sous ces règles-là (leur
+résultat est convergé), et aucune mission n'y a construit depuis de structure plus fine qu'ils
+défairaient. Marquer faible au-delà du risque mesuré ne protège rien et gèle des classements encore
+perfectibles.
+
+### 🔴 2 — D8 et D9 n'étaient jamais rejouées au moment du déplacement
+
+`ConsolidationExec` recalculait la CIBLE à l'état courant (garde de 2026-07-21) mais jugeait la
+POSITION sur l'instantané du plan : ni D8 ni D9 n'étaient consultées avant le `moveTo`. Les deux
+gardes n'existaient donc qu'au dry-run — alors que les missions et le flux tournent dans le MÊME
+tick, APRÈS l'exécuteur, et peuvent avoir rangé le fichier plus finement entre-temps.
+
+Correctif : `positionActuelleFichier_` rend le domaine **avec le sous-chemin traversé**, et
+`decisionConsolidation_` — la MÊME fonction que le plan, jamais une seconde formule — est rappelée
+avant la mutation. Tout ce qui n'est pas `Déplacer` est inscrit `consolidé-sur-place`, sans aucune
+écriture Drive. C'est le corollaire EXÉCUTION de §9 (#47 PR2) appliqué à la lettre.
+
+### 🔴 3 — D9 n'avait aucun test
+
+Neutralisée en `if (false && estSousCheminDe_(…))`, la suite restait **entièrement verte**
+(1241/1241). Le jsdoc annonçait pourtant « PURE (testée) ». Correctif : tests de `estSousCheminDe_`
+(dont le piège `Contrats` ⊄ `Contrats divers`), test de la branche D9 de `decisionConsolidation_`,
+tests de D8/D9 **au niveau de la mutation**, et la mention « (testée) » retirée jusqu'à ce qu'elle
+soit vraie. Les cinq correctifs de ce lot sont prouvés PAR MUTATION, un par un.
+
+### 🟠 Les quatre autres, corrigés dans le même lot
+
+- **Le rouge « bon pour suppression » n'avait aucun chemin de retour.** Les 4 dossiers d'école
+  étaient les `sourcesJetables` de l'ancienne mission : vidés, puis peints en rouge — et rien dans
+  le moteur ne retirait jamais cette couleur. L'inversion en fait la structure que Marc a choisie,
+  et le rattrapage allait y verser 143 fichiers de plus. `depeindreCiblesRemplies_` rend leur
+  couleur par défaut aux dossiers qui ne sont PLUS vides, one-shot par version de règles, au premier
+  run de la mission (pas à sa convergence : le signal est trompeur dès maintenant). Sens de l'échec
+  inversé par rapport à la peinture : un dossier illisible est dé-peint — peindre à tort invite à
+  supprimer, dé-peindre à tort ne coûte qu'une couleur.
+- **L'exécuteur pouvait appliquer les lignes de `conso-3` sous la clé `conso-4`.** Il tourne AVANT
+  le générateur, et c'est le générateur qui purge le plan périmé : au premier tick du bump, l'onglet
+  porte encore l'ancienne campagne. Les `Déplacer` étaient atténués par le recalcul, mais les
+  `Doublon` auraient été appliqués sur une comparaison d'empreintes vieille d'un mois. Garde de tag
+  en tête d'`appliquerPlanConsolidation_` : un tick d'attente contre une ligne périmée définitive.
+- **`<école>/Administratif` partait vers `<école>/Cours & travaux`.** Le vocabulaire des cours,
+  remonté devant `Résultats` dans ce lot, contient « fiche » et « cours » en sous-chaîne et passait
+  aussi devant `Administratif` — « Fiche d'inscription », « Convention de stage », « Attestation de
+  suivi de cours » sont des actes administratifs. L'ordre est corrigé ; mesuré sur les 480 noms de
+  `06` du corpus : **zéro document existant ne bascule** (la classe est réelle, le stock ne la
+  contient pas).
+- **Le corpus de preuve ne contenait pas la population que D9 protège.** Les 2 sous-dossiers
+  thématiques de `3325 4e avenue` qui ont du contenu y sont ajoutés : neutraliser D9 fait désormais
+  tomber le test de corpus, ce qui n'était pas le cas avant.
+
+### Ce que la revue a vérifié SAIN, par exécution
+
+`04 · Immigration` (aucune sortie possible : `Ignoré` rendu avant tout usage de la cible,
+`aParentProtege_` strict re-vérifié avant chaque `moveTo`), §2 (aucune suppression ajoutée ; la
+purge du bump est un `clearContent` sur un onglet de RAPPORT), §3 (`appsscript.json` non touché),
+§4 (aucun secret), le couple de budgets (12 min/j, prouvé par 3 mutations) et l'inversion de la
+mission (aucun site d'appel oublié).
+
+### Vérifié dans Drive, pas déduit
+
+Le libellé `lycée Thérèse d'Avila` de la table et le dossier réel de Marc sont **identiques
+octet pour octet** (NFC, apostrophe droite U+0027 — relevé le 13/09 via l'API). Le risque de dossier
+jumeau par normalisation Unicode, soulevé en revue, est écarté pour ce libellé.

@@ -254,6 +254,12 @@ function tableMissions_() {
       apresConvergence: function () {
         (IDS.archives06 || []).forEach(function (p) { repointerEntites_(p.src, p.cible); });
       },
+      // ⚠️ Les 4 dossiers d'ÉCOLE étaient les SOURCES de l'ancienne mission, donc ses
+      // `sourcesJetables` : vidés puis PEINTS EN ROUGE (« bon pour suppression »), eux et leurs
+      // sous-dossiers vides. L'inversion en fait la STRUCTURE que Marc a choisie — et le
+      // rattrapage va y verser 143 fichiers. Le rouge se retire donc explicitement : rien d'autre
+      // dans le moteur ne le retirait, jamais (leçon §9 « chemin de RETOUR »).
+      ciblesADepeindre: (IDS.archives06 || []).map(function (p) { return p.cible; }),
       // ⚠️ `sourcesJetables: []` — VOLONTAIRE, et c'est le cœur de l'inversion. Les archives vidées
       // NE SONT PAS peintes en rouge : `Archives scolaires` contient trois autres dossiers que
       // cette mission ne touche pas (« Collège & Lycée — divers », « Lycée — Gustave Eiffel —
@@ -1317,6 +1323,60 @@ function peindreDossierRouge_(folderId) {
   } catch (e) { journalInfo_('Missions', 'Peinture rouge différée : ' + e); }
 }
 
+/**
+ * Rend sa couleur PAR DÉFAUT à un dossier (`folderColorRgb: null`) — l'inverse EXACT de
+ * `peindreDossierRouge_`. Métadonnée, jamais une mutation de contenu. Best-effort.
+ */
+function depeindreDossier_(folderId) {
+  try {
+    var rep = fetchDriveAvecRetry_(
+      'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(folderId) + '?fields=id',
+      {
+        method: 'patch', contentType: 'application/json',
+        payload: JSON.stringify({ folderColorRgb: null }),
+        headers: { Authorization: 'Bearer ' + jetonDrive_() },
+        muteHttpExceptions: true,
+      }
+    );
+    if (rep.getResponseCode() !== 200) {
+      journalInfo_('Missions', 'Dé-peinture refusée (HTTP ' + rep.getResponseCode() + ') pour ' + folderId);
+    }
+  } catch (e) { journalInfo_('Missions', 'Dé-peinture différée : ' + e); }
+}
+
+/**
+ * CHEMIN DE RETOUR du signal rouge (revue sécurité C28-90, 🟠 7) — rend leur couleur par défaut
+ * aux dossiers qui ne sont PLUS vides : eux ET leurs sous-dossiers directs.
+ *
+ * Pourquoi il manquait : le rouge se posait à la convergence d'une mission qui VIDAIT un dossier,
+ * et rien ne le retirait jamais. Quand la mission s'est INVERSÉE (C28-90 — les archives rendent
+ * leur contenu aux 4 dossiers d'école), ces mêmes dossiers sont redevenus LA structure que Marc
+ * a choisie, et ils affichaient toujours « bon pour suppression » — au moment précis où le
+ * rattrapage allait y verser 143 fichiers de plus. C'est la leçon §9 « un garde-fou qui met des
+ * items HORS CIRCUIT exige un chemin de RETOUR auto », appliquée au signal lui-même : sans retour,
+ * un état transitoire (dossier momentanément vide) devient un verdict permanent.
+ * ⚠️ Sens de l'échec VOLONTAIREMENT inverse de la peinture : un dossier ILLISIBLE est dé-peint
+ * (`estDossierVideMission_` rend `false` sur erreur). Peindre à tort invite à supprimer ; dé-peindre
+ * à tort ne coûte qu'une couleur.
+ * @param {string[]} cibles  dossiers à re-vérifier (les CIBLES d'une mission, jamais ses sources)
+ * @param {function():boolean} garde
+ */
+function depeindreCiblesRemplies_(cibles, garde) {
+  (cibles || []).forEach(function (id) {
+    if (garde && garde()) return;
+    try {
+      var racine = DriveApp.getFolderById(id);
+      if (!estDossierVideMission_(racine)) depeindreDossier_(id);
+      var ds = racine.getFolders();
+      while (ds.hasNext()) {
+        if (garde && garde()) return;
+        var sous = ds.next();
+        if (!estDossierVideMission_(sous)) depeindreDossier_(sous.getId());
+      }
+    } catch (e) { journalInfo_('Missions', 'Dé-peinture de la cible ' + id + ' différée : ' + e); }
+  });
+}
+
 /** Vrai si le dossier est STRICTEMENT vide (aucun fichier, aucun sous-dossier non corbeillés). */
 function estDossierVideMission_(dossier) {
   try { return !dossier.getFiles().hasNext() && !dossier.getFolders().hasNext(); }
@@ -1438,6 +1498,19 @@ function executerMission_(tag, estBudgetDepasse) {
   try {
     var ctx = spec.batirCtx ? spec.batirCtx() : {};
     var proteges = ensembleDomainesProteges_();
+    // DÉ-PEINTURE one-shot, par VERSION de règles (revue sécurité C28-90) : au PREMIER run de la
+    // mission sous cette version, les dossiers CIBLES qui ne sont plus vides perdent le rouge
+    // « bon pour suppression » qu'une campagne précédente leur a posé. Placée ICI et pas à la
+    // convergence : le signal est trompeur dès MAINTENANT, et une convergence peut prendre des
+    // jours. ENVELOPPÉE — une couleur ne remet jamais en cause le drainage.
+    if ((spec.ciblesADepeindre || []).length && m0.dep !== version) {
+      try {
+        depeindreCiblesRemplies_(spec.ciblesADepeindre, garde);
+        m0.dep = version;
+        etatM0[tag] = m0;
+        props.setProperty('DriveAI_MISSIONS_ETAT', JSON.stringify(etatM0));
+      } catch (eDep) { journalInfo_('Missions', 'Dé-peinture différée : ' + eDep); }
+    }
     // DEUX drapeaux distincts (🔴 revue code) : `coupe` = garde/plafond ⇒ on ARRÊTE (le reste du
     // tick attend) ; `passeIncomplete` = un item transitoire / une source en erreur ⇒ on CONTINUE
     // les autres items et les autres sources (sinon un fichier POISON — « Access denied » permanent,

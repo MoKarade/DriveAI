@@ -86,21 +86,34 @@ function dossierCiblePlan_(c) {
  * @return {string}
  */
 /**
- * DOMAINE ACTUEL d'un fichier : remonte la chaîne (premier parent) jusqu'à un dossier dont l'ID
- * est un domaine connu. null si hors domaines (fichier déplacé ailleurs depuis le plan). Le
- * multi-parents est exclu EN AMONT (nbParentsBorne_) — la chaîne du premier parent suffit.
+ * POSITION ACTUELLE d'un fichier : remonte la chaîne (premier parent) jusqu'à un dossier dont l'ID
+ * est un domaine connu, et rend le DOMAINE **avec le sous-chemin traversé**. null si hors domaines
+ * (fichier déplacé ailleurs depuis le plan). Le multi-parents est exclu EN AMONT
+ * (`nbParentsBorne_`) — la chaîne du premier parent suffit.
+ *
+ * ⚠️ Le sous-chemin n'est pas un confort d'affichage : c'est l'entrée que `decisionConsolidation_`
+ * lit pour D8 (« un signal faible ne déplace pas ce qui est déjà rangé ») et D9 (« on ne remonte
+ * jamais un fichier vers un de ses ancêtres »). Sans lui, l'exécuteur recalculait la CIBLE à
+ * l'état courant mais jugeait la POSITION sur l'instantané du plan — les deux gardes ne
+ * s'appliquaient donc qu'au dry-run (revue sécurité C28-90, 🔴 : « un invariant JAMAIS X affiché
+ * au plan se RÉ-APPLIQUE à la mutation, avec le MÊME prédicat », leçon §9 #47 PR2).
  * @param {File} f
  * @param {Object} parId  {folderId: nomDomaine}
- * @return {?string}
+ * @return {?{domaine:string, sousChemin:string, parentId:string}} sousChemin relatif au domaine
+ *   ('' = à la racine du domaine), parentId = parent DIRECT (pour la règle d'ID, ADR-0028)
  */
-function domaineActuelFichier_(f, parId) {
+function positionActuelleFichier_(f, parId) {
   try {
+    var segments = [];
+    var parentId = '';
     var courant = f;
     for (var i = 0; i < 10; i++) {
       var ps = courant.getParents();
       if (!ps.hasNext()) return null;
       var p = ps.next();
-      if (parId[p.getId()]) return parId[p.getId()];
+      if (!parentId) parentId = p.getId();
+      if (parId[p.getId()]) return { domaine: parId[p.getId()], sousChemin: segments.join('/'), parentId: parentId };
+      segments.unshift(p.getName()); // remontée ⇒ on empile à l'ENVERS
       courant = p;
     }
   } catch (e) { return null; }
@@ -151,13 +164,36 @@ function appliquerLigneConsolidation_(ligne, ctx) {
   if (String(ligne.action) === 'Doublon') {
     c = { doublons: true, domaine: null, segments: [] };
   } else {
-    var domaine = domaineActuelFichier_(f, ctx.parId);
-    if (!domaine) {
+    var pos = positionActuelleFichier_(f, ctx.parId);
+    if (!pos) {
       // Hors domaines (déjà déplacé ailleurs par Marc/le flux) : plus notre affaire.
       indexAjouter_(cle, { statut: 'consolidé-hors-domaine', nom: nom, domaine: '', chemin: '' }, '');
       return 'saute';
     }
-    var sousCible = cheminCibleConsolidation_(domaine, nom, ctx.validees); // {nom, id} (ADR-0028)
+    var domaine = pos.domaine;
+    var sousCible = cheminCibleConsolidation_(domaine, nom, ctx.validees); // {nom, id, faible} (ADR-0028)
+    // LA MÊME DÉCISION QU'AU PLAN, REJOUÉE SUR L'ÉTAT COURANT (revue sécurité C28-90, 🔴 2).
+    // `decisionConsolidation_` est la fonction que le dry-run affiche à Marc : la rappeler ICI —
+    // la MÊME, jamais une seconde formule — est ce qui fait des gardes D8/D9 des gardes et non un
+    // affichage. Le fichier a pu être rangé plus finement PAR AILLEURS entre la génération du plan
+    // et son exécution (les missions et le flux tournent dans le même tick, APRÈS l'exécuteur).
+    // Zone protégée et raccourci sont déjà re-vérifiés plus haut, échec-fermé ; le doublon ne passe
+    // pas par ici (décision par CONTENU, branche `Doublon` ci-dessus).
+    var decision = decisionConsolidation_({
+      domaine: domaine, sousCheminActuel: pos.sousChemin, sousCheminCible: sousCible.nom,
+      protege: false, protegeIllisible: false, raccourci: false, doublonDe: null,
+      parentId: pos.parentId, dossierIdCible: sousCible.id || '', cibleFaible: sousCible.faible === true,
+    });
+    if (decision.action !== 'Déplacer') {
+      // « Déjà rangé plus finement », « déjà au bon endroit », repli par type sur un fichier déjà
+      // en sous-dossier : on n'écrit RIEN dans Drive. La clé est posée quand même — la ligne a été
+      // traitée, et sans elle le plan la re-proposerait à chaque passe.
+      indexAjouter_(cle, {
+        statut: 'consolidé-sur-place', nom: nom, domaine: domaine,
+        chemin: domaine + (pos.sousChemin ? '/' + pos.sousChemin : ''),
+      }, '');
+      return 'saute';
+    }
     // Segments assainis par LA règle partagée avec le flux vivant (`segmentsChemin_`, Router.gs) —
     // elle était écrite deux fois, et les deux exemplaires ne produisaient pas le même chemin
     // (le flux assainissait le chemin ENTIER, donc `/` → `-`). Une seule fonction, deux consommateurs.
@@ -260,6 +296,14 @@ function appliquerPlanConsolidation_(estBudgetDepasse) {
   // Court-circuit TERMINAL (revue quotas) : campagne finie ET plan consommé → 1 lecture de
   // Property par tick, plus aucune I/O Sheet ni écriture de budget à vie.
   if (props.getProperty('DriveAI_CONSO_EXEC_FINI') === tag) return;
+  // PLAN D'UNE AUTRE CAMPAGNE — on n'applique rien (revue sécurité C28-90, 🟠 6). L'exécuteur
+  // tourne AVANT le générateur dans le tick (Main.gs), et c'est le GÉNÉRATEUR qui purge le plan
+  // périmé au changement de tag : au premier tick d'un bump, l'onglet porte encore les lignes de
+  // la campagne précédente. Pour les `Déplacer`, la cible est recalculée (atténué) ; pour les
+  // `Doublon`, la décision par CONTENU serait appliquée telle quelle, sur une comparaison
+  // d'empreintes vieille d'un mois. Un tick d'attente coûte 5 minutes ; une ligne périmée
+  // appliquée sous la clé du nouveau tag ne se rejoue jamais.
+  if (props.getProperty('DriveAI_CONSO_PLAN_TAG') !== tag) return;
   if (estBudgetDepasse()) return;
 
   var aujourdhui = dateGmail_(new Date());

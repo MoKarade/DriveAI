@@ -78,17 +78,19 @@ function cheminCibleConsolidation_(domaine, nom, validees) {
   // flux↔conso↔reset par CONSTRUCTION. `id=''` : le chemin thématique EST la structure (pas d'ID
   // d'entité ; l'exécuteur `dossierCiblePlan_` sait déjà résoudre un nom multi-segments). Repli sur
   // la règle historique (entité validée / année / type d'identité) quand le Reset rend null.
-  var relReset = cheminCibleReset_(domaine, nom);
+  // C28-90 (revue sécurité) — `detail` recueille le drapeau FAIBLE posé PAR la ligne de la table
+  // qui a décidé (`faibleReset_`, Reset.gs) : filet par TYPE (un « Contrat » sans bailleur, une
+  // « Lettre » sans émetteur connu) ou école DÉDUITE d'une fenêtre de scolarité. Ces cibles-là
+  // sortent un fichier de la RACINE d'un domaine, jamais d'un sous-dossier où une mission — ou
+  // Marc — l'a rangé (D8, `decisionConsolidation_`).
+  // ⚠️ Ce drapeau ne se RE-DÉRIVE pas du chemin rendu : `'Contrats'` ne dit pas si c'est l'entité
+  // ou le type qui a répondu. La 1ʳᵉ version le re-calculait depuis le nom et le posait aussi sur
+  // la branche `Diplômes & relevés officiels`, qui rend AVANT tout calcul d'école (leçon §9 :
+  // « un verdict pris sur la donnée RICHE ne se re-dérive jamais depuis sa forme APPAUVRIE »).
+  var detail = {};
+  var relReset = cheminCibleReset_(domaine, nom, detail);
   if (relReset) {
-    // C28-90 — une école DÉDUITE d'une fenêtre de scolarité est un signal FAIBLE, comme le repli
-    // par type (D8) : elle ne lit que 4 à 7 caractères en tête du nom et ignore tout ce qui a pu
-    // justifier un rangement existant. Elle a le droit de sortir un fichier de la RACINE, jamais de
-    // le retirer d'un dossier d'école où Marc — ou la mission `archives06` — l'a mis.
-    // Le marqueur est posé PAR la fonction qui décide (`ecoleParNomReset_` a-t-elle répondu ?),
-    // jamais re-dérivé d'une forme appauvrie du verdict (leçon §9).
-    var faibleEcole = domaine === '06 · Études & diplômes' && !ecoleParNomReset_(nom) &&
-      !!ecoleParDateReset_(nom);
-    return faibleEcole ? { nom: relReset, id: '', faible: true } : { nom: relReset, id: '' };
+    return detail.faible ? { nom: relReset, id: '', faible: true } : { nom: relReset, id: '' };
   }
 
   var seg = analyserNomClasse_(nom);
@@ -130,8 +132,10 @@ function cheminCibleConsolidation_(domaine, nom, validees) {
  * @param {{domaine:string, sousCheminActuel:string, sousCheminCible:string, protege:boolean,
  *          protegeIllisible:boolean, raccourci:boolean, doublonDe:?string,
  *          parentId:?string, dossierIdCible:?string, cibleFaible:?boolean}} d
- *   cibleFaible (ADR-0052 D8) : la cible ne vient QUE du type du document (repli `bucketTypeDomaine_`)
- *   — elle suffit à sortir un fichier de la racine, jamais à le déplacer d'un sous-dossier.
+ *   cibleFaible (ADR-0052 D8) : la cible ne vient QUE du type du document — repli
+ *   `bucketTypeDomaine_`, filets par type de la table (`faibleReset_`, Reset.gs) et école déduite
+ *   d'une fenêtre de scolarité. Elle suffit à sortir un fichier de la racine d'un domaine, jamais
+ *   à le déplacer d'un sous-dossier.
  *   parentId/dossierIdCible (ADR-0028) : égalité d'ID = « déjà au bon endroit », À TOUTE PROFONDEUR,
  *   évaluée AVANT la comparaison textuelle des sous-chemins. Absents ⇒ comportement textuel d'avant.
  *   protege = zone protégée CONSTATÉE (détection positive) ; protegeIllisible = contrôle §1
@@ -140,7 +144,7 @@ function cheminCibleConsolidation_(domaine, nom, validees) {
  */
 /**
  * Vrai si `actuel` est STRICTEMENT PLUS PROFOND que `cible` et commence par elle, segment par
- * segment — c'est-à-dire si la cible est un ANCÊTRE de la position actuelle. PURE (testée).
+ * segment — c'est-à-dire si la cible est un ANCÊTRE de la position actuelle. PURE.
  *
  * La comparaison est faite SEGMENT par SEGMENT, jamais par `indexOf` de chaîne : « Contrats » est
  * un préfixe de chaîne de « Contrats divers », qui est un dossier DIFFÉRENT. Le piège est le même

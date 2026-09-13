@@ -1,5 +1,5 @@
 {
- "_lisezmoi": "Fichiers RÉELLEMENT déjà rangés dans un sous-dossier, relevés dans Drive les 13/09. Ils mesurent ce que le rangement ferait de la population sur laquelle il agira VRAIMENT quand la consolidation repassera (C28-90) : ~15 700 documents déjà classés, et non les 683 de la racine. Dossiers RÉELS, pris entiers — dont les 4 buckets par émetteur que les missions ont créés le 12/09 et qui sont exactement ce qu'un rattrapage mal gardé remonterait d'un cran.",
+ "_lisezmoi": "Fichiers RÉELLEMENT déjà rangés dans un sous-dossier, relevés dans Drive les 13/09. Ils mesurent ce que le rangement ferait de la population sur laquelle il agira VRAIMENT quand la consolidation repassera (C28-90) : ~15 700 documents déjà classés, et non les 683 de la racine. Dossiers RÉELS, pris entiers — dont les 4 buckets par émetteur que les missions ont créés le 12/09, et les 2 sous-dossiers THÉMATIQUES de « 3325 4e avenue » qui ont du contenu. Ces deux derniers sont la population que la revue sécurité du 13/09 a montrée découverte : leurs fichiers ne nomment ni adresse ni bailleur, donc seuls les filets PAR TYPE (« Formulaire de demande de location » → Contrats, « Correspondance » → Correspondance) les visent — et un filet non marqué FAIBLE les remonterait d'un cran. Le corpus ne pouvait pas voir ce défaut sans eux.",
  "03 · Logement & véhicule": {
   "Logement/3325 4e avenue": [
    "2024-01-28_Avis de reconduction de bail_LCP Groupe Immobilier_2.pdf",
@@ -17,6 +17,13 @@
    "2026-07-01_Échange de messagerie_Guy Laporte.jpg",
    "2024-01-28_Avis de reconduction de bail_LCP Groupe Immobilier_3.pdf",
    "2024-01-28_Avis de reconduction de bail_9420-3767 Québec inc. LCP Groupe Immobilier.pdf"
+  ],
+  "Logement/3325 4e avenue/Correspondance": [
+   "2026-07-06_Correspondance_GestiPro_2.jpg"
+  ],
+  "Logement/3325 4e avenue/Contrats": [
+   "2018-10-15_Formulaire de demande de location_Immeubles MA8_2.pdf",
+   "2018-10-15_Formulaire de demande de location_Immeubles MA8_3.pdf"
   ],
   "Logement/783 av. Moreau, Québec": [
    "2023-03-22_Contrat de location_Contrat location chambre 783 avenue Moreau Québec.pdf"

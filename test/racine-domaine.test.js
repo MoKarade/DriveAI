@@ -283,6 +283,113 @@ test('ADR-0052 D8 — la garde ne s\'applique QU\'au signal faible, et jamais à
   })).action, 'OK');
 });
 
+/* ---------- D9 : « on ne remonte jamais un fichier vers un de ses ancêtres » ----------
+ * Verrou écrit APRÈS coup (revue sécurité C28-90, 🔴 3) : la garde qui rend le bump de campagne
+ * sûr n'était couverte par AUCUN test — neutralisée en `if (false && estSousCheminDe_(…))`, la
+ * suite restait entièrement verte. Mutation à rejouer pour prouver ces tests : neutraliser le `if`
+ * de D9 dans `decisionConsolidation_`, ou faire rendre `true` à `estSousCheminDe_` sans comparer. */
+test('estSousCheminDe_ : segment par segment — un préfixe de CHAÎNE n\'est pas un ancêtre', () => {
+  // Le cas nominal : la cible est un ancêtre strict de la position.
+  assert.strictEqual(ctx.estSousCheminDe_('Assurance habitation/Desjardins', 'Assurance habitation'), true);
+  assert.strictEqual(ctx.estSousCheminDe_('Logement/3325 4e avenue/Correspondance', 'Logement'), true);
+  assert.strictEqual(ctx.estSousCheminDe_('Logement/3325 4e avenue/Correspondance', 'Logement/3325 4e avenue'), true);
+  // LE piège : « Contrats » est un préfixe de chaîne de « Contrats divers », qui est un AUTRE
+  // dossier. Une comparaison par `indexOf` gèlerait le fichier au mauvais endroit, pour toujours.
+  assert.strictEqual(ctx.estSousCheminDe_('Contrats divers/2024', 'Contrats'), false);
+  assert.strictEqual(ctx.estSousCheminDe_('Contrats', 'Contrats divers'), false);
+  // Même profondeur, ou cible plus profonde : D9 n'a rien à dire (c'est un déplacement LATÉRAL ou
+  // un APPROFONDISSEMENT — le rattrapage garde tout son pouvoir).
+  assert.strictEqual(ctx.estSousCheminDe_('Contrats', 'Correspondance'), false);
+  assert.strictEqual(ctx.estSousCheminDe_('Assurance habitation', 'Assurance habitation/MAIF'), false);
+  // Chemins identiques : traité en amont par « déjà au bon endroit », jamais ici.
+  assert.strictEqual(ctx.estSousCheminDe_('Logement', 'Logement'), false);
+  // Cible VIDE (racine du domaine) : D8 s'en charge, D9 s'abstient — sinon TOUT fichier rangé
+  // serait « déjà plus fin » et la campagne n'aurait plus aucun effet.
+  assert.strictEqual(ctx.estSousCheminDe_('Logement/3325 4e avenue', ''), false);
+  assert.strictEqual(ctx.estSousCheminDe_('', ''), false);
+  assert.strictEqual(ctx.estSousCheminDe_(null, null), false);
+});
+
+test('ADR-0052 D6 — le drapeau « école déduite » ne fuit PAS sur les diplômes, et l\'ordre admin/cours tient', () => {
+  const d = '06 · Études & diplômes';
+  // 🟠 4 de la revue sécurité : le drapeau se re-calculait depuis le NOM, alors que la branche
+  // `Diplômes & relevés officiels` rend AVANT tout calcul d'école. Un relevé de notes de 2021
+  // (dans la fenêtre IMERIR) était donc marqué faible et restait sur place, pendant que le MÊME
+  // relevé de 2026 partait : la DATE décidait d'une garde qui n'a rien à voir avec elle.
+  for (const nom of ['2021-05-05_Relevé de notes_Untel.pdf', '2026-05-05_Relevé de notes_Untel.pdf',
+    '2019-05-05_Relevé de notes_Untel.pdf', '2021-05-05_Relevé de notes_IMERIR.pdf']) {
+    const c = ctx.cheminCibleConsolidation_(d, nom, {});
+    assert.strictEqual(c.nom, 'Diplômes & relevés officiels', nom);
+    assert.strictEqual(c.faible, undefined, nom + ' : cette branche ne déduit aucune école');
+  }
+  // Le drapeau reste posé là où une école est bel et bien DÉDUITE d'une fenêtre…
+  assert.strictEqual(ctx.cheminCibleConsolidation_(d, '2016-03-01_Devoir_Maths.pdf', {}).faible, true);
+  // …et jamais quand le NOM nomme l'école (un FAIT, pas une déduction).
+  assert.strictEqual(ctx.cheminCibleConsolidation_(d, '2021-05-05_Cours_IMERIR.pdf', {}).faible, undefined);
+
+  // 🟠 5 : « fiche » et « cours » sont des SOUS-CHAÎNES du vocabulaire des cours, remonté devant
+  // `Résultats` dans ce même lot — il passait aussi devant `Administratif`.
+  assert.strictEqual(ctx.cheminCibleReset_(d, "2021-09-01_Fiche d'inscription_IMERIR.pdf"), 'IMERIR/Administratif');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2021-05-05_Attestation de suivi de cours_IMERIR.pdf'), 'IMERIR/Administratif');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2021-05-05_Convention de stage_IMERIR.pdf'), 'IMERIR/Administratif');
+  // …sans rien voler aux vrais cours (le glissement `Notes de cours` → Cours & travaux, lui, est voulu).
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2021-05-05_Notes de cours_IMERIR.pdf'), 'IMERIR/Cours & travaux');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2021-05-05_Travail pratique_IMERIR.pdf'), 'IMERIR/Cours & travaux');
+});
+
+test('ADR-0052 D9 — la décision : jamais remonté vers un ancêtre, et la raison le DIT', () => {
+  const base = { domaine: '03 · Logement & véhicule', protege: false, protegeIllisible: false,
+    raccourci: false, doublonDe: null, parentId: null, dossierIdCible: '', cibleFaible: false };
+  // Signal FORT (le thème est dans le nom, pas l'assureur) et position PLUS FINE : D8 ne peut rien
+  // (la cible n'est pas faible), seul D9 arrête le mouvement.
+  const d = ctx.decisionConsolidation_(Object.assign({}, base, {
+    sousCheminActuel: 'Assurance habitation/Desjardins', sousCheminCible: 'Assurance habitation',
+  }));
+  assert.strictEqual(d.action, 'OK');
+  assert.strictEqual(d.cible, '03 · Logement & véhicule/Assurance habitation/Desjardins',
+    'la cible affichée est la position CONSERVÉE, jamais l\'ancêtre');
+  assert.ok(d.raison.indexOf('plus finement') !== -1, 'Marc lit la raison dans le plan : elle doit dire la règle qui a décidé');
+  // …et l'APPROFONDISSEMENT inverse reste un « Déplacer » : la garde ne gèle rien.
+  assert.strictEqual(ctx.decisionConsolidation_(Object.assign({}, base, {
+    sousCheminActuel: 'Assurance habitation', sousCheminCible: 'Assurance habitation/MAIF',
+  })).action, 'Déplacer');
+});
+
+test('ADR-0052 D8 — le drapeau `faible` est posé par CHAQUE filet par type, jamais par une règle d\'entité', () => {
+  // Régression mesurée par la revue sécurité (🔴 1) : `faible` n'était posé QUE par le repli
+  // `bucketTypeDomaine_`. Les filets par type de la TABLE (`cheminCibleReset_`) rendaient une cible
+  // NON flaguée — 16 des 36 fichiers ciblés de `03` (44 %) traversaient donc D8 sans être vus, et
+  // « Lettre » sortait d'un dossier thématique là où « Échange de messages » était protégé.
+  const d03 = '03 · Logement & véhicule';
+  const filets = [
+    ['2024-03-15_Lettre_Ville de Québec.pdf', 'Correspondance'],
+    ['2024-03-15_Mise en demeure_Me Tremblay.pdf', 'Correspondance'],
+    ['2024-03-15_Devis_Plomberie Dubé.pdf', 'Contrats'],
+    ['2024-03-15_Contrat de vente_Suprême Auto.pdf', 'Contrats'],
+    ['2024-03-15_Fiche technique_Inconnu.pdf', 'Travaux & équipements'],
+    ['2024-03-15_Constat d\'infraction_Inconnu.pdf', 'Véhicule/À attribuer'],
+  ];
+  for (const [nom, attendu] of filets) {
+    const cible = ctx.cheminCibleConsolidation_(d03, nom, {});
+    assert.strictEqual(cible.nom, attendu, nom);
+    assert.strictEqual(cible.faible, true, nom + ' : filet par TYPE ⇒ signal faible');
+  }
+  // …et les mêmes documents, une fois l'ENTITÉ reconnue, redeviennent des signaux FORTS.
+  const forts = [
+    ['2024-03-15_Lettre_Ville de Québec.pdf'.replace('Ville de Québec', 'Roselière'), 'Logement/1548 avenue de la Roselière, Québec'],
+    ['2024-03-15_Contrat_3325 4e avenue.pdf', 'Logement/3325 4e avenue'],
+  ];
+  for (const [nom, attendu] of forts) {
+    const cible = ctx.cheminCibleConsolidation_(d03, nom, {});
+    assert.strictEqual(cible.nom, attendu, nom);
+    assert.strictEqual(cible.faible, undefined, nom + ' : une règle par ENTITÉ n\'est jamais faible');
+  }
+  // 01 : le filet « Correspondance » de la table porte le drapeau, la règle par émetteur non.
+  const d01 = '01 · Administratif & identité';
+  assert.strictEqual(ctx.cheminCibleConsolidation_(d01, '2024-03-15_Courrier_Inconnu.pdf').faible, true);
+  assert.strictEqual(ctx.cheminCibleConsolidation_(d01, '2024-03-15_Contrat_EDF.pdf').faible, undefined);
+});
+
 test('ADR-0052 D8 — le drapeau `faible` n\'est posé QUE par le repli par type', () => {
   const dom = '03 · Logement & véhicule';
   assert.strictEqual(ctx.sousCheminDomaine_({ domaine: dom, entite: { nom: 'X', dossierId: 'ID' } }).faible, undefined);

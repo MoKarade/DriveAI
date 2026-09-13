@@ -232,7 +232,7 @@ const CONTRAT = [
   'segmentsSousDomaine_', 'dossierEntiteParId_', // ADR-0028 : confinement + chemin réel, et le RÉSOLVEUR UNIQUE par ID — Router.gs, appelés AUSSI par ConsolidationExec.gs
   'seedEntitesMarc_', // seed one-shot des entités de Marc (décision 2026-07-17), appelé depuis Main
   // exécution du plan de consolidation (ADR-0024) — moveTo seul, §1 par mutation, cible recalculée
-  'appliquerPlanConsolidation_', 'appliquerLigneConsolidation_', 'domaineActuelFichier_',
+  'appliquerPlanConsolidation_', 'appliquerLigneConsolidation_', 'positionActuelleFichier_',
   'ligneAAppliquer_', 'budgetJourConsoExec_', 'dossierCiblePlan_', 'nbParentsBorne_',
   // RESET complet (C28-33, ADR-0030 PR2) — rassemblement/placement/04 interne, appelés depuis Main ;
   // resetEnCours_ suspend conso-2/réorg-auto (ADR-0030 « Transition ») ; réutilisent detecterDossierVide_
