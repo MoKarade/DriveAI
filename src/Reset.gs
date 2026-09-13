@@ -875,18 +875,24 @@ function bucketTypeDomaine_(domaine, nom) {
     // « Correspondance » (6 nœuds, la place restante n'est pas un fourre-tout) et le contenu de
     // ces captures est bien une trace d'échange que Marc garde, pas un écrit qu'il a produit.
     if (resetContient_(t, BUCKET_TYPE_CORRESPONDANCE)) return 'Notes';
+    // ⚠️ « jeu » est en MOT ENTIER (⊂ « enjeu », « jeune ») et « mème » a été RETIRÉ : normalisé, il
+    // s'écrit « meme » et appariait n'importe quel type contenant « même ». « Image humoristique »
+    // suffit à couvrir le cas réel, sans le piège.
     if (resetContient_(t, ['photo', 'billet', 'ticket', 'coupon', 'bon de reduction', 'grille',
-      'regles', 'jeu', 'menu', 'reservation', 'promotionnel', 'recette', 'conditions generales',
-      'loisir', 'evenement', 'abonnement', 'adhesion', 'tournoi', 'partie d echecs', 'meme',
+      'regles', 'menu', 'reservation', 'promotionnel', 'recette', 'conditions generales',
+      'loisir', 'evenement', 'abonnement', 'adhesion', 'tournoi', 'partie d echecs',
       'image humoristique', 'commande', 'livraison', 'annonce', 'capture d ecran',
-      'capture de profil'])) return 'Photos & loisirs';
+      'capture de profil']) || resetMotEntier_(t, 'jeu')) return 'Photos & loisirs';
     return '';
   }
 
   if (domaine === '09 · Voyages') {
     if (resetContient_(t, ['billet', 'e-ticket', 'e tickets', 'reservation', 'itineraire',
-      'carte d embarquement', 'recu', 'facture', 'confirmation', 'capture etat du vol', 'bagage',
-      'vol', 'sejour'])) return 'Réservations & billets/' + annee('Réservations & billets');
+      'carte d embarquement', 'recu', 'facture', 'confirmation', 'capture etat du vol', 'bagage'])
+        || resetMotEntier_(t, 'vol')) return 'Réservations & billets/' + annee('Réservations & billets');
+    // ⚠️ « séjour » a été RETIRÉ de la liste ci-dessus : il volait « Programme de séjour » aux
+    // guides — un programme de séjour n'est pas un titre de transport. Et « vol » est en MOT
+    // ENTIER : en sous-chaîne il apparie « volume », « bénévolat », « survol ».
     if (t.indexOf('assurance') !== -1) return 'Assurances voyage';
     // ADR-0052 D3 — nœud NEUF : tout ce qui prépare ou accompagne un voyage sans être un titre de
     // transport (guide d'accueil, programme, conditions générales, fiche pratique, invitation).
