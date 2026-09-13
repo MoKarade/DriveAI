@@ -234,7 +234,7 @@ function ligneDryRunV2_(avant, classif, plan, coutDoc) {
  * financier/Diplôme, `docs/TAXONOMY.md`) — un document y est 3-4 niveaux sous le domaine (ex.
  * « Véhicule/Véhicule — Honda Civic (…)/Entretien & réparations »), un seul niveau afficherait à
  * tort une structure plate (revue structure-keeper #26). Borné à 5 niveaux (même anti-boucle que
- * `positionActuelleFichier_`, ConsolidationExec.gs — RELEVÉ de 5 à 10 par la revue de code
+ * `positionActuelleFichier_`, ConsolidationExec.gs — RELEVÉ de 5 à 20 par la revue de code
  * C28-90 : ce chemin alimente `decisionConsolidation_` côté PLAN pendant que l'exécuteur calcule le
  * sien sur 10 niveaux ; à profondeur ≥ 6 le plan affichait un sous-chemin TRONQUÉ EN TÊTE, donc un
  * « Déplacer » là où l'exécution dit « OK ») ; s'arrête AU dossier de domaine (exclu, jamais
@@ -245,7 +245,7 @@ function ligneDryRunV2_(avant, classif, plan, coutDoc) {
 function cheminActuelDryRunV2_(f, domaineActuel) {
   var segments = [];
   var courant = f;
-  for (var i = 0; i < 10; i++) {
+  for (var i = 0; i < 20; i++) { // 20 = EXACTEMENT la borne de `positionActuelleFichier_`
     var parents;
     try { parents = courant.getParents(); } catch (e) { break; }
     if (!parents.hasNext()) break;

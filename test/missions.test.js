@@ -385,66 +385,79 @@ test('runner : déplace, pose la clé VERSIONNÉE après, converge sur la passe 
   assert.strictEqual(etatM.vehicule.b, 2, 'base = t + na après une passe complète');
 });
 
-test('runner : DÉ-PEINTURE à la CONVERGENCE — jamais un dossier encore vide, et une passe coupée ne conclut pas', () => {
-  // Revue sécurité C28-90 (🟠 7) : les 4 dossiers d'école étaient les SOURCES de l'ancienne mission
-  // — vidés puis peints en ROUGE (« bon pour suppression ») ; rien dans le moteur ne retirait jamais
-  // cette couleur. L'inversion en fait la STRUCTURE, et le rattrapage va y verser 143 fichiers.
-  // ⚠️ La 1ʳᵉ version posait ce retour au PREMIER run, sous un drapeau one-shot. La revue de code
-  // l'a démonté (🔴) : à ce moment-là les cibles sont encore VIDES — c'est justement pourquoi elles
-  // sont rouges — donc la passe ne dé-peignait RIEN et le drapeau était consommé quand même. Le
-  // retour existait sur le papier et nulle part ailleurs. Il vit maintenant à la CONVERGENCE, quand
-  // la mission a fini de verser, et AVANT le drapeau FINI (après lui, plus aucun run n'y arrive).
+test('runner : DÉ-PEINTURE — sonde QUOTIDIENNE, indépendante de la convergence, qui se termine', () => {
+  // Troisième écriture de ce garde-fou, et les deux premières expliquent celle-ci :
+  //  1. one-shot au PREMIER run → les cibles sont encore VIDES (c'est pourquoi elles sont rouges) :
+  //     la passe ne faisait rien et le drapeau était consommé quand même ;
+  //  2. à la CONVERGENCE → la mission n'est pas la seule à remplir ces dossiers : la CONSOLIDATION
+  //     y enverra 143 fichiers pendant des semaines APRÈS, et le court-circuit terminal fait
+  //     qu'aucun run n'y revient. Mesuré par la revue : 20 ticks après remplissage, 0 dé-peint.
+  // D'où une sonde appelée AVANT le court-circuit terminal, bornée à 1 passe/jour.
   const h = ctxRunner();
   const IDS = h.c.CONFIG.MISSIONS_IDS;
   const version = h.c.CONFIG.MISSIONS_REGLES_VERSION;
   const paires = IDS.archives06;
-  paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
-  h.arbre[paires[0].src] = { files: [h.fichier('a1', '2021-05-05_Cours_IMERIR.pdf')], folders: {} };
-  // 1ʳᵉ école : REMPLIE, avec un sous-dossier rempli et un sous-dossier encore vide.
-  h.arbre[paires[0].cible] = { files: [h.fichier('g1', '2021-05-05_Cours_IMERIR.pdf')], folders: { 'Cours & travaux': 'SOUS_PLEIN', Résultats: 'SOUS_VIDE' } };
-  h.arbre.SOUS_PLEIN = { files: [h.fichier('g2', '2021-05-05_Devoir_IMERIR.pdf')], folders: {} };
-  h.arbre.SOUS_VIDE = { files: [], folders: {} };
-  paires.slice(1).forEach((p) => { h.arbre[p.cible] = { files: [], folders: {} }; });
+  let jour = '2026-09-13';
+  h.c.dateGmail_ = () => jour;
+  // Départ RÉEL : archives pleines, écoles VIDES (l'ancienne mission les avait vidées et peintes).
+  paires.forEach((p) => {
+    h.arbre[p.src] = { files: [h.fichier('a' + p.src, '2021-05-05_Cours_IMERIR.pdf')], folders: {} };
+    h.arbre[p.cible] = { files: [], folders: {} };
+  });
 
-  // Passe PRODUCTIVE : elle déplace, elle ne converge pas — donc elle ne dé-peint pas encore.
   h.c.executerMission_('retour-ecoles06', () => false);
-  assert.strictEqual(h.moves.filter((m) => m.vers).length, 1, 'le fichier de l\'archive est rendu à l\'école');
-  assert.deepStrictEqual(h.depeints, [], 'pas de convergence ⇒ pas encore de dé-peinture');
-  assert.ok(!h.store['DriveAI_MISSION_FINI_retour-ecoles06']);
+  assert.deepStrictEqual(h.depeints, [], 'tout est vide : rien à dé-peindre, et le rouge y est VRAI');
+  assert.notStrictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait', 'donc surtout pas « terminé »');
 
-  // Passe à VIDE → convergence → dé-peinture, puis seulement le drapeau FINI.
+  // Même jour, 10 ticks : la sonde ne re-balaie pas Drive (budget partagé).
+  const appelsAvant = h.depeints.length;
+  for (let i = 0; i < 10; i++) h.c.executerMission_('retour-ecoles06', () => false);
+  assert.strictEqual(h.depeints.length, appelsAvant, '1 passe par jour, pas 288');
+
+  // La mission converge (les archives sont vides) ET pose son drapeau FINI…
   h.c.executerMission_('retour-ecoles06', () => false);
-  assert.ok(h.depeints.indexOf(paires[0].cible) !== -1, 'école remplie : le rouge est retiré');
-  assert.ok(h.depeints.indexOf('SOUS_PLEIN') !== -1, 'sous-dossier rempli : idem');
-  assert.strictEqual(h.depeints.indexOf('SOUS_VIDE'), -1, 'un dossier ENCORE vide garde son signal — il est vrai');
-  paires.slice(1).forEach((p) => assert.strictEqual(h.depeints.indexOf(p.cible), -1, 'école encore vide : rien à retirer'));
-  assert.deepStrictEqual(h.peints, [], 'cette mission ne peint JAMAIS (sourcesJetables vide)');
-  assert.strictEqual(h.store['DriveAI_MISSION_FINI_retour-ecoles06'], version, 'FINI posé APRÈS une dé-peinture complète');
+  assert.strictEqual(h.store['DriveAI_MISSION_FINI_retour-ecoles06'], version);
+
+  // …puis la CONSOLIDATION remplit les dossiers, des jours plus tard. La sonde doit encore agir,
+  // alors que la mission, elle, est court-circuitée depuis longtemps.
+  paires.forEach((p) => { h.arbre[p.cible] = { files: [h.fichier('c' + p.cible, 'x.pdf')], folders: {} }; });
+  jour = '2026-09-20';
+  h.c.executerMission_('retour-ecoles06', () => false);
+  assert.strictEqual(h.depeints.length, 4, 'les 4 dossiers remplis perdent leur rouge, après le FINI');
+  assert.strictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait', 'plus rien de vide ⇒ terminé');
+
+  // …et une fois terminée, elle ne coûte plus rien.
+  jour = '2026-09-21';
+  h.c.executerMission_('retour-ecoles06', () => false);
+  assert.strictEqual(h.depeints.length, 4);
 });
 
-test('runner : une dé-peinture INCOMPLÈTE ne pose pas FINI — la convergence est re-tentée', () => {
-  // Mutation qui doit faire tomber ce test : poser `DriveAI_MISSION_FINI_` sans regarder le retour
-  // de `depeindreCiblesRemplies_`. C'est exactement le défaut de la 1ʳᵉ version (drapeau consommé
-  // pour une passe qui n'a rien fait) — un chemin de retour qui n'en est pas un.
-  const paires = (ctxRunner().c.CONFIG.MISSIONS_IDS.archives06);
-  const monte = (opts) => {
-    const h = ctxRunner(opts);
-    paires.forEach((p) => {
-      h.arbre[p.src] = { files: [], folders: {} };
-      h.arbre[p.cible] = { files: [h.fichier('x' + p.cible, '2021-05-05_Cours_IMERIR.pdf')], folders: {} };
-    });
-    return h;
-  };
-  // (a) PATCH refusé sur une cible : la passe est incomplète, aucun FINI.
-  const refus = monte({ patchRefuse: [paires[1].cible] });
+test('runner : la sonde de dé-peinture s\'arrête d\'elle-même, et un PATCH refusé ne conclut jamais', () => {
+  // Un « chemin de retour » sans fin est un coût sans fin : au bout de MISSIONS_DEPEINTURE_MAX_JOURS
+  // passes, un dossier encore vide l'est pour de bon et son rouge est VRAI. Valeur DÉRIVÉE de la
+  // constante, jamais écrite en dur (leçon §7).
+  const MAX = ctxRunner().c.CONFIG.MISSIONS_DEPEINTURE_MAX_JOURS;
+  const h = ctxRunner();
+  const paires = h.c.CONFIG.MISSIONS_IDS.archives06;
+  let n = 0;
+  h.c.dateGmail_ = () => '2026-10-' + String(1 + (n % 28)).padStart(2, '0');
+  paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; h.arbre[p.cible] = { files: [], folders: {} }; });
+  for (n = 0; n < MAX - 1; n++) h.c.executerMission_('retour-ecoles06', () => false);
+  assert.notStrictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait', 'avant le plafond : on sonde encore');
+  h.c.executerMission_('retour-ecoles06', () => false);
+  assert.strictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait', 'au plafond : on arrête');
+  assert.ok(h.infos.some((m) => m.indexOf('ARRÊTÉE') !== -1), 'et on le DIT, avec le nombre de dossiers vides');
+
+  // PATCH refusé (403 quota, permission) : la passe n'est pas complète ⇒ jamais « terminé », même
+  // si plus rien n'est vide. Mutation : ignorer `complet` dans `assurerDepeintureCibles_`.
+  const refus = ctxRunner({ patchRefuse: [paires[0].cible] });
+  paires.forEach((p) => {
+    refus.arbre[p.src] = { files: [], folders: {} };
+    refus.arbre[p.cible] = { files: [refus.fichier('y' + p.cible, 'x.pdf')], folders: {} };
+  });
   refus.c.executerMission_('retour-ecoles06', () => false);
-  assert.strictEqual(refus.store['DriveAI_MISSION_FINI_retour-ecoles06'], undefined, 'PATCH refusé ⇒ pas de conclusion');
-  assert.ok(refus.infos.some((m) => m.indexOf('INCOMPLÈTE') !== -1), 'et Marc peut le lire dans le Journal');
-  // (b) le run suivant, sans refus, conclut normalement : le retour n'est pas perdu.
-  const ok = monte({});
-  ok.c.executerMission_('retour-ecoles06', () => false);
-  assert.strictEqual(ok.depeints.length, 4, 'les 4 écoles remplies sont dé-peintes');
-  assert.strictEqual(ok.store['DriveAI_MISSION_FINI_retour-ecoles06'], ok.c.CONFIG.MISSIONS_REGLES_VERSION);
+  assert.strictEqual(refus.depeints.length, 3, '3 dé-peints sur 4');
+  assert.notStrictEqual(refus.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait', 'un PATCH refusé ne conclut pas');
 });
 
 test('runner : NON APPARIÉ inscrit sous la version (re-collecté JAMAIS, ré-évaluable par bump)', () => {

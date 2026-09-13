@@ -243,14 +243,14 @@ function decisionConsolidation_(d) {
     };
   }
   // La RAISON est lue par Marc dans le plan qu'il valide : elle doit dire la vérité de la règle qui
-  // a décidé. Depuis ADR-0052, « pas de sous-chemin » ne veut plus dire « à la racine par défaut »
-  // mais « aucune règle, pas même le type, n'a su placer ce document » — ce qui est un constat très
-  // différent, et le seul cas où Marc doit intervenir lui-même.
+  // a décidé. ⚠️ Arrivé ici, `sousCheminCible` est TOUJOURS non vide : les deux sorties `OK`
+  // ci-dessus (déjà au bon endroit / jamais remonté à la racine) couvrent l'intégralité des cibles
+  // vides. Le ternaire qui s'y trouvait — et sa raison « racine du domaine, à trancher avec
+  // Marc » — était devenu du code MORT (vérifié par balayage exhaustif des couples possibles,
+  // 3ᵉ passe de revue) ; le garder aurait laissé croire à un chemin qui n'existe plus.
   return {
     action: 'Déplacer', cible: cible,
-    raison: d.sousCheminCible
-      ? 'Entité/année validée, ou type de document (ADR-0052)'
-      : 'Aucune règle ne sait le placer — racine du domaine (ADR-0052 : à trancher avec Marc)',
+    raison: 'Entité/année validée, ou type de document (ADR-0052)',
   };
 }
 

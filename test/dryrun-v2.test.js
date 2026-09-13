@@ -319,15 +319,20 @@ test('cheminActuelDryRunV2_ : à la racine du domaine (aucun sous-dossier) → d
   assert.strictEqual(ctx.cheminActuelDryRunV2_(f, '02 · Finances'), '02 · Finances');
 });
 
-test('cheminActuelDryRunV2_ : borné à 10 niveaux (anti-boucle), jamais un plantage sur une chaîne trop profonde', () => {
+test('cheminActuelDryRunV2_ : borné à 20 niveaux — EXACTEMENT la borne de l\'exécuteur', () => {
   const ctx = load(['Config.gs', 'DryRunV2.gs']);
-  const chaine = Array.from({ length: 15 }, (_, i) => 'niveau' + i); // jamais « 08 · Perso & projets »
+  const chaine = Array.from({ length: 25 }, (_, i) => 'niveau' + i); // jamais « 08 · Perso & projets »
   const f = fauxFichierParents(chaine.concat(['08 · Perso & projets']));
   const r = ctx.cheminActuelDryRunV2_(f, '08 · Perso & projets');
-  // 10 et non 5 : ce chemin alimente `decisionConsolidation_` côté PLAN, pendant que l'exécuteur
-  // calcule le sien sur une chaîne plus longue — un plan tronqué EN TÊTE affichait « Déplacer »
-  // là où l'exécution dit « OK » (revue sécurité C28-90, divergence mesurée à partir du 6ᵉ niveau).
-  assert.strictEqual(r.split('/').length - 1, 10, 'au plus 10 segments au-delà du domaine');
+  // Ce chemin alimente `decisionConsolidation_` côté PLAN pendant que l'exécuteur calcule le sien
+  // de son côté : toute différence de borne fait afficher « Déplacer » là où l'exécution dira
+  // « OK » (tronqué EN TÊTE, sans le dire). La 2ᵉ passe a relevé 5 → 10 en montant l'exécuteur à
+  // 20 dans le même lot — la divergence n'était pas fermée, elle était déplacée (3ᵉ passe).
+  // Valeur DÉRIVÉE de l'autre borne, pas recopiée : si l'une bouge, ce test tombe.
+  const borneExec = Number(require('node:fs')
+    .readFileSync(require('node:path').join(__dirname, '..', 'src', 'ConsolidationExec.gs'), 'utf8')
+    .match(/for \(var i = 0; i < (\d+); i\+\+\) \{ \/\/ 20 et non 10/)[1]);
+  assert.strictEqual(r.split('/').length - 1, borneExec, 'MÊME borne que positionActuelleFichier_');
 });
 
 test('cheminActuelDryRunV2_ : ancêtre illisible → dégrade sur ce qui a pu être lu, jamais un plantage', () => {

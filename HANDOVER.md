@@ -118,6 +118,23 @@
 > qui envoyait **le passeport d'un proche rangé sous `Autres/<personne>` dans le dossier d'identité
 > de Marc** dès que son prénom n'est pas dans le nom.
 >
+> **Troisième passe : 🟢 sur les garde-fous, et le retrait du rouge réécrit une fois de plus.** §1
+> (04, aucune suppression) et la convergence de la campagne vérifiés par exécution ; les 4 marquages
+> « signal faible » ne coûtent **aucun** rangement attendu (mesuré sur les 683 : 0 régression). Mais
+> le retrait du rouge, posé à la convergence de la mission, ne pouvait toujours pas marcher : **la
+> mission n'est pas la seule à remplir ces dossiers** — la consolidation y enverra 143 fichiers
+> pendant des semaines APRÈS, quand plus aucun run n'y revient (reproduit : 20 ticks après
+> remplissage, 0 dé-peint). C'est maintenant une **sonde quotidienne** indépendante de la mission,
+> qui s'arrête quand plus rien n'est vide (ou après un mois — un dossier vide depuis un mois l'est
+> pour de bon, et son rouge est alors VRAI). Au passage : ce chemin-là était le seul à pouvoir
+> boucler sans filet anti-brûlage et à affamer les 5 autres missions.
+>
+> ⚠️ **Honnêteté sur la preuve** : les 4 marquages n'ont aucune couverture sur données RÉELLES —
+> 0 des 683 noms du corpus les déclenche, et les fichiers qu'ils protègent (ceux déjà dans tes
+> dossiers d'école) sont aujourd'hui **absents de Drive**, l'ancienne mission les ayant tous envoyés
+> aux archives. La preuve tient sur des noms réalistes en test. Quand `retour-ecoles06` aura rendu
+> leur contenu aux écoles, le corpus pourra être régénéré et cette classe deviendra mesurable.
+>
 > Vérifié dans Drive plutôt que déduit : le libellé `lycée Thérèse d'Avila` de la table et le dossier
 > réel de Marc sont **identiques octet pour octet** (NFC, apostrophe droite) — pas de dossier jumeau
 > par normalisation Unicode. La couleur réelle des 4 dossiers, elle, **n'est pas lisible** par l'API

@@ -1373,29 +1373,79 @@ function depeindreDossier_(folderId) {
  * de chemin de retour du tout — il en donne l'apparence.
  * @param {string[]} cibles  dossiers à re-vérifier (les CIBLES d'une mission, jamais ses sources)
  * @param {function():boolean} garde
- * @return {boolean} vrai si TOUTES les cibles et leurs sous-dossiers ont été examinés (aucune
- *   coupure par le garde, aucune source illisible) ET que chaque PATCH a abouti. Un dossier laissé
- *   rouge parce qu'il est ENCORE VIDE n'est PAS une incomplétude : le signal y est vrai.
+ * @return {{complet:boolean, vides:number}} `complet` = toutes les cibles et leurs sous-dossiers
+ *   ont été examinés (aucune coupure, aucune source illisible) ET chaque PATCH a abouti ;
+ *   `vides` = combien de dossiers sont ENCORE VIDES, donc légitimement rouges — ils ne rendent pas
+ *   la passe incomplète, mais ils empêchent de la déclarer TERMINÉE (un dossier vide aujourd'hui
+ *   peut être rempli demain par la consolidation, longtemps après la mission).
  */
 function depeindreCiblesRemplies_(cibles, garde) {
   var complet = true;
+  var vides = 0;
   (cibles || []).forEach(function (id) {
     if (garde && garde()) { complet = false; return; }
     try {
       var racine = DriveApp.getFolderById(id);
-      if (!estDossierVideMission_(racine) && !depeindreDossier_(id)) complet = false;
+      if (estDossierVideMission_(racine)) vides++;
+      else if (!depeindreDossier_(id)) complet = false;
       var ds = racine.getFolders();
       while (ds.hasNext()) {
         if (garde && garde()) { complet = false; return; }
         var sous = ds.next();
-        if (!estDossierVideMission_(sous) && !depeindreDossier_(sous.getId())) complet = false;
+        if (estDossierVideMission_(sous)) vides++;
+        else if (!depeindreDossier_(sous.getId())) complet = false;
       }
     } catch (e) {
       complet = false; // source illisible : on ne conclut pas, on re-tentera
       journalInfo_('Missions', 'Dé-peinture de la cible ' + id + ' différée : ' + e);
     }
   });
-  return complet;
+  return { complet: complet, vides: vides };
+}
+
+/**
+ * SONDE QUOTIDIENNE de dé-peinture — le chemin de retour du signal rouge, détaché de la mission.
+ *
+ * Troisième écriture de ce garde-fou, et les deux premières disent pourquoi celle-ci a cette forme :
+ *  1. au PREMIER run, sous drapeau one-shot → les cibles étaient encore vides (c'est justement
+ *     pourquoi elles sont rouges), la passe ne faisait RIEN et le drapeau était consommé quand même ;
+ *  2. à la CONVERGENCE de la mission → mieux, mais la mission n'est pas la seule à remplir ces
+ *     dossiers : la CONSOLIDATION y enverra 143 fichiers pendant des semaines APRÈS la convergence,
+ *     et le court-circuit terminal fait qu'aucun run n'y revient jamais.
+ * D'où une sonde INDÉPENDANTE : bon marché (≈ 30 appels Drive), appelée AVANT le court-circuit
+ * terminal, et bornée à UNE passe par jour tant qu'elle n'a pas fini — « un retour qui est un DÉLAI
+ * n'est pas un chemin de retour », mais un retour qui coûte un balayage par tick affamerait le
+ * budget partagé (§9). Elle se déclare TERMINÉE quand plus aucun dossier n'est vide (donc plus rien
+ * à dé-peindre plus tard), ou après `MISSIONS_DEPEINTURE_MAX_JOURS` passes — un dossier qui reste
+ * vide des semaines l'est pour de bon, et son rouge est alors VRAI.
+ * État : `DriveAI_DEPEINTURE_<tag>` = 'fait' | '<jour>|<passes>'. Horodatage posé AVANT l'appel
+ * (une exception ne doit pas faire re-sonder 288 fois le même jour).
+ * @param {{tag:string, ciblesADepeindre:string[]}} spec
+ * @param {Properties} props
+ * @param {string} aujourdhui
+ */
+function assurerDepeintureCibles_(spec, props, aujourdhui) {
+  var cibles = spec.ciblesADepeindre || [];
+  if (!cibles.length) return;
+  var cle = 'DriveAI_DEPEINTURE_' + spec.tag;
+  var etat = String(props.getProperty(cle) || '');
+  if (etat === 'fait') return;
+  var sep = etat.indexOf('|');
+  var dernierJour = sep === -1 ? '' : etat.slice(0, sep);
+  var passes = sep === -1 ? 0 : (Number(etat.slice(sep + 1)) || 0);
+  if (dernierJour === aujourdhui) return; // déjà sondé aujourd'hui
+  passes++;
+  props.setProperty(cle, aujourdhui + '|' + passes); // AVANT l'appel
+  var r = depeindreCiblesRemplies_(cibles, null); // pas de garde : ~30 appels, 1×/jour
+  if (r.complet && r.vides === 0) {
+    props.setProperty(cle, 'fait');
+    journalInfo_('Missions', 'Dé-peinture TERMINÉE pour « ' + spec.tag +
+      ' » : plus aucun dossier cible vide, plus aucun signal « bon pour suppression » à retirer.');
+  } else if (passes >= CONFIG.MISSIONS_DEPEINTURE_MAX_JOURS) {
+    props.setProperty(cle, 'fait');
+    journalInfo_('Missions', 'Dé-peinture ARRÊTÉE pour « ' + spec.tag + ' » après ' + passes +
+      ' passes : ' + r.vides + ' dossier(s) encore vide(s) — leur rouge est VRAI, ils sont vides.');
+  }
 }
 
 /**
@@ -1500,9 +1550,14 @@ function executerMission_(tag, estBudgetDepasse) {
   // le nettoyage se défaire en silence. Elle n'écrit pas non plus `FINI` (voir plus bas), ce qui
   // impose de ne JAMAIS la mettre en `convergenceApres` d'une autre mission : elle bloquerait
   // l'aval à vie. Verrouillé par un test.
+  var aujourdhui = dateGmail_(new Date());
+  // DÉ-PEINTURE : AVANT le court-circuit terminal, et indépendante de la convergence (voir
+  // `assurerDepeintureCibles_` — la consolidation remplit ces dossiers longtemps après la mission).
+  // ENVELOPPÉE : une couleur ne remet jamais en cause le drainage ni la convergence.
+  try { assurerDepeintureCibles_(spec, props, aujourdhui); }
+  catch (eDep) { journalInfo_('Missions', 'Sonde de dé-peinture différée : ' + eDep); }
   if (!spec.perpetuelle && props.getProperty('DriveAI_MISSION_FINI_' + tag) === version) return;
 
-  var aujourdhui = dateGmail_(new Date());
   var consommeJour = budgetJourMissions_(props, aujourdhui);
   if (consommeJour >= CONFIG.MISSIONS_BUDGET_JOUR_MS) return; // repris demain (gate + re-vérif)
 
@@ -1613,21 +1668,6 @@ function executerMission_(tag, estBudgetDepasse) {
         // Passe à vide : rien à faire, on repassera au prochain tick. Ni drapeau FINI, ni peinture
         // rouge (les sources vont se re-remplir — les peindre inviterait à supprimer des dossiers
         // que le flux recrée aussitôt).
-        return;
-      }
-      // DÉ-PEINTURE (revue sécurité C28-90 🟠 7, corrigée par la revue de code 🔴 1) — le chemin de
-      // RETOUR du signal rouge « vidé, bon pour suppression », posé par une campagne PRÉCÉDENTE sur
-      // des dossiers qu'elle avait vidés et qui sont redevenus la STRUCTURE (les 4 dossiers d'école).
-      // ⚠️ ICI, et pas au premier run : à ce moment-là les cibles étaient encore VIDES (c'est
-      // justement pourquoi elles sont rouges) — la dé-peinture n'aurait rien fait, et un drapeau
-      // one-shot consommé aurait laissé le rouge À VIE sur des dossiers ensuite remplis. À la
-      // convergence, la mission a fini de verser : ce qui est vide l'est pour de bon.
-      // ⚠️ AVANT le drapeau FINI : après lui, le court-circuit terminal fait que plus aucun run
-      // n'atteint ce code. Une passe coupée par le garde-temps ne conclut donc PAS (pas de FINI) —
-      // la mission re-convergera au prochain run (une passe à vide, quelques RPC).
-      if ((spec.ciblesADepeindre || []).length && !depeindreCiblesRemplies_(spec.ciblesADepeindre, garde)) {
-        journalInfo_('Missions', 'Dé-peinture INCOMPLÈTE (budget/illisible) pour « ' + tag +
-          ' » : convergence re-tentée au prochain run, le signal rouge ne reste pas.');
         return;
       }
       props.setProperty('DriveAI_MISSION_FINI_' + tag, version);

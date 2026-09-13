@@ -943,6 +943,8 @@ var CONFIG = {
                                           // INVISIBLES et la mission se déclarait « terminée » en les ignorant
                                           // — au-delà de la borne, signalé + mission maintenue OUVERTE)
   MISSIONS_FENETRE_MARGE_MS: 30 * 24 * 60 * 60 * 1000, // ± 30 j autour des dates observées d'un logement
+  MISSIONS_DEPEINTURE_MAX_JOURS: 30,      // sonde de dé-peinture : passes AVANT d'abandonner (§9 —
+                                          // un « chemin de retour » sans fin est un coût sans fin)
   MISSIONS_COULEUR_VIDE: '#f83a22',       // ROUGE Drive (palette standard) : « vidé, bon pour suppression »
                                           // — un SIGNAL pour Marc, jamais une suppression (§2)
   // IDs ÉPINGLÉS des dossiers de Marc (recon du 2026-08-17). Par ID et jamais par NOM : un renommage

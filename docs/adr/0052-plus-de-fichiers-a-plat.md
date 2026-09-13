@@ -561,3 +561,56 @@ réécrit ici plutôt que laissé faux.
   appliqué : changer la constante n'aurait aucun effet en production.
 - Recherche Drive exhaustive sur « Thérèse » : deux dossiers, le dossier d'école (minuscule) et
   l'archive. Aucun jumeau existant.
+
+## 12. La troisième passe (2026-09-13) — 🟢 sur les garde-fous, et le retour du rouge réécrit une 3ᵉ fois
+
+Verdict : **aucun bloquant**. §1.1b (aucune sortie de `04`) et §1.2 (aucune suppression) reproduits
+sur du code exécuté, y compris à la profondeur nouvellement ouverte par ce lot (11-20) — la
+détection de zone protégée remonte jusqu'à 50 ancêtres, elle couvre toute la plage. Convergence de
+la campagne intacte : un fichier laissé en place reçoit quand même ses clés `conso|` et `consoexec|`.
+Et les 4 marquages faibles ne coûtent **aucun** rangement attendu : mesuré domaine par domaine sur
+les 683 fichiers de la racine, **0 régression** (D8 exige `sousCheminActuel !== ''`, donc à la racine
+rien ne change — structurel ET mesuré).
+
+Deux 🟠 restaient, tous deux sur le même garde-fou.
+
+### Le « chemin de retour » du rouge, troisième écriture — et pourquoi les deux premières étaient fausses
+
+1. **One-shot au premier run** : les cibles sont encore VIDES à ce moment-là (c'est *pourquoi* elles
+   sont rouges) — la passe ne faisait rien et le drapeau était consommé quand même.
+2. **À la convergence de la mission** : mieux, mais **la mission n'est pas la seule à remplir ces
+   dossiers**. La consolidation y enverra 143 fichiers pendant des semaines APRÈS la convergence, et
+   le court-circuit terminal fait qu'aucun run n'y revient. Reproduit par la revue : convergence sur
+   cibles vides, puis remplissage, puis 20 ticks → **0 dé-peint**. Le défaut n'était pas fermé, il
+   était déplacé dans le temps. Second effet : ce `return` sans drapeau FINI était le **seul** chemin
+   de convergence sans filet anti-brûlage — une cible devenue illisible (Marc supprime un dossier
+   rouge : le précédent est documenté) bouclait à vie, 200 relectures de l'onglet `Entités` en
+   50 ticks, et affamait les 5 autres missions sur le budget partagé de 2 min/jour.
+3. **Sonde QUOTIDIENNE indépendante** (retenu) : `assurerDepeintureCibles_`, appelée **avant** le
+   court-circuit terminal, bornée à **une passe par jour** (≈ 30 appels Drive) tant qu'elle n'a pas
+   fini. Elle se déclare terminée quand plus aucun dossier cible n'est vide — donc plus rien à
+   dé-peindre plus tard — ou après `MISSIONS_DEPEINTURE_MAX_JOURS` passes, parce qu'un chemin de
+   retour sans fin est un coût sans fin, et qu'un dossier vide depuis un mois l'est pour de bon :
+   son rouge est alors VRAI. Un PATCH refusé ne conclut jamais. Quatre mutations le prouvent, dont
+   « remettre la sonde après le court-circuit terminal » et « retirer le plafond de passes ».
+
+### Ce qui a été corrigé en même temps
+
+- **Branche morte** : depuis la garde « cible vide », le `return` final ne pouvait plus rendre la
+  racine du domaine. Son ternaire et sa raison « à trancher avec Marc » décrivaient un chemin qui
+  n'existe plus (vérifié par balayage exhaustif des couples possibles) — retirés.
+- **La profondeur du plan n'était pas alignée, elle était décalée** : le lot précédent montait le
+  plan de 5 à 10 *et* l'exécuteur de 10 à 20. La divergence passait de « ≥ 6 niveaux » à
+  « ≥ 11 » — pas fermée. Les deux valent 20, et le test **dérive sa borne du code de l'exécuteur**
+  au lieu de la recopier : si l'une bouge seule, il tombe.
+
+### Honnêteté du corpus
+
+Les 4 marquages faibles n'ont **aucune couverture sur données réelles** : 0 des 683 noms du corpus
+déclenche l'une de ces branches, et la population qu'ils protègent — les fichiers déjà *dans* les
+dossiers d'école — est aujourd'hui **vide dans Drive** (l'ancienne mission les avait tous déplacés
+vers les archives ; c'est précisément ce que `retour-ecoles06` est en train d'annuler). La preuve
+repose donc sur des noms réalistes en test, chacun verrouillé par sa propre mutation. Quand les
+dossiers d'école seront re-remplis, le corpus `deja-ranges` pourra être régénéré depuis Drive et
+cette classe deviendra mesurable — **c'est la seule preuve qui comptera** (§9 : « la seule preuve
+qui compte reste la DONNÉE RÉELLE post-merge »).
