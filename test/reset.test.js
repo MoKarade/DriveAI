@@ -125,7 +125,10 @@ const CAS = [
   // Cible à 3 SEGMENTS versée dans CAS (revue structure C28-51) : `cibleExiste` verrouille alors
   // route ↔ table — renommer une catégorie dans les constantes sans toucher la route casserait ICI.
   ['03 · Logement & véhicule', '2025-03-01_Facture_Garage Jetta.pdf', 'Véhicule/VW Jetta/Entretien & réparations'],
-  ['03 · Logement & véhicule', '2026-02_Facture_ENGIE.pdf', 'Énergie & services'],
+  // C28-90 : le flux vise désormais le BUCKET PAR ÉMETTEUR, comme la mission `dispatch03` —
+  // avant, il s'arrêtait au filet et la consolidation aurait remonté d'un cran chaque fichier
+  // que la mission venait de ranger.
+  ['03 · Logement & véhicule', '2026-02_Facture_ENGIE.pdf', 'Énergie & services/ENGIE'],
   // 04 — routage INTERNE seulement ; un doc étranger (banque CIC) rend null = reste EN PLACE + rapport
   ['04 · Immigration', '2024-11_Permis de travail_IRCC.pdf', 'Permis de travail & EIMT'],
   ['04 · Immigration', '2025-02_Lettre_Immigration, Réfugiés Et Citoyenneté Canada.pdf', 'IRCC (fédéral)'],
@@ -330,7 +333,9 @@ test('05 : « Recherche d\'emploi » RECRÉÉ (ADR-0044 D10) — le geste est SY
 test('06 : la table des écoles se construit depuis SOUS_DOSSIERS_ECOLE_RESET (une seule source, revue PR1)', () => {
   const table = JSON.parse(JSON.stringify(ctx.STRUCTURE_CIBLE_RESET['06 · Études & diplômes']));
   const attendu = JSON.parse(JSON.stringify(ctx.SOUS_DOSSIERS_ECOLE_RESET));
-  for (const ecole of ['Lycée Thérèse d\'Avila', 'DUT ULCO Saint-Omer', 'Cégep de Sherbrooke', 'IMERIR']) {
+  // ⚠️ « lycée » en MINUSCULE : c'est le nom RÉEL du dossier Drive (relevé le 13/09), et
+  // `sousDossier_` résout par `getFoldersByName`, qui est SENSIBLE À LA CASSE.
+  for (const ecole of ['lycée Thérèse d\'Avila', 'DUT ULCO Saint-Omer', 'Cégep de Sherbrooke', 'IMERIR']) {
     assert.deepStrictEqual(Object.keys(table[ecole]), attendu, ecole);
   }
   assert.deepStrictEqual(Object.keys(table['Prépa Gustave Eiffel (PTSI)']), attendu.concat(['Concours']));
@@ -478,8 +483,13 @@ test('c49-2 · 03 : SANS véhicule identifiable → null (jamais de fourre-tout,
     '2026-07-06_Constat d\'infraction_Municipalité de Thetford Mines.jpg',
     '2026-07-20_Certificat d\'immatriculation_Société de l\'assurance automobile du Québec.jpg',
   ].forEach((nom) => assert.strictEqual(c.cheminCibleReset_(D, nom), 'Véhicule/À attribuer', nom));
-  // L'assurance HABITATION, elle, garde son nœud (règle plus haute).
-  assert.strictEqual(c.cheminCibleReset_(D, '2025-01-01_Assurance habitation_Desjardins.pdf'), 'Assurance habitation');
+  // L'assurance HABITATION, elle, garde son nœud (règle plus haute) — et depuis C28-90 elle
+  // descend dans le bucket PAR ÉMETTEUR, exactement comme la mission `dispatch03` le fait déjà.
+  assert.strictEqual(c.cheminCibleReset_(D, '2025-01-01_Assurance habitation_Desjardins.pdf'),
+    'Assurance habitation/Desjardins');
+  // Émetteur hors table ⇒ le filet seul, jamais un bucket inventé.
+  assert.strictEqual(c.cheminCibleReset_(D, '2025-01-01_Assurance habitation_Intact.pdf'),
+    'Assurance habitation');
   // Une réclamation TÉLÉCOM ne devient jamais un sinistre auto (contre-exemple réel conservé).
   assert.strictEqual(c.cheminCibleReset_(D, '2023-11-01_Réclamation_Virgin.png'), null);
 });

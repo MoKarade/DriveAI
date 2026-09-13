@@ -266,7 +266,25 @@ Ordre de décision dans la branche `06`, du FAIT vers la DÉDUCTION — et jamai
    15 fichiers sur 349 ;
 3. la FENÊTRE de scolarité (déduction), refus dès qu'il y a deux fenêtres ou aucune.
 
-**Mesuré : 147 des 475 placés dans `06`, répartis sur les 5 écoles.**
+**Mesuré : 143 des 475 placés dans `06`** — **34 par un FAIT écrit dans le nom** (école, type de
+diplôme, marqueur `GIM`/`1ʳᵉ`) et **109 par les fenêtres**. *(Une première version annonçait
+« 147 dont 15 par marqueur » : les deux chiffres étaient faux, re-comptés par la revue flotte. Sept
+marqueurs sur neuf avaient une contribution NULLE mesurée — dont `svt`, qui produisait en prime une
+contradiction dans le corpus — et quatre étaient INATTEIGNABLES, déjà captés par les listes de nom.
+Il n'en reste que deux.)*
+
+⚠️ **La fenêtre seule ne suffisait pas.** Marc a dit « Sherbrooke 2019 », mais le dossier RÉEL
+`Cégep de Sherbrooke` contient des fichiers de **2018-08 à 2025-01**. Cinq documents du corpus
+(« Direction du Cégep » 2020-03 et 2020-11, « Message MIO » 2020-10, « Centre de services scolaire »
+2023-08…) partaient donc chez l'ULCO ou chez IMERIR — le mode de panne exact que la fenêtre de
+Sherbrooke devait éviter, décalé de trois mois. D'où `vetoCollegialReset_` : quand le nom revendique
+un établissement québécois que la table n'a pas su résoudre, **aucune fenêtre n'a le droit de
+trancher**. Garde par CAPACITÉ, pas par liste d'écoles.
+
+⚠️ **Et une école DÉDUITE est un signal FAIBLE** (même statut que le repli par type, D8) : elle sort
+un fichier de la RACINE, elle ne le retire jamais d'un dossier d'école existant. Sans ça, un
+document de cégep classé à la main et dont le nom ne dit pas l'école aurait été déménagé au premier
+passage de la consolidation.
 
 ### D6 bis — le reliquat : « lit et classe mieux »
 Reste 328 fichiers, dont **239 portent la date `2026`** — la date de RÉCEPTION, faute de date
@@ -294,10 +312,60 @@ sinon elle RE-CRÉAIT `Modèles & formulaires` PAR NOM à chaque passage pendant
 **Mesuré : 6 des 8 restants de `03` placés.** Les 2 derniers ne sont pas de l'équipement (une capture
 d'annonce, une liste d'achats pour le VÉHICULE) — c'est la revue flotte qui avait corrigé l'étiquette.
 
-### Bilan après D6/D7
+### Bilan après D6/D7 (mesuré, pas recopié)
 | | À plat | Placés | Restants |
 |---|---:|---:|---:|
 | Hors `06` | 208 | 204 | **4** |
-| `06` | 475 | 147 | 328 *(C28-92)* |
-| **Total** | **683** | **351** | **332** |
+| `06` | 475 | 143 | 332 *(C28-92)* |
+| **Total** | **683** | **347** | **336** |
 
+Sur les 332 restants de `06`, **237 portent la date `2026`** (la date de réception).
+
+## 8. C28-90 — la préparation du rattrapage, et pourquoi le bump N'A PAS eu lieu
+
+Marc, 2026-09-13 : « fais la préparation de C28-90 et lance le rattrapage ». La préparation est
+faite ; **le bump de `CONSOLIDATION_TAG` ne l'est pas**, et c'est un refus motivé, pas un oubli.
+
+### Ce qui EST fait
+1. **Budget réalloué** : `CONSOLIDATION_BUDGET_JOUR_MS` 2 → 10 min/j, repris aux missions (10 → 2),
+   toutes terminées ou à jour. Le COUPLE reste à 12 min/j — réallocation, jamais une hausse
+   d'enveloppe (leçon §9), et le test d'invariant le vérifie.
+2. **Les règles que les missions étaient seules à connaître sont remontées dans la règle partagée** :
+   le flux vise désormais `Assurance habitation/<Assureur>` et `Énergie & services/<Fournisseur>`
+   via `bucketEmetteur_` — la MÊME fonction que `dispatch03`. Avant, le flux s'arrêtait au filet
+   pendant que la mission remplissait le bucket : la consolidation aurait remonté d'un cran chaque
+   fichier rangé le 12/09. Les 4 buckets sont désormais DÉCLARÉS dans `STRUCTURE_CIBLE_RESET`.
+3. **D9 — on ne remonte jamais un fichier vers un de ses ancêtres.** Quand la cible calculée est un
+   préfixe du chemin actuel, le fichier est déjà là où on veut l'envoyer, en plus précis : la règle
+   générale en sait moins que celui qui l'a rangé. Mesuré sur le Drive réel : sans cette garde, les
+   6 sous-dossiers thématiques de `Logement/3325 4e avenue` et les 4 buckets d'émetteur étaient
+   remontés d'un cran. `ConsolidationExec` applique sans validation ligne à ligne — l'erreur aurait
+   été muette et massive.
+
+### Ce qui BLOQUE le bump — une contradiction de structure, pas un détail technique
+Les 4 nœuds d'école visés par D6 (`DUT ULCO Saint-Omer`, `Prépa Gustave Eiffel (PTSI)`, `IMERIR`,
+`lycée Thérèse d'Avila`) sont **exactement les 4 sources de la mission `archives06`**
+(`CONFIG.MISSIONS_IDS.archives06`), dont l'objet est de les VIDER vers des archives aux autres noms
+(`ULCO — DUT GIM`, `Prépa PTSI`, `IMERIR — Ingénieur MSIR`, `Lycée — Thérèse Davila`) — et qui les
+déclare `sourcesJetables`, c'est-à-dire **peints en rouge pour suppression une fois vides**.
+
+Son commentaire affirme : « une fois vides, ils n'ont plus d'objet et le flux ne les recrée pas (il
+vise l'archive) ». C'est vrai du chemin par ENTITÉ (re-pointé par `apresConvergence`), **faux du
+chemin par TABLE** : `cheminCibleReset_` résout ces nœuds PAR NOM. Avant D6 la contradiction portait
+sur 11 fichiers ; D6 la porterait à 143, et le bump la rendrait effective d'un coup.
+
+Deux structures de `06` coexistent donc, et il faut que Marc tranche laquelle est la sienne :
+ses documents d'études vont-ils dans `06/<École>` (et `archives06` n'a plus lieu d'être), ou dans
+`06/Archives scolaires/<École — filière>` (et c'est la table qui doit viser les archives) ?
+Tant que ce n'est pas tranché, bumper le tag ferait travailler le flux contre une mission active.
+
+*(Constat de passage, hors périmètre : `06` a **9 enfants réels** — les 7 de la table, plus
+`Archives scolaires` et `IUT Du Littoral`, un doublon d'entité laissé par le seed. Le validateur
+≤ 7 ne lit que la table, il ne pouvait pas le voir.)*
+
+### Ce qui a failli passer, et que seule la vérification a arrêté
+`STRUCTURE_CIBLE_RESET` écrivait `Lycée Thérèse d'Avila` ; le dossier RÉEL de Marc s'appelle
+`lycée Thérèse d'Avila`, avec un **l minuscule**. `sousDossier_` résout par `getFoldersByName`, qui
+est **sensible à la casse** : un second dossier serait né à côté du sien, et 143 fichiers y seraient
+partis. C'est exactement « 3987 route des Rivières » à côté de « 3987 rte des Rivières », déjà vécu
+en `03`. Un test fige désormais les libellés de la table sur les noms réels relevés dans Drive.

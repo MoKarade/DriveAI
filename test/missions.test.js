@@ -1242,6 +1242,14 @@ test('ADR-0044 §6 (cible révisée ADR-0052 D7) : formulaires GÉNÉRIQUES → 
   assert.strictEqual(c.estModeleOuFormulaire_('formulaire de consentement'), true);
   assert.strictEqual(c.estModeleOuFormulaire_('formulaire-de-consentement'), true);
   assert.strictEqual(c.estModeleOuFormulaire_('contrat de bail'), false);
+  // ⚠️ CAS DISCRIMINANT (revue flotte) : les deux noms ci-dessus sont AUSSI captés par le filet
+  // générique de fin de branche ('formulaire de demande de location', 'consentement'), qui rend le
+  // même « Contrats » — depuis que D7 a aligné les deux cibles, le test était devenu TAUTOLOGIQUE
+  // (mutation jouée : retirer `estModeleOuFormulaire_` du flux laissait le test vert). Celui-ci,
+  // réel et présent au corpus, n'est capté QUE par `estModeleOuFormulaire_`.
+  assert.ok(c.estModeleOuFormulaire_('Formulaire de dépôt de garantie'));
+  assert.strictEqual(c.cheminCibleReset_(D, '2023-05-27_Formulaire de dépôt de garantie_CORPIQ.pdf'),
+    'Contrats', 'FLUX — seul `estModeleOuFormulaire_` capte ce nom');
 });
 
 test('ADR-0044 §7 : les dossiers-années de 02 sortent vers leur VRAI domaine, cible calculée par LE FLUX', () => {

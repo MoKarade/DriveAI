@@ -577,7 +577,7 @@ var CONFIG = {
                                           // tout avec le référentiel courant (rotation dans genererPlan…)
   CONSOLIDATION_BUDGET_MS: 3 * 60 * 1000, // sous-budget PROPRE par run (le hash MD5 lit les octets — sans
                                           // cette borne, un run mangerait le budget des étapes suivantes)
-  CONSOLIDATION_BUDGET_JOUR_MS: 2 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
+  CONSOLIDATION_BUDGET_JOUR_MS: 10 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
                                           // un plafond par RUN ne borne pas la JOURNÉE — ×288 ticks > quota
                                           // runtime ~90 min/j ; patron GMAIL_HISTO/SYNC_BUDGET_JOUR_MS).
                                           // 20 → 12 min (REDESCENTE, revue quota C28-29) ; puis 12 → 2 min
@@ -585,9 +585,12 @@ var CONFIG = {
                                           // (9/9 domaines le 16/08) — ses 10 min partent aux MISSIONS de
                                           // curation (MISSIONS_BUDGET_JOUR_MS). COUPLE verrouillé par test :
                                           // conso-gen + missions = 12 min/j, enveloppe reset-OFF INCHANGÉE.
-                                          // 2 min suffisent à un redémarrage LENT si un nouveau plan naissait ;
-                                          // le jour où la conso doit VRAIMENT reprendre, rendre les 10 min
-                                          // (missions finies) — le test de couple force l'arbitrage.
+                                          // 2026-09-13, C28-90 : LE JOUR EST VENU. 2 → 10 min, repris aux
+                                          // missions (10 → 2), qui sont toutes terminées ou à jour. Le
+                                          // couple reste à 12 min/j — c'est une RÉALLOCATION, jamais une
+                                          // hausse de l'enveloppe (leçon §9). Les missions gardent 2 min :
+                                          // assez pour réagir à un fichier neuf, et `MISSIONS_BUDGET_JOUR_MS`
+                                          // à 0 avec `MISSIONS_ACTIF` vrai serait un no-op silencieux.
   CONSOLIDATION_MAX_PAR_RUN: 60,          // fichiers ajoutés au plan par run (40 → 60 ; le coût réel = le hash)
   // Exécution du plan (ConsolidationExec.gs, ADR-0024 — décision Marc 2026-07-17 « change tout live ») :
   CONSOLIDATION_EXEC_ACTIF: true,         // applique Déplacer/Doublon du PlanConsolidation (moveTo seul,
@@ -909,7 +912,7 @@ var CONFIG = {
                                           // ÉMETTEUR pour assurances et énergie — les ~28 refus des
                                           // missions logement/dispatch03/carrière se ré-évaluent.
   MISSIONS_BUDGET_MS: 90 * 1000,          // sous-budget par run (pure I/O moveTo — reste < mur standard)
-  MISSIONS_BUDGET_JOUR_MS: 10 * 60 * 1000, // budget QUOTIDIEN partagé entre missions, ms RÉELLES persistées.
+  MISSIONS_BUDGET_JOUR_MS: 2 * 60 * 1000, // budget QUOTIDIEN partagé entre missions, ms RÉELLES persistées.
                                           // RÉALLOUÉ (jamais ajouté) : les 10 min viennent de
                                           // CONSOLIDATION_BUDGET_JOUR_MS (12 → 2, gen terminée le 16/08).
                                           // Couple missions+conso-gen = 12 min/j verrouillé par test.

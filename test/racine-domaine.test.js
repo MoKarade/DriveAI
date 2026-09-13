@@ -78,9 +78,9 @@ const RACINE_ATTENDUE = {
                                       // pour le VÉHICULE) — la revue flotte avait corrigé l'étiquette
   '04 · Immigration': 0,
   '05 · Carrière': 0,
-  '06 · Études & diplômes': 328,      // D6 appliquée : 147 placés (11 par le nom de l'école,
-                                      // 15 par un marqueur de niveau/filière, le reste par les
-                                      // fenêtres de scolarité). Sur les 328 restants, 239 portent
+  '06 · Études & diplômes': 332,      // D6 appliquée : 143 placés — 34 par un FAIT écrit dans le
+                                      // nom (école, diplôme, marqueur GIM/1ʳᵉ) et 109 par les
+                                      // fenêtres de scolarité. Sur les 332 restants, ~237 portent
                                       // la date 2026 — la date de RÉCEPTION faute de date lisible
                                       // dans le document — donc hors de toute fenêtre. C'est ce
                                       // reliquat-là que la re-lecture LLM doit dater (C28-92).
@@ -99,7 +99,7 @@ test('ADR-0052 — corpus réel : le compte de fichiers laissés à la RACINE, d
 
 test('ADR-0052 — ce que la TABLE seule sait placer, mesuré sur le corpus', () => {
   // Au recensement du 13/09, avant ce chantier, la table n'en plaçait que 13 sur 683 (1,9 %) —
-  // c'est le constat du §1 de l'ADR. Trois apports l'ont fait monter à 152 SANS toucher au repli :
+  // c'est le constat du §1 de l'ADR. Trois apports l'ont fait monter SANS toucher au repli :
   // les corrections de motifs de la revue flotte (« saint-hyacinthe » que `normaliserCle_` écrit
   // avec son trait d'union, 4 établissements manquants, l'identité dans `04`), les fenêtres de
   // scolarité (D6) et le nœud d'équipement de `03` (D7).
@@ -107,7 +107,7 @@ test('ADR-0052 — ce que la TABLE seule sait placer, mesuré sur le corpus', ()
   for (const [domaine, noms] of Object.entries(CORPUS)) {
     parLaTable += noms.filter((n) => ctx.cheminCibleReset_(domaine, n)).length;
   }
-  assert.strictEqual(parLaTable, 173);
+  assert.strictEqual(parLaTable, 169);
 });
 
 test('ADR-0052 — le corpus figé est bien celui du recensement (683 fichiers, 8 domaines)', () => {
@@ -310,7 +310,7 @@ test('bucketTypeDomaine_ : les 6 collisions de motifs relevées en revue restent
       'Attestations & certificats'],
     // Une assurance AUTO n'est pas une assurance habitation ; 03 a le nœud prévu pour ça.
     ['03 · Logement & véhicule', '2025-01-01_Assurance auto_Intact.pdf', 'Véhicule/À attribuer'],
-    ['03 · Logement & véhicule', "2025-01-01_Assurance_Filia-MAIF.pdf", 'Assurance habitation'],
+    ['03 · Logement & véhicule', "2025-01-01_Assurance_Filia-MAIF.pdf", 'Assurance habitation/MAIF'],
     // Les deux graphies d'une locution doivent donner la MÊME cible (trait d'union neutralisé).
     ['07 · Santé', '2025-01-01_Compte-rendu opératoire_CHU.pdf', 'Médecins & consultations'],
     ['07 · Santé', '2025-01-01_Compte rendu opératoire_CHU.pdf', 'Médecins & consultations'],
@@ -384,11 +384,11 @@ test('ADR-0052 D6 — les fenêtres de scolarité placent, et REFUSENT dès le m
   assert.strictEqual(ctx.ecoleParDateReset_('2017-11-03_Notes de cours_Maths.pdf'), 'Prépa Gustave Eiffel (PTSI)');
   assert.strictEqual(ctx.ecoleParDateReset_('2018-03-12_Devoir_Physique.pdf'), 'Prépa Gustave Eiffel (PTSI)');
   assert.strictEqual(ctx.ecoleParDateReset_('2018-10-01_TP_Élec.pdf'), 'DUT ULCO Saint-Omer');
-  assert.strictEqual(ctx.ecoleParDateReset_('2016-03-01_Devoir_SVT.pdf'), 'Lycée Thérèse d\'Avila');
+  assert.strictEqual(ctx.ecoleParDateReset_('2016-03-01_Devoir_SVT.pdf'), 'lycée Thérèse d\'Avila');
   assert.strictEqual(ctx.ecoleParDateReset_('2021-02-02_Rapport de TP_Robotique.pdf'), 'IMERIR');
   // ANNÉE SEULE : elle ne place que si l'année CIVILE ENTIÈRE tient dans une fenêtre.
   assert.strictEqual(ctx.ecoleParDateReset_('2022_Notes de cours_Maths.pdf'), 'IMERIR');
-  assert.strictEqual(ctx.ecoleParDateReset_('2016_Notes de cours_Maths.pdf'), 'Lycée Thérèse d\'Avila');
+  assert.strictEqual(ctx.ecoleParDateReset_('2016_Notes de cours_Maths.pdf'), 'lycée Thérèse d\'Avila');
   assert.strictEqual(ctx.ecoleParDateReset_('2018_Notes de cours_Maths.pdf'), null, '2018 est à cheval');
   assert.strictEqual(ctx.ecoleParDateReset_('2020_Notes de cours_Maths.pdf'), null, '2020 est à cheval');
   // HORS fenêtre — dont les 239 fichiers datés 2026 (date de réception), qu'il ne faut surtout pas
@@ -449,8 +449,12 @@ test('ADR-0052 D6 — Sherbrooke CHEVAUCHE l\'ULCO : toute l\'année 2019 est re
   assert.strictEqual(ctx.ecoleParDateReset_('2018-11-01_TP_Élec.pdf'), 'DUT ULCO Saint-Omer');
   assert.strictEqual(ctx.ecoleParDateReset_('2020-03-01_TP_Élec.pdf'), 'DUT ULCO Saint-Omer');
   // …et un document de 2019 qui NOMME son école va quand même chez elle (le nom est un fait).
+  // ⚠️ Égalité STRICTE, et un type que la règle « Diplômes » ne capte pas : la version précédente
+  // écrivait `String(...).length > 0`, or `String(null)` vaut « null » — l'assertion ne pouvait
+  // PAS échouer, et la valeur réelle n'était même pas l'école (revue flotte).
   const d = '06 · Études & diplômes';
-  assert.ok(String(ctx.cheminCibleReset_(d, '2019-03-01_Relevé de notes_Cégep de Sherbrooke.pdf')).length > 0);
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2019-03-01_Travail pratique_Cégep de Sherbrooke.pdf'),
+    'Cégep de Sherbrooke/Cours & travaux');
 });
 
 test('ADR-0052 D6 — un marqueur de NIVEAU ou de FILIÈRE dans le nom est un FAIT, pas une déduction', () => {
@@ -458,14 +462,90 @@ test('ADR-0052 D6 — un marqueur de NIVEAU ou de FILIÈRE dans le nom est un FA
   const cas = [
     // Ces 4 noms portent une date HORS de toute fenêtre (2026 = date de réception) : seul le
     // marqueur peut les placer, ce qui prouve qu'il est bien consulté AVANT la date.
-    ['2026-07-01_Compte rendu de sortie scolaire_SVT sortie Mare à Goriaux 2nde.pdf', 'Lycée Thérèse d\'Avila'],
     ['2026-07-01_Travail pratique_TP électricité théorème superposition GIM1.docx', 'DUT ULCO Saint-Omer'],
-    ['2026-07-01_Programme de colle_Programme de colles semaine 12.pdf', 'Prépa Gustave Eiffel (PTSI)'],
+    ['2026-07-01_Devoir_Devoir 1ère année.pdf', 'lycée Thérèse d\'Avila/Cours & travaux'],
+    // « svt », « 2nde », « colle » ont été RETIRÉS : contribution NULLE mesurée sur le corpus et
+    // risque non nul. Un document qui ne porte qu'une MATIÈRE n'est plus attribué par elle.
+    ['2026-07-01_Compte rendu de sortie scolaire_SVT sortie Mare à Goriaux 2nde.pdf', null],
     ['2026-07-01_Notes de cours_Cours de maths.pdf', null], // aucun marqueur, aucune fenêtre
   ];
+  // LE cas qui prouve l'ORDRE : ici la DATE et le MARQUEUR se contredisent pour de vrai.
+  // Sans lui, déplacer la déduction par date AVANT le bloc de marqueurs laissait les 24 tests
+  // verts (mutation jouée par la revue flotte) — le verrou était décoratif.
+  assert.strictEqual(ctx.ecoleParDateReset_('2019-05-05_Travail pratique_TP GIM2.docx'), null,
+    'pré-condition : 2019 est ambigu, la date ne tranche pas');
+  assert.strictEqual(ctx.ecoleParNomReset_('2019-05-05_Travail pratique_TP GIM2.docx'), 'DUT ULCO Saint-Omer');
+  assert.strictEqual(ctx.ecoleParDateReset_('2021-05-05_Travail pratique_TP GIM2.docx'), 'IMERIR',
+    'la date dit IMERIR…');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2021-05-05_Travail pratique_TP GIM2.docx'),
+    'DUT ULCO Saint-Omer/Cours & travaux', '…mais le marqueur GIM, qui est un FAIT écrit, gagne');
   for (const [nom, attendu] of cas) {
     const cible = ctx.cheminCibleReset_(d, nom);
     if (attendu === null) assert.strictEqual(cible, null, nom);
     else assert.ok(String(cible).indexOf(attendu) === 0, nom + ' → ' + cible);
   }
+});
+
+test('C28-90 — les libellés d\'école de la table sont EXACTEMENT les dossiers Drive du 13/09', () => {
+  // `sousDossier_` résout par `getFoldersByName`, SENSIBLE À LA CASSE : un libellé de table qui
+  // diffère d'une majuscule crée un SECOND dossier à côté du vrai, et plus rien ne les réunit.
+  // C'est exactement ce qui est arrivé en `03` (« 3987 route des Rivières » vs « 3987 rte des
+  // Rivières »), et la revue flotte l'a trouvé ici avant que ça ne se produise sur 143 fichiers.
+  // Les 9 enfants RÉELS de `06` relevés le 13/09 (2 ne sont pas dans la table et c'est voulu :
+  // « Archives scolaires » est la cible de la mission archives06, « IUT Du Littoral » est un
+  // doublon d'entité laissé par le seed — tous deux à traiter hors de ce chantier).
+  const reels = ['IUT Du Littoral', 'DUT ULCO Saint-Omer', 'Diplômes & relevés officiels',
+    'Autres établissements', 'Prépa Gustave Eiffel (PTSI)', 'IMERIR', 'Cégep de Sherbrooke',
+    "lycée Thérèse d'Avila", 'Archives scolaires'];
+  const table = Object.keys(ctx.STRUCTURE_CIBLE_RESET['06 · Études & diplômes']);
+  const inconnus = table.filter((n) => reels.indexOf(n) === -1);
+  assert.deepStrictEqual(inconnus, [], 'un libellé de table absent du Drive créerait un dossier jumeau');
+  // Et toute cible rendue par la branche 06 commence par l'un de ces libellés.
+  for (const nom of CORPUS['06 · Études & diplômes']) {
+    const c = ctx.cheminCibleReset_('06 · Études & diplômes', nom);
+    if (c) assert.ok(reels.indexOf(c.split('/')[0]) !== -1, nom + ' → ' + c);
+  }
+});
+
+test('C28-90 — le veto collégial empêche une fenêtre de trancher pour un cégep', () => {
+  // Marc a dit « Sherbrooke c'est 2019 » ; le dossier RÉEL contient des fichiers de 2018-08 à
+  // 2025-01. Sans veto, 5 documents du corpus partaient chez l'ULCO ou IMERIR avec une clé de
+  // SUCCÈS — le mode de panne que la fenêtre de Sherbrooke devait éviter, décalé de trois mois.
+  const d = '06 · Études & diplômes';
+  for (const nom of ['2020-03-23_Message institutionnel_Direction du Cégep.jpg',
+    '2020-11-20_Avis de suspension d\'épreuve_Direction du Cégep.jpg',
+    '2020-10-20_Message MIO_Jérémie Côté.jpg',
+    '2023-08-25_Horaire scolaire_Centre de services scolaire Marie-Victorin.pdf']) {
+    assert.ok(ctx.vetoCollegialReset_(nom), 'veto attendu : ' + nom);
+    assert.strictEqual(ctx.cheminCibleReset_(d, nom), null, nom);
+  }
+  // …mais le veto ne bloque QUE la déduction : un document qui NOMME Sherbrooke y va toujours.
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2020-04-03_Correspondance_Cégep de Sherbrooke.jpg'),
+    'Cégep de Sherbrooke');
+  // …et il ne touche à rien hors de 06.
+  assert.strictEqual(ctx.vetoCollegialReset_('2020-01-01_Facture_Hydro-Québec.pdf'), false);
+});
+
+test("C28-90 — une école DÉDUITE d'une fenêtre ne sort jamais un fichier de son dossier", () => {
+  // Le corpus réel ne peut pas exercer ce cas (tous les fichiers déjà rangés sous une école
+  // NOMMENT leur école), mais le scénario est plausible dès qu'un document de cégep sans son nom
+  // est classé à la main : la fenêtre dirait « lycée » et le sortirait de « Cégep de Sherbrooke ».
+  const d = '06 · Études & diplômes';
+  const nom = '2016-03-01_Devoir_Maths.pdf'; // 2016 → fenêtre du lycée, et AUCUN nom d'école
+  assert.strictEqual(ctx.ecoleParNomReset_(nom), null, 'pré-condition : rien dans le nom');
+  const cible = ctx.cheminCibleConsolidation_(d, nom, {});
+  assert.strictEqual(cible.faible, true, 'une école déduite est un signal FAIBLE');
+  const dec = ctx.decisionConsolidation_({
+    domaine: d, sousCheminActuel: 'Cégep de Sherbrooke', sousCheminCible: cible.nom,
+    dossierIdCible: cible.id, cibleFaible: cible.faible === true,
+    parentId: null, protege: false, protegeIllisible: false, raccourci: false, doublonDe: null,
+  });
+  assert.strictEqual(dec.action, 'OK', "le fichier reste où Marc l'a mis");
+  // …mais le même document À LA RACINE est bien placé : la fenêtre garde tout son pouvoir là où il
+  // n'y a rien à contredire.
+  assert.strictEqual(ctx.decisionConsolidation_({
+    domaine: d, sousCheminActuel: '', sousCheminCible: cible.nom, dossierIdCible: '',
+    cibleFaible: true, parentId: null, protege: false, protegeIllisible: false,
+    raccourci: false, doublonDe: null,
+  }).action, 'Déplacer');
 });

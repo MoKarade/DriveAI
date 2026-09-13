@@ -1,5 +1,5 @@
 {
- "_lisezmoi": "Fichiers RÉELLEMENT déjà rangés dans un sous-dossier, relevés dans Drive le 2026-09-13. Ils servent à mesurer ce que le repli par TYPE (ADR-0052) ferait de la population sur laquelle il agira VRAIMENT le jour où la consolidation repassera : ~15 700 documents déjà classés, et non les 683 de la racine. Deux dossiers RÉELS, pris entiers (jamais un échantillon choisi).",
+ "_lisezmoi": "Fichiers RÉELLEMENT déjà rangés dans un sous-dossier, relevés dans Drive les 13/09. Ils mesurent ce que le rangement ferait de la population sur laquelle il agira VRAIMENT quand la consolidation repassera (C28-90) : ~15 700 documents déjà classés, et non les 683 de la racine. Dossiers RÉELS, pris entiers — dont les 4 buckets par émetteur que les missions ont créés le 12/09 et qui sont exactement ce qu'un rattrapage mal gardé remonterait d'un cran.",
  "03 · Logement & véhicule": {
   "Logement/3325 4e avenue": [
    "2024-01-28_Avis de reconduction de bail_LCP Groupe Immobilier_2.pdf",
@@ -20,6 +20,30 @@
   ],
   "Logement/783 av. Moreau, Québec": [
    "2023-03-22_Contrat de location_Contrat location chambre 783 avenue Moreau Québec.pdf"
+  ],
+  "Assurance habitation/Desjardins": [
+   "2026-02-26_Contrat d'assurance habitation_Desjardins Assurances.pdf"
+  ],
+  "Assurance habitation/MAIF": [
+   "2023-04_Relevé_MAIF_2.pdf",
+   "2020-09-17_Attestation d'assurance responsabilité civile_FILIA-MAIF_2.pdf",
+   "2020-09-28_Carte internationale d'assurance automobile (carte verte)_MAIF.jpg"
+  ],
+  "Énergie & services/Hydro-Québec": [
+   "2024-12-06_Facture d'électricité_Hydro-Québec.pdf",
+   "2023-07-15_Confirmation d'ajout d'adresse_Hydro-Québec.PNG"
+  ],
+  "Énergie & services/ENGIE": [
+   "2020-12-04_Attestation de contrat d'énergie_ENGIE_2.pdf"
+  ]
+ },
+ "06 · Études & diplômes": {
+  "Cégep de Sherbrooke": [
+   "2018-08-01_Guide d'installation logiciel_Cegep de Sherbrooke.jpg",
+   "2025-01-17_Feuille de présence_Cégep de Sherbrooke.xlsx",
+   "2020-10-13_Capture d'écran_Cégep de Sherbrooke.jpg",
+   "2020-03-13_Avis de fermeture COVID-19_Cégep de Sherbrooke.jpg",
+   "2020-04-03_Correspondance_Cégep de Sherbrooke.jpg"
   ]
  }
 }

@@ -91,8 +91,12 @@ var STRUCTURE_CIBLE_RESET = {
       'Toyota bZ': categoriesVehiculeReset_(), 'Ford Fiesta': categoriesVehiculeReset_(), 'VW Jetta': categoriesVehiculeReset_(),
       'Recherche & achat': {}, 'Locations': {}, 'À attribuer': {},
     },
-    'Énergie & services': {},
-    'Assurance habitation': {},
+    // C28-90 : les buckets par ÉMETTEUR que la mission `dispatch03` crée depuis le 12/09 sont
+    // DÉCLARÉS ici. Sans ça, ils étaient invisibles du validateur ≤ 7 et du tripwire « toute cible
+    // rendue EXISTE dans la table » — et surtout le FLUX ne savait pas les viser, alors que la
+    // mission les remplissait : deux règles pour une même question (leçon §9).
+    'Énergie & services': { 'Hydro-Québec': {}, 'ENGIE': {} },
+    'Assurance habitation': { 'Desjardins': {}, 'MAIF': {} },
     // Ajoutés sur le reliquat réel (décision Marc 2026-07-30) : 18 « Contrat » et 16
     // « Correspondance » de 03 n'avaient aucun dossier d'accueil. 03 reste à 6 nœuds (≤ 7 ✔).
     'Contrats': {},
@@ -137,7 +141,12 @@ var STRUCTURE_CIBLE_RESET = {
     'Réseaux & présentations': {},
   },
   '06 · Études & diplômes': {
-    'Lycée Thérèse d\'Avila': ecoleReset_(false),
+    // ⚠️ « lycée » en MINUSCULE : c'est le nom RÉEL du dossier Drive (relevé le 13/09).
+    // `sousDossier_` résout par `getFoldersByName`, qui est SENSIBLE À LA CASSE : un « L »
+    // majuscule ici aurait créé un SECOND dossier à côté du sien, exactement comme
+    // « 3987 route des Rivières » à côté de « 3987 rte des Rivières » (leçon vécue en 03).
+    // Un test fige la correspondance table ↔ noms réels.
+    'lycée Thérèse d\'Avila': ecoleReset_(false),
     'Prépa Gustave Eiffel (PTSI)': ecoleReset_(true),
     'DUT ULCO Saint-Omer': ecoleReset_(false),
     'Cégep de Sherbrooke': ecoleReset_(false),
@@ -359,7 +368,7 @@ function estExcluDuReset_(nom) {
  * tombaient dans deux fenêtres et étaient refusés pour rien.
  */
 var RESET_FENETRES_ECOLE = [
-  { ecole: 'Lycée Thérèse d\'Avila', debut: 2014 * 12 + 9, fin: 2017 * 12 + 8 },
+  { ecole: 'lycée Thérèse d\'Avila', debut: 2014 * 12 + 9, fin: 2017 * 12 + 8 },
   { ecole: 'Prépa Gustave Eiffel (PTSI)', debut: 2017 * 12 + 9, fin: 2018 * 12 + 8 },
   { ecole: 'DUT ULCO Saint-Omer', debut: 2018 * 12 + 9, fin: 2020 * 12 + 8 },
   // ⚠️ SHERBROOKE CHEVAUCHE L'ULCO, ET C'EST VOULU. Marc : « Cégep de Sherbrooke c'est 2019 en même
@@ -402,6 +411,71 @@ function ecoleParDateReset_(nom) {
     if (dedans) { if (trouve) return null; trouve = f.ecole; } // deux fenêtres ⇒ ambigu ⇒ refus
   }
   return trouve;
+}
+
+/**
+ * ÉCOLE reconnue DANS LE NOM (ADR-0052 D6) : l'établissement lui-même, ou un marqueur de NIVEAU /
+ * FILIÈRE qui ne peut appartenir qu'à lui. C'est un FAIT écrit, donc il prime sur toute déduction.
+ * Extrait de `cheminCibleReset_` pour que la consolidation puisse distinguer « école SUE » d'« école
+ * DÉDUITE » sans re-dériver le verdict depuis une forme appauvrie (leçon §9). PURE.
+ * @param {string} nom @return {?string} libellé EXACT d'un nœud de `STRUCTURE_CIBLE_RESET['06 · …']`
+ */
+function ecoleParNomReset_(nom) {
+  var tout = normaliserCle_(nom);
+  var sansTiret = tout.replace(/-/g, ' '); // `normaliserCle_` CONSERVE les traits d'union
+  // --- L'ÉTABLISSEMENT, nommé.
+  if (resetContient_(tout, ['therese', 'avila'])) return 'lycée Thérèse d\'Avila';
+  // Le COLLÈGE Gustave Eiffel et le Hubhouse (ULCO-CEL) ne sont PAS la prépa/le DUT : testés AVANT
+  // leurs mots-pièges ('gustave eiffel', 'ulco').
+  if (resetContient_(tout, ['college', 'hubhouse'])) return 'Autres établissements';
+  if (resetContient_(tout, ['gustave eiffel', 'ptsi', 'kholle', ' colles', 'concours avenir',
+    'tetard', 'le meur', 'salwa', 'parcevaux', 'leroux'])) return 'Prépa Gustave Eiffel (PTSI)';
+  if (resetContient_(sansTiret, ['iut', 'ulco', 'littoral', 'saint omer', 'cote d opale'])) return 'DUT ULCO Saint-Omer';
+  if (tout.indexOf('sherbrooke') !== -1) return 'Cégep de Sherbrooke';
+  if (tout.indexOf('imerir') !== -1) return 'IMERIR';
+  if (resetContient_(sansTiret, ['hamk', 'hame', 'erasmus', 'esiee', 'hei campus', 'limoilou',
+    'saint hyacinthe', 'hubhouse', 'lycee hugo', 'armentieres', 'academie de lille',
+    'centre universitaire descartes'])) return 'Autres établissements';
+
+  // --- Le NIVEAU ou la FILIÈRE, qui ne désignent qu'une école dans le parcours de Marc.
+  // ⚠️ Tous ANCRÉS en mot entier. « seconde » est aussi une unité de temps et « terminale » un
+  // terme d'électrotechnique — dans un corpus fait à 80 % de TP de physique et d'électronique
+  // (revue flotte). Le verdict déplace le fichier : dans le doute, il doit refuser.
+  // ⚠️ « svt » a été RETIRÉ : c'est une MATIÈRE, pas un niveau, et elle s'enseigne aussi au collège
+  // — hors de toute fenêtre. Preuve dans le corpus réel : deux fichiers du MÊME jour décrivant le
+  // MÊME événement (répartition des groupes de langues du 2017-09-07) partaient dans DEUX écoles
+  // différentes, l'un par « svt », l'autre par la fenêtre. L'un des deux était faux par construction.
+  // Il ne reste que les DEUX marqueurs dont la contribution est MESURÉE sur le corpus réel :
+  // « GIM » (19 fichiers) et « 1ʳᵉ … » (3 bulletins). `ptsi`, `kholle`, `concours avenir` et `iut`
+  // ont été RETIRÉS d'ici : les listes par NOM ci-dessus les captent déjà, donc ces tests étaient
+  // INATTEIGNABLES — le bloc paraissait couvrir 13 signaux, il en appliquait 5 (revue flotte).
+  // `2nde`, `seconde`, `terminale`, `svt`, `colle`, `colles`, `dut` ont été retirés pour l'autre
+  // raison : contribution NULLE mesurée, et risque non nul (« 30 secondes » dans un TP de physique,
+  // « borne terminale » en électrotechnique, « Seconde Guerre mondiale » en histoire). Un prédicat
+  // qui ne gagne rien et peut se tromper ne mérite pas d'exister.
+  if (/(^|[^a-z0-9])gim ?[12]?([^a-z0-9]|$)/.test(sansTiret)) return 'DUT ULCO Saint-Omer';
+  if (/(^|[^a-z0-9])1 ?ere([^a-z0-9]|$)/.test(sansTiret)) return 'lycée Thérèse d\'Avila';
+  return null;
+}
+
+/**
+ * VETO COLLÉGIAL QUÉBÉCOIS (revue flotte, C28-90) — le nom crie « cégep » sans nommer
+ * l'établissement : aucune fenêtre n'a le droit de trancher. PURE.
+ *
+ * Pourquoi il faut un veto plutôt qu'une fenêtre plus large : Marc a dit « Sherbrooke c'est 2019 en
+ * même temps que l'ULCO », mais le dossier RÉEL `Cégep de Sherbrooke` contient des fichiers de
+ * 2018-08 à 2025-01 (relevé le 13/09). Étendre la fenêtre rendrait l'ULCO inattribuable sur toute
+ * la période ; le veto, lui, ne coûte que les documents qui se désignent eux-mêmes comme collégiaux.
+ * Sans lui, 5 documents du corpus (« Direction du Cégep » 2020-03, « Message MIO » 2020-10…)
+ * partaient chez l'ULCO et chez IMERIR avec une clé de SUCCÈS — le mode de panne exact que la
+ * fenêtre de Sherbrooke était censée éviter, décalé de trois mois.
+ * `mio` = la messagerie Omnivox des cégeps ; `sram` = le service d'admission collégiale.
+ * @param {string} nom @return {boolean}
+ */
+function vetoCollegialReset_(nom) {
+  var tout = normaliserCle_(nom).replace(/-/g, ' ');
+  return resetContient_(tout, ['cegep', 'collegial', 'omnivox', 'centre de services scolaire',
+    'commission scolaire']) || resetMotEntier_(tout, 'mio') || resetMotEntier_(tout, 'sram');
 }
 
 /**
@@ -618,14 +692,19 @@ function cheminCibleReset_(domaine, nom) {
     // ADR-0052 D7 : le nœud « Modèles & formulaires » n'existe plus en 03 — un formulaire vierge
     // rejoint « Contrats », comme les 6 qui y étaient déjà (tous locatifs).
     if (estModeleOuFormulaire_(t)) return 'Contrats';
-    // ÉQUIPEMENT du logement (ADR-0052 D7) : ce que Marc garde sur ce qu'il y a DANS le logement,
-    // par opposition au bail qui porte sur le logement lui-même. Testé APRÈS les règles par entité
-    // (une étiquette produit qui nomme une adresse part chez le logement).
-    if (resetContient_(t, ['etiquette', 'appareil', 'electromenager', 'materiaux', 'revetement',
-      'inventaire d equipement', 'degradation', 'notice d utilisation', 'garantie constructeur',
-      'fiche produit', 'fiche technique'])) return 'Travaux & équipements';
-    if (resetContient_(e, ['edf', 'engie', 'hydro'])) return 'Énergie & services';
-    if (tout.indexOf('assurance habitation') !== -1 || e.indexOf('maif') !== -1) return 'Assurance habitation';
+    // C28-90 — MÊME règle que la mission `dispatch03` (`bucketEmetteur_`, Missions.gs) : le flux
+    // range DANS le bucket par émetteur, pas seulement dans le filet. Avant, le flux visait
+    // « Énergie & services » pendant que la mission remplissait « Énergie & services/ENGIE » : la
+    // consolidation aurait proposé de REMONTER d'un cran chaque fichier que la mission venait de
+    // classer. Une seule règle, deux consommateurs — et un test de convergence le verrouille.
+    if (resetContient_(e, ['edf', 'engie', 'hydro'])) {
+      var fournisseur = bucketEmetteur_(nom, CONFIG.MISSIONS_FOURNISSEURS_ENERGIE);
+      return fournisseur ? 'Énergie & services/' + fournisseur : 'Énergie & services';
+    }
+    if (tout.indexOf('assurance habitation') !== -1 || e.indexOf('maif') !== -1) {
+      var assureur = bucketEmetteur_(nom, CONFIG.MISSIONS_ASSUREURS);
+      return assureur ? 'Assurance habitation/' + assureur : 'Assurance habitation';
+    }
     // Un document de VÉHICULE sans véhicule identifiable (immatriculation SAAQ, contravention
     // anonyme…) : le dossier COMMUN « À attribuer » (ADR-0044 §4.2, décision Marc).
     // ⚠️ Ce `return` valait `null` jusqu'à la revue C28-62, au motif que « la MISSION sait trancher
@@ -649,6 +728,16 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(tout, ['sncf', 'billet de train'])) return null;
     // Un bail/une quittance SANS adresse ni bailleur reconnus : les filets de fin (le pluriel
     // « Logements » n'existe plus — la mission ou Marc trancheront depuis le rapport).
+    // ÉQUIPEMENT du logement (ADR-0052 D7) : ce que Marc garde sur ce qu'il y a DANS le logement,
+    // par opposition au bail, qui porte sur le logement lui-même. C'est un FILET PAR TYPE, donc il
+    // vient APRÈS toutes les règles par entité ET par émetteur — un cran plus haut, il volait
+    // « Étiquette énergie_EDF » à `Énergie & services` et « Fiche technique_Assurance habitation
+    // MAIF » à `Assurance habitation` (mesuré en revue). ⚠️ « appareil » exige un MOT ENTIER :
+    // en sous-chaîne il apparie « appareillage », donc un contrat d'appareillage audio.
+    if (resetContient_(t, ['etiquette', 'electromenager', 'materiaux', 'revetement',
+      'inventaire d equipement', 'degradation', 'notice d utilisation', 'notice d installation',
+      'mode d emploi', 'garantie constructeur', 'fiche produit', 'fiche technique']) ||
+        resetMotEntier_(t, 'appareil')) return 'Travaux & équipements';
     if (resetContient_(t, ['contrat', 'devis', 'consentement', 'formulaire de demande de location', 'bail'])) return 'Contrats';
     if (resetContient_(t, ['correspondance', 'lettre', 'courrier', 'avis de sejour', 'mise en demeure'])) return 'Correspondance';
     return null;
@@ -722,50 +811,29 @@ function cheminCibleReset_(domaine, nom) {
 
   if (domaine === '06 · Études & diplômes') {
     if (resetContient_(t, ['diplome', 'releve de notes', 'bulletin', 'attestation de reussite'])) return 'Diplômes & relevés officiels';
-    var toutSansTiret = tout.replace(/-/g, ' '); // cf. « saint-hyacinthe » plus bas
-    var ecole = null;
-    if (resetContient_(tout, ['therese', 'avila'])) ecole = 'Lycée Thérèse d\'Avila';
-    // Le COLLÈGE Gustave Eiffel et le Hubhouse (ULCO-CEL) ne sont PAS la prépa/le DUT (revue) :
-    // testés AVANT leurs mots-pièges ('gustave eiffel', 'ulco').
-    else if (resetContient_(tout, ['college', 'hubhouse'])) ecole = 'Autres établissements';
-    else if (resetContient_(tout, ['gustave eiffel', 'ptsi', 'kholle', ' colles', 'concours avenir', 'tetard', 'le meur', 'salwa', 'parcevaux', 'leroux'])) ecole = 'Prépa Gustave Eiffel (PTSI)';
-    else if (resetContient_(toutSansTiret, ['iut', 'ulco', 'littoral', 'saint omer', 'cote d opale'])) ecole = 'DUT ULCO Saint-Omer';
-    else if (tout.indexOf('sherbrooke') !== -1) ecole = 'Cégep de Sherbrooke';
-    else if (tout.indexOf('imerir') !== -1) ecole = 'IMERIR';
-    // ⚠️ `toutSansTiret` sur cette ligne et la précédente : `normaliserCle_` CONSERVE les traits
-    // d'union, donc « Cégep de Saint-Hyacinthe » se normalise en « saint-hyacinthe » et ne matchait
-    // PAS le motif « saint hyacinthe » pourtant présent depuis toujours (trouvé par la revue
-    // flotte). Même piège pour « Saint-Omer ». Ce sont les deux seuls motifs multi-mots de cette
-    // branche dont la graphie réelle porte un trait d'union ; les autres restent sur la clé brute.
-    // Établissements ajoutés sur le reliquat RÉEL du 13/09 (leur nom figurait dans le fichier, la
-    // table ne le connaissait pas) : Lycée Hugo, Armentières, Académie de Lille, Centre
-    // universitaire Descartes.
-    else if (resetContient_(toutSansTiret, ['hamk', 'hame', 'erasmus', 'esiee', 'hei campus',
-      'limoilou', 'saint hyacinthe', 'hubhouse', 'lycee hugo', 'armentieres', 'academie de lille',
-      'centre universitaire descartes'])) ecole = 'Autres établissements';
-    // ADR-0052 D6 — dernier recours AVANT le refus : la DATE. Les fenêtres de scolarité sont une
-    // table validée par Marc, appliquée comme les fenêtres d'occupation des logements. Placée ICI,
-    // après TOUTE la reconnaissance par le NOM : un document qui nomme son école va chez elle, même
-    // si sa date dit autre chose (le nom est un fait, la fenêtre une déduction).
-    // NIVEAU ou FILIÈRE écrit dans le nom (ADR-0052 D6) : « 2nde », « GIM1 », « khôlle » sont des
-    // FAITS, au même titre que le nom de l'école — ils passent donc AVANT la déduction par la date.
-    // Couverture mesurée : 15 des 349 restants. Faible, mais gratuite et sans risque.
-    if (!ecole) {
-      if (resetMotEntier_(toutSansTiret, 'ptsi') || resetContient_(toutSansTiret, ['kholle', 'concours avenir']) ||
-          resetMotEntier_(toutSansTiret, 'colle') || resetMotEntier_(toutSansTiret, 'colles')) ecole = 'Prépa Gustave Eiffel (PTSI)';
-      else if (/(^|[^a-z0-9])gim ?[12]?([^a-z0-9]|$)/.test(toutSansTiret) ||
-               resetMotEntier_(toutSansTiret, 'iut') || resetMotEntier_(toutSansTiret, 'dut')) ecole = 'DUT ULCO Saint-Omer';
-      else if (resetContient_(toutSansTiret, ['2nde', 'seconde', 'terminale']) ||
-               resetMotEntier_(toutSansTiret, 'svt') || /(^|[^a-z0-9])1 ?ere([^a-z0-9]|$)/.test(toutSansTiret)) ecole = 'Lycée Thérèse d\'Avila';
-    }
-    if (!ecole) ecole = ecoleParDateReset_(nom);
+    // ORDRE (ADR-0052 D6) : le NOM est un FAIT, la fenêtre une DÉDUCTION — et une déduction ne
+    // contredit jamais un fait. Le VETO québécois s'intercale entre les deux : quand le nom crie
+    // « cégep » sans nommer l'établissement, aucune fenêtre n'a le droit de trancher.
+    var ecole = ecoleParNomReset_(nom);
+    if (!ecole && !vetoCollegialReset_(nom)) ecole = ecoleParDateReset_(nom);
     if (!ecole) return null;
     if (ecole === 'Autres établissements') return ecole; // à plat (rapport → affinage si volume)
     if (t.indexOf('concours') !== -1 && ecole === 'Prépa Gustave Eiffel (PTSI)') return ecole + '/Concours';
     if (resetContient_(t, ['examen', 'devoir surveille', 'controle', 'partiel', 'kholle', 'colles']) || t === 'ds') return ecole + '/Examens & khôlles';
+    // ⚠️ COURS & TRAVAUX AVANT RÉSULTATS. « note » est une sous-chaîne, et « Notes de cours » —
+    // 68 fichiers du corpus — atterrissait dans `/Résultats`. Défaut PRÉ-EXISTANT, mais ce chantier
+    // fait passer ~110 fichiers de plus dans cette cascade : le corriger ici coûte une ligne, le
+    // laisser aurait coûté un dossier de résultats rempli de cours (revue flotte).
+    // Vocabulaire ÉLARGI aux familles réellement majoritaires du corpus (mesuré le 13/09) :
+    // 93 « exercice », 82 « TP / travail pratique / rapport de TP », 71 « devoir », 68 « cours ».
+    // Sans « travail pratique » ni « exercice », les deux plus gros paquets restaient à la RACINE
+    // de leur école — placés, mais pas rangés.
+    if (resetContient_(t, ['cours', 'fiche', 'travaux', 'travail pratique', 'projet', 'memoire',
+      'devoir', 'exercice', 'corrige', 'correction', 'enonce', 'schema', 'support de cours',
+      'laboratoire', 'protocole']) || t === 'td' || t === 'tp' ||
+        /(^| )tp\d*( |$)/.test(t) || /(^| )tps?( |$)/.test(t)) return ecole + '/Cours & travaux';
     if (resetContient_(t, ['resultat', 'note', 'evaluation'])) return ecole + '/Résultats';
     if (resetContient_(t, ['certificat de scolarite', 'inscription', 'convention', 'attestation'])) return ecole + '/Administratif';
-    if (resetContient_(t, ['cours', 'fiche', 'travaux', 'projet', 'memoire', 'devoir']) || t === 'td' || t === 'tp') return ecole + '/Cours & travaux';
     return ecole; // racine de l'école : mieux que _TRI, l'école est sûre
   }
 
@@ -925,17 +993,32 @@ function bucketTypeDomaine_(domaine, nom) {
     // déjà le nœud prévu pour « document de véhicule sans véhicule identifiable » (ADR-0044 §4.2,
     // consommé par `cheminCibleReset_`). Sans cette ligne, « Assurance auto_Intact » atterrissait
     // dans `Assurance habitation`.
+    // ⚠️ « auto » est en MOT ENTIER : en sous-chaîne il apparie « autorisation », « automatique »
+    // et jusqu'à l'employeur « Automatech ». Le retirer tout court ne marchait pas non plus —
+    // « Assurance auto » est justement la graphie la plus courante (attrapé par le test).
     if (t.indexOf('assurance') !== -1 &&
-        resetContient_(tout, ['auto', 'automobile', 'vehicule', 'voiture', 'vignette', 'saaq'])) {
+        (resetContient_(tout, ['automobile', 'vehicule', 'voiture', 'vignette', 'saaq']) ||
+         resetMotEntier_(tout, 'auto'))) {
       return 'Véhicule/À attribuer';
     }
-    if (t.indexOf('assurance') !== -1) return 'Assurance habitation';
-    if (resetContient_(t, ['energie', 'electricite', 'gaz', 'hydro'])) return 'Énergie & services';
+    if (t.indexOf('assurance') !== -1) {
+      var assur = bucketEmetteur_(nom, CONFIG.MISSIONS_ASSUREURS); // C28-90 : même bucket que le flux
+      return assur ? 'Assurance habitation/' + assur : 'Assurance habitation';
+    }
+    if (resetContient_(t, ['energie', 'electricite', 'gaz', 'hydro'])) {
+      var fourn = bucketEmetteur_(nom, CONFIG.MISSIONS_FOURNISSEURS_ENERGIE);
+      return fourn ? 'Énergie & services/' + fourn : 'Énergie & services';
+    }
     if (resetContient_(t, BUCKET_TYPE_CORRESPONDANCE)) return 'Correspondance';
+    // ADR-0052 D7 — l'équipement AVANT les formulaires : « Notice d'utilisation » et « Mode
+    // d'emploi » sont de l'équipement, or `BUCKET_TYPE_FORMULAIRE` contient « notice » et
+    // « manuel ». Sans cet ordre, la même famille se répartissait entre deux nœuds selon la
+    // graphie du titre (revue flotte).
+    if (resetContient_(t, ['etiquette', 'electromenager', 'materiaux', 'revetement',
+      'inventaire d equipement', 'degradation', 'notice', 'mode d emploi', 'manuel',
+      'garantie constructeur', 'fiche produit', 'fiche technique']) ||
+        resetMotEntier_(t, 'appareil')) return 'Travaux & équipements';
     if (resetContient_(t, BUCKET_TYPE_FORMULAIRE)) return 'Contrats'; // ADR-0052 D7
-    // ⚠️ Les documents d'ÉQUIPEMENT du logement (étiquette produit, liste de matériaux, plan de
-    // revêtements, inventaire, rapport de dégradation — 8 au recensement) n'ont PAS de nœud : 03
-    // est PLEIN à 7. En ouvrir un exige d'en libérer un — arbitrage de Marc, ADR-0052 D7.
     return '';
   }
 

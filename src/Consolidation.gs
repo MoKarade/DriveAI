@@ -79,7 +79,17 @@ function cheminCibleConsolidation_(domaine, nom, validees) {
   // d'entité ; l'exécuteur `dossierCiblePlan_` sait déjà résoudre un nom multi-segments). Repli sur
   // la règle historique (entité validée / année / type d'identité) quand le Reset rend null.
   var relReset = cheminCibleReset_(domaine, nom);
-  if (relReset) return { nom: relReset, id: '' };
+  if (relReset) {
+    // C28-90 — une école DÉDUITE d'une fenêtre de scolarité est un signal FAIBLE, comme le repli
+    // par type (D8) : elle ne lit que 4 à 7 caractères en tête du nom et ignore tout ce qui a pu
+    // justifier un rangement existant. Elle a le droit de sortir un fichier de la RACINE, jamais de
+    // le retirer d'un dossier d'école où Marc — ou la mission `archives06` — l'a mis.
+    // Le marqueur est posé PAR la fonction qui décide (`ecoleParNomReset_` a-t-elle répondu ?),
+    // jamais re-dérivé d'une forme appauvrie du verdict (leçon §9).
+    var faibleEcole = domaine === '06 · Études & diplômes' && !ecoleParNomReset_(nom) &&
+      !!ecoleParDateReset_(nom);
+    return faibleEcole ? { nom: relReset, id: '', faible: true } : { nom: relReset, id: '' };
+  }
 
   var seg = analyserNomClasse_(nom);
   // IDENTITÉ — MÊME repli que le flux vivant (`repliIdentite_`, Router.gs), jamais une seconde
@@ -128,6 +138,25 @@ function cheminCibleConsolidation_(domaine, nom, validees) {
  *   illisible (abstention prudente, raison HONNÊTE — le plan que Marc valide ne doit pas mentir).
  * @return {{action:string, cible:string, raison:string}}
  */
+/**
+ * Vrai si `actuel` est STRICTEMENT PLUS PROFOND que `cible` et commence par elle, segment par
+ * segment — c'est-à-dire si la cible est un ANCÊTRE de la position actuelle. PURE (testée).
+ *
+ * La comparaison est faite SEGMENT par SEGMENT, jamais par `indexOf` de chaîne : « Contrats » est
+ * un préfixe de chaîne de « Contrats divers », qui est un dossier DIFFÉRENT. Le piège est le même
+ * que celui des motifs en sous-chaîne du routage, et il coûterait ici un fichier qui ne bouge plus.
+ * @param {string} actuel  sous-chemin actuel, relatif au domaine
+ * @param {string} cible   sous-chemin calculé, relatif au domaine
+ * @return {boolean}
+ */
+function estSousCheminDe_(actuel, cible) {
+  var a = String(actuel || '').split('/').filter(Boolean);
+  var c = String(cible || '').split('/').filter(Boolean);
+  if (!c.length || a.length <= c.length) return false; // cible vide ⇒ D8 s'en charge ; pas plus profond ⇒ rien à dire
+  for (var i = 0; i < c.length; i++) if (a[i] !== c[i]) return false;
+  return true;
+}
+
 function decisionConsolidation_(d) {
   if (d.protege) {
     return {
@@ -153,6 +182,28 @@ function decisionConsolidation_(d) {
   }
   if (String(d.sousCheminActuel || '') === String(d.sousCheminCible || '')) {
     return { action: 'OK', cible: cible, raison: 'Déjà au bon endroit' };
+  }
+  // C28-90 / ADR-0052 D9 — ON NE REMONTE JAMAIS UN FICHIER VERS UN DE SES ANCÊTRES.
+  // Quand la cible calculée est un PRÉFIXE du chemin actuel, le fichier est déjà là où on veut
+  // l'envoyer, en PLUS PRÉCIS. Cela ne veut pas dire qu'il est mal rangé : cela veut dire que la
+  // règle générale en sait MOINS que celui qui l'a rangé — une mission qui range par thème
+  // (`Logement/3325 4e avenue/Correspondance`) ou par émetteur
+  // (`Assurance habitation/Desjardins`), ou Marc lui-même.
+  //
+  // C'est la garde qui rend le BUMP DE CAMPAGNE sûr (C28-90). Sans elle, la passe fraîche
+  // proposait de remonter d'un cran TOUT ce que les missions de C28-84/85 venaient de classer :
+  // mesuré sur le Drive réel, les 6 sous-dossiers thématiques de `Logement/3325 4e avenue` et les
+  // 4 buckets d'émetteur créés le 12/09. `ConsolidationExec` applique sans validation ligne à
+  // ligne : l'erreur aurait été muette, massive, et exactement l'inverse du travail demandé.
+  //
+  // Ce que la garde N'EMPÊCHE PAS : un déplacement LATÉRAL (`Contrats` → `Logement/<adresse>`) ni
+  // un approfondissement (`Assurance habitation` → `Assurance habitation/MAIF`). Le rattrapage
+  // garde donc tout son pouvoir ; il perd seulement celui de défaire un rangement plus fin.
+  if (estSousCheminDe_(d.sousCheminActuel, d.sousCheminCible)) {
+    return {
+      action: 'OK', cible: d.domaine + '/' + d.sousCheminActuel,
+      raison: 'Déjà rangé plus finement (' + d.sousCheminActuel + ') — jamais remonté (C28-90)',
+    };
   }
   // ADR-0052 D8 — UN SIGNAL FAIBLE NE DÉPLACE PAS CE QUI EST DÉJÀ RANGÉ. Le repli par TYPE ne lit
   // que le type du document : il ignore tout ce qui a pu justifier le rangement actuel (une mission

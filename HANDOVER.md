@@ -19,7 +19,8 @@
 > et zéro mal placé. C'est LA raison pour laquelle la question valait d'être posée — sans elle, les
 > documents de Sherbrooke seraient partis chez l'ULCO avec une clé de SUCCÈS, en silence et sans
 > retour. Ordre de décision : nom de l'école → marqueur de niveau/filière (« 2nde », « GIM1 »,
-> « khôlle ») → fenêtre. **147 des 475 placés, sur les 5 écoles.**
+> « GIM », « 1ʳᵉ année ») → fenêtre. **143 des 475 placés, sur les 5 écoles** : 34 par un FAIT
+> écrit dans le nom, 109 par les fenêtres.
 >
 > **D7 · `03 · Logement`** — « fusionner Contrats + Modèles ». `Modèles & formulaires` disparaît de
 > la structure, sa place va à `Travaux & équipements`. Les 6 formulaires réellement présents dans
@@ -28,7 +29,40 @@
 > ailleurs. **6 des 8 restants placés** (les 2 derniers ne sont pas de l'équipement : une capture
 > d'annonce, une liste d'achats pour le VÉHICULE).
 >
-> **Bilan : 351 des 683 — et 204 sur 208 hors `06`.**
+> **Bilan : 347 des 683 — et 204 sur 208 hors `06`.**
+>
+> **Revue flotte sur D6/D7 : 2 agents, 2 🔴 + 10 🟠/🟡 intégrés.** Ce qui a failli passer :
+> `STRUCTURE_CIBLE_RESET` écrivait `Lycée Thérèse d'Avila` alors que le dossier RÉEL de Marc
+> s'appelle `lycée Thérèse d'Avila` — **l minuscule**. `getFoldersByName` est sensible à la casse :
+> un second dossier serait né à côté du sien et 143 fichiers y seraient partis (le « 3987 route »
+> vs « 3987 rte » de `03`, en pire). Et la fenêtre de Sherbrooke ne suffisait pas : le dossier réel
+> contient des fichiers de 2018 à 2025, donc 5 documents de cégep de 2020-2023 partaient chez
+> l'ULCO et l'IMERIR. D'où `vetoCollegialReset_`. Sept marqueurs sur neuf avaient une contribution
+> NULLE mesurée (dont `svt`, qui produisait une contradiction dans le corpus : deux fichiers du même
+> jour, même événement, deux écoles) et quatre étaient INATTEIGNABLES — il n'en reste que deux.
+> Deux tests ne prouvaient rien : l'un asserte `String(null).length > 0` (toujours vrai), l'autre
+> était devenu tautologique en changeant sa valeur attendue.
+
+> **🟦 EN COURS — 2026-09-13 : C28-90, la préparation du rattrapage. LE BUMP N'A PAS ÉTÉ FAIT.**
+> Marc : « fais la préparation de C28-90 et lance le rattrapage ». La préparation est faite ; le
+> bump de `CONSOLIDATION_TAG` ne l'est pas, et c'est un refus motivé.
+>
+> **Fait** : (1) budget réalloué, consolidation 2 → 10 min/j repris aux missions (10 → 2, toutes
+> terminées) — le couple reste à 12 min/j, réallocation et non hausse d'enveloppe ; (2) les règles
+> que les missions étaient seules à connaître sont remontées dans la règle partagée — le flux vise
+> désormais `Assurance habitation/<Assureur>` et `Énergie & services/<Fournisseur>` via le MÊME
+> `bucketEmetteur_` que `dispatch03`, et les 4 buckets sont déclarés dans la table ; (3) **D9 — on
+> ne remonte jamais un fichier vers un de ses ancêtres**. Mesuré sur le Drive réel : sans cette
+> garde, les 6 sous-dossiers thématiques de `Logement/3325 4e avenue` et les 4 buckets d'émetteur
+> créés le 12/09 étaient remontés d'un cran, sans validation ligne à ligne.
+>
+> **Ce qui bloque** : les 4 nœuds d'école visés par D6 sont EXACTEMENT les 4 sources de la mission
+> `archives06`, dont l'objet est de les VIDER vers des archives aux autres noms (`ULCO — DUT GIM`,
+> `Prépa PTSI`…) et qui les déclare `sourcesJetables` — donc peints en rouge pour suppression. Son
+> commentaire dit « le flux ne les recrée pas, il vise l'archive » : vrai du chemin par ENTITÉ, FAUX
+> du chemin par TABLE, qui résout par NOM. Avant D6 la contradiction portait sur 11 fichiers ; D6 la
+> porterait à 143, et le bump la rendrait effective d'un coup. **Marc doit dire laquelle des deux
+> structures de `06` est la sienne** avant qu'on lance quoi que ce soit.
 >
 > **Ce qui reste, et ce que « lit et classe mieux » veut dire (C28-92).** 328 fichiers de `06`, dont
 > **239 datés `2026`** : la date de RÉCEPTION, faute de date lisible à l'import. Le nom est épuisé

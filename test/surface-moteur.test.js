@@ -227,7 +227,7 @@ const CONTRAT = [
   // INTER-MODULE, donc invisible des tests unitaires mockés si elle disparaissait.
   'bucketTypeDomaine_', 'estDocumentIdentiteReset_',
   // `segmentsChemin_` vit dans Router.gs et est appelée depuis ConsolidationExec.gs.
-  'segmentsChemin_',
+  'segmentsChemin_', 'estSousCheminDe_', 'ecoleParDateReset_',
   'estCibleInterdite_', // C28-31 : année/type d'identité ne sont JAMAIS parents d'un regroupement
   'segmentsSousDomaine_', 'dossierEntiteParId_', // ADR-0028 : confinement + chemin réel, et le RÉSOLVEUR UNIQUE par ID — Router.gs, appelés AUSSI par ConsolidationExec.gs
   'seedEntitesMarc_', // seed one-shot des entités de Marc (décision 2026-07-17), appelé depuis Main
