@@ -158,9 +158,10 @@ function appliquerLigneConsolidation_(ligne, ctx) {
       return 'saute';
     }
     var sousCible = cheminCibleConsolidation_(domaine, nom, ctx.validees); // {nom, id} (ADR-0028)
-    // Segments assainis comme le flux vivant (champ_ : caractères interdits → '-') — la règle
-    // unique doit produire le MÊME nom de dossier des deux côtés (anti-divergence).
-    var segments = sousCible.nom ? sousCible.nom.split('/').map(function (s) { return champ_(s); }).filter(Boolean) : [];
+    // Segments assainis par LA règle partagée avec le flux vivant (`segmentsChemin_`, Router.gs) —
+    // elle était écrite deux fois, et les deux exemplaires ne produisaient pas le même chemin
+    // (le flux assainissait le chemin ENTIER, donc `/` → `-`). Une seule fonction, deux consommateurs.
+    var segments = segmentsChemin_(sousCible.nom);
     // `dossierIdCible` est consommé par `dossierCiblePlan_` : résolution par ID, confinée au domaine.
     c = { doublons: false, domaine: domaine, segments: segments, dossierIdCible: sousCible.id || '' };
   }

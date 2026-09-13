@@ -119,7 +119,9 @@ function cheminCibleConsolidation_(domaine, nom, validees) {
  *  - sinon         → « Déplacer » vers `domaine[/sousCheminCible]`.
  * @param {{domaine:string, sousCheminActuel:string, sousCheminCible:string, protege:boolean,
  *          protegeIllisible:boolean, raccourci:boolean, doublonDe:?string,
- *          parentId:?string, dossierIdCible:?string}} d
+ *          parentId:?string, dossierIdCible:?string, cibleFaible:?boolean}} d
+ *   cibleFaible (ADR-0052 D8) : la cible ne vient QUE du type du document (repli `bucketTypeDomaine_`)
+ *   — elle suffit à sortir un fichier de la racine, jamais à le déplacer d'un sous-dossier.
  *   parentId/dossierIdCible (ADR-0028) : égalité d'ID = « déjà au bon endroit », À TOUTE PROFONDEUR,
  *   évaluée AVANT la comparaison textuelle des sous-chemins. Absents ⇒ comportement textuel d'avant.
  *   protege = zone protégée CONSTATÉE (détection positive) ; protegeIllisible = contrôle §1
@@ -151,6 +153,21 @@ function decisionConsolidation_(d) {
   }
   if (String(d.sousCheminActuel || '') === String(d.sousCheminCible || '')) {
     return { action: 'OK', cible: cible, raison: 'Déjà au bon endroit' };
+  }
+  // ADR-0052 D8 — UN SIGNAL FAIBLE NE DÉPLACE PAS CE QUI EST DÉJÀ RANGÉ. Le repli par TYPE ne lit
+  // que le type du document : il ignore tout ce qui a pu justifier le rangement actuel (une mission
+  // qui range par bailleur ou par fenêtre d'occupation, un geste de Marc, un dossier d'entité pas
+  // encore au référentiel). Il a été introduit pour qu'un document ne RESTE pas à la racine, pas
+  // pour arbitrer contre un classement existant — et l'exécuteur applique sans validation ligne à
+  // ligne, donc l'erreur serait muette et définitive de fait.
+  // Mesuré avant d'écrire cette garde : sur 8 fichiers réels de `03/Logement/3325 4e avenue`, 2
+  // (« Échange de messages_Saga Installation », « Échange de messagerie_Guy Laporte ») partaient
+  // vers `Correspondance` — la table ne reconnaît ni l'un ni l'autre émetteur, la mission si.
+  if (d.cibleFaible && String(d.sousCheminActuel || '') !== '') {
+    return {
+      action: 'OK', cible: d.domaine + '/' + d.sousCheminActuel,
+      raison: 'Déjà dans un sous-dossier — le repli par type ne déplace pas (ADR-0052 D8)',
+    };
   }
   // La RAISON est lue par Marc dans le plan qu'il valide : elle doit dire la vérité de la règle qui
   // a décidé. Depuis ADR-0052, « pas de sous-chemin » ne veut plus dire « à la racine par défaut »
@@ -315,6 +332,8 @@ function traiterUnConsolidation_(fileId, domaine, tag, ctx) {
     sousCheminActuel: sousCheminActuel,
     sousCheminCible: cibleConso.nom,
     dossierIdCible: cibleConso.id,
+    cibleFaible: cibleConso.faible === true, // ADR-0052 D8 : cible issue du seul TYPE du document
+
     parentId: parentId,
     protege: protegeConstate,
     protegeIllisible: protegeStrict && !protegeConstate,

@@ -590,6 +590,19 @@ function cheminCibleReset_(domaine, nom) {
     if (resetContient_(tout, ['mifi', 'francisation', 'caq', 'certificat d acceptation', 'diversite et de l inclusion'])) return 'MIFI (Québec)';
     if (resetContient_(tout, ['permis de travail', 'eimt', 'ptet'])) return 'Permis de travail & EIMT';
     if (resetContient_(tout, ['residence permanente', 'resident permanent'])) return 'Résidence permanente';
+    // PIÈCES D'IDENTITÉ (ADR-0052 D3) — APRÈS les règles par STATUT. 7 passeports
+    // étaient à plat dans 04 au recensement du 13/09, et `reorganiserInterne04_` (le SEUL mutateur
+    // autorisé dans cette zone) résout sa cible par CETTE fonction : sans cette ligne, le nœud
+    // ajouté à la table n'aurait eu aucun producteur — un dossier créé pour rien (trouvé par la
+    // revue flotte, deux agents indépendamment).
+    // ⚠️ L'ORDRE EST LE GARDE-FOU, et il a failli être faux : une « Carte de résident permanent »
+    // est À LA FOIS une pièce d'identité (vocabulaire `estDocumentIdentiteReset_`) et le document
+    // de STATUT qui donne son nom au nœud `Résidence permanente`. Placée en tête, cette ligne la
+    // détournait — attrapé par le test `planRoutageV2_ : carte de résident permanent → domaine 04`.
+    // La règle de statut passe donc AVANT, et `REPLI_IDENTITE_PAR_DOMAINE['04 · Immigration']`
+    // (Router.gs) reste `Résidence permanente` : c'est la MÊME réponse à la MÊME question.
+    // Ce qui atterrit ici, ce sont les passeports/CNI/permis DÉJÀ versés au dossier d'immigration.
+    if (estDocumentIdentiteReset_(t)) return 'Pièces d\'identité';
     if (resetContient_(tout, ['ircc', 'citoyennete', 'citizenship', 'immigration'])) return 'IRCC (fédéral)';
     if (resetContient_(t, ['formulaire', 'lettre', 'correspondance'])) return 'Formulaires & correspondance';
     return null;
@@ -639,16 +652,27 @@ function cheminCibleReset_(domaine, nom) {
 
   if (domaine === '06 · Études & diplômes') {
     if (resetContient_(t, ['diplome', 'releve de notes', 'bulletin', 'attestation de reussite'])) return 'Diplômes & relevés officiels';
+    var toutSansTiret = tout.replace(/-/g, ' '); // cf. « saint-hyacinthe » plus bas
     var ecole = null;
     if (resetContient_(tout, ['therese', 'avila'])) ecole = 'Lycée Thérèse d\'Avila';
     // Le COLLÈGE Gustave Eiffel et le Hubhouse (ULCO-CEL) ne sont PAS la prépa/le DUT (revue) :
     // testés AVANT leurs mots-pièges ('gustave eiffel', 'ulco').
     else if (resetContient_(tout, ['college', 'hubhouse'])) ecole = 'Autres établissements';
     else if (resetContient_(tout, ['gustave eiffel', 'ptsi', 'kholle', ' colles', 'concours avenir', 'tetard', 'le meur', 'salwa', 'parcevaux', 'leroux'])) ecole = 'Prépa Gustave Eiffel (PTSI)';
-    else if (resetContient_(tout, ['iut', 'ulco', 'littoral', 'saint omer', 'cote d opale'])) ecole = 'DUT ULCO Saint-Omer';
+    else if (resetContient_(toutSansTiret, ['iut', 'ulco', 'littoral', 'saint omer', 'cote d opale'])) ecole = 'DUT ULCO Saint-Omer';
     else if (tout.indexOf('sherbrooke') !== -1) ecole = 'Cégep de Sherbrooke';
     else if (tout.indexOf('imerir') !== -1) ecole = 'IMERIR';
-    else if (resetContient_(tout, ['hamk', 'hame', 'erasmus', 'esiee', 'hei campus', 'limoilou', 'saint hyacinthe', 'hubhouse'])) ecole = 'Autres établissements';
+    // ⚠️ `toutSansTiret` sur cette ligne et la précédente : `normaliserCle_` CONSERVE les traits
+    // d'union, donc « Cégep de Saint-Hyacinthe » se normalise en « saint-hyacinthe » et ne matchait
+    // PAS le motif « saint hyacinthe » pourtant présent depuis toujours (trouvé par la revue
+    // flotte). Même piège pour « Saint-Omer ». Ce sont les deux seuls motifs multi-mots de cette
+    // branche dont la graphie réelle porte un trait d'union ; les autres restent sur la clé brute.
+    // Établissements ajoutés sur le reliquat RÉEL du 13/09 (leur nom figurait dans le fichier, la
+    // table ne le connaissait pas) : Lycée Hugo, Armentières, Académie de Lille, Centre
+    // universitaire Descartes.
+    else if (resetContient_(toutSansTiret, ['hamk', 'hame', 'erasmus', 'esiee', 'hei campus',
+      'limoilou', 'saint hyacinthe', 'hubhouse', 'lycee hugo', 'armentieres', 'academie de lille',
+      'centre universitaire descartes'])) ecole = 'Autres établissements';
     if (!ecole) return null;
     if (ecole === 'Autres établissements') return ecole; // à plat (rapport → affinage si volume)
     if (t.indexOf('concours') !== -1 && ecole === 'Prépa Gustave Eiffel (PTSI)') return ecole + '/Concours';
@@ -716,8 +740,7 @@ function cheminCibleReset_(domaine, nom) {
  */
 var BUCKET_TYPE_CORRESPONDANCE = ['courriel', 'courrier', 'lettre', 'correspondance', 'message',
   'echange', 'avis', 'notification', 'convocation', 'mise en demeure', 'reponse', 'demande',
-  'relance', 'confirmation', 'rappel', 'constat', 'contravention', 'amende', 'note juridique',
-  'capture de conversation', 'capture de message', 'capture d ecran de conversation'];
+  'relance', 'confirmation', 'rappel', 'constat', 'contravention', 'amende', 'note juridique'];
 var BUCKET_TYPE_ATTESTATION = ['attestation', 'certificat', 'justificatif', 'extrait', 'registre',
   'kbis', 'carte de membre'];
 var BUCKET_TYPE_FORMULAIRE = ['formulaire', 'guide', 'notice', 'mentions legales', 'annexe',
@@ -750,8 +773,16 @@ function bucketTypeDomaine_(domaine, nom) {
   var s = STRUCTURE_CIBLE_RESET[domaine];
   if (!s) return '';
   var seg = analyserNomClasse_(nom);
-  var t = normaliserCle_(seg.type || '');
-  var tout = normaliserCle_(nom);
+  // ⚠️ `normaliserCle_` CONSERVE les traits d'union (« moreau.pdf » doit matcher, « moreault »
+  // jamais). Pour un repli qui compare des LOCUTIONS, c'est un piège à double sens : « rendez-vous »
+  // et « rendez vous », « compte-rendu » et « compte rendu » sont deux graphies également
+  // courantes, et un motif écrit dans l'une ne voit jamais l'autre. Un seul motif par locution
+  // suffit donc à condition de NEUTRALISER le trait d'union ICI, au seul point de comparaison —
+  // plutôt que de doubler chaque entrée de chaque liste, ce qui se périmerait au premier ajout.
+  // Ne concerne QUE cette fonction : `cheminCibleReset_` garde la clé brute, ses motifs sont ancrés.
+  var sansTiret = function (v) { return normaliserCle_(v || '').replace(/-/g, ' '); };
+  var t = sansTiret(seg.type);
+  var tout = sansTiret(nom);
   // ARTEFACTS D'AGENT déposés dans `08` (« Journal de tri (agent) », « Rapport de passe »,
   // « Rapport global cumulatif », « Registre documents » — 22 au recensement du 13/09). Ils sont
   // hors convention de nommage : `analyserNomClasse_` ne leur trouve NI date NI type, donc ils
@@ -778,27 +809,40 @@ function bucketTypeDomaine_(domaine, nom) {
     if (resetContient_(t, ['etat civil', 'naissance', 'mariage', 'filiation', 'livret de famille',
       'notari'])) return 'État civil & notarial';
     if (resetContient_(t, BUCKET_TYPE_ATTESTATION)) return 'Attestations & certificats';
-    if (resetContient_(t, BUCKET_TYPE_CORRESPONDANCE)) return 'Correspondance';
-    // Un formulaire administratif (CERFA, recensement) est une PIÈCE justificative, pas du courrier.
+    // FORMULAIRE avant CORRESPONDANCE : un formulaire administratif (CERFA, recensement) est une
+    // PIÈCE justificative, pas du courrier — et `BUCKET_TYPE_CORRESPONDANCE` contient « demande »,
+    // qui volait « Formulaire de demande de logement » (trouvé en revue : le commentaire disait
+    // l'inverse de ce que l'ordre faisait). `09` teste déjà dans cet ordre-là.
     if (resetContient_(t, BUCKET_TYPE_FORMULAIRE)) return 'Attestations & certificats';
+    if (resetContient_(t, BUCKET_TYPE_CORRESPONDANCE)) return 'Correspondance';
     return '';
   }
 
-  if (domaine === '02 · Finances') {
-    // 02 n'avait AUCUN fichier à plat au recensement du 13/09 : ces deux lignes sont un filet pour
-    // l'avenir, pas un rattrapage. Les buckets d'ANNÉE sont ceux de la table (jamais recalculés).
-    if (resetContient_(t, ['recu', 'facture', 'ticket', 'bon de commande', 'paiement', 'depense'])) {
-      return 'Reçus & factures/' + annee('Reçus & factures');
-    }
-    if (resetContient_(t, ['releve', 'extrait de compte', 'avis d operation', 'solde'])) {
-      return 'Relevés/' + annee('Relevés');
-    }
-    return '';
-  }
+  /* 02 · Finances n'a PAS de branche ici, et c'est une décision, pas un oubli. Une première version
+   * en posait une « pour l'avenir » ; elle était MORTE par construction, et un filet qui ne peut pas
+   * se déclencher est pire que pas de filet — il fait croire que le domaine est couvert (trouvé en
+   * revue). Deux raisons cumulées : `sousCheminDomaine_` route 02 par l'ANNÉE avant d'arriver ici
+   * (`CONFIG.DOMAINES_PAR_ANNEE === ['02 · Finances']`), et quand l'année manque, le TYPE manque
+   * aussi — `analyserNomClasse_` n'extrait un type que d'un nom qui COMMENCE par `AAAA`, donc la
+   * garde `!t` coupe avant. Faire primer le TYPE sur l'ANNÉE en 02 serait un changement de politique
+   * de classement : son propre ADR (§11.1). Constat cohérent : 02 est le seul domaine à n'avoir
+   * AUCUN fichier à plat au recensement du 13/09. */
 
   if (domaine === '03 · Logement & véhicule') {
-    if (resetContient_(t, ['bail', 'contrat', 'acte', 'caution', 'garantie', 'surete', 'signature',
-      'engagement', 'devis', 'consentement', 'quittance'])) return 'Contrats';
+    // « acte » en MOT ENTIER : en sous-chaîne il apparie « caractéristiques » et « facteur » —
+    // c'est-à-dire, très exactement, la famille de documents d'ÉQUIPEMENT que ce domaine laisse en
+    // attente d'arbitrage (D7). Un « Caractéristiques techniques_Amana » serait parti dans
+    // « Contrats », déplacé automatiquement, donc définitif de fait (trouvé en revue).
+    if (resetContient_(t, ['bail', 'contrat', 'caution', 'garantie', 'surete', 'signature',
+      'engagement', 'devis', 'consentement', 'quittance']) || resetMotEntier_(t, 'acte')) return 'Contrats';
+    // ASSURANCE AUTO avant assurance habitation : `03` couvre le logement ET le véhicule, et il a
+    // déjà le nœud prévu pour « document de véhicule sans véhicule identifiable » (ADR-0044 §4.2,
+    // consommé par `cheminCibleReset_`). Sans cette ligne, « Assurance auto_Intact » atterrissait
+    // dans `Assurance habitation`.
+    if (t.indexOf('assurance') !== -1 &&
+        resetContient_(tout, ['auto', 'automobile', 'vehicule', 'voiture', 'vignette', 'saaq'])) {
+      return 'Véhicule/À attribuer';
+    }
     if (t.indexOf('assurance') !== -1) return 'Assurance habitation';
     if (resetContient_(t, ['energie', 'electricite', 'gaz', 'hydro'])) return 'Énergie & services';
     if (resetContient_(t, BUCKET_TYPE_CORRESPONDANCE)) return 'Correspondance';
@@ -818,9 +862,12 @@ function bucketTypeDomaine_(domaine, nom) {
 
   if (domaine === '05 · Carrière') {
     if (resetContient_(t, ['cv', 'lettre de motivation', 'candidature'])) return 'CV & lettres';
-    if (resetContient_(t, ['bilan', 'formation', 'evaluation', 'attestation', 'certificat'])) {
-      return 'Formation & bilans';
-    }
+    // « formation » en MOT ENTIER : `cheminCibleReset_` se garde déjà de « information » 190 lignes
+    // plus haut (`(' ' + t).indexOf(' formation')`) — la liste en sous-chaîne ré-ouvrait le bug
+    // qu'une revue précédente avait fermé, et attrapait « Note d'information », « Lettre
+    // d'information », « Document d'information » (trouvé en revue).
+    if (resetContient_(t, ['bilan', 'evaluation', 'attestation', 'certificat']) ||
+        resetMotEntier_(t, 'formation')) return 'Formation & bilans';
     if (resetContient_(t, ['presentation', 'reseau', 'portfolio', 'profil'])) return 'Réseaux & présentations';
     return '';
   }
@@ -833,7 +880,9 @@ function bucketTypeDomaine_(domaine, nom) {
   if (domaine === '06 · Études & diplômes') return '';
 
   if (domaine === '07 · Santé') {
-    if (resetContient_(t, ['consultation', 'ordonnance', 'rendez-vous', 'compte rendu', 'carnet',
+    // « rendez vous » et « compte rendu » s'écrivent SANS trait d'union ici : la clé de comparaison
+    // les a déjà neutralisés (voir `sansTiret` en tête), donc UN motif couvre les deux graphies.
+    if (resetContient_(t, ['consultation', 'ordonnance', 'rendez vous', 'compte rendu', 'carnet',
       'vaccination', 'prescription', 'suivi medical'])) return 'Médecins & consultations';
     if (resetContient_(t, ['facture', 'recu', 'remboursement'])) return 'Factures & reçus';
     if (resetContient_(t, ['resultat', 'analyse', 'examen', 'radiographie', 'bilan', 'depistage'])) {
@@ -857,6 +906,15 @@ function bucketTypeDomaine_(domaine, nom) {
 
   if (domaine === '08 · Perso & projets') {
     if (resetContient_(t, ['note', 'carnet', 'memo'])) return 'Notes';
+    // LES CAPTURES, tranchées en UN endroit et AVANT tout le reste. Éclatées entre trois listes,
+    // elles se volaient : « Capture de profil » tombait dans « Écrits & rédactions » à cause du
+    // motif « profil », et le motif « capture de profil » de la liste « Photos » était MORT
+    // (trouvé en revue). Une capture d'ÉCHANGE est une trace de conversation que Marc garde
+    // (Notes) ; toute autre capture est une image (Photos & loisirs).
+    if (t.indexOf('capture') !== -1) {
+      return resetContient_(t, ['conversation', 'message', 'messagerie', 'courriel'])
+        ? 'Notes' : 'Photos & loisirs';
+    }
     if (resetContient_(t, ['schema', 'plan de', 'diagramme', 'carte mentale', 'catalogue technique',
       'patron', 'croquis', 'fiche produit', 'fiche technique', 'fiche d installation',
       'fiche de dimensions', 'document technique', 'code source', 'liste d inventaire',
@@ -864,11 +922,14 @@ function bucketTypeDomaine_(domaine, nom) {
     // Les artefacts d'agent déposés dans 08 (« Journal de tri (agent) », « Rapport de passe »,
     // « Rapport global cumulatif », « Registre documents » — 22 au recensement) n'ont PAS de
     // segment TYPE : ils sont reconnus sur le NOM COMPLET, seul cas de ce bloc.
+    // « journal » NU a été retiré : il envoyait « Journal intime » dans les exports. Les artefacts
+    // d'agent (« Journal de tri (agent) ») ont leur branche dédiée, en tête de la fonction.
     if (resetContient_(t, ['tableur', 'feuille de calcul', 'export', 'registre', 'rapport',
-      'donnees', 'base de donnees', 'journal', 'classeur', 'simulation', 'budget', 'fichier',
+      'donnees', 'base de donnees', 'classeur', 'simulation', 'budget', 'fichier',
       'statistique', 'releve'])) return 'Données & exports';
     if (resetContient_(t, ['memoire', 'article', 'redaction', 'essai', 'ecrit', 'lettre', 'script',
-      'presentation', 'texte', 'poeme', 'discours', 'dialogue', 'profil', 'questionnaire'])) {
+      'presentation', 'texte', 'poeme', 'discours', 'dialogue', 'profil', 'questionnaire',
+      'journal intime'])) {
       return 'Écrits & rédactions';
     }
     // Un courriel ou une capture de conversation personnelle est une NOTE : 08 n'a pas de nœud
@@ -881,8 +942,8 @@ function bucketTypeDomaine_(domaine, nom) {
     if (resetContient_(t, ['photo', 'billet', 'ticket', 'coupon', 'bon de reduction', 'grille',
       'regles', 'menu', 'reservation', 'promotionnel', 'recette', 'conditions generales',
       'loisir', 'evenement', 'abonnement', 'adhesion', 'tournoi', 'partie d echecs',
-      'image humoristique', 'commande', 'livraison', 'annonce', 'capture d ecran',
-      'capture de profil']) || resetMotEntier_(t, 'jeu')) return 'Photos & loisirs';
+      'image humoristique', 'commande', 'livraison', 'annonce'])
+        || resetMotEntier_(t, 'jeu')) return 'Photos & loisirs';
     return '';
   }
 

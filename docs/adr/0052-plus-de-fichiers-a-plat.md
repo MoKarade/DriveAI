@@ -41,15 +41,22 @@ implémentée en *laisser à plat*, ce qui règle le frein mais fabrique le vrac
 dégradation qui est faux, pas le principe.
 
 **(b) En 06, toute la table est gatée sur l'identification de l'ÉCOLE — et l'école n'est nulle part.**
-`cheminCibleReset_` branche 06 : `if (!ecole) return null;`. Mesure sur les 475 noms réels :
-**0 sur 475** contiennent un jeton d'établissement. Les 475 sont des travaux scolaires
+`cheminCibleReset_` branche 06 : `if (!ecole) return null;`. Mesure initiale sur les 475 noms
+réels : **0 sur 475** reconnu par la table.
+⚠️ **Ce chiffre, annoncé comme exhaustif, était faux — corrigé par la revue flotte.** 11 noms
+portaient bel et bien un établissement que la table ne voyait pas : « Cégep de **Saint-Hyacinthe** »
+figurait dans le vocabulaire depuis toujours mais ne matchait jamais (`normaliserCle_` conserve les
+traits d'union), et 4 établissements réels manquaient (Lycée Hugo, Armentières, Académie de Lille,
+Centre universitaire Descartes). Corrigé ici : **11 sur 475**, gratuitement. Le diagnostic tient,
+sa formulation était trop forte — « 0 reconnu par la table » n'est pas « 0 qui en porte un ».
+Les 464 restants sont des travaux scolaires
 (93 « exercice », 82 « TP/travaux pratiques », 71 « devoir », 68 « cours », 64 « note »,
 26 « rapport », 14 « examen », 11 « correction »…) dont le nom ne porte que la matière.
 
 ⚠️ **Et le contenu ne la porte pas non plus.** Deux documents lus avant de chiffrer quoi que ce soit
 (`TP Physique raideur ressort oscillations`, `Notes de cours biologie végétale`) : en-tête = prénoms
-d'élèves + date, corps = la matière. **Aucun établissement.** Une campagne LLM sur les 475
-(475 × 0,0261 $ ≈ **12,4 $**) ne les placerait donc PAS — elle rendrait le même `null` en ayant payé.
+d'élèves + date, corps = la matière. **Aucun établissement.** Une campagne LLM sur les 464
+(464 × 0,0261 $ ≈ **12,1 $**) ne les placerait donc PAS — elle rendrait le même `null` en ayant payé.
 C'est exactement la leçon §9 « prouver sur du réel AVANT de coder ET de déployer » : le
 chiffre-titre « 8-10 $ pour tout rattraper » n'était pas une promesse de gain.
 
@@ -103,58 +110,125 @@ Le frein `CONFIG.LLM_BUDGET_CAMPAGNES` reste à 40 $ et ne gate jamais le flux v
 
 ### D6 — *(en attente de Marc)* 06 · Études : la structure, pas le LLM
 06 est PLEIN (7 nœuds : 5 écoles + « Autres établissements » + « Diplômes & relevés officiels »).
-Accueillir les 475 travaux scolaires demande un nœud de plus, donc un arbitrage de Marc :
+Accueillir les 464 travaux scolaires sans école identifiable demande un arbitrage de Marc :
 
 - **Option A — regrouper les écoles.** `06/Établissements/{les 6 existants}` +
   `06/Cours & travaux/{Notes de cours, Exercices & devoirs, TP & comptes rendus, Examens & corrigés,
   Projets & mémoires, Fiches & schémas}` + `06/Diplômes & relevés officiels`. 3 nœuds au niveau 1,
-  6 à chaque niveau 2 (≤ 7 ✔). Place les 475. Coût : déplace aussi les ~139 fichiers déjà classés
+  6 à chaque niveau 2 (≤ 7 ✔). Place les 464. Coût : déplace aussi les ~139 fichiers déjà classés
   sous les 5 écoles (déplacement seul, réversible, aucune suppression).
-- **Option B — ne rien restructurer.** Les 475 vont sous `06/Autres établissements/<famille>`.
+- **Option B — ne rien restructurer.** Les 464 vont sous `06/Autres établissements/<famille>`.
   Zéro fichier déjà classé touché, mais « Autres établissements » veut dire « un autre
   établissement », pas « établissement inconnu » : ce n'est pas « le bon sous-dossier ».
 
-Tant que Marc n'a pas tranché, les 475 restent à plat et le test le CONSTATE (compteur à 475, avec
+- **Option C — la fenêtre de scolarité, comme les fenêtres d'occupation des logements**
+  *(proposée par la revue flotte ; c'est celle que je recommande)*. Le projet fait DÉJÀ exactement
+  cela, à la demande explicite de Marc : `logementParDate_` / `fenetresOccupation_` (Missions.gs)
+  attribuent une correspondance sans indice au logement dont la fenêtre d'occupation contient sa
+  date — « regarde les dates pour déterminer », décision Marc, ADR-0040. Une table `ANNEES_ECOLE`
+  **validée par Marc** (lycée → prépa → DUT ULCO → cégep → IMERIR) a le même statut que
+  `MISSIONS_BAILLEURS` ou `RESET_PERSONNES_AUTRES` : une DÉCISION, pas une inférence du moteur.
+  Le préfixe `AAAA` du nom — présent sur la quasi-totalité des 464 — désigne alors l'école **si et
+  seulement si** il tombe dans EXACTEMENT une fenêtre ; sinon refus (révisable), comme pour les
+  logements. Le type fait le reste, via les règles `<école>/Cours & travaux`, `/Examens & khôlles`,
+  `/Résultats` qui existent déjà.
+  Ce que ça coûte : les années charnières (2018 lycée/prépa, 2020-21 DUT/cégep) refusent — couverture
+  partielle, et c'est le bon comportement (« le prédicat qui déclenche l'irréversible refuse dans le
+  doute »). Ce que ça économise par rapport à A : **zéro fichier déjà classé déplacé**, aucun nœud
+  ajouté, aucun libellé mensonger.
+  ⚠️ Cette option invalide la phrase du §2 « le déduire serait deviner » : déduire SEUL serait
+  deviner ; appliquer une table que Marc a validée ne l'est pas. La distinction est celle que le
+  dépôt fait déjà partout ailleurs.
+
+Tant que Marc n'a pas tranché, les 464 restent à plat et le test le CONSTATE (compteur à 464, avec
 son commentaire) plutôt que de le masquer par une exception.
 
 ### D7 — *(en attente de Marc)* 03 · Logement : 8 fichiers d'équipements sans nœud
-8 fichiers (étiquette produit Armstrong, document électroménager Amana, liste de matériaux, plan de
-revêtements de sol, inventaire d'équipements, rapport de dégradation…) décrivent l'ÉQUIPEMENT du
-logement. 03 est PLEIN (7 nœuds). Un nœud `Travaux & équipements` demanderait d'en libérer un —
-arbitrage de Marc.
+**6** des 8 fichiers restants décrivent l'ÉQUIPEMENT du logement (étiquette produit Armstrong,
+document électroménager Amana, liste de matériaux, plan de revêtements de sol, inventaire
+d'équipements, rapport de dégradation) : un nœud `Travaux & équipements` les accueillerait, mais
+`03` est PLEIN (7 nœuds) et en ouvrir un exige d'en libérer un — arbitrage de Marc.
+Les **2 autres** ne sont pas de cette famille et sont listés à part pour ne pas fausser son
+arbitrage (correction de la revue flotte, qui a relu la liste réelle) : une capture d'annonce
+(`Capture de profil entreprise_LOPI Groupe Immobilier`) et une liste d'achats pour le VÉHICULE, pas
+le logement (`Liste achats préparation hivernale véhicule`).
+
+### D8 — Un signal FAIBLE ne déplace jamais ce qui est déjà rangé *(ajouté après la revue flotte)*
+`bucketTypeDomaine_` ne lit que le TYPE : il ignore tout ce qui a pu justifier un rangement existant
+(une mission qui range par bailleur ou par fenêtre d'occupation, un geste de Marc, un dossier
+d'entité pas encore au référentiel). Il a été introduit pour qu'un document ne RESTE pas à la racine,
+pas pour arbitrer contre un classement. Sa cible est donc marquée `faible: true`, et
+`decisionConsolidation_` refuse de DÉPLACER un fichier dont le sous-chemin actuel n'est pas vide.
+
+Mesuré avant d'écrire la garde, sur les 15 fichiers réels de `03 · Logement/3325 4e avenue` :
+**2 partaient vers `Correspondance`** (« Échange de messages_Saga Installation », « Échange de
+messagerie_Guy Laporte ») — la table ne reconnaît ni l'un ni l'autre émetteur, la mission logements
+si. `ConsolidationExec` applique **sans validation ligne à ligne** : l'erreur aurait été muette.
+C'est aussi ce qui rend le bump de tag du §5 sûr le jour où Marc le décidera.
+Corpus figé : `test/fixtures/deja-ranges-2026-09-13.json` (deux dossiers réels, pris entiers).
 
 ## 4. Ce que ça donne, mesuré sur les 683
 
-| Domaine | À plat | Placés après D1-D3 | Restants |
-|---|---:|---:|---:|
-| 01 | 13 | 12 | 1 — « Fragment de document technique » : le type n'apprend rien |
-| 03 | 38 | 30 | 8 *(D7)* |
-| 04 | 18 | 18 | 0 |
-| 05 | 2 | 2 | 0 |
-| 06 | 475 | 0 | 475 *(D6)* |
-| 07 | 10 | 10 | 0 |
-| 08 | 115 | 114 | 1 — `profil-vocal-marc.md` : ni date, ni type, ni émetteur |
-| 09 | 12 | 12 | 0 |
-| **Total** | **683** | **198** | **485** |
+| Domaine | À plat | Par la TABLE | Par le REPLI | Restants |
+|---|---:|---:|---:|---:|
+| 01 | 13 | 0 | 12 | 1 — « Fragment de document technique » : le type n'apprend rien |
+| 03 | 38 | 13 | 17 | 8 *(D7)* |
+| 04 | 18 | 7 | *(11)* | voir ci-dessous |
+| 05 | 2 | 0 | 2 | 0 |
+| 06 | 475 | 11 | 0 | 464 *(D6)* |
+| 07 | 10 | 0 | 10 | 0 |
+| 08 | 115 | 0 | 114 | 1 — `profil-vocal-marc.md` : ni date, ni type, ni émetteur |
+| 09 | 12 | 0 | 12 | 0 |
+| **Total** | **683** | **31** | **178** | **474** |
 
-**Hors 06 : 198 sur 208, soit 95 %.** Les 485 restants sont à 98 % le seul arbitrage D6.
-Chiffres MESURÉS par `test/racine-domaine.test.js` sur le corpus figé, jamais recopiés à la main :
-le test échoue si l'un d'eux bouge.
+**Hors 06 : 198 sur 208, soit 95 %.** Chiffres MESURÉS par `test/racine-domaine.test.js` sur le
+corpus figé, jamais recopiés à la main : le test échoue si l'un d'eux bouge.
 
-## 5. Impact quotas & coût
+⚠️ **La colonne `04` est entre parenthèses, et c'est important.** Le repli calcule bien une cible
+pour ses 11 autres fichiers, mais **aucun consommateur ne l'appliquera** : la consolidation refuse
+d'agir sur la zone protégée (action `Ignoré`, §1), et le seul mutateur autorisé dans `04`,
+`reorganiserInterne04_`, résout sa cible par `cheminCibleReset_`. C'est pourquoi la règle
+d'identité a été ajoutée **dans la table** et pas seulement dans le repli : sans elle, le nœud
+`04/Pièces d'identité` n'aurait eu **aucun producteur**. Les 7 passeports partiront donc quand
+`CONFIG.RESET_ACTIF` repassera à `true` — décision de Marc, hors périmètre de cette ADR.
+*(Une première version de ce tableau annonçait « 04 : 18/18 ». C'était mesuré à travers une lentille
+que la production n'emprunte jamais pour `04` — trouvé par deux agents de la revue flotte,
+indépendamment.)*
+
+Les 31 « par la table » ne sont pas un acquis de cette ADR mais des **bugs de motifs** que la revue
+flotte a trouvés dans la table EXISTANTE, corrigés ici parce qu'ils étaient gratuits : « saint
+hyacinthe » et « saint omer » ne matchaient pas (`normaliserCle_` conserve les traits d'union),
+4 établissements réels manquaient au vocabulaire de `06`, et `04` ne connaissait pas l'identité.
+
+## 5. Impact quotas & coût — et ce qui reste à faire pour que ça PRODUISE cet effet
 
 - **Coût LLM : zéro.** Le repli est PUR, par le NOM — aucun appel supplémentaire, ni au flux ni à
-  la consolidation. C'est le point le plus important de cette ADR face à la demande initiale
-  (« ~8-10 $ une fois ») : 94 % du rattrapable l'est **gratuitement**.
+  la consolidation. C'est le point le plus important face à la demande initiale (« ~8-10 $ une
+  fois ») : 95 % du rattrapable hors `06` l'est **gratuitement**.
+- **Effet IMMÉDIAT : les nouvelles arrivées.** Dès le déploiement, tout document entrant par Gmail
+  ou par `00 · À trier` que le flux ne sait pas rattacher va dans un sous-dossier au lieu de la
+  racine. La racine cesse de se remplir.
+- 🔴 **Effet sur le STOCK : AUCUN en l'état, et c'est délibéré.** Les 683 fichiers portent déjà une
+  clé de SUCCÈS `conso|conso-3|<fileId>` posée avec la décision « OK — racine du domaine », et la
+  génération de plan sort au premier `if` (`DriveAI_CONSOLIDATION === tag`, campagne terminée 9/9 le
+  16/08). La réconciliation, elle, ne mute rien par conception. Rien ne les reverra tant que
+  `CONFIG.CONSOLIDATION_TAG` n'est pas bumpé — c'est la leçon §9 « re-lancer une campagne à clé de
+  SUCCÈS ne re-traite pas ce qu'elle a figé OK ».
+  *(Les trois agents de la revue flotte l'ont relevé indépendamment ; la première version de cette
+  ADR, du commit et du HANDOVER écrivait « 198 des 683 placés » au passé accompli.)*
+  **Le bump n'est pas fait ici** parce qu'il ne se résume pas à changer une constante : il faut
+  aussi rendre à la consolidation le budget quotidien qui lui a été retiré (2 min/j depuis C28-49,
+  ses 10 min étant parties aux missions), et ce transfert est verrouillé par un test de COUPLE qui
+  force l'arbitrage. C'est une décision de Marc sur le quota runtime partagé, pas un détail
+  d'implémentation. Suivi : **C28-90** au backlog.
 - **Quota Drive** : inchangé au flux vivant (le `find-or-create` du sous-dossier remplace un
-  `find-or-create` de racine). Sur le STOCK, ce sont les campagnes existantes (consolidation,
-  réconciliation) qui reverront ces fichiers à leur rythme, dans leurs budgets/jour actuels —
-  **aucune constante `*_BUDGET_JOUR_MS` ajoutée**, donc aucune addition nette à l'enveloppe
-  (leçon §9 « réallouer, jamais augmenter »).
-- **Risque de non-convergence** : nul par construction — le flux et la consolidation calculent la
-  cible par la MÊME fonction ; ce qui est verrouillé par test n'est pas cette égalité (elle serait
-  tautologique, leçon C28-62) mais (a) que toute cible rendue EXISTE dans la table, et (b) le
-  compte d'atterrissages à la racine sur le corpus réel.
+  `find-or-create` de racine). **Aucune constante `*_BUDGET_JOUR_MS` ajoutée** (leçon §9
+  « réallouer, jamais augmenter »).
+- **Risque de non-convergence** : D8 le ramène à zéro pour la classe que la revue a mesurée (un
+  fichier déjà rangé n'est jamais remonté par le repli). Ce qui reste, et qui est **antérieur** à
+  cette ADR : les missions `03` calculent leurs cibles avec des règles que `cheminCibleReset_` ne
+  possède pas (`cibleBailleur_`, `logementParDate_`, `bucketEmetteur_`). Les faire remonter dans la
+  règle partagée est le prérequis propre au bump de tag — C28-90 aussi.
 
 ## 6. Méthode de test
 

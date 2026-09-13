@@ -10,7 +10,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { load } = require('./harness');
 
-const ctxPur = load(['Config.gs', 'ConsolidationExec.gs']);
+const ctxPur = load(['Config.gs', 'Router.gs', 'ConsolidationExec.gs']);
 
 test('ligneAAppliquer_ : Déplacer/Doublon seulement — OK et Ignoré ne se touchent JAMAIS', () => {
   assert.strictEqual(ctxPur.ligneAAppliquer_('Déplacer'), true);
@@ -34,7 +34,7 @@ const PAR_ID = { DOMID: '02 · Finances' };
 
 function ctxLigne(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'ConsolidationExec.gs']);
+  const c = load(['Config.gs', 'Router.gs', 'ConsolidationExec.gs']);
   const index = {};
   const ajouts = [];
   const moves = [];
@@ -46,7 +46,8 @@ function ctxLigne(opts) {
   c.dossierDoublons_ = () => ({ getId: () => 'DOUBLONS' });
   c.idDomaine_ = () => 'DOM';
   c.sousDossier_ = (parent, nom) => ({ getId: () => parent.getId() + '/' + nom });
-  c.champ_ = (s) => String(s == null ? '' : s).trim();
+  // (plus de stub `champ_` : Router.gs est chargé, donc `segmentsChemin_` — la règle de
+  // découpage partagée avec le flux vivant — s'exécute POUR DE VRAI ici.)
   // La cible est RECALCULÉE via la règle unique — mockée ici (testée pour de vrai dans consolidation.test.js).
   c.cheminCibleConsolidation_ = () => ({ nom: opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : '2026', id: opts.dossierIdCible || '' }); // {nom,id} depuis l'ADR-0028
   // ADR-0028 : le RÉSOLVEUR PARTAGÉ vit dans Router.gs (non chargé ici) — mocké. Par défaut null
@@ -157,7 +158,7 @@ test('appliquerLigneConsolidation_ : Doublon → moveTo vers _Doublons (décisio
 // les fonctions cross-module (Reorg.gs non chargé ici) sont injectées ; feuille_ capte les appendRow.
 function ctxVide(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'ConsolidationExec.gs']);
+  const c = load(['Config.gs', 'Router.gs', 'ConsolidationExec.gs']);
   const appends = [];
   const reorgData = [['Clé', 'Type', 'ID', 'CheminA', 'CheminP', 'Statut', 'Détail', 'H']].concat(opts.reorgData || []);
   c.indexContient_ = () => false;
@@ -168,7 +169,8 @@ function ctxVide(opts) {
   c.idDomaine_ = () => 'DOM';
   c.dossierDoublons_ = () => ({ getId: () => 'DOUBLONS' });
   c.sousDossier_ = (parent, nom) => ({ getId: () => parent.getId() + '/' + nom });
-  c.champ_ = (s) => String(s == null ? '' : s).trim();
+  // (plus de stub `champ_` : Router.gs est chargé, donc `segmentsChemin_` — la règle de
+  // découpage partagée avec le flux vivant — s'exécute POUR DE VRAI ici.)
   c.cheminCibleConsolidation_ = () => ({ nom: opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : '', id: opts.dossierIdCible || '' }); // {nom,id} depuis l'ADR-0028
   c.dossierEntiteParId_ = (id) => (id && opts.entiteResoluble !== false
     ? { dossier: { getId: () => 'ENT:' + id }, segments: ['Anciens employeurs', 'Robovic'] } : null);
@@ -250,7 +252,7 @@ test('détection vide : dédup (déjà signalé) ; et un échec d\'inscription n
 
 function ctxPlan(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'ConsolidationExec.gs']);
+  const c = load(['Config.gs', 'Router.gs', 'ConsolidationExec.gs']);
   c.CONFIG.CONSOLIDATION_TAG = 'conso-2'; // FORCÉ : ces fixtures encodent 'conso-2' ; le défaut prod
   // est passé à 'conso-3' (2026-08-05, ADR-0035, bump anti-plan-périmé). Leçon §7 : forcer la valeur
   // dans le contexte, jamais dépendre du défaut du jour.

@@ -30,12 +30,43 @@
 > par CAPACITÉ aux missions (« le flux fait autorité DANS 02 ») : lui apprendre à tout placer aurait
 > tué les sorties inter-domaines, en silence. Deux nœuds ajoutés là où il y avait de la place :
 > `09/Préparation & guides` et `04/Pièces d'identité` (INTERNE à 04, aucune sortie représentable).
-> **198 des 683 placés — 95 % hors `06` — pour zéro appel LLM.**
+> **209 des 683 placés — 95 % hors `06` — pour zéro appel LLM** (31 par la table, 178 par le repli).
+>
+> ⚠️ **Ce chiffre est un POTENTIEL mesuré sur corpus, PAS un effet en production.** Les 683 portent
+> déjà une clé de SUCCÈS `conso|conso-3|<fileId>` posée avec « OK — racine du domaine », et la
+> génération du plan de consolidation sort au premier `if` (campagne terminée 9/9 le 16/08). Rien de
+> l'EXISTANT ne bougera tant que `CONFIG.CONSOLIDATION_TAG` n'est pas bumpé — **C28-90**, qui exige
+> aussi de rendre à la consolidation son budget quotidien (2 min/j depuis C28-49) et de faire
+> remonter dans la règle partagée les placements que les missions `03` calculent seules. C'est une
+> décision de Marc sur le quota runtime. Ce qui prend effet IMMÉDIATEMENT : les **nouvelles
+> arrivées** — la racine cesse de se remplir.
+>
+> **Revue flotte (3 agents en parallèle, avant merge) : 3 🔴 + 8 🟠 intégrés.** Les trois 🔴
+> convergeaient : (1) aucun consommateur actif ne reverrait les 683 — le commit, l'ADR et ce
+> document écrivaient « 198 placés » au passé accompli, corrigé partout ; (2) l'effet annoncé sur
+> `04` était nul, parce que le seul mutateur autorisé dans la zone protégée (`reorganiserInterne04_`)
+> résout sa cible par `cheminCibleReset_` et pas par le repli — la règle d'identité a donc été
+> ajoutée DANS la table, sinon le nœud `04/Pièces d'identité` n'avait aucun producteur ; (3) le
+> corpus ne mesurait que la population où tout déplacement est un gain (la racine), jamais les
+> ~15 700 fichiers DÉJÀ rangés sur lesquels le repli agira vraiment. D'où **D8** : la cible du repli
+> est marquée `faible`, et la consolidation refuse alors de déplacer un fichier déjà rangé. Mesuré
+> avant la garde : 2 des 15 fichiers de `03/Logement/3325 4e avenue` partaient vers `Correspondance`.
+> Plus 6 collisions de motifs reproductibles, et un bug de la table EXISTANTE : « saint-hyacinthe »
+> n'appariait rien depuis toujours (`normaliserCle_` conserve les traits d'union).
+>
+> **Reste ouvert** : C28-90 (le bump, décision de Marc) et C28-91 (l'audit sécurité signale que la
+> fixture de 683 noms réels emporte dans git des données de santé identifiantes et des noms de tiers
+> — aucun contenu, aucun identifiant, mais un commit est irréversible).
 >
 > **Reste à Marc (2 arbitrages, ADR-0052 D6/D7)** : `06` et `03` sont tous deux PLEINS à 7 nœuds,
-> donc accueillir leurs 475 + 8 fichiers demande une décision de structure. Tant qu'elle n'est pas
-> prise, ces fichiers restent à plat et `test/racine-domaine.test.js` le CONSTATE (compteurs 475 et
-> 8, chacun commenté avec sa décision) plutôt que de le masquer par une exception.
+> donc accueillir leurs 464 + 8 fichiers demande une décision de structure. Pour `06`, la revue
+> flotte a proposé une **option C** qui a un précédent validé par Marc dans ce dépôt : une table
+> `ANNEES_ECOLE` (lycée → prépa → DUT → cégep → IMERIR), exactement comme les fenêtres d'occupation
+> des logements (« regarde les dates pour déterminer », ADR-0040) — l'année du nom désigne l'école si
+> et seulement si elle tombe dans UNE seule fenêtre, sinon refus. Zéro fichier déjà classé déplacé,
+> aucun nœud ajouté. Tant que Marc n'a pas tranché, ces fichiers restent à plat et
+> `test/racine-domaine.test.js` le CONSTATE (compteurs 464 et 8, chacun commenté avec sa décision)
+> plutôt que de le masquer par une exception.
 >
 > **✅ TERMINÉ — 2026-09-12 : C28-84 / C28-85 (chantier #46), mergé en #336 et VÉRIFIÉ EN PROD.**
 > Marc : « analyse tout et peaufine », puis « toutes les missions qui ont pas fini, finis-les ; pose
