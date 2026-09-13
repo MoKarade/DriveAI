@@ -102,6 +102,10 @@ function cheminCibleConsolidation_(domaine, nom, validees) {
   // l'exécuteur RE-CRÉAIT le nœud parasite par nom — le correctif du flux annulé par la campagne
   // voisine, silencieusement, avec une CI verte. C'est la leçon §9 « une seule règle, deux
   // consommateurs » prise en flagrant délit.
+  // FORT, volontairement (arbitrage C28-90, revue de code 🟠 3) : le repli d'identité vise
+  // `Pièces d'identité/<titulaire>` — le domicile THÉMATIQUE d'un passeport, pas un fourre-tout.
+  // Comme `État civil & notarial` et `Diplômes & relevés officiels`, il garde le pouvoir de
+  // rassembler depuis un sous-dossier (critère détaillé sur `marquerFaibleReset_`, Reset.gs).
   if (seg.type) {
     var t = normaliserTypeIdentite_(seg.type);
     if (TYPES_IDENTITE.indexOf(t) !== -1) {
@@ -222,6 +226,20 @@ function decisionConsolidation_(d) {
     return {
       action: 'OK', cible: d.domaine + '/' + d.sousCheminActuel,
       raison: 'Déjà dans un sous-dossier — le repli par type ne déplace pas (ADR-0052 D8)',
+    };
+  }
+  // C28-90 (trouvé en vérifiant la revue) — UNE CIBLE VIDE NE REMONTE JAMAIS UN FICHIER À LA RACINE.
+  // « Aucune règle, pas même le type, n'a su placer ce document » est un constat d'IGNORANCE : il ne
+  // dit rien du rangement actuel, et il ne peut donc pas le défaire. Or la collecte est RÉCURSIVE
+  // sur tout le domaine : sans cette ligne, un fichier bien rangé dont le nom n'apprend rien (ex.
+  // « Attestation_Coursera » sous `06/Archives scolaires/Online course — AI Essentials ») recevait
+  // un « Déplacer » vers la RACINE du domaine — c'est-à-dire vers le vrac que cette campagne existe
+  // pour vider, et que `HistoriqueVrac` compte comme dette. Le constat reste DIT dans la raison,
+  // pour que Marc puisse trancher ; c'est le déplacement qui disparaît.
+  if (!String(d.sousCheminCible || '') && String(d.sousCheminActuel || '') !== '') {
+    return {
+      action: 'OK', cible: d.domaine + '/' + d.sousCheminActuel,
+      raison: 'Aucune règle ne sait le placer — laissé où il est, jamais remonté à la racine (C28-90)',
     };
   }
   // La RAISON est lue par Marc dans le plan qu'il valide : elle doit dire la vérité de la règle qui

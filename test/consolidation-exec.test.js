@@ -94,12 +94,18 @@ test('appliquerLigneConsolidation_ : Déplacer → cible RECALCULÉE (la colonne
   assert.strictEqual(ajouts[0].chemin, '02 · Finances/2026');
 });
 
-test('appliquerLigneConsolidation_ : recalcul « à plat » → racine du domaine ; recalcul = position actuelle → no-op', () => {
-  // Fichier dans un sous-dossier (« Relevés »), cible recalculée à plat → il remonte à la racine.
+test('appliquerLigneConsolidation_ : une cible VIDE ne remonte JAMAIS un fichier rangé à la racine', () => {
+  // ⚠️ Ce test assertait l'INVERSE jusqu'au 13/09 (`moves === ['DOM']`) : il figeait en contrat un
+  // défaut latent — la consolidation, récursive sur tout le domaine, proposait de remonter à la
+  // RACINE tout fichier bien rangé dont le nom n'apprend rien. Mesuré par la revue sécurité sur le
+  // corpus réel : 332 des 475 noms de `06` placés dans un dossier d'école repartaient à la racine,
+  // c'est-à-dire l'exact inverse du mandat de la campagne (revue sécurité C28-90, 🔴).
   const plat = ctxLigne({ cibleRecalculee: '', parents: ['SOUS'], ancetres: { SOUS: { nom: 'Relevés', parent: 'DOMID' } } });
   const r1 = plat.c.appliquerLigneConsolidation_({ fileId: 'F2', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, CTX_EXEC);
-  assert.strictEqual(r1, 'fait');
-  assert.deepStrictEqual(plat.moves, ['DOM'], 'sous-chemin vide = racine du domaine');
+  assert.strictEqual(r1, 'saute');
+  assert.deepStrictEqual(plat.moves, [], 'aucune règle ne sait le placer ⇒ on ne défait pas le rangement');
+  assert.strictEqual(plat.ajouts[0].statut, 'consolidé-sur-place');
+  assert.strictEqual(plat.ajouts[0].chemin, '02 · Finances/Relevés');
 
   // Fichier DÉJÀ à la racine du domaine et recalcul '' → aucun moveTo, et plus aucune I/O : c'est
   // `decisionConsolidation_` (« Déjà au bon endroit ») qui tranche, avant même de résoudre la cible.
@@ -234,7 +240,9 @@ function ctxVide(opts) {
   c.sousDossier_ = (parent, nom) => ({ getId: () => parent.getId() + '/' + nom });
   // (plus de stub `champ_` : Router.gs est chargé, donc `segmentsChemin_` — la règle de
   // découpage partagée avec le flux vivant — s'exécute POUR DE VRAI ici.)
-  c.cheminCibleConsolidation_ = () => ({ nom: opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : '', id: opts.dossierIdCible || '', faible: false });
+  // Cible NON vide par défaut : depuis C28-90, une cible vide sur un fichier déjà rangé ne
+  // déplace plus rien — et ces tests ont besoin d'un déplacement pour qu'un dossier se vide.
+  c.cheminCibleConsolidation_ = () => ({ nom: opts.cibleRecalculee !== undefined ? opts.cibleRecalculee : 'Relevés', id: opts.dossierIdCible || '', faible: false });
   c.dossierEntiteParId_ = (id) => (id && opts.entiteResoluble !== false
     ? { dossier: { getId: () => 'ENT:' + id }, segments: ['Anciens employeurs', 'Robovic'] } : null);
   // Injections cross-module (Reorg.gs / Maintenance.gs non chargés dans ce contexte de test).

@@ -1325,7 +1325,11 @@ function peindreDossierRouge_(folderId) {
 
 /**
  * Rend sa couleur PAR DÉFAUT à un dossier (`folderColorRgb: null`) — l'inverse EXACT de
- * `peindreDossierRouge_`. Métadonnée, jamais une mutation de contenu. Best-effort.
+ * `peindreDossierRouge_`. Métadonnée, jamais une mutation de contenu.
+ * ⚠️ Rend son SUCCÈS, contrairement à la peinture : un PATCH refusé (403 quota, permission) laisse
+ * un dossier plein marqué « bon pour suppression », et l'appelant doit pouvoir re-tenter. Best-effort
+ * au sens où il ne lève jamais, pas au sens où l'échec est sans conséquence.
+ * @param {string} folderId @return {boolean} vrai si la couleur a bien été retirée
  */
 function depeindreDossier_(folderId) {
   try {
@@ -1340,8 +1344,13 @@ function depeindreDossier_(folderId) {
     );
     if (rep.getResponseCode() !== 200) {
       journalInfo_('Missions', 'Dé-peinture refusée (HTTP ' + rep.getResponseCode() + ') pour ' + folderId);
+      return false;
     }
-  } catch (e) { journalInfo_('Missions', 'Dé-peinture différée : ' + e); }
+    return true;
+  } catch (e) {
+    journalInfo_('Missions', 'Dé-peinture du dossier ' + folderId + ' différée : ' + e);
+    return false;
+  }
 }
 
 /**
@@ -1358,29 +1367,48 @@ function depeindreDossier_(folderId) {
  * ⚠️ Sens de l'échec VOLONTAIREMENT inverse de la peinture : un dossier ILLISIBLE est dé-peint
  * (`estDossierVideMission_` rend `false` sur erreur). Peindre à tort invite à supprimer ; dé-peindre
  * à tort ne coûte qu'une couleur.
+ * ⚠️ Rend la COMPLÉTUDE de la passe, et l'appelant s'en sert pour NE PAS conclure (revue de code
+ * C28-90, 🔴) : un « chemin de retour » coupé par le garde-temps laisserait le rouge à vie sur un
+ * dossier plein, et un drapeau one-shot consommé pour une passe qui n'a rien fait est pire que pas
+ * de chemin de retour du tout — il en donne l'apparence.
  * @param {string[]} cibles  dossiers à re-vérifier (les CIBLES d'une mission, jamais ses sources)
  * @param {function():boolean} garde
+ * @return {boolean} vrai si TOUTES les cibles et leurs sous-dossiers ont été examinés (aucune
+ *   coupure par le garde, aucune source illisible) ET que chaque PATCH a abouti. Un dossier laissé
+ *   rouge parce qu'il est ENCORE VIDE n'est PAS une incomplétude : le signal y est vrai.
  */
 function depeindreCiblesRemplies_(cibles, garde) {
+  var complet = true;
   (cibles || []).forEach(function (id) {
-    if (garde && garde()) return;
+    if (garde && garde()) { complet = false; return; }
     try {
       var racine = DriveApp.getFolderById(id);
-      if (!estDossierVideMission_(racine)) depeindreDossier_(id);
+      if (!estDossierVideMission_(racine) && !depeindreDossier_(id)) complet = false;
       var ds = racine.getFolders();
       while (ds.hasNext()) {
-        if (garde && garde()) return;
+        if (garde && garde()) { complet = false; return; }
         var sous = ds.next();
-        if (!estDossierVideMission_(sous)) depeindreDossier_(sous.getId());
+        if (!estDossierVideMission_(sous) && !depeindreDossier_(sous.getId())) complet = false;
       }
-    } catch (e) { journalInfo_('Missions', 'Dé-peinture de la cible ' + id + ' différée : ' + e); }
+    } catch (e) {
+      complet = false; // source illisible : on ne conclut pas, on re-tentera
+      journalInfo_('Missions', 'Dé-peinture de la cible ' + id + ' différée : ' + e);
+    }
   });
+  return complet;
 }
 
-/** Vrai si le dossier est STRICTEMENT vide (aucun fichier, aucun sous-dossier non corbeillés). */
+/**
+ * Vrai si le dossier est STRICTEMENT vide (aucun fichier, aucun sous-dossier non corbeillés).
+ * ⚠️ DEUX consommateurs de polarité OPPOSÉE : `peindreSourcesVides_` peint quand c'est `true`,
+ * `depeindreCiblesRemplies_` dé-peint quand c'est `false`. Le repli sur erreur (`false`) est donc
+ * prudent des deux côtés — et c'est un hasard heureux, pas une propriété : ne peint jamais à tort
+ * (peindre invite à supprimer), dé-peint au pire à tort (une couleur). Toute inversion future de ce
+ * repli doit se relire depuis LES DEUX appelants.
+ */
 function estDossierVideMission_(dossier) {
   try { return !dossier.getFiles().hasNext() && !dossier.getFolders().hasNext(); }
-  catch (e) { return false; } // illisible → on ne peint pas (prudence)
+  catch (e) { return false; } // illisible → on ne peint pas, et on dé-peint (cf. ⚠️ ci-dessus)
 }
 
 /**
@@ -1498,19 +1526,6 @@ function executerMission_(tag, estBudgetDepasse) {
   try {
     var ctx = spec.batirCtx ? spec.batirCtx() : {};
     var proteges = ensembleDomainesProteges_();
-    // DÉ-PEINTURE one-shot, par VERSION de règles (revue sécurité C28-90) : au PREMIER run de la
-    // mission sous cette version, les dossiers CIBLES qui ne sont plus vides perdent le rouge
-    // « bon pour suppression » qu'une campagne précédente leur a posé. Placée ICI et pas à la
-    // convergence : le signal est trompeur dès MAINTENANT, et une convergence peut prendre des
-    // jours. ENVELOPPÉE — une couleur ne remet jamais en cause le drainage.
-    if ((spec.ciblesADepeindre || []).length && m0.dep !== version) {
-      try {
-        depeindreCiblesRemplies_(spec.ciblesADepeindre, garde);
-        m0.dep = version;
-        etatM0[tag] = m0;
-        props.setProperty('DriveAI_MISSIONS_ETAT', JSON.stringify(etatM0));
-      } catch (eDep) { journalInfo_('Missions', 'Dé-peinture différée : ' + eDep); }
-    }
     // DEUX drapeaux distincts (🔴 revue code) : `coupe` = garde/plafond ⇒ on ARRÊTE (le reste du
     // tick attend) ; `passeIncomplete` = un item transitoire / une source en erreur ⇒ on CONTINUE
     // les autres items et les autres sources (sinon un fichier POISON — « Access denied » permanent,
@@ -1598,6 +1613,21 @@ function executerMission_(tag, estBudgetDepasse) {
         // Passe à vide : rien à faire, on repassera au prochain tick. Ni drapeau FINI, ni peinture
         // rouge (les sources vont se re-remplir — les peindre inviterait à supprimer des dossiers
         // que le flux recrée aussitôt).
+        return;
+      }
+      // DÉ-PEINTURE (revue sécurité C28-90 🟠 7, corrigée par la revue de code 🔴 1) — le chemin de
+      // RETOUR du signal rouge « vidé, bon pour suppression », posé par une campagne PRÉCÉDENTE sur
+      // des dossiers qu'elle avait vidés et qui sont redevenus la STRUCTURE (les 4 dossiers d'école).
+      // ⚠️ ICI, et pas au premier run : à ce moment-là les cibles étaient encore VIDES (c'est
+      // justement pourquoi elles sont rouges) — la dé-peinture n'aurait rien fait, et un drapeau
+      // one-shot consommé aurait laissé le rouge À VIE sur des dossiers ensuite remplis. À la
+      // convergence, la mission a fini de verser : ce qui est vide l'est pour de bon.
+      // ⚠️ AVANT le drapeau FINI : après lui, le court-circuit terminal fait que plus aucun run
+      // n'atteint ce code. Une passe coupée par le garde-temps ne conclut donc PAS (pas de FINI) —
+      // la mission re-convergera au prochain run (une passe à vide, quelques RPC).
+      if ((spec.ciblesADepeindre || []).length && !depeindreCiblesRemplies_(spec.ciblesADepeindre, garde)) {
+        journalInfo_('Missions', 'Dé-peinture INCOMPLÈTE (budget/illisible) pour « ' + tag +
+          ' » : convergence re-tentée au prochain run, le signal rouge ne reste pas.');
         return;
       }
       props.setProperty('DriveAI_MISSION_FINI_' + tag, version);

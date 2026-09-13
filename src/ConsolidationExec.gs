@@ -19,6 +19,10 @@
  *    (`cheminCibleConsolidation_`) appliquée au domaine ACTUEL du fichier, à son nom ACTUEL et
  *    aux entités VALIDÉES d'aujourd'hui ; un ID de DOSSIER est refusé ; les seuls dossiers créés
  *    (find-or-create) sont ceux de la règle unique : « ajout de dossiers utile seulement » ;
+ *  - CAMPAGNE : rien n'est appliqué tant que le plan de l'onglet n'a pas été (re)posé sous le TAG
+ *    COURANT (`DriveAI_CONSO_PLAN_TAG`, écrit par le GÉNÉRATEUR). Conséquence à connaître : si le
+ *    générateur est éteint (`CONSOLIDATION_ACTIF: false`) ou sur une installation neuve, l'exécuteur
+ *    est inerte — par construction, et sans bruit dans le Journal ;
  *  - avancement par CURSEUR de ligne (`DriveAI_CONSO_EXEC_LIGNE`) : l'onglet est APPEND-ONLY
  *    (écrit par le générateur) → le curseur est stable, pas de file mouvante ; rejeu sûr par la
  *    clé `consoexec|<tag>|<fileId>` + le no-op « déjà dans la cible » ;
@@ -107,8 +111,8 @@ function positionActuelleFichier_(f, parId) {
     var segments = [];
     var parentId = '';
     var courant = f;
-    for (var i = 0; i < 10; i++) {
-      var ps = courant.getParents();
+    for (var i = 0; i < 20; i++) { // 20 et non 10 : au-delà, la position est INCONNUE et la ligne
+      var ps = courant.getParents();  // serait classée « hors domaine » à tort (revue sécurité C28-90)
       if (!ps.hasNext()) return null;
       var p = ps.next();
       if (!parentId) parentId = p.getId();
@@ -177,8 +181,11 @@ function appliquerLigneConsolidation_(ligne, ctx) {
     // la MÊME, jamais une seconde formule — est ce qui fait des gardes D8/D9 des gardes et non un
     // affichage. Le fichier a pu être rangé plus finement PAR AILLEURS entre la génération du plan
     // et son exécution (les missions et le flux tournent dans le même tick, APRÈS l'exécuteur).
-    // Zone protégée et raccourci sont déjà re-vérifiés plus haut, échec-fermé ; le doublon ne passe
-    // pas par ici (décision par CONTENU, branche `Doublon` ci-dessus).
+    // `protege` : DÉJÀ re-vérifié plus haut, échec-fermé (ligne `aParentProtege_`) — on ne le rejoue
+    // pas ici. `raccourci` : le générateur met les raccourcis en `Ignoré`, donc AUCUNE ligne
+    // applicable n'en porte ; l'exécuteur ne le re-teste pas (constat, pas une garde — revue
+    // sécurité C28-90 : le commentaire précédent affirmait à tort qu'il l'était). `doublonDe` ne
+    // passe pas par ici (décision par CONTENU, branche `Doublon` ci-dessus).
     var decision = decisionConsolidation_({
       domaine: domaine, sousCheminActuel: pos.sousChemin, sousCheminCible: sousCible.nom,
       protege: false, protegeIllisible: false, raccourci: false, doublonDe: null,

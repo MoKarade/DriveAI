@@ -316,12 +316,21 @@ test('ADR-0052 D6 — le drapeau « école déduite » ne fuit PAS sur les dipl�
   // `Diplômes & relevés officiels` rend AVANT tout calcul d'école. Un relevé de notes de 2021
   // (dans la fenêtre IMERIR) était donc marqué faible et restait sur place, pendant que le MÊME
   // relevé de 2026 partait : la DATE décidait d'une garde qui n'a rien à voir avec elle.
+  // Le drapeau ne doit pas DÉPENDRE DE LA DATE sur cette branche : elle rend avant tout calcul
+  // d'école. Depuis l'arbitrage du 13/09 elle est faible pour une AUTRE raison (décidée par le seul
+  // TYPE, elle ne doit pas vider les dossiers d'école) — ce qui se teste, c'est l'UNIFORMITÉ.
   for (const nom of ['2021-05-05_Relevé de notes_Untel.pdf', '2026-05-05_Relevé de notes_Untel.pdf',
     '2019-05-05_Relevé de notes_Untel.pdf', '2021-05-05_Relevé de notes_IMERIR.pdf']) {
     const c = ctx.cheminCibleConsolidation_(d, nom, {});
     assert.strictEqual(c.nom, 'Diplômes & relevés officiels', nom);
-    assert.strictEqual(c.faible, undefined, nom + ' : cette branche ne déduit aucune école');
+    assert.strictEqual(c.faible, true, nom + ' : filet par TYPE, et jamais une école déduite');
   }
+  // …et un diplôme déjà rangé dans un dossier d'école y RESTE (`retour-ecoles06` les y remet).
+  assert.strictEqual(ctx.decisionConsolidation_({
+    domaine: d, sousCheminActuel: 'IMERIR/Administratif', sousCheminCible: 'Diplômes & relevés officiels',
+    dossierIdCible: '', cibleFaible: true, parentId: null, protege: false, protegeIllisible: false,
+    raccourci: false, doublonDe: null,
+  }).action, 'OK');
   // Le drapeau reste posé là où une école est bel et bien DÉDUITE d'une fenêtre…
   assert.strictEqual(ctx.cheminCibleConsolidation_(d, '2016-03-01_Devoir_Maths.pdf', {}).faible, true);
   // …et jamais quand le NOM nomme l'école (un FAIT, pas une déduction).
@@ -355,6 +364,28 @@ test('ADR-0052 D9 — la décision : jamais remonté vers un ancêtre, et la rai
   })).action, 'Déplacer');
 });
 
+test('C28-90 — une cible VIDE ne remonte JAMAIS un fichier rangé à la racine du domaine', () => {
+  // Trouvé en vérifiant la revue, pas par elle : la collecte de consolidation est RÉCURSIVE sur
+  // tout le domaine, et « aucune règle ne sait placer ce document » rendait un « Déplacer » vers la
+  // RACINE — c'est-à-dire vers le vrac que cette campagne existe pour vider. Un constat d'IGNORANCE
+  // ne dit rien du rangement actuel : il ne peut pas le défaire.
+  const d = '06 · Études & diplômes';
+  const nom = '2024-01-01_Attestation_Coursera.pdf';
+  const cible = ctx.cheminCibleConsolidation_(d, nom, {});
+  assert.strictEqual(cible.nom, '', 'pré-condition : aucune règle, pas même le type, ne sait le placer');
+  const base = { domaine: d, sousCheminCible: cible.nom, dossierIdCible: cible.id,
+    cibleFaible: cible.faible === true, parentId: null, protege: false, protegeIllisible: false,
+    raccourci: false, doublonDe: null };
+  const range = ctx.decisionConsolidation_(Object.assign({}, base, {
+    sousCheminActuel: 'Archives scolaires/Online course — AI Essentials',
+  }));
+  assert.strictEqual(range.action, 'OK');
+  assert.strictEqual(range.cible, d + '/Archives scolaires/Online course — AI Essentials');
+  assert.ok(range.raison.indexOf('racine') !== -1, 'la raison dit le constat, pour que Marc puisse trancher');
+  // …et le fichier qui est DÉJÀ à la racine reste le seul cas « Déplacer » impossible : rien à faire.
+  assert.strictEqual(ctx.decisionConsolidation_(Object.assign({}, base, { sousCheminActuel: '' })).action, 'OK');
+});
+
 test('ADR-0052 D8 — le drapeau `faible` est posé par CHAQUE filet par type, jamais par une règle d\'entité', () => {
   // Régression mesurée par la revue sécurité (🔴 1) : `faible` n'était posé QUE par le repli
   // `bucketTypeDomaine_`. Les filets par type de la TABLE (`cheminCibleReset_`) rendaient une cible
@@ -384,10 +415,30 @@ test('ADR-0052 D8 — le drapeau `faible` est posé par CHAQUE filet par type, j
     assert.strictEqual(cible.nom, attendu, nom);
     assert.strictEqual(cible.faible, undefined, nom + ' : une règle par ENTITÉ n\'est jamais faible');
   }
-  // 01 : le filet « Correspondance » de la table porte le drapeau, la règle par émetteur non.
+  // 01 : les filets par TYPE de la table portent le drapeau, les règles par ÉMETTEUR non.
+  // (Les 3 derniers ont été ajoutés APRÈS la revue : le même dossier cible portait un drapeau
+  // OPPOSÉ selon la règle qui avait répondu, et un passeport rangé sous `Autres/<proche>` partait
+  // dans le dossier d'identité de Marc parce que le nom ne dit pas à qui il est.)
   const d01 = '01 · Administratif & identité';
-  assert.strictEqual(ctx.cheminCibleConsolidation_(d01, '2024-03-15_Courrier_Inconnu.pdf').faible, true);
+  const faible01 = [
+    ['2024-03-15_Courrier_Inconnu.pdf', 'Correspondance'],
+    ['2024-03-15_Attestation de résidence_Ville de Québec.pdf', 'Attestations & certificats'],
+    ['2020-01-01_Acte de naissance_Mairie de Lille.pdf', 'État civil & notarial'],
+    ['2019-03-02_Passeport_Préfecture du Nord.pdf', 'Pièces d\'identité/Marc'],
+  ];
+  for (const [nom, attendu] of faible01) {
+    const c = ctx.cheminCibleConsolidation_(d01, nom);
+    assert.strictEqual(c.nom, attendu, nom);
+    assert.strictEqual(c.faible, true, nom + ' : décidé par le seul TYPE');
+  }
   assert.strictEqual(ctx.cheminCibleConsolidation_(d01, '2024-03-15_Contrat_EDF.pdf').faible, undefined);
+  // L'ÉMETTEUR notarial reste FORT sur le MÊME dossier — c'est la règle qui est qualifiée, pas la
+  // destination (sinon le drapeau dépend du chemin d'arrivée, ce que la revue a mesuré).
+  const notaire = ctx.cheminCibleConsolidation_(d01, '2020-01-01_Document_Office notarial Dupont.pdf');
+  assert.strictEqual(notaire.nom, 'État civil & notarial');
+  assert.strictEqual(notaire.faible, undefined);
+  // …et un titulaire NOMMÉ reste fort lui aussi.
+  assert.strictEqual(ctx.cheminCibleConsolidation_(d01, '2019-03-02_Passeport_Marc Richard.pdf').faible, undefined);
 });
 
 test('ADR-0052 D8 — le drapeau `faible` n\'est posé QUE par le repli par type', () => {

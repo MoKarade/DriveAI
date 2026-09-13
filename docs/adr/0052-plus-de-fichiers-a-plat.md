@@ -477,3 +477,87 @@ mission (aucun site d'appel oublié).
 Le libellé `lycée Thérèse d'Avila` de la table et le dossier réel de Marc sont **identiques
 octet pour octet** (NFC, apostrophe droite U+0027 — relevé le 13/09 via l'API). Le risque de dossier
 jumeau par normalisation Unicode, soulevé en revue, est écarté pour ce libellé.
+
+## 11. La contre-revue (2026-09-13, second tour) — ce que les correctifs avaient laissé ouvert
+
+Les deux agents (sécurité + code) ont re-passé le lot de correctifs. Verdict : les trois 🔴 du
+premier tour sont bien fermés — et **deux portes restaient ouvertes, dont une plus large que celles
+qu'on venait de fermer**.
+
+### 🔴 Une cible VIDE remontait les fichiers à la RACINE du domaine — l'inverse du mandat
+
+Trouvé en vérifiant le premier tour, confirmé et **chiffré** par la contre-revue. La collecte de
+consolidation est RÉCURSIVE sur tout le domaine ; quand aucune règle ne sait placer un document
+(`sousCheminCible === ''`), la décision rendait « Déplacer » vers la racine. D9 s'en remettait
+explicitement à D8 (« cible VIDE : D8 s'en charge »), et D8 exige `cibleFaible` — que
+`sousCheminDomaine_` ne pose pas sur un retour vide. **Personne ne gardait le cas.**
+
+Mesuré sur le corpus réel (475 noms de `06`, placés dans un dossier d'école — ce que
+`retour-ecoles06` est précisément en train de faire) :
+
+| position | avant | après |
+|---|---:|---:|
+| `IMERIR` | **332 remontés à la racine** | **0** |
+| `IMERIR/Cours & travaux` | **332** | **0** |
+
+C'est l'exact inverse d'ADR-0052 (« la racine d'un domaine n'est plus une cible de classement »).
+Le défaut était PRÉ-EXISTANT, mais ce lot en faisait l'autorité au point de mutation — et, pire,
+**un test ajouté au premier tour le figeait en contrat** (`moves === ['DOM']`). Un défaut latent
+devenu comportement testé : c'est la leçon §9 « un test qui n'asserte que le blocage VERROUILLE le
+bug », vue de l'autre côté. Le constat reste DIT dans la raison du plan (Marc doit pouvoir
+trancher) ; c'est le déplacement qui disparaît.
+
+### 🔴 Le « chemin de retour » du rouge ne s'exécutait jamais dans le scénario qui l'a motivé
+
+Le one-shot `m0.dep` était posé au PREMIER run, avant le drainage, et consommé **même quand rien
+n'avait été dé-peint**. Or les 4 dossiers d'école sont rouges *parce qu'*ils sont vides : au premier
+run ils le sont encore, la passe ne fait rien, le drapeau brûle — puis la mission et le rattrapage
+les remplissent, et le rouge « bon pour suppression » reste **à vie** sur des dossiers pleins. Un
+chemin de retour qui existe sur le papier et nulle part ailleurs est pire que pas de chemin du tout.
+(Effet de bord attrapé en même temps : l'écriture d'état anticipée cassait les compteurs de
+progression de la mission — `t` et `b` passaient à `null`.)
+
+Corrigé : la dé-peinture vit maintenant **à la convergence**, quand la mission a fini de verser, et
+**avant** le drapeau FINI — après lui, le court-circuit terminal fait qu'aucun run n'atteint plus ce
+code. `depeindreCiblesRemplies_` rend la COMPLÉTUDE de sa passe (garde-temps, source illisible,
+PATCH refusé) et une passe incomplète **ne conclut pas** : pas de FINI, convergence re-tentée au
+run suivant (une passe à vide, quelques RPC).
+
+### 🟠 Le marquage « faible » n'était pas exhaustif dans son propre périmètre
+
+Quatre filets par TYPE de `01` et `06` restaient non marqués — et la preuve la plus nette n'est pas
+un chiffre : **le même dossier cible portait un drapeau opposé selon la règle qui avait répondu**.
+Marqués depuis, chacun prouvé par sa propre mutation :
+
+- `01 · Attestations & certificats` — fourre-tout par type.
+- `01 · État civil & notarial` — la branche par TYPE seulement ; l'ÉMETTEUR notarial reste FORT. Le
+  drapeau qualifie **la règle**, jamais la destination : deux `return` plutôt qu'un.
+- `01 · Pièces d'identité/Marc` quand l'émetteur est une autorité ou absent — le titulaire est alors
+  **déduit**, pas lu. Sans le drapeau, un passeport rangé sous `Pièces d'identité/Autres/<proche>`
+  partait dans le dossier de Marc dès que le nom ne portait pas le prénom.
+- `06 · Diplômes & relevés officiels` — arbitrage : ce nœud centralise très bien depuis la RACINE
+  (où sont les 683), mais le laisser fort lui donnait le pouvoir de VIDER les dossiers d'école que
+  Marc vient de désigner comme sa structure et que `retour-ecoles06` remplit dans le même tick. Une
+  campagne ne défait pas ce qu'une autre construit.
+
+### Correction d'un motif écrit au premier tour
+
+Le §10 justifiait le bornage à `01`/`03`/`06` par « `conso-3` a déjà passé le Drive entier sous ces
+règles-là » et « aucune mission n'y a construit de structure plus fine ». **Les deux moitiés sont
+fausses** : la clé de convergence est `conso|<tag>|<fileId>`, donc un nouveau tag re-collecte tout ;
+et `paies`, `impots` et `annees02` construisent dans `02`. La DÉCISION de bornage reste la même —
+le repli par ANNÉE de `02` est un vrai signal, pas un aveu d'ignorance, et D9 protège déjà le cas
+dominant (`Revenus & paie/<Employeur>` est un ancêtre de sa propre cible) — mais son motif est
+réécrit ici plutôt que laissé faux.
+
+### Vérifié plutôt que déduit
+
+- Les 4 marquages neufs, la cible vide et la complétude de la dé-peinture : **prouvés par mutation,
+  un par un**.
+- `SEED_ENTITES` porte `Lycée Thérèse d'Avila` (majuscule) là où la table porte le nom réel du
+  dossier, en minuscule. Mesuré : pour les trois formes de nom qui pourraient déclencher la règle
+  par entité, **la table répond d'abord et rend la graphie minuscule** — le référentiel est
+  inatteignable ici, aucun dossier jumeau possible. Le seed est par ailleurs one-shot et déjà
+  appliqué : changer la constante n'aurait aucun effet en production.
+- Recherche Drive exhaustive sur « Thérèse » : deux dossiers, le dossier d'école (minuscule) et
+  l'archive. Aucun jumeau existant.

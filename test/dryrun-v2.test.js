@@ -319,12 +319,15 @@ test('cheminActuelDryRunV2_ : à la racine du domaine (aucun sous-dossier) → d
   assert.strictEqual(ctx.cheminActuelDryRunV2_(f, '02 · Finances'), '02 · Finances');
 });
 
-test('cheminActuelDryRunV2_ : borné à 5 niveaux (anti-boucle), jamais un plantage sur une chaîne trop profonde', () => {
+test('cheminActuelDryRunV2_ : borné à 10 niveaux (anti-boucle), jamais un plantage sur une chaîne trop profonde', () => {
   const ctx = load(['Config.gs', 'DryRunV2.gs']);
-  const chaine = Array.from({ length: 10 }, (_, i) => 'niveau' + i); // jamais « 08 · Perso & projets »
+  const chaine = Array.from({ length: 15 }, (_, i) => 'niveau' + i); // jamais « 08 · Perso & projets »
   const f = fauxFichierParents(chaine.concat(['08 · Perso & projets']));
   const r = ctx.cheminActuelDryRunV2_(f, '08 · Perso & projets');
-  assert.strictEqual(r.split('/').length - 1, 5, 'au plus 5 segments au-delà du domaine');
+  // 10 et non 5 : ce chemin alimente `decisionConsolidation_` côté PLAN, pendant que l'exécuteur
+  // calcule le sien sur une chaîne plus longue — un plan tronqué EN TÊTE affichait « Déplacer »
+  // là où l'exécution dit « OK » (revue sécurité C28-90, divergence mesurée à partir du 6ᵉ niveau).
+  assert.strictEqual(r.split('/').length - 1, 10, 'au plus 10 segments au-delà du domaine');
 });
 
 test('cheminActuelDryRunV2_ : ancêtre illisible → dégrade sur ce qui a pu être lu, jamais un plantage', () => {

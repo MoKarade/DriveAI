@@ -483,9 +483,19 @@ function vetoCollegialReset_(nom) {
  * drapeau ne puisse jamais se désolidariser du `return` qu'il qualifie. PURE : elle écrit dans
  * l'objet `detail` que l'APPELANT lui passe, jamais dans un état global.
  *
- * FAIBLE = « ce chemin ne vient QUE du TYPE du document ». Un filet par type sait CE QUE C'EST,
- * jamais À QUI ni À QUOI le document se rattache : il a le droit de sortir un fichier de la RACINE
- * d'un domaine, jamais de le retirer d'un sous-dossier où une mission — ou Marc — l'a rangé.
+ * FAIBLE = « ce chemin ne vient QUE du TYPE du document, et sa destination est un FOURRE-TOUT ».
+ * Un tel filet sait CE QUE C'EST, jamais À QUI ni À QUOI le document se rattache : il a le droit de
+ * sortir un fichier de la RACINE d'un domaine, jamais de le retirer d'un sous-dossier où une
+ * mission — ou Marc — l'a rangé.
+ *
+ * ⚠️ LE CRITÈRE EST LA DESTINATION, pas seulement le prédicat (arbitrage explicite, revue de code
+ * C28-90 🟠 3 — l'ADR-0052 §10 le détaille site par site). Sont FAIBLES les nets dont la cible est
+ * un fourre-tout du domaine (`Contrats`, `Correspondance`, `Travaux & équipements`,
+ * `Attestations & certificats`, `Véhicule/À attribuer`) : ils disent « je ne sais pas à quoi ça se
+ * rattache ». Restent FORTS les nets dont la cible est le domicile THÉMATIQUE de ce type de
+ * document (`État civil & notarial`, `Diplômes & relevés officiels`, `Pièces d'identité/…`) : ils
+ * disent « je sais exactement ce que c'est, et ce genre de document vit ICI » — c'est une décision
+ * de taxonomie, pas un aveu d'ignorance, et elle doit garder le pouvoir de rassembler.
  *
  * ⚠️ Pourquoi un marqueur et pas une re-lecture du chemin rendu : `'Contrats'` ne dit pas si c'est
  * l'entité ou le type qui a répondu. Re-dériver le verdict de sa forme appauvrie est la leçon §9
@@ -496,7 +506,7 @@ function vetoCollegialReset_(nom) {
  * @param {string} chemin
  * @return {string} `chemin`, inchangé
  */
-function faibleReset_(detail, chemin) {
+function marquerFaibleReset_(detail, chemin) {
   if (detail) detail.faible = true;
   return chemin;
 }
@@ -506,7 +516,7 @@ function faibleReset_(detail, chemin) {
  * @param {string} domaine  domaine d'ORIGINE (enregistré au rassemblement, clé `tri33|`)
  * @param {string} nom      nom actuel du fichier
  * @param {Object=} detail  objet de SORTIE optionnel : reçoit `faible = true` quand la cible ne
- *   vient que du TYPE du document (ADR-0052 D8, `faibleReset_`). Les appelants qui n'en passent pas
+ *   vient que du TYPE du document (ADR-0052 D8, `marquerFaibleReset_`). Les appelants qui n'en passent pas
  *   (le reset, les missions) voient exactement le comportement d'avant.
  * @return {?string} chemin relatif au domaine (« Banques/Desjardins ») — null = NON ROUTÉ : le
  *   fichier RESTE dans `_TRI 2026` (rapport → affinage de table ou passe LLM) ; pour 04 (jamais
@@ -533,14 +543,22 @@ function cheminCibleReset_(domaine, nom, detail) {
       // ressemble à une personne rend null (revue PR1) : le contrat du module est « jamais deviné » —
       // le passeport d'un proche non listé doit RESTER en _TRI au rapport, pas finir chez Marc.
       if (e.indexOf('marc') !== -1 && e.indexOf('richard') !== -1) return 'Pièces d\'identité/Marc';
+      // TITULAIRE DÉDUIT, donc FAIBLE (revue sécurité C28-90) : ici le nom ne dit PAS à qui est la
+      // pièce — on suppose Marc parce que l'émetteur est une autorité (ou absent). C'est vrai pour
+      // un document à la racine ; ça ne l'est plus face à un rangement existant, et un passeport
+      // rangé sous `Pièces d\'identité/Autres/<proche>` partait chez Marc.
       if (e === '' || resetContient_(e, ['prefecture', 'saaq', 'societe de l assurance', 'ramq', 'gouvernement', 'republique', 'mairie', 'ministere', 'service', 'consulat', 'ambassade'])) {
-        return 'Pièces d\'identité/Marc';
+        return marquerFaibleReset_(detail, 'Pièces d\'identité/Marc');
       }
       return null;
     }
-    if (resetContient_(t, ['acte de naissance', 'acte de mariage', 'fiche d etat civil', 'fiche individuelle', 'livret de famille']) ||
-        resetContient_(e, ['office notarial', 'notaire'])) return 'État civil & notarial';
-    if (resetContient_(t, ['attestation', 'certificat'])) return 'Attestations & certificats';
+    // Le TYPE seul est FAIBLE, l'ÉMETTEUR notarial est FORT — deux `return` plutôt qu'un, parce que
+    // le drapeau qualifie la RÈGLE qui a répondu, pas la destination (revue : le même dossier
+    // portait un drapeau opposé selon le chemin d'arrivée).
+    if (resetContient_(e, ['office notarial', 'notaire'])) return 'État civil & notarial';
+    if (resetContient_(t, ['acte de naissance', 'acte de mariage', 'fiche d etat civil',
+      'fiche individuelle', 'livret de famille'])) return marquerFaibleReset_(detail, 'État civil & notarial');
+    if (resetContient_(t, ['attestation', 'certificat'])) return marquerFaibleReset_(detail, 'Attestations & certificats');
     if (e.indexOf('edf') !== -1) return 'Contrats & fournisseurs/EDF';
     if (e.indexOf('engie') !== -1) return 'Contrats & fournisseurs/ENGIE';
     // MÊME exclusion que la table des missions — et LUE DEPUIS ELLE, pas recopiée : deux listes
@@ -560,7 +578,7 @@ function cheminCibleReset_(domaine, nom, detail) {
     if (resetContient_(tout, ['code de securite', 'codes de securite', 'code de recuperation',
       'codes de recuperation', 'mot de passe', 'double facteur', 'authentification a deux facteurs']) ||
         (tout.indexOf('sauvegarde') !== -1 && e.indexOf('gmf') === -1)) return 'Sécurité & codes'; // GMF La Sauvegarde = un ASSUREUR (revue)
-    if (resetContient_(t, ['lettre', 'courrier', 'correspondance', 'mise en demeure'])) return faibleReset_(detail, 'Correspondance');
+    if (resetContient_(t, ['lettre', 'courrier', 'correspondance', 'mise en demeure'])) return marquerFaibleReset_(detail, 'Correspondance');
     return null;
   }
 
@@ -717,7 +735,7 @@ function cheminCibleReset_(domaine, nom, detail) {
     // attribuable n'est pas un modèle.
     // ADR-0052 D7 : le nœud « Modèles & formulaires » n'existe plus en 03 — un formulaire vierge
     // rejoint « Contrats », comme les 6 qui y étaient déjà (tous locatifs).
-    if (estModeleOuFormulaire_(t)) return faibleReset_(detail, 'Contrats');
+    if (estModeleOuFormulaire_(t)) return marquerFaibleReset_(detail, 'Contrats');
     // C28-90 — MÊME règle que la mission `dispatch03` (`bucketEmetteur_`, Missions.gs) : le flux
     // range DANS le bucket par émetteur, pas seulement dans le filet. Avant, le flux visait
     // « Énergie & services » pendant que la mission remplissait « Énergie & services/ENGIE » : la
@@ -742,7 +760,7 @@ function cheminCibleReset_(domaine, nom, detail) {
     // MÊME cible pour ces documents (la conso recalculerait « À attribuer » ⇒ ligne « OK », au
     // lieu de proposer de les ramener à la racine du domaine).
     if (resetContient_(t, ['immatriculation', 'carte grise', 'constat d infraction', 'contravention', 'amende']) ||
-        e.indexOf('saaq') !== -1) return faibleReset_(detail, 'Véhicule/À attribuer');
+        e.indexOf('saaq') !== -1) return marquerFaibleReset_(detail, 'Véhicule/À attribuer');
 
     /* ---- Ordre VOULU : les règles par entité/canon ci-dessus passent AVANT les filets
      * « Contrats »/« Correspondance » (un « Contrat_LCP » part chez son bailleur, jamais dans le
@@ -763,9 +781,9 @@ function cheminCibleReset_(domaine, nom, detail) {
     if (resetContient_(t, ['etiquette', 'electromenager', 'materiaux', 'revetement',
       'inventaire d equipement', 'degradation', 'notice d utilisation', 'notice d installation',
       'mode d emploi', 'garantie constructeur', 'fiche produit', 'fiche technique']) ||
-        resetMotEntier_(t, 'appareil')) return faibleReset_(detail, 'Travaux & équipements');
-    if (resetContient_(t, ['contrat', 'devis', 'consentement', 'formulaire de demande de location', 'bail'])) return faibleReset_(detail, 'Contrats');
-    if (resetContient_(t, ['correspondance', 'lettre', 'courrier', 'avis de sejour', 'mise en demeure'])) return faibleReset_(detail, 'Correspondance');
+        resetMotEntier_(t, 'appareil')) return marquerFaibleReset_(detail, 'Travaux & équipements');
+    if (resetContient_(t, ['contrat', 'devis', 'consentement', 'formulaire de demande de location', 'bail'])) return marquerFaibleReset_(detail, 'Contrats');
+    if (resetContient_(t, ['correspondance', 'lettre', 'courrier', 'avis de sejour', 'mise en demeure'])) return marquerFaibleReset_(detail, 'Correspondance');
     return null;
   }
 
@@ -836,7 +854,15 @@ function cheminCibleReset_(domaine, nom, detail) {
   }
 
   if (domaine === '06 · Études & diplômes') {
-    if (resetContient_(t, ['diplome', 'releve de notes', 'bulletin', 'attestation de reussite'])) return 'Diplômes & relevés officiels';
+    // FAIBLE (arbitrage C28-90, après mesure) : ce nœud centralise les diplômes, et il le fait très
+    // bien depuis la RACINE du domaine — c'est là que sont les 683. Mais il est décidé par le seul
+    // TYPE, et le laisser fort lui donnait le pouvoir de VIDER les dossiers d'école que Marc vient
+    // de désigner comme sa structure et que `retour-ecoles06` est en train de remplir (mesuré :
+    // `IMERIR/Administratif` vers `Diplômes & relevés officiels`). Une campagne ne défait pas ce
+    // qu'une autre construit dans le même tick.
+    if (resetContient_(t, ['diplome', 'releve de notes', 'bulletin', 'attestation de reussite'])) {
+      return marquerFaibleReset_(detail, 'Diplômes & relevés officiels');
+    }
     // ORDRE (ADR-0052 D6) : le NOM est un FAIT, la fenêtre une DÉDUCTION — et une déduction ne
     // contredit jamais un fait. Le VETO québécois s'intercale entre les deux : quand le nom crie
     // « cégep » sans nommer l'établissement, aucune fenêtre n'a le droit de trancher.
@@ -846,7 +872,7 @@ function cheminCibleReset_(domaine, nom, detail) {
     // pas plus bas (les quatre sous-dossiers de fin l'héritent tous, quel que soit le type).
     if (!ecole && !vetoCollegialReset_(nom)) {
       ecole = ecoleParDateReset_(nom);
-      if (ecole) ecole = faibleReset_(detail, ecole);
+      if (ecole) ecole = marquerFaibleReset_(detail, ecole);
     }
     if (!ecole) return null;
     if (ecole === 'Autres établissements') return ecole; // à plat (rapport → affinage si volume)

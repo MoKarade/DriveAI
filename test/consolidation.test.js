@@ -138,11 +138,24 @@ test('budgetJourConsolidation_ : la valeur ne vaut que si la date persistée est
 
 test('decisionConsolidation_ : fichier mal rangé → « Déplacer » vers la cible complète', () => {
   const d = ctx.decisionConsolidation_({
-    domaine: '05 · Carrière', sousCheminActuel: 'Schneider Electric', sousCheminCible: '',
+    domaine: '05 · Carrière', sousCheminActuel: 'Schneider Electric', sousCheminCible: 'CV & lettres',
     protege: false, raccourci: false, doublonDe: null,
   });
   assert.strictEqual(d.action, 'Déplacer');
-  assert.strictEqual(d.cible, '05 · Carrière', 'cible = racine du domaine (à plat)');
+  assert.strictEqual(d.cible, '05 · Carrière/CV & lettres');
+  // ⚠️ Ce test visait une cible VIDE jusqu'au 13/09 — c'est-à-dire « Déplacer vers la RACINE du
+  // domaine », que C28-90 interdit désormais pour un fichier déjà rangé (le vrac est ce que la
+  // campagne vide, pas ce qu'elle produit). Le « mal rangé » se prouve avec une vraie cible.
+  const versRacine = ctx.decisionConsolidation_({
+    domaine: '05 · Carrière', sousCheminActuel: 'Schneider Electric', sousCheminCible: '',
+    protege: false, raccourci: false, doublonDe: null,
+  });
+  assert.strictEqual(versRacine.action, 'OK', 'aucune règle ne sait le placer ⇒ on ne le remonte pas');
+  // …et un fichier DÉJÀ à la racine avec une cible vide n'a simplement rien à faire.
+  assert.strictEqual(ctx.decisionConsolidation_({
+    domaine: '05 · Carrière', sousCheminActuel: '', sousCheminCible: '',
+    protege: false, raccourci: false, doublonDe: null,
+  }).action, 'OK');
 });
 
 test('decisionConsolidation_ : déjà au bon endroit → « OK » (le plan converge, rien à faire)', () => {

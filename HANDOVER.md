@@ -102,6 +102,22 @@
 > corpus de preuve ne contenait pas la population que D9 protège — les 2 sous-dossiers thématiques
 > réels de `3325 4e avenue` y sont, et neutraliser D9 fait désormais tomber le test de corpus.
 >
+> **La contre-revue a rouvert le dossier, et c'est la bonne nouvelle.** Les trois 🔴 du premier tour
+> étaient bien fermés, mais deux portes restaient ouvertes — dont une plus large que celles qu'on
+> venait de fermer. (1) **Une cible VIDE remontait les fichiers à la RACINE du domaine** : quand
+> aucune règle ne sait placer un document, la décision proposait de le sortir de son dossier pour
+> le mettre à plat — l'inverse exact de ce que tu as demandé. Mesuré sur le corpus réel, en plaçant
+> les 475 noms de `06` dans un dossier d'école (ce que `retour-ecoles06` est en train de faire) :
+> **332 repartaient à la racine ; maintenant 0**. Défaut pré-existant, mais ce lot en faisait
+> l'autorité au moment du déplacement — et un test ajouté au premier tour le figeait en contrat.
+> (2) **Le retrait du rouge ne s'exécutait jamais** : il était posé au premier run, avant le
+> drainage, alors que les dossiers sont rouges *parce qu'*ils sont vides — la passe ne faisait rien
+> et le drapeau « c'est fait » était consommé quand même. Il vit désormais à la CONVERGENCE de la
+> mission (quand elle a fini de verser), avant le drapeau de fin, et une passe coupée ne conclut
+> pas. (3) Quatre filets par type de `01`/`06` n'étaient pas marqués « signal faible », dont celui
+> qui envoyait **le passeport d'un proche rangé sous `Autres/<personne>` dans le dossier d'identité
+> de Marc** dès que son prénom n'est pas dans le nom.
+>
 > Vérifié dans Drive plutôt que déduit : le libellé `lycée Thérèse d'Avila` de la table et le dossier
 > réel de Marc sont **identiques octet pour octet** (NFC, apostrophe droite) — pas de dossier jumeau
 > par normalisation Unicode. La couleur réelle des 4 dossiers, elle, **n'est pas lisible** par l'API
