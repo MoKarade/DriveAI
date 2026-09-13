@@ -66,7 +66,7 @@ const CONTRAT = [
   'budgetJourMissions_', 'cleMission_', 'apparierUnique_', 'jetonsCible_', 'logementParDate_',
   'dateDuNomMission_', 'fenetresOccupation_', 'ciblesAvecJetons_', 'collecterMission_',
   'traiterItemMission_', 'peindreDossierRouge_', 'peindreSourcesVides_', 'estDossierVideMission_',
-  'depeindreDossier_', 'depeindreCiblesRemplies_',
+  'depeindreDossier_', 'depeindreCiblesRemplies_', 'assurerDepeintureCibles_',
   // C28-49 PR2 : Carrière + Finances.
   'employeurDuNom_', 'typeDuNomMission_', 'anneeDuNomMission_', 'typeContient_',
   'routerFinance02_', 'sousDossierEmployeur_', 'routerCarriere_', 'moisManquantsPaies_',
