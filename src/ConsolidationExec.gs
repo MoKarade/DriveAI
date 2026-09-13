@@ -245,14 +245,18 @@ function appliquerLigneConsolidation_(ligne, ctx) {
  * structurel ? Si oui, inscrit un CONSTAT `vide-candidat` dans l'onglet Réorg — JAMAIS une
  * suppression (la corbeille reste à l'APP, au clic de Marc, ADR-0014, avec re-vérif live corbeillés
  * inclus). Exclusions (jamais un candidat) : zone protégée, racines système/domaine/catégorie
- * (`ensembleIntouchables_`), noms `_…`, segments structurels (année AAAA, schéma d'entité).
+ * (`ensembleIntouchables_`), et tout nom que la TAXONOMIE SAIT RECRÉER (`estNoeudRecreable_` —
+ * nœud de la table à toute profondeur, entité validée, année, schéma, nom de racine de domaine).
+ * ⚠️ Cette dernière garde est la leçon C28-93 : proposer à la corbeille un dossier que le moteur
+ * recrée au premier document ne mène nulle part, et un seul nom interdit en tête de liste bloquait
+ * le bouton « tout corbeiller » pour les 123 suivants.
  */
 function detecterDossierVide_(parent, ctx) {
   var id = parent.getId();
   if (!ctx.intouchables) ctx.intouchables = ensembleIntouchables_();
   if (ctx.intouchables[id]) return;                          // domaine / catégorie à ID fixe / file système
   var nom = parent.getName();
-  if (nom.charAt(0) === '_' || estSegmentStructurel_(nom)) return; // racine système / année AAAA / schéma
+  if (estNoeudRecreable_(nom, ctx.validees)) return;         // la taxonomie le recréerait (C28-93)
   // Vacuité STRICTE (non corbeillés) d'ABORD (cas DOMINANT : le parent reste NON vide → sortie tôt,
   // coût minimal — revue quotas) : le moindre fichier OU sous-dossier ⇒ pas un candidat.
   if (parent.getFiles().hasNext() || parent.getFolders().hasNext()) return;
@@ -260,7 +264,33 @@ function detecterDossierVide_(parent, ctx) {
   // toute la chaîne d'ancêtres », durcissement revue sécurité) — self OU ascendance protégée / illisible
   // ⇒ jamais un candidat (échec-fermé). Placée APRÈS la vacuité : la remontée ne se paie que sur un vide.
   if (chaineMonteVersProtege_(parent, ctx.proteges || {}, 0, true)) return;
-  inscrireDossierVideCandidat_(id, nom, ctx);
+  inscrireDossierVideCandidat_(id, cheminPourConstat_(parent, ctx), ctx);
+}
+
+/**
+ * Chemin LISIBLE d'un dossier pour le constat (« 06 · Études & diplômes/Archives/Colles ») — remonté
+ * jusqu'à une racine connue (`ctx.intouchables`), borné à 10 niveaux, dégradé sur le seul nom si la
+ * chaîne est illisible : un constat n'échoue jamais pour un libellé.
+ *
+ * Pourquoi : la liste affichée à Marc ne portait que le NOM du dossier. Au décompte du 13/09 elle
+ * contenait deux « Mémoire », deux « Exercices », quatre graphies d'« IUT Du Littoral » — impossible
+ * de dire lequel est lequel, donc impossible de trancher autrement qu'en bloc. Un constat qu'on ne
+ * peut pas situer n'est pas un constat.
+ */
+function cheminPourConstat_(dossier, ctx) {
+  var segments = [dossier.getName()];
+  try {
+    var courant = dossier;
+    for (var i = 0; i < 10; i++) {
+      var ps = courant.getParents();
+      if (!ps.hasNext()) break;
+      var p = ps.next();
+      segments.unshift(p.getName());
+      if ((ctx.intouchables || {})[p.getId()]) break; // racine de domaine atteinte : on s'arrête là
+      courant = p;
+    }
+  } catch (e) { /* chaîne illisible : le nom seul, jamais une exception */ }
+  return segments.join('/');
 }
 
 /**

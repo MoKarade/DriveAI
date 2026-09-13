@@ -394,3 +394,46 @@ test('estSegmentStructurel_ : les buckets de NIVEAU 1 de STRUCTURE_CIBLE_RESET s
   const t = JSON.parse(JSON.stringify(c.STRUCTURE_CIBLE_RESET));
   assert.ok(Object.keys(t).some((d) => Object.prototype.hasOwnProperty.call(t[d], 'Travaux & équipements')));
 });
+
+/* ---------- C28-93 : la garde par CAPACITÉ de la liste « dossiers vides » ---------- */
+
+/**
+ * Contexte chargé AVEC la table de la taxonomie : `estNoeudRecreable_` l'interroge pour de vrai.
+ * Mocker la table reviendrait à tester ma propre copie de la question (leçon §9).
+ */
+const ctxCap = load(['Config.gs', 'Reset.gs', 'Reorg.gs']);
+
+test('estNoeudRecreable_ : tout ce que la TAXONOMIE recrée par nom, à toute profondeur', () => {
+  // Les 5 vrais cas du décompte du 13/09 (liste des dossiers proposés à la corbeille de Marc).
+  for (const nom of ['Robovic', 'Automatech', 'DriveAI', 'Novel Software', 'Candidatures']) {
+    assert.strictEqual(ctxCap.estNoeudRecreable_(nom), true, nom);
+  }
+  // Nœuds de la table à des profondeurs différentes : niveau 1, niveau 2, sous-dossier d'école.
+  assert.strictEqual(ctxCap.estNoeudRecreable_('Contrats'), true);
+  assert.strictEqual(ctxCap.estNoeudRecreable_('Hydro-Québec'), true);
+  assert.strictEqual(ctxCap.estNoeudRecreable_('Cours & travaux'), true);
+  // Noms de racine de domaine — ce sont EUX qui bloquaient le bouton « tout corbeiller ».
+  assert.strictEqual(ctxCap.estNoeudRecreable_('02 · Finances'), true);
+  assert.strictEqual(ctxCap.estNoeudRecreable_('05 · Carrière'), true);
+  assert.strictEqual(ctxCap.estNoeudRecreable_('00 · À trier'), true);
+  // Racine système, année, schéma d'entité : déjà couverts, on le VÉRIFIE plutôt que le supposer.
+  assert.strictEqual(ctxCap.estNoeudRecreable_('_Doublons'), true);
+  assert.strictEqual(ctxCap.estNoeudRecreable_('2024'), true);
+  // Sans nom : échec FERMÉ (on ne propose jamais un dossier qu'on ne sait pas nommer).
+  assert.strictEqual(ctxCap.estNoeudRecreable_(''), true);
+  assert.strictEqual(ctxCap.estNoeudRecreable_(null), true);
+  // …et l'inverse, sinon la garde gèlerait la fonctionnalité : de VRAIS dossiers obsolètes du
+  // décompte, que rien dans la taxonomie ne recrée, restent proposables.
+  for (const nom of ['IUT GIM 1', 'Colles', 'Omnivox', 'Notes de Terminale', 'Cegep De Sherbrooke']) {
+    assert.strictEqual(ctxCap.estNoeudRecreable_(nom), false, nom);
+  }
+});
+
+test('estNoeudRecreable_ : un dossier d\'ENTITÉ VALIDÉE n\'est jamais proposé', () => {
+  // Le référentiel est passé en paramètre (PURE) : le flux et les missions recréent ces dossiers
+  // par nom dès qu'un document vise l'entité.
+  const validees = { 'cle|x': { nom: 'Kim Pinsonneault', dossierId: 'ID1' } };
+  assert.strictEqual(ctxCap.estNoeudRecreable_('Kim Pinsonneault', validees), true);
+  assert.strictEqual(ctxCap.estNoeudRecreable_('Kim Pinsonneault'), false, 'sans référentiel : rien à dire');
+  assert.strictEqual(ctxCap.estNoeudRecreable_('Inconnu SARL', validees), false);
+});

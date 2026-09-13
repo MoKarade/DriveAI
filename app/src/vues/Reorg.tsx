@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { lirePlage, ecrireCellule, ecrireColonnePlage, ajouterLigne } from '../google';
-import { corbeillerDossierVide } from '../corbeille';
+import { corbeillerDossierVide, statutRefusCorbeille } from '../corbeille';
 import {
   LigneReorg,
   interpreterReorg,
@@ -117,6 +117,7 @@ export function ReorgVue({ langue }: { langue: Langue }) {
   }
 
   const [erreurCorbeille, setErreurCorbeille] = useState('');
+  const [avancement, setAvancement] = useState<{ fait: number; total: number } | null>(null);
 
   /** ADR-0014 : corbeille d'un dossier VIDE — re-vérifié en direct au clic, jamais automatique. */
   async function corbeiller(l: LigneReorg) {
@@ -145,20 +146,36 @@ export function ReorgVue({ langue }: { langue: Langue }) {
     if (enCours || vides.length === 0) return;
     setEnCours(true);
     setErreurCorbeille('');
-    let courant: LigneReorg | null = null;
-    try {
-      for (const l of vides) {
-        courant = l;
+    setAvancement({ fait: 0, total: vides.length });
+    let corbeilles = 0;
+    let classes = 0;
+    let aReessayer = 0;
+    for (let i = 0; i < vides.length; i++) {
+      const l = vides[i];
+      // UN refus n'arrête pas le lot (C28-93) : il retire SA ligne en disant pourquoi. Ce qu'on ne
+      // sait pas conclure (réseau, quota) reste candidat et sera re-tenté au prochain lot.
+      let statut = 'corbeillé';
+      try {
         await corbeillerDossierVide(l.id);
-        await ecrireCellule('Réorg', `F${l.ligneSheet}`, 'corbeillé');
-        setLignes((xs) => xs.map((x) => (x.ligneSheet === l.ligneSheet ? { ...x, statut: 'corbeillé' } : x)));
+        corbeilles++;
+      } catch (e) {
+        const verdict = statutRefusCorbeille(String(e));
+        if (!verdict) { aReessayer++; setAvancement({ fait: i + 1, total: vides.length }); continue; }
+        statut = verdict;
+        classes++;
       }
-    } catch (e) {
-      const ou = courant ? ` (${t('corbeilleArreteA', langue)} ${courant.cheminActuel})` : '';
-      setErreurCorbeille(messageCorbeille(e, langue) + ou);
-    } finally {
-      setEnCours(false);
+      try {
+        await ecrireCellule('Réorg', `F${l.ligneSheet}`, statut);
+        setLignes((xs) => xs.map((x) => (x.ligneSheet === l.ligneSheet ? { ...x, statut } : x)));
+      } catch { aReessayer++; } // la Sheet a refusé l'écriture : la ligne reste, le dossier est fait
+      setAvancement({ fait: i + 1, total: vides.length });
     }
+    setAvancement(null);
+    setEnCours(false);
+    setErreurCorbeille(t('corbeilleBilan', langue)
+      .replace('{n}', String(corbeilles))
+      .replace('{c}', String(classes))
+      .replace('{r}', String(aReessayer)));
   }
 
   if (erreur && !charge) return <p className="erreur">{t('erreur', langue)} : {erreur}</p>;
@@ -238,6 +255,7 @@ export function ReorgVue({ langue }: { langue: Langue }) {
         <div className="prop-carte vides">
           <b>{t('dossiersVides', langue)}</b>
           {erreurCorbeille && <p className="erreur">{erreurCorbeille}</p>}
+          {avancement && <p className="variante">⏳ {avancement.fait} / {avancement.total}</p>}
           {videsCandidats.map((l) => (
             <div key={l.cle} className="prop-vide">
               <span className="prop-chemin">{l.cheminActuel}</span>

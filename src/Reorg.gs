@@ -199,6 +199,58 @@ function ensembleIntouchables_() {
 }
 
 /**
+ * Vrai si la TAXONOMIE COURANTE sait RECRÉER un dossier de ce nom — donc le proposer à la corbeille
+ * ne mène nulle part : il reviendrait au premier document qui le vise. PURE.
+ *
+ * Garde par CAPACITÉ, jamais par liste d'exceptions (leçon §9) : on demande à la table elle-même si
+ * elle connaît ce nœud, à N'IMPORTE QUELLE profondeur, plutôt que d'énumérer les cas — une liste
+ * serait fausse au premier nœud ajouté, et personne ne saurait qu'elle l'est.
+ *
+ * Vécu (C28-93, décompte du 13/09) : la liste des dossiers vides proposés à Marc contenait
+ * `Robovic`, `Automatech`, `DriveAI`, `Novel Software`, `Candidatures` — tous des nœuds que la table
+ * recrée PAR NOM — et deux dossiers NOMMÉS comme des domaines (`02 · Finances`, `05 · Carrière`),
+ * que l'app refuse de corbeiller par leur nom. Le premier de la liste étant l'un d'eux, le bouton
+ * « tout corbeiller » s'arrêtait dessus : la liste était inutilisable ENTIÈREMENT à cause de ce que
+ * le moteur n'aurait jamais dû y mettre.
+ * @param {string} nom  nom du dossier
+ * @param {Object=} validees  référentiel des entités VALIDÉES (cleCanonique → {nom, dossierId})
+ * @return {boolean}
+ */
+function estNoeudRecreable_(nom, validees) {
+  var propre = String(nom == null ? '' : nom).trim();
+  if (!propre) return true;                       // sans nom : on ne propose rien (échec fermé)
+  if (/^\d{2} · /.test(propre)) return true;      // NOM de racine de domaine (l'app le refuse aussi)
+  if (propre.charAt(0) === '_') return true;      // racine système
+  if (estSegmentStructurel_(propre)) return true; // année AAAA, schéma d'entité, type d'identité
+  if (noeudsTableReset_()[propre]) return true;   // nœud de STRUCTURE_CIBLE_RESET, à toute profondeur
+  var v = validees || {};
+  var cles = Object.keys(v);
+  for (var i = 0; i < cles.length; i++) {
+    if (v[cles[i]] && String(v[cles[i]].nom).trim() === propre) return true; // dossier d'entité validée
+  }
+  return false;
+}
+
+/**
+ * Index {nom → true} de TOUS les nœuds de `STRUCTURE_CIBLE_RESET`, à toute profondeur, plus les
+ * quatre sous-dossiers d'école. Calculé UNE fois par exécution (la table est une constante).
+ * @return {Object}
+ */
+var _noeudsTableResetCache = null;
+function noeudsTableReset_() {
+  if (_noeudsTableResetCache) return _noeudsTableResetCache;
+  var set = {};
+  var plonger = function (obj) {
+    if (!obj || typeof obj !== 'object') return;
+    Object.keys(obj).forEach(function (k) { set[k] = true; plonger(obj[k]); });
+  };
+  plonger(typeof STRUCTURE_CIBLE_RESET !== 'undefined' ? STRUCTURE_CIBLE_RESET : {});
+  (typeof SOUS_DOSSIERS_ECOLE_RESET !== 'undefined' ? SOUS_DOSSIERS_ECOLE_RESET : []).forEach(function (n) { set[n] = true; });
+  _noeudsTableResetCache = set;
+  return set;
+}
+
+/**
  * Vrai si `nom` est un segment STRUCTUREL de la taxonomie : sous-dossier d'année « AAAA » ou
  * nom de schéma d'entité (le router les find-or-create PAR NOM — les muter rend le plan non
  * convergent : le router les re-créerait). PURE (testée).

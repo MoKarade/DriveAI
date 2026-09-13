@@ -43,6 +43,36 @@
 > Deux tests ne prouvaient rien : l'un asserte `String(null).length > 0` (toujours vrai), l'autre
 > était devenu tautologique en changeant sa valeur attendue.
 
+> **🟦 EN COURS — 2026-09-13 : C28-93, la liste « dossiers vides » ne propose plus n'importe quoi.**
+> Marc : « il me propose trop de dossiers à mettre en poubelle, même des dossiers utiles — fais un
+> nettoyage et améliore », puis, sur le reste : « **supprime tous les vides** ».
+>
+> **Compté, pas supposé** : 124 dossiers proposés dans l'onglet `Réorg`, tous vidés entre le 1er et
+> le 15 août par le grand rangement, aucun depuis. Dedans : deux dossiers NOMMÉS comme des domaines
+> (`02 · Finances`, `05 · Carrière`), cinq nœuds que la table recrée par nom (`Robovic`,
+> `Automatech`, `DriveAI`, `Novel Software`, `Candidatures`), une entité du référentiel, des
+> doublons de nom sans chemin (deux `Mémoire`, deux `Exercices`, quatre graphies d'`IUT Du
+> Littoral`), et au moins un dossier qui **n'existe plus** (404).
+>
+> ⚠️ **Le défaut qui rendait la liste inutilisable EN ENTIER** : le bouton « Tout corbeiller (124) »
+> bouclait dans un `try` unique — la PREMIÈRE exception arrêtait tout. Le premier de la liste étant
+> un dossier nommé `02 · Finances`, refusé par son nom, **le bouton ne corbeillait rien**, et
+> l'erreur ne parlait que de lui.
+>
+> **Livré** (ADR-0053) : (1) le moteur ne propose plus ce que la TAXONOMIE sait recréer — garde par
+> CAPACITÉ (`estNoeudRecreable_`, la table répond elle-même, à toute profondeur), jamais une liste
+> d'exceptions ; (2) le constat porte le CHEMIN COMPLET, pas le nom nu ; (3) un refus ne stoppe plus
+> le lot : il classe SA ligne (`vide-disparu` / `vide-repris` / `vide-protégé`) et le lot continue,
+> avec un bilan chiffré — et ce qu'on ne sait pas conclure (réseau, quota) reste candidat plutôt que
+> de devenir un verdict.
+>
+> ⚠️ **Ce que ça ne fait pas** : le moteur ne corbeille toujours rien. La mutation reste dans
+> `app/src/corbeille.ts`, au clic de Marc, avec re-vérification live (ADR-0014, §1.2 — non
+> négociable). « Supprime tous les vides » = **un** clic sur « Tout corbeiller », qui traite
+> maintenant les 124 lignes au lieu de s'arrêter sur la première.
+> ⚠️ La peinture rouge dans Drive reste telle quelle (choix de Marc, 13/09) : deux canaux de
+> proposition coexistent, la couleur et la liste.
+
 > **✅ MERGÉ, DÉPLOYÉ ET VÉRIFIÉ EN PRODUCTION — 2026-09-13 19:25 UTC : le rattrapage TOURNE.**
 > PR #339 mergée (`a2f4373`), `deploy.yml` run #325 vert (clasp push + redéploiement de la web app
 > + réinstallation du déclencheur). Et le signal INDÉPENDANT, lu 1 h après le merge — parce qu'un

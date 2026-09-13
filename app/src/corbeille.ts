@@ -52,6 +52,30 @@ export function verdictCorbeille(args: {
 }
 
 /**
+ * Verdict d'une tentative de corbeille qui N'A PAS abouti : que fait-on de la ligne ? PURE (testée).
+ *
+ * Pourquoi cette fonction existe (C28-93) : le lot s'arrêtait à la PREMIÈRE exception, et la liste
+ * de Marc commençait par un dossier nommé `02 · Finances` — refusé par son nom. Le bouton « tout
+ * corbeiller (124) » ne corbeillait donc RIEN, sans qu'on puisse le deviner. Un refus n'est pas une
+ * panne : c'est un VERDICT sur UNE ligne, et il doit retirer cette ligne de la liste en disant
+ * pourquoi, pas arrêter les 123 suivantes.
+ *
+ * Le statut rendu n'est jamais `vide-candidat` : la ligne quitte la liste dans tous les cas où on
+ * sait conclure. `null` = on ne sait pas (réseau, quota, session) ⇒ la ligne RESTE candidate et
+ * sera re-tentée : une incertitude ne se transforme pas en verdict.
+ */
+export function statutRefusCorbeille(message: string): string | null {
+  const brut = String(message);
+  if (brut.includes('Google API 404')) return 'vide-disparu';   // déjà supprimé/corbeillé ailleurs
+  if (brut.includes('non-vide')) return 'vide-repris';          // le classement l'a re-rempli
+  if (brut.includes('zone-protegee') || brut.includes('racine-systeme') ||
+      brut.includes('dossier-structurel') || brut.includes('pas-un-dossier')) {
+    return 'vide-protégé';                                      // ne devait jamais être proposé
+  }
+  return null;                                                  // transitoire : on re-tentera
+}
+
+/**
  * Compte STRICT des enfants directs : la requête ne filtre PAS `trashed` — un dossier dont il
  * ne reste que des éléments corbeillés n'est PAS vide (les corbeiller avec serait une décision
  * que personne n'a validée).

@@ -227,7 +227,9 @@ test('appliquerLigneConsolidation_ : Doublon → moveTo vers _Doublons (décisio
 // les fonctions cross-module (Reorg.gs non chargé ici) sont injectées ; feuille_ capte les appendRow.
 function ctxVide(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'Router.gs', 'Consolidation.gs', 'ConsolidationExec.gs']);
+  // `Reset.gs` + `Reorg.gs` chargés POUR DE VRAI : la garde par capacité (`estNoeudRecreable_`) lit
+  // la table de la taxonomie. La mocker reviendrait à tester ma propre copie de la question.
+  const c = load(['Config.gs', 'Router.gs', 'Reset.gs', 'Reorg.gs', 'Consolidation.gs', 'ConsolidationExec.gs']);
   const appends = [];
   const reorgData = [['Clé', 'Type', 'ID', 'CheminA', 'CheminP', 'Statut', 'Détail', 'H']].concat(opts.reorgData || []);
   c.indexContient_ = () => false;
@@ -247,7 +249,7 @@ function ctxVide(opts) {
     ? { dossier: { getId: () => 'ENT:' + id }, segments: ['Anciens employeurs', 'Robovic'] } : null);
   // Injections cross-module (Reorg.gs / Maintenance.gs non chargés dans ce contexte de test).
   c.ensembleIntouchables_ = () => (opts.intouchables || {});
-  c.estSegmentStructurel_ = () => !!opts.structurel;
+  if (opts.structurel) c.estSegmentStructurel_ = () => true; // sinon : la VRAIE fonction de Reorg.gs
   c.chaineMonteVersProtege_ = (dossier, proteges) => !!(proteges && proteges[dossier.getId()]);
   c.feuille_ = () => {
     if (opts.feuilleLeve) throw new Error('Sheet indisponible');
@@ -259,7 +261,7 @@ function ctxVide(opts) {
   };
   const ancienParent = {
     getId: () => opts.parentId || 'PARENT',
-    getName: () => opts.parentNom || 'ENGIE',
+    getName: () => opts.parentNom || 'Colles', // nom RÉEL d'un dossier obsolète (décompte 13/09)
     // Chaîne RÉELLE jusqu'à la racine du domaine : `positionActuelleFichier_` s'exécute pour de
     // vrai (le fichier est dans 02/<ENGIE>, la cible recalculée est à plat → il remonte).
     getParents: () => {
@@ -280,13 +282,42 @@ function ctxVide(opts) {
 function ctxV() { return { proteges: {}, tag: 'conso-2', validees: {}, parId: PAR_ID }; }
 
 test('détection vide : le dossier QUITTÉ devenu vide → UNE ligne vide-candidat (constat seul, jamais de suppression)', () => {
-  const v = ctxVide({ parentId: 'ENGIEID', parentNom: 'ENGIE' }); // vacuité par défaut (rien ne reste)
+  const v = ctxVide({ parentId: 'ENGIEID', parentNom: 'Colles' }); // vacuité par défaut (rien ne reste)
   const r = v.c.appliquerLigneConsolidation_({ fileId: 'F1', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
   assert.strictEqual(r, 'fait');
   assert.strictEqual(v.appends.length, 1, 'une inscription vide-candidat');
   assert.strictEqual(v.appends[0][0], 'videcandidat|ENGIEID');
   assert.strictEqual(v.appends[0][1], 'dossier-vide');
   assert.strictEqual(v.appends[0][5], 'vide-candidat', 'statut lu par l\'app (jamais corbeillé par le moteur)');
+});
+
+test('détection vide : JAMAIS un dossier que la taxonomie sait RECRÉER (C28-93)', () => {
+  // Le décompte du 13/09 a trouvé, dans la liste des dossiers proposés à la corbeille de Marc :
+  // `Robovic`, `Automatech`, `DriveAI`, `Novel Software`, `Candidatures` (des nœuds que la table
+  // recrée PAR NOM) et deux dossiers NOMMÉS comme des domaines. Proposer de supprimer ce que le
+  // moteur recrée au premier document ne mène nulle part — et le premier de la liste étant un nom
+  // que l'app REFUSE, le bouton « tout corbeiller » s'arrêtait dessus pour les 123 suivants.
+  // Mutation : retirer l'appel à `estNoeudRecreable_` dans `detecterDossierVide_` ⇒ ce test tombe.
+  for (const nom of ['Robovic', 'Automatech', 'DriveAI', 'Novel Software', 'Candidatures',
+    'Contrats', 'Cours & travaux', '02 · Finances', '05 · Carrière', '_Doublons', '2024']) {
+    const v = ctxVide({ parentId: 'ID_' + nom, parentNom: nom });
+    v.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+    assert.strictEqual(v.appends.length, 0, nom + ' : la taxonomie le recrée ⇒ jamais proposé');
+  }
+  // …et un dossier VRAIMENT obsolète reste proposé : la garde ne gèle pas la fonctionnalité.
+  const obsolete = ctxVide({ parentId: 'ID_OBS', parentNom: 'IUT GIM 1' });
+  obsolete.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+  assert.strictEqual(obsolete.appends.length, 1, 'un dossier que rien ne recrée reste un candidat');
+});
+
+test('détection vide : le constat porte le CHEMIN, pas seulement le nom (C28-93)', () => {
+  // Deux « Mémoire », deux « Exercices », quatre graphies d'« IUT Du Littoral » dans la même liste :
+  // sans chemin, Marc ne peut pas savoir lequel est lequel, donc ne peut pas trancher autrement
+  // qu'en bloc. Mutation : réécrire `nom` à la place de `cheminPourConstat_(...)` ⇒ ce test tombe.
+  const v = ctxVide({ parentId: 'ID_MEM', parentNom: 'Mémoire' });
+  v.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+  assert.strictEqual(v.appends.length, 1);
+  assert.strictEqual(v.appends[0][3], 'DOM/Mémoire', 'le chemin remonte jusqu\'à la racine de domaine');
 });
 
 test('détection vide : un dossier qui reste NON vide → aucune inscription', () => {

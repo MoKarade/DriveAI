@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { verdictCorbeille } from '../src/corbeille';
+import { verdictCorbeille, statutRefusCorbeille } from '../src/corbeille';
 import { IDS_STRUCTURELS_DEFAUT } from '../src/garde-fous';
 import { MIME_DOSSIER } from '../src/explorateur';
 
@@ -68,5 +68,36 @@ describe('verdictCorbeille (ADR-0014 — dossier VIDE validé, rien d’autre)',
       racinesProtegees: [PROTEGE],
     });
     expect([...v].sort()).toEqual(['non-vide', 'pas-un-dossier', 'racine-systeme', 'zone-protegee']);
+  });
+});
+
+/* ---------- C28-93 : un refus classe SA ligne, il n'arrête pas le lot ---------- */
+
+describe('statutRefusCorbeille', () => {
+  it('classe chaque refus CONNU, pour que la ligne quitte la liste en disant pourquoi', () => {
+    // Le décompte du 13/09 : 124 dossiers proposés, dont un `02 · Finances` EN TÊTE que le verdict
+    // refuse par son nom. Le lot s'arrêtait dessus — donc zéro dossier corbeillé, pour 124 proposés.
+    expect(statutRefusCorbeille('Corbeille refusée (ADR-0014) : racine-systeme')).toBe('vide-protégé');
+    expect(statutRefusCorbeille('Corbeille refusée (ADR-0014) : zone-protegee')).toBe('vide-protégé');
+    expect(statutRefusCorbeille('Corbeille refusée (ADR-0014) : dossier-structurel')).toBe('vide-protégé');
+    expect(statutRefusCorbeille('Corbeille refusée (ADR-0014) : pas-un-dossier')).toBe('vide-protégé');
+    expect(statutRefusCorbeille('Corbeille refusée (ADR-0014) : non-vide')).toBe('vide-repris');
+    expect(statutRefusCorbeille('Error: Google API 404 : {"error":{"message":"File not found"}}')).toBe('vide-disparu');
+  });
+
+  it('ne conclut RIEN sur une panne : la ligne reste candidate et sera re-tentée', () => {
+    // Une incertitude ne se transforme pas en verdict — sans ça, un quota d'une minute retirerait
+    // définitivement de la liste des dossiers qu'on n'a même pas regardés.
+    expect(statutRefusCorbeille('Google est momentanément saturé (quota par minute)')).toBeNull();
+    expect(statutRefusCorbeille('Session expirée — reconnecte-toi')).toBeNull();
+    expect(statutRefusCorbeille('Google API 500 : backend error')).toBeNull();
+    expect(statutRefusCorbeille('TypeError: Failed to fetch')).toBeNull();
+    expect(statutRefusCorbeille('')).toBeNull();
+  });
+
+  it('aucun statut rendu ne laisse la ligne dans la liste (sinon elle reviendrait à chaque lot)', () => {
+    for (const msg of ['racine-systeme', 'non-vide', 'Google API 404']) {
+      expect(statutRefusCorbeille(msg)).not.toBe('vide-candidat');
+    }
   });
 });
