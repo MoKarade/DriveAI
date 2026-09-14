@@ -79,27 +79,88 @@ export function repondreErreurOAuth(res: Reponse, err: unknown): void {
  *   réponse, la version /exec déployée ne connaît PAS l'action (piège de déploiement 4) — erreur
  *   claire plutôt qu'un « refusé » trompeur.
  */
+/**
+ * Nombre TOTAL de tentatives pour une action REJOUABLE. 1 = l'ancien comportement.
+ *
+ * ── CE QUE ÇA SOIGNE, ET CE QUE ÇA NE SOIGNE PAS ────────────────────────────────────
+ *
+ * Ça soigne le COUP UNIQUE : la plateforme sert une page d'écho dégradée sur un appel et
+ * le JSON sur le suivant. C'est exactement ce qui a été mesuré le 14/09/2026 depuis une
+ * session Claude — première tentative 404, deuxième 200 avec du non-JSON — et la leçon §7
+ * du CLAUDE.md prescrit depuis toujours de « rejouer (borné) tout ce qui n'est pas un JSON
+ * ok:true ». Ce fichier ne le faisait pas : il DISAIT « réessaie » à l'humain sans
+ * réessayer lui-même.
+ *
+ * Ça ne soigne PAS une indisponibilité de plusieurs minutes — celle du 05/08 a duré six
+ * minutes, et trois tentatives sur deux secondes n'y changent rien. C'est dit ici pour que
+ * personne n'augmente ce nombre en espérant couvrir la seconde : il faudrait attendre des
+ * minutes, ce qu'un appel MCP ne peut pas faire.
+ */
+const TENTATIVES_REJOUABLES = 3;
+
+/** Attentes entre deux tentatives, en ms. Une de moins que `TENTATIVES_REJOUABLES`. */
+const ATTENTES_MS = [400, 1200];
+
+const dormir = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/**
+ * Appelle UNE action du moteur Apps Script (/exec) et rend le JSON. Le succès se juge au CONTENU
+ * (leçon §7) : un non-JSON (page « Sorry, unable to open », HTML transitoire) est une erreur
+ * explicite, jamais un faux succès. `redirect: 'follow'` : /exec répond 302 vers
+ * script.googleusercontent.com — fetch bascule POST→GET sur la redirection, exactement le
+ * comportement attendu (leçon curl : ne jamais verrouiller la méthode sur la chaîne).
+ * @param attendreVersionMcp  true pour les actions `mcp-*` : sans champ `versionMcp` dans la
+ *   réponse, la version /exec déployée ne connaît PAS l'action (piège de déploiement 4) — erreur
+ *   claire plutôt qu'un « refusé » trompeur.
+ * @param rejouable  L'action est-elle SANS EFFET DE BORD ? Défaut `false`, et ce défaut est
+ *   le garde-fou : voir le bloc ci-dessous.
+ */
 export async function appelerMoteur(
   env: EnvMcp, action: string, secret: string, corps: unknown, attendreVersionMcp: boolean,
+  rejouable = false,
 ): Promise<Record<string, unknown>> {
   const url = `${env.webappUrl}?action=${encodeURIComponent(action)}&secret=${encodeURIComponent(secret)}`;
-  const rep = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // requête « simple », pas de préflight (comme l'app)
-    body: JSON.stringify(corps ?? {}),
-    redirect: 'follow',
-  });
-  const texte = await rep.text();
-  let json: Record<string, unknown>;
-  try {
-    json = JSON.parse(texte) as Record<string, unknown>;
-  } catch {
-    throw new Error(`moteur illisible (HTTP ${rep.status}) — panne transitoire Apps Script probable, réessaie`);
+  const tentatives = rejouable ? TENTATIVES_REJOUABLES : 1;
+  let dernierStatut = 0;
+
+  for (let essai = 0; essai < tentatives; essai += 1) {
+    const rep = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // requête « simple », pas de préflight (comme l'app)
+      body: JSON.stringify(corps ?? {}),
+      redirect: 'follow',
+    });
+    dernierStatut = rep.status;
+    const texte = await rep.text();
+
+    let json: Record<string, unknown>;
+    try {
+      json = JSON.parse(texte) as Record<string, unknown>;
+    } catch {
+      // ⚠️ SEUL le non-JSON est rejoué. Un JSON valide portant `ok:false` est une RÉPONSE —
+      // « refusé », « introuvable » — et la rejouer ne changerait rien tout en martelant un
+      // moteur qui a déjà répondu. C'est la même discipline que la sonde du Registre, où
+      // trois requêtes en une seconde ont FABRIQUÉ le refus qu'on croyait mesurer.
+      if (essai < tentatives - 1) {
+        await dormir(ATTENTES_MS[essai] ?? 1200);
+        continue;
+      }
+      throw new Error(
+        `moteur illisible (HTTP ${dernierStatut}) après ${tentatives} tentative(s) — `
+        + 'indisponibilité Apps Script de plusieurs minutes probable (elle ne se rejoue pas '
+        + 'en deux secondes), ou /exec non déployé',
+      );
+    }
+
+    if (attendreVersionMcp && json.versionMcp === undefined) {
+      throw new Error(json.erreur === 'refusé'
+        ? 'accès moteur refusé — DriveAI_MCP_SECRET (Script Property) et MCP_ENGINE_SECRET (Vercel) divergent, ou la version /exec déployée ne connaît pas encore les actions MCP'
+        : 'la version /exec déployée ne connaît pas les actions MCP — redéployer le moteur (piège 4)');
+    }
+    return json;
   }
-  if (attendreVersionMcp && json.versionMcp === undefined) {
-    throw new Error(json.erreur === 'refusé'
-      ? 'accès moteur refusé — DriveAI_MCP_SECRET (Script Property) et MCP_ENGINE_SECRET (Vercel) divergent, ou la version /exec déployée ne connaît pas encore les actions MCP'
-      : 'la version /exec déployée ne connaît pas les actions MCP — redéployer le moteur (piège 4)');
-  }
-  return json;
+
+  // Inatteignable : la boucle rend ou jette à la dernière itération. Présent pour que le
+  // type de retour reste honnête sans `as` ni assertion non nulle.
+  throw new Error(`moteur illisible (HTTP ${dernierStatut})`);
 }
