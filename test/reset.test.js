@@ -340,7 +340,7 @@ test('06 : la table des écoles se construit depuis SOUS_DOSSIERS_ECOLE_RESET (u
   // Les 4 standard sont TOUJOURS là, dans l'ordre de la constante — une seule source. Ce qui suit
   // (le « Concours » de la prépa, les sous-dossiers THÉMATIQUES de Marc) s'y AJOUTE, jamais s'y
   // substitue : la garde qui protège ses dossiers de la corbeille ne doit pas défaire la taxonomie.
-  for (const ecole of ['Lycée — Thérèse Davila (2017-2018)', 'Cégep de Sherbrooke (2019)']) {
+  for (const ecole of ['Collège & Lycée — divers (2014-2018)', 'Cégep de Sherbrooke (2019)']) {
     assert.deepStrictEqual(Object.keys(table[ecole]), attendu, ecole);
   }
   for (const ecole of ['ULCO — DUT GIM (2018-2020)', 'IMERIR — Ingénieur MSIR (2020-2023)']) {
@@ -360,8 +360,10 @@ test('ADR-0055 — l\'exemption au plafond ≤ 7 est NOMMÉE, et sans elle le va
   // `Cégep de Sherbrooke (2019)` qu'il a demandé d'ajouter. Le dépassement vient de SA structure,
   // il est donc DÉCLARÉ à la valeur près — jamais toléré en silence. L'alternative (omettre de la
   // table les 3 dossiers qu'aucune règle ne vise) aurait rendu le plafond FAUX sans le dire.
+  // ⚠️ `Archives scolaires` N'EST PLUS exempté (ADR-0056) : la fusion des deux dossiers de
+  // collège/lycée le ramène de 8 à 7 enfants. Une exemption devenue inutile se RETIRE, sinon elle
+  // couvre en silence le prochain dépassement — celui que personne n'aura décidé.
   assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.RESET_EXEMPTIONS_PLAFOND)), [
-    '06 · Études & diplômes/Archives scolaires',
     '06 · Études & diplômes/Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023)',
   ]);
   // MUTATION : sans les exemptions, les violations sont RÉELLES et CHIFFRÉES — la garde n'est pas
@@ -372,7 +374,6 @@ test('ADR-0055 — l\'exemption au plafond ≤ 7 est NOMMÉE, et sans elle le va
   try {
     assert.deepStrictEqual(JSON.parse(JSON.stringify(
       ctx.verifierStructureCibleReset_(ctx.STRUCTURE_CIBLE_RESET, MAX))), [
-      '06 · Études & diplômes/Archives scolaires : 8 sous-dossiers',
       '06 · Études & diplômes/Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023) : 16 sous-dossiers',
     ]);
   } finally { ctx.RESET_EXEMPTIONS_PLAFOND = vraies; }

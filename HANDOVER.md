@@ -4,7 +4,45 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🟦 EN COURS — 2026-09-14 : C28-105, la structure des écoles, c'est celle de Marc (ADR-0055).**
+> **🟦 EN COURS — 2026-09-14 (suite) : finaliser avant le prochain chantier (ADR-0056).**
+> Marc : « j'ai un gros chantier que je veux faire mais d'abord regarde ce qu'il faut finaliser »,
+> puis quatre décisions et un « go ». Trois lots livrés ensemble.
+>
+> **A · « Tout corbeiller » n'a jamais marché — et le code, lui, marchait.** Mesuré AVANT de toucher
+> à quoi que ce soit : l'app en ligne sert EXACTEMENT le build courant (même empreinte de fichier que
+> la compilation locale ⇒ le correctif de C28-93 EST déployé), les 112 lignes existent avec le bon
+> statut, Marc voit « 🗑 Tout corbeiller (112) » actif. Or TOUS les chemins de `corbeillerLot`
+> produisent un affichage : le code ne PEUT pas être silencieux. Ce qui l'était, c'est **l'endroit** —
+> bilan, erreur et progression rendus en TÊTE de la carte, bouton en BAS, 112 lignes plus loin. Marc
+> cliquait, le compte rendu s'affichait hors de son écran. Zone de retour désormais **collante en bas
+> de carte**, et plus aucun `return` muet. ⚠️ C28-93 avait vérifié son effet sur le COMPTEUR du moteur
+> (124 → 112), jamais sur ce que l'ÉCRAN montre après l'action.
+>
+> **B · Les deux dossiers collège/lycée fusionnent** en `Collège & Lycée — divers (2014-2018)`
+> (dossier Drive renommé ; `Lycée — Thérèse Davila (2017-2018)` devient une SOURCE de la mission).
+> `Archives scolaires` repasse à 7 enfants ⇒ son exemption au plafond est RETIRÉE. ⚠️ **La fenêtre
+> reste 2014-09 → 2017-08** : l'étendre à 2018 chevaucherait la prépa et rendrait toute cette année
+> inclassable par la date — signalé, Marc a confirmé.
+>
+> **C · Re-datation des 328 de `06`** (`c26-08` → `c28-92`, cibles réduites à `06`, ~8,6 $). Et le
+> trou qu'on ne pouvait pas laisser en rallumant cette campagne : **elle n'avait aucun budget
+> quotidien**, donc rien ne bornait sa journée et elle échappait à l'invariant d'enveloppe.
+> `REANALYSE_BUDGET_JOUR_MS: 8 min` **prélevées** sur l'historique Gmail (20 → 12) — la réallocation
+> que C28-70 attendait faute de preuve, et c'est le MOTEUR qui l'écrit (« terminée ✅ — ses 20 min/j
+> sont RÉALLOUABLES »). Enveloppe inchangée à 63 min/j.
+>
+> **Vérifications** : 1293 tests moteur · 278 tests app + build · syntaxe `.gs` · **5 mutations,
+> 5 attrapées** (gate quotidienne retirée, ms non écrites, enveloppe gonflée, nom divergent, fenêtre
+> étendue à 2018). Trois tests qui MENTAIENT sont tombés et ont été corrigés : `majSante_` affirmait
+> dériver les 20 min de CONFIG en écrivant `20` en dur — son propre commentaire avait prédit qu'il
+> tomberait « le jour où les 20 min sont réallouées ».
+>
+> **Ouverts** : C28-111 (re-analyse de `03`/`08` parkée — à reprendre ou à clore avec Marc),
+> C28-112 (la campagne `reanalyse` n'a pas de ligne dans l'état : on la rallume sans barre de
+> progression). C28-86 ne demande plus rien au code — Marc met les 2 fichiers illisibles à la
+> poubelle lui-même, et la mission Carrière convergera d'elle-même.
+
+> **🟦 HISTORIQUE — 2026-09-14 : C28-105, la structure des écoles, c'est celle de Marc (ADR-0055).**
 > Marc, capture d'écran à l'appui : « j'ai la bonne structure pour les écoles déjà, **continue à
 > rajouter là-dedans au lieu de mettre à la racine du projet** », puis « et **décale prépa et cégep
 > là-dedans** en reprenant la bonne structure ».

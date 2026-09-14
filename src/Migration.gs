@@ -344,47 +344,80 @@ function appliquerReanalyseCiblee_(estBudgetDepasse) {
   if (props.getProperty('DriveAI_MIGRATION') !== CONFIG.MIGRATION_TAG) return; // m1 d'abord (une campagne à la fois)
   if (estBudgetDepasse()) return;
 
+  // BUDGET QUOTIDIEN (ADR-0056) — la campagne n'en avait AUCUN : seulement un sous-budget PAR TICK.
+  // « Un plafond par RUN ne borne pas la JOURNÉE » (leçon §9, C28-42) : à 288 ticks × 2 min, elle
+  // pouvait à elle seule dépasser le mur runtime d'Apps Script (~90 min/j) et geler TOUS les
+  // déclencheurs, chien de garde compris (C28-29). Elle était aussi INVISIBLE de l'invariant
+  // d'enveloppe, qui ne somme que les constantes `*_BUDGET_JOUR_MS` — le test restait vert pendant
+  // que l'enveloppe croissait. Les deux trous se ferment ici (C28-86 le signalait depuis le 12/09).
+  var aujourdhui = dateGmail_(new Date());
+  var consommeJour = budgetJourReanalyse_(props, aujourdhui);
+  if (consommeJour >= CONFIG.REANALYSE_BUDGET_JOUR_MS) return; // repris demain
   // SOUS-budget propre (même raison que MIGRATION_BUDGET_MS) : sans lui, chaque tick de campagne
   // consommerait ~tout le budget en OCR + Sonnet ×2 et épuiserait le quota JOURNALIER des triggers.
+  // Borné AUSSI par le reliquat du jour : le dernier run de la journée ne déborde pas.
+  var budgetRun = Math.min(CONFIG.REANALYSE_BUDGET_MS,
+    CONFIG.REANALYSE_BUDGET_JOUR_MS - consommeJour);
   var debutReanalyse = Date.now();
   var garde = function () {
-    return estBudgetDepasse() || (Date.now() - debutReanalyse) > CONFIG.REANALYSE_BUDGET_MS;
+    return estBudgetDepasse() || (Date.now() - debutReanalyse) > budgetRun;
   };
+  try {
 
-  // Nouveau tag = nouvelle campagne → barre VIERGE (même patron BARRE_TAG que m1/rangement).
-  if (props.getProperty('DriveAI_REANALYSE_BARRE_TAG') !== CONFIG.REANALYSE_TAG) {
-    props.deleteProperty('DriveAI_REANALYSE_BASE');
-    props.deleteProperty('DriveAI_REANALYSE_TRAITES');
-    props.deleteProperty('DriveAI_REANALYSE_RECENS');
-    props.setProperty('DriveAI_REANALYSE_BARRE_TAG', CONFIG.REANALYSE_TAG);
-  }
-
-  // PHASE RECENSEMENT (C28-18) : même mécanique que m1 — ticks dédiés, filet du compte partiel.
-  if (props.getProperty('DriveAI_REANALYSE_BASE') === null) {
-    var essaisRecens = Number(props.getProperty('DriveAI_REANALYSE_RECENS')) || 0;
-    var rec = compterRestantReanalyse_(garde);
-    if (!rec.complet && essaisRecens + 1 < CONFIG.RANGEMENT_RECENS_ESSAIS_MAX) {
-      props.setProperty('DriveAI_REANALYSE_RECENS', String(essaisRecens + 1)); // partiel → réessai
-      return;
+    // Nouveau tag = nouvelle campagne → barre VIERGE (même patron BARRE_TAG que m1/rangement).
+    if (props.getProperty('DriveAI_REANALYSE_BARRE_TAG') !== CONFIG.REANALYSE_TAG) {
+      props.deleteProperty('DriveAI_REANALYSE_BASE');
+      props.deleteProperty('DriveAI_REANALYSE_TRAITES');
+      props.deleteProperty('DriveAI_REANALYSE_RECENS');
+      props.setProperty('DriveAI_REANALYSE_BARRE_TAG', CONFIG.REANALYSE_TAG);
     }
-    props.setProperty('DriveAI_REANALYSE_BASE', String(rec.n || 0)); // complet, ou partiel accepté
-    props.setProperty('DriveAI_REANALYSE_TRAITES', '0');
-    props.deleteProperty('DriveAI_REANALYSE_RECENS'); // compteur d'essais soldé avec le recensement
-    return; // tick dédié : la re-analyse reprend au tick suivant
-  }
 
-  var r = reanalyserUnePage_(garde, ensembleDomainesProteges_());
-  if (r.traites) {
-    majCompteurCampagne_('DriveAI_REANALYSE', r.traites); // barre (C28-18) — Properties seules
-    journalInfo_('Réanalyse', r.traites + ' document(s) soumis à la re-analyse v2 (campagne « ' +
-      CONFIG.REANALYSE_TAG + ' »).');
+    // PHASE RECENSEMENT (C28-18) : même mécanique que m1 — ticks dédiés, filet du compte partiel.
+    if (props.getProperty('DriveAI_REANALYSE_BASE') === null) {
+      var essaisRecens = Number(props.getProperty('DriveAI_REANALYSE_RECENS')) || 0;
+      var rec = compterRestantReanalyse_(garde);
+      if (!rec.complet && essaisRecens + 1 < CONFIG.RANGEMENT_RECENS_ESSAIS_MAX) {
+        props.setProperty('DriveAI_REANALYSE_RECENS', String(essaisRecens + 1)); // partiel → réessai
+        return;
+      }
+      props.setProperty('DriveAI_REANALYSE_BASE', String(rec.n || 0)); // complet, ou partiel accepté
+      props.setProperty('DriveAI_REANALYSE_TRAITES', '0');
+      props.deleteProperty('DriveAI_REANALYSE_RECENS'); // compteur d'essais soldé avec le recensement
+      return; // tick dédié : la re-analyse reprend au tick suivant
+    }
+
+    var r = reanalyserUnePage_(garde, ensembleDomainesProteges_());
+    if (r.traites) {
+      majCompteurCampagne_('DriveAI_REANALYSE', r.traites); // barre (C28-18) — Properties seules
+      journalInfo_('Réanalyse', r.traites + ' document(s) soumis à la re-analyse v2 (campagne « ' +
+        CONFIG.REANALYSE_TAG + ' »).');
+    }
+    // Terminé SEULEMENT quand une passe complète (non interrompue, sans erreur) ne collecte plus rien.
+    if (!r.reste && r.collectes === 0) {
+      props.setProperty('DriveAI_REANALYSE', CONFIG.REANALYSE_TAG);
+      finaliserCompteurCampagne_('DriveAI_REANALYSE'); // barre à 100 % sur le VRAI signal de fin
+      journalInfo_('Réanalyse', 'Re-analyse v2 ciblée terminée (tag « ' + CONFIG.REANALYSE_TAG + ' »).');
+    }
+  } finally {
+    // ms RÉELLEMENT consommées, écrites MÊME sur exception (jamais de fuite de budget) — patron
+    // `DriveAI_MISSIONS_JOUR`. Le `try/catch` interne : un blip Properties ne doit pas avorter le tick.
+    try {
+      props.setProperty('DriveAI_REANALYSE_JOUR',
+        aujourdhui + '|' + (consommeJour + (Date.now() - debutReanalyse)));
+    } catch (e) { }
   }
-  // Terminé SEULEMENT quand une passe complète (non interrompue, sans erreur) ne collecte plus rien.
-  if (!r.reste && r.collectes === 0) {
-    props.setProperty('DriveAI_REANALYSE', CONFIG.REANALYSE_TAG);
-    finaliserCompteurCampagne_('DriveAI_REANALYSE'); // barre à 100 % sur le VRAI signal de fin
-    journalInfo_('Réanalyse', 'Re-analyse v2 ciblée terminée (tag « ' + CONFIG.REANALYSE_TAG + ' »).');
-  }
+}
+
+/**
+ * ms de re-analyse consommées AUJOURD'HUI (0 si l'enregistrement date d'un autre jour). PURE de
+ * décision, lecture de Property. Jumeau de `budgetJourMissions_`.
+ * @param {Properties} props @param {string} aujourdhui @return {number}
+ */
+function budgetJourReanalyse_(props, aujourdhui) {
+  var brut = String(props.getProperty('DriveAI_REANALYSE_JOUR') || '');
+  var sep = brut.indexOf('|');
+  if (sep === -1) return 0;
+  return brut.slice(0, sep) === aujourdhui ? (Number(brut.slice(sep + 1)) || 0) : 0;
 }
 
 /**

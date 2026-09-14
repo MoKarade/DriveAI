@@ -238,7 +238,11 @@ var CONFIG = {
   // times » le 06/07) et le TRI vivant était affamé toute la journée (4-17 fils triés/j). Le quota
   // d'appels est PARTAGÉ : la seule protection du tri est de borner la consommation TOTALE de la
   // campagne, pas seulement son runtime. La campagne finit plus lentement — c'est le prix accepté.
-  GMAIL_HISTO_BUDGET_JOUR_MS: 20 * 60 * 1000,
+  GMAIL_HISTO_BUDGET_JOUR_MS: 12 * 60 * 1000, // 20 → 12 (ADR-0056) : 8 min prêtées à la re-analyse
+                                          // ciblée de `06`. Donneur choisi parce que le moteur ÉCRIT
+                                          // « Historique Gmail : terminée ✅ — ses 20 min/j sont
+                                          // RÉALLOUABLES » : une campagne finie rend ses minutes, et
+                                          // c'est SA ligne de santé qui le dit, pas une supposition.
   // Frein d'appels API par RUN (C28-15) : au plus N fils PARCOURUS par run (lus depuis Gmail,
   // indexés ou non) — les passes de VÉRIFICATION re-lisent des fils entiers « pour rien » côté
   // quota d'appels (les PJ indexées sont gratuites côté LLM, PAS côté Gmail). NB : une page fait
@@ -832,10 +836,28 @@ var CONFIG = {
   // la collecte itère UNIQUEMENT sur REANALYSE_CIBLES, et la campagne ne démarre qu'après la FIN
   // de m1 (une seule campagne de masse à la fois — les collecteurs se marcheraient dessus).
   // Ces domaines sont exclus de m1 dès ce merge : jamais payés DEUX fois (v1 puis v2).
-  REANALYSE_TAG: 'c26-08',                // bumper le tag relance une campagne complète (re-facture)
-  REANALYSE_CIBLES: ['03 · Logement & véhicule', '08 · Perso & projets'],
+  // ⚠️ RE-CIBLÉE le 2026-09-14 (C28-92, ADR-0056, feu vert de Marc « oui »). Le travail utile de la
+  // lecture LLM sur `06` n'est PAS de trouver l'école — C28-88 a prouvé qu'elle ne la trouve pas —
+  // c'est de trouver la DATE : 239 des 328 fichiers à plat portent `2026`, la date de RÉCEPTION
+  // faute de date lisible à l'import, alors que le document lui-même porte la sienne dans son
+  // en-tête. Re-datés, ils tombent dans les fenêtres de scolarité (ADR-0052 D6) et se rangent seuls.
+  // 328 × 0,0261 $ ≈ 8,6 $, dans l'enveloppe approuvée, sous le frein `LLM_BUDGET_CAMPAGNES`.
+  // ⚠️ `03` et `08` SORTENT des cibles : la collecte n'itère QUE sur cette liste, donc le coût reste
+  // borné à `06`. Leurs clés `reanalyse|c26-08|<fileId>` survivent — reprendre C26-08 un jour se
+  // fera par un NOUVEAU tag + ces domaines remis ici. Ce qui est parké est DIT (backlog C28-111) :
+  // le compteur de C26-08 n'est pas lisible d'ici (sa ligne Progression est absente), mais la
+  // ventilation LLM de septembre montre ZÉRO dépense de re-analyse — rien d'actif n'est interrompu.
+  REANALYSE_TAG: 'c28-92',                // bumper le tag relance une campagne complète (re-facture)
+  REANALYSE_CIBLES: ['06 · Études & diplômes'],
   REANALYSE_BUDGET_MS: 2 * 60 * 1000,     // sous-budget PAR TICK (même famille que MIGRATION_BUDGET_MS) ;
                                           // la page réutilise MIGRATION_MAX_PAR_RUN (docs lourds/run)
+  // Budget QUOTIDIEN, en ms RÉELLES persistées (ADR-0056). Il MANQUAIT : la campagne n'avait qu'un
+  // plafond par tick, donc rien ne bornait sa journée, et elle était invisible de l'invariant
+  // d'enveloppe. PRÉLEVÉ, jamais ajouté (§9 « réallouer, jamais augmenter ») : 8 min reprises à
+  // `GMAIL_HISTO_BUDGET_JOUR_MS` (20 → 12), dont le moteur DIT lui-même « terminée ✅ — ses 20 min/j
+  // sont RÉALLOUABLES ». C'est la réallocation que C28-70 attendait faute de preuve : la preuve est
+  // désormais écrite par le moteur, pas supposée. La somme de l'enveloppe reste EXACTEMENT 63 min/j.
+  REANALYSE_BUDGET_JOUR_MS: 8 * 60 * 1000,
 
   // --- C26-07 (ADR-0015) : PREUVE dry-run avant/après du pipeline v2, sur un échantillon RÉEL ---
   // Prérequis à la campagne C26-08 et à l'allumage de ANALYSE_V2. Interrupteur DÉDIÉ, distinct
@@ -1041,7 +1063,11 @@ var CONFIG = {
     // création était inconditionnelle, et la promesse « jamais créé à vide » était fausse).
     archivesScolaires: '1Spv7fdg-cUAhOG52ieMecAkZpVLQ-o77', // 06/« Archives scolaires » (dossier de Marc)
     ecoles06: [
-      { src: '157LXd0CwcPhc2S8C5Ftg_FFOqVuDfrZ9', cible: '1xcSm-mucmPSG-9jZHgvL_6Q_r3V6fath', cibleNom: 'Lycée — Thérèse Davila (2017-2018)' },      // lycée Thérèse d'Avila
+      { src: '157LXd0CwcPhc2S8C5Ftg_FFOqVuDfrZ9', cible: '1zG75U9G2B4Gi4BSd481efn3dX0y1J3Tc', cibleNom: 'Collège & Lycée — divers (2014-2018)' },        // lycée Thérèse d'Avila
+      // (ADR-0056) L'ANCIEN dossier d'archive de Marc devient lui aussi une SOURCE : il se vide
+      // dans le dossier fusionné. C'est la seule paire dont la source est un dossier à LUI —
+      // elle existe parce que c'est LUI qui a demandé la fusion (« fusionne en un 2014-2018 »).
+      { src: '1xcSm-mucmPSG-9jZHgvL_6Q_r3V6fath', cible: '1zG75U9G2B4Gi4BSd481efn3dX0y1J3Tc', cibleNom: 'Collège & Lycée — divers (2014-2018)' },        // Lycée — Thérèse Davila (2017-2018)
       { src: '1NpsmzrQlZfFexVaTRtFaMefnErEvZDCL', cible: '1XQAMQXZOMxlFboIUVGSZVklWmuEvXodA', cibleNom: 'Prépa PTSI (2017-2018)' },                  // Prépa Gustave Eiffel (PTSI)
       { src: '13pgIZArEdu3Ly-eHOJmTpdY0sj1qBwNb', cible: '1XdWSfTGZUj1HMgfRleI_9KunZFQb8TJV', cibleNom: 'ULCO — DUT GIM (2018-2020)' },              // DUT ULCO Saint-Omer
       // `IUT Du Littoral` : dossier que le MOTEUR s'est créé le 23/08 à côté du précédent (l'IUT du

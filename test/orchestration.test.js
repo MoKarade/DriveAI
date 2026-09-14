@@ -143,7 +143,10 @@ test('enveloppe reset-OFF : la somme des budgets QUOTIDIENS des campagnes concur
   const concurrentesResetOff = C.GMAIL_HISTO_BUDGET_JOUR_MS + C.CONSOLIDATION_BUDGET_JOUR_MS +
     C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS +
     C.HISTORIQUE_VRAC_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS + // missions C28-49 (partagé entre elles)
-    C.DOUBLONS_BUDGET_JOUR_MS; // validation de _Doublons (C28-49 PR4, ADR-0047) — lecture seule, zéro LLM
+    C.DOUBLONS_BUDGET_JOUR_MS + // validation de _Doublons (C28-49 PR4, ADR-0047) — lecture seule, zéro LLM
+    C.REANALYSE_BUDGET_JOUR_MS; // re-analyse ciblée (ADR-0056) — elle n'avait AUCUN budget quotidien,
+                                // donc l'agrégat ci-dessous ne la voyait pas : l'enveloppe pouvait
+                                // croître avec ce test au vert. La 9ᵉ jambe ferme cet angle mort.
   // RÉALLOCATION 2026-08-11 (diagnostic prod : l'exec est le goulot) : exec 6→12, fusion 6→0 (parkée,
   // campagne OFF) — la SOMME reste 56 min/j (20+12+12+12+0), enveloppe INCHANGÉE, pur transfert.
   // HISTORIQUE_VRAC (2026-08-12, demande Marc : suivi journalier par domaine) : +4 min → 60 min/j.
@@ -186,9 +189,10 @@ test('ENVELOPPE des campagnes : la somme reste EXACTEMENT 63 min/j (réallouer, 
   const C = require('./harness').load(['Config.gs']).CONFIG;
   const total = C.GMAIL_HISTO_BUDGET_JOUR_MS + C.CONSOLIDATION_BUDGET_JOUR_MS +
     C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS +
-    C.HISTORIQUE_VRAC_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS + C.DOUBLONS_BUDGET_JOUR_MS;
+    C.HISTORIQUE_VRAC_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS + C.DOUBLONS_BUDGET_JOUR_MS +
+    C.REANALYSE_BUDGET_JOUR_MS; // 9ᵉ jambe (ADR-0056) — cf. le commentaire de l'agrégat ci-dessus
   assert.strictEqual(total / 60000, 63,
-    'la somme des budgets quotidiens des 8 campagnes doit rester = 63 min/j. Pour accélérer une ' +
+    'la somme des budgets quotidiens des 9 campagnes doit rester = 63 min/j. Pour accélérer une ' +
     'campagne, PRENDRE à une autre — jamais ajouter des minutes : au-delà du mur runtime ' +
     '~90 min/j, TOUS les déclencheurs gèlent, chien de garde inclus (C28-29). Relever ce total ' +
     'est une DÉCISION de Marc, pas un effet de bord : il faudrait d\'abord MESURER le runtime ' +
@@ -230,10 +234,10 @@ test('INVENTAIRE des budgets quotidiens : aucune constante n\'échappe aux invar
   // `feuille_` ↔ `creerOnglet_`.
   const C = require('./harness').load(['Config.gs']).CONFIG;
   const connues = [
-    // les 8 campagnes de l'enveloppe reset-OFF (sommées à 63 min/j ci-dessus)
+    // les 9 campagnes de l'enveloppe reset-OFF (sommées à 63 min/j ci-dessus)
     'GMAIL_HISTO_BUDGET_JOUR_MS', 'CONSOLIDATION_BUDGET_JOUR_MS', 'CONSOLIDATION_EXEC_BUDGET_JOUR_MS',
     'SYNC_BUDGET_JOUR_MS', 'FUSION_EXEC_BUDGET_JOUR_MS', 'HISTORIQUE_VRAC_BUDGET_JOUR_MS',
-    'MISSIONS_BUDGET_JOUR_MS', 'DOUBLONS_BUDGET_JOUR_MS',
+    'MISSIONS_BUDGET_JOUR_MS', 'DOUBLONS_BUDGET_JOUR_MS', 'REANALYSE_BUDGET_JOUR_MS',
     // les 4 phases du reset (invariant de réallocation reset-ON)
     'RESET_RASSEMBLEMENT_BUDGET_JOUR_MS', 'RESET_PLACEMENT_BUDGET_JOUR_MS',
     'RESET_04_BUDGET_JOUR_MS', 'RESET_LLM_BUDGET_JOUR_MS',

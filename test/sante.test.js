@@ -80,7 +80,14 @@ test('majSante_ : la ligne « Historique Gmail » dit l\'état ET les minutes co
   // affirmant l'inverse dans son message : mutation jouée en revue, remplacer le calcul par '20'
   // laissait le test VERT — et le jour où les 20 min sont réallouées (l'objectif même du lot) il
   // serait tombé en accusant le code. Même patron que la cadence de sonde, plus bas dans ce fichier.
-  assert.ok(/des 20 min\/j/.test(ligne) && /des 150 fils\/j/.test(ligne), ligne);
+  // …et cette fois le calcul est VRAIMENT dérivé : la version précédente écrivait `/des 20 min/` en
+  // dur tout en affirmant l'inverse — elle est tombée le jour où les 20 min ont été réallouées
+  // (ADR-0056, 20 → 12), exactement comme son propre commentaire l'avait prédit. Un test qui
+  // ANNONCE dériver de CONFIG et recopie la valeur du jour accuse le code au premier rajustement.
+  const minJ = ctx.CONFIG.GMAIL_HISTO_BUDGET_JOUR_MS / 60000;
+  const filsJ = ctx.CONFIG.GMAIL_HISTO_MAX_FILS_JOUR;
+  assert.ok(new RegExp('des ' + minJ + ' min\\/j').test(ligne), ligne);
+  assert.ok(new RegExp('des ' + filsJ + ' fils\\/j').test(ligne), ligne);
 });
 
 test('texteSanteHistoGmail_ : les deux plafonds DÉRIVENT de CONFIG, et les CLÉS de Property sont les bonnes', () => {

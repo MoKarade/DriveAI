@@ -19,6 +19,10 @@ function ctxMigration(clesIndexees) {
   ctx.journalInfo_ = () => {};
   ctx.journalErreur_ = () => {};
   ctx.indexContient_ = (cle) => (clesIndexees || []).indexOf(cle) !== -1;
+  // `dateGmail_` vit dans Gmail.gs : contrat INTER-MODULE consommé par le budget QUOTIDIEN de la
+  // re-analyse (ADR-0056), comme le fait déjà `executerMission_`. Stubé plutôt que chargé : le jour
+  // du test n'a aucune importance ici, seul compte le fait que la clé de jour existe.
+  ctx.dateGmail_ = () => '2026-09-14';
   return ctx;
 }
 
@@ -216,6 +220,9 @@ test('migrerUnePage_ : les domaines de REANALYSE_CIBLES sont EXCLUS de m1 (jamai
 });
 
 test('estAReanalyser_ : convergence par clé reanalyse|<tag>| ; natifs exclus ; indépendant des clés migre|', () => {
+  // ⚠️ Ici le tag est un LITTÉRAL volontaire, pas la valeur de CONFIG : ce test porte sur la FORME
+  // de la clé et sur l'indépendance entre campagnes, et il passe le tag en ARGUMENT. Le dériver de
+  // CONFIG le rendrait tautologique (le même tag des deux côtés ne prouverait plus la séparation).
   const ctx = ctxMigration(['reanalyse|c26-08|DEJA', 'migre|m1|AUTRE']);
   assert.strictEqual(ctx.estAReanalyser_(fakeFile({ id: 'LIBRE', mime: 'application/pdf' }), 'c26-08'), true);
   assert.strictEqual(ctx.estAReanalyser_(fakeFile({ id: 'DEJA', mime: 'application/pdf' }), 'c26-08'), false);
@@ -226,6 +233,10 @@ test('estAReanalyser_ : convergence par clé reanalyse|<tag>| ; natifs exclus ; 
 
 function ctxReanalyseCampagne(props) {
   const ctx = load(['Config.gs', 'Migration.gs']);
+  // `dateGmail_` vit dans Gmail.gs : contrat INTER-MODULE consommé par le budget QUOTIDIEN de la
+  // re-analyse (ADR-0056), exactement comme `executerMission_` le fait déjà. Le jour n'a pas
+  // d'importance ici — ce qui compte, c'est que la clé de jour existe.
+  ctx.dateGmail_ = () => '2026-09-14';
   const journal = [];
   ctx.journalInfo_ = (s, m) => journal.push(m);
   ctx.journalErreur_ = () => {};
@@ -278,6 +289,52 @@ test('appliquerReanalyseCiblee_ : migration finie + passe complète VIDE → Pro
   // Et une fois figée, plus aucune collecte (idempotence du re-lancement).
   ctx1.ctx.reanalyserUnePage_ = () => { throw new Error('campagne finie : ne doit plus collecter'); };
   ctx1.ctx.appliquerReanalyseCiblee_(() => false);
+});
+
+test('ADR-0056 — la re-analyse a un budget QUOTIDIEN : il coupe, il se libère, et il se compte', () => {
+  // Elle n'en avait AUCUN : seulement un plafond par tick. « Un plafond par RUN ne borne pas la
+  // JOURNÉE » (§9, C28-42) — à 288 ticks × 2 min elle pouvait à elle seule franchir le mur runtime
+  // d'Apps Script et geler TOUS les déclencheurs, chien de garde compris.
+  const jour = '2026-09-14';
+  const base = () => ({ valeurs: { DriveAI_REANALYSE_BASE: '900' } });
+
+  // (a) BUDGET ÉPUISÉ AUJOURD'HUI ⇒ aucune collecte. Valeur dérivée de la CONSTANTE, jamais du jour.
+  const p1 = base();
+  const c1 = ctxReanalyseCampagne(p1);
+  const plafond = c1.ctx.CONFIG.REANALYSE_BUDGET_JOUR_MS;
+  p1.valeurs.DriveAI_MIGRATION = c1.ctx.CONFIG.MIGRATION_TAG;
+  p1.valeurs.DriveAI_REANALYSE_BARRE_TAG = c1.ctx.CONFIG.REANALYSE_TAG;
+  p1.valeurs.DriveAI_REANALYSE_JOUR = jour + '|' + plafond;
+  c1.ctx.reanalyserUnePage_ = () => { throw new Error('budget du jour épuisé : ne doit pas collecter'); };
+  c1.ctx.appliquerReanalyseCiblee_(() => false); // ne lève pas ⇒ la garde a coupé
+
+  // (b) LIBÉRATION — un gate se teste par sa levée, pas seulement par son blocage (leçon §7).
+  // Même plafond, mais consommé HIER : la journée repart à zéro.
+  const p2 = base();
+  const c2 = ctxReanalyseCampagne(p2);
+  p2.valeurs.DriveAI_MIGRATION = c2.ctx.CONFIG.MIGRATION_TAG;
+  p2.valeurs.DriveAI_REANALYSE_BARRE_TAG = c2.ctx.CONFIG.REANALYSE_TAG;
+  p2.valeurs.DriveAI_REANALYSE_JOUR = '2026-09-13|' + plafond;
+  let collecte = 0;
+  c2.ctx.reanalyserUnePage_ = () => { collecte++; return { traites: 3, collectes: 3, reste: true }; };
+  c2.ctx.appliquerReanalyseCiblee_(() => false);
+  assert.strictEqual(collecte, 1, 'un budget consommé HIER ne borne pas aujourd\'hui');
+
+  // (c) Les ms consommées sont ÉCRITES, sous le jour courant — sinon rien ne borne la journée.
+  const suivi = String(p2.valeurs.DriveAI_REANALYSE_JOUR || '');
+  assert.ok(suivi.indexOf(jour + '|') === 0, 'budget du jour ré-ancré sur aujourd\'hui : ' + suivi);
+
+  // (d) …MÊME sur exception : un plantage ne doit jamais faire FUIR le budget (patron `finally`
+  // des missions). Sans ça, une campagne qui échoue en boucle consomme du runtime sans jamais
+  // l'inscrire, et le plafond quotidien ne mord jamais.
+  const p3 = base();
+  const c3 = ctxReanalyseCampagne(p3);
+  p3.valeurs.DriveAI_MIGRATION = c3.ctx.CONFIG.MIGRATION_TAG;
+  p3.valeurs.DriveAI_REANALYSE_BARRE_TAG = c3.ctx.CONFIG.REANALYSE_TAG;
+  c3.ctx.reanalyserUnePage_ = () => { throw new Error('boum'); };
+  assert.throws(() => c3.ctx.appliquerReanalyseCiblee_(() => false), /boum/);
+  assert.ok(String(p3.valeurs.DriveAI_REANALYSE_JOUR || '').indexOf(jour + '|') === 0,
+    'ms consommées écrites malgré l\'exception');
 });
 
 test('appliquerReanalyseCiblee_ : tick DÉDIÉ de recensement (C28-18) — pose la base SANS collecter, filet du partiel', () => {
@@ -340,13 +397,13 @@ test('reanalyserFichier_ : zone protégée inscrite sous la clé reanalyse| ; pi
 
   ctx.aParentProtege_ = () => true; // multi-parents accroché à 04 → refus inscrit, jamais muté
   assert.strictEqual(ctx.reanalyserFichier_('F1', {}), false);
-  assert.deepStrictEqual(calls.index, [{ cle: 'reanalyse|c26-08|F1', statut: 'zone protégée' }]);
+  assert.deepStrictEqual(calls.index, [{ cle: 'reanalyse|' + ctx.CONFIG.REANALYSE_TAG + '|F1', statut: 'zone protégée' }]);
   assert.strictEqual(calls.traites.length, 0);
 
   ctx.aParentProtege_ = () => false;
   assert.strictEqual(ctx.reanalyserFichier_('F2', {}), true);
   assert.strictEqual(calls.traites.length, 1);
-  assert.strictEqual(calls.traites[0].cle, 'reanalyse|c26-08|F2');
+  assert.strictEqual(calls.traites[0].cle, 'reanalyse|' + ctx.CONFIG.REANALYSE_TAG + '|F2');
   assert.strictEqual(calls.traites[0].ignorerDoublon, true);
 });
 

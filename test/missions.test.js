@@ -274,7 +274,9 @@ test('routeur ecoles-archives06 : alias explicite = transfert ; source hors tabl
   // portaient une clé de SUCCÈS et n'auraient jamais été repris.
   const spec = pur.tableMissions_().filter((m) => m.tag === 'ecoles-archives06')[0];
   const paires = pur.CONFIG.MISSIONS_IDS.ecoles06;
-  assert.strictEqual(paires.length, 6, 'les 6 dossiers d\'école de la racine de 06');
+  // 7 paires depuis ADR-0056 : les 6 dossiers d'école de la racine de `06`, plus l'ancien dossier
+  // d'archive de Marc que la fusion vide dans le dossier 2014-2018.
+  assert.strictEqual(paires.length, 7);
   const ctx = spec.batirCtx();
   const parId = paires.filter((x) => x.cible)[0];
   const r = spec.router('2020-01-01_Relevé_ULCO.pdf', { sourceId: parId.src, sousChemin: 'Semestre 1' }, ctx);

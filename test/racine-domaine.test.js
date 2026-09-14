@@ -253,7 +253,7 @@ test('ADR-0052 D8 — aucun fichier DÉJÀ rangé n\'est sorti de son sous-dossi
   // Ingénieur MSIR (2020-2023)` ne « sort » pas de son dossier : il SUIT la structure que Marc a
   // désignée. Un fichier du cégep qui partirait chez l'ULCO, lui, ferait toujours échouer le test.
   const DEMENAGEMENT_06 = {
-    "lycée Thérèse d'Avila": 'Lycée — Thérèse Davila (2017-2018)',
+    "lycée Thérèse d'Avila": 'Collège & Lycée — divers (2014-2018)',
     'Prépa Gustave Eiffel (PTSI)': 'Prépa PTSI (2017-2018)',
     'DUT ULCO Saint-Omer': 'ULCO — DUT GIM (2018-2020)',
     'IUT Du Littoral': 'ULCO — DUT GIM (2018-2020)',
@@ -572,11 +572,11 @@ test('ADR-0052 D6 — les fenêtres de scolarité placent, et REFUSENT dès le m
   assert.strictEqual(ctx.ecoleParDateReset_('2017-11-03_Notes de cours_Maths.pdf'), 'Prépa PTSI (2017-2018)');
   assert.strictEqual(ctx.ecoleParDateReset_('2018-03-12_Devoir_Physique.pdf'), 'Prépa PTSI (2017-2018)');
   assert.strictEqual(ctx.ecoleParDateReset_('2018-10-01_TP_Élec.pdf'), 'ULCO — DUT GIM (2018-2020)');
-  assert.strictEqual(ctx.ecoleParDateReset_('2016-03-01_Devoir_SVT.pdf'), 'Lycée — Thérèse Davila (2017-2018)');
+  assert.strictEqual(ctx.ecoleParDateReset_('2016-03-01_Devoir_SVT.pdf'), 'Collège & Lycée — divers (2014-2018)');
   assert.strictEqual(ctx.ecoleParDateReset_('2021-02-02_Rapport de TP_Robotique.pdf'), 'IMERIR — Ingénieur MSIR (2020-2023)');
   // ANNÉE SEULE : elle ne place que si l'année CIVILE ENTIÈRE tient dans une fenêtre.
   assert.strictEqual(ctx.ecoleParDateReset_('2022_Notes de cours_Maths.pdf'), 'IMERIR — Ingénieur MSIR (2020-2023)');
-  assert.strictEqual(ctx.ecoleParDateReset_('2016_Notes de cours_Maths.pdf'), 'Lycée — Thérèse Davila (2017-2018)');
+  assert.strictEqual(ctx.ecoleParDateReset_('2016_Notes de cours_Maths.pdf'), 'Collège & Lycée — divers (2014-2018)');
   assert.strictEqual(ctx.ecoleParDateReset_('2018_Notes de cours_Maths.pdf'), null, '2018 est à cheval');
   assert.strictEqual(ctx.ecoleParDateReset_('2020_Notes de cours_Maths.pdf'), null, '2020 est à cheval');
   // HORS fenêtre — dont les 239 fichiers datés 2026 (date de réception), qu'il ne faut surtout pas
@@ -651,7 +651,7 @@ test('ADR-0052 D6 — un marqueur de NIVEAU ou de FILIÈRE dans le nom est un FA
     // Ces 4 noms portent une date HORS de toute fenêtre (2026 = date de réception) : seul le
     // marqueur peut les placer, ce qui prouve qu'il est bien consulté AVANT la date.
     ['2026-07-01_Travail pratique_TP électricité théorème superposition GIM1.docx', 'Archives scolaires/ULCO — DUT GIM (2018-2020)'],
-    ['2026-07-01_Devoir_Devoir 1ère année.pdf', 'Archives scolaires/Lycée — Thérèse Davila (2017-2018)/Cours & travaux'],
+    ['2026-07-01_Devoir_Devoir 1ère année.pdf', 'Archives scolaires/Collège & Lycée — divers (2014-2018)/Cours & travaux'],
     // « svt », « 2nde », « colle » ont été RETIRÉS : contribution NULLE mesurée sur le corpus et
     // risque non nul. Un document qui ne porte qu'une MATIÈRE n'est plus attribué par elle.
     ['2026-07-01_Compte rendu de sortie scolaire_SVT sortie Mare à Goriaux 2nde.pdf', null],
@@ -682,7 +682,7 @@ test('ADR-0055 — les libellés d\'école sont EXACTEMENT les dossiers de Marc 
   // Les 8 enfants d'`Archives scolaires` : les 7 que MARC a créés le 29/05/2026 (relevés dans son
   // Drive le 14/09) + `Cégep de Sherbrooke (2019)`, qu'il a demandé d'ajouter et que le moteur
   // find-or-crée PAR NOM — donc au caractère près, lui aussi.
-  const reels = ['Collège & Lycée — divers (2014-2017)', 'Lycée — Thérèse Davila (2017-2018)',
+  const reels = ['Collège & Lycée — divers (2014-2018)',
     'Lycée — Gustave Eiffel — Physique-Chimie (TP)', 'Prépa PTSI (2017-2018)',
     'ULCO — DUT GIM (2018-2020)', 'Cégep de Sherbrooke (2019)',
     'IMERIR — Ingénieur MSIR (2020-2023)', 'Online course — AI Essentials (Google)'];
@@ -712,7 +712,7 @@ test('ADR-0055 — les libellés d\'école sont EXACTEMENT les dossiers de Marc 
   // Le corpus ne contient aucun document « Thérèse d'Avila » : la branche par NOM se pinne donc
   // directement, sinon elle reste le seul libellé sans verrou (revue sécurité, mutation survivante).
   for (const [nom, attendue] of [
-    ["2016-03-01_Bulletin scolaire_Lycée Thérèse d'Avila.pdf", 'Lycée — Thérèse Davila (2017-2018)'],
+    ["2016-03-01_Bulletin scolaire_Lycée Thérèse d'Avila.pdf", 'Collège & Lycée — divers (2014-2018)'],
     ['2018-01-05_Kholle_Gustave Eiffel.pdf', 'Prépa PTSI (2017-2018)'],
     ['2019-05-05_Travail pratique_ULCO Saint-Omer.pdf', 'ULCO — DUT GIM (2018-2020)'],
     ['2021-02-02_Notes de cours_IMERIR.pdf', 'IMERIR — Ingénieur MSIR (2020-2023)'],
