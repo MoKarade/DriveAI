@@ -43,6 +43,51 @@
 > Deux tests ne prouvaient rien : l'un asserte `String(null).length > 0` (toujours vrai), l'autre
 > était devenu tautologique en changeant sa valeur attendue.
 
+> **🟦 EN COURS — 2026-09-14 : C28-99, réallouer le temps d'exécution vers le vrai goulot (ADR-0054).**
+> Marc : « fais la réallocation, jveux utiliser le temps dispo au max ».
+>
+> **Mesuré avant de bouger quoi que ce soit.** La génération du plan de consolidation consomme ses
+> 10 min/j EN ENTIER sans terminer un seul domaine (1 sur 9, aucun progrès depuis 18 h) — et c'est
+> elle qui alimente tout l'aval : l'exécuteur affiche « plan drainé 372/372, attend la génération »,
+> donc ses 12 min DORMENT, et la racine `08 · Perso & projets` reste à 116 fichiers en vrac. La
+> campagne Doublons, elle, est TERMINÉE — lu dans la ligne de Santé du moteur, pas supposé.
+>
+> **Transfert `10/12/3` → `16/8/1`** : la génération gagne **+60 % de débit**, l'enveloppe
+> reset-OFF reste à **63 min/j** pour un plafond de 65. Aucune minute créée — §9 « réallouer,
+> JAMAIS augmenter » : au-delà du mur de ~90 min/j, TOUS les déclencheurs gèlent, chien de garde
+> compris (C28-29).
+>
+> Les deux verrous de COUPLE (exec↔fusion 2026-08-11, gen↔missions C28-49) devenaient faux dès
+> qu'un transfert traverse les deux paires : remplacés par un verrou de **BLOC** (somme des cinq
+> campagnes qui se prêtent du budget = 27 min/j), plus l'interdit « campagne ACTIVE à budget 0 »
+> (une campagne à 0 est MUETTE, no-op silencieux). 5 mutations jouées.
+>
+> ⚠️ **À VÉRIFIER DANS 24 H** (c'est la contrepartie du transfert) : ouvrir `Diagnostic.gs` →
+> `etatCampagnesRangement` dans l'éditeur Apps Script. Si la génération affiche **`16/16 ÉPUISÉ`**,
+> le budget était bien le frein et le gain est réel. Si elle affiche `2-4/16` avec l'exécuteur à
+> `8/8 ÉPUISÉ`, c'est la **contre-pression** qui a mordu (elle coupe la génération quand l'exécuteur
+> accumule 150 lignes de retard) : il faut alors rendre les 4 minutes à l'exécuteur. Ce risque est
+> borné par le plafond de RATIO ajouté au passage — `génération ≤ 2 × exécution` — parce qu'en août
+> 2026, à ce ratio exact, la contre-pression avait déjà étranglé la génération.
+>
+> ⚠️ **Ce qui n'est PAS réalloué, et c'est le plus gros** : les **20 min/j** de l'historique Gmail.
+> §1.6 interdit de la déclarer finie sans lire son compteur, et le compteur qui tranche — les
+> MINUTES consommées — n'existait nulle part. *(Correction apportée en revue : j'avais écrit que la
+> campagne « n'était visible nulle part ». Faux — l'onglet Progression lui consacre une ligne depuis
+> C28-44, avec un statut à quatre valeurs. Je l'avais cherchée dans un export TRONQUÉ de la Sheet et
+> conclu de son absence qu'elle n'existait pas.)*
+>
+> Livré : **sa ligne dans l'onglet Santé** — statut RICHE (partagé avec la Progression : une seule
+> règle, deux surfaces), minutes ET fils du jour. Les trois précautions comptent autant que la ligne :
+> une campagne SUSPENDUE ou EN PAUSE affichait « en cours · 0 min », ce qui se lit « prends ses
+> 20 minutes » — elle dit maintenant « elle ne PEUT pas consommer » ; les DEUX plafonds sont affichés
+> (c'est celui des fils/jour qui mord en régime normal, donc à plein régime elle peut n'afficher que
+> 0,4 des 20 min) ; et une lecture en panne rend « illisible », jamais « terminée ».
+>
+> Au prochain tick, la réponse sera écrite. ⚠️ Mais **ses minutes ne pourront pas doubler la
+> génération** : le plafond de ratio l'interdit. Une réallocation saine ressemblerait à « −6 à
+> l'historique, +4 à la génération, +2 à l'exécution » — vérifié par mutation.
+
 > **✅ MERGÉ, DÉPLOYÉ ET VÉRIFIÉ EN PRODUCTION — 2026-09-14 : C28-93.**
 > PR #341 mergée (`88e8458`), `deploy.yml` #327 vert (clasp push + redéploiement de la web app +
 > réinstallation du déclencheur). Et le signal INDÉPENDANT, lu dans l'onglet `Réorg` deux ticks

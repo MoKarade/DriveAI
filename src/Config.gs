@@ -600,14 +600,27 @@ var CONFIG = {
                                           // tout avec le référentiel courant (rotation dans genererPlan…)
   CONSOLIDATION_BUDGET_MS: 3 * 60 * 1000, // sous-budget PROPRE par run (le hash MD5 lit les octets — sans
                                           // cette borne, un run mangerait le budget des étapes suivantes)
-  CONSOLIDATION_BUDGET_JOUR_MS: 10 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
+  CONSOLIDATION_BUDGET_JOUR_MS: 16 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
+                                          // ⚡ 10 → 16 (RÉALLOCATION C28-99, demande Marc « jveux utiliser le temps
+                                          // dispo au max »). MESURÉ avant de bouger quoi que ce soit : la génération
+                                          // consomme ses 10 min/j EN ENTIER sans finir un seul domaine (1/9 depuis
+                                          // 18 h), et c'est ELLE qui alimente tout le reste — l'exécuteur a drainé
+                                          // ses 372 lignes et affiche « attend la génération », donc ses 12 min
+                                          // dorment. Les 6 min viennent de LÀ (4) et des doublons TERMINÉS (2) :
+                                          // enveloppe reset-OFF INCHANGÉE à 63 min/j, pur transfert. RÉALLOUER,
+                                          // JAMAIS AUGMENTER (§9 / C28-29 : au-delà du mur runtime, TOUS les
+                                          // déclencheurs gèlent, chien de garde compris).
                                           // un plafond par RUN ne borne pas la JOURNÉE — ×288 ticks > quota
                                           // runtime ~90 min/j ; patron GMAIL_HISTO/SYNC_BUDGET_JOUR_MS).
                                           // 20 → 12 min (REDESCENTE, revue quota C28-29) ; puis 12 → 2 min
                                           // (RÉALLOCATION C28-49, ADR-0039) : la génération est TERMINÉE
                                           // (9/9 domaines le 16/08) — ses 10 min partent aux MISSIONS de
-                                          // curation (MISSIONS_BUDGET_JOUR_MS). COUPLE verrouillé par test :
-                                          // conso-gen + missions = 12 min/j, enveloppe reset-OFF INCHANGÉE.
+                                          // curation (MISSIONS_BUDGET_JOUR_MS).
+                                          // ⚠️ Ce COUPLE n'est plus verrouillé comme tel (C28-99) : le verrou
+                                          // porte désormais sur l'ÉGALITÉ de la somme des HUIT campagnes
+                                          // (= 63 min/j, orchestration.test.js). Un couple devenait faux dès
+                                          // qu'un transfert traversait deux paires — et il REFUSAIT des
+                                          // réallocations parfaitement neutres.
                                           // 2026-09-13, C28-90 : LE JOUR EST VENU. 2 → 10 min, repris aux
                                           // missions (10 → 2), qui sont toutes terminées ou à jour. Le
                                           // couple reste à 12 min/j — c'est une RÉALLOCATION, jamais une
@@ -621,7 +634,15 @@ var CONFIG = {
   CONSOLIDATION_EXEC_BUDGET_MS: 2 * 60 * 1000,        // sous-budget par run — reste STRICTEMENT < garde-temps de
                                           // tick (ANALYSE_V2_BUDGET_MS 3 min) pour ne pas affamer le reste du
                                           // tick ; le débit journalier vient du budget QUOTIDIEN (moveTo cheap)
-  CONSOLIDATION_EXEC_BUDGET_JOUR_MS: 12 * 60 * 1000,  // budget QUOTIDIEN en ms réelles persistées.
+  CONSOLIDATION_EXEC_BUDGET_JOUR_MS: 8 * 60 * 1000,   // budget QUOTIDIEN en ms réelles persistées.
+                                          // ⚡ 12 → 8 (RÉALLOCATION C28-99) : PRÊTEUR cette fois, et pour une raison
+                                          // mesurée — le plan est DRAINÉ (372/372, statut « attend la génération »),
+                                          // l'exécuteur tourne donc à vide pendant que la génération étouffe. Il a
+                                          // drainé 372 lignes avec 12 min ; à 8 min il en drainera encore ~250/j,
+                                          // très au-delà de ce qu'une génération à 1 domaine/j peut produire. Les
+                                          // 4 min sont RENDUES dès que l'exécuteur redevient le goulot (le test de
+                                          // bloc ci-dessous force l'arbitrage : on ne peut pas les rendre sans les
+                                          // reprendre à quelqu'un).
                                           // 6 → 12 min (RÉALLOCATION 2026-08-11, décision Marc « accélère, réalloc
                                           // sûre »). Le diagnostic un-clic `etatCampagnesRangement` a PROUVÉ sur la
                                           // prod que l'exécuteur EST désormais le goulot : budget jour 6/6 ÉPUISÉ,
@@ -856,9 +877,11 @@ var CONFIG = {
                                           // CONSOLIDATION_EXEC tant que la fusion est OFF (le gate `!FUSION_EXEC_ACTIF`
                                           // en TÊTE de `appliquerPlanFusion_` retourne AVANT toute lecture de ce
                                           // budget — 0 est donc inoffensif ici). ⚠ À LA RÉACTIVATION de la fusion
-                                          // (FUSION_EXEC_ACTIF=true) : REMETTRE 6 ICI **ET** redescendre
-                                          // CONSOLIDATION_EXEC_BUDGET_JOUR_MS de 12 à 6 (rendre les 6 min prêtés) —
-                                          // sinon l'enveloppe reset-OFF passe à 62 min/j (near-gel). Pure I/O (moveTo).
+                                          // (FUSION_EXEC_ACTIF=true) : lui redonner du budget en le PRENANT à une
+                                          // autre campagne, jamais en l'ajoutant. Le test d'ÉGALITÉ (somme des huit
+                                          // = 63 min/j) force l'arbitrage — inutile de citer ici des valeurs qui se
+                                          // périment : ce commentaire l'a fait (« redescendre l'exec de 12 à 6 »
+                                          // alors qu'il est à 8, relevé en revue C28-99). Pure I/O (moveTo).
   FUSION_EXEC_MAX_SOURCES_PAR_RUN: 40,    // dossiers source drainés par run au maximum (moveTo cheap, reprenable)
   FUSION_EXEC_MAX_FICHIERS_PAR_SOURCE: 500, // fichiers directs collectés-puis-déplacés par source et par run
 
@@ -915,11 +938,24 @@ var CONFIG = {
                                           // n'apparaître dans AUCUNE, et une preuve d'ABSENCE trouée
                                           // fabriquerait un faux orphelin (revue flotte, ADR-0047 §5)
   DOUBLONS_BUDGET_MS: 90 * 1000,          // sous-budget par run (pur listing REST + 1 écriture Sheet/page)
-  DOUBLONS_BUDGET_JOUR_MS: 3 * 60 * 1000, // budget QUOTIDIEN en ms réelles persistées — AJOUTÉ à la somme
+  DOUBLONS_BUDGET_JOUR_MS: 1 * 60 * 1000, // budget QUOTIDIEN en ms réelles persistées — AJOUTÉ à la somme
                                           // de l'enveloppe reset-OFF (orchestration.test.js) : 60 → 63 min/j
                                           // pour un plafond dérivé de 65. Prélevé sur la MARGE, faute de
                                           // pouvoir encore prouver que l'historique Gmail (20 min/j) est
                                           // fini — c'est LE donneur à terme (ADR-0047 §6, backlog C28-70).
+                                          // ⚡ 3 → 1 (RÉALLOCATION C28-99) : la campagne est TERMINÉE, et cette
+                                          // fois c'est LU, pas supposé — la ligne de Santé du moteur dit
+                                          // « terminée ✅ le 2026/08/22 — 1076 écartés » (§1.6 : ne jamais
+                                          // déclarer une campagne finie sans lire son compteur). On lui laisse
+                                          // 1 min plutôt que 0 : une campagne ACTIVE à budget 0 est MUETTE
+                                          // (no-op silencieux) — c'est l'interdit verrouillé par le test.
+                                          // ⚠️ Et NON pas « pour repérer un nouvel arrivant » : c'est faux, la
+                                          // campagne court-circuite sur sa phase FINI avant même de lire son
+                                          // budget, et c'est un CONSTAT one-shot sur le passif, pas une
+                                          // surveillance (Doublons.gs). Ce qui la rouvre, c'est un bump de
+                                          // `DOUBLONS_TABLE_VERSION` — et ce jour-là elle re-validera 3× plus
+                                          // lentement qu'avant (1 min/j au lieu de 3) : à savoir, c'est le prix
+                                          // assumé. Les 2 min vont à la génération.
 
   // ---------- MISSIONS de curation (C28-49, ADR-0039 — brief Marc 2026-08-17) ----------
   MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions

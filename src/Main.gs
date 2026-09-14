@@ -1048,6 +1048,59 @@ function traiterFil_(fil, estBudgetDepasse) {
 }
 
 /**
+ * Ligne de SANTÉ de la campagne historique Gmail — état, avancement, et minutes RÉELLEMENT
+ * consommées aujourd'hui sur son budget quotidien. PURE au sens I/O (Properties seules).
+ *
+ * Pourquoi elle existe (C28-99) : cette campagne réserve **20 min/j** dans l'enveloppe de runtime,
+ * le plus gros bloc de toutes les campagnes, et le compteur qui dirait si elles servent vraiment —
+ * les MINUTES consommées — n'existait nulle part. (L'onglet Progression, lui, porte bien une ligne
+ * `histo-gmail` depuis C28-44, avec statut et compteur de fils : une première rédaction affirmait
+ * le contraire, à tort.) Le registre de suivi C28-44 étant SATURÉ (8 377/8 500 octets), ce chiffre
+ * ne pouvait pas y prendre une 43ᵉ clé : il se rend donc visible ICI, comme `Doublons` et
+ * « Rangement ancien Drive ». Sans lui, réallouer ces 20 minutes serait une SUPPOSITION — et §1.6
+ * l'interdit : « ne pas déclarer une campagne finie sans lire son compteur ».
+ * @return {string}
+ */
+function texteSanteHistoGmail_() {
+  var budget = Math.round(CONFIG.GMAIL_HISTO_BUDGET_JOUR_MS / 60000);
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var statut = statutHistoGmail_(props.getProperty('DriveAI_GMAIL_HISTO') === 'terminé',
+      estPanneGmail_(), budgetCampagnesAtteint_(), resetEnCours_());
+    if (statut === 'terminé') return 'terminée ✅ — ses ' + budget + ' min/j sont RÉALLOUABLES';
+    // ⚠️ Le COMPTE de fils n'est PAS répété ici : l'onglet Progression le porte déjà, et de façon
+    // MONOTONE (l'offset brut repart à 0 aux passes de vérification — c'est une position de scan,
+    // pas un cumul). Deux surfaces qui affichent le même fait avec deux conversions différentes,
+    // c'est le défaut que §9 interdit. Le seul chiffre RÉELLEMENT neuf est celui des minutes.
+    var aujourdhui = dateGmail_(new Date());
+    var msJour = props.getProperty('DriveAI_GMAIL_HISTO_JOUR') === aujourdhui
+      ? Number(props.getProperty('DriveAI_GMAIL_HISTO_MS_JOUR')) || 0
+      : 0;
+    // ⚠️ Les MINUTES ne sont PAS le seul plafond : la campagne est AUSSI bornée à
+    // `GMAIL_HISTO_MAX_FILS_JOUR` fils/jour, et c'est ce plafond-là qui mord en régime normal. Une
+    // campagne qui tourne À PLEIN peut donc afficher « 0,4 des 20 min/j » — lire ça comme
+    // « 20 minutes sont libres » serait l'erreur même que cette ligne existe pour empêcher.
+    // Les deux compteurs sont donc affichés ensemble (revue C28-99).
+    // `compteurFilsJour_` plutôt qu'une seconde écriture des mêmes clés : c'est la fonction que la
+    // télémétrie et la web app utilisent déjà, et la thèse de ce lot est « une règle, deux
+    // consommateurs » — la contredire ici serait cocasse (relevé en revue C28-99).
+    var filsJour = compteurFilsJour_(props, 'DriveAI_GMAIL_HISTO', aujourdhui);
+    // Passes PROPRES : le seul indicateur de proximité de la fin (deux d'affilée ⇒ terminée).
+    var propres = Number(props.getProperty('DriveAI_GMAIL_HISTO_PASSES_PROPRES')) || 0;
+    // Au dixième de minute : sous la minute, `Math.round` afficherait « 0 » — or c'est précisément
+    // la différence entre « elle n'a rien consommé » et « elle a commencé » qui décide ici.
+    return statut + ' — ' + (Math.round(msJour / 6000) / 10) + ' des ' + budget + ' min/j et ' +
+      filsJour + ' des ' + CONFIG.GMAIL_HISTO_MAX_FILS_JOUR + ' fils/j consommés aujourd\'hui' +
+      (propres ? ' · passe de vérification ' + propres + '/2' : '') +
+      (statut === 'en cours' ? '' : ' (elle ne PEUT pas consommer : ne pas conclure « inutilisée »)');
+  } catch (e) {
+    // Journalisé : sans ça, une lecture qui échoue à chaque tick n'a aucun canal hors de la cellule.
+    try { journalErreur_('Santé', 'État de l\'historique Gmail illisible : ' + e); } catch (e2) { /* rien */ }
+    return 'illisible (' + String(e).slice(0, 60) + ')'; // jamais « terminée » par défaut
+  }
+}
+
+/**
  * Chantier #12 (ADR-0010 §1) — HISTORIQUE Gmail complet : ancre FIXE + pagination par OFFSET,
  * terminée par une PASSE DE VÉRIFICATION propre.
  *

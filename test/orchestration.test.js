@@ -164,41 +164,92 @@ test('enveloppe reset-OFF : la somme des budgets QUOTIDIENS des campagnes concur
 });
 
 /**
- * RÉALLOCATION 2026-08-11 (revue flotte apps-script-quota) : verrou du COUPLE exec↔fusion, PAS
- * seulement de l'agrégat ≤ 65 — celui-ci est structurellement AVEUGLE au cas 62 min/j (near-gel :
- * fusion réactivée à 6 SANS rendre les 6 min à l'exec) puisque 62 ≤ 65. C'est exactement le trou de
- * la leçon C28-42 (l'invariant d'enveloppe reste vert pendant qu'un couple mal restauré grimpe). On
- * verrouille donc la PAIRE (somme constante) + l'interdit « campagne active à budget 0 » (muette).
+ * VERROU D'ÉGALITÉ (C28-99) — remplace les deux verrous de COUPLE (exec↔fusion 2026-08-11,
+ * conso-gen↔missions C28-49), devenus faux dès qu'une réallocation traverse les deux paires.
+ *
+ * ⚠️ Il porte sur le MÊME ensemble que le test d'enveloppe ci-dessus — les HUIT campagnes — et pas
+ * sur un sous-bloc. Une première écriture ne verrouillait que les cinq campagnes qui se prêtent
+ * habituellement du budget ; la revue l'a cassée en deux coups : (a) `HISTORIQUE_VRAC` 4 → 6 SEUL,
+ * soit +2 min nettes d'enveloppe, passait au vert (jambe hors bloc, et la marge 63→65 l'absorbait) ;
+ * (b) pire, la réallocation SUIVANTE que l'ADR planifie — reprendre 6 min à l'historique Gmail pour
+ * la génération — était REFUSÉE alors qu'elle est parfaitement légitime (jambe hors bloc, somme du
+ * bloc modifiée). Un verrou qui laisse passer une hausse et bloque un transfert neutre verrouille
+ * le contraire de ce qu'on veut.
+ *
+ * Ce qu'il protège : **aucune réallocation ne doit faire CROÎTRE l'enveloppe de runtime**. Au-delà
+ * du mur (~90 min/j), TOUS les déclencheurs gèlent, chien de garde compris (§9 / C28-29).
+ * L'agrégat « ≤ 65 » ne suffit pas : il tolère toute croissance tant que la marge tient, donc il est
+ * aveugle aux petits transferts à moitié annulés (leçon C28-42). Une ÉGALITÉ, elle, tombe dès que la
+ * somme bouge — dans les deux sens, et où que soit la jambe.
  */
-test('réallocation exec↔fusion : le COUPLE somme 12 min ET une campagne active n\'a jamais un budget 0', () => {
+test('ENVELOPPE des campagnes : la somme reste EXACTEMENT 63 min/j (réallouer, jamais augmenter)', () => {
   const C = require('./harness').load(['Config.gs']).CONFIG;
-  // 6 min ont été TRANSFÉRÉS de FUSION_EXEC (OFF) vers CONSOLIDATION_EXEC : leur somme reste 12 min/j.
-  // Réactiver la fusion (0→6) SANS redescendre l'exec (12→6) casse ce test — rappel FORCÉ, jamais
-  // laissé à la seule discipline (leçon §7 : « promesse de verrou = verrou codé »).
-  assert.strictEqual((C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS) / 60000, 12,
-    'CONSOLIDATION_EXEC + FUSION_EXEC doit rester = 12 min/j (couple réalloué) : à la réactivation de ' +
-    'la fusion, rendre à l\'exec les 6 min prêtés (sinon enveloppe 62 = near-gel, non vu par l\'agrégat ≤65)');
+  const total = C.GMAIL_HISTO_BUDGET_JOUR_MS + C.CONSOLIDATION_BUDGET_JOUR_MS +
+    C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS +
+    C.HISTORIQUE_VRAC_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS + C.DOUBLONS_BUDGET_JOUR_MS;
+  assert.strictEqual(total / 60000, 63,
+    'la somme des budgets quotidiens des 8 campagnes doit rester = 63 min/j. Pour accélérer une ' +
+    'campagne, PRENDRE à une autre — jamais ajouter des minutes : au-delà du mur runtime ' +
+    '~90 min/j, TOUS les déclencheurs gèlent, chien de garde inclus (C28-29). Relever ce total ' +
+    'est une DÉCISION de Marc, pas un effet de bord : il faudrait d\'abord MESURER le runtime ' +
+    'réellement consommé (personne ne le fait — le plafond 65 vient d\'une réserve ESTIMÉE).');
+  // Ratio gen/exec. ⚠️ HONNÊTETÉ SUR CE SEUIL (revue C28-99) : le précédent documenté d'août 2026
+  // est 12/6 — soit le ratio 2,0 EXACTEMENT, celui où la contre-pression a étranglé la génération
+  // (« throttlée, 2,3/12 min seulement »). 16/8 se pose donc PILE sur le point observé, et ce garde
+  // l'autorise DÉLIBÉRÉMENT : ce qui différait en août, c'est que le plan traînait 1236 lignes de
+  // retard alors qu'il est drainé aujourd'hui. Ce n'est pas une preuve d'innocuité, c'est un pari —
+  // et sa contrepartie est la vérification à 24 h inscrite au HANDOVER (si la génération n'affiche
+  // pas `16/16 ÉPUISÉ`, rendre les 4 min à l'exécuteur). Ce que le garde empêche, c'est d'aller
+  // AU-DELÀ du point déjà vécu sans y penser. Ne pas en déduire « sous 2:1 c'est sûr ».
+  assert.ok(C.CONSOLIDATION_BUDGET_JOUR_MS <= 2 * C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS,
+    'génération ' + (C.CONSOLIDATION_BUDGET_JOUR_MS / 60000) + ' min/j pour un exécuteur à ' +
+    (C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS / 60000) + ' : au-delà du ratio 2:1, on dépasse le point ' +
+    'où la contre-pression (CONSOLIDATION_BACKLOG_MAX) a DÉJÀ coupé la génération en prod ' +
+    '(2026-08-11) — et les deux moitiés s\'arrêtent alors ensemble, sans symptôme visible.');
   // Une campagne ACTIVE avec un budget quotidien 0 tourne à VIDE en silence (`consommeJour 0 >= 0`
-  // court-circuite `appliquer…_` avant tout travail) : jamais autorisé.
-  assert.ok(!C.FUSION_EXEC_ACTIF || C.FUSION_EXEC_BUDGET_JOUR_MS > 0,
-    'FUSION_EXEC_ACTIF=true avec FUSION_EXEC_BUDGET_JOUR_MS=0 = campagne MUETTE (no-op silencieux) : ' +
-    'rends-lui son budget avant de l\'activer');
+  // court-circuite avant tout travail) : jamais autorisé. C'est l'autre moitié du verrou — sans elle,
+  // la somme de bloc se conserverait en rendant une campagne MUETTE.
+  [['FUSION_EXEC', C.FUSION_EXEC_ACTIF, C.FUSION_EXEC_BUDGET_JOUR_MS],
+    ['MISSIONS', C.MISSIONS_ACTIF, C.MISSIONS_BUDGET_JOUR_MS],
+    ['DOUBLONS', C.DOUBLONS_ACTIF, C.DOUBLONS_BUDGET_JOUR_MS],
+    ['CONSOLIDATION', C.CONSOLIDATION_ACTIF, C.CONSOLIDATION_BUDGET_JOUR_MS],
+    ['CONSOLIDATION_EXEC', C.CONSOLIDATION_EXEC_ACTIF, C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS],
+  ].forEach(([nom, actif, budget]) => {
+    assert.ok(!actif || budget > 0,
+      nom + '_ACTIF=true avec un budget quotidien de 0 = campagne MUETTE (no-op silencieux) : ' +
+      'rends-lui du budget avant de l\'activer, ou désactive-la explicitement');
+  });
 });
 
-/**
- * RÉALLOCATION C28-49 (ADR-0039) : la génération de consolidation est TERMINÉE (16/08, 9/9) —
- * 10 de ses 12 min/j partent aux MISSIONS de curation. Même patron de verrou que exec↔fusion :
- * la PAIRE (somme constante), pas seulement l'agrégat ≤ 65 (aveugle à un transfert à moitié
- * annulé), + l'interdit « campagne active à budget 0 ». Prouvé par mutation.
- */
-test('réallocation conso-gen↔missions : le COUPLE somme 12 min ET une mission active n\'a jamais un budget 0', () => {
+test('INVENTAIRE des budgets quotidiens : aucune constante n\'échappe aux invariants', () => {
+  // Cécité structurelle de la leçon C28-42, mesurée en revue C28-99 : ajouter une NOUVELLE
+  // constante `*_BUDGET_JOUR_MS` laissait les deux invariants VERTS pendant que l'enveloppe
+  // croissait — ils somment une liste ÉCRITE À LA MAIN, ils ne savent pas ce qu'ils ignorent.
+  // Cet inventaire renverse la charge : toute constante neuve DOIT être classée ici, donc son
+  // auteur doit se demander dans quelle enveloppe elle tombe. Même patron que l'inventaire
+  // `feuille_` ↔ `creerOnglet_`.
   const C = require('./harness').load(['Config.gs']).CONFIG;
-  assert.strictEqual((C.CONSOLIDATION_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS) / 60000, 12,
-    'CONSOLIDATION (gen) + MISSIONS doit rester = 12 min/j (couple réalloué C28-49) : le jour où la ' +
-    'consolidation doit VRAIMENT reprendre, rendre les 10 min prêtés (missions finies) — sinon ' +
-    'l\'enveloppe croît en silence (leçon C28-42)');
-  assert.ok(!C.MISSIONS_ACTIF || C.MISSIONS_BUDGET_JOUR_MS > 0,
-    'MISSIONS_ACTIF=true avec MISSIONS_BUDGET_JOUR_MS=0 = missions MUETTES (no-op silencieux)');
+  const connues = [
+    // les 8 campagnes de l'enveloppe reset-OFF (sommées à 63 min/j ci-dessus)
+    'GMAIL_HISTO_BUDGET_JOUR_MS', 'CONSOLIDATION_BUDGET_JOUR_MS', 'CONSOLIDATION_EXEC_BUDGET_JOUR_MS',
+    'SYNC_BUDGET_JOUR_MS', 'FUSION_EXEC_BUDGET_JOUR_MS', 'HISTORIQUE_VRAC_BUDGET_JOUR_MS',
+    'MISSIONS_BUDGET_JOUR_MS', 'DOUBLONS_BUDGET_JOUR_MS',
+    // les 4 phases du reset (invariant de réallocation reset-ON)
+    'RESET_RASSEMBLEMENT_BUDGET_JOUR_MS', 'RESET_PLACEMENT_BUDGET_JOUR_MS',
+    'RESET_04_BUDGET_JOUR_MS', 'RESET_LLM_BUDGET_JOUR_MS',
+    // ⚠️ HORS des deux invariants, et c'est un TROU connu (backlog C28-101) : le pilote CI consomme
+    // du runtime sur le même compte. Inoffensif UNIQUEMENT parce qu'il exige `RESET_ACTIF` (false) ;
+    // reset rallumé, reset 50 + pilote 30 + doublons + vrac ≈ 85 min/j pour un mur à ~90.
+    'PILOTE_BUDGET_JOUR_MS',
+  ];
+  const trouvees = Object.keys(C).filter((k) => /_BUDGET_JOUR_MS$/.test(k));
+  const inconnues = trouvees.filter((k) => connues.indexOf(k) === -1);
+  assert.deepStrictEqual(inconnues, [],
+    'constante(s) de budget QUOTIDIEN hors inventaire : ' + inconnues.join(', ') + '. Classe-la : ' +
+    'dans l\'enveloppe reset-OFF (et remonte la somme de 63), dans l\'invariant du reset, ou en ' +
+    'exception documentée. Sans ça elle échappe aux deux tests et l\'enveloppe croît EN SILENCE.');
+  const manquantes = connues.filter((k) => trouvees.indexOf(k) === -1);
+  assert.deepStrictEqual(manquantes, [], 'constante(s) disparue(s) : ' + manquantes.join(', '));
 });
 
 test('orchestration MISSIONS : les 8 missions sont gatées par !resetEnCours_() ET le budget quotidien', () => {
