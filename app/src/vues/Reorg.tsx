@@ -198,8 +198,14 @@ export function ReorgVue({ langue }: { langue: Langue }) {
     // Un lot écourté ne se lit pas comme un lot complet : la cause ET le nombre de lignes jamais
     // tentées sont dits, sinon Marc croit la liste traitée (revue C28-93).
     if (bilan.interrompu) {
+      // …et la CAUSE EXACTE si on en a une (C28-121). « Google refuse les appels » ne dit pas si
+      // c'est un quota, un refus de droits, une ascendance illisible ou le réseau — et sans cette
+      // ligne, le message de l'exception était jeté, donc chaque diagnostic repartait à l'aveugle.
+      const cause = bilan.derniereCause
+        ? t('corbeilleCause', langue).replace('{m}', bilan.derniereCause.slice(0, 300))
+        : '';
       setErreurCorbeille(t(bilan.interrompu === 'session' ? 'corbeilleCoupeeSession' : 'corbeilleCoupeePannes', langue)
-        .replace('{x}', String(bilan.nonTentees)));
+        .replace('{x}', String(bilan.nonTentees)) + cause);
     }
   }
 

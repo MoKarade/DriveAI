@@ -17,6 +17,7 @@ const ICI = fileURLToPath(new URL('.', import.meta.url));
 import { IDS_STRUCTURELS_DEFAUT } from '../src/garde-fous';
 import { MIME_DOSSIER } from '../src/explorateur';
 import { messageQuota } from '../src/google';
+import { t } from '../src/i18n';
 
 const PROTEGE = 'ID_IMMIGRATION';
 const BASE = {
@@ -174,7 +175,7 @@ describe('corbeillerLot', () => {
       ecrireLot: async (debut, valeurs) =>
         valeurs.forEach((statut, k) => ecrits.push({ ligneSheet: debut + k, statut })),
     });
-    expect(bilan).toEqual({ corbeilles: 3, classes: 2, aReessayer: 0, sheetKo: 0, nonTentees: 0, interrompu: '' });
+    expect(bilan).toEqual({ corbeilles: 3, classes: 2, aReessayer: 0, sheetKo: 0, nonTentees: 0, interrompu: '', derniereCause: '' });
     expect(ecrits.map((e) => e.statut)).toEqual(['vide-protégé', 'corbeillé', 'vide-repris', 'corbeillé', 'corbeillé']);
     expect(ecrits).toHaveLength(5); // TOUTES les lignes quittent la liste, aucune n'est oubliée
   });
@@ -185,7 +186,11 @@ describe('corbeillerLot', () => {
       corbeiller: async (id) => { if (id === 'ID1') throw new Error('Google est momentanément saturé'); },
       ecrireLot: async (debut, valeurs) => valeurs.forEach((_v, k) => ecrits.push(debut + k)),
     });
-    expect(bilan).toEqual({ corbeilles: 2, classes: 0, aReessayer: 1, sheetKo: 0, nonTentees: 0, interrompu: '' });
+    expect(bilan).toMatchObject({ corbeilles: 2, classes: 0, aReessayer: 1, sheetKo: 0, nonTentees: 0, interrompu: '' });
+    // ⚠️ LA CAUSE EST GARDÉE (C28-121) : sans elle, « Google refuse les appels » a servi deux fois
+    // de diagnostic, dont une à tort. Le message de l'exception est le SEUL endroit où la
+    // différence entre un quota, un refus de droits et une ascendance illisible est écrite.
+    expect(bilan.derniereCause).toContain('momentanément saturé');
     expect(ecrits).toEqual([2, 4]); // la ligne 3 n'est PAS écrite : elle sera re-proposée
   });
 
@@ -281,6 +286,7 @@ describe('corbeillerLot', () => {
     });
     expect(bilan).toEqual({
       corbeilles: 10, classes: 0, aReessayer: 0, sheetKo: 0, nonTentees: 0, interrompu: '',
+      derniereCause: '',
     });
   });
 
@@ -353,6 +359,50 @@ describe('corbeillerLot', () => {
     // contiguës = 2 PUT : très loin du plafond, donc zéro attente. Dérivé de la constante.
     expect(CORBEILLE_ECRITURES_PAR_MIN).toBeLessThan(60); // sous le plafond Sheets, marge pour le reste de l'app
     expect(CORBEILLE_ECRITURES_PAR_MIN).toBeGreaterThanOrEqual(30); // …sans brider l'usage normal
+  });
+
+  it('C28-121 : un lot interrompu DIT POURQUOI — la cause exacte remonte jusqu\'à l\'écran', () => {
+    // ⚠️ CE TEST EXISTE À CAUSE D'UN DIAGNOSTIC FAUX. « Lot interrompu : Google refuse les appels
+    // (quota ou panne) » a servi deux fois de point de départ : la première m'a fait conclure au
+    // quota Sheets, la seconde — « après 4 dossiers il s'arrête sans rien supprimer » — a réfuté
+    // cette conclusion (sous l'hypothèse quota-Sheets, les dossiers PARTENT et seuls les statuts
+    // échouent). Entre les deux, le message de l'exception, seul endroit où la différence est
+    // écrite, était JETÉ. §9 : « tout verdict indéterminé persiste son POURQUOI ».
+    const causes = [
+      'Error: Corbeille refusée (ADR-0014) : ascendance-illisible',
+      'Error: Google API 403 : insufficientFilePermissions',
+      'TypeError: Failed to fetch',
+      'Error: Sheets (la feuille d\'état) est momentanément saturé (quota par minute)',
+    ];
+    // Chacune de ces quatre causes rend `null` (incertitude ⇒ la ligne reste candidate) — c'est
+    // JUSTE, et c'est exactement pourquoi elles étaient indistinguables à l'écran.
+    for (const c of causes) expect(statutRefusCorbeille(c)).toBeNull();
+    // Le gabarit d'affichage porte bien un emplacement pour la cause, dans les DEUX langues.
+    expect(t('corbeilleCause', 'fr')).toContain('{m}');
+    expect(t('corbeilleCause', 'en')).toContain('{m}');
+    // …et la vue la rend : sans cet appel, le champ existerait sans jamais atteindre Marc.
+    const vue = readFileSync(join(ICI, '..', 'src', 'vues', 'Reorg.tsx'), 'utf8');
+    expect(vue).toContain('bilan.derniereCause');
+    expect(vue).toContain("t('corbeilleCause', langue)");
+  });
+
+  it('C28-121 : chaque famille de panne remonte SA cause, pas celle de la voisine', async () => {
+    // La cause gardée doit être la DERNIÈRE vue, sur les deux canaux — Drive comme Sheets.
+    const drive = await corbeillerLot(lignes(8), {
+      corbeiller: async () => { throw new Error('Google API 403 : insufficientFilePermissions'); },
+      ecrireLot: async () => {},
+    });
+    expect(drive.interrompu).toBe('pannes');
+    expect(drive.corbeilles).toBe(0); // RIEN n'est parti à la corbeille — la signature de Marc
+    expect(drive.derniereCause).toContain('insufficientFilePermissions');
+
+    const sheets = await corbeillerLot(lignes(8), {
+      corbeiller: async () => {},
+      ecrireLot: async () => { throw new Error('Google API 429 : rateLimitExceeded'); },
+    });
+    expect(sheets.interrompu).toBe('pannes');
+    expect(sheets.corbeilles).toBe(CORBEILLE_PREMIERE_ECRITURE); // eux SONT partis : signature opposée
+    expect(sheets.derniereCause).toContain('rateLimitExceeded');
   });
 
   it('C28-119 : la sentinelle borne l\'exposition — au plus CORBEILLE_MAX_PANNES dossiers à l\'aveugle', () => {

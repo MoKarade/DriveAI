@@ -163,6 +163,14 @@ export interface BilanLot {
   // que 83 lignes n'avaient jamais été tentées. « Une passe abandonnée doit se DIRE dans l'état ».
   nonTentees: number;                        // lignes jamais tentées, parce que le lot a été coupé
   interrompu: '' | 'session' | 'pannes';     // '' = le lot est allé au bout
+  // ⚠️ LE POURQUOI, pas seulement le QUE (C28-121). « Google refuse les appels (quota ou panne) »
+  // ne distingue pas un quota d'un refus de droits, d'une ascendance illisible ou d'une coupure
+  // réseau — et le message de l'exception, seul endroit où la différence est écrite, était JETÉ.
+  // Résultat vécu : deux diagnostics successifs faits à l'aveugle, dont un FAUX (j'ai conclu au
+  // quota Sheets ; Marc a ensuite rapporté « après 4 dossiers il s'arrête sans rien supprimer »,
+  // ce qui l'exclut — sous l'hypothèse quota-Sheets, les dossiers PARTENT et seuls les statuts
+  // échouent). §9 : « tout verdict indéterminé persiste son POURQUOI ».
+  derniereCause: string;                     // message de la DERNIÈRE panne non interprétable
 }
 
 /**
@@ -198,6 +206,7 @@ export async function corbeillerLot(
 ): Promise<BilanLot> {
   const bilan: BilanLot = {
     corbeilles: 0, classes: 0, aReessayer: 0, sheetKo: 0, nonTentees: 0, interrompu: '',
+    derniereCause: '',
   };
   let pannesDaffilee = 0;
   // Statuts en attente d'écriture : l'action Drive est DÉJÀ faite pour chacun.
@@ -240,7 +249,8 @@ export async function corbeillerLot(
           try { deps.surLigne?.(n, parLigne.get(n) as string); } catch { /* affichage seulement */ }
         }
         pannesDaffilee = 0; // une plage écrite prouve que le canal Sheets répond
-      } catch {
+      } catch (eSheet) {
+        bilan.derniereCause = String(eSheet); // même exigence côté Sheets (C28-121)
         // Les dossiers SONT traités ; seule la Sheet les ignore. Compté à part (revue C28-93).
         // ⚠️ Le coupe-circuit compte les LIGNES, pas les requêtes : ce qu'il protège, c'est le
         // nombre de dossiers corbeillés dont on n'a PAS pu inscrire l'état. Compter « 1 par plage
@@ -273,6 +283,7 @@ export async function corbeillerLot(
       if (!verdict) {
         bilan.aReessayer++;
         pannesDaffilee++;             // c'est la PLATEFORME qui flanche, pas la ligne
+        bilan.derniereCause = String(e); // …et on GARDE de quoi le dire (C28-121)
         try { deps.avancement?.(i + 1, lignes.length); } catch { /* affichage seulement */ }
         continue;
       }
