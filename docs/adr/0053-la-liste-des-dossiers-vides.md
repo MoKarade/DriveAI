@@ -100,11 +100,29 @@ ré-écrit sous le tag courant, plus un nœud ⇒ retour à `vide-candidat`. Les
 l'**APP** (zone protégée, racine système) ne portent pas la marque et ne sont jamais relus : eux sont
 définitifs par nature.
 
-⚠️ **Le nom se lit avec `nomDepuisConstat_`, pas avec un `split('/')`.** Drive AUTORISE la barre
-oblique dans un nom de dossier : un dossier nommé « Impôts/Archives » se serait lu « Archives » —
-un nœud de la table — et la ligne aurait été retirée à tort, définitivement. Ce qui distingue les
-deux formats, c'est qu'un chemin produit par `cheminPourConstat_` commence toujours par une racine
-de domaine.
+⚠️ **La colonne « Chemin actuel » porte TROIS formats, et aucun discriminant ne les sépare.** Un nom
+NU (lignes d'avant C28-93), un chemin ancré sur la racine de domaine (`cheminPourConstat_`), et un
+chemin d'INVENTAIRE SCOPÉ ancré sur le dossier que Marc analysait (`Robovic/Projets`, produit par
+`inventaireDossiers_` quand on clique « Analyser la structure » sur un dossier). Se tromper coûte
+dans les deux sens : découper toujours retire à tort un dossier réellement nommé « Impôts/Archives »,
+ne jamais découper laisse passer `Robovic/Projets` — et une première écriture, qui ne découpait que
+les chaînes commençant par une racine de domaine, a effectivement rouvert la garde sur `Projets` et
+`Candidatures`, les noms mêmes de la plainte de Marc (régression attrapée en 4ᵉ revue).
+`estNoeudRecreableDepuisConstat_` essaie donc les **deux** lectures et refuse si l'une d'elles est un
+nœud — sauf pour un chemin ancré sur un domaine, qui ne se lit que par son dernier segment (sa chaîne
+entière commence par `NN · `, que la garde reconnaît comme un nom de racine : la lire en bloc
+protégerait tout ce qui est sous un domaine, donc tout). Le prédicat qui déclenche l'action
+quasi-irréversible est STRICT et, dans le doute, REFUSE (§9). Conséquence assumée : un dossier
+réellement nommé « Impôts/Archives » n'est plus proposé. `nomDepuisConstat_` ne sert plus qu'à
+l'AFFICHAGE.
+
+⚠️ **La marque du filtre porte son tag ET le statut qu'il a écrit** (`[filtre-vides c2893-1 →
+vide-protégé]`). Le tag seul ne suffisait pas : l'app n'écrit QUE la colonne F (le statut), jamais la
+G (le détail), donc une marque sans statut prouvait seulement « le filtre a touché cette ligne un
+jour ». Scénario : le filtre rend une ligne candidate, Marc clique, Drive refuse (zone protégée),
+l'app écrit `vide-protégé` en F — et au bump suivant la ligne redevenait `vide-candidat`,
+réapparaissait dans la liste, échouait encore, à chaque bump. En comparant le statut inscrit au
+statut RELU, toute écriture de l'app fait diverger les deux et rend son verdict définitif.
 
 **D7 — `vide-repris` est le seul statut RÉVISABLE de la famille.** Le moteur dédoublonne sur la
 seule présence de `videcandidat|<id>`, quel que soit le statut. `vide-disparu`, `vide-protégé` et

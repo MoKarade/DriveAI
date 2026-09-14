@@ -168,8 +168,12 @@ export async function corbeillerLot(
     pannesDaffilee = sheetOk ? 0 : pannesDaffilee + 1;
     // HORS du try d'écriture : une exception de la mise à jour d'ÉCRAN n'est pas un échec Sheet,
     // et ne doit ni se compter en `sheetKo` ni nourrir le coupe-circuit.
-    if (sheetOk) { try { deps.surLigne?.(l.ligneSheet, statut); } catch { /* affichage seulement */ } }
-    deps.avancement?.(i + 1, lignes.length);
+    // Les DEUX appels d'écran sont protégés (4ᵉ revue : n'en protéger qu'un n'appliquait le
+    // raisonnement qu'à moitié). Un plantage de rendu n'est ni un échec Sheet ni une panne.
+    try {
+      if (sheetOk) deps.surLigne?.(l.ligneSheet, statut);
+      deps.avancement?.(i + 1, lignes.length);
+    } catch { /* affichage seulement */ }
   }
   return bilan;
 }

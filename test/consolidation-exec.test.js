@@ -229,7 +229,7 @@ function ctxVide(opts) {
   opts = opts || {};
   // `Reset.gs` + `Reorg.gs` chargés POUR DE VRAI : la garde par capacité (`estNoeudRecreable_`) lit
   // la table de la taxonomie. La mocker reviendrait à tester ma propre copie de la question.
-  const c = load(['Config.gs', 'Router.gs', 'Reset.gs', 'Reorg.gs', 'Consolidation.gs', 'ConsolidationExec.gs']);
+  const c = load(['Config.gs', 'Entites.gs', 'Router.gs', 'Reset.gs', 'Reorg.gs', 'Consolidation.gs', 'ConsolidationExec.gs']);
   const appends = [];
   const ecrits = [];
   const reorgData = [['Clé', 'Type', 'ID', 'CheminA', 'CheminP', 'Statut', 'Détail', 'H']].concat(opts.reorgData || []);

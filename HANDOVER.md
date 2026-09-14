@@ -137,8 +137,27 @@
 > rattrapée — arbitrage assumé, écrit en ADR-0053 D11), C28-98 (les autres résolveurs par nom
 > ignorent la corbeille — aucun n'ouvre de chemin vers une suppression automatique).
 >
-> **Vérifications** : 1277 tests moteur · 270 tests app · `node --check` sur les 41 `.gs` ·
-> `npm run build` · **17 mutations** jouées et restaurées par copie de sauvegarde (jamais
+> **4ᵉ PASSE — 3 🟠, dont une RÉGRESSION introduite par le lot précédent.**
+>
+> 🟠 **Le discriminant « un chemin commence par une racine de domaine » est FAUX pour l'inventaire à
+> PORTÉE.** Quand Marc clique « Analyser la structure » sur un dossier, les chemins produits sont
+> `Robovic/Projets` — sans racine. Lus en bloc, `Projets` et `Candidatures` redevenaient proposables
+> à la corbeille : les noms MÊMES de sa plainte. Les deux lectures sont désormais essayées, et un
+> seul « oui » suffit à refuser. Conséquence assumée : un dossier réellement nommé `Impôts/Archives`
+> n'est plus proposé — un dossier vide qui subsiste coûte moins qu'un dossier utile corbeillé.
+> 🟠 **La marque du filtre ne portait que son tag**, alors que l'app n'écrit QUE la colonne F. Une
+> ligne que Marc avait fait refuser par Drive redevenait candidate à CHAQUE bump, réapparaissait
+> dans sa liste, échouait encore — sans qu'il puisse s'en débarrasser. La marque porte maintenant le
+> statut écrit, donc toute écriture de l'app rend son verdict définitif.
+> 🟠 **Le câblage du verdict révisable n'était exercé par aucun test** : deux mutations restaient
+> vertes sur 1278 tests. C'est le défaut de la 3ᵉ passe, reproduit sur le câblage neuf.
+>
+> Plus 4 🟡 : un jsdoc orphelin, l'horodatage de la ligne ré-armée, `avancement` resté hors du try
+> d'écran, et la comparaison d'entité **sensible à la casse** alors que le décompte du 13/09 contient
+> quatre graphies d'`IUT Du Littoral` — elle est désormais normalisée (casse, accents, apostrophes).
+>
+> **Vérifications** : 1279 tests moteur · 270 tests app · `node --check` sur les 41 `.gs` ·
+> `npm run build` · **22 mutations** jouées et restaurées par copie de sauvegarde (jamais
 > `git checkout`).
 
 > **✅ MERGÉ, DÉPLOYÉ ET VÉRIFIÉ EN PRODUCTION — 2026-09-13 19:25 UTC : le rattrapage TOURNE.**

@@ -375,7 +375,8 @@ function inscrireDossierVideCandidat_(id, chemin, ctx) {
   // lignes contradictoires sous la même clé.
   if (ctx.videsRepris && ctx.videsRepris[cle]) {
     var rang = ctx.videsRepris[cle];
-    feuille.getRange(rang, 4, 1, 4).setValues([[chemin, '', 'vide-candidat', 'redevenu vide']]);
+    feuille.getRange(rang, 4, 1, 5)
+      .setValues([[chemin, '', 'vide-candidat', 'redevenu vide', new Date().toISOString()]]);
     delete ctx.videsRepris[cle];
     ctx.videsConnus[cle] = true;
     return;

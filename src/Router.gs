@@ -47,13 +47,6 @@ function idDomaine_(domaine) {
 }
 
 /**
- * Renvoie (ou crée) le dossier d'un domaine AUTO-créé (ex. « 07 · Santé »), placé À CÔTÉ des domaines
- * existants (même parent que le domaine par défaut). ID mémorisé en Script Property. Zéro clic, jamais
- * de suppression. Idempotent (réutilise le dossier s'il existe déjà par nom).
- * @param {string} nom
- * @return {Folder}
- */
-/**
  * Le dossier d'ID donné, ou `null` s'il n'existe plus OU s'il est À LA CORBEILLE.
  *
  * Un ID mémorisé en Script Property SURVIT au corbeillage : `getFolderById` rend le dossier sans
@@ -94,6 +87,13 @@ function racineVivanteOuCreee_(parent, nom) {
   return parent.createFolder(nom);
 }
 
+/**
+ * Renvoie (ou crée) le dossier d'un domaine AUTO-créé (ex. « 07 · Santé »), placé À CÔTÉ des domaines
+ * existants (même parent que le domaine par défaut). ID mémorisé en Script Property. Zéro clic, jamais
+ * de suppression. Idempotent (réutilise le dossier s'il existe déjà par nom, jamais un corbeillé).
+ * @param {string} nom
+ * @return {Folder}
+ */
 function dossierDomaineAuto_(nom) {
   var props = PropertiesService.getScriptProperties();
   var cle = 'DriveAI_DOM_' + nom;

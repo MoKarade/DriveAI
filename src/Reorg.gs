@@ -216,27 +216,72 @@ function partiesId_(idCol) {
  * @return {boolean}
  */
 function proposerSourceFusion_(cheminActuel, cheminPropose, validees) {
-  var nomSource = nomDepuisConstat_(cheminActuel);
-  if (!nomSource) return false;                                   // sans nom : jamais de proposition
-  return !estNoeudRecreablePrudent_(nomSource, validees);
+  return !estNoeudRecreableDepuisConstat_(cheminActuel, validees);
 }
 
 /**
  * Le NOM du dossier depuis la colonne « Chemin actuel » d'un constat. PURE (testée).
  *
- * Deux formats cohabitent : les lignes d'avant C28-93 portent le nom NU, celles d'après le chemin
- * complet produit par `cheminPourConstat_`. Découper à l'aveugle sur `/` serait faux, parce que
- * Drive AUTORISE la barre oblique dans un nom de dossier : un dossier nommé « Impôts/Archives » se
- * lirait « Archives », qui est un nœud de la table — la ligne serait retirée à tort, et
- * DÉFINITIVEMENT (relevé en revue C28-93). Un chemin produit par `cheminPourConstat_` commence
- * TOUJOURS par une racine de domaine : c'est ce qui distingue les deux formats.
+ * ⚠️ POUR L'AFFICHAGE SEULEMENT. La DÉCISION passe par `estNoeudRecreableDepuisConstat_`, qui essaie
+ * les DEUX lectures — voir pourquoi là-bas. Ce discriminant-ci (« un chemin commence par une racine
+ * de domaine ») est vrai des constats produits par `cheminPourConstat_`, faux des chemins d'un
+ * INVENTAIRE SCOPÉ (`inventaireDossiers_` empile le dossier de portée avec `chemin: null`, donc ses
+ * enfants sont `Robovic/Projets`) : s'en servir pour décider a rouvert la garde sur `Projets` et
+ * `Candidatures`, les noms mêmes de la plainte de Marc (régression attrapée en 4ᵉ revue).
  * @param {string} valeur
- * @return {string}
+ * @return {string} le libellé à MONTRER, jamais celui sur lequel trancher
  */
 function nomDepuisConstat_(valeur) {
   var brut = String(valeur == null ? '' : valeur).trim();
   if (!brut) return '';
   return /^\d{2} · /.test(brut) ? dernierSegment_(brut) : brut;
+}
+
+/**
+ * La TAXONOMIE sait-elle recréer le dossier que désigne cette colonne « Chemin actuel » ? PURE.
+ *
+ * La colonne porte trois formats : un nom NU (lignes d'avant C28-93), un chemin complet ancré sur la
+ * racine de domaine (`cheminPourConstat_`), et un chemin d'INVENTAIRE SCOPÉ ancré sur le dossier que
+ * Marc analysait (`Robovic/Projets`). Aucun discriminant ne les sépare de façon fiable — et se
+ * tromper coûte cher DANS LES DEUX SENS : découper toujours retire à tort un dossier réellement
+ * nommé « Impôts/Archives », ne jamais découper laisse passer `Robovic/Projets`.
+ *
+ * On essaie donc les DEUX lectures et on refuse si l'UNE d'elles est un nœud. Le prédicat qui
+ * déclenche l'action quasi-irréversible est STRICT et, dans le doute, REFUSE (§9) : un refus coûte
+ * un dossier vide qui subsiste, un faux positif coûte un dossier utile corbeillé. Conséquence
+ * assumée : un dossier réellement nommé « Impôts/Archives » n'est plus proposé.
+ * @param {string} valeur   la colonne « Chemin actuel »
+ * @param {Object|null} validees  référentiel des entités validées (`null` = illisible ⇒ abstention)
+ * @return {boolean}
+ */
+function estNoeudRecreableDepuisConstat_(valeur, validees) {
+  var brut = String(valeur == null ? '' : valeur).trim();
+  if (!brut) return true;                                          // sans nom : échec fermé
+  var dernier = dernierSegment_(brut);
+  // Un chemin ANCRÉ sur une racine de domaine ne se lit QUE par son dernier segment : la chaîne
+  // entière commence par `NN · `, que `estNoeudRecreable_` reconnaît comme un NOM de racine de
+  // domaine — la lire en bloc protégerait tout ce qui est sous un domaine, donc tout.
+  if (dernier !== brut && /^\d{2} · /.test(brut)) return estNoeudRecreablePrudent_(dernier, validees);
+  if (estNoeudRecreablePrudent_(brut, validees)) return true;
+  return estNoeudRecreablePrudent_(dernier, validees);
+}
+
+/**
+ * La marque que le FILTRE inscrit dans le détail : son tag de règles ET le statut qu'il a écrit.
+ * PURE (testée).
+ *
+ * Pourquoi le STATUT y figure (4ᵉ revue) : l'app n'écrit que la colonne F (le statut), jamais la G
+ * (le détail). Une marque qui ne portait que le tag prouvait donc seulement « le filtre a touché
+ * cette ligne un jour », pas « ce `vide-protégé`-ci vient du filtre » — et une ligne que MARC avait
+ * fait refuser par Drive (zone protégée) redevenait `vide-candidat` au bump suivant, réapparaissait
+ * dans sa liste, échouait encore, à chaque bump. En comparant le statut inscrit au statut RELU, toute
+ * écriture de l'app fait diverger les deux et rend son verdict définitif, comme promis.
+ * @param {string} detail
+ * @return {{tag: string, statut: string}|null}
+ */
+function marqueFiltreVides_(detail) {
+  var m = /\[filtre-vides ([^\]\s]+) → ([^\]]+)\]/.exec(String(detail == null ? '' : detail));
+  return m ? { tag: m[1], statut: m[2].trim() } : null;
 }
 
 /**
@@ -279,13 +324,14 @@ function videsCandidatsRecreables_(lignes, validees, tag) {
     if (String(l[1]) !== 'dossier-vide') continue;
     var statut = String(l[5]);
     var detail = String(l[6] == null ? '' : l[6]);
-    var duFiltre = detail.indexOf(MARQUE_FILTRE_VIDES) !== -1;
+    var marque = marqueFiltreVides_(detail);
+    var duFiltre = !!marque && marque.statut === statut; // l'app n'écrit que F : le statut fait foi
     if (statut === 'vide-protégé' && !duFiltre) continue;                 // verdict de l'APP : définitif
-    if (statut === 'vide-protégé' && detail.indexOf(MARQUE_FILTRE_VIDES + tag + ']') !== -1) continue;
+    if (statut === 'vide-protégé' && marque.tag === tag) continue;        // déjà jugé sous ces règles
     if (statut !== 'vide-candidat' && statut !== 'vide-protégé') continue; // disparu, repris, corbeillé
     var nom = nomDepuisConstat_(l[3]);
     if (!nom) continue;
-    var recreable = estNoeudRecreable_(nom, validees);
+    var recreable = estNoeudRecreableDepuisConstat_(l[3], validees);
     if (statut === 'vide-candidat' && !recreable) continue;                // rien à changer
     out.push({ rang: i + 1, nom: nom, statut: recreable ? 'vide-protégé' : 'vide-candidat' });
   }
@@ -338,13 +384,15 @@ function filtrerVidesCandidatsRecreables_(f, lignes, estBudgetDepasse) {
     var rang = cibles[i].rang;
     var avant = frais[rang - 1] || [];
     var statutLu = String(avant[0]);
-    var duFiltre = String(avant[1] == null ? '' : avant[1]).indexOf(MARQUE_FILTRE_VIDES) !== -1;
+    var marqueLue = marqueFiltreVides_(avant[1]);
+    var duFiltre = !!marqueLue && marqueLue.statut === statutLu;
     // L'app est-elle passée entre l'instantané et maintenant ? Seuls deux états sont à nous : une
     // proposition encore candidate, et un `vide-protégé` que le FILTRE avait posé.
     if (statutLu !== 'vide-candidat' && !(statutLu === 'vide-protégé' && duFiltre)) continue;
-    var detail = cibles[i].statut === 'vide-protégé'
-      ? 'la taxonomie recrée « ' + cibles[i].nom + ' » au premier document ' + MARQUE_FILTRE_VIDES + VIDES_FILTRE_TAG + ']'
-      : 'la taxonomie ne recrée plus « ' + cibles[i].nom + ' » ' + MARQUE_FILTRE_VIDES + VIDES_FILTRE_TAG + ']';
+    var raison = cibles[i].statut === 'vide-protégé'
+      ? 'la taxonomie recrée « ' + cibles[i].nom + ' » au premier document '
+      : 'la taxonomie ne recrée plus « ' + cibles[i].nom + ' » ';
+    var detail = raison + MARQUE_FILTRE_VIDES + VIDES_FILTRE_TAG + ' → ' + cibles[i].statut + ']';
     // Statut ET détail en UNE écriture (÷2 les allers-retours Sheet vs `solderAction_`).
     f.getRange(rang, 6, 1, 2).setValues([[cibles[i].statut, detail]]);
     faits++;
@@ -410,10 +458,14 @@ function estNoeudRecreable_(nom, validees) {
   if (propre.charAt(0) === '_') return true;      // racine système
   if (estSegmentStructurel_(propre)) return true; // année AAAA, schéma d'entité, type d'identité
   if (noeudsTableReset_()[propre]) return true;   // nœud de STRUCTURE_CIBLE_RESET, à toute profondeur
+  // Comparaison NORMALISÉE (casse, accents, apostrophes) : le décompte du 13/09 contenait QUATRE
+  // graphies d'« IUT Du Littoral ». Une comparaison stricte n'en protégeait qu'une — et la garde
+  // doit protéger LARGE, c'est le sens où se tromper coûte le moins (relevé en 4ᵉ revue).
+  var cible = normaliserCle_(propre);
   var v = validees || {};
   var cles = Object.keys(v);
   for (var i = 0; i < cles.length; i++) {
-    if (v[cles[i]] && String(v[cles[i]].nom).trim() === propre) return true; // dossier d'entité validée
+    if (v[cles[i]] && normaliserCle_(v[cles[i]].nom) === cible) return true; // dossier d'entité validée
   }
   return false;
 }
