@@ -149,7 +149,7 @@ function ligneMission(m: MissionHub): LigneDetail {
  * ⚠️ AUCUN NOM DE FICHIER NE SORT D'ICI. Le nom du dernier document classé vit dans `details`
  * et nulle part ailleurs : le hub ne persiste que `metrics` (table `releves`, 90 jours), donc un
  * nom placé en métrique serait recopié dans la base du hub à chaque relevé. Dans `details` il
- * transite, s'affiche, et disparaît. C'est la contrainte que l'ADR-0056 a posée en échange du
+ * transite, s'affiche, et disparaît. C'est la contrainte que l'ADR-0057 a posée en échange du
  * droit de publier le nom, et `app/test/hub-summary.test.ts` la verrouille.
  */
 function sectionsDetail(etat: EngineState, maintenantMs: number): SectionDetail[] {

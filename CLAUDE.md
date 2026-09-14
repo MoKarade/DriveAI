@@ -261,7 +261,7 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
   (compteurs, horodatage, avancement des campagnes, ADR-0007) — jamais un CONTENU de document.
   ⚠️ Cette puce écrivait « jamais un nom de fichier » jusqu'au 14/09/2026 : c'était une glose plus
   stricte que l'ADR-0007, dont le §2 liste `Fichier` parmi les métadonnées légitimes. Depuis
-  l'**ADR-0056**, le nom du dernier document classé est publié — et sous une contrainte précise :
+  l'**ADR-0057**, le nom du dernier document classé est publié — et sous une contrainte précise :
   il voyage dans le bloc `details` du contrat, **JAMAIS dans `metrics`**, parce que Hubperso
   persiste les métriques (table `releves`, 90 jours) et pas les détails. Un test le verrouille.
   Trois retours, trois
@@ -338,7 +338,7 @@ ce qui reste vrai d'une session à l'autre.
   log doit respecter cet invariant (à verrouiller par un test, roadmap #1).
   **Ce qui SORT du compte Google de Marc se juge à part, et se tranche par un ADR** : le texte des
   documents vers claude.ai (ADR-0042 §3), le nom du dernier document classé vers hubperso.com
-  (ADR-0056 §3). Chaque sortie nomme la frontière franchie ET le garde-fou obtenu en échange —
+  (ADR-0057 §3). Chaque sortie nomme la frontière franchie ET le garde-fou obtenu en échange —
   jamais une permission nue.
 - **Garde-fou étroit, calibré sur du réel.** Un flag de protection (ex. `sensible`) doit viser
   des catégories précises (immigration + fiscal), pas « true par défaut » — sinon tout part en

@@ -691,7 +691,7 @@ function actionHubSummary_() {
   return { ok: true, etat: etat };
 }
 
-/* ---------- Avancement des missions publié au hub (C28-110, ADR-0056) ---------- */
+/* ---------- Avancement des missions publié au hub (HUB-MISSIONS, ADR-0057) ---------- */
 
 /**
  * Nombre d'opérations de fond publiées au hub, au plus.
@@ -920,12 +920,12 @@ function majResumeHub_() {
     llmBudgetCampagnesUsd: llmBudgetCampagnesUsd,
     gmailThreadsToday: gmailThreadsToday,
     gmailQuotaSuspended: gmailQuotaSuspended,
-    // AVANCEMENT DES CAMPAGNES + DERNIER DOCUMENT CLASSÉ (C28-110, ADR-0056). Champs ADDITIFS :
+    // AVANCEMENT DES CAMPAGNES + DERNIER DOCUMENT CLASSÉ (HUB-MISSIONS, ADR-0057). Champs ADDITIFS :
     // un broker pas encore redéployé les ignore, il ne tombe pas.
     //
     // ⚠️ Le NOM DE FICHIER est une révision assumée de la doctrine, pas un oubli : l'ADR-0007 §2
     // liste `Fichier` parmi les métadonnées légitimes de l'Index, mais jusqu'ici aucun nom ne
-    // SORTAIT du compte Google de Marc. L'ADR-0056 tranche la question et fixe le garde-fou qui
+    // SORTAIT du compte Google de Marc. L'ADR-0057 tranche la question et fixe le garde-fou qui
     // compte : le nom voyage dans `details`, JAMAIS dans `metrics` — le hub ne persiste que les
     // métriques (table `releves`), donc aucun nom de document de Marc n'atterrit dans sa base.
     missions: missions.liste,

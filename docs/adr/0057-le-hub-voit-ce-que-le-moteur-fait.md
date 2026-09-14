@@ -1,4 +1,4 @@
-# ADR-0056 — Le hub voit ce que le moteur FAIT, et un nom de fichier quitte le compte de Marc
+# ADR-0057 — Le hub voit ce que le moteur FAIT, et un nom de fichier quitte le compte de Marc
 
 - **Statut** : accepté — arbitrage explicite de Marc, 14/09/2026 : « Oui, avec un ADR qui l'assume »
 - **Portée** : `api/hub/*` (broker Vercel) et `majResumeHub_` (moteur). Aucun autre chemin.

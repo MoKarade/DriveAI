@@ -12,7 +12,7 @@
  * plus stricte que l'ADR-0007 elle-même — son §2 liste `Fichier` parmi les métadonnées légitimes
  * de l'Index, et le Journal stocke des noms de fichiers depuis toujours. Ce qui était vrai, et
  * qui n'était écrit nulle part, c'est qu'aucun nom ne SORTAIT du compte Google de Marc.
- * L'ADR-0056 tranche : un nom peut sortir, et il sort sous une contrainte précise — il voyage
+ * L'ADR-0057 tranche : un nom peut sortir, et il sort sous une contrainte précise — il voyage
  * dans le bloc `details` du contrat, JAMAIS dans `metrics`, parce que le hub ne persiste que les
  * métriques (table `releves`, 90 jours de rétention). Voir `api/hub/summary.ts`, qui applique la
  * contrainte, et `app/test/hub-summary.test.ts`, qui la verrouille.
@@ -53,14 +53,14 @@ export interface EngineState {
   /** Quota Gmail en pause (bloc usage) — optionnel. */
   gmailQuotaSuspended?: boolean;
   /**
-   * Avancement des campagnes de fond (ADR-0056) — optionnel, borné à `MISSIONS_MAX`.
+   * Avancement des campagnes de fond (ADR-0057) — optionnel, borné à `MISSIONS_MAX`.
    * Publié tel que l'onglet Progression l'a rendu : le moteur est le seul à savoir ne PAS annoncer
    * d'horizon sur une campagne en pause.
    */
   missions?: MissionHub[];
   /** Campagnes NON publiées faute de place. Dire le nombre plutôt que tronquer en silence. */
   missionsOmises?: number;
-  /** Nom du dernier document classé (ADR-0056) — optionnel. Voir l'en-tête. */
+  /** Nom du dernier document classé (ADR-0057) — optionnel. Voir l'en-tête. */
   lastFiledName?: string;
   /** Domaine de classement de ce document — optionnel. */
   lastFiledDomain?: string;
@@ -289,7 +289,7 @@ async function lireMoteur_(): Promise<EngineState | null> {
   const gmailThreadsToday = nombrePositif(etat.gmailThreadsToday);
   const gmailQuotaSuspended = etat.gmailQuotaSuspended === true ? true : undefined;
 
-  // Avancement des campagnes + dernier document classé (ADR-0056), additifs et tolérants.
+  // Avancement des campagnes + dernier document classé (ADR-0057), additifs et tolérants.
   const missions = missionsValides(etat.missions);
   const missionsOmises = compteurOuNull(etat.missionsOmises);
   // Le NOM et sa DATE ne se publient qu'ENSEMBLE. Un nom sans date se lirait comme « à l'instant »

@@ -381,7 +381,7 @@ test('majResumeHub_ puis actionHubSummary_ : la lecture rend EXACTEMENT ce que l
       reviewQueueCount: 0, filedLast7d: 0, errorsLast7d: 0, lastRunAt: new Date(tick).toISOString(),
       llmCostTotalUsd: null, llmCostMonthUsd: null, llmBudgetCampagnesUsd: null,
       gmailThreadsToday: null, gmailQuotaSuspended: false,
-      // ADR-0056 : avancement des campagnes + dernier document classé. Vides ici (aucune ligne
+      // ADR-0057 : avancement des campagnes + dernier document classé. Vides ici (aucune ligne
       // de Progression, Index sans en-tête de données) — et VIDES, pas absents : le broker
       // distingue « le moteur ne publie pas encore » de « il publie une liste vide ».
       missions: [], missionsOmises: 0,
@@ -443,7 +443,7 @@ test('majResumeHub_ : sans résumé antérieur, le calcul COMPLET a bien lieu (p
   assert.strictEqual(typeof ecrit.filedLast7d, 'number');
 });
 
-/* ---------- ADR-0056 : l'avancement des campagnes et le dernier document classé ---------- */
+/* ---------- ADR-0057 : l'avancement des campagnes et le dernier document classé ---------- */
 
 test('missionsPourHub_ : ne retient que les CAMPAGNES, actives avant terminées, plafond respecté', () => {
   const c = load(['Config.gs', 'WebApp.gs']);

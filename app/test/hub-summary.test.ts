@@ -406,9 +406,9 @@ describe('_engineState — cache broker (quota Apps Script)', () => {
   });
 });
 
-/* ---------- ADR-0056 : fraîcheur attendue, avancement, et le nom de fichier ---------- */
+/* ---------- ADR-0057 : fraîcheur attendue, avancement, et le nom de fichier ---------- */
 
-/** État sain enrichi des champs ADR-0056. */
+/** État sain enrichi des champs ADR-0057. */
 const ETAT_AVEC_MISSIONS = {
   ok: true,
   etat: {
@@ -513,7 +513,7 @@ describe('/api/hub/summary — avancement des campagnes (bloc details)', () => {
     expect(summary.details?.[0]?.title).toBe('Campagnes de rangement');
   });
 
-  it('moteur pas encore redéployé (aucun champ ADR-0056) → AUCUN bloc details, jamais une coquille', async () => {
+  it('moteur pas encore redéployé (aucun champ ADR-0057) → AUCUN bloc details, jamais une coquille', async () => {
     const summary = await summaryAvec(ETAT_SAIN);
     expect(summary.details).toBeUndefined();
   });
@@ -587,7 +587,7 @@ describe('REGISTRE_OPERATIONS : aucun libellé de campagne ne se confond après 
   });
 });
 
-describe('/api/hub/summary — le nom du dernier document classé (ADR-0056)', () => {
+describe('/api/hub/summary — le nom du dernier document classé (ADR-0057)', () => {
   it('nom + domaine + âge RELATIF, dans details et nulle part ailleurs', async () => {
     const summary = await summaryAvec(ETAT_AVEC_MISSIONS);
     const section = summary.details?.find((s) => s.title === 'Dernier document classé');
@@ -605,11 +605,11 @@ describe('/api/hub/summary — le nom du dernier document classé (ADR-0056)', (
     ]);
   });
 
-  it('🔴 LE GARDE-FOU DE L\'ADR-0056 : aucun nom de fichier dans metrics ni dans alerts', async () => {
+  it('🔴 LE GARDE-FOU DE L\'ADR-0057 : aucun nom de fichier dans metrics ni dans alerts', async () => {
     // Le hub ne PERSISTE que `metrics` (table `releves`, 90 jours de rétention côté Neon). Un nom
     // placé en métrique serait donc recopié dans la base du hub à chaque relevé — c'est-à-dire
     // qu'il sortirait du compte Google de Marc ET s'y installerait. Dans `details` il transite,
-    // s'affiche, et disparaît. C'est la contrainte exacte en échange de laquelle l'ADR-0056
+    // s'affiche, et disparaît. C'est la contrainte exacte en échange de laquelle l'ADR-0057
     // autorise la publication du nom.
     const summary = await summaryAvec(ETAT_AVEC_MISSIONS);
     const nom = ETAT_AVEC_MISSIONS.etat.lastFiledName;

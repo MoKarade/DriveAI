@@ -398,7 +398,7 @@ test('accélération : majResumeHub_ est throttlé (il relisait l\'Index ENTIER 
   // « déjà fait » sur un calcul qui a échoué).
   //
   // ⚠️ La sonde ne cherche plus `JSON.stringify(etat)` mais le `setProperty` lui-même : la
-  // sérialisation est passée dans une variable quand le garde de taille est arrivé (ADR-0056),
+  // sérialisation est passée dans une variable quand le garde de taille est arrivé (ADR-0057),
   // et la sonde littérale a alors échoué sur un code toujours CORRECT. Un test de structure
   // mérite d'être aussi peu couplé que possible à la façon d'écrire — sinon il crie à chaque
   // refactorisation et on prend l'habitude de le « réparer » sans lire ce qu'il affirme.
