@@ -1071,6 +1071,16 @@ function schemaNommage_(typeDoc) {
   var regles = [
     { motifs: ['releve de note', 'bulletin de note'], gran: 'annee' },                          // études (avant « releve »)
     { motifs: ['bulletin de paie', 'fiche de paie', 'bulletin de salaire'], re: /(^| )(paie|salaire)( |$)/, gran: 'mois', label: 'Paie' },
+    // ⚠️ LE NUMÉRO DU FEUILLET SE CONSERVE, et ces deux règles passent AVANT « releve » (🟠 revue
+    // structure ADR-0058). Mesuré : sans elles, « Relevé 1 » devenait `2026-09_Relevé_X.pdf` — le
+    // « 1 » disparaissait, `estFeuilletFiscalReset_` (ANCRÉ sur le nombre) ne le reconnaissait plus,
+    // et la table de `02` le lisait comme un relevé : `Revenus & paie/<employeur>` si l'employeur
+    // est connu, sinon **`Relevés/AAAA` — parmi les relevés BANCAIRES**, ce que le code lui-même
+    // déclare interdit (« le RL-1 est un document d'IMPÔT, pas un relevé bancaire »).
+    // Un feuillet est ANNUEL, jamais mensuel. Correctif étroit : deux lignes ici alignent d'un coup
+    // le flux, la consolidation et les missions — tous lisent le même nom.
+    { motifs: ['releve 1', 'rl 1', 'rl-1'], gran: 'annee', label: 'Relevé 1' },
+    { motifs: ['releve 31', 'rl 31', 'rl-31'], gran: 'annee', label: 'Relevé 31' },
     { motifs: ['releve bancaire', 'releve de compte', 'releve'], gran: 'mois', label: 'Relevé' },
     { motifs: ['diplome', 'attestation de reussite'], gran: 'annee' },
     { motifs: ['avis d imposition', 'avis de cotisation', 'impot', 'declaration de revenus', 'feuillet'], gran: 'annee' },

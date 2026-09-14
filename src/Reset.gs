@@ -418,11 +418,37 @@ function estRl31Reset_(t) {
  * @param {string=} typeBrut  `type_doc` rendu par le LLM, avant renommage
  */
 function estRevenuEmployeurReset_(nom, typeBrut) {
+  var b = normaliserCle_(typeBrut || '');
+  // ⚠️ DISQUALIFIANTS LUS SUR LE TYPE BRUT, et ils passent EN PREMIER (🟠 revue structure ADR-0058).
+  // « Attestation de salaire », « Assurance salaire », « Preuve de salaire » sont des documents de
+  // CARRIÈRE — la frontière que Marc a posée en disant « attestation d'emploi reste dans 05 ». Or
+  // `schemaNommage_` les renomme TOUS en « Paie » : mesuré, `Attestation de salaire` devient
+  // `2026-09_Paie_Robovic.pdf`. Le mot qui disqualifie a donc DÉJÀ disparu quand on lit le nom —
+  // et il a disparu pour les AUTRES consommateurs du prédicat partagé aussi, qui ne lisent que des
+  // noms. Le type brut du LLM est le SEUL endroit où l'information existe encore : c'est là que la
+  // distinction se fait, pas ailleurs (§9, « un verdict pris sur la donnée RICHE ne se re-dérive
+  // jamais depuis sa forme APPAUVRIE »).
+  if (b && estDisqualifieCommeRevenuReset_(b)) return false;
   var t = normaliserCle_(analyserNomClasse_(nom).type || '');
   if (estTypePaieReset_(t)) return true;
   if (estFeuilletFiscalReset_(t) && !estRl31Reset_(t)) return true;
-  var b = normaliserCle_(typeBrut || '');
   return !!b && estFeuilletFiscalReset_(b) && !estRl31Reset_(b);
+}
+
+/**
+ * Ce type BRUT contient-il un mot qui le disqualifie comme revenu, malgré « salaire » ? PURE.
+ *
+ * Une ATTESTATION de salaire prouve qu'on est payé ; elle ne dit pas ce qu'on a été payé ce
+ * mois-ci. Elle sert à une banque, à la CNESST, à un assureur — c'est un document de carrière, du
+ * même genre que l'attestation d'emploi que Marc garde explicitement en `05`. Même chose pour
+ * l'assurance salaire (invalidité), qui relève des assurances.
+ * ⚠️ N'agit QUE sur le type brut : ces mots ne survivent pas au renommage, donc le nom final ne
+ * peut pas les voir. Si le type brut manque, on retombe sur le comportement d'avant — assumé.
+ */
+function estDisqualifieCommeRevenuReset_(b) {
+  var mots = ['attestation', 'assurance', 'preuve', 'certificat', 'demande', 'reclamation'];
+  for (var i = 0; i < mots.length; i++) if (resetMotEntier_(b, mots[i])) return true;
+  return false;
 }
 
 /** Feuillet fiscal québécois RL-1/RL-31 — ANCRÉ sur le nombre (jamais « Relevé 10 »). PURE. */

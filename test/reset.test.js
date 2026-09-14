@@ -642,11 +642,12 @@ test('ADR-0058 : estRevenuEmployeurReset_ reconnaît les paies et le RL-1, et RI
   //     « Relevé » — le « 1 », sur lequel le prédicat de feuillet est ANCRÉ, a déjà disparu du nom
   //     final. Mesuré, pas supposé. C'est la seule raison pour laquelle le second argument existe.
   assert.strictEqual(f(n('Relevé 1')), true, 'RL-1 quand le nom conserve le numéro');
-  // ⚠️ LIMITE CONNUE, PRÉ-EXISTANTE, non élargie ici : le prédicat PARTAGÉ est ancré sur « relevé 1 »
-  //     et ne connaît pas la graphie « RL-1 ». L'élargir depuis ce lot créerait une divergence avec
-  //     ses autres consommateurs (§9, « deux canonicaliseurs qui divergent »). Signalé au backlog,
-  //     et figé ici pour que le jour où on l'élargit, ce soit une DÉCISION.
-  assert.strictEqual(f(n('Feuillet RL-1')), false, 'graphie « RL-1 » : limite connue du prédicat partagé');
+  // ⚠️ LA GRAPHIE « RL-1 » EST COUVERTE, et sans divergence — correction d'un raisonnement que la
+  //     revue a retourné. Je voulais laisser le cas de côté au motif qu'élargir le prédicat partagé
+  //     créerait une divergence : c'est l'INVERSE. Le correctif ne touche pas le prédicat du tout,
+  //     il CANONICALISE au renommage (`RL-1` → `Relevé 1`), donc tous les consommateurs voient le
+  //     même texte — une seule règle, N consommateurs.
+  assert.strictEqual(f('2026_Relevé 1_Robovic.pdf', 'RL-1'), true, 'graphie « RL-1 » couverte');
   assert.strictEqual(f('2026_Relevé_Robovic.pdf', 'Relevé 1'), true, 'RL-1 via le type BRUT');
   assert.strictEqual(f('2026_Relevé_Robovic.pdf', ''), false,
     'sans le type brut, un « Relevé » nu n\'est PAS un feuillet — il pourrait être bancaire');
@@ -657,6 +658,21 @@ test('ADR-0058 : estRevenuEmployeurReset_ reconnaît les paies et le RL-1, et RI
     'Avis de paiement', 'Confirmation de paiement']) {
     assert.strictEqual(f(n(t)), false, t);
   }
+  // (c bis) ⚠️ LA FRONTIÈRE QUE MARC A POSÉE, trouvée par la revue structure. « Attestation de
+  //     salaire », « Assurance salaire », « Preuve de salaire » sont des documents de CARRIÈRE — du
+  //     même genre que l'attestation d'emploi qu'il garde en `05`. Or `schemaNommage_` les renomme
+  //     TOUS en « Paie » : le mot qui disqualifie a disparu du nom, et il a disparu pour les AUTRES
+  //     consommateurs du prédicat partagé aussi. Le type BRUT est le seul endroit où il existe
+  //     encore. Sans ce test, un document que Marc veut en `05` partait en Finances, renommé
+  //     « Paie », indistinguable d'un vrai bulletin.
+  for (const t of ['Attestation de salaire', 'Assurance salaire', 'Preuve de salaire',
+    'Demande d\'assurance salaire', 'Certificat de salaire', 'Réclamation assurance salaire']) {
+    assert.strictEqual(f('2026-09_Paie_Robovic.pdf', t), false, t + ' doit rester hors des revenus');
+  }
+  // …et la disqualification ne mord QUE sur le type brut : un vrai bulletin reste un vrai bulletin.
+  assert.strictEqual(f('2026-09_Paie_Robovic.pdf', 'Bulletin de salaire'), true);
+  assert.strictEqual(f('2026-09_Paie_Robovic.pdf', ''), true, 'sans type brut : comportement d\'avant');
+
   // (d) Ce que Marc laisse en `05`, explicitement.
   for (const t of ['Attestation d\'emploi', 'Lettre d\'embauche', 'Contrat de travail',
     'CV', 'Lettre de motivation', 'Document professionnel']) {
@@ -689,11 +705,17 @@ test('ADR-0058 : le FLUX envoie la paie en Finances même quand le LLM répond �
   assert.ok(paie.sousDossier.indexOf('Revenus & paie') === 0, paie.sousDossier);
   const rl1 = plan('Relevé 1');
   assert.strictEqual(rl1.domaine, r.CONFIG.DOMAINE_REVENUS, 'le RL-1 aussi : ' + rl1.domaine);
-  // ⚠️ POINT D'ATTENTION ASSUMÉ, pas un oubli : le nom ayant perdu le « 1 », `02` le range dans
-  // `Revenus & paie/<employeur>` et non dans `Impôts & déclarations`. C'est bien « dans finances »
-  // — la demande de Marc — mais pas le sous-dossier fiscal. Le corriger demanderait de faire
-  // survivre le numéro au renommage, ce qui touche TOUT le nommage : hors périmètre, signalé.
-  assert.ok(rl1.sousDossier.indexOf('Revenus & paie') === 0, rl1.sousDossier);
+  // ⚠️ CORRIGÉ SUITE À LA REVUE STRUCTURE : le numéro du feuillet est désormais CONSERVÉ au
+  // renommage (deux règles dans `schemaNommage_`, avant la règle « relevé » générique), donc le
+  // RL-1 atterrit dans le bon sous-dossier FISCAL. Avant ce correctif il tombait dans
+  // `Revenus & paie/<employeur>` — ou, employeur hors table, dans `Relevés/AAAA`, c'est-à-dire
+  // PARMI LES RELEVÉS BANCAIRES, ce que le code lui-même déclare interdit.
+  assert.ok(rl1.sousDossier.indexOf('Impôts & déclarations') === 0, rl1.sousDossier);
+  // …et l'employeur HORS TABLE atterrit au même endroit : la cible ne dépend plus de l'employeur.
+  const rl1Inconnu = r.planRoutageV2_(
+    { domaine: '05 · Carrière', type_doc: 'Relevé 1', emetteur: 'Entreprise Inconnue SARL' },
+    { nomFichier: 'x.pdf' }, '2026-09-01', '.pdf', {});
+  assert.ok(rl1Inconnu.sousDossier.indexOf('Impôts & déclarations') === 0, rl1Inconnu.sousDossier);
   // …et ce que Marc garde en `05` y RESTE : la règle n'élargit rien.
   const attest = plan('Attestation d\'emploi');
   assert.strictEqual(attest.domaine, '05 · Carrière', attest.domaine);

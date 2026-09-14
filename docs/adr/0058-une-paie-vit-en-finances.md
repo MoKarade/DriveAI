@@ -112,12 +112,22 @@ toujours quelque part »).
    le « mot entier » (« paiement » redevient une paie) ⇒ 5 tests tombent ; retirer la lecture du
    type brut ⇒ tombe.
 
-## Le rattrapage du stock
+## Le rattrapage du stock — **et ce que j'avais écrit à tort**
 
-Un seul fichier. Il sera repris **par la mission `paies` existante**, dont c'est exactement le
-travail — sans bump de tag : ce fichier n'a jamais porté sa clé de succès, il n'est donc pas figé.
-Si la mission ne le reprend pas (elle est marquée « terminée »), le déplacement se fera par une
-proposition dans la file de réorg, validée par Marc — jamais d'office.
+J'ai écrit « il sera repris par la mission `paies` existante, sans bump de tag : ce fichier n'a jamais
+porté sa clé de succès ». **Le raisonnement portait sur la clé du FICHIER ; le verrou est au niveau
+de la MISSION.** `executerMission_` court-circuite toute mission NON perpétuelle dont
+`DriveAI_MISSION_FINI_<tag>` vaut la version courante — et c'est `carriere`, pas `paies`, qui sort
+les paies de `05`. Or la prémisse même de cet ADR (« toutes les paies anciennes sont au bon endroit,
+une mission les y a rapatriées ») implique que `carriere` **a convergé**.
+
+La consolidation ne peut rien non plus : elle est intra-domaine et jugera `05/Employeurs/Robovic`
+« déjà au bon endroit » à perpétuité.
+
+**Donc : ce fichier ne partira PAS tout seul.** Trois options, à trancher avec Marc plutôt qu'à
+décider ici — un bump de `MISSIONS_REGLES_VERSION` invaliderait les clés de succès des huit missions
+(la leçon C28-105), ce qui est cher pour un fichier. Le plus simple reste qu'il le déplace lui-même,
+ou qu'on passe par une proposition dans la file de réorg, validée au clic.
 
 ## Ce qu'on assume
 
@@ -144,21 +154,50 @@ et **seulement pour le feuillet** : les paies traversent le renommage intactes e
 le nom, là où la convergence avec `cheminCibleReset_` est structurelle. Élargir le chemin « type
 brut » aux paies relâcherait un verdict qui DÉPLACE sans rien gagner.
 
-### 2. Un RL-1 atterrit dans `Revenus & paie/<employeur>`, pas dans `Impôts & déclarations`
+### 2. ~~Un RL-1 atterrit dans `Revenus & paie`~~ → **CORRIGÉ par la revue structure**
 
-Conséquence directe du point 1 : le nom ayant perdu son numéro, la table de `02` le lit comme un
-`Relevé_<employeur>`, c'est-à-dire — par ADR-0044 D9 — une paie mensuelle. Il est donc **bien « dans
-finances »**, ce que Marc a demandé, mais **pas dans le sous-dossier fiscal**.
+J'avais écrit que c'était hors périmètre, « le corriger touche TOUT le nommage du projet ». **C'était
+faux**, et la revue l'a démontré : le correctif tient en **deux lignes** dans `schemaNommage_`, placées
+avant la règle « relevé » générique, qui conservent le numéro (`Relevé 1` / `Relevé 31`, granularité
+ANNUELLE — un feuillet n'est jamais mensuel).
 
-Le corriger demanderait de faire survivre le numéro au renommage, ce qui touche TOUT le nommage du
-projet. **Hors périmètre, signalé plutôt que fait** (§6 : un travail « pendant qu'on y est » est un
-travail non demandé). Figé par un test, pour que ce soit visible et non découvert par hasard.
+La revue a aussi trouvé un cas que je n'avais pas vu, et qui était pire que celui que je décrivais :
+**employeur hors table**, le RL-1 ne tombait pas dans `Revenus & paie` mais dans **`02 · Finances/Relevés/AAAA`
+— parmi les relevés BANCAIRES**, ce que le code lui-même déclare interdit (« le RL-1 est un document
+d'IMPÔT, pas un relevé bancaire »). Et employeur connu, il **polluait `RapportPaies`** : le rapport
+compte tout fichier dont le nom commence par `AAAA-MM` comme un mois de paie présent, donc un RL-1
+nommé `2026-09_Relevé_Robovic.pdf` **masquait une paie de septembre réellement manquante**.
 
-### 3. Limite connue, non élargie : la graphie « RL-1 »
+Cause racine en une ligne : le forçage SAIT (par `typeBrut`) que c'est un feuillet fiscal, puis JETTE
+cette information et laisse la table la re-dériver d'un nom appauvri. C'est §9 mot pour mot.
+Désormais : **`Impôts & déclarations/AAAA`, employeur connu ou non.**
 
-Le prédicat partagé reconnaît « relevé 1 », pas « RL-1 ». L'élargir depuis ce lot créerait une
-divergence avec ses autres consommateurs (la mission paies, la consolidation). Figé par un test en
-l'état, pour que l'élargissement soit un jour une DÉCISION et pas un effet de bord.
+### 3. ~~Limite connue : la graphie « RL-1 »~~ → **COUVERTE, et mon raisonnement était à l'envers**
+
+J'avais refusé de la couvrir au motif qu'« élargir le prédicat partagé créerait une divergence avec
+ses autres consommateurs ». C'est l'**inverse** : un prédicat PARTAGÉ élargi s'étend à tous ses
+consommateurs ENSEMBLE — c'est « une seule règle, N consommateurs ». La divergence serait née de
+l'autre côté (ajouter le motif dans le seul `estRevenuEmployeurReset_`).
+
+Le correctif retenu ne touche même pas le prédicat : il **canonicalise au renommage** (`RL-1` →
+`Relevé 1`), donc tous les consommateurs lisent le même texte.
+
+### 4. La frontière que Marc a posée passait au mauvais endroit
+
+`estTypePaieReset_` matche `salaire` en mot entier — et `schemaNommage_` renomme **« Attestation de
+salaire » en « Paie »**. Mesuré : `Attestation de salaire`, `Assurance salaire`, `Preuve de salaire`
+partaient tous en `02 · Finances/Revenus & paie`, renommés « Paie », **indistinguables d'un vrai
+bulletin**. Or Marc a dit « **attestation d'emploi reste dans 05** » : son cousin le plus proche
+partait ailleurs.
+
+Ce qui avait changé : ce prédicat n'était consommé que par la mission `carriere`, **dans un contexte
+où l'employeur est déjà garanti**. Le promouvoir en règle globale sur un verdict qui DÉPLACE, c'est
+le patron « prédicat calibré pour un contexte étroit, promu en règle générale ».
+
+⇒ `estDisqualifieCommeRevenuReset_` — `attestation`, `assurance`, `preuve`, `certificat`, `demande`,
+`réclamation` — appliqué **au type BRUT**, parce que le mot qui disqualifie ne survit pas au
+renommage. Il a disparu du nom pour les AUTRES consommateurs aussi : le type brut est le seul endroit
+où l'information existe encore, donc c'est là que la distinction se fait, et nulle part ailleurs.
 
 ## Ce que les tests ont coûté (et ce que ça dit)
 
@@ -173,3 +212,27 @@ résout à la même profondeur que l'ancienne paie : le sujet est intact.
 
 **4 mutations jouées, 4 attrapées** : forçage retiré · soustraction du RL-31 retirée · « mot entier »
 perdu (« paiement » redevient une paie) · lecture du type brut retirée.
+
+
+### 5. Limite assumée : une paie déposée comme pièce justificative d'immigration
+
+Le modèle de ce forçage — `dossierIdentite_` — dérive un domaine du type **y compris `04 · Immigration`**.
+Le forçage revenu, lui, vise `02` inconditionnellement. Une paie ou un RL-1 déposé comme pièce
+justificative pour IRCC/MIFI (usage courant) que le LLM classait en `04` part donc maintenant en `02`.
+
+**Ce n'est pas une violation du §1** : le flux ne traite que des ARRIVÉES, aucun fichier déjà sous
+`04` n'est collecté ni détaché, et le forçage ne peut pas produire une cible `04`. C'est une limite,
+elle est ici pour être lue.
+
+### 6. Un test dont je certifiais à tort qu'il prouvait son sujet
+
+`test/audit-logique.test.js` prétend prouver « un employeur réel garde son dossier **si validé au
+référentiel** ». Avec le figurant remplacé, `cheminCibleReset_` résout et `planRoutageV2_` retourne
+**avant** de lire `validees` : remplacer `{ [cle]: 'Robovic' }` par `{}` laisse le test vert.
+**C'était déjà vrai avec l'ancien figurant** — le changement n'a rien cassé. Mais le commentaire que
+j'avais ajouté (« le sujet est intact ») certifiait une propriété que l'assertion ne tient pas. Le
+commentaire est corrigé ; la tautologie, pré-existante, est notée au backlog.
+
+**8 mutations jouées au total sur ADR-0058, 8 attrapées** — dont les quatre de la revue : disqualifiant
+retiré · disqualifiant lu sur le nom au lieu du type brut · numéro du feuillet non conservé · règles
+de feuillet placées après la règle « relevé » générique.

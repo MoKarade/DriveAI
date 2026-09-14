@@ -156,6 +156,10 @@ const CONTRAT = [
   'statutHistoGmail_', // Journal.gs, appelée par Main.gs — UNE règle de statut, deux surfaces
   // Re-datation de `06` (C28-92, ADR-0056) — trois contrats INTER-MODULES que la 1ʳᵉ rédaction
   // avait oubliés alors que leurs jumeaux ci-dessus y étaient (🟠 revues code et sécurité) :
+  // ADR-0058 — le domaine d'une paie / d'un RL-1 est dérivé du TYPE. Contrat INTER-MODULE :
+  // défini dans Reset.gs, appelé depuis Router.gs, comme ses voisins `estTypePaieReset_` /
+  // `estFeuilletFiscalReset_` déjà déclarés plus haut (🟡 revue structure : ils manquaient).
+  'estRevenuEmployeurReset_', 'estRl31Reset_', 'estDisqualifieCommeRevenuReset_',
   'texteSanteReanalyse_', // Main.gs, appelée par Journal.gs (ligne de Santé)
   'statutReanalyse_', // Main.gs — les SIX causes d'arrêt, une seule règle
   'budgetJourReanalyse_', // Migration.gs, appelée par Main.gs (minutes du jour de la ligne de Santé)
