@@ -199,8 +199,11 @@ describe('/api/hub/summary — métriques réelles (C28-27, canal sain)', () => 
       const summary = validateSummary(JSON.parse(res.corps()));
       expect(summary.status).toBe('ok');
       expect(summary.dataAsOf).toBe(ETAT_SAIN.etat.lastRunAt);
+      // `primary` (contrat v1.3) désigne LE chiffre de la carte : le volume classé. La file de
+      // revue et les erreurs valent 0 en régime normal — mettre en avant un zéro sain ne dirait
+      // rien de ce que l'app fait.
       expect(summary.metrics).toEqual([
-        { label: 'Classés (7 jours)', value: 14, format: 'number' },
+        { label: 'Classés (7 jours)', value: 14, format: 'number', primary: true },
         { label: 'File de revue', value: 2, format: 'number' },
         { label: 'Erreurs (7 jours)', value: 1, format: 'number' },
       ]);
@@ -400,5 +403,246 @@ describe('_engineState — cache broker (quota Apps Script)', () => {
       expect(etat?.filedLast7d).toBe(14);
       expect(sain).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+/* ---------- ADR-0056 : fraîcheur attendue, avancement, et le nom de fichier ---------- */
+
+/** État sain enrichi des champs ADR-0056. */
+const ETAT_AVEC_MISSIONS = {
+  ok: true,
+  etat: {
+    ...ETAT_SAIN.etat,
+    missions: [
+      {
+        nom: 'Mission — paies par employeur (02)', traites: 12, base: 48, unite: 'fichiers',
+        statut: 'en cours', finEstimee: 'reste 36 fichiers · ~2 h', fini: false,
+      },
+      {
+        nom: 'Consolidation — génération du plan', traites: null, base: null, unite: 'domaines',
+        statut: 'recensement', finEstimee: '', fini: false,
+      },
+      {
+        nom: 'Rangement initial du Drive', traites: 900, base: 900, unite: 'fichiers',
+        statut: 'terminé', finEstimee: '', fini: true,
+      },
+    ],
+    missionsOmises: 2,
+    lastFiledName: '2026-09-14_Facture_Hydro-Quebec_Aout.pdf',
+    lastFiledDomain: '02 · Finances',
+    lastFiledAt: new Date(Date.now() - 22 * 60 * 1000).toISOString(),
+  },
+};
+
+type Summary = ReturnType<typeof validateSummary>;
+
+async function summaryAvec(corps: unknown): Promise<Summary> {
+  const recu: Summary[] = [];
+  await avecEnv({ HUB_TOKEN: JETON, WEBAPP_URL: 'https://script.example/exec', WEBAPP_SECRET: 's' }, async () => {
+    vi.stubGlobal('fetch', fauxFetch(200, corps));
+    const res = fauxRes();
+    await handlerHub(fauxReq({ [HUB_TOKEN_HEADER]: JETON }), res);
+    expect(res.statusCode).toBe(200);
+    recu.push(validateSummary(JSON.parse(res.corps())));
+  });
+  const summary = recu[0];
+  if (summary === undefined) throw new Error('aucun summary');
+  return summary;
+}
+
+describe('/api/hub/summary — expectedMaxAgeSec (contrat v1.3)', () => {
+  it('publie un âge attendu DÉRIVÉ du seuil « muet » + le cache du broker, jamais un chiffre choisi', async () => {
+    // 45 min (SEUIL_MUET_MS, le seuil auquel DriveAI se déclare elle-même `degraded`) + 5 min
+    // (CACHE_TTL_MS, puisqu'un résumé servi depuis le cache porte un dataAsOf vieilli d'autant).
+    //
+    // DISCRIMINANT, et c'est tout l'intérêt : si ce nombre était indépendant, le hub pourrait
+    // afficher « donnée figée » pendant que le widget de la MÊME app affiche `ok`. Deux
+    // diagnostics opposés sur la même réalité, c'est la façon la plus sûre de n'en croire aucun.
+    const summary = await summaryAvec(ETAT_SAIN);
+    expect(summary.expectedMaxAgeSec).toBe(50 * 60);
+    expect(summary.dataAsOf).toBe(ETAT_SAIN.etat.lastRunAt);
+  });
+
+  it('la branche « building » n\'en publie AUCUN — le contrat rejetterait un âge sans dataAsOf', async () => {
+    // Le contrat v1.3 refuse `expectedMaxAgeSec` sans `dataAsOf` : un seuil sans horodatage à
+    // comparer donnerait au producteur la certitude d'être surveillé alors que rien ne le serait.
+    // Ce test échouerait donc sur une exception de `validateSummary`, pas sur son assertion.
+    await avecEnv({ HUB_TOKEN: JETON, WEBAPP_URL: undefined, WEBAPP_SECRET: undefined }, async () => {
+      const res = fauxRes();
+      await handlerHub(fauxReq({ [HUB_TOKEN_HEADER]: JETON }), res);
+      const summary = validateSummary(JSON.parse(res.corps()));
+      expect(summary.status).toBe('building');
+      expect(summary.expectedMaxAgeSec).toBeUndefined();
+      expect(summary.dataAsOf).toBeUndefined();
+    });
+  });
+});
+
+describe('/api/hub/summary — avancement des campagnes (bloc details)', () => {
+  it('une section titrée, le nombre d\'omises DIT, et l\'estimation du moteur intacte', async () => {
+    const summary = await summaryAvec(ETAT_AVEC_MISSIONS);
+    const section = summary.details?.find((s) => s.title.startsWith('Campagnes'));
+    expect(section).toBeDefined();
+    expect(section?.title).toBe('Campagnes (2 non affichées)');
+    expect(section?.items).toEqual([
+      {
+        label: 'Mission — paies par employeur (02)', value: 12, format: 'number',
+        hint: 'sur 48 fichiers · en cours · reste 36 fichiers · ~2 h',
+      },
+      {
+        // Au RECENSEMENT il n'y a pas de volume : un tiret texte, jamais un 0 numérique — « rien
+        // de traité » et « pas encore compté » ne sont pas la même information, et le 0 serait le
+        // seul des deux à ressembler à une panne.
+        label: 'Consolidation — génération du plan', value: '—', format: 'text',
+        hint: 'recensement',
+      },
+      {
+        // `ok` sur une campagne convergée, et RIEN sur les autres : une campagne lente n'est pas
+        // une faute, et lui coller `warn` inventerait un reproche que le hub trierait comme tel.
+        label: 'Rangement initial du Drive', value: 900, format: 'number',
+        severity: 'ok', hint: 'sur 900 fichiers · terminé',
+      },
+    ]);
+  });
+
+  it('sans omises, le titre ne parle pas de troncature', async () => {
+    const summary = await summaryAvec({
+      ok: true,
+      etat: { ...ETAT_AVEC_MISSIONS.etat, missionsOmises: 0 },
+    });
+    expect(summary.details?.[0]?.title).toBe('Campagnes de rangement');
+  });
+
+  it('moteur pas encore redéployé (aucun champ ADR-0056) → AUCUN bloc details, jamais une coquille', async () => {
+    const summary = await summaryAvec(ETAT_SAIN);
+    expect(summary.details).toBeUndefined();
+  });
+
+  it('au plus 6 campagnes acceptées, et les entrées mal formées sont écartées sans panne', async () => {
+    // Champ ADDITIF donc TOLÉRANT : le moteur peut être en avance d'un déploiement, et perdre
+    // l'avancement ne justifie pas de faire afficher « injoignable » sur une app qui répond.
+    // Le plafond de 6 garde deux lignes de marge sous les 8 du contrat — un dépassement ferait
+    // REJETER le résumé entier, donc accuserait DriveAI d'une panne inexistante.
+    const summary = await summaryAvec({
+      ok: true,
+      etat: {
+        ...ETAT_SAIN.etat,
+        missions: [
+          ...Array.from({ length: 9 }, (_, i) => ({
+            nom: 'Campagne ' + i, traites: i, base: 10, unite: 'fichiers',
+            statut: 'en cours', finEstimee: '', fini: false,
+          })),
+          null,
+          { nom: '', traites: 1, base: 2, unite: '', statut: '', finEstimee: '', fini: false },
+          'pas un objet',
+        ],
+      },
+    });
+    expect(summary.details?.[0]?.items.length).toBe(6);
+    expect(summary.details?.[0]?.items.map((ligne) => ligne.label)).toEqual([
+      'Campagne 0', 'Campagne 1', 'Campagne 2', 'Campagne 3', 'Campagne 4', 'Campagne 5',
+    ]);
+  });
+
+  it('deux libellés qui se confondent après troncature ne font PAS rejeter le résumé', async () => {
+    // Le contrat refuse deux libellés identiques dans une même section. C'est la ceinture : en
+    // production une collision perd une ligne au lieu de faire rejeter le résumé ENTIER. Le vrai
+    // garde-fou est le test suivant, qui passe le registre RÉEL du moteur dans la troncature.
+    const long = 'Mission — un libellé vraiment très long qui dépasse quarante caractères';
+    const summary = await summaryAvec({
+      ok: true,
+      etat: {
+        ...ETAT_SAIN.etat,
+        missions: [
+          { nom: long + ' A', traites: 1, base: 2, unite: '', statut: '', finEstimee: '', fini: false },
+          { nom: long + ' B', traites: 3, base: 4, unite: '', statut: '', finEstimee: '', fini: false },
+        ],
+      },
+    });
+    expect(summary.details?.[0]?.items.length).toBe(1);
+    expect(summary.details?.[0]?.items[0]?.value).toBe(1);
+  });
+});
+
+describe('REGISTRE_OPERATIONS : aucun libellé de campagne ne se confond après troncature à 40', () => {
+  it('le registre RÉEL du moteur traverse la troncature du contrat sans collision', async () => {
+    // Deux sources, un test pour les tenir ensemble — même patron que `rejeu-moteur.test.ts`, qui
+    // compare `MCP_ACTIONS` (.gs) à `REJOUABLES` (.ts). `api/` ne peut pas importer un `.gs`
+    // (zéro dépendance par construction), donc on ANALYSE le fichier source.
+    const { readFileSync } = await import('node:fs');
+    const suivi = readFileSync(new URL('../../src/Suivi.gs', import.meta.url), 'utf8');
+    const bloc = suivi.slice(suivi.indexOf('var REGISTRE_OPERATIONS'));
+    const libelles: string[] = [];
+    const motif = /libelle:\s*'((?:[^'\\]|\\.)*)'[^}]*?type:\s*'campagne'/g;
+    for (let m = motif.exec(bloc); m !== null; m = motif.exec(bloc)) {
+      libelles.push(m[1].replace(/\\'/g, "'"));
+    }
+    // Sans ce garde-fou le test pourrait « passer » sur zéro libellé lu (regex périmée) : un test
+    // d'exhaustivité qui ne trouve rien est un test qui n'affirme rien.
+    expect(libelles.length).toBeGreaterThanOrEqual(10);
+
+    const tronques = libelles.map((l) => (l.length <= 40 ? l : l.slice(0, 39) + '…'));
+    expect(new Set(tronques).size).toBe(tronques.length);
+    for (const t of tronques) expect(t.length).toBeLessThanOrEqual(40);
+  });
+});
+
+describe('/api/hub/summary — le nom du dernier document classé (ADR-0056)', () => {
+  it('nom + domaine + âge RELATIF, dans details et nulle part ailleurs', async () => {
+    const summary = await summaryAvec(ETAT_AVEC_MISSIONS);
+    const section = summary.details?.find((s) => s.title === 'Dernier document classé');
+    expect(section?.items).toEqual([
+      {
+        label: 'Fichier',
+        value: '2026-09-14_Facture_Hydro-Quebec_Aout.pdf',
+        format: 'text',
+        hint: '02 · Finances',
+      },
+      // RELATIF et pas une date : ce code tourne sur Vercel en UTC, et `Intl` prendrait le fuseau
+      // de la MACHINE — le hub serait faux de 4 ou 5 h selon la saison, sans aucun signe
+      // extérieur. Un écart n'a pas de fuseau.
+      { label: 'Classé', value: 'il y a 22 min', format: 'text', hint: 'relevé au plus toutes les 15 min' },
+    ]);
+  });
+
+  it('🔴 LE GARDE-FOU DE L\'ADR-0056 : aucun nom de fichier dans metrics ni dans alerts', async () => {
+    // Le hub ne PERSISTE que `metrics` (table `releves`, 90 jours de rétention côté Neon). Un nom
+    // placé en métrique serait donc recopié dans la base du hub à chaque relevé — c'est-à-dire
+    // qu'il sortirait du compte Google de Marc ET s'y installerait. Dans `details` il transite,
+    // s'affiche, et disparaît. C'est la contrainte exacte en échange de laquelle l'ADR-0056
+    // autorise la publication du nom.
+    const summary = await summaryAvec(ETAT_AVEC_MISSIONS);
+    const nom = ETAT_AVEC_MISSIONS.etat.lastFiledName;
+    expect(JSON.stringify(summary.metrics)).not.toContain(nom);
+    expect(JSON.stringify(summary.alerts)).not.toContain(nom);
+    expect(JSON.stringify(summary.actions)).not.toContain(nom);
+    expect(JSON.stringify(summary.usage ?? {})).not.toContain(nom);
+    expect(JSON.stringify(summary.details)).toContain(nom);
+  });
+
+  it('un nom SANS date n\'est pas publié — il se lirait « à l\'instant » quel que soit son âge', async () => {
+    for (const partiel of [
+      { lastFiledName: 'orphelin.pdf' },
+      { lastFiledAt: new Date().toISOString() },
+      { lastFiledName: 'orphelin.pdf', lastFiledAt: 'pas-une-date' },
+    ]) {
+      const summary = await summaryAvec({ ok: true, etat: { ...ETAT_SAIN.etat, ...partiel } });
+      expect(summary.details).toBeUndefined();
+    }
+  });
+
+  it('un nom très long est TRONQUÉ avec un signe visible, jamais coupé en silence', async () => {
+    // Le contrat ne borne PAS la valeur texte d'une ligne de détail : la charge est au producteur.
+    const summary = await summaryAvec({
+      ok: true,
+      etat: {
+        ...ETAT_SAIN.etat,
+        lastFiledName: 'N'.repeat(300) + '.pdf',
+        lastFiledAt: new Date().toISOString(),
+      },
+    });
+    const valeur = String(summary.details?.[0]?.items[0]?.value);
+    expect(valeur.length).toBe(60);
+    expect(valeur.endsWith('…')).toBe(true);
   });
 });

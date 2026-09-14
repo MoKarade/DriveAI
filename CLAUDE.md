@@ -258,7 +258,13 @@ DriveAI expose un résumé au **hub perso** (`hubperso.com`) via **un seul endpo
 - **HONNÊTETÉ (no-fake-data)** : le point de bascule est `api/hub/_engineState.ts` →
   `getEngineState()`, qui interroge la web app Apps Script (`action=hub-summary`, gardée par le
   secret partagé `WEBAPP_SECRET` — aucun nouveau secret) et rend des **métadonnées seulement**
-  (compteurs + horodatage, ADR-0007), jamais un nom de fichier ni un contenu. Trois retours, trois
+  (compteurs, horodatage, avancement des campagnes, ADR-0007) — jamais un CONTENU de document.
+  ⚠️ Cette puce écrivait « jamais un nom de fichier » jusqu'au 14/09/2026 : c'était une glose plus
+  stricte que l'ADR-0007, dont le §2 liste `Fichier` parmi les métadonnées légitimes. Depuis
+  l'**ADR-0056**, le nom du dernier document classé est publié — et sous une contrainte précise :
+  il voyage dans le bloc `details` du contrat, **JAMAIS dans `metrics`**, parce que Hubperso
+  persiste les métriques (table `releves`, 90 jours) et pas les détails. Un test le verrouille.
+  Trois retours, trois
   sens **distincts** : `null` (intégration non branchée, ou moteur jamais passé) ⇒ summary
   `status:"building"` ; `throw` (canal branché mais EN PANNE — réseau, HTTP, JSON illisible) ⇒
   **500**, jamais une donnée partielle ; sinon les vrais chiffres. Le serverless Vercel n'accède
@@ -330,6 +336,10 @@ ce qui reste vrai d'une session à l'autre.
   statut, **empreinte = hash**). Le texte des documents ne sort que vers l'API Anthropic pour le
   classement (transit assumé, ADR-0007) ; il ne se stocke nulle part. Tout nouveau champ d'état ou
   log doit respecter cet invariant (à verrouiller par un test, roadmap #1).
+  **Ce qui SORT du compte Google de Marc se juge à part, et se tranche par un ADR** : le texte des
+  documents vers claude.ai (ADR-0042 §3), le nom du dernier document classé vers hubperso.com
+  (ADR-0056 §3). Chaque sortie nomme la frontière franchie ET le garde-fou obtenu en échange —
+  jamais une permission nue.
 - **Garde-fou étroit, calibré sur du réel.** Un flag de protection (ex. `sensible`) doit viser
   des catégories précises (immigration + fiscal), pas « true par défaut » — sinon tout part en
   revue et l'auto-rangement est neutralisé. Le défaut prudent ne sert que pour les réponses LLM
