@@ -32,18 +32,21 @@ var RACINE_ARCHIVES_ECOLE_RESET = 'Archives scolaires';
  * EXEMPTIONS DÉCLARÉES au plafond « ≤ 7 enfants par niveau » (ADR-0030), par chemin EXACT.
  *
  * ⚠️ Une exemption n'est pas une tolérance : c'est une décision NOMMÉE, testée à la valeur près.
- * `Archives scolaires` porte les 7 dossiers que Marc a construits lui-même, plus le
- * `Cégep de Sherbrooke (2019)` qu'il a demandé d'ajouter le 14/09 — soit 8. Le dépassement vient
- * de sa structure et de sa demande, pas d'une dérive du moteur.
- * L'alternative — omettre de la table les 3 dossiers qu'aucune règle ne vise — aurait rendu le
- * plafond FAUX en silence (« une cible ABSENTE de la table rend `verifierStructureCibleReset_`
- * aveugle au ≤ 7 RÉEL », déjà vécu en `01`). On déclare les 8 et on assume l'exemption.
+ * Le principe : on DÉCLARE tout ce qui existe dans le Drive de Marc — l'alternative, omettre de la
+ * table les dossiers qu'aucune règle ne vise, rendrait le plafond FAUX en silence (« une cible
+ * ABSENTE de la table rend `verifierStructureCibleReset_` aveugle au ≤ 7 RÉEL », vécu en `01`) —
+ * et quand le compte dépasse 7, le dépassement est NOMMÉ ici plutôt que toléré.
+ * ⚠️ `Archives scolaires` a porté une exemption jusqu'à ADR-0056 (8 enfants) ; la fusion des deux
+ * dossiers de collège/lycée l'a ramené à 7, et l'exemption a été RETIRÉE. Une exemption devenue
+ * inutile se retire : gardée, elle couvrirait en silence le prochain dépassement.
  */
 var RESET_EXEMPTIONS_PLAFOND = [
-  '06 · Études & diplômes/Archives scolaires',
   // 12 sous-dossiers thématiques de MARC + les 4 standard = 16. Le dépassement est le SIEN, et le
   // DÉCLARER est précisément ce qui protège ses dossiers de la liste « dossiers vides » et de la
   // réorg. (`ULCO — DUT GIM (2018-2020)` : 2 + 4 = 6, sous le plafond ⇒ pas d'exemption.)
+  // ⚠️ `Archives scolaires` N'Y EST PLUS (ADR-0056) : la fusion des deux dossiers de collège/lycée
+  // le ramène de 8 à 7 enfants, donc SOUS le plafond. Une exemption qui n'est plus nécessaire se
+  // retire — sinon elle couvre en silence le prochain dépassement, celui que personne n'a décidé.
   '06 · Études & diplômes/Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023)',
 ];
 
@@ -195,11 +198,13 @@ var STRUCTURE_CIBLE_RESET = {
     // du cadratin, et le moteur crée un SECOND dossier à côté du sien — exactement comme
     // « 3987 route des Rivières » à côté de « 3987 rte des Rivières » (leçon vécue en 03).
     // Deux tests le verrouillent : les noms == le relevé Drive, et chacun survit à `champ_`.
-    // (ADR-0055) 8 enfants : les 7 de Marc + le cégep qu'il a demandé. Exemption DÉCLARÉE au
-    // plafond ≤ 7 dans `RESET_EXEMPTIONS_PLAFOND`, jamais une omission silencieuse.
+    // 7 enfants depuis ADR-0056 (la fusion des deux dossiers de collège/lycée) : SOUS le plafond,
+    // donc plus aucune exemption pour ce niveau. Celle d'`IMERIR — …` (16 enfants) demeure, elle,
+    // dans `RESET_EXEMPTIONS_PLAFOND` — nommée, jamais une omission silencieuse.
     'Archives scolaires': {
-      'Collège & Lycée — divers (2014-2017)': {},
-      'Lycée — Thérèse Davila (2017-2018)': ecoleReset_(false),
+      // (ADR-0056, décision Marc 2026-09-14 « fusionne en un 2014-2018 ») : ses deux dossiers de
+      // collège/lycée n'en font plus qu'UN. Le dossier Drive a été renommé en conséquence.
+      'Collège & Lycée — divers (2014-2018)': ecoleReset_(false),
       'Lycée — Gustave Eiffel — Physique-Chimie (TP)': {},
       'Prépa PTSI (2017-2018)': ecoleReset_(true),
       'ULCO — DUT GIM (2018-2020)': ecoleReset_(false, THEMATIQUES_ULCO_RESET),
@@ -427,7 +432,12 @@ function estExcluDuReset_(nom) {
  * tombaient dans deux fenêtres et étaient refusés pour rien.
  */
 var RESET_FENETRES_ECOLE = [
-  { ecole: 'Lycée — Thérèse Davila (2017-2018)', debut: 2014 * 12 + 9, fin: 2017 * 12 + 8 },
+  // ⚠️ LE LIBELLÉ DIT 2014-2018, LA FENÊTRE S'ARRÊTE EN 2017-08 — et c'est voulu (ADR-0056,
+  // confirmé par Marc : « 2014-2017 c'est bon »). Étendre la fenêtre jusqu'en 2018 la ferait
+  // CHEVAUCHER celle de la prépa (2017-09 → 2018-08) : tout document de cette année-là tomberait
+  // dans deux fenêtres et serait REFUSÉ — l'année de prépa deviendrait inclassable par la date.
+  // Le nom du dossier couvre la période de ses documents ; la fenêtre, elle, doit rester disjointe.
+  { ecole: 'Collège & Lycée — divers (2014-2018)', debut: 2014 * 12 + 9, fin: 2017 * 12 + 8 },
   { ecole: 'Prépa PTSI (2017-2018)', debut: 2017 * 12 + 9, fin: 2018 * 12 + 8 },
   { ecole: 'ULCO — DUT GIM (2018-2020)', debut: 2018 * 12 + 9, fin: 2020 * 12 + 8 },
   // ⚠️ SHERBROOKE CHEVAUCHE L'ULCO, ET C'EST VOULU. Marc : « Cégep de Sherbrooke c'est 2019 en même
@@ -483,7 +493,7 @@ function ecoleParNomReset_(nom) {
   var tout = normaliserCle_(nom);
   var sansTiret = tout.replace(/-/g, ' '); // `normaliserCle_` CONSERVE les traits d'union
   // --- L'ÉTABLISSEMENT, nommé.
-  if (resetContient_(tout, ['therese', 'avila'])) return 'Lycée — Thérèse Davila (2017-2018)';
+  if (resetContient_(tout, ['therese', 'avila'])) return 'Collège & Lycée — divers (2014-2018)';
   // Le COLLÈGE Gustave Eiffel et le Hubhouse (ULCO-CEL) ne sont PAS la prépa/le DUT : testés AVANT
   // leurs mots-pièges ('gustave eiffel', 'ulco').
   if (resetContient_(tout, ['college', 'hubhouse'])) return 'Autres établissements';
@@ -513,7 +523,7 @@ function ecoleParNomReset_(nom) {
   // « borne terminale » en électrotechnique, « Seconde Guerre mondiale » en histoire). Un prédicat
   // qui ne gagne rien et peut se tromper ne mérite pas d'exister.
   if (/(^|[^a-z0-9])gim ?[12]?([^a-z0-9]|$)/.test(sansTiret)) return 'ULCO — DUT GIM (2018-2020)';
-  if (/(^|[^a-z0-9])1 ?ere([^a-z0-9]|$)/.test(sansTiret)) return 'Lycée — Thérèse Davila (2017-2018)';
+  if (/(^|[^a-z0-9])1 ?ere([^a-z0-9]|$)/.test(sansTiret)) return 'Collège & Lycée — divers (2014-2018)';
   return null;
 }
 

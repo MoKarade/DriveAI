@@ -8,18 +8,19 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { load } = require('./harness');
 
-/** PropertiesService mocké : aucune Property (coût du mois = 0). */
-function mockProps() {
+/** PropertiesService mocké : `props` posées, tout le reste null (coût du mois = 0). */
+function mockProps(props) {
+  const table = props || {};
   return {
     getScriptProperties: () => ({
-      getProperty: () => null,
-      setProperty: () => {},
-      deleteProperty: () => {},
+      getProperty: (k) => (Object.prototype.hasOwnProperty.call(table, k) ? table[k] : null),
+      setProperty: (k, v) => { table[k] = String(v); },
+      deleteProperty: (k) => { delete table[k]; },
     }),
   };
 }
 
-function chargerAvecSanteMock(indexCache) {
+function chargerAvecSanteMock(indexCache, props) {
   // `GoogleApi.gs` : `majSante_` lit l'état de panne de config d'API (C28-48). `Llm.gs` et
   // `TriGmail.gs` : la ligne « Tri Gmail » (ADR-0043) interroge `estPannePlateforme_` et
   // `estPanneConfigApi_`. Sans eux, le contexte par défaut exerçait le chemin d'ERREUR au lieu du
@@ -37,8 +38,12 @@ function chargerAvecSanteMock(indexCache) {
   // de la campagne (gate `gResetEnCours`). Chargé POUR DE VRAI plutôt que mocké : un `typeof ===
   // 'function'` masquerait la dépendance, et c'est précisément ce genre de garde qui a fait qu'un
   // chemin d'ERREUR a longtemps été pris pour le chemin nominal dans ce fichier.
+  // `Migration.gs` : `texteSanteReanalyse_` lit `budgetJourReanalyse_` — contrat INTER-MODULE.
+  // Chargé POUR DE VRAI et non mocké : une mutation du nom doit tomber ici (elle a SURVÉCU à la
+  // première écriture de ce test, qui ne sortait jamais de la branche « en attente »).
   const ctx = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'GoogleApi.gs', 'TriGmail.gs', 'Doublons.gs',
-    'Gmail.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'], { PropertiesService: mockProps() });
+    'Gmail.gs', 'Migration.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
+    { PropertiesService: mockProps(props) });
   const captured = [];
   // feuille_ mocké : capture l'unique setValues de « Santé » ; `getLastRow: 1` = rapport des
   // doublons encore vide (état réel avant la première passe de la campagne).
@@ -50,11 +55,77 @@ function chargerAvecSanteMock(indexCache) {
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 9 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 10 lignes de métadonnées (une seule écriture Sheet)', () => {
+  // 10 depuis ADR-0056 : la re-datation de `06` rallume de la dépense LLM et son budget du jour
+  // n'était lisible NULLE PART. Le compte est figé pour que l'ajout d'une ligne soit une DÉCISION —
+  // l'écriture est unique par tick, et chaque ligne coûte de la place à l'écran de Marc.
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 9);
+  assert.strictEqual(captured.length, 10);
   assert.ok(captured.every((l) => typeof l === 'string'));
+});
+
+test('majSante_ : la ligne « Re-datation de 06 » distingue « jamais démarrée » de « rien à faire »', () => {
+  // Deux revues l'ont relevé indépendamment : rallumer ~8,6 $ de LLM sans aucun point
+  // d'observation, c'est le mode de panne du §1.6 — c'est ainsi que C26-08 est restée en pause
+  // deux semaines sans que personne ne le voie. Un « 0 min/j » tout seul ne dirait pas si la
+  // campagne n'a rien à faire ou si elle n'est jamais ATTEINTE : les deux gardes amont (grand
+  // rangement, migration) doivent se DIRE. Mutation : retirer la ligne de `majSante_` ⇒ tombe.
+  const { ctx, captured } = chargerAvecSanteMock({});
+  ctx.majSante_();
+  const ligne = captured.find((l) => l.indexOf('Re-datation de 06') === 0);
+  assert.ok(ligne, 'la ligne existe');
+  assert.ok(!ligne.includes('illisible'), 'chemin nominal, pas le catch : ' + ligne);
+  // Le mock n'a aucune Property : la migration n'est donc PAS finie — la ligne doit le dire,
+  // et surtout pas prétendre que la campagne tourne.
+  assert.ok(/en attente/.test(ligne), ligne);
+  assert.ok(!/en cours/.test(ligne), 'jamais « en cours » quand une garde amont bloque : ' + ligne);
+});
+
+test('majSante_ : la ligne « Re-datation de 06 » EXERCE sa branche « en cours » (avancement + minutes)', () => {
+  // ⚠️ Ce test existe parce que le précédent ne prouvait RIEN de la branche nominale : sans
+  // Properties, `texteSanteReanalyse_` sortait toujours sur « en attente ». Mutation jouée en revue
+  // — renommer `budgetJourReanalyse_` (contrat INTER-MODULE, Migration.gs → Main.gs) — laissait
+  // 1297 tests VERTS. Ici on pose les deux gardes amont à « fini » pour tomber dans la branche qui
+  // lit les compteurs, et on asserte ce qu'elle produit.
+  const { ctx, captured } = chargerAvecSanteMock({}, {});
+  const p = ctx.PropertiesService.getScriptProperties();
+  p.setProperty('DriveAI_RANGEMENT', ctx.CONFIG.RANGEMENT_TAG);
+  p.setProperty('DriveAI_MIGRATION', ctx.CONFIG.MIGRATION_TAG);
+  p.setProperty('DriveAI_REANALYSE_BASE', '328');
+  p.setProperty('DriveAI_REANALYSE_TRAITES', '41');
+  // Compteur du jour : la MÊME clé de jour que la campagne (`dateGmail_`), sinon on lirait 0 et le
+  // test passerait en mesurant un zéro sans rapport.
+  p.setProperty('DriveAI_REANALYSE_JOUR', ctx.dateGmail_(new Date()) + '|' + (3 * 60 * 1000));
+  ctx.majSante_();
+  const ligne = captured.find((l) => l.indexOf('Re-datation de 06') === 0);
+  assert.ok(ligne && !ligne.includes('illisible'), 'chemin nominal, pas le catch : ' + ligne);
+  assert.ok(/en cours/.test(ligne), ligne);
+  assert.ok(/41 \/ 328 documents/.test(ligne), ligne);
+  // DÉRIVÉ de CONFIG (jamais « 8 » recopié) : le jour où les minutes sont réallouées, ce test suit.
+  const minJ = ctx.CONFIG.REANALYSE_BUDGET_JOUR_MS / 60000;
+  assert.ok(new RegExp('3 des ' + minJ + ' min\\/j').test(ligne), ligne);
+});
+
+test('statutReanalyse_ : les SIX causes d\'arrêt se disent, une par une (PURE)', () => {
+  // 🟠 des trois revues : la première version n'en connaissait que deux, et affichait
+  // « en cours — 0 / 328 · 0 des 8 min/j » pendant que le frein à 40 $, le reset ou une panne de
+  // plateforme tenaient la campagne à l'arrêt. Chaque cause est assertée SÉPARÉMENT — un
+  // `indexOf(x) === 0` sur une seule famille en raterait la moitié (§9, estimation en pause).
+  const { ctx } = chargerAvecSanteMock({}, {});
+  const F = ctx.statutReanalyse_;
+  //           terminée, rangement, migration, frein, reset, panne
+  assert.match(F(true, false, false, false, false, false), /terminée/);
+  assert.match(F(false, true, false, false, false, false), /grand rangement/);
+  assert.match(F(false, false, true, false, false, false), /migration/);
+  assert.match(F(false, false, false, false, false, true), /panne de plateforme/);
+  assert.match(F(false, false, false, true, false, false), /frein budget/);
+  assert.match(F(false, false, false, false, true, false), /reset/);
+  // Rien ne l'arrête ⇒ chaîne VIDE : c'est ce qui laisse l'appelant calculer l'avancement.
+  assert.strictEqual(F(false, false, false, false, false, false), '');
+  // Le montant du frein est DÉRIVÉ de CONFIG, jamais recopié.
+  assert.ok(F(false, false, false, true, false, false)
+    .includes(String(ctx.CONFIG.LLM_BUDGET_CAMPAGNES) + ' $'));
 });
 
 test('majSante_ : la ligne « Historique Gmail » dit l\'état ET les minutes consommées (C28-99)', () => {
@@ -80,7 +151,14 @@ test('majSante_ : la ligne « Historique Gmail » dit l\'état ET les minutes co
   // affirmant l'inverse dans son message : mutation jouée en revue, remplacer le calcul par '20'
   // laissait le test VERT — et le jour où les 20 min sont réallouées (l'objectif même du lot) il
   // serait tombé en accusant le code. Même patron que la cadence de sonde, plus bas dans ce fichier.
-  assert.ok(/des 20 min\/j/.test(ligne) && /des 150 fils\/j/.test(ligne), ligne);
+  // …et cette fois le calcul est VRAIMENT dérivé : la version précédente écrivait `/des 20 min/` en
+  // dur tout en affirmant l'inverse — elle est tombée le jour où les 20 min ont été réallouées
+  // (ADR-0056, 20 → 12), exactement comme son propre commentaire l'avait prédit. Un test qui
+  // ANNONCE dériver de CONFIG et recopie la valeur du jour accuse le code au premier rajustement.
+  const minJ = ctx.CONFIG.GMAIL_HISTO_BUDGET_JOUR_MS / 60000;
+  const filsJ = ctx.CONFIG.GMAIL_HISTO_MAX_FILS_JOUR;
+  assert.ok(new RegExp('des ' + minJ + ' min\\/j').test(ligne), ligne);
+  assert.ok(new RegExp('des ' + filsJ + ' fils\\/j').test(ligne), ligne);
 });
 
 test('texteSanteHistoGmail_ : les deux plafonds DÉRIVENT de CONFIG, et les CLÉS de Property sont les bonnes', () => {

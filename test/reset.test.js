@@ -340,7 +340,7 @@ test('06 : la table des écoles se construit depuis SOUS_DOSSIERS_ECOLE_RESET (u
   // Les 4 standard sont TOUJOURS là, dans l'ordre de la constante — une seule source. Ce qui suit
   // (le « Concours » de la prépa, les sous-dossiers THÉMATIQUES de Marc) s'y AJOUTE, jamais s'y
   // substitue : la garde qui protège ses dossiers de la corbeille ne doit pas défaire la taxonomie.
-  for (const ecole of ['Lycée — Thérèse Davila (2017-2018)', 'Cégep de Sherbrooke (2019)']) {
+  for (const ecole of ['Collège & Lycée — divers (2014-2018)', 'Cégep de Sherbrooke (2019)']) {
     assert.deepStrictEqual(Object.keys(table[ecole]), attendu, ecole);
   }
   for (const ecole of ['ULCO — DUT GIM (2018-2020)', 'IMERIR — Ingénieur MSIR (2020-2023)']) {
@@ -356,12 +356,14 @@ test('06 : la table des écoles se construit depuis SOUS_DOSSIERS_ECOLE_RESET (u
 });
 
 test('ADR-0055 — l\'exemption au plafond ≤ 7 est NOMMÉE, et sans elle le validateur mord', () => {
-  // `Archives scolaires` porte 8 enfants : les 7 dossiers que MARC a construits lui-même, plus le
+  // `Archives scolaires` portait 8 enfants jusqu'à ADR-0056 (7 depuis la fusion) : les 7 dossiers que MARC a construits lui-même, plus le
   // `Cégep de Sherbrooke (2019)` qu'il a demandé d'ajouter. Le dépassement vient de SA structure,
   // il est donc DÉCLARÉ à la valeur près — jamais toléré en silence. L'alternative (omettre de la
   // table les 3 dossiers qu'aucune règle ne vise) aurait rendu le plafond FAUX sans le dire.
+  // ⚠️ `Archives scolaires` N'EST PLUS exempté (ADR-0056) : la fusion des deux dossiers de
+  // collège/lycée le ramène de 8 à 7 enfants. Une exemption devenue inutile se RETIRE, sinon elle
+  // couvre en silence le prochain dépassement — celui que personne n'aura décidé.
   assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.RESET_EXEMPTIONS_PLAFOND)), [
-    '06 · Études & diplômes/Archives scolaires',
     '06 · Études & diplômes/Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023)',
   ]);
   // MUTATION : sans les exemptions, les violations sont RÉELLES et CHIFFRÉES — la garde n'est pas
@@ -372,7 +374,6 @@ test('ADR-0055 — l\'exemption au plafond ≤ 7 est NOMMÉE, et sans elle le va
   try {
     assert.deepStrictEqual(JSON.parse(JSON.stringify(
       ctx.verifierStructureCibleReset_(ctx.STRUCTURE_CIBLE_RESET, MAX))), [
-      '06 · Études & diplômes/Archives scolaires : 8 sous-dossiers',
       '06 · Études & diplômes/Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023) : 16 sous-dossiers',
     ]);
   } finally { ctx.RESET_EXEMPTIONS_PLAFOND = vraies; }
@@ -395,9 +396,23 @@ test('ADR-0055 — une règle, deux consommateurs : les cibles de la mission == 
   const ecolesRoutees = Array.from(new Set(ctx.RESET_FENETRES_ECOLE.map((f) => f.ecole))).sort();
   assert.deepStrictEqual(cibles, ecolesRoutees,
     'toute école que le routage sait nommer doit recevoir le contenu de son dossier de racine');
-  // Une source ne peut pas être sa propre cible (la mission tournerait en rond), et chaque source
-  // est déclarée JETABLE — le dossier vidé n'est plus dans la table, donc rien ne le recrée.
+  // Une source ne peut pas être sa propre cible (la mission tournerait en rond). ⚠️ AUCUNE n'est
+  // déclarée JETABLE : peindre les dossiers vidés « bon pour suppression » reposait sur un invariant
+  // non démontré (C28-106), et depuis ADR-0056 l'une des sources est un dossier de MARC.
   for (const p of paires) assert.notStrictEqual(p.src, p.cible);
+  // ⚠️ ET une SOURCE n'est la cible d'AUCUNE autre paire (🟠 revue code ADR-0056). L'invariant
+  // n'avait pas de sens tant que les cibles étaient pures ; il en a un depuis que la fusion fait
+  // d'un ancien dossier d'archive une source. Sans lui : les fichiers d'Avila atterrissent dans le
+  // dossier intermédiaire, y reçoivent une clé de SUCCÈS, et n'iront JAMAIS dans le dossier
+  // fusionné — fusion à moitié faite, silencieuse, mission « TERMINÉE ». Mutation : remettre
+  // l'ancien ID en `cible` sur la 1ʳᵉ paire ⇒ ce test tombe.
+  const ciblesDeclarees = {};
+  for (const p of paires) { if (p.cible) ciblesDeclarees[p.cible] = true; }
+  for (const p of paires) {
+    assert.ok(!ciblesDeclarees[p.src],
+      'une SOURCE ne peut pas être la cible d\'une autre paire (le fichier y serait keyé en ' +
+      'SUCCÈS et ne repartirait jamais) : ' + p.src);
+  }
   const sources = Array.from(paires).map((p) => p.src).sort();
   assert.strictEqual(sources.join('|'), Array.from(new Set(sources)).sort().join('|'),
     'chaque dossier de racine est une source UNIQUE');

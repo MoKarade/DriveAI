@@ -139,6 +139,8 @@ const TEXTES = {
     corbeilleProtege: 'Refusé : zone protégée (Immigration) — jamais touchée.',
     corbeilleStructurel: 'Refusé : dossier structurel ou système — le classement en a besoin.',
     corbeilleAscendance: 'Refusé par prudence : impossible de lire où se trouve ce dossier — il reste dans la liste, réessaie.',
+    actionEnCours: 'Une action est déjà en cours — attends qu’elle finisse.',
+    corbeilleRienASupprimer: 'Aucun dossier vide à traiter pour le moment.',
     corbeilleCoupeeSession: 'Lot interrompu : la session Google a expiré. {x} dossier(s) n’ont pas été tentés — reconnecte-toi et relance.',
     corbeilleCoupeePannes: 'Lot interrompu : Google refuse les appels (quota ou panne). {x} dossier(s) n’ont pas été tentés — réessaie dans quelques minutes.',
 
@@ -323,6 +325,8 @@ const TEXTES = {
     corbeilleProtege: 'Refused: protected zone (Immigration) — never touched.',
     corbeilleStructurel: 'Refused: structural or system folder — filing needs it.',
     corbeilleAscendance: 'Refused out of caution: could not read where this folder sits — it stays in the list, try again.',
+    actionEnCours: 'An action is already running — wait for it to finish.',
+    corbeilleRienASupprimer: 'No empty folder to process right now.',
     corbeilleCoupeeSession: 'Batch interrupted: the Google session expired. {x} folder(s) were never attempted — sign in again and restart.',
     corbeilleCoupeePannes: 'Batch interrupted: Google is refusing calls (quota or outage). {x} folder(s) were never attempted — try again in a few minutes.',
 

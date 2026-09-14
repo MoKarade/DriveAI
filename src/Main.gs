@@ -310,6 +310,20 @@ function tickDriveAI() {
     // remontée juste après lui, n'utilise que le RELIQUAT jusqu'à 4,5 min : elle est ainsi GARANTIE
     // de s'exécuter à chaque tick sans jamais voler une ms au flux vivant (leçon §7 « tôt + gated »).
     var estBudgetDepasseStandard = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
+    // ⚠️ GARDE-TEMPS « DÉMARRAGE DE DOCUMENT » (🔴 revue quotas ADR-0056). Un sous-budget local ne
+    // peut pas protéger le TICK : `appliquerReanalyseCiblee_` retranchait bien sa marge de SON
+    // budget (2 min), mais le terme qui mord dès que l'amont a consommé 2 min est celui-ci
+    // (`budgetMsRun_()` = 3 min), qui n'en avait aucune. Un document pris à 179 s de tick coûte
+    // encore 1 à 3 min : 179 + 180 + les écritures d'état du `finally` franchissent le mur DUR de
+    // 6 min, où l'exécution est TUÉE — le `finally` ne tourne pas, les ms consommées ne sont pas
+    // imputées (jusqu'à ~4 min sur un budget quotidien de 8), et le MÊME document repart en tête
+    // au tick suivant, sans compteur pour l'arrêter. Une protection annoncée et absente est pire
+    // qu'une protection absente : elle clôt la question.
+    // Réservé aux étapes qui lancent un DOCUMENT LLM complet (OCR + Sonnet ×2) ; les étapes I/O
+    // gardent leur budget nominal.
+    var estBudgetDepasseDoc = function () {
+      return Date.now() - debut > budgetMsRun_() - CONFIG.PILOTE_MARGE_DOC_MS;
+    };
 
     // Suivi générique C28-44 (ADR-0038) : gates PARTAGÉES du wrapper `etapeSuivie_`. Contrat :
     // chaque gate rend une RAISON DE SKIP NON VIDE, ou null pour laisser passer ('' = passe
@@ -491,7 +505,7 @@ function tickDriveAI() {
       function () { executerMission_('dispatch03', estBudgetDepasseStandard); },
       function (e) { journalErreur_('Missions', 'Mission dispatch 03 différée : ' + e); });
     etapeSuivie_('mission-ecoles-archives-06', [gMissionsActif, gBudgetStandard, gResetEnCours, gMissionsJour_],
-      function () { executerMission_('ecoles-archives06', estBudgetDepasseStandard); },
+      function () { executerMission_('ecoles-archives06b', estBudgetDepasseStandard); },
       function (e) { journalErreur_('Missions', 'Mission archives 06 différée : ' + e); });
     // PR2 (Carrière + Finances). `paies` AVANT `carriere` : le domicile UNIQUE des paies est
     // 02/« Revenus & paie »/<Employeur> — les deux missions y routent par la MÊME fonction
@@ -580,11 +594,11 @@ function tickDriveAI() {
       function (e) { journalErreur_('Migration', 'Migration taxonomie différée : ' + e); });
 
     // Re-analyse v2 CIBLÉE (#26, C26-08, ADR-0018) : re-passe les domaines mal classés
-    // (REANALYSE_CIBLES : 03, 08) au pipeline v2, EN PLACE, une page par tick. Ne démarre qu'après
+    // (REANALYSE_CIBLES : `06` seul depuis ADR-0056, et à la RACINE du domaine) au pipeline v2, EN PLACE, une page par tick. Ne démarre qu'après
     // la FIN de m1 (une seule campagne de masse à la fois — garde dans appliquerReanalyseCiblee_).
     // Même famille que la migration : après l'intake, gatée par le frein budget, enveloppée.
     etapeSuivie_('reanalyse', [gBudgetTick, gFreinCampagnes, gResetEnCours],
-      function () { appliquerReanalyseCiblee_(estBudgetDepasse); },
+      function () { appliquerReanalyseCiblee_(estBudgetDepasseDoc); },
       function (e) { journalErreur_('Réanalyse', 'Re-analyse ciblée différée : ' + e); });
 
     // Dry-run v2 (#26, C26-07, ADR-0015) : preuve avant/après sur échantillon réel, ZÉRO mutation
@@ -1048,6 +1062,65 @@ function traiterFil_(fil, estBudgetDepasse) {
 }
 
 /**
+ * Ligne de Santé de la RE-DATATION de `06` (C28-92, ADR-0056) : où en est la campagne, et combien
+ * de son budget quotidien elle a consommé AUJOURD'HUI.
+ *
+ * Pourquoi elle existe : la campagne rallume de la dépense LLM, et `DriveAI_REANALYSE_JOUR` n'était
+ * lisible nulle part. Sans ce chiffre, « elle tourne » et « elle n'a jamais démarré » se ressemblent
+ * — c'est exactement ce qui a permis à C26-08 de rester en pause deux semaines sans que personne ne
+ * le voie (§1.6). Les DEUX gardes amont sont dites explicitement, parce qu'un zéro à 0 min/j ne
+ * distingue pas « rien à faire » de « jamais atteinte ».
+ * Échec fermé : toute lecture qui lève rend un texte neutre, jamais un faux « terminée ».
+ * @return {string}
+ */
+function texteSanteReanalyse_() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var suspension = statutReanalyse_(
+      props.getProperty('DriveAI_REANALYSE') === CONFIG.REANALYSE_TAG,
+      !rangementTermine_(),
+      props.getProperty('DriveAI_MIGRATION') !== CONFIG.MIGRATION_TAG,
+      budgetCampagnesAtteint_(),
+      resetEnCours_(),
+      estPannePlateforme_());
+    if (suspension) return suspension;
+    var budget = Math.round(CONFIG.REANALYSE_BUDGET_JOUR_MS / 60000);
+    var consomme = budgetJourReanalyse_(props, dateGmail_(new Date()));
+    var base = props.getProperty('DriveAI_REANALYSE_BASE');
+    var traites = Number(props.getProperty('DriveAI_REANALYSE_TRAITES')) || 0;
+    var avance = base === null
+      ? 'recensement en cours'
+      : traites + ' / ' + base + ' documents';
+    return 'en cours — ' + avance + ' · ' + Math.round(consomme / 60000) + ' des ' + budget +
+      ' min/j consommées aujourd\'hui (campagne « ' + CONFIG.REANALYSE_TAG + ' »)';
+  } catch (e) {
+    return 'état illisible (' + e + ')';
+  }
+}
+
+/**
+ * Cause d'ARRÊT de la re-datation, ou '' si la campagne peut tourner. PURE (testée).
+ *
+ * ⚠️ Les SIX gardes, pas deux (🟠 revues code, quotas ET sécurité ADR-0056). La première version
+ * n'en disait que deux — et la ligne affichait « en cours — 0 / 328 · 0 des 8 min/j » pendant que
+ * le frein à 40 $, le reset ou une panne de plateforme tenaient la campagne à l'arrêt. Un « 0 min
+ * aujourd'hui » ne distingue pas « pas encore passée » de « ne passera plus » : c'est le mode de
+ * panne du §1.6 mot pour mot, DANS la surface écrite pour le fermer. Même contrat que le jumeau
+ * `statutHistoGmail_`, dont le commentaire raconte déjà qu'une cause y avait été oubliée.
+ * L'ORDRE suit celui des gardes réelles du tick : la cause la plus définitive d'abord.
+ * @return {string} '' si rien ne l'arrête
+ */
+function statutReanalyse_(terminee, rangementEnCours, migrationEnCours, freinBudget, resetEnCours, pannePlateforme) {
+  if (terminee) return 'terminée ✅ (campagne « ' + CONFIG.REANALYSE_TAG + ' »)';
+  if (rangementEnCours) return 'en attente — le grand rangement passe d\'abord';
+  if (migrationEnCours) return 'en attente — la migration « ' + CONFIG.MIGRATION_TAG + ' » doit finir d\'abord';
+  if (pannePlateforme) return 'suspendue — panne de plateforme LLM (reprise dès le rétablissement)';
+  if (freinBudget) return 'en pause — frein budget campagnes atteint (' + CONFIG.LLM_BUDGET_CAMPAGNES + ' $)';
+  if (resetEnCours) return 'suspendue — le grand reset a la main (une seule à la fois)';
+  return '';
+}
+
+/**
  * Ligne de SANTÉ de la campagne historique Gmail — état, avancement, et minutes RÉELLEMENT
  * consommées aujourd'hui sur son budget quotidien. PURE au sens I/O (Properties seules).
  *
@@ -1067,7 +1140,15 @@ function texteSanteHistoGmail_() {
     var props = PropertiesService.getScriptProperties();
     var statut = statutHistoGmail_(props.getProperty('DriveAI_GMAIL_HISTO') === 'terminé',
       estPanneGmail_(), budgetCampagnesAtteint_(), resetEnCours_());
-    if (statut === 'terminé') return 'terminée ✅ — ses ' + budget + ' min/j sont RÉALLOUABLES';
+    if (statut === 'terminé') {
+      // ⚠️ DIRE ce qui a DÉJÀ été prêté (🟡 revue sécurité ADR-0056). Sans ce rappel, la prochaine
+      // session lit « ses 12 min/j sont RÉALLOUABLES » exactement comme celle-ci a lu « 20 », et
+      // prête une SECONDE fois des minutes déjà cédées — l'enveloppe se creuse sans que personne
+      // ne voie le double emploi. Le donneur annonce donc son solde, pas seulement son budget.
+      var pretees = CONFIG.GMAIL_HISTO_PRETEES_MIN || 0;
+      return 'terminée ✅ — ses ' + budget + ' min/j sont RÉALLOUABLES' +
+        (pretees ? ' (' + pretees + ' min déjà prêtées à la re-analyse)' : '');
+    }
     // ⚠️ Le COMPTE de fils n'est PAS répété ici : l'onglet Progression le porte déjà, et de façon
     // MONOTONE (l'offset brut repart à 0 aux passes de vérification — c'est une position de scan,
     // pas un cumul). Deux surfaces qui affichent le même fait avec deux conversions différentes,

@@ -272,9 +272,11 @@ test('routeur ecoles-archives06 : alias explicite = transfert ; source hors tabl
   // s'était créé à la racine de `06`, la cible le dossier de MARC sous `Archives scolaires`.
   // Le tag a changé AVEC le sens — sinon les ~45 fichiers déjà déplacés dans l'autre sens
   // portaient une clé de SUCCÈS et n'auraient jamais été repris.
-  const spec = pur.tableMissions_().filter((m) => m.tag === 'ecoles-archives06')[0];
+  const spec = pur.tableMissions_().filter((m) => m.tag === 'ecoles-archives06b')[0];
   const paires = pur.CONFIG.MISSIONS_IDS.ecoles06;
-  assert.strictEqual(paires.length, 6, 'les 6 dossiers d\'école de la racine de 06');
+  // 7 paires depuis ADR-0056 : les 6 dossiers d'école de la racine de `06`, plus l'ancien dossier
+  // d'archive de Marc que la fusion vide dans le dossier 2014-2018.
+  assert.strictEqual(paires.length, 7);
   const ctx = spec.batirCtx();
   const parId = paires.filter((x) => x.cible)[0];
   const r = spec.router('2020-01-01_Relevé_ULCO.pdf', { sourceId: parId.src, sousChemin: 'Semestre 1' }, ctx);
@@ -617,10 +619,10 @@ test('runner ecoles-archives06 : transfert par alias + RE-POINTAGE des entités 
   paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
   h.arbre[paires[0].src].files = [h.fichier('fd', '2019-05-01_Relevé_ULCO.pdf')];
 
-  h.c.executerMission_('ecoles-archives06', () => false);
+  h.c.executerMission_('ecoles-archives06b', () => false);
   assert.deepStrictEqual(plain(h.moves.filter((m) => m.vers)), [{ id: 'fd', vers: paires[0].cible }]);
 
-  h.c.executerMission_('ecoles-archives06', () => false); // passe vide → convergence
+  h.c.executerMission_('ecoles-archives06b', () => false); // passe vide → convergence
   // UNE seule lecture/écriture en LOT (revue quotas : 6 lectures intégrales de l'onglet `Entités`
   // juste avant l'unique fenêtre d'écriture consommaient le garde-temps qu'elles partagent).
   assert.strictEqual(h.lots.length, 1, 'un seul appel en lot, pas un par paire');
@@ -639,7 +641,7 @@ test('runner ecoles-archives06 : la cible sans ID est créée dès qu\'une entit
   const h = ctxSchool({ viseUneSource: true });
   const paires = h.c.CONFIG.MISSIONS_IDS.ecoles06;
   paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
-  h.c.executerMission_('ecoles-archives06', () => false);
+  h.c.executerMission_('ecoles-archives06b', () => false);
   const sansId = paires.filter((p) => !p.cible)[0];
   assert.ok(Object.prototype.hasOwnProperty.call(h.lots[0], sansId.src),
     'la source du cégep est bien re-pointée une fois son dossier find-or-créé');
@@ -655,20 +657,20 @@ test('un re-pointage qui LÈVE empêche le drapeau FINI — re-tenté à la pass
   let rate = true;
   h.c.repointerEntitesLot_ = (carte) => { if (rate) throw new Error('Sheet indisponible'); h.lots.push(carte); };
 
-  assert.throws(() => h.c.executerMission_('ecoles-archives06', () => false), /Sheet indisponible/,
+  assert.throws(() => h.c.executerMission_('ecoles-archives06b', () => false), /Sheet indisponible/,
     'l\'échec REMONTE (etapeSuivie_ le journalise) au lieu d\'être avalé');
-  assert.ok(!h.store['DriveAI_MISSION_FINI_ecoles-archives06'], 'pas de FINI sur un re-pointage raté');
+  assert.ok(!h.store['DriveAI_MISSION_FINI_ecoles-archives06b'], 'pas de FINI sur un re-pointage raté');
   assert.ok(h.store['DriveAI_MISSIONS_JOUR'], 'le budget consommé est écrit malgré le throw (finally)');
 
   // La Sheet revient : la passe suivante (vide, quasi gratuite) re-tente et conclut.
   rate = false;
-  h.c.executerMission_('ecoles-archives06', () => false);
-  assert.strictEqual(h.store['DriveAI_MISSION_FINI_ecoles-archives06'], h.c.CONFIG.MISSIONS_REGLES_VERSION);
+  h.c.executerMission_('ecoles-archives06b', () => false);
+  assert.strictEqual(h.store['DriveAI_MISSION_FINI_ecoles-archives06b'], h.c.CONFIG.MISSIONS_REGLES_VERSION);
   assert.strictEqual(h.lots.length, 1);
   // LIBÉRATION du compteur (revue finale PR2 — « un gate se teste par sa libération », leçon §7) :
   // l'échec a incrémenté errC ; le succès doit l'effacer, sinon un errC ≥ MAX survivrait au FINI
   // et re-bloquerait une journée entière au PREMIER échec après un futur bump de version.
-  const etatApres = JSON.parse(h.store['DriveAI_MISSIONS_ETAT'])['ecoles-archives06'];
+  const etatApres = JSON.parse(h.store['DriveAI_MISSIONS_ETAT'])['ecoles-archives06b'];
   assert.strictEqual(etatApres.errC, undefined, 'errC effacé par la convergence réussie');
   assert.strictEqual(etatApres.errJour, undefined, 'errJour effacé avec lui');
 });
@@ -2046,15 +2048,15 @@ test('§1.2 — une cible à la CORBEILLE refuse le dépôt (jamais de suppressi
   h.arbre[avecId.src].files = [h.fichier('fx', '2019-05-01_Relevé_ULCO.pdf')];
   h.arbre[avecId.cible] = { files: [], folders: {}, corbeille: true };
 
-  h.c.executerMission_('ecoles-archives06', () => false);
+  h.c.executerMission_('ecoles-archives06b', () => false);
   assert.strictEqual(h.moves.filter((m) => m.vers).length, 0, 'aucun dépôt dans une corbeille');
-  assert.ok(!h.index['mission|ecoles-archives06|' + h.c.CONFIG.MISSIONS_REGLES_VERSION + '|fx'],
+  assert.ok(!h.index['mission|ecoles-archives06b|' + h.c.CONFIG.MISSIONS_REGLES_VERSION + '|fx'],
     'aucune clé posée : le fichier est re-tenté, jamais perdu de vue');
-  assert.ok(!h.store['DriveAI_MISSION_FINI_ecoles-archives06'], 'une passe incomplète ne conclut pas');
+  assert.ok(!h.store['DriveAI_MISSION_FINI_ecoles-archives06b'], 'une passe incomplète ne conclut pas');
 
   // LIBÉRATION : la corbeille vidée/restaurée, le dépôt reprend (un gate se teste par sa levée).
   h.arbre[avecId.cible].corbeille = false;
-  h.c.executerMission_('ecoles-archives06', () => false);
+  h.c.executerMission_('ecoles-archives06b', () => false);
   assert.strictEqual(h.moves.filter((m) => m.vers).length, 1);
 });
 

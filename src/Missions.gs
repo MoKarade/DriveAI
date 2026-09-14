@@ -238,7 +238,16 @@ function tableMissions_() {
       // Le TAG et la CLÉ changent avec le sens — sinon les ~45 fichiers déjà déplacés dans l'autre
       // sens portent une clé de SUCCÈS sous `retour-ecoles06` et ne seraient jamais repris
       // (leçon §9 : « re-lancer une campagne à clé de SUCCÈS ne re-traite pas ce qu'elle a figé »).
-      tag: 'ecoles-archives06', cle: 'mission-ecoles-archives-06',
+      // ⚠️ TAG BUMPÉ `…06` → `…06b` (🔴 revue code ADR-0056). `Lycée — Thérèse Davila (2017-2018)`
+      // était hier la CIBLE de la paire Avila ; la fusion en fait une SOURCE. Or la clé
+      // d'idempotence est scopée par TAG, pas par source : les fichiers que la mission y a déjà
+      // déposés portent `mission|ecoles-archives06|…` et la collecte les SAUTERAIT — ils resteraient
+      // à vie dans le dossier que Marc a demandé de dissoudre, et la mission écrirait « TERMINÉE »
+      // avec un compte propre. C'est mot pour mot le raisonnement de C28-105 la veille, et la leçon
+      // §9 « re-lancer une campagne à clé de SUCCÈS ne re-traite pas ce qu'elle a figé OK ».
+      // Coût du bump : NUL — les fichiers déjà livrés dans les cibles ne sont dans aucune source,
+      // donc jamais re-collectés ; seuls le drapeau FINI et les compteurs repartent propres.
+      tag: 'ecoles-archives06b', cle: 'mission-ecoles-archives-06',
       sources: (IDS.ecoles06 || []).map(function (p) { return p.src; }),
       batirCtx: function () {
         var parSource = {};

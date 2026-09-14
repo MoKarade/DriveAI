@@ -121,7 +121,14 @@ test('budget RÉALLOUÉ, jamais AUGMENTÉ : le total du reset ne dépasse pas ce
     C.RESET_04_BUDGET_JOUR_MS + C.RESET_LLM_BUDGET_JOUR_MS;
   const libere = C.CONSOLIDATION_BUDGET_JOUR_MS + C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS +
     C.GMAIL_HISTO_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS +
-    C.MISSIONS_BUDGET_JOUR_MS; // + fusion (#47) et missions (C28-49) — TOUTES gatées !resetEnCours_
+    C.MISSIONS_BUDGET_JOUR_MS +
+    // ⚠️ 9ᵉ jambe (revue quotas ADR-0056) : `reanalyse` est gatée `gResetEnCours` (Main.gs), elle
+    // appartient donc à CE bloc AUSSI. Il y a TROIS sommes, pas deux — et c'est la troisième qui
+    // perdait sa marge : sans cette ligne, `libere` tombait de 58 à 50 min/j face à un `reset` de
+    // 50, soit ZÉRO marge, avec le test toujours vert (50 ≤ 50). La prochaine réallocation neutre
+    // vers la re-analyse aurait été refusée par un invariant censé l'autoriser — exactement le
+    // défaut que C28-99 avait corrigé sur l'autre verrou.
+    C.REANALYSE_BUDGET_JOUR_MS; // + fusion (#47) et missions (C28-49) — TOUTES gatées !resetEnCours_
                                // (vérifié par les tests de gates ci-dessus/dessous) : un reset ON les
                                // suspend, leur budget est donc réellement LIBÉRÉ pour lui.
   assert.ok(reset <= libere,
@@ -143,7 +150,10 @@ test('enveloppe reset-OFF : la somme des budgets QUOTIDIENS des campagnes concur
   const concurrentesResetOff = C.GMAIL_HISTO_BUDGET_JOUR_MS + C.CONSOLIDATION_BUDGET_JOUR_MS +
     C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS +
     C.HISTORIQUE_VRAC_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS + // missions C28-49 (partagé entre elles)
-    C.DOUBLONS_BUDGET_JOUR_MS; // validation de _Doublons (C28-49 PR4, ADR-0047) — lecture seule, zéro LLM
+    C.DOUBLONS_BUDGET_JOUR_MS + // validation de _Doublons (C28-49 PR4, ADR-0047) — lecture seule, zéro LLM
+    C.REANALYSE_BUDGET_JOUR_MS; // re-analyse ciblée (ADR-0056) — elle n'avait AUCUN budget quotidien,
+                                // donc l'agrégat ci-dessous ne la voyait pas : l'enveloppe pouvait
+                                // croître avec ce test au vert. La 9ᵉ jambe ferme cet angle mort.
   // RÉALLOCATION 2026-08-11 (diagnostic prod : l'exec est le goulot) : exec 6→12, fusion 6→0 (parkée,
   // campagne OFF) — la SOMME reste 56 min/j (20+12+12+12+0), enveloppe INCHANGÉE, pur transfert.
   // HISTORIQUE_VRAC (2026-08-12, demande Marc : suivi journalier par domaine) : +4 min → 60 min/j.
@@ -186,9 +196,10 @@ test('ENVELOPPE des campagnes : la somme reste EXACTEMENT 63 min/j (réallouer, 
   const C = require('./harness').load(['Config.gs']).CONFIG;
   const total = C.GMAIL_HISTO_BUDGET_JOUR_MS + C.CONSOLIDATION_BUDGET_JOUR_MS +
     C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS +
-    C.HISTORIQUE_VRAC_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS + C.DOUBLONS_BUDGET_JOUR_MS;
+    C.HISTORIQUE_VRAC_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS + C.DOUBLONS_BUDGET_JOUR_MS +
+    C.REANALYSE_BUDGET_JOUR_MS; // 9ᵉ jambe (ADR-0056) — cf. le commentaire de l'agrégat ci-dessus
   assert.strictEqual(total / 60000, 63,
-    'la somme des budgets quotidiens des 8 campagnes doit rester = 63 min/j. Pour accélérer une ' +
+    'la somme des budgets quotidiens des 9 campagnes doit rester = 63 min/j. Pour accélérer une ' +
     'campagne, PRENDRE à une autre — jamais ajouter des minutes : au-delà du mur runtime ' +
     '~90 min/j, TOUS les déclencheurs gèlent, chien de garde inclus (C28-29). Relever ce total ' +
     'est une DÉCISION de Marc, pas un effet de bord : il faudrait d\'abord MESURER le runtime ' +
@@ -214,11 +225,33 @@ test('ENVELOPPE des campagnes : la somme reste EXACTEMENT 63 min/j (réallouer, 
     ['DOUBLONS', C.DOUBLONS_ACTIF, C.DOUBLONS_BUDGET_JOUR_MS],
     ['CONSOLIDATION', C.CONSOLIDATION_ACTIF, C.CONSOLIDATION_BUDGET_JOUR_MS],
     ['CONSOLIDATION_EXEC', C.CONSOLIDATION_EXEC_ACTIF, C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS],
+    // La re-datation n'a pas de drapeau `*_ACTIF` : elle tourne tant que son tag n'est pas posé,
+    // donc elle est TOUJOURS active du point de vue de ce garde (🟡 revue quotas ADR-0056 — 9 jambes
+    // dans la somme, 5 seulement dans le garde). Son motif est exactement celui visé :
+    // `consommeJour (0) >= 0` ⇒ `return` à chaque tick, en silence, à vie, l'égalité à 63 restant
+    // verte puisque les 8 min seraient parties ailleurs.
+    ['REANALYSE', true, C.REANALYSE_BUDGET_JOUR_MS],
   ].forEach(([nom, actif, budget]) => {
     assert.ok(!actif || budget > 0,
       nom + '_ACTIF=true avec un budget quotidien de 0 = campagne MUETTE (no-op silencieux) : ' +
       'rends-lui du budget avant de l\'activer, ou désactive-la explicitement');
   });
+});
+
+test('minutes PRÊTÉES : le chiffre affiché à Marc est DÉRIVÉ du transfert, jamais recopié', () => {
+  // 🟡 revue code ADR-0056. `GMAIL_HISTO_PRETEES_MIN` existe pour qu'une prochaine session ne prête
+  // pas deux fois les mêmes minutes — et pour que la ligne de Santé dise la vérité. Rien ne la
+  // reliait au transfert : un prochain 12 → 10 l'aurait laissée à 8, et le message serait devenu
+  // faux en silence. « Promesse de verrou = verrou codé dans le même commit » (§9).
+  // 20 min = la dotation HISTORIQUE de l'historique Gmail, avant le prêt (ADR-0056 §C).
+  const C = require('./harness').load(['Config.gs']).CONFIG;
+  const DOTATION_HISTO_MIN = 20;
+  assert.strictEqual(C.GMAIL_HISTO_PRETEES_MIN,
+    DOTATION_HISTO_MIN - C.GMAIL_HISTO_BUDGET_JOUR_MS / 60000,
+    'le prêt annoncé doit être la DIFFÉRENCE réelle entre la dotation et le budget courant');
+  // …et ce qui est prêté est ce qui est reçu : sinon des minutes se créent ou se perdent en route.
+  assert.strictEqual(C.GMAIL_HISTO_PRETEES_MIN, C.REANALYSE_BUDGET_JOUR_MS / 60000,
+    'les minutes retirées au donneur sont EXACTEMENT celles reçues par la re-datation');
 });
 
 test('INVENTAIRE des budgets quotidiens : aucune constante n\'échappe aux invariants', () => {
@@ -230,10 +263,10 @@ test('INVENTAIRE des budgets quotidiens : aucune constante n\'échappe aux invar
   // `feuille_` ↔ `creerOnglet_`.
   const C = require('./harness').load(['Config.gs']).CONFIG;
   const connues = [
-    // les 8 campagnes de l'enveloppe reset-OFF (sommées à 63 min/j ci-dessus)
+    // les 9 campagnes de l'enveloppe reset-OFF (sommées à 63 min/j ci-dessus)
     'GMAIL_HISTO_BUDGET_JOUR_MS', 'CONSOLIDATION_BUDGET_JOUR_MS', 'CONSOLIDATION_EXEC_BUDGET_JOUR_MS',
     'SYNC_BUDGET_JOUR_MS', 'FUSION_EXEC_BUDGET_JOUR_MS', 'HISTORIQUE_VRAC_BUDGET_JOUR_MS',
-    'MISSIONS_BUDGET_JOUR_MS', 'DOUBLONS_BUDGET_JOUR_MS',
+    'MISSIONS_BUDGET_JOUR_MS', 'DOUBLONS_BUDGET_JOUR_MS', 'REANALYSE_BUDGET_JOUR_MS',
     // les 4 phases du reset (invariant de réallocation reset-ON)
     'RESET_RASSEMBLEMENT_BUDGET_JOUR_MS', 'RESET_PLACEMENT_BUDGET_JOUR_MS',
     'RESET_04_BUDGET_JOUR_MS', 'RESET_LLM_BUDGET_JOUR_MS',
@@ -317,6 +350,28 @@ test('orchestration RESET : la passe LLM du reliquat est gatée budget de tick +
     'AVANT l\'historique Gmail : à la reprise post-reset, l\'histo lui volerait le créneau LLM du tick');
   assert.ok(i < posAppel('appliquerMigrationTaxonomie_(estBudgetDepasse)'),
     'le reliquat garde la priorité du créneau LLM sur les campagnes qui reprennent après le reset');
+});
+
+test('MARGE DE DÉMARRAGE : la re-datation reçoit un garde-temps de tick AMPUTÉ de la marge, jamais le nu', () => {
+  // 🔴 revue quotas ADR-0056. Un sous-budget LOCAL ne peut pas protéger le TICK : la campagne
+  // retranchait bien sa marge de SES 2 min, mais dès que l'amont a consommé 2 min c'est le
+  // garde-temps du tick (`budgetMsRun_()` = 3 min) qui mord — et il n'en avait aucune. Un document
+  // pris à 179 s de tick coûte encore 1 à 3 min : 179 + 180 + les écritures du `finally` franchissent
+  // le mur DUR de 6 min, où l'exécution est TUÉE. Le `finally` ne tourne pas, les ms ne sont pas
+  // imputées, et le MÊME document repart en tête au tick suivant — sans compteur pour l'arrêter.
+  // Mutation prouvée : remettre `estBudgetDepasse` nu dans l'appel fait tomber ce test.
+  assert.ok(/appliquerReanalyseCiblee_\(estBudgetDepasseDoc\)/.test(corps),
+    'la re-datation doit recevoir le garde AMPUTÉ de la marge, jamais `estBudgetDepasse` nu');
+  assert.ok(!/appliquerReanalyseCiblee_\(estBudgetDepasse\)/.test(corps),
+    'le garde nu autoriserait un démarrage à 179 s de tick');
+  // …et ce garde est bien le garde-temps du tick MOINS la marge, dérivé des constantes.
+  const def = corps.slice(corps.indexOf('var estBudgetDepasseDoc'));
+  assert.ok(/budgetMsRun_\(\) - CONFIG\.PILOTE_MARGE_DOC_MS/.test(def.slice(0, 260)),
+    'la marge se RETRANCHE du budget de tick, elle ne se recopie pas en chiffre : ' + def.slice(0, 260));
+  // Le garde amputé est RÉSERVÉ aux étapes qui lancent un document LLM complet : l'appliquer à
+  // l'I/O pur amputerait des fenêtres qui n'en ont pas besoin (le recensement l'a déjà payé).
+  assert.strictEqual((corps.match(/estBudgetDepasseDoc\)/g) || []).length, 1,
+    'une seule étape le consomme aujourd\'hui — en ajouter une est une DÉCISION');
 });
 
 test('orchestration RESET : rassemblement → placement → 04 interne, dans cet ordre, en BUDGET TAIL (jamais le budget de tick 3 min)', () => {

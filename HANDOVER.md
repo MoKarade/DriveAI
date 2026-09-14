@@ -4,7 +4,90 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🟦 EN COURS — 2026-09-14 : C28-105, la structure des écoles, c'est celle de Marc (ADR-0055).**
+> **🟦 EN COURS — 2026-09-14 (suite) : finaliser avant le prochain chantier (ADR-0056).**
+> Marc : « j'ai un gros chantier que je veux faire mais d'abord regarde ce qu'il faut finaliser »,
+> puis quatre décisions et un « go ». Trois lots livrés ensemble.
+>
+> **A · « Tout corbeiller » n'a jamais marché — et le code, lui, marchait.** Mesuré AVANT de toucher
+> à quoi que ce soit : l'app en ligne sert EXACTEMENT le build courant (même empreinte de fichier que
+> la compilation locale ⇒ le correctif de C28-93 EST déployé), les 112 lignes existent avec le bon
+> statut, Marc voit « 🗑 Tout corbeiller (112) » actif. Or TOUS les chemins de `corbeillerLot`
+> produisent un affichage : le code ne PEUT pas être silencieux. Ce qui l'était, c'est **l'endroit** —
+> bilan, erreur et progression rendus en TÊTE de la carte, bouton en BAS, 112 lignes plus loin. Marc
+> cliquait, le compte rendu s'affichait hors de son écran. Zone de retour désormais **collante en bas
+> de carte**, et plus aucun `return` muet. ⚠️ C28-93 avait vérifié son effet sur le COMPTEUR du moteur
+> (124 → 112), jamais sur ce que l'ÉCRAN montre après l'action.
+>
+> **B · Les deux dossiers collège/lycée fusionnent** en `Collège & Lycée — divers (2014-2018)`
+> (dossier Drive renommé ; `Lycée — Thérèse Davila (2017-2018)` devient une SOURCE de la mission).
+> `Archives scolaires` repasse à 7 enfants ⇒ son exemption au plafond est RETIRÉE. ⚠️ **La fenêtre
+> reste 2014-09 → 2017-08** : l'étendre à 2018 chevaucherait la prépa et rendrait toute cette année
+> inclassable par la date — signalé, Marc a confirmé.
+>
+> **C · Re-datation des 328 de `06`** (`c26-08` → `c28-92`, cibles réduites à `06`, ~8,6 $). Et le
+> trou qu'on ne pouvait pas laisser en rallumant cette campagne : **elle n'avait aucun budget
+> quotidien**, donc rien ne bornait sa journée et elle échappait à l'invariant d'enveloppe.
+> `REANALYSE_BUDGET_JOUR_MS: 8 min` **prélevées** sur l'historique Gmail (20 → 12) — la réallocation
+> que C28-70 attendait faute de preuve, et c'est le MOTEUR qui l'écrit (« terminée ✅ — ses 20 min/j
+> sont RÉALLOUABLES »). Enveloppe inchangée à 63 min/j.
+>
+> **REVUE FLOTTE ADVERSARIALE — 2ᵉ passe : 3 🔴 de plus, tous intégrés avant le merge.**
+> (1) La campagne descendait **tout le sous-arbre de `06`**, pas les 328 fichiers à plat : elle
+> aurait fait repasser par le flux ce que C28-90/C28-105 venaient de ranger — y compris les dossiers
+> de MARC — et le flux ne connaît ni D8, ni D9, ni D10, donc un nom muet repartait **à plat à la
+> racine du domaine**. Coût ×2 à ×3 au passage. ⇒ `REANALYSE_RACINE_SEULE`. (2) La carte du compte
+> rendu **se démontait au succès complet** (0 candidat restant ⇒ plus rien pour rendre le bilan) —
+> C28-93 déplacé d'un cran. ⇒ prédicat pur `carteVidesVisible`. (3) La zone collante se rendait
+> **sous la barre d'onglets du téléphone**. Plus : le dossier Davila passait de CIBLE à SOURCE sous
+> le MÊME tag (les fichiers déjà déplacés n'auraient jamais été repris) ⇒ tag `…06b` ; et aucune
+> marge avant le mur (un document LLM lancé dans la dernière minute est TUÉ, le `finally` ne tourne
+> pas, le budget fuit) ⇒ `PILOTE_MARGE_DOC_MS`.
+>
+> **REVUE FLOTTE — 3ᵉ PASSE (code · sécurité · quotas) : 2 🔴 de plus, et CINQ mutations jouées par
+> les agents ont SURVÉCU.** C'est la leçon du lot : une correction n'existe que si une mutation la
+> fait tomber, et il faut la jouer **sur le point d'appel**, pas seulement sur la fonction pure.
+> (1) **La marge de démarrage protégeait le mauvais budget** — retranchée du sous-budget local
+> (2 min) alors que le terme qui mord est le garde-temps du TICK (3 min), qui n'en avait aucune. Un
+> document pris à 179 s franchit le mur DUR de 6 min : l'exécution est TUÉE, le `finally` ne tourne
+> pas, ~4 min sur 8 échappent au compteur, et le MÊME document repart au tick suivant sans rien pour
+> l'arrêter. (2) **La convergence était devenue topologique** : « plus rien à la racine de `06` ».
+> Mais la consolidation passe AVANT, avec 24 min/j contre 8, en pure I/O — elle pouvait emporter les
+> 328 fichiers classés sur leur date FAUSSE, après quoi la campagne écrivait « terminée ✅ » sans
+> avoir rien re-daté… et `finaliserCompteurCampagne_` EFFAÇAIT le compteur qui l'aurait dit. ⇒ D11
+> (la racine d'un domaine en cours de re-datation ne se vide pas sous la campagne, levée seule à la
+> convergence) + compteur honnête. (3) 🟠 **la re-datation pouvait DÉTRUIRE une bonne date** :
+> `getLastUpdated()` en référence, donc `2015-06-12_Bulletin_Avila.pdf` → `2026-…`, hors fenêtre,
+> figé sous une clé de SUCCÈS — l'inverse du but de la campagne. (4) 🟠 trois verrous **promis mais
+> inexistants** : le drapeau STRICT du garde `04` (mutation survivante, mock qui ne lisait pas ses
+> arguments), la ligne de Santé qui ne disait que 2 causes d'arrêt sur 6, et le tripwire de l'app
+> contournable par la forme conjonctive — le bug C28-110 réintroduit, au vert.
+>
+> **Vérifications** : 1306 tests moteur · 281 tests app + build · syntaxe `.gs` · **27 mutations,
+> 27 attrapées** (dont 8 qui avaient d'abord survécu et ont exigé d'écrire le test manquant). ⚠️ Dont la garde « racine seule », qui n'était couverte par **AUCUN** test au
+> premier jet : la retirer laissait toute la suite verte. Son test observe le CHEMIN (`getFolders`
+> jamais appelé), pas la taille du résultat. Trois tests qui MENTAIENT sont tombés et ont été
+> corrigés : `majSante_` affirmait dériver les 20 min de CONFIG en écrivant `20` en dur — son propre
+> commentaire avait prédit qu'il tomberait « le jour où les 20 min sont réallouées ».
+>
+> **Ce que ça coûte vraiment** : **14 à 21 jours** [Probable] — 8 min/j ÷ **20-30 s par document**
+> (le chiffre MESURÉ du projet pour OCR + Sonnet v2, `Config.gs`) = 16 à 24 documents/jour pour 328.
+> Elle tourne en fond, ce n'est pas l'affaire de quelques jours. Et la réallocation est neutre **au tableau** (63 min/j), pas dans la machine : le
+> donneur était TERMINÉ, il ne consommait plus rien — le moteur va donc réellement consommer
+> **+8 min/j** sur les ~90 min/j d'Apps Script. Marge confortable, mais l'invariant somme des
+> PLAFONDS, jamais de la consommation.
+>
+> **Ouverts** : C28-111 (re-analyse de `03`/`08` parkée — à reprendre ou à clore avec Marc),
+> **C28-115 — à trancher par Marc** : le frein LLM est à **40 $** pour une campagne annoncée à
+> 8,6 $ (4,6× le besoin) ; c'est un filet anti-emballement, pas un budget, mais si la mesure dérape
+> rien ne s'arrêtera avant 40 $. C28-113 (`migration` et les `dryrun-*` ont le même trou de budget
+> quotidien) et C28-114 (`chargerIndexCache_` publie son cache avant de l'avoir rempli) sont notés,
+> **non corrigés** — hors périmètre. C28-112 est **diagnostiqué et se répare tout seul** : la ligne
+> manquait parce que `pousser` refuse de créer une ligne pour une campagne déjà « terminée »
+> (C26-08 l'était sans en avoir jamais eu une) ; le tag neuf la fait naître au prochain tick. C28-86
+> ne demande plus rien au code — Marc met les 2 fichiers illisibles à la poubelle lui-même, et la
+> mission Carrière convergera d'elle-même.
+
+> **🟦 HISTORIQUE — 2026-09-14 : C28-105, la structure des écoles, c'est celle de Marc (ADR-0055).**
 > Marc, capture d'écran à l'appui : « j'ai la bonne structure pour les écoles déjà, **continue à
 > rajouter là-dedans au lieu de mettre à la racine du projet** », puis « et **décale prépa et cégep
 > là-dedans** en reprenant la bonne structure ».

@@ -14,8 +14,8 @@ const { load } = require('./harness');
 const CORPUS = require('./fixtures/vrac-racines-2026-09-13.json');
 const DEJA_RANGES = require('./fixtures/deja-ranges-2026-09-13.json');
 
-const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs',
-  'Router.gs', 'Llm.gs']);
+const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Migration.gs', 'Reset.gs',
+  'Missions.gs', 'Router.gs', 'Llm.gs']);
 
 /**
  * LE bon objectif de mesure pour un STOCK déjà posé sur le Drive, c'est la CONSOLIDATION : c'est
@@ -253,7 +253,7 @@ test('ADR-0052 D8 — aucun fichier DÉJÀ rangé n\'est sorti de son sous-dossi
   // Ingénieur MSIR (2020-2023)` ne « sort » pas de son dossier : il SUIT la structure que Marc a
   // désignée. Un fichier du cégep qui partirait chez l'ULCO, lui, ferait toujours échouer le test.
   const DEMENAGEMENT_06 = {
-    "lycée Thérèse d'Avila": 'Lycée — Thérèse Davila (2017-2018)',
+    "lycée Thérèse d'Avila": 'Collège & Lycée — divers (2014-2018)',
     'Prépa Gustave Eiffel (PTSI)': 'Prépa PTSI (2017-2018)',
     'DUT ULCO Saint-Omer': 'ULCO — DUT GIM (2018-2020)',
     'IUT Du Littoral': 'ULCO — DUT GIM (2018-2020)',
@@ -572,11 +572,11 @@ test('ADR-0052 D6 — les fenêtres de scolarité placent, et REFUSENT dès le m
   assert.strictEqual(ctx.ecoleParDateReset_('2017-11-03_Notes de cours_Maths.pdf'), 'Prépa PTSI (2017-2018)');
   assert.strictEqual(ctx.ecoleParDateReset_('2018-03-12_Devoir_Physique.pdf'), 'Prépa PTSI (2017-2018)');
   assert.strictEqual(ctx.ecoleParDateReset_('2018-10-01_TP_Élec.pdf'), 'ULCO — DUT GIM (2018-2020)');
-  assert.strictEqual(ctx.ecoleParDateReset_('2016-03-01_Devoir_SVT.pdf'), 'Lycée — Thérèse Davila (2017-2018)');
+  assert.strictEqual(ctx.ecoleParDateReset_('2016-03-01_Devoir_SVT.pdf'), 'Collège & Lycée — divers (2014-2018)');
   assert.strictEqual(ctx.ecoleParDateReset_('2021-02-02_Rapport de TP_Robotique.pdf'), 'IMERIR — Ingénieur MSIR (2020-2023)');
   // ANNÉE SEULE : elle ne place que si l'année CIVILE ENTIÈRE tient dans une fenêtre.
   assert.strictEqual(ctx.ecoleParDateReset_('2022_Notes de cours_Maths.pdf'), 'IMERIR — Ingénieur MSIR (2020-2023)');
-  assert.strictEqual(ctx.ecoleParDateReset_('2016_Notes de cours_Maths.pdf'), 'Lycée — Thérèse Davila (2017-2018)');
+  assert.strictEqual(ctx.ecoleParDateReset_('2016_Notes de cours_Maths.pdf'), 'Collège & Lycée — divers (2014-2018)');
   assert.strictEqual(ctx.ecoleParDateReset_('2018_Notes de cours_Maths.pdf'), null, '2018 est à cheval');
   assert.strictEqual(ctx.ecoleParDateReset_('2020_Notes de cours_Maths.pdf'), null, '2020 est à cheval');
   // HORS fenêtre — dont les 239 fichiers datés 2026 (date de réception), qu'il ne faut surtout pas
@@ -651,7 +651,7 @@ test('ADR-0052 D6 — un marqueur de NIVEAU ou de FILIÈRE dans le nom est un FA
     // Ces 4 noms portent une date HORS de toute fenêtre (2026 = date de réception) : seul le
     // marqueur peut les placer, ce qui prouve qu'il est bien consulté AVANT la date.
     ['2026-07-01_Travail pratique_TP électricité théorème superposition GIM1.docx', 'Archives scolaires/ULCO — DUT GIM (2018-2020)'],
-    ['2026-07-01_Devoir_Devoir 1ère année.pdf', 'Archives scolaires/Lycée — Thérèse Davila (2017-2018)/Cours & travaux'],
+    ['2026-07-01_Devoir_Devoir 1ère année.pdf', 'Archives scolaires/Collège & Lycée — divers (2014-2018)/Cours & travaux'],
     // « svt », « 2nde », « colle » ont été RETIRÉS : contribution NULLE mesurée sur le corpus et
     // risque non nul. Un document qui ne porte qu'une MATIÈRE n'est plus attribué par elle.
     ['2026-07-01_Compte rendu de sortie scolaire_SVT sortie Mare à Goriaux 2nde.pdf', null],
@@ -679,10 +679,11 @@ test('ADR-0055 — les libellés d\'école sont EXACTEMENT les dossiers de Marc 
   // libellé qui diffère d'une majuscule, d'un accent ou d'un tiret CADRATIN crée un SECOND dossier
   // à côté du vrai, et plus rien ne les réunit. C'est exactement ce qui est arrivé en `03`
   // (« 3987 route des Rivières » vs « 3987 rte des Rivières »).
-  // Les 8 enfants d'`Archives scolaires` : les 7 que MARC a créés le 29/05/2026 (relevés dans son
-  // Drive le 14/09) + `Cégep de Sherbrooke (2019)`, qu'il a demandé d'ajouter et que le moteur
-  // find-or-crée PAR NOM — donc au caractère près, lui aussi.
-  const reels = ['Collège & Lycée — divers (2014-2017)', 'Lycée — Thérèse Davila (2017-2018)',
+  // Les 7 enfants d'`Archives scolaires` : les 6 qui restent des 7 que MARC a créés le 29/05/2026
+  // (C28-90 fusionne ses deux nœuds collège/lycée en un seul `… (2014-2018)`, à sa demande)
+  // + `Cégep de Sherbrooke (2019)`, qu'il a demandé d'ajouter et que le moteur find-or-crée PAR
+  // NOM — donc au caractère près, lui aussi.
+  const reels = ['Collège & Lycée — divers (2014-2018)',
     'Lycée — Gustave Eiffel — Physique-Chimie (TP)', 'Prépa PTSI (2017-2018)',
     'ULCO — DUT GIM (2018-2020)', 'Cégep de Sherbrooke (2019)',
     'IMERIR — Ingénieur MSIR (2020-2023)', 'Online course — AI Essentials (Google)'];
@@ -712,7 +713,7 @@ test('ADR-0055 — les libellés d\'école sont EXACTEMENT les dossiers de Marc 
   // Le corpus ne contient aucun document « Thérèse d'Avila » : la branche par NOM se pinne donc
   // directement, sinon elle reste le seul libellé sans verrou (revue sécurité, mutation survivante).
   for (const [nom, attendue] of [
-    ["2016-03-01_Bulletin scolaire_Lycée Thérèse d'Avila.pdf", 'Lycée — Thérèse Davila (2017-2018)'],
+    ["2016-03-01_Bulletin scolaire_Lycée Thérèse d'Avila.pdf", 'Collège & Lycée — divers (2014-2018)'],
     ['2018-01-05_Kholle_Gustave Eiffel.pdf', 'Prépa PTSI (2017-2018)'],
     ['2019-05-05_Travail pratique_ULCO Saint-Omer.pdf', 'ULCO — DUT GIM (2018-2020)'],
     ['2021-02-02_Notes de cours_IMERIR.pdf', 'IMERIR — Ingénieur MSIR (2020-2023)'],
@@ -728,7 +729,7 @@ test('ADR-0055 D10 — la campagne ne réorganise jamais l\'intérieur de la str
   // `decisionConsolidation_` : une école NOMMÉE est un signal FORT, donc ni D8 (cible faible) ni
   // D9 (remontée vers un ancêtre) ne mordent entre deux FRÈRES de même profondeur. La
   // consolidation vidait donc `Archives scolaires/IMERIR — …/MFE` dans `…/Cours & travaux`, et
-  // `Archives scolaires/Collège & Lycée — divers (2014-2017)` vers `Autres établissements`, à la
+  // `Archives scolaires/Collège & Lycée — divers (2014-2018)` vers `Autres établissements`, à la
   // RACINE du domaine — l'inverse mot pour mot de la demande qui a motivé ADR-0055.
   const d = '06 · Études & diplômes';
   const A = ctx.RACINE_ARCHIVES_ECOLE_RESET + '/';
@@ -751,10 +752,10 @@ test('ADR-0055 D10 — la campagne ne réorganise jamais l\'intérieur de la str
     assert.strictEqual(dec.cible, d + '/' + actuel);
   }
   // (b) SORTIE de la structure vers la racine du domaine : refusée aussi.
-  const sortie = decide(A + 'Collège & Lycée — divers (2014-2017)',
+  const sortie = decide(A + 'Collège & Lycée — divers (2014-2018)',
     '2018-03-10_Certificat de scolarité_Collège Gustave Eiffel.pdf');
   assert.strictEqual(sortie.action, 'OK');
-  assert.strictEqual(sortie.cible, d + '/' + A + 'Collège & Lycée — divers (2014-2017)');
+  assert.strictEqual(sortie.cible, d + '/' + A + 'Collège & Lycée — divers (2014-2018)');
   // (c) …et un fichier d'un dossier de Marc que le nom rattache à une AUTRE école ne bouge pas non
   // plus : c'est SA décision de rangement, pas celle du moteur.
   const croise = decide(A + 'Lycée — Gustave Eiffel — Physique-Chimie (TP)',
@@ -847,4 +848,68 @@ test("C28-90 — une école DÉDUITE d'une fenêtre ne sort jamais un fichier de
     cibleFaible: true, parentId: null, protege: false, protegeIllisible: false,
     raccourci: false, doublonDe: null,
   }).action, 'Déplacer');
+});
+
+
+test('ADR-0056 D11 — la racine d\'un domaine EN COURS DE RE-DATATION ne se vide pas sous la campagne', () => {
+  // 🔴 revue code ADR-0056. `REANALYSE_RACINE_SEULE` borne la campagne aux fichiers à plat ; mais la
+  // consolidation passe AVANT elle dans le tick, avec 24 min/j contre 8, en pure I/O — des dizaines
+  // de fichiers/minute contre 16 à 24 par JOUR. Et D8 ne protège explicitement PAS les fichiers à
+  // plat (c'est le but d'ADR-0052). Sans D11, elle emporte les 328 fichiers classés sur leur date
+  // FAUSSE (la date de réception — ce que la campagne existe pour corriger), la passe suivante
+  // collecte 0, et la campagne écrit « terminée ✅ » sans avoir rien re-daté.
+  const d = '06 · Études & diplômes';
+  const base = {
+    domaine: d, sousCheminCible: 'Autres établissements', dossierIdCible: 'ID_AUTRES',
+    cibleFaible: false, parentId: null, protege: false, protegeIllisible: false,
+    raccourci: false, doublonDe: null,
+  };
+  // (a) À PLAT + re-datation en cours ⇒ on ne bouge pas, et la RAISON le dit.
+  const garde = ctx.decisionConsolidation_(
+    Object.assign({}, base, { sousCheminActuel: '', reDatationEnCours: true }));
+  assert.strictEqual(garde.action, 'OK');
+  assert.strictEqual(garde.cible, d);
+  assert.match(garde.raison, /D11/);
+  // (b) MÊME cas, re-datation finie ⇒ ADR-0052 reprend la main. La garde RETARDE, elle n'annule pas.
+  const apres = ctx.decisionConsolidation_(
+    Object.assign({}, base, { sousCheminActuel: '', reDatationEnCours: false }));
+  assert.strictEqual(apres.action, 'Déplacer');
+  assert.strictEqual(apres.cible, d + '/Autres établissements');
+  // (c) D11 ne protège QUE la racine : un fichier déjà dans un sous-dossier n'est pas concerné par
+  //     elle (il a ses propres gardes, D8/D9/D10) — sinon elle gèlerait TOUT le domaine pendant
+  //     14 à 21 jours, y compris des mouvements qui n'ont rien à voir avec la date.
+  //     ⚠️ Le cas doit ATTEINDRE D11 pour prouver quelque chose : une source qui est un SOUS-CHEMIN
+  //     de la cible est interceptée plus haut (« déjà dans le bon sous-arbre »), et la mutation
+  //     « D11 sans la borne de racine » y survivrait — c'est ce qui est arrivé au premier jet.
+  const sousDossier = ctx.decisionConsolidation_(Object.assign({}, base, {
+    sousCheminActuel: 'Diplômes & relevés officiels', sousCheminCible: 'Autres établissements',
+    reDatationEnCours: true,
+  }));
+  assert.ok(!/D11/.test(sousDossier.raison), 'D11 ne doit pas mordre hors de la racine : ' + sousDossier.raison);
+});
+
+test('ADR-0056 D11 — le prédicat est BORNÉ aux cibles de la campagne, et échoue OUVERT', () => {
+  // Le domaine doit être dans `REANALYSE_CIBLES` : sinon D11 gèlerait la racine de TOUS les
+  // domaines dès qu'une campagne tourne quelque part. Et la lecture qui LÈVE rend `false` (échec
+  // ouvert VOULU) : le pire cas est alors ce qui se passait avant ce lot — des fichiers classés sur
+  // une date fausse, récupérables — jamais un blocage définitif du rangement sur un blip Properties.
+  const cible = (CONFIG) => CONFIG.REANALYSE_CIBLES[0];
+  const props = { DriveAI_REANALYSE: null };
+  const c = load(['Config.gs', 'Migration.gs'], {
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] || null }) },
+  });
+  assert.strictEqual(c.reDatationEnCours_(cible(c.CONFIG)), true, 'campagne non convergée');
+  assert.strictEqual(c.reDatationEnCours_('02 · Finances'), false, 'hors REANALYSE_CIBLES');
+  // Campagne convergée ⇒ la garde se lève TOUTE SEULE (chemin de retour, jamais un délai).
+  const c2 = load(['Config.gs', 'Migration.gs'], {
+    PropertiesService: {
+      getScriptProperties: () => ({ getProperty: () => c.CONFIG.REANALYSE_TAG }),
+    },
+  });
+  assert.strictEqual(c2.reDatationEnCours_(cible(c2.CONFIG)), false, 'convergée ⇒ D11 se lève');
+  // Lecture qui LÈVE ⇒ false (échec ouvert assumé, testé pour qu'il reste une décision).
+  const c3 = load(['Config.gs', 'Migration.gs'], {
+    PropertiesService: { getScriptProperties: () => { throw new Error('blip'); } },
+  });
+  assert.strictEqual(c3.reDatationEnCours_(cible(c3.CONFIG)), false);
 });

@@ -19,6 +19,10 @@ function ctxMigration(clesIndexees) {
   ctx.journalInfo_ = () => {};
   ctx.journalErreur_ = () => {};
   ctx.indexContient_ = (cle) => (clesIndexees || []).indexOf(cle) !== -1;
+  // `dateGmail_` vit dans Gmail.gs : contrat INTER-MODULE consommé par le budget QUOTIDIEN de la
+  // re-analyse (ADR-0056), comme le fait déjà `executerMission_`. Stubé plutôt que chargé : le jour
+  // du test n'a aucune importance ici, seul compte le fait que la clé de jour existe.
+  ctx.dateGmail_ = () => '2026-09-14';
   return ctx;
 }
 
@@ -73,6 +77,121 @@ test('collecterAMigrer_ : walk récursif, plafond respecté, fichier illisible s
   assert.strictEqual(ids3.length, 0);
 });
 
+test('collecterAReanalyser_ (ADR-0056) : RACINE SEULE — la descente récursive n\'a même pas lieu', () => {
+  // 🔴 revue sécurité ADR-0056 : récursive, la campagne c28-92 ramassait TOUT le sous-arbre de
+  // `06` — donc ce que C28-90/C28-105 venaient de ranger, et les dossiers que MARC a construits.
+  // Le flux (`planRoutageV2_`) ne connaît ni D8, ni D9, ni D10 : un nom qui n\'apprend rien serait
+  // reparti À PLAT à la racine du domaine. Le garde est un `return` : on l\'observe par le CHEMIN
+  // (`getFolders` jamais appelé), pas seulement par la taille du résultat — un sous-dossier vide
+  // rendrait la même liste (§9, « un mock qui compose son résultat ne distingue pas deux chemins »).
+  const ctx = ctxMigration([]);
+  const doc = (id) => fakeFile({ id, name: id + '.pdf' });
+  let descentes = 0;
+  const sous = fauxDossier([doc('S1'), doc('S2')]);
+  const racine = {
+    getFiles: () => iter([doc('R1'), doc('R2')]),
+    getFolders: () => { descentes += 1; return iter([sous]); },
+  };
+
+  const ids = [];
+  ctx.collecterAReanalyser_(racine, ids, 10, () => false);
+  assert.deepStrictEqual(ids, ['R1', 'R2'], 'seuls les fichiers À PLAT à la racine de 06');
+  assert.strictEqual(descentes, 0, 'aucune descente : le garde coupe AVANT getFolders()');
+
+  // Contre-épreuve : le garde est bien CE drapeau, pas un itérateur cassé. La position globale du
+  // drapeau est une décision de Marc, jamais un invariant de test (§9) → save/restore.
+  const avant = ctx.CONFIG.REANALYSE_RACINE_SEULE;
+  try {
+    ctx.CONFIG.REANALYSE_RACINE_SEULE = false;
+    const rec = [];
+    ctx.collecterAReanalyser_(racine, rec, 10, () => false);
+    assert.deepStrictEqual(rec, ['R1', 'R2', 'S1', 'S2']);
+    assert.strictEqual(descentes, 1);
+  } finally {
+    ctx.CONFIG.REANALYSE_RACINE_SEULE = avant;
+  }
+});
+
+test('compterCampagneDossier_ : le RECENSEMENT partage le périmètre de la collecte (racine seule)', () => {
+  // 🟠 revue code ADR-0056, mutation survivante au premier jet. Le recensement fixe la BASE de la
+  // barre ET de la ligne de santé. Récursif alors que la collecte est à plat, il compterait ~800
+  // fichiers pour une campagne qui n'en traitera que 328 : « terminé » arriverait à 40 % affiché,
+  // et Marc lirait une progression qui n'a aucun rapport avec le travail réel.
+  // Observé par le CHEMIN (`getFolders` jamais appelé), pas par la taille du résultat : un
+  // sous-dossier vide rendrait le même compte.
+  const ctx = ctxMigration([]);
+  let descentes = 0;
+  const doc = (id) => fakeFile({ id, name: id + '.pdf' });
+  const sous = fauxDossier([doc('S1'), doc('S2'), doc('S3')]);
+  const racine = {
+    getFiles: () => iter([doc('R1'), doc('R2')]),
+    getFolders: () => { descentes += 1; return iter([sous]); },
+  };
+
+  const etat = { n: 0, complet: true };
+  ctx.compterCampagneDossier_(racine, etat, () => false, () => true, false);
+  assert.strictEqual(etat.n, 2, 'seuls les fichiers à plat');
+  assert.strictEqual(descentes, 0, 'le garde coupe AVANT getFolders()');
+
+  // Contre-épreuve : sans le drapeau, le comportement HISTORIQUE (migration m1) est intact.
+  const etat2 = { n: 0, complet: true };
+  ctx.compterCampagneDossier_(racine, etat2, () => false, () => true);
+  assert.strictEqual(etat2.n, 5);
+  assert.strictEqual(descentes, 1);
+});
+
+test('compterRestantReanalyse_ : c\'est bien `REANALYSE_RACINE_SEULE` qui commande le recensement', () => {
+  // Le lien entre la CONSTANTE et l'appel : sans lui, un futur « nettoyage » qui remet la récursion
+  // en dur passerait inaperçu. La position du drapeau est une décision de Marc → save/restore (§9).
+  const ctx = ctxMigration([]);
+  const vus = [];
+  ctx.compterCampagneDossier_ = (dossier, etat, garde, predicat, recursif) => { vus.push(recursif); };
+  ctx.DriveApp = { getFolderById: () => ({}) };
+  const avant = ctx.CONFIG.REANALYSE_RACINE_SEULE;
+  try {
+    ctx.CONFIG.REANALYSE_RACINE_SEULE = true;
+    ctx.compterRestantReanalyse_(() => false);
+    ctx.CONFIG.REANALYSE_RACINE_SEULE = false;
+    ctx.compterRestantReanalyse_(() => false);
+  } finally {
+    ctx.CONFIG.REANALYSE_RACINE_SEULE = avant;
+  }
+  assert.deepStrictEqual(vus, [false, true], 'le recensement suit la constante, jamais une valeur en dur');
+});
+
+test('dateReferenceReanalyse_ : le préfixe du NOM prime, `getLastUpdated()` n\'est qu\'un repli', () => {
+  // 🟠 revue sécurité ADR-0056, et c'est le cœur de la campagne. `dateNormalisee_` retombe sur la
+  // date de RÉFÉRENCE quand la passe 2 rend `date_doc: null` (scan mal OCRisé). Avec la date Drive,
+  // `2015-06-12_Bulletin_Avila.pdf` devenait `2026-09-14_…` : il SORTAIT de la fenêtre de scolarité,
+  // retombait à plat, et la clé de campagne étant inscrite il n'était PLUS JAMAIS re-collecté
+  // (§9, « un verdict POSITIF qui déplace l'item est DÉFINITIF DE FAIT »). La campagne existe pour
+  // RÉPARER des dates : détruire les bonnes au passage est l'inverse de son but. Les ~89 fichiers
+  // des 328 qui ne portent pas `2026` sont exactement la population exposée.
+  const ctx = ctxMigration([]);
+  const drive = new Date('2026-09-14T12:00:00Z');
+  const f = ctx.dateReferenceReanalyse_;
+  // (a) préfixe complet → c'est lui qui gagne
+  const d1 = f('2015-06-12_Bulletin_Lycée-Thérèse-Avila.pdf', drive);
+  assert.strictEqual(d1.getFullYear(), 2015);
+  assert.strictEqual(d1.getMonth(), 5);
+  assert.strictEqual(d1.getDate(), 12);
+  // (b) préfixe au MOIS (granularité admise par la convention) → milieu de mois, jamais la date Drive
+  const d2 = f('2017-03_Relevé_ULCO.pdf', drive);
+  assert.strictEqual(d2.getFullYear(), 2017);
+  assert.strictEqual(d2.getMonth(), 2);
+  // (c) pas de préfixe → repli sur Drive (comportement historique, intact)
+  assert.strictEqual(f('Devoir de physique.pdf', drive), drive);
+  assert.strictEqual(f('', drive), drive);
+  // (d) préfixe ABSURDE → on ne remplace pas une date réelle par une aberration
+  assert.strictEqual(f('0000-99-99_Truc.pdf', drive), drive);
+  assert.strictEqual(f('2015-13-01_Truc.pdf', drive), drive);
+  // (e) …et une date de 2026 dans le nom reste prise telle quelle : la campagne la CORRIGERA par
+  //     la lecture du document. Ce qu'on refuse, c'est de la RÉ-ÉCRASER quand la lecture échoue.
+  const d3 = f('2026-01-05_Devoir_Inconnu.pdf', drive);
+  assert.strictEqual(d3.getFullYear(), 2026);
+  assert.strictEqual(d3.getMonth(), 0);
+});
+
 /* ---------- migrerFichier_ : zone protégée + placement ---------- */
 
 function ctxMigrerFichier(opts) {
@@ -84,7 +203,11 @@ function ctxMigrerFichier(opts) {
   ctx.traiterDocument_ = (src) => calls.traites.push(src);
   ctx.renommer_ = (id, nom) => { calls.renomme.push({ id, nom }); return true; };
   ctx.deplacerEtRenommer_ = (id, nouveau, ancien, nom) => { calls.deplace.push({ id, nouveau, ancien, nom }); return true; };
-  ctx.aParentProtege_ = () => !!opts.protege;
+  // Le 3ᵉ argument (STRICT) est le garde-fou §1 : le mock le CONSIGNE au lieu de l'ignorer, pour
+  // qu'une mutation qui le retire tombe ici aussi — `migrerFichier_` porte le MÊME appel que
+  // `reanalyserFichier_`, et une revue ne verrouille que les sites qu'elle inspecte.
+  calls.gardeStrict = [];
+  ctx.aParentProtege_ = (f, proteges, strict) => { calls.gardeStrict.push(strict); return !!opts.protege; };
   ctx.DriveApp = {
     getFileById: () => ({
       getName: () => 'doc 2024.pdf',
@@ -105,6 +228,10 @@ test('migrerFichier_ : zone protégée (strict) → non touché, inscrit « zone
   assert.strictEqual(calls.index.length, 1);                          // mais inscrit → plus jamais re-collecté
   assert.strictEqual(calls.index[0].cle, 'migre|' + ctx.CONFIG.MIGRATION_TAG + '|F1'); // dérivé de la CONSTANTE
   assert.strictEqual(calls.index[0].res.statut, 'zone protégée');
+  // Le mode STRICT est le garde-fou, pas l'appel : sans lui, une chaîne d'ancêtres ILLISIBLE rend
+  // « non protégé » au lieu de s'abstenir, et `deplacerEtRenommer_` retire le premier parent — qui
+  // peut être `04`. Mutation prouvée : retirer le `true` fait tomber ce test.
+  assert.deepStrictEqual(calls.gardeStrict, [true], 'garde §1 appelé en mode STRICT (échec fermé)');
 });
 
 test('migrerFichier_ : descripteur pipeline (clé migre|, ignorerDoublon) + placement in-place', () => {
@@ -216,6 +343,9 @@ test('migrerUnePage_ : les domaines de REANALYSE_CIBLES sont EXCLUS de m1 (jamai
 });
 
 test('estAReanalyser_ : convergence par clé reanalyse|<tag>| ; natifs exclus ; indépendant des clés migre|', () => {
+  // ⚠️ Ici le tag est un LITTÉRAL volontaire, pas la valeur de CONFIG : ce test porte sur la FORME
+  // de la clé et sur l'indépendance entre campagnes, et il passe le tag en ARGUMENT. Le dériver de
+  // CONFIG le rendrait tautologique (le même tag des deux côtés ne prouverait plus la séparation).
   const ctx = ctxMigration(['reanalyse|c26-08|DEJA', 'migre|m1|AUTRE']);
   assert.strictEqual(ctx.estAReanalyser_(fakeFile({ id: 'LIBRE', mime: 'application/pdf' }), 'c26-08'), true);
   assert.strictEqual(ctx.estAReanalyser_(fakeFile({ id: 'DEJA', mime: 'application/pdf' }), 'c26-08'), false);
@@ -226,6 +356,10 @@ test('estAReanalyser_ : convergence par clé reanalyse|<tag>| ; natifs exclus ; 
 
 function ctxReanalyseCampagne(props) {
   const ctx = load(['Config.gs', 'Migration.gs']);
+  // `dateGmail_` vit dans Gmail.gs : contrat INTER-MODULE consommé par le budget QUOTIDIEN de la
+  // re-analyse (ADR-0056), exactement comme `executerMission_` le fait déjà. Le jour n'a pas
+  // d'importance ici — ce qui compte, c'est que la clé de jour existe.
+  ctx.dateGmail_ = () => '2026-09-14';
   const journal = [];
   ctx.journalInfo_ = (s, m) => journal.push(m);
   ctx.journalErreur_ = () => {};
@@ -278,6 +412,111 @@ test('appliquerReanalyseCiblee_ : migration finie + passe complète VIDE → Pro
   // Et une fois figée, plus aucune collecte (idempotence du re-lancement).
   ctx1.ctx.reanalyserUnePage_ = () => { throw new Error('campagne finie : ne doit plus collecter'); };
   ctx1.ctx.appliquerReanalyseCiblee_(() => false);
+});
+
+test('ADR-0056 — la re-analyse a un budget QUOTIDIEN : il coupe, il se libère, et il se compte', () => {
+  // Elle n'en avait AUCUN : seulement un plafond par tick. « Un plafond par RUN ne borne pas la
+  // JOURNÉE » (§9, C28-42) — à 288 ticks × 2 min elle pouvait à elle seule franchir le mur runtime
+  // d'Apps Script et geler TOUS les déclencheurs, chien de garde compris.
+  const jour = '2026-09-14';
+  const base = () => ({ valeurs: { DriveAI_REANALYSE_BASE: '900' } });
+
+  // (a) BUDGET ÉPUISÉ AUJOURD'HUI ⇒ aucune collecte. Valeur dérivée de la CONSTANTE, jamais du jour.
+  const p1 = base();
+  const c1 = ctxReanalyseCampagne(p1);
+  const plafond = c1.ctx.CONFIG.REANALYSE_BUDGET_JOUR_MS;
+  p1.valeurs.DriveAI_MIGRATION = c1.ctx.CONFIG.MIGRATION_TAG;
+  p1.valeurs.DriveAI_REANALYSE_BARRE_TAG = c1.ctx.CONFIG.REANALYSE_TAG;
+  p1.valeurs.DriveAI_REANALYSE_JOUR = jour + '|' + plafond;
+  c1.ctx.reanalyserUnePage_ = () => { throw new Error('budget du jour épuisé : ne doit pas collecter'); };
+  c1.ctx.appliquerReanalyseCiblee_(() => false); // ne lève pas ⇒ la garde a coupé
+
+  // (b) LIBÉRATION — un gate se teste par sa levée, pas seulement par son blocage (leçon §7).
+  // Même plafond, mais consommé HIER : la journée repart à zéro.
+  const p2 = base();
+  const c2 = ctxReanalyseCampagne(p2);
+  p2.valeurs.DriveAI_MIGRATION = c2.ctx.CONFIG.MIGRATION_TAG;
+  p2.valeurs.DriveAI_REANALYSE_BARRE_TAG = c2.ctx.CONFIG.REANALYSE_TAG;
+  p2.valeurs.DriveAI_REANALYSE_JOUR = '2026-09-13|' + plafond;
+  let collecte = 0;
+  c2.ctx.reanalyserUnePage_ = () => { collecte++; return { traites: 3, collectes: 3, reste: true }; };
+  c2.ctx.appliquerReanalyseCiblee_(() => false);
+  assert.strictEqual(collecte, 1, 'un budget consommé HIER ne borne pas aujourd\'hui');
+
+  // (c) Les ms consommées sont ÉCRITES, sous le jour courant — sinon rien ne borne la journée.
+  const suivi = String(p2.valeurs.DriveAI_REANALYSE_JOUR || '');
+  assert.ok(suivi.indexOf(jour + '|') === 0, 'budget du jour ré-ancré sur aujourd\'hui : ' + suivi);
+  // …et le compteur ACCUMULE : le consommé ANTÉRIEUR est reporté ET l'écoulé s'y ajoute.
+  // ⚠️ Vérifier le seul PRÉFIXE de jour ne prouvait rien (🟠 revue code, mutation SURVIVANTE) :
+  // écrire `aujourdhui + '|' + consommeJour` sans l'écoulé laissait le compteur à plat, donc la
+  // gate quotidienne ne mordait JAMAIS et la campagne consommait 288 ticks × 2 min — précisément
+  // le gel de tous les déclencheurs que ce budget existe pour empêcher.
+  const p4 = base();
+  const c4 = ctxReanalyseCampagne(p4);
+  const anterieur = 3 * 60 * 1000;
+  p4.valeurs.DriveAI_MIGRATION = c4.ctx.CONFIG.MIGRATION_TAG;
+  p4.valeurs.DriveAI_REANALYSE_BARRE_TAG = c4.ctx.CONFIG.REANALYSE_TAG;
+  p4.valeurs.DriveAI_REANALYSE_JOUR = jour + '|' + anterieur;
+  c4.ctx.reanalyserUnePage_ = () => {
+    const t0 = Date.now(); while (Date.now() - t0 < 3) { /* consomme du temps RÉEL */ }
+    return { traites: 1, collectes: 1, reste: true };
+  };
+  c4.ctx.appliquerReanalyseCiblee_(() => false);
+  const ms = Number(String(p4.valeurs.DriveAI_REANALYSE_JOUR).split('|')[1]);
+  assert.ok(ms > anterieur, 'le consommé antérieur est REPORTÉ et l\'écoulé AJOUTÉ : ' + ms);
+
+  // (d) …MÊME sur exception : un plantage ne doit jamais faire FUIR le budget (patron `finally`
+  // des missions). Sans ça, une campagne qui échoue en boucle consomme du runtime sans jamais
+  // l'inscrire, et le plafond quotidien ne mord jamais.
+  const p3 = base();
+  const c3 = ctxReanalyseCampagne(p3);
+  p3.valeurs.DriveAI_MIGRATION = c3.ctx.CONFIG.MIGRATION_TAG;
+  p3.valeurs.DriveAI_REANALYSE_BARRE_TAG = c3.ctx.CONFIG.REANALYSE_TAG;
+  c3.ctx.reanalyserUnePage_ = () => { throw new Error('boum'); };
+  assert.throws(() => c3.ctx.appliquerReanalyseCiblee_(() => false), /boum/);
+  assert.ok(String(p3.valeurs.DriveAI_REANALYSE_JOUR || '').indexOf(jour + '|') === 0,
+    'ms consommées écrites malgré l\'exception');
+});
+
+test('ADR-0056 — le RELIQUAT du jour borne le run, et jamais un document ne démarre dans la marge', () => {
+  // Deux propriétés qu'aucun des quatre cas précédents n'exerçait (🟡 revue quotas) : le
+  // `Math.min(par-tick, reliquat)` — le remplacer par le seul plafond par tick les laissait TOUS
+  // verts — et la marge de démarrage, sans laquelle un document pris à la dernière seconde pousse
+  // le tick au-delà du mur DUR de 6 min, où l'exécution est TUÉE (le `finally` ne tourne pas : la
+  // fuite de budget se produit dans le run qui en a le plus consommé).
+  const p = { valeurs: { DriveAI_REANALYSE_BASE: '900' } };
+  const { ctx } = ctxReanalyseCampagne(p);
+  const plafondJour = ctx.CONFIG.REANALYSE_BUDGET_JOUR_MS;
+  const marge = ctx.CONFIG.PILOTE_MARGE_DOC_MS;
+  const reliquat = marge + 30000; // reliquat VOLONTAIREMENT plus petit que le plafond par tick
+  assert.ok(reliquat < ctx.CONFIG.REANALYSE_BUDGET_MS,
+    'pré-condition : le reliquat doit mordre AVANT le plafond par tick, sinon le test ne prouve rien');
+  p.valeurs.DriveAI_MIGRATION = ctx.CONFIG.MIGRATION_TAG;
+  p.valeurs.DriveAI_REANALYSE_BARRE_TAG = ctx.CONFIG.REANALYSE_TAG;
+  p.valeurs.DriveAI_REANALYSE_JOUR = '2026-09-14|' + (plafondJour - reliquat);
+
+  // Horloge pilotée : `Date.now()` ET `new Date()` (le budget du jour lit les deux).
+  const VraiDate = ctx.Date;
+  let horloge = 1000000;
+  function FauxDate() { return new VraiDate(horloge); }
+  FauxDate.now = () => horloge;
+  ctx.Date = FauxDate;
+
+  let garde = null;
+  ctx.reanalyserUnePage_ = (g) => { garde = g; return { traites: 0, collectes: 0, reste: true }; };
+  ctx.appliquerReanalyseCiblee_(() => false);
+  assert.ok(garde, 'la page a bien été lancée');
+
+  // Le mur de DÉMARRAGE attendu : reliquat du jour − marge. Dérivé, jamais recopié.
+  const murAttendu = reliquat - marge;
+  assert.strictEqual(garde(), false, 'au démarrage, il reste du budget');
+  horloge += murAttendu - 1000;      // juste SOUS le mur : on prend encore un document
+  assert.strictEqual(garde(), false, 'sous le mur de démarrage, on prend encore un document');
+  horloge += 2000;                   // juste AU-DESSUS : plus aucun document ne démarre
+  assert.strictEqual(garde(), true,
+    'aucun document ne démarre dans la dernière minute du reliquat (mutation : remplacer ' +
+    '`murDemarrage` par `budgetRun`, ou `budgetRun` par le seul plafond par tick, fait tomber ceci)');
+  ctx.Date = VraiDate;
 });
 
 test('appliquerReanalyseCiblee_ : tick DÉDIÉ de recensement (C28-18) — pose la base SANS collecter, filet du partiel', () => {
@@ -338,16 +577,33 @@ test('reanalyserFichier_ : zone protégée inscrite sous la clé reanalyse| ; pi
     }),
   };
 
-  ctx.aParentProtege_ = () => true; // multi-parents accroché à 04 → refus inscrit, jamais muté
+  // ⚠️ LE 3ᵉ ARGUMENT EST LE GARDE-FOU (🟠 revue sécurité ADR-0056, mutation survivante). Le mock
+  // rendait `true` SANS LIRE SES ARGUMENTS : retirer le `true` de `aParentProtege_(f, proteges, true)`
+  // laissait 1297 tests verts. Or sans lui, `aParentProtege_` rend FALSE quand la chaîne d'ancêtres
+  // est ILLISIBLE au lieu de s'abstenir — un fichier multi-parents accroché à `04` dont la remontée
+  // échoue transitoirement serait jugé non protégé, et `deplacerEtRenommer_` retire le PREMIER
+  // parent, qui peut être `04`. Détachement silencieux de la zone protégée (§1).
+  // §9, mot pour mot : « un mock doit lire l'ARGUMENT reçu ».
+  const argsGarde = [];
+  ctx.aParentProtege_ = (f, proteges, strict) => { argsGarde.push(strict); return true; };
   assert.strictEqual(ctx.reanalyserFichier_('F1', {}), false);
-  assert.deepStrictEqual(calls.index, [{ cle: 'reanalyse|c26-08|F1', statut: 'zone protégée' }]);
+  assert.deepStrictEqual(argsGarde, [true], 'le garde §1 doit être appelé en mode STRICT (échec fermé)');
+  assert.deepStrictEqual(calls.index, [{ cle: 'reanalyse|' + ctx.CONFIG.REANALYSE_TAG + '|F1', statut: 'zone protégée' }]);
   assert.strictEqual(calls.traites.length, 0);
 
   ctx.aParentProtege_ = () => false;
   assert.strictEqual(ctx.reanalyserFichier_('F2', {}), true);
   assert.strictEqual(calls.traites.length, 1);
-  assert.strictEqual(calls.traites[0].cle, 'reanalyse|c26-08|F2');
+  assert.strictEqual(calls.traites[0].cle, 'reanalyse|' + ctx.CONFIG.REANALYSE_TAG + '|F2');
   assert.strictEqual(calls.traites[0].ignorerDoublon, true);
+  // ⚠️ LE POINT D'APPEL, pas seulement la fonction pure. Le mock oppose exprès deux dates : le nom
+  // dit 2024, `getLastUpdated()` dit 2026. Le pipeline doit recevoir CELLE DU NOM — sinon un
+  // document dont la passe 2 ne relit pas la date se fait ré-écraser par la date d'import, sort de
+  // sa fenêtre et se fige sous une clé de SUCCÈS. Mutation prouvée : remettre `f.getLastUpdated()`
+  // ici fait tomber ce test (la fonction pure seule, elle, restait verte — une garde n'existe qu'aux
+  // endroits qui la CONSULTENT).
+  assert.strictEqual(calls.traites[0].date.getFullYear(), 2024,
+    'la date de référence vient du NOM (2024), jamais de getLastUpdated (2026)');
 });
 
 /* ---------- Fix convergence rangement : 3 granularités de date ---------- */

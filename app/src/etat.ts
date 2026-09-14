@@ -467,6 +467,23 @@ export function lignesVideCandidat(lignes: LigneReorg[]): LigneReorg[] {
   return lignes.filter((l) => l.type === 'dossier-vide' && l.statut === 'vide-candidat');
 }
 
+/**
+ * La carte « dossiers vides » est-elle rendue ? (C28-110, 🔴 revue sécurité ADR-0056)
+ *
+ * Gatée sur les seuls candidats restants, elle se DÉMONTAIT au succès complet : `corbeillerLot`
+ * passe chaque ligne traitée à `corbeillé`, donc à la dernière la liste devient vide, la carte
+ * disparaît — et le bilan écrit juste après n'a plus rien qui le rende. Le compte rendu n'était
+ * alors visible QUE s'il restait des échecs, c'est-à-dire jamais sur le cas nominal : le défaut
+ * d'origine de C28-93, déplacé d'un cran. La carte reste tant qu'il y a quelque chose à DIRE ;
+ * seule la LISTE dépend des candidats restants.
+ */
+export function carteVidesVisible(
+  nbCandidats: number,
+  retour: { erreur?: string | null; bilan?: string | null; avancement?: unknown },
+): boolean {
+  return nbCandidats > 0 || !!retour.erreur || !!retour.bilan || !!retour.avancement;
+}
+
 /* ---------- Progression LIVE des opérations (C28-18) ---------- */
 
 /** Miroir d'une ligne de l'onglet Progression (COLONNES_PROGRESSION, Journal.gs — 10 colonnes C28-44). */

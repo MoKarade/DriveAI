@@ -17,6 +17,7 @@ import {
   actionsRefuseesReorg,
   lignesVideCandidat,
   plagesContigues,
+  carteVidesVisible,
 } from '../etat';
 import { Icone } from '../composants/Icone';
 import { Langue, t } from '../i18n';
@@ -127,9 +128,17 @@ export function ReorgVue({ langue }: { langue: Langue }) {
 
   /** ADR-0014 : corbeille d'un dossier VIDE — re-vérifié en direct au clic, jamais automatique. */
   async function corbeiller(l: LigneReorg) {
-    if (enCours) return;
+    // Un `return` MUET est ce qui rend une panne indiagnosticable : si l'app se croit occupée,
+    // elle le DIT (C28-110). Le bouton est déjà `disabled` dans ce cas — mais la garde existe
+    // aussi pour les chemins où il ne l'est pas (clavier, double-clic, re-rendu en vol).
+    if (enCours) { setErreurCorbeille(t('actionEnCours', langue)); return; }
     setEnCours(true);
     setErreurCorbeille('');
+    // Le bilan du lot PRÉCÉDENT est périmé dès qu'on relance une action (🟡 revues code et sécurité
+    // ADR-0056). Tant que la carte se démontait avec le dernier candidat, il partait avec elle ;
+    // maintenant qu'elle survit, « 110 corbeillés · 2 à re-tenter » resterait affiché au bas d'une
+    // liste que Marc vient justement de finir de vider — le compte rendu contredirait la liste.
+    setBilanCorbeille('');
     try {
       await corbeillerDossierVide(l.id);
       await ecrireCellule('Réorg', `F${l.ligneSheet}`, 'corbeillé');
@@ -151,7 +160,8 @@ export function ReorgVue({ langue }: { langue: Langue }) {
    * ce clic.
    */
   async function toutCorbeiller(vides: LigneReorg[]) {
-    if (enCours || vides.length === 0) return;
+    if (enCours) { setErreurCorbeille(t('actionEnCours', langue)); return; }
+    if (vides.length === 0) { setErreurCorbeille(t('corbeilleRienASupprimer', langue)); return; }
     setEnCours(true);
     setErreurCorbeille('');
     setBilanCorbeille('');
@@ -263,12 +273,16 @@ export function ReorgVue({ langue }: { langue: Langue }) {
       )}
       {demande && demande.statut === 'échec' && <p className="erreur">{demande.detail}</p>}
 
-      {videsCandidats.length > 0 && (
+      {/* ⚠️ LA CARTE SURVIT À LA LISTE (🔴 revue sécurité ADR-0056). Conditionner la carte au seul
+          `videsCandidats.length > 0` la démontait au succès COMPLET : `corbeillerLot` fait passer
+          chaque ligne traitée à `corbeillé`, donc à la 112ᵉ la liste devient vide, la carte
+          disparaît — et le bilan écrit juste après n'a plus rien qui le rende. Le compte rendu
+          n'était visible QUE quand il restait des échecs, c'est-à-dire jamais sur le cas nominal :
+          le défaut d'origine, déplacé d'un cran. La carte reste donc tant qu'il y a quelque chose
+          à DIRE ; seule la LISTE dépend des candidats restants. */}
+      {carteVidesVisible(videsCandidats.length, { erreur: erreurCorbeille, bilan: bilanCorbeille, avancement }) && (
         <div className="prop-carte vides">
-          <b>{t('dossiersVides', langue)}</b>
-          {erreurCorbeille && <p className="erreur">{erreurCorbeille}</p>}
-          {bilanCorbeille && <p className="variante">{bilanCorbeille}</p>}
-          {avancement && <p className="variante">⏳ {avancement.fait} / {avancement.total}</p>}
+          {videsCandidats.length > 0 && <b>{t('dossiersVides', langue)}</b>}
           {videsCandidats.map((l) => (
             <div key={l.cle} className="prop-vide">
               <span className="prop-chemin">{l.cheminActuel}</span>
@@ -277,13 +291,25 @@ export function ReorgVue({ langue }: { langue: Langue }) {
               </button>
             </div>
           ))}
-          {videsCandidats.length >= 2 && (
-            <div className="prop-actions">
-              <button className="bouton-ligne" onClick={() => toutCorbeiller(videsCandidats)} disabled={enCours} title={t('corbeilleNote', langue)}>
-                🗑 {t('toutCorbeiller', langue)} ({videsCandidats.length})
-              </button>
-            </div>
-          )}
+          {/* ⚠️ LE COMPTE RENDU VIT ICI, EN BAS ET COLLANT (C28-110). Il était rendu EN TÊTE de
+              cette carte, au-dessus de la liste — or la liste fait 112 lignes et le bouton est en
+              bas : Marc cliquait, le bilan s'affichait ~112 lignes au-dessus de son écran, et de
+              là où il était « il ne se passait rien ». C'est ce qui a fait croire pendant des
+              semaines que « tout corbeiller » ne marchait pas, alors que le code, lui, faisait son
+              travail. Collant : le retour reste visible où qu'on soit dans la liste, ce qui vaut
+              aussi pour un clic 🗑 unitaire fait tout en haut. */}
+          <div className="corbeille-retour">
+            {erreurCorbeille && <p className="erreur">{erreurCorbeille}</p>}
+            {bilanCorbeille && <p className="variante">{bilanCorbeille}</p>}
+            {avancement && <p className="variante">⏳ {avancement.fait} / {avancement.total}</p>}
+            {videsCandidats.length >= 2 && (
+              <div className="prop-actions">
+                <button className="bouton-ligne" onClick={() => toutCorbeiller(videsCandidats)} disabled={enCours} title={t('corbeilleNote', langue)}>
+                  🗑 {t('toutCorbeiller', langue)} ({videsCandidats.length})
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

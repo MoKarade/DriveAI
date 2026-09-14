@@ -142,8 +142,11 @@ function compterRestantReanalyse_(estBudgetDepasse) {
     if (estBudgetDepasse()) { etat.complet = false; break; }
     if (CONFIG.DOMAINES_PROTEGES.indexOf(cibles[d]) !== -1) continue; // défense en profondeur
     try {
+      // MÊME périmètre que `collecterAReanalyser_` — sinon la barre de progression compte une
+      // population que la campagne ne traitera jamais, et « terminé » arrive à 30 %.
       compterCampagneDossier_(DriveApp.getFolderById(CONFIG.DOMAINES[cibles[d]]), etat, estBudgetDepasse,
-        function (f) { return estAReanalyser_(f, CONFIG.REANALYSE_TAG); });
+        function (f) { return estAReanalyser_(f, CONFIG.REANALYSE_TAG); },
+        !CONFIG.REANALYSE_RACINE_SEULE);
     } catch (e) {
       etat.complet = false;
     }
@@ -160,17 +163,21 @@ function compterRestantReanalyse_(estBudgetDepasse) {
  * @param {function():boolean} estBudgetDepasse
  * @param {function(File):boolean} predicat
  */
-function compterCampagneDossier_(dossier, etat, estBudgetDepasse, predicat) {
+function compterCampagneDossier_(dossier, etat, estBudgetDepasse, predicat, recursif) {
   if (etat.n > 20000) { etat.complet = false; return; } // plafond dur de sécurité
   var fi = dossier.getFiles();
   while (fi.hasNext()) {
     if (estBudgetDepasse()) { etat.complet = false; return; }
     try { if (predicat(fi.next())) etat.n++; } catch (e) { /* illisible : pas compté */ }
   }
+  // `recursif` par DÉFAUT vrai : l'appelant historique (migration m1) ne passe pas l'argument et
+  // garde exactement son comportement. Seule la re-analyse, qui vise une population À PLAT, le
+  // passe à `false` (ADR-0056).
+  if (recursif === false) return;
   var fo = dossier.getFolders();
   while (fo.hasNext()) {
     if (estBudgetDepasse()) { etat.complet = false; return; }
-    compterCampagneDossier_(fo.next(), etat, estBudgetDepasse, predicat);
+    compterCampagneDossier_(fo.next(), etat, estBudgetDepasse, predicat, recursif);
     if (!etat.complet) return;
   }
 }
@@ -344,47 +351,118 @@ function appliquerReanalyseCiblee_(estBudgetDepasse) {
   if (props.getProperty('DriveAI_MIGRATION') !== CONFIG.MIGRATION_TAG) return; // m1 d'abord (une campagne à la fois)
   if (estBudgetDepasse()) return;
 
+  // BUDGET QUOTIDIEN (ADR-0056) — la campagne n'en avait AUCUN : seulement un sous-budget PAR TICK.
+  // « Un plafond par RUN ne borne pas la JOURNÉE » (leçon §9, C28-42) : à 288 ticks × 2 min, elle
+  // pouvait à elle seule dépasser le mur runtime d'Apps Script (~90 min/j) et geler TOUS les
+  // déclencheurs, chien de garde compris (C28-29). Elle était aussi INVISIBLE de l'invariant
+  // d'enveloppe, qui ne somme que les constantes `*_BUDGET_JOUR_MS` — le test restait vert pendant
+  // que l'enveloppe croissait. Les deux trous se ferment ici (C28-86 le signalait depuis le 12/09).
+  var aujourdhui = dateGmail_(new Date());
+  var consommeJour = budgetJourReanalyse_(props, aujourdhui);
+  if (consommeJour >= CONFIG.REANALYSE_BUDGET_JOUR_MS) return; // repris demain
   // SOUS-budget propre (même raison que MIGRATION_BUDGET_MS) : sans lui, chaque tick de campagne
   // consommerait ~tout le budget en OCR + Sonnet ×2 et épuiserait le quota JOURNALIER des triggers.
+  // Borné AUSSI par le reliquat du jour : le dernier run de la journée ne déborde pas.
+  var budgetRun = Math.min(CONFIG.REANALYSE_BUDGET_MS,
+    CONFIG.REANALYSE_BUDGET_JOUR_MS - consommeJour);
+  // ⚠️ RELIQUAT PLUS PETIT QU'UN DOCUMENT ⇒ on ne commence pas (🟠 revues code ET quotas ADR-0056).
+  // Sans cette sortie, `murDemarrage` ci-dessous est CLAMPÉ À 0 par le `Math.max` : la garde devient
+  // « elapsed > 0 », fausse au premier appel, et un document Sonnet ×2 (1 à 3 min) démarre quand
+  // même avec quelques secondes de budget. La marge ne protège donc RIEN sur le dernier run de la
+  // journée — celui, justement, où le mur DUR de 6 min tue l'exécution et fait fuir le budget.
+  // Le reliquat perdu est borné par la marge elle-même (≤ 1 min sur 8), et il est REPRIS demain.
+  if (budgetRun <= CONFIG.PILOTE_MARGE_DOC_MS) return;
   var debutReanalyse = Date.now();
+  // ⚠️ MARGE DE DÉMARRAGE (revue quotas ADR-0056, patron `DocumentsID.gs`/`Reset.gs`) : le garde
+  // n'est évalué qu'ENTRE deux documents. Sans marge, un document PRIS à la dernière seconde du
+  // budget coûte encore 1 à 3 min (OCR + Sonnet ×2 + un retry) et peut pousser le tick au-delà du
+  // mur DUR de 6 min d'Apps Script — où l'exécution est TUÉE : le `finally` ne tourne pas, les ms
+  // du run ne sont pas inscrites (la fuite de budget se produit dans le run qui en a le plus
+  // consommé), et le heartbeat du tick saute avec. La marge ferme la fuite ET le dépassement.
+  var murDemarrage = budgetRun - CONFIG.PILOTE_MARGE_DOC_MS; // > 0 : garanti par la sortie ci-dessus
   var garde = function () {
-    return estBudgetDepasse() || (Date.now() - debutReanalyse) > CONFIG.REANALYSE_BUDGET_MS;
+    return estBudgetDepasse() || (Date.now() - debutReanalyse) > murDemarrage;
   };
+  // ⚠️ DEUX MURS, comme `Reset.gs` (🟡 revues quotas ET sécurité ADR-0056). La marge existe pour ne
+  // pas LANCER UN DOCUMENT LLM dans la dernière minute — le recensement, lui, est du pur comptage
+  // Drive : lui imposer la même marge ampute sa fenêtre de moitié, et une fenêtre trop courte le
+  // fait rendre `{n:0, complet:false}` trois fois de suite, après quoi le filet du compte partiel
+  // ACCEPTE une base à 0, écrite une fois pour toutes (la barre dirait « 5 / 0 documents »).
+  var gardeIO = function () {
+    return estBudgetDepasse() || (Date.now() - debutReanalyse) > budgetRun;
+  };
+  try {
 
-  // Nouveau tag = nouvelle campagne → barre VIERGE (même patron BARRE_TAG que m1/rangement).
-  if (props.getProperty('DriveAI_REANALYSE_BARRE_TAG') !== CONFIG.REANALYSE_TAG) {
-    props.deleteProperty('DriveAI_REANALYSE_BASE');
-    props.deleteProperty('DriveAI_REANALYSE_TRAITES');
-    props.deleteProperty('DriveAI_REANALYSE_RECENS');
-    props.setProperty('DriveAI_REANALYSE_BARRE_TAG', CONFIG.REANALYSE_TAG);
-  }
-
-  // PHASE RECENSEMENT (C28-18) : même mécanique que m1 — ticks dédiés, filet du compte partiel.
-  if (props.getProperty('DriveAI_REANALYSE_BASE') === null) {
-    var essaisRecens = Number(props.getProperty('DriveAI_REANALYSE_RECENS')) || 0;
-    var rec = compterRestantReanalyse_(garde);
-    if (!rec.complet && essaisRecens + 1 < CONFIG.RANGEMENT_RECENS_ESSAIS_MAX) {
-      props.setProperty('DriveAI_REANALYSE_RECENS', String(essaisRecens + 1)); // partiel → réessai
-      return;
+    // Nouveau tag = nouvelle campagne → barre VIERGE (même patron BARRE_TAG que m1/rangement).
+    if (props.getProperty('DriveAI_REANALYSE_BARRE_TAG') !== CONFIG.REANALYSE_TAG) {
+      props.deleteProperty('DriveAI_REANALYSE_BASE');
+      props.deleteProperty('DriveAI_REANALYSE_TRAITES');
+      props.deleteProperty('DriveAI_REANALYSE_RECENS');
+      props.setProperty('DriveAI_REANALYSE_BARRE_TAG', CONFIG.REANALYSE_TAG);
     }
-    props.setProperty('DriveAI_REANALYSE_BASE', String(rec.n || 0)); // complet, ou partiel accepté
-    props.setProperty('DriveAI_REANALYSE_TRAITES', '0');
-    props.deleteProperty('DriveAI_REANALYSE_RECENS'); // compteur d'essais soldé avec le recensement
-    return; // tick dédié : la re-analyse reprend au tick suivant
-  }
 
-  var r = reanalyserUnePage_(garde, ensembleDomainesProteges_());
-  if (r.traites) {
-    majCompteurCampagne_('DriveAI_REANALYSE', r.traites); // barre (C28-18) — Properties seules
-    journalInfo_('Réanalyse', r.traites + ' document(s) soumis à la re-analyse v2 (campagne « ' +
-      CONFIG.REANALYSE_TAG + ' »).');
+    // PHASE RECENSEMENT (C28-18) : même mécanique que m1 — ticks dédiés, filet du compte partiel.
+    if (props.getProperty('DriveAI_REANALYSE_BASE') === null) {
+      var essaisRecens = Number(props.getProperty('DriveAI_REANALYSE_RECENS')) || 0;
+      var rec = compterRestantReanalyse_(gardeIO);
+      if (!rec.complet && essaisRecens + 1 < CONFIG.RANGEMENT_RECENS_ESSAIS_MAX) {
+        props.setProperty('DriveAI_REANALYSE_RECENS', String(essaisRecens + 1)); // partiel → réessai
+        return;
+      }
+      props.setProperty('DriveAI_REANALYSE_BASE', String(rec.n || 0)); // complet, ou partiel accepté
+      props.setProperty('DriveAI_REANALYSE_TRAITES', '0');
+      props.deleteProperty('DriveAI_REANALYSE_RECENS'); // compteur d'essais soldé avec le recensement
+      return; // tick dédié : la re-analyse reprend au tick suivant
+    }
+
+    var r = reanalyserUnePage_(garde, ensembleDomainesProteges_());
+    if (r.traites) {
+      majCompteurCampagne_('DriveAI_REANALYSE', r.traites); // barre (C28-18) — Properties seules
+      journalInfo_('Réanalyse', r.traites + ' document(s) soumis à la re-analyse v2 (campagne « ' +
+        CONFIG.REANALYSE_TAG + ' »).');
+    }
+    // Terminé SEULEMENT quand une passe complète (non interrompue, sans erreur) ne collecte plus rien.
+    if (!r.reste && r.collectes === 0) {
+      props.setProperty('DriveAI_REANALYSE', CONFIG.REANALYSE_TAG);
+      // ⚠️ LE COMPTEUR N'EST PAS FIGÉ À 100 % (🔴 revue code ADR-0056). Depuis `RACINE_SEULE`, la
+      // convergence est TOPOLOGIQUE : « plus rien à la racine de `06` ». Or cette racine n'est pas
+      // drainée que par nous — la consolidation tourne AVANT, avec 24 min/j contre 8, en pure I/O,
+      // et D8 ne protège explicitement PAS les fichiers à plat (c'est le but d'ADR-0052). Elle peut
+      // donc emporter le stock, par son NOM et sa date FAUSSE, avant que nous l'ayons re-daté :
+      // la passe suivante collecte 0, et la campagne se déclare finie sans avoir fait son travail.
+      // `finaliserCompteurCampagne_` écrivait alors TRAITES = BASE — il EFFAÇAIT le seul chiffre qui
+      // aurait dit « 41 re-datés sur 328 », à l'instant même où il fallait le lire (§1.6 : « une
+      // campagne déclarée terminée qui ne l'est pas ne se signale pas »). On garde donc le compte
+      // RÉEL : une barre à 41/328 marquée « terminé » se voit, un « terminée ✅ » nu, non.
+      var traitesReels = Number(props.getProperty('DriveAI_REANALYSE_TRAITES')) || 0;
+      var baseReelle = Number(props.getProperty('DriveAI_REANALYSE_BASE')) || 0;
+      var ecart = baseReelle > 0 && traitesReels < baseReelle
+        ? ' ⚠️ seulement ' + traitesReels + ' des ' + baseReelle +
+          ' recensés ont été re-datés — le reste a quitté la racine avant nous'
+        : '';
+      journalInfo_('Réanalyse', 'Re-analyse v2 ciblée terminée (tag « ' + CONFIG.REANALYSE_TAG +
+        ' ») : ' + traitesReels + ' / ' + baseReelle + ' documents.' + ecart);
+    }
+  } finally {
+    // ms RÉELLEMENT consommées, écrites MÊME sur exception (jamais de fuite de budget) — patron
+    // `DriveAI_MISSIONS_JOUR`. Le `try/catch` interne : un blip Properties ne doit pas avorter le tick.
+    try {
+      props.setProperty('DriveAI_REANALYSE_JOUR',
+        aujourdhui + '|' + (consommeJour + (Date.now() - debutReanalyse)));
+    } catch (e) { }
   }
-  // Terminé SEULEMENT quand une passe complète (non interrompue, sans erreur) ne collecte plus rien.
-  if (!r.reste && r.collectes === 0) {
-    props.setProperty('DriveAI_REANALYSE', CONFIG.REANALYSE_TAG);
-    finaliserCompteurCampagne_('DriveAI_REANALYSE'); // barre à 100 % sur le VRAI signal de fin
-    journalInfo_('Réanalyse', 'Re-analyse v2 ciblée terminée (tag « ' + CONFIG.REANALYSE_TAG + ' »).');
-  }
+}
+
+/**
+ * ms de re-analyse consommées AUJOURD'HUI (0 si l'enregistrement date d'un autre jour). PURE de
+ * décision, lecture de Property. Jumeau de `budgetJourMissions_`.
+ * @param {Properties} props @param {string} aujourdhui @return {number}
+ */
+function budgetJourReanalyse_(props, aujourdhui) {
+  var brut = String(props.getProperty('DriveAI_REANALYSE_JOUR') || '');
+  var sep = brut.indexOf('|');
+  if (sep === -1) return 0;
+  return brut.slice(0, sep) === aujourdhui ? (Number(brut.slice(sep + 1)) || 0) : 0;
 }
 
 /**
@@ -433,6 +511,31 @@ function reanalyserUnePage_(estBudgetDepasse, proteges) {
 }
 
 /**
+ * Ce domaine est-il en cours de RE-DATATION ? (ADR-0056 D11 — lu par la consolidation.)
+ *
+ * Vrai tant que le domaine figure dans `REANALYSE_CIBLES` ET que la campagne n'a pas convergé.
+ * Échec FERMÉ inversé, volontairement : une lecture de Property qui lève rend `false`, donc la
+ * consolidation reprend son comportement normal. Le pire cas est alors ce qui se passait AVANT ce
+ * lot (des fichiers classés sur une date fausse, récupérables), jamais un blocage définitif du
+ * rangement sur une panne transitoire — le mode de panne que §9 décrit comme le plus coûteux.
+ * @param {string} domaine
+ * @return {boolean}
+ */
+var _reDatationCache = null; // par EXÉCUTION Apps Script (une page de conso = des dizaines d'items)
+function reDatationEnCours_(domaine) {
+  try {
+    if ((CONFIG.REANALYSE_CIBLES || []).indexOf(String(domaine)) === -1) return false;
+    if (_reDatationCache === null) {
+      _reDatationCache = PropertiesService.getScriptProperties().getProperty('DriveAI_REANALYSE')
+        !== CONFIG.REANALYSE_TAG;
+    }
+    return _reDatationCache;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
  * Collecte récursive des fichiers à re-analyser d'un dossier (IDs seuls — le déplacement pendant
  * l'itération invaliderait l'itérateur). Un fichier illisible ne doit JAMAIS avorter la collecte :
  * sauté, les autres continuent.
@@ -452,6 +555,16 @@ function collecterAReanalyser_(dossier, ids, max, estBudgetDepasse) {
       journalErreur_('Réanalyse', 'Fichier ignoré à la collecte (' + e + ')');
     }
   }
+  // ⚠️ RACINE SEULE (ADR-0056, 🔴 revue sécurité) — la descente récursive est CONDITIONNELLE.
+  // La campagne c28-92 vise « les fichiers à plat à la racine de `06` », et c'est la population
+  // que Marc a chiffrée en disant oui. Récursive, elle ramassait AUSSI tout ce que C28-90/C28-105
+  // venaient de ranger — y compris les dossiers que Marc a construits lui-même — et les faisait
+  // repasser par `planRoutageV2_`, qui calcule la cible DEPUIS LE SEUL NOM. Or les trois gardes
+  // qui protègent le déjà-rangé (D8 cible faible, D9 ancêtre, D10 structure de Marc) vivent dans
+  // `decisionConsolidation_`, PAS dans le flux : un document dont le nom n'apprend rien serait
+  // reparti À PLAT à la racine du domaine — exactement le défaut que la contre-revue de C28-90
+  // avait mesuré (332 des 475) et fermé, ré-ouvert par une autre porte.
+  if (CONFIG.REANALYSE_RACINE_SEULE) return;
   var fo = dossier.getFolders();
   while (fo.hasNext() && ids.length < max) {
     if (estBudgetDepasse()) return;
@@ -470,6 +583,30 @@ function collecterAReanalyser_(dossier, ids, max, estBudgetDepasse) {
  * @param {Object} proteges
  * @return {boolean} vrai si le document a été soumis au pipeline.
  */
+/**
+ * Date de référence d'une re-analyse : le préfixe `AAAA-MM[-JJ]` du nom COURANT s'il existe,
+ * sinon la date Drive. PURE (testée).
+ *
+ * Pourquoi le nom prime : un document déjà classé porte dans son nom la date que le pipeline a
+ * retenue la fois précédente — souvent la BONNE (lue dans l'en-tête du document). La date Drive,
+ * elle, est la date de dernière modification du fichier, donc la date de l'import : c'est
+ * exactement la valeur fausse que C28-92 vient corriger. La prendre comme référence ferait
+ * REMPLACER une bonne date par une mauvaise chaque fois que la passe 2 échoue à relire la date.
+ * @param {string} nom  nom courant du fichier
+ * @param {Date} dateDrive  repli (getLastUpdated)
+ * @return {Date}
+ */
+function dateReferenceReanalyse_(nom, dateDrive) {
+  var m = /^(\d{4})-(\d{2})(?:-(\d{2}))?/.exec(String(nom || ''));
+  if (!m) return dateDrive;
+  var an = Number(m[1]), mois = Number(m[2]), jour = Number(m[3] || 15);
+  // Garde-fou de plausibilité : un préfixe absurde (`0000-99`) ne doit pas remplacer une date
+  // réelle. Bornes larges — on refuse l'impossible, jamais le simplement ancien.
+  if (!(an >= 1900 && an <= 2200 && mois >= 1 && mois <= 12 && jour >= 1 && jour <= 31)) return dateDrive;
+  var d = new Date(an, mois - 1, jour);
+  return isNaN(d.getTime()) ? dateDrive : d;
+}
+
 function reanalyserFichier_(fileId, proteges) {
   var cle = 'reanalyse|' + CONFIG.REANALYSE_TAG + '|' + fileId;
   var f, nom, parentId, taille, date;
@@ -486,7 +623,16 @@ function reanalyserFichier_(fileId, proteges) {
     // TOUTES les lectures de métadonnées restent DANS le try : un fichier devenu illisible entre la
     // collecte et ici doit être sauté (quarantaine), jamais avorter la page ni bloquer la campagne.
     taille = f.getSize();
-    date = f.getLastUpdated();
+    // ⚠️ DATE DE RÉFÉRENCE : le préfixe du NOM d'abord, `getLastUpdated()` seulement en repli
+    // (🟠 revue sécurité ADR-0056). `dateNormalisee_` retombe sur la date de référence quand la
+    // passe 2 rend `date_doc: null` — un scan mal OCRisé, par exemple. Avec `getLastUpdated()`,
+    // `2015-06-12_Bulletin_Avila.pdf` serait renommé `2026-09-14_…` : il SORTIRAIT de la fenêtre
+    // de scolarité, retomberait à plat, et la clé de campagne étant inscrite il ne serait PLUS
+    // JAMAIS re-collecté (§9, « un verdict POSITIF qui déplace l'item est DÉFINITIF DE FAIT »).
+    // C'est l'inverse exact du but de C28-92 : la campagne existe pour RÉPARER les dates, jamais
+    // pour en détruire une bonne. Les ~89 fichiers des 328 qui ne portent PAS `2026` sont
+    // précisément la population exposée. Repli inchangé pour un nom sans préfixe de date.
+    date = dateReferenceReanalyse_(nom, f.getLastUpdated());
   } catch (e) {
     // Quarantaine (compteur d'échecs) et non simple log : un doc durablement illisible serait sinon
     // re-collecté à chaque passe, à vie — `collectes` ne retomberait jamais à 0.
