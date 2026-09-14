@@ -267,19 +267,37 @@ test('cibleBailleur_ : dossier RENOMMÉ/absent ⇒ refus — la table ne crée J
   assert.strictEqual(ok.id, 'l3987');
 });
 
-test('routeur retour-ecoles06 : alias explicite = transfert ; source hors table = jamais une source', () => {
-  // SENS INVERSÉ le 2026-09-13 (décision Marc) : la source est l'ARCHIVE, la cible l'ÉCOLE.
-  // Le tag a changé AVEC le sens — sinon les fichiers déjà déplacés dans l'autre sens
+test('routeur ecoles-archives06 : alias explicite = transfert ; source hors table = jamais une source', () => {
+  // SENS RE-INVERSÉ le 2026-09-14 (ADR-0055) : la source est le dossier d'école que le MOTEUR
+  // s'était créé à la racine de `06`, la cible le dossier de MARC sous `Archives scolaires`.
+  // Le tag a changé AVEC le sens — sinon les ~45 fichiers déjà déplacés dans l'autre sens
   // portaient une clé de SUCCÈS et n'auraient jamais été repris.
-  const spec = pur.tableMissions_().filter((m) => m.tag === 'retour-ecoles06')[0];
-  const paires = pur.CONFIG.MISSIONS_IDS.archives06;
-  assert.ok(paires.length >= 4, 'les 4 alias du brief');
+  const spec = pur.tableMissions_().filter((m) => m.tag === 'ecoles-archives06')[0];
+  const paires = pur.CONFIG.MISSIONS_IDS.ecoles06;
+  assert.strictEqual(paires.length, 6, 'les 6 dossiers d\'école de la racine de 06');
   const ctx = spec.batirCtx();
-  const r = spec.router('2020-01-01_Relevé_ULCO.pdf', { sourceId: paires[0].src, sousChemin: 'Semestre 1' }, ctx);
-  assert.strictEqual(r.cibleId, paires[0].cible);
+  const parId = paires.filter((x) => x.cible)[0];
+  const r = spec.router('2020-01-01_Relevé_ULCO.pdf', { sourceId: parId.src, sousChemin: 'Semestre 1' }, ctx);
+  assert.strictEqual(r.cibleId, parId.cible);
   assert.strictEqual(r.sousDossier, 'Semestre 1', 'un niveau de sous-dossier préservé');
-  // Les sources de la mission sont EXACTEMENT les alias (Cégep de Sherbrooke absent = non touché).
-  assert.deepStrictEqual(plain(spec.sources), plain(paires.map((p) => p.src)));
+  // La cible qui n'existe PAS encore (`Cégep de Sherbrooke (2019)`) passe par le find-or-create
+  // PAR NOM du runner : rien n'est créé tant qu'aucun fichier ne part.
+  const aCreer = paires.filter((x) => !x.cible)[0];
+  assert.ok(aCreer, 'le cégep n\'a pas de dossier d\'archive : il est créé par nom');
+  const r2 = spec.router('2019-03-01_TP_Cégep.pdf', { sourceId: aCreer.src, sousChemin: '' }, ctx);
+  assert.strictEqual(r2.cibleId, undefined);
+  assert.strictEqual(r2.cibleParentId, pur.CONFIG.MISSIONS_IDS.archivesScolaires);
+  assert.strictEqual(r2.cibleNom, aCreer.cibleNom);
+  // Une source hors table n'est jamais devinée.
+  assert.strictEqual(spec.router('x.pdf', { sourceId: 'inconnu', sousChemin: '' }, ctx), null);
+  // Les sources de la mission sont EXACTEMENT les alias.
+  assert.strictEqual(plain(spec.sources).join('|'), plain(paires.map((x) => x.src)).join('|'));
+  // AUCUNE n'est JETABLE (revue flotte) : peindre les 6 dossiers vidés « bon pour suppression »
+  // reposait sur « rien ne les recrée », qui est FAUX tant que `SEED_ENTITES` valide 6 écoles dans
+  // `06` (C28-106). Un signal destructeur ne se pose pas sur un invariant non démontré.
+  assert.strictEqual(plain(spec.sourcesJetables).length, 0);
+  assert.strictEqual(plain(spec.ciblesADepeindre).length, 0,
+    'les archives de Marc n\'ont jamais été peintes en rouge : rien à dé-peindre');
 });
 
 test('budgetJourMissions_ : jour courant compté, autre jour = 0 (patron conso)', () => {
@@ -337,6 +355,9 @@ function ctxRunner(opts) {
     return {
       getId: () => id,
       getName: () => noeud.nom || id,
+      // §1.2 : le runner refuse de déposer dans un dossier CORBEILLÉ — le mock doit donc pouvoir
+      // en simuler un (`arbre[id].corbeille = true`), sinon la garde est intestable.
+      isTrashed: () => !!noeud.corbeille,
       getFiles: () => iterFactice((noeud.files || []).filter((f) => !f.__deplace)),
       getFolders: () => iterFactice(Object.keys(noeud.folders || {}).map((n) => dossierFactice(noeud.folders[n]))),
     };
@@ -393,56 +414,79 @@ test('runner : déplace, pose la clé VERSIONNÉE après, converge sur la passe 
   assert.strictEqual(etatM.vehicule.b, 2, 'base = t + na après une passe complète');
 });
 
+/**
+ * Contexte de runner portant une mission SYNTHÉTIQUE qui PEINT ses cibles.
+ *
+ * ⚠️ Pourquoi synthétique : depuis ADR-0055, AUCUNE mission réelle ne déclare `ciblesADepeindre`
+ * (les archives de Marc n'ont jamais été peintes en rouge). Le mécanisme, lui, reste câblé dans
+ * `executerMission_` pour TOUTES les missions — un dossier rouge qui se remplit doit perdre son
+ * rouge, et la prochaine mission qui peindra en aura besoin. Le driver est donc une fausse
+ * mission plutôt qu'une vraie configurée pour les besoins du test : un test qui prouverait une
+ * option qu'aucune mission ne porte prouverait moins qu'il n'annonce.
+ */
+function ctxSonde(opts) {
+  const h = ctxRunner(opts);
+  const cibles = (opts || {}).cibles || ['cib1', 'cib2', 'cib3', 'cib4'];
+  const sources = (opts || {}).sources || ['src1'];
+  h.cibles = cibles;
+  h.sources = sources;
+  h.c.tableMissions_ = () => [{
+    tag: 'sonde-test', cle: 'mission-sonde-test',
+    sources: sources,
+    batirCtx: () => ({}),
+    router: () => ({ cibleId: cibles[0], sousDossier: '' }),
+    ciblesADepeindre: cibles,
+    sourcesJetables: [],
+  }];
+  return h;
+}
+
 test('runner : DÉ-PEINTURE — sonde QUOTIDIENNE, indépendante de la convergence, qui se termine', () => {
   // Troisième écriture de ce garde-fou, et les deux premières expliquent celle-ci :
   //  1. one-shot au PREMIER run → les cibles sont encore VIDES (c'est pourquoi elles sont rouges) :
   //     la passe ne faisait rien et le drapeau était consommé quand même ;
   //  2. à la CONVERGENCE → la mission n'est pas la seule à remplir ces dossiers : la CONSOLIDATION
-  //     y enverra 143 fichiers pendant des semaines APRÈS, et le court-circuit terminal fait
+  //     y enverra des fichiers pendant des semaines APRÈS, et le court-circuit terminal fait
   //     qu'aucun run n'y revient. Mesuré par la revue : 20 ticks après remplissage, 0 dé-peint.
   // D'où une sonde appelée AVANT le court-circuit terminal, bornée à 1 passe/jour.
-  const h = ctxRunner();
-  const IDS = h.c.CONFIG.MISSIONS_IDS;
+  const h = ctxSonde();
   const version = h.c.CONFIG.MISSIONS_REGLES_VERSION;
-  const paires = IDS.archives06;
   let jour = '2026-09-13';
   h.c.dateGmail_ = () => jour;
-  // Départ RÉEL : archives pleines, écoles VIDES (l'ancienne mission les avait vidées et peintes).
-  paires.forEach((p) => {
-    h.arbre[p.src] = { files: [h.fichier('a' + p.src, '2021-05-05_Cours_IMERIR.pdf')], folders: {} };
-    h.arbre[p.cible] = { files: [], folders: {} };
-  });
+  // Départ RÉEL : source pleine, cibles VIDES (donc rouges, et leur rouge est VRAI).
+  h.arbre[h.sources[0]] = { files: [h.fichier('a1', '2021-05-05_Cours_IMERIR.pdf')], folders: {} };
+  h.cibles.forEach((id) => { h.arbre[id] = { files: [], folders: {} }; });
 
-  h.c.executerMission_('retour-ecoles06', () => false);
+  h.c.executerMission_('sonde-test', () => false);
   assert.deepStrictEqual(h.depeints, [], 'tout est vide : rien à dé-peindre, et le rouge y est VRAI');
-  assert.notStrictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait', 'donc surtout pas « terminé »');
+  assert.notStrictEqual(h.store['DriveAI_DEPEINTURE_sonde-test'], 'fait', 'donc surtout pas « terminé »');
 
   // Même jour, 10 ticks : la sonde ne re-balaie pas Drive (budget partagé).
-  // ⚠️ Compter les DÉ-PEINTURES ne prouverait rien ici — les 4 cibles sont vides, donc aucune n'est
+  // ⚠️ Compter les DÉ-PEINTURES ne prouverait rien ici — les cibles sont vides, donc aucune n'est
   // possible, que la sonde balaie 1 fois ou 11 (tautologie attrapée en revue quotas). Ce qui se
   // mesure, c'est le BALAYAGE lui-même (appels Drive) et l'état persisté.
-  const balayages = () => paires.reduce((n, p) => n + (h.ouvertures[p.cible] || 0), 0);
+  const balayages = () => h.cibles.reduce((n, id) => n + (h.ouvertures[id] || 0), 0);
   const avant = balayages(); // (la mission ouvre aussi ses cibles pour y déposer : on mesure le DELTA)
-  for (let i = 0; i < 10; i++) h.c.executerMission_('retour-ecoles06', () => false);
+  for (let i = 0; i < 10; i++) h.c.executerMission_('sonde-test', () => false);
   assert.strictEqual(balayages(), avant, '1 passe par jour, pas 288 : aucun nouvel appel Drive');
-  assert.strictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], jour + '|1',
+  assert.strictEqual(h.store['DriveAI_DEPEINTURE_sonde-test'], jour + '|1',
     'une seule passe comptée ce jour-là (mutation : retirer le garde de jour ⇒ « |11 »)');
 
-  // La mission converge (les archives sont vides) ET pose son drapeau FINI…
-  h.c.executerMission_('retour-ecoles06', () => false);
-  assert.strictEqual(h.store['DriveAI_MISSION_FINI_retour-ecoles06'], version);
+  // La mission converge (la source est vide) ET pose son drapeau FINI…
+  h.c.executerMission_('sonde-test', () => false);
+  assert.strictEqual(h.store['DriveAI_MISSION_FINI_sonde-test'], version);
 
   // …puis la CONSOLIDATION remplit les dossiers, des jours plus tard. La sonde doit encore agir,
   // alors que la mission, elle, est court-circuitée depuis longtemps.
-  paires.forEach((p) => { h.arbre[p.cible] = { files: [h.fichier('c' + p.cible, 'x.pdf')], folders: {} }; });
+  h.cibles.forEach((id) => { h.arbre[id] = { files: [h.fichier('c' + id, 'x.pdf')], folders: {} }; });
   jour = '2026-09-20';
-  h.c.executerMission_('retour-ecoles06', () => false);
+  h.c.executerMission_('sonde-test', () => false);
   assert.strictEqual(h.depeints.length, 4, 'les 4 dossiers remplis perdent leur rouge, après le FINI');
-  assert.strictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait', 'plus rien de vide ⇒ terminé');
+  assert.strictEqual(h.store['DriveAI_DEPEINTURE_sonde-test'], 'fait', 'plus rien de vide ⇒ terminé');
 
   // …et une fois terminée, elle ne coûte plus rien.
   jour = '2026-09-21';
-  h.c.executerMission_('retour-ecoles06', () => false);
+  h.c.executerMission_('sonde-test', () => false);
   assert.strictEqual(h.depeints.length, 4);
 });
 
@@ -451,26 +495,23 @@ test('runner : le balayage de la sonde est BORNÉ par le garde-temps du tick', (
   // l'étape peut démarrer à 4,4 min du mur DUR de 6 min — qu'aucun `try` ne capture. Un tick tué
   // emporterait tout ce qui suit les missions (fusion, reset, historique Gmail).
   // Mutation : repasser `null` au lieu de `estBudgetDepasse` ⇒ ce test tombe.
-  const h = ctxRunner();
-  const paires = h.c.CONFIG.MISSIONS_IDS.archives06;
+  const h = ctxSonde();
   h.c.dateGmail_ = () => '2026-09-13';
-  paires.forEach((p) => {
-    h.arbre[p.src] = { files: [], folders: {} };
-    h.arbre[p.cible] = { files: [h.fichier('z' + p.cible, 'x.pdf')], folders: {} };
-  });
-  const ouvertesCibles = () => paires.reduce((n, p) => n + (h.ouvertures[p.cible] || 0), 0);
+  h.arbre[h.sources[0]] = { files: [], folders: {} };
+  h.cibles.forEach((id) => { h.arbre[id] = { files: [h.fichier('z' + id, 'x.pdf')], folders: {} }; });
+  const ouvertesCibles = () => h.cibles.reduce((n, id) => n + (h.ouvertures[id] || 0), 0);
 
-  h.c.executerMission_('retour-ecoles06', () => true); // budget déjà épuisé à l'entrée
+  h.c.executerMission_('sonde-test', () => true); // budget déjà épuisé à l'entrée
   assert.strictEqual(ouvertesCibles(), 0, 'aucune cible ouverte : le balayage est coupé AVANT l\'appel Drive');
   assert.deepStrictEqual(h.depeints, []);
-  assert.strictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], '2026-09-13|1',
+  assert.strictEqual(h.store['DriveAI_DEPEINTURE_sonde-test'], '2026-09-13|1',
     'la passe est comptée (sinon on re-sonderait 288×) mais ne conclut pas');
 
   // Le lendemain, avec du budget : la sonde reprend et termine.
   h.c.dateGmail_ = () => '2026-09-14';
-  h.c.executerMission_('retour-ecoles06', () => false);
+  h.c.executerMission_('sonde-test', () => false);
   assert.strictEqual(h.depeints.length, 4);
-  assert.strictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait');
+  assert.strictEqual(h.store['DriveAI_DEPEINTURE_sonde-test'], 'fait');
 });
 
 test('runner : la sonde de dé-peinture s\'arrête d\'elle-même, et un PATCH refusé ne conclut jamais', () => {
@@ -478,27 +519,25 @@ test('runner : la sonde de dé-peinture s\'arrête d\'elle-même, et un PATCH re
   // passes, un dossier encore vide l'est pour de bon et son rouge est VRAI. Valeur DÉRIVÉE de la
   // constante, jamais écrite en dur (leçon §7).
   const MAX = ctxRunner().c.CONFIG.MISSIONS_DEPEINTURE_MAX_JOURS;
-  const h = ctxRunner();
-  const paires = h.c.CONFIG.MISSIONS_IDS.archives06;
+  const h = ctxSonde();
   let n = 0;
   h.c.dateGmail_ = () => '2026-10-' + String(1 + (n % 28)).padStart(2, '0');
-  paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; h.arbre[p.cible] = { files: [], folders: {} }; });
-  for (n = 0; n < MAX - 1; n++) h.c.executerMission_('retour-ecoles06', () => false);
-  assert.notStrictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait', 'avant le plafond : on sonde encore');
-  h.c.executerMission_('retour-ecoles06', () => false);
-  assert.strictEqual(h.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait', 'au plafond : on arrête');
+  h.arbre[h.sources[0]] = { files: [], folders: {} };
+  h.cibles.forEach((id) => { h.arbre[id] = { files: [], folders: {} }; });
+  for (n = 0; n < MAX - 1; n++) h.c.executerMission_('sonde-test', () => false);
+  assert.notStrictEqual(h.store['DriveAI_DEPEINTURE_sonde-test'], 'fait', 'avant le plafond : on sonde encore');
+  h.c.executerMission_('sonde-test', () => false);
+  assert.strictEqual(h.store['DriveAI_DEPEINTURE_sonde-test'], 'fait', 'au plafond : on arrête');
   assert.ok(h.infos.some((m) => m.indexOf('ARRÊTÉE') !== -1), 'et on le DIT, avec le nombre de dossiers vides');
 
   // PATCH refusé (403 quota, permission) : la passe n'est pas complète ⇒ jamais « terminé », même
   // si plus rien n'est vide. Mutation : ignorer `complet` dans `assurerDepeintureCibles_`.
-  const refus = ctxRunner({ patchRefuse: [paires[0].cible] });
-  paires.forEach((p) => {
-    refus.arbre[p.src] = { files: [], folders: {} };
-    refus.arbre[p.cible] = { files: [refus.fichier('y' + p.cible, 'x.pdf')], folders: {} };
-  });
-  refus.c.executerMission_('retour-ecoles06', () => false);
+  const refus = ctxSonde({ patchRefuse: ['cib1'] });
+  refus.arbre[refus.sources[0]] = { files: [], folders: {} };
+  refus.cibles.forEach((id) => { refus.arbre[id] = { files: [refus.fichier('y' + id, 'x.pdf')], folders: {} }; });
+  refus.c.executerMission_('sonde-test', () => false);
   assert.strictEqual(refus.depeints.length, 3, '3 dé-peints sur 4');
-  assert.notStrictEqual(refus.store['DriveAI_DEPEINTURE_retour-ecoles06'], 'fait', 'un PATCH refusé ne conclut pas');
+  assert.notStrictEqual(refus.store['DriveAI_DEPEINTURE_sonde-test'], 'fait', 'un PATCH refusé ne conclut pas');
 });
 
 test('runner : NON APPARIÉ inscrit sous la version (re-collecté JAMAIS, ré-évaluable par bump)', () => {
@@ -558,44 +597,78 @@ test('runner : budget du jour épuisé → aucune I/O ; garde-temps → passe IN
   assert.ok(!coupe.store['DriveAI_MISSION_FINI_vehicule'], 'passe coupée ≠ passe vide');
 });
 
-test('runner retour-ecoles06 : transfert par alias + RE-POINTAGE des entités à la convergence', () => {
-  const h = ctxRunner();
-  const paires = h.c.CONFIG.MISSIONS_IDS.archives06;
+/**
+ * Contexte de runner pour `ecoles-archives06` : le référentiel d'entités est mocké au niveau du
+ * LOT (`repointerEntitesLot_`) et de sa sonde (`dossiersVisesParEntites_`), parce que la vraie
+ * implémentation lit l'onglet `Entités` via `feuille_`, absent de ce harnais.
+ */
+function ctxSchool(opts) {
+  opts = opts || {};
+  const h = ctxRunner(opts);
+  h.lots = [];
+  h.c.repointerEntitesLot_ = (carte) => { h.lots.push(carte); };
+  h.c.dossiersVisesParEntites_ = () => !!opts.viseUneSource;
+  return h;
+}
+
+test('runner ecoles-archives06 : transfert par alias + RE-POINTAGE des entités à la convergence', () => {
+  const h = ctxSchool();
+  const paires = h.c.CONFIG.MISSIONS_IDS.ecoles06;
   paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
   h.arbre[paires[0].src].files = [h.fichier('fd', '2019-05-01_Relevé_ULCO.pdf')];
 
-  h.c.executerMission_('retour-ecoles06', () => false);
+  h.c.executerMission_('ecoles-archives06', () => false);
   assert.deepStrictEqual(plain(h.moves.filter((m) => m.vers)), [{ id: 'fd', vers: paires[0].cible }]);
 
-  h.c.executerMission_('retour-ecoles06', () => false); // passe vide → convergence
-  const repointes = h.moves.filter((m) => m.repointe);
-  assert.strictEqual(repointes.length, paires.length, 'chaque entité re-pointée vers son archive');
+  h.c.executerMission_('ecoles-archives06', () => false); // passe vide → convergence
+  // UNE seule lecture/écriture en LOT (revue quotas : 6 lectures intégrales de l'onglet `Entités`
+  // juste avant l'unique fenêtre d'écriture consommaient le garde-temps qu'elles partagent).
+  assert.strictEqual(h.lots.length, 1, 'un seul appel en lot, pas un par paire');
+  const avecId = paires.filter((p) => p.cible);
+  assert.strictEqual(Object.keys(h.lots[0]).sort().join('|'),
+    avecId.map((p) => p.src).sort().join('|'), 'chaque entité re-pointée vers son archive');
+  // …et la cible SANS ID (`Cégep de Sherbrooke (2019)`) n'est PAS créée : aucune ligne du
+  // référentiel ne vise sa source. Mutation : rendre `true` à `dossiersVisesParEntites_` ⇒ ce test
+  // tombe (le dossier apparaît dans la carte), ce qui prouve que la garde est bien consultée.
+  assert.ok(!Object.keys(h.lots[0]).some((k) => k === paires.filter((p) => !p.cible)[0].src),
+    'jamais créé à vide : la promesse est CODÉE, pas commentée');
+});
+
+test('runner ecoles-archives06 : la cible sans ID est créée dès qu\'une entité la vise', () => {
+  // Le pendant du test précédent — « un gate se teste par sa LIBÉRATION » (leçon §7).
+  const h = ctxSchool({ viseUneSource: true });
+  const paires = h.c.CONFIG.MISSIONS_IDS.ecoles06;
+  paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
+  h.c.executerMission_('ecoles-archives06', () => false);
+  const sansId = paires.filter((p) => !p.cible)[0];
+  assert.ok(Object.prototype.hasOwnProperty.call(h.lots[0], sansId.src),
+    'la source du cégep est bien re-pointée une fois son dossier find-or-créé');
 });
 
 test('un re-pointage qui LÈVE empêche le drapeau FINI — re-tenté à la passe suivante (🟠 revue sécurité)', () => {
   // FINI posé AVANT `apresConvergence` + court-circuit terminal = échec JAMAIS re-tenté : le flux
   // vivant re-remplirait le dossier vidé/peint en rouge que Marc s'apprête à corbeiller. Prouvé
   // par mutation : remonter le setProperty au-dessus de l'appel fait échouer ce test.
-  const h = ctxRunner();
-  const paires = h.c.CONFIG.MISSIONS_IDS.archives06;
+  const h = ctxSchool();
+  const paires = h.c.CONFIG.MISSIONS_IDS.ecoles06;
   paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
   let rate = true;
-  h.c.repointerEntites_ = () => { if (rate) throw new Error('Sheet indisponible'); h.moves.push({ repointe: 'ok' }); };
+  h.c.repointerEntitesLot_ = (carte) => { if (rate) throw new Error('Sheet indisponible'); h.lots.push(carte); };
 
-  assert.throws(() => h.c.executerMission_('retour-ecoles06', () => false), /Sheet indisponible/,
+  assert.throws(() => h.c.executerMission_('ecoles-archives06', () => false), /Sheet indisponible/,
     'l\'échec REMONTE (etapeSuivie_ le journalise) au lieu d\'être avalé');
-  assert.ok(!h.store['DriveAI_MISSION_FINI_retour-ecoles06'], 'pas de FINI sur un re-pointage raté');
+  assert.ok(!h.store['DriveAI_MISSION_FINI_ecoles-archives06'], 'pas de FINI sur un re-pointage raté');
   assert.ok(h.store['DriveAI_MISSIONS_JOUR'], 'le budget consommé est écrit malgré le throw (finally)');
 
   // La Sheet revient : la passe suivante (vide, quasi gratuite) re-tente et conclut.
   rate = false;
-  h.c.executerMission_('retour-ecoles06', () => false);
-  assert.strictEqual(h.store['DriveAI_MISSION_FINI_retour-ecoles06'], h.c.CONFIG.MISSIONS_REGLES_VERSION);
-  assert.strictEqual(h.moves.filter((m) => m.repointe).length, paires.length);
+  h.c.executerMission_('ecoles-archives06', () => false);
+  assert.strictEqual(h.store['DriveAI_MISSION_FINI_ecoles-archives06'], h.c.CONFIG.MISSIONS_REGLES_VERSION);
+  assert.strictEqual(h.lots.length, 1);
   // LIBÉRATION du compteur (revue finale PR2 — « un gate se teste par sa libération », leçon §7) :
   // l'échec a incrémenté errC ; le succès doit l'effacer, sinon un errC ≥ MAX survivrait au FINI
   // et re-bloquerait une journée entière au PREMIER échec après un futur bump de version.
-  const etatApres = JSON.parse(h.store['DriveAI_MISSIONS_ETAT'])['retour-ecoles06'];
+  const etatApres = JSON.parse(h.store['DriveAI_MISSIONS_ETAT'])['ecoles-archives06'];
   assert.strictEqual(etatApres.errC, undefined, 'errC effacé par la convergence réussie');
   assert.strictEqual(etatApres.errJour, undefined, 'errJour effacé avec lui');
 });
@@ -1874,6 +1947,12 @@ test('sourcesJetables : CHAQUE spec tranche explicitement (un défaut ne décide
     assert.ok(Object.prototype.hasOwnProperty.call(s, 'sourcesJetables'),
       `la mission « ${s.tag} » doit déclarer sourcesJetables (ne serait-ce que [])`);
     assert.ok(Array.isArray(s.sourcesJetables), `sourcesJetables de « ${s.tag} » doit être un tableau`);
+    // Même exigence pour `ciblesADepeindre` (revue code C28-105) : plus aucune mission réelle ne
+    // le porte depuis ADR-0055, donc un renommage silencieux du champ ne serait vu par personne —
+    // la sonde de dé-peinture deviendrait inerte sans qu'aucun test ne tombe.
+    assert.ok(Object.prototype.hasOwnProperty.call(s, 'ciblesADepeindre'),
+      `la mission « ${s.tag} » doit déclarer ciblesADepeindre (ne serait-ce que [])`);
+    assert.ok(Array.isArray(s.ciblesADepeindre), `ciblesADepeindre de « ${s.tag} » doit être un tableau`);
     // Une source jetable est forcément une SOURCE de la mission : jamais un dossier tiers.
     for (const j of s.sourcesJetables) {
       assert.ok(s.sources.indexOf(j) !== -1, `« ${s.tag} » : ${j} est déclaré jetable sans être une source`);
@@ -1955,12 +2034,44 @@ test('épingles : un domaine AUTO absent ⇒ REFUS, jamais une cible vide (éche
   }
 });
 
+test('§1.2 — une cible à la CORBEILLE refuse le dépôt (jamais de suppression automatique)', () => {
+  // `sousDossier_` écarte déjà les ENFANTS corbeillés (C28-93) ; `getFolderById`, lui, rend un
+  // dossier corbeillé sans lever. Un dépôt dedans = purge Drive à 30 jours = suppression
+  // AUTOMATIQUE, le garde-fou non négociable. Mutation : retirer le `if (!vivant(racineCible))`
+  // de `traiterItemMission_` ⇒ ce test tombe (le fichier est déplacé et la clé posée).
+  const h = ctxSchool();
+  const paires = h.c.CONFIG.MISSIONS_IDS.ecoles06;
+  const avecId = paires.filter((p) => p.cible)[0];
+  paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
+  h.arbre[avecId.src].files = [h.fichier('fx', '2019-05-01_Relevé_ULCO.pdf')];
+  h.arbre[avecId.cible] = { files: [], folders: {}, corbeille: true };
+
+  h.c.executerMission_('ecoles-archives06', () => false);
+  assert.strictEqual(h.moves.filter((m) => m.vers).length, 0, 'aucun dépôt dans une corbeille');
+  assert.ok(!h.index['mission|ecoles-archives06|' + h.c.CONFIG.MISSIONS_REGLES_VERSION + '|fx'],
+    'aucune clé posée : le fichier est re-tenté, jamais perdu de vue');
+  assert.ok(!h.store['DriveAI_MISSION_FINI_ecoles-archives06'], 'une passe incomplète ne conclut pas');
+
+  // LIBÉRATION : la corbeille vidée/restaurée, le dépôt reprend (un gate se teste par sa levée).
+  h.arbre[avecId.cible].corbeille = false;
+  h.c.executerMission_('ecoles-archives06', () => false);
+  assert.strictEqual(h.moves.filter((m) => m.vers).length, 1);
+});
+
 test('estSourceDisparue_ : un dossier SUPPRIMÉ est une source vide, une PANNE reste une erreur', () => {
   // Vérifié dans le Drive de Marc le 2026-09-12 : les 4 sources de la mission véhicule et les 2 de
   // la mission logement n'existent plus — elles avaient été proposées à la suppression une fois
   // vidées. Sans ce prédicat, la collecte les compte en ERREUR : plus aucune passe complète, donc
   // plus aucune convergence, et une ligne de journal par source et par tick (288/jour).
-  for (const msg of ['No item with the given ID could be found, or you do not have permission to access it.'.replace(', or you do not have permission to access it.', ''),
+  // ⚠️ LE MESSAGE RÉEL, NON TRONQUÉ (revue sécurité C28-105). La version précédente de ce test
+  // construisait le message canonique de Drive puis en RETIRAIT la moitié « or you do not have
+  // permission to access it. » — c'est-à-dire exactement la moitié qui faisait échouer le
+  // prédicat. Il assertait sur une chaîne que Drive n'émet jamais, et verrouillait le bug.
+  // L'API ne distingue VOLONTAIREMENT pas « absent » de « interdit » : le marqueur de disparition
+  // doit donc être reconnu EN PREMIER, et « permission » ne récuse que s'il est SEUL.
+  for (const msg of ['No item with the given ID could be found, or you do not have permission to access it.',
+    'Aucun élément ne correspond à l\'ID indiqué. Il est possible que vous ne disposiez pas des autorisations requises.',
+    'No item with the given ID could be found',
     'Not Found', 'Aucun élément trouvé avec cet ID', 'Dossier introuvable']) {
     assert.strictEqual(pur.estSourceDisparue_(new Error(msg)), true, msg);
   }

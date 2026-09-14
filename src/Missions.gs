@@ -108,6 +108,7 @@ function tableMissions_() {
       // créés sous c49-2 avant que Marc ne retire KIA du canon. Déclaré EXPLICITEMENT depuis le
       // 2026-09-12 : le défaut est « rien n'est jetable » (audit sécurité — un défaut ne décide pas
       // d'un geste destructeur).
+      ciblesADepeindre: [], // rien à dé-peindre : cette mission ne peint pas
       sourcesJetables: [IDS.vehiculesPluriel, IDS.toyotaBzIsole, IDS.vehiculeKia, IDS.vehiculeKiaJetta],
     },
     {
@@ -131,6 +132,7 @@ function tableMissions_() {
       // remplacé par « Logement ») et le double LCP. Vidées, elles n'ont plus de raison d'être —
       // le flux ne les recrée pas (la table du flux vise « Logement »). Déclaré EXPLICITEMENT
       // depuis le 2026-09-12 : le défaut est désormais « rien n'est jetable » (audit sécurité).
+      ciblesADepeindre: [], // rien à dé-peindre : cette mission ne peint pas
       sourcesJetables: [IDS.logementsPluriel, IDS.lcpLogementDouble],
     },
     {
@@ -225,47 +227,64 @@ function tableMissions_() {
       // Énergie & services) sont des nœuds PÉRENNES de la table du flux (les filets de 03) —
       // vidées à la convergence, elles ne sont JAMAIS peintes en rouge : Marc les supprimerait
       // et le flux les recréerait par nom au prochain document (ping-pong, leçon paies/impots).
+      ciblesADepeindre: [], // rien à dé-peindre : cette mission ne peint pas
       sourcesJetables: [],
     },
     {
-      // SENS INVERSÉ le 2026-09-13 (décision Marc) : l'archive rend son contenu à l'école.
-      // Le TAG et la CLÉ changent avec le sens — sinon les fichiers déjà déplacés dans l'autre
-      // sens portent une clé de SUCCÈS sous `mission-archives-06` et ne seraient jamais repris
+      // SENS RE-INVERSÉ le 2026-09-14 (ADR-0055, demande de Marc : « j'ai la bonne structure pour
+      // les écoles déjà, continue à rajouter là-dedans au lieu de mettre à la racine du projet » +
+      // « décale prépa et cégep là-dedans »). La RACINE de `06` rend ses dossiers d'école — tous
+      // créés par le MOTEUR — aux 7 dossiers qu'il a construits lui-même sous `Archives scolaires`.
+      // Le TAG et la CLÉ changent avec le sens — sinon les ~45 fichiers déjà déplacés dans l'autre
+      // sens portent une clé de SUCCÈS sous `retour-ecoles06` et ne seraient jamais repris
       // (leçon §9 : « re-lancer une campagne à clé de SUCCÈS ne re-traite pas ce qu'elle a figé »).
-      tag: 'retour-ecoles06', cle: 'mission-retour-ecoles-06',
-      sources: (IDS.archives06 || []).map(function (p) { return p.src; }),
+      tag: 'ecoles-archives06', cle: 'mission-ecoles-archives-06',
+      sources: (IDS.ecoles06 || []).map(function (p) { return p.src; }),
       batirCtx: function () {
         var parSource = {};
-        (IDS.archives06 || []).forEach(function (p) { parSource[p.src] = p.cible; });
-        return { parSource: parSource };
+        (IDS.ecoles06 || []).forEach(function (p) { parSource[p.src] = p; });
+        return { parSource: parSource, archivesId: IDS.archivesScolaires };
       },
       router: function (nom, info, ctx) {
-        // Table d'alias EXPLICITE (ADR-0039) : la source désigne l'archive, le contenu part en bloc
-        // (un niveau de sous-dossier préservé). Pas d'alias = pas une source = jamais deviné.
-        var cible = ctx.parSource[info.sourceId];
-        return cible ? { cibleId: cible, sousDossier: info.sousChemin } : null;
+        // Table d'alias EXPLICITE (ADR-0039) : la source désigne le dossier d'école de la racine,
+        // le contenu part en bloc (un niveau de sous-dossier préservé — les 4 sous-dossiers
+        // standard existent déjà dans 3 des archives). Pas d'alias = pas une source = jamais deviné.
+        var p = ctx.parSource[info.sourceId];
+        if (!p) return null;
+        // Cible par ID quand le dossier de Marc EXISTE DÉJÀ. `Cégep de Sherbrooke (2019)` n'existe
+        // pas : il est find-or-créé PAR NOM sous `Archives scolaires` — par CE chemin, la création
+        // n'a lieu qu'au premier fichier réellement déplacé. (L'autre chemin, `repointerEcoles06_`
+        // à la convergence, est gardé par `referentielViseUneSource_`.)
+        if (p.cible) return { cibleId: p.cible, sousDossier: info.sousChemin };
+        return { cibleParentId: ctx.archivesId, cibleNom: p.cibleNom, sousDossier: info.sousChemin };
       },
-      // Après le transfert, le référentiel doit VISER le dossier d'école, pas l'archive vidée —
-      // c'est la même règle qu'avant, dans l'autre sens : le flux (`cheminCibleReset_`) et le
-      // référentiel doivent désigner le MÊME dossier, sinon l'un remplit ce que l'autre vide.
+      // Après le transfert, le référentiel doit VISER le dossier d'archive, pas le dossier de la
+      // racine qu'on vient de vider — même règle qu'avant, dans l'autre sens : le flux
+      // (`cheminCibleReset_`) et le référentiel doivent désigner le MÊME dossier, sinon l'un
+      // remplit ce que l'autre vide.
       // PEUT LEVER, volontairement (revue sécurité C28-49) : un échec doit EMPÊCHER le drapeau
       // FINI pour être re-tenté à la passe suivante — `repointerEntites_` est idempotent (une
       // ligne déjà re-pointée ne matche plus la source), rejouer la boucle est sans danger.
-      apresConvergence: function () {
-        (IDS.archives06 || []).forEach(function (p) { repointerEntites_(p.src, p.cible); });
-      },
-      // ⚠️ Les 4 dossiers d'ÉCOLE étaient les SOURCES de l'ancienne mission, donc ses
-      // `sourcesJetables` : vidés puis PEINTS EN ROUGE (« bon pour suppression »), eux et leurs
-      // sous-dossiers vides. L'inversion en fait la STRUCTURE que Marc a choisie — et le
-      // rattrapage va y verser 143 fichiers. Le rouge se retire donc explicitement : rien d'autre
-      // dans le moteur ne le retirait, jamais (leçon §9 « chemin de RETOUR »).
-      ciblesADepeindre: (IDS.archives06 || []).map(function (p) { return p.cible; }),
-      // ⚠️ `sourcesJetables: []` — VOLONTAIRE, et c'est le cœur de l'inversion. Les archives vidées
-      // NE SONT PAS peintes en rouge : `Archives scolaires` contient trois autres dossiers que
-      // cette mission ne touche pas (« Collège & Lycée — divers », « Lycée — Gustave Eiffel —
-      // Physique-Chimie (TP) », « Online course — AI Essentials »), et un signal « bon pour
-      // suppression » sur un parent partiellement vidé est exactement le défaut relevé en revue :
-      // « tracer ce qui se passe si l'utilisateur OBÉIT au signal ».
+      apresConvergence: function () { repointerEcoles06_(); },
+      // Rien à dé-peindre : les archives de Marc n'ont JAMAIS été peintes en rouge (l'inversion du
+      // 13/09 avait justement retiré ce signal), et les 8 dossiers d'`Archives scolaires` sont
+      // désormais des nœuds de `STRUCTURE_CIBLE_RESET` — donc protégés par la garde de capacité
+      // (C28-93) contre toute proposition de suppression.
+      ciblesADepeindre: [],
+      // ⚠️ `sourcesJetables: []` — DÉCISION, pas un défaut, et RÉVISÉE en revue flotte. La version
+      // précédente de ce lot peignait les 6 dossiers vidés en ROUGE (« bon pour suppression ») en
+      // s'appuyant sur « ils ne sont plus dans la table, donc rien ne les recrée ». Trois choses
+      // l'ont fait retirer, chacune vérifiée :
+      //  (a) l'invariant est FAUX — `SEED_ENTITES` valide encore 6 écoles dans `06`, et le
+      //      référentiel d'entités matérialise un dossier d'entité à la RACINE du domaine
+      //      (C28-106, ouvert au backlog, pas corrigé ici) ;
+      //  (b) le rouge n'atteindrait de toute façon pas les racines : `peindreSourcesVides_` exige
+      //      la vacuité STRICTE, or ces dossiers gardent leurs sous-dossiers standard ;
+      //  (c) 4 des 6 sont des entités SEEDÉES, donc `estNoeudRecreable_` les refuse à la liste
+      //      « dossiers vides » de l'app : Marc verrait du rouge qu'aucun bouton n'exécute.
+      // Un signal destructeur ne se pose pas sur un invariant non démontré (leçon §9 : « tracer ce
+      // qui se passe si l'utilisateur OBÉIT au signal »). Les 6 coquilles vides restent, visibles ;
+      // leur retrait viendra avec C28-106.
       sourcesJetables: [],
     },
     /* ---- PR2 : Carrière + Finances (brief Marc §« paies / employeurs / impôts / années ») ---- */
@@ -283,7 +302,7 @@ function tableMissions_() {
       },
       // À la convergence : le rapport des MOIS MANQUANTS par employeur (demande explicite de
       // Marc « je n'ai absolument pas toutes les paies ») — onglet `RapportPaies`, self-serve.
-      // Peut lever (comme le re-pointage archives06) : pas de FINI sans rapport écrit.
+      // Peut lever (comme le re-pointage `ecoles-archives06`) : pas de FINI sans rapport écrit.
       // `convergenceApres` (revue quotas PR2) : `carriere` et `annees02` alimentent ENCORE
       // « Revenus & paie » pendant des jours — écrire le rapport avant leur fin le FIGERAIT sur
       // des « mois manquants » qu'elles vont combler (donnée MOUVANTE, corollaire C28-49). La
@@ -293,6 +312,7 @@ function tableMissions_() {
       // qui ne revient jamais ne peut pas servir de gate » (leçon C28-32, autre face).
       convergenceApres: ['carriere'],
       apresConvergence: function () { ecrireRapportPaies_(); },
+      ciblesADepeindre: [], // rien à dé-peindre : cette mission ne peint pas
       sourcesJetables: [], // « Revenus & paie » est PÉRENNE : jamais peinte en rouge
     },
     {
@@ -332,6 +352,7 @@ function tableMissions_() {
       // Plus AUCUNE source jetable : `Recherche d'emploi` est redevenu une CIBLE (ADR-0044 D10),
       // et « Employeurs/<X> »/racine 05 sont PÉRENNES (peindre en rouge un dossier de structure
       // momentanément vide dirait « supprimable » à tort).
+      ciblesADepeindre: [], // rien à dé-peindre : cette mission ne peint pas
       sourcesJetables: [],
     },
     {
@@ -378,6 +399,7 @@ function tableMissions_() {
       // C'est FAUX — `detecterDossierVide_` écarte tout nom `^\d{4}$` via `estSegmentStructurel_`,
       // et ces dossiers s'appellent 2003…2026. Il n'y a donc AUCUN signal automatique : Marc les
       // verra vides dans Drive, c'est tout. Mieux vaut pas de signal qu'un signal piégé.
+      ciblesADepeindre: [], // rien à dé-peindre : cette mission ne peint pas
       sourcesJetables: [],
     },
     {
@@ -390,6 +412,7 @@ function tableMissions_() {
         var annee = anneeDuNomMission_(nom);
         return annee ? { cibleParentId: IDS.impotsDeclarations, cibleNom: annee } : null;
       },
+      ciblesADepeindre: [], // rien à dé-peindre : cette mission ne peint pas
       sourcesJetables: [], // « Impôts & déclarations » est PÉRENNE : jamais peinte
     },
   ];
@@ -634,13 +657,25 @@ function cibleBailleur_(nom, cibles) {
  */
 function estSourceDisparue_(e) {
   var m = String((e && e.message) || e || '').toLowerCase();
-  // Un refus de PERMISSION n'est PAS une disparition : le dossier existe, on n'y accède pas — la
-  // mission doit rester OUVERTE. Testé dans les deux sens.
-  if (m.indexOf('permission') !== -1 || m.indexOf('autorisation') !== -1) return false;
-  return m.indexOf('no item with the given id') !== -1 ||  // « No item with the given ID could be found »
+  // ⚠️ ORDRE CORRIGÉ (revue sécurité C28-105, PROUVÉ EN L'EXÉCUTANT). Le message RÉEL de Drive
+  // porte les DEUX moitiés — « No item with the given ID could be found, **or you do not have
+  // permission to access it.** » — parce que l'API ne distingue volontairement pas « absent » de
+  // « interdit ». Récuser sur « permission » EN PREMIER faisait donc rendre `false` au message
+  // canonique : la seule situation que cette fonction existe pour reconnaître.
+  // Conséquence mesurée : une source corbeillée puis purgée à 30 j (ce que le moteur PROPOSE à
+  // Marc pour les dossiers vidés) faisait passer la mission en `erreur` à chaque run — donc
+  // JAMAIS de passe complète, JAMAIS de convergence, et `dispatch03`, gatée sur la convergence de
+  // `vehicule`+`logement` (sources déjà corbeillées le 12/09), bloquée à vie, heartbeat vert.
+  // C'est la leçon §9 « un statut TERMINAL ne peut pas servir de signal d'occupation », armée.
+  var disparue = m.indexOf('no item with the given id') !== -1 ||
     m.indexOf('not found') !== -1 ||
     m.indexOf('aucun élément') !== -1 ||                    // variantes FR de l'éditeur
     m.indexOf('introuvable') !== -1;
+  if (disparue) return true;
+  // Un refus de PERMISSION SEUL (le message ne porte aucun marqueur de disparition) n'est PAS une
+  // disparition : le dossier existe, on n'y accède pas — la mission doit rester OUVERTE. Testé
+  // dans les deux sens, sur les messages RÉELS et non tronqués.
+  return false;
 }
 
 /**
@@ -1105,7 +1140,7 @@ var COLONNES_RAPPORT_PAIES = ['Employeur', 'Mois présents', 'Mois manquants (nb
 /**
  * Écrit l'onglet `RapportPaies` (une ligne par employeur : couverture + mois manquants) depuis
  * l'état RÉEL de « Revenus & paie »/<Employeur>. Appelée à la CONVERGENCE de la mission paies
- * (peut lever → pas de FINI sans rapport, comme le re-pointage archives06). Bornée : ≤ 300
+ * (peut lever → pas de FINI sans rapport, comme le re-pointage `ecoles-archives06`). Bornée : ≤ 300
  * fichiers lus par employeur, pur `getName()`.
  */
 function ecrireRapportPaies_() {
@@ -1506,8 +1541,20 @@ function budgetJourMissions_(props, aujourdhui) {
 
 /** Compteurs compacts par mission `{<tag>:{t,b,na}}` (~40 o/mission — loin des 9 Ko). */
 function chargerEtatMissions_(props) {
-  try { return JSON.parse(props.getProperty('DriveAI_MISSIONS_ETAT') || '{}') || {}; }
+  var brut;
+  try { brut = JSON.parse(props.getProperty('DriveAI_MISSIONS_ETAT') || '{}') || {}; }
   catch (e) { return {}; }
+  // PURGE des tags qui ne sont plus dans la table (revue quotas C28-105) : chaque renommage de
+  // mission — il y en a eu deux sur `06` en deux jours — laissait sinon son entrée à VIE, personne
+  // ne la lisant jamais. Croissance non bornée indexée sur le nombre de renommages, exactement le
+  // défaut « un registre borné finit par se fermer, et il se ferme sans le dire » (§9).
+  // Patron `fusionnerSuiviOps_` (Suivi.gs), qui filtre déjà sur son registre.
+  var connus = {};
+  try { tableMissions_().forEach(function (m) { connus[m.tag] = true; }); }
+  catch (e) { return brut; } // table illisible : on ne purge RIEN plutôt que de tout perdre
+  var etat = {};
+  Object.keys(brut).forEach(function (t) { if (connus[t]) etat[t] = brut[t]; });
+  return etat;
 }
 
 /**
@@ -1702,6 +1749,45 @@ function executerMission_(tag, estBudgetDepasse) {
 }
 
 /**
+ * RE-POINTAGE du référentiel d'entités après la mission `ecoles-archives06` (ADR-0055) : chaque
+ * dossier d'école de la RACINE de `06` cède ses lignes au dossier d'archive de Marc.
+ *
+ * I/O assumé (le routeur, lui, reste PUR) : la cible du cégep n'existe qu'à partir du premier
+ * fichier déplacé, donc on la find-or-crée ICI pour que le référentiel ait un ID stable à viser.
+ * PEUT LEVER, volontairement : un échec doit EMPÊCHER le drapeau FINI, pour re-tenter au run
+ * suivant. `repointerEntites_` est idempotent (une ligne déjà re-pointée ne matche plus la source).
+ */
+function repointerEcoles06_() {
+  var IDS = CONFIG.MISSIONS_IDS;
+  var paires = IDS.ecoles06 || [];
+  // UNE seule lecture de l'onglet `Entités` pour les 6 paires (revue quotas : `repointerEntites_`
+  // fait `getDataRange().getValues()` À CHAQUE appel — 6 lectures intégrales juste avant l'unique
+  // fenêtre de peinture, sur un garde-temps déjà consommé).
+  var carte = {};
+  paires.forEach(function (p) { if (p.cible) carte[p.src] = p.cible; });
+  // La cible SANS ID (`Cégep de Sherbrooke (2019)`) n'est find-or-créée que si une ligne du
+  // référentiel vise réellement sa source — sinon on créerait un dossier VIDE à chaque
+  // convergence, alors que la table et l'ADR promettent l'inverse (revue code + sécurité).
+  var sansId = paires.filter(function (p) { return !p.cible; });
+  if (sansId.length && referentielViseUneSource_(sansId)) {
+    var archives = DriveApp.getFolderById(IDS.archivesScolaires);
+    sansId.forEach(function (p) { carte[p.src] = sousDossier_(archives, p.cibleNom).getId(); });
+  }
+  repointerEntitesLot_(carte);
+}
+
+/**
+ * Vrai si au moins une ligne du référentiel d'entités pointe l'une des sources données. PURE de
+ * décision, I/O de lecture : une seule lecture de l'onglet, partagée avec `repointerEntitesLot_`.
+ * @param {Array<{src:string}>} paires @return {boolean}
+ */
+function referentielViseUneSource_(paires) {
+  var vise = {};
+  paires.forEach(function (p) { vise[p.src] = true; });
+  return dossiersVisesParEntites_(vise);
+}
+
+/**
  * Traite UN item : route, RE-VÉRIFIE les gardes (strict), déplace, inscrit la clé APRÈS.
  * @return {string} 'fait' | 'refus' (non apparié/multi-parents, inscrit) | 'transitoire' (re-tenté)
  */
@@ -1741,7 +1827,21 @@ function traiterItemMission_(spec, item, ctx, proteges) {
       var k = 'sous|' + parent.getId() + '|' + nomSous;
       return memo[k] || (memo[k] = sousDossier_(parent, nomSous));
     };
-    var dossier = cible.cibleId ? ouvrir(cible.cibleId) : sous(ouvrir(cible.cibleParentId), cible.cibleNom);
+    // ⚠️ §1.2 — JAMAIS DE DÉPÔT DANS UNE CORBEILLE (revue sécurité C28-105). `sousDossier_` filtre
+    // déjà les ENFANTS corbeillés (`racineVivanteOuCreee_`, C28-93) ; `getFolderById`, lui, rend un
+    // dossier corbeillé SANS lever. Un dossier cible que Marc met à la corbeille — et ce lot place
+    // justement `06/IMERIR` (vidé) à côté de `06/Archives scolaires/IMERIR — …` (la cible) —
+    // recevrait les fichiers, qui seraient purgés avec lui à 30 jours : une SUPPRESSION
+    // AUTOMATIQUE, le garde-fou non négociable. `FusionExec.gs` a cette garde ; le runner ne
+    // l'avait pas. Échec fermé : on rend `'transitoire'`, aucune clé posée, re-tenté au run suivant.
+    var vivant = function (d) { return d && !d.isTrashed(); };
+    var racineCible = cible.cibleId ? ouvrir(cible.cibleId) : ouvrir(cible.cibleParentId);
+    if (!vivant(racineCible)) {
+      journalErreur_('Missions', 'Cible à la CORBEILLE, dépôt refusé (« ' + nom + ' », mission ' + spec.tag +
+        ') — §1.2 : jamais de dépôt dans une corbeille.');
+      return 'transitoire';
+    }
+    var dossier = cible.cibleId ? racineCible : sous(racineCible, cible.cibleNom);
     // CHEMIN (segments séparés par '/'), pas un nom simple : la cible d'un routage inter-domaines
     // est calculée par `cheminCibleReset_`, qui rend des chemins (« Contrats & fournisseurs/Virgin
     // Plus »). Sans le découpage, Drive créerait UN dossier portant la barre oblique dans son nom.

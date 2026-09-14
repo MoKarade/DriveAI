@@ -64,7 +64,7 @@ var REGISTRE_OPERATIONS = [
   { cle: 'mission-vehicule', libelle: 'Mission — véhicules (Véhicules → Véhicule)', unite: 'fichiers', type: 'campagne' },
   { cle: 'mission-logement', libelle: 'Mission — logements (Logements → Logement)', unite: 'fichiers', type: 'campagne' },
   { cle: 'mission-dispatch-03', libelle: 'Mission — contrats, correspondance, assurances & énergie (03)', unite: 'fichiers', type: 'campagne' },
-  { cle: 'mission-retour-ecoles-06', libelle: 'Mission — retour des archives vers les écoles (06)', unite: 'fichiers', type: 'campagne' },
+  { cle: 'mission-ecoles-archives-06', libelle: 'Mission — les écoles rejoignent les archives scolaires (06)', unite: 'fichiers', type: 'campagne' },
   { cle: 'mission-paies', libelle: 'Mission — paies par employeur (02)', unite: 'fichiers', type: 'campagne' },
   { cle: 'mission-carriere', libelle: 'Mission — employeurs & CV (05)', unite: 'fichiers', type: 'campagne' },
   { cle: 'mission-annees-02', libelle: 'Mission — dossiers-années de Finances (02)', unite: 'fichiers', type: 'campagne' },

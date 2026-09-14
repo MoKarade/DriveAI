@@ -148,10 +148,10 @@ const CAS = [
   // 06 — par ÉCOLE (liste de Marc), diplômes transverses, profs de prépa rattachés à la prépa
   ['06 · Études & diplômes', '2019-06_Diplôme_Baccalauréat.pdf', 'Diplômes & relevés officiels'],
   ['06 · Études & diplômes', '2021-01_Relevé de notes_ULCO.pdf', 'Diplômes & relevés officiels'],
-  ['06 · Études & diplômes', '2020-11_Kholle_Mr Têtard.pdf', 'Prépa Gustave Eiffel (PTSI)/Examens & khôlles'],
-  ['06 · Études & diplômes', '2022-03_TP_IUT Du Littoral Côte d\'Opale.pdf', 'DUT ULCO Saint-Omer/Cours & travaux'],
-  ['06 · Études & diplômes', '2024-09_Attestation_Cégep de Sherbrooke.pdf', 'Cégep de Sherbrooke/Administratif'],
-  ['06 · Études & diplômes', '2023-05_Projet_IMERIR.pdf', 'IMERIR/Cours & travaux'],
+  ['06 · Études & diplômes', '2020-11_Kholle_Mr Têtard.pdf', 'Archives scolaires/Prépa PTSI (2017-2018)/Examens & khôlles'],
+  ['06 · Études & diplômes', '2022-03_TP_IUT Du Littoral Côte d\'Opale.pdf', 'Archives scolaires/ULCO — DUT GIM (2018-2020)/Cours & travaux'],
+  ['06 · Études & diplômes', '2024-09_Attestation_Cégep de Sherbrooke.pdf', 'Archives scolaires/Cégep de Sherbrooke (2019)/Administratif'],
+  ['06 · Études & diplômes', '2023-05_Projet_IMERIR.pdf', 'Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023)/Cours & travaux'],
   ['06 · Études & diplômes', '2021-09_Convention_Häme University Of Applied Sciences.pdf', 'Autres établissements'],
   // 07 — validé tel quel par Marc
   ['07 · Santé', '2025-04-09_Facture_Prelib - Centre de prévention en santé sexuelle Inc..pdf', 'Factures & reçus'],
@@ -197,7 +197,7 @@ const CAS = [
   ['06 · Études & diplômes', '2013-09_Certificat de scolarité_Collège Gustave Eiffel.pdf', 'Autres établissements'],
   ['06 · Études & diplômes', '2021-03_Attestation_ULCO CEL Hubhouse.pdf', 'Autres établissements'],
   // ' colles' (programme de colles → prépa/examens) sans jamais matcher un autre mot.
-  ['06 · Études & diplômes', '2020-01_Programme de colles_Semaine 12.pdf', 'Prépa Gustave Eiffel (PTSI)/Examens & khôlles'],
+  ['06 · Études & diplômes', '2020-01_Programme de colles_Semaine 12.pdf', 'Archives scolaires/Prépa PTSI (2017-2018)/Examens & khôlles'],
   // 'chine' ⊂ « machine » : un billet « La Machine » ne part pas en Chine… mais le VRAI cas
   // « _Chine.pdf » (underscore, pas d'espace) route bien (égalité sur l'émetteur).
   ['09 · Voyages', '2024-05-14_Billet_La Machine De l\'Île.pdf', 'Réservations & billets/2024'],
@@ -331,14 +331,76 @@ test('05 : « Recherche d\'emploi » RECRÉÉ (ADR-0044 D10) — le geste est SY
 });
 
 test('06 : la table des écoles se construit depuis SOUS_DOSSIERS_ECOLE_RESET (une seule source, revue PR1)', () => {
-  const table = JSON.parse(JSON.stringify(ctx.STRUCTURE_CIBLE_RESET['06 · Études & diplômes']));
+  // (ADR-0055) Les écoles vivent sous `Archives scolaires`, le dossier de MARC, et portent SES
+  // noms. `getFoldersByName` est SENSIBLE À LA CASSE et aux tirets CADRATINS : un libellé qui
+  // diffère d'un caractère crée un dossier jumeau à côté du sien.
+  const table = JSON.parse(JSON.stringify(
+    ctx.STRUCTURE_CIBLE_RESET['06 · Études & diplômes'][ctx.RACINE_ARCHIVES_ECOLE_RESET]));
   const attendu = JSON.parse(JSON.stringify(ctx.SOUS_DOSSIERS_ECOLE_RESET));
-  // ⚠️ « lycée » en MINUSCULE : c'est le nom RÉEL du dossier Drive (relevé le 13/09), et
-  // `sousDossier_` résout par `getFoldersByName`, qui est SENSIBLE À LA CASSE.
-  for (const ecole of ['lycée Thérèse d\'Avila', 'DUT ULCO Saint-Omer', 'Cégep de Sherbrooke', 'IMERIR']) {
+  // Les 4 standard sont TOUJOURS là, dans l'ordre de la constante — une seule source. Ce qui suit
+  // (le « Concours » de la prépa, les sous-dossiers THÉMATIQUES de Marc) s'y AJOUTE, jamais s'y
+  // substitue : la garde qui protège ses dossiers de la corbeille ne doit pas défaire la taxonomie.
+  for (const ecole of ['Lycée — Thérèse Davila (2017-2018)', 'Cégep de Sherbrooke (2019)']) {
     assert.deepStrictEqual(Object.keys(table[ecole]), attendu, ecole);
   }
-  assert.deepStrictEqual(Object.keys(table['Prépa Gustave Eiffel (PTSI)']), attendu.concat(['Concours']));
+  for (const ecole of ['ULCO — DUT GIM (2018-2020)', 'IMERIR — Ingénieur MSIR (2020-2023)']) {
+    assert.deepStrictEqual(Object.keys(table[ecole]).slice(0, attendu.length), attendu, ecole);
+  }
+  assert.deepStrictEqual(Object.keys(table['Prépa PTSI (2017-2018)']), attendu.concat(['Concours']));
+  // Les thématiques de MARC (relevé Drive du 14/09), déclarées pour ne pas être proposées à la
+  // corbeille ni mutées par la réorg — dérivées de la constante, jamais recopiées.
+  assert.deepStrictEqual(Object.keys(table['IMERIR — Ingénieur MSIR (2020-2023)']).slice(attendu.length),
+    JSON.parse(JSON.stringify(ctx.THEMATIQUES_IMERIR_RESET)));
+  assert.deepStrictEqual(Object.keys(table['ULCO — DUT GIM (2018-2020)']).slice(attendu.length),
+    JSON.parse(JSON.stringify(ctx.THEMATIQUES_ULCO_RESET)));
+});
+
+test('ADR-0055 — l\'exemption au plafond ≤ 7 est NOMMÉE, et sans elle le validateur mord', () => {
+  // `Archives scolaires` porte 8 enfants : les 7 dossiers que MARC a construits lui-même, plus le
+  // `Cégep de Sherbrooke (2019)` qu'il a demandé d'ajouter. Le dépassement vient de SA structure,
+  // il est donc DÉCLARÉ à la valeur près — jamais toléré en silence. L'alternative (omettre de la
+  // table les 3 dossiers qu'aucune règle ne vise) aurait rendu le plafond FAUX sans le dire.
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.RESET_EXEMPTIONS_PLAFOND)), [
+    '06 · Études & diplômes/Archives scolaires',
+    '06 · Études & diplômes/Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023)',
+  ]);
+  // MUTATION : sans les exemptions, les violations sont RÉELLES et CHIFFRÉES — la garde n'est pas
+  // décorative, et le COMPTE est figé lui aussi : un 9ᵉ dossier sous `Archives scolaires` ou un
+  // 17ᵉ sous IMERIR fait échouer la CI.
+  const vraies = ctx.RESET_EXEMPTIONS_PLAFOND;
+  ctx.RESET_EXEMPTIONS_PLAFOND = [];
+  try {
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(
+      ctx.verifierStructureCibleReset_(ctx.STRUCTURE_CIBLE_RESET, MAX))), [
+      '06 · Études & diplômes/Archives scolaires : 8 sous-dossiers',
+      '06 · Études & diplômes/Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023) : 16 sous-dossiers',
+    ]);
+  } finally { ctx.RESET_EXEMPTIONS_PLAFOND = vraies; }
+});
+
+test('ADR-0055 — une règle, deux consommateurs : les cibles de la mission == les écoles du routage', () => {
+  // Le flux (`cheminCibleReset_`) classe DANS les dossiers de Marc ; la mission `ecoles-archives06`
+  // y VERSE le contenu des dossiers que le moteur s'était créés à la racine de `06`. Si les deux
+  // listes divergent d'un nom, l'un remplit ce que l'autre ne vise pas — c'est la leçon C28-26
+  // (« deux formules équivalentes écrites séparément divergent toujours quelque part »).
+  // Les deux bornes sont DÉRIVÉES, jamais recopiées : les fenêtres de scolarité d'un côté, la
+  // table d'alias de l'autre.
+  const paires = ctx.CONFIG.MISSIONS_IDS.ecoles06;
+  const archives = ctx.STRUCTURE_CIBLE_RESET['06 · Études & diplômes'][ctx.RACINE_ARCHIVES_ECOLE_RESET];
+  for (const p of paires) {
+    assert.ok(Object.prototype.hasOwnProperty.call(archives, p.cibleNom),
+      'cible de mission absente de la table : ' + p.cibleNom);
+  }
+  const cibles = Array.from(new Set(paires.map((p) => p.cibleNom))).sort();
+  const ecolesRoutees = Array.from(new Set(ctx.RESET_FENETRES_ECOLE.map((f) => f.ecole))).sort();
+  assert.deepStrictEqual(cibles, ecolesRoutees,
+    'toute école que le routage sait nommer doit recevoir le contenu de son dossier de racine');
+  // Une source ne peut pas être sa propre cible (la mission tournerait en rond), et chaque source
+  // est déclarée JETABLE — le dossier vidé n'est plus dans la table, donc rien ne le recrée.
+  for (const p of paires) assert.notStrictEqual(p.src, p.cible);
+  const sources = Array.from(paires).map((p) => p.src).sort();
+  assert.strictEqual(sources.join('|'), Array.from(new Set(sources)).sort().join('|'),
+    'chaque dossier de racine est une source UNIQUE');
 });
 
 test('estExcluDuReset_ : artefacts du moteur jamais touchés ; documents normaux jamais exclus', () => {
