@@ -43,6 +43,26 @@
 > marge avant le mur (un document LLM lancé dans la dernière minute est TUÉ, le `finally` ne tourne
 > pas, le budget fuit) ⇒ `PILOTE_MARGE_DOC_MS`.
 >
+> **✅ DÉPLOYÉ ET VÉRIFIÉ PAR SIGNAL INDÉPENDANT (14/09 15:58, relevé `etat_moteur`).** `deploy.yml`
+> vert sur `01f509f`, ET le moteur écrit la preuve : ligne `Re-analyse v2 (c28-92)` **née** dans
+> Progression (C28-112 se répare exactement comme diagnostiqué — le tag neuf rend `termine` faux, et
+> `pousser` crée enfin la ligne), ligne de Santé « Re-datation de 06 : en cours », et
+> « Historique Gmail : terminée ✅ — ses **12** min/j sont RÉALLOUABLES (**8 min déjà prêtées à la
+> re-analyse**) ». Frein à 40 $ : décision de Marc, respectée.
+>
+> ⚠️ **LA BASE RECENSÉE EST 466, PAS 328 — +42 %.** Le chiffre de l'ADR venait du recensement
+> C28-88 ; la mesure du moteur, elle, est exhaustive et faite aujourd'hui. Conséquences, toutes
+> dérivées de 466 × 0,0261 $ : **~12,2 $ au lieu de 8,6 $**, et **19 à 30 jours** au lieu de 14 à 21.
+> Le frein à 40 $ garde 3,3× de marge, donc rien ne s'arrête — mais l'écart n'est PAS expliqué et
+> doit l'être (C28-120) : soit la racine de `06` s'est regarnie depuis le 13/09, soit le prédicat de
+> collecte est plus large que « les fichiers à plat mal datés ». C'est le §9 mot pour mot : « un
+> chiffre-titre n'est jamais une promesse de gain tant qu'il n'est pas mesuré sur le corpus ».
+>
+> ⚠️ **Deux choses NON encore prouvées en prod**, à ne pas déclarer : (a) la campagne est à
+> `0 / 466` — elle vient de finir son recensement, aucun document n'a encore été re-daté ; (b) **D11
+> n'a pas encore été exercée** — la génération de consolidation en est à 2 domaines sur 9 et n'a pas
+> atteint `06`.
+>
 > **REVUE FLOTTE — 3ᵉ PASSE (code · sécurité · quotas) : 2 🔴 de plus, et CINQ mutations jouées par
 > les agents ont SURVÉCU.** C'est la leçon du lot : une correction n'existe que si une mutation la
 > fait tomber, et il faut la jouer **sur le point d'appel**, pas seulement sur la fonction pure.
