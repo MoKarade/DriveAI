@@ -106,8 +106,40 @@
 > l'abstention sur un référentiel « vide »), C28-95 (deux remontées d'ancêtres pour une),
 > C28-96 (le scope `.../auth/forms` n'est documenté nulle part).
 >
-> **Vérifications** : 1268 tests moteur · 268 tests app · `node --check` sur les 41 `.gs` ·
-> `npm run build` · 7 mutations jouées et restaurées par copie de sauvegarde.
+> **3ᵉ PASSE (code · sécurité), sur le delta seul — 🟢 sur les garde-fous, et 6 🟠 de plus.**
+>
+> 🟠 **Les deux CÂBLAGES du delta n'étaient gardés par aucun test** — prouvé par mutation chez la
+> revue : retirer l'appel à `filtrerVidesCandidatsRecreables_`, puis celui à `proposerSourceFusion_`,
+> laissait 1268/1268 verts. C'est la forme EXACTE du 🔴 d'origine (une fonction testée, appelée à un
+> seul endroit) : le lot corrigeait le symptôme et reconduisait la cause. Deux tests d'orchestration.
+> 🟠 **Le correctif §1.2 gardait la FEUILLE de la chaîne, pas ses RACINES.** `dossierDomaineAuto_` et
+> `dossierRacineParNom_` résolvent par un ID mémorisé en Script Property, qui SURVIT au corbeillage :
+> Marc corbeille `_Doublons` depuis Drive, le moteur continue d'y envoyer chaque doublon, et 30 jours
+> plus tard Drive purge le dossier AVEC son contenu — §1.1(c), sur la population dont C28-49 PR4 a
+> mesuré qu'elle contenait 1 076 fichiers dont trois passeports.
+> 🟠 **Le verdict du filtre était DÉFINITIF et non versionné** : un bump pouvait retirer une
+> proposition, jamais la rendre — alors que C28-89 a réellement retiré `Modèles & formulaires` de la
+> table. Le détail porte désormais la marque du filtre et son tag.
+> 🟠 **Les deux producteurs ne rendaient pas le même verdict** : `Robovic` refusé par l'un, proposé
+> par l'autre dès que la cible portait le même nom, puis défait par le filtre au bump suivant. Règle
+> alignée, exception supprimée.
+> 🟠 **`dernierSegment_` sur un nom contenant `/`** — Drive l'autorise : « Impôts/Archives » se
+> lisait « Archives », un nœud de la table, et la ligne était retirée à tort et DÉFINITIVEMENT.
+> 🟠 **Le coupe-circuit ne surveillait que Drive** : un 429 côté Sheets laissait le lot aller au bout,
+> 124 dossiers corbeillés et 124 statuts perdus, sans que rien ne le dise.
+>
+> Plus : le garde-temps manquant dans la boucle d'écritures, un instantané de l'onglet qui pouvait
+> écraser ce que l'app venait d'y écrire, `ctx.proteges || {}` qui faisait échouer le garde §1
+> OUVERT, `entitesValideesParCle_` qui avait cessé de rendre sa carte PARTIELLE, et trois
+> commentaires qui promettaient ce que le code ne tient pas.
+>
+> **Deux bugs PRÉ-EXISTANTS de plus au backlog** : C28-97 (une abstention de constat n'est jamais
+> rattrapée — arbitrage assumé, écrit en ADR-0053 D11), C28-98 (les autres résolveurs par nom
+> ignorent la corbeille — aucun n'ouvre de chemin vers une suppression automatique).
+>
+> **Vérifications** : 1277 tests moteur · 270 tests app · `node --check` sur les 41 `.gs` ·
+> `npm run build` · **17 mutations** jouées et restaurées par copie de sauvegarde (jamais
+> `git checkout`).
 
 > **✅ MERGÉ, DÉPLOYÉ ET VÉRIFIÉ EN PRODUCTION — 2026-09-13 19:25 UTC : le rattrapage TOURNE.**
 > PR #339 mergée (`a2f4373`), `deploy.yml` run #325 vert (clasp push + redéploiement de la web app

@@ -90,6 +90,22 @@ seuls des statuts changent. C'est aussi le chemin de RETOUR qui manquait aux lig
 proposées. La VERSION dans le tag est ce qui rend l'affinage effectif : ajouter un nœud à la
 taxonomie re-filtre le stock au bump suivant (leçon §9).
 
+⚠️ **Et l'affinage marche dans les DEUX sens** (3ᵉ revue). Une première écriture ne re-collectait que
+les lignes `vide-candidat` : un bump pouvait RETIRER une proposition, jamais la rendre. Or C28-89 a
+réellement retiré `Modèles & formulaires` de la table — la ligne correspondante serait restée
+« protégée » à vie pour un dossier que plus rien ne recrée. C'est le refus keyé sur « je n'ai pas su
+faire » de §9, sans sa version. Le filtre écrit donc sa MARQUE et son tag dans le détail
+(`[filtre-vides c2893-1]`), et re-juge les lignes marquées d'un tag différent : encore un nœud ⇒ on
+ré-écrit sous le tag courant, plus un nœud ⇒ retour à `vide-candidat`. Les `vide-protégé` posés par
+l'**APP** (zone protégée, racine système) ne portent pas la marque et ne sont jamais relus : eux sont
+définitifs par nature.
+
+⚠️ **Le nom se lit avec `nomDepuisConstat_`, pas avec un `split('/')`.** Drive AUTORISE la barre
+oblique dans un nom de dossier : un dossier nommé « Impôts/Archives » se serait lu « Archives » —
+un nœud de la table — et la ligne aurait été retirée à tort, définitivement. Ce qui distingue les
+deux formats, c'est qu'un chemin produit par `cheminPourConstat_` commence toujours par une racine
+de domaine.
+
 **D7 — `vide-repris` est le seul statut RÉVISABLE de la famille.** Le moteur dédoublonne sur la
 seule présence de `videcandidat|<id>`, quel que soit le statut. `vide-disparu`, `vide-protégé` et
 `corbeillé` sont définitifs par nature ; `vide-repris` dit « il n'était plus vide AU MOMENT DU
@@ -108,20 +124,54 @@ puisqu'il débloque le bouton. Fermé ici plutôt que renvoyé au backlog : lais
 vers la suppression automatique n'est pas une option. Coût : un `isTrashed()` par résolution de
 dossier.
 
+⚠️ **Et pas seulement la FEUILLE de la chaîne — ses RACINES aussi** (3ᵉ revue). Le classement résout
+`racine → segment → segment` ; ne garder que `sousDossier_` laissait le trou sur `dossierDomaineAuto_`
+et `dossierRacineParNom_`, c'est-à-dire sur `_Doublons`, `_Médias`, `_Technique`, `_Miroir du dépôt`,
+et les domaines AUTO (`07 · Santé`, `09 · Voyages`). Pire : ces deux-là résolvent par un **ID mémorisé
+en Script Property**, qui SURVIT au corbeillage. Scénario : Marc corbeille `_Doublons` depuis Drive
+(la garde de nom qui le protège vit dans l'APP, pas dans Drive), `routageDoublon_` continue d'y
+envoyer chaque doublon, et 30 jours plus tard Drive purge le dossier **avec son contenu** — §1.1(c),
+« un doublon, MÊME SENSIBLE, va dans `_Doublons`, jamais effacé », sur la population dont C28-49 PR4
+a mesuré qu'elle contenait 1 076 fichiers dont trois passeports. `dossierVivantOuNull_` et
+`racineVivanteOuCreee_` ferment les deux voies (ID et nom). La voie par ID du routage d'entités,
+elle, était déjà fermée (`dossierEntiteParId_`).
+Effet de bord assumé : si Marc RESTAURE dans les 30 jours un dossier qu'on a remplacé, il se retrouve
+avec deux homonymes. Un doublon se répare ; une purge à 30 jours non.
+
+**D11 — Ce que le moteur NE peut pas promettre : qu'une abstention soit rattrapée.** Les cinq
+appelants de `detecterDossierVide_` n'observent le dossier qu'APRÈS qu'un fichier l'a QUITTÉ. Une
+fois le dossier vide, plus aucun fichier n'en sort : il n'est jamais re-constaté. Sur un blip de
+lecture du référentiel, la proposition est donc perdue — pas le dossier, qui reste simplement vide
+et non proposé. Un commentaire du code a d'abord promis l'inverse (« sera re-constaté plus tard ») ;
+il est corrigé. L'arbitrage est assumé, et c'est le même que partout dans ce lot : un dossier vide
+qui subsiste coûte moins qu'un dossier utile corbeillé. Un mécanisme de constat différé est au
+backlog (C28-97).
+
 **D9 — Un lot écourté le DIT, et il s'écourte tout seul sous la panne.** `BilanLot` porte
 `nonTentees` et `interrompu` : une session morte à la 40ᵉ ligne sur 124 rendait exactement le même
 bilan qu'un lot complet, et rien nulle part ne disait que 84 lignes n'avaient jamais été tentées
 (« une passe abandonnée doit se DIRE dans l'état », §9). Et `CORBEILLE_MAX_PANNES` = 5 pannes
 CONSÉCUTIVES coupent le lot : sous un 429 généralisé, 124 lignes × ~4 appels × 4 tentatives ≈ 2 000
-requêtes partaient en rafale sur un quota **partagé avec le moteur**. Le compteur se remet à zéro
-dès qu'une ligne aboutit ou reçoit un verdict — il vise la RAFALE, jamais le cumul.
+requêtes partaient en rafale sur un quota **partagé avec le moteur**. Le compteur se remet à zéro sur
+une ligne ENTIÈREMENT propre — il vise la RAFALE, jamais le cumul — et il surveille les **deux**
+canaux : une première écriture ne comptait que Drive, or un 429 côté Sheets laissait le lot aller au
+bout, 124 dossiers réellement corbeillés et 124 statuts perdus, avec `interrompu: ''` ; Marc
+rechargeait, revoyait ses 124 lignes, et rien ne disait que les dossiers étaient déjà à la corbeille.
 
-**D10 — Le SECOND producteur de propositions est gardé lui aussi.** Après une fusion validée dans
-l'app, le moteur appendait directement une ligne `vide-candidat` pour la source drainée, sans passer
-par `detecterDossierVide_` — donc sans la garde par capacité, alors que §3 affirmait le contraire.
-`proposerSourceFusion_` (PURE) porte désormais la décision, avec la nuance déjà codée chez son
-voisin `estAncreStructurelleFusion_` : pour une fusion de DOUBLONS DE MÊME NOM, proposer la source
-reste légitime (le canonique existe toujours).
+**D10 — Le SECOND producteur de propositions est gardé par la MÊME règle, pas par une variante.**
+Après une fusion validée dans l'app, le moteur appendait directement une ligne `vide-candidat` pour
+la source drainée, sans passer par `detecterDossierVide_` — donc sans la garde par capacité, alors
+que §3 affirmait le contraire. `proposerSourceFusion_` (PURE) porte désormais la décision.
+⚠️ Une première écriture exemptait les fusions de DOUBLONS DE MÊME NOM, en copiant la réserve du
+voisin `estAncreStructurelleFusion_`. La 3ᵉ revue a mesuré ce que ça donnait : `Robovic` REFUSÉ par
+un producteur et PROPOSÉ par l'autre dès que la cible porte le même nom, puis défait par le filtre du
+stock au bump suivant — trois règles, deux verdicts, exactement le corollaire §9 « mutualiser UNE
+dimension d'une règle ne couvre pas les autres ». Et la justification (« le canonique existe
+toujours ») ne tenait que pour un dossier d'ENTITÉ, où `repointerEntites_` vient de re-pointer le
+`Dossier ID` ; pas pour un nœud de table à profondeur ≥ 2, que la table recrée PAR NOM au premier
+document — le ping-pong même que la garde doit fermer. Les deux producteurs appliquent donc le même
+prédicat. Ce qu'on perd : un doublon d'entité vidé n'est plus proposé, donc un dossier vide subsiste.
+Un dossier vide qui reste coûte moins qu'un dossier utile corbeillé.
 
 **D5 — La peinture rouge reste telle quelle** (choix de Marc, 13/09). Deux canaux de proposition
 coexistent donc : la couleur dans Drive et la liste dans l'app. La sonde de dé-peinture de C28-90

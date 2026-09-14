@@ -179,3 +179,25 @@ test('sousDossier_ : un dossier à la CORBEILLE n\'est JAMAIS une cible de class
   assert.strictEqual(ctx.sousDossier_(p3, 'Robovic').getId(), 'VIVANT');
   assert.strictEqual(p3.cree.length, 0);
 });
+
+test('dossierVivantOuNull_ : un ID MÉMORISÉ ne ressuscite jamais un dossier corbeillé (§1.2)', () => {
+  // 3ᵉ revue : le correctif de `sousDossier_` gardait la FEUILLE de la chaîne, pas ses RACINES.
+  // `dossierDomaineAuto_` et `dossierRacineParNom_` rendaient l'ID mémorisé en Script Property sans
+  // vérifier la corbeille. Scénario mesuré par l'auditeur : Marc corbeille `_Doublons` depuis Drive
+  // (la garde de NOM qui le protège vit dans l'APP, pas dans Drive) ; `DriveAI_DOUBLONS_ID` pointe
+  // toujours dessus, `routageDoublon_` continue d'y envoyer chaque doublon, et 30 jours plus tard
+  // Drive purge le dossier AVEC son contenu — §1.1(c) « un doublon, MÊME SENSIBLE, jamais effacé ».
+  // Mutation : rendre `DriveApp.getFolderById(id)` sans le test ⇒ ce test tombe.
+  const dossiers = { VIVANT: false, MORT: true };
+  ctx.DriveApp = {
+    getFolderById: (id) => {
+      if (!(id in dossiers)) throw new Error('File not found');
+      return { getId: () => id, isTrashed: () => dossiers[id] };
+    },
+  };
+  assert.strictEqual(ctx.dossierVivantOuNull_('VIVANT').getId(), 'VIVANT');
+  assert.strictEqual(ctx.dossierVivantOuNull_('MORT'), null, 'corbeillé ⇒ on n\'y dépose plus rien');
+  assert.strictEqual(ctx.dossierVivantOuNull_('INCONNU'), null, 'ID mort ⇒ recréation par nom');
+  assert.strictEqual(ctx.dossierVivantOuNull_(''), null);
+  assert.strictEqual(ctx.dossierVivantOuNull_(null), null);
+});

@@ -53,18 +53,56 @@ function idDomaine_(domaine) {
  * @param {string} nom
  * @return {Folder}
  */
+/**
+ * Le dossier d'ID donné, ou `null` s'il n'existe plus OU s'il est À LA CORBEILLE.
+ *
+ * Un ID mémorisé en Script Property SURVIT au corbeillage : `getFolderById` rend le dossier sans
+ * broncher, et le classement continue d'y déposer des documents — qui sont purgés AVEC lui à
+ * 30 jours. C'est une SUPPRESSION AUTOMATIQUE, le garde-fou §1.2 non négociable, et elle vise les
+ * racines les plus sensibles du projet : `_Doublons` (§1.1c — « un doublon, MÊME SENSIBLE, va dans
+ * `_Doublons`, jamais effacé »), `_Médias`, `_Technique`, et les domaines AUTO (`07 · Santé`).
+ * Relevé en revue C28-93 : le remède de `sousDossier_` gardait la FEUILLE de la chaîne, pas ses
+ * RACINES. Rien n'interdit à Marc de corbeiller un de ces dossiers depuis Drive — la garde de nom
+ * qui les protège vit dans l'APP, elle ne couvre pas un clic droit dans Drive. Et ce lot livre
+ * précisément le bouton qui l'invite à faire le ménage.
+ * @param {string} id
+ * @return {Folder|null}
+ */
+function dossierVivantOuNull_(id) {
+  if (!id) return null;
+  try {
+    var d = DriveApp.getFolderById(id);
+    return d.isTrashed() ? null : d;   // corbeillé → on n'y dépose plus rien, on en recrée un
+  } catch (e) {
+    return null;                       // ID mort/illisible → recréation par nom (comportement d'origine)
+  }
+}
+
+/**
+ * Premier homonyme VIVANT parmi les enfants directs, ou un dossier neuf. Même motif que
+ * `sousDossier_` : `getFoldersByName` rend AUSSI les corbeillés.
+ * @param {Folder} parent
+ * @param {string} nom
+ * @return {Folder}
+ */
+function racineVivanteOuCreee_(parent, nom) {
+  var it = parent.getFoldersByName(nom);
+  while (it.hasNext()) {
+    var candidat = it.next();
+    if (!candidat.isTrashed()) return candidat;
+  }
+  return parent.createFolder(nom);
+}
+
 function dossierDomaineAuto_(nom) {
   var props = PropertiesService.getScriptProperties();
   var cle = 'DriveAI_DOM_' + nom;
-  var id = props.getProperty(cle);
-  if (id) {
-    try { return DriveApp.getFolderById(id); } catch (e) { /* supprimé → on recrée */ }
-  }
+  var memorise = dossierVivantOuNull_(props.getProperty(cle));
+  if (memorise) return memorise;
   var ref = DriveApp.getFolderById(CONFIG.DOMAINES[CONFIG.DOMAINE_DEFAUT]); // domaine de référence (01)
   var parents = ref.getParents();
   var racine = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
-  var it = racine.getFoldersByName(nom);
-  var dossier = it.hasNext() ? it.next() : racine.createFolder(nom);
+  var dossier = racineVivanteOuCreee_(racine, nom);
   props.setProperty(cle, dossier.getId());
   return dossier;
 }
@@ -151,17 +189,16 @@ function deposer_(blob, dossierId, nom) {
  * @return {Folder}
  */
 function sousDossier_(parent, nom) {
-  var it = parent.getFoldersByName(nom);
   // ⚠️ `getFoldersByName` rend AUSSI les dossiers à la corbeille. Sans ce filtre, un dossier
   // corbeillé (par ADR-0014, au clic de Marc) redeviendrait une CIBLE de classement : les documents
   // y seraient déposés, puis purgés avec lui à 30 jours — une SUPPRESSION AUTOMATIQUE, §1.2, le
   // garde-fou non négociable. Défaut pré-existant, rendu atteignable par C28-93 qui débloque le
-  // bouton « tout corbeiller » : relevé en revue de code, fermé ici plutôt que laissé au backlog.
-  while (it.hasNext()) {
-    var candidat = it.next();
-    if (!candidat.isTrashed()) return candidat;
-  }
-  return parent.createFolder(nom);
+  // bouton « tout corbeiller » : relevé en revue, fermé ici plutôt que laissé au backlog.
+  // ⚠️ Effet de bord assumé : si Marc RESTAURE dans les 30 jours un dossier qu'on a remplacé, il se
+  // retrouve avec deux homonymes. Le cas d'un dossier corbeillé par l'APP est inoffensif (il était
+  // vide) ; celui d'un dossier corbeillé À LA MAIN avec du contenu est le prix à payer pour ne
+  // jamais déposer dans une corbeille — un doublon se répare, une purge à 30 jours non.
+  return racineVivanteOuCreee_(parent, nom);
 }
 
 /**
@@ -189,15 +226,12 @@ function dossierTechnique_() {
  */
 function dossierRacineParNom_(nom, cleProp) {
   var props = PropertiesService.getScriptProperties();
-  var id = props.getProperty(cleProp);
-  if (id) {
-    try { return DriveApp.getFolderById(id); } catch (e) { /* supprimé → on recrée ci-dessous */ }
-  }
+  var memorise = dossierVivantOuNull_(props.getProperty(cleProp));
+  if (memorise) return memorise;
   var aTrier = DriveApp.getFolderById(CONFIG.DOSSIERS.A_TRIER);
   var parents = aTrier.getParents();
   var racine = parents.hasNext() ? parents.next() : DriveApp.getRootFolder();
-  var it = racine.getFoldersByName(nom);
-  var dossier = it.hasNext() ? it.next() : racine.createFolder(nom);
+  var dossier = racineVivanteOuCreee_(racine, nom);
   props.setProperty(cleProp, dossier.getId());
   return dossier;
 }

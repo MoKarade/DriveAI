@@ -487,73 +487,133 @@ test('videsCandidatsRecreables_ : le STOCK déjà écrit passe par la même gard
   ]);
   // `join` plutôt que `deepStrictEqual` : le tableau vient du contexte VM, donc son prototype
   // n'est pas celui de l'hôte (« same structure but not reference-equal »).
-  const cibles = Array.from(ctxCap.videsCandidatsRecreables_(lignes, validees));
+  const cibles = Array.from(ctxCap.videsCandidatsRecreables_(lignes, validees, 'c2893-1'));
   assert.strictEqual(cibles.map((x) => x.nom).join('|'), 'Projets|Robovic|IUT Du Littoral');
   assert.strictEqual(cibles.map((x) => x.rang).join('|'), '2|3|4', 'rangs 1-based, en-tête comprise');
+  assert.strictEqual(cibles.map((x) => x.statut).join('|'), 'vide-protégé|vide-protégé|vide-protégé');
 });
 
-test('filtrerVidesCandidatsRecreables_ : one-shot versionné, et un référentiel MUET ne retire RIEN', () => {
-  const lignes = ongletReorg([vc('A', 'Robovic'), vc('D', 'Colles')]);
-  const soldes = [];
-  const props = {};
+/**
+ * Onglet Réorg factice qui rend la COLONNE DEMANDÉE et enregistre les écritures — pas un mock qui
+ * compose sa réponse : `filtrerVidesCandidatsRecreables_` relit la colonne F pour ne pas écraser ce
+ * que l'app vient d'y écrire, et un mock aveugle à la colonne ne verrait pas la différence.
+ */
+function feuilleReorg(lignes) {
+  const grille = ongletReorg(lignes);
+  const ecrits = [];
+  return {
+    grille,
+    ecrits,
+    getLastRow: () => grille.length,
+    getRange: (r, col, nbL, nbC) => ({
+      getValues: () => grille.slice(r - 1, r - 1 + (nbL || 1)).map((row) => row.slice(col - 1, col - 1 + (nbC || 1))),
+      setValues: (v) => {
+        ecrits.push({ rang: r, valeurs: v[0] });
+        for (let j = 0; j < v[0].length; j++) grille[r - 1][col - 1 + j] = v[0][j];
+      },
+    }),
+  };
+}
+
+function ctxFiltre(props) {
   const c = load(['Config.gs', 'Reset.gs', 'Reorg.gs']);
   c.PropertiesService = { getScriptProperties: () => ({
     getProperty: (k) => (k in props ? props[k] : null),
     setProperty: (k, v) => { props[k] = v; },
   }) };
   c.journalInfo_ = () => {};
-  c.solderAction_ = (f, rang, statut, detail) => { soldes.push({ rang, statut, detail }); };
-  const f = {};
+  c.entitesValideesOuNull_ = () => ({ 'k|z': { nom: 'Zzz', dossierId: '' } });
+  return c;
+}
+
+test('filtrerVidesCandidatsRecreables_ : one-shot versionné, et un référentiel MUET ne retire RIEN', () => {
+  const props = {};
+  const c = ctxFiltre(props);
+  const f = feuilleReorg([vc('A', 'Robovic'), vc('D', 'Colles')]);
 
   // 1) Référentiel ILLISIBLE : aucune ligne retirée, et surtout AUCUN tag posé — sinon un blip de
   //    lecture aurait clos la passe à vide, pour toujours. Symétrique du 🔴 `ascendance-illisible`.
   c.entitesValideesOuNull_ = () => null;
-  c.filtrerVidesCandidatsRecreables_(f, lignes);
-  assert.strictEqual(soldes.length, 0, 'référentiel illisible : on ne retire rien');
+  c.filtrerVidesCandidatsRecreables_(f, f.grille);
+  assert.strictEqual(f.ecrits.length, 0, 'référentiel illisible : on ne retire rien');
   assert.strictEqual(props.DriveAI_VIDES_FILTRES, undefined, 'et on n\'a pas conclu la passe');
 
   // 2) Référentiel VIDE : idem (indiscernable d'un illisible, cf. `chargerEntitesCache_`).
   c.entitesValideesOuNull_ = () => ({});
-  c.filtrerVidesCandidatsRecreables_(f, lignes);
-  assert.strictEqual(soldes.length, 0, 'référentiel vide : on ne retire rien non plus');
+  c.filtrerVidesCandidatsRecreables_(f, f.grille);
+  assert.strictEqual(f.ecrits.length, 0, 'référentiel vide : on ne retire rien non plus');
 
   // 3) Référentiel lu : la ligne fautive passe à `vide-protégé`, l'obsolète reste proposée.
   c.entitesValideesOuNull_ = () => ({ 'k|z': { nom: 'Zzz', dossierId: '' } });
-  c.filtrerVidesCandidatsRecreables_(f, lignes);
-  assert.strictEqual(soldes.length, 1);
-  assert.strictEqual(soldes[0].rang, 2);
-  assert.strictEqual(soldes[0].statut, 'vide-protégé');
-  assert.ok(soldes[0].detail.includes('Robovic'), 'le détail NOMME le dossier : Marc doit pouvoir vérifier');
+  c.filtrerVidesCandidatsRecreables_(f, f.grille);
+  assert.strictEqual(f.ecrits.length, 1);
+  assert.strictEqual(f.ecrits[0].rang, 2);
+  assert.strictEqual(f.ecrits[0].valeurs[0], 'vide-protégé');
+  assert.ok(String(f.ecrits[0].valeurs[1]).includes('Robovic'),
+    'le détail NOMME le dossier : Marc doit pouvoir vérifier');
   assert.strictEqual(props.DriveAI_VIDES_FILTRES, c.VIDES_FILTRE_TAG, 'passe complète ⇒ tag posé');
 
   // 4) One-shot : au tick suivant, plus rien n'est relu.
-  c.filtrerVidesCandidatsRecreables_(f, lignes);
-  assert.strictEqual(soldes.length, 1, 'tag posé : la passe ne repasse pas');
+  c.filtrerVidesCandidatsRecreables_(f, f.grille);
+  assert.strictEqual(f.ecrits.length, 1, 'tag posé : la passe ne repasse pas');
 
   // 5) …mais bumper la VERSION des règles la rejoue (leçon §9 : la version de la table de règles
   //    fait partie de l'état — sinon ajouter un nœud à la taxonomie n'aurait aucun effet ici).
+  //    La ligne 2 est déjà `vide-protégé`, donc la re-passe n'a plus de cible : le tag se repose.
   props.DriveAI_VIDES_FILTRES = 'c2893-0';
-  c.filtrerVidesCandidatsRecreables_(f, lignes);
-  assert.strictEqual(soldes.length, 2, 'version différente ⇒ le stock est re-filtré');
+  const f2 = feuilleReorg([vc('A', 'Robovic'), vc('D', 'Colles')]);
+  c.filtrerVidesCandidatsRecreables_(f2, f2.grille);
+  assert.strictEqual(f2.ecrits.length, 1, 'version différente ⇒ le stock est re-filtré');
 });
 
 test('filtrerVidesCandidatsRecreables_ : une passe ÉCRÊTÉE ne pose pas le tag', () => {
   // Le tag est le « c'est fini » : le poser sur une passe partielle laisserait le reliquat proposé
   // à vie. Mutation : poser le tag inconditionnellement ⇒ ce test tombe.
-  const c = load(['Config.gs', 'Reset.gs', 'Reorg.gs']);
   const props = {};
-  const soldes = [];
-  c.PropertiesService = { getScriptProperties: () => ({
-    getProperty: (k) => (k in props ? props[k] : null),
-    setProperty: (k, v) => { props[k] = v; },
-  }) };
-  c.journalInfo_ = () => {};
-  c.solderAction_ = (f, rang) => { soldes.push(rang); };
-  c.entitesValideesOuNull_ = () => ({ 'k|z': { nom: 'Zzz', dossierId: '' } });
+  const c = ctxFiltre(props);
   c.CONFIG = Object.assign({}, c.CONFIG, { REORG_VIDES_FILTRE_LOT: 1 });
-  c.filtrerVidesCandidatsRecreables_({}, ongletReorg([vc('A', 'Robovic'), vc('B', 'Projets')]));
-  assert.strictEqual(soldes.length, 1, 'écrêté au lot');
+  const f = feuilleReorg([vc('A', 'Robovic'), vc('B', 'Projets')]);
+  c.filtrerVidesCandidatsRecreables_(f, f.grille);
+  assert.strictEqual(f.ecrits.length, 1, 'écrêté au lot');
   assert.strictEqual(props.DriveAI_VIDES_FILTRES, undefined, 'passe incomplète ⇒ jamais « fini »');
+});
+
+test('filtrerVidesCandidatsRecreables_ : le garde-temps coupe la boucle d\'écritures', () => {
+  // §9 « garde-temps sur TOUT lot » : la passe tourne dans la DERNIÈRE étape du tick et peut
+  // démarrer à quelques secondes du mur DUR de 6 min, qu'aucun `try` ne capture — un tick tué
+  // emporterait tout ce qui suit. Le plafond par lot ne remplace pas le garde-temps : il est
+  // volontairement dimensionné AU-DESSUS du stock, pour finir en un run.
+  // Mutation : passer `null` comme garde ⇒ 3 écritures au lieu de 2, ce test tombe.
+  const props = {};
+  const c = ctxFiltre(props);
+  const f = feuilleReorg([vc('A', 'Robovic'), vc('B', 'Projets'), vc('C', 'Automatech')]);
+  let appels = 0;
+  c.filtrerVidesCandidatsRecreables_(f, f.grille, () => (appels++ >= 2));
+  assert.strictEqual(f.ecrits.length, 2, 'coupé au garde-temps');
+  assert.strictEqual(props.DriveAI_VIDES_FILTRES, undefined, 'coupé ⇒ jamais « fini »');
+  // …et la passe REPREND : le reliquat est re-collecté au tick suivant.
+  c.filtrerVidesCandidatsRecreables_(f, f.grille, () => false);
+  assert.strictEqual(f.ecrits.length, 3);
+  assert.strictEqual(props.DriveAI_VIDES_FILTRES, c.VIDES_FILTRE_TAG);
+});
+
+test('filtrerVidesCandidatsRecreables_ : ce que l\'APP vient d\'écrire n\'est jamais écrasé', () => {
+  // `lignes` est un instantané pris en tête d'étape ; l'app écrit dans le même onglet au clic de
+  // Marc. Sans relecture de la colonne F, un `corbeillé` posé entre-temps serait remplacé par
+  // `vide-protégé` — une ligne qui affiche « protégé » pour un dossier qui est DANS la corbeille et
+  // sera purgé à 30 jours, sans autre trace. Mutation : lire le statut dans `lignes` au lieu de le
+  // relire ⇒ ce test tombe.
+  const props = {};
+  const c = ctxFiltre(props);
+  const f = feuilleReorg([vc('A', 'Robovic'), vc('B', 'Projets')]);
+  const instantane = JSON.parse(JSON.stringify(f.grille)); // l'état AU DÉBUT de l'étape
+  f.grille[1][5] = 'corbeillé';                            // …et l'app clique pendant ce temps
+  c.filtrerVidesCandidatsRecreables_(f, instantane);
+  assert.strictEqual(f.ecrits.length, 1, 'une seule ligne réécrite');
+  assert.strictEqual(f.ecrits[0].rang, 3, 'celle que l\'app n\'a pas touchée');
+  assert.strictEqual(f.grille[1][5], 'corbeillé', 'le verdict de l\'app tient');
+  // La ligne écartée compte quand même comme EXAMINÉE : la passe est complète.
+  assert.strictEqual(props.DriveAI_VIDES_FILTRES, c.VIDES_FILTRE_TAG);
 });
 
 test('proposerSourceFusion_ : le SECOND producteur de `videcandidat|` est gardé lui aussi', () => {
@@ -566,12 +626,107 @@ test('proposerSourceFusion_ : le SECOND producteur de `videcandidat|` est gardé
   assert.strictEqual(ctxCap.proposerSourceFusion_('05 · Carrière/Projets', '05 · Carrière/Travaux', validees), false);
   // Un dossier vraiment obsolète : proposé, comme avant.
   assert.strictEqual(ctxCap.proposerSourceFusion_('06 · Études/IUT GIM 1', '06 · Études/IUT', validees), true);
-  // NUANCE : deux DOUBLONS DE MÊME NOM — proposer la source reste légitime, le canonique existe
-  // toujours et le find-or-create le retrouve. Même réserve que `estAncreStructurelleFusion_`.
-  assert.strictEqual(ctxCap.proposerSourceFusion_('05 · Carrière/A/Projets', '05 · Carrière/B/Projets', validees), true);
-  // Référentiel MUET : on s'abstient (échec fermé), sauf sur le cas même-nom qui n'en dépend pas.
-  assert.strictEqual(ctxCap.proposerSourceFusion_('x/Kim Pinsonneault', 'x/Kim P.', null), false);
-  assert.strictEqual(ctxCap.proposerSourceFusion_('x/Kim Pinsonneault', 'y/Kim Pinsonneault', null), true);
+  // …et un nom NU (ligne d'avant C28-93) est lu tel quel, jamais découpé sur « / » : Drive autorise
+  // la barre oblique dans un nom, et « Impôts/Archives » se lirait « Archives » — un nœud de table.
+  assert.strictEqual(ctxCap.proposerSourceFusion_('Impôts/Archives', 'ailleurs', validees), true);
+  assert.strictEqual(ctxCap.proposerSourceFusion_('06 · Études/Archives', 'ailleurs', validees), false);
+  // ⚠️ MÊME NOM, MÊME VERDICT — et c'est le correctif de la 3ᵉ revue. Une première écriture exemptait
+  // les fusions de doublons de même nom : `Robovic` était alors REFUSÉ par `detecterDossierVide_` et
+  // PROPOSÉ ici dès que la cible portait le même nom. Trois règles, deux verdicts (corollaire §9).
+  // Mutation : remettre `if (nomSource === nomCible) return true;` ⇒ ces deux assertions tombent.
+  assert.strictEqual(ctxCap.proposerSourceFusion_('05 · Carrière/A/Projets', '05 · Carrière/B/Projets', validees), false);
+  assert.strictEqual(ctxCap.proposerSourceFusion_('x/Kim Pinsonneault', 'y/Kim Pinsonneault', null), false);
+  // Référentiel MUET : on s'abstient (échec fermé).
+  assert.strictEqual(ctxCap.proposerSourceFusion_('05 · Carrière/x/Kim Pinsonneault', 'y/Kim P.', null), false);
   // Sans nom de source : jamais de proposition.
   assert.strictEqual(ctxCap.proposerSourceFusion_('', 'x/y', validees), false);
+});
+
+test('nomDepuisConstat_ : un nom NU n\'est jamais découpé sur « / » (Drive l\'autorise)', () => {
+  // 🟠 de la 3ᵉ revue : les lignes d'août portent le nom NU, celles d'après le chemin complet.
+  // Découper à l'aveugle lisait « Impôts/Archives » comme « Archives » — un nœud de la table — et
+  // retirait la ligne DÉFINITIVEMENT. Ce qui distingue les deux formats : un chemin produit par
+  // `cheminPourConstat_` commence TOUJOURS par une racine de domaine.
+  assert.strictEqual(ctxCap.nomDepuisConstat_('06 · Études & diplômes/Archives/Colles'), 'Colles');
+  assert.strictEqual(ctxCap.nomDepuisConstat_('Impôts/Archives'), 'Impôts/Archives');
+  assert.strictEqual(ctxCap.nomDepuisConstat_('Robovic'), 'Robovic');
+  assert.strictEqual(ctxCap.nomDepuisConstat_(''), '');
+  assert.strictEqual(ctxCap.nomDepuisConstat_(null), '');
+  // …et l'effet sur la garde : le dossier à barre oblique reste proposable.
+  assert.strictEqual(ctxCap.estNoeudRecreable_(ctxCap.nomDepuisConstat_('Impôts/Archives'), {}), false);
+});
+
+test('videsCandidatsRecreables_ : le verdict du FILTRE est révisable DANS LES DEUX SENS', () => {
+  // 🟠 de la 3ᵉ revue : `VIDES_FILTRE_TAG` ne rendait l'affinage effectif que dans le sens
+  // RESTRICTIF. Une ligne passée à `vide-protégé` n'était jamais relue — or C28-89 a réellement
+  // RETIRÉ `Modèles & formulaires` de la table : la ligne correspondante serait restée « protégée »
+  // à vie pour un dossier que plus rien ne recrée. §9 : un refus keyé sur « je n'ai pas su faire »
+  // exige sa version. Mutation : ignorer les `vide-protégé` dans la collecte ⇒ ce test tombe.
+  const M = ctxCap.MARQUE_FILTRE_VIDES;
+  const prot = (id, chemin, tag) =>
+    ['videcandidat|' + id, 'dossier-vide', id, chemin, '', 'vide-protégé', 'raison ' + M + tag + ']', ''];
+  const lignes = ongletReorg([
+    prot('A', 'Robovic', 'c2893-0'),        // ancien tag, TOUJOURS un nœud ⇒ ré-écrit sous le neuf
+    prot('B', 'IUT GIM 1', 'c2893-0'),      // ancien tag, plus un nœud ⇒ REDEVIENT candidat
+    prot('C', 'Robovic', 'c2893-1'),        // déjà jugé sous les règles COURANTES ⇒ rien à faire
+    ['videcandidat|D', 'dossier-vide', 'D', 'Robovic', '', 'vide-protégé', 'zone-protegee', ''], // APP
+  ]);
+  const out = Array.from(ctxCap.videsCandidatsRecreables_(lignes, {}, 'c2893-1'));
+  assert.strictEqual(out.map((x) => x.rang).join('|'), '2|3');
+  assert.strictEqual(out.map((x) => x.statut).join('|'), 'vide-protégé|vide-candidat');
+});
+
+/* ---------- 3ᵉ revue : les CÂBLAGES, pas seulement les fonctions pures ---------- */
+
+test('etapeReorg_ APPELLE bien le filtre du stock (câblage, pas seulement la fonction)', () => {
+  // 🟠 de la 3ᵉ revue, prouvé par mutation chez elle : retirer l'appel dans `etapeReorg_` laissait
+  // 1268/1268 verts. C'est la forme EXACTE du 🔴 d'origine — `estNoeudRecreable_` existait, était
+  // testée, et n'avait qu'un site d'appel. Une fonction bien testée qui n'est pas APPELÉE ne
+  // protège rien (§9, 3ᵉ question : « que se passe-t-il si je la neutralise ? »).
+  const c = load(['Config.gs', 'Reset.gs', 'Reorg.gs']);
+  const f = feuilleReorg([vc('A', 'Robovic')]);
+  const props = {};
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in props ? props[k] : null), setProperty: (k, v) => { props[k] = v; },
+  }) };
+  c.feuille_ = () => Object.assign({ getDataRange: () => ({ getValues: () => f.grille }) }, f);
+  c.journalInfo_ = () => {};
+  c.journalErreur_ = (s, m) => { throw new Error('aucune erreur attendue : ' + m); };
+  c.entitesValideesOuNull_ = () => ({ 'k|z': { nom: 'Zzz', dossierId: '' } });
+  c.appliquerReorgValidee_ = () => false;
+  c.appliquerReorgIA_ = () => {};
+  c.etapeReorg_(() => false);
+  assert.strictEqual(f.ecrits.length, 1, 'le filtre a tourné DEPUIS l\'étape de tick');
+  assert.strictEqual(f.ecrits[0].valeurs[0], 'vide-protégé');
+});
+
+test('appliquerReorgValidee_ APPELLE bien la garde de fusion (câblage)', () => {
+  // Même mutation, même verdict chez la revue : retirer l'appel à `proposerSourceFusion_` laissait
+  // la suite verte. Ici on exerce le chemin RÉEL : une fusion `appliqué` dont la source est un nœud
+  // de la table ne doit produire AUCUNE ligne `vide-candidat`.
+  const c = load(['Config.gs', 'Reset.gs', 'Reorg.gs']);
+  const appends = [];
+  const enTete = ['Clé', 'Type', 'ID', 'Chemin actuel', 'Chemin proposé', 'Statut', 'Détail', 'Horodaté'];
+  const action = (cle, source, chemin, propose) =>
+    [cle, 'fusionner', source + ' → CIBLE', chemin, propose, 'validé', '', ''];
+  const f = {
+    getRange: () => ({ setValue: () => {} }),
+    appendRow: (row) => { appends.push(row); },
+  };
+  c.ensembleDomainesProteges_ = () => ({});
+  c.ensembleIntouchables_ = () => ({});
+  c.repointerEntites_ = () => {};
+  c.appliquerUneAction_ = () => ({ statut: 'appliqué', detail: '' });
+  c.entitesValideesOuNull_ = () => ({ 'k|z': { nom: 'Zzz', dossierId: '' } });
+
+  // 1) Source = nœud de la table ⇒ AUCUNE proposition de corbeille.
+  const lignes1 = [enTete, action('r|1', 'SRC1', '05 · Carrière/Projets', '05 · Carrière/Travaux')];
+  c.appliquerReorgValidee_(f, lignes1, () => false);
+  assert.strictEqual(appends.length, 0, 'un nœud que la table recrée n\'est jamais proposé');
+
+  // 2) Contre-épreuve : source vraiment obsolète ⇒ la ligne est bien proposée (rien n'est gelé).
+  const lignes2 = [enTete, action('r|2', 'SRC2', '06 · Études/IUT GIM 1', '06 · Études/IUT')];
+  c.appliquerReorgValidee_(f, lignes2, () => false);
+  assert.strictEqual(appends.length, 1);
+  assert.strictEqual(appends[0][5], 'vide-candidat');
 });

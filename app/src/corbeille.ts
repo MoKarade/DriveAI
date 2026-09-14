@@ -142,7 +142,6 @@ export async function corbeillerLot(
     try {
       await deps.corbeiller(l.id);
       bilan.corbeilles++;
-      pannesDaffilee = 0;
     } catch (e) {
       const verdict = statutRefusCorbeille(String(e));
       if (!verdict) {
@@ -152,15 +151,24 @@ export async function corbeillerLot(
         continue;
       }
       statut = verdict;
-      bilan.classes++;
-      pannesDaffilee = 0;             // un VERDICT prouve que le canal répond
+      bilan.classes++;                // un VERDICT prouve que le canal Drive répond
     }
+    let sheetOk = true;
     try {
       await deps.ecrire(l.ligneSheet, statut);
-      deps.surLigne?.(l.ligneSheet, statut);
     } catch {
       bilan.sheetKo++; // le dossier EST traité ; seule la Sheet l'ignore. Compté à part (revue C28-93).
+      sheetOk = false;
     }
+    // ⚠️ Le compteur ne se remet à zéro que sur une ligne ENTIÈREMENT propre, et il compte AUSSI les
+    // échecs Sheets (revue C28-93) : il ne surveillait que Drive, or un 429 généralisé côté Sheets —
+    // quota lui aussi partagé avec le moteur — laissait le lot aller au bout, 124 dossiers réellement
+    // corbeillés et 124 statuts perdus, avec `interrompu: ''`. Marc rechargeait, revoyait ses 124
+    // lignes `vide-candidat`, et rien ne disait que les dossiers étaient déjà à la corbeille.
+    pannesDaffilee = sheetOk ? 0 : pannesDaffilee + 1;
+    // HORS du try d'écriture : une exception de la mise à jour d'ÉCRAN n'est pas un échec Sheet,
+    // et ne doit ni se compter en `sheetKo` ni nourrir le coupe-circuit.
+    if (sheetOk) { try { deps.surLigne?.(l.ligneSheet, statut); } catch { /* affichage seulement */ } }
     deps.avancement?.(i + 1, lignes.length);
   }
   return bilan;

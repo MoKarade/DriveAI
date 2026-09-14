@@ -222,6 +222,36 @@ describe('corbeillerLot', () => {
     expect(bilan.nonTentees).toBe(40 - CORBEILLE_MAX_PANNES);
   });
 
+  it('le coupe-circuit surveille AUSSI le canal Sheets, pas seulement Drive', async () => {
+    // 3ᵉ revue : `pannesDaffilee` n'était incrémenté que dans le catch de `corbeiller`. Un 429
+    // généralisé côté SHEETS — quota lui aussi partagé avec le moteur — laissait le lot aller au
+    // bout : 124 dossiers RÉELLEMENT corbeillés, 124 écritures de statut perdues, `interrompu: ''`.
+    // Marc rechargeait, revoyait ses 124 lignes `vide-candidat`, et rien ne disait que les dossiers
+    // étaient déjà à la corbeille. Mutation : ne plus compter `sheetKo` ⇒ ce test tombe.
+    let vus = 0;
+    const bilan = await corbeillerLot(lignes(40), {
+      corbeiller: async () => { vus++; },
+      ecrire: async () => { throw new Error('Google API 429'); },
+    });
+    expect(vus).toBe(CORBEILLE_MAX_PANNES);
+    expect(bilan.interrompu).toBe('pannes');
+    expect(bilan.sheetKo).toBe(CORBEILLE_MAX_PANNES);
+    expect(bilan.nonTentees).toBe(40 - CORBEILLE_MAX_PANNES);
+  });
+
+  it('une exception de la mise à jour d\'ÉCRAN n\'est ni un échec Sheet ni une panne', async () => {
+    // `surLigne` vivait DANS le try d'écriture : un plantage de rendu se comptait `sheetKo` alors
+    // que la Sheet avait pris le statut — et nourrissait le coupe-circuit (3ᵉ revue).
+    const bilan = await corbeillerLot(lignes(10), {
+      corbeiller: async () => {},
+      ecrire: async () => {},
+      surLigne: () => { throw new Error('rendu React cassé'); },
+    });
+    expect(bilan).toEqual({
+      corbeilles: 10, classes: 0, aReessayer: 0, sheetKo: 0, nonTentees: 0, interrompu: '',
+    });
+  });
+
   it('le compteur de pannes se REMET À ZÉRO dès que le canal répond', async () => {
     // Sans remise à zéro, N pannes réparties sur tout un lot finiraient par le couper alors que
     // Google répond très bien — le coupe-circuit doit viser la RAFALE, pas le cumul.

@@ -438,7 +438,7 @@ function entitesCache_() {
  *   alors sur le nom (échec ouvert, jamais un blocage — ADR-0028).
  */
 function entitesValideesParCle_() {
-  return entitesValideesOuNull_() || {};
+  return construireEntitesValidees_().validees; // PARTIEL sur exception — contrat d'origine, inchangé
 }
 
 /**
@@ -450,9 +450,22 @@ function entitesValideesParCle_() {
  * CONSTAT « ce dossier est bon pour la corbeille », `{}` est un faux verdict DÉFINITIF : la clé
  * `videcandidat|<id>` n'est jamais ré-évaluée. Un consommateur qui écrit du définitif doit pouvoir
  * distinguer « aucune entité validée » de « je n'ai pas pu lire le référentiel ».
+ * ⚠️ Elle ne CHANGE pas ce que voit le routage : `entitesValideesParCle_` continue de rendre la
+ * carte PARTIELLE construite avant l'exception (contrat d'origine — une carte tronquée vaut mieux
+ * qu'une carte vide pour un classement réversible). Seule la question « la lecture a-t-elle
+ * abouti ? » est neuve.
  * @return {Object|null} la carte, ou `null` si le référentiel n'a pas pu être lu.
  */
 function entitesValideesOuNull_() {
+  var r = construireEntitesValidees_();
+  return r.ok ? r.validees : null;
+}
+
+/**
+ * Le travail commun aux deux accesseurs ci-dessus : construit la carte et DIT si elle est complète.
+ * @return {{validees: Object, ok: boolean}} `validees` est PARTIEL quand `ok` est faux.
+ */
+function construireEntitesValidees_() {
   var validees = {};
   try {
     var cache = entitesCache_(); // accesseur (chargerEntitesCache_ remplit la globale, ne retourne rien)
@@ -468,9 +481,9 @@ function entitesValideesOuNull_() {
     }
   } catch (e) {
     journalErreur_('Entités', 'Référentiel illisible (aucun dossier d\'entité ce run — à plat) : ' + e);
-    return null;
+    return { validees: validees, ok: false }; // PARTIEL, pas vide : ce qui a été lu reste utilisable
   }
-  return validees;
+  return { validees: validees, ok: true };
 }
 
 /** Une entité est « validée » dès que son statut le dit (tolère « validee » et « validee (auto ≥3) » — #18). */

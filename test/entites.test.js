@@ -57,3 +57,31 @@ test('correctionValideUneEntite_ (C6-04) : entité + domaine requis pour valider
   assert.strictEqual(ctx.correctionValideUneEntite_({ entite: 'EDF' }), false); // domaine absent
   assert.strictEqual(ctx.correctionValideUneEntite_(null), false);
 });
+
+test('entitesValideesParCle_ / entitesValideesOuNull_ : même carte, deux réponses à « la lecture a-t-elle abouti ? »', () => {
+  // C28-93 : le routage doit continuer à recevoir la carte PARTIELLE construite avant l'exception
+  // (dégradation réversible : le document part à plat, le run suivant le reprend), tandis que les
+  // consommateurs qui écrivent du DÉFINITIF — une proposition de corbeille — ont besoin de savoir
+  // que la lecture a échoué. Mutation : faire rendre `{}` à `entitesValideesParCle_` sur exception
+  // (ce qu'une première écriture faisait) ⇒ l'assertion « partielle » tombe.
+  const c = load(['Config.gs', 'Entites.gs']);
+  const lignes = [
+    { entite: 'Robovic', domaine: '05 · Carrière', statut: 'validee', dossierId: 'ID1' },
+    { entite: 'POISON', domaine: '05 · Carrière', statut: 'validee', dossierId: 'ID2' },
+    { entite: 'Jamais lue', domaine: '05 · Carrière', statut: 'validee', dossierId: 'ID3' },
+  ];
+  c.entitesCache_ = () => ({ lignes: lignes, parCle: {} });
+  c.estValidee_ = () => true;
+  c.journalErreur_ = () => {};
+  const vrai = c.cleCanoniqueEntite_;
+  c.cleCanoniqueEntite_ = (d, e) => { if (e === 'POISON') throw new Error('libellé pathologique'); return vrai(d, e); };
+
+  const partielle = c.entitesValideesParCle_();
+  assert.strictEqual(Object.keys(partielle).length, 1, 'ce qui a été lu AVANT l\'exception reste utilisable');
+  assert.strictEqual(c.entitesValideesOuNull_(), null, 'mais la lecture n\'a PAS abouti, et ça se dit');
+
+  // Cas nominal : les deux rendent la même chose.
+  c.cleCanoniqueEntite_ = vrai;
+  assert.strictEqual(Object.keys(c.entitesValideesParCle_()).length, 3);
+  assert.strictEqual(Object.keys(c.entitesValideesOuNull_()).length, 3);
+});

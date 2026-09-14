@@ -46,7 +46,7 @@ function etapeReorg_(estBudgetDepasse) {
   // One-shot versionné : nettoyer le STOCK de propositions de corbeille avant tout le reste — un
   // clic de Marc peut tomber à tout moment (C28-93). ENVELOPPÉ : une étape secondaire ne bloque
   // jamais l'application des actions validées.
-  try { filtrerVidesCandidatsRecreables_(f, lignes); }
+  try { filtrerVidesCandidatsRecreables_(f, lignes, estBudgetDepasse); }
   catch (e) { journalErreur_('Reorg', 'Filtre des propositions de corbeille : ' + e); }
   var reste = appliquerReorgValidee_(f, lignes, estBudgetDepasse);
   if (!reste && !estBudgetDepasse()) appliquerReorgIA_(f, lignes, estBudgetDepasse);
@@ -80,7 +80,9 @@ function appliquerReorgValidee_(f, lignes, estBudgetDepasse) {
   var intouchables = ensembleIntouchables_();
   var horodate = new Date().toISOString();
   var resteEnValide = false;
-  var videsValidees = null; // référentiel d'entités, résolu au plus une fois par run (lazy)
+  var videsValidees; // référentiel d'entités, résolu au plus une fois par run — SENTINELLE
+  // `undefined` : `null` est une VALEUR de retour légitime (référentiel illisible). Tester `!x`
+  // rappellerait la lecture à chaque fusion du run (revue C28-93).
 
   for (var i = 0; i < validees.length; i++) {
     if (estBudgetDepasse()) return true; // repris au tick suivant
@@ -127,7 +129,7 @@ function appliquerReorgValidee_(f, lignes, estBudgetDepasse) {
         // NUANCE (réserve déjà codée chez le voisin `estAncreStructurelleFusion_`) : pour une fusion
         // de DOUBLONS DE MÊME NOM, proposer la source drainée reste légitime — le canonique existe
         // toujours et le find-or-create le retrouve. D'où la conjonction avec `nomSource !== nomCible`.
-        if (!videsValidees) videsValidees = entitesValideesOuNull_();
+        if (videsValidees === undefined) videsValidees = entitesValideesOuNull_();
         if (!proposerSourceFusion_(a.cheminActuel, a.cheminPropose, videsValidees)) dejaInscrit = true;
         if (!dejaInscrit) {
           f.appendRow([cleVide, 'dossier-vide', a.source, a.cheminActuel, '',
@@ -198,21 +200,53 @@ function partiesId_(idCol) {
  * `Projets` dans un voisin vidait un nœud de la table, le proposait à la corbeille, et la table le
  * recréait au premier document : le ping-pong de la leçon §9.
  *
- * NUANCE — c'est la réserve déjà codée chez le voisin `estAncreStructurelleFusion_` : pour une
- * fusion de DOUBLONS DE MÊME NOM, proposer la source drainée reste LÉGITIME, le canonique existe
- * toujours et le find-or-create le retrouve. La garde ne vaut donc que quand les noms DIFFÈRENT.
+ * ⚠️ EXACTEMENT la même règle que `detecterDossierVide_` — pas une variante. Une première écriture
+ * exemptait les fusions de DOUBLONS DE MÊME NOM (« le canonique existe toujours »), en copiant la
+ * réserve du voisin `estAncreStructurelleFusion_`. La revue a mesuré ce que ça donnait : `Robovic`
+ * REFUSÉ par un producteur et PROPOSÉ par l'autre dès que la cible porte le même nom, puis défait
+ * par le filtre du stock au bump suivant. Trois règles, deux verdicts — le corollaire §9 « mutualiser
+ * UNE dimension d'une règle ne couvre pas les autres ». Et la justification ne tenait que pour un
+ * dossier d'ENTITÉ (où `repointerEntites_` vient de re-pointer le `Dossier ID`), pas pour un nœud de
+ * table à profondeur ≥ 2, que la table recrée PAR NOM au premier document : le ping-pong même que
+ * cette garde doit fermer. Ce qu'on perd en alignant : un doublon d'entité vidé n'est plus proposé,
+ * donc un dossier vide subsiste. Un dossier vide qui reste coûte moins qu'un dossier utile corbeillé.
  * @param {string} cheminActuel   chemin de la SOURCE (son dernier segment est son nom)
- * @param {string} cheminPropose  chemin de la CIBLE
+ * @param {string} cheminPropose  chemin de la CIBLE — gardé au contrat, non lu (voir ci-dessus)
  * @param {Object|null} validees  référentiel des entités validées, `null` s'il est illisible
  * @return {boolean}
  */
 function proposerSourceFusion_(cheminActuel, cheminPropose, validees) {
-  var nomSource = dernierSegment_(String(cheminActuel == null ? '' : cheminActuel));
+  var nomSource = nomDepuisConstat_(cheminActuel);
   if (!nomSource) return false;                                   // sans nom : jamais de proposition
-  var nomCible = dernierSegment_(String(cheminPropose == null ? '' : cheminPropose));
-  if (nomSource === nomCible) return true;                        // doublons de MÊME nom : légitime
   return !estNoeudRecreablePrudent_(nomSource, validees);
 }
+
+/**
+ * Le NOM du dossier depuis la colonne « Chemin actuel » d'un constat. PURE (testée).
+ *
+ * Deux formats cohabitent : les lignes d'avant C28-93 portent le nom NU, celles d'après le chemin
+ * complet produit par `cheminPourConstat_`. Découper à l'aveugle sur `/` serait faux, parce que
+ * Drive AUTORISE la barre oblique dans un nom de dossier : un dossier nommé « Impôts/Archives » se
+ * lirait « Archives », qui est un nœud de la table — la ligne serait retirée à tort, et
+ * DÉFINITIVEMENT (relevé en revue C28-93). Un chemin produit par `cheminPourConstat_` commence
+ * TOUJOURS par une racine de domaine : c'est ce qui distingue les deux formats.
+ * @param {string} valeur
+ * @return {string}
+ */
+function nomDepuisConstat_(valeur) {
+  var brut = String(valeur == null ? '' : valeur).trim();
+  if (!brut) return '';
+  return /^\d{2} · /.test(brut) ? dernierSegment_(brut) : brut;
+}
+
+/**
+ * Marque écrite dans le DÉTAIL d'une ligne retirée par le filtre du stock, suivie du tag de règles.
+ * Elle distingue un `vide-protégé` posé par le FILTRE (verdict révisable, sous une version de
+ * règles) d'un `vide-protégé` posé par l'APP (zone protégée, racine système : définitif par nature).
+ * Sans elle, le moteur ne pouvait plus les distinguer — et un bump ne ramenait jamais une ligne
+ * retirée, alors que retirer un nœud de la table (C28-89 l'a déjà fait) doit la ramener.
+ */
+var MARQUE_FILTRE_VIDES = '[filtre-vides ';
 
 /**
  * Version des RÈGLES de la garde par capacité. Bumper cette valeur re-filtre tout le stock de
@@ -226,19 +260,34 @@ var VIDES_FILTRE_TAG = 'c2893-1';
  * PURE — parmi les lignes de l'onglet `Réorg`, les propositions à la corbeille qui portent un nom
  * que la TAXONOMIE sait recréer. Rend [{rang, nom}] (rang 1-based, en-tête comprise).
  *
- * Le nom se lit au DERNIER segment de « Chemin actuel » : les lignes d'avant C28-93 n'y portent
- * que le nom nu, celles d'après le chemin complet — le dernier segment vaut pour les deux.
+ * Le verdict du filtre est RÉVISABLE, dans les DEUX sens (revue C28-93) : une ligne retirée porte
+ * dans son détail la MARQUE du filtre et le tag de règles sous lequel elle l'a été. Un bump du tag
+ * la re-juge — et si la taxonomie ne connaît plus ce nœud (C28-89 a réellement RETIRÉ
+ * `Modèles & formulaires` de la table), elle redevient `vide-candidat`. Sans ça, l'affinage ne
+ * marchait que dans le sens restrictif, et un refus keyé sur « je n'ai pas su faire » restait figé
+ * à vie (§9). Les `vide-protégé` posés par l'APP (zone protégée, racine système) ne portent PAS la
+ * marque : ils sont définitifs par nature et ne sont jamais relus.
  * @param {Array<Array>} lignes  l'onglet entier, en-tête comprise
  * @param {Object} validees  référentiel des entités validées (déjà vérifié NON vide par l'appelant)
- * @return {Array<{rang:number, nom:string}>}
+ * @param {string} tag  version COURANTE des règles (`VIDES_FILTRE_TAG`)
+ * @return {Array<{rang:number, nom:string, statut:string}>} `statut` = ce qu'il faut écrire
  */
-function videsCandidatsRecreables_(lignes, validees) {
+function videsCandidatsRecreables_(lignes, validees, tag) {
   var out = [];
   for (var i = 1; i < lignes.length; i++) {
     var l = lignes[i] || [];
-    if (String(l[1]) !== 'dossier-vide' || String(l[5]) !== 'vide-candidat') continue;
-    var nom = dernierSegment_(String(l[3] == null ? '' : l[3]));
-    if (nom && estNoeudRecreable_(nom, validees)) out.push({ rang: i + 1, nom: nom });
+    if (String(l[1]) !== 'dossier-vide') continue;
+    var statut = String(l[5]);
+    var detail = String(l[6] == null ? '' : l[6]);
+    var duFiltre = detail.indexOf(MARQUE_FILTRE_VIDES) !== -1;
+    if (statut === 'vide-protégé' && !duFiltre) continue;                 // verdict de l'APP : définitif
+    if (statut === 'vide-protégé' && detail.indexOf(MARQUE_FILTRE_VIDES + tag + ']') !== -1) continue;
+    if (statut !== 'vide-candidat' && statut !== 'vide-protégé') continue; // disparu, repris, corbeillé
+    var nom = nomDepuisConstat_(l[3]);
+    if (!nom) continue;
+    var recreable = estNoeudRecreable_(nom, validees);
+    if (statut === 'vide-candidat' && !recreable) continue;                // rien à changer
+    out.push({ rang: i + 1, nom: nom, statut: recreable ? 'vide-protégé' : 'vide-candidat' });
   }
   return out;
 }
@@ -263,23 +312,48 @@ function videsCandidatsRecreables_(lignes, validees) {
  * (illisible OU vide) ⇒ on ne retire RIEN et on réessaie au tick suivant — marquer tout le stock
  * « protégé » sur un blip de lecture serait le défaut symétrique.
  * @param {Sheet} f  l'onglet Réorg
- * @param {Array<Array>} lignes  déjà lu par `etapeReorg_` — aucun appel Sheet supplémentaire
+ * @param {Array<Array>} lignes  déjà lu par `etapeReorg_` — aucune relecture de l'onglet entier
+ * @param {function(): boolean} estBudgetDepasse  garde-temps PARTAGÉ du tick (§9 : « garde-temps sur
+ *   TOUT lot », y compris une boucle d'écritures Sheet — celle-ci part en DERNIÈRE étape du tick et
+ *   peut démarrer à quelques secondes du mur DUR de 6 min, que ne capture aucun `try`)
  */
-function filtrerVidesCandidatsRecreables_(f, lignes) {
+function filtrerVidesCandidatsRecreables_(f, lignes, estBudgetDepasse) {
   var props = PropertiesService.getScriptProperties();
   if (props.getProperty('DriveAI_VIDES_FILTRES') === VIDES_FILTRE_TAG) return;
   var validees = entitesValideesOuNull_();
   if (!validees || !Object.keys(validees).length) return; // panne ≠ verdict : re-tenté au tick suivant
-  var cibles = videsCandidatsRecreables_(lignes, validees);
-  var lot = Math.min(cibles.length, CONFIG.REORG_VIDES_FILTRE_LOT);
-  for (var i = 0; i < lot; i++) {
-    solderAction_(f, cibles[i].rang, 'vide-protégé',
-      'la taxonomie recrée « ' + cibles[i].nom + ' » au premier document (C28-93)');
+  var cibles = videsCandidatsRecreables_(lignes, validees, VIDES_FILTRE_TAG);
+  if (!cibles.length) { props.setProperty('DriveAI_VIDES_FILTRES', VIDES_FILTRE_TAG); return; }
+  // Statuts RELUS à l'instant. `lignes` est un instantané pris en tête d'étape, et l'APP écrit dans
+  // le même onglet au clic de Marc : sans cette relecture, un `corbeillé` posé entre-temps serait
+  // écrasé par `vide-protégé` — une ligne qui affiche « protégé » pour un dossier qui est en
+  // réalité DANS la corbeille, et sera purgé à 30 jours sans autre trace (revue C28-93).
+  var frais = f.getRange(1, 6, f.getLastRow(), 2).getValues(); // F (statut) + G (détail)
+  var faits = 0;
+  var vus = 0;
+  for (var i = 0; i < cibles.length; i++) {
+    if (faits >= CONFIG.REORG_VIDES_FILTRE_LOT) break;
+    if (estBudgetDepasse && estBudgetDepasse()) break;
+    vus++;
+    var rang = cibles[i].rang;
+    var avant = frais[rang - 1] || [];
+    var statutLu = String(avant[0]);
+    var duFiltre = String(avant[1] == null ? '' : avant[1]).indexOf(MARQUE_FILTRE_VIDES) !== -1;
+    // L'app est-elle passée entre l'instantané et maintenant ? Seuls deux états sont à nous : une
+    // proposition encore candidate, et un `vide-protégé` que le FILTRE avait posé.
+    if (statutLu !== 'vide-candidat' && !(statutLu === 'vide-protégé' && duFiltre)) continue;
+    var detail = cibles[i].statut === 'vide-protégé'
+      ? 'la taxonomie recrée « ' + cibles[i].nom + ' » au premier document ' + MARQUE_FILTRE_VIDES + VIDES_FILTRE_TAG + ']'
+      : 'la taxonomie ne recrée plus « ' + cibles[i].nom + ' » ' + MARQUE_FILTRE_VIDES + VIDES_FILTRE_TAG + ']';
+    // Statut ET détail en UNE écriture (÷2 les allers-retours Sheet vs `solderAction_`).
+    f.getRange(rang, 6, 1, 2).setValues([[cibles[i].statut, detail]]);
+    faits++;
   }
-  // Le tag ne se pose que sur une passe COMPLÈTE : une passe écrêtée par le lot reprend au tick
-  // suivant (les lignes réécrites ne matchent plus `vide-candidat`, donc la collecte converge).
-  if (lot === cibles.length) props.setProperty('DriveAI_VIDES_FILTRES', VIDES_FILTRE_TAG);
-  if (lot) journalInfo_('Reorg', lot + ' proposition(s) de corbeille retirée(s) : nœud de la taxonomie');
+  // Le tag ne se pose que sur une passe COMPLÈTE — toutes les cibles EXAMINÉES, qu'elles aient été
+  // réécrites ou laissées à l'app. Une passe écrêtée (lot ou garde-temps) reprend au tick suivant :
+  // les lignes réécrites ne matchent plus `vide-candidat`, donc la collecte converge.
+  if (vus === cibles.length) props.setProperty('DriveAI_VIDES_FILTRES', VIDES_FILTRE_TAG);
+  if (faits) journalInfo_('Reorg', faits + ' proposition(s) de corbeille re-jugée(s) par la taxonomie');
 }
 
 /** Dernier segment d'un chemin proposé (nom du dossier à créer/renommer). PURE (testée). */

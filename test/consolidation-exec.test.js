@@ -231,6 +231,7 @@ function ctxVide(opts) {
   // la table de la taxonomie. La mocker reviendrait à tester ma propre copie de la question.
   const c = load(['Config.gs', 'Router.gs', 'Reset.gs', 'Reorg.gs', 'Consolidation.gs', 'ConsolidationExec.gs']);
   const appends = [];
+  const ecrits = [];
   const reorgData = [['Clé', 'Type', 'ID', 'CheminA', 'CheminP', 'Statut', 'Détail', 'H']].concat(opts.reorgData || []);
   c.indexContient_ = () => false;
   c.indexAjouter_ = () => {};
@@ -264,7 +265,13 @@ function ctxVide(opts) {
       getLastRow: () => reorgData.length,
       // Rend la COLONNE DEMANDÉE, pas toujours la A : `chargerVidesConnus_` lit A (clés) PUIS F
       // (statuts). Un mock qui rendrait A pour les deux ferait passer un code qui confond les deux.
-      getRange: (r, col, nb) => ({ getValues: () => reorgData.slice(r - 1, r - 1 + nb).map((row) => [row[col - 1]]) }),
+      getRange: (r, col, nbL, nbC) => ({
+        getValues: () => reorgData.slice(r - 1, r - 1 + (nbL || 1)).map((row) => row.slice(col - 1, col - 1 + (nbC || 1))),
+        setValues: (v) => {
+          ecrits.push({ rang: r, col: col, valeurs: v[0] });
+          for (let j = 0; j < v[0].length; j++) reorgData[r - 1][col - 1 + j] = v[0][j];
+        },
+      }),
       appendRow: (row) => { appends.push(row); },
     };
   };
@@ -294,7 +301,7 @@ function ctxVide(opts) {
     getName: () => 'f.pdf', getMimeType: () => 'application/pdf', moveTo: () => {},
   };
   c.DriveApp = { getFolderById: (id) => ({ getId: () => id }), getFileById: () => fichier };
-  return { c, appends };
+  return { c, appends, ecrits, reorgData };
 }
 
 function ctxV() { return { proteges: {}, tag: 'conso-2', validees: {}, parId: PAR_ID }; }
@@ -388,7 +395,13 @@ test('détection vide : `vide-repris` est RÉVISABLE — un dossier re-vidé est
   const ligne = (statut) => [['videcandidat|REPRIS', 'dossier-vide', 'REPRIS', 'DOM/X', '', statut, '', '']];
   const repris = ctxVide({ parentId: 'REPRIS', parentNom: 'IUT GIM 1', reorgData: ligne('vide-repris') });
   repris.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
-  assert.strictEqual(repris.appends.length, 1, 'un dossier re-vidé revient dans la liste');
+  // ⚠️ RÉ-ARMÉE SUR PLACE, pas appendée (relevé en 3ᵉ revue) : appendre une seconde ligne de même
+  // clé dans un onglet append-only la ferait croître à chaque cycle rempli→vidé, et laisserait deux
+  // lignes contradictoires sous la même clé. Mutation : revenir à `appendRow` ⇒ ce test tombe.
+  assert.strictEqual(repris.appends.length, 0, 'aucune seconde ligne de même clé');
+  assert.strictEqual(repris.ecrits.length, 1, 'la ligne existante est réécrite');
+  assert.strictEqual(repris.ecrits[0].rang, 2);
+  assert.strictEqual(repris.ecrits[0].valeurs[2], 'vide-candidat', 'un dossier re-vidé revient dans la liste');
 
   // …alors que les statuts DÉFINITIFS, eux, tiennent : la ligne ne revient jamais.
   for (const fige of ['vide-protégé', 'vide-disparu', 'corbeillé', 'vide-candidat']) {
@@ -598,4 +611,19 @@ test('ConsolidationExec.gs : aucune mutation hors moveTo (jamais de suppression/
       assert.ok(!src.includes(motif), 'mutation interdite dans ConsolidationExec.gs : ' + motif);
     });
   assert.ok(src.includes('moveTo('), 'le déplacement est bien le mécanisme du module');
+});
+
+test('détection vide : sans l\'ensemble des racines PROTÉGÉES, on ne constate rien (§1, échec dur)', () => {
+  // `ctx.proteges || {}` faisait échouer le garde §1 OUVERT : avec un ensemble vide,
+  // `chaineMonteVersProtege_` rend `false` pour TOUT — la zone protégée cesse d'exister sans que
+  // rien ne lève. C'est la forme exacte du défaut corrigé juste avant pour `ctx.validees`, sur le
+  // garde-fou le moins négociable du projet. Mutation : remettre `ctx.proteges || {}` ⇒ tombe.
+  const v = ctxVide({ parentId: 'ID_X', parentNom: 'IUT GIM 1' });
+  const sansProteges = { tag: 'conso-2', validees: {}, parId: PAR_ID }; // pas de `proteges`
+  v.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, sansProteges);
+  assert.strictEqual(v.appends.length, 0, 'pas d\'ensemble protégé ⇒ pas de constat');
+  // …et avec l'ensemble (même vide mais PRÉSENT), le constat repart : la garde ne gèle rien.
+  const ok = ctxVide({ parentId: 'ID_Y', parentNom: 'IUT GIM 1' });
+  ok.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+  assert.strictEqual(ok.appends.length, 1);
 });
