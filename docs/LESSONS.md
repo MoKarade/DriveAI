@@ -14,6 +14,42 @@
 
 ---
 
+## 2026-09-14 — Une vue d'API en RETARD ressemble EXACTEMENT à une panne connue, et c'est la ressemblance qui fait sauter la vérification
+**Contexte.** Après le merge de #348, PR de suivi #349 (doc seule). Trois checks verts, le
+quatrième — « Captures d'écran UI (E2E mode mock) » — affiché `in_progress` sur l'étape
+`playwright install` pendant douze minutes. Le `CLAUDE.md` §5 décrit ce mode de panne mot pour
+mot (« `playwright install` figé > 20 min retenant le merge sans rien afficher », vécu 2× le
+19/08). J'ai reconnu le motif, armé un check-in pour relancer le job, et annoncé à Marc une PR
+en attente. **Elle était déjà fusionnée depuis dix minutes** : le job s'était terminé en 61 s
+(21:46:54), l'auto-merge avait fusionné à 21:47:04. Les DEUX endpoints GitHub que j'ai
+interrogés — `get_check_runs` ET `list_workflow_jobs`, celui-là même que j'avais choisi parce
+qu'il donne le détail par étape — servaient la même vue périmée. Interroger une seconde source
+qui lit le même cache n'est pas une seconde source.
+
+**Ce qui l'a rendu possible.** Le symptôme observé (« bloqué sur l'étape 5 ») et le symptôme de
+la panne connue (« bloqué sur l'étape 5 ») sont le MÊME texte. Ce qui les sépare est ailleurs :
+un job réellement figé ne produit pas d'événement `automerge`, et l'état de la PR
+(`merged: true`) tranche en un appel. Je n'ai lu ni l'un ni l'autre — la ressemblance avec une
+leçon déjà écrite m'a tenu lieu de preuve, alors qu'une leçon décrit un mécanisme, jamais un
+diagnostic. Symétrie exacte avec l'incident de la corbeille du même jour : une hypothèse qui
+explique parfaitement les signaux disponibles reste fausse tant qu'un signal INDÉPENDANT ne la
+confirme pas.
+
+**Leçon.** « Un état lu par API peut être en RETARD, et le retard est indiscernable d'une panne
+tant qu'on interroge la même source. Avant de conclure qu'un travail distant est bloqué :
+demander l'état de l'OBJET (la PR est-elle fusionnée ? la ressource existe-t-elle ?), pas
+seulement l'état de l'ÉTAPE — l'objet porte le résultat, l'étape porte une vue. Et quand un
+symptôme ressemble à une panne déjà consignée, cette ressemblance AUGMENTE l'exigence de
+preuve au lieu de la dispenser : une leçon nomme un mécanisme, elle ne diagnostique aucun cas.
+Corollaire opérationnel : ré-interroger un endpoint voisin du même service ne double pas la
+preuve s'il lit le même cache — la seconde source doit être d'une NATURE différente (ici l'état
+de la PR, ou le contenu de `main`). »
+
+**Règle durable ?** oui — §9, en corollaire de « Vérifier la prod par un signal indépendant »
+(même famille : ce qui compte est la NATURE de la source, pas le nombre d'appels).
+
+---
+
 ## 2026-09-13 — Une garde n'existe qu'aux endroits qui la CONSULTENT : instrumenter un chemin ne couvre pas ses frères, et un plan n'est pas une mutation
 **Contexte.** Lancement du rattrapage du stock (C28-90, ADR-0052). Deux gardes neuves, D8 (« un
 signal faible ne déplace pas ce qui est déjà rangé ») et D9 (« on ne remonte jamais un fichier vers

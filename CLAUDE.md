@@ -457,6 +457,15 @@ ce qui reste vrai d'une session à l'autre.
   destination. La certitude runtime vient du **diagnostic un-clic** (Properties + comptage via le code
   DÉPLOYÉ), jamais d'un échantillon Drive. Et après un diagnostic dur RÉUSSI (piège 3), ne pas enchaîner
   un 2ᵉ verdict à la va-vite sur un signal partiel : chaque conclusion se re-prouve sur son propre axe.
+  **Corollaire (2026-09-14) : « indépendant » qualifie la NATURE de la source, pas le nombre d'appels.**
+  Un état lu par API peut être EN RETARD, et le retard est indiscernable d'une panne tant qu'on
+  interroge la même source : `get_check_runs` ET `list_workflow_jobs` ont servi la même vue périmée
+  pendant 12 min (job « figé » sur `playwright install` — il était fini en 61 s, la PR fusionnée depuis
+  10 min). Re-demander à un endpoint VOISIN du même service ne double pas la preuve — la 2ᵉ source doit
+  être d'une autre NATURE (l'état de l'OBJET : PR `merged`, contenu de `main`), pas de l'ÉTAPE. Et quand
+  un symptôme RESSEMBLE à une panne déjà consignée (ici §5, `playwright install` figé, vécu 2× le 19/08),
+  la ressemblance AUGMENTE l'exigence de preuve au lieu d'en dispenser : une leçon nomme un MÉCANISME,
+  elle ne diagnostique aucun cas.
 - **Maintenance auto dans le tick : protéger l'intake, drainer avant d'alimenter.** Toute étape SECONDAIRE
   (rejeu de version, grand rangement, ajustement de déclencheur) doit être **enveloppée d'un try/catch** —
   « un échec ne doit JAMAIS bloquer l'intake ». Le `try` de `tickDriveAI` n'a qu'un `finally` : une exception
