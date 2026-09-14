@@ -799,5 +799,7 @@ button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):ho
 }
 /* Et le focus clavier ne se gare pas SOUS la zone collante : tabuler parmi 112 boutons 🗑 y
    amènerait sinon le focus, invisible. Patron déjà utilisé par `.chat-fin`. */
-.prop-vide { scroll-margin-bottom: 8rem; }
-.prop-vide { display: flex; align-items: center; gap: 0.6rem; justify-content: space-between; }
+.prop-vide {
+  display: flex; align-items: center; gap: 0.6rem; justify-content: space-between;
+  scroll-margin-bottom: 8rem;
+}
