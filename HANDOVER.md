@@ -7,7 +7,7 @@
 > **🟦 EN COURS — 2026-09-14 (soir) : deux demandes de Marc, dont un diagnostic que j'ai eu FAUX.**
 >
 > **1 · « mes paies ne devraient pas arriver dans employeur mais seulement dans finances »**
-> (ADR-0058, C28-122 — **livré**, en revue `structure-keeper`). Puis, sur mes deux questions :
+> (ADR-0058, C28-122 — **livré et EN LIGNE**). Puis, sur mes deux questions :
 > « **rl-1 aussi dans finances, attestation d'emploi reste dans 05** ». AUDIT du Drive réel avant
 > d'écrire : **UNE seule paie mal classée** (`2026-09_Paie_Robovic Inc..pdf`, `05/Employeurs/Robovic`,
 > déposée le 14/09 à 18:00 par le FLUX) — Automatech n'en a aucune, Trajectoire-Emploi est bien en 02.
@@ -17,8 +17,15 @@
 > s'arrêtent, c'est le flux qui avait le dernier mot. Correctif : domaine dérivé du TYPE, même patron
 > que les pièces d'identité. ⚠️ **Deux faits MESURÉS** : le numéro du feuillet ne survit pas au
 > renommage (« Relevé 1 » → « Relevé »), donc (a) le prédicat lit AUSSI le `type_doc` brut, (b) un
-> RL-1 atterrit dans `Revenus & paie/<employeur>` et **pas** dans `Impôts & déclarations` — bien « dans
-> finances », pas le bon sous-dossier (C28-123, hors périmètre, figé par un test).
+> RL-1 atterrissait dans `Revenus & paie/<employeur>` et **pas** dans `Impôts & déclarations` — bien
+> « dans finances », pas le bon sous-dossier. ⚠️ **Corrigé dans le même lot (C28-123)**, et non renvoyé
+> au backlog comme cette ligne l'annonçait d'abord : la revue a montré pire (employeur HORS table ⇒
+> `02 · Finances/Relevés/AAAA`, parmi les relevés BANCAIRES ; employeur connu ⇒ pollution de
+> `RapportPaies`, un RL-1 MASQUANT une paie réellement manquante). Deux règles de nommage ont suffi.
+> Marc a ensuite tranché « **oui le t4 aussi dans finances** » : le T4 (fédéral) suit le RL-1
+> (provincial) — même employeur, même mode de panne —, granularité ANNUELLE, prédicat DÉDIÉ (pas
+> `estTypeFiscalReset_`, qui matche `taxe` et attraperait un compte de taxes municipales de `03`).
+> **`T4A` reste NON couvert** : autre feuillet, revenus hors emploi salarié, Marc a nommé le T4.
 >
 > **2 · « Tout corbeiller » : mon diagnostic était FAUX, et Marc l'a réfuté.** Premier rapport :
 > « 56 dossiers n'ont pas été tentés » ⇒ j'ai conclu au quota Sheets, chiffres à l'appui (C28-119,
@@ -34,8 +41,14 @@
 > Hypothèse la plus compatible, **NON vérifiée** : `ascendance-illisible` (il rend `null`, donc compte
 > comme une PANNE — 5 d'affilée coupent le lot sans rien supprimer).
 >
-> **PR #348** (C28-119 + C28-121) : CI verte, revue rendue et intégrée, **en attente de merge**
-> (API GitHub rationnée 4× dans l'après-midi ; check-in armé).
+> **PR #348** (C28-119/121/122/123) : **MERGÉE le 14/09 à 21:42 UTC** (squash `86d2c94`) sur
+> autorisation explicite de Marc (« ok merge la quand la revue est finie »). L'API GitHub a rationné
+> la sortie du brouillon **9 fois** en trois heures — un check-in ré-armé y est finalement arrivé.
+> **LES DEUX CIBLES sont déployées** : `deploy.yml` run 34900324341 vert (clasp push + `clasp deploy`
+> + réinstallation du déclencheur) et Vercel `dpl_AibCSa7…` **READY** en production sur ce même SHA.
+> ⚠️ **Déploiement vert ≠ effet pris** (§9, piège 3) : le SEUL signal indépendant sera le prochain
+> clic de Marc sur « Tout corbeiller », qui portera « Cause exacte : … », et la prochaine paie/RL-1/T4
+> qui arrivera par le flux. Rien n'est prouvé avant.
 >
 > **🟦 EN COURS — 2026-09-14 (suite) : finaliser avant le prochain chantier (ADR-0056).**
 > Marc : « j'ai un gros chantier que je veux faire mais d'abord regarde ce qu'il faut finaliser »,
