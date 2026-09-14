@@ -153,7 +153,14 @@ export async function api<T>(url: string, options?: RequestInit): Promise<T> {
       continue;
     }
     if (rep.status === 429) {
-      throw new Error('Google est momentanément saturé (quota par minute) — réessaie dans quelques secondes.');
+      // ⚠️ DIRE QUELLE API refuse (C28-119). Le message générique a coûté un diagnostic entier :
+      // au premier vrai « Tout corbeiller », le lot s'est arrêté à 56 dossiers sur 112 et rien ne
+      // disait si c'était Drive ou Sheets — or les deux plafonds n'ont RIEN à voir (Drive ~12 000
+      // requêtes/minute, Sheets 60 ÉCRITURES/minute par utilisateur) et donc ni la même cause ni le
+      // même remède. Un verdict qui ne nomme pas sa source se re-diagnostique à chaque fois (§9).
+      const quoi = url.includes('sheets.googleapis.com') ? 'Sheets (la feuille d\'état)'
+        : url.includes('googleapis.com/drive') ? 'Drive' : 'Google';
+      throw new Error(`${quoi} est momentanément saturé (quota par minute) — réessaie dans quelques secondes.`);
     }
     if (!rep.ok) {
       const corps = await rep.text();

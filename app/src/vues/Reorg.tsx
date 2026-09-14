@@ -173,7 +173,10 @@ export function ReorgVue({ langue }: { langue: Langue }) {
     try {
       bilan = await corbeillerLot(vides, {
         corbeiller: (id) => corbeillerDossierVide(id),
-        ecrire: (ligneSheet, statut) => ecrireCellule('Réorg', `F${ligneSheet}`, statut),
+        // Écriture par PLAGE (C28-119) : une cellule par dossier saturait le quota Sheets de
+        // 60 écritures/minute par utilisateur — partagé avec le moteur — et le lot s'arrêtait de
+        // lui-même vers la 56ᵉ ligne. Les lignes `vide-candidat` sont contiguës : un PUT les couvre.
+        ecrireLot: (debut, valeurs) => ecrireColonnePlage('Réorg', 'F', debut, valeurs),
         surLigne: (ligneSheet, statut) =>
           setLignes((xs) => xs.map((x) => (x.ligneSheet === ligneSheet ? { ...x, statut } : x))),
         avancement: (fait, total) => setAvancement({ fait, total }),
