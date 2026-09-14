@@ -4,6 +4,39 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **🟦 EN COURS — 2026-09-14 (soir) : deux demandes de Marc, dont un diagnostic que j'ai eu FAUX.**
+>
+> **1 · « mes paies ne devraient pas arriver dans employeur mais seulement dans finances »**
+> (ADR-0058, C28-122 — **livré**, en revue `structure-keeper`). Puis, sur mes deux questions :
+> « **rl-1 aussi dans finances, attestation d'emploi reste dans 05** ». AUDIT du Drive réel avant
+> d'écrire : **UNE seule paie mal classée** (`2026-09_Paie_Robovic Inc..pdf`, `05/Employeurs/Robovic`,
+> déposée le 14/09 à 18:00 par le FLUX) — Automatech n'en a aucune, Trajectoire-Emploi est bien en 02.
+> C'est une FUITE, pas une migration. Cause : les MISSIONS connaissent la règle (« le domicile UNIQUE
+> des paies est 02 »), le FLUX prend le domaine du LLM — et une paie NOMME un employeur, donc le LLM
+> répond « 05 ». Les missions rangeaient, le flux dé-rangeait, et comme les missions convergent puis
+> s'arrêtent, c'est le flux qui avait le dernier mot. Correctif : domaine dérivé du TYPE, même patron
+> que les pièces d'identité. ⚠️ **Deux faits MESURÉS** : le numéro du feuillet ne survit pas au
+> renommage (« Relevé 1 » → « Relevé »), donc (a) le prédicat lit AUSSI le `type_doc` brut, (b) un
+> RL-1 atterrit dans `Revenus & paie/<employeur>` et **pas** dans `Impôts & déclarations` — bien « dans
+> finances », pas le bon sous-dossier (C28-123, hors périmètre, figé par un test).
+>
+> **2 · « Tout corbeiller » : mon diagnostic était FAUX, et Marc l'a réfuté.** Premier rapport :
+> « 56 dossiers n'ont pas été tentés » ⇒ j'ai conclu au quota Sheets, chiffres à l'appui (C28-119,
+> régulateur de cadence — qui reste utile, le plafond est réel). Second rapport : « **après 4 dossiers
+> il s'arrête seul sans rien supprimer** » ⇒ **ça exclut Sheets** : sous cette hypothèse les dossiers
+> PARTENT à la corbeille et seuls les statuts échouent (`corbeilles: 56, sheetKo: 5`). « Rien de
+> supprimé » est la signature du canal **DRIVE** (`corbeilles: 0, aReessayer: 5`).
+> ⚠️ **LA CAUSE RACINE EST INCONNUE.** Ne rien conclure avant de l'avoir LUE. Ce qui a permis deux
+> diagnostics à l'aveugle : le message de l'exception était JETÉ — `statutRefusCorbeille` rend `null`
+> pour un quota, un 403 de droits, une ascendance illisible ET une coupure réseau (ce qui est JUSTE,
+> une incertitude ne devient pas un verdict) mais les rend indistinguables à l'écran. **C28-121** :
+> `BilanLot.derniereCause` porte désormais le message, sur les DEUX canaux, et l'écran l'affiche.
+> Hypothèse la plus compatible, **NON vérifiée** : `ascendance-illisible` (il rend `null`, donc compte
+> comme une PANNE — 5 d'affilée coupent le lot sans rien supprimer).
+>
+> **PR #348** (C28-119 + C28-121) : CI verte, revue rendue et intégrée, **en attente de merge**
+> (API GitHub rationnée 4× dans l'après-midi ; check-in armé).
+>
 > **🟦 EN COURS — 2026-09-14 (suite) : finaliser avant le prochain chantier (ADR-0056).**
 > Marc : « j'ai un gros chantier que je veux faire mais d'abord regarde ce qu'il faut finaliser »,
 > puis quatre décisions et un « go ». Trois lots livrés ensemble.

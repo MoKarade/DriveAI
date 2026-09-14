@@ -545,6 +545,17 @@ ce qui reste vrai d'une session à l'autre.
   NUE en tête de tick. Et le diagnostic se conserve par son CHAMP EXPLOITABLE (`error.message` :
   projet GCP + URL d'activation), jamais par l'enveloppe brute — un JSON indenté, tronqué pour
   l'affichage, ne montre que sa ponctuation.
+  **Corollaire (14/09) : un verdict d'INCERTITUDE doit persister la CAUSE qu'il vient d'écraser.**
+  Quand un prédicat rend « je ne sais pas conclure » pour plusieurs causes distinctes — quota, refus
+  de droits, ascendance illisible, coupure réseau — c'est souvent la BONNE décision (une incertitude
+  ne devient pas un verdict), mais le message d'origine, SEUL endroit où la différence est écrite,
+  ne doit pas être consommé par le verdict : il se garde À CÔTÉ et s'affiche. Sinon chaque diagnostic
+  repart de zéro et finit par se faire à l'aveugle (vécu : deux diagnostics successifs sur « Tout
+  corbeiller », dont un FAUX, sur un message « quota ou panne » vrai pour les quatre causes). Et quand
+  l'utilisateur décrit un symptôme, LUI DEMANDER LES CHIFFRES QUE L'ÉCRAN AFFICHE DÉJÀ avant de bâtir
+  une hypothèse : ils tranchent souvent entre des causes aux signatures OPPOSÉES (« rien de supprimé »
+  vs « 56 supprimés, statuts perdus »). Une hypothèse qui explique parfaitement les chiffres
+  disponibles reste fausse si elle n'explique pas le symptôme DÉCRIT.
   **Corollaire (19/08, 1ᵉʳ usage réel) : une sonde « ressource inexistante » doit parler la
   GRAMMAIRE d'identifiant de CHAQUE API sondée — sinon 400 ≠ 404 et le verdict ne conclut JAMAIS.**
   Un identifiant *malformé* fait répondre « je ne comprends pas ta requête » (400) au lieu de « ça
