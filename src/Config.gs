@@ -600,7 +600,16 @@ var CONFIG = {
                                           // tout avec le référentiel courant (rotation dans genererPlan…)
   CONSOLIDATION_BUDGET_MS: 3 * 60 * 1000, // sous-budget PROPRE par run (le hash MD5 lit les octets — sans
                                           // cette borne, un run mangerait le budget des étapes suivantes)
-  CONSOLIDATION_BUDGET_JOUR_MS: 10 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
+  CONSOLIDATION_BUDGET_JOUR_MS: 16 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
+                                          // ⚡ 10 → 16 (RÉALLOCATION C28-99, demande Marc « jveux utiliser le temps
+                                          // dispo au max »). MESURÉ avant de bouger quoi que ce soit : la génération
+                                          // consomme ses 10 min/j EN ENTIER sans finir un seul domaine (1/9 depuis
+                                          // 18 h), et c'est ELLE qui alimente tout le reste — l'exécuteur a drainé
+                                          // ses 372 lignes et affiche « attend la génération », donc ses 12 min
+                                          // dorment. Les 6 min viennent de LÀ (4) et des doublons TERMINÉS (2) :
+                                          // enveloppe reset-OFF INCHANGÉE à 63 min/j, pur transfert. RÉALLOUER,
+                                          // JAMAIS AUGMENTER (§9 / C28-29 : au-delà du mur runtime, TOUS les
+                                          // déclencheurs gèlent, chien de garde compris).
                                           // un plafond par RUN ne borne pas la JOURNÉE — ×288 ticks > quota
                                           // runtime ~90 min/j ; patron GMAIL_HISTO/SYNC_BUDGET_JOUR_MS).
                                           // 20 → 12 min (REDESCENTE, revue quota C28-29) ; puis 12 → 2 min
@@ -621,7 +630,15 @@ var CONFIG = {
   CONSOLIDATION_EXEC_BUDGET_MS: 2 * 60 * 1000,        // sous-budget par run — reste STRICTEMENT < garde-temps de
                                           // tick (ANALYSE_V2_BUDGET_MS 3 min) pour ne pas affamer le reste du
                                           // tick ; le débit journalier vient du budget QUOTIDIEN (moveTo cheap)
-  CONSOLIDATION_EXEC_BUDGET_JOUR_MS: 12 * 60 * 1000,  // budget QUOTIDIEN en ms réelles persistées.
+  CONSOLIDATION_EXEC_BUDGET_JOUR_MS: 8 * 60 * 1000,   // budget QUOTIDIEN en ms réelles persistées.
+                                          // ⚡ 12 → 8 (RÉALLOCATION C28-99) : PRÊTEUR cette fois, et pour une raison
+                                          // mesurée — le plan est DRAINÉ (372/372, statut « attend la génération »),
+                                          // l'exécuteur tourne donc à vide pendant que la génération étouffe. Il a
+                                          // drainé 372 lignes avec 12 min ; à 8 min il en drainera encore ~250/j,
+                                          // très au-delà de ce qu'une génération à 1 domaine/j peut produire. Les
+                                          // 4 min sont RENDUES dès que l'exécuteur redevient le goulot (le test de
+                                          // bloc ci-dessous force l'arbitrage : on ne peut pas les rendre sans les
+                                          // reprendre à quelqu'un).
                                           // 6 → 12 min (RÉALLOCATION 2026-08-11, décision Marc « accélère, réalloc
                                           // sûre »). Le diagnostic un-clic `etatCampagnesRangement` a PROUVÉ sur la
                                           // prod que l'exécuteur EST désormais le goulot : budget jour 6/6 ÉPUISÉ,
@@ -915,11 +932,18 @@ var CONFIG = {
                                           // n'apparaître dans AUCUNE, et une preuve d'ABSENCE trouée
                                           // fabriquerait un faux orphelin (revue flotte, ADR-0047 §5)
   DOUBLONS_BUDGET_MS: 90 * 1000,          // sous-budget par run (pur listing REST + 1 écriture Sheet/page)
-  DOUBLONS_BUDGET_JOUR_MS: 3 * 60 * 1000, // budget QUOTIDIEN en ms réelles persistées — AJOUTÉ à la somme
+  DOUBLONS_BUDGET_JOUR_MS: 1 * 60 * 1000, // budget QUOTIDIEN en ms réelles persistées — AJOUTÉ à la somme
                                           // de l'enveloppe reset-OFF (orchestration.test.js) : 60 → 63 min/j
                                           // pour un plafond dérivé de 65. Prélevé sur la MARGE, faute de
                                           // pouvoir encore prouver que l'historique Gmail (20 min/j) est
                                           // fini — c'est LE donneur à terme (ADR-0047 §6, backlog C28-70).
+                                          // ⚡ 3 → 1 (RÉALLOCATION C28-99) : la campagne est TERMINÉE, et cette
+                                          // fois c'est LU, pas supposé — la ligne de Santé du moteur dit
+                                          // « terminée ✅ le 2026/08/22 — 1076 écartés » (§1.6 : ne jamais
+                                          // déclarer une campagne finie sans lire son compteur). On lui laisse
+                                          // 1 min plutôt que 0 : une campagne ACTIVE à budget 0 est MUETTE
+                                          // (no-op silencieux), et elle doit pouvoir repérer un nouvel arrivant
+                                          // dans `_Doublons`. Les 2 min vont à la génération.
 
   // ---------- MISSIONS de curation (C28-49, ADR-0039 — brief Marc 2026-08-17) ----------
   MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions

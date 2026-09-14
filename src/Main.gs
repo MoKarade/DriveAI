@@ -1082,6 +1082,37 @@ function traiterFil_(fil, estBudgetDepasse) {
  * peut masquer un fil pendant la passe de vérification elle-même ; la re-passe est quasi gratuite).
  * @param {function():boolean} estBudgetDepasse
  */
+/**
+ * Ligne de SANTÉ de la campagne historique Gmail — état, avancement, et minutes RÉELLEMENT
+ * consommées aujourd'hui sur son budget quotidien. PURE au sens I/O (Properties seules).
+ *
+ * Pourquoi elle existe (C28-99) : cette campagne réserve **20 min/j** dans l'enveloppe de runtime,
+ * le plus gros bloc de toutes les campagnes — et rien nulle part ne disait si elle tournait encore.
+ * Le registre de suivi C28-44 étant SATURÉ (8 377/8 500 octets), elle ne pouvait pas y prendre une
+ * 43ᵉ clé : elle se rend donc visible ICI, comme `Doublons` et « Rangement ancien Drive ».
+ * Sans ce chiffre, réallouer ses 20 minutes serait une SUPPOSITION — et §1.6 l'interdit
+ * explicitement : « ne pas déclarer une campagne finie sans lire son compteur ».
+ * @return {string}
+ */
+function texteSanteHistoGmail_() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var fils = Number(props.getProperty('DriveAI_GMAIL_HISTO_OFFSET')) || 0;
+    if (props.getProperty('DriveAI_GMAIL_HISTO') === 'terminé') {
+      return 'terminée ✅ — ' + fils + ' fils parcourus · ses ' +
+        Math.round(CONFIG.GMAIL_HISTO_BUDGET_JOUR_MS / 60000) + ' min/j sont RÉALLOUABLES';
+    }
+    var aujourdhui = dateGmail_(new Date());
+    var msJour = props.getProperty('DriveAI_GMAIL_HISTO_JOUR') === aujourdhui
+      ? Number(props.getProperty('DriveAI_GMAIL_HISTO_MS_JOUR')) || 0
+      : 0;
+    return 'en cours — ' + fils + ' fils parcourus · ' + Math.round(msJour / 60000) + ' des ' +
+      Math.round(CONFIG.GMAIL_HISTO_BUDGET_JOUR_MS / 60000) + ' min/j consommées aujourd\'hui';
+  } catch (e) {
+    return 'illisible (' + String(e).slice(0, 60) + ')'; // jamais « terminée » par défaut
+  }
+}
+
 function traiterGmailHistorique_(estBudgetDepasse) {
   if (estPanneGmail_()) return; // quota Gmail épuisé (C28-15) : suspendu jusqu'à la re-sonde
   var props = PropertiesService.getScriptProperties();

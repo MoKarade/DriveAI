@@ -164,41 +164,41 @@ test('enveloppe reset-OFF : la somme des budgets QUOTIDIENS des campagnes concur
 });
 
 /**
- * RÉALLOCATION 2026-08-11 (revue flotte apps-script-quota) : verrou du COUPLE exec↔fusion, PAS
- * seulement de l'agrégat ≤ 65 — celui-ci est structurellement AVEUGLE au cas 62 min/j (near-gel :
- * fusion réactivée à 6 SANS rendre les 6 min à l'exec) puisque 62 ≤ 65. C'est exactement le trou de
- * la leçon C28-42 (l'invariant d'enveloppe reste vert pendant qu'un couple mal restauré grimpe). On
- * verrouille donc la PAIRE (somme constante) + l'interdit « campagne active à budget 0 » (muette).
+ * VERROU DE BLOC (C28-99) — remplace les deux verrous de COUPLE (exec↔fusion 2026-08-11,
+ * conso-gen↔missions C28-49), devenus faux dès qu'une réallocation traverse les deux paires.
+ *
+ * Ce qu'il protège est inchangé, et c'est le seul invariant qui compte : **aucun transfert interne
+ * ne doit faire CROÎTRE l'enveloppe de runtime**. Au-delà du mur (~90 min/j), TOUS les déclencheurs
+ * gèlent, chien de garde compris (§9 / C28-29). L'agrégat ≤ 65 min ne suffit pas : il est
+ * structurellement AVEUGLE à un transfert à MOITIÉ annulé (rendre 6 min à la fusion sans les
+ * reprendre à l'exécuteur donne 69 → non, 62 ≤ 65 → vert, leçon C28-42). Une SOMME DE BLOC
+ * constante, elle, tombe au premier déséquilibre, quel que soit le sens du transfert.
+ *
+ * Le bloc = les campagnes qui se prêtent mutuellement du budget depuis C28-42 : les deux moitiés de
+ * la consolidation, la fusion (parkée), les missions de curation, la validation des doublons.
  */
-test('réallocation exec↔fusion : le COUPLE somme 12 min ET une campagne active n\'a jamais un budget 0', () => {
+test('BLOC des campagnes de rangement : la somme reste 27 min/j (réallouer, jamais augmenter)', () => {
   const C = require('./harness').load(['Config.gs']).CONFIG;
-  // 6 min ont été TRANSFÉRÉS de FUSION_EXEC (OFF) vers CONSOLIDATION_EXEC : leur somme reste 12 min/j.
-  // Réactiver la fusion (0→6) SANS redescendre l'exec (12→6) casse ce test — rappel FORCÉ, jamais
-  // laissé à la seule discipline (leçon §7 : « promesse de verrou = verrou codé »).
-  assert.strictEqual((C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS) / 60000, 12,
-    'CONSOLIDATION_EXEC + FUSION_EXEC doit rester = 12 min/j (couple réalloué) : à la réactivation de ' +
-    'la fusion, rendre à l\'exec les 6 min prêtés (sinon enveloppe 62 = near-gel, non vu par l\'agrégat ≤65)');
+  const bloc = C.CONSOLIDATION_BUDGET_JOUR_MS + C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS +
+    C.FUSION_EXEC_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS + C.DOUBLONS_BUDGET_JOUR_MS;
+  assert.strictEqual(bloc / 60000, 27,
+    'consolidation(gen) + consolidation(exec) + fusion + missions + doublons doit rester = 27 min/j. ' +
+    'Historique des transferts : 12/6/6/0/0 (2026-08-11) → 2/12/0/10/3 (C28-49) → 16/8/0/2/1 (C28-99). ' +
+    'Pour accélérer une campagne, PRENDRE à une autre du bloc — jamais ajouter des minutes : ' +
+    'au-delà du mur runtime ~90 min/j, TOUS les déclencheurs gèlent, chien de garde inclus (C28-29).');
   // Une campagne ACTIVE avec un budget quotidien 0 tourne à VIDE en silence (`consommeJour 0 >= 0`
-  // court-circuite `appliquer…_` avant tout travail) : jamais autorisé.
-  assert.ok(!C.FUSION_EXEC_ACTIF || C.FUSION_EXEC_BUDGET_JOUR_MS > 0,
-    'FUSION_EXEC_ACTIF=true avec FUSION_EXEC_BUDGET_JOUR_MS=0 = campagne MUETTE (no-op silencieux) : ' +
-    'rends-lui son budget avant de l\'activer');
-});
-
-/**
- * RÉALLOCATION C28-49 (ADR-0039) : la génération de consolidation est TERMINÉE (16/08, 9/9) —
- * 10 de ses 12 min/j partent aux MISSIONS de curation. Même patron de verrou que exec↔fusion :
- * la PAIRE (somme constante), pas seulement l'agrégat ≤ 65 (aveugle à un transfert à moitié
- * annulé), + l'interdit « campagne active à budget 0 ». Prouvé par mutation.
- */
-test('réallocation conso-gen↔missions : le COUPLE somme 12 min ET une mission active n\'a jamais un budget 0', () => {
-  const C = require('./harness').load(['Config.gs']).CONFIG;
-  assert.strictEqual((C.CONSOLIDATION_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS) / 60000, 12,
-    'CONSOLIDATION (gen) + MISSIONS doit rester = 12 min/j (couple réalloué C28-49) : le jour où la ' +
-    'consolidation doit VRAIMENT reprendre, rendre les 10 min prêtés (missions finies) — sinon ' +
-    'l\'enveloppe croît en silence (leçon C28-42)');
-  assert.ok(!C.MISSIONS_ACTIF || C.MISSIONS_BUDGET_JOUR_MS > 0,
-    'MISSIONS_ACTIF=true avec MISSIONS_BUDGET_JOUR_MS=0 = missions MUETTES (no-op silencieux)');
+  // court-circuite avant tout travail) : jamais autorisé. C'est l'autre moitié du verrou — sans elle,
+  // la somme de bloc se conserverait en rendant une campagne MUETTE.
+  [['FUSION_EXEC', C.FUSION_EXEC_ACTIF, C.FUSION_EXEC_BUDGET_JOUR_MS],
+    ['MISSIONS', C.MISSIONS_ACTIF, C.MISSIONS_BUDGET_JOUR_MS],
+    ['DOUBLONS', C.DOUBLONS_ACTIF, C.DOUBLONS_BUDGET_JOUR_MS],
+    ['CONSOLIDATION', C.CONSOLIDATION_ACTIF, C.CONSOLIDATION_BUDGET_JOUR_MS],
+    ['CONSOLIDATION_EXEC', C.CONSOLIDATION_EXEC_ACTIF, C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS],
+  ].forEach(([nom, actif, budget]) => {
+    assert.ok(!actif || budget > 0,
+      nom + '_ACTIF=true avec un budget quotidien de 0 = campagne MUETTE (no-op silencieux) : ' +
+      'rends-lui du budget avant de l\'activer, ou désactive-la explicitement');
+  });
 });
 
 test('orchestration MISSIONS : les 8 missions sont gatées par !resetEnCours_() ET le budget quotidien', () => {

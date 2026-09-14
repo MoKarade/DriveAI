@@ -28,8 +28,13 @@ function chargerAvecSanteMock(indexCache) {
   // `texteSanteDoublons_`. Sans lui, `majSante_` lèverait — et surtout ce mock DOIT exposer
   // `getLastRow` (cf. ci-dessous), sinon on exercerait le chemin d'ERREUR de cette ligne en croyant
   // valider le chemin nominal : c'est exactement le piège corrigé plus haut pour la ligne Tri Gmail.
-  const ctx = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'GoogleApi.gs', 'TriGmail.gs', 'Doublons.gs', 'Journal.gs'],
-    { PropertiesService: mockProps() });
+  // `Main.gs` : la ligne « Historique Gmail » (C28-99) appelle `texteSanteHistoGmail_`. Même
+  // exigence que pour `Doublons.gs` — le charger POUR DE VRAI, sinon on exercerait son catch en
+  // croyant valider le chemin nominal.
+  // `Gmail.gs` : `texteSanteHistoGmail_` date son compteur du jour avec `dateGmail_` — la MÊME
+  // fonction que la campagne, sinon la clé du jour ne correspondrait pas et le compteur lirait 0.
+  const ctx = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'GoogleApi.gs', 'TriGmail.gs', 'Doublons.gs',
+    'Gmail.gs', 'Main.gs', 'Journal.gs'], { PropertiesService: mockProps() });
   const captured = [];
   // feuille_ mocké : capture l'unique setValues de « Santé » ; `getLastRow: 1` = rapport des
   // doublons encore vide (état réel avant la première passe de la campagne).
@@ -41,11 +46,51 @@ function chargerAvecSanteMock(indexCache) {
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 8 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 9 lignes de métadonnées (une seule écriture Sheet)', () => {
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 8);
+  assert.strictEqual(captured.length, 9);
   assert.ok(captured.every((l) => typeof l === 'string'));
+});
+
+test('majSante_ : la ligne « Historique Gmail » dit l\'état ET les minutes consommées (C28-99)', () => {
+  // Pourquoi cette ligne existe : la campagne historique réserve 20 min/j — le plus gros bloc de
+  // l'enveloppe de runtime — et n'était visible NULLE PART (le registre de suivi C28-44 est saturé,
+  // elle ne pouvait pas y prendre une 43ᵉ clé). Sans ce chiffre, réallouer ses minutes serait une
+  // SUPPOSITION, et §1.6 l'interdit : « ne pas déclarer une campagne finie sans lire son compteur ».
+  // Mutation : retirer la ligne de `majSante_` ⇒ ce test tombe.
+  const { ctx, captured } = chargerAvecSanteMock({});
+  ctx.majSante_();
+  const ligne = captured.find((l) => l.indexOf('Historique Gmail') === 0);
+  assert.ok(ligne, 'la ligne existe');
+  assert.ok(!ligne.includes('illisible'), 'chemin nominal, pas le catch : ' + ligne);
+  // Campagne PAS terminée (aucune Property dans le mock) : elle doit le dire, avec son avancement
+  // et les minutes du jour — jamais « terminée » par défaut (un échec fermé dans le bon sens).
+  assert.ok(/en cours/.test(ligne), ligne);
+  assert.ok(/0 fils parcourus/.test(ligne), ligne);
+  assert.ok(/des 20 min\/j/.test(ligne), 'le budget affiché DÉRIVE de CONFIG, jamais recopié : ' + ligne);
+});
+
+test('texteSanteHistoGmail_ : terminée ⇒ elle DIT que ses minutes sont réallouables', () => {
+  // C'est le signal qui débloquera la réallocation des 20 min (C28-99, reste ouvert) : il doit être
+  // explicite, pas à déduire. Mutation : rendre « terminée » sans le compteur ⇒ ce test tombe.
+  const { ctx } = chargerAvecSanteMock({});
+  const props = { DriveAI_GMAIL_HISTO: 'terminé', DriveAI_GMAIL_HISTO_OFFSET: '4210' };
+  ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => props[k] || null }) };
+  const t = ctx.texteSanteHistoGmail_();
+  assert.ok(/termin/.test(t), t);
+  assert.ok(/4210 fils/.test(t), t);
+  assert.ok(/20 min\/j sont RÉALLOUABLES/.test(t), t);
+
+  // ⚠️ ÉCHEC FERMÉ, et c'est la moitié qui compte. Une lecture d'état en panne ne doit JAMAIS
+  // rendre « terminée » : ce texte est précisément ce sur quoi on s'appuiera pour réallouer
+  // 20 min/j. Un catch optimiste ferait libérer le budget d'une campagne encore vivante — le
+  // symétrique exact du 🔴 `ascendance-illisible` de C28-93 (une panne n'est pas un verdict).
+  // Mutation : rendre « terminée ✅ » depuis le catch ⇒ cette assertion tombe.
+  ctx.PropertiesService = { getScriptProperties: () => { throw new Error('Properties indisponible'); } };
+  const panne = ctx.texteSanteHistoGmail_();
+  assert.ok(!/termin/.test(panne), 'une panne de lecture ne conclut jamais « terminée » : ' + panne);
+  assert.ok(/illisible/.test(panne), panne);
 });
 
 test('majSante_ : la ligne « Doublons » exerce le chemin NOMINAL, pas le catch (ADR-0047)', () => {

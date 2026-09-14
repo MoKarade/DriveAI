@@ -207,6 +207,10 @@ function majSante_() {
     // campagne se rend donc visible ICI, comme « Rangement ancien Drive », sans coûter un octet
     // de Property (ADR-0047 §6, backlog C28-71).
     ['Doublons (validation par empreinte) : ' + texteSanteDoublons_()],
+    // Même raison que la ligne ci-dessus (registre de suivi C28-44 saturé) : la campagne historique
+    // Gmail réserve le plus gros budget quotidien de toutes les campagnes (20 min/j) et n'était
+    // visible NULLE PART. Sans ce chiffre, réallouer ses minutes serait une supposition (§1.6).
+    ['Historique Gmail : ' + texteSanteHistoGmail_()],
     ['Mis à jour : ' + new Date()]
   ];
   f.getRange(2, 1, lignes.length, 1).setValues(lignes); // une seule écriture Sheet (I/O borné/tick)

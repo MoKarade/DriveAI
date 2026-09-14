@@ -43,6 +43,33 @@
 > Deux tests ne prouvaient rien : l'un asserte `String(null).length > 0` (toujours vrai), l'autre
 > était devenu tautologique en changeant sa valeur attendue.
 
+> **🟦 EN COURS — 2026-09-14 : C28-99, réallouer le temps d'exécution vers le vrai goulot (ADR-0054).**
+> Marc : « fais la réallocation, jveux utiliser le temps dispo au max ».
+>
+> **Mesuré avant de bouger quoi que ce soit.** La génération du plan de consolidation consomme ses
+> 10 min/j EN ENTIER sans terminer un seul domaine (1 sur 9, aucun progrès depuis 18 h) — et c'est
+> elle qui alimente tout l'aval : l'exécuteur affiche « plan drainé 372/372, attend la génération »,
+> donc ses 12 min DORMENT, et la racine `08 · Perso & projets` reste à 116 fichiers en vrac. La
+> campagne Doublons, elle, est TERMINÉE — lu dans la ligne de Santé du moteur, pas supposé.
+>
+> **Transfert `10/12/3` → `16/8/1`** : la génération gagne **+60 % de débit**, l'enveloppe
+> reset-OFF reste à **63 min/j** pour un plafond de 65. Aucune minute créée — §9 « réallouer,
+> JAMAIS augmenter » : au-delà du mur de ~90 min/j, TOUS les déclencheurs gèlent, chien de garde
+> compris (C28-29).
+>
+> Les deux verrous de COUPLE (exec↔fusion 2026-08-11, gen↔missions C28-49) devenaient faux dès
+> qu'un transfert traverse les deux paires : remplacés par un verrou de **BLOC** (somme des cinq
+> campagnes qui se prêtent du budget = 27 min/j), plus l'interdit « campagne ACTIVE à budget 0 »
+> (une campagne à 0 est MUETTE, no-op silencieux). 5 mutations jouées.
+>
+> ⚠️ **Ce qui n'est PAS réalloué, et c'est le plus gros** : les **20 min/j** de l'historique Gmail.
+> Rien nulle part ne disait si cette campagne tourne encore, et §1.6 interdit de la déclarer finie
+> sans lire son compteur — deux lectures à 0 fil ne distinguent pas « finie » de « budget épuisé »
+> ou « suspendue ». Livré à la place : **sa ligne dans l'onglet Santé** (état, avancement, minutes
+> consommées aujourd'hui sur les 20). Elle ne pouvait pas passer par le registre de suivi, SATURÉ
+> à 8 377/8 500 octets. Échec FERMÉ : une lecture en panne rend « illisible », jamais « terminée ».
+> Au prochain tick, la réponse sera écrite — et 20 minutes deviendront peut-être réallouables.
+
 > **✅ MERGÉ, DÉPLOYÉ ET VÉRIFIÉ EN PRODUCTION — 2026-09-14 : C28-93.**
 > PR #341 mergée (`88e8458`), `deploy.yml` #327 vert (clasp push + redéploiement de la web app +
 > réinstallation du déclencheur). Et le signal INDÉPENDANT, lu dans l'onglet `Réorg` deux ticks
