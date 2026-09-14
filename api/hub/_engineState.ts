@@ -5,9 +5,17 @@
  *
  * PHASE 1 (C28-27, plan architecte 2026-07-21) : Vercel est le BROKER entre le hub et le moteur.
  * `getEngineState()` interroge la web app Apps Script (`action=hub-summary`, gardée par le
- * secret partagé existant WEBAPP_SECRET — AUCUN nouveau secret) et rend les 4 métadonnées.
- * ADR-0007 respectée : 4 compteurs + 1 horodatage transitent, jamais un nom de fichier ni un
- * contenu — et le serverless n'accède toujours PAS à la Sheet (c'est le moteur qui la lit).
+ * secret partagé existant WEBAPP_SECRET — AUCUN nouveau secret) et rend les métadonnées.
+ * Le serverless n'accède toujours PAS à la Sheet : c'est le moteur qui la lit.
+ *
+ * ⚠️ CE COMMENTAIRE A DIT « JAMAIS UN NOM DE FICHIER » JUSQU'AU 14/09/2026, et c'était une glose
+ * plus stricte que l'ADR-0007 elle-même — son §2 liste `Fichier` parmi les métadonnées légitimes
+ * de l'Index, et le Journal stocke des noms de fichiers depuis toujours. Ce qui était vrai, et
+ * qui n'était écrit nulle part, c'est qu'aucun nom ne SORTAIT du compte Google de Marc.
+ * L'ADR-0057 tranche : un nom peut sortir, et il sort sous une contrainte précise — il voyage
+ * dans le bloc `details` du contrat, JAMAIS dans `metrics`, parce que le hub ne persiste que les
+ * métriques (table `releves`, 90 jours de rétention). Voir `api/hub/summary.ts`, qui applique la
+ * contrainte, et `app/test/hub-summary.test.ts`, qui la verrouille.
  *
  * Sémantique des retours (no-fake-data, échec fermé) :
  *  - `null`  → intégration moteur PAS BRANCHÉE (env absentes) ou moteur jamais passé
@@ -44,7 +52,52 @@ export interface EngineState {
   gmailThreadsToday?: number;
   /** Quota Gmail en pause (bloc usage) — optionnel. */
   gmailQuotaSuspended?: boolean;
+  /**
+   * Avancement des campagnes de fond (ADR-0057) — optionnel, borné à `MISSIONS_MAX`.
+   * Publié tel que l'onglet Progression l'a rendu : le moteur est le seul à savoir ne PAS annoncer
+   * d'horizon sur une campagne en pause.
+   */
+  missions?: MissionHub[];
+  /** Campagnes NON publiées faute de place. Dire le nombre plutôt que tronquer en silence. */
+  missionsOmises?: number;
+  /** Nom du dernier document classé (ADR-0057) — optionnel. Voir l'en-tête. */
+  lastFiledName?: string;
+  /** Domaine de classement de ce document — optionnel. */
+  lastFiledDomain?: string;
+  /** Quand il a été classé (ISO 8601) — optionnel, et absent si le nom est absent. */
+  lastFiledAt?: string;
 }
+
+/** Une campagne de fond du moteur, telle que l'onglet Progression la décrit. */
+export interface MissionHub {
+  /** Libellé du registre d'opérations du moteur (`REGISTRE_OPERATIONS`). */
+  nom: string;
+  /** Volume traité. `null` = la campagne en est encore au recensement (≠ 0 traité). */
+  traites: number | null;
+  /** Volume total. `null` = pas encore recensé. */
+  base: number | null;
+  /** Unité du volume (« fichiers », « lignes », « domaines »…). Peut être vide. */
+  unite: string;
+  /** Statut lisible calculé par le moteur (« en cours », « en pause (frein budget) »…). */
+  statut: string;
+  /** Estimation de fin, telle que le moteur l'a formulée. Vide quand il refuse d'en donner une. */
+  finEstimee: string;
+  /** La campagne a convergé. */
+  fini: boolean;
+}
+
+/**
+ * Campagnes acceptées au plus. MIROIR de `HUB_MISSIONS_MAX` (src/WebApp.gs) — deux constantes
+ * parce que `api/` ne lit pas de `.gs` (zéro dépendance par construction), et c'est la MÊME
+ * raison qui a imposé la liste blanche `REJOUABLES` de `api/mcp/index.ts`. Le moteur borne déjà ;
+ * cette borne-ci protège d'un moteur compromis ou d'un moteur en avance d'un déploiement, et elle
+ * garde la marge sous le plafond de 8 lignes du contrat.
+ */
+const MISSIONS_MAX = 6;
+
+/** Plafonds de longueur, alignés sur ceux du moteur (`HUB_TEXTE_MAX`, `HUB_NOM_FICHIER_MAX`). */
+const TEXTE_MAX = 90;
+const NOM_FICHIER_MAX = 200;
 
 /**
  * Budget d'attente de la web app. La réponse elle-même est instantanée (pré-calcul au tick) ; le
@@ -110,7 +163,7 @@ const TIMEOUT_MS = 8700;
  * comportement d'avant. Un cache partagé (Vercel KV) ferait mieux, au prix d'une dépendance —
  * refusé, `api/` est zéro-dépendance par construction.
  */
-const CACHE_TTL_MS = 5 * 60_000;
+export const CACHE_TTL_MS = 5 * 60_000;
 
 /** Dernier état LU avec succès (y compris `null` = moteur non branché, qui est une réponse valide). */
 let cache: { at: number; etat: EngineState | null } | null = null;
@@ -128,6 +181,49 @@ function compteurValide(v: unknown): number | null {
 /** Nombre ≥ 0 (non arrondi : les coûts ont des cents) ou null. Champs usage additifs, tolérants. */
 function nombrePositif(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null;
+}
+
+/** Texte borné, ou `''` pour tout le reste (nombre, objet, absent). Jamais un `String(objet)`. */
+function texteBorne(v: unknown, max: number): string {
+  if (typeof v !== 'string') return '';
+  const t = v.trim();
+  return t.length <= max ? t : t.slice(0, max - 1) + '\u2026';
+}
+
+/** Compteur de Progression : un nombre fini, ou `null` (= pas encore recensé, ≠ 0). */
+function compteurOuNull(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * Campagnes valides, bornées. Champ ADDITIF donc TOLÉRANT : une entrée mal formée est écartée,
+ * jamais une panne — le moteur peut être en avance d'un déploiement, et perdre l'avancement des
+ * campagnes ne justifie pas de priver le hub des compteurs (ni de lui faire afficher « injoignable »
+ * sur une app qui répond parfaitement).
+ *
+ * Ce qui est en revanche STRICT : le `nom`. Une campagne sans libellé n'est pas affichable — elle
+ * produirait une ligne de détail vide, que le hub rendrait comme une donnée qui n'a pas chargé.
+ */
+function missionsValides(v: unknown): MissionHub[] {
+  if (!Array.isArray(v)) return [];
+  const liste: MissionHub[] = [];
+  for (const brut of v) {
+    if (liste.length >= MISSIONS_MAX) break;
+    if (brut === null || typeof brut !== 'object') continue;
+    const m = brut as Record<string, unknown>;
+    const nom = texteBorne(m.nom, TEXTE_MAX);
+    if (!nom) continue;
+    liste.push({
+      nom,
+      traites: compteurOuNull(m.traites),
+      base: compteurOuNull(m.base),
+      unite: texteBorne(m.unite, 20),
+      statut: texteBorne(m.statut, TEXTE_MAX),
+      finEstimee: texteBorne(m.finEstimee, TEXTE_MAX),
+      fini: m.fini === true,
+    });
+  }
+  return liste;
 }
 
 /**
@@ -193,6 +289,19 @@ async function lireMoteur_(): Promise<EngineState | null> {
   const gmailThreadsToday = nombrePositif(etat.gmailThreadsToday);
   const gmailQuotaSuspended = etat.gmailQuotaSuspended === true ? true : undefined;
 
+  // Avancement des campagnes + dernier document classé (ADR-0057), additifs et tolérants.
+  const missions = missionsValides(etat.missions);
+  const missionsOmises = compteurOuNull(etat.missionsOmises);
+  // Le NOM et sa DATE ne se publient qu'ENSEMBLE. Un nom sans date se lirait comme « à l'instant »
+  // alors qu'il peut avoir douze jours — et c'est exactement ce que ce champ existe pour dire.
+  // Une date sans nom ne désigne rien. Les deux étages du couple sont donc liés ici, à l'entrée,
+  // et pas laissés à la charge du rendu.
+  const lastFiledName = texteBorne(etat.lastFiledName, NOM_FICHIER_MAX);
+  const lastFiledAtBrut = texteBorne(etat.lastFiledAt, 40);
+  const couple = lastFiledName !== '' && lastFiledAtBrut !== '' &&
+    !Number.isNaN(Date.parse(lastFiledAtBrut));
+  const lastFiledDomain = couple ? texteBorne(etat.lastFiledDomain, TEXTE_MAX) : '';
+
   return {
     reviewQueueCount,
     filedLast7d,
@@ -203,5 +312,14 @@ async function lireMoteur_(): Promise<EngineState | null> {
     ...(llmBudgetCampagnesUsd !== null ? { llmBudgetCampagnesUsd } : {}),
     ...(gmailThreadsToday !== null ? { gmailThreadsToday } : {}),
     ...(gmailQuotaSuspended ? { gmailQuotaSuspended } : {}),
+    ...(missions.length > 0 ? { missions } : {}),
+    ...(missionsOmises !== null && missionsOmises > 0 ? { missionsOmises } : {}),
+    ...(couple
+      ? {
+        lastFiledName,
+        lastFiledAt: new Date(lastFiledAtBrut).toISOString(),
+        ...(lastFiledDomain !== '' ? { lastFiledDomain } : {}),
+      }
+      : {}),
   };
 }

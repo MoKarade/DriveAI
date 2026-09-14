@@ -247,15 +247,32 @@ test('tsCellule_ : objet Date (getValues) et chaîne ISO acceptés, illisible �
 /** Contexte web app avec Property store et mocks Sheet/Drive injectables. */
 function ctxHub(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'WebApp.gs']);
+  // `Mcp.gs` est chargé pour `lireOngletBorne_` : `majResumeHub_` relit l'onglet Progression par
+  // ce lecteur BORNÉ existant plutôt que d'en écrire un second (en Apps Script tous les .gs
+  // partagent une seule portée globale — la réutilisation est réelle, pas un import simulé).
+  const c = load(['Config.gs', 'Mcp.gs', 'WebApp.gs']);
   const props = Object.assign({}, opts.props);
   c.PropertiesService = { getScriptProperties: () => ({
     getProperty: (k) => (k in props ? props[k] : null),
     setProperty: (k, v) => { props[k] = String(v); },
   }) };
-  c.feuille_ = (nom) => ({ getDataRange: () => ({ getValues: () => (opts.feuilles || {})[nom] || [[]] }) });
+  const journal = [];
+  c.journalErreur_ = (source, message) => { journal.push({ source, message }); };
+  // Feuille mockée complète : `getDataRange` pour l'Index/Journal (lecture entière) ET
+  // `getLastRow`/`getLastColumn`/`getRange` pour la lecture BORNÉE de Progression.
+  c.feuille_ = (nom) => {
+    const lignes = (opts.feuilles || {})[nom] || [[]];
+    return {
+      getDataRange: () => ({ getValues: () => lignes }),
+      getLastRow: () => lignes.length,
+      getLastColumn: () => (lignes[0] || []).length,
+      getRange: (debut, col, nb) => ({
+        getValues: () => lignes.slice(debut - 1, debut - 1 + nb).map((l) => l.slice(col - 1)),
+      }),
+    };
+  };
   c.DriveApp = { getFolderById: () => ({ getFiles: () => iter(opts.fichiersRevue || []) }) };
-  return { c, props };
+  return { c, props, journal };
 }
 
 test('actionHubSummary_ : Property absente → lastRunAt null (broker rendra « building »)', () => {
@@ -364,6 +381,11 @@ test('majResumeHub_ puis actionHubSummary_ : la lecture rend EXACTEMENT ce que l
       reviewQueueCount: 0, filedLast7d: 0, errorsLast7d: 0, lastRunAt: new Date(tick).toISOString(),
       llmCostTotalUsd: null, llmCostMonthUsd: null, llmBudgetCampagnesUsd: null,
       gmailThreadsToday: null, gmailQuotaSuspended: false,
+      // ADR-0057 : avancement des campagnes + dernier document classé. Vides ici (aucune ligne
+      // de Progression, Index sans en-tête de données) — et VIDES, pas absents : le broker
+      // distingue « le moteur ne publie pas encore » de « il publie une liste vide ».
+      missions: [], missionsOmises: 0,
+      lastFiledName: null, lastFiledDomain: null, lastFiledAt: null,
     },
   });
 });
@@ -419,4 +441,227 @@ test('majResumeHub_ : sans résumé antérieur, le calcul COMPLET a bien lieu (p
   const ecrit = JSON.parse(props.DriveAI_HUB_SUMMARY);
   assert.strictEqual(ecrit.reviewQueueCount, 1);
   assert.strictEqual(typeof ecrit.filedLast7d, 'number');
+});
+
+/* ---------- ADR-0057 : l'avancement des campagnes et le dernier document classé ---------- */
+
+test('missionsPourHub_ : ne retient que les CAMPAGNES, actives avant terminées, plafond respecté', () => {
+  const c = load(['Config.gs', 'WebApp.gs']);
+  // Colonnes : 0 Clé, 1 Opération, 2 Traités, 3 Base, 4 Unité, 5 Statut, 6 Horodaté, 7 Détail,
+  // 8 Dernière activité, 9 Dernière erreur, 10 Type, 11 Dernière passe, 12 Fin estimée.
+  const ligne = (cle, op, traites, base, statut, type, fin) =>
+    [cle, op, traites, base, 'fichiers', statut, '', '', '', '', type, '', fin || ''];
+  const r = plat(c.missionsPourHub_([
+    ligne('a', 'Rangement initial du Drive', 900, 900, 'terminé', 'campagne'),
+    ligne('b', 'Intake — dépôts (00 · À trier)', 3, '', 'en cours', 'flux'),
+    ligne('c', 'Mission — paies par employeur (02)', 12, 48, 'en cours', 'campagne', 'reste 36 fichiers · ~3 h'),
+    ligne('d', 'Progression (cet onglet)', '', '', '', 'observabilite'),
+    ligne('e', 'Mission — impôts par année (02)', 0, 20, 'en pause (frein budget)', 'campagne'),
+  ], 2));
+
+  assert.strictEqual(r.liste.length, 2);
+  assert.deepStrictEqual(r.liste.map((m) => m.nom), [
+    'Mission — paies par employeur (02)',
+    'Mission — impôts par année (02)',
+  ], 'les ACTIVES passent devant « terminé », et l\'ordre de l\'onglet (= du tick) est conservé');
+  assert.strictEqual(r.omises, 1, 'la campagne terminée est comptée, jamais tue');
+  assert.strictEqual(r.liste[0].base, 48);
+  assert.strictEqual(r.liste[0].finEstimee, 'reste 36 fichiers · ~3 h',
+    'l\'estimation vient du MOTEUR telle quelle — le broker ne la reformule pas');
+  // `flux` et `observabilite` n'ont aucun avancement : publier « Progression · terminé » serait du bruit.
+  assert.ok(!JSON.stringify(r).includes('Intake'));
+  assert.ok(!JSON.stringify(r).includes('Progression (cet onglet)'));
+});
+
+test('missionsPourHub_ : « pas encore recensé » (cellule vide) reste null, jamais 0', () => {
+  const c = load(['Config.gs', 'WebApp.gs']);
+  // DISCRIMINANT : si les cellules vides devenaient 0, une campagne au RECENSEMENT afficherait
+  // « 0 / 0 · recensement » — un couple qui ressemble à une campagne finie ou en panne, alors
+  // qu'elle est simplement en train de compter ses fichiers.
+  const r = plat(c.missionsPourHub_([
+    ['k', 'Consolidation — génération du plan', '', '', 'domaines', 'recensement', '', '', '', '', 'campagne', '', ''],
+    ['k2', 'Mission — carrière', 0, 30, 'fichiers', 'en cours', '', '', '', '', 'campagne', '', ''],
+  ]));
+  assert.strictEqual(r.liste[0].traites, null);
+  assert.strictEqual(r.liste[0].base, null);
+  assert.strictEqual(r.liste[1].traites, 0, '0 traité sur une base connue est un VRAI zéro');
+  assert.strictEqual(r.liste[1].base, 30);
+});
+
+test('missionsPourHub_ : textes bornés (la Property plafonne à ~9 Ko, pas l\'onglet)', () => {
+  const c = load(['Config.gs', 'WebApp.gs']);
+  const r = plat(c.missionsPourHub_([
+    ['k', 'M'.repeat(500), 1, 2, 'u'.repeat(60), 's'.repeat(300), '', '', '', '', 'campagne', '', 'f'.repeat(400)],
+  ]));
+  assert.strictEqual(r.liste[0].nom.length, c.HUB_TEXTE_MAX);
+  assert.strictEqual(r.liste[0].statut.length, c.HUB_TEXTE_MAX);
+  assert.strictEqual(r.liste[0].finEstimee.length, c.HUB_TEXTE_MAX);
+  assert.strictEqual(r.liste[0].unite.length, 20);
+  assert.ok(r.liste[0].nom.endsWith('…'), 'la troncature est SIGNALÉE, jamais muette');
+});
+
+test('compterMetriquesHub_ : le dernier document classé se cherche sur TOUT l\'Index, pas sur 7 jours', () => {
+  const c = load(['Config.gs', 'WebApp.gs']);
+  const jour = 24 * 60 * 60 * 1000;
+  const maintenant = Date.now();
+  const index = [
+    ['h', 'h', 'h', 'h', 'h', 'h', 'h', 'h'],
+    ['drive|a', new Date(maintenant - 40 * jour), 'vieux.pdf', '02 · Finances', 'p', 'classé', '', ''],
+    ['drive|b', new Date(maintenant - 12 * jour), '2026-09-02_Hydro.pdf', '02 · Finances', 'p', 'classé', '', ''],
+    ['drive|c', new Date(maintenant - 2 * jour), 'quarantaine.pdf', '02 · Finances', 'p', 'à vérifier', '', ''],
+  ];
+  const r = plat(c.compterMetriquesHub_(index, [['h']], maintenant));
+  // DISCRIMINANT : rien n'a été classé depuis 12 jours, donc `classes7j` vaut 0 — et c'est
+  // précisément le moment où « aucun document classé » serait un faux diagnostic de panne.
+  assert.strictEqual(r.classes7j, 0);
+  assert.strictEqual(r.dernierClasse.nom, '2026-09-02_Hydro.pdf');
+  assert.strictEqual(r.dernierClasse.domaine, '02 · Finances');
+  assert.ok(r.dernierClasse.ts > maintenant - 13 * jour);
+});
+
+test('compterMetriquesHub_ : un statut ≠ classé ou un nom VIDE ne remplacent jamais le nom connu', () => {
+  const c = load(['Config.gs', 'WebApp.gs']);
+  const maintenant = Date.now();
+  const index = [
+    ['h', 'h', 'h', 'h', 'h', 'h', 'h', 'h'],
+    ['drive|a', new Date(maintenant - 3600000), 'connu.pdf', '02 · Finances', 'p', 'classé', '', ''],
+    // Ligne classée SANS colonne Fichier (il en existe, écrites par d'anciennes campagnes) : plus
+    // récente, elle effacerait le seul nom publiable si le garde du nom vide manquait.
+    ['drive|b', new Date(maintenant - 60000), '', '02 · Finances', 'p', 'classé', '', ''],
+    // Plus récente encore, mais pas classée : elle n'est pas « le dernier document classé ».
+    ['drive|c', new Date(maintenant), 'en-attente.pdf', '02 · Finances', 'p', 'à vérifier', '', ''],
+  ];
+  const r = plat(c.compterMetriquesHub_(index, [['h']], maintenant));
+  assert.strictEqual(r.dernierClasse.nom, 'connu.pdf');
+});
+
+test('compterMetriquesHub_ : aucun document classé → dernierClasse null (jamais un nom inventé)', () => {
+  const c = load(['Config.gs', 'WebApp.gs']);
+  const r = plat(c.compterMetriquesHub_([['h'], ['drive|a', new Date(), 'x.pdf', 'd', 'p', 'à vérifier', '', '']], [['h']], Date.now()));
+  assert.strictEqual(r.dernierClasse, null);
+});
+
+test('majResumeHub_ : publie l\'avancement lu dans Progression ET le dernier document classé', () => {
+  const tick = Date.now() - 2 * 60 * 1000;
+  const classeLe = new Date(Date.now() - 20 * 60 * 1000);
+  const feuilles = {
+    Index: [
+      ['Clé', 'Traité le', 'Fichier', 'Domaine', 'Chemin', 'Statut', 'Empreinte', 'Confiance'],
+      ['drive|a', classeLe, '2026-09-14_Facture_Hydro.pdf', '02 · Finances', 'p', 'classé', '', ''],
+    ],
+    Journal: [['Date', 'Niveau', 'Source', 'Message']],
+    Progression: [
+      ['Clé', 'Opération', 'Traités', 'Base', 'Unité', 'Statut', 'Horodaté', 'Détail',
+        'Dernière activité', 'Dernière erreur', 'Type', 'Dernière passe', 'Fin estimée'],
+      ['mission-paies', 'Mission — paies par employeur (02)', 12, 48, 'fichiers', 'en cours',
+        '', '', '', '', 'campagne', '+3 fichiers', 'reste 36 fichiers · ~2 h'],
+    ],
+  };
+  const { c, props } = ctxHub({ props: { DriveAI_LAST_TICK: String(tick) }, feuilles, fichiersRevue: [] });
+  c.majResumeHub_();
+  const ecrit = JSON.parse(props.DriveAI_HUB_SUMMARY);
+
+  assert.strictEqual(ecrit.missions.length, 1);
+  assert.strictEqual(ecrit.missions[0].nom, 'Mission — paies par employeur (02)');
+  assert.strictEqual(ecrit.missions[0].traites, 12);
+  assert.strictEqual(ecrit.lastFiledName, '2026-09-14_Facture_Hydro.pdf');
+  assert.strictEqual(ecrit.lastFiledDomain, '02 · Finances');
+  assert.strictEqual(ecrit.lastFiledAt, classeLe.toISOString(),
+    'le nom voyage AVEC sa date : sans elle il se lirait « à l\'instant » quel que soit son âge');
+});
+
+test('majResumeHub_ : le dernier document classé se REPORTE quand le calcul cher est throttlé', () => {
+  // Il vient de l'Index, donc du côté CHER. Il porte SA PROPRE date : le report ne le périme pas,
+  // là où un champ « il y a X » figé aurait vieilli en silence pendant 15 min.
+  const classeLe = new Date(Date.now() - 3 * 60 * 60 * 1000);
+  const feuilles = {
+    Index: [['h', 'h', 'h', 'h', 'h', 'h', 'h', 'h'],
+      ['drive|a', classeLe, 'rapport.pdf', '05 · Carrière', 'p', 'classé', '', '']],
+    Journal: [['h']],
+    Progression: [['h', 'h', 'h', 'h', 'h', 'h', 'h', 'h', 'h', 'h', 'h', 'h', 'h']],
+  };
+  const { c, props } = ctxHub({ props: { DriveAI_LAST_TICK: String(Date.now() - 600000) }, feuilles });
+  c.majResumeHub_();
+  const premier = JSON.parse(props.DriveAI_HUB_SUMMARY);
+  assert.strictEqual(premier.lastFiledName, 'rapport.pdf');
+
+  // Tick suivant, DANS la fenêtre de throttle : l'Index n'est plus relu.
+  props.DriveAI_LAST_TICK = String(Date.now());
+  let scans = 0;
+  c.compterMetriquesHub_ = () => { scans++; return { classes7j: 0, erreurs7j: 0, dernierClasse: null }; };
+  c.majResumeHub_();
+  const second = JSON.parse(props.DriveAI_HUB_SUMMARY);
+  assert.strictEqual(scans, 0, 'le throttle tient');
+  assert.strictEqual(second.lastFiledName, 'rapport.pdf');
+  assert.strictEqual(second.lastFiledAt, classeLe.toISOString());
+});
+
+test('majResumeHub_ : une panne de lecture de Progression ne prive le hub de RIEN d\'autre', () => {
+  const tick = Date.now();
+  const { c, props, journal } = ctxHub({ props: { DriveAI_LAST_TICK: String(tick) } });
+  const feuilleSaine = c.feuille_;
+  c.feuille_ = (nom) => {
+    if (nom === 'Progression') throw new Error('onglet illisible (simulé)');
+    return feuilleSaine(nom);
+  };
+  c.majResumeHub_();
+  const ecrit = JSON.parse(props.DriveAI_HUB_SUMMARY);
+  assert.deepStrictEqual(ecrit.missions, [], 'l\'avancement manque…');
+  assert.strictEqual(ecrit.lastRunAt, new Date(tick).toISOString(), '…et RIEN d\'autre n\'est emporté');
+  assert.strictEqual(typeof ecrit.filedLast7d, 'number');
+  assert.ok(journal.some((e) => /avancement des campagnes/i.test(e.message)),
+    'la dégradation est DITE : une dégradation silencieuse est le défaut qu\'on corrige, pas une parade');
+});
+
+test('majResumeHub_ : au-delà du budget de la Property, les campagnes sont LARGUÉES et le dire', () => {
+  // ⚠️ Un `setProperty` au-delà de ~9 Ko est REFUSÉ par Apps Script sans casser le tick : le hub
+  // servirait éternellement le dernier résumé écrit, rien ne serait rouge. On sacrifie donc la
+  // partie optionnelle plutôt que le résumé entier. DISCRIMINANT : sans ce garde, la charge
+  // dépasserait HUB_SUMMARY_MAX_OCTETS et la Property partirait telle quelle.
+  const gros = (n) => ['k' + n, 'Campagne ' + n + ' ' + 'x'.repeat(88), 1, 2, 'fichiers',
+    'y'.repeat(88), '', '', '', '', 'campagne', '', 'z'.repeat(88)];
+  const feuilles = {
+    Index: [['h']], Journal: [['h']],
+    Progression: [['h', 'h', 'h', 'h', 'h', 'h', 'h', 'h', 'h', 'h', 'h', 'h', 'h']],
+  };
+  const { c, props, journal } = ctxHub({ props: { DriveAI_LAST_TICK: String(Date.now()) }, feuilles });
+  // Un plafond de campagnes volontairement absurde pour franchir le budget d'octets — la vraie
+  // borne (6) le rend inatteignable, et c'est bien ce que le test d'ensemble ci-dessous vérifie.
+  c.HUB_MISSIONS_MAX = 400;
+  c.missionsPourHub_ = () => ({
+    liste: Array.from({ length: 400 }, (_, i) => ({
+      nom: gros(i)[1], traites: 1, base: 2, unite: 'fichiers',
+      statut: 'y'.repeat(88), finEstimee: 'z'.repeat(88), fini: false,
+    })),
+    omises: 0,
+  });
+  c.majResumeHub_();
+  const ecrit = JSON.parse(props.DriveAI_HUB_SUMMARY);
+  assert.ok(props.DriveAI_HUB_SUMMARY.length <= c.HUB_SUMMARY_MAX_OCTETS);
+  assert.deepStrictEqual(ecrit.missions, []);
+  assert.strictEqual(ecrit.missionsOmises, 400, 'le nombre largué est publié, pas effacé');
+  assert.strictEqual(typeof ecrit.filedLast7d, 'number', 'le résumé ESSENTIEL survit');
+  assert.ok(journal.some((e) => /trop volumineux/i.test(e.message)));
+});
+
+test('majResumeHub_ : à plafond NORMAL, le pire résumé possible tient sous le budget', () => {
+  // Le garde ci-dessus est un filet ; c'est CE test qui dit que le filet ne sert jamais. 6 campagnes
+  // aux textes saturés + un nom de fichier de 200 caractères doivent rester très loin des ~9 Ko —
+  // et un registre VOISIN de ce même moteur est déjà à 8 377 octets, donc la marge n'est pas
+  // théorique.
+  const feuilles = {
+    Index: [['h', 'h', 'h', 'h', 'h', 'h', 'h', 'h'],
+      ['drive|a', new Date(), 'F'.repeat(400) + '.pdf', 'D'.repeat(200), 'p', 'classé', '', '']],
+    Journal: [['h']],
+    Progression: [['h', 'h', 'h', 'h', 'h', 'h', 'h', 'h', 'h', 'h', 'h', 'h', 'h']].concat(
+      Array.from({ length: 20 }, (_, i) => ['k' + i, 'M'.repeat(200), 1, 2, 'u'.repeat(40),
+        'S'.repeat(200), '', '', '', '', 'campagne', '', 'E'.repeat(200)])),
+  };
+  const { c, props, journal } = ctxHub({ props: { DriveAI_LAST_TICK: String(Date.now()) }, feuilles });
+  c.majResumeHub_();
+  assert.strictEqual(JSON.parse(props.DriveAI_HUB_SUMMARY).missions.length, c.HUB_MISSIONS_MAX);
+  assert.ok(props.DriveAI_HUB_SUMMARY.length < c.HUB_SUMMARY_MAX_OCTETS,
+    'charge = ' + props.DriveAI_HUB_SUMMARY.length + ' octets');
+  assert.ok(!journal.some((e) => /trop volumineux/i.test(e.message)),
+    'aucun largage : le garde de taille ne se déclenche pas — il reste un filet, jamais un passage');
 });

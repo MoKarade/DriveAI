@@ -691,9 +691,119 @@ function actionHubSummary_() {
   return { ok: true, etat: etat };
 }
 
+/* ---------- Avancement des missions publié au hub (HUB-MISSIONS, ADR-0057) ---------- */
+
 /**
- * Pré-calcule les 4 métriques du widget hub et les persiste (Property `DriveAI_HUB_SUMMARY`, JSON
- * compact ~90 octets ≪ 9 Ko). Appelée UNE fois par tick, dans le finally, ENVELOPPÉE (Main.gs) :
+ * Nombre d'opérations de fond publiées au hub, au plus.
+ *
+ * 6 et pas 8 : le contrat `hub-contract` v1.3 plafonne une section de détail à 8 lignes, et
+ * DriveAI compte aujourd'hui une quinzaine de campagnes — le plafond du contrat serait donc
+ * atteint AVANT celui-ci, et un dépassement fait REJETER le résumé entier (le hub afficherait
+ * « réponse invalide », c'est-à-dire accuserait l'app d'une panne qu'elle n'a pas). Garder deux
+ * lignes de marge sous le plafond du contrat est ce qui rend ce rejet impossible.
+ *
+ * Ce qui est tronqué n'est pas tu : `missionsOmises` porte le compte, et le hub l'affiche.
+ */
+var HUB_MISSIONS_MAX = 6;
+
+/**
+ * Longueurs maximales des textes publiés. Le contrat a ses propres plafonds (40 pour un libellé,
+ * 80 pour une précision) et c'est le BROKER qui les applique — ici on borne la Property, pas
+ * l'affichage.
+ *
+ * ⚠️ POURQUOI BORNER ICI AUSSI. `DriveAI_HUB_SUMMARY` est une Script Property : Apps Script
+ * refuse au-delà de ~9 Ko par valeur, et un registre voisin de ce même moteur est déjà à
+ * 8 377 octets. Un `setProperty` refusé ne casse pas le tick — il laisse le hub servir
+ * ÉTERNELLEMENT le dernier résumé écrit, sans que rien ne soit rouge : exactement la panne
+ * silencieuse que tout le reste de ce fichier existe pour supprimer.
+ */
+var HUB_TEXTE_MAX = 90;
+var HUB_NOM_FICHIER_MAX = 200;
+
+/**
+ * Budget de la Property `DriveAI_HUB_SUMMARY`, en octets de JSON.
+ *
+ * 8 000 sous les ~9 Ko d'Apps Script : la marge n'est pas de la superstition, c'est ce qui
+ * absorbe un champ additif ajouté par une session future sans qu'elle ait à connaître ce
+ * plafond. Au-delà, `majResumeHub_` republie SANS les missions (cf. son garde de taille) plutôt
+ * que de tenter une écriture qui échouerait.
+ */
+var HUB_SUMMARY_MAX_OCTETS = 8000;
+
+/** Tronque en signalant la troncature — jamais une coupe muette qui passe pour la valeur. */
+function tronquerHub_(valeur, max) {
+  var t = String(valeur === null || valeur === undefined ? '' : valeur);
+  return t.length <= max ? t : t.slice(0, max - 1) + '\u2026';
+}
+
+/**
+ * Avancement des campagnes de fond, tiré des lignes BRUTES de l'onglet Progression. PURE (testée).
+ *
+ * ── POURQUOI L'ONGLET PROGRESSION ET PAS LES PROPERTIES ─────────────────────────────
+ *
+ * Les compteurs bruts vivent bien dans les Properties (`chargerEtatMissions_`), mais le STATUT
+ * lisible (« en pause (frein budget) »), le reste à faire et l'estimation de fin sont calculés
+ * par `lignesProgression_` (Journal.gs) — avec, dedans, tout ce que cette fonction a appris à ne
+ * PAS dire : pas d'horizon sur une campagne en pause, pas de date de fin sur une mission
+ * convergée à reliquat. Recalculer ces phrases ici donnerait un SECOND jugement sur la même
+ * réalité, et c'est le premier qui divergerait sans que personne ne le voie. L'onglet est réécrit
+ * en entier à chaque tick, juste AVANT `majResumeHub_` (ordre du `finally`, Main.gs) : le relire
+ * publie exactement ce que Marc voit dans l'app.
+ *
+ * Seules les lignes de `type` « campagne » entrent : le rangement, les missions de curation, la
+ * consolidation, les resets. Les lignes de flux (intake, tri Gmail) et d'observabilité n'ont pas
+ * d'avancement — publier « Progression (cet onglet) · terminé » serait du bruit.
+ *
+ * ORDRE : les opérations ACTIVES d'abord, puis les « terminé » récents, et à l'intérieur de
+ * chaque groupe l'ordre de l'onglet — qui est celui du tick, donc la priorité. Trier par
+ * avancement ou par activité ferait danser les lignes d'un relevé à l'autre pour une information
+ * qui, elle, ne change pas.
+ *
+ * @param {Array<Array>} lignesProgression  lignes de données (13 col, cf. COLONNES_PROGRESSION)
+ * @param {number=} max  plafond (défaut HUB_MISSIONS_MAX)
+ * @return {{liste: Array<Object>, omises: number}}
+ */
+function missionsPourHub_(lignesProgression, max) {
+  var plafond = typeof max === 'number' && max >= 0 ? max : HUB_MISSIONS_MAX;
+  var retenues = (lignesProgression || []).filter(function (l) {
+    return l && String(l[10] || '') === 'campagne' && String(l[1] || '') !== '';
+  }).map(function (l) {
+    var statut = tronquerHub_(l[5], HUB_TEXTE_MAX);
+    return {
+      nom: tronquerHub_(l[1], HUB_TEXTE_MAX),
+      traites: nombreProgressionHub_(l[2]),
+      base: nombreProgressionHub_(l[3]),
+      unite: tronquerHub_(l[4], 20),
+      statut: statut,
+      finEstimee: tronquerHub_(l[12], HUB_TEXTE_MAX),
+      fini: statut === 'terminé'
+    };
+  });
+  var actives = retenues.filter(function (m) { return !m.fini; });
+  var finies = retenues.filter(function (m) { return m.fini; });
+  var ordonnees = actives.concat(finies);
+  return {
+    liste: ordonnees.slice(0, plafond),
+    omises: Math.max(0, ordonnees.length - plafond)
+  };
+}
+
+/**
+ * Cellule de compteur de Progression → nombre, ou `null` quand elle est VIDE.
+ *
+ * `null` et `0` ne disent pas la même chose : une campagne au RECENSEMENT n'a pas encore de base
+ * (`''`), une campagne qui n'a rien traité en a une et vaut 0. Les confondre afficherait
+ * « 0 / 0 · en cours » sur une campagne qui compte encore ses fichiers.
+ */
+function nombreProgressionHub_(cellule) {
+  if (cellule === '' || cellule === null || cellule === undefined) return null;
+  var n = Number(cellule);
+  return isNaN(n) ? null : n;
+}
+
+/**
+ * Pré-calcule les métriques du widget hub et les persiste (Property `DriveAI_HUB_SUMMARY`, JSON
+ * borné par `HUB_SUMMARY_MAX_OCTETS` ≪ 9 Ko). Appelée UNE fois par tick, dans le finally, ENVELOPPÉE (Main.gs) :
  * un échec ne bloque jamais l'intake. Le calcul (getValues + liste Drive) est ici sans risque de
  * délai — le tick a son propre garde-temps. `lastRunAt` = heartbeat DriveAI_LAST_TICK (écrit juste
  * avant dans le même finally). ADR-0007 : métadonnées seulement.
@@ -729,7 +839,35 @@ function majResumeHub_() {
       feuille_('Index').getDataRange().getValues(),
       feuille_('Journal').getDataRange().getValues(),
       Date.now())
-    : { classes7j: precedent.filedLast7d, erreurs7j: precedent.errorsLast7d };
+    // Le dernier document classé vient de l'Index : il est donc du côté CHER, et se reporte tel
+    // quel quand le calcul n'a pas lieu. Il porte SA PROPRE date (`lastFiledAt`), ce qui le rend
+    // insensible au report — « il y a 22 min » reste vrai même publié par un tick qui n'a pas
+    // relu l'Index, là où un « à l'instant » sans date aurait vieilli en silence.
+    : {
+      classes7j: precedent.filedLast7d, erreurs7j: precedent.errorsLast7d,
+      dernierClasse: precedent.lastFiledAt
+        ? {
+          ts: Date.parse(String(precedent.lastFiledAt)),
+          nom: String(precedent.lastFiledName || ''),
+          domaine: String(precedent.lastFiledDomain || '')
+        }
+        : null
+    };
+  var lastFiled = compte.dernierClasse || null;
+  // Avancement des campagnes — côté FRAIS (partage cher/frais de C28-59) : l'onglet Progression
+  // vient d'être réécrit par `majProgressions_` dans le même `finally`, et une lecture bornée de
+  // ~50 lignes n'a rien de commun avec la relecture de l'Index ENTIER que le throttle protège.
+  // C'est aussi ce que Marc veut voir BOUGER : une mission gelée quinze minutes de plus que la
+  // réalité est exactement la plainte qui a motivé C28-59.
+  //
+  // Try DÉDIÉ, comme le cumul de coût : une panne de lecture de l'onglet ne doit pas emporter les
+  // compteurs ni le dernier document classé avec elle.
+  var missions = { liste: [], omises: 0 };
+  try {
+    missions = missionsPourHub_(lireOngletBorne_('Progression', MCP_PROGRESSION_MAX), HUB_MISSIONS_MAX);
+  } catch (e) {
+    journalErreur_('Hub', 'Avancement des campagnes indisponible : ' + e);
+  }
   // Coûts & quotas (bloc `usage` du hub) : coût LLM CUMULÉ + coût du MOIS + activité Gmail
   // du jour + état du quota Gmail. Métadonnées agrégées seulement (ADR-0007). Enveloppé :
   // une panne de mesure ne doit pas priver le hub des 4 compteurs.
@@ -781,9 +919,34 @@ function majResumeHub_() {
     llmCostMonthUsd: llmCostMonthUsd,
     llmBudgetCampagnesUsd: llmBudgetCampagnesUsd,
     gmailThreadsToday: gmailThreadsToday,
-    gmailQuotaSuspended: gmailQuotaSuspended
+    gmailQuotaSuspended: gmailQuotaSuspended,
+    // AVANCEMENT DES CAMPAGNES + DERNIER DOCUMENT CLASSÉ (HUB-MISSIONS, ADR-0057). Champs ADDITIFS :
+    // un broker pas encore redéployé les ignore, il ne tombe pas.
+    //
+    // ⚠️ Le NOM DE FICHIER est une révision assumée de la doctrine, pas un oubli : l'ADR-0007 §2
+    // liste `Fichier` parmi les métadonnées légitimes de l'Index, mais jusqu'ici aucun nom ne
+    // SORTAIT du compte Google de Marc. L'ADR-0057 tranche la question et fixe le garde-fou qui
+    // compte : le nom voyage dans `details`, JAMAIS dans `metrics` — le hub ne persiste que les
+    // métriques (table `releves`), donc aucun nom de document de Marc n'atterrit dans sa base.
+    missions: missions.liste,
+    missionsOmises: missions.omises,
+    lastFiledName: lastFiled && lastFiled.nom ? tronquerHub_(lastFiled.nom, HUB_NOM_FICHIER_MAX) : null,
+    lastFiledDomain: lastFiled && lastFiled.domaine ? tronquerHub_(lastFiled.domaine, HUB_TEXTE_MAX) : null,
+    lastFiledAt: lastFiled && isFinite(lastFiled.ts) ? new Date(lastFiled.ts).toISOString() : null
   };
-  props.setProperty('DriveAI_HUB_SUMMARY', JSON.stringify(etat));
+  // GARDE DE TAILLE — échec fermé appliqué à la Property. Un `setProperty` au-delà de ~9 Ko est
+  // REFUSÉ par Apps Script : le tick continuerait, et le hub servirait éternellement le dernier
+  // résumé écrit sans que rien ne soit rouge. On sacrifie donc la partie OPTIONNELLE (l'avancement
+  // des campagnes, le plus gros poste) plutôt que le résumé entier, et on le DIT au Journal —
+  // sinon la dégradation serait elle-même silencieuse.
+  var charge = JSON.stringify(etat);
+  if (charge.length > HUB_SUMMARY_MAX_OCTETS) {
+    journalErreur_('Hub', 'Résumé hub trop volumineux (' + charge.length + ' octets) : avancement des campagnes retiré.');
+    etat.missions = [];
+    etat.missionsOmises = missions.liste.length + missions.omises;
+    charge = JSON.stringify(etat);
+  }
+  props.setProperty('DriveAI_HUB_SUMMARY', charge);
   // L'horodatage du calcul CHER n'avance QUE quand il a réellement eu lieu : sinon un
   // rafraîchissement bon marché repousserait indéfiniment le recalcul des compteurs 7 jours,
   // qui ne seraient alors jamais mis à jour (le throttle deviendrait un gel).
@@ -839,11 +1002,22 @@ function compterMetriquesHub_(lignesIndex, lignesJournal, maintenantMs) {
   var seuil = maintenantMs - 7 * 24 * 60 * 60 * 1000;
 
   var parDocument = {};
+  // Le DERNIER document classé se cherche sur TOUT l'Index, jamais sur la fenêtre de 7 jours :
+  // « rien de classé depuis douze jours » est une information — « aucun document classé »
+  // serait faux, et c'est précisément le genre de vide qui se lit comme une panne.
+  var dernierClasse = null;
   for (var i = 1; i < lignesIndex.length; i++) {
     var ligne = lignesIndex[i];
     if (String(ligne[5]) !== 'classé') continue;
     var ts = tsCellule_(ligne[1]);
-    if (isNaN(ts) || ts < seuil) continue;
+    if (isNaN(ts)) continue;
+    var nomFichier = String(ligne[2] || '');
+    // Un nom VIDE ne remplace pas un nom connu : une ligne d'Index sans colonne `Fichier` (il en
+    // existe, écrites par des campagnes anciennes) effacerait sinon le seul nom publiable.
+    if (nomFichier && (dernierClasse === null || ts > dernierClasse.ts)) {
+      dernierClasse = { ts: ts, nom: nomFichier, domaine: String(ligne[3] || '') };
+    }
+    if (ts < seuil) continue;
     parDocument[cleDocumentIndex_(String(ligne[0]))] = true;
   }
   var classes7j = Object.keys(parDocument).length;
@@ -855,7 +1029,7 @@ function compterMetriquesHub_(lignesIndex, lignesJournal, maintenantMs) {
     if (!isNaN(tsJ) && tsJ >= seuil) erreurs7j++;
   }
 
-  return { classes7j: classes7j, erreurs7j: erreurs7j };
+  return { classes7j: classes7j, erreurs7j: erreurs7j, dernierClasse: dernierClasse };
 }
 
 /**

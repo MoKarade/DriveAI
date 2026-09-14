@@ -396,8 +396,15 @@ test('accélération : majResumeHub_ est throttlé (il relisait l\'Index ENTIER 
   assert.ok(/HUB_RESUME_INTERVALLE_MS/.test(corps), 'le throttle doit être appliqué');
   // Le marqueur ne se pose qu'APRÈS le calcul : une panne rejoue au tick suivant (jamais un
   // « déjà fait » sur un calcul qui a échoué).
+  //
+  // ⚠️ La sonde ne cherche plus `JSON.stringify(etat)` mais le `setProperty` lui-même : la
+  // sérialisation est passée dans une variable quand le garde de taille est arrivé (ADR-0057),
+  // et la sonde littérale a alors échoué sur un code toujours CORRECT. Un test de structure
+  // mérite d'être aussi peu couplé que possible à la façon d'écrire — sinon il crie à chaque
+  // refactorisation et on prend l'habitude de le « réparer » sans lire ce qu'il affirme.
   const posMarqueur = src.indexOf("DriveAI_HUB_MAJ_MS', String(Date.now())");
-  const posEcriture = src.indexOf("DriveAI_HUB_SUMMARY', JSON.stringify(etat)");
-  assert.ok(posEcriture !== -1 && posMarqueur > posEcriture,
+  const posEcriture = src.indexOf("setProperty('DriveAI_HUB_SUMMARY'");
+  assert.ok(posEcriture !== -1, 'l\'écriture du résumé doit rester repérable dans le source');
+  assert.ok(posMarqueur > posEcriture,
     'le marqueur de fraîcheur doit être posé APRÈS l\'écriture du résumé');
 });

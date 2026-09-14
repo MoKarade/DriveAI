@@ -21,7 +21,7 @@
 
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { Requete, Reponse, repondreJson } from '../_lib';
-import { getEngineState, EngineState } from './_engineState';
+import { getEngineState, EngineState, MissionHub, CACHE_TTL_MS } from './_engineState';
 
 /** Version du contrat hub (= CONTRACT_VERSION du package). Bump = rupture → nouveau tag + re-pin. */
 const CONTRACT_VERSION = 1;
@@ -31,8 +31,42 @@ const HUB_TOKEN_HEADER = 'x-hub-token';
 const URL_APP = 'https://drive.hubperso.com';
 /** Couleur d'accent du widget (hex 6 digits) — accent de l'app (styles.css `--accent`, v5 Material Dark). */
 const COULEUR = '#8ab4f8';
-/** Moteur « muet » au-delà de 45 min sans tick (déclencheur à 30 min + marge) → status degraded. */
+/**
+ * Moteur « muet » au-delà de 45 min sans tick → `status: degraded`.
+ *
+ * ⚠️ CORRECTION DU 14/09/2026. Ce commentaire disait « déclencheur à 30 min + marge » : les deux
+ * moitiés étaient fausses. Le DÉCLENCHEUR du tick est à 5 minutes (`CONFIG.TICK_MINUTES`) ; c'est
+ * le CHIEN DE GARDE qui est à 30 (`CONFIG.WATCHDOG_MINUTES`). La valeur de 45 min est donc bien
+ * calibrée — sur le chien de garde, plus une marge d'un demi-cycle — mais sa raison écrite
+ * désignait le mauvais mécanisme. Un seuil dont la justification est fausse est un seuil que la
+ * prochaine session « corrigera » vers 10 min en croyant coller au déclencheur, et DriveAI
+ * passerait alors en `degraded` à chaque tick manqué.
+ */
 const SEUIL_MUET_MS = 45 * 60 * 1000;
+
+/**
+ * Âge maximal ATTENDU de la donnée, publié au hub (`expectedMaxAgeSec`, contrat v1.3).
+ *
+ * DÉRIVÉ, jamais écrit en dur : c'est exactement le seuil au-delà duquel DriveAI se déclare
+ * elle-même `degraded`, plus la durée de vie du cache du broker — puisqu'un résumé servi depuis
+ * ce cache porte un `dataAsOf` vieilli d'autant.
+ *
+ * ── POURQUOI LE DÉRIVER PLUTÔT QUE DE CHOISIR UN JOLI CHIFFRE ───────────────────────
+ *
+ * Le hub juge la fraîcheur avec ce nombre et lui seul (`lib/gel.ts`, ADR-0003 de Hubperso) : il
+ * n'a aucune connaissance du rythme de DriveAI, et c'est voulu. Si ce nombre était indépendant de
+ * `SEUIL_MUET_MS`, les deux surfaces se contrediraient — le hub afficherait « donnée figée »
+ * pendant que le widget de la même app affiche `ok`, ou l'inverse. Deux diagnostics opposés sur
+ * la même réalité, c'est la façon la plus sûre d'apprendre à n'en croire aucun. Dérivé, l'écart
+ * est impossible par construction : un rajustement du seuil déplace les deux ensemble.
+ */
+const AGE_MAX_ATTENDU_SEC = Math.round((SEUIL_MUET_MS + CACHE_TTL_MS) / 1000);
+
+/** Plafonds du contrat v1.3 pour une ligne de détail. Dépasser fait REJETER le résumé entier. */
+const LABEL_MAX = 40;
+const HINT_MAX = 80;
+/** Le contrat ne borne PAS la valeur texte d'une ligne de détail — le producteur doit le faire. */
+const VALEUR_TEXTE_MAX = 60;
 
 /**
  * Comparaison de jetons en TEMPS CONSTANT, insensible aux longueurs différentes : on compare les
@@ -44,6 +78,134 @@ function jetonValide(fourni: string | string[] | undefined, attendu: string): bo
   const a = createHash('sha256').update(fourni).digest();
   const b = createHash('sha256').update(attendu).digest();
   return timingSafeEqual(a, b);
+}
+
+/** Type d'une ligne de détail du contrat v1.3, inliné (api/ est zéro-dépendance). */
+interface LigneDetail {
+  label: string;
+  value: number | string;
+  format: 'currency' | 'percent' | 'number' | 'text';
+  severity?: 'ok' | 'warn' | 'alert';
+  hint?: string;
+}
+interface SectionDetail {
+  title: string;
+  items: LigneDetail[];
+}
+
+/** Tronque en signalant la coupe. Une valeur coupée en silence passe pour la valeur entière. */
+function tronquer(texte: string, max: number): string {
+  return texte.length <= max ? texte : texte.slice(0, max - 1) + '\u2026';
+}
+
+/**
+ * « il y a 12 min », « il y a 3 h », « il y a 5 j » — RELATIF, et c'est le point.
+ *
+ * Une date absolue devrait être rendue dans le fuseau du Québec ; ce code tourne sur Vercel, en
+ * UTC, et `Intl` prendrait le fuseau de la MACHINE. Le hub serait alors faux de 4 ou 5 h selon la
+ * saison, sans aucun signe extérieur — c'est le garde-fou `FUSEAU` de Hubperso, vu du côté
+ * producteur. Un écart, lui, est vrai partout : il n'a pas de fuseau.
+ */
+function ilYA(deltaMs: number): string {
+  const min = Math.max(0, Math.round(deltaMs / 60_000));
+  if (min < 60) return 'il y a ' + min + ' min';
+  const h = Math.round(min / 60);
+  return h < 48 ? 'il y a ' + h + ' h' : 'il y a ' + Math.round(h / 24) + ' j';
+}
+
+/**
+ * Une campagne → une ligne de détail.
+ *
+ * `value` porte le VOLUME TRAITÉ en nombre quand il est connu, pour que le hub puisse un jour en
+ * tracer la courbe. Au recensement il n'y a pas de volume : on publie un tiret TEXTE plutôt qu'un
+ * 0 numérique — « rien de traité » et « pas encore compté » ne sont pas la même information, et le
+ * 0 serait le seul des deux à ressembler à une panne.
+ *
+ * Le `hint` ne redit jamais le libellé : il porte la base, le statut et l'estimation telle que le
+ * MOTEUR l'a formulée — y compris ses silences (pas d'horizon sur une campagne en pause, pas de
+ * date de fin sur une mission convergée à reliquat). Reformuler ici rouvrirait tous les mensonges
+ * que `lignesProgression_` a appris à ne pas dire.
+ */
+function ligneMission(m: MissionHub): LigneDetail {
+  const bouts: string[] = [];
+  if (m.base !== null) bouts.push('sur ' + m.base + (m.unite ? ' ' + m.unite : ''));
+  if (m.statut) bouts.push(m.statut);
+  if (m.finEstimee) bouts.push(m.finEstimee);
+  const hint = tronquer(bouts.join(' · '), HINT_MAX);
+  return {
+    label: tronquer(m.nom, LABEL_MAX),
+    value: m.traites === null ? '\u2014' : m.traites,
+    format: m.traites === null ? 'text' : 'number',
+    // `ok` sur une campagne convergée, et RIEN sur les autres. Une campagne lente n'est pas une
+    // faute : lui coller `warn` inventerait un reproche, et le hub trie ses gravités.
+    ...(m.fini ? { severity: 'ok' as const } : {}),
+    ...(hint ? { hint } : {}),
+  };
+}
+
+/**
+ * Les sections de détail du résumé (contrat v1.3) — vide si le moteur n'en publie pas encore.
+ *
+ * ⚠️ AUCUN NOM DE FICHIER NE SORT D'ICI. Le nom du dernier document classé vit dans `details`
+ * et nulle part ailleurs : le hub ne persiste que `metrics` (table `releves`, 90 jours), donc un
+ * nom placé en métrique serait recopié dans la base du hub à chaque relevé. Dans `details` il
+ * transite, s'affiche, et disparaît. C'est la contrainte que l'ADR-0057 a posée en échange du
+ * droit de publier le nom, et `app/test/hub-summary.test.ts` la verrouille.
+ */
+function sectionsDetail(etat: EngineState, maintenantMs: number): SectionDetail[] {
+  const sections: SectionDetail[] = [];
+
+  const missions = etat.missions ?? [];
+  if (missions.length > 0) {
+    const items: LigneDetail[] = [];
+    const vus = new Set<string>();
+    for (const m of missions) {
+      const ligne = ligneMission(m);
+      // Le contrat REFUSE deux libellés identiques dans une même section, et deux libellés
+      // distincts peuvent se confondre une fois tronqués à 40 caractères. Le vrai garde-fou est le
+      // test qui passe le registre d'opérations RÉEL du moteur dans cette troncature ; cette
+      // déduplication-ci est la ceinture : en production, une collision perd une ligne au lieu de
+      // faire rejeter le résumé ENTIER — c'est-à-dire d'accuser DriveAI d'une panne inexistante.
+      if (vus.has(ligne.label)) continue;
+      vus.add(ligne.label);
+      items.push(ligne);
+    }
+    if (items.length > 0) {
+      const omises = etat.missionsOmises ?? 0;
+      sections.push({
+        title: omises > 0
+          ? tronquer('Campagnes (' + omises + ' non affichée' + (omises > 1 ? 's' : '') + ')', LABEL_MAX)
+          : 'Campagnes de rangement',
+        items,
+      });
+    }
+  }
+
+  if (etat.lastFiledName && etat.lastFiledAt) {
+    const classeLe = Date.parse(etat.lastFiledAt);
+    sections.push({
+      title: 'Dernier document classé',
+      items: [
+        {
+          label: 'Fichier',
+          value: tronquer(etat.lastFiledName, VALEUR_TEXTE_MAX),
+          format: 'text',
+          ...(etat.lastFiledDomain ? { hint: tronquer(etat.lastFiledDomain, HINT_MAX) } : {}),
+        },
+        {
+          label: 'Classé',
+          value: Number.isNaN(classeLe) ? '\u2014' : ilYA(maintenantMs - classeLe),
+          format: 'text',
+          // Le retard PROPRE à cette ligne, dit une fois : le scan de l'Index est throttlé à
+          // 15 min côté moteur (il relit un onglet non borné). Un document classé à l'instant
+          // peut donc ne pas être celui-ci — mais celui qui s'affiche porte sa vraie date.
+          hint: 'relevé au plus toutes les 15 min',
+        },
+      ],
+    });
+  }
+
+  return sections;
 }
 
 export default async function handler(req: Requete, res: Reponse): Promise<void> {
@@ -98,9 +260,10 @@ export default async function handler(req: Requete, res: Reponse): Promise<void>
   }
 
   // Données réelles : 3 compteurs en métriques, lastRunAt en dataAsOf. « degraded » si le
-  // moteur est muet depuis plus de SEUIL_MUET_MS (déclencheur 30 min + marge). Les alertes ne
-  // disent que ce qui est vrai : rien à signaler = aucune alerte.
-  const muet = Date.now() - Date.parse(etat.lastRunAt) > SEUIL_MUET_MS;
+  // moteur est muet depuis plus de SEUIL_MUET_MS (le chien de garde + une marge — voir la
+  // constante). Les alertes ne disent que ce qui est vrai : rien à signaler = aucune alerte.
+  const maintenant = Date.now();
+  const muet = maintenant - Date.parse(etat.lastRunAt) > SEUIL_MUET_MS;
   const alerts: { label: string; severity: 'info' | 'warn' }[] = [];
   if (muet) alerts.push({ label: 'Moteur silencieux depuis plus de 45 minutes', severity: 'warn' });
   if (etat.errorsLast7d > 0) {
@@ -156,19 +319,30 @@ export default async function handler(req: Requete, res: Reponse): Promise<void>
   }
   if (quotas.length > 0) usage.quotas = quotas;
 
+  const details = sectionsDetail(etat, maintenant);
+
   repondreJson(res, 200, {
     contractVersion: CONTRACT_VERSION,
     app,
     generatedAt: new Date().toISOString(),
     dataAsOf: etat.lastRunAt,
+    // `expectedMaxAgeSec` n'est publié QU'AVEC `dataAsOf` — le contrat v1.3 rejette un âge
+    // attendu orphelin, et il a raison : un seuil sans horodatage à comparer donnerait au
+    // producteur la certitude d'être surveillé alors que rien ne le serait. Les deux champs sont
+    // donc ici, sur la même branche ; la branche « building » n'en porte aucun des deux.
+    expectedMaxAgeSec: AGE_MAX_ATTENDU_SEC,
     status: muet ? 'degraded' : 'ok',
     metrics: [
-      { label: 'Classés (7 jours)', value: etat.filedLast7d, format: 'number' },
+      // `primary` désigne LE chiffre de la carte (contrat v1.3). Pour un moteur de classement,
+      // c'est le volume classé : la file de revue et les erreurs sont à 0 en régime normal, et
+      // mettre en avant un zéro sain ne dit rien de ce que l'app fait.
+      { label: 'Classés (7 jours)', value: etat.filedLast7d, format: 'number', primary: true },
       { label: 'File de revue', value: etat.reviewQueueCount, format: 'number' },
       { label: 'Erreurs (7 jours)', value: etat.errorsLast7d, format: 'number' },
     ],
     alerts,
     actions: [{ label: 'Ouvrir DriveAI', kind: 'link', href: URL_APP }],
     ...(usage.cost || usage.quotas ? { usage } : {}),
+    ...(details.length > 0 ? { details } : {}),
   });
 }
