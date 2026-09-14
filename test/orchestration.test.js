@@ -193,15 +193,19 @@ test('ENVELOPPE des campagnes : la somme reste EXACTEMENT 63 min/j (réallouer, 
     '~90 min/j, TOUS les déclencheurs gèlent, chien de garde inclus (C28-29). Relever ce total ' +
     'est une DÉCISION de Marc, pas un effet de bord : il faudrait d\'abord MESURER le runtime ' +
     'réellement consommé (personne ne le fait — le plafond 65 vient d\'une réserve ESTIMÉE).');
-  // Ratio gen/exec : le précédent documenté d'août 2026 (Config.gs) montre qu'à 12/6 — le même
-  // ratio 2,0 — la contre-pression a ÉTRANGLÉ la génération (« throttlée, 2,3/12 min seulement »),
-  // parce que l'exécuteur ne rattrapait pas. 16/8 atteint ce plafond pile : au-delà, on reproduit
-  // un blocage déjà vécu. Relevé en revue quotas C28-99.
+  // Ratio gen/exec. ⚠️ HONNÊTETÉ SUR CE SEUIL (revue C28-99) : le précédent documenté d'août 2026
+  // est 12/6 — soit le ratio 2,0 EXACTEMENT, celui où la contre-pression a étranglé la génération
+  // (« throttlée, 2,3/12 min seulement »). 16/8 se pose donc PILE sur le point observé, et ce garde
+  // l'autorise DÉLIBÉRÉMENT : ce qui différait en août, c'est que le plan traînait 1236 lignes de
+  // retard alors qu'il est drainé aujourd'hui. Ce n'est pas une preuve d'innocuité, c'est un pari —
+  // et sa contrepartie est la vérification à 24 h inscrite au HANDOVER (si la génération n'affiche
+  // pas `16/16 ÉPUISÉ`, rendre les 4 min à l'exécuteur). Ce que le garde empêche, c'est d'aller
+  // AU-DELÀ du point déjà vécu sans y penser. Ne pas en déduire « sous 2:1 c'est sûr ».
   assert.ok(C.CONSOLIDATION_BUDGET_JOUR_MS <= 2 * C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS,
     'génération ' + (C.CONSOLIDATION_BUDGET_JOUR_MS / 60000) + ' min/j pour un exécuteur à ' +
-    (C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS / 60000) + ' : au-delà du ratio 2:1, la contre-pression ' +
-    '(CONSOLIDATION_BACKLOG_MAX) coupe la génération et les deux moitiés s\'arrêtent ensemble — ' +
-    'blocage OBSERVÉ en prod le 2026-08-11 à ce ratio exact.');
+    (C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS / 60000) + ' : au-delà du ratio 2:1, on dépasse le point ' +
+    'où la contre-pression (CONSOLIDATION_BACKLOG_MAX) a DÉJÀ coupé la génération en prod ' +
+    '(2026-08-11) — et les deux moitiés s\'arrêtent alors ensemble, sans symptôme visible.');
   // Une campagne ACTIVE avec un budget quotidien 0 tourne à VIDE en silence (`consommeJour 0 >= 0`
   // court-circuite avant tout travail) : jamais autorisé. C'est l'autre moitié du verrou — sans elle,
   // la somme de bloc se conserverait en rendant une campagne MUETTE.
@@ -215,6 +219,37 @@ test('ENVELOPPE des campagnes : la somme reste EXACTEMENT 63 min/j (réallouer, 
       nom + '_ACTIF=true avec un budget quotidien de 0 = campagne MUETTE (no-op silencieux) : ' +
       'rends-lui du budget avant de l\'activer, ou désactive-la explicitement');
   });
+});
+
+test('INVENTAIRE des budgets quotidiens : aucune constante n\'échappe aux invariants', () => {
+  // Cécité structurelle de la leçon C28-42, mesurée en revue C28-99 : ajouter une NOUVELLE
+  // constante `*_BUDGET_JOUR_MS` laissait les deux invariants VERTS pendant que l'enveloppe
+  // croissait — ils somment une liste ÉCRITE À LA MAIN, ils ne savent pas ce qu'ils ignorent.
+  // Cet inventaire renverse la charge : toute constante neuve DOIT être classée ici, donc son
+  // auteur doit se demander dans quelle enveloppe elle tombe. Même patron que l'inventaire
+  // `feuille_` ↔ `creerOnglet_`.
+  const C = require('./harness').load(['Config.gs']).CONFIG;
+  const connues = [
+    // les 8 campagnes de l'enveloppe reset-OFF (sommées à 63 min/j ci-dessus)
+    'GMAIL_HISTO_BUDGET_JOUR_MS', 'CONSOLIDATION_BUDGET_JOUR_MS', 'CONSOLIDATION_EXEC_BUDGET_JOUR_MS',
+    'SYNC_BUDGET_JOUR_MS', 'FUSION_EXEC_BUDGET_JOUR_MS', 'HISTORIQUE_VRAC_BUDGET_JOUR_MS',
+    'MISSIONS_BUDGET_JOUR_MS', 'DOUBLONS_BUDGET_JOUR_MS',
+    // les 4 phases du reset (invariant de réallocation reset-ON)
+    'RESET_RASSEMBLEMENT_BUDGET_JOUR_MS', 'RESET_PLACEMENT_BUDGET_JOUR_MS',
+    'RESET_04_BUDGET_JOUR_MS', 'RESET_LLM_BUDGET_JOUR_MS',
+    // ⚠️ HORS des deux invariants, et c'est un TROU connu (backlog C28-101) : le pilote CI consomme
+    // du runtime sur le même compte. Inoffensif UNIQUEMENT parce qu'il exige `RESET_ACTIF` (false) ;
+    // reset rallumé, reset 50 + pilote 30 + doublons + vrac ≈ 85 min/j pour un mur à ~90.
+    'PILOTE_BUDGET_JOUR_MS',
+  ];
+  const trouvees = Object.keys(C).filter((k) => /_BUDGET_JOUR_MS$/.test(k));
+  const inconnues = trouvees.filter((k) => connues.indexOf(k) === -1);
+  assert.deepStrictEqual(inconnues, [],
+    'constante(s) de budget QUOTIDIEN hors inventaire : ' + inconnues.join(', ') + '. Classe-la : ' +
+    'dans l\'enveloppe reset-OFF (et remonte la somme de 63), dans l\'invariant du reset, ou en ' +
+    'exception documentée. Sans ça elle échappe aux deux tests et l\'enveloppe croît EN SILENCE.');
+  const manquantes = connues.filter((k) => trouvees.indexOf(k) === -1);
+  assert.deepStrictEqual(manquantes, [], 'constante(s) disparue(s) : ' + manquantes.join(', '));
 });
 
 test('orchestration MISSIONS : les 8 missions sont gatées par !resetEnCours_() ET le budget quotidien', () => {

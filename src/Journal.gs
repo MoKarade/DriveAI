@@ -182,11 +182,6 @@ function texteSanteConfigApi_(etat, tz) {
 }
 
 /**
- * Met à jour l'onglet `Santé` — vue lisible de référence (heartbeat + métriques). Métadonnées
- * seulement (ADR-0007) : horodatage, compteurs, coût, statut — jamais de contenu de document.
- * Écrit après `flushUsage_` (le coût du mois inclut alors le run courant). Enveloppé par l'appelant.
- */
-/**
  * Statut de la campagne historique Gmail — UNE règle, DEUX consommateurs : la ligne de Progression
  * et la ligne de Santé. PURE (testée).
  *
@@ -199,15 +194,25 @@ function texteSanteConfigApi_(etat, tz) {
  * @param {boolean} termine
  * @param {boolean} quotaGmail  quota Gmail épuisé (la campagne sort avant de consommer sa première ms)
  * @param {boolean} freinBudget frein des campagnes atteint (idem)
+ * @param {boolean} resetEnCours le reset suspend la campagne (gate `gResetEnCours`) — TROISIÈME
+ *   cause, oubliée de la première écriture : latente seulement parce que `RESET_ACTIF` est false,
+ *   et elle produirait exactement le faux « en cours · 0 min » que cette fonction existe pour
+ *   fermer (relevé en revue C28-99).
  * @return {string}
  */
-function statutHistoGmail_(termine, quotaGmail, freinBudget) {
+function statutHistoGmail_(termine, quotaGmail, freinBudget, resetEnCours) {
   if (termine) return 'terminé';
   if (quotaGmail) return 'suspendu (quota Gmail)';
   if (freinBudget) return 'en pause (frein budget)';
+  if (resetEnCours) return 'suspendu (reset en cours)';
   return 'en cours';
 }
 
+/**
+ * Met à jour l'onglet `Santé` — vue lisible de référence (heartbeat + métriques). Métadonnées
+ * seulement (ADR-0007) : horodatage, compteurs, coût, statut — jamais de contenu de document.
+ * Écrit après `flushUsage_` (le coût du mois inclut alors le run courant). Enveloppé par l'appelant.
+ */
 function majSante_() {
   var f = feuille_('Santé');
   var tz = Session.getScriptTimeZone();
@@ -230,8 +235,9 @@ function majSante_() {
     // de Property (ADR-0047 §6, backlog C28-71).
     ['Doublons (validation par empreinte) : ' + texteSanteDoublons_()],
     // Même raison que la ligne ci-dessus (registre de suivi C28-44 saturé) : la campagne historique
-    // Gmail réserve le plus gros budget quotidien de toutes les campagnes (20 min/j) et n'était
-    // visible NULLE PART. Sans ce chiffre, réallouer ses minutes serait une supposition (§1.6).
+    // Gmail réserve le plus gros budget quotidien de toutes les campagnes (20 min/j), et le chiffre
+    // qui dit si elles servent — les MINUTES consommées — n'existait nulle part. Son avancement,
+    // lui, est déjà dans l'onglet Progression. Sans ce chiffre, réallouer serait une supposition.
     ['Historique Gmail : ' + texteSanteHistoGmail_()],
     ['Mis à jour : ' + new Date()]
   ];
@@ -487,7 +493,8 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, regi
         etat.reanalyse.traites, etat.reanalyse.base, 'documents', statutCampagne(etat.reanalyse));
     },
     'histo-gmail': function () {
-      var statutHisto = statutHistoGmail_(etat.histo.termine, etat.quotaGmail, etat.freinBudget);
+      var statutHisto = statutHistoGmail_(etat.histo.termine, etat.quotaGmail, etat.freinBudget,
+        etat.resetEnCours);
       // L'offset histo REPART À 0 aux passes de vérification (position de scan, pas un cumul) :
       // affichage MONOTONE via le max avec la ligne existante — le compteur ne recule jamais.
       var exHisto = existantes['histo-gmail'];
