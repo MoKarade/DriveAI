@@ -67,6 +67,8 @@ courte liste de types dont le domicile est une **propriété du document**, pas 
 |---|---|---|
 | Paie, bulletin/fiche/feuille de paie, bulletin de salaire | **02** | Décision de Marc. Prédicat PARTAGÉ `estTypePaieReset_` — mot entier, jamais « paiement ». |
 | **RL-1** (relevé 1) | **02** | Décision de Marc (« rl-1 aussi dans finances »). Émis par l'EMPLOYEUR : même mode de panne exactement. |
+| **T4** (feuillet fédéral) | **02** | Décision de Marc (« oui le t4 aussi dans finances », 14/09). Tout salarié québécois reçoit chaque année un T4 **et** un RL-1, du même employeur. ⚠️ Prédicat **dédié** (`estFeuilletT4Reset_`, mot entier) et **non** `estTypeFiscalReset_` — qui connaît déjà `t4` mais matche aussi `taxe`/`taxes` et attraperait un « Compte de taxes municipales », lequel relève de `03`. |
+| **T4A** | **inchangé** | Autre feuillet (revenus hors emploi salarié). Marc a nommé le T4 ; `resetMotEntier_` l'exclut par construction. Élargir serait une décision. |
 | **RL-31** (relevé 31) | **inchangé** | Émis par le **propriétaire** (occupation d'un logement), pas par l'employeur. Il n'a pas le mode de panne « le LLM voit un employeur et route en 05 », et le tirer vers 02 serait un changement que Marc n'a pas demandé. Le prédicat partagé `estFeuilletFiscalReset_` couvre RL-1 **et** RL-31 : on le RÉUTILISE en lui soustrayant explicitement le 31, plutôt que d'écrire une deuxième règle qui divergera (§9, « deux canonicaliseurs du projet DIVERGENT »). |
 | **Attestation d'emploi, lettre d'embauche** | **05** | Décision de Marc (« attestation d'emploi reste dans 05 »). Ce sont des documents de CARRIÈRE, pas de revenu. |
 | CV, lettre de motivation | **05** | Inchangé. |
@@ -233,6 +235,17 @@ référentiel** ». Avec le figurant remplacé, `cheminCibleReset_` résout et `
 j'avais ajouté (« le sujet est intact ») certifiait une propriété que l'assertion ne tient pas. Le
 commentaire est corrigé ; la tautologie, pré-existante, est notée au backlog.
 
-**8 mutations jouées au total sur ADR-0058, 8 attrapées** — dont les quatre de la revue : disqualifiant
+### 7. Le T4 — décision prise le 14/09
+
+Marc : « **oui le t4 aussi dans finances** ». Étendu, avec sa règle de nommage (identité + granularité
+ANNUELLE) : `T4`, `Feuillet T4` et `Relevé T4` atterrissent dans `02 · Finances/Impôts & déclarations/AAAA`.
+
+⚠️ Mutation **survivante** au premier jet : retirer la règle de nommage du T4 ne cassait rien, parce
+que `T4` et `Feuillet T4` se routaient déjà correctement. Ce que la règle achète vraiment, et qui
+n'était testé nulle part : les graphies où le numéro est **noyé** (« Relevé T4 » devenait « Relevé »
+et partait chez les paies) et la **granularité** — un feuillet couvre l'année, il ne se date pas au
+jour. Les deux sont figés maintenant.
+
+**11 mutations jouées au total sur ADR-0058, 11 attrapées** — dont les quatre de la revue : disqualifiant
 retiré · disqualifiant lu sur le nom au lieu du type brut · numéro du feuillet non conservé · règles
 de feuillet placées après la règle « relevé » générique.

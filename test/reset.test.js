@@ -658,6 +658,20 @@ test('ADR-0058 : estRevenuEmployeurReset_ reconnaît les paies et le RL-1, et RI
     'Avis de paiement', 'Confirmation de paiement']) {
     assert.strictEqual(f(n(t)), false, t);
   }
+  // (b bis) LE T4, décision de Marc du 14/09 : « oui le t4 aussi dans finances ». Tout salarié
+  //     québécois reçoit chaque année un T4 (fédéral) ET un RL-1 (provincial), émis par le MÊME
+  //     employeur, avec exactement le même mode de panne.
+  assert.strictEqual(f(n('T4')), true);
+  assert.strictEqual(f(n('Feuillet T4')), true);
+  assert.strictEqual(f('2026_Relevé_X.pdf', 'T4'), true, 'reconnu aussi par le type BRUT');
+  //     ⚠️ ET LA BORNE QUE LA REVUE A SIGNALÉE : surtout pas `estTypeFiscalReset_`, qui connaît
+  //     déjà `t4` mais matche AUSSI `taxe`/`taxes` en mot entier — il attraperait un « Compte de
+  //     taxes municipales », qui relève de `03`. Un verdict qui DÉPLACE est définitif de fait.
+  assert.strictEqual(f(n('Compte de taxes municipales')), false, 'la taxe municipale relève de 03');
+  assert.strictEqual(f(n('Avis d\'imposition')), false, 'un avis d\'imposition n\'est pas un revenu d\'employeur');
+  //     `T4A` est un AUTRE feuillet (revenus hors emploi salarié) : Marc a nommé le T4.
+  assert.strictEqual(f(n('T4A')), false, 'T4A : autre feuillet, décision non prise');
+
   // (c bis) ⚠️ LA FRONTIÈRE QUE MARC A POSÉE, trouvée par la revue structure. « Attestation de
   //     salaire », « Assurance salaire », « Preuve de salaire » sont des documents de CARRIÈRE — du
   //     même genre que l'attestation d'emploi qu'il garde en `05`. Or `schemaNommage_` les renomme
@@ -703,6 +717,9 @@ test('ADR-0058 : le FLUX envoie la paie en Finances même quand le LLM répond �
   const paie = plan('Paie');
   assert.strictEqual(paie.domaine, r.CONFIG.DOMAINE_REVENUS, 'la paie quitte 05 : ' + paie.domaine);
   assert.ok(paie.sousDossier.indexOf('Revenus & paie') === 0, paie.sousDossier);
+  const t4 = plan('T4');
+  assert.strictEqual(t4.domaine, r.CONFIG.DOMAINE_REVENUS, 'le T4 aussi : ' + t4.domaine);
+  assert.ok(t4.sousDossier.indexOf('Impôts & déclarations') === 0, t4.sousDossier);
   const rl1 = plan('Relevé 1');
   assert.strictEqual(rl1.domaine, r.CONFIG.DOMAINE_REVENUS, 'le RL-1 aussi : ' + rl1.domaine);
   // ⚠️ CORRIGÉ SUITE À LA REVUE STRUCTURE : le numéro du feuillet est désormais CONSERVÉ au
@@ -721,6 +738,29 @@ test('ADR-0058 : le FLUX envoie la paie en Finances même quand le LLM répond �
   assert.strictEqual(attest.domaine, '05 · Carrière', attest.domaine);
   const recu = plan('Reçu de paiement');
   assert.strictEqual(recu.domaine, '05 · Carrière', 'un « paiement » n\'est pas une paie : ' + recu.domaine);
+});
+
+test('ADR-0058 : le NOM d\'un feuillet porte son identité et son année (sinon il finit chez les paies)', () => {
+  // ⚠️ Mutation SURVIVANTE au premier jet : retirer la règle de nommage du T4 ne cassait rien, parce
+  // que `T4` et `Feuillet T4` se routent déjà bien dans `02`. Ce que la règle achète VRAIMENT, et
+  // qui n'était testé nulle part : (a) les graphies où le numéro est noyé, (b) la GRANULARITÉ.
+  const r = require('./harness').load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs',
+    'Missions.gs', 'Router.gs', 'Llm.gs']);
+  const nom = (type) => r.nommerDocument_(
+    { domaine: '05 · Carrière', type_doc: type, emetteur: 'Robovic' }, '2026-09-01', '.pdf');
+  // (a) « Relevé T4 » : sans la règle, `schemaNommage_` le réduit à « Relevé » — le T4 disparaît et
+  //     le fichier part chez les PAIES au lieu des impôts. Même piège que « Relevé 1 ».
+  assert.strictEqual(r.cheminCibleReset_('02 · Finances', nom('Relevé T4')).indexOf('Impôts & déclarations'), 0,
+    nom('Relevé T4') + ' → ' + r.cheminCibleReset_('02 · Finances', nom('Relevé T4')));
+  assert.strictEqual(r.cheminCibleReset_('02 · Finances', nom('Relevé 1')).indexOf('Impôts & déclarations'), 0);
+  // (b) GRANULARITÉ : un feuillet est ANNUEL. Sans la règle, un « T4 » nu était daté au JOUR —
+  //     `2026-09-01_T4_…` — ce qui n'a aucun sens pour un document qui couvre l'année entière, et
+  //     produit un nom différent selon le jour où il arrive.
+  for (const t of ['T4', 'Feuillet T4', 'Relevé T4', 'Relevé 1', 'RL-1']) {
+    assert.match(nom(t), /^2026_/, t + ' doit être daté à l\'ANNÉE : ' + nom(t));
+  }
+  // …et un relevé BANCAIRE reste mensuel : la règle du feuillet passe avant, sans l'écraser.
+  assert.match(nom('Relevé bancaire'), /^2026-09_/, nom('Relevé bancaire'));
 });
 
 test('ADR-0058 : une seule règle, deux consommateurs — le domaine forcé est CELUI que la table sait router', () => {

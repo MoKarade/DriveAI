@@ -1079,6 +1079,7 @@ function schemaNommage_(typeDoc) {
     // déclare interdit (« le RL-1 est un document d'IMPÔT, pas un relevé bancaire »).
     // Un feuillet est ANNUEL, jamais mensuel. Correctif étroit : deux lignes ici alignent d'un coup
     // le flux, la consolidation et les missions — tous lisent le même nom.
+    { re: /(^| )t4( |$)/, motifs: [], gran: 'annee', label: 'T4' },              // feuillet fédéral (ANNUEL)
     { motifs: ['releve 1', 'rl 1', 'rl-1'], gran: 'annee', label: 'Relevé 1' },
     { motifs: ['releve 31', 'rl 31', 'rl-31'], gran: 'annee', label: 'Relevé 31' },
     { motifs: ['releve bancaire', 'releve de compte', 'releve'], gran: 'mois', label: 'Relevé' },

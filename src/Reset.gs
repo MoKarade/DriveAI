@@ -376,6 +376,22 @@ function estTypePaieReset_(t) {
   return /(^| )(paie|paye|salaire)( |$)/.test(t);
 }
 
+/**
+ * Feuillet **T4** (fédéral) — MOT ENTIER, jamais « T4A ». PURE.
+ *
+ * Décision de Marc, 14/09 : « oui le t4 aussi dans finances ». Tout salarié québécois reçoit chaque
+ * année un T4 (fédéral) ET un RL-1 (provincial), émis par le MÊME employeur, avec EXACTEMENT le même
+ * mode de panne : le LLM voit un employeur et route en `05`.
+ * ⚠️ PRÉDICAT DÉDIÉ, et non `estTypeFiscalReset_` (qui connaît déjà `t4`) : celui-là matche aussi
+ * `taxe`/`taxes` en mot entier et attraperait un « Compte de taxes municipales », qui relève de `03`
+ * (🟠 revue structure). Un verdict qui DÉPLACE est définitif de fait : le prédicat vise juste.
+ * ⚠️ `t4a` est un AUTRE feuillet (revenus autres qu'un emploi salarié) : `resetMotEntier_` le laisse
+ * de côté par construction, et Marc a nommé le T4. Élargir serait une décision, pas un effet de bord.
+ */
+function estFeuilletT4Reset_(t) {
+  return resetMotEntier_(t, 't4');
+}
+
 /** Relevé 31 SEUL (occupation d'un logement, émis par le PROPRIÉTAIRE). PURE. */
 function estRl31Reset_(t) {
   return /(^| )releve 31( |$)/.test(t);
@@ -431,8 +447,10 @@ function estRevenuEmployeurReset_(nom, typeBrut) {
   if (b && estDisqualifieCommeRevenuReset_(b)) return false;
   var t = normaliserCle_(analyserNomClasse_(nom).type || '');
   if (estTypePaieReset_(t)) return true;
+  if (estFeuilletT4Reset_(t)) return true;                       // décision Marc 14/09
   if (estFeuilletFiscalReset_(t) && !estRl31Reset_(t)) return true;
-  return !!b && estFeuilletFiscalReset_(b) && !estRl31Reset_(b);
+  if (!b) return false;
+  return estFeuilletT4Reset_(b) || (estFeuilletFiscalReset_(b) && !estRl31Reset_(b));
 }
 
 /**
