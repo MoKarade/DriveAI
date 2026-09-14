@@ -159,10 +159,20 @@ describe('tools/call → actions moteur (secret + URL + non-persistance du conte
   });
 
   it('moteur illisible (HTML transitoire Apps Script) → isError, jamais un faux succès (succès jugé au CONTENU)', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('<html>Sorry, unable to open</html>', { status: 200 }));
+    // ⚠️ `mockImplementation` et NON `mockResolvedValue` : un `Response` ne se lit qu'une
+    // fois, et `mockResolvedValue` rend le MÊME objet à chaque appel. Depuis que
+    // `appelerMoteur` rejoue une action sans effet de bord (14/09), la deuxième lecture
+    // échouait sur « Body has already been read » — un échec du MOCK, pas du code : en
+    // production `fetch` rend un `Response` neuf par appel. Le test est meilleur ainsi :
+    // l'ancienne forme affirmait en silence « appelé au plus une fois ».
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(async () => new Response('<html>Sorry, unable to open</html>', { status: 200 }));
     const r = await appeler({ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'etat_moteur', arguments: {} } }, `Bearer ${bearer()}`);
     expect(r.json.result.isError).toBe(true);
     expect(r.json.result.content[0].text).toMatch(/illisible|transitoire/);
+    // `etat_moteur` n'écrit rien : elle est rejouée, bornée à trois tentatives.
+    expect(spy).toHaveBeenCalledTimes(3);
   });
 
   it('creer_intention succès → message lisible avec l\'id', async () => {

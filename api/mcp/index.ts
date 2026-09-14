@@ -123,6 +123,10 @@ async function executerOutil(ctx: ContexteMcp, nom: string, args: Record<string,
   if (nom === 'question_documents') {
     const question = typeof args.question === 'string' ? args.question.trim() : '';
     if (question.length < 3 || question.length > 2000) return { texte: 'question invalide (3 à 2000 caractères)', erreur: true };
+    // ⚠️ PAS rejouable, et ce n'est pas un oubli : `chat-assistant` ne modifie pas le
+    // Drive mais il APPELLE UN MODÈLE, donc il dépense. Un rejeu ferait payer deux fois
+    // une question posée une fois, et le budget IA du jour est plafonné — le rejeu
+    // pourrait donc consommer le plafond pour rendre la même réponse.
     const r = await appelerMoteur(ctx.env, 'chat-assistant', ctx.env.webappSecret,
       { historique: [{ role: 'user', content: question }] }, false);
     if (!r.ok) return { texte: String(r.erreur ?? 'assistant indisponible'), erreur: true };
@@ -134,13 +138,35 @@ async function executerOutil(ctx: ContexteMcp, nom: string, args: Record<string,
     etat_moteur: 'mcp-etat', rechercher_documents: 'mcp-recherche', lire_document: 'mcp-lire',
     proposer_reorg: 'mcp-reorg', creer_intention: 'mcp-intention',
   };
+
+  /**
+   * Actions REJOUABLES — celles qui n'écrivent rien, donc qu'on peut redemander quand la
+   * plateforme sert une page d'écho au lieu du JSON.
+   *
+   * ⚠️ POURQUOI UNE LISTE BLANCHE ET NON UN REJEU GÉNÉRAL. Quand Apps Script rend un
+   * non-JSON, on ne sait PAS si l'action a eu lieu : la réponse est perdue, pas forcément
+   * le travail. Rejouer `mcp-intention` créerait donc une SECONDE tâche ou un SECOND
+   * événement dans l'agenda de Marc, sans rien pour le signaler — un doublon silencieux,
+   * strictement pire que l'erreur qu'on cherche à éviter. Le défaut de `appelerMoteur` est
+   * `rejouable = false` pour la même raison : un oubli ici ne peut que retirer le rejeu,
+   * jamais l'accorder par accident.
+   *
+   * Le moteur porte déjà cette information — `MCP_ACTIONS` (`src/Mcp.gs`) associe à chaque
+   * action un booléen « écrit ». Cette liste en est le MIROIR côté serverless, faute de
+   * pouvoir l'importer : `api/` est zéro-dépendance par construction et ne lit pas de
+   * `.gs`. Un test l'y confronte en analysant le fichier source, plutôt que de compter sur
+   * la vigilance — c'est exactement le genre de paire qui divergerait à la première action
+   * ajoutée.
+   */
+  const REJOUABLES = new Set(['mcp-etat', 'mcp-recherche', 'mcp-lire']);
+
   const action = parAction[nom];
   if (!action) return { texte: `outil inconnu : ${nom}`, erreur: true };
 
   // Adaptation des arguments outil → corps d'action moteur (validation FERMÉE côté moteur).
   let corps: unknown = args;
   if (nom === 'rechercher_documents') corps = { requete: args.requete, mode: args.mode === 'contenu' ? 'contenu' : 'nom' };
-  const r = await appelerMoteur(ctx.env, action, ctx.env.engineSecret, corps, true);
+  const r = await appelerMoteur(ctx.env, action, ctx.env.engineSecret, corps, true, REJOUABLES.has(action));
   if (!r.ok) return { texte: String(r.erreur ?? 'action refusée par le moteur'), erreur: true };
 
   if (nom === 'rechercher_documents') return { texte: String(r.resultat ?? ''), erreur: false };
