@@ -624,3 +624,93 @@ test('c49-2 · 03 : les règles par ENTITÉ/BAILLEUR gardent la priorité sur le
   assert.ok(Object.keys(JSON.parse(JSON.stringify(n03['Véhicule']))).length <= MAX,
     'règle des ≤ ' + MAX + ' nœuds (dérivée de la constante, jamais du littéral du jour)');
 });
+
+/* ---------- ADR-0058 — une paie vit en Finances, quel que soit l'avis du LLM ---------- */
+
+test('ADR-0058 : estRevenuEmployeurReset_ reconnaît les paies et le RL-1, et RIEN d\'autre', () => {
+  // Demande de Marc, mot pour mot : « mes paies ne devraient pas arriver dans employeur mais
+  // seulement dans finances », puis « rl-1 aussi dans finances, attestation d'emploi reste dans 05 ».
+  const f = ctx.estRevenuEmployeurReset_;
+  const n = (t) => '2026-06-30_' + t + '_Robovic.pdf';
+  // (a) Les graphies de paie — toutes couvertes par le prédicat PARTAGÉ `estTypePaieReset_`.
+  for (const t of ['Paie', 'Bulletin de paie', 'Fiche de paie', 'Feuille de paie',
+    'Bulletin de salaire', 'Sommaire de paie', 'Relevé de paie']) {
+    assert.strictEqual(f(n(t)), true, t);
+  }
+  // (b) Le RL-1, qui est émis par l'EMPLOYEUR : même mode de panne exactement.
+  //     ⚠️ Lu sur le TYPE BRUT et pas sur le nom : `nommerDocument_` réduit « Relevé 1 » à
+  //     « Relevé » — le « 1 », sur lequel le prédicat de feuillet est ANCRÉ, a déjà disparu du nom
+  //     final. Mesuré, pas supposé. C'est la seule raison pour laquelle le second argument existe.
+  assert.strictEqual(f(n('Relevé 1')), true, 'RL-1 quand le nom conserve le numéro');
+  // ⚠️ LIMITE CONNUE, PRÉ-EXISTANTE, non élargie ici : le prédicat PARTAGÉ est ancré sur « relevé 1 »
+  //     et ne connaît pas la graphie « RL-1 ». L'élargir depuis ce lot créerait une divergence avec
+  //     ses autres consommateurs (§9, « deux canonicaliseurs qui divergent »). Signalé au backlog,
+  //     et figé ici pour que le jour où on l'élargit, ce soit une DÉCISION.
+  assert.strictEqual(f(n('Feuillet RL-1')), false, 'graphie « RL-1 » : limite connue du prédicat partagé');
+  assert.strictEqual(f('2026_Relevé_Robovic.pdf', 'Relevé 1'), true, 'RL-1 via le type BRUT');
+  assert.strictEqual(f('2026_Relevé_Robovic.pdf', ''), false,
+    'sans le type brut, un « Relevé » nu n\'est PAS un feuillet — il pourrait être bancaire');
+  // (c) ⚠️ LE PIÈGE #228, en test bloquant : « paiement » n'est PAS « paie ». Un faux positif ici
+  //     enverrait des reçus de dépense dans les revenus — et le verdict qui DÉPLACE est définitif
+  //     de fait (§9), donc il se prouve dans les deux sens.
+  for (const t of ['Reçu de paiement', 'Paiement préautorisé', 'Relevé de paiement',
+    'Avis de paiement', 'Confirmation de paiement']) {
+    assert.strictEqual(f(n(t)), false, t);
+  }
+  // (d) Ce que Marc laisse en `05`, explicitement.
+  for (const t of ['Attestation d\'emploi', 'Lettre d\'embauche', 'Contrat de travail',
+    'CV', 'Lettre de motivation', 'Document professionnel']) {
+    assert.strictEqual(f(n(t)), false, t);
+  }
+  // (e) ⚠️ RL-31 EXCLU : émis par le PROPRIÉTAIRE (occupation d'un logement), pas par l'employeur.
+  //     Marc a nommé le RL-1. Le prédicat partagé `estFeuilletFiscalReset_` couvre les deux : la
+  //     soustraction est EXPLICITE, et elle se teste.
+  assert.strictEqual(f(n('Relevé 31')), false, 'RL-31 : propriétaire, pas employeur');
+  assert.strictEqual(f('2026_Relevé_X.pdf', 'Relevé 31'), false, 'RL-31 exclu AUSSI par le type brut');
+  assert.strictEqual(ctx.estFeuilletFiscalReset_('releve 31'), true,
+    'le prédicat PARTAGÉ le couvre toujours — c\'est bien une soustraction, pas une divergence');
+  // (f) Et un relevé BANCAIRE n'est pas un revenu d'employeur : `estReleveDePaie_` est volontairement
+  //     ABSENT de ce prédicat (ADR-0044 D9 n'est sûr qu'avec un employeur garanti, ce que le flux n'a pas).
+  assert.strictEqual(f('2026-06-30_Relevé bancaire_Desjardins.pdf'), false);
+  assert.strictEqual(f('2026-06-30_Relevé_Desjardins.pdf'), false);
+});
+
+test('ADR-0058 : le FLUX envoie la paie en Finances même quand le LLM répond « 05 »', () => {
+  // Le défaut vécu, reproduit : `2026-09_Paie_Robovic Inc..pdf` classé le 14/09 dans
+  // `05 · Emploi & carrière/Employeurs/Robovic`. Une paie NOMME un employeur, donc le LLM répond
+  // « 05 » — ce n'est pas absurde, c'est la mauvaise règle pour ce type-là.
+  const r = require('./harness').load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs',
+    'Missions.gs', 'Router.gs', 'Llm.gs']);
+  const plan = (type) => r.planRoutageV2_(
+    { domaine: '05 · Carrière', type_doc: type, emetteur: 'Robovic', sousDossier: 'Robovic' },
+    { nomFichier: 'x.pdf' }, '2026-09-01', '.pdf', {});
+  const paie = plan('Paie');
+  assert.strictEqual(paie.domaine, r.CONFIG.DOMAINE_REVENUS, 'la paie quitte 05 : ' + paie.domaine);
+  assert.ok(paie.sousDossier.indexOf('Revenus & paie') === 0, paie.sousDossier);
+  const rl1 = plan('Relevé 1');
+  assert.strictEqual(rl1.domaine, r.CONFIG.DOMAINE_REVENUS, 'le RL-1 aussi : ' + rl1.domaine);
+  // ⚠️ POINT D'ATTENTION ASSUMÉ, pas un oubli : le nom ayant perdu le « 1 », `02` le range dans
+  // `Revenus & paie/<employeur>` et non dans `Impôts & déclarations`. C'est bien « dans finances »
+  // — la demande de Marc — mais pas le sous-dossier fiscal. Le corriger demanderait de faire
+  // survivre le numéro au renommage, ce qui touche TOUT le nommage : hors périmètre, signalé.
+  assert.ok(rl1.sousDossier.indexOf('Revenus & paie') === 0, rl1.sousDossier);
+  // …et ce que Marc garde en `05` y RESTE : la règle n'élargit rien.
+  const attest = plan('Attestation d\'emploi');
+  assert.strictEqual(attest.domaine, '05 · Carrière', attest.domaine);
+  const recu = plan('Reçu de paiement');
+  assert.strictEqual(recu.domaine, '05 · Carrière', 'un « paiement » n\'est pas une paie : ' + recu.domaine);
+});
+
+test('ADR-0058 : une seule règle, deux consommateurs — le domaine forcé est CELUI que la table sait router', () => {
+  // Tripwire de convergence NON tautologique : on ne compare pas le forçage à lui-même, on vérifie
+  // que le domaine choisi est une CLÉ RÉELLE de la table de routage. Un libellé qui dérive ne rend
+  // pas une erreur — il rend `undefined`, c'est-à-dire une cible VIDE (§9).
+  assert.ok(ctx.STRUCTURE_CIBLE_RESET[ctx.CONFIG.DOMAINE_REVENUS],
+    'DOMAINE_REVENUS doit être une clé de STRUCTURE_CIBLE_RESET');
+  assert.ok(ctx.CONFIG.DOMAINES[ctx.CONFIG.DOMAINE_REVENUS],
+    'DOMAINE_REVENUS doit être un domaine FIXE (avec un ID), jamais un domaine AUTO');
+  // Et la table sait effectivement placer une paie dans ce domaine — sinon le forçage l'enverrait
+  // à plat à la racine de `02`, ce qui serait une régression silencieuse.
+  const cible = ctx.cheminCibleReset_(ctx.CONFIG.DOMAINE_REVENUS, '2026-09-01_Paie_Robovic.pdf');
+  assert.ok(cible && cible.indexOf('Revenus & paie') === 0, 'cible : ' + cible);
+});

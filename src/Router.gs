@@ -559,7 +559,17 @@ function planRoutageV2_(classif, meta, date, ext, validees) {
 
   var nom = nommerDocument_(c, date, ext);
   var di = estDocumentIdentitePersonnel_(c) ? dossierIdentite_(c) : null; // identité → domaine dérivé du TYPE
-  var domaine = di ? di.domaine : c.domaine;
+  // ADR-0058 (décision Marc : « mes paies ne devraient pas arriver dans employeur mais seulement
+  // dans finances ») — DEUXIÈME type dont le domaine est une PROPRIÉTÉ du document, jamais une
+  // interprétation du LLM. Même patron que la ligne d'identité juste au-dessus, et pour la même
+  // raison : une paie NOMME un employeur, donc le LLM répond « 05 » — ce qui n'est pas absurde,
+  // c'est la mauvaise règle pour ce type-là. Les MISSIONS le savaient (« le domicile UNIQUE des
+  // paies est 02 »), le FLUX non : elles rangeaient, il dé-rangeait, et comme elles convergent puis
+  // s'arrêtent, c'est lui qui avait le dernier mot sur tout ce qui arrive désormais.
+  // Évalué sur le nom FINAL — celui que `cheminCibleReset_` reçoit trois lignes plus bas, avec la
+  // MÊME extraction de type : une seule règle, deux consommateurs.
+  var domaine = di ? di.domaine
+    : (estRevenuEmployeurReset_(nom, c.type_doc) ? CONFIG.DOMAINE_REVENUS : c.domaine);
 
   // (4) UNIFICATION (ADR-0033, décision Marc) : le flux DÉLÈGUE son sous-chemin à la MÊME fonction
   // pure que le Reset (`cheminCibleReset_`) sur le nom FINAL → convergence flux↔reset par

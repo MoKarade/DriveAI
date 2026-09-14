@@ -461,6 +461,11 @@ var CONFIG = {
   // 2026-07-01 : plus de file de revue — un document non classable est rangé AU MIEUX ici (avec
   // son nom final propre), jamais laissé en limbo. « Administratif » = bucket générique le plus sûr.
   DOMAINE_DEFAUT: '01 · Administratif & identité',
+  // ADR-0058 — domicile UNIQUE des revenus d'employeur (paies, RL-1). Constante et non littéral :
+  // le libellé sert de CLÉ dans `CONFIG.DOMAINES` et `STRUCTURE_CIBLE_RESET`, donc une graphie qui
+  // dérive d'un point d'usage à l'autre ne rend pas une erreur — elle rend `undefined`, c'est-à-dire
+  // une cible vide (§9, « CONFIG.DOMAINES ne contient que les domaines FIXES »).
+  DOMAINE_REVENUS: '02 · Finances',
 
   // Domaines AUTO-créés (ADR-0002 §3) : nouveaux domaines sans ID en dur — le dossier est trouvé/créé
   // par le code À CÔTÉ des domaines existants (find-or-create, cf. Router.dossierDomaineAuto_), zéro clic.

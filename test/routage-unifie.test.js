@@ -131,9 +131,17 @@ test('deciderRoutageV2_ : entité-table au Dossier ID PÉRIMÉ → re-pointée v
   c.garantirNomUnique_ = (n) => n;
   c.nomsDansDossier_ = () => [];
 
+  // ⚠️ FIGURANT CHANGÉ (ADR-0058) : ce test prouve le RE-POINTAGE d'une entité au Dossier ID
+  // périmé, pas le sort des paies — lesquelles quittent désormais `05` par construction, ce qui
+  // aurait fait « passer » le test en lui faisant prouver autre chose.
+  // `Document professionnel` et non `Attestation d'emploi` : il faut un type qui résolve à la MÊME
+  // PROFONDEUR que l'ancienne paie (`Employeurs/Robovic`). L'attestation gagne un sous-dossier
+  // thématique (`/Attestations & lettres`), donc le dossier FINAL n'est plus celui de l'entité et le
+  // re-pointage ne se déclenche pas — le test serait tombé pour une raison sans rapport avec ce
+  // qu'il vérifie. Un figurant se remplace à conditions ÉGALES, sinon on déplace le sujet.
   const doc = (date) => c.deciderRoutageV2_(
-    { domaine: '05 · Carrière', type_doc: 'Paie', emetteur: 'Robovic', date_doc: date },
-    { nomFichier: 'paie.pdf', taille: 1000, extraitOcr: 'texte lisible '.repeat(5), emetteur: 'Robovic' },
+    { domaine: '05 · Carrière', type_doc: 'Document professionnel', emetteur: 'Robovic', date_doc: date },
+    { nomFichier: 'doc.pdf', taille: 1000, extraitOcr: 'texte lisible '.repeat(5), emetteur: 'Robovic' },
     new Date(date + 'T00:00:00Z'), '.pdf');
 
   const r = doc('2026-06-01');

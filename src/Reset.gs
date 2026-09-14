@@ -376,6 +376,55 @@ function estTypePaieReset_(t) {
   return /(^| )(paie|paye|salaire)( |$)/.test(t);
 }
 
+/** Relevé 31 SEUL (occupation d'un logement, émis par le PROPRIÉTAIRE). PURE. */
+function estRl31Reset_(t) {
+  return /(^| )releve 31( |$)/.test(t);
+}
+
+/**
+ * Ce document est-il un REVENU D'EMPLOYEUR ? (ADR-0058 — décision de Marc.)
+ *
+ * Son domaine est alors `02 · Finances`, quel que soit le domaine rendu par le LLM. Pourquoi c'est
+ * nécessaire : une paie NOMME un employeur dans son en-tête, donc le LLM répond « 05 · Emploi &
+ * carrière » — ce qui n'est pas absurde, c'est simplement la mauvaise règle pour ce type-là. Les
+ * MISSIONS de curation le savaient déjà (« le domicile UNIQUE des paies est 02 ») ; le FLUX, non.
+ * Résultat vécu : les missions rangeaient, le flux dé-rangeait, et comme les missions convergent
+ * puis s'arrêtent, c'est le flux qui avait le dernier mot sur tout ce qui arrive désormais.
+ *
+ * ⚠️ DÉRIVE LE TYPE PAR LA MÊME FONCTION que `cheminCibleReset_` (`analyserNomClasse_` +
+ * `normaliserCle_`), sur le nom FINAL que celui-ci recevra ensuite : la convergence flux↔reset est
+ * STRUCTURELLE, pas une coïncidence à re-vérifier (§9, C28-26).
+ *
+ * ⚠️ RL-31 EXCLU, explicitement. `estFeuilletFiscalReset_` couvre RL-1 ET RL-31 ; on le RÉUTILISE en
+ * lui soustrayant le 31 plutôt que d'écrire une deuxième règle qui divergera au premier ajout. Le
+ * RL-31 est émis par le PROPRIÉTAIRE (occupation d'un logement), pas par l'employeur : il n'a pas
+ * le mode de panne « le LLM voit un employeur et route en 05 », et le tirer vers `02` serait un
+ * changement que Marc n'a pas demandé — il a nommé le RL-1.
+ *
+ * ⚠️ `estReleveDePaie_` N'EST PAS ICI. ADR-0044 D9 en fait une paie mensuelle, mais UNIQUEMENT parce
+ * qu'un employeur est déjà garanti par le contexte de la mission. Au point de décision du flux,
+ * cette garantie n'existe pas : l'appliquer ici capturerait les relevés BANCAIRES. §9, « l'asymétrie
+ * des verdicts commande la sévérité du prédicat » — un verdict qui DÉPLACE est définitif de fait,
+ * donc le prédicat est strict et, dans le doute, refuse.
+ * ⚠️ LE NUMÉRO DU FEUILLET NE SURVIT PAS AU RENOMMAGE. Mesuré : `nommerDocument_` réduit
+ * « Relevé 1 » à « Relevé » dans le nom final — le « 1 », sur lequel `estFeuilletFiscalReset_` est
+ * ANCRÉ, a donc déjà disparu quand on lit le nom. Le type BRUT du LLM est le seul endroit où il
+ * reste. On lit donc les deux, et seulement pour le feuillet : les paies, elles, traversent le
+ * renommage intactes et restent jugées sur le nom — là où la convergence avec `cheminCibleReset_`
+ * est structurelle. Élargir le chemin « type brut » aux paies relâcherait un verdict qui DÉPLACE,
+ * sans rien gagner (§9, l'asymétrie des verdicts commande la sévérité du prédicat).
+ * PURE (testée).
+ * @param {string} nom  nom FINAL du document (`AAAA-MM-JJ_Type_Émetteur.ext`)
+ * @param {string=} typeBrut  `type_doc` rendu par le LLM, avant renommage
+ */
+function estRevenuEmployeurReset_(nom, typeBrut) {
+  var t = normaliserCle_(analyserNomClasse_(nom).type || '');
+  if (estTypePaieReset_(t)) return true;
+  if (estFeuilletFiscalReset_(t) && !estRl31Reset_(t)) return true;
+  var b = normaliserCle_(typeBrut || '');
+  return !!b && estFeuilletFiscalReset_(b) && !estRl31Reset_(b);
+}
+
 /** Feuillet fiscal québécois RL-1/RL-31 — ANCRÉ sur le nombre (jamais « Relevé 10 »). PURE. */
 function estFeuilletFiscalReset_(t) {
   return /(^| )releve (1|31)( |$)/.test(t);
