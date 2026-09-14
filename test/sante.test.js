@@ -67,8 +67,20 @@ test('majSante_ : la ligne « Historique Gmail » dit l\'état ET les minutes co
   // Campagne PAS terminée (aucune Property dans le mock) : elle doit le dire, avec son avancement
   // et les minutes du jour — jamais « terminée » par défaut (un échec fermé dans le bon sens).
   assert.ok(/en cours/.test(ligne), ligne);
-  assert.ok(/0 fils parcourus/.test(ligne), ligne);
-  assert.ok(/des 20 min\/j/.test(ligne), 'le budget affiché DÉRIVE de CONFIG, jamais recopié : ' + ligne);
+  // ⚠️ Le COMPTE de fils n'est volontairement PAS répété ici : l'onglet Progression le porte déjà,
+  // et de façon MONOTONE (l'offset brut repart à 0 aux passes de vérification — c'est une position
+  // de scan, pas un cumul). Deux surfaces, deux conversions du même fait : le défaut que §9
+  // interdit. Ce qui est neuf, ce sont les DEUX compteurs de quota du jour.
+  assert.ok(!/fils parcourus/.test(ligne), 'pas de second compteur de fils divergent : ' + ligne);
+  // ⚠️ DÉRIVÉ de CONFIG, pas recopié. La version précédente écrivait `/des 20 min/` en dur tout en
+  // affirmant l'inverse dans son message : mutation jouée en revue, remplacer le calcul par '20'
+  // laissait le test VERT — et le jour où les 20 min sont réallouées (l'objectif même du lot) il
+  // serait tombé en accusant le code. Même patron que la cadence de sonde, plus bas dans ce fichier.
+  const budget = Math.round(ctx.CONFIG.GMAIL_HISTO_BUDGET_JOUR_MS / 60000);
+  assert.ok(ligne.includes('des ' + budget + ' min/j'), 'budget dérivé de CONFIG : ' + ligne);
+  assert.ok(ligne.includes('des ' + ctx.CONFIG.GMAIL_HISTO_MAX_FILS_JOUR + ' fils/j'),
+    'le SECOND plafond (fils/jour) est affiché : c\'est lui qui borne la campagne en régime ' +
+    'normal, et sans lui « 0,4 des 20 min » se lit à tort « 20 minutes sont libres » : ' + ligne);
 });
 
 test('texteSanteHistoGmail_ : terminée ⇒ elle DIT que ses minutes sont réallouables', () => {
@@ -79,8 +91,7 @@ test('texteSanteHistoGmail_ : terminée ⇒ elle DIT que ses minutes sont réall
   ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => props[k] || null }) };
   const t = ctx.texteSanteHistoGmail_();
   assert.ok(/termin/.test(t), t);
-  assert.ok(/4210 fils/.test(t), t);
-  assert.ok(/20 min\/j sont RÉALLOUABLES/.test(t), t);
+  assert.ok(t.includes(Math.round(ctx.CONFIG.GMAIL_HISTO_BUDGET_JOUR_MS / 60000) + ' min/j sont RÉALLOUABLES'), t);
 
   // ⚠️ ÉCHEC FERMÉ, et c'est la moitié qui compte. Une lecture d'état en panne ne doit JAMAIS
   // rendre « terminée » : ce texte est précisément ce sur quoi on s'appuiera pour réallouer
@@ -88,9 +99,51 @@ test('texteSanteHistoGmail_ : terminée ⇒ elle DIT que ses minutes sont réall
   // symétrique exact du 🔴 `ascendance-illisible` de C28-93 (une panne n'est pas un verdict).
   // Mutation : rendre « terminée ✅ » depuis le catch ⇒ cette assertion tombe.
   ctx.PropertiesService = { getScriptProperties: () => { throw new Error('Properties indisponible'); } };
+  ctx.journalErreur_ = () => {};
   const panne = ctx.texteSanteHistoGmail_();
   assert.ok(!/termin/.test(panne), 'une panne de lecture ne conclut jamais « terminée » : ' + panne);
   assert.ok(/illisible/.test(panne), panne);
+});
+
+test('texteSanteHistoGmail_ : SUSPENDUE ≠ « ne consomme rien » — le piège que la ligne doit fermer', () => {
+  // 🟠 de la revue : la campagne sort AVANT de consommer sa première milliseconde quand le quota
+  // Gmail est épuisé ou que le frein des campagnes mord. Elle affichait alors « en cours · 0 min »,
+  // et la lecture naturelle de ce 0 — celle que l'ADR annonce — est « elle ne s'en sert pas, prends
+  // ses 20 minutes ». Le jour où Marc redescend `LLM_BUDGET_CAMPAGNES` à 10 (ce que §1.6 lui demande
+  // de faire), ce faux signal deviendrait permanent. Mutation : remettre le statut binaire
+  // terminé/en cours ⇒ ce test tombe.
+  const { ctx } = chargerAvecSanteMock({});
+  ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => null }) };
+
+  ctx.estPanneGmail_ = () => true;
+  ctx.budgetCampagnesAtteint_ = () => false;
+  const quota = ctx.texteSanteHistoGmail_();
+  assert.ok(/suspendu \(quota Gmail\)/.test(quota), quota);
+  assert.ok(/ne PEUT pas consommer/.test(quota), 'le 0 min doit être EXPLICITEMENT désamorcé : ' + quota);
+
+  ctx.estPanneGmail_ = () => false;
+  ctx.budgetCampagnesAtteint_ = () => true;
+  const frein = ctx.texteSanteHistoGmail_();
+  assert.ok(/en pause \(frein budget\)/.test(frein), frein);
+  assert.ok(/ne PEUT pas consommer/.test(frein), frein);
+
+  // …et quand rien ne l'empêche, le 0 min veut DIRE quelque chose : pas d'avertissement.
+  ctx.budgetCampagnesAtteint_ = () => false;
+  const normal = ctx.texteSanteHistoGmail_();
+  assert.ok(/en cours/.test(normal), normal);
+  assert.ok(!/ne PEUT pas consommer/.test(normal), normal);
+});
+
+test('statutHistoGmail_ : UNE règle, deux consommateurs (Progression et Santé)', () => {
+  // Le statut riche vivait en clair dans le pousseur de Progression ; la ligne de Santé en avait
+  // écrit une version PAUVRE à côté. Deux formulations du même verdict divergent toujours (§9) :
+  // la règle est extraite et partagée. Mutation : remettre une copie locale ⇒ ce test perd son sens
+  // (à défaut de tomber, il documente l'invariant que la revue suivante doit vérifier).
+  const { ctx } = chargerAvecSanteMock({});
+  assert.strictEqual(ctx.statutHistoGmail_(true, true, true), 'terminé', 'terminé prime sur tout');
+  assert.strictEqual(ctx.statutHistoGmail_(false, true, true), 'suspendu (quota Gmail)');
+  assert.strictEqual(ctx.statutHistoGmail_(false, false, true), 'en pause (frein budget)');
+  assert.strictEqual(ctx.statutHistoGmail_(false, false, false), 'en cours');
 });
 
 test('majSante_ : la ligne « Doublons » exerce le chemin NOMINAL, pas le catch (ADR-0047)', () => {

@@ -63,7 +63,9 @@ export function FournisseurEtat({ children }: { children: ReactNode }) {
         // Une borne de TÊTE fige l'app EN SILENCE dès qu'elle est franchie (zéro erreur, zéro log :
         // Marc croirait le moteur arrêté). Repéré en revue le 2026-07-31, à ~4 600 fichiers du seuil.
         lirePlage('Index', 'A2:H'),
-        lirePlage('Santé', 'A2:A10'),
+        lirePlage('Santé', 'A2:A'), // fenêtre OUVERTE, comme Index et Journal : `A2:A10` tenait à zéro
+        // marge (9 lignes écrites pour 9 lues) et la 10ᵉ aurait disparu EN SILENCE — le défaut
+        // exact déjà vécu côté MCP quand Santé est passée de 6 à 7 lignes (revue C28-99).
         // MÊME piège que l'Index (ci-dessus) : le Journal est append-only avec rotation (le moteur
         // supprime les PLUS VIEILLES au-delà de ~25 000). `A2:D5000` lisait donc les 5 000 lignes les
         // plus ANCIENNES → « 0 erreur · 7 j » en vert alors que le moteur en accumule AUJOURD'HUI

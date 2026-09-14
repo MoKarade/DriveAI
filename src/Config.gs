@@ -615,8 +615,12 @@ var CONFIG = {
                                           // 20 → 12 min (REDESCENTE, revue quota C28-29) ; puis 12 → 2 min
                                           // (RÉALLOCATION C28-49, ADR-0039) : la génération est TERMINÉE
                                           // (9/9 domaines le 16/08) — ses 10 min partent aux MISSIONS de
-                                          // curation (MISSIONS_BUDGET_JOUR_MS). COUPLE verrouillé par test :
-                                          // conso-gen + missions = 12 min/j, enveloppe reset-OFF INCHANGÉE.
+                                          // curation (MISSIONS_BUDGET_JOUR_MS).
+                                          // ⚠️ Ce COUPLE n'est plus verrouillé comme tel (C28-99) : le verrou
+                                          // porte désormais sur l'ÉGALITÉ de la somme des HUIT campagnes
+                                          // (= 63 min/j, orchestration.test.js). Un couple devenait faux dès
+                                          // qu'un transfert traversait deux paires — et il REFUSAIT des
+                                          // réallocations parfaitement neutres.
                                           // 2026-09-13, C28-90 : LE JOUR EST VENU. 2 → 10 min, repris aux
                                           // missions (10 → 2), qui sont toutes terminées ou à jour. Le
                                           // couple reste à 12 min/j — c'est une RÉALLOCATION, jamais une
@@ -873,9 +877,11 @@ var CONFIG = {
                                           // CONSOLIDATION_EXEC tant que la fusion est OFF (le gate `!FUSION_EXEC_ACTIF`
                                           // en TÊTE de `appliquerPlanFusion_` retourne AVANT toute lecture de ce
                                           // budget — 0 est donc inoffensif ici). ⚠ À LA RÉACTIVATION de la fusion
-                                          // (FUSION_EXEC_ACTIF=true) : REMETTRE 6 ICI **ET** redescendre
-                                          // CONSOLIDATION_EXEC_BUDGET_JOUR_MS de 12 à 6 (rendre les 6 min prêtés) —
-                                          // sinon l'enveloppe reset-OFF passe à 62 min/j (near-gel). Pure I/O (moveTo).
+                                          // (FUSION_EXEC_ACTIF=true) : lui redonner du budget en le PRENANT à une
+                                          // autre campagne, jamais en l'ajoutant. Le test d'ÉGALITÉ (somme des huit
+                                          // = 63 min/j) force l'arbitrage — inutile de citer ici des valeurs qui se
+                                          // périment : ce commentaire l'a fait (« redescendre l'exec de 12 à 6 »
+                                          // alors qu'il est à 8, relevé en revue C28-99). Pure I/O (moveTo).
   FUSION_EXEC_MAX_SOURCES_PAR_RUN: 40,    // dossiers source drainés par run au maximum (moveTo cheap, reprenable)
   FUSION_EXEC_MAX_FICHIERS_PAR_SOURCE: 500, // fichiers directs collectés-puis-déplacés par source et par run
 
@@ -942,8 +948,14 @@ var CONFIG = {
                                           // « terminée ✅ le 2026/08/22 — 1076 écartés » (§1.6 : ne jamais
                                           // déclarer une campagne finie sans lire son compteur). On lui laisse
                                           // 1 min plutôt que 0 : une campagne ACTIVE à budget 0 est MUETTE
-                                          // (no-op silencieux), et elle doit pouvoir repérer un nouvel arrivant
-                                          // dans `_Doublons`. Les 2 min vont à la génération.
+                                          // (no-op silencieux) — c'est l'interdit verrouillé par le test.
+                                          // ⚠️ Et NON pas « pour repérer un nouvel arrivant » : c'est faux, la
+                                          // campagne court-circuite sur sa phase FINI avant même de lire son
+                                          // budget, et c'est un CONSTAT one-shot sur le passif, pas une
+                                          // surveillance (Doublons.gs). Ce qui la rouvre, c'est un bump de
+                                          // `DOUBLONS_TABLE_VERSION` — et ce jour-là elle re-validera 3× plus
+                                          // lentement qu'avant (1 min/j au lieu de 3) : à savoir, c'est le prix
+                                          // assumé. Les 2 min vont à la génération.
 
   // ---------- MISSIONS de curation (C28-49, ADR-0039 — brief Marc 2026-08-17) ----------
   MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions

@@ -164,28 +164,44 @@ test('enveloppe reset-OFF : la somme des budgets QUOTIDIENS des campagnes concur
 });
 
 /**
- * VERROU DE BLOC (C28-99) — remplace les deux verrous de COUPLE (exec↔fusion 2026-08-11,
+ * VERROU D'ÉGALITÉ (C28-99) — remplace les deux verrous de COUPLE (exec↔fusion 2026-08-11,
  * conso-gen↔missions C28-49), devenus faux dès qu'une réallocation traverse les deux paires.
  *
- * Ce qu'il protège est inchangé, et c'est le seul invariant qui compte : **aucun transfert interne
- * ne doit faire CROÎTRE l'enveloppe de runtime**. Au-delà du mur (~90 min/j), TOUS les déclencheurs
- * gèlent, chien de garde compris (§9 / C28-29). L'agrégat ≤ 65 min ne suffit pas : il est
- * structurellement AVEUGLE à un transfert à MOITIÉ annulé (rendre 6 min à la fusion sans les
- * reprendre à l'exécuteur donne 69 → non, 62 ≤ 65 → vert, leçon C28-42). Une SOMME DE BLOC
- * constante, elle, tombe au premier déséquilibre, quel que soit le sens du transfert.
+ * ⚠️ Il porte sur le MÊME ensemble que le test d'enveloppe ci-dessus — les HUIT campagnes — et pas
+ * sur un sous-bloc. Une première écriture ne verrouillait que les cinq campagnes qui se prêtent
+ * habituellement du budget ; la revue l'a cassée en deux coups : (a) `HISTORIQUE_VRAC` 4 → 6 SEUL,
+ * soit +2 min nettes d'enveloppe, passait au vert (jambe hors bloc, et la marge 63→65 l'absorbait) ;
+ * (b) pire, la réallocation SUIVANTE que l'ADR planifie — reprendre 6 min à l'historique Gmail pour
+ * la génération — était REFUSÉE alors qu'elle est parfaitement légitime (jambe hors bloc, somme du
+ * bloc modifiée). Un verrou qui laisse passer une hausse et bloque un transfert neutre verrouille
+ * le contraire de ce qu'on veut.
  *
- * Le bloc = les campagnes qui se prêtent mutuellement du budget depuis C28-42 : les deux moitiés de
- * la consolidation, la fusion (parkée), les missions de curation, la validation des doublons.
+ * Ce qu'il protège : **aucune réallocation ne doit faire CROÎTRE l'enveloppe de runtime**. Au-delà
+ * du mur (~90 min/j), TOUS les déclencheurs gèlent, chien de garde compris (§9 / C28-29).
+ * L'agrégat « ≤ 65 » ne suffit pas : il tolère toute croissance tant que la marge tient, donc il est
+ * aveugle aux petits transferts à moitié annulés (leçon C28-42). Une ÉGALITÉ, elle, tombe dès que la
+ * somme bouge — dans les deux sens, et où que soit la jambe.
  */
-test('BLOC des campagnes de rangement : la somme reste 27 min/j (réallouer, jamais augmenter)', () => {
+test('ENVELOPPE des campagnes : la somme reste EXACTEMENT 63 min/j (réallouer, jamais augmenter)', () => {
   const C = require('./harness').load(['Config.gs']).CONFIG;
-  const bloc = C.CONSOLIDATION_BUDGET_JOUR_MS + C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS +
-    C.FUSION_EXEC_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS + C.DOUBLONS_BUDGET_JOUR_MS;
-  assert.strictEqual(bloc / 60000, 27,
-    'consolidation(gen) + consolidation(exec) + fusion + missions + doublons doit rester = 27 min/j. ' +
-    'Historique des transferts : 12/6/6/0/0 (2026-08-11) → 2/12/0/10/3 (C28-49) → 16/8/0/2/1 (C28-99). ' +
-    'Pour accélérer une campagne, PRENDRE à une autre du bloc — jamais ajouter des minutes : ' +
-    'au-delà du mur runtime ~90 min/j, TOUS les déclencheurs gèlent, chien de garde inclus (C28-29).');
+  const total = C.GMAIL_HISTO_BUDGET_JOUR_MS + C.CONSOLIDATION_BUDGET_JOUR_MS +
+    C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS +
+    C.HISTORIQUE_VRAC_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS + C.DOUBLONS_BUDGET_JOUR_MS;
+  assert.strictEqual(total / 60000, 63,
+    'la somme des budgets quotidiens des 8 campagnes doit rester = 63 min/j. Pour accélérer une ' +
+    'campagne, PRENDRE à une autre — jamais ajouter des minutes : au-delà du mur runtime ' +
+    '~90 min/j, TOUS les déclencheurs gèlent, chien de garde inclus (C28-29). Relever ce total ' +
+    'est une DÉCISION de Marc, pas un effet de bord : il faudrait d\'abord MESURER le runtime ' +
+    'réellement consommé (personne ne le fait — le plafond 65 vient d\'une réserve ESTIMÉE).');
+  // Ratio gen/exec : le précédent documenté d'août 2026 (Config.gs) montre qu'à 12/6 — le même
+  // ratio 2,0 — la contre-pression a ÉTRANGLÉ la génération (« throttlée, 2,3/12 min seulement »),
+  // parce que l'exécuteur ne rattrapait pas. 16/8 atteint ce plafond pile : au-delà, on reproduit
+  // un blocage déjà vécu. Relevé en revue quotas C28-99.
+  assert.ok(C.CONSOLIDATION_BUDGET_JOUR_MS <= 2 * C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS,
+    'génération ' + (C.CONSOLIDATION_BUDGET_JOUR_MS / 60000) + ' min/j pour un exécuteur à ' +
+    (C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS / 60000) + ' : au-delà du ratio 2:1, la contre-pression ' +
+    '(CONSOLIDATION_BACKLOG_MAX) coupe la génération et les deux moitiés s\'arrêtent ensemble — ' +
+    'blocage OBSERVÉ en prod le 2026-08-11 à ce ratio exact.');
   // Une campagne ACTIVE avec un budget quotidien 0 tourne à VIDE en silence (`consommeJour 0 >= 0`
   // court-circuite avant tout travail) : jamais autorisé. C'est l'autre moitié du verrou — sans elle,
   // la somme de bloc se conserverait en rendant une campagne MUETTE.

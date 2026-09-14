@@ -62,13 +62,31 @@
 > campagnes qui se prêtent du budget = 27 min/j), plus l'interdit « campagne ACTIVE à budget 0 »
 > (une campagne à 0 est MUETTE, no-op silencieux). 5 mutations jouées.
 >
+> ⚠️ **À VÉRIFIER DANS 24 H** (c'est la contrepartie du transfert) : ouvrir `Diagnostic.gs` →
+> `etatCampagnesRangement` dans l'éditeur Apps Script. Si la génération affiche **`16/16 ÉPUISÉ`**,
+> le budget était bien le frein et le gain est réel. Si elle affiche `2-4/16` avec l'exécuteur à
+> `8/8 ÉPUISÉ`, c'est la **contre-pression** qui a mordu (elle coupe la génération quand l'exécuteur
+> accumule 150 lignes de retard) : il faut alors rendre les 4 minutes à l'exécuteur. Ce risque est
+> borné par le plafond de RATIO ajouté au passage — `génération ≤ 2 × exécution` — parce qu'en août
+> 2026, à ce ratio exact, la contre-pression avait déjà étranglé la génération.
+>
 > ⚠️ **Ce qui n'est PAS réalloué, et c'est le plus gros** : les **20 min/j** de l'historique Gmail.
-> Rien nulle part ne disait si cette campagne tourne encore, et §1.6 interdit de la déclarer finie
-> sans lire son compteur — deux lectures à 0 fil ne distinguent pas « finie » de « budget épuisé »
-> ou « suspendue ». Livré à la place : **sa ligne dans l'onglet Santé** (état, avancement, minutes
-> consommées aujourd'hui sur les 20). Elle ne pouvait pas passer par le registre de suivi, SATURÉ
-> à 8 377/8 500 octets. Échec FERMÉ : une lecture en panne rend « illisible », jamais « terminée ».
-> Au prochain tick, la réponse sera écrite — et 20 minutes deviendront peut-être réallouables.
+> §1.6 interdit de la déclarer finie sans lire son compteur, et le compteur qui tranche — les
+> MINUTES consommées — n'existait nulle part. *(Correction apportée en revue : j'avais écrit que la
+> campagne « n'était visible nulle part ». Faux — l'onglet Progression lui consacre une ligne depuis
+> C28-44, avec un statut à quatre valeurs. Je l'avais cherchée dans un export TRONQUÉ de la Sheet et
+> conclu de son absence qu'elle n'existait pas.)*
+>
+> Livré : **sa ligne dans l'onglet Santé** — statut RICHE (partagé avec la Progression : une seule
+> règle, deux surfaces), minutes ET fils du jour. Les trois précautions comptent autant que la ligne :
+> une campagne SUSPENDUE ou EN PAUSE affichait « en cours · 0 min », ce qui se lit « prends ses
+> 20 minutes » — elle dit maintenant « elle ne PEUT pas consommer » ; les DEUX plafonds sont affichés
+> (c'est celui des fils/jour qui mord en régime normal, donc à plein régime elle peut n'afficher que
+> 0,4 des 20 min) ; et une lecture en panne rend « illisible », jamais « terminée ».
+>
+> Au prochain tick, la réponse sera écrite. ⚠️ Mais **ses minutes ne pourront pas doubler la
+> génération** : le plafond de ratio l'interdit. Une réallocation saine ressemblerait à « −6 à
+> l'historique, +4 à la génération, +2 à l'exécution » — vérifié par mutation.
 
 > **✅ MERGÉ, DÉPLOYÉ ET VÉRIFIÉ EN PRODUCTION — 2026-09-14 : C28-93.**
 > PR #341 mergée (`88e8458`), `deploy.yml` #327 vert (clasp push + redéploiement de la web app +

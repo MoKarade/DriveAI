@@ -153,6 +153,7 @@ const CONTRAT = [
   'majValidationDoublons_', 'inventorierDoublons_', 'balayerExemplairesDoublons_',
   'ecrireVerdictsDoublons_', 'feuilleRapportDoublons_', 'texteSanteDoublons_', 'pageListeDrive_',
   'texteSanteHistoGmail_', // Main.gs, appelée par Journal.gs (ligne de Santé C28-99)
+  'statutHistoGmail_', // Journal.gs, appelée par Main.gs — UNE règle de statut, deux surfaces
   'estExemplaireSurvivant_', 'verdictClotureDoublon_', 'urlListeDrive_', 'bilanDoublons_',
   'idDoublonsSansCreer_', 'estJetonPaginationRefuse_',
   // Drainage de `Documents ID` (C28-73, ADR-0048) — DocumentsID.gs, un-clic manuel (aucun budget de
