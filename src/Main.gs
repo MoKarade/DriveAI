@@ -310,6 +310,20 @@ function tickDriveAI() {
     // remontée juste après lui, n'utilise que le RELIQUAT jusqu'à 4,5 min : elle est ainsi GARANTIE
     // de s'exécuter à chaque tick sans jamais voler une ms au flux vivant (leçon §7 « tôt + gated »).
     var estBudgetDepasseStandard = function () { return Date.now() - debut > CONFIG.BUDGET_MS; };
+    // ⚠️ GARDE-TEMPS « DÉMARRAGE DE DOCUMENT » (🔴 revue quotas ADR-0056). Un sous-budget local ne
+    // peut pas protéger le TICK : `appliquerReanalyseCiblee_` retranchait bien sa marge de SON
+    // budget (2 min), mais le terme qui mord dès que l'amont a consommé 2 min est celui-ci
+    // (`budgetMsRun_()` = 3 min), qui n'en avait aucune. Un document pris à 179 s de tick coûte
+    // encore 1 à 3 min : 179 + 180 + les écritures d'état du `finally` franchissent le mur DUR de
+    // 6 min, où l'exécution est TUÉE — le `finally` ne tourne pas, les ms consommées ne sont pas
+    // imputées (jusqu'à ~4 min sur un budget quotidien de 8), et le MÊME document repart en tête
+    // au tick suivant, sans compteur pour l'arrêter. Une protection annoncée et absente est pire
+    // qu'une protection absente : elle clôt la question.
+    // Réservé aux étapes qui lancent un DOCUMENT LLM complet (OCR + Sonnet ×2) ; les étapes I/O
+    // gardent leur budget nominal.
+    var estBudgetDepasseDoc = function () {
+      return Date.now() - debut > budgetMsRun_() - CONFIG.PILOTE_MARGE_DOC_MS;
+    };
 
     // Suivi générique C28-44 (ADR-0038) : gates PARTAGÉES du wrapper `etapeSuivie_`. Contrat :
     // chaque gate rend une RAISON DE SKIP NON VIDE, ou null pour laisser passer ('' = passe
@@ -584,7 +598,7 @@ function tickDriveAI() {
     // la FIN de m1 (une seule campagne de masse à la fois — garde dans appliquerReanalyseCiblee_).
     // Même famille que la migration : après l'intake, gatée par le frein budget, enveloppée.
     etapeSuivie_('reanalyse', [gBudgetTick, gFreinCampagnes, gResetEnCours],
-      function () { appliquerReanalyseCiblee_(estBudgetDepasse); },
+      function () { appliquerReanalyseCiblee_(estBudgetDepasseDoc); },
       function (e) { journalErreur_('Réanalyse', 'Re-analyse ciblée différée : ' + e); });
 
     // Dry-run v2 (#26, C26-07, ADR-0015) : preuve avant/après sur échantillon réel, ZÉRO mutation
@@ -1062,15 +1076,14 @@ function traiterFil_(fil, estBudgetDepasse) {
 function texteSanteReanalyse_() {
   try {
     var props = PropertiesService.getScriptProperties();
-    if (props.getProperty('DriveAI_REANALYSE') === CONFIG.REANALYSE_TAG) {
-      return 'terminée ✅ (campagne « ' + CONFIG.REANALYSE_TAG + ' »)';
-    }
-    if (typeof rangementTermine_ === 'function' && !rangementTermine_()) {
-      return 'en attente — le grand rangement passe d\'abord';
-    }
-    if (props.getProperty('DriveAI_MIGRATION') !== CONFIG.MIGRATION_TAG) {
-      return 'en attente — la migration « ' + CONFIG.MIGRATION_TAG + ' » doit finir d\'abord';
-    }
+    var suspension = statutReanalyse_(
+      props.getProperty('DriveAI_REANALYSE') === CONFIG.REANALYSE_TAG,
+      !rangementTermine_(),
+      props.getProperty('DriveAI_MIGRATION') !== CONFIG.MIGRATION_TAG,
+      budgetCampagnesAtteint_(),
+      resetEnCours_(),
+      estPannePlateforme_());
+    if (suspension) return suspension;
     var budget = Math.round(CONFIG.REANALYSE_BUDGET_JOUR_MS / 60000);
     var consomme = budgetJourReanalyse_(props, dateGmail_(new Date()));
     var base = props.getProperty('DriveAI_REANALYSE_BASE');
@@ -1083,6 +1096,28 @@ function texteSanteReanalyse_() {
   } catch (e) {
     return 'état illisible (' + e + ')';
   }
+}
+
+/**
+ * Cause d'ARRÊT de la re-datation, ou '' si la campagne peut tourner. PURE (testée).
+ *
+ * ⚠️ Les SIX gardes, pas deux (🟠 revues code, quotas ET sécurité ADR-0056). La première version
+ * n'en disait que deux — et la ligne affichait « en cours — 0 / 328 · 0 des 8 min/j » pendant que
+ * le frein à 40 $, le reset ou une panne de plateforme tenaient la campagne à l'arrêt. Un « 0 min
+ * aujourd'hui » ne distingue pas « pas encore passée » de « ne passera plus » : c'est le mode de
+ * panne du §1.6 mot pour mot, DANS la surface écrite pour le fermer. Même contrat que le jumeau
+ * `statutHistoGmail_`, dont le commentaire raconte déjà qu'une cause y avait été oubliée.
+ * L'ORDRE suit celui des gardes réelles du tick : la cause la plus définitive d'abord.
+ * @return {string} '' si rien ne l'arrête
+ */
+function statutReanalyse_(terminee, rangementEnCours, migrationEnCours, freinBudget, resetEnCours, pannePlateforme) {
+  if (terminee) return 'terminée ✅ (campagne « ' + CONFIG.REANALYSE_TAG + ' »)';
+  if (rangementEnCours) return 'en attente — le grand rangement passe d\'abord';
+  if (migrationEnCours) return 'en attente — la migration « ' + CONFIG.MIGRATION_TAG + ' » doit finir d\'abord';
+  if (pannePlateforme) return 'suspendue — panne de plateforme LLM (reprise dès le rétablissement)';
+  if (freinBudget) return 'en pause — frein budget campagnes atteint (' + CONFIG.LLM_BUDGET_CAMPAGNES + ' $)';
+  if (resetEnCours) return 'suspendue — le grand reset a la main (une seule à la fois)';
+  return '';
 }
 
 /**

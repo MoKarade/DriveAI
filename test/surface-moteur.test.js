@@ -154,6 +154,13 @@ const CONTRAT = [
   'ecrireVerdictsDoublons_', 'feuilleRapportDoublons_', 'texteSanteDoublons_', 'pageListeDrive_',
   'texteSanteHistoGmail_', // Main.gs, appelée par Journal.gs (ligne de Santé C28-99)
   'statutHistoGmail_', // Journal.gs, appelée par Main.gs — UNE règle de statut, deux surfaces
+  // Re-datation de `06` (C28-92, ADR-0056) — trois contrats INTER-MODULES que la 1ʳᵉ rédaction
+  // avait oubliés alors que leurs jumeaux ci-dessus y étaient (🟠 revues code et sécurité) :
+  'texteSanteReanalyse_', // Main.gs, appelée par Journal.gs (ligne de Santé)
+  'statutReanalyse_', // Main.gs — les SIX causes d'arrêt, une seule règle
+  'budgetJourReanalyse_', // Migration.gs, appelée par Main.gs (minutes du jour de la ligne de Santé)
+  'reDatationEnCours_', // Migration.gs, appelée par Consolidation.gs (garde D11)
+  'dateReferenceReanalyse_', // Migration.gs — date de référence : le nom d'abord, Drive en repli
   'estExemplaireSurvivant_', 'verdictClotureDoublon_', 'urlListeDrive_', 'bilanDoublons_',
   'idDoublonsSansCreer_', 'estJetonPaginationRefuse_',
   // Drainage de `Documents ID` (C28-73, ADR-0048) — DocumentsID.gs, un-clic manuel (aucun budget de

@@ -14,8 +14,8 @@ const { load } = require('./harness');
 const CORPUS = require('./fixtures/vrac-racines-2026-09-13.json');
 const DEJA_RANGES = require('./fixtures/deja-ranges-2026-09-13.json');
 
-const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs',
-  'Router.gs', 'Llm.gs']);
+const ctx = load(['Config.gs', 'Entites.gs', 'Consolidation.gs', 'Migration.gs', 'Reset.gs',
+  'Missions.gs', 'Router.gs', 'Llm.gs']);
 
 /**
  * LE bon objectif de mesure pour un STOCK déjà posé sur le Drive, c'est la CONSOLIDATION : c'est
@@ -848,4 +848,68 @@ test("C28-90 — une école DÉDUITE d'une fenêtre ne sort jamais un fichier de
     cibleFaible: true, parentId: null, protege: false, protegeIllisible: false,
     raccourci: false, doublonDe: null,
   }).action, 'Déplacer');
+});
+
+
+test('ADR-0056 D11 — la racine d\'un domaine EN COURS DE RE-DATATION ne se vide pas sous la campagne', () => {
+  // 🔴 revue code ADR-0056. `REANALYSE_RACINE_SEULE` borne la campagne aux fichiers à plat ; mais la
+  // consolidation passe AVANT elle dans le tick, avec 24 min/j contre 8, en pure I/O — des dizaines
+  // de fichiers/minute contre 16 à 24 par JOUR. Et D8 ne protège explicitement PAS les fichiers à
+  // plat (c'est le but d'ADR-0052). Sans D11, elle emporte les 328 fichiers classés sur leur date
+  // FAUSSE (la date de réception — ce que la campagne existe pour corriger), la passe suivante
+  // collecte 0, et la campagne écrit « terminée ✅ » sans avoir rien re-daté.
+  const d = '06 · Études & diplômes';
+  const base = {
+    domaine: d, sousCheminCible: 'Autres établissements', dossierIdCible: 'ID_AUTRES',
+    cibleFaible: false, parentId: null, protege: false, protegeIllisible: false,
+    raccourci: false, doublonDe: null,
+  };
+  // (a) À PLAT + re-datation en cours ⇒ on ne bouge pas, et la RAISON le dit.
+  const garde = ctx.decisionConsolidation_(
+    Object.assign({}, base, { sousCheminActuel: '', reDatationEnCours: true }));
+  assert.strictEqual(garde.action, 'OK');
+  assert.strictEqual(garde.cible, d);
+  assert.match(garde.raison, /D11/);
+  // (b) MÊME cas, re-datation finie ⇒ ADR-0052 reprend la main. La garde RETARDE, elle n'annule pas.
+  const apres = ctx.decisionConsolidation_(
+    Object.assign({}, base, { sousCheminActuel: '', reDatationEnCours: false }));
+  assert.strictEqual(apres.action, 'Déplacer');
+  assert.strictEqual(apres.cible, d + '/Autres établissements');
+  // (c) D11 ne protège QUE la racine : un fichier déjà dans un sous-dossier n'est pas concerné par
+  //     elle (il a ses propres gardes, D8/D9/D10) — sinon elle gèlerait TOUT le domaine pendant
+  //     14 à 21 jours, y compris des mouvements qui n'ont rien à voir avec la date.
+  //     ⚠️ Le cas doit ATTEINDRE D11 pour prouver quelque chose : une source qui est un SOUS-CHEMIN
+  //     de la cible est interceptée plus haut (« déjà dans le bon sous-arbre »), et la mutation
+  //     « D11 sans la borne de racine » y survivrait — c'est ce qui est arrivé au premier jet.
+  const sousDossier = ctx.decisionConsolidation_(Object.assign({}, base, {
+    sousCheminActuel: 'Diplômes & relevés officiels', sousCheminCible: 'Autres établissements',
+    reDatationEnCours: true,
+  }));
+  assert.ok(!/D11/.test(sousDossier.raison), 'D11 ne doit pas mordre hors de la racine : ' + sousDossier.raison);
+});
+
+test('ADR-0056 D11 — le prédicat est BORNÉ aux cibles de la campagne, et échoue OUVERT', () => {
+  // Le domaine doit être dans `REANALYSE_CIBLES` : sinon D11 gèlerait la racine de TOUS les
+  // domaines dès qu'une campagne tourne quelque part. Et la lecture qui LÈVE rend `false` (échec
+  // ouvert VOULU) : le pire cas est alors ce qui se passait avant ce lot — des fichiers classés sur
+  // une date fausse, récupérables — jamais un blocage définitif du rangement sur un blip Properties.
+  const cible = (CONFIG) => CONFIG.REANALYSE_CIBLES[0];
+  const props = { DriveAI_REANALYSE: null };
+  const c = load(['Config.gs', 'Migration.gs'], {
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] || null }) },
+  });
+  assert.strictEqual(c.reDatationEnCours_(cible(c.CONFIG)), true, 'campagne non convergée');
+  assert.strictEqual(c.reDatationEnCours_('02 · Finances'), false, 'hors REANALYSE_CIBLES');
+  // Campagne convergée ⇒ la garde se lève TOUTE SEULE (chemin de retour, jamais un délai).
+  const c2 = load(['Config.gs', 'Migration.gs'], {
+    PropertiesService: {
+      getScriptProperties: () => ({ getProperty: () => c.CONFIG.REANALYSE_TAG }),
+    },
+  });
+  assert.strictEqual(c2.reDatationEnCours_(cible(c2.CONFIG)), false, 'convergée ⇒ D11 se lève');
+  // Lecture qui LÈVE ⇒ false (échec ouvert assumé, testé pour qu'il reste une décision).
+  const c3 = load(['Config.gs', 'Migration.gs'], {
+    PropertiesService: { getScriptProperties: () => { throw new Error('blip'); } },
+  });
+  assert.strictEqual(c3.reDatationEnCours_(cible(c3.CONFIG)), false);
 });

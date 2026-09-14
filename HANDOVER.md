@@ -43,8 +43,27 @@
 > marge avant le mur (un document LLM lancé dans la dernière minute est TUÉ, le `finally` ne tourne
 > pas, le budget fuit) ⇒ `PILOTE_MARGE_DOC_MS`.
 >
-> **Vérifications** : 1297 tests moteur · 281 tests app + build · syntaxe `.gs` · **12 mutations,
-> 12 attrapées**. ⚠️ Dont la garde « racine seule », qui n'était couverte par **AUCUN** test au
+> **REVUE FLOTTE — 3ᵉ PASSE (code · sécurité · quotas) : 2 🔴 de plus, et CINQ mutations jouées par
+> les agents ont SURVÉCU.** C'est la leçon du lot : une correction n'existe que si une mutation la
+> fait tomber, et il faut la jouer **sur le point d'appel**, pas seulement sur la fonction pure.
+> (1) **La marge de démarrage protégeait le mauvais budget** — retranchée du sous-budget local
+> (2 min) alors que le terme qui mord est le garde-temps du TICK (3 min), qui n'en avait aucune. Un
+> document pris à 179 s franchit le mur DUR de 6 min : l'exécution est TUÉE, le `finally` ne tourne
+> pas, ~4 min sur 8 échappent au compteur, et le MÊME document repart au tick suivant sans rien pour
+> l'arrêter. (2) **La convergence était devenue topologique** : « plus rien à la racine de `06` ».
+> Mais la consolidation passe AVANT, avec 24 min/j contre 8, en pure I/O — elle pouvait emporter les
+> 328 fichiers classés sur leur date FAUSSE, après quoi la campagne écrivait « terminée ✅ » sans
+> avoir rien re-daté… et `finaliserCompteurCampagne_` EFFAÇAIT le compteur qui l'aurait dit. ⇒ D11
+> (la racine d'un domaine en cours de re-datation ne se vide pas sous la campagne, levée seule à la
+> convergence) + compteur honnête. (3) 🟠 **la re-datation pouvait DÉTRUIRE une bonne date** :
+> `getLastUpdated()` en référence, donc `2015-06-12_Bulletin_Avila.pdf` → `2026-…`, hors fenêtre,
+> figé sous une clé de SUCCÈS — l'inverse du but de la campagne. (4) 🟠 trois verrous **promis mais
+> inexistants** : le drapeau STRICT du garde `04` (mutation survivante, mock qui ne lisait pas ses
+> arguments), la ligne de Santé qui ne disait que 2 causes d'arrêt sur 6, et le tripwire de l'app
+> contournable par la forme conjonctive — le bug C28-110 réintroduit, au vert.
+>
+> **Vérifications** : 1306 tests moteur · 281 tests app + build · syntaxe `.gs` · **27 mutations,
+> 27 attrapées** (dont 8 qui avaient d'abord survécu et ont exigé d'écrire le test manquant). ⚠️ Dont la garde « racine seule », qui n'était couverte par **AUCUN** test au
 > premier jet : la retirer laissait toute la suite verte. Son test observe le CHEMIN (`getFolders`
 > jamais appelé), pas la taille du résultat. Trois tests qui MENTAIENT sont tombés et ont été
 > corrigés : `majSante_` affirmait dériver les 20 min de CONFIG en écrivant `20` en dur — son propre

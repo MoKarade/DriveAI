@@ -134,6 +134,11 @@ export function ReorgVue({ langue }: { langue: Langue }) {
     if (enCours) { setErreurCorbeille(t('actionEnCours', langue)); return; }
     setEnCours(true);
     setErreurCorbeille('');
+    // Le bilan du lot PRÉCÉDENT est périmé dès qu'on relance une action (🟡 revues code et sécurité
+    // ADR-0056). Tant que la carte se démontait avec le dernier candidat, il partait avec elle ;
+    // maintenant qu'elle survit, « 110 corbeillés · 2 à re-tenter » resterait affiché au bas d'une
+    // liste que Marc vient justement de finir de vider — le compte rendu contredirait la liste.
+    setBilanCorbeille('');
     try {
       await corbeillerDossierVide(l.id);
       await ecrireCellule('Réorg', `F${l.ligneSheet}`, 'corbeillé');

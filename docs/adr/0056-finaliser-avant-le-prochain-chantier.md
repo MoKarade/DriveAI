@@ -195,3 +195,102 @@ liste (§9, « un mock qui compose son résultat ne distingue pas deux chemins �
   de tag). Aucun code à écrire. En plus, `majSante_` porte une ligne dédiée « **Re-datation de 06** » :
   en attente / en cours avec `N / base` et les minutes du jour / terminée ✅ — donc la campagne est
   suivable dès maintenant, sans attendre sa barre.
+
+---
+
+## Revue flotte adversariale — 3ᵉ passe (code · sécurité · quotas)
+
+Trois agents, lancés en parallèle sur le lot déjà commité. Deux 🔴 de plus, et **cinq mutations
+jouées par les agents ont SURVÉCU** — dont deux qui ré-introduisaient un bug que la 2ᵉ passe
+prétendait avoir fermé. C'est la leçon du lot : une correction n'existe que si une mutation la fait
+tomber, et il faut jouer la mutation SUR LE POINT D'APPEL, pas seulement sur la fonction pure.
+
+### 🔴 1 — La marge de démarrage protégeait le mauvais budget
+
+`PILOTE_MARGE_DOC_MS` était retranchée du sous-budget LOCAL de la campagne (2 min). Or le terme qui
+mord dès que l'amont du tick a consommé 2 min est le garde-temps du TICK (`budgetMsRun_()`, 3 min),
+qui n'en avait **aucune**. Un document pris à 179 s de tick coûte encore 1 à 3 min : 179 + 180 + les
+écritures d'état du `finally` franchissent le **mur DUR de 6 min**, où l'exécution est TUÉE — le
+`finally` ne tourne pas, jusqu'à ~4 min sur un budget quotidien de 8 échappent au compteur, et le
+MÊME document repart en tête au tick suivant, sans compteur pour l'arrêter. Une protection annoncée
+et absente est pire qu'une protection absente : elle clôt la question.
+⇒ `estBudgetDepasseDoc` (Main.gs), garde-temps du tick **amputé de la marge**, réservé aux étapes
+qui lancent un document LLM complet. Verrouillé par un tripwire d'orchestration + 2 mutations.
+
+Deux corollaires du même endroit :
+- **Le reliquat plus petit qu'un document** clampait `murDemarrage` à 0 : la garde devenait
+  « elapsed > 0 », fausse au premier appel, et un document démarrait avec quelques secondes de
+  budget. ⇒ sortie explicite `if (budgetRun <= PILOTE_MARGE_DOC_MS) return;` avant le `try`.
+- **Le RECENSEMENT héritait de la marge LLM** alors qu'il n'est que du comptage Drive. Fenêtre
+  amputée ⇒ trois passes incomplètes ⇒ le filet du compte partiel accepte une **base à 0**, écrite
+  une fois pour toutes (« 5 / 0 documents »). ⇒ deux murs distincts, comme `Reset.gs`.
+
+### 🔴 2 — La convergence était devenue topologique, et le compteur qui l'aurait dit était effacé
+
+Depuis `RACINE_SEULE`, « terminé » veut dire « plus rien à la racine de `06` ». Mais cette racine
+n'est pas drainée que par nous : la **consolidation passe AVANT** dans le tick, avec 24 min/j contre
+8, en pure I/O — des dizaines de fichiers/minute contre 16 à 24 par JOUR — et D8 ne protège
+explicitement PAS les fichiers à plat (c'est le but d'ADR-0052). Elle emporte donc le stock, classé
+sur son NOM et sa **date fausse**, la passe suivante collecte 0, et la campagne écrit « terminée ✅ »
+sans avoir rien re-daté : les ~8,6 $ sont dépensés pour rien et le problème d'origine revient intact.
+Pire, `finaliserCompteurCampagne_` écrivait alors `TRAITES = BASE` — il **effaçait le seul chiffre**
+qui aurait dit « 41 re-datés sur 328 », à l'instant même où il fallait le lire.
+
+⇒ Deux correctifs conjoints, prévenir **et** détecter :
+1. **D11** (`decisionConsolidation_`) — la racine d'un domaine EN COURS de re-datation ne se vide
+   pas sous la campagne. Borné aux domaines de `REANALYSE_CIBLES`, à la racine seule, et il se lève
+   TOUT SEUL à la convergence : c'est un chemin de retour (un état observable), jamais un délai.
+   ADR-0052 reprend la main sur `06` dès que la campagne a fini. Échec **ouvert** assumé et testé :
+   une lecture de Property qui lève rend `false`, donc le pire cas est ce qui se passait avant ce
+   lot — jamais un rangement bloqué à vie par un blip.
+2. Le compteur **n'est plus figé à 100 %** : le journal de fin dit `N / M`, et signale l'écart.
+
+### 🟠 3 — La re-datation pouvait DÉTRUIRE une bonne date, définitivement
+
+`reanalyserFichier_` passait `getLastUpdated()` comme date de référence. Quand la passe 2 rend
+`date_doc: null` (scan mal OCRisé), `dateNormalisee_` retombe dessus : `2015-06-12_Bulletin_Avila.pdf`
+devenait `2026-09-14_…`, **sortait de la fenêtre de scolarité**, retombait à plat — et la clé de
+campagne étant inscrite, **plus jamais re-collecté**. La campagne existe pour RÉPARER des dates :
+en détruire de bonnes au passage est l'inverse de son but, et les ~89 des 328 qui ne portent pas
+`2026` sont exactement la population exposée. ⇒ `dateReferenceReanalyse_` : le préfixe `AAAA-MM[-JJ]`
+du nom courant d'abord, Drive en repli, avec garde de plausibilité. Verrouillé **au point d'appel**.
+
+### 🟠 4 — Trois verrous promis qui n'existaient pas (mutations survivantes)
+
+- **Le drapeau STRICT du garde `04`.** `aParentProtege_(f, proteges, true)` : retirer le `true`
+  laissait 1297 tests verts, parce que le mock rendait `true` sans lire ses arguments (§9 mot pour
+  mot). Sans STRICT, une chaîne d'ancêtres illisible rend « non protégé » au lieu de s'abstenir, et
+  `deplacerEtRenommer_` retire le premier parent — qui peut être `04`. ⇒ les DEUX points d'appel
+  consignent désormais l'argument.
+- **La ligne de Santé ne disait que 2 causes d'arrêt sur 6** : pendant le frein à 40 $, un reset ou
+  une panne de plateforme, elle affichait « en cours — 0 / 328 · 0 des 8 min/j ». C'est le mode de
+  panne du §1.6 DANS la surface écrite pour le fermer. ⇒ `statutReanalyse_` pure, six causes, une
+  assertion par cause. Et le test de santé n'exerçait **jamais** la branche « en cours » : renommer
+  `budgetJourReanalyse_` laissait tout vert. ⇒ harnais qui pose les Properties et charge
+  `Migration.gs` pour de vrai.
+- **Le tripwire de `carteVidesVisible` se contournait par la forme conjonctive**
+  (`videsCandidats.length > 0 && carteVidesVisible(…)`) — c'est-à-dire le bug C28-110 réintroduit,
+  et la façon dont une prochaine session « nettoiera » l'affichage. Il asserta l'absence d'une forme
+  qui n'avait jamais existé dans ce fichier. ⇒ la LIGNE entière est verrouillée, du début à la fin.
+  Idem pour l'assertion CSS, qui passait si la règle sortait de la media query — où
+  `var(--barre-basse-h)` n'est pas déclarée, la déclaration est jetée, et le bilan repasse sous la
+  barre d'onglets.
+
+### 🟡 Le reste, corrigé ici
+
+Recensement racine-seule non testé · `REANALYSE` absent du garde « campagne ACTIVE à budget 0 =
+muette » (9 jambes dans la somme, 5 dans le garde) · `GMAIL_HISTO_PRETEES_MIN` non relié au
+transfert (un prochain 12 → 10 l'aurait laissé à 8) · un bilan de lot PÉRIMÉ qui survit désormais à
+la liste · cinq contrats inter-modules absents de `surface-moteur.test.js` alors que leurs jumeaux
+y étaient.
+
+### Ce qui a été vérifié et qui tenait
+
+Zone protégée `04` intacte (aucun chemin de détachement ; collecte bornée au seul `06`, domaine
+protégé sauté en défense en profondeur, refus inscrit sous la clé de campagne ⇒ convergence) ·
+aucune suppression, aucun scope élargi, aucun secret · enveloppe à 63 min/j exactement, 9ᵉ jambe
+dans les TROIS sommes · `finally` qui accumule les ms même sur exception · étape enveloppée d'un
+try/catch (l'intake ne peut pas être gelé par elle) · coût en appels Drive : ~5 par tick.
+
+**27 mutations jouées sur l'ensemble du lot, 27 attrapées** — dont 8 qui avaient d'abord survécu et
+ont exigé d'écrire le test manquant.

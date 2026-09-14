@@ -307,9 +307,16 @@ describe('carteVidesVisible + placement du compte rendu (C28-93)', () => {
     // lequel Marc venait de cliquer. Un test de logique pure ne peut pas voir ça : l'ORDRE du rendu
     // et le fait que la vue appelle bien le prédicat se verrouillent sur la SOURCE.
     const vue = readFileSync(join(ICI, '..', 'src', 'vues', 'Reorg.tsx'), 'utf8');
-    expect(vue).toContain('carteVidesVisible(videsCandidats.length');
-    // L'ancienne condition ne doit plus gater la carte (elle reste permise pour la LISTE seule).
-    expect(vue).not.toMatch(/\{\(videsCandidats\.length > 0 \|\|/);
+    // ⚠️ LA LIGNE ENTIÈRE, jamais une sous-chaîne (🟠 revue code ADR-0056). La première version
+    // asserta `toContain('carteVidesVisible(')` + l'absence d'une forme qui n'a JAMAIS existé dans
+    // ce fichier : la mutation `videsCandidats.length > 0 && carteVidesVisible(…) && (` — c'est-à-dire
+    // exactement le bug C28-110 réintroduit, et la façon dont une prochaine session « nettoiera »
+    // l'affichage — passait au vert. On verrouille donc la ligne du début à la fin.
+    const ligne = vue.split('\n').find((l) => l.includes('carteVidesVisible('));
+    expect(ligne, 'la vue doit gater la carte par le prédicat').toBeDefined();
+    expect(ligne!.trim()).toMatch(
+      /^\{carteVidesVisible\(videsCandidats\.length, \{[^}]*\}\) && \($/,
+    );
     const liste = vue.indexOf('videsCandidats.map(');
     const retour = vue.indexOf('className="corbeille-retour"');
     expect(liste).toBeGreaterThan(0);
@@ -319,6 +326,13 @@ describe('carteVidesVisible + placement du compte rendu (C28-93)', () => {
     const css = readFileSync(join(ICI, '..', 'src', 'styles.css'), 'utf8');
     const bloc = css.slice(css.indexOf('.corbeille-retour'));
     expect(bloc.slice(0, 400)).toMatch(/position:\s*sticky/);
-    expect(css).toMatch(/\.corbeille-retour\s*\{[^}]*bottom:\s*calc\(var\(--barre-basse-h\)/);
+    // ⚠️ La règle doit être DANS la media query (🟡 revue code ADR-0056) : `--barre-basse-h` n'est
+    // déclarée que sous 760 px. Hors media query, `calc(var(--barre-basse-h) + …)` est INVALIDE, la
+    // déclaration est jetée en silence, et le bilan repasse sous la barre d'onglets — exactement le
+    // bug qu'on ferme. On ancre donc l'assertion sur le BLOC, pas sur le fichier entier.
+    const media = css.slice(css.indexOf('@media (max-width: 760px) {\n  .corbeille-retour'));
+    expect(media.slice(0, 200)).toMatch(
+      /\.corbeille-retour\s*\{[^}]*bottom:\s*calc\(var\(--barre-basse-h\)/,
+    );
   });
 });

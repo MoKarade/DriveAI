@@ -245,6 +245,26 @@ function decisionConsolidation_(d) {
       raison: 'Déjà dans un sous-dossier — le repli par type ne déplace pas (ADR-0052 D8)',
     };
   }
+  // ADR-0056 D11 — LA RACINE D'UN DOMAINE EN COURS DE RE-DATATION NE SE VIDE PAS SOUS LA CAMPAGNE.
+  //
+  // 🔴 revue code ADR-0056. La re-datation (C28-92) ne collecte QUE les fichiers à plat à la racine
+  // de `06` — c'est la garde `REANALYSE_RACINE_SEULE`, posée pour qu'elle ne défasse pas le rangement
+  // de Marc. Mais la consolidation passe AVANT elle dans le tick, avec 24 min/j contre 8, en pure
+  // I/O : elle draine des dizaines de fichiers/minute là où la campagne en traite 16 à 24 par JOUR.
+  // Et D8 ne protège explicitement PAS les fichiers à plat (c'est le but d'ADR-0052). Elle emporte
+  // donc le stock, classé sur son NOM et sa date FAUSSE — la date de réception, précisément ce que
+  // la campagne existe pour corriger. Les fichiers atterrissent dans la mauvaise année, la campagne
+  // collecte 0 à la passe suivante et se déclare « terminée ✅ » sans avoir rien re-daté : les ~8,6 $
+  // sont dépensés pour rien et le problème d'origine de Marc revient intact.
+  // On RETARDE donc, on n'annule pas : ADR-0052 (« plus aucun fichier à plat ») reprend la main sur
+  // ce domaine dès que la campagne converge. C'est un chemin de RETOUR (un état observable), jamais
+  // un délai (§9) — et c'est borné aux domaines de `REANALYSE_CIBLES`, à la RACINE seule.
+  if (d.reDatationEnCours && String(d.sousCheminActuel || '') === '') {
+    return {
+      action: 'OK', cible: d.domaine,
+      raison: 'Re-datation en cours sur ce domaine — classer maintenant le figerait sur une date fausse (ADR-0056 D11)',
+    };
+  }
   // C28-90 (trouvé en vérifiant la revue) — UNE CIBLE VIDE NE REMONTE JAMAIS UN FICHIER À LA RACINE.
   // « Aucune règle, pas même le type, n'a su placer ce document » est un constat d'IGNORANCE : il ne
   // dit rien du rangement actuel, et il ne peut donc pas le défaire. Or la collecte est RÉCURSIVE
@@ -447,6 +467,10 @@ function traiterUnConsolidation_(fileId, domaine, tag, ctx) {
     sousCheminCible: cibleConso.nom,
     dossierIdCible: cibleConso.id,
     cibleFaible: cibleConso.faible === true, // ADR-0052 D8 : cible issue du seul TYPE du document
+    // ADR-0056 D11. Appel DIRECT et non `ctx.x ? ctx.x() : false` : un contexte de test qui
+    // oublierait la clé désarmerait la garde EN SILENCE. La lecture de Property est mémoïsée par
+    // exécution dans `reDatationEnCours_` — une page de consolidation en traite des dizaines.
+    reDatationEnCours: reDatationEnCours_(domaine),
 
     parentId: parentId,
     protege: protegeConstate,

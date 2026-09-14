@@ -112,6 +112,86 @@ test('collecterAReanalyser_ (ADR-0056) : RACINE SEULE — la descente récursive
   }
 });
 
+test('compterCampagneDossier_ : le RECENSEMENT partage le périmètre de la collecte (racine seule)', () => {
+  // 🟠 revue code ADR-0056, mutation survivante au premier jet. Le recensement fixe la BASE de la
+  // barre ET de la ligne de santé. Récursif alors que la collecte est à plat, il compterait ~800
+  // fichiers pour une campagne qui n'en traitera que 328 : « terminé » arriverait à 40 % affiché,
+  // et Marc lirait une progression qui n'a aucun rapport avec le travail réel.
+  // Observé par le CHEMIN (`getFolders` jamais appelé), pas par la taille du résultat : un
+  // sous-dossier vide rendrait le même compte.
+  const ctx = ctxMigration([]);
+  let descentes = 0;
+  const doc = (id) => fakeFile({ id, name: id + '.pdf' });
+  const sous = fauxDossier([doc('S1'), doc('S2'), doc('S3')]);
+  const racine = {
+    getFiles: () => iter([doc('R1'), doc('R2')]),
+    getFolders: () => { descentes += 1; return iter([sous]); },
+  };
+
+  const etat = { n: 0, complet: true };
+  ctx.compterCampagneDossier_(racine, etat, () => false, () => true, false);
+  assert.strictEqual(etat.n, 2, 'seuls les fichiers à plat');
+  assert.strictEqual(descentes, 0, 'le garde coupe AVANT getFolders()');
+
+  // Contre-épreuve : sans le drapeau, le comportement HISTORIQUE (migration m1) est intact.
+  const etat2 = { n: 0, complet: true };
+  ctx.compterCampagneDossier_(racine, etat2, () => false, () => true);
+  assert.strictEqual(etat2.n, 5);
+  assert.strictEqual(descentes, 1);
+});
+
+test('compterRestantReanalyse_ : c\'est bien `REANALYSE_RACINE_SEULE` qui commande le recensement', () => {
+  // Le lien entre la CONSTANTE et l'appel : sans lui, un futur « nettoyage » qui remet la récursion
+  // en dur passerait inaperçu. La position du drapeau est une décision de Marc → save/restore (§9).
+  const ctx = ctxMigration([]);
+  const vus = [];
+  ctx.compterCampagneDossier_ = (dossier, etat, garde, predicat, recursif) => { vus.push(recursif); };
+  ctx.DriveApp = { getFolderById: () => ({}) };
+  const avant = ctx.CONFIG.REANALYSE_RACINE_SEULE;
+  try {
+    ctx.CONFIG.REANALYSE_RACINE_SEULE = true;
+    ctx.compterRestantReanalyse_(() => false);
+    ctx.CONFIG.REANALYSE_RACINE_SEULE = false;
+    ctx.compterRestantReanalyse_(() => false);
+  } finally {
+    ctx.CONFIG.REANALYSE_RACINE_SEULE = avant;
+  }
+  assert.deepStrictEqual(vus, [false, true], 'le recensement suit la constante, jamais une valeur en dur');
+});
+
+test('dateReferenceReanalyse_ : le préfixe du NOM prime, `getLastUpdated()` n\'est qu\'un repli', () => {
+  // 🟠 revue sécurité ADR-0056, et c'est le cœur de la campagne. `dateNormalisee_` retombe sur la
+  // date de RÉFÉRENCE quand la passe 2 rend `date_doc: null` (scan mal OCRisé). Avec la date Drive,
+  // `2015-06-12_Bulletin_Avila.pdf` devenait `2026-09-14_…` : il SORTAIT de la fenêtre de scolarité,
+  // retombait à plat, et la clé de campagne étant inscrite il n'était PLUS JAMAIS re-collecté
+  // (§9, « un verdict POSITIF qui déplace l'item est DÉFINITIF DE FAIT »). La campagne existe pour
+  // RÉPARER des dates : détruire les bonnes au passage est l'inverse de son but. Les ~89 fichiers
+  // des 328 qui ne portent pas `2026` sont exactement la population exposée.
+  const ctx = ctxMigration([]);
+  const drive = new Date('2026-09-14T12:00:00Z');
+  const f = ctx.dateReferenceReanalyse_;
+  // (a) préfixe complet → c'est lui qui gagne
+  const d1 = f('2015-06-12_Bulletin_Lycée-Thérèse-Avila.pdf', drive);
+  assert.strictEqual(d1.getFullYear(), 2015);
+  assert.strictEqual(d1.getMonth(), 5);
+  assert.strictEqual(d1.getDate(), 12);
+  // (b) préfixe au MOIS (granularité admise par la convention) → milieu de mois, jamais la date Drive
+  const d2 = f('2017-03_Relevé_ULCO.pdf', drive);
+  assert.strictEqual(d2.getFullYear(), 2017);
+  assert.strictEqual(d2.getMonth(), 2);
+  // (c) pas de préfixe → repli sur Drive (comportement historique, intact)
+  assert.strictEqual(f('Devoir de physique.pdf', drive), drive);
+  assert.strictEqual(f('', drive), drive);
+  // (d) préfixe ABSURDE → on ne remplace pas une date réelle par une aberration
+  assert.strictEqual(f('0000-99-99_Truc.pdf', drive), drive);
+  assert.strictEqual(f('2015-13-01_Truc.pdf', drive), drive);
+  // (e) …et une date de 2026 dans le nom reste prise telle quelle : la campagne la CORRIGERA par
+  //     la lecture du document. Ce qu'on refuse, c'est de la RÉ-ÉCRASER quand la lecture échoue.
+  const d3 = f('2026-01-05_Devoir_Inconnu.pdf', drive);
+  assert.strictEqual(d3.getFullYear(), 2026);
+  assert.strictEqual(d3.getMonth(), 0);
+});
+
 /* ---------- migrerFichier_ : zone protégée + placement ---------- */
 
 function ctxMigrerFichier(opts) {
@@ -123,7 +203,11 @@ function ctxMigrerFichier(opts) {
   ctx.traiterDocument_ = (src) => calls.traites.push(src);
   ctx.renommer_ = (id, nom) => { calls.renomme.push({ id, nom }); return true; };
   ctx.deplacerEtRenommer_ = (id, nouveau, ancien, nom) => { calls.deplace.push({ id, nouveau, ancien, nom }); return true; };
-  ctx.aParentProtege_ = () => !!opts.protege;
+  // Le 3ᵉ argument (STRICT) est le garde-fou §1 : le mock le CONSIGNE au lieu de l'ignorer, pour
+  // qu'une mutation qui le retire tombe ici aussi — `migrerFichier_` porte le MÊME appel que
+  // `reanalyserFichier_`, et une revue ne verrouille que les sites qu'elle inspecte.
+  calls.gardeStrict = [];
+  ctx.aParentProtege_ = (f, proteges, strict) => { calls.gardeStrict.push(strict); return !!opts.protege; };
   ctx.DriveApp = {
     getFileById: () => ({
       getName: () => 'doc 2024.pdf',
@@ -144,6 +228,10 @@ test('migrerFichier_ : zone protégée (strict) → non touché, inscrit « zone
   assert.strictEqual(calls.index.length, 1);                          // mais inscrit → plus jamais re-collecté
   assert.strictEqual(calls.index[0].cle, 'migre|' + ctx.CONFIG.MIGRATION_TAG + '|F1'); // dérivé de la CONSTANTE
   assert.strictEqual(calls.index[0].res.statut, 'zone protégée');
+  // Le mode STRICT est le garde-fou, pas l'appel : sans lui, une chaîne d'ancêtres ILLISIBLE rend
+  // « non protégé » au lieu de s'abstenir, et `deplacerEtRenommer_` retire le premier parent — qui
+  // peut être `04`. Mutation prouvée : retirer le `true` fait tomber ce test.
+  assert.deepStrictEqual(calls.gardeStrict, [true], 'garde §1 appelé en mode STRICT (échec fermé)');
 });
 
 test('migrerFichier_ : descripteur pipeline (clé migre|, ignorerDoublon) + placement in-place', () => {
@@ -489,8 +577,17 @@ test('reanalyserFichier_ : zone protégée inscrite sous la clé reanalyse| ; pi
     }),
   };
 
-  ctx.aParentProtege_ = () => true; // multi-parents accroché à 04 → refus inscrit, jamais muté
+  // ⚠️ LE 3ᵉ ARGUMENT EST LE GARDE-FOU (🟠 revue sécurité ADR-0056, mutation survivante). Le mock
+  // rendait `true` SANS LIRE SES ARGUMENTS : retirer le `true` de `aParentProtege_(f, proteges, true)`
+  // laissait 1297 tests verts. Or sans lui, `aParentProtege_` rend FALSE quand la chaîne d'ancêtres
+  // est ILLISIBLE au lieu de s'abstenir — un fichier multi-parents accroché à `04` dont la remontée
+  // échoue transitoirement serait jugé non protégé, et `deplacerEtRenommer_` retire le PREMIER
+  // parent, qui peut être `04`. Détachement silencieux de la zone protégée (§1).
+  // §9, mot pour mot : « un mock doit lire l'ARGUMENT reçu ».
+  const argsGarde = [];
+  ctx.aParentProtege_ = (f, proteges, strict) => { argsGarde.push(strict); return true; };
   assert.strictEqual(ctx.reanalyserFichier_('F1', {}), false);
+  assert.deepStrictEqual(argsGarde, [true], 'le garde §1 doit être appelé en mode STRICT (échec fermé)');
   assert.deepStrictEqual(calls.index, [{ cle: 'reanalyse|' + ctx.CONFIG.REANALYSE_TAG + '|F1', statut: 'zone protégée' }]);
   assert.strictEqual(calls.traites.length, 0);
 
@@ -499,6 +596,14 @@ test('reanalyserFichier_ : zone protégée inscrite sous la clé reanalyse| ; pi
   assert.strictEqual(calls.traites.length, 1);
   assert.strictEqual(calls.traites[0].cle, 'reanalyse|' + ctx.CONFIG.REANALYSE_TAG + '|F2');
   assert.strictEqual(calls.traites[0].ignorerDoublon, true);
+  // ⚠️ LE POINT D'APPEL, pas seulement la fonction pure. Le mock oppose exprès deux dates : le nom
+  // dit 2024, `getLastUpdated()` dit 2026. Le pipeline doit recevoir CELLE DU NOM — sinon un
+  // document dont la passe 2 ne relit pas la date se fait ré-écraser par la date d'import, sort de
+  // sa fenêtre et se fige sous une clé de SUCCÈS. Mutation prouvée : remettre `f.getLastUpdated()`
+  // ici fait tomber ce test (la fonction pure seule, elle, restait verte — une garde n'existe qu'aux
+  // endroits qui la CONSULTENT).
+  assert.strictEqual(calls.traites[0].date.getFullYear(), 2024,
+    'la date de référence vient du NOM (2024), jamais de getLastUpdated (2026)');
 });
 
 /* ---------- Fix convergence rangement : 3 granularités de date ---------- */

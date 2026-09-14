@@ -8,18 +8,19 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const { load } = require('./harness');
 
-/** PropertiesService mocké : aucune Property (coût du mois = 0). */
-function mockProps() {
+/** PropertiesService mocké : `props` posées, tout le reste null (coût du mois = 0). */
+function mockProps(props) {
+  const table = props || {};
   return {
     getScriptProperties: () => ({
-      getProperty: () => null,
-      setProperty: () => {},
-      deleteProperty: () => {},
+      getProperty: (k) => (Object.prototype.hasOwnProperty.call(table, k) ? table[k] : null),
+      setProperty: (k, v) => { table[k] = String(v); },
+      deleteProperty: (k) => { delete table[k]; },
     }),
   };
 }
 
-function chargerAvecSanteMock(indexCache) {
+function chargerAvecSanteMock(indexCache, props) {
   // `GoogleApi.gs` : `majSante_` lit l'état de panne de config d'API (C28-48). `Llm.gs` et
   // `TriGmail.gs` : la ligne « Tri Gmail » (ADR-0043) interroge `estPannePlateforme_` et
   // `estPanneConfigApi_`. Sans eux, le contexte par défaut exerçait le chemin d'ERREUR au lieu du
@@ -37,8 +38,12 @@ function chargerAvecSanteMock(indexCache) {
   // de la campagne (gate `gResetEnCours`). Chargé POUR DE VRAI plutôt que mocké : un `typeof ===
   // 'function'` masquerait la dépendance, et c'est précisément ce genre de garde qui a fait qu'un
   // chemin d'ERREUR a longtemps été pris pour le chemin nominal dans ce fichier.
+  // `Migration.gs` : `texteSanteReanalyse_` lit `budgetJourReanalyse_` — contrat INTER-MODULE.
+  // Chargé POUR DE VRAI et non mocké : une mutation du nom doit tomber ici (elle a SURVÉCU à la
+  // première écriture de ce test, qui ne sortait jamais de la branche « en attente »).
   const ctx = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'GoogleApi.gs', 'TriGmail.gs', 'Doublons.gs',
-    'Gmail.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'], { PropertiesService: mockProps() });
+    'Gmail.gs', 'Migration.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
+    { PropertiesService: mockProps(props) });
   const captured = [];
   // feuille_ mocké : capture l'unique setValues de « Santé » ; `getLastRow: 1` = rapport des
   // doublons encore vide (état réel avant la première passe de la campagne).
@@ -75,6 +80,52 @@ test('majSante_ : la ligne « Re-datation de 06 » distingue « jamais démarré
   // et surtout pas prétendre que la campagne tourne.
   assert.ok(/en attente/.test(ligne), ligne);
   assert.ok(!/en cours/.test(ligne), 'jamais « en cours » quand une garde amont bloque : ' + ligne);
+});
+
+test('majSante_ : la ligne « Re-datation de 06 » EXERCE sa branche « en cours » (avancement + minutes)', () => {
+  // ⚠️ Ce test existe parce que le précédent ne prouvait RIEN de la branche nominale : sans
+  // Properties, `texteSanteReanalyse_` sortait toujours sur « en attente ». Mutation jouée en revue
+  // — renommer `budgetJourReanalyse_` (contrat INTER-MODULE, Migration.gs → Main.gs) — laissait
+  // 1297 tests VERTS. Ici on pose les deux gardes amont à « fini » pour tomber dans la branche qui
+  // lit les compteurs, et on asserte ce qu'elle produit.
+  const { ctx, captured } = chargerAvecSanteMock({}, {});
+  const p = ctx.PropertiesService.getScriptProperties();
+  p.setProperty('DriveAI_RANGEMENT', ctx.CONFIG.RANGEMENT_TAG);
+  p.setProperty('DriveAI_MIGRATION', ctx.CONFIG.MIGRATION_TAG);
+  p.setProperty('DriveAI_REANALYSE_BASE', '328');
+  p.setProperty('DriveAI_REANALYSE_TRAITES', '41');
+  // Compteur du jour : la MÊME clé de jour que la campagne (`dateGmail_`), sinon on lirait 0 et le
+  // test passerait en mesurant un zéro sans rapport.
+  p.setProperty('DriveAI_REANALYSE_JOUR', ctx.dateGmail_(new Date()) + '|' + (3 * 60 * 1000));
+  ctx.majSante_();
+  const ligne = captured.find((l) => l.indexOf('Re-datation de 06') === 0);
+  assert.ok(ligne && !ligne.includes('illisible'), 'chemin nominal, pas le catch : ' + ligne);
+  assert.ok(/en cours/.test(ligne), ligne);
+  assert.ok(/41 \/ 328 documents/.test(ligne), ligne);
+  // DÉRIVÉ de CONFIG (jamais « 8 » recopié) : le jour où les minutes sont réallouées, ce test suit.
+  const minJ = ctx.CONFIG.REANALYSE_BUDGET_JOUR_MS / 60000;
+  assert.ok(new RegExp('3 des ' + minJ + ' min\\/j').test(ligne), ligne);
+});
+
+test('statutReanalyse_ : les SIX causes d\'arrêt se disent, une par une (PURE)', () => {
+  // 🟠 des trois revues : la première version n'en connaissait que deux, et affichait
+  // « en cours — 0 / 328 · 0 des 8 min/j » pendant que le frein à 40 $, le reset ou une panne de
+  // plateforme tenaient la campagne à l'arrêt. Chaque cause est assertée SÉPARÉMENT — un
+  // `indexOf(x) === 0` sur une seule famille en raterait la moitié (§9, estimation en pause).
+  const { ctx } = chargerAvecSanteMock({}, {});
+  const F = ctx.statutReanalyse_;
+  //           terminée, rangement, migration, frein, reset, panne
+  assert.match(F(true, false, false, false, false, false), /terminée/);
+  assert.match(F(false, true, false, false, false, false), /grand rangement/);
+  assert.match(F(false, false, true, false, false, false), /migration/);
+  assert.match(F(false, false, false, false, false, true), /panne de plateforme/);
+  assert.match(F(false, false, false, true, false, false), /frein budget/);
+  assert.match(F(false, false, false, false, true, false), /reset/);
+  // Rien ne l'arrête ⇒ chaîne VIDE : c'est ce qui laisse l'appelant calculer l'avancement.
+  assert.strictEqual(F(false, false, false, false, false, false), '');
+  // Le montant du frein est DÉRIVÉ de CONFIG, jamais recopié.
+  assert.ok(F(false, false, false, true, false, false)
+    .includes(String(ctx.CONFIG.LLM_BUDGET_CAMPAGNES) + ' $'));
 });
 
 test('majSante_ : la ligne « Historique Gmail » dit l\'état ET les minutes consommées (C28-99)', () => {
