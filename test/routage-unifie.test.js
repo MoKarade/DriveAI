@@ -201,3 +201,62 @@ test('dossierVivantOuNull_ : un ID MÉMORISÉ ne ressuscite jamais un dossier co
   assert.strictEqual(ctx.dossierVivantOuNull_(''), null);
   assert.strictEqual(ctx.dossierVivantOuNull_(null), null);
 });
+
+test('dossierRacineParNom_ / dossierDomaineAuto_ APPELLENT la garde (câblage, pas la fonction seule)', () => {
+  // Leçon de la 3ᵉ revue, appliquée AU CORRECTIF LUI-MÊME : une fonction bien testée qui n'est pas
+  // APPELÉE ne protège rien. `dossierVivantOuNull_` a son test ; ce test-ci vérifie que les deux
+  // résolveurs de RACINE passent par elle, sur les DEUX voies (ID mémorisé, puis nom).
+  // Mutation : remettre `try { return DriveApp.getFolderById(id); } catch {}` ⇒ ce test tombe.
+  const props = {};
+  const cree = [];
+  const dossier = (id, corbeille) => ({
+    getId: () => id,
+    isTrashed: () => corbeille,
+    getParents: () => ({ hasNext: () => true, next: () => racine }),
+  });
+  const racine = {
+    getId: () => 'RACINE',
+    getParents: () => ({ hasNext: () => false }),
+    getFoldersByName: (nom) => {
+      let i = 0;
+      const items = nom === '_Doublons' ? [dossier('DOUBLONS_MORT', true)] : [];
+      return { hasNext: () => i < items.length, next: () => items[i++] };
+    },
+    createFolder: (nom) => { cree.push(nom); return dossier('NEUF:' + nom, false); },
+  };
+  ctx.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in props ? props[k] : null),
+    setProperty: (k, v) => { props[k] = v; },
+  }) };
+  ctx.DriveApp = {
+    getRootFolder: () => racine,
+    getFolderById: (id) => {
+      if (id === 'DOUBLONS_MORT') return dossier('DOUBLONS_MORT', true);
+      if (id === 'ANCRE') return dossier('ANCRE', false);
+      throw new Error('File not found: ' + id);
+    },
+  };
+  ctx.CONFIG = Object.assign({}, ctx.CONFIG, {
+    DOSSIERS: Object.assign({}, ctx.CONFIG.DOSSIERS, { A_TRIER: 'ANCRE' }),
+    DOMAINES: Object.assign({}, ctx.CONFIG.DOMAINES, { [ctx.CONFIG.DOMAINE_DEFAUT]: 'ANCRE' }),
+  });
+
+  // Voie ID : la Property pointe sur un dossier CORBEILLÉ — c'est le scénario « Marc corbeille
+  // `_Doublons` depuis Drive » — on ne le rend pas, on en recrée un.
+  props.DriveAI_DOUBLONS_ID = 'DOUBLONS_MORT';
+  const d = ctx.dossierRacineParNom_('_Doublons', 'DriveAI_DOUBLONS_ID');
+  assert.strictEqual(d.getId(), 'NEUF:_Doublons', 'jamais le dossier corbeillé');
+  assert.strictEqual(props.DriveAI_DOUBLONS_ID, 'NEUF:_Doublons', 'et la Property est re-pointée');
+
+  // Voie NOM (aucune Property) : l'homonyme corbeillé est ignoré lui aussi.
+  cree.length = 0;
+  const dom = ctx.dossierDomaineAuto_('_Doublons');
+  assert.strictEqual(dom.getId(), 'NEUF:_Doublons');
+  assert.strictEqual(cree.length, 1, 'un dossier neuf, pas la corbeille');
+
+  // Contre-épreuve : un ID mémorisé VIVANT est rendu tel quel, rien n'est créé.
+  props.DriveAI_DOUBLONS_ID = 'ANCRE';
+  cree.length = 0;
+  assert.strictEqual(ctx.dossierRacineParNom_('_Doublons', 'DriveAI_DOUBLONS_ID').getId(), 'ANCRE');
+  assert.strictEqual(cree.length, 0);
+});
