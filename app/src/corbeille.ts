@@ -98,10 +98,15 @@ export const CORBEILLE_MAX_PANNES = 5;
  * POURQUOI — incident du 2026-09-14, rapporté par Marc au premier vrai clic sur « Tout corbeiller
  * (112) » : « Lot interrompu : Google refuse les appels. 56 dossier(s) n'ont pas été tentés ». Le
  * coupe-circuit avait bien fait son travail ; ce qui l'a déclenché, c'est nous. Le lot écrivait
- * **UNE cellule par dossier**, or l'API Sheets plafonne à **60 écritures/minute PAR UTILISATEUR** —
- * et ce quota est PARTAGÉ avec le moteur, qui écrit dans la même Sheet en tant que Marc toutes les
- * 5 minutes. À ~2 dossiers/seconde, on dépassait le plafond autour de la 56ᵉ ligne : exactement là
- * où ça s'est arrêté. Les réessais de `api()` (1,5 s → 3 s → 6 s) ne sauvent pas d'un quota PAR
+ * **UNE cellule par dossier**, or l'API Sheets plafonne à **60 écritures/minute PAR UTILISATEUR ET PAR PROJET**.
+ * À ~2 dossiers/seconde, on dépassait le plafond autour de la 56ᵉ ligne : exactement là où ça s'est
+ * arrêté. Le compte tombe juste : coupure après 5 pannes d'affilée à `i = 56` ⇒ le premier refus est
+ * tombé sur la **52ᵉ** écriture, et les réessais de `api()` ont brûlé le reste du seau.
+ * ⚠️ Une version antérieure de ce commentaire disait « quota PARTAGÉ avec le moteur ». C'est très
+ * probablement FAUX (revue C28-119) : le moteur écrit via `SpreadsheetApp` d'Apps Script — service
+ * interne, projet GCP caché — et non par l'API REST Sheets du client OAuth de l'app. Deux seaux
+ * indépendants [Probable]. Le seau de l'app suffit à lui seul à expliquer l'incident, et une cause
+ * mémorisée que les faits ne soutiennent pas refonde un raisonnement plus tard (§9). Les réessais de `api()` (1,5 s → 3 s → 6 s) ne sauvent pas d'un quota PAR
  * MINUTE qu'on continue de saturer — ils l'entretiennent.
  *
  * Le remède n'est pas d'attendre, c'est d'écrire MOINS : les lignes `vide-candidat` sont posées en
@@ -127,6 +132,25 @@ export const CORBEILLE_LOT_ECRITURE = 20;
  * 112 lignes font 7 écritures au lieu de 112.
  */
 export const CORBEILLE_PREMIERE_ECRITURE = CORBEILLE_MAX_PANNES;
+
+/**
+ * Écritures Sheet autorisées par minute glissante (C28-119, revue flotte).
+ *
+ * ⚠️ POURQUOI CE RÉGULATEUR EXISTE, ALORS QUE LA MISE EN LOTS SEMBLE SUFFIRE. Elle ne suffit que si
+ * les lignes `vide-candidat` sont CONTIGUËS — et c'est une hypothèse que ce code ne contrôle pas.
+ * Mesuré en revue sur la vraie fonction : 112 lignes contiguës font 7 PUT, par blocs de 3 elles en
+ * font 42, **une ligne sur deux en fait 112 — exactement comme avant le correctif**. Or QUATRE
+ * producteurs écrivent dans l'onglet Réorg (`ConsolidationExec.gs` ×2, `Reorg.gs`, `WebApp.gs`), la
+ * consolidation découvre les dossiers vides sur des dizaines de ticks budgétés, et
+ * `inscrireDossierVideCandidat_` ré-arme une ligne `vide-repris` SUR PLACE, à son ancien rang —
+ * un producteur délibéré de lignes isolées.
+ *
+ * Le régulateur borne LA CAUSE (le nombre d'écritures par minute) au lieu de parier sur la
+ * disposition : quelle que soit la forme de la liste, on ne sature plus. La mise en lots reste
+ * utile — elle rend l'attente rare — mais elle n'est plus ce sur quoi la correction repose.
+ * 50 et non 60 : le reste de l'app écrit aussi (validations, demandes d'analyse).
+ */
+export const CORBEILLE_ECRITURES_PAR_MIN = 50;
 
 /** Ce qu'un lot de corbeille a VRAIMENT fait — chaque état distinct, jamais additionnés. */
 export interface BilanLot {
@@ -166,6 +190,10 @@ export async function corbeillerLot(
     surLigne?: (ligneSheet: number, statut: string) => void;
     avancement?: (fait: number, total: number) => void;
     stop?: () => boolean;
+    // Horloge et attente INJECTÉES : le régulateur de cadence ne se teste pas en attendant vraiment
+    // une minute. Défauts réels en production.
+    maintenant?: () => number;
+    attendre?: (ms: number) => Promise<void>;
   },
 ): Promise<BilanLot> {
   const bilan: BilanLot = {
@@ -175,6 +203,24 @@ export async function corbeillerLot(
   // Statuts en attente d'écriture : l'action Drive est DÉJÀ faite pour chacun.
   let tampon: { ligneSheet: number; statut: string }[] = [];
   let premiereEcritureFaite = false;
+  const maintenant = deps.maintenant ?? (() => Date.now());
+  const attendre = deps.attendre ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const horodatages: number[] = []; // instants des PUT émis, fenêtre glissante d'une minute
+
+  /** Attend s'il le faut pour ne jamais dépasser CORBEILLE_ECRITURES_PAR_MIN sur 60 s glissantes. */
+  async function cadencer(): Promise<void> {
+    const purger = (t: number) => {
+      while (horodatages.length && t - horodatages[0] >= 60_000) horodatages.shift();
+    };
+    purger(maintenant());
+    if (horodatages.length >= CORBEILLE_ECRITURES_PAR_MIN) {
+      // On attend que la plus ANCIENNE écriture sorte de la fenêtre, plus une marge : c'est le
+      // minimum qui libère une place, jamais une pause forfaitaire.
+      await attendre(60_000 - (maintenant() - horodatages[0]) + 100);
+      purger(maintenant());
+    }
+    horodatages.push(maintenant());
+  }
 
   /** Écrit le tampon en PLAGES contiguës (un PUT par plage), puis le vide. */
   async function viderTampon(): Promise<void> {
@@ -186,6 +232,7 @@ export async function corbeillerLot(
       const valeurs: string[] = [];
       for (let n = debut; n <= fin; n++) valeurs.push(parLigne.get(n) as string);
       try {
+        await cadencer();
         await deps.ecrireLot(debut, valeurs);
         // L'écran ne suit QUE ce que la Sheet a pris : sinon Marc voit « corbeillé » sur une ligne
         // que le prochain rechargement lui rendra `vide-candidat`, sans qu'il comprenne pourquoi.
@@ -241,6 +288,9 @@ export async function corbeillerLot(
   }
   // ⚠️ VIDÉ MÊME SUR INTERRUPTION : les dossiers déjà corbeillés avant la coupure doivent laisser
   // leur trace, sinon le lot suivant les re-présente et Marc re-clique sur du travail déjà fait.
+  // (Une version antérieure ajoutait « et la re-tentative tombe sur un 404 » : FAUX, vérifié en
+  // revue — l'API sert les fichiers corbeillés, le re-clic réussit en silence. Le travail refait
+  // suffit comme raison ; une justification fausse dans un commentaire durable se recopie.)
   await viderTampon();
   return bilan;
 }

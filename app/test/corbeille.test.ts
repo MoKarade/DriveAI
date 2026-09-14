@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { verdictCorbeille, statutRefusCorbeille, corbeillerLot, CORBEILLE_MAX_PANNES,
-  CORBEILLE_LOT_ECRITURE, CORBEILLE_PREMIERE_ECRITURE } from '../src/corbeille';
+  CORBEILLE_LOT_ECRITURE, CORBEILLE_PREMIERE_ECRITURE, CORBEILLE_ECRITURES_PAR_MIN } from '../src/corbeille';
 import { carteVidesVisible } from '../src/etat';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 const ICI = fileURLToPath(new URL('.', import.meta.url));
 import { IDS_STRUCTURELS_DEFAUT } from '../src/garde-fous';
 import { MIME_DOSSIER } from '../src/explorateur';
+import { messageQuota } from '../src/google';
 
 const PROTEGE = 'ID_IMMIGRATION';
 const BASE = {
@@ -117,9 +118,14 @@ describe('statutRefusCorbeille', () => {
     // ⚠️ Le message de saturation NOMME désormais l'API (C28-119) — et `statutRefusCorbeille` LIT ce
     // message. Améliorer un message pour l'humain est un changement de CONTRAT dès que du code le
     // lit (§9) : les deux variantes doivent rester des INCERTITUDES, donc la ligne reste candidate.
-    // Si l'une devenait un verdict, elle quitterait la liste à vie sur une simple panne de quota.
-    expect(statutRefusCorbeille('Sheets (la feuille d\'état) est momentanément saturé (quota par minute) — réessaie dans quelques secondes.')).toBeNull();
-    expect(statutRefusCorbeille('Drive est momentanément saturé (quota par minute) — réessaie dans quelques secondes.')).toBeNull();
+    // ⚠️ ALIMENTÉ PAR LA VRAIE SORTIE du producteur, jamais par une chaîne recopiée : la version
+    // précédente figeait le texte à la main, si bien que revenir au message générique laissait 297
+    // tests VERTS — producteur et consommateur n'étaient reliés par rien (mutation jouée en revue).
+    expect(statutRefusCorbeille(messageQuota('https://sheets.googleapis.com/v4/spreadsheets/x/values/y'))).toBeNull();
+    expect(statutRefusCorbeille(messageQuota('https://www.googleapis.com/drive/v3/files/x'))).toBeNull();
+    // …et le message DIT bien laquelle des deux API refuse : c'est tout l'objet du correctif.
+    expect(messageQuota('https://sheets.googleapis.com/v4/spreadsheets/x')).toContain('Sheets');
+    expect(messageQuota('https://www.googleapis.com/drive/v3/files/x')).toContain('Drive');
     expect(statutRefusCorbeille('Session expirée — reconnecte-toi')).toBeNull();
     expect(statutRefusCorbeille('Google API 500 : backend error')).toBeNull();
     expect(statutRefusCorbeille('TypeError: Failed to fetch')).toBeNull();
@@ -184,10 +190,17 @@ describe('corbeillerLot', () => {
   });
 
   it('Sheet en échec : compté À PART, jamais comme « à re-tenter » (le dossier, lui, est fait)', async () => {
+    // ⚠️ L'ÉCRAN NE SUIT QUE CE QUE LA SHEET A PRIS (mutation survivante, revue C28-119). Déplacer
+    // les `surLigne` AVANT le PUT ne cassait rien : Marc verrait « corbeillé » sur des lignes que le
+    // prochain rechargement lui rendra `vide-candidat`, sans comprendre pourquoi. Le commentaire du
+    // code portait l'invariant, aucun test ne l'observait. On espionne donc l'appel d'écran.
+    const vusEcran: number[] = [];
     const bilan = await corbeillerLot(lignes(2), {
       corbeiller: async () => {},
       ecrireLot: async () => { throw new Error('Google API 429'); },
+      surLigne: (ligneSheet) => vusEcran.push(ligneSheet),
     });
+    expect(vusEcran).toEqual([]); // le PUT a échoué : l'écran ne doit RIEN afficher de corbeillé
     expect(bilan).toMatchObject({ corbeilles: 2, classes: 0, aReessayer: 0, sheetKo: 2, nonTentees: 0 });
     // Le total ne double-compte pas. ⚠️ La version précédente ré-additionnait des valeurs assertées
     // à la ligne d'au-dessus : tautologique (revue C28-93). Ce qui se vérifie, c'est que la somme
@@ -307,6 +320,41 @@ describe('corbeillerLot', () => {
     expect(ecritures.reduce((t, e) => t + e.n, 0)).toBe(112);
   });
 
+  it('C28-119 : LISTE ÉPARSE — la mise en lots n\'aide plus, et le régulateur tient quand même', async () => {
+    // ⚠️ LE TEST QUI DÉCIDE SI L'INCIDENT PEUT SE REPRODUIRE. La mise en lots ne gagne du quota que
+    // si les lignes sont CONTIGUËS — et ce code ne contrôle pas la disposition : QUATRE producteurs
+    // écrivent dans l'onglet Réorg, et `inscrireDossierVideCandidat_` ré-arme une ligne SUR PLACE, à
+    // son ancien rang. Mesuré en revue : une ligne sur deux ⇒ 112 PUT, exactement comme AVANT le
+    // correctif. Le fixture parfaitement contigu du test voisin ne pouvait pas le voir.
+    // Ici chaque ligne est isolée : autant de PUT que de lignes. Ce qui doit tenir, c'est la CADENCE.
+    const eparses = Array.from({ length: 112 }, (_v, i) => ({ id: 'ID' + i, ligneSheet: 2 + i * 2 }));
+    let horloge = 0;
+    const puts: number[] = [];
+    const attentes: number[] = [];
+    const bilan = await corbeillerLot(eparses, {
+      corbeiller: async () => { horloge += 300; },       // ~2 dossiers/s, la cadence de l'incident
+      ecrireLot: async () => { puts.push(horloge); },
+      maintenant: () => horloge,
+      attendre: async (ms) => { attentes.push(ms); horloge += ms; },
+    });
+    expect(bilan.corbeilles).toBe(112);
+    expect(bilan.sheetKo).toBe(0);
+    expect(puts).toHaveLength(112); // la mise en lots n'a RIEN groupé : c'est le pire cas assumé
+    // …et pourtant AUCUNE fenêtre d'une minute ne dépasse le plafond. C'est ça, borner la cause.
+    for (const t of puts) {
+      const fenetre = puts.filter((x) => x > t - 60_000 && x <= t).length;
+      expect(fenetre).toBeLessThanOrEqual(CORBEILLE_ECRITURES_PAR_MIN);
+    }
+    expect(attentes.length).toBeGreaterThan(0); // le régulateur a bien dû freiner
+  });
+
+  it('C28-119 : sur une liste courte, le régulateur n\'attend JAMAIS (aucun coût quand rien ne sature)', () => {
+    // Un régulateur qui ralentit le cas normal se fait retirer à la première plainte. 40 lignes
+    // contiguës = 2 PUT : très loin du plafond, donc zéro attente. Dérivé de la constante.
+    expect(CORBEILLE_ECRITURES_PAR_MIN).toBeLessThan(60); // sous le plafond Sheets, marge pour le reste de l'app
+    expect(CORBEILLE_ECRITURES_PAR_MIN).toBeGreaterThanOrEqual(30); // …sans brider l'usage normal
+  });
+
   it('C28-119 : la sentinelle borne l\'exposition — au plus CORBEILLE_MAX_PANNES dossiers à l\'aveugle', () => {
     // ⚠️ Le test du coupe-circuit Sheets ci-dessus DÉRIVE ses attentes de `CORBEILLE_PREMIERE_ECRITURE` :
     // il reste donc vert si on aligne la sentinelle sur un lot plein (mutation jouée, survivante).
@@ -320,6 +368,11 @@ describe('corbeillerLot', () => {
     // Le lot plein, lui, doit valoir le détour : sous ~10, on ne gagne plus assez de quota pour
     // justifier la fenêtre « corbeillé mais pas encore inscrit ».
     expect(CORBEILLE_LOT_ECRITURE).toBeGreaterThanOrEqual(10);
+    // ⚠️ ET UNE BORNE HAUTE (mutation survivante, revue C28-119). Le docblock PROMET « au pire 20
+    // lignes à re-constater, jamais 112 » — sans cette ligne, passer la constante à 200 laissait
+    // 27 tests verts et la fenêtre aveugle avalait le lot entier. « Promesse de verrou = verrou
+    // codé dans le même commit » (§9).
+    expect(CORBEILLE_LOT_ECRITURE).toBeLessThanOrEqual(25);
   });
 
   it('C28-119 : des lignes NON contiguës se découpent en plages, chacune avec SES statuts', async () => {

@@ -116,6 +116,23 @@ export function abonnerSessionExpiree(cb: () => void): void {
 
 /* ---------- Appels HTTP (401 → rafraîchissement silencieux puis rejeu) ---------- */
 
+/**
+ * Message de saturation, NOMMANT l'API (C28-119). PURE, et EXPORTÉE exprès : `statutRefusCorbeille`
+ * lit ce texte pour décider si une ligne reste candidate. Tant que le test du consommateur recopiait
+ * la chaîne à la main, revenir au message générique laissait 297 tests verts — producteur et
+ * consommateur n'étaient reliés par rien (§9, « un verdict pris sur la donnée RICHE ne se re-dérive
+ * jamais depuis sa forme APPAUVRIE »). Le test alimente désormais le consommateur avec CETTE sortie.
+ *
+ * Pourquoi nommer l'API : les deux plafonds n'ont rien à voir — Drive ~12 000 requêtes/minute,
+ * Sheets 60 ÉCRITURES/minute — donc ni la même cause ni le même remède. Un message générique a
+ * coûté le diagnostic entier de l'incident « Tout corbeiller ».
+ */
+export function messageQuota(url: string): string {
+  const quoi = url.includes('sheets.googleapis.com') ? 'Sheets (la feuille d\'état)'
+    : url.includes('googleapis.com/drive') ? 'Drive' : 'Google';
+  return `${quoi} est momentanément saturé (quota par minute) — réessaie dans quelques secondes.`;
+}
+
 export async function api<T>(url: string, options?: RequestInit): Promise<T> {
   // Filet du mode mock : AUCUN appel réseau ne doit atteindre les vraies API Google en CI.
   // Un chemin oublié échoue bruyamment (visible sur la capture) au lieu de fuiter.
@@ -152,18 +169,17 @@ export async function api<T>(url: string, options?: RequestInit): Promise<T> {
       await new Promise((r) => setTimeout(r, attente + Math.random() * 400));
       continue;
     }
-    if (rep.status === 429) {
-      // ⚠️ DIRE QUELLE API refuse (C28-119). Le message générique a coûté un diagnostic entier :
-      // au premier vrai « Tout corbeiller », le lot s'est arrêté à 56 dossiers sur 112 et rien ne
-      // disait si c'était Drive ou Sheets — or les deux plafonds n'ont RIEN à voir (Drive ~12 000
-      // requêtes/minute, Sheets 60 ÉCRITURES/minute par utilisateur) et donc ni la même cause ni le
-      // même remède. Un verdict qui ne nomme pas sa source se re-diagnostique à chaque fois (§9).
-      const quoi = url.includes('sheets.googleapis.com') ? 'Sheets (la feuille d\'état)'
-        : url.includes('googleapis.com/drive') ? 'Drive' : 'Google';
-      throw new Error(`${quoi} est momentanément saturé (quota par minute) — réessaie dans quelques secondes.`);
-    }
+    if (rep.status === 429) throw new Error(messageQuota(url));
     if (!rep.ok) {
       const corps = await rep.text();
+      // ⚠️ DRIVE NE DIT PAS 429 (revue C28-119). Il signale ses throttles par un **403**
+      // `userRateLimitExceeded` / `rateLimitExceeded`. Sans cette branche, le correctif de message
+      // ne couvrait QUE Sheets : un vrai throttle Drive ressortait en « Google API 403 : … », ni
+      // nommé ni reconnaissable — donc le prochain diagnostic repartait de zéro, ce que ce lot
+      // existe précisément pour empêcher.
+      if (rep.status === 403 && /rateLimitExceeded|userRateLimitExceeded/i.test(corps)) {
+        throw new Error(messageQuota(url));
+      }
       throw new Error(`Google API ${rep.status} : ${corps.slice(0, 200)}`);
     }
     return rep.json() as Promise<T>;
