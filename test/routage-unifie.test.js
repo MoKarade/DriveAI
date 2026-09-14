@@ -146,3 +146,117 @@ test('deciderRoutageV2_ : entité-table au Dossier ID PÉRIMÉ → re-pointée v
   doc('2026-07-01');
   assert.strictEqual(repoints.length, 1, 'aucun 2ᵉ re-pointage dans le même run (dédup run-scope réelle)');
 });
+
+test('sousDossier_ : un dossier à la CORBEILLE n\'est JAMAIS une cible de classement (§1.2)', () => {
+  // Relevé en revue C28-93 : `getFoldersByName` rend AUSSI les dossiers corbeillés. Sans filtre, un
+  // dossier mis à la corbeille par Marc (ADR-0014, au clic) redevenait la cible du classement : les
+  // documents y étaient déposés, puis purgés AVEC lui à 30 jours — une SUPPRESSION AUTOMATIQUE, le
+  // garde-fou §1.2 non négociable. Défaut pré-existant, rendu ATTEIGNABLE par ce lot, qui débloque
+  // le bouton « tout corbeiller ». Mutation : revenir à `it.hasNext() ? it.next() : create` ⇒ tombe.
+  const dossier = (id, corbeille) => ({ getId: () => id, isTrashed: () => corbeille });
+  const iterateur = (items) => { let i = 0; return { hasNext: () => i < items.length, next: () => items[i++] }; };
+  const parent = (items) => {
+    const cree = [];
+    return {
+      cree,
+      getFoldersByName: () => iterateur(items),
+      createFolder: (nom) => { cree.push(nom); return dossier('CREE:' + nom, false); },
+    };
+  };
+
+  // 1) Un SEUL homonyme, corbeillé : on en RECRÉE un plutôt que de déposer dans la corbeille.
+  const p1 = parent([dossier('MORT', true)]);
+  assert.strictEqual(ctx.sousDossier_(p1, 'Robovic').getId(), 'CREE:Robovic');
+  assert.strictEqual(p1.cree.length, 1);
+
+  // 2) Un corbeillé PUIS un vivant : c'est le vivant qui est rendu, et rien n'est créé.
+  const p2 = parent([dossier('MORT', true), dossier('VIVANT', false)]);
+  assert.strictEqual(ctx.sousDossier_(p2, 'Robovic').getId(), 'VIVANT');
+  assert.strictEqual(p2.cree.length, 0, 'un dossier vivant existe : surtout pas de doublon');
+
+  // 3) Cas nominal inchangé : premier homonyme vivant ⇒ rendu tel quel.
+  const p3 = parent([dossier('VIVANT', false)]);
+  assert.strictEqual(ctx.sousDossier_(p3, 'Robovic').getId(), 'VIVANT');
+  assert.strictEqual(p3.cree.length, 0);
+});
+
+test('dossierVivantOuNull_ : un ID MÉMORISÉ ne ressuscite jamais un dossier corbeillé (§1.2)', () => {
+  // 3ᵉ revue : le correctif de `sousDossier_` gardait la FEUILLE de la chaîne, pas ses RACINES.
+  // `dossierDomaineAuto_` et `dossierRacineParNom_` rendaient l'ID mémorisé en Script Property sans
+  // vérifier la corbeille. Scénario mesuré par l'auditeur : Marc corbeille `_Doublons` depuis Drive
+  // (la garde de NOM qui le protège vit dans l'APP, pas dans Drive) ; `DriveAI_DOUBLONS_ID` pointe
+  // toujours dessus, `routageDoublon_` continue d'y envoyer chaque doublon, et 30 jours plus tard
+  // Drive purge le dossier AVEC son contenu — §1.1(c) « un doublon, MÊME SENSIBLE, jamais effacé ».
+  // Mutation : rendre `DriveApp.getFolderById(id)` sans le test ⇒ ce test tombe.
+  const dossiers = { VIVANT: false, MORT: true };
+  ctx.DriveApp = {
+    getFolderById: (id) => {
+      if (!(id in dossiers)) throw new Error('File not found');
+      return { getId: () => id, isTrashed: () => dossiers[id] };
+    },
+  };
+  assert.strictEqual(ctx.dossierVivantOuNull_('VIVANT').getId(), 'VIVANT');
+  assert.strictEqual(ctx.dossierVivantOuNull_('MORT'), null, 'corbeillé ⇒ on n\'y dépose plus rien');
+  assert.strictEqual(ctx.dossierVivantOuNull_('INCONNU'), null, 'ID mort ⇒ recréation par nom');
+  assert.strictEqual(ctx.dossierVivantOuNull_(''), null);
+  assert.strictEqual(ctx.dossierVivantOuNull_(null), null);
+});
+
+test('dossierRacineParNom_ / dossierDomaineAuto_ APPELLENT la garde (câblage, pas la fonction seule)', () => {
+  // Leçon de la 3ᵉ revue, appliquée AU CORRECTIF LUI-MÊME : une fonction bien testée qui n'est pas
+  // APPELÉE ne protège rien. `dossierVivantOuNull_` a son test ; ce test-ci vérifie que les deux
+  // résolveurs de RACINE passent par elle, sur les DEUX voies (ID mémorisé, puis nom).
+  // Mutation : remettre `try { return DriveApp.getFolderById(id); } catch {}` ⇒ ce test tombe.
+  const props = {};
+  const cree = [];
+  const dossier = (id, corbeille) => ({
+    getId: () => id,
+    isTrashed: () => corbeille,
+    getParents: () => ({ hasNext: () => true, next: () => racine }),
+  });
+  const racine = {
+    getId: () => 'RACINE',
+    getParents: () => ({ hasNext: () => false }),
+    getFoldersByName: (nom) => {
+      let i = 0;
+      const items = nom === '_Doublons' ? [dossier('DOUBLONS_MORT', true)] : [];
+      return { hasNext: () => i < items.length, next: () => items[i++] };
+    },
+    createFolder: (nom) => { cree.push(nom); return dossier('NEUF:' + nom, false); },
+  };
+  ctx.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in props ? props[k] : null),
+    setProperty: (k, v) => { props[k] = v; },
+  }) };
+  ctx.DriveApp = {
+    getRootFolder: () => racine,
+    getFolderById: (id) => {
+      if (id === 'DOUBLONS_MORT') return dossier('DOUBLONS_MORT', true);
+      if (id === 'ANCRE') return dossier('ANCRE', false);
+      throw new Error('File not found: ' + id);
+    },
+  };
+  ctx.CONFIG = Object.assign({}, ctx.CONFIG, {
+    DOSSIERS: Object.assign({}, ctx.CONFIG.DOSSIERS, { A_TRIER: 'ANCRE' }),
+    DOMAINES: Object.assign({}, ctx.CONFIG.DOMAINES, { [ctx.CONFIG.DOMAINE_DEFAUT]: 'ANCRE' }),
+  });
+
+  // Voie ID : la Property pointe sur un dossier CORBEILLÉ — c'est le scénario « Marc corbeille
+  // `_Doublons` depuis Drive » — on ne le rend pas, on en recrée un.
+  props.DriveAI_DOUBLONS_ID = 'DOUBLONS_MORT';
+  const d = ctx.dossierRacineParNom_('_Doublons', 'DriveAI_DOUBLONS_ID');
+  assert.strictEqual(d.getId(), 'NEUF:_Doublons', 'jamais le dossier corbeillé');
+  assert.strictEqual(props.DriveAI_DOUBLONS_ID, 'NEUF:_Doublons', 'et la Property est re-pointée');
+
+  // Voie NOM (aucune Property) : l'homonyme corbeillé est ignoré lui aussi.
+  cree.length = 0;
+  const dom = ctx.dossierDomaineAuto_('_Doublons');
+  assert.strictEqual(dom.getId(), 'NEUF:_Doublons');
+  assert.strictEqual(cree.length, 1, 'un dossier neuf, pas la corbeille');
+
+  // Contre-épreuve : un ID mémorisé VIVANT est rendu tel quel, rien n'est créé.
+  props.DriveAI_DOUBLONS_ID = 'ANCRE';
+  cree.length = 0;
+  assert.strictEqual(ctx.dossierRacineParNom_('_Doublons', 'DriveAI_DOUBLONS_ID').getId(), 'ANCRE');
+  assert.strictEqual(cree.length, 0);
+});

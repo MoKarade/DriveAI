@@ -190,7 +190,7 @@ export function viderCachePlages(onglet?: string): void {
 }
 
 /** Invalide les seuls caches DRIVE (déplacement/création : les listages changent, pas la Sheet). */
-function viderCachesDrive(): void {
+export function viderCachesDrive(): void {
   cacheDossiers.clear();
 }
 

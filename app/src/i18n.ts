@@ -133,10 +133,14 @@ const TEXTES = {
     corbeiller: 'Corbeille (30 j)',
     toutCorbeiller: 'Tout corbeiller',
     corbeilleArreteA: 'arrêté à',
-    corbeilleNote: 'Re-vérifié au clic (chacun, même en lot) : vide (corbeillés inclus), hors zone Immigration, jamais une racine système. Un dossier re-rempli entre-temps est refusé et arrête le lot.',
+    corbeilleNote: 'Re-vérifié au clic (chacun, même en lot) : vide (corbeillés inclus), hors zone Immigration, jamais une racine système. Un dossier re-rempli entre-temps est refusé et retiré de la liste — le lot continue.',
+    corbeilleBilan: '{n} dossier(s) mis à la corbeille · {c} retiré(s) de la liste (déjà disparus, re-remplis, ou à ne jamais supprimer) · {r} à re-tenter · {s} traité(s) mais statut non écrit.',
     corbeilleNonVide: 'Refusé : ce dossier n’est plus vide — le classement l’a re-rempli entre-temps.',
     corbeilleProtege: 'Refusé : zone protégée (Immigration) — jamais touchée.',
     corbeilleStructurel: 'Refusé : dossier structurel ou système — le classement en a besoin.',
+    corbeilleAscendance: 'Refusé par prudence : impossible de lire où se trouve ce dossier — il reste dans la liste, réessaie.',
+    corbeilleCoupeeSession: 'Lot interrompu : la session Google a expiré. {x} dossier(s) n’ont pas été tentés — reconnecte-toi et relance.',
+    corbeilleCoupeePannes: 'Lot interrompu : Google refuse les appels (quota ou panne). {x} dossier(s) n’ont pas été tentés — réessaie dans quelques minutes.',
 
     /* ---- page Moteur (C28-41 : coût fiable · progression · état · réglage) ---- */
     noteNonApparies: 'laissés en place, en attente d’un affinage des règles (jamais devinés).',
@@ -313,10 +317,14 @@ const TEXTES = {
     corbeiller: 'Trash (30 d)',
     toutCorbeiller: 'Trash all',
     corbeilleArreteA: 'stopped at',
-    corbeilleNote: 'Re-checked on click (each one, even in a batch): empty (trashed included), outside the Immigration zone, never a system root. A folder refilled in the meantime is refused and stops the batch.',
+    corbeilleNote: 'Re-checked on click (each one, even in a batch): empty (trashed included), outside the Immigration zone, never a system root. A folder refilled in the meantime is refused and dropped from the list — the batch carries on.',
+    corbeilleBilan: '{n} folder(s) trashed · {c} dropped from the list (already gone, refilled, or never to be deleted) · {r} to retry · {s} done but status not written.',
     corbeilleNonVide: 'Refused: this folder is no longer empty — filing refilled it in the meantime.',
     corbeilleProtege: 'Refused: protected zone (Immigration) — never touched.',
     corbeilleStructurel: 'Refused: structural or system folder — filing needs it.',
+    corbeilleAscendance: 'Refused out of caution: could not read where this folder sits — it stays in the list, try again.',
+    corbeilleCoupeeSession: 'Batch interrupted: the Google session expired. {x} folder(s) were never attempted — sign in again and restart.',
+    corbeilleCoupeePannes: 'Batch interrupted: Google is refusing calls (quota or outage). {x} folder(s) were never attempted — try again in a few minutes.',
 
     /* ---- Engine page ---- */
     noteNonApparies: 'left in place, awaiting a rule refinement (never guessed).',

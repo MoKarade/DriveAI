@@ -188,8 +188,9 @@ const CONTRAT = [
   'parserPropositionReorg_', 'lignePourAction_', 'solderDemande_', 'aParentEtrangerProtege_',
   'chaineMonteVersProtege_',
   'etapeReorg_', 'appliquerReorgValidee_', 'appliquerUneAction_', 'actionsValidees_',
+  'proposerSourceFusion_', 'videsCandidatsRecreables_', 'filtrerVidesCandidatsRecreables_',
   'partiesId_', 'dernierSegment_', 'ensembleIntouchables_', 'repointerEntites_', 'solderAction_',
-  'estSegmentStructurel_',
+  'estSegmentStructurel_', 'estNoeudRecreable_', 'estNoeudRecreablePrudent_', 'noeudsTableReset_',
   // documents d'identité & titulaire (refonte 2026-07-07)
   'normaliserTypeIdentite_', 'estDocumentIdentitePersonnel_', 'dossierIdentite_', 'titulairePourNom_',
   'nommerDocument_', 'garantirNomUnique_', 'casseNomPersonne_', 'sousDossierPourNom_',
@@ -222,7 +223,7 @@ const CONTRAT = [
   // consolidation de l'arborescence (C28-26, ADR-0023) : dry-run pur, appelé depuis Main
   'genererPlanConsolidation_', 'traiterUnConsolidation_', 'collecterConsolidation_',
   'analyserNomClasse_', 'cheminCibleConsolidation_', 'decisionConsolidation_',
-  'entitesValideesParCle_', 'empreintesPlanConsolidation_',
+  'entitesValideesParCle_', 'entitesValideesOuNull_', 'empreintesPlanConsolidation_',
   'sousCheminDomaine_', 'budgetJourConsolidation_', // règle unique flux↔plan + budget quotidien (revue flotte)
   // ADR-0052 : `bucketTypeDomaine_` vit dans Reset.gs et est appelée depuis Router.gs — contrat
   // INTER-MODULE, donc invisible des tests unitaires mockés si elle disparaissait.

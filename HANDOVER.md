@@ -43,6 +43,123 @@
 > Deux tests ne prouvaient rien : l'un asserte `String(null).length > 0` (toujours vrai), l'autre
 > était devenu tautologique en changeant sa valeur attendue.
 
+> **🟦 EN COURS — 2026-09-13 : C28-93, la liste « dossiers vides » ne propose plus n'importe quoi.**
+> Marc : « il me propose trop de dossiers à mettre en poubelle, même des dossiers utiles — fais un
+> nettoyage et améliore », puis, sur le reste : « **supprime tous les vides** ».
+>
+> **Compté, pas supposé** : 124 dossiers proposés dans l'onglet `Réorg`, tous vidés entre le 1er et
+> le 15 août par le grand rangement, aucun depuis. Dedans : deux dossiers NOMMÉS comme des domaines
+> (`02 · Finances`, `05 · Carrière`), SIX noms que la table recrée — sept lignes, `Robovic`
+> y figurant deux fois — (`Robovic`, `Projets`, `Automatech`, `DriveAI`, `Novel Software`,
+> `Candidatures`), une entité du référentiel, des
+> doublons de nom sans chemin (deux `Mémoire`, deux `Exercices`, quatre graphies d'`IUT Du
+> Littoral`), et au moins un dossier qui **n'existe plus** (404).
+>
+> ⚠️ **Le défaut qui rendait la liste inutilisable EN ENTIER** : le bouton « Tout corbeiller (124) »
+> bouclait dans un `try` unique — la PREMIÈRE exception arrêtait tout. Le premier de la liste étant
+> un dossier nommé `02 · Finances`, refusé par son nom, **le bouton ne corbeillait rien**, et
+> l'erreur ne parlait que de lui.
+>
+> **Livré** (ADR-0053) : (1) le moteur ne propose plus ce que la TAXONOMIE sait recréer — garde par
+> CAPACITÉ (`estNoeudRecreable_`, la table répond elle-même, à toute profondeur), jamais une liste
+> d'exceptions ; (2) le constat porte le CHEMIN COMPLET, pas le nom nu ; (3) un refus ne stoppe plus
+> le lot : il classe SA ligne (`vide-disparu` / `vide-repris` / `vide-protégé`) et le lot continue,
+> avec un bilan chiffré — et ce qu'on ne sait pas conclure (réseau, quota) reste candidat plutôt que
+> de devenir un verdict.
+>
+> ⚠️ **Ce que ça ne fait pas** : le moteur ne corbeille toujours rien. La mutation reste dans
+> `app/src/corbeille.ts`, au clic de Marc, avec re-vérification live (ADR-0014, §1.2 — non
+> négociable). « Supprime tous les vides » = **un** clic sur « Tout corbeiller », qui traite
+> maintenant les 124 lignes au lieu de s'arrêter sur la première.
+> ⚠️ La peinture rouge dans Drive reste telle quelle (choix de Marc, 13/09) : deux canaux de
+> proposition coexistent, la couleur et la liste.
+>
+> **2ᵉ REVUE FLOTTE (code · sécurité · quotas) — 1 🔴 trouvé par DEUX agents en convergence, plus
+> 6 🟠. Tout corrigé avant le merge, 7 mutations jouées.**
+>
+> 🔴 **La garde ne s'appliquait qu'aux FUTURS constats.** `estNoeudRecreable_` n'avait qu'un site
+> d'appel, sur le chemin d'ÉCRITURE. Les 124 lignes d'août étaient déjà dans l'onglet, qui est
+> append-only — et c'est le MÊME lot qui rendait le bouton opérant. Au clic, `Robovic` (×2),
+> `Projets`, `Automatech`, `DriveAI`, `Novel Software`, `Candidatures` et `IUT Du Littoral`
+> seraient partis à la corbeille : exactement les « dossiers utiles » de la plainte de Marc.
+> Corriger le flux sans nettoyer le stock rendait le défaut EFFECTIF au lieu de le fermer. D'où une
+> passe one-shot VERSIONNÉE (`filtrerVidesCandidatsRecreables_`) qui ré-applique la garde au stock
+> — statuts seuls, aucune mutation Drive.
+>
+> 🟠 **Le référentiel d'entités échoue OUVERT** : `entitesValideesParCle_` avale son exception et
+> rend `{}`. Bonne dégradation pour le ROUTAGE (classement à plat, réversible) ; faux verdict
+> DÉFINITIF pour une proposition de corbeille. C'est le symétrique EXACT du 🔴 `ascendance-illisible`
+> côté app, resté ouvert côté moteur.
+> 🟠 **Un SECOND producteur** de lignes `videcandidat|` (les fusions validées dans l'app) ne passait
+> par aucune garde — alors que l'ADR affirmait le contraire.
+> 🟠 **§1.2** : `sousDossier_` rendait aussi les dossiers **CORBEILLÉS** (`getFoldersByName` les
+> inclut). Un dossier corbeillé redevenait cible de classement, et les documents déposés dedans
+> étaient purgés AVEC lui à 30 jours — une suppression automatique. Pré-existant, rendu
+> ATTEIGNABLE par ce lot ; fermé ici plutôt que renvoyé au backlog.
+> 🟠 **Un lot écourté rendait le même bilan qu'un lot complet** (session morte à la 40ᵉ sur 124 :
+> rien ne disait que 84 lignes n'avaient jamais été tentées) ; 🟠 **aucun coupe-circuit** — sous un
+> 429 généralisé, ~2 000 requêtes partaient en rafale sur un quota partagé avec le moteur ;
+> 🟠 **`vide-repris` figeait un fait RÉVISABLE** (un dossier re-vidé n'était plus jamais proposé).
+>
+> **Trois bugs PRÉ-EXISTANTS relevés et NON corrigés** (§6 — au backlog, pas dans ce lot) :
+> C28-94 (`chargerEntitesCache_` publie son cache avant de l'avoir lu — c'est ce qui force
+> l'abstention sur un référentiel « vide »), C28-95 (deux remontées d'ancêtres pour une),
+> C28-96 (le scope `.../auth/forms` n'est documenté nulle part).
+>
+> **3ᵉ PASSE (code · sécurité), sur le delta seul — 🟢 sur les garde-fous, et 6 🟠 de plus.**
+>
+> 🟠 **Les deux CÂBLAGES du delta n'étaient gardés par aucun test** — prouvé par mutation chez la
+> revue : retirer l'appel à `filtrerVidesCandidatsRecreables_`, puis celui à `proposerSourceFusion_`,
+> laissait 1268/1268 verts. C'est la forme EXACTE du 🔴 d'origine (une fonction testée, appelée à un
+> seul endroit) : le lot corrigeait le symptôme et reconduisait la cause. Deux tests d'orchestration.
+> 🟠 **Le correctif §1.2 gardait la FEUILLE de la chaîne, pas ses RACINES.** `dossierDomaineAuto_` et
+> `dossierRacineParNom_` résolvent par un ID mémorisé en Script Property, qui SURVIT au corbeillage :
+> Marc corbeille `_Doublons` depuis Drive, le moteur continue d'y envoyer chaque doublon, et 30 jours
+> plus tard Drive purge le dossier AVEC son contenu — §1.1(c), sur la population dont C28-49 PR4 a
+> mesuré qu'elle contenait 1 076 fichiers dont trois passeports.
+> 🟠 **Le verdict du filtre était DÉFINITIF et non versionné** : un bump pouvait retirer une
+> proposition, jamais la rendre — alors que C28-89 a réellement retiré `Modèles & formulaires` de la
+> table. Le détail porte désormais la marque du filtre et son tag.
+> 🟠 **Les deux producteurs ne rendaient pas le même verdict** : `Robovic` refusé par l'un, proposé
+> par l'autre dès que la cible portait le même nom, puis défait par le filtre au bump suivant. Règle
+> alignée, exception supprimée.
+> 🟠 **`dernierSegment_` sur un nom contenant `/`** — Drive l'autorise : « Impôts/Archives » se
+> lisait « Archives », un nœud de la table, et la ligne était retirée à tort et DÉFINITIVEMENT.
+> 🟠 **Le coupe-circuit ne surveillait que Drive** : un 429 côté Sheets laissait le lot aller au bout,
+> 124 dossiers corbeillés et 124 statuts perdus, sans que rien ne le dise.
+>
+> Plus : le garde-temps manquant dans la boucle d'écritures, un instantané de l'onglet qui pouvait
+> écraser ce que l'app venait d'y écrire, `ctx.proteges || {}` qui faisait échouer le garde §1
+> OUVERT, `entitesValideesParCle_` qui avait cessé de rendre sa carte PARTIELLE, et trois
+> commentaires qui promettaient ce que le code ne tient pas.
+>
+> **Deux bugs PRÉ-EXISTANTS de plus au backlog** : C28-97 (une abstention de constat n'est jamais
+> rattrapée — arbitrage assumé, écrit en ADR-0053 D11), C28-98 (les autres résolveurs par nom
+> ignorent la corbeille — aucun n'ouvre de chemin vers une suppression automatique).
+>
+> **4ᵉ PASSE — 3 🟠, dont une RÉGRESSION introduite par le lot précédent.**
+>
+> 🟠 **Le discriminant « un chemin commence par une racine de domaine » est FAUX pour l'inventaire à
+> PORTÉE.** Quand Marc clique « Analyser la structure » sur un dossier, les chemins produits sont
+> `Robovic/Projets` — sans racine. Lus en bloc, `Projets` et `Candidatures` redevenaient proposables
+> à la corbeille : les noms MÊMES de sa plainte. Les deux lectures sont désormais essayées, et un
+> seul « oui » suffit à refuser. Conséquence assumée : un dossier réellement nommé `Impôts/Archives`
+> n'est plus proposé — un dossier vide qui subsiste coûte moins qu'un dossier utile corbeillé.
+> 🟠 **La marque du filtre ne portait que son tag**, alors que l'app n'écrit QUE la colonne F. Une
+> ligne que Marc avait fait refuser par Drive redevenait candidate à CHAQUE bump, réapparaissait
+> dans sa liste, échouait encore — sans qu'il puisse s'en débarrasser. La marque porte maintenant le
+> statut écrit, donc toute écriture de l'app rend son verdict définitif.
+> 🟠 **Le câblage du verdict révisable n'était exercé par aucun test** : deux mutations restaient
+> vertes sur 1278 tests. C'est le défaut de la 3ᵉ passe, reproduit sur le câblage neuf.
+>
+> Plus 4 🟡 : un jsdoc orphelin, l'horodatage de la ligne ré-armée, `avancement` resté hors du try
+> d'écran, et la comparaison d'entité **sensible à la casse** alors que le décompte du 13/09 contient
+> quatre graphies d'`IUT Du Littoral` — elle est désormais normalisée (casse, accents, apostrophes).
+>
+> **Vérifications** : 1279 tests moteur · 270 tests app · `node --check` sur les 41 `.gs` ·
+> `npm run build` · **22 mutations** jouées et restaurées par copie de sauvegarde (jamais
+> `git checkout`).
+
 > **✅ MERGÉ, DÉPLOYÉ ET VÉRIFIÉ EN PRODUCTION — 2026-09-13 19:25 UTC : le rattrapage TOURNE.**
 > PR #339 mergée (`a2f4373`), `deploy.yml` run #325 vert (clasp push + redéploiement de la web app
 > + réinstallation du déclencheur). Et le signal INDÉPENDANT, lu 1 h après le merge — parce qu'un

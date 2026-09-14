@@ -227,8 +227,11 @@ test('appliquerLigneConsolidation_ : Doublon → moveTo vers _Doublons (décisio
 // les fonctions cross-module (Reorg.gs non chargé ici) sont injectées ; feuille_ capte les appendRow.
 function ctxVide(opts) {
   opts = opts || {};
-  const c = load(['Config.gs', 'Router.gs', 'Consolidation.gs', 'ConsolidationExec.gs']);
+  // `Reset.gs` + `Reorg.gs` chargés POUR DE VRAI : la garde par capacité (`estNoeudRecreable_`) lit
+  // la table de la taxonomie. La mocker reviendrait à tester ma propre copie de la question.
+  const c = load(['Config.gs', 'Entites.gs', 'Router.gs', 'Reset.gs', 'Reorg.gs', 'Consolidation.gs', 'ConsolidationExec.gs']);
   const appends = [];
+  const ecrits = [];
   const reorgData = [['Clé', 'Type', 'ID', 'CheminA', 'CheminP', 'Statut', 'Détail', 'H']].concat(opts.reorgData || []);
   c.indexContient_ = () => false;
   c.indexAjouter_ = () => {};
@@ -247,25 +250,49 @@ function ctxVide(opts) {
     ? { dossier: { getId: () => 'ENT:' + id }, segments: ['Anciens employeurs', 'Robovic'] } : null);
   // Injections cross-module (Reorg.gs / Maintenance.gs non chargés dans ce contexte de test).
   c.ensembleIntouchables_ = () => (opts.intouchables || {});
-  c.estSegmentStructurel_ = () => !!opts.structurel;
+  // Référentiel d'entités : NON VIDE par défaut. Depuis la revue quotas C28-93, un référentiel MUET
+  // (illisible → `null`, ou vide) fait S'ABSTENIR de tout constat — « une panne n'est pas un
+  // verdict ». Un stub vide ferait donc passer au vert un code qui ne constate plus rien.
+  c.entitesValideesOuNull_ = () => (opts.validees !== undefined
+    ? opts.validees
+    : { 'referentiel|non-vide': { nom: '\u0000aucun-dossier-reel', dossierId: '' } });
+  c.entitesValideesParCle_ = () => (c.entitesValideesOuNull_() || {});
+  if (opts.structurel) c.estSegmentStructurel_ = () => true; // sinon : la VRAIE fonction de Reorg.gs
   c.chaineMonteVersProtege_ = (dossier, proteges) => !!(proteges && proteges[dossier.getId()]);
   c.feuille_ = () => {
     if (opts.feuilleLeve) throw new Error('Sheet indisponible');
     return {
       getLastRow: () => reorgData.length,
-      getRange: (r, col, nb) => ({ getValues: () => reorgData.slice(r - 1, r - 1 + nb).map((row) => [row[0]]) }),
+      // Rend la COLONNE DEMANDÉE, pas toujours la A : `chargerVidesConnus_` lit A (clés) PUIS F
+      // (statuts). Un mock qui rendrait A pour les deux ferait passer un code qui confond les deux.
+      getRange: (r, col, nbL, nbC) => ({
+        getValues: () => reorgData.slice(r - 1, r - 1 + (nbL || 1)).map((row) => row.slice(col - 1, col - 1 + (nbC || 1))),
+        setValues: (v) => {
+          ecrits.push({ rang: r, col: col, valeurs: v[0] });
+          for (let j = 0; j < v[0].length; j++) reorgData[r - 1][col - 1 + j] = v[0][j];
+        },
+      }),
       appendRow: (row) => { appends.push(row); },
+    };
+  };
+  // Chaîne d'ancêtres CONFIGURABLE (du plus proche au plus lointain) : `positionActuelleFichier_`
+  // ET `cheminPourConstat_` la remontent pour de vrai. Défaut : un seul niveau, la racine `DOMID`.
+  const chaine = opts.chaineAncetres || [{ id: 'DOMID', nom: 'DOM' }];
+  const ancetreDepuis = (rang) => {
+    if (rang >= chaine.length) return { hasNext: () => false, next: () => null };
+    let servi = false;
+    return {
+      hasNext: () => !servi,
+      next: () => {
+        servi = true;
+        return { getId: () => chaine[rang].id, getName: () => chaine[rang].nom, getParents: () => ancetreDepuis(rang + 1) };
+      },
     };
   };
   const ancienParent = {
     getId: () => opts.parentId || 'PARENT',
-    getName: () => opts.parentNom || 'ENGIE',
-    // Chaîne RÉELLE jusqu'à la racine du domaine : `positionActuelleFichier_` s'exécute pour de
-    // vrai (le fichier est dans 02/<ENGIE>, la cible recalculée est à plat → il remonte).
-    getParents: () => {
-      let i = 0; const p = ['DOMID'];
-      return { hasNext: () => i < p.length, next: () => ({ getId: () => p[i++], getName: () => 'DOM', getParents: () => ({ hasNext: () => false, next: () => null }) }) };
-    },
+    getName: () => opts.parentNom || 'Colles', // nom RÉEL d'un dossier obsolète (décompte 13/09)
+    getParents: () => { if (opts.chaineIllisible) throw new Error('illisible'); return ancetreDepuis(0); },
     getFiles: () => ({ hasNext: () => !!opts.resteFichier }),
     getFolders: () => ({ hasNext: () => !!opts.resteDossier }),
   };
@@ -274,19 +301,153 @@ function ctxVide(opts) {
     getName: () => 'f.pdf', getMimeType: () => 'application/pdf', moveTo: () => {},
   };
   c.DriveApp = { getFolderById: (id) => ({ getId: () => id }), getFileById: () => fichier };
-  return { c, appends };
+  return { c, appends, ecrits, reorgData };
 }
 
 function ctxV() { return { proteges: {}, tag: 'conso-2', validees: {}, parId: PAR_ID }; }
 
 test('détection vide : le dossier QUITTÉ devenu vide → UNE ligne vide-candidat (constat seul, jamais de suppression)', () => {
-  const v = ctxVide({ parentId: 'ENGIEID', parentNom: 'ENGIE' }); // vacuité par défaut (rien ne reste)
+  const v = ctxVide({ parentId: 'ENGIEID', parentNom: 'Colles' }); // vacuité par défaut (rien ne reste)
   const r = v.c.appliquerLigneConsolidation_({ fileId: 'F1', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
   assert.strictEqual(r, 'fait');
   assert.strictEqual(v.appends.length, 1, 'une inscription vide-candidat');
   assert.strictEqual(v.appends[0][0], 'videcandidat|ENGIEID');
   assert.strictEqual(v.appends[0][1], 'dossier-vide');
   assert.strictEqual(v.appends[0][5], 'vide-candidat', 'statut lu par l\'app (jamais corbeillé par le moteur)');
+});
+
+test('détection vide : JAMAIS un dossier que la taxonomie sait RECRÉER (C28-93)', () => {
+  // Le décompte du 13/09 a trouvé, dans la liste des dossiers proposés à la corbeille de Marc :
+  // `Robovic`, `Automatech`, `DriveAI`, `Novel Software`, `Candidatures` (des nœuds que la table
+  // recrée PAR NOM) et deux dossiers NOMMÉS comme des domaines. Proposer de supprimer ce que le
+  // moteur recrée au premier document ne mène nulle part — et le premier de la liste étant un nom
+  // que l'app REFUSE, le bouton « tout corbeiller » s'arrêtait dessus pour les 123 suivants.
+  // Mutation : retirer l'appel à `estNoeudRecreable_` dans `detecterDossierVide_` ⇒ ce test tombe.
+  for (const nom of ['Robovic', 'Automatech', 'DriveAI', 'Novel Software', 'Candidatures',
+    'Contrats', 'Cours & travaux', '02 · Finances', '05 · Carrière', '_Doublons', '2024']) {
+    const v = ctxVide({ parentId: 'ID_' + nom, parentNom: nom });
+    v.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+    assert.strictEqual(v.appends.length, 0, nom + ' : la taxonomie le recrée ⇒ jamais proposé');
+  }
+  // …et un dossier VRAIMENT obsolète reste proposé : la garde ne gèle pas la fonctionnalité.
+  const obsolete = ctxVide({ parentId: 'ID_OBS', parentNom: 'IUT GIM 1' });
+  obsolete.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+  assert.strictEqual(obsolete.appends.length, 1, 'un dossier que rien ne recrée reste un candidat');
+});
+
+test('détection vide : le constat porte le CHEMIN, pas seulement le nom (C28-93)', () => {
+  // Deux « Mémoire », deux « Exercices », quatre graphies d'« IUT Du Littoral » dans la même liste :
+  // sans chemin, Marc ne peut pas savoir lequel est lequel, donc ne peut pas trancher autrement
+  // qu'en bloc. Mutation : réécrire `nom` à la place de `cheminPourConstat_(...)` ⇒ ce test tombe.
+  const v = ctxVide({ parentId: 'ID_MEM', parentNom: 'Mémoire' });
+  v.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+  assert.strictEqual(v.appends.length, 1);
+  assert.strictEqual(v.appends[0][3], 'DOM/Mémoire', 'le chemin remonte jusqu\'à la racine de domaine');
+});
+
+test('détection vide : le référentiel d\'entités est résolu MÊME quand le ctx ne le porte pas', () => {
+  // Sur les 5 appelants de `detecterDossierVide_`, TROIS construisaient un ctx sans `validees` —
+  // dont `FusionExec`, celui qui vide justement les dossiers d'ENTITÉ (il vient d'appeler
+  // `repointerEntites_`). La branche « entité validée » était donc morte là où elle sert le plus.
+  // Mutation : retirer la résolution lazy ⇒ ce test tombe.
+  const v = ctxVide({ parentId: 'ID_ENT', parentNom: 'Kim Pinsonneault' });
+  v.c.entitesValideesOuNull_ = () => ({ 'cle|kim': { nom: 'Kim Pinsonneault', dossierId: 'ID_ENT' } });
+  const ctxSansValidees = { proteges: {}, tag: 'conso-2', parId: PAR_ID }; // comme FusionExec
+  v.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxSansValidees);
+  assert.strictEqual(v.appends.length, 0, 'dossier d\'entité validée : jamais proposé à la corbeille');
+
+  // …et le référentiel n'est lu QU'UNE fois par run (mémoïsé sur le ctx, comme `intouchables`).
+  const compte = ctxVide({ parentId: 'ID_AUTRE', parentNom: 'IUT GIM 1' });
+  let lectures = 0;
+  compte.c.entitesValideesOuNull_ = () => { lectures++; return { 'k|x': { nom: 'Zzz', dossierId: '' } }; };
+  const ctxPartage = { proteges: {}, tag: 'conso-2', parId: PAR_ID };
+  compte.c.appliquerLigneConsolidation_({ fileId: 'F1', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxPartage);
+  compte.c.appliquerLigneConsolidation_({ fileId: 'F2', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxPartage);
+  assert.strictEqual(lectures, 1, 'une seule lecture du référentiel pour tout le run');
+});
+
+test('détection vide : un référentiel MUET fait s\'abstenir — une panne n\'est pas un verdict (revue quotas C28-93)', () => {
+  // `entitesValideesParCle_` échoue OUVERT : elle avale son exception et rend `{}`. Pour le ROUTAGE
+  // c'est la bonne dégradation (classement à plat, réversible) ; ici c'est un faux verdict
+  // DÉFINITIF — la clé `videcandidat|<id>` n'est jamais ré-évaluée, et l'app ne protège pas les
+  // dossiers d'entité : Marc verrait « Robovic » dans sa liste, et il cliquerait. Symétrique exact
+  // du 🔴 `ascendance-illisible` côté app.
+  // Mutation : remettre `estNoeudRecreable_` (nu) à la place de `estNoeudRecreablePrudent_`, ou
+  // rendre `{}` acceptable ⇒ ces deux cas tombent.
+  for (const muet of [null, {}]) {
+    const v = ctxVide({ parentId: 'ID_ENT2', parentNom: 'Kim Pinsonneault', validees: muet });
+    v.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+    assert.strictEqual(v.appends.length, 0,
+      'référentiel ' + (muet === null ? 'illisible' : 'vide') + ' : aucun constat écrit');
+  }
+  // …et le référentiel RÉPOND ⇒ la fonction vit toujours (la garde ne la gèle pas).
+  const ok = ctxVide({ parentId: 'ID_OBS2', parentNom: 'IUT GIM 1' });
+  ok.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+  assert.strictEqual(ok.appends.length, 1, 'référentiel lu : le constat est écrit');
+});
+
+test('détection vide : `vide-repris` est RÉVISABLE — un dossier re-vidé est re-proposé (revue C28-93)', () => {
+  // Des quatre statuts que l'app écrit, `vide-repris` est le seul qui fige un fait RÉVISABLE : « il
+  // n'était plus vide AU MOMENT DU CLIC ». Il redevient faux dès que la consolidation le re-vide.
+  // Cas fréquent et sournois : `compterEnfantsStrict` compte aussi les enfants CORBEILLÉS — un
+  // dossier qui n'a plus que des corbeillés rend `non-vide` → `vide-repris` alors que rien ne l'a
+  // re-rempli. Mutation : retirer le `continue` sur `vide-repris` ⇒ ce test tombe.
+  const ligne = (statut) => [['videcandidat|REPRIS', 'dossier-vide', 'REPRIS', 'DOM/X', '', statut, '', '']];
+  const repris = ctxVide({ parentId: 'REPRIS', parentNom: 'IUT GIM 1', reorgData: ligne('vide-repris') });
+  repris.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+  // ⚠️ RÉ-ARMÉE SUR PLACE, pas appendée (relevé en 3ᵉ revue) : appendre une seconde ligne de même
+  // clé dans un onglet append-only la ferait croître à chaque cycle rempli→vidé, et laisserait deux
+  // lignes contradictoires sous la même clé. Mutation : revenir à `appendRow` ⇒ ce test tombe.
+  assert.strictEqual(repris.appends.length, 0, 'aucune seconde ligne de même clé');
+  assert.strictEqual(repris.ecrits.length, 1, 'la ligne existante est réécrite');
+  assert.strictEqual(repris.ecrits[0].rang, 2);
+  assert.strictEqual(repris.ecrits[0].valeurs[2], 'vide-candidat', 'un dossier re-vidé revient dans la liste');
+
+  // …alors que les statuts DÉFINITIFS, eux, tiennent : la ligne ne revient jamais.
+  for (const fige of ['vide-protégé', 'vide-disparu', 'corbeillé', 'vide-candidat']) {
+    const v = ctxVide({ parentId: 'REPRIS', parentNom: 'IUT GIM 1', reorgData: ligne(fige) });
+    v.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+    assert.strictEqual(v.appends.length, 0, fige + ' : verdict définitif, jamais re-proposé');
+  }
+});
+
+test('cheminPourConstat_ : s\'arrête à la racine de domaine, borné, et dégrade sans jamais lever', () => {
+  // Testée DIRECTEMENT : par le bout du pipeline, la chaîne d'ancêtres sert AUSSI à
+  // `positionActuelleFichier_`, et la rendre illisible fait sortir la ligne bien avant la détection.
+  // Les deux branches (arrêt au domaine, borne de profondeur) étaient passées non verrouillées :
+  // la revue les a fait tomber par mutation sans qu'aucun test ne bouge.
+  const { c } = ctxVide({});
+  const faux = (chaine) => {
+    const noeud = (rang) => ({
+      getId: () => chaine[rang].id,
+      getName: () => chaine[rang].nom,
+      getParents: () => {
+        let servi = rang + 1 >= chaine.length;
+        return { hasNext: () => !servi, next: () => { servi = true; return noeud(rang + 1); } };
+      },
+    });
+    return noeud(0);
+  };
+
+  // (a) ARRÊT au domaine : ce qui est AU-DESSUS n'apparaît jamais.
+  const chaine = [{ id: 'ID_X', nom: 'Colles' }, { id: 'ID_ARCH', nom: 'Archives scolaires' },
+    { id: 'DOMID', nom: '06 · Études & diplômes' }, { id: 'RACINE', nom: 'Mon Drive' }];
+  assert.strictEqual(
+    c.cheminPourConstat_(faux(chaine), 'Colles', { intouchables: { DOMID: true } }),
+    '06 · Études & diplômes/Archives scolaires/Colles',
+    'le domaine ferme le chemin : ni « Mon Drive », ni au-dessus',
+  );
+
+  // (b) BORNE : une chaîne sans racine connue s'arrête sur la borne, jamais à l'infini.
+  const profonde = Array.from({ length: 20 }, (_, i) => ({ id: 'N' + i, nom: 'n' + i }));
+  const segments = c.cheminPourConstat_(faux(profonde), 'n0', { intouchables: {} }).split('/');
+  assert.strictEqual(segments.length, 11, '10 ancêtres au plus, + le dossier lui-même');
+  assert.strictEqual(segments[segments.length - 1], 'n0');
+
+  // (c) CHAÎNE ILLISIBLE : dégrade sur le nom, jamais une exception — un constat ne doit pas
+  // échouer pour un libellé (c'est pour ça que le nom vient de l'appelant, hors du `try`).
+  const casse = { getName: () => { throw new Error('jamais appelé'); }, getParents: () => { throw new Error('illisible'); } };
+  assert.strictEqual(c.cheminPourConstat_(casse, 'Colles', { intouchables: {} }), 'Colles');
 });
 
 test('détection vide : un dossier qui reste NON vide → aucune inscription', () => {
@@ -450,4 +611,19 @@ test('ConsolidationExec.gs : aucune mutation hors moveTo (jamais de suppression/
       assert.ok(!src.includes(motif), 'mutation interdite dans ConsolidationExec.gs : ' + motif);
     });
   assert.ok(src.includes('moveTo('), 'le déplacement est bien le mécanisme du module');
+});
+
+test('détection vide : sans l\'ensemble des racines PROTÉGÉES, on ne constate rien (§1, échec dur)', () => {
+  // `ctx.proteges || {}` faisait échouer le garde §1 OUVERT : avec un ensemble vide,
+  // `chaineMonteVersProtege_` rend `false` pour TOUT — la zone protégée cesse d'exister sans que
+  // rien ne lève. C'est la forme exacte du défaut corrigé juste avant pour `ctx.validees`, sur le
+  // garde-fou le moins négociable du projet. Mutation : remettre `ctx.proteges || {}` ⇒ tombe.
+  const v = ctxVide({ parentId: 'ID_X', parentNom: 'IUT GIM 1' });
+  const sansProteges = { tag: 'conso-2', validees: {}, parId: PAR_ID }; // pas de `proteges`
+  v.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, sansProteges);
+  assert.strictEqual(v.appends.length, 0, 'pas d\'ensemble protégé ⇒ pas de constat');
+  // …et avec l'ensemble (même vide mais PRÉSENT), le constat repart : la garde ne gèle rien.
+  const ok = ctxVide({ parentId: 'ID_Y', parentNom: 'IUT GIM 1' });
+  ok.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
+  assert.strictEqual(ok.appends.length, 1);
 });
