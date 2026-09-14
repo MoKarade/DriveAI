@@ -63,10 +63,65 @@ une proposition légitime, sous l'étiquette « protégé ». Deux faits différ
 différents, même refus — leçon §9 : *un verdict pris sur la donnée RICHE ne se re-dérive jamais
 depuis sa forme APPAUVRIE*, ici le texte du message d'erreur.
 
+⚠️ **Où vit vraiment ce verrou** (précision de la 2ᵉ revue). Ce qui protège, c'est la SCISSION dans
+`verdictCorbeille` : tant qu'un seul motif couvrait les deux faits, aucune ligne en aval ne pouvait
+les distinguer. La ligne `ascendance-illisible` de `statutRefusCorbeille`, elle, ne change le
+résultat que sur les COMPOSITES (`ascendance-illisible` + `racine-systeme` / `dossier-structurel` /
+`pas-un-dossier`) — un motif seul retombe de toute façon sur le `return null` final. La revue l'a
+montré en la supprimant : 16/16 tests verts. Elle est donc désormais verrouillée par ces trois cas
+composites, et ce paragraphe dit qui fait quoi plutôt que de créditer la mauvaise ligne.
+
 **D4 — Ce que ce lot NE fait PAS.** Le moteur ne corbeille toujours rien : la mutation reste dans
 `app/src/corbeille.ts`, au clic de Marc, avec re-vérification live de chaque dossier (ADR-0014,
 §1.2 — non négociable). « Supprime tous les vides » se lit donc : *un* clic sur « Tout corbeiller »,
 qui traite maintenant les 124 lignes au lieu de s'arrêter sur la première.
+
+**D6 — La garde s'applique AUSSI au STOCK déjà proposé** *(🔴 de la 2ᵉ revue, trouvé par DEUX
+agents en convergence)*. `estNoeudRecreable_` n'avait qu'un site d'appel, sur le chemin d'ÉCRITURE
+d'un nouveau constat. Or les 124 lignes d'août étaient DÉJÀ dans l'onglet, qui est append-only :
+rien ne les re-filtrait. Et c'est le même lot qui rend le bouton « Tout corbeiller » OPÉRANT — donc,
+au clic, `Robovic` (×2), `Projets`, `Automatech`, `DriveAI`, `Novel Software`, `Candidatures` et
+`IUT Du Littoral` seraient partis à la corbeille : exactement les « dossiers utiles » de la plainte
+de Marc, exactement ce que D1 déclare intouchable. Corriger le flux sans nettoyer le stock aurait
+rendu le défaut EFFECTIF au lieu de le fermer.
+`filtrerVidesCandidatsRecreables_` (one-shot, versionné par `VIDES_FILTRE_TAG`) relit les lignes
+`vide-candidat`, leur ré-applique la garde et les passe à `vide-protégé`. Aucune mutation Drive :
+seuls des statuts changent. C'est aussi le chemin de RETOUR qui manquait aux lignes déjà mal
+proposées. La VERSION dans le tag est ce qui rend l'affinage effectif : ajouter un nœud à la
+taxonomie re-filtre le stock au bump suivant (leçon §9).
+
+**D7 — `vide-repris` est le seul statut RÉVISABLE de la famille.** Le moteur dédoublonne sur la
+seule présence de `videcandidat|<id>`, quel que soit le statut. `vide-disparu`, `vide-protégé` et
+`corbeillé` sont définitifs par nature ; `vide-repris` dit « il n'était plus vide AU MOMENT DU
+CLIC » — un fait qui redevient faux dès que la consolidation le re-vide. Sans exception, un dossier
+re-rempli puis re-vidé n'aurait plus JAMAIS été proposé, alors que c'est son cas d'usage. Cas
+fréquent et sournois : `compterEnfantsStrict` compte aussi les enfants CORBEILLÉS (exigence
+ADR-0014), donc un dossier qui n'a plus que des corbeillés rend `non-vide` → `vide-repris` alors
+que rien ne l'a re-rempli. Le refus reste juste ; sa PERMANENCE ne l'était pas.
+
+**D8 — Un dossier à la corbeille n'est jamais une CIBLE de classement** *(garde-fou §1.2, relevé en
+revue)*. `sousDossier_` faisait `getFoldersByName(...).next()`, et cet itérateur rend AUSSI les
+dossiers corbeillés. Un dossier mis à la corbeille au titre d'ADR-0014 redevenait donc la cible du
+classement : les documents y étaient déposés, puis **purgés avec lui à 30 jours** — une suppression
+automatique, le garde-fou non négociable. Défaut PRÉ-EXISTANT, mais rendu atteignable par ce lot
+puisqu'il débloque le bouton. Fermé ici plutôt que renvoyé au backlog : laisser ouvert un chemin
+vers la suppression automatique n'est pas une option. Coût : un `isTrashed()` par résolution de
+dossier.
+
+**D9 — Un lot écourté le DIT, et il s'écourte tout seul sous la panne.** `BilanLot` porte
+`nonTentees` et `interrompu` : une session morte à la 40ᵉ ligne sur 124 rendait exactement le même
+bilan qu'un lot complet, et rien nulle part ne disait que 84 lignes n'avaient jamais été tentées
+(« une passe abandonnée doit se DIRE dans l'état », §9). Et `CORBEILLE_MAX_PANNES` = 5 pannes
+CONSÉCUTIVES coupent le lot : sous un 429 généralisé, 124 lignes × ~4 appels × 4 tentatives ≈ 2 000
+requêtes partaient en rafale sur un quota **partagé avec le moteur**. Le compteur se remet à zéro
+dès qu'une ligne aboutit ou reçoit un verdict — il vise la RAFALE, jamais le cumul.
+
+**D10 — Le SECOND producteur de propositions est gardé lui aussi.** Après une fusion validée dans
+l'app, le moteur appendait directement une ligne `vide-candidat` pour la source drainée, sans passer
+par `detecterDossierVide_` — donc sans la garde par capacité, alors que §3 affirmait le contraire.
+`proposerSourceFusion_` (PURE) porte désormais la décision, avec la nuance déjà codée chez son
+voisin `estAncreStructurelleFusion_` : pour une fusion de DOUBLONS DE MÊME NOM, proposer la source
+reste légitime (le canonique existe toujours).
 
 **D5 — La peinture rouge reste telle quelle** (choix de Marc, 13/09). Deux canaux de proposition
 coexistent donc : la couleur dans Drive et la liste dans l'app. La sonde de dé-peinture de C28-90
@@ -76,8 +131,22 @@ reste le chemin de retour du premier.
 
 - Ce que Marc verra au prochain clic : les dossiers réellement vides partent à la corbeille Drive
   (récupérables 30 jours) ; les autres quittent la liste avec leur raison ; un bilan chiffré.
-- Les futurs constats seront moins nombreux et situables. Ils ne peuvent plus contenir un nœud de
-  la structure : c'est vérifié par la table, pas par une liste que quelqu'un devra maintenir.
+- Les constats — futurs ET déjà écrits (D6) — sont moins nombreux et situables. Ils ne peuvent plus
+  contenir un nœud de la structure : c'est vérifié par la table, pas par une liste que quelqu'un
+  devra maintenir, et sur les DEUX producteurs (consolidation et fusion, D10).
+- Un référentiel d'entités MUET fait s'abstenir de tout constat. `entitesValideesParCle_` échoue
+  OUVERT (elle avale son exception et rend `{}`) : bonne dégradation pour le ROUTAGE, où le document
+  part à plat et sera repris ; faux verdict DÉFINITIF pour une proposition à la corbeille. D'où
+  `entitesValideesOuNull_` (qui DIT l'échec) et `estNoeudRecreablePrudent_` (qui s'abstient).
+  L'abstention porte aussi sur un référentiel VIDE, parce que les deux sont aujourd'hui
+  indiscernables — `chargerEntitesCache_` pré-positionne son cache à vide AVANT de lire la Sheet,
+  donc un second appel dans le même run ne lève plus. Bug de fond, PRÉ-EXISTANT, au backlog ; une
+  fois corrigé, la condition « vide » pourra être relâchée.
+- Re-vérification au clic : le mémo d'ascendance n'est plus purgé entre deux lignes d'un même lot
+  (il l'était par un `viderCachePlages()` global). Le dossier LUI-MÊME reste relu en direct ; seule
+  une mutation d'un ANCÊTRE vers `04` pendant le lot passerait — et le moteur ne déplace jamais un
+  dossier VERS 04. Écrit ici parce que la note d'interface (« re-vérifié au clic ») est désormais un
+  poil plus large que le code.
 - Coût : le chemin coûte quelques appels `getParents` **par dossier réellement devenu vide** (cas
   rare, déjà en aval d'une garde de vacuité), la garde par capacité aucun appel réseau.
 

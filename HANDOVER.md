@@ -73,6 +73,41 @@
 > maintenant les 124 lignes au lieu de s'arrêter sur la première.
 > ⚠️ La peinture rouge dans Drive reste telle quelle (choix de Marc, 13/09) : deux canaux de
 > proposition coexistent, la couleur et la liste.
+>
+> **2ᵉ REVUE FLOTTE (code · sécurité · quotas) — 1 🔴 trouvé par DEUX agents en convergence, plus
+> 6 🟠. Tout corrigé avant le merge, 7 mutations jouées.**
+>
+> 🔴 **La garde ne s'appliquait qu'aux FUTURS constats.** `estNoeudRecreable_` n'avait qu'un site
+> d'appel, sur le chemin d'ÉCRITURE. Les 124 lignes d'août étaient déjà dans l'onglet, qui est
+> append-only — et c'est le MÊME lot qui rendait le bouton opérant. Au clic, `Robovic` (×2),
+> `Projets`, `Automatech`, `DriveAI`, `Novel Software`, `Candidatures` et `IUT Du Littoral`
+> seraient partis à la corbeille : exactement les « dossiers utiles » de la plainte de Marc.
+> Corriger le flux sans nettoyer le stock rendait le défaut EFFECTIF au lieu de le fermer. D'où une
+> passe one-shot VERSIONNÉE (`filtrerVidesCandidatsRecreables_`) qui ré-applique la garde au stock
+> — statuts seuls, aucune mutation Drive.
+>
+> 🟠 **Le référentiel d'entités échoue OUVERT** : `entitesValideesParCle_` avale son exception et
+> rend `{}`. Bonne dégradation pour le ROUTAGE (classement à plat, réversible) ; faux verdict
+> DÉFINITIF pour une proposition de corbeille. C'est le symétrique EXACT du 🔴 `ascendance-illisible`
+> côté app, resté ouvert côté moteur.
+> 🟠 **Un SECOND producteur** de lignes `videcandidat|` (les fusions validées dans l'app) ne passait
+> par aucune garde — alors que l'ADR affirmait le contraire.
+> 🟠 **§1.2** : `sousDossier_` rendait aussi les dossiers **CORBEILLÉS** (`getFoldersByName` les
+> inclut). Un dossier corbeillé redevenait cible de classement, et les documents déposés dedans
+> étaient purgés AVEC lui à 30 jours — une suppression automatique. Pré-existant, rendu
+> ATTEIGNABLE par ce lot ; fermé ici plutôt que renvoyé au backlog.
+> 🟠 **Un lot écourté rendait le même bilan qu'un lot complet** (session morte à la 40ᵉ sur 124 :
+> rien ne disait que 84 lignes n'avaient jamais été tentées) ; 🟠 **aucun coupe-circuit** — sous un
+> 429 généralisé, ~2 000 requêtes partaient en rafale sur un quota partagé avec le moteur ;
+> 🟠 **`vide-repris` figeait un fait RÉVISABLE** (un dossier re-vidé n'était plus jamais proposé).
+>
+> **Trois bugs PRÉ-EXISTANTS relevés et NON corrigés** (§6 — au backlog, pas dans ce lot) :
+> C28-94 (`chargerEntitesCache_` publie son cache avant de l'avoir lu — c'est ce qui force
+> l'abstention sur un référentiel « vide »), C28-95 (deux remontées d'ancêtres pour une),
+> C28-96 (le scope `.../auth/forms` n'est documenté nulle part).
+>
+> **Vérifications** : 1268 tests moteur · 268 tests app · `node --check` sur les 41 `.gs` ·
+> `npm run build` · 7 mutations jouées et restaurées par copie de sauvegarde.
 
 > **✅ MERGÉ, DÉPLOYÉ ET VÉRIFIÉ EN PRODUCTION — 2026-09-13 19:25 UTC : le rattrapage TOURNE.**
 > PR #339 mergée (`a2f4373`), `deploy.yml` run #325 vert (clasp push + redéploiement de la web app

@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from 'react';
 import { lirePlage, ecrireCellule, ecrireColonnePlage, ajouterLigne, estConnecte } from '../google';
-import { corbeillerDossierVide, corbeillerLot } from '../corbeille';
+import { corbeillerDossierVide, corbeillerLot, type BilanLot } from '../corbeille';
 import {
   LigneReorg,
   interpreterReorg,
@@ -31,6 +31,10 @@ function messageCorbeille(e: unknown, langue: Langue): string {
   if (brut.includes('racine-systeme') || brut.includes('dossier-structurel') || brut.includes('pas-un-dossier')) {
     return t('corbeilleStructurel', langue);
   }
+  // Motif NEUF de C28-93 : sans cette ligne, Marc lisait la chaîne technique brute au clic unitaire
+  // (§9 : « améliorer un message d'erreur POUR L'HUMAIN est un changement de CONTRAT dès que du code
+  // lit ce message » — ici l'inverse : un motif ajouté sans inventorier ses AFFICHEURS).
+  if (brut.includes('ascendance-illisible')) return t('corbeilleAscendance', langue);
   return brut;
 }
 
@@ -140,9 +144,11 @@ export function ReorgVue({ langue }: { langue: Langue }) {
   /**
    * ADR-0025 (axe 1) : corbeille EN LOT — un seul geste pour N dossiers vidés par le rangement. Chaque
    * dossier passe par la MÊME re-vérif LIVE (`corbeillerDossierVide` → `verdictCorbeille`) qu'au clic
-   * unitaire ; SÉQUENTIEL (jamais de rafale d'appels Drive) ; s'arrête PROPREMENT à la première
-   * violation (dossier re-rempli entre-temps, zone protégée) en nommant où, et garde tout le progrès
-   * déjà acquis. Le moteur ne corbeille toujours rien : tout part de ce clic.
+   * unitaire ; SÉQUENTIEL (jamais de rafale d'appels Drive). Un refus ne stoppe PLUS le lot : il
+   * classe SA ligne et les suivantes continuent (C28-93 — le contraire rendait la liste inutilisable
+   * en entier). Le lot ne s'écourte que sur une session morte ou `CORBEILLE_MAX_PANNES` pannes
+   * d'affilée, et il le DIT alors dans le bilan. Le moteur ne corbeille toujours rien : tout part de
+   * ce clic.
    */
   async function toutCorbeiller(vides: LigneReorg[]) {
     if (enCours || vides.length === 0) return;
@@ -151,14 +157,24 @@ export function ReorgVue({ langue }: { langue: Langue }) {
     setBilanCorbeille('');
     setAvancement({ fait: 0, total: vides.length });
     // La boucle vit dans `corbeille.ts` (testée) : un refus classe SA ligne et le lot continue.
-    const bilan = await corbeillerLot(vides, {
-      corbeiller: (id) => corbeillerDossierVide(id),
-      ecrire: (ligneSheet, statut) => ecrireCellule('Réorg', `F${ligneSheet}`, statut),
-      surLigne: (ligneSheet, statut) =>
-        setLignes((xs) => xs.map((x) => (x.ligneSheet === ligneSheet ? { ...x, statut } : x))),
-      avancement: (fait, total) => setAvancement({ fait, total }),
-      stop: () => !estConnecte(), // session morte : inutile d'enchaîner 100 échecs de fetch
-    });
+    // `corbeillerLot` n'attrape que ce qui vient de ses I/O injectées ; une exception de `stop()`
+    // laisserait sinon tous les boutons désactivés jusqu'au rechargement (revue C28-93).
+    let bilan: BilanLot;
+    try {
+      bilan = await corbeillerLot(vides, {
+        corbeiller: (id) => corbeillerDossierVide(id),
+        ecrire: (ligneSheet, statut) => ecrireCellule('Réorg', `F${ligneSheet}`, statut),
+        surLigne: (ligneSheet, statut) =>
+          setLignes((xs) => xs.map((x) => (x.ligneSheet === ligneSheet ? { ...x, statut } : x))),
+        avancement: (fait, total) => setAvancement({ fait, total }),
+        stop: () => !estConnecte(), // session morte : inutile d'enchaîner 100 échecs de fetch
+      });
+    } catch (e) {
+      setAvancement(null);
+      setEnCours(false);
+      setErreurCorbeille(messageCorbeille(e, langue));
+      return;
+    }
     setAvancement(null);
     setEnCours(false);
     setBilanCorbeille(t('corbeilleBilan', langue)
@@ -166,6 +182,12 @@ export function ReorgVue({ langue }: { langue: Langue }) {
       .replace('{c}', String(bilan.classes))
       .replace('{r}', String(bilan.aReessayer))
       .replace('{s}', String(bilan.sheetKo)));
+    // Un lot écourté ne se lit pas comme un lot complet : la cause ET le nombre de lignes jamais
+    // tentées sont dits, sinon Marc croit la liste traitée (revue C28-93).
+    if (bilan.interrompu) {
+      setErreurCorbeille(t(bilan.interrompu === 'session' ? 'corbeilleCoupeeSession' : 'corbeilleCoupeePannes', langue)
+        .replace('{x}', String(bilan.nonTentees)));
+    }
   }
 
   if (erreur && !charge) return <p className="erreur">{t('erreur', langue)} : {erreur}</p>;

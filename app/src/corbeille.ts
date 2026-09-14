@@ -83,12 +83,25 @@ export function statutRefusCorbeille(message: string): string | null {
   return null;                                                  // transitoire : on re-tentera
 }
 
-/** Ce qu'un lot de corbeille a VRAIMENT fait — quatre états distincts, jamais additionnés. */
+/**
+ * Nombre de pannes CONSÉCUTIVES au-delà duquel le lot s'arrête. Sans ce coupe-circuit, un 429
+ * généralisé sur Drive faisait partir 124 lignes × ~4 appels × 4 tentatives ≈ 2 000 requêtes en
+ * rafale — sur un quota PARTAGÉ avec le moteur (revue sécurité C28-93). Au-delà de quelques échecs
+ * d'affilée, ce n'est plus une ligne qui est en cause mais la plateforme : on rend la main.
+ */
+export const CORBEILLE_MAX_PANNES = 5;
+
+/** Ce qu'un lot de corbeille a VRAIMENT fait — chaque état distinct, jamais additionnés. */
 export interface BilanLot {
   corbeilles: number;  // dossier mis à la corbeille Drive (récupérable 30 j)
   classes: number;     // refus CONNU : la ligne quitte la liste avec sa raison
   aReessayer: number;  // refus INCONNU (réseau, quota, session) : la ligne reste candidate
   sheetKo: number;     // action Drive faite, mais la Sheet n'a pas pris le statut
+  // ⚠️ Un lot ÉCOURTÉ rendait exactement le même bilan qu'un lot complet (revue C28-93) : sur une
+  // session morte à la 40ᵉ ligne, `{corbeilles:40, aReessayer:1}` — et rien, nulle part, ne disait
+  // que 83 lignes n'avaient jamais été tentées. « Une passe abandonnée doit se DIRE dans l'état ».
+  nonTentees: number;                        // lignes jamais tentées, parce que le lot a été coupé
+  interrompu: '' | 'session' | 'pannes';     // '' = le lot est allé au bout
 }
 
 /**
@@ -99,9 +112,10 @@ export interface BilanLot {
  *
  * Invariants que les tests figent :
  *  - un refus n'arrête JAMAIS le lot (il classe SA ligne) ;
- *  - `corbeilles + classes + aReessayer === lignes traitées` — `sheetKo` compte À PART, sinon une
- *    écriture Sheet refusée ferait compter deux fois une ligne déjà corbeillée ;
- *  - `stop()` (session morte) coupe NET : inutile d'enchaîner 100 échecs de fetch.
+ *  - `corbeilles + classes + aReessayer + nonTentees === lignes.length` — `sheetKo` compte À PART,
+ *    sinon une écriture Sheet refusée ferait compter deux fois une ligne déjà corbeillée ;
+ *  - `stop()` (session morte) coupe NET, et `CORBEILLE_MAX_PANNES` pannes d'affilée aussi : dans les
+ *    deux cas le bilan DIT qu'il a été écourté, et combien de lignes n'ont jamais été tentées.
  * @param lignes  {id Drive, numéro de ligne Sheet}
  * @param deps    I/O injectées (corbeille, écriture Sheet, UI) — aucune n'est appelée en test réel
  */
@@ -115,19 +129,31 @@ export async function corbeillerLot(
     stop?: () => boolean;
   },
 ): Promise<BilanLot> {
-  const bilan: BilanLot = { corbeilles: 0, classes: 0, aReessayer: 0, sheetKo: 0 };
+  const bilan: BilanLot = {
+    corbeilles: 0, classes: 0, aReessayer: 0, sheetKo: 0, nonTentees: 0, interrompu: '',
+  };
+  let pannesDaffilee = 0;
   for (let i = 0; i < lignes.length; i++) {
-    if (deps.stop?.()) break;
+    if (deps.stop?.()) bilan.interrompu = 'session';
+    else if (pannesDaffilee >= CORBEILLE_MAX_PANNES) bilan.interrompu = 'pannes';
+    if (bilan.interrompu) { bilan.nonTentees = lignes.length - i; break; }
     const l = lignes[i];
     let statut = 'corbeillé';
     try {
       await deps.corbeiller(l.id);
       bilan.corbeilles++;
+      pannesDaffilee = 0;
     } catch (e) {
       const verdict = statutRefusCorbeille(String(e));
-      if (!verdict) { bilan.aReessayer++; deps.avancement?.(i + 1, lignes.length); continue; }
+      if (!verdict) {
+        bilan.aReessayer++;
+        pannesDaffilee++;             // c'est la PLATEFORME qui flanche, pas la ligne
+        deps.avancement?.(i + 1, lignes.length);
+        continue;
+      }
       statut = verdict;
       bilan.classes++;
+      pannesDaffilee = 0;             // un VERDICT prouve que le canal répond
     }
     try {
       await deps.ecrire(l.ligneSheet, statut);

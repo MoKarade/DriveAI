@@ -28,7 +28,10 @@
 
 /** Statuts d'une ligne d'action (machine à états — cf. BACKLOG #21). */
 var REORG_STATUTS = ['proposé', 'validé', 'écarté', 'appliqué', 'refusé (zone protégée)',
-  'refusé (structure)', 'échec', 'vide-candidat', 'corbeillé'];
+  'refusé (structure)', 'échec', 'vide-candidat', 'corbeillé',
+  // Écrits par l'APP au clic (C28-93) : un refus classe SA ligne au lieu d'arrêter le lot.
+  // `vide-repris` est le SEUL de la famille qui soit RÉVISABLE (cf. `chargerVidesConnus_`).
+  'vide-disparu', 'vide-repris', 'vide-protégé'];
 
 /**
  * Étape de tick unique du chantier Réorg : UNE lecture de l'onglet, puis DRAINER (appliquer les
@@ -40,6 +43,11 @@ var REORG_STATUTS = ['proposé', 'validé', 'écarté', 'appliqué', 'refusé (z
 function etapeReorg_(estBudgetDepasse) {
   var f = feuille_('Réorg');
   var lignes = f.getDataRange().getValues(); // en-têtes incluses — onglet petit (demandes + actions)
+  // One-shot versionné : nettoyer le STOCK de propositions de corbeille avant tout le reste — un
+  // clic de Marc peut tomber à tout moment (C28-93). ENVELOPPÉ : une étape secondaire ne bloque
+  // jamais l'application des actions validées.
+  try { filtrerVidesCandidatsRecreables_(f, lignes); }
+  catch (e) { journalErreur_('Reorg', 'Filtre des propositions de corbeille : ' + e); }
   var reste = appliquerReorgValidee_(f, lignes, estBudgetDepasse);
   if (!reste && !estBudgetDepasse()) appliquerReorgIA_(f, lignes, estBudgetDepasse);
 }
@@ -72,6 +80,7 @@ function appliquerReorgValidee_(f, lignes, estBudgetDepasse) {
   var intouchables = ensembleIntouchables_();
   var horodate = new Date().toISOString();
   var resteEnValide = false;
+  var videsValidees = null; // référentiel d'entités, résolu au plus une fois par run (lazy)
 
   for (var i = 0; i < validees.length; i++) {
     if (estBudgetDepasse()) return true; // repris au tick suivant
@@ -110,6 +119,16 @@ function appliquerReorgValidee_(f, lignes, estBudgetDepasse) {
         for (var v = 1; v < lignes.length; v++) {
           if (String(lignes[v][0]) === cleVide) { dejaInscrit = true; break; }
         }
+        // SECOND producteur de `videcandidat|`, découvert en revue C28-93 (🟠) : il ne passait pas
+        // par `detecterDossierVide_`, donc pas par la garde par capacité — l'ADR affirmait pourtant
+        // « ils ne peuvent plus contenir un nœud de la structure ». Un plan IA qui fusionne
+        // `Projets` dans un voisin vidait un nœud de la table, le proposait à la corbeille, et la
+        // table le recréait au premier document : le ping-pong de la leçon §9.
+        // NUANCE (réserve déjà codée chez le voisin `estAncreStructurelleFusion_`) : pour une fusion
+        // de DOUBLONS DE MÊME NOM, proposer la source drainée reste légitime — le canonique existe
+        // toujours et le find-or-create le retrouve. D'où la conjonction avec `nomSource !== nomCible`.
+        if (!videsValidees) videsValidees = entitesValideesOuNull_();
+        if (!proposerSourceFusion_(a.cheminActuel, a.cheminPropose, videsValidees)) dejaInscrit = true;
         if (!dejaInscrit) {
           f.appendRow([cleVide, 'dossier-vide', a.source, a.cheminActuel, '',
             'vide-candidat', 'devenu vide par fusion', horodate]);
@@ -170,6 +189,99 @@ function partiesId_(idCol) {
   return { source: (parts[0] || '').trim(), cible: (parts[1] || '').trim() };
 }
 
+/**
+ * Après une fusion APPLIQUÉE, faut-il proposer la source drainée à la corbeille ? PURE (testée).
+ *
+ * Découvert en revue C28-93 (🟠) : ce chemin est un SECOND producteur de lignes `videcandidat|`,
+ * et il ne passait pas par `detecterDossierVide_` — donc pas par la garde par capacité, alors que
+ * l'ADR affirmait « ils ne peuvent plus contenir un nœud de la structure ». Un plan IA qui fusionne
+ * `Projets` dans un voisin vidait un nœud de la table, le proposait à la corbeille, et la table le
+ * recréait au premier document : le ping-pong de la leçon §9.
+ *
+ * NUANCE — c'est la réserve déjà codée chez le voisin `estAncreStructurelleFusion_` : pour une
+ * fusion de DOUBLONS DE MÊME NOM, proposer la source drainée reste LÉGITIME, le canonique existe
+ * toujours et le find-or-create le retrouve. La garde ne vaut donc que quand les noms DIFFÈRENT.
+ * @param {string} cheminActuel   chemin de la SOURCE (son dernier segment est son nom)
+ * @param {string} cheminPropose  chemin de la CIBLE
+ * @param {Object|null} validees  référentiel des entités validées, `null` s'il est illisible
+ * @return {boolean}
+ */
+function proposerSourceFusion_(cheminActuel, cheminPropose, validees) {
+  var nomSource = dernierSegment_(String(cheminActuel == null ? '' : cheminActuel));
+  if (!nomSource) return false;                                   // sans nom : jamais de proposition
+  var nomCible = dernierSegment_(String(cheminPropose == null ? '' : cheminPropose));
+  if (nomSource === nomCible) return true;                        // doublons de MÊME nom : légitime
+  return !estNoeudRecreablePrudent_(nomSource, validees);
+}
+
+/**
+ * Version des RÈGLES de la garde par capacité. Bumper cette valeur re-filtre tout le stock de
+ * propositions `vide-candidat` sous les règles courantes — c'est la leçon §9 « quand la décision
+ * dépend d'une TABLE DE RÈGLES du code, la VERSION de cette table fait partie de l'état » : sans
+ * elle, ajouter un nœud à la taxonomie n'aurait aucun effet sur ce qui est déjà proposé.
+ */
+var VIDES_FILTRE_TAG = 'c2893-1';
+
+/**
+ * PURE — parmi les lignes de l'onglet `Réorg`, les propositions à la corbeille qui portent un nom
+ * que la TAXONOMIE sait recréer. Rend [{rang, nom}] (rang 1-based, en-tête comprise).
+ *
+ * Le nom se lit au DERNIER segment de « Chemin actuel » : les lignes d'avant C28-93 n'y portent
+ * que le nom nu, celles d'après le chemin complet — le dernier segment vaut pour les deux.
+ * @param {Array<Array>} lignes  l'onglet entier, en-tête comprise
+ * @param {Object} validees  référentiel des entités validées (déjà vérifié NON vide par l'appelant)
+ * @return {Array<{rang:number, nom:string}>}
+ */
+function videsCandidatsRecreables_(lignes, validees) {
+  var out = [];
+  for (var i = 1; i < lignes.length; i++) {
+    var l = lignes[i] || [];
+    if (String(l[1]) !== 'dossier-vide' || String(l[5]) !== 'vide-candidat') continue;
+    var nom = dernierSegment_(String(l[3] == null ? '' : l[3]));
+    if (nom && estNoeudRecreable_(nom, validees)) out.push({ rang: i + 1, nom: nom });
+  }
+  return out;
+}
+
+/**
+ * ÉTAPE DE TICK (one-shot, versionnée) — applique la garde par capacité au STOCK de propositions
+ * DÉJÀ écrites, pas seulement aux futures.
+ *
+ * Pourquoi (revue C28-93, 🔴 trouvé par DEUX agents en convergence) : `estNoeudRecreable_` n'avait
+ * qu'un site d'appel, sur le chemin d'ÉCRITURE d'un nouveau constat. Les 124 lignes d'août étaient
+ * déjà dans l'onglet, et l'onglet est append-only — rien ne les re-filtrait. Le même lot rendait le
+ * bouton « Tout corbeiller » OPÉRANT : au clic, les 7 lignes de nœuds de table (`Robovic` ×2,
+ * `Projets`, `Automatech`, `DriveAI`, `Novel Software`, `Candidatures`) et `IUT Du Littoral`
+ * seraient parties à la corbeille — exactement les « dossiers utiles » de la plainte de Marc, et
+ * exactement ce que la nouvelle garde déclare intouchable. Corriger le flux sans nettoyer le stock
+ * aurait rendu le défaut EFFECTIF au lieu de le fermer.
+ *
+ * C'est aussi le chemin de RETOUR qui manquait aux lignes déjà mal proposées (§9 : « un garde-fou
+ * qui met des items hors circuit exige un chemin de retour »).
+ *
+ * Aucune mutation Drive : seuls les statuts de l'onglet changent. Échec fermé : référentiel muet
+ * (illisible OU vide) ⇒ on ne retire RIEN et on réessaie au tick suivant — marquer tout le stock
+ * « protégé » sur un blip de lecture serait le défaut symétrique.
+ * @param {Sheet} f  l'onglet Réorg
+ * @param {Array<Array>} lignes  déjà lu par `etapeReorg_` — aucun appel Sheet supplémentaire
+ */
+function filtrerVidesCandidatsRecreables_(f, lignes) {
+  var props = PropertiesService.getScriptProperties();
+  if (props.getProperty('DriveAI_VIDES_FILTRES') === VIDES_FILTRE_TAG) return;
+  var validees = entitesValideesOuNull_();
+  if (!validees || !Object.keys(validees).length) return; // panne ≠ verdict : re-tenté au tick suivant
+  var cibles = videsCandidatsRecreables_(lignes, validees);
+  var lot = Math.min(cibles.length, CONFIG.REORG_VIDES_FILTRE_LOT);
+  for (var i = 0; i < lot; i++) {
+    solderAction_(f, cibles[i].rang, 'vide-protégé',
+      'la taxonomie recrée « ' + cibles[i].nom + ' » au premier document (C28-93)');
+  }
+  // Le tag ne se pose que sur une passe COMPLÈTE : une passe écrêtée par le lot reprend au tick
+  // suivant (les lignes réécrites ne matchent plus `vide-candidat`, donc la collecte converge).
+  if (lot === cibles.length) props.setProperty('DriveAI_VIDES_FILTRES', VIDES_FILTRE_TAG);
+  if (lot) journalInfo_('Reorg', lot + ' proposition(s) de corbeille retirée(s) : nœud de la taxonomie');
+}
+
 /** Dernier segment d'un chemin proposé (nom du dossier à créer/renommer). PURE (testée). */
 function dernierSegment_(chemin) {
   var parts = String(chemin).split('/');
@@ -207,7 +319,8 @@ function ensembleIntouchables_() {
  * serait fausse au premier nœud ajouté, et personne ne saurait qu'elle l'est.
  *
  * Vécu (C28-93, décompte du 13/09) : la liste des dossiers vides proposés à Marc contenait
- * `Robovic`, `Automatech`, `DriveAI`, `Novel Software`, `Candidatures` — tous des nœuds que la table
+ * `Robovic` (deux fois), `Projets`, `Automatech`, `DriveAI`, `Novel Software`, `Candidatures` —
+ * six noms sur sept lignes, tous des nœuds que la table
  * recrée PAR NOM — et deux dossiers NOMMÉS comme des domaines (`02 · Finances`, `05 · Carrière`),
  * que l'app refuse de corbeiller par leur nom. Le premier de la liste étant l'un d'eux, le bouton
  * « tout corbeiller » s'arrêtait dessus : la liste était inutilisable ENTIÈREMENT à cause de ce que
@@ -229,6 +342,30 @@ function estNoeudRecreable_(nom, validees) {
     if (v[cles[i]] && String(v[cles[i]].nom).trim() === propre) return true; // dossier d'entité validée
   }
   return false;
+}
+
+/**
+ * `estNoeudRecreable_` à ÉCHEC FERMÉ, pour les appelants qui décident de PROPOSER un dossier à la
+ * corbeille. Un référentiel d'entités illisible ou vide rend `true` — « je ne sais pas, donc je
+ * m'abstiens » — là où le prédicat nu répondrait `false` (« ce n'est pas une entité validée ») et
+ * laisserait passer la proposition.
+ *
+ * Pourquoi (revue quotas C28-93, 🟠) : `entitesValideesParCle_` échoue OUVERT, elle avale son
+ * exception et rend `{}`. Pour le ROUTAGE c'est la bonne dégradation (classement à plat,
+ * réversible au run suivant) ; pour une PROPOSITION À LA CORBEILLE c'est un faux verdict
+ * DÉFINITIF — la clé `videcandidat|<id>` n'est jamais ré-évaluée, et l'app ne protège pas les
+ * dossiers d'entité : Marc verrait « Robovic » dans sa liste, et il cliquerait.
+ *
+ * ⚠️ À n'utiliser QUE dans ce sens. Pour la question INVERSE — « dois-je RETIRER une proposition
+ * existante ? » — s'abstenir veut dire ne rien retirer : l'appelant coupe alors AVANT la boucle
+ * (cf. `filtrerVidesCandidatsRecreables_`), sinon il marquerait tout le stock « protégé ».
+ * @param {string} nom
+ * @param {Object|null} validees  référentiel des entités validées, ou `null` s'il est illisible
+ * @return {boolean}
+ */
+function estNoeudRecreablePrudent_(nom, validees) {
+  if (!validees || !Object.keys(validees).length) return true;
+  return estNoeudRecreable_(nom, validees);
 }
 
 /**

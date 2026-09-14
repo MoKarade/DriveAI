@@ -146,3 +146,36 @@ test('deciderRoutageV2_ : entité-table au Dossier ID PÉRIMÉ → re-pointée v
   doc('2026-07-01');
   assert.strictEqual(repoints.length, 1, 'aucun 2ᵉ re-pointage dans le même run (dédup run-scope réelle)');
 });
+
+test('sousDossier_ : un dossier à la CORBEILLE n\'est JAMAIS une cible de classement (§1.2)', () => {
+  // Relevé en revue C28-93 : `getFoldersByName` rend AUSSI les dossiers corbeillés. Sans filtre, un
+  // dossier mis à la corbeille par Marc (ADR-0014, au clic) redevenait la cible du classement : les
+  // documents y étaient déposés, puis purgés AVEC lui à 30 jours — une SUPPRESSION AUTOMATIQUE, le
+  // garde-fou §1.2 non négociable. Défaut pré-existant, rendu ATTEIGNABLE par ce lot, qui débloque
+  // le bouton « tout corbeiller ». Mutation : revenir à `it.hasNext() ? it.next() : create` ⇒ tombe.
+  const dossier = (id, corbeille) => ({ getId: () => id, isTrashed: () => corbeille });
+  const iterateur = (items) => { let i = 0; return { hasNext: () => i < items.length, next: () => items[i++] }; };
+  const parent = (items) => {
+    const cree = [];
+    return {
+      cree,
+      getFoldersByName: () => iterateur(items),
+      createFolder: (nom) => { cree.push(nom); return dossier('CREE:' + nom, false); },
+    };
+  };
+
+  // 1) Un SEUL homonyme, corbeillé : on en RECRÉE un plutôt que de déposer dans la corbeille.
+  const p1 = parent([dossier('MORT', true)]);
+  assert.strictEqual(ctx.sousDossier_(p1, 'Robovic').getId(), 'CREE:Robovic');
+  assert.strictEqual(p1.cree.length, 1);
+
+  // 2) Un corbeillé PUIS un vivant : c'est le vivant qui est rendu, et rien n'est créé.
+  const p2 = parent([dossier('MORT', true), dossier('VIVANT', false)]);
+  assert.strictEqual(ctx.sousDossier_(p2, 'Robovic').getId(), 'VIVANT');
+  assert.strictEqual(p2.cree.length, 0, 'un dossier vivant existe : surtout pas de doublon');
+
+  // 3) Cas nominal inchangé : premier homonyme vivant ⇒ rendu tel quel.
+  const p3 = parent([dossier('VIVANT', false)]);
+  assert.strictEqual(ctx.sousDossier_(p3, 'Robovic').getId(), 'VIVANT');
+  assert.strictEqual(p3.cree.length, 0);
+});

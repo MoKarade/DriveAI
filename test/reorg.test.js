@@ -437,3 +437,141 @@ test('estNoeudRecreable_ : un dossier d\'ENTITÉ VALIDÉE n\'est jamais proposé
   assert.strictEqual(ctxCap.estNoeudRecreable_('Kim Pinsonneault'), false, 'sans référentiel : rien à dire');
   assert.strictEqual(ctxCap.estNoeudRecreable_('Inconnu SARL', validees), false);
 });
+
+test('estNoeudRecreable_ : `Projets` aussi — le décompte en comptait SIX noms, pas cinq', () => {
+  // Relevé en revue : ma liste de cinq oubliait `Projets` (nœud de niveau 1 de `05 · Carrière`).
+  // Ce test le dérive de la TABLE plutôt que de la recopier — le décompte réel du 13/09 est de
+  // 7 LIGNES pour 6 NOMS (`Robovic` y figure deux fois).
+  for (const nom of ['Robovic', 'Projets', 'Automatech', 'DriveAI', 'Novel Software', 'Candidatures']) {
+    assert.strictEqual(ctxCap.estNoeudRecreable_(nom), true, nom);
+  }
+});
+
+test('estNoeudRecreablePrudent_ : référentiel MUET ⇒ on s\'abstient de proposer', () => {
+  // Variante à échec FERMÉ pour les appelants qui écrivent du DÉFINITIF. `entitesValideesParCle_`
+  // échoue OUVERT (`{}` sur exception) : le prédicat nu répondrait « ce n'est pas une entité
+  // validée » et laisserait passer la proposition. Mutation : rendre `false` sur `null`/`{}`
+  // ⇒ ce test tombe.
+  assert.strictEqual(ctxCap.estNoeudRecreablePrudent_('Kim Pinsonneault', null), true, 'illisible');
+  assert.strictEqual(ctxCap.estNoeudRecreablePrudent_('Kim Pinsonneault', {}), true, 'vide');
+  // …et quand le référentiel RÉPOND, la variante prudente est le prédicat nu : elle ne gèle rien.
+  const validees = { 'cle|x': { nom: 'Kim Pinsonneault', dossierId: 'ID1' } };
+  assert.strictEqual(ctxCap.estNoeudRecreablePrudent_('IUT GIM 1', validees), false);
+  assert.strictEqual(ctxCap.estNoeudRecreablePrudent_('Kim Pinsonneault', validees), true);
+});
+
+/* ---------- C28-93 (revue) : la garde s'applique aussi au STOCK déjà proposé ---------- */
+
+/** Un onglet Réorg factice : en-tête + les lignes données. */
+function ongletReorg(lignes) {
+  return [['Clé', 'Type', 'ID', 'Chemin actuel', 'Chemin proposé', 'Statut', 'Détail', 'Horodaté']]
+    .concat(lignes);
+}
+const vc = (id, chemin, statut) =>
+  ['videcandidat|' + id, 'dossier-vide', id, chemin, '', statut || 'vide-candidat', '', ''];
+
+test('videsCandidatsRecreables_ : le STOCK déjà écrit passe par la même garde que le flux', () => {
+  // 🔴 de la revue, trouvé par DEUX agents en convergence : `estNoeudRecreable_` n'avait qu'un site
+  // d'appel, sur le chemin d'ÉCRITURE. Les 124 lignes d'août étaient déjà dans l'onglet, et le même
+  // lot rendait le bouton « Tout corbeiller » OPÉRANT — donc au clic, `Robovic`, `Projets`,
+  // `Automatech`, `DriveAI`, `Novel Software`, `Candidatures` et `IUT Du Littoral` partaient à la
+  // corbeille : exactement les « dossiers utiles » de la plainte de Marc.
+  const validees = { 'cle|iut': { nom: 'IUT Du Littoral', dossierId: 'ID9' } };
+  const lignes = ongletReorg([
+    vc('A', '05 · Carrière/Projets'),                 // nœud de table, chemin complet (après C28-93)
+    vc('B', 'Robovic'),                               // nœud de table, nom nu (lignes d'août)
+    vc('C', 'IUT Du Littoral'),                       // entité VALIDÉE du référentiel
+    vc('D', '06 · Études & diplômes/Archives/Colles'), // vraiment obsolète : reste proposé
+    vc('E', 'Robovic', 'corbeillé'),                  // déjà soldée : on n'y touche pas
+    ['reorg|x', 'action', 'Z', 'a', 'b', 'proposé', '', ''], // autre type de ligne : ignorée
+  ]);
+  // `join` plutôt que `deepStrictEqual` : le tableau vient du contexte VM, donc son prototype
+  // n'est pas celui de l'hôte (« same structure but not reference-equal »).
+  const cibles = Array.from(ctxCap.videsCandidatsRecreables_(lignes, validees));
+  assert.strictEqual(cibles.map((x) => x.nom).join('|'), 'Projets|Robovic|IUT Du Littoral');
+  assert.strictEqual(cibles.map((x) => x.rang).join('|'), '2|3|4', 'rangs 1-based, en-tête comprise');
+});
+
+test('filtrerVidesCandidatsRecreables_ : one-shot versionné, et un référentiel MUET ne retire RIEN', () => {
+  const lignes = ongletReorg([vc('A', 'Robovic'), vc('D', 'Colles')]);
+  const soldes = [];
+  const props = {};
+  const c = load(['Config.gs', 'Reset.gs', 'Reorg.gs']);
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in props ? props[k] : null),
+    setProperty: (k, v) => { props[k] = v; },
+  }) };
+  c.journalInfo_ = () => {};
+  c.solderAction_ = (f, rang, statut, detail) => { soldes.push({ rang, statut, detail }); };
+  const f = {};
+
+  // 1) Référentiel ILLISIBLE : aucune ligne retirée, et surtout AUCUN tag posé — sinon un blip de
+  //    lecture aurait clos la passe à vide, pour toujours. Symétrique du 🔴 `ascendance-illisible`.
+  c.entitesValideesOuNull_ = () => null;
+  c.filtrerVidesCandidatsRecreables_(f, lignes);
+  assert.strictEqual(soldes.length, 0, 'référentiel illisible : on ne retire rien');
+  assert.strictEqual(props.DriveAI_VIDES_FILTRES, undefined, 'et on n\'a pas conclu la passe');
+
+  // 2) Référentiel VIDE : idem (indiscernable d'un illisible, cf. `chargerEntitesCache_`).
+  c.entitesValideesOuNull_ = () => ({});
+  c.filtrerVidesCandidatsRecreables_(f, lignes);
+  assert.strictEqual(soldes.length, 0, 'référentiel vide : on ne retire rien non plus');
+
+  // 3) Référentiel lu : la ligne fautive passe à `vide-protégé`, l'obsolète reste proposée.
+  c.entitesValideesOuNull_ = () => ({ 'k|z': { nom: 'Zzz', dossierId: '' } });
+  c.filtrerVidesCandidatsRecreables_(f, lignes);
+  assert.strictEqual(soldes.length, 1);
+  assert.strictEqual(soldes[0].rang, 2);
+  assert.strictEqual(soldes[0].statut, 'vide-protégé');
+  assert.ok(soldes[0].detail.includes('Robovic'), 'le détail NOMME le dossier : Marc doit pouvoir vérifier');
+  assert.strictEqual(props.DriveAI_VIDES_FILTRES, c.VIDES_FILTRE_TAG, 'passe complète ⇒ tag posé');
+
+  // 4) One-shot : au tick suivant, plus rien n'est relu.
+  c.filtrerVidesCandidatsRecreables_(f, lignes);
+  assert.strictEqual(soldes.length, 1, 'tag posé : la passe ne repasse pas');
+
+  // 5) …mais bumper la VERSION des règles la rejoue (leçon §9 : la version de la table de règles
+  //    fait partie de l'état — sinon ajouter un nœud à la taxonomie n'aurait aucun effet ici).
+  props.DriveAI_VIDES_FILTRES = 'c2893-0';
+  c.filtrerVidesCandidatsRecreables_(f, lignes);
+  assert.strictEqual(soldes.length, 2, 'version différente ⇒ le stock est re-filtré');
+});
+
+test('filtrerVidesCandidatsRecreables_ : une passe ÉCRÊTÉE ne pose pas le tag', () => {
+  // Le tag est le « c'est fini » : le poser sur une passe partielle laisserait le reliquat proposé
+  // à vie. Mutation : poser le tag inconditionnellement ⇒ ce test tombe.
+  const c = load(['Config.gs', 'Reset.gs', 'Reorg.gs']);
+  const props = {};
+  const soldes = [];
+  c.PropertiesService = { getScriptProperties: () => ({
+    getProperty: (k) => (k in props ? props[k] : null),
+    setProperty: (k, v) => { props[k] = v; },
+  }) };
+  c.journalInfo_ = () => {};
+  c.solderAction_ = (f, rang) => { soldes.push(rang); };
+  c.entitesValideesOuNull_ = () => ({ 'k|z': { nom: 'Zzz', dossierId: '' } });
+  c.CONFIG = Object.assign({}, c.CONFIG, { REORG_VIDES_FILTRE_LOT: 1 });
+  c.filtrerVidesCandidatsRecreables_({}, ongletReorg([vc('A', 'Robovic'), vc('B', 'Projets')]));
+  assert.strictEqual(soldes.length, 1, 'écrêté au lot');
+  assert.strictEqual(props.DriveAI_VIDES_FILTRES, undefined, 'passe incomplète ⇒ jamais « fini »');
+});
+
+test('proposerSourceFusion_ : le SECOND producteur de `videcandidat|` est gardé lui aussi', () => {
+  // 🟠 de la revue : après une fusion validée, le moteur appendait directement une ligne
+  // `vide-candidat` pour la source drainée, sans passer par `detecterDossierVide_` — donc sans la
+  // garde par capacité, alors que l'ADR affirmait le contraire.
+  // Mutation : rendre `true` inconditionnellement ⇒ ce test tombe.
+  const validees = { 'k|z': { nom: 'Zzz', dossierId: '' } };
+  // Un nœud de la TABLE fusionné ailleurs : jamais proposé (la table le recrée ⇒ ping-pong).
+  assert.strictEqual(ctxCap.proposerSourceFusion_('05 · Carrière/Projets', '05 · Carrière/Travaux', validees), false);
+  // Un dossier vraiment obsolète : proposé, comme avant.
+  assert.strictEqual(ctxCap.proposerSourceFusion_('06 · Études/IUT GIM 1', '06 · Études/IUT', validees), true);
+  // NUANCE : deux DOUBLONS DE MÊME NOM — proposer la source reste légitime, le canonique existe
+  // toujours et le find-or-create le retrouve. Même réserve que `estAncreStructurelleFusion_`.
+  assert.strictEqual(ctxCap.proposerSourceFusion_('05 · Carrière/A/Projets', '05 · Carrière/B/Projets', validees), true);
+  // Référentiel MUET : on s'abstient (échec fermé), sauf sur le cas même-nom qui n'en dépend pas.
+  assert.strictEqual(ctxCap.proposerSourceFusion_('x/Kim Pinsonneault', 'x/Kim P.', null), false);
+  assert.strictEqual(ctxCap.proposerSourceFusion_('x/Kim Pinsonneault', 'y/Kim Pinsonneault', null), true);
+  // Sans nom de source : jamais de proposition.
+  assert.strictEqual(ctxCap.proposerSourceFusion_('', 'x/y', validees), false);
+});

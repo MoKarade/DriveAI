@@ -438,6 +438,21 @@ function entitesCache_() {
  *   alors sur le nom (échec ouvert, jamais un blocage — ADR-0028).
  */
 function entitesValideesParCle_() {
+  return entitesValideesOuNull_() || {};
+}
+
+/**
+ * Idem `entitesValideesParCle_`, mais qui DIT quand la lecture a échoué : `null` au lieu de `{}`.
+ *
+ * Pourquoi deux fonctions — l'ASYMÉTRIE des consommateurs (revue quotas C28-93, 🟠). Pour le
+ * ROUTAGE, un référentiel illisible doit dégrader vers `{}` : le document est classé à plat, et le
+ * run suivant le reprendra — réversible, donc l'échec ouvert est le bon comportement. Pour un
+ * CONSTAT « ce dossier est bon pour la corbeille », `{}` est un faux verdict DÉFINITIF : la clé
+ * `videcandidat|<id>` n'est jamais ré-évaluée. Un consommateur qui écrit du définitif doit pouvoir
+ * distinguer « aucune entité validée » de « je n'ai pas pu lire le référentiel ».
+ * @return {Object|null} la carte, ou `null` si le référentiel n'a pas pu être lu.
+ */
+function entitesValideesOuNull_() {
   var validees = {};
   try {
     var cache = entitesCache_(); // accesseur (chargerEntitesCache_ remplit la globale, ne retourne rien)
@@ -453,6 +468,7 @@ function entitesValideesParCle_() {
     }
   } catch (e) {
     journalErreur_('Entités', 'Référentiel illisible (aucun dossier d\'entité ce run — à plat) : ' + e);
+    return null;
   }
   return validees;
 }

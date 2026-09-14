@@ -152,7 +152,16 @@ function deposer_(blob, dossierId, nom) {
  */
 function sousDossier_(parent, nom) {
   var it = parent.getFoldersByName(nom);
-  return it.hasNext() ? it.next() : parent.createFolder(nom);
+  // ⚠️ `getFoldersByName` rend AUSSI les dossiers à la corbeille. Sans ce filtre, un dossier
+  // corbeillé (par ADR-0014, au clic de Marc) redeviendrait une CIBLE de classement : les documents
+  // y seraient déposés, puis purgés avec lui à 30 jours — une SUPPRESSION AUTOMATIQUE, §1.2, le
+  // garde-fou non négociable. Défaut pré-existant, rendu atteignable par C28-93 qui débloque le
+  // bouton « tout corbeiller » : relevé en revue de code, fermé ici plutôt que laissé au backlog.
+  while (it.hasNext()) {
+    var candidat = it.next();
+    if (!candidat.isTrashed()) return candidat;
+  }
+  return parent.createFolder(nom);
 }
 
 /**

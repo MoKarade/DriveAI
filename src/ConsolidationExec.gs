@@ -255,22 +255,37 @@ function detecterDossierVide_(parent, ctx) {
   var id = parent.getId();
   if (!ctx.intouchables) ctx.intouchables = ensembleIntouchables_();
   if (ctx.intouchables[id]) return;                          // domaine / catégorie à ID fixe / file système
-  var nom = parent.getName();
-  // Référentiel résolu en LAZY, comme `intouchables` (revue C28-93, 🟠) : sur 5 appelants, TROIS
-  // construisaient un ctx sans `validees` — dont `FusionExec`, qui est justement celui qui VIDE les
-  // dossiers d'entité (il vient d'appeler `repointerEntites_` deux lignes plus haut). La branche
-  // « entité validée » était donc morte là où elle sert le plus. Résoudre ici couvre les cinq d'un
-  // coup, et ne coûte rien tant qu'aucun dossier n'est devenu vide.
-  if (!ctx.validees) ctx.validees = entitesValideesParCle_();
-  if (estNoeudRecreable_(nom, ctx.validees)) return;         // la taxonomie le recréerait (C28-93)
-  // Vacuité STRICTE (non corbeillés) — premier test qui TOUCHE DRIVE (les gardes ci-dessus sont
-  // pures, donc gratuites et placées avant, revue C28-93). Cas DOMINANT : le parent reste NON vide
-  // → sortie tôt, coût minimal (revue quotas). Le moindre fichier OU sous-dossier ⇒ pas un candidat.
+  // Vacuité STRICTE (non corbeillés) — EN PREMIER, parce que c'est le cas DOMINANT (le parent reste
+  // non vide) et le filtre le moins cher : deux itérateurs Drive, contre une lecture de l'onglet
+  // `Entités` pour la garde par capacité ci-dessous. Le moindre fichier OU sous-dossier ⇒ pas un
+  // candidat. ⚠️ Ordre CORRIGÉ en revue quotas C28-93 : la garde par capacité était annoncée « pure,
+  // donc gratuite, placée avant » — faux, elle résout le référentiel, et elle s'exécutait donc sur
+  // CHAQUE fichier déplacé au lieu des seuls dossiers réellement vidés.
   if (parent.getFiles().hasNext() || parent.getFolders().hasNext()) return;
-  // RARE (parent devenu vide) : garde §1 par REMONTÉE de TOUTE la chaîne d'ancêtres (leçon « remonter
-  // toute la chaîne d'ancêtres », durcissement revue sécurité) — self OU ascendance protégée / illisible
-  // ⇒ jamais un candidat (échec-fermé). Placée APRÈS la vacuité : la remontée ne se paie que sur un vide.
+  // ---- À partir d'ici le dossier est réellement devenu VIDE : cas RARE, on peut payer. ----
+  // Garde §1 par REMONTÉE de TOUTE la chaîne d'ancêtres (leçon « remonter toute la chaîne
+  // d'ancêtres », durcissement revue sécurité) — self OU ascendance protégée / illisible ⇒ jamais
+  // un candidat (échec-fermé).
   if (chaineMonteVersProtege_(parent, ctx.proteges || {}, 0, true)) return;
+  // Référentiel des entités validées — résolu ICI, et PAS hérité de `ctx.validees` (revue quotas
+  // C28-93, 🟠). `entitesValideesParCle_` échoue OUVERT : elle avale son exception et rend `{}`.
+  // Pour le ROUTAGE c'est la bonne dégradation (classement à plat, réversible au run suivant) ;
+  // pour CE constat, c'est un faux verdict DÉFINITIF — la clé `videcandidat|<id>` n'est jamais
+  // ré-évaluée, et l'app ne protège pas les dossiers d'entité : Marc verrait « Robovic » proposé à
+  // la corbeille, et il cliquerait. C'est le symétrique EXACT de `ascendance-illisible` côté app :
+  // une panne n'est pas un verdict.
+  // On s'abstient donc sur `null` (lecture en échec) ET sur un référentiel VIDE, parce que les deux
+  // sont aujourd'hui indiscernables : `chargerEntitesCache_` pré-positionne `_entitesCache` à vide
+  // AVANT de lire la Sheet, donc un second appel dans le même run ne lève plus (bug de fond,
+  // pré-existant, au BACKLOG — une fois corrigé, la condition « vide » pourra être relâchée).
+  // S'abstenir ne coûte RIEN : aucune clé n'est écrite, le dossier sera re-constaté plus tard.
+  if (ctx.valideesConstat === undefined) ctx.valideesConstat = entitesValideesOuNull_();
+  var nom = parent.getName();
+  if (estNoeudRecreablePrudent_(nom, ctx.valideesConstat)) return; // la taxonomie le recréerait
+  // Dédup AVANT de calculer le chemin (revue quotas C28-93, 🟡) : la remontée coûte jusqu'à
+  // 10 `getParents()`, inutile pour une ligne déjà inscrite (un dossier peut se re-vider).
+  chargerVidesConnus_(ctx);
+  if (ctx.videsConnus['videcandidat|' + id]) return;
   inscrireDossierVideCandidat_(id, cheminPourConstat_(parent, nom, ctx), ctx);
 }
 
@@ -311,18 +326,35 @@ function cheminPourConstat_(dossier, nom, ctx) {
  * par run (lazy, sur `ctx`) et tenu à jour, pour éviter une lecture de l'onglet par dossier vidé.
  * Colonnes : Clé | Type | ID | Chemin actuel | Chemin proposé | Statut | Détail | Horodaté.
  */
+function chargerVidesConnus_(ctx) {
+  if (ctx.videsConnus) return ctx.videsConnus;
+  ctx.videsConnus = {};
+  // Colonnes A (clés) et F (statut) SEULES — ÷4 le payload vs getDataRange (8 colonnes).
+  var feuille = feuille_('Réorg');
+  var dern = feuille.getLastRow();
+  var cles = dern >= 1 ? feuille.getRange(1, 1, dern, 1).getValues() : [];
+  var statuts = dern >= 1 ? feuille.getRange(1, 6, dern, 1).getValues() : [];
+  for (var i = 0; i < cles.length; i++) {
+    var k = String(cles[i][0]);
+    if (k.indexOf('videcandidat|') !== 0) continue;
+    // `vide-repris` est le SEUL statut RÉVISABLE de la famille (revue C28-93, 🟠) : il dit « ce
+    // dossier n'était plus vide AU MOMENT DU CLIC », un fait qui redevient faux dès que la
+    // consolidation le re-vide. `vide-disparu` / `vide-protégé` / `corbeillé` sont définitifs par
+    // nature, et une ligne encore `vide-candidat` est déjà proposée. Sans cette exception, un
+    // dossier re-rempli puis re-vidé ne serait plus JAMAIS proposé — exactement son cas d'usage.
+    // (Cas fréquent et sournois : `compterEnfantsStrict` compte aussi les enfants CORBEILLÉS, donc
+    // un dossier qui n'a plus que des corbeillés rend `non-vide` → `vide-repris` alors que rien ne
+    // l'a re-rempli. Le refus reste juste — ADR-0014 exige la vacuité corbeillés inclus — mais il
+    // ne doit pas être définitif.)
+    if (String((statuts[i] || [])[0]) === 'vide-repris') continue;
+    ctx.videsConnus[k] = true;
+  }
+  return ctx.videsConnus;
+}
+
 function inscrireDossierVideCandidat_(id, chemin, ctx) {
   var feuille = feuille_('Réorg');
-  if (!ctx.videsConnus) {
-    ctx.videsConnus = {};
-    // Seule la colonne A (clés) est lue — ÷8 le payload vs getDataRange (8 colonnes), revue quotas.
-    var dern = feuille.getLastRow();
-    var cles = dern >= 1 ? feuille.getRange(1, 1, dern, 1).getValues() : [];
-    for (var i = 0; i < cles.length; i++) {
-      var k = String(cles[i][0]);
-      if (k.indexOf('videcandidat|') === 0) ctx.videsConnus[k] = true;
-    }
-  }
+  chargerVidesConnus_(ctx);
   var cle = 'videcandidat|' + id;
   if (ctx.videsConnus[cle]) return; // déjà signalé (rejeu, ou fusion antérieure) — jamais un doublon
   feuille.appendRow([cle, 'dossier-vide', id, chemin, '', 'vide-candidat',
