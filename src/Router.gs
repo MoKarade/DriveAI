@@ -559,7 +559,17 @@ function planRoutageV2_(classif, meta, date, ext, validees) {
 
   var nom = nommerDocument_(c, date, ext);
   var di = estDocumentIdentitePersonnel_(c) ? dossierIdentite_(c) : null; // identité → domaine dérivé du TYPE
-  var domaine = di ? di.domaine : c.domaine;
+  // ADR-0058 (décision Marc : « mes paies ne devraient pas arriver dans employeur mais seulement
+  // dans finances ») — DEUXIÈME type dont le domaine est une PROPRIÉTÉ du document, jamais une
+  // interprétation du LLM. Même patron que la ligne d'identité juste au-dessus, et pour la même
+  // raison : une paie NOMME un employeur, donc le LLM répond « 05 » — ce qui n'est pas absurde,
+  // c'est la mauvaise règle pour ce type-là. Les MISSIONS le savaient (« le domicile UNIQUE des
+  // paies est 02 »), le FLUX non : elles rangeaient, il dé-rangeait, et comme elles convergent puis
+  // s'arrêtent, c'est lui qui avait le dernier mot sur tout ce qui arrive désormais.
+  // Évalué sur le nom FINAL — celui que `cheminCibleReset_` reçoit trois lignes plus bas, avec la
+  // MÊME extraction de type : une seule règle, deux consommateurs.
+  var domaine = di ? di.domaine
+    : (estRevenuEmployeurReset_(nom, c.type_doc) ? CONFIG.DOMAINE_REVENUS : c.domaine);
 
   // (4) UNIFICATION (ADR-0033, décision Marc) : le flux DÉLÈGUE son sous-chemin à la MÊME fonction
   // pure que le Reset (`cheminCibleReset_`) sur le nom FINAL → convergence flux↔reset par
@@ -1061,6 +1071,17 @@ function schemaNommage_(typeDoc) {
   var regles = [
     { motifs: ['releve de note', 'bulletin de note'], gran: 'annee' },                          // études (avant « releve »)
     { motifs: ['bulletin de paie', 'fiche de paie', 'bulletin de salaire'], re: /(^| )(paie|salaire)( |$)/, gran: 'mois', label: 'Paie' },
+    // ⚠️ LE NUMÉRO DU FEUILLET SE CONSERVE, et ces deux règles passent AVANT « releve » (🟠 revue
+    // structure ADR-0058). Mesuré : sans elles, « Relevé 1 » devenait `2026-09_Relevé_X.pdf` — le
+    // « 1 » disparaissait, `estFeuilletFiscalReset_` (ANCRÉ sur le nombre) ne le reconnaissait plus,
+    // et la table de `02` le lisait comme un relevé : `Revenus & paie/<employeur>` si l'employeur
+    // est connu, sinon **`Relevés/AAAA` — parmi les relevés BANCAIRES**, ce que le code lui-même
+    // déclare interdit (« le RL-1 est un document d'IMPÔT, pas un relevé bancaire »).
+    // Un feuillet est ANNUEL, jamais mensuel. Correctif étroit : deux lignes ici alignent d'un coup
+    // le flux, la consolidation et les missions — tous lisent le même nom.
+    { re: /(^| )t4( |$)/, motifs: [], gran: 'annee', label: 'T4' },              // feuillet fédéral (ANNUEL)
+    { motifs: ['releve 1', 'rl 1', 'rl-1'], gran: 'annee', label: 'Relevé 1' },
+    { motifs: ['releve 31', 'rl 31', 'rl-31'], gran: 'annee', label: 'Relevé 31' },
     { motifs: ['releve bancaire', 'releve de compte', 'releve'], gran: 'mois', label: 'Relevé' },
     { motifs: ['diplome', 'attestation de reussite'], gran: 'annee' },
     { motifs: ['avis d imposition', 'avis de cotisation', 'impot', 'declaration de revenus', 'feuillet'], gran: 'annee' },

@@ -4,6 +4,39 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **🟦 EN COURS — 2026-09-14 (soir) : deux demandes de Marc, dont un diagnostic que j'ai eu FAUX.**
+>
+> **1 · « mes paies ne devraient pas arriver dans employeur mais seulement dans finances »**
+> (ADR-0058, C28-122 — **livré**, en revue `structure-keeper`). Puis, sur mes deux questions :
+> « **rl-1 aussi dans finances, attestation d'emploi reste dans 05** ». AUDIT du Drive réel avant
+> d'écrire : **UNE seule paie mal classée** (`2026-09_Paie_Robovic Inc..pdf`, `05/Employeurs/Robovic`,
+> déposée le 14/09 à 18:00 par le FLUX) — Automatech n'en a aucune, Trajectoire-Emploi est bien en 02.
+> C'est une FUITE, pas une migration. Cause : les MISSIONS connaissent la règle (« le domicile UNIQUE
+> des paies est 02 »), le FLUX prend le domaine du LLM — et une paie NOMME un employeur, donc le LLM
+> répond « 05 ». Les missions rangeaient, le flux dé-rangeait, et comme les missions convergent puis
+> s'arrêtent, c'est le flux qui avait le dernier mot. Correctif : domaine dérivé du TYPE, même patron
+> que les pièces d'identité. ⚠️ **Deux faits MESURÉS** : le numéro du feuillet ne survit pas au
+> renommage (« Relevé 1 » → « Relevé »), donc (a) le prédicat lit AUSSI le `type_doc` brut, (b) un
+> RL-1 atterrit dans `Revenus & paie/<employeur>` et **pas** dans `Impôts & déclarations` — bien « dans
+> finances », pas le bon sous-dossier (C28-123, hors périmètre, figé par un test).
+>
+> **2 · « Tout corbeiller » : mon diagnostic était FAUX, et Marc l'a réfuté.** Premier rapport :
+> « 56 dossiers n'ont pas été tentés » ⇒ j'ai conclu au quota Sheets, chiffres à l'appui (C28-119,
+> régulateur de cadence — qui reste utile, le plafond est réel). Second rapport : « **après 4 dossiers
+> il s'arrête seul sans rien supprimer** » ⇒ **ça exclut Sheets** : sous cette hypothèse les dossiers
+> PARTENT à la corbeille et seuls les statuts échouent (`corbeilles: 56, sheetKo: 5`). « Rien de
+> supprimé » est la signature du canal **DRIVE** (`corbeilles: 0, aReessayer: 5`).
+> ⚠️ **LA CAUSE RACINE EST INCONNUE.** Ne rien conclure avant de l'avoir LUE. Ce qui a permis deux
+> diagnostics à l'aveugle : le message de l'exception était JETÉ — `statutRefusCorbeille` rend `null`
+> pour un quota, un 403 de droits, une ascendance illisible ET une coupure réseau (ce qui est JUSTE,
+> une incertitude ne devient pas un verdict) mais les rend indistinguables à l'écran. **C28-121** :
+> `BilanLot.derniereCause` porte désormais le message, sur les DEUX canaux, et l'écran l'affiche.
+> Hypothèse la plus compatible, **NON vérifiée** : `ascendance-illisible` (il rend `null`, donc compte
+> comme une PANNE — 5 d'affilée coupent le lot sans rien supprimer).
+>
+> **PR #348** (C28-119 + C28-121) : CI verte, revue rendue et intégrée, **en attente de merge**
+> (API GitHub rationnée 4× dans l'après-midi ; check-in armé).
+>
 > **🟦 EN COURS — 2026-09-14 (suite) : finaliser avant le prochain chantier (ADR-0056).**
 > Marc : « j'ai un gros chantier que je veux faire mais d'abord regarde ce qu'il faut finaliser »,
 > puis quatre décisions et un « go ». Trois lots livrés ensemble.
@@ -42,6 +75,26 @@
 > le MÊME tag (les fichiers déjà déplacés n'auraient jamais été repris) ⇒ tag `…06b` ; et aucune
 > marge avant le mur (un document LLM lancé dans la dernière minute est TUÉ, le `finally` ne tourne
 > pas, le budget fuit) ⇒ `PILOTE_MARGE_DOC_MS`.
+>
+> **✅ DÉPLOYÉ ET VÉRIFIÉ PAR SIGNAL INDÉPENDANT (14/09 15:58, relevé `etat_moteur`).** `deploy.yml`
+> vert sur `01f509f`, ET le moteur écrit la preuve : ligne `Re-analyse v2 (c28-92)` **née** dans
+> Progression (C28-112 se répare exactement comme diagnostiqué — le tag neuf rend `termine` faux, et
+> `pousser` crée enfin la ligne), ligne de Santé « Re-datation de 06 : en cours », et
+> « Historique Gmail : terminée ✅ — ses **12** min/j sont RÉALLOUABLES (**8 min déjà prêtées à la
+> re-analyse**) ». Frein à 40 $ : décision de Marc, respectée.
+>
+> ⚠️ **LA BASE RECENSÉE EST 466, PAS 328 — +42 %.** Le chiffre de l'ADR venait du recensement
+> C28-88 ; la mesure du moteur, elle, est exhaustive et faite aujourd'hui. Conséquences, toutes
+> dérivées de 466 × 0,0261 $ : **~12,2 $ au lieu de 8,6 $**, et **19 à 30 jours** au lieu de 14 à 21.
+> Le frein à 40 $ garde 3,3× de marge, donc rien ne s'arrête — mais l'écart n'est PAS expliqué et
+> doit l'être (C28-120) : soit la racine de `06` s'est regarnie depuis le 13/09, soit le prédicat de
+> collecte est plus large que « les fichiers à plat mal datés ». C'est le §9 mot pour mot : « un
+> chiffre-titre n'est jamais une promesse de gain tant qu'il n'est pas mesuré sur le corpus ».
+>
+> ⚠️ **Deux choses NON encore prouvées en prod**, à ne pas déclarer : (a) la campagne est à
+> `0 / 466` — elle vient de finir son recensement, aucun document n'a encore été re-daté ; (b) **D11
+> n'a pas encore été exercée** — la génération de consolidation en est à 2 domaines sur 9 et n'a pas
+> atteint `06`.
 >
 > **REVUE FLOTTE — 3ᵉ PASSE (code · sécurité · quotas) : 2 🔴 de plus, et CINQ mutations jouées par
 > les agents ont SURVÉCU.** C'est la leçon du lot : une correction n'existe que si une mutation la

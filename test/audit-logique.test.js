@@ -84,10 +84,23 @@ test('AUDIT AXE 2 (ADR-0025) : une candidature (05, entreprise VISÉE) route à 
 
   // Contraste : un employeur RÉEL, lui, garde son dossier SI validé au référentiel (la granularité utile reste).
   const cle = ctx.cleCanoniqueEntite_('05 · Carrière', 'Robovic');
+  // ⚠️ FIGURANT CHANGÉ : ce test prouve que l'employeur VALIDÉ garde son dossier, pas le sort des
+  // paies. Depuis ADR-0058, une paie QUITTE `05` par construction — elle ne pouvait donc plus
+  // exercer le sujet de ce test. On prend un type que Marc a explicitement laissé en `05`
+  // (« attestation d'emploi reste dans 05 ») : le sujet est intact, le figurant est juste devenu
+  // légitime. Flipper l'attendu aurait gardé le test vert en lui faisant prouver autre chose.
   const valide = ctx.planRoutageV2_(
-    { domaine: '05 · Carrière', type_doc: 'Paie', emetteur: 'Robovic', sousDossier: 'Robovic' },
-    { nomFichier: '2026-06_Paie_Robovic.pdf' }, '2026-06-01', '.pdf', { [cle]: 'Robovic' });
-  assert.strictEqual(valide.sousDossier, 'Employeurs/Robovic', 'un employeur → arbre Reset Employeurs/X (granularité utile, structure validée)');
+    { domaine: '05 · Carrière', type_doc: 'Attestation d\'emploi', emetteur: 'Robovic', sousDossier: 'Robovic' },
+    { nomFichier: '2026-06-30_Attestation d\'emploi_Robovic.pdf' }, '2026-06-30', '.pdf', { [cle]: 'Robovic' });
+  // ⚠️ CE QUE CETTE ASSERTION PROUVE VRAIMENT (🟡 revue structure ADR-0058) : que le document
+  // atterrit dans l'arbre de l'employeur. Elle ne prouve PAS le « SI VALIDÉ au référentiel » du
+  // titre — `cheminCibleReset_` résout ici, donc `planRoutageV2_` retourne AVANT de lire
+  // `validees` ; remplacer la carte par `{}` laisse ce test vert. C'était DÉJÀ le cas avec l'ancien
+  // figurant (une paie 05 passait par la même branche) : le changement n'a rien cassé, mais mon
+  // commentaire précédent (« le sujet est intact ») certifiait une propriété que l'assertion ne
+  // tient pas. La tautologie est pré-existante et notée au backlog — elle n'est pas certifiée ici.
+  assert.ok(valide.sousDossier.indexOf('Employeurs/Robovic') === 0,
+    'un employeur → arbre Reset Employeurs/X (granularité utile, structure validée) : ' + valide.sousDossier);
 });
 
 test('AUDIT AXE 2 (ADR-0025) : un export de MAIL n\'est plus dumpé en _Technique (classé au domaine)', () => {

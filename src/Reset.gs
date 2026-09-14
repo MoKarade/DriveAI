@@ -376,6 +376,99 @@ function estTypePaieReset_(t) {
   return /(^| )(paie|paye|salaire)( |$)/.test(t);
 }
 
+/**
+ * Feuillet **T4** (fédéral) — MOT ENTIER, jamais « T4A ». PURE.
+ *
+ * Décision de Marc, 14/09 : « oui le t4 aussi dans finances ». Tout salarié québécois reçoit chaque
+ * année un T4 (fédéral) ET un RL-1 (provincial), émis par le MÊME employeur, avec EXACTEMENT le même
+ * mode de panne : le LLM voit un employeur et route en `05`.
+ * ⚠️ PRÉDICAT DÉDIÉ, et non `estTypeFiscalReset_` (qui connaît déjà `t4`) : celui-là matche aussi
+ * `taxe`/`taxes` en mot entier et attraperait un « Compte de taxes municipales », qui relève de `03`
+ * (🟠 revue structure). Un verdict qui DÉPLACE est définitif de fait : le prédicat vise juste.
+ * ⚠️ `t4a` est un AUTRE feuillet (revenus autres qu'un emploi salarié) : `resetMotEntier_` le laisse
+ * de côté par construction, et Marc a nommé le T4. Élargir serait une décision, pas un effet de bord.
+ */
+function estFeuilletT4Reset_(t) {
+  return resetMotEntier_(t, 't4');
+}
+
+/** Relevé 31 SEUL (occupation d'un logement, émis par le PROPRIÉTAIRE). PURE. */
+function estRl31Reset_(t) {
+  return /(^| )releve 31( |$)/.test(t);
+}
+
+/**
+ * Ce document est-il un REVENU D'EMPLOYEUR ? (ADR-0058 — décision de Marc.)
+ *
+ * Son domaine est alors `02 · Finances`, quel que soit le domaine rendu par le LLM. Pourquoi c'est
+ * nécessaire : une paie NOMME un employeur dans son en-tête, donc le LLM répond « 05 · Emploi &
+ * carrière » — ce qui n'est pas absurde, c'est simplement la mauvaise règle pour ce type-là. Les
+ * MISSIONS de curation le savaient déjà (« le domicile UNIQUE des paies est 02 ») ; le FLUX, non.
+ * Résultat vécu : les missions rangeaient, le flux dé-rangeait, et comme les missions convergent
+ * puis s'arrêtent, c'est le flux qui avait le dernier mot sur tout ce qui arrive désormais.
+ *
+ * ⚠️ DÉRIVE LE TYPE PAR LA MÊME FONCTION que `cheminCibleReset_` (`analyserNomClasse_` +
+ * `normaliserCle_`), sur le nom FINAL que celui-ci recevra ensuite : la convergence flux↔reset est
+ * STRUCTURELLE, pas une coïncidence à re-vérifier (§9, C28-26).
+ *
+ * ⚠️ RL-31 EXCLU, explicitement. `estFeuilletFiscalReset_` couvre RL-1 ET RL-31 ; on le RÉUTILISE en
+ * lui soustrayant le 31 plutôt que d'écrire une deuxième règle qui divergera au premier ajout. Le
+ * RL-31 est émis par le PROPRIÉTAIRE (occupation d'un logement), pas par l'employeur : il n'a pas
+ * le mode de panne « le LLM voit un employeur et route en 05 », et le tirer vers `02` serait un
+ * changement que Marc n'a pas demandé — il a nommé le RL-1.
+ *
+ * ⚠️ `estReleveDePaie_` N'EST PAS ICI. ADR-0044 D9 en fait une paie mensuelle, mais UNIQUEMENT parce
+ * qu'un employeur est déjà garanti par le contexte de la mission. Au point de décision du flux,
+ * cette garantie n'existe pas : l'appliquer ici capturerait les relevés BANCAIRES. §9, « l'asymétrie
+ * des verdicts commande la sévérité du prédicat » — un verdict qui DÉPLACE est définitif de fait,
+ * donc le prédicat est strict et, dans le doute, refuse.
+ * ⚠️ LE NUMÉRO DU FEUILLET NE SURVIT PAS AU RENOMMAGE. Mesuré : `nommerDocument_` réduit
+ * « Relevé 1 » à « Relevé » dans le nom final — le « 1 », sur lequel `estFeuilletFiscalReset_` est
+ * ANCRÉ, a donc déjà disparu quand on lit le nom. Le type BRUT du LLM est le seul endroit où il
+ * reste. On lit donc les deux, et seulement pour le feuillet : les paies, elles, traversent le
+ * renommage intactes et restent jugées sur le nom — là où la convergence avec `cheminCibleReset_`
+ * est structurelle. Élargir le chemin « type brut » aux paies relâcherait un verdict qui DÉPLACE,
+ * sans rien gagner (§9, l'asymétrie des verdicts commande la sévérité du prédicat).
+ * PURE (testée).
+ * @param {string} nom  nom FINAL du document (`AAAA-MM-JJ_Type_Émetteur.ext`)
+ * @param {string=} typeBrut  `type_doc` rendu par le LLM, avant renommage
+ */
+function estRevenuEmployeurReset_(nom, typeBrut) {
+  var b = normaliserCle_(typeBrut || '');
+  // ⚠️ DISQUALIFIANTS LUS SUR LE TYPE BRUT, et ils passent EN PREMIER (🟠 revue structure ADR-0058).
+  // « Attestation de salaire », « Assurance salaire », « Preuve de salaire » sont des documents de
+  // CARRIÈRE — la frontière que Marc a posée en disant « attestation d'emploi reste dans 05 ». Or
+  // `schemaNommage_` les renomme TOUS en « Paie » : mesuré, `Attestation de salaire` devient
+  // `2026-09_Paie_Robovic.pdf`. Le mot qui disqualifie a donc DÉJÀ disparu quand on lit le nom —
+  // et il a disparu pour les AUTRES consommateurs du prédicat partagé aussi, qui ne lisent que des
+  // noms. Le type brut du LLM est le SEUL endroit où l'information existe encore : c'est là que la
+  // distinction se fait, pas ailleurs (§9, « un verdict pris sur la donnée RICHE ne se re-dérive
+  // jamais depuis sa forme APPAUVRIE »).
+  if (b && estDisqualifieCommeRevenuReset_(b)) return false;
+  var t = normaliserCle_(analyserNomClasse_(nom).type || '');
+  if (estTypePaieReset_(t)) return true;
+  if (estFeuilletT4Reset_(t)) return true;                       // décision Marc 14/09
+  if (estFeuilletFiscalReset_(t) && !estRl31Reset_(t)) return true;
+  if (!b) return false;
+  return estFeuilletT4Reset_(b) || (estFeuilletFiscalReset_(b) && !estRl31Reset_(b));
+}
+
+/**
+ * Ce type BRUT contient-il un mot qui le disqualifie comme revenu, malgré « salaire » ? PURE.
+ *
+ * Une ATTESTATION de salaire prouve qu'on est payé ; elle ne dit pas ce qu'on a été payé ce
+ * mois-ci. Elle sert à une banque, à la CNESST, à un assureur — c'est un document de carrière, du
+ * même genre que l'attestation d'emploi que Marc garde explicitement en `05`. Même chose pour
+ * l'assurance salaire (invalidité), qui relève des assurances.
+ * ⚠️ N'agit QUE sur le type brut : ces mots ne survivent pas au renommage, donc le nom final ne
+ * peut pas les voir. Si le type brut manque, on retombe sur le comportement d'avant — assumé.
+ */
+function estDisqualifieCommeRevenuReset_(b) {
+  var mots = ['attestation', 'assurance', 'preuve', 'certificat', 'demande', 'reclamation'];
+  for (var i = 0; i < mots.length; i++) if (resetMotEntier_(b, mots[i])) return true;
+  return false;
+}
+
 /** Feuillet fiscal québécois RL-1/RL-31 — ANCRÉ sur le nombre (jamais « Relevé 10 »). PURE. */
 function estFeuilletFiscalReset_(t) {
   return /(^| )releve (1|31)( |$)/.test(t);

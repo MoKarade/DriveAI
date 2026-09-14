@@ -142,7 +142,11 @@ const TEXTES = {
     actionEnCours: 'Une action est déjà en cours — attends qu’elle finisse.',
     corbeilleRienASupprimer: 'Aucun dossier vide à traiter pour le moment.',
     corbeilleCoupeeSession: 'Lot interrompu : la session Google a expiré. {x} dossier(s) n’ont pas été tentés — reconnecte-toi et relance.',
-    corbeilleCoupeePannes: 'Lot interrompu : Google refuse les appels (quota ou panne). {x} dossier(s) n’ont pas été tentés — réessaie dans quelques minutes.',
+    corbeilleCoupeePannes: 'Lot interrompu : Google refuse les appels. {x} dossier(s) n’ont pas été tentés — réessaie dans quelques minutes.',
+    // ⚠️ LA CAUSE EXACTE, à la fin du message (C28-121). Sans elle, « quota ou panne » a servi de
+    // diagnostic à deux reprises — dont une fois à tort. C'est la seule ligne qui distingue un
+    // quota d'un refus de droits, d'une ascendance illisible ou d'une coupure réseau.
+    corbeilleCause: ' Cause exacte : {m}',
 
     /* ---- page Moteur (C28-41 : coût fiable · progression · état · réglage) ---- */
     noteNonApparies: 'laissés en place, en attente d’un affinage des règles (jamais devinés).',
@@ -328,7 +332,8 @@ const TEXTES = {
     actionEnCours: 'An action is already running — wait for it to finish.',
     corbeilleRienASupprimer: 'No empty folder to process right now.',
     corbeilleCoupeeSession: 'Batch interrupted: the Google session expired. {x} folder(s) were never attempted — sign in again and restart.',
-    corbeilleCoupeePannes: 'Batch interrupted: Google is refusing calls (quota or outage). {x} folder(s) were never attempted — try again in a few minutes.',
+    corbeilleCoupeePannes: 'Batch interrupted: Google is refusing calls. {x} folder(s) were never attempted — try again in a few minutes.',
+    corbeilleCause: ' Exact cause: {m}',
 
     /* ---- Engine page ---- */
     noteNonApparies: 'left in place, awaiting a rule refinement (never guessed).',

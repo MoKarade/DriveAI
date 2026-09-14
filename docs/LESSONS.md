@@ -2785,3 +2785,39 @@ un run **vert** peut être un run qui a REFUSÉ d'agir — conclusion ≠ effet.
 **Règle durable ?** oui — CLAUDE.md §3 (la règle « un draft n'est pas un frein » est révisée : il
 l'est désormais, et une PR ouverte en brouillon ne partira jamais toute seule) + note en tête de
 `auto-merge.yml`.
+
+## 2026-09-14 — Deux diagnostics à l'aveugle, dont un faux, parce que le message d'erreur était jeté
+
+**Contexte.** Marc rapporte que « Tout corbeiller » s'arrête : « 56 dossier(s) n'ont pas été
+tentés ». Je diagnostique un quota Sheets (60 écritures/min/utilisateur), chiffres à l'appui — la
+coupure se reconstitue exactement, la 52ᵉ écriture, les réessais qui brûlent le seau. Une revue
+confirme les nombres. Je livre un correctif (écriture par plages + régulateur de cadence). Marc
+précise alors : « **après 4 dossiers il s'arrête seul sans rien supprimer** ».
+
+Cette phrase **réfute** ma conclusion. Sous l'hypothèse quota-Sheets, les dossiers PARTENT bien à la
+corbeille et seuls les statuts échouent — le bilan dirait `corbeilles: 56, sheetKo: 5`. « Rien de
+supprimé » est la signature du canal **Drive** : `corbeilles: 0, aReessayer: 5`. Les deux
+hypothèses avaient des signatures OPPOSÉES et parfaitement observables… dans une ligne de bilan
+affichée à l'écran de Marc, que je n'ai jamais demandée. La revue me l'avait pourtant écrit
+noir sur blanc : « la preuve décisive était à l'écran de Marc, et elle manque au rapport ».
+
+**Ce qui l'a rendu possible.** `statutRefusCorbeille` rend `null` — « je ne sais pas conclure,
+la ligne reste candidate » — pour un quota, un 403 de droits, une ascendance illisible ET une
+coupure réseau. C'est **juste** : une incertitude ne doit pas devenir un verdict. Mais le message
+de l'exception, **seul endroit où la différence est écrite**, était jeté juste après. L'écran ne
+montrait plus que « Google refuse les appels (quota ou panne) » — une phrase vraie pour les quatre
+causes, donc informative pour aucune.
+
+**Leçon.** « Un garde-fou qui met des items hors circuit doit dire POURQUOI, pas seulement QUE.
+Quand un prédicat écrase plusieurs causes distinctes en un seul verdict d'incertitude — ce qui est
+souvent la bonne décision — le message d'origine doit être PERSISTÉ à côté du verdict, jamais
+consommé par lui. Sinon chaque diagnostic repart de zéro et finit par se faire à l'aveugle. Et quand
+un utilisateur décrit un symptôme, LUI DEMANDER LES CHIFFRES QUE L'ÉCRAN AFFICHE DÉJÀ avant de
+construire une hypothèse : ils tranchent souvent entre des causes aux signatures opposées. »
+
+**Corollaire.** Une hypothèse qui explique parfaitement les chiffres disponibles peut être fausse
+si elle n'explique pas le symptôme que l'utilisateur DÉCRIT. « 56 non tentés » collait ; « rien de
+supprimé » ne collait pas — et c'était dans la première phrase de Marc, que j'ai lue comme un détail.
+
+**Règle durable ?** oui — §9, en corollaire de « un garde-fou qui met des items HORS CIRCUIT exige un
+chemin de RETOUR auto » (même famille : l'observabilité d'un verdict d'exclusion).
