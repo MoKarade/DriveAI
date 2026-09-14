@@ -247,7 +247,26 @@ test('ADR-0052 D8 — aucun fichier DÉJÀ rangé n\'est sorti de son sous-dossi
   // documents DÉJÀ classés — et là, un déplacement est une PERTE. Mesuré avant d'écrire la garde :
   // sur ces 16 fichiers réels, 2 partaient vers `Correspondance` (la table ne reconnaît ni
   // « Saga Installation » ni « Guy Laporte » ; la mission logements, elle, les avait bien rangés).
+  // ⚠️ UNE SEULE EXCEPTION, et elle est vérifiée À L'ÉCOLE PRÈS (ADR-0055) : les 6 dossiers
+  // d'école que le MOTEUR s'était créés à la RACINE de `06` déménagent sous `Archives scolaires`,
+  // le dossier de Marc. Un fichier qui quitte `06/IMERIR` pour `06/Archives scolaires/IMERIR —
+  // Ingénieur MSIR (2020-2023)` ne « sort » pas de son dossier : il SUIT la structure que Marc a
+  // désignée. Un fichier du cégep qui partirait chez l'ULCO, lui, ferait toujours échouer le test.
+  const DEMENAGEMENT_06 = {
+    "lycée Thérèse d'Avila": 'Lycée — Thérèse Davila (2017-2018)',
+    'Prépa Gustave Eiffel (PTSI)': 'Prépa PTSI (2017-2018)',
+    'DUT ULCO Saint-Omer': 'ULCO — DUT GIM (2018-2020)',
+    'IUT Du Littoral': 'ULCO — DUT GIM (2018-2020)',
+    'IMERIR': 'IMERIR — Ingénieur MSIR (2020-2023)',
+    'Cégep de Sherbrooke': 'Cégep de Sherbrooke (2019)',
+  };
+  const suitLaStructure = (domaine, sousChemin, cible) => {
+    if (domaine !== '06 · Études & diplômes') return false;
+    const neuf = DEMENAGEMENT_06[String(sousChemin).split('/')[0]];
+    return !!neuf && String(cible).indexOf(domaine + '/Archives scolaires/' + neuf) === 0;
+  };
   const sortis = [];
+  let demenages = 0;
   for (const [domaine, parDossier] of Object.entries(DEJA_RANGES)) {
     if (domaine.charAt(0) === '_') continue;
     for (const [sousChemin, noms] of Object.entries(parDossier)) {
@@ -258,11 +277,16 @@ test('ADR-0052 D8 — aucun fichier DÉJÀ rangé n\'est sorti de son sous-dossi
           dossierIdCible: cible.id, cibleFaible: cible.faible === true,
           parentId: null, protege: false, protegeIllisible: false, raccourci: false, doublonDe: null,
         });
-        if (d.action !== 'OK') sortis.push(sousChemin + ' → ' + d.cible + '   (' + nom + ')');
+        if (d.action === 'OK') continue;
+        if (suitLaStructure(domaine, sousChemin, d.cible)) { demenages++; continue; }
+        sortis.push(sousChemin + ' → ' + d.cible + '   (' + nom + ')');
       }
     }
   }
   assert.deepStrictEqual(sortis, []);
+  // …et le déménagement a bien LIEU : sans cette borne, neutraliser la relocalisation laisserait le
+  // test vert en ne déplaçant plus rien (« un test qui n'asserte que le blocage verrouille le bug »).
+  assert.ok(demenages >= 5, 'le corpus déjà rangé doit suivre la nouvelle structure : ' + demenages);
 });
 
 test('ADR-0052 D8 — la garde ne s\'applique QU\'au signal faible, et jamais à la racine', () => {
@@ -327,7 +351,7 @@ test('ADR-0052 D6 — le drapeau « école déduite » ne fuit PAS sur les dipl�
   }
   // …et un diplôme déjà rangé dans un dossier d'école y RESTE (`retour-ecoles06` les y remet).
   assert.strictEqual(ctx.decisionConsolidation_({
-    domaine: d, sousCheminActuel: 'IMERIR/Administratif', sousCheminCible: 'Diplômes & relevés officiels',
+    domaine: d, sousCheminActuel: 'Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023)/Administratif', sousCheminCible: 'Diplômes & relevés officiels',
     dossierIdCible: '', cibleFaible: true, parentId: null, protege: false, protegeIllisible: false,
     raccourci: false, doublonDe: null,
   }).action, 'OK');
@@ -338,12 +362,12 @@ test('ADR-0052 D6 — le drapeau « école déduite » ne fuit PAS sur les dipl�
 
   // 🟠 5 : « fiche » et « cours » sont des SOUS-CHAÎNES du vocabulaire des cours, remonté devant
   // `Résultats` dans ce même lot — il passait aussi devant `Administratif`.
-  assert.strictEqual(ctx.cheminCibleReset_(d, "2021-09-01_Fiche d'inscription_IMERIR.pdf"), 'IMERIR/Administratif');
-  assert.strictEqual(ctx.cheminCibleReset_(d, '2021-05-05_Attestation de suivi de cours_IMERIR.pdf'), 'IMERIR/Administratif');
-  assert.strictEqual(ctx.cheminCibleReset_(d, '2021-05-05_Convention de stage_IMERIR.pdf'), 'IMERIR/Administratif');
+  assert.strictEqual(ctx.cheminCibleReset_(d, "2021-09-01_Fiche d'inscription_IMERIR.pdf"), 'Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023)/Administratif');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2021-05-05_Attestation de suivi de cours_IMERIR.pdf'), 'Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023)/Administratif');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2021-05-05_Convention de stage_IMERIR.pdf'), 'Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023)/Administratif');
   // …sans rien voler aux vrais cours (le glissement `Notes de cours` → Cours & travaux, lui, est voulu).
-  assert.strictEqual(ctx.cheminCibleReset_(d, '2021-05-05_Notes de cours_IMERIR.pdf'), 'IMERIR/Cours & travaux');
-  assert.strictEqual(ctx.cheminCibleReset_(d, '2021-05-05_Travail pratique_IMERIR.pdf'), 'IMERIR/Cours & travaux');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2021-05-05_Notes de cours_IMERIR.pdf'), 'Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023)/Cours & travaux');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2021-05-05_Travail pratique_IMERIR.pdf'), 'Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023)/Cours & travaux');
 });
 
 test('ADR-0052 D9 — la décision : jamais remonté vers un ancêtre, et la raison le DIT', () => {
@@ -500,7 +524,7 @@ test('cheminCibleReset_ : « Saint-Hyacinthe » et « Saint-Omer » matchent mal
   // depuis toujours et n'appariait rien (trouvé en revue).
   const d = '06 · Études & diplômes';
   assert.strictEqual(ctx.cheminCibleReset_(d, '2018-01_Relevé_Cégep de Saint-Hyacinthe.jpg'), 'Autres établissements');
-  assert.ok(String(ctx.cheminCibleReset_(d, '2016-01-01_Cours_IUT de Saint-Omer.pdf')).indexOf('DUT ULCO') === 0);
+  assert.ok(String(ctx.cheminCibleReset_(d, '2016-01-01_Cours_IUT de Saint-Omer.pdf')).indexOf('Archives scolaires/ULCO — DUT GIM') === 0);
 });
 
 test('ADR-0052 — convergence flux ↔ conso aussi sur les branches que le corpus ne traverse pas', () => {
@@ -539,14 +563,14 @@ test('ADR-0052 D6 — les fenêtres de scolarité placent, et REFUSENT dès le m
   // Fenêtres validées par Marc : Eiffel 2017-2018, ULCO 2018-2020, IMERIR 2020-2023 — bornées à
   // l'année SCOLAIRE (sept → août), ce qui les rend disjointes malgré des années nues qui se
   // chevauchent.
-  assert.strictEqual(ctx.ecoleParDateReset_('2017-11-03_Notes de cours_Maths.pdf'), 'Prépa Gustave Eiffel (PTSI)');
-  assert.strictEqual(ctx.ecoleParDateReset_('2018-03-12_Devoir_Physique.pdf'), 'Prépa Gustave Eiffel (PTSI)');
-  assert.strictEqual(ctx.ecoleParDateReset_('2018-10-01_TP_Élec.pdf'), 'DUT ULCO Saint-Omer');
-  assert.strictEqual(ctx.ecoleParDateReset_('2016-03-01_Devoir_SVT.pdf'), 'lycée Thérèse d\'Avila');
-  assert.strictEqual(ctx.ecoleParDateReset_('2021-02-02_Rapport de TP_Robotique.pdf'), 'IMERIR');
+  assert.strictEqual(ctx.ecoleParDateReset_('2017-11-03_Notes de cours_Maths.pdf'), 'Prépa PTSI (2017-2018)');
+  assert.strictEqual(ctx.ecoleParDateReset_('2018-03-12_Devoir_Physique.pdf'), 'Prépa PTSI (2017-2018)');
+  assert.strictEqual(ctx.ecoleParDateReset_('2018-10-01_TP_Élec.pdf'), 'ULCO — DUT GIM (2018-2020)');
+  assert.strictEqual(ctx.ecoleParDateReset_('2016-03-01_Devoir_SVT.pdf'), 'Lycée — Thérèse Davila (2017-2018)');
+  assert.strictEqual(ctx.ecoleParDateReset_('2021-02-02_Rapport de TP_Robotique.pdf'), 'IMERIR — Ingénieur MSIR (2020-2023)');
   // ANNÉE SEULE : elle ne place que si l'année CIVILE ENTIÈRE tient dans une fenêtre.
-  assert.strictEqual(ctx.ecoleParDateReset_('2022_Notes de cours_Maths.pdf'), 'IMERIR');
-  assert.strictEqual(ctx.ecoleParDateReset_('2016_Notes de cours_Maths.pdf'), 'lycée Thérèse d\'Avila');
+  assert.strictEqual(ctx.ecoleParDateReset_('2022_Notes de cours_Maths.pdf'), 'IMERIR — Ingénieur MSIR (2020-2023)');
+  assert.strictEqual(ctx.ecoleParDateReset_('2016_Notes de cours_Maths.pdf'), 'Lycée — Thérèse Davila (2017-2018)');
   assert.strictEqual(ctx.ecoleParDateReset_('2018_Notes de cours_Maths.pdf'), null, '2018 est à cheval');
   assert.strictEqual(ctx.ecoleParDateReset_('2020_Notes de cours_Maths.pdf'), null, '2020 est à cheval');
   // HORS fenêtre — dont les 239 fichiers datés 2026 (date de réception), qu'il ne faut surtout pas
@@ -562,15 +586,15 @@ test('ADR-0052 D6 — le NOM de l\'école prime toujours sur sa DATE', () => {
   // daté dans la fenêtre de l'ULCO reste chez IMERIR.
   const d = '06 · Études & diplômes';
   // La DATE dit IMERIR (fenêtre 2020-09 → 2023-08)…
-  assert.strictEqual(ctx.ecoleParDateReset_('2021-05-05_Cours_ULCO Saint-Omer.pdf'), 'IMERIR');
+  assert.strictEqual(ctx.ecoleParDateReset_('2021-05-05_Cours_ULCO Saint-Omer.pdf'), 'IMERIR — Ingénieur MSIR (2020-2023)');
   // …mais le NOM dit ULCO, et c'est lui qui gagne.
-  assert.ok(String(ctx.cheminCibleReset_(d, '2021-05-05_Cours_ULCO Saint-Omer.pdf')).indexOf('DUT ULCO') === 0);
+  assert.ok(String(ctx.cheminCibleReset_(d, '2021-05-05_Cours_ULCO Saint-Omer.pdf')).indexOf('Archives scolaires/ULCO — DUT GIM') === 0);
   // Et le NOM gagne aussi contre un MARQUEUR de filière : « GIM1 » désigne l'ULCO, « IMERIR » est
   // écrit noir sur blanc. Sans cette assertion, rendre le bloc des marqueurs inconditionnel ne
   // ferait échouer AUCUN test (vérifié par mutation) — la hiérarchie ne serait verrouillée qu'à
   // moitié.
   assert.ok(String(ctx.cheminCibleReset_(d, "2026-07-01_Travail pratique_TP GIM1 réalisé à l'IMERIR.docx"))
-    .indexOf('IMERIR') === 0);
+    .indexOf('Archives scolaires/IMERIR — Ingénieur MSIR') === 0);
 });
 
 test('ADR-0052 D7 — « Modèles & formulaires » a cédé sa place, flux et mission suivent ensemble', () => {
@@ -604,15 +628,15 @@ test('ADR-0052 D6 — Sherbrooke CHEVAUCHE l\'ULCO : toute l\'année 2019 est re
   assert.strictEqual(ctx.ecoleParDateReset_('2019-11-01_Notes de cours_Maths.pdf'), null);
   assert.strictEqual(ctx.ecoleParDateReset_('2019_Devoir_Maths.pdf'), null);
   // Les mois voisins, eux, restent attribuables : le chevauchement est borné à 2019.
-  assert.strictEqual(ctx.ecoleParDateReset_('2018-11-01_TP_Élec.pdf'), 'DUT ULCO Saint-Omer');
-  assert.strictEqual(ctx.ecoleParDateReset_('2020-03-01_TP_Élec.pdf'), 'DUT ULCO Saint-Omer');
+  assert.strictEqual(ctx.ecoleParDateReset_('2018-11-01_TP_Élec.pdf'), 'ULCO — DUT GIM (2018-2020)');
+  assert.strictEqual(ctx.ecoleParDateReset_('2020-03-01_TP_Élec.pdf'), 'ULCO — DUT GIM (2018-2020)');
   // …et un document de 2019 qui NOMME son école va quand même chez elle (le nom est un fait).
   // ⚠️ Égalité STRICTE, et un type que la règle « Diplômes » ne capte pas : la version précédente
   // écrivait `String(...).length > 0`, or `String(null)` vaut « null » — l'assertion ne pouvait
   // PAS échouer, et la valeur réelle n'était même pas l'école (revue flotte).
   const d = '06 · Études & diplômes';
   assert.strictEqual(ctx.cheminCibleReset_(d, '2019-03-01_Travail pratique_Cégep de Sherbrooke.pdf'),
-    'Cégep de Sherbrooke/Cours & travaux');
+    'Archives scolaires/Cégep de Sherbrooke (2019)/Cours & travaux');
 });
 
 test('ADR-0052 D6 — un marqueur de NIVEAU ou de FILIÈRE dans le nom est un FAIT, pas une déduction', () => {
@@ -620,8 +644,8 @@ test('ADR-0052 D6 — un marqueur de NIVEAU ou de FILIÈRE dans le nom est un FA
   const cas = [
     // Ces 4 noms portent une date HORS de toute fenêtre (2026 = date de réception) : seul le
     // marqueur peut les placer, ce qui prouve qu'il est bien consulté AVANT la date.
-    ['2026-07-01_Travail pratique_TP électricité théorème superposition GIM1.docx', 'DUT ULCO Saint-Omer'],
-    ['2026-07-01_Devoir_Devoir 1ère année.pdf', 'lycée Thérèse d\'Avila/Cours & travaux'],
+    ['2026-07-01_Travail pratique_TP électricité théorème superposition GIM1.docx', 'Archives scolaires/ULCO — DUT GIM (2018-2020)'],
+    ['2026-07-01_Devoir_Devoir 1ère année.pdf', 'Archives scolaires/Lycée — Thérèse Davila (2017-2018)/Cours & travaux'],
     // « svt », « 2nde », « colle » ont été RETIRÉS : contribution NULLE mesurée sur le corpus et
     // risque non nul. Un document qui ne porte qu'une MATIÈRE n'est plus attribué par elle.
     ['2026-07-01_Compte rendu de sortie scolaire_SVT sortie Mare à Goriaux 2nde.pdf', null],
@@ -632,11 +656,11 @@ test('ADR-0052 D6 — un marqueur de NIVEAU ou de FILIÈRE dans le nom est un FA
   // verts (mutation jouée par la revue flotte) — le verrou était décoratif.
   assert.strictEqual(ctx.ecoleParDateReset_('2019-05-05_Travail pratique_TP GIM2.docx'), null,
     'pré-condition : 2019 est ambigu, la date ne tranche pas');
-  assert.strictEqual(ctx.ecoleParNomReset_('2019-05-05_Travail pratique_TP GIM2.docx'), 'DUT ULCO Saint-Omer');
-  assert.strictEqual(ctx.ecoleParDateReset_('2021-05-05_Travail pratique_TP GIM2.docx'), 'IMERIR',
+  assert.strictEqual(ctx.ecoleParNomReset_('2019-05-05_Travail pratique_TP GIM2.docx'), 'ULCO — DUT GIM (2018-2020)');
+  assert.strictEqual(ctx.ecoleParDateReset_('2021-05-05_Travail pratique_TP GIM2.docx'), 'IMERIR — Ingénieur MSIR (2020-2023)',
     'la date dit IMERIR…');
   assert.strictEqual(ctx.cheminCibleReset_(d, '2021-05-05_Travail pratique_TP GIM2.docx'),
-    'DUT ULCO Saint-Omer/Cours & travaux', '…mais le marqueur GIM, qui est un FAIT écrit, gagne');
+    'Archives scolaires/ULCO — DUT GIM (2018-2020)/Cours & travaux', '…mais le marqueur GIM, qui est un FAIT écrit, gagne');
   for (const [nom, attendu] of cas) {
     const cible = ctx.cheminCibleReset_(d, nom);
     if (attendu === null) assert.strictEqual(cible, null, nom);
@@ -644,25 +668,65 @@ test('ADR-0052 D6 — un marqueur de NIVEAU ou de FILIÈRE dans le nom est un FA
   }
 });
 
-test('C28-90 — les libellés d\'école de la table sont EXACTEMENT les dossiers Drive du 13/09', () => {
-  // `sousDossier_` résout par `getFoldersByName`, SENSIBLE À LA CASSE : un libellé de table qui
-  // diffère d'une majuscule crée un SECOND dossier à côté du vrai, et plus rien ne les réunit.
-  // C'est exactement ce qui est arrivé en `03` (« 3987 route des Rivières » vs « 3987 rte des
-  // Rivières »), et la revue flotte l'a trouvé ici avant que ça ne se produise sur 143 fichiers.
-  // Les 9 enfants RÉELS de `06` relevés le 13/09 (2 ne sont pas dans la table et c'est voulu :
-  // « Archives scolaires » est la cible de la mission archives06, « IUT Du Littoral » est un
-  // doublon d'entité laissé par le seed — tous deux à traiter hors de ce chantier).
-  const reels = ['IUT Du Littoral', 'DUT ULCO Saint-Omer', 'Diplômes & relevés officiels',
-    'Autres établissements', 'Prépa Gustave Eiffel (PTSI)', 'IMERIR', 'Cégep de Sherbrooke',
-    "lycée Thérèse d'Avila", 'Archives scolaires'];
-  const table = Object.keys(ctx.STRUCTURE_CIBLE_RESET['06 · Études & diplômes']);
-  const inconnus = table.filter((n) => reels.indexOf(n) === -1);
-  assert.deepStrictEqual(inconnus, [], 'un libellé de table absent du Drive créerait un dossier jumeau');
-  // Et toute cible rendue par la branche 06 commence par l'un de ces libellés.
+test('ADR-0055 — les libellés d\'école sont EXACTEMENT les dossiers de Marc (relevé Drive du 14/09)', () => {
+  // `sousDossier_` résout par `getFoldersByName`, SENSIBLE À LA CASSE et au caractère près : un
+  // libellé qui diffère d'une majuscule, d'un accent ou d'un tiret CADRATIN crée un SECOND dossier
+  // à côté du vrai, et plus rien ne les réunit. C'est exactement ce qui est arrivé en `03`
+  // (« 3987 route des Rivières » vs « 3987 rte des Rivières »).
+  // Les 8 enfants d'`Archives scolaires` : les 7 que MARC a créés le 29/05/2026 (relevés dans son
+  // Drive le 14/09) + `Cégep de Sherbrooke (2019)`, qu'il a demandé d'ajouter et que le moteur
+  // find-or-crée PAR NOM — donc au caractère près, lui aussi.
+  const reels = ['Collège & Lycée — divers (2014-2017)', 'Lycée — Thérèse Davila (2017-2018)',
+    'Lycée — Gustave Eiffel — Physique-Chimie (TP)', 'Prépa PTSI (2017-2018)',
+    'ULCO — DUT GIM (2018-2020)', 'Cégep de Sherbrooke (2019)',
+    'IMERIR — Ingénieur MSIR (2020-2023)', 'Online course — AI Essentials (Google)'];
+  const d6 = ctx.STRUCTURE_CIBLE_RESET['06 · Études & diplômes'];
+  // La RACINE de `06` ne porte plus AUCUNE école — c'est la demande de Marc, mot pour mot :
+  // « continue à rajouter là-dedans au lieu de mettre à la racine du projet ».
+  assert.deepStrictEqual(Object.keys(d6).slice().sort(),
+    ['Archives scolaires', 'Autres établissements', 'Diplômes & relevés officiels'].sort());
+  assert.deepStrictEqual(Object.keys(d6[ctx.RACINE_ARCHIVES_ECOLE_RESET]).slice().sort(),
+    reels.slice().sort(), 'un libellé de table absent du Drive créerait un dossier jumeau');
+  // Et toute cible rendue par la branche 06 commence par l'un des trois nœuds de la racine.
+  const racines = Object.keys(d6);
   for (const nom of CORPUS['06 · Études & diplômes']) {
     const c = ctx.cheminCibleReset_('06 · Études & diplômes', nom);
-    if (c) assert.ok(reels.indexOf(c.split('/')[0]) !== -1, nom + ' → ' + c);
+    if (c) assert.ok(racines.indexOf(c.split('/')[0]) !== -1, nom + ' → ' + c);
   }
+});
+
+test('ADR-0055 — chaque nœud d\'école survit INCHANGÉ à `champ_` (sinon dossier jumeau silencieux)', () => {
+  // `segmentsChemin_` assainit CHAQUE segment avant de résoudre le dossier : `_` et les caractères
+  // interdits deviennent `-`. Les noms de Marc portent des tirets cadratins, des `&`, des
+  // parenthèses et des accents — aucun n'est touché, mais c'est un VERROU, pas une observation.
+  // Un `_` glissé dans un libellé créerait `Prépa-PTSI` à côté de `Prépa_PTSI`, sans une erreur.
+  const d6 = ctx.STRUCTURE_CIBLE_RESET['06 · Études & diplômes'];
+  const noeuds = Object.keys(d6).concat(Object.keys(d6[ctx.RACINE_ARCHIVES_ECOLE_RESET]));
+  for (const n of noeuds) {
+    assert.strictEqual(ctx.champ_(n), n, 'nom altéré par champ_ : ' + n + ' → ' + ctx.champ_(n));
+    // `join` plutôt que `deepStrictEqual` : le tableau vient du bac à sable `vm`, donc d'un
+    // AUTRE realm — une comparaison stricte échouerait sur le prototype, pas sur le contenu.
+    assert.strictEqual(ctx.segmentsChemin_(n).join('|'), n, 'segment altéré : ' + n);
+  }
+  // MUTATION : la garde mord bien (un `_` suffit à faire diverger le nom résolu).
+  assert.notStrictEqual(ctx.champ_('Prépa_PTSI (2017-2018)'), 'Prépa_PTSI (2017-2018)');
+});
+
+test('ADR-0055 — toute école est préfixée `Archives scolaires/`, jamais les deux nœuds de taxonomie', () => {
+  const d = '06 · Études & diplômes';
+  const prefixe = ctx.RACINE_ARCHIVES_ECOLE_RESET + '/';
+  // Une école NOMMÉE, une école DÉDUITE d'une fenêtre, et la branche `Concours` de la prépa :
+  // les trois chemins qui produisent une école passent par le même préfixe, posé en UN point.
+  for (const nom of ['2021-05-05_Notes de cours_IMERIR.pdf', '2016-03-01_Devoir_Maths.pdf',
+    '2018-01-01_Concours_Concours Avenir.pdf', '2019-03-01_Travail pratique_Cégep de Sherbrooke.pdf']) {
+    const c = ctx.cheminCibleReset_(d, nom);
+    assert.ok(c && c.indexOf(prefixe) === 0, nom + ' → ' + c);
+  }
+  // …et JAMAIS les deux nœuds de taxonomie du domaine : un diplôme se range par TYPE, un
+  // établissement non listé reste à plat. Les préfixer les sortirait de la racine de `06`.
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2019-06_Diplôme_Baccalauréat.pdf'), 'Diplômes & relevés officiels');
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2021-09_Convention_Häme University Of Applied Sciences.pdf'),
+    'Autres établissements');
 });
 
 test('C28-90 — le veto collégial empêche une fenêtre de trancher pour un cégep', () => {
@@ -679,7 +743,7 @@ test('C28-90 — le veto collégial empêche une fenêtre de trancher pour un c�
   }
   // …mais le veto ne bloque QUE la déduction : un document qui NOMME Sherbrooke y va toujours.
   assert.strictEqual(ctx.cheminCibleReset_(d, '2020-04-03_Correspondance_Cégep de Sherbrooke.jpg'),
-    'Cégep de Sherbrooke');
+    'Archives scolaires/Cégep de Sherbrooke (2019)');
   // …et il ne touche à rien hors de 06.
   assert.strictEqual(ctx.vetoCollegialReset_('2020-01-01_Facture_Hydro-Québec.pdf'), false);
 });
@@ -694,7 +758,7 @@ test("C28-90 — une école DÉDUITE d'une fenêtre ne sort jamais un fichier de
   const cible = ctx.cheminCibleConsolidation_(d, nom, {});
   assert.strictEqual(cible.faible, true, 'une école déduite est un signal FAIBLE');
   const dec = ctx.decisionConsolidation_({
-    domaine: d, sousCheminActuel: 'Cégep de Sherbrooke', sousCheminCible: cible.nom,
+    domaine: d, sousCheminActuel: 'Archives scolaires/Cégep de Sherbrooke (2019)', sousCheminCible: cible.nom,
     dossierIdCible: cible.id, cibleFaible: cible.faible === true,
     parentId: null, protege: false, protegeIllisible: false, raccourci: false, doublonDe: null,
   });

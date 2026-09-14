@@ -228,45 +228,51 @@ function tableMissions_() {
       sourcesJetables: [],
     },
     {
-      // SENS INVERSÉ le 2026-09-13 (décision Marc) : l'archive rend son contenu à l'école.
-      // Le TAG et la CLÉ changent avec le sens — sinon les fichiers déjà déplacés dans l'autre
-      // sens portent une clé de SUCCÈS sous `mission-archives-06` et ne seraient jamais repris
+      // SENS RE-INVERSÉ le 2026-09-14 (ADR-0055, demande de Marc : « j'ai la bonne structure pour
+      // les écoles déjà, continue à rajouter là-dedans au lieu de mettre à la racine du projet » +
+      // « décale prépa et cégep là-dedans »). La RACINE de `06` rend ses dossiers d'école — tous
+      // créés par le MOTEUR — aux 7 dossiers qu'il a construits lui-même sous `Archives scolaires`.
+      // Le TAG et la CLÉ changent avec le sens — sinon les ~45 fichiers déjà déplacés dans l'autre
+      // sens portent une clé de SUCCÈS sous `retour-ecoles06` et ne seraient jamais repris
       // (leçon §9 : « re-lancer une campagne à clé de SUCCÈS ne re-traite pas ce qu'elle a figé »).
-      tag: 'retour-ecoles06', cle: 'mission-retour-ecoles-06',
-      sources: (IDS.archives06 || []).map(function (p) { return p.src; }),
+      tag: 'ecoles-archives06', cle: 'mission-ecoles-archives-06',
+      sources: (IDS.ecoles06 || []).map(function (p) { return p.src; }),
       batirCtx: function () {
         var parSource = {};
-        (IDS.archives06 || []).forEach(function (p) { parSource[p.src] = p.cible; });
-        return { parSource: parSource };
+        (IDS.ecoles06 || []).forEach(function (p) { parSource[p.src] = p; });
+        return { parSource: parSource, archivesId: IDS.archivesScolaires };
       },
       router: function (nom, info, ctx) {
-        // Table d'alias EXPLICITE (ADR-0039) : la source désigne l'archive, le contenu part en bloc
-        // (un niveau de sous-dossier préservé). Pas d'alias = pas une source = jamais deviné.
-        var cible = ctx.parSource[info.sourceId];
-        return cible ? { cibleId: cible, sousDossier: info.sousChemin } : null;
+        // Table d'alias EXPLICITE (ADR-0039) : la source désigne le dossier d'école de la racine,
+        // le contenu part en bloc (un niveau de sous-dossier préservé — les 4 sous-dossiers
+        // standard existent déjà dans 3 des archives). Pas d'alias = pas une source = jamais deviné.
+        var p = ctx.parSource[info.sourceId];
+        if (!p) return null;
+        // Cible par ID quand le dossier de Marc EXISTE DÉJÀ. `Cégep de Sherbrooke (2019)` n'existe
+        // pas : il est find-or-créé PAR NOM sous `Archives scolaires`, donc jamais créé à vide —
+        // la création n'a lieu qu'au premier fichier réellement déplacé.
+        if (p.cible) return { cibleId: p.cible, sousDossier: info.sousChemin };
+        return { cibleParentId: ctx.archivesId, cibleNom: p.cibleNom, sousDossier: info.sousChemin };
       },
-      // Après le transfert, le référentiel doit VISER le dossier d'école, pas l'archive vidée —
-      // c'est la même règle qu'avant, dans l'autre sens : le flux (`cheminCibleReset_`) et le
-      // référentiel doivent désigner le MÊME dossier, sinon l'un remplit ce que l'autre vide.
+      // Après le transfert, le référentiel doit VISER le dossier d'archive, pas le dossier de la
+      // racine qu'on vient de vider — même règle qu'avant, dans l'autre sens : le flux
+      // (`cheminCibleReset_`) et le référentiel doivent désigner le MÊME dossier, sinon l'un
+      // remplit ce que l'autre vide.
       // PEUT LEVER, volontairement (revue sécurité C28-49) : un échec doit EMPÊCHER le drapeau
       // FINI pour être re-tenté à la passe suivante — `repointerEntites_` est idempotent (une
       // ligne déjà re-pointée ne matche plus la source), rejouer la boucle est sans danger.
-      apresConvergence: function () {
-        (IDS.archives06 || []).forEach(function (p) { repointerEntites_(p.src, p.cible); });
-      },
-      // ⚠️ Les 4 dossiers d'ÉCOLE étaient les SOURCES de l'ancienne mission, donc ses
-      // `sourcesJetables` : vidés puis PEINTS EN ROUGE (« bon pour suppression »), eux et leurs
-      // sous-dossiers vides. L'inversion en fait la STRUCTURE que Marc a choisie — et le
-      // rattrapage va y verser 143 fichiers. Le rouge se retire donc explicitement : rien d'autre
-      // dans le moteur ne le retirait, jamais (leçon §9 « chemin de RETOUR »).
-      ciblesADepeindre: (IDS.archives06 || []).map(function (p) { return p.cible; }),
-      // ⚠️ `sourcesJetables: []` — VOLONTAIRE, et c'est le cœur de l'inversion. Les archives vidées
-      // NE SONT PAS peintes en rouge : `Archives scolaires` contient trois autres dossiers que
-      // cette mission ne touche pas (« Collège & Lycée — divers », « Lycée — Gustave Eiffel —
-      // Physique-Chimie (TP) », « Online course — AI Essentials »), et un signal « bon pour
-      // suppression » sur un parent partiellement vidé est exactement le défaut relevé en revue :
-      // « tracer ce qui se passe si l'utilisateur OBÉIT au signal ».
-      sourcesJetables: [],
+      apresConvergence: function () { repointerEcoles06_(); },
+      // Rien à dé-peindre : les archives de Marc n'ont JAMAIS été peintes en rouge (l'inversion du
+      // 13/09 avait justement retiré ce signal), et les 8 dossiers d'`Archives scolaires` sont
+      // désormais des nœuds de `STRUCTURE_CIBLE_RESET` — donc protégés par la garde de capacité
+      // (C28-93) contre toute proposition de suppression.
+      ciblesADepeindre: [],
+      // ⚠️ LES 6 DOSSIERS DE LA RACINE SONT JETABLES, et c'est une décision, pas un défaut. Ils ne
+      // sont plus dans la table du flux : rien ne les recrée, donc le signal « bon pour
+      // suppression » est VRAI (le ping-pong des leçons paies/impots ne peut pas se produire). Et
+      // si Marc OBÉIT au signal, `estSourceDisparue_` traite la source absente comme vide : la
+      // mission converge quand même, elle ne se fige pas à vie (le mode de panne relevé en C28-93).
+      sourcesJetables: (IDS.ecoles06 || []).map(function (p) { return p.src; }),
     },
     /* ---- PR2 : Carrière + Finances (brief Marc §« paies / employeurs / impôts / années ») ---- */
     {
@@ -283,7 +289,7 @@ function tableMissions_() {
       },
       // À la convergence : le rapport des MOIS MANQUANTS par employeur (demande explicite de
       // Marc « je n'ai absolument pas toutes les paies ») — onglet `RapportPaies`, self-serve.
-      // Peut lever (comme le re-pointage archives06) : pas de FINI sans rapport écrit.
+      // Peut lever (comme le re-pointage `ecoles-archives06`) : pas de FINI sans rapport écrit.
       // `convergenceApres` (revue quotas PR2) : `carriere` et `annees02` alimentent ENCORE
       // « Revenus & paie » pendant des jours — écrire le rapport avant leur fin le FIGERAIT sur
       // des « mois manquants » qu'elles vont combler (donnée MOUVANTE, corollaire C28-49). La
@@ -1105,7 +1111,7 @@ var COLONNES_RAPPORT_PAIES = ['Employeur', 'Mois présents', 'Mois manquants (nb
 /**
  * Écrit l'onglet `RapportPaies` (une ligne par employeur : couverture + mois manquants) depuis
  * l'état RÉEL de « Revenus & paie »/<Employeur>. Appelée à la CONVERGENCE de la mission paies
- * (peut lever → pas de FINI sans rapport, comme le re-pointage archives06). Bornée : ≤ 300
+ * (peut lever → pas de FINI sans rapport, comme le re-pointage `ecoles-archives06`). Bornée : ≤ 300
  * fichiers lus par employeur, pur `getName()`.
  */
 function ecrireRapportPaies_() {
@@ -1699,6 +1705,24 @@ function executerMission_(tag, estBudgetDepasse) {
     try { props.setProperty('DriveAI_MISSIONS_JOUR', aujourdhui + '|' + (consommeJour + (Date.now() - debut))); }
     catch (e) { }
   }
+}
+
+/**
+ * RE-POINTAGE du référentiel d'entités après la mission `ecoles-archives06` (ADR-0055) : chaque
+ * dossier d'école de la RACINE de `06` cède ses lignes au dossier d'archive de Marc.
+ *
+ * I/O assumé (le routeur, lui, reste PUR) : la cible du cégep n'existe qu'à partir du premier
+ * fichier déplacé, donc on la find-or-crée ICI pour que le référentiel ait un ID stable à viser.
+ * PEUT LEVER, volontairement : un échec doit EMPÊCHER le drapeau FINI, pour re-tenter au run
+ * suivant. `repointerEntites_` est idempotent (une ligne déjà re-pointée ne matche plus la source).
+ */
+function repointerEcoles06_() {
+  var IDS = CONFIG.MISSIONS_IDS;
+  (IDS.ecoles06 || []).forEach(function (p) {
+    var cible = p.cible ||
+      sousDossier_(DriveApp.getFolderById(IDS.archivesScolaires), p.cibleNom).getId();
+    repointerEntites_(p.src, cible);
+  });
 }
 
 /**

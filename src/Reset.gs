@@ -18,6 +18,29 @@
 /** Sous-dossiers standard d'une ÉCOLE (06). Prépa reçoit en plus « Concours ». */
 var SOUS_DOSSIERS_ECOLE_RESET = ['Cours & travaux', 'Examens & khôlles', 'Résultats', 'Administratif'];
 
+/**
+ * RACINE des écoles dans `06` (ADR-0055, demande de Marc 2026-09-14 : « j'ai la bonne structure
+ * pour les écoles déjà, continue à rajouter là-dedans au lieu de mettre à la racine du projet »).
+ * Les dossiers d'école ne vivent plus à la racine du domaine : ils sont les enfants de CE dossier,
+ * que MARC a créé le 29/05/2026 et dont les noms lui appartiennent.
+ * ⚠️ `Autres établissements` et `Diplômes & relevés officiels` ne sont PAS des écoles : ce sont les
+ * deux nœuds de TAXONOMIE de `06`, et ils restent à sa racine.
+ */
+var RACINE_ARCHIVES_ECOLE_RESET = 'Archives scolaires';
+
+/**
+ * EXEMPTIONS DÉCLARÉES au plafond « ≤ 7 enfants par niveau » (ADR-0030), par chemin EXACT.
+ *
+ * ⚠️ Une exemption n'est pas une tolérance : c'est une décision NOMMÉE, testée à la valeur près.
+ * `Archives scolaires` porte les 7 dossiers que Marc a construits lui-même, plus le
+ * `Cégep de Sherbrooke (2019)` qu'il a demandé d'ajouter le 14/09 — soit 8. Le dépassement vient
+ * de sa structure et de sa demande, pas d'une dérive du moteur.
+ * L'alternative — omettre de la table les 3 dossiers qu'aucune règle ne vise — aurait rendu le
+ * plafond FAUX en silence (« une cible ABSENTE de la table rend `verifierStructureCibleReset_`
+ * aveugle au ≤ 7 RÉEL », déjà vécu en `01`). On déclare les 8 et on assume l'exemption.
+ */
+var RESET_EXEMPTIONS_PLAFOND = ['06 · Études & diplômes/Archives scolaires'];
+
 /** Les 4 catégories PAR VÉHICULE (décision Marc 2026-08-17, ADR-0040 §3a). Littéral LOCAL et non
  * CONFIG.MISSIONS_CATEGORIES_VEHICULE : la table se construit au CHARGEMENT du fichier, dont
  * l'ordre n'est pas garanti face à Config.gs — l'ÉGALITÉ des deux listes est verrouillée par
@@ -141,16 +164,25 @@ var STRUCTURE_CIBLE_RESET = {
     'Réseaux & présentations': {},
   },
   '06 · Études & diplômes': {
-    // ⚠️ « lycée » en MINUSCULE : c'est le nom RÉEL du dossier Drive (relevé le 13/09).
-    // `sousDossier_` résout par `getFoldersByName`, qui est SENSIBLE À LA CASSE : un « L »
-    // majuscule ici aurait créé un SECOND dossier à côté du sien, exactement comme
+    // ⚠️ LES NOMS CI-DESSOUS SONT CEUX DE MARC, relevés dans son Drive le 14/09 — tirets
+    // CADRATINS (—), parenthèses et casse compris. `sousDossier_` résout par `getFoldersByName`,
+    // qui est SENSIBLE À LA CASSE : « Davila » contre « d'Avila », ou un tiret simple à la place
+    // du cadratin, et le moteur crée un SECOND dossier à côté du sien — exactement comme
     // « 3987 route des Rivières » à côté de « 3987 rte des Rivières » (leçon vécue en 03).
-    // Un test fige la correspondance table ↔ noms réels.
-    'lycée Thérèse d\'Avila': ecoleReset_(false),
-    'Prépa Gustave Eiffel (PTSI)': ecoleReset_(true),
-    'DUT ULCO Saint-Omer': ecoleReset_(false),
-    'Cégep de Sherbrooke': ecoleReset_(false),
-    'IMERIR': ecoleReset_(false),
+    // Deux tests le verrouillent : les noms == le relevé Drive, et chacun survit à `champ_`.
+    // (ADR-0055) 8 enfants : les 7 de Marc + le cégep qu'il a demandé. Exemption DÉCLARÉE au
+    // plafond ≤ 7 dans `RESET_EXEMPTIONS_PLAFOND`, jamais une omission silencieuse.
+    'Archives scolaires': {
+      'Collège & Lycée — divers (2014-2017)': {},
+      'Lycée — Thérèse Davila (2017-2018)': ecoleReset_(false),
+      'Lycée — Gustave Eiffel — Physique-Chimie (TP)': {},
+      'Prépa PTSI (2017-2018)': ecoleReset_(true),
+      'ULCO — DUT GIM (2018-2020)': ecoleReset_(false),
+      'Cégep de Sherbrooke (2019)': ecoleReset_(false),
+      'IMERIR — Ingénieur MSIR (2020-2023)': ecoleReset_(false),
+      'Online course — AI Essentials (Google)': {},
+    },
+    // Les deux nœuds de TAXONOMIE du domaine — pas des écoles, donc pas sous l'archive.
     'Autres établissements': {},
     'Diplômes & relevés officiels': {},
   },
@@ -195,7 +227,9 @@ function verifierStructureCibleReset_(structure, maxParNiveau) {
   var violations = [];
   var marcher = function (noeud, chemin) {
     var enfants = Object.keys(noeud || {});
-    if (enfants.length > maxParNiveau) violations.push(chemin + ' : ' + enfants.length + ' sous-dossiers');
+    if (enfants.length > maxParNiveau && RESET_EXEMPTIONS_PLAFOND.indexOf(chemin) === -1) {
+      violations.push(chemin + ' : ' + enfants.length + ' sous-dossiers');
+    }
     for (var i = 0; i < enfants.length; i++) marcher(noeud[enfants[i]], chemin + '/' + enfants[i]);
   };
   Object.keys(structure || {}).forEach(function (dom) { marcher(structure[dom], dom); });
@@ -368,17 +402,17 @@ function estExcluDuReset_(nom) {
  * tombaient dans deux fenêtres et étaient refusés pour rien.
  */
 var RESET_FENETRES_ECOLE = [
-  { ecole: 'lycée Thérèse d\'Avila', debut: 2014 * 12 + 9, fin: 2017 * 12 + 8 },
-  { ecole: 'Prépa Gustave Eiffel (PTSI)', debut: 2017 * 12 + 9, fin: 2018 * 12 + 8 },
-  { ecole: 'DUT ULCO Saint-Omer', debut: 2018 * 12 + 9, fin: 2020 * 12 + 8 },
+  { ecole: 'Lycée — Thérèse Davila (2017-2018)', debut: 2014 * 12 + 9, fin: 2017 * 12 + 8 },
+  { ecole: 'Prépa PTSI (2017-2018)', debut: 2017 * 12 + 9, fin: 2018 * 12 + 8 },
+  { ecole: 'ULCO — DUT GIM (2018-2020)', debut: 2018 * 12 + 9, fin: 2020 * 12 + 8 },
   // ⚠️ SHERBROOKE CHEVAUCHE L'ULCO, ET C'EST VOULU. Marc : « Cégep de Sherbrooke c'est 2019 en même
   // temps que ULCO » (échange). La fenêtre n'est donc PAS là pour placer — elle est là pour
   // EMPÊCHER de placer : tout document de 2019 tombe dans deux fenêtres et se voit REFUSÉ, au lieu
   // d'être attribué à l'ULCO par défaut. C'est 28 fichiers de moins placés, et zéro mal placé.
   // Sans cette ligne, l'omission de Sherbrooke aurait été SILENCIEUSE : le moteur aurait rangé ses
   // documents chez l'ULCO avec une clé de SUCCÈS, donc sans retour possible.
-  { ecole: 'Cégep de Sherbrooke', debut: 2019 * 12 + 1, fin: 2019 * 12 + 12 },
-  { ecole: 'IMERIR', debut: 2020 * 12 + 9, fin: 2023 * 12 + 8 },
+  { ecole: 'Cégep de Sherbrooke (2019)', debut: 2019 * 12 + 1, fin: 2019 * 12 + 12 },
+  { ecole: 'IMERIR — Ingénieur MSIR (2020-2023)', debut: 2020 * 12 + 9, fin: 2023 * 12 + 8 },
 ];
 
 /**
@@ -424,15 +458,15 @@ function ecoleParNomReset_(nom) {
   var tout = normaliserCle_(nom);
   var sansTiret = tout.replace(/-/g, ' '); // `normaliserCle_` CONSERVE les traits d'union
   // --- L'ÉTABLISSEMENT, nommé.
-  if (resetContient_(tout, ['therese', 'avila'])) return 'lycée Thérèse d\'Avila';
+  if (resetContient_(tout, ['therese', 'avila'])) return 'Lycée — Thérèse Davila (2017-2018)';
   // Le COLLÈGE Gustave Eiffel et le Hubhouse (ULCO-CEL) ne sont PAS la prépa/le DUT : testés AVANT
   // leurs mots-pièges ('gustave eiffel', 'ulco').
   if (resetContient_(tout, ['college', 'hubhouse'])) return 'Autres établissements';
   if (resetContient_(tout, ['gustave eiffel', 'ptsi', 'kholle', ' colles', 'concours avenir',
-    'tetard', 'le meur', 'salwa', 'parcevaux', 'leroux'])) return 'Prépa Gustave Eiffel (PTSI)';
-  if (resetContient_(sansTiret, ['iut', 'ulco', 'littoral', 'saint omer', 'cote d opale'])) return 'DUT ULCO Saint-Omer';
-  if (tout.indexOf('sherbrooke') !== -1) return 'Cégep de Sherbrooke';
-  if (tout.indexOf('imerir') !== -1) return 'IMERIR';
+    'tetard', 'le meur', 'salwa', 'parcevaux', 'leroux'])) return 'Prépa PTSI (2017-2018)';
+  if (resetContient_(sansTiret, ['iut', 'ulco', 'littoral', 'saint omer', 'cote d opale'])) return 'ULCO — DUT GIM (2018-2020)';
+  if (tout.indexOf('sherbrooke') !== -1) return 'Cégep de Sherbrooke (2019)';
+  if (tout.indexOf('imerir') !== -1) return 'IMERIR — Ingénieur MSIR (2020-2023)';
   if (resetContient_(sansTiret, ['hamk', 'hame', 'erasmus', 'esiee', 'hei campus', 'limoilou',
     'saint hyacinthe', 'hubhouse', 'lycee hugo', 'armentieres', 'academie de lille',
     'centre universitaire descartes'])) return 'Autres établissements';
@@ -453,8 +487,8 @@ function ecoleParNomReset_(nom) {
   // raison : contribution NULLE mesurée, et risque non nul (« 30 secondes » dans un TP de physique,
   // « borne terminale » en électrotechnique, « Seconde Guerre mondiale » en histoire). Un prédicat
   // qui ne gagne rien et peut se tromper ne mérite pas d'exister.
-  if (/(^|[^a-z0-9])gim ?[12]?([^a-z0-9]|$)/.test(sansTiret)) return 'DUT ULCO Saint-Omer';
-  if (/(^|[^a-z0-9])1 ?ere([^a-z0-9]|$)/.test(sansTiret)) return 'lycée Thérèse d\'Avila';
+  if (/(^|[^a-z0-9])gim ?[12]?([^a-z0-9]|$)/.test(sansTiret)) return 'ULCO — DUT GIM (2018-2020)';
+  if (/(^|[^a-z0-9])1 ?ere([^a-z0-9]|$)/.test(sansTiret)) return 'Lycée — Thérèse Davila (2017-2018)';
   return null;
 }
 
@@ -856,10 +890,11 @@ function cheminCibleReset_(domaine, nom, detail) {
   if (domaine === '06 · Études & diplômes') {
     // FAIBLE (arbitrage C28-90, après mesure) : ce nœud centralise les diplômes, et il le fait très
     // bien depuis la RACINE du domaine — c'est là que sont les 683. Mais il est décidé par le seul
-    // TYPE, et le laisser fort lui donnait le pouvoir de VIDER les dossiers d'école que Marc vient
-    // de désigner comme sa structure et que `retour-ecoles06` est en train de remplir (mesuré :
-    // `IMERIR/Administratif` vers `Diplômes & relevés officiels`). Une campagne ne défait pas ce
-    // qu'une autre construit dans le même tick.
+    // TYPE, et le laisser fort lui donnait le pouvoir de VIDER les dossiers d'école de Marc, que la
+    // mission remplit dans le même tick (mesuré : `IMERIR/Administratif` vers `Diplômes & relevés
+    // officiels`). Une campagne ne défait pas ce qu'une autre construit dans le même tick.
+    // ⚠️ Ce nœud reste à la RACINE de `06`, jamais sous `Archives scolaires` (ADR-0055) : un
+    // diplôme se range par TYPE, pas par établissement — c'est ce qui lui permet de rassembler.
     if (resetContient_(t, ['diplome', 'releve de notes', 'bulletin', 'attestation de reussite'])) {
       return marquerFaibleReset_(detail, 'Diplômes & relevés officiels');
     }
@@ -876,8 +911,13 @@ function cheminCibleReset_(domaine, nom, detail) {
     }
     if (!ecole) return null;
     if (ecole === 'Autres établissements') return ecole; // à plat (rapport → affinage si volume)
-    if (t.indexOf('concours') !== -1 && ecole === 'Prépa Gustave Eiffel (PTSI)') return ecole + '/Concours';
-    if (resetContient_(t, ['examen', 'devoir surveille', 'controle', 'partiel', 'kholle', 'colles']) || t === 'ds') return ecole + '/Examens & khôlles';
+    // (ADR-0055) TOUTE école vit sous `Archives scolaires` — le préfixe est posé ICI, en UN seul
+    // endroit, après le seul `return` qui ne désigne pas une école (`Autres établissements` est un
+    // nœud de taxonomie du domaine, pas un établissement de Marc). Un préfixe recopié sur chacun
+    // des six `return` ci-dessous se serait désolidarisé au premier ajout de règle.
+    var base = RACINE_ARCHIVES_ECOLE_RESET + '/' + ecole;
+    if (t.indexOf('concours') !== -1 && ecole === 'Prépa PTSI (2017-2018)') return base + '/Concours';
+    if (resetContient_(t, ['examen', 'devoir surveille', 'controle', 'partiel', 'kholle', 'colles']) || t === 'ds') return base + '/Examens & khôlles';
     // ⚠️ ADMINISTRATIF AVANT COURS & TRAVAUX (revue sécurité C28-90) : le vocabulaire des cours
     // contient « fiche » et « cours » en SOUS-CHAÎNE, et il est passé devant `Résultats` dans ce
     // même lot — « Fiche d'inscription_IMERIR » et « Attestation de suivi de cours » quittaient
@@ -886,7 +926,7 @@ function cheminCibleReset_(domaine, nom, detail) {
     // qu'ils citent ; l'ordre est ce qui l'exprime. MESURÉ sur les 480 noms de 06 du corpus :
     // ZÉRO document bascule (aucun n'est à la fois administratif et « cours ») — le réordonnancement
     // ferme une classe démontrée sur des noms réalistes, il ne rejoue pas le corpus existant.
-    if (resetContient_(t, ['certificat de scolarite', 'inscription', 'convention', 'attestation'])) return ecole + '/Administratif';
+    if (resetContient_(t, ['certificat de scolarite', 'inscription', 'convention', 'attestation'])) return base + '/Administratif';
     // ⚠️ COURS & TRAVAUX AVANT RÉSULTATS. « note » est une sous-chaîne, et « Notes de cours » —
     // 68 fichiers du corpus — atterrissait dans `/Résultats`. Défaut PRÉ-EXISTANT, mais ce chantier
     // fait passer ~110 fichiers de plus dans cette cascade : le corriger ici coûte une ligne, le
@@ -898,9 +938,9 @@ function cheminCibleReset_(domaine, nom, detail) {
     if (resetContient_(t, ['cours', 'fiche', 'travaux', 'travail pratique', 'projet', 'memoire',
       'devoir', 'exercice', 'corrige', 'correction', 'enonce', 'schema', 'support de cours',
       'laboratoire', 'protocole']) || t === 'td' || t === 'tp' ||
-        /(^| )tp\d*( |$)/.test(t) || /(^| )tps?( |$)/.test(t)) return ecole + '/Cours & travaux';
-    if (resetContient_(t, ['resultat', 'note', 'evaluation'])) return ecole + '/Résultats';
-    return ecole; // racine de l'école : mieux que _TRI, l'école est sûre
+        /(^| )tp\d*( |$)/.test(t) || /(^| )tps?( |$)/.test(t)) return base + '/Cours & travaux';
+    if (resetContient_(t, ['resultat', 'note', 'evaluation'])) return base + '/Résultats';
+    return base; // racine de l'école : mieux que _TRI, l'école est sûre
   }
 
   if (domaine === '07 · Santé') {

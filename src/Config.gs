@@ -699,7 +699,11 @@ var CONFIG = {
   // sur `_TRI 2026/<domaine>` — un fichier placé n'y est plus, il n'est donc jamais re-présenté).
   // À bumper à CHAQUE modification des règles de routage, sinon les non-routés resteraient marqués
   // « déjà tenté » à vie et l'affinage serait sans effet (constaté au 1ᵉʳ reliquat réel, 2026-07-30).
-  RESET_TABLE_VERSION: 't5',              // t5 (ADR-0044, 2026-08-20) : « KIA » RETIRÉ du nœud Véhicule (il le
+  RESET_TABLE_VERSION: 't6',              // t6 (ADR-0055, 2026-09-14) : les écoles de `06` passent sous
+                                          // `Archives scolaires` et prennent les noms de dossier de Marc.
+                                          // RESET_ACTIF=false, donc aucun redémarrage de campagne : le bump
+                                          // ACQUITTE la dette pour le jour où le reset repartirait.
+                                          // t5 (ADR-0044, 2026-08-20) : « KIA » RETIRÉ du nœud Véhicule (il le
                                           // faisait RECRÉER par nom pendant que la mission le dissout →
                                           // ping-pong), + les 3 dossiers COMMUNS « Recherche & achat »,
                                           // « Locations » et « À attribuer » déclarés dans la table. Ce bump ACQUITTE
@@ -961,7 +965,10 @@ var CONFIG = {
   MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions
   // c49-3 (ADR-0044 §4, véhicules) puis c49-4 (§5, les 39 de « employeurs & CV ») — l'historique
   // inline s'arrêtait à c49-2 alors que la valeur avait bougé deux fois (revue code PR2).
-  MISSIONS_REGLES_VERSION: 'c50-1',       // DANS la clé d'idempotence : un refus (non apparié) se fige
+  MISSIONS_REGLES_VERSION: 'c55-1',       // c55-1 (ADR-0055, 2026-09-14) : `06` re-routé sous
+                                          // `Archives scolaires`. Le bump est OBLIGATOIRE, pas cosmétique —
+                                          // les refus keyés sous c50-1 l'ont été contre l'ANCIENNE table.
+                                          // DANS la clé d'idempotence : un refus (non apparié) se fige
                                           // sous CETTE version — affiner les règles = bump ⇒ ré-évaluation
                                           // (leçon C28-33 « verdict négatif révisable, jamais figé à vie »)
                                           // c49-2 (C28-51, ADR-0040) : tables bailleurs + véhicules,
@@ -1011,20 +1018,32 @@ var CONFIG = {
     correspondance03: '14qrPCSHsSLMT2XSJm1h6HOHGXNehx5uL',
     assuranceHab03: '1V_tiKNtUfgdwwrfigeFM2saEgYuKGR9Q',
     energieServices03: '1TBssvW9sSUVugsK8bNj-MQTtH6MT1-2s',
-    // 06 · Études — SENS INVERSÉ le 2026-09-13 (décision Marc, ADR-0052 §9 : « mes 5 dossiers
-    // d'école »). La mission `archives06` VIDAIT les dossiers d'école vers `Archives scolaires` et
-    // les peignait en rouge pour suppression ; or la table du flux les vise PAR NOM, et D6 y envoie
-    // désormais 143 fichiers. Les deux se seraient battus, et le rattrapage du stock (C28-90)
-    // aurait rendu le conflit effectif d'un coup.
-    // Marc a tranché : la structure, ce sont ses 5 dossiers d'école. La mission draine donc
-    // maintenant DANS L'AUTRE SENS — l'archive rend son contenu à l'école. `Cégep de Sherbrooke`
-    // n'a pas d'archive (il n'est pas listé) : rien à rapatrier pour lui.
-    // ⚠️ Le libellé de gauche est l'ARCHIVE (source), celui de droite le dossier d'ÉCOLE (cible).
-    archives06: [
-      { src: '1XdWSfTGZUj1HMgfRleI_9KunZFQb8TJV', cible: '13pgIZArEdu3Ly-eHOJmTpdY0sj1qBwNb' }, // ULCO — DUT GIM (2018-2020) → DUT ULCO Saint-Omer
-      { src: '1XQAMQXZOMxlFboIUVGSZVklWmuEvXodA', cible: '1NpsmzrQlZfFexVaTRtFaMefnErEvZDCL' }, // Prépa PTSI (2017-2018) → Prépa Gustave Eiffel (PTSI)
-      { src: '1pIIovCmN8o-GrROoyH8rfsziUUbcfeKK', cible: '1Q0QBp3q_e9CqpKi6FZOwSvJg1ZbGR282' }, // IMERIR — Ingénieur MSIR (2020-2023) → IMERIR
-      { src: '1xcSm-mucmPSG-9jZHgvL_6Q_r3V6fath', cible: '157LXd0CwcPhc2S8C5Ftg_FFOqVuDfrZ9' }, // Lycée — Thérèse Davila (2017-2018) → lycée Thérèse d'Avila
+    // 06 · Études — SENS RE-INVERSÉ le 2026-09-14 (ADR-0055, demande de Marc : « j'ai la bonne
+    // structure pour les écoles déjà, continue à rajouter là-dedans au lieu de mettre à la racine
+    // du projet » + « décale prépa et cégep là-dedans »). Relevé Drive du 14/09 : les 7 dossiers de
+    // sa capture ne sont PAS à la racine de `06`, ce sont les enfants d'`Archives scolaires`, qu'il
+    // a créés lui-même le 29/05/2026. Les dossiers d'école de la RACINE, eux, ont tous été créés
+    // par le MOTEUR (07→08/2026). C'est donc la racine qui se vide dans l'archive, pas l'inverse.
+    // ⚠️ RÉVISE la décision du 13/09 (`archives06` → `retour-ecoles06`, « mes 5 dossiers d'école »),
+    // qui portait sur une question ; celle-ci porte sur une capture d'écran de la structure réelle.
+    // ⚠️ Le libellé de GAUCHE est le dossier de la RACINE (source, moteur), celui de DROITE le
+    // dossier de MARC (cible). `cibleNom` est le nom EXACT du nœud de `STRUCTURE_CIBLE_RESET`
+    // (tripwire : une règle, deux consommateurs) ; `cible` est son ID quand le dossier EXISTE déjà.
+    // `Cégep de Sherbrooke (2019)` n'existe pas encore : il est find-or-créé PAR NOM sous
+    // `archivesScolaires`, au premier fichier déplacé — jamais créé à vide.
+    archivesScolaires: '1Spv7fdg-cUAhOG52ieMecAkZpVLQ-o77', // 06/« Archives scolaires » (dossier de Marc)
+    ecoles06: [
+      { src: '157LXd0CwcPhc2S8C5Ftg_FFOqVuDfrZ9', cible: '1xcSm-mucmPSG-9jZHgvL_6Q_r3V6fath', cibleNom: 'Lycée — Thérèse Davila (2017-2018)' },      // lycée Thérèse d'Avila
+      { src: '1NpsmzrQlZfFexVaTRtFaMefnErEvZDCL', cible: '1XQAMQXZOMxlFboIUVGSZVklWmuEvXodA', cibleNom: 'Prépa PTSI (2017-2018)' },                  // Prépa Gustave Eiffel (PTSI)
+      { src: '13pgIZArEdu3Ly-eHOJmTpdY0sj1qBwNb', cible: '1XdWSfTGZUj1HMgfRleI_9KunZFQb8TJV', cibleNom: 'ULCO — DUT GIM (2018-2020)' },              // DUT ULCO Saint-Omer
+      // `IUT Du Littoral` : dossier que le MOTEUR s'est créé le 23/08 à côté du précédent (l'IUT du
+      // Littoral EST l'ULCO, et `ecoleParNomReset_` envoie déjà `iut`/`littoral` vers ce nœud). Ses
+      // 5 fichiers sont des documents de DUT GIM. Marc n'a nommé que prépa et cégep — c'est signalé
+      // dans l'ADR §3.5, pas fait en silence : c'est un dossier d'école à la racine de `06`, donc
+      // exactement ce que sa première phrase demande de faire disparaître.
+      { src: '1warTOdOWFxNU7bs8carxWAnC5LulScs7', cible: '1XdWSfTGZUj1HMgfRleI_9KunZFQb8TJV', cibleNom: 'ULCO — DUT GIM (2018-2020)' },              // IUT Du Littoral
+      { src: '1Q8JJwvpbt-pgbumhUVCPXs_MRrFfK6x3', cibleNom: 'Cégep de Sherbrooke (2019)' },                                                          // Cégep de Sherbrooke (cible à créer)
+      { src: '1Q0QBp3q_e9CqpKi6FZOwSvJg1ZbGR282', cible: '1pIIovCmN8o-GrROoyH8rfsziUUbcfeKK', cibleNom: 'IMERIR — Ingénieur MSIR (2020-2023)' },     // IMERIR
     ],
     // ---- PR2 (Carrière + Finances, recon du 17/08) ----
     revenusPaie: '1nPL2rWJFASUIyxkS5zPdy0iMsnWqsI5f',       // 02/« Revenus & paie » (cible paies, par employeur)

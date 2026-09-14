@@ -4,7 +4,58 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🟦 EN COURS — 2026-09-13 (suite) : C28-89, les deux arbitrages de Marc appliqués (ADR-0052 §7).**
+> **🟦 EN COURS — 2026-09-14 : C28-105, la structure des écoles, c'est celle de Marc (ADR-0055).**
+> Marc, capture d'écran à l'appui : « j'ai la bonne structure pour les écoles déjà, **continue à
+> rajouter là-dedans au lieu de mettre à la racine du projet** », puis « et **décale prépa et cégep
+> là-dedans** en reprenant la bonne structure ».
+>
+> ⚠️ **Ce lot RE-INVERSE la mission d'école, un jour après l'avoir inversée.** Le 13/09, à une
+> question qui opposait les deux structures, Marc avait répondu « mes 5 dossiers d'école » et
+> `archives06` était devenue `retour-ecoles06` (l'archive rendait son contenu aux dossiers de la
+> racine) ; elle a déplacé **~45 fichiers** dans ce sens. La demande du 14/09 dit l'inverse et elle
+> est plus précise, parce qu'elle vient d'une capture : **les 7 dossiers qu'il montre ne sont pas à
+> la racine de `06`, ce sont les enfants d'`Archives scolaires`**, qu'il a créés le 29/05/2026. Les
+> 6 dossiers d'école de la racine, eux, ont TOUS été créés par le moteur (07→08/2026). Relevé dans
+> Drive le 14/09, pas déduit. Rien n'est perdu : la seule mutation est le déplacement.
+>
+> **Ce qui change.** (1) La table du flux ne porte plus aucune école à la racine de `06` : elle
+> porte `Archives scolaires` et, dessous, les 8 dossiers de Marc — la racine passe de 9 à
+> **3 enfants** (`Archives scolaires`, `Autres établissements`, `Diplômes & relevés officiels`).
+> (2) Les libellés du routage DEVIENNENT ses noms (`Lycée — Thérèse Davila (2017-2018)`,
+> `Prépa PTSI (2017-2018)`, `ULCO — DUT GIM (2018-2020)`, `IMERIR — Ingénieur MSIR (2020-2023)`),
+> plutôt qu'une table de correspondance — deux noms pour la même chose, c'est le piège des deux
+> canonicaliseurs qui divergent. (3) `Cégep de Sherbrooke (2019)` est créé PAR NOM au patron de
+> Marc, au premier fichier déplacé, jamais à vide. (4) La mission devient **`ecoles-archives06`**
+> (tag et clé NEUFS, sinon les ~45 déjà déplacés portent une clé de SUCCÈS et ne reviennent
+> jamais) : les 6 dossiers de la racine sont les SOURCES, les archives les CIBLES.
+>
+> **`IUT Du Littoral` part avec.** Marc n'a nommé que prépa et cégep, mais c'est un dossier d'école
+> que le moteur s'est créé le 23/08 à côté de `DUT ULCO Saint-Omer` (l'IUT du Littoral EST l'ULCO) ;
+> ses 5 fichiers sont des documents de DUT GIM. Signalé ici et dans l'ADR §3.5, pas fait en silence.
+>
+> **Ce qui est verrouillé.** `Archives scolaires` a 8 enfants > 7 : l'exemption au plafond est
+> **nommée** (`RESET_EXEMPTIONS_PLAFOND`) et testée à la valeur près — l'alternative (omettre de la
+> table les 3 dossiers qu'aucune règle ne vise) aurait rendu le plafond faux en silence. Les noms
+> sont comparés au relevé Drive caractère par caractère ET doivent survivre inchangés à `champ_`
+> (un `_` créerait un dossier jumeau sans une erreur). Les cibles de la mission == les écoles que
+> le routage sait nommer (dérivé de `RESET_FENETRES_ECOLE`, pas recopié). **6 mutations jouées, 6
+> attrapées** : exemption non consultée, nom divergent d'un caractère, préfixe retiré, `_` dans un
+> nom, cible de mission hors table, école du routage sans mission.
+>
+> **Le corpus `deja-ranges` le montre** : les 5 fichiers réellement dans `06/Cégep de Sherbrooke`
+> suivent la nouvelle structure, et le test le vérifie **à l'école près** — un fichier du cégep qui
+> partirait chez l'ULCO fait toujours échouer la CI.
+>
+> ⚠️ **Question toujours ouverte (C28-90)** : Marc a dit « Avila c'est genre 2014 2017 », son
+> dossier s'appelle `Lycée — Thérèse Davila (2017-2018)` et il a aussi
+> `Collège & Lycée — divers (2014-2017)`. Les deux ne peuvent pas être vrais (2017-2018, c'est
+> aussi la prépa). La FENÊTRE n'a pas bougé — ~26 fichiers, tous dans `06`, récupérables.
+>
+> ⚠️ `CONSOLIDATION_TAG` n'est **pas** bumpé : `conso-4` est en cours (102/162 au 13/09) et un bump
+> la relancerait de zéro sur 18 700 documents. Les fichiers déjà dans les dossiers d'école sont
+> déménagés par la mission, pas par la consolidation.
+>
+> **🟦 HISTORIQUE — 2026-09-13 (suite) : C28-89, les deux arbitrages de Marc appliqués (ADR-0052 §7).**
 > #338 est **mergé** (`main` = 0d53c8a) et **déployé** : `deploy.yml` run #324 vert sur les deux
 > cibles. Marc a ensuite tranché D6 et D7, et ce lot les livre.
 >

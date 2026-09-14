@@ -40,7 +40,7 @@ test('tripwire : la suspension R2 enregistre un skip pour CHAQUE étape du bloc 
   // + les 8 missions de curation (C28-49 PR1+PR2) : dans le bloc, juste après la consolidation.
   const attendu = ['intake-gmail', 'intake-depots', 'intake-partages', 'intentions', 'tri-gmail',
     'consolidation-exec', 'consolidation-gen',
-    'mission-vehicule', 'mission-logement', 'mission-dispatch-03', 'mission-retour-ecoles-06',
+    'mission-vehicule', 'mission-logement', 'mission-dispatch-03', 'mission-ecoles-archives-06',
     'mission-paies', 'mission-carriere', 'mission-annees-02', 'mission-impots',
     'fusion-exec', 'reset-rassemblement',
     'reset-placement', 'reset-04-interne', 'reset-llm', 'histo-gmail', 'migration',

@@ -23,19 +23,34 @@ plus bas décrit la cascade de replis à jour, pas l'héritage.
 | `03 · Logement & véhicule` | **Logement** (5 adresses aux noms RÉELS Drive) · **Véhicule** (Toyota bZ · Ford Fiesta · VW Jetta, chacun avec {Contraventions · Assurance auto · Entretien & réparations · Recherche & achat}) **+ 3 dossiers COMMUNS au même niveau que les véhicules — `Recherche & achat` (magasinage sans véhicule identifié, dont l'ex-« KIA »), `Locations` (voiture louée, jamais un véhicule de Marc) et `À attribuer` (aucun véhicule identifiable — ADR-0044)** · Énergie & services · Assurance habitation · Contrats (les formulaires génériques/vierges y sont depuis ADR-0052 D7) · Correspondance · **Travaux & équipements** 🆕 *(ce qu'il y a DANS le logement : étiquettes produit, matériaux, revêtements, inventaires, dégradations — ADR-0052 D7, qui RÉVISE ADR-0044 §6)* | 0 — PLEIN |
 | `04 · Immigration` | IRCC (fédéral) · MIFI (Québec) · Permis de travail & EIMT · Résidence permanente · Formulaires & correspondance · **Pièces d'identité** 🆕 *(ADR-0052)* | 1 |
 | `05 · Carrière` | **Employeurs** (Robovic · Automatech · **Autres employeurs** — commun des employeurs occasionnels, ADR-0044 D11) · Alternance & stages · CV & lettres (+ Candidatures · Suivi · Archive 2021-2025) · **Recherche d'emploi** (recrutement reçu : offres, invitations d'entretien, descriptions de rôle, listes d'entreprises cibles — **RECRÉÉ par ADR-0044 D10, qui révoque la fusion du 2026-08-17 vers « CV & lettres »**) · Entreprise — MRic (SCI) · Formation & bilans · Réseaux & présentations | 0 — PLEIN |
-| `06 · Études & diplômes` | 5 écoles + Autres établissements + Diplômes & relevés officiels | 0 |
+| `06 · Études & diplômes` | **Archives scolaires** *(le dossier de MARC : ses 7 dossiers de parcours + `Cégep de Sherbrooke (2019)` — ADR-0055)* · Autres établissements · Diplômes & relevés officiels | 4 |
 | `07 · Santé` | Médecins & consultations · Hôpitaux & centres · Assurances santé · Factures & reçus · Examens & résultats · Médecine scolaire & travail | 1 |
 | `08 · Perso & projets` | Projets · Écrits & rédactions · Schémas & technique · Photos & loisirs · Notes · Données & exports | 1 |
 | `09 · Voyages` | Réservations & billets · Par voyage · Assurances voyage · **Préparation & guides** 🆕 *(ADR-0052)* | 3 |
 
-> **`06 · Études & diplômes` — comment une école est attribuée** (ADR-0052 D6, décisions Marc
-> 2026-09-13). Du FAIT vers la DÉDUCTION, jamais l'inverse : (1) le NOM de l'école ; (2) un marqueur
+> **`06 · Études & diplômes` — où vont les écoles** (ADR-0055, demande de Marc 2026-09-14 :
+> « j'ai la bonne structure pour les écoles déjà, continue à rajouter là-dedans au lieu de mettre à
+> la racine du projet »). Les dossiers d'école ne sont PLUS à la racine du domaine : ce sont les
+> enfants d'`Archives scolaires`, que Marc a construit lui-même le 29/05/2026, et ils portent SES
+> noms — `Lycée — Thérèse Davila (2017-2018)`, `Prépa PTSI (2017-2018)`,
+> `ULCO — DUT GIM (2018-2020)`, `Cégep de Sherbrooke (2019)`,
+> `IMERIR — Ingénieur MSIR (2020-2023)`, plus trois dossiers qu'aucune règle ne vise
+> (`Collège & Lycée — divers (2014-2017)`, `Lycée — Gustave Eiffel — Physique-Chimie (TP)`,
+> `Online course — AI Essentials (Google)`). Soit **8 enfants > 7** : l'exemption au plafond est
+> DÉCLARÉE dans `RESET_EXEMPTIONS_PLAFOND` et testée à la valeur près, jamais tolérée en silence.
+> `Autres établissements` et `Diplômes & relevés officiels` restent à la RACINE de `06` : ce sont
+> des nœuds de taxonomie, pas des établissements.
+>
+> **Comment une école est attribuée** (ADR-0052 D6, décisions Marc 2026-09-13). Du FAIT vers la DÉDUCTION, jamais l'inverse : (1) le NOM de l'école ; (2) un marqueur
 > de FILIÈRE ou de NIVEAU écrit dans le nom (« GIM », « 1ʳᵉ année » — les seuls dont la revue a
 > MESURÉ une contribution non nulle) ; (3) la FENÊTRE de
 > scolarité (`RESET_FENETRES_ECOLE`, bornée au MOIS à la convention sept → août), qui refuse dès
-> qu'il y a deux fenêtres ou aucune. Le parcours validé par Marc : Lycée Thérèse d'Avila 2014-2017,
-> Prépa Gustave Eiffel 2017-2018, DUT ULCO Saint-Omer 2018-2020, **Cégep de Sherbrooke 2019 — EN
-> MÊME TEMPS que l'ULCO**, IMERIR 2020-2023.
+> qu'il y a deux fenêtres ou aucune. Le parcours validé par Marc : Avila 2014-2017,
+> Prépa 2017-2018, ULCO 2018-2020, **Cégep de Sherbrooke 2019 — EN MÊME TEMPS que l'ULCO**,
+> IMERIR 2020-2023. ⚠️ Marc a dit « Avila c'est genre 2014 2017 », et son propre dossier
+> s'appelle `Lycée — Thérèse Davila (2017-2018)` : les deux ne peuvent pas être vrais en même
+> temps. La FENÊTRE (sa phrase) fait foi et n'a pas bougé — question ouverte depuis C28-90,
+> ~26 fichiers en jeu, tous dans `06`, récupérables.
 > ⚠️ La fenêtre de Sherbrooke ne sert pas à placer : elle sert à **empêcher** de placer. Un document
 > de 2019 tombe dans deux fenêtres et reste non attribué, au lieu de partir chez l'ULCO avec une clé
 > de succès — c'est-à-dire sans retour possible. Sa borne (l'année civile) est la seule qui ne suive

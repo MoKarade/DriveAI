@@ -246,6 +246,9 @@ const CONTRAT = [
   'pousserResetPilote_', 'pilotageTermineReset_', 'actionAssurerTrigger_', 'installerTrigger',
   'analyserReliquatReset_', 'analyserPageReliquatReset_', 'analyserFichierReliquat_', // ADR-0030 PR5 : passe LLM du reliquat (appelée par Main.gs)
   'detecterDossierVide_', 'repointerEntites_',
+  // ADR-0055 : `repointerEcoles06_` (Missions.gs) appelle `sousDossier_` (Router.gs) pour
+  // find-or-créer la cible qui n'existe pas encore — 2ᵉ contrat inter-module de cette fonction.
+  'sousDossier_',
   // Débit du placement (revue #229) : `empreinteReutiliseeReset_` (Reset.gs) appelle
   // `empreinteConnueParId_` (Journal.gs) et consomme `empreintesPlanDeuxSens_` (Consolidation.gs) —
   // trois modules différents, donc INVISIBLES des tests unitaires mockés : d'où leur place ici.
