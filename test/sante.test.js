@@ -50,11 +50,31 @@ function chargerAvecSanteMock(indexCache) {
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 9 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 10 lignes de métadonnées (une seule écriture Sheet)', () => {
+  // 10 depuis ADR-0056 : la re-datation de `06` rallume de la dépense LLM et son budget du jour
+  // n'était lisible NULLE PART. Le compte est figé pour que l'ajout d'une ligne soit une DÉCISION —
+  // l'écriture est unique par tick, et chaque ligne coûte de la place à l'écran de Marc.
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 9);
+  assert.strictEqual(captured.length, 10);
   assert.ok(captured.every((l) => typeof l === 'string'));
+});
+
+test('majSante_ : la ligne « Re-datation de 06 » distingue « jamais démarrée » de « rien à faire »', () => {
+  // Deux revues l'ont relevé indépendamment : rallumer ~8,6 $ de LLM sans aucun point
+  // d'observation, c'est le mode de panne du §1.6 — c'est ainsi que C26-08 est restée en pause
+  // deux semaines sans que personne ne le voie. Un « 0 min/j » tout seul ne dirait pas si la
+  // campagne n'a rien à faire ou si elle n'est jamais ATTEINTE : les deux gardes amont (grand
+  // rangement, migration) doivent se DIRE. Mutation : retirer la ligne de `majSante_` ⇒ tombe.
+  const { ctx, captured } = chargerAvecSanteMock({});
+  ctx.majSante_();
+  const ligne = captured.find((l) => l.indexOf('Re-datation de 06') === 0);
+  assert.ok(ligne, 'la ligne existe');
+  assert.ok(!ligne.includes('illisible'), 'chemin nominal, pas le catch : ' + ligne);
+  // Le mock n'a aucune Property : la migration n'est donc PAS finie — la ligne doit le dire,
+  // et surtout pas prétendre que la campagne tourne.
+  assert.ok(/en attente/.test(ligne), ligne);
+  assert.ok(!/en cours/.test(ligne), 'jamais « en cours » quand une garde amont bloque : ' + ligne);
 });
 
 test('majSante_ : la ligne « Historique Gmail » dit l\'état ET les minutes consommées (C28-99)', () => {

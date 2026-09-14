@@ -77,6 +77,41 @@ test('collecterAMigrer_ : walk récursif, plafond respecté, fichier illisible s
   assert.strictEqual(ids3.length, 0);
 });
 
+test('collecterAReanalyser_ (ADR-0056) : RACINE SEULE — la descente récursive n\'a même pas lieu', () => {
+  // 🔴 revue sécurité ADR-0056 : récursive, la campagne c28-92 ramassait TOUT le sous-arbre de
+  // `06` — donc ce que C28-90/C28-105 venaient de ranger, et les dossiers que MARC a construits.
+  // Le flux (`planRoutageV2_`) ne connaît ni D8, ni D9, ni D10 : un nom qui n\'apprend rien serait
+  // reparti À PLAT à la racine du domaine. Le garde est un `return` : on l\'observe par le CHEMIN
+  // (`getFolders` jamais appelé), pas seulement par la taille du résultat — un sous-dossier vide
+  // rendrait la même liste (§9, « un mock qui compose son résultat ne distingue pas deux chemins »).
+  const ctx = ctxMigration([]);
+  const doc = (id) => fakeFile({ id, name: id + '.pdf' });
+  let descentes = 0;
+  const sous = fauxDossier([doc('S1'), doc('S2')]);
+  const racine = {
+    getFiles: () => iter([doc('R1'), doc('R2')]),
+    getFolders: () => { descentes += 1; return iter([sous]); },
+  };
+
+  const ids = [];
+  ctx.collecterAReanalyser_(racine, ids, 10, () => false);
+  assert.deepStrictEqual(ids, ['R1', 'R2'], 'seuls les fichiers À PLAT à la racine de 06');
+  assert.strictEqual(descentes, 0, 'aucune descente : le garde coupe AVANT getFolders()');
+
+  // Contre-épreuve : le garde est bien CE drapeau, pas un itérateur cassé. La position globale du
+  // drapeau est une décision de Marc, jamais un invariant de test (§9) → save/restore.
+  const avant = ctx.CONFIG.REANALYSE_RACINE_SEULE;
+  try {
+    ctx.CONFIG.REANALYSE_RACINE_SEULE = false;
+    const rec = [];
+    ctx.collecterAReanalyser_(racine, rec, 10, () => false);
+    assert.deepStrictEqual(rec, ['R1', 'R2', 'S1', 'S2']);
+    assert.strictEqual(descentes, 1);
+  } finally {
+    ctx.CONFIG.REANALYSE_RACINE_SEULE = avant;
+  }
+});
+
 /* ---------- migrerFichier_ : zone protégée + placement ---------- */
 
 function ctxMigrerFichier(opts) {
@@ -323,6 +358,24 @@ test('ADR-0056 — la re-analyse a un budget QUOTIDIEN : il coupe, il se libère
   // (c) Les ms consommées sont ÉCRITES, sous le jour courant — sinon rien ne borne la journée.
   const suivi = String(p2.valeurs.DriveAI_REANALYSE_JOUR || '');
   assert.ok(suivi.indexOf(jour + '|') === 0, 'budget du jour ré-ancré sur aujourd\'hui : ' + suivi);
+  // …et le compteur ACCUMULE : le consommé ANTÉRIEUR est reporté ET l'écoulé s'y ajoute.
+  // ⚠️ Vérifier le seul PRÉFIXE de jour ne prouvait rien (🟠 revue code, mutation SURVIVANTE) :
+  // écrire `aujourdhui + '|' + consommeJour` sans l'écoulé laissait le compteur à plat, donc la
+  // gate quotidienne ne mordait JAMAIS et la campagne consommait 288 ticks × 2 min — précisément
+  // le gel de tous les déclencheurs que ce budget existe pour empêcher.
+  const p4 = base();
+  const c4 = ctxReanalyseCampagne(p4);
+  const anterieur = 3 * 60 * 1000;
+  p4.valeurs.DriveAI_MIGRATION = c4.ctx.CONFIG.MIGRATION_TAG;
+  p4.valeurs.DriveAI_REANALYSE_BARRE_TAG = c4.ctx.CONFIG.REANALYSE_TAG;
+  p4.valeurs.DriveAI_REANALYSE_JOUR = jour + '|' + anterieur;
+  c4.ctx.reanalyserUnePage_ = () => {
+    const t0 = Date.now(); while (Date.now() - t0 < 3) { /* consomme du temps RÉEL */ }
+    return { traites: 1, collectes: 1, reste: true };
+  };
+  c4.ctx.appliquerReanalyseCiblee_(() => false);
+  const ms = Number(String(p4.valeurs.DriveAI_REANALYSE_JOUR).split('|')[1]);
+  assert.ok(ms > anterieur, 'le consommé antérieur est REPORTÉ et l\'écoulé AJOUTÉ : ' + ms);
 
   // (d) …MÊME sur exception : un plantage ne doit jamais faire FUIR le budget (patron `finally`
   // des missions). Sans ça, une campagne qui échoue en boucle consomme du runtime sans jamais
@@ -335,6 +388,47 @@ test('ADR-0056 — la re-analyse a un budget QUOTIDIEN : il coupe, il se libère
   assert.throws(() => c3.ctx.appliquerReanalyseCiblee_(() => false), /boum/);
   assert.ok(String(p3.valeurs.DriveAI_REANALYSE_JOUR || '').indexOf(jour + '|') === 0,
     'ms consommées écrites malgré l\'exception');
+});
+
+test('ADR-0056 — le RELIQUAT du jour borne le run, et jamais un document ne démarre dans la marge', () => {
+  // Deux propriétés qu'aucun des quatre cas précédents n'exerçait (🟡 revue quotas) : le
+  // `Math.min(par-tick, reliquat)` — le remplacer par le seul plafond par tick les laissait TOUS
+  // verts — et la marge de démarrage, sans laquelle un document pris à la dernière seconde pousse
+  // le tick au-delà du mur DUR de 6 min, où l'exécution est TUÉE (le `finally` ne tourne pas : la
+  // fuite de budget se produit dans le run qui en a le plus consommé).
+  const p = { valeurs: { DriveAI_REANALYSE_BASE: '900' } };
+  const { ctx } = ctxReanalyseCampagne(p);
+  const plafondJour = ctx.CONFIG.REANALYSE_BUDGET_JOUR_MS;
+  const marge = ctx.CONFIG.PILOTE_MARGE_DOC_MS;
+  const reliquat = marge + 30000; // reliquat VOLONTAIREMENT plus petit que le plafond par tick
+  assert.ok(reliquat < ctx.CONFIG.REANALYSE_BUDGET_MS,
+    'pré-condition : le reliquat doit mordre AVANT le plafond par tick, sinon le test ne prouve rien');
+  p.valeurs.DriveAI_MIGRATION = ctx.CONFIG.MIGRATION_TAG;
+  p.valeurs.DriveAI_REANALYSE_BARRE_TAG = ctx.CONFIG.REANALYSE_TAG;
+  p.valeurs.DriveAI_REANALYSE_JOUR = '2026-09-14|' + (plafondJour - reliquat);
+
+  // Horloge pilotée : `Date.now()` ET `new Date()` (le budget du jour lit les deux).
+  const VraiDate = ctx.Date;
+  let horloge = 1000000;
+  function FauxDate() { return new VraiDate(horloge); }
+  FauxDate.now = () => horloge;
+  ctx.Date = FauxDate;
+
+  let garde = null;
+  ctx.reanalyserUnePage_ = (g) => { garde = g; return { traites: 0, collectes: 0, reste: true }; };
+  ctx.appliquerReanalyseCiblee_(() => false);
+  assert.ok(garde, 'la page a bien été lancée');
+
+  // Le mur de DÉMARRAGE attendu : reliquat du jour − marge. Dérivé, jamais recopié.
+  const murAttendu = reliquat - marge;
+  assert.strictEqual(garde(), false, 'au démarrage, il reste du budget');
+  horloge += murAttendu - 1000;      // juste SOUS le mur : on prend encore un document
+  assert.strictEqual(garde(), false, 'sous le mur de démarrage, on prend encore un document');
+  horloge += 2000;                   // juste AU-DESSUS : plus aucun document ne démarre
+  assert.strictEqual(garde(), true,
+    'aucun document ne démarre dans la dernière minute du reliquat (mutation : remplacer ' +
+    '`murDemarrage` par `budgetRun`, ou `budgetRun` par le seul plafond par tick, fait tomber ceci)');
+  ctx.Date = VraiDate;
 });
 
 test('appliquerReanalyseCiblee_ : tick DÉDIÉ de recensement (C28-18) — pose la base SANS collecter, filet du partiel', () => {

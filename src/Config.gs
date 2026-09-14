@@ -238,6 +238,10 @@ var CONFIG = {
   // times » le 06/07) et le TRI vivant était affamé toute la journée (4-17 fils triés/j). Le quota
   // d'appels est PARTAGÉ : la seule protection du tri est de borner la consommation TOTALE de la
   // campagne, pas seulement son runtime. La campagne finit plus lentement — c'est le prix accepté.
+  GMAIL_HISTO_PRETEES_MIN: 8,             // minutes DÉJÀ prêtées par ce donneur (ADR-0056). La ligne de
+                                          // santé les DIT, sinon la prochaine session lit « ses 12 min/j
+                                          // sont RÉALLOUABLES » exactement comme celle-ci a lu « 20 » et
+                                          // prête une seconde fois les mêmes minutes (🟡 revue sécurité).
   GMAIL_HISTO_BUDGET_JOUR_MS: 12 * 60 * 1000, // 20 → 12 (ADR-0056) : 8 min prêtées à la re-analyse
                                           // ciblée de `06`. Donneur choisi parce que le moteur ÉCRIT
                                           // « Historique Gmail : terminée ✅ — ses 20 min/j sont
@@ -849,6 +853,14 @@ var CONFIG = {
   // ventilation LLM de septembre montre ZÉRO dépense de re-analyse — rien d'actif n'est interrompu.
   REANALYSE_TAG: 'c28-92',                // bumper le tag relance une campagne complète (re-facture)
   REANALYSE_CIBLES: ['06 · Études & diplômes'],
+  // ⚠️ RACINE SEULE (🔴 revue sécurité ADR-0056). `REANALYSE_CIBLES` borne le DOMAINE, jamais la
+  // POPULATION : la collecte était récursive, donc la campagne aurait ramassé tout l'arbre `06` —
+  // y compris ce que C28-90/C28-105 venaient d'y ranger et les dossiers que MARC a construits — et
+  // les aurait fait repasser par `planRoutageV2_`, qui calcule la cible depuis le seul NOM et ne
+  // consulte AUCUNE des gardes du déjà-rangé (elles vivent dans `decisionConsolidation_`). Un
+  // document dont le nom n'apprend rien serait reparti À PLAT à la racine du domaine.
+  // Borner à la racine ramène le rayon d'action à ce que l'ADR décrit ET à ce que Marc a chiffré.
+  REANALYSE_RACINE_SEULE: true,
   REANALYSE_BUDGET_MS: 2 * 60 * 1000,     // sous-budget PAR TICK (même famille que MIGRATION_BUDGET_MS) ;
                                           // la page réutilise MIGRATION_MAX_PAR_RUN (docs lourds/run)
   // Budget QUOTIDIEN, en ms RÉELLES persistées (ADR-0056). Il MANQUAIT : la campagne n'avait qu'un

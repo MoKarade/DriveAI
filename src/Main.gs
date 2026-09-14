@@ -491,7 +491,7 @@ function tickDriveAI() {
       function () { executerMission_('dispatch03', estBudgetDepasseStandard); },
       function (e) { journalErreur_('Missions', 'Mission dispatch 03 différée : ' + e); });
     etapeSuivie_('mission-ecoles-archives-06', [gMissionsActif, gBudgetStandard, gResetEnCours, gMissionsJour_],
-      function () { executerMission_('ecoles-archives06', estBudgetDepasseStandard); },
+      function () { executerMission_('ecoles-archives06b', estBudgetDepasseStandard); },
       function (e) { journalErreur_('Missions', 'Mission archives 06 différée : ' + e); });
     // PR2 (Carrière + Finances). `paies` AVANT `carriere` : le domicile UNIQUE des paies est
     // 02/« Revenus & paie »/<Employeur> — les deux missions y routent par la MÊME fonction
@@ -580,7 +580,7 @@ function tickDriveAI() {
       function (e) { journalErreur_('Migration', 'Migration taxonomie différée : ' + e); });
 
     // Re-analyse v2 CIBLÉE (#26, C26-08, ADR-0018) : re-passe les domaines mal classés
-    // (REANALYSE_CIBLES : 03, 08) au pipeline v2, EN PLACE, une page par tick. Ne démarre qu'après
+    // (REANALYSE_CIBLES : `06` seul depuis ADR-0056, et à la RACINE du domaine) au pipeline v2, EN PLACE, une page par tick. Ne démarre qu'après
     // la FIN de m1 (une seule campagne de masse à la fois — garde dans appliquerReanalyseCiblee_).
     // Même famille que la migration : après l'intake, gatée par le frein budget, enveloppée.
     etapeSuivie_('reanalyse', [gBudgetTick, gFreinCampagnes, gResetEnCours],
@@ -1048,6 +1048,44 @@ function traiterFil_(fil, estBudgetDepasse) {
 }
 
 /**
+ * Ligne de Santé de la RE-DATATION de `06` (C28-92, ADR-0056) : où en est la campagne, et combien
+ * de son budget quotidien elle a consommé AUJOURD'HUI.
+ *
+ * Pourquoi elle existe : la campagne rallume de la dépense LLM, et `DriveAI_REANALYSE_JOUR` n'était
+ * lisible nulle part. Sans ce chiffre, « elle tourne » et « elle n'a jamais démarré » se ressemblent
+ * — c'est exactement ce qui a permis à C26-08 de rester en pause deux semaines sans que personne ne
+ * le voie (§1.6). Les DEUX gardes amont sont dites explicitement, parce qu'un zéro à 0 min/j ne
+ * distingue pas « rien à faire » de « jamais atteinte ».
+ * Échec fermé : toute lecture qui lève rend un texte neutre, jamais un faux « terminée ».
+ * @return {string}
+ */
+function texteSanteReanalyse_() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    if (props.getProperty('DriveAI_REANALYSE') === CONFIG.REANALYSE_TAG) {
+      return 'terminée ✅ (campagne « ' + CONFIG.REANALYSE_TAG + ' »)';
+    }
+    if (typeof rangementTermine_ === 'function' && !rangementTermine_()) {
+      return 'en attente — le grand rangement passe d\'abord';
+    }
+    if (props.getProperty('DriveAI_MIGRATION') !== CONFIG.MIGRATION_TAG) {
+      return 'en attente — la migration « ' + CONFIG.MIGRATION_TAG + ' » doit finir d\'abord';
+    }
+    var budget = Math.round(CONFIG.REANALYSE_BUDGET_JOUR_MS / 60000);
+    var consomme = budgetJourReanalyse_(props, dateGmail_(new Date()));
+    var base = props.getProperty('DriveAI_REANALYSE_BASE');
+    var traites = Number(props.getProperty('DriveAI_REANALYSE_TRAITES')) || 0;
+    var avance = base === null
+      ? 'recensement en cours'
+      : traites + ' / ' + base + ' documents';
+    return 'en cours — ' + avance + ' · ' + Math.round(consomme / 60000) + ' des ' + budget +
+      ' min/j consommées aujourd\'hui (campagne « ' + CONFIG.REANALYSE_TAG + ' »)';
+  } catch (e) {
+    return 'état illisible (' + e + ')';
+  }
+}
+
+/**
  * Ligne de SANTÉ de la campagne historique Gmail — état, avancement, et minutes RÉELLEMENT
  * consommées aujourd'hui sur son budget quotidien. PURE au sens I/O (Properties seules).
  *
@@ -1067,7 +1105,15 @@ function texteSanteHistoGmail_() {
     var props = PropertiesService.getScriptProperties();
     var statut = statutHistoGmail_(props.getProperty('DriveAI_GMAIL_HISTO') === 'terminé',
       estPanneGmail_(), budgetCampagnesAtteint_(), resetEnCours_());
-    if (statut === 'terminé') return 'terminée ✅ — ses ' + budget + ' min/j sont RÉALLOUABLES';
+    if (statut === 'terminé') {
+      // ⚠️ DIRE ce qui a DÉJÀ été prêté (🟡 revue sécurité ADR-0056). Sans ce rappel, la prochaine
+      // session lit « ses 12 min/j sont RÉALLOUABLES » exactement comme celle-ci a lu « 20 », et
+      // prête une SECONDE fois des minutes déjà cédées — l'enveloppe se creuse sans que personne
+      // ne voie le double emploi. Le donneur annonce donc son solde, pas seulement son budget.
+      var pretees = CONFIG.GMAIL_HISTO_PRETEES_MIN || 0;
+      return 'terminée ✅ — ses ' + budget + ' min/j sont RÉALLOUABLES' +
+        (pretees ? ' (' + pretees + ' min déjà prêtées à la re-analyse)' : '');
+    }
     // ⚠️ Le COMPTE de fils n'est PAS répété ici : l'onglet Progression le porte déjà, et de façon
     // MONOTONE (l'offset brut repart à 0 aux passes de vérification — c'est une position de scan,
     // pas un cumul). Deux surfaces qui affichent le même fait avec deux conversions différentes,

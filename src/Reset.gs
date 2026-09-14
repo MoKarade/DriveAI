@@ -32,12 +32,13 @@ var RACINE_ARCHIVES_ECOLE_RESET = 'Archives scolaires';
  * EXEMPTIONS DÉCLARÉES au plafond « ≤ 7 enfants par niveau » (ADR-0030), par chemin EXACT.
  *
  * ⚠️ Une exemption n'est pas une tolérance : c'est une décision NOMMÉE, testée à la valeur près.
- * `Archives scolaires` porte les 7 dossiers que Marc a construits lui-même, plus le
- * `Cégep de Sherbrooke (2019)` qu'il a demandé d'ajouter le 14/09 — soit 8. Le dépassement vient
- * de sa structure et de sa demande, pas d'une dérive du moteur.
- * L'alternative — omettre de la table les 3 dossiers qu'aucune règle ne vise — aurait rendu le
- * plafond FAUX en silence (« une cible ABSENTE de la table rend `verifierStructureCibleReset_`
- * aveugle au ≤ 7 RÉEL », déjà vécu en `01`). On déclare les 8 et on assume l'exemption.
+ * Le principe : on DÉCLARE tout ce qui existe dans le Drive de Marc — l'alternative, omettre de la
+ * table les dossiers qu'aucune règle ne vise, rendrait le plafond FAUX en silence (« une cible
+ * ABSENTE de la table rend `verifierStructureCibleReset_` aveugle au ≤ 7 RÉEL », vécu en `01`) —
+ * et quand le compte dépasse 7, le dépassement est NOMMÉ ici plutôt que toléré.
+ * ⚠️ `Archives scolaires` a porté une exemption jusqu'à ADR-0056 (8 enfants) ; la fusion des deux
+ * dossiers de collège/lycée l'a ramené à 7, et l'exemption a été RETIRÉE. Une exemption devenue
+ * inutile se retire : gardée, elle couvrirait en silence le prochain dépassement.
  */
 var RESET_EXEMPTIONS_PLAFOND = [
   // 12 sous-dossiers thématiques de MARC + les 4 standard = 16. Le dépassement est le SIEN, et le
@@ -197,8 +198,9 @@ var STRUCTURE_CIBLE_RESET = {
     // du cadratin, et le moteur crée un SECOND dossier à côté du sien — exactement comme
     // « 3987 route des Rivières » à côté de « 3987 rte des Rivières » (leçon vécue en 03).
     // Deux tests le verrouillent : les noms == le relevé Drive, et chacun survit à `champ_`.
-    // (ADR-0055) 8 enfants : les 7 de Marc + le cégep qu'il a demandé. Exemption DÉCLARÉE au
-    // plafond ≤ 7 dans `RESET_EXEMPTIONS_PLAFOND`, jamais une omission silencieuse.
+    // 7 enfants depuis ADR-0056 (la fusion des deux dossiers de collège/lycée) : SOUS le plafond,
+    // donc plus aucune exemption pour ce niveau. Celle d'`IMERIR — …` (16 enfants) demeure, elle,
+    // dans `RESET_EXEMPTIONS_PLAFOND` — nommée, jamais une omission silencieuse.
     'Archives scolaires': {
       // (ADR-0056, décision Marc 2026-09-14 « fusionne en un 2014-2018 ») : ses deux dossiers de
       // collège/lycée n'en font plus qu'UN. Le dossier Drive a été renommé en conséquence.

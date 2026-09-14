@@ -239,6 +239,13 @@ function majSante_() {
     // qui dit si elles servent — les MINUTES consommées — n'existait nulle part. Son avancement,
     // lui, est déjà dans l'onglet Progression. Sans ce chiffre, réallouer serait une supposition.
     ['Historique Gmail : ' + texteSanteHistoGmail_()],
+    // Re-datation de `06` (C28-92, ADR-0056). Même raison que les deux lignes ci-dessus — le
+    // registre de suivi C28-44 est SATURÉ, on ne peut pas lui ajouter une clé — et une raison
+    // propre à cette campagne : elle rallume de la dépense LLM et `DriveAI_REANALYSE_JOUR`
+    // n'était exposé NULLE PART (ni Santé, ni Télémétrie, ni Diagnostic). Rallumer ~8,6 $ sans
+    // aucun point d'observation, c'est le mode de panne du §1.6 mot pour mot (deux revues l'ont
+    // relevé indépendamment). Une ligne, une écriture par tick, zéro octet de Property.
+    ['Re-datation de 06 : ' + texteSanteReanalyse_()],
     ['Mis à jour : ' + new Date()]
   ];
   f.getRange(2, 1, lignes.length, 1).setValues(lignes); // une seule écriture Sheet (I/O borné/tick)
@@ -513,7 +520,7 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, regi
     'mission-vehicule': function () { pousserMission('mission-vehicule', 'vehicule'); },
     'mission-logement': function () { pousserMission('mission-logement', 'logement'); },
     'mission-dispatch-03': function () { pousserMission('mission-dispatch-03', 'dispatch03'); },
-    'mission-ecoles-archives-06': function () { pousserMission('mission-ecoles-archives-06', 'ecoles-archives06'); },
+    'mission-ecoles-archives-06': function () { pousserMission('mission-ecoles-archives-06', 'ecoles-archives06b'); },
     'mission-paies': function () { pousserMission('mission-paies', 'paies'); },
     'mission-carriere': function () { pousserMission('mission-carriere', 'carriere'); },
     'mission-annees-02': function () { pousserMission('mission-annees-02', 'annees02'); },
@@ -618,7 +625,7 @@ function majProgressions_() {
     missions: (function () {
       var brut = chargerEtatMissions_(props);
       var m = {};
-      ['vehicule', 'logement', 'dispatch03', 'ecoles-archives06', 'paies', 'carriere', 'annees02', 'impots'].forEach(function (tag) {
+      ['vehicule', 'logement', 'dispatch03', 'ecoles-archives06b', 'paies', 'carriere', 'annees02', 'impots'].forEach(function (tag) {
         var e = brut[tag] || { t: 0, b: 0, na: 0 };
         m[tag] = {
           traites: e.t || 0, base: e.b || 0, nonApparies: e.na || 0,
@@ -657,7 +664,7 @@ function majProgressions_() {
     'mission-vehicule': etat.missions.vehicule.traites,
     'mission-logement': etat.missions.logement.traites,
     'mission-dispatch-03': etat.missions.dispatch03.traites,
-    'mission-ecoles-archives-06': etat.missions['ecoles-archives06'].traites,
+    'mission-ecoles-archives-06': etat.missions['ecoles-archives06b'].traites,
     'mission-paies': etat.missions.paies.traites,
     'mission-carriere': etat.missions.carriere.traites,
     'mission-annees-02': etat.missions.annees02.traites,

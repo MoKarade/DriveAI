@@ -31,16 +31,42 @@
 > que C28-70 attendait faute de preuve, et c'est le MOTEUR qui l'écrit (« terminée ✅ — ses 20 min/j
 > sont RÉALLOUABLES »). Enveloppe inchangée à 63 min/j.
 >
-> **Vérifications** : 1293 tests moteur · 278 tests app + build · syntaxe `.gs` · **5 mutations,
-> 5 attrapées** (gate quotidienne retirée, ms non écrites, enveloppe gonflée, nom divergent, fenêtre
-> étendue à 2018). Trois tests qui MENTAIENT sont tombés et ont été corrigés : `majSante_` affirmait
-> dériver les 20 min de CONFIG en écrivant `20` en dur — son propre commentaire avait prédit qu'il
-> tomberait « le jour où les 20 min sont réallouées ».
+> **REVUE FLOTTE ADVERSARIALE — 2ᵉ passe : 3 🔴 de plus, tous intégrés avant le merge.**
+> (1) La campagne descendait **tout le sous-arbre de `06`**, pas les 328 fichiers à plat : elle
+> aurait fait repasser par le flux ce que C28-90/C28-105 venaient de ranger — y compris les dossiers
+> de MARC — et le flux ne connaît ni D8, ni D9, ni D10, donc un nom muet repartait **à plat à la
+> racine du domaine**. Coût ×2 à ×3 au passage. ⇒ `REANALYSE_RACINE_SEULE`. (2) La carte du compte
+> rendu **se démontait au succès complet** (0 candidat restant ⇒ plus rien pour rendre le bilan) —
+> C28-93 déplacé d'un cran. ⇒ prédicat pur `carteVidesVisible`. (3) La zone collante se rendait
+> **sous la barre d'onglets du téléphone**. Plus : le dossier Davila passait de CIBLE à SOURCE sous
+> le MÊME tag (les fichiers déjà déplacés n'auraient jamais été repris) ⇒ tag `…06b` ; et aucune
+> marge avant le mur (un document LLM lancé dans la dernière minute est TUÉ, le `finally` ne tourne
+> pas, le budget fuit) ⇒ `PILOTE_MARGE_DOC_MS`.
+>
+> **Vérifications** : 1297 tests moteur · 281 tests app + build · syntaxe `.gs` · **12 mutations,
+> 12 attrapées**. ⚠️ Dont la garde « racine seule », qui n'était couverte par **AUCUN** test au
+> premier jet : la retirer laissait toute la suite verte. Son test observe le CHEMIN (`getFolders`
+> jamais appelé), pas la taille du résultat. Trois tests qui MENTAIENT sont tombés et ont été
+> corrigés : `majSante_` affirmait dériver les 20 min de CONFIG en écrivant `20` en dur — son propre
+> commentaire avait prédit qu'il tomberait « le jour où les 20 min sont réallouées ».
+>
+> **Ce que ça coûte vraiment** : **14 à 21 jours** [Probable] — 8 min/j ÷ **20-30 s par document**
+> (le chiffre MESURÉ du projet pour OCR + Sonnet v2, `Config.gs`) = 16 à 24 documents/jour pour 328.
+> Elle tourne en fond, ce n'est pas l'affaire de quelques jours. Et la réallocation est neutre **au tableau** (63 min/j), pas dans la machine : le
+> donneur était TERMINÉ, il ne consommait plus rien — le moteur va donc réellement consommer
+> **+8 min/j** sur les ~90 min/j d'Apps Script. Marge confortable, mais l'invariant somme des
+> PLAFONDS, jamais de la consommation.
 >
 > **Ouverts** : C28-111 (re-analyse de `03`/`08` parkée — à reprendre ou à clore avec Marc),
-> C28-112 (la campagne `reanalyse` n'a pas de ligne dans l'état : on la rallume sans barre de
-> progression). C28-86 ne demande plus rien au code — Marc met les 2 fichiers illisibles à la
-> poubelle lui-même, et la mission Carrière convergera d'elle-même.
+> **C28-115 — à trancher par Marc** : le frein LLM est à **40 $** pour une campagne annoncée à
+> 8,6 $ (4,6× le besoin) ; c'est un filet anti-emballement, pas un budget, mais si la mesure dérape
+> rien ne s'arrêtera avant 40 $. C28-113 (`migration` et les `dryrun-*` ont le même trou de budget
+> quotidien) et C28-114 (`chargerIndexCache_` publie son cache avant de l'avoir rempli) sont notés,
+> **non corrigés** — hors périmètre. C28-112 est **diagnostiqué et se répare tout seul** : la ligne
+> manquait parce que `pousser` refuse de créer une ligne pour une campagne déjà « terminée »
+> (C26-08 l'était sans en avoir jamais eu une) ; le tag neuf la fait naître au prochain tick. C28-86
+> ne demande plus rien au code — Marc met les 2 fichiers illisibles à la poubelle lui-même, et la
+> mission Carrière convergera d'elle-même.
 
 > **🟦 HISTORIQUE — 2026-09-14 : C28-105, la structure des écoles, c'est celle de Marc (ADR-0055).**
 > Marc, capture d'écran à l'appui : « j'ai la bonne structure pour les écoles déjà, **continue à

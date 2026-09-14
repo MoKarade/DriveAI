@@ -264,7 +264,7 @@ function decisionConsolidation_(d) {
   // D8 ne protège que les cibles FAIBLES et D9 que les remontées vers un ANCÊTRE : entre deux
   // FRÈRES de même profondeur, les deux se taisent. Or une école NOMMÉE dans le nom est un signal
   // FORT — donc, sans cette règle, la consolidation vide `Archives scolaires/IMERIR — …/MFE` dans
-  // `…/IMERIR — …/Cours & travaux`, et `Archives scolaires/Collège & Lycée — divers (2014-2017)`
+  // `…/IMERIR — …/Cours & travaux`, et `Archives scolaires/Collège & Lycée — divers (2014-2018)`
   // vers `Autres établissements`, à la RACINE du domaine. Les trois agents de la revue flotte l'ont
   // trouvé indépendamment, deux d'entre eux en EXÉCUTANT `decisionConsolidation_` sur ces cas.
   // C'est l'inverse mot pour mot de la demande qui a motivé ADR-0055 : « continue à rajouter

@@ -17,6 +17,7 @@ import {
   actionsRefuseesReorg,
   lignesVideCandidat,
   plagesContigues,
+  carteVidesVisible,
 } from '../etat';
 import { Icone } from '../composants/Icone';
 import { Langue, t } from '../i18n';
@@ -267,9 +268,16 @@ export function ReorgVue({ langue }: { langue: Langue }) {
       )}
       {demande && demande.statut === 'échec' && <p className="erreur">{demande.detail}</p>}
 
-      {videsCandidats.length > 0 && (
+      {/* ⚠️ LA CARTE SURVIT À LA LISTE (🔴 revue sécurité ADR-0056). Conditionner la carte au seul
+          `videsCandidats.length > 0` la démontait au succès COMPLET : `corbeillerLot` fait passer
+          chaque ligne traitée à `corbeillé`, donc à la 112ᵉ la liste devient vide, la carte
+          disparaît — et le bilan écrit juste après n'a plus rien qui le rende. Le compte rendu
+          n'était visible QUE quand il restait des échecs, c'est-à-dire jamais sur le cas nominal :
+          le défaut d'origine, déplacé d'un cran. La carte reste donc tant qu'il y a quelque chose
+          à DIRE ; seule la LISTE dépend des candidats restants. */}
+      {carteVidesVisible(videsCandidats.length, { erreur: erreurCorbeille, bilan: bilanCorbeille, avancement }) && (
         <div className="prop-carte vides">
-          <b>{t('dossiersVides', langue)}</b>
+          {videsCandidats.length > 0 && <b>{t('dossiersVides', langue)}</b>}
           {videsCandidats.map((l) => (
             <div key={l.cle} className="prop-vide">
               <span className="prop-chemin">{l.cheminActuel}</span>

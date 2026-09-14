@@ -7,6 +7,12 @@
 
 import { describe, it, expect } from 'vitest';
 import { verdictCorbeille, statutRefusCorbeille, corbeillerLot, CORBEILLE_MAX_PANNES } from '../src/corbeille';
+import { carteVidesVisible } from '../src/etat';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ICI = fileURLToPath(new URL('.', import.meta.url));
 import { IDS_STRUCTURELS_DEFAUT } from '../src/garde-fous';
 import { MIME_DOSSIER } from '../src/explorateur';
 
@@ -275,5 +281,44 @@ describe('corbeillerLot', () => {
       avancement: (fait) => vus.push(fait),
     });
     expect(vus).toEqual([1, 2, 3]);
+  });
+});
+
+/* ---------- C28-93/C28-110 : le compte rendu doit être VU là où on clique ---------- */
+
+describe('carteVidesVisible + placement du compte rendu (C28-93)', () => {
+  it('succès COMPLET (plus un seul candidat) : la carte reste, pour porter le bilan', () => {
+    // Le cas nominal, précisément celui qui ne s'affichait jamais : 112 dossiers corbeillés,
+    // 0 candidat restant, un bilan à montrer. Gatée sur la liste, la carte se démontait ici.
+    expect(carteVidesVisible(0, { bilan: '112 dossiers mis à la corbeille' })).toBe(true);
+    expect(carteVidesVisible(0, { erreur: 'Corbeille refusée : non-vide' })).toBe(true);
+    expect(carteVidesVisible(0, { avancement: { fait: 7, total: 112 } })).toBe(true);
+    expect(carteVidesVisible(3, {})).toBe(true);
+  });
+
+  it('rien à dire et rien à lister → la carte n\'existe pas (pas de cadre vide)', () => {
+    expect(carteVidesVisible(0, {})).toBe(false);
+    expect(carteVidesVisible(0, { erreur: null, bilan: '', avancement: undefined })).toBe(false);
+  });
+
+  it('TRIPWIRE : la vue GATE la carte par ce prédicat, et rend le retour APRÈS la liste', () => {
+    // 🔴 C28-93 — le vrai défaut n'était pas le code de la corbeille (il marchait), c'était l'ENDROIT
+    // du rendu : le compte rendu s'affichait en TÊTE de carte, ~112 lignes au-dessus du bouton sur
+    // lequel Marc venait de cliquer. Un test de logique pure ne peut pas voir ça : l'ORDRE du rendu
+    // et le fait que la vue appelle bien le prédicat se verrouillent sur la SOURCE.
+    const vue = readFileSync(join(ICI, '..', 'src', 'vues', 'Reorg.tsx'), 'utf8');
+    expect(vue).toContain('carteVidesVisible(videsCandidats.length');
+    // L'ancienne condition ne doit plus gater la carte (elle reste permise pour la LISTE seule).
+    expect(vue).not.toMatch(/\{\(videsCandidats\.length > 0 \|\|/);
+    const liste = vue.indexOf('videsCandidats.map(');
+    const retour = vue.indexOf('className="corbeille-retour"');
+    expect(liste).toBeGreaterThan(0);
+    expect(retour).toBeGreaterThan(liste); // le retour est SOUS la liste, jamais au-dessus
+    // …et il reste visible où qu'on soit dans une liste de 112 lignes : collant, dégagé de la
+    // barre d'onglets du téléphone (sinon il se rend SOUS elle — 🔴 revue ADR-0056).
+    const css = readFileSync(join(ICI, '..', 'src', 'styles.css'), 'utf8');
+    const bloc = css.slice(css.indexOf('.corbeille-retour'));
+    expect(bloc.slice(0, 400)).toMatch(/position:\s*sticky/);
+    expect(css).toMatch(/\.corbeille-retour\s*\{[^}]*bottom:\s*calc\(var\(--barre-basse-h\)/);
   });
 });

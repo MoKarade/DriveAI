@@ -679,9 +679,10 @@ test('ADR-0055 — les libellés d\'école sont EXACTEMENT les dossiers de Marc 
   // libellé qui diffère d'une majuscule, d'un accent ou d'un tiret CADRATIN crée un SECOND dossier
   // à côté du vrai, et plus rien ne les réunit. C'est exactement ce qui est arrivé en `03`
   // (« 3987 route des Rivières » vs « 3987 rte des Rivières »).
-  // Les 8 enfants d'`Archives scolaires` : les 7 que MARC a créés le 29/05/2026 (relevés dans son
-  // Drive le 14/09) + `Cégep de Sherbrooke (2019)`, qu'il a demandé d'ajouter et que le moteur
-  // find-or-crée PAR NOM — donc au caractère près, lui aussi.
+  // Les 7 enfants d'`Archives scolaires` : les 6 qui restent des 7 que MARC a créés le 29/05/2026
+  // (C28-90 fusionne ses deux nœuds collège/lycée en un seul `… (2014-2018)`, à sa demande)
+  // + `Cégep de Sherbrooke (2019)`, qu'il a demandé d'ajouter et que le moteur find-or-crée PAR
+  // NOM — donc au caractère près, lui aussi.
   const reels = ['Collège & Lycée — divers (2014-2018)',
     'Lycée — Gustave Eiffel — Physique-Chimie (TP)', 'Prépa PTSI (2017-2018)',
     'ULCO — DUT GIM (2018-2020)', 'Cégep de Sherbrooke (2019)',
@@ -728,7 +729,7 @@ test('ADR-0055 D10 — la campagne ne réorganise jamais l\'intérieur de la str
   // `decisionConsolidation_` : une école NOMMÉE est un signal FORT, donc ni D8 (cible faible) ni
   // D9 (remontée vers un ancêtre) ne mordent entre deux FRÈRES de même profondeur. La
   // consolidation vidait donc `Archives scolaires/IMERIR — …/MFE` dans `…/Cours & travaux`, et
-  // `Archives scolaires/Collège & Lycée — divers (2014-2017)` vers `Autres établissements`, à la
+  // `Archives scolaires/Collège & Lycée — divers (2014-2018)` vers `Autres établissements`, à la
   // RACINE du domaine — l'inverse mot pour mot de la demande qui a motivé ADR-0055.
   const d = '06 · Études & diplômes';
   const A = ctx.RACINE_ARCHIVES_ECOLE_RESET + '/';
@@ -751,10 +752,10 @@ test('ADR-0055 D10 — la campagne ne réorganise jamais l\'intérieur de la str
     assert.strictEqual(dec.cible, d + '/' + actuel);
   }
   // (b) SORTIE de la structure vers la racine du domaine : refusée aussi.
-  const sortie = decide(A + 'Collège & Lycée — divers (2014-2017)',
+  const sortie = decide(A + 'Collège & Lycée — divers (2014-2018)',
     '2018-03-10_Certificat de scolarité_Collège Gustave Eiffel.pdf');
   assert.strictEqual(sortie.action, 'OK');
-  assert.strictEqual(sortie.cible, d + '/' + A + 'Collège & Lycée — divers (2014-2017)');
+  assert.strictEqual(sortie.cible, d + '/' + A + 'Collège & Lycée — divers (2014-2018)');
   // (c) …et un fichier d'un dossier de Marc que le nom rattache à une AUTRE école ne bouge pas non
   // plus : c'est SA décision de rangement, pas celle du moteur.
   const croise = decide(A + 'Lycée — Gustave Eiffel — Physique-Chimie (TP)',

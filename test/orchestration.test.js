@@ -121,7 +121,14 @@ test('budget RÉALLOUÉ, jamais AUGMENTÉ : le total du reset ne dépasse pas ce
     C.RESET_04_BUDGET_JOUR_MS + C.RESET_LLM_BUDGET_JOUR_MS;
   const libere = C.CONSOLIDATION_BUDGET_JOUR_MS + C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS +
     C.GMAIL_HISTO_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS +
-    C.MISSIONS_BUDGET_JOUR_MS; // + fusion (#47) et missions (C28-49) — TOUTES gatées !resetEnCours_
+    C.MISSIONS_BUDGET_JOUR_MS +
+    // ⚠️ 9ᵉ jambe (revue quotas ADR-0056) : `reanalyse` est gatée `gResetEnCours` (Main.gs), elle
+    // appartient donc à CE bloc AUSSI. Il y a TROIS sommes, pas deux — et c'est la troisième qui
+    // perdait sa marge : sans cette ligne, `libere` tombait de 58 à 50 min/j face à un `reset` de
+    // 50, soit ZÉRO marge, avec le test toujours vert (50 ≤ 50). La prochaine réallocation neutre
+    // vers la re-analyse aurait été refusée par un invariant censé l'autoriser — exactement le
+    // défaut que C28-99 avait corrigé sur l'autre verrou.
+    C.REANALYSE_BUDGET_JOUR_MS; // + fusion (#47) et missions (C28-49) — TOUTES gatées !resetEnCours_
                                // (vérifié par les tests de gates ci-dessus/dessous) : un reset ON les
                                // suspend, leur budget est donc réellement LIBÉRÉ pour lui.
   assert.ok(reset <= libere,

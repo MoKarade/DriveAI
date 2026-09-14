@@ -142,8 +142,11 @@ function compterRestantReanalyse_(estBudgetDepasse) {
     if (estBudgetDepasse()) { etat.complet = false; break; }
     if (CONFIG.DOMAINES_PROTEGES.indexOf(cibles[d]) !== -1) continue; // défense en profondeur
     try {
+      // MÊME périmètre que `collecterAReanalyser_` — sinon la barre de progression compte une
+      // population que la campagne ne traitera jamais, et « terminé » arrive à 30 %.
       compterCampagneDossier_(DriveApp.getFolderById(CONFIG.DOMAINES[cibles[d]]), etat, estBudgetDepasse,
-        function (f) { return estAReanalyser_(f, CONFIG.REANALYSE_TAG); });
+        function (f) { return estAReanalyser_(f, CONFIG.REANALYSE_TAG); },
+        !CONFIG.REANALYSE_RACINE_SEULE);
     } catch (e) {
       etat.complet = false;
     }
@@ -160,17 +163,21 @@ function compterRestantReanalyse_(estBudgetDepasse) {
  * @param {function():boolean} estBudgetDepasse
  * @param {function(File):boolean} predicat
  */
-function compterCampagneDossier_(dossier, etat, estBudgetDepasse, predicat) {
+function compterCampagneDossier_(dossier, etat, estBudgetDepasse, predicat, recursif) {
   if (etat.n > 20000) { etat.complet = false; return; } // plafond dur de sécurité
   var fi = dossier.getFiles();
   while (fi.hasNext()) {
     if (estBudgetDepasse()) { etat.complet = false; return; }
     try { if (predicat(fi.next())) etat.n++; } catch (e) { /* illisible : pas compté */ }
   }
+  // `recursif` par DÉFAUT vrai : l'appelant historique (migration m1) ne passe pas l'argument et
+  // garde exactement son comportement. Seule la re-analyse, qui vise une population À PLAT, le
+  // passe à `false` (ADR-0056).
+  if (recursif === false) return;
   var fo = dossier.getFolders();
   while (fo.hasNext()) {
     if (estBudgetDepasse()) { etat.complet = false; return; }
-    compterCampagneDossier_(fo.next(), etat, estBudgetDepasse, predicat);
+    compterCampagneDossier_(fo.next(), etat, estBudgetDepasse, predicat, recursif);
     if (!etat.complet) return;
   }
 }
@@ -359,8 +366,15 @@ function appliquerReanalyseCiblee_(estBudgetDepasse) {
   var budgetRun = Math.min(CONFIG.REANALYSE_BUDGET_MS,
     CONFIG.REANALYSE_BUDGET_JOUR_MS - consommeJour);
   var debutReanalyse = Date.now();
+  // ⚠️ MARGE DE DÉMARRAGE (revue quotas ADR-0056, patron `DocumentsID.gs`/`Reset.gs`) : le garde
+  // n'est évalué qu'ENTRE deux documents. Sans marge, un document PRIS à la dernière seconde du
+  // budget coûte encore 1 à 3 min (OCR + Sonnet ×2 + un retry) et peut pousser le tick au-delà du
+  // mur DUR de 6 min d'Apps Script — où l'exécution est TUÉE : le `finally` ne tourne pas, les ms
+  // du run ne sont pas inscrites (la fuite de budget se produit dans le run qui en a le plus
+  // consommé), et le heartbeat du tick saute avec. La marge ferme la fuite ET le dépassement.
+  var murDemarrage = Math.max(0, budgetRun - CONFIG.PILOTE_MARGE_DOC_MS);
   var garde = function () {
-    return estBudgetDepasse() || (Date.now() - debutReanalyse) > budgetRun;
+    return estBudgetDepasse() || (Date.now() - debutReanalyse) > murDemarrage;
   };
   try {
 
@@ -485,6 +499,16 @@ function collecterAReanalyser_(dossier, ids, max, estBudgetDepasse) {
       journalErreur_('Réanalyse', 'Fichier ignoré à la collecte (' + e + ')');
     }
   }
+  // ⚠️ RACINE SEULE (ADR-0056, 🔴 revue sécurité) — la descente récursive est CONDITIONNELLE.
+  // La campagne c28-92 vise « les fichiers à plat à la racine de `06` », et c'est la population
+  // que Marc a chiffrée en disant oui. Récursive, elle ramassait AUSSI tout ce que C28-90/C28-105
+  // venaient de ranger — y compris les dossiers que Marc a construits lui-même — et les faisait
+  // repasser par `planRoutageV2_`, qui calcule la cible DEPUIS LE SEUL NOM. Or les trois gardes
+  // qui protègent le déjà-rangé (D8 cible faible, D9 ancêtre, D10 structure de Marc) vivent dans
+  // `decisionConsolidation_`, PAS dans le flux : un document dont le nom n'apprend rien serait
+  // reparti À PLAT à la racine du domaine — exactement le défaut que la contre-revue de C28-90
+  // avait mesuré (332 des 475) et fermé, ré-ouvert par une autre porte.
+  if (CONFIG.REANALYSE_RACINE_SEULE) return;
   var fo = dossier.getFolders();
   while (fo.hasNext() && ids.length < max) {
     if (estBudgetDepasse()) return;

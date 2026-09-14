@@ -121,8 +121,11 @@ re-analyse** : rien d'actif n'est interrompu.
    dérivés de la constante, jamais de sa valeur du jour.
 2. L'invariant d'enveloppe somme la 9ᵉ jambe ; l'inventaire des constantes la classe.
 3. Le nom du dossier fusionné est verrouillé des deux côtés (table ↔ mission ↔ fenêtres).
-4. **5 mutations, 5 attrapées** : gate quotidienne retirée · ms non écrites · enveloppe gonflée de
-   12 min · nom du dossier divergent · fenêtre étendue à 2018.
+4. **12 mutations, 12 attrapées** : gate quotidienne retirée · ms écrasées au lieu d'accumulées ·
+   marge de démarrage retirée · enveloppe gonflée de 12 min · transfert à moitié rendu · nom du
+   dossier divergent · fenêtre étendue à 2018 · source == cible · tag non bumpé · garde « racine
+   seule » retirée PUIS inversée · carte re-gatée sur la liste · prédicat amputé du bilan · compte
+   rendu remonté au-dessus de la liste · zone collante sous la barre d'onglets.
 
 ## Ce qu'on assume
 
@@ -133,5 +136,62 @@ re-analyse** : rien d'actif n'est interrompu.
 - **C28-86 ne demande plus rien au code** : Marc met les deux fichiers illisibles à la poubelle
   lui-même. La mission Carrière convergera d'elle-même quand ils auront disparu.
 - **La ligne de Progression de `reanalyse` est absente de l'état** alors que `Suivi.gs` la déclare.
-  Non diagnostiqué ici (backlog C28-112) : une campagne qu'on rallume sans barre de progression est
-  une campagne qu'on ne saura pas suivre.
+  Diagnostiqué depuis (voir plus bas) et compensé par une ligne de santé dédiée : une campagne
+  qu'on rallume sans rien pour la suivre est une campagne qu'on croira finie.
+
+---
+
+## Revue flotte adversariale — 2ᵉ passe (avant merge)
+
+Trois 🔴 trouvés APRÈS la rédaction ci-dessus. Les trois sont corrigés dans ce même lot ; ils sont
+consignés ici parce que chacun est un cas d'école d'une leçon déjà écrite au §9.
+
+1. **La campagne descendait tout le sous-arbre de `06`.** `collecterAReanalyser_` est récursive : à
+   côté des 328 fichiers à plat, elle ramassait tout ce que C28-90/C28-105 venaient de ranger — y
+   compris les dossiers que **Marc** a construits — et les faisait repasser par `planRoutageV2_`,
+   qui calcule la cible depuis le SEUL nom. Or les trois gardes qui protègent le déjà-rangé (D8
+   cible faible, D9 ancêtre, D10 structure de Marc) vivent dans `decisionConsolidation_`, **pas**
+   dans le flux : un document dont le nom n'apprend rien serait reparti **à plat à la racine du
+   domaine** — le défaut que la contre-revue de C28-90 avait mesuré (332 des 475) et fermé,
+   ré-ouvert par une autre porte. Et le coût annoncé aurait été multiplié par 2 à 3.
+   ➜ `CONFIG.REANALYSE_RACINE_SEULE: true`, la descente est conditionnelle.
+2. **La carte du compte rendu se démontait au succès complet.** Gatée sur `videsCandidats.length`,
+   elle disparaissait à la dernière ligne corbeillée — donc le bilan n'était visible **que s'il
+   restait des échecs**. C'était C28-93 déplacé d'un cran. ➜ prédicat pur `carteVidesVisible`.
+3. **La zone collante se rendait SOUS la barre d'onglets du téléphone.** ➜ `bottom: calc(var(--barre-basse-h) + env(safe-area-inset-bottom))`.
+
+Plus, sans gravité de garde-fou : le dossier Davila passait de CIBLE à SOURCE **sous le même tag**
+(les fichiers déjà déplacés portaient une clé de SUCCÈS et n'auraient jamais été repris) ➜ tag
+bumpé `ecoles-archives06` → `…06b` ; pas de marge de démarrage avant le mur (un document LLM lancé
+dans la dernière minute est TUÉ, le `finally` ne tourne pas, le budget fuit) ➜ `PILOTE_MARGE_DOC_MS` ;
+et six commentaires devenus faux après la fusion des deux nœuds collège/lycée.
+
+**12 mutations jouées, 12 attrapées** — dont la garde « racine seule », qui n'était couverte par
+**aucun** test au premier jet : la retirer laissait la suite verte. Son test observe le CHEMIN
+(`getFolders` jamais appelé), pas la taille du résultat — un sous-dossier vide rendrait la même
+liste (§9, « un mock qui compose son résultat ne distingue pas deux chemins »).
+
+## Ce que ça coûte vraiment, et ce qui reste à trancher
+
+- **Durée : 14 à 21 jours** [Probable]. 8 min/j ÷ **20-30 s par document** — le chiffre MESURÉ du
+  projet pour le pipeline complet OCR + Sonnet v2 (`Config.gs`, `RESET_LLM_MAX_PAR_RUN`) — donne 16
+  à 24 documents/jour pour 328. Ce n'est pas une campagne de quelques jours ; elle tourne en fond.
+  C'est le prix d'un budget prélevé plutôt qu'ajouté, et c'est le bon arbitrage — mais il se dit.
+- **La réallocation est neutre au tableau, pas dans la machine.** L'enveloppe reste à 63 min/j,
+  mais le donneur (`GMAIL_HISTO`) est **terminé** : il ne consommait plus rien. Le moteur va donc
+  réellement consommer **+8 min/j** de quota runtime, sur les ~90 min/j d'Apps Script. Marge
+  confortable, mais l'invariant d'enveloppe ne la mesure pas — il somme des PLAFONDS, pas de la
+  consommation.
+- **Le frein est à 40 $ pour une campagne annoncée à 8,6 $** — 4,6× le besoin. Le frein est un
+  filet anti-emballement, pas un budget ; le laisser là n'est pas une erreur. Mais s'il reste à 40
+  et que la mesure du coût dérape, rien ne s'arrêtera avant 40 $. **Décision de Marc**, pas la
+  mienne : redescendre à ~15 $ le temps de la campagne, ou le laisser à 40.
+- **C28-112 est diagnostiqué, et il se répare tout seul avec ce lot.** La ligne manquait à cause
+  d'une règle de `pousser` (Journal.gs) : *« finie avant d'avoir eu une ligne → rien à montrer »*.
+  C26-08 était marquée terminée (`DriveAI_REANALYSE === 'c26-08'`) et n'avait jamais eu de ligne :
+  chaque tick voyait `termine: true` et refusait d'en créer une. Le tag neuf `c28-92` rend
+  `termine` faux, donc la ligne NAÎT au prochain tick — avant même le premier document — et ses
+  compteurs repartent de zéro (`DriveAI_REANALYSE_BARRE_TAG` purge `_BASE`/`_TRAITES` au changement
+  de tag). Aucun code à écrire. En plus, `majSante_` porte une ligne dédiée « **Re-datation de 06** » :
+  en attente / en cours avec `N / base` et les minutes du jour / terminée ✅ — donc la campagne est
+  suivable dès maintenant, sans attendre sa barre.
