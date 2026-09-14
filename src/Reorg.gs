@@ -523,8 +523,47 @@ function noeudsTableReset_() {
  * nom de schéma d'entité (le router les find-or-create PAR NOM — les muter rend le plan non
  * convergent : le router les re-créerait). PURE (testée).
  */
+var _noeudsStructureMarcCache = null;
+
+/**
+ * Vrai si `nom` est un nœud de la structure que MARC a construite sous `Archives scolaires`
+ * (ADR-0055) — la racine elle-même, un de ses 8 dossiers d'école, ou l'un de leurs sous-dossiers
+ * déclarés (les 4 standard, « Concours », et les thématiques de Marc).
+ *
+ * Garde par CAPACITÉ à l'intérieur d'un sous-arbre DÉCLARÉ, pas une liste d'exceptions : ajouter
+ * un dossier à la table suffit à le protéger. GELÉ et mémoïsé comme `noeudsTableReset_`. PURE.
+ * @param {string} nom @return {boolean}
+ */
+function estNoeudStructureMarc_(nom) {
+  if (!_noeudsStructureMarcCache) {
+    var set = {};
+    var t = (typeof STRUCTURE_CIBLE_RESET !== 'undefined')
+      ? STRUCTURE_CIBLE_RESET['06 · Études & diplômes'] : null;
+    var racine = (typeof RACINE_ARCHIVES_ECOLE_RESET !== 'undefined')
+      ? RACINE_ARCHIVES_ECOLE_RESET : 'Archives scolaires';
+    if (t && t[racine]) {
+      set[racine] = true;
+      var plonger = function (obj) {
+        if (!obj || typeof obj !== 'object') return;
+        Object.keys(obj).forEach(function (k) { set[k] = true; plonger(obj[k]); });
+      };
+      plonger(t[racine]);
+    }
+    _noeudsStructureMarcCache = Object.freeze(set);
+  }
+  return !!_noeudsStructureMarcCache[String(nom).trim()];
+}
+
 function estSegmentStructurel_(nom) {
   var propre = String(nom).trim();
+  // ⚠️ LA STRUCTURE DE MARC, À TOUTE PROFONDEUR (revue structure C28-105). Cette garde ne
+  // consultait que les enfants de NIVEAU 1 des domaines : les 5 dossiers d'école, passés sous
+  // `Archives scolaires` (ADR-0055), l'auraient perdue du jour au lendemain — la Réorg IA, ACTIVE
+  // dans le tick, aurait pu proposer de renommer ou fusionner `Prépa PTSI (2017-2018)`, ce que le
+  // code refusait la veille. La garde est CIBLÉE sur ce sous-arbre et pas étendue à toute la
+  // table : un dossier d'ENTITÉ de niveau 2 (`Banques/Desjardins`) doit rester mutable, sinon la
+  // Réorg n'a plus rien à proposer — contrat vérifié par test depuis ADR-0044 §6.3.
+  if (estNoeudStructureMarc_(propre)) return true;
   if (/^\d{4}$/.test(propre)) return true;
   // Dossiers de TYPE D'IDENTITÉ (« Passeport », « Permis de conduire », …) au niveau 1 d'un domaine.
   // ⚠️ La justification a CHANGÉ avec C28-72, et il faut le dire pour que la prochaine revue ne
@@ -743,6 +782,52 @@ function appliquerDeplacerFichier_(a, proteges) {
  * re-pointées vers la cible (sinon le routage classerait dans un dossier mort — contrat
  * structure-keeper C21-04).
  */
+/**
+ * RE-POINTAGE EN LOT du référentiel d'entités : UNE lecture de l'onglet `Entités` pour N
+ * correspondances `ancienDossierId → nouveauDossierId` (ADR-0055).
+ *
+ * `repointerEntites_` relit l'onglet ENTIER à chaque appel ; l'appeler 6 fois d'affilée, juste
+ * avant la seule fenêtre où la mission peut encore écrire, consomme le garde-temps qu'elle
+ * partage avec la suite (revue quotas C28-105). Même sémantique, même idempotence (une ligne déjà
+ * re-pointée ne matche plus sa source). PEUT LEVER, volontairement : l'appelant n'a pas le droit
+ * de conclure sur un re-pointage raté.
+ * @param {!Object<string,string>} carte  { ancienDossierId: nouveauDossierId }
+ */
+function repointerEntitesLot_(carte) {
+  var sources = Object.keys(carte || {});
+  if (!sources.length) return;
+  var f = feuille_('Entités');
+  var valeurs = f.getDataRange().getValues();
+  if (valeurs.length < 2) return;
+  var iDossier = valeurs[0].indexOf('Dossier ID');
+  if (iDossier === -1) return;
+  for (var i = 1; i < valeurs.length; i++) {
+    var actuel = String(valeurs[i][iDossier]);
+    if (Object.prototype.hasOwnProperty.call(carte, actuel)) {
+      f.getRange(i + 1, iDossier + 1).setValue(carte[actuel]);
+      journalInfo_('Reorg', 'Entité re-pointée (lot) : ' + String(valeurs[i][0] || ''));
+    }
+  }
+}
+
+/**
+ * Vrai si au moins une ligne du référentiel pointe l'un des dossiers donnés. Lecture seule.
+ * Sert à ne pas find-or-créer une cible que PERSONNE ne vise (leçon : une promesse « jamais créé
+ * à vide » se code, elle ne se commente pas).
+ * @param {!Object<string,boolean>} ids @return {boolean}
+ */
+function dossiersVisesParEntites_(ids) {
+  var f = feuille_('Entités');
+  var valeurs = f.getDataRange().getValues();
+  if (valeurs.length < 2) return false;
+  var iDossier = valeurs[0].indexOf('Dossier ID');
+  if (iDossier === -1) return false;
+  for (var i = 1; i < valeurs.length; i++) {
+    if (ids[String(valeurs[i][iDossier])]) return true;
+  }
+  return false;
+}
+
 function repointerEntites_(sourceId, cibleId) {
   var f = feuille_('Entités');
   var valeurs = f.getDataRange().getValues();

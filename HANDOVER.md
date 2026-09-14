@@ -33,14 +33,40 @@
 > que le moteur s'est créé le 23/08 à côté de `DUT ULCO Saint-Omer` (l'IUT du Littoral EST l'ULCO) ;
 > ses 5 fichiers sont des documents de DUT GIM. Signalé ici et dans l'ADR §3.5, pas fait en silence.
 >
-> **Ce qui est verrouillé.** `Archives scolaires` a 8 enfants > 7 : l'exemption au plafond est
+> **La revue flotte a rendu 2 🔴 et 6 🟠, tous intégrés AVANT le merge — et les trois plus graves
+> n'étaient pas visibles depuis le diff.** (1) La consolidation **démantelait la sous-structure de
+> Marc** : une école nommée est un signal FORT, donc ni D8 ni D9 ne mordent entre deux frères de
+> même profondeur — `…/IMERIR — …/MFE` se vidait dans `…/Cours & travaux`, et
+> `…/Collège & Lycée — divers` partait vers la RACINE de `06`, l'inverse mot pour mot de la demande.
+> D'où **D10** (« on ne réorganise jamais l'intérieur de la structure de Marc ») et la déclaration
+> de ses **14 dossiers thématiques** dans la table — sans quoi, étant VIDES, ils seraient proposés à
+> la corbeille, c'est-à-dire sa plainte d'origine appliquée à sa propre structure. (2)
+> **`estSourceDisparue_` ne reconnaissait pas le message RÉEL de Drive** (qui dit « absent OU pas le
+> droit » en une seule phrase), et son test s'en protégeait en tronquant la chaîne : les sources de
+> `vehicule`/`logement`, corbeillées le 12/09, auraient à leur purge (~12/10) empêché toute
+> convergence, donc bloqué `dispatch03` à vie, heartbeat vert. (3) Le **tripwire des libellés
+> d'école était devenu TAUTOLOGIQUE** — une mutation du libellé Avila survivait aux 1289 tests et
+> aurait créé un dossier jumeau au premier document.
+>
+> Retirés en conséquence : le **bump de `MISSIONS_REGLES_VERSION`** (inutile — tag neuf — et il
+> aurait invalidé les clés de SUCCÈS des 8 missions) et la **peinture rouge des 6 dossiers vidés**
+> (elle reposait sur « rien ne les recrée », faux tant que `SEED_ENTITES` valide 6 écoles dans
+> `06` — C28-106). Ajoutés : la garde §1.2 « jamais de dépôt dans une corbeille » dans le runner de
+> missions, et `repointerEntitesLot_` (1 lecture de l'onglet `Entités` au lieu de 6).
+>
+> ⚠️ **Horizon corrigé** : les 8 missions se partagent **2 min/jour**, pas 9 — l'ADR l'avait écrit
+> faux d'un facteur 4,5. Les ~190-250 fichiers mettront **~5 à 10 jours** [Probable].
+>
+> **Ce qui est verrouillé.** `Archives scolaires` a 8 enfants > 7 (et `IMERIR — …` en a 16) : l'exemption au plafond est
 > **nommée** (`RESET_EXEMPTIONS_PLAFOND`) et testée à la valeur près — l'alternative (omettre de la
 > table les 3 dossiers qu'aucune règle ne vise) aurait rendu le plafond faux en silence. Les noms
 > sont comparés au relevé Drive caractère par caractère ET doivent survivre inchangés à `champ_`
 > (un `_` créerait un dossier jumeau sans une erreur). Les cibles de la mission == les écoles que
-> le routage sait nommer (dérivé de `RESET_FENETRES_ECOLE`, pas recopié). **6 mutations jouées, 6
+> le routage sait nommer (dérivé de `RESET_FENETRES_ECOLE`, pas recopié). **12 mutations jouées, 12
 > attrapées** : exemption non consultée, nom divergent d'un caractère, préfixe retiré, `_` dans un
-> nom, cible de mission hors table, école du routage sans mission.
+> nom, cible de mission hors table, école du routage sans mission — puis, après la revue : D10
+> neutralisée, ordre de `estSourceDisparue_` remis à l'envers, garde corbeille retirée, garde
+> structure retirée, libellé Avila divergent, cégep créé à vide.
 >
 > **Le corpus `deja-ranges` le montre** : les 5 fichiers réellement dans `06/Cégep de Sherbrooke`
 > suivent la nouvelle structure, et le test le vérifie **à l'école près** — un fichier du cégep qui

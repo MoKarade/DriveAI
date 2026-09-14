@@ -165,6 +165,23 @@ function estSousCheminDe_(actuel, cible) {
   return true;
 }
 
+/**
+ * Vrai si le fichier est DÉJÀ DANS la structure que Marc a construite lui-même (ADR-0055) :
+ * au moins `Archives scolaires/<école>` dans `06`. PURE.
+ *
+ * Le seuil est « ≥ 2 segments » et pas « ≥ 1 » : un fichier posé directement dans
+ * `Archives scolaires` n'est rangé dans AUCUN de ses dossiers, et la campagne a le droit de le
+ * descendre dans l'école que son nom désigne.
+ * @param {string} domaine @param {string} sousChemin @return {boolean}
+ */
+function estDansStructureMarc_(domaine, sousChemin) {
+  if (String(domaine) !== '06 · Études & diplômes') return false;
+  var racine = typeof RACINE_ARCHIVES_ECOLE_RESET !== 'undefined'
+    ? RACINE_ARCHIVES_ECOLE_RESET : 'Archives scolaires';
+  var segs = String(sousChemin || '').split('/').filter(Boolean);
+  return segs.length >= 2 && segs[0] === racine;
+}
+
 function decisionConsolidation_(d) {
   if (d.protege) {
     return {
@@ -240,6 +257,30 @@ function decisionConsolidation_(d) {
     return {
       action: 'OK', cible: d.domaine + '/' + d.sousCheminActuel,
       raison: 'Aucune règle ne sait le placer — laissé où il est, jamais remonté à la racine (C28-90)',
+    };
+  }
+  // ADR-0055 D10 — ON NE RÉORGANISE JAMAIS L'INTÉRIEUR DE LA STRUCTURE QUE MARC A CONSTRUITE.
+  //
+  // D8 ne protège que les cibles FAIBLES et D9 que les remontées vers un ANCÊTRE : entre deux
+  // FRÈRES de même profondeur, les deux se taisent. Or une école NOMMÉE dans le nom est un signal
+  // FORT — donc, sans cette règle, la consolidation vide `Archives scolaires/IMERIR — …/MFE` dans
+  // `…/IMERIR — …/Cours & travaux`, et `Archives scolaires/Collège & Lycée — divers (2014-2017)`
+  // vers `Autres établissements`, à la RACINE du domaine. Les trois agents de la revue flotte l'ont
+  // trouvé indépendamment, deux d'entre eux en EXÉCUTANT `decisionConsolidation_` sur ces cas.
+  // C'est l'inverse mot pour mot de la demande qui a motivé ADR-0055 : « continue à rajouter
+  // là-dedans au lieu de mettre à la racine du projet ».
+  //
+  // Ce que la règle autorise encore : un APPROFONDISSEMENT dans le MÊME dossier (la cible est un
+  // descendant strict de la position) — `Archives scolaires/<école>` → `…/<école>/Cours & travaux`
+  // reste un gain. Ce qu'elle interdit : tout mouvement LATÉRAL ou SORTANT depuis un dossier de
+  // Marc. Un fichier encore à la racine de `06` ou dans un dossier d'école du moteur n'est PAS
+  // concerné : le déménagement d'ADR-0055 garde tout son pouvoir.
+  if (estDansStructureMarc_(d.domaine, d.sousCheminActuel) &&
+      !estSousCheminDe_(d.sousCheminCible, d.sousCheminActuel)) {
+    return {
+      action: 'OK', cible: d.domaine + '/' + d.sousCheminActuel,
+      raison: 'Dans la structure de Marc (' + d.sousCheminActuel +
+        ') — jamais réorganisée depuis l\'extérieur (ADR-0055 D10)',
     };
   }
   // La RAISON est lue par Marc dans le plan qu'il valide : elle doit dire la vérité de la règle qui

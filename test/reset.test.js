@@ -337,10 +337,22 @@ test('06 : la table des écoles se construit depuis SOUS_DOSSIERS_ECOLE_RESET (u
   const table = JSON.parse(JSON.stringify(
     ctx.STRUCTURE_CIBLE_RESET['06 · Études & diplômes'][ctx.RACINE_ARCHIVES_ECOLE_RESET]));
   const attendu = JSON.parse(JSON.stringify(ctx.SOUS_DOSSIERS_ECOLE_RESET));
-  for (const ecole of ['Lycée — Thérèse Davila (2017-2018)', 'ULCO — DUT GIM (2018-2020)', 'Cégep de Sherbrooke (2019)', 'IMERIR — Ingénieur MSIR (2020-2023)']) {
+  // Les 4 standard sont TOUJOURS là, dans l'ordre de la constante — une seule source. Ce qui suit
+  // (le « Concours » de la prépa, les sous-dossiers THÉMATIQUES de Marc) s'y AJOUTE, jamais s'y
+  // substitue : la garde qui protège ses dossiers de la corbeille ne doit pas défaire la taxonomie.
+  for (const ecole of ['Lycée — Thérèse Davila (2017-2018)', 'Cégep de Sherbrooke (2019)']) {
     assert.deepStrictEqual(Object.keys(table[ecole]), attendu, ecole);
   }
+  for (const ecole of ['ULCO — DUT GIM (2018-2020)', 'IMERIR — Ingénieur MSIR (2020-2023)']) {
+    assert.deepStrictEqual(Object.keys(table[ecole]).slice(0, attendu.length), attendu, ecole);
+  }
   assert.deepStrictEqual(Object.keys(table['Prépa PTSI (2017-2018)']), attendu.concat(['Concours']));
+  // Les thématiques de MARC (relevé Drive du 14/09), déclarées pour ne pas être proposées à la
+  // corbeille ni mutées par la réorg — dérivées de la constante, jamais recopiées.
+  assert.deepStrictEqual(Object.keys(table['IMERIR — Ingénieur MSIR (2020-2023)']).slice(attendu.length),
+    JSON.parse(JSON.stringify(ctx.THEMATIQUES_IMERIR_RESET)));
+  assert.deepStrictEqual(Object.keys(table['ULCO — DUT GIM (2018-2020)']).slice(attendu.length),
+    JSON.parse(JSON.stringify(ctx.THEMATIQUES_ULCO_RESET)));
 });
 
 test('ADR-0055 — l\'exemption au plafond ≤ 7 est NOMMÉE, et sans elle le validateur mord', () => {
@@ -348,15 +360,21 @@ test('ADR-0055 — l\'exemption au plafond ≤ 7 est NOMMÉE, et sans elle le va
   // `Cégep de Sherbrooke (2019)` qu'il a demandé d'ajouter. Le dépassement vient de SA structure,
   // il est donc DÉCLARÉ à la valeur près — jamais toléré en silence. L'alternative (omettre de la
   // table les 3 dossiers qu'aucune règle ne vise) aurait rendu le plafond FAUX sans le dire.
-  assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.RESET_EXEMPTIONS_PLAFOND)),
-    ['06 · Études & diplômes/Archives scolaires']);
-  // MUTATION : sans l'exemption, la violation est RÉELLE et chiffrée — la garde n'est pas décorative.
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(ctx.RESET_EXEMPTIONS_PLAFOND)), [
+    '06 · Études & diplômes/Archives scolaires',
+    '06 · Études & diplômes/Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023)',
+  ]);
+  // MUTATION : sans les exemptions, les violations sont RÉELLES et CHIFFRÉES — la garde n'est pas
+  // décorative, et le COMPTE est figé lui aussi : un 9ᵉ dossier sous `Archives scolaires` ou un
+  // 17ᵉ sous IMERIR fait échouer la CI.
   const vraies = ctx.RESET_EXEMPTIONS_PLAFOND;
   ctx.RESET_EXEMPTIONS_PLAFOND = [];
   try {
     assert.deepStrictEqual(JSON.parse(JSON.stringify(
-      ctx.verifierStructureCibleReset_(ctx.STRUCTURE_CIBLE_RESET, MAX))),
-      ['06 · Études & diplômes/Archives scolaires : 8 sous-dossiers']);
+      ctx.verifierStructureCibleReset_(ctx.STRUCTURE_CIBLE_RESET, MAX))), [
+      '06 · Études & diplômes/Archives scolaires : 8 sous-dossiers',
+      '06 · Études & diplômes/Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023) : 16 sous-dossiers',
+    ]);
   } finally { ctx.RESET_EXEMPTIONS_PLAFOND = vraies; }
 });
 

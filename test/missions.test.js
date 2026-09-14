@@ -290,10 +290,12 @@ test('routeur ecoles-archives06 : alias explicite = transfert ; source hors tabl
   assert.strictEqual(r2.cibleNom, aCreer.cibleNom);
   // Une source hors table n'est jamais devinée.
   assert.strictEqual(spec.router('x.pdf', { sourceId: 'inconnu', sousChemin: '' }, ctx), null);
-  // Les sources de la mission sont EXACTEMENT les alias, et toutes JETABLES : le dossier vidé
-  // n'est plus dans la table du flux, donc rien ne le recrée (aucun ping-pong possible).
+  // Les sources de la mission sont EXACTEMENT les alias.
   assert.strictEqual(plain(spec.sources).join('|'), plain(paires.map((x) => x.src)).join('|'));
-  assert.strictEqual(plain(spec.sourcesJetables).join('|'), plain(paires.map((x) => x.src)).join('|'));
+  // AUCUNE n'est JETABLE (revue flotte) : peindre les 6 dossiers vidés « bon pour suppression »
+  // reposait sur « rien ne les recrée », qui est FAUX tant que `SEED_ENTITES` valide 6 écoles dans
+  // `06` (C28-106). Un signal destructeur ne se pose pas sur un invariant non démontré.
+  assert.strictEqual(plain(spec.sourcesJetables).length, 0);
   assert.strictEqual(plain(spec.ciblesADepeindre).length, 0,
     'les archives de Marc n\'ont jamais été peintes en rouge : rien à dé-peindre');
 });
@@ -353,6 +355,9 @@ function ctxRunner(opts) {
     return {
       getId: () => id,
       getName: () => noeud.nom || id,
+      // §1.2 : le runner refuse de déposer dans un dossier CORBEILLÉ — le mock doit donc pouvoir
+      // en simuler un (`arbre[id].corbeille = true`), sinon la garde est intestable.
+      isTrashed: () => !!noeud.corbeille,
       getFiles: () => iterFactice((noeud.files || []).filter((f) => !f.__deplace)),
       getFolders: () => iterFactice(Object.keys(noeud.folders || {}).map((n) => dossierFactice(noeud.folders[n]))),
     };
@@ -592,8 +597,22 @@ test('runner : budget du jour épuisé → aucune I/O ; garde-temps → passe IN
   assert.ok(!coupe.store['DriveAI_MISSION_FINI_vehicule'], 'passe coupée ≠ passe vide');
 });
 
+/**
+ * Contexte de runner pour `ecoles-archives06` : le référentiel d'entités est mocké au niveau du
+ * LOT (`repointerEntitesLot_`) et de sa sonde (`dossiersVisesParEntites_`), parce que la vraie
+ * implémentation lit l'onglet `Entités` via `feuille_`, absent de ce harnais.
+ */
+function ctxSchool(opts) {
+  opts = opts || {};
+  const h = ctxRunner(opts);
+  h.lots = [];
+  h.c.repointerEntitesLot_ = (carte) => { h.lots.push(carte); };
+  h.c.dossiersVisesParEntites_ = () => !!opts.viseUneSource;
+  return h;
+}
+
 test('runner ecoles-archives06 : transfert par alias + RE-POINTAGE des entités à la convergence', () => {
-  const h = ctxRunner();
+  const h = ctxSchool();
   const paires = h.c.CONFIG.MISSIONS_IDS.ecoles06;
   paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
   h.arbre[paires[0].src].files = [h.fichier('fd', '2019-05-01_Relevé_ULCO.pdf')];
@@ -602,19 +621,39 @@ test('runner ecoles-archives06 : transfert par alias + RE-POINTAGE des entités 
   assert.deepStrictEqual(plain(h.moves.filter((m) => m.vers)), [{ id: 'fd', vers: paires[0].cible }]);
 
   h.c.executerMission_('ecoles-archives06', () => false); // passe vide → convergence
-  const repointes = h.moves.filter((m) => m.repointe);
-  assert.strictEqual(repointes.length, paires.length, 'chaque entité re-pointée vers son archive');
+  // UNE seule lecture/écriture en LOT (revue quotas : 6 lectures intégrales de l'onglet `Entités`
+  // juste avant l'unique fenêtre d'écriture consommaient le garde-temps qu'elles partagent).
+  assert.strictEqual(h.lots.length, 1, 'un seul appel en lot, pas un par paire');
+  const avecId = paires.filter((p) => p.cible);
+  assert.strictEqual(Object.keys(h.lots[0]).sort().join('|'),
+    avecId.map((p) => p.src).sort().join('|'), 'chaque entité re-pointée vers son archive');
+  // …et la cible SANS ID (`Cégep de Sherbrooke (2019)`) n'est PAS créée : aucune ligne du
+  // référentiel ne vise sa source. Mutation : rendre `true` à `dossiersVisesParEntites_` ⇒ ce test
+  // tombe (le dossier apparaît dans la carte), ce qui prouve que la garde est bien consultée.
+  assert.ok(!Object.keys(h.lots[0]).some((k) => k === paires.filter((p) => !p.cible)[0].src),
+    'jamais créé à vide : la promesse est CODÉE, pas commentée');
+});
+
+test('runner ecoles-archives06 : la cible sans ID est créée dès qu\'une entité la vise', () => {
+  // Le pendant du test précédent — « un gate se teste par sa LIBÉRATION » (leçon §7).
+  const h = ctxSchool({ viseUneSource: true });
+  const paires = h.c.CONFIG.MISSIONS_IDS.ecoles06;
+  paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
+  h.c.executerMission_('ecoles-archives06', () => false);
+  const sansId = paires.filter((p) => !p.cible)[0];
+  assert.ok(Object.prototype.hasOwnProperty.call(h.lots[0], sansId.src),
+    'la source du cégep est bien re-pointée une fois son dossier find-or-créé');
 });
 
 test('un re-pointage qui LÈVE empêche le drapeau FINI — re-tenté à la passe suivante (🟠 revue sécurité)', () => {
   // FINI posé AVANT `apresConvergence` + court-circuit terminal = échec JAMAIS re-tenté : le flux
   // vivant re-remplirait le dossier vidé/peint en rouge que Marc s'apprête à corbeiller. Prouvé
   // par mutation : remonter le setProperty au-dessus de l'appel fait échouer ce test.
-  const h = ctxRunner();
+  const h = ctxSchool();
   const paires = h.c.CONFIG.MISSIONS_IDS.ecoles06;
   paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
   let rate = true;
-  h.c.repointerEntites_ = () => { if (rate) throw new Error('Sheet indisponible'); h.moves.push({ repointe: 'ok' }); };
+  h.c.repointerEntitesLot_ = (carte) => { if (rate) throw new Error('Sheet indisponible'); h.lots.push(carte); };
 
   assert.throws(() => h.c.executerMission_('ecoles-archives06', () => false), /Sheet indisponible/,
     'l\'échec REMONTE (etapeSuivie_ le journalise) au lieu d\'être avalé');
@@ -625,7 +664,7 @@ test('un re-pointage qui LÈVE empêche le drapeau FINI — re-tenté à la pass
   rate = false;
   h.c.executerMission_('ecoles-archives06', () => false);
   assert.strictEqual(h.store['DriveAI_MISSION_FINI_ecoles-archives06'], h.c.CONFIG.MISSIONS_REGLES_VERSION);
-  assert.strictEqual(h.moves.filter((m) => m.repointe).length, paires.length);
+  assert.strictEqual(h.lots.length, 1);
   // LIBÉRATION du compteur (revue finale PR2 — « un gate se teste par sa libération », leçon §7) :
   // l'échec a incrémenté errC ; le succès doit l'effacer, sinon un errC ≥ MAX survivrait au FINI
   // et re-bloquerait une journée entière au PREMIER échec après un futur bump de version.
@@ -1908,6 +1947,12 @@ test('sourcesJetables : CHAQUE spec tranche explicitement (un défaut ne décide
     assert.ok(Object.prototype.hasOwnProperty.call(s, 'sourcesJetables'),
       `la mission « ${s.tag} » doit déclarer sourcesJetables (ne serait-ce que [])`);
     assert.ok(Array.isArray(s.sourcesJetables), `sourcesJetables de « ${s.tag} » doit être un tableau`);
+    // Même exigence pour `ciblesADepeindre` (revue code C28-105) : plus aucune mission réelle ne
+    // le porte depuis ADR-0055, donc un renommage silencieux du champ ne serait vu par personne —
+    // la sonde de dé-peinture deviendrait inerte sans qu'aucun test ne tombe.
+    assert.ok(Object.prototype.hasOwnProperty.call(s, 'ciblesADepeindre'),
+      `la mission « ${s.tag} » doit déclarer ciblesADepeindre (ne serait-ce que [])`);
+    assert.ok(Array.isArray(s.ciblesADepeindre), `ciblesADepeindre de « ${s.tag} » doit être un tableau`);
     // Une source jetable est forcément une SOURCE de la mission : jamais un dossier tiers.
     for (const j of s.sourcesJetables) {
       assert.ok(s.sources.indexOf(j) !== -1, `« ${s.tag} » : ${j} est déclaré jetable sans être une source`);
@@ -1989,12 +2034,44 @@ test('épingles : un domaine AUTO absent ⇒ REFUS, jamais une cible vide (éche
   }
 });
 
+test('§1.2 — une cible à la CORBEILLE refuse le dépôt (jamais de suppression automatique)', () => {
+  // `sousDossier_` écarte déjà les ENFANTS corbeillés (C28-93) ; `getFolderById`, lui, rend un
+  // dossier corbeillé sans lever. Un dépôt dedans = purge Drive à 30 jours = suppression
+  // AUTOMATIQUE, le garde-fou non négociable. Mutation : retirer le `if (!vivant(racineCible))`
+  // de `traiterItemMission_` ⇒ ce test tombe (le fichier est déplacé et la clé posée).
+  const h = ctxSchool();
+  const paires = h.c.CONFIG.MISSIONS_IDS.ecoles06;
+  const avecId = paires.filter((p) => p.cible)[0];
+  paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
+  h.arbre[avecId.src].files = [h.fichier('fx', '2019-05-01_Relevé_ULCO.pdf')];
+  h.arbre[avecId.cible] = { files: [], folders: {}, corbeille: true };
+
+  h.c.executerMission_('ecoles-archives06', () => false);
+  assert.strictEqual(h.moves.filter((m) => m.vers).length, 0, 'aucun dépôt dans une corbeille');
+  assert.ok(!h.index['mission|ecoles-archives06|' + h.c.CONFIG.MISSIONS_REGLES_VERSION + '|fx'],
+    'aucune clé posée : le fichier est re-tenté, jamais perdu de vue');
+  assert.ok(!h.store['DriveAI_MISSION_FINI_ecoles-archives06'], 'une passe incomplète ne conclut pas');
+
+  // LIBÉRATION : la corbeille vidée/restaurée, le dépôt reprend (un gate se teste par sa levée).
+  h.arbre[avecId.cible].corbeille = false;
+  h.c.executerMission_('ecoles-archives06', () => false);
+  assert.strictEqual(h.moves.filter((m) => m.vers).length, 1);
+});
+
 test('estSourceDisparue_ : un dossier SUPPRIMÉ est une source vide, une PANNE reste une erreur', () => {
   // Vérifié dans le Drive de Marc le 2026-09-12 : les 4 sources de la mission véhicule et les 2 de
   // la mission logement n'existent plus — elles avaient été proposées à la suppression une fois
   // vidées. Sans ce prédicat, la collecte les compte en ERREUR : plus aucune passe complète, donc
   // plus aucune convergence, et une ligne de journal par source et par tick (288/jour).
-  for (const msg of ['No item with the given ID could be found, or you do not have permission to access it.'.replace(', or you do not have permission to access it.', ''),
+  // ⚠️ LE MESSAGE RÉEL, NON TRONQUÉ (revue sécurité C28-105). La version précédente de ce test
+  // construisait le message canonique de Drive puis en RETIRAIT la moitié « or you do not have
+  // permission to access it. » — c'est-à-dire exactement la moitié qui faisait échouer le
+  // prédicat. Il assertait sur une chaîne que Drive n'émet jamais, et verrouillait le bug.
+  // L'API ne distingue VOLONTAIREMENT pas « absent » de « interdit » : le marqueur de disparition
+  // doit donc être reconnu EN PREMIER, et « permission » ne récuse que s'il est SEUL.
+  for (const msg of ['No item with the given ID could be found, or you do not have permission to access it.',
+    'Aucun élément ne correspond à l\'ID indiqué. Il est possible que vous ne disposiez pas des autorisations requises.',
+    'No item with the given ID could be found',
     'Not Found', 'Aucun élément trouvé avec cet ID', 'Dossier introuvable']) {
     assert.strictEqual(pur.estSourceDisparue_(new Error(msg)), true, msg);
   }

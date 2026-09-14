@@ -37,7 +37,17 @@ plus bas décrit la cascade de replis à jour, pas l'héritage.
 > `IMERIR — Ingénieur MSIR (2020-2023)`, plus trois dossiers qu'aucune règle ne vise
 > (`Collège & Lycée — divers (2014-2017)`, `Lycée — Gustave Eiffel — Physique-Chimie (TP)`,
 > `Online course — AI Essentials (Google)`). Soit **8 enfants > 7** : l'exemption au plafond est
-> DÉCLARÉE dans `RESET_EXEMPTIONS_PLAFOND` et testée à la valeur près, jamais tolérée en silence.
+> DÉCLARÉE dans `RESET_EXEMPTIONS_PLAFOND` et testée à la valeur près, jamais tolérée en silence —
+> comme celle d'`IMERIR — Ingénieur MSIR (2020-2023)`, qui porte **16** enfants (les 12 dossiers
+> thématiques de Marc + les 4 standard). Ces 14 thématiques sont DÉCLARÉES exprès : aucune règle ne
+> route vers elles, mais les déclarer les retire de la liste « dossiers vides » de l'app et les rend
+> immuables pour la réorg et la fusion.
+> ⚠️ Le ≤ 7 porte sur la TABLE, jamais sur le Drive : si Marc ajoute un dossier dans les siens, le
+> dépassement réel reste invisible de la CI.
+> ⚠️ **D10** (`estDansStructureMarc_`) : un fichier déjà sous `Archives scolaires/<école>` ne se
+> déplace plus que vers un descendant STRICT de sa position. Ni D8 ni D9 ne mordaient entre deux
+> frères de même profondeur, et une école nommée est un signal FORT : sans D10, la campagne vidait
+> `…/IMERIR — …/MFE` dans `…/Cours & travaux`.
 > `Autres établissements` et `Diplômes & relevés officiels` restent à la RACINE de `06` : ce sont
 > des nœuds de taxonomie, pas des établissements.
 >
@@ -227,7 +237,7 @@ premier appelant distrait.
 Sinon seulement : **racine du domaine** — et c'est désormais un CONSTAT MESURÉ, pas un défaut :
 `test/racine-domaine.test.js` rejoue les 683 fichiers qui y étaient réellement au recensement du
 2026-09-13 et fige le compte PAR DOMAINE (0 partout, sauf 2 décisions en attente de Marc : `06` et
-`03`, tous deux PLEINS à 7 nœuds — ADR-0052 D6/D7). Un chiffre qui monte fait échouer la CI.
+`03` PLEIN à 7 nœuds ; `06` n'en a plus que 3 depuis ADR-0055 — ADR-0052 D6/D7). Un chiffre qui monte fait échouer la CI.
 
 **Interdits** (les mécanismes du bordel, recensement 2026-07-16) : dossier par émetteur ponctuel,
 dossier-catégorie **CRÉÉ À LA VOLÉE** (« Cours », « Devoirs », « Reçus »), « Divers », squelettes de

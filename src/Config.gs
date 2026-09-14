@@ -965,9 +965,15 @@ var CONFIG = {
   MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions
   // c49-3 (ADR-0044 §4, véhicules) puis c49-4 (§5, les 39 de « employeurs & CV ») — l'historique
   // inline s'arrêtait à c49-2 alors que la valeur avait bougé deux fois (revue code PR2).
-  MISSIONS_REGLES_VERSION: 'c55-1',       // c55-1 (ADR-0055, 2026-09-14) : `06` re-routé sous
-                                          // `Archives scolaires`. Le bump est OBLIGATOIRE, pas cosmétique —
-                                          // les refus keyés sous c50-1 l'ont été contre l'ANCIENNE table.
+  MISSIONS_REGLES_VERSION: 'c50-1',       // ⚠️ PAS de bump pour ADR-0055, et c'est délibéré (revue
+                                          // flotte C28-105) : `ecoles-archives06` porte un TAG NEUF, donc
+                                          // ses clés sont fraîches par construction. Aucun AUTRE routeur de
+                                          // mission n'a changé (`dispatch03` lit `cheminCibleReset_('03…')`,
+                                          // `annees02`/`impots` lisent `02` — la branche modifiée est `06`).
+                                          // Bumper aurait invalidé les clés de SUCCÈS des 8 missions et leur
+                                          // drapeau FINI : re-collecte complète de toutes les sources et
+                                          // rapport des paies re-gaté, sur 2 min/j partagées, sans rien
+                                          // rouvrir d'utile.
                                           // DANS la clé d'idempotence : un refus (non apparié) se fige
                                           // sous CETTE version — affiner les règles = bump ⇒ ré-évaluation
                                           // (leçon C28-33 « verdict négatif révisable, jamais figé à vie »)
@@ -1030,7 +1036,9 @@ var CONFIG = {
     // dossier de MARC (cible). `cibleNom` est le nom EXACT du nœud de `STRUCTURE_CIBLE_RESET`
     // (tripwire : une règle, deux consommateurs) ; `cible` est son ID quand le dossier EXISTE déjà.
     // `Cégep de Sherbrooke (2019)` n'existe pas encore : il est find-or-créé PAR NOM sous
-    // `archivesScolaires`, au premier fichier déplacé — jamais créé à vide.
+    // `archivesScolaires`, au premier fichier déplacé. À la convergence, `repointerEcoles06_` ne
+    // le crée QUE si une ligne du référentiel vise réellement sa source (revue flotte : la
+    // création était inconditionnelle, et la promesse « jamais créé à vide » était fausse).
     archivesScolaires: '1Spv7fdg-cUAhOG52ieMecAkZpVLQ-o77', // 06/« Archives scolaires » (dossier de Marc)
     ecoles06: [
       { src: '157LXd0CwcPhc2S8C5Ftg_FFOqVuDfrZ9', cible: '1xcSm-mucmPSG-9jZHgvL_6Q_r3V6fath', cibleNom: 'Lycée — Thérèse Davila (2017-2018)' },      // lycée Thérèse d'Avila

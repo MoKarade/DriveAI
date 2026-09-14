@@ -262,8 +262,14 @@ test('ADR-0052 D8 — aucun fichier DÉJÀ rangé n\'est sorti de son sous-dossi
   };
   const suitLaStructure = (domaine, sousChemin, cible) => {
     if (domaine !== '06 · Études & diplômes') return false;
-    const neuf = DEMENAGEMENT_06[String(sousChemin).split('/')[0]];
-    return !!neuf && String(cible).indexOf(domaine + '/Archives scolaires/' + neuf) === 0;
+    const segs = String(sousChemin).split('/');
+    const neuf = DEMENAGEMENT_06[segs[0]];
+    if (!neuf) return false;
+    // Le SOUS-DOSSIER doit être préservé, pas seulement l'école (revue code) : sinon un fichier
+    // de `IMERIR/Examens & khôlles` qui partirait vers `…/IMERIR — …/Cours & travaux` passerait
+    // pour un déménagement, alors que c'est exactement le ré-arbitrage que D8 interdit.
+    const attendu = [domaine, ctx.RACINE_ARCHIVES_ECOLE_RESET, neuf].concat(segs.slice(1)).join('/');
+    return String(cible) === attendu;
   };
   const sortis = [];
   let demenages = 0;
@@ -349,7 +355,7 @@ test('ADR-0052 D6 — le drapeau « école déduite » ne fuit PAS sur les dipl�
     assert.strictEqual(c.nom, 'Diplômes & relevés officiels', nom);
     assert.strictEqual(c.faible, true, nom + ' : filet par TYPE, et jamais une école déduite');
   }
-  // …et un diplôme déjà rangé dans un dossier d'école y RESTE (`retour-ecoles06` les y remet).
+  // …et un diplôme déjà rangé dans un dossier d'école y RESTE (la mission les y remet).
   assert.strictEqual(ctx.decisionConsolidation_({
     domaine: d, sousCheminActuel: 'Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023)/Administratif', sousCheminCible: 'Diplômes & relevés officiels',
     dossierIdCible: '', cibleFaible: true, parentId: null, protege: false, protegeIllisible: false,
@@ -687,12 +693,83 @@ test('ADR-0055 — les libellés d\'école sont EXACTEMENT les dossiers de Marc 
     ['Archives scolaires', 'Autres établissements', 'Diplômes & relevés officiels'].sort());
   assert.deepStrictEqual(Object.keys(d6[ctx.RACINE_ARCHIVES_ECOLE_RESET]).slice().sort(),
     reels.slice().sort(), 'un libellé de table absent du Drive créerait un dossier jumeau');
-  // Et toute cible rendue par la branche 06 commence par l'un des trois nœuds de la racine.
+  // Et toute cible rendue par la branche 06 commence par l'un des trois nœuds de la racine…
   const racines = Object.keys(d6);
   for (const nom of CORPUS['06 · Études & diplômes']) {
     const c = ctx.cheminCibleReset_('06 · Études & diplômes', nom);
-    if (c) assert.ok(racines.indexOf(c.split('/')[0]) !== -1, nom + ' → ' + c);
+    if (!c) continue;
+    const segs = c.split('/');
+    assert.ok(racines.indexOf(segs[0]) !== -1, nom + ' → ' + c);
+    // …⚠️ ET, sous `Archives scolaires`, le 2ᵉ segment est un dossier RÉEL de Marc. Sans cette
+    // ligne le tripwire était TAUTOLOGIQUE (revue flotte, deux agents indépendamment) : depuis que
+    // l'école est passée au 2ᵉ segment, la seule assertion sur le 1ᵉʳ ne peut PLUS échouer, et le
+    // libellé littéral d'`ecoleParNomReset_` n'était plus pinné par rien — une mutation de la
+    // branche Avila survivait aux 1289 tests, et aurait créé un dossier jumeau au premier document.
+    if (segs[0] === ctx.RACINE_ARCHIVES_ECOLE_RESET) {
+      assert.ok(reels.indexOf(segs[1]) !== -1, 'école hors du Drive de Marc : ' + nom + ' → ' + c);
+    }
   }
+  // Le corpus ne contient aucun document « Thérèse d'Avila » : la branche par NOM se pinne donc
+  // directement, sinon elle reste le seul libellé sans verrou (revue sécurité, mutation survivante).
+  for (const [nom, attendue] of [
+    ["2016-03-01_Bulletin scolaire_Lycée Thérèse d'Avila.pdf", 'Lycée — Thérèse Davila (2017-2018)'],
+    ['2018-01-05_Kholle_Gustave Eiffel.pdf', 'Prépa PTSI (2017-2018)'],
+    ['2019-05-05_Travail pratique_ULCO Saint-Omer.pdf', 'ULCO — DUT GIM (2018-2020)'],
+    ['2021-02-02_Notes de cours_IMERIR.pdf', 'IMERIR — Ingénieur MSIR (2020-2023)'],
+    ['2019-03-01_Attestation_Cégep de Sherbrooke.pdf', 'Cégep de Sherbrooke (2019)'],
+  ]) {
+    assert.strictEqual(ctx.ecoleParNomReset_(nom), attendue, nom);
+    assert.ok(reels.indexOf(attendue) !== -1, 'libellé hors du Drive de Marc : ' + attendue);
+  }
+});
+
+test('ADR-0055 D10 — la campagne ne réorganise jamais l\'intérieur de la structure de Marc', () => {
+  // Les trois agents de la revue flotte l'ont trouvé indépendamment, deux en EXÉCUTANT
+  // `decisionConsolidation_` : une école NOMMÉE est un signal FORT, donc ni D8 (cible faible) ni
+  // D9 (remontée vers un ancêtre) ne mordent entre deux FRÈRES de même profondeur. La
+  // consolidation vidait donc `Archives scolaires/IMERIR — …/MFE` dans `…/Cours & travaux`, et
+  // `Archives scolaires/Collège & Lycée — divers (2014-2017)` vers `Autres établissements`, à la
+  // RACINE du domaine — l'inverse mot pour mot de la demande qui a motivé ADR-0055.
+  const d = '06 · Études & diplômes';
+  const A = ctx.RACINE_ARCHIVES_ECOLE_RESET + '/';
+  const decide = (actuel, nom) => {
+    const c = ctx.cheminCibleConsolidation_(d, nom, {});
+    return ctx.decisionConsolidation_({
+      domaine: d, sousCheminActuel: actuel, sousCheminCible: c.nom, dossierIdCible: c.id,
+      cibleFaible: c.faible === true, parentId: null, protege: false, protegeIllisible: false,
+      raccourci: false, doublonDe: null,
+    });
+  };
+  // (a) Mouvement LATÉRAL entre sous-dossiers d'une même école : refusé.
+  for (const [actuel, nom] of [
+    [A + 'IMERIR — Ingénieur MSIR (2020-2023)/MFE — Mémoire de fin d\'études', '2022-05-05_Mémoire_IMERIR.pdf'],
+    [A + 'IMERIR — Ingénieur MSIR (2020-2023)/Robotique', '2021-02-02_Travail pratique_IMERIR.pdf'],
+    [A + 'ULCO — DUT GIM (2018-2020)/GIM 1 (2018-2019)', '2019-05-05_Notes de cours_TP GIM1.pdf'],
+  ]) {
+    const dec = decide(actuel, nom);
+    assert.strictEqual(dec.action, 'OK', nom + ' → ' + dec.cible);
+    assert.strictEqual(dec.cible, d + '/' + actuel);
+  }
+  // (b) SORTIE de la structure vers la racine du domaine : refusée aussi.
+  const sortie = decide(A + 'Collège & Lycée — divers (2014-2017)',
+    '2018-03-10_Certificat de scolarité_Collège Gustave Eiffel.pdf');
+  assert.strictEqual(sortie.action, 'OK');
+  assert.strictEqual(sortie.cible, d + '/' + A + 'Collège & Lycée — divers (2014-2017)');
+  // (c) …et un fichier d'un dossier de Marc que le nom rattache à une AUTRE école ne bouge pas non
+  // plus : c'est SA décision de rangement, pas celle du moteur.
+  const croise = decide(A + 'Lycée — Gustave Eiffel — Physique-Chimie (TP)',
+    '2017-11-03_Travail pratique_Gustave Eiffel physique.pdf');
+  assert.strictEqual(croise.action, 'OK');
+  // (d) CE QUI RESTE PERMIS — l'approfondissement dans SON PROPRE dossier (granularité =
+  // enrichissement) et le déménagement ADR-0055 depuis un dossier du MOTEUR.
+  assert.strictEqual(decide(A + 'IMERIR — Ingénieur MSIR (2020-2023)',
+    '2021-02-02_Notes de cours_IMERIR.pdf').action, 'Déplacer');
+  assert.strictEqual(decide('IMERIR', '2021-02-02_Notes de cours_IMERIR.pdf').action, 'Déplacer');
+  // (e) La garde est BORNÉE à la structure de Marc : ailleurs dans `06`, rien ne change.
+  assert.strictEqual(ctx.estDansStructureMarc_(d, 'IMERIR/Cours & travaux'), false);
+  assert.strictEqual(ctx.estDansStructureMarc_(d, ctx.RACINE_ARCHIVES_ECOLE_RESET), false,
+    'un fichier posé DANS `Archives scolaires` n\'est rangé dans aucun de ses dossiers');
+  assert.strictEqual(ctx.estDansStructureMarc_('03 · Logement & véhicule', A + 'x'), false);
 });
 
 test('ADR-0055 — chaque nœud d\'école survit INCHANGÉ à `champ_` (sinon dossier jumeau silencieux)', () => {

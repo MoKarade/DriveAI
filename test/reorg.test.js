@@ -395,6 +395,33 @@ test('estSegmentStructurel_ : les buckets de NIVEAU 1 de STRUCTURE_CIBLE_RESET s
   assert.ok(Object.keys(t).some((d) => Object.prototype.hasOwnProperty.call(t[d], 'Travaux & équipements')));
 });
 
+test('ADR-0055 — la structure de Marc est IMMUABLE à toute profondeur, et elle seule', () => {
+  // Les 5 dossiers d'école étaient des nœuds de NIVEAU 1 de `06`, donc protégés de la Réorg et de
+  // la Fusion. Passés sous `Archives scolaires`, ils perdaient cette garde du jour au lendemain —
+  // et la Réorg IA est ACTIVE dans le tick : un plan validé aurait pu renommer ou fusionner
+  // `Prépa PTSI (2017-2018)`, ce que le code refusait la veille (revue structure).
+  // `Fusion.gs` est chargé ICI : `estAncreStructurelleFusion_` délègue à `estSegmentStructurel_`,
+  // et c'est ce contrat INTER-MODULE qu'on veut voir tenir, pas une copie mockée.
+  const c = load(['Config.gs', 'Router.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs', 'Reorg.gs', 'Fusion.gs']);
+  for (const n of ['Archives scolaires', 'Prépa PTSI (2017-2018)', 'IMERIR — Ingénieur MSIR (2020-2023)',
+    'Cégep de Sherbrooke (2019)', 'Online course — AI Essentials (Google)',
+    'MFE — Mémoire de fin d\'études', 'GIM 1 (2018-2019)', 'Robotique']) {
+    assert.strictEqual(c.estSegmentStructurel_(n), true, 'structure de Marc : ' + n);
+    assert.strictEqual(c.estAncreStructurelleFusion_('06 · Études & diplômes', n), true, n);
+  }
+  // …ET ELLE SEULE : la garde est CIBLÉE sur ce sous-arbre, pas étendue à toute la table. Un
+  // dossier d'ENTITÉ de niveau 2 reste mutable, sinon la Réorg n'a plus rien à proposer.
+  assert.strictEqual(c.estSegmentStructurel_('Desjardins'), false, 'Banques/Desjardins reste mutable');
+  assert.strictEqual(c.estSegmentStructurel_('Toyota bZ'), false);
+  // Les mêmes dossiers, VIDES, ne sont jamais proposés à la corbeille : c'est la raison même de
+  // les avoir déclarés (plainte de Marc : « il me propose … même des dossiers utiles »).
+  const validees = {};
+  for (const n of ['MFE — Mémoire de fin d\'études', 'Scrum — Génie logiciel', 'GIM 2 (2019-2020)',
+    'Erasmus+', 'Online course — AI Essentials (Google)']) {
+    assert.strictEqual(c.estNoeudRecreable_(n, validees), true, 'jamais proposé à la corbeille : ' + n);
+  }
+});
+
 /* ---------- C28-93 : la garde par CAPACITÉ de la liste « dossiers vides » ---------- */
 
 /**

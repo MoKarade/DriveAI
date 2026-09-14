@@ -39,7 +39,13 @@ var RACINE_ARCHIVES_ECOLE_RESET = 'Archives scolaires';
  * plafond FAUX en silence (« une cible ABSENTE de la table rend `verifierStructureCibleReset_`
  * aveugle au ≤ 7 RÉEL », déjà vécu en `01`). On déclare les 8 et on assume l'exemption.
  */
-var RESET_EXEMPTIONS_PLAFOND = ['06 · Études & diplômes/Archives scolaires'];
+var RESET_EXEMPTIONS_PLAFOND = [
+  '06 · Études & diplômes/Archives scolaires',
+  // 12 sous-dossiers thématiques de MARC + les 4 standard = 16. Le dépassement est le SIEN, et le
+  // DÉCLARER est précisément ce qui protège ses dossiers de la liste « dossiers vides » et de la
+  // réorg. (`ULCO — DUT GIM (2018-2020)` : 2 + 4 = 6, sous le plafond ⇒ pas d'exemption.)
+  '06 · Études & diplômes/Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023)',
+];
 
 /** Les 4 catégories PAR VÉHICULE (décision Marc 2026-08-17, ADR-0040 §3a). Littéral LOCAL et non
  * CONFIG.MISSIONS_CATEGORIES_VEHICULE : la table se construit au CHARGEMENT du fichier, dont
@@ -54,13 +60,32 @@ function categoriesVehiculeReset_() {
   return n;
 }
 
-/** Construit le nœud d'une école depuis la constante (UNE source — revue PR1). PURE. */
-function ecoleReset_(avecConcours) {
+/**
+ * Construit le nœud d'une école depuis la constante (UNE source — revue PR1). PURE.
+ * @param {boolean} avecConcours  la prépa reçoit en plus « Concours »
+ * @param {Array<string>=} thematiques  les sous-dossiers que MARC a créés lui-même dans SON
+ *   dossier d'archive (ADR-0055). Aucune règle ne ROUTE vers eux : les DÉCLARER sert à ne pas les
+ *   DÉFAIRE — la garde de capacité (`noeudsTableReset_` → `estNoeudRecreable_`) les retire alors de
+ *   la liste « dossiers vides » de l'app, et `estSegmentStructurel_` / `estAncreStructurelleFusion_`
+ *   les refusent comme source de réorg ou de fusion.
+ *   ⚠️ Ils sont VIDES aujourd'hui (relevé Drive du 14/09 : l'ancienne mission `archives06` avait
+ *   versé leur contenu vers la racine de `06`) — c'est-à-dire exactement la population que l'app
+ *   proposerait de corbeiller si on ne les déclarait pas. C'est la plainte d'origine de Marc :
+ *   « il me propose trop de dossiers à mettre en poubelle même des dossiers utiles ».
+ */
+function ecoleReset_(avecConcours, thematiques) {
   var n = {};
   for (var i = 0; i < SOUS_DOSSIERS_ECOLE_RESET.length; i++) n[SOUS_DOSSIERS_ECOLE_RESET[i]] = {};
   if (avecConcours) n['Concours'] = {};
+  (thematiques || []).forEach(function (t) { n[t] = {}; });
   return n;
 }
+
+/** Les sous-dossiers THÉMATIQUES que Marc a créés lui-même (relevé Drive du 14/09). PURE. */
+var THEMATIQUES_IMERIR_RESET = ['MFE — Mémoire de fin d\'études', 'Scrum — Génie logiciel',
+  'Algorithmique', 'Réseaux', 'Automatique', 'Modélisation 2D', 'Sécurité des échanges',
+  'FitCo', 'Erasmus+', 'Java — Jeu d\'échecs', 'Anglais', 'Robotique'];
+var THEMATIQUES_ULCO_RESET = ['GIM 1 (2018-2019)', 'GIM 2 (2019-2020)'];
 
 var STRUCTURE_CIBLE_RESET = {
   '01 · Administratif & identité': {
@@ -177,9 +202,9 @@ var STRUCTURE_CIBLE_RESET = {
       'Lycée — Thérèse Davila (2017-2018)': ecoleReset_(false),
       'Lycée — Gustave Eiffel — Physique-Chimie (TP)': {},
       'Prépa PTSI (2017-2018)': ecoleReset_(true),
-      'ULCO — DUT GIM (2018-2020)': ecoleReset_(false),
+      'ULCO — DUT GIM (2018-2020)': ecoleReset_(false, THEMATIQUES_ULCO_RESET),
       'Cégep de Sherbrooke (2019)': ecoleReset_(false),
-      'IMERIR — Ingénieur MSIR (2020-2023)': ecoleReset_(false),
+      'IMERIR — Ingénieur MSIR (2020-2023)': ecoleReset_(false, THEMATIQUES_IMERIR_RESET),
       'Online course — AI Essentials (Google)': {},
     },
     // Les deux nœuds de TAXONOMIE du domaine — pas des écoles, donc pas sous l'archive.
@@ -497,7 +522,7 @@ function ecoleParNomReset_(nom) {
  * l'établissement : aucune fenêtre n'a le droit de trancher. PURE.
  *
  * Pourquoi il faut un veto plutôt qu'une fenêtre plus large : Marc a dit « Sherbrooke c'est 2019 en
- * même temps que l'ULCO », mais le dossier RÉEL `Cégep de Sherbrooke` contient des fichiers de
+ * même temps que l'ULCO », mais le dossier RÉEL du cégep contient des fichiers de
  * 2018-08 à 2025-01 (relevé le 13/09). Étendre la fenêtre rendrait l'ULCO inattribuable sur toute
  * la période ; le veto, lui, ne coûte que les documents qui se désignent eux-mêmes comme collégiaux.
  * Sans lui, 5 documents du corpus (« Direction du Cégep » 2020-03, « Message MIO » 2020-10…)
@@ -891,7 +916,7 @@ function cheminCibleReset_(domaine, nom, detail) {
     // FAIBLE (arbitrage C28-90, après mesure) : ce nœud centralise les diplômes, et il le fait très
     // bien depuis la RACINE du domaine — c'est là que sont les 683. Mais il est décidé par le seul
     // TYPE, et le laisser fort lui donnait le pouvoir de VIDER les dossiers d'école de Marc, que la
-    // mission remplit dans le même tick (mesuré : `IMERIR/Administratif` vers `Diplômes & relevés
+    // mission remplit dans le même tick (mesuré : `…/IMERIR — …/Administratif` vers `Diplômes & relevés
     // officiels`). Une campagne ne défait pas ce qu'une autre construit dans le même tick.
     // ⚠️ Ce nœud reste à la RACINE de `06`, jamais sous `Archives scolaires` (ADR-0055) : un
     // diplôme se range par TYPE, pas par établissement — c'est ce qui lui permet de rassembler.
