@@ -43,7 +43,21 @@
 > Deux tests ne prouvaient rien : l'un asserte `String(null).length > 0` (toujours vrai), l'autre
 > était devenu tautologique en changeant sa valeur attendue.
 
-> **🟦 EN COURS — 2026-09-13 : C28-93, la liste « dossiers vides » ne propose plus n'importe quoi.**
+> **✅ MERGÉ, DÉPLOYÉ ET VÉRIFIÉ EN PRODUCTION — 2026-09-14 : C28-93.**
+> PR #341 mergée (`88e8458`), `deploy.yml` #327 vert (clasp push + redéploiement de la web app +
+> réinstallation du déclencheur). Et le signal INDÉPENDANT, lu dans l'onglet `Réorg` deux ticks
+> après le déploiement — parce qu'un run vert ne prouve pas que le tick exécute le nouveau code
+> (§9, piège 3) : **la liste est passée de 124 à 112 propositions**, et les **12 lignes retirées**
+> sont exactement celles qui n'auraient jamais dû y être :
+> `02 · Finances`, `05 · Carrière` (noms de racine de domaine) · `Robovic` (×2), `Projets`,
+> `Candidatures`, `Automatech`, `Novel Software`, `DriveAI` (nœuds de la table) ·
+> `IUT Du Littoral`, `Cegep De Sherbrooke`, `Axter Automation` (entités validées).
+> Chacune porte son motif : « la taxonomie recrée « X » au premier document [filtre-vides c2893-1
+> → vide-protégé] ». Aucune mutation Drive : seuls des statuts ont changé.
+> ⚠️ Les 112 restantes attendent UN clic de Marc sur « Tout corbeiller » — le moteur ne corbeille
+> toujours rien (ADR-0014, §1.2).
+>
+> **Le détail du chantier :**
 > Marc : « il me propose trop de dossiers à mettre en poubelle, même des dossiers utiles — fais un
 > nettoyage et améliore », puis, sur le reste : « **supprime tous les vides** ».
 >
