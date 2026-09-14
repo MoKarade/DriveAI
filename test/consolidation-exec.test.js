@@ -259,15 +259,24 @@ function ctxVide(opts) {
       appendRow: (row) => { appends.push(row); },
     };
   };
+  // Chaîne d'ancêtres CONFIGURABLE (du plus proche au plus lointain) : `positionActuelleFichier_`
+  // ET `cheminPourConstat_` la remontent pour de vrai. Défaut : un seul niveau, la racine `DOMID`.
+  const chaine = opts.chaineAncetres || [{ id: 'DOMID', nom: 'DOM' }];
+  const ancetreDepuis = (rang) => {
+    if (rang >= chaine.length) return { hasNext: () => false, next: () => null };
+    let servi = false;
+    return {
+      hasNext: () => !servi,
+      next: () => {
+        servi = true;
+        return { getId: () => chaine[rang].id, getName: () => chaine[rang].nom, getParents: () => ancetreDepuis(rang + 1) };
+      },
+    };
+  };
   const ancienParent = {
     getId: () => opts.parentId || 'PARENT',
     getName: () => opts.parentNom || 'Colles', // nom RÉEL d'un dossier obsolète (décompte 13/09)
-    // Chaîne RÉELLE jusqu'à la racine du domaine : `positionActuelleFichier_` s'exécute pour de
-    // vrai (le fichier est dans 02/<ENGIE>, la cible recalculée est à plat → il remonte).
-    getParents: () => {
-      let i = 0; const p = ['DOMID'];
-      return { hasNext: () => i < p.length, next: () => ({ getId: () => p[i++], getName: () => 'DOM', getParents: () => ({ hasNext: () => false, next: () => null }) }) };
-    },
+    getParents: () => { if (opts.chaineIllisible) throw new Error('illisible'); return ancetreDepuis(0); },
     getFiles: () => ({ hasNext: () => !!opts.resteFichier }),
     getFolders: () => ({ hasNext: () => !!opts.resteDossier }),
   };
@@ -318,6 +327,66 @@ test('détection vide : le constat porte le CHEMIN, pas seulement le nom (C28-93
   v.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxV());
   assert.strictEqual(v.appends.length, 1);
   assert.strictEqual(v.appends[0][3], 'DOM/Mémoire', 'le chemin remonte jusqu\'à la racine de domaine');
+});
+
+test('détection vide : le référentiel d\'entités est résolu MÊME quand le ctx ne le porte pas', () => {
+  // Sur les 5 appelants de `detecterDossierVide_`, TROIS construisaient un ctx sans `validees` —
+  // dont `FusionExec`, celui qui vide justement les dossiers d'ENTITÉ (il vient d'appeler
+  // `repointerEntites_`). La branche « entité validée » était donc morte là où elle sert le plus.
+  // Mutation : retirer la résolution lazy ⇒ ce test tombe.
+  const v = ctxVide({ parentId: 'ID_ENT', parentNom: 'Kim Pinsonneault' });
+  v.c.entitesValideesParCle_ = () => ({ 'cle|kim': { nom: 'Kim Pinsonneault', dossierId: 'ID_ENT' } });
+  const ctxSansValidees = { proteges: {}, tag: 'conso-2', parId: PAR_ID }; // comme FusionExec
+  v.c.appliquerLigneConsolidation_({ fileId: 'F', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxSansValidees);
+  assert.strictEqual(v.appends.length, 0, 'dossier d\'entité validée : jamais proposé à la corbeille');
+
+  // …et le référentiel n'est lu QU'UNE fois par run (mémoïsé sur le ctx, comme `intouchables`).
+  const compte = ctxVide({ parentId: 'ID_AUTRE', parentNom: 'IUT GIM 1' });
+  let lectures = 0;
+  compte.c.entitesValideesParCle_ = () => { lectures++; return {}; };
+  const ctxPartage = { proteges: {}, tag: 'conso-2', parId: PAR_ID };
+  compte.c.appliquerLigneConsolidation_({ fileId: 'F1', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxPartage);
+  compte.c.appliquerLigneConsolidation_({ fileId: 'F2', nom: 'f.pdf', action: 'Déplacer', cible: 'x' }, ctxPartage);
+  assert.strictEqual(lectures, 1, 'une seule lecture du référentiel pour tout le run');
+});
+
+test('cheminPourConstat_ : s\'arrête à la racine de domaine, borné, et dégrade sans jamais lever', () => {
+  // Testée DIRECTEMENT : par le bout du pipeline, la chaîne d'ancêtres sert AUSSI à
+  // `positionActuelleFichier_`, et la rendre illisible fait sortir la ligne bien avant la détection.
+  // Les deux branches (arrêt au domaine, borne de profondeur) étaient passées non verrouillées :
+  // la revue les a fait tomber par mutation sans qu'aucun test ne bouge.
+  const { c } = ctxVide({});
+  const faux = (chaine) => {
+    const noeud = (rang) => ({
+      getId: () => chaine[rang].id,
+      getName: () => chaine[rang].nom,
+      getParents: () => {
+        let servi = rang + 1 >= chaine.length;
+        return { hasNext: () => !servi, next: () => { servi = true; return noeud(rang + 1); } };
+      },
+    });
+    return noeud(0);
+  };
+
+  // (a) ARRÊT au domaine : ce qui est AU-DESSUS n'apparaît jamais.
+  const chaine = [{ id: 'ID_X', nom: 'Colles' }, { id: 'ID_ARCH', nom: 'Archives scolaires' },
+    { id: 'DOMID', nom: '06 · Études & diplômes' }, { id: 'RACINE', nom: 'Mon Drive' }];
+  assert.strictEqual(
+    c.cheminPourConstat_(faux(chaine), 'Colles', { intouchables: { DOMID: true } }),
+    '06 · Études & diplômes/Archives scolaires/Colles',
+    'le domaine ferme le chemin : ni « Mon Drive », ni au-dessus',
+  );
+
+  // (b) BORNE : une chaîne sans racine connue s'arrête sur la borne, jamais à l'infini.
+  const profonde = Array.from({ length: 20 }, (_, i) => ({ id: 'N' + i, nom: 'n' + i }));
+  const segments = c.cheminPourConstat_(faux(profonde), 'n0', { intouchables: {} }).split('/');
+  assert.strictEqual(segments.length, 11, '10 ancêtres au plus, + le dossier lui-même');
+  assert.strictEqual(segments[segments.length - 1], 'n0');
+
+  // (c) CHAÎNE ILLISIBLE : dégrade sur le nom, jamais une exception — un constat ne doit pas
+  // échouer pour un libellé (c'est pour ça que le nom vient de l'appelant, hors du `try`).
+  const casse = { getName: () => { throw new Error('jamais appelé'); }, getParents: () => { throw new Error('illisible'); } };
+  assert.strictEqual(c.cheminPourConstat_(casse, 'Colles', { intouchables: {} }), 'Colles');
 });
 
 test('détection vide : un dossier qui reste NON vide → aucune inscription', () => {

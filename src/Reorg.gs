@@ -245,9 +245,14 @@ function noeudsTableReset_() {
     Object.keys(obj).forEach(function (k) { set[k] = true; plonger(obj[k]); });
   };
   plonger(typeof STRUCTURE_CIBLE_RESET !== 'undefined' ? STRUCTURE_CIBLE_RESET : {});
+  // ⚠️ Redondant AUJOURD'HUI (`ecoleReset_` injecte déjà ces 4 noms dans la table) — gardé comme
+  // ceinture : le jour où les sous-dossiers d'école cesseraient de passer par la table, la garde
+  // ne tomberait pas en silence. Dit ici pour que la prochaine revue ne le lise pas comme un ajout.
   (typeof SOUS_DOSSIERS_ECOLE_RESET !== 'undefined' ? SOUS_DOSSIERS_ECOLE_RESET : []).forEach(function (n) { set[n] = true; });
-  _noeudsTableResetCache = set;
-  return set;
+  // GELÉ : l'index est rendu PAR RÉFÉRENCE et mémoïsé pour toute l'exécution — un appelant qui le
+  // muterait corromprait la garde jusqu'au prochain tick (revue C28-93).
+  _noeudsTableResetCache = Object.freeze(set);
+  return _noeudsTableResetCache;
 }
 
 /**

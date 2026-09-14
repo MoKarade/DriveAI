@@ -256,15 +256,22 @@ function detecterDossierVide_(parent, ctx) {
   if (!ctx.intouchables) ctx.intouchables = ensembleIntouchables_();
   if (ctx.intouchables[id]) return;                          // domaine / catégorie à ID fixe / file système
   var nom = parent.getName();
+  // Référentiel résolu en LAZY, comme `intouchables` (revue C28-93, 🟠) : sur 5 appelants, TROIS
+  // construisaient un ctx sans `validees` — dont `FusionExec`, qui est justement celui qui VIDE les
+  // dossiers d'entité (il vient d'appeler `repointerEntites_` deux lignes plus haut). La branche
+  // « entité validée » était donc morte là où elle sert le plus. Résoudre ici couvre les cinq d'un
+  // coup, et ne coûte rien tant qu'aucun dossier n'est devenu vide.
+  if (!ctx.validees) ctx.validees = entitesValideesParCle_();
   if (estNoeudRecreable_(nom, ctx.validees)) return;         // la taxonomie le recréerait (C28-93)
-  // Vacuité STRICTE (non corbeillés) d'ABORD (cas DOMINANT : le parent reste NON vide → sortie tôt,
-  // coût minimal — revue quotas) : le moindre fichier OU sous-dossier ⇒ pas un candidat.
+  // Vacuité STRICTE (non corbeillés) — premier test qui TOUCHE DRIVE (les gardes ci-dessus sont
+  // pures, donc gratuites et placées avant, revue C28-93). Cas DOMINANT : le parent reste NON vide
+  // → sortie tôt, coût minimal (revue quotas). Le moindre fichier OU sous-dossier ⇒ pas un candidat.
   if (parent.getFiles().hasNext() || parent.getFolders().hasNext()) return;
   // RARE (parent devenu vide) : garde §1 par REMONTÉE de TOUTE la chaîne d'ancêtres (leçon « remonter
   // toute la chaîne d'ancêtres », durcissement revue sécurité) — self OU ascendance protégée / illisible
   // ⇒ jamais un candidat (échec-fermé). Placée APRÈS la vacuité : la remontée ne se paie que sur un vide.
   if (chaineMonteVersProtege_(parent, ctx.proteges || {}, 0, true)) return;
-  inscrireDossierVideCandidat_(id, cheminPourConstat_(parent, ctx), ctx);
+  inscrireDossierVideCandidat_(id, cheminPourConstat_(parent, nom, ctx), ctx);
 }
 
 /**
@@ -276,9 +283,14 @@ function detecterDossierVide_(parent, ctx) {
  * contenait deux « Mémoire », deux « Exercices », quatre graphies d'« IUT Du Littoral » — impossible
  * de dire lequel est lequel, donc impossible de trancher autrement qu'en bloc. Un constat qu'on ne
  * peut pas situer n'est pas un constat.
+ * @param {Folder} dossier
+ * @param {string} nom  nom DÉJÀ lu par l'appelant (un appel Drive de moins, et la promesse
+ *   « un constat n'échoue jamais pour un libellé » devient vraie : plus rien hors du `try`)
+ * @param {Object} ctx
+ * @return {string}
  */
-function cheminPourConstat_(dossier, ctx) {
-  var segments = [dossier.getName()];
+function cheminPourConstat_(dossier, nom, ctx) {
+  var segments = [nom];
   try {
     var courant = dossier;
     for (var i = 0; i < 10; i++) {

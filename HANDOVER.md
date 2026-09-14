@@ -49,8 +49,9 @@
 >
 > **Compté, pas supposé** : 124 dossiers proposés dans l'onglet `Réorg`, tous vidés entre le 1er et
 > le 15 août par le grand rangement, aucun depuis. Dedans : deux dossiers NOMMÉS comme des domaines
-> (`02 · Finances`, `05 · Carrière`), cinq nœuds que la table recrée par nom (`Robovic`,
-> `Automatech`, `DriveAI`, `Novel Software`, `Candidatures`), une entité du référentiel, des
+> (`02 · Finances`, `05 · Carrière`), SIX noms que la table recrée — sept lignes, `Robovic`
+> y figurant deux fois — (`Robovic`, `Projets`, `Automatech`, `DriveAI`, `Novel Software`,
+> `Candidatures`), une entité du référentiel, des
 > doublons de nom sans chemin (deux `Mémoire`, deux `Exercices`, quatre graphies d'`IUT Du
 > Littoral`), et au moins un dossier qui **n'existe plus** (404).
 >

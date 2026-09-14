@@ -6,8 +6,8 @@
  */
 
 import { useEffect, useState } from 'react';
-import { lirePlage, ecrireCellule, ecrireColonnePlage, ajouterLigne } from '../google';
-import { corbeillerDossierVide, statutRefusCorbeille } from '../corbeille';
+import { lirePlage, ecrireCellule, ecrireColonnePlage, ajouterLigne, estConnecte } from '../google';
+import { corbeillerDossierVide, corbeillerLot } from '../corbeille';
 import {
   LigneReorg,
   interpreterReorg,
@@ -118,6 +118,8 @@ export function ReorgVue({ langue }: { langue: Langue }) {
 
   const [erreurCorbeille, setErreurCorbeille] = useState('');
   const [avancement, setAvancement] = useState<{ fait: number; total: number } | null>(null);
+  // Le bilan d'un lot RÉUSSI n'est pas une erreur : il a sa propre ligne, en neutre (revue C28-93).
+  const [bilanCorbeille, setBilanCorbeille] = useState('');
 
   /** ADR-0014 : corbeille d'un dossier VIDE — re-vérifié en direct au clic, jamais automatique. */
   async function corbeiller(l: LigneReorg) {
@@ -146,36 +148,24 @@ export function ReorgVue({ langue }: { langue: Langue }) {
     if (enCours || vides.length === 0) return;
     setEnCours(true);
     setErreurCorbeille('');
+    setBilanCorbeille('');
     setAvancement({ fait: 0, total: vides.length });
-    let corbeilles = 0;
-    let classes = 0;
-    let aReessayer = 0;
-    for (let i = 0; i < vides.length; i++) {
-      const l = vides[i];
-      // UN refus n'arrête pas le lot (C28-93) : il retire SA ligne en disant pourquoi. Ce qu'on ne
-      // sait pas conclure (réseau, quota) reste candidat et sera re-tenté au prochain lot.
-      let statut = 'corbeillé';
-      try {
-        await corbeillerDossierVide(l.id);
-        corbeilles++;
-      } catch (e) {
-        const verdict = statutRefusCorbeille(String(e));
-        if (!verdict) { aReessayer++; setAvancement({ fait: i + 1, total: vides.length }); continue; }
-        statut = verdict;
-        classes++;
-      }
-      try {
-        await ecrireCellule('Réorg', `F${l.ligneSheet}`, statut);
-        setLignes((xs) => xs.map((x) => (x.ligneSheet === l.ligneSheet ? { ...x, statut } : x)));
-      } catch { aReessayer++; } // la Sheet a refusé l'écriture : la ligne reste, le dossier est fait
-      setAvancement({ fait: i + 1, total: vides.length });
-    }
+    // La boucle vit dans `corbeille.ts` (testée) : un refus classe SA ligne et le lot continue.
+    const bilan = await corbeillerLot(vides, {
+      corbeiller: (id) => corbeillerDossierVide(id),
+      ecrire: (ligneSheet, statut) => ecrireCellule('Réorg', `F${ligneSheet}`, statut),
+      surLigne: (ligneSheet, statut) =>
+        setLignes((xs) => xs.map((x) => (x.ligneSheet === ligneSheet ? { ...x, statut } : x))),
+      avancement: (fait, total) => setAvancement({ fait, total }),
+      stop: () => !estConnecte(), // session morte : inutile d'enchaîner 100 échecs de fetch
+    });
     setAvancement(null);
     setEnCours(false);
-    setErreurCorbeille(t('corbeilleBilan', langue)
-      .replace('{n}', String(corbeilles))
-      .replace('{c}', String(classes))
-      .replace('{r}', String(aReessayer)));
+    setBilanCorbeille(t('corbeilleBilan', langue)
+      .replace('{n}', String(bilan.corbeilles))
+      .replace('{c}', String(bilan.classes))
+      .replace('{r}', String(bilan.aReessayer))
+      .replace('{s}', String(bilan.sheetKo)));
   }
 
   if (erreur && !charge) return <p className="erreur">{t('erreur', langue)} : {erreur}</p>;
@@ -255,6 +245,7 @@ export function ReorgVue({ langue }: { langue: Langue }) {
         <div className="prop-carte vides">
           <b>{t('dossiersVides', langue)}</b>
           {erreurCorbeille && <p className="erreur">{erreurCorbeille}</p>}
+          {bilanCorbeille && <p className="variante">{bilanCorbeille}</p>}
           {avancement && <p className="variante">⏳ {avancement.fait} / {avancement.total}</p>}
           {videsCandidats.map((l) => (
             <div key={l.cle} className="prop-vide">

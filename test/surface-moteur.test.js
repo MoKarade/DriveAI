@@ -189,7 +189,7 @@ const CONTRAT = [
   'chaineMonteVersProtege_',
   'etapeReorg_', 'appliquerReorgValidee_', 'appliquerUneAction_', 'actionsValidees_',
   'partiesId_', 'dernierSegment_', 'ensembleIntouchables_', 'repointerEntites_', 'solderAction_',
-  'estSegmentStructurel_',
+  'estSegmentStructurel_', 'estNoeudRecreable_', 'noeudsTableReset_',
   // documents d'identité & titulaire (refonte 2026-07-07)
   'normaliserTypeIdentite_', 'estDocumentIdentitePersonnel_', 'dossierIdentite_', 'titulairePourNom_',
   'nommerDocument_', 'garantirNomUnique_', 'casseNomPersonne_', 'sousDossierPourNom_',

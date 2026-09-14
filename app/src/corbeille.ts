@@ -15,7 +15,7 @@
 
 import { Ascendance, RACINES_PROTEGEES_DEFAUT, IDS_STRUCTURELS_DEFAUT } from './garde-fous';
 import { MIME_DOSSIER } from './explorateur';
-import { api, lireFichier, remonterAscendance, viderCachePlages, DRIVE } from './google';
+import { api, lireFichier, remonterAscendance, viderCachesDrive, DRIVE } from './google';
 
 /**
  * Verdict PUR (testé) : ce dossier peut-il partir à la corbeille ? Liste des violations
@@ -34,11 +34,18 @@ export function verdictCorbeille(args: {
   if (args.mimeType !== MIME_DOSSIER) violations.push('pas-un-dossier');
   if (args.nbEnfants > 0) violations.push('non-vide');
   const proteges = args.racinesProtegees ?? RACINES_PROTEGEES_DEFAUT;
-  // Identité D'ABORD (la racine protégée elle-même n'est pas dans sa propre ascendance),
-  // puis ascendance ; chaîne illisible = protégé (échec fermé).
-  if (proteges.includes(args.id) || !args.ascendance.complete ||
-      args.ascendance.ids.some((id) => proteges.includes(id))) {
+  // Identité D'ABORD (la racine protégée elle-même n'est pas dans sa propre ascendance), puis
+  // ascendance. Le refus est le MÊME dans les deux cas (échec fermé) — mais le MOTIF diffère, et
+  // c'est tout l'objet de cette séparation (revue C28-93, 🔴) : « je sais que c'est protégé » est un
+  // VERDICT, « je n'ai pas pu lire la chaîne » est une PANNE. Les deux arrivaient au lecteur sous
+  // la même chaîne `zone-protegee`, si bien qu'un 429 sur un GET d'ancêtre retirait définitivement
+  // une ligne de la liste (le moteur dédoublonne à vie sur `videcandidat|<id>` : jamais re-proposé).
+  // C'est la leçon §9 « un verdict pris sur la donnée RICHE ne se re-dérive jamais depuis sa forme
+  // APPAUVRIE » — d'où un motif explicite porté par celui qui SAIT.
+  if (proteges.includes(args.id) || args.ascendance.ids.some((id) => proteges.includes(id))) {
     violations.push('zone-protegee');
+  } else if (!args.ascendance.complete) {
+    violations.push('ascendance-illisible'); // refus identique, motif distinct : jamais un verdict
   }
   const structurels = args.idsStructurels ?? IDS_STRUCTURELS_DEFAUT;
   if (structurels.includes(args.id)) {
@@ -68,11 +75,69 @@ export function statutRefusCorbeille(message: string): string | null {
   const brut = String(message);
   if (brut.includes('Google API 404')) return 'vide-disparu';   // déjà supprimé/corbeillé ailleurs
   if (brut.includes('non-vide')) return 'vide-repris';          // le classement l'a re-rempli
+  if (brut.includes('ascendance-illisible')) return null;        // PANNE de lecture : aucun verdict
   if (brut.includes('zone-protegee') || brut.includes('racine-systeme') ||
       brut.includes('dossier-structurel') || brut.includes('pas-un-dossier')) {
     return 'vide-protégé';                                      // ne devait jamais être proposé
   }
   return null;                                                  // transitoire : on re-tentera
+}
+
+/** Ce qu'un lot de corbeille a VRAIMENT fait — quatre états distincts, jamais additionnés. */
+export interface BilanLot {
+  corbeilles: number;  // dossier mis à la corbeille Drive (récupérable 30 j)
+  classes: number;     // refus CONNU : la ligne quitte la liste avec sa raison
+  aReessayer: number;  // refus INCONNU (réseau, quota, session) : la ligne reste candidate
+  sheetKo: number;     // action Drive faite, mais la Sheet n'a pas pris le statut
+}
+
+/**
+ * Applique la corbeille à UN LOT de lignes. Extraite de la vue pour être TESTABLE : c'est ici que
+ * vivait le défaut de C28-93 — la boucle était dans un `try` unique, donc la PREMIÈRE exception
+ * arrêtait tout, et le premier de la liste était justement un dossier refusé par son nom. 124
+ * propositions, zéro action. La revue a reproduit la régression sous CI verte : rien ne la gardait.
+ *
+ * Invariants que les tests figent :
+ *  - un refus n'arrête JAMAIS le lot (il classe SA ligne) ;
+ *  - `corbeilles + classes + aReessayer === lignes traitées` — `sheetKo` compte À PART, sinon une
+ *    écriture Sheet refusée ferait compter deux fois une ligne déjà corbeillée ;
+ *  - `stop()` (session morte) coupe NET : inutile d'enchaîner 100 échecs de fetch.
+ * @param lignes  {id Drive, numéro de ligne Sheet}
+ * @param deps    I/O injectées (corbeille, écriture Sheet, UI) — aucune n'est appelée en test réel
+ */
+export async function corbeillerLot(
+  lignes: { id: string; ligneSheet: number }[],
+  deps: {
+    corbeiller: (id: string) => Promise<void>;
+    ecrire: (ligneSheet: number, statut: string) => Promise<void>;
+    surLigne?: (ligneSheet: number, statut: string) => void;
+    avancement?: (fait: number, total: number) => void;
+    stop?: () => boolean;
+  },
+): Promise<BilanLot> {
+  const bilan: BilanLot = { corbeilles: 0, classes: 0, aReessayer: 0, sheetKo: 0 };
+  for (let i = 0; i < lignes.length; i++) {
+    if (deps.stop?.()) break;
+    const l = lignes[i];
+    let statut = 'corbeillé';
+    try {
+      await deps.corbeiller(l.id);
+      bilan.corbeilles++;
+    } catch (e) {
+      const verdict = statutRefusCorbeille(String(e));
+      if (!verdict) { bilan.aReessayer++; deps.avancement?.(i + 1, lignes.length); continue; }
+      statut = verdict;
+      bilan.classes++;
+    }
+    try {
+      await deps.ecrire(l.ligneSheet, statut);
+      deps.surLigne?.(l.ligneSheet, statut);
+    } catch {
+      bilan.sheetKo++; // le dossier EST traité ; seule la Sheet l'ignore. Compté à part (revue C28-93).
+    }
+    deps.avancement?.(i + 1, lignes.length);
+  }
+  return bilan;
 }
 
 /**
@@ -113,7 +178,10 @@ export async function corbeillerDossierVide(folderId: string, racinesProtegees?:
   if (violations.length > 0) {
     throw new Error(`Corbeille refusée (ADR-0014) : ${violations.join(', ')}`);
   }
-  viderCachePlages();
+  // Seul le LISTAGE du dossier parent devient périmé : on ne jette QUE les caches Drive. La purge
+  // totale jetait aussi le mémo d'ascendance, donc chaque ligne d'un lot de 124 re-parcourait toute
+  // sa chaîne depuis zéro alors que ces dossiers partagent une poignée de racines (revue C28-93).
+  viderCachesDrive();
   await api(`${DRIVE}/${folderId}?fields=id`, {
     method: 'PATCH',
     body: JSON.stringify({ trashed: true }), // corbeille Drive — récupérable 30 j, jamais définitif

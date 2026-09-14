@@ -15,7 +15,7 @@ vidés entre le **1er et le 15 août** par le grand rangement. Aucun depuis. Ded
 | ce qu'on y trouve | exemples | pourquoi c'est faux |
 |---|---|---|
 | des noms de RACINE DE DOMAINE | `02 · Finances`, `05 · Carrière` | l'app REFUSE de les corbeiller par leur nom |
-| des nœuds que la table recrée PAR NOM | `Robovic`, `Automatech`, `DriveAI`, `Novel Software`, `Candidatures` | supprimés, ils reviennent au premier document qui les vise |
+| des nœuds que la table recrée PAR NOM (7 lignes, 6 noms) | `Robovic` (×2), `Projets`, `Automatech`, `DriveAI`, `Novel Software`, `Candidatures` | supprimés, ils reviennent au premier document qui les vise |
 | une entité du référentiel | `IUT Du Littoral` | idem : le flux la recrée |
 | des doublons de NOM sans chemin | deux `Mémoire`, deux `Exercices`, quatre graphies d'`IUT Du Littoral` | impossible de savoir lequel est lequel |
 | des dossiers qui n'existent PLUS | `1gG2fec…` → l'API rend `404` | la ligne survit au dossier |
@@ -47,10 +47,21 @@ chaque refus connu en statut, et la ligne quitte la liste en disant pourquoi :
 | `Google API 404` | `vide-disparu` | le dossier n'existe plus |
 | `non-vide` | `vide-repris` | le classement l'a re-rempli |
 | `racine-systeme`, `zone-protegee`, `dossier-structurel`, `pas-un-dossier` | `vide-protégé` | n'aurait jamais dû être proposé |
+| `ascendance-illisible` | *(aucun)* | on n'a pas PU lire la chaîne : ce n'est pas un verdict |
 | réseau, quota, session | *(aucun)* | **on ne conclut pas** : la ligne reste candidate, re-tentée |
 
-La dernière ligne est la garde qui compte : une incertitude ne se transforme pas en verdict. Un
-quota d'une minute retirerait sinon de la liste des dossiers que personne n'a regardés.
+Les deux dernières lignes sont la garde qui compte : une incertitude ne se transforme pas en
+verdict. Un quota d'une minute retirerait sinon de la liste des dossiers que personne n'a regardés.
+
+⚠️ **`ascendance-illisible` est un motif NEUF, et c'est le cœur de D3** (🔴 de la revue). Avant,
+`verdictCorbeille` rendait `zone-protegee` dans les DEUX cas : « un ancêtre EST la zone protégée »
+et « je n'ai pas pu lire les ancêtres ». Le refus était le bon (échec fermé, §1.2) — mais le MOTIF
+était un mensonge, et c'est lui que `statutRefusCorbeille` lit désormais pour décider qu'une ligne
+quitte la liste **définitivement** : le moteur dédoublonne sur `videcandidat|<fileId>` et ne
+re-proposera JAMAIS une ligne retirée. Un `429` sur un simple GET d'ancêtre aurait donc effacé à vie
+une proposition légitime, sous l'étiquette « protégé ». Deux faits différents, deux motifs
+différents, même refus — leçon §9 : *un verdict pris sur la donnée RICHE ne se re-dérive jamais
+depuis sa forme APPAUVRIE*, ici le texte du message d'erreur.
 
 **D4 — Ce que ce lot NE fait PAS.** Le moteur ne corbeille toujours rien : la mutation reste dans
 `app/src/corbeille.ts`, au clic de Marc, avec re-vérification live de chaque dossier (ADR-0014,
