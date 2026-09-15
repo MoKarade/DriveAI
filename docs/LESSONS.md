@@ -14,6 +14,49 @@
 
 ---
 
+## 2026-09-15 (soir) — Une preuve se lit dans SON unité : « +4 appels » ne voulait pas dire ce que j'en ai tiré
+**Contexte.** Marc : « erreur 404 quand je fais une demande à l'assistant ». Cette fois j'ai commencé
+par demander le texte exact affiché — « Web app 404 » — au lieu de bâtir une hypothèse, et ça a bien
+servi : ça désignait sans ambiguïté le POST vers `/exec`. Puis j'ai cherché un signal indépendant et
+j'ai trouvé le compteur de coût du moteur, passé de 4 à 8 appels pour `app:chat-assistant`. J'en ai
+conclu : « des demandes ABOUTISSAIENT pendant que d'autres échouaient, donc la panne est transitoire
+et rejouer est sûr ». J'ai écrit cette phrase dans le code, dans le commit et dans le backlog.
+
+**Elle est fausse.** Ce compteur compte des appels **ANTHROPIC facturés**, et un seul tour de chat en
+vaut **1 à 7** (boucle d'outils). « +4 » est donc au moins autant compatible avec « UN tour a tourné
+ENTIÈREMENT, a été payé, et Marc n'a reçu qu'un 404 » — c'est-à-dire exactement le monde où rejouer
+refacture. J'avais le bon réflexe (chercher un signal d'une autre nature) et je l'ai lu dans la
+mauvaise unité : j'ai compté des appels au modèle comme si c'étaient des réponses livrées au
+navigateur.
+
+**Et la prémisse que j'en ai tirée était fausse aussi.** J'ai écrit qu'un statut non-2xx « prouve que
+le script n'a pas tourné ». Un POST `/exec` a DEUX segments : `script.google.com` exécute puis redirige
+(302) vers `googleusercontent.com`, qui ne fait que SERVIR la sortie. `fetch` suit la redirection : le
+statut observé est celui du second segment. Un 404 peut donc vouloir dire « rien n'a tourné » autant
+que « tout a tourné et a été facturé », et **le client ne peut pas les distinguer** — `redirect:
+'manual'` rendrait une réponse opaque, donc perdrait la réponse. Pire : le dépôt avait déjà tranché
+l'inverse pour la MÊME action un jour plus tôt (`api/mcp/index.ts` : « PAS rejouable, et ce n'est pas
+un oubli »). Deux composants du même dépôt allaient rendre des verdicts contraires sans se citer.
+
+**Ce qui l'a rattrapé.** Deux revues, lancées en parallèle sur des angles différents, ont convergé sur
+le même 🔴 — l'une par le modèle d'exécution de la plateforme, l'autre par l'unité du compteur. Aucune
+des deux ne l'aurait trouvé seule : la première ne savait pas ce que comptait le compteur, la seconde
+n'aurait pas cherché la contradiction interne au dépôt.
+
+**Leçon.** « Avant de faire porter une décision à un chiffre, dire dans quelle UNITÉ il est compté et
+ce qu'il compte exactement — un compteur d'appels au modèle n'est pas un compteur de réponses livrées,
+et le facteur entre les deux (ici 1 à 7) suffit à inverser la conclusion. Et quand la sûreté d'une
+action dépend de « est-ce que ça a déjà tourné ? », ne pas la DÉDUIRE d'un code d'erreur : la faire
+DIRE par le composant qui le sait. Ici le remède n'était pas un meilleur prédicat côté client, c'était
+un mémo de requête côté moteur — la garantie se déplace là où elle est observable. »
+
+**Corollaire.** Un correctif dont la sûreté repose sur une hypothèse de plateforme non vérifiable
+depuis le code qu'on écrit n'est pas un correctif : c'est un pari. Chercher l'endroit où l'hypothèse
+devient un FAIT.
+
+**Règle durable ?** oui — §9, en corollaire de « un verdict se prend sur une LECTURE, jamais sur
+l'échec d'une MUTATION » (écrite le matin même, et que je venais de violer sur un autre axe).
+
 ## 2026-09-15 — Un même code HTTP porte des causes d'ÉCHELLES différentes : la question n'est pas « quelle erreur », c'est « combien de lignes elle frappe »
 **Contexte.** Marc reclique sur « Tout corbeiller » : « Lot interrompu : Google refuse les appels.
 53 dossier(s) n'ont pas été tentés — réessaie dans quelques minutes. » Depuis la veille, le message

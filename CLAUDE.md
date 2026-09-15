@@ -652,6 +652,23 @@ ce qui reste vrai d'une session à l'autre.
   prose d'un message déjà tronqué pour l'écran : l'amont pose un marqueur canonique, l'aval ne lit
   que lui. Corollaire : un coupe-circuit qui compte les échecs « d'affilée » se remet à zéro sur
   TOUT signal que le canal répond — un refus définitif est une réponse.
+- **Un chiffre ne prouve rien tant qu'on n'a pas dit ce qu'il COMPTE — et « est-ce que ça a déjà
+  tourné ? » se fait DIRE par le moteur, jamais déduire d'un code d'erreur.** Vécu C28-133 : j'ai
+  conclu « panne transitoire, rejouer est sûr » d'un compteur passé de 4 à 8 « appels réussis » —
+  c'était le compteur d'appels ANTHROPIC, et un tour de chat en vaut 1 à 7 (boucle d'outils), donc
+  « +4 » collait tout autant à « UN tour a tourné en entier, a été payé, et l'utilisateur n'a reçu
+  qu'un 404 ». Réflexe : avant de faire porter une décision à une métrique, nommer son unité et son
+  facteur de conversion vers ce qu'on veut savoir. Second volet, structurel : un POST `/exec` a DEUX
+  segments (exécution, puis 302 vers l'écho qui sert la sortie) et `fetch` suit la redirection — le
+  statut observé est celui du SECOND, donc un 404 ne dit PAS si le script a tourné, et `redirect:
+  'manual'` ne sauve pas (réponse opaque). La garantie ne peut donc pas vivre côté client : elle vit
+  dans un MÉMO DE REQUÊTE côté moteur (`requestId` généré une fois, réutilisé à l'identique sur tous
+  les essais ; `doPost` re-sert la réponse mémorisée sans rappeler le modèle ni ré-écrire). Ce n'est
+  qu'ALORS que « rejouer tout ce qui n'est pas un JSON `ok:true` » devient sûr. ⚠️ Les deux moitiés
+  se livrent dans le MÊME merge : le mémo vit dans le moteur, un client qui rejoue sans lui
+  ré-exécute. Et toute rejouabilité se déclare PAR APPELANT, sans défaut (un oubli ne compile pas) —
+  le dépôt avait déjà tranché « `chat-assistant` PAS rejouable » ailleurs, et deux composants
+  n'ont pas le droit de rendre des verdicts contraires sans se citer.
 - **Un verdict se prend sur une LECTURE, jamais sur l'échec d'une MUTATION — et les mutations de
   test se jouent DANS LES DEUX SENS.** Apprendre « je n'ai pas le droit » en essayant puis en lisant
   la 403 fait naître la décision dans un `catch`, hors de la fonction de garde, donc sans qu'AUCUNE

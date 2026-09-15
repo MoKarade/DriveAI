@@ -665,3 +665,112 @@ test('majResumeHub_ : à plafond NORMAL, le pire résumé possible tient sous le
   assert.ok(!journal.some((e) => /trop volumineux/i.test(e.message)),
     'aucun largage : le garde de taille ne se déclenche pas — il reste un filet, jamais un passage');
 });
+
+/* ---------- C28-133 : le mémo de requête — un rejeu ne s'exécute pas deux fois ---------- */
+
+test('cleMemoRequete_ : PURE, et l\'identifiant ne peut pas être une chaîne arbitraire du réseau', () => {
+  assert.strictEqual(ctx.cleMemoRequete_('chat-assistant', 'abcd1234efgh'), 'rep|chat-assistant|abcd1234efgh');
+  // La clé entre dans un cache : charset et longueur contraints, jamais « ce que le client envoie ».
+  assert.strictEqual(ctx.cleMemoRequete_('chat-assistant', 'court'), '');           // < 8
+  assert.strictEqual(ctx.cleMemoRequete_('chat-assistant', 'x'.repeat(65)), '');    // > 64
+  assert.strictEqual(ctx.cleMemoRequete_('chat-assistant', 'avec espace 12'), '');  // charset
+  assert.strictEqual(ctx.cleMemoRequete_('chat-assistant', 'inject|ion|12345'), ''); // séparateur de clé
+  assert.strictEqual(ctx.cleMemoRequete_('chat-assistant', 42), '');                // pas une chaîne
+  assert.strictEqual(ctx.cleMemoRequete_('', 'abcd1234efgh'), '');                  // pas d'action
+});
+
+test('requestIdDeRequete_ : un corps illisible ne casse JAMAIS la requête', () => {
+  assert.strictEqual(ctx.requestIdDeRequete_({ postData: { contents: '{"requestId":"abcd1234efgh"}' } }), 'abcd1234efgh');
+  assert.strictEqual(ctx.requestIdDeRequete_({ postData: { contents: 'pas du json' } }), '');
+  assert.strictEqual(ctx.requestIdDeRequete_({}), '');
+  assert.strictEqual(ctx.requestIdDeRequete_(null), '');
+});
+
+test('doPost : une requête REJOUÉE rend la réponse mémorisée, SANS ré-exécuter l\'action', () => {
+  // Le cœur du correctif. Sans ce mémo, un rejeu de `chat-assistant` refacture un tour de Sonnet
+  // et fait appender une SECONDE fois les mêmes propositions dans l'onglet Réorg.
+  const cache = {};
+  let executions = 0;
+  ctx.CacheService = { getScriptCache: () => ({
+    get: (k) => (Object.prototype.hasOwnProperty.call(cache, k) ? cache[k] : null),
+    put: (k, v) => { cache[k] = v; },
+  }) };
+  ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'SECRET', setProperty: () => {} }) };
+  ctx.ContentService = { createTextOutput: (t) => ({ setMimeType: () => t }), MimeType: { JSON: 'json' } };
+  ctx.poserOperationCourante_ = () => {};
+  ctx.actionChatAssistant_ = () => { executions += 1; return { ok: true, reponse: 'la réponse', coutJour: 0.01 }; };
+
+  const requete = {
+    parameter: { action: 'chat-assistant', secret: 'SECRET' },
+    postData: { contents: JSON.stringify({ historique: [], requestId: 'abcd1234efgh' }) },
+  };
+  const premiere = JSON.parse(ctx.doPost(requete));
+  assert.strictEqual(premiere.reponse, 'la réponse');
+  assert.strictEqual(premiere.memo, undefined, 'le premier appel n\'est pas un rejeu');
+  assert.strictEqual(executions, 1);
+
+  const rejeu = JSON.parse(ctx.doPost(requete));           // MÊME requestId
+  assert.strictEqual(rejeu.reponse, 'la réponse', 'Marc reçoit sa réponse');
+  assert.strictEqual(rejeu.memo, true, 'et l\'app sait qu\'elle relit');
+  assert.strictEqual(executions, 1, 'mutation : retirer le mémo de doPost ⇒ 2 exécutions, Sonnet payé deux fois');
+
+  // Une AUTRE requête logique s'exécute normalement — le mémo ne gèle pas le chat.
+  const autre = { parameter: requete.parameter, postData: { contents: JSON.stringify({ requestId: 'zzzz9999yyyy' }) } };
+  JSON.parse(ctx.doPost(autre));
+  assert.strictEqual(executions, 2);
+});
+
+test('doPost : un `ok:false` n\'est PAS mémorisé — sinon un refus de budget serait figé 10 min', () => {
+  const cache = {};
+  let executions = 0;
+  ctx.CacheService = { getScriptCache: () => ({
+    get: (k) => (Object.prototype.hasOwnProperty.call(cache, k) ? cache[k] : null),
+    put: (k, v) => { cache[k] = v; },
+  }) };
+  ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'SECRET', setProperty: () => {} }) };
+  ctx.ContentService = { createTextOutput: (t) => ({ setMimeType: () => t }), MimeType: { JSON: 'json' } };
+  ctx.poserOperationCourante_ = () => {};
+  ctx.actionChatAssistant_ = () => { executions += 1; return { ok: false, erreur: 'Budget du jour atteint' }; };
+  const requete = {
+    parameter: { action: 'chat-assistant', secret: 'SECRET' },
+    postData: { contents: JSON.stringify({ requestId: 'abcd1234efgh' }) },
+  };
+  JSON.parse(ctx.doPost(requete));
+  JSON.parse(ctx.doPost(requete));
+  assert.strictEqual(executions, 2, 'rien n\'a été exécuté de coûteux : le second essai doit repasser');
+});
+
+test('doPost : un cache INDISPONIBLE dégrade vers le comportement d\'avant, jamais vers une panne', () => {
+  // Filet obligatoire : tout nouvel accès d'état sur un chemin d'intake s'enveloppe et dégrade (§9).
+  let executions = 0;
+  ctx.CacheService = { getScriptCache: () => { throw new Error('cache indisponible'); } };
+  ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'SECRET', setProperty: () => {} }) };
+  ctx.ContentService = { createTextOutput: (t) => ({ setMimeType: () => t }), MimeType: { JSON: 'json' } };
+  ctx.poserOperationCourante_ = () => {};
+  ctx.actionChatAssistant_ = () => { executions += 1; return { ok: true, reponse: 'ok' }; };
+  const requete = {
+    parameter: { action: 'chat-assistant', secret: 'SECRET' },
+    postData: { contents: JSON.stringify({ requestId: 'abcd1234efgh' }) },
+  };
+  const r = JSON.parse(ctx.doPost(requete));
+  assert.strictEqual(r.reponse, 'ok');
+  assert.strictEqual(executions, 1);
+});
+
+test('doPost : sans requestId, rien ne change — le mémo est OPT-IN par le client', () => {
+  let executions = 0;
+  const cache = {};
+  ctx.CacheService = { getScriptCache: () => ({ get: (k) => cache[k] || null, put: (k, v) => { cache[k] = v; } }) };
+  ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'SECRET', setProperty: () => {} }) };
+  ctx.ContentService = { createTextOutput: (t) => ({ setMimeType: () => t }), MimeType: { JSON: 'json' } };
+  ctx.poserOperationCourante_ = () => {};
+  ctx.actionChatAssistant_ = () => { executions += 1; return { ok: true, reponse: 'ok' }; };
+  const requete = {
+    parameter: { action: 'chat-assistant', secret: 'SECRET' },
+    postData: { contents: JSON.stringify({ historique: [] }) },
+  };
+  JSON.parse(ctx.doPost(requete));
+  JSON.parse(ctx.doPost(requete));
+  assert.strictEqual(executions, 2, 'aucune clé ⇒ aucun mémo ⇒ comportement historique');
+  assert.deepStrictEqual(Object.keys(cache), [], 'et rien n\'est écrit dans le cache');
+});
