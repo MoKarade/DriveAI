@@ -4,6 +4,22 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **🟦 EN COURS — 2026-09-15 : le « gros chantier » de Marc — l'assistant qui me connaît (C28-128, ADR-0059 PROPOSÉ).**
+> Marc l'a décrit le 15/09 : un assistant « 1000× plus intelligent » qui lit ses documents et ses mails
+> au fil de l'eau, se constitue une base de connaissances, est connecté à toutes ses apps (et aux
+> futures), visuel, le même dans chaque app, « secure au max ». Fait ce jour : lecture parallèle des
+> **9 dépôts** (clonés sous `/home/user/…`), critique de complétude, panel de **5 architectures**
+> (MCP-first, nouvelle app, hub-cerveau, fédéré sans stock, local RTX), **3 juges** (sécurité 7/8/4,5,
+> coût 8/7,5/7, fidélité 8 pour la nouvelle app), synthèse ⇒ **`docs/adr/0059-assistant-transversal-cadrage.md`**
+> + deux annexes (les 13 invariants en conflit ; le mur Gmail et le chiffrage). Retenu : une app neuve
+> `memoire.hubperso.com`, base de faits chiffrée à 4 niveaux, zéro jeton détenu, MCP + widget iframe,
+> alimentée par le moteur à coût marginal. **Rien n'est codé** : 10 questions posées à Marc (§8 de
+> l'ADR), 14 invariants à lever un par un (§4). Phase 0 proposée : « claude.ai a une mémoire et sait
+> où sont mes 19 427 documents » (2-3 semaines, 0-2 $).
+> ⚠️ Deux faits d'infra tranchés en chemin : Vercel = **Hobby** [Certain, `list_teams` 15/09] (les
+> docs CarAI/FinanceAI disant « Pro » sont périmées) ; le moteur tique à **~30 min** et non 5 (cadence
+> = `Réglages!B2`, `Main.gs:240`) — question posée à Marc, C28-99 clos (gain réel : génération 1/9 → 4/9).
+>
 > **🟥 OUVERT — 2026-09-15 : la mission écoles dit « terminé », et sa cible déclarée est VIDE.**
 >
 > Relevé Drive du 15/09 (listing par `parentId` — `search_files` retarde). Mission `ecoles-archives06`

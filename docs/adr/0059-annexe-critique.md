@@ -1,0 +1,66 @@
+# ADR-0059 — Annexe A : critique de complétude de la carte de l'écosystème
+
+> Produite le 2026-09-15 par un agent critique après la lecture parallèle des 9 dépôts. C'est la pièce qui liste les **13 invariants écrits** que la demande heurte, les contradictions entre dépôts, et les deux tentatives antérieures retirées.
+
+## Critique de complétude — carte de l'écosystème (vérifiée dans les dépôts, 15/09/2026)
+
+### 1. Questions d'architecte auxquelles la carte NE répond PAS
+
+**Google / scopes / projets GCP**
+- **Où vit le client OAuth de l'app web DriveAI (scope `drive` restreint) et en quel mode de consentement ?** `docs/DEPLOIEMENT.md` l.262-269 dit « même projet Google Cloud que le script Apps Script » + « peut rester en mode test », ce qui est impossible si ADR-0041 est vrai (projet caché, inadministrable) et incompatible avec « ne se reconnecte jamais » (mode Test = 7 j). Réponse dans la console GCP, pas dans un dépôt. [Certain que le dépôt se contredit]
+- **Combien de mails au total dans la boîte ?** Nulle part. Seule la fenêtre `newer_than:30d` et `has:attachment` historique sont connues (`src/Config.gs`).
+- **claude.ai lit-il déjà Gmail/Drive/Calendar de Marc ?** **OUI — et la carte l'omet entièrement.** Cette session expose `mcp__Gmail__*` (search, get_message, **trash**, **send**, mark_spam, delete_label), `mcp__Google_Drive__*` (read, create, **trash_file**, **share_file**), `mcp__Google_Calendar__*` — connecteurs first-party Anthropic, et `ops-stack/references/connecteurs.md` §« Google Drive » / §« Gmail / Google Calendar » en documente déjà les pièges. Le rapport transversal §3 (« la seule voie sans vérification pour lire Gmail est Apps Script ») est faux pour un assistant vivant dans claude.ai : l'OAuth vérifié d'Anthropic contourne CASA. Question ouverte : quels scopes exacts, quel projet, quelle rétention Anthropic ? [Certain sur l'existence, À vérifier sur les scopes]
+- **La rétention zéro Anthropic est-elle activée sur l'organisation de Marc ?** ADR-0007 l.14/27 dit « rétention zéro *possible* », jamais « activée ». Réponse : console.anthropic.com (cité seulement pour le rechargement, `docs/RUNBOOK.md` l.51).
+- **Une seule clé/organisation Anthropic ou plusieurs ?** Quatre variables distinctes (`DriveAI_ANTHROPIC_KEY` Script Properties, `ANTHROPIC_API_KEY` JobAI + BatchChef Vercel, BYOK FinanceAI navigateur). Aucun dépôt ne dit si c'est la même clé/facturation ; le hub somme les coûts `period:"total"` sans savoir s'ils se recouvrent (`hubperso/lib/usage.ts`).
+
+**Infra / plans**
+- **Quel plan Vercel, pour quelle équipe ?** Hubperso ADR 0003 (**14/09/2026**) et CarAI CLAUDE.md l.283 disent Hobby ; FinanceAI A0, BatchChef `build-necessaire.sh`, CarAI HANDOVER l.1989 disent **Pro depuis le 13/08**. Un plan Vercel est par équipe : soit deux équipes, soit une doc périmée. Réponse : dashboard Vercel (`list_teams`). [À vérifier]
+- **Combien de projets Neon, quel plan, `pgvector` disponible ?** Quatre bases (hub, JobAI, CarAI, BatchChef), aucune sur `pgvector` (grep vide sur les 8 dépôts), BatchChef note que `unaccent` est déjà un privilège refusé. Plan Neon et nombre de projets gratuits : console Neon.
+- **La machine locale.** `claude-config/CLAUDE.md` §10 : « PC cible 24/7 : Windows + RTX 5080, run le hub » — un GPU local existe. Est-il allumé, sert-il encore ? (§9 dit que `MoKarade/hub` FastAPI/Ollama a été retiré de la liste le 20/08). Réponse : nulle part dans les dépôts.
+
+**Assistant / mémoire**
+- **Où vit la mémoire de claude.ai de Marc (Projects, mémoire de compte, Routines) ?** Hors dépôts. Seule trace : `ops-stack` (skill synchronisée claude.ai, `Rapports IA/Hebdo` et `/Quotidien` écrits dans Drive par des Routines claude-code-remote, `connecteurs.md` l.144-150 et §« Tâches planifiées »). La carte cite la skill mais pas ce circuit d'écriture Drive déjà actif.
+- **Le hub compte-t-il persister `details` ?** `hub-contract/src/index.ts` l.247 et `hubperso/BACKLOG.md` l.130 : « Les libellés de détail servent de CLÉ à l'historique ». Code actuel : `historiqueDb.ts` l.64 n'insère que `metriques`. Intention non tranchée — voir contradiction 2.3.
+- **Politique d'écosystème sur la persistance des conversations ?** DriveAI ADR-0026 : `sessionStorage` strict ; FinanceAI : 30 conversations archivées dans le blob Drive ; BatchChef : `useState` volatil ; JobAI/CarAI : rien. Aucune règle commune.
+- **Modèles.** Trois familles de noms en prod (`claude-sonnet-4-6`, `claude-sonnet-5`, `claude-haiku-4-5[-20251001]`, alias `claude-opus-4-8`) — aucune politique de modèle commune.
+
+### 2. Contradictions entre dépôts
+
+1. **Vercel Hobby vs Pro** (voir ci-dessus) — ADR 0003 du hub, daté du jour même, construit une décision d'architecture (horloge GitHub Actions) sur « le plan Hobby n'autorise que des crons quotidiens ».
+2. **Projet GCP du client web DriveAI** — `DEPLOIEMENT.md` (« même projet que le script ») vs ADR-0041 (projet caché, personne n'y accède).
+3. **`details` : transit ou mémoire ?** DriveAI ADR-0057 fonde son garde-fou (« le nom voyage dans `details`, JAMAIS dans `metrics`, parce que Hubperso ne persiste pas `details` ») sur l'état ACTUEL du code hub ; le contrat et le backlog du hub annoncent l'inverse comme intention. Le jour où H-09 persiste les détails, le nom du dernier document classé s'installe 90 j dans Neon sans qu'aucun test DriveAI ne bouge (`hub-summary.test.ts` ne vérifie que `metrics`/`alerts`).
+4. **CarAI multi-utilisateur** — `lib/session.ts` l.33 n'appelle que `isAuthorizedEmail` ; HANDOVER l.2287 affirme « l'app n'est plus réservée à une seule adresse ». Un invité accordé dans `/administration` est refusé à chaque écran. [Certain]
+5. **« Métadonnées seulement » n'est pas une règle d'écosystème.** DriveAI l'érige en constitution ; JobAI stocke le CV entier (`cvs.contenu` base64 + `cvs.texte`, schema.ts l.567-569) et le texte LLM d'analyse de marché ; FinanceAI stocke `DocumentMeta.extractedData` (Vision) et les transcripts de chat dans Drive ; CarAI stocke positions GPS et domicile en base. Trois régimes incompatibles sous une même bannière « Local-first » (claude-config §2 l.24 — contredite par Neon/Vercel/Apps Script/Anthropic dans les 8 dépôts).
+6. **Gmail : « à jamais interdit » vs déjà permis.** DriveAI §1.3 interdit « à jamais » suppression/spam/retrait de libellé, verrou CI ; le connecteur Gmail de claude.ai de Marc expose `trash_message`, `mark_spam`, `send_message`, `delete_label`. Le garde-fou le plus dur de l'écosystème ne couvre qu'un des deux lecteurs de la boîte.
+7. **Cookie partagé vs cookie propre.** Hubperso/JobAI/CarAI/BatchChef : `openid email profile tasks`, « ni Drive ni Gmail », un test le verrouille ; DriveAI : `drive` complet 1 an dans `driveai_rt` ; FinanceAI : `drive.appdata`. Un assistant « présent dans chaque app » n'a pas la même identité Google selon la page où il tourne.
+8. **Docs périmées** : hub-contract HANDOVER/README (« v1.3.0 à pousser », exemple `#v1.2.0`) ; app-template README (`lib/hubToken.ts` inexistant, SHA du contrat faux) ; JobAI `lib/domicile.ts` (règle révisée par ADR-0016, commentaire non mis à jour) ; app-template `lib/authorized.ts` (« UNE SEULE adresse »).
+
+### 3. Invariants FRONTALEMENT en conflit avec « persister une base de connaissances tirée des documents et des mails »
+
+Ce sont les décisions que Marc doit prendre explicitement, une par une :
+
+1. DriveAI CLAUDE.md §9 / ADR-0007 §2 / `test/privacy.test.js` : « **Ne JAMAIS persister le corps d'un document (texte OCR, contenu) dans l'Index ni le Journal — uniquement des métadonnées** […] Le texte des documents ne sort que vers l'API Anthropic pour le classement ; **il ne se stocke nulle part**. »
+2. DriveAI CLAUDE.md §9 : « **Ce qui SORT du compte Google de Marc se juge à part, et se tranche par un ADR** […] Chaque sortie nomme la frontière franchie ET le garde-fou obtenu en échange — jamais une permission nue. » (une base de faits stockée hors du compte est une frontière plus large que 0042 — transit — et 0057 — un nom.)
+3. DriveAI ADR-0026 : « **`sessionStorage` STRICT, jamais `localStorage`** […] l'écrire en `localStorage` l'inscrirait DURABLEMENT sur le disque. »
+4. DriveAI ADR-0045 : « DriveAI publie **ce qui existe et où, jamais combien**. » + ADR-0007 contexte : « Pas de serveur tiers, pas de multi-utilisateur. »
+5. DriveAI ADR-0041 §1 / CLAUDE.md §9 : « **Gmail et Drive restent sur le projet par défaut — NON NÉGOCIABLE** » (toute lecture de mails hors Apps Script passe par un relais `/exec` gardé — ou par le connecteur claude.ai, à décider).
+6. Hubperso CLAUDE.md §1 + schema.ts : « **Le hub ne connaît AUCUNE app en particulier** » ; `.env.example` : « ce qui n'y est PAS, c'est le contenu des apps (**aucun nom de fichier, aucune transaction**) » ; schema.ts : « Deux tables suffisent […] il n'en faut pas une de plus ». Le hub est le seul lieu transversal, et il s'interdit d'être le siège.
+7. Hubperso ADR 0001 / docs/ACCES-PAR-APP.md : « **On accorde une app entière, ou rien** […] un accès à la liste d'épicerie ne doit jamais ouvrir ça. » Une base transversale fusionne des périmètres que l'écosystème sépare volontairement (JobAI : domicile, statut migratoire, tiers).
+8. Hubperso `jetonsGoogle.ts` : « **ni Drive, ni Agenda, ni Gmail** […] multiplierait par quatre les portes vers un Drive complet. Un test le verrouille. »
+9. FinanceAI VISION / compliance : « **Local-first** : les données ne quittent pas l'appareil sauf backup chiffré explicite » ; Onboarding : consentement Anthropic limité à « noms de marchands tronqués, montants exacts » ; CLAUDE.md §9 : « Une décision de vie privée écrite pour UNE sortie se repasse sur TOUTES (PDF, CSV, backup, prompt LLM, MCP, logs) ».
+10. JobAI CLAUDE.md §1.1 : « **Dépôt PUBLIC — donc aucune donnée personnelle, jamais** » ; ADR-0009 : « **Le CV stocké ne sort jamais** » ; ADR-0011 : « l'adresse du domicile ne traverse jamais l'MCP » ; §7 : « `details` ne porte que des NOMBRES ».
+11. CarAI `lib/mcp/outils.ts` : « **LA POSITION EXACTE NE SORT PAS** […] Ne pas “améliorer” la précision ici sans reprendre cette décision. »
+12. claude-config CLAUDE.md §2 : « **Tout gratuit** : Marc veut zéro abonnement. » / « **Local-first** » ; §6 : « JAMAIS de secret en clair dans le code, le repo, le chat, **ou Drive** ».
+13. BatchChef / ADR-0001 : « le LLM propose, le code valide, Marc confirme » — règle reprise par FinanceAI (writeExecutor), JobAI (ADR-0011), DriveAI (Réorg) : tout assistant transversal qui ÉCRIT dans une app hérite d'une confirmation par app.
+
+### 4. Tentatives antérieures de la même idée
+
+- **Hubperso ADR 0001 §3 « prêt de jetons »** (08/2026) : le hub comme détenteur central des `refresh_token` Google (coffre `jetons_google` AES-256-GCM, `GET /api/google/jeton`). **Écrit, puis retiré avant livraison ; amendement du 14/08** : « le moteur ne détient aucun jeton », « fusionner les clients OAuth » exigerait `drive` + `gmail.modify` restreints ⇒ CASA + écran En production ; « ne pas aller rechercher dans l'historique en croyant que c'était fini ». Décision : centraliser l'AUTORISATION, jamais l'accès Google.
+- **FinanceAI ADR-002 « Era Context »** (05/2026, `docs/HISTORIQUE.md` l.3915-3990) : API d'« insights pré-calculés et de **mémoire persistante** » injectée en `<memory>` dans le prompt ; abandonnée le 27/05 (pas de CORS, Era « MCP-first ») ; finding SC2 prompt injection ; la balise `<memory>` survit sans producteur dans `QUEBEC_FISCAL_CONTEXT`. Décision : local-first, store dump, pas de tiers. Le profil détaillé W5.1 a été **purgé** le 11/06 faute de consommateur.
+- **DriveAI ADR-0017** miroir du dépôt « pour NotebookLM » — abandonné (§3 CLAUDE.md), et **ADR-0045** (inventaire documents → FinanceAI, « jamais un montant ») — Proposé, non ratifié, non implémenté ; écarte « un bus de messages dans le hub ».
+- **JobAI ADR-0001** : réutilisation du scan Gmail de DriveAI **rejetée** (« son moteur Gmail vit dans Apps Script, à l'intérieur du compte Google de Marc ») ; accès Drive retiré par ADR-0009 au profit du téléversement.
+- **BatchChef BACKLOG l.108-112, 452** : historique des propositions/repas **écarté** par Marc (« mesure sans usage tant que personne ne l'a demandée »).
+- **De fait, l'assistant transversal existe déjà** : claude.ai + 5 MCP + connecteurs Gmail/Drive/Calendar first-party + Routines qui déposent des rapports dans `08 · Perso & projets / Projets / Rapports IA` + skill `ops-stack` (Mode A brief, Mode C « question qui traverse la pile », « Entretenir la mémoire » = pièges de connecteurs, pas profil). Sa mémoire de Marc est nulle part dans un dépôt ; sa règle est « la lecture est gratuite, l'écriture ne l'est pas ».
+- **DriveAI ADR-0056 (14/09)** : « j'ai un gros chantier » — le chantier n'est nommé nulle part [Certain] ; l'ADR ne contient que les trois lots de finalisation.
+
+**TL;DR** — La carte manque le fait le plus structurant (claude.ai de Marc lit ET écrit déjà Gmail/Drive via connecteurs Anthropic, hors de tout garde-fou des dépôts), laisse ouvertes cinq questions hors dépôts (plan Vercel, projet GCP du client web DriveAI, rétention Anthropic, clés/facturation, machine locale RTX), et l'objectif heurte frontalement treize invariants écrits, dont deux tentatives déjà retirées (prêt de jetons du hub, mémoire Era de FinanceAI).
