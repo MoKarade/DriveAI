@@ -28,6 +28,16 @@
 > = `Réglages!B2`, `Main.gs:240`) — **c'est un CHOIX de Marc (« oui, c'est moi, laisse 30 »)** : ne pas le
 > « corriger ». C28-99 clos (gain réel : génération 1/9 → 4/9).
 >
+> **🟦 EN COURS — 2026-09-15 soir : « Web app 404 » sur l'assistant (C28-133).** Marc : « erreur 404
+> quand je fais une demande à l'assistant ». Texte exact demandé AVANT de bâtir une hypothèse, et il
+> tranche : **« Web app 404 »**, donc le POST vers `/exec`. **Transitoire** — le compteur
+> `app:chat-assistant` du moteur est passé de 4 à 8 appels réussis dans la même fenêtre, et le moteur
+> n'a aucune erreur. La signature ET son remède étaient déjà écrits en §9 ; le remède n'avait jamais
+> été appliqué aux appels de l'APP. Correctif livré : `postWebApp`, rejeu borné sur non-2xx seulement.
+> ⚠️ **En revue flotte** (code + quotas Apps Script) — la revue challenge le point qui porte tout :
+> un non-2xx prouve-t-il que `doPost` n'a pas tourné ? Si non, le rejeu peut double-facturer un appel
+> LLM et dupliquer une proposition Réorg. Ne pas merger avant son verdict.
+>
 > **✅ RÉGLÉ — 2026-09-15 : « Tout corbeiller » ne se gèle plus sur un refus de droits (C28-129).**
 > Marc a collé la cause exacte, et elle clôt trois jours de diagnostic : `403 : The user does not have
 > sufficient permissions for this file.` Les dossiers vides restants **ne lui appartiennent pas** (autre

@@ -698,6 +698,67 @@ export interface PlanRechercheIA {
   explication?: string;
 }
 
+/* ---------- POST vers la web app Apps Script : un 404 d'infra se REJOUE (C28-133) ---------- */
+
+/**
+ * Essais d'un POST vers `/exec`, et attentes entre eux. Bornés : au-delà, ce n'est plus une
+ * hoquet de plateforme mais un vrai problème de déploiement, et Marc doit le savoir.
+ */
+export const WEBAPP_ESSAIS = 3;
+export const WEBAPP_ATTENTES_MS = [700, 1800];
+
+/**
+ * POST vers la web app du moteur, avec REJEU BORNÉ sur une panne d'INFRASTRUCTURE. PUR sauf le
+ * `fetch` et l'attente, tous deux injectables.
+ *
+ * POURQUOI — symptôme rapporté par Marc le 15/09 : « erreur 404 quand je fais une demande à
+ * l'assistant », affiché « Web app 404 ». C'est la signature documentée en `CLAUDE.md` §9 :
+ * « les pannes transitoires sous POST ont DEUX signatures : un non-200 (404 « Sorry, unable to
+ * open ») ET un 200 avec une page HTML ; rejouer (borné) tout ce qui n'est pas un JSON `ok:true` ».
+ * La leçon existait, elle avait été appliquée au miroir Drive — et jamais aux appels de l'APP,
+ * qui levaient dès la première réponse. Preuve que le canal marche par ailleurs : le compteur
+ * `app:chat-assistant` du moteur est passé de 4 à 8 appels réussis pendant que Marc voyait des 404.
+ *
+ * CE QUI SE REJOUE, et pourquoi c'est SÛR : uniquement un statut HTTP non-2xx. Apps Script répond
+ * ainsi quand il refuse d'OUVRIR le déploiement — le script n'a pas tourné, donc rien n'a été
+ * facturé ni écrit, et un second essai ne peut pas dupliquer un effet.
+ *
+ * CE QUI NE SE REJOUE PAS, délibérément :
+ *  - un `fetch` qui LÈVE (réseau coupé) : la requête a PU atteindre le moteur, et une action comme
+ *    `chat-assistant` coûte un appel LLM et peut écrire des propositions. « Je ne sais pas si ça a
+ *    tourné » n'autorise pas à rejouer.
+ *  - un 200 illisible (page HTML) : c'est le piège de VERSION, permanent — échouer vite.
+ *  - un JSON propre `ok:false` (secret, config, budget) : permanent aussi — échouer vite.
+ * @param attendre  injectée : un rejeu ne se teste pas en attendant vraiment deux secondes.
+ */
+export async function postWebApp<T extends { ok: boolean; erreur?: string }>(
+  action: string,
+  corps: unknown,
+  attendre: (ms: number) => Promise<void> = (ms) => new Promise((r) => { setTimeout(r, ms); }),
+): Promise<T> {
+  const { webappUrl, webappSecret } = lireConfig();
+  if (!webappUrl || !webappSecret) throw new Error('Variables Vercel WEBAPP_URL / WEBAPP_SECRET manquantes (Settings → Environment Variables)');
+  let dernierStatut = 0;
+  for (let essai = 0; essai < WEBAPP_ESSAIS; essai++) {
+    if (essai > 0) await attendre(WEBAPP_ATTENTES_MS[Math.min(essai - 1, WEBAPP_ATTENTES_MS.length - 1)]);
+    const rep = await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}&action=${action}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(corps),
+    });
+    if (!rep.ok) { dernierStatut = rep.status; continue; } // infra : le script n'a PAS tourné
+    try {
+      return await rep.json() as T; // `ok:true` ou `ok:false` : l'appelant tranche, on ne rejoue pas
+    } catch {
+      // Une web app mal déployée renvoie une page HTML en 200 (piège de VERSION — DEPLOIEMENT.md).
+      throw new Error('Réponse illisible — la web app a-t-elle été redéployée en nouvelle version ?');
+    }
+  }
+  // Le message DIT qu'on a insisté : sans ça, Marc ne peut pas distinguer un hoquet d'une panne
+  // installée, et c'est exactement la différence qui commande son geste suivant.
+  throw new Error(`Web app ${dernierStatut} — ${WEBAPP_ESSAIS} essais sans réponse. Si ça se répète, c'est le déploiement /exec qu'il faut revoir.`);
+}
+
 /**
  * Traduit une question libre en plan de recherche via le doPost du moteur (la clé Anthropic
  * reste dans les Script Properties — l'app ne parle JAMAIS à l'API Anthropic). Contrairement à
@@ -706,21 +767,8 @@ export interface PlanRechercheIA {
  * La question voyage dans le CORPS (jamais l'URL — les URL finissent dans des logs).
  */
 export async function rechercheIA(question: string): Promise<PlanRechercheIA> {
-  const { webappUrl, webappSecret } = lireConfig();
-  if (!webappUrl || !webappSecret) throw new Error('Variables Vercel WEBAPP_URL / WEBAPP_SECRET manquantes (Settings → Environment Variables)');
-  const rep = await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}&action=recherche-ia`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ question }),
-  });
-  if (!rep.ok) throw new Error(`Web app ${rep.status}`);
-  let data: { ok: boolean; erreur?: string; plan?: PlanRechercheIA };
-  try {
-    data = await rep.json();
-  } catch {
-    // Une web app mal déployée renvoie une page HTML en 200 (piège de VERSION — DEPLOIEMENT.md).
-    throw new Error('Réponse illisible — la web app a-t-elle été redéployée en nouvelle version ?');
-  }
+  const data = await postWebApp<{ ok: boolean; erreur?: string; plan?: PlanRechercheIA }>(
+    'recherche-ia', { question });
   if (!data.ok || !data.plan) throw new Error(data.erreur || 'recherche IA indisponible');
   return data.plan;
 }
@@ -755,20 +803,8 @@ export interface ErreurChat extends Error {
  * persisté (chat éphémère, State React).
  */
 export async function envoyerMessageChat(historique: MessageChat[]): Promise<ReponseChat> {
-  const { webappUrl, webappSecret } = lireConfig();
-  if (!webappUrl || !webappSecret) throw new Error('Variables Vercel WEBAPP_URL / WEBAPP_SECRET manquantes (Settings → Environment Variables)');
-  const rep = await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}&action=chat-assistant`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ historique }),
-  });
-  if (!rep.ok) throw new Error(`Web app ${rep.status}`);
-  let data: { ok: boolean; erreur?: string; reponse?: string; actionsProposees?: boolean; coutJour?: number; plafond?: number };
-  try {
-    data = await rep.json();
-  } catch {
-    throw new Error('Réponse illisible — la web app a-t-elle été redéployée en nouvelle version ?');
-  }
+  const data = await postWebApp<{ ok: boolean; erreur?: string; reponse?: string;
+    actionsProposees?: boolean; coutJour?: number; plafond?: number }>('chat-assistant', { historique });
   if (!data.ok) {
     // Le refus de budget porte AUSSI coutJour/plafond → on les attache à l'erreur pour que l'UI
     // affiche le compteur « plafond atteint » même au premier message d'une journée déjà plafonnée.
@@ -787,20 +823,7 @@ export async function envoyerMessageChat(historique: MessageChat[]): Promise<Rep
  * remonte TELLE QUELLE — l'UI la traduit en message clair au lieu d'un texte technique.
  */
 async function demandeWebApp(action: string, corps: unknown): Promise<string> {
-  const { webappUrl, webappSecret } = lireConfig();
-  if (!webappUrl || !webappSecret) throw new Error('Variables Vercel WEBAPP_URL / WEBAPP_SECRET manquantes (Settings → Environment Variables)');
-  const rep = await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}&action=${action}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(corps),
-  });
-  if (!rep.ok) throw new Error(`Web app ${rep.status}`);
-  let data: { ok: boolean; erreur?: string; message?: string };
-  try {
-    data = await rep.json();
-  } catch {
-    throw new Error('Réponse illisible — la web app a-t-elle été redéployée en nouvelle version ?');
-  }
+  const data = await postWebApp<{ ok: boolean; erreur?: string; message?: string }>(action, corps);
   if (!data.ok) throw new Error(data.erreur || `${action} refusé`);
   return data.message ?? 'demande programmée';
 }
