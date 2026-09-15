@@ -4,6 +4,38 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **🟥 OUVERT — 2026-09-15 : la mission écoles dit « terminé », et sa cible déclarée est VIDE.**
+>
+> Relevé Drive du 15/09 (listing par `parentId` — `search_files` retarde). Mission `ecoles-archives06`
+> à **`traites: 5 / base: 5`, statut `terminé`**. Ce qui MARCHE : la racine de `06` ne porte plus
+> aucun dossier d'école, et l'ancienne source `Cégep de Sherbrooke` est une coquille **entièrement
+> vide** (ses 5 sous-dossiers vérifiés un par un). Ce qui ne va PAS — `Archives scolaires` diverge de
+> `STRUCTURE_CIBLE_RESET` en **trois** points (C28-126) : `Cégep de Sherbrooke (2019)` a été créé
+> **À VIDE** le 15/09 à 04:38 UTC alors que deux commentaires du code promettent « jamais à vide » ;
+> les **9 documents Sherbrooke réels** sont dans `CEGEP - Sherbrooke (2020)`, graphie qui n'existe
+> **nulle part** dans `src/` ; et `Online course — AI Essentials (Google)` est déclaré mais absent,
+> ses documents à plat à la racine de `06`.
+> ⚠️ Le test censé verrouiller « les noms == le relevé Drive » compare la table à un corpus **figé** :
+> il ne voit pas cette dérive et il est resté vert. Une mission « terminée » sur un compteur ne prouve
+> rien — c'est le CONTENU qui l'a dit.
+> Le suivi quotidien (routine) est **supprimé** : la mission a convergé, la suite est du backlog.
+>
+> **⏸️ EN ATTENTE DE MARC — « Tout corbeiller » : le 403.** Marc, 14/09 au soir : « j'ai toujours
+> l'erreur 403 ». Vérifié de mon côté : l'app en ligne EST le code C28-121 (mon build local du SHA
+> déployé produit `index-D7t6Aai6.js`, le fichier exact que sert le site ; le service worker est un
+> passe-plat SANS cache). Un 403 qui n'est pas un throttle ressort en clair (`Google API 403 : <200
+> car. du corps>`), et `statutRefusCorbeille` le classe `null` ⇒ ligne re-tentée, compteur de pannes
+> +1, **coupure à 5 d'affilée** — mot pour mot « il s'arrête seul sans rien supprimer ».
+> **Piste TROUVÉE, non prouvée** : 5 dossiers d'école **vides** que Marc **ne possède pas**
+> (`esprit.richard59@gmail.com`) — « Bac », « CEGEP », « IUT », « Notes de Terminale », « Notes de
+> Première ». Un dossier non possédé ne peut pas être corbeillé : 403 `insufficientFilePermissions`,
+> définitif. Cinq dossiers, coupe-circuit à cinq. ⚠️ **Je ne peux pas confirmer que ce sont ceux-là**
+> que la liste propose — la ligne « Cause exacte : … » de Marc tranche en un coup d'œil.
+> **Défaut RÉEL indépendant de la cause** : un 403 PERMANENT est traité comme une panne passagère
+> (aucune branche ne le reconnaît) ⇒ la ligne ne quitte jamais la liste et le lot meurt au 5ᵉ.
+> Correctif = patron C28-93 (un refus n'est pas une panne). **Pas codé : j'attends la ligne d'erreur**,
+> pour ne pas diagnostiquer une troisième fois à l'aveugle.
+>
 > **🟦 EN COURS — 2026-09-14 (soir) : deux demandes de Marc, dont un diagnostic que j'ai eu FAUX.**
 >
 > **1 · « mes paies ne devraient pas arriver dans employeur mais seulement dans finances »**
