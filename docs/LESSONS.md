@@ -52,6 +52,33 @@ TOUT signal que le canal répond — y compris un refus définitif, qui est une 
 quelques incidents épars, séparés par des dossiers parfaitement traités, finissent par couper un lot
 que la plateforme sert très bien.
 
+**Ce que la revue flotte a ajouté, et qui vaut plus que le correctif.** Deux choses qu'aucun test
+de la suite ne pouvait me dire.
+
+*1. Mes mutations allaient toutes dans le même sens.* J'en avais joué quatre, toutes du type « je
+retire un bout de la détection » — et les quatre étaient attrapées, ce qui m'a donné une confiance
+imméritée. Aucune n'allait dans la direction OPPOSÉE : ÉLARGIR le prédicat. Or c'est celle-là qui
+est irréversible ici — un verdict qui sort une ligne de la liste n'est jamais re-proposé, tandis
+qu'un verdict manqué coûte un réessai. La revue a élargi le prédicat d'un mot, et le corpus n'a
+rien vu : il contenait la forme de la couche d'authentification (« Request had insufficient
+authentication scopes ») mais pas celle que Drive rend VRAIMENT quand le jeton perd son scope
+(« Insufficient Permission »). Le corpus de preuve ne contenait pas la population que la garde
+protège.
+
+*2. Un verdict pris sur un ÉCHEC contourne toutes les gardes.* Mon correctif apprenait « ce dossier
+n'est pas à moi » en TENTANT la corbeille et en lisant la 403. La décision se prenait donc dans un
+`catch`, hors de `verdictCorbeille`, sans qu'aucune des cinq gardes d'ADR-0014 n'ait tourné — alors
+que la même information était disponible AVANT, sur une simple lecture (`capabilities.canTrash`).
+L'audit l'a dit sans détour : c'est l'ordre inverse de celui que l'ADR exige. Et le correctif qu'il
+propose fait disparaître les deux 🟠 d'un coup, parce qu'il supprime la 403 au lieu de la traiter.
+
+**Leçon (2).** « Quand une information peut être LUE avant d'agir, le verdict se prend sur la
+lecture — jamais sur l'échec de l'action. Un verdict né dans un `catch` court-circuite par
+construction toutes les gardes placées avant la mutation. Et un test de mutation ne prouve la
+garde que s'il est joué DANS LES DEUX SENS : celui qui affaiblit la détection, et celui qui
+l'élargit. Le second est presque toujours le dangereux, parce que c'est lui qui produit des
+verdicts positifs — et un verdict positif qui retire l'item du périmètre est définitif de fait. »
+
 **Règle durable ?** oui — §9, en corollaire de « Échecs LLM : classer par ORIGINE avant de compter »
 (même famille : l'origine d'un échec commande ce qu'on en fait) et de « un verdict pris sur la donnée
 RICHE ne se re-dérive jamais depuis sa forme APPAUVRIE ».

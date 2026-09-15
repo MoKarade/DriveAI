@@ -652,6 +652,19 @@ ce qui reste vrai d'une session à l'autre.
   prose d'un message déjà tronqué pour l'écran : l'amont pose un marqueur canonique, l'aval ne lit
   que lui. Corollaire : un coupe-circuit qui compte les échecs « d'affilée » se remet à zéro sur
   TOUT signal que le canal répond — un refus définitif est une réponse.
+- **Un verdict se prend sur une LECTURE, jamais sur l'échec d'une MUTATION — et les mutations de
+  test se jouent DANS LES DEUX SENS.** Apprendre « je n'ai pas le droit » en essayant puis en lisant
+  la 403 fait naître la décision dans un `catch`, hors de la fonction de garde, donc sans qu'AUCUNE
+  garde amont n'ait tourné (vécu C28-129 : le refus de corbeille, alors que `capabilities.canTrash`
+  répondait à la même question sur la lecture qui précède). Réflexe : « cette information est-elle
+  lisible AVANT d'agir ? » — si oui, la garde la consulte, et l'échec de la mutation ne reste qu'un
+  filet. Le prédicat porte alors TROIS états (oui / non / l'API n'a rien dit), le troisième étant une
+  PANNE et jamais une autorisation par défaut ; rendre le champ OBLIGATOIRE laisse le compilateur
+  exiger que chaque appelant tranche. Côté preuve : jouer une mutation qui AFFAIBLIT la détection ne
+  prouve que la moitié — jouer aussi celle qui l'ÉLARGIT, parce que c'est elle qui fabrique des
+  verdicts POSITIFS, et qu'un verdict positif retirant l'item du périmètre est définitif de fait
+  (vécu : 4 mutations vertes dans un sens, la 5ᵉ en sens inverse non attrapée — le corpus négatif ne
+  contenait pas la vraie forme de la panne GLOBALE que la garde devait laisser passer).
 - **Échecs LLM : classer par ORIGINE avant de compter.** Une erreur de PLATEFORME (HTTP 400
   « credit balance », 401 — panne de COMPTE) n'est jamais imputée au document : détecter →
   suspendre les appels du run (échec rapide) → ne rien compter → re-sonder au run suivant. Sinon
