@@ -20,8 +20,9 @@
 > de corps dans Drive) ; **adresse servie aux apps à périmètre** (écart : défaut OFF, `domicile` +
 > `niveau_max ≥ 2` explicites par app). Mails : « Takeout pour l'historique, moteur pour le flux » (confirmé).
 > Les 6 autres questions = recommandations. Phase 0 retenue :
-> « claude.ai a une mémoire et sait où sont mes 19 427 documents ». ⚠️ Le dépôt `MoKarade/memoire`
-> n'existe pas encore : c'est le geste manuel de Marc (« Use this template » sur app-template, privé).
+> « claude.ai a une mémoire et sait où sont mes 19 427 documents ». ✅ **Le dépôt existe depuis le 15/09 18:07, et il s'appelle `MoKarade/MemoryAI`** (privé), pas
+> `memoire` comme l'ADR l'anticipait ; son projet Vercel `memory-ai` est déjà lié. Le brief de
+> démarrage a été remis à Marc (`BRIEF-MEMOIRE-PHASE-0.md`). Le sous-domaine servi reste à trancher.
 > ⚠️ Deux faits d'infra tranchés en chemin : Vercel = **Hobby** [Certain, `list_teams` 15/09] (les
 > docs CarAI/FinanceAI disant « Pro » sont périmées) ; le moteur tique à **~30 min** et non 5 (cadence
 > = `Réglages!B2`, `Main.gs:240`) — **c'est un CHOIX de Marc (« oui, c'est moi, laisse 30 »)** : ne pas le
