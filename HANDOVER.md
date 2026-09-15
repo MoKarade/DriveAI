@@ -28,6 +28,22 @@
 > = `Réglages!B2`, `Main.gs:240`) — **c'est un CHOIX de Marc (« oui, c'est moi, laisse 30 »)** : ne pas le
 > « corriger ». C28-99 clos (gain réel : génération 1/9 → 4/9).
 >
+> **✅ RÉGLÉ — 2026-09-15 soir : « Web app 404 » sur l'assistant (C28-133).** Marc : « erreur 404 quand
+> je fais une demande à l'assistant ». Texte exact demandé avant toute hypothèse : **« Web app 404 »**.
+> ⚠️ **Ma première lecture de la preuve était FAUSSE et la revue l'a réfutée** — j'avais conclu
+> « transitoire » parce que le compteur `app:chat-assistant` passait de 4 à 8 « appels réussis » ; ce
+> compteur compte des appels ANTHROPIC, et un tour de chat en vaut 1 à 7. « +4 » colle tout autant à
+> « UN tour a tourné en entier, a été payé, et Marc n'a reçu qu'un 404 ».
+> **Cause** : un POST `/exec` a deux segments (exécution, puis 302 vers l'écho qui sert la sortie) ;
+> `fetch` suit la redirection, donc un 404 ne dit PAS si le script a tourné. Le client ne peut pas
+> trancher — la garantie devait venir du moteur.
+> **Livré en deux parties indissociables** : le moteur mémorise la réponse d'une requête réussie sous
+> son `requestId` (10 min) et la re-sert à un rejeu ; l'app rejoue 3 fois avec le MÊME identifiant, et
+> chaque appelant déclare sa rejouabilité obligatoirement.
+> ⚠️ **Fenêtre de déploiement** : le mémo vit dans le moteur. Entre le déploiement Vercel et celui
+> d'Apps Script (quelques dizaines de secondes, même commit), un rejeu ré-exécuterait. C'est pourquoi
+> les deux parties sont dans le MÊME merge, et jamais l'une sans l'autre.
+>
 > **✅ RÉGLÉ — 2026-09-15 : « Tout corbeiller » ne se gèle plus sur un refus de droits (C28-129).**
 > Marc a collé la cause exacte, et elle clôt trois jours de diagnostic : `403 : The user does not have
 > sufficient permissions for this file.` Les dossiers vides restants **ne lui appartiennent pas** (autre

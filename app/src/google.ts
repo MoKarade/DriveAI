@@ -698,6 +698,106 @@ export interface PlanRechercheIA {
   explication?: string;
 }
 
+/* ---------- POST vers la web app Apps Script : rejeu SÛR parce que le moteur mémorise (C28-133) ---------- */
+
+/**
+ * Attentes entre deux essais, en ms. La seule mesure prod de CETTE panne dans le dépôt est
+ * l'incident du 2026-07-08 (`sync-drive.yml`) : 3 tentatives espacées de 20 s, et ça passait.
+ * 1 s puis 4 s reste invisible dans un chat qui prend déjà 5 à 30 s, et couvre un vrai blip —
+ * là où 700 ms revenait à réessayer « la même seconde, trois fois ».
+ */
+export const WEBAPP_ATTENTES_MS = [1000, 4000];
+/** Essais = attentes + 1, DÉRIVÉ : une seule constante à régler, et aucun index à borner. */
+export const WEBAPP_ESSAIS = WEBAPP_ATTENTES_MS.length + 1;
+
+/** Identifiant d'une requête LOGIQUE — le même sur tous les essais, c'est tout son intérêt. */
+function nouvelIdRequete(): string {
+  const c = globalThis.crypto;
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID();
+  return `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`;
+}
+
+export interface OptionsWebApp {
+  /**
+   * Cette action accepte-t-elle d'être rejouée ? **Aucun défaut : chaque appelant tranche.** Le
+   * défaut « ne pas rejouer » est la doctrine du dépôt (`api/mcp/_commun.ts`, verrouillée par
+   * `rejeu-moteur.test.ts`) ; la rendre OBLIGATOIRE va plus loin — un oubli ne peut ni accorder
+   * ni retirer le rejeu en silence, il ne compile pas.
+   */
+  rejouable: boolean;
+  /** Injectée : un rejeu ne se teste pas en attendant vraiment cinq secondes. */
+  attendre?: (ms: number) => Promise<void>;
+}
+
+/**
+ * POST vers la web app du moteur, avec REJEU BORNÉ de tout ce qui n'est pas un JSON exploitable.
+ *
+ * POURQUOI — Marc, 15/09 : « erreur 404 quand je fais une demande à l'assistant », affiché
+ * « Web app 404 ». `CLAUDE.md` §9 décrit la panne et son remède (« le succès se juge au CONTENU,
+ * jamais au code HTTP ; rejouer, borné, tout ce qui n'est pas un JSON `ok:true` ») ; le remède
+ * était appliqué au miroir Drive et à personne d'autre.
+ *
+ * CE QUI REND LE REJEU SÛR, et ce n'est PAS le code HTTP. Un POST `/exec` a DEUX segments :
+ * `script.google.com` EXÉCUTE puis redirige (302) vers `googleusercontent.com`, qui ne fait que
+ * SERVIR la sortie. `fetch` suit la redirection : le statut observé est celui du SECOND segment.
+ * Un 404 peut donc vouloir dire « rien n'a tourné » AUTANT que « tout a tourné et Anthropic a été
+ * payé » — le client ne peut pas les distinguer (une première version de ce code l'a cru ; deux
+ * revues l'ont réfutée). La sûreté vient donc du MOTEUR : `doPost` mémorise la réponse d'une
+ * requête réussie sous son `requestId` (10 min) et la re-sert telle quelle à un rejeu, sans
+ * rappeler le modèle ni ré-écrire une ligne. L'identifiant est généré UNE fois ici et réutilisé
+ * à l'identique — c'est lui, et non le statut, qui porte la garantie.
+ *
+ * ⚠️ Le mémo vit dans le moteur : tant que la version déployée ne le connaît pas, un rejeu
+ * ré-exécute. C'est pourquoi ce changement se livre AVEC le sien, et jamais seul.
+ *
+ * NE SE REJOUE PAS : un JSON propre `ok:false` (secret, config, budget du jour) — permanent, et il
+ * remonte tel quel pour que l'UI distingue un budget atteint d'une panne.
+ */
+export async function postWebApp<T extends { ok: boolean; erreur?: string }>(
+  action: string,
+  corps: Record<string, unknown>,
+  opts: OptionsWebApp,
+): Promise<T> {
+  const { webappUrl, webappSecret } = lireConfig();
+  if (!webappUrl || !webappSecret) throw new Error('Variables Vercel WEBAPP_URL / WEBAPP_SECRET manquantes (Settings → Environment Variables)');
+  const attendre = opts.attendre ?? ((ms: number) => new Promise<void>((r) => {
+    setTimeout(r, ms + Math.floor(Math.random() * ms * 0.25)); // gigue : deux onglets ne repartent pas ensemble
+  }));
+  const essais = opts.rejouable ? WEBAPP_ESSAIS : 1;
+  const requestId = nouvelIdRequete();
+  const url = `${webappUrl}?secret=${encodeURIComponent(webappSecret)}&action=${encodeURIComponent(action)}`;
+  const causes: string[] = []; // ⚠️ on GARDE chaque cause : un verdict d'échec ne doit pas écraser
+  for (let essai = 0; essai < essais; essai++) {                     //   celles qu'il vient de traverser
+    if (essai > 0) await attendre(WEBAPP_ATTENTES_MS[essai - 1]);
+    let rep: Response;
+    try {
+      rep = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ ...corps, requestId }),
+      });
+    } catch (e) {
+      causes.push(String(e));
+      if (essai === essais - 1) throw e instanceof Error ? e : new Error(String(e));
+      continue;
+    }
+    if (!rep.ok) { causes.push(`HTTP ${rep.status}`); continue; }
+    try {
+      return await rep.json() as T; // `ok:true` ou `ok:false` : l'appelant tranche, on ne rejoue pas
+    } catch {
+      // Page HTML en 200 : servie en GET, donc `doPost` n'a PAS tourné (incident du 2026-07-08).
+      // Transitoire — mais si ça persiste, c'est le piège de VERSION, et le message le dit.
+      causes.push('réponse illisible');
+    }
+  }
+  if (causes.length === 1) throw causes[0] === 'réponse illisible'
+    ? new Error('Réponse illisible — la web app a-t-elle été redéployée en nouvelle version ?')
+    : new Error(`Web app ${causes[0].replace('HTTP ', '')}`);
+  // Le message DIT qu'on a insisté ET ce qu'on a vu à chaque fois : sans ça, Marc ne peut pas
+  // distinguer un hoquet d'une panne installée, et c'est la différence qui commande son geste.
+  throw new Error(`Web app injoignable après ${causes.length} essais (${causes.join(', ')}). Si ça se répète, c'est le déploiement /exec qu'il faut revoir.`);
+}
+
 /**
  * Traduit une question libre en plan de recherche via le doPost du moteur (la clé Anthropic
  * reste dans les Script Properties — l'app ne parle JAMAIS à l'API Anthropic). Contrairement à
@@ -706,21 +806,10 @@ export interface PlanRechercheIA {
  * La question voyage dans le CORPS (jamais l'URL — les URL finissent dans des logs).
  */
 export async function rechercheIA(question: string): Promise<PlanRechercheIA> {
-  const { webappUrl, webappSecret } = lireConfig();
-  if (!webappUrl || !webappSecret) throw new Error('Variables Vercel WEBAPP_URL / WEBAPP_SECRET manquantes (Settings → Environment Variables)');
-  const rep = await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}&action=recherche-ia`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ question }),
-  });
-  if (!rep.ok) throw new Error(`Web app ${rep.status}`);
-  let data: { ok: boolean; erreur?: string; plan?: PlanRechercheIA };
-  try {
-    data = await rep.json();
-  } catch {
-    // Une web app mal déployée renvoie une page HTML en 200 (piège de VERSION — DEPLOIEMENT.md).
-    throw new Error('Réponse illisible — la web app a-t-elle été redéployée en nouvelle version ?');
-  }
+  // Lecture seule côté Drive, un appel Haiku à ~0,002 $, et le mémo du moteur empêche même celui-là
+  // d'être payé deux fois : rejouable sans réserve.
+  const data = await postWebApp<{ ok: boolean; erreur?: string; plan?: PlanRechercheIA }>(
+    'recherche-ia', { question }, { rejouable: true });
   if (!data.ok || !data.plan) throw new Error(data.erreur || 'recherche IA indisponible');
   return data.plan;
 }
@@ -755,20 +844,13 @@ export interface ErreurChat extends Error {
  * persisté (chat éphémère, State React).
  */
 export async function envoyerMessageChat(historique: MessageChat[]): Promise<ReponseChat> {
-  const { webappUrl, webappSecret } = lireConfig();
-  if (!webappUrl || !webappSecret) throw new Error('Variables Vercel WEBAPP_URL / WEBAPP_SECRET manquantes (Settings → Environment Variables)');
-  const rep = await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}&action=chat-assistant`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ historique }),
-  });
-  if (!rep.ok) throw new Error(`Web app ${rep.status}`);
-  let data: { ok: boolean; erreur?: string; reponse?: string; actionsProposees?: boolean; coutJour?: number; plafond?: number };
-  try {
-    data = await rep.json();
-  } catch {
-    throw new Error('Réponse illisible — la web app a-t-elle été redéployée en nouvelle version ?');
-  }
+  // C'est L'ACTION qui a motivé tout ce lot, et la plus coûteuse : un tour de chat vaut 1 à 7 appels
+  // Sonnet et peut appender des propositions dans Réorg. Elle n'est rejouable QUE parce que le
+  // moteur mémorise sa réponse sous le `requestId` — jamais parce qu'un 404 « prouverait » quelque
+  // chose. Si le mémo disparaissait du moteur, cette ligne devrait repasser à `false`.
+  const data = await postWebApp<{ ok: boolean; erreur?: string; reponse?: string;
+    actionsProposees?: boolean; coutJour?: number; plafond?: number }>(
+    'chat-assistant', { historique }, { rejouable: true });
   if (!data.ok) {
     // Le refus de budget porte AUSSI coutJour/plafond → on les attache à l'erreur pour que l'UI
     // affiche le compteur « plafond atteint » même au premier message d'une journée déjà plafonnée.
@@ -786,21 +868,12 @@ export async function envoyerMessageChat(historique: MessageChat[]): Promise<Rep
  * POST générique vers la web app (mêmes canal et pièges que `rechercheIA`). L'erreur du moteur
  * remonte TELLE QUELLE — l'UI la traduit en message clair au lieu d'un texte technique.
  */
-async function demandeWebApp(action: string, corps: unknown): Promise<string> {
-  const { webappUrl, webappSecret } = lireConfig();
-  if (!webappUrl || !webappSecret) throw new Error('Variables Vercel WEBAPP_URL / WEBAPP_SECRET manquantes (Settings → Environment Variables)');
-  const rep = await fetch(`${webappUrl}?secret=${encodeURIComponent(webappSecret)}&action=${action}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(corps),
-  });
-  if (!rep.ok) throw new Error(`Web app ${rep.status}`);
-  let data: { ok: boolean; erreur?: string; message?: string };
-  try {
-    data = await rep.json();
-  } catch {
-    throw new Error('Réponse illisible — la web app a-t-elle été redéployée en nouvelle version ?');
-  }
+/**
+ * @param rejouable  OBLIGATOIRE, et c'est le but : cette porte est générique, et une action ajoutée
+ *   demain ne doit pas hériter du rejeu par défaut de configuration (§9).
+ */
+async function demandeWebApp(action: string, corps: Record<string, unknown>, rejouable: boolean): Promise<string> {
+  const data = await postWebApp<{ ok: boolean; erreur?: string; message?: string }>(action, corps, { rejouable });
   if (!data.ok) throw new Error(data.erreur || `${action} refusé`);
   return data.message ?? 'demande programmée';
 }
@@ -812,5 +885,7 @@ async function demandeWebApp(action: string, corps: unknown): Promise<string> {
  * désormais ignoré : le fil suit le tri normal (archivé s'il est lu).
  */
 export async function marquerPasSuspect(threadId: string): Promise<string> {
-  return demandeWebApp('pas-suspect', { threadId });
+  // Idempotente côté moteur (la confiance est dédupliquée par expéditeur, le tick ponctuel est
+  // borné à 1/min) — et le mémo la rend gratuite à rejouer.
+  return demandeWebApp('pas-suspect', { threadId }, true);
 }

@@ -52,6 +52,67 @@ function doGet(e) {
   return ContentService.createTextOutput('DriveAI');
 }
 
+/* ---------- Mémo de requête : une demande rejouée ne s'exécute pas deux fois (C28-133) ---------- */
+
+/**
+ * Durée de vie du mémo d'une requête d'app. Assez long pour couvrir les rejeux du navigateur
+ * (3 essais, quelques secondes), assez court pour ne rien garder : ce n'est pas un cache de
+ * réponses, c'est un filet anti-double-exécution.
+ */
+var WEBAPP_MEMO_TTL_S = 600;
+
+/**
+ * Clé de mémo d'une requête d'app. PURE — rend '' quand il n'y a rien à mémoriser.
+ *
+ * POURQUOI (revue flotte C28-133, DEUX agents en convergence). L'app rejoue un POST `/exec` quand
+ * Google refuse de servir la réponse. Or un POST `/exec` est une chaîne à DEUX segments :
+ * `script.google.com/…/exec` EXÉCUTE le script puis répond 302 vers `…googleusercontent.com/…/echo`,
+ * qui ne fait plus que SERVIR la sortie. `fetch` suit la redirection, donc le statut que le
+ * navigateur voit est celui du SECOND segment : un 404 peut aussi bien vouloir dire « je n'ai pas
+ * pu ouvrir le déploiement » (rien n'a tourné) que « je n'arrive pas à te livrer la sortie »
+ * (TOUT a tourné, et Anthropic a été payé). **Le client ne peut pas distinguer les deux.**
+ *
+ * Sans ce mémo, un rejeu de `chat-assistant` pouvait donc refacturer un tour de Sonnet et faire
+ * appender une SECONDE fois les mêmes propositions dans l'onglet Réorg (`proposerReorgChat_` ne
+ * déduplique pas). L'anti-rafale de 3 s ne protège pas : elle a expiré depuis longtemps quand un
+ * tour de 40 s échoue à la livraison.
+ *
+ * Le mémo déplace la garantie là où elle est OBSERVABLE — dans le moteur, qui SAIT s'il a déjà
+ * tourné — au lieu de la déduire d'un code HTTP ambigu. C'est §9 : « un verdict se prend sur une
+ * LECTURE, jamais sur l'échec d'une MUTATION ».
+ *
+ * L'identifiant est contraint (charset + longueur) : il entre dans une clé de cache, il ne peut pas
+ * être une chaîne arbitraire venue du réseau.
+ * @param {string} action
+ * @param {*} requestId
+ * @return {string} clé, ou '' si la requête n'est pas mémorisable
+ */
+function cleMemoRequete_(action, requestId) {
+  if (!action || typeof requestId !== 'string') return '';
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(requestId)) return '';
+  return 'rep|' + action + '|' + requestId;
+}
+
+/** `requestId` du corps POST, sans jamais laisser un corps illisible casser la requête. PURE-ish. */
+function requestIdDeRequete_(e) {
+  try {
+    var c = e && e.postData && e.postData.contents ? JSON.parse(e.postData.contents) : null;
+    return c && typeof c.requestId === 'string' ? c.requestId : '';
+  } catch (err) { return ''; }
+}
+
+/** Lecture du mémo. Un cache indisponible n'est JAMAIS une panne : on ré-exécute, comme avant. */
+function memoLire_(cle) {
+  if (!cle) return null;
+  try { return CacheService.getScriptCache().get(cle); } catch (err) { return null; }
+}
+
+/** Écriture du mémo, enveloppée pour la même raison (et la valeur peut dépasser la taille admise). */
+function memoEcrire_(cle, valeur) {
+  if (!cle) return;
+  try { CacheService.getScriptCache().put(cle, valeur, WEBAPP_MEMO_TTL_S); } catch (err) { }
+}
+
 function doPost(e) {
   var reponse = { ok: false };
   try {
@@ -87,16 +148,34 @@ function doPost(e) {
       var recu = e && e.parameter ? e.parameter.secret : '';
       if (!attendu || !recu || recu !== attendu) {
         reponse.erreur = 'refusé';
-      } else if (action === 'recherche-ia') {
-        reponse = actionRechercheIA_(e);
-      } else if (action === 'chat-assistant') {
-        reponse = actionChatAssistant_(e);
-      } else if (action === 'pas-suspect') {
-        reponse = actionPasSuspect_(e);
-      } else if (action === 'hub-summary') {
-        reponse = actionHubSummary_();
       } else {
-        reponse = actionTickPonctuel_();
+        // Mémo AVANT toute action : un rejeu de la MÊME requête logique rend la réponse déjà
+        // calculée, sans rappeler le modèle, sans ré-écrire une ligne, et sans toucher
+        // l'anti-rafale (on sort ici, avant `actionChatAssistant_`). Seules les réponses RÉUSSIES
+        // sont mémorisées : un `ok:false` (budget, anti-rafale) n'a rien exécuté de coûteux, et
+        // le figer rendrait à Marc une erreur périmée à chaque essai.
+        var cleMemo = cleMemoRequete_(action, requestIdDeRequete_(e));
+        var memo = memoLire_(cleMemo);
+        if (memo) {
+          try {
+            var dejaFait = JSON.parse(memo);
+            dejaFait.memo = true; // dit à l'app qu'elle relit, au lieu de le lui faire deviner
+            return ContentService.createTextOutput(JSON.stringify(dejaFait))
+              .setMimeType(ContentService.MimeType.JSON);
+          } catch (eMemo) { /* mémo illisible : on ré-exécute, jamais on n'échoue */ }
+        }
+        if (action === 'recherche-ia') {
+          reponse = actionRechercheIA_(e);
+        } else if (action === 'chat-assistant') {
+          reponse = actionChatAssistant_(e);
+        } else if (action === 'pas-suspect') {
+          reponse = actionPasSuspect_(e);
+        } else if (action === 'hub-summary') {
+          reponse = actionHubSummary_();
+        } else {
+          reponse = actionTickPonctuel_();
+        }
+        if (reponse && reponse.ok === true) memoEcrire_(cleMemo, JSON.stringify(reponse));
       }
     }
   } catch (err) {
