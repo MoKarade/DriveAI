@@ -277,6 +277,26 @@ describe('corbeillerLot — refus de droits en masse (le cas RÉEL du 15/09)', (
     expect(bilan.refusDroits).toBe(15);
   });
 
+  it('TRIPWIRE — tout statut que l’APP écrit est déclaré par le MOTEUR (`REORG_STATUTS`)', () => {
+    // Deux fichiers qui doivent bouger ensemble se verrouillent par un tripwire, pas par la
+    // discipline (§9). L'app écrit ces littéraux dans la colonne F de l'onglet Réorg ; le moteur les
+    // lit et les documente. `vide-droits-refusés` y a été ajouté dans le même commit — sans ce test,
+    // un prochain statut partirait côté app sans que rien ne le signale, et la famille « vides »
+    // se lirait différemment des deux côtés.
+    const gs = readFileSync(join(ICI, '..', '..', 'src', 'Reorg.gs'), 'utf8');
+    const bloc = gs.slice(gs.indexOf('var REORG_STATUTS'), gs.indexOf('];', gs.indexOf('var REORG_STATUTS')));
+    const src = readFileSync(join(ICI, '..', 'src', 'corbeille.ts'), 'utf8');
+    // Les statuts rendus par le verdict : les littéraux `'vide-…'` de `statutRefusCorbeille`.
+    const fonction = src.slice(src.indexOf('export function statutRefusCorbeille'),
+      src.indexOf('\n}', src.indexOf('export function statutRefusCorbeille')));
+    const ecrits = [...fonction.matchAll(/return '(vide-[^']+)'/g)].map((m) => m[1]);
+    expect(ecrits.length).toBeGreaterThanOrEqual(4); // le test ne doit pas passer sur un corpus vide
+    expect(ecrits).toContain('vide-droits-refusés');
+    for (const st of ecrits) expect(bloc, `${st} manque à REORG_STATUTS`).toContain(`'${st}'`);
+    // …et le statut de SUCCÈS, écrit par la boucle elle-même.
+    expect(bloc).toContain("'corbeillé'");
+  });
+
   it('le bilan affiché NOMME le geste à faire (sinon la raison disparaît avec la coupure)', () => {
     for (const langue of ['fr', 'en'] as const) {
       const texte = t('corbeilleDroits', langue).replace('{d}', '58');
