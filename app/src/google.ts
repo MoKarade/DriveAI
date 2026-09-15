@@ -117,6 +117,31 @@ export function abonnerSessionExpiree(cb: () => void): void {
 /* ---------- Appels HTTP (401 → rafraîchissement silencieux puis rejeu) ---------- */
 
 /**
+ * Marqueur CANONIQUE d'un refus de droits SUR UN ÉLÉMENT précis (403 `insufficientFilePermissions`).
+ * Posé par `api()` sur le corps ENTIER de la réponse ; c'est le SEUL signal que l'aval interprète —
+ * jamais le texte brut de Google, qui arrive tronqué. Changer cette chaîne est un changement de
+ * CONTRAT : `statutRefusCorbeille` la lit, et un test le verrouille des deux côtés.
+ */
+export const MARQUEUR_DROITS_FICHIER = 'droits-insuffisants-sur-element';
+
+/**
+ * Le corps d'une réponse 403 dit-il « tu n'as pas les droits SUR CET ÉLÉMENT » ? PURE (testée).
+ *
+ * Deux signaux, et l'ordre compte pour la lecture : `reason: insufficientFilePermissions` est le
+ * champ MACHINE (le contrat) ; la phrase anglaise n'est qu'un filet, parce qu'un message destiné à
+ * un humain peut être reformulé par Google sans préavis — §9 : « améliorer un message d'erreur POUR
+ * L'HUMAIN est un changement de CONTRAT dès que du code le lit ».
+ *
+ * EXCLUS volontairement : `insufficientPermissions` (sans `File`) et « insufficient authentication
+ * scopes » — ce sont des pannes d'AUTORISATION GLOBALE. Elles frappent toutes les lignes à la fois ;
+ * les classer une par une viderait la liste de Marc à tort, alors qu'une reconnexion les répare.
+ */
+export function estRefusDroitsFichier(corps: string): boolean {
+  if (/insufficientFilePermissions/i.test(corps)) return true;
+  return /sufficient permissions for this file/i.test(corps);
+}
+
+/**
  * Message de saturation, NOMMANT l'API (C28-119). PURE, et EXPORTÉE exprès : `statutRefusCorbeille`
  * lit ce texte pour décider si une ligne reste candidate. Tant que le test du consommateur recopiait
  * la chaîne à la main, revenir au message générique laissait 297 tests verts — producteur et
@@ -179,6 +204,22 @@ export async function api<T>(url: string, options?: RequestInit): Promise<T> {
       // existe précisément pour empêcher.
       if (rep.status === 403 && /rateLimitExceeded|userRateLimitExceeded/i.test(corps)) {
         throw new Error(messageQuota(url));
+      }
+      // ⚠️ TROISIÈME sens du 403, et le seul DÉFINITIF (C28-129, cause réelle du 15/09) : Google
+      // refuse parce que Marc n'a pas les droits SUR CET ÉLÉMENT — il n'en est pas propriétaire, ou
+      // il n'y a qu'un accès en lecture. Aucun réessai ne le rendra propriétaire : c'est un verdict
+      // sur UNE ligne, pas une panne de plateforme, et le confondre avec un throttle arrête un lot
+      // entier (53 dossiers jamais tentés, vécu).
+      // Le test vit ICI, sur le corps ENTIER, et surtout PAS chez l'appelant : `slice(0, 200)` coupe
+      // juste avant `errors[].reason` — le message que Marc a collé s'arrête au milieu du premier
+      // `errors[]`, sans jamais montrer `insufficientFilePermissions`. §9 : « un verdict pris sur la
+      // donnée RICHE ne se re-dérive jamais depuis sa forme APPAUVRIE » ; l'amont pose un MARQUEUR
+      // canonique, l'aval ne lit que lui.
+      // Ce que ce test NE capture PAS, volontairement : `insufficientPermissions` (sans `File`) et
+      // « insufficient authentication scopes », qui sont des pannes d'AUTORISATION globales — elles
+      // frapperaient les 58 lignes, et les classer une par une viderait la liste à tort.
+      if (rep.status === 403 && estRefusDroitsFichier(corps)) {
+        throw new Error(`${MARQUEUR_DROITS_FICHIER} : ${corps.slice(0, 200)}`);
       }
       throw new Error(`Google API ${rep.status} : ${corps.slice(0, 200)}`);
     }

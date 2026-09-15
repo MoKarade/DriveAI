@@ -147,6 +147,8 @@ const TEXTES = {
     // diagnostic à deux reprises — dont une fois à tort. C'est la seule ligne qui distingue un
     // quota d'un refus de droits, d'une ascendance illisible ou d'une coupure réseau.
     corbeilleCause: ' Cause exacte : {m}',
+    // Le SEUL verdict qui demande un geste à Marc : ces dossiers ne lui appartiennent pas.
+    corbeilleDroits: ' Dont {d} refusé(s) par Google : tu n’es pas propriétaire de ces dossiers (ou tu n’y as qu’un accès en lecture). Ils sont retirés de la liste — pour les supprimer, il faut le compte qui les possède.',
 
     /* ---- page Moteur (C28-41 : coût fiable · progression · état · réglage) ---- */
     noteNonApparies: 'laissés en place, en attente d’un affinage des règles (jamais devinés).',
@@ -334,6 +336,7 @@ const TEXTES = {
     corbeilleCoupeeSession: 'Batch interrupted: the Google session expired. {x} folder(s) were never attempted — sign in again and restart.',
     corbeilleCoupeePannes: 'Batch interrupted: Google is refusing calls. {x} folder(s) were never attempted — try again in a few minutes.',
     corbeilleCause: ' Exact cause: {m}',
+    corbeilleDroits: ' Including {d} refused by Google: you are not the owner of those folders (or you only have read access). They were dropped from the list — deleting them requires the account that owns them.',
 
     /* ---- Engine page ---- */
     noteNonApparies: 'left in place, awaiting a rule refinement (never guessed).',

@@ -31,7 +31,9 @@ var REORG_STATUTS = ['proposé', 'validé', 'écarté', 'appliqué', 'refusé (z
   'refusé (structure)', 'échec', 'vide-candidat', 'corbeillé',
   // Écrits par l'APP au clic (C28-93) : un refus classe SA ligne au lieu d'arrêter le lot.
   // `vide-repris` est le SEUL de la famille qui soit RÉVISABLE (cf. `chargerVidesConnus_`).
-  'vide-disparu', 'vide-repris', 'vide-protégé'];
+  // `vide-droits-refusés` (C28-129) : Google a refusé la corbeille parce que Marc n'est pas
+  // propriétaire du dossier. DÉFINITIF comme `vide-disparu`/`vide-protégé` — jamais révisable.
+  'vide-disparu', 'vide-repris', 'vide-protégé', 'vide-droits-refusés'];
 
 /**
  * Étape de tick unique du chantier Réorg : UNE lecture de l'onglet, puis DRAINER (appliquer les

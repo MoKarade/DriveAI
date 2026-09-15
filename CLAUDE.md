@@ -640,6 +640,18 @@ ce qui reste vrai d'une session à l'autre.
   gain tant qu'il n'est pas mesuré sur le corpus (vécu : « 65 % d'Inconnu » = 0/21 réellement
   récupérable — les Inconnu étaient légitimes ; le vrai gain était la CORRECTNESS, pas l'émetteur).
   Le pipeline LLM live (flag éteint) et la campagne viennent APRÈS validation.
+- **Une même erreur de plateforme porte des causes d'ÉCHELLES différentes : trancher par le NOMBRE
+  de lignes qu'elles frappent, pas par le code.** Un `403` Drive vaut throttle (transitoire, tout le
+  lot), scope perdu (durable, tout le lot, réparé par une reconnexion) ou droits sur CET élément
+  (définitif, UNE ligne — `insufficientFilePermissions`). Traiter le troisième comme une panne a
+  gelé « Tout corbeiller » au 5ᵉ dossier, 53 jamais tentés, avec un message qui invitait à
+  re-essayer l'impossible (C28-129) ; le traiter comme un verdict alors que la cause est GLOBALE
+  aurait vidé la liste à tort. Question de revue : « si cette cause est vraie, combien de lignes
+  échouent ? » — une ⇒ verdict qui classe SA ligne ; toutes ⇒ panne qui rend la main. Et la
+  désambiguïsation se fait sur le corps ENTIER, au champ MACHINE (`errors[].reason`), jamais sur la
+  prose d'un message déjà tronqué pour l'écran : l'amont pose un marqueur canonique, l'aval ne lit
+  que lui. Corollaire : un coupe-circuit qui compte les échecs « d'affilée » se remet à zéro sur
+  TOUT signal que le canal répond — un refus définitif est une réponse.
 - **Échecs LLM : classer par ORIGINE avant de compter.** Une erreur de PLATEFORME (HTTP 400
   « credit balance », 401 — panne de COMPTE) n'est jamais imputée au document : détecter →
   suspendre les appels du run (échec rapide) → ne rien compter → re-sonder au run suivant. Sinon

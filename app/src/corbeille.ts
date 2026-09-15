@@ -16,7 +16,7 @@
 import { Ascendance, RACINES_PROTEGEES_DEFAUT, IDS_STRUCTURELS_DEFAUT } from './garde-fous';
 import { plagesContigues } from './etat';
 import { MIME_DOSSIER } from './explorateur';
-import { api, lireFichier, remonterAscendance, viderCachesDrive, DRIVE } from './google';
+import { api, lireFichier, remonterAscendance, viderCachesDrive, DRIVE, MARQUEUR_DROITS_FICHIER } from './google';
 
 /**
  * Verdict PUR (testé) : ce dossier peut-il partir à la corbeille ? Liste des violations
@@ -81,6 +81,12 @@ export function statutRefusCorbeille(message: string): string | null {
       brut.includes('dossier-structurel') || brut.includes('pas-un-dossier')) {
     return 'vide-protégé';                                      // ne devait jamais être proposé
   }
+  // Marc n'a pas les droits sur CET élément (403 `insufficientFilePermissions`) : il n'en est pas
+  // propriétaire, ou il n'y a qu'un accès en lecture. DÉFINITIF — aucun réessai ne le rendra
+  // propriétaire, et le traiter en panne a arrêté le lot de Marc au 5ᵉ dossier, 53 jamais tentés
+  // (15/09). Le marqueur vient de `api()`, qui l'a reconnu sur le corps ENTIER : cette ligne ne
+  // regarde JAMAIS le texte de Google, qui arrive tronqué avant `errors[].reason`.
+  if (brut.includes(MARQUEUR_DROITS_FICHIER)) return 'vide-droits-refusés';
   return null;                                                  // transitoire : on re-tentera
 }
 
@@ -171,6 +177,11 @@ export interface BilanLot {
   // ce qui l'exclut — sous l'hypothèse quota-Sheets, les dossiers PARTENT et seuls les statuts
   // échouent). §9 : « tout verdict indéterminé persiste son POURQUOI ».
   derniereCause: string;                     // message de la DERNIÈRE panne non interprétable
+  // SOUS-ENSEMBLE de `classes` (jamais un bucket de plus : l'invariant de somme reste
+  // `corbeilles + classes + aReessayer + nonTentees === lignes.length`). Compté à part parce que
+  // c'est le seul verdict qui demande un GESTE à Marc — devenir propriétaire, ou renoncer — et
+  // qu'un total de « retirés de la liste » ne le dit pas.
+  refusDroits: number;
 }
 
 /**
@@ -205,7 +216,7 @@ export async function corbeillerLot(
   },
 ): Promise<BilanLot> {
   const bilan: BilanLot = {
-    corbeilles: 0, classes: 0, aReessayer: 0, sheetKo: 0, nonTentees: 0, interrompu: '',
+    corbeilles: 0, classes: 0, aReessayer: 0, sheetKo: 0, nonTentees: 0, refusDroits: 0, interrompu: '',
     derniereCause: '',
   };
   let pannesDaffilee = 0;
@@ -289,6 +300,12 @@ export async function corbeillerLot(
       }
       statut = verdict;
       bilan.classes++;                // un VERDICT prouve que le canal Drive répond
+      if (verdict === 'vide-droits-refusés') bilan.refusDroits++;
+      // …donc la RAFALE est cassée, exactement comme après une corbeille réussie. Le coupe-circuit
+      // vise la rafale, jamais le cumul (c'est écrit deux blocs plus haut) — sans cette remise à
+      // zéro, quelques blips réseau épars finissent par couper un lot que Google sert très bien,
+      // et le cas devient la norme maintenant que « pas propriétaire » rend un verdict par ligne.
+      pannesDaffilee = 0;
     }
     tampon.push({ ligneSheet: l.ligneSheet, statut });
     // Première écriture SENTINELLE (petite) puis lots pleins : on prouve que Sheets répond avant

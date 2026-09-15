@@ -14,6 +14,48 @@
 
 ---
 
+## 2026-09-15 — Un même code HTTP porte des causes d'ÉCHELLES différentes : la question n'est pas « quelle erreur », c'est « combien de lignes elle frappe »
+**Contexte.** Marc reclique sur « Tout corbeiller » : « Lot interrompu : Google refuse les appels.
+53 dossier(s) n'ont pas été tentés — réessaie dans quelques minutes. » Depuis la veille, le message
+porte enfin la cause exacte, et elle dit tout : `403 : The user does not have sufficient permissions
+for this file.` Ces dossiers vides ne lui appartiennent pas — ils viennent d'un autre compte. Aucun
+réessai, jamais, ne le rendra propriétaire ; or le code les traitait comme une panne transitoire,
+comptait cinq échecs d'affilée, déclenchait le coupe-circuit et rendait la main. La liste ne pouvait
+plus JAMAIS avancer, et le message invitait à recommencer une opération structurellement vouée à
+échouer.
+
+**La confusion exacte.** `403` recouvre trois causes que rien ne distingue au niveau du code HTTP :
+(a) un throttle Drive (`rateLimitExceeded`) — transitoire, toutes les lignes ; (b) un scope perdu
+(`insufficientPermissions`, « insufficient authentication scopes ») — durable, toutes les lignes,
+réparable par une reconnexion ; (c) les droits sur CET élément (`insufficientFilePermissions`) —
+définitif, UNE ligne. Le premier correctif (C28-119) avait déjà séparé (a) des autres. Il restait à
+séparer (b) de (c), et ce qui les sépare n'est pas la gravité : c'est le NOMBRE DE LIGNES que la
+cause frappe. Une cause qui frappe toutes les lignes ne doit jamais devenir un verdict par ligne —
+elle viderait la liste à tort. Une cause qui ne frappe qu'une ligne ne doit jamais arrêter le lot.
+
+**Le piège de représentation, encore.** Le détecteur ne pouvait pas vivre chez l'appelant : le
+message affiché est tronqué à 200 caractères pour l'écran, et `errors[].reason` — le seul champ
+CONTRACTUEL — tombe juste après la coupure. Le message collé par Marc s'arrête au milieu du premier
+`errors[]`. Il restait la phrase anglaise, dans les 200 premiers caractères… mais une phrase écrite
+pour un humain n'est pas un contrat : Google peut la reformuler sans préavis. Donc : un prédicat pur
+qui lit le corps ENTIER en amont, un marqueur canonique posé dans le message, et un aval qui ne lit
+que le marqueur.
+
+**Leçon.** « Quand plusieurs causes partagent un même code d'erreur, classe-les par l'ÉCHELLE de ce
+qu'elles frappent — une ligne, ou toutes — avant de décider si c'est un verdict ou une panne. Un
+verdict par ligne qui vaut en réalité pour toutes vide la liste ; une panne globale qui ne vaut que
+pour une ligne gèle le lot. Et la désambiguïsation se fait là où la réponse est ENTIÈRE, sur le
+champ machine, jamais sur la prose d'un message tronqué pour l'affichage. »
+
+**Corollaire.** Un coupe-circuit qui compte des échecs « d'affilée » doit se remettre à zéro sur
+TOUT signal que le canal répond — y compris un refus définitif, qui est une réponse. Sans quoi
+quelques incidents épars, séparés par des dossiers parfaitement traités, finissent par couper un lot
+que la plateforme sert très bien.
+
+**Règle durable ?** oui — §9, en corollaire de « Échecs LLM : classer par ORIGINE avant de compter »
+(même famille : l'origine d'un échec commande ce qu'on en fait) et de « un verdict pris sur la donnée
+RICHE ne se re-dérive jamais depuis sa forme APPAUVRIE ».
+
 ## 2026-09-14 — Une vue d'API en RETARD ressemble EXACTEMENT à une panne connue, et c'est la ressemblance qui fait sauter la vérification
 **Contexte.** Après le merge de #348, PR de suivi #349 (doc seule). Trois checks verts, le
 quatrième — « Captures d'écran UI (E2E mode mock) » — affiché `in_progress` sur l'étape

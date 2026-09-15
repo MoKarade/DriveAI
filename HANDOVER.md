@@ -27,6 +27,18 @@
 > = `Réglages!B2`, `Main.gs:240`) — **c'est un CHOIX de Marc (« oui, c'est moi, laisse 30 »)** : ne pas le
 > « corriger ». C28-99 clos (gain réel : génération 1/9 → 4/9).
 >
+> **✅ RÉGLÉ — 2026-09-15 : « Tout corbeiller » ne se gèle plus sur un refus de droits (C28-129).**
+> Marc a collé la cause exacte, et elle clôt trois jours de diagnostic : `403 : The user does not have
+> sufficient permissions for this file.` Les dossiers vides restants **ne lui appartiennent pas** (autre
+> compte) — aucun réessai ne peut aboutir. Le code les traitait en panne transitoire : 5 d'affilée, le
+> coupe-circuit tombait, « 53 non tentés — réessaie dans quelques minutes ». Désormais c'est un
+> **verdict par ligne** (`vide-droits-refusés`), la ligne quitte la liste avec sa raison et le lot va au
+> bout ; le bilan dit combien et ce qu'il faut faire. La désambiguïsation des trois sens du `403`
+> (throttle / scope perdu / droits sur l'élément) se fait dans `api()` sur le corps ENTIER — le champ
+> `errors[].reason` tombe après la troncature d'affichage — et l'aval ne lit qu'un marqueur canonique.
+> ⚠️ **Ce que Marc verra au prochain clic** : les dossiers d'un autre compte seront retirés de la liste,
+> PAS supprimés. Pour les faire disparaître de son Drive, il faut le compte qui les possède.
+>
 > **🟦 EN COURS — 2026-09-15 : ADR-0060, le code suit le Drive de Marc en `06` (C28-126/127).** Marc :
 > « `CEGEP - Sherbrooke (2020)` fait foi », « crée `Online course` », « vas-y ». Livré en revue flotte :
 > libellé + ID réel dans `ecoles06`, garde de création remplacée par un find-only structurel (la cause

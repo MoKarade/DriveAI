@@ -190,11 +190,17 @@ export function ReorgVue({ langue }: { langue: Langue }) {
     }
     setAvancement(null);
     setEnCours(false);
+    // Le détail « pas propriétaire » est COLLÉ au bilan, pas réservé au cas interrompu : depuis
+    // C28-129 ces lignes ne coupent plus le lot, donc Marc ne verrait plus jamais leur raison —
+    // elles seraient juste « retirées de la liste », ce qui ne lui dit pas quoi faire.
+    const droits = bilan.refusDroits
+      ? t('corbeilleDroits', langue).replace('{d}', String(bilan.refusDroits))
+      : '';
     setBilanCorbeille(t('corbeilleBilan', langue)
       .replace('{n}', String(bilan.corbeilles))
       .replace('{c}', String(bilan.classes))
       .replace('{r}', String(bilan.aReessayer))
-      .replace('{s}', String(bilan.sheetKo)));
+      .replace('{s}', String(bilan.sheetKo)) + droits);
     // Un lot écourté ne se lit pas comme un lot complet : la cause ET le nombre de lignes jamais
     // tentées sont dits, sinon Marc croit la liste traitée (revue C28-93).
     if (bilan.interrompu) {
