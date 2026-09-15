@@ -260,6 +260,8 @@ const CONTRAT = [
   // ADR-0055 : `repointerEcoles06_` (Missions.gs) appelle `sousDossier_` (Router.gs) pour
   // find-or-créer la cible qui n'existe pas encore — 2ᵉ contrat inter-module de cette fonction.
   'sousDossier_',
+  // ADR-0060 : `repointerEcoles06_` (Missions.gs) ne fait plus que TROUVER une cible sans ID.
+  'sousDossierExistant_',
   // Débit du placement (revue #229) : `empreinteReutiliseeReset_` (Reset.gs) appelle
   // `empreinteConnueParId_` (Journal.gs) et consomme `empreintesPlanDeuxSens_` (Consolidation.gs) —
   // trois modules différents, donc INVISIBLES des tests unitaires mockés : d'où leur place ici.

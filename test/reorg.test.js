@@ -404,7 +404,7 @@ test('ADR-0055 — la structure de Marc est IMMUABLE à toute profondeur, et ell
   // et c'est ce contrat INTER-MODULE qu'on veut voir tenir, pas une copie mockée.
   const c = load(['Config.gs', 'Router.gs', 'Entites.gs', 'Consolidation.gs', 'Reset.gs', 'Missions.gs', 'Reorg.gs', 'Fusion.gs']);
   for (const n of ['Archives scolaires', 'Prépa PTSI (2017-2018)', 'IMERIR — Ingénieur MSIR (2020-2023)',
-    'Cégep de Sherbrooke (2019)', 'Online course — AI Essentials (Google)',
+    'CEGEP - Sherbrooke (2020)', 'Online course — AI Essentials (Google)',
     'MFE — Mémoire de fin d\'études', 'GIM 1 (2018-2019)', 'Robotique']) {
     assert.strictEqual(c.estSegmentStructurel_(n), true, 'structure de Marc : ' + n);
     assert.strictEqual(c.estAncreStructurelleFusion_('06 · Études & diplômes', n), true, n);

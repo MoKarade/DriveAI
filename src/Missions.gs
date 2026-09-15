@@ -247,7 +247,9 @@ function tableMissions_() {
       // §9 « re-lancer une campagne à clé de SUCCÈS ne re-traite pas ce qu'elle a figé OK ».
       // Coût du bump : NUL — les fichiers déjà livrés dans les cibles ne sont dans aucune source,
       // donc jamais re-collectés ; seuls le drapeau FINI et les compteurs repartent propres.
-      tag: 'ecoles-archives06b', cle: 'mission-ecoles-archives-06',
+      // (ADR-0060) `c` : Sherbrooke vise par ID le dossier de Marc ; la passe re-pointe l'entité
+      // `Cégep De Sherbrooke` hors de la coquille de la racine. Sources vides ⇒ converge en une passe.
+      tag: 'ecoles-archives06c', cle: 'mission-ecoles-archives-06',
       sources: (IDS.ecoles06 || []).map(function (p) { return p.src; }),
       batirCtx: function () {
         var parSource = {};
@@ -260,10 +262,9 @@ function tableMissions_() {
         // standard existent déjà dans 3 des archives). Pas d'alias = pas une source = jamais deviné.
         var p = ctx.parSource[info.sourceId];
         if (!p) return null;
-        // Cible par ID quand le dossier de Marc EXISTE DÉJÀ. `Cégep de Sherbrooke (2019)` n'existe
-        // pas : il est find-or-créé PAR NOM sous `Archives scolaires` — par CE chemin, la création
-        // n'a lieu qu'au premier fichier réellement déplacé. (L'autre chemin, `repointerEcoles06_`
-        // à la convergence, est gardé par `referentielViseUneSource_`.)
+        // Cible par ID quand le dossier de Marc EXISTE DÉJÀ (toutes les paires depuis ADR-0060). Une
+        // cible sans ID reste possible pour une école future : par CE chemin, elle est find-or-créée
+        // PAR NOM au premier fichier réellement déplacé — le SEUL chemin qui crée un dossier.
         if (p.cible) return { cibleId: p.cible, sousDossier: info.sousChemin };
         return { cibleParentId: ctx.archivesId, cibleNom: p.cibleNom, sousDossier: info.sousChemin };
       },
@@ -1774,26 +1775,23 @@ function repointerEcoles06_() {
   // fenêtre de peinture, sur un garde-temps déjà consommé).
   var carte = {};
   paires.forEach(function (p) { if (p.cible) carte[p.src] = p.cible; });
-  // La cible SANS ID (`Cégep de Sherbrooke (2019)`) n'est find-or-créée que si une ligne du
-  // référentiel vise réellement sa source — sinon on créerait un dossier VIDE à chaque
-  // convergence, alors que la table et l'ADR promettent l'inverse (revue code + sécurité).
+  // (ADR-0060) Une cible SANS ID n'est JAMAIS créée ici. Ce chemin tourne à la CONVERGENCE, donc
+  // après le dernier fichier déplacé : si le dossier n'existe pas à ce moment-là, aucun fichier n'y
+  // est parti (le routeur crée au premier déplacement) et le référentiel n'a rien à viser.
+  // L'ancienne garde (« une ligne du référentiel vise la source ») était VRAIE EN PERMANENCE :
+  // `SEED_ENTITES` écrit `Cégep De Sherbrooke` avec le dossier SOURCE comme « Dossier ID » — un fait
+  // de configuration, pas un signal de mouvement — et `Cégep de Sherbrooke (2019)` a été créé VIDE le
+  // 15/09 à 04:38 UTC, exactement ce que deux commentaires promettaient d'empêcher. Le test qui
+  // prouvait le gate MOCKAIT le prédicat (leçon §9). Ici : find-ONLY, jamais de création.
   var sansId = paires.filter(function (p) { return !p.cible; });
-  if (sansId.length && referentielViseUneSource_(sansId)) {
+  if (sansId.length) {
     var archives = DriveApp.getFolderById(IDS.archivesScolaires);
-    sansId.forEach(function (p) { carte[p.src] = sousDossier_(archives, p.cibleNom).getId(); });
+    sansId.forEach(function (p) {
+      var existant = sousDossierExistant_(archives, p.cibleNom);
+      if (existant) carte[p.src] = existant.getId();
+    });
   }
   repointerEntitesLot_(carte);
-}
-
-/**
- * Vrai si au moins une ligne du référentiel d'entités pointe l'une des sources données. PURE de
- * décision, I/O de lecture : une seule lecture de l'onglet, partagée avec `repointerEntitesLot_`.
- * @param {Array<{src:string}>} paires @return {boolean}
- */
-function referentielViseUneSource_(paires) {
-  var vise = {};
-  paires.forEach(function (p) { vise[p.src] = true; });
-  return dossiersVisesParEntites_(vise);
 }
 
 /**

@@ -27,6 +27,15 @@
 > = `Réglages!B2`, `Main.gs:240`) — **c'est un CHOIX de Marc (« oui, c'est moi, laisse 30 »)** : ne pas le
 > « corriger ». C28-99 clos (gain réel : génération 1/9 → 4/9).
 >
+> **🟦 EN COURS — 2026-09-15 : ADR-0060, le code suit le Drive de Marc en `06` (C28-126/127).** Marc :
+> « `CEGEP - Sherbrooke (2020)` fait foi », « crée `Online course` », « vas-y ». Livré en revue flotte :
+> libellé + ID réel dans `ecoles06`, garde de création remplacée par un find-only structurel (la cause
+> du dossier créé à vide : `SEED_ENTITES` rend « une entité vise la source » vrai à vie), règle
+> `ai essentials` (5 natifs à plat), mission `ecoles-archives06c` (re-pointe l'entité hors de la
+> coquille), `RESET_TABLE_VERSION` t7. 1322 tests, 3 mutations jouées et attrapées, audit §11 sur les
+> 14 noms réels. ⚠️ `conso-4` en cours (4/9) et NON bumpée : les 5 « AI Essentials » partiront à
+> `conso-5` — ou tout de suite si Marc les glisse dans le dossier une fois créé.
+>
 > **🟥 OUVERT — 2026-09-15 : la mission écoles dit « terminé », et sa cible déclarée est VIDE.**
 >
 > Relevé Drive du 15/09 (listing par `parentId` — `search_files` retarde). Mission `ecoles-archives06`
@@ -37,7 +46,7 @@
 > **À VIDE** le 15/09 à 04:38 UTC alors que deux commentaires du code promettent « jamais à vide » ;
 > les **9 documents Sherbrooke réels** sont dans `CEGEP - Sherbrooke (2020)`, graphie qui n'existe
 > **nulle part** dans `src/` ; et `Online course — AI Essentials (Google)` est déclaré mais absent,
-> ses documents à plat à la racine de `06`.
+> ses 5 documents Google natifs à plat à la racine de `06`.
 > ⚠️ Le test censé verrouiller « les noms == le relevé Drive » compare la table à un corpus **figé** :
 > il ne voit pas cette dérive et il est resté vert. Une mission « terminée » sur un compteur ne prouve
 > rien — c'est le CONTENU qui l'a dit.

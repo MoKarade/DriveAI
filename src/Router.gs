@@ -202,6 +202,23 @@ function sousDossier_(parent, nom) {
 }
 
 /**
+ * Renvoie un sous-dossier par nom s'il EXISTE (vivant, jamais un corbeillé) — et `null` sinon.
+ * Find-ONLY : ne crée JAMAIS (ADR-0060). C'est ce qui distingue « viser un dossier qui a reçu des
+ * fichiers » de « fabriquer un dossier vide pour avoir un ID à viser ».
+ * @param {Folder} parent
+ * @param {string} nom
+ * @return {?Folder}
+ */
+function sousDossierExistant_(parent, nom) {
+  var it = parent.getFoldersByName(nom);
+  while (it.hasNext()) {
+    var d = it.next();
+    if (!d.isTrashed()) return d;
+  }
+  return null;
+}
+
+/**
  * Renvoie (ou crée) le dossier « _Doublons » où sont écartés les doublons (déplacement seul,
  * jamais de suppression). Placé à côté de `00·À trier` (même parent = racine DriveAI). L'ID est
  * mémorisé en Script Property pour éviter de le re-chercher à chaque doublon.

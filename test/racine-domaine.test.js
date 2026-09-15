@@ -78,7 +78,9 @@ const RACINE_ATTENDUE = {
                                       // pour le VÉHICULE) — la revue flotte avait corrigé l'étiquette
   '04 · Immigration': 0,
   '05 · Carrière': 0,
-  '06 · Études & diplômes': 332,      // D6 appliquée : 143 placés — 34 par un FAIT écrit dans le
+  '06 · Études & diplômes': 327,      // ADR-0060 : 332 → 327, la règle `ai essentials` place les 5
+                                      // documents Google natifs « AI Essentials — … » du corpus.
+                                      // D6 appliquée : 143 placés — 34 par un FAIT écrit dans le
                                       // nom (école, diplôme, marqueur GIM/1ʳᵉ) et 109 par les
                                       // fenêtres de scolarité. Sur les 332 restants, ~237 portent
                                       // la date 2026 — la date de RÉCEPTION faute de date lisible
@@ -107,7 +109,8 @@ test('ADR-0052 — ce que la TABLE seule sait placer, mesuré sur le corpus', ()
   for (const [domaine, noms] of Object.entries(CORPUS)) {
     parLaTable += noms.filter((n) => ctx.cheminCibleReset_(domaine, n)).length;
   }
-  assert.strictEqual(parLaTable, 169);
+  // ADR-0060 : 169 → 174, les 5 « AI Essentials — … » du corpus sont désormais placés par la table.
+  assert.strictEqual(parLaTable, 174);
 });
 
 test('ADR-0052 — le corpus figé est bien celui du recensement (683 fichiers, 8 domaines)', () => {
@@ -258,7 +261,7 @@ test('ADR-0052 D8 — aucun fichier DÉJÀ rangé n\'est sorti de son sous-dossi
     'DUT ULCO Saint-Omer': 'ULCO — DUT GIM (2018-2020)',
     'IUT Du Littoral': 'ULCO — DUT GIM (2018-2020)',
     'IMERIR': 'IMERIR — Ingénieur MSIR (2020-2023)',
-    'Cégep de Sherbrooke': 'Cégep de Sherbrooke (2019)',
+    'Cégep de Sherbrooke': 'CEGEP - Sherbrooke (2020)',
   };
   const suitLaStructure = (domaine, sousChemin, cible) => {
     if (domaine !== '06 · Études & diplômes') return false;
@@ -642,7 +645,7 @@ test('ADR-0052 D6 — Sherbrooke CHEVAUCHE l\'ULCO : toute l\'année 2019 est re
   // PAS échouer, et la valeur réelle n'était même pas l'école (revue flotte).
   const d = '06 · Études & diplômes';
   assert.strictEqual(ctx.cheminCibleReset_(d, '2019-03-01_Travail pratique_Cégep de Sherbrooke.pdf'),
-    'Archives scolaires/Cégep de Sherbrooke (2019)/Cours & travaux');
+    'Archives scolaires/CEGEP - Sherbrooke (2020)/Cours & travaux');
 });
 
 test('ADR-0052 D6 — un marqueur de NIVEAU ou de FILIÈRE dans le nom est un FAIT, pas une déduction', () => {
@@ -681,11 +684,11 @@ test('ADR-0055 — les libellés d\'école sont EXACTEMENT les dossiers de Marc 
   // (« 3987 route des Rivières » vs « 3987 rte des Rivières »).
   // Les 7 enfants d'`Archives scolaires` : les 6 qui restent des 7 que MARC a créés le 29/05/2026
   // (C28-90 fusionne ses deux nœuds collège/lycée en un seul `… (2014-2018)`, à sa demande)
-  // + `Cégep de Sherbrooke (2019)`, qu'il a demandé d'ajouter et que le moteur find-or-crée PAR
+  // + `CEGEP - Sherbrooke (2020)`, qu'il a demandé d'ajouter et que le moteur find-or-crée PAR
   // NOM — donc au caractère près, lui aussi.
   const reels = ['Collège & Lycée — divers (2014-2018)',
     'Lycée — Gustave Eiffel — Physique-Chimie (TP)', 'Prépa PTSI (2017-2018)',
-    'ULCO — DUT GIM (2018-2020)', 'Cégep de Sherbrooke (2019)',
+    'ULCO — DUT GIM (2018-2020)', 'CEGEP - Sherbrooke (2020)',
     'IMERIR — Ingénieur MSIR (2020-2023)', 'Online course — AI Essentials (Google)'];
   const d6 = ctx.STRUCTURE_CIBLE_RESET['06 · Études & diplômes'];
   // La RACINE de `06` ne porte plus AUCUNE école — c'est la demande de Marc, mot pour mot :
@@ -717,7 +720,7 @@ test('ADR-0055 — les libellés d\'école sont EXACTEMENT les dossiers de Marc 
     ['2018-01-05_Kholle_Gustave Eiffel.pdf', 'Prépa PTSI (2017-2018)'],
     ['2019-05-05_Travail pratique_ULCO Saint-Omer.pdf', 'ULCO — DUT GIM (2018-2020)'],
     ['2021-02-02_Notes de cours_IMERIR.pdf', 'IMERIR — Ingénieur MSIR (2020-2023)'],
-    ['2019-03-01_Attestation_Cégep de Sherbrooke.pdf', 'Cégep de Sherbrooke (2019)'],
+    ['2019-03-01_Attestation_Cégep de Sherbrooke.pdf', 'CEGEP - Sherbrooke (2020)'],
   ]) {
     assert.strictEqual(ctx.ecoleParNomReset_(nom), attendue, nom);
     assert.ok(reels.indexOf(attendue) !== -1, 'libellé hors du Drive de Marc : ' + attendue);
@@ -821,7 +824,7 @@ test('C28-90 — le veto collégial empêche une fenêtre de trancher pour un c�
   }
   // …mais le veto ne bloque QUE la déduction : un document qui NOMME Sherbrooke y va toujours.
   assert.strictEqual(ctx.cheminCibleReset_(d, '2020-04-03_Correspondance_Cégep de Sherbrooke.jpg'),
-    'Archives scolaires/Cégep de Sherbrooke (2019)');
+    'Archives scolaires/CEGEP - Sherbrooke (2020)');
   // …et il ne touche à rien hors de 06.
   assert.strictEqual(ctx.vetoCollegialReset_('2020-01-01_Facture_Hydro-Québec.pdf'), false);
 });
@@ -836,7 +839,7 @@ test("C28-90 — une école DÉDUITE d'une fenêtre ne sort jamais un fichier de
   const cible = ctx.cheminCibleConsolidation_(d, nom, {});
   assert.strictEqual(cible.faible, true, 'une école déduite est un signal FAIBLE');
   const dec = ctx.decisionConsolidation_({
-    domaine: d, sousCheminActuel: 'Archives scolaires/Cégep de Sherbrooke (2019)', sousCheminCible: cible.nom,
+    domaine: d, sousCheminActuel: 'Archives scolaires/CEGEP - Sherbrooke (2020)', sousCheminCible: cible.nom,
     dossierIdCible: cible.id, cibleFaible: cible.faible === true,
     parentId: null, protege: false, protegeIllisible: false, raccourci: false, doublonDe: null,
   });
@@ -912,4 +915,37 @@ test('ADR-0056 D11 — le prédicat est BORNÉ aux cibles de la campagne, et éc
     PropertiesService: { getScriptProperties: () => { throw new Error('blip'); } },
   });
   assert.strictEqual(c3.reDatationEnCours_(cible(c3.CONFIG)), false);
+});
+
+test('ADR-0060 — audit §11 sur du RÉEL : les 9 documents Sherbrooke et les 5 « AI Essentials » de Marc', () => {
+  // Relevé Drive du 15/09 par `parentId` : les 9 fichiers de `CEGEP - Sherbrooke (2020)` (le dossier
+  // que Marc UTILISE) et les 5 documents Google natifs à plat à la racine de `06`. Le libellé est
+  // copié de la réponse de l'API au caractère près — `getFoldersByName` est sensible à la casse, et
+  // un caractère de différence crée un dossier JUMEAU au premier document (vécu en `03`).
+  const d = '06 · Études & diplômes';
+  const sherbrooke = [
+    '2026_Notes de cours_Cégep de Sherbrooke.jpg', '2024_Horaire de cours_Cégep de Sherbrooke.png',
+    '2026_Horaire de cours_Cégep de Sherbrooke.jpg', '2019_Horaire de cours_Cégep de Sherbrooke.png',
+    "2018-08-01_Guide d'installation logiciel_Cegep de Sherbrooke.jpg",
+    '2025-01-17_Feuille de présence_Cégep de Sherbrooke.xlsx', "2020-10-13_Capture d'écran_Cégep de Sherbrooke.jpg",
+    '2020-03-13_Avis de fermeture COVID-19_Cégep de Sherbrooke.jpg', '2020-04-03_Correspondance_Cégep de Sherbrooke.jpg',
+  ];
+  const tableau = [];
+  for (const nom of sherbrooke) {
+    const c = String(ctx.cheminCibleReset_(d, nom));
+    tableau.push(nom + ' → ' + c);
+    assert.ok(c.indexOf('Archives scolaires/CEGEP - Sherbrooke (2020)') === 0, tableau.join('\n'));
+  }
+  // Mutation : remettre `Cégep de Sherbrooke (2019)` dans `ecoleParNomReset_` fait tomber les 9 lignes.
+  assert.strictEqual(ctx.ecoleParNomReset_('2019-03-01_Attestation_Cégep de Sherbrooke.pdf'), 'CEGEP - Sherbrooke (2020)');
+  assert.strictEqual(ctx.champ_('CEGEP - Sherbrooke (2020)'), 'CEGEP - Sherbrooke (2020)', 'le libellé survit à champ_');
+  // Les 5 documents Google natifs « AI Essentials — … » : sans préfixe de date, AUCUNE fenêtre ne
+  // peut les placer — seule la règle par NOM le fait. Mutation : retirer `ai essentials` ⇒ null.
+  const ia = ['AI Essentials — Email prompt reflections', 'AI Essentials — Card game and presentation notes',
+    'AI Essentials — Fiction sales analysis', 'AI Essentials — Promoting fiction sales (présentation)',
+    'AI Essentials — Quarterly sales promotions (feuille)'];
+  for (const nom of ia) {
+    assert.strictEqual(ctx.ecoleParNomReset_(nom), 'Online course — AI Essentials (Google)', nom);
+    assert.ok(String(ctx.cheminCibleReset_(d, nom)).indexOf('Archives scolaires/Online course — AI Essentials (Google)') === 0, nom);
+  }
 });

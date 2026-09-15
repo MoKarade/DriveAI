@@ -208,7 +208,11 @@ var STRUCTURE_CIBLE_RESET = {
       'Lycée — Gustave Eiffel — Physique-Chimie (TP)': {},
       'Prépa PTSI (2017-2018)': ecoleReset_(true),
       'ULCO — DUT GIM (2018-2020)': ecoleReset_(false, THEMATIQUES_ULCO_RESET),
-      'Cégep de Sherbrooke (2019)': ecoleReset_(false),
+      // (ADR-0060) Le libellé est celui du dossier que Marc UTILISE (relevé Drive du 15/09, au
+      // caractère près : `getFoldersByName` est sensible à la casse). L'ancien `Cégep de Sherbrooke
+      // (2019)`, déclaré mais créé À VIDE par le moteur, est sorti de la table : il redevient un
+      // dossier vide ordinaire, candidat corbeille au clic de Marc.
+      'CEGEP - Sherbrooke (2020)': ecoleReset_(false),
       'IMERIR — Ingénieur MSIR (2020-2023)': ecoleReset_(false, THEMATIQUES_IMERIR_RESET),
       'Online course — AI Essentials (Google)': {},
     },
@@ -539,7 +543,9 @@ var RESET_FENETRES_ECOLE = [
   // d'être attribué à l'ULCO par défaut. C'est 28 fichiers de moins placés, et zéro mal placé.
   // Sans cette ligne, l'omission de Sherbrooke aurait été SILENCIEUSE : le moteur aurait rangé ses
   // documents chez l'ULCO avec une clé de SUCCÈS, donc sans retour possible.
-  { ecole: 'Cégep de Sherbrooke (2019)', debut: 2019 * 12 + 1, fin: 2019 * 12 + 12 },
+  // (ADR-0060) Le NOM du dossier dit « (2020) », la FENÊTRE reste 2019 : le nom est le dossier de
+  // Marc, la fenêtre borne des DOCUMENTS — et elle ne sert qu'à refuser (voir ci-dessus).
+  { ecole: 'CEGEP - Sherbrooke (2020)', debut: 2019 * 12 + 1, fin: 2019 * 12 + 12 },
   { ecole: 'IMERIR — Ingénieur MSIR (2020-2023)', debut: 2020 * 12 + 9, fin: 2023 * 12 + 8 },
 ];
 
@@ -593,7 +599,10 @@ function ecoleParNomReset_(nom) {
   if (resetContient_(tout, ['gustave eiffel', 'ptsi', 'kholle', ' colles', 'concours avenir',
     'tetard', 'le meur', 'salwa', 'parcevaux', 'leroux'])) return 'Prépa PTSI (2017-2018)';
   if (resetContient_(sansTiret, ['iut', 'ulco', 'littoral', 'saint omer', 'cote d opale'])) return 'ULCO — DUT GIM (2018-2020)';
-  if (tout.indexOf('sherbrooke') !== -1) return 'Cégep de Sherbrooke (2019)';
+  if (tout.indexOf('sherbrooke') !== -1) return 'CEGEP - Sherbrooke (2020)';
+  // (ADR-0060) Les 4 documents Google natifs « AI Essentials — … » n'avaient AUCUNE règle : le nœud
+  // était déclaré mais rien ne l'atteignait, et ils restaient à plat à la racine de `06`.
+  if (resetContient_(tout, ['ai essentials'])) return 'Online course — AI Essentials (Google)';
   if (tout.indexOf('imerir') !== -1) return 'IMERIR — Ingénieur MSIR (2020-2023)';
   if (resetContient_(sansTiret, ['hamk', 'hame', 'erasmus', 'esiee', 'hei campus', 'limoilou',
     'saint hyacinthe', 'hubhouse', 'lycee hugo', 'armentieres', 'academie de lille',

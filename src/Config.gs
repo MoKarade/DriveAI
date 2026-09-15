@@ -712,7 +712,9 @@ var CONFIG = {
   // sur `_TRI 2026/<domaine>` — un fichier placé n'y est plus, il n'est donc jamais re-présenté).
   // À bumper à CHAQUE modification des règles de routage, sinon les non-routés resteraient marqués
   // « déjà tenté » à vie et l'affinage serait sans effet (constaté au 1ᵉʳ reliquat réel, 2026-07-30).
-  RESET_TABLE_VERSION: 't6',              // t6 (ADR-0055, 2026-09-14) : les écoles de `06` passent sous
+  RESET_TABLE_VERSION: 't7',              // t7 (ADR-0060, 2026-09-15) : Sherbrooke = le dossier de Marc
+                                          // `CEGEP - Sherbrooke (2020)` + règle `ai essentials`.
+                                          // t6 (ADR-0055, 2026-09-14) : les écoles de `06` passent sous
                                           // `Archives scolaires` et prennent les noms de dossier de Marc.
                                           // RESET_ACTIF=false, donc aucun redémarrage de campagne : le bump
                                           // ACQUITTE la dette pour le jour où le reset repartirait.
@@ -1074,10 +1076,11 @@ var CONFIG = {
     // ⚠️ Le libellé de GAUCHE est le dossier de la RACINE (source, moteur), celui de DROITE le
     // dossier de MARC (cible). `cibleNom` est le nom EXACT du nœud de `STRUCTURE_CIBLE_RESET`
     // (tripwire : une règle, deux consommateurs) ; `cible` est son ID quand le dossier EXISTE déjà.
-    // `Cégep de Sherbrooke (2019)` n'existe pas encore : il est find-or-créé PAR NOM sous
-    // `archivesScolaires`, au premier fichier déplacé. À la convergence, `repointerEcoles06_` ne
-    // le crée QUE si une ligne du référentiel vise réellement sa source (revue flotte : la
-    // création était inconditionnelle, et la promesse « jamais créé à vide » était fausse).
+    // (ADR-0060) Sherbrooke vise DÉSORMAIS PAR ID le dossier que Marc utilise, `CEGEP - Sherbrooke
+    // (2020)`. L'ancienne cible sans ID (`Cégep de Sherbrooke (2019)`) a été créée À VIDE par
+    // `repointerEcoles06_` le 15/09 : sa garde « une ligne du référentiel vise la source » était vraie
+    // par CONFIGURATION (`SEED_ENTITES` y écrit ce dossier), pas par mouvement. À la convergence, une
+    // cible sans ID n'est plus JAMAIS créée — seulement trouvée si elle existe.
     archivesScolaires: '1Spv7fdg-cUAhOG52ieMecAkZpVLQ-o77', // 06/« Archives scolaires » (dossier de Marc)
     ecoles06: [
       { src: '157LXd0CwcPhc2S8C5Ftg_FFOqVuDfrZ9', cible: '1zG75U9G2B4Gi4BSd481efn3dX0y1J3Tc', cibleNom: 'Collège & Lycée — divers (2014-2018)' },        // lycée Thérèse d'Avila
@@ -1093,7 +1096,7 @@ var CONFIG = {
       // dans l'ADR §3.5, pas fait en silence : c'est un dossier d'école à la racine de `06`, donc
       // exactement ce que sa première phrase demande de faire disparaître.
       { src: '1warTOdOWFxNU7bs8carxWAnC5LulScs7', cible: '1XdWSfTGZUj1HMgfRleI_9KunZFQb8TJV', cibleNom: 'ULCO — DUT GIM (2018-2020)' },              // IUT Du Littoral
-      { src: '1Q8JJwvpbt-pgbumhUVCPXs_MRrFfK6x3', cibleNom: 'Cégep de Sherbrooke (2019)' },                                                          // Cégep de Sherbrooke (cible à créer)
+      { src: '1Q8JJwvpbt-pgbumhUVCPXs_MRrFfK6x3', cible: '1TReaSk46YXO9LXl9VD-5P8CeG38yC7dj', cibleNom: 'CEGEP - Sherbrooke (2020)' },              // Cégep de Sherbrooke → le dossier de Marc (ADR-0060)
       { src: '1Q0QBp3q_e9CqpKi6FZOwSvJg1ZbGR282', cible: '1pIIovCmN8o-GrROoyH8rfsziUUbcfeKK', cibleNom: 'IMERIR — Ingénieur MSIR (2020-2023)' },     // IMERIR
     ],
     // ---- PR2 (Carrière + Finances, recon du 17/08) ----

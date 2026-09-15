@@ -272,7 +272,7 @@ test('routeur ecoles-archives06 : alias explicite = transfert ; source hors tabl
   // s'était créé à la racine de `06`, la cible le dossier de MARC sous `Archives scolaires`.
   // Le tag a changé AVEC le sens — sinon les ~45 fichiers déjà déplacés dans l'autre sens
   // portaient une clé de SUCCÈS et n'auraient jamais été repris.
-  const spec = pur.tableMissions_().filter((m) => m.tag === 'ecoles-archives06b')[0];
+  const spec = pur.tableMissions_().filter((m) => m.tag === 'ecoles-archives06c')[0];
   const paires = pur.CONFIG.MISSIONS_IDS.ecoles06;
   // 7 paires depuis ADR-0056 : les 6 dossiers d'école de la racine de `06`, plus l'ancien dossier
   // d'archive de Marc que la fusion vide dans le dossier 2014-2018.
@@ -282,14 +282,19 @@ test('routeur ecoles-archives06 : alias explicite = transfert ; source hors tabl
   const r = spec.router('2020-01-01_Relevé_ULCO.pdf', { sourceId: parId.src, sousChemin: 'Semestre 1' }, ctx);
   assert.strictEqual(r.cibleId, parId.cible);
   assert.strictEqual(r.sousDossier, 'Semestre 1', 'un niveau de sous-dossier préservé');
-  // La cible qui n'existe PAS encore (`Cégep de Sherbrooke (2019)`) passe par le find-or-create
-  // PAR NOM du runner : rien n'est créé tant qu'aucun fichier ne part.
-  const aCreer = paires.filter((x) => !x.cible)[0];
-  assert.ok(aCreer, 'le cégep n\'a pas de dossier d\'archive : il est créé par nom');
-  const r2 = spec.router('2019-03-01_TP_Cégep.pdf', { sourceId: aCreer.src, sousChemin: '' }, ctx);
+  // (ADR-0060) TOUTES les paires visent désormais un dossier de Marc PAR ID — Sherbrooke compris,
+  // au caractère près du relevé Drive du 15/09.
+  assert.strictEqual(paires.filter((x) => !x.cible).length, 0, 'plus aucune cible sans ID');
+  const cegep = paires.filter((x) => x.src === '1Q8JJwvpbt-pgbumhUVCPXs_MRrFfK6x3')[0];
+  assert.strictEqual(cegep.cible, '1TReaSk46YXO9LXl9VD-5P8CeG38yC7dj');
+  assert.strictEqual(cegep.cibleNom, 'CEGEP - Sherbrooke (2020)');
+  // Le chemin « cible sans ID » du routeur reste vivant pour une école FUTURE : find-or-create PAR
+  // NOM au premier fichier déplacé — le seul chemin autorisé à créer un dossier.
+  const ctx2 = { parSource: { SRC_FUTURE: { src: 'SRC_FUTURE', cibleNom: 'École future (2030)' } }, archivesId: ctx.archivesId };
+  const r2 = spec.router('2030-01-01_TP_Future.pdf', { sourceId: 'SRC_FUTURE', sousChemin: '' }, ctx2);
   assert.strictEqual(r2.cibleId, undefined);
   assert.strictEqual(r2.cibleParentId, pur.CONFIG.MISSIONS_IDS.archivesScolaires);
-  assert.strictEqual(r2.cibleNom, aCreer.cibleNom);
+  assert.strictEqual(r2.cibleNom, 'École future (2030)');
   // Une source hors table n'est jamais devinée.
   assert.strictEqual(spec.router('x.pdf', { sourceId: 'inconnu', sousChemin: '' }, ctx), null);
   // Les sources de la mission sont EXACTEMENT les alias.
@@ -609,7 +614,12 @@ function ctxSchool(opts) {
   const h = ctxRunner(opts);
   h.lots = [];
   h.c.repointerEntitesLot_ = (carte) => { h.lots.push(carte); };
-  h.c.dossiersVisesParEntites_ = () => !!opts.viseUneSource;
+  // (ADR-0060) find-ONLY : rend un dossier seulement si le test dit qu'il existe ; JAMAIS de création.
+  h.creations = [];
+  h.c.sousDossierExistant_ = (parent, nom) => (opts.existants && opts.existants[nom]) ? { getId: () => opts.existants[nom] } : null;
+  h.c.sousDossier_ = (parent, nom) => { h.creations.push(nom); return { getId: () => 'CREE-' + nom }; };
+  // Une paire SANS ID injectée dans la config (aucune en prod depuis ADR-0060) pour prouver le chemin.
+  if (opts.paireSansId) h.c.CONFIG.MISSIONS_IDS.ecoles06 = h.c.CONFIG.MISSIONS_IDS.ecoles06.concat([opts.paireSansId]);
   return h;
 }
 
@@ -619,32 +629,37 @@ test('runner ecoles-archives06 : transfert par alias + RE-POINTAGE des entités 
   paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
   h.arbre[paires[0].src].files = [h.fichier('fd', '2019-05-01_Relevé_ULCO.pdf')];
 
-  h.c.executerMission_('ecoles-archives06b', () => false);
+  h.c.executerMission_('ecoles-archives06c', () => false);
   assert.deepStrictEqual(plain(h.moves.filter((m) => m.vers)), [{ id: 'fd', vers: paires[0].cible }]);
 
-  h.c.executerMission_('ecoles-archives06b', () => false); // passe vide → convergence
+  h.c.executerMission_('ecoles-archives06c', () => false); // passe vide → convergence
   // UNE seule lecture/écriture en LOT (revue quotas : 6 lectures intégrales de l'onglet `Entités`
   // juste avant l'unique fenêtre d'écriture consommaient le garde-temps qu'elles partagent).
   assert.strictEqual(h.lots.length, 1, 'un seul appel en lot, pas un par paire');
   const avecId = paires.filter((p) => p.cible);
   assert.strictEqual(Object.keys(h.lots[0]).sort().join('|'),
     avecId.map((p) => p.src).sort().join('|'), 'chaque entité re-pointée vers son archive');
-  // …et la cible SANS ID (`Cégep de Sherbrooke (2019)`) n'est PAS créée : aucune ligne du
-  // référentiel ne vise sa source. Mutation : rendre `true` à `dossiersVisesParEntites_` ⇒ ce test
-  // tombe (le dossier apparaît dans la carte), ce qui prouve que la garde est bien consultée.
-  assert.ok(!Object.keys(h.lots[0]).some((k) => k === paires.filter((p) => !p.cible)[0].src),
-    'jamais créé à vide : la promesse est CODÉE, pas commentée');
+  assert.strictEqual(h.creations.length, 0, 'la convergence ne crée jamais un dossier');
 });
 
-test('runner ecoles-archives06 : la cible sans ID est créée dès qu\'une entité la vise', () => {
-  // Le pendant du test précédent — « un gate se teste par sa LIBÉRATION » (leçon §7).
-  const h = ctxSchool({ viseUneSource: true });
-  const paires = h.c.CONFIG.MISSIONS_IDS.ecoles06;
-  paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
-  h.c.executerMission_('ecoles-archives06b', () => false);
-  const sansId = paires.filter((p) => !p.cible)[0];
-  assert.ok(Object.prototype.hasOwnProperty.call(h.lots[0], sansId.src),
-    'la source du cégep est bien re-pointée une fois son dossier find-or-créé');
+test('ADR-0060 — à la convergence, une cible SANS ID n\'est JAMAIS créée, seulement trouvée', () => {
+  // Le 15/09, `Cégep de Sherbrooke (2019)` a été créé À VIDE par ce chemin : sa garde (« une ligne du
+  // référentiel vise la source ») était vraie par CONFIGURATION — `SEED_ENTITES` y écrit le dossier
+  // source — et le test précédent la mockait à `false`. Un mock du prédicat prouve le gate, jamais sa
+  // valeur réelle. Désormais la propriété est STRUCTURELLE : find-only, aucune création possible.
+  const paire = { src: 'SRC_SANS_ID', cibleNom: 'École future (2030)' };
+  // (a) le dossier n'existe pas ⇒ rien n'est créé, la source n'est pas re-pointée
+  let h = ctxSchool({ paireSansId: paire });
+  h.c.CONFIG.MISSIONS_IDS.ecoles06.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
+  h.c.executerMission_('ecoles-archives06c', () => false);
+  assert.strictEqual(h.creations.length, 0, 'JAMAIS créé à vide — mutation : remettre `sousDossier_` ici fait tomber ce test');
+  assert.ok(!Object.prototype.hasOwnProperty.call(h.lots[0], 'SRC_SANS_ID'), 'pas de dossier ⇒ rien à viser');
+  // (b) le dossier existe (un fichier y est parti par le routeur) ⇒ re-pointé vers SON id, sans création
+  h = ctxSchool({ paireSansId: paire, existants: { 'École future (2030)': 'ID-EXISTANT' } });
+  h.c.CONFIG.MISSIONS_IDS.ecoles06.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
+  h.c.executerMission_('ecoles-archives06c', () => false);
+  assert.strictEqual(h.creations.length, 0);
+  assert.strictEqual(h.lots[0].SRC_SANS_ID, 'ID-EXISTANT', 'un gate se teste par sa LIBÉRATION');
 });
 
 test('un re-pointage qui LÈVE empêche le drapeau FINI — re-tenté à la passe suivante (🟠 revue sécurité)', () => {
@@ -657,20 +672,20 @@ test('un re-pointage qui LÈVE empêche le drapeau FINI — re-tenté à la pass
   let rate = true;
   h.c.repointerEntitesLot_ = (carte) => { if (rate) throw new Error('Sheet indisponible'); h.lots.push(carte); };
 
-  assert.throws(() => h.c.executerMission_('ecoles-archives06b', () => false), /Sheet indisponible/,
+  assert.throws(() => h.c.executerMission_('ecoles-archives06c', () => false), /Sheet indisponible/,
     'l\'échec REMONTE (etapeSuivie_ le journalise) au lieu d\'être avalé');
-  assert.ok(!h.store['DriveAI_MISSION_FINI_ecoles-archives06b'], 'pas de FINI sur un re-pointage raté');
+  assert.ok(!h.store['DriveAI_MISSION_FINI_ecoles-archives06c'], 'pas de FINI sur un re-pointage raté');
   assert.ok(h.store['DriveAI_MISSIONS_JOUR'], 'le budget consommé est écrit malgré le throw (finally)');
 
   // La Sheet revient : la passe suivante (vide, quasi gratuite) re-tente et conclut.
   rate = false;
-  h.c.executerMission_('ecoles-archives06b', () => false);
-  assert.strictEqual(h.store['DriveAI_MISSION_FINI_ecoles-archives06b'], h.c.CONFIG.MISSIONS_REGLES_VERSION);
+  h.c.executerMission_('ecoles-archives06c', () => false);
+  assert.strictEqual(h.store['DriveAI_MISSION_FINI_ecoles-archives06c'], h.c.CONFIG.MISSIONS_REGLES_VERSION);
   assert.strictEqual(h.lots.length, 1);
   // LIBÉRATION du compteur (revue finale PR2 — « un gate se teste par sa libération », leçon §7) :
   // l'échec a incrémenté errC ; le succès doit l'effacer, sinon un errC ≥ MAX survivrait au FINI
   // et re-bloquerait une journée entière au PREMIER échec après un futur bump de version.
-  const etatApres = JSON.parse(h.store['DriveAI_MISSIONS_ETAT'])['ecoles-archives06b'];
+  const etatApres = JSON.parse(h.store['DriveAI_MISSIONS_ETAT'])['ecoles-archives06c'];
   assert.strictEqual(etatApres.errC, undefined, 'errC effacé par la convergence réussie');
   assert.strictEqual(etatApres.errJour, undefined, 'errJour effacé avec lui');
 });
@@ -2048,15 +2063,15 @@ test('§1.2 — une cible à la CORBEILLE refuse le dépôt (jamais de suppressi
   h.arbre[avecId.src].files = [h.fichier('fx', '2019-05-01_Relevé_ULCO.pdf')];
   h.arbre[avecId.cible] = { files: [], folders: {}, corbeille: true };
 
-  h.c.executerMission_('ecoles-archives06b', () => false);
+  h.c.executerMission_('ecoles-archives06c', () => false);
   assert.strictEqual(h.moves.filter((m) => m.vers).length, 0, 'aucun dépôt dans une corbeille');
   assert.ok(!h.index['mission|ecoles-archives06b|' + h.c.CONFIG.MISSIONS_REGLES_VERSION + '|fx'],
     'aucune clé posée : le fichier est re-tenté, jamais perdu de vue');
-  assert.ok(!h.store['DriveAI_MISSION_FINI_ecoles-archives06b'], 'une passe incomplète ne conclut pas');
+  assert.ok(!h.store['DriveAI_MISSION_FINI_ecoles-archives06c'], 'une passe incomplète ne conclut pas');
 
   // LIBÉRATION : la corbeille vidée/restaurée, le dépôt reprend (un gate se teste par sa levée).
   h.arbre[avecId.cible].corbeille = false;
-  h.c.executerMission_('ecoles-archives06b', () => false);
+  h.c.executerMission_('ecoles-archives06c', () => false);
   assert.strictEqual(h.moves.filter((m) => m.vers).length, 1);
 });
 
