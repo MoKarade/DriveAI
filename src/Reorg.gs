@@ -810,24 +810,6 @@ function repointerEntitesLot_(carte) {
   }
 }
 
-/**
- * Vrai si au moins une ligne du référentiel pointe l'un des dossiers donnés. Lecture seule.
- * Sert à ne pas find-or-créer une cible que PERSONNE ne vise (leçon : une promesse « jamais créé
- * à vide » se code, elle ne se commente pas).
- * @param {!Object<string,boolean>} ids @return {boolean}
- */
-function dossiersVisesParEntites_(ids) {
-  var f = feuille_('Entités');
-  var valeurs = f.getDataRange().getValues();
-  if (valeurs.length < 2) return false;
-  var iDossier = valeurs[0].indexOf('Dossier ID');
-  if (iDossier === -1) return false;
-  for (var i = 1; i < valeurs.length; i++) {
-    if (ids[String(valeurs[i][iDossier])]) return true;
-  }
-  return false;
-}
-
 function repointerEntites_(sourceId, cibleId) {
   var f = feuille_('Entités');
   var valeurs = f.getDataRange().getValues();

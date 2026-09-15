@@ -150,7 +150,8 @@ const CAS = [
   ['06 · Études & diplômes', '2021-01_Relevé de notes_ULCO.pdf', 'Diplômes & relevés officiels'],
   ['06 · Études & diplômes', '2020-11_Kholle_Mr Têtard.pdf', 'Archives scolaires/Prépa PTSI (2017-2018)/Examens & khôlles'],
   ['06 · Études & diplômes', '2022-03_TP_IUT Du Littoral Côte d\'Opale.pdf', 'Archives scolaires/ULCO — DUT GIM (2018-2020)/Cours & travaux'],
-  ['06 · Études & diplômes', '2024-09_Attestation_Cégep de Sherbrooke.pdf', 'Archives scolaires/CEGEP - Sherbrooke (2020)/Administratif'],
+  // (ADR-0060) le dossier de Marc est déclaré `{}` : À PLAT, quel que soit le type du document.
+  ['06 · Études & diplômes', '2024-09_Attestation_Cégep de Sherbrooke.pdf', 'Archives scolaires/CEGEP - Sherbrooke (2020)'],
   ['06 · Études & diplômes', '2023-05_Projet_IMERIR.pdf', 'Archives scolaires/IMERIR — Ingénieur MSIR (2020-2023)/Cours & travaux'],
   ['06 · Études & diplômes', '2021-09_Convention_Häme University Of Applied Sciences.pdf', 'Autres établissements'],
   // 07 — validé tel quel par Marc
@@ -340,9 +341,12 @@ test('06 : la table des écoles se construit depuis SOUS_DOSSIERS_ECOLE_RESET (u
   // Les 4 standard sont TOUJOURS là, dans l'ordre de la constante — une seule source. Ce qui suit
   // (le « Concours » de la prépa, les sous-dossiers THÉMATIQUES de Marc) s'y AJOUTE, jamais s'y
   // substitue : la garde qui protège ses dossiers de la corbeille ne doit pas défaire la taxonomie.
-  for (const ecole of ['Collège & Lycée — divers (2014-2018)', 'CEGEP - Sherbrooke (2020)']) {
+  for (const ecole of ['Collège & Lycée — divers (2014-2018)']) {
     assert.deepStrictEqual(Object.keys(table[ecole]), attendu, ecole);
   }
+  // (ADR-0060) `CEGEP - Sherbrooke (2020)` est le dossier de Marc, 9 fichiers À PLAT, « aucun fichier
+  // ne bouge » : déclaré SANS sous-dossier, et `cheminCibleReset_` le laisse à plat.
+  assert.deepStrictEqual(Object.keys(table['CEGEP - Sherbrooke (2020)']), []);
   for (const ecole of ['ULCO — DUT GIM (2018-2020)', 'IMERIR — Ingénieur MSIR (2020-2023)']) {
     assert.deepStrictEqual(Object.keys(table[ecole]).slice(0, attendu.length), attendu, ecole);
   }

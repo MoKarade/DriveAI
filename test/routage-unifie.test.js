@@ -268,3 +268,24 @@ test('dossierRacineParNom_ / dossierDomaineAuto_ APPELLENT la garde (câblage, p
   assert.strictEqual(ctx.dossierRacineParNom_('_Doublons', 'DriveAI_DOUBLONS_ID').getId(), 'ANCRE');
   assert.strictEqual(cree.length, 0);
 });
+
+test('ADR-0060 — `sousDossierExistant_` : find-ONLY, ignore les corbeillés, ne crée JAMAIS', () => {
+  // 🟠 revue code : « ignore les dossiers corbeillés » n'était prouvé par rien — `ctxSchool` remplace
+  // la fonction en bloc. Ici la VRAIE fonction, sur le même mock d'itérateur que `sousDossier_`.
+  // Mutations : retirer `if (!d.isTrashed())` ⇒ (1) tombe ; remettre `createFolder` ⇒ (3) tombe.
+  const dossier = (id, corbeille) => ({ getId: () => id, isTrashed: () => corbeille });
+  const iterateur = (items) => { let i = 0; return { hasNext: () => i < items.length, next: () => items[i++] }; };
+  const parent = (items) => {
+    const cree = [];
+    return { cree, getFoldersByName: () => iterateur(items), createFolder: (nom) => { cree.push(nom); return dossier('CREE:' + nom, false); } };
+  };
+  const p1 = parent([dossier('MORT', true)]);
+  assert.strictEqual(ctx.sousDossierExistant_(p1, 'X'), null, '(1) un homonyme corbeillé n\'est PAS un dossier existant');
+  assert.strictEqual(p1.cree.length, 0);
+  const p2 = parent([dossier('MORT', true), dossier('VIVANT', false)]);
+  assert.strictEqual(ctx.sousDossierExistant_(p2, 'X').getId(), 'VIVANT', '(2) le vivant est rendu');
+  assert.strictEqual(p2.cree.length, 0);
+  const p3 = parent([]);
+  assert.strictEqual(ctx.sousDossierExistant_(p3, 'X'), null, '(3) absent ⇒ null');
+  assert.strictEqual(p3.cree.length, 0, '(3) et RIEN n\'est créé — c\'est tout le sens du find-only');
+});

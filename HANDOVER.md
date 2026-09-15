@@ -31,10 +31,14 @@
 > « `CEGEP - Sherbrooke (2020)` fait foi », « crée `Online course` », « vas-y ». Livré en revue flotte :
 > libellé + ID réel dans `ecoles06`, garde de création remplacée par un find-only structurel (la cause
 > du dossier créé à vide : `SEED_ENTITES` rend « une entité vise la source » vrai à vie), règle
-> `ai essentials` (5 natifs à plat), mission `ecoles-archives06c` (re-pointe l'entité hors de la
-> coquille), `RESET_TABLE_VERSION` t7. 1322 tests, 3 mutations jouées et attrapées, audit §11 sur les
-> 14 noms réels. ⚠️ `conso-4` en cours (4/9) et NON bumpée : les 5 « AI Essentials » partiront à
-> `conso-5` — ou tout de suite si Marc les glisse dans le dossier une fois créé.
+> `ai essentials` (5 natifs à plat), mission `ecoles-archives06c` (re-pointe l'entité — qui vise déjà
+> le dossier vide `(2019)`, pas la coquille : `anciensNoms` la ramène), `RESET_TABLE_VERSION` t7.
+> Revue flotte intégrée (2 🔴 : les 4 sites d'appel du tag oubliés + l'entité orpheline). ⚠️ `conso-4`
+> (4/9, ordre 01→04→05→06) NON bumpée : les 5 « AI Essentials » partent sous `conso-4` si le moteur
+> est déployé avant qu'elle atteigne `06`, sinon à un bump — ou tout de suite si Marc les glisse.
+> **Consigne à Marc après merge** : laisser `c` converger, vérifier dans `Entités` que `Cégep De
+> Sherbrooke` porte `1TReaSk46…`, PUIS corbeiller à la main `(2019)`, `Thérèse Davila` et la coquille
+> (rien ne les proposera : ils n'ont jamais été vidés par le classement).
 >
 > **🟥 OUVERT — 2026-09-15 : la mission écoles dit « terminé », et sa cible déclarée est VIDE.**
 >

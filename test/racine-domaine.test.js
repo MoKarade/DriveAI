@@ -644,8 +644,9 @@ test('ADR-0052 D6 — Sherbrooke CHEVAUCHE l\'ULCO : toute l\'année 2019 est re
   // écrivait `String(...).length > 0`, or `String(null)` vaut « null » — l'assertion ne pouvait
   // PAS échouer, et la valeur réelle n'était même pas l'école (revue flotte).
   const d = '06 · Études & diplômes';
+  // (ADR-0060) à PLAT : le nœud est déclaré `{}`, la cascade de buckets ne s'applique pas.
   assert.strictEqual(ctx.cheminCibleReset_(d, '2019-03-01_Travail pratique_Cégep de Sherbrooke.pdf'),
-    'Archives scolaires/CEGEP - Sherbrooke (2020)/Cours & travaux');
+    'Archives scolaires/CEGEP - Sherbrooke (2020)');
 });
 
 test('ADR-0052 D6 — un marqueur de NIVEAU ou de FILIÈRE dans le nom est un FAIT, pas une déduction', () => {
@@ -934,7 +935,7 @@ test('ADR-0060 — audit §11 sur du RÉEL : les 9 documents Sherbrooke et les 5
   for (const nom of sherbrooke) {
     const c = String(ctx.cheminCibleReset_(d, nom));
     tableau.push(nom + ' → ' + c);
-    assert.ok(c.indexOf('Archives scolaires/CEGEP - Sherbrooke (2020)') === 0, tableau.join('\n'));
+    assert.strictEqual(c, 'Archives scolaires/CEGEP - Sherbrooke (2020)', 'À PLAT, comme Marc les tient : ' + tableau.join('\n'));
   }
   // Mutation : remettre `Cégep de Sherbrooke (2019)` dans `ecoleParNomReset_` fait tomber les 9 lignes.
   assert.strictEqual(ctx.ecoleParNomReset_('2019-03-01_Attestation_Cégep de Sherbrooke.pdf'), 'CEGEP - Sherbrooke (2020)');
@@ -946,6 +947,14 @@ test('ADR-0060 — audit §11 sur du RÉEL : les 9 documents Sherbrooke et les 5
     'AI Essentials — Quarterly sales promotions (feuille)'];
   for (const nom of ia) {
     assert.strictEqual(ctx.ecoleParNomReset_(nom), 'Online course — AI Essentials (Google)', nom);
-    assert.ok(String(ctx.cheminCibleReset_(d, nom)).indexOf('Archives scolaires/Online course — AI Essentials (Google)') === 0, nom);
+    assert.strictEqual(ctx.cheminCibleReset_(d, nom), 'Archives scolaires/Online course — AI Essentials (Google)', nom);
+  }
+  // 🟡 revue code : la règle est ANCRÉE (mot entier) et un nœud `{}` reste à plat même avec un type.
+  for (const nom of ['Bonsai essentials.pdf', 'Mai essentials 2020.pdf']) {
+    assert.notStrictEqual(ctx.ecoleParNomReset_(nom), 'Online course — AI Essentials (Google)', nom);
+  }
+  assert.strictEqual(ctx.cheminCibleReset_(d, '2024-01-01_Notes de cours_AI Essentials.pdf'),
+    'Archives scolaires/Online course — AI Essentials (Google)', 'jamais un /Cours & travaux que la table ne déclare pas');
+  for (const _ of []) {
   }
 });

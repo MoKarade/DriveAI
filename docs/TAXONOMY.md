@@ -23,25 +23,28 @@ plus bas décrit la cascade de replis à jour, pas l'héritage.
 | `03 · Logement & véhicule` | **Logement** (5 adresses aux noms RÉELS Drive) · **Véhicule** (Toyota bZ · Ford Fiesta · VW Jetta, chacun avec {Contraventions · Assurance auto · Entretien & réparations · Recherche & achat}) **+ 3 dossiers COMMUNS au même niveau que les véhicules — `Recherche & achat` (magasinage sans véhicule identifié, dont l'ex-« KIA »), `Locations` (voiture louée, jamais un véhicule de Marc) et `À attribuer` (aucun véhicule identifiable — ADR-0044)** · Énergie & services · Assurance habitation · Contrats (les formulaires génériques/vierges y sont depuis ADR-0052 D7) · Correspondance · **Travaux & équipements** 🆕 *(ce qu'il y a DANS le logement : étiquettes produit, matériaux, revêtements, inventaires, dégradations — ADR-0052 D7, qui RÉVISE ADR-0044 §6)* | 0 — PLEIN |
 | `04 · Immigration` | IRCC (fédéral) · MIFI (Québec) · Permis de travail & EIMT · Résidence permanente · Formulaires & correspondance · **Pièces d'identité** 🆕 *(ADR-0052)* | 1 |
 | `05 · Carrière` | **Employeurs** (Robovic · Automatech · **Autres employeurs** — commun des employeurs occasionnels, ADR-0044 D11) · Alternance & stages · CV & lettres (+ Candidatures · Suivi · Archive 2021-2025) · **Recherche d'emploi** (recrutement reçu : offres, invitations d'entretien, descriptions de rôle, listes d'entreprises cibles — **RECRÉÉ par ADR-0044 D10, qui révoque la fusion du 2026-08-17 vers « CV & lettres »**) · Entreprise — MRic (SCI) · Formation & bilans · Réseaux & présentations | 0 — PLEIN |
-| `06 · Études & diplômes` | **Archives scolaires** *(le dossier de MARC : ses 7 dossiers de parcours + `Cégep de Sherbrooke (2019)` — ADR-0055)* · Autres établissements · Diplômes & relevés officiels | 4 |
+| `06 · Études & diplômes` | **Archives scolaires** *(le dossier de MARC : ses 7 dossiers de parcours, dont `CEGEP - Sherbrooke (2020)` — ADR-0055, libellé ADR-0060)* · Autres établissements · Diplômes & relevés officiels | 4 |
 | `07 · Santé` | Médecins & consultations · Hôpitaux & centres · Assurances santé · Factures & reçus · Examens & résultats · Médecine scolaire & travail | 1 |
 | `08 · Perso & projets` | Projets · Écrits & rédactions · Schémas & technique · Photos & loisirs · Notes · Données & exports | 1 |
 | `09 · Voyages` | Réservations & billets · Par voyage · Assurances voyage · **Préparation & guides** 🆕 *(ADR-0052)* | 3 |
 
-> **`06 · Études & diplômes` — où vont les écoles** (ADR-0055, demande de Marc 2026-09-14 :
-> « j'ai la bonne structure pour les écoles déjà, continue à rajouter là-dedans au lieu de mettre à
-> la racine du projet »). Les dossiers d'école ne sont PLUS à la racine du domaine : ce sont les
-> enfants d'`Archives scolaires`, que Marc a construit lui-même le 29/05/2026, et ils portent SES
-> noms — `Lycée — Thérèse Davila (2017-2018)`, `Prépa PTSI (2017-2018)`,
-> `ULCO — DUT GIM (2018-2020)`, `Cégep de Sherbrooke (2019)`,
-> `IMERIR — Ingénieur MSIR (2020-2023)`, plus trois dossiers qu'aucune règle ne vise
-> (`Collège & Lycée — divers (2014-2017)`, `Lycée — Gustave Eiffel — Physique-Chimie (TP)`,
-> `Online course — AI Essentials (Google)`). Soit **8 enfants > 7** : l'exemption au plafond est
-> DÉCLARÉE dans `RESET_EXEMPTIONS_PLAFOND` et testée à la valeur près, jamais tolérée en silence —
-> comme celle d'`IMERIR — Ingénieur MSIR (2020-2023)`, qui porte **16** enfants (les 12 dossiers
-> thématiques de Marc + les 4 standard). Ces 14 thématiques sont DÉCLARÉES exprès : aucune règle ne
-> route vers elles, mais les déclarer les retire de la liste « dossiers vides » de l'app et les rend
-> immuables pour la réorg et la fusion.
+> **`06 · Études & diplômes` — où vont les écoles** (ADR-0055, révisé ADR-0056 et ADR-0060 ; demande de
+> Marc 2026-09-14 : « j'ai la bonne structure pour les écoles déjà, continue à rajouter là-dedans au
+> lieu de mettre à la racine du projet »). Les écoles ne sont PLUS à la racine du domaine : ce sont les
+> enfants d'`Archives scolaires`, aux noms de Marc relevés dans Drive — `Collège & Lycée — divers
+> (2014-2018)` (fusion ADR-0056 de ses deux dossiers collège/lycée), `Lycée — Gustave Eiffel —
+> Physique-Chimie (TP)`, `Prépa PTSI (2017-2018)`, `ULCO — DUT GIM (2018-2020)`, `CEGEP - Sherbrooke
+> (2020)` (ADR-0060 : le dossier que Marc utilise, visé par ID, déclaré `{}` donc À PLAT ; le « (2020) »
+> est le nom du dossier, la fenêtre de documents reste 2019), `IMERIR — Ingénieur MSIR (2020-2023)`,
+> `Online course — AI Essentials (Google)` (règle `ai essentials`, créé au premier document, à plat).
+> **7 enfants ≤ 7 : plus d'exemption pour ce niveau** ; seule `IMERIR — …` (16 enfants : les 12
+> thématiques de Marc + les 4 standard) reste dans `RESET_EXEMPTIONS_PLAFOND`, déclarée et testée à la
+> valeur près. Ces thématiques sont DÉCLARÉES exprès : aucune règle ne route vers elles, mais les
+> déclarer les retire de la liste « dossiers vides » de l'app et les rend immuables pour la réorg.
+> ⚠️ Drive porte AUSSI deux dossiers vides hors table (`Cégep de Sherbrooke (2019)`, créé à vide par le
+> moteur ; `Lycée — Thérèse Davila (2017-2018)`, source drainée par la fusion) : rien ne les recrée,
+> et rien ne les propose à la corbeille — Marc les retire à la main, APRÈS avoir vérifié que l'entité
+> `Cégep De Sherbrooke` de l'onglet `Entités` porte l'ID de `CEGEP - Sherbrooke (2020)` (ADR-0060).
 > ⚠️ Le ≤ 7 porte sur la TABLE, jamais sur le Drive : si Marc ajoute un dossier dans les siens, le
 > dépassement réel reste invisible de la CI.
 > ⚠️ **D10** (`estDansStructureMarc_`) : un fichier déjà sous `Archives scolaires/<école>` ne se
@@ -56,7 +59,7 @@ plus bas décrit la cascade de replis à jour, pas l'héritage.
 > MESURÉ une contribution non nulle) ; (3) la FENÊTRE de
 > scolarité (`RESET_FENETRES_ECOLE`, bornée au MOIS à la convention sept → août), qui refuse dès
 > qu'il y a deux fenêtres ou aucune. Le parcours validé par Marc : Avila 2014-2017,
-> Prépa 2017-2018, ULCO 2018-2020, **Cégep de Sherbrooke 2019 — EN MÊME TEMPS que l'ULCO**,
+> Prépa 2017-2018, ULCO 2018-2020, **Cégep de Sherbrooke 2019 — EN MÊME TEMPS que l'ULCO** (le dossier, lui, s'appelle `CEGEP - Sherbrooke (2020)` : la fenêtre borne des documents, pas le nom),
 > IMERIR 2020-2023. ⚠️ Marc a dit « Avila c'est genre 2014 2017 », et son propre dossier
 > s'appelle `Lycée — Thérèse Davila (2017-2018)` : les deux ne peuvent pas être vrais en même
 > temps. La FENÊTRE (sa phrase) fait foi et n'a pas bougé — question ouverte depuis C28-90,

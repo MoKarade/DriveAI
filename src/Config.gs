@@ -1096,7 +1096,11 @@ var CONFIG = {
       // dans l'ADR §3.5, pas fait en silence : c'est un dossier d'école à la racine de `06`, donc
       // exactement ce que sa première phrase demande de faire disparaître.
       { src: '1warTOdOWFxNU7bs8carxWAnC5LulScs7', cible: '1XdWSfTGZUj1HMgfRleI_9KunZFQb8TJV', cibleNom: 'ULCO — DUT GIM (2018-2020)' },              // IUT Du Littoral
-      { src: '1Q8JJwvpbt-pgbumhUVCPXs_MRrFfK6x3', cible: '1TReaSk46YXO9LXl9VD-5P8CeG38yC7dj', cibleNom: 'CEGEP - Sherbrooke (2020)' },              // Cégep de Sherbrooke → le dossier de Marc (ADR-0060)
+      // `anciensNoms` (revue structure ADR-0060) : le 15/09 à 04:38, l'ancien code a re-pointé l'entité
+      // `Cégep De Sherbrooke` vers le dossier VIDE `(2019)` qu'il venait de créer — la ligne du
+      // référentiel ne porte plus la source, elle porte l'orphelin. La passe `c` doit AUSSI ramener
+      // cet ID-là vers le dossier de Marc, sinon le flux (repli par entité) remplit `(2019)`.
+      { src: '1Q8JJwvpbt-pgbumhUVCPXs_MRrFfK6x3', cible: '1TReaSk46YXO9LXl9VD-5P8CeG38yC7dj', cibleNom: 'CEGEP - Sherbrooke (2020)', anciensNoms: ['Cégep de Sherbrooke (2019)'] }, // Cégep → le dossier de Marc (ADR-0060)
       { src: '1Q0QBp3q_e9CqpKi6FZOwSvJg1ZbGR282', cible: '1pIIovCmN8o-GrROoyH8rfsziUUbcfeKK', cibleNom: 'IMERIR — Ingénieur MSIR (2020-2023)' },     // IMERIR
     ],
     // ---- PR2 (Carrière + Finances, recon du 17/08) ----

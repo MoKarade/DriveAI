@@ -463,3 +463,27 @@ test('accélération : majResumeHub_ est throttlé (il relisait l\'Index ENTIER 
   assert.ok(posMarqueur > posEcriture,
     'le marqueur de fraîcheur doit être posé APRÈS l\'écriture du résumé');
 });
+
+test('ADR-0060 — chaque tag de mission appelé par Main.gs ou lu par Journal.gs EXISTE dans tableMissions_', () => {
+  // 🔴 revue code : le bump `ecoles-archives06b` → `c` avait été fait dans `tableMissions_` mais pas
+  // aux 4 sites d'appel — `executerMission_` rend en SILENCE sur un tag inconnu (`if (!spec) return`),
+  // la mission `c` ne tournait jamais, et Progression continuait d'afficher l'ancienne « terminée ».
+  // Le bump précédent (`06` → `06b`, 4d5694e) avait touché exactement ces lignes : c'est un patron.
+  const missions = fs.readFileSync(path.join(__dirname, '..', 'src', 'Missions.gs'), 'utf8');
+  const journal = fs.readFileSync(path.join(__dirname, '..', 'src', 'Journal.gs'), 'utf8');
+  const tags = new Set([...missions.matchAll(/^\s*tag: '([^']+)'/gm)].map((m) => m[1]));
+  assert.ok(tags.size >= 8, 'tableMissions_ : ' + [...tags].join(', '));
+  const appeles = [...src.matchAll(/executerMission_\('([^']+)'/g)].map((m) => m[1]);
+  const pousses = [...journal.matchAll(/pousserMission\('[^']+', '([^']+)'\)/g)].map((m) => m[1]);
+  const listeEtat = [...(journal.match(/\[('[^\]]+')\]\.forEach\(function \(tag\)/)[1].matchAll(/'([^']+)'/g))].map((m) => m[1]);
+  const lus = [...journal.matchAll(/etat\.missions(?:\['([^']+)'\]|\.([a-zA-Z0-9]+))\.traites/g)].map((m) => m[1] || m[2]);
+  for (const [ou, liste] of [['Main.gs executerMission_', appeles], ['Journal.gs pousserMission', pousses],
+    ['Journal.gs liste des tags', listeEtat], ['Journal.gs etat.missions', lus]]) {
+    assert.ok(liste.length >= 8, ou + ' : ' + liste.length + ' tags trouvés');
+    const inconnus = liste.filter((tg) => !tags.has(tg));
+    assert.deepStrictEqual(inconnus, [], ou + ' appelle un tag absent de tableMissions_ : ' + inconnus.join(', '));
+  }
+  // …et réciproquement : une mission de la table qui n'est appelée nulle part est une mission MORTE.
+  const jamaisAppelees = [...tags].filter((tg) => appeles.indexOf(tg) === -1);
+  assert.deepStrictEqual(jamaisAppelees, [], 'missions jamais appelées par le tick : ' + jamaisAppelees.join(', '));
+});

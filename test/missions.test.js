@@ -606,8 +606,10 @@ test('runner : budget du jour épuisé → aucune I/O ; garde-temps → passe IN
 
 /**
  * Contexte de runner pour `ecoles-archives06` : le référentiel d'entités est mocké au niveau du
- * LOT (`repointerEntitesLot_`) et de sa sonde (`dossiersVisesParEntites_`), parce que la vraie
- * implémentation lit l'onglet `Entités` via `feuille_`, absent de ce harnais.
+ * LOT (`repointerEntitesLot_`), parce que la vraie implémentation lit l'onglet `Entités` via
+ * `feuille_`, absent de ce harnais ; et la résolution find-ONLY d'une cible sans ID
+ * (`sousDossierExistant_`, ADR-0060) est mockée par `opts.existants` — la vraie fonction, elle, est
+ * exercée dans `test/routage-unifie.test.js` (corbeillés ignorés, jamais de création).
  */
 function ctxSchool(opts) {
   opts = opts || {};
@@ -660,6 +662,31 @@ test('ADR-0060 — à la convergence, une cible SANS ID n\'est JAMAIS créée, s
   h.c.executerMission_('ecoles-archives06c', () => false);
   assert.strictEqual(h.creations.length, 0);
   assert.strictEqual(h.lots[0].SRC_SANS_ID, 'ID-EXISTANT', 'un gate se teste par sa LIBÉRATION');
+});
+
+test('ADR-0060 (revue structure) — l\'entité qui vise l\'ANCIEN dossier vide `(2019)` est ramenée au dossier de Marc', () => {
+  // Le 15/09 à 04:38, l'ancien `repointerEcoles06_` a créé `(2019)` à vide ET re-pointé la ligne
+  // `Cégep De Sherbrooke` dessus (elle ne porte plus la source). Une carte { src → cible } ne la
+  // matche donc plus : sans `anciensNoms`, la passe `c` écrit FINI en laissant l'entité viser un
+  // dossier hors table — et le flux vivant, par son repli d'entité, le remplirait.
+  const h = ctxSchool({ existants: { 'Cégep de Sherbrooke (2019)': 'ID-ORPHELIN-2019' } });
+  const paires = h.c.CONFIG.MISSIONS_IDS.ecoles06;
+  paires.forEach((p) => { h.arbre[p.src] = { files: [], folders: {} }; });
+  h.c.executerMission_('ecoles-archives06c', () => false);
+  assert.strictEqual(h.lots[0]['ID-ORPHELIN-2019'], '1TReaSk46YXO9LXl9VD-5P8CeG38yC7dj',
+    'mutation : retirer `anciensNoms` de la paire Sherbrooke ⇒ cette clé disparaît');
+  assert.strictEqual(h.lots[0]['1Q8JJwvpbt-pgbumhUVCPXs_MRrFfK6x3'], '1TReaSk46YXO9LXl9VD-5P8CeG38yC7dj', 'la source aussi');
+  assert.strictEqual(h.creations.length, 0, 'et toujours aucune création');
+  // La fonction PURE, sans harnais — c'est elle qui porte la règle. (`{ ...x }` ramène l'objet du
+  // contexte `vm` dans ce realm : `deepStrictEqual` compare aussi les prototypes.)
+  const pure = (paires, fn) => ({ ...h.c.carteRepointageEcoles06_(paires, fn) });
+  assert.deepStrictEqual(
+    pure([{ src: 'S', cible: 'C', cibleNom: 'N', anciensNoms: ['V', 'ABSENT'] }], (nom) => (nom === 'V' ? 'IDV' : null)),
+    { S: 'C', IDV: 'C' });
+  assert.deepStrictEqual(pure([{ src: 'S', cibleNom: 'N' }], () => null), {},
+    'sans ID ni dossier existant : rien — et rien n\'est créé');
+  assert.deepStrictEqual(pure([{ src: 'S', cibleNom: 'N', anciensNoms: ['N'] }], () => 'IDN'),
+    { S: 'IDN' }, 'un ancien nom qui résout sur la cible elle-même ne crée pas de boucle');
 });
 
 test('un re-pointage qui LÈVE empêche le drapeau FINI — re-tenté à la passe suivante (🟠 revue sécurité)', () => {
@@ -2065,7 +2092,7 @@ test('§1.2 — une cible à la CORBEILLE refuse le dépôt (jamais de suppressi
 
   h.c.executerMission_('ecoles-archives06c', () => false);
   assert.strictEqual(h.moves.filter((m) => m.vers).length, 0, 'aucun dépôt dans une corbeille');
-  assert.ok(!h.index['mission|ecoles-archives06b|' + h.c.CONFIG.MISSIONS_REGLES_VERSION + '|fx'],
+  assert.ok(!h.index['mission|ecoles-archives06c|' + h.c.CONFIG.MISSIONS_REGLES_VERSION + '|fx'],
     'aucune clé posée : le fichier est re-tenté, jamais perdu de vue');
   assert.ok(!h.store['DriveAI_MISSION_FINI_ecoles-archives06c'], 'une passe incomplète ne conclut pas');
 

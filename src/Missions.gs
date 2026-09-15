@@ -1770,28 +1770,49 @@ function executerMission_(tag, estBudgetDepasse) {
 function repointerEcoles06_() {
   var IDS = CONFIG.MISSIONS_IDS;
   var paires = IDS.ecoles06 || [];
-  // UNE seule lecture de l'onglet `Entités` pour les 6 paires (revue quotas : `repointerEntites_`
+  // UNE seule lecture de l'onglet `Entités` pour toutes les paires (revue quotas : `repointerEntites_`
   // fait `getDataRange().getValues()` À CHAQUE appel — 6 lectures intégrales juste avant l'unique
   // fenêtre de peinture, sur un garde-temps déjà consommé).
-  var carte = {};
-  paires.forEach(function (p) { if (p.cible) carte[p.src] = p.cible; });
-  // (ADR-0060) Une cible SANS ID n'est JAMAIS créée ici. Ce chemin tourne à la CONVERGENCE, donc
-  // après le dernier fichier déplacé : si le dossier n'existe pas à ce moment-là, aucun fichier n'y
-  // est parti (le routeur crée au premier déplacement) et le référentiel n'a rien à viser.
-  // L'ancienne garde (« une ligne du référentiel vise la source ») était VRAIE EN PERMANENCE :
-  // `SEED_ENTITES` écrit `Cégep De Sherbrooke` avec le dossier SOURCE comme « Dossier ID » — un fait
-  // de configuration, pas un signal de mouvement — et `Cégep de Sherbrooke (2019)` a été créé VIDE le
-  // 15/09 à 04:38 UTC, exactement ce que deux commentaires promettaient d'empêcher. Le test qui
-  // prouvait le gate MOCKAIT le prédicat (leçon §9). Ici : find-ONLY, jamais de création.
-  var sansId = paires.filter(function (p) { return !p.cible; });
-  if (sansId.length) {
-    var archives = DriveApp.getFolderById(IDS.archivesScolaires);
-    sansId.forEach(function (p) {
-      var existant = sousDossierExistant_(archives, p.cibleNom);
-      if (existant) carte[p.src] = existant.getId();
-    });
-  }
+  // (ADR-0060) Résolution find-ONLY d'un nom sous `Archives scolaires` — JAMAIS de création ici : ce
+  // chemin tourne à la CONVERGENCE, après le dernier fichier déplacé ; un dossier absent à ce moment-là
+  // n'a reçu aucun fichier et le référentiel n'a rien à y viser. L'ancienne garde (« une ligne du
+  // référentiel vise la source ») était VRAIE EN PERMANENCE — `SEED_ENTITES` écrit `Cégep De Sherbrooke`
+  // avec le dossier SOURCE comme « Dossier ID » — et `Cégep de Sherbrooke (2019)` a été créé VIDE le
+  // 15/09 à 04:38 UTC ; le test qui prouvait le gate MOCKAIT le prédicat (leçon §9).
+  var archives = DriveApp.getFolderById(IDS.archivesScolaires);
+  var carte = carteRepointageEcoles06_(paires, function (nom) {
+    var d = sousDossierExistant_(archives, nom);
+    return d ? d.getId() : null;
+  });
   repointerEntitesLot_(carte);
+}
+
+/**
+ * Carte de re-pointage { dossierId → cibleId } du référentiel d'entités pour `ecoles06`. PURE.
+ * `idExistantParNom(nom)` rend l'ID d'un dossier VIVANT sous `Archives scolaires` ou `null` — jamais
+ * une création (c'est l'appelant qui l'injecte, `sousDossierExistant_`).
+ *  - `p.src` → `p.cible` (ou le dossier `p.cibleNom` s'il existe déjà) ;
+ *  - `p.anciensNoms` (revue structure ADR-0060) : les ANCIENS libellés de cible, orphelins que l'ancien
+ *    code a pu créer à vide ET faire viser par le référentiel — ramenés vers la cible de Marc. Sans
+ *    cette clé, la ligne `Cégep De Sherbrooke` (qui porte l'ID du dossier vide `(2019)` depuis le
+ *    15/09) ne matche plus rien, et le flux vivant (repli par entité, `planRoutageV2_`) remplirait
+ *    `(2019)` ou, s'il est corbeillé, recréerait l'école à la RACINE de `06` (C28-106).
+ * @param {Array<{src:string, cible:(string|undefined), cibleNom:string, anciensNoms:(Array<string>|undefined)}>} paires
+ * @param {function(string):?string} idExistantParNom
+ * @return {!Object<string,string>}
+ */
+function carteRepointageEcoles06_(paires, idExistantParNom) {
+  var carte = {};
+  paires.forEach(function (p) {
+    var cible = p.cible || (p.cibleNom ? idExistantParNom(p.cibleNom) : null);
+    if (!cible) return; // pas de dossier ⇒ aucun fichier n'y est parti ⇒ rien à viser
+    carte[p.src] = cible;
+    (p.anciensNoms || []).forEach(function (nom) {
+      var orphelin = idExistantParNom(nom);
+      if (orphelin && orphelin !== cible) carte[orphelin] = cible;
+    });
+  });
+  return carte;
 }
 
 /**

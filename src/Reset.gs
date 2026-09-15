@@ -212,7 +212,10 @@ var STRUCTURE_CIBLE_RESET = {
       // caractère près : `getFoldersByName` est sensible à la casse). L'ancien `Cégep de Sherbrooke
       // (2019)`, déclaré mais créé À VIDE par le moteur, est sorti de la table : il redevient un
       // dossier vide ordinaire, candidat corbeille au clic de Marc.
-      'CEGEP - Sherbrooke (2020)': ecoleReset_(false),
+      // Déclaré SANS sous-dossier : c'est le dossier tel que Marc le tient (9 fichiers À PLAT au
+      // relevé), et il a choisi « aucun fichier ne bouge ». Un nœud `{}` reste à plat dans
+      // `cheminCibleReset_` — la cascade de buckets ne s'applique qu'aux écoles déclarées AVEC.
+      'CEGEP - Sherbrooke (2020)': {},
       'IMERIR — Ingénieur MSIR (2020-2023)': ecoleReset_(false, THEMATIQUES_IMERIR_RESET),
       'Online course — AI Essentials (Google)': {},
     },
@@ -602,7 +605,7 @@ function ecoleParNomReset_(nom) {
   if (tout.indexOf('sherbrooke') !== -1) return 'CEGEP - Sherbrooke (2020)';
   // (ADR-0060) Les 4 documents Google natifs « AI Essentials — … » n'avaient AUCUNE règle : le nœud
   // était déclaré mais rien ne l'atteignait, et ils restaient à plat à la racine de `06`.
-  if (resetContient_(tout, ['ai essentials'])) return 'Online course — AI Essentials (Google)';
+  if (/(^|[^a-z0-9])ai essentials([^a-z0-9]|$)/.test(tout)) return 'Online course — AI Essentials (Google)';
   if (tout.indexOf('imerir') !== -1) return 'IMERIR — Ingénieur MSIR (2020-2023)';
   if (resetContient_(sansTiret, ['hamk', 'hame', 'erasmus', 'esiee', 'hei campus', 'limoilou',
     'saint hyacinthe', 'hubhouse', 'lycee hugo', 'armentieres', 'academie de lille',
@@ -1053,6 +1056,12 @@ function cheminCibleReset_(domaine, nom, detail) {
     // nœud de taxonomie du domaine, pas un établissement de Marc). Un préfixe recopié sur chacun
     // des six `return` ci-dessous se serait désolidarisé au premier ajout de règle.
     var base = RACINE_ARCHIVES_ECOLE_RESET + '/' + ecole;
+    // (ADR-0060, revue code) Un nœud déclaré SANS enfant (`{}`) reste À PLAT : c'est la structure
+    // de Marc telle qu'il la tient (`CEGEP - Sherbrooke (2020)`, `Online course`), qu'ADR-0055 dit
+    // immuable à toute profondeur. Sans ce retour, la cascade ci-dessous fabriquait un
+    // `/Cours & travaux` que sa table ne déclare pas — premier nœud `{}` qu'une règle par nom atteint.
+    var noeud = STRUCTURE_CIBLE_RESET[domaine] && STRUCTURE_CIBLE_RESET[domaine][RACINE_ARCHIVES_ECOLE_RESET];
+    if (noeud && noeud[ecole] && Object.keys(noeud[ecole]).length === 0) return base;
     if (t.indexOf('concours') !== -1 && ecole === 'Prépa PTSI (2017-2018)') return base + '/Concours';
     if (resetContient_(t, ['examen', 'devoir surveille', 'controle', 'partiel', 'kholle', 'colles']) || t === 'ds') return base + '/Examens & khôlles';
     // ⚠️ ADMINISTRATIF AVANT COURS & TRAVAUX (revue sécurité C28-90) : le vocabulaire des cours
