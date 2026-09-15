@@ -36,6 +36,12 @@
 > bout ; le bilan dit combien et ce qu'il faut faire. La désambiguïsation des trois sens du `403`
 > (throttle / scope perdu / droits sur l'élément) se fait dans `api()` sur le corps ENTIER — le champ
 > `errors[].reason` tombe après la troncature d'affichage — et l'aval ne lit qu'un marqueur canonique.
+> **Revue flotte (code + sécurité) intégrée.** Le verdict se prend désormais sur une LECTURE : l'app
+> demande `capabilities(canTrash)` et `ownedByMe` à Drive et refuse le dossier AVANT toute mutation —
+> l'ordre qu'ADR-0014 exige, au lieu d'apprendre le refus par l'échec du PATCH. Trois états, échec fermé :
+> oui / non (verdict) / Drive n'a rien dit (panne, la ligne reste). Un marqueur de droits rencontré pendant
+> la LECTURE est neutralisé — « je n'ai pas pu lire » n'est jamais un verdict (le 🔴 de C28-93). Garde-fou
+> ADR-0014 déclaré INTACT par l'audit : `verdictCorbeille` inchangé, `trashed: true` toujours confiné.
 > ⚠️ **Ce que Marc verra au prochain clic** : les dossiers d'un autre compte seront retirés de la liste,
 > PAS supprimés. Pour les faire disparaître de son Drive, il faut le compte qui les possède.
 >

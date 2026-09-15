@@ -26,6 +26,7 @@ const BASE = {
   mimeType: MIME_DOSSIER,
   nbEnfants: 0,
   ascendance: { ids: ['a', 'b'], complete: true },
+  peutCorbeiller: true,   // Drive a répondu « oui » — le cas nominal
   racinesProtegees: [PROTEGE],
 };
 
@@ -92,13 +93,52 @@ describe('verdictCorbeille (ADR-0014 — dossier VIDE validé, rien d’autre)',
       mimeType: 'application/pdf',
       nbEnfants: 3,
       ascendance: { ids: [PROTEGE], complete: true },
+      peutCorbeiller: false,
       racinesProtegees: [PROTEGE],
     });
-    expect([...v].sort()).toEqual(['non-vide', 'pas-un-dossier', 'racine-systeme', 'zone-protegee']);
+    expect([...v].sort()).toEqual(
+      ['non-possede', 'non-vide', 'pas-un-dossier', 'racine-systeme', 'zone-protegee']);
+    // …et `capacite-inconnue` est EXCLUSIF de `non-possede` : « je ne sais pas » et « je sais que
+    // non » sont deux états, jamais cumulés.
+    const inconnu = verdictCorbeille({ ...BASE, peutCorbeiller: undefined, nbEnfants: 3 });
+    expect([...inconnu].sort()).toEqual(['capacite-inconnue', 'non-vide']);
   });
 });
 
 /* ---------- C28-93 : un refus classe SA ligne, il n'arrête pas le lot ---------- */
+
+describe('possession — le verdict se prend sur une LECTURE, jamais sur l’échec du PATCH (C28-129)', () => {
+  it('Drive dit « tu ne peux pas corbeiller » → refus, avant toute mutation', () => {
+    // 🟠 audit sécurité : sans cette garde, la seule façon d'apprendre « ce dossier n'est pas à
+    // moi » était de TENTER la corbeille et de lire la 403 — un verdict décidé par une exception,
+    // hors de `verdictCorbeille`, donc sans qu'aucune autre garde n'ait tourné. ADR-0014 demande
+    // l'inverse : constater, puis agir.
+    expect(verdictCorbeille({ ...BASE, peutCorbeiller: false })).toContain('non-possede');
+  });
+
+  it('Drive n’a rien répondu → PANNE, pas verdict : la ligne RESTE candidate (échec fermé)', () => {
+    // Même frontière que `ascendance-illisible` : « je ne sais pas » ne devient jamais un verdict.
+    // Un défaut permissif serait pire que tout — un défaut de configuration n'est pas une décision.
+    const v = verdictCorbeille({ ...BASE, peutCorbeiller: undefined });
+    expect(v).toContain('capacite-inconnue');
+    expect(v).not.toContain('non-possede');
+    expect(statutRefusCorbeille('Corbeille refusée (ADR-0014) : capacite-inconnue')).toBeNull();
+    expect(statutRefusCorbeille('Corbeille refusée (ADR-0014) : non-possede')).toBe('vide-droits-refusés');
+  });
+
+  it('la garde est CÂBLÉE : les champs sont demandés à Drive, et la lecture ne rend pas de verdict', () => {
+    // Une garde n'existe qu'aux endroits qui la consultent (§9) : trois points d'attache à vérifier.
+    const g = readFileSync(join(ICI, '..', 'src', 'google.ts'), 'utf8');
+    expect(g).toContain('capabilities(canTrash)');   // (a) le champ est DEMANDÉ à l'API
+    const c = readFileSync(join(ICI, '..', 'src', 'corbeille.ts'), 'utf8');
+    const appel = c.slice(c.indexOf('const violations = verdictCorbeille({'), c.indexOf('if (violations.length'));
+    expect(appel).toContain('peutCorbeiller:');       // (b) il est PASSÉ au verdict
+    // (c) un marqueur rencontré pendant la LECTURE est neutralisé : une lecture ratée n'est pas un
+    // verdict. Mutation : retirer le `.catch` du `Promise.all` ⇒ cette assertion tombe.
+    const lecture = c.slice(c.indexOf('await Promise.all(['), c.indexOf('const violations = verdictCorbeille({'));
+    expect(lecture).toContain('split(MARQUEUR_DROITS_FICHIER)');
+  });
+});
 
 describe('statutRefusCorbeille', () => {
   it('classe chaque refus CONNU, pour que la ligne quitte la liste en disant pourquoi', () => {
@@ -327,6 +367,12 @@ describe('corbeillerLot — refus de droits en masse (le cas RÉEL du 15/09)', (
     const msg = vue.slice(vue.indexOf('function messageCorbeille'), vue.indexOf('function libelleType'));
     expect(msg).toContain('MARQUEUR_DROITS_FICHIER');
     expect(msg).toContain("t('corbeilleDroitsUn', langue)");
+    // Le chemin NOMINAL passe par la garde, pas par le marqueur : les deux doivent être branchés.
+    expect(msg).toContain("'non-possede'");
+    expect(msg).toContain("t('corbeilleCapaciteInconnue', langue)");
+    for (const langue of ['fr', 'en'] as const) {
+      expect(t('corbeilleCapaciteInconnue', langue).length).toBeGreaterThan(40);
+    }
     // …et la vue la colle au BILAN, pas au seul cas interrompu — qui ne se produit plus.
     expect(vue).toContain("t('corbeilleDroits', langue)");
     const ligneBilan = vue.split('\n').find((l) => l.includes("String(bilan.sheetKo)"));

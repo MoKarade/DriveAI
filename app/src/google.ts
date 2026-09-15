@@ -352,10 +352,17 @@ export interface FichierDrive {
   mimeType?: string;
   parents?: string[];
   webViewLink?: string;
+  // Demandés pour la corbeille (🟠 audit sécurité C28-129) : « Marc peut-il corbeiller ceci ? » est
+  // une question à laquelle Drive répond AVANT toute mutation. Sans elle, la seule façon de
+  // l'apprendre était d'essayer et de lire le 403 — un verdict pris sur un ÉCHEC plutôt que sur une
+  // LECTURE, ce qu'ADR-0014 demande justement d'éviter. `undefined` = Drive n'a pas répondu ⇒ échec
+  // fermé côté verdict, jamais une autorisation par défaut.
+  ownedByMe?: boolean;
+  capabilities?: { canTrash?: boolean };
 }
 
 export async function lireFichier(fileId: string): Promise<FichierDrive> {
-  return api<FichierDrive>(`${DRIVE}/${fileId}?fields=${encodeURIComponent('id,name,mimeType,parents,webViewLink')}`);
+  return api<FichierDrive>(`${DRIVE}/${fileId}?fields=${encodeURIComponent('id,name,mimeType,parents,webViewLink,ownedByMe,capabilities(canTrash)')}`);
 }
 
 // L'alias `'root'` n'apparaît JAMAIS dans `parents` (l'API y met l'ID réel) : résolu une fois

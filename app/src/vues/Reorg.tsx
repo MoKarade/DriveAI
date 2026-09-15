@@ -38,7 +38,15 @@ function messageCorbeille(e: unknown, langue: Langue): string {
   if (brut.includes('ascendance-illisible')) return t('corbeilleAscendance', langue);
   // Motif NEUF de C28-129, inventorié ICI AUSSI (🟠 revue code) : le clic unitaire est le chemin
   // qu'on prend pour comprendre un cas — il ne doit pas être le plus muet des deux.
-  if (brut.includes(MARQUEUR_DROITS_FICHIER)) return t('corbeilleDroitsUn', langue);
+  // Depuis l'ajout de la garde de possession (C28-129), le chemin NOMINAL est `non-possede` —
+  // constaté sur une lecture — et le marqueur n'est plus que le filet de la mutation. Les deux
+  // disent la même chose à Marc.
+  if (brut.includes('non-possede') || brut.includes(MARQUEUR_DROITS_FICHIER)) {
+    return t('corbeilleDroitsUn', langue);
+  }
+  // Motif NEUF lui aussi : Drive n'a pas dit si Marc peut corbeiller. On ne conclut pas, et on le
+  // dit — sinon Marc lirait un slug technique pour une simple panne de lecture.
+  if (brut.includes('capacite-inconnue')) return t('corbeilleCapaciteInconnue', langue);
   return brut;
 }
 

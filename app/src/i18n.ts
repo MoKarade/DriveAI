@@ -153,6 +153,7 @@ const TEXTES = {
     // slug technique + du JSON tronqué sur le chemin même qu'on prend pour COMPRENDRE, pendant
     // que le lot, lui, lui parlait français. Un motif neuf s'ajoute à TOUS ses afficheurs.
     corbeilleDroitsUn: 'Google refuse : ce dossier ne t’appartient pas (ou tu n’y as qu’un accès en lecture). Pour le supprimer, il faut le compte qui le possède.',
+    corbeilleCapaciteInconnue: 'Google n’a pas dit si tu peux supprimer ce dossier. Rien n’a été touché — réessaie dans un instant.',
 
     /* ---- page Moteur (C28-41 : coût fiable · progression · état · réglage) ---- */
     noteNonApparies: 'laissés en place, en attente d’un affinage des règles (jamais devinés).',
@@ -342,6 +343,7 @@ const TEXTES = {
     corbeilleCause: ' Exact cause: {m}',
     corbeilleDroits: ' Including {d} refused by Google: you are not the owner of those folders (or you only have read access). They were dropped from the list — deleting them requires the account that owns them.',
     corbeilleDroitsUn: 'Google refused: you do not own this folder (or you only have read access). Deleting it requires the account that owns it.',
+    corbeilleCapaciteInconnue: 'Google did not say whether you can delete this folder. Nothing was touched — try again in a moment.',
 
     /* ---- Engine page ---- */
     noteNonApparies: 'left in place, awaiting a rule refinement (never guessed).',
