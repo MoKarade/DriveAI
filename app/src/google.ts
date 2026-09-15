@@ -230,7 +230,11 @@ export async function api<T>(url: string, options?: RequestInit): Promise<T> {
       // « insufficient authentication scopes », qui sont des pannes d'AUTORISATION globales — elles
       // frapperaient les 58 lignes, et les classer une par une viderait la liste à tort.
       if (rep.status === 403 && estRefusDroitsFichier(corps)) {
-        throw new Error(`${MARQUEUR_DROITS_FICHIER} : ${corps.slice(0, 200)}`);
+        // Le préfixe `Google API 403` est CONSERVÉ (🟡 audit sécurité) : d'autres lecteurs de ce
+        // message le cherchent (`listerAgendas`), et ajouter un marqueur ne doit pas retirer ce
+        // qu'un message portait déjà — c'est la règle « inventorier les lecteurs » appliquée dans
+        // les deux sens. Le marqueur s'ajoute, il ne remplace pas.
+        throw new Error(`Google API 403 : ${MARQUEUR_DROITS_FICHIER} : ${corps.slice(0, 200)}`);
       }
       throw new Error(`Google API ${rep.status} : ${corps.slice(0, 200)}`);
     }

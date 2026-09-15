@@ -270,6 +270,11 @@ describe('estRefusDroitsFichier — le verdict se prend sur le corps ENTIER (C28
     // La version tronquée reste reconnue par le filet EN PROSE — mais la prose n'est pas un
     // contrat (Google peut la reformuler), et le test ci-dessus verrouille le champ `reason` seul.
     expect(estRefusDroitsFichier(CORPS_REEL.slice(0, 200))).toBe(true);
+    // Le message produit GARDE le préfixe que d'autres lecteurs cherchent (🟡 audit sécurité) :
+    // ajouter un marqueur n'enlève jamais ce que le message portait déjà.
+    const src = readFileSync(join(ICI, '..', 'src', 'google.ts'), 'utf8');
+    const jet = src.split('\n').find((l) => l.includes('MARQUEUR_DROITS_FICHIER') && l.includes('throw'));
+    expect(jet!).toContain('Google API 403');
   });
 
   it('api() appelle le prédicat sur le corps ENTIER, jamais sur la version tronquée', () => {
