@@ -18,12 +18,14 @@
 > app ✔ ; **tout le stock** lu sur le PC (95-195 $ Haiku ou 0 $ Ollama — écart avec la reco) ; **tous les
 > mails** (écart : mécanisme révisé = Takeout MBOX sur le PC pour le stock + moteur pour le flux, jamais
 > de corps dans Drive) ; **adresse servie aux apps à périmètre** (écart : défaut OFF, `domicile` +
-> `niveau_max ≥ 2` explicites par app). Les 6 autres questions = recommandations. Phase 0 retenue :
+> `niveau_max ≥ 2` explicites par app). Mails : « Takeout pour l'historique, moteur pour le flux » (confirmé).
+> Les 6 autres questions = recommandations. Phase 0 retenue :
 > « claude.ai a une mémoire et sait où sont mes 19 427 documents ». ⚠️ Le dépôt `MoKarade/memoire`
 > n'existe pas encore : c'est le geste manuel de Marc (« Use this template » sur app-template, privé).
 > ⚠️ Deux faits d'infra tranchés en chemin : Vercel = **Hobby** [Certain, `list_teams` 15/09] (les
 > docs CarAI/FinanceAI disant « Pro » sont périmées) ; le moteur tique à **~30 min** et non 5 (cadence
-> = `Réglages!B2`, `Main.gs:240`) — question posée à Marc, C28-99 clos (gain réel : génération 1/9 → 4/9).
+> = `Réglages!B2`, `Main.gs:240`) — **c'est un CHOIX de Marc (« oui, c'est moi, laisse 30 »)** : ne pas le
+> « corriger ». C28-99 clos (gain réel : génération 1/9 → 4/9).
 >
 > **🟥 OUVERT — 2026-09-15 : la mission écoles dit « terminé », et sa cible déclarée est VIDE.**
 >

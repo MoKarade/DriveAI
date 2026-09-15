@@ -67,6 +67,10 @@ mails ». Les deux se réconcilient en séparant le STOCK du FLUX :
   l'app, corps tronqués à 3 000 caractères, purge à 30 jours après extraction. C'est un repli, pas
   la voie retenue — et il se tranche par une ligne de plus dans cet ADR, jamais en silence.
 
+**Confirmé par Marc le 15/09 (2ᵉ série de questions)** : « les deux — Takeout pour l'historique,
+moteur pour le flux ». Le repli `_Courriels` n'est donc PAS retenu. Marc crée le dépôt `MoKarade/memoire`
+lui-même (« Use this template » sur app-template, privé) ; la phase 0 démarre côté moteur en attendant.
+
 **Ce que ces trois écarts coûtent, dit une fois** : Q4 multiplie le coût du rattrapage par 5 à 10
 (ou par 0 en Ollama) pour lire des documents dont une bonne part ne porte aucun fait ; Q3 met
 l'adresse à portée d'une app compromise *si* Marc l'accorde à cette app ; Q5, sous la forme
