@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url';
 const ICI = fileURLToPath(new URL('.', import.meta.url));
 import { IDS_STRUCTURELS_DEFAUT } from '../src/garde-fous';
 import { MIME_DOSSIER } from '../src/explorateur';
-import { messageQuota } from '../src/google';
+import { messageQuota, MARQUEUR_DROITS_FICHIER, estRefusDroitsFichier } from '../src/google';
 import { t } from '../src/i18n';
 
 const PROTEGE = 'ID_IMMIGRATION';
@@ -26,6 +26,7 @@ const BASE = {
   mimeType: MIME_DOSSIER,
   nbEnfants: 0,
   ascendance: { ids: ['a', 'b'], complete: true },
+  peutCorbeiller: true,   // Drive a répondu « oui » — le cas nominal
   racinesProtegees: [PROTEGE],
 };
 
@@ -92,13 +93,52 @@ describe('verdictCorbeille (ADR-0014 — dossier VIDE validé, rien d’autre)',
       mimeType: 'application/pdf',
       nbEnfants: 3,
       ascendance: { ids: [PROTEGE], complete: true },
+      peutCorbeiller: false,
       racinesProtegees: [PROTEGE],
     });
-    expect([...v].sort()).toEqual(['non-vide', 'pas-un-dossier', 'racine-systeme', 'zone-protegee']);
+    expect([...v].sort()).toEqual(
+      ['non-possede', 'non-vide', 'pas-un-dossier', 'racine-systeme', 'zone-protegee']);
+    // …et `capacite-inconnue` est EXCLUSIF de `non-possede` : « je ne sais pas » et « je sais que
+    // non » sont deux états, jamais cumulés.
+    const inconnu = verdictCorbeille({ ...BASE, peutCorbeiller: undefined, nbEnfants: 3 });
+    expect([...inconnu].sort()).toEqual(['capacite-inconnue', 'non-vide']);
   });
 });
 
 /* ---------- C28-93 : un refus classe SA ligne, il n'arrête pas le lot ---------- */
+
+describe('possession — le verdict se prend sur une LECTURE, jamais sur l’échec du PATCH (C28-129)', () => {
+  it('Drive dit « tu ne peux pas corbeiller » → refus, avant toute mutation', () => {
+    // 🟠 audit sécurité : sans cette garde, la seule façon d'apprendre « ce dossier n'est pas à
+    // moi » était de TENTER la corbeille et de lire la 403 — un verdict décidé par une exception,
+    // hors de `verdictCorbeille`, donc sans qu'aucune autre garde n'ait tourné. ADR-0014 demande
+    // l'inverse : constater, puis agir.
+    expect(verdictCorbeille({ ...BASE, peutCorbeiller: false })).toContain('non-possede');
+  });
+
+  it('Drive n’a rien répondu → PANNE, pas verdict : la ligne RESTE candidate (échec fermé)', () => {
+    // Même frontière que `ascendance-illisible` : « je ne sais pas » ne devient jamais un verdict.
+    // Un défaut permissif serait pire que tout — un défaut de configuration n'est pas une décision.
+    const v = verdictCorbeille({ ...BASE, peutCorbeiller: undefined });
+    expect(v).toContain('capacite-inconnue');
+    expect(v).not.toContain('non-possede');
+    expect(statutRefusCorbeille('Corbeille refusée (ADR-0014) : capacite-inconnue')).toBeNull();
+    expect(statutRefusCorbeille('Corbeille refusée (ADR-0014) : non-possede')).toBe('vide-droits-refusés');
+  });
+
+  it('la garde est CÂBLÉE : les champs sont demandés à Drive, et la lecture ne rend pas de verdict', () => {
+    // Une garde n'existe qu'aux endroits qui la consultent (§9) : trois points d'attache à vérifier.
+    const g = readFileSync(join(ICI, '..', 'src', 'google.ts'), 'utf8');
+    expect(g).toContain('capabilities(canTrash)');   // (a) le champ est DEMANDÉ à l'API
+    const c = readFileSync(join(ICI, '..', 'src', 'corbeille.ts'), 'utf8');
+    const appel = c.slice(c.indexOf('const violations = verdictCorbeille({'), c.indexOf('if (violations.length'));
+    expect(appel).toContain('peutCorbeiller:');       // (b) il est PASSÉ au verdict
+    // (c) un marqueur rencontré pendant la LECTURE est neutralisé : une lecture ratée n'est pas un
+    // verdict. Mutation : retirer le `.catch` du `Promise.all` ⇒ cette assertion tombe.
+    const lecture = c.slice(c.indexOf('await Promise.all(['), c.indexOf('const violations = verdictCorbeille({'));
+    expect(lecture).toContain('split(MARQUEUR_DROITS_FICHIER)');
+  });
+});
 
 describe('statutRefusCorbeille', () => {
   it('classe chaque refus CONNU, pour que la ligne quitte la liste en disant pourquoi', () => {
@@ -156,6 +196,193 @@ describe('statutRefusCorbeille', () => {
     for (const m of definitifs) expect(statutRefusCorbeille(m), m).not.toBeNull();
     for (const m of pannes) expect(statutRefusCorbeille(m), m).toBeNull();
   });
+
+  /* ---------- C28-129 : « pas propriétaire » est un VERDICT, pas une panne ---------- */
+
+  it('403 « droits insuffisants sur cet élément » → la ligne QUITTE la liste (définitif)', () => {
+    // La cause réelle du 15/09, collée par Marc. Aucun réessai ne rendra Marc propriétaire du
+    // dossier : le traiter en panne a coupé son lot au 5ᵉ dossier, 53 jamais tentés.
+    expect(statutRefusCorbeille(`Error: ${MARQUEUR_DROITS_FICHIER} : {"error":{"code":403}}`))
+      .toBe('vide-droits-refusés');
+  });
+
+  it('le TEXTE BRUT de Google ne suffit PAS — c\'est tout l\'intérêt du marqueur', () => {
+    // Message RÉEL de Marc, tel que l'app l'a affiché : `slice(0, 200)` l'a coupé AU MILIEU du
+    // premier `errors[]`, donc `insufficientFilePermissions` n'y figure JAMAIS. Un détecteur placé
+    // ici, en aval, ne pourrait pas conclure : c'est pourquoi `api()` décide en amont, sur le corps
+    // ENTIER, et pose un marqueur. Mutation : déplacer la détection dans `statutRefusCorbeille` ⇒
+    // ce test passe au vert par accident et le vrai cas de Marc reste non classé.
+    const reel = 'Error: Google API 403 : { "error": { "code": 403, "message": "The user does not '
+      + 'have sufficient permissions for this file.", "errors": [ { "message": "The user does not '
+      + 'have sufficient permissions';
+    expect(reel).not.toContain('insufficientFilePermissions'); // la donnée est APPAUVRIE
+    expect(statutRefusCorbeille(reel)).toBeNull();             // …donc aucun verdict possible ici
+  });
+
+  it('une panne d\'AUTORISATION globale reste une panne (scope perdu ≠ dossier d\'un tiers)', () => {
+    // `insufficientPermissions` (sans `File`) et « authentication scopes » frappent les 58 lignes à
+    // la fois : les classer une par une viderait la liste à tort. Elles ne portent donc jamais le
+    // marqueur, et restent candidates.
+    for (const m of [
+      'Error: Google API 403 : {"error":{"code":403,"errors":[{"reason":"insufficientPermissions"}]}}',
+      // La forme RÉELLE de Drive quand le scope est perdu — celle que Marc recevrait.
+      'Error: Google API 403 : {"error":{"code":403,"message":"Insufficient Permission"}}',
+      'Error: Google API 403 : {"error":{"message":"Request had insufficient authentication scopes."}}',
+    ]) expect(statutRefusCorbeille(m), m).toBeNull();
+  });
+});
+
+describe('estRefusDroitsFichier — le verdict se prend sur le corps ENTIER (C28-129)', () => {
+  const CORPS_REEL = JSON.stringify({ error: { code: 403,
+    message: 'The user does not have sufficient permissions for this file.',
+    errors: [{ domain: 'global', message: 'The user does not have sufficient permissions for this file.',
+      reason: 'insufficientFilePermissions', location: 'file', locationType: 'other' }] } });
+
+  it('reconnaît le refus de droits, et PAS une panne d’autorisation globale', () => {
+    expect(estRefusDroitsFichier(CORPS_REEL)).toBe(true);
+    // Le champ MACHINE suffit SEUL : c'est lui le contrat, la prose anglaise n'est qu'un filet.
+    // Mutation : retirer la ligne `reason` du prédicat ⇒ cette assertion tombe.
+    expect(estRefusDroitsFichier('{"error":{"errors":[{"reason":"insufficientFilePermissions"}]}}')).toBe(true);
+    // …et réciproquement, la prose SEULE (message reformulé sans `reason`) reste reconnue.
+    expect(estRefusDroitsFichier('The user does not have sufficient permissions for this file.')).toBe(true);
+    // ⚠️ LA POPULATION QUE LA GARDE PROTÈGE (🟠 revue code) : ce sont les corps 403 d'une panne
+    // GLOBALE. Les classer par ligne marquerait les 58 lignes DÉFINITIVEMENT — `chargerVidesConnus_`
+    // ne révise que `vide-repris` — alors qu'une reconnexion suffisait. C'est la seule direction
+    // IRRÉVERSIBLE, donc la seule où la mutation compte : élargir le prédicat à
+    // `/insufficient permission/i` doit faire tomber ce test.
+    // La 2ᵉ forme est celle que Drive renvoie VRAIMENT quand le jeton perd le scope — la 3ᵉ vient de
+    // la couche auth, et c'était la seule que le corpus contenait.
+    expect(estRefusDroitsFichier('{"error":{"errors":[{"reason":"insufficientPermissions"}]}}')).toBe(false);
+    expect(estRefusDroitsFichier('{"error":{"errors":[{"domain":"global","reason":"insufficientPermissions",'
+      + '"message":"Insufficient Permission"}],"code":403,"message":"Insufficient Permission"}}')).toBe(false);
+    expect(estRefusDroitsFichier('{"error":{"message":"Request had insufficient authentication scopes."}}')).toBe(false);
+    // Forme moderne (`PERMISSION_DENIED`) et Drive partagé : non reconnues par la prose, rattrapées
+    // par le champ machine quand il est là. Elles dégradent du BON côté (panne, ligne conservée).
+    expect(estRefusDroitsFichier('{"error":{"code":403,"message":"The caller does not have permission",'
+      + '"status":"PERMISSION_DENIED"}}')).toBe(false);
+    expect(estRefusDroitsFichier('{"error":{"errors":[{"reason":"userRateLimitExceeded"}]}}')).toBe(false);
+  });
+
+  it('le champ MACHINE est hors des 200 caractères affichés — d’où la détection en AMONT', () => {
+    // C'est le piège que ce lot ferme : `slice(0, 200)` coupe le corps AVANT `reason`, le seul
+    // champ contractuel. Le message de Marc s'arrêtait au milieu du premier `errors[]`.
+    expect(CORPS_REEL.indexOf('insufficientFilePermissions')).toBeGreaterThan(200);
+    // La version tronquée reste reconnue par le filet EN PROSE — mais la prose n'est pas un
+    // contrat (Google peut la reformuler), et le test ci-dessus verrouille le champ `reason` seul.
+    expect(estRefusDroitsFichier(CORPS_REEL.slice(0, 200))).toBe(true);
+    // Le message produit GARDE le préfixe que d'autres lecteurs cherchent (🟡 audit sécurité) :
+    // ajouter un marqueur n'enlève jamais ce que le message portait déjà.
+    const src = readFileSync(join(ICI, '..', 'src', 'google.ts'), 'utf8');
+    const jet = src.split('\n').find((l) => l.includes('MARQUEUR_DROITS_FICHIER') && l.includes('throw'));
+    expect(jet!).toContain('Google API 403');
+  });
+
+  it('api() appelle le prédicat sur le corps ENTIER, jamais sur la version tronquée', () => {
+    // Vérif de PLACEMENT (le prédicat est pur, son point d'attache ne l'est pas). Le même défaut
+    // que « une réparation posée là où elle ne s'exécute jamais » : ici, un jour, quelqu'un
+    // factorisera `const court = corps.slice(0, 200)` et passera `court` au prédicat.
+    const src = readFileSync(join(ICI, '..', 'src', 'google.ts'), 'utf8');
+    const ligne = src.split('\n').find((l) => l.includes('estRefusDroitsFichier(') && !l.includes('export function'));
+    expect(ligne, 'api() doit consulter le prédicat').toBeDefined();
+    expect(ligne!).toContain('estRefusDroitsFichier(corps)');
+    expect(ligne!).not.toContain('slice(');
+  });
+});
+
+
+/* ---------- C28-129 : 58 dossiers « pas à toi » ne coupent plus le lot ---------- */
+
+describe('corbeillerLot — refus de droits en masse (le cas RÉEL du 15/09)', () => {
+  const lignes = (n: number) => Array.from({ length: n }, (_, i) => ({ id: `ID${i}`, ligneSheet: i + 2 }));
+
+  it('58 refus de droits d’affilée : le lot VA AU BOUT, aucune ligne non tentée', async () => {
+    // AVANT ce correctif : `statutRefusCorbeille` rendait `null`, donc chaque refus comptait comme
+    // une panne de plateforme ; au 5ᵉ le coupe-circuit tombait et Marc lisait « 53 dossier(s) n'ont
+    // pas été tentés — réessaie dans quelques minutes ». Réessayer ne pouvait RIEN changer.
+    const statuts: string[] = [];
+    const bilan = await corbeillerLot(lignes(58), {
+      corbeiller: async () => { throw new Error(`${MARQUEUR_DROITS_FICHIER} : {"error":{"code":403}}`); },
+      ecrireLot: async (_d, valeurs) => { statuts.push(...valeurs); },
+    });
+    expect(bilan.interrompu).toBe('');          // ← mutation : rendre `null` au lieu du verdict ⇒ 'pannes'
+    expect(bilan.nonTentees).toBe(0);
+    expect(bilan.refusDroits).toBe(58);
+    expect(bilan.classes).toBe(58);             // `refusDroits` est un SOUS-ENSEMBLE, pas un bucket de plus
+    expect(bilan.aReessayer).toBe(0);           // rien à re-tenter : c'est définitif
+    expect(bilan.corbeilles + bilan.classes + bilan.aReessayer + bilan.nonTentees).toBe(58);
+    expect(new Set(statuts)).toEqual(new Set(['vide-droits-refusés'])); // …et chaque ligne DIT pourquoi
+  });
+
+  it('un verdict remet le coupe-circuit à zéro — il vise la RAFALE, jamais le cumul', async () => {
+    // Scénario CALIBRÉ sur le seul chemin où la remise à zéro change quelque chose : 4 blips
+    // réseau, puis SEULEMENT 3 verdicts — moins que `CORBEILLE_PREMIERE_ECRITURE`, donc le tampon
+    // Sheets n'est pas encore vidé et sa propre remise à zéro n'a PAS lieu — puis un 5ᵉ blip.
+    // Sans la remise à zéro sur verdict : 4 + 1 = 5 pannes « d'affilée » séparées par trois
+    // dossiers que Google a parfaitement traités ⇒ lot coupé, 12 lignes jamais tentées.
+    let n = 0;
+    let flushs = 0;
+    const bilan = await corbeillerLot(lignes(20), {
+      corbeiller: async () => {
+        n++;
+        if (n <= 4 || n === 8) throw new Error('TypeError: Failed to fetch');
+        throw new Error(`${MARQUEUR_DROITS_FICHIER} : {"error":{"code":403}}`);
+      },
+      ecrireLot: async () => { flushs++; },
+    });
+    expect(flushs).toBeGreaterThan(0);          // le tampon a bien fini par partir…
+    expect(CORBEILLE_PREMIERE_ECRITURE).toBeGreaterThan(3); // …mais PAS avant le 5ᵉ blip
+    expect(bilan.interrompu).toBe('');          // ← mutation : retirer `pannesDaffilee = 0` du
+    expect(bilan.nonTentees).toBe(0);           //    chemin VERDICT ⇒ 'pannes' + 12 non tentées
+    expect(bilan.aReessayer).toBe(5);
+    expect(bilan.refusDroits).toBe(15);
+  });
+
+  it('TRIPWIRE — tout statut que l’APP écrit est déclaré par le MOTEUR (`REORG_STATUTS`)', () => {
+    // Deux fichiers qui doivent bouger ensemble se verrouillent par un tripwire, pas par la
+    // discipline (§9). L'app écrit ces littéraux dans la colonne F de l'onglet Réorg ; le moteur les
+    // lit et les documente. `vide-droits-refusés` y a été ajouté dans le même commit — sans ce test,
+    // un prochain statut partirait côté app sans que rien ne le signale, et la famille « vides »
+    // se lirait différemment des deux côtés.
+    const gs = readFileSync(join(ICI, '..', '..', 'src', 'Reorg.gs'), 'utf8');
+    const bloc = gs.slice(gs.indexOf('var REORG_STATUTS'), gs.indexOf('];', gs.indexOf('var REORG_STATUTS')));
+    const src = readFileSync(join(ICI, '..', 'src', 'corbeille.ts'), 'utf8');
+    // Les statuts rendus par le verdict : les littéraux `'vide-…'` de `statutRefusCorbeille`.
+    const fonction = src.slice(src.indexOf('export function statutRefusCorbeille'),
+      src.indexOf('\n}', src.indexOf('export function statutRefusCorbeille')));
+    const ecrits = [...fonction.matchAll(/return '(vide-[^']+)'/g)].map((m) => m[1]);
+    expect(ecrits.length).toBeGreaterThanOrEqual(4); // le test ne doit pas passer sur un corpus vide
+    expect(ecrits).toContain('vide-droits-refusés');
+    for (const st of ecrits) expect(bloc, `${st} manque à REORG_STATUTS`).toContain(`'${st}'`);
+    // …et le statut de SUCCÈS, écrit par la boucle elle-même.
+    expect(bloc).toContain("'corbeillé'");
+  });
+
+  it('le bilan affiché NOMME le geste à faire (sinon la raison disparaît avec la coupure)', () => {
+    for (const langue of ['fr', 'en'] as const) {
+      const texte = t('corbeilleDroits', langue).replace('{d}', '58');
+      expect(texte).toContain('58');
+      expect(texte.length).toBeGreaterThan(40); // une vraie phrase, pas un code
+    }
+    expect(t('corbeilleDroits', 'fr')).toMatch(/propriétaire/);
+    const vue = readFileSync(join(ICI, '..', 'src', 'vues', 'Reorg.tsx'), 'utf8');
+    // …et le clic UNITAIRE dit la MÊME chose (🟠 revue code) : c'est le chemin qu'on prend pour
+    // comprendre un cas, il ne peut pas être le plus muet. Mutation : retirer la ligne
+    // `MARQUEUR_DROITS_FICHIER` de `messageCorbeille` ⇒ ce test tombe.
+    for (const langue of ['fr', 'en'] as const) expect(t('corbeilleDroitsUn', langue).length).toBeGreaterThan(40);
+    const msg = vue.slice(vue.indexOf('function messageCorbeille'), vue.indexOf('function libelleType'));
+    expect(msg).toContain('MARQUEUR_DROITS_FICHIER');
+    expect(msg).toContain("t('corbeilleDroitsUn', langue)");
+    // Le chemin NOMINAL passe par la garde, pas par le marqueur : les deux doivent être branchés.
+    expect(msg).toContain("'non-possede'");
+    expect(msg).toContain("t('corbeilleCapaciteInconnue', langue)");
+    for (const langue of ['fr', 'en'] as const) {
+      expect(t('corbeilleCapaciteInconnue', langue).length).toBeGreaterThan(40);
+    }
+    // …et la vue la colle au BILAN, pas au seul cas interrompu — qui ne se produit plus.
+    expect(vue).toContain("t('corbeilleDroits', langue)");
+    const ligneBilan = vue.split('\n').find((l) => l.includes("String(bilan.sheetKo)"));
+    expect(ligneBilan!).toContain('+ droits');
+  });
 });
 
 /* ---------- C28-93 : le LOT lui-même — un refus n'arrête plus les suivants ---------- */
@@ -175,7 +402,7 @@ describe('corbeillerLot', () => {
       ecrireLot: async (debut, valeurs) =>
         valeurs.forEach((statut, k) => ecrits.push({ ligneSheet: debut + k, statut })),
     });
-    expect(bilan).toEqual({ corbeilles: 3, classes: 2, aReessayer: 0, sheetKo: 0, nonTentees: 0, interrompu: '', derniereCause: '' });
+    expect(bilan).toEqual({ corbeilles: 3, classes: 2, aReessayer: 0, sheetKo: 0, nonTentees: 0, refusDroits: 0, interrompu: '', derniereCause: '' });
     expect(ecrits.map((e) => e.statut)).toEqual(['vide-protégé', 'corbeillé', 'vide-repris', 'corbeillé', 'corbeillé']);
     expect(ecrits).toHaveLength(5); // TOUTES les lignes quittent la liste, aucune n'est oubliée
   });
@@ -285,7 +512,7 @@ describe('corbeillerLot', () => {
       surLigne: () => { throw new Error('rendu React cassé'); },
     });
     expect(bilan).toEqual({
-      corbeilles: 10, classes: 0, aReessayer: 0, sheetKo: 0, nonTentees: 0, interrompu: '',
+      corbeilles: 10, classes: 0, aReessayer: 0, sheetKo: 0, nonTentees: 0, refusDroits: 0, interrompu: '',
       derniereCause: '',
     });
   });

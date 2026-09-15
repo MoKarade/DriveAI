@@ -117,6 +117,42 @@ export function abonnerSessionExpiree(cb: () => void): void {
 /* ---------- Appels HTTP (401 → rafraîchissement silencieux puis rejeu) ---------- */
 
 /**
+ * Marqueur CANONIQUE d'un refus de droits SUR UN ÉLÉMENT précis (403 `insufficientFilePermissions`).
+ * Posé par `api()` sur le corps ENTIER de la réponse ; c'est le SEUL signal que l'aval interprète —
+ * jamais le texte brut de Google, qui arrive tronqué. Une SEULE source de vérité, importée des deux
+ * côtés (`statutRefusCorbeille`, `messageCorbeille`) : la valeur littérale n'a donc pas à être
+ * verrouillée par un test, c'est l'import qui l'est. Ce qui EST verrouillé, c'est que chaque afficheur
+ * consulte ce marqueur, et que le statut produit existe dans `REORG_STATUTS` (`corbeille.test.ts`).
+ */
+export const MARQUEUR_DROITS_FICHIER = 'droits-insuffisants-sur-element';
+
+/**
+ * Le corps d'une réponse 403 dit-il « tu n'as pas les droits SUR CET ÉLÉMENT » ? PURE (testée).
+ *
+ * Deux signaux, et l'ordre compte pour la lecture : `reason: insufficientFilePermissions` est le
+ * champ MACHINE (le contrat) ; la phrase anglaise n'est qu'un filet, parce qu'un message destiné à
+ * un humain peut être reformulé par Google sans préavis — §9 : « améliorer un message d'erreur POUR
+ * L'HUMAIN est un changement de CONTRAT dès que du code le lit ».
+ *
+ * EXCLUS volontairement : `insufficientPermissions` (sans `File`), « Insufficient Permission » — la
+ * forme que Drive rend VRAIMENT quand le jeton perd le scope — et « insufficient authentication
+ * scopes ». Ce sont des pannes d'AUTORISATION GLOBALE : elles frappent toutes les lignes à la fois,
+ * et les classer une par une viderait la liste de Marc à tort alors qu'une reconnexion les répare.
+ * C'est la direction IRRÉVERSIBLE (un statut définitif n'est jamais re-proposé), donc celle que le
+ * corpus négatif de `corbeille.test.ts` verrouille en priorité.
+ *
+ * Deux formulations restent NON reconnues par le filet en prose, et c'est sans conséquence : elles
+ * dégradent du bon côté (panne ⇒ la ligne reste candidate). La forme moderne
+ * `{"status":"PERMISSION_DENIED","message":"The caller does not have permission"}` et la variante
+ * Drive partagé « …for this shared drive » — toutes deux rattrapées par le champ machine quand il
+ * est présent. Noté pour que le prochain diagnostic ne les re-dérive pas.
+ */
+export function estRefusDroitsFichier(corps: string): boolean {
+  if (/insufficientFilePermissions/i.test(corps)) return true;
+  return /sufficient permissions for this file/i.test(corps);
+}
+
+/**
  * Message de saturation, NOMMANT l'API (C28-119). PURE, et EXPORTÉE exprès : `statutRefusCorbeille`
  * lit ce texte pour décider si une ligne reste candidate. Tant que le test du consommateur recopiait
  * la chaîne à la main, revenir au message générique laissait 297 tests verts — producteur et
@@ -179,6 +215,26 @@ export async function api<T>(url: string, options?: RequestInit): Promise<T> {
       // existe précisément pour empêcher.
       if (rep.status === 403 && /rateLimitExceeded|userRateLimitExceeded/i.test(corps)) {
         throw new Error(messageQuota(url));
+      }
+      // ⚠️ TROISIÈME sens du 403, et le seul DÉFINITIF (C28-129, cause réelle du 15/09) : Google
+      // refuse parce que Marc n'a pas les droits SUR CET ÉLÉMENT — il n'en est pas propriétaire, ou
+      // il n'y a qu'un accès en lecture. Aucun réessai ne le rendra propriétaire : c'est un verdict
+      // sur UNE ligne, pas une panne de plateforme, et le confondre avec un throttle arrête un lot
+      // entier (53 dossiers jamais tentés, vécu).
+      // Le test vit ICI, sur le corps ENTIER, et surtout PAS chez l'appelant : `slice(0, 200)` coupe
+      // juste avant `errors[].reason` — le message que Marc a collé s'arrête au milieu du premier
+      // `errors[]`, sans jamais montrer `insufficientFilePermissions`. §9 : « un verdict pris sur la
+      // donnée RICHE ne se re-dérive jamais depuis sa forme APPAUVRIE » ; l'amont pose un MARQUEUR
+      // canonique, l'aval ne lit que lui.
+      // Ce que ce test NE capture PAS, volontairement : `insufficientPermissions` (sans `File`) et
+      // « insufficient authentication scopes », qui sont des pannes d'AUTORISATION globales — elles
+      // frapperaient les 58 lignes, et les classer une par une viderait la liste à tort.
+      if (rep.status === 403 && estRefusDroitsFichier(corps)) {
+        // Le préfixe `Google API 403` est CONSERVÉ (🟡 audit sécurité) : d'autres lecteurs de ce
+        // message le cherchent (`listerAgendas`), et ajouter un marqueur ne doit pas retirer ce
+        // qu'un message portait déjà — c'est la règle « inventorier les lecteurs » appliquée dans
+        // les deux sens. Le marqueur s'ajoute, il ne remplace pas.
+        throw new Error(`Google API 403 : ${MARQUEUR_DROITS_FICHIER} : ${corps.slice(0, 200)}`);
       }
       throw new Error(`Google API ${rep.status} : ${corps.slice(0, 200)}`);
     }
@@ -300,10 +356,17 @@ export interface FichierDrive {
   mimeType?: string;
   parents?: string[];
   webViewLink?: string;
+  // Demandés pour la corbeille (🟠 audit sécurité C28-129) : « Marc peut-il corbeiller ceci ? » est
+  // une question à laquelle Drive répond AVANT toute mutation. Sans elle, la seule façon de
+  // l'apprendre était d'essayer et de lire le 403 — un verdict pris sur un ÉCHEC plutôt que sur une
+  // LECTURE, ce qu'ADR-0014 demande justement d'éviter. `undefined` = Drive n'a pas répondu ⇒ échec
+  // fermé côté verdict, jamais une autorisation par défaut.
+  ownedByMe?: boolean;
+  capabilities?: { canTrash?: boolean };
 }
 
 export async function lireFichier(fileId: string): Promise<FichierDrive> {
-  return api<FichierDrive>(`${DRIVE}/${fileId}?fields=${encodeURIComponent('id,name,mimeType,parents,webViewLink')}`);
+  return api<FichierDrive>(`${DRIVE}/${fileId}?fields=${encodeURIComponent('id,name,mimeType,parents,webViewLink,ownedByMe,capabilities(canTrash)')}`);
 }
 
 // L'alias `'root'` n'apparaît JAMAIS dans `parents` (l'API y met l'ID réel) : résolu une fois

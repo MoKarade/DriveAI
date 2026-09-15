@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { lirePlage, ecrireCellule, ecrireColonnePlage, ajouterLigne, estConnecte } from '../google';
+import { lirePlage, ecrireCellule, ecrireColonnePlage, ajouterLigne, estConnecte, MARQUEUR_DROITS_FICHIER } from '../google';
 import { corbeillerDossierVide, corbeillerLot, type BilanLot } from '../corbeille';
 import {
   LigneReorg,
@@ -36,6 +36,17 @@ function messageCorbeille(e: unknown, langue: Langue): string {
   // (§9 : « améliorer un message d'erreur POUR L'HUMAIN est un changement de CONTRAT dès que du code
   // lit ce message » — ici l'inverse : un motif ajouté sans inventorier ses AFFICHEURS).
   if (brut.includes('ascendance-illisible')) return t('corbeilleAscendance', langue);
+  // Motif NEUF de C28-129, inventorié ICI AUSSI (🟠 revue code) : le clic unitaire est le chemin
+  // qu'on prend pour comprendre un cas — il ne doit pas être le plus muet des deux.
+  // Depuis l'ajout de la garde de possession (C28-129), le chemin NOMINAL est `non-possede` —
+  // constaté sur une lecture — et le marqueur n'est plus que le filet de la mutation. Les deux
+  // disent la même chose à Marc.
+  if (brut.includes('non-possede') || brut.includes(MARQUEUR_DROITS_FICHIER)) {
+    return t('corbeilleDroitsUn', langue);
+  }
+  // Motif NEUF lui aussi : Drive n'a pas dit si Marc peut corbeiller. On ne conclut pas, et on le
+  // dit — sinon Marc lirait un slug technique pour une simple panne de lecture.
+  if (brut.includes('capacite-inconnue')) return t('corbeilleCapaciteInconnue', langue);
   return brut;
 }
 
@@ -190,11 +201,17 @@ export function ReorgVue({ langue }: { langue: Langue }) {
     }
     setAvancement(null);
     setEnCours(false);
+    // Le détail « pas propriétaire » est COLLÉ au bilan, pas réservé au cas interrompu : depuis
+    // C28-129 ces lignes ne coupent plus le lot, donc Marc ne verrait plus jamais leur raison —
+    // elles seraient juste « retirées de la liste », ce qui ne lui dit pas quoi faire.
+    const droits = bilan.refusDroits
+      ? t('corbeilleDroits', langue).replace('{d}', String(bilan.refusDroits))
+      : '';
     setBilanCorbeille(t('corbeilleBilan', langue)
       .replace('{n}', String(bilan.corbeilles))
       .replace('{c}', String(bilan.classes))
       .replace('{r}', String(bilan.aReessayer))
-      .replace('{s}', String(bilan.sheetKo)));
+      .replace('{s}', String(bilan.sheetKo)) + droits);
     // Un lot écourté ne se lit pas comme un lot complet : la cause ET le nombre de lignes jamais
     // tentées sont dits, sinon Marc croit la liste traitée (revue C28-93).
     if (bilan.interrompu) {

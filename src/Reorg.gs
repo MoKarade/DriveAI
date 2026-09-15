@@ -26,12 +26,21 @@
  * `échec` immédiat (déterministe, retenter ne changerait rien).
  */
 
-/** Statuts d'une ligne d'action (machine à états — cf. BACKLOG #21). */
+/**
+ * Statuts d'une ligne d'action (machine à états — cf. BACKLOG #21).
+ * ⚠️ Cette liste est DOCUMENTAIRE : aucun code du moteur ne la consulte pour valider un statut, et
+ * il ne faut pas le lui faire faire — `chargerVidesConnus_` est une garde par CAPACITÉ (« tout sauf
+ * `vide-repris` est définitif »), qui reste juste quand un statut s'ajoute. Ce qui empêche l'app et
+ * le moteur de diverger est un TRIPWIRE côté app (`app/test/corbeille.test.ts`) : tout statut
+ * `vide-…` rendu par `statutRefusCorbeille` doit figurer ici.
+ */
 var REORG_STATUTS = ['proposé', 'validé', 'écarté', 'appliqué', 'refusé (zone protégée)',
   'refusé (structure)', 'échec', 'vide-candidat', 'corbeillé',
   // Écrits par l'APP au clic (C28-93) : un refus classe SA ligne au lieu d'arrêter le lot.
   // `vide-repris` est le SEUL de la famille qui soit RÉVISABLE (cf. `chargerVidesConnus_`).
-  'vide-disparu', 'vide-repris', 'vide-protégé'];
+  // `vide-droits-refusés` (C28-129) : Google a refusé la corbeille parce que Marc n'est pas
+  // propriétaire du dossier. DÉFINITIF comme `vide-disparu`/`vide-protégé` — jamais révisable.
+  'vide-disparu', 'vide-repris', 'vide-protégé', 'vide-droits-refusés'];
 
 /**
  * Étape de tick unique du chantier Réorg : UNE lecture de l'onglet, puis DRAINER (appliquer les
@@ -808,24 +817,6 @@ function repointerEntitesLot_(carte) {
       journalInfo_('Reorg', 'Entité re-pointée (lot) : ' + String(valeurs[i][0] || ''));
     }
   }
-}
-
-/**
- * Vrai si au moins une ligne du référentiel pointe l'un des dossiers donnés. Lecture seule.
- * Sert à ne pas find-or-créer une cible que PERSONNE ne vise (leçon : une promesse « jamais créé
- * à vide » se code, elle ne se commente pas).
- * @param {!Object<string,boolean>} ids @return {boolean}
- */
-function dossiersVisesParEntites_(ids) {
-  var f = feuille_('Entités');
-  var valeurs = f.getDataRange().getValues();
-  if (valeurs.length < 2) return false;
-  var iDossier = valeurs[0].indexOf('Dossier ID');
-  if (iDossier === -1) return false;
-  for (var i = 1; i < valeurs.length; i++) {
-    if (ids[String(valeurs[i][iDossier])]) return true;
-  }
-  return false;
 }
 
 function repointerEntites_(sourceId, cibleId) {

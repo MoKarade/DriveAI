@@ -27,6 +27,37 @@
 > = `Réglages!B2`, `Main.gs:240`) — **c'est un CHOIX de Marc (« oui, c'est moi, laisse 30 »)** : ne pas le
 > « corriger ». C28-99 clos (gain réel : génération 1/9 → 4/9).
 >
+> **✅ RÉGLÉ — 2026-09-15 : « Tout corbeiller » ne se gèle plus sur un refus de droits (C28-129).**
+> Marc a collé la cause exacte, et elle clôt trois jours de diagnostic : `403 : The user does not have
+> sufficient permissions for this file.` Les dossiers vides restants **ne lui appartiennent pas** (autre
+> compte) — aucun réessai ne peut aboutir. Le code les traitait en panne transitoire : 5 d'affilée, le
+> coupe-circuit tombait, « 53 non tentés — réessaie dans quelques minutes ». Désormais c'est un
+> **verdict par ligne** (`vide-droits-refusés`), la ligne quitte la liste avec sa raison et le lot va au
+> bout ; le bilan dit combien et ce qu'il faut faire. La désambiguïsation des trois sens du `403`
+> (throttle / scope perdu / droits sur l'élément) se fait dans `api()` sur le corps ENTIER — le champ
+> `errors[].reason` tombe après la troncature d'affichage — et l'aval ne lit qu'un marqueur canonique.
+> **Revue flotte (code + sécurité) intégrée.** Le verdict se prend désormais sur une LECTURE : l'app
+> demande `capabilities(canTrash)` et `ownedByMe` à Drive et refuse le dossier AVANT toute mutation —
+> l'ordre qu'ADR-0014 exige, au lieu d'apprendre le refus par l'échec du PATCH. Trois états, échec fermé :
+> oui / non (verdict) / Drive n'a rien dit (panne, la ligne reste). Un marqueur de droits rencontré pendant
+> la LECTURE est neutralisé — « je n'ai pas pu lire » n'est jamais un verdict (le 🔴 de C28-93). Garde-fou
+> ADR-0014 déclaré INTACT par l'audit : `verdictCorbeille` inchangé, `trashed: true` toujours confiné.
+> ⚠️ **Ce que Marc verra au prochain clic** : les dossiers d'un autre compte seront retirés de la liste,
+> PAS supprimés. Pour les faire disparaître de son Drive, il faut le compte qui les possède.
+>
+> **🟦 EN COURS — 2026-09-15 : ADR-0060, le code suit le Drive de Marc en `06` (C28-126/127).** Marc :
+> « `CEGEP - Sherbrooke (2020)` fait foi », « crée `Online course` », « vas-y ». Livré en revue flotte :
+> libellé + ID réel dans `ecoles06`, garde de création remplacée par un find-only structurel (la cause
+> du dossier créé à vide : `SEED_ENTITES` rend « une entité vise la source » vrai à vie), règle
+> `ai essentials` (5 natifs à plat), mission `ecoles-archives06c` (re-pointe l'entité — qui vise déjà
+> le dossier vide `(2019)`, pas la coquille : `anciensNoms` la ramène), `RESET_TABLE_VERSION` t7.
+> Revue flotte intégrée (2 🔴 : les 4 sites d'appel du tag oubliés + l'entité orpheline). ⚠️ `conso-4`
+> (4/9, ordre 01→04→05→06) NON bumpée : les 5 « AI Essentials » partent sous `conso-4` si le moteur
+> est déployé avant qu'elle atteigne `06`, sinon à un bump — ou tout de suite si Marc les glisse.
+> **Consigne à Marc après merge** : laisser `c` converger, vérifier dans `Entités` que `Cégep De
+> Sherbrooke` porte `1TReaSk46…`, PUIS corbeiller à la main `(2019)`, `Thérèse Davila` et la coquille
+> (rien ne les proposera : ils n'ont jamais été vidés par le classement).
+>
 > **🟥 OUVERT — 2026-09-15 : la mission écoles dit « terminé », et sa cible déclarée est VIDE.**
 >
 > Relevé Drive du 15/09 (listing par `parentId` — `search_files` retarde). Mission `ecoles-archives06`
@@ -37,7 +68,7 @@
 > **À VIDE** le 15/09 à 04:38 UTC alors que deux commentaires du code promettent « jamais à vide » ;
 > les **9 documents Sherbrooke réels** sont dans `CEGEP - Sherbrooke (2020)`, graphie qui n'existe
 > **nulle part** dans `src/` ; et `Online course — AI Essentials (Google)` est déclaré mais absent,
-> ses documents à plat à la racine de `06`.
+> ses 5 documents Google natifs à plat à la racine de `06`.
 > ⚠️ Le test censé verrouiller « les noms == le relevé Drive » compare la table à un corpus **figé** :
 > il ne voit pas cette dérive et il est resté vert. Une mission « terminée » sur un compteur ne prouve
 > rien — c'est le CONTENU qui l'a dit.

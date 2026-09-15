@@ -14,6 +14,75 @@
 
 ---
 
+## 2026-09-15 — Un même code HTTP porte des causes d'ÉCHELLES différentes : la question n'est pas « quelle erreur », c'est « combien de lignes elle frappe »
+**Contexte.** Marc reclique sur « Tout corbeiller » : « Lot interrompu : Google refuse les appels.
+53 dossier(s) n'ont pas été tentés — réessaie dans quelques minutes. » Depuis la veille, le message
+porte enfin la cause exacte, et elle dit tout : `403 : The user does not have sufficient permissions
+for this file.` Ces dossiers vides ne lui appartiennent pas — ils viennent d'un autre compte. Aucun
+réessai, jamais, ne le rendra propriétaire ; or le code les traitait comme une panne transitoire,
+comptait cinq échecs d'affilée, déclenchait le coupe-circuit et rendait la main. La liste ne pouvait
+plus JAMAIS avancer, et le message invitait à recommencer une opération structurellement vouée à
+échouer.
+
+**La confusion exacte.** `403` recouvre trois causes que rien ne distingue au niveau du code HTTP :
+(a) un throttle Drive (`rateLimitExceeded`) — transitoire, toutes les lignes ; (b) un scope perdu
+(`insufficientPermissions`, « insufficient authentication scopes ») — durable, toutes les lignes,
+réparable par une reconnexion ; (c) les droits sur CET élément (`insufficientFilePermissions`) —
+définitif, UNE ligne. Le premier correctif (C28-119) avait déjà séparé (a) des autres. Il restait à
+séparer (b) de (c), et ce qui les sépare n'est pas la gravité : c'est le NOMBRE DE LIGNES que la
+cause frappe. Une cause qui frappe toutes les lignes ne doit jamais devenir un verdict par ligne —
+elle viderait la liste à tort. Une cause qui ne frappe qu'une ligne ne doit jamais arrêter le lot.
+
+**Le piège de représentation, encore.** Le détecteur ne pouvait pas vivre chez l'appelant : le
+message affiché est tronqué à 200 caractères pour l'écran, et `errors[].reason` — le seul champ
+CONTRACTUEL — tombe juste après la coupure. Le message collé par Marc s'arrête au milieu du premier
+`errors[]`. Il restait la phrase anglaise, dans les 200 premiers caractères… mais une phrase écrite
+pour un humain n'est pas un contrat : Google peut la reformuler sans préavis. Donc : un prédicat pur
+qui lit le corps ENTIER en amont, un marqueur canonique posé dans le message, et un aval qui ne lit
+que le marqueur.
+
+**Leçon.** « Quand plusieurs causes partagent un même code d'erreur, classe-les par l'ÉCHELLE de ce
+qu'elles frappent — une ligne, ou toutes — avant de décider si c'est un verdict ou une panne. Un
+verdict par ligne qui vaut en réalité pour toutes vide la liste ; une panne globale qui ne vaut que
+pour une ligne gèle le lot. Et la désambiguïsation se fait là où la réponse est ENTIÈRE, sur le
+champ machine, jamais sur la prose d'un message tronqué pour l'affichage. »
+
+**Corollaire.** Un coupe-circuit qui compte des échecs « d'affilée » doit se remettre à zéro sur
+TOUT signal que le canal répond — y compris un refus définitif, qui est une réponse. Sans quoi
+quelques incidents épars, séparés par des dossiers parfaitement traités, finissent par couper un lot
+que la plateforme sert très bien.
+
+**Ce que la revue flotte a ajouté, et qui vaut plus que le correctif.** Deux choses qu'aucun test
+de la suite ne pouvait me dire.
+
+*1. Mes mutations allaient toutes dans le même sens.* J'en avais joué quatre, toutes du type « je
+retire un bout de la détection » — et les quatre étaient attrapées, ce qui m'a donné une confiance
+imméritée. Aucune n'allait dans la direction OPPOSÉE : ÉLARGIR le prédicat. Or c'est celle-là qui
+est irréversible ici — un verdict qui sort une ligne de la liste n'est jamais re-proposé, tandis
+qu'un verdict manqué coûte un réessai. La revue a élargi le prédicat d'un mot, et le corpus n'a
+rien vu : il contenait la forme de la couche d'authentification (« Request had insufficient
+authentication scopes ») mais pas celle que Drive rend VRAIMENT quand le jeton perd son scope
+(« Insufficient Permission »). Le corpus de preuve ne contenait pas la population que la garde
+protège.
+
+*2. Un verdict pris sur un ÉCHEC contourne toutes les gardes.* Mon correctif apprenait « ce dossier
+n'est pas à moi » en TENTANT la corbeille et en lisant la 403. La décision se prenait donc dans un
+`catch`, hors de `verdictCorbeille`, sans qu'aucune des cinq gardes d'ADR-0014 n'ait tourné — alors
+que la même information était disponible AVANT, sur une simple lecture (`capabilities.canTrash`).
+L'audit l'a dit sans détour : c'est l'ordre inverse de celui que l'ADR exige. Et le correctif qu'il
+propose fait disparaître les deux 🟠 d'un coup, parce qu'il supprime la 403 au lieu de la traiter.
+
+**Leçon (2).** « Quand une information peut être LUE avant d'agir, le verdict se prend sur la
+lecture — jamais sur l'échec de l'action. Un verdict né dans un `catch` court-circuite par
+construction toutes les gardes placées avant la mutation. Et un test de mutation ne prouve la
+garde que s'il est joué DANS LES DEUX SENS : celui qui affaiblit la détection, et celui qui
+l'élargit. Le second est presque toujours le dangereux, parce que c'est lui qui produit des
+verdicts positifs — et un verdict positif qui retire l'item du périmètre est définitif de fait. »
+
+**Règle durable ?** oui — §9, en corollaire de « Échecs LLM : classer par ORIGINE avant de compter »
+(même famille : l'origine d'un échec commande ce qu'on en fait) et de « un verdict pris sur la donnée
+RICHE ne se re-dérive jamais depuis sa forme APPAUVRIE ».
+
 ## 2026-09-14 — Une vue d'API en RETARD ressemble EXACTEMENT à une panne connue, et c'est la ressemblance qui fait sauter la vérification
 **Contexte.** Après le merge de #348, PR de suivi #349 (doc seule). Trois checks verts, le
 quatrième — « Captures d'écran UI (E2E mode mock) » — affiché `in_progress` sur l'étape

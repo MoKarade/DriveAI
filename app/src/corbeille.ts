@@ -16,7 +16,7 @@
 import { Ascendance, RACINES_PROTEGEES_DEFAUT, IDS_STRUCTURELS_DEFAUT } from './garde-fous';
 import { plagesContigues } from './etat';
 import { MIME_DOSSIER } from './explorateur';
-import { api, lireFichier, remonterAscendance, viderCachesDrive, DRIVE } from './google';
+import { api, lireFichier, remonterAscendance, viderCachesDrive, DRIVE, MARQUEUR_DROITS_FICHIER } from './google';
 
 /**
  * Verdict PUR (testé) : ce dossier peut-il partir à la corbeille ? Liste des violations
@@ -28,12 +28,24 @@ export function verdictCorbeille(args: {
   mimeType: string;
   nbEnfants: number; // 0 ou 1 (compte BORNÉ pageSize=1) — tous statuts confondus, corbeillés inclus
   ascendance: Ascendance;
+  // Drive dit-il que Marc peut corbeiller CE dossier ? `capabilities.canTrash`, corroboré par
+  // `ownedByMe`. TROIS états, comme `ascendance` : `true` = oui ; `false` = non, VERDICT (le
+  // dossier appartient à un autre compte, ou Marc n'y a qu'un accès en lecture) ; `undefined` =
+  // Drive n'a rien répondu, PANNE (on ne conclut pas). Jamais de défaut permissif : un défaut de
+  // configuration n'est pas une décision (§9).
+  peutCorbeiller: boolean | undefined;
   racinesProtegees?: string[];
   idsStructurels?: string[];
 }): string[] {
   const violations: string[] = [];
   if (args.mimeType !== MIME_DOSSIER) violations.push('pas-un-dossier');
   if (args.nbEnfants > 0) violations.push('non-vide');
+  // 🟠 audit sécurité C28-129 : la question se pose sur une LECTURE, avant toute mutation. Avant,
+  // le seul chemin qui apprenait « ce dossier n'est pas à moi » était l'échec du PATCH — un verdict
+  // décidé par une exception, hors de cette fonction, donc sans qu'aucune des gardes ci-dessous
+  // n'ait tourné. Ici l'ordre d'ADR-0014 est respecté : on constate, puis on agit.
+  if (args.peutCorbeiller === false) violations.push('non-possede');
+  else if (args.peutCorbeiller === undefined) violations.push('capacite-inconnue');
   const proteges = args.racinesProtegees ?? RACINES_PROTEGEES_DEFAUT;
   // Identité D'ABORD (la racine protégée elle-même n'est pas dans sa propre ascendance), puis
   // ascendance. Le refus est le MÊME dans les deux cas (échec fermé) — mais le MOTIF diffère, et
@@ -81,6 +93,16 @@ export function statutRefusCorbeille(message: string): string | null {
       brut.includes('dossier-structurel') || brut.includes('pas-un-dossier')) {
     return 'vide-protégé';                                      // ne devait jamais être proposé
   }
+  // Marc n'a pas les droits sur CET élément (403 `insufficientFilePermissions`) : il n'en est pas
+  // propriétaire, ou il n'y a qu'un accès en lecture. DÉFINITIF — aucun réessai ne le rendra
+  // propriétaire, et le traiter en panne a arrêté le lot de Marc au 5ᵉ dossier, 53 jamais tentés
+  // (15/09). Le marqueur vient de `api()`, qui l'a reconnu sur le corps ENTIER : cette ligne ne
+  // regarde JAMAIS le texte de Google, qui arrive tronqué avant `errors[].reason`.
+  // Même fait, deux sources : la garde de possession (constat sur lecture, chemin nominal) et le
+  // marqueur posé par `api()` si le PATCH échoue quand même (course : droits retirés entre la
+  // lecture et la mutation). `capacite-inconnue` n'est PAS ici : c'est une panne, la ligne reste.
+  if (brut.includes('non-possede')) return 'vide-droits-refusés';
+  if (brut.includes(MARQUEUR_DROITS_FICHIER)) return 'vide-droits-refusés';
   return null;                                                  // transitoire : on re-tentera
 }
 
@@ -171,6 +193,11 @@ export interface BilanLot {
   // ce qui l'exclut — sous l'hypothèse quota-Sheets, les dossiers PARTENT et seuls les statuts
   // échouent). §9 : « tout verdict indéterminé persiste son POURQUOI ».
   derniereCause: string;                     // message de la DERNIÈRE panne non interprétable
+  // SOUS-ENSEMBLE de `classes` (jamais un bucket de plus : l'invariant de somme reste
+  // `corbeilles + classes + aReessayer + nonTentees === lignes.length`). Compté à part parce que
+  // c'est le seul verdict qui demande un GESTE à Marc — devenir propriétaire, ou renoncer — et
+  // qu'un total de « retirés de la liste » ne le dit pas.
+  refusDroits: number;
 }
 
 /**
@@ -205,7 +232,7 @@ export async function corbeillerLot(
   },
 ): Promise<BilanLot> {
   const bilan: BilanLot = {
-    corbeilles: 0, classes: 0, aReessayer: 0, sheetKo: 0, nonTentees: 0, interrompu: '',
+    corbeilles: 0, classes: 0, aReessayer: 0, sheetKo: 0, nonTentees: 0, refusDroits: 0, interrompu: '',
     derniereCause: '',
   };
   let pannesDaffilee = 0;
@@ -289,6 +316,12 @@ export async function corbeillerLot(
       }
       statut = verdict;
       bilan.classes++;                // un VERDICT prouve que le canal Drive répond
+      if (verdict === 'vide-droits-refusés') bilan.refusDroits++;
+      // …donc la RAFALE est cassée, exactement comme après une corbeille réussie. Le coupe-circuit
+      // vise la rafale, jamais le cumul (c'est écrit deux blocs plus haut) — sans cette remise à
+      // zéro, quelques blips réseau épars finissent par couper un lot que Google sert très bien,
+      // et le cas devient la norme maintenant que « pas propriétaire » rend un verdict par ligne.
+      pannesDaffilee = 0;
     }
     tampon.push({ ligneSheet: l.ligneSheet, statut });
     // Première écriture SENTINELLE (petite) puis lots pleins : on prouve que Sheets répond avant
@@ -332,13 +365,23 @@ export async function corbeillerDossierVide(folderId: string, racinesProtegees?:
     lireFichier(folderId),
     compterEnfantsStrict(folderId),
     remonterAscendance(folderId),
-  ]);
+  ]).catch((e) => {
+    // 🟠 audit sécurité C28-129 : le marqueur ne vaut QUE pour la mutation. Rencontré pendant la
+    // LECTURE, il ne prouve rien sur le dossier — il dit qu'on n'a pas pu conclure, et « je n'a
+    // pas pu lire » est une PANNE, pas un VERDICT (le 🔴 de C28-93, sur ce même chemin). On le
+    // neutralise donc ici, en gardant le texte lisible pour le diagnostic.
+    throw new Error(String(e).split(MARQUEUR_DROITS_FICHIER).join('lecture-403-droits'));
+  });
   const violations = verdictCorbeille({
     id: folderId,
     nom: meta.name,
     mimeType: meta.mimeType ?? '',
     nbEnfants,
     ascendance,
+    // `canTrash` fait foi (il couvre aussi un accès en lecture sur un dossier partagé) ;
+    // `ownedByMe === false` le corrobore. Si Drive n'a rendu NI l'un NI l'autre, on reste à
+    // `undefined` et le verdict refuse de conclure.
+    peutCorbeiller: meta.capabilities?.canTrash ?? (meta.ownedByMe === false ? false : undefined),
     racinesProtegees,
   });
   if (violations.length > 0) {

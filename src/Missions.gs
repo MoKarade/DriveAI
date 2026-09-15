@@ -247,7 +247,9 @@ function tableMissions_() {
       // §9 « re-lancer une campagne à clé de SUCCÈS ne re-traite pas ce qu'elle a figé OK ».
       // Coût du bump : NUL — les fichiers déjà livrés dans les cibles ne sont dans aucune source,
       // donc jamais re-collectés ; seuls le drapeau FINI et les compteurs repartent propres.
-      tag: 'ecoles-archives06b', cle: 'mission-ecoles-archives-06',
+      // (ADR-0060) `c` : Sherbrooke vise par ID le dossier de Marc ; la passe re-pointe l'entité
+      // `Cégep De Sherbrooke` hors de la coquille de la racine. Sources vides ⇒ converge en une passe.
+      tag: 'ecoles-archives06c', cle: 'mission-ecoles-archives-06',
       sources: (IDS.ecoles06 || []).map(function (p) { return p.src; }),
       batirCtx: function () {
         var parSource = {};
@@ -260,10 +262,9 @@ function tableMissions_() {
         // standard existent déjà dans 3 des archives). Pas d'alias = pas une source = jamais deviné.
         var p = ctx.parSource[info.sourceId];
         if (!p) return null;
-        // Cible par ID quand le dossier de Marc EXISTE DÉJÀ. `Cégep de Sherbrooke (2019)` n'existe
-        // pas : il est find-or-créé PAR NOM sous `Archives scolaires` — par CE chemin, la création
-        // n'a lieu qu'au premier fichier réellement déplacé. (L'autre chemin, `repointerEcoles06_`
-        // à la convergence, est gardé par `referentielViseUneSource_`.)
+        // Cible par ID quand le dossier de Marc EXISTE DÉJÀ (toutes les paires depuis ADR-0060). Une
+        // cible sans ID reste possible pour une école future : par CE chemin, elle est find-or-créée
+        // PAR NOM au premier fichier réellement déplacé — le SEUL chemin qui crée un dossier.
         if (p.cible) return { cibleId: p.cible, sousDossier: info.sousChemin };
         return { cibleParentId: ctx.archivesId, cibleNom: p.cibleNom, sousDossier: info.sousChemin };
       },
@@ -1769,31 +1770,49 @@ function executerMission_(tag, estBudgetDepasse) {
 function repointerEcoles06_() {
   var IDS = CONFIG.MISSIONS_IDS;
   var paires = IDS.ecoles06 || [];
-  // UNE seule lecture de l'onglet `Entités` pour les 6 paires (revue quotas : `repointerEntites_`
+  // UNE seule lecture de l'onglet `Entités` pour toutes les paires (revue quotas : `repointerEntites_`
   // fait `getDataRange().getValues()` À CHAQUE appel — 6 lectures intégrales juste avant l'unique
   // fenêtre de peinture, sur un garde-temps déjà consommé).
-  var carte = {};
-  paires.forEach(function (p) { if (p.cible) carte[p.src] = p.cible; });
-  // La cible SANS ID (`Cégep de Sherbrooke (2019)`) n'est find-or-créée que si une ligne du
-  // référentiel vise réellement sa source — sinon on créerait un dossier VIDE à chaque
-  // convergence, alors que la table et l'ADR promettent l'inverse (revue code + sécurité).
-  var sansId = paires.filter(function (p) { return !p.cible; });
-  if (sansId.length && referentielViseUneSource_(sansId)) {
-    var archives = DriveApp.getFolderById(IDS.archivesScolaires);
-    sansId.forEach(function (p) { carte[p.src] = sousDossier_(archives, p.cibleNom).getId(); });
-  }
+  // (ADR-0060) Résolution find-ONLY d'un nom sous `Archives scolaires` — JAMAIS de création ici : ce
+  // chemin tourne à la CONVERGENCE, après le dernier fichier déplacé ; un dossier absent à ce moment-là
+  // n'a reçu aucun fichier et le référentiel n'a rien à y viser. L'ancienne garde (« une ligne du
+  // référentiel vise la source ») était VRAIE EN PERMANENCE — `SEED_ENTITES` écrit `Cégep De Sherbrooke`
+  // avec le dossier SOURCE comme « Dossier ID » — et `Cégep de Sherbrooke (2019)` a été créé VIDE le
+  // 15/09 à 04:38 UTC ; le test qui prouvait le gate MOCKAIT le prédicat (leçon §9).
+  var archives = DriveApp.getFolderById(IDS.archivesScolaires);
+  var carte = carteRepointageEcoles06_(paires, function (nom) {
+    var d = sousDossierExistant_(archives, nom);
+    return d ? d.getId() : null;
+  });
   repointerEntitesLot_(carte);
 }
 
 /**
- * Vrai si au moins une ligne du référentiel d'entités pointe l'une des sources données. PURE de
- * décision, I/O de lecture : une seule lecture de l'onglet, partagée avec `repointerEntitesLot_`.
- * @param {Array<{src:string}>} paires @return {boolean}
+ * Carte de re-pointage { dossierId → cibleId } du référentiel d'entités pour `ecoles06`. PURE.
+ * `idExistantParNom(nom)` rend l'ID d'un dossier VIVANT sous `Archives scolaires` ou `null` — jamais
+ * une création (c'est l'appelant qui l'injecte, `sousDossierExistant_`).
+ *  - `p.src` → `p.cible` (ou le dossier `p.cibleNom` s'il existe déjà) ;
+ *  - `p.anciensNoms` (revue structure ADR-0060) : les ANCIENS libellés de cible, orphelins que l'ancien
+ *    code a pu créer à vide ET faire viser par le référentiel — ramenés vers la cible de Marc. Sans
+ *    cette clé, la ligne `Cégep De Sherbrooke` (qui porte l'ID du dossier vide `(2019)` depuis le
+ *    15/09) ne matche plus rien, et le flux vivant (repli par entité, `planRoutageV2_`) remplirait
+ *    `(2019)` ou, s'il est corbeillé, recréerait l'école à la RACINE de `06` (C28-106).
+ * @param {Array<{src:string, cible:(string|undefined), cibleNom:string, anciensNoms:(Array<string>|undefined)}>} paires
+ * @param {function(string):?string} idExistantParNom
+ * @return {!Object<string,string>}
  */
-function referentielViseUneSource_(paires) {
-  var vise = {};
-  paires.forEach(function (p) { vise[p.src] = true; });
-  return dossiersVisesParEntites_(vise);
+function carteRepointageEcoles06_(paires, idExistantParNom) {
+  var carte = {};
+  paires.forEach(function (p) {
+    var cible = p.cible || (p.cibleNom ? idExistantParNom(p.cibleNom) : null);
+    if (!cible) return; // pas de dossier ⇒ aucun fichier n'y est parti ⇒ rien à viser
+    carte[p.src] = cible;
+    (p.anciensNoms || []).forEach(function (nom) {
+      var orphelin = idExistantParNom(nom);
+      if (orphelin && orphelin !== cible) carte[orphelin] = cible;
+    });
+  });
+  return carte;
 }
 
 /**

@@ -134,7 +134,7 @@ const TEXTES = {
     toutCorbeiller: 'Tout corbeiller',
     corbeilleArreteA: 'arrêté à',
     corbeilleNote: 'Re-vérifié au clic (chacun, même en lot) : vide (corbeillés inclus), hors zone Immigration, jamais une racine système. Un dossier re-rempli entre-temps est refusé et retiré de la liste — le lot continue.',
-    corbeilleBilan: '{n} dossier(s) mis à la corbeille · {c} retiré(s) de la liste (déjà disparus, re-remplis, ou à ne jamais supprimer) · {r} à re-tenter · {s} traité(s) mais statut non écrit.',
+    corbeilleBilan: '{n} dossier(s) mis à la corbeille · {c} retiré(s) de la liste (déjà disparus, re-remplis, à ne jamais supprimer, ou impossibles à supprimer) · {r} à re-tenter · {s} traité(s) mais statut non écrit.',
     corbeilleNonVide: 'Refusé : ce dossier n’est plus vide — le classement l’a re-rempli entre-temps.',
     corbeilleProtege: 'Refusé : zone protégée (Immigration) — jamais touchée.',
     corbeilleStructurel: 'Refusé : dossier structurel ou système — le classement en a besoin.',
@@ -147,6 +147,13 @@ const TEXTES = {
     // diagnostic à deux reprises — dont une fois à tort. C'est la seule ligne qui distingue un
     // quota d'un refus de droits, d'une ascendance illisible ou d'une coupure réseau.
     corbeilleCause: ' Cause exacte : {m}',
+    // Le SEUL verdict qui demande un geste à Marc : ces dossiers ne lui appartiennent pas.
+    corbeilleDroits: ' Dont {d} refusé(s) par Google : tu n’es pas propriétaire de ces dossiers (ou tu n’y as qu’un accès en lecture). Ils sont retirés de la liste — pour les supprimer, il faut le compte qui les possède.',
+    // Le MÊME motif au clic UNITAIRE (🟠 revue code C28-129) : sans cette clé, Marc lisait le
+    // slug technique + du JSON tronqué sur le chemin même qu'on prend pour COMPRENDRE, pendant
+    // que le lot, lui, lui parlait français. Un motif neuf s'ajoute à TOUS ses afficheurs.
+    corbeilleDroitsUn: 'Google refuse : ce dossier ne t’appartient pas (ou tu n’y as qu’un accès en lecture). Pour le supprimer, il faut le compte qui le possède.',
+    corbeilleCapaciteInconnue: 'Google n’a pas dit si tu peux supprimer ce dossier. Rien n’a été touché — réessaie dans un instant.',
 
     /* ---- page Moteur (C28-41 : coût fiable · progression · état · réglage) ---- */
     noteNonApparies: 'laissés en place, en attente d’un affinage des règles (jamais devinés).',
@@ -324,7 +331,7 @@ const TEXTES = {
     toutCorbeiller: 'Trash all',
     corbeilleArreteA: 'stopped at',
     corbeilleNote: 'Re-checked on click (each one, even in a batch): empty (trashed included), outside the Immigration zone, never a system root. A folder refilled in the meantime is refused and dropped from the list — the batch carries on.',
-    corbeilleBilan: '{n} folder(s) trashed · {c} dropped from the list (already gone, refilled, or never to be deleted) · {r} to retry · {s} done but status not written.',
+    corbeilleBilan: '{n} folder(s) trashed · {c} dropped from the list (already gone, refilled, never to be deleted, or impossible to delete) · {r} to retry · {s} done but status not written.',
     corbeilleNonVide: 'Refused: this folder is no longer empty — filing refilled it in the meantime.',
     corbeilleProtege: 'Refused: protected zone (Immigration) — never touched.',
     corbeilleStructurel: 'Refused: structural or system folder — filing needs it.',
@@ -334,6 +341,9 @@ const TEXTES = {
     corbeilleCoupeeSession: 'Batch interrupted: the Google session expired. {x} folder(s) were never attempted — sign in again and restart.',
     corbeilleCoupeePannes: 'Batch interrupted: Google is refusing calls. {x} folder(s) were never attempted — try again in a few minutes.',
     corbeilleCause: ' Exact cause: {m}',
+    corbeilleDroits: ' Including {d} refused by Google: you are not the owner of those folders (or you only have read access). They were dropped from the list — deleting them requires the account that owns them.',
+    corbeilleDroitsUn: 'Google refused: you do not own this folder (or you only have read access). Deleting it requires the account that owns it.',
+    corbeilleCapaciteInconnue: 'Google did not say whether you can delete this folder. Nothing was touched — try again in a moment.',
 
     /* ---- Engine page ---- */
     noteNonApparies: 'left in place, awaiting a rule refinement (never guessed).',
