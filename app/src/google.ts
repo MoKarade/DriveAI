@@ -119,8 +119,10 @@ export function abonnerSessionExpiree(cb: () => void): void {
 /**
  * Marqueur CANONIQUE d'un refus de droits SUR UN ÉLÉMENT précis (403 `insufficientFilePermissions`).
  * Posé par `api()` sur le corps ENTIER de la réponse ; c'est le SEUL signal que l'aval interprète —
- * jamais le texte brut de Google, qui arrive tronqué. Changer cette chaîne est un changement de
- * CONTRAT : `statutRefusCorbeille` la lit, et un test le verrouille des deux côtés.
+ * jamais le texte brut de Google, qui arrive tronqué. Une SEULE source de vérité, importée des deux
+ * côtés (`statutRefusCorbeille`, `messageCorbeille`) : la valeur littérale n'a donc pas à être
+ * verrouillée par un test, c'est l'import qui l'est. Ce qui EST verrouillé, c'est que chaque afficheur
+ * consulte ce marqueur, et que le statut produit existe dans `REORG_STATUTS` (`corbeille.test.ts`).
  */
 export const MARQUEUR_DROITS_FICHIER = 'droits-insuffisants-sur-element';
 
@@ -132,9 +134,18 @@ export const MARQUEUR_DROITS_FICHIER = 'droits-insuffisants-sur-element';
  * un humain peut être reformulé par Google sans préavis — §9 : « améliorer un message d'erreur POUR
  * L'HUMAIN est un changement de CONTRAT dès que du code le lit ».
  *
- * EXCLUS volontairement : `insufficientPermissions` (sans `File`) et « insufficient authentication
- * scopes » — ce sont des pannes d'AUTORISATION GLOBALE. Elles frappent toutes les lignes à la fois ;
- * les classer une par une viderait la liste de Marc à tort, alors qu'une reconnexion les répare.
+ * EXCLUS volontairement : `insufficientPermissions` (sans `File`), « Insufficient Permission » — la
+ * forme que Drive rend VRAIMENT quand le jeton perd le scope — et « insufficient authentication
+ * scopes ». Ce sont des pannes d'AUTORISATION GLOBALE : elles frappent toutes les lignes à la fois,
+ * et les classer une par une viderait la liste de Marc à tort alors qu'une reconnexion les répare.
+ * C'est la direction IRRÉVERSIBLE (un statut définitif n'est jamais re-proposé), donc celle que le
+ * corpus négatif de `corbeille.test.ts` verrouille en priorité.
+ *
+ * Deux formulations restent NON reconnues par le filet en prose, et c'est sans conséquence : elles
+ * dégradent du bon côté (panne ⇒ la ligne reste candidate). La forme moderne
+ * `{"status":"PERMISSION_DENIED","message":"The caller does not have permission"}` et la variante
+ * Drive partagé « …for this shared drive » — toutes deux rattrapées par le champ machine quand il
+ * est présent. Noté pour que le prochain diagnostic ne les re-dérive pas.
  */
 export function estRefusDroitsFichier(corps: string): boolean {
   if (/insufficientFilePermissions/i.test(corps)) return true;

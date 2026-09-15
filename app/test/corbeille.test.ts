@@ -185,6 +185,8 @@ describe('statutRefusCorbeille', () => {
     // marqueur, et restent candidates.
     for (const m of [
       'Error: Google API 403 : {"error":{"code":403,"errors":[{"reason":"insufficientPermissions"}]}}',
+      // La forme RÉELLE de Drive quand le scope est perdu — celle que Marc recevrait.
+      'Error: Google API 403 : {"error":{"code":403,"message":"Insufficient Permission"}}',
       'Error: Google API 403 : {"error":{"message":"Request had insufficient authentication scopes."}}',
     ]) expect(statutRefusCorbeille(m), m).toBeNull();
   });
@@ -203,8 +205,21 @@ describe('estRefusDroitsFichier — le verdict se prend sur le corps ENTIER (C28
     expect(estRefusDroitsFichier('{"error":{"errors":[{"reason":"insufficientFilePermissions"}]}}')).toBe(true);
     // …et réciproquement, la prose SEULE (message reformulé sans `reason`) reste reconnue.
     expect(estRefusDroitsFichier('The user does not have sufficient permissions for this file.')).toBe(true);
+    // ⚠️ LA POPULATION QUE LA GARDE PROTÈGE (🟠 revue code) : ce sont les corps 403 d'une panne
+    // GLOBALE. Les classer par ligne marquerait les 58 lignes DÉFINITIVEMENT — `chargerVidesConnus_`
+    // ne révise que `vide-repris` — alors qu'une reconnexion suffisait. C'est la seule direction
+    // IRRÉVERSIBLE, donc la seule où la mutation compte : élargir le prédicat à
+    // `/insufficient permission/i` doit faire tomber ce test.
+    // La 2ᵉ forme est celle que Drive renvoie VRAIMENT quand le jeton perd le scope — la 3ᵉ vient de
+    // la couche auth, et c'était la seule que le corpus contenait.
     expect(estRefusDroitsFichier('{"error":{"errors":[{"reason":"insufficientPermissions"}]}}')).toBe(false);
+    expect(estRefusDroitsFichier('{"error":{"errors":[{"domain":"global","reason":"insufficientPermissions",'
+      + '"message":"Insufficient Permission"}],"code":403,"message":"Insufficient Permission"}}')).toBe(false);
     expect(estRefusDroitsFichier('{"error":{"message":"Request had insufficient authentication scopes."}}')).toBe(false);
+    // Forme moderne (`PERMISSION_DENIED`) et Drive partagé : non reconnues par la prose, rattrapées
+    // par le champ machine quand il est là. Elles dégradent du BON côté (panne, ligne conservée).
+    expect(estRefusDroitsFichier('{"error":{"code":403,"message":"The caller does not have permission",'
+      + '"status":"PERMISSION_DENIED"}}')).toBe(false);
     expect(estRefusDroitsFichier('{"error":{"errors":[{"reason":"userRateLimitExceeded"}]}}')).toBe(false);
   });
 
@@ -305,6 +320,13 @@ describe('corbeillerLot — refus de droits en masse (le cas RÉEL du 15/09)', (
     }
     expect(t('corbeilleDroits', 'fr')).toMatch(/propriétaire/);
     const vue = readFileSync(join(ICI, '..', 'src', 'vues', 'Reorg.tsx'), 'utf8');
+    // …et le clic UNITAIRE dit la MÊME chose (🟠 revue code) : c'est le chemin qu'on prend pour
+    // comprendre un cas, il ne peut pas être le plus muet. Mutation : retirer la ligne
+    // `MARQUEUR_DROITS_FICHIER` de `messageCorbeille` ⇒ ce test tombe.
+    for (const langue of ['fr', 'en'] as const) expect(t('corbeilleDroitsUn', langue).length).toBeGreaterThan(40);
+    const msg = vue.slice(vue.indexOf('function messageCorbeille'), vue.indexOf('function libelleType'));
+    expect(msg).toContain('MARQUEUR_DROITS_FICHIER');
+    expect(msg).toContain("t('corbeilleDroitsUn', langue)");
     // …et la vue la colle au BILAN, pas au seul cas interrompu — qui ne se produit plus.
     expect(vue).toContain("t('corbeilleDroits', langue)");
     const ligneBilan = vue.split('\n').find((l) => l.includes("String(bilan.sheetKo)"));

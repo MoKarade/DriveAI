@@ -6,7 +6,7 @@
  */
 
 import { useEffect, useState } from 'react';
-import { lirePlage, ecrireCellule, ecrireColonnePlage, ajouterLigne, estConnecte } from '../google';
+import { lirePlage, ecrireCellule, ecrireColonnePlage, ajouterLigne, estConnecte, MARQUEUR_DROITS_FICHIER } from '../google';
 import { corbeillerDossierVide, corbeillerLot, type BilanLot } from '../corbeille';
 import {
   LigneReorg,
@@ -36,6 +36,9 @@ function messageCorbeille(e: unknown, langue: Langue): string {
   // (§9 : « améliorer un message d'erreur POUR L'HUMAIN est un changement de CONTRAT dès que du code
   // lit ce message » — ici l'inverse : un motif ajouté sans inventorier ses AFFICHEURS).
   if (brut.includes('ascendance-illisible')) return t('corbeilleAscendance', langue);
+  // Motif NEUF de C28-129, inventorié ICI AUSSI (🟠 revue code) : le clic unitaire est le chemin
+  // qu'on prend pour comprendre un cas — il ne doit pas être le plus muet des deux.
+  if (brut.includes(MARQUEUR_DROITS_FICHIER)) return t('corbeilleDroitsUn', langue);
   return brut;
 }
 

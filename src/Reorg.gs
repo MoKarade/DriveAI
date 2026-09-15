@@ -26,7 +26,14 @@
  * `échec` immédiat (déterministe, retenter ne changerait rien).
  */
 
-/** Statuts d'une ligne d'action (machine à états — cf. BACKLOG #21). */
+/**
+ * Statuts d'une ligne d'action (machine à états — cf. BACKLOG #21).
+ * ⚠️ Cette liste est DOCUMENTAIRE : aucun code du moteur ne la consulte pour valider un statut, et
+ * il ne faut pas le lui faire faire — `chargerVidesConnus_` est une garde par CAPACITÉ (« tout sauf
+ * `vide-repris` est définitif »), qui reste juste quand un statut s'ajoute. Ce qui empêche l'app et
+ * le moteur de diverger est un TRIPWIRE côté app (`app/test/corbeille.test.ts`) : tout statut
+ * `vide-…` rendu par `statutRefusCorbeille` doit figurer ici.
+ */
 var REORG_STATUTS = ['proposé', 'validé', 'écarté', 'appliqué', 'refusé (zone protégée)',
   'refusé (structure)', 'échec', 'vide-candidat', 'corbeillé',
   // Écrits par l'APP au clic (C28-93) : un refus classe SA ligne au lieu d'arrêter le lot.
