@@ -1,7 +1,9 @@
 # ADR-0059 — L'assistant qui me connaît : cadrage de l'assistant personnel transversal
 
-* **Statut** : **proposé** — en attente des réponses de Marc aux 10 questions du §8. Aucune ligne
-  de code avant.
+* **Statut** : **accepté** le 2026-09-15 — Marc a tranché les 4 questions structurantes (Q2, Q3,
+  Q4, Q5) ; pour les 6 autres (Q1, Q6-Q10) il prend les recommandations. Ses décisions, dont
+  **trois s'écartent des recommandations**, sont consignées dans la section « Décisions de Marc »
+  ci-dessous, chacune avec la frontière franchie et le garde-fou obtenu en échange.
 * **Date** : 2026-09-15
 * **Demande de Marc** (mot pour mot) : « je veux que le gros dossier ce soit que mon assistant
   devienne 1000x plus intelligent, qu'il lise au fur et à mesure tous les documents sur moi pour
@@ -31,6 +33,51 @@
 
 ---
 
+
+## Décisions de Marc (15/09/2026) — et ce qu'elles changent
+
+Posées par choix cliquable, quatre questions ; les six autres prennent la recommandation du §8.
+
+| Q | Décision | Écart avec la recommandation | Frontière franchie | Garde-fou obtenu en échange |
+|---|---|---|---|---|
+| **Q2** Forme | **Une nouvelle app « Mémoire »** (`memoire.hubperso.com`, fork d'app-template) | aucun | une base de faits sur Marc hors de son compte Google | chiffrement N ≥ 1, N3 sans valeur, montants 422, zéro jeton détenu, journal chaîné, oubli, purge |
+| **Q4** Stock | **TOUT le stock (19 427 documents) lu sur le PC** | la recommandation s'arrêtait à ~3 500 documents porteurs (15-20 $) | coût : ≈ 95-195 $ Haiku 4.5 standard, 3-5 jours de script — ou **0 $ en Ollama sur la RTX 5080** (précision à mesurer sur 100 documents d'abord, §11) | inchangé : niveau dérivé du chemin par le code (`04 · Immigration`, identité, santé ⇒ N3 = existence/type/date/échéance, jamais une valeur) ; idempotent par `fileId` ; plafond $ dur dans le script ; **mesure sur 100 documents stratifiés AVANT de lancer les 19 000** (chiffre-titre interdit) |
+| **Q5** Mails | **Copier tous les mails pour les lire** | refusée par les trois juges sous la forme « spool dans Drive » | le CORPS de chaque mail quitte Gmail | **le mécanisme est révisé pour que Marc obtienne « tous mes mails » SANS exposer les corps dans Drive** — voir la note Q5 ci-dessous |
+| **Q3** Sensible | **Adresse servie aux apps à périmètre** ; position GPS, adresses de tiers, numéros d'identité restent refusés structurellement | la recommandation réservait l'adresse à claude.ai et au chat plein écran | l'adresse du domicile peut atteindre le widget d'une app | **servie UNIQUEMENT à une app dont le périmètre porte explicitement `domicile` ET `niveau_max ≥ 2`, réglé par Marc dans `/perimetres`, défaut OFF pour toute app ; jamais si `admet_invites` ; chaque service journalisé** |
+
+**Note Q5 — comment « copier tous les mails » se fait sans les mettre dans Drive.** Les juges ont
+refusé le *spool dans Drive* pour une raison précise : un corps de mail déposé dans Drive devient
+lisible par `mcp-lire`, par le cookie `driveai_rt` de l'app, par le connecteur Drive de claude.ai et
+par le moteur — quatre lecteurs de plus que Gmail. La demande de Marc, elle, est « lire tous mes
+mails ». Les deux se réconcilient en séparant le STOCK du FLUX :
+
+- **Stock (tout l'historique)** : un **export Google Takeout de Gmail (MBOX)**, téléchargé par Marc
+  sur son PC et lu par le MÊME script de rattrapage que les documents. Zéro quota Gmail, zéro
+  scope, zéro copie dans Drive : les corps ne quittent le PC que sous forme de faits typés. C'est
+  la seule voie qui lit *vraiment tous* les mails (le moteur est borné à 150 fils/jour par campagne,
+  `Config.gs` — 10 000 mails ≈ 67 jours, et relever ce plafond a déjà tué le tri vivant).
+- **Flux (les mails qui arrivent)** : le moteur — seul lecteur légitime de Gmail — extrait les faits
+  DANS l'appel Haiku qu'il paie déjà pour les mails jugés importants (recommandation Q5), **et**,
+  puisque Marc veut tous les mails, étend l'extraction aux mails que le préfiltre écarte aujourd'hui
+  (newsletters, promos : c'est là que vivent « ce que je pourrais aimer ») avec un mini-appel Haiku
+  sur `expéditeur + sujet + 1 000 caractères` — +0,002 $/mail, ~1 500 mails/mois ⇒ **+3 $/mois**,
+  sous un plafond `MEMOIRE_MAILS_BUDGET_JOUR_USD` dédié. Aucun corps n'est persisté nulle part.
+- **Si Marc tient au dépôt dans Drive malgré tout** : dossier `_Courriels` (préfixe `_` = hors
+  classement, `connecteurs.md`), exclu par ID de `mcp-recherche`/`mcp-lire` et de l'explorateur de
+  l'app, corps tronqués à 3 000 caractères, purge à 30 jours après extraction. C'est un repli, pas
+  la voie retenue — et il se tranche par une ligne de plus dans cet ADR, jamais en silence.
+
+**Confirmé par Marc le 15/09 (2ᵉ série de questions)** : « les deux — Takeout pour l'historique,
+moteur pour le flux ». Le repli `_Courriels` n'est donc PAS retenu. Marc crée le dépôt `MoKarade/memoire`
+lui-même (« Use this template » sur app-template, privé) ; la phase 0 démarre côté moteur en attendant.
+
+**Ce que ces trois écarts coûtent, dit une fois** : Q4 multiplie le coût du rattrapage par 5 à 10
+(ou par 0 en Ollama) pour lire des documents dont une bonne part ne porte aucun fait ; Q3 met
+l'adresse à portée d'une app compromise *si* Marc l'accorde à cette app ; Q5, sous la forme
+révisée, ne coûte rien de plus que le budget de flux. Aucun des trois ne touche N3 : identité,
+immigration et fiscal restent sans valeur stockée, quelle que soit la source.
+
+---
 
 ## 1. Verdict
 
