@@ -2818,6 +2818,37 @@ Détail des tâches : `BACKLOG.md`.
    Le NIVEAU reste dérivé par le code, donc **rien de ce que DriveAI envoie ne devient plus
    accessible**. Conséquence pour ce dépôt : les ~19 000 faits à venir n'engorgent plus rien, et
    la file ne garde que ce qu'un modèle a DÉDUIT.
+2 ter. **L'envoi des PIÈCES vers la Mémoire** (chantier #49, ADR-0061) — **LIVRÉ, DÉPLOYÉ,
+   et ÉTEINT**. Le 16/09 au soir, les lots C49-1, C49-1 bis et C49-2 bis sont fusionnés (PR #364)
+   et `deploy.yml` est vert. Une **pièce** n'est pas un fait : elle fait sortir ce qu'un papier
+   CONTIENT — son type, son émetteur, ses dates, son titulaire, ses champs structurés, **numéros
+   d'identité compris**, pour Marc et pour ses proches. C'est la frontière que l'ADR-0061 franchit.
+   ⚠️ **Rien ne part tant que `CONFIG.PIECE_PUSH` vaut `false`**, et ce n'est pas de la prudence
+   décorative : `traiterDocument_` a **huit appelants**, dont `Reset.gs` et `Migration.gs`.
+   Allumer ce drapeau ne re-tarife pas seulement le flux vivant — ça re-tarife **les campagnes en
+   cours**, exactement comme `ANALYSE_V2` qui a doublé un mois de budget en une nuit.
+   **Deux gestes, dans cet ordre, et le second est la porte :**
+   1. **C49-3 — l'audit sur 100 documents stratifiés.** Ce n'est pas une étape, c'est une PORTE :
+      si l'extraction se trompe sur des numéros d'identité, il vaut mieux le savoir sur 100 papiers
+      que sur 19 900. ⚠️ **Elle ne peut pas être franchie depuis une session Claude** — le moteur
+      tourne dans le compte Google de Marc, et une session ne déploie ni n'exécute Apps Script.
+   2. Seulement ensuite : `CONFIG.PIECE_PUSH = true`, et le rattrapage (C49-4) par le runner.
+   ⚠️ **Comment savoir que le code a PRIS EFFET** — pas le run vert (piège 3, et son inverse, la
+   cause n° 3 du 2 bis) : la ligne de Santé **« Mémoire (pièces) »** doit apparaître dans
+   `etat_moteur`, DISTINCTE de « Mémoire (inventaire) ». Les deux canaux tombent pour des raisons
+   différentes et l'un coûte un appel LLM par document, l'autre aucun : une seule ligne pour les
+   deux ferait disparaître la panne du plus cher derrière la santé du plus simple.
+   ⚠️ **Le signal du CANAL passe avant celui du DOCUMENT** : une photo sans texte
+   (« sans-texte », « non-classé ») n'écrase JAMAIS un « jeton refusé » à l'écran, et
+   `DriveAI_PIECE_DERNIER_REFUS` n'est jamais effacé par un succès. C'est la seule chose qu'on
+   cherche quand le canal a l'air de marcher — le 16/09, 4 000 faits ont été refusés dans des
+   HTTP 200.
+   ⚠️ **Décision d'architecture prise sans feu vert** : l'envoi est **immédiat**, un POST par
+   document, là où l'inventaire batche par 50. L'alternative écartée — accumuler puis pousser —
+   obligerait à garder le texte OCR de plusieurs papiers entre deux ticks, c'est-à-dire un stock
+   de contenu personnel hors de la Mémoire que rien ne protège et que personne ne purge.
+   `CLAUDE.md` §9 interdit de persister le corps d'un document, et l'ADR-0061 a levé la sortie
+   VERS la Mémoire, jamais le stockage local.
 3. *(`P1-09` — fait)* le coût LLM réel est désormais **mesuré** (`Cout.gs`, tokens `usage` agrégés
    par mois) et **affiché chaque semaine** dans le résumé hebdo automatique (`Resume.gs`). Plus besoin
    d'estimer : à observer sur le 1er mois réel pour confirmer < 10 $/mois.
