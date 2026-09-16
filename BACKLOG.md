@@ -5,6 +5,21 @@
 
 ---
 
+## Chantier #48 — DriveAI dit à la Mémoire ce qui EXISTE et où (ADR-0059 phase 0)  🟦
+
+> Marc, 16/09 : le chantier A de l'ADR-0002 de MemoryAI. Côté Mémoire tout était prêt depuis le
+> 15/09 (route `POST /api/faits`, jeton, fiabilités, périmètre réglable) ; il ne manquait que
+> l'ÉMETTEUR. C'est ce lot.
+
+| ID | Tâche | Statut |
+|----|-------|--------|
+| C28-117 — l'inventaire part vers la Mémoire, ZÉRO LLM | `src/Memoire.gs` : un fait `document.existe` par document classé, dont la VALEUR est un `fileId`. Tout se lit dans l'Index et dans le NOM du fichier (`AAAA-MM-JJ_Type_Émetteur.ext`) — **pas un seul appel LLM**, donc les 19 000 documents déjà classés ne se re-paient pas. Le niveau est dérivé par le CODE depuis le domaine (`04`, `01` ⇒ N3 ; `02`, `03`, `07` ⇒ N2 ; le reste ⇒ N1) : c'est GRATUIT à serrer, puisque la valeur d'un `document.existe` est un pointeur et non un contenu — serrer change qui peut lire, jamais ce qu'on sait. ⚠️ **ÉTEINT par défaut** (`CONFIG.MEMOIRE_PUSH`) et doublement gardé par l'absence de jeton, qui le DIT au lieu de se taire. Reprenable par curseur, mais l'idempotence ne vient PAS du curseur : elle vient de l'empreinte que la Mémoire calcule — perdre le curseur coûte du temps, jamais une donnée. `test/memoire.test.js` (12 cas, 6 mutations prouvées) verrouille la liste FERMÉE des champs poussés, l'absence de corps/montant/numéro même quand on en glisse dans la ligne d'Index, et l'absence d'émetteur sur un document N3. | 🟦 |
+| C28-118 — le niveau d'un domaine NOUVEAU est une décision, pas un défaut | Un test exige que CHAQUE domaine de `CONFIG.DOMAINES` et `DOMAINES_AUTO` ait sa ligne dans `NIVEAU_PAR_DOMAINE_MEMOIRE`, et que l'inverse soit vrai aussi (une ligne qui ne correspond à aucun domaine est morte). Sans lui, un domaine ajouté tomberait en silence sur le défaut — « un défaut de configuration n'est pas une décision ». | ✅ |
+| C28-119 — les faits TIRÉS de l'analyse (phase 1) | L'ADR-0059 §6 phase 1 : `faits[]` dans `PROMPT_PASSE2` et `PROMPT_INTENTIONS`, à coût marginal (l'appel est déjà payé). ⚠️ Protocole §11 : audit sur 20 documents réels AVANT, tableau nom / faits / verdict, et test de CONTENU du prompt avec marqueurs après chaque `+` (§9 : une chaîne concaténée dont un `+` manque est tronquée en SILENCE). Pas commencé — la phase 0 doit d'abord tourner et prouver sa chaîne. | ⬜ |
+| C28-120 — l'ADR-0059 dit `memoire.hubperso.com`, la réalité est `memoryai.hubperso.com` | L'ADR a été écrit avant le fork ; l'app publie `id: "memoryai"` et vit sur `memoryai.hubperso.com`. `CONFIG.MEMOIRE_URL` porte la vraie valeur avec la raison écrite à côté. Rien à corriger dans l'ADR (c'est un RÉCIT daté), mais une session qui le lit doit le savoir. | ✅ |
+
+---
+
 ## Chantier #47 — « pas de fichiers libres » : la racine d'un domaine n'est plus une cible (Marc, 2026-09-13)  🟦
 
 > Marc : « J'ai encore trop de fichiers non classés dans des sous dossiers, en bref je veux mes

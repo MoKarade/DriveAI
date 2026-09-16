@@ -460,6 +460,23 @@ var CONFIG = {
   // Domaine par défaut (catch-all) quand le LLM ne rend pas un domaine valide. Décision Marc
   // 2026-07-01 : plus de file de revue — un document non classable est rangé AU MIEUX ici (avec
   // son nom final propre), jamais laissé en limbo. « Administratif » = bucket générique le plus sûr.
+  // ── La Mémoire (ADR-0059 phase 0) ─────────────────────────────────────────────────────
+  // DriveAI dit à `memoryai.hubperso.com` ce qui EXISTE et où : un fait `document.existe` par
+  // document classé, ZÉRO appel LLM (tout se lit dans l'Index et dans le nom du fichier).
+  //
+  // ⚠️ ÉTEINT PAR DÉFAUT, et ce n'est pas de la prudence décorative : allumer ce flag fait
+  // SORTIR des métadonnées du compte Google de Marc. Le jeton (Script Property
+  // `DriveAI_MEMORYAI_TOKEN`) est le second verrou — sans lui, l'étape reste éteinte même
+  // allumée, et elle le DIT plutôt que de se taire.
+  MEMOIRE_PUSH: false,
+  // ⚠️ L'ADR-0059 écrivait `memoire.hubperso.com` ; l'app s'appelle MemoryAI et vit sur
+  // `memoryai.hubperso.com` (identité publiée au hub : `id: "memoryai"`). C'est la seconde
+  // qui fait foi — l'ADR a été écrit avant le fork.
+  MEMOIRE_URL: 'https://memoryai.hubperso.com',
+  // Une panne de la Mémoire ne se re-tente pas à chaque tick ; une suspension sans chemin de
+  // retour transformerait un incident d'une heure en perte permanente (§9).
+  MEMOIRE_RESONDE_MS: 60 * 60 * 1000,
+
   DOMAINE_DEFAUT: '01 · Administratif & identité',
   // ADR-0058 — domicile UNIQUE des revenus d'employeur (paies, RL-1). Constante et non littéral :
   // le libellé sert de CLÉ dans `CONFIG.DOMAINES` et `STRUCTURE_CIBLE_RESET`, donc une graphie qui
