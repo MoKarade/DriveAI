@@ -675,6 +675,21 @@ ce qui reste vrai d'une session à l'autre.
   ré-exécute. Et toute rejouabilité se déclare PAR APPELANT, sans défaut (un oubli ne compile pas) —
   le dépôt avait déjà tranché « `chat-assistant` PAS rejouable » ailleurs, et deux composants
   n'ont pas le droit de rendre des verdicts contraires sans se citer.
+- **Un contrat entre deux dépôts n'appartient à aucun des deux — et chacun le teste chez lui,
+  donc personne ne teste le chaînon.** Le 2026-09-16, l'envoi vers la Mémoire a été allumé,
+  les deux jetons posés, le code déployé, le tick vert : **4 000 faits refusés, zéro accepté**,
+  et rien nulle part. Nous poussions un champ `niveau`, son schéma `.strict()` n'accepte que
+  `niveau_propose`. Les deux côtés étaient testés — une liste FERMÉE ici (vie privée), un
+  schéma STRICT là-bas (injection) — et aucun des deux ne pouvait voir que les deux listes ne
+  se recouvrent pas. Parade : recopier la liste des champs ACCEPTÉS dans le dépôt émetteur,
+  avec sa source, et un test qui exige que tout champ produit y figure. Il ne prouve pas que la
+  recopie est fraîche (rien ici ne peut le savoir) ; il oblige à rouvrir le contrat au prochain
+  champ ajouté, ce qu'un `grep` ne fait jamais tout seul.
+  ⚠️ **Et ce qui a rendu la panne MUETTE est à part** : un refus de contrat arrive dans un
+  **HTTP 200**, et le compteur `refuses` était lu puis jeté — « 4 000 » sans le mot
+  `champ_inconnu` ne dit pas s'il faut corriger un champ, un prédicat ou une valeur. Un refus
+  se NOMME (la Mémoire envoyait le code ; nous ne le lisions pas), et une passe qui envoie sans
+  rien faire accepter le DIT au Journal : c'est une panne de contrat, pas un jour sans document.
 - **Un verdict se prend sur une LECTURE, jamais sur l'échec d'une MUTATION — et les mutations de
   test se jouent DANS LES DEUX SENS.** Apprendre « je n'ai pas le droit » en essayant puis en lisant
   la 403 fait naître la décision dans un `catch`, hors de la fonction de garde, donc sans qu'AUCUNE

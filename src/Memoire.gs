@@ -80,7 +80,21 @@ function niveauMemoire_(domaine) {
  * privée lit : un champ ajouté ici est un champ qu'on a DÉCIDÉ de faire sortir du compte
  * Google, jamais un champ qui a suivi une refacto.
  */
-var CHAMPS_FAIT_MEMOIRE = ['sujet', 'predicat', 'valeur', 'valeur_type', 'niveau', 'attributs', 'valide_de', 'provenance'];
+var CHAMPS_FAIT_MEMOIRE = ['sujet', 'predicat', 'valeur', 'valeur_type', 'niveau_propose', 'attributs', 'valide_de', 'provenance'];
+
+/**
+ * Les champs que `POST /api/faits` ACCEPTE (`faitSchema` de `lib/validerFait.ts`, `.strict()`).
+ *
+ * ⚠️ RECOPIÉS, et c'est assumé : ce moteur ne peut pas importer la Mémoire. Un champ que la
+ * liste ci-dessus porte et que celle-ci ignore est refusé `champ_inconnu` — **le lot entier**,
+ * sans qu'aucune erreur ne remonte, parce qu'un refus arrive dans un HTTP 200. C'est ce qui
+ * s'est passé le 2026-09-16 : nous poussions `niveau`, la Mémoire n'accepte que
+ * `niveau_propose` (elle prend le MAX de ce qu'on propose et de ce qu'elle dérive), et
+ * 4 000 faits ont été refusés en silence sur un canal que les deux côtés testaient — chacun
+ * le sien. Le test qui tient les deux ensemble est dans `test/memoire.test.js`.
+ */
+var CHAMPS_ACCEPTES_MEMOIRE = ['sujet', 'predicat', 'valeur', 'valeur_type', 'valide_de',
+  'valide_a', 'niveau_propose', 'confiance', 'fiabilite_source', 'attributs', 'provenance'];
 var CHAMPS_ATTRIBUTS_MEMOIRE = ['type', 'emetteur', 'annee'];
 var CHAMPS_PROVENANCE_MEMOIRE = ['source_type', 'source_ref', 'extracteur', 'date_source'];
 
@@ -122,7 +136,7 @@ function faitInventaireMemoire_(ligne) {
     predicat: 'document.existe',
     valeur: fileId,
     valeur_type: 'ref_document',
-    niveau: niveau,
+    niveau_propose: niveau,
     provenance: {
       source_type: 'document',
       source_ref: fileId,
@@ -199,7 +213,7 @@ function pousserInventaireMemoire_(garde) {
   // ne verrait plus jamais les documents rangés depuis (il n'y a pas de notification).
   if (curseur > dern) curseur = 2;
 
-  var res = { envoyes: 0, acceptes: 0, dejaPresents: 0, refuses: 0, fin: 'termine' };
+  var res = { envoyes: 0, acceptes: 0, dejaPresents: 0, refuses: 0, premierRefus: null, fin: 'termine' };
   var tampon = [];
   var ligne = curseur;
   while (ligne <= dern) {
@@ -228,6 +242,13 @@ function pousserInventaireMemoire_(garde) {
   // (ADR-0059 §6). Un run vert ne le prouve pas ; ce nombre qui monte, si.
   var emis = parseInt(props.getProperty('DriveAI_MEMOIRE_EMIS') || '0', 10) || 0;
   props.setProperty('DriveAI_MEMOIRE_EMIS', String(emis + res.acceptes));
+  // Une passe qui envoie et n'obtient AUCUNE acceptation est une panne de contrat, pas un
+  // jour sans document : elle se dit UNE fois, avec le motif que la Mémoire a donné. Sans
+  // ça, un HTTP 200 qui refuse tout ressemble exactement à un canal qui marche.
+  if (res.envoyes > 0 && res.acceptes === 0 && res.dejaPresents === 0) {
+    journalErreur_('Mémoire', 'Aucun fait accepté sur ' + res.envoyes + ' envoyés — '
+      + (res.premierRefus || 'motif non rendu par la Mémoire'));
+  }
   return res;
 }
 
@@ -238,6 +259,7 @@ function cumulerEnvoiMemoire_(res, envoi) {
   res.acceptes += envoi.acceptes;
   res.dejaPresents += envoi.dejaPresents;
   res.refuses += envoi.refuses;
+  if (!res.premierRefus && envoi.premierRefus) res.premierRefus = envoi.premierRefus;
 }
 
 /**
@@ -275,7 +297,12 @@ function envoyerLotMemoire_(lot, jeton, props) {
       recus: Number(corps.recus) || 0,
       acceptes: Number(corps.acceptes) || 0,
       dejaPresents: Number(corps.dejaPresents) || 0,
-      refuses: Array.isArray(corps.refuses) ? corps.refuses.length : 0
+      refuses: Array.isArray(corps.refuses) ? corps.refuses.length : 0,
+      // ⚠️ Un refus se NOMME, il ne se compte pas. « 4 000 refusés » ne dit pas s'il faut
+      // corriger un champ, un prédicat ou une valeur — et la Mémoire, elle, envoie le code.
+      premierRefus: (Array.isArray(corps.refuses) && corps.refuses.length)
+        ? String(corps.refuses[0].code || '?') + ' : ' + String(corps.refuses[0].raison || '')
+        : null
     };
   }
   if (code === 401 || code === 403) {
