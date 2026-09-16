@@ -464,11 +464,14 @@ var CONFIG = {
   // DriveAI dit à `memoryai.hubperso.com` ce qui EXISTE et où : un fait `document.existe` par
   // document classé, ZÉRO appel LLM (tout se lit dans l'Index et dans le nom du fichier).
   //
-  // ⚠️ ÉTEINT PAR DÉFAUT, et ce n'est pas de la prudence décorative : allumer ce flag fait
-  // SORTIR des métadonnées du compte Google de Marc. Le jeton (Script Property
-  // `DriveAI_MEMORYAI_TOKEN`) est le second verrou — sans lui, l'étape reste éteinte même
-  // allumée, et elle le DIT plutôt que de se taire.
-  MEMOIRE_PUSH: false,
+  // ⚠️ ALLUMÉ LE 2026-09-16, sur demande explicite de Marc. Ce n'est pas un défaut qu'on
+  // relève en passant : allumer ce flag fait SORTIR des métadonnées du compte Google de
+  // Marc (ADR-0059 §3 point 2). Le jeton (Script Property `DriveAI_MEMORYAI_TOKEN`) reste
+  // le SECOND verrou — sans lui rien ne part malgré ce `true`, et l'étape le DIT plutôt
+  // que de se taire. Le repasser à `false` est une décision du même ordre, jamais un repli
+  // de confort : `test/memoire.test.js` verrouille la valeur, et il l'a verrouillée dans
+  // l'autre sens jusqu'à aujourd'hui.
+  MEMOIRE_PUSH: true,
   // ⚠️ L'ADR-0059 écrivait `memoire.hubperso.com` ; l'app s'appelle MemoryAI et vit sur
   // `memoryai.hubperso.com` (identité publiée au hub : `id: "memoryai"`). C'est la seconde
   // qui fait foi — l'ADR a été écrit avant le fork.

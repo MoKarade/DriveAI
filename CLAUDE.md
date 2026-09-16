@@ -343,7 +343,8 @@ ce qui reste vrai d'une session à l'autre.
   nomme la frontière franchie ET le garde-fou obtenu en échange — jamais une permission nue.
   Pour la troisième : liste de champs FERMÉE et testée (`test/memoire.test.js`), niveau dérivé
   par le CODE depuis le domaine (04, 01 ⇒ N3), aucun émetteur sur un document N3, `MEMOIRE_PUSH`
-  éteint par défaut, jeton en second verrou, et ZÉRO appel LLM — tout se lit dans l'Index et dans
+  (livré éteint, **allumé par Marc le 2026-09-16** — un test verrouille sa valeur dans les deux
+  sens), jeton en second verrou, et ZÉRO appel LLM — tout se lit dans l'Index et dans
   le nom du fichier.
 - **Garde-fou étroit, calibré sur du réel.** Un flag de protection (ex. `sensible`) doit viser
   des catégories précises (immigration + fiscal), pas « true par défaut » — sinon tout part en

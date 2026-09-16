@@ -10,7 +10,7 @@
  *   3. le niveau est dérivé par le CODE, et tout domaine connu a sa ligne — un domaine
  *      ajouté sans décision fait rougir ce fichier, il ne tombe pas en silence sur un défaut ;
  *   4. un document N3 ne fait pas sortir son émetteur ;
- *   5. l'étape est ÉTEINTE par défaut.
+ *   5. la valeur du flag d'envoi est une DÉCISION, dans les deux sens.
  */
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -22,10 +22,15 @@ function ctx() {
   return load(['Config.gs', 'Consolidation.gs', 'Journal.gs', 'Memoire.gs']);
 }
 
-test('éteinte par défaut : CONFIG.MEMOIRE_PUSH est false', () => {
+// ⚠️ Ce cas s'est INVERSÉ le 2026-09-16, il ne s'est pas supprimé. Il a défendu « ce flag
+// ne s'allume pas tout seul » jusqu'à ce que Marc l'allume ; ce qu'il défend maintenant est
+// l'autre moitié de la même règle — il ne s'ÉTEINT pas tout seul non plus. Le supprimer
+// laisserait croire que la valeur n'a jamais été une décision, et le prochain refactor la
+// retournerait sans que rien ne rougisse.
+test('allumé par DÉCISION (Marc, 2026-09-16) : CONFIG.MEMOIRE_PUSH est true', () => {
   const c = ctx();
-  assert.strictEqual(c.CONFIG.MEMOIRE_PUSH, false,
-    'ce flag fait SORTIR des métadonnées du compte Google : il ne s\'allume pas tout seul');
+  assert.strictEqual(c.CONFIG.MEMOIRE_PUSH, true,
+    'ce flag fait SORTIR des métadonnées du compte Google : sa valeur est une décision, dans les deux sens');
 });
 
 test('un document classé devient UN fait document.existe, et rien de plus', () => {
