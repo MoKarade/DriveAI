@@ -388,3 +388,133 @@ test('un run MANUEL ne mange pas le budget du tick, et n\'est pas bridé par lui
   assert.strictEqual(props.ecrit.DriveAI_MEMOIRE_JOUR_MS, avant,
     'et il ne CONSOMME pas le budget du tick (la double peine de C28-33)');
 });
+
+/* ========================================================================================
+ * LES PIÈCES (ADR-0061, lot D1) — la frontière s'élargit, les gardes se déplacent
+ * ======================================================================================== */
+
+const LIGNE_BAIL = {
+  cle: 'drive|1AbCdEfGhIjKlMnOpQrStUvWxYz01',
+  nom: '2026-01-15_Bail_GestionImmo.pdf',
+  domaine: '03 · Logement & véhicule',
+  statut: 'classé',
+  chemin: '/03 · Logement & véhicule/Bail'
+};
+
+const EXTRAIT_BAIL = {
+  type: 'bail',
+  emetteur: 'Gestion Immo',
+  langue: 'fr',
+  date_document: '2026-01-15',
+  date_echeance: '2027-01-14',
+  resume: 'Bail de 12 mois, reconduction tacite.',
+  champs: { montants: [{ libelle: 'loyer mensuel', valeur: '1 250 $' }] },
+  libres: { 'téléphone du propriétaire': '418 555 0199' },
+  confiance: 0.9
+};
+
+test('une pièce porte le CONTENU du papier — c\'est la frontière que l\'ADR-0061 franchit', () => {
+  const c = ctx();
+  const p = c.pieceMemoire_(LIGNE_BAIL, EXTRAIT_BAIL);
+  assert.strictEqual(p.type, 'bail');
+  assert.strictEqual(p.emetteur, 'Gestion Immo');
+  assert.strictEqual(p.resume, 'Bail de 12 mois, reconduction tacite.');
+  assert.deepEqual(p.champs_structures.montants, [{ libelle: 'loyer mensuel', valeur: '1 250 $' }]);
+  assert.strictEqual(p.champs_libres['téléphone du propriétaire'], '418 555 0199');
+  assert.deepEqual(p.exemplaires, [{ file_id: '1AbCdEfGhIjKlMnOpQrStUvWxYz01', chemin: '/03 · Logement & véhicule/Bail' }]);
+  // Le niveau reste DÉRIVÉ par le code, et seulement PROPOSÉ : la Mémoire prend le MAX.
+  assert.strictEqual(p.niveau_propose, 2);
+});
+
+test('la liste des champs poussés est FERMÉE — pour les pièces aussi', () => {
+  const c = ctx();
+  const p = c.pieceMemoire_(LIGNE_BAIL, EXTRAIT_BAIL);
+  for (const k of Object.keys(p)) {
+    assert.ok(c.CHAMPS_PIECE_MEMOIRE.includes(k), `champ inattendu poussé : ${k}`);
+  }
+});
+
+test('CHAQUE champ de pièce poussé est un champ que la Mémoire ACCEPTE', () => {
+  const c = ctx();
+  // Le même chaînon que pour les faits, et la même panne à éviter : un `champ_inconnu`
+  // refuse le LOT ENTIER dans un HTTP 200.
+  for (const champ of c.CHAMPS_PIECE_MEMOIRE) {
+    assert.ok(c.CHAMPS_ACCEPTES_PIECE_MEMOIRE.includes(champ),
+      `« ${champ} » est poussé mais n'est pas dans le contrat des pièces`);
+  }
+  const p = c.pieceMemoire_(LIGNE_BAIL, EXTRAIT_BAIL);
+  for (const champ of Object.keys(p)) {
+    assert.ok(c.CHAMPS_ACCEPTES_PIECE_MEMOIRE.includes(champ), `champ hors contrat produit : ${champ}`);
+  }
+});
+
+test('le TITULAIRE vaut « inconnu » dès qu\'on n\'est pas sûr — jamais « Marc » par défaut', () => {
+  const c = ctx();
+  // Quatre formes du doute, et la même réponse : rien. C'est l'arbitrage de Marc du 16/09.
+  assert.deepEqual(c.titulaireMemoire_('', 0.9), { titulaire: null, confiance: null });
+  assert.deepEqual(c.titulaireMemoire_('Inconnu', 0.9), { titulaire: null, confiance: null });
+  assert.deepEqual(c.titulaireMemoire_('N/A', 0.9), { titulaire: null, confiance: null });
+  assert.deepEqual(c.titulaireMemoire_(null, null), { titulaire: null, confiance: null });
+  // Et le cas nominal, sinon la règle serait satisfaite par « ne rien rendre jamais ».
+  assert.deepEqual(c.titulaireMemoire_('Julie', 0.8), { titulaire: 'Julie', confiance: 0.8 });
+});
+
+test('un titulaire SANS confiance n\'est pas envoyé — la Mémoire refuserait la paire', () => {
+  const c = ctx();
+  assert.deepEqual(c.titulaireMemoire_('Julie', null), { titulaire: null, confiance: null });
+  assert.deepEqual(c.titulaireMemoire_('Julie', 'beaucoup'), { titulaire: null, confiance: null });
+  assert.deepEqual(c.titulaireMemoire_('Julie', 1.5), { titulaire: null, confiance: null });
+  const p = c.pieceMemoire_(LIGNE_BAIL, Object.assign({}, EXTRAIT_BAIL, { titulaire: 'Julie' }));
+  assert.ok(!('titulaire' in p), 'un titulaire sans confiance ne doit pas partir');
+  assert.ok(!('titulaire_confiance' in p));
+});
+
+test('le titulaire ne DÉCIDE de rien ici — ni niveau, ni domaine', () => {
+  const c = ctx();
+  const sans = c.pieceMemoire_(LIGNE_BAIL, EXTRAIT_BAIL);
+  const avec = c.pieceMemoire_(LIGNE_BAIL, Object.assign({}, EXTRAIT_BAIL, { titulaire: 'Julie', titulaire_confiance: 0.9 }));
+  // Une garde bâtie sur une lecture de modèle n'est pas une garde : le champ voyage, il ne
+  // pilote rien (ADR-0061 §9).
+  assert.strictEqual(avec.niveau_propose, sans.niveau_propose);
+  assert.strictEqual(avec.domaine, sans.domaine);
+});
+
+test('une extraction MUETTE ne fait pas perdre ce que le nom classé disait déjà', () => {
+  const c = ctx();
+  const p = c.pieceMemoire_(LIGNE_BAIL, { resume: 'Rien de lisible.' });
+  assert.strictEqual(p.type, 'Bail');
+  assert.strictEqual(p.emetteur, 'GestionImmo');
+  assert.strictEqual(p.date_document, '2026-01-15');
+});
+
+test('une famille de champs structurés INCONNUE est écartée, pas envoyée', () => {
+  const c = ctx();
+  // Le schéma de la Mémoire est `.strict()` sur cet objet aussi : une famille inventée
+  // refuserait le lot entier.
+  const p = c.pieceMemoire_(LIGNE_BAIL, Object.assign({}, EXTRAIT_BAIL, {
+    champs: { montants: [{ libelle: 'loyer', valeur: '1 250 $' }], recettes: [{ libelle: 'x', valeur: 'y' }] }
+  }));
+  assert.deepEqual(Object.keys(p.champs_structures), ['montants']);
+});
+
+test('les champs libres sont bornés au plafond de la Mémoire', () => {
+  const c = ctx();
+  const libres = {};
+  for (let i = 0; i < c.MAX_CHAMPS_LIBRES_MEMOIRE + 10; i++) libres['c' + i] = 'v';
+  const p = c.pieceMemoire_(LIGNE_BAIL, Object.assign({}, EXTRAIT_BAIL, { libres: libres }));
+  assert.strictEqual(Object.keys(p.champs_libres).length, c.MAX_CHAMPS_LIBRES_MEMOIRE);
+});
+
+test('une échéance ANTÉRIEURE à la date du document n\'est pas envoyée', () => {
+  const c = ctx();
+  // La Mémoire la refuse (`date-invalide`) : on n'envoie pas un lot qu'on sait refusé.
+  const p = c.pieceMemoire_(LIGNE_BAIL, Object.assign({}, EXTRAIT_BAIL, { date_echeance: '2020-01-01' }));
+  assert.ok(!('date_echeance' in p));
+});
+
+test('pas de pièce sans fileId, ni pour un document non classé', () => {
+  const c = ctx();
+  assert.strictEqual(c.pieceMemoire_({ cle: 'gmail|abc', nom: 'x.pdf', domaine: '02 · Finances', statut: 'classé' }, EXTRAIT_BAIL), null);
+  assert.strictEqual(c.pieceMemoire_(Object.assign({}, LIGNE_BAIL, { statut: 'doublon' }), EXTRAIT_BAIL), null);
+  assert.strictEqual(c.pieceMemoire_(null, EXTRAIT_BAIL), null);
+});

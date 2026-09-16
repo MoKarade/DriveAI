@@ -495,3 +495,224 @@ function phraseFinMemoire_(brut, emis, consommeJour, budgetJour) {
     ' (envoyés/acceptés/déjà là) à la ligne ' + (p[3] || '?') + ' — ' + motif +
     ' · ' + minutes + ' des ' + Math.round(budgetJour / 60000) + ' min/j consommées' + mode;
 }
+
+/* ========================================================================================
+ * LES PIÈCES — ce qu'un PAPIER contient (ADR-0061, chantier #49 lot D1)
+ * ======================================================================================== */
+
+/**
+ * ⚠️ CE QUI SORT DU COMPTE GOOGLE CHANGE ICI, ET L'ADR-0061 LE NOMME.
+ *
+ * Jusqu'à ce lot, un document ne faisait sortir qu'un `fileId` et ce que son NOM portait
+ * déjà. Une pièce fait sortir son CONTENU EXTRAIT : émetteur, dates, montants, numéros de
+ * référence, **numéros d'identité compris**, pour Marc ET pour ses proches. C'est la
+ * frontière que l'ADR-0061 §2 franchit, sur décision de Marc du 16/09, et les invariants 1
+ * et 3 de l'ADR-0059 §4 sont RÉVISÉS par elle — pas contournés en silence.
+ *
+ * Le garde-fou obtenu en échange est le même que pour les faits, et il tient au même
+ * endroit : la liste ci-dessous est FERMÉE, et `test/memoire.test.js` échoue si un champ s'y
+ * ajoute. Un champ qui sort est un champ qu'on a DÉCIDÉ de faire sortir.
+ */
+var CHAMPS_PIECE_MEMOIRE = ['sujet', 'type', 'emetteur', 'titulaire', 'titulaire_confiance',
+  'annee', 'domaine', 'langue', 'date_document', 'date_echeance', 'resume',
+  'champs_structures', 'champs_libres', 'exemplaires', 'niveau_propose', 'confiance', 'extracteur'];
+
+/**
+ * Les champs que `POST /api/pieces` ACCEPTE (`pieceSchema` de `lib/pieces/validerPiece.ts`,
+ * `.strict()`), dérivés là-bas de `CHAMPS_ACCEPTES_PIECE`.
+ *
+ * ⚠️ RECOPIÉS, comme `CHAMPS_ACCEPTES_MEMOIRE`, et pour la même raison qu'eux : un moteur
+ * Apps Script ne peut rien importer de la Mémoire. Un champ que nous poussons et qu'elle
+ * ignore fait refuser **le lot entier** en `champ_inconnu`, dans un HTTP 200, sans qu'aucune
+ * erreur ne remonte — 4 000 faits sont tombés comme ça le 16/09 sur un canal que les deux
+ * côtés testaient, chacun le sien. Le test qui tient les deux ensemble est dans
+ * `test/memoire.test.js`, et il ne prouve pas que la copie est FRAÎCHE (rien ici ne peut le
+ * savoir) : il oblige à rouvrir le contrat au prochain champ ajouté.
+ */
+var CHAMPS_ACCEPTES_PIECE_MEMOIRE = ['sujet', 'type', 'emetteur', 'titulaire',
+  'titulaire_confiance', 'annee', 'domaine', 'langue', 'date_document', 'date_echeance',
+  'resume', 'champs_structures', 'champs_libres', 'exemplaires', 'niveau_propose',
+  'confiance', 'extracteur'];
+
+/** Les familles de champs structurés que la Mémoire accepte (`FAMILLES_STRUCTUREES`). */
+var FAMILLES_STRUCTUREES_MEMOIRE = ['montants', 'numeros', 'personnes', 'lieux'];
+
+/** L'extracteur des pièces, versionné à part : il DIT quel prompt a produit le contenu. */
+var EXTRACTEUR_PIECE_MEMOIRE = 'haiku-4.5-piece-v1';
+
+/**
+ * Le TITULAIRE d'un papier — à qui il appartient — et sa confiance.
+ *
+ * ⚠️ « INCONNU » EST LA BONNE RÉPONSE, ET ELLE VAUT `null`. Jamais « Marc » par défaut : un
+ * document au nom de deux personnes, un formulaire vierge, un papier où aucun nom
+ * n'apparaît. Un défaut de configuration n'est pas une décision, et ici le défaut le plus
+ * prudent est celui qui n'attribue rien à personne (ADR-0061 §9, arbitrage de Marc).
+ *
+ * ⚠️ IL NE DÉCIDE DE RIEN ICI. Ni niveau, ni routage, ni domaine : ce serait une garde bâtie
+ * sur une lecture de modèle, ce que cet ADR ne fait nulle part. Il est POUSSÉ, et c'est la
+ * Mémoire qui en fera un réglage.
+ *
+ * ⚠️ SANS CONFIANCE, PAS DE TITULAIRE. La Mémoire refuse la paire incomplète
+ * (`titulaire-sans-confiance`) : une lecture de modèle qu'on ne peut pas pondérer serait crue
+ * sur parole, et rien ne distinguerait plus tard « c'est sûrement sa sœur » de « c'est sa
+ * sœur ». Plutôt que d'envoyer un lot qui sera refusé, on n'envoie pas le champ.
+ *
+ * @param {*} brut  ce que l'extraction a rendu
+ * @param {*} confiance  ce qu'elle dit de sa propre certitude
+ * @return {{titulaire:?string, confiance:?number}}
+ */
+function titulaireMemoire_(brut, confiance) {
+  var nom = String(brut == null ? '' : brut).trim();
+  var sentinelle = /^(inconnu|unknown|n\/?a|-|—|null|nil)$/i;
+  if (!nom || sentinelle.test(nom)) return { titulaire: null, confiance: null };
+  // ⚠️ ABSENTE N'EST PAS ZÉRO, et `Number(null)` vaut 0 — donc sans ce test, « le modèle
+  // n'a rien dit » deviendrait « le modèle est certain de ne pas savoir », et le titulaire
+  // partirait quand même, crédité d'une confiance qu'il n'a jamais donnée. C'est la règle
+  // du parc « une donnée illisible se COMPTE, elle ne se rabat pas sur zéro », appliquée à
+  // une mesure de certitude. Trouvé par le test, pas par la relecture.
+  if (confiance === null || confiance === undefined || confiance === '') {
+    return { titulaire: null, confiance: null };
+  }
+  var c = Number(confiance);
+  if (!isFinite(c) || c < 0 || c > 1) return { titulaire: null, confiance: null };
+  return { titulaire: nom.slice(0, 80), confiance: c };
+}
+
+/**
+ * Une pièce au format `POST /api/pieces`, ou null.
+ *
+ * PURE : ni Drive, ni réseau, ni horloge. Elle prend ce que l'Index sait déjà (domaine, nom
+ * classé) et ce que l'extraction a lu (résumé, champs, titulaire), et n'invente rien.
+ *
+ * ⚠️ RIEN SANS `fileId` : une pièce sans exemplaire ne se retrouve jamais — ni par DriveAI,
+ * ni par la Mémoire. La Mémoire la refuserait (`sans-exemplaire`) ; autant ne pas l'envoyer.
+ *
+ * ⚠️ LE NIVEAU RESTE DÉRIVÉ PAR LE CODE (`niveauMemoire_`), comme pour un fait. On le
+ * PROPOSE, la Mémoire prend le MAX du sien et du nôtre — donc une erreur de notre côté peut
+ * rendre une pièce plus protégée, jamais moins.
+ *
+ * @param {{cle:string, nom:string, domaine:string, statut:string, chemin:string}} ligne
+ * @param {{resume:?string, type:?string, emetteur:?string, langue:?string,
+ *          date_document:?string, date_echeance:?string, champs:?Object, libres:?Object,
+ *          titulaire:?string, titulaire_confiance:?number, confiance:?number}} extrait
+ * @return {?Object}
+ */
+function pieceMemoire_(ligne, extrait) {
+  if (!ligne) return null;
+  var fileId = fileIdDeCleIndex_(String(ligne.cle || ''));
+  if (!fileId) return null;
+  var statut = String(ligne.statut || '').toLowerCase();
+  if (statut.indexOf('class') !== 0) return null;
+
+  var e = extrait || {};
+  var seg = analyserNomClasse_(String(ligne.nom || ''));
+  var domaine = String(ligne.domaine || '') || null;
+  var tit = titulaireMemoire_(e.titulaire, e.titulaire_confiance);
+
+  var piece = {
+    sujet: 'marc',
+    domaine: domaine,
+    niveau_propose: niveauMemoire_(ligne.domaine),
+    extracteur: EXTRACTEUR_PIECE_MEMOIRE,
+    exemplaires: [{ file_id: fileId, chemin: String(ligne.chemin || '') || null }]
+  };
+
+  // Le type et l'émetteur viennent de l'extraction quand elle les a lus, du NOM sinon : le
+  // nom classé les porte déjà, et une extraction muette ne doit pas faire perdre ce qu'on
+  // savait avant elle.
+  var type = texteCourtMemoire_(e.type) || (seg.type ? String(seg.type) : null);
+  if (type) piece.type = type.slice(0, 80);
+  var emetteur = texteCourtMemoire_(e.emetteur) || (seg.tiers ? String(seg.tiers) : null);
+  if (emetteur) piece.emetteur = emetteur.slice(0, 80);
+
+  if (tit.titulaire) {
+    piece.titulaire = tit.titulaire;
+    piece.titulaire_confiance = tit.confiance;
+  }
+
+  var annee = Number(e.annee || seg.annee);
+  if (isFinite(annee) && annee >= 1900 && annee <= 2100) piece.annee = annee;
+
+  var langue = texteCourtMemoire_(e.langue);
+  if (langue) piece.langue = langue.slice(0, 5);
+
+  var dateDoc = dateIsoMemoire_(e.date_document) || dateDuNomClasse_(String(ligne.nom || ''));
+  if (dateDoc) piece.date_document = dateDoc;
+  var dateEch = dateIsoMemoire_(e.date_echeance);
+  // Une échéance antérieure à la date du document est refusée par la Mémoire
+  // (`date-invalide`) : on n'envoie pas un lot qu'on sait refusé.
+  if (dateEch && (!dateDoc || dateEch >= dateDoc)) piece.date_echeance = dateEch;
+
+  var resume = texteCourtMemoire_(e.resume);
+  if (resume) piece.resume = resume.slice(0, 600);
+
+  var structures = champsStructuresMemoire_(e.champs);
+  if (structures) piece.champs_structures = structures;
+  var libres = champsLibresMemoire_(e.libres);
+  if (libres) piece.champs_libres = libres;
+
+  var conf = Number(e.confiance);
+  if (isFinite(conf) && conf >= 0 && conf <= 1) piece.confiance = conf;
+
+  return piece;
+}
+
+/** Un texte court, nettoyé, ou null. Les sentinelles d'un LLM comptent comme absentes. */
+function texteCourtMemoire_(brut) {
+  var s = String(brut == null ? '' : brut).replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  return /^(inconnu|unknown|n\/?a|-|—|null|nil)$/i.test(s) ? null : s;
+}
+
+/** Une date `AAAA-MM-JJ`, ou null. STRICT : une date partielle n'est pas une date. */
+function dateIsoMemoire_(brut) {
+  var m = /^(\d{4}-\d{2}-\d{2})$/.exec(String(brut == null ? '' : brut).trim());
+  return m ? m[1] : null;
+}
+
+/**
+ * Les champs STRUCTURÉS, bornés aux familles que la Mémoire connaît.
+ *
+ * ⚠️ Une famille inconnue est ÉCARTÉE, pas envoyée : le schéma de la Mémoire est `.strict()`
+ * sur cet objet aussi, et un `champ_inconnu` refuserait le lot entier.
+ */
+function champsStructuresMemoire_(brut) {
+  if (!brut || typeof brut !== 'object') return null;
+  var out = {};
+  var garde = false;
+  for (var i = 0; i < FAMILLES_STRUCTUREES_MEMOIRE.length; i++) {
+    var famille = FAMILLES_STRUCTUREES_MEMOIRE[i];
+    var liste = brut[famille];
+    if (!liste || !liste.length) continue;
+    var entrees = [];
+    for (var j = 0; j < liste.length; j++) {
+      var libelle = texteCourtMemoire_(liste[j] && liste[j].libelle);
+      var valeur = texteCourtMemoire_(liste[j] && liste[j].valeur);
+      if (libelle && valeur) entrees.push({ libelle: libelle.slice(0, 80), valeur: valeur.slice(0, 500) });
+    }
+    if (entrees.length) { out[famille] = entrees; garde = true; }
+  }
+  return garde ? out : null;
+}
+
+/**
+ * Les champs LIBRES. Bornés au plafond de la Mémoire (40 clés) : au-delà elle refuse le lot,
+ * et une pièce n'est pas le texte intégral du document.
+ */
+var MAX_CHAMPS_LIBRES_MEMOIRE = 40;
+
+function champsLibresMemoire_(brut) {
+  if (!brut || typeof brut !== 'object') return null;
+  var out = {};
+  var n = 0;
+  for (var cle in brut) {
+    if (!Object.prototype.hasOwnProperty.call(brut, cle)) continue;
+    if (n >= MAX_CHAMPS_LIBRES_MEMOIRE) break;
+    var c = texteCourtMemoire_(cle);
+    var v = texteCourtMemoire_(brut[cle]);
+    if (!c || !v) continue;
+    out[c.slice(0, 60)] = v.slice(0, 500);
+    n++;
+  }
+  return n ? out : null;
+}
