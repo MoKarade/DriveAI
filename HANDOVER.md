@@ -2739,14 +2739,28 @@ Détail des tâches : `BACKLOG.md`.
    nécessaire — DriveAI ne peut pas le faire à sa place (frontière d'exécution). Sera annoncé clairement
    le moment venu, avec une fonction « un clic » dédiée si possible.
 2. 🔑 **Révoquer l'ancienne clé Anthropic** partagée dans le chat (compromise), si pas déjà fait.
-2 bis. 🧠 **L'envoi vers la Mémoire** (chantier #48, ADR-0059 phase 0) — `MEMOIRE_PUSH` est
-   **allumé depuis le 2026-09-16** (décision de Marc, PR de C28-117 bis) et les **deux jetons
-   sont posés** (mesuré le 16/09 : 80 lots reçus par la Mémoire en HTTP 200).
-   ⚠️ **Le canal a tourné à vide ce jour-là, et le savoir a coûté une heure** : nous poussions
-   un champ `niveau`, la Mémoire n'accepte que `niveau_propose` — donc `champ_inconnu` sur
-   **4 000 faits**, dans un HTTP 200, sans une ligne au Journal. Corrigé par C28-118 (le champ,
-   plus le motif de refus qui est désormais NOMMÉ au Journal au lieu d'être compté puis jeté).
-   Le premier tick après déploiement fait monter `DriveAI_MEMOIRE_EMIS` et remplit `/a-valider`.
+2 bis. 🧠 **L'envoi vers la Mémoire** (chantier #48, ADR-0059 phase 0) — **ÇA TRANSPORTE**, et
+   c'est mesuré : le 2026-09-16 à 10:40 (Québec), une passe a fait accepter **2 348 faits**
+   (`refuses: 0`, plus 52 `dejaPresents` qui prouvent la déduplication par empreinte), et
+   MemoryAI affiche **2 725 faits en attente** — N1 1 691 · N2 1 027 · N3 84. `MEMOIRE_PUSH`
+   est allumé depuis le matin (décision de Marc, C28-117 bis) et les deux jetons sont posés.
+   Le reste des ~19 900 documents entre tick après tick (`fin: "budget"` est le cas normal :
+   la passe s'arrête au budget et reprend au tick suivant), sans un appel LLM.
+   ⚠️ **Il a fallu TROIS causes empilées pour y arriver, chacune masquée par la précédente** —
+   et les trois étaient silencieuses :
+   1. un **nom de champ faux** (`niveau` au lieu de `niveau_propose`) : 4 000 faits refusés en
+      `champ_inconnu`, dans des HTTP 200, sans une ligne au Journal. Corrigé par C28-118, qui
+      ajoute aussi le motif de refus NOMMÉ au Journal au lieu d'un compteur muet ;
+   2. une **rotation de jeton à moitié faite** (nouvelle valeur côté Vercel, ancienne côté
+      Apps Script) : `Jeton refusé (401)` à chaque tick ;
+   3. un **onglet d'éditeur ouvert avant le `clasp push`**, qui a réécrit le projet avec sa
+      copie périmée — déploiement vert, fichier listé, et l'ancien code qui tourne quand même.
+      Réglé en fermant l'éditeur, re-poussant (run 346), puis rouvrant une page neuve.
+      Cf. `CLAUDE.md` §9, entrée dédiée : ce n'est PAS le piège (3), c'en est l'inverse.
+   ⚠️ **Reste à confirmer** (au 16/09 10:45) : que le **TICK AUTOMATIQUE** pousse, et pas
+   seulement l'exécution manuelle depuis l'éditeur. `aValider` valait toujours exactement
+   2 725 cinq minutes après. Le signal qui tranche est ce que la production écrit ENTRE deux
+   ticks, jamais le résultat d'un lancement à la main.
    Pour mémoire, les deux gestes de pose — il ne se passe rien tant que les deux ne sont pas
    faits, le flag allumé sans jeton n'ouvrant rien par construction :
    1. dans MemoryAI (Vercel → `memory-ai` → Environment Variables) poser
@@ -2764,6 +2778,11 @@ Détail des tâches : `BACKLOG.md`.
    ⚠️ **Comment savoir que ça marche** — pas le run vert, mais le compteur : Propriétés du script →
    `DriveAI_MEMOIRE_EMIS` doit MONTER, et les faits apparaissent dans `/a-valider` de MemoryAI.
    Si `DriveAI_MEMOIRE_SUSPENDU_RAISON` existe, elle dit ce qui bloque.
+   ⚠️ **La file « à valider » va atteindre ~19 000**, et c'est voulu par l'ADR-0059 (un fait
+   `propose` issu d'un document classé est SERVI, étiqueté, avant validation). À cette taille
+   `/a-valider` cesse d'être une file qu'un humain parcourt : le `CLAUDE.md` de MemoryAI nomme
+   ce point comme « le vrai risque du projet ». À trancher quand Marc aura vu l'écran — ce
+   n'est pas une panne, c'est une décision de produit qui l'attend.
 3. *(`P1-09` — fait)* le coût LLM réel est désormais **mesuré** (`Cout.gs`, tokens `usage` agrégés
    par mois) et **affiché chaque semaine** dans le résumé hebdo automatique (`Resume.gs`). Plus besoin
    d'estimer : à observer sur le 1er mois réel pour confirmer < 10 $/mois.
