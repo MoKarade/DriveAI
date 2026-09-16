@@ -238,15 +238,17 @@ var CONFIG = {
   // times » le 06/07) et le TRI vivant était affamé toute la journée (4-17 fils triés/j). Le quota
   // d'appels est PARTAGÉ : la seule protection du tri est de borner la consommation TOTALE de la
   // campagne, pas seulement son runtime. La campagne finit plus lentement — c'est le prix accepté.
-  GMAIL_HISTO_PRETEES_MIN: 8,             // minutes DÉJÀ prêtées par ce donneur (ADR-0056). La ligne de
+  GMAIL_HISTO_PRETEES_MIN: 12,            // minutes DÉJÀ prêtées par ce donneur (ADR-0056, puis C28-135 :
+                                          // 8 → 12, les 4 nouvelles vont à la Mémoire). La ligne de
                                           // santé les DIT, sinon la prochaine session lit « ses 12 min/j
                                           // sont RÉALLOUABLES » exactement comme celle-ci a lu « 20 » et
                                           // prête une seconde fois les mêmes minutes (🟡 revue sécurité).
-  GMAIL_HISTO_BUDGET_JOUR_MS: 12 * 60 * 1000, // 20 → 12 (ADR-0056) : 8 min prêtées à la re-analyse
-                                          // ciblée de `06`. Donneur choisi parce que le moteur ÉCRIT
-                                          // « Historique Gmail : terminée ✅ — ses 20 min/j sont
-                                          // RÉALLOUABLES » : une campagne finie rend ses minutes, et
-                                          // c'est SA ligne de santé qui le dit, pas une supposition.
+  GMAIL_HISTO_BUDGET_JOUR_MS: 8 * 60 * 1000, // 20 → 12 (ADR-0056) → 8 (C28-135) : 8 min prêtées à la
+                                          // re-analyse ciblée de `06`, puis 4 à la Mémoire. Donneur
+                                          // choisi parce que le moteur ÉCRIT « Historique Gmail :
+                                          // terminée ✅ — ses N min/j sont RÉALLOUABLES » : une campagne
+                                          // finie rend ses minutes, et c'est SA ligne de santé qui le
+                                          // dit, pas une supposition (re-LU le 16/09 avant de prélever).
   // Frein d'appels API par RUN (C28-15) : au plus N fils PARCOURUS par run (lus depuis Gmail,
   // indexés ou non) — les passes de VÉRIFICATION re-lisent des fils entiers « pour rien » côté
   // quota d'appels (les PJ indexées sont gratuites côté LLM, PAS côté Gmail). NB : une page fait
@@ -479,6 +481,17 @@ var CONFIG = {
   // Une panne de la Mémoire ne se re-tente pas à chaque tick ; une suspension sans chemin de
   // retour transformerait un incident d'une heure en perte permanente (§9).
   MEMOIRE_RESONDE_MS: 60 * 60 * 1000,
+  // ⚠️ C28-135 — l'étape N'AVAIT AUCUN budget quotidien : c'était une ADDITION nette à
+  // l'enveloppe (leçon §9, « RÉALLOUER, jamais AUGMENTER »), et le test d'invariant est
+  // structurellement AVEUGLE à une étape sans constante — il restait vert pendant que
+  // l'enveloppe croissait. Ces 4 min/j sont PRÉLEVÉES sur `GMAIL_HISTO_BUDGET_JOUR_MS`
+  // (12 → 8), donc la somme des campagnes reste EXACTEMENT 63 min/j.
+  // Dimensionnement : ~19 900 documents ÷ 50 par lot = ~400 POST, à ~1 s l'un ⇒ ~7 min de
+  // runtime au TOTAL pour le rattrapage complet, puis quasi rien en régime (le curseur ne
+  // relit que ce qui s'est ajouté). 4 min/j finit donc le stock en deux jours.
+  MEMOIRE_BUDGET_JOUR_MS: 4 * 60 * 1000,
+  MEMOIRE_BUDGET_MS: 60 * 1000,           // sous-budget par RUN : l'étape est en fin de `finally`,
+                                          // et le mur dur d'Apps Script est à 6 min.
 
   DOMAINE_DEFAUT: '01 · Administratif & identité',
   // ADR-0058 — domicile UNIQUE des revenus d'employeur (paies, RL-1). Constante et non littéral :

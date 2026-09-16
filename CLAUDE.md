@@ -1180,6 +1180,25 @@ ce qui reste vrai d'une session à l'autre.
   la suite reste verte, elle n'est pas testée — quoi qu'en dise son jsdoc. Et le corpus de preuve
   doit contenir la population que la garde PROTÈGE : un corpus dont chaque ligne est sauvée par une
   AUTRE règle ne peut rien détecter.
+- **Une étape en FIN de `finally` n'est pas « servie en dernier » : elle n'est PAS servie — et
+  si elle ne DIT rien en sortant, la panne est invisible.** Deux défauts distincts, payés
+  ensemble le 16/09 (C28-135). (a) L'envoi à la Mémoire était le dernier de la file du
+  `finally`, donc il recevait le reliquat de budget TAIL d'un tick qui l'avait déjà dépensé :
+  zéro fait poussé pendant une heure, pendant que le tick tournait toutes les 5 min et que le
+  canal venait d'accepter 2 348 faits À LA MAIN. C'est mot pour mot l'incident de la
+  consolidation du 23/07 — **l'ORDRE prime sur les budgets**, et les deux voisines qui la
+  précédaient étaient moins pressées qu'elle (une sweep quotidienne, une campagne TERMINÉE).
+  (b) La sortie sur garde-temps n'écrivait RIEN : pas de Journal (le seul `journalErreur_`
+  visait un refus total), pas de compteur, pas de ligne de Santé — donc « rien à envoyer »,
+  « jamais atteinte » et « suspendue » avaient le MÊME symptôme, le silence. Réflexe, pour
+  toute étape de tick : **lister ses sorties, et vérifier que chacune écrit son motif** (ici
+  `DriveAI_MEMOIRE_FIN` = `<ISO>|<fin>|<envoyés/acceptés/déjà>|<ligne>/<dernière>`, une seule
+  fonction l'écrit pour qu'aucun `return` ne l'oublie, et `majSante_` la rend lisible sans rien
+  exécuter). C'est la règle « 0/0 et 0/6 ne disent pas la même chose » appliquée à une étape
+  entière. ⚠️ Corollaire : cette étape tournait aussi **sans aucune constante `*_BUDGET_JOUR_MS`**
+  — donc l'invariant d'enveloppe restait vert pendant qu'elle s'ajoutait au quota runtime. C'est
+  l'angle mort déjà nommé en C28-42, re-payé : ses 4 min/j sont désormais PRÉLEVÉES sur
+  l'historique Gmail (12 → 8), et `test/orchestration.test.js` en fait sa 10ᵉ jambe.
 - **Un déclencheur que le tick RÉINSTALLE ne se coupe pas à la main.** « Ne plus créer » ne
   suffit pas : la coupure livre AUSSI la suppression de l'existant (`deleteTrigger` sous le même
   flag), sinon l'ancien continue de partir et l'utilisateur, qui l'a supprimé une fois, le voit

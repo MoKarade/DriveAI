@@ -193,15 +193,70 @@ var MEMOIRE_LOT_MAX = 50;
  * @param {function():boolean} garde
  * @return {{envoyes:number, acceptes:number, dejaPresents:number, refuses:number, fin:string}}
  */
-function pousserInventaireMemoire_(garde) {
+function pousserInventaireMemoire_(garde, opts) {
+  var props = PropertiesService.getScriptProperties();
+  return noterFinMemoire_(props, passeMemoire_(props, garde, opts || {}));
+}
+
+/**
+ * Le SIGNAL, et il n'y a qu'UN endroit qui l'écrit — donc aucune sortie ne peut l'oublier.
+ *
+ * ⚠️ C28-135, et c'est la leçon « 0/0 et 0/6 ne disent pas la même chose » payée une fois de
+ * plus : jusqu'ici l'étape ne parlait QUE pour se plaindre (`journalErreur_` sur un refus
+ * total). Une passe qui sortait sur son garde-temps écrivait zéro ligne, zéro erreur, et
+ * laissait `aValider` figé — indiscernable de « il n'y avait rien à envoyer ». Le 16/09, le
+ * canal a été réparé puis a poussé 2 348 faits À LA MAIN, et le tick n'en a plus poussé un
+ * seul pendant une heure sans qu'AUCUNE surface ne puisse dire pourquoi.
+ *
+ * `DriveAI_MEMOIRE_FIN` = `<ISO>|<fin>|<envoyés>/<acceptés>/<déjà>|<ligne>/<dernière>`. Lu par
+ * `majSante_`, donc visible dans `etat_moteur` — un signal qu'on peut lire sans exécuter quoi
+ * que ce soit, ce que le piège 3 (§9) exige.
+ */
+function noterFinMemoire_(props, res) {
+  try {
+    props.setProperty('DriveAI_MEMOIRE_FIN', ligneFinMemoire_(new Date(), res));
+  } catch (e) { /* observabilité best-effort : jamais bloquante */ }
+  return res;
+}
+
+/** PURE : la ligne persistée. Testable sans Property, sans horloge, sans réseau. */
+function ligneFinMemoire_(maintenant, res) {
+  return [
+    maintenant.toISOString(),
+    res.fin,
+    res.envoyes + '/' + res.acceptes + '/' + res.dejaPresents,
+    (res.ligne || 0) + '/' + (res.dernLigne || 0)
+  ].join('|');
+}
+
+/** Consommation du budget QUOTIDIEN (ms réelles persistées `AAAA/MM/JJ|ms`). PUR sur props. */
+function budgetJourMemoire_(props, aujourdhui) {
+  var brut = String(props.getProperty('DriveAI_MEMOIRE_JOUR_MS') || '');
+  var sep = brut.indexOf('|');
+  if (sep === -1) return 0;
+  return brut.slice(0, sep) === aujourdhui ? (Number(brut.slice(sep + 1)) || 0) : 0;
+}
+
+/** Le travail. Tous les retours passent par `noterFinMemoire_` — ne pas l'appeler ailleurs. */
+function passeMemoire_(props, garde, opts) {
   var rien = { envoyes: 0, acceptes: 0, dejaPresents: 0, refuses: 0, fin: 'desactive' };
   if (!CONFIG.MEMOIRE_PUSH) return rien;
-  var props = PropertiesService.getScriptProperties();
   var jeton = props.getProperty('DriveAI_MEMORYAI_TOKEN');
   // Pas de jeton ⇒ éteint, et on le DIT : « allumé sans jeton » et « éteint » ne sont pas la
   // même situation, et la première demande un geste de Marc.
   if (!jeton) { rien.fin = 'jeton-absent'; return rien; }
   if (memoireSuspendue_(props)) { rien.fin = 'suspendu'; return rien; }
+
+  // ⚠️ Le budget QUOTIDIEN protège le quota runtime des DÉCLENCHEURS (~90 min/j). Une
+  // exécution MANUELLE depuis l'éditeur en est HORS : l'y soumettre serait la DOUBLE peine
+  // de C28-33 (Marc bloqué jusqu'au lendemain sans qu'aucun quota réel soit en cause, ET son
+  // run consommant le budget du tick). Le drapeau coupe le gate ET le comptage.
+  var aujourdhui = dateGmail_(new Date());
+  var consommeJour = opts.manuel ? 0 : budgetJourMemoire_(props, aujourdhui);
+  if (consommeJour >= CONFIG.MEMOIRE_BUDGET_JOUR_MS) {
+    rien.fin = 'budget-jour';
+    return rien;
+  }
 
   var f = feuille_('Index');
   var dern = f.getLastRow();
@@ -213,11 +268,18 @@ function pousserInventaireMemoire_(garde) {
   // ne verrait plus jamais les documents rangés depuis (il n'y a pas de notification).
   if (curseur > dern) curseur = 2;
 
-  var res = { envoyes: 0, acceptes: 0, dejaPresents: 0, refuses: 0, premierRefus: null, fin: 'termine' };
+  var res = { envoyes: 0, acceptes: 0, dejaPresents: 0, refuses: 0, premierRefus: null,
+    fin: 'termine', ligne: curseur, dernLigne: dern };
   var tampon = [];
   var ligne = curseur;
+  var debutRun = Date.now();
+  var budgetRun = opts.manuel ? Infinity
+    : Math.min(CONFIG.MEMOIRE_BUDGET_MS, CONFIG.MEMOIRE_BUDGET_JOUR_MS - consommeJour);
+  var gardeRun = function () {
+    return (garde && garde()) || (Date.now() - debutRun) > budgetRun;
+  };
   while (ligne <= dern) {
-    if (garde && garde()) { res.fin = 'budget'; break; }
+    if (gardeRun()) { res.fin = 'budget'; break; }
     var n = Math.min(MEMOIRE_LIGNES_PAR_LECTURE, dern - ligne + 1);
     var v = f.getRange(ligne, 1, n, 6).getValues();
     for (var i = 0; i < v.length; i++) {
@@ -238,6 +300,13 @@ function pousserInventaireMemoire_(garde) {
     else res.fin = dernier.raison;
   }
   props.setProperty('DriveAI_MEMOIRE_CURSEUR', String(ligne));
+  res.ligne = ligne;
+  // Le budget consommé se pose ICI, jamais avant : une passe qui n'a rien pu faire ne doit pas
+  // manger la journée. Patron `majHistoriqueVrac_`/`majValidationDoublons_`.
+  if (!opts.manuel) {
+    props.setProperty('DriveAI_MEMOIRE_JOUR_MS',
+      aujourdhui + '|' + (consommeJour + (Date.now() - debutRun)));
+  }
   // Le compteur cumulé : le signal INDÉPENDANT qui dit que le code déployé tourne vraiment
   // (ADR-0059 §6). Un run vert ne le prouve pas ; ce nombre qui monte, si.
   var emis = parseInt(props.getProperty('DriveAI_MEMOIRE_EMIS') || '0', 10) || 0;
@@ -331,4 +400,50 @@ function memoireSuspendue_(props) {
     return false;
   }
   return true;
+}
+
+/**
+ * La ligne de Santé — c'est ELLE qui rend `DriveAI_MEMOIRE_FIN` lisible sans rien exécuter.
+ * Impure (Properties) ; la mise en mots est dans `phraseFinMemoire_`, PURE et testée.
+ */
+function texteSanteMemoire_() {
+  if (!CONFIG.MEMOIRE_PUSH) return 'désactivée (CONFIG)';
+  try {
+    var props = PropertiesService.getScriptProperties();
+    return phraseFinMemoire_(
+      props.getProperty('DriveAI_MEMOIRE_FIN') || '',
+      Number(props.getProperty('DriveAI_MEMOIRE_EMIS')) || 0,
+      budgetJourMemoire_(props, dateGmail_(new Date())),
+      CONFIG.MEMOIRE_BUDGET_JOUR_MS
+    );
+  } catch (e) {
+    return '⚠️ état illisible (' + e + ')';
+  }
+}
+
+/**
+ * PURE. Une passe qui n'a RIEN envoyé ne se lit pas comme une journée sans document : le motif
+ * est nommé, en français, et il désigne le geste. « aucune passe enregistrée » est un état à
+ * part — c'est celui d'un code qui n'a jamais tourné, la question même du piège 3 (§9).
+ */
+var PHRASES_FIN_MEMOIRE_ = {
+  'termine': 'tout l\'Index a été parcouru',
+  'budget': 'coupée par le garde-temps du tick (reprend au tick suivant)',
+  'budget-jour': 'budget du jour épuisé — reprise demain',
+  'suspendu': '⚠️ SUSPENDUE après un refus de la Mémoire — re-sonde automatique',
+  'jeton-absent': '⚠️ allumée SANS jeton (`DriveAI_MEMORYAI_TOKEN`) — geste de Marc requis',
+  'desactive': 'désactivée (CONFIG)',
+  'index-vide': 'Index vide',
+  'jeton-refuse': '⚠️ jeton REFUSÉ par la Mémoire — geste de Marc requis'
+};
+
+function phraseFinMemoire_(brut, emis, consommeJour, budgetJour) {
+  if (!brut) return '⚠️ aucune passe enregistrée — l\'étape n\'a jamais tourné depuis le déploiement';
+  var p = String(brut).split('|');
+  var fin = p[1] || '?';
+  var motif = PHRASES_FIN_MEMOIRE_[fin] || ('sortie « ' + fin + ' »');
+  var minutes = Math.round((consommeJour / 60000) * 10) / 10;
+  return emis + ' faits acceptés au total · dernière passe : ' + (p[2] || '?') +
+    ' (envoyés/acceptés/déjà là) à la ligne ' + (p[3] || '?') + ' — ' + motif +
+    ' · ' + minutes + ' des ' + Math.round(budgetJour / 60000) + ' min/j consommées';
 }

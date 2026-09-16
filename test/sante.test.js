@@ -41,8 +41,12 @@ function chargerAvecSanteMock(indexCache, props) {
   // `Migration.gs` : `texteSanteReanalyse_` lit `budgetJourReanalyse_` — contrat INTER-MODULE.
   // Chargé POUR DE VRAI et non mocké : une mutation du nom doit tomber ici (elle a SURVÉCU à la
   // première écriture de ce test, qui ne sortait jamais de la branche « en attente »).
+  // `Memoire.gs` : la ligne « Mémoire (inventaire) » (C28-135) appelle `texteSanteMemoire_`, qui
+  // lit `budgetJourMemoire_` — même exigence inter-module que `Migration.gs` ci-dessus. Chargé
+  // POUR DE VRAI : mocké, une mutation du nom survivrait, et c'est ce fichier qui est censé la
+  // faire tomber.
   const ctx = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'GoogleApi.gs', 'TriGmail.gs', 'Doublons.gs',
-    'Gmail.gs', 'Migration.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
+    'Gmail.gs', 'Migration.gs', 'Memoire.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
     { PropertiesService: mockProps(props) });
   const captured = [];
   // feuille_ mocké : capture l'unique setValues de « Santé » ; `getLastRow: 1` = rapport des
@@ -55,13 +59,17 @@ function chargerAvecSanteMock(indexCache, props) {
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 10 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 11 lignes de métadonnées (une seule écriture Sheet)', () => {
   // 10 depuis ADR-0056 : la re-datation de `06` rallume de la dépense LLM et son budget du jour
   // n'était lisible NULLE PART. Le compte est figé pour que l'ajout d'une ligne soit une DÉCISION —
   // l'écriture est unique par tick, et chaque ligne coûte de la place à l'écran de Marc.
+  // 11 depuis C28-135 : l'envoi à la Mémoire n'écrivait RIEN quand il sortait sur son garde-temps
+  // (16/09 : une heure de silence pour un canal qui venait d'accepter 2 348 faits). Même
+  // justification que les trois lignes voisines — le registre de suivi C28-44 est saturé, la
+  // campagne ne peut pas s'y déclarer, donc elle se dit ICI.
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 10);
+  assert.strictEqual(captured.length, 11);
   assert.ok(captured.every((l) => typeof l === 'string'));
 });
 
