@@ -338,8 +338,13 @@ ce qui reste vrai d'une session à l'autre.
   log doit respecter cet invariant (à verrouiller par un test, roadmap #1).
   **Ce qui SORT du compte Google de Marc se juge à part, et se tranche par un ADR** : le texte des
   documents vers claude.ai (ADR-0042 §3), le nom du dernier document classé vers hubperso.com
-  (ADR-0057 §3). Chaque sortie nomme la frontière franchie ET le garde-fou obtenu en échange —
-  jamais une permission nue.
+  (ADR-0057 §3), et **l'inventaire vers la Mémoire** (ADR-0059 §3 point 2 — un fait
+  `document.existe` par document classé, sa VALEUR est un `fileId`, `Memoire.gs`). Chaque sortie
+  nomme la frontière franchie ET le garde-fou obtenu en échange — jamais une permission nue.
+  Pour la troisième : liste de champs FERMÉE et testée (`test/memoire.test.js`), niveau dérivé
+  par le CODE depuis le domaine (04, 01 ⇒ N3), aucun émetteur sur un document N3, `MEMOIRE_PUSH`
+  éteint par défaut, jeton en second verrou, et ZÉRO appel LLM — tout se lit dans l'Index et dans
+  le nom du fichier.
 - **Garde-fou étroit, calibré sur du réel.** Un flag de protection (ex. `sensible`) doit viser
   des catégories précises (immigration + fiscal), pas « true par défaut » — sinon tout part en
   revue et l'auto-rangement est neutralisé. Le défaut prudent ne sert que pour les réponses LLM

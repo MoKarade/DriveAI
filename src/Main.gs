@@ -734,6 +734,19 @@ function tickDriveAI() {
       // Santé et son onglet `RapportDoublons` (ADR-0047 §6). Enveloppée : un échec ne bloque rien.
       try { majValidationDoublons_(estBudgetDepasseStandard); }
       catch (e) { journalErreur_('Doublons', 'Validation des doublons impossible : ' + e); }
+      // La Mémoire (ADR-0059 phase 0) : DriveAI lui dit ce qui EXISTE et où. I/O pur, ZÉRO
+      // LLM ⇒ budget TAIL, comme la validation ci-dessus. ÉTEINTE par défaut
+      // (`CONFIG.MEMOIRE_PUSH`) et doublement gardée par l'absence de jeton.
+      //
+      // ⚠️ PAS d'`etapeSuivie_`, pour la MÊME raison que la ligne juste au-dessus : le
+      // registre C28-44 est saturé (8 377/8 500 octets, ~199 par entrée) et une clé de plus
+      // ferait échouer son tripwire. La visibilité passe par le compteur
+      // `DriveAI_MEMOIRE_EMIS`, qui est de toute façon le signal qu'il FAUT (un run vert ne
+      // prouve pas qu'un code déployé a pris effet — piège 3 §9).
+      //
+      // Enveloppée : une panne de la Mémoire ne doit JAMAIS bloquer l'intake.
+      try { pousserInventaireMemoire_(estBudgetDepasseStandard); }
+      catch (e) { journalErreur_('Mémoire', 'Envoi de l\'inventaire impossible : ' + e); }
       // La rotation (deleteRows en lot, 10-30 s) est REPORTÉE si le tick a déjà consommé son
       // garde-temps standard : elle est en toute fin de `finally`, donc c'est elle qui franchirait
       // le mur des 6 min (revue #229). Aucun coût à attendre le tick suivant.

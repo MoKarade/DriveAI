@@ -150,7 +150,12 @@ const CONTRAT = [
   // Validation de `_Doublons` par empreinte (C28-49 PR4, ADR-0047) — Doublons.gs, appelée depuis
   // Main.gs (finally du tick, hors `etapeSuivie_` : registre C28-44 saturé) ; `texteSanteDoublons_`
   // est appelée par `majSante_` (Journal.gs) et `COLONNES_RAPPORT_DOUBLONS` par `initialiserSheet_`.
-  'majValidationDoublons_', 'inventorierDoublons_', 'balayerExemplairesDoublons_',
+  'majValidationDoublons_',
+  // La Mémoire (ADR-0059 phase 0) : appelée par le tick, définie dans Memoire.gs. Sans cette
+  // ligne, la disparition de la fonction laisserait la suite verte et le tick lèverait à
+  // chaque exécution — l'incident qui a fait naître ce fichier.
+  'pousserInventaireMemoire_', 'faitInventaireMemoire_', 'niveauMemoire_',
+  'inventorierDoublons_', 'balayerExemplairesDoublons_',
   'ecrireVerdictsDoublons_', 'feuilleRapportDoublons_', 'texteSanteDoublons_', 'pageListeDrive_',
   'texteSanteHistoGmail_', // Main.gs, appelée par Journal.gs (ligne de Santé C28-99)
   'statutHistoGmail_', // Journal.gs, appelée par Main.gs — UNE règle de statut, deux surfaces

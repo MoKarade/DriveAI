@@ -2739,6 +2739,18 @@ Détail des tâches : `BACKLOG.md`.
    nécessaire — DriveAI ne peut pas le faire à sa place (frontière d'exécution). Sera annoncé clairement
    le moment venu, avec une fonction « un clic » dédiée si possible.
 2. 🔑 **Révoquer l'ancienne clé Anthropic** partagée dans le chat (compromise), si pas déjà fait.
+2 bis. 🧠 **Allumer l'envoi vers la Mémoire** (chantier #48, ADR-0059 phase 0) — **deux gestes, et
+   il ne se passe rien tant que les deux ne sont pas faits** :
+   1. dans MemoryAI (Vercel → `memory-ai` → Environment Variables) poser
+      `MEMORYAI_TOKEN_DRIVEAI_ECRITURE` = `openssl rand -base64 24`, puis redéployer ;
+   2. dans l'éditeur Apps Script de DriveAI : **Paramètres du projet → Propriétés du script** →
+      `DriveAI_MEMORYAI_TOKEN` = **la même valeur**, puis `Config.gs` → `MEMOIRE_PUSH: true`.
+   ⚠️ **Ce que ça fait sortir du compte Google** : pour chaque document classé, son `fileId`, son
+   type, son année, son émetteur (sauf documents d'immigration et d'identité) et son domaine.
+   Jamais un corps, jamais un montant, jamais un numéro. La liste est fermée et testée.
+   ⚠️ **Comment savoir que ça marche** — pas le run vert, mais le compteur : Propriétés du script →
+   `DriveAI_MEMOIRE_EMIS` doit MONTER, et les faits apparaissent dans `/a-valider` de MemoryAI.
+   Si `DriveAI_MEMOIRE_SUSPENDU_RAISON` existe, elle dit ce qui bloque.
 3. *(`P1-09` — fait)* le coût LLM réel est désormais **mesuré** (`Cout.gs`, tokens `usage` agrégés
    par mois) et **affiché chaque semaine** dans le résumé hebdo automatique (`Resume.gs`). Plus besoin
    d'estimer : à observer sur le 1er mois réel pour confirmer < 10 $/mois.
