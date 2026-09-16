@@ -1,8 +1,8 @@
 # ADR-0061 — Le CONTENU des documents quitte le compte, et ce qu'on obtient en échange
 
-- **Statut** : **proposé** (session Claude, 16/09/2026). Marc ratifie ; la PR reste en brouillon
-  d'ici là (règle `claude-config` : un ADR en statut Proposé est la seule exception qui reste
-  en brouillon).
+- **Statut** : **accepté** (Marc, 16/09/2026). Il a confirmé la frontière (§2) et les deux
+  invariants révisés (§3), puis tranché les deux arbitrages de la §9 : **le runner** pour le
+  rattrapage, et **un champ « titulaire »** pour les documents des proches.
 - **Portée** : `src/Memoire.gs`, le pipeline d'analyse (`src/Llm.gs`, `src/Main.gs`), et une
   route de lecture sur la web app. **Aucun changement au classement** — la taxonomie, le
   routage et la zone protégée ne bougent pas d'une ligne.
@@ -120,14 +120,20 @@ dizaine de campagnes de fond dont la somme des budgets est verrouillée à **63 
 `test/orchestration.test.js`. Faire les trois étapes ici, c'est le mur que tout le §9 du
 CLAUDE.md raconte.
 
-**Recommandation [Probable] : DriveAI fait la lecture et l'OCR ; l'extraction LLM se fait
-ailleurs.** Concrètement : une route de la web app, gardée par le `WEBAPP_SECRET` **existant**,
+**DÉCISION de Marc (16/09) : DriveAI fait la lecture et l'OCR ; l'extraction LLM se fait
+ailleurs — « le runner ».** Concrètement : une route de la web app, gardée par le `WEBAPP_SECRET` **existant**,
 rend le texte OCR d'un `fileId` ; la campagne de MemoryAI (GitHub Actions, ADR 0004 §7) le tire
 par lots et appelle Haiku. Le quota Apps Script ne paie que ce que lui seul peut faire.
 
 ⚠️ **Cette voie fait sortir le TEXTE OCR du compte, vers un runner GitHub.** C'est une frontière
-**plus large** que le §2, où seuls les champs sortent. Elle est ici en toutes lettres plutôt que
-découverte à mi-chemin — et c'est la **question Q1** de la §9.
+**plus large** que le §2, où seuls les champs sortent — un acteur de plus dans le chemin, qui
+voit le texte intégral de chaque document. Marc l'a tranché en connaissance de cause après que
+cette phrase lui a été posée ; elle est ici en toutes lettres plutôt que découverte à mi-chemin.
+
+⚠️ **Ce que la décision ne dispense PAS de mesurer** : le coût en quota de la lecture+OCR reste
+inconnu, et il décide du calendrier du rattrapage, pas de sa voie. Si l'audit le montre bon
+marché, la question de garder la frontière étroite se rouvre — c'est alors une amélioration, pas
+une révision de cet ADR.
 
 ⚠️ Le coût en quota de la seule lecture+OCR sur 19 900 documents **n'est pas mesuré** [À vérifier].
 Il se mesure sur les 100 documents stratifiés, avant d'engager quoi que ce soit — jamais extrapolé
@@ -167,10 +173,10 @@ total**, et le prélèvement se prouve par mutation (gonfler un budget doit fair
 
 | Lot | Contenu | Prouve |
 |---|---|---|
-| **D1** | Le contrat `pieces` côté DriveAI : `champsPieceMemoire_` (liste FERMÉE), envoi, refus d'un champ de texte brut, tests jumeaux de ceux de `champsFaitMemoire_` | un champ ajouté fait rougir le gate |
+| **D1** | Le contrat `pieces` côté DriveAI : `champsPieceMemoire_` (liste FERMÉE, **`titulaire` compris, avec sa confiance**), envoi, refus d'un champ de texte brut, tests jumeaux de ceux de `champsFaitMemoire_` | un champ ajouté fait rougir le gate ; un titulaire incertain vaut « inconnu » |
 | **D2** | Extraction du **flux vivant** : un prompt DÉDIÉ, une passe Haiku après la décision de classement, sous try/catch, jamais bloquante | un document déposé dans `00 · À trier` produit sa `piece` en quelques minutes |
 | **D3** | **Audit sur 100 documents stratifiés** (manuscrit, scan croche, anglais, formulaire, facture à colonnes, papier d'immigration) — tableau nom / champs extraits / verdict, **avant** toute campagne | le taux d'erreur par type, mesuré, pas estimé |
-| **D4** | La voie de rattrapage retenue en Q1, avec son budget prélevé et son test d'invariant | la somme des budgets quotidiens reste à 63 min/j |
+| **D4** | Le rattrapage par le **runner** : une route de la web app qui rend le texte OCR d'un `fileId`, gardée par le `WEBAPP_SECRET` existant ; budget prélevé et test d'invariant | la somme des budgets quotidiens reste à 63 min/j, prouvé par mutation |
 
 ⚠️ **D3 est une porte, pas une étape.** Le protocole §11 l'exige (« audit sur du réel avant de
 modifier le pipeline »), et l'ADR 0004 de MemoryAI en fait le critère de mort de son socle : moins
@@ -178,25 +184,26 @@ de 8 des 10 questions de test qui trouvent leur réponse, et les 19 900 ne parte
 
 ---
 
-## 9. Questions ouvertes — l'arbitrage de Marc
+## 9. Les deux arbitrages, tranchés par Marc le 16/09
 
-**Q1 — le rattrapage.** Deux voies, et elles n'ont pas la même frontière :
+**Q1 — le rattrapage : le TEXTE OCR sort vers le runner GitHub.** L'option écartée était de tout
+garder dans Apps Script, ce qui aurait préservé la frontière étroite (seuls les champs sortent)
+au prix d'un rattrapage compté en mois, prélevé sur une enveloppe déjà pleine. Marc a pris la
+frontière plus large contre le délai. Ce que ça implique est en §5.2, et ce n'est pas adouci.
 
-- **(a) Le texte OCR sort vers GitHub Actions**, qui appelle Haiku. Le quota Apps Script ne paie
-  que la lecture. ⚠️ Le texte intégral de chaque document transite par un runner GitHub — un acteur
-  de plus dans le chemin, et le plus large franchissement de cet ADR.
-- **(b) Tout reste dans Apps Script.** Frontière étroite : seuls les champs sortent, jamais le
-  texte. ⚠️ Le quota devient le facteur limitant, et le rattrapage se compte en mois, prélevés sur
-  une enveloppe déjà pleine.
+**Q2 — les proches : DriveAI extrait un champ « titulaire ».** L'option écartée était de pousser
+sans distinction — plus simple, et elle aurait retiré à Marc la possibilité de revenir en arrière
+pour eux SEULS : il aurait fallu re-lire les 19 900 documents pour savoir lesquels sont les leurs.
 
-*Recommandation [Probable] : (a), à la condition que D3 mesure d'abord ce que la lecture+OCR coûte
-vraiment. Si elle s'avère bon marché, (b) redevient défendable et garde la frontière étroite.*
+⚠️ **Le « titulaire » sera parfois faux**, et il doit le dire : un document au nom de deux
+personnes, un formulaire vierge, un papier où le nom n'apparaît pas. Le champ porte donc sa
+**confiance**, et un titulaire incertain vaut « inconnu » — jamais « Marc » par défaut. Un
+défaut de configuration n'est pas une décision, et ici le défaut le plus prudent est celui qui
+n'attribue rien à personne.
 
-**Q2 — les documents des proches.** L'ADR 0004 de MemoryAI dit « mêmes règles que Marc », et
-DriveAI ne sait pas distinguer un passeport de Marc de celui d'un proche : les deux sont dans
-`04 · Immigration`. **Question : est-ce que DriveAI doit essayer de les distinguer** (un champ
-« titulaire » extrait, et un réglage côté Mémoire) **ou pousser sans distinction** ? Sans
-distinction est plus simple et retire à Marc la possibilité de changer d'avis pour eux seuls.
+⚠️ **Le champ ne décide de RIEN dans DriveAI.** Il est poussé, et c'est la Mémoire qui décidera
+un jour d'en faire un réglage. Lui faire piloter quoi que ce soit ici — un niveau, un routage —
+en ferait une garde bâtie sur une lecture de modèle, ce que cet ADR ne fait nulle part.
 
 ---
 
@@ -207,12 +214,15 @@ distinction est plus simple et retire à Marc la possibilité de changer d'avis 
 2. **L'extraction se trompe, et personne ne relit** : l'ADR 0004 a supprimé la validation. Un
    numéro mal lu vivra dans la Mémoire et sera redit avec aplomb. D3 mesure le taux d'erreur ;
    il ne le rend pas nul.
-3. **Le quota d'analyse est déjà tendu.** Ajouter un appel LLM par document au flux vivant est
+3. **Le titulaire est une lecture de modèle sur un sujet sensible.** Un document attribué au
+   mauvais nom range la mauvaise personne dans la mémoire. Le champ porte sa confiance et ne
+   décide de rien côté DriveAI, mais il sera lu comme un fait le jour où la Mémoire s'en servira.
+4. **Le quota d'analyse est déjà tendu.** Ajouter un appel LLM par document au flux vivant est
    marginal aujourd'hui ; ça cesse de l'être le jour où le flux grossit. La métrique à surveiller
    est le temps d'exécution quotidien, pas le nombre de documents.
-4. **Deux prompts au lieu d'un** : le classement et l'extraction dériveront séparément. C'est le
+5. **Deux prompts au lieu d'un** : le classement et l'extraction dériveront séparément. C'est le
    prix de pouvoir diagnostiquer une régression — et il faut que les deux soient audités
    séparément, jamais ensemble.
-5. **La liste FERMÉE des champs est le seul verrou de la frontière.** Elle ne tient que tant que
+6. **La liste FERMÉE des champs est le seul verrou de la frontière.** Elle ne tient que tant que
    le test qui la garde est lu. C'est la leçon du §9 : « promesse de verrou = verrou codé dans le
    même commit ».

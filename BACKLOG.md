@@ -5,7 +5,7 @@
 
 ---
 
-## Chantier #49 — Le CONTENU des documents quitte le compte (ADR-0061, proposé le 16/09)  ⬜
+## Chantier #49 — Le CONTENU des documents quitte le compte (ADR-0061, **accepté** le 16/09)  ⬜
 
 > Marc, 16/09 : « il extrait toutes les infos de chaque fichier […] vraiment toutes les infos ».
 > L'ADR 0004 de MemoryAI (**accepté** le même jour) crée la table `pieces` pour les recevoir ;
@@ -25,8 +25,8 @@
 | C49-2 — l'extraction du flux vivant | Une passe Haiku APRÈS la décision de classement, sur le texte déjà en main (l'OCR est payé, la lecture est payée). Prompt **DÉDIÉ**, jamais fondu dans celui du classement : mêler les deux rendrait une régression de classement indistinguable d'une régression d'extraction. Sous try/catch, budget TAIL, jamais bloquante pour l'intake. | ⬜ |
 | C49-3 — l'audit sur 100 documents STRATIFIÉS | Manuscrit, scan croche, anglais, formulaire, facture à colonnes, papier d'immigration. Tableau nom / champs extraits / verdict, et le coût RÉEL en quota de lecture+OCR — aujourd'hui **non mesuré** [À vérifier], et c'est lui qui tranche la Q1 de l'ADR. ⚠️ C'est une PORTE, pas une étape : côté MemoryAI, moins de 8 des 10 questions de test qui trouvent leur réponse et les 19 900 ne partent pas. | ⬜ |
 | C49-4 — le rattrapage, selon la voie retenue en Q1 | Budget quotidien **PRÉLEVÉ** sur l'enveloppe des 63 min/j, jamais ajouté (§9 : « RÉALLOUER, jamais AUGMENTER »), et le prélèvement prouvé par mutation — gonfler un budget doit faire échouer `test/orchestration.test.js`. La campagne qui paie se choisit sur l'état RÉEL des campagnes ce jour-là, pas sur une lecture de `Config.gs` faite aujourd'hui. | ⬜ |
-| C49-Q1 — **arbitrage de Marc** : le texte OCR sort-il vers GitHub Actions ? | (a) il sort, et le quota Apps Script ne paie que la lecture — mais le texte intégral transite par un runner GitHub, la frontière la plus large de l'ADR ; (b) tout reste dans Apps Script, frontière étroite, rattrapage en mois sur une enveloppe déjà pleine. Recommandation [Probable] : (a), **après** que C49-3 ait mesuré ce que la lecture+OCR coûte vraiment. | ⬜ |
-| C49-Q2 — **arbitrage de Marc** : distinguer les documents des proches ? | DriveAI ne sait pas séparer le passeport de Marc de celui d'un proche — les deux sont dans `04`. Extraire un champ « titulaire » laisserait à Marc la possibilité de changer d'avis pour eux seuls ; pousser sans distinction est plus simple et la lui retire. | ⬜ |
+| C49-Q1 — **tranché par Marc, 16/09** : le texte OCR sort vers le runner | Le quota Apps Script ne paie que la lecture+OCR ; l'extraction Haiku se fait dans GitHub Actions. ⚠️ Frontière la plus large de l'ADR — le texte intégral de chaque document transite par un runner GitHub. Écarté : tout garder dans Apps Script (frontière étroite, rattrapage en mois). ⚠️ La décision ne dispense pas C49-3 de mesurer le coût réel : il décide du CALENDRIER, pas de la voie. | ✅ |
+| C49-Q2 — **tranché par Marc, 16/09** : un champ « titulaire » | DriveAI extrait à qui le document appartient, avec sa **confiance**. Un titulaire incertain vaut « inconnu », **jamais « Marc » par défaut**. ⚠️ Le champ ne décide de RIEN côté DriveAI — ni niveau, ni routage : ce serait une garde bâtie sur une lecture de modèle. Écarté : pousser sans distinction, qui aurait retiré à Marc tout retour en arrière pour eux seuls. | ✅ |
 
 ---
 
