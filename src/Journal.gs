@@ -246,6 +246,12 @@ function majSante_() {
     // aucun point d'observation, c'est le mode de panne du §1.6 mot pour mot (deux revues l'ont
     // relevé indépendamment). Une ligne, une écriture par tick, zéro octet de Property.
     ['Re-datation de 06 : ' + texteSanteReanalyse_()],
+    // La Mémoire (C28-135). Même raison que les trois lignes ci-dessus — le registre de suivi
+    // C28-44 est SATURÉ — et une raison PROPRE, payée le 16/09 : l'étape n'écrivait RIEN quand
+    // elle sortait sur son garde-temps, donc « rien à envoyer » et « jamais atteinte » étaient
+    // indiscernables, et le canal a eu l'air mort pendant une heure alors qu'il venait
+    // d'accepter 2 348 faits. Cette ligne DIT le POURQUOI de la dernière passe.
+    ['Mémoire (inventaire) : ' + texteSanteMemoire_()],
     ['Mis à jour : ' + new Date()]
   ];
   f.getRange(2, 1, lignes.length, 1).setValues(lignes); // une seule écriture Sheet (I/O borné/tick)

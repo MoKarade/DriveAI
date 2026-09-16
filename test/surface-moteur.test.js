@@ -155,6 +155,8 @@ const CONTRAT = [
   // ligne, la disparition de la fonction laisserait la suite verte et le tick lèverait à
   // chaque exécution — l'incident qui a fait naître ce fichier.
   'pousserInventaireMemoire_', 'faitInventaireMemoire_', 'niveauMemoire_',
+  'passeMemoire_', 'noterFinMemoire_', 'ligneFinMemoire_', 'budgetJourMemoire_',
+  'texteSanteMemoire_', 'phraseFinMemoire_',
   'inventorierDoublons_', 'balayerExemplairesDoublons_',
   'ecrireVerdictsDoublons_', 'feuilleRapportDoublons_', 'texteSanteDoublons_', 'pageListeDrive_',
   'texteSanteHistoGmail_', // Main.gs, appelée par Journal.gs (ligne de Santé C28-99)

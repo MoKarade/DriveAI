@@ -19,7 +19,9 @@ const { load } = require('./harness');
 const SECRET = 'CORPS SECRET — numéro de passeport AB1234567, solde 12 345,67 $, texte OCR intégral';
 
 function ctx() {
-  return load(['Config.gs', 'Consolidation.gs', 'Journal.gs', 'Memoire.gs']);
+  // ⚠️ `Gmail.gs` est chargé pour `dateGmail_` SEUL : c'est lui qui donne le jour du budget
+  // quotidien (`AAAA/MM/JJ`, fuseau du script). Sans lui, la passe lève au lieu de tourner.
+  return load(['Config.gs', 'Consolidation.gs', 'Gmail.gs', 'Journal.gs', 'Memoire.gs']);
 }
 
 // ⚠️ Ce cas s'est INVERSÉ le 2026-09-16, il ne s'est pas supprimé. Il a défendu « ce flag
@@ -188,4 +190,149 @@ test('les lots sont bornés à ce que la Mémoire accepte', () => {
   const lots = c.lotsMemoire_(faits, c.MEMOIRE_LOT_MAX);
   assert.deepEqual(lots.map((l) => l.length), [50, 50, 20]);
   assert.strictEqual(lots.reduce((n, l) => n + l.length, 0), 120, 'aucun fait perdu au découpage');
+});
+
+// ── C28-135 : la passe DIT pourquoi elle s'arrête, et elle a son budget quotidien ──────────
+//
+// ⚠️ Le défaut que ces cas ferment a coûté une heure de diagnostic à l'aveugle le 16/09 : le
+// canal venait d'accepter 2 348 faits À LA MAIN, le tick tournait toutes les 5 min, et rien —
+// ni Journal, ni Santé, ni compteur — ne pouvait dire si l'étape était ATTEINTE, SUSPENDUE ou
+// coupée par son garde-temps. Trois situations, un seul symptôme : le silence.
+
+test('phraseFinMemoire_ : « jamais tourné » n\'est PAS « rien à envoyer »', () => {
+  const c = ctx();
+  const jamais = c.phraseFinMemoire_('', 0, 0, 4 * 60 * 1000);
+  assert.match(jamais, /jamais tourné/,
+    'aucune passe enregistrée = la question du piège 3 (le code déployé s\'exécute-t-il ?)');
+
+  const finie = c.phraseFinMemoire_('2026-09-16T15:00:00.000Z|termine|120/118/2|900/19900', 2466, 30_000, 4 * 60 * 1000);
+  assert.match(finie, /2466 faits acceptés/);
+  assert.match(finie, /120\/118\/2/);
+  assert.doesNotMatch(finie, /jamais tourné/);
+});
+
+test('phraseFinMemoire_ : CHAQUE motif de sortie a sa phrase, et elle désigne le geste', () => {
+  const c = ctx();
+  // La liste se DÉRIVE du code qui produit les motifs — jamais recopiée à la main : c'est ce
+  // qui fait rougir ce test le jour où une sortie nouvelle est ajoutée sans sa phrase.
+  const motifs = Object.keys(c.PHRASES_FIN_MEMOIRE_);
+  assert.ok(motifs.length >= 8, 'les huit sorties connues au 16/09');
+  for (const m of motifs) {
+    const p = c.phraseFinMemoire_('2026-09-16T15:00:00.000Z|' + m + '|0/0/0|2/2', 0, 0, 60_000);
+    assert.doesNotMatch(p, /sortie « /, 'le motif « ' + m + ' » doit avoir sa phrase, pas son code brut');
+  }
+  // Les deux qui demandent un GESTE de Marc le disent, sinon elles se lisent comme une pause.
+  for (const m of ['jeton-absent', 'jeton-refuse', 'suspendu']) {
+    assert.match(c.phraseFinMemoire_('x|' + m + '|0/0/0|2/2', 0, 0, 60_000), /⚠️/,
+      '« ' + m +' » n\'est pas une pause : il demande un geste');
+  }
+  // Un motif INCONNU ne se tait pas non plus — il se cite.
+  assert.match(c.phraseFinMemoire_('x|motif-neuf|0/0/0|2/2', 0, 0, 60_000), /sortie « motif-neuf »/);
+});
+
+test('ligneFinMemoire_ : la ligne persistée porte le motif, les comptes ET la position', () => {
+  const c = ctx();
+  const l = c.ligneFinMemoire_(new Date('2026-09-16T15:00:00.000Z'),
+    { fin: 'budget', envoyes: 50, acceptes: 48, dejaPresents: 2, ligne: 900, dernLigne: 19900 });
+  assert.strictEqual(l, '2026-09-16T15:00:00.000Z|budget|50/48/2|900/19900');
+});
+
+test('budgetJourMemoire_ : le budget d\'HIER ne borne pas AUJOURD\'HUI', () => {
+  const c = ctx();
+  const props = { getProperty: (k) => (k === 'DriveAI_MEMOIRE_JOUR_MS' ? '2026/09/15|240000' : null) };
+  assert.strictEqual(c.budgetJourMemoire_(props, '2026/09/15'), 240000);
+  assert.strictEqual(c.budgetJourMemoire_(props, '2026/09/16'), 0, 'un autre jour repart à zéro');
+  assert.strictEqual(c.budgetJourMemoire_({ getProperty: () => null }, '2026/09/16'), 0);
+});
+
+// ── La garde COMPORTEMENTALE : aucune sortie ne peut se taire ──────────────────────────────
+//
+// ⚠️ Un scan de source prouverait la PRÉSENCE d'un `setProperty`, jamais que TOUTES les
+// sorties y passent. Ici on EXÉCUTE la passe sur chaque chemin et on lit ce qui a été écrit.
+// C'est ce test qui rougit si quelqu'un ajoute une sortie anticipée sans son signal.
+
+/** Un faux `PropertiesService` qui enregistre ce qu'on lui écrit. */
+function faussesProps(depart) {
+  const m = Object.assign({}, depart || {});
+  return {
+    ecrit: m,
+    getProperty: (k) => (k in m ? m[k] : null),
+    setProperty: (k, v) => { m[k] = String(v); },
+    deleteProperty: (k) => { delete m[k]; }
+  };
+}
+
+function ctxPasse(props, index) {
+  const c = ctx();
+  c.PropertiesService = { getScriptProperties: () => props };
+  // `feuille_('Index')` : l'Index rendu ligne par ligne (clé, _, nom, domaine, _, statut).
+  c.feuille_ = () => ({
+    getLastRow: () => (index || []).length + 1,
+    getRange: (l, _c, n) => ({ getValues: () => (index || []).slice(l - 2, l - 2 + n) })
+  });
+  return c;
+}
+
+test('CHAQUE sortie de la passe écrit son motif — aucune ne se tait', () => {
+  const LIGNE = ['drive|1AbCdEfGhIjKlMnOpQrStUvWxYz01', '', '2026-01-15_Facture_Hydro.pdf', '02 · Finances', '', 'classé'];
+
+  // 1. Allumée SANS jeton — le cas qui demande un geste de Marc.
+  let props = faussesProps({});
+  let c = ctxPasse(props, [LIGNE]);
+  assert.strictEqual(c.pousserInventaireMemoire_(() => false).fin, 'jeton-absent');
+  assert.match(props.ecrit.DriveAI_MEMOIRE_FIN, /\|jeton-absent\|/);
+
+  // 2. Suspendue après un refus — un silence d'une heure qui doit se DIRE.
+  props = faussesProps({
+    DriveAI_MEMORYAI_TOKEN: 'jeton',
+    DriveAI_MEMOIRE_SUSPENDU: String(Date.now())
+  });
+  c = ctxPasse(props, [LIGNE]);
+  assert.strictEqual(c.pousserInventaireMemoire_(() => false).fin, 'suspendu');
+  assert.match(props.ecrit.DriveAI_MEMOIRE_FIN, /\|suspendu\|/);
+
+  // 3. Budget du JOUR épuisé — « repris demain », pas « rien à envoyer ».
+  props = faussesProps({
+    DriveAI_MEMORYAI_TOKEN: 'jeton',
+    DriveAI_MEMOIRE_JOUR_MS: c.dateGmail_(new Date()) + '|' + (99 * 60 * 1000)
+  });
+  c = ctxPasse(props, [LIGNE]);
+  assert.strictEqual(c.pousserInventaireMemoire_(() => false).fin, 'budget-jour');
+  assert.match(props.ecrit.DriveAI_MEMOIRE_FIN, /\|budget-jour\|/);
+
+  // 4. Coupée par le garde-temps du TICK, dès la première ligne : ZÉRO envoyé, zéro erreur —
+  //    c'est EXACTEMENT le silence du 16/09, et c'est lui que le signal rend visible.
+  props = faussesProps({ DriveAI_MEMORYAI_TOKEN: 'jeton' });
+  c = ctxPasse(props, [LIGNE]);
+  const r = c.pousserInventaireMemoire_(() => true);
+  assert.strictEqual(r.fin, 'budget');
+  assert.strictEqual(r.envoyes, 0);
+  assert.match(props.ecrit.DriveAI_MEMOIRE_FIN, /\|budget\|0\/0\/0\|/);
+
+  // 5. Éteinte par CONFIG — « désactivée » et « jamais tourné » ne sont pas la même chose.
+  props = faussesProps({ DriveAI_MEMORYAI_TOKEN: 'jeton' });
+  c = ctxPasse(props, [LIGNE]);
+  c.CONFIG.MEMOIRE_PUSH = false;
+  assert.strictEqual(c.pousserInventaireMemoire_(() => false).fin, 'desactive');
+  assert.match(props.ecrit.DriveAI_MEMOIRE_FIN, /\|desactive\|/);
+});
+
+test('un run MANUEL ne mange pas le budget du tick, et n\'est pas bridé par lui', () => {
+  // Leçon C28-33 : les budgets quotidiens protègent le quota des DÉCLENCHEURS ; une exécution
+  // depuis l'éditeur en est HORS. Sans le drapeau, Marc serait bloqué jusqu'au lendemain ET
+  // son run affamerait l'automatique. Testé dans les DEUX sens.
+  const LIGNE = ['drive|1AbCdEfGhIjKlMnOpQrStUvWxYz01', '', 'doc.pdf', '02 · Finances', '', 'classé'];
+  const jourPlein = { DriveAI_MEMORYAI_TOKEN: 'jeton' };
+  let props = faussesProps(jourPlein);
+  let c = ctxPasse(props, [LIGNE]);
+  props.setProperty('DriveAI_MEMOIRE_JOUR_MS', c.dateGmail_(new Date()) + '|' + (99 * 60 * 1000));
+
+  // Le TICK est bridé…
+  assert.strictEqual(c.pousserInventaireMemoire_(() => false).fin, 'budget-jour');
+  // …le run MANUEL ne l'est pas, et il ne réécrit pas le compteur du jour.
+  const avant = props.ecrit.DriveAI_MEMOIRE_JOUR_MS;
+  const r = c.pousserInventaireMemoire_(() => false, { manuel: true });
+  assert.notStrictEqual(r.fin, 'budget-jour', 'un run manuel traverse le budget quotidien');
+  assert.strictEqual(props.ecrit.DriveAI_MEMOIRE_JOUR_MS, avant,
+    'et il ne CONSOMME pas le budget du tick (la double peine de C28-33)');
 });

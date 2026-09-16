@@ -2757,10 +2757,28 @@ Détail des tâches : `BACKLOG.md`.
       copie périmée — déploiement vert, fichier listé, et l'ancien code qui tourne quand même.
       Réglé en fermant l'éditeur, re-poussant (run 346), puis rouvrant une page neuve.
       Cf. `CLAUDE.md` §9, entrée dédiée : ce n'est PAS le piège (3), c'en est l'inverse.
-   ⚠️ **Reste à confirmer** (au 16/09 10:45) : que le **TICK AUTOMATIQUE** pousse, et pas
-   seulement l'exécution manuelle depuis l'éditeur. `aValider` valait toujours exactement
-   2 725 cinq minutes après. Le signal qui tranche est ce que la production écrit ENTRE deux
-   ticks, jamais le résultat d'un lancement à la main.
+   ⚠️ **MESURÉ, et la réponse était NON : le tick ne poussait rien** (C28-135). À 11:13, une
+   heure après la passe manuelle et ~12 ticks plus tard, la Mémoire portait **zéro fait de
+   plus** (2 834 au total ; les seules variations venaient des validations de Marc). Le moteur
+   tournait pourtant normalement — heartbeat à 11:10, toutes les missions actives — et le
+   Journal ne portait **aucune erreur Mémoire depuis 13:58 UTC**. Deux causes, livrées ensemble :
+   1. **l'étape était en FIN de `finally`**, donc dernière servie sur le reliquat de budget
+      TAIL d'un tick qui l'avait déjà dépensé. REMONTÉE avant l'historique du vrac (sweep
+      quotidienne) et la validation des doublons (campagne TERMINÉE) : l'ORDRE prime sur les
+      budgets, incident de la consolidation du 23/07 mot pour mot ;
+   2. **elle ne DISAIT rien en sortant** : « rien à envoyer », « jamais atteinte » et
+      « suspendue » avaient le même symptôme, le silence. `DriveAI_MEMOIRE_FIN` porte désormais
+      `<ISO>|<motif>|<envoyés/acceptés/déjà>|<ligne>/<dernière>`, une seule fonction l'écrit
+      pour qu'aucun `return` ne l'oublie, et la ligne de Santé « Mémoire (inventaire) » le rend
+      lisible sans rien exécuter — donc via `etat_moteur`.
+   Elle a aussi reçu son **budget quotidien** (4 min/j, PRÉLEVÉES sur l'historique Gmail 12 → 8) :
+   elle tournait jusqu'ici sans aucune constante, donc l'invariant d'enveloppe était aveugle à
+   elle — l'angle mort de C28-42, re-payé.
+   ⚠️ **À VÉRIFIER APRÈS LE DÉPLOIEMENT** (et c'est la seule preuve qui compte, piège 3) : la
+   ligne « Mémoire (inventaire) » de Santé doit cesser de dire « aucune passe enregistrée », et
+   `aValider`/le total des faits de MemoryAI doit MONTER entre deux ticks, sans qu'une main y
+   touche. ⚠️ **Fermer tous les onglets de l'éditeur Apps Script AVANT le `clasp push`** — c'est
+   la cause n° 3 ci-dessus, et elle se reproduit à l'identique.
    Pour mémoire, les deux gestes de pose — il ne se passe rien tant que les deux ne sont pas
    faits, le flag allumé sans jeton n'ouvrant rien par construction :
    1. dans MemoryAI (Vercel → `memory-ai` → Environment Variables) poser
@@ -2778,11 +2796,14 @@ Détail des tâches : `BACKLOG.md`.
    ⚠️ **Comment savoir que ça marche** — pas le run vert, mais le compteur : Propriétés du script →
    `DriveAI_MEMOIRE_EMIS` doit MONTER, et les faits apparaissent dans `/a-valider` de MemoryAI.
    Si `DriveAI_MEMOIRE_SUSPENDU_RAISON` existe, elle dit ce qui bloque.
-   ⚠️ **La file « à valider » va atteindre ~19 000**, et c'est voulu par l'ADR-0059 (un fait
-   `propose` issu d'un document classé est SERVI, étiqueté, avant validation). À cette taille
-   `/a-valider` cesse d'être une file qu'un humain parcourt : le `CLAUDE.md` de MemoryAI nomme
-   ce point comme « le vrai risque du projet ». À trancher quand Marc aura vu l'écran — ce
-   n'est pas une panne, c'est une décision de produit qui l'attend.
+   ⚠️ ~~**La file « à valider » va atteindre ~19 000**~~ — **TRANCHÉ le 16/09 par Marc**, côté
+   MemoryAI (son ADR 0003, PR #18 fusionnée) : un fait MÉCANIQUE — couple (extracteur, prédicat)
+   en liste fermée, ici `moteur-inventaire-v1` × `document.existe` — entre directement en
+   `valide`, et le stock déjà posé a été rattrapé par migration. La règle porte sur la
+   PROVENANCE, jamais sur le contenu : ce fait n'a jamais vu de modèle, il n'y a rien à relire.
+   Le NIVEAU reste dérivé par le code, donc **rien de ce que DriveAI envoie ne devient plus
+   accessible**. Conséquence pour ce dépôt : les ~19 000 faits à venir n'engorgent plus rien, et
+   la file ne garde que ce qu'un modèle a DÉDUIT.
 3. *(`P1-09` — fait)* le coût LLM réel est désormais **mesuré** (`Cout.gs`, tokens `usage` agrégés
    par mois) et **affiché chaque semaine** dans le résumé hebdo automatique (`Resume.gs`). Plus besoin
    d'estimer : à observer sur le 1er mois réel pour confirmer < 10 $/mois.

@@ -14,6 +14,48 @@
 
 ---
 
+## 2026-09-16 (après-midi) — Une étape en fin de `finally` n'est pas servie en dernier : elle n'est PAS servie
+**Contexte.** Le canal DriveAI → Mémoire venait d'être réparé (trois causes empilées le matin) et
+une exécution MANUELLE avait fait accepter **2 348 faits** d'un coup. Question posée à un
+check-in : le TICK, lui, pousse-t-il ? Mesuré une heure plus tard, ~12 ticks après : **zéro fait de
+plus**. Le moteur était parfaitement vivant (heartbeat à 11:10, toutes les missions actives), le
+Journal ne portait **aucune erreur Mémoire** depuis les 401 du matin, et rien — ni compteur, ni
+Santé, ni onglet — ne pouvait dire si l'étape avait été ATTEINTE, SUSPENDUE ou coupée par son
+garde-temps.
+
+**Leçon (deux moitiés, et il faut les deux).** (a) L'étape était le DERNIER appel du `finally`,
+donc elle recevait le reliquat du budget TAIL d'un tick qui l'avait déjà dépensé. C'est mot pour
+mot l'incident de la consolidation du 23/07, et la règle est la même : **l'ORDRE prime sur les
+budgets**. Ses deux voisines étaient objectivement moins pressées qu'elle — une sweep
+une-fois-par-jour, une campagne dont la ligne de Santé dit « terminée ✅ ». (b) Et surtout : sa
+sortie sur garde-temps **n'écrivait rien**. Le seul `journalErreur_` de la fonction visait un refus
+TOTAL (`envoyes > 0 && acceptes === 0`) ; une passe qui sort AVANT d'envoyer quoi que ce soit ne
+tombe dans aucune branche. Donc trois situations très différentes — « rien à envoyer », « jamais
+atteinte », « suspendue » — avaient un seul symptôme : le silence. C'est la règle « 0/0 et 0/6 ne
+disent pas la même chose » appliquée non plus à un compteur, mais à une ÉTAPE entière.
+
+Ce qui en sort, réutilisable : pour toute étape de tick, **lister ses sorties et vérifier que
+chacune écrit son motif**. Ici l'écriture est faite par UNE seule fonction (`noterFinMemoire_`),
+appelée au point de retour unique — pas dans chaque branche, sinon la prochaine sortie ajoutée
+l'oubliera. Et le motif se met en mots à l'écran : `jeton-absent`, `suspendu` et `jeton-refuse`
+portent un ⚠️ parce qu'ils demandent un GESTE, là où `budget` et `budget-jour` sont des pauses
+normales. Un motif inconnu se CITE au lieu de se taire.
+
+**Troisième défaut, trouvé en chemin, et il n'était pas cherché.** L'étape tournait depuis son
+déploiement **sans aucune constante `*_BUDGET_JOUR_MS`** — donc l'invariant d'enveloppe
+(`test/orchestration.test.js`) restait vert pendant qu'elle s'ajoutait au quota runtime. C'est
+exactement l'angle mort nommé en C28-42, re-payé. Ce qui l'a attrapé n'est pas une relecture : c'est
+l'INVENTAIRE des budgets, écrit précisément pour ça, qui a rougi sur la constante neuve. Et un
+second garde a rougi avec lui — celui qui vérifie que les minutes prêtées sont celles reçues :
+il comparait le prêt à UN receveur nommé, et il avait raison de tomber au second. Il somme
+désormais les receveurs : **une garde qui nomme un receveur se périme au premier suivant.**
+
+**Règle durable ?** oui — `CLAUDE.md` §9, entrée « Une étape en FIN de `finally` n'est pas
+"servie en dernier" : elle n'est PAS servie — et si elle ne DIT rien en sortant, la panne est
+invisible ».
+
+---
+
 ## 2026-09-15 (soir) — Une preuve se lit dans SON unité : « +4 appels » ne voulait pas dire ce que j'en ai tiré
 **Contexte.** Marc : « erreur 404 quand je fais une demande à l'assistant ». Cette fois j'ai commencé
 par demander le texte exact affiché — « Web app 404 » — au lieu de bâtir une hypothèse, et ça a bien

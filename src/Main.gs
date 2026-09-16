@@ -720,6 +720,27 @@ function tickDriveAI() {
       // délai du broker Vercel — 500 en boucle). SECONDAIRE et enveloppée : un échec ne bloque rien.
       etapeSuivie_('hub-resume', [], function () { majResumeHub_(); },
         function (e) { journalErreur_('Hub', 'MàJ résumé hub impossible : ' + e); });
+      // La Mémoire (ADR-0059 phase 0) : DriveAI lui dit ce qui EXISTE et où. I/O pur, ZÉRO
+      // LLM ⇒ budget TAIL, plus son propre budget QUOTIDIEN (4 min/j, C28-135).
+      // ÉTEINTE par défaut (`CONFIG.MEMOIRE_PUSH`) et doublement gardée par l'absence de jeton.
+      //
+      // ⚠️ REMONTÉE ICI le 16/09 (C28-135), AVANT l'historique du vrac et la validation des
+      // doublons. Elle était en toute fin de `finally`, donc dernière servie sur le reliquat de
+      // budget TAIL : le 16/09 elle n'a rien poussé pendant une heure alors que le tick tournait
+      // toutes les 5 min et que le canal venait d'accepter 2 348 faits à la main. C'est
+      // exactement l'incident du 23/07 (consolidation affamée en fin de `finally`) : **l'ORDRE
+      // prime sur les budgets**, et ses deux voisines sont moins pressées qu'elle — l'historique
+      // du vrac est une sweep une-fois-par-jour, la validation des doublons est TERMINÉE.
+      //
+      // ⚠️ PAS d'`etapeSuivie_` : le registre C28-44 est saturé (8 377/8 500 octets, ~199 par
+      // entrée) et une clé de plus ferait échouer son tripwire. La visibilité passe par
+      // `DriveAI_MEMOIRE_FIN` (POURQUOI la passe s'est arrêtée) et `DriveAI_MEMOIRE_EMIS` (le
+      // cumul), tous deux publiés par `majSante_` — un run vert ne prouve pas qu'un code déployé
+      // a pris effet (piège 3 §9), un compteur qui monte, si.
+      //
+      // Enveloppée : une panne de la Mémoire ne doit JAMAIS bloquer l'intake.
+      try { pousserInventaireMemoire_(estBudgetDepasseStandard); }
+      catch (e) { journalErreur_('Mémoire', 'Envoi de l\'inventaire impossible : ' + e); }
       // Historique QUOTIDIEN du vrac par domaine (demande Marc 2026-08-12) : I/O pur (comptage
       // Drive), jamais de LLM ⇒ budget TAIL (4,5 min), jamais le budget de tick 3 min. Une seule
       // sweep complète par jour, curseur reprenable sur plusieurs ticks si besoin ; ne mute rien,
@@ -734,19 +755,6 @@ function tickDriveAI() {
       // Santé et son onglet `RapportDoublons` (ADR-0047 §6). Enveloppée : un échec ne bloque rien.
       try { majValidationDoublons_(estBudgetDepasseStandard); }
       catch (e) { journalErreur_('Doublons', 'Validation des doublons impossible : ' + e); }
-      // La Mémoire (ADR-0059 phase 0) : DriveAI lui dit ce qui EXISTE et où. I/O pur, ZÉRO
-      // LLM ⇒ budget TAIL, comme la validation ci-dessus. ÉTEINTE par défaut
-      // (`CONFIG.MEMOIRE_PUSH`) et doublement gardée par l'absence de jeton.
-      //
-      // ⚠️ PAS d'`etapeSuivie_`, pour la MÊME raison que la ligne juste au-dessus : le
-      // registre C28-44 est saturé (8 377/8 500 octets, ~199 par entrée) et une clé de plus
-      // ferait échouer son tripwire. La visibilité passe par le compteur
-      // `DriveAI_MEMOIRE_EMIS`, qui est de toute façon le signal qu'il FAUT (un run vert ne
-      // prouve pas qu'un code déployé a pris effet — piège 3 §9).
-      //
-      // Enveloppée : une panne de la Mémoire ne doit JAMAIS bloquer l'intake.
-      try { pousserInventaireMemoire_(estBudgetDepasseStandard); }
-      catch (e) { journalErreur_('Mémoire', 'Envoi de l\'inventaire impossible : ' + e); }
       // La rotation (deleteRows en lot, 10-30 s) est REPORTÉE si le tick a déjà consommé son
       // garde-temps standard : elle est en toute fin de `finally`, donc c'est elle qui franchirait
       // le mur des 6 min (revue #229). Aucun coût à attendre le tick suivant.
