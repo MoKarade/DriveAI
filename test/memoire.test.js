@@ -45,7 +45,7 @@ test('un document classé devient UN fait document.existe, et rien de plus', () 
   assert.strictEqual(f.predicat, 'document.existe');
   assert.strictEqual(f.valeur_type, 'ref_document');
   assert.strictEqual(f.valeur, '1AbCdEfGhIjKlMnOpQrStUvWxYz01');
-  assert.strictEqual(f.niveau, 2);
+  assert.strictEqual(f.niveau_propose, 2);
   assert.strictEqual(f.valide_de, '2026-01-15');
   assert.deepEqual(f.attributs, { type: 'Facture', annee: '2026', emetteur: 'Hydro-Québec' });
 });
@@ -85,12 +85,36 @@ test('aucun corps de document ne sort, même glissé dans la ligne d\'Index', ()
   assert.ok(!rendu.includes('AB1234567'), 'un numéro d\'identité ne doit jamais sortir');
 });
 
+test('CHAQUE champ poussé est un champ que la Mémoire ACCEPTE', () => {
+  const c = ctx();
+  // ⚠️ LE TROU QUI A COÛTÉ 4 000 FAITS LE 2026-09-16. Les deux côtés étaient testés — la
+  // liste fermée ici (vie privée), le schéma strict là-bas (injection) — et le CHAÎNON
+  // n'était le sujet d'aucun test : nous poussions `niveau`, la Mémoire n'accepte que
+  // `niveau_propose`, elle refusait tout, et elle le faisait dans un HTTP 200. Un canal
+  // vert des deux bouts, muet au milieu.
+  //
+  // Ce cas n'affirme pas que la recopie est à jour (rien ici ne peut le savoir) : il
+  // affirme que ce qu'on FABRIQUE reste dans ce qu'on a ÉCRIT du contrat. Un champ ajouté
+  // au fait sans être ajouté à la recopie fait rougir — donc oblige à rouvrir
+  // `lib/validerFait.ts` de la Mémoire pour vérifier qu'il y est vraiment.
+  for (const champ of c.CHAMPS_FAIT_MEMOIRE) {
+    assert.ok(c.CHAMPS_ACCEPTES_MEMOIRE.includes(champ),
+      `« ${champ} » est poussé mais n'est pas dans le contrat de la Mémoire : elle refuserait le LOT ENTIER en \`champ_inconnu\`, dans un HTTP 200`);
+  }
+  const f = c.faitInventaireMemoire_({
+    cle: 'drive|1AbCdEfGhIjKlMnOpQrStUvWxYz01', nom: '2026-01-15_Facture_Hydro.pdf', domaine: '02 · Finances', statut: 'classé'
+  });
+  for (const champ of Object.keys(f)) {
+    assert.ok(c.CHAMPS_ACCEPTES_MEMOIRE.includes(champ), `champ hors contrat produit : ${champ}`);
+  }
+});
+
 test('un document de niveau 3 ne fait PAS sortir son émetteur', () => {
   const c = ctx();
   const f = c.faitInventaireMemoire_({
     cle: 'drive|1ZzYyXxWwVvUuTtSsRrQqPpOoNn', nom: '2024-06-01_Passeport_IRCC.pdf', domaine: '04 · Immigration', statut: 'classé'
   });
-  assert.strictEqual(f.niveau, 3);
+  assert.strictEqual(f.niveau_propose, 3);
   // L'ADR-0001 de la Mémoire énumère ce qu'un fait N3 porte : existence, type, date,
   // échéance, pointeur. L'émetteur n'y est pas — et la Mémoire l'accepterait, ce qui est
   // justement la raison de s'abstenir ICI.
