@@ -289,6 +289,7 @@ function tickDriveAI() {
     reinitialiserPanneEcriture_();   // panne d'ÉCRITURE Gmail : nouvelle chance à chaque run
     reinitialiserUsage_();     // compteur de coût LLM du run (mesure réelle, P1-09)
     reinitialiserFreinBudget_(); // frein budget des campagnes (R3, §2.6), relu 1×/run
+    reinitialiserPiecesRun_();   // plafond d'extractions de pièces PAR EXÉCUTION (C49-2 bis)
 
     // Applique un éventuel changement d'intervalle (CONFIG.TICK_MINUTES) sans action manuelle,
     // et installe le déclencheur du résumé hebdo s'il manque. Secondaire : un échec ne doit

@@ -108,6 +108,12 @@ const CONTRAT = [
   'majCompteurCampagne_', 'finaliserCompteurCampagne_',
   'exporterTexteNatif_', 'exportNatifMime_', // natifs Google lisibles (R3)
   'budgetCampagnesAtteint_', 'reinitialiserFreinBudget_', // frein budget campagnes (R3, §2.6)
+  // Les PIÈCES vers la Mémoire (ADR-0061, C49-2 bis). `pousserPieceApresClassement_` est
+  // appelée depuis `Pipeline.gs`, `texteSantePiece_` depuis `Journal.gs`,
+  // `reinitialiserPiecesRun_` depuis `Main.gs` : trois traversées de module qu'aucun test
+  // unitaire mocké ne verrait disparaître.
+  'pousserPieceApresClassement_', 'texteSantePiece_', 'reinitialiserPiecesRun_',
+  'extrairePiece_', 'envoyerLotPiecesMemoire_',
   'appliquerRangementInitial_', 'appliquerRejeuSiNouvelleVersion_', 'rangementTermine_',
   'appliquerRelancesQuarantaine_',
   'estAReclasserLeger_', 'collecterAReclasser_', 'deplacerVersATrier_',

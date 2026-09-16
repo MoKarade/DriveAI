@@ -495,3 +495,476 @@ function phraseFinMemoire_(brut, emis, consommeJour, budgetJour) {
     ' (envoyés/acceptés/déjà là) à la ligne ' + (p[3] || '?') + ' — ' + motif +
     ' · ' + minutes + ' des ' + Math.round(budgetJour / 60000) + ' min/j consommées' + mode;
 }
+
+/* ========================================================================================
+ * LES PIÈCES — ce qu'un PAPIER contient (ADR-0061, chantier #49 lot D1)
+ * ======================================================================================== */
+
+/**
+ * ⚠️ CE QUI SORT DU COMPTE GOOGLE CHANGE ICI, ET L'ADR-0061 LE NOMME.
+ *
+ * Jusqu'à ce lot, un document ne faisait sortir qu'un `fileId` et ce que son NOM portait
+ * déjà. Une pièce fait sortir son CONTENU EXTRAIT : émetteur, dates, montants, numéros de
+ * référence, **numéros d'identité compris**, pour Marc ET pour ses proches. C'est la
+ * frontière que l'ADR-0061 §2 franchit, sur décision de Marc du 16/09, et les invariants 1
+ * et 3 de l'ADR-0059 §4 sont RÉVISÉS par elle — pas contournés en silence.
+ *
+ * Le garde-fou obtenu en échange est le même que pour les faits, et il tient au même
+ * endroit : la liste ci-dessous est FERMÉE, et `test/memoire.test.js` échoue si un champ s'y
+ * ajoute. Un champ qui sort est un champ qu'on a DÉCIDÉ de faire sortir.
+ */
+var CHAMPS_PIECE_MEMOIRE = ['sujet', 'type', 'emetteur', 'titulaire', 'titulaire_confiance',
+  'annee', 'domaine', 'langue', 'date_document', 'date_echeance', 'resume',
+  'champs_structures', 'champs_libres', 'exemplaires', 'niveau_propose', 'confiance', 'extracteur'];
+
+/**
+ * Les champs que `POST /api/pieces` ACCEPTE (`pieceSchema` de `lib/pieces/validerPiece.ts`,
+ * `.strict()`), dérivés là-bas de `CHAMPS_ACCEPTES_PIECE`.
+ *
+ * ⚠️ RECOPIÉS, comme `CHAMPS_ACCEPTES_MEMOIRE`, et pour la même raison qu'eux : un moteur
+ * Apps Script ne peut rien importer de la Mémoire. Un champ que nous poussons et qu'elle
+ * ignore fait refuser **le lot entier** en `champ_inconnu`, dans un HTTP 200, sans qu'aucune
+ * erreur ne remonte — 4 000 faits sont tombés comme ça le 16/09 sur un canal que les deux
+ * côtés testaient, chacun le sien. Le test qui tient les deux ensemble est dans
+ * `test/memoire.test.js`, et il ne prouve pas que la copie est FRAÎCHE (rien ici ne peut le
+ * savoir) : il oblige à rouvrir le contrat au prochain champ ajouté.
+ */
+var CHAMPS_ACCEPTES_PIECE_MEMOIRE = ['sujet', 'type', 'emetteur', 'titulaire',
+  'titulaire_confiance', 'annee', 'domaine', 'langue', 'date_document', 'date_echeance',
+  'resume', 'champs_structures', 'champs_libres', 'exemplaires', 'niveau_propose',
+  'confiance', 'extracteur'];
+
+/** Les familles de champs structurés que la Mémoire accepte (`FAMILLES_STRUCTUREES`). */
+var FAMILLES_STRUCTUREES_MEMOIRE = ['montants', 'numeros', 'personnes', 'lieux'];
+
+/** L'extracteur des pièces, versionné à part : il DIT quel prompt a produit le contenu. */
+var EXTRACTEUR_PIECE_MEMOIRE = 'haiku-4.5-piece-v1';
+
+/**
+ * Le TITULAIRE d'un papier — à qui il appartient — et sa confiance.
+ *
+ * ⚠️ « INCONNU » EST LA BONNE RÉPONSE, ET ELLE VAUT `null`. Jamais « Marc » par défaut : un
+ * document au nom de deux personnes, un formulaire vierge, un papier où aucun nom
+ * n'apparaît. Un défaut de configuration n'est pas une décision, et ici le défaut le plus
+ * prudent est celui qui n'attribue rien à personne (ADR-0061 §9, arbitrage de Marc).
+ *
+ * ⚠️ IL NE DÉCIDE DE RIEN ICI. Ni niveau, ni routage, ni domaine : ce serait une garde bâtie
+ * sur une lecture de modèle, ce que cet ADR ne fait nulle part. Il est POUSSÉ, et c'est la
+ * Mémoire qui en fera un réglage.
+ *
+ * ⚠️ SANS CONFIANCE, PAS DE TITULAIRE. La Mémoire refuse la paire incomplète
+ * (`titulaire-sans-confiance`) : une lecture de modèle qu'on ne peut pas pondérer serait crue
+ * sur parole, et rien ne distinguerait plus tard « c'est sûrement sa sœur » de « c'est sa
+ * sœur ». Plutôt que d'envoyer un lot qui sera refusé, on n'envoie pas le champ.
+ *
+ * @param {*} brut  ce que l'extraction a rendu
+ * @param {*} confiance  ce qu'elle dit de sa propre certitude
+ * @return {{titulaire:?string, confiance:?number}}
+ */
+function titulaireMemoire_(brut, confiance) {
+  var nom = String(brut == null ? '' : brut).trim();
+  var sentinelle = /^(inconnu|unknown|n\/?a|-|—|null|nil)$/i;
+  if (!nom || sentinelle.test(nom)) return { titulaire: null, confiance: null };
+  // ⚠️ ABSENTE N'EST PAS ZÉRO, et `Number(null)` vaut 0 — donc sans ce test, « le modèle
+  // n'a rien dit » deviendrait « le modèle est certain de ne pas savoir », et le titulaire
+  // partirait quand même, crédité d'une confiance qu'il n'a jamais donnée. C'est la règle
+  // du parc « une donnée illisible se COMPTE, elle ne se rabat pas sur zéro », appliquée à
+  // une mesure de certitude. Trouvé par le test, pas par la relecture.
+  if (confiance === null || confiance === undefined || confiance === '') {
+    return { titulaire: null, confiance: null };
+  }
+  var c = Number(confiance);
+  if (!isFinite(c) || c < 0 || c > 1) return { titulaire: null, confiance: null };
+  return { titulaire: nom.slice(0, 80), confiance: c };
+}
+
+/**
+ * Une pièce au format `POST /api/pieces`, ou null.
+ *
+ * PURE : ni Drive, ni réseau, ni horloge. Elle prend ce que l'Index sait déjà (domaine, nom
+ * classé) et ce que l'extraction a lu (résumé, champs, titulaire), et n'invente rien.
+ *
+ * ⚠️ RIEN SANS `fileId` : une pièce sans exemplaire ne se retrouve jamais — ni par DriveAI,
+ * ni par la Mémoire. La Mémoire la refuserait (`sans-exemplaire`) ; autant ne pas l'envoyer.
+ *
+ * ⚠️ LE NIVEAU RESTE DÉRIVÉ PAR LE CODE (`niveauMemoire_`), comme pour un fait. On le
+ * PROPOSE, la Mémoire prend le MAX du sien et du nôtre — donc une erreur de notre côté peut
+ * rendre une pièce plus protégée, jamais moins.
+ *
+ * @param {{cle:string, nom:string, domaine:string, statut:string, chemin:string}} ligne
+ * @param {{resume:?string, type:?string, emetteur:?string, langue:?string,
+ *          date_document:?string, date_echeance:?string, champs:?Object, libres:?Object,
+ *          titulaire:?string, titulaire_confiance:?number, confiance:?number}} extrait
+ * @return {?Object}
+ */
+function pieceMemoire_(ligne, extrait) {
+  if (!ligne) return null;
+  var fileId = fileIdDeCleIndex_(String(ligne.cle || ''));
+  if (!fileId) return null;
+  var statut = String(ligne.statut || '').toLowerCase();
+  if (statut.indexOf('class') !== 0) return null;
+
+  var e = extrait || {};
+  var seg = analyserNomClasse_(String(ligne.nom || ''));
+  var domaine = String(ligne.domaine || '') || null;
+  var tit = titulaireMemoire_(e.titulaire, e.titulaire_confiance);
+
+  var piece = {
+    sujet: 'marc',
+    domaine: domaine,
+    niveau_propose: niveauMemoire_(ligne.domaine),
+    extracteur: EXTRACTEUR_PIECE_MEMOIRE,
+    exemplaires: [{ file_id: fileId, chemin: String(ligne.chemin || '') || null }]
+  };
+
+  // Le type et l'émetteur viennent de l'extraction quand elle les a lus, du NOM sinon : le
+  // nom classé les porte déjà, et une extraction muette ne doit pas faire perdre ce qu'on
+  // savait avant elle.
+  var type = texteCourtMemoire_(e.type) || (seg.type ? String(seg.type) : null);
+  if (type) piece.type = type.slice(0, 80);
+  var emetteur = texteCourtMemoire_(e.emetteur) || (seg.tiers ? String(seg.tiers) : null);
+  if (emetteur) piece.emetteur = emetteur.slice(0, 80);
+
+  if (tit.titulaire) {
+    piece.titulaire = tit.titulaire;
+    piece.titulaire_confiance = tit.confiance;
+  }
+
+  var annee = Number(e.annee || seg.annee);
+  if (isFinite(annee) && annee >= 1900 && annee <= 2100) piece.annee = annee;
+
+  var langue = texteCourtMemoire_(e.langue);
+  if (langue) piece.langue = langue.slice(0, 5);
+
+  var dateDoc = dateIsoMemoire_(e.date_document) || dateDuNomClasse_(String(ligne.nom || ''));
+  if (dateDoc) piece.date_document = dateDoc;
+  var dateEch = dateIsoMemoire_(e.date_echeance);
+  // Une échéance antérieure à la date du document est refusée par la Mémoire
+  // (`date-invalide`) : on n'envoie pas un lot qu'on sait refusé.
+  if (dateEch && (!dateDoc || dateEch >= dateDoc)) piece.date_echeance = dateEch;
+
+  var resume = texteCourtMemoire_(e.resume);
+  if (resume) piece.resume = resume.slice(0, 600);
+
+  var structures = champsStructuresMemoire_(e.champs);
+  if (structures) piece.champs_structures = structures;
+  var libres = champsLibresMemoire_(e.libres);
+  if (libres) piece.champs_libres = libres;
+
+  var conf = Number(e.confiance);
+  if (isFinite(conf) && conf >= 0 && conf <= 1) piece.confiance = conf;
+
+  return piece;
+}
+
+/** Un texte court, nettoyé, ou null. Les sentinelles d'un LLM comptent comme absentes. */
+function texteCourtMemoire_(brut) {
+  var s = String(brut == null ? '' : brut).replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  return /^(inconnu|unknown|n\/?a|-|—|null|nil)$/i.test(s) ? null : s;
+}
+
+/** Une date `AAAA-MM-JJ`, ou null. STRICT : une date partielle n'est pas une date. */
+function dateIsoMemoire_(brut) {
+  var m = /^(\d{4}-\d{2}-\d{2})$/.exec(String(brut == null ? '' : brut).trim());
+  return m ? m[1] : null;
+}
+
+/**
+ * Les champs STRUCTURÉS, bornés aux familles que la Mémoire connaît.
+ *
+ * ⚠️ Une famille inconnue est ÉCARTÉE, pas envoyée : le schéma de la Mémoire est `.strict()`
+ * sur cet objet aussi, et un `champ_inconnu` refuserait le lot entier.
+ */
+function champsStructuresMemoire_(brut) {
+  if (!brut || typeof brut !== 'object') return null;
+  var out = {};
+  var garde = false;
+  for (var i = 0; i < FAMILLES_STRUCTUREES_MEMOIRE.length; i++) {
+    var famille = FAMILLES_STRUCTUREES_MEMOIRE[i];
+    var liste = brut[famille];
+    if (!liste || !liste.length) continue;
+    var entrees = [];
+    for (var j = 0; j < liste.length; j++) {
+      var libelle = texteCourtMemoire_(liste[j] && liste[j].libelle);
+      var valeur = texteCourtMemoire_(liste[j] && liste[j].valeur);
+      if (libelle && valeur) entrees.push({ libelle: libelle.slice(0, 80), valeur: valeur.slice(0, 500) });
+    }
+    if (entrees.length) { out[famille] = entrees; garde = true; }
+  }
+  return garde ? out : null;
+}
+
+/**
+ * Les champs LIBRES. Bornés au plafond de la Mémoire (40 clés) : au-delà elle refuse le lot,
+ * et une pièce n'est pas le texte intégral du document.
+ */
+var MAX_CHAMPS_LIBRES_MEMOIRE = 40;
+
+function champsLibresMemoire_(brut) {
+  if (!brut || typeof brut !== 'object') return null;
+  var out = {};
+  var n = 0;
+  for (var cle in brut) {
+    if (!Object.prototype.hasOwnProperty.call(brut, cle)) continue;
+    if (n >= MAX_CHAMPS_LIBRES_MEMOIRE) break;
+    var c = texteCourtMemoire_(cle);
+    var v = texteCourtMemoire_(brut[cle]);
+    if (!c || !v) continue;
+    out[c.slice(0, 60)] = v.slice(0, 500);
+    n++;
+  }
+  return n ? out : null;
+}
+
+/* ========================================================================================
+ * LE CÂBLAGE — extraire une pièce au moment du classement et l'envoyer (C49-2 bis)
+ * ======================================================================================== */
+
+/**
+ * ⚠️ POURQUOI L'ENVOI EST IMMÉDIAT, ET PAS BATCHÉ COMME L'INVENTAIRE.
+ *
+ * L'inventaire (`passeMemoire_`) relit l'Index à froid, par lots de 50, parce que tout ce
+ * qu'il pousse y est DÉJÀ écrit. Une pièce, non : son contenu vient du texte OCR, et
+ * `CLAUDE.md` §9 interdit de le persister — « ne JAMAIS persister le corps d'un document
+ * (texte OCR, contenu) dans l'Index ni le Journal ». Batcher exigerait donc de le garder
+ * quelque part entre l'extraction et l'envoi, c'est-à-dire de franchir l'invariant que
+ * l'ADR-0061 n'a PAS levé (il a levé la sortie vers la Mémoire, pas le stockage local).
+ *
+ * L'alternative écartée : persister un extrait borné dans une Property le temps d'un tick.
+ * Écartée parce qu'elle échange un invariant DUR contre un confort de débit, et qu'elle
+ * rouvre la question de la vie privée à chaque relecture du code.
+ *
+ * Le prix payé, dit plutôt que caché : un POST par document au lieu d'un POST par 50. Sur le
+ * flux vivant c'est quelques documents par jour. Sur un rattrapage, c'est le sujet de C49-4,
+ * qui passe par le runner GitHub et non par le tick.
+ *
+ * ⚠️ JAMAIS BLOQUANT POUR LE CLASSEMENT. Le document est DÉJÀ placé et indexé quand cette
+ * fonction est appelée : quoi qu'il arrive ici, il reste rangé. C'est l'ordre qui le
+ * garantit, pas le try/catch de l'appelant — mais les deux sont là.
+ */
+
+/** Compteur à portée RUN (remis à zéro à chaque exécution Apps Script, comme `_freinBudget`). */
+var _piecesCeRun = 0;
+function reinitialiserPiecesRun_() { _piecesCeRun = 0; }
+
+/**
+ * PURE. Le verdict des gardes, séparé de l'I/O pour être testable sans réseau ni Property.
+ *
+ * ⚠️ L'ORDRE EST LA DÉCISION. Les gardes du CANAL (éteint, jeton, suspension, budget, panne,
+ * plafond) passent AVANT celles du DOCUMENT (non classé, sans texte) : quand les deux
+ * s'appliquent, ce que le lecteur doit savoir est l'état du canal, pas qu'un PDF était vide.
+ * L'inverse ferait écrire « sans-texte » pendant qu'un jeton est refusé depuis trois jours.
+ *
+ * @return {?string} le motif de refus, ou `null` si on peut extraire
+ */
+function verdictPiece_(etat) {
+  if (!etat.push) return 'desactive';
+  if (!etat.jeton) return 'jeton-absent';
+  if (etat.suspendue) return 'suspendu';
+  if (etat.freinBudget) return 'frein-budget';
+  if (etat.pannePlateforme) return 'panne-llm';
+  if (etat.faitesCeRun >= etat.maxParRun) return 'plafond-run';
+  if (!etat.statutClasse) return 'non-classe';
+  if (!etat.aDuTexte) return 'sans-texte';
+  return null;
+}
+
+/**
+ * PURE. La ligne persistée dans `DriveAI_PIECE_FIN`, jumelle de `ligneFinMemoire_` :
+ * `<ISO>|<motif>|<envoyées/acceptées/déjà>|<nom du document>`.
+ *
+ * Le NOM du document y figure parce que c'est la seule chose qui rend la ligne actionnable —
+ * « refusée » sans savoir laquelle n'envoie nulle part. Il est déjà publié au hub sous
+ * l'ADR-0057, donc aucune frontière nouvelle.
+ */
+function ligneFinPiece_(maintenant, res) {
+  return [
+    maintenant.toISOString(),
+    res.motif,
+    (res.envoyees || 0) + '/' + (res.acceptees || 0) + '/' + (res.dejaPresentes || 0),
+    String(res.document || '').slice(0, 120)
+  ].join('|');
+}
+
+var PHRASES_FIN_PIECE_ = {
+  'ok': 'pièce envoyée et acceptée',
+  'desactive': 'désactivée (CONFIG.PIECE_PUSH) — rien n\'est extrait ni envoyé',
+  'jeton-absent': '⚠️ allumée SANS jeton (`DriveAI_MEMORYAI_TOKEN`) — geste de Marc requis',
+  'suspendu': '⚠️ SUSPENDUE après un refus de la Mémoire — re-sonde automatique',
+  'frein-budget': 'en pause — frein budget campagnes atteint (l\'extraction s\'y soumet)',
+  'panne-llm': '⚠️ panne de plateforme LLM — aucun appel tenté',
+  'plafond-run': 'plafond par exécution atteint — reprend au tick suivant',
+  'non-classe': 'le document n\'est pas classé (média, quarantaine) — rien à extraire',
+  'sans-texte': 'aucun texte lisible (OCR vide) — rien à extraire',
+  'extraction-vide': '⚠️ le modèle n\'a rien rendu d\'exploitable',
+  'piece-vide': '⚠️ extraction faite mais pièce non composable (pas de fileId ?)',
+  'refusee': '⚠️ pièce REFUSÉE par la Mémoire — voir le dernier refus',
+  'jeton-refuse': '⚠️ jeton REFUSÉ par la Mémoire — geste de Marc requis',
+  'perimetre-retire': '⚠️ périmètre RETIRÉ par la Mémoire — geste de Marc requis',
+  'reseau': '⚠️ réseau injoignable — suspension puis re-sonde',
+  'panne': '⚠️ la Mémoire a répondu en erreur — suspension puis re-sonde'
+};
+
+/**
+ * PURE. La ligne de Santé. Mêmes règles que `phraseFinMemoire_` : « aucune passe
+ * enregistrée » est un état À PART — celui d'un code qui n'a jamais tourné (piège 3, §9).
+ */
+function phraseFinPiece_(brut, emises, dernierRefus) {
+  if (!brut) return '⚠️ aucune extraction enregistrée — l\'étape n\'a jamais tourné depuis le déploiement';
+  var p = String(brut).split('|');
+  var motif = PHRASES_FIN_PIECE_[p[1]] || ('sortie « ' + (p[1] || '?') + ' »');
+  return emises + ' pièces acceptées au total · dernier document : « ' + (p[3] || '?') +
+    ' » ' + (p[2] || '?') + ' (envoyées/acceptées/déjà là) — ' + motif +
+    (dernierRefus ? ' · dernier refus : ' + dernierRefus : '');
+}
+
+function texteSantePiece_() {
+  if (!CONFIG.PIECE_PUSH) return 'désactivée (CONFIG)';
+  try {
+    var props = PropertiesService.getScriptProperties();
+    return phraseFinPiece_(
+      props.getProperty('DriveAI_PIECE_FIN') || '',
+      Number(props.getProperty('DriveAI_PIECE_EMISES')) || 0,
+      props.getProperty('DriveAI_PIECE_DERNIER_REFUS') || ''
+    );
+  } catch (e) {
+    return '⚠️ état illisible (' + e + ')';
+  }
+}
+
+/**
+ * I/O. L'envoi d'un lot de pièces. Jumeau d'`envoyerLotMemoire_`, et il partage sa
+ * suspension : une Mémoire en panne l'est pour les deux canaux, il n'y a qu'un serveur.
+ *
+ * ⚠️ Les compteurs sont au FÉMININ côté Mémoire (`acceptees`, `dejaPresentes`, `refusees`) —
+ * ce n'est pas une coquille, c'est le contrat de `POST /api/pieces`. Les lire au masculin
+ * rendrait 0 partout, dans un HTTP 200, sans qu'aucune erreur ne remonte : exactement la
+ * panne du 16/09 vue par l'autre bout.
+ *
+ * ⚠️ `oubliees` est RENDU par la Mémoire et compté ICI comme un SUCCÈS silencieux : une pièce
+ * que Marc a fait oublier ne doit jamais ressembler à un refus, sinon on la re-pousserait à
+ * chaque passage du document.
+ */
+function envoyerLotPiecesMemoire_(lot, jeton, props) {
+  var url = (CONFIG.MEMOIRE_URL || '').replace(/\/+$/, '') + '/api/pieces';
+  var rep;
+  try {
+    rep = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + jeton },
+      payload: JSON.stringify({ pieces: lot }),
+      muteHttpExceptions: true
+    });
+  } catch (e) {
+    suspendreMemoire_(props, 'réseau (pièces) : ' + e);
+    return { ok: false, raison: 'reseau' };
+  }
+  var code = rep.getResponseCode();
+  if (code === 200) {
+    var corps = {};
+    try { corps = JSON.parse(rep.getContentText()); } catch (e) { corps = {}; }
+    return {
+      ok: true,
+      recus: Number(corps.recus) || 0,
+      acceptees: Number(corps.acceptees) || 0,
+      dejaPresentes: Number(corps.dejaPresentes) || 0,
+      oubliees: Number(corps.oubliees) || 0,
+      refusees: Array.isArray(corps.refusees) ? corps.refusees.length : 0,
+      premierRefus: (Array.isArray(corps.refusees) && corps.refusees.length)
+        ? String(corps.refusees[0].code || '?') + ' : ' + String(corps.refusees[0].raison || '')
+        : null
+    };
+  }
+  if (code === 401 || code === 403) {
+    journalErreur_('Pièce', 'Jeton refusé (' + code + ') : la Mémoire n\'accepte plus nos pièces. Geste de Marc requis.');
+    return { ok: false, raison: code === 401 ? 'jeton-refuse' : 'perimetre-retire' };
+  }
+  suspendreMemoire_(props, 'HTTP ' + code + ' (pièces)');
+  return { ok: false, raison: 'panne' };
+}
+
+/**
+ * I/O. Le point d'entrée du pipeline : extraire la pièce d'un document QUI VIENT D'ÊTRE
+ * classé, et l'envoyer. Appelé sous try/catch depuis `traiterDocument_`.
+ *
+ * @param {{cle:string}} src
+ * @param {{nom:string, domaine:string, statut:string, chemin:string}} decision
+ * @param {?string} texteOcr  le texte lu du document — jamais persisté nulle part
+ * @return {{motif:string, envoyees:number, acceptees:number, dejaPresentes:number}}
+ */
+function pousserPieceApresClassement_(src, decision, texteOcr) {
+  var props = PropertiesService.getScriptProperties();
+  var res = { motif: 'desactive', envoyees: 0, acceptees: 0, dejaPresentes: 0,
+              document: (decision && decision.nom) || '' };
+
+  var jeton = CONFIG.PIECE_PUSH ? props.getProperty('DriveAI_MEMORYAI_TOKEN') : '';
+  var statut = String((decision && decision.statut) || '').toLowerCase();
+  var motif = verdictPiece_({
+    push: !!CONFIG.PIECE_PUSH,
+    jeton: !!jeton,
+    suspendue: !!jeton && memoireSuspendue_(props),
+    freinBudget: !!jeton && budgetCampagnesAtteint_(),
+    pannePlateforme: estPannePlateforme_(),
+    faitesCeRun: _piecesCeRun,
+    maxParRun: CONFIG.PIECE_MAX_PAR_RUN,
+    statutClasse: statut.indexOf('class') === 0,
+    aDuTexte: !!String(texteOcr || '').trim()
+  });
+  if (motif) {
+    res.motif = motif;
+    // ⚠️ Un non-événement PROPRE AU DOCUMENT n'écrase pas le signal du CANAL. Une photo sans
+    // texte remplacerait sinon « jeton refusé » par « sans-texte », et le geste à faire
+    // disparaîtrait de l'écran au profit d'une information sans intérêt.
+    if (motif !== 'non-classe' && motif !== 'sans-texte') noterFinPiece_(props, res);
+    return res;
+  }
+
+  // Le compteur monte AVANT l'appel : un appel qui lève ne doit pas rendre son crédit, sinon
+  // le plafond ne borne plus rien le jour où c'est justement l'appel qui part en vrille.
+  _piecesCeRun++;
+
+  var extraction = extrairePiece_({ nomFichier: decision.nom, extrait: texteOcr });
+  if (!extraction) { res.motif = 'extraction-vide'; return noterFinPiece_(props, res); }
+
+  var piece = pieceMemoire_({
+    cle: src.cle,
+    nom: decision.nom,
+    domaine: decision.domaine,
+    statut: decision.statut,
+    chemin: decision.chemin
+  }, extraction);
+  if (!piece) { res.motif = 'piece-vide'; return noterFinPiece_(props, res); }
+
+  res.envoyees = 1;
+  var envoi = envoyerLotPiecesMemoire_([piece], jeton, props);
+  if (!envoi.ok) { res.motif = envoi.raison; res.envoyees = 0; return noterFinPiece_(props, res); }
+
+  res.acceptees = envoi.acceptees;
+  res.dejaPresentes = envoi.dejaPresentes + envoi.oubliees;
+  res.motif = envoi.refusees ? 'refusee' : 'ok';
+  if (envoi.premierRefus) {
+    // ⚠️ Écrit dans une Property DÉDIÉE, jamais écrasée par un succès : un refus de contrat
+    // est la seule chose qu'on cherche quand le canal a l'air de marcher (16/09, 4 000 faits
+    // refusés dans des HTTP 200). Le motif de la ligne courante peut redevenir « ok » ; la
+    // trace, elle, reste jusqu'au prochain refus.
+    try { props.setProperty('DriveAI_PIECE_DERNIER_REFUS',
+      new Date().toISOString().slice(0, 16) + ' ' + String(envoi.premierRefus).slice(0, 180)); }
+    catch (e) { /* observabilité best-effort */ }
+  }
+  if (envoi.acceptees) {
+    try {
+      var emises = parseInt(props.getProperty('DriveAI_PIECE_EMISES') || '0', 10) || 0;
+      props.setProperty('DriveAI_PIECE_EMISES', String(emises + envoi.acceptees));
+    } catch (e) { /* observabilité best-effort */ }
+  }
+  return noterFinPiece_(props, res);
+}
+
+/** Le SIGNAL, un seul endroit qui l'écrit — donc aucune sortie ne peut l'oublier. */
+function noterFinPiece_(props, res) {
+  try { props.setProperty('DriveAI_PIECE_FIN', ligneFinPiece_(new Date(), res)); }
+  catch (e) { /* observabilité best-effort : jamais bloquante */ }
+  return res;
+}
