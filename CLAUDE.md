@@ -675,6 +675,26 @@ ce qui reste vrai d'une session à l'autre.
   ré-exécute. Et toute rejouabilité se déclare PAR APPELANT, sans défaut (un oubli ne compile pas) —
   le dépôt avait déjà tranché « `chat-assistant` PAS rejouable » ailleurs, et deux composants
   n'ont pas le droit de rendre des verdicts contraires sans se citer.
+- **Un onglet d'éditeur Apps Script ouvert AVANT un `clasp push` peut l'annuler — et le
+  déploiement reste vert.** Le 2026-09-16, le run 345 a poussé `src/Memoire.gs` (fichier listé
+  dans son journal, étapes toutes vertes), et le projet a continué d'exécuter l'ANCIENNE
+  version : le fichier collé par Marc depuis son éditeur portait encore `niveau`, sans une
+  ligne du correctif. L'IDE garde en mémoire ce qu'il a chargé et le SAUVEGARDE avant
+  d'exécuter — un onglet ouvert avant le push réécrit donc le projet avec sa copie périmée,
+  en silence. L'indice qui l'a trahi : des fichiers de diagnostic créés à la main, absents du
+  dépôt, avaient survécu au push. Ordre qui règle le cas : **fermer tous les onglets de
+  l'éditeur, POUSSER, rouvrir une page neuve** — et vérifier la présence d'une constante que
+  seule la nouvelle version porte avant de conclure quoi que ce soit.
+  ⚠️ **Distinct du piège (3), et il faut les deux** : celui-là dit qu'un tick peut continuer
+  l'ancien code ; celui-ci dit que le PROJET peut redevenir l'ancien code. Le premier se
+  répare en ouvrant l'éditeur, le second est CAUSÉ par l'éditeur ouvert — le remède de l'un
+  est le poison de l'autre, ce qui rend le diagnostic pénible tant qu'on ne les sépare pas.
+  ⚠️ **Corollaire de MESURE, payé le même jour** : une exécution MANUELLE réussie prouve que
+  le CODE est bon, jamais que le DÉCLENCHEUR l'exécute. `diagnosticMemoire` a poussé
+  2 348 faits d'un coup depuis l'éditeur pendant que le tick, lui, n'en poussait aucun — et
+  le compteur de la Mémoire restait figé sur ce que la main avait envoyé. Un signal
+  indépendant se prend sur ce que la PRODUCTION AUTOMATIQUE écrit entre deux ticks, jamais
+  sur le résultat d'un lancement à la main.
 - **Un contrat entre deux dépôts n'appartient à aucun des deux — et chacun le teste chez lui,
   donc personne ne teste le chaînon.** Le 2026-09-16, l'envoi vers la Mémoire a été allumé,
   les deux jetons posés, le code déployé, le tick vert : **4 000 faits refusés, zéro accepté**,

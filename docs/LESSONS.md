@@ -2969,3 +2969,50 @@ supprimé » ne collait pas — et c'était dans la première phrase de Marc, qu
 
 **Règle durable ?** oui — §9, en corollaire de « un garde-fou qui met des items HORS CIRCUIT exige un
 chemin de RETOUR auto » (même famille : l'observabilité d'un verdict d'exclusion).
+
+---
+
+## 2026-09-16 — Trois causes empilées sur un canal neuf, et la troisième était mon propre remède
+**Contexte.** Le canal DriveAI → MemoryAI (ADR-0059, chantier A) a été allumé le matin. Rien n'est
+arrivé de la journée, et il a fallu trois diagnostics successifs — chaque cause n'apparaissant
+qu'une fois la précédente réparée.
+
+1. **Un nom de champ.** Nous poussions `niveau`, le schéma `.strict()` de la Mémoire n'accepte que
+   `niveau_propose`. 4 000 faits refusés en `champ_inconnu`. ⚠️ Le refus arrive dans un **HTTP 200**
+   et notre code lisait `refuses.length` puis JETAIT les motifs : « 4 000 refusés » ne dit pas s'il
+   faut corriger un champ, un prédicat ou une valeur. La Mémoire, elle, envoyait le code.
+2. **Une rotation de jeton à moitié faite.** Nouvelle valeur posée côté Vercel + redéploiement à
+   13:48:55, ancienne valeur restée dans la Script Property ⇒ `Jeton refusé (401)` à 13:50, 13:53,
+   13:58. Ce qui l'a démasqué n'est pas le Journal mais l'HORODATAGE du redéploiement Vercel, 88
+   secondes avant le premier 401.
+3. **Un onglet d'éditeur Apps Script ouvert avant le `clasp push`.** Le run 345 était vert, son
+   journal listait `src/Memoire.gs`, et le projet exécutait quand même l'ANCIENNE version. L'IDE
+   sauvegarde sa copie en mémoire avant d'exécuter : un onglet chargé avant le push réécrit le
+   projet, en silence. Indice qui l'a trahi : des fichiers de diagnostic créés à la main, absents du
+   dépôt, avaient survécu au push.
+
+**Leçon.** Trois choses distinctes, chacune réutilisable ailleurs.
+
+- **Un contrat entre deux dépôts n'appartient à aucun des deux.** Les deux côtés étaient testés — une
+  liste FERMÉE ici (vie privée), un schéma STRICT là-bas (injection) — et aucun ne pouvait voir que
+  les deux listes ne se recouvrent pas. Parade : recopier la liste des champs ACCEPTÉS chez
+  l'émetteur, avec sa source, plus un test qui exige que tout champ produit y figure. Il ne prouve
+  pas que la recopie est fraîche ; il oblige à rouvrir le contrat au prochain champ ajouté.
+- **L'éditeur peut annuler un push, et c'est l'INVERSE du piège (3).** Le piège (3) dit qu'un tick
+  peut continuer l'ancien code, et son remède est d'ouvrir l'éditeur. Celui-ci dit que le PROJET peut
+  redevenir l'ancien code, et sa cause est l'éditeur ouvert. Le remède de l'un est le poison de
+  l'autre — d'où un diagnostic pénible tant qu'on ne les sépare pas. Ordre qui règle le cas : fermer
+  tous les onglets, POUSSER, rouvrir une page neuve, et vérifier la présence d'une constante que
+  seule la nouvelle version porte.
+- **Une exécution MANUELLE prouve le CODE, jamais le DÉCLENCHEUR.** `diagnosticMemoire` a fait
+  accepter 2 348 faits d'un coup depuis l'éditeur ; cinq minutes plus tard, `aValider` valait
+  toujours exactement 2 725, donc aucun tick n'avait rien ajouté. Le signal indépendant se prend sur
+  ce que la production AUTOMATIQUE écrit ENTRE deux ticks.
+
+**Corollaire de conduite.** Deux hypothèses fausses ont été publiées puis corrigées en chemin
+(« le moteur s'est arrêté » — c'était le MCP en retard ; « la variable Vercel n'est pas prise en
+compte » — le Journal disait le contraire). Les deux venaient d'avoir conclu depuis UNE source. La
+règle du dépôt tient : « indépendant » qualifie la NATURE de la source, pas le nombre d'appels.
+
+**Règle durable ?** oui — `CLAUDE.md` §9, deux entrées (le contrat entre deux dépôts ; l'onglet
+d'éditeur qui annule un push, avec son corollaire de mesure).
