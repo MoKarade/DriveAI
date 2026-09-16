@@ -493,6 +493,19 @@ var CONFIG = {
   MEMOIRE_BUDGET_MS: 60 * 1000,           // sous-budget par RUN : l'étape est en fin de `finally`,
                                           // et le mur dur d'Apps Script est à 6 min.
 
+  // ⚠️ LES PIÈCES (ADR-0061, C49-2 bis) — LIVRÉES ÉTEINTES, et pour une raison qui n'est pas
+  // de la prudence rituelle : allumer ce flag ajoute UN APPEL LLM par document classé, et
+  // `traiterDocument_` est appelé par HUIT sites, dont `Reset.gs` et `Migration.gs` — les
+  // campagnes de masse. C'est mot pour mot la leçon §9 « allumer un flag qui change le
+  // modèle/coût du pipeline re-tarife AUSSI les campagnes déjà en cours » : `ANALYSE_V2` a
+  // doublé un mois en une nuit par ce chemin. Marc l'allume APRÈS l'audit C49-3, jamais avant.
+  PIECE_PUSH: false,
+  // Plafond ANTI-EMBALLEMENT par exécution. Il ne borne PAS la journée (×288 ticks) et ne
+  // prétend pas le faire — c'est `budgetCampagnesAtteint_` (en DOLLARS, l'unité du quota
+  // protégé) qui tient le mois, et l'extraction s'y soumet comme une campagne. Ce plafond-ci
+  // ne protège qu'une chose : qu'un run de rattrapage ne parte pas en rafale de 200 appels.
+  PIECE_MAX_PAR_RUN: 5,
+
   DOMAINE_DEFAUT: '01 · Administratif & identité',
   // ADR-0058 — domicile UNIQUE des revenus d'employeur (paies, RL-1). Constante et non littéral :
   // le libellé sert de CLÉ dans `CONFIG.DOMAINES` et `STRUCTURE_CIBLE_RESET`, donc une graphie qui

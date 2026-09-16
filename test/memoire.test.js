@@ -518,3 +518,351 @@ test('pas de pièce sans fileId, ni pour un document non classé', () => {
   assert.strictEqual(c.pieceMemoire_(Object.assign({}, LIGNE_BAIL, { statut: 'doublon' }), EXTRAIT_BAIL), null);
   assert.strictEqual(c.pieceMemoire_(null, EXTRAIT_BAIL), null);
 });
+
+/* ========================================================================================
+ * LE CÂBLAGE (C49-2 bis) — ce qui fait qu'une pièce existe VRAIMENT
+ * ======================================================================================== */
+
+/**
+ * ⚠️ Ce bloc défend la moitié qui manquait. `extrairePiece_` et `pieceMemoire_` étaient
+ * corrects, testés… et appelés par PERSONNE : la classe de défaut que ce dépôt nomme
+ * `UN-CHAMP-TYPE-SANS-PRODUCTEUR`. Du code vert qui ne peut rien produire.
+ */
+
+test('verdictPiece_ : le canal passe AVANT le document, et c\'est la décision', () => {
+  const c = ctx();
+  const sain = {
+    push: true, jeton: true, suspendue: false, freinBudget: false, pannePlateforme: false,
+    faitesCeRun: 0, maxParRun: 5, statutClasse: true, aDuTexte: true
+  };
+  assert.strictEqual(c.verdictPiece_(sain), null, 'un état sain n\'a aucun motif de refus');
+
+  // Chaque garde, une par une : la perturbation d'UN champ doit produire SON motif.
+  const cas = [
+    ['push', false, 'desactive'],
+    ['jeton', false, 'jeton-absent'],
+    ['suspendue', true, 'suspendu'],
+    ['freinBudget', true, 'frein-budget'],
+    ['pannePlateforme', true, 'panne-llm'],
+    ['faitesCeRun', 5, 'plafond-run'],
+    ['statutClasse', false, 'non-classe'],
+    ['aDuTexte', false, 'sans-texte']
+  ];
+  for (const [champ, valeur, motif] of cas) {
+    const etat = Object.assign({}, sain); etat[champ] = valeur;
+    assert.strictEqual(c.verdictPiece_(etat), motif, 'garde « ' + champ + ' »');
+  }
+
+  // ⚠️ LE CAS QUI ANCRE L'ORDRE. Les deux s'appliquent : ce qu'on doit lire est l'état du
+  // CANAL. Inverser les deux blocs de gardes ferait écrire « sans-texte » pendant qu'un
+  // jeton est refusé depuis trois jours, et le geste à faire disparaîtrait de l'écran.
+  assert.strictEqual(
+    c.verdictPiece_(Object.assign({}, sain, { jeton: false, aDuTexte: false })),
+    'jeton-absent',
+    'quand le canal ET le document bloquent, c\'est le canal qui est rapporté');
+});
+
+test('le plafond par exécution borne le RUN, et il se remet à zéro', () => {
+  const c = ctx();
+  const sain = {
+    push: true, jeton: true, suspendue: false, freinBudget: false, pannePlateforme: false,
+    faitesCeRun: 4, maxParRun: 5, statutClasse: true, aDuTexte: true
+  };
+  assert.strictEqual(c.verdictPiece_(sain), null, 'la 5ᵉ passe encore');
+  assert.strictEqual(c.verdictPiece_(Object.assign({}, sain, { faitesCeRun: 5 })), 'plafond-run',
+    'la 6ᵉ est refusée');
+  // Le compteur existe ET se remet à zéro : sans ce reset, le 2ᵉ tick d'une même exécution
+  // (cas des campagnes) n'extrairait plus rien et le motif serait « plafond-run » à vie.
+  assert.strictEqual(typeof c.reinitialiserPiecesRun_, 'function');
+});
+
+test('ligneFinPiece_ : quatre champs, le document NOMMÉ, et une borne', () => {
+  const c = ctx();
+  const ligne = c.ligneFinPiece_(new Date('2026-09-16T12:34:56Z'), {
+    motif: 'ok', envoyees: 1, acceptees: 1, dejaPresentes: 0, document: 'x'.repeat(200)
+  });
+  const p = ligne.split('|');
+  assert.strictEqual(p.length, 4);
+  assert.strictEqual(p[0], '2026-09-16T12:34:56.000Z');
+  assert.strictEqual(p[1], 'ok');
+  assert.strictEqual(p[2], '1/1/0');
+  assert.strictEqual(p[3].length, 120, 'le nom du document est borné (Property ~9 Ko, §9)');
+});
+
+test('phraseFinPiece_ : « jamais tourné » est un état À PART', () => {
+  const c = ctx();
+  assert.match(c.phraseFinPiece_('', 0, ''), /jamais tourné/,
+    'une Property absente ne se lit pas comme une journée sans document');
+  const dite = c.phraseFinPiece_('2026-09-16T12:00:00.000Z|jeton-absent|0/0/0|Facture.pdf', 7, '');
+  assert.match(dite, /7 pièces acceptées/);
+  assert.match(dite, /Facture\.pdf/);
+  assert.match(dite, /geste de Marc requis/, 'le motif DÉSIGNE le geste, il ne le décrit pas');
+  // Un refus persistant s'affiche à côté du motif courant, sans l'écraser.
+  assert.match(c.phraseFinPiece_('2026-09-16T12:00:00.000Z|ok|1/1/0|F.pdf', 7, 'champ_inconnu : titulaire'),
+    /dernier refus : champ_inconnu/);
+  // Un motif inconnu n'est PAS avalé : il se lit tel quel plutôt que de disparaître.
+  assert.match(c.phraseFinPiece_('2026-09-16T12:00:00.000Z|xyz|0/0/0|F.pdf', 0, ''), /sortie « xyz »/);
+});
+
+test('EXHAUSTIVITÉ : tout motif que le code peut émettre a sa phrase', () => {
+  const c = ctx();
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'src', 'Memoire.gs'), 'utf8');
+  // Les deux formes par lesquelles un motif naît : le `return` des gardes pures, et
+  // l'affectation dans l'orchestrateur. Le motif d'un envoi raté vient de `envoi.raison`,
+  // dont les valeurs sont recensées à part ci-dessous.
+  const trouves = new Set();
+  const bloc = src.slice(src.indexOf('function verdictPiece_'), src.indexOf('\n}', src.indexOf('function verdictPiece_')));
+  for (const m of bloc.matchAll(/return '([a-z-]+)'/g)) trouves.add(m[1]);
+  for (const m of src.matchAll(/res\.motif = '([a-z-]+)'/g)) trouves.add(m[1]);
+  for (const m of src.matchAll(/raison: '([a-z-]+)' \}/g)) trouves.add(m[1]);
+  for (const m of src.matchAll(/raison: code === 401 \? '([a-z-]+)' : '([a-z-]+)'/g)) { trouves.add(m[1]); trouves.add(m[2]); }
+
+  // Anti-vacuité : un scan qui ne trouve rien prouverait « aucun motif manquant » à partir
+  // de « il n'y a aucun motif ». Les deux témoins viennent des DEUX formes scannées.
+  assert.ok(trouves.size >= 10, 'le scan a trouvé ' + trouves.size + ' motifs — trop peu, le motif est cassé');
+  assert.ok(trouves.has('plafond-run'), 'témoin de la forme `return`');
+  assert.ok(trouves.has('extraction-vide'), 'témoin de la forme `res.motif =`');
+
+  for (const motif of trouves) {
+    assert.ok(Object.prototype.hasOwnProperty.call(c.PHRASES_FIN_PIECE_, motif),
+      'motif « ' + motif + ' » émis par le code mais sans phrase : la Santé dirait « sortie « ' +
+      motif + ' » » au lieu de désigner un geste');
+  }
+});
+
+test('le câblage APPELLE l\'extraction puis l\'envoi, et compte ce qui est accepté', () => {
+  const c = ctx();
+  const props = {};
+  c.PropertiesService = {
+    getScriptProperties: () => ({
+      getProperty: (k) => (k in props ? props[k] : null),
+      setProperty: (k, v) => { props[k] = String(v); },
+      deleteProperty: (k) => { delete props[k]; }
+    })
+  };
+  props.DriveAI_MEMORYAI_TOKEN = 'jeton';
+  c.CONFIG.PIECE_PUSH = true;
+  c.budgetCampagnesAtteint_ = () => false;
+  c.estPannePlateforme_ = () => false;
+  c.reinitialiserPiecesRun_();
+
+  const vus = [];
+  c.extrairePiece_ = (meta) => { vus.push(meta.nomFichier); return { resume: 'Une facture', type: 'Facture' }; };
+  const envoyes = [];
+  c.envoyerLotPiecesMemoire_ = (lot) => {
+    envoyes.push(lot);
+    return { ok: true, recus: 1, acceptees: 1, dejaPresentes: 0, oubliees: 0, refusees: 0, premierRefus: null };
+  };
+
+  const decision = {
+    nom: '2026-01-15_Facture_Hydro-Québec.pdf', domaine: '02 · Finances',
+    statut: 'classé', chemin: '02 · Finances/2026'
+  };
+  const res = c.pousserPieceApresClassement_(
+    { cle: 'drive|1AbCdEfGhIjKlMnOpQrStUvWxYz01' }, decision, 'Texte du document, facture Hydro.');
+
+  assert.strictEqual(res.motif, 'ok');
+  assert.strictEqual(res.acceptees, 1);
+  // ⚠️ L'ARGUMENT, pas seulement le fait d'avoir appelé : c'est le nom CLASSÉ qui part au
+  // modèle, jamais le nom d'origine — sinon le prompt lit « scan0012.pdf ».
+  assert.deepEqual(vus, ['2026-01-15_Facture_Hydro-Québec.pdf']);
+  assert.strictEqual(envoyes.length, 1);
+  assert.strictEqual(envoyes[0][0].exemplaires[0].file_id, '1AbCdEfGhIjKlMnOpQrStUvWxYz01');
+  assert.strictEqual(props.DriveAI_PIECE_EMISES, '1');
+  assert.match(props.DriveAI_PIECE_FIN, /\|ok\|1\/1\/0\|2026-01-15_Facture_Hydro-Québec\.pdf$/);
+});
+
+test('un non-événement PROPRE AU DOCUMENT n\'écrase pas le signal du CANAL', () => {
+  const c = ctx();
+  const props = { DriveAI_PIECE_FIN: 'ANCIENNE|jeton-absent|0/0/0|Passeport.pdf' };
+  c.PropertiesService = {
+    getScriptProperties: () => ({
+      getProperty: (k) => (k in props ? props[k] : null),
+      setProperty: (k, v) => { props[k] = String(v); },
+      deleteProperty: (k) => { delete props[k]; }
+    })
+  };
+  props.DriveAI_MEMORYAI_TOKEN = 'jeton';
+  c.CONFIG.PIECE_PUSH = true;
+  c.budgetCampagnesAtteint_ = () => false;
+  c.estPannePlateforme_ = () => false;
+  c.reinitialiserPiecesRun_();
+  c.extrairePiece_ = () => { throw new Error('ne doit jamais être appelée sans texte'); };
+
+  const res = c.pousserPieceApresClassement_(
+    { cle: 'drive|1AbCdEfGhIjKlMnOpQrStUvWxYz01' },
+    { nom: 'photo.jpg', domaine: '08 · Perso & projets', statut: 'classé', chemin: '_Médias' },
+    '   ');
+
+  assert.strictEqual(res.motif, 'sans-texte');
+  assert.strictEqual(props.DriveAI_PIECE_FIN, 'ANCIENNE|jeton-absent|0/0/0|Passeport.pdf',
+    'une photo sans texte ne doit pas effacer « jeton refusé » : le geste à faire disparaîtrait');
+});
+
+test('un refus de contrat est NOMMÉ et SURVIT au succès suivant', () => {
+  const c = ctx();
+  const props = { DriveAI_MEMORYAI_TOKEN: 'jeton' };
+  c.PropertiesService = {
+    getScriptProperties: () => ({
+      getProperty: (k) => (k in props ? props[k] : null),
+      setProperty: (k, v) => { props[k] = String(v); },
+      deleteProperty: (k) => { delete props[k]; }
+    })
+  };
+  c.CONFIG.PIECE_PUSH = true;
+  c.budgetCampagnesAtteint_ = () => false;
+  c.estPannePlateforme_ = () => false;
+  c.reinitialiserPiecesRun_();
+  c.extrairePiece_ = () => ({ resume: 'r' });
+
+  c.envoyerLotPiecesMemoire_ = () => ({
+    ok: true, recus: 1, acceptees: 0, dejaPresentes: 0, oubliees: 0, refusees: 1,
+    premierRefus: 'champ_inconnu : titulaire_confiance'
+  });
+  const ko = c.pousserPieceApresClassement_({ cle: 'drive|1AbCdEfGhIjKlMnOpQrStUvWxYz01' },
+    { nom: 'a.pdf', domaine: '02 · Finances', statut: 'classé', chemin: 'x' }, 'texte');
+  assert.strictEqual(ko.motif, 'refusee');
+  assert.match(props.DriveAI_PIECE_DERNIER_REFUS, /champ_inconnu/);
+
+  // Le succès suivant remet le motif à « ok » — et ne doit PAS effacer la trace du refus,
+  // seule chose qu'on cherche quand le canal a l'air de marcher (16/09, 4 000 faits refusés
+  // dans des HTTP 200).
+  c.envoyerLotPiecesMemoire_ = () => ({
+    ok: true, recus: 1, acceptees: 1, dejaPresentes: 0, oubliees: 0, refusees: 0, premierRefus: null
+  });
+  const ok = c.pousserPieceApresClassement_({ cle: 'drive|1AbCdEfGhIjKlMnOpQrStUvWxYz01' },
+    { nom: 'b.pdf', domaine: '02 · Finances', statut: 'classé', chemin: 'x' }, 'texte');
+  assert.strictEqual(ok.motif, 'ok');
+  assert.match(props.DriveAI_PIECE_DERNIER_REFUS, /champ_inconnu/,
+    'un succès n\'efface pas la trace du refus précédent');
+});
+
+test('une pièce OUBLIÉE par Marc est un SUCCÈS silencieux, jamais un refus', () => {
+  const c = ctx();
+  const props = { DriveAI_MEMORYAI_TOKEN: 'jeton' };
+  c.PropertiesService = {
+    getScriptProperties: () => ({
+      getProperty: (k) => (k in props ? props[k] : null),
+      setProperty: (k, v) => { props[k] = String(v); },
+      deleteProperty: (k) => { delete props[k]; }
+    })
+  };
+  c.CONFIG.PIECE_PUSH = true;
+  c.budgetCampagnesAtteint_ = () => false;
+  c.estPannePlateforme_ = () => false;
+  c.reinitialiserPiecesRun_();
+  c.extrairePiece_ = () => ({ resume: 'r' });
+  c.envoyerLotPiecesMemoire_ = () => ({
+    ok: true, recus: 1, acceptees: 0, dejaPresentes: 0, oubliees: 1, refusees: 0, premierRefus: null
+  });
+  const res = c.pousserPieceApresClassement_({ cle: 'drive|1AbCdEfGhIjKlMnOpQrStUvWxYz01' },
+    { nom: 'a.pdf', domaine: '02 · Finances', statut: 'classé', chemin: 'x' }, 'texte');
+  assert.strictEqual(res.motif, 'ok', 'oubliée ≠ refusée : sinon on la re-pousserait à chaque passage');
+  assert.strictEqual(res.dejaPresentes, 1);
+});
+
+test('livrée ÉTEINTE : CONFIG.PIECE_PUSH est false, et c\'est une décision', () => {
+  const c = ctx();
+  assert.strictEqual(c.CONFIG.PIECE_PUSH, false,
+    'allumer ce flag ajoute un appel LLM par document classé, sur les HUIT appelants de ' +
+    '`traiterDocument_` — campagnes comprises. Marc l\'allume APRÈS l\'audit C49-3.');
+});
+
+test('envoyerLotPiecesMemoire_ lit les compteurs AU FÉMININ — le contrat, pas l\'habitude', () => {
+  const c = ctx();
+  // ⚠️ `POST /api/pieces` rend `acceptees`/`dejaPresentes`/`refusees`. Les lire au masculin
+  // (comme `/api/faits`) rendrait 0 partout, dans un HTTP 200, sans qu'aucune erreur ne
+  // remonte : la panne du 16/09 vue par l'autre bout. Ce cas est le seul endroit qui le
+  // prouve — partout ailleurs la fonction est mockée.
+  c.UrlFetchApp = { fetch: () => ({
+    getResponseCode: () => 200,
+    getContentText: () => JSON.stringify({
+      recus: 1, acceptees: 1, dejaPresentes: 2, oubliees: 3,
+      refusees: [{ index: 0, code: 'champ_inconnu', raison: 'titulaire' }]
+    })
+  }) };
+  const r = c.envoyerLotPiecesMemoire_([{}], 'jeton', { setProperty() {} });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.acceptees, 1);
+  assert.strictEqual(r.dejaPresentes, 2);
+  assert.strictEqual(r.oubliees, 3);
+  assert.strictEqual(r.refusees, 1);
+  assert.match(r.premierRefus, /^champ_inconnu : titulaire$/,
+    'un refus se NOMME — « 4 000 refusés » ne dit pas s\'il faut corriger un champ ou une valeur');
+});
+
+test('CÂBLAGE RÉEL : Pipeline.gs appelle bien la fonction, sur le SEUL chemin classé', () => {
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'src', 'Pipeline.gs'), 'utf8');
+  // ⚠️ Ce cas existe parce que le test de SURFACE ne voit que l'EXISTENCE : une fonction
+  // parfaite que personne n'appelle reste verte partout (`UN-CHAMP-TYPE-SANS-PRODUCTEUR`).
+  // On vise donc l'APPEL, et son enveloppe.
+  const appels = src.match(/pousserPieceApresClassement_\(/g) || [];
+  assert.strictEqual(appels.length, 1,
+    'un seul appel : les deux chemins `_Médias` n\'ont aucune pièce à rendre, et payer un ' +
+    'appel LLM pour l\'apprendre serait un coût sans information');
+  assert.match(src, /try \{ pousserPieceApresClassement_\(src, decision, extrait\); \}\s*\n\s*catch/,
+    'sous try/catch : le document est déjà classé, l\'extraction ne doit JAMAIS le défaire');
+  // Et l'ORDRE : l'appel vient APRÈS l'inscription à l'Index, jamais avant. Sinon une
+  // coupure entre les deux laisserait une pièce envoyée pour un document non indexé.
+  assert.ok(src.indexOf('pousserPieceApresClassement_(') >
+    src.indexOf('indexAjouter_(src.cle, decision, empreinte)'),
+    'l\'appel suit l\'inscription à l\'Index');
+});
+
+test('CÂBLAGE RÉEL : la ligne de Santé et le reset de run sont branchés', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const journal = fs.readFileSync(path.join(__dirname, '..', 'src', 'Journal.gs'), 'utf8');
+  const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'Main.gs'), 'utf8');
+  assert.match(journal, /texteSantePiece_\(\)/,
+    'une étape muette est indiscernable d\'une étape jamais atteinte (C28-135)');
+  assert.match(main, /reinitialiserPiecesRun_\(\)/,
+    'sans ce reset, le plafond par exécution devient un plafond à vie');
+});
+
+test('le plafond MORD vraiment : le compteur avance d\'un appel à l\'autre', () => {
+  const c = ctx();
+  // ⚠️ Ce cas est né d'une perturbation MUETTE : retirer `_piecesCeRun++` laissait les
+  // 45 autres verts. Le plafond avait l'air posé et ne bornait RIEN — or c'est lui qui
+  // empêche qu'un run de campagne (`Reset.gs`, `Migration.gs`) parte en rafale d'appels LLM.
+  const props = { DriveAI_MEMORYAI_TOKEN: 'jeton' };
+  c.PropertiesService = {
+    getScriptProperties: () => ({
+      getProperty: (k) => (k in props ? props[k] : null),
+      setProperty: (k, v) => { props[k] = String(v); },
+      deleteProperty: (k) => { delete props[k]; }
+    })
+  };
+  c.CONFIG.PIECE_PUSH = true;
+  c.budgetCampagnesAtteint_ = () => false;
+  c.estPannePlateforme_ = () => false;
+  c.reinitialiserPiecesRun_();
+
+  let appels = 0;
+  c.extrairePiece_ = () => { appels++; return { resume: 'r' }; };
+  c.envoyerLotPiecesMemoire_ = () => ({
+    ok: true, recus: 1, acceptees: 1, dejaPresentes: 0, oubliees: 0, refusees: 0, premierRefus: null
+  });
+
+  // Le nombre de tours se DÉRIVE de la constante : codé en dur, il mentirait au premier
+  // rajustement de `PIECE_MAX_PAR_RUN` (§9, « un test paramétré par CONFIG dérive ses cas »).
+  const max = c.CONFIG.PIECE_MAX_PAR_RUN;
+  const motifs = [];
+  for (let i = 0; i <= max; i++) {
+    motifs.push(c.pousserPieceApresClassement_(
+      { cle: 'drive|1AbCdEfGhIjKlMnOpQrStUvWxYz0' + (i % 10) },
+      { nom: 'doc' + i + '.pdf', domaine: '02 · Finances', statut: 'classé', chemin: 'x' },
+      'texte').motif);
+  }
+  assert.deepEqual(motifs.slice(0, max), new Array(max).fill('ok'));
+  assert.strictEqual(motifs[max], 'plafond-run', 'le ' + (max + 1) + 'ᵉ est refusé');
+  assert.strictEqual(appels, max, 'et surtout : l\'appel LLM N\'A PAS eu lieu — le plafond ' +
+    'borne le COÛT, pas seulement le compte rendu');
+
+  // Le reset le remet à zéro : sans lui le plafond deviendrait définitif au premier run plein.
+  c.reinitialiserPiecesRun_();
+  assert.strictEqual(c.pousserPieceApresClassement_(
+    { cle: 'drive|1AbCdEfGhIjKlMnOpQrStUvWxYz01' },
+    { nom: 'apres.pdf', domaine: '02 · Finances', statut: 'classé', chemin: 'x' }, 'texte').motif, 'ok');
+});

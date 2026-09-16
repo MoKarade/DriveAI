@@ -716,3 +716,255 @@ function champsLibresMemoire_(brut) {
   }
   return n ? out : null;
 }
+
+/* ========================================================================================
+ * LE CÂBLAGE — extraire une pièce au moment du classement et l'envoyer (C49-2 bis)
+ * ======================================================================================== */
+
+/**
+ * ⚠️ POURQUOI L'ENVOI EST IMMÉDIAT, ET PAS BATCHÉ COMME L'INVENTAIRE.
+ *
+ * L'inventaire (`passeMemoire_`) relit l'Index à froid, par lots de 50, parce que tout ce
+ * qu'il pousse y est DÉJÀ écrit. Une pièce, non : son contenu vient du texte OCR, et
+ * `CLAUDE.md` §9 interdit de le persister — « ne JAMAIS persister le corps d'un document
+ * (texte OCR, contenu) dans l'Index ni le Journal ». Batcher exigerait donc de le garder
+ * quelque part entre l'extraction et l'envoi, c'est-à-dire de franchir l'invariant que
+ * l'ADR-0061 n'a PAS levé (il a levé la sortie vers la Mémoire, pas le stockage local).
+ *
+ * L'alternative écartée : persister un extrait borné dans une Property le temps d'un tick.
+ * Écartée parce qu'elle échange un invariant DUR contre un confort de débit, et qu'elle
+ * rouvre la question de la vie privée à chaque relecture du code.
+ *
+ * Le prix payé, dit plutôt que caché : un POST par document au lieu d'un POST par 50. Sur le
+ * flux vivant c'est quelques documents par jour. Sur un rattrapage, c'est le sujet de C49-4,
+ * qui passe par le runner GitHub et non par le tick.
+ *
+ * ⚠️ JAMAIS BLOQUANT POUR LE CLASSEMENT. Le document est DÉJÀ placé et indexé quand cette
+ * fonction est appelée : quoi qu'il arrive ici, il reste rangé. C'est l'ordre qui le
+ * garantit, pas le try/catch de l'appelant — mais les deux sont là.
+ */
+
+/** Compteur à portée RUN (remis à zéro à chaque exécution Apps Script, comme `_freinBudget`). */
+var _piecesCeRun = 0;
+function reinitialiserPiecesRun_() { _piecesCeRun = 0; }
+
+/**
+ * PURE. Le verdict des gardes, séparé de l'I/O pour être testable sans réseau ni Property.
+ *
+ * ⚠️ L'ORDRE EST LA DÉCISION. Les gardes du CANAL (éteint, jeton, suspension, budget, panne,
+ * plafond) passent AVANT celles du DOCUMENT (non classé, sans texte) : quand les deux
+ * s'appliquent, ce que le lecteur doit savoir est l'état du canal, pas qu'un PDF était vide.
+ * L'inverse ferait écrire « sans-texte » pendant qu'un jeton est refusé depuis trois jours.
+ *
+ * @return {?string} le motif de refus, ou `null` si on peut extraire
+ */
+function verdictPiece_(etat) {
+  if (!etat.push) return 'desactive';
+  if (!etat.jeton) return 'jeton-absent';
+  if (etat.suspendue) return 'suspendu';
+  if (etat.freinBudget) return 'frein-budget';
+  if (etat.pannePlateforme) return 'panne-llm';
+  if (etat.faitesCeRun >= etat.maxParRun) return 'plafond-run';
+  if (!etat.statutClasse) return 'non-classe';
+  if (!etat.aDuTexte) return 'sans-texte';
+  return null;
+}
+
+/**
+ * PURE. La ligne persistée dans `DriveAI_PIECE_FIN`, jumelle de `ligneFinMemoire_` :
+ * `<ISO>|<motif>|<envoyées/acceptées/déjà>|<nom du document>`.
+ *
+ * Le NOM du document y figure parce que c'est la seule chose qui rend la ligne actionnable —
+ * « refusée » sans savoir laquelle n'envoie nulle part. Il est déjà publié au hub sous
+ * l'ADR-0057, donc aucune frontière nouvelle.
+ */
+function ligneFinPiece_(maintenant, res) {
+  return [
+    maintenant.toISOString(),
+    res.motif,
+    (res.envoyees || 0) + '/' + (res.acceptees || 0) + '/' + (res.dejaPresentes || 0),
+    String(res.document || '').slice(0, 120)
+  ].join('|');
+}
+
+var PHRASES_FIN_PIECE_ = {
+  'ok': 'pièce envoyée et acceptée',
+  'desactive': 'désactivée (CONFIG.PIECE_PUSH) — rien n\'est extrait ni envoyé',
+  'jeton-absent': '⚠️ allumée SANS jeton (`DriveAI_MEMORYAI_TOKEN`) — geste de Marc requis',
+  'suspendu': '⚠️ SUSPENDUE après un refus de la Mémoire — re-sonde automatique',
+  'frein-budget': 'en pause — frein budget campagnes atteint (l\'extraction s\'y soumet)',
+  'panne-llm': '⚠️ panne de plateforme LLM — aucun appel tenté',
+  'plafond-run': 'plafond par exécution atteint — reprend au tick suivant',
+  'non-classe': 'le document n\'est pas classé (média, quarantaine) — rien à extraire',
+  'sans-texte': 'aucun texte lisible (OCR vide) — rien à extraire',
+  'extraction-vide': '⚠️ le modèle n\'a rien rendu d\'exploitable',
+  'piece-vide': '⚠️ extraction faite mais pièce non composable (pas de fileId ?)',
+  'refusee': '⚠️ pièce REFUSÉE par la Mémoire — voir le dernier refus',
+  'jeton-refuse': '⚠️ jeton REFUSÉ par la Mémoire — geste de Marc requis',
+  'perimetre-retire': '⚠️ périmètre RETIRÉ par la Mémoire — geste de Marc requis',
+  'reseau': '⚠️ réseau injoignable — suspension puis re-sonde',
+  'panne': '⚠️ la Mémoire a répondu en erreur — suspension puis re-sonde'
+};
+
+/**
+ * PURE. La ligne de Santé. Mêmes règles que `phraseFinMemoire_` : « aucune passe
+ * enregistrée » est un état À PART — celui d'un code qui n'a jamais tourné (piège 3, §9).
+ */
+function phraseFinPiece_(brut, emises, dernierRefus) {
+  if (!brut) return '⚠️ aucune extraction enregistrée — l\'étape n\'a jamais tourné depuis le déploiement';
+  var p = String(brut).split('|');
+  var motif = PHRASES_FIN_PIECE_[p[1]] || ('sortie « ' + (p[1] || '?') + ' »');
+  return emises + ' pièces acceptées au total · dernier document : « ' + (p[3] || '?') +
+    ' » ' + (p[2] || '?') + ' (envoyées/acceptées/déjà là) — ' + motif +
+    (dernierRefus ? ' · dernier refus : ' + dernierRefus : '');
+}
+
+function texteSantePiece_() {
+  if (!CONFIG.PIECE_PUSH) return 'désactivée (CONFIG)';
+  try {
+    var props = PropertiesService.getScriptProperties();
+    return phraseFinPiece_(
+      props.getProperty('DriveAI_PIECE_FIN') || '',
+      Number(props.getProperty('DriveAI_PIECE_EMISES')) || 0,
+      props.getProperty('DriveAI_PIECE_DERNIER_REFUS') || ''
+    );
+  } catch (e) {
+    return '⚠️ état illisible (' + e + ')';
+  }
+}
+
+/**
+ * I/O. L'envoi d'un lot de pièces. Jumeau d'`envoyerLotMemoire_`, et il partage sa
+ * suspension : une Mémoire en panne l'est pour les deux canaux, il n'y a qu'un serveur.
+ *
+ * ⚠️ Les compteurs sont au FÉMININ côté Mémoire (`acceptees`, `dejaPresentes`, `refusees`) —
+ * ce n'est pas une coquille, c'est le contrat de `POST /api/pieces`. Les lire au masculin
+ * rendrait 0 partout, dans un HTTP 200, sans qu'aucune erreur ne remonte : exactement la
+ * panne du 16/09 vue par l'autre bout.
+ *
+ * ⚠️ `oubliees` est RENDU par la Mémoire et compté ICI comme un SUCCÈS silencieux : une pièce
+ * que Marc a fait oublier ne doit jamais ressembler à un refus, sinon on la re-pousserait à
+ * chaque passage du document.
+ */
+function envoyerLotPiecesMemoire_(lot, jeton, props) {
+  var url = (CONFIG.MEMOIRE_URL || '').replace(/\/+$/, '') + '/api/pieces';
+  var rep;
+  try {
+    rep = UrlFetchApp.fetch(url, {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + jeton },
+      payload: JSON.stringify({ pieces: lot }),
+      muteHttpExceptions: true
+    });
+  } catch (e) {
+    suspendreMemoire_(props, 'réseau (pièces) : ' + e);
+    return { ok: false, raison: 'reseau' };
+  }
+  var code = rep.getResponseCode();
+  if (code === 200) {
+    var corps = {};
+    try { corps = JSON.parse(rep.getContentText()); } catch (e) { corps = {}; }
+    return {
+      ok: true,
+      recus: Number(corps.recus) || 0,
+      acceptees: Number(corps.acceptees) || 0,
+      dejaPresentes: Number(corps.dejaPresentes) || 0,
+      oubliees: Number(corps.oubliees) || 0,
+      refusees: Array.isArray(corps.refusees) ? corps.refusees.length : 0,
+      premierRefus: (Array.isArray(corps.refusees) && corps.refusees.length)
+        ? String(corps.refusees[0].code || '?') + ' : ' + String(corps.refusees[0].raison || '')
+        : null
+    };
+  }
+  if (code === 401 || code === 403) {
+    journalErreur_('Pièce', 'Jeton refusé (' + code + ') : la Mémoire n\'accepte plus nos pièces. Geste de Marc requis.');
+    return { ok: false, raison: code === 401 ? 'jeton-refuse' : 'perimetre-retire' };
+  }
+  suspendreMemoire_(props, 'HTTP ' + code + ' (pièces)');
+  return { ok: false, raison: 'panne' };
+}
+
+/**
+ * I/O. Le point d'entrée du pipeline : extraire la pièce d'un document QUI VIENT D'ÊTRE
+ * classé, et l'envoyer. Appelé sous try/catch depuis `traiterDocument_`.
+ *
+ * @param {{cle:string}} src
+ * @param {{nom:string, domaine:string, statut:string, chemin:string}} decision
+ * @param {?string} texteOcr  le texte lu du document — jamais persisté nulle part
+ * @return {{motif:string, envoyees:number, acceptees:number, dejaPresentes:number}}
+ */
+function pousserPieceApresClassement_(src, decision, texteOcr) {
+  var props = PropertiesService.getScriptProperties();
+  var res = { motif: 'desactive', envoyees: 0, acceptees: 0, dejaPresentes: 0,
+              document: (decision && decision.nom) || '' };
+
+  var jeton = CONFIG.PIECE_PUSH ? props.getProperty('DriveAI_MEMORYAI_TOKEN') : '';
+  var statut = String((decision && decision.statut) || '').toLowerCase();
+  var motif = verdictPiece_({
+    push: !!CONFIG.PIECE_PUSH,
+    jeton: !!jeton,
+    suspendue: !!jeton && memoireSuspendue_(props),
+    freinBudget: !!jeton && budgetCampagnesAtteint_(),
+    pannePlateforme: estPannePlateforme_(),
+    faitesCeRun: _piecesCeRun,
+    maxParRun: CONFIG.PIECE_MAX_PAR_RUN,
+    statutClasse: statut.indexOf('class') === 0,
+    aDuTexte: !!String(texteOcr || '').trim()
+  });
+  if (motif) {
+    res.motif = motif;
+    // ⚠️ Un non-événement PROPRE AU DOCUMENT n'écrase pas le signal du CANAL. Une photo sans
+    // texte remplacerait sinon « jeton refusé » par « sans-texte », et le geste à faire
+    // disparaîtrait de l'écran au profit d'une information sans intérêt.
+    if (motif !== 'non-classe' && motif !== 'sans-texte') noterFinPiece_(props, res);
+    return res;
+  }
+
+  // Le compteur monte AVANT l'appel : un appel qui lève ne doit pas rendre son crédit, sinon
+  // le plafond ne borne plus rien le jour où c'est justement l'appel qui part en vrille.
+  _piecesCeRun++;
+
+  var extraction = extrairePiece_({ nomFichier: decision.nom, extrait: texteOcr });
+  if (!extraction) { res.motif = 'extraction-vide'; return noterFinPiece_(props, res); }
+
+  var piece = pieceMemoire_({
+    cle: src.cle,
+    nom: decision.nom,
+    domaine: decision.domaine,
+    statut: decision.statut,
+    chemin: decision.chemin
+  }, extraction);
+  if (!piece) { res.motif = 'piece-vide'; return noterFinPiece_(props, res); }
+
+  res.envoyees = 1;
+  var envoi = envoyerLotPiecesMemoire_([piece], jeton, props);
+  if (!envoi.ok) { res.motif = envoi.raison; res.envoyees = 0; return noterFinPiece_(props, res); }
+
+  res.acceptees = envoi.acceptees;
+  res.dejaPresentes = envoi.dejaPresentes + envoi.oubliees;
+  res.motif = envoi.refusees ? 'refusee' : 'ok';
+  if (envoi.premierRefus) {
+    // ⚠️ Écrit dans une Property DÉDIÉE, jamais écrasée par un succès : un refus de contrat
+    // est la seule chose qu'on cherche quand le canal a l'air de marcher (16/09, 4 000 faits
+    // refusés dans des HTTP 200). Le motif de la ligne courante peut redevenir « ok » ; la
+    // trace, elle, reste jusqu'au prochain refus.
+    try { props.setProperty('DriveAI_PIECE_DERNIER_REFUS',
+      new Date().toISOString().slice(0, 16) + ' ' + String(envoi.premierRefus).slice(0, 180)); }
+    catch (e) { /* observabilité best-effort */ }
+  }
+  if (envoi.acceptees) {
+    try {
+      var emises = parseInt(props.getProperty('DriveAI_PIECE_EMISES') || '0', 10) || 0;
+      props.setProperty('DriveAI_PIECE_EMISES', String(emises + envoi.acceptees));
+    } catch (e) { /* observabilité best-effort */ }
+  }
+  return noterFinPiece_(props, res);
+}
+
+/** Le SIGNAL, un seul endroit qui l'écrit — donc aucune sortie ne peut l'oublier. */
+function noterFinPiece_(props, res) {
+  try { props.setProperty('DriveAI_PIECE_FIN', ligneFinPiece_(new Date(), res)); }
+  catch (e) { /* observabilité best-effort : jamais bloquante */ }
+  return res;
+}

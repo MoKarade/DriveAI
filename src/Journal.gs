@@ -252,6 +252,11 @@ function majSante_() {
     // indiscernables, et le canal a eu l'air mort pendant une heure alors qu'il venait
     // d'accepter 2 348 faits. Cette ligne DIT le POURQUOI de la dernière passe.
     ['Mémoire (inventaire) : ' + texteSanteMemoire_()],
+    // Les PIÈCES (C49-2 bis). Ligne SÉPARÉE de l'inventaire, parce que les deux canaux
+    // tombent en panne pour des raisons différentes : l'inventaire ne coûte aucun appel LLM,
+    // l'extraction en coûte un par document. Une seule ligne pour les deux ferait lire le
+    // silence de l'un comme celui de l'autre.
+    ['Mémoire (pièces) : ' + texteSantePiece_()],
     ['Mis à jour : ' + new Date()]
   ];
   f.getRange(2, 1, lignes.length, 1).setValues(lignes); // une seule écriture Sheet (I/O borné/tick)

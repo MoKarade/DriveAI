@@ -59,7 +59,7 @@ function chargerAvecSanteMock(indexCache, props) {
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 11 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 12 lignes de métadonnées (une seule écriture Sheet)', () => {
   // 10 depuis ADR-0056 : la re-datation de `06` rallume de la dépense LLM et son budget du jour
   // n'était lisible NULLE PART. Le compte est figé pour que l'ajout d'une ligne soit une DÉCISION —
   // l'écriture est unique par tick, et chaque ligne coûte de la place à l'écran de Marc.
@@ -67,9 +67,13 @@ test('majSante_ écrit exactement 11 lignes de métadonnées (une seule écritur
   // (16/09 : une heure de silence pour un canal qui venait d'accepter 2 348 faits). Même
   // justification que les trois lignes voisines — le registre de suivi C28-44 est saturé, la
   // campagne ne peut pas s'y déclarer, donc elle se dit ICI.
+  // 12 depuis C49-2 bis : les PIÈCES sont un SECOND canal vers la Mémoire, et il tombe en panne
+  // pour d'autres raisons que l'inventaire (celui-ci ne coûte aucun appel LLM, l'extraction en
+  // coûte un par document). Les fondre en une ligne ferait lire le silence de l'un comme celui
+  // de l'autre — ce que le compte figé est précisément là pour rendre délibéré.
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 11);
+  assert.strictEqual(captured.length, 12);
   assert.ok(captured.every((l) => typeof l === 'string'));
 });
 
@@ -415,4 +419,18 @@ test('majCouts_ : écrit total + postes, et EFFACE le reliquat du mois précéde
   ecrits.length = 0; efface = null; dernRang = 1;
   ctx.majCouts_();
   assert.strictEqual(efface, null, 'aucun effacement inutile');
+});
+
+test('majSante_ : la ligne « Mémoire (pièces) » est DISTINCTE de celle de l\'inventaire', () => {
+  // ⚠️ Deux canaux, deux pannes possibles, donc deux lignes. L'inventaire ne coûte aucun appel
+  // LLM (il relit l'Index) ; l'extraction en coûte un par document et se met en pause sur le
+  // frein budget. Une ligne unique ferait conclure « la Mémoire marche » sur la preuve de
+  // l'autre moitié — exactement le défaut que C28-135 a payé sur une seule étape.
+  const { ctx, captured } = chargerAvecSanteMock({});
+  ctx.majSante_();
+  const inv = captured.find((l) => l.indexOf('Mémoire (inventaire)') === 0);
+  const pieces = captured.find((l) => l.indexOf('Mémoire (pièces)') === 0);
+  assert.ok(inv, 'la ligne de l\'inventaire existe');
+  assert.ok(pieces, 'la ligne des pièces existe');
+  assert.notStrictEqual(inv, pieces, 'et elles ne disent pas la même chose');
 });
