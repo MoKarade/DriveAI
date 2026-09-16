@@ -230,11 +230,63 @@ test('phraseFinMemoire_ : CHAQUE motif de sortie a sa phrase, et elle désigne l
   assert.match(c.phraseFinMemoire_('x|motif-neuf|0/0/0|2/2', 0, 0, 60_000), /sortie « motif-neuf »/);
 });
 
-test('ligneFinMemoire_ : la ligne persistée porte le motif, les comptes ET la position', () => {
+test('ligneFinMemoire_ : la ligne persistée porte le motif, les comptes, la position ET le mode', () => {
   const c = ctx();
-  const l = c.ligneFinMemoire_(new Date('2026-09-16T15:00:00.000Z'),
-    { fin: 'budget', envoyes: 50, acceptes: 48, dejaPresents: 2, ligne: 900, dernLigne: 19900 });
-  assert.strictEqual(l, '2026-09-16T15:00:00.000Z|budget|50/48/2|900/19900');
+  const res = { fin: 'budget', envoyes: 50, acceptes: 48, dejaPresents: 2, ligne: 900, dernLigne: 19900 };
+  const quand = new Date('2026-09-16T15:00:00.000Z');
+  // ⚠️ Le mode est le 5ᵉ champ, AJOUTÉ EN QUEUE (C28-137) : les quatre premiers ne bougent
+  // pas d'un caractère, sinon la ligne déjà persistée en production se lirait de travers.
+  assert.strictEqual(c.ligneFinMemoire_(quand, res, false), '2026-09-16T15:00:00.000Z|budget|50/48/2|900/19900|tick');
+  assert.strictEqual(c.ligneFinMemoire_(quand, res, true), '2026-09-16T15:00:00.000Z|budget|50/48/2|900/19900|manuel');
+});
+
+// ── C28-137 : une passe MANUELLE le DIT, et le chemin manuel EXISTE ────────────────────────
+//
+// ⚠️ Pourquoi ces cas valent le lot : `opts.manuel` était lu en TROIS endroits de
+// `passeMemoire_` et AUCUN appelant ne le passait — un champ lu par le moteur sans
+// producteur. Et le jour où on lui en donne un, le signal doit distinguer les deux : le
+// 16/09, `diagnosticMemoire` a poussé 2 348 faits depuis l'éditeur pendant que le tick n'en
+// poussait aucun, et le compteur qui montait a fait conclure « ça marche ».
+
+test('une passe MANUELLE se DIT dans la ligne de Santé — sinon elle se lit comme un tick', () => {
+  const c = ctx();
+  const tick = c.phraseFinMemoire_('2026-09-16T15:00:00.000Z|termine|50/48/2|900/19900|tick', 2466, 0, 60_000);
+  const main = c.phraseFinMemoire_('2026-09-16T15:00:00.000Z|termine|50/48/2|900/19900|manuel', 2466, 0, 60_000);
+  assert.doesNotMatch(tick, /MANUELLE/);
+  assert.match(main, /MANUELLE/);
+  assert.match(main, /ne prouve PAS que le tick tourne/,
+    'le piège est de CONCLURE depuis une main : la phrase doit le dire, pas le suggérer');
+  // Rétrocompatibilité : la ligne déjà en PRODUCTION n'a que quatre champs.
+  assert.doesNotMatch(c.phraseFinMemoire_('2026-09-16T15:00:00.000Z|termine|50/48/2|900/19900', 1, 0, 60_000), /MANUELLE/);
+});
+
+test('le chemin manuel EXISTE, et il s\'INSCRIT comme manuel', () => {
+  // ⚠️ Le cas voisin (« un run MANUEL ne mange pas le budget du tick ») appelle
+  // `pousserInventaireMemoire_(…, {manuel:true})` DIRECTEMENT — ce qu'aucun code de
+  // production ne faisait : `opts.manuel` était lu en trois endroits et personne ne le
+  // passait. C'est donc la fonction PUBLIQUE qui manquait, et c'est elle qu'on exerce ici,
+  // sans la mocker : une fonction qu'on remplace par un faux ne prouve pas qu'elle existe.
+  const LIGNE = ['drive|1AbCdEfGhIjKlMnOpQrStUvWxYz01', '', 'doc.pdf', '02 · Finances', '', 'classé'];
+  const props = faussesProps({ DriveAI_MEMORYAI_TOKEN: 'jeton' });
+  const c = ctxPasse(props, [LIGNE]);
+  // Budget du jour ÉPUISÉ : sans le chemin manuel, il n'y a plus rien à faire avant minuit.
+  props.setProperty('DriveAI_MEMOIRE_JOUR_MS', c.dateGmail_(new Date()) + '|' + (99 * 60 * 1000));
+  c.Logger = { log: () => {} };
+  c.UrlFetchApp = {
+    fetch: () => ({
+      getResponseCode: () => 200,
+      getContentText: () => JSON.stringify({ recus: 1, acceptes: 1, dejaPresents: 0, refuses: [] })
+    })
+  };
+
+  assert.strictEqual(typeof c.pousserMemoireMaintenant, 'function',
+    'sans producteur, `opts.manuel` est une intention jamais livrée');
+  const ligne = c.pousserMemoireMaintenant();
+  assert.match(String(ligne), /Mémoire \(manuel\)/, 'la fonction rend un compte lisible dans l\'éditeur');
+  assert.doesNotMatch(props.ecrit.DriveAI_MEMOIRE_FIN, /\|budget-jour\|/,
+    'une main traverse le budget du jour — c\'est tout l\'intérêt du chemin');
+  assert.match(props.ecrit.DriveAI_MEMOIRE_FIN, /\|manuel$/,
+    'et elle s\'INSCRIT comme manuelle : une passe à la main qui ressemble à un tick fait conclure « ça marche »');
 });
 
 test('budgetJourMemoire_ : le budget d\'HIER ne borne pas AUJOURD\'HUI', () => {

@@ -2774,6 +2774,20 @@ Détail des tâches : `BACKLOG.md`.
    Elle a aussi reçu son **budget quotidien** (4 min/j, PRÉLEVÉES sur l'historique Gmail 12 → 8) :
    elle tournait jusqu'ici sans aucune constante, donc l'invariant d'enveloppe était aveugle à
    elle — l'angle mort de C28-42, re-payé.
+   ⚠️ **C28-137 — LE CHEMIN MANUEL EXISTE ENFIN, et il se DIT** (16/09, demande de Marc). Le
+   jeton a été réparé dans l'après-midi, mais le budget Mémoire du jour était déjà épuisé (4 min
+   sur 4, brûlées par les trois refus de 13 h 50–13 h 58) : plus rien à tester avant minuit, et
+   **aucune fonction pour forcer une passe** — `diagnosticMemoire`, celle qui avait poussé
+   2 348 faits le matin, n'a jamais existé dans le dépôt. `opts.manuel` était pourtant lu en
+   trois endroits de `passeMemoire_` et passé par personne. Désormais : ouvrir `Memoire.gs` →
+   **`pousserMemoireMaintenant`** → Exécuter. Hors budget quotidien, bornée par
+   `CONFIG.BUDGET_MS` (4,5 min), et elle rend son compte dans le journal d'exécution.
+   ⚠️⚠️ **Et la ligne de Santé DIT maintenant qu'une passe était manuelle** — 5ᵉ champ de
+   `DriveAI_MEMOIRE_FIN`, ajouté en QUEUE. Sans lui, une passe lancée à la main est
+   indiscernable d'un tick qui travaille : c'est exactement ce qui a fait conclure « le canal
+   marche » le 16/09 au matin, alors que l'automatique n'envoyait rien. **Une main ne prouve
+   jamais qu'un déclencheur tourne, et la surface doit le rappeler à celui qui la lit.**
+
    ⚠️ **À VÉRIFIER APRÈS LE DÉPLOIEMENT** (et c'est la seule preuve qui compte, piège 3) : la
    ligne « Mémoire (inventaire) » de Santé doit cesser de dire « aucune passe enregistrée », et
    `aValider`/le total des faits de MemoryAI doit MONTER entre deux ticks, sans qu'une main y

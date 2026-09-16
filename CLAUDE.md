@@ -1199,6 +1199,27 @@ ce qui reste vrai d'une session à l'autre.
   — donc l'invariant d'enveloppe restait vert pendant qu'elle s'ajoutait au quota runtime. C'est
   l'angle mort déjà nommé en C28-42, re-payé : ses 4 min/j sont désormais PRÉLEVÉES sur
   l'historique Gmail (12 → 8), et `test/orchestration.test.js` en fait sa 10ᵉ jambe.
+- **Une surface qui ne distingue pas la MAIN du DÉCLENCHEUR fait conclure « ça marche » sur
+  la preuve d'un geste humain.** Le 16/09, `diagnosticMemoire` a poussé 2 348 faits depuis
+  l'éditeur ; le compteur montait, la ligne de Santé disait « passe terminée », et le tick
+  n'envoyait rien depuis une heure. La leçon « une exécution MANUELLE prouve que le CODE est
+  bon, jamais que le DÉCLENCHEUR l'exécute » était déjà écrite — ce qui manquait, c'est que
+  **la surface le rappelle à celui qui la lit** : un 5ᵉ champ `manuel`/`tick` dans
+  `DriveAI_MEMOIRE_FIN`, et la phrase qui le dit. Réflexe : pour toute observabilité qui
+  résume « la dernière passe », demander **qui l'a lancée**, et si la réponse ne s'y lit pas,
+  la surface ment par omission au pire moment — celui où l'on vient de réparer quelque chose
+  et où l'on cherche une confirmation. ⚠️ Un champ ajouté à un état déjà PERSISTÉ se met **en
+  queue**, et son absence doit se lire comme la valeur d'AVANT (ici : pas de 5ᵉ champ ⇒ tick).
+- **Un `opts.X` lu par le moteur et passé par personne est une intention jamais livrée** —
+  et le jour où on en a besoin, il est trop tard. `opts.manuel` était lu en TROIS endroits de
+  `passeMemoire_` (gate, budget par run, comptage), testé, commenté… et le seul appelant était
+  le tick, qui ne le passe jamais. Coût réel : le jeton de la Mémoire réparé à 17 h, le budget
+  du jour épuisé, et rien pour forcer une passe avant minuit — alors que le code pour le faire
+  était là depuis le matin. C'est `UN-CHAMP-TYPE-SANS-PRODUCTEUR` appliqué à une OPTION, et
+  c'est plus discret : un champ absent d'un formulaire se voit, un paramètre optionnel que
+  personne ne passe ressemble à du code qui marche. Réflexe : `grep` les APPELANTS d'une
+  option, jamais ses lecteurs. Et un chemin que seul un humain emprunte a besoin d'être
+  déclaré dans `test/surface-moteur.test.js` — rien d'autre ne le retient.
 - **Un déclencheur que le tick RÉINSTALLE ne se coupe pas à la main.** « Ne plus créer » ne
   suffit pas : la coupure livre AUSSI la suppression de l'existant (`deleteTrigger` sous le même
   flag), sinon l'ancien continue de partir et l'utilisateur, qui l'a supprimé une fois, le voit
