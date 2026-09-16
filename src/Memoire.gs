@@ -194,8 +194,43 @@ var MEMOIRE_LOT_MAX = 50;
  * @return {{envoyes:number, acceptes:number, dejaPresents:number, refuses:number, fin:string}}
  */
 function pousserInventaireMemoire_(garde, opts) {
+  var o = opts || {};
   var props = PropertiesService.getScriptProperties();
-  return noterFinMemoire_(props, passeMemoire_(props, garde, opts || {}));
+  // ⚠️ `manuel` voyage jusqu'au SIGNAL, pas seulement jusqu'au budget (C28-137). Une passe
+  // lancée à la main qui s'inscrirait comme les autres ferait croire que le TICK tourne —
+  // c'est exactement ce qui a coûté la journée du 16/09 : `diagnosticMemoire` avait poussé
+  // 2 348 faits depuis l'éditeur, le compteur montait, et l'automatique n'envoyait rien.
+  return noterFinMemoire_(props, passeMemoire_(props, garde, o), !!o.manuel);
+}
+
+/**
+ * ⚠️ LE CHEMIN MANUEL, ET IL N'EXISTAIT PAS (C28-137, demande de Marc du 16/09).
+ *
+ * `opts.manuel` était lu en TROIS endroits de `passeMemoire_` — gate, budget par run,
+ * comptage — et **aucun appelant ne le passait** : le seul appel est celui du tick. Un champ
+ * lu par le moteur sans producteur, la classe de défaut que ce dépôt a déjà payée sous
+ * `UN-CHAMP-TYPE-SANS-PRODUCTEUR-EST-UNE-INTENTION-JAMAIS-LIVREE`. Le coût réel, mesuré le
+ * jour même : le budget du jour épuisé par trois refus de jeton, plus aucun moyen de tester
+ * la réparation avant minuit — et rien pour le faire, puisque `diagnosticMemoire` était une
+ * fonction créée à la main dans l'éditeur, jamais dans le dépôt.
+ *
+ * À lancer depuis `Memoire.gs` → `pousserMemoireMaintenant` → Exécuter.
+ *
+ * Hors budget QUOTIDIEN (c'est le sujet), mais PAS hors garde-temps : `budgetRun` vaut
+ * `Infinity` sous `manuel`, donc le seul frein est la garde passée ici — sans elle, la boucle
+ * irait au mur des 6 minutes d'Apps Script et lèverait au lieu de rendre son compte.
+ */
+function pousserMemoireMaintenant() {
+  var debut = Date.now();
+  var res = pousserInventaireMemoire_(
+    function () { return (Date.now() - debut) > CONFIG.BUDGET_MS; },
+    { manuel: true }
+  );
+  var ligne = 'Mémoire (manuel) : ' + res.envoyes + ' envoyés / ' + res.acceptes
+    + ' acceptés / ' + res.dejaPresents + ' déjà là — ' + res.fin
+    + (res.premierRefus ? ' — ' + res.premierRefus : '');
+  Logger.log(ligne);
+  return ligne;
 }
 
 /**
@@ -212,20 +247,27 @@ function pousserInventaireMemoire_(garde, opts) {
  * `majSante_`, donc visible dans `etat_moteur` — un signal qu'on peut lire sans exécuter quoi
  * que ce soit, ce que le piège 3 (§9) exige.
  */
-function noterFinMemoire_(props, res) {
+function noterFinMemoire_(props, res, manuel) {
   try {
-    props.setProperty('DriveAI_MEMOIRE_FIN', ligneFinMemoire_(new Date(), res));
+    props.setProperty('DriveAI_MEMOIRE_FIN', ligneFinMemoire_(new Date(), res, manuel));
   } catch (e) { /* observabilité best-effort : jamais bloquante */ }
   return res;
 }
 
-/** PURE : la ligne persistée. Testable sans Property, sans horloge, sans réseau. */
-function ligneFinMemoire_(maintenant, res) {
+/**
+ * PURE : la ligne persistée. Testable sans Property, sans horloge, sans réseau.
+ *
+ * ⚠️ Le MODE est un 5ᵉ champ, AJOUTÉ EN QUEUE (C28-137) — jamais une insertion qui décalerait
+ * les quatre autres. La ligne déjà écrite en production n'en a que quatre, et elle doit rester
+ * lisible : `phraseFinMemoire_` traite son absence comme un tick, ce qu'elle est.
+ */
+function ligneFinMemoire_(maintenant, res, manuel) {
   return [
     maintenant.toISOString(),
     res.fin,
     res.envoyes + '/' + res.acceptes + '/' + res.dejaPresents,
-    (res.ligne || 0) + '/' + (res.dernLigne || 0)
+    (res.ligne || 0) + '/' + (res.dernLigne || 0),
+    manuel ? 'manuel' : 'tick'
   ].join('|');
 }
 
@@ -443,7 +485,13 @@ function phraseFinMemoire_(brut, emis, consommeJour, budgetJour) {
   var fin = p[1] || '?';
   var motif = PHRASES_FIN_MEMOIRE_[fin] || ('sortie « ' + fin + ' »');
   var minutes = Math.round((consommeJour / 60000) * 10) / 10;
+  // ⚠️ Une passe MANUELLE se dit, et c'est tout l'intérêt du 5ᵉ champ : sans ça, la ligne de
+  // Santé après un lancement depuis l'éditeur est indiscernable d'un tick qui travaille — et
+  // on conclut « le canal marche » sur la preuve d'une main. Absent ⇒ tick (lignes d'avant).
+  var mode = (p[4] === 'manuel')
+    ? ' ⚠️ passe MANUELLE (lancée depuis l\'éditeur) — ne prouve PAS que le tick tourne'
+    : '';
   return emis + ' faits acceptés au total · dernière passe : ' + (p[2] || '?') +
     ' (envoyés/acceptés/déjà là) à la ligne ' + (p[3] || '?') + ' — ' + motif +
-    ' · ' + minutes + ' des ' + Math.round(budgetJour / 60000) + ' min/j consommées';
+    ' · ' + minutes + ' des ' + Math.round(budgetJour / 60000) + ' min/j consommées' + mode;
 }

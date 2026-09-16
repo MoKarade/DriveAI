@@ -157,6 +157,12 @@ const CONTRAT = [
   'pousserInventaireMemoire_', 'faitInventaireMemoire_', 'niveauMemoire_',
   'passeMemoire_', 'noterFinMemoire_', 'ligneFinMemoire_', 'budgetJourMemoire_',
   'texteSanteMemoire_', 'phraseFinMemoire_',
+  // C28-137 — le chemin MANUEL. Ce n'est PAS un contrat inter-module : personne ne l'appelle
+  // depuis le code, c'est Marc qui la lance depuis l'éditeur. Elle est déclarée ici pour la
+  // raison INVERSE des autres — rien d'autre ne la retient, et sa disparition dans un refactor
+  // ne casserait aucun test ailleurs. Un chemin que seul un humain emprunte a besoin d'un
+  // gardien, sinon il s'efface sans bruit et le budget quotidien redevient un mur sans porte.
+  'pousserMemoireMaintenant',
   'inventorierDoublons_', 'balayerExemplairesDoublons_',
   'ecrireVerdictsDoublons_', 'feuilleRapportDoublons_', 'texteSanteDoublons_', 'pageListeDrive_',
   'texteSanteHistoGmail_', // Main.gs, appelée par Journal.gs (ligne de Santé C28-99)
