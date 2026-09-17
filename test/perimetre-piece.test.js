@@ -233,3 +233,62 @@ test('aucun budget quotidien ne lui est prélevé — c\'est une passe ONE-SHOT'
   // moment où la question « à qui prend-on la minute ? » doit être posée.
   assert.doesNotMatch(config, /PERIMETRE_[A-Z_]*BUDGET_JOUR_MS/);
 });
+
+/* ---------- LE PLANCHER : ce que la CLÉ fait disparaître (mesuré le 17/09) ---------- */
+
+test('une ligne classée dont la CLÉ ne porte pas de fileId se COMPTE, jamais ne se saute', () => {
+  const c = ctx();
+  // ⚠️ LE CAS RÉEL, et il est majoritaire : la clé d'une pièce jointe Gmail est
+  // `<messageId>|<rang>|<nom>|<taille>` (`cleAttachement_`), dont le premier segment n'est
+  // AUCUN des quatre préfixes acceptés par `fileIdDeCleIndex_`. Le document est rangé dans le
+  // Drive, il a un vrai fileId — et il est invisible ici comme il l'est pour la Mémoire
+  // (`faitInventaireMemoire_` applique les deux MÊMES conditions).
+  const lignes = [
+    ligne(CLE(ID + '1'), 'a.pdf', '04 · Immigration', 'classé'),
+    ligne('18f3c2a1b9d0e4f5|0|Facture.pdf|48213', 'Facture.pdf', '02 · Finances', 'classé'),
+  ];
+  const res = c.compterPerimetrePiece_(lignes, c.fileIdDeCleIndex_);
+  assert.strictEqual(res.classees, 1);
+  assert.strictEqual(res.classeesSansFileId, 1,
+    'la PJ Gmail doit être COMPTÉE : sans ce nombre, le total se lit comme un périmètre alors que c\'est un plancher');
+  assert.strictEqual(res.candidats, 1, 'elle n\'entre pas dans les candidats — on ne sait pas la viser');
+});
+
+test('les domaines DÉCISIFS sont toujours rendus, même à zéro, et par PRÉFIXE', () => {
+  const c = ctx();
+  // Mesuré le 17/09 : `01` valait 87 et `04` était sous la barre des six plus gros. Une
+  // troncature par volume cache donc exactement le chiffre pour lequel on mesure.
+  assert.deepStrictEqual(
+    Array.from(c.decisifsPerimetre_({ '06 · Études & diplômes': 1169, '01 · Administratif & identité': 87 })),
+    ['04=0', '01=87']);
+  // ⚠️ Par PRÉFIXE : le libellé se renomme, le numéro non. Un appariement sur le libellé
+  // entier rendrait 0 au premier « 04 · Immigration & statut ».
+  assert.deepStrictEqual(
+    Array.from(c.decisifsPerimetre_({ '04 · Immigration & statut': 12, '04 · Immigration': 5 })),
+    ['04=17', '01=0']);
+});
+
+test('la phrase ANNONCE le plancher, et ne l\'invente pas quand il n\'y en a pas', () => {
+  const c = ctx();
+  const avecPlancher = c.phrasePerimetrePiece_(
+    '2026-09-17T16:39:00.000Z|c49-4-a|3972/4240/26550|268|06=1169|pdf=3000|18000|04=31,01=87');
+  assert.match(avecPlancher, /18000 lignes classées SANS fileId/);
+  assert.match(avecPlancher, /PLANCHER/);
+  assert.match(avecPlancher, /à pousser d'abord : 04=31,01=87/,
+    'les deux domaines que Marc pousse en premier sont TOUJOURS nommés');
+
+  const sansPlancher = c.phrasePerimetrePiece_(
+    '2026-09-17T16:39:00.000Z|c49-4-a|3972/4240/26550|268|06=1169|pdf=3000|0|04=31,01=87');
+  assert.doesNotMatch(sansPlancher, /PLANCHER/,
+    'à zéro, annoncer un plancher serait une alarme permanente — donc une alarme morte');
+});
+
+test('une chaîne de l\'ANCIENNE version se relit sans inventer un zéro', () => {
+  const c = ctx();
+  // Six champs : la Property écrite avant ce correctif. Elle doit rester lisible, et surtout
+  // ne PAS afficher « 0 lignes sans fileId », qui serait une mesure qu'on n'a pas faite.
+  const p = c.phrasePerimetrePiece_('2026-09-17T16:39:00.000Z|c49-4-a|3972/4240/26550|268|06=1169|pdf=3000');
+  assert.match(p, /3972 papiers candidats/);
+  assert.doesNotMatch(p, /PLANCHER/);
+  assert.doesNotMatch(p, /à pousser d'abord/);
+});
