@@ -1220,6 +1220,27 @@ ce qui reste vrai d'une session à l'autre.
   personne ne passe ressemble à du code qui marche. Réflexe : `grep` les APPELANTS d'une
   option, jamais ses lecteurs. Et un chemin que seul un humain emprunte a besoin d'être
   déclaré dans `test/surface-moteur.test.js` — rien d'autre ne le retient.
+- **Un bouton RECOUVERT s'affiche parfaitement — une correction de mise en page se MESURE dans
+  un navigateur.** Les trois verdicts de l'audit (C49-3) tombaient sous la barre d'onglets du
+  téléphone : « Juste » à y=788 pour une barre qui commence à y=783, même après défilement. Le
+  geste principal de l'écran était inatteignable, le CSS était correct, le build vert et la suite
+  verte — rien ne pouvait le dire. Ce qui l'a trouvé : ouvrir la page dans Chromium au format
+  d'un téléphone et COMPARER les rectangles (`boundingBox`), pas regarder la capture. ⚠️ Une
+  capture `fullPage` ne tranche RIEN pour ça : un élément `position: fixed` y apparaît superposé
+  au milieu du contenu déroulé, donc elle montre un chevauchement même quand il n'y en a pas — et
+  l'inverse est vrai aussi. ⚠️ Et le remède se verrouille au MÊME seuil que ce qu'il évite : deux
+  media queries différentes rouvrent une fenêtre de largeurs où les boutons se collent au mauvais
+  endroit (`test/seuil-telephone.test.ts` le tient déjà pour la coquille).
+- **Le DONNEUR d'une réallocation de budget se fait choisir par les tests, pas par le raisonnement.**
+  Pour financer l'audit (C49-3), les deux donneurs « évidents » ont été refusés : l'historique
+  Gmail, pourtant TERMINÉ et déclaré réallouable par le moteur lui-même, rend 20 de ses tests
+  rouges dès qu'on le met à zéro (un budget quotidien nul rend une campagne MUETTE, et ces tests
+  encodent la conception inverse — ils ne se re-basent pas) ; la re-datation de `06` perd 25 % de
+  son budget en marge de démarrage dès qu'on la coupe en deux, et son propre commentaire annonçait
+  « ≤ 1 min sur 8 », donc il serait devenu faux en silence. Le poste retenu est celui que PERSONNE
+  n'attend : une campagne perpétuelle en lecture seule. Réflexe : proposer le transfert, lancer le
+  gate, et lire ce qui rougit AVANT d'écrire la justification — c'est le parc qui sait quel budget
+  garantit quoi ailleurs.
 - **Un déclencheur que le tick RÉINSTALLE ne se coupe pas à la main.** « Ne plus créer » ne
   suffit pas : la coupure livre AUSSI la suppression de l'existant (`deleteTrigger` sous le même
   flag), sinon l'ancien continue de partir et l'utilisateur, qui l'a supprimé une fois, le voit

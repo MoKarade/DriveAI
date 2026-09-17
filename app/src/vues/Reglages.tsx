@@ -35,6 +35,8 @@ import {
   complementStatut,
 } from '../etat';
 import { formaterMontant } from '../explorateur';
+import { auditDepuisSante } from '../audit';
+import { Audit } from './Audit';
 import { CleTexte, Langue, t } from '../i18n';
 
 const BUDGET_CROISIERE = 10; // cible < 10 $/mois en croisière (CLAUDE.md §1.6)
@@ -49,6 +51,9 @@ export function Reglages({ langue, onLangue, onDeconnexion }: {
 }) {
   const { donnees, synchroA, rafraichir } = useEtatGlobal();
   const progression = useProgressionLive();
+  // C49-3 — la PORTE de l'ADR-0061 vit ici plutôt que dans un cinquième onglet : elle se franchit
+  // une fois, et un onglet permanent pour une chose temporaire encombre les quatre qui restent.
+  const [audit, setAudit] = useState(false);
   const maintenant = new Date();
   const locale = langue === 'fr' ? 'fr-CA' : 'en-CA';
   const heureSynchro = synchroA ? synchroA.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) : '…';
@@ -80,6 +85,8 @@ export function Reglages({ langue, onLangue, onDeconnexion }: {
       </div>
     </section>
   );
+
+  if (audit) return <Audit langue={langue} onFermer={() => setAudit(false)} />;
 
   if (!donnees) {
     return (
@@ -139,6 +146,12 @@ export function Reglages({ langue, onLangue, onDeconnexion }: {
       </div>
 
       {carteReglages}
+
+      {/* ⚠️ La carte n'apparaît QUE si le moteur a un audit en cours — et l'information vient de
+          la ligne de Santé, déjà chargée : savoir s'il y a quelque chose à vérifier ne coûte
+          aucune requête. Une carte permanente pour une porte qu'on franchit une fois serait du
+          décor, et le décor finit par ne plus être lu. */}
+      <CarteAudit langue={langue} santeBrut={donnees.santeBrut} onOuvrir={() => setAudit(true)} />
 
       <details className="avance">
         <summary>
@@ -303,5 +316,29 @@ function Operation({ langue, op }: { langue: Langue; op: LigneProgression }) {
       )}
       {op.derniereErreur && <p className="op-note op-erreur">{t('derniereErreur', langue)} {op.derniereErreur}</p>}
     </div>
+  );
+}
+
+/**
+ * La carte d'entrée de l'audit (C49-3). Elle DIT où en est l'extraction plutôt que d'annoncer un
+ * nombre à juger qu'elle ne connaît pas : la ligne de Santé compte les documents restant à LIRE,
+ * pas ceux restant à JUGER — les confondre ferait afficher « 0 » sur un audit entier à vérifier.
+ */
+function CarteAudit({ langue, santeBrut, onOuvrir }: {
+  langue: Langue;
+  santeBrut: string[][];
+  onOuvrir: () => void;
+}) {
+  const etat = auditDepuisSante(interpreterSante(santeBrut).lignes);
+  if (!etat.present || etat.jamaisTourne) return null;
+  return (
+    <section className="carte">
+      <h2>{t('auditTitre', langue)}</h2>
+      <p className="audit-intro">{t('auditIntro', langue)}</p>
+      {etat.restants !== null && etat.restants > 0 && (
+        <p className="variante">{t('auditEnCours', langue)} <b>{etat.restants}</b></p>
+      )}
+      <button className="principal" onClick={onOuvrir}>{t('auditOuvrir', langue)}</button>
+    </section>
   );
 }

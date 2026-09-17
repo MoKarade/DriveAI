@@ -803,3 +803,73 @@ button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):ho
   display: flex; align-items: center; gap: 0.6rem; justify-content: space-between;
   scroll-margin-bottom: 8rem;
 }
+
+/* ---- C49-3 : l'audit des pièces. UNE carte à la fois, trois cibles larges au pouce. ---- */
+.audit-retour { margin-bottom: 0.6rem; }
+.audit-intro { color: var(--texte-doux); margin: -0.4rem 0 1rem; line-height: 1.5; }
+.audit-compte { margin-bottom: 1.2rem; }
+.audit-barre { height: 6px; border-radius: 3px; background: var(--rang); overflow: hidden; }
+.audit-barre i { display: block; height: 100%; background: var(--accent); transition: width 0.25s ease; }
+.audit-chiffres { margin: 0.45rem 0 0; font-size: 0.85rem; color: var(--texte-doux); font-variant-numeric: tabular-nums; }
+.audit-chiffres b { color: var(--accent); font-weight: 600; }
+.audit-fini { padding: 2rem 0; text-align: center; color: var(--texte-doux); }
+
+.audit-carte { background: var(--carte); border: 1px solid var(--bord); border-radius: var(--r-l); padding: 1.1rem 1.1rem 1rem; }
+.audit-domaine { margin: 0; font-size: 0.78rem; color: var(--texte-doux); letter-spacing: 0.02em; }
+.audit-fichier { margin: 0.2rem 0 0.7rem; font-size: 1.05rem; line-height: 1.35; overflow-wrap: anywhere; }
+/* Cible tactile pleine : un lien qu'on rate au pouce renvoie juger sans avoir vu le document. */
+.audit-lien {
+  display: inline-flex; align-items: center; min-height: 44px; padding: 0 0.9rem;
+  border: 1px solid var(--bord-fort); border-radius: var(--r-m); color: var(--accent);
+  text-decoration: none; font-size: 0.9rem;
+}
+.audit-lien:hover { border-color: var(--accent); background: var(--tonal); }
+
+.audit-champs { margin: 1rem 0 0; display: flex; flex-direction: column; }
+.audit-champs > div { display: flex; gap: 0.8rem; padding: 0.5rem 0; border-top: 1px solid var(--rang); }
+.audit-champs > div:first-child { border-top: none; }
+.audit-champs dt { flex: 0 0 8.5rem; color: var(--texte-doux); font-size: 0.85rem; }
+.audit-champs dd { margin: 0; overflow-wrap: anywhere; }
+
+.audit-note-masque {
+  margin: 0.9rem 0 0; padding: 0.7rem 0.85rem; border-radius: var(--r-m);
+  background: var(--tonal); color: var(--texte-doux); font-size: 0.85rem; line-height: 1.45;
+}
+
+/**
+ * ⚠️ COLLANTS, et c'est une correction MESURÉE, pas une préférence. Posés en flux normal, les
+ * trois verdicts tombaient sous la barre d'onglets du téléphone : bouton « Juste » à y=788 pour
+ * une barre qui commence à y=783, même après défilement — donc le geste principal de l'écran
+ * était inatteignable sans que rien ne le signale. Collés au-dessus de la barre, ils restent
+ * sous le pouce pendant qu'on lit la carte, ce qui est de toute façon la bonne forme : on juge
+ * en regardant les champs, pas après avoir défilé jusqu'en bas.
+ * Le fond est OPAQUE : sans lui, le texte de la carte défile sous les boutons et les rend
+ * illisibles au moment précis où on les vise.
+ */
+.audit-verdicts {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 1.2rem;
+  position: sticky; bottom: 0; padding: 0.6rem 0 0.2rem; background: var(--carte);
+}
+.audit-verdict {
+  min-height: 52px; border-radius: var(--r-m); border: 1px solid var(--bord-fort);
+  background: var(--carte-2); color: var(--texte); font-size: 0.95rem; font-weight: 550;
+}
+.audit-verdict:not(:disabled):hover { filter: none; border-color: var(--accent); background: var(--tonal); }
+.audit-verdict.juste:not(:disabled):hover { border-color: var(--ok); color: var(--ok); }
+.audit-verdict.partiel:not(:disabled):hover { border-color: var(--attention); color: var(--attention); }
+.audit-verdict.faux:not(:disabled):hover { border-color: var(--erreur); color: var(--erreur); }
+.audit-passer { display: block; width: 100%; min-height: 44px; margin-top: 0.5rem; }
+
+/* Téléphone : les trois verdicts restent côte à côte (ils se comparent), le reste s'étale. */
+@media (max-width: 560px) {
+  .audit-champs > div { flex-direction: column; gap: 0.15rem; }
+  .audit-champs dt { flex: none; }
+  .audit-lien { width: 100%; justify-content: center; }
+}
+
+/* Le seuil de la barre d'onglets (760px, cf. `--barre-basse-h`) : au-dessous, les verdicts se
+   collent AU-DESSUS d'elle. Le même seuil que la barre, jamais un second — deux seuils créent
+   une fenêtre où les boutons sont collés au mauvais endroit. */
+@media (max-width: 760px) {
+  .audit-verdicts { bottom: calc(var(--barre-basse-h) + env(safe-area-inset-bottom)); }
+}
