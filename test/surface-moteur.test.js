@@ -202,6 +202,9 @@ const CONTRAT = [
   // chaque vérification sur un échantillon Drive (§9, « un diagnostic un-clic n'est un signal
   // de certitude que s'il est COMMITTÉ et déployé »).
   'perimetreDoitTourner_', 'etapePerimetrePiece_', 'texteSantePerimetrePiece_',
+  // `decisifsPerimetre_` : le compte des domaines que Marc pousse EN PREMIER. Appelée par
+  // l'encodage ET par le diagnostic — deux sites, donc un contrat que seul ce test retient.
+  'decisifsPerimetre_',
   'diagnosticPerimetrePiece', 'lireLignesIndexPerimetre_',
   'inventorierDoublons_', 'balayerExemplairesDoublons_',
   'ecrireVerdictsDoublons_', 'feuilleRapportDoublons_', 'texteSanteDoublons_', 'pageListeDrive_',

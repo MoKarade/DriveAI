@@ -15,17 +15,30 @@
  * peut donc rien coûter et rien exposer ; c'est ce qui permet de la livrer avant la porte
  * C49-3, qui, elle, garde l'ENVOI.
  *
- * ⚠️ L'EXCLUSION EST FERMÉE, L'INCLUSION EST OUVERTE, et c'est le sens sûr. Ce qu'on exclut est
- * une liste ÉCRITE d'extensions qui ne peuvent porter aucun texte (vidéo, son, archive) ; tout
- * le reste est candidat, y compris ce qu'on ne connaît pas. Dans l'autre sens — une liste
- * fermée de ce qui EST un papier — une extension oubliée SOUS-compte le périmètre, donc
- * sous-estime la durée et le coût, et l'erreur ne se voit qu'une fois la campagne lancée et
- * plus chère que promis. Sur-compter se voit tout de suite et ne coûte rien.
+ * ⚠️ L'EXCLUSION EST FERMÉE, L'INCLUSION EST OUVERTE, et c'est le sens sûr POUR L'EXTENSION.
+ * Ce qu'on exclut est une liste ÉCRITE d'extensions qui ne peuvent porter aucun texte (vidéo,
+ * son, archive) ; tout le reste est candidat, y compris ce qu'on ne connaît pas. Dans l'autre
+ * sens — une liste fermée de ce qui EST un papier — une extension oubliée sous-compte le
+ * périmètre, et l'erreur ne se verrait qu'une fois la campagne lancée et plus chère que promis.
  *
- * ⚠️ ET LE COMPTE RESTE UNE BORNE HAUTE, pas une promesse. « Ce fichier peut porter du texte »
- * ne veut pas dire « l'OCR en rendra ». La seule mesure de ce taux-là est l'audit C49-3, qui
- * compte ses « sans texte » sur un échantillon stratifié : c'est LUI qui convertira cette
- * borne en prévision, pas ce fichier. Dire les deux séparément est tout l'intérêt.
+ * ⚠️⚠️ MAIS LE COMPTE EST QUAND MÊME UN PLANCHER, ET CE N'EST PAS L'EXTENSION QUI LE CAUSE —
+ * C'EST LA CLÉ. Mesuré au premier usage réel, le 17/09 : 4 240 lignes `classé` porteuses d'un
+ * fileId, sur 26 550 lignes d'Index. `fileIdDeCleIndex_` n'accepte que quatre préfixes de clé
+ * (`drive`, `tri33p`, `migre`, `reanalyse`) ; or la clé d'une pièce jointe Gmail est
+ * `<messageId>|<rang>|<nom>|<taille>` (`cleAttachement_`) et ne commence par aucun d'eux. Tout
+ * document entré par Gmail — l'intake PRINCIPAL du moteur — est donc invisible à ce comptage,
+ * bien qu'il soit rangé dans le Drive et porte un vrai fileId.
+ * Ces lignes se COMPTENT désormais (`classeesSansFileId`) au lieu d'être sautées en silence :
+ * une population qu'on ne sait pas mesurer doit au moins se dire, sinon « 3 972 » se lit comme
+ * un total alors que c'est un début. La première rédaction de cet en-tête affirmait
+ * « sur-compter se voit tout de suite » — c'était vrai de l'extension et faux du périmètre.
+ * ⚠️ MÊME ANGLE MORT CÔTÉ MÉMOIRE : `faitInventaireMemoire_` et `pieceMemoire_` appliquent les
+ * DEUX mêmes conditions. Ce que ce comptage ne voit pas, le canal ne l'enverra jamais non plus.
+ *
+ * ⚠️ ET CE QUI EST COMPTÉ RESTE UNE BORNE HAUTE, pas une promesse. « Ce fichier peut porter du
+ * texte » ne veut pas dire « l'OCR en rendra ». La seule mesure de ce taux-là est l'audit
+ * C49-3, qui compte ses « sans texte » sur un échantillon stratifié : c'est LUI qui convertira
+ * cette borne en prévision, pas ce fichier. Dire les deux séparément est tout l'intérêt.
  */
 
 /**
@@ -42,6 +55,21 @@ var EXTENSIONS_SANS_TEXTE_PIECE = {
 
 /** Combien de lignes de détail (domaines, extensions) tiennent dans la Property de suivi. */
 var PERIMETRE_PIECE_TOP = 6;
+
+/**
+ * Les domaines que Marc a choisi de pousser EN PREMIER (17/09), donc ceux dont le compte
+ * DÉCIDE — toujours publiés, même à zéro.
+ *
+ * ⚠️ POURQUOI ILS NE PEUVENT PAS SORTIR DE LA TÊTE. Au premier usage réel, la tête des six
+ * plus gros domaines ne contenait NI `04` NI `01` : ils sont petits (87 pour `01`, et `04`
+ * quelque part dans les 68 restants), donc précisément invisibles à une troncature par
+ * volume. Une surface bornée qui cache le seul chiffre pour lequel on l'a écrite ne mesure
+ * rien — et « absent de la tête » se lit comme « zéro », qui est une autre information.
+ *
+ * Reconnus par le PRÉFIXE, jamais par le libellé entier, qui se renomme (même règle que
+ * `estDomaineMasqueAudit_`, et pour la même raison).
+ */
+var PREFIXES_DOMAINE_DECISIF_PIECE = ['04', '01'];
 
 /* ---------- PUR ---------- */
 
@@ -79,14 +107,20 @@ function estCandidatPiece_(nom) {
  * @return {!Object} { lues, classees, candidats, exclus, parDomaine, parExtension }
  */
 function compterPerimetrePiece_(lignes, fileIdDe) {
-  var res = { lues: 0, classees: 0, candidats: 0, exclus: 0, parDomaine: {}, parExtension: {} };
+  var res = { lues: 0, classees: 0, classeesSansFileId: 0, candidats: 0, exclus: 0,
+    parDomaine: {}, parExtension: {} };
   if (!lignes || !lignes.length) return res;
 
   for (var i = 0; i < lignes.length; i++) {
     res.lues++;
     var statut = String(lignes[i][5] || '').toLowerCase();
     if (statut.indexOf('class') !== 0) continue;
-    if (!fileIdDe(String(lignes[i][0] || ''))) continue;
+    if (!fileIdDe(String(lignes[i][0] || ''))) {
+      // ⚠️ RANGÉ, mais sa CLÉ ne porte pas de fileId — une pièce jointe Gmail, typiquement.
+      // Sauter en silence ferait passer un PLANCHER pour un total (voir l'en-tête). On compte.
+      res.classeesSansFileId++;
+      continue;
+    }
     res.classees++;
 
     var nom = String(lignes[i][2] || '');
@@ -102,6 +136,24 @@ function compterPerimetrePiece_(lignes, fileIdDe) {
     res.parExtension[ext] = (res.parExtension[ext] || 0) + 1;
   }
   return res;
+}
+
+/**
+ * PURE. Le compte des domaines DÉCISIFS, par préfixe, dans l'ordre de la constante.
+ * Rend toujours une entrée par préfixe — un zéro est une mesure, une absence n'en est pas une.
+ */
+function decisifsPerimetre_(parDomaine) {
+  var out = [];
+  for (var i = 0; i < PREFIXES_DOMAINE_DECISIF_PIECE.length; i++) {
+    var prefixe = PREFIXES_DOMAINE_DECISIF_PIECE[i];
+    var n = 0;
+    for (var d in parDomaine) {
+      if (!Object.prototype.hasOwnProperty.call(parDomaine, d)) continue;
+      if (String(d).trim().slice(0, 2) === prefixe) n += parDomaine[d];
+    }
+    out.push(prefixe + '=' + n);
+  }
+  return out;
 }
 
 /**
@@ -135,12 +187,17 @@ function encoderPerimetrePiece_(res, tag, iso) {
   for (i = 0; i < doms.length; i++) morceaux.push(doms[i] + '=' + res.parDomaine[doms[i]]);
   var extraits = [];
   for (i = 0; i < exts.length; i++) extraits.push(exts[i] + '=' + res.parExtension[exts[i]]);
+  // ⚠️ Les deux derniers champs sont AJOUTÉS EN QUEUE : une chaîne écrite par la version
+  // précédente se relit sans décalage, et son absence se lit comme « pas encore mesuré par
+  // cette version » plutôt que comme un zéro (C28-44, appliqué à une Property).
   return [
     iso, tag,
     res.candidats + '/' + res.classees + '/' + res.lues,
     String(res.exclus),
     morceaux.join(','),
-    extraits.join(',')
+    extraits.join(','),
+    String(res.classeesSansFileId || 0),
+    decisifsPerimetre_(res.parDomaine).join(',')
   ].join('|');
 }
 
@@ -173,10 +230,21 @@ function phrasePerimetrePiece_(brut) {
   var lues = comptes[2] || '?';
   var phrase = candidats + ' papiers candidats sur ' + classees + ' documents classés (' +
     lues + ' lignes d\'Index) · ' + (p[3] || '0') + ' écartés (sans texte possible)';
+  // ⚠️ Les domaines que Marc pousse EN PREMIER, TOUJOURS — ils sont trop petits pour entrer
+  // dans la tête par volume, donc la troncature cacherait le seul chiffre qui décide.
+  if (p[7]) phrase += ' · à pousser d\'abord : ' + p[7];
   if (p[4]) phrase += ' · ' + p[4];
+  // ⚠️ LE PLANCHER, avant la borne haute : une ligne « classé » dont la CLÉ ne porte pas de
+  // fileId (une pièce jointe Gmail) est hors de ce comptage ET hors du canal de la Mémoire.
+  // Sans ce nombre, « 3 972 » se lit comme un total alors que c'est un début.
+  var sansId = Number(p[6]);
+  if (!isNaN(sansId) && sansId > 0) {
+    phrase += ' · ⚠️ ' + sansId + ' lignes classées SANS fileId de clé (PJ Gmail) — hors de ce ' +
+      'compte ET hors du canal Mémoire : le total est donc un PLANCHER';
+  }
   phrase += ' · mesuré le ' + String(p[0] || '?').slice(0, 16).replace('T', ' ');
-  // ⚠️ Le compte est une BORNE HAUTE : « peut porter du texte » n'est pas « en porte ». Le
-  // dire ICI, pas seulement dans l'en-tête du fichier — c'est cette ligne que Marc lit.
+  // ⚠️ Ce qui EST compté reste une BORNE HAUTE : « peut porter du texte » n'est pas « en
+  // porte ». Le dire ICI, pas seulement dans l'en-tête — c'est cette ligne que Marc lit.
   return phrase + ' · borne HAUTE (le taux de texte réel se lit dans l\'audit)';
 }
 
@@ -257,8 +325,12 @@ function diagnosticPerimetrePiece() {
   var res = compterPerimetrePiece_(lignes, fileIdDeCleIndex_);
   Logger.log('Lignes d\'Index : ' + res.lues);
   Logger.log('Classés avec fileId : ' + res.classees);
+  // ⚠️ Le PLANCHER : ces lignes sont rangées dans le Drive et invisibles au comptage comme au
+  // canal de la Mémoire, parce que leur CLÉ ne porte pas de fileId (PJ Gmail).
+  Logger.log('Classés SANS fileId de clé (hors compte, hors Mémoire) : ' + res.classeesSansFileId);
   Logger.log('Candidats (peuvent porter du texte) : ' + res.candidats);
   Logger.log('Écartés (extension sans texte possible) : ' + res.exclus);
+  Logger.log('À pousser d\'abord : ' + decisifsPerimetre_(res.parDomaine).join(' · '));
   Logger.log('--- par domaine ---');
   var doms = tetePerimetre_(res.parDomaine, 1000);
   var i;

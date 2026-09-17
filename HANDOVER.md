@@ -2946,6 +2946,35 @@ Détail des tâches : `BACKLOG.md`.
         détail COMPLET — tous les domaines, toutes les extensions — se lit par
         `PerimetrePiece.gs` → `diagnosticPerimetrePiece` → Exécuter : lecture seule, rien de
         persisté, rien d'envoyé.
+      ⚠️⚠️ **MESURÉ LE 17/09 À 16:39, ET LE RÉSULTAT DÉPLACE DEUX CHIFFRES QUE TOUT
+      L'ÉCOSYSTÈME CITAIT.** La ligne de Santé rend : **3 972 papiers candidats sur 4 240
+      documents classés, 26 550 lignes d'Index, 268 écartés**.
+      - **« 20 346 » n'est PAS un compte de documents.** C'est
+        `Object.keys(_indexCache).length` (`Journal.gs`), donc le nombre de CLÉS d'Index toutes
+        natures confondues — plans de consolidation, dry-run, fusion, quarantaine, zones
+        protégées. Le chiffre des documents RANGÉS et identifiables est 4 240.
+      - **« ~19 900 » (la cible de l'inventaire Mémoire, écrite dans l'ADR 0003 de MemoryAI, son
+        `CLAUDE.md` et ici) vient de cette même confusion.** `faitInventaireMemoire_` applique
+        EXACTEMENT les deux mêmes conditions que ce comptage — clé porteuse d'un fileId, statut
+        `class*`. Sa cible réelle est donc du même ordre que 4 240, et ses 2 725 faits ne sont
+        pas 14 % du but mais **~64 %**. [Probable — même prédicat lu dans les deux fichiers.]
+      - ⚠️⚠️ **ET LE 4 240 EST LUI-MÊME UN PLANCHER, pour une raison qui n'est pas l'extension
+        mais la CLÉ.** `fileIdDeCleIndex_` n'accepte que quatre préfixes (`drive`, `tri33p`,
+        `migre`, `reanalyse`) ; la clé d'une pièce jointe Gmail est
+        `<messageId>|<rang>|<nom>|<taille>` (`cleAttachement_`) et n'en porte aucun. **Tout
+        document entré par Gmail — l'intake PRINCIPAL du moteur — est invisible à ce comptage
+        ET au canal de la Mémoire**, bien qu'il soit rangé et porte un vrai fileId. Ces lignes
+        se COMPTENT désormais (`classeesSansFileId`) et la ligne de Santé dit « PLANCHER » quand
+        il y en a : une population qu'on ne sait pas viser doit au moins se dire.
+      - ⚠️ **`04` et `01` sont TOUJOURS nommés** (`PREFIXES_DOMAINE_DECISIF_PIECE`), même à zéro.
+        Au premier usage réel ils ne figuraient dans AUCUN des six plus gros domaines — `01`
+        vaut 87 et `04` est dans les 68 restants : ils sont trop PETITS pour survivre à une
+        troncature par volume, et ce sont exactement les deux que Marc pousse en premier. Une
+        surface bornée qui cache le seul chiffre pour lequel on l'a écrite ne mesure rien.
+      - **Conséquence pratique pour Marc** : sa première tranche (`04` + `01`) est de l'ordre de
+        la centaine de documents, pas du millier. C'est peu cher à essayer — ce qui va dans le
+        sens de son choix.
+
       ⚠️ **Ce que cette étape NE fait pas** : lire les documents. C'est le lot suivant, et il
       commencera par `04 · Immigration` et `01 · Administratif & identité` — **choix de Marc du
       17/09, contre ma recommandation** : « pour voir tout de suite ce que la Mémoire sait de mes
