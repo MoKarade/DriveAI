@@ -2991,18 +2991,20 @@ Détail des tâches : `BACKLOG.md`.
       MemoryAI (`/pieces`, PR #26).
 
    1 ter. **C49-5 étape B — le RATTRAPAGE du stock, `04` puis `01`** (17/09, `src/RattrapagePiece.gs`).
-      ⚠️⚠️ **À LIRE AVANT TOUT LE RESTE DE CE POINT : ce lot prend la voie que la Q1 de
-      l'ADR-0061 avait ÉCARTÉE, et c'est MARC qui doit trancher avant l'allumage.** La Q1
-      (16/09) retient « le texte OCR sort vers le runner GitHub » contre « tout garder dans
-      Apps Script », au motif d'« un rattrapage compté en mois ». Ce module fait le second, et
-      il est livré **éteint** et **en brouillon** pour cette raison. Deux faits neufs, tous deux
-      postérieurs à la décision : la prémisse portait sur **19 900** documents — mesurés depuis
-      à **3 972** (C49-4), et la tranche choisie n'en pèse que **110**, soit ~18 min de quota à
-      10 s/document ; et l'ADR prévoit ce cas en toutes lettres (« si l'audit le montre bon
-      marché, la question de garder la frontière étroite se rouvre — c'est alors une
-      amélioration, pas une révision »). ⚠️ La voie du tick est la frontière **ÉTROITE** : seuls
-      les champs sortent, aucun texte intégral ne transite par un runner. Si Marc garde la voie
-      du runner, ce module est à jeter — pas à adapter.
+      ⚠️⚠️ **LA VOIE : TRANCHÉE PAR MARC LE 17/09 — « garde ta voie, 110 docs c'est peu pour
+      l'instant ».** Ce module prend la voie que la Q1 de l'ADR-0061 avait écartée (le tick
+      Apps Script plutôt que le runner GitHub) ; il a été livré en brouillon POUR CETTE RAISON,
+      et Marc a tranché avant tout allumage. L'ADR est **amendé**, pas révoqué (§9, Q1) : la Q1
+      reste la voie du rattrapage COMPLET, cette tranche-ci reste ici. Ce qui l'a rendue bon
+      marché, et ce que l'ADR prévoyait en toutes lettres : la prémisse « compté en mois »
+      portait sur **19 900** documents, mesurés depuis à **3 972** (C49-4), et la tranche n'en
+      pèse que **110** — ~18 min de quota à 10 s/document, sur les 11 min/j déjà prélevées.
+      ⚠️ La voie du tick est la frontière **ÉTROITE** : seuls les champs sortent, aucun texte
+      intégral ne transite par un runner pour ces 110 documents.
+      ⚠️ **Le « pour l'instant » de Marc est DANS le code, pas seulement dans sa phrase** : les
+      3 862 papiers restants retombent sous la Q1, et l'idempotence de ce module (200 `fileId`
+      dans une Script Property) refuse une tranche plus grande plutôt que de le découvrir en
+      production.
       ⚠️ **LE POINT QUI N'ÉTAIT PAS ÉVIDENT, ET QUI CHANGE LE LOT** : allumer `PIECE_PUSH`
       n'aurait RIEN envoyé de ce que Marc veut voir. Le canal des pièces
       (`pousserPieceApresClassement_`) n'a qu'un appelant, `Pipeline.gs`, juste après le
