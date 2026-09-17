@@ -262,6 +262,12 @@ function majSante_() {
     // seule chose qui bloque l'allumage de `PIECE_PUSH`. Sans elle, « l'audit avance » et
     // « l'audit n'a jamais tourné » se lisent tous les deux comme un onglet qui ne bouge pas.
     ['Audit des pièces (C49-3) : ' + texteSanteAuditPiece_()],
+    // Le PÉRIMÈTRE (C49-4 étape A). Ligne à part de l'audit, parce qu'elle répond à une AUTRE
+    // question : l'audit dit « l'extraction est-elle bonne ? », celle-ci dit « sur combien de
+    // documents ». C'est ce nombre qui dimensionne la campagne — sa durée, son coût, le budget
+    // à lui prélever — et il n'était mesuré NULLE PART : « 20 346 » est le compte de l'Index,
+    // pas celui des papiers.
+    ['Périmètre des pièces (C49-4) : ' + texteSantePerimetrePiece_()],
     ['Mis à jour : ' + new Date()]
   ];
   f.getRange(2, 1, lignes.length, 1).setValues(lignes); // une seule écriture Sheet (I/O borné/tick)

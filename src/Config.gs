@@ -517,6 +517,15 @@ var CONFIG = {
   // ne protège qu'une chose : qu'un run de rattrapage ne parte pas en rafale de 200 appels.
   PIECE_MAX_PAR_RUN: 5,
 
+  // C49-4 — la LECTURE DE TOUT LE DRIVE, étape A : compter le périmètre avant de le promettre.
+  // ⚠️ Bumper ce tag RELANCE le comptage (une lecture de l'Index, aucun appel LLM, rien qui
+  // sorte du compte Google). Sans bump, l'étape ne coûte qu'une lecture de Property par tick :
+  // c'est une passe ONE-SHOT, pas une campagne — d'où l'ABSENCE de `*_BUDGET_JOUR_MS`, qui
+  // prélèverait une minute par jour à une autre campagne pour une mesure qui se fait une fois.
+  // ⚠️ Ce qu'elle mesure est une BORNE HAUTE : « ce fichier peut porter du texte », jamais
+  // « il en porte ». Le taux réel se lit dans les « sans texte » de l'audit C49-3.
+  PERIMETRE_PIECE_TAG: 'c49-4-a',
+
   // C49-3 — l'audit AVANT d'allumer `PIECE_PUSH` (ADR-0061). Cent documents, servis
   // ÉGALITAIREMENT entre les domaines et non au prorata : au prorata, `04 · Immigration` —
   // celui dont une erreur d'extraction coûte le plus cher — aurait deux lignes sur cent.

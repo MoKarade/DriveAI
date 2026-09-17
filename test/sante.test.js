@@ -49,8 +49,12 @@ function chargerAvecSanteMock(indexCache, props) {
   // lit `budgetJourAudit_`. Même exigence inter-module que les deux ci-dessus — et la même raison
   // de le charger POUR DE VRAI : cette ligne est le SEUL endroit d'où l'on voit que la porte de
   // l'ADR-0061 avance, et un catch pris pour le chemin nominal la rendrait muette sans rougir.
+  // `PerimetrePiece.gs` : la ligne « Périmètre des pièces » (C49-4) appelle
+  // `texteSantePerimetrePiece_`. Chargé POUR DE VRAI, pour la même raison que les trois
+  // ci-dessus : mocké, une mutation du nom survivrait, et cette ligne est le seul endroit d'où
+  // l'on voit le nombre qui DIMENSIONNE la campagne de lecture du Drive.
   const ctx = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'GoogleApi.gs', 'TriGmail.gs', 'Doublons.gs',
-    'Gmail.gs', 'Migration.gs', 'Memoire.gs', 'AuditPiece.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
+    'Gmail.gs', 'Migration.gs', 'Memoire.gs', 'AuditPiece.gs', 'PerimetrePiece.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
     { PropertiesService: mockProps(props) });
   const captured = [];
   // feuille_ mocké : capture l'unique setValues de « Santé » ; `getLastRow: 1` = rapport des
@@ -63,7 +67,7 @@ function chargerAvecSanteMock(indexCache, props) {
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 13 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 14 lignes de métadonnées (une seule écriture Sheet)', () => {
   // 10 depuis ADR-0056 : la re-datation de `06` rallume de la dépense LLM et son budget du jour
   // n'était lisible NULLE PART. Le compte est figé pour que l'ajout d'une ligne soit une DÉCISION —
   // l'écriture est unique par tick, et chaque ligne coûte de la place à l'écran de Marc.
@@ -80,9 +84,13 @@ test('majSante_ écrit exactement 13 lignes de métadonnées (une seule écritur
   // soit. Une campagne qui avance sans geste humain a d'autant plus besoin d'être lisible : sans
   // cette ligne, « elle progresse », « elle est finie » et « elle n'a jamais démarré » se lisent
   // tous les trois comme un onglet qui ne bouge pas.
+  // 14 depuis C49-4 : le PÉRIMÈTRE répond à une autre question que l'audit — celui-ci dit si
+  // l'extraction est bonne, celle-là sur COMBIEN de documents elle aurait à tourner. C'est ce
+  // nombre qui dimensionne la campagne (durée, coût, budget à prélever) et il n'était mesuré
+  // nulle part : « 20 346 » est le compte de l'Index, pas celui des papiers.
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 13);
+  assert.strictEqual(captured.length, 14);
   assert.ok(captured.every((l) => typeof l === 'string'));
 });
 
