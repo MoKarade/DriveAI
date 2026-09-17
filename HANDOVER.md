@@ -2946,9 +2946,10 @@ Détail des tâches : `BACKLOG.md`.
         détail COMPLET — tous les domaines, toutes les extensions — se lit par
         `PerimetrePiece.gs` → `diagnosticPerimetrePiece` → Exécuter : lecture seule, rien de
         persisté, rien d'envoyé.
-      ⚠️⚠️ **MESURÉ LE 17/09 À 16:39, ET LE RÉSULTAT DÉPLACE DEUX CHIFFRES QUE TOUT
-      L'ÉCOSYSTÈME CITAIT.** La ligne de Santé rend : **3 972 papiers candidats sur 4 240
-      documents classés, 26 550 lignes d'Index, 268 écartés**.
+      ⚠️⚠️ **MESURÉ LE 17/09 (recompté à 17:27 sous `c49-4-b`), ET LE RÉSULTAT DÉPLACE DEUX
+      CHIFFRES QUE TOUT L'ÉCOSYSTÈME CITAIT.** La ligne de Santé rend : **3 972 papiers
+      candidats sur 4 240 documents classés, 26 550 lignes d'Index, 268 écartés**, plus
+      **734 lignes classées SANS fileId de clé** — le plancher, ci-dessous.
       - **« 20 346 » n'est PAS un compte de documents.** C'est
         `Object.keys(_indexCache).length` (`Journal.gs`), donc le nombre de CLÉS d'Index toutes
         natures confondues — plans de consolidation, dry-run, fusion, quarantaine, zones
@@ -2967,12 +2968,13 @@ Détail des tâches : `BACKLOG.md`.
         se COMPTENT désormais (`classeesSansFileId`) et la ligne de Santé dit « PLANCHER » quand
         il y en a : une population qu'on ne sait pas viser doit au moins se dire.
       - ⚠️ **`04` et `01` sont TOUJOURS nommés** (`PREFIXES_DOMAINE_DECISIF_PIECE`), même à zéro.
-        Au premier usage réel ils ne figuraient dans AUCUN des six plus gros domaines — `01`
-        vaut 87 et `04` est dans les 68 restants : ils sont trop PETITS pour survivre à une
-        troncature par volume, et ce sont exactement les deux que Marc pousse en premier. Une
-        surface bornée qui cache le seul chiffre pour lequel on l'a écrite ne mesure rien.
-      - **Conséquence pratique pour Marc** : sa première tranche (`04` + `01`) est de l'ordre de
-        la centaine de documents, pas du millier. C'est peu cher à essayer — ce qui va dans le
+        Au premier usage réel ils ne figuraient dans AUCUN des six plus gros domaines (`06`=1169,
+        `02`=976, `08`=857, `05`=531, `03`=284, `01`=87) : **`04` vaut 23**, il est trop PETIT
+        pour survivre à une troncature par volume, et c'est exactement le premier que Marc
+        pousse. Une surface bornée qui cache le seul chiffre pour lequel on l'a écrite ne mesure
+        rien.
+      - **Conséquence pratique pour Marc** : sa première tranche (`04` + `01`) pèse **110
+        documents** — la centaine, pas le millier. C'est peu cher à essayer, ce qui va dans le
         sens de son choix.
       - ⚠️ **TAG BUMPÉ EN `c49-4-b`** (17/09, demande de Marc). Le correctif ci-dessus ne
         change QUE la façon de mesurer ; la gate étant un tag déjà posé, rien ne recalculait
@@ -2987,7 +2989,85 @@ Détail des tâches : `BACKLOG.md`.
       papiers d'identité — et si c'est mauvais, on arrête avant d'avoir dépensé ». Son retour en
       arrière (retirer une pièce déjà partie) n'existait pas ; il a été livré le même jour côté
       MemoryAI (`/pieces`, PR #26).
-   2. Seulement ensuite : `CONFIG.PIECE_PUSH = true`, et le rattrapage (C49-4) par le runner.
+
+   1 ter. **C49-5 étape B — le RATTRAPAGE du stock, `04` puis `01`** (17/09, `src/RattrapagePiece.gs`).
+      ⚠️⚠️ **LA VOIE : TRANCHÉE PAR MARC LE 17/09 — « garde ta voie, 110 docs c'est peu pour
+      l'instant ».** Ce module prend la voie que la Q1 de l'ADR-0061 avait écartée (le tick
+      Apps Script plutôt que le runner GitHub) ; il a été livré en brouillon POUR CETTE RAISON,
+      et Marc a tranché avant tout allumage. L'ADR est **amendé**, pas révoqué (§9, Q1) : la Q1
+      reste la voie du rattrapage COMPLET, cette tranche-ci reste ici. Ce qui l'a rendue bon
+      marché, et ce que l'ADR prévoyait en toutes lettres : la prémisse « compté en mois »
+      portait sur **19 900** documents, mesurés depuis à **3 972** (C49-4), et la tranche n'en
+      pèse que **110** — ~18 min de quota à 10 s/document, sur les 11 min/j déjà prélevées.
+      ⚠️ La voie du tick est la frontière **ÉTROITE** : seuls les champs sortent, aucun texte
+      intégral ne transite par un runner pour ces 110 documents.
+      ⚠️ **Le « pour l'instant » de Marc est DANS le code, pas seulement dans sa phrase** : les
+      3 862 papiers restants retombent sous la Q1, et l'idempotence de ce module (200 `fileId`
+      dans une Script Property) refuse une tranche plus grande plutôt que de le découvrir en
+      production.
+      ⚠️ **LE POINT QUI N'ÉTAIT PAS ÉVIDENT, ET QUI CHANGE LE LOT** : allumer `PIECE_PUSH`
+      n'aurait RIEN envoyé de ce que Marc veut voir. Le canal des pièces
+      (`pousserPieceApresClassement_`) n'a qu'un appelant, `Pipeline.gs`, juste après le
+      classement : il ne voit que le FLUX VIVANT. Les papiers de `04`+`01` sont rangés depuis
+      des semaines, ils ne repasseront jamais par `traiterDocument_` — le tableau aurait
+      affiché « canal actif » pendant que le stock restait invisible.
+      - **Comment c'est bâti** : une campagne qui relit l'Index, choisit les documents de la
+        tranche DANS L'ORDRE des préfixes (`04` épuisé avant `01` — c'est la demande, pas un
+        effet de tri), et les fait passer par la MÊME fonction que le flux vivant. Mêmes gardes
+        (`verdictPiece_`), même mise en forme (`pieceMemoire_`), même envoi : un papier rattrapé
+        arrive à la Mémoire exactement comme un papier classé aujourd'hui.
+      - **Deux interrupteurs, un seul canal** : `PIECE_PUSH` reste `false` (décision de Marc du
+        17/09, « le rattrapage seul ») et `RATTRAPAGE_PIECE_TAG` gouverne la campagne. Allumer
+        le flux vivant re-tarifierait les HUIT sites d'appel de `traiterDocument_`, dont
+        `Reset.gs` et `Migration.gs` : c'est le piège d'`ANALYSE_V2`, qui a doublé un mois en
+        une nuit. Ici ce qui part est une LISTE fermée, donc un coût borné avant de partir.
+      - ⚠️ **LIVRÉ ÉTEINT, et la porte est celle de l'ADR-0061** : `RATTRAPAGE_PIECE_TAG` vaut
+        `''`. Marc a choisi « après le jugement de l'audit ». Le code ne DÉDUIT pas ce jugement
+        d'un compteur de verdicts — il peut en juger quarante et s'arrêter ; poser une valeur
+        dans le tag, c'est dire « j'ai jugé, vas-y ». Et l'étape refuse en plus de démarrer tant
+        que l'audit a des documents à extraire (`resteAuditPiece_ !== 0`).
+      - **Aucune addition à l'enveloppe des 63 min/j** : la campagne n'a AUCUNE constante
+        `*_BUDGET_JOUR_MS` à elle (un test l'exige dans les deux fichiers). Elle consomme le
+        budget des PIÈCES déjà prélevé en C49-3 — même constante, même Property — et les deux
+        étapes sont mutuellement exclusives. Il n'y a donc aucun transfert à verrouiller.
+      - **Ce qu'on marque, et ce qu'on ne marque JAMAIS** : un verdict propre au document (sans
+        texte, extraction vide, refus de la Mémoire) se marque « fait » — sinon la même photo
+        illisible serait re-téléchargée et re-extraite à chaque passe, à vie. Une PANNE DE CANAL
+        (jeton, suspension, frein, réseau, plafond) ne se marque pas et arrête la boucle :
+        marquer là perdrait le document POUR TOUJOURS, puisqu'il ne reviendrait ni par le
+        rattrapage ni par le flux. La table énumère les VERDICTS, pas les pannes — un motif
+        inconnu tombe donc du côté sûr.
+      - ⚠️ **Le coupe-circuit Drive** : une lecture impossible est un verdict du document
+        (droits, fichier disparu), mais TROIS d'affilée ne le sont plus — un scope perdu ou un
+        throttle les fait toutes échouer. Au troisième, la passe s'arrête ET retire les marques
+        déjà posées, sinon le coupe-circuit protégerait le troisième document et pas les deux
+        premiers.
+      - ⚠️ **L'idempotence tient dans une Script Property, donc elle a un plafond** (200 `fileId`,
+        mesuré au plafond contre les ~9 Ko). L'étape REFUSE une tranche plus grande au lieu de
+        découvrir la limite en production — une Property qui déborde lève à l'écriture, et la
+        campagne re-paierait alors une extraction par document à chaque passe sans jamais
+        avancer. **La tranche suivante (3 862 papiers) ne tiendra JAMAIS ici** : l'élargir
+        exigera un autre mécanisme, et c'est écrit plutôt que découvert.
+      - **Où le lire sans rien exécuter** : la ligne de Santé **« Rattrapage des pièces
+        (C49-5) »** — restants, dernière passe (faits/échecs/sans texte), motif de fin, et
+        **qui l'a lancée** (`par le tick` / `lancée à la main`). Le détail et le COÛT d'une
+        tranche AVANT de la dépenser : `RattrapagePiece.gs` → `diagnosticRattrapagePiece` →
+        Exécuter (lecture seule, rien de persisté, rien d'envoyé).
+      - **Le chemin manuel** : `RattrapagePiece.gs` → `rattraperPiecesMaintenant` → Exécuter.
+        Hors budget quotidien et hors porte de l'audit — c'est le geste de Marc — mais PAS hors
+        garde-temps, jeton, suspension ni frein en dollars. Il existe pour la raison de C28-137 :
+        un `opts` lu par le moteur et passé par personne est une intention jamais livrée, et on
+        s'en aperçoit le jour où le budget du tick est épuisé.
+      - **Pour l'allumer** : poser une valeur dans `CONFIG.RATTRAPAGE_PIECE_TAG` (ex. `c49-5-a`),
+        pousser, et lire la ligne de Santé sur un tick POSTÉRIEUR au déploiement. ⚠️ Bumper ce
+        tag ensuite REFAIT toute la tranche : la liste des faits est écrite SOUS le tag, donc
+        chaque document re-coûte son appel Haiku.
+   2. Seulement ensuite, et dans CET ordre : **poser `CONFIG.RATTRAPAGE_PIECE_TAG`** (la tranche
+      `04`+`01`, C49-5 ci-dessus), juger ce qui est arrivé dans MemoryAI `/pieces` — le retrait
+      y existe depuis la PR #26 —, puis seulement `CONFIG.PIECE_PUSH = true` pour le flux vivant.
+      ⚠️ Cette ligne annonçait « le rattrapage (C49-4) par le runner » jusqu'au 17/09 : il n'y a
+      pas de runner, et C49-4 ne fait que COMPTER. Le rattrapage est C49-5 et il tourne dans le
+      tick.
    ⚠️ **Comment savoir que le code a PRIS EFFET** — pas le run vert (piège 3, et son inverse, la
    cause n° 3 du 2 bis) : la ligne de Santé **« Mémoire (pièces) »** doit apparaître dans
    `etat_moteur`, DISTINCTE de « Mémoire (inventaire) ». Les deux canaux tombent pour des raisons

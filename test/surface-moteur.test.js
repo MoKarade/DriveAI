@@ -206,6 +206,19 @@ const CONTRAT = [
   // l'encodage ET par le diagnostic — deux sites, donc un contrat que seul ce test retient.
   'decisifsPerimetre_',
   'diagnosticPerimetrePiece', 'lireLignesIndexPerimetre_',
+  // Le RATTRAPAGE (C49-5 étape B). `rattrapageDoitTourner_`, `restantsRattrapage_` et
+  // `etapeRattrapagePiece_` sont appelées par `Main.gs` ; `texteSanteRattrapagePiece_` par
+  // `Journal.gs` ; et le module consomme `estCandidatPiece_` + `PREFIXES_DOMAINE_DECISIF_PIECE`
+  // de `PerimetrePiece.gs`, `fileIdDeCleIndex_` de `Journal.gs`, `budgetJourAudit_` et
+  // `resteAuditPiece_` d'`AuditPiece.gs`, `pousserPieceApresClassement_` de `Memoire.gs`.
+  // Rien d'autre que ce test ne retient ces contrats.
+  'rattrapageDoitTourner_', 'restantsRattrapage_', 'etapeRattrapagePiece_',
+  'texteSanteRattrapagePiece_', 'prefixesRattrapage_',
+  // Les DEUX chemins que Marc emprunte depuis l'éditeur. C28-137 : un chemin que seul un humain
+  // emprunte n'a personne d'autre pour le retenir, et le jour où le budget du tick est épuisé,
+  // c'est le seul moyen de vérifier une réparation avant minuit. `diagnosticRattrapagePiece`
+  // est en plus ce qui permet de lire le COÛT d'une tranche AVANT de la dépenser.
+  'rattraperPiecesMaintenant', 'diagnosticRattrapagePiece',
   'inventorierDoublons_', 'balayerExemplairesDoublons_',
   'ecrireVerdictsDoublons_', 'feuilleRapportDoublons_', 'texteSanteDoublons_', 'pageListeDrive_',
   'texteSanteHistoGmail_', // Main.gs, appelée par Journal.gs (ligne de Santé C28-99)

@@ -3,6 +3,9 @@
 - **Statut** : **accepté** (Marc, 16/09/2026). Il a confirmé la frontière (§2) et les deux
   invariants révisés (§3), puis tranché les deux arbitrages de la §9 : **le runner** pour le
   rattrapage, et **un champ « titulaire »** pour les documents des proches.
+  ⚠️ **Amendé le 17/09** (§9, Q1) : la PREMIÈRE tranche (`04`+`01`, 110 documents mesurés) reste
+  dans Apps Script, sur la frontière étroite — le cas que cet ADR prévoyait en toutes lettres.
+  La Q1 reste la voie du rattrapage complet.
 - **Portée** : `src/Memoire.gs`, le pipeline d'analyse (`src/Llm.gs`, `src/Main.gs`), et une
   route de lecture sur la web app. **Aucun changement au classement** — la taxonomie, le
   routage et la zone protégée ne bougent pas d'une ligne.
@@ -190,6 +193,40 @@ de 8 des 10 questions de test qui trouvent leur réponse, et les 19 900 ne parte
 garder dans Apps Script, ce qui aurait préservé la frontière étroite (seuls les champs sortent)
 au prix d'un rattrapage compté en mois, prélevé sur une enveloppe déjà pleine. Marc a pris la
 frontière plus large contre le délai. Ce que ça implique est en §5.2, et ce n'est pas adouci.
+
+⚠️⚠️ **AMENDEMENT DU 17/09 — LA PREMIÈRE TRANCHE RESTE DANS APPS SCRIPT, ET C'EST L'ADR
+LUI-MÊME QUI LE PRÉVOYAIT.** Marc, le 17/09 : « garde ta voie, 110 docs c'est peu pour
+l'instant ». La Q1 n'est **pas révoquée** — elle reste la voie du rattrapage COMPLET — mais la
+tranche `04 · Immigration` + `01 · Administratif & identité` (C49-5, `src/RattrapagePiece.gs`)
+se fait dans le tick, sur la frontière ÉTROITE.
+
+Ce qui l'autorise est écrit trois paragraphes plus haut, dans cet ADR : « si l'audit le montre
+bon marché, la question de garder la frontière étroite se rouvre — c'est alors une
+**amélioration**, pas une révision de cet ADR ». Deux faits neufs l'ont rendue bon marché, et
+tous deux sont POSTÉRIEURS au 16/09 :
+
+1. **La prémisse chiffrée de la Q1 était fausse d'un facteur 5.** « Compté en mois » portait sur
+   **19 900 documents** — un nombre qui venait de `Object.keys(_indexCache).length`, donc du
+   compte des CLÉS d'Index toutes natures confondues. Mesuré depuis (C49-4, `PerimetrePiece.gs`) :
+   **3 972 papiers candidats** sur 4 240 documents classés et identifiables.
+2. **Et la tranche n'en pèse que 110** (`04`=23, `01`=87, mesurés). À ~10 s/document — le débit
+   réel de l'audit C49-3, pas une estimation — elle coûte **~18 min de quota**, soit moins de
+   deux jours sur les 11 min/j déjà prélevées pour les pièces. Il n'y a donc rien à prélever de
+   plus, et aucun mois à attendre.
+
+⚠️ **Ce que l'amendement NE fait pas** : il ne dit rien du rattrapage complet. Les 3 862 papiers
+restants retombent sous la Q1 telle qu'elle est écrite ci-dessus, et l'idempotence du C49-5 — une
+liste de `fileId` dans une Script Property, plafonnée à 200 contre les ~9 Ko — **ne passera
+jamais à cette échelle** : l'étape refuse une tranche plus grande plutôt que de le découvrir en
+production. Le « pour l'instant » de Marc est donc dans le code, pas seulement dans sa phrase.
+
+⚠️ **Et la frontière va dans le sens PRUDENT** : la voie du tick est celle où seuls les champs
+sortent. Aucun texte intégral ne transite par un runner GitHub pour ces 110 documents — la
+conséquence assumée en §5.2 ne s'applique pas à eux.
+
+⚠️ **La porte de la §7 tient inchangée** : rien ne part avant le jugement de l'audit C49-3.
+`RATTRAPAGE_PIECE_TAG` est livré VIDE, et l'étape refuse en plus de démarrer tant que l'audit a
+des documents à extraire.
 
 **Q2 — les proches : DriveAI extrait un champ « titulaire ».** L'option écartée était de pousser
 sans distinction — plus simple, et elle aurait retiré à Marc la possibilité de revenir en arrière

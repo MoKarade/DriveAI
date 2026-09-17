@@ -53,8 +53,12 @@ function chargerAvecSanteMock(indexCache, props) {
   // `texteSantePerimetrePiece_`. Chargé POUR DE VRAI, pour la même raison que les trois
   // ci-dessus : mocké, une mutation du nom survivrait, et cette ligne est le seul endroit d'où
   // l'on voit le nombre qui DIMENSIONNE la campagne de lecture du Drive.
+  // `RattrapagePiece.gs` : la ligne « Rattrapage des pièces » (C49-5) appelle
+  // `texteSanteRattrapagePiece_`. Chargé POUR DE VRAI : c'est la seule surface d'où l'on voit
+  // qu'une campagne qui DÉPENSE avance — et, quand elle n'avance pas, laquelle des six causes
+  // (non armée, jeton, suspension, frein, audit en cours, budget du jour) la retient.
   const ctx = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'GoogleApi.gs', 'TriGmail.gs', 'Doublons.gs',
-    'Gmail.gs', 'Migration.gs', 'Memoire.gs', 'AuditPiece.gs', 'PerimetrePiece.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
+    'Gmail.gs', 'Migration.gs', 'Memoire.gs', 'AuditPiece.gs', 'PerimetrePiece.gs', 'RattrapagePiece.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
     { PropertiesService: mockProps(props) });
   const captured = [];
   // feuille_ mocké : capture l'unique setValues de « Santé » ; `getLastRow: 1` = rapport des
@@ -67,7 +71,7 @@ function chargerAvecSanteMock(indexCache, props) {
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 14 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 15 lignes de métadonnées (une seule écriture Sheet)', () => {
   // 10 depuis ADR-0056 : la re-datation de `06` rallume de la dépense LLM et son budget du jour
   // n'était lisible NULLE PART. Le compte est figé pour que l'ajout d'une ligne soit une DÉCISION —
   // l'écriture est unique par tick, et chaque ligne coûte de la place à l'écran de Marc.
@@ -88,9 +92,14 @@ test('majSante_ écrit exactement 14 lignes de métadonnées (une seule écritur
   // l'extraction est bonne, celle-là sur COMBIEN de documents elle aurait à tourner. C'est ce
   // nombre qui dimensionne la campagne (durée, coût, budget à prélever) et il n'était mesuré
   // nulle part : « 20 346 » est le compte de l'Index, pas celui des papiers.
+  // 15 depuis C49-5 : le RATTRAPAGE est la première campagne qui fait SORTIR du contenu de
+  // documents vers un service extérieur, et elle tourne toute seule dans le tick. Elle ne
+  // partage la ligne d'aucune voisine : le périmètre COMPTE (rien ne part), l'audit VÉRIFIE
+  // (rien ne part non plus), celle-ci ENVOIE. Les fondre ferait lire « la mesure est faite »
+  // comme « les papiers sont partis », ce qui n'est pas la même chose du tout pour Marc.
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 14);
+  assert.strictEqual(captured.length, 15);
   assert.ok(captured.every((l) => typeof l === 'string'));
 });
 

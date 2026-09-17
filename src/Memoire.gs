@@ -894,15 +894,29 @@ function envoyerLotPiecesMemoire_(lot, jeton, props) {
  * @param {?string} texteOcr  le texte lu du document — jamais persisté nulle part
  * @return {{motif:string, envoyees:number, acceptees:number, dejaPresentes:number}}
  */
-function pousserPieceApresClassement_(src, decision, texteOcr) {
+function pousserPieceApresClassement_(src, decision, texteOcr, opts) {
+  opts = opts || {};
   var props = PropertiesService.getScriptProperties();
   var res = { motif: 'desactive', envoyees: 0, acceptees: 0, dejaPresentes: 0,
               document: (decision && decision.nom) || '' };
 
-  var jeton = CONFIG.PIECE_PUSH ? props.getProperty('DriveAI_MEMORYAI_TOKEN') : '';
+  // ⚠️ DEUX INTERRUPTEURS, UN SEUL CANAL (C49-5). Le flux vivant est gouverné par
+  // `PIECE_PUSH` ; le RATTRAPAGE du stock a le sien, parce que Marc a choisi le 17/09 de faire
+  // partir 110 papiers choisis sans allumer les HUIT sites d'appel de `traiterDocument_`. Ce
+  // qui ne change pas : les gardes (`verdictPiece_`), la mise en forme (`pieceMemoire_`) et
+  // l'envoi restent les MÊMES pour les deux — sinon un papier rattrapé arriverait à la Mémoire
+  // autrement qu'un papier classé aujourd'hui, et rien ne le dirait.
+  // ⚠️ Le tag est RE-VÉRIFIÉ ICI, au point d'envoi, et pas seulement dans l'étape qui appelle :
+  // une garde n'existe qu'aux endroits qui la consultent. `opts.manuel` est l'exception NOMMÉE
+  // — le geste de Marc depuis l'éditeur, avant même qu'un tag soit posé — et il voyage
+  // explicitement plutôt que d'être déduit.
+  var actif = opts.rattrapage
+    ? (!!String(CONFIG.RATTRAPAGE_PIECE_TAG || '') || !!opts.manuel)
+    : !!CONFIG.PIECE_PUSH;
+  var jeton = actif ? props.getProperty('DriveAI_MEMORYAI_TOKEN') : '';
   var statut = String((decision && decision.statut) || '').toLowerCase();
   var motif = verdictPiece_({
-    push: !!CONFIG.PIECE_PUSH,
+    push: actif,
     jeton: !!jeton,
     suspendue: !!jeton && memoireSuspendue_(props),
     freinBudget: !!jeton && budgetCampagnesAtteint_(),

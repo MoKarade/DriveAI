@@ -268,6 +268,7 @@ function majSante_() {
     // à lui prélever — et il n'était mesuré NULLE PART : « 20 346 » est le compte de l'Index,
     // pas celui des papiers.
     ['Périmètre des pièces (C49-4) : ' + texteSantePerimetrePiece_()],
+    ['Rattrapage des pièces (C49-5) : ' + texteSanteRattrapagePiece_()],
     ['Mis à jour : ' + new Date()]
   ];
   f.getRange(2, 1, lignes.length, 1).setValues(lignes); // une seule écriture Sheet (I/O borné/tick)

@@ -517,6 +517,17 @@ var CONFIG = {
   // ne protège qu'une chose : qu'un run de rattrapage ne parte pas en rafale de 200 appels.
   PIECE_MAX_PAR_RUN: 5,
 
+  // C49-5 — le RATTRAPAGE du stock déjà classé (étape B), `04` puis `01`, dans cet ordre.
+  // ⚠️ LIVRÉ ÉTEINT, et l'interrupteur EST le tag : vide ⇒ l'étape ne tourne pas. Marc a
+  // tranché le 17/09 « après le jugement de l'audit » — la porte de l'ADR-0061 ne se lève pas
+  // toute seule, et la déduire d'un compteur de verdicts serait deviner à sa place (il peut
+  // juger quarante lignes et s'arrêter). Poser une valeur ici, c'est dire « j'ai jugé, vas-y ».
+  // ⚠️ Bumper ce tag REFAIT toute la tranche : la liste des documents déjà envoyés est écrite
+  // SOUS le tag, donc elle redevient vide — et chaque document re-coûte son appel Haiku.
+  // ⚠️ Ce tag n'allume PAS le flux vivant (`PIECE_PUSH` reste `false`) : ce qui part est une
+  // liste fermée de documents, pas tout ce qui sera classé demain.
+  RATTRAPAGE_PIECE_TAG: '',
+
   // C49-4 — la LECTURE DE TOUT LE DRIVE, étape A : compter le périmètre avant de le promettre.
   // ⚠️ Bumper ce tag RELANCE le comptage (une lecture de l'Index, aucun appel LLM, rien qui
   // sorte du compte Google). Sans bump, l'étape ne coûte qu'une lecture de Property par tick :
