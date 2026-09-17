@@ -2898,9 +2898,15 @@ Détail des tâches : `BACKLOG.md`.
       (`AUDIT_PIECE_PART_SYNC_MIN` 11 + `AUDIT_PIECE_PART_GMAIL_MIN` 6 = 17) et un test exige que
       les parts remplissent le budget : une minute sans donneur nommé passerait entre les deux
       gardes de paire, chacun ne regardant que le sien.
-      **À RENDRE quand l'audit est fini** : `SYNC` 4 → 12 et `AUDIT_PIECE` 8 → 0. L'étape ne
+      **À RENDRE quand l'audit est fini**, et cette liste a DÉJÀ été fausse une fois (elle
+      disait « `SYNC` 4 → 12 et `AUDIT_PIECE` 8 → 0 » alors que deux réallocations étaient
+      passées depuis) : `SYNC_BUDGET_JOUR_MS` **1 → 12**, `GMAIL_HISTO_BUDGET_JOUR_MS` **2 → 8**,
+      `AUDIT_PIECE_BUDGET_JOUR_MS` **17 → 0**, `GMAIL_HISTO_PRETEES_MIN` **18 → 12**, et les deux
+      parts (`AUDIT_PIECE_PART_SYNC_MIN`, `AUDIT_PIECE_PART_GMAIL_MIN`) tombent à 0. L'étape ne
       consomme plus rien une fois éteinte, mais sa CONSTANTE continue de peser sur l'invariant
       d'enveloppe, et une enveloppe faussement chargée fait renoncer à la réallocation suivante.
+      ⚠️ Les chiffres ci-dessus sont ceux du 17/09 : la source qui fait foi reste `Config.gs`, et
+      les gardes de paire de `test/orchestration.test.js` refuseront toute restitution partielle.
       ⚠️ **L'échantillon est ÉGALITAIRE entre domaines, pas au prorata du stock** — sinon
       `02 · Finances` raflerait les cent lignes et `04 · Immigration` en aurait deux.
       ⚠️ **`04` et `01` ont leur TITULAIRE et leurs CHAMPS masqués** (arbitrage de Marc, 17/09,
@@ -2913,6 +2919,39 @@ Détail des tâches : `BACKLOG.md`.
       comme n'importe quelle campagne — la passe sort avec le motif « frein budget LLM atteint »
       plutôt que de le franchir. **Rien n'est envoyé à la Mémoire** : l'audit est LOCAL, et il
       le reste même une fois `PIECE_PUSH` allumé.
+   1 bis. **C49-4 étape A — COMBIEN de documents, mesuré au lieu d'être supposé** (17/09,
+      demande de Marc : « commencer à mettre en place la lecture de tout mon Drive »).
+      Tout le reste de C49-4 — la durée de la campagne, son coût, le budget à lui prélever —
+      se dérive d'UN nombre que personne n'avait mesuré : combien des documents de l'Index sont
+      des PAPIERS. **« 20 346 » est le compte de l'Index, pas celui du périmètre** : il porte
+      des photos, des exports, des vidéos, des archives. Annoncer une durée là-dessus serait un
+      chiffre inventé, et la §9 a déjà payé deux fois « un seuil écrit avant sa mesure ».
+      - `src/PerimetrePiece.gs` : une passe **ONE-SHOT** (gate par tag, `PERIMETRE_PIECE_TAG`),
+        qui lit l'Index en un `getValues` et publie le compte par DOMAINE et par EXTENSION.
+      - **Aucun appel LLM, aucune lecture de contenu, aucun octet qui sort du compte Google.**
+        C'est pour ça qu'elle peut être livrée AVANT la porte C49-3, qui garde l'ENVOI.
+      - **Pas de `*_BUDGET_JOUR_MS`, et c'est une décision** : une constante coûterait sa minute
+        TOUS LES JOURS pour une mesure qui se fait une fois. Un test le verrouille — si l'étape
+        devient un jour perpétuelle, il tombe, et c'est là qu'il faudra nommer un donneur.
+      - ⚠️ **L'exclusion est FERMÉE, l'inclusion est OUVERTE** : on écarte une liste écrite
+        d'extensions qui ne peuvent porter aucun texte (vidéo, son, archive) et tout le reste est
+        candidat, y compris l'inconnu. Dans l'autre sens, une extension oubliée SOUS-compte le
+        périmètre — donc sous-estime la durée et le coût — et l'écart ne se verrait qu'une fois
+        la campagne lancée. Sur-compter se voit tout de suite et ne coûte rien.
+      - ⚠️ **Le compte est une BORNE HAUTE, pas une prévision**, et la ligne de Santé le DIT :
+        « ce fichier peut porter du texte » n'est pas « il en porte ». Le taux réel se lit dans
+        les « sans texte » de l'audit C49-3 — c'est LUI qui convertira la borne en prévision.
+      - **Où le lire sans rien exécuter** : la ligne de Santé **« Périmètre des pièces (C49-4) »**
+        (candidats / classés / lignes d'Index, écartés, tête par domaine, date de mesure). Le
+        détail COMPLET — tous les domaines, toutes les extensions — se lit par
+        `PerimetrePiece.gs` → `diagnosticPerimetrePiece` → Exécuter : lecture seule, rien de
+        persisté, rien d'envoyé.
+      ⚠️ **Ce que cette étape NE fait pas** : lire les documents. C'est le lot suivant, et il
+      commencera par `04 · Immigration` et `01 · Administratif & identité` — **choix de Marc du
+      17/09, contre ma recommandation** : « pour voir tout de suite ce que la Mémoire sait de mes
+      papiers d'identité — et si c'est mauvais, on arrête avant d'avoir dépensé ». Son retour en
+      arrière (retirer une pièce déjà partie) n'existait pas ; il a été livré le même jour côté
+      MemoryAI (`/pieces`, PR #26).
    2. Seulement ensuite : `CONFIG.PIECE_PUSH = true`, et le rattrapage (C49-4) par le runner.
    ⚠️ **Comment savoir que le code a PRIS EFFET** — pas le run vert (piège 3, et son inverse, la
    cause n° 3 du 2 bis) : la ligne de Santé **« Mémoire (pièces) »** doit apparaître dans

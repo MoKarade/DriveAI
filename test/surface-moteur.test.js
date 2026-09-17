@@ -195,6 +195,14 @@ const CONTRAT = [
   // chemin de la passe, donc rien d'autre ne les retient si un refactor les emporte.
   'valeurChampAudit_', 'reparerEnTeteAudit_', 'reextraireAudit_',
   'noterFinAuditPiece_', 'phraseFinAuditPiece_', 'texteSanteAuditPiece_',
+  // Le PÉRIMÈTRE (C49-4 étape A). Trois contrats INTER-MODULES : `perimetreDoitTourner_` et
+  // `etapePerimetrePiece_` sont appelées par `Main.gs`, `texteSantePerimetrePiece_` par
+  // `Journal.gs`. Et `diagnosticPerimetrePiece` est le chemin que MARC emprunte depuis
+  // l'éditeur : rien d'autre ne la retient, or un diagnostic promis mais absent fait retomber
+  // chaque vérification sur un échantillon Drive (§9, « un diagnostic un-clic n'est un signal
+  // de certitude que s'il est COMMITTÉ et déployé »).
+  'perimetreDoitTourner_', 'etapePerimetrePiece_', 'texteSantePerimetrePiece_',
+  'diagnosticPerimetrePiece', 'lireLignesIndexPerimetre_',
   'inventorierDoublons_', 'balayerExemplairesDoublons_',
   'ecrireVerdictsDoublons_', 'feuilleRapportDoublons_', 'texteSanteDoublons_', 'pageListeDrive_',
   'texteSanteHistoGmail_', // Main.gs, appelée par Journal.gs (ligne de Santé C28-99)

@@ -614,6 +614,25 @@ function tickDriveAI() {
       }
     } catch (e) { journalErreur_('AuditPiece', 'Audit des pièces différé : ' + e); }
 
+    // PÉRIMÈTRE DES PIÈCES (C49-4 étape A) : combien de documents la Mémoire aurait à lire.
+    // Placée APRÈS l'audit et gatée sur son TAG seul : c'est une passe ONE-SHOT — une lecture
+    // de l'Index en un `getValues`, puis plus jamais. Aucun appel LLM, aucun octet qui sort du
+    // compte Google : elle n'a donc rien à attendre de la porte C49-3, qui garde l'ENVOI.
+    //
+    // ⚠️ Pas de garde de frein LLM ici, et ce n'est pas un oubli : cette étape ne peut pas
+    // dépenser un dollar. L'y soumettre ferait attendre une MESURE — celle qui dimensionne la
+    // campagne — à cause d'un budget qu'elle ne consomme pas.
+    //
+    // Enveloppée, comme tout ce qui suit l'intake : un échec ne doit jamais le bloquer.
+    try {
+      var tagPerimetre = null;
+      try { tagPerimetre = PropertiesService.getScriptProperties().getProperty('DriveAI_PERIMETRE_PIECE_TAG'); }
+      catch (ePerTag) { tagPerimetre = null; } // « je ne sais pas » ⇒ on recompte, c'est gratuit
+      if (perimetreDoitTourner_(tagPerimetre, CONFIG.PERIMETRE_PIECE_TAG) && !estBudgetDepasse()) {
+        etapePerimetrePiece_();
+      }
+    } catch (e) { journalErreur_('PerimetrePiece', 'Comptage du périmètre différé : ' + e); }
+
     etapeSuivie_('histo-gmail', [gBudgetTick, gFreinCampagnes, gResetEnCours],
       function () { traiterGmailHistorique_(estBudgetDepasse); },
       function (e) {
