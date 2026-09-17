@@ -526,7 +526,9 @@ var CONFIG = {
   // SOUS le tag, donc elle redevient vide — et chaque document re-coûte son appel Haiku.
   // ⚠️ Ce tag n'allume PAS le flux vivant (`PIECE_PUSH` reste `false`) : ce qui part est une
   // liste fermée de documents, pas tout ce qui sera classé demain.
-  RATTRAPAGE_PIECE_TAG: '',
+  // ⚠️ ARMÉ LE 17/09 : « ok jugé, pose le tag, extrait tous les docs aujd ». La porte de la §7
+  // de l'ADR-0061 est levée PAR MARC, pas déduite d'un compteur de verdicts.
+  RATTRAPAGE_PIECE_TAG: 'c49-5-a',
 
   // C49-4 — la LECTURE DE TOUT LE DRIVE, étape A : compter le périmètre avant de le promettre.
   // ⚠️ Bumper ce tag RELANCE le comptage (une lecture de l'Index, aucun appel LLM, rien qui

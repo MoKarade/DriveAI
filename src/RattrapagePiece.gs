@@ -42,7 +42,17 @@
  */
 var RATTRAPAGE_PIECE_MAX_FAITS = 200;
 
-/** Le plafond d'extractions par run. Aligné sur celui du flux : même unité de coût. */
+/**
+ * Le plafond d'extractions par run du TICK. Aligné sur celui du flux : même unité de coût.
+ *
+ * ⚠️ Il ne s'applique PAS au chemin manuel, et c'est la leçon C28-33 : « un budget calibré pour
+ * UN CHEMIN d'exécution ne doit ni brider, ni être consommé par, un AUTRE chemin ». Cinq
+ * documents protègent un tick de 5 minutes qui a dix autres étapes à servir ; imposés à une
+ * exécution que Marc lance lui-même avec 4,5 minutes devant elle, ils lui demanderaient de
+ * cliquer VINGT-DEUX fois pour 110 documents. Le seul frein du chemin manuel est le
+ * garde-temps — plus le jeton, la suspension, la panne et le frein en dollars, qui sont
+ * re-évalués à CHAQUE document et qu'aucun drapeau ne lève.
+ */
 var RATTRAPAGE_PIECE_MAX_PAR_RUN = 5;
 
 /**
@@ -158,6 +168,16 @@ function rattrapageDoitTourner_(restants, tagPersiste, tagCourant) {
   if (!String(tagCourant || '')) return false;            // tranche non armée : rien à faire
   if (String(tagPersiste || '') !== String(tagCourant || '')) return true;
   return restants !== 0;
+}
+
+/**
+ * Le « pas de plafond » du chemin manuel. Une constante nommée plutôt qu'un `Infinity` en
+ * ligne : la sélection le compare à une longueur, et un plafond qui ne peut pas être dépassé
+ * par la tranche (elle-même bornée à `RATTRAPAGE_PIECE_MAX_FAITS`) est plus lisible qu'un
+ * infini qu'on doit vérifier à chaque lecture. PURE.
+ */
+function choixSansPlafondRattrapage_() {
+  return RATTRAPAGE_PIECE_MAX_FAITS + 1;
 }
 
 /** Ce qui reste à faire sous le tag courant, ou `null` si on ne sait pas encore. */
@@ -276,8 +296,9 @@ function etapeRattrapagePiece_(garde, opts) {
   var tagFaits = tag || 'manuel';
   var faits = decoderFaitsRattrapage_(
     props.getProperty('DriveAI_RATTRAPAGE_PIECE_FAITS'), tagFaits);
+  var maxParRun = opts.manuel ? choixSansPlafondRattrapage_() : RATTRAPAGE_PIECE_MAX_PAR_RUN;
   var choix = selectionnerRattrapage_(
-    lignes, fileIdDeCleIndex_, faits, prefixesRattrapage_(), RATTRAPAGE_PIECE_MAX_PAR_RUN);
+    lignes, fileIdDeCleIndex_, faits, prefixesRattrapage_(), maxParRun);
   res.restants = choix.restants;
 
   // ⚠️ Le REFUS de démarrer une tranche trop grande, plutôt que la découverte du plafond en
