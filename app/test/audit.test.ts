@@ -11,11 +11,14 @@
  *   5. la colonne d'écriture est DÉRIVÉE de la position du champ, jamais écrite en dur — un
  *      verdict posé dans la mauvaise colonne écraserait une valeur extraite.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, test, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   lireLignesAudit, compterAudit, prochaineAJuger, celluleVerdict,
   champsAMontrer, domaineMasqueAudit, LETTRE_COLONNE_VERDICT, COL_AUDIT,
-  auditDepuisSante,
+  auditDepuisSante, PLAGE_AUDIT,
+  CHAMPS_JUGEABLES, celluleChampsFaux, lireChampsFaux, ecrireChampsFaux, compterChampsFaux,
 } from '../src/audit';
 
 /**
@@ -167,4 +170,93 @@ describe('l\'audit vu depuis la ligne de Santé (zéro requête)', () => {
     const e = auditDepuisSante(['Audit des pièces (C49-3) : ⚠️ état illisible (Error)']);
     expect(e).toMatchObject({ present: true, jamaisTourne: false, restants: null });
   });
+});
+
+/* ---------- Le grain fin du « à moitié » (C49-3, demande de Marc du 17/09) ---------- */
+
+/**
+ * Lit un tableau de littéraux dans le moteur, sur la source DÉCOMMENTÉE.
+ *
+ * ⚠️ Écrit après un rouge : le premier jet extrayait `'([^']+)'` sur la source BRUTE, et les
+ * apostrophes de la prose française des commentaires (« l'app », « l'ANCIENNE ») comptaient
+ * comme des littéraux — 16 colonnes au lieu de 15. C'est le piège `SCAN-QUI-MATCHE-LA-PROSE`
+ * du parc, payé une fois de plus. L'anti-vacuité est explicite : un décommentage qui aurait
+ * mangé le bloc rendrait une liste vide, et le test passerait en n'affirmant plus rien.
+ */
+function litteraux(gs: string, nom: string): string[] {
+  const bloc = gs.match(new RegExp(`var ${nom} = \\[([\\s\\S]*?)\\];`));
+  expect(bloc, `${nom} introuvable dans le moteur`).toBeTruthy();
+  const sansCommentaires = bloc![1]!
+    .split('\n')
+    .map((l) => l.replace(/\/\/.*$/, ''))
+    .join('\n');
+  const trouves = [...sansCommentaires.matchAll(/'([^']+)'/g)].map((m) => m[1]!);
+  expect(trouves.length, 'décommentage trop agressif — scan vacueux').toBeGreaterThan(0);
+  return trouves;
+}
+
+test("la liste des champs jugeables est IDENTIQUE à celle du moteur", () => {
+  // ⚠️ Le moteur et l'app se déploient SÉPARÉMENT. Une case ajoutée d'un seul côté écrirait une
+  // valeur que l'autre ne sait pas lire — sans erreur, comme toujours. Rien d'autre que ce test
+  // ne tient les deux listes ensemble : il lit le `.gs` pour de vrai.
+  const gs = readFileSync(join(__dirname, '..', '..', 'src', 'AuditPiece.gs'), 'utf8');
+  const duMoteur = litteraux(gs, 'CHAMPS_JUGEABLES_AUDIT');
+  expect(CHAMPS_JUGEABLES).toEqual(duMoteur);
+  // Et le champ pour lequel ce lot existe est bien là, des deux côtés.
+  expect(duMoteur).toContain('numeros');
+});
+
+test("la colonne des champs faux est la DERNIÈRE — jamais une insertion qui décale", () => {
+  // ⚠️ Le moteur écrit et l'app lit par INDEX. Une colonne insérée au milieu ferait lire chaque
+  // valeur avec l'ancienne sémantique pendant la fenêtre entre les deux déploiements (C28-44) :
+  // un verdict atterrirait dans « Résumé ». Ce test lit l'ordre RÉEL du moteur.
+  const gs = readFileSync(join(__dirname, '..', '..', 'src', 'AuditPiece.gs'), 'utf8');
+  const colonnes = litteraux(gs, 'COLONNES_AUDIT_PIECE');
+  expect(colonnes.length).toBe(15);
+  expect(colonnes[colonnes.length - 1]).toBe('Champs faux (à toi)');
+  expect(COL_AUDIT.champsFaux).toBe(colonnes.length - 1);
+  // La plage lue couvre bien la nouvelle colonne, sinon la valeur revient `undefined` sans erreur.
+  expect(PLAGE_AUDIT).toBe('A2:O');
+});
+
+test("lireChampsFaux écarte ce qui n'est pas un champ connu", () => {
+  expect(lireChampsFaux('numeros, titulaire')).toEqual(['numeros', 'titulaire']);
+  expect(lireChampsFaux(' NUMEROS ,  date ')).toEqual(['numeros', 'date']);
+  // Une valeur tapée à la main dans la Sheet ne doit pas compter comme un champ : elle
+  // fausserait le seul tableau que cette porte produit.
+  expect(lireChampsFaux('numeros, nimportequoi')).toEqual(['numeros']);
+  expect(lireChampsFaux('')).toEqual([]);
+});
+
+test("ecrireChampsFaux rend un ordre STABLE, pour que deux lignes se comparent à l'œil", () => {
+  expect(ecrireChampsFaux(['resume', 'type'])).toBe('type, resume');
+  expect(ecrireChampsFaux(['type', 'resume'])).toBe('type, resume');
+  expect(ecrireChampsFaux([])).toBe('');
+});
+
+test("compterChampsFaux ne compte QUE les lignes extraites", () => {
+  const l = (statut: string, champsFaux: string, verdict = 'partiel') =>
+    lireLignesAudit([[
+      '1', '02 · Finances', 'f.pdf', '', statut,
+      'facture', 'Hydro', '2026-07-01', 'Marc', '0.9', 'montants: 1', 'résumé',
+      verdict, '', champsFaux,
+    ]])[0]!;
+  const lignes = [
+    l('extrait', 'numeros, titulaire'),
+    l('extrait', 'numeros'),
+    // ⚠️ Une ligne « à faire » porterait un détail d'un passage PRÉCÉDENT : la compter
+    // ferait remonter dans le tableau des erreurs qu'on vient justement de refaire.
+    l('à faire', 'numeros, date'),
+  ];
+  expect(compterChampsFaux(lignes)).toEqual([
+    { cle: 'titulaire', n: 1 },
+    { cle: 'numeros', n: 2 },
+  ]);
+  expect(compterChampsFaux([])).toEqual([]);
+});
+
+test("celluleChampsFaux vise la bonne colonne", () => {
+  expect(celluleChampsFaux(7)).toBe('O7');
+  // Et jamais la même que le verdict — les écraser l'une l'autre perdrait le verdict.
+  expect(celluleChampsFaux(7)).not.toBe(celluleVerdict(7));
 });

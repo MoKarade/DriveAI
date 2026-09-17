@@ -40,7 +40,26 @@ var ONGLET_AUDIT_PIECE = 'AuditPieces';
 var COLONNES_AUDIT_PIECE = [
   'Rang', 'Domaine', 'Fichier', 'Lien', 'Statut',
   'Type', 'Émetteur', 'Date doc', 'Titulaire', 'Confiance', 'Champs', 'Résumé',
-  'Verdict (à toi)', 'Note (à toi)'
+  'Verdict (à toi)', 'Note (à toi)',
+  // ⚠️ EN QUEUE, jamais une insertion : l'app et le moteur se déploient SÉPARÉMENT, et pendant
+  // la fenêtre entre les deux, chaque position décalée serait lue avec l'ANCIENNE sémantique —
+  // sans erreur ni warning (leçon C28-44). Un verdict atterrirait dans « Résumé ».
+  'Champs faux (à toi)'
+];
+
+/**
+ * Les champs que Marc peut déclarer FAUX quand il juge « à moitié ». Dérivés de ce que la carte
+ * lui MONTRE, pas de ce que le modèle pourrait produire : juger un champ qu'on ne voit pas n'a
+ * aucun sens. L'app porte la même liste et un test exige qu'elles soient identiques — les deux
+ * moitiés se déploient séparément, donc rien d'autre ne les tient ensemble.
+ *
+ * ⚠️ `numeros` est le champ pour lequel cette liste existe : « à moitié » ne disait pas si
+ * l'erreur portait sur un libellé ou sur un numéro d'identité, et ce n'est pas la même gravité.
+ */
+var CHAMPS_JUGEABLES_AUDIT = [
+  'type', 'emetteur', 'date', 'titulaire',
+  'montants', 'numeros', 'personnes', 'lieux',
+  'resume'
 ];
 
 /**
@@ -56,6 +75,9 @@ var PREFIXES_DOMAINE_MASQUE_AUDIT = ['01', '04'];
  * posé dans la mauvaise colonne ÉCRASE une valeur extraite.
  */
 var COL_VERDICT_AUDIT_PIECE = COLONNES_AUDIT_PIECE.indexOf('Verdict (à toi)') + 1;
+
+/** Même dérivation, même raison : la colonne des champs déclarés faux. */
+var COL_CHAMPS_FAUX_AUDIT_PIECE = COLONNES_AUDIT_PIECE.indexOf('Champs faux (à toi)') + 1;
 
 /** Les verdicts que Marc peut écrire. Tout le reste compte comme « non jugé ». */
 var VERDICTS_AUDIT = ['juste', 'partiel', 'faux'];
@@ -486,6 +508,9 @@ function reextraireAudit_(f) {
     vide[0] = 'à faire';
     f.getRange(i + 2, 5, 1, 8).setValues([vide]);
     f.getRange(i + 2, COL_VERDICT_AUDIT_PIECE, 1, 1).setValues([['']]);
+    // Les champs déclarés faux QUALIFIENT le verdict : ils partent avec lui. La NOTE reste —
+    // elle parle du document, pas de ce qu'on en a lu.
+    f.getRange(i + 2, COL_CHAMPS_FAUX_AUDIT_PIECE, 1, 1).setValues([['']]);
     remises++;
   }
   return remises;

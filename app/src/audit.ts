@@ -22,14 +22,33 @@
 export const COL_AUDIT = {
   rang: 0, domaine: 1, fichier: 2, lien: 3, statut: 4,
   type: 5, emetteur: 6, dateDoc: 7, titulaire: 8, confiance: 9, champs: 10, resume: 11,
-  verdict: 12, note: 13,
+  verdict: 12, note: 13, champsFaux: 14,
 } as const;
 
+/**
+ * Les champs que Marc peut déclarer FAUX sur un « à moitié ».
+ *
+ * ⚠️ Cette liste est la JUMELLE de `CHAMPS_JUGEABLES_AUDIT` (`src/AuditPiece.gs`), et un test
+ * lit le `.gs` pour exiger qu'elles soient identiques. Rien d'autre ne les tient ensemble : le
+ * moteur et l'app se déploient séparément, donc une case ajoutée d'un seul côté écrirait une
+ * valeur que l'autre ne sait pas lire — sans erreur, comme toujours.
+ *
+ * ⚠️ `numeros` est la raison d'être de cette liste : « à moitié » ne disait pas si l'erreur
+ * portait sur un libellé ou sur un numéro d'identité.
+ */
+export const CHAMPS_JUGEABLES: string[] = [
+  'type', 'emetteur', 'date', 'titulaire',
+  'montants', 'numeros', 'personnes', 'lieux',
+  'resume',
+];
+
 /** La plage à lire — DÉRIVÉE du nombre de colonnes, jamais écrite en dur à côté. */
-export const PLAGE_AUDIT = `A2:${String.fromCharCode(65 + COL_AUDIT.note)}`;
+export const PLAGE_AUDIT = `A2:${String.fromCharCode(65 + COL_AUDIT.champsFaux)}`;
 
 /** La colonne « Verdict (à toi) » en notation Sheet — DÉRIVÉE de l'index, jamais écrite en dur. */
-export const LETTRE_COLONNE_VERDICT = String.fromCharCode(65 + COL_AUDIT.verdict); // 'L'
+export const LETTRE_COLONNE_VERDICT = String.fromCharCode(65 + COL_AUDIT.verdict); // 'M'
+/** Idem pour « Champs faux (à toi) ». */
+export const LETTRE_COLONNE_CHAMPS_FAUX = String.fromCharCode(65 + COL_AUDIT.champsFaux); // 'O'
 
 export type Verdict = 'juste' | 'partiel' | 'faux';
 export const VERDICTS: Verdict[] = ['juste', 'partiel', 'faux'];
@@ -51,6 +70,8 @@ export type LigneAudit = {
   resume: string;
   verdict: string;
   note: string;
+  /** Les champs déclarés faux, tels qu'écrits dans la Sheet (`numeros, date`). */
+  champsFaux: string;
 };
 
 function cell(l: string[], i: number): string {
@@ -82,6 +103,7 @@ export function lireLignesAudit(valeurs: string[][]): LigneAudit[] {
     resume: cell(l, COL_AUDIT.resume),
     verdict: cell(l, COL_AUDIT.verdict).toLowerCase(),
     note: cell(l, COL_AUDIT.note),
+    champsFaux: cell(l, COL_AUDIT.champsFaux),
   })).filter((r) => r.fichier || r.statut); // une ligne vide n'est pas un document
 }
 
@@ -140,9 +162,48 @@ export function prochaineAJuger(lignes: LigneAudit[], depuis = 0): number {
   return -1;
 }
 
-/** La cellule à écrire pour un verdict — `L` + le numéro de ligne. */
+/** La cellule à écrire pour un verdict — la lettre DÉRIVÉE + le numéro de ligne. */
 export function celluleVerdict(ligneSheet: number): string {
   return LETTRE_COLONNE_VERDICT + String(ligneSheet);
+}
+
+/** Idem pour les champs déclarés faux. */
+export function celluleChampsFaux(ligneSheet: number): string {
+  return LETTRE_COLONNE_CHAMPS_FAUX + String(ligneSheet);
+}
+
+/**
+ * Sépare une cellule « champs faux » en liste. Tolérante sur la FORME (virgules, espaces, casse)
+ * et stricte sur le FOND : ce que la liste des champs jugeables ne connaît pas est ÉCARTÉ.
+ * Sans ça, une valeur tapée à la main dans la Sheet compterait comme un champ et fausserait le
+ * seul tableau que cette porte produit.
+ */
+export function lireChampsFaux(cellule: string): string[] {
+  return String(cellule || '')
+    .split(',')
+    .map((x) => x.trim().toLowerCase())
+    .filter((x) => CHAMPS_JUGEABLES.includes(x));
+}
+
+/** L'écriture, dans l'ordre STABLE de la liste — pour que deux lignes se comparent à l'œil. */
+export function ecrireChampsFaux(champs: string[]): string {
+  return CHAMPS_JUGEABLES.filter((c) => champs.includes(c)).join(', ');
+}
+
+/**
+ * Combien de fois chaque champ a été déclaré faux, sur les lignes JUGÉES.
+ *
+ * ⚠️ C'est ce tableau qui justifie tout le lot : « 12 documents à moitié » n'oriente aucun
+ * correctif, « titulaire faux 8 fois, numéros 1 fois » en oriente un — et dit surtout si les
+ * erreurs touchent ce qui est sensible ou seulement des libellés.
+ */
+export function compterChampsFaux(lignes: LigneAudit[]): { cle: string; n: number }[] {
+  const par = new Map<string, number>();
+  for (const l of lignes) {
+    if (l.statut !== 'extrait') continue;
+    for (const c of lireChampsFaux(l.champsFaux)) par.set(c, (par.get(c) ?? 0) + 1);
+  }
+  return CHAMPS_JUGEABLES.map((cle) => ({ cle, n: par.get(cle) ?? 0 })).filter((x) => x.n > 0);
 }
 
 /**

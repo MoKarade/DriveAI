@@ -21,6 +21,7 @@ import {
   LigneAudit, Verdict, VERDICTS, PLAGE_AUDIT,
   lireLignesAudit, compterAudit, prochaineAJuger, celluleVerdict,
   champsAMontrer, domaineMasqueAudit,
+  CHAMPS_JUGEABLES, celluleChampsFaux, ecrireChampsFaux, compterChampsFaux,
 } from '../audit';
 import { IndicateurChargement, BanniereErreur } from '../composants/UI';
 import { Langue, t, CleTexte } from '../i18n';
@@ -31,6 +32,17 @@ const ONGLET = 'AuditPieces';
 const LIBELLE_CHAMP: Record<string, CleTexte> = {
   type: 'auditChampType', emetteur: 'auditChampEmetteur', dateDoc: 'auditChampDate',
   titulaire: 'auditChampTitulaire', champs: 'auditChampChamps',
+};
+
+/**
+ * Le libellé d'un champ JUGEABLE. Distinct de `LIBELLE_CHAMP` ci-dessus, qui nomme ce que la
+ * carte AFFICHE : ici on nomme ce que Marc peut déclarer faux, et les deux listes ne se
+ * recouvrent pas (« champs lus » se juge en quatre cases, une par sorte).
+ */
+const LIBELLE_JUGEABLE: Record<string, CleTexte> = {
+  type: 'auditChampType', emetteur: 'auditChampEmetteur', date: 'auditChampDate',
+  titulaire: 'auditChampTitulaire', montants: 'auditChampMontants', numeros: 'auditChampNumeros',
+  personnes: 'auditChampPersonnes', lieux: 'auditChampLieux', resume: 'auditChampResume',
 };
 
 const LIBELLE_VERDICT: Record<Verdict, CleTexte> = {
@@ -59,6 +71,7 @@ export function Audit({ langue, onFermer }: { langue: Langue; onFermer: () => vo
   if (lignes === null) return <section className="vue-active"><IndicateurChargement langue={langue} /></section>;
 
   const compte = compterAudit(lignes);
+  const champsFaux = compterChampsFaux(lignes);
   const courante = lignes[position];
   const index = prochaineAJuger(lignes, position);
 
@@ -68,17 +81,27 @@ export function Audit({ langue, onFermer }: { langue: Langue; onFermer: () => vo
    * fois. En cas d'échec, on RESTAURE la ligne et on le dit — un verdict perdu en silence
    * fausserait le compte final, qui est justement ce que la porte mesure.
    */
-  async function juger(l: LigneAudit, verdict: Verdict) {
+  async function juger(l: LigneAudit, verdict: Verdict, champsFaux: string[] = []) {
     if (enCours) return;
     setEnCours(true);
     setErreur('');
     const avant = l.verdict;
-    setLignes((ls) => (ls ?? []).map((x) => (x.ligneSheet === l.ligneSheet ? { ...x, verdict } : x)));
+    const avantFaux = l.champsFaux;
+    const faux = ecrireChampsFaux(champsFaux);
+    setLignes((ls) => (ls ?? []).map((x) => (
+      x.ligneSheet === l.ligneSheet ? { ...x, verdict, champsFaux: faux } : x)));
     try {
+      // ⚠️ LE DÉTAIL D'ABORD, LE VERDICT ENSUITE. C'est le verdict qui fait avancer le compteur
+      // de la porte : si la seconde écriture échoue, il reste un détail sans verdict (la ligne
+      // se re-présente, rien n'est perdu) plutôt qu'un verdict sans détail, qui compterait dans
+      // le taux en ayant perdu ce qui l'explique. Même règle que l'Index du moteur : l'écriture
+      // « c'est fini » se pose en DERNIER.
+      if (faux || avantFaux) await ecrireCellule(ONGLET, celluleChampsFaux(l.ligneSheet), faux);
       await ecrireCellule(ONGLET, celluleVerdict(l.ligneSheet), verdict);
       setPosition((p) => p + 1);
     } catch (e) {
-      setLignes((ls) => (ls ?? []).map((x) => (x.ligneSheet === l.ligneSheet ? { ...x, verdict: avant } : x)));
+      setLignes((ls) => (ls ?? []).map((x) => (
+        x.ligneSheet === l.ligneSheet ? { ...x, verdict: avant, champsFaux: avantFaux } : x)));
       setErreur(String(e));
     } finally {
       setEnCours(false);
@@ -102,6 +125,18 @@ export function Audit({ langue, onFermer }: { langue: Langue; onFermer: () => vo
         </p>
       </div>
 
+      {/* ⚠️ Le tableau qui justifie tout le lot : « 12 à moitié » n'oriente aucun correctif,
+          « titulaire 8 · numéros 1 » en oriente un — et dit surtout si les erreurs touchent ce
+          qui est sensible ou seulement des libellés. */}
+      {champsFaux.length > 0 && (
+        <p className="audit-faux-recap">
+          {t('auditFauxRecap', langue)}{' '}
+          {champsFaux.map(({ cle, n }) => (
+            <span key={cle}>{LIBELLE_JUGEABLE[cle] ? t(LIBELLE_JUGEABLE[cle]!, langue) : cle} <b>{n}</b></span>
+          ))}
+        </p>
+      )}
+
       <BanniereErreur langue={langue} erreur={erreur} />
 
       {index === -1 || !courante ? (
@@ -111,7 +146,7 @@ export function Audit({ langue, onFermer }: { langue: Langue; onFermer: () => vo
           langue={langue}
           ligne={lignes[index]!}
           enCours={enCours}
-          onVerdict={(v) => juger(lignes[index]!, v)}
+          onVerdict={(v, faux) => juger(lignes[index]!, v, faux)}
           onPasser={() => setPosition(index + 1)}
         />
       )}
@@ -127,10 +162,26 @@ function CarteDocument({ langue, ligne, enCours, onVerdict, onPasser }: {
   langue: Langue;
   ligne: LigneAudit;
   enCours: boolean;
-  onVerdict: (v: Verdict) => void;
+  onVerdict: (v: Verdict, champsFaux: string[]) => void;
   onPasser: () => void;
 }) {
   const masque = domaineMasqueAudit(ligne.domaine);
+  /**
+   * Les cases ne s'ouvrent que sur « à moitié ». « Juste » et « faux » n'ont rien à préciser :
+   * l'un ne se trompe nulle part, l'autre se trompe partout — demander quoi serait une question
+   * dont la réponse est déjà écrite, et trois clics de plus sur chaque carte.
+   *
+   * ⚠️ L'état se remet à zéro quand la carte CHANGE (`ligne.ligneSheet` en clé de l'effet) :
+   * sans ça, les cases cochées sur un document suivraient jusqu'au suivant et Marc enregistrerait
+   * un détail qui parle du papier d'avant.
+   */
+  const [ouvert, setOuvert] = useState(false);
+  const [coches, setCoches] = useState<string[]>([]);
+  useEffect(() => { setOuvert(false); setCoches([]); }, [ligne.ligneSheet]);
+
+  function basculer(cle: string) {
+    setCoches((cs) => (cs.includes(cle) ? cs.filter((c) => c !== cle) : [...cs, cle]));
+  }
   return (
     <article className="audit-carte">
       <p className="audit-domaine">{ligne.domaine}</p>
@@ -161,16 +212,54 @@ function CarteDocument({ langue, ligne, enCours, onVerdict, onPasser }: {
           meilleur qu'il n'est exactement là où l'erreur coûte le plus cher. */}
       {masque && <p className="audit-note-masque">{t('auditMasque', langue)}</p>}
 
-      <div className="audit-verdicts">
-        {VERDICTS.map((v) => (
-          <button key={v} className={`audit-verdict ${v}`} disabled={enCours} onClick={() => onVerdict(v)}>
-            {t(LIBELLE_VERDICT[v], langue)}
+      {ouvert ? (
+        <div className="audit-quoi">
+          <p className="audit-quoi-titre">{t('auditQuoiFaux', langue)}</p>
+          <p className="audit-quoi-aide">{t('auditQuoiFauxAide', langue)}</p>
+          <div className="audit-cases">
+            {CHAMPS_JUGEABLES.map((cle) => (
+              <label key={cle} className={`audit-case${coches.includes(cle) ? ' cochee' : ''}`}>
+                <input
+                  type="checkbox"
+                  checked={coches.includes(cle)}
+                  disabled={enCours}
+                  onChange={() => basculer(cle)}
+                />
+                {LIBELLE_JUGEABLE[cle] ? t(LIBELLE_JUGEABLE[cle]!, langue) : cle}
+              </label>
+            ))}
+          </div>
+          <div className="audit-verdicts">
+            {/* ⚠️ Enregistrer reste possible SANS aucune case : « à moitié, je ne sais pas dire
+                lequel » est une réponse honnête, et forcer une case ferait cocher n'importe quoi
+                pour passer à la suite — le tableau des champs faux en sortirait faussé. */}
+            <button className="audit-verdict partiel" disabled={enCours} onClick={() => onVerdict('partiel', coches)}>
+              {t('auditConfirmer', langue)}
+            </button>
+            <button className="discret" disabled={enCours} onClick={() => { setOuvert(false); setCoches([]); }}>
+              {t('auditAnnuler', langue)}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="audit-verdicts">
+            {VERDICTS.map((v) => (
+              <button
+                key={v}
+                className={`audit-verdict ${v}`}
+                disabled={enCours}
+                onClick={() => (v === 'partiel' ? setOuvert(true) : onVerdict(v, []))}
+              >
+                {t(LIBELLE_VERDICT[v], langue)}
+              </button>
+            ))}
+          </div>
+          <button className="discret audit-passer" disabled={enCours} onClick={onPasser}>
+            {t('auditPasser', langue)}
           </button>
-        ))}
-      </div>
-      <button className="discret audit-passer" disabled={enCours} onClick={onPasser}>
-        {t('auditPasser', langue)}
-      </button>
+        </>
+      )}
     </article>
   );
 }

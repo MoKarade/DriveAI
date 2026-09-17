@@ -860,11 +860,49 @@ button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):ho
 .audit-verdict.faux:not(:disabled):hover { border-color: var(--erreur); color: var(--erreur); }
 .audit-passer { display: block; width: 100%; min-height: 44px; margin-top: 0.5rem; }
 
+/* Le panneau du « à moitié » : QUELS champs sont faux.
+ *
+ * ⚠️ Il remplace les trois verdicts au lieu de s'ajouter au-dessus : ajoutés, les cases et les
+ * boutons se disputent la zone collante du bas, et sur un téléphone le bouton « Enregistrer »
+ * repasse sous la barre d'onglets — exactement le défaut mesuré le 17/09. Un seul bloc à la
+ * fois, donc une seule zone collante.
+ * ⚠️ Les cases sont hautes de 44 px, et de 48 px pleine largeur sous 560 px : une cible de
+ * 48 × 100 px se rate LATÉRALEMENT, un pouce étant large et arrivant de biais.
+ * ⚠️ La valeur est ÉCRITE, pas prise dans un jeton : le premier jet disait `var(--cible)`, qui
+ * est un jeton de Hubperso et n'existe pas ici. Une `var()` non résolue ne « retombe » pas sur
+ * la règle précédente — elle rend la déclaration invalide au calcul, et la propriété prend sa
+ * valeur INITIALE. Mesuré : les cases faisaient 26 px au lieu de 44, donc la règle censée les
+ * agrandir les avait rapetissées, sans que rien ne le signale. */
+.audit-quoi { margin-top: 1.2rem; }
+.audit-quoi-titre { margin: 0; font-weight: 600; }
+.audit-quoi-aide { margin: 0.25rem 0 0.8rem; color: var(--texte-doux); font-size: 0.88rem; }
+.audit-cases { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.audit-case {
+  display: inline-flex; align-items: center; gap: 0.45rem;
+  min-height: 44px; padding: 0 0.8rem;
+  border: 1px solid var(--bord-fort); border-radius: var(--r-m);
+  background: var(--carte-2); color: var(--texte); font-size: 0.92rem; cursor: pointer;
+}
+.audit-case.cochee { border-color: var(--attention); color: var(--attention); }
+.audit-case input { width: 18px; height: 18px; accent-color: var(--attention); }
+.audit-quoi .audit-verdicts { grid-template-columns: 1fr 1fr; }
+
+/* Le récapitulatif : ce que l'audit APPREND, pas seulement ce qu'il compte. */
+.audit-faux-recap {
+  margin: 0.4rem 0 0; color: var(--texte-doux); font-size: 0.88rem;
+  display: flex; flex-wrap: wrap; gap: 0 0.7rem;
+}
+.audit-faux-recap b { color: var(--attention); }
+
 /* Téléphone : les trois verdicts restent côte à côte (ils se comparent), le reste s'étale. */
 @media (max-width: 560px) {
   .audit-champs > div { flex-direction: column; gap: 0.15rem; }
   .audit-champs dt { flex: none; }
   .audit-lien { width: 100%; justify-content: center; }
+  /* Même seuil que le reste de l'app : sous 560 px les cibles prennent toute la largeur et
+     montent à 48 px. Un second seuil ouvrirait une fenêtre où elles sont empilées mais
+     encore étroites — le défaut que la convention du parc nomme explicitement. */
+  .audit-case { width: 100%; min-height: 48px; }
 }
 
 /* Le seuil de la barre d'onglets (760px, cf. `--barre-basse-h`) : au-dessous, les verdicts se
