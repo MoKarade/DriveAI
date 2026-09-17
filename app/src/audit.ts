@@ -21,9 +21,12 @@
 /** Les colonnes de l'onglet, dans l'ordre où le moteur les écrit (`COLONNES_AUDIT_PIECE`). */
 export const COL_AUDIT = {
   rang: 0, domaine: 1, fichier: 2, lien: 3, statut: 4,
-  type: 5, emetteur: 6, dateDoc: 7, titulaire: 8, confiance: 9, champs: 10,
-  verdict: 11, note: 12,
+  type: 5, emetteur: 6, dateDoc: 7, titulaire: 8, confiance: 9, champs: 10, resume: 11,
+  verdict: 12, note: 13,
 } as const;
+
+/** La plage à lire — DÉRIVÉE du nombre de colonnes, jamais écrite en dur à côté. */
+export const PLAGE_AUDIT = `A2:${String.fromCharCode(65 + COL_AUDIT.note)}`;
 
 /** La colonne « Verdict (à toi) » en notation Sheet — DÉRIVÉE de l'index, jamais écrite en dur. */
 export const LETTRE_COLONNE_VERDICT = String.fromCharCode(65 + COL_AUDIT.verdict); // 'L'
@@ -45,6 +48,7 @@ export type LigneAudit = {
   titulaire: string;
   confiance: string;
   champs: string;
+  resume: string;
   verdict: string;
   note: string;
 };
@@ -75,6 +79,7 @@ export function lireLignesAudit(valeurs: string[][]): LigneAudit[] {
     titulaire: cell(l, COL_AUDIT.titulaire),
     confiance: cell(l, COL_AUDIT.confiance),
     champs: cell(l, COL_AUDIT.champs),
+    resume: cell(l, COL_AUDIT.resume),
     verdict: cell(l, COL_AUDIT.verdict).toLowerCase(),
     note: cell(l, COL_AUDIT.note),
   })).filter((r) => r.fichier || r.statut); // une ligne vide n'est pas un document

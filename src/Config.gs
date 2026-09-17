@@ -518,6 +518,14 @@ var CONFIG = {
   // celui dont une erreur d'extraction coûte le plus cher — aurait deux lignes sur cent.
   // C'est tout le sens du mot « stratifié » dans l'ADR (`repartirAudit_`).
   AUDIT_PIECE_TAILLE: 100,
+  // ⚠️ Bumper ce tag REFAIT l'extraction des 100 documents de l'échantillon en cours et EFFACE
+  // les verdicts déjà posés (les notes restent). C'est le patron `MIGRATION_TAG` : une clé de
+  // SUCCÈS fige un résultat à vie, et la version de la règle fait partie de l'état.
+  // `c49-3-b` (17/09) : la colonne Champs portait « [object Object] » — les valeurs extraites
+  // sont des listes `{libelle, valeur}`, mises en texte par un `String()` naïf — et le RÉSUMÉ
+  // n'était pas écrit du tout. Les lignes du premier passage sont donc INJUGEABLES : les
+  // garder reviendrait à faire juger la porte de l'ADR-0061 sur une information fausse.
+  AUDIT_PIECE_TAG: 'c49-3-b',
   // ⚠️ Budget QUOTIDIEN de l'audit, en ms RÉELLES persistées — PRÉLEVÉ, jamais ajouté (§9
   // « RÉALLOUER, jamais AUGMENTER ») : 8 min reprises à `SYNC_BUDGET_JOUR_MS`, la réconciliation
   // Index↔Drive — perpétuelle et en lecture seule, donc le seul poste qui ne tient aucun délai.

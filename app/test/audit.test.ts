@@ -18,15 +18,25 @@ import {
   auditDepuisSante,
 } from '../src/audit';
 
-/** Une ligne de la Sheet, dans l'ordre exact où le moteur l'écrit. */
+/**
+ * Une ligne de la Sheet. ⚠️ DÉRIVÉE de `COL_AUDIT` et non écrite à la main : la première
+ * version était une liste positionnelle, et l'ajout de la colonne « Résumé » a décalé le
+ * verdict d'un cran — six cas rouges pour une raison qui n'avait rien à voir avec ce qu'ils
+ * défendaient. Une fixture qui recopie un ordre se périme exactement comme le code qui le
+ * recopie (leçon du parc : dériver, ne jamais énumérer).
+ */
+const DEFAUTS: Record<string, string> = {
+  rang: '1', domaine: '02 · Finances', fichier: 'doc.pdf',
+  lien: 'https://drive.google.com/file/d/AAAAAAAAAAAAAAAAAAAAAA/view',
+  statut: 'extrait', type: 'facture', emetteur: 'Hydro', dateDoc: '2026-03-01',
+  titulaire: 'Marc', confiance: '0.9', champs: 'montants : prime 1 240 $',
+  resume: 'Facture d\'électricité pour juin.', verdict: '', note: '',
+};
+
 function ligne(o: Partial<Record<string, string>> = {}): string[] {
-  return [
-    o.rang ?? '1', o.domaine ?? '02 · Finances', o.fichier ?? 'doc.pdf',
-    o.lien ?? 'https://drive.google.com/file/d/AAAAAAAAAAAAAAAAAAAAAA/view',
-    o.statut ?? 'extrait', o.type ?? 'facture', o.emetteur ?? 'Hydro',
-    o.dateDoc ?? '2026-03-01', o.titulaire ?? 'Marc', o.confiance ?? '0.9',
-    o.champs ?? 'montant', o.verdict ?? '', o.note ?? '',
-  ];
+  const l: string[] = [];
+  for (const [cle, index] of Object.entries(COL_AUDIT)) l[index as number] = o[cle] ?? DEFAUTS[cle] ?? '';
+  return l;
 }
 
 describe('lecture des lignes', () => {
@@ -35,6 +45,7 @@ describe('lecture des lignes', () => {
     // 5 colonnes. Sans garde, `l[11]` vaut `undefined` et « non jugé » devient un accident.
     const [l] = lireLignesAudit([['3', '04 · Immigration', 'passeport.pdf', 'https://x', 'à faire']]);
     expect(l!.verdict).toBe('');
+    expect(l!.resume).toBe('');
     expect(l!.type).toBe('');
     expect(l!.ligneSheet).toBe(2);
   });
@@ -99,10 +110,16 @@ describe('la carte suivante', () => {
 
 describe('écriture', () => {
   it('la colonne du verdict est DÉRIVÉE de sa position — un décalage écraserait une extraction', () => {
-    expect(LETTRE_COLONNE_VERDICT).toBe('L');
-    expect(COL_AUDIT.verdict).toBe(11);
-    expect(celluleVerdict(2)).toBe('L2');
-    expect(celluleVerdict(101)).toBe('L101');
+    // ⚠️ Pas de lettre écrite en dur : le sujet est que la lettre SUIVE la position, sinon un
+    // verdict s'écrit par-dessus une valeur extraite. La colonne a déjà bougé une fois (L → M,
+    // quand « Résumé » est arrivée) et ce cas ne devait pas rougir pour ça.
+    const attendue = String.fromCharCode(65 + COL_AUDIT.verdict);
+    expect(LETTRE_COLONNE_VERDICT).toBe(attendue);
+    expect(celluleVerdict(2)).toBe(attendue + '2');
+    expect(celluleVerdict(101)).toBe(attendue + '101');
+    // …et le verdict reste APRÈS tout ce que l'extraction écrit — le résumé est la dernière
+    // cellule du moteur, les deux suivantes appartiennent à Marc.
+    expect(COL_AUDIT.verdict).toBe(COL_AUDIT.resume + 1);
   });
 });
 

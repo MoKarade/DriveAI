@@ -2844,9 +2844,17 @@ Détail des tâches : `BACKLOG.md`.
         tirer cent documents, c'est lancer une campagne LLM que personne n'a demandée. Composer un
         NOUVEL échantillon reste `auditPiecesMaintenant` — le seul geste d'éditeur qui subsiste, et
         il ne sert qu'à en relancer un autre plus tard ;
+      ⚠️ **RE-EXTRACTION du 17/09 (`AUDIT_PIECE_TAG = 'c49-3-b'`)** : le premier passage a écrit
+      « [object Object] » dans la colonne Champs — les valeurs extraites sont des listes
+      `{libelle, valeur}` et un `String()` naïf les a aplaties — et il n'écrivait pas le RÉSUMÉ.
+      Les 100 lignes étaient donc INJUGEABLES. Le tag les remet à « à faire » au premier tick et
+      **efface les verdicts déjà posés** (les notes restent) : un verdict rendu sur une ligne
+      illisible ne dit rien de l'extraction, et le garder fausserait le seul chiffre que la porte
+      mesure. Bumper ce tag est la façon de refaire l'échantillon en cours, sans rien lancer.
       - **le jugement se fait dans l'app** : `drive.hubperso.com` → engrenage → **« Vérifier »**.
-        Un document à la fois, plein écran, trois boutons (`Juste` / `À moitié` / `Faux`) et le lien
-        qui ouvre le papier à côté. Le verdict s'écrit directement dans la Sheet ; le compte et le
+        Un document à la fois, plein écran, trois boutons (`Juste` / `À moitié` / `Faux`), le
+        RÉSUMÉ que le modèle a écrit du document — c'est lui qui dit s'il l'a COMPRIS, là où les
+        champs disent seulement ce qu'il en a tiré — et le lien qui ouvre le papier à côté. Le verdict s'écrit directement dans la Sheet ; le compte et le
         taux de justesse s'affichent en haut. La carte n'apparaît que s'il y a un audit en cours, et
         cette information vient de la ligne de SANTÉ déjà chargée — savoir s'il y a quelque chose à
         vérifier ne coûte aucune requête ;

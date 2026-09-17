@@ -46,12 +46,12 @@ const SANTE: string[][] = [
  * que le masquage existe pour éviter.
  */
 const AUDIT_PIECES: string[][] = [
-  // Rang | Domaine | Fichier | Lien | Statut | Type | Émetteur | Date doc | Titulaire | Confiance | Champs | Verdict | Note
-  ['1', '02 · Finances', '2026-07-01_Facture_Hydro-Québec.pdf', 'https://drive.google.com/file/d/mock-001/view', 'extrait', 'facture', 'Hydro-Québec', '2026-07-01', 'Marc Exemple', '0.95', 'montant, échéance', '', ''],
-  ['2', '04 · Immigration', '2026-05-20_Passeport.pdf', 'https://drive.google.com/file/d/mock-002/view', 'extrait', 'passeport', '(absent)', '2026-05-20', '(12 lettres)', '0.97', '(9 chiffres)', '', ''],
-  ['3', '03 · Logement & véhicule', '2026-06-15_Bail.pdf', 'https://drive.google.com/file/d/mock-003/view', 'extrait', 'bail', 'Immeubles Exemple', '2026-06-15', 'Marc Exemple', '0.88', 'loyer, fin du bail', 'juste', ''],
-  ['4', '05 · Emploi', 'cv-2026.pdf', 'https://drive.google.com/file/d/mock-004/view', 'sans texte', '', '', '', '', '', '', '', ''],
-  ['5', '01 · Administratif & identité', '2026-02-02_Permis.pdf', 'https://drive.google.com/file/d/mock-005/view', 'extrait', 'permis de conduire', 'SAAQ', '2026-02-02', '(12 lettres)', '0.93', '(5 lettres, 8 chiffres)', '', ''],
+  // Rang | Domaine | Fichier | Lien | Statut | Type | Émetteur | Date doc | Titulaire | Confiance | Champs | Résumé | Verdict | Note
+  ['1', '02 · Finances', '2026-07-01_Facture_Hydro-Québec.pdf', 'https://drive.google.com/file/d/mock-001/view', 'extrait', 'facture', 'Hydro-Québec', '2026-07-01', 'Marc Exemple', '0.95', 'montants : total 142,30 $, taxes 18,55 $ · numeros : compte 3 100 200', 'Facture d’électricité pour la période du 1ᵉʳ mai au 30 juin, payable le 21 juillet.', '', ''],
+  ['2', '04 · Immigration', '2026-05-20_Passeport.pdf', 'https://drive.google.com/file/d/mock-002/view', 'extrait', 'passeport', '(absent)', '2026-05-20', '(12 lettres)', '0.97', 'numeros : passeport (9 chiffres)', '(masqué — ouvre le document)', '', ''],
+  ['3', '03 · Logement & véhicule', '2026-06-15_Bail.pdf', 'https://drive.google.com/file/d/mock-003/view', 'extrait', 'bail', 'Immeubles Exemple', '2026-06-15', 'Marc Exemple', '0.88', 'montants : loyer 1 250 $ · lieux : logement 4½', 'Bail résidentiel d’un an, du 1ᵉʳ juillet 2026 au 30 juin 2027.', 'juste', ''],
+  ['4', '05 · Emploi', 'cv-2026.pdf', 'https://drive.google.com/file/d/mock-004/view', 'sans texte', '', '', '', '', '', '', '', '', ''],
+  ['5', '01 · Administratif & identité', '2026-02-02_Permis.pdf', 'https://drive.google.com/file/d/mock-005/view', 'extrait', 'permis de conduire', 'SAAQ', '2026-02-02', '(12 lettres)', '0.93', 'numeros : permis (5 lettres, 8 chiffres)', '(masqué — ouvre le document)', '', ''],
 ];
 
 const JOURNAL: string[][] = [

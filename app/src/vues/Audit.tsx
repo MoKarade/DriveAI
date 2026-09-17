@@ -18,7 +18,7 @@
 import { useEffect, useState } from 'react';
 import { lirePlage, ecrireCellule, viderCachePlages } from '../google';
 import {
-  LigneAudit, Verdict, VERDICTS,
+  LigneAudit, Verdict, VERDICTS, PLAGE_AUDIT,
   lireLignesAudit, compterAudit, prochaineAJuger, celluleVerdict,
   champsAMontrer, domaineMasqueAudit,
 } from '../audit';
@@ -46,7 +46,7 @@ export function Audit({ langue, onFermer }: { langue: Langue; onFermer: () => vo
   useEffect(() => {
     let vivant = true;
     viderCachePlages(ONGLET); // l'onglet bouge à chaque tick du moteur : jamais servir du cache ici
-    lirePlage(ONGLET, 'A2:M')
+    lirePlage(ONGLET, PLAGE_AUDIT)
       .then((v) => { if (!vivant) return; const ls = lireLignesAudit(v); setLignes(ls); setPosition(Math.max(0, prochaineAJuger(ls, 0))); })
       .catch((e) => { if (vivant) { setErreur(String(e)); setLignes([]); } });
     return () => { vivant = false; };
@@ -140,6 +140,12 @@ function CarteDocument({ langue, ligne, enCours, onVerdict, onPasser }: {
           {t('auditOuvrirDoc', langue)} ↗
         </a>
       )}
+
+      {/* ⚠️ LE RÉSUMÉ D'ABORD, et ce n'est pas un choix de mise en page. Les champs disent ce
+          que le modèle a TIRÉ du papier ; le résumé dit s'il l'a COMPRIS — on peut extraire
+          « facture / Hydro / 2026-07-01 » d'un document lu de travers. Demande de Marc au
+          premier usage : « je jugerai mieux une analyse de IA avec des vraies infos ». */}
+      {ligne.resume && <p className="audit-resume">{ligne.resume}</p>}
 
       <dl className="audit-champs">
         {champsAMontrer(ligne).map(({ cle, valeur }) => (
