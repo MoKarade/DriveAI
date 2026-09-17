@@ -614,6 +614,30 @@ function tickDriveAI() {
       }
     } catch (e) { journalErreur_('AuditPiece', 'Audit des pièces différé : ' + e); }
 
+    // RATTRAPAGE DES PIÈCES (C49-5 étape B) : faire partir vers la Mémoire le CONTENU des
+    // papiers DÉJÀ classés, `04` puis `01`. Placée JUSTE APRÈS l'audit, et ce n'est pas un
+    // détail de style : les deux partagent le budget quotidien des pièces et sont mutuellement
+    // exclusifs (celle-ci refuse de démarrer tant que l'audit a quelque chose à extraire).
+    // L'ORDRE prime sur les budgets — une étape reléguée en fin de `finally` reçoit le reliquat
+    // d'un tick qui l'a déjà dépensé, et c'est l'incident du 16/09.
+    //
+    // ⚠️ Le frein en DOLLARS est vérifié DEUX fois : ici, et dans l'étape elle-même. Cette
+    // campagne dépense, contrairement au comptage du périmètre juste en dessous.
+    //
+    // Enveloppée : un échec du rattrapage ne doit JAMAIS bloquer l'intake.
+    try {
+      var resteRatt = null;
+      try { resteRatt = restantsRattrapage_(PropertiesService.getScriptProperties()); }
+      catch (eRatt) { resteRatt = null; } // « je ne sais pas » ≠ « zéro » : on laisse compter
+      var tagRatt = null;
+      try { tagRatt = PropertiesService.getScriptProperties().getProperty('DriveAI_RATTRAPAGE_PIECE_TAG'); }
+      catch (eRattTag) { tagRatt = null; }
+      if (rattrapageDoitTourner_(resteRatt, tagRatt, CONFIG.RATTRAPAGE_PIECE_TAG)
+          && !estBudgetDepasse() && !budgetCampagnesAtteint_() && !resetEnCours_()) {
+        etapeRattrapagePiece_(estBudgetDepasse, {});
+      }
+    } catch (e) { journalErreur_('RattrapagePiece', 'Rattrapage des pièces différé : ' + e); }
+
     // PÉRIMÈTRE DES PIÈCES (C49-4 étape A) : combien de documents la Mémoire aurait à lire.
     // Placée APRÈS l'audit et gatée sur son TAG seul : c'est une passe ONE-SHOT — une lecture
     // de l'Index en un `getValues`, puis plus jamais. Aucun appel LLM, aucun octet qui sort du
