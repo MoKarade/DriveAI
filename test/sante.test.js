@@ -45,8 +45,12 @@ function chargerAvecSanteMock(indexCache, props) {
   // lit `budgetJourMemoire_` — même exigence inter-module que `Migration.gs` ci-dessus. Chargé
   // POUR DE VRAI : mocké, une mutation du nom survivrait, et c'est ce fichier qui est censé la
   // faire tomber.
+  // `AuditPiece.gs` : la ligne « Audit des pièces » (C49-3) appelle `texteSanteAuditPiece_`, qui
+  // lit `budgetJourAudit_`. Même exigence inter-module que les deux ci-dessus — et la même raison
+  // de le charger POUR DE VRAI : cette ligne est le SEUL endroit d'où l'on voit que la porte de
+  // l'ADR-0061 avance, et un catch pris pour le chemin nominal la rendrait muette sans rougir.
   const ctx = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'GoogleApi.gs', 'TriGmail.gs', 'Doublons.gs',
-    'Gmail.gs', 'Migration.gs', 'Memoire.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
+    'Gmail.gs', 'Migration.gs', 'Memoire.gs', 'AuditPiece.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
     { PropertiesService: mockProps(props) });
   const captured = [];
   // feuille_ mocké : capture l'unique setValues de « Santé » ; `getLastRow: 1` = rapport des
@@ -59,7 +63,7 @@ function chargerAvecSanteMock(indexCache, props) {
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 12 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 13 lignes de métadonnées (une seule écriture Sheet)', () => {
   // 10 depuis ADR-0056 : la re-datation de `06` rallume de la dépense LLM et son budget du jour
   // n'était lisible NULLE PART. Le compte est figé pour que l'ajout d'une ligne soit une DÉCISION —
   // l'écriture est unique par tick, et chaque ligne coûte de la place à l'écran de Marc.
@@ -71,9 +75,14 @@ test('majSante_ écrit exactement 12 lignes de métadonnées (une seule écritur
   // pour d'autres raisons que l'inventaire (celui-ci ne coûte aucun appel LLM, l'extraction en
   // coûte un par document). Les fondre en une ligne ferait lire le silence de l'un comme celui
   // de l'autre — ce que le compte figé est précisément là pour rendre délibéré.
+  // 13 depuis C49-3 : l'audit des pièces est la PORTE de l'ADR-0061 (rien n'allume `PIECE_PUSH`
+  // avant elle) et il tourne désormais tout seul dans le tick, sans que Marc lance quoi que ce
+  // soit. Une campagne qui avance sans geste humain a d'autant plus besoin d'être lisible : sans
+  // cette ligne, « elle progresse », « elle est finie » et « elle n'a jamais démarré » se lisent
+  // tous les trois comme un onglet qui ne bouge pas.
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 12);
+  assert.strictEqual(captured.length, 13);
   assert.ok(captured.every((l) => typeof l === 'string'));
 });
 
@@ -433,4 +442,18 @@ test('majSante_ : la ligne « Mémoire (pièces) » est DISTINCTE de celle de l\
   assert.ok(inv, 'la ligne de l\'inventaire existe');
   assert.ok(pieces, 'la ligne des pièces existe');
   assert.notStrictEqual(inv, pieces, 'et elles ne disent pas la même chose');
+});
+
+test('majSante_ : la ligne « Audit des pièces » exerce le chemin NOMINAL, et distingue les trois silences', () => {
+  // La PORTE de l'ADR-0061 avance maintenant toute seule dans le tick : c'est la seule surface
+  // d'où Marc voit qu'elle avance. Trois situations donnent le même onglet immobile — jamais
+  // lancée, en cours de budget, terminée — et elles appellent trois gestes différents (lancer,
+  // attendre, juger). Mutation : retirer la ligne de `majSante_` ⇒ ce cas tombe.
+  const { ctx, captured } = chargerAvecSanteMock({});
+  ctx.majSante_();
+  const ligne = captured.find((l) => l.indexOf('Audit des pièces') === 0);
+  assert.ok(ligne, 'la ligne existe');
+  assert.ok(!ligne.includes('illisible'), 'chemin nominal, pas le catch : ' + ligne);
+  // Aucune passe enregistrée dans ce contexte ⇒ l'état « jamais tourné », qui est à part.
+  assert.match(ligne, /n'a pas encore tourné/, ligne);
 });

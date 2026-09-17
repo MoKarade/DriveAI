@@ -580,6 +580,36 @@ function tickDriveAI() {
     // quotidien (20 min/j) est RÉALLOUÉ au reset — l'enveloppe totale du quota runtime ne bouge pas,
     // donc aucun risque de gel des déclencheurs. C'est un RATTRAPAGE : quelques jours de retard sont
     // sans conséquence, et elle reprend SEULE à la convergence du reset (`resetEnCours_` repasse à false).
+    // AUDIT des pièces (C49-3, ADR-0061) : TERMINE l'échantillon de 100 documents que Marc a
+    // lancé — il ne l'amorce JAMAIS lui-même (tirer 100 documents, c'est lancer une campagne LLM
+    // que personne n'a demandée ; la garde est dans `etapeAuditPiece_`). Placée AVANT les
+    // campagnes de fond parce que c'est une PORTE : l'ADR-0061 interdit d'allumer `PIECE_PUSH`
+    // tant qu'elle n'est pas franchie, alors que rien n'attend derrière la re-datation de `06`.
+    // L'ORDRE prime sur les budgets (leçon §9, incident consolidation du 23/07).
+    //
+    // ⚠️ Elle S'ÉTEINT SEULE : la gate lit le compteur de restants que la passe écrit elle-même,
+    // donc à zéro elle ne coûte plus qu'une lecture de Property par tick. Aucun tag à poser,
+    // aucun geste pour l'arrêter — c'est tout l'intérêt, Marc n'a rien à lancer NI à éteindre.
+    //
+    // ⚠️ PAS d'`etapeSuivie_`, même raison que la Mémoire et la validation des doublons : le
+    // registre C28-44 est saturé (8 377/8 500 octets, ~199 par entrée) et une clé de plus fait
+    // échouer son tripwire de plafond. Les gates sont donc écrites ici, dans le MÊME ORDRE que
+    // leurs équivalents `gBudgetTick, gFreinCampagnes, gResetEnCours` — et la visibilité passe
+    // par `DriveAI_AUDIT_PIECE_FIN`, publié par `majSante_` : un run vert ne prouve pas qu'une
+    // étape a tourné (piège 3 §9), un motif de fin daté, si.
+    //
+    // Enveloppée : un échec de l'audit ne doit JAMAIS bloquer l'intake.
+    try {
+      // La gate d'extinction lit une Property (I/O) : son propre try, pour qu'un blip devienne
+      // un simple report au tick suivant et non une exception qui emporte l'étape.
+      var resteAudit = null;
+      try { resteAudit = resteAuditPiece_(PropertiesService.getScriptProperties()); }
+      catch (eAudit) { resteAudit = null; } // « je ne sais pas » ⇒ on laisse la passe compter
+      if (resteAudit !== 0 && !estBudgetDepasse() && !budgetCampagnesAtteint_() && !resetEnCours_()) {
+        etapeAuditPiece_(estBudgetDepasse, {});
+      }
+    } catch (e) { journalErreur_('AuditPiece', 'Audit des pièces différé : ' + e); }
+
     etapeSuivie_('histo-gmail', [gBudgetTick, gFreinCampagnes, gResetEnCours],
       function () { traiterGmailHistorique_(estBudgetDepasse); },
       function (e) {
@@ -1168,8 +1198,14 @@ function texteSanteHistoGmail_() {
       // prête une SECONDE fois des minutes déjà cédées — l'enveloppe se creuse sans que personne
       // ne voie le double emploi. Le donneur annonce donc son solde, pas seulement son budget.
       var pretees = CONFIG.GMAIL_HISTO_PRETEES_MIN || 0;
+      // ⚠️ Un budget à ZÉRO ne se dit pas « réallouable » : à zéro la campagne est MUETTE, et
+      // la phrase inviterait à prendre ce qui n'existe plus. Le donneur annonce alors son état.
+      if (!budget) {
+        return 'terminée ✅ — donneur À SEC : ses ' + pretees + ' min/j sont DÉJÀ prêtées. '
+          + 'Prélever ailleurs.';
+      }
       return 'terminée ✅ — ses ' + budget + ' min/j sont RÉALLOUABLES' +
-        (pretees ? ' (' + pretees + ' min déjà prêtées à la re-analyse)' : '');
+        (pretees ? ' (' + pretees + ' min déjà prêtées à la re-analyse, à la Mémoire et à l\'audit)' : '');
     }
     // ⚠️ Le COMPTE de fils n'est PAS répété ici : l'onglet Progression le porte déjà, et de façon
     // MONOTONE (l'offset brut repart à 0 aux passes de vérification — c'est une position de scan,

@@ -128,7 +128,11 @@ test('budget RÉALLOUÉ, jamais AUGMENTÉ : le total du reset ne dépasse pas ce
     // 50, soit ZÉRO marge, avec le test toujours vert (50 ≤ 50). La prochaine réallocation neutre
     // vers la re-analyse aurait été refusée par un invariant censé l'autoriser — exactement le
     // défaut que C28-99 avait corrigé sur l'autre verrou.
-    C.REANALYSE_BUDGET_JOUR_MS; // + fusion (#47) et missions (C28-49) — TOUTES gatées !resetEnCours_
+    C.REANALYSE_BUDGET_JOUR_MS +
+    // ⚠️ 10ᵉ jambe (C49-3) : l'audit des pièces est gaté `gResetEnCours` lui aussi (Main.gs), il
+    // appartient donc à CE bloc. Sans cette ligne, `libere` perdrait les 12 min qu'il vient de
+    // recevoir et le test refuserait un transfert NEUTRE — le défaut que la 9ᵉ jambe a corrigé.
+    C.AUDIT_PIECE_BUDGET_JOUR_MS; // + fusion (#47) et missions (C28-49) — TOUTES gatées !resetEnCours_
                                // (vérifié par les tests de gates ci-dessus/dessous) : un reset ON les
                                // suspend, leur budget est donc réellement LIBÉRÉ pour lui.
   assert.ok(reset <= libere,
@@ -154,10 +158,13 @@ test('enveloppe reset-OFF : la somme des budgets QUOTIDIENS des campagnes concur
     C.REANALYSE_BUDGET_JOUR_MS + // re-analyse ciblée (ADR-0056) — elle n'avait AUCUN budget quotidien,
                                 // donc l'agrégat ci-dessous ne la voyait pas : l'enveloppe pouvait
                                 // croître avec ce test au vert. La 9ᵉ jambe ferme cet angle mort.
-    C.MEMOIRE_BUDGET_JOUR_MS;   // 10ᵉ jambe (C28-135) — MÊME angle mort, re-payé : l'envoi à la
+    C.MEMOIRE_BUDGET_JOUR_MS +  // 10ᵉ jambe (C28-135) — MÊME angle mort, re-payé : l'envoi à la
                                 // Mémoire tournait depuis le 16/09 SANS aucune constante quotidienne,
                                 // donc ce test restait vert pendant que l'enveloppe croissait. Ses
                                 // 4 min/j sont PRÉLEVÉES sur l'historique Gmail (12 → 8).
+    C.AUDIT_PIECE_BUDGET_JOUR_MS; // 11ᵉ jambe (C49-3) — l'audit de l'ADR-0061, branché dans le tick
+                                // pour que Marc n'ait plus rien à lancer. Financé par un pur
+                                // transfert depuis la réconciliation Index (SYNC 12 → 4).
   // RÉALLOCATION 2026-08-11 (diagnostic prod : l'exec est le goulot) : exec 6→12, fusion 6→0 (parkée,
   // campagne OFF) — la SOMME reste 56 min/j (20+12+12+12+0), enveloppe INCHANGÉE, pur transfert.
   // HISTORIQUE_VRAC (2026-08-12, demande Marc : suivi journalier par domaine) : +4 min → 60 min/j.
@@ -202,10 +209,12 @@ test('ENVELOPPE des campagnes : la somme reste EXACTEMENT 63 min/j (réallouer, 
     C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS +
     C.HISTORIQUE_VRAC_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS + C.DOUBLONS_BUDGET_JOUR_MS +
     C.REANALYSE_BUDGET_JOUR_MS + // 9ᵉ jambe (ADR-0056) — cf. le commentaire de l'agrégat ci-dessus
-    C.MEMOIRE_BUDGET_JOUR_MS;   // 10ᵉ jambe (C28-135) — idem, et le transfert qui l'a financée est
+    C.MEMOIRE_BUDGET_JOUR_MS +  // 10ᵉ jambe (C28-135) — idem, et le transfert qui l'a financée est
                                 // un pur déplacement : GMAIL_HISTO 12 → 8, MEMOIRE 0 → 4.
+    C.AUDIT_PIECE_BUDGET_JOUR_MS; // 11ᵉ jambe (C49-3) — idem : SYNC 12 → 4, AUDIT_PIECE 0 → 8.
+                                // La somme ne bouge pas d'une minute.
   assert.strictEqual(total / 60000, 63,
-    'la somme des budgets quotidiens des 10 campagnes doit rester = 63 min/j. Pour accélérer une ' +
+    'la somme des budgets quotidiens des 11 campagnes doit rester = 63 min/j. Pour accélérer une ' +
     'campagne, PRENDRE à une autre — jamais ajouter des minutes : au-delà du mur runtime ' +
     '~90 min/j, TOUS les déclencheurs gèlent, chien de garde inclus (C28-29). Relever ce total ' +
     'est une DÉCISION de Marc, pas un effet de bord : il faudrait d\'abord MESURER le runtime ' +
@@ -261,6 +270,11 @@ test('minutes PRÊTÉES : le chiffre affiché à Marc est DÉRIVÉ du transfert,
   // re-datation reçoit tout », c'est « rien ne se crée en route » : la liste des receveurs est donc
   // une SOMME, et un troisième prêt devra s'y inscrire. Une garde qui nomme un receveur se périme
   // au premier suivant ; une garde qui somme survit (§9, « ancrer le FAIT, jamais la FORME »).
+  // ⚠️ C49-3 n'a RIEN pris ici et n'ajoute donc pas de receveur : l'audit des pièces est financé
+  // par `SYNC_BUDGET_JOUR_MS` (12 → 4). Le garde ne suit QUE les prêts de CE donneur — mêler les
+  // deux transferts ferait de cette égalité une somme de choses sans rapport, et elle cesserait
+  // de dire ce qu'elle défend (« rien ne se crée en route » entre l'historique Gmail et ses
+  // receveurs). Un second donneur qui prête à plusieurs aura besoin de son propre garde.
   const RECEVEURS_MIN = (C.REANALYSE_BUDGET_JOUR_MS + C.MEMOIRE_BUDGET_JOUR_MS) / 60000;
   assert.strictEqual(C.GMAIL_HISTO_PRETEES_MIN, RECEVEURS_MIN,
     'les minutes retirées au donneur sont EXACTEMENT celles reçues par ses receveurs ' +
@@ -282,6 +296,7 @@ test('INVENTAIRE des budgets quotidiens : aucune constante n\'échappe aux invar
     'MISSIONS_BUDGET_JOUR_MS', 'DOUBLONS_BUDGET_JOUR_MS', 'REANALYSE_BUDGET_JOUR_MS',
     'MEMOIRE_BUDGET_JOUR_MS', // C28-135 — et cet inventaire a fait EXACTEMENT son travail : il a
                               // rougi sur la constante neuve avant qu'elle n'échappe aux sommes.
+    'AUDIT_PIECE_BUDGET_JOUR_MS', // C49-3 — il a re-rougi, et c'est la deuxième fois qu'il gagne.
     // les 4 phases du reset (invariant de réallocation reset-ON)
     'RESET_RASSEMBLEMENT_BUDGET_JOUR_MS', 'RESET_PLACEMENT_BUDGET_JOUR_MS',
     'RESET_04_BUDGET_JOUR_MS', 'RESET_LLM_BUDGET_JOUR_MS',

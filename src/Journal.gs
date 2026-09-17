@@ -258,6 +258,10 @@ function majSante_() {
     // l'extraction en coûte un par document. Une seule ligne pour les deux ferait lire le
     // silence de l'un comme celui de l'autre.
     ['Mémoire (pièces) : ' + texteSantePiece_()],
+    // L'AUDIT (C49-3). Ligne à part, et pas un détail : c'est la PORTE de l'ADR-0061, donc la
+    // seule chose qui bloque l'allumage de `PIECE_PUSH`. Sans elle, « l'audit avance » et
+    // « l'audit n'a jamais tourné » se lisent tous les deux comme un onglet qui ne bouge pas.
+    ['Audit des pièces (C49-3) : ' + texteSanteAuditPiece_()],
     ['Mis à jour : ' + new Date()]
   ];
   f.getRange(2, 1, lignes.length, 1).setValues(lignes); // une seule écriture Sheet (I/O borné/tick)
