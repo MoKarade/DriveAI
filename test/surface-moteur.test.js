@@ -180,6 +180,14 @@ const CONTRAT = [
   'repartirAudit_', 'estDomaineMasqueAudit_', 'masquerAudit_', 'masquerChampsAudit_',
   'champsEnClairAudit_', 'cellulesAuditPiece_', 'compterVerdictsAudit_', 'phraseVerdictAudit_',
   'composerEchantillonAudit_', 'extraireLotAudit_', 'auditerUnDocumentAudit_',
+  // La passe AUTOMATIQUE (C49-3, 17/09). `etapeAuditPiece_` et `resteAuditPiece_` sont appelées
+  // par Main.gs (l'étape et sa gate), `texteSanteAuditPiece_` par Journal.gs : trois contrats
+  // INTER-MODULES qu'aucun test unitaire mocké ne verrait disparaître. `budgetJourAudit_` et
+  // `phraseFinAuditPiece_` sont PURES et testées à part ; `noterFinAuditPiece_` est le point
+  // d'écriture UNIQUE de l'état de fin — le retirer rendrait les sorties muettes en silence,
+  // exactement l'incident du 16/09 sur l'envoi à la Mémoire.
+  'etapeAuditPiece_', 'resteAuditPiece_', 'budgetJourAudit_',
+  'noterFinAuditPiece_', 'phraseFinAuditPiece_', 'texteSanteAuditPiece_',
   'inventorierDoublons_', 'balayerExemplairesDoublons_',
   'ecrireVerdictsDoublons_', 'feuilleRapportDoublons_', 'texteSanteDoublons_', 'pageListeDrive_',
   'texteSanteHistoGmail_', // Main.gs, appelée par Journal.gs (ligne de Santé C28-99)

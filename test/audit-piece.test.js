@@ -137,3 +137,110 @@ test('les colonnes sont une liste FERMÉE, et le verdict est la 12e', () => {
   // `verdictAuditPieces` lit la colonne 12 en dur : si l'ordre bouge, il compte autre chose.
   assert.strictEqual(c.COLONNES_AUDIT_PIECE[4], 'Statut');
 });
+
+/* ======================================================================================
+ * LA PASSE AUTOMATIQUE (C49-3, 17/09) — « je veux rien faire à la main », décision de Marc.
+ *
+ * Ce que ces cas défendent, et pourquoi chacun a coûté quelque chose ailleurs dans le parc :
+ *   5. le TICK N'AMORCE JAMAIS — tirer 100 documents, c'est lancer une campagne LLM que
+ *      personne n'a demandée ;
+ *   6. une passe qui sort DIT pourquoi — « rien à faire », « jamais atteinte » et « suspendue »
+ *      ont le même symptôme (le silence) et trois gestes différents (incident C28-135) ;
+ *   7. une passe MANUELLE se voit dans la ligne de Santé — sinon on conclut « le tick tourne »
+ *      sur la preuve d'une main (leçon du 16/09) ;
+ *   8. « je ne sais pas encore » n'est pas « zéro » : la gate d'extinction doit laisser passer
+ *      un audit commencé AVANT que ce code n'existe — le cas de Marc aujourd'hui.
+ * ==================================================================================== */
+
+test('le compteur de restants distingue « pas encore compté » de « zéro » — sinon l\'audit de Marc ne repart jamais', () => {
+  const c = ctx();
+  const props = (v) => ({ getProperty: () => v });
+  // ABSENT ⇒ null (« je ne sais pas ») : la gate laisse passer, la passe comptera.
+  assert.strictEqual(c.resteAuditPiece_(props(null)), null);
+  assert.strictEqual(c.resteAuditPiece_(props('')), null);
+  // PRÉSENT ⇒ un nombre, et 0 éteint l'étape.
+  assert.strictEqual(c.resteAuditPiece_(props('0')), 0);
+  assert.strictEqual(c.resteAuditPiece_(props('66')), 66);
+  // Une valeur illisible ne doit pas se lire comme « il en reste » à vie, ni lever.
+  assert.strictEqual(c.resteAuditPiece_(props('bof')), 0);
+});
+
+test('le budget quotidien ne compte QUE la journée en cours (un compteur d\'hier vaut zéro)', () => {
+  const c = ctx();
+  const props = (v) => ({ getProperty: () => v });
+  assert.strictEqual(c.budgetJourAudit_(props('2026/09/17|120000'), '2026/09/17'), 120000);
+  assert.strictEqual(c.budgetJourAudit_(props('2026/09/16|720000'), '2026/09/17'), 0,
+    'un budget épuisé HIER bloquerait la campagne à vie');
+  assert.strictEqual(c.budgetJourAudit_(props(''), '2026/09/17'), 0);
+  assert.strictEqual(c.budgetJourAudit_(props('n\'importe quoi'), '2026/09/17'), 0);
+});
+
+test('une passe qui n\'a rien fait DIT pourquoi — le silence ne se lit pas comme « rien à faire »', () => {
+  const c = ctx();
+  const budget = 12 * 60 * 1000;
+  // Jamais tourné : c'est un état à part, pas un zéro.
+  assert.match(c.phraseFinAuditPiece_('', 0, budget), /n'a pas encore tourné/);
+  // Chaque motif a sa phrase, et elle nomme le geste quand il y en a un.
+  const fin = (motif, restants) => ['2026-09-17T13:00:00Z', motif, '27/5/2', restants, 'tick'].join('|');
+  assert.match(c.phraseFinAuditPiece_(fin('budget-jour', 66), 720000, budget), /reprise demain/);
+  assert.match(c.phraseFinAuditPiece_(fin('frein budget LLM atteint', 66), 0, budget), /LLM_BUDGET_CAMPAGNES/);
+  assert.match(c.phraseFinAuditPiece_(fin('vide', 0), 0, budget), /aucun échantillon/);
+  assert.match(c.phraseFinAuditPiece_(fin('termine', 0), 660000, budget), /à toi de juger/);
+  // Un motif INCONNU se cite tel quel plutôt que de se fondre dans le plus proche : c'est ce qui
+  // permet d'ajouter une sortie sans que son silence ressemble à une sortie connue.
+  assert.match(c.phraseFinAuditPiece_(fin('sortie-neuve', 3), 0, budget), /sortie « sortie-neuve »/);
+});
+
+test('une passe MANUELLE se DIT — sinon on conclut « le tick tourne » sur la preuve d\'une main', () => {
+  const c = ctx();
+  const budget = 12 * 60 * 1000;
+  const ligne = (mode) => ['2026-09-17T13:00:00Z', 'termine', '27/5/2', 0, mode].join('|');
+  assert.match(c.phraseFinAuditPiece_(ligne('manuel'), 0, budget), /passe MANUELLE/);
+  assert.doesNotMatch(c.phraseFinAuditPiece_(ligne('tick'), 0, budget), /passe MANUELLE/);
+  // Une ligne d'AVANT ce champ (4 champs) doit se lire comme un tick, pas planter ni mentir.
+  const ancienne = ['2026-09-17T13:00:00Z', 'termine', '27/5/2', 0].join('|');
+  assert.doesNotMatch(c.phraseFinAuditPiece_(ancienne, 0, budget), /passe MANUELLE/);
+});
+
+test('la phrase porte les RESTANTS et les minutes — les deux chiffres qui disent s\'il faut attendre', () => {
+  const c = ctx();
+  const p = c.phraseFinAuditPiece_(
+    ['2026-09-17T13:00:00Z', 'budget-jour', '27/5/2', 66, 'tick'].join('|'), 720000, 12 * 60 * 1000);
+  assert.match(p, /66 restants/);
+  assert.match(p, /12 des 12 min\/j/);
+});
+
+test('l\'étape est RÉELLEMENT branchée dans le tick, gatée, et enveloppée — sinon elle est correcte et inerte', () => {
+  // ⚠️ Ce cas existe parce que l'étape ne passe PAS par `etapeSuivie_` (registre C28-44 saturé) :
+  // aucun test de gates ne la voit, et le parc a déjà payé deux fois « un correctif vert en test,
+  // inerte en prod ». Il scanne donc la SOURCE, décommentée — un scan brut se ferait satisfaire
+  // par le commentaire qui explique le motif (leçon §9, la garde qui lit son propre commentaire).
+  const fs = require('node:fs');
+  const { stripComments } = require('./harness');
+  const brut = fs.readFileSync(require('node:path').join(__dirname, '..', 'src', 'Main.gs'), 'utf8');
+  const code = typeof stripComments === 'function' ? stripComments(brut) : brut.replace(/\/\/[^\n]*/g, '');
+  // Anti-vacuité : le décommentage n'a pas mangé le fichier.
+  assert.ok(code.length > brut.length * 0.4, 'source décommentée trop courte — scan vacueux');
+  assert.ok(/etapeAuditPiece_\(/.test(code), 'le tick doit APPELER la passe, pas seulement la définir');
+  assert.ok(/resteAuditPiece_\(/.test(code), 'la gate d\'extinction doit être consultée par le tick');
+  // ⚠️ APPELER la gate ne suffit pas : son résultat doit GARDER l'appel. Sans la comparaison à
+  // zéro, l'étape reste allumée à vie une fois l'audit fini — elle relirait l'onglet toutes les
+  // 5 minutes pour n'y rien trouver. Mutation qui le prouve : retirer `resteAudit !== 0`.
+  // Les trois gates de campagne, dans le même esprit que `gBudgetTick, gFreinCampagnes, gResetEnCours`.
+  // ⚠️ La fenêtre part de `resteAuditPiece_` et s'arrête à l'appel : une fenêtre plus large est
+  // satisfaite par les gates des étapes VOISINES, et la mutation qui retire `!resetEnCours_()`
+  // reste alors VERTE (mesuré — c'est le piège « une garde qui lit son voisinage » du §9).
+  const debutBloc = code.indexOf('resteAuditPiece_(');
+  const finBloc = code.indexOf('etapeAuditPiece_(');
+  assert.ok(debutBloc !== -1 && finBloc > debutBloc, 'la gate doit précéder l\'appel');
+  const bloc = code.slice(debutBloc, finBloc);
+  assert.ok(/budgetCampagnesAtteint_\(\)/.test(bloc), 'le frein budget LLM doit garder l\'étape');
+  assert.ok(/resetEnCours_\(\)/.test(bloc), 'une seule main déplace : gatée par le reset');
+  assert.ok(/estBudgetDepasse\(\)/.test(bloc), 'budget de TICK (appels LLM), jamais le budget TAIL');
+  assert.match(bloc, /!==\s*0/, 'le compte de restants doit ÉTEINDRE l\'étape, pas seulement être lu');
+  // L'ENVELOPPE se prouve par son CATCH, en aval de l'appel — un `try {` en amont serait
+  // satisfait par n'importe quel try du tick, et il y en a une douzaine.
+  const apres = code.slice(finBloc, finBloc + 400);
+  assert.match(apres, /catch[\s\S]{0,40}journalErreur_\('AuditPiece'/,
+    'ENVELOPPÉE : un échec de l\'audit ne doit jamais bloquer l\'intake, et il doit se DIRE');
+});

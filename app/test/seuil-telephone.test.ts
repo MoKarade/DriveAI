@@ -25,4 +25,20 @@ describe('seuil téléphone : une seule valeur, deux fichiers', () => {
 
     expect(bloc![1], 'le seuil CSS de la coquille téléphone a bougé sans Agenda.tsx').toBe(seuilJs![1]);
   });
+
+  it('les verdicts de l\'audit se collent au MÊME seuil que la barre d\'onglets (C49-3)', () => {
+    // ⚠️ MESURÉ avant d'exister : posés en flux normal, les trois boutons tombaient SOUS la barre
+    // d'onglets (« Juste » à y=788 pour une barre à y=783), donc le geste principal de l'écran
+    // était inatteignable — et rien ne le signalait, un bouton recouvert s'affiche parfaitement.
+    // Ils sont donc collants au-dessus d'elle. Deux seuils différents rouvriraient une fenêtre de
+    // largeurs où ils se collent au mauvais endroit : c'est le défaut que ce fichier garde déjà.
+    const css = lire('../src/styles.css');
+    const seuilBarre = css.match(/@media \(max-width: (\d+)px\) \{[^@]*?nav\.barre-basse \{\s*display: grid;/);
+    const seuilVerdicts = css.match(/@media \(max-width: (\d+)px\) \{[^@]*?\.audit-verdicts \{ bottom:/);
+    expect(seuilVerdicts, 'le bloc collant des verdicts est introuvable — les boutons retomberaient sous la barre').not.toBeNull();
+    expect(seuilVerdicts![1], 'le seuil des verdicts a divergé de celui de la barre').toBe(seuilBarre![1]);
+    // …et ils se collent au-dessus d'ELLE, pas au bas du viewport : `bottom: 0` les remettrait
+    // exactement là où la mesure les a trouvés.
+    expect(css).toMatch(/\.audit-verdicts \{ bottom: calc\(var\(--barre-basse-h\)/);
+  });
 });

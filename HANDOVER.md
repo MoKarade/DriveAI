@@ -2830,21 +2830,39 @@ Détail des tâches : `BACKLOG.md`.
    **Deux gestes, dans cet ordre, et le second est la porte :**
    1. **C49-3 — l'audit sur 100 documents stratifiés.** Ce n'est pas une étape, c'est une PORTE :
       si l'extraction se trompe sur des numéros d'identité, il vaut mieux le savoir sur 100 papiers
-      que sur 19 900. ⚠️ **Elle ne peut pas être franchie depuis une session Claude** — le moteur
-      tourne dans le compte Google de Marc, et une session ne déploie ni n'exécute Apps Script.
-      **La fonction « un clic » existe** (`src/AuditPiece.gs`, C49-3) :
-      - ouvrir l'éditeur Apps Script → `AuditPiece.gs` → **`auditPiecesMaintenant`** → Exécuter.
-        Le premier passage tire l'échantillon et remplit ce qu'il peut ; **relancer autant de fois
-        que nécessaire** — 100 extractions dépassent le mur des 6 minutes, et chaque passage
-        reprend à la première ligne « à faire ». La ligne rendue dit toujours combien restent ;
-      - l'onglet **`AuditPieces`** de la Sheet porte le tableau. Deux colonnes sont VIDES et
-        c'est à Marc de les remplir : **`Verdict`** (`juste` / `partiel` / `faux`) et `Note`.
-        La colonne `Lien` ouvre le document, pour comparer ;
-      - **`verdictAuditPieces`** compte ce qui a été jugé. C'est lui qui répond à la porte.
-        ⚠️ « non jugé » y est une catégorie à part : un tableau à moitié rempli ne ressemble
-        pas à un audit qui a échoué ;
+      que 19 900. ⚠️ **Le JUGEMENT ne peut pas être franchi depuis une session Claude** — le moteur
+      tourne dans le compte Google de Marc — **et il ne peut pas non plus s'automatiser** : un
+      pré-juge par un second modèle partagerait l'OCR du premier, donc il verrait les erreurs de
+      raisonnement et jamais celles de LECTURE, les seules qui comptent sur `01` et `04`. Proposé
+      le 17/09, écarté par Marc. Ce qui a été automatisé, c'est le GESTE ; le verdict reste le sien.
+
+      **Depuis le 17/09, Marc n'a PLUS RIEN à lancer dans l'éditeur** (sa demande : « je veux rien
+      lancer dans appscript ») :
+      - **l'extraction se termine seule.** `etapeAuditPiece_` est une étape du tick : elle TERMINE
+        l'échantillon en cours et s'éteint d'elle-même à zéro restant (sa gate lit le compteur que
+        la passe écrit). Budget 8 min/j, ~48 documents par jour. ⚠️ Elle **n'amorce JAMAIS** :
+        tirer cent documents, c'est lancer une campagne LLM que personne n'a demandée. Composer un
+        NOUVEL échantillon reste `auditPiecesMaintenant` — le seul geste d'éditeur qui subsiste, et
+        il ne sert qu'à en relancer un autre plus tard ;
+      - **le jugement se fait dans l'app** : `drive.hubperso.com` → engrenage → **« Vérifier »**.
+        Un document à la fois, plein écran, trois boutons (`Juste` / `À moitié` / `Faux`) et le lien
+        qui ouvre le papier à côté. Le verdict s'écrit directement dans la Sheet ; le compte et le
+        taux de justesse s'affichent en haut. La carte n'apparaît que s'il y a un audit en cours, et
+        cette information vient de la ligne de SANTÉ déjà chargée — savoir s'il y a quelque chose à
+        vérifier ne coûte aucune requête ;
+      - **`verdictAuditPieces`** compte toujours, depuis l'éditeur, mais il ne sert plus : l'app
+        affiche le même compte. ⚠️ « non jugé » y reste une catégorie à part, des deux côtés — un
+        tableau à moitié rempli ne ressemble pas à un audit qui a échoué ;
       - **`viderAuditPieces`** efface le rapport. L'onglet porte des valeurs extraites de vrais
         papiers : il est TEMPORAIRE, et c'est pour ça que son effaceur est livré avec lui.
+      ⚠️ **Où lire l'avancement sans rien exécuter** : la ligne de Santé **« Audit des pièces
+      (C49-3) »** — restants, motif de la dernière passe, minutes consommées. Elle distingue
+      « jamais tourné » de « rien à faire », et elle DIT si la dernière passe était MANUELLE :
+      sans ça, on conclut « le tick tourne » sur la preuve d'une main (leçon du 16/09).
+      ⚠️ **Les 8 min/j sont PRÊTÉES** par la réconciliation Index (`SYNC_BUDGET_JOUR_MS` 12 → 4).
+      **À RENDRE quand l'audit est fini** : `SYNC` 4 → 12 et `AUDIT_PIECE` 8 → 0. L'étape ne
+      consomme plus rien une fois éteinte, mais sa CONSTANTE continue de peser sur l'invariant
+      d'enveloppe, et une enveloppe faussement chargée fait renoncer à la réallocation suivante.
       ⚠️ **L'échantillon est ÉGALITAIRE entre domaines, pas au prorata du stock** — sinon
       `02 · Finances` raflerait les cent lignes et `04 · Immigration` en aurait deux.
       ⚠️ **`04` et `01` ont leur TITULAIRE et leurs CHAMPS masqués** (arbitrage de Marc, 17/09,

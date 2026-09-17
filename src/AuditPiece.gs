@@ -227,23 +227,172 @@ function phraseVerdictAudit_(c) {
  * @return {string} ce qui s'est passé — rendu ET journalisé.
  */
 function auditPiecesMaintenant() {
-  var debut = Date.now();
-  var f = feuille_(ONGLET_AUDIT_PIECE);
-  if (!f) return 'Onglet ' + ONGLET_AUDIT_PIECE + ' introuvable (initialiserSheet_ ne l\'a pas créé).';
-
-  var poses = 0;
-  if (f.getLastRow() < 2) {
-    poses = composerEchantillonAudit_(f);
-    if (!poses) return 'Aucun document classé à auditer — l\'Index est vide ou rien n\'est classé.';
-  }
-
-  var res = extraireLotAudit_(f, function () { return (Date.now() - debut) > CONFIG.BUDGET_MS; });
-  var ligne = 'Audit pièces : ' + (poses ? poses + ' tirés · ' : '')
+  var res = etapeAuditPiece_(function () { return false; }, { manuel: true, amorcer: true });
+  var ligne = 'Audit pièces : ' + (res.poses ? res.poses + ' tirés · ' : '')
     + res.faits + ' extraits · ' + res.sansTexte + ' sans texte · ' + res.echecs + ' en échec · '
     + res.restants + ' restants — ' + res.fin;
   Logger.log(ligne);
   journalInfo_('AuditPiece', ligne);
   return ligne;
+}
+
+/* ---------- La passe AUTOMATIQUE : le tick finit ce que Marc a commencé ---------- */
+
+/**
+ * Consommation du budget QUOTIDIEN (ms réelles persistées `AAAA/MM/JJ|ms`). PUR sur props.
+ * Même patron que `budgetJourMemoire_` — une seule forme de stockage pour tout le parc.
+ */
+function budgetJourAudit_(props, aujourdhui) {
+  var brut = String(props.getProperty('DriveAI_AUDIT_PIECE_JOUR_MS') || '');
+  var sep = brut.indexOf('|');
+  if (sep === -1) return 0;
+  return brut.slice(0, sep) === aujourdhui ? (Number(brut.slice(sep + 1)) || 0) : 0;
+}
+
+/**
+ * La GATE du tick : reste-t-il quelque chose à extraire ?
+ *
+ * ⚠️ Elle lit une PROPERTY, jamais la Sheet. Interroger l'onglet à chaque tick coûterait une
+ * lecture Sheet toutes les 5 minutes pour apprendre, 287 fois sur 288, qu'il n'y a rien à faire —
+ * et cette campagne est éteinte la quasi-totalité du temps. Le compteur est écrit par la passe
+ * elle-même ; ABSENT, on laisse passer UNE fois pour qu'elle le pose (sinon un audit lancé
+ * avant ce code ne repartirait jamais, ce qui est exactement le cas de Marc aujourd'hui).
+ */
+function resteAuditPiece_(props) {
+  var brut = props.getProperty('DriveAI_AUDIT_PIECE_RESTANTS');
+  if (brut === null || brut === '') return null; // « je ne sais pas » ≠ « zéro »
+  return Number(brut) || 0;
+}
+
+/**
+ * Le point d'entrée UNIQUE de l'audit — le tick comme la main y passent, et c'est ce qui fait
+ * que les deux comptent pareil. Tous les retours passent par `noterFinAuditPiece_`.
+ *
+ * ⚠️ LE TICK N'AMORCE JAMAIS (`opts.amorcer` faux) : tirer un échantillon de 100 documents
+ * lance une campagne LLM que personne n'a demandée. Il ne fait que TERMINER celui qui existe.
+ * Composer reste un geste explicite — aujourd'hui `auditPiecesMaintenant`, demain un bouton.
+ *
+ * ⚠️ `opts.manuel` coupe le gate ET le comptage du budget quotidien (C28-33, la DOUBLE peine) :
+ * une exécution depuis l'éditeur est hors du quota runtime des déclencheurs, l'y soumettre
+ * bloquerait Marc jusqu'au lendemain sans qu'aucun quota réel ne soit en cause — et son run
+ * mangerait le budget du tick.
+ */
+function etapeAuditPiece_(garde, opts) {
+  opts = opts || {};
+  var props = PropertiesService.getScriptProperties();
+  var res = { poses: 0, faits: 0, sansTexte: 0, echecs: 0, restants: 0, fin: 'vide' };
+
+  var f = feuille_(ONGLET_AUDIT_PIECE);
+  if (!f) { res.fin = 'onglet-absent'; return noterFinAuditPiece_(props, res, !!opts.manuel); }
+
+  if (f.getLastRow() < 2) {
+    if (!opts.amorcer) { res.fin = 'vide'; return noterFinAuditPiece_(props, res, !!opts.manuel); }
+    res.poses = composerEchantillonAudit_(f);
+    if (!res.poses) { res.fin = 'index-vide'; return noterFinAuditPiece_(props, res, !!opts.manuel); }
+  }
+
+  var aujourdhui = dateGmail_(new Date());
+  var consommeJour = opts.manuel ? 0 : budgetJourAudit_(props, aujourdhui);
+  if (consommeJour >= CONFIG.AUDIT_PIECE_BUDGET_JOUR_MS) {
+    res.restants = resteAuditPiece_(props) || 0;
+    res.fin = 'budget-jour';
+    return noterFinAuditPiece_(props, res, !!opts.manuel);
+  }
+
+  // Le garde-temps effectif : le plus SERRÉ des trois — celui du tick (passé par l'appelant),
+  // le sous-budget par run, et ce qui reste du budget du jour. Un seul d'entre eux manquant, la
+  // borne qu'on croit poser est doublée en silence (leçon §9).
+  var debutRun = Date.now();
+  var plafondRun = opts.manuel
+    ? CONFIG.BUDGET_MS
+    : Math.min(CONFIG.AUDIT_PIECE_BUDGET_MS, CONFIG.AUDIT_PIECE_BUDGET_JOUR_MS - consommeJour);
+  var gardeEffective = function () {
+    return garde() || (Date.now() - debutRun) > plafondRun;
+  };
+
+  var lot = extraireLotAudit_(f, gardeEffective);
+  res.faits = lot.faits;
+  res.sansTexte = lot.sansTexte;
+  res.echecs = lot.echecs;
+  res.restants = lot.restants;
+  res.fin = lot.fin;
+
+  // Le budget consommé se pose ICI, jamais avant : une passe qui n'a rien pu faire ne doit pas
+  // manger la journée (patron `passeMemoire_`).
+  if (!opts.manuel) {
+    props.setProperty('DriveAI_AUDIT_PIECE_JOUR_MS',
+      aujourdhui + '|' + (consommeJour + (Date.now() - debutRun)));
+  }
+  return noterFinAuditPiece_(props, res, !!opts.manuel);
+}
+
+/**
+ * Écrit l'état de la dernière passe — UNE seule fonction, pour qu'aucune sortie ne l'oublie.
+ * C'est la leçon C28-135 : une étape qui sort sans rien dire rend « rien à faire », « jamais
+ * atteinte » et « suspendue » indiscernables, et la panne se cache derrière le silence.
+ *
+ * ⚠️ Le compteur de RESTANTS est écrit ici, parce que c'est lui que lit la gate du tick :
+ * l'étape s'éteint donc d'elle-même, sans tag, sans drapeau à poser à la main.
+ */
+function noterFinAuditPiece_(props, res, manuel) {
+  try {
+    props.setProperty('DriveAI_AUDIT_PIECE_RESTANTS', String(res.restants));
+    props.setProperty('DriveAI_AUDIT_PIECE_FIN', [
+      new Date().toISOString(),
+      res.fin,
+      res.faits + '/' + res.sansTexte + '/' + res.echecs,
+      res.restants,
+      manuel ? 'manuel' : 'tick'
+    ].join('|'));
+  } catch (e) {
+    journalErreur_('AuditPiece', 'État de fin non écrit : ' + e);
+  }
+  return res;
+}
+
+/** PURE. Le motif de fin, en français, avec le geste qu'il appelle. */
+var PHRASES_FIN_AUDIT_ = {
+  'termine': 'les 100 documents sont extraits — à toi de juger',
+  'garde-temps — relance pour continuer': 'coupée par le garde-temps du tick (reprend au tick suivant)',
+  'budget-jour': 'budget du jour épuisé — reprise demain',
+  'frein budget LLM atteint': '⚠️ frein budget LLM atteint (CONFIG.LLM_BUDGET_CAMPAGNES)',
+  'panne de plateforme LLM': '⚠️ panne de plateforme LLM — re-sonde automatique',
+  'vide': 'aucun échantillon en cours',
+  'index-vide': 'Index vide — rien de classé à auditer',
+  'onglet-absent': '⚠️ onglet AuditPieces introuvable'
+};
+
+/**
+ * PURE. La ligne que Marc lit. Un « 0 restant » et un « jamais lancé » ne disent pas la même
+ * chose, et cette phrase les distingue.
+ */
+function phraseFinAuditPiece_(brut, consommeJour, budgetJour) {
+  if (!brut) return 'aucune passe enregistrée — l\'audit n\'a pas encore tourné';
+  var p = String(brut).split('|');
+  var fin = p[1] || '?';
+  var motif = PHRASES_FIN_AUDIT_[fin] || ('sortie « ' + fin + ' »');
+  var restants = Number(p[3]);
+  var minutes = Math.round((consommeJour / 60000) * 10) / 10;
+  var mode = (p[4] === 'manuel')
+    ? ' ⚠️ passe MANUELLE (éditeur) — ne prouve PAS que le tick tourne'
+    : '';
+  return (isNaN(restants) ? '?' : restants) + ' restants · dernière passe : ' + (p[2] || '?') +
+    ' (extraits/sans texte/échecs) — ' + motif +
+    ' · ' + minutes + ' des ' + Math.round(budgetJour / 60000) + ' min/j consommées' + mode;
+}
+
+/** La ligne de Santé. Impure (Properties) ; la mise en mots est PURE et testée. */
+function texteSanteAuditPiece_() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    return phraseFinAuditPiece_(
+      props.getProperty('DriveAI_AUDIT_PIECE_FIN') || '',
+      budgetJourAudit_(props, dateGmail_(new Date())),
+      CONFIG.AUDIT_PIECE_BUDGET_JOUR_MS
+    );
+  } catch (e) {
+    return '⚠️ état illisible (' + e + ')';
+  }
 }
 
 /**
