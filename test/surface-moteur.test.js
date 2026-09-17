@@ -187,6 +187,9 @@ const CONTRAT = [
   // d'écriture UNIQUE de l'état de fin — le retirer rendrait les sorties muettes en silence,
   // exactement l'incident du 16/09 sur l'envoi à la Mémoire.
   'etapeAuditPiece_', 'resteAuditPiece_', 'budgetJourAudit_',
+  // `auditDoitTourner_` est appelée par `Main.gs` et `compterAFaireAudit_` par la passe : deux
+  // fonctions inter-modules, donc deux noms que seul ce test retient si on les déplace.
+  'auditDoitTourner_', 'compterAFaireAudit_',
   // Le correctif du 17/09 : l'aplatissement des champs (c'est LUI qui rendait « [object
   // Object] »), la réparation d'en-tête et la re-extraction one-shot. Les trois vivent sur le
   // chemin de la passe, donc rien d'autre ne les retient si un refactor les emporte.

@@ -605,7 +605,11 @@ function tickDriveAI() {
       var resteAudit = null;
       try { resteAudit = resteAuditPiece_(PropertiesService.getScriptProperties()); }
       catch (eAudit) { resteAudit = null; } // « je ne sais pas » ⇒ on laisse la passe compter
-      if (resteAudit !== 0 && !estBudgetDepasse() && !budgetCampagnesAtteint_() && !resetEnCours_()) {
+      var tagAudit = null;
+      try { tagAudit = PropertiesService.getScriptProperties().getProperty('DriveAI_AUDIT_PIECE_TAG'); }
+      catch (eTag) { tagAudit = null; }
+      if (auditDoitTourner_(resteAudit, tagAudit, CONFIG.AUDIT_PIECE_TAG)
+          && !estBudgetDepasse() && !budgetCampagnesAtteint_() && !resetEnCours_()) {
         etapeAuditPiece_(estBudgetDepasse, {});
       }
     } catch (e) { journalErreur_('AuditPiece', 'Audit des pièces différé : ' + e); }

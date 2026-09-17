@@ -2851,6 +2851,14 @@ Détail des tâches : `BACKLOG.md`.
       **efface les verdicts déjà posés** (les notes restent) : un verdict rendu sur une ligne
       illisible ne dit rien de l'extraction, et le garder fausserait le seul chiffre que la porte
       mesure. Bumper ce tag est la façon de refaire l'échantillon en cours, sans rien lancer.
+      ⚠️⚠️ **Et ce tag n'a RIEN déclenché pendant deux ticks — mesuré le 17/09 à 11:09.** La gate
+      du tick s'éteignait sur « 0 restant » sans lire le tag, or la ré-extraction vit DANS la
+      passe : le remède était INERTE, et l'interblocage se refermait tout seul (plus d'étape ⇒
+      plus de tag lu ⇒ plus de lignes remises ⇒ plus jamais d'étape). Corrigé par une gate PURE
+      (`auditDoitTourner_`) qui consulte le compteur ET le tag. Second défaut du même lot, pire :
+      la sortie « budget du jour épuisé » relisait le compteur PERSISTÉ — elle aurait réécrit
+      « 0 restants » sur 100 lignes fraîchement vidées, fermant la gate pour de bon sur des cartes
+      VIDES. Les restants se comptent désormais dans la FEUILLE (`compterAFaireAudit_`).
       - **le jugement se fait dans l'app** : `drive.hubperso.com` → engrenage → **« Vérifier »**.
         Un document à la fois, plein écran, trois boutons (`Juste` / `À moitié` / `Faux`), le
         RÉSUMÉ que le modèle a écrit du document — c'est lui qui dit s'il l'a COMPRIS, là où les
