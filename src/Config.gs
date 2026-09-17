@@ -238,7 +238,7 @@ var CONFIG = {
   // times » le 06/07) et le TRI vivant était affamé toute la journée (4-17 fils triés/j). Le quota
   // d'appels est PARTAGÉ : la seule protection du tri est de borner la consommation TOTALE de la
   // campagne, pas seulement son runtime. La campagne finit plus lentement — c'est le prix accepté.
-  GMAIL_HISTO_PRETEES_MIN: 12,            // minutes DÉJÀ prêtées par ce donneur (ADR-0056, puis C28-135 :
+  GMAIL_HISTO_PRETEES_MIN: 18,            // minutes DÉJÀ prêtées par ce donneur (ADR-0056, puis C28-135 :
                                           // 8 → 12, les 4 nouvelles vont à la Mémoire ; puis C49-3 :
                                           // 8 → 12, les 4 nouvelles vont à la Mémoire). La ligne de
                                           // santé les DIT, sinon la prochaine session lit « ses 12 min/j
@@ -250,7 +250,11 @@ var CONFIG = {
                                           // encodent la conception inverse. Ce qui reste est un plancher
                                           // de fonctionnement, pas un solde à finir : la vider exige de
                                           // la DÉSACTIVER d'abord, ce qui est une décision, pas un geste.
-  GMAIL_HISTO_BUDGET_JOUR_MS: 8 * 60 * 1000, // 20 → 12 (ADR-0056) → 8 (C28-135) : 8 min prêtées à la
+  // ⚠️ 8 → 2 (C49-3, 17/09, demande de Marc « prends aussi sur l'historique Gmail ») : 6 min de
+  // plus pour l'audit des pièces. MESURÉ avant d'écrire, comme la fois précédente : à 2 min la
+  // campagne n'est PAS muette (aucun de ses vingt tests ne rougit) — c'est à ZÉRO qu'elle le
+  // devient. 2 min est donc son plancher de fonctionnement, pas un reliquat arbitraire.
+  GMAIL_HISTO_BUDGET_JOUR_MS: 2 * 60 * 1000, // 20 → 12 (ADR-0056) → 8 (C28-135) → 2 : min prêtées à la
                                           // re-analyse ciblée de `06`, puis 4 à la Mémoire. Donneur
                                           // choisi parce que le moteur ÉCRIT « Historique Gmail :
                                           // terminée ✅ — ses N min/j sont RÉALLOUABLES » : une campagne
@@ -527,7 +531,7 @@ var CONFIG = {
   // garder reviendrait à faire juger la porte de l'ADR-0061 sur une information fausse.
   AUDIT_PIECE_TAG: 'c49-3-b',
   // ⚠️ Budget QUOTIDIEN de l'audit, en ms RÉELLES persistées — PRÉLEVÉ, jamais ajouté (§9
-  // « RÉALLOUER, jamais AUGMENTER ») : 8 min reprises à `SYNC_BUDGET_JOUR_MS`, la réconciliation
+  // « RÉALLOUER, jamais AUGMENTER ») : 11 min reprises à `SYNC_BUDGET_JOUR_MS`, la réconciliation
   // Index↔Drive — perpétuelle et en lecture seule, donc le seul poste qui ne tient aucun délai.
   // La somme de l'enveloppe ne bouge pas d'une minute, et `test/orchestration.test.js` le
   // verrouille dans les deux sens.
@@ -536,7 +540,22 @@ var CONFIG = {
   // épuisés en un jour et demi. Deux autres donneurs ont été essayés et REFUSÉS PAR DES TESTS
   // (l'historique Gmail devient muet à 0 ; la re-datation perd 25 % de son budget en marge de
   // démarrage) : c'est le parc qui a choisi le donneur, pas moi.
-  AUDIT_PIECE_BUDGET_JOUR_MS: 8 * 60 * 1000,
+  // ⚠️ 8 → 11 (demande de Marc, 17/09 : « accélère, prends plus de budget à la réconciliation »).
+  // Le donneur est allé au bout de ce qu'il peut donner : il passe de 4 à 1 min, et l'invariant de
+  // paire ci-dessous lui interdit le zéro. Ce que ça achète, mesuré sur la ré-extraction en cours
+  // (25 documents en 8,2 min, soit ~20 s/document) : ~33 documents/jour au lieu de ~24. Pour aller
+  // ⚠️ 11 → 17 (même jour, « prends aussi sur l'historique Gmail ») : le SECOND donneur est la
+  // campagne historique Gmail, TERMINÉE et déclarée réallouable par la ligne de santé du moteur
+  // lui-même. Elle descend à son plancher mesuré (2 min, en dessous elle devient muette).
+  // ~51 documents/jour au lieu de ~33. C'est le maximum atteignable sans DÉSACTIVER une campagne,
+  // ce qui serait une décision et non un réglage.
+  // ⚠️ La PROVENANCE de chaque minute est écrite, parce que ce budget a désormais DEUX donneurs.
+  // Sans ça, le garde des minutes prêtées par l'historique Gmail devrait recopier « 17 − 11 » :
+  // un chiffre en dur, exactement ce que ce dépôt reproche à une somme qui se périme en silence.
+  // Les deux parts s'additionnent au budget, et un test le verrouille.
+  AUDIT_PIECE_PART_SYNC_MIN: 11,   // prêtées par `SYNC_BUDGET_JOUR_MS` (12 → 1)
+  AUDIT_PIECE_PART_GMAIL_MIN: 6,   // prêtées par `GMAIL_HISTO_BUDGET_JOUR_MS` (8 → 2)
+  AUDIT_PIECE_BUDGET_JOUR_MS: 17 * 60 * 1000,
   // Sous-budget PAR TICK (même famille que `REANALYSE_BUDGET_MS`) : l'étape ne prend que le
   // reliquat du tick, après le flux vivant, et jamais plus que ça d'un coup.
   AUDIT_PIECE_BUDGET_MS: 2 * 60 * 1000,
@@ -896,16 +915,20 @@ var CONFIG = {
   RANGEMENT_RACINES_SUP: [],
   // Réconciliation Index↔Drive (C28-07, plan P3) : campagne de fond perpétuelle, lecture seule.
   SYNC_LIGNES_PAR_RUN: 50,            // lignes d'Index re-visitées par tick (sur le reliquat de budget)
-  // ⚠️ 12 → 4 (C49-3, 17/09) : 8 min prêtées à l'audit des pièces. Donneur choisi parce que c'est
+  // ⚠️ 12 → 4 → 1 (C49-3, 17/09) : 11 min prêtées à l'audit des pièces. Donneur choisi parce que c'est
   // le SEUL poste de l'enveloppe qui ne tient aucun délai — la réconciliation Index↔Drive est
   // PERPÉTUELLE et en LECTURE SEULE : lui prendre du budget rallonge son cycle, ça ne laisse
   // rien en plan. Les deux autres candidats ont été essayés et refusés par des tests (historique
   // Gmail : muette à 0 ; re-datation : sa marge de démarrage double en proportion).
-  // ⚠️ À RENDRE quand l'audit est fini : celui-ci 4 → 12 et `AUDIT_PIECE_BUDGET_JOUR_MS` 8 → 0.
+  // ⚠️ À RENDRE quand l'audit est fini : celui-ci 1 → 12 et `AUDIT_PIECE_BUDGET_JOUR_MS` 11 → 0.
+  // ⚠️ 1 min et pas 0 : à zéro, cette campagne PERPÉTUELLE tournerait à vide en silence — c'est
+  // l'interdit que la §9 pose pour toute réallocation en paire. Mesuré le 17/09, il n'était codé
+  // NULLE PART pour ce couple (mettre ce budget à 0 laissait les 20 tests d'orchestration verts) ;
+  // `test/orchestration.test.js` le verrouille désormais, avec la somme du couple.
   // L'étape d'audit s'éteint d'elle-même à zéro restant, donc elle ne CONSOMME plus rien après
   // coup — mais sa CONSTANTE continue de peser sur l'invariant d'enveloppe, et une enveloppe
   // faussement chargée fait renoncer à la réallocation suivante (leçon §9).
-  SYNC_BUDGET_JOUR_MS: 4 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES (leçon §7 : ~90 min/j de runtime partagé — jamais un compteur d'items)
+  SYNC_BUDGET_JOUR_MS: 1 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES (leçon §7 : ~90 min/j de runtime partagé — jamais un compteur d'items)
   SYNC_AGE_MIN_H: 48,                 // une ligne plus fraîche que ça n'a pas eu le temps de dériver — pas de vérif Drive
 
   // --- Chantier #8 : MIGRATION de l'existant vers la nouvelle taxonomie (ADR-0002) ---
