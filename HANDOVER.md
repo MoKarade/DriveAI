@@ -2880,8 +2880,15 @@ Détail des tâches : `BACKLOG.md`.
       zéro — une campagne perpétuelle à budget nul tourne à vide en silence, et
       `test/orchestration.test.js` le verrouille désormais (il ne l'était nulle part : la mutation
       « donneur à 0 » était VERTE). Ce que ça achète, mesuré : ~33 documents/jour au lieu de ~24.
-      Pour aller plus vite il faudrait un SECOND donneur — l'historique Gmail, terminé et déclaré
-      réallouable par le moteur — avec son propre garde de paire.
+      ⚠️ **Et un SECOND donneur, le même jour** (« prends aussi sur l'historique Gmail ») : cette
+      campagne TERMINÉE descend de 8 à **2 min**, son plancher MESURÉ — à zéro elle devient muette
+      (20 de ses tests rougissent), à 2 aucun. L'audit tourne donc à **17 min/j**, soit ~51
+      documents/jour. C'est le maximum atteignable sans DÉSACTIVER une campagne, ce qui serait une
+      décision et non un réglage.
+      ⚠️ Le budget de l'audit ayant deux donneurs, la PROVENANCE de chaque minute est écrite
+      (`AUDIT_PIECE_PART_SYNC_MIN` 11 + `AUDIT_PIECE_PART_GMAIL_MIN` 6 = 17) et un test exige que
+      les parts remplissent le budget : une minute sans donneur nommé passerait entre les deux
+      gardes de paire, chacun ne regardant que le sien.
       **À RENDRE quand l'audit est fini** : `SYNC` 4 → 12 et `AUDIT_PIECE` 8 → 0. L'étape ne
       consomme plus rien une fois éteinte, mais sa CONSTANTE continue de peser sur l'invariant
       d'enveloppe, et une enveloppe faussement chargée fait renoncer à la réallocation suivante.

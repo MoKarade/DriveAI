@@ -275,7 +275,13 @@ test('minutes PRÊTÉES : le chiffre affiché à Marc est DÉRIVÉ du transfert,
   // deux transferts ferait de cette égalité une somme de choses sans rapport, et elle cesserait
   // de dire ce qu'elle défend (« rien ne se crée en route » entre l'historique Gmail et ses
   // receveurs). Un second donneur qui prête à plusieurs aura besoin de son propre garde.
-  const RECEVEURS_MIN = (C.REANALYSE_BUDGET_JOUR_MS + C.MEMOIRE_BUDGET_JOUR_MS) / 60000;
+  // ⚠️ C49-3 (second transfert, 17/09) : l'audit des pièces devient le TROISIÈME receveur, et il
+  // entre par sa PART (`AUDIT_PIECE_PART_GMAIL_MIN`), jamais par son budget total — celui-ci porte
+  // aussi les minutes de la réconciliation, et les mêler ferait de cette égalité une somme de
+  // choses sans rapport. C'est ce que le paragraphe ci-dessus annonçait : « un second donneur qui
+  // prête à plusieurs aura besoin de son propre garde ». Le voici, et il tient par la PROVENANCE.
+  const RECEVEURS_MIN = (C.REANALYSE_BUDGET_JOUR_MS + C.MEMOIRE_BUDGET_JOUR_MS) / 60000
+    + C.AUDIT_PIECE_PART_GMAIL_MIN;
   assert.strictEqual(C.GMAIL_HISTO_PRETEES_MIN, RECEVEURS_MIN,
     'les minutes retirées au donneur sont EXACTEMENT celles reçues par ses receveurs ' +
     '(re-datation de 06, puis envoi à la Mémoire)');
@@ -292,9 +298,17 @@ test('PAIRE réconciliation ↔ audit des pièces : la somme est figée, et le d
   // donneur sans redescendre le receveur, ou l'inverse) reste sous le plafond global, donc
   // l'invariant d'enveloppe ne l'attrape pas — seul ce garde-ci le voit.
   const DOTATION_COUPLE_MIN = 12; // la dotation HISTORIQUE de la réconciliation, avant tout prêt
+  // ⚠️ La comparaison porte sur la PART reçue de CE donneur, jamais sur le budget total de
+  // l'audit : depuis le second transfert, celui-ci porte aussi des minutes de l'historique Gmail.
   assert.strictEqual(
-    (C.SYNC_BUDGET_JOUR_MS + C.AUDIT_PIECE_BUDGET_JOUR_MS) / 60000, DOTATION_COUPLE_MIN,
-    'ce que l\'audit reçoit est EXACTEMENT ce que la réconciliation perd — rien ne se crée en route');
+    C.SYNC_BUDGET_JOUR_MS / 60000 + C.AUDIT_PIECE_PART_SYNC_MIN, DOTATION_COUPLE_MIN,
+    'ce que l\'audit reçoit de la réconciliation est EXACTEMENT ce qu\'elle perd — rien ne se crée en route');
+  // …et les deux parts REMPLISSENT le budget : une minute sans donneur nommé serait une minute
+  // créée, et les deux gardes de paire la laisseraient passer chacun de son côté.
+  assert.strictEqual(
+    C.AUDIT_PIECE_PART_SYNC_MIN + C.AUDIT_PIECE_PART_GMAIL_MIN,
+    C.AUDIT_PIECE_BUDGET_JOUR_MS / 60000,
+    'chaque minute du budget de l\'audit a un donneur NOMMÉ');
   // (b) Le donneur reste VIVANT. Une campagne active à budget quotidien nul est un transfert
   // non rendu déguisé en réglage : elle ne produit plus rien et rien ne le signale.
   assert.ok(C.SYNC_BUDGET_JOUR_MS > 0,
