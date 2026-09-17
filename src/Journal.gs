@@ -55,6 +55,7 @@ function initialiserSheet_(ss) {
   // cf. ecrireRapportPaies_). Onglet OUBLIÉ ici à la livraison → `feuille_('RapportPaies')` rendait
   // null et la mission plantait à CHAQUE tick (`getRange of null`, révélé par le MCP le 19/08).
   creerOnglet_(ss, 'RapportPaies', COLONNES_RAPPORT_PAIES); // constante partagée (Missions.gs)
+  creerOnglet_(ss, ONGLET_AUDIT_PIECE, COLONNES_AUDIT_PIECE); // C49-3, TEMPORAIRE (cf. viderAuditPieces)
   creerOnglet_(ss, 'RapportDoublons', COLONNES_RAPPORT_DOUBLONS); // constante partagée (Doublons.gs)
   // C28-26 (ADR-0023) : plan de CONSOLIDATION de l'arborescence — dry-run pur, validé par Marc
   // avant toute exécution. La colonne Empreinte est la mémoire de dédup de la campagne

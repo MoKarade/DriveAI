@@ -2832,6 +2832,31 @@ Détail des tâches : `BACKLOG.md`.
       si l'extraction se trompe sur des numéros d'identité, il vaut mieux le savoir sur 100 papiers
       que sur 19 900. ⚠️ **Elle ne peut pas être franchie depuis une session Claude** — le moteur
       tourne dans le compte Google de Marc, et une session ne déploie ni n'exécute Apps Script.
+      **La fonction « un clic » existe** (`src/AuditPiece.gs`, C49-3) :
+      - ouvrir l'éditeur Apps Script → `AuditPiece.gs` → **`auditPiecesMaintenant`** → Exécuter.
+        Le premier passage tire l'échantillon et remplit ce qu'il peut ; **relancer autant de fois
+        que nécessaire** — 100 extractions dépassent le mur des 6 minutes, et chaque passage
+        reprend à la première ligne « à faire ». La ligne rendue dit toujours combien restent ;
+      - l'onglet **`AuditPieces`** de la Sheet porte le tableau. Deux colonnes sont VIDES et
+        c'est à Marc de les remplir : **`Verdict`** (`juste` / `partiel` / `faux`) et `Note`.
+        La colonne `Lien` ouvre le document, pour comparer ;
+      - **`verdictAuditPieces`** compte ce qui a été jugé. C'est lui qui répond à la porte.
+        ⚠️ « non jugé » y est une catégorie à part : un tableau à moitié rempli ne ressemble
+        pas à un audit qui a échoué ;
+      - **`viderAuditPieces`** efface le rapport. L'onglet porte des valeurs extraites de vrais
+        papiers : il est TEMPORAIRE, et c'est pour ça que son effaceur est livré avec lui.
+      ⚠️ **L'échantillon est ÉGALITAIRE entre domaines, pas au prorata du stock** — sinon
+      `02 · Finances` raflerait les cent lignes et `04 · Immigration` en aurait deux.
+      ⚠️ **`04` et `01` ont leur TITULAIRE et leurs CHAMPS masqués** (arbitrage de Marc, 17/09,
+      contre ma recommandation) : seule la FORME s'écrit (« 9 chiffres »). Le type, l'émetteur
+      et les dates restent lisibles. **Conséquence assumée** : sur ces deux domaines l'audit ne
+      constate que la présence et la forme — un numéro bien formé mais FAUX passe, et ce sont
+      justement les deux domaines où l'erreur coûte le plus cher. Pour les juger vraiment, il
+      faut ouvrir le document par le lien, à côté du tableau.
+      ⚠️ **Coût** : une extraction Haiku par document, soumise au frein `LLM_BUDGET_CAMPAGNES`
+      comme n'importe quelle campagne — la passe sort avec le motif « frein budget LLM atteint »
+      plutôt que de le franchir. **Rien n'est envoyé à la Mémoire** : l'audit est LOCAL, et il
+      le reste même une fois `PIECE_PUSH` allumé.
    2. Seulement ensuite : `CONFIG.PIECE_PUSH = true`, et le rattrapage (C49-4) par le runner.
    ⚠️ **Comment savoir que le code a PRIS EFFET** — pas le run vert (piège 3, et son inverse, la
    cause n° 3 du 2 bis) : la ligne de Santé **« Mémoire (pièces) »** doit apparaître dans
