@@ -3058,3 +3058,35 @@ règle du dépôt tient : « indépendant » qualifie la NATURE de la source, pa
 
 **Règle durable ?** oui — `CLAUDE.md` §9, deux entrées (le contrat entre deux dépôts ; l'onglet
 d'éditeur qui annule un push, avec son corollaire de mesure).
+
+## 2026-09-17 — C49-5 : le compteur écrasé par une sortie qui n'avait rien compté
+
+**Symptôme.** Quarante minutes après avoir armé le rattrapage des pièces, la Santé annonçait
+« Rattrapage des pièces (C49-5) : **0 restants** · ✅ tranche terminée ». Marc venait de lancer
+une passe manuelle qui rendait « **85 restants** », et la Mémoire n'avait reçu que 24 papiers
+sur 110. Aucune erreur nulle part.
+
+**Cause.** Les deux sorties précoces de `etapeRattrapagePiece_` — « l'audit tourne encore » et
+« budget du jour épuisé » — faisaient `res.restants = restantsRattrapage_(props) || 0`. Au
+premier passage du tick, la Property n'existait pas, `restantsRattrapage_` rendait `null`
+(« je ne sais pas », par conception et par test), et `|| 0` le convertissait en zéro. Ce zéro
+partait dans `DriveAI_RATTRAPAGE_PIECE_RESTANTS`, que la gate du tick relit.
+
+**Ce qui le rend traître.** La gate, elle, était juste : elle lit le TAG avant le compteur,
+exactement comme la leçon du matin même l'exigeait. Ce sont les branches de sortie qui
+alimentaient la gate avec une ignorance. Corriger la gate n'aurait rien réparé.
+
+**Et la règle était écrite, à trois lignes de là.** `restantsRattrapage_` rend `null` avec un
+commentaire qui dit pourquoi ; `rattrapageDoitTourner_` traite `null` comme « on continue », et
+un test le prouve. Le `|| 0` des sorties annulait les deux.
+
+**Correctif.** Le motif de fin s'écrit toujours ; le compteur seulement quand il a été mesuré
+(`typeof === 'number' && isFinite`). Un reste non mesuré se sérialise **vide** — pas `'0'`, pas
+`'null'` : `Number('')` vaut zéro, donc un lecteur naïf relirait « terminée » de toute façon. La
+phrase de Santé distingue « 0 restants » de « reste inconnu ». Trois mutations, dont le code
+exact de production, font tomber les nouveaux cas.
+
+**Réparation de l'état.** La Property valait `0` en production, donc la gate restait fermée. Le
+chemin manuel ne passe pas par elle : la première passe de Marc après le déploiement recompte et
+réécrit le vrai reste, ce qui rouvre la gate. Aucun bump de tag — il aurait refait les 25
+documents déjà partis, à leur coût.

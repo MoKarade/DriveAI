@@ -202,7 +202,9 @@ function ligneFinRattrapage_(maintenant, res, manuel) {
     maintenant.toISOString().slice(0, 16).replace('T', ' '),
     res.fin,
     res.faits + '/' + res.echecs + '/' + res.sansTexte,
-    String(res.restants),
+    // Un reste non mesuré s'écrit VIDE, jamais 'null' ni '0' : le lecteur doit pouvoir le
+    // distinguer d'un vrai zéro, et c'est cette distinction qui a manqué le 17/09.
+    (typeof res.restants === 'number' && isFinite(res.restants)) ? String(res.restants) : '',
     manuel ? 'manuel' : 'tick'
   ].join('|');
 }
@@ -210,7 +212,12 @@ function ligneFinRattrapage_(maintenant, res, manuel) {
 function noterFinRattrapage_(props, res, manuel) {
   try {
     props.setProperty('DriveAI_RATTRAPAGE_PIECE_FIN', ligneFinRattrapage_(new Date(), res, manuel));
-    props.setProperty('DriveAI_RATTRAPAGE_PIECE_RESTANTS', String(res.restants));
+    // ⚠️ LE COMPTEUR N'EST ÉCRIT QUE S'IL A ÉTÉ MESURÉ. C'est lui que la gate du tick relit :
+    // une sortie précoce qui y poserait `0` faute de savoir refermerait la campagne à vie. Le
+    // motif de fin, lui, s'écrit TOUJOURS — c'est la moitié qui dit pourquoi on s'est arrêté.
+    if (typeof res.restants === 'number' && isFinite(res.restants)) {
+      props.setProperty('DriveAI_RATTRAPAGE_PIECE_RESTANTS', String(res.restants));
+    }
   } catch (e) { /* observabilité best-effort : jamais au prix de l'étape */ }
   return res;
 }
@@ -224,8 +231,11 @@ function phraseFinRattrapage_(brut, tagCourant) {
   }
   if (!brut) return 'armée (« ' + tagCourant + ' »), jamais passée';
   var p = String(brut).split('|');
-  var restants = Number(p[3]);
-  var phrase = (isFinite(restants) ? restants : '?') + ' restants dans la tranche 04 + 01'
+  // ⚠️ `Number('')` vaut 0 et `Number('null')` vaut NaN : une sortie qui n'a rien compté ne doit
+  // pas se lire « 0 restants », donc « terminée ». On ne fait confiance qu'à un vrai nombre.
+  var restants = (p[3] === '' || p[3] === undefined || p[3] === 'null') ? NaN : Number(p[3]);
+  var phrase = (isFinite(restants) ? restants + ' restants' : 'reste inconnu')
+    + ' dans la tranche 04 + 01'
     + ' · dernière passe : ' + (p[2] || '?') + ' (faits/échecs/sans texte) — ' + (p[1] || '?')
     + ' · ' + (p[0] || '?')
     // ⚠️ Qui l'a lancée : une passe MANUELLE prouve que le code est bon, jamais que le
@@ -253,8 +263,14 @@ function texteSanteRattrapagePiece_() {
 function etapeRattrapagePiece_(garde, opts) {
   opts = opts || {};
   var props = PropertiesService.getScriptProperties();
+  // ⚠️ `restants: null` = « je ne sais pas », JAMAIS zéro. Ce champ est écrit dans la Property
+  // que la GATE du tick relit : un zéro posé par une sortie qui n'a rien compté referme la
+  // campagne POUR TOUJOURS, et la Santé annonce « ✅ tranche terminée ». Vécu en production le
+  // 17/09 à 18:35, avec 85 papiers restants — la gate d'extinction du 17/09 au matin, reprise
+  // par l'autre bout : ce n'était pas la gate qui était fausse, c'était le COMPTEUR qu'une
+  // branche de sortie précoce avait écrasé avec une ignorance.
   var res = { faits: 0, echecs: 0, sansTexte: 0, envoyees: 0, acceptees: 0,
-              restants: 0, fin: 'desactive', dernierMotif: '' };
+              restants: null, fin: 'desactive', dernierMotif: '' };
 
   var tag = String(CONFIG.RATTRAPAGE_PIECE_TAG || '');
   if (!tag && !opts.manuel) { res.fin = 'non-armee'; return noterFinRattrapage_(props, res, false); }
@@ -275,7 +291,8 @@ function etapeRattrapagePiece_(garde, opts) {
   // Santé dira que c'était une passe manuelle.
   if (!opts.manuel && resteAuditPiece_(props) !== 0) {
     res.fin = 'audit-en-cours';
-    res.restants = restantsRattrapage_(props) || 0;
+    // Ce qu'on SAIT, ou rien — `restantsRattrapage_` rend déjà `null` quand elle l'ignore.
+    res.restants = restantsRattrapage_(props);
     return noterFinRattrapage_(props, res, false);
   }
 
@@ -286,7 +303,7 @@ function etapeRattrapagePiece_(garde, opts) {
   var consommeJour = opts.manuel ? 0 : budgetJourAudit_(props, aujourdhui);
   if (consommeJour >= CONFIG.AUDIT_PIECE_BUDGET_JOUR_MS) {
     res.fin = 'budget-jour';
-    res.restants = restantsRattrapage_(props) || 0;
+    res.restants = restantsRattrapage_(props);
     return noterFinRattrapage_(props, res, false);
   }
 
