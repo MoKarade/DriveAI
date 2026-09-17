@@ -3058,10 +3058,24 @@ Détail des tâches : `BACKLOG.md`.
         garde-temps, jeton, suspension ni frein en dollars. Il existe pour la raison de C28-137 :
         un `opts` lu par le moteur et passé par personne est une intention jamais livrée, et on
         s'en aperçoit le jour où le budget du tick est épuisé.
-      - **Pour l'allumer** : poser une valeur dans `CONFIG.RATTRAPAGE_PIECE_TAG` (ex. `c49-5-a`),
-        pousser, et lire la ligne de Santé sur un tick POSTÉRIEUR au déploiement. ⚠️ Bumper ce
-        tag ensuite REFAIT toute la tranche : la liste des faits est écrite SOUS le tag, donc
-        chaque document re-coûte son appel Haiku.
+      - ⚠️ **ARMÉ LE 17/09** (`c49-5-a`) : Marc a jugé l'audit — « ok jugé, pose le tag, extrait
+        tous les docs aujd ». La porte de la §7 de l'ADR-0061 est levée PAR LUI, jamais déduite
+        d'un compteur de verdicts. ⚠️ Bumper ce tag ensuite REFAIT toute la tranche : la liste
+        des faits est écrite SOUS le tag, donc chaque document re-coûte son appel Haiku.
+      - ⚠️⚠️ **« TOUS LES DOCS AUJOURD'HUI » NE PASSE PAS PAR LE TICK, ET IL FAUT LE DIRE.** Le
+        budget quotidien des pièces était **déjà épuisé** au moment de l'armement (17,2 des
+        17 min consommées par l'audit) : le tick ne fera donc **rien** aujourd'hui, et il
+        reprendra demain avec ses 11 min — soit ~66 documents/jour à 10 s l'un, donc les 110 en
+        **deux jours**. Le seul chemin pour aujourd'hui est **manuel**, et il demande
+        **~4 exécutions** : `RattrapagePiece.gs` → `rattraperPiecesMaintenant` → Exécuter, le
+        mur d'Apps Script étant à 6 min et `CONFIG.BUDGET_MS` à 4,5 (≈ 27 documents par
+        exécution). La fonction annonce à chaque fois combien il RESTE.
+      - ⚠️ **Les deux plafonds « 5 par run » ne s'appliquent plus au chemin manuel** (C28-33 :
+        « un budget calibré pour UN CHEMIN d'exécution ne doit ni brider, ni être consommé par,
+        un AUTRE chemin »). Cinq documents protègent un tick de 5 min qui a dix autres étapes à
+        servir ; imposés à un geste que Marc lance lui-même, ils lui demanderaient **vingt-deux**
+        exécutions. Ce que `manuel` ne lève JAMAIS, et qui est re-évalué à chaque document : le
+        garde-temps, le jeton, la suspension, la panne de plateforme et le frein en DOLLARS.
    2. Seulement ensuite, et dans CET ordre : **poser `CONFIG.RATTRAPAGE_PIECE_TAG`** (la tranche
       `04`+`01`, C49-5 ci-dessus), juger ce qui est arrivé dans MemoryAI `/pieces` — le retrait
       y existe depuis la PR #26 —, puis seulement `CONFIG.PIECE_PUSH = true` pour le flux vivant.

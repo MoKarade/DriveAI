@@ -922,7 +922,11 @@ function pousserPieceApresClassement_(src, decision, texteOcr, opts) {
     freinBudget: !!jeton && budgetCampagnesAtteint_(),
     pannePlateforme: estPannePlateforme_(),
     faitesCeRun: _piecesCeRun,
-    maxParRun: CONFIG.PIECE_MAX_PAR_RUN,
+    // ⚠️ Le plafond par run protège le TICK d'une rafale d'appels ; une exécution que Marc
+    // lance lui-même n'a pas ce problème et n'a pas à cliquer vingt fois pour l'éviter
+    // (C28-33). Ce que `manuel` ne lève PAS : le jeton, la suspension, la panne de plateforme
+    // et le frein en DOLLARS — tous re-évalués à chaque document, juste au-dessus.
+    maxParRun: opts.manuel ? Infinity : CONFIG.PIECE_MAX_PAR_RUN,
     statutClasse: statut.indexOf('class') === 0,
     aDuTexte: !!String(texteOcr || '').trim()
   });

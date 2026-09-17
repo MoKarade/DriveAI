@@ -470,3 +470,80 @@ test('l\'étape est branchée au TICK, gatée sur le tag, et sa ligne est dans l
   const journal = fs.readFileSync(path.join(__dirname, '..', 'src', 'Journal.gs'), 'utf8');
   assert.match(journal, /texteSanteRattrapagePiece_\(\)/);
 });
+
+/* ---------- LE CHEMIN MANUEL N'EST PAS BRIDÉ PAR LE PLAFOND DU TICK ---------- */
+
+test('le chemin MANUEL ne s\'arrête pas au plafond de 5 : il va jusqu\'au garde-temps', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const lignes = [];
+  for (let i = 0; i < 12; i++) lignes.push(ligne(CLE(ID(1) + i), i + '.pdf', '04 · Immigration'));
+  const c = montage(lignes, props);
+
+  // Par le TICK : cinq, pas plus — le tick a dix autres étapes à servir en 5 minutes.
+  const parTick = c.etapeRattrapagePiece_(() => false, {});
+  assert.strictEqual(parTick.faits, c.RATTRAPAGE_PIECE_MAX_PAR_RUN);
+
+  // ⚠️ À LA MAIN : les douze. C28-33 — « un budget calibré pour UN CHEMIN d'exécution ne doit
+  // ni brider, ni être consommé par, un AUTRE chemin ». Bridé à cinq, le geste de Marc
+  // demanderait VINGT-DEUX exécutions pour les 110 papiers de la tranche.
+  const c2 = montage(lignes, new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]));
+  const parMain = c2.etapeRattrapagePiece_(() => false, { manuel: true });
+  assert.strictEqual(parMain.faits, 12);
+});
+
+test('le garde-temps, lui, borne AUSSI le chemin manuel', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const lignes = [];
+  for (let i = 0; i < 12; i++) lignes.push(ligne(CLE(ID(1) + i), i + '.pdf', '04 · Immigration'));
+  const c = montage(lignes, props);
+  // ⚠️ Ce que `manuel` ne lève JAMAIS : sans cette borne, la boucle irait au mur des 6 minutes
+  // d'Apps Script et LÈVERAIT au lieu de rendre son compte — Marc ne saurait pas où elle en est.
+  let n = 0;
+  const res = c.etapeRattrapagePiece_(() => (++n > 3), { manuel: true });
+  assert.strictEqual(res.fin, 'budget');
+  assert.ok(res.faits < 12 && res.faits > 0, 'il a fait quelque chose, puis s\'est arrêté');
+  assert.strictEqual(res.restants, 12 - res.faits, 'et le reste est annoncé pour la prochaine fois');
+});
+
+test('le CANAL lève son propre plafond par run sous `manuel`, et rien d\'autre', () => {
+  const etats = [];
+  const c = load(['Config.gs', 'Consolidation.gs', 'Journal.gs', 'Memoire.gs'], {
+    PropertiesService: { getScriptProperties: () => ({
+      getProperty: (k) => (k === 'DriveAI_MEMORYAI_TOKEN' ? 'jeton' : null),
+      setProperty: () => {},
+    }) },
+  });
+  c.CONFIG.RATTRAPAGE_PIECE_TAG = 'c49-5-a';
+  c.journalErreur_ = () => {};
+  c.estPannePlateforme_ = () => false;
+  c.memoireSuspendue_ = () => false;
+  c.budgetCampagnesAtteint_ = () => false;
+  c.extrairePiece_ = () => ({ type: 'Permis' });
+  c.envoyerLotPiecesMemoire_ = () => ({ ok: true, acceptees: 1, dejaPresentes: 0, oubliees: 0, refusees: 0 });
+  c.verdictPiece_ = (etat) => { etats.push(etat); return null; };
+
+  const dec = { nom: 'a.pdf', domaine: '04 · Immigration', statut: 'classé', chemin: '' };
+  c.pousserPieceApresClassement_({ cle: CLE(ID(1)) }, dec, 'du texte', { rattrapage: true });
+  c.pousserPieceApresClassement_({ cle: CLE(ID(1)) }, dec, 'du texte', { rattrapage: true, manuel: true });
+
+  assert.strictEqual(etats[0].maxParRun, c.CONFIG.PIECE_MAX_PAR_RUN, 'le tick garde son plafond');
+  assert.strictEqual(etats[1].maxParRun, Infinity, 'la main ne l\'a pas');
+  // ⚠️ Et ce que `manuel` ne lève PAS — les quatre gardes qui protègent autre chose que le tick.
+  assert.strictEqual(etats[1].jeton, true);
+  assert.strictEqual(etats[1].suspendue, false);
+  assert.strictEqual(etats[1].freinBudget, false);
+  assert.strictEqual(etats[1].pannePlateforme, false);
+});
+
+test('la tranche est ARMÉE, et changer cette valeur est une DÉCISION', () => {
+  const c = ctx();
+  // ⚠️ Armée le 17/09 par Marc : « ok jugé, pose le tag, extrait tous les docs aujd ». Ce test
+  // ne défend pas la chaîne `c49-5-a` — il défend le fait que le tag ne redevienne pas VIDE par
+  // distraction, ce qui éteindrait la campagne en silence, et que le bumper soit délibéré (un
+  // bump REFAIT toute la tranche : la liste des faits est écrite sous le tag, chaque document
+  // re-coûte son appel Haiku). Le re-baser en même temps qu'un bump volontaire est normal.
+  assert.strictEqual(c.CONFIG.RATTRAPAGE_PIECE_TAG, 'c49-5-a');
+  assert.strictEqual(c.rattrapageDoitTourner_(null, null, c.CONFIG.RATTRAPAGE_PIECE_TAG), true);
+  // Et le flux vivant reste ÉTEINT : armer le rattrapage n'allume pas les huit sites d'appel.
+  assert.strictEqual(c.CONFIG.PIECE_PUSH, false);
+});
