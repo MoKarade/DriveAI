@@ -4,6 +4,70 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **🟦 EN COURS — 2026-09-17 : C49-5, le rattrapage des pièces `04` + `01`. REPRENDRE ICI.**
+>
+> **En une phrase** : les papiers d'identité et d'immigration de Marc partent vers la Mémoire,
+> la campagne est ARMÉE et tourne, il reste **55 documents sur 110** (relevé le 17/09 18:47 UTC).
+>
+> **Le geste pour continuer, et il est à MARC** (la session ne peut pas exécuter Apps Script) :
+> `script.google.com` → projet DriveAI → fichier **`RattrapagePiece.gs`** → fonction
+> **`rattraperPiecesMaintenant`** → Exécuter. ~25 documents par passe (garde-temps 4,5 min), donc
+> **~2 passes** pour finir. La fonction annonce le reste à chaque fois. Lecture seule avant de
+> dépenser : `diagnosticRattrapagePiece`.
+> ⚠️ **Fermer TOUS les onglets de l'éditeur Apps Script avant d'ouvrir une page neuve** — un
+> onglet ouvert avant un `clasp push` ré-enregistre sa copie périmée et annule le déploiement
+> (§9, vécu le 16/09).
+> ⚠️ Le TICK, lui, ne reprendra **que demain** : le budget quotidien des pièces (11 min, partagé
+> avec l'audit) était déjà épuisé le 17/09 à 17,2/17 min. À 11 min/j il fait ~66 documents/jour.
+>
+> **Ce qui a été livré le 17/09** (trois PR, toutes fusionnées et déployées) :
+> - **#375** — `src/RattrapagePiece.gs` : la campagne. Le canal des pièces n'avait qu'un appelant
+>   (`Pipeline.gs`, après classement) donc ne voyait que le FLUX VIVANT ; allumer `PIECE_PUSH`
+>   n'aurait rien envoyé du stock déjà classé.
+> - **#376** — le tag `RATTRAPAGE_PIECE_TAG: 'c49-5-a'` (Marc a jugé l'audit : « ok jugé, pose le
+>   tag »), et les DEUX plafonds « 5 par run » levés sur le chemin manuel (C28-33).
+> - **#377** — correctif d'un bug que #375 avait introduit, attrapé par son propre signal : voir
+>   ci-dessous.
+>
+> ⚠️⚠️ **LE BUG DU 17/09 18:35, À CONNAÎTRE AVANT DE TOUCHER À CE MODULE.** La Santé a annoncé
+> « 0 restants · ✅ tranche terminée » avec 85 papiers restants. Les sorties précoces écrivaient
+> `restantsRattrapage_(props) || 0` : `null` (« je ne sais pas ») devenait zéro, la gate du tick
+> relisait ce zéro et **éteignait la campagne à vie**. Corrigé (#377) : le motif de fin s'écrit
+> toujours, le compteur **seulement quand il a été mesuré**, et un reste inconnu se sérialise
+> VIDE (jamais `'0'` ni `'null'` — `Number('')` vaut zéro). Leçon en §9 du `CLAUDE.md` et récit
+> complet dans `docs/LESSONS.md`.
+>
+> **Ce qui est arrivé dans la Mémoire, vérifié le 17/09** : `04 · Immigration` **COMPLET, 23/23**
+> (c'est ce que Marc voulait voir en premier), `01` en cours. Les papiers de `04`/`01` sont en
+> **niveau 3** : seuls domaine, dates et pointeur sont servis, le contenu ne l'est pas — la
+> frontière de l'ADR-0061 tient. Marc juge et retire sur `memoryai.hubperso.com/pieces`.
+>
+> **⬜ OUVERT, à vérifier par la prochaine session** :
+> 1. **Le coût LLM n'a pas bougé** : `llm_appels_mois` = 476 et `moisDollars` = 2,52 $ au 17/09
+>    18:47, identiques à ce matin, alors que ~55 extractions Haiku ont eu lieu. Soit la télémétrie
+>    est en retard, soit `enregistrerUsage_` n'est pas atteint sur ce chemin. **Non diagnostiqué**
+>    — à re-mesurer avant de conclure quoi que ce soit. [À vérifier]
+> 2. **La ligne manuelle n'affiche pas les ACCEPTÉES** — `rattraperPiecesMaintenant` rend
+>    « N faits » sans dire combien la Mémoire a acceptés. Un refus de contrat passerait pour un
+>    succès (la panne du 16/09 en plus discret). Vérifié À LA MAIN le 17/09 : 24 envoyés,
+>    24 arrivés. À corriger dans un petit lot.
+> 3. **243 papiers « sans domaine »** dans MemoryAI, d'extracteur `moteur-inventaire-v1` — ils ne
+>    viennent PAS de cette campagne. Origine inconnue. [À vérifier]
+> 4. **4 lectures Drive impossibles** pendant les passes (18:38, 18:40, 18:45, 18:47) : fichiers
+>    dont l'identifiant ne répond plus. Isolées (le coupe-circuit exige 3 d'affilée), comptées en
+>    échecs et marquées — elles ne reviendront pas. Rien à faire, mais c'est dit.
+> 5. **Le trou des PJ Gmail** (C49-4) : 734 lignes classées dont la clé ne porte pas de `fileId`
+>    sont invisibles au comptage ET au canal Mémoire. Décision à prendre par Marc — ça touche
+>    `fileIdDeCleIndex_`, donc l'inventaire déjà en production. **Rien n'a été fait dessus.**
+> 6. **La suite de la campagne** : les 3 862 autres papiers retombent sous la Q1 de l'ADR-0061
+>    (le runner GitHub). ⚠️ L'idempotence de C49-5 (200 `fileId` dans une Script Property)
+>    **ne passera JAMAIS à cette échelle** — l'étape refuse une tranche plus grande. Voir
+>    l'amendement du 17/09 en §9 de l'ADR-0061.
+>
+> ⚠️ **Les check-ins programmés meurent avec la session qui les a créés.** Celle du 17/09 en avait
+> armé un pour le 18/09 16:00 UTC (audit C49-3, 33 documents restants à extraire, reprise le
+> matin). Une nouvelle session ne l'héritera pas : ce qu'il devait vérifier est écrit ici.
+>
 > **🟦 EN COURS — 2026-09-15 : le « gros chantier » de Marc — l'assistant qui me connaît (C28-128, ADR-0059 ACCEPTÉ).**
 > Marc l'a décrit le 15/09 : un assistant « 1000× plus intelligent » qui lit ses documents et ses mails
 > au fil de l'eau, se constitue une base de connaissances, est connecté à toutes ses apps (et aux
