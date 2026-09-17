@@ -547,3 +547,60 @@ test('la tranche est ARMÉE, et changer cette valeur est une DÉCISION', () => {
   // Et le flux vivant reste ÉTEINT : armer le rattrapage n'allume pas les huit sites d'appel.
   assert.strictEqual(c.CONFIG.PIECE_PUSH, false);
 });
+
+/* ---------- LE COMPTEUR DE LA GATE : « je ne sais pas » n'est JAMAIS zéro ---------- */
+
+test('une SORTIE PRÉCOCE n\'écrase pas le compteur que la gate relit', () => {
+  // ⚠️ VÉCU EN PRODUCTION LE 17/09 À 18:35. La Property des restants n'existait pas encore ; la
+  // branche « audit-en-cours » faisait `restantsRattrapage_(props) || 0` et écrivait donc `0`.
+  // Conséquences en chaîne : la gate du tick lit 0, `rattrapageDoitTourner_` rend false, l'étape
+  // ne tourne PLUS JAMAIS — et la Santé annonce « ✅ tranche terminée » alors qu'il restait 85
+  // papiers. C'est l'interblocage du 17/09 au matin repris par l'autre bout : ce n'est pas la
+  // gate qui était fausse, c'est le compteur qu'une sortie qui n'avait rien compté avait écrasé.
+  ['audit-en-cours', 'budget-jour'].forEach((attendu) => {
+    const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+    const c = montage([ligne(CLE(ID(1)), 'a.pdf', '04 · Immigration')], props,
+      attendu === 'audit-en-cours' ? { resteAudit: 33 } : {});
+    if (attendu === 'budget-jour') {
+      c.dateGmail_ = () => '2026-09-18';
+      props.set('DriveAI_AUDIT_PIECE_JOUR_MS',
+        '2026-09-18|' + (c.CONFIG.AUDIT_PIECE_BUDGET_JOUR_MS + 1));
+    }
+
+    const res = c.etapeRattrapagePiece_(() => false, {});
+    assert.strictEqual(res.fin, attendu);
+    assert.strictEqual(props.has('DriveAI_RATTRAPAGE_PIECE_RESTANTS'), false,
+      attendu + ' : rien de mesuré, donc rien d\'écrit');
+
+    // Et la conséquence qui compte : la gate reste OUVERTE au tick suivant.
+    assert.strictEqual(
+      c.rattrapageDoitTourner_(c.restantsRattrapage_({ getProperty: () => null }),
+        'c49-5-a', 'c49-5-a'), true);
+  });
+});
+
+test('une sortie précoce CONSERVE un compte déjà mesuré, elle ne l\'invente pas', () => {
+  const props = new Map([
+    ['DriveAI_MEMORYAI_TOKEN', 'jeton'],
+    ['DriveAI_RATTRAPAGE_PIECE_RESTANTS', '85'],
+  ]);
+  const c = montage([ligne(CLE(ID(1)), 'a.pdf', '04 · Immigration')], props, { resteAudit: 33 });
+  const res = c.etapeRattrapagePiece_(() => false, {});
+  assert.strictEqual(res.fin, 'audit-en-cours');
+  assert.strictEqual(res.restants, 85, 'ce qui était connu le reste');
+  assert.strictEqual(props.get('DriveAI_RATTRAPAGE_PIECE_RESTANTS'), '85');
+});
+
+test('la Santé distingue « 0 restants » de « reste inconnu »', () => {
+  const c = ctx();
+  // ⚠️ Le champ VIDE est ce qu'écrit une sortie qui n'a rien compté. `Number('')` vaut ZÉRO :
+  // sans garde explicite, « je ne sais pas » s'afficherait « ✅ tranche terminée », qui est
+  // exactement le message rassurant et faux servi en production le 17/09.
+  const inconnu = c.phraseFinRattrapage_('2026-09-17 18:35|audit-en-cours|0/0/0||tick', 'c49-5-a');
+  assert.match(inconnu, /reste inconnu/);
+  assert.doesNotMatch(inconnu, /tranche terminée/);
+
+  const fini = c.phraseFinRattrapage_('2026-09-17 18:35|tranche-terminee|0/0/0|0|tick', 'c49-5-a');
+  assert.match(fini, /0 restants/);
+  assert.match(fini, /tranche terminée/);
+});

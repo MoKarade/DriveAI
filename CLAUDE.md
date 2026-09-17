@@ -1288,6 +1288,25 @@ ce qui reste vrai d'une session à l'autre.
   faux « bouton recouvert » — un `position: sticky` ne prend qu'AU SCROLL. Le geste réel se
   reproduit (défiler, puis viser), sinon on « corrige » une mise en page qui marchait.
 
+- **Une sortie PRÉCOCE ne doit jamais écrire le compteur que sa propre GATE relit.** Le 17/09
+  à 18:35, la branche « l'audit tourne encore » de `etapeRattrapagePiece_` faisait
+  `restantsRattrapage_(props) || 0` : la Property n'existait pas, elle a donc écrit **0** — un
+  chiffre qu'aucune mesure n'avait produit. En chaîne : la gate lit 0, `rattrapageDoitTourner_`
+  rend `false`, l'étape ne tourne **plus jamais**, et la Santé annonce « ✅ tranche terminée »
+  alors qu'il restait **85 papiers sur 110**. Un message rassurant et faux, sur une campagne
+  qui venait d'être allumée.
+  ⚠️ C'est l'interblocage du 17/09 au MATIN (`UNE-GATE-D-EXTINCTION-QUI-NE-LIT-PAS-LE-TAG…`)
+  repris par l'autre bout, et c'est ce qui le rend traître : la gate était correcte — elle
+  lisait bien le tag —, c'est le COMPTEUR qu'elle consulte qui avait été écrasé par une
+  ignorance. Corriger la gate n'aurait rien réparé.
+  ⚠️ `null` veut dire « je ne sais pas », et `|| 0` le convertit en « c'est fini ». La règle
+  « `restants === null` ≠ zéro » était **écrite et testée** dans la gate elle-même, et violée
+  trois lignes plus bas dans les branches de sortie. Réflexe : pour tout champ qu'une étape
+  PERSISTE et qu'une gate RELIT, se demander **quels chemins l'écrivent sans l'avoir mesuré** —
+  et faire que le motif de fin s'écrive toujours, le compteur seulement quand il est mesuré.
+  ⚠️ Corollaire d'écriture : un compteur non mesuré se sérialise **VIDE**, jamais `'0'` ni
+  `'null'` — `Number('')` vaut zéro, donc un lecteur naïf relit « terminée » de toute façon.
+
 - **Un déclencheur que le tick RÉINSTALLE ne se coupe pas à la main.** « Ne plus créer » ne
   suffit pas : la coupure livre AUSSI la suppression de l'existant (`deleteTrigger` sous le même
   flag), sinon l'ancien continue de partir et l'utilisateur, qui l'a supprimé une fois, le voit
