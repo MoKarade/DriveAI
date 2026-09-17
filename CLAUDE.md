@@ -1272,6 +1272,22 @@ ce qui reste vrai d'une session à l'autre.
   restée VERTE au premier jet — le défaut le plus grave des trois était celui qu'aucun test ne
   voyait. Une mutation muette sur le chemin le plus coûteux se traite avant d'écrire le rapport.
 
+- **Une `var(--x)` qui n'existe pas ne « retombe » pas sur la règle précédente : la propriété
+  prend sa valeur INITIALE.** Le 17/09, une règle ajoutée pour AGRANDIR les cases d'un panneau
+  disait `min-height: var(--cible)` — un jeton de **Hubperso**, absent de ce dépôt. Mesuré au
+  navigateur : `min-height` calculé à `auto`, cases à **26 px au lieu de 44**. La règle censée
+  agrandir avait rapetissé, en écrasant le `min-height: 44px` de la règle de base. Ni le build,
+  ni les tests, ni l'œil sur un écran large ne pouvaient le dire.
+  ⚠️ Deux enseignements distincts. (a) **Les jetons ne traversent pas les dépôts** : le parc
+  partage des conventions, pas des feuilles de style — recopier une règle d'un dépôt voisin
+  importe ses variables, qui n'existent pas ici. (b) La garde qui l'attrape est générale et
+  tient en dix lignes (« toute `var()` sans repli est définie dans la feuille ») — et elle a
+  trouvé un SECOND fantôme dans le même lot, `--texte-2`, que je n'avais pas vu. Un `var()` AVEC
+  repli reste légitime : il ne peut pas tomber en `auto`.
+  ⚠️ Corollaire de MESURE, du même lot : un harnais qui mesure une page **non défilée** rend un
+  faux « bouton recouvert » — un `position: sticky` ne prend qu'AU SCROLL. Le geste réel se
+  reproduit (défiler, puis viser), sinon on « corrige » une mise en page qui marchait.
+
 - **Un déclencheur que le tick RÉINSTALLE ne se coupe pas à la main.** « Ne plus créer » ne
   suffit pas : la coupure livre AUSSI la suppression de l'existant (`deleteTrigger` sous le même
   flag), sinon l'ancien continue de partir et l'utilisateur, qui l'a supprimé une fois, le voit

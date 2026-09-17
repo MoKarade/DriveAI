@@ -2859,6 +2859,15 @@ Détail des tâches : `BACKLOG.md`.
       la sortie « budget du jour épuisé » relisait le compteur PERSISTÉ — elle aurait réécrit
       « 0 restants » sur 100 lignes fraîchement vidées, fermant la gate pour de bon sur des cartes
       VIDES. Les restants se comptent désormais dans la FEUILLE (`compterAFaireAudit_`).
+      ⚠️ **Le jugement est CHAMP PAR CHAMP sur les « à moitié »** (demande de Marc, 17/09). Un
+      clic sur « À moitié » ouvre neuf cases (type, émetteur, date, titulaire, montants, numéros,
+      personnes, lieux, résumé) et le compte s'affiche en haut : « titulaire 8 · numéros 1 ».
+      C'est ce tableau qui décide d'un correctif — « 12 documents à moitié » n'en oriente aucun,
+      et surtout ne dit pas si les erreurs touchent des libellés ou des NUMÉROS D'IDENTITÉ.
+      Enregistrer sans cocher reste possible : « je ne sais pas dire lequel » est une réponse
+      honnête, et forcer une case ferait cocher n'importe quoi. La liste vit en DEUX exemplaires
+      (`CHAMPS_JUGEABLES_AUDIT` côté moteur, `CHAMPS_JUGEABLES` côté app) et un test lit le `.gs`
+      pour exiger qu'elles soient identiques — les deux moitiés se déploient séparément.
       - **le jugement se fait dans l'app** : `drive.hubperso.com` → engrenage → **« Vérifier »**.
         Un document à la fois, plein écran, trois boutons (`Juste` / `À moitié` / `Faux`), le
         RÉSUMÉ que le modèle a écrit du document — c'est lui qui dit s'il l'a COMPRIS, là où les

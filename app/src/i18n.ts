@@ -236,6 +236,17 @@ const TEXTES = {
     auditChampDate: 'date du document',
     auditChampTitulaire: 'au nom de',
     auditChampChamps: 'champs lus',
+    /* ---- C49-3 : le grain fin du « à moitié » (demande de Marc, 17/09) ---- */
+    auditChampMontants: 'montants',
+    auditChampNumeros: 'numéros',
+    auditChampPersonnes: 'personnes',
+    auditChampLieux: 'lieux',
+    auditChampResume: 'résumé',
+    auditQuoiFaux: 'Qu\'est-ce qui est faux ?',
+    auditQuoiFauxAide: 'Coche ce qui ne correspond pas au document. C\'est ce qui dira si les erreurs portent sur des libellés ou sur des numéros.',
+    auditConfirmer: 'Enregistrer',
+    auditAnnuler: 'Annuler',
+    auditFauxRecap: 'faux le plus souvent :',
   },
   en: {
     /* ---- shell & sign-in ---- */
@@ -449,6 +460,16 @@ const TEXTES = {
     auditChampDate: 'document date',
     auditChampTitulaire: 'in the name of',
     auditChampChamps: 'fields read',
+    auditChampMontants: 'amounts',
+    auditChampNumeros: 'numbers',
+    auditChampPersonnes: 'people',
+    auditChampLieux: 'places',
+    auditChampResume: 'summary',
+    auditQuoiFaux: 'What is wrong?',
+    auditQuoiFauxAide: 'Tick what does not match the document. This is what tells whether the errors are on labels or on numbers.',
+    auditConfirmer: 'Save',
+    auditAnnuler: 'Cancel',
+    auditFauxRecap: 'most often wrong:',
   },
 } as const;
 
