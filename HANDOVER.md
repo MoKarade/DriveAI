@@ -2974,6 +2974,12 @@ Détail des tâches : `BACKLOG.md`.
       - **Conséquence pratique pour Marc** : sa première tranche (`04` + `01`) est de l'ordre de
         la centaine de documents, pas du millier. C'est peu cher à essayer — ce qui va dans le
         sens de son choix.
+      - ⚠️ **TAG BUMPÉ EN `c49-4-b`** (17/09, demande de Marc). Le correctif ci-dessus ne
+        change QUE la façon de mesurer ; la gate étant un tag déjà posé, rien ne recalculait
+        tout seul, et la Santé aurait réaffiché la mesure de `c49-4-a` indéfiniment — juste
+        dans ses chiffres, muette sur le plancher et sur `04`/`01`. **Un correctif de mesure
+        n'existe que quand la mesure est refaite.** Le recomptage coûte une lecture de l'Index,
+        aucun appel LLM, et rien ne sort du compte Google.
 
       ⚠️ **Ce que cette étape NE fait pas** : lire les documents. C'est le lot suivant, et il
       commencera par `04 · Immigration` et `01 · Administratif & identité` — **choix de Marc du

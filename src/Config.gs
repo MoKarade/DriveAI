@@ -524,7 +524,13 @@ var CONFIG = {
   // prélèverait une minute par jour à une autre campagne pour une mesure qui se fait une fois.
   // ⚠️ Ce qu'elle mesure est une BORNE HAUTE : « ce fichier peut porter du texte », jamais
   // « il en porte ». Le taux réel se lit dans les « sans texte » de l'audit C49-3.
-  PERIMETRE_PIECE_TAG: 'c49-4-a',
+  // ⚠️ `c49-4-b` (17/09, demande de Marc : « bump le tag ») : la mesure de `c49-4-a` a été
+  // écrite par une version qui SAUTAIT en silence les lignes classées dont la clé ne porte pas
+  // de fileId — les pièces jointes Gmail. Sa chaîne persistée n'a donc ni le PLANCHER ni les
+  // domaines décisifs (`04`, `01`), et la gate étant un tag, rien ne la recalcule tout seul :
+  // la Santé aurait réaffiché l'ancienne mesure indéfiniment, correcte dans ses chiffres et
+  // muette sur ce qui manque. Un correctif de MESURE n'existe que quand la mesure est refaite.
+  PERIMETRE_PIECE_TAG: 'c49-4-b',
 
   // C49-3 — l'audit AVANT d'allumer `PIECE_PUSH` (ADR-0061). Cent documents, servis
   // ÉGALITAIREMENT entre les domaines et non au prorata : au prorata, `04 · Immigration` —
