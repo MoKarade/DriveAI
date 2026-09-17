@@ -2875,7 +2875,13 @@ Détail des tâches : `BACKLOG.md`.
       (C49-3) »** — restants, motif de la dernière passe, minutes consommées. Elle distingue
       « jamais tourné » de « rien à faire », et elle DIT si la dernière passe était MANUELLE :
       sans ça, on conclut « le tick tourne » sur la preuve d'une main (leçon du 16/09).
-      ⚠️ **Les 8 min/j sont PRÊTÉES** par la réconciliation Index (`SYNC_BUDGET_JOUR_MS` 12 → 4).
+      ⚠️ **Les 11 min/j sont PRÊTÉES** par la réconciliation Index (`SYNC_BUDGET_JOUR_MS` 12 → 4 → 1,
+      demande de Marc le 17/09 : « accélère »). Le donneur est au BOUT : il ne peut pas descendre à
+      zéro — une campagne perpétuelle à budget nul tourne à vide en silence, et
+      `test/orchestration.test.js` le verrouille désormais (il ne l'était nulle part : la mutation
+      « donneur à 0 » était VERTE). Ce que ça achète, mesuré : ~33 documents/jour au lieu de ~24.
+      Pour aller plus vite il faudrait un SECOND donneur — l'historique Gmail, terminé et déclaré
+      réallouable par le moteur — avec son propre garde de paire.
       **À RENDRE quand l'audit est fini** : `SYNC` 4 → 12 et `AUDIT_PIECE` 8 → 0. L'étape ne
       consomme plus rien une fois éteinte, mais sa CONSTANTE continue de peser sur l'invariant
       d'enveloppe, et une enveloppe faussement chargée fait renoncer à la réallocation suivante.

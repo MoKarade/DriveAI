@@ -527,7 +527,7 @@ var CONFIG = {
   // garder reviendrait à faire juger la porte de l'ADR-0061 sur une information fausse.
   AUDIT_PIECE_TAG: 'c49-3-b',
   // ⚠️ Budget QUOTIDIEN de l'audit, en ms RÉELLES persistées — PRÉLEVÉ, jamais ajouté (§9
-  // « RÉALLOUER, jamais AUGMENTER ») : 8 min reprises à `SYNC_BUDGET_JOUR_MS`, la réconciliation
+  // « RÉALLOUER, jamais AUGMENTER ») : 11 min reprises à `SYNC_BUDGET_JOUR_MS`, la réconciliation
   // Index↔Drive — perpétuelle et en lecture seule, donc le seul poste qui ne tient aucun délai.
   // La somme de l'enveloppe ne bouge pas d'une minute, et `test/orchestration.test.js` le
   // verrouille dans les deux sens.
@@ -536,7 +536,14 @@ var CONFIG = {
   // épuisés en un jour et demi. Deux autres donneurs ont été essayés et REFUSÉS PAR DES TESTS
   // (l'historique Gmail devient muet à 0 ; la re-datation perd 25 % de son budget en marge de
   // démarrage) : c'est le parc qui a choisi le donneur, pas moi.
-  AUDIT_PIECE_BUDGET_JOUR_MS: 8 * 60 * 1000,
+  // ⚠️ 8 → 11 (demande de Marc, 17/09 : « accélère, prends plus de budget à la réconciliation »).
+  // Le donneur est allé au bout de ce qu'il peut donner : il passe de 4 à 1 min, et l'invariant de
+  // paire ci-dessous lui interdit le zéro. Ce que ça achète, mesuré sur la ré-extraction en cours
+  // (25 documents en 8,2 min, soit ~20 s/document) : ~33 documents/jour au lieu de ~24. Pour aller
+  // plus vite il faudrait un SECOND donneur — l'historique Gmail, campagne TERMINÉE que le moteur
+  // déclare lui-même réallouable — et il aurait besoin de son propre garde de paire (le test des
+  // minutes PRÊTÉES ne suit que les receveurs de CE donneur-là, et il le dit).
+  AUDIT_PIECE_BUDGET_JOUR_MS: 11 * 60 * 1000,
   // Sous-budget PAR TICK (même famille que `REANALYSE_BUDGET_MS`) : l'étape ne prend que le
   // reliquat du tick, après le flux vivant, et jamais plus que ça d'un coup.
   AUDIT_PIECE_BUDGET_MS: 2 * 60 * 1000,
@@ -896,16 +903,20 @@ var CONFIG = {
   RANGEMENT_RACINES_SUP: [],
   // Réconciliation Index↔Drive (C28-07, plan P3) : campagne de fond perpétuelle, lecture seule.
   SYNC_LIGNES_PAR_RUN: 50,            // lignes d'Index re-visitées par tick (sur le reliquat de budget)
-  // ⚠️ 12 → 4 (C49-3, 17/09) : 8 min prêtées à l'audit des pièces. Donneur choisi parce que c'est
+  // ⚠️ 12 → 4 → 1 (C49-3, 17/09) : 11 min prêtées à l'audit des pièces. Donneur choisi parce que c'est
   // le SEUL poste de l'enveloppe qui ne tient aucun délai — la réconciliation Index↔Drive est
   // PERPÉTUELLE et en LECTURE SEULE : lui prendre du budget rallonge son cycle, ça ne laisse
   // rien en plan. Les deux autres candidats ont été essayés et refusés par des tests (historique
   // Gmail : muette à 0 ; re-datation : sa marge de démarrage double en proportion).
-  // ⚠️ À RENDRE quand l'audit est fini : celui-ci 4 → 12 et `AUDIT_PIECE_BUDGET_JOUR_MS` 8 → 0.
+  // ⚠️ À RENDRE quand l'audit est fini : celui-ci 1 → 12 et `AUDIT_PIECE_BUDGET_JOUR_MS` 11 → 0.
+  // ⚠️ 1 min et pas 0 : à zéro, cette campagne PERPÉTUELLE tournerait à vide en silence — c'est
+  // l'interdit que la §9 pose pour toute réallocation en paire. Mesuré le 17/09, il n'était codé
+  // NULLE PART pour ce couple (mettre ce budget à 0 laissait les 20 tests d'orchestration verts) ;
+  // `test/orchestration.test.js` le verrouille désormais, avec la somme du couple.
   // L'étape d'audit s'éteint d'elle-même à zéro restant, donc elle ne CONSOMME plus rien après
   // coup — mais sa CONSTANTE continue de peser sur l'invariant d'enveloppe, et une enveloppe
   // faussement chargée fait renoncer à la réallocation suivante (leçon §9).
-  SYNC_BUDGET_JOUR_MS: 4 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES (leçon §7 : ~90 min/j de runtime partagé — jamais un compteur d'items)
+  SYNC_BUDGET_JOUR_MS: 1 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES (leçon §7 : ~90 min/j de runtime partagé — jamais un compteur d'items)
   SYNC_AGE_MIN_H: 48,                 // une ligne plus fraîche que ça n'a pas eu le temps de dériver — pas de vérif Drive
 
   // --- Chantier #8 : MIGRATION de l'existant vers la nouvelle taxonomie (ADR-0002) ---

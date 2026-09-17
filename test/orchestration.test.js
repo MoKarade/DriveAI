@@ -281,6 +281,26 @@ test('minutes PRÊTÉES : le chiffre affiché à Marc est DÉRIVÉ du transfert,
     '(re-datation de 06, puis envoi à la Mémoire)');
 });
 
+test('PAIRE réconciliation ↔ audit des pièces : la somme est figée, et le donneur ne tombe jamais à zéro', () => {
+  // ⚠️ Écrit le 17/09 après une MUTATION VERTE : mettre `SYNC_BUDGET_JOUR_MS` à 0 laissait les
+  // vingt cas de ce fichier au vert. L'invariant d'enveloppe ne voit qu'une CROISSANCE ; il est
+  // aveugle à une campagne qu'on éteint. Or la réconciliation Index↔Drive est PERPÉTUELLE : à
+  // zéro elle tournerait à vide, sans rien dire — l'interdit que la §9 pose pour toute
+  // réallocation en paire, et qui n'était codé nulle part pour CE couple.
+  const C = require('./harness').load(['Config.gs']).CONFIG;
+  // (a) La SOMME du couple ne bouge pas : un transfert à moitié annulé (minutes rendues au
+  // donneur sans redescendre le receveur, ou l'inverse) reste sous le plafond global, donc
+  // l'invariant d'enveloppe ne l'attrape pas — seul ce garde-ci le voit.
+  const DOTATION_COUPLE_MIN = 12; // la dotation HISTORIQUE de la réconciliation, avant tout prêt
+  assert.strictEqual(
+    (C.SYNC_BUDGET_JOUR_MS + C.AUDIT_PIECE_BUDGET_JOUR_MS) / 60000, DOTATION_COUPLE_MIN,
+    'ce que l\'audit reçoit est EXACTEMENT ce que la réconciliation perd — rien ne se crée en route');
+  // (b) Le donneur reste VIVANT. Une campagne active à budget quotidien nul est un transfert
+  // non rendu déguisé en réglage : elle ne produit plus rien et rien ne le signale.
+  assert.ok(C.SYNC_BUDGET_JOUR_MS > 0,
+    'la réconciliation est PERPÉTUELLE : à zéro elle tourne à vide en silence (§9, réallocation en paire)');
+});
+
 test('INVENTAIRE des budgets quotidiens : aucune constante n\'échappe aux invariants', () => {
   // Cécité structurelle de la leçon C28-42, mesurée en revue C28-99 : ajouter une NOUVELLE
   // constante `*_BUDGET_JOUR_MS` laissait les deux invariants VERTS pendant que l'enveloppe
