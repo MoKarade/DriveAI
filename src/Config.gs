@@ -506,6 +506,12 @@ var CONFIG = {
   // ne protège qu'une chose : qu'un run de rattrapage ne parte pas en rafale de 200 appels.
   PIECE_MAX_PAR_RUN: 5,
 
+  // C49-3 — l'audit AVANT d'allumer `PIECE_PUSH` (ADR-0061). Cent documents, servis
+  // ÉGALITAIREMENT entre les domaines et non au prorata : au prorata, `04 · Immigration` —
+  // celui dont une erreur d'extraction coûte le plus cher — aurait deux lignes sur cent.
+  // C'est tout le sens du mot « stratifié » dans l'ADR (`repartirAudit_`).
+  AUDIT_PIECE_TAILLE: 100,
+
   DOMAINE_DEFAUT: '01 · Administratif & identité',
   // ADR-0058 — domicile UNIQUE des revenus d'employeur (paies, RL-1). Constante et non littéral :
   // le libellé sert de CLÉ dans `CONFIG.DOMAINES` et `STRUCTURE_CIBLE_RESET`, donc une graphie qui

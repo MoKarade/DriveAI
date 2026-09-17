@@ -169,6 +169,17 @@ const CONTRAT = [
   // ne casserait aucun test ailleurs. Un chemin que seul un humain emprunte a besoin d'un
   // gardien, sinon il s'efface sans bruit et le budget quotidien redevient un mur sans porte.
   'pousserMemoireMaintenant',
+  // C49-3, l'audit des pièces (ADR-0061). Trois fonctions que SEUL Marc lance depuis
+  // l'éditeur, pour la même raison que `pousserMemoireMaintenant` juste au-dessus : rien dans
+  // le code ne les appelle, donc rien ne les retient. Et celle-ci est une PORTE — si elle
+  // s'efface dans un refactor, le seul moyen de mesurer avant d'ouvrir le canal des pièces
+  // disparaît avec elle, silencieusement.
+  'auditPiecesMaintenant', 'verdictAuditPieces', 'viderAuditPieces',
+  // Leurs fonctions pures, et `composerEchantillonAudit_` / `extraireLotAudit_` qui sont bien
+  // des contrats INTER-MODULES (Journal.gs crée l'onglet à partir de ces constantes).
+  'repartirAudit_', 'estDomaineMasqueAudit_', 'masquerAudit_', 'masquerChampsAudit_',
+  'champsEnClairAudit_', 'cellulesAuditPiece_', 'compterVerdictsAudit_', 'phraseVerdictAudit_',
+  'composerEchantillonAudit_', 'extraireLotAudit_', 'auditerUnDocumentAudit_',
   'inventorierDoublons_', 'balayerExemplairesDoublons_',
   'ecrireVerdictsDoublons_', 'feuilleRapportDoublons_', 'texteSanteDoublons_', 'pageListeDrive_',
   'texteSanteHistoGmail_', // Main.gs, appelée par Journal.gs (ligne de Santé C28-99)
