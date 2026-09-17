@@ -1231,6 +1231,17 @@ ce qui reste vrai d'une session à l'autre.
   l'inverse est vrai aussi. ⚠️ Et le remède se verrouille au MÊME seuil que ce qu'il évite : deux
   media queries différentes rouvrent une fenêtre de largeurs où les boutons se collent au mauvais
   endroit (`test/seuil-telephone.test.ts` le tient déjà pour la coquille).
+- **Une fixture qui ne ressemble pas à la donnée RÉELLE valide une hypothèse, pas un format.**
+  L'audit des pièces a écrit « [object Object] » dans sa colonne Champs au PREMIER usage réel :
+  `champs` n'est pas une carte de scalaires, c'est `{"montants": [{"libelle","valeur"}], …}` —
+  la forme que le prompt DEMANDE, trois lignes plus haut dans le même dépôt. Un `String()`
+  dessus ne lève pas, ne casse aucun test, et rend la ligne injugeable. Mes fixtures portaient
+  des scalaires, donc les onze cas étaient verts sur un format qui n'existe pas. Réflexe : pour
+  tout champ produit par un modèle, **construire la fixture depuis le PROMPT** (ou depuis une
+  réponse réelle), jamais depuis l'idée qu'on se fait du champ. ⚠️ Corollaire de réparation :
+  une extraction déjà ÉCRITE ne se répare pas en corrigeant le code qui l'écrit — il faut un tag
+  de version qui la refait (patron `MIGRATION_TAG`), sinon le correctif ne vaut que pour les
+  lignes futures et l'utilisateur continue de lire les anciennes.
 - **Le DONNEUR d'une réallocation de budget se fait choisir par les tests, pas par le raisonnement.**
   Pour financer l'audit (C49-3), les deux donneurs « évidents » ont été refusés : l'historique
   Gmail, pourtant TERMINÉ et déclaré réallouable par le moteur lui-même, rend 20 de ses tests

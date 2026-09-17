@@ -130,12 +130,77 @@ test('le TEXTE OCR ne peut pas entrer dans le rapport, quoi qu\'on donne à la l
     'les cellules sont composées champ par champ : ce qui n\'est pas nommé n\'existe pas');
 });
 
-test('les colonnes sont une liste FERMÉE, et le verdict est la 12e', () => {
+test('la colonne du verdict est DÉRIVÉE de la liste — un décalage écraserait une extraction', () => {
+  // ⚠️ RÉÉCRIT le 17/09. Ce cas ancrait « le verdict est la 12e » : il a rougi quand la colonne
+  // Résumé est arrivée, alors que RIEN de ce qu'il défend n'avait bougé — une garde qui ancre
+  // la FORME coûte un aller-retour à chaque évolution et finit par se faire re-baser sans être
+  // lue (leçon §9). Ce qu'il défend vraiment : le lecteur et l'écrivain parlent de la MÊME
+  // colonne, et le verdict est la dernière chose qu'on écrirait par-dessus une valeur extraite.
   const c = ctx();
-  assert.strictEqual(c.COLONNES_AUDIT_PIECE.length, 13);
-  assert.strictEqual(c.COLONNES_AUDIT_PIECE[11], 'Verdict (à toi)');
-  // `verdictAuditPieces` lit la colonne 12 en dur : si l'ordre bouge, il compte autre chose.
-  assert.strictEqual(c.COLONNES_AUDIT_PIECE[4], 'Statut');
+  assert.strictEqual(c.COL_VERDICT_AUDIT_PIECE,
+    c.COLONNES_AUDIT_PIECE.indexOf('Verdict (à toi)') + 1);
+  // Les cellules de résultat vont de « Statut » jusqu'à « Résumé » INCLUS, et s'arrêtent AVANT
+  // les deux colonnes de Marc : une de plus et l'extraction effacerait son verdict à chaque passe.
+  assert.strictEqual(c.COLONNES_AUDIT_PIECE.indexOf('Statut'), 4);
+  assert.strictEqual(c.COLONNES_AUDIT_PIECE.indexOf('Résumé'),
+    c.COLONNES_AUDIT_PIECE.indexOf('Verdict (à toi)') - 1);
+  assert.strictEqual(c.cellulesAuditPiece_({ domaine: '02 · Finances' }, {}, 'extrait').length,
+    c.COLONNES_AUDIT_PIECE.indexOf('Verdict (à toi)') - 4);
+});
+
+/* ---- LE BUG DU 17/09 : « [object Object] » dans la colonne Champs ---- */
+
+test('une LISTE de paires {libelle, valeur} devient du texte lisible — jamais « [object Object] »', () => {
+  // C'est la forme que le prompt DEMANDE (`PROMPT_PIECE`), donc le cas nominal — et c'est celle
+  // qui est arrivée à l'écran illisible au premier usage réel. Mes fixtures portaient des
+  // scalaires : elles validaient une hypothèse sur le format, pas le format.
+  const c = ctx();
+  const champs = {
+    montants: [{ libelle: 'franchise', valeur: '500 $' }, { libelle: 'prime', valeur: '1 240 $' }],
+    numeros: [{ libelle: 'police', valeur: 'A-99812' }],
+    lieux: [],
+  };
+  const t = c.champsEnClairAudit_(champs);
+  assert.ok(!/\[object Object\]/.test(t), 'aucun objet brut ne doit sortir : ' + t);
+  assert.match(t, /montants : franchise 500 \$, prime 1 240 \$/);
+  assert.match(t, /numeros : police A-99812/);
+  assert.ok(!/lieux/.test(t), 'une famille VIDE ne s\'affiche pas — quatre familles vides poussent ' +
+    'hors de vue ce qu\'il y a à juger');
+});
+
+test('les autres formes que le modèle rend passent aussi : objet simple, scalaire, imbriqué', () => {
+  const c = ctx();
+  const clair = (x) => c.champsEnClairAudit_(x);
+  assert.strictEqual(clair({ duree: '12 mois' }), 'duree : 12 mois');
+  assert.strictEqual(clair({ divers: { piece: 'chambre', etage: 2 } }), 'divers : piece chambre, etage 2');
+  assert.ok(!/\[object Object\]/.test(clair({ x: [{ a: { b: 'c' } }] })));
+});
+
+test('sur un domaine masqué, les LIBELLÉS restent et seules les VALEURS sont masquées', () => {
+  // Le libellé est le sujet de l'audit : « numeros : assurance sociale (9 chiffres) » dit que
+  // le modèle a trouvé un NAS et combien de chiffres il a lus. Masquer le libellé aussi
+  // supprimerait la mesure au lieu de protéger la valeur.
+  const c = ctx();
+  const t = c.masquerChampsAudit_({
+    numeros: [{ libelle: 'assurance sociale', valeur: '123456789' }],
+  });
+  assert.match(t, /numeros : assurance sociale \(9 chiffres\)/);
+  assert.ok(!/123456789/.test(t), 'la valeur ne sort jamais : ' + t);
+});
+
+test('le RÉSUMÉ est écrit en clair, et JAMAIS sur un domaine masqué', () => {
+  // Le résumé est du texte LIBRE : il peut porter le numéro que le masquage des champs vient
+  // de retirer. L'afficher sur 01/04 rouvrirait par la fenêtre ce que l'arbitrage a fermé.
+  const c = ctx();
+  const extrait = { resume: 'Réclamation auto, franchise 500 $, dossier ouvert le 23 juin.' };
+  const iResume = c.COLONNES_AUDIT_PIECE.indexOf('Résumé') - 4;
+  assert.match(c.cellulesAuditPiece_({ domaine: '02 · Finances' }, extrait, 'extrait')[iResume],
+    /Réclamation auto/);
+  const masque = c.cellulesAuditPiece_({ domaine: '04 · Immigration' }, extrait, 'extrait')[iResume];
+  assert.ok(!/Réclamation|500/.test(masque), 'rien du résumé ne sort sur 04 : ' + masque);
+  assert.match(masque, /masqué/, 'et l\'absence se DIT, sinon elle ressemble à une extraction vide');
+  // Pas de résumé du tout ⇒ case vide des DEUX côtés : « masqué » affirmerait qu'il y en a un.
+  assert.strictEqual(c.cellulesAuditPiece_({ domaine: '04 · Immigration' }, {}, 'extrait')[iResume], '');
 });
 
 /* ======================================================================================

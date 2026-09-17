@@ -39,7 +39,7 @@ var ONGLET_AUDIT_PIECE = 'AuditPieces';
 
 var COLONNES_AUDIT_PIECE = [
   'Rang', 'Domaine', 'Fichier', 'Lien', 'Statut',
-  'Type', 'Émetteur', 'Date doc', 'Titulaire', 'Confiance', 'Champs',
+  'Type', 'Émetteur', 'Date doc', 'Titulaire', 'Confiance', 'Champs', 'Résumé',
   'Verdict (à toi)', 'Note (à toi)'
 ];
 
@@ -49,6 +49,13 @@ var COLONNES_AUDIT_PIECE = [
  * (`assurerNomsDomaines_` le fait), le numéro non.
  */
 var PREFIXES_DOMAINE_MASQUE_AUDIT = ['01', '04'];
+
+/**
+ * La colonne « Verdict (à toi) », en numérotation Sheet (1-indexée). DÉRIVÉE de la liste des
+ * colonnes : écrite en dur, elle se décale en silence au prochain champ ajouté — et un verdict
+ * posé dans la mauvaise colonne ÉCRASE une valeur extraite.
+ */
+var COL_VERDICT_AUDIT_PIECE = COLONNES_AUDIT_PIECE.indexOf('Verdict (à toi)') + 1;
 
 /** Les verdicts que Marc peut écrire. Tout le reste compte comme « non jugé ». */
 var VERDICTS_AUDIT = ['juste', 'partiel', 'faux'];
@@ -135,13 +142,62 @@ function masquerAudit_(valeur) {
   return '(' + lettres + ' lettres)';
 }
 
-/** PURE. L'objet des champs structurés, masqué CLÉ PAR CLÉ — les clés, elles, sont le sujet. */
+/**
+ * PURE. Une valeur de champ, mise en texte LISIBLE.
+ *
+ * ⚠️ CE QUI A CASSÉ, ET POURQUOI ÇA NE SE VOYAIT PAS EN TEST. `champs` n'est PAS une carte de
+ * scalaires : le prompt demande `{"montants": [{"libelle", "valeur"}], "numeros": [...], …}`.
+ * Un `String()` sur ce tableau rend `[object Object],[object Object]` — du JavaScript qui ne
+ * lève pas, s'écrit sans erreur, et donne une ligne d'audit INJUGEABLE. Marc l'a vu au premier
+ * usage réel ; mes fixtures, elles, portaient des scalaires, donc aucun test ne pouvait le dire.
+ * La leçon est déjà dans ce dépôt sous un autre nom : une fixture qui ne ressemble pas à la
+ * donnée RÉELLE valide une hypothèse, pas un format.
+ *
+ * Trois formes, parce que le modèle en rend trois : la liste `{libelle, valeur}` (le cas
+ * nominal), l'objet simple, et le scalaire. `rendre` décide du sort de chaque VALEUR — c'est
+ * par lui que passe le masquage, et c'est pour ça qu'il est un paramètre plutôt que deux
+ * copies de cette fonction qui divergeraient au premier format ajouté.
+ */
+function valeurChampAudit_(v, rendre) {
+  if (v === null || v === undefined || v === '') return '';
+  if (Object.prototype.toString.call(v) === '[object Array]') {
+    var items = [];
+    for (var i = 0; i < v.length; i++) {
+      var t = valeurChampAudit_(v[i], rendre);
+      if (t) items.push(t);
+    }
+    return items.join(', ');
+  }
+  if (typeof v === 'object') {
+    // La paire du prompt : le LIBELLÉ dit ce que la valeur est, la VALEUR est ce qu'on masque.
+    var aLibelle = Object.prototype.hasOwnProperty.call(v, 'libelle');
+    var aValeur = Object.prototype.hasOwnProperty.call(v, 'valeur');
+    if (aLibelle || aValeur) {
+      var lib = aLibelle && v.libelle != null ? String(v.libelle) : '';
+      var val = aValeur ? rendre(v.valeur) : '';
+      if (lib && val) return lib + ' ' + val;
+      return lib || val;
+    }
+    // Un objet quelconque : on l'aplatit clé par clé plutôt que de rendre « [object Object] ».
+    var out = [];
+    for (var k in v) {
+      if (!Object.prototype.hasOwnProperty.call(v, k)) continue;
+      var t2 = valeurChampAudit_(v[k], rendre);
+      if (t2) out.push(k + ' ' + t2);
+    }
+    return out.join(', ');
+  }
+  return rendre(v);
+}
+
+/** PURE. L'objet des champs structurés, masqué — les LIBELLÉS restent, ce sont eux le sujet. */
 function masquerChampsAudit_(champs) {
   if (!champs || typeof champs !== 'object') return '(absent)';
   var out = [];
   for (var k in champs) {
     if (!Object.prototype.hasOwnProperty.call(champs, k)) continue;
-    out.push(k + ' : ' + masquerAudit_(champs[k]));
+    var t = valeurChampAudit_(champs[k], masquerAudit_);
+    if (t) out.push(k + ' : ' + t);
   }
   return out.length ? out.join(' · ') : '(aucun)';
 }
@@ -152,9 +208,8 @@ function champsEnClairAudit_(champs) {
   var out = [];
   for (var k in champs) {
     if (!Object.prototype.hasOwnProperty.call(champs, k)) continue;
-    var v = champs[k];
-    if (v === null || v === undefined || v === '') continue;
-    out.push(k + ' : ' + String(v));
+    var t = valeurChampAudit_(champs[k], function (x) { return String(x); });
+    if (t) out.push(k + ' : ' + t);
   }
   return out.join(' · ');
 }
@@ -174,6 +229,14 @@ function cellulesAuditPiece_(ligne, extrait, statut) {
     ? '(absent)'
     : (masque ? masquerAudit_(e.titulaire) : String(e.titulaire));
   var champs = masque ? masquerChampsAudit_(e.champs) : champsEnClairAudit_(e.champs);
+  // ⚠️ LE RÉSUMÉ EST LE SEUL CHAMP QUI DIT SI LE MODÈLE A COMPRIS LE DOCUMENT. Les autres
+  // disent ce qu'il en a TIRÉ : on peut extraire « facture / Hydro / 2026-07-01 » d'un papier
+  // qu'on a lu de travers. Marc, au premier usage : « je jugerai mieux une analyse de IA avec
+  // des vraies infos ». C'est ça, l'analyse.
+  // ⚠️ MASQUÉ SUR 01 ET 04, et ce n'est pas de la prudence en trop : le résumé est du texte
+  // LIBRE, il peut porter le numéro que le masquage des champs vient justement de retirer.
+  // L'afficher là rouvrirait par la fenêtre ce que l'arbitrage du 17/09 a fermé par la porte.
+  var resume = e.resume === null || e.resume === undefined ? '' : String(e.resume);
   return [
     statut,
     e.type === null || e.type === undefined ? '' : String(e.type),
@@ -181,7 +244,8 @@ function cellulesAuditPiece_(ligne, extrait, statut) {
     e.date_document === null || e.date_document === undefined ? '' : String(e.date_document),
     tit,
     e.titulaire_confiance === null || e.titulaire_confiance === undefined ? '' : e.titulaire_confiance,
-    champs
+    champs,
+    masque ? (resume ? '(masqué — ouvre le document)' : '') : resume
   ];
 }
 
@@ -291,6 +355,22 @@ function etapeAuditPiece_(garde, opts) {
     if (!res.poses) { res.fin = 'index-vide'; return noterFinAuditPiece_(props, res, !!opts.manuel); }
   }
 
+  // ⚠️ RE-EXTRACTION one-shot, gatée par tag (patron `MIGRATION_TAG` du parc). Elle existe
+  // parce qu'une extraction déjà écrite ne se répare pas en corrigeant le code qui l'écrit :
+  // les 100 lignes du 17/09 portent « [object Object] » dans la colonne Champs et aucun
+  // résumé, donc elles sont INJUGEABLES — et l'audit est la porte de l'ADR-0061.
+  // ⚠️ Elle EFFACE les verdicts déjà posés. C'est délibéré et ce n'est pas anodin : un verdict
+  // rendu sur une ligne illisible ne dit rien de l'extraction, et le garder fausserait le seul
+  // chiffre que la porte mesure. Les NOTES, elles, restent — elles parlent du document.
+  // ⚠️ Elle n'AMORCE toujours rien : elle re-lit un échantillon qui existe déjà.
+  reparerEnTeteAudit_(f);
+  if (props.getProperty('DriveAI_AUDIT_PIECE_TAG') !== CONFIG.AUDIT_PIECE_TAG) {
+    var remises = reextraireAudit_(f);
+    props.setProperty('DriveAI_AUDIT_PIECE_TAG', CONFIG.AUDIT_PIECE_TAG);
+    journalInfo_('AuditPiece', 'Re-extraction « ' + CONFIG.AUDIT_PIECE_TAG + ' » : '
+      + remises + ' ligne(s) remise(s) à faire (verdicts effacés, notes gardées).');
+  }
+
   var aujourdhui = dateGmail_(new Date());
   var consommeJour = opts.manuel ? 0 : budgetJourAudit_(props, aujourdhui);
   if (consommeJour >= CONFIG.AUDIT_PIECE_BUDGET_JOUR_MS) {
@@ -324,6 +404,52 @@ function etapeAuditPiece_(garde, opts) {
       aujourdhui + '|' + (consommeJour + (Date.now() - debutRun)));
   }
   return noterFinAuditPiece_(props, res, !!opts.manuel);
+}
+
+/**
+ * Répare l'en-tête d'un onglet DÉJÀ créé. `creerOnglet_` ne tourne qu'à la création : une
+ * colonne ajoutée plus tard n'y arrive jamais, et la réparation posée là serait du code mort
+ * (leçon §9 du parc, payée sur `HistoriqueVrac`). Elle vit donc ICI, sur le chemin qui lit
+ * l'onglet à chaque passe. Idempotente : elle ne réécrit que si la ligne 1 a dérivé.
+ */
+function reparerEnTeteAudit_(f) {
+  try {
+    var n = COLONNES_AUDIT_PIECE.length;
+    var actuel = f.getRange(1, 1, 1, n).getValues()[0];
+    for (var i = 0; i < n; i++) {
+      if (String(actuel[i] || '') !== COLONNES_AUDIT_PIECE[i]) {
+        f.getRange(1, 1, 1, n).setValues([COLONNES_AUDIT_PIECE]);
+        return true;
+      }
+    }
+  } catch (e) {
+    journalErreur_('AuditPiece', 'En-tête non réparé : ' + e);
+  }
+  return false;
+}
+
+/**
+ * Remet à « à faire » toutes les lignes déjà traitées et efface leur verdict. Rend le nombre
+ * de lignes remises. Les colonnes de Marc : le VERDICT part (il portait sur une extraction
+ * illisible), la NOTE reste (elle parle du document, pas de ce qu'on en a lu).
+ */
+function reextraireAudit_(f) {
+  var n = f.getLastRow() - 1;
+  if (n <= 0) return 0;
+  var large = COLONNES_AUDIT_PIECE.length;
+  var lignes = f.getRange(2, 1, n, large).getValues();
+  var remises = 0;
+  for (var i = 0; i < lignes.length; i++) {
+    if (!String(lignes[i][2] || '')) continue;           // ligne vide : rien à refaire
+    if (String(lignes[i][4] || '') === 'à faire') continue; // déjà en attente
+    var vide = [];
+    for (var c = 0; c < 8; c++) vide.push('');           // Statut → Résumé
+    vide[0] = 'à faire';
+    f.getRange(i + 2, 5, 1, 8).setValues([vide]);
+    f.getRange(i + 2, COL_VERDICT_AUDIT_PIECE, 1, 1).setValues([['']]);
+    remises++;
+  }
+  return remises;
 }
 
 /**
@@ -472,7 +598,7 @@ function extraireLotAudit_(f, garde) {
       nom: String(lignes[i][2] || ''),
       domaine: String(lignes[i][1] || '')
     });
-    f.getRange(i + 2, 5, 1, 7).setValues([cellules]);
+    f.getRange(i + 2, 5, 1, 8).setValues([cellules]);
     if (cellules[0] === 'extrait') res.faits++;
     else if (cellules[0] === 'sans texte') res.sansTexte++;
     else res.echecs++;
@@ -523,7 +649,7 @@ function verdictAuditPieces() {
   if (!f || f.getLastRow() < 2) return phraseVerdictAudit_(compterVerdictsAudit_([]));
   var n = f.getLastRow() - 1;
   var statuts = f.getRange(2, 5, n, 1).getValues();
-  var verdicts = f.getRange(2, 12, n, 1).getValues();
+  var verdicts = f.getRange(2, COL_VERDICT_AUDIT_PIECE, n, 1).getValues();
   var juges = [];
   for (var i = 0; i < n; i++) {
     // Seules les lignes EXTRAITES se jugent : une ligne « à faire » non remplie n'est pas un

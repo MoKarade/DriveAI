@@ -873,3 +873,10 @@ button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):ho
 @media (max-width: 760px) {
   .audit-verdicts { bottom: calc(var(--barre-basse-h) + env(safe-area-inset-bottom)); }
 }
+
+/* Le résumé : c'est ce qu'on lit EN PREMIER pour juger, donc il a le poids d'un paragraphe,
+   pas d'une ligne de tableau. */
+.audit-resume {
+  margin: 1rem 0 0; padding: 0.8rem 0.9rem; border-radius: var(--r-m);
+  background: var(--carte-2); line-height: 1.5; overflow-wrap: anywhere;
+}
