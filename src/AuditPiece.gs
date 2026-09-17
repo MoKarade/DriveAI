@@ -329,6 +329,42 @@ function resteAuditPiece_(props) {
 }
 
 /**
+ * Compte les lignes RESTANT à faire en lisant la FEUILLE, jamais la Property.
+ *
+ * ⚠️ Il existe parce que le compteur persisté ment dès qu'une ré-extraction vient de remettre
+ * des lignes « à faire » : une sortie anticipée (budget du jour) qui lirait l'ancien compteur
+ * réécrirait « 0 restants » sur 100 lignes vides, le tag serait déjà posé, et la gate du tick
+ * se refermerait DÉFINITIVEMENT sur des cartes vidées — l'audit détruit au lieu d'être réparé.
+ * La feuille est la source ; la Property n'en est qu'un cache pour la gate.
+ */
+function compterAFaireAudit_(f) {
+  var n = f.getLastRow() - 1;
+  if (n <= 0) return 0;
+  var statuts = f.getRange(2, 5, n, 1).getValues();
+  var restants = 0;
+  for (var i = 0; i < statuts.length; i++) {
+    if (String(statuts[i][0] || '') === 'à faire') restants++;
+  }
+  return restants;
+}
+
+/**
+ * La GATE du tick, en PUR : faut-il appeler la passe ?
+ *
+ * ⚠️ Elle consulte le TAG autant que le compteur, et c'est tout l'objet de cette fonction.
+ * `restants === 0` éteint l'étape — or la RE-EXTRACTION vit DANS la passe : un remède gaté par
+ * un tag que la gate ne lit pas est INERTE, et l'interblocage est parfait (l'étape ne tourne
+ * plus, donc le compteur ne peut plus repasser au-dessus de zéro, donc l'étape ne tournera
+ * jamais). Mesuré le 17/09 : tag bumpé à « c49-3-b », déploiement vert, deux ticks passés,
+ * zéro ligne ré-extraite et une Santé qui annonce « 0 restants — à toi de juger », c'est-à-dire
+ * l'état normal. `null` (compteur absent) reste « je ne sais pas » ⇒ on laisse passer.
+ */
+function auditDoitTourner_(reste, tagPersiste, tagCourant) {
+  if (String(tagPersiste || '') !== String(tagCourant || '')) return true;
+  return reste !== 0;
+}
+
+/**
  * Le point d'entrée UNIQUE de l'audit — le tick comme la main y passent, et c'est ce qui fait
  * que les deux comptent pareil. Tous les retours passent par `noterFinAuditPiece_`.
  *
@@ -367,6 +403,9 @@ function etapeAuditPiece_(garde, opts) {
   if (props.getProperty('DriveAI_AUDIT_PIECE_TAG') !== CONFIG.AUDIT_PIECE_TAG) {
     var remises = reextraireAudit_(f);
     props.setProperty('DriveAI_AUDIT_PIECE_TAG', CONFIG.AUDIT_PIECE_TAG);
+    // ⚠️ Le compteur se réécrit ICI, avant tout `return` possible : le tag vient d'être posé,
+    // donc plus rien ne rouvrira la gate si le compteur reste sur sa valeur d'avant.
+    props.setProperty('DriveAI_AUDIT_PIECE_RESTANTS', String(compterAFaireAudit_(f)));
     journalInfo_('AuditPiece', 'Re-extraction « ' + CONFIG.AUDIT_PIECE_TAG + ' » : '
       + remises + ' ligne(s) remise(s) à faire (verdicts effacés, notes gardées).');
   }
@@ -374,7 +413,7 @@ function etapeAuditPiece_(garde, opts) {
   var aujourdhui = dateGmail_(new Date());
   var consommeJour = opts.manuel ? 0 : budgetJourAudit_(props, aujourdhui);
   if (consommeJour >= CONFIG.AUDIT_PIECE_BUDGET_JOUR_MS) {
-    res.restants = resteAuditPiece_(props) || 0;
+    res.restants = compterAFaireAudit_(f);
     res.fin = 'budget-jour';
     return noterFinAuditPiece_(props, res, !!opts.manuel);
   }

@@ -1252,6 +1252,26 @@ ce qui reste vrai d'une session à l'autre.
   n'attend : une campagne perpétuelle en lecture seule. Réflexe : proposer le transfert, lancer le
   gate, et lire ce qui rougit AVANT d'écrire la justification — c'est le parc qui sait quel budget
   garantit quoi ailleurs.
+- **Une GATE d'extinction qui ne lit pas le TAG rend INERTE le remède gaté par ce tag.** Le
+  17/09, le correctif de l'audit des pièces a été livré, la CI verte, le moteur déployé — et
+  **zéro ligne ré-extraite après deux ticks**. La ré-extraction vit DANS la passe, gatée par
+  `AUDIT_PIECE_TAG` ; la gate du tick, elle, éteignait l'étape sur `restants === 0`. Donc :
+  l'étape ne tourne plus ⇒ le tag n'est jamais lu ⇒ rien ne remet de lignes « à faire » ⇒ le
+  compteur ne repasse jamais au-dessus de zéro ⇒ l'étape ne tournera **jamais**. Interblocage
+  parfait, et la Santé annonçait « 0 restants — à toi de juger », c'est-à-dire l'état NORMAL.
+  Réflexe : pour tout remède gaté par une version, demander **qui appelle le code qui lit la
+  version**, et si cet appelant peut s'éteindre ; la décision devient alors une fonction PURE qui
+  consulte les DEUX (`auditDoitTourner_(reste, tagPersiste, tagCourant)`), testable et mutable.
+  ⚠️ **Et le second défaut était pire que le premier** : même la gate corrigée, la branche de
+  sortie « budget du jour épuisé » relisait le compteur PERSISTÉ — c'est-à-dire la valeur
+  d'AVANT la ré-extraction. Elle aurait réécrit « 0 restants » sur 100 lignes qu'on venait de
+  vider, le tag étant déjà posé : la gate se refermait pour de bon sur des cartes VIDES, l'audit
+  détruit au lieu d'être réparé. Un compteur qui sert de gate se relit **depuis la SOURCE** (ici
+  la feuille) dès que quelque chose vient de la modifier, jamais depuis son propre cache.
+  ⚠️ Corollaire de preuve : la mutation « la branche budget-jour relit l'ancien compteur » est
+  restée VERTE au premier jet — le défaut le plus grave des trois était celui qu'aucun test ne
+  voyait. Une mutation muette sur le chemin le plus coûteux se traite avant d'écrire le rapport.
+
 - **Un déclencheur que le tick RÉINSTALLE ne se coupe pas à la main.** « Ne plus créer » ne
   suffit pas : la coupure livre AUSSI la suppression de l'existant (`deleteTrigger` sous le même
   flag), sinon l'ancien continue de partir et l'utilisateur, qui l'a supprimé une fois, le voit

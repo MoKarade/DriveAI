@@ -288,6 +288,7 @@ test('l\'étape est RÉELLEMENT branchée dans le tick, gatée, et enveloppée �
   assert.ok(code.length > brut.length * 0.4, 'source décommentée trop courte — scan vacueux');
   assert.ok(/etapeAuditPiece_\(/.test(code), 'le tick doit APPELER la passe, pas seulement la définir');
   assert.ok(/resteAuditPiece_\(/.test(code), 'la gate d\'extinction doit être consultée par le tick');
+  assert.ok(/auditDoitTourner_\(/.test(code), 'la DÉCISION de tourner est une fonction pure, pas une condition recopiée');
   // ⚠️ APPELER la gate ne suffit pas : son résultat doit GARDER l'appel. Sans la comparaison à
   // zéro, l'étape reste allumée à vie une fois l'audit fini — elle relirait l'onglet toutes les
   // 5 minutes pour n'y rien trouver. Mutation qui le prouve : retirer `resteAudit !== 0`.
@@ -302,10 +303,128 @@ test('l\'étape est RÉELLEMENT branchée dans le tick, gatée, et enveloppée �
   assert.ok(/budgetCampagnesAtteint_\(\)/.test(bloc), 'le frein budget LLM doit garder l\'étape');
   assert.ok(/resetEnCours_\(\)/.test(bloc), 'une seule main déplace : gatée par le reset');
   assert.ok(/estBudgetDepasse\(\)/.test(bloc), 'budget de TICK (appels LLM), jamais le budget TAIL');
-  assert.match(bloc, /!==\s*0/, 'le compte de restants doit ÉTEINDRE l\'étape, pas seulement être lu');
+  // ⚠️ L'extinction (`restants === 0`) vivait ICI en dur jusqu'au 17/09. Elle a déménagé dans
+  // `auditDoitTourner_` le jour où l'on a mesuré qu'elle fabriquait un INTERBLOCAGE : la
+  // ré-extraction gatée par tag vit DANS la passe, donc une gate qui s'éteint sans lire le tag
+  // rend le remède inerte à vie. Ce test ancre désormais le FAIT (la décision est prise par la
+  // fonction pure, et le TAG lui est passé), jamais la forme qu'avait la condition.
+  assert.match(bloc, /auditDoitTourner_\(\s*resteAudit\s*,/, 'la gate pure reçoit le compte de restants');
+  assert.match(bloc, /AUDIT_PIECE_TAG/, 'la gate du tick doit consulter le TAG, sinon la ré-extraction est inerte');
   // L'ENVELOPPE se prouve par son CATCH, en aval de l'appel — un `try {` en amont serait
   // satisfait par n'importe quel try du tick, et il y en a une douzaine.
   const apres = code.slice(finBloc, finBloc + 400);
   assert.match(apres, /catch[\s\S]{0,40}journalErreur_\('AuditPiece'/,
     'ENVELOPPÉE : un échec de l\'audit ne doit jamais bloquer l\'intake, et il doit se DIRE');
+});
+
+/* ---------- L'INTERBLOCAGE du 17/09 : une gate qui s'éteint sans lire le tag ---------- */
+
+test('auditDoitTourner_ : le tag ROUVRE la gate même à zéro restant', () => {
+  const c = ctx();
+  // Le cas EXACT mesuré en production : 100 documents extraits (compteur 0), tag bumpé pour
+  // refaire des lignes illisibles. Sans cette ligne, la ré-extraction n'est JAMAIS atteinte.
+  assert.strictEqual(c.auditDoitTourner_(0, 'c49-3-a', 'c49-3-b'), true);
+  assert.strictEqual(c.auditDoitTourner_(0, null, 'c49-3-b'), true, 'tag jamais posé ⇒ il y a une passe à faire');
+  // Et l'extinction tient toujours quand il n'y a vraiment rien à faire.
+  assert.strictEqual(c.auditDoitTourner_(0, 'c49-3-b', 'c49-3-b'), false);
+  // « je ne sais pas » ≠ « zéro » : on laisse passer pour que la passe pose le compteur.
+  assert.strictEqual(c.auditDoitTourner_(null, 'c49-3-b', 'c49-3-b'), true);
+  assert.strictEqual(c.auditDoitTourner_(66, 'c49-3-b', 'c49-3-b'), true);
+});
+
+test('compterAFaireAudit_ compte depuis la FEUILLE, pas depuis le compteur persisté', () => {
+  const c = ctx();
+  const statuts = [['fait'], ['à faire'], ['à faire'], [''], ['sans texte']];
+  const f = {
+    getLastRow: () => statuts.length + 1,
+    getRange: (l, col, n) => {
+      assert.strictEqual(col, 5, 'la colonne Statut');
+      assert.strictEqual(l, 2, 'on saute l\'en-tête');
+      return { getValues: () => statuts.slice(0, n) };
+    }
+  };
+  assert.strictEqual(c.compterAFaireAudit_(f), 2);
+  assert.strictEqual(c.compterAFaireAudit_({ getLastRow: () => 1 }), 0, 'onglet vide ⇒ 0, sans lecture');
+});
+
+/* ---------- Le compteur qui MENT après une ré-extraction (le pire des deux) ---------- */
+
+test('budget du jour épuisé : les restants se comptent dans la FEUILLE, jamais dans la Property', () => {
+  // Scénario RÉEL du 17/09, un cran plus loin : la ré-extraction vient de remettre 100 lignes
+  // « à faire » et de poser le tag ; le budget du jour est épuisé, donc la passe sort tout de
+  // suite. Si elle réécrit le compteur d'AVANT (0), la gate se referme sur des cartes VIDÉES et
+  // plus rien ne les ré-extraira : l'audit détruit au lieu d'être réparé.
+  const props = new Map([
+    ['DriveAI_AUDIT_PIECE_RESTANTS', '0'],            // valeur d'avant la ré-extraction
+    ['DriveAI_AUDIT_PIECE_TAG', 'c49-3-b'],           // tag DÉJÀ posé : plus rien ne rouvrira
+    ['DriveAI_AUDIT_PIECE_JOUR_MS', '2026/09/17|999999999'], // budget du jour épuisé
+  ]);
+  const statuts = [['à faire'], ['à faire'], ['fait']];
+  const feuille = {
+    getLastRow: () => statuts.length + 1,
+    getRange: (l, col, n, large) => ({
+      getValues: () => (col === 1
+        ? statuts.map((s, i) => { const r = []; r[2] = 'f' + i; r[4] = s[0]; return r; })
+        : statuts.slice(0, n)),
+      setValues: () => {},
+    }),
+  };
+  const c = load(['Config.gs', 'Consolidation.gs', 'Journal.gs', 'AuditPiece.gs'], {
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (k) => (props.has(k) ? props.get(k) : null),
+        setProperty: (k, v) => { props.set(k, String(v)); },
+      }),
+    },
+  });
+  c.dateGmail_ = () => '2026/09/17';
+  // ⚠️ APRÈS le chargement : `Config.gs` définit `feuille_`, donc un override passé au sandbox
+  // serait ÉCRASÉ par le chargement — la mutation resterait muette sans que rien ne le dise.
+  c.feuille_ = () => feuille;
+
+  const res = c.etapeAuditPiece_(() => false, {});
+  assert.strictEqual(res.fin, 'budget-jour', 'la passe sort bien sur le budget du jour');
+  assert.strictEqual(res.restants, 2, 'les deux lignes « à faire » de la FEUILLE');
+  assert.strictEqual(props.get('DriveAI_AUDIT_PIECE_RESTANTS'), '2',
+    'le compteur persisté doit dire la vérité, sinon la gate se referme pour toujours');
+  // Contrôle : avec ce compteur, la gate rouvre bien — la boucle est complète.
+  assert.strictEqual(c.auditDoitTourner_(2, 'c49-3-b', 'c49-3-b'), true);
+});
+
+test('ré-extraction puis EXCEPTION : le compteur est déjà écrit, la gate rouvre quand même', () => {
+  // Le seul chemin où l'écriture immédiate du compteur n'est pas redondante — et il est
+  // exactement celui qui fait le plus mal : le tag vient d'être posé, les lignes sont vidées,
+  // et une exception AVANT la première sortie normale ferait sortir la passe sans jamais
+  // passer par `noterFinAuditPiece_`. Sans ce filet, la gate reste fermée sur 100 cartes vides.
+  const props = new Map([
+    ['DriveAI_AUDIT_PIECE_RESTANTS', '0'],
+    ['DriveAI_AUDIT_PIECE_TAG', 'c49-3-a'],   // tag ANCIEN : la ré-extraction va tourner
+  ]);
+  const statuts = [['fait'], ['fait']];
+  const feuille = {
+    getLastRow: () => statuts.length + 1,
+    getRange: (l, col, n) => ({
+      getValues: () => (col === 1
+        ? statuts.map((s, i) => { const r = []; r[2] = 'f' + i; r[4] = s[0]; return r; })
+        : statuts.slice(0, n)),
+      setValues: (v) => { if (col === 5 && v[0][0] === 'à faire') statuts[l - 2][0] = 'à faire'; },
+    }),
+    appendRow: () => {},   // `journalInfo_` écrit au Journal par la même feuille factice
+  };
+  const c = load(['Config.gs', 'Consolidation.gs', 'Journal.gs', 'AuditPiece.gs'], {
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (k) => (props.has(k) ? props.get(k) : null),
+        setProperty: (k, v) => { props.set(k, String(v)); },
+      }),
+    },
+  });
+  c.feuille_ = () => feuille;
+  c.dateGmail_ = () => { throw new Error('blip Google juste après la ré-extraction'); };
+
+  assert.throws(() => c.etapeAuditPiece_(() => false, {}), /blip Google/);
+  assert.strictEqual(props.get('DriveAI_AUDIT_PIECE_RESTANTS'), '2',
+    'le compteur doit avoir été posé AVANT le point qui lève');
+  assert.strictEqual(c.auditDoitTourner_(2, 'c49-3-b', 'c49-3-b'), true,
+    'la gate rouvre au tick suivant malgré le tag déjà posé');
 });
