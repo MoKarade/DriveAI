@@ -228,6 +228,41 @@ conséquence assumée en §5.2 ne s'applique pas à eux.
 `RATTRAPAGE_PIECE_TAG` est livré VIDE, et l'étape refuse en plus de démarrer tant que l'audit a
 des documents à extraire.
 
+⚠️⚠️ **SECOND AMENDEMENT, 18/09 — LE STOCK COMPLET PART AUSSI PAR LE TICK, ET CE N'EST PAS UN
+DÉTAIL : C'EST UNE DÉCISION PRISE SANS LE FEU VERT DE MARC, DANS LE SENS PRUDENT.** Marc, le
+18/09 : « je veux que ce soit lia qui lise tous mes fichiers », puis « go … jusqu'à avoir une
+boucle de lecture fiable ». Le module livré est `src/LectureFile.gs` (L36). Il ne construit PAS
+le runner de la Q1. Trois faits, tous POSTÉRIEURS au 16/09 :
+
+1. **Le mécanisme d'idempotence qui manquait existe, et il ne vit pas ici.** Depuis les ADR 0006
+   et 0007 de MemoryAI, une vraie lecture REMPLACE la pièce d'inventaire, et la Mémoire sert une
+   FILE (`GET /api/pieces/file`) : un papier lu en sort tout seul. Le plafond de 200 `fileId`
+   qui rendait la voie du tick impraticable à cette échelle **n'existe plus** — c'était la
+   raison technique écrite au premier amendement, et elle est levée.
+2. **Le runner gagnerait moins que prévu, et ce gain n'est pas mesuré.** L'OCR reste dans Apps
+   Script dans les DEUX voies (c'est Drive qui convertit) : le runner n'économise que le temps
+   de l'appel Haiku, sur les ~10 à 20 s mesurées par document. Tant que la part de l'OCR n'est
+   pas mesurée, « le runner est beaucoup plus rapide » est une supposition.
+3. **Le runner exigerait une SECONDE implémentation de l'extraction** (le prompt, le parseur
+   tolérant, `pieceMemoire_`, le titulaire) hors d'Apps Script. C'est « une règle et demie » :
+   un papier lu par le runner arriverait à la Mémoire autrement qu'un papier classé aujourd'hui.
+
+**Ce que ça COÛTE, et ce n'est pas adouci : du CALENDRIER.** À 17 min/j de budget des pièces
+(partagé, jamais ajouté) et ~15 s par document, c'est de l'ordre de 60 à 70 documents par
+jour — donc **environ deux mois** pour les ~2 645 papiers restants, pas deux jours. La Q1
+avait été choisie par Marc CONTRE ce délai. Si deux mois est trop long, deux leviers existent
+sans rien réécrire : réallouer des minutes au budget des pièces (une décision, pas un réglage),
+ou construire le runner — la file de la Mémoire sert les deux voies à l'identique, elle ne sait
+pas qui la consomme.
+
+**Ce qui va dans le sens PRUDENT** : la frontière reste ÉTROITE. Aucun texte intégral ne quitte
+le compte Google pour un runner ; seuls les champs sortent, comme pour les 110 premiers
+documents. La conséquence assumée en §5.2 ne s'applique donc à AUCUN document lu par ce module.
+
+⚠️ **La Q1 n'est toujours pas révoquée.** Elle reste la décision de Marc ; ce module la rend
+simplement non nécessaire pour COMMENCER. `LECTURE_FILE_TAG` est livré ARMÉ (`l36-a`) sur sa
+demande explicite, et le vider éteint cette campagne et elle seule.
+
 **Q2 — les proches : DriveAI extrait un champ « titulaire ».** L'option écartée était de pousser
 sans distinction — plus simple, et elle aurait retiré à Marc la possibilité de revenir en arrière
 pour eux SEULS : il aurait fallu re-lire les 19 900 documents pour savoir lesquels sont les leurs.

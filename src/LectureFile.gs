@@ -340,6 +340,12 @@ function etapeLectureFile_(garde, opts) {
       motif = detail.motif;
       acceptees = detail.acceptees;
     }
+    // ⚠️ « extraction-vide » PENDANT une panne de la plateforme LLM n'est PAS un verdict du
+    // document : `extrairePiece_` rend `null` aussi bien quand le modèle n'a rien tiré que quand
+    // l'API est tombée, et c'est le PREMIER document de la panne qui porte ce motif (les
+    // suivants sont arrêtés par `verdictPiece_`). Le noter sortirait de la file un papier
+    // parfaitement lisible, jusqu'au prochain extracteur.
+    if (motif === 'extraction-vide' && estPannePlateforme_()) motif = 'panne-llm';
     res.dernierMotif = motif;
 
     // ⚠️ UNE PANNE DE CANAL NE SE NOTE PAS, et elle arrête la boucle : le papier doit rester

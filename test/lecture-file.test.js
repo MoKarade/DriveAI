@@ -236,6 +236,32 @@ test('trois lectures Drive impossibles D\'AFFILÉE : les verdicts déjà posés 
   assert.strictEqual(res.restants, 4);
 });
 
+test('⚠️ une extraction vide PENDANT une panne LLM est une PANNE, pas un verdict du document', () => {
+  const props = JETON();
+  const c = montage(INDEX, props, {
+    file: () => ({ ok: true, file: [ID(1), ID(2)], restants: 2 }),
+    envoi: () => ({ motif: 'extraction-vide', acceptees: 0 }),
+  });
+  // La panne se DÉCLARE pendant l'appel : avant lui l'étape la voit saine (sinon elle ne
+  // démarrerait pas), après lui `estPannePlateforme_` répond vrai — comme en production, où
+  // c'est `extrairePiece_` qui la signale.
+  let appels = 0;
+  const envoiMock = c.pousserPieceApresClassement_;
+  c.pousserPieceApresClassement_ = (...a) => { appels++; c.estPannePlateforme_ = () => true; return envoiMock(...a); };
+  const res = c.etapeLectureFile_(() => false, {});
+  assert.strictEqual(res.fin, 'canal-panne-llm');
+  assert.strictEqual(c.verdictsNotes.length, 0, 'le PREMIER document de la panne sortirait de la file à tort');
+  assert.strictEqual(appels, 1, 'et la boucle s’arrête : les suivants échoueraient pareil');
+
+  // Contrôle : SANS panne, le même motif reste un verdict du document.
+  const c2 = montage(INDEX, JETON(), {
+    file: () => ({ ok: true, file: [ID(1)], restants: 1 }),
+    envoi: () => ({ motif: 'extraction-vide', acceptees: 0 }),
+  });
+  c2.etapeLectureFile_(() => false, {});
+  assert.deepStrictEqual(c2.verdictsNotes.map((v) => v.motif), ['extraction-vide']);
+});
+
 test('UNE lecture impossible isolée reste un verdict du document', () => {
   const props = JETON();
   const c = montage(INDEX, props, { file: () => ({ ok: true, file: [ID(1), ID(2)], restants: 2 }) });

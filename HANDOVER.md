@@ -4,7 +4,28 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🟦 EN COURS — 2026-09-18 : C49-5, le rattrapage des pièces `04` + `01`. REPRENDRE ICI.**
+> **🟦 EN COURS — 2026-09-18 (soir) : L36, la lecture du STOCK COMPLET par la file de la Mémoire.**
+>
+> **En une phrase** : `src/LectureFile.gs` demande à MemoryAI « qu'est-ce que je lis ensuite ? »
+> (`GET /api/pieces/file`), lit dans l'ordre reçu par le MÊME chemin que C49-5, et note à la
+> Mémoire ce qui ne donne rien. Il ne tient AUCUNE liste : un papier lu sort de la file tout
+> seul, parce que sa lecture remplace sa pièce d'inventaire (MemoryAI ADR 0006 + 0007).
+>
+> **Ce qu'il faut lire sur la Santé** : « Lecture par la file (L36) » — restants, dernière passe
+> (lus / sans résultat), motif de fin. `canal-file-absente` = la Mémoire déployée ne connaît pas
+> encore la route (404) : ce n'est PAS une panne, et ça ne suspend pas les autres canaux.
+> `rattrapage-en-cours` ou `audit-en-cours` = une campagne des pièces passe avant (budget partagé).
+>
+> ⚠️ **DÉCISION PRISE SANS FEU VERT, dans le sens prudent** : la voie du TICK (frontière étroite)
+> plutôt que le runner de la Q1. Coût : ~2 mois de calendrier pour ~2 645 papiers à 17 min/j.
+> Tout est dans l'ADR-0061 §9, second amendement — y compris les deux leviers si c'est trop long.
+>
+> ⚠️ `LECTURE_FILE_TAG: 'l36-a'` est livré ARMÉ (demande explicite de Marc). Le vider éteint cette
+> campagne et elle seule. Geste manuel : `LectureFile.gs` → `lireFileMaintenant` → Exécuter.
+>
+> ⚠️ Relevé en chemin, NON corrigé : `C28-138` (la gate du rattrapage C49-5 ne se referme jamais).
+>
+> **🟦 2026-09-18 : C49-5, le rattrapage des pièces `04` + `01`.**
 >
 > **En une phrase** : la tranche est **TERMINÉE** — le tick a fini les 55 restants dans la nuit
 > (Santé du 18/09 15:57 UTC : « 0 restants · tranche terminée »), et **78 pièces** sont arrivées
