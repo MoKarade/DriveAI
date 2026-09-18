@@ -869,6 +869,10 @@ function envoyerLotPiecesMemoire_(lot, jeton, props) {
       ok: true,
       recus: Number(corps.recus) || 0,
       acceptees: Number(corps.acceptees) || 0,
+      // ⚠️ `remplacees` (MemoryAI ADR 0006) : combien de pièces d'INVENTAIRE cette écriture a
+      // remplacées. SOUS-ENSEMBLE de `acceptees`. C'est le seul chiffre qui dise qu'un papier
+      // est SORTI de la file de lecture — `acceptees` dit seulement qu'une ligne a été créée.
+      remplacees: Number(corps.remplacees) || 0,
       dejaPresentes: Number(corps.dejaPresentes) || 0,
       oubliees: Number(corps.oubliees) || 0,
       refusees: Array.isArray(corps.refusees) ? corps.refusees.length : 0,
@@ -897,7 +901,7 @@ function envoyerLotPiecesMemoire_(lot, jeton, props) {
 function pousserPieceApresClassement_(src, decision, texteOcr, opts) {
   opts = opts || {};
   var props = PropertiesService.getScriptProperties();
-  var res = { motif: 'desactive', envoyees: 0, acceptees: 0, dejaPresentes: 0,
+  var res = { motif: 'desactive', envoyees: 0, acceptees: 0, remplacees: 0, dejaPresentes: 0,
               document: (decision && decision.nom) || '' };
 
   // ⚠️ DEUX INTERRUPTEURS, UN SEUL CANAL (C49-5). Le flux vivant est gouverné par
@@ -964,6 +968,7 @@ function pousserPieceApresClassement_(src, decision, texteOcr, opts) {
   if (!envoi.ok) { res.motif = envoi.raison; res.envoyees = 0; return noterFinPiece_(props, res); }
 
   res.acceptees = envoi.acceptees;
+  res.remplacees = envoi.remplacees || 0;
   res.dejaPresentes = envoi.dejaPresentes + envoi.oubliees;
   res.motif = envoi.refusees ? 'refusee' : 'ok';
   if (envoi.premierRefus) {

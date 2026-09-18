@@ -153,7 +153,7 @@ function montage(lignesIndex, props, options) {
   c.extraireTexte_ = (blob) => (o.texte ? o.texte(blob.id) : 'du texte de ' + blob.id);
   c.pousserPieceApresClassement_ = (src, decision, texte, opts) => {
     c.appels.push({ cle: src.cle, nom: decision.nom, opts: opts });
-    const r = o.envoi ? o.envoi(src.cle) : { motif: 'ok', acceptees: 1 };
+    const r = o.envoi ? o.envoi(src.cle) : { motif: 'ok', acceptees: 1, remplacees: 1 };
     return r;
   };
   return c;
@@ -197,7 +197,21 @@ test('⚠️ un « ok » que la Mémoire n\'a PAS accepté est noté sans-effet 
   const props = JETON();
   const c = montage(INDEX, props, {
     file: () => ({ ok: true, file: [ID(1)], restants: 1 }),
-    envoi: () => ({ motif: 'ok', acceptees: 0 }),
+    envoi: () => ({ motif: 'ok', acceptees: 0, remplacees: 0 }),
+  });
+  const res = c.etapeLectureFile_(() => false, {});
+  assert.deepStrictEqual(c.verdictsNotes.map((v) => v.motif), ['sans-effet']);
+  assert.strictEqual(res.lus, 0);
+});
+
+test('⚠️⚠️ une pièce ACCEPTÉE qui n’a rien REMPLACÉ est sans effet — `acceptees` ne prouve pas la sortie de file', () => {
+  // Le constat de la revue : une pièce dont l'empreinte diffère de celle de l'inventaire (autre
+  // sujet, exemplaires dans un autre ordre) est ACCEPTÉE comme une pièce NEUVE. L'inventaire
+  // reste en place, donc le papier revient — et `acceptees: 1` dit que tout va bien.
+  const props = JETON();
+  const c = montage(INDEX, props, {
+    file: () => ({ ok: true, file: [ID(1)], restants: 1 }),
+    envoi: () => ({ motif: 'ok', acceptees: 1, remplacees: 0 }),
   });
   const res = c.etapeLectureFile_(() => false, {});
   assert.deepStrictEqual(c.verdictsNotes.map((v) => v.motif), ['sans-effet']);
@@ -396,7 +410,7 @@ test('le canal a TROIS interrupteurs : vider LECTURE_FILE_TAG éteint la file et
   c.budgetCampagnesAtteint_ = () => false;
   c.extrairePiece_ = () => ({ type: 'Permis' });
   c.pieceMemoire_ = () => ({ type: 'Permis' });
-  c.envoyerLotPiecesMemoire_ = () => ({ ok: true, acceptees: 1, dejaPresentes: 0, oubliees: 0, refusees: 0 });
+  c.envoyerLotPiecesMemoire_ = () => ({ ok: true, acceptees: 1, remplacees: 1, dejaPresentes: 0, oubliees: 0, refusees: 0 });
   const decision = { nom: 'a.pdf', domaine: '02 · Finances', statut: 'classé', chemin: '' };
 
   c.CONFIG.PIECE_PUSH = false;
@@ -409,7 +423,7 @@ test('le canal a TROIS interrupteurs : vider LECTURE_FILE_TAG éteint la file et
   c.CONFIG.RATTRAPAGE_PIECE_TAG = '';
   const r = c.pousserPieceApresClassement_({ cle: 'k' }, decision, 'texte', { file: true });
   assert.strictEqual(r.motif, 'ok');
-  assert.strictEqual(r.acceptees, 1, 'l\'étape a besoin de `acceptees` pour reconnaître un envoi sans effet');
+  assert.strictEqual(r.remplacees, 1, 'la file juge sur `remplacees` : il doit TRAVERSER le canal');
   assert.strictEqual(c.pousserPieceApresClassement_({ cle: 'k' }, decision, 'texte', { rattrapage: true }).motif, 'desactive',
     'et le tag de la FILE ne doit pas allumer le RATTRAPAGE');
 });

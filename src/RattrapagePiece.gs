@@ -470,22 +470,22 @@ function rattraperUnDocument_(doc, manuel) {
  * ⚠️ `optsCanal` désigne l'INTERRUPTEUR (`rattrapage` ou `file`) : chaque campagne a le sien,
  * et il est re-vérifié au point d'envoi par `pousserPieceApresClassement_`.
  *
- * @return {{motif:string, acceptees:number}}
+ * @return {{motif:string, acceptees:number, remplacees:number}}
  */
 function rattraperUnDocumentDetail_(doc, manuel, optsCanal) {
   var blob;
   try {
     var fichier = DriveApp.getFileById(doc.fileId);
-    if (fichier.getSize() > CONFIG.OCR_TAILLE_MAX) return { motif: 'sans-texte', acceptees: 0 };
+    if (fichier.getSize() > CONFIG.OCR_TAILLE_MAX) return { motif: 'sans-texte', acceptees: 0, remplacees: 0 };
     blob = fichier.getBlob();
   } catch (e) {
     journalErreur_('RattrapagePiece', 'Lecture impossible : ' + e);
-    return { motif: 'lecture-impossible', acceptees: 0 };
+    return { motif: 'lecture-impossible', acceptees: 0, remplacees: 0 };
   }
 
   var texte = extraireTexte_(blob);
-  if (texte === null) return { motif: 'ocr-echec', acceptees: 0 };
-  if (!String(texte).trim()) return { motif: 'sans-texte', acceptees: 0 };
+  if (texte === null) return { motif: 'ocr-echec', acceptees: 0, remplacees: 0 };
+  if (!String(texte).trim()) return { motif: 'sans-texte', acceptees: 0, remplacees: 0 };
 
   var envoi = pousserPieceApresClassement_(
     { cle: doc.cle },
@@ -495,7 +495,8 @@ function rattraperUnDocumentDetail_(doc, manuel, optsCanal) {
   );
   return {
     motif: envoi && envoi.motif ? envoi.motif : 'echec',
-    acceptees: Number(envoi && envoi.acceptees) || 0
+    acceptees: Number(envoi && envoi.acceptees) || 0,
+    remplacees: Number(envoi && envoi.remplacees) || 0
   };
 }
 

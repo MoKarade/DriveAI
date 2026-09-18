@@ -68,18 +68,25 @@ var VERDICTS_ACCEPTES_MEMOIRE_ = ['sans-texte', 'ocr-echec', 'lecture-impossible
  * ⚠️ `null` recouvre deux cas opposés, et l'appelant les distingue par `issueRattrapage_` :
  * le papier est LU (il sortira de la file tout seul), ou c'est une PANNE (il doit y rester).
  *
- * ⚠️⚠️ `sans-effet` : le document a été lu et la pièce envoyée, mais la Mémoire n'a RIEN
- * accepté (déjà présente, ou oubliée par Marc). Sans ce verdict, il reviendrait en tête de
- * file à chaque passe et coûterait un OCR ET un appel Haiku à chaque fois — mot pour mot
- * l'écriture inerte que l'ADR 0006 de MemoryAI a corrigée, recommise par la file.
+ * ⚠️⚠️ `sans-effet` : le document a été lu et la pièce envoyée, mais AUCUNE pièce d'inventaire
+ * n'a été REMPLACÉE. Sans ce verdict, il reviendrait en tête de file à chaque passe et
+ * coûterait un OCR ET un appel Haiku à chaque fois — mot pour mot l'écriture inerte que
+ * l'ADR 0006 de MemoryAI a corrigée, recommise par la file.
  *
- * @param {string} motif      rendu par le canal
- * @param {number} acceptees  ce que la Mémoire dit avoir écrit
+ * ⚠️⚠️ ON JUGE SUR `remplacees`, JAMAIS SUR `acceptees` (revue du 18/09). La file ne sert QUE
+ * des papiers d'inventaire : toute lecture réussie DOIT donc en remplacer un. Une pièce
+ * ACCEPTÉE sans remplacement — sujet différent, exemplaires dans un autre ordre, donc une
+ * autre empreinte — crée une ligne NEUVE et laisse l'inventaire en place : `acceptees` vaut 1,
+ * tout a l'air d'avoir marché, et le papier revient pour toujours. `remplacees` est le seul
+ * chiffre qui dise « ce papier est SORTI de la file ».
+ *
+ * @param {string} motif       rendu par le canal
+ * @param {number} remplacees  combien de pièces d'inventaire la Mémoire dit avoir remplacées
  */
-function verdictDeLecture_(motif, acceptees) {
+function verdictDeLecture_(motif, remplacees) {
   var m = String(motif || '');
   if (issueRattrapage_(m) === 'panne') return null;
-  if (m === 'ok') return (Number(acceptees) || 0) > 0 ? null : 'sans-effet';
+  if (m === 'ok') return (Number(remplacees) || 0) > 0 ? null : 'sans-effet';
   // Ne devrait pas arriver (la file ne sert que ce que l'Index dit classé) ; si ça arrive, le
   // document n'est plus où l'inventaire l'a vu.
   if (m === 'non-classe') return 'introuvable';
@@ -328,7 +335,7 @@ function etapeLectureFile_(garde, opts) {
     var fileId = demande.file[i];
     var doc = parFileId[fileId];
 
-    var motif, acceptees = 0;
+    var motif, remplacees = 0;
     if (!doc || String(doc.statut).toLowerCase().indexOf('class') !== 0) {
       // L'inventaire l'a vu, l'Index ne le connaît plus comme classé : déplacé, supprimé, ou
       // reparti en quarantaine. Aucune lecture n'est tentée — donc rien n'est payé.
@@ -338,7 +345,7 @@ function etapeLectureFile_(garde, opts) {
     } else {
       var detail = rattraperUnDocumentDetail_(doc, manuel, { file: true, manuel: manuel });
       motif = detail.motif;
-      acceptees = detail.acceptees;
+      remplacees = detail.remplacees;
     }
     // ⚠️ « extraction-vide » PENDANT une panne de la plateforme LLM n'est PAS un verdict du
     // document : `extrairePiece_` rend `null` aussi bien quand le modèle n'a rien tiré que quand
@@ -368,7 +375,7 @@ function etapeLectureFile_(garde, opts) {
       fragiles = 0;
     }
 
-    var verdict = verdictDeLecture_(motif, acceptees);
+    var verdict = verdictDeLecture_(motif, remplacees);
     if (verdict) {
       verdicts.push({ file_id: fileId, motif: verdict });
       res.sansResultat++;
