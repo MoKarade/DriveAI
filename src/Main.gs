@@ -638,6 +638,28 @@ function tickDriveAI() {
       }
     } catch (e) { journalErreur_('RattrapagePiece', 'Rattrapage des pièces différé : ' + e); }
 
+    // LECTURE PAR LA FILE (L36) : le stock COMPLET, dans l'ordre que la Mémoire sert. Placée
+    // JUSTE APRÈS le rattrapage : les trois campagnes des pièces partagent le même budget
+    // quotidien et sont mutuellement exclusives — celle-ci refuse de démarrer tant que
+    // l'audit ou la tranche C49-5 ont quelque chose à faire.
+    //
+    // ⚠️ La gate lit UNE Property et ne touche pas au réseau : file vide ⇒ une re-sonde toutes
+    // les six heures, pas 288 appels par jour pour apprendre qu'il n'y a rien.
+    //
+    // Enveloppée : un échec de la lecture ne doit JAMAIS bloquer l'intake.
+    try {
+      var etatFile = null;
+      try {
+        etatFile = decoderEtatLectureFile_(
+          PropertiesService.getScriptProperties().getProperty('DriveAI_LECTURE_FILE_ETAT'),
+          CONFIG.LECTURE_FILE_TAG);
+      } catch (eFile) { etatFile = null; } // « je ne sais pas » ⇒ on laisse la passe sonder
+      if (lectureFileDoitTourner_(CONFIG.LECTURE_FILE_TAG, etatFile, Date.now())
+          && !estBudgetDepasse() && !budgetCampagnesAtteint_() && !resetEnCours_()) {
+        etapeLectureFile_(estBudgetDepasse, {});
+      }
+    } catch (e) { journalErreur_('LectureFile', 'Lecture par la file différée : ' + e); }
+
     // PÉRIMÈTRE DES PIÈCES (C49-4 étape A) : combien de documents la Mémoire aurait à lire.
     // Placée APRÈS l'audit et gatée sur son TAG seul : c'est une passe ONE-SHOT — une lecture
     // de l'Index en un `getValues`, puis plus jamais. Aucun appel LLM, aucun octet qui sort du

@@ -459,27 +459,44 @@ function issueRattrapage_(motif) {
  * Mémoire autrement qu'un papier classé aujourd'hui, et rien ne le dirait.
  */
 function rattraperUnDocument_(doc, manuel) {
+  return rattraperUnDocumentDetail_(doc, manuel, { rattrapage: true, manuel: !!manuel }).motif;
+}
+
+/**
+ * Le même geste, avec ce que la Mémoire a RÉPONDU (L36). `LectureFile.gs` en a besoin : un
+ * « ok » dont `acceptees` vaut 0 n'a rien changé en Mémoire, et la file doit le savoir —
+ * sinon le document y revient et re-coûte son OCR et son appel Haiku à chaque passe.
+ *
+ * ⚠️ `optsCanal` désigne l'INTERRUPTEUR (`rattrapage` ou `file`) : chaque campagne a le sien,
+ * et il est re-vérifié au point d'envoi par `pousserPieceApresClassement_`.
+ *
+ * @return {{motif:string, acceptees:number}}
+ */
+function rattraperUnDocumentDetail_(doc, manuel, optsCanal) {
   var blob;
   try {
     var fichier = DriveApp.getFileById(doc.fileId);
-    if (fichier.getSize() > CONFIG.OCR_TAILLE_MAX) return 'sans-texte';
+    if (fichier.getSize() > CONFIG.OCR_TAILLE_MAX) return { motif: 'sans-texte', acceptees: 0 };
     blob = fichier.getBlob();
   } catch (e) {
     journalErreur_('RattrapagePiece', 'Lecture impossible : ' + e);
-    return 'lecture-impossible';
+    return { motif: 'lecture-impossible', acceptees: 0 };
   }
 
   var texte = extraireTexte_(blob);
-  if (texte === null) return 'ocr-echec';
-  if (!String(texte).trim()) return 'sans-texte';
+  if (texte === null) return { motif: 'ocr-echec', acceptees: 0 };
+  if (!String(texte).trim()) return { motif: 'sans-texte', acceptees: 0 };
 
   var envoi = pousserPieceApresClassement_(
     { cle: doc.cle },
     { nom: doc.nom, domaine: doc.domaine, statut: doc.statut, chemin: doc.chemin },
     texte,
-    { rattrapage: true, manuel: !!manuel }
+    optsCanal
   );
-  return envoi && envoi.motif ? envoi.motif : 'echec';
+  return {
+    motif: envoi && envoi.motif ? envoi.motif : 'echec',
+    acceptees: Number(envoi && envoi.acceptees) || 0
+  };
 }
 
 /**

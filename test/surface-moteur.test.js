@@ -219,6 +219,12 @@ const CONTRAT = [
   // c'est le seul moyen de vérifier une réparation avant minuit. `diagnosticRattrapagePiece`
   // est en plus ce qui permet de lire le COÛT d'une tranche AVANT de la dépenser.
   'rattraperPiecesMaintenant', 'diagnosticRattrapagePiece',
+  // La LECTURE PAR LA FILE (L36). `decoderEtatLectureFile_`, `lectureFileDoitTourner_` et
+  // `etapeLectureFile_` sont appelées par `Main.gs` ; `texteSanteLectureFile_` par
+  // `Journal.gs` ; le module consomme `rattraperUnDocumentDetail_` et `issueRattrapage_` de
+  // `RattrapagePiece.gs`. `lireFileMaintenant` est le chemin que seul MARC emprunte.
+  'decoderEtatLectureFile_', 'lectureFileDoitTourner_', 'etapeLectureFile_',
+  'texteSanteLectureFile_', 'rattraperUnDocumentDetail_', 'lireFileMaintenant',
   'inventorierDoublons_', 'balayerExemplairesDoublons_',
   'ecrireVerdictsDoublons_', 'feuilleRapportDoublons_', 'texteSanteDoublons_', 'pageListeDrive_',
   'texteSanteHistoGmail_', // Main.gs, appelée par Journal.gs (ligne de Santé C28-99)

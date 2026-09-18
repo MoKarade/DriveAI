@@ -910,9 +910,13 @@ function pousserPieceApresClassement_(src, decision, texteOcr, opts) {
   // une garde n'existe qu'aux endroits qui la consultent. `opts.manuel` est l'exception NOMMÉE
   // — le geste de Marc depuis l'éditeur, avant même qu'un tag soit posé — et il voyage
   // explicitement plutôt que d'être déduit.
-  var actif = opts.rattrapage
-    ? (!!String(CONFIG.RATTRAPAGE_PIECE_TAG || '') || !!opts.manuel)
-    : !!CONFIG.PIECE_PUSH;
+  // ⚠️ TROIS interrupteurs depuis L36 : la lecture par la FILE a le sien (`LECTURE_FILE_TAG`),
+  // pour la même raison que le rattrapage — vider un tag doit éteindre SA campagne et elle seule.
+  var actif = opts.file
+    ? (!!String(CONFIG.LECTURE_FILE_TAG || '') || !!opts.manuel)
+    : opts.rattrapage
+      ? (!!String(CONFIG.RATTRAPAGE_PIECE_TAG || '') || !!opts.manuel)
+      : !!CONFIG.PIECE_PUSH;
   var jeton = actif ? props.getProperty('DriveAI_MEMORYAI_TOKEN') : '';
   var statut = String((decision && decision.statut) || '').toLowerCase();
   var motif = verdictPiece_({

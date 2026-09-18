@@ -58,7 +58,7 @@ function chargerAvecSanteMock(indexCache, props) {
   // qu'une campagne qui DÉPENSE avance — et, quand elle n'avance pas, laquelle des six causes
   // (non armée, jeton, suspension, frein, audit en cours, budget du jour) la retient.
   const ctx = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'GoogleApi.gs', 'TriGmail.gs', 'Doublons.gs',
-    'Gmail.gs', 'Migration.gs', 'Memoire.gs', 'AuditPiece.gs', 'PerimetrePiece.gs', 'RattrapagePiece.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
+    'Gmail.gs', 'Migration.gs', 'Memoire.gs', 'AuditPiece.gs', 'PerimetrePiece.gs', 'RattrapagePiece.gs', 'LectureFile.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
     { PropertiesService: mockProps(props) });
   const captured = [];
   // feuille_ mocké : capture l'unique setValues de « Santé » ; `getLastRow: 1` = rapport des
@@ -71,7 +71,7 @@ function chargerAvecSanteMock(indexCache, props) {
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 15 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 16 lignes de métadonnées (une seule écriture Sheet)', () => {
   // 10 depuis ADR-0056 : la re-datation de `06` rallume de la dépense LLM et son budget du jour
   // n'était lisible NULLE PART. Le compte est figé pour que l'ajout d'une ligne soit une DÉCISION —
   // l'écriture est unique par tick, et chaque ligne coûte de la place à l'écran de Marc.
@@ -99,7 +99,10 @@ test('majSante_ écrit exactement 15 lignes de métadonnées (une seule écritur
   // comme « les papiers sont partis », ce qui n'est pas la même chose du tout pour Marc.
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 15);
+  // 15 → 16 (L36) : « Lecture par la file ». Ligne À PART du rattrapage C49-5, parce que les
+  // deux campagnes n'ont pas le même état : celle-là est une tranche FERMÉE qui se termine,
+  // celle-ci suit une file que la Mémoire tient et qui ne se vide jamais pour toujours.
+  assert.strictEqual(captured.length, 16);
   assert.ok(captured.every((l) => typeof l === 'string'));
 });
 

@@ -269,6 +269,7 @@ function majSante_() {
     // pas celui des papiers.
     ['Périmètre des pièces (C49-4) : ' + texteSantePerimetrePiece_()],
     ['Rattrapage des pièces (C49-5) : ' + texteSanteRattrapagePiece_()],
+    ['Lecture par la file (L36) : ' + texteSanteLectureFile_()],
     ['Mis à jour : ' + new Date()]
   ];
   f.getRange(2, 1, lignes.length, 1).setValues(lignes); // une seule écriture Sheet (I/O borné/tick)

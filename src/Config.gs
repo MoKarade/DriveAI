@@ -530,6 +530,19 @@ var CONFIG = {
   // de l'ADR-0061 est levée PAR MARC, pas déduite d'un compteur de verdicts.
   RATTRAPAGE_PIECE_TAG: 'c49-5-a',
 
+  // L36 — la lecture du STOCK COMPLET par la file de la Mémoire (`src/LectureFile.gs`).
+  // ⚠️ L'interrupteur EST le tag : vide ⇒ l'étape ne tourne pas, et RIEN d'autre ne change.
+  // ⚠️ ARMÉ LE 18/09 sur la demande de Marc (« je veux que ce soit lia qui lise tous mes
+  // fichiers », puis « go … jusqu'à avoir une boucle de lecture fiable »). Ce que ça dépense
+  // est borné par ce qui existait déjà : le budget quotidien des PIÈCES (partagé, jamais
+  // ajouté — l'étape ne démarre que quand l'audit et la tranche C49-5 sont à zéro), le
+  // plafond par run, et le frein en DOLLARS des campagnes. Un appel Haiku par document.
+  // ⚠️ Bumper ce tag ne REFAIT RIEN, contrairement aux autres : l'idempotence vit dans la
+  // Mémoire (un papier lu sort de sa file), pas sous ce tag. Il ne sert qu'à armer, et à
+  // faire re-sonder la file tout de suite.
+  // ⚠️ N'allume PAS le flux vivant (`PIECE_PUSH` reste `false`).
+  LECTURE_FILE_TAG: 'l36-a',
+
   // C49-4 — la LECTURE DE TOUT LE DRIVE, étape A : compter le périmètre avant de le promettre.
   // ⚠️ Bumper ce tag RELANCE le comptage (une lecture de l'Index, aucun appel LLM, rien qui
   // sorte du compte Google). Sans bump, l'étape ne coûte qu'une lecture de Property par tick :
