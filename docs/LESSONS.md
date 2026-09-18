@@ -3090,3 +3090,43 @@ exact de production, font tomber les nouveaux cas.
 chemin manuel ne passe pas par elle : la première passe de Marc après le déploiement recompte et
 réécrit le vrai reste, ce qui rouvre la gate. Aucun bump de tag — il aurait refait les 25
 documents déjà partis, à leur coût.
+
+---
+
+## Un recensement ancré sur `npm ci` ne voit pas `npx` (2026-09-18, lot L2 de l'audit)
+
+Le lot L2 devait fermer deux surfaces de la chaîne de build : le `GITHUB_TOKEN` laissé lisible
+par `actions/checkout`, et les scripts d'installation de paquets exécutés sur le runner. J'ai
+recensé la seconde en cherchant `npm ci` et `npm install -g`, posé `--ignore-scripts` sur les
+trois sites trouvés, et déclaré le lot fini avec son compte rejoué.
+
+**Il restait `npx playwright install --with-deps chromium`.** `npx` télécharge le paquet depuis
+le registre quand il ne le trouve pas localement, **et exécute ses scripts de cycle de vie** —
+donc exactement la surface que `--ignore-scripts` venait de fermer, rouverte deux étapes plus
+bas, et sur une version non figée en plus (le registre sert la dernière). Le détail qui rend
+l'oubli traître : c'est mon propre `--ignore-scripts` qui a rendu cette étape NÉCESSAIRE
+(Playwright ne télécharge plus son navigateur à l'installation), donc le correctif a créé le
+besoin de l'étape qu'il laissait ouverte.
+
+C'est SonarCloud qui l'a dit, et pas dans les termes où je cherchais : « "npx" can install
+packages on-demand and run their lifecycle scripts » et « Define exact package version », deux
+constats vieux de deux mois sur `ci.yml`, que ma requête n'atteignait pas.
+
+**La règle** : un recensement de commandes d'installation s'énumère par ce qu'elles FONT
+(installer un paquet, exécuter un binaire qui peut s'installer), jamais par le nom d'une seule
+d'entre elles. La forme du jour couvre `npm ci`, `npm install`, `npm install -g` **et** `npx`.
+Mesuré le même jour sur les huit dépôts : **8 sites de plus** hors de ma requête initiale, chez
+FinanceAI (3) et JobAI (5), tous corrigés dans leur PR respective.
+
+**Le correctif est `npx --no-install`**, pas le retrait de l'étape : le binaire vient alors de
+`node_modules/.bin`, donc de la version qu'épingle le lockfile, et npx échoue franchement s'il
+manque au lieu d'aller le chercher. ⚠️ Il exige que l'étape d'installation vive dans le MÊME
+job — vérifié job par job avant de le poser, sinon le drapeau transforme un téléchargement
+silencieux en échec de CI.
+
+**Et une deuxième omission au même endroit** : `npm install -g @google/clasp@3.4.1` avait reçu
+sa version exacte mais pas `--ignore-scripts`, alors qu'une installation globale exécute les
+scripts du paquet avec les droits du runner — celui-là même qui porte `CLASPRC_JSON` et
+`SCRIPT_ID` deux étapes plus bas. Mesuré avant de poser le drapeau : clasp 3.4.1 ne déclare
+qu'un `prepare` (jamais exécuté à l'installation d'un paquet publié), et `clasp --version` rend
+bien « 3.4.1 » après une installation avec le drapeau.
