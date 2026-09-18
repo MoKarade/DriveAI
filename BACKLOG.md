@@ -5,6 +5,38 @@
 
 ---
 
+## Chantier #50 — la chaîne de build : le GITHUB_TOKEN restait lisible tout le run  ✅
+
+Lot L2 de l'audit multi-outils du 2026-09-18, livré le même jour.
+
+- Les **6** étapes `actions/checkout` portent `persist-credentials: false`. La v2+ écrit le
+  `GITHUB_TOKEN` dans la config git du runner POUR TOUT LE RESTE DU RUN : n'importe quelle
+  étape suivante, y compris une action tierce, peut le lire. Vérifié un par un qu'**aucun**
+  workflow de ce dépôt ne fait de `git push` ni d'appel `gh` — donc aucun `true` nécessaire,
+  contrairement à FinanceAI dont `refresh-screenshots.yml` pousse.
+- Les **2** `npm ci` portent `--ignore-scripts`. ⚠️ **MESURÉ avant d'être posé**, parce que le
+  piège est réel ailleurs (Playwright, esbuild) : `npm ci --ignore-scripts` dans `app/`, puis
+  `tsc --noEmit`, `vite build` et **328 tests** — tous verts.
+- `npm install -g @google/clasp` (`deploy.yml:61`) est épinglé à **3.4.1**, version relevée sur
+  le registre le 18/09 (`npm view @google/clasp version`) et jamais devinée. Sans version, une
+  publication majeure de clasp change le déploiement sans qu'une ligne du dépôt n'ait bougé.
+- `S7637` (action tierce non épinglée au SHA) est **sans objet ici** : ce dépôt n'utilise que
+  des actions `actions/*`.
+
+⚠️ **C'est Aikido qui a trouvé le `persist-credentials`, pas SonarQube** — malgré ses 7 règles
+`githubactions:*` actives. Un scanner silencieux ne dit pas qu'il n'y a rien.
+
+⚠️ **Le recensement se fait sur la FORME SYNTAXIQUE, jamais sur la mention.** Deux pièges
+mesurés le même jour : les dépôts de l'écosystème écrivent `- uses:` (Hubperso) OU `- name:`
+puis `uses:` (FinanceAI), donc un motif ancré sur `^\s*uses:` rend **0** là où il y a 5 ou 6
+étapes ; et le commentaire qui EXPLIQUE le correctif nomme `actions/checkout`, donc il se fait
+recenser lui-même (6 → 10 sur FinanceAI). Motif juste :
+`grep -rhoE '^\s*-?\s*uses:\s*actions/checkout'`. Classe détaillée dans
+`FinanceAI/docs/CONVENTIONS.md` sous
+`UN-CORRECTIF-DONT-LE-COMMENTAIRE-CONTIENT-LE-MOTIF-FAUSSE-SON-PROPRE-RECENSEMENT`.
+
+---
+
 ## Chantier #49 — Le CONTENU des documents quitte le compte (ADR-0061, **accepté** le 16/09)  ⬜
 
 > Marc, 16/09 : « il extrait toutes les infos de chaque fichier […] vraiment toutes les infos ».

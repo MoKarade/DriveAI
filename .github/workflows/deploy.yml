@@ -49,6 +49,12 @@ jobs:
       - name: Checkout
         if: steps.guard.outputs.ready == 'true'
         uses: actions/checkout@v5
+        with:
+          # [CI-PERSIST-CREDS] `actions/checkout` v2+ écrit le GITHUB_TOKEN dans la config git du
+          # runner POUR TOUT LE RESTE DU RUN : n'importe quelle étape suivante, y compris une
+          # action tierce, peut le lire. Vérifié un par un : aucun workflow de ce dépôt ne fait
+          # de `git push` ni d'appel `gh`, donc aucun n'a besoin du jeton persisté.
+          persist-credentials: false
 
       - name: Node
         if: steps.guard.outputs.ready == 'true'
@@ -58,7 +64,11 @@ jobs:
 
       - name: Installer clasp
         if: steps.guard.outputs.ready == 'true'
-        run: npm install -g @google/clasp
+        # [CI-VERSION-FIGEE] Version EXACTE, et non `@latest` implicite : sans elle, une
+        # publication majeure de clasp change le comportement du déploiement sans qu'une
+        # ligne du dépôt n'ait bougé. 3.4.1 relevée sur le registre le 18/09 (`npm view`),
+        # jamais devinée. À monter volontairement, en lisant le changelog.
+        run: npm install -g @google/clasp@3.4.1
 
       - name: Authentifier clasp + cibler le projet
         if: steps.guard.outputs.ready == 'true'
