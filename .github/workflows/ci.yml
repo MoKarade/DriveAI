@@ -22,6 +22,12 @@ jobs:
     timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
+        with:
+          # [CI-PERSIST-CREDS] `actions/checkout` v2+ écrit le GITHUB_TOKEN dans la config git du
+          # runner POUR TOUT LE RESTE DU RUN : n'importe quelle étape suivante, y compris une
+          # action tierce, peut le lire. Vérifié un par un : aucun workflow de ce dépôt ne fait
+          # de `git push` ni d'appel `gh`, donc aucun n'a besoin du jeton persisté.
+          persist-credentials: false
 
       # La convention de compte-rendu est une COPIE synchronisée de
       # claude-config/conventions/COMPTE-RENDU.md — un CLAUDE.md ne charge rien hors de son
@@ -74,6 +80,12 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # [CI-PERSIST-CREDS] `actions/checkout` v2+ écrit le GITHUB_TOKEN dans la config git du
+          # runner POUR TOUT LE RESTE DU RUN : n'importe quelle étape suivante, y compris une
+          # action tierce, peut le lire. Vérifié un par un : aucun workflow de ce dépôt ne fait
+          # de `git push` ni d'appel `gh`, donc aucun n'a besoin du jeton persisté.
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -100,6 +112,12 @@ jobs:
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
+        with:
+          # [CI-PERSIST-CREDS] `actions/checkout` v2+ écrit le GITHUB_TOKEN dans la config git du
+          # runner POUR TOUT LE RESTE DU RUN : n'importe quelle étape suivante, y compris une
+          # action tierce, peut le lire. Vérifié un par un : aucun workflow de ce dépôt ne fait
+          # de `git push` ni d'appel `gh`, donc aucun n'a besoin du jeton persisté.
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -109,7 +127,10 @@ jobs:
 
       - name: Dépendances (npm ci, lockfile committé)
         working-directory: app
-        run: npm ci
+        # [CI-IGNORE-SCRIPTS] Un script d'installation de paquet s'exécute avec les droits du
+        # runner, qui porte les secrets du workflow. MESURÉ sur ce dépôt avant d'être posé :
+        # `npm ci --ignore-scripts` dans `app/`, puis tsc, vite build et 328 tests — tous verts.
+        run: npm ci --ignore-scripts
 
       - name: "Tests vitest — dont le miroir des garde-fous §1/§2 (ADR-0008 : l'app mute Drive)"
         working-directory: app
@@ -135,6 +156,12 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # [CI-PERSIST-CREDS] `actions/checkout` v2+ écrit le GITHUB_TOKEN dans la config git du
+          # runner POUR TOUT LE RESTE DU RUN : n'importe quelle étape suivante, y compris une
+          # action tierce, peut le lire. Vérifié un par un : aucun workflow de ce dépôt ne fait
+          # de `git push` ni d'appel `gh`, donc aucun n'a besoin du jeton persisté.
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
@@ -144,7 +171,10 @@ jobs:
 
       - name: Dépendances (npm ci, lockfile committé)
         working-directory: app
-        run: npm ci
+        # [CI-IGNORE-SCRIPTS] Un script d'installation de paquet s'exécute avec les droits du
+        # runner, qui porte les secrets du workflow. MESURÉ sur ce dépôt avant d'être posé :
+        # `npm ci --ignore-scripts` dans `app/`, puis tsc, vite build et 328 tests — tous verts.
+        run: npm ci --ignore-scripts
 
       # Étape la plus FRAGILE de la CI : elle tire des paquets apt et le binaire Chromium. Vécu
       # 2× le 19/08 — figée > 20 min sans rien produire, retenant le merge. Bornée pour qu'un
@@ -152,7 +182,16 @@ jobs:
       - name: Navigateur Playwright (Chromium seul)
         working-directory: app
         timeout-minutes: 6
-        run: npx playwright install --with-deps chromium
+        # [CI-NPX-NO-INSTALL] `--no-install` : sans lui, `npx` TÉLÉCHARGE le paquet depuis le
+        # registre quand il ne le trouve pas localement, et exécute ses scripts de cycle de vie
+        # — la surface que `--ignore-scripts` vient de fermer deux étapes plus haut, rouverte
+        # ici, et sur une version NON figée en plus (le registre sert la dernière). Avec le
+        # drapeau, npx n'utilise que le binaire de `app/node_modules/.bin`, donc la version que
+        # le lockfile épingle, et échoue franchement s'il manque au lieu d'aller le chercher.
+        # Mesuré le 18/09 : `npm ci --ignore-scripts` puis `npx --no-install playwright
+        # --version` rend « Version 1.61.1 », le binaire local. `@playwright/test` est bien une
+        # devDependency de `app/` (c'est ce qui rend le drapeau applicable ici).
+        run: npx --no-install playwright install --with-deps chromium
 
       # VITE_E2E_MOCK=true est injectée par playwright.config.ts (webServer) : auth bouchonnée,
       # données locales (mockData.ts), AUCUN appel aux vraies API Google (api() lève en mock).

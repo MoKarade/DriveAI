@@ -41,8 +41,24 @@ function chargerAvecSanteMock(indexCache, props) {
   // `Migration.gs` : `texteSanteReanalyse_` lit `budgetJourReanalyse_` — contrat INTER-MODULE.
   // Chargé POUR DE VRAI et non mocké : une mutation du nom doit tomber ici (elle a SURVÉCU à la
   // première écriture de ce test, qui ne sortait jamais de la branche « en attente »).
+  // `Memoire.gs` : la ligne « Mémoire (inventaire) » (C28-135) appelle `texteSanteMemoire_`, qui
+  // lit `budgetJourMemoire_` — même exigence inter-module que `Migration.gs` ci-dessus. Chargé
+  // POUR DE VRAI : mocké, une mutation du nom survivrait, et c'est ce fichier qui est censé la
+  // faire tomber.
+  // `AuditPiece.gs` : la ligne « Audit des pièces » (C49-3) appelle `texteSanteAuditPiece_`, qui
+  // lit `budgetJourAudit_`. Même exigence inter-module que les deux ci-dessus — et la même raison
+  // de le charger POUR DE VRAI : cette ligne est le SEUL endroit d'où l'on voit que la porte de
+  // l'ADR-0061 avance, et un catch pris pour le chemin nominal la rendrait muette sans rougir.
+  // `PerimetrePiece.gs` : la ligne « Périmètre des pièces » (C49-4) appelle
+  // `texteSantePerimetrePiece_`. Chargé POUR DE VRAI, pour la même raison que les trois
+  // ci-dessus : mocké, une mutation du nom survivrait, et cette ligne est le seul endroit d'où
+  // l'on voit le nombre qui DIMENSIONNE la campagne de lecture du Drive.
+  // `RattrapagePiece.gs` : la ligne « Rattrapage des pièces » (C49-5) appelle
+  // `texteSanteRattrapagePiece_`. Chargé POUR DE VRAI : c'est la seule surface d'où l'on voit
+  // qu'une campagne qui DÉPENSE avance — et, quand elle n'avance pas, laquelle des six causes
+  // (non armée, jeton, suspension, frein, audit en cours, budget du jour) la retient.
   const ctx = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'GoogleApi.gs', 'TriGmail.gs', 'Doublons.gs',
-    'Gmail.gs', 'Migration.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
+    'Gmail.gs', 'Migration.gs', 'Memoire.gs', 'AuditPiece.gs', 'PerimetrePiece.gs', 'RattrapagePiece.gs', 'LectureFile.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
     { PropertiesService: mockProps(props) });
   const captured = [];
   // feuille_ mocké : capture l'unique setValues de « Santé » ; `getLastRow: 1` = rapport des
@@ -55,13 +71,38 @@ function chargerAvecSanteMock(indexCache, props) {
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 10 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 16 lignes de métadonnées (une seule écriture Sheet)', () => {
   // 10 depuis ADR-0056 : la re-datation de `06` rallume de la dépense LLM et son budget du jour
   // n'était lisible NULLE PART. Le compte est figé pour que l'ajout d'une ligne soit une DÉCISION —
   // l'écriture est unique par tick, et chaque ligne coûte de la place à l'écran de Marc.
+  // 11 depuis C28-135 : l'envoi à la Mémoire n'écrivait RIEN quand il sortait sur son garde-temps
+  // (16/09 : une heure de silence pour un canal qui venait d'accepter 2 348 faits). Même
+  // justification que les trois lignes voisines — le registre de suivi C28-44 est saturé, la
+  // campagne ne peut pas s'y déclarer, donc elle se dit ICI.
+  // 12 depuis C49-2 bis : les PIÈCES sont un SECOND canal vers la Mémoire, et il tombe en panne
+  // pour d'autres raisons que l'inventaire (celui-ci ne coûte aucun appel LLM, l'extraction en
+  // coûte un par document). Les fondre en une ligne ferait lire le silence de l'un comme celui
+  // de l'autre — ce que le compte figé est précisément là pour rendre délibéré.
+  // 13 depuis C49-3 : l'audit des pièces est la PORTE de l'ADR-0061 (rien n'allume `PIECE_PUSH`
+  // avant elle) et il tourne désormais tout seul dans le tick, sans que Marc lance quoi que ce
+  // soit. Une campagne qui avance sans geste humain a d'autant plus besoin d'être lisible : sans
+  // cette ligne, « elle progresse », « elle est finie » et « elle n'a jamais démarré » se lisent
+  // tous les trois comme un onglet qui ne bouge pas.
+  // 14 depuis C49-4 : le PÉRIMÈTRE répond à une autre question que l'audit — celui-ci dit si
+  // l'extraction est bonne, celle-là sur COMBIEN de documents elle aurait à tourner. C'est ce
+  // nombre qui dimensionne la campagne (durée, coût, budget à prélever) et il n'était mesuré
+  // nulle part : « 20 346 » est le compte de l'Index, pas celui des papiers.
+  // 15 depuis C49-5 : le RATTRAPAGE est la première campagne qui fait SORTIR du contenu de
+  // documents vers un service extérieur, et elle tourne toute seule dans le tick. Elle ne
+  // partage la ligne d'aucune voisine : le périmètre COMPTE (rien ne part), l'audit VÉRIFIE
+  // (rien ne part non plus), celle-ci ENVOIE. Les fondre ferait lire « la mesure est faite »
+  // comme « les papiers sont partis », ce qui n'est pas la même chose du tout pour Marc.
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 10);
+  // 15 → 16 (L36) : « Lecture par la file ». Ligne À PART du rattrapage C49-5, parce que les
+  // deux campagnes n'ont pas le même état : celle-là est une tranche FERMÉE qui se termine,
+  // celle-ci suit une file que la Mémoire tient et qui ne se vide jamais pour toujours.
+  assert.strictEqual(captured.length, 16);
   assert.ok(captured.every((l) => typeof l === 'string'));
 });
 
@@ -407,4 +448,32 @@ test('majCouts_ : écrit total + postes, et EFFACE le reliquat du mois précéde
   ecrits.length = 0; efface = null; dernRang = 1;
   ctx.majCouts_();
   assert.strictEqual(efface, null, 'aucun effacement inutile');
+});
+
+test('majSante_ : la ligne « Mémoire (pièces) » est DISTINCTE de celle de l\'inventaire', () => {
+  // ⚠️ Deux canaux, deux pannes possibles, donc deux lignes. L'inventaire ne coûte aucun appel
+  // LLM (il relit l'Index) ; l'extraction en coûte un par document et se met en pause sur le
+  // frein budget. Une ligne unique ferait conclure « la Mémoire marche » sur la preuve de
+  // l'autre moitié — exactement le défaut que C28-135 a payé sur une seule étape.
+  const { ctx, captured } = chargerAvecSanteMock({});
+  ctx.majSante_();
+  const inv = captured.find((l) => l.indexOf('Mémoire (inventaire)') === 0);
+  const pieces = captured.find((l) => l.indexOf('Mémoire (pièces)') === 0);
+  assert.ok(inv, 'la ligne de l\'inventaire existe');
+  assert.ok(pieces, 'la ligne des pièces existe');
+  assert.notStrictEqual(inv, pieces, 'et elles ne disent pas la même chose');
+});
+
+test('majSante_ : la ligne « Audit des pièces » exerce le chemin NOMINAL, et distingue les trois silences', () => {
+  // La PORTE de l'ADR-0061 avance maintenant toute seule dans le tick : c'est la seule surface
+  // d'où Marc voit qu'elle avance. Trois situations donnent le même onglet immobile — jamais
+  // lancée, en cours de budget, terminée — et elles appellent trois gestes différents (lancer,
+  // attendre, juger). Mutation : retirer la ligne de `majSante_` ⇒ ce cas tombe.
+  const { ctx, captured } = chargerAvecSanteMock({});
+  ctx.majSante_();
+  const ligne = captured.find((l) => l.indexOf('Audit des pièces') === 0);
+  assert.ok(ligne, 'la ligne existe');
+  assert.ok(!ligne.includes('illisible'), 'chemin nominal, pas le catch : ' + ligne);
+  // Aucune passe enregistrée dans ce contexte ⇒ l'état « jamais tourné », qui est à part.
+  assert.match(ligne, /n'a pas encore tourné/, ligne);
 });

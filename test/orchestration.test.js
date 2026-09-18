@@ -128,7 +128,11 @@ test('budget RÉALLOUÉ, jamais AUGMENTÉ : le total du reset ne dépasse pas ce
     // 50, soit ZÉRO marge, avec le test toujours vert (50 ≤ 50). La prochaine réallocation neutre
     // vers la re-analyse aurait été refusée par un invariant censé l'autoriser — exactement le
     // défaut que C28-99 avait corrigé sur l'autre verrou.
-    C.REANALYSE_BUDGET_JOUR_MS; // + fusion (#47) et missions (C28-49) — TOUTES gatées !resetEnCours_
+    C.REANALYSE_BUDGET_JOUR_MS +
+    // ⚠️ 10ᵉ jambe (C49-3) : l'audit des pièces est gaté `gResetEnCours` lui aussi (Main.gs), il
+    // appartient donc à CE bloc. Sans cette ligne, `libere` perdrait les 12 min qu'il vient de
+    // recevoir et le test refuserait un transfert NEUTRE — le défaut que la 9ᵉ jambe a corrigé.
+    C.AUDIT_PIECE_BUDGET_JOUR_MS; // + fusion (#47) et missions (C28-49) — TOUTES gatées !resetEnCours_
                                // (vérifié par les tests de gates ci-dessus/dessous) : un reset ON les
                                // suspend, leur budget est donc réellement LIBÉRÉ pour lui.
   assert.ok(reset <= libere,
@@ -151,9 +155,16 @@ test('enveloppe reset-OFF : la somme des budgets QUOTIDIENS des campagnes concur
     C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS +
     C.HISTORIQUE_VRAC_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS + // missions C28-49 (partagé entre elles)
     C.DOUBLONS_BUDGET_JOUR_MS + // validation de _Doublons (C28-49 PR4, ADR-0047) — lecture seule, zéro LLM
-    C.REANALYSE_BUDGET_JOUR_MS; // re-analyse ciblée (ADR-0056) — elle n'avait AUCUN budget quotidien,
+    C.REANALYSE_BUDGET_JOUR_MS + // re-analyse ciblée (ADR-0056) — elle n'avait AUCUN budget quotidien,
                                 // donc l'agrégat ci-dessous ne la voyait pas : l'enveloppe pouvait
                                 // croître avec ce test au vert. La 9ᵉ jambe ferme cet angle mort.
+    C.MEMOIRE_BUDGET_JOUR_MS +  // 10ᵉ jambe (C28-135) — MÊME angle mort, re-payé : l'envoi à la
+                                // Mémoire tournait depuis le 16/09 SANS aucune constante quotidienne,
+                                // donc ce test restait vert pendant que l'enveloppe croissait. Ses
+                                // 4 min/j sont PRÉLEVÉES sur l'historique Gmail (12 → 8).
+    C.AUDIT_PIECE_BUDGET_JOUR_MS; // 11ᵉ jambe (C49-3) — l'audit de l'ADR-0061, branché dans le tick
+                                // pour que Marc n'ait plus rien à lancer. Financé par un pur
+                                // transfert depuis la réconciliation Index (SYNC 12 → 4).
   // RÉALLOCATION 2026-08-11 (diagnostic prod : l'exec est le goulot) : exec 6→12, fusion 6→0 (parkée,
   // campagne OFF) — la SOMME reste 56 min/j (20+12+12+12+0), enveloppe INCHANGÉE, pur transfert.
   // HISTORIQUE_VRAC (2026-08-12, demande Marc : suivi journalier par domaine) : +4 min → 60 min/j.
@@ -197,9 +208,13 @@ test('ENVELOPPE des campagnes : la somme reste EXACTEMENT 63 min/j (réallouer, 
   const total = C.GMAIL_HISTO_BUDGET_JOUR_MS + C.CONSOLIDATION_BUDGET_JOUR_MS +
     C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS + C.SYNC_BUDGET_JOUR_MS + C.FUSION_EXEC_BUDGET_JOUR_MS +
     C.HISTORIQUE_VRAC_BUDGET_JOUR_MS + C.MISSIONS_BUDGET_JOUR_MS + C.DOUBLONS_BUDGET_JOUR_MS +
-    C.REANALYSE_BUDGET_JOUR_MS; // 9ᵉ jambe (ADR-0056) — cf. le commentaire de l'agrégat ci-dessus
+    C.REANALYSE_BUDGET_JOUR_MS + // 9ᵉ jambe (ADR-0056) — cf. le commentaire de l'agrégat ci-dessus
+    C.MEMOIRE_BUDGET_JOUR_MS +  // 10ᵉ jambe (C28-135) — idem, et le transfert qui l'a financée est
+                                // un pur déplacement : GMAIL_HISTO 12 → 8, MEMOIRE 0 → 4.
+    C.AUDIT_PIECE_BUDGET_JOUR_MS; // 11ᵉ jambe (C49-3) — idem : SYNC 12 → 4, AUDIT_PIECE 0 → 8.
+                                // La somme ne bouge pas d'une minute.
   assert.strictEqual(total / 60000, 63,
-    'la somme des budgets quotidiens des 9 campagnes doit rester = 63 min/j. Pour accélérer une ' +
+    'la somme des budgets quotidiens des 11 campagnes doit rester = 63 min/j. Pour accélérer une ' +
     'campagne, PRENDRE à une autre — jamais ajouter des minutes : au-delà du mur runtime ' +
     '~90 min/j, TOUS les déclencheurs gèlent, chien de garde inclus (C28-29). Relever ce total ' +
     'est une DÉCISION de Marc, pas un effet de bord : il faudrait d\'abord MESURER le runtime ' +
@@ -250,8 +265,54 @@ test('minutes PRÊTÉES : le chiffre affiché à Marc est DÉRIVÉ du transfert,
     DOTATION_HISTO_MIN - C.GMAIL_HISTO_BUDGET_JOUR_MS / 60000,
     'le prêt annoncé doit être la DIFFÉRENCE réelle entre la dotation et le budget courant');
   // …et ce qui est prêté est ce qui est reçu : sinon des minutes se créent ou se perdent en route.
-  assert.strictEqual(C.GMAIL_HISTO_PRETEES_MIN, C.REANALYSE_BUDGET_JOUR_MS / 60000,
-    'les minutes retirées au donneur sont EXACTEMENT celles reçues par la re-datation');
+  // ⚠️ C28-135 : ce garde comparait le prêt à UN seul receveur (la re-datation). C'était vrai tant
+  // qu'il n'y en avait qu'un, et ça a rougi au second — à raison. Ce qu'il défend n'est PAS « la
+  // re-datation reçoit tout », c'est « rien ne se crée en route » : la liste des receveurs est donc
+  // une SOMME, et un troisième prêt devra s'y inscrire. Une garde qui nomme un receveur se périme
+  // au premier suivant ; une garde qui somme survit (§9, « ancrer le FAIT, jamais la FORME »).
+  // ⚠️ C49-3 n'a RIEN pris ici et n'ajoute donc pas de receveur : l'audit des pièces est financé
+  // par `SYNC_BUDGET_JOUR_MS` (12 → 4). Le garde ne suit QUE les prêts de CE donneur — mêler les
+  // deux transferts ferait de cette égalité une somme de choses sans rapport, et elle cesserait
+  // de dire ce qu'elle défend (« rien ne se crée en route » entre l'historique Gmail et ses
+  // receveurs). Un second donneur qui prête à plusieurs aura besoin de son propre garde.
+  // ⚠️ C49-3 (second transfert, 17/09) : l'audit des pièces devient le TROISIÈME receveur, et il
+  // entre par sa PART (`AUDIT_PIECE_PART_GMAIL_MIN`), jamais par son budget total — celui-ci porte
+  // aussi les minutes de la réconciliation, et les mêler ferait de cette égalité une somme de
+  // choses sans rapport. C'est ce que le paragraphe ci-dessus annonçait : « un second donneur qui
+  // prête à plusieurs aura besoin de son propre garde ». Le voici, et il tient par la PROVENANCE.
+  const RECEVEURS_MIN = (C.REANALYSE_BUDGET_JOUR_MS + C.MEMOIRE_BUDGET_JOUR_MS) / 60000
+    + C.AUDIT_PIECE_PART_GMAIL_MIN;
+  assert.strictEqual(C.GMAIL_HISTO_PRETEES_MIN, RECEVEURS_MIN,
+    'les minutes retirées au donneur sont EXACTEMENT celles reçues par ses receveurs ' +
+    '(re-datation de 06, puis envoi à la Mémoire)');
+});
+
+test('PAIRE réconciliation ↔ audit des pièces : la somme est figée, et le donneur ne tombe jamais à zéro', () => {
+  // ⚠️ Écrit le 17/09 après une MUTATION VERTE : mettre `SYNC_BUDGET_JOUR_MS` à 0 laissait les
+  // vingt cas de ce fichier au vert. L'invariant d'enveloppe ne voit qu'une CROISSANCE ; il est
+  // aveugle à une campagne qu'on éteint. Or la réconciliation Index↔Drive est PERPÉTUELLE : à
+  // zéro elle tournerait à vide, sans rien dire — l'interdit que la §9 pose pour toute
+  // réallocation en paire, et qui n'était codé nulle part pour CE couple.
+  const C = require('./harness').load(['Config.gs']).CONFIG;
+  // (a) La SOMME du couple ne bouge pas : un transfert à moitié annulé (minutes rendues au
+  // donneur sans redescendre le receveur, ou l'inverse) reste sous le plafond global, donc
+  // l'invariant d'enveloppe ne l'attrape pas — seul ce garde-ci le voit.
+  const DOTATION_COUPLE_MIN = 12; // la dotation HISTORIQUE de la réconciliation, avant tout prêt
+  // ⚠️ La comparaison porte sur la PART reçue de CE donneur, jamais sur le budget total de
+  // l'audit : depuis le second transfert, celui-ci porte aussi des minutes de l'historique Gmail.
+  assert.strictEqual(
+    C.SYNC_BUDGET_JOUR_MS / 60000 + C.AUDIT_PIECE_PART_SYNC_MIN, DOTATION_COUPLE_MIN,
+    'ce que l\'audit reçoit de la réconciliation est EXACTEMENT ce qu\'elle perd — rien ne se crée en route');
+  // …et les deux parts REMPLISSENT le budget : une minute sans donneur nommé serait une minute
+  // créée, et les deux gardes de paire la laisseraient passer chacun de son côté.
+  assert.strictEqual(
+    C.AUDIT_PIECE_PART_SYNC_MIN + C.AUDIT_PIECE_PART_GMAIL_MIN,
+    C.AUDIT_PIECE_BUDGET_JOUR_MS / 60000,
+    'chaque minute du budget de l\'audit a un donneur NOMMÉ');
+  // (b) Le donneur reste VIVANT. Une campagne active à budget quotidien nul est un transfert
+  // non rendu déguisé en réglage : elle ne produit plus rien et rien ne le signale.
+  assert.ok(C.SYNC_BUDGET_JOUR_MS > 0,
+    'la réconciliation est PERPÉTUELLE : à zéro elle tourne à vide en silence (§9, réallocation en paire)');
 });
 
 test('INVENTAIRE des budgets quotidiens : aucune constante n\'échappe aux invariants', () => {
@@ -263,10 +324,13 @@ test('INVENTAIRE des budgets quotidiens : aucune constante n\'échappe aux invar
   // `feuille_` ↔ `creerOnglet_`.
   const C = require('./harness').load(['Config.gs']).CONFIG;
   const connues = [
-    // les 9 campagnes de l'enveloppe reset-OFF (sommées à 63 min/j ci-dessus)
+    // les 10 campagnes de l'enveloppe reset-OFF (sommées à 63 min/j ci-dessus)
     'GMAIL_HISTO_BUDGET_JOUR_MS', 'CONSOLIDATION_BUDGET_JOUR_MS', 'CONSOLIDATION_EXEC_BUDGET_JOUR_MS',
     'SYNC_BUDGET_JOUR_MS', 'FUSION_EXEC_BUDGET_JOUR_MS', 'HISTORIQUE_VRAC_BUDGET_JOUR_MS',
     'MISSIONS_BUDGET_JOUR_MS', 'DOUBLONS_BUDGET_JOUR_MS', 'REANALYSE_BUDGET_JOUR_MS',
+    'MEMOIRE_BUDGET_JOUR_MS', // C28-135 — et cet inventaire a fait EXACTEMENT son travail : il a
+                              // rougi sur la constante neuve avant qu'elle n'échappe aux sommes.
+    'AUDIT_PIECE_BUDGET_JOUR_MS', // C49-3 — il a re-rougi, et c'est la deuxième fois qu'il gagne.
     // les 4 phases du reset (invariant de réallocation reset-ON)
     'RESET_RASSEMBLEMENT_BUDGET_JOUR_MS', 'RESET_PLACEMENT_BUDGET_JOUR_MS',
     'RESET_04_BUDGET_JOUR_MS', 'RESET_LLM_BUDGET_JOUR_MS',
@@ -486,4 +550,35 @@ test('ADR-0060 — chaque tag de mission appelé par Main.gs ou lu par Journal.g
   // …et réciproquement : une mission de la table qui n'est appelée nulle part est une mission MORTE.
   const jamaisAppelees = [...tags].filter((tg) => appeles.indexOf(tg) === -1);
   assert.deepStrictEqual(jamaisAppelees, [], 'missions jamais appelées par le tick : ' + jamaisAppelees.join(', '));
+});
+
+/**
+ * L'ORDRE prime sur les budgets (leçon §9, incident consolidation du 23/07 — re-payé le 16/09).
+ *
+ * Une étape placée en FIN de `finally` n'est pas « servie en dernier » : elle n'est **pas servie**,
+ * parce que le budget TAIL est déjà consommé quand on l'atteint. L'envoi à la Mémoire était le
+ * dernier de la file ; il n'a rien poussé pendant une heure alors que le tick tournait toutes les
+ * 5 min et que le canal venait d'accepter 2 348 faits à la main. Ses deux anciennes voisines sont
+ * MOINS pressées qu'elle : l'historique du vrac est une sweep une-fois-par-jour, la validation des
+ * doublons est TERMINÉE (sa ligne de Santé le dit).
+ *
+ * Ce garde ancre le FAIT (« la Mémoire passe avant ces deux-là »), jamais la forme du bloc.
+ */
+test('ORDRE du finally : la Mémoire est servie AVANT le vrac et les doublons', () => {
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'src', 'Main.gs'), 'utf8');
+  // On vise les APPELS (nom + argument), jamais le nom nu : les commentaires qui racontent cet
+  // incident citent les trois fonctions, et un motif sur le nom seul les compterait.
+  const pos = (appel) => {
+    const m = src.match(new RegExp(appel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || [];
+    assert.strictEqual(m.length, 1, 'appel attendu une seule fois : ' + appel);
+    return src.indexOf(appel);
+  };
+  const memoire = pos('pousserInventaireMemoire_(estBudgetDepasseStandard)');
+  const vrac = pos('majHistoriqueVrac_(estBudgetDepasseStandard)');
+  const doublons = pos('majValidationDoublons_(estBudgetDepasseStandard)');
+  assert.ok(memoire < vrac,
+    'la Mémoire doit passer avant l\'historique du vrac (sweep quotidienne, aucune urgence)');
+  assert.ok(memoire < doublons,
+    'la Mémoire doit passer avant la validation des doublons (campagne TERMINÉE)');
 });

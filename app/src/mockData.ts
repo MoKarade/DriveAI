@@ -34,6 +34,24 @@ const SANTE: string[][] = [
   ['📄 1 842 documents classés · 12 en attente'],
   ['💰 Coût LLM du mois : 4,87 $ (cible < 10 $)'],
   ['📬 Tri Gmail : 214 fils triés · 1 suspect'],
+  // C49-3 : la porte de l'ADR-0061. Sa ligne de Santé est ce qui fait apparaître la carte dans
+  // les Réglages — sans elle, l'écran d'audit n'a pas d'entrée et la capture ne prouve rien.
+  ['Audit des pièces (C49-3) : 4 restants · dernière passe : 27/5/2 (extraits/sans texte/échecs) — budget du jour épuisé — reprise demain · 8 des 8 min/j consommées'],
+];
+
+/**
+ * L'onglet de l'audit (C49-3). Aucune donnée réelle : des papiers inventés, et DEUX lignes de
+ * domaines masqués (`01`, `04`) écrites comme le moteur les écrit — c'est-à-dire en FORME, pas
+ * en clair. Une fixture qui montrerait un vrai numéro ici recréerait dans le dépôt exactement ce
+ * que le masquage existe pour éviter.
+ */
+const AUDIT_PIECES: string[][] = [
+  // Rang | Domaine | Fichier | Lien | Statut | Type | Émetteur | Date doc | Titulaire | Confiance | Champs | Résumé | Verdict | Note
+  ['1', '02 · Finances', '2026-07-01_Facture_Hydro-Québec.pdf', 'https://drive.google.com/file/d/mock-001/view', 'extrait', 'facture', 'Hydro-Québec', '2026-07-01', 'Marc Exemple', '0.95', 'montants : total 142,30 $, taxes 18,55 $ · numeros : compte 3 100 200', 'Facture d’électricité pour la période du 1ᵉʳ mai au 30 juin, payable le 21 juillet.', '', ''],
+  ['2', '04 · Immigration', '2026-05-20_Passeport.pdf', 'https://drive.google.com/file/d/mock-002/view', 'extrait', 'passeport', '(absent)', '2026-05-20', '(12 lettres)', '0.97', 'numeros : passeport (9 chiffres)', '(masqué — ouvre le document)', '', ''],
+  ['3', '03 · Logement & véhicule', '2026-06-15_Bail.pdf', 'https://drive.google.com/file/d/mock-003/view', 'extrait', 'bail', 'Immeubles Exemple', '2026-06-15', 'Marc Exemple', '0.88', 'montants : loyer 1 250 $ · lieux : logement 4½', 'Bail résidentiel d’un an, du 1ᵉʳ juillet 2026 au 30 juin 2027.', 'juste', ''],
+  ['4', '05 · Emploi', 'cv-2026.pdf', 'https://drive.google.com/file/d/mock-004/view', 'sans texte', '', '', '', '', '', '', '', '', ''],
+  ['5', '01 · Administratif & identité', '2026-02-02_Permis.pdf', 'https://drive.google.com/file/d/mock-005/view', 'extrait', 'permis de conduire', 'SAAQ', '2026-02-02', '(12 lettres)', '0.93', 'numeros : permis (5 lettres, 8 chiffres)', '(masqué — ouvre le document)', '', ''],
 ];
 
 const JOURNAL: string[][] = [
@@ -109,6 +127,7 @@ export function plageMock(onglet: string, plage: string): string[][] {
     case 'Réglages': return REGLAGES;
     case 'Progression': return PROGRESSION;
     case 'Télémétrie': return TELEMETRIE;
+    case 'AuditPieces': return AUDIT_PIECES;
     default: return [];
   }
 }

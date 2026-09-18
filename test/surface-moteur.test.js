@@ -108,6 +108,12 @@ const CONTRAT = [
   'majCompteurCampagne_', 'finaliserCompteurCampagne_',
   'exporterTexteNatif_', 'exportNatifMime_', // natifs Google lisibles (R3)
   'budgetCampagnesAtteint_', 'reinitialiserFreinBudget_', // frein budget campagnes (R3, §2.6)
+  // Les PIÈCES vers la Mémoire (ADR-0061, C49-2 bis). `pousserPieceApresClassement_` est
+  // appelée depuis `Pipeline.gs`, `texteSantePiece_` depuis `Journal.gs`,
+  // `reinitialiserPiecesRun_` depuis `Main.gs` : trois traversées de module qu'aucun test
+  // unitaire mocké ne verrait disparaître.
+  'pousserPieceApresClassement_', 'texteSantePiece_', 'reinitialiserPiecesRun_',
+  'extrairePiece_', 'envoyerLotPiecesMemoire_',
   'appliquerRangementInitial_', 'appliquerRejeuSiNouvelleVersion_', 'rangementTermine_',
   'appliquerRelancesQuarantaine_',
   'estAReclasserLeger_', 'collecterAReclasser_', 'deplacerVersATrier_',
@@ -150,7 +156,76 @@ const CONTRAT = [
   // Validation de `_Doublons` par empreinte (C28-49 PR4, ADR-0047) — Doublons.gs, appelée depuis
   // Main.gs (finally du tick, hors `etapeSuivie_` : registre C28-44 saturé) ; `texteSanteDoublons_`
   // est appelée par `majSante_` (Journal.gs) et `COLONNES_RAPPORT_DOUBLONS` par `initialiserSheet_`.
-  'majValidationDoublons_', 'inventorierDoublons_', 'balayerExemplairesDoublons_',
+  'majValidationDoublons_',
+  // La Mémoire (ADR-0059 phase 0) : appelée par le tick, définie dans Memoire.gs. Sans cette
+  // ligne, la disparition de la fonction laisserait la suite verte et le tick lèverait à
+  // chaque exécution — l'incident qui a fait naître ce fichier.
+  'pousserInventaireMemoire_', 'faitInventaireMemoire_', 'niveauMemoire_',
+  'passeMemoire_', 'noterFinMemoire_', 'ligneFinMemoire_', 'budgetJourMemoire_',
+  'texteSanteMemoire_', 'phraseFinMemoire_',
+  // C28-137 — le chemin MANUEL. Ce n'est PAS un contrat inter-module : personne ne l'appelle
+  // depuis le code, c'est Marc qui la lance depuis l'éditeur. Elle est déclarée ici pour la
+  // raison INVERSE des autres — rien d'autre ne la retient, et sa disparition dans un refactor
+  // ne casserait aucun test ailleurs. Un chemin que seul un humain emprunte a besoin d'un
+  // gardien, sinon il s'efface sans bruit et le budget quotidien redevient un mur sans porte.
+  'pousserMemoireMaintenant',
+  // C49-3, l'audit des pièces (ADR-0061). Trois fonctions que SEUL Marc lance depuis
+  // l'éditeur, pour la même raison que `pousserMemoireMaintenant` juste au-dessus : rien dans
+  // le code ne les appelle, donc rien ne les retient. Et celle-ci est une PORTE — si elle
+  // s'efface dans un refactor, le seul moyen de mesurer avant d'ouvrir le canal des pièces
+  // disparaît avec elle, silencieusement.
+  'auditPiecesMaintenant', 'verdictAuditPieces', 'viderAuditPieces',
+  // Leurs fonctions pures, et `composerEchantillonAudit_` / `extraireLotAudit_` qui sont bien
+  // des contrats INTER-MODULES (Journal.gs crée l'onglet à partir de ces constantes).
+  'repartirAudit_', 'estDomaineMasqueAudit_', 'masquerAudit_', 'masquerChampsAudit_',
+  'champsEnClairAudit_', 'cellulesAuditPiece_', 'compterVerdictsAudit_', 'phraseVerdictAudit_',
+  'composerEchantillonAudit_', 'extraireLotAudit_', 'auditerUnDocumentAudit_',
+  // La passe AUTOMATIQUE (C49-3, 17/09). `etapeAuditPiece_` et `resteAuditPiece_` sont appelées
+  // par Main.gs (l'étape et sa gate), `texteSanteAuditPiece_` par Journal.gs : trois contrats
+  // INTER-MODULES qu'aucun test unitaire mocké ne verrait disparaître. `budgetJourAudit_` et
+  // `phraseFinAuditPiece_` sont PURES et testées à part ; `noterFinAuditPiece_` est le point
+  // d'écriture UNIQUE de l'état de fin — le retirer rendrait les sorties muettes en silence,
+  // exactement l'incident du 16/09 sur l'envoi à la Mémoire.
+  'etapeAuditPiece_', 'resteAuditPiece_', 'budgetJourAudit_',
+  // `auditDoitTourner_` est appelée par `Main.gs` et `compterAFaireAudit_` par la passe : deux
+  // fonctions inter-modules, donc deux noms que seul ce test retient si on les déplace.
+  'auditDoitTourner_', 'compterAFaireAudit_',
+  // Le correctif du 17/09 : l'aplatissement des champs (c'est LUI qui rendait « [object
+  // Object] »), la réparation d'en-tête et la re-extraction one-shot. Les trois vivent sur le
+  // chemin de la passe, donc rien d'autre ne les retient si un refactor les emporte.
+  'valeurChampAudit_', 'reparerEnTeteAudit_', 'reextraireAudit_',
+  'noterFinAuditPiece_', 'phraseFinAuditPiece_', 'texteSanteAuditPiece_',
+  // Le PÉRIMÈTRE (C49-4 étape A). Trois contrats INTER-MODULES : `perimetreDoitTourner_` et
+  // `etapePerimetrePiece_` sont appelées par `Main.gs`, `texteSantePerimetrePiece_` par
+  // `Journal.gs`. Et `diagnosticPerimetrePiece` est le chemin que MARC emprunte depuis
+  // l'éditeur : rien d'autre ne la retient, or un diagnostic promis mais absent fait retomber
+  // chaque vérification sur un échantillon Drive (§9, « un diagnostic un-clic n'est un signal
+  // de certitude que s'il est COMMITTÉ et déployé »).
+  'perimetreDoitTourner_', 'etapePerimetrePiece_', 'texteSantePerimetrePiece_',
+  // `decisifsPerimetre_` : le compte des domaines que Marc pousse EN PREMIER. Appelée par
+  // l'encodage ET par le diagnostic — deux sites, donc un contrat que seul ce test retient.
+  'decisifsPerimetre_',
+  'diagnosticPerimetrePiece', 'lireLignesIndexPerimetre_',
+  // Le RATTRAPAGE (C49-5 étape B). `rattrapageDoitTourner_`, `restantsRattrapage_` et
+  // `etapeRattrapagePiece_` sont appelées par `Main.gs` ; `texteSanteRattrapagePiece_` par
+  // `Journal.gs` ; et le module consomme `estCandidatPiece_` + `PREFIXES_DOMAINE_DECISIF_PIECE`
+  // de `PerimetrePiece.gs`, `fileIdDeCleIndex_` de `Journal.gs`, `budgetJourAudit_` et
+  // `resteAuditPiece_` d'`AuditPiece.gs`, `pousserPieceApresClassement_` de `Memoire.gs`.
+  // Rien d'autre que ce test ne retient ces contrats.
+  'rattrapageDoitTourner_', 'restantsRattrapage_', 'etapeRattrapagePiece_',
+  'texteSanteRattrapagePiece_', 'prefixesRattrapage_',
+  // Les DEUX chemins que Marc emprunte depuis l'éditeur. C28-137 : un chemin que seul un humain
+  // emprunte n'a personne d'autre pour le retenir, et le jour où le budget du tick est épuisé,
+  // c'est le seul moyen de vérifier une réparation avant minuit. `diagnosticRattrapagePiece`
+  // est en plus ce qui permet de lire le COÛT d'une tranche AVANT de la dépenser.
+  'rattraperPiecesMaintenant', 'diagnosticRattrapagePiece',
+  // La LECTURE PAR LA FILE (L36). `decoderEtatLectureFile_`, `lectureFileDoitTourner_` et
+  // `etapeLectureFile_` sont appelées par `Main.gs` ; `texteSanteLectureFile_` par
+  // `Journal.gs` ; le module consomme `rattraperUnDocumentDetail_` et `issueRattrapage_` de
+  // `RattrapagePiece.gs`. `lireFileMaintenant` est le chemin que seul MARC emprunte.
+  'decoderEtatLectureFile_', 'lectureFileDoitTourner_', 'etapeLectureFile_',
+  'texteSanteLectureFile_', 'rattraperUnDocumentDetail_', 'lireFileMaintenant',
+  'inventorierDoublons_', 'balayerExemplairesDoublons_',
   'ecrireVerdictsDoublons_', 'feuilleRapportDoublons_', 'texteSanteDoublons_', 'pageListeDrive_',
   'texteSanteHistoGmail_', // Main.gs, appelée par Journal.gs (ligne de Santé C28-99)
   'statutHistoGmail_', // Journal.gs, appelée par Main.gs — UNE règle de statut, deux surfaces
