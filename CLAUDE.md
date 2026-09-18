@@ -1313,6 +1313,17 @@ ce qui reste vrai d'une session à l'autre.
   revenir sans comprendre (C28-75). Réflexe pour tout `assurerX_` idempotent : « que se passe-t-il
   quand X est DÉSACTIVÉ après avoir été installé ? ».
 
+
+**Un recensement de commandes d'installation s'énumère par ce qu'elles FONT, jamais par le nom
+de l'une d'elles.** Le lot L2 du 18/09 a posé `--ignore-scripts` sur les trois `npm ci` /
+`npm install -g` trouvés par un grep, et laissé ouvert `npx playwright install` — qui télécharge
+depuis le registre ET exécute les scripts de cycle de vie, donc la surface qu'on venait de
+fermer, rouverte deux étapes plus bas, sur une version non figée. Pire : c'est le
+`--ignore-scripts` posé juste avant qui rendait cette étape NÉCESSAIRE. La forme couvre
+`npm ci`, `npm install`, `npm install -g` **et** `npx` ; le correctif est `npx --no-install`
+(binaire local, version du lockfile, échec franc s'il manque), et il exige que l'installation
+vive dans le MÊME job — à vérifier avant de le poser. Histoire dans `docs/LESSONS.md`.
+
 ## 10. Style et compte-rendu
 
 > 📣 Forme des comptes-rendus, des commits, des PR et des docs générées :

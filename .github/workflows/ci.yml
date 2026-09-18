@@ -182,7 +182,16 @@ jobs:
       - name: Navigateur Playwright (Chromium seul)
         working-directory: app
         timeout-minutes: 6
-        run: npx playwright install --with-deps chromium
+        # [CI-NPX-NO-INSTALL] `--no-install` : sans lui, `npx` TÉLÉCHARGE le paquet depuis le
+        # registre quand il ne le trouve pas localement, et exécute ses scripts de cycle de vie
+        # — la surface que `--ignore-scripts` vient de fermer deux étapes plus haut, rouverte
+        # ici, et sur une version NON figée en plus (le registre sert la dernière). Avec le
+        # drapeau, npx n'utilise que le binaire de `app/node_modules/.bin`, donc la version que
+        # le lockfile épingle, et échoue franchement s'il manque au lieu d'aller le chercher.
+        # Mesuré le 18/09 : `npm ci --ignore-scripts` puis `npx --no-install playwright
+        # --version` rend « Version 1.61.1 », le binaire local. `@playwright/test` est bien une
+        # devDependency de `app/` (c'est ce qui rend le drapeau applicable ici).
+        run: npx --no-install playwright install --with-deps chromium
 
       # VITE_E2E_MOCK=true est injectée par playwright.config.ts (webServer) : auth bouchonnée,
       # données locales (mockData.ts), AUCUN appel aux vraies API Google (api() lève en mock).
