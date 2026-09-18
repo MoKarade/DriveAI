@@ -4,12 +4,22 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🟦 EN COURS — 2026-09-17 : C49-5, le rattrapage des pièces `04` + `01`. REPRENDRE ICI.**
+> **🟦 EN COURS — 2026-09-18 : C49-5, le rattrapage des pièces `04` + `01`. REPRENDRE ICI.**
 >
-> **En une phrase** : les papiers d'identité et d'immigration de Marc partent vers la Mémoire,
-> la campagne est ARMÉE et tourne, il reste **55 documents sur 110** (relevé le 17/09 18:47 UTC).
+> **En une phrase** : la tranche est **TERMINÉE** — le tick a fini les 55 restants dans la nuit
+> (Santé du 18/09 15:57 UTC : « 0 restants · tranche terminée »), et **78 pièces** sont arrivées
+> dans la Mémoire. Il ne reste aucun geste automatique : **c'est à Marc de juger** avant
+> d'élargir la campagne au reste du Drive.
 >
-> **Le geste pour continuer, et il est à MARC** (la session ne peut pas exécuter Apps Script) :
+> ⚠️ **Un écart de 32 n'est expliqué par aucun chiffre lisible** : 110 documents traités,
+> 78 pièces produites (`04` = 23, `01` = 55 dont une en niveau 2). Les 32 autres sont
+> normalement des « sans texte » et des échecs — quatre lectures Drive impossibles sont tracées
+> au Journal du 17/09 — mais **le signal ne porte que la DERNIÈRE passe**, jamais le cumul, donc
+> personne ne peut le confirmer d'ici. C'est la même lacune que le point 2 ci-dessous, vue de
+> plus loin : la campagne dit « terminée » sans dire ce qu'elle a produit. [À vérifier]
+>
+> **Le geste manuel, gardé pour mémoire** (il n'y a plus rien à rattraper sur cette tranche,
+> mais il resservira si Marc élargit — et la session ne peut pas exécuter Apps Script) :
 > `script.google.com` → projet DriveAI → fichier **`RattrapagePiece.gs`** → fonction
 > **`rattraperPiecesMaintenant`** → Exécuter. ~25 documents par passe (garde-temps 4,5 min), donc
 > **~2 passes** pour finir. La fonction annonce le reste à chaque fois. Lecture seule avant de
@@ -43,16 +53,21 @@
 > frontière de l'ADR-0061 tient. Marc juge et retire sur `memoryai.hubperso.com/pieces`.
 >
 > **⬜ OUVERT, à vérifier par la prochaine session** :
-> 1. **Le coût LLM n'a pas bougé** : `llm_appels_mois` = 476 et `moisDollars` = 2,52 $ au 17/09
->    18:47, identiques à ce matin, alors que ~55 extractions Haiku ont eu lieu. Soit la télémétrie
->    est en retard, soit `enregistrerUsage_` n'est pas atteint sur ce chemin. **Non diagnostiqué**
->    — à re-mesurer avant de conclure quoi que ce soit. [À vérifier]
+> 1. ~~**Le coût LLM n'a pas bougé**~~ — **FAUX, re-mesuré le 18/09 16:00 UTC** : le compteur
+>    est passé de 476 à **539 appels** et de 2,52 à **2,85 $**. Ce n'était pas un compteur mort,
+>    c'était de la télémétrie en retard. Ce qui RESTE ouvert est une question plus étroite :
+>    l'extraction des pièces ne porte **aucune étiquette d'étape** et tombe donc dans le poste
+>    « (hors étape) » (113 appels, 0,49 $ ce mois) — le coût est compté, il n'est pas
+>    ATTRIBUÉ. Tant qu'il y est, on ne peut pas chiffrer ce que cette campagne coûte avant
+>    d'élargir. [Probable]
 > 2. **La ligne manuelle n'affiche pas les ACCEPTÉES** — `rattraperPiecesMaintenant` rend
 >    « N faits » sans dire combien la Mémoire a acceptés. Un refus de contrat passerait pour un
 >    succès (la panne du 16/09 en plus discret). Vérifié À LA MAIN le 17/09 : 24 envoyés,
 >    24 arrivés. À corriger dans un petit lot.
-> 3. **243 papiers « sans domaine »** dans MemoryAI, d'extracteur `moteur-inventaire-v1` — ils ne
->    viennent PAS de cette campagne. Origine inconnue. [À vérifier]
+> 3. ~~**243 papiers « sans domaine »**, origine inconnue~~ — **ÉLUCIDÉ le 18/09** : ils sont
+>    2 645 maintenant, et c'est l'INVENTAIRE (`document.existe`, 2 730 faits acceptés), pas le
+>    canal des pièces. `memoryai_papiers_facettes` compte les deux ensemble, d'où la confusion.
+>    Rien à corriger : le compte des pièces se lit par DOMAINE, jamais sur le total.
 > 4. **4 lectures Drive impossibles** pendant les passes (18:38, 18:40, 18:45, 18:47) : fichiers
 >    dont l'identifiant ne répond plus. Isolées (le coupe-circuit exige 3 d'affilée), comptées en
 >    échecs et marquées — elles ne reviendront pas. Rien à faire, mais c'est dit.
@@ -64,9 +79,14 @@
 >    **ne passera JAMAIS à cette échelle** — l'étape refuse une tranche plus grande. Voir
 >    l'amendement du 17/09 en §9 de l'ADR-0061.
 >
-> ⚠️ **Les check-ins programmés meurent avec la session qui les a créés.** Celle du 17/09 en avait
-> armé un pour le 18/09 16:00 UTC (audit C49-3, 33 documents restants à extraire, reprise le
-> matin). Une nouvelle session ne l'héritera pas : ce qu'il devait vérifier est écrit ici.
+> **L'audit C49-3 est TERMINÉ lui aussi** (Santé : « 0 restants · les 100 documents sont
+> extraits — à toi de juger »). Les cartes se jugent dans l'app : `drive.hubperso.com` →
+> engrenage → « Vérifier ». C'était la porte de l'ADR-0061 §7, et elle est franchie.
+>
+> ⚠️ **Les check-ins programmés meurent avec la session qui les a créés.** Celui du 18/09
+> 16:00 UTC a bien tiré et son verdict est écrit ci-dessus ; aucun autre n'est armé, et une
+> nouvelle session n'en hériterait pas. Les deux campagnes étant à zéro, il n'y a plus rien à
+> surveiller automatiquement — ce qui reste sont des DÉCISIONS de Marc.
 >
 > **🟦 EN COURS — 2026-09-15 : le « gros chantier » de Marc — l'assistant qui me connaît (C28-128, ADR-0059 ACCEPTÉ).**
 > Marc l'a décrit le 15/09 : un assistant « 1000× plus intelligent » qui lit ses documents et ses mails
