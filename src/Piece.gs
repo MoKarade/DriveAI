@@ -58,6 +58,10 @@ var PROMPT_PIECE =
   'n\'apparaît, réponds null. « Inconnu » est une bonne réponse ; deviner ne l\'est pas.\n' +
   'MONTANTS ET NUMÉROS : recopie-les TELS QU\'ÉCRITS, sans les convertir ni les arrondir.\n' +
   'LIBRES : au plus 40 clés, courtes. Ce qui ne rentre dans aucune famille va là.\n' +
+  'DATES D\'UNE PERSONNE : une date de NAISSANCE va dans "libres", sous la clé exacte ' +
+  '"date de naissance", au format AAAA-MM-JJ. Idem pour "date de délivrance". ' +
+  '(`date_document` est la date du PAPIER, `date_echeance` sa fin de validité : ni l\'une ni ' +
+  'l\'autre ne dit quand son titulaire est né.)\n' +
   'NE DEVINE RIEN : un champ que le document ne porte pas vaut null. Une date incomplète vaut null.';
 
 /**

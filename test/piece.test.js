@@ -107,6 +107,25 @@ test('le prompt d\'extraction est DÉDIÉ — il ne classe rien', () => {
     'la consigne « ne devine pas le titulaire » est ce qui rend le champ utilisable');
 });
 
+test('le prompt demande la date de NAISSANCE, et la distingue des deux autres dates', () => {
+  const c = ctx();
+  // ⚠️ Né d'un défaut OBSERVÉ (19/09/2026) : la Mémoire portait le passeport de Marc et ne
+  // pouvait pas dire son âge. Deux causes empilées — la lecture (niveau 3, côté MemoryAI) et
+  // celle-ci : rien ne demandait la date de naissance, donc elle n'arrivait dans `libres` que
+  // si le modèle y pensait. Une consigne implicite n'est pas une consigne.
+  assert.ok(/date de naissance/.test(c.PROMPT_PIECE),
+    'sans cette consigne, la date de naissance n\'est extraite qu\'au petit bonheur');
+  // Et la distinction avec les deux dates qui existaient déjà doit être ÉCRITE : sans elle,
+  // un modèle range une naissance dans `date_document`, qui est la date du PAPIER.
+  assert.ok(/date du PAPIER/.test(c.PROMPT_PIECE),
+    'la consigne doit dire ce que date_document et date_echeance sont, sinon elle déplace le défaut');
+  // ⚠️ ANTI-VACUITÉ : ce fragment est le dernier AVANT la fin du prompt concaténé. Un `+`
+  // manquant tronquerait tout ce qui suit EN SILENCE (leçon §9, surface verte) — donc on
+  // vérifie aussi que la phrase finale a survécu.
+  assert.ok(/Une date incomplète vaut null\.$/.test(c.PROMPT_PIECE.trim()),
+    'le prompt est tronqué : la dernière phrase manque');
+});
+
 test('le prompt interdit de deviner, et de convertir les montants', () => {
   const c = ctx();
   assert.ok(/NE DEVINE RIEN/.test(c.PROMPT_PIECE));
