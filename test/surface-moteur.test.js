@@ -213,7 +213,12 @@ const CONTRAT = [
   // `resteAuditPiece_` d'`AuditPiece.gs`, `pousserPieceApresClassement_` de `Memoire.gs`.
   // Rien d'autre que ce test ne retient ces contrats.
   'rattrapageDoitTourner_', 'restantsRattrapage_', 'etapeRattrapagePiece_',
-  'texteSanteRattrapagePiece_', 'prefixesRattrapage_',
+  'texteSanteRattrapagePiece_',
+  // C49-6 : le CUMUL de la campagne (Marc, 19/09 : « mesuré »). Ces cinq-là sont appelées
+  // en travers des modules — `Journal.gs` lit la Santé, `Main.gs` la ventilation — donc seul
+  // ce test de surface les retient.
+  'decoderCumulRattrapage_', 'encoderCumulRattrapage_', 'cumulerRattrapage_',
+  'lireCumulRattrapage_', 'phraseCumulRattrapage_', 'prefixesRattrapage_',
   // Les DEUX chemins que Marc emprunte depuis l'éditeur. C28-137 : un chemin que seul un humain
   // emprunte n'a personne d'autre pour le retenir, et le jour où le budget du tick est épuisé,
   // c'est le seul moyen de vérifier une réparation avant minuit. `diagnosticRattrapagePiece`
