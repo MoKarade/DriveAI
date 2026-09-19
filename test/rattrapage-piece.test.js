@@ -604,3 +604,62 @@ test('la Santé distingue « 0 restants » de « reste inconnu »', () => {
   assert.match(fini, /0 restants/);
   assert.match(fini, /tranche terminée/);
 });
+
+// ────────────────────────────────────────────────────────────────────────────────────────
+// LE CUMUL (C49-6, demande de Marc du 19/09 : « je veux que l'import se fasse automatiquement
+// et MESURÉ »). Le signal de fin ne porte que la DERNIÈRE passe : après 110 documents il
+// annonçait « 0/0/0 — tranche terminée », c'est-à-dire exactement ce qu'il annonce quand il
+// n'y avait rien à faire. C'est ce qui a rendu inexplicable l'écart entre 110 documents
+// traités et 78 pièces arrivées.
+// ────────────────────────────────────────────────────────────────────────────────────────
+
+test('le cumul ADDITIONNE les passes au lieu de les écraser', () => {
+  const c = ctx();
+  const zero = c.decoderCumulRattrapage_('');
+  assert.deepStrictEqual(
+    { f: zero.faits, e: zero.echecs, s: zero.sansTexte, a: zero.acceptees },
+    { f: 0, e: 0, s: 0, a: 0 });
+
+  const p1 = c.cumulerRattrapage_(zero, { faits: 24, echecs: 0, sansTexte: 1, acceptees: 24 });
+  const p2 = c.cumulerRattrapage_(p1, { faits: 53, echecs: 4, sansTexte: 28, acceptees: 53 });
+  assert.strictEqual(p2.faits, 77, 'deux passes s\'additionnent');
+  assert.strictEqual(p2.sansTexte, 29);
+  assert.strictEqual(p2.echecs, 4);
+  assert.strictEqual(p2.acceptees, 77);
+  // Et l'aller-retour par la forme persistée ne perd rien.
+  assert.deepStrictEqual(c.decoderCumulRattrapage_(c.encoderCumulRattrapage_(p2)), p2);
+});
+
+test('une passe VIDE ne détruit pas le cumul — c\'est le bug du 17/09 un cran plus loin', () => {
+  const c = ctx();
+  const avant = c.decoderCumulRattrapage_('77/4/29/77');
+  const apres = c.cumulerRattrapage_(avant, { faits: 0, echecs: 0, sansTexte: 0, acceptees: 0 });
+  assert.deepStrictEqual(apres, avant, 'une sortie précoce ne remet aucun compteur à zéro');
+});
+
+test('un cumul écrit sous un AUTRE tag ne compte pas — deux populations ne s\'additionnent pas', () => {
+  const c = ctx();
+  const props = {
+    getProperty: () => 'c49-5-a|77/4/29/77',
+    setProperty: () => { }
+  };
+  const meme = c.lireCumulRattrapage_(props, 'c49-5-a');
+  assert.strictEqual(meme.faits, 77, 'même tag : le cumul se poursuit');
+  const autre = c.lireCumulRattrapage_(props, 'c49-6-a');
+  assert.strictEqual(autre.faits, 0, 'tag différent : on repart de zéro, jamais on n\'additionne');
+  // ⚠️ Une Property ILLISIBLE vaut zéro, pas une exception : l'observabilité ne fait pas
+  // échouer l'étape qu'elle observe.
+  const casse = c.lireCumulRattrapage_({ getProperty: () => { throw new Error('boom'); } }, 'c49-5-a');
+  assert.strictEqual(casse.faits, 0);
+});
+
+test('la Santé se TAIT tant que rien n\'a été produit, et parle dès le premier document', () => {
+  const c = ctx();
+  assert.strictEqual(c.phraseCumulRattrapage_({ faits: 0, echecs: 0, sansTexte: 0, acceptees: 0 }), '',
+    'un cumul vide ne dit rien : « rien produit » et « rien à produire » ne sont pas la même chose');
+  const p = c.phraseCumulRattrapage_({ faits: 77, echecs: 4, sansTexte: 29, acceptees: 77 });
+  assert.ok(/77 extraits/.test(p) && /77 acceptés/.test(p), p);
+  assert.ok(/29 sans texte/.test(p) && /4 en échec/.test(p), p);
+  // ⚠️ Un zéro MESURÉ s'affiche : c'est lui qui distingue « aucun échec » de « on ne sait pas ».
+  assert.ok(/0 en échec/.test(c.phraseCumulRattrapage_({ faits: 5, echecs: 0, sansTexte: 0, acceptees: 5 })));
+});

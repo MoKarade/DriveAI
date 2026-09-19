@@ -209,9 +209,61 @@ function ligneFinRattrapage_(maintenant, res, manuel) {
   ].join('|');
 }
 
+/**
+ * Le CUMUL de la campagne, lu puis réécrit. PUR sur son entrée (une chaîne), pour qu'il se
+ * teste sans Properties.
+ *
+ * ⚠️ POURQUOI IL EXISTE. Le signal de fin ne porte que la DERNIÈRE passe : après 110
+ * documents, il annonçait « 0/0/0 — tranche terminée », c'est-à-dire exactement ce qu'il
+ * annonce quand il n'y avait rien à faire. Marc a demandé un import « mesuré » le 19/09 ;
+ * une campagne qui dit « terminée » sans dire ce qu'elle a PRODUIT n'est pas mesurée, et
+ * c'est ce qui a rendu inexplicable l'écart de 32 entre 110 documents et 78 pièces.
+ *
+ * ⚠️ Le cumul est porté par sa PROPRE Property, jamais par un 6ᵉ champ du signal de fin : ce
+ * signal est réécrit à chaque passe, y compris par les sorties précoces, et un cumul qu'une
+ * sortie précoce peut remettre à zéro ne cumule rien (le bug du 17/09, d'un cran plus loin).
+ *
+ * @param {string} brut  `<faits>/<echecs>/<sansTexte>/<acceptees>` ou vide
+ * @return {{faits:number, echecs:number, sansTexte:number, acceptees:number}}
+ */
+function decoderCumulRattrapage_(brut) {
+  var p = String(brut || '').split('/');
+  var n = function (i) { var v = Number(p[i]); return isFinite(v) && v >= 0 ? v : 0; };
+  return { faits: n(0), echecs: n(1), sansTexte: n(2), acceptees: n(3) };
+}
+
+/** @return {string} la forme persistée du cumul. PURE. */
+function encoderCumulRattrapage_(c) {
+  return [c.faits, c.echecs, c.sansTexte, c.acceptees].join('/');
+}
+
+/** Le cumul APRÈS cette passe. PURE — l'addition est ici, l'I/O chez l'appelant. */
+function cumulerRattrapage_(cumul, res) {
+  return {
+    faits: cumul.faits + (Number(res.faits) || 0),
+    echecs: cumul.echecs + (Number(res.echecs) || 0),
+    sansTexte: cumul.sansTexte + (Number(res.sansTexte) || 0),
+    acceptees: cumul.acceptees + (Number(res.acceptees) || 0)
+  };
+}
+
+/** Le cumul persisté sous le tag COURANT, remis à zéro si le tag a changé. */
+function lireCumulRattrapage_(props, tagCourant) {
+  var brut;
+  try { brut = props.getProperty('DriveAI_RATTRAPAGE_PIECE_CUMUL'); } catch (e) { brut = null; }
+  var p = String(brut || '').split('|');
+  // ⚠️ Le cumul porte SON tag, comme la liste d'idempotence : un cumul écrit sous une
+  // campagne précédente additionnerait deux populations et personne ne le verrait.
+  if (p.length < 2 || p[0] !== String(tagCourant || '')) return decoderCumulRattrapage_('');
+  return decoderCumulRattrapage_(p[1]);
+}
+
 function noterFinRattrapage_(props, res, manuel) {
   try {
     props.setProperty('DriveAI_RATTRAPAGE_PIECE_FIN', ligneFinRattrapage_(new Date(), res, manuel));
+    var tag = String(CONFIG.RATTRAPAGE_PIECE_TAG || '');
+    var cumul = cumulerRattrapage_(lireCumulRattrapage_(props, tag), res);
+    props.setProperty('DriveAI_RATTRAPAGE_PIECE_CUMUL', tag + '|' + encoderCumulRattrapage_(cumul));
     // ⚠️ LE COMPTEUR N'EST ÉCRIT QUE S'IL A ÉTÉ MESURÉ. C'est lui que la gate du tick relit :
     // une sortie précoce qui y poserait `0` faute de savoir refermerait la campagne à vie. Le
     // motif de fin, lui, s'écrit TOUJOURS — c'est la moitié qui dit pourquoi on s'est arrêté.
@@ -247,11 +299,31 @@ function phraseFinRattrapage_(brut, tagCourant) {
   return phrase;
 }
 
+/**
+ * La phrase du CUMUL, ou une chaîne vide s'il n'y a rien à dire. PURE.
+ *
+ * ⚠️ « rien produit » et « rien à produire » ne se disent pas pareil : un cumul entièrement à
+ * zéro se TAIT (la campagne n'a pas encore tourné), mais dès qu'un seul document est passé,
+ * les quatre nombres s'affichent — y compris les zéros, qui sont alors des mesures.
+ */
+function phraseCumulRattrapage_(cumul) {
+  var total = cumul.faits + cumul.echecs + cumul.sansTexte;
+  if (!total) return '';
+  return 'depuis le début : ' + cumul.faits + ' extraits ('
+    + cumul.acceptees + ' acceptés par la Mémoire), '
+    + cumul.sansTexte + ' sans texte, ' + cumul.echecs + ' en échec';
+}
+
 function texteSanteRattrapagePiece_() {
-  var brut;
-  try { brut = PropertiesService.getScriptProperties().getProperty('DriveAI_RATTRAPAGE_PIECE_FIN'); }
-  catch (e) { return 'état illisible'; }
-  return phraseFinRattrapage_(brut, CONFIG.RATTRAPAGE_PIECE_TAG);
+  var brut, cumul;
+  try {
+    var props = PropertiesService.getScriptProperties();
+    brut = props.getProperty('DriveAI_RATTRAPAGE_PIECE_FIN');
+    cumul = lireCumulRattrapage_(props, CONFIG.RATTRAPAGE_PIECE_TAG);
+  } catch (e) { return 'état illisible'; }
+  var phrase = phraseFinRattrapage_(brut, CONFIG.RATTRAPAGE_PIECE_TAG);
+  var cum = phraseCumulRattrapage_(cumul);
+  return cum ? (phrase + ' · ' + cum) : phrase;
 }
 
 /**
@@ -496,11 +568,25 @@ function rattraperUnDocument_(doc, manuel) {
  */
 function rattraperPiecesMaintenant() {
   var debut = Date.now();
-  var res = etapeRattrapagePiece_(
-    function () { return (Date.now() - debut) > CONFIG.BUDGET_MS; },
-    { manuel: true }
-  );
-  var ligne = 'Rattrapage des pièces (manuel) : ' + res.faits + ' faits / ' + res.echecs
+  // Ventilation du coût, patron de `WebApp.gs` : une exécution manuelle ne passe par aucune
+  // étape de tick, donc ses appels Haiku tombaient dans « (hors étape) » — indistinguables de
+  // ceux du chat. Restauré en `finally` : l'éditeur Apps Script réutilise le contexte.
+  var opAvant = '';
+  try { opAvant = operationCourante_(); poserOperationCourante_('rattrapage-piece-manuel'); } catch (eOp) { }
+  var res;
+  try {
+    res = etapeRattrapagePiece_(
+      function () { return (Date.now() - debut) > CONFIG.BUDGET_MS; },
+      { manuel: true }
+    );
+  } finally {
+    try { poserOperationCourante_(opAvant); } catch (eOp2) { }
+  }
+  // ⚠️ LES ACCEPTÉES SONT DITES. Sans elles, « 24 faits » couvre aussi bien 24 pièces arrivées
+  // que 24 refusées par le contrat de la Mémoire — c'est la panne du 16/09 (4 000 faits refusés
+  // sous un HTTP 200) en plus discret, puisque ici personne ne compterait.
+  var ligne = 'Rattrapage des pièces (manuel) : ' + res.faits + ' extraits dont '
+    + res.acceptees + ' acceptés par la Mémoire / ' + res.echecs
     + ' échecs / ' + res.sansTexte + ' sans texte — ' + res.restants + ' restants — ' + res.fin
     + (res.dernierMotif ? ' — dernier motif : ' + res.dernierMotif : '');
   Logger.log(ligne);

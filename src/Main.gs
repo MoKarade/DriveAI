@@ -610,7 +610,16 @@ function tickDriveAI() {
       catch (eTag) { tagAudit = null; }
       if (auditDoitTourner_(resteAudit, tagAudit, CONFIG.AUDIT_PIECE_TAG)
           && !estBudgetDepasse() && !budgetCampagnesAtteint_() && !resetEnCours_()) {
-        etapeAuditPiece_(estBudgetDepasse, {});
+        // VENTILATION DU COÛT (C28-58) : ces deux étapes ne passent pas par
+        // `etapeSuivie_`, donc leurs appels Haiku tombaient dans « (hors étape) » —
+        // mesuré le 19/09 : aucun poste ne nommait les pièces, et le coût de la
+        // campagne était donc inchiffrable AVANT de l'élargir au Drive entier.
+        // Patron de `WebApp.gs` : on pose l'opération, on la restaure en `finally`.
+        var opAvantA = operationCourante_();
+        try {
+          poserOperationCourante_('audit-piece');
+          etapeAuditPiece_(estBudgetDepasse, {});
+        } finally { poserOperationCourante_(opAvantA); }
       }
     } catch (e) { journalErreur_('AuditPiece', 'Audit des pièces différé : ' + e); }
 
@@ -634,7 +643,16 @@ function tickDriveAI() {
       catch (eRattTag) { tagRatt = null; }
       if (rattrapageDoitTourner_(resteRatt, tagRatt, CONFIG.RATTRAPAGE_PIECE_TAG)
           && !estBudgetDepasse() && !budgetCampagnesAtteint_() && !resetEnCours_()) {
-        etapeRattrapagePiece_(estBudgetDepasse, {});
+        // VENTILATION DU COÛT (C28-58) : ces deux étapes ne passent pas par
+        // `etapeSuivie_`, donc leurs appels Haiku tombaient dans « (hors étape) » —
+        // mesuré le 19/09 : aucun poste ne nommait les pièces, et le coût de la
+        // campagne était donc inchiffrable AVANT de l'élargir au Drive entier.
+        // Patron de `WebApp.gs` : on pose l'opération, on la restaure en `finally`.
+        var opAvantR = operationCourante_();
+        try {
+          poserOperationCourante_('rattrapage-piece');
+          etapeRattrapagePiece_(estBudgetDepasse, {});
+        } finally { poserOperationCourante_(opAvantR); }
       }
     } catch (e) { journalErreur_('RattrapagePiece', 'Rattrapage des pièces différé : ' + e); }
 
