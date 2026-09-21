@@ -784,10 +784,12 @@ export interface DocumentLu {
   /** Vide pour les lignes écrites avant C49-13 : l'onglet est append-only, il ne se corrige pas. */
   nom: string;
   motif: string;
+  /** Le dossier d'où vient le papier. Vide avant C49-14, pour la même raison. */
+  domaine: string;
 }
 
 /**
- * PURE. Lit `PiecesFaites!A2:E`.
+ * PURE. Lit `PiecesFaites!A2:F`.
  *
  * ⚠️ Une ligne sans `fileId` est IGNORÉE, jamais rendue avec un identifiant vide : elle ne
  * désigne aucun document, et l'afficher ferait compter un traitement qui n'a pas eu lieu.
@@ -805,6 +807,7 @@ export function interpreterPiecesFaites(brut: string[][]): DocumentLu[] {
       le: String(l?.[2] ?? '').trim(),
       nom: String(l?.[3] ?? '').trim(),
       motif: String(l?.[4] ?? '').trim(),
+      domaine: String(l?.[5] ?? '').trim(),
     });
   }
   return out;
@@ -887,12 +890,149 @@ export function derniersLus(lus: DocumentLu[], n: number): DocumentLu[] {
  * possible du canal de lecture.
  */
 export function ligneSanteLecture(sante: string[]): string | null {
+  // ⚠️ Déléguée à `ligneSanteNommee` depuis C49-14 : trois lignes de Santé se lisent
+  // désormais de la même façon, et trois copies du même découpage auraient divergé au
+  // premier libellé qui porte un « : » de plus.
+  return ligneSanteNommee(sante, 'Rattrapage des pièces');
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   CE QUE LA CAMPAGNE FAIT EN CE MOMENT — C49-14.
+
+   Marc, le 21/09/2026 : « je vois pas de courbe pas d'estimé je sais pas ça traite quoi en ce
+   moment quel dossier quel fichier quelle direction quelles infos il lui manque ».
+
+   Cinq questions. Quatre n'avaient AUCUNE réponse dans le moteur — pas « mal affichée » :
+   absente. Le moteur les publie depuis C49-14, et ce bloc les met en forme SANS rien calculer
+   de neuf : la file et l'en-cours sont décidés côté moteur, ici on ne fait que lire.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+/** Un dossier de la tranche : combien y sont lus, combien restent. */
+export interface DossierLecture {
+  prefixe: string;
+  lus: number;
+  total: number;
+  restants: number;
+}
+
+/**
+ * PURE. La file par dossier, depuis la ligne de Santé « Lecture — file ».
+ *
+ * ⚠️ Le format lu est celui que le moteur ÉCRIT (`04:0/23·01:40/87`), jamais la phrase
+ * française qu'il compose à côté : une phrase se reformule, un encodage non. Deux lectures de
+ * la même chose seraient « une règle et demie », et l'écart ne se verrait jamais.
+ */
+export function fileLecture(sante: string[]): DossierLecture[] | null {
+  const ligne = ligneSanteNommee(sante, 'Lecture — file');
+  if (ligne === null) return null;
+  const out: DossierLecture[] = [];
+  for (const part of ligne.split('·')) {
+    const m = /^\s*(\S+?):(\d+)\/(\d+)\s*$/.exec(part);
+    if (!m) continue;
+    const restants = Number(m[2]);
+    const total = Number(m[3]);
+    out.push({ prefixe: m[1]!, restants, total, lus: total - restants });
+  }
+  // ⚠️ Une ligne présente mais illisible rend un tableau VIDE, pas `null` : « le moteur n'a pas
+  // écrit » et « j'ai lu et je n'ai rien compris » ne se réparent pas au même endroit.
+  return out;
+}
+
+/**
+ * PURE. Le document en cours de lecture, ou `null`.
+ *
+ * ⚠️ Le moteur a DÉJÀ tranché la péremption (une passe tuée par le mur des six minutes laisse
+ * sa Property derrière elle) : quand rien n'est en cours, il écrit sa propre phrase de repos.
+ * On ne re-décide donc rien ici — on reconnaît juste ce repos pour que l'écran puisse montrer
+ * le dernier document lu à la place, qui est vrai.
+ */
+export function enCoursLecture(sante: string[]): string | null {
+  const ligne = ligneSanteNommee(sante, 'Lecture — en cours');
+  if (ligne === null) return null;
+  if (!ligne || ligne.indexOf('rien en ce moment') === 0) return null;
+  if (ligne === 'état illisible') return null;
+  return ligne;
+}
+
+/** PURE. Une ligne de Santé par son préfixe, sans son libellé. */
+export function ligneSanteNommee(sante: string[], prefixe: string): string | null {
   for (const l of sante ?? []) {
     const s = String(l ?? '');
-    if (s.indexOf('Rattrapage des pièces') === 0) {
+    if (s.indexOf(prefixe) === 0) {
       const i = s.indexOf(':');
-      return i === -1 ? s : s.slice(i + 1).trim();
+      return i === -1 ? '' : s.slice(i + 1).trim();
     }
   }
   return null;
+}
+
+/** Ce que la campagne n'a PAS pu lire, nommément. */
+export interface ManqueLecture {
+  nom: string;
+  domaine: string;
+  fileId: string;
+  raison: string;
+}
+
+/**
+ * PURE. Les documents dont il manque quelque chose — « quelles infos il lui manque ».
+ *
+ * ⚠️ Seules les classes `vide` et `echec` entrent : un verdict INCONNU est une ligne d'avant
+ * C49-13, pas un manque. Les mélanger ferait apparaître comme « à refaire » des documents dont
+ * on ne sait simplement rien.
+ * ⚠️ Le tag COURANT seulement, comme le bilan : un bump remet la campagne à zéro.
+ */
+export function manquesLecture(lus: DocumentLu[], n: number): ManqueLecture[] {
+  const tag = lus.length ? lus[lus.length - 1]!.tag : '';
+  const out: ManqueLecture[] = [];
+  for (let i = lus.length - 1; i >= 0 && out.length < n; i--) {
+    const d = lus[i]!;
+    if (d.tag !== tag) continue;
+    const v = verdictLecture(d.motif);
+    if (v.classe !== 'vide' && v.classe !== 'echec') continue;
+    out.push({ nom: d.nom, domaine: d.domaine, fileId: d.fileId, raison: v.libelle });
+  }
+  return out;
+}
+
+/** Le rythme OBSERVÉ de la campagne, et ce qu'il reste à ce rythme. */
+export interface CadenceLecture {
+  /** Documents lus sur la journée la plus récente où la campagne a travaillé. */
+  parJourActif: number;
+  /** Le jour en question, `AAAA-MM-JJ`. */
+  jour: string;
+  /** Nombre de jours où elle a travaillé, tous tags confondus pour le tag courant. */
+  joursActifs: number;
+  /** `null` quand on ne peut rien dire — jamais un horizon inventé. */
+  joursRestants: number | null;
+}
+
+/**
+ * PURE. La cadence, mesurée sur les JOURS ACTIFS et pas sur les jours écoulés.
+ *
+ * ⚠️ Les deux répondent à des questions différentes, et prendre la mauvaise fabrique une
+ * estimation confiante et fausse — le dépôt l'a déjà payé (MemoryAI, 18/09) : « total ÷ jours
+ * écoulés » donne un rythme de 4/jour sur une campagne qui en fait 83 en une journée puis
+ * s'arrête. Ici la campagne tourne par rafales et s'interrompt sur son budget quotidien : ce
+ * qu'on veut dire est « il reste N jours OÙ ELLE TOURNE », pas « N jours de calendrier ».
+ *
+ * ⚠️ Zéro document lu ⇒ `joursRestants: null`. Un `Infinity` ou un grand nombre se lirait
+ * comme une mesure.
+ */
+export function cadenceLecture(lus: DocumentLu[], restants: number | null): CadenceLecture {
+  const tag = lus.length ? lus[lus.length - 1]!.tag : '';
+  const parJour = new Map<string, number>();
+  for (const d of lus) {
+    if (d.tag !== tag) continue;
+    const jour = d.le.slice(0, 10);
+    if (!jour) continue;
+    parJour.set(jour, (parJour.get(jour) ?? 0) + 1);
+  }
+  const jours = Array.from(parJour.keys()).sort();
+  const dernier = jours.length ? jours[jours.length - 1]! : '';
+  const parJourActif = dernier ? (parJour.get(dernier) ?? 0) : 0;
+  const joursRestants = (parJourActif > 0 && restants !== null && restants >= 0)
+    ? Math.ceil(restants / parJourActif)
+    : null;
+  return { parJourActif, jour: dernier, joursActifs: jours.length, joursRestants };
 }

@@ -71,7 +71,7 @@ function chargerAvecSanteMock(indexCache, props) {
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 15 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 17 lignes de métadonnées (une seule écriture Sheet)', () => {
   // 10 depuis ADR-0056 : la re-datation de `06` rallume de la dépense LLM et son budget du jour
   // n'était lisible NULLE PART. Le compte est figé pour que l'ajout d'une ligne soit une DÉCISION —
   // l'écriture est unique par tick, et chaque ligne coûte de la place à l'écran de Marc.
@@ -97,9 +97,16 @@ test('majSante_ écrit exactement 15 lignes de métadonnées (une seule écritur
   // partage la ligne d'aucune voisine : le périmètre COMPTE (rien ne part), l'audit VÉRIFIE
   // (rien ne part non plus), celle-ci ENVOIE. Les fondre ferait lire « la mesure est faite »
   // comme « les papiers sont partis », ce qui n'est pas la même chose du tout pour Marc.
+  // 17 depuis C49-14 : DEUX lignes, pas une, et la distinction est le sujet même du lot.
+  // « Lecture — file » est STABLE (elle se relit à froid et dit quel dossier, dans quel
+  // ordre, ce qui vient ensuite) ; « Lecture — en cours » est VOLATILE et PÉRIME au bout de
+  // huit minutes. Les fondre ferait afficher un document « en cours » des heures après la
+  // fin de la passe, c'est-à-dire fabriquer le faux état figé que ce lot existe pour tuer.
+  // Marc, le 21/09 : « je sais pas ça traite quoi en ce moment, quel dossier, quel fichier,
+  // quelle direction » — quatre questions dont aucune n'avait de réponse dans le moteur.
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 15);
+  assert.strictEqual(captured.length, 17);
   assert.ok(captured.every((l) => typeof l === 'string'));
 });
 

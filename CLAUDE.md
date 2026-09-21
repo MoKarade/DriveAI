@@ -1397,6 +1397,28 @@ contre un `setProperty` qui lève en boucle. La bonne question n'était pas « c
 cette étape » mais « a-t-elle sa place ici » — le registre suit ce qui PROGRESSE, et poser un
 point par jour ne progresse pas.
 
+**Un état écrit APRÈS coup répond à « qu'est-ce qui a été lu », jamais à « qu'est-ce qui est
+en train d'être lu ».** Le 21/09/2026, Marc a demandé trois fois de suite où en était la lecture
+de ses papiers. Mesuré avant d'écrire une ligne : sur ses cinq questions, **quatre n'avaient
+aucune réponse dans le moteur** — pas une réponse mal affichée, une réponse ABSENTE. La campagne
+n'écrivait son état qu'une fois le document traité, donc « ça traite quoi en ce moment » était
+structurellement sans réponse ; l'ordre `04 → 01 → 02` vivait dans une boucle et n'était publié
+nulle part ; et la ligne du document lu ne portait pas son dossier. Réflexe : devant « je ne vois
+pas », **lister les questions une par une et chercher la ligne qui ÉCRIT la réponse** — si aucune
+n'existe, le lot n'est pas un lot d'affichage.
+⚠️ Un « en cours » s'écrit **AVANT** l'appel (après, il décrit le passé), s'efface à **CHAQUE**
+sortie de boucle (budget, garde-temps, erreur — pas seulement la fin normale), et **périme** :
+sans péremption, un plantage laisse un nom affiché « en train d'être lu » pour toujours, et c'est
+pire que rien parce qu'on le croit.
+⚠️ **Une file qui ne s'écrit que dans le cas ACTIF ne dit rien du cas FINI.** Ma première
+version ne publiait la file que s'il restait du travail — donc un dossier terminé disparaissait,
+exactement au moment où « quelle direction ? » se pose. Prouvé par mutation : la garde rougit
+quand le domaine à zéro restant s'évapore.
+⚠️ Et la CADENCE se mesure sur les **jours ACTIFS** (déjà payé chez MemoryAI le 18/09) : « total
+÷ jours écoulés » et « total ÷ jours où ça a tourné » sont tous deux vrais, un seul répond à
+« combien de jours de campagne reste-t-il » — d'où un horizon annoncé en « jours OÙ LA CAMPAGNE
+TOURNE », jamais en jours de calendrier.
+
 ## 10. Style et compte-rendu
 
 > 📣 Forme des comptes-rendus, des commits, des PR et des docs générées :

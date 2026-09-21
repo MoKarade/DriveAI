@@ -194,6 +194,7 @@ function montage(lignesIndex, props, options) {
       getScriptProperties: () => ({
         getProperty: (k) => (props.has(k) ? props.get(k) : null),
         setProperty: (k, v) => { props.set(k, String(v)); },
+        deleteProperty: (k) => { props.delete(k); },
       }),
     },
   });
@@ -889,10 +890,13 @@ test('chaque document lu est inscrit avec son NOM et son MOTIF', () => {
   c.etapeRattrapagePiece_(() => false, {});
 
   assert.strictEqual(c.faitsEcrits.length, 2);
+  // ⚠️ Le DOMAINE a rejoint le nom et le motif le 21/09 (C49-14) : Marc demandait « quel
+  // dossier », et un nom de fichier seul ne le dit pas. Ce cas n'a pas été RE-BASÉ — il
+  // affirme désormais le fait de plus, parce que c'est le fait que le lot ajoute.
   assert.deepStrictEqual(Array.from(c.faitsEcrits[0]).slice(3),
-    ['2026-01-02_Passeport_IRCC.pdf', 'ok']);
+    ['2026-01-02_Passeport_IRCC.pdf', 'ok', '04 · Immigration']);
   assert.deepStrictEqual(Array.from(c.faitsEcrits[1]).slice(3),
-    ['2026-03-04_Relevé_Desjardins.pdf', 'illisible']);
+    ['2026-03-04_Relevé_Desjardins.pdf', 'illisible', '01 · Administratif & identité']);
   // ⚠️ Et l'identifiant reste en colonne 1 : c'est lui que lit l'idempotence, et il ne bouge
   // pas parce qu'on a ajouté des colonnes EN QUEUE.
   assert.strictEqual(c.faitsEcrits[0][0], ID(1));
@@ -916,4 +920,110 @@ test('l\'en-tête de PiecesFaites se RÉPARE là où on écrit, pas à la créat
   d.largeurFaits = d.COLONNES_PIECES_FAITES.length;
   d.etapeRattrapagePiece_(() => false, {});
   assert.strictEqual(d.enTetesEcrits.length, 0);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────
+// 11. CE QUE LA CAMPAGNE EST EN TRAIN DE FAIRE (C49-14).
+//
+// Marc, le 21/09 : « je sais pas ça traite quoi en ce moment, quel dossier, quel fichier,
+// quelle direction, quelles infos il lui manque ». Quatre questions sans réponse — pas mal
+// affichées : ABSENTES du moteur.
+// ─────────────────────────────────────────────────────────────────────────────────────────
+
+test('la file par domaine SUIT l\'ordre de la tranche, et garde les domaines finis', () => {
+  const c = load(['Config.gs', 'PerimetrePiece.gs', 'RattrapagePiece.gs']);
+  // `04` entièrement fait, `01` à moitié, `02` intact.
+  const parDomaine = {
+    '04': { tranche: 23, restants: 0 },
+    '01': { tranche: 87, restants: 40 },
+    '02': { tranche: 976, restants: 976 },
+  };
+  const encode = c.encoderFilePiece_(parDomaine, ['04', '01', '02']);
+  assert.strictEqual(encode, '04:0/23·01:40/87·02:976/976');
+
+  const phrase = c.phraseFilePiece_(encode);
+  // ⚠️ Ce que la phrase doit DIRE, et c'est la demande mot à mot : quel dossier maintenant,
+  // combien y sont lus, et ce qui vient ensuite.
+  assert.match(phrase, /04 ✅ \(23\)/);
+  assert.match(phrase, /EN COURS 01 : 47\/87 lus, 40 à lire/);
+  assert.match(phrase, /ensuite 02 \(976\)/);
+});
+
+test('un domaine à ZÉRO restant reste dans la file — l\'absence se lirait « pas commencé »', () => {
+  const c = load(['Config.gs', 'PerimetrePiece.gs', 'RattrapagePiece.gs']);
+  const encode = c.encoderFilePiece_({ '04': { tranche: 23, restants: 0 } }, ['04']);
+  assert.strictEqual(encode, '04:0/23');
+  assert.match(c.phraseFilePiece_(encode), /tranche terminée/);
+  // ⚠️ Contrôle inverse : une file VIDE ne dit pas « terminée », elle dit qu'on n'a pas mesuré.
+  assert.strictEqual(c.phraseFilePiece_(''), 'pas encore mesurée');
+});
+
+test('le document EN COURS s\'efface tout seul quand il a trop vieilli', () => {
+  const c = load(['Config.gs', 'PerimetrePiece.gs', 'RattrapagePiece.gs']);
+  const t0 = 1_700_000_000_000;
+  const brut = c.encoderEnCoursPiece_(
+    { fileId: 'abc', nom: 'Passeport.pdf', domaine: '04 · Immigration' }, t0);
+
+  // Frais : il se dit.
+  assert.strictEqual(c.phraseEnCoursPiece_(brut, t0 + 1000, 8 * 60 * 1000),
+    'Passeport.pdf (04 · Immigration)');
+  // ⚠️ Périmé : RIEN. Un run tué par le mur des six minutes laisse la Property en place ; sans
+  // cette borne, l'écran afficherait « en train de lire » pendant des heures — exactement le
+  // « faux 0 permanent » d'`HistoriqueVrac`.
+  assert.strictEqual(c.phraseEnCoursPiece_(brut, t0 + 9 * 60 * 1000, 8 * 60 * 1000), '');
+  // Ni horodatage, ni nom ⇒ rien non plus : on n'invente pas un document en cours.
+  assert.strictEqual(c.phraseEnCoursPiece_('', t0, 1000), '');
+  assert.strictEqual(c.phraseEnCoursPiece_('abc|x|y|z', t0, 1000), '');
+  assert.strictEqual(c.phraseEnCoursPiece_(String(t0) + '|abc||04', t0, 1000), '');
+});
+
+test('un nom qui porte le séparateur ne casse pas l\'encodage', () => {
+  const c = load(['Config.gs', 'PerimetrePiece.gs', 'RattrapagePiece.gs']);
+  // ⚠️ `|` est le séparateur : un nom qui en contient couperait la chaîne et ferait lire le
+  // domaine à la place du nom. Les retours à la ligne feraient pire — ils casseraient la ligne
+  // de Santé, qui est UNE cellule.
+  const brut = c.encoderEnCoursPiece_(
+    { fileId: 'i', nom: 'a|b\nc', domaine: '04 · X' }, 1000);
+  assert.strictEqual(brut.split('|').length, 4);
+  assert.strictEqual(c.phraseEnCoursPiece_(brut, 1000, 1000), 'a b c (04 · X)');
+});
+
+test('la file et l\'en-cours sont ÉCRITS par la passe, et l\'en-cours est effacé à la sortie', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const c = montage([
+    ligne(CLE(ID(1)), 'a.pdf', '04 · Immigration'),
+    ligne(CLE(ID(2)), 'b.pdf', '01 · Administratif & identité'),
+  ], props);
+  const vus = [];
+  c.pousserPieceApresClassement_ = () => {
+    // ⚠️ On observe la Property PENDANT la lecture : c'est la seule façon de prouver qu'elle
+    // est écrite AVANT l'appel. La lire après la passe ne prouverait que l'effacement.
+    vus.push(props.get('DriveAI_PIECE_EN_COURS'));
+    return { motif: 'ok' };
+  };
+
+  c.etapeRattrapagePiece_(() => false, {});
+
+  assert.strictEqual(vus.length, 2);
+  assert.match(String(vus[0]), /\|a\.pdf\|04 · Immigration$/);
+  assert.match(String(vus[1]), /\|b\.pdf\|01 · Administratif & identité$/);
+  // La file dit la tranche ET ce qui y reste, dans l'ordre des préfixes.
+  assert.strictEqual(typeof props.get('DriveAI_PIECE_FILE'), 'string');
+  assert.match(props.get('DriveAI_PIECE_FILE'), /^04:\d+\/\d+·01:\d+\/\d+/);
+  // ⚠️ Et la campagne ne laisse RIEN en cours derrière elle.
+  assert.strictEqual(props.get('DriveAI_PIECE_EN_COURS'), undefined);
+});
+
+test('la file s\'écrit AUSSI quand il ne reste rien — « terminée » n\'est pas « non mesurée »', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  // Tout est déjà fait : la sélection ne rend aucun document.
+  const c = montage([ligne(CLE(ID(1)), 'a.pdf', '04 · Immigration')], props);
+  // ⚠️ L'idempotence se lit dans l'onglet `PiecesFaites`, filtrée par TAG : poser un champ
+  // sur le contexte ne simulerait rien. On écrit donc une vraie ligne déjà faite.
+  c.faitsEcrits.push([ID(1), c.CONFIG.RATTRAPAGE_PIECE_TAG, '2026-09-21 10:00', 'a.pdf', 'ok', '04 · Immigration']);
+
+  const res = c.etapeRattrapagePiece_(() => false, {});
+
+  assert.strictEqual(res.fin, 'tranche-terminee');
+  assert.match(props.get('DriveAI_PIECE_FILE'), /04:0\/1/);
 });

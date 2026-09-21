@@ -22,6 +22,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   interpreterPiecesFaites, verdictLecture, bilanLecture, derniersLus, ligneSanteLecture,
+  fileLecture, enCoursLecture, manquesLecture, cadenceLecture,
 } from '../src/etat';
 import { SECTIONS_NAV } from '../src/App';
 
@@ -124,5 +125,128 @@ describe('la barre du bas suit le nombre d\'onglets', () => {
       if (s === 'aujourdhui') continue; // rendu par défaut, sans garde de section
       expect(app, `l'onglet « ${s} » n'a aucune vue`).toContain(`section === '${s}' &&`);
     }
+  });
+});
+
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   C49-14 — « je vois pas de courbe pas d'estimé je sais pas ça traite quoi en ce moment quel
+   dossier quel fichier quelle direction quelles infos il lui manque » (Marc, 21/09).
+
+   Cinq questions. Les gardes ci-dessous tiennent les réponses ET leurs refus d'inventer.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+describe('la file par dossier — « quel dossier, quelle direction »', () => {
+  const sante = (l: string[]) => l;
+
+  it('lit l\'ENCODAGE du moteur, pas sa phrase française', () => {
+    const f = fileLecture(sante(['Lecture — file : 04:0/23·01:40/87·02:976/976']));
+    expect(f).not.toBeNull();
+    expect(f).toEqual([
+      { prefixe: '04', restants: 0, total: 23, lus: 23 },
+      { prefixe: '01', restants: 40, total: 87, lus: 47 },
+      { prefixe: '02', restants: 976, total: 976, lus: 0 },
+    ]);
+  });
+
+  it('distingue « pas publiée » de « publiée et illisible »', () => {
+    // ⚠️ Les deux ne se réparent pas au même endroit : l'une est un moteur qui n'a pas tourné,
+    // l'autre un format qui a changé. Les fondre enverrait chercher au mauvais endroit.
+    expect(fileLecture(sante(['autre chose']))).toBeNull();
+    expect(fileLecture(sante(['Lecture — file : n’importe quoi']))).toEqual([]);
+  });
+});
+
+describe('le document en cours — « ça traite quoi en ce moment »', () => {
+  it('rend le document quand il y en a un', () => {
+    expect(enCoursLecture(['Lecture — en cours : Passeport.pdf (04 · Immigration)']))
+      .toBe('Passeport.pdf (04 · Immigration)');
+  });
+
+  it('le REPOS n\'est pas un document — il rend null, pour que l\'écran montre le dernier lu', () => {
+    // ⚠️ Le moteur écrit sa propre phrase de repos : la reconnaître ici évite que l'écran
+    // affiche « en train de lire : rien en ce moment… », qui se lirait comme un nom de fichier.
+    expect(enCoursLecture(['Lecture — en cours : rien en ce moment (la campagne lit par rafales, à chaque tick)']))
+      .toBeNull();
+    expect(enCoursLecture(['Lecture — en cours : état illisible'])).toBeNull();
+    expect(enCoursLecture(['autre chose'])).toBeNull();
+  });
+});
+
+describe('ce qui manque — « quelles infos il lui manque »', () => {
+  const l = (id: string, nom: string, motif: string, dom: string, tag = 'c49-5-b') =>
+    [id, tag, '2026-09-21 10:00', nom, motif, dom];
+
+  it('ne retient que les documents dont il MANQUE quelque chose, nommés', () => {
+    const lus = interpreterPiecesFaites([
+      l('1', 'ok.pdf', 'ok', '04 · Immigration'),
+      l('2', 'photo.jpg', 'illisible', '01 · Administratif & identité'),
+      l('3', 'scan.pdf', 'sans-texte', '02 · Finances'),
+    ]);
+    const m = manquesLecture(lus, 10);
+    expect(m.map((x) => x.nom)).toEqual(['scan.pdf', 'photo.jpg']);
+    expect(m[0]!.domaine).toBe('02 · Finances');
+    expect(m[1]!.raison).toMatch(/photo à refaire/);
+  });
+
+  it('un verdict NON ENREGISTRÉ n\'est pas un manque', () => {
+    // ⚠️ Ce sont des lignes d'avant C49-13. Les afficher « à refaire » enverrait Marc rouvrir
+    // des documents dont on ne sait simplement rien.
+    const lus = interpreterPiecesFaites([l('1', 'vieux.pdf', '', '04 · Immigration')]);
+    expect(manquesLecture(lus, 10)).toEqual([]);
+  });
+
+  it('ne mélange pas les tags — un bump remet la campagne à zéro', () => {
+    const lus = interpreterPiecesFaites([
+      l('1', 'vieux.pdf', 'illisible', '04 · Immigration', 'c49-5-a'),
+      l('2', 'neuf.pdf', 'ok', '04 · Immigration', 'c49-5-b'),
+    ]);
+    expect(manquesLecture(lus, 10)).toEqual([]);
+  });
+});
+
+describe('la cadence — « pas d\'estimé »', () => {
+  const l = (id: string, jour: string) => [id, 'c49-5-b', jour + ' 10:00', 'x.pdf', 'ok', '04 · X'];
+
+  it('se mesure sur les JOURS ACTIFS, jamais sur les jours écoulés', () => {
+    // ⚠️ Le piège déjà payé (MemoryAI, 18/09) : « total ÷ jours écoulés » donne 1/jour sur une
+    // campagne qui en fait 3 en une journée puis s'arrête trois jours. Les deux chiffres sont
+    // vrais, un seul répond à « combien de jours OÙ ÇA TOURNE ».
+    const lus = interpreterPiecesFaites([
+      l('1', '2026-09-18'),
+      l('2', '2026-09-21'), l('3', '2026-09-21'), l('4', '2026-09-21'),
+    ]);
+    const c = cadenceLecture(lus, 9);
+    expect(c.parJourActif).toBe(3);
+    expect(c.jour).toBe('2026-09-21');
+    expect(c.joursActifs).toBe(2);
+    expect(c.joursRestants).toBe(3); // 9 / 3, et non 9 / (4 documents / 4 jours)
+  });
+
+  it('aucun document lu ⇒ AUCUN horizon, jamais un grand nombre', () => {
+    expect(cadenceLecture([], 100).joursRestants).toBeNull();
+    // Un reste inconnu non plus : on ne divise pas par ce qu'on ignore.
+    const lus = interpreterPiecesFaites([l('1', '2026-09-21')]);
+    expect(cadenceLecture(lus, null).joursRestants).toBeNull();
+  });
+});
+
+describe('le DOSSIER voyage avec le document', () => {
+  it('la sixième colonne est lue, et son absence reste VIDE', () => {
+    const lus = interpreterPiecesFaites([
+      ['1', 'c49-5-b', '2026-09-21 10:00', 'a.pdf', 'ok', '04 · Immigration'],
+      ['2', 'c49-5-b', '2026-09-21 10:00', 'b.pdf', 'ok'], // ligne d'avant C49-14
+    ]);
+    expect(lus[0]!.domaine).toBe('04 · Immigration');
+    // ⚠️ Vide, jamais « inconnu » : une ligne ancienne n'est pas un document sans dossier.
+    expect(lus[1]!.domaine).toBe('');
+  });
+
+  it('l\'onglet lit bien SIX colonnes — une plage trop courte viderait le dossier en silence', () => {
+    // ⚠️ Garde de FORME, et elle est nécessaire : `A2:E` ne lève aucune erreur, il rend
+    // simplement un dossier vide partout. C'est exactement le genre de défaut que ce lot
+    // existe pour supprimer, recommis un cran plus bas.
+    const src = lire('../src/vues/Lecture.tsx');
+    expect(src).toMatch(/const PLAGE = 'A2:F'/);
   });
 });
