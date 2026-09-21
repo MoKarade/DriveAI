@@ -355,6 +355,55 @@ test('INVENTAIRE des budgets quotidiens : aucune constante n\'échappe aux invar
   assert.deepStrictEqual(manquantes, [], 'constante(s) disparue(s) : ' + manquantes.join(', '));
 });
 
+test('C49-20 : les SEPT interrupteurs d\'arrêt sont consultés — dans le wrapper ET dans la fonction', () => {
+  // Mesuré en revue, une mutation par interrupteur : retirer la garde interne de `Missions.gs`,
+  // `Consolidation.gs` ou `ConsolidationExec.gs` laissait 1 548 tests VERTS — et remplacer leurs
+  // trois gates de wrapper par `return null` aussi. On pouvait donc supprimer les DEUX gardes de
+  // ces campagnes sans qu'une seule ligne ne rougisse, alors que ce lot fait de l'interrupteur le
+  // SEUL mécanisme d'arrêt (le budget à 0 n'est plus qu'un filet). « Un flag lu par personne est
+  // une intention jamais livrée » (§9) ; un flag que rien ne teste en est la version suivante.
+  //
+  // Les gates de wrapper sont des fonctions INLINE anonymes : elles échappent par construction à
+  // l'inventaire des gates NOMMÉES du haut de ce fichier. D'où ce recensement, dérivé de la liste
+  // des sept — pas d'une liste écrite à la main ailleurs.
+  const fs = require('fs');
+  const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/[^\n]*$/gm, ' ');
+
+  // (a) la garde INTERNE, dans le module qui porte la campagne — le dernier rempart si la gate saute
+  const internes = {
+    'GMAIL_HISTO_ACTIF': 'Main.gs',
+    'REANALYSE_ACTIF': 'Migration.gs',
+    'HISTORIQUE_VRAC_ACTIF': 'HistoriqueVrac.gs',
+    'DOUBLONS_ACTIF': 'Doublons.gs',
+    'MISSIONS_ACTIF': 'Missions.gs',
+    'CONSOLIDATION_ACTIF': 'Consolidation.gs',
+    'CONSOLIDATION_EXEC_ACTIF': 'ConsolidationExec.gs',
+  };
+  Object.keys(internes).forEach((flag) => {
+    const f = path.join(__dirname, '..', 'src', internes[flag]);
+    const code = strip(fs.readFileSync(f, 'utf8'));
+    assert.ok(new RegExp('if \\(!CONFIG\\.' + flag + '\\)\\s*return').test(code),
+      internes[flag] + ' doit sortir en TÊTE sur !CONFIG.' + flag + ' — sans quoi une campagne ' +
+      'arrêtée consomme quand même son I/O');
+    // Anti-vacuité : le décommentage n'a pas vidé le fichier, et un flag inventé n'est PAS trouvé.
+    assert.ok(code.replace(/\s/g, '').length > 500, internes[flag] + ' : décommentage suspect');
+    assert.ok(!new RegExp('if \\(!CONFIG\\.' + flag + '_XX\\)').test(code), 'témoin négatif');
+  });
+
+  // (b) la gate de WRAPPER, qui DIT l'arrêt : sans elle, `etapeSuivie_` enregistre un succès et la
+  //     Progression affiche un run à vide comme de l'activité (le piège `dryrun-v2` de 2026-08-13).
+  const gatePortant = {
+    'consolidation-exec': 'CONSOLIDATION_EXEC_ACTIF',
+    'consolidation-gen': 'CONSOLIDATION_ACTIF',
+    'historique-vrac': 'HISTORIQUE_VRAC_ACTIF',
+  };
+  Object.keys(gatePortant).forEach((cle) => {
+    assert.ok(new RegExp('CONFIG\\.' + gatePortant[cle]).test(gatesDe(cle)),
+      cle + ' : l\'interrupteur doit être une GATE, jamais seulement un no-op interne — ' +
+      'invisible du wrapper, il laisse `statutDepuisSuivi_` rendre « en cours »');
+  });
+});
+
 test('orchestration MISSIONS : les 8 missions sont gatées par !resetEnCours_() ET le budget quotidien', () => {
   ['mission-vehicule', 'mission-logement', 'mission-dispatch-03', 'mission-ecoles-archives-06',
     'mission-paies', 'mission-carriere', 'mission-annees-02', 'mission-impots'].forEach((cle) => {
@@ -362,6 +411,10 @@ test('orchestration MISSIONS : les 8 missions sont gatées par !resetEnCours_() 
     assert.ok(/gMissionsJour_/.test(gatesDe(cle)), cle + ' : la raison « budget du jour épuisé » doit ' +
       'venir de la GATE (suivi C28-44 → statut « en pause » + « reprise demain »)');
     assert.ok(/gBudgetStandard/.test(gatesDe(cle)), cle + ' : budget TAIL (pure I/O), jamais le budget de tick');
+    // C49-20 : l'INTERRUPTEUR aussi. Mesuré en revue : remplacer `gMissionsActif` par `null`
+    // laissait 1 548 tests verts — la gate qui porte l'arrêt des missions n'était gardée par rien.
+    assert.ok(/gMissionsActif/.test(gatesDe(cle)), cle + ' : l\'interrupteur MISSIONS_ACTIF doit être ' +
+      'une GATE (sinon le skip n\'a pas de raison et la Progression dit « en cours »)');
   });
   // dispatch03 attend la convergence de vehicule+logement (revue code C28-49) : ses fenêtres
   // d'occupation et la cible Toyota bZ sont CONSTRUITES par ces deux missions — router avant,

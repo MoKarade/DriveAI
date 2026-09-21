@@ -790,10 +790,13 @@ var CONFIG = {
 
   // ---- Campagne de CONSOLIDATION de l'arborescence (C28-26, ADR-0023 — Consolidation.gs) ----
   CONSOLIDATION_ACTIF: false,           // ARRÊTÉE le 21/09 (C49-20, décision de Marc). Ses 16 min/j
-                                          // vont à la lecture des papiers.              // interrupteur du DRY-RUN (génération du plan seule) — ALLUMÉ
-                                          // 2026-07-17 (« continue », post-correctifs revue flotte #183) :
-                                          // le moteur remplit l'onglet PlanConsolidation (~12 min/j max,
-                                          // AUCUNE mutation Drive). Repasser à false pour suspendre.
+                                          // vont à la lecture des papiers.
+                                          // ⚠️ Ce qui suit décrit ce qu'elle FAIT UNE FOIS RALLUMÉE — allumée
+                                          // le 2026-07-17 (« continue », post-correctifs revue flotte #183),
+                                          // éteinte le 21/09 : interrupteur du DRY-RUN (génération du plan
+                                          // SEULE), le moteur remplit l'onglet PlanConsolidation (~12 min/j
+                                          // max, AUCUNE mutation Drive). Repasser à true pour la reprendre —
+                                          // et lui rendre son budget, que l'audit des pièces détient.
   CONSOLIDATION_TAG: 'conso-4',           // tag de campagne (clé de convergence `conso|<tag>|<fileId>`).
                                           // conso-3 → conso-4 (2026-09-13, C28-90, demande de Marc
                                           // « lance le rattrapage ») : les 683 fichiers à plat aux
@@ -857,8 +860,10 @@ var CONFIG = {
                                           // à 0 avec `MISSIONS_ACTIF` vrai serait un no-op silencieux.
   CONSOLIDATION_MAX_PAR_RUN: 60,          // fichiers ajoutés au plan par run (40 → 60 ; le coût réel = le hash)
   // Exécution du plan (ConsolidationExec.gs, ADR-0024 — décision Marc 2026-07-17 « change tout live ») :
-  CONSOLIDATION_EXEC_ACTIF: false,        // ARRÊTÉE le 21/09 (C49-20). 8 min/j rendues.         // applique Déplacer/Doublon du PlanConsolidation (moveTo seul,
-                                          // §1 re-vérifiée par mutation) — false = suspension immédiate
+  CONSOLIDATION_EXEC_ACTIF: false,        // ARRÊTÉE le 21/09 (C49-20). 8 min/j rendues.
+                                          // ⚠️ Ce qui suit décrit ce qu'elle FAIT UNE FOIS RALLUMÉE : applique
+                                          // Déplacer/Doublon du PlanConsolidation (moveTo seul, §1 re-vérifiée
+                                          // par mutation) — false = suspension immédiate
   CONSOLIDATION_EXEC_BUDGET_MS: 2 * 60 * 1000,        // sous-budget par run — reste STRICTEMENT < garde-temps de
                                           // tick (ANALYSE_V2_BUDGET_MS 3 min) pour ne pas affamer le reste du
                                           // tick ; le débit journalier vient du budget QUOTIDIEN (moveTo cheap)
@@ -1035,7 +1040,9 @@ var CONFIG = {
   // PERPÉTUELLE et en LECTURE SEULE : lui prendre du budget rallonge son cycle, ça ne laisse
   // rien en plan. Les deux autres candidats ont été essayés et refusés par des tests (historique
   // Gmail : muette à 0 ; re-datation : sa marge de démarrage double en proportion).
-  // ⚠️ À RENDRE quand l'audit est fini : celui-ci 1 → 12 et `AUDIT_PIECE_BUDGET_JOUR_MS` 11 → 0.
+  // ⚠️ À RENDRE quand l'audit est fini : celui-ci 1 → 12 et `AUDIT_PIECE_BUDGET_JOUR_MS` 58 → 0.
+  // (58 et non 11 : C49-20 lui a ajouté 47 min prises aux sept campagnes arrêtées. Le détail
+  //  donneur par donneur vit dans `AUDIT_PIECE_DONNEURS_MIN`, qui est la seule source du compte.)
   // ⚠️ 1 min et pas 0 : à zéro, cette campagne PERPÉTUELLE tournerait à vide en silence — c'est
   // l'interdit que la §9 pose pour toute réallocation en paire. Mesuré le 17/09, il n'était codé
   // NULLE PART pour ce couple (mettre ce budget à 0 laissait les 20 tests d'orchestration verts) ;
@@ -1243,7 +1250,7 @@ var CONFIG = {
 
   // ---------- MISSIONS de curation (C28-49, ADR-0039 — brief Marc 2026-08-17) ----------
   MISSIONS_ACTIF: false,                  // ARRÊTÉE le 21/09 (C49-20) — dernière production il y a 32 j.
-                                          // 2 min/j rendues.                   // false = suspension immédiate de TOUTES les missions
+                                          // 2 min/j rendues. false = suspension immédiate de TOUTES les missions.
   // c49-3 (ADR-0044 §4, véhicules) puis c49-4 (§5, les 39 de « employeurs & CV ») — l'historique
   // inline s'arrêtait à c49-2 alors que la valeur avait bougé deux fois (revue code PR2).
   MISSIONS_REGLES_VERSION: 'c50-1',       // ⚠️ PAS de bump pour ADR-0055, et c'est délibéré (revue

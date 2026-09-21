@@ -1555,6 +1555,38 @@ suspensions sont transitoires et leur cause est le sujet ; celle-ci est définit
 108 documents sur 466 en plan — « arrêtée » tout court effacerait le seul chiffre qui dit ce qu'on
 a laissé, et la Progression purge ses lignes finies après 48 h.
 
+- **ARRÊTER quelque chose dans le MOTEUR ne l'arrête pas dans les SURFACES** (21/09, C49-20, trouvé
+  par les deux revues de flotte, jamais par la relecture). Les sept interrupteurs étaient câblés
+  dans le tick et dans la Santé ; la Progression, l'app, le MCP et le **widget hubperso**
+  continuaient d'annoncer « en cours · vers le 01/10 » et « en pause · **reprise demain** » pour des
+  campagnes délibérément arrêtées. Dans le MÊME `finally`, la Santé écrivait « arrêtée » et la
+  Progression « en cours » : deux surfaces, deux vérités opposées. La pire des trois est la
+  consolidation — son `budgetEpuise` vaut `0 >= 0`, donc VRAI à jamais : la surface lisait le
+  BUDGET et jamais le flag, soit l'état « muette » qu'on venait de refuser, atteint par l'autre
+  bout. **Après avoir posé un interrupteur, recenser tout ce qui RACONTE la chose arrêtée**, et se
+  demander pour chaque lecteur s'il lit le flag ou une de ses conséquences.
+  ⚠️ **Et le MOT d'un statut lu par une autre couche s'apparie par ÉGALITÉ** : les deux revues
+  recommandaient « arrêtée (CONFIG) », or `familleStatut` (`app/src/etat.ts`) teste
+  `statut === 'désactivée'` — le correctif aurait réintroduit le défaut qu'il corrige, en famille
+  `encours`, sans qu'aucun des deux dépôts ne puisse le dire seul. Garde de CHAÎNON obligatoire dès
+  qu'un statut franchit une frontière de dépôt.
+  ⚠️ **Un no-op INTERNE ne suffit pas à DIRE l'arrêt** : sans gate NOMMÉE dans `etapeSuivie_`, le
+  wrapper enregistre un SUCCÈS et `statutDepuisSuivi_` rend « en cours » (piège `dryrun-v2` du
+  13/08, re-payé). ⚠️ Et trois des sept interrupteurs n'étaient tenus par AUCUN test : on pouvait
+  retirer garde interne ET gate en laissant 1 548 tests verts, alors que le lot faisait de
+  l'interrupteur le SEUL mécanisme d'arrêt. « Un flag lu par personne est une intention jamais
+  livrée » a sa version suivante : **un flag que rien ne teste**.
+
+- **Un lanceur de test qui échoue AVANT d'exécuter quoi que ce soit rend toutes les mutations
+  « rouges » — donc toutes vaines** (21/09, C49-20). J'ai joué 13 mutations avec `node --test test/`
+  (forme RÉPERTOIRE) : chacune a rendu `# fail 1` et j'ai conclu « 13/13 discriminantes ». Sur
+  l'arbre PROPRE, la même commande rend `# fail 1` aussi — `Error: Cannot find module
+  '/home/user/DriveAI/test'`. Zéro test avait tourné. Le gate du dépôt écrit `node --test test/*.test.js`,
+  et j'avais changé la forme sans y penser. **Toute campagne de mutations commence par une mesure de
+  RÉFÉRENCE sur l'arbre propre, assertée verte, avec la commande EXACTE du gate** — et se relit sur
+  le nombre de tests PASSÉS (1 554 → 1 553), jamais sur le seul compteur d'échecs. Rejouées
+  correctement : 13/13 rouges, avec la référence et la restauration vertes de part et d'autre.
+
 ## 10. Style et compte-rendu
 
 > 📣 Forme des comptes-rendus, des commits, des PR et des docs générées :

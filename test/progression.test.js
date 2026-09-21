@@ -174,6 +174,64 @@ test('lignesProgression_ : consolidation TERMINÉE — prime sur reset en cours 
 
 /* ---------- C28-44 PR3 : lignes GÉNÉRIQUES (toutes les opérations du registre) ---------- */
 
+test('lignesProgression_ (C49-20) : une campagne ARRÊTÉE dit « désactivée » — jamais « en cours », jamais une reprise', () => {
+  // Le trou trouvé par les DEUX revues de flotte, et le plus coûteux du lot : les sept
+  // interrupteurs étaient câblés dans le TICK et dans la Santé, dans aucun lecteur de Progression.
+  // Mesuré avant correctif, avec la config de production : « re-analyse : en cours · reste 358
+  // documents · vers le 01/10 », « consolidation : en pause (budget du jour épuisé) · reprise
+  // demain ». Le second est le pire : `budgetEpuise` vaut `0 >= 0`, donc VRAI à jamais — la
+  // surface lisait le BUDGET et jamais le flag, soit exactement l'état « muette » que l'ADR-0062
+  // refuse. Et « reprise demain » est une affirmation sur l'avenir, fausse tous les jours.
+  // ⚠️ Ces lignes partent au hub (`missionsPourHub_` → widget hubperso), donc le mensonge sortait
+  // de l'app. Mutation : retirer l'une des trois gardes `op.arretee` ⇒ ce test tombe.
+  const c = ctxJournal();
+  const etat = etatVierge(c);
+  etat.reanalyse = { termine: false, enAttente: false, base: 466, traites: 108, arretee: true, tag: 'c28-92' };
+  etat.consolidationGen = { termine: false, base: 16, traites: 4, budgetEpuise: true, arretee: true, tag: 'conso-4' };
+  etat.consolidationExec = { termine: false, base: 9, traites: 9, budgetEpuise: true, arretee: true, tag: 'conso-4' };
+  etat.histo = { termine: false, traites: 4210 };
+  c.CONFIG = Object.assign({}, c.CONFIG, { GMAIL_HISTO_ACTIF: false });
+
+  const parCle = {};
+  lignesV3(c, etat, {}, Date.now()).forEach((l) => { parCle[l[0]] = l; });
+
+  ['reanalyse', 'consolidation-gen', 'consolidation-exec', 'histo-gmail'].forEach((cle) => {
+    assert.strictEqual(parCle[cle][5], 'désactivée',
+      cle + ' : une campagne arrêtée ne dit ni « en cours » ni « en pause » — ' + parCle[cle][5]);
+  });
+  // L'AVANCEMENT reste à l'écran (même arbitrage que la ligne de Santé : « arrêtée » tout court
+  // effacerait le seul chiffre qui dit ce qu'on a perdu) — c'est le STATUT qui change, pas le reste.
+  assert.deepStrictEqual([parCle['reanalyse'][2], parCle['reanalyse'][3]], [108, 466]);
+
+  // …et AUCUNE date de fin ni horizon : une campagne arrêtée n'a pas de débit futur.
+  const dernPasse = Date.now() - 3600000;
+  const debits = { reanalyse: { dn: 12, dts: dernPasse, n: 108, ts: dernPasse, r: 12 } };
+  const avecDebit = {};
+  c.lignesProgression_(etat, {}, Date.now(), c.CONFIG.PROGRESSION_PURGE_MS, {}, c.REGISTRE_OPERATIONS, debits)
+    .forEach((l) => { avecDebit[l[0]] = l; });
+  const fin = avecDebit['reanalyse'][12] || '';
+  assert.ok(!/vers le/.test(fin) && !/reprise/.test(fin),
+    'ni date de fin ni reprise sur une campagne arrêtée : ' + fin);
+  assert.ok(/reste 358/.test(fin), 'le RESTE, lui, reste dit : ' + fin);
+});
+
+test('lignesProgression_ (C49-20) : « désactivée » est le mot que l\'APP apparie — par ÉGALITÉ, pas par préfixe', () => {
+  // Garde de CHAÎNON (le trou entre deux moitiés testées). Le moteur écrit un statut, l'app le
+  // classe : `familleStatut` (app/src/etat.ts) compare `statut === 'désactivée'` par ÉGALITÉ, donc
+  // « arrêtée (CONFIG) » — le mot que les deux revues proposaient — serait retombé dans la famille
+  // par défaut, « encours », c'est-à-dire le défaut qu'on venait de corriger, réintroduit par son
+  // propre correctif. Rien des deux côtés ne pouvait le dire seul.
+  const fs = require('fs');
+  const path = require('path');
+  const etatTs = fs.readFileSync(path.join(__dirname, '..', 'app', 'src', 'etat.ts'), 'utf8');
+  assert.ok(etatTs.includes("statut === 'désactivée'"),
+    'app/src/etat.ts doit apparier EXACTEMENT la chaîne que le moteur émet — sinon le statut ' +
+    'retombe dans « encours » et la campagne arrêtée redevient « en cours » à l\'écran');
+  // Anti-vacuité : le fichier lu est bien celui qui classe, et la chaîne fabriquée n'y est pas.
+  assert.ok(etatTs.includes('export function familleStatut'), 'mauvais fichier lu');
+  assert.ok(!etatTs.includes("statut === 'arrêtée (CONFIG)'"), 'témoin négatif');
+});
+
 test('lignesProgression_ (C28-44) : UNE ligne par opération du registre, dans l\'ordre d\'exécution — plus jamais 6 lignes codées en dur', () => {
   const c = ctxJournal();
   const lignes = lignesV3(c, etatVierge(c), {}, Date.now());

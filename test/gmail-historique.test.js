@@ -258,7 +258,11 @@ test('historique : budget QUOTIDIEN épuisé → aucun appel, repris le lendemai
     props: {
       DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02',
       DriveAI_GMAIL_HISTO_JOUR: auj,
-      DriveAI_GMAIL_HISTO_MS_JOUR: String(60 * 60 * 1000), // = GMAIL_HISTO_BUDGET_JOUR_MS (plafond du jour atteint)
+      // ⚠️ DÉRIVÉ, jamais recopié (revue C49-20) : le commentaire annonçait « = 
+      // GMAIL_HISTO_BUDGET_JOUR_MS » sur une valeur écrite en dur, et la constante a depuis
+      // changé deux fois. Le test passait par EXCÈS — même faute que `historique-vrac`, corrigée
+      // dans ce lot. `+1` : on veut le plafond ATTEINT, pas frôlé.
+      DriveAI_GMAIL_HISTO_MS_JOUR: String(ctxPur.CONFIG.GMAIL_HISTO_BUDGET_JOUR_MS + 1),
     },
     page: () => [fil([['a']])],
   });

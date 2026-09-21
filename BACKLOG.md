@@ -30,7 +30,29 @@
   l'arrêt. Liste NOMMÉE (jamais tous les `*_ACTIF` : `RESET_ACTIF` et `FUSION_EXEC_ACTIF` sont
   éteints pour une raison de sûreté), et **jamais** appliquée quand seul `Config.gs` est chargé —
   un test qui INSPECTE les constantes doit voir la production, pas une position retouchée.
-- [x] **10 mutations jouées, 10 rouges.** Gate : 1 548 moteur · 384 app · build · syntaxe .gs.
+- [x] **L'ARRÊT SE DIT AUSSI DANS LES SURFACES** (revues de flotte, 21/09). Les sept
+  interrupteurs étaient câblés dans le tick et la Santé ; la Progression, l'app, le MCP et le
+  **widget hubperso** disaient encore « en cours · vers le 01/10 » et « en pause · reprise
+  demain ». Posé : `op.arretee` dans `statutCampagne`/`statutConsolidation_`, un paramètre
+  `arretee` en premier dans `statutHistoGmail_`, une gate NOMMÉE pour l'historique du vrac, et
+  « désactivée » ajouté au garde qui interdit d'annoncer une date de fin. ⚠️ Le mot est
+  `désactivée` et pas « arrêtée » : `familleStatut` (app) apparie par ÉGALITÉ — garde de chaînon.
+- [x] **Trois des sept interrupteurs n'étaient tenus par AUCUN test** (missions, consolidation
+  gén. et exéc.) : on pouvait retirer garde interne ET gate de wrapper en laissant tout vert.
+  Recensement dérivé de la liste des sept, wrapper + interne, avec ses deux anti-vacuités.
+- [x] **La branche « donneur À SEC » — la seule que la production atteint — n'était testée par
+  personne**, pendant qu'un test certifiait la branche « RÉALLOUABLES », devenue inatteignable,
+  grâce au rallumage du harnais. Les deux forcent désormais leur budget explicitement.
+- [x] **Régression de ce lot, corrigée** : le retour anticipé des six autres suspensions de
+  `texteSanteReanalyse_` était passé APRÈS trois lectures de Property — une lecture qui lève
+  effaçait un verdict juste au profit de « état illisible ». Remis avant, avec son test.
+- [x] ⚠️ **CORRECTION D'UNE AFFIRMATION DE CE MÊME BACKLOG.** Il a porté « 10 mutations jouées,
+  10 rouges » : c'était FAUX. Elles ont tourné avec `node --test test/` (forme répertoire), qui
+  échoue sur `Cannot find module` AVANT d'exécuter un seul test — donc chacune rendait « fail 1 »
+  pour une raison sans rapport. Rejouées avec la commande du gate (`test/*.test.js`), référence
+  verte assertée de part et d'autre : **17 mutations, 17 rouges** (13 sur l'arrêt et ses surfaces,
+  4 sur la comptabilité des minutes). Leçon portée en `CLAUDE.md` §9.
+- [x] **Gate : 1 554 moteur · 384 app · build · syntaxe .gs.**
 
 - [ ] **[C49-21] La consolidation est déclarée finie par ABSENCE.** Ses lignes ne sont plus dans la
   Progression, ce qui est cohérent avec « terminée depuis > 48 h » (purge) **et** avec « n'a jamais

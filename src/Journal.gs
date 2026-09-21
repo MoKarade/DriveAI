@@ -203,6 +203,9 @@ function texteSanteConfigApi_(etat, tz) {
  * lui reprendre ses 20 minutes : confondre « elle ne s'en sert pas » avec « on l'empêche de s'en
  * servir », c'est exactement l'erreur que §1.6 interdit — et elle deviendrait certaine le jour où
  * Marc redescend `LLM_BUDGET_CAMPAGNES` à 10, ce que §1.6 lui demande justement de faire.
+ * @param {boolean} arretee  campagne ARRETEE par CONFIG (`GMAIL_HISTO_ACTIF: false`, C49-20) —
+ *   passee EN PREMIER pour que tout appelant doive trancher : ajoutee en dernier, un oubli
+ *   vaudrait `undefined`, donc « pas arretee », c'est-a-dire le cote dangereux par defaut.
  * @param {boolean} termine
  * @param {boolean} quotaGmail  quota Gmail épuisé (la campagne sort avant de consommer sa première ms)
  * @param {boolean} freinBudget frein des campagnes atteint (idem)
@@ -212,8 +215,13 @@ function texteSanteConfigApi_(etat, tz) {
  *   fermer (relevé en revue C28-99).
  * @return {string}
  */
-function statutHistoGmail_(termine, quotaGmail, freinBudget, resetEnCours) {
+function statutHistoGmail_(arretee, termine, quotaGmail, freinBudget, resetEnCours) {
   if (termine) return 'terminé';
+  // C49-20 — ARRÊTÉE par CONFIG. La chaîne EXACTE `désactivée` est la seule que `familleStatut`
+  // (app/src/etat.ts) reconnaisse : tout autre mot retombe dans « en cours », soit exactement le
+  // mensonge que ce garde existe pour fermer. APRÈS `termine` : une campagne qui a FINI puis
+  // qu'on éteint est terminée, pas désactivée — et c'est le cas de la production aujourd'hui.
+  if (arretee) return 'désactivée';
   if (quotaGmail) return 'suspendu (quota Gmail)';
   if (freinBudget) return 'en pause (frein budget)';
   if (resetEnCours) return 'suspendu (reset en cours)';
@@ -440,7 +448,10 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, regi
     // MORT annonçait une date que rien ne produira — même famille de mensonge que la pause, qui
     // avait motivé ce garde. Les 3 familles de statut sans débit attendu sont donc traitées
     // ensemble, et testées une par une.
-    var sansDebit = !!statut && /^(suspendu|en pause|à jour)/.test(statut);
+    // ⚠️ « DÉSACTIVÉE » compte AUSSI (C49-20) : une campagne arrêtée n'a aucun débit futur, et
+    // extrapoler son dernier lui ferait annoncer une date de fin que plus rien ne produira —
+    // même famille de mensonge que la pause, qui a motivé ce garde.
+    var sansDebit = !!statut && /^(suspendu|en pause|à jour|désactivée)/.test(statut);
     var bouts = [];
     if (est) {
       bouts.push('reste ' + est.restant + (unite ? ' ' + unite : ''));
@@ -483,6 +494,9 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, regi
   /** Statut d'une CAMPAGNE Drive+LLM (migration, re-analyse, rangement). */
   function statutCampagne(op) {
     if (op.termine) return 'terminé';
+    // C49-20 — campagne ARRÊTÉE par CONFIG. Le drapeau est porté par l'OP et jamais lu de CONFIG
+    // ici : cette fonction sert AUSSI la migration et le rangement, que rien n'arrête.
+    if (op.arretee) return 'désactivée';
     if (op.enAttente) return 'en attente (après m1)';
     if (op.base === null) return 'recensement';
     if (etat.panneApi) return 'suspendu (panne API)';
@@ -498,6 +512,10 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, regi
    */
   function statutConsolidation_(op) {
     if (op.termine) return 'terminé';
+    // C49-20 — AVANT le budget, et c'est tout l'intérêt : à budget 0, `op.budgetEpuise` est vrai
+    // (`0 >= 0`) et la ligne annonçait « en pause (budget du jour épuisé) » PUIS « reprise
+    // demain » — une reprise que plus rien ne produira. Un arrêt n'est pas une pause.
+    if (op.arretee) return 'désactivée';
     if (etat.resetEnCours) return 'suspendu (reset en cours)';
     if (op.budgetEpuise) return 'en pause (budget du jour épuisé)';
     return 'en cours';
@@ -549,8 +567,8 @@ function lignesProgression_(etat, existantes, maintenantMs, purgeMs, suivi, regi
         etat.reanalyse.traites, etat.reanalyse.base, 'documents', statutCampagne(etat.reanalyse));
     },
     'histo-gmail': function () {
-      var statutHisto = statutHistoGmail_(etat.histo.termine, etat.quotaGmail, etat.freinBudget,
-        etat.resetEnCours);
+      var statutHisto = statutHistoGmail_(!CONFIG.GMAIL_HISTO_ACTIF, etat.histo.termine,
+        etat.quotaGmail, etat.freinBudget, etat.resetEnCours);
       // L'offset histo REPART À 0 aux passes de vérification (position de scan, pas un cumul) :
       // affichage MONOTONE via le max avec la ligne existante — le compteur ne recule jamais.
       var exHisto = existantes['histo-gmail'];
@@ -655,6 +673,7 @@ function majProgressions_() {
     reanalyse: {
       termine: props.getProperty('DriveAI_REANALYSE') === CONFIG.REANALYSE_TAG,
       enAttente: props.getProperty('DriveAI_MIGRATION') !== CONFIG.MIGRATION_TAG,
+      arretee: !CONFIG.REANALYSE_ACTIF,   // C49-20 — sinon la ligne dirait « en cours » à vie
       base: proprieteNombre_(props, 'DriveAI_REANALYSE_BASE'),
       traites: proprieteNombre_(props, 'DriveAI_REANALYSE_TRAITES') || 0,
       tag: CONFIG.REANALYSE_TAG
@@ -665,6 +684,7 @@ function majProgressions_() {
     },
     consolidationGen: {
       termine: termineConso,
+      arretee: !CONFIG.CONSOLIDATION_ACTIF,       // C49-20
       base: domainesConso.length,
       traites: domainesEpuises,
       budgetEpuise: budgetJourConsolidation_(props, aujourdhuiConso) >= CONFIG.CONSOLIDATION_BUDGET_JOUR_MS,
@@ -685,6 +705,7 @@ function majProgressions_() {
     })(),
     consolidationExec: {
       termine: props.getProperty('DriveAI_CONSO_EXEC_FINI') === tagConso,
+      arretee: !CONFIG.CONSOLIDATION_EXEC_ACTIF,  // C49-20
       base: dernPlanConso > 1 ? dernPlanConso - 1 : 0,
       // UNITÉS ALIGNÉES sur Diagnostic.gs (revue flotte code-reviewer) : `DriveAI_CONSO_EXEC_LIGNE`
       // est un n° de ligne PHYSIQUE (en-tête = 1) ; lignes de DONNÉES consommées = curseur − 1 —

@@ -75,6 +75,40 @@ cohérent avec « terminée depuis plus de 48 h » mais aussi avec « n'a jamais
 l'élément le moins mesuré des sept, et il vaut mieux le dire : la certitude se prendrait dans
 l'onglet `PlanConsolidation`.
 
+## Arrêter une campagne, c'est aussi le DIRE — partout (amendement du 21/09, revues de flotte)
+
+Première rédaction de cet ADR : les sept interrupteurs, câblés dans le tick et dans la Santé.
+Les deux revues adversariales ont mesuré ce que ça donnait **sur les autres surfaces**, avec la
+configuration de production :
+
+| ligne | ce qu'elle disait | pourquoi |
+|---|---|---|
+| Re-datation de `06` | « en cours · reste 358 documents · vers le 01/10 » | `statutCampagne` ne lisait aucun flag |
+| Consolidation (gén. et exéc.) | « en pause (budget du jour épuisé) » + « reprise demain » | `budgetEpuise` vaut `0 >= 0`, donc VRAI à jamais |
+| Historique du vrac | « en cours » | gate du flag DANS la fonction, invisible du wrapper |
+| Historique Gmail | juste aujourd'hui, faux au premier bump | garde d'arrêt absente de `statutHistoGmail_` |
+
+Les trois premières partaient jusqu'au **widget hubperso** (`missionsPourHub_` → `api/hub/summary`).
+Et « reprise demain » est une affirmation sur l'avenir, fausse tous les jours : c'est exactement
+l'état « muette » que la section précédente refuse, atteint par l'autre bout — la surface lisait le
+BUDGET et jamais le flag. Dans le même `finally`, la Santé écrivait « arrêtée » pendant que la
+Progression écrivait « en cours » : deux surfaces, deux vérités opposées.
+
+**Ce qui est posé** : `op.arretee` traverse `statutCampagne` / `statutConsolidation_`, un paramètre
+`arretee` en PREMIER dans `statutHistoGmail_`, une gate NOMMÉE pour l'historique du vrac (patron
+`dryrun-v2`), et « désactivée » ajouté au garde qui interdit d'annoncer une date de fin.
+
+⚠️ **Le MOT compte, et les deux revues proposaient le mauvais.** `familleStatut`
+(`app/src/etat.ts`) apparie `statut === 'désactivée'` par **ÉGALITÉ** : « arrêtée (CONFIG) »
+serait retombé dans la famille par défaut, `encours` — donc le correctif aurait réintroduit le
+défaut qu'il corrige. Une garde de CHAÎNON le verrouille désormais, parce qu'aucun des deux dépôts
+ne pouvait le dire seul.
+
+⚠️ **Trois des sept interrupteurs n'étaient tenus par AUCUN test** (missions, consolidation gén. et
+exéc.) : mesuré, on pouvait retirer leur garde interne ET leur gate de wrapper en laissant
+1 548 tests verts. Le lot fait pourtant de l'interrupteur le SEUL mécanisme d'arrêt — le budget à
+zéro n'est plus qu'un filet. Un recensement dérivé de la liste des sept les couvre maintenant.
+
 ## La comptabilité des minutes
 
 Les deux parts nommées (`AUDIT_PIECE_PART_SYNC_MIN`, `AUDIT_PIECE_PART_GMAIL_MIN`) ne passent pas à

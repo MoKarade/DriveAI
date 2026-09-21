@@ -17,9 +17,17 @@
 > reprendre : `REANALYSE_ACTIF: true` **et** lui rendre des minutes (le gate refuse l'un sans
 > l'autre).
 >
-> ⚠️ **À VÉRIFIER AU PROCHAIN DÉPLOIEMENT** : que la ligne « Rattrapage des pièces » annonce bien
-> 58 min/j et non 17, et que les lignes des sept arrêtées disent « arrêtée » / « désactivée
-> (CONFIG) » — pas un silence qui ressemblerait à une panne.
+> ⚠️ **L'ARRÊT SE DIT MAINTENANT DANS TOUTES LES SURFACES** (correctif des revues de flotte,
+> 21/09). Première rédaction : les sept interrupteurs étaient câblés dans le tick et la Santé, et
+> la vérification des lignes de Progression était renvoyée au déploiement. Mesuré avant de
+> déployer : **trois sur sept** ne disaient rien — la re-datation « en cours · vers le 01/10 », la
+> consolidation « en pause · **reprise demain** » (son `budgetEpuise` vaut `0 >= 0`, donc vrai à
+> jamais), l'historique du vrac « en cours ». Les trois partaient jusqu'au **widget hubperso**.
+> C'est corrigé et tenu par des tests ; le mot est **`désactivée`**, la seule chaîne que
+> `familleStatut` (`app/src/etat.ts`) apparie — par ÉGALITÉ.
+>
+> ⚠️ **RESTE À VÉRIFIER AU PROCHAIN DÉPLOIEMENT** : que la ligne « Rattrapage des pièces » annonce
+> bien **58 min/j** et non 17. Ça, aucun test ne peut le dire — c'est la prod qui répond.
 >
 > **LOT PRÉCÉDENT — C49-18 : l'OCR rejoue ses appels IDEMPOTENTS, et seulement ceux-là.**
 > `fetchDriveAvecRetry_` existe depuis la phase 2 ; `Ocr.gs` ne l'employait nulle part. Les deux
@@ -3097,15 +3105,21 @@ Détail des tâches : `BACKLOG.md`.
       (`AUDIT_PIECE_PART_SYNC_MIN` 11 + `AUDIT_PIECE_PART_GMAIL_MIN` 6 = 17) et un test exige que
       les parts remplissent le budget : une minute sans donneur nommé passerait entre les deux
       gardes de paire, chacun ne regardant que le sien.
-      **À RENDRE quand l'audit est fini**, et cette liste a DÉJÀ été fausse une fois (elle
-      disait « `SYNC` 4 → 12 et `AUDIT_PIECE` 8 → 0 » alors que deux réallocations étaient
-      passées depuis) : `SYNC_BUDGET_JOUR_MS` **1 → 12**, `GMAIL_HISTO_BUDGET_JOUR_MS` **2 → 8**,
-      `AUDIT_PIECE_BUDGET_JOUR_MS` **17 → 0**, `GMAIL_HISTO_PRETEES_MIN` **18 → 12**, et les deux
-      parts (`AUDIT_PIECE_PART_SYNC_MIN`, `AUDIT_PIECE_PART_GMAIL_MIN`) tombent à 0. L'étape ne
-      consomme plus rien une fois éteinte, mais sa CONSTANTE continue de peser sur l'invariant
-      d'enveloppe, et une enveloppe faussement chargée fait renoncer à la réallocation suivante.
-      ⚠️ Les chiffres ci-dessus sont ceux du 17/09 : la source qui fait foi reste `Config.gs`, et
-      les gardes de paire de `test/orchestration.test.js` refuseront toute restitution partielle.
+      ⚠️ *(Récit du 17/09, gardé tel quel. Ces deux constantes n'existent plus : C49-20 les a
+      remplacées le 21/09 par la table `AUDIT_PIECE_DONNEURS_MIN`, qui nomme HUIT donneurs pour
+      58 min/j. Le mécanisme — chaque minute a un donneur nommé — est inchangé.)*
+      **À RENDRE quand l'audit est fini.** ⚠️ **Cette liste a été fausse DEUX FOIS** — une
+      première le 17/09 (elle disait « `SYNC` 4 → 12 et `AUDIT_PIECE` 8 → 0 » alors que deux
+      réallocations étaient passées depuis), une seconde le 21/09, où C49-20 lui a ajouté sept
+      donneurs sans qu'elle bouge. Elle ne porte donc plus AUCUN chiffre : la recette de
+      restitution se lit dans **`CONFIG.AUDIT_PIECE_DONNEURS_MIN`** (`src/Config.gs`), qui est la
+      seule source du compte — rendre à chaque donneur exactement ce qu'il y est inscrit, remettre
+      son `*_ACTIF` à true pour les sept campagnes arrêtées, et ramener
+      `AUDIT_PIECE_BUDGET_JOUR_MS` à 0. L'étape ne consomme plus rien une fois éteinte, mais sa
+      CONSTANTE continue de peser sur l'invariant d'enveloppe, et une enveloppe faussement chargée
+      fait renoncer à la réallocation suivante.
+      ⚠️ Une recette écrite au présent rote : celle-ci est désormais DÉRIVÉE, et les gardes de
+      paire de `test/orchestration.test.js` refuseront toute restitution partielle.
       ⚠️ **L'échantillon est ÉGALITAIRE entre domaines, pas au prorata du stock** — sinon
       `02 · Finances` raflerait les cent lignes et `04 · Immigration` en aurait deux.
       ⚠️ **`04` et `01` ont leur TITULAIRE et leurs CHAMPS masqués** (arbitrage de Marc, 17/09,

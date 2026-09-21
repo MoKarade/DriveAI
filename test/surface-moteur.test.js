@@ -254,7 +254,7 @@ const CONTRAT = [
   // `estFeuilletFiscalReset_` déjà déclarés plus haut (🟡 revue structure : ils manquaient).
   'estRevenuEmployeurReset_', 'estRl31Reset_', 'estDisqualifieCommeRevenuReset_', 'estFeuilletT4Reset_',
   'texteSanteReanalyse_', // Main.gs, appelée par Journal.gs (ligne de Santé)
-  'statutReanalyse_', // Main.gs — les SIX causes d'arrêt, une seule règle
+  'statutReanalyse_', // Main.gs — les SEPT causes d'arrêt (la 7e, C49-20), une seule règle
   'budgetJourReanalyse_', // Migration.gs, appelée par Main.gs (minutes du jour de la ligne de Santé)
   'reDatationEnCours_', // Migration.gs, appelée par Consolidation.gs (garde D11)
   'dateReferenceReanalyse_', // Migration.gs — date de référence : le nom d'abord, Drive en repli
