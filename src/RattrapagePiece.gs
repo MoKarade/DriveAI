@@ -195,13 +195,13 @@ function restantsRattrapage_(props) {
  * et les trois appellent des gestes opposés. Chaque `return` de `etapeRattrapagePiece_` passe
  * par ici, avec son motif.
  *
- * `DriveAI_RATTRAPAGE_PIECE_FIN` = `<ISO>|<fin>|<faits>/<echecs>/<sansTexte>|<restants>|<tick|manuel>`
+ * `DriveAI_RATTRAPAGE_PIECE_FIN` = `<ISO>|<fin>|<faits>/<echecs>/<sansTexte>/<illisibles>|<restants>|<tick|manuel>`
  */
 function ligneFinRattrapage_(maintenant, res, manuel) {
   return [
     maintenant.toISOString().slice(0, 16).replace('T', ' '),
     res.fin,
-    res.faits + '/' + res.echecs + '/' + res.sansTexte,
+    res.faits + '/' + res.echecs + '/' + res.sansTexte + '/' + res.illisibles,
     // Un reste non mesuré s'écrit VIDE, jamais 'null' ni '0' : le lecteur doit pouvoir le
     // distinguer d'un vrai zéro, et c'est cette distinction qui a manqué le 17/09.
     (typeof res.restants === 'number' && isFinite(res.restants)) ? String(res.restants) : '',
@@ -223,18 +223,21 @@ function ligneFinRattrapage_(maintenant, res, manuel) {
  * signal est réécrit à chaque passe, y compris par les sorties précoces, et un cumul qu'une
  * sortie précoce peut remettre à zéro ne cumule rien (le bug du 17/09, d'un cran plus loin).
  *
- * @param {string} brut  `<faits>/<echecs>/<sansTexte>/<acceptees>` ou vide
- * @return {{faits:number, echecs:number, sansTexte:number, acceptees:number}}
+ * @param {string} brut  `<faits>/<echecs>/<sansTexte>/<acceptees>/<illisibles>` ou vide
+ * @return {{faits:number, echecs:number, sansTexte:number, acceptees:number, illisibles:number}}
+ *
+ * ⚠️ `illisibles` est en QUEUE, et son absence se lit ZÉRO : une Property écrite avant ce lot
+ * porte quatre champs, et c'est la bonne valeur pour elle — le compteur n'existait pas.
  */
 function decoderCumulRattrapage_(brut) {
   var p = String(brut || '').split('/');
   var n = function (i) { var v = Number(p[i]); return isFinite(v) && v >= 0 ? v : 0; };
-  return { faits: n(0), echecs: n(1), sansTexte: n(2), acceptees: n(3) };
+  return { faits: n(0), echecs: n(1), sansTexte: n(2), acceptees: n(3), illisibles: n(4) };
 }
 
 /** @return {string} la forme persistée du cumul. PURE. */
 function encoderCumulRattrapage_(c) {
-  return [c.faits, c.echecs, c.sansTexte, c.acceptees].join('/');
+  return [c.faits, c.echecs, c.sansTexte, c.acceptees, c.illisibles].join('/');
 }
 
 /** Le cumul APRÈS cette passe. PURE — l'addition est ici, l'I/O chez l'appelant. */
@@ -243,6 +246,7 @@ function cumulerRattrapage_(cumul, res) {
     faits: cumul.faits + (Number(res.faits) || 0),
     echecs: cumul.echecs + (Number(res.echecs) || 0),
     sansTexte: cumul.sansTexte + (Number(res.sansTexte) || 0),
+    illisibles: cumul.illisibles + (Number(res.illisibles) || 0),
     acceptees: cumul.acceptees + (Number(res.acceptees) || 0)
   };
 }
@@ -304,14 +308,23 @@ function phraseFinRattrapage_(brut, tagCourant) {
  *
  * ⚠️ « rien produit » et « rien à produire » ne se disent pas pareil : un cumul entièrement à
  * zéro se TAIT (la campagne n'a pas encore tourné), mais dès qu'un seul document est passé,
- * les quatre nombres s'affichent — y compris les zéros, qui sont alors des mesures.
+ * les nombres s'affichent — y compris les zéros, qui sont alors des mesures.
+ *
+ * ⚠️ CHAQUE compteur est normalisé à zéro À L'ENTRÉE. Un `undefined` dans une addition rend
+ * `NaN`, `NaN` est falsy, et la phrase se TAIRAIT — donc un compteur ajouté plus tard ferait
+ * disparaître toute l'observabilité au lieu de manquer une colonne. Mesuré sur `illisibles`.
  */
 function phraseCumulRattrapage_(cumul) {
-  var total = cumul.faits + cumul.echecs + cumul.sansTexte;
+  var c = cumul || {};
+  var n = function (v) { var x = Number(v); return isFinite(x) ? x : 0; };
+  var faits = n(c.faits), echecs = n(c.echecs), sansTexte = n(c.sansTexte);
+  var illisibles = n(c.illisibles), acceptees = n(c.acceptees);
+  var total = faits + echecs + sansTexte + illisibles;
   if (!total) return '';
-  return 'depuis le début : ' + cumul.faits + ' extraits ('
-    + cumul.acceptees + ' acceptés par la Mémoire), '
-    + cumul.sansTexte + ' sans texte, ' + cumul.echecs + ' en échec';
+  return 'depuis le début : ' + faits + ' extraits ('
+    + acceptees + ' acceptés par la Mémoire), '
+    + sansTexte + ' sans texte, ' + illisibles + ' illisibles (photo à refaire), '
+    + echecs + ' en échec';
 }
 
 function texteSanteRattrapagePiece_() {
@@ -341,7 +354,7 @@ function etapeRattrapagePiece_(garde, opts) {
   // 17/09 à 18:35, avec 85 papiers restants — la gate d'extinction du 17/09 au matin, reprise
   // par l'autre bout : ce n'était pas la gate qui était fausse, c'était le COMPTEUR qu'une
   // branche de sortie précoce avait écrasé avec une ignorance.
-  var res = { faits: 0, echecs: 0, sansTexte: 0, envoyees: 0, acceptees: 0,
+  var res = { faits: 0, echecs: 0, sansTexte: 0, illisibles: 0, envoyees: 0, acceptees: 0,
               restants: null, fin: 'desactive', dernierMotif: '' };
 
   var tag = String(CONFIG.RATTRAPAGE_PIECE_TAG || '');
@@ -458,6 +471,7 @@ function etapeRattrapagePiece_(garde, opts) {
     }
 
     if (issue === 'sans-texte') res.sansTexte++;
+    else if (issue === 'illisible') res.illisibles++;
     else if (issue === 'echec') res.echecs++;
     else { res.faits++; res.envoyees++; if (motif === 'ok') res.acceptees++; }
 
@@ -511,6 +525,10 @@ var VERDICTS_DOCUMENT_RATTRAPAGE_ = {
   'sans-texte': 'sans-texte',
   'non-classe': 'echec',       // ne devrait pas arriver : la sélection ne prend que des classés.
   'extraction-vide': 'echec',  // le modèle n'a rien tiré de ce document-ci.
+  'illisible': 'illisible',    // le modèle DIT qu'il n'a pas pu lire : ni une panne, ni un
+                               // document pauvre — une photo à refaire. Issue DÉFINITIVE (la
+                               // marque se pose), comptée à part : la noyer dans `echecs`
+                               // ferait chercher une panne de canal là où il n'y en a pas.
   'piece-vide': 'echec',
   'lecture-impossible': 'echec', // droits manquants, fichier disparu — voir le coupe-circuit
                                  // de la boucle : en SÉRIE, la cause n'est plus le document.
@@ -587,7 +605,8 @@ function rattraperPiecesMaintenant() {
   // sous un HTTP 200) en plus discret, puisque ici personne ne compterait.
   var ligne = 'Rattrapage des pièces (manuel) : ' + res.faits + ' extraits dont '
     + res.acceptees + ' acceptés par la Mémoire / ' + res.echecs
-    + ' échecs / ' + res.sansTexte + ' sans texte — ' + res.restants + ' restants — ' + res.fin
+    + ' échecs / ' + res.sansTexte + ' sans texte / ' + res.illisibles + ' illisibles — '
+    + res.restants + ' restants — ' + res.fin
     + (res.dernierMotif ? ' — dernier motif : ' + res.dernierMotif : '');
   Logger.log(ligne);
   return ligne;

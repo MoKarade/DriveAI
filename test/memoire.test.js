@@ -608,13 +608,19 @@ test('EXHAUSTIVITÉ : tout motif que le code peut émettre a sa phrase', () => {
   const c = ctx();
   const src = require('node:fs').readFileSync(
     require('node:path').join(__dirname, '..', 'src', 'Memoire.gs'), 'utf8');
-  // Les deux formes par lesquelles un motif naît : le `return` des gardes pures, et
-  // l'affectation dans l'orchestrateur. Le motif d'un envoi raté vient de `envoi.raison`,
-  // dont les valeurs sont recensées à part ci-dessous.
+  // Les formes par lesquelles un motif naît : le `return` des gardes pures, et l'affectation
+  // dans l'orchestrateur. Le motif d'un envoi raté vient de `envoi.raison`, dont les valeurs
+  // sont recensées à part ci-dessous.
+  // ⚠️ L'affectation se lit jusqu'au `;`, pas comme un littéral collé au `=` : le 21/09/2026,
+  // remplacer `res.motif = 'extraction-vide'` par un TERNAIRE a fait disparaître le motif du
+  // recensement — et le témoin avec, ce qui est la seule raison pour laquelle on l'a vu. Un
+  // recenseur ancré sur la forme ne couvre que les formes que son auteur avait sous les yeux.
   const trouves = new Set();
   const bloc = src.slice(src.indexOf('function verdictPiece_'), src.indexOf('\n}', src.indexOf('function verdictPiece_')));
   for (const m of bloc.matchAll(/return '([a-z-]+)'/g)) trouves.add(m[1]);
-  for (const m of src.matchAll(/res\.motif = '([a-z-]+)'/g)) trouves.add(m[1]);
+  for (const m of src.matchAll(/res\.motif = ([^;]+);/g)) {
+    for (const lit of m[1].matchAll(/'([a-z-]+)'/g)) trouves.add(lit[1]);
+  }
   for (const m of src.matchAll(/raison: '([a-z-]+)' \}/g)) trouves.add(m[1]);
   for (const m of src.matchAll(/raison: code === 401 \? '([a-z-]+)' : '([a-z-]+)'/g)) { trouves.add(m[1]); trouves.add(m[2]); }
 
@@ -671,6 +677,72 @@ test('le câblage APPELLE l\'extraction puis l\'envoi, et compte ce qui est acce
   assert.strictEqual(envoyes[0][0].exemplaires[0].file_id, '1AbCdEfGhIjKlMnOpQrStUvWxYz01');
   assert.strictEqual(props.DriveAI_PIECE_EMISES, '1');
   assert.match(props.DriveAI_PIECE_FIN, /\|ok\|1\/1\/0\|2026-01-15_Facture_Hydro-Québec\.pdf$/);
+});
+
+// ⚠️ GARDE QUI TRAVERSE — de la RÉPONSE DU MODÈLE jusqu'au motif posé par l'orchestrateur.
+// Les deux moitiés étaient testées chacune chez elle (le parseur dans `piece.test.js`, la
+// table des issues dans `rattrapage-piece.test.js`) et le CHAÎNON n'appartenait à personne :
+// couper le fil dans `Memoire.gs` laissait les 1 472 cas VERTS, mesuré le 21/09/2026. Le
+// vrai `extrairePiece_` tourne ici — seul le RÉSEAU est simulé.
+function ctxReel() {
+  const c = load(['Config.gs', 'Consolidation.gs', 'Gmail.gs', 'Journal.gs', 'Llm.gs', 'Piece.gs', 'Memoire.gs']);
+  const props = {};
+  c.PropertiesService = {
+    getScriptProperties: () => ({
+      getProperty: (k) => (k in props ? props[k] : null),
+      setProperty: (k, v) => { props[k] = String(v); },
+      deleteProperty: (k) => { delete props[k]; }
+    })
+  };
+  props.DriveAI_MEMORYAI_TOKEN = 'jeton';
+  c.CONFIG.PIECE_PUSH = true;
+  c.budgetCampagnesAtteint_ = () => false;
+  c.estPannePlateforme_ = () => false;
+  c.getCleAnthropic_ = () => 'cle';
+  c.enregistrerUsage_ = () => {};
+  c.signalerRetablissement_ = () => {};
+  c.envoyerLotPiecesMemoire_ = () => ({
+    ok: true, recus: 1, acceptees: 1, dejaPresentes: 0, oubliees: 0, refusees: 0, premierRefus: null
+  });
+  c.reinitialiserPiecesRun_();
+  return { c, props };
+}
+
+function pousser(c, reponseDuModele) {
+  c.fetchAvecRetry_ = () => ({
+    getResponseCode: () => 200,
+    getContentText: () => JSON.stringify({ content: [{ type: 'text', text: reponseDuModele }] })
+  });
+  return c.pousserPieceApresClassement_(
+    { cle: 'drive|1AbCdEfGhIjKlMnOpQrStUvWxYz01' },
+    { nom: 'photo-passeport.jpg', domaine: '04 · Immigration', statut: 'classé', chemin: '04 · Immigration' },
+    'HARD FLEX T 014 Vol PASSEPORT 966 /EXPL ITD OSS C1966 WINDOW/HUBLOT CANADA');
+}
+
+test('LE REFUS DU MODÈLE TRAVERSE : « je n\'ai pas pu lire » devient le motif `illisible`', () => {
+  const { c } = ctxReel();
+  // La réponse EXACTE que le passeport aurait dû produire : le modèle déclare son échec, et
+  // remplit quand même — c'est le cas qui compte, parce qu'une extraction riche passe tous
+  // les tests de « porte quelque chose ».
+  const res = pousser(c, JSON.stringify({
+    lisible: false,
+    resume: 'Passeport canadiense emitido por el Gobierno de Canadá.',
+    type: 'passeport',
+    emetteur: 'Gouvernement du Canada',
+    libres: { reference_vol: 'HARD FLEX T 014' }
+  }));
+  assert.strictEqual(res.motif, 'illisible',
+    'le motif doit REMONTER : sans lui, une photo illisible se lit « le modèle n\'a rien rendu »');
+  assert.strictEqual(res.envoyees, 0, 'et rien ne part à la Mémoire');
+});
+
+test('CONTRÔLE NÉGATIF : la même chaîne rend `ok` sur une vraie lecture', () => {
+  const { c } = ctxReel();
+  // Sans ce cas, la garde ci-dessus prouverait « rien ne passe jamais » aussi bien que « le
+  // refus remonte ».
+  const res = pousser(c, JSON.stringify({ resume: 'Un vrai passeport.', type: 'passeport' }));
+  assert.strictEqual(res.motif, 'ok');
+  assert.strictEqual(res.envoyees, 1);
 });
 
 test('un non-événement PROPRE AU DOCUMENT n\'écrase pas le signal du CANAL', () => {

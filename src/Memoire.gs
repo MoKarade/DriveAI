@@ -798,6 +798,7 @@ var PHRASES_FIN_PIECE_ = {
   'non-classe': 'le document n\'est pas classé (média, quarantaine) — rien à extraire',
   'sans-texte': 'aucun texte lisible (OCR vide) — rien à extraire',
   'extraction-vide': '⚠️ le modèle n\'a rien rendu d\'exploitable',
+  'illisible': '⚠️ le modèle DIT n\'avoir pas pu lire — la photo est à refaire, pas le prompt',
   'piece-vide': '⚠️ extraction faite mais pièce non composable (pas de fileId ?)',
   'refusee': '⚠️ pièce REFUSÉE par la Mémoire — voir le dernier refus',
   'jeton-refuse': '⚠️ jeton REFUSÉ par la Mémoire — geste de Marc requis',
@@ -943,8 +944,15 @@ function pousserPieceApresClassement_(src, decision, texteOcr, opts) {
   // le plafond ne borne plus rien le jour où c'est justement l'appel qui part en vrille.
   _piecesCeRun++;
 
-  var extraction = extrairePiece_({ nomFichier: decision.nom, extrait: texteOcr });
-  if (!extraction) { res.motif = 'extraction-vide'; return noterFinPiece_(props, res); }
+  // ⚠️ DEUX refus sous une seule forme sans cet objet de sortie : « le modèle n'a rien tiré »
+  // et « le modèle dit qu'il n'a pas pu LIRE ». Le second est le défaut du passeport du
+  // 21/09/2026, et il n'appelle pas le même geste — il faut refaire la photo, pas le prompt.
+  var horsExtraction = {};
+  var extraction = extrairePiece_({ nomFichier: decision.nom, extrait: texteOcr }, horsExtraction);
+  if (!extraction) {
+    res.motif = horsExtraction.motif === 'illisible' ? 'illisible' : 'extraction-vide';
+    return noterFinPiece_(props, res);
+  }
 
   var piece = pieceMemoire_({
     cle: src.cle,

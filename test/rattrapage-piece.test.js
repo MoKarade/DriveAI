@@ -232,8 +232,29 @@ test('l\'étape envoie 04 d\'abord, marque les faits et le DIT dans son signal',
 
   const faits = c.decoderFaitsRattrapage_(props.get('DriveAI_RATTRAPAGE_PIECE_FAITS'), 'c49-5-a');
   assert.deepStrictEqual(Object.keys(faits).sort(), [ID(1), ID(2)].sort());
-  assert.match(props.get('DriveAI_RATTRAPAGE_PIECE_FIN'), /\|termine\|2\/0\/0\|0\|tick$/);
+  assert.match(props.get('DriveAI_RATTRAPAGE_PIECE_FIN'), /\|termine\|2\/0\/0\/0\|0\|tick$/);
   assert.strictEqual(props.get('DriveAI_RATTRAPAGE_PIECE_RESTANTS'), '0');
+});
+
+test('UN DOCUMENT ILLISIBLE est compté à part, et il est MARQUÉ fait', () => {
+  // ⚠️ Deux exigences opposées dans le même cas, et il faut les deux. (1) Compté À PART :
+  //     noyé dans `echecs`, un lot de photos illisibles ferait chercher une panne de canal
+  //     là où il n'y en a pas. (2) MARQUÉ fait : une photo illisible le reste tant que Marc
+  //     ne l'a pas reprise — sans la marque, elle est re-téléchargée et re-extraite à chaque
+  //     passe, à vie, et la tranche ne se termine jamais.
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const c = montage([
+    ligne(CLE(ID(1)), 'photo-passeport.jpg', '04 · Immigration'),
+  ], props, { motif: () => 'illisible' });
+
+  const res = c.etapeRattrapagePiece_(() => false, {});
+  assert.strictEqual(res.illisibles, 1, 'le refus du modèle a son propre compteur');
+  assert.strictEqual(res.echecs, 0, 'et il ne doit PAS ressembler à une panne');
+  assert.strictEqual(res.faits, 0, 'rien n\'a été extrait : ce n\'est pas une lecture');
+  const faits = c.decoderFaitsRattrapage_(props.get('DriveAI_RATTRAPAGE_PIECE_FAITS'), 'c49-5-a');
+  assert.deepStrictEqual(Object.keys(faits), [ID(1)],
+    'sans la marque, la photo revient à chaque passe et la tranche ne finit jamais');
+  assert.strictEqual(res.restants, 0);
 });
 
 test('UNE PANNE DE CANAL ne marque rien et rend la main', () => {
@@ -660,6 +681,13 @@ test('la Santé se TAIT tant que rien n\'a été produit, et parle dès le premi
   const p = c.phraseCumulRattrapage_({ faits: 77, echecs: 4, sansTexte: 29, acceptees: 77 });
   assert.ok(/77 extraits/.test(p) && /77 acceptés/.test(p), p);
   assert.ok(/29 sans texte/.test(p) && /4 en échec/.test(p), p);
+  // ⚠️ Un compteur ABSENT vaut zéro, jamais NaN : sans la normalisation d'entrée, `illisibles`
+  // manquant rendait le total NaN, donc falsy, donc la phrase VIDE — un compteur ajouté aurait
+  // fait taire toute l'observabilité au lieu de manquer une colonne.
+  assert.ok(/0 illisibles/.test(p), 'un compteur absent se lit zéro, et il s\'affiche : ' + p);
+  const avec = c.phraseCumulRattrapage_({ faits: 3, echecs: 0, sansTexte: 1, acceptees: 3, illisibles: 6 });
+  assert.ok(/6 illisibles \(photo à refaire\)/.test(avec),
+    'le compteur doit DIRE le geste : une photo illisible se reprend, elle ne se re-extrait pas');
   // ⚠️ Un zéro MESURÉ s'affiche : c'est lui qui distingue « aucun échec » de « on ne sait pas ».
   assert.ok(/0 en échec/.test(c.phraseCumulRattrapage_({ faits: 5, echecs: 0, sansTexte: 0, acceptees: 5 })));
 });
