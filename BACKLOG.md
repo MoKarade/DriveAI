@@ -56,9 +56,29 @@ sans fileId de clé (pièces jointes Gmail) restent hors du dénominateur — C4
   `test/pilote-ci.test.js` — 3 mutations rouges (sans `always()`, sans `id: push`, `always()`
   seul qui réinstallerait le déclencheur même sur un push raté).
 
-⚠️ **Le correctif ne prend effet qu'au prochain merge, et son effet se MESURE** : `Import — file`
-doit apparaître dans la Santé. Le vert d'un run ne le prouve pas. ⚠️ Et il ne débloque QUE le
-tick : `/exec` reste figée tant que Marc n'a pas purgé l'historique des versions (HANDOVER §4.0).
+⚠️⚠️ **MESURÉ APRÈS LE MERGE — LE CORRECTIF NE SUFFIT PAS.** Le run 35653862869 s'est déroulé
+comme prévu (push ✅, deploy ❌ sur les 200 versions, **déclencheur ✅ — l'étape a tourné**), et le
+moteur exécute toujours l'ancien code : `Import — file` reste absente aux ticks de **21:00 et
+21:04 UTC**, postérieurs de 6 et 10 min à la réinstallation de 20:54:12.
+
+La raison : la réinstallation passe par `/exec`, qui est justement ce que le `clasp deploy` raté
+laisse figé — le déclencheur est recréé PAR l'ancienne version. **Un remède administré par le
+composant en panne n'est pas un remède.** Deux mécanismes expliquent la suite et rien ici ne
+permet de les départager (déclencheur épinglé à la version qui l'a créé, ou bien c'est le
+`clasp deploy` qui a toujours forcé le rechargement) ; ce qui est mesuré suffit pour agir.
+
+➜ **Le blocage est routé dans `HANDOVER.md` §4.0, en 🔴🔴.** Geste de Marc, deux options : purger
+l'historique des versions Apps Script (débloque tout), ou exécuter `installerTrigger` depuis
+l'éditeur (rattrape le moteur seulement).
+
+### [C49-24] — le signal « version servie » de la CI ne varie pas ⬜
+
+- [ ] `versionPilote_()` rend `CONFIG.TICK_MINUTES + '|' + CONFIG.RESET_TABLE_VERSION` : deux
+  constantes inchangées depuis des semaines. Il prouve que `/exec` CONNAÎT l'action (piège n° 4,
+  ce pour quoi il a été écrit) et **jamais qu'elle sert le code du jour** — il a rendu `5min|t7`
+  le 21/09 sur une web app figée. Un signal se juge sur ce qu'il fait VARIER.
+- [ ] Piste : y mettre une empreinte qui change à chaque déploiement, et faire échouer l'étape
+  quand elle ne bouge pas. ⚠️ **Proposé, pas fait** — aucun feu vert de Marc.
 
 ---
 
