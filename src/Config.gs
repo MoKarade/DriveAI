@@ -534,11 +534,21 @@ var CONFIG = {
   //   2. les 110 papiers de `04` + `01`, lus le 17/09 sous le prompt v1, sont RELUS sous le
   //      v2 — c'est l'ADR 0008 de la Mémoire qui l'autorise, et le lot qui l'a rendu
   //      nécessaire est le passeport fabriqué du 21/09.
-  // ⚠️ COÛT MESURÉ AVANT DE POSER : 1 086 documents × 0,0261 $ ≈ 28,3 $, plus 3,65 $ déjà
-  // dépensés ce mois = ~32 $ sous un frein à 40 $. La marge est de ~8 $ et la re-datation de
-  // `06` consomme en parallèle (~4 $ pour ses 358 documents restants) : si le frein mord, la
-  // campagne se met en PAUSE au milieu — pas de perte, mais il faudra relever le frein, ce
-  // qui est une décision de dépense et pas un effet de bord.
+  // ⚠️ COÛT — ET LE PREMIER CHIFFRE ÉCRIT ICI ÉTAIT FAUX D'UN FACTEUR 6, par recopie.
+  // J'avais pris les 0,0261 $/doc de l'ADR-0018 : c'est le coût de la RE-ANALYSE, qui tourne
+  // en Sonnet DEUX passes. L'extraction de pièce est Haiku UNE passe (`PIECE_MODELE`), avec
+  // son prompt en cache éphémère. Un coût mesuré sur une autre campagne n'est pas une mesure
+  // de celle-ci : le MODÈLE et le NOMBRE D'APPELS par document diffèrent tous les deux.
+  //
+  // Deux voies concordantes, le 21/09 :
+  //   · la télémétrie du mois — le poste « (hors étape) », où l'extraction tombe tant que la
+  //     ventilation de C49-6 n'est pas déployée : 0,485 $ / 113 appels = 0,0043 $/appel ;
+  //   · les prix de `LLM_PRIX` — ~1 500 jetons de texte en entrée + 1 100 de prompt CACHÉ
+  //     (0,1 $/M en lecture) + ~350 en sortie à 5 $/M ≈ 0,0034 $/doc.
+  // Soit ~0,004 $/document, donc 1 086 documents ≈ 4,3 $ [Probable]. Avec 3,65 $ déjà
+  // dépensés, on reste très loin du frein à 40 $ — il n'y a pas de tension à arbitrer.
+  // ⚠️ Ce chiffre se RE-MESURERA tout seul une fois C49-6 déployé : le poste
+  // `rattrapage-piece` de la télémétrie le donnera sans qu'on ait à le déduire.
   RATTRAPAGE_PIECE_TAG: 'c49-5-b',
 
   // C49-4 — la LECTURE DE TOUT LE DRIVE, étape A : compter le périmètre avant de le promettre.
