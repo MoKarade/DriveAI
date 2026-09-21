@@ -131,3 +131,63 @@ test('le prompt interdit de deviner, et de convertir les montants', () => {
   assert.ok(/NE DEVINE RIEN/.test(c.PROMPT_PIECE));
   assert.ok(/TELS QU'ÉCRITS|TELS QU\\'ÉCRITS/.test(c.PROMPT_PIECE) || /TELS QU/.test(c.PROMPT_PIECE));
 });
+
+// ── Une extraction FABRIQUÉE (défaut du passeport, 21/09/2026) ──────────────────────────
+//
+// L'OCR d'une photo de passeport n'avait rendu que des fragments (« HARD FLEX T 014 »,
+// « ITD OSS », des références de fabricant). Le modèle n'avait AUCUNE façon de dire non :
+// la structure JSON demandée exigeait un résumé, un type, un émetteur. Il a donc fabriqué
+// un passeport plausible — résumé en espagnol sur un document marqué `fr`, numéros tirés
+// du bruit — et cette pièce a été écrite, servie à un modèle, et jamais reprise.
+
+test('le modèle a le DROIT de dire qu\'il n\'a pas pu lire, et ce refus est respecté', () => {
+  const c = ctx();
+  // Le cas EXACT : `lisible: false` accompagné de champs bien remplis. Sans le refus, cette
+  // extraction passe — elle « porte quelque chose », c'est justement le problème.
+  const fabrique = JSON.stringify({
+    lisible: false,
+    resume: 'Passeport canadiense emitido por el Gobierno de Canadá.',
+    type: 'passeport',
+    emetteur: 'Gouvernement du Canada',
+    champs: { numeros: [{ libelle: 'Numéro de série', valeur: 'C1966' }] },
+    libres: { reference_vol: 'HARD FLEX T 014', zone_donnees: 'ITD OSS' }
+  });
+  assert.strictEqual(c.parserExtractionPiece_(fabrique), null,
+    'une extraction que le modèle déclare illisible ne doit JAMAIS être écrite');
+});
+
+test('`lisible` ABSENT vaut vrai — un champ oublié ne fait pas jeter tout un lot', () => {
+  const c = ctx();
+  // Le côté sûr est ici l'acceptation : le défaut inverse jetterait toutes les réponses
+  // d'un modèle qui omet le champ, c'est-à-dire tout ce qui a été extrait avant ce lot.
+  const e = c.parserExtractionPiece_(COMPLET);
+  assert.ok(e, 'une extraction sans le champ doit passer comme avant');
+  assert.strictEqual(e.lisible, true, '`lisible` absent est normalisé à true, pas à undefined');
+  const vrai = c.parserExtractionPiece_(JSON.stringify({ lisible: true, type: 'bail' }));
+  assert.ok(vrai, 'un `lisible: true` explicite passe aussi');
+});
+
+test('`extractionExploitable_` est PURE, et sépare ses deux refus', () => {
+  const c = ctx();
+  assert.strictEqual(c.extractionExploitable_(null), false);
+  assert.strictEqual(c.extractionExploitable_({}), false, 'ne porte rien');
+  assert.strictEqual(c.extractionExploitable_({ type: 'bail' }), true);
+  // Le refus « illisible » PRIME sur la richesse : c'est toute la différence avec l'ancien
+  // test, qui ne savait refuser qu'une extraction VIDE.
+  assert.strictEqual(c.extractionExploitable_({ type: 'bail', lisible: false }), false);
+});
+
+test('le prompt OUVRE la porte de sortie, et interdit de fabriquer', () => {
+  const c = ctx();
+  // Le champ doit être dans le CONTRAT JSON, pas seulement dans la prose : un modèle rend
+  // la forme qu'on lui montre.
+  assert.ok(/"lisible"/.test(c.PROMPT_PIECE),
+    'sans le champ dans le gabarit JSON, le modèle n\'a aucune façon de dire non');
+  assert.ok(/DOCUMENT ILLISIBLE/.test(c.PROMPT_PIECE));
+  // Et l'interdiction doit être EXPLICITE : dire « tu peux répondre false » sans dire « ne
+  // fabrique pas » laisse le modèle choisir la réponse la plus serviable, qui est l'invention.
+  assert.ok(/Ne fabrique JAMAIS/.test(c.PROMPT_PIECE),
+    'la porte de sortie ne sert à rien tant que l\'invention reste permise');
+  assert.ok(/bruit d'OCR/.test(c.PROMPT_PIECE),
+    'le cas qui a mordu doit être nommé, sinon la consigne reste abstraite');
+});

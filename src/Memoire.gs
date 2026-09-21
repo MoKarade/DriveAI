@@ -538,7 +538,14 @@ var CHAMPS_ACCEPTES_PIECE_MEMOIRE = ['sujet', 'type', 'emetteur', 'titulaire',
 var FAMILLES_STRUCTUREES_MEMOIRE = ['montants', 'numeros', 'personnes', 'lieux'];
 
 /** L'extracteur des pièces, versionné à part : il DIT quel prompt a produit le contenu. */
-var EXTRACTEUR_PIECE_MEMOIRE = 'haiku-4.5-piece-v1';
+// ⚠️ CE NOM DÉSIGNE LA VERSION DU PROMPT, pas celle du modèle — et c'est lui qui autorise une
+// RELECTURE côté Mémoire (son ADR 0008, `LIGNEE_EXTRACTEURS`). Deux lectures du même modèle
+// sous deux prompts n'ont pas la même valeur : `v1` a lu sans la consigne « date de naissance »
+// (20/09/2026) et sans la porte « lisible » (21/09), donc en fabriquant un document plausible
+// devant un OCR de bruit. Bumper ici sans ajouter le nom en queue de la lignée là-bas ne
+// remplace RIEN — et l'inverse non plus : les deux gestes vont ensemble, c'est la friction qui
+// empêche une relecture involontaire (elle coûte un appel de modèle par document).
+var EXTRACTEUR_PIECE_MEMOIRE = 'haiku-4.5-piece-v2';
 
 /**
  * Le TITULAIRE d'un papier — à qui il appartient — et sa confiance.
@@ -798,6 +805,7 @@ var PHRASES_FIN_PIECE_ = {
   'non-classe': 'le document n\'est pas classé (média, quarantaine) — rien à extraire',
   'sans-texte': 'aucun texte lisible (OCR vide) — rien à extraire',
   'extraction-vide': '⚠️ le modèle n\'a rien rendu d\'exploitable',
+  'illisible': '⚠️ le modèle DIT n\'avoir pas pu lire — la photo est à refaire, pas le prompt',
   'piece-vide': '⚠️ extraction faite mais pièce non composable (pas de fileId ?)',
   'refusee': '⚠️ pièce REFUSÉE par la Mémoire — voir le dernier refus',
   'jeton-refuse': '⚠️ jeton REFUSÉ par la Mémoire — geste de Marc requis',
@@ -943,8 +951,15 @@ function pousserPieceApresClassement_(src, decision, texteOcr, opts) {
   // le plafond ne borne plus rien le jour où c'est justement l'appel qui part en vrille.
   _piecesCeRun++;
 
-  var extraction = extrairePiece_({ nomFichier: decision.nom, extrait: texteOcr });
-  if (!extraction) { res.motif = 'extraction-vide'; return noterFinPiece_(props, res); }
+  // ⚠️ DEUX refus sous une seule forme sans cet objet de sortie : « le modèle n'a rien tiré »
+  // et « le modèle dit qu'il n'a pas pu LIRE ». Le second est le défaut du passeport du
+  // 21/09/2026, et il n'appelle pas le même geste — il faut refaire la photo, pas le prompt.
+  var horsExtraction = {};
+  var extraction = extrairePiece_({ nomFichier: decision.nom, extrait: texteOcr }, horsExtraction);
+  if (!extraction) {
+    res.motif = horsExtraction.motif === 'illisible' ? 'illisible' : 'extraction-vide';
+    return noterFinPiece_(props, res);
+  }
 
   var piece = pieceMemoire_({
     cle: src.cle,

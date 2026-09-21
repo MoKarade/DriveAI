@@ -37,6 +37,7 @@ var PROMPT_PIECE =
   'Tu ne le classes pas : son rangement est déjà décidé.\n' +
   'Réponds UNIQUEMENT par un objet JSON valide, sans texte avant ni après :\n' +
   '{\n' +
+  '  "lisible": <true si ce texte permet VRAIMENT d\'identifier un document, false sinon>,\n' +
   '  "resume": <2 ou 3 phrases, DANS LA LANGUE DU DOCUMENT, ce que le papier dit>,\n' +
   '  "type": <type court et précis ("bail", "avis de cotisation", "police d\'assurance") ou null>,\n' +
   '  "emetteur": <l\'ORGANISATION qui émet le document, ou null>,\n' +
@@ -62,6 +63,11 @@ var PROMPT_PIECE =
   '"date de naissance", au format AAAA-MM-JJ. Idem pour "date de délivrance". ' +
   '(`date_document` est la date du PAPIER, `date_echeance` sa fin de validité : ni l\'une ni ' +
   'l\'autre ne dit quand son titulaire est né.)\n' +
+  'DOCUMENT ILLISIBLE : si le texte est vide, tronqué, corrompu, ou s\'il ne porte que des ' +
+  'fragments sans rapport (bruit d\'OCR, inscriptions de fabricant, message d\'erreur d\'un ' +
+  'lecteur PDF), réponds "lisible": false et laisse TOUT LE RESTE à null. Ne fabrique JAMAIS ' +
+  'un document plausible à partir de fragments : « je n\'ai pas pu lire » est une bonne ' +
+  'réponse, un papier inventé n\'en est jamais une.\n' +
   'NE DEVINE RIEN : un champ que le document ne porte pas vaut null. Une date incomplète vaut null.';
 
 /**
@@ -102,17 +108,69 @@ function parserExtractionPiece_(texte) {
     titulaire_confiance: aplatirNombrePiece_(o.titulaire_confiance),
     champs: (o.champs && typeof o.champs === 'object') ? o.champs : null,
     libres: (o.libres && typeof o.libres === 'object') ? o.libres : null,
-    confiance: aplatirNombrePiece_(o.confiance)
+    confiance: aplatirNombrePiece_(o.confiance),
+    lisible: o.lisible === false ? false : true
   };
 
-  // ⚠️ UNE EXTRACTION QUI NE PORTE RIEN N'EST PAS UNE EXTRACTION. Sans ce test, un appel
-  // muet produirait une pièce vide — et une pièce vide est pire qu'une pièce absente : elle
-  // occupe la place de celle qu'on aurait pu extraire, et l'idempotence empêche de réessayer.
-  var porteQuelqueChose = !!(out.resume || out.type || out.emetteur || out.date_document ||
-    out.date_echeance || out.titulaire ||
-    (out.champs && Object.keys(out.champs).length) ||
-    (out.libres && Object.keys(out.libres).length));
-  return porteQuelqueChose ? out : null;
+  return extractionExploitable_(out) ? out : null;
+}
+
+/**
+ * PUR. Cette extraction mérite-t-elle d'être écrite ?
+ *
+ * ⚠️ DEUX refus, et ils n'ont pas la même cause. (1) UNE EXTRACTION QUI NE PORTE RIEN
+ * N'EST PAS UNE EXTRACTION : un appel muet produirait une pièce vide, et une pièce vide est
+ * pire qu'une pièce absente — elle occupe la place de celle qu'on aurait pu extraire, et
+ * l'idempotence empêche de réessayer. (2) LE MODÈLE DIT QU'IL N'A PAS PU LIRE : c'est le
+ * défaut du passeport du 21/09/2026 — l'OCR d'une photo n'avait rendu que des fragments
+ * (« HARD FLEX T 014 », « ITD OSS », des références de fabricant), et le modèle, qui n'avait
+ * AUCUNE façon de dire non, a fabriqué un passeport plausible avec un résumé en espagnol et
+ * des numéros tirés du bruit. Une pièce inventée est pire qu'une pièce vide : elle a l'air
+ * d'une lecture, donc personne ne la reprend.
+ *
+ * ⚠️ `lisible` ABSENT vaut TRUE, et c'est le côté sûr ici : une réponse qui omet le champ
+ * (modèle plus ancien, oubli) doit se comporter comme avant, jamais faire jeter tout un lot.
+ * Seul un `false` EXPLICITE refuse.
+ *
+ * ⚠️ Les deux refus arrivent aujourd'hui à l'appelant sous la même forme (`null`, compté
+ * `echec`). Le dire plutôt que de laisser croire que le compteur les sépare.
+ *
+ * @param {?Object} e  l'extraction normalisée
+ * @return {boolean}
+ */
+/**
+ * PUR. Le seul champ qui survit a un refus : `lisible`. `parserExtractionPiece_` rend `null`
+ * des qu'elle refuse, donc la CAUSE serait perdue sans cette relecture minimale.
+ *
+ * @param {string} texte  la reponse brute du modele
+ * @return {?Object} `{lisible:false}` si le modele l'a declare, sinon null
+ */
+function lisibiliteDeclaree_(texte) {
+  var brut = String(texte == null ? '' : texte);
+  return /"lisible"\s*:\s*false/.test(brut) ? { lisible: false } : null;
+}
+
+/**
+ * PUR. POURQUOI une extraction est refusee. `extractionExploitable_` dit OUI ou NON ;
+ * celle-ci dit laquelle des deux causes, parce qu'elles n'appellent pas le meme geste :
+ * `vide` est un document dont le modele n'a rien tire, `illisible` est un document que
+ * l'OCR n'a pas rendu — le premier se rejoue avec un meilleur prompt, le second avec une
+ * meilleure PHOTO. Les confondre, c'est la panne « 0/0 et 0/6 » appliquee a une campagne.
+ *
+ * @param {?Object} e  l'extraction normalisee
+ * @return {string} 'ok' | 'illisible' | 'vide'
+ */
+function motifRefusExtraction_(e) {
+  if (e && e.lisible === false) return 'illisible';
+  return extractionExploitable_(e) ? 'ok' : 'vide';
+}
+function extractionExploitable_(e) {
+  if (!e) return false;
+  if (e.lisible === false) return false;
+  return !!(e.resume || e.type || e.emetteur || e.date_document || e.date_echeance ||
+    e.titulaire ||
+    (e.champs && Object.keys(e.champs).length) ||
+    (e.libres && Object.keys(e.libres).length));
 }
 
 /**
@@ -161,7 +219,11 @@ function aplatirNombrePiece_(v) {
  * @param {{nomFichier:string, extrait:string}} meta
  * @return {?Object} l'extraction, ou null
  */
-function extrairePiece_(meta) {
+function extrairePiece_(meta, hors) {
+  // ⚠️ `hors` est un objet de SORTIE : l'appelant qui en passe un y lit le motif du refus.
+  // Sans lui, « le modele n'a rien tire » et « l'OCR n'a rien rendu » arrivent sous la meme
+  // forme (`null`) et une campagne ne peut pas dire ce qu'elle a jete.
+  if (hors) hors.motif = 'vide';
   if (!meta || !String(meta.extrait || '').trim()) return null;
   if (estPannePlateforme_()) return null;
 
@@ -207,5 +269,7 @@ function extrairePiece_(meta) {
   }
   signalerRetablissement_();
   enregistrerUsage_(PIECE_MODELE, data.usage);
-  return parserExtractionPiece_(texteReponse_(data));
+  var brut = parserExtractionPiece_(texteReponse_(data));
+  if (hors) hors.motif = motifRefusExtraction_(brut || lisibiliteDeclaree_(texteReponse_(data)));
+  return brut;
 }
