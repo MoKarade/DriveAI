@@ -528,7 +528,18 @@ var CONFIG = {
   // liste fermée de documents, pas tout ce qui sera classé demain.
   // ⚠️ ARMÉ LE 17/09 : « ok jugé, pose le tag, extrait tous les docs aujd ». La porte de la §7
   // de l'ADR-0061 est levée PAR MARC, pas déduite d'un compteur de verdicts.
-  RATTRAPAGE_PIECE_TAG: 'c49-5-a',
+  // ⚠️ `c49-5-b` (21/09/2026, demande de Marc « fais A B et finances »). Le bump REFAIT la
+  // tranche, et c'est ici voulu deux fois plutôt qu'une :
+  //   1. `02 · Finances` entre dans la tranche (976 papiers candidats, mesurés le 17/09) ;
+  //   2. les 110 papiers de `04` + `01`, lus le 17/09 sous le prompt v1, sont RELUS sous le
+  //      v2 — c'est l'ADR 0008 de la Mémoire qui l'autorise, et le lot qui l'a rendu
+  //      nécessaire est le passeport fabriqué du 21/09.
+  // ⚠️ COÛT MESURÉ AVANT DE POSER : 1 086 documents × 0,0261 $ ≈ 28,3 $, plus 3,65 $ déjà
+  // dépensés ce mois = ~32 $ sous un frein à 40 $. La marge est de ~8 $ et la re-datation de
+  // `06` consomme en parallèle (~4 $ pour ses 358 documents restants) : si le frein mord, la
+  // campagne se met en PAUSE au milieu — pas de perte, mais il faudra relever le frein, ce
+  // qui est une décision de dépense et pas un effet de bord.
+  RATTRAPAGE_PIECE_TAG: 'c49-5-b',
 
   // C49-4 — la LECTURE DE TOUT LE DRIVE, étape A : compter le périmètre avant de le promettre.
   // ⚠️ Bumper ce tag RELANCE le comptage (une lecture de l'Index, aucun appel LLM, rien qui

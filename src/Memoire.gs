@@ -538,7 +538,14 @@ var CHAMPS_ACCEPTES_PIECE_MEMOIRE = ['sujet', 'type', 'emetteur', 'titulaire',
 var FAMILLES_STRUCTUREES_MEMOIRE = ['montants', 'numeros', 'personnes', 'lieux'];
 
 /** L'extracteur des pièces, versionné à part : il DIT quel prompt a produit le contenu. */
-var EXTRACTEUR_PIECE_MEMOIRE = 'haiku-4.5-piece-v1';
+// ⚠️ CE NOM DÉSIGNE LA VERSION DU PROMPT, pas celle du modèle — et c'est lui qui autorise une
+// RELECTURE côté Mémoire (son ADR 0008, `LIGNEE_EXTRACTEURS`). Deux lectures du même modèle
+// sous deux prompts n'ont pas la même valeur : `v1` a lu sans la consigne « date de naissance »
+// (20/09/2026) et sans la porte « lisible » (21/09), donc en fabriquant un document plausible
+// devant un OCR de bruit. Bumper ici sans ajouter le nom en queue de la lignée là-bas ne
+// remplace RIEN — et l'inverse non plus : les deux gestes vont ensemble, c'est la friction qui
+// empêche une relecture involontaire (elle coûte un appel de modèle par document).
+var EXTRACTEUR_PIECE_MEMOIRE = 'haiku-4.5-piece-v2';
 
 /**
  * Le TITULAIRE d'un papier — à qui il appartient — et sa confiance.

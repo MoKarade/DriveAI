@@ -69,7 +69,7 @@ var PERIMETRE_PIECE_TOP = 6;
  * Reconnus par le PRÉFIXE, jamais par le libellé entier, qui se renomme (même règle que
  * `estDomaineMasqueAudit_`, et pour la même raison).
  */
-var PREFIXES_DOMAINE_DECISIF_PIECE = ['04', '01'];
+var PREFIXES_DOMAINE_DECISIF_PIECE = ['04', '01', '02'];
 
 /* ---------- PUR ---------- */
 

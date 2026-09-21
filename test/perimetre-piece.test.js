@@ -258,14 +258,17 @@ test('les domaines DÉCISIFS sont toujours rendus, même à zéro, et par PRÉFI
   const c = ctx();
   // Mesuré le 17/09 : `01` valait 87 et `04` était sous la barre des six plus gros. Une
   // troncature par volume cache donc exactement le chiffre pour lequel on mesure.
+  // ⚠️ `02` a rejoint la tête le 21/09 (demande de Marc) : la liste des décisifs est aussi
+  // celle que le RATTRAPAGE parcourt, une seule liste et deux consommateurs — sinon le
+  // comptage promettrait une tranche et la campagne en traiterait une autre.
   assert.deepStrictEqual(
     Array.from(c.decisifsPerimetre_({ '06 · Études & diplômes': 1169, '01 · Administratif & identité': 87 })),
-    ['04=0', '01=87']);
+    ['04=0', '01=87', '02=0']);
   // ⚠️ Par PRÉFIXE : le libellé se renomme, le numéro non. Un appariement sur le libellé
   // entier rendrait 0 au premier « 04 · Immigration & statut ».
   assert.deepStrictEqual(
     Array.from(c.decisifsPerimetre_({ '04 · Immigration & statut': 12, '04 · Immigration': 5 })),
-    ['04=17', '01=0']);
+    ['04=17', '01=0', '02=0']);
 });
 
 test('la phrase ANNONCE le plancher, et ne l\'invente pas quand il n\'y en a pas', () => {
@@ -275,7 +278,7 @@ test('la phrase ANNONCE le plancher, et ne l\'invente pas quand il n\'y en a pas
   assert.match(avecPlancher, /18000 lignes classées SANS fileId/);
   assert.match(avecPlancher, /PLANCHER/);
   assert.match(avecPlancher, /à pousser d'abord : 04=31,01=87/,
-    'les deux domaines que Marc pousse en premier sont TOUJOURS nommés');
+    'les domaines que Marc pousse en premier sont TOUJOURS nommés');
 
   const sansPlancher = c.phrasePerimetrePiece_(
     '2026-09-17T16:39:00.000Z|c49-4-a|3972/4240/26550|268|06=1169|pdf=3000|0|04=31,01=87');

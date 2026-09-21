@@ -563,7 +563,9 @@ test('la tranche est ARMÉE, et changer cette valeur est une DÉCISION', () => {
   // distraction, ce qui éteindrait la campagne en silence, et que le bumper soit délibéré (un
   // bump REFAIT toute la tranche : la liste des faits est écrite sous le tag, chaque document
   // re-coûte son appel Haiku). Le re-baser en même temps qu'un bump volontaire est normal.
-  assert.strictEqual(c.CONFIG.RATTRAPAGE_PIECE_TAG, 'c49-5-a');
+  // Re-basé le 21/09 sur `c49-5-b` : la tranche accueille `02 · Finances` ET relit les 110
+  // papiers de `04` + `01` sous le prompt v2 (ADR 0008 de la Mémoire). Un bump volontaire.
+  assert.strictEqual(c.CONFIG.RATTRAPAGE_PIECE_TAG, 'c49-5-b');
   assert.strictEqual(c.rattrapageDoitTourner_(null, null, c.CONFIG.RATTRAPAGE_PIECE_TAG), true);
   // Et le flux vivant reste ÉTEINT : armer le rattrapage n'allume pas les huit sites d'appel.
   assert.strictEqual(c.CONFIG.PIECE_PUSH, false);
