@@ -51,6 +51,17 @@ function fil(pjsParMessage) {
   return { getId: () => id, getMessages: () => pjsParMessage.map((pjs) => ({ pjs })) };
 }
 
+test('C49-20 — GMAIL_HISTO_ACTIF=false : aucune recherche Gmail, même campagne non terminée', () => {
+  // ⚠️ Cette campagne n'avait AUCUN interrupteur : seule la Property `= terminé` l'arrêtait, donc
+  // un bump l'aurait relancée sans qu'on puisse dire non. Le flag est en TÊTE — avant même la
+  // garde de panne Gmail — parce qu'une campagne arrêtée n'a pas à sonder quoi que ce soit.
+  const { c, calls } = ctxHisto({ page: () => { throw new Error('arrêtée : aucune page'); } });
+  c.CONFIG.GMAIL_HISTO_ACTIF = false; // (le harnais rallume les campagnes arrêtées — cf. harness.js)
+  c.traiterGmailHistorique_(() => false);
+  assert.strictEqual(calls.pages.length, 0, 'aucune recherche Gmail lancée');
+  assert.strictEqual(Object.keys(calls.props).length, 0, 'aucune écriture d\'état');
+});
+
 /* ---------- terminaison : deux passes propres ---------- */
 
 test('historique : DEUX pages vides propres consécutives → TERMINÉE, plus jamais de recherche', () => {
@@ -247,7 +258,11 @@ test('historique : budget QUOTIDIEN épuisé → aucun appel, repris le lendemai
     props: {
       DriveAI_GMAIL_HISTO_ANCRE: '2026/06/02',
       DriveAI_GMAIL_HISTO_JOUR: auj,
-      DriveAI_GMAIL_HISTO_MS_JOUR: String(60 * 60 * 1000), // = GMAIL_HISTO_BUDGET_JOUR_MS (plafond du jour atteint)
+      // ⚠️ DÉRIVÉ, jamais recopié (revue C49-20) : le commentaire annonçait « = 
+      // GMAIL_HISTO_BUDGET_JOUR_MS » sur une valeur écrite en dur, et la constante a depuis
+      // changé deux fois. Le test passait par EXCÈS — même faute que `historique-vrac`, corrigée
+      // dans ce lot. `+1` : on veut le plafond ATTEINT, pas frôlé.
+      DriveAI_GMAIL_HISTO_MS_JOUR: String(ctxPur.CONFIG.GMAIL_HISTO_BUDGET_JOUR_MS + 1),
     },
     page: () => [fil([['a']])],
   });

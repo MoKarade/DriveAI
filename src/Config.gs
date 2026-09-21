@@ -238,7 +238,12 @@ var CONFIG = {
   // times » le 06/07) et le TRI vivant était affamé toute la journée (4-17 fils triés/j). Le quota
   // d'appels est PARTAGÉ : la seule protection du tri est de borner la consommation TOTALE de la
   // campagne, pas seulement son runtime. La campagne finit plus lentement — c'est le prix accepté.
-  GMAIL_HISTO_PRETEES_MIN: 18,            // minutes DÉJÀ prêtées par ce donneur (ADR-0056, puis C28-135 :
+  // ⚠️ ARRÊTÉE le 21/09 (C49-20). Elle était TERMINÉE et le moteur le disait lui-même
+  // (« ses 2 min/j sont RÉALLOUABLES »). Elle n'avait aucun interrupteur : seule la Property
+  // `DriveAI_GMAIL_HISTO = terminé` l'arrêtait, donc un bump de campagne la relançait sans
+  // qu'on puisse dire non. L'interrupteur est le geste qui manquait.
+  GMAIL_HISTO_ACTIF: false,
+  GMAIL_HISTO_PRETEES_MIN: 20,            // minutes DÉJÀ prêtées par ce donneur (ADR-0056, puis C28-135 :
                                           // 8 → 12, les 4 nouvelles vont à la Mémoire ; puis C49-3 :
                                           // 8 → 12, les 4 nouvelles vont à la Mémoire). La ligne de
                                           // santé les DIT, sinon la prochaine session lit « ses 12 min/j
@@ -254,7 +259,7 @@ var CONFIG = {
   // plus pour l'audit des pièces. MESURÉ avant d'écrire, comme la fois précédente : à 2 min la
   // campagne n'est PAS muette (aucun de ses vingt tests ne rougit) — c'est à ZÉRO qu'elle le
   // devient. 2 min est donc son plancher de fonctionnement, pas un reliquat arbitraire.
-  GMAIL_HISTO_BUDGET_JOUR_MS: 2 * 60 * 1000, // 20 → 12 (ADR-0056) → 8 (C28-135) → 2 : min prêtées à la
+  GMAIL_HISTO_BUDGET_JOUR_MS: 0 * 60 * 1000, // 20 → 12 (ADR-0056) → 8 (C28-135) → 2 : min prêtées à la
                                           // re-analyse ciblée de `06`, puis 4 à la Mémoire. Donneur
                                           // choisi parce que le moteur ÉCRIT « Historique Gmail :
                                           // terminée ✅ — ses N min/j sont RÉALLOUABLES » : une campagne
@@ -641,9 +646,30 @@ var CONFIG = {
   // Sans ça, le garde des minutes prêtées par l'historique Gmail devrait recopier « 17 − 11 » :
   // un chiffre en dur, exactement ce que ce dépôt reproche à une somme qui se périme en silence.
   // Les deux parts s'additionnent au budget, et un test le verrouille.
-  AUDIT_PIECE_PART_SYNC_MIN: 11,   // prêtées par `SYNC_BUDGET_JOUR_MS` (12 → 1)
-  AUDIT_PIECE_PART_GMAIL_MIN: 6,   // prêtées par `GMAIL_HISTO_BUDGET_JOUR_MS` (8 → 2)
-  AUDIT_PIECE_BUDGET_JOUR_MS: 17 * 60 * 1000,
+  // ⚠️ CHAQUE MINUTE DE CE BUDGET A UN DONNEUR NOMMÉ, et leur somme DOIT valoir
+  // `AUDIT_PIECE_BUDGET_JOUR_MS` — `test/orchestration.test.js` le vérifie. Une minute sans
+  // donneur est une minute CRÉÉE, et l'invariant d'enveloppe seul ne la voit pas : il ne juge
+  // que le total, donc un transfert à moitié fait lui échappe.
+  //
+  // ⚠️ Deux PARTS nommées (`AUDIT_PIECE_PART_SYNC_MIN`, `_GMAIL_MIN`) tenaient ce rôle jusqu'au
+  // 21/09. Elles ne passent pas à l'échelle : C49-20 a SEPT donneurs d'un coup, et une paire de
+  // constantes par donneur aurait fini par diverger. La table dit la même chose et grandit d'une
+  // ligne par transfert.
+  //
+  // ⚠️ Ce que la table compte est ce que chaque poste cède AUJOURD'HUI, à sa valeur du jour —
+  // jamais l'origine PREMIÈRE des minutes. Les 8 min de la re-datation venaient elles-mêmes de
+  // l'historique Gmail : les re-tracer jusqu'à lui les compterait DEUX fois.
+  AUDIT_PIECE_DONNEURS_MIN: {
+    SYNC: 11,                 // réconciliation Index↔Drive (12 → 1), prêt du 17/09
+    GMAIL_HISTO: 8,           // 6 prêtées le 17/09, + ses 2 dernières à l'arrêt du 21/09 (C49-20)
+    CONSOLIDATION: 16,        // C49-20 — arrêtée
+    CONSOLIDATION_EXEC: 8,    // C49-20 — arrêtée
+    REANALYSE: 8,             // C49-20 — arrêtée EN COURS (108/466), décision de Marc
+    HISTORIQUE_VRAC: 4,       // C49-20 — arrêtée
+    DOUBLONS: 1,              // C49-20 — arrêtée (terminée le 22/08)
+    MISSIONS: 2               // C49-20 — arrêtée (dernière production il y a 32 j)
+  },
+  AUDIT_PIECE_BUDGET_JOUR_MS: 58 * 60 * 1000,
   // Sous-budget PAR TICK (même famille que `REANALYSE_BUDGET_MS`) : l'étape ne prend que le
   // reliquat du tick, après le flux vivant, et jamais plus que ça d'un coup.
   AUDIT_PIECE_BUDGET_MS: 2 * 60 * 1000,
@@ -763,10 +789,14 @@ var CONFIG = {
                                           // sur un Drive énorme — la re-base/finalisation corrigent l'écart)
 
   // ---- Campagne de CONSOLIDATION de l'arborescence (C28-26, ADR-0023 — Consolidation.gs) ----
-  CONSOLIDATION_ACTIF: true,              // interrupteur du DRY-RUN (génération du plan seule) — ALLUMÉ
-                                          // 2026-07-17 (« continue », post-correctifs revue flotte #183) :
-                                          // le moteur remplit l'onglet PlanConsolidation (~12 min/j max,
-                                          // AUCUNE mutation Drive). Repasser à false pour suspendre.
+  CONSOLIDATION_ACTIF: false,           // ARRÊTÉE le 21/09 (C49-20, décision de Marc). Ses 16 min/j
+                                          // vont à la lecture des papiers.
+                                          // ⚠️ Ce qui suit décrit ce qu'elle FAIT UNE FOIS RALLUMÉE — allumée
+                                          // le 2026-07-17 (« continue », post-correctifs revue flotte #183),
+                                          // éteinte le 21/09 : interrupteur du DRY-RUN (génération du plan
+                                          // SEULE), le moteur remplit l'onglet PlanConsolidation (~12 min/j
+                                          // max, AUCUNE mutation Drive). Repasser à true pour la reprendre —
+                                          // et lui rendre son budget, que l'audit des pièces détient.
   CONSOLIDATION_TAG: 'conso-4',           // tag de campagne (clé de convergence `conso|<tag>|<fileId>`).
                                           // conso-3 → conso-4 (2026-09-13, C28-90, demande de Marc
                                           // « lance le rattrapage ») : les 683 fichiers à plat aux
@@ -801,7 +831,7 @@ var CONFIG = {
                                           // tout avec le référentiel courant (rotation dans genererPlan…)
   CONSOLIDATION_BUDGET_MS: 3 * 60 * 1000, // sous-budget PROPRE par run (le hash MD5 lit les octets — sans
                                           // cette borne, un run mangerait le budget des étapes suivantes)
-  CONSOLIDATION_BUDGET_JOUR_MS: 16 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
+  CONSOLIDATION_BUDGET_JOUR_MS: 0 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES persistées (leçon §7 :
                                           // ⚡ 10 → 16 (RÉALLOCATION C28-99, demande Marc « jveux utiliser le temps
                                           // dispo au max »). MESURÉ avant de bouger quoi que ce soit : la génération
                                           // consomme ses 10 min/j EN ENTIER sans finir un seul domaine (1/9 depuis
@@ -830,12 +860,14 @@ var CONFIG = {
                                           // à 0 avec `MISSIONS_ACTIF` vrai serait un no-op silencieux.
   CONSOLIDATION_MAX_PAR_RUN: 60,          // fichiers ajoutés au plan par run (40 → 60 ; le coût réel = le hash)
   // Exécution du plan (ConsolidationExec.gs, ADR-0024 — décision Marc 2026-07-17 « change tout live ») :
-  CONSOLIDATION_EXEC_ACTIF: true,         // applique Déplacer/Doublon du PlanConsolidation (moveTo seul,
-                                          // §1 re-vérifiée par mutation) — false = suspension immédiate
+  CONSOLIDATION_EXEC_ACTIF: false,        // ARRÊTÉE le 21/09 (C49-20). 8 min/j rendues.
+                                          // ⚠️ Ce qui suit décrit ce qu'elle FAIT UNE FOIS RALLUMÉE : applique
+                                          // Déplacer/Doublon du PlanConsolidation (moveTo seul, §1 re-vérifiée
+                                          // par mutation) — false = suspension immédiate
   CONSOLIDATION_EXEC_BUDGET_MS: 2 * 60 * 1000,        // sous-budget par run — reste STRICTEMENT < garde-temps de
                                           // tick (ANALYSE_V2_BUDGET_MS 3 min) pour ne pas affamer le reste du
                                           // tick ; le débit journalier vient du budget QUOTIDIEN (moveTo cheap)
-  CONSOLIDATION_EXEC_BUDGET_JOUR_MS: 8 * 60 * 1000,   // budget QUOTIDIEN en ms réelles persistées.
+  CONSOLIDATION_EXEC_BUDGET_JOUR_MS: 0 * 60 * 1000,   // budget QUOTIDIEN en ms réelles persistées.
                                           // ⚡ 12 → 8 (RÉALLOCATION C28-99) : PRÊTEUR cette fois, et pour une raison
                                           // mesurée — le plan est DRAINÉ (372/372, statut « attend la génération »),
                                           // l'exécuteur tourne donc à vide pendant que la génération étouffe. Il a
@@ -1008,7 +1040,9 @@ var CONFIG = {
   // PERPÉTUELLE et en LECTURE SEULE : lui prendre du budget rallonge son cycle, ça ne laisse
   // rien en plan. Les deux autres candidats ont été essayés et refusés par des tests (historique
   // Gmail : muette à 0 ; re-datation : sa marge de démarrage double en proportion).
-  // ⚠️ À RENDRE quand l'audit est fini : celui-ci 1 → 12 et `AUDIT_PIECE_BUDGET_JOUR_MS` 11 → 0.
+  // ⚠️ À RENDRE quand l'audit est fini : celui-ci 1 → 12 et `AUDIT_PIECE_BUDGET_JOUR_MS` 58 → 0.
+  // (58 et non 11 : C49-20 lui a ajouté 47 min prises aux sept campagnes arrêtées. Le détail
+  //  donneur par donneur vit dans `AUDIT_PIECE_DONNEURS_MIN`, qui est la seule source du compte.)
   // ⚠️ 1 min et pas 0 : à zéro, cette campagne PERPÉTUELLE tournerait à vide en silence — c'est
   // l'interdit que la §9 pose pour toute réallocation en paire. Mesuré le 17/09, il n'était codé
   // NULLE PART pour ce couple (mettre ce budget à 0 laissait les 20 tests d'orchestration verts) ;
@@ -1059,6 +1093,12 @@ var CONFIG = {
   // fera par un NOUVEAU tag + ces domaines remis ici. Ce qui est parké est DIT (backlog C28-111) :
   // le compteur de C26-08 n'est pas lisible d'ici (sa ligne Progression est absente), mais la
   // ventilation LLM de septembre montre ZÉRO dépense de re-analyse — rien d'actif n'est interrompu.
+  // ⚠️ ARRÊTÉE le 21/09 (C49-20, décision de Marc) alors qu'elle était EN COURS — 108/466, fin
+  // estimée au 25/10. Ce n'est donc pas le ménage d'une campagne finie : c'est un arrêt
+  // délibéré, sur la mesure du 21/09 — elle consommait 57,5 % du budget LLM du mois (2,33 $ /
+  // 216 appels) pour +2 documents en 14 h, sur des documents DÉJÀ classés. Rallumer = remettre
+  // ce flag à true ET lui rendre du budget quotidien (le verrou refuse l'un sans l'autre).
+  REANALYSE_ACTIF: false,
   REANALYSE_TAG: 'c28-92',                // bumper le tag relance une campagne complète (re-facture)
   REANALYSE_CIBLES: ['06 · Études & diplômes'],
   // ⚠️ RACINE SEULE (🔴 revue sécurité ADR-0056). `REANALYSE_CIBLES` borne le DOMAINE, jamais la
@@ -1082,7 +1122,7 @@ var CONFIG = {
   // et le reliquat perdu chaque jour double. Le commentaire du code le disait — « ≤ 1 min sur 8 » —
   // et il serait devenu faux en silence. Un budget ne se coupe pas en deux sans relire ce que sa
   // taille garantissait ailleurs.
-  REANALYSE_BUDGET_JOUR_MS: 8 * 60 * 1000,
+  REANALYSE_BUDGET_JOUR_MS: 0 * 60 * 1000,
 
   // --- C26-07 (ADR-0015) : PREUVE dry-run avant/après du pipeline v2, sur un échantillon RÉEL ---
   // Prérequis à la campagne C26-08 et à l'allumage de ANALYSE_V2. Interrupteur DÉDIÉ, distinct
@@ -1144,9 +1184,9 @@ var CONFIG = {
   // (série temporelle, jamais écrasé — patron PlanConsolidation/PlanFusion, pas Progression/Santé
   // qui réécrivent). Tourne MÊME pendant un reset (aucune mutation, pas de conflit avec « une seule
   // main déplace »).
-  HISTORIQUE_VRAC_ACTIF: true,
+  HISTORIQUE_VRAC_ACTIF: false,           // ARRÊTÉE le 21/09 (C49-20). 4 min/j rendues.
   HISTORIQUE_VRAC_BUDGET_MS: 2 * 60 * 1000,      // sous-budget par run — pur listing Drive, jamais de LLM
-  HISTORIQUE_VRAC_BUDGET_JOUR_MS: 4 * 60 * 1000, // budget QUOTIDIEN en ms réelles persistées (leçon §7 :
+  HISTORIQUE_VRAC_BUDGET_JOUR_MS: 0 * 60 * 1000, // budget QUOTIDIEN en ms réelles persistées (leçon §7 :
                                           // un plafond par RUN ne borne pas la JOURNÉE si la sweep doit
                                           // reprendre sur plusieurs ticks) — compté dans l'enveloppe
                                           // reset-OFF (orchestration.test.js).
@@ -1176,7 +1216,7 @@ var CONFIG = {
   // Campagne STRICTEMENT lecture seule : aucun moveTo, aucun renommage, aucun appel LLM. Elle
   // re-pose la question que `estDoublon_` ne pose pas — « un exemplaire est-il ENCORE classé ? » —
   // et écrit un verdict par fichier écarté dans l'onglet `RapportDoublons`.
-  DOUBLONS_ACTIF: true,
+  DOUBLONS_ACTIF: false,                  // ARRÊTÉE le 21/09 (C49-20) — terminée le 22/08. 1 min/j rendue.
   DOUBLONS_TABLE_VERSION: 'd1',           // bump = rapport remis à zéro et TOUT re-validé (les verdicts
                                           // dépendent d'un état MUTABLE — un jumeau peut avoir bougé
                                           // depuis : « verdict révisable, jamais figé à vie », leçon §9)
@@ -1189,7 +1229,7 @@ var CONFIG = {
                                           // n'apparaître dans AUCUNE, et une preuve d'ABSENCE trouée
                                           // fabriquerait un faux orphelin (revue flotte, ADR-0047 §5)
   DOUBLONS_BUDGET_MS: 90 * 1000,          // sous-budget par run (pur listing REST + 1 écriture Sheet/page)
-  DOUBLONS_BUDGET_JOUR_MS: 1 * 60 * 1000, // budget QUOTIDIEN en ms réelles persistées — AJOUTÉ à la somme
+  DOUBLONS_BUDGET_JOUR_MS: 0 * 60 * 1000, // budget QUOTIDIEN en ms réelles persistées — AJOUTÉ à la somme
                                           // de l'enveloppe reset-OFF (orchestration.test.js) : 60 → 63 min/j
                                           // pour un plafond dérivé de 65. Prélevé sur la MARGE, faute de
                                           // pouvoir encore prouver que l'historique Gmail (20 min/j) est
@@ -1209,7 +1249,8 @@ var CONFIG = {
                                           // assumé. Les 2 min vont à la génération.
 
   // ---------- MISSIONS de curation (C28-49, ADR-0039 — brief Marc 2026-08-17) ----------
-  MISSIONS_ACTIF: true,                   // false = suspension immédiate de TOUTES les missions
+  MISSIONS_ACTIF: false,                  // ARRÊTÉE le 21/09 (C49-20) — dernière production il y a 32 j.
+                                          // 2 min/j rendues. false = suspension immédiate de TOUTES les missions.
   // c49-3 (ADR-0044 §4, véhicules) puis c49-4 (§5, les 39 de « employeurs & CV ») — l'historique
   // inline s'arrêtait à c49-2 alors que la valeur avait bougé deux fois (revue code PR2).
   MISSIONS_REGLES_VERSION: 'c50-1',       // ⚠️ PAS de bump pour ADR-0055, et c'est délibéré (revue
@@ -1231,7 +1272,7 @@ var CONFIG = {
                                           // ÉMETTEUR pour assurances et énergie — les ~28 refus des
                                           // missions logement/dispatch03/carrière se ré-évaluent.
   MISSIONS_BUDGET_MS: 90 * 1000,          // sous-budget par run (pure I/O moveTo — reste < mur standard)
-  MISSIONS_BUDGET_JOUR_MS: 2 * 60 * 1000, // budget QUOTIDIEN partagé entre missions, ms RÉELLES persistées.
+  MISSIONS_BUDGET_JOUR_MS: 0 * 60 * 1000, // budget QUOTIDIEN partagé entre missions, ms RÉELLES persistées.
                                           // RÉALLOUÉ (jamais ajouté) : les 10 min viennent de
                                           // CONSOLIDATION_BUDGET_JOUR_MS (12 → 2, gen terminée le 16/08).
                                           // Couple missions+conso-gen = 12 min/j verrouillé par test.

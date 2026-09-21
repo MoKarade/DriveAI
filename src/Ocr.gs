@@ -13,6 +13,17 @@
  *
  * Le fichier Google temporaire est créé PAR NOUS puis supprimé : seule suppression
  * autorisée par les garde-fous (jamais un fichier de l'utilisateur).
+ *
+ * ⚠️ LES APPELS IDEMPOTENTS RETENTENT, L'UPLOAD NON — ET CE N'EST PAS UNE HARMONISATION
+ * OUBLIÉE. `fetchDriveAvecRetry_` (DriveRest.gs) rejoue une fois sur 429/5xx : c'est sûr pour
+ * les deux EXPORTS et pour la suppression, qui sont des opérations sans effet de bord
+ * cumulable. Ça ne l'est pas pour l'upload multipart, qui CRÉE un fichier — un 5xx peut
+ * arriver APRÈS la création (c'est la réponse qui est perdue, pas l'effet), donc rejouer
+ * fabriquerait un second `DriveAI_extract_temp` dont on n'apprend jamais l'identifiant. Or on
+ * ne sait supprimer que celui que la réponse nous rend : l'orphelin resterait dans le Drive
+ * pour toujours, et le garde-fou « aucune suppression automatique » interdit d'aller le
+ * chercher par son nom. Un lot qui « mettrait le retry partout » est donc une régression —
+ * `test/ocr-retry.test.js` le refuse.
  */
 
 /**
@@ -109,7 +120,10 @@ function exporterTexteNatif_(fileId, mime) {
   var exportMime = exportNatifMime_(mime);
   if (!exportMime) return null;
   try {
-    var rep = UrlFetchApp.fetch(
+    // Un export est un GET : le rejouer ne crée rien. Sans retry, un 429 ou un 503 passager
+    // rendait `null`, que le rattrapage range en `ocr-echec` — donc le document est marqué
+    // « fait » DÉFINITIVEMENT sous le tag courant, pour une cause qui aurait disparu d'elle-même.
+    var rep = fetchDriveAvecRetry_(
       'https://www.googleapis.com/drive/v3/files/' + fileId + '/export?mimeType=' + encodeURIComponent(exportMime),
       { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true }
     );
@@ -153,6 +167,10 @@ function convertirEtExtraire_(blob, cibleMime, exportMime, ocr) {
 
   var url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id' +
     (ocr ? '&ocrLanguage=fr' : '');
+  // ⚠️ `UrlFetchApp.fetch` NU, jamais `fetchDriveAvecRetry_` : cet appel CRÉE un fichier (voir
+  // l'en-tête). Le rejouer sur un 5xx fabriquerait un temporaire orphelin qu'on ne pourrait
+  // plus supprimer. Conséquence assumée et NON corrigée ici : un 5xx à cet endroit perd la
+  // conversion, et le rattrapage marque le document « fait » — c'est le sujet de `[C49-19]`.
   var insert = UrlFetchApp.fetch(url, {
     method: 'post',
     contentType: 'multipart/related; boundary=' + boundary,
@@ -168,14 +186,19 @@ function convertirEtExtraire_(blob, cibleMime, exportMime, ocr) {
 
   var id = JSON.parse(insert.getContentText()).id;
   try {
-    var exp = UrlFetchApp.fetch(
+    // ⚠️ C'est l'appel où un retry rapporte le plus : la conversion vient d'être PAYÉE (upload
+    // fait, fichier temporaire créé), et un 5xx ici jetait tout ce travail. Un export est un
+    // GET, donc le rejouer est sans effet de bord.
+    var exp = fetchDriveAvecRetry_(
       'https://www.googleapis.com/drive/v3/files/' + id + '/export?mimeType=' + encodeURIComponent(exportMime),
       { headers: { Authorization: 'Bearer ' + token }, muteHttpExceptions: true }
     );
     return exp.getResponseCode() === 200 ? exp.getContentText() : null; // échec technique ≠ sans texte (contrat extraireTexte_)
   } finally {
     // Supprime NOTRE fichier temporaire (jamais un fichier utilisateur).
-    UrlFetchApp.fetch('https://www.googleapis.com/drive/v3/files/' + id, {
+    // Idempotent : supprimer deux fois le même identifiant ne retire rien de plus. Sans retry,
+    // un 5xx laissait un `DriveAI_extract_temp` dans le Drive, et rien n'allait le chercher.
+    fetchDriveAvecRetry_('https://www.googleapis.com/drive/v3/files/' + id, {
       method: 'delete',
       headers: { Authorization: 'Bearer ' + token },
       muteHttpExceptions: true

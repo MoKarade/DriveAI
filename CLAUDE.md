@@ -1507,6 +1507,86 @@ que des constantes `*_BUDGET_JOUR_MS` nommées. Troisième occurrence de cet ang
 C28-135). Et une étape de fond sans sous-budget par run peut affamer exactement celles qu'elle
 est placée là pour alimenter.
 
+**Un correctif se mesure AU SITE QUI ÉCHOUE, jamais au MODULE.** Le 21/09, j'ai annoncé à Marc
+« le retry OCR manquant, gratuit, une ligne, aucun changement de comportement » après avoir
+constaté que `Ocr.gs` n'employait `fetchDriveAvecRetry_` nulle part. Vrai du module, faux de la
+panne : les deux erreurs du Journal (`Conversion HTTP 400`, `HTTP 500`) sont à l'upload
+multipart, le SEUL des quatre appels qui ne peut pas rejouer — il CRÉE un fichier, et un 5xx
+peut arriver après la création, donc un rejeu fabriquerait un temporaire orphelin qu'on ne
+pourrait plus supprimer. Le correctif est bon, il ne touche simplement pas le défaut observé.
+⚠️ La question qui manquait : **cet appel a-t-il un EFFET, ou seulement un RÉSULTAT ?** Un retry
+est sûr sur un GET, jamais sur une création — « durcir le réseau » n'est pas une catégorie, c'est
+une décision par appel. ⚠️ Et la garde vaut dans les DEUX SENS : trois cas exigent le rejeu, un
+QUATRIÈME l'interdit — sans lui, un lot futur qui « harmonise » rouvre le trou en croyant ranger.
+⚠️ Corollaire déjà payé et re-payé : deux tests chargeaient `Ocr.gs` sans `DriveRest.gs`, et le
+`try/catch` qui protège l'export avalait la fonction manquante en rendant `null`. **Un try/catch
+qui protège une lecture avale aussi un contrat inter-module rompu** — ce sont les tests qui l'ont
+dit, pas la relecture.
+
+**ARRÊTER une campagne n'est pas lui retirer son budget — et deux des sept n'avaient aucun
+interrupteur.** Le 21/09, Marc a demandé d'enlever les campagnes finies ou improductives : sept
+postes, **41 min/j sur les 63** de l'enveloppe, immobilisées sur des choses terminées (doublons le
+22/08, historique Gmail que le moteur lui-même disait « RÉALLOUABLE »), convergées (consolidation)
+ou sans production depuis 32 jours (missions). Le réflexe — mettre leur `*_BUDGET_JOUR_MS` à 0 —
+est exactement ce que le verrou d'orchestration interdit : **une campagne ACTIVE à budget nul
+tourne à VIDE en silence** (`consommeJour 0 >= 0` court-circuite avant tout travail). Une campagne
+muette n'est pas une campagne arrêtée : elle reste dans les surfaces, et plus rien ne dit pourquoi
+elle ne produit rien.
+⚠️ **Deux n'avaient pas d'interrupteur du tout**, et c'est le vrai enseignement : la re-datation ne
+s'arrêtait que sur sa Property de FIN, l'historique Gmail non plus. Autrement dit, on ne pouvait
+arrêter QUE ce qui était déjà fini. Le flag se pose donc **avant** ce `return` — placé après, il
+n'éteint que ce qui est éteint — et il se CÂBLE avec son test (un flag lu par personne est une
+intention jamais livrée, C28-137).
+⚠️ **82 tests rouges d'un coup**, et ils ont raison : ils exercent le CHEMIN de campagnes qu'on
+vient d'éteindre. La règle du dépôt tranche (« la position globale d'un flag est une décision de
+Marc, jamais un invariant de test ») : le HARNAIS les rallume, budget compris — l'interrupteur seul
+en laissait encore 73, puisque le budget à zéro rouvre le même no-op un cran plus bas. La liste est
+NOMMÉE (rallumer tous les `*_ACTIF` réveillerait ceux qui sont éteints pour une raison de SÛRETÉ) et
+ne s'applique JAMAIS quand seul `Config.gs` est chargé : un test qui INSPECTE les constantes doit
+voir la production, sinon il valide une enveloppe qui n'existe pas.
+⚠️ **Une comptabilité par PAIRE ne passe pas à sept donneurs** : `AUDIT_PIECE_PART_SYNC_MIN` et
+`_GMAIL_MIN` deviennent une TABLE, dont la somme doit valoir le budget du receveur, et dont chaque
+donneur doit prouver qu'il a bien un budget à zéro — sinon la table se conserve en INVENTANT un
+donneur, c'est-à-dire en déplaçant d'un cran le défaut qu'elle existe pour empêcher. Et le garde
+« prêté = reçu » par donneur d'ORIGINE a été RETIRÉ, avec sa raison écrite : des minutes qui
+changent de mains deux fois ne se tracent plus jusqu'à leur source sans être comptées double.
+⚠️ Corollaire d'affichage : **un arrêt DÉLIBÉRÉ garde son avancement à l'écran.** Les autres
+suspensions sont transitoires et leur cause est le sujet ; celle-ci est définitive et laisse
+108 documents sur 466 en plan — « arrêtée » tout court effacerait le seul chiffre qui dit ce qu'on
+a laissé, et la Progression purge ses lignes finies après 48 h.
+
+- **ARRÊTER quelque chose dans le MOTEUR ne l'arrête pas dans les SURFACES** (21/09, C49-20, trouvé
+  par les deux revues de flotte, jamais par la relecture). Les sept interrupteurs étaient câblés
+  dans le tick et dans la Santé ; la Progression, l'app, le MCP et le **widget hubperso**
+  continuaient d'annoncer « en cours · vers le 01/10 » et « en pause · **reprise demain** » pour des
+  campagnes délibérément arrêtées. Dans le MÊME `finally`, la Santé écrivait « arrêtée » et la
+  Progression « en cours » : deux surfaces, deux vérités opposées. La pire des trois est la
+  consolidation — son `budgetEpuise` vaut `0 >= 0`, donc VRAI à jamais : la surface lisait le
+  BUDGET et jamais le flag, soit l'état « muette » qu'on venait de refuser, atteint par l'autre
+  bout. **Après avoir posé un interrupteur, recenser tout ce qui RACONTE la chose arrêtée**, et se
+  demander pour chaque lecteur s'il lit le flag ou une de ses conséquences.
+  ⚠️ **Et le MOT d'un statut lu par une autre couche s'apparie par ÉGALITÉ** : les deux revues
+  recommandaient « arrêtée (CONFIG) », or `familleStatut` (`app/src/etat.ts`) teste
+  `statut === 'désactivée'` — le correctif aurait réintroduit le défaut qu'il corrige, en famille
+  `encours`, sans qu'aucun des deux dépôts ne puisse le dire seul. Garde de CHAÎNON obligatoire dès
+  qu'un statut franchit une frontière de dépôt.
+  ⚠️ **Un no-op INTERNE ne suffit pas à DIRE l'arrêt** : sans gate NOMMÉE dans `etapeSuivie_`, le
+  wrapper enregistre un SUCCÈS et `statutDepuisSuivi_` rend « en cours » (piège `dryrun-v2` du
+  13/08, re-payé). ⚠️ Et trois des sept interrupteurs n'étaient tenus par AUCUN test : on pouvait
+  retirer garde interne ET gate en laissant 1 548 tests verts, alors que le lot faisait de
+  l'interrupteur le SEUL mécanisme d'arrêt. « Un flag lu par personne est une intention jamais
+  livrée » a sa version suivante : **un flag que rien ne teste**.
+
+- **Un lanceur de test qui échoue AVANT d'exécuter quoi que ce soit rend toutes les mutations
+  « rouges » — donc toutes vaines** (21/09, C49-20). J'ai joué 13 mutations avec `node --test test/`
+  (forme RÉPERTOIRE) : chacune a rendu `# fail 1` et j'ai conclu « 13/13 discriminantes ». Sur
+  l'arbre PROPRE, la même commande rend `# fail 1` aussi — `Error: Cannot find module
+  '/home/user/DriveAI/test'`. Zéro test avait tourné. Le gate du dépôt écrit `node --test test/*.test.js`,
+  et j'avais changé la forme sans y penser. **Toute campagne de mutations commence par une mesure de
+  RÉFÉRENCE sur l'arbre propre, assertée verte, avec la commande EXACTE du gate** — et se relit sur
+  le nombre de tests PASSÉS (1 554 → 1 553), jamais sur le seul compteur d'échecs. Rejouées
+  correctement : 13/13 rouges, avec la référence et la restauration vertes de part et d'autre.
+
 ## 10. Style et compte-rendu
 
 > 📣 Forme des comptes-rendus, des commits, des PR et des docs générées :

@@ -6,7 +6,48 @@
 >
 > **🟦 EN COURS — 2026-09-21 : la lecture des papiers se REGARDE. REPRENDRE ICI.**
 >
-> **DERNIER LOT — C49-16 : 734 documents CLASSÉS que le canal ne savait pas DÉSIGNER.**
+> **DERNIER LOT — C49-20 : sept campagnes arrêtées, 41 min/j rendues à la lecture des papiers.**
+> Décision de Marc du 21/09, sur la mesure du jour. Consolidation (16 + 8), re-datation de 06 (8),
+> historique du vrac (4), historique Gmail (2), doublons (1) et missions (2) sont ARRÊTÉES par
+> leur interrupteur ; leurs minutes vont à `AUDIT_PIECE_BUDGET_JOUR_MS`, **17 → 58 min/j**.
+> L'enveloppe reste à 63 : c'est une réallocation. Détail et alternative écartée dans l'ADR-0062.
+>
+> ⚠️ **La re-datation est arrêtée EN COURS** (108/466, fin estimée au 25/10) : ce n'est pas le
+> ménage d'une campagne finie. Sa ligne de Santé garde son avancement à l'écran. Pour la
+> reprendre : `REANALYSE_ACTIF: true` **et** lui rendre des minutes (le gate refuse l'un sans
+> l'autre).
+>
+> ⚠️ **L'ARRÊT SE DIT MAINTENANT DANS TOUTES LES SURFACES** (correctif des revues de flotte,
+> 21/09). Première rédaction : les sept interrupteurs étaient câblés dans le tick et la Santé, et
+> la vérification des lignes de Progression était renvoyée au déploiement. Mesuré avant de
+> déployer : **trois sur sept** ne disaient rien — la re-datation « en cours · vers le 01/10 », la
+> consolidation « en pause · **reprise demain** » (son `budgetEpuise` vaut `0 >= 0`, donc vrai à
+> jamais), l'historique du vrac « en cours ». Les trois partaient jusqu'au **widget hubperso**.
+> C'est corrigé et tenu par des tests ; le mot est **`désactivée`**, la seule chaîne que
+> `familleStatut` (`app/src/etat.ts`) apparie — par ÉGALITÉ.
+>
+> ⚠️ **RESTE À VÉRIFIER AU PROCHAIN DÉPLOIEMENT** : que la ligne « Rattrapage des pièces » annonce
+> bien **58 min/j** et non 17. Ça, aucun test ne peut le dire — c'est la prod qui répond.
+>
+> **LOT PRÉCÉDENT — C49-18 : l'OCR rejoue ses appels IDEMPOTENTS, et seulement ceux-là.**
+> `fetchDriveAvecRetry_` existe depuis la phase 2 ; `Ocr.gs` ne l'employait nulle part. Les deux
+> exports et la suppression du temporaire le prennent désormais — un 503 passager ne fige plus un
+> document sous `ocr-echec`, qui est une issue DÉFINITIVE. ⚠️ **L'upload multipart, lui, ne
+> rejoue PAS, et c'est gardé** : il CRÉE un fichier, un 5xx peut arriver après la création, et un
+> rejeu fabriquerait un `DriveAI_extract_temp` orphelin qu'on ne pourrait plus supprimer.
+>
+> ⚠️ **À DIRE EN CLAIR : ce lot ne corrige pas les erreurs OCR observées en production.** Le
+> Journal du 21/09 ne porte aucun `Export natif HTTP` ; ses deux erreurs OCR (`Conversion HTTP
+> 400` et `HTTP 500`) sont à l'upload, le seul appel qui ne peut pas rejouer. Le correctif est un
+> filet, pas une récupération chiffrée. Ce qui répare vraiment la perte mesurée est `[C49-19]` —
+> porter l'ORIGINE de l'échec pour qu'un 500 transitoire ne marque plus le document « fait » —
+> et il n'est PAS fait : hors du périmètre donné.
+>
+> **C49-16 EST EN PRODUCTION ET TOURNE** (mesuré le 21/09 à 14:33 via `etat_moteur`) :
+> « 14 retrouvés · 26 sans preuve · 695 à examiner ». La campagne de lecture avance aussi —
+> `04` ✅ (23), `01` à 78/87, puis `02` (964).
+>
+> **LOT PRÉCÉDENT — C49-16 : 734 documents CLASSÉS que le canal ne savait pas DÉSIGNER.**
 > C'est le **lot A** du plan « tout le Drive », fait avant de demander l'OK sur le reste.
 > `fileIdDeCleIndex_` déduit l'identifiant Drive de la CLÉ d'Index et n'accepte que quatre
 > préfixes ; la clé d'une pièce jointe Gmail — l'intake PRINCIPAL — n'en porte aucun. Ces
@@ -3064,15 +3105,21 @@ Détail des tâches : `BACKLOG.md`.
       (`AUDIT_PIECE_PART_SYNC_MIN` 11 + `AUDIT_PIECE_PART_GMAIL_MIN` 6 = 17) et un test exige que
       les parts remplissent le budget : une minute sans donneur nommé passerait entre les deux
       gardes de paire, chacun ne regardant que le sien.
-      **À RENDRE quand l'audit est fini**, et cette liste a DÉJÀ été fausse une fois (elle
-      disait « `SYNC` 4 → 12 et `AUDIT_PIECE` 8 → 0 » alors que deux réallocations étaient
-      passées depuis) : `SYNC_BUDGET_JOUR_MS` **1 → 12**, `GMAIL_HISTO_BUDGET_JOUR_MS` **2 → 8**,
-      `AUDIT_PIECE_BUDGET_JOUR_MS` **17 → 0**, `GMAIL_HISTO_PRETEES_MIN` **18 → 12**, et les deux
-      parts (`AUDIT_PIECE_PART_SYNC_MIN`, `AUDIT_PIECE_PART_GMAIL_MIN`) tombent à 0. L'étape ne
-      consomme plus rien une fois éteinte, mais sa CONSTANTE continue de peser sur l'invariant
-      d'enveloppe, et une enveloppe faussement chargée fait renoncer à la réallocation suivante.
-      ⚠️ Les chiffres ci-dessus sont ceux du 17/09 : la source qui fait foi reste `Config.gs`, et
-      les gardes de paire de `test/orchestration.test.js` refuseront toute restitution partielle.
+      ⚠️ *(Récit du 17/09, gardé tel quel. Ces deux constantes n'existent plus : C49-20 les a
+      remplacées le 21/09 par la table `AUDIT_PIECE_DONNEURS_MIN`, qui nomme HUIT donneurs pour
+      58 min/j. Le mécanisme — chaque minute a un donneur nommé — est inchangé.)*
+      **À RENDRE quand l'audit est fini.** ⚠️ **Cette liste a été fausse DEUX FOIS** — une
+      première le 17/09 (elle disait « `SYNC` 4 → 12 et `AUDIT_PIECE` 8 → 0 » alors que deux
+      réallocations étaient passées depuis), une seconde le 21/09, où C49-20 lui a ajouté sept
+      donneurs sans qu'elle bouge. Elle ne porte donc plus AUCUN chiffre : la recette de
+      restitution se lit dans **`CONFIG.AUDIT_PIECE_DONNEURS_MIN`** (`src/Config.gs`), qui est la
+      seule source du compte — rendre à chaque donneur exactement ce qu'il y est inscrit, remettre
+      son `*_ACTIF` à true pour les sept campagnes arrêtées, et ramener
+      `AUDIT_PIECE_BUDGET_JOUR_MS` à 0. L'étape ne consomme plus rien une fois éteinte, mais sa
+      CONSTANTE continue de peser sur l'invariant d'enveloppe, et une enveloppe faussement chargée
+      fait renoncer à la réallocation suivante.
+      ⚠️ Une recette écrite au présent rote : celle-ci est désormais DÉRIVÉE, et les gardes de
+      paire de `test/orchestration.test.js` refuseront toute restitution partielle.
       ⚠️ **L'échantillon est ÉGALITAIRE entre domaines, pas au prorata du stock** — sinon
       `02 · Finances` raflerait les cent lignes et `04 · Immigration` en aurait deux.
       ⚠️ **`04` et `01` ont leur TITULAIRE et leurs CHAMPS masqués** (arbitrage de Marc, 17/09,

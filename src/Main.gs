@@ -474,7 +474,10 @@ function tickDriveAI() {
     // PURE I/O Drive (moveTo + hash MD5, aucun risque LLM). Le flux vivant ci-dessus (borné à 3 min)
     // a déjà eu sa part ; la consolidation n'utilise que le reliquat → GARANTIE à chaque tick sans
     // rien lui voler. EXÉCUTION avant GÉNÉRATION (drainer avant d'alimenter). Bornée par ses budgets
-    // run + quotidien (12/20 min) + la contre-pression. SECONDAIRES → enveloppées (jamais bloquer l'intake).
+    // run + quotidien + la contre-pression. ⚠️ ARRÊTÉE le 21/09 (C49-20) : ses deux budgets
+    // quotidiens sont rendus à 0 et les gates ci-dessous portent l'interrupteur — ce qui suit
+    // décrit donc un mécanisme INERTE aujourd'hui, gardé parce qu'il redémarre d'un booléen.
+    // SECONDAIRES → enveloppées (jamais bloquer l'intake).
     // Suspendues pendant le RESET (C28-33, ADR-0030 « Transition ») : une seule main déplace à la
     // fois, sinon le flux concurrent re-remplit ce que le reset vide (non-convergence structurelle,
     // leçon §7 C28-26). `resetEnCours_()` = false dès que les 3 phases du reset sont terminées (ou
@@ -577,7 +580,9 @@ function tickDriveAI() {
     // ancrées. APRÈS le flux vivant (priorité stricte C28-15). Coût nul une fois finie.
     // SECONDAIRE → enveloppée : un échec Gmail ne bloque jamais la suite du tick.
     // SUSPENDUE pendant le RESET (décision Marc 2026-07-29 « accélère l'automatique ») : son budget
-    // quotidien (20 min/j) est RÉALLOUÉ au reset — l'enveloppe totale du quota runtime ne bouge pas,
+    // quotidien était RÉALLOUÉ au reset — l'enveloppe totale du quota runtime ne bouge pas,
+    // ⚠️ ARRÊTÉE le 21/09 (C49-20) : `GMAIL_HISTO_ACTIF` est false et son budget vaut 0 (20 min
+    // prêtées en tout, dont 8 à l'audit des pièces). Ce qui suit décrit un mécanisme inerte.
     // donc aucun risque de gel des déclencheurs. C'est un RATTRAPAGE : quelques jours de retard sont
     // sans conséquence, et elle reprend SEULE à la convergence du reset (`resetEnCours_` repasse à false).
     // AUDIT des pièces (C49-3, ADR-0061) : TERMINE l'échantillon de 100 documents que Marc a
@@ -879,7 +884,13 @@ function tickDriveAI() {
       // Drive), jamais de LLM ⇒ budget TAIL (4,5 min), jamais le budget de tick 3 min. Une seule
       // sweep complète par jour, curseur reprenable sur plusieurs ticks si besoin ; ne mute rien,
       // tourne même pendant un reset. Enveloppée : un échec ne bloque jamais le reste.
-      etapeSuivie_('historique-vrac', [], function () { majHistoriqueVrac_(estBudgetDepasseStandard); },
+      // ⚠️ Gate du flag EN TÊTE (C49-20, patron `dryrun-v2`) : le no-op interne de
+      // `majHistoriqueVrac_` suffit à ne RIEN FAIRE, il ne suffit pas à le DIRE. Sans gate
+      // NOMMÉE, `statutDepuisSuivi_` n'a ni skip ni raison à lire et rend « en cours » sur une
+      // campagne arrêtée. Le no-op interne reste (double garde).
+      etapeSuivie_('historique-vrac',
+        [function () { return CONFIG.HISTORIQUE_VRAC_ACTIF ? null : 'désactivée (CONFIG)'; }],
+        function () { majHistoriqueVrac_(estBudgetDepasseStandard); },
         function (e) { journalErreur_('HistoriqueVrac', 'MàJ historique vrac impossible : ' + e); });
 
       // ⚠️ AUCUN budget quotidien, et c'est justifié plutôt que constaté : cette étape ne lit ni
@@ -1247,13 +1258,20 @@ function texteSanteReanalyse_() {
   try {
     var props = PropertiesService.getScriptProperties();
     var suspension = statutReanalyse_(
+      !CONFIG.REANALYSE_ACTIF,
       props.getProperty('DriveAI_REANALYSE') === CONFIG.REANALYSE_TAG,
       !rangementTermine_(),
       props.getProperty('DriveAI_MIGRATION') !== CONFIG.MIGRATION_TAG,
       budgetCampagnesAtteint_(),
       resetEnCours_(),
       estPannePlateforme_());
-    if (suspension) return suspension;
+    // ⚠️ LE RETOUR ANTICIPÉ DES SIX AUTRES SUSPENSIONS PASSE AVANT LES TROIS LECTURES DE
+    // PROPERTY ci-dessous (revue code C49-20). Descendre d'abord les lire mettait un frein
+    // budget ou une panne de plateforme à la merci d'une lecture qui lève : le `catch` aurait
+    // rendu « état illisible » À LA PLACE de la cause, donc le diagnostic aurait été perdu pour
+    // une raison sans aucun rapport avec lui. Seul le cas « arrêtée » descend, parce qu'il est
+    // le seul à avoir besoin de `avance`.
+    if (suspension && CONFIG.REANALYSE_ACTIF) return suspension;
     var budget = Math.round(CONFIG.REANALYSE_BUDGET_JOUR_MS / 60000);
     var consomme = budgetJourReanalyse_(props, dateGmail_(new Date()));
     var base = props.getProperty('DriveAI_REANALYSE_BASE');
@@ -1261,6 +1279,15 @@ function texteSanteReanalyse_() {
     var avance = base === null
       ? 'recensement en cours'
       : traites + ' / ' + base + ' documents';
+    // ⚠️ UN ARRÊT DÉLIBÉRÉ GARDE SON AVANCEMENT À L'ÉCRAN. Les autres suspensions sont des états
+    // TRANSITOIRES dont la cause est le sujet ; celle-ci est définitive et laisse un travail à
+    // moitié fait — « arrêtée » tout court effacerait le seul chiffre qui dit ce qu'on a perdu,
+    // et la question « où ça en était ? » n'aurait plus de réponse nulle part.
+    // (Pas de `if (suspension) return suspension;` ici : le retour anticipé ci-dessus l'a déjà
+    //  traité, et `arretee` est la PREMIÈRE garde de `statutReanalyse_` — donc à ce point,
+    //  `!REANALYSE_ACTIF` implique `suspension` non vide. Le garder serait du code mort qui a
+    //  l'air vivant.)
+    if (!CONFIG.REANALYSE_ACTIF) return suspension + ' — ' + avance + ' au moment de l\'arrêt';
     return 'en cours — ' + avance + ' · ' + Math.round(consomme / 60000) + ' des ' + budget +
       ' min/j consommées aujourd\'hui (campagne « ' + CONFIG.REANALYSE_TAG + ' »)';
   } catch (e) {
@@ -1271,7 +1298,8 @@ function texteSanteReanalyse_() {
 /**
  * Cause d'ARRÊT de la re-datation, ou '' si la campagne peut tourner. PURE (testée).
  *
- * ⚠️ Les SIX gardes, pas deux (🟠 revues code, quotas ET sécurité ADR-0056). La première version
+ * ⚠️ Les SEPT gardes, pas deux (🟠 revues code, quotas ET sécurité ADR-0056 ; la septième,
+ * l'arrêt délibéré, est arrivée en C49-20). La première version
  * n'en disait que deux — et la ligne affichait « en cours — 0 / 328 · 0 des 8 min/j » pendant que
  * le frein à 40 $, le reset ou une panne de plateforme tenaient la campagne à l'arrêt. Un « 0 min
  * aujourd'hui » ne distingue pas « pas encore passée » de « ne passera plus » : c'est le mode de
@@ -1280,7 +1308,12 @@ function texteSanteReanalyse_() {
  * L'ORDRE suit celui des gardes réelles du tick : la cause la plus définitive d'abord.
  * @return {string} '' si rien ne l'arrête
  */
-function statutReanalyse_(terminee, rangementEnCours, migrationEnCours, freinBudget, resetEnCours, pannePlateforme) {
+function statutReanalyse_(arretee, terminee, rangementEnCours, migrationEnCours, freinBudget, resetEnCours, pannePlateforme) {
+  // ⚠️ SEPTIÈME garde, et la PREMIÈRE de l'ordre (C49-20) : un arrêt par la CONFIG est la cause la
+  // plus définitive de toutes — il survit au rétablissement d'une panne, au réarmement du budget
+  // et à la fin du reset. L'annoncer après elles ferait lire « en pause, reprise demain » sur une
+  // campagne qui ne reprendra jamais toute seule.
+  if (arretee) return 'arrêtée (CONFIG, C49-20) — campagne « ' + CONFIG.REANALYSE_TAG + ' »';
   if (terminee) return 'terminée ✅ (campagne « ' + CONFIG.REANALYSE_TAG + ' »)';
   if (rangementEnCours) return 'en attente — le grand rangement passe d\'abord';
   if (migrationEnCours) return 'en attente — la migration « ' + CONFIG.MIGRATION_TAG + ' » doit finir d\'abord';
@@ -1308,7 +1341,8 @@ function texteSanteHistoGmail_() {
   var budget = Math.round(CONFIG.GMAIL_HISTO_BUDGET_JOUR_MS / 60000);
   try {
     var props = PropertiesService.getScriptProperties();
-    var statut = statutHistoGmail_(props.getProperty('DriveAI_GMAIL_HISTO') === 'terminé',
+    var statut = statutHistoGmail_(!CONFIG.GMAIL_HISTO_ACTIF,
+      props.getProperty('DriveAI_GMAIL_HISTO') === 'terminé',
       estPanneGmail_(), budgetCampagnesAtteint_(), resetEnCours_());
     if (statut === 'terminé') {
       // ⚠️ DIRE ce qui a DÉJÀ été prêté (🟡 revue sécurité ADR-0056). Sans ce rappel, la prochaine
@@ -1393,6 +1427,7 @@ function texteSanteHistoGmail_() {
  * @param {function():boolean} estBudgetDepasse
  */
 function traiterGmailHistorique_(estBudgetDepasse) {
+  if (!CONFIG.GMAIL_HISTO_ACTIF) return; // C49-20 — arrêtée ; l'interrupteur avant tout le reste
   if (estPanneGmail_()) return; // quota Gmail épuisé (C28-15) : suspendu jusqu'à la re-sonde
   var props = PropertiesService.getScriptProperties();
   if (props.getProperty('DriveAI_GMAIL_HISTO') === 'terminé') return; // campagne finie (1 lecture)

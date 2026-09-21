@@ -5,6 +5,104 @@
 
 ---
 
+## C49-20 — sept campagnes arrêtées, 41 min/j rendues à la lecture ✅
+
+> Décision de Marc, 21/09 : « enlève tout ça, ca aurait du s'arrêter avant quand on savait que ca
+> servait a rien ». ADR-0062. Mesuré AVANT d'agir, par `etat_moteur`.
+
+- [x] **Ce que ça libère** : consolidation 16 + exécution 8 + re-datation 8 + historique du vrac 4
+  + historique Gmail 2 + doublons 1 + missions 2 = **41 min/j** — soit **les deux tiers** des
+  63 min de l'enveloppe, immobilisées sur des campagnes terminées, convergées ou sans production
+  depuis 32 jours.
+- [x] **Où elles vont** : `AUDIT_PIECE_BUDGET_JOUR_MS` **17 → 58 min/j** (lecture des papiers :
+  969 restants dans la tranche, ~2 645 jamais lus). L'enveloppe reste à 63 — réallocation, jamais
+  hausse.
+- [x] **ARRÊTER, pas mettre à zéro.** Le verrou d'orchestration interdit « campagne ACTIVE à
+  budget 0 » : elle tournerait à vide en silence. Deux campagnes n'avaient AUCUN interrupteur
+  (`REANALYSE_ACTIF`, `GMAIL_HISTO_ACTIF`) — créés, câblés EN TÊTE de leur étape, et chacun avec
+  son test : un flag lu par personne est une intention jamais livrée.
+- [x] **La comptabilité passe en TABLE** (`AUDIT_PIECE_DONNEURS_MIN`) : les deux parts nommées ne
+  passaient pas à sept donneurs. Le test exige que la somme vaille le budget du receveur ET que
+  chaque donneur ait un budget à zéro et un flag à false — sinon la table se conserve en inventant
+  un donneur.
+- [x] **Le harnais de test RALLUME les sept**, budget compris : sans ça, 82 tests rougissent d'un
+  coup et il faudrait choisir entre re-baser des tests qui encodent une CONCEPTION et renoncer à
+  l'arrêt. Liste NOMMÉE (jamais tous les `*_ACTIF` : `RESET_ACTIF` et `FUSION_EXEC_ACTIF` sont
+  éteints pour une raison de sûreté), et **jamais** appliquée quand seul `Config.gs` est chargé —
+  un test qui INSPECTE les constantes doit voir la production, pas une position retouchée.
+- [x] **L'ARRÊT SE DIT AUSSI DANS LES SURFACES** (revues de flotte, 21/09). Les sept
+  interrupteurs étaient câblés dans le tick et la Santé ; la Progression, l'app, le MCP et le
+  **widget hubperso** disaient encore « en cours · vers le 01/10 » et « en pause · reprise
+  demain ». Posé : `op.arretee` dans `statutCampagne`/`statutConsolidation_`, un paramètre
+  `arretee` en premier dans `statutHistoGmail_`, une gate NOMMÉE pour l'historique du vrac, et
+  « désactivée » ajouté au garde qui interdit d'annoncer une date de fin. ⚠️ Le mot est
+  `désactivée` et pas « arrêtée » : `familleStatut` (app) apparie par ÉGALITÉ — garde de chaînon.
+- [x] **Trois des sept interrupteurs n'étaient tenus par AUCUN test** (missions, consolidation
+  gén. et exéc.) : on pouvait retirer garde interne ET gate de wrapper en laissant tout vert.
+  Recensement dérivé de la liste des sept, wrapper + interne, avec ses deux anti-vacuités.
+- [x] **La branche « donneur À SEC » — la seule que la production atteint — n'était testée par
+  personne**, pendant qu'un test certifiait la branche « RÉALLOUABLES », devenue inatteignable,
+  grâce au rallumage du harnais. Les deux forcent désormais leur budget explicitement.
+- [x] **Régression de ce lot, corrigée** : le retour anticipé des six autres suspensions de
+  `texteSanteReanalyse_` était passé APRÈS trois lectures de Property — une lecture qui lève
+  effaçait un verdict juste au profit de « état illisible ». Remis avant, avec son test.
+- [x] ⚠️ **CORRECTION D'UNE AFFIRMATION DE CE MÊME BACKLOG.** Il a porté « 10 mutations jouées,
+  10 rouges » : c'était FAUX. Elles ont tourné avec `node --test test/` (forme répertoire), qui
+  échoue sur `Cannot find module` AVANT d'exécuter un seul test — donc chacune rendait « fail 1 »
+  pour une raison sans rapport. Rejouées avec la commande du gate (`test/*.test.js`), référence
+  verte assertée de part et d'autre : **17 mutations, 17 rouges** (13 sur l'arrêt et ses surfaces,
+  4 sur la comptabilité des minutes). Leçon portée en `CLAUDE.md` §9.
+- [x] **Gate : 1 554 moteur · 384 app · build · syntaxe .gs.**
+
+- [ ] **[C49-21] La consolidation est déclarée finie par ABSENCE.** Ses lignes ne sont plus dans la
+  Progression, ce qui est cohérent avec « terminée depuis > 48 h » (purge) **et** avec « n'a jamais
+  eu de ligne ». C'est le moins mesuré des sept arrêts — la certitude se prend dans l'onglet
+  `PlanConsolidation`. À faire quand Marc aura l'occasion de le regarder ; sans conséquence tant
+  que la campagne reste arrêtée.
+
+---
+
+## C49-18 — l'OCR rejoue ses appels IDEMPOTENTS, et seulement ceux-là ✅
+
+> Livré le 21/09. Et il faut lire la ligne suivante avant celle-ci : **ce lot ne corrige pas
+> les erreurs OCR observées aujourd'hui en production** (voir `[C49-19]`).
+
+- [x] **Le défaut.** `fetchDriveAvecRetry_` existe depuis la phase 2 et rejoue une fois sur
+  429/5xx. `Ocr.gs` ne l'employait **nulle part** : ses quatre appels Drive étaient des
+  `UrlFetchApp.fetch` nus. Un 503 passager sur un export rendait `null`, que le rattrapage range
+  en `ocr-echec` — issue DÉFINITIVE : le document est marqué « fait » sous le tag courant et ne
+  revient ni par le rattrapage, ni par le flux (il est déjà classé).
+- [x] **Trois appels retentent** : l'export natif (`exporterTexteNatif_`), l'export du fichier
+  temporaire — celui où le rejeu rapporte le plus, puisque la conversion vient d'être PAYÉE — et
+  la suppression du temporaire (sinon un 5xx laisse un `DriveAI_extract_temp` que rien ne va
+  chercher).
+- [x] **Le quatrième NE DOIT PAS, et c'est gardé.** L'upload multipart CRÉE un fichier : un 5xx
+  peut arriver APRÈS la création (c'est la réponse qui est perdue, pas l'effet), donc rejouer
+  fabriquerait un second temporaire dont on n'apprend jamais l'identifiant — un orphelin qu'on ne
+  peut plus supprimer, le garde-fou « aucune suppression automatique » interdisant d'aller le
+  chercher par son nom. `test/ocr-retry.test.js` refuse le retry à cet endroit : un lot futur qui
+  « harmoniserait » rougit.
+- [x] **Ce que ça rapporte, mesuré honnêtement : rien d'observé.** Le Journal du 21/09 ne porte
+  AUCUN `Export natif HTTP` — les deux erreurs OCR du jour (`Conversion HTTP 400`, `HTTP 500`)
+  sont toutes deux à l'upload, le seul appel qui ne peut pas rejouer. C'est un filet, pas une
+  récupération chiffrée, et le dire vaut mieux que laisser croire l'inverse.
+- [x] 5 cas neufs, **4 mutations jouées, 4 rouges** (dont celle qui POSE le retry sur l'upload).
+  Deux tests d'`intake.test.js` ont rougi au passage : ils chargeaient `Ocr.gs` sans
+  `DriveRest.gs`, le `try/catch` de l'export avalait la fonction manquante et rendait `null` —
+  le contrat inter-module n'existait que dans la production. Corrigé côté test.
+
+- [ ] **[C49-19] Un 5xx à l'upload fige le document POUR TOUJOURS.** C'est le site qui échoue
+  réellement (deux occurrences le 21/09), et le retry ne peut pas l'atteindre. Aujourd'hui
+  `extraireTexte_` rend `null` sans dire POURQUOI : un 400 (ce document-ci est refusé par Drive —
+  verdict légitime) et un 500 (Google a eu un hoquet — cause transitoire) arrivent au rattrapage
+  sous la même forme, donc les deux marquent le document « fait » définitivement. Le correctif
+  est de porter l'ORIGINE de l'échec (4xx = permanent, 5xx/429/réseau = transitoire) et de ne pas
+  marquer sur un transitoire, avec un nombre d'essais BORNÉ — sinon un document qui échoue
+  toujours empêche la tranche de finir. **Non fait : hors du périmètre donné (« applique le
+  correctif » visait le retry).**
+
+---
+
 ## C49-16 — 734 documents CLASSÉS que le canal ne sait pas DÉSIGNER ✅
 
 > Mesuré le 21/09, corrigé le 21/09. Lot A du plan « tout le Drive » (arbitrages de Marc :

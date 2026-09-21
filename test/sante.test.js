@@ -133,6 +133,26 @@ test('majSante_ : la ligne « Re-datation de 06 » distingue « jamais démarré
   assert.ok(!/en cours/.test(ligne), 'jamais « en cours » quand une garde amont bloque : ' + ligne);
 });
 
+test('C49-20 — la ligne « Re-datation de 06 » ARRÊTÉE garde son avancement à l\'écran', () => {
+  // ⚠️ Les six autres suspensions sont TRANSITOIRES : leur cause est le sujet, et l'avancement
+  // reviendra. Celle-ci est définitive et laisse 108 documents sur 466 derrière elle — « arrêtée »
+  // tout court effacerait le seul chiffre qui dit ce qu'on a laissé en plan, et la question « où
+  // ça en était ? » n'aurait plus de réponse NULLE PART (la Progression purge ses lignes finies
+  // après 48 h).
+  const { ctx, captured } = chargerAvecSanteMock({}, {});
+  const p = ctx.PropertiesService.getScriptProperties();
+  p.setProperty('DriveAI_RANGEMENT', ctx.CONFIG.RANGEMENT_TAG);
+  p.setProperty('DriveAI_MIGRATION', ctx.CONFIG.MIGRATION_TAG);
+  p.setProperty('DriveAI_REANALYSE_BASE', '466');
+  p.setProperty('DriveAI_REANALYSE_TRAITES', '108');
+  ctx.CONFIG.REANALYSE_ACTIF = false; // (le harnais rallume les campagnes arrêtées — cf. harness.js)
+  ctx.majSante_();
+  const ligne = captured.find((l) => l.indexOf('Re-datation de 06') === 0);
+  assert.ok(ligne && !ligne.includes('illisible'), 'chemin nominal, pas le catch : ' + ligne);
+  assert.match(ligne, /arrêtée \(CONFIG/, ligne);
+  assert.match(ligne, /108 \/ 466 documents au moment de l'arrêt/, ligne);
+});
+
 test('majSante_ : la ligne « Re-datation de 06 » EXERCE sa branche « en cours » (avancement + minutes)', () => {
   // ⚠️ Ce test existe parce que le précédent ne prouvait RIEN de la branche nominale : sans
   // Properties, `texteSanteReanalyse_` sortait toujours sur « en attente ». Mutation jouée en revue
@@ -158,25 +178,60 @@ test('majSante_ : la ligne « Re-datation de 06 » EXERCE sa branche « en cours
   assert.ok(new RegExp('3 des ' + minJ + ' min\\/j').test(ligne), ligne);
 });
 
-test('statutReanalyse_ : les SIX causes d\'arrêt se disent, une par une (PURE)', () => {
+test('texteSanteReanalyse_ (C49-20) : une SUSPENSION survit à une lecture de Property qui LÈVE', () => {
+  // ⚠️ Régression introduite par ce lot même, trouvée en revue de code. Le cas « arrêtée » a besoin
+  // de l'avancement, donc il descend lire trois Properties — et le retour anticipé des SIX autres
+  // suspensions était passé APRÈS elles. Conséquence : si une seule de ces lectures lève, le
+  // `catch` rend « état illisible (…) » À LA PLACE de la cause, donc un frein budget ou une panne
+  // de plateforme perd son diagnostic pour une raison qui n'a rien à voir avec lui. C'est le même
+  // défaut que la §9 nomme ailleurs (« une panne n'est pas un verdict »), en sens inverse : ici
+  // une panne de lecture EFFACE un verdict juste.
+  // Mutation : redescendre le `if (suspension && CONFIG.REANALYSE_ACTIF) return suspension;`
+  // sous les trois lectures ⇒ ce test tombe.
+  const { ctx } = chargerAvecSanteMock({}, {});
+  ctx.CONFIG = Object.assign({}, ctx.CONFIG, { REANALYSE_ACTIF: true });
+  ctx.budgetCampagnesAtteint_ = () => true;          // une cause VRAIE, transitoire
+  ctx.rangementTermine_ = () => true;
+  ctx.resetEnCours_ = () => false;
+  ctx.estPannePlateforme_ = () => false;
+  ctx.PropertiesService = {
+    getScriptProperties: () => ({
+      getProperty: (k) => {
+        if (k === 'DriveAI_REANALYSE_BASE') throw new Error('Properties indisponible');
+        if (k === 'DriveAI_MIGRATION') return ctx.CONFIG.MIGRATION_TAG;
+        return null;
+      },
+    }),
+  };
+  const t = ctx.texteSanteReanalyse_();
+  assert.match(t, /frein budget/, 'la cause doit survivre à la panne de lecture : ' + t);
+  assert.ok(!/illisible/.test(t), 'un blip de lecture ne doit pas effacer un verdict juste : ' + t);
+});
+
+test('statutReanalyse_ : les SEPT causes d\'arrêt se disent, une par une (PURE)', () => {
   // 🟠 des trois revues : la première version n'en connaissait que deux, et affichait
   // « en cours — 0 / 328 · 0 des 8 min/j » pendant que le frein à 40 $, le reset ou une panne de
   // plateforme tenaient la campagne à l'arrêt. Chaque cause est assertée SÉPARÉMENT — un
   // `indexOf(x) === 0` sur une seule famille en raterait la moitié (§9, estimation en pause).
   const { ctx } = chargerAvecSanteMock({}, {});
   const F = ctx.statutReanalyse_;
-  //           terminée, rangement, migration, frein, reset, panne
-  assert.match(F(true, false, false, false, false, false), /terminée/);
-  assert.match(F(false, true, false, false, false, false), /grand rangement/);
-  assert.match(F(false, false, true, false, false, false), /migration/);
-  assert.match(F(false, false, false, false, false, true), /panne de plateforme/);
-  assert.match(F(false, false, false, true, false, false), /frein budget/);
-  assert.match(F(false, false, false, false, true, false), /reset/);
+  //           arrêtée, terminée, rangement, migration, frein, reset, panne
+  assert.match(F(true, false, false, false, false, false, false), /arrêtée \(CONFIG/);
+  assert.match(F(false, true, false, false, false, false, false), /terminée/);
+  assert.match(F(false, false, true, false, false, false, false), /grand rangement/);
+  assert.match(F(false, false, false, true, false, false, false), /migration/);
+  assert.match(F(false, false, false, false, false, false, true), /panne de plateforme/);
+  assert.match(F(false, false, false, false, true, false, false), /frein budget/);
+  assert.match(F(false, false, false, false, false, true, false), /reset/);
   // Rien ne l'arrête ⇒ chaîne VIDE : c'est ce qui laisse l'appelant calculer l'avancement.
-  assert.strictEqual(F(false, false, false, false, false, false), '');
+  assert.strictEqual(F(false, false, false, false, false, false, false), '');
   // Le montant du frein est DÉRIVÉ de CONFIG, jamais recopié.
-  assert.ok(F(false, false, false, true, false, false)
+  assert.ok(F(false, false, false, false, true, false, false)
     .includes(String(ctx.CONFIG.LLM_BUDGET_CAMPAGNES) + ' $'));
+  // ⚠️ L'arrêt PRIME sur tout le reste, y compris sur une panne ou un frein : il survit à leur
+  // rétablissement. Annoncé après eux, il ferait lire « reprise demain » sur une campagne qui ne
+  // reprendra jamais seule (C49-20).
+  assert.match(F(true, false, false, false, true, true, true), /arrêtée \(CONFIG/);
 });
 
 test('majSante_ : la ligne « Historique Gmail » dit l\'état ET les minutes consommées (C28-99)', () => {
@@ -243,12 +298,19 @@ test('texteSanteHistoGmail_ : les deux plafonds DÉRIVENT de CONFIG, et les CLÉ
 test('texteSanteHistoGmail_ : terminée ⇒ elle DIT que ses minutes sont réallouables', () => {
   // C'est le signal qui débloquera la réallocation des 20 min (C28-99, reste ouvert) : il doit être
   // explicite, pas à déduire. Mutation : rendre « terminée » sans le compteur ⇒ ce test tombe.
+  // ⚠️ LE BUDGET EST FORCÉ ICI (revue code C49-20), et ce n'est pas un détail : en production il
+  // vaut 0 depuis l'arrêt de la campagne, donc la branche exercée ci-dessous est devenue
+  // INATTEIGNABLE. Sans ce forçage, le test ne passait plus que parce que le HARNAIS rallume les
+  // budgets des campagnes arrêtées — il aurait donc certifié une phrase que Marc ne peut plus
+  // lire, en laissant la seule phrase qu'il lit vraiment (« À SEC », testée juste en dessous)
+  // sans aucune couverture. Un test doit dire de QUEL monde il parle.
   const { ctx } = chargerAvecSanteMock({});
+  ctx.CONFIG = Object.assign({}, ctx.CONFIG, { GMAIL_HISTO_BUDGET_JOUR_MS: 9 * 60 * 1000 });
   const props = { DriveAI_GMAIL_HISTO: 'terminé', DriveAI_GMAIL_HISTO_OFFSET: '4210' };
   ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => props[k] || null }) };
   const t = ctx.texteSanteHistoGmail_();
   assert.ok(/termin/.test(t), t);
-  assert.ok(t.includes(Math.round(ctx.CONFIG.GMAIL_HISTO_BUDGET_JOUR_MS / 60000) + ' min/j sont RÉALLOUABLES'), t);
+  assert.ok(t.includes('9 min/j sont RÉALLOUABLES'), t);
 
   // ⚠️ ÉCHEC FERMÉ, et c'est la moitié qui compte. Une lecture d'état en panne ne doit JAMAIS
   // rendre « terminée » : ce texte est précisément ce sur quoi on s'appuiera pour réallouer
@@ -260,6 +322,23 @@ test('texteSanteHistoGmail_ : terminée ⇒ elle DIT que ses minutes sont réall
   const panne = ctx.texteSanteHistoGmail_();
   assert.ok(!/termin/.test(panne), 'une panne de lecture ne conclut jamais « terminée » : ' + panne);
   assert.ok(/illisible/.test(panne), panne);
+});
+
+test('texteSanteHistoGmail_ (C49-20) : donneur À SEC — la branche que la PRODUCTION atteint, et que rien ne testait', () => {
+  // Mesuré en revue : `if (!budget)` supprimé ⇒ 1 548 tests verts. C'est pourtant la SEULE des
+  // deux phrases que Marc peut lire aujourd'hui (budget à 0 depuis C49-20), et celle qui décide
+  // s'il ira chercher ses minutes ici ou ailleurs. Un donneur qui s'annonce « réallouable » alors
+  // qu'il a tout prêté ferait prêter DEUX FOIS les mêmes minutes — l'enveloppe se creuserait sans
+  // que personne ne voie le double emploi. Mutation : `if (false)` ⇒ ce test tombe.
+  const { ctx } = chargerAvecSanteMock({});
+  ctx.CONFIG = Object.assign({}, ctx.CONFIG,
+    { GMAIL_HISTO_BUDGET_JOUR_MS: 0, GMAIL_HISTO_PRETEES_MIN: 20 });
+  const props = { DriveAI_GMAIL_HISTO: 'terminé', DriveAI_GMAIL_HISTO_OFFSET: '4210' };
+  ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: (k) => props[k] || null }) };
+  const t = ctx.texteSanteHistoGmail_();
+  assert.ok(/À SEC/.test(t), 'le donneur doit DIRE qu\'il n\'a plus rien : ' + t);
+  assert.ok(t.includes('20 min/j sont DÉJÀ prêtées'), 'le solde prêté vient de CONFIG : ' + t);
+  assert.ok(!/RÉALLOUABLES/.test(t), 'à zéro, rien n\'est réallouable : ' + t);
 });
 
 test('texteSanteHistoGmail_ : SUSPENDUE ≠ « ne consomme rien » — le piège que la ligne doit fermer', () => {
@@ -308,14 +387,43 @@ test('statutHistoGmail_ : UNE règle, deux consommateurs (Progression et Santé)
   // la règle est extraite et partagée. Mutation : remettre une copie locale ⇒ ce test perd son sens
   // (à défaut de tomber, il documente l'invariant que la revue suivante doit vérifier).
   const { ctx } = chargerAvecSanteMock({});
-  assert.strictEqual(ctx.statutHistoGmail_(true, true, true, true), 'terminé', 'terminé prime sur tout');
-  assert.strictEqual(ctx.statutHistoGmail_(false, true, true, true), 'suspendu (quota Gmail)');
-  assert.strictEqual(ctx.statutHistoGmail_(false, false, true, true), 'en pause (frein budget)');
+  assert.strictEqual(ctx.statutHistoGmail_(false, true, true, true, true), 'terminé', 'terminé prime sur tout');
+  assert.strictEqual(ctx.statutHistoGmail_(false, false, true, true, true), 'suspendu (quota Gmail)');
+  assert.strictEqual(ctx.statutHistoGmail_(false, false, false, true, true), 'en pause (frein budget)');
   // 3ᵉ cause, oubliée de la première écriture : le reset suspend AUSSI la campagne (gate
   // `gResetEnCours`). Latente parce que `RESET_ACTIF` est false — mais c'est exactement le faux
   // « en cours · 0 min » que la ligne existe pour fermer.
-  assert.strictEqual(ctx.statutHistoGmail_(false, false, false, true), 'suspendu (reset en cours)');
-  assert.strictEqual(ctx.statutHistoGmail_(false, false, false, false), 'en cours');
+  assert.strictEqual(ctx.statutHistoGmail_(false, false, false, false, true), 'suspendu (reset en cours)');
+  assert.strictEqual(ctx.statutHistoGmail_(false, false, false, false, false), 'en cours');
+
+  // 4ᵉ cause (C49-20) : ARRÊTÉE par CONFIG. La chaîne doit être EXACTEMENT `désactivée` —
+  // `familleStatut` (app/src/etat.ts) l'apparie par ÉGALITÉ, et tout autre mot retombe dans
+  // « en cours », c'est-à-dire le mensonge que ce garde existe pour fermer.
+  assert.strictEqual(ctx.statutHistoGmail_(true, false, false, false, false), 'désactivée');
+  // …et elle NE prime PAS sur « terminé » : une campagne qui a FINI puis qu'on éteint est
+  // terminée, pas désactivée — c'est l'état de la production aujourd'hui.
+  assert.strictEqual(ctx.statutHistoGmail_(true, true, false, false, false), 'terminé');
+  // …mais elle prime sur les trois causes TRANSITOIRES : un arrêt délibéré n'est pas une panne.
+  assert.strictEqual(ctx.statutHistoGmail_(true, false, true, true, true), 'désactivée');
+});
+
+test('texteSanteHistoGmail_ (C49-20) : la ligne de Santé TRANSMET l\'interrupteur, elle ne le devine pas', () => {
+  // Le trou trouvé en revue : `statutHistoGmail_` avait reçu sa garde d\'arrêt et la ligne de
+  // Santé ne la lui passait pas. Inoffensif tant que la Property vaut « terminé », FAUX dans le
+  // seul cas où le flag existe (un bump de campagne). On OBSERVE l\'argument plutôt que le texte :
+  // c\'est le câblage qui est en cause, pas la formulation. Mutation : passer `false` en dur ⇒ rouge.
+  const { ctx } = chargerAvecSanteMock({});
+  ctx.PropertiesService = { getScriptProperties: () => ({ getProperty: () => null }) };
+  const vus = [];
+  ctx.statutHistoGmail_ = function () { vus.push([].slice.call(arguments)); return 'en cours'; };
+
+  ctx.CONFIG = Object.assign({}, ctx.CONFIG, { GMAIL_HISTO_ACTIF: false });
+  ctx.texteSanteHistoGmail_();
+  assert.strictEqual(vus[0][0], true, 'campagne éteinte ⇒ `arretee` vrai : ' + JSON.stringify(vus[0]));
+
+  ctx.CONFIG = Object.assign({}, ctx.CONFIG, { GMAIL_HISTO_ACTIF: true });
+  ctx.texteSanteHistoGmail_();
+  assert.strictEqual(vus[1][0], false, 'campagne allumée ⇒ `arretee` faux : ' + JSON.stringify(vus[1]));
 });
 
 test('majSante_ : la ligne « Doublons » exerce le chemin NOMINAL, pas le catch (ADR-0047)', () => {

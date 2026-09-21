@@ -14,6 +14,44 @@
 
 ---
 
+## 2026-09-21 (soir) — Un correctif se mesure AU SITE QUI ÉCHOUE, jamais au MODULE
+**Contexte.** Marc avait demandé « moins de perte » sur la lecture de ses papiers. Parmi trois
+leviers proposés, j'avais vendu le premier comme « gratuit, une ligne, aucun changement de
+comportement » : `Ocr.gs` n'employait `fetchDriveAvecRetry_` (DriveRest.gs, phase 2) **nulle
+part**, donc un 429 ou un 503 passager rendait `null` — que le rattrapage range en `ocr-echec`,
+une issue DÉFINITIVE. Le document est marqué « fait » sous le tag courant et ne revient ni par le
+rattrapage, ni par le flux, qui ne le verra jamais puisqu'il est déjà classé.
+
+**Leçon.** Le constat était vrai du MODULE et faux de la PANNE. Sur les quatre appels Drive de
+`Ocr.gs`, les deux erreurs réellement présentes au Journal du jour (`Conversion HTTP 400`,
+`HTTP 500`) sont à l'upload multipart — le SEUL des quatre qui ne peut pas rejouer, parce qu'il
+CRÉE un fichier : un 5xx peut arriver APRÈS la création (c'est la réponse qui est perdue, pas
+l'effet), donc un rejeu fabriquerait un second `DriveAI_extract_temp` dont on n'apprend jamais
+l'identifiant — et on ne sait supprimer que celui que la réponse rend. La question qui manquait,
+et qui se pose appel par appel : **cet appel a-t-il un EFFET, ou seulement un RÉSULTAT ?** Un
+retry est sûr sur un GET, jamais sur une création. « Durcir le réseau » n'est pas une catégorie.
+
+⚠️ **La garde vaut dans les DEUX SENS.** Trois cas exigent le rejeu (les deux exports, la
+suppression du temporaire), un QUATRIÈME l'interdit — et c'est celui-là qui compte : sans lui, un
+lot futur qui « harmonise en mettant le retry partout » rouvre le trou en croyant ranger. La
+mutation qui POSE `fetchDriveAvecRetry_` sur l'upload fait rougir le test.
+
+⚠️ **Et le correctif se rapporte avec ce qu'il ne répare pas.** Il est livré comme un FILET, pas
+comme une récupération chiffrée : aucune occurrence d'`Export natif HTTP` au Journal. Le correctif
+de la perte mesurée est `[C49-19]` — porter l'ORIGINE de l'échec (4xx = ce document-ci est refusé,
+verdict légitime ; 5xx/429/réseau = cause transitoire) pour qu'un transitoire ne fige plus le
+document, avec un nombre d'essais BORNÉ.
+
+⚠️ **Corollaire, déjà payé ailleurs et re-payé ici.** Deux tests d'`intake.test.js` ont rougi au
+passage : ils chargeaient `Ocr.gs` sans `DriveRest.gs`, et le `try/catch` qui protège l'export
+avalait la fonction manquante en rendant `null`. Le contrat inter-module n'existait que dans la
+production. **Un `try/catch` qui protège une lecture avale aussi un contrat rompu** — ce sont les
+tests qui l'ont dit, pas la relecture.
+
+**Règle durable ?** oui — ajoutée à `CLAUDE.md` §9.
+
+---
+
 ## 2026-09-16 (après-midi) — Une étape en fin de `finally` n'est pas servie en dernier : elle n'est PAS servie
 **Contexte.** Le canal DriveAI → Mémoire venait d'être réparé (trois causes empilées le matin) et
 une exécution MANUELLE avait fait accepter **2 348 faits** d'un coup. Question posée à un

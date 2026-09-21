@@ -168,7 +168,11 @@ test('exportNatifMime_ : Docs/Sheets/Slides exportables, le reste → null', () 
 });
 
 function ctxExport(reponse) {
-  return load(['Config.gs', 'Ocr.gs'], {
+  // ⚠️ `DriveRest.gs` est CHARGÉ, et ce n'est pas du confort : depuis C49-18, l'export natif
+  // passe par `fetchDriveAvecRetry_`, qui vit là-bas. Sans lui, l'appel lève, le `try/catch`
+  // qui protège l'export avale la faute et la fonction rend `null` — un contrat inter-module
+  // rompu, que seul le chargement réel fait apparaître (ces deux tests ont rougi pour ça).
+  return load(['Config.gs', 'DriveRest.gs', 'Ocr.gs'], {
     ScriptApp: { getOAuthToken: () => 'jeton-test' },
     UrlFetchApp: {
       fetch: (url) => {
