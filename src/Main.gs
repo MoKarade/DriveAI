@@ -649,7 +649,13 @@ function tickDriveAI() {
       var tagRes = null;
       try { tagRes = propsRes.getProperty('DriveAI_RESOLUTION_FILEID_TAG'); }
       catch (eResTag) { tagRes = null; } // « je ne sais pas » ⇒ on laisse la passe trancher
-      if (resolutionFileIdDoitTourner_(etatRes, tagRes, CONFIG.RESOLUTION_FILEID_TAG)
+      // La suspension de panne (revue quotas) : sans elle, un refus Drive persistant fait
+      // re-lire l'Index ENTIER à chaque tick pour re-échouer — ~20-30 min/j, indéfiniment.
+      var panneRes = panneResolutionFileId_(propsRes);
+      var repriseRes = panneRes.depuisMs
+        ? panneRes.depuisMs + CONFIG.RESOLUTION_FILEID_RESONDE_MS : 0;
+      if (resolutionFileIdDoitTourner_(etatRes, tagRes, CONFIG.RESOLUTION_FILEID_TAG,
+            repriseRes, Date.now())
           && !estBudgetDepasse()) {
         etapeResolutionFileId_(estBudgetDepasse, {});
       }

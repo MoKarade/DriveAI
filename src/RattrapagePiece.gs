@@ -853,9 +853,17 @@ function rattraperUnDocument_(doc, manuel) {
   if (texte === null) return 'ocr-echec';
   if (!String(texte).trim()) return 'sans-texte';
 
+  // ⚠️ C49-16 — LE `fileId` VOYAGE, ET SANS LUI TOUT LE LOT EST INERTE ICI. `pieceMemoire_`
+  // lit `fileIdDeLigneIndex_(ligne)` : sans ce champ, il retombe sur la CLÉ, qui n'en porte
+  // aucun pour une pièce jointe Gmail — donc il rend `null`, le verdict devient « piece-vide »,
+  // et le document est marqué « fait » DÉFINITIVEMENT sous le tag courant… après avoir payé
+  // l'extraction Haiku. Une boucle inerte qui facture, et qui aurait frappé `04` en premier.
+  // Trouvé en revue adversariale, prouvé par sonde : clé Gmail sans fileId ⇒ `pieceMemoire_`
+  // rend `null` ; avec fileId ⇒ une pièce.
   var envoi = pousserPieceApresClassement_(
     { cle: doc.cle },
-    { nom: doc.nom, domaine: doc.domaine, statut: doc.statut, chemin: doc.chemin },
+    { nom: doc.nom, domaine: doc.domaine, statut: doc.statut, chemin: doc.chemin,
+      fileId: doc.fileId },
     texte,
     { rattrapage: true, manuel: !!manuel }
   );

@@ -1090,6 +1090,13 @@ function chargerIndexCache_() {
     // lignes est chronologique. Garder la PREMIÈRE ferait gagner l'empreinte la plus ANCIENNE — un
     // fichier ré-analysé (`reanalyse|…`) après un `drive|…` aurait vu la périmée l'emporter. C'est
     // aussi la sémantique de `indexAjouter_`, qui écrase avec la valeur la plus récente.
+    // ⚠️ C49-16 — CELUI-CI reste sur la CLÉ, et c'est une DÉCISION, pas un oubli. Ce cache ne
+    // lit que deux colonnes (A et G) pour une raison MESURÉE : lire les autres chargeait 3,5×
+    // trop de cellules à chaque tick sur un Index qui croît, et c'est l'un des postes du socle
+    // non budgété qui pousse vers le mur des ~90 min/j. Ajouter la colonne I pour couvrir les
+    // pièces jointes Gmail est possible et ne coûterait qu'un aller-retour — mais ce cache n'est
+    // qu'un RACCOURCI de performance (`empreinteConnueParId_` ; `Reset.gs` recalcule le hash en
+    // repli), donc l'écart ne perd aucune donnée. Noté au BACKLOG plutôt que fait ici.
     var fid = fileIdDeCleIndex_(cles[i][0]);
     if (fid) _empreintesParIdCache[fid] = String(empreintes[i][0]);
   }
@@ -1140,7 +1147,11 @@ function indexAjouter_(cle, resultat, empreinte) {
   if (_indexCache !== null) _indexCache[cle] = true;
   if (_empreintesCache !== null && empreinte) _empreintesCache[empreinte] = true;
   if (_empreintesParIdCache !== null && empreinte) {
-    var fid = fileIdDeCleIndex_(cle);
+    // ⚠️ C49-16 — MIGRÉ : le fileId est en main trois lignes plus haut (`resultat.fileId`), donc
+    // la déduction par la clé n'a plus lieu d'être. Effet de bord VOULU : le cache couvre
+    // désormais les pièces jointes Gmail, qui en étaient exclues — autant de hachages qu'on ne
+    // repaiera pas.
+    var fid = fileIdDeLigneIndex_({ cle: cle, fileId: resultat.fileId });
     if (fid) _empreintesParIdCache[fid] = empreinte;
   }
 }

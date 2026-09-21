@@ -590,6 +590,20 @@ var CONFIG = {
   // jour à une voisine coûterait plus cher que ce qu'elle consomme, et l'enveloppe est verrouillée
   // à la minute près par `test/orchestration.test.js`.
   RESOLUTION_FILEID_TAG: 'c49-16-a',
+  // ⚠️ SOUS-BUDGET PAR RUN — ajouté après revue. C'était la SEULE étape de fond sans plafond
+  // propre : elle recevait `estBudgetDepasse` (3 min de budget de TICK) et pouvait donc consommer
+  // tout le reliquat, affamant précisément les deux étapes qu'elle est placée là pour alimenter
+  // (le rattrapage — le seul poste qui dépense des dollars — et le périmètre). Ses voisines ont
+  // toutes le leur : audit 2 min, Mémoire 60 s, doublons 90 s, missions 90 s.
+  // ⚠️ Ce n'est PAS un budget QUOTIDIEN : la passe reste one-shot (~20 runs au total), donc elle
+  // ne prélève toujours aucune minute à l'enveloppe des 63 min/j.
+  RESOLUTION_FILEID_BUDGET_MS: 60 * 1000,
+  // Plafond d'items par run. Il ne borne PAS la journée (le tag et l'extinction s'en chargent) :
+  // il borne le pire cas d'UN run, et le sous-budget ci-dessus coupe avant lui en pratique.
+  RESOLUTION_FILEID_MAX_PAR_RUN: 40,
+  // Espacement de la re-sonde après une panne. Une heure : assez pour qu'un throttle Drive
+  // passe, assez court pour qu'une panne guérie ne coûte pas une journée de campagne.
+  RESOLUTION_FILEID_RESONDE_MS: 60 * 60 * 1000,
 
   // C49-3 — l'audit AVANT d'allumer `PIECE_PUSH` (ADR-0061). Cent documents, servis
   // ÉGALITAIREMENT entre les domaines et non au prorata : au prorata, `04 · Immigration` —

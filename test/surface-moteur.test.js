@@ -232,6 +232,12 @@ const CONTRAT = [
   // (C28-137), et c'est le seul moyen de finir la passe sans attendre les ticks.
   'etatResolutionFileId_', 'resolutionFileIdDoitTourner_', 'etapeResolutionFileId_',
   'texteSanteResolutionFileId_', 'resoudreIdentifiantsMaintenant',
+  // `panneResolutionFileId_` est lue par `Main.gs` (la gate) ET par la Santé ; `tronquer_`
+  // (`Ocr.gs`) borne la cause persistée. Contrats inter-modules, donc seul ce test les retient.
+  'panneResolutionFileId_', 'suspendreResolutionFileId_', 'leverSuspensionResolutionFileId_',
+  'tronquer_', 'segmentsChemin_', 'estExemplaireEcarte_', 'cheminsDossier_', 'fichesDossierMemo_',
+  'accepterCandidat_', 'decoderCumulResolution_', 'detailMotifsResolution_',
+  'encoderMotifsResolution_', 'decoderMotifsResolution_', 'noterFinResolutionFileId_',
   // Le module consomme `urlListeDrive_` + `pageListeDrive_` (`Doublons.gs`) pour chercher par
   // nom — la MÊME pagination que la détection de doublons, jamais une seconde écrite à part —
   // et `estFileIdPlausible_` (`Journal.gs`), qui décide si une cellule porte un id ou du bruit.

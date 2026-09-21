@@ -25,6 +25,15 @@
 > identifiants (C49-16) » dit où elle en est et POURQUOI elle refuse — « introuvable »,
 > « ambigu » et « empreinte-differente » appellent trois gestes différents.
 >
+> ⚠️ **La revue adversariale a trouvé TROIS bloquants que le gate ne pouvait pas voir** (1 526
+> cas verts sur les trois). Tous corrigés dans la même PR, tous prouvés par mutation. Le plus
+> grave : le `fileId` ne voyageait PAS jusqu'à la Mémoire depuis le rattrapage — le lot aurait
+> donc été **inerte sur son seul consommateur vivant, en payant un appel Haiku par document et
+> en les marquant « faits » définitivement**, `04` en premier. Les deux autres : un curseur qui
+> sautait 40 lignes sur une coupure au premier item (« ✅ terminée » sur 60 documents lus sur
+> 100), et un verdict irréversible pris sur un simple NOM de dossier (`2025` existe sous les
+> neuf domaines). Détail complet dans `BACKLOG.md`.
+>
 > ⚠️ **À VÉRIFIER après le run `deploy.yml`** : que la ligne de Santé quitte « jamais passée »,
 > et que le périmètre re-compté fasse tomber son PLANCHER. Tant que ce n'est pas mesuré, le
 > correctif n'est pas fini (§9 : une réparation se mesure, elle ne se déduit pas d'un merge).

@@ -30,7 +30,11 @@ function mockProps(table) {
 }
 
 function ctx(props) {
-  return load(['Config.gs', 'Consolidation.gs', 'Journal.gs', 'ResolutionFileId.gs'],
+  // ⚠️ `Ocr.gs` pour `tronquer_`, que `suspendreResolutionFileId_` emploie. C'est la garde
+  // « panne-ecriture » qui l'a révélé : le `try/catch` qui protège la persistance avalait aussi
+  // la fonction absente, donc la Property n'était jamais écrite — en silence. « Un try/catch qui
+  // protège une persistance avale aussi les fautes de frappe » (§9), payé une seconde fois.
+  return load(['Config.gs', 'Consolidation.gs', 'Ocr.gs', 'Journal.gs', 'ResolutionFileId.gs'],
     { PropertiesService: mockProps(props) });
 }
 
@@ -118,38 +122,44 @@ test('selectionnerAResoudre_ : à la FIN, le curseur repart de zéro', () => {
  * oublié se verrait), on ne compare simplement plus la provenance de l'objet.
  */
 function verdict(c, candidats, empreinte, chemin) {
-  const v = c.choisirResolutionFileId_(candidats, empreinte, chemin);
+  return verdict4(c, candidats, empreinte, chemin, false);
+}
+
+function verdict4(c, candidats, empreinte, chemin, tropNombreux) {
+  const v = c.choisirResolutionFileId_(candidats, empreinte, chemin, tropNombreux);
   return { fileId: v.fileId, motif: v.motif };
 }
 
 test('choisirResolutionFileId_ : l\'EMPREINTE tranche, et son absence REFUSE au lieu de se rabattre', () => {
   const c = ctx();
   const candidats = [
-    { id: ID('a'), empreinte: 'HASH_A', chemin: '2025' },
-    { id: ID('b'), empreinte: 'HASH_B', chemin: '2025' },
+    { id: ID('a'), empreinte: 'HASH_A', chemins: ['02 · Finances/2025'] },
+    { id: ID('b'), empreinte: 'HASH_B', chemins: ['02 · Finances/2025'] },
   ];
-  assert.deepStrictEqual(verdict(c, candidats, 'HASH_B', '2025'),
+  assert.deepStrictEqual(verdict(c, candidats, 'HASH_B', '02 · Finances/2025'),
     { fileId: ID('b'), motif: 'empreinte' });
   // ⚠️ LE CAS QUI COMMANDE TOUT LE MODULE : deux fichiers portent le bon nom, dans le bon
   // dossier, et AUCUN ne porte l'empreinte attendue. Se rabattre sur le chemin désignerait un
   // AUTRE document — et l'enverrait à la Mémoire sous l'identité de celui-ci. On refuse.
-  assert.deepStrictEqual(verdict(c, candidats, 'HASH_INCONNU', '2025'),
+  assert.deepStrictEqual(verdict(c, candidats, 'HASH_INCONNU', '02 · Finances/2025'),
     { fileId: '', motif: 'empreinte-differente' });
 });
 
 test('choisirResolutionFileId_ : sans empreinte, le CHEMIN décide — et l\'homonymie refuse', () => {
   const c = ctx();
+  const P25 = '02 · Finances/2025';
   const deuxDansLeMemeDossier = [
-    { id: ID('a'), empreinte: '', chemin: '2025' },
-    { id: ID('b'), empreinte: '', chemin: '2025' },
+    { id: ID('a'), empreinte: '', chemins: [P25] },
+    { id: ID('b'), empreinte: '', chemins: [P25] },
   ];
-  assert.deepStrictEqual(verdict(c, deuxDansLeMemeDossier, '', '2025'),
+  assert.deepStrictEqual(verdict(c, deuxDansLeMemeDossier, '', P25),
     { fileId: '', motif: 'ambigu' }, 'deux homonymes dans le même dossier : aucune preuve');
-  assert.deepStrictEqual(verdict(c, [{ id: ID('a'), empreinte: '', chemin: '2024' }], '', '2025'),
+  assert.deepStrictEqual(
+    verdict(c, [{ id: ID('a'), empreinte: '', chemins: ['02 · Finances/2024'] }], '', P25),
     { fileId: '', motif: 'hors-chemin' });
-  assert.deepStrictEqual(verdict(c, [{ id: ID('a'), empreinte: '', chemin: '2025' }], '', '2025'),
+  assert.deepStrictEqual(verdict(c, [{ id: ID('a'), empreinte: '', chemins: [P25] }], '', P25),
     { fileId: ID('a'), motif: 'chemin' });
-  assert.deepStrictEqual(verdict(c, [], '', '2025'), { fileId: '', motif: 'introuvable' });
+  assert.deepStrictEqual(verdict(c, [], '', P25), { fileId: '', motif: 'introuvable' });
   // Un chemin d'Index vide ne peut rien prouver : refus, jamais « le premier de la liste ».
   assert.deepStrictEqual(verdict(c, deuxDansLeMemeDossier, '', ''),
     { fileId: '', motif: 'ambigu' });
@@ -160,12 +170,12 @@ test('choisirResolutionFileId_ : DEUX copies identiques, le chemin départage sa
   // Cas réel : le même document rangé ET son exemplaire écarté dans `_Doublons`. Même contenu,
   // donc même empreinte — choisir au hasard désignerait peut-être celui qu'on a mis de côté.
   const copies = [
-    { id: ID('a'), empreinte: 'HASH', chemin: '_Doublons' },
-    { id: ID('b'), empreinte: 'HASH', chemin: '2025' },
+    { id: ID('a'), empreinte: 'HASH', chemins: ['02 · Finances/_Doublons'] },
+    { id: ID('b'), empreinte: 'HASH', chemins: ['02 · Finances/2025'] },
   ];
-  assert.deepStrictEqual(verdict(c, copies, 'HASH', '2025'),
+  assert.deepStrictEqual(verdict(c, copies, 'HASH', '02 · Finances/2025'),
     { fileId: ID('b'), motif: 'empreinte-chemin' });
-  assert.deepStrictEqual(verdict(c, copies, 'HASH', 'ailleurs'),
+  assert.deepStrictEqual(verdict(c, copies, 'HASH', '02 · Finances/ailleurs'),
     { fileId: '', motif: 'hors-chemin' }, 'aucune des deux copies n\'est dans le dossier attendu');
 });
 
@@ -176,19 +186,42 @@ test('qNomDrive_ : l\'APOSTROPHE française est échappée, et l\'antislash AVAN
   // ⚠️ Le `q` de l'API Drive délimite ses chaînes par des apostrophes simples, et un nom de
   // document français en contient sans arrêt. Non échappée, elle ne lève pas une erreur : elle
   // change la REQUÊTE, donc les candidats, donc le verdict.
-  assert.strictEqual(c.qNomDrive_("Contrat d'assurance.pdf"),
-    "name = 'Contrat d\\'assurance.pdf' and trashed = false");
+  assert.match(c.qNomDrive_("Contrat d'assurance.pdf"), /^name = 'Contrat d\\'assurance\.pdf'/);
   // L'antislash d'abord, sinon on échappe l'échappement qu'on vient de poser.
-  assert.strictEqual(c.qNomDrive_('a\\b'), "name = 'a\\\\b' and trashed = false");
-  assert.match(c.qNomDrive_('x.pdf'), /trashed = false$/, 'un fichier à la corbeille n\'est pas un candidat');
+  assert.match(c.qNomDrive_('a\\b'), /^name = 'a\\\\b'/);
+  assert.match(c.qNomDrive_('x.pdf'), /trashed = false/, 'un fichier à la corbeille n\'est pas un candidat');
+  // ⚠️ Les RACCOURCIS sont écartés : ce dépôt en fabrique (`creerRaccourcisEntites_`), avec le
+  // MÊME nom que le document et SANS empreinte — un raccourci pouvait devenir l'unique candidat
+  // d'une ligne sans empreinte, et le verdict positif portait alors sur un objet qui n'est même
+  // pas le fichier (revue de code).
+  assert.match(c.qNomDrive_('x.pdf'), /mimeType != 'application\/vnd\.google-apps\.shortcut'/);
 });
 
-test('dernierSegmentChemin_ : le dossier CONTENANT, sans payer la remontée des ancêtres', () => {
+test('segmentsChemin_ : le chemin ENTIER, pas seulement le dernier dossier', () => {
   const c = ctx();
-  assert.strictEqual(c.dernierSegmentChemin_('02 · Finances/2025'), '2025');
-  assert.strictEqual(c.dernierSegmentChemin_('02 · Finances/2025/'), '2025', 'une barre finale ne crée pas un dossier');
-  assert.strictEqual(c.dernierSegmentChemin_('04 · Immigration'), '04 · Immigration');
-  assert.strictEqual(c.dernierSegmentChemin_(''), '');
+  // ⚠️ REMPLACE `dernierSegmentChemin_`, retirée après la revue de sécurité : le nom d'un
+  // dossier ne prouve pas son identité. `2025` existe sous chacun des neuf domaines, et un
+  // homonyme rangé sous `03 · Logement/2025` serait devenu l'unique candidat d'une ligne
+  // `02 · Finances/2025` — verdict POSITIF, donc définitif de fait.
+  assert.deepStrictEqual(Array.from(c.segmentsChemin_('02 · Finances/2025')), ['02 · Finances', '2025']);
+  assert.deepStrictEqual(Array.from(c.segmentsChemin_('02 · Finances/2025/')), ['02 · Finances', '2025'],
+    'une barre finale ne crée pas un dossier');
+  assert.deepStrictEqual(Array.from(c.segmentsChemin_('04 · Immigration')), ['04 · Immigration']);
+  assert.deepStrictEqual(Array.from(c.segmentsChemin_('')), []);
+});
+
+test('le chemin COMPLET discrimine là où le dernier segment acceptait un homonyme', () => {
+  const c = ctx();
+  // LE scénario de la revue de sécurité, joué en entier : ligne d'Index sans empreinte, sous
+  // `02 · Finances/2025` ; le fichier d'origine a été renommé depuis ; un homonyme existe sous
+  // `03 · Logement/2025`. Avec l'ancien prédicat, son dossier s'appelait `2025` ⇒ accepté.
+  const homonyme = [{ id: ID('z'), empreinte: '', chemins: ['03 · Logement/2025'] }];
+  assert.deepStrictEqual(verdict(c, homonyme, '', '02 · Finances/2025'),
+    { fileId: '', motif: 'hors-chemin' });
+  // Et le multi-parents reste servi : un fichier qui EST sous les deux est accepté.
+  const deuxParents = [{ id: ID('z'), empreinte: '', chemins: ['03 · Logement/2025', '02 · Finances/2025'] }];
+  assert.deepStrictEqual(verdict(c, deuxParents, '', '02 · Finances/2025'),
+    { fileId: ID('z'), motif: 'chemin' });
 });
 
 /* ---------- PUR : l'état et sa phrase ---------- */
@@ -250,16 +283,22 @@ function passe(opts) {
   const c = ctx(props);
   const ecrits = {};
   const cherches = [];
-  c.feuille_ = () => ({
-    getLastRow: () => (opts.lignes || []).length + 1,
-    getRange: (r, col, n) => (n === undefined
-      ? { setValue: (v) => { ecrits[r + ':' + col] = v; } }
-      : { getValues: () => opts.lignes }),
-  });
-  c.candidatsPourNom_ = (nom) => {
-    cherches.push(nom);
+  c.feuille_ = () => {
+    if (opts.indexLeve) throw new Error('Sheet indisponible (simulé)');
+    return {
+      getLastRow: () => (opts.lignes || []).length + 1,
+      getRange: (r, col, n) => (n === undefined
+        ? { setValue: (v) => {
+            if (opts.ecritureLeve) throw new Error('plage protégée (simulé)');
+            ecrits[r + ':' + col] = v;
+          } }
+        : { getValues: () => opts.lignes }),
+    };
+  };
+  c.candidatsPourNom_ = (nom, profondeur) => {
+    cherches.push(nom + '@' + profondeur);
     if (opts.leve) throw new Error('réseau indisponible (simulé)');
-    return (opts.candidats || {})[nom] || [];
+    return { candidats: (opts.candidats || {})[nom] || [], tropNombreux: !!opts.tropNombreux };
   };
   c.journalErreur_ = () => {};
   c.journalInfo_ = () => {};
@@ -282,7 +321,7 @@ test('la passe ÉCRIT l\'id trouvé sur la bonne ligne, et le refus sur l\'autre
       ligne(CLE_GMAIL, 'Trouve.pdf', '02 · Finances/2025', 'classé', 'HASH'),
       ligne(CLE_GMAIL, 'Perdu.pdf', '02 · Finances/2025', 'classé', 'HASH2'),
     ],
-    candidats: { 'Trouve.pdf': [{ id: ID('a'), empreinte: 'HASH', chemin: '2025' }] },
+    candidats: { 'Trouve.pdf': [{ id: ID('a'), empreinte: 'HASH', chemins: ['02 · Finances/2025'] }] },
   });
   c.etapeResolutionFileId_(() => false, {});
   // ⚠️ Cellule par cellule et non un `setValues` en bloc : les rangs choisis ne sont PAS
@@ -290,7 +329,8 @@ test('la passe ÉCRIT l\'id trouvé sur la bonne ligne, et le refus sur l\'autre
   // c'est-à-dire précisément les lignes qui portent déjà un identifiant.
   assert.strictEqual(ecrits['2:9'], ID('a'), 'ligne 1 de données ⇒ rangée 2, colonne 9');
   assert.strictEqual(ecrits['3:9'], '!introuvable|' + c.CONFIG.RESOLUTION_FILEID_TAG);
-  assert.match(props.DriveAI_RESOLUTION_FILEID_FIN, /\|1\/1\|/);
+  assert.match(props.DriveAI_RESOLUTION_FILEID_FIN, /\|1\/1\/2\|/,
+    'résolus / refusés / ÉCRITES — décider n\'est pas écrire, et le troisième chiffre le dit');
   assert.match(props.DriveAI_RESOLUTION_FILEID_FIN, /introuvable:1/);
 });
 
@@ -366,4 +406,175 @@ test('la Santé PUBLIE la ligne — un état que personne ne lit n\'observe rien
   const journal = fs.readFileSync(path.join(__dirname, '..', 'src', 'Journal.gs'), 'utf8');
   assert.match(journal, /texteSanteResolutionFileId_\(\)/);
   assert.match(journal, /Résolution des identifiants \(C49-16\)/);
+});
+
+/* ---------- CORRECTIFS DE REVUE (21/09) ---------- */
+
+test('une page PLEINE refuse — la troncature RETIRE des candidats, donc elle fabrique des uniques', () => {
+  const c = ctx();
+  // ⚠️ Le commentaire d'origine affirmait l'inverse : « au-delà du plafond, le choix refusera de
+  // toute façon ». FAUX, et dans le sens dangereux — le refus vient d'avoir DEUX candidats.
+  assert.deepStrictEqual(
+    verdict4(c, [{ id: ID('a'), empreinte: '', chemins: ['02 · Finances/2025'] }], '', '02 · Finances/2025', true),
+    { fileId: '', motif: 'trop-d-homonymes' });
+});
+
+test('le seul exemplaire qui porte l\'empreinte, mais dans `_Doublons`, est REFUSÉ', () => {
+  const c = ctx();
+  const rebut = [{ id: ID('a'), empreinte: 'HASH', chemins: ['02 · Finances/_Doublons'] }];
+  // Le contenu est PROUVÉ, le LIEU ne l'est pas : accepter ferait pointer la Mémoire sur
+  // l'exemplaire qu'on a délibérément écarté, avec le chemin de l'Index qui dit autre chose.
+  assert.deepStrictEqual(verdict(c, rebut, 'HASH', '02 · Finances/2025'),
+    { fileId: '', motif: 'exemplaire-ecarte' });
+  // ⚠️ Contrôle inverse : une ligne que l'Index range DANS `_Doublons` n'est pas concernée.
+  assert.deepStrictEqual(verdict(c, rebut, 'HASH', '02 · Finances/_Doublons'),
+    { fileId: ID('a'), motif: 'empreinte' });
+});
+
+test('une chaîne de dossiers ILLISIBLE est une panne, jamais un refus figé', () => {
+  const c = ctx();
+  const v = c.choisirResolutionFileId_(
+    [{ id: ID('a'), empreinte: '', chemins: [], illisible: true }], '', '02 · Finances/2025', false);
+  assert.strictEqual(v.motif, 'chemin-illisible');
+  assert.strictEqual(v.panne, true,
+    'un blip Drive sur UN dossier ne doit pas écrire « hors-chemin » jusqu\'au prochain bump');
+});
+
+test('un candidat sans identifiant plausible ne devient JAMAIS un verdict positif', () => {
+  const c = ctx();
+  // `String(null)` vaut « null », une chaîne TRUTHY : elle aurait été comptée « retrouvée » et
+  // écrite dans la colonne. Le module refuse dans le doute partout ailleurs.
+  assert.deepStrictEqual(
+    verdict(c, [{ id: null, empreinte: '', chemins: ['02 · Finances/2025'] }], '', '02 · Finances/2025'),
+    { fileId: '', motif: 'id-illisible' });
+  assert.deepStrictEqual(verdict(c, [{ id: 'trop-court', empreinte: 'H', chemins: [] }], 'H', ''),
+    { fileId: '', motif: 'id-illisible' });
+});
+
+test('« aucun candidat n\'a d\'empreinte » n\'est pas « ce n\'est pas ce document »', () => {
+  const c = ctx();
+  // Un Google Doc natif n'a pas de md5. Confondre les deux causes envoie chercher au mauvais
+  // endroit : l'une dit « le fichier a changé », l'autre « ce type de fichier n'a pas d'empreinte ».
+  assert.deepStrictEqual(
+    verdict(c, [{ id: ID('a'), empreinte: '', chemins: ['02 · Finances/2025'] }], 'HASH', '02 · Finances/2025'),
+    { fileId: '', motif: 'candidats-sans-empreinte' });
+  assert.deepStrictEqual(
+    verdict(c, [{ id: ID('a'), empreinte: 'AUTRE', chemins: [] }], 'HASH', ''),
+    { fileId: '', motif: 'empreinte-differente' });
+});
+
+test('une coupure au PREMIER item ne fait pas sauter une page entière', () => {
+  const lignes = [];
+  for (let i = 0; i < 100; i++) lignes.push(ligne(CLE_GMAIL, 'f' + i + '.pdf', '02 · Finances', 'classé'));
+  // Passe 1 : complète (40 lignes), curseur à 40.
+  const p1 = passe({ lignes });
+  p1.c.etapeResolutionFileId_(() => false, {});
+  assert.strictEqual(p1.props.DriveAI_RESOLUTION_FILEID_FIN.split('|')[4], '40');
+  // Passe 2 : le garde tire AVANT le premier item — rien n'est examiné.
+  const p2 = passe({ lignes, props: p1.props });
+  p2.c.etapeResolutionFileId_(() => true, {});
+  assert.strictEqual(p2.cherches.length, 0, 'aucun item traité');
+  // ⚠️ LE DÉFAUT : le curseur valait « après la 40ᵉ de CETTE page », soit 80 — quarante lignes
+  // jamais examinées, perdues pour toujours, et la Santé annonçait « termine ». Mesuré en revue :
+  // 60 résolues sur 100.
+  assert.strictEqual(p2.props.DriveAI_RESOLUTION_FILEID_FIN.split('|')[4], '40',
+    'le curseur reste où la sélection a COMMENCÉ tant que rien n\'a été tranché');
+});
+
+test('« terminé » ne se prononce que sur un tour parti de ZÉRO', () => {
+  // Deux lignes déjà tranchées, curseur persisté sur la SECONDE : le scan ne dit rien de la
+  // première. Prononcer « terminé » là-dessus fermerait la porte à vie sur une campagne
+  // incomplète — et trois mécanismes y laissent des lignes (coupure, échec d'écriture,
+  // suppression de lignes d'Index qui décale la numérotation).
+  const lignes = [
+    ligne(CLE_GMAIL, 'a.pdf', '02 · Finances', 'classé', '', ID('y')),
+    ligne(CLE_GMAIL, 'b.pdf', '02 · Finances', 'classé', '', ID('z')),
+  ];
+  const p = passe({
+    lignes,
+    props: {
+      DriveAI_RESOLUTION_FILEID_TAG: 'c49-16-a',
+      DriveAI_RESOLUTION_FILEID_FIN: '2026-09-21T10:00:00.000Z|page|1/0/1|0|1|',
+    },
+  });
+  p.c.etapeResolutionFileId_(() => false, {});
+  const champs = p.props.DriveAI_RESOLUTION_FILEID_FIN.split('|');
+  assert.strictEqual(champs[1], 'tour', 'un scan partiel rend la main, il ne ferme pas la porte');
+  assert.strictEqual(champs[4], '0', 'et il remet le curseur à zéro pour un dernier tour complet');
+});
+
+test('la phrase terminale lit le CUMUL de campagne, pas la dernière passe', () => {
+  const c = ctx();
+  // ⚠️ La passe qui CONCLUT est justement celle qui n'a plus rien trouvé : sans cumul, la seule
+  // ligne qui dise si les 734 documents sont redevenus désignables annonce « 0 retrouvés ».
+  const p = c.phraseResolutionFileId_(
+    { ts: 'x', fin: 'termine', fini: true, restants: 0, resolus: 0, refuses: 0,
+      cumul: { resolus: 700, refuses: 34 } });
+  assert.match(p, /✅ terminée — 700 retrouvés, 34 sans preuve/);
+  // Une chaîne d'avant ce correctif n'invente pas un zéro : elle dit qu'elle ne sait pas.
+  assert.match(
+    c.phraseResolutionFileId_({ ts: 'x', fin: 'termine', fini: true, restants: 0, cumul: null }),
+    /compteurs de campagne absents/);
+});
+
+test('une PANNE suspend la passe, et la Santé dit depuis quand ET pourquoi', () => {
+  const c = ctx();
+  const ilYaDixMinutes = Date.now() - 10 * 60 * 1000;
+  // ⚠️ Sans suspension, un refus Drive persistant fait re-lire l'Index ENTIER à chaque tick pour
+  // re-échouer : ~20-30 min de runtime par jour, indéfiniment, et INVISIBLES au test d'enveloppe
+  // (qui ne somme que des constantes `*_BUDGET_JOUR_MS` nommées).
+  assert.strictEqual(
+    c.resolutionFileIdDoitTourner_({ ts: 'x' }, 'c49-16-a', 'c49-16-a',
+      ilYaDixMinutes + c.CONFIG.RESOLUTION_FILEID_RESONDE_MS, Date.now()),
+    false);
+  // Mais un BUMP passe AVANT la suspension : elle ne doit jamais empêcher Marc de relancer.
+  assert.strictEqual(
+    c.resolutionFileIdDoitTourner_({ ts: 'x' }, 'vieux', 'c49-16-a',
+      ilYaDixMinutes + c.CONFIG.RESOLUTION_FILEID_RESONDE_MS, Date.now()),
+    true);
+  const phrase = c.phraseResolutionFileId_({ ts: 'x', resolus: 12 },
+    { depuisMs: ilYaDixMinutes, cause: 'drive : 403 quota' });
+  assert.match(phrase, /suspendue depuis/);
+  assert.match(phrase, /403 quota/, 'quatre causes, quatre gestes — « panne » seul les confond');
+  assert.doesNotMatch(phrase, /12 retrouvés/, 'un compteur vrai est trompeur quand la passe est morte');
+});
+
+test('la passe se suspend quand AUCUNE cellule ne s\'écrit', () => {
+  const { c, props, ecrits } = passe({
+    lignes: [ligne(CLE_GMAIL, 'f.pdf', '02 · Finances', 'classé')],
+    ecritureLeve: true,
+  });
+  c.etapeResolutionFileId_(() => false, {});
+  assert.deepStrictEqual(ecrits, {});
+  // Sans ça : la ligne est re-sélectionnée au run suivant, donc re-payée en recherche Drive,
+  // indéfiniment — pendant que « 1 retrouvé » s'affiche. Un compteur d'envoyés, pas d'écrits.
+  assert.match(props.DriveAI_RESOLUTION_FILEID_FIN, /\|panne-ecriture\|/);
+  assert.ok(props.DriveAI_RESOLUTION_FILEID_PANNE, 'et la panne est persistée, donc la gate se ferme');
+});
+
+test('un Index illisible le DIT, au lieu de laisser la Santé sur la passe précédente', () => {
+  const { c, props } = passe({ lignes: [], indexLeve: true });
+  c.etapeResolutionFileId_(() => false, {});
+  assert.match(props.DriveAI_RESOLUTION_FILEID_FIN, /\|index-illisible\|/,
+    '« Index illisible », « jamais atteinte » et « tout va bien » ne doivent pas se ressembler');
+});
+
+test('une ligne SANS NOM ne paie pas de recherche Drive', () => {
+  const c = ctx();
+  const r = c.selectionnerAResoudre_(
+    [ligne(CLE_GMAIL, '', '02 · Finances', 'classé')], 'c49-16-a', 0, 10);
+  assert.strictEqual(r.choisies.length, 0);
+  assert.strictEqual(r.restants, 0,
+    'et elle ne compte pas dans les restants, sinon le compteur ne tombe jamais à zéro');
+});
+
+test('le RATTRAPAGE transmet le fileId — sans lui, tout le lot est inerte sur son seul consommateur', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'RattrapagePiece.gs'), 'utf8');
+  // ⚠️ GARDE DE CHAÎNON. `pieceMemoire_` lit `fileIdDeLigneIndex_(ligne)` : sans ce champ, il
+  // retombe sur la CLÉ — qui n'en porte aucun pour une pièce jointe Gmail — donc il rend `null`,
+  // le verdict devient « piece-vide », et le document est marqué « fait » DÉFINITIVEMENT… après
+  // avoir payé l'extraction Haiku. Une boucle inerte qui facture, sur `04` en premier.
+  const appel = src.slice(src.indexOf('var envoi = pousserPieceApresClassement_('));
+  assert.ok(appel.slice(0, 400).includes('fileId: doc.fileId'),
+    'le fileId doit voyager jusqu\'à `pousserPieceApresClassement_`');
 });
