@@ -54,6 +54,15 @@
   4 sur la comptabilité des minutes). Leçon portée en `CLAUDE.md` §9.
 - [x] **Gate : 1 554 moteur · 384 app · build · syntaxe .gs.**
 
+- [ ] **[C49-22] La ligne de Santé « Résolution des identifiants » change de SÉMANTIQUE en cours de
+  route, sans le dire.** Tant que la campagne tourne, `phraseResolutionFileId_` affiche les
+  compteurs de la DERNIÈRE PASSE (`e.resolus`/`e.refuses`) ; une fois terminée, elle affiche le
+  CUMUL (`e.cumul`) — mêmes mots, deux grandeurs. Constaté le 21/09 en mesurant : « 14 retrouvés »
+  puis « 10 retrouvés » deux heures plus tard, ce qui ressemble à un compteur qui RECULE. Ce n'en
+  est pas un (le vrai avancement est « 695 → 295 à examiner »), et c'est bien le problème : un
+  lecteur ne peut pas le savoir. Le voisin `detailMotifsResolution_` dit « dernière passe » en
+  toutes lettres, précisément pour cette raison — la ligne principale ne le fait pas. Défaut
+  d'affichage, aucun effet sur les données. Pas de feu vert.
 - [ ] **[C49-21] La consolidation est déclarée finie par ABSENCE.** Ses lignes ne sont plus dans la
   Progression, ce qui est cohérent avec « terminée depuis > 48 h » (purge) **et** avec « n'a jamais
   eu de ligne ». C'est le moins mesuré des sept arrêts — la certitude se prend dans l'onglet
