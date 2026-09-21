@@ -938,3 +938,41 @@ test('le plafond MORD vraiment : le compteur avance d\'un appel à l\'autre', ()
     { cle: 'drive|1AbCdEfGhIjKlMnOpQrStUvWxYz01' },
     { nom: 'apres.pdf', domaine: '02 · Finances', statut: 'classé', chemin: 'x' }, 'texte').motif, 'ok');
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────
+// LA RAISON DE LA SUSPENSION, écrite depuis toujours et lue par personne.
+//
+// `suspendreMemoire_` persiste `DriveAI_MEMOIRE_SUSPENDU_RAISON` depuis l'origine, et AUCUNE
+// surface ne l'affichait : la ligne de Santé disait « SUSPENDUE après un refus de la Mémoire »,
+// phrase vraie d'un jeton refusé, d'un périmètre retiré, d'un champ hors contrat et d'une
+// coupure réseau — quatre causes, quatre gestes différents. Mesuré le 21/09 : le canal était
+// suspendu, la campagne à l'arrêt, et rien nulle part ne disait pourquoi.
+//
+// ⚠️ La mutation qui coupe ce fil est restée MUETTE au premier jet : ces deux cas existent
+// parce qu'un correctif sans garde se fait retirer au lot suivant.
+// ─────────────────────────────────────────────────────────────────────────────────────────
+
+test('la ligne de Santé de la Mémoire DIT pourquoi le canal est coupé', () => {
+  const c = ctx();
+  const brut = '2026-09-21T13:58:00.000Z|refusee|1/0/0|12/4240';
+
+  const avec = c.phraseFinMemoire_(brut, 2731, 0, 4 * 60 * 1000, 'jeton refusé (401)');
+  assert.match(avec, /raison : jeton refusé \(401\)/);
+
+  // ⚠️ Contrôle inverse : sans raison persistée, la phrase n'en fabrique aucune. Sans ce cas,
+  // « la raison s'affiche » serait vrai d'une phrase qui l'invente.
+  assert.doesNotMatch(c.phraseFinMemoire_(brut, 2731, 0, 4 * 60 * 1000, ''), /raison :/);
+});
+
+test('texteSanteMemoire_ LIT la raison, et seulement quand la suspension tient', () => {
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'src', 'Memoire.gs'), 'utf8');
+  // ⚠️ Garde de FORME, faute de mieux : la fonction lit les Properties. Ce qu'elle défend est
+  // le FIL — la Property lue et passée à la phrase —, pas la mise en mots, couverte au-dessus.
+  assert.match(src,
+    /texteSanteMemoire_[\s\S]{0,800}DriveAI_MEMOIRE_SUSPENDU_RAISON/,
+    'le fil est coupé : la raison est écrite et plus personne ne la lit');
+  // ⚠️ Et elle ne s'affiche que si la suspension TIENT encore : une raison survivante après la
+  // re-sonde ferait croire à une panne en cours sur un canal réparé.
+  assert.match(src, /memoireSuspendue_\(props\) \?[\s\S]{0,120}SUSPENDU_RAISON/);
+});
