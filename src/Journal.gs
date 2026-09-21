@@ -71,6 +71,7 @@ function initialiserSheet_(ss) {
   // jour, jusqu'à la fin du drainage.
   creerOnglet_(ss, 'HistoriqueVrac', COLONNES_HISTORIQUE_VRAC);
   creerOnglet_(ss, 'HistoriqueImport', COLONNES_HISTORIQUE_IMPORT);
+  creerOnglet_(ss, 'PiecesFaites', COLONNES_PIECES_FAITES);
   var defaut = ss.getSheetByName('Feuille 1') || ss.getSheetByName('Sheet1');
   if (defaut && ss.getSheets().length > 1) ss.deleteSheet(defaut);
 }
@@ -757,6 +758,16 @@ var COLONNES_HISTORIQUE_VRAC = ['Date', 'Domaine', 'Vrac', 'Tronqué', 'Erreur']
  *  serait lue avec l'ANCIENNE sémantique, sans erreur ni avertissement. */
 var COLONNES_HISTORIQUE_IMPORT = ['Date', 'Restants', 'Extraits', 'Acceptés', 'Illisibles',
   'Sans texte', 'Échecs', 'Tag'];
+
+/**
+ * L'IDEMPOTENCE du rattrapage des pièces — une ligne par document traité. APPEND-ONLY.
+ *
+ * ⚠️ Elle tenait dans une Script Property jusqu'au 21/09/2026, plafonnée à ~9 Ko, soit ~200
+ * documents. Une tranche de 976 papiers l'a fait refuser (et le refus était le bon
+ * comportement : une Property qui déborde lève À L'ÉCRITURE, donc la campagne re-paierait un
+ * appel LLM par document à chaque passe sans jamais avancer).
+ */
+var COLONNES_PIECES_FAITES = ['FileId', 'Tag', 'Le'];
 
 /**
  * Construit les lignes de l'onglet Télémétrie. PURE (testée) : tout l'état arrive en paramètres,

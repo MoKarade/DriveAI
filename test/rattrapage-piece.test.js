@@ -141,19 +141,23 @@ test('rattrapageDoitTourner_ : le TAG est lu AVANT le compteur', () => {
 
 test('la liste des faits vit SOUS le tag : un bump la vide vraiment', () => {
   const c = ctx();
-  const faits = {}; faits[ID(1)] = 1; faits[ID(2)] = 1;
-  const encode = c.encoderFaitsRattrapage_('c49-5-a', faits);
+  // ⚠️ L'idempotence a quitté la Script Property le 21/09/2026 (voir le cas du plafond plus
+  // bas) : elle vit dans l'onglet `PiecesFaites`, une ligne par document. Ce que ce cas défend
+  // n'a PAS changé — c'est le filtrage par tag, sans lequel bumper pour tout refaire
+  // laisserait l'ancienne liste en place et la campagne relancée ne traiterait rien.
+  const lignes = [[ID(1), 'c49-5-a', '2026-09-18 10:00'], [ID(2), 'c49-5-a', '2026-09-18 10:01']];
 
   assert.deepStrictEqual(
-    Object.keys(c.decoderFaitsRattrapage_(encode, 'c49-5-a')).sort(), [ID(1), ID(2)].sort());
-  // ⚠️ Sans le tag DANS la valeur, bumper pour tout refaire laisserait l'ancienne liste en
-  // place : la campagne relancée ne traiterait rien et la Santé annoncerait « terminée ».
+    Object.keys(c.filtrerFaitsParTag_(lignes, 'c49-5-a')).sort(), [ID(1), ID(2)].sort());
   // ⚠️ `deepStrictEqual` contre `{}` échoue ici : l'objet naît dans le sandbox `vm` et n'a
   // donc pas le `Object.prototype` de l'hôte — « same structure but not reference-equal ».
   // On compare les CLÉS, qui reviennent en tableau de l'hôte.
-  assert.deepStrictEqual(Object.keys(c.decoderFaitsRattrapage_(encode, 'c49-5-b')), []);
-  assert.deepStrictEqual(Object.keys(c.decoderFaitsRattrapage_(null, 'c49-5-a')), []);
-  assert.deepStrictEqual(Object.keys(c.decoderFaitsRattrapage_('', 'c49-5-a')), []);
+  assert.deepStrictEqual(Object.keys(c.filtrerFaitsParTag_(lignes, 'c49-5-b')), [],
+    'les lignes d\'un tag précédent RESTENT dans l\'onglet — elles ne doivent rien freiner');
+  assert.deepStrictEqual(Object.keys(c.filtrerFaitsParTag_(null, 'c49-5-a')), []);
+  assert.deepStrictEqual(Object.keys(c.filtrerFaitsParTag_([], 'c49-5-a')), []);
+  // Une ligne sans fileId ne compte pas : elle rendrait « fait » un document vide.
+  assert.deepStrictEqual(Object.keys(c.filtrerFaitsParTag_([['', 'c49-5-a', '']], 'c49-5-a')), []);
 });
 
 /* ---------- PUR : ce que la Santé dit ---------- */
@@ -192,7 +196,20 @@ function montage(lignesIndex, props, options) {
   });
   // ⚠️ APRÈS le chargement : `Config.gs` définit `feuille_`, donc un override passé au sandbox
   // serait ÉCRASÉ au load et la mutation resterait muette.
-  c.feuille_ = () => feuille;
+  //
+  // ⚠️ DEUX onglets depuis le 21/09/2026 : l'Index, et `PiecesFaites` qui porte l'idempotence
+  // (elle a quitté la Script Property, plafonnée à ~200 documents). Un seul faux `feuille_`
+  // rendrait l'Index pour les deux, et la liste des faits lirait des lignes d'Index — donc des
+  // clés qui ne sont pas des fileId, donc une idempotence toujours vide, en silence.
+  c.faitsEcrits = [];
+  const feuilleFaits = {
+    getLastRow: () => c.faitsEcrits.length + 1,
+    getRange: (ligne, col, n) => ({
+      getValues: () => c.faitsEcrits.slice(ligne - 2, ligne - 2 + n),
+      setValues: (v) => { for (const l of v) c.faitsEcrits.push(l); },
+    }),
+  };
+  c.feuille_ = (nom) => (nom === 'PiecesFaites' ? feuilleFaits : feuille);
   c.journalInfo_ = () => {};
   c.journalErreur_ = () => {};
   // `dateGmail_` vit dans `Gmail.gs`, non chargé ici : le charger tirerait tout l'intake pour
@@ -230,7 +247,7 @@ test('l\'étape envoie 04 d\'abord, marque les faits et le DIT dans son signal',
   assert.strictEqual(c.appels[0].opts.rattrapage, true,
     'le canal doit recevoir le drapeau, sinon il répond « désactivé » et rien ne part');
 
-  const faits = c.decoderFaitsRattrapage_(props.get('DriveAI_RATTRAPAGE_PIECE_FAITS'), 'c49-5-a');
+  const faits = c.filtrerFaitsParTag_(c.faitsEcrits, 'c49-5-a');
   assert.deepStrictEqual(Object.keys(faits).sort(), [ID(1), ID(2)].sort());
   assert.match(props.get('DriveAI_RATTRAPAGE_PIECE_FIN'), /\|termine\|2\/0\/0\/0\|0\|tick$/);
   assert.strictEqual(props.get('DriveAI_RATTRAPAGE_PIECE_RESTANTS'), '0');
@@ -251,7 +268,7 @@ test('UN DOCUMENT ILLISIBLE est compté à part, et il est MARQUÉ fait', () => 
   assert.strictEqual(res.illisibles, 1, 'le refus du modèle a son propre compteur');
   assert.strictEqual(res.echecs, 0, 'et il ne doit PAS ressembler à une panne');
   assert.strictEqual(res.faits, 0, 'rien n\'a été extrait : ce n\'est pas une lecture');
-  const faits = c.decoderFaitsRattrapage_(props.get('DriveAI_RATTRAPAGE_PIECE_FAITS'), 'c49-5-a');
+  const faits = c.filtrerFaitsParTag_(c.faitsEcrits, 'c49-5-a');
   assert.deepStrictEqual(Object.keys(faits), [ID(1)],
     'sans la marque, la photo revient à chaque passe et la tranche ne finit jamais');
   assert.strictEqual(res.restants, 0);
@@ -270,7 +287,7 @@ test('UNE PANNE DE CANAL ne marque rien et rend la main', () => {
   // ⚠️ LE CAS LE PLUS COÛTEUX DU FICHIER. Marquer « fait » ici perdrait les deux documents À
   // VIE : ils ne reviendraient ni par le rattrapage (marqués), ni par le flux (déjà classés).
   assert.deepStrictEqual(
-    Object.keys(c.decoderFaitsRattrapage_(props.get('DriveAI_RATTRAPAGE_PIECE_FAITS'), 'c49-5-a')), []);
+    Object.keys(c.filtrerFaitsParTag_(c.faitsEcrits, 'c49-5-a')), []);
   assert.strictEqual(c.appels.length, 1, 'et la boucle s\'arrête : le refus serait identique');
 });
 
@@ -287,7 +304,7 @@ test('un verdict PROPRE AU DOCUMENT se marque, lui', () => {
   // Une photo illisible se marque : sans ça elle serait re-téléchargée à chaque passe, à vie,
   // et la tranche ne se terminerait jamais.
   assert.deepStrictEqual(
-    Object.keys(c.decoderFaitsRattrapage_(props.get('DriveAI_RATTRAPAGE_PIECE_FAITS'), 'c49-5-a')).sort(),
+    Object.keys(c.filtrerFaitsParTag_(c.faitsEcrits, 'c49-5-a')).sort(),
     [ID(1), ID(2)].sort());
 });
 
@@ -307,7 +324,7 @@ test('trois lectures Drive impossibles D\'AFFILÉE retirent les marques déjà p
   // les deux premiers : une panne GLOBALE (scope perdu, throttle) viderait la tranche par le
   // bord. La même erreur porte des causes d'ÉCHELLES différentes, et c'est la SÉRIE qui tranche.
   assert.deepStrictEqual(
-    Object.keys(c.decoderFaitsRattrapage_(props.get('DriveAI_RATTRAPAGE_PIECE_FAITS'), 'c49-5-a')), []);
+    Object.keys(c.filtrerFaitsParTag_(c.faitsEcrits, 'c49-5-a')), []);
   assert.strictEqual(res.echecs, 0);
   assert.strictEqual(res.restants, 4, 'les quatre restent à faire');
 });
@@ -330,7 +347,7 @@ test('une lecture impossible ISOLÉE reste un verdict du document', () => {
   // Le canal a répondu pour le second : la série est rompue, donc ce qu'elle mettait en doute
   // est confirmé et les deux marques tiennent.
   assert.deepStrictEqual(
-    Object.keys(c.decoderFaitsRattrapage_(props.get('DriveAI_RATTRAPAGE_PIECE_FAITS'), 'c49-5-a')).sort(),
+    Object.keys(c.filtrerFaitsParTag_(c.faitsEcrits, 'c49-5-a')).sort(),
     [ID(1), ID(2)].sort());
 });
 
@@ -366,9 +383,8 @@ test('les cinq silences du canal se distinguent, et aucun ne ressemble à « rie
 
 test('la tranche TERMINÉE le dit, et ne réenvoie rien', () => {
   const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
-  const faits = {}; faits[ID(1)] = 1;
-  props.set('DriveAI_RATTRAPAGE_PIECE_FAITS', 'c49-5-a|' + ID(1));
   const c = montage([ligne(CLE(ID(1)), 'a.pdf', '04 · Immigration')], props);
+  c.faitsEcrits.push([ID(1), 'c49-5-a', '2026-09-18 10:00']);
 
   const res = c.etapeRattrapagePiece_(() => false, {});
   assert.strictEqual(res.fin, 'tranche-terminee');
@@ -376,32 +392,70 @@ test('la tranche TERMINÉE le dit, et ne réenvoie rien', () => {
   assert.strictEqual(props.get('DriveAI_RATTRAPAGE_PIECE_RESTANTS'), '0');
 });
 
-test('une tranche PLUS GRANDE que la Property est REFUSÉE, jamais découverte en production', () => {
+test('⚠️ UNE TRANCHE DE PLUS DE 200 TOURNE — le plafond de la Property est levé', () => {
+  // ⚠️⚠️ CE CAS S'EST INVERSÉ LE 21/09/2026, IL N'A PAS ÉTÉ SUPPRIMÉ. Il défendait « une
+  // tranche plus grande que ce qu'une Script Property peut porter est REFUSÉE » — et ce refus
+  // était juste : une Property qui déborde lève À L'ÉCRITURE, donc la campagne re-traiterait
+  // les mêmes documents à chaque passe, en payant un appel LLM à chaque fois, sans jamais
+  // avancer. La garde a d'ailleurs tiré en production le jour où Marc a demandé les 976
+  // papiers de « 02 · Finances ».
+  //
+  // Ce qui a changé n'est pas le jugement, c'est le MÉCANISME : l'idempotence vit maintenant
+  // dans l'onglet `PiecesFaites`, qui n'a pas ce plafond. Ce que ce cas défend désormais est
+  // l'autre moitié de la même règle — que la levée soit RÉELLE, et pas seulement annoncée.
   const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
   const lignes = [];
   const c0 = ctx();
-  const plafond = c0.RATTRAPAGE_PIECE_MAX_FAITS;
-  for (let i = 0; i <= plafond; i++) {
+  for (let i = 0; i <= c0.RATTRAPAGE_PIECE_MAX_FAITS; i++) {
     lignes.push(ligne(CLE(ID(1) + i), i + '.pdf', '04 · Immigration'));
   }
   const c = montage(lignes, props);
   const res = c.etapeRattrapagePiece_(() => false, {});
-  // ⚠️ Une Property qui déborde lève À L'ÉCRITURE : la campagne re-traiterait les mêmes
-  // documents à chaque passe, en payant un appel LLM à chaque fois, sans jamais avancer.
-  assert.strictEqual(res.fin, 'tranche-trop-grande');
-  assert.strictEqual(c.appels.length, 0, 'et rien n\'est dépensé avant le refus');
+  assert.notStrictEqual(res.fin, 'tranche-trop-grande', 'le refus ne doit plus exister');
+  // ⚠️ RESTANTS + TRAITÉS, jamais les seuls restants : le run en traite 5 (le plafond PAR RUN,
+  // qui lui n'a pas bougé), donc le compteur redescend sous la barre au premier passage et
+  // l'assertion mesurerait le plafond de run au lieu de celui de la tranche.
+  assert.ok(res.restants + c.appels.length > c0.RATTRAPAGE_PIECE_MAX_FAITS,
+    'la tranche entière est vue : ' + res.restants + ' restants + ' + c.appels.length + ' traités');
+  assert.ok(c.appels.length > 0, 'et elle AVANCE — sinon la levée ne serait qu\'un mot');
 });
 
-test('le plafond de la liste TIENT dans une Script Property (~9 Ko)', () => {
-  const c = ctx();
-  const faits = {};
-  for (let i = 0; i < c.RATTRAPAGE_PIECE_MAX_FAITS; i++) faits[ID(1) + i] = 1;
-  const encode = c.encoderFaitsRattrapage_('c49-5-a', faits);
-  // ⚠️ Mesuré au PLAFOND, pas sur la valeur du jour : un `fileId` pèse ~29 caractères plus un
-  // séparateur, et la limite d'une Script Property est de 9 Ko. Le test tombe si quelqu'un
-  // relève le plafond sans changer de mécanisme d'idempotence.
-  assert.ok(encode.length < 9000,
-    'la liste au plafond pèse ' + encode.length + ' caractères, limite ~9000');
+test('⚠️ UNE LISTE ILLISIBLE fait S\'ABSTENIR, elle ne se lit pas « rien de fait »', () => {
+  // ⚠️ ÉCHEC FERMÉ. Rendre `{}` sur une lecture ratée est la pire issue : la tranche entière
+  // repartirait de zéro, en payant UN APPEL DE MODÈLE PAR DOCUMENT — et ça se répéterait à
+  // chaque passe tant que l'onglet reste illisible. Une panne de Sheet deviendrait une
+  // facture. Mesuré : sans le refus, 5 appels partent sur un onglet en panne.
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const c = montage([
+    ligne(CLE(ID(1)), 'a.pdf', '04 · Immigration'),
+    ligne(CLE(ID(2)), 'b.pdf', '04 · Immigration'),
+  ], props);
+  const vrai = c.feuille_;
+  c.feuille_ = (nom) => {
+    if (nom === 'PiecesFaites') throw new Error('Sheet indisponible');
+    return vrai(nom);
+  };
+  const res = c.etapeRattrapagePiece_(() => false, {});
+  assert.strictEqual(res.fin, 'faits-illisibles');
+  assert.strictEqual(c.appels.length, 0, 'et RIEN n\'est dépensé');
+});
+
+test('⚠️ L\'IDEMPOTENCE NE REVIENT PAS DANS UNE SCRIPT PROPERTY', () => {
+  // ⚠️ L'inverse du cas d'avant, et il est nécessaire : sans lui, « on a levé le plafond » se
+  // réduirait à un commentaire. Ce qui est interdit ici est le RETOUR EN ARRIÈRE — une
+  // prochaine session qui re-poserait la liste dans une Property « parce que c'est plus
+  // simple » re-fabriquerait le mur de ~200 documents, et il ne se verrait qu'en production.
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', 'src', 'RattrapagePiece.gs'), 'utf8');
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  assert.ok(!/setProperty\([^)]*RATTRAPAGE_PIECE_FAITS/.test(code),
+    'la liste des faits ne s\'écrit plus dans une Property');
+  assert.ok(/feuille_\('PiecesFaites'\)/.test(code),
+    'elle vit dans l\'onglet — anti-vacuité : si ce jeton disparaît, le scan ne prouve plus rien');
+  // Et la largeur ÉCRITE suit l'en-tête : une colonne ajoutée à l'un sans l'autre décalerait
+  // tout ce qui suit, sans erreur, dans un onglet append-only qui ne se corrige pas.
+  const c = load(['Config.gs', 'Journal.gs'], {});
+  assert.strictEqual(c.COLONNES_PIECES_FAITES.length, 3);
 });
 
 test('le budget quotidien est PARTAGÉ avec l\'audit : aucune addition à l\'enveloppe', () => {
