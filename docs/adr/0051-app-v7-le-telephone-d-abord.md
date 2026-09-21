@@ -87,3 +87,33 @@ Réglages ou dans l'Agenda) ; PWA conservée ; animations courtes, aucune sous
 `google.ts`, `etat.ts`, `agenda.ts`, `agendasStore.ts`, `explorateur.ts`, `corbeille.ts`,
 `garde-fous.ts`, tout `api/`, les scopes OAuth, le contrat hub. La refonte ne touche que ce qui
 s'affiche.
+
+---
+
+## 7. Révision du 2026-09-21 — un CINQUIÈME onglet : « Lecture »
+
+**Décidé par Marc**, le jour même, après deux messages : « ça ne m'explique toujours pas
+l'avancement », puis « je veux vraiment un onglet précis pour l'avancement, avec ce qui est en
+train d'être lu, ce qui a déjà été lu etc etc ». La question a été posée en choix explicite —
+5ᵉ onglet, page dans Documents, ou page dans Réglages — et il a tranché pour le 5ᵉ onglet.
+
+**Ce que cet ADR avait figé** : quatre entrées dans la barre du bas, « le téléphone d'abord ».
+La raison tenait : une barre chargée est une barre qu'on ne vise pas.
+
+**Ce que la mesure a ajouté.** L'avancement de la lecture vivait dans une ligne de Santé, au
+milieu de quinze autres, dans **Réglages** — l'écran qu'on ouvre le moins. Marc a dit deux
+fois qu'il ne trouvait pas l'information ; elle était là, et c'est exactement le défaut qu'un
+onglet corrige. Un cinquième onglet coûte de la largeur ; l'information introuvable coûtait la
+confiance dans tout le reste.
+
+**Ce qui tient encore**, et qui ne se re-négocie pas ici :
+- la barre du bas reste la navigation du téléphone, et rien ne s'y ajoute sans arbitrage ;
+- **cinq cases de 64 à 72 px** sur un écran de 320 à 360 px : au-dessus du seuil tactile de
+  44 px, mesuré avant de livrer ;
+- ⚠️ la grille CSS était figée à `repeat(4, 1fr)`. Elle est passée à 5 **et** une garde la
+  DÉRIVE désormais de `SECTIONS_NAV.length` (`app/test/lecture.test.ts`) : la valeur avait
+  survécu au passage à cinq sans qu'aucun test ne rougisse, et une case de trop dans une
+  grille figée ne se voit que sur un téléphone.
+
+**Ce que la révision N'autorise PAS** : un sixième onglet. La question se reposera à Marc, avec
+ce que ça coûte en largeur, et la mesure à l'appui.

@@ -193,11 +193,22 @@ function lireFaitsRattrapage_(tag) {
 }
 
 /** Ajoute les documents de ce run à l'onglet. I/O. */
-function ajouterFaitsRattrapage_(tag, ids, quand) {
-  if (!ids || !ids.length) return;
+function ajouterFaitsRattrapage_(tag, entrees, quand) {
+  if (!entrees || !entrees.length) return;
   var lignes = [];
-  for (var i = 0; i < ids.length; i++) lignes.push([ids[i], String(tag || ''), quand]);
+  for (var i = 0; i < entrees.length; i++) {
+    var e = entrees[i] || {};
+    lignes.push([String(e.id || ''), String(tag || ''), quand,
+      String(e.nom || ''), String(e.motif || '')]);
+  }
   var f = feuille_('PiecesFaites');
+  // ⚠️ RÉPARATION D'EN-TÊTE, posée ICI et pas dans `initialiserSheet_` : celle-là ne tourne
+  // qu'à la création de la Sheet ou quand l'onglet est ABSENT. L'onglet existe déjà en prod
+  // avec trois colonnes — le cas même où la réparation est nécessaire — donc l'y mettre
+  // serait du code mort (leçon de la colonne `Erreur` d'`HistoriqueVrac`, §9).
+  if (f.getLastColumn() < COLONNES_PIECES_FAITES.length) {
+    f.getRange(1, 1, 1, COLONNES_PIECES_FAITES.length).setValues([COLONNES_PIECES_FAITES]);
+  }
   // ⚠️ La largeur vient de la LIGNE, pas de la constante d'en-tête : celle-ci vit dans
   // `Journal.gs`, et un appelant qui ne le charge pas ferait lever `.length` — dans un
   // `try/catch` qui avale, donc la liste ne serait jamais écrite, EN SILENCE. Un test lie
@@ -590,7 +601,10 @@ function etapeRattrapagePiece_(garde, opts) {
           // ⚠️ ET de la liste à ÉCRIRE : depuis que l'idempotence vit dans un onglet, retirer la
           // marque en mémoire ne suffit plus — sans cette ligne, le document serait quand même
           // inscrit « fait » et jamais repris, ce que ce coupe-circuit existe pour empêcher.
-          var pos = aEcrire.indexOf(marquesFragiles[f]);
+          var pos = -1;
+          for (var q = 0; q < aEcrire.length; q++) {
+            if (aEcrire[q].id === marquesFragiles[f]) { pos = q; break; }
+          }
           if (pos !== -1) aEcrire.splice(pos, 1);
         }
         break;
@@ -611,7 +625,9 @@ function etapeRattrapagePiece_(garde, opts) {
     // sans ça, une photo illisible serait re-téléchargée et re-extraite à chaque passe, à vie,
     // et la tranche ne se terminerait jamais.
     faits[doc.fileId] = 1;
-    aEcrire.push(doc.fileId);
+    // ⚠️ Le NOM et le MOTIF partent avec l'identifiant : un `fileId` est opaque, donc une
+    // liste qui n'en porte que lui ne répond à aucune question qu'un humain se pose.
+    aEcrire.push({ id: doc.fileId, nom: doc.nom, motif: motif });
     res.restants--;
   }
 

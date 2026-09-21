@@ -767,7 +767,10 @@ var COLONNES_HISTORIQUE_IMPORT = ['Date', 'Restants', 'Extraits', 'Acceptés', '
  * comportement : une Property qui déborde lève À L'ÉCRITURE, donc la campagne re-paierait un
  * appel LLM par document à chaque passe sans jamais avancer).
  */
-var COLONNES_PIECES_FAITES = ['FileId', 'Tag', 'Le'];
+// ⚠️ `Nom` et `Motif` sont arrivés EN QUEUE le 21/09, jamais en insertion : l'app lit cet
+// onglet et se déploie séparément du moteur. Pendant la fenêtre entre les deux déploiements,
+// chaque position décalée serait lue avec l'ANCIENNE sémantique, sans erreur ni warning.
+var COLONNES_PIECES_FAITES = ['FileId', 'Tag', 'Le', 'Nom', 'Motif'];
 
 /**
  * Construit les lignes de l'onglet Télémétrie. PURE (testée) : tout l'état arrive en paramètres,

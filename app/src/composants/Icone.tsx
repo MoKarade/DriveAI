@@ -6,7 +6,7 @@
  */
 
 export type NomIcone =
-  | 'aujourdhui' | 'agenda' | 'documents' | 'assistant' | 'reglages'
+  | 'aujourdhui' | 'agenda' | 'documents' | 'assistant' | 'lecture' | 'reglages'
   | 'plus' | 'chevron' | 'retour' | 'fermer' | 'menu' | 'rafraichir'
   | 'fichier' | 'dossier' | 'mail' | 'alerte' | 'externe' | 'horloge'
   | 'recherche' | 'envoyer' | 'coche' | 'deplacer' | 'cadenas' | 'etincelle';
@@ -18,6 +18,8 @@ const TRACES: Record<NomIcone, string> = {
   agenda: 'M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2z M3 10h18 M8 3v4 M16 3v4',
   documents: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z',
   assistant: 'M21 12a8 8 0 0 1-11.5 7.2L4 21l1.8-4.5A8 8 0 1 1 21 12z',
+  // Un livre ouvert : l'onglet dit où en est la LECTURE des papiers.
+  lecture: 'M3 5h6a3 3 0 0 1 3 3v11a3 3 0 0 0-3-3H3z M21 5h-6a3 3 0 0 0-3 3v11a3 3 0 0 1 3-3h6z',
   reglages: 'M12 9a3 3 0 1 1 0 6a3 3 0 1 1 0-6 M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1',
   plus: 'M12 5v14M5 12h14',
   chevron: 'M9 6l6 6-6 6',
