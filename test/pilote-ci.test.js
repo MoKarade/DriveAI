@@ -352,6 +352,29 @@ test('deploy.yml : le déclencheur est réinstallé APRÈS le redéploiement de 
   assert.ok(/continue-on-error: true/.test(wf), 'ne jamais faire échouer un déploiement réussi sur ce confort');
 });
 
+test('deploy.yml : le déclencheur est réinstallé dès que le CODE est poussé, même si le redéploiement de la web app échoue', () => {
+  // [CI-TRIGGER-APRES-PUSH] Le 21/09/2026, `clasp deploy` a buté sur les 200 versions d'Apps
+  // Script. L'étape du déclencheur portait alors `if: steps.guard.outputs.ready == 'true'` —
+  // or GitHub Actions SAUTE une étape dès qu'une étape amont a échoué, quelle que soit sa
+  // condition, sauf si elle contient `always()`. Le déclencheur n'a donc pas été réinstallé et
+  // le tick a continué d'exécuter l'ANCIEN code (piège n° 3), mesuré sur les ticks de 20:38 et
+  // 20:44 UTC. Ce qui décide du code exécuté par le TICK, c'est le PUSH — pas le deploy.
+  const wf = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'deploy.yml'), 'utf8');
+  const posPush = wf.indexOf('clasp push --force');
+  const posId = wf.indexOf('id: push');
+  assert.ok(posId !== -1 && posId < posPush,
+    'l\'étape qui pousse le code porte `id: push` — sans identifiant, aucune condition ne peut la citer');
+  const bloc = wf.slice(wf.indexOf('- name: Assurer le déclencheur'));
+  const cond = /if:\s*(.+)/.exec(bloc);
+  assert.ok(cond, 'condition de l\'étape du déclencheur introuvable');
+  assert.ok(/always\(\)/.test(cond[1]),
+    '`always()` est ce qui empêche GitHub de SAUTER l\'étape après un `clasp deploy` rouge — ' +
+    'sans lui, tout échec du redéploiement de la web app fige le moteur sur l\'ancien code, en silence');
+  assert.ok(/steps\.push\.outcome == 'success'/.test(cond[1]),
+    'mais uniquement quand le CODE a bien été poussé : `always()` seul réinstallerait le ' +
+    'déclencheur même sur un push raté, ou quand le déploiement n\'est pas configuré');
+});
+
 /* ---------- C28-58 : le pilote est du travail AUTOMATIQUE, pas « une demande de Marc » ---------- */
 
 test('pousserResetPilote_ : son coût LLM porte sa propre clé, jamais l\'étiquette `app:` du doPost', () => {

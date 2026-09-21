@@ -87,6 +87,7 @@ jobs:
           printf '{ "scriptId": "%s", "rootDir": "src" }\n' "$SCRIPT_ID" > .clasp.json
 
       - name: Pousser le code
+        id: push
         if: steps.guard.outputs.ready == 'true'
         run: clasp push --force || (sleep 5 && clasp push --force) # retry léger (erreurs réseau transitoires)
 
@@ -115,8 +116,17 @@ jobs:
       # ~4 jours de prod figée vécus, CI verte, zéro erreur). Supprimer/recréer le déclencheur force
       # le rechargement. Placé APRÈS le redéploiement de la web app : c'est la NOUVELLE version qui
       # doit servir l'action. Jamais bloquant (le code est poussé de toute façon).
+      #
+      # ⚠️ [CI-TRIGGER-APRES-PUSH] La condition suit le PUSH, jamais le DEPLOY — et c'est `always()`
+      # qui le permet. Sans lui, GitHub Actions SAUTE cette étape dès qu'une étape amont échoue :
+      # le 21/09/2026, `clasp deploy` a buté sur les 200 versions d'Apps Script, le déclencheur n'a
+      # donc pas été réinstallé, et le tick a continué d'exécuter l'ANCIEN code — mesuré sur les
+      # ticks de 20:38 et 20:44 UTC, postérieurs au push de 20:39:36 : la ligne de Santé attendue
+      # était absente. Autrement dit, N'IMPORTE QUEL échec du redéploiement de la web app (quota,
+      # réseau, secret) figeait le moteur en silence. `steps.push.outcome == 'success'` est la
+      # bonne condition : ce qui décide du code exécuté par le TICK, c'est le push.
       - name: Assurer le déclencheur (fin du geste manuel)
-        if: steps.guard.outputs.ready == 'true'
+        if: always() && steps.push.outcome == 'success'
         continue-on-error: true
         env:
           URL: ${{ secrets.DRIVEAI_WEBAPP_URL }}

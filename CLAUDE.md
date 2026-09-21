@@ -1645,16 +1645,32 @@ a laissé, et la Progression purge ses lignes finies après 48 h.
   au lieu de rendre la VRAIE structure (`.contenu`, qui porte
   `calc(var(--barre-basse-h) + 1.7rem + …)`) fabrique exactement le défaut qu'on cherche.
 
-- ⚠️⚠️ **`clasp push` et `clasp deploy` sont DEUX étapes, et un run rouge ne dit pas laquelle
-  est tombée** (21/09, C49-23). `deploy.yml` a échoué sur
-  `Cannot create more versions: Script has reached the limit of 200 versions` — mais le log
-  montre que le **push a réussi** (les 40 fichiers sont listés) : c'est le `clasp deploy` de la
-  web app qui a buté. Conséquence exacte, et il ne faut ni l'exagérer ni la minimiser : **le
-  TICK exécute bien le nouveau code** (c'est le push qui le décide), pendant que **`/exec`
-  reste figée sur son ancienne version** (c'est le deploy qui la fait avancer). Lire « rouge »
-  comme « rien n'est déployé » aurait fait rejouer un lot déjà en ligne ; le lire comme « tout
-  va bien » laisserait le piège n° 4 ouvert au prochain lot qui touche `WebApp.gs` — réponse
-  `{ok:true}` sans le champ attendu, zéro erreur, panne muette.
+- ⚠️⚠️⚠️ **UNE ÉTAPE DE CI SAUTÉE NE RESSEMBLE À RIEN — et celle-là était le SEUL mécanisme
+  qui fait recharger le code au moteur** (21/09, C49-23). `deploy.yml` a échoué sur
+  `Cannot create more versions: Script has reached the limit of 200 versions`. J'ai lu le log,
+  vu que le **push avait réussi** (40 fichiers listés) et que seul le `clasp deploy` de la web
+  app avait buté, puis j'ai écrit dans DEUX documents vivants que « le TICK exécute bien le
+  nouveau code, c'est le push qui le décide ». **Faux.** Re-mesuré sur les ticks de 20:38 et
+  20:44 UTC (le second postérieur au push de 20:39:36) : la ligne de Santé que le lot venait
+  d'ajouter était ABSENTE — 18 lignes, pas 19. Le moteur tournait sur l'ancien code.
+  La cause, LUE dans l'API des jobs et non déduite : l'étape « Assurer le déclencheur » porte
+  `conclusion: "skipped"`. Sa condition était `if: steps.guard.outputs.ready == 'true'`, sans
+  `always()` — **GitHub Actions saute une étape dès qu'une étape amont a échoué, quelle que soit
+  sa condition**, et `continue-on-error: true` sur l'étape elle-même n'y change rien (il dit ce
+  qui se passe quand ELLE échoue, pas quand une AUTRE a échoué avant). Or supprimer/recréer le
+  déclencheur est précisément ce qui force Apps Script à recharger (piège n° 3), et le workflow
+  le dit depuis toujours dans son propre commentaire — que j'avais lu.
+  ⚠️ **Le défaut n'est pas « les 200 versions »** : n'importe quel échec du redéploiement de la
+  web app (quota, réseau, secret retiré) figeait le moteur sur l'ancien code, en silence, avec
+  un `clasp push` vert dans le log. Corrigé par `if: always() && steps.push.outcome == 'success'`
+  — ce qui décide du code exécuté par le TICK, c'est le PUSH — et gardé par
+  `test/pilote-ci.test.js` (3 mutations rouges : sans `always()`, sans `id: push`, et `always()`
+  seul, qui réinstallerait le déclencheur même sur un push raté).
+  ⚠️ **La leçon de conduite est celle qui coûte** : un raisonnement JUSTE sur les étapes qu'on a
+  lues (« le push a réussi, donc le code est à jour ») reste une DÉDUCTION, et une déduction ne
+  s'écrit pas au présent dans un document vivant. Le signal était à une mesure de distance — la
+  ligne de Santé que le lot venait d'ajouter. **Une réparation n'est finie qu'avec la mesure de
+  son effet**, et un déploiement partiellement rouge est exactement le moment de la prendre.
   ⚠️ **Un plafond de plateforme se remplit sans jamais prévenir** : les cinq runs précédents du
   même jour étaient verts, et chaque merge crée une version. Une fois les 200 atteintes, TOUS
   les merges suivants échouent au même endroit. Le geste (purger l'historique des versions du

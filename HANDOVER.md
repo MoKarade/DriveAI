@@ -2967,16 +2967,36 @@ Détail des tâches : `BACKLOG.md`.
    `Cannot create more versions: Script has reached the limit of 200 versions. To create more,
    delete a version from the project history page.`
 
-   **Ce qui marche encore, et ce qui ne marche plus** — la distinction est tout le sujet :
-   - ✅ **`clasp push` RÉUSSIT** (les 40 fichiers sont listés dans le log). Le CODE du projet est
-     à jour, donc **le tick exécute la nouvelle version** — c'est l'étape qui a échoué juste
-     après, pas celle-là.
-   - ❌ **`clasp deploy -i $WEBAPP_DEPLOYMENT_ID` ÉCHOUE.** La web app `/exec` reste donc figée
-     sur sa version épinglée. Sans conséquence pour C49-23 (qui ne touche ni `WebApp.gs` ni
-     `doGet`/`doPost`) — mais **au prochain lot qui y touche, l'app et le miroir appelleront une
-     version qui ne connaît pas la nouvelle action**, et le piège n° 4 du `CLAUDE.md` §9 dit
-     exactement ce que ça donne : une réponse `{ok:true}` SANS le champ attendu, zéro erreur,
-     panne silencieuse.
+   ⚠️⚠️ **CETTE ENTRÉE A AFFIRMÉ LE CONTRAIRE PENDANT QUELQUES HEURES, ET C'ÉTAIT FAUX.**
+   Première rédaction : « le CODE du projet est à jour, donc **le tick exécute la nouvelle
+   version** ». Re-mesuré sur les ticks de **20:38 et 20:44 UTC** — le second est postérieur au
+   push de 20:39:36 — la ligne de Santé que C49-23 venait d'ajouter (`Import — file`) est
+   **ABSENTE** : la Santé en porte toujours 18, pas 19. Le moteur tournait bien sur l'ANCIEN
+   code. La règle du §9 s'applique telle quelle : un re-check qui contredit un « prouvé »
+   antérieur se corrige immédiatement, là où il a été écrit.
+
+   **Ce qui marche, ce qui ne marche pas, et POURQUOI** — les trois étapes se lisent séparément :
+   - ✅ **`clasp push` RÉUSSIT** (20:39:31 → 20:39:36, les 40 fichiers listés). Le CODE du projet
+     Apps Script est bien à jour.
+   - ❌ **`clasp deploy -i $WEBAPP_DEPLOYMENT_ID` ÉCHOUE** (20:39:36 → 20:39:44). La web app
+     `/exec` reste figée sur sa version épinglée. C'est le piège n° 4 du `CLAUDE.md` §9 : au
+     prochain lot qui touche `WebApp.gs`, l'app et le miroir appelleront une version qui ignore
+     la nouvelle action — réponse `{ok:true}` SANS le champ attendu, zéro erreur, panne muette.
+   - ⏭️ **« Assurer le déclencheur » a été SAUTÉE** — `conclusion: "skipped"` dans l'API des jobs
+     (run 35652410816, étape 9), LU et non déduit. Sa condition était
+     `if: steps.guard.outputs.ready == 'true'`, sans `always()` : GitHub Actions saute une étape
+     dès qu'une étape amont a échoué, quelle que soit sa condition. Or c'est CETTE étape qui
+     supprime/recrée le déclencheur, donc **la seule chose qui force Apps Script à recharger le
+     code** (piège n° 3). Le `clasp push` vert ne suffit pas, et c'est écrit dans le workflow
+     depuis toujours.
+
+   ⚠️ **Le défaut est donc plus large que les 200 versions** : N'IMPORTE QUEL échec du
+   redéploiement de la web app — quota, réseau, secret retiré — figeait le moteur sur l'ancien
+   code, en silence. **Corrigé** : la condition est désormais
+   `if: always() && steps.push.outcome == 'success'`, gardée par `test/pilote-ci.test.js`
+   (3 mutations rouges). ⚠️ Le correctif ne prendra effet qu'au **prochain merge**, et son effet
+   se MESURE (la ligne `Import — file` doit apparaître dans la Santé) — il ne se déduit pas du
+   vert d'un run.
 
    **Le geste, et il n'appartient qu'à Marc** (frontière d'exécution — une session ne peut ni
    déployer ni exécuter dans Apps Script) : ouvrir le projet Apps Script → **Historique du
