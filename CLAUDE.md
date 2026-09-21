@@ -1419,6 +1419,37 @@ quand le domaine à zéro restant s'évapore.
 « combien de jours de campagne reste-t-il » — d'où un horizon annoncé en « jours OÙ LA CAMPAGNE
 TOURNE », jamais en jours de calendrier.
 
+**Un budget de lecture se dépense dans l'ORDRE du fichier, et le balisage vient en premier.**
+Le 21/09/2026, `extraireTexte_` tronquait à 12 000 caractères un export HTML dont le `<style>`
+fait à lui seul plus que ça : le modèle recevait une feuille de style coupée en plein milieu
+d'une règle CSS, **zéro caractère du document**, et il répondait quand même — « nom, date de
+naissance, informations email ou téléphone », en disant lui-même qu'il devinait. Mesuré sur le
+vrai fichier du Drive par l'outil du moteur DÉPLOYÉ, pas sur une fixture. Périmètre : **151
+papiers** au moins. **Nettoyer APRÈS la troncature n'aurait rien réparé — le contenu n'est déjà
+plus là**, et c'est ce qui rend l'ordre non négociable. ⚠️ Et le remède n'est PAS de relever la
+borne : 12 000 caractères de CSS coûtent exactement le même argent que 12 000 caractères de
+texte. Devant un budget qui semble trop petit, demander d'abord **ce qu'il dépense**.
+⚠️ **Un nettoyage qui ne rend RIEN rend le BRUT.** « Je n'ai pas su lire » n'est pas « ce
+document est vide », et c'est le second qui se fige en verdict (`sans-texte`) pour toujours :
+dégradé vaut mieux que menteur.
+⚠️ **Retirer `<head>` en bloc est plus simple et jette le `<title>`** — souvent la ligne la plus
+utile du fichier. On retire ce qui n'est JAMAIS du texte (style, script, commentaires), pas ce
+qui n'est pas du corps.
+⚠️ **Les balises de BLOC deviennent des sauts de ligne**, sinon deux cellules voisines se collent
+en un mot qui n'existe dans aucun document.
+⚠️ Et `text/plain` n'entre JAMAIS dans un retrait de balises : un bloc-notes qui écrit « 3 < 5 »
+serait mutilé. Le MIME vient de Drive et n'est pas fiable, l'EXTENSION vient du fichier — il faut
+les deux.
+
+**Un compteur ajouté LAISSE son libellé derrière, et rien ne le dit.** Le même jour, la Santé
+affichait « dernière passe : 3/0/1/1 (faits/échecs/sans texte) » : quatre chiffres, trois noms.
+Le compteur était juste ; c'est la phrase qui n'avait pas suivi quand `illisibles` est entré,
+cinq jours plus tôt. ⚠️ **Corriger le libellé a laissé les 1502 tests VERTS** — aucun ne
+l'épinglait, et c'est exactement pourquoi il avait pu dériver. La garde qui referme la classe est
+**COMPORTEMENTALE et DÉRIVÉE** : elle compte les chiffres que la passe sérialise et les noms que
+la phrase affiche, et exige l'égalité. Épingler le texte se re-baserait mécaniquement au prochain
+compteur ajouté — c'est-à-dire le jour où il faut que quelque chose rougisse.
+
 ## 10. Style et compte-rendu
 
 > 📣 Forme des comptes-rendus, des commits, des PR et des docs générées :

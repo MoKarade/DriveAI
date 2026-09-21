@@ -28,6 +28,26 @@
 > **Ce qui reste à surveiller** : la courbe n'aura son deuxième point qu'au prochain jour où la
 > campagne tourne (`HistoriqueImport` écrit un point par JOUR, et le tag a été bumpé
 > aujourd'hui). Un écran qui reste sans courbe demain soir est un signal, pas une patience.
+>
+> **Puis, le même jour, deux bugs PRÉEXISTANTS signés et corrigés sur feu vert (« fais les 3
+> points ») :**
+> - **C49-11 — l'OCR était mangé par le CSS.** Sur un export HTML, les 12 000 caractères du
+>   budget partaient en feuille de style AVANT d'atteindre la moindre donnée : le modèle
+>   répondait quand même, en devinant. Mesuré sur le vrai fichier du Drive (18 685 octets) par
+>   l'outil du moteur DÉPLOYÉ — l'extrait servi était du `<style>` de bout en bout, coupé en
+>   plein milieu d'une règle CSS. Périmètre : **151 papiers Facebook** au moins, plus tout autre
+>   HTML. Le balisage se retire désormais AVANT la troncature (`src/Ocr.gs`, trois fonctions
+>   PURES). ⚠️ **Le correctif n'est pas de relever la borne** : 12 000 caractères de CSS coûtent
+>   exactement le même argent que 12 000 caractères de texte.
+> - **C49-15 — la Santé nommait TROIS compteurs pour QUATRE chiffres** (« 3/0/1/1
+>   (faits/échecs/sans texte) »). Le quatrième — les documents dont la PHOTO est à refaire —
+>   n'avait pas de nom, donc il se lisait comme un chiffre de trop.
+>
+> ⚠️ **Le troisième point ne peut PAS être fait à la place de Marc** : `C49-3`, l'audit sur 100
+> documents stratifiés, est un VERDICT HUMAIN — la porte de l'ADR-0061 §7. L'extraction est
+> automatique et terminée ; le jugement se fait dans l'app (engrenage → « Vérifier », un
+> document à la fois). Un pré-juge automatique a été proposé et ÉCARTÉ : il partagerait l'OCR
+> de l'extracteur, donc il ne verrait aucune erreur de LECTURE.
 
 > **🟦 HISTORIQUE — 2026-09-18 : C49-5, le rattrapage des pièces `04` + `01`.**
 >
