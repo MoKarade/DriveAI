@@ -1587,6 +1587,22 @@ a laissé, et la Progression purge ses lignes finies après 48 h.
   le nombre de tests PASSÉS (1 554 → 1 553), jamais sur le seul compteur d'échecs. Rejouées
   correctement : 13/13 rouges, avec la référence et la restauration vertes de part et d'autre.
 
+- **Deux lignes du MÊME lot ne peuvent pas trancher à l'inverse — et c'est la mesure d'APRÈS qui
+  le dit** (21/09, C49-20). Le lot avait posé, pour la re-datation, « un arrêt délibéré garde son
+  avancement à l'écran » ; sur les doublons, éteindre la campagne a EFFACÉ son bilan (« 1 076
+  écartés : 1 054 confirmés, **19 ORPHELINS** ») au profit d'un « désactivée (CONFIG) » muet.
+  Deux arbitrages opposés, écrits le même jour, sur deux lignes voisines du même écran. Cause :
+  le prédicat `!DOUBLONS_ACTIF` vivait EN TÊTE de `ligneSanteDoublons_` — il était MORT tant que
+  la campagne tournait, et c'est mon lot qui l'a rendu ATTEIGNABLE. **Après avoir allumé un
+  interrupteur, relire les branches que personne ne pouvait atteindre avant** : elles n'ont
+  jamais été jugées, donc jamais alignées sur rien. ⚠️ Et ce qui l'a trouvé n'est ni la relecture
+  ni la revue de flotte (les deux l'ont manqué, sur un fichier qu'elles avaient lu) mais la
+  MESURE d'après, en comparant deux instantanés à neuf minutes d'écart.
+  ⚠️ Corollaire de coût : la ligne d'état d'une campagne ÉTEINTE ne doit pas relire son onglet à
+  chaque tick — et le prix de cette économie est de DIRE « je n'ai pas relu », jamais de rendre
+  un total à zéro. Un zéro qu'aucune mesure n'a produit est un chiffre inventé, même dans une
+  ligne de Santé.
+
 ## 10. Style et compte-rendu
 
 > 📣 Forme des comptes-rendus, des commits, des PR et des docs générées :

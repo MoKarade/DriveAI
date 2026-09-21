@@ -76,10 +76,29 @@ test('bilanDoublons_ : compte par verdict, et une ligne SANS verdict est « rest
 test('ligneSanteDoublons_ : dit la PHASE réelle — jamais un « OK » qui masque une campagne en cours', () => {
   const c = ctx();
   const b = plain(c.bilanDoublons_(['confirmé', 'orphelin', '']));
-  assert.ok(/inventaire/.test(c.ligneSanteDoublons_(c.PHASE_DOUBLONS_INVENTAIRE, b)));
-  assert.ok(/balayage/.test(c.ligneSanteDoublons_(c.PHASE_DOUBLONS_BALAYAGE, b)));
-  const fini = c.ligneSanteDoublons_(c.PHASE_DOUBLONS_FINI, b);
+  assert.ok(/inventaire/.test(c.ligneSanteDoublons_(false, c.PHASE_DOUBLONS_INVENTAIRE, b)));
+  assert.ok(/balayage/.test(c.ligneSanteDoublons_(false, c.PHASE_DOUBLONS_BALAYAGE, b)));
+  const fini = c.ligneSanteDoublons_(false, c.PHASE_DOUBLONS_FINI, b);
   assert.ok(/terminée/.test(fini) && /ORPHELINS/.test(fini), 'le compte d\'orphelins est LE livrable : il doit être lisible');
+});
+
+test('ligneSanteDoublons_ (C49-20) : ARRÊTER la campagne n\'efface pas son BILAN', () => {
+  // Régression MESURÉE en production le 21/09, sur le tick qui suivait l'arrêt : la ligne est
+  // passée de « terminée ✅ le 2026/08/22 — 1076 écartés : 1054 confirmés, 19 ORPHELINS » à
+  // « désactivée (CONFIG) ». Le prédicat `!DOUBLONS_ACTIF` vivait EN TÊTE, donc C49-20 l'a rendu
+  // ATTEIGNABLE et a effacé le seul livrable de la campagne — 19 fichiers dont il n'existe qu'un
+  // exemplaire, précisément ce que Marc doit pouvoir relire. Et c'était l'arbitrage INVERSE de
+  // celui pris trois lignes plus loin pour la re-datation, dans le même lot.
+  // Mutation : remonter `if (arretee)` avant le cas FINI ⇒ ce test tombe.
+  const c = ctx();
+  const b = plain(c.bilanDoublons_(['confirmé', 'orphelin', '']));
+  const fini = c.ligneSanteDoublons_(true, c.PHASE_DOUBLONS_FINI, b);
+  assert.ok(/terminée/.test(fini) && /ORPHELINS/.test(fini),
+    'terminée PUIS éteinte reste terminée, bilan compris : ' + fini);
+  // …et une campagne arrêtée EN COURS le dit, avec ce qu'elle avait recensé.
+  const coupee = c.ligneSanteDoublons_(true, c.PHASE_DOUBLONS_BALAYAGE, b);
+  assert.ok(/arrêtée \(CONFIG/.test(coupee) && /3 fichiers recensés/.test(coupee), coupee);
+  assert.ok(!/balayage/.test(coupee), 'un arrêt n\'est pas un balayage en cours : ' + coupee);
 });
 
 /* ---------- budgetJourDoublons_ (PURE sur props) ---------- */
@@ -324,6 +343,39 @@ test('à la CLÔTURE le bilan est FIGÉ en Property, et la ligne Santé ne relit
   const ligne = h.c.texteSanteDoublons_();
   assert.ok(/terminée/.test(ligne), 'la ligne Santé vient du bilan figé : ' + ligne);
   assert.ok(!/illisible/.test(ligne), 'et surtout pas du chemin d\'erreur');
+});
+
+test('texteSanteDoublons_ (C49-20) : ARRÊTÉE + terminée ⇒ le bilan figé est SERVI, et l\'onglet n\'est jamais lu', () => {
+  // C'est le cas RÉEL de la production depuis le 21/09 — et celui que le garde en tête de
+  // `texteSanteDoublons_` effaçait. Deux affirmations en une : le bilan revient, ET il revient
+  // sans toucher à `RapportDoublons` (relire un onglet à chaque tick pour une campagne éteinte
+  // est un coût pur). Mutation : remettre `if (!CONFIG.DOUBLONS_ACTIF) return 'désactivée…'` en
+  // tête de la fonction ⇒ ce test tombe.
+  const h = ctxMaj([], {
+    props: {
+      DriveAI_DOUBLONS_PHASE: 'fini',
+      DriveAI_DOUBLONS_BILAN: JSON.stringify(
+        { total: 1076, confirmes: 1054, orphelins: 19, indetermines: 3, restants: 0, le: '2026/08/22' }),
+    },
+  });
+  h.c.CONFIG = Object.assign({}, h.c.CONFIG, { DOUBLONS_ACTIF: false });
+  h.onglet.getLastRow = () => { throw new Error('l\'onglet ne doit pas être lu sur une campagne arrêtée'); };
+  const ligne = h.c.texteSanteDoublons_();
+  assert.ok(/terminée/.test(ligne) && /19 ORPHELINS/.test(ligne),
+    'éteindre la campagne ne doit pas effacer son bilan : ' + ligne);
+  assert.ok(!/illisible/.test(ligne), 'et surtout pas par le chemin d\'erreur : ' + ligne);
+});
+
+test('texteSanteDoublons_ (C49-20) : ARRÊTÉE sans bilan figé ⇒ elle DIT qu\'elle n\'a pas relu, jamais un zéro', () => {
+  // « Je ne l'ai pas relu » n'est pas « il n'y a rien » : rendre un total à 0 ici serait un
+  // chiffre qu'aucune mesure n'a produit (no-fake-data appliqué à une ligne d'état). Et l'onglet
+  // reste intouché. Mutation : remplacer ce retour par un appel avec un bilan à zéro ⇒ rouge.
+  const h = ctxMaj([], { props: { DriveAI_DOUBLONS_PHASE: 'balayage' } });
+  h.c.CONFIG = Object.assign({}, h.c.CONFIG, { DOUBLONS_ACTIF: false });
+  h.onglet.getLastRow = () => { throw new Error('l\'onglet ne doit pas être lu sur une campagne arrêtée'); };
+  const ligne = h.c.texteSanteDoublons_();
+  assert.ok(/arrêtée \(CONFIG/.test(ligne), ligne);
+  assert.ok(/non relu/.test(ligne) && !/0 fichiers/.test(ligne), 'aucun zéro inventé : ' + ligne);
 });
 
 test('campagne désactivée (CONFIG) → no-op TOTAL, aucune requête', () => {

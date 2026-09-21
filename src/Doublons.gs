@@ -139,14 +139,16 @@ function bilanDoublons_(verdicts) {
  * PURE — ligne Santé de la campagne. Marc lit CET écran ; il doit y voir l'état réel, jamais un
  * « OK » qui masque une campagne à l'arrêt (leçon §9 : « en PAUSE, dire le RESTE et la REPRISE,
  * jamais une date de fin »).
+ * @param {boolean} arretee  campagne ARRÊTÉE par CONFIG (`DOUBLONS_ACTIF: false`, C49-20).
+ *   EN PREMIER, comme `statutHistoGmail_` : ajouté en dernier, un appelant qui l'oublie
+ *   vaudrait `undefined`, donc « pas arrêtée » — le côté dangereux par défaut.
  * @param {string} phase
  * @param {{total:number, confirmes:number, orphelins:number, indetermines:number, restants:number}} bilan
  * @param {number} [passes]  balayages COMPLETS déjà accomplis
  * @param {string} [erreur]  dernière erreur rencontrée, '' si aucune
  * @return {string}
  */
-function ligneSanteDoublons_(phase, bilan, passes, erreur) {
-  if (!CONFIG.DOUBLONS_ACTIF) return 'désactivée (CONFIG)';
+function ligneSanteDoublons_(arretee, phase, bilan, passes, erreur) {
   passes = Number(passes) || 0;
   // La campagne n'a PAS d'entrée dans le registre de suivi (saturé) : sans ce report explicite, une
   // panne n'aurait aucun canal — ni « dernière erreur » dans l'app, ni ligne ici (revue quotas NB2).
@@ -156,6 +158,15 @@ function ligneSanteDoublons_(phase, bilan, passes, erreur) {
       bilan.confirmes + ' confirmés, ' + bilan.orphelins + ' ORPHELINS (seul exemplaire), ' +
       bilan.indetermines + ' indéterminés' + suffixe;
   }
+  // ⚠️ C49-20 — ARRÊTÉE, et APRÈS le cas « terminée » : c'est tout l'objet de ce garde.
+  // Le prédicat vivait EN TÊTE de la fonction, donc éteindre la campagne a effacé son bilan
+  // (« 1 076 écartés : 1 054 confirmés, 19 ORPHELINS ») au profit d'un « désactivée (CONFIG) »
+  // muet — mesuré en production le 21/09, sur le tick qui suivait l'arrêt. Une campagne qui a
+  // FINI puis qu'on éteint reste TERMINÉE, et son bilan est le seul livrable qu'elle ait laissé.
+  // C'est le même arbitrage que la re-datation de `06` (« un arrêt délibéré garde son
+  // avancement à l'écran ») ; les deux lignes du même lot ne peuvent pas trancher à l'inverse.
+  if (arretee) return 'arrêtée (CONFIG, C49-20) — ' + bilan.total +
+    ' fichiers recensés au moment de l\'arrêt' + suffixe;
   if (phase === PHASE_DOUBLONS_BALAYAGE) {
     return 'balayage du Drive ' + (passes + 1) + '/' + CONFIG.DOUBLONS_PASSES_MIN + ' — ' +
       bilan.total + ' écartés inventoriés, ' + bilan.confirmes + ' déjà confirmés' + suffixe;
@@ -511,7 +522,7 @@ function ecrireVerdictsDoublons_(f, n, verdicts, preuves) {
  * @return {string}
  */
 function texteSanteDoublons_() {
-  if (!CONFIG.DOUBLONS_ACTIF) return 'désactivée (CONFIG)';
+  var arretee = !CONFIG.DOUBLONS_ACTIF;
   try {
     var props = PropertiesService.getScriptProperties();
     var phase = props.getProperty('DriveAI_DOUBLONS_PHASE') || PHASE_DOUBLONS_INVENTAIRE;
@@ -520,12 +531,17 @@ function texteSanteDoublons_() {
     var erreur = props.getProperty('DriveAI_DOUBLONS_ERREUR') || '';
     if (phase === PHASE_DOUBLONS_FINI) {
       var fige = props.getProperty('DriveAI_DOUBLONS_BILAN');
-      if (fige) return ligneSanteDoublons_(phase, JSON.parse(fige), passes, erreur);
+      if (fige) return ligneSanteDoublons_(arretee, phase, JSON.parse(fige), passes, erreur);
     }
+    // ⚠️ ARRÊTÉE et pas terminée : on ne LIT PAS l'onglet. Le garde en tête de cette fonction
+    // existait aussi pour ça — relire `RapportDoublons` à chaque tick pour une campagne éteinte
+    // est un coût pur. Et on n'INVENTE pas un total à 0 : « je ne l'ai pas relu » n'est pas
+    // « il n'y a rien », c'est le no-fake-data appliqué à une ligne d'état.
+    if (arretee) return 'arrêtée (CONFIG, C49-20) — bilan non relu (onglet RapportDoublons)';
     var f = feuille_('RapportDoublons');
     var dern = f.getLastRow();
     var verdicts = dern > 1 ? f.getRange(2, 4, dern - 1, 1).getValues().map(function (l) { return l[0]; }) : [];
-    return ligneSanteDoublons_(phase, bilanDoublons_(verdicts), passes, erreur);
+    return ligneSanteDoublons_(arretee, phase, bilanDoublons_(verdicts), passes, erreur);
   } catch (e) {
     return '⚠️ état illisible (' + e + ')';
   }
