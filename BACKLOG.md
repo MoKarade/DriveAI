@@ -5,6 +5,24 @@
 
 ---
 
+## C49-15 — la ligne de Santé du rattrapage nomme TROIS compteurs pour QUATRE chiffres ⬜
+
+⚠️ **Bug PRÉEXISTANT, découvert le 21/09/2026 en vérifiant C49-14 sur la production. Signalé,
+pas corrigé — c'est du scope non demandé.**
+
+- [ ] **`src/RattrapagePiece.gs` écrit `faits/echecs/sansTexte/illisibles` (quatre valeurs,
+  ligne ~273) et l'affiche sous le libellé `(faits/échecs/sans texte)` (ligne ~436).** Mesuré
+  en production le 21/09 à 15:06 UTC : « dernière passe : **3/0/1/1** (faits/échecs/sans
+  texte) ». Le quatrième chiffre — les documents ILLISIBLES, ceux dont la photo est à refaire —
+  n'a pas de nom, donc il se lit comme un chiffre de trop.
+  ⚠️ C'est exactement la classe que C49-12/13/14 existent pour supprimer : un état dont
+  l'étiquette ment, sur la surface que Marc lit pour savoir où en est la lecture de ses papiers.
+  Le compteur, lui, est juste — c'est le libellé qui a été laissé derrière quand `illisibles`
+  est entré (C49-7/8, le même jour).
+  ⚠️ Le même fichier montre la forme JUSTE deux cents lignes plus bas (le rapport manuel, ligne
+  ~890, nomme ses quatre compteurs un par un) : le correctif est d'aligner le libellé, jamais de
+  retirer un chiffre.
+
 ## C49-12 / C49-13 / C49-14 — la campagne se REGARDE ✅
 
 > Trois lots du 21/09/2026, nés du même message de Marc, répété trois fois en escalade :
