@@ -2841,6 +2841,16 @@
 
 ## 1. TL;DR (où on en est)
 
+- **C49-23 (21/09, le plus récent)** : l'onglet **Lecture** montre désormais les DEUX files en
+  gros au-dessus du pli — **Import** (documents connus de la Mémoire, tout le Drive) et
+  **Lecture** (papiers ouverts, la tranche en cours) — plus le **pourcentage de certitude du
+  classement**. Les six sections de C49-13/14 sont **repliées**, pas supprimées. Côté moteur, une
+  ligne de Santé ENCODÉE `Import — file : <poussés>/<cible>` : les deux nombres existaient déjà,
+  mais seulement dans des phrases françaises que l'app n'a pas le droit de parser.
+  ⚠️ **À vérifier après déploiement** : la ligne n'apparaît qu'au premier tick qui suit le run
+  `deploy.yml`, et la jauge d'import reste ABSENTE tant que `DriveAI_PERIMETRE_PIECE` n'a pas été
+  mesuré (bump de `CONFIG.PERIMETRE_PIECE_TAG`). Mesuré au 21/09 : **2 731 / 4 240**, et 4 240
+  est un PLANCHER (734 lignes classées sans fileId de clé restent hors du compte).
 - **Phase 0** (scaffolding & automatisation) : ✅ mergée.
 - **Phase 1** (le cœur : Gmail → analyse → classement) : ✅ codée, revue par la flotte, mergée sur `main`.
 - **Automatisation live** : CI + auto-merge (PR `claude/**` verte → squash auto), `CLAUDE.md`

@@ -5,6 +5,44 @@
 
 ---
 
+## C49-23 — les DEUX files en tête d'écran, et le pourcentage de certitude ✅
+
+> Marc, 21/09 : « retravaille le style, l'affichage de l'app pour que je comprenne quelque chose
+> […] juste une file d'attente que je vois progresser, aussi le pourcentage de certitude, fil
+> d'attente pour import et fil d'attente pour lecture … moins de texte, très épuré, très simple,
+> gros boutons mais droit au but. » Arbitrage du même jour : **replier**, pas supprimer.
+
+- [x] **Mesuré AVANT de coder** : les deux nombres de la file d'IMPORT existaient déjà — dans la
+  PHRASE de « Mémoire (inventaire) » (2 731 faits acceptés) et dans celle du « Périmètre »
+  (4 240 documents classés). Donc mesurés, et illisibles pour l'app : le dépôt interdit de parser
+  une phrase. Le lot s'est réduit à **une ligne de Santé encodée**, `Import — file : 2731/4240`.
+- [x] **Moteur** : `cibleImportMemoire_` + `ligneFileImport_` (PURES, 5 cas) et
+  `texteSanteFileImport_`. La cible est `classees` du périmètre — ni `candidats` (la file de
+  LECTURE) ni `lues` (des lignes d'Index toutes natures) : trois nombres voisins dans le même
+  champ, et deux répondent à une autre question. Périmètre jamais mesuré ⇒ **motif**, jamais
+  « N/0 », qui afficherait une jauge pleine sur un comptage qui n'a pas eu lieu.
+- [x] **App** : `importFile` (lit l'encodé, refuse la prose) et `certitudeClassement` (PURES).
+  Deux jauges en gros au-dessus du pli, le pourcentage de certitude, puis les six sections de
+  C49-13/14 **repliées** derrière un `<summary>` de 44 px. Rien n'est perdu.
+- [x] **La certitude porte sur le CLASSEMENT**, jamais sur la lecture : aucune confiance n'est
+  attachée à l'extraction d'un papier, et en fabriquer une serait un chiffre inventé. Le
+  dénominateur est le nombre de lignes MESURÉES — les lignes sans mesure se comptent À PART,
+  sinon le pourcentage dérive tout seul au fil des vieilles lignes.
+- [x] **Chaque jauge porte son PÉRIMÈTRE** : l'import couvre tout le Drive, la lecture seulement
+  la tranche en cours. L'arbitrage du 21/09 (« la tranche et le reste ne se fondent pas en un
+  seul pourcentage ») reste entier — les barres par dossier survivent dans le détail.
+- [x] **5 mutations, 5 rouges.** ⚠️ La 4ᵉ a d'abord été MUETTE : mon témoin « ne lit pas la
+  prose » échouait sur le PRÉFIXE avant d'atteindre le motif. Témoin refait, mutation rouge.
+- [x] **Mise en page mesurée dans Chromium** (390×844 et 360×640, repli ouvert et fermé) :
+  bouton à 44 px, jamais sous la barre d'onglets, aucun débordement horizontal.
+
+⚠️ **Ce que ce lot ne fait PAS** : la file d'import est un PLANCHER. Les 734 lignes classées
+sans fileId de clé (pièces jointes Gmail) restent hors du dénominateur — C49-16 en a retrouvé
+352, le reste attend. Le périmètre date du 17/09 et ne se re-mesure qu'au bump de
+`CONFIG.PERIMETRE_PIECE_TAG`.
+
+---
+
 ## C49-20 — sept campagnes arrêtées, 41 min/j rendues à la lecture ✅
 
 > Décision de Marc, 21/09 : « enlève tout ça, ca aurait du s'arrêter avant quand on savait que ca

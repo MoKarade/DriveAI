@@ -467,6 +467,58 @@ function texteSanteMemoire_() {
   }
 }
 
+/* ---------- C49-23 : la FILE D'IMPORT, en chiffres ---------- */
+
+/**
+ * PURE. Combien de documents le canal de la Mémoire a-t-il à pousser EN TOUT ?
+ *
+ * Lit le 3ᵉ champ de `DriveAI_PERIMETRE_PIECE` (`candidats/classees/lues`) et rend `classees`
+ * — les documents CLASSÉS porteurs d'un fileId, c'est-à-dire exactement ce que ce canal sait
+ * atteindre. Ni `candidats` (qui ne compte que ceux dont on espère du texte, donc la file de
+ * LECTURE) ni `lues` (des lignes d'Index toutes natures).
+ *
+ * ⚠️ `null` quand le périmètre n'a jamais été mesuré, JAMAIS zéro : un dénominateur inventé
+ * ferait afficher « 2731 / 0 », soit une jauge pleine sur un comptage qui n'a pas eu lieu.
+ */
+function cibleImportMemoire_(brutPerimetre) {
+  if (!brutPerimetre) return null;
+  var p = String(brutPerimetre).split('|');
+  var comptes = String(p[2] || '').split('/');
+  var n = Number(comptes[1]);
+  return (isNaN(n) || n <= 0) ? null : n;
+}
+
+/**
+ * PURE. La file d'IMPORT, ENCODÉE `<poussés>/<cible>` — le pendant exact de `Lecture — file`.
+ *
+ * ⚠️ Pourquoi une ligne encodée et pas la phrase de `phraseFinMemoire_`, qui porte déjà les
+ * deux nombres : « le format lu est celui que le moteur ÉCRIT, jamais la phrase française »
+ * (§9). Une phrase se reformule au premier lot qui la rend plus claire, et l'app cesserait
+ * alors d'afficher la jauge sans qu'aucun test ne rougisse.
+ *
+ * ⚠️ Une cible non mesurée rend un MOTIF, pas un couple : l'app doit pouvoir distinguer
+ * « rien poussé » de « je ne sais pas sur combien ».
+ */
+function ligneFileImport_(emis, brutPerimetre) {
+  var cible = cibleImportMemoire_(brutPerimetre);
+  if (cible === null) return 'cible non mesurée — bumper CONFIG.PERIMETRE_PIECE_TAG';
+  var n = Number(emis);
+  return (isNaN(n) || n < 0 ? 0 : n) + '/' + cible;
+}
+
+/** La ligne de Santé. Impure (Properties) ; la mise en forme est {@link ligneFileImport_}. */
+function texteSanteFileImport_() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    return ligneFileImport_(
+      Number(props.getProperty('DriveAI_MEMOIRE_EMIS')) || 0,
+      props.getProperty('DriveAI_PERIMETRE_PIECE') || ''
+    );
+  } catch (e) {
+    return 'état illisible (' + e + ')';
+  }
+}
+
 /**
  * PURE. Une passe qui n'a RIEN envoyé ne se lit pas comme une journée sans document : le motif
  * est nommé, en français, et il désigne le geste. « aucune passe enregistrée » est un état à

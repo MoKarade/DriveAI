@@ -71,7 +71,7 @@ function chargerAvecSanteMock(indexCache, props) {
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 18 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 19 lignes de métadonnées (une seule écriture Sheet)', () => {
   // 10 depuis ADR-0056 : la re-datation de `06` rallume de la dépense LLM et son budget du jour
   // n'était lisible NULLE PART. Le compte est figé pour que l'ajout d'une ligne soit une DÉCISION —
   // l'écriture est unique par tick, et chaque ligne coûte de la place à l'écran de Marc.
@@ -110,9 +110,18 @@ test('majSante_ écrit exactement 18 lignes de métadonnées (une seule écritur
   // que 734 pièces jointes Gmail, classées depuis des mois, n'ont jamais pu partir : le
   // périmètre les écarte de son total (il l'annonce comme un PLANCHER) et le rattrapage ne sait
   // pas les nommer. Un écart que rien d'autre n'affiche.
+  // 19 depuis C49-23 : « Import — file » est la SEULE forme que l'app a le droit de lire pour
+  // dessiner la file d'import. Les deux nombres existaient déjà — dans la phrase de « Mémoire
+  // (inventaire) » et dans celle du « Périmètre » — donc dans une prose qui se reformule au
+  // premier lot qui la rend plus claire. Le dépôt a déjà tranché pour la lecture (« le format
+  // lu est celui que le moteur ÉCRIT ») ; cette ligne applique la même règle à l'import.
+  // Elle ne coûte aucune lecture de plus : les deux Properties sont déjà ouvertes à côté.
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 18);
+  assert.strictEqual(captured.length, 19);
+  // ⚠️ Le COMPTE seul ne dirait pas QUELLE ligne a été ajoutée : une ligne retirée et une autre
+  // posée laisseraient 19. La présence se vérifie donc à part, sur la forme ENCODÉE.
+  assert.ok(captured.some((l) => /^Import — file : /.test(l)), captured.join(' | '));
   assert.ok(captured.every((l) => typeof l === 'string'));
 });
 
