@@ -345,6 +345,10 @@ function estAReanalyser_(f, tag) {
  * @param {function():boolean} estBudgetDepasse
  */
 function appliquerReanalyseCiblee_(estBudgetDepasse) {
+  // ⚠️ C49-20 — L'INTERRUPTEUR EN PREMIER. Il passe AVANT la Property de fin de campagne :
+  // arrêter une campagne EN COURS est précisément ce qu'on demande ici, et un flag placé
+  // après un `return` qui le précède ne servirait qu'aux campagnes déjà finies.
+  if (!CONFIG.REANALYSE_ACTIF) return;
   var props = PropertiesService.getScriptProperties();
   if (props.getProperty('DriveAI_REANALYSE') === CONFIG.REANALYSE_TAG) return; // campagne déjà terminée
   if (!rangementTermine_()) return; // le grand rangement d'abord (même famille d'arbres)

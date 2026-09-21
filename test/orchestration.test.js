@@ -240,12 +240,15 @@ test('ENVELOPPE des campagnes : la somme reste EXACTEMENT 63 min/j (réallouer, 
     ['DOUBLONS', C.DOUBLONS_ACTIF, C.DOUBLONS_BUDGET_JOUR_MS],
     ['CONSOLIDATION', C.CONSOLIDATION_ACTIF, C.CONSOLIDATION_BUDGET_JOUR_MS],
     ['CONSOLIDATION_EXEC', C.CONSOLIDATION_EXEC_ACTIF, C.CONSOLIDATION_EXEC_BUDGET_JOUR_MS],
-    // La re-datation n'a pas de drapeau `*_ACTIF` : elle tourne tant que son tag n'est pas posé,
-    // donc elle est TOUJOURS active du point de vue de ce garde (🟡 revue quotas ADR-0056 — 9 jambes
-    // dans la somme, 5 seulement dans le garde). Son motif est exactement celui visé :
-    // `consommeJour (0) >= 0` ⇒ `return` à chaque tick, en silence, à vie, l'égalité à 63 restant
-    // verte puisque les 8 min seraient parties ailleurs.
-    ['REANALYSE', true, C.REANALYSE_BUDGET_JOUR_MS],
+    // ⚠️ La re-datation N'AVAIT PAS de drapeau `*_ACTIF` : une rédaction antérieure codait donc
+    // `true` en dur ici, ce qui était juste — elle tournait tant que son tag n'était pas posé.
+    // C49-20 lui en a donné un, parce que l'arrêter était impossible autrement : à budget nul elle
+    // serait devenue exactement la campagne MUETTE que ce garde interdit.
+    ['REANALYSE', C.REANALYSE_ACTIF, C.REANALYSE_BUDGET_JOUR_MS],
+    // ⚠️ Ces deux-là MANQUAIENT (la liste en couvrait 5 sur 9, le commentaire ci-dessus le disait
+    // sans le corriger). Elles y entrent avec C49-20, qui est le premier lot à les éteindre.
+    ['HISTORIQUE_VRAC', C.HISTORIQUE_VRAC_ACTIF, C.HISTORIQUE_VRAC_BUDGET_JOUR_MS],
+    ['GMAIL_HISTO', C.GMAIL_HISTO_ACTIF, C.GMAIL_HISTO_BUDGET_JOUR_MS],
   ].forEach(([nom, actif, budget]) => {
     assert.ok(!actif || budget > 0,
       nom + '_ACTIF=true avec un budget quotidien de 0 = campagne MUETTE (no-op silencieux) : ' +
@@ -264,27 +267,17 @@ test('minutes PRÊTÉES : le chiffre affiché à Marc est DÉRIVÉ du transfert,
   assert.strictEqual(C.GMAIL_HISTO_PRETEES_MIN,
     DOTATION_HISTO_MIN - C.GMAIL_HISTO_BUDGET_JOUR_MS / 60000,
     'le prêt annoncé doit être la DIFFÉRENCE réelle entre la dotation et le budget courant');
-  // …et ce qui est prêté est ce qui est reçu : sinon des minutes se créent ou se perdent en route.
-  // ⚠️ C28-135 : ce garde comparait le prêt à UN seul receveur (la re-datation). C'était vrai tant
-  // qu'il n'y en avait qu'un, et ça a rougi au second — à raison. Ce qu'il défend n'est PAS « la
-  // re-datation reçoit tout », c'est « rien ne se crée en route » : la liste des receveurs est donc
-  // une SOMME, et un troisième prêt devra s'y inscrire. Une garde qui nomme un receveur se périme
-  // au premier suivant ; une garde qui somme survit (§9, « ancrer le FAIT, jamais la FORME »).
-  // ⚠️ C49-3 n'a RIEN pris ici et n'ajoute donc pas de receveur : l'audit des pièces est financé
-  // par `SYNC_BUDGET_JOUR_MS` (12 → 4). Le garde ne suit QUE les prêts de CE donneur — mêler les
-  // deux transferts ferait de cette égalité une somme de choses sans rapport, et elle cesserait
-  // de dire ce qu'elle défend (« rien ne se crée en route » entre l'historique Gmail et ses
-  // receveurs). Un second donneur qui prête à plusieurs aura besoin de son propre garde.
-  // ⚠️ C49-3 (second transfert, 17/09) : l'audit des pièces devient le TROISIÈME receveur, et il
-  // entre par sa PART (`AUDIT_PIECE_PART_GMAIL_MIN`), jamais par son budget total — celui-ci porte
-  // aussi les minutes de la réconciliation, et les mêler ferait de cette égalité une somme de
-  // choses sans rapport. C'est ce que le paragraphe ci-dessus annonçait : « un second donneur qui
-  // prête à plusieurs aura besoin de son propre garde ». Le voici, et il tient par la PROVENANCE.
-  const RECEVEURS_MIN = (C.REANALYSE_BUDGET_JOUR_MS + C.MEMOIRE_BUDGET_JOUR_MS) / 60000
-    + C.AUDIT_PIECE_PART_GMAIL_MIN;
-  assert.strictEqual(C.GMAIL_HISTO_PRETEES_MIN, RECEVEURS_MIN,
-    'les minutes retirées au donneur sont EXACTEMENT celles reçues par ses receveurs ' +
-    '(re-datation de 06, puis envoi à la Mémoire)');
+  // ⚠️ LE GARDE « PRÊTÉ = REÇU » PAR DONNEUR A ÉTÉ RETIRÉ LE 21/09, et il faut dire pourquoi
+  // plutôt que de laisser croire à un oubli. Il suivait une chaîne à UN maillon : l'historique
+  // Gmail prête, la re-datation et la Mémoire reçoivent. C49-20 a arrêté la re-datation, donc ses
+  // 8 min — qui venaient elles-mêmes de l'historique Gmail — sont reparties vers l'audit des
+  // pièces. Les re-tracer jusqu'à leur donneur d'ORIGINE les compterait deux fois ; ne pas les
+  // tracer casserait l'égalité. Une comptabilité par donneur d'origine ne survit pas à des minutes
+  // qui changent de mains deux fois.
+  //
+  // Ce qui le remplace, et qui couvre strictement plus : l'égalité de l'ENVELOPPE (63 min, plus
+  // haut) plus la table `AUDIT_PIECE_DONNEURS_MIN` (test suivant) — la première interdit qu'une
+  // minute se crée, la seconde exige que chacune de celles du receveur ait un donneur NOMMÉ.
 });
 
 test('PAIRE réconciliation ↔ audit des pièces : la somme est figée, et le donneur ne tombe jamais à zéro', () => {
@@ -298,17 +291,30 @@ test('PAIRE réconciliation ↔ audit des pièces : la somme est figée, et le d
   // donneur sans redescendre le receveur, ou l'inverse) reste sous le plafond global, donc
   // l'invariant d'enveloppe ne l'attrape pas — seul ce garde-ci le voit.
   const DOTATION_COUPLE_MIN = 12; // la dotation HISTORIQUE de la réconciliation, avant tout prêt
+  const DONNEURS = C.AUDIT_PIECE_DONNEURS_MIN;
   // ⚠️ La comparaison porte sur la PART reçue de CE donneur, jamais sur le budget total de
-  // l'audit : depuis le second transfert, celui-ci porte aussi des minutes de l'historique Gmail.
+  // l'audit : celui-ci porte désormais les minutes de HUIT postes.
   assert.strictEqual(
-    C.SYNC_BUDGET_JOUR_MS / 60000 + C.AUDIT_PIECE_PART_SYNC_MIN, DOTATION_COUPLE_MIN,
+    C.SYNC_BUDGET_JOUR_MS / 60000 + DONNEURS.SYNC, DOTATION_COUPLE_MIN,
     'ce que l\'audit reçoit de la réconciliation est EXACTEMENT ce qu\'elle perd — rien ne se crée en route');
-  // …et les deux parts REMPLISSENT le budget : une minute sans donneur nommé serait une minute
-  // créée, et les deux gardes de paire la laisseraient passer chacun de son côté.
-  assert.strictEqual(
-    C.AUDIT_PIECE_PART_SYNC_MIN + C.AUDIT_PIECE_PART_GMAIL_MIN,
-    C.AUDIT_PIECE_BUDGET_JOUR_MS / 60000,
-    'chaque minute du budget de l\'audit a un donneur NOMMÉ');
+  // …et les parts REMPLISSENT le budget : une minute sans donneur nommé serait une minute créée,
+  // et l'invariant d'enveloppe la laisserait passer (il ne juge que le TOTAL, donc un transfert à
+  // moitié fait lui échappe).
+  const sommeDonneurs = Object.keys(DONNEURS).reduce((t, k) => t + DONNEURS[k], 0);
+  assert.strictEqual(sommeDonneurs, C.AUDIT_PIECE_BUDGET_JOUR_MS / 60000,
+    'chaque minute du budget de l\'audit a un donneur NOMMÉ (table AUDIT_PIECE_DONNEURS_MIN)');
+  // ⚠️ Et un donneur NOMMÉ doit être un poste qui a VRAIMENT cédé ces minutes : son budget
+  // courant plus ce qu'il a prêté ne peut pas être inférieur à ce qu'il déclare donner. Sans
+  // cette ligne, la table se conserverait en inventant un donneur — le défaut qu'elle existe
+  // pour empêcher, déplacé d'un cran.
+  ['CONSOLIDATION', 'CONSOLIDATION_EXEC', 'REANALYSE', 'HISTORIQUE_VRAC', 'DOUBLONS', 'MISSIONS']
+    .forEach((nom) => {
+      assert.strictEqual(C[nom + '_BUDGET_JOUR_MS'], 0,
+        nom + ' donne ' + DONNEURS[nom] + ' min à l\'audit : son propre budget doit être à ZÉRO, '
+        + 'sinon les mêmes minutes sont comptées deux fois');
+      assert.strictEqual(C[nom + '_ACTIF'], false,
+        nom + ' a cédé TOUT son budget : la laisser ACTIVE en ferait une campagne muette');
+    });
   // (b) Le donneur reste VIVANT. Une campagne active à budget quotidien nul est un transfert
   // non rendu déguisé en réglage : elle ne produit plus rien et rien ne le signale.
   assert.ok(C.SYNC_BUDGET_JOUR_MS > 0,

@@ -99,6 +99,44 @@ function makeSandbox(overrides) {
 }
 
 /**
+ * Les campagnes ARRÊTÉES en production (C49-20) que le harnais RALLUME pour les tests de CHEMIN.
+ *
+ * ⚠️ Règle du dépôt (`CLAUDE.md` §9) : « un test d'un CHEMIN gaté par un flag de campagne FORCE ce
+ * flag dans son contexte — la position globale d'un flag est une décision de Marc, jamais un
+ * invariant de test ». Sans ça, arrêter une campagne rend 82 tests rouges d'un coup, et on se
+ * retrouve à choisir entre re-baser des tests qui encodent une CONCEPTION et renoncer à l'arrêter.
+ *
+ * ⚠️ La liste est NOMMÉE et étroite : uniquement les sept campagnes coupées le 21/09. Forcer tous
+ * les `*_ACTIF` à vrai rallumerait aussi ceux qui sont éteints pour une raison de SÛRETÉ
+ * (`RESET_ACTIF`, `FUSION_EXEC_ACTIF`), et les tests cesseraient de décrire ce qui tourne.
+ */
+const CAMPAGNES_RALLUMEES_EN_TEST = [
+  'CONSOLIDATION_ACTIF', 'CONSOLIDATION_EXEC_ACTIF', 'REANALYSE_ACTIF',
+  'HISTORIQUE_VRAC_ACTIF', 'GMAIL_HISTO_ACTIF', 'DOUBLONS_ACTIF', 'MISSIONS_ACTIF',
+];
+
+/**
+ * ⚠️ ET IL FAUT LEUR RENDRE DU BUDGET, sinon on remplace un blocage par l'autre : à 0,
+ * `consommeJour (0) >= 0` fait sortir l'étape AVANT tout travail — c'est le no-op silencieux que
+ * le verrou d'orchestration interdit en production, et il rend les tests de chemin tout aussi
+ * muets. Mesuré : l'interrupteur seul laissait encore 73 tests rouges.
+ *
+ * ⚠️ La VALEUR n'est pas le sujet — 10 min est un chiffre de travail, pas la dotation d'avant
+ * l'arrêt (la recopier la ferait vieillir en silence). Un test qui vérifie une COUPURE de budget
+ * pose lui-même sa valeur, et écrase donc celle-ci.
+ */
+const BUDGET_TEST_MS = 10 * 60 * 1000;
+const BUDGETS_RENDUS_EN_TEST = {
+  CONSOLIDATION_ACTIF: 'CONSOLIDATION_BUDGET_JOUR_MS',
+  CONSOLIDATION_EXEC_ACTIF: 'CONSOLIDATION_EXEC_BUDGET_JOUR_MS',
+  REANALYSE_ACTIF: 'REANALYSE_BUDGET_JOUR_MS',
+  HISTORIQUE_VRAC_ACTIF: 'HISTORIQUE_VRAC_BUDGET_JOUR_MS',
+  GMAIL_HISTO_ACTIF: 'GMAIL_HISTO_BUDGET_JOUR_MS',
+  DOUBLONS_ACTIF: 'DOUBLONS_BUDGET_JOUR_MS',
+  MISSIONS_ACTIF: 'MISSIONS_BUDGET_JOUR_MS',
+};
+
+/**
  * Charge une liste de fichiers `.gs` (noms relatifs à `src/`) dans un contexte vm partagé.
  * @param {string[]} files
  * @param {Object} [overrides]  globals à injecter avant le chargement.
@@ -111,7 +149,21 @@ function load(files, overrides) {
     const code = fs.readFileSync(path.join(SRC, file), 'utf8');
     vm.runInContext(code, context, { filename: file });
   }
+  // ⚠️ SEULEMENT quand du CODE est chargé. Un test qui ne charge que `Config.gs` INSPECTE les
+  // constantes (l'invariant d'enveloppe, le garde « campagne active à budget 0 », la ligne de
+  // Santé qui lit le flag) : lui servir une position retouchée lui ferait valider une production
+  // qui n'existe pas — et c'est précisément le garde qui doit rougir si on rallume une campagne
+  // sans lui rendre de budget. Un test qui charge un module, lui, exerce un CHEMIN.
+  if (context.CONFIG && files.some((f) => f !== 'Config.gs')) {
+    CAMPAGNES_RALLUMEES_EN_TEST.forEach((flag) => {
+      if (!(flag in context.CONFIG)) return;
+      context.CONFIG[flag] = true;
+      const cleBudget = BUDGETS_RENDUS_EN_TEST[flag];
+      if (cleBudget && !context.CONFIG[cleBudget]) context.CONFIG[cleBudget] = BUDGET_TEST_MS;
+    });
+  }
   return context;
 }
 
-module.exports = { load, makeSandbox, iter, fakeFolder, fakeFile };
+module.exports = { load, makeSandbox, iter, fakeFolder, fakeFile,
+  CAMPAGNES_RALLUMEES_EN_TEST, BUDGETS_RENDUS_EN_TEST };

@@ -378,6 +378,22 @@ function ctxReanalyseCampagne(props) {
   return { ctx, journal };
 }
 
+test('C49-20 — REANALYSE_ACTIF=false : l\'étape sort AVANT tout, même campagne NON terminée', () => {
+  // ⚠️ L'interrupteur passe avant la Property de fin de campagne, et c'est le sujet : arrêter une
+  // campagne EN COURS est exactement ce que C49-20 demande (elle était à 108/466). Un flag posé
+  // APRÈS ce `return` n'aurait servi qu'aux campagnes déjà finies — un interrupteur qui ne peut
+  // éteindre que ce qui est déjà éteint.
+  const props = { valeurs: {} };
+  const { ctx } = ctxReanalyseCampagne(props);
+  ctx.CONFIG.REANALYSE_ACTIF = false; // (le harnais rallume les campagnes arrêtées — cf. harness.js)
+  ctx.CONFIG.MIGRATION_TAG = 'm1';
+  props.valeurs.DriveAI_MIGRATION = 'm1';          // migration finie : rien d'autre ne bloque
+  ctx.rangementTermine_ = () => true;
+  ctx.reanalyserUnePage_ = () => { throw new Error('la campagne est ARRÊTÉE : aucune collecte'); };
+  ctx.appliquerReanalyseCiblee_(() => false);      // ne lève pas ⇒ l'interrupteur a court-circuité
+  assert.ok(!('DriveAI_REANALYSE_JOUR' in props.valeurs), 'aucune minute consommée non plus');
+});
+
 test('appliquerReanalyseCiblee_ : ne démarre JAMAIS tant que la migration n\'est pas finie (une campagne de masse à la fois)', () => {
   const props = { valeurs: {} }; // DriveAI_MIGRATION absent → migration en cours
   const { ctx } = ctxReanalyseCampagne(props);

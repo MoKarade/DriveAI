@@ -51,6 +51,17 @@ function fil(pjsParMessage) {
   return { getId: () => id, getMessages: () => pjsParMessage.map((pjs) => ({ pjs })) };
 }
 
+test('C49-20 — GMAIL_HISTO_ACTIF=false : aucune recherche Gmail, même campagne non terminée', () => {
+  // ⚠️ Cette campagne n'avait AUCUN interrupteur : seule la Property `= terminé` l'arrêtait, donc
+  // un bump l'aurait relancée sans qu'on puisse dire non. Le flag est en TÊTE — avant même la
+  // garde de panne Gmail — parce qu'une campagne arrêtée n'a pas à sonder quoi que ce soit.
+  const { c, calls } = ctxHisto({ page: () => { throw new Error('arrêtée : aucune page'); } });
+  c.CONFIG.GMAIL_HISTO_ACTIF = false; // (le harnais rallume les campagnes arrêtées — cf. harness.js)
+  c.traiterGmailHistorique_(() => false);
+  assert.strictEqual(calls.pages.length, 0, 'aucune recherche Gmail lancée');
+  assert.strictEqual(Object.keys(calls.props).length, 0, 'aucune écriture d\'état');
+});
+
 /* ---------- terminaison : deux passes propres ---------- */
 
 test('historique : DEUX pages vides propres consécutives → TERMINÉE, plus jamais de recherche', () => {

@@ -6,7 +6,22 @@
 >
 > **🟦 EN COURS — 2026-09-21 : la lecture des papiers se REGARDE. REPRENDRE ICI.**
 >
-> **DERNIER LOT — C49-18 : l'OCR rejoue ses appels IDEMPOTENTS, et seulement ceux-là.**
+> **DERNIER LOT — C49-20 : sept campagnes arrêtées, 41 min/j rendues à la lecture des papiers.**
+> Décision de Marc du 21/09, sur la mesure du jour. Consolidation (16 + 8), re-datation de 06 (8),
+> historique du vrac (4), historique Gmail (2), doublons (1) et missions (2) sont ARRÊTÉES par
+> leur interrupteur ; leurs minutes vont à `AUDIT_PIECE_BUDGET_JOUR_MS`, **17 → 58 min/j**.
+> L'enveloppe reste à 63 : c'est une réallocation. Détail et alternative écartée dans l'ADR-0062.
+>
+> ⚠️ **La re-datation est arrêtée EN COURS** (108/466, fin estimée au 25/10) : ce n'est pas le
+> ménage d'une campagne finie. Sa ligne de Santé garde son avancement à l'écran. Pour la
+> reprendre : `REANALYSE_ACTIF: true` **et** lui rendre des minutes (le gate refuse l'un sans
+> l'autre).
+>
+> ⚠️ **À VÉRIFIER AU PROCHAIN DÉPLOIEMENT** : que la ligne « Rattrapage des pièces » annonce bien
+> 58 min/j et non 17, et que les lignes des sept arrêtées disent « arrêtée » / « désactivée
+> (CONFIG) » — pas un silence qui ressemblerait à une panne.
+>
+> **LOT PRÉCÉDENT — C49-18 : l'OCR rejoue ses appels IDEMPOTENTS, et seulement ceux-là.**
 > `fetchDriveAvecRetry_` existe depuis la phase 2 ; `Ocr.gs` ne l'employait nulle part. Les deux
 > exports et la suppression du temporaire le prennent désormais — un 503 passager ne fige plus un
 > document sous `ocr-echec`, qui est une issue DÉFINITIVE. ⚠️ **L'upload multipart, lui, ne

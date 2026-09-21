@@ -189,9 +189,12 @@ test('majHistoriqueVrac_ : reprise le lendemain d\'une passe interrompue hier �
 });
 
 test('majHistoriqueVrac_ : budget QUOTIDIEN déjà épuisé aujourd\'hui → no-op TOTAL, repris demain', () => {
-  const { c, ecritures, appelsComptage } = ctxMaj({
-    props: { DriveAI_VRAC_JOUR_MS: '2026/08/12|' + (4 * 60 * 1000) }, // déjà au plafond du jour
-  });
+  // ⚠️ Le plafond se DÉRIVE de la constante, jamais recopié (§9 : « un test qui verrouille un
+  // comportement PARAMÉTRÉ par CONFIG dérive ses cas de la constante »). Il portait `4 * 60 * 1000`
+  // en dur — la valeur du jour où il a été écrit —, donc il a cessé de couper dès que la campagne
+  // a changé de dotation (C49-20, arrêt + rallumage du harnais à une autre valeur).
+  const { c, ecritures, appelsComptage, store } = ctxMaj({ props: {} });
+  store.DriveAI_VRAC_JOUR_MS = '2026/08/12|' + c.CONFIG.HISTORIQUE_VRAC_BUDGET_JOUR_MS;
   c.majHistoriqueVrac_(() => false);
   assert.strictEqual(appelsComptage(), 0, 'aucun comptage tenté — le budget du JOUR est épuisé, pas seulement celui du run');
   assert.strictEqual(ecritures.length, 0);

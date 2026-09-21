@@ -1523,6 +1523,38 @@ QUATRIÈME l'interdit — sans lui, un lot futur qui « harmonise » rouvre le t
 qui protège une lecture avale aussi un contrat inter-module rompu** — ce sont les tests qui l'ont
 dit, pas la relecture.
 
+**ARRÊTER une campagne n'est pas lui retirer son budget — et deux des sept n'avaient aucun
+interrupteur.** Le 21/09, Marc a demandé d'enlever les campagnes finies ou improductives : sept
+postes, **41 min/j sur les 63** de l'enveloppe, immobilisées sur des choses terminées (doublons le
+22/08, historique Gmail que le moteur lui-même disait « RÉALLOUABLE »), convergées (consolidation)
+ou sans production depuis 32 jours (missions). Le réflexe — mettre leur `*_BUDGET_JOUR_MS` à 0 —
+est exactement ce que le verrou d'orchestration interdit : **une campagne ACTIVE à budget nul
+tourne à VIDE en silence** (`consommeJour 0 >= 0` court-circuite avant tout travail). Une campagne
+muette n'est pas une campagne arrêtée : elle reste dans les surfaces, et plus rien ne dit pourquoi
+elle ne produit rien.
+⚠️ **Deux n'avaient pas d'interrupteur du tout**, et c'est le vrai enseignement : la re-datation ne
+s'arrêtait que sur sa Property de FIN, l'historique Gmail non plus. Autrement dit, on ne pouvait
+arrêter QUE ce qui était déjà fini. Le flag se pose donc **avant** ce `return` — placé après, il
+n'éteint que ce qui est éteint — et il se CÂBLE avec son test (un flag lu par personne est une
+intention jamais livrée, C28-137).
+⚠️ **82 tests rouges d'un coup**, et ils ont raison : ils exercent le CHEMIN de campagnes qu'on
+vient d'éteindre. La règle du dépôt tranche (« la position globale d'un flag est une décision de
+Marc, jamais un invariant de test ») : le HARNAIS les rallume, budget compris — l'interrupteur seul
+en laissait encore 73, puisque le budget à zéro rouvre le même no-op un cran plus bas. La liste est
+NOMMÉE (rallumer tous les `*_ACTIF` réveillerait ceux qui sont éteints pour une raison de SÛRETÉ) et
+ne s'applique JAMAIS quand seul `Config.gs` est chargé : un test qui INSPECTE les constantes doit
+voir la production, sinon il valide une enveloppe qui n'existe pas.
+⚠️ **Une comptabilité par PAIRE ne passe pas à sept donneurs** : `AUDIT_PIECE_PART_SYNC_MIN` et
+`_GMAIL_MIN` deviennent une TABLE, dont la somme doit valoir le budget du receveur, et dont chaque
+donneur doit prouver qu'il a bien un budget à zéro — sinon la table se conserve en INVENTANT un
+donneur, c'est-à-dire en déplaçant d'un cran le défaut qu'elle existe pour empêcher. Et le garde
+« prêté = reçu » par donneur d'ORIGINE a été RETIRÉ, avec sa raison écrite : des minutes qui
+changent de mains deux fois ne se tracent plus jusqu'à leur source sans être comptées double.
+⚠️ Corollaire d'affichage : **un arrêt DÉLIBÉRÉ garde son avancement à l'écran.** Les autres
+suspensions sont transitoires et leur cause est le sujet ; celle-ci est définitive et laisse
+108 documents sur 466 en plan — « arrêtée » tout court effacerait le seul chiffre qui dit ce qu'on
+a laissé, et la Progression purge ses lignes finies après 48 h.
+
 ## 10. Style et compte-rendu
 
 > 📣 Forme des comptes-rendus, des commits, des PR et des docs générées :

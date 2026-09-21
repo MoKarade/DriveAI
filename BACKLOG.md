@@ -5,6 +5,41 @@
 
 ---
 
+## C49-20 — sept campagnes arrêtées, 41 min/j rendues à la lecture ✅
+
+> Décision de Marc, 21/09 : « enlève tout ça, ca aurait du s'arrêter avant quand on savait que ca
+> servait a rien ». ADR-0062. Mesuré AVANT d'agir, par `etat_moteur`.
+
+- [x] **Ce que ça libère** : consolidation 16 + exécution 8 + re-datation 8 + historique du vrac 4
+  + historique Gmail 2 + doublons 1 + missions 2 = **41 min/j** — soit **les deux tiers** des
+  63 min de l'enveloppe, immobilisées sur des campagnes terminées, convergées ou sans production
+  depuis 32 jours.
+- [x] **Où elles vont** : `AUDIT_PIECE_BUDGET_JOUR_MS` **17 → 58 min/j** (lecture des papiers :
+  969 restants dans la tranche, ~2 645 jamais lus). L'enveloppe reste à 63 — réallocation, jamais
+  hausse.
+- [x] **ARRÊTER, pas mettre à zéro.** Le verrou d'orchestration interdit « campagne ACTIVE à
+  budget 0 » : elle tournerait à vide en silence. Deux campagnes n'avaient AUCUN interrupteur
+  (`REANALYSE_ACTIF`, `GMAIL_HISTO_ACTIF`) — créés, câblés EN TÊTE de leur étape, et chacun avec
+  son test : un flag lu par personne est une intention jamais livrée.
+- [x] **La comptabilité passe en TABLE** (`AUDIT_PIECE_DONNEURS_MIN`) : les deux parts nommées ne
+  passaient pas à sept donneurs. Le test exige que la somme vaille le budget du receveur ET que
+  chaque donneur ait un budget à zéro et un flag à false — sinon la table se conserve en inventant
+  un donneur.
+- [x] **Le harnais de test RALLUME les sept**, budget compris : sans ça, 82 tests rougissent d'un
+  coup et il faudrait choisir entre re-baser des tests qui encodent une CONCEPTION et renoncer à
+  l'arrêt. Liste NOMMÉE (jamais tous les `*_ACTIF` : `RESET_ACTIF` et `FUSION_EXEC_ACTIF` sont
+  éteints pour une raison de sûreté), et **jamais** appliquée quand seul `Config.gs` est chargé —
+  un test qui INSPECTE les constantes doit voir la production, pas une position retouchée.
+- [x] **10 mutations jouées, 10 rouges.** Gate : 1 548 moteur · 384 app · build · syntaxe .gs.
+
+- [ ] **[C49-21] La consolidation est déclarée finie par ABSENCE.** Ses lignes ne sont plus dans la
+  Progression, ce qui est cohérent avec « terminée depuis > 48 h » (purge) **et** avec « n'a jamais
+  eu de ligne ». C'est le moins mesuré des sept arrêts — la certitude se prend dans l'onglet
+  `PlanConsolidation`. À faire quand Marc aura l'occasion de le regarder ; sans conséquence tant
+  que la campagne reste arrêtée.
+
+---
+
 ## C49-18 — l'OCR rejoue ses appels IDEMPOTENTS, et seulement ceux-là ✅
 
 > Livré le 21/09. Et il faut lire la ligne suivante avant celle-ci : **ce lot ne corrige pas

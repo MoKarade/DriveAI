@@ -1247,13 +1247,13 @@ function texteSanteReanalyse_() {
   try {
     var props = PropertiesService.getScriptProperties();
     var suspension = statutReanalyse_(
+      !CONFIG.REANALYSE_ACTIF,
       props.getProperty('DriveAI_REANALYSE') === CONFIG.REANALYSE_TAG,
       !rangementTermine_(),
       props.getProperty('DriveAI_MIGRATION') !== CONFIG.MIGRATION_TAG,
       budgetCampagnesAtteint_(),
       resetEnCours_(),
       estPannePlateforme_());
-    if (suspension) return suspension;
     var budget = Math.round(CONFIG.REANALYSE_BUDGET_JOUR_MS / 60000);
     var consomme = budgetJourReanalyse_(props, dateGmail_(new Date()));
     var base = props.getProperty('DriveAI_REANALYSE_BASE');
@@ -1261,6 +1261,12 @@ function texteSanteReanalyse_() {
     var avance = base === null
       ? 'recensement en cours'
       : traites + ' / ' + base + ' documents';
+    // ⚠️ UN ARRÊT DÉLIBÉRÉ GARDE SON AVANCEMENT À L'ÉCRAN. Les autres suspensions sont des états
+    // TRANSITOIRES dont la cause est le sujet ; celle-ci est définitive et laisse un travail à
+    // moitié fait — « arrêtée » tout court effacerait le seul chiffre qui dit ce qu'on a perdu,
+    // et la question « où ça en était ? » n'aurait plus de réponse nulle part.
+    if (!CONFIG.REANALYSE_ACTIF) return suspension + ' — ' + avance + ' au moment de l\'arrêt';
+    if (suspension) return suspension;
     return 'en cours — ' + avance + ' · ' + Math.round(consomme / 60000) + ' des ' + budget +
       ' min/j consommées aujourd\'hui (campagne « ' + CONFIG.REANALYSE_TAG + ' »)';
   } catch (e) {
@@ -1280,7 +1286,12 @@ function texteSanteReanalyse_() {
  * L'ORDRE suit celui des gardes réelles du tick : la cause la plus définitive d'abord.
  * @return {string} '' si rien ne l'arrête
  */
-function statutReanalyse_(terminee, rangementEnCours, migrationEnCours, freinBudget, resetEnCours, pannePlateforme) {
+function statutReanalyse_(arretee, terminee, rangementEnCours, migrationEnCours, freinBudget, resetEnCours, pannePlateforme) {
+  // ⚠️ SEPTIÈME garde, et la PREMIÈRE de l'ordre (C49-20) : un arrêt par la CONFIG est la cause la
+  // plus définitive de toutes — il survit au rétablissement d'une panne, au réarmement du budget
+  // et à la fin du reset. L'annoncer après elles ferait lire « en pause, reprise demain » sur une
+  // campagne qui ne reprendra jamais toute seule.
+  if (arretee) return 'arrêtée (CONFIG, C49-20) — campagne « ' + CONFIG.REANALYSE_TAG + ' »';
   if (terminee) return 'terminée ✅ (campagne « ' + CONFIG.REANALYSE_TAG + ' »)';
   if (rangementEnCours) return 'en attente — le grand rangement passe d\'abord';
   if (migrationEnCours) return 'en attente — la migration « ' + CONFIG.MIGRATION_TAG + ' » doit finir d\'abord';
@@ -1393,6 +1404,7 @@ function texteSanteHistoGmail_() {
  * @param {function():boolean} estBudgetDepasse
  */
 function traiterGmailHistorique_(estBudgetDepasse) {
+  if (!CONFIG.GMAIL_HISTO_ACTIF) return; // C49-20 — arrêtée ; l'interrupteur avant tout le reste
   if (estPanneGmail_()) return; // quota Gmail épuisé (C28-15) : suspendu jusqu'à la re-sonde
   var props = PropertiesService.getScriptProperties();
   if (props.getProperty('DriveAI_GMAIL_HISTO') === 'terminé') return; // campagne finie (1 lecture)

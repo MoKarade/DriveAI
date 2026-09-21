@@ -133,6 +133,26 @@ test('majSante_ : la ligne « Re-datation de 06 » distingue « jamais démarré
   assert.ok(!/en cours/.test(ligne), 'jamais « en cours » quand une garde amont bloque : ' + ligne);
 });
 
+test('C49-20 — la ligne « Re-datation de 06 » ARRÊTÉE garde son avancement à l\'écran', () => {
+  // ⚠️ Les six autres suspensions sont TRANSITOIRES : leur cause est le sujet, et l'avancement
+  // reviendra. Celle-ci est définitive et laisse 108 documents sur 466 derrière elle — « arrêtée »
+  // tout court effacerait le seul chiffre qui dit ce qu'on a laissé en plan, et la question « où
+  // ça en était ? » n'aurait plus de réponse NULLE PART (la Progression purge ses lignes finies
+  // après 48 h).
+  const { ctx, captured } = chargerAvecSanteMock({}, {});
+  const p = ctx.PropertiesService.getScriptProperties();
+  p.setProperty('DriveAI_RANGEMENT', ctx.CONFIG.RANGEMENT_TAG);
+  p.setProperty('DriveAI_MIGRATION', ctx.CONFIG.MIGRATION_TAG);
+  p.setProperty('DriveAI_REANALYSE_BASE', '466');
+  p.setProperty('DriveAI_REANALYSE_TRAITES', '108');
+  ctx.CONFIG.REANALYSE_ACTIF = false; // (le harnais rallume les campagnes arrêtées — cf. harness.js)
+  ctx.majSante_();
+  const ligne = captured.find((l) => l.indexOf('Re-datation de 06') === 0);
+  assert.ok(ligne && !ligne.includes('illisible'), 'chemin nominal, pas le catch : ' + ligne);
+  assert.match(ligne, /arrêtée \(CONFIG/, ligne);
+  assert.match(ligne, /108 \/ 466 documents au moment de l'arrêt/, ligne);
+});
+
 test('majSante_ : la ligne « Re-datation de 06 » EXERCE sa branche « en cours » (avancement + minutes)', () => {
   // ⚠️ Ce test existe parce que le précédent ne prouvait RIEN de la branche nominale : sans
   // Properties, `texteSanteReanalyse_` sortait toujours sur « en attente ». Mutation jouée en revue
@@ -158,25 +178,30 @@ test('majSante_ : la ligne « Re-datation de 06 » EXERCE sa branche « en cours
   assert.ok(new RegExp('3 des ' + minJ + ' min\\/j').test(ligne), ligne);
 });
 
-test('statutReanalyse_ : les SIX causes d\'arrêt se disent, une par une (PURE)', () => {
+test('statutReanalyse_ : les SEPT causes d\'arrêt se disent, une par une (PURE)', () => {
   // 🟠 des trois revues : la première version n'en connaissait que deux, et affichait
   // « en cours — 0 / 328 · 0 des 8 min/j » pendant que le frein à 40 $, le reset ou une panne de
   // plateforme tenaient la campagne à l'arrêt. Chaque cause est assertée SÉPARÉMENT — un
   // `indexOf(x) === 0` sur une seule famille en raterait la moitié (§9, estimation en pause).
   const { ctx } = chargerAvecSanteMock({}, {});
   const F = ctx.statutReanalyse_;
-  //           terminée, rangement, migration, frein, reset, panne
-  assert.match(F(true, false, false, false, false, false), /terminée/);
-  assert.match(F(false, true, false, false, false, false), /grand rangement/);
-  assert.match(F(false, false, true, false, false, false), /migration/);
-  assert.match(F(false, false, false, false, false, true), /panne de plateforme/);
-  assert.match(F(false, false, false, true, false, false), /frein budget/);
-  assert.match(F(false, false, false, false, true, false), /reset/);
+  //           arrêtée, terminée, rangement, migration, frein, reset, panne
+  assert.match(F(true, false, false, false, false, false, false), /arrêtée \(CONFIG/);
+  assert.match(F(false, true, false, false, false, false, false), /terminée/);
+  assert.match(F(false, false, true, false, false, false, false), /grand rangement/);
+  assert.match(F(false, false, false, true, false, false, false), /migration/);
+  assert.match(F(false, false, false, false, false, false, true), /panne de plateforme/);
+  assert.match(F(false, false, false, false, true, false, false), /frein budget/);
+  assert.match(F(false, false, false, false, false, true, false), /reset/);
   // Rien ne l'arrête ⇒ chaîne VIDE : c'est ce qui laisse l'appelant calculer l'avancement.
-  assert.strictEqual(F(false, false, false, false, false, false), '');
+  assert.strictEqual(F(false, false, false, false, false, false, false), '');
   // Le montant du frein est DÉRIVÉ de CONFIG, jamais recopié.
-  assert.ok(F(false, false, false, true, false, false)
+  assert.ok(F(false, false, false, false, true, false, false)
     .includes(String(ctx.CONFIG.LLM_BUDGET_CAMPAGNES) + ' $'));
+  // ⚠️ L'arrêt PRIME sur tout le reste, y compris sur une panne ou un frein : il survit à leur
+  // rétablissement. Annoncé après eux, il ferait lire « reprise demain » sur une campagne qui ne
+  // reprendra jamais seule (C49-20).
+  assert.match(F(true, false, false, false, true, true, true), /arrêtée \(CONFIG/);
 });
 
 test('majSante_ : la ligne « Historique Gmail » dit l\'état ET les minutes consommées (C28-99)', () => {
