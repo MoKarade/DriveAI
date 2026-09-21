@@ -1507,6 +1507,22 @@ que des constantes `*_BUDGET_JOUR_MS` nommées. Troisième occurrence de cet ang
 C28-135). Et une étape de fond sans sous-budget par run peut affamer exactement celles qu'elle
 est placée là pour alimenter.
 
+**Un correctif se mesure AU SITE QUI ÉCHOUE, jamais au MODULE.** Le 21/09, j'ai annoncé à Marc
+« le retry OCR manquant, gratuit, une ligne, aucun changement de comportement » après avoir
+constaté que `Ocr.gs` n'employait `fetchDriveAvecRetry_` nulle part. Vrai du module, faux de la
+panne : les deux erreurs du Journal (`Conversion HTTP 400`, `HTTP 500`) sont à l'upload
+multipart, le SEUL des quatre appels qui ne peut pas rejouer — il CRÉE un fichier, et un 5xx
+peut arriver après la création, donc un rejeu fabriquerait un temporaire orphelin qu'on ne
+pourrait plus supprimer. Le correctif est bon, il ne touche simplement pas le défaut observé.
+⚠️ La question qui manquait : **cet appel a-t-il un EFFET, ou seulement un RÉSULTAT ?** Un retry
+est sûr sur un GET, jamais sur une création — « durcir le réseau » n'est pas une catégorie, c'est
+une décision par appel. ⚠️ Et la garde vaut dans les DEUX SENS : trois cas exigent le rejeu, un
+QUATRIÈME l'interdit — sans lui, un lot futur qui « harmonise » rouvre le trou en croyant ranger.
+⚠️ Corollaire déjà payé et re-payé : deux tests chargeaient `Ocr.gs` sans `DriveRest.gs`, et le
+`try/catch` qui protège l'export avalait la fonction manquante en rendant `null`. **Un try/catch
+qui protège une lecture avale aussi un contrat inter-module rompu** — ce sont les tests qui l'ont
+dit, pas la relecture.
+
 ## 10. Style et compte-rendu
 
 > 📣 Forme des comptes-rendus, des commits, des PR et des docs générées :

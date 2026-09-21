@@ -6,7 +6,25 @@
 >
 > **🟦 EN COURS — 2026-09-21 : la lecture des papiers se REGARDE. REPRENDRE ICI.**
 >
-> **DERNIER LOT — C49-16 : 734 documents CLASSÉS que le canal ne savait pas DÉSIGNER.**
+> **DERNIER LOT — C49-18 : l'OCR rejoue ses appels IDEMPOTENTS, et seulement ceux-là.**
+> `fetchDriveAvecRetry_` existe depuis la phase 2 ; `Ocr.gs` ne l'employait nulle part. Les deux
+> exports et la suppression du temporaire le prennent désormais — un 503 passager ne fige plus un
+> document sous `ocr-echec`, qui est une issue DÉFINITIVE. ⚠️ **L'upload multipart, lui, ne
+> rejoue PAS, et c'est gardé** : il CRÉE un fichier, un 5xx peut arriver après la création, et un
+> rejeu fabriquerait un `DriveAI_extract_temp` orphelin qu'on ne pourrait plus supprimer.
+>
+> ⚠️ **À DIRE EN CLAIR : ce lot ne corrige pas les erreurs OCR observées en production.** Le
+> Journal du 21/09 ne porte aucun `Export natif HTTP` ; ses deux erreurs OCR (`Conversion HTTP
+> 400` et `HTTP 500`) sont à l'upload, le seul appel qui ne peut pas rejouer. Le correctif est un
+> filet, pas une récupération chiffrée. Ce qui répare vraiment la perte mesurée est `[C49-19]` —
+> porter l'ORIGINE de l'échec pour qu'un 500 transitoire ne marque plus le document « fait » —
+> et il n'est PAS fait : hors du périmètre donné.
+>
+> **C49-16 EST EN PRODUCTION ET TOURNE** (mesuré le 21/09 à 14:33 via `etat_moteur`) :
+> « 14 retrouvés · 26 sans preuve · 695 à examiner ». La campagne de lecture avance aussi —
+> `04` ✅ (23), `01` à 78/87, puis `02` (964).
+>
+> **LOT PRÉCÉDENT — C49-16 : 734 documents CLASSÉS que le canal ne savait pas DÉSIGNER.**
 > C'est le **lot A** du plan « tout le Drive », fait avant de demander l'OK sur le reste.
 > `fileIdDeCleIndex_` déduit l'identifiant Drive de la CLÉ d'Index et n'accepte que quatre
 > préfixes ; la clé d'une pièce jointe Gmail — l'intake PRINCIPAL — n'en porte aucun. Ces

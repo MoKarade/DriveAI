@@ -5,6 +5,47 @@
 
 ---
 
+## C49-18 — l'OCR rejoue ses appels IDEMPOTENTS, et seulement ceux-là ✅
+
+> Livré le 21/09. Et il faut lire la ligne suivante avant celle-ci : **ce lot ne corrige pas
+> les erreurs OCR observées aujourd'hui en production** (voir `[C49-19]`).
+
+- [x] **Le défaut.** `fetchDriveAvecRetry_` existe depuis la phase 2 et rejoue une fois sur
+  429/5xx. `Ocr.gs` ne l'employait **nulle part** : ses quatre appels Drive étaient des
+  `UrlFetchApp.fetch` nus. Un 503 passager sur un export rendait `null`, que le rattrapage range
+  en `ocr-echec` — issue DÉFINITIVE : le document est marqué « fait » sous le tag courant et ne
+  revient ni par le rattrapage, ni par le flux (il est déjà classé).
+- [x] **Trois appels retentent** : l'export natif (`exporterTexteNatif_`), l'export du fichier
+  temporaire — celui où le rejeu rapporte le plus, puisque la conversion vient d'être PAYÉE — et
+  la suppression du temporaire (sinon un 5xx laisse un `DriveAI_extract_temp` que rien ne va
+  chercher).
+- [x] **Le quatrième NE DOIT PAS, et c'est gardé.** L'upload multipart CRÉE un fichier : un 5xx
+  peut arriver APRÈS la création (c'est la réponse qui est perdue, pas l'effet), donc rejouer
+  fabriquerait un second temporaire dont on n'apprend jamais l'identifiant — un orphelin qu'on ne
+  peut plus supprimer, le garde-fou « aucune suppression automatique » interdisant d'aller le
+  chercher par son nom. `test/ocr-retry.test.js` refuse le retry à cet endroit : un lot futur qui
+  « harmoniserait » rougit.
+- [x] **Ce que ça rapporte, mesuré honnêtement : rien d'observé.** Le Journal du 21/09 ne porte
+  AUCUN `Export natif HTTP` — les deux erreurs OCR du jour (`Conversion HTTP 400`, `HTTP 500`)
+  sont toutes deux à l'upload, le seul appel qui ne peut pas rejouer. C'est un filet, pas une
+  récupération chiffrée, et le dire vaut mieux que laisser croire l'inverse.
+- [x] 5 cas neufs, **4 mutations jouées, 4 rouges** (dont celle qui POSE le retry sur l'upload).
+  Deux tests d'`intake.test.js` ont rougi au passage : ils chargeaient `Ocr.gs` sans
+  `DriveRest.gs`, le `try/catch` de l'export avalait la fonction manquante et rendait `null` —
+  le contrat inter-module n'existait que dans la production. Corrigé côté test.
+
+- [ ] **[C49-19] Un 5xx à l'upload fige le document POUR TOUJOURS.** C'est le site qui échoue
+  réellement (deux occurrences le 21/09), et le retry ne peut pas l'atteindre. Aujourd'hui
+  `extraireTexte_` rend `null` sans dire POURQUOI : un 400 (ce document-ci est refusé par Drive —
+  verdict légitime) et un 500 (Google a eu un hoquet — cause transitoire) arrivent au rattrapage
+  sous la même forme, donc les deux marquent le document « fait » définitivement. Le correctif
+  est de porter l'ORIGINE de l'échec (4xx = permanent, 5xx/429/réseau = transitoire) et de ne pas
+  marquer sur un transitoire, avec un nombre d'essais BORNÉ — sinon un document qui échoue
+  toujours empêche la tranche de finir. **Non fait : hors du périmètre donné (« applique le
+  correctif » visait le retry).**
+
+---
+
 ## C49-16 — 734 documents CLASSÉS que le canal ne sait pas DÉSIGNER ✅
 
 > Mesuré le 21/09, corrigé le 21/09. Lot A du plan « tout le Drive » (arbitrages de Marc :
