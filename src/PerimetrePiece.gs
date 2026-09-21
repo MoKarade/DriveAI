@@ -102,8 +102,10 @@ function estCandidatPiece_(nom) {
  * PURE. Le périmètre, depuis les lignes BRUTES de l'Index (colonnes A..F).
  *
  * @param {!Array<!Array<*>>} lignes  [clé, traité le, fichier, domaine, chemin, statut]
- * @param {function(string):string} fileIdDe  extracteur de fileId (injecté : la règle vit
- *     dans `Journal.gs`, et la recopier ici en ferait une règle et demie)
+ * @param {function(Array):string} fileIdDe  extracteur de fileId (injecté : la règle vit
+ *     dans `Journal.gs`, et la recopier ici en ferait une règle et demie). ⚠️ Il reçoit la
+ *     LIGNE ENTIÈRE depuis C49-16, plus seulement sa clé : le fileId vit désormais dans une
+ *     colonne, et une pièce jointe Gmail n'en a jamais eu dans sa clé.
  * @return {!Object} { lues, classees, candidats, exclus, parDomaine, parExtension }
  */
 function compterPerimetrePiece_(lignes, fileIdDe) {
@@ -115,9 +117,10 @@ function compterPerimetrePiece_(lignes, fileIdDe) {
     res.lues++;
     var statut = String(lignes[i][5] || '').toLowerCase();
     if (statut.indexOf('class') !== 0) continue;
-    if (!fileIdDe(String(lignes[i][0] || ''))) {
-      // ⚠️ RANGÉ, mais sa CLÉ ne porte pas de fileId — une pièce jointe Gmail, typiquement.
-      // Sauter en silence ferait passer un PLANCHER pour un total (voir l'en-tête). On compte.
+    if (!fileIdDe(lignes[i])) {
+      // ⚠️ RANGÉ, et NI sa clé NI sa colonne ne portent de fileId — une pièce jointe Gmail dont
+      // la résolution n'a pas encore tourné, ou qui a été refusée. Sauter en silence ferait
+      // passer un PLANCHER pour un total (voir l'en-tête). On compte.
       res.classeesSansFileId++;
       continue;
     }
@@ -250,11 +253,14 @@ function phrasePerimetrePiece_(brut) {
 
 /* ---------- I/O ---------- */
 
-/** Les lignes A..F de l'Index, ou `null` si l'onglet est vide/absent. */
+/** Les lignes A..I de l'Index, ou `null` si l'onglet est vide/absent. */
 function lireLignesIndexPerimetre_() {
   var idx = feuille_('Index');
   if (!idx || idx.getLastRow() < 2) return null;
-  return idx.getRange(2, 1, idx.getLastRow() - 1, 6).getValues();
+  // ⚠️ NEUF colonnes depuis C49-16, pas six : la 9ᵉ porte le fileId. Une plage trop courte rend
+  // `undefined` sans lever, et le lecteur retomberait en silence sur la clé — c'est-à-dire sur
+  // l'angle mort qu'on vient de fermer.
+  return idx.getRange(2, 1, idx.getLastRow() - 1, 9).getValues();
 }
 
 /**
@@ -287,7 +293,7 @@ function etapePerimetrePiece_() {
     return null;
   }
 
-  var res = compterPerimetrePiece_(lignes, fileIdDeCleIndex_);
+  var res = compterPerimetrePiece_(lignes, fileIdDeLigneIndex_);
   props.setProperty('DriveAI_PERIMETRE_PIECE', encoderPerimetrePiece_(res, CONFIG.PERIMETRE_PIECE_TAG, iso));
   props.setProperty('DriveAI_PERIMETRE_PIECE_TAG', CONFIG.PERIMETRE_PIECE_TAG);
   journalInfo_('PerimetrePiece',
@@ -322,7 +328,7 @@ function diagnosticPerimetrePiece() {
     Logger.log('Index vide ou absent — aucun comptage possible.');
     return null;
   }
-  var res = compterPerimetrePiece_(lignes, fileIdDeCleIndex_);
+  var res = compterPerimetrePiece_(lignes, fileIdDeLigneIndex_);
   Logger.log('Lignes d\'Index : ' + res.lues);
   Logger.log('Classés avec fileId : ' + res.classees);
   // ⚠️ Le PLANCHER : ces lignes sont rangées dans le Drive et invisibles au comptage comme au

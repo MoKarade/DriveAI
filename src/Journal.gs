@@ -14,7 +14,16 @@ var COLONNES_CONFIANCE = ['Adresse', 'Ajouté le'];
 function initialiserSheet_(ss) {
   creerOnglet_(ss, 'Entités', COLONNES_ENTITES); // cf. COLONNES_ENTITES (9 colonnes, dont Variante possible ? et Vu N fois)
   creerOnglet_(ss, 'Corrections', COLONNES_CORRECTIONS); // apprentissage : doc corrigé → exemples few-shot (ADR-0003)
-  creerOnglet_(ss, 'Index', ['Clé', 'Traité le', 'Fichier', 'Domaine', 'Chemin', 'Statut', 'Empreinte', 'Confiance']);
+  // ⚠️ `FileId` (9ᵉ, C49-16) est AJOUTÉE EN QUEUE, jamais insérée : l'app se déploie séparément
+  // du moteur, et une insertion ferait lire chaque colonne suivante avec l'ancienne sémantique
+  // pendant la fenêtre entre les deux déploiements, sans la moindre erreur (leçon C28-44).
+  // ⚠️ Les plages de lecture de l'app ont été RECENSÉES le 21/09, comme la leçon l'exige et pas
+  // en le supposant : `etatGlobal.tsx` et `AvancementLecture.tsx` lisent `A2:H`, `google.ts` lit
+  // `A1:H1` puis `A2:A`. Aucune ne dépasse la 8ᵉ colonne — elles IGNORENT donc la neuvième, ce
+  // qui est exactement l'effet voulu d'un ajout en queue. Et `ajouterLigne('Index', […8])` de
+  // l'app laisse la 9ᵉ VIDE : `fileIdDeLigneIndex_` retombe alors sur la clé, jamais sur un
+  // identifiant deviné.
+  creerOnglet_(ss, 'Index', ['Clé', 'Traité le', 'Fichier', 'Domaine', 'Chemin', 'Statut', 'Empreinte', 'Confiance', 'FileId']);
   // #17 : la Sheet existante n'a pas l'en-tête H — réparé ici (initialiserSheet_ ne tourne que
   // quand un onglet manque : coût nul en régime normal).
   var fIndex = ss.getSheetByName('Index');
@@ -271,6 +280,13 @@ function majSante_() {
     // pas celui des papiers.
     ['Périmètre des pièces (C49-4) : ' + texteSantePerimetrePiece_()],
     ['Rattrapage des pièces (C49-5) : ' + texteSanteRattrapagePiece_()],
+    // La RÉSOLUTION des identifiants (C49-16). Ligne à part des deux ci-dessus, parce qu'elle
+    // répond à une question qu'aucune ne pose : « combien de papiers classés sont-ils seulement
+    // DÉSIGNABLES ? ». Tant qu'une ligne d'Index ne porte pas de fileId, le périmètre la compte
+    // hors de son total (il le dit comme un PLANCHER) et le rattrapage ne peut pas l'envoyer —
+    // donc un « ✅ tranche terminée » parfaitement vrai peut coexister avec 734 documents que
+    // personne n'a jamais lus. C'est exactement le genre d'écart que le silence rend invisible.
+    ['Résolution des identifiants (C49-16) : ' + texteSanteResolutionFileId_()],
     // C49-14 — Marc, le 21/09 : « je sais pas ça traite quoi en ce moment, quel dossier,
     // quel fichier, quelle direction ». Trois questions, et AUCUNE n'avait de réponse :
     // la ligne ci-dessus donne un total et un motif, jamais un DOSSIER ni un FICHIER.
@@ -992,7 +1008,46 @@ function fileIdDeCleIndex_(cle) {
   if (parts.length < 2) return '';
   if (PREFIXES_CLE_FICHIER_[parts[0]] !== 1) return '';
   var id = parts[parts.length - 1];
-  return /^[A-Za-z0-9_-]{20,}$/.test(id) ? id : '';
+  return estFileIdPlausible_(id) ? id : '';
+}
+
+/**
+ * PURE. Cette chaîne a-t-elle la FORME d'un identifiant Drive ?
+ *
+ * ⚠️ Extraite de `fileIdDeCleIndex_` parce qu'elle a désormais DEUX lecteurs : la clé et la
+ * colonne. Deux écritures de la même règle divergeraient au premier ajustement, et la seconde
+ * accepterait ce que la première refuse — sans que rien ne le dise.
+ */
+function estFileIdPlausible_(s) {
+  return /^[A-Za-z0-9_-]{20,}$/.test(String(s == null ? '' : s));
+}
+
+/**
+ * PURE. Le fileId d'une ligne d'Index : la COLONNE d'abord, la clé en repli.
+ *
+ * ⚠️ L'ORDRE n'est pas indifférent. La colonne est écrite par le code qui a VU le fichier
+ * (`src.placer` rend son id) ; la clé n'est qu'une déduction, et elle ne marche que pour quatre
+ * préfixes sur tous ceux que l'Index porte. Le repli existe pour les 26 000 lignes écrites avant
+ * C49-16, pas comme source préférée.
+ *
+ * ⚠️ Une colonne qui ne ressemble pas à un id Drive est IGNORÉE plutôt que rendue : une cellule
+ * abîmée à la main ne doit pas envoyer un document sous l'identité d'un autre.
+ *
+ * ⚠️ DEUX FORMES D'ENTRÉE, UNE SEULE RÈGLE. L'Index se lit tantôt en lignes brutes (tableaux,
+ * `PerimetrePiece`/`RattrapagePiece`/`AuditPiece`), tantôt en fiches nommées (`Memoire`, et le
+ * flux vivant qui n'a jamais vu l'Index — il tient sa décision en main). Écrire la règle deux
+ * fois en ferait une règle et demie : la seconde accepterait un jour ce que la première refuse,
+ * et rien ne le dirait. Une fonction, deux accesseurs.
+ *
+ * @param {Array|{cle:string, fileId:(string|undefined)}} ligne  ligne d'Index ou fiche
+ * @return {string} l'id, ou '' si la ligne n'en porte aucun
+ */
+function fileIdDeLigneIndex_(ligne) {
+  if (!ligne) return '';
+  var tableau = Array.isArray(ligne);
+  var colonne = String((tableau ? ligne[8] : ligne.fileId) || '').trim();
+  if (estFileIdPlausible_(colonne)) return colonne;
+  return fileIdDeCleIndex_(String((tableau ? ligne[0] : ligne.cle) || ''));
 }
 
 /**
@@ -1012,6 +1067,11 @@ function chargerIndexCache_() {
   var f = feuille_('Index');
   // Auto-réparation : assure la colonne « Empreinte » (G) sur un Index existant.
   if (f.getRange(1, 7).getValue() !== 'Empreinte') f.getRange(1, 7).setValue('Empreinte');
+  // ⚠️ MÊME point d'attache, et pas `initialiserSheet_` : celle-ci ne tourne qu'à la création de
+  // la Sheet ou quand l'onglet est ABSENT, donc sur un Index déjà en production — le cas même où
+  // la réparation sert — elle est du code MORT (leçon §9, payée sur la colonne `Erreur` de
+  // `HistoriqueVrac`). `chargerIndexCache_` tourne, elle, à chaque run.
+  if (f.getRange(1, 9).getValue() !== 'FileId') f.getRange(1, 9).setValue('FileId');
 
   var dern = f.getLastRow();
   if (dern < 2) return;
@@ -1030,6 +1090,13 @@ function chargerIndexCache_() {
     // lignes est chronologique. Garder la PREMIÈRE ferait gagner l'empreinte la plus ANCIENNE — un
     // fichier ré-analysé (`reanalyse|…`) après un `drive|…` aurait vu la périmée l'emporter. C'est
     // aussi la sémantique de `indexAjouter_`, qui écrase avec la valeur la plus récente.
+    // ⚠️ C49-16 — CELUI-CI reste sur la CLÉ, et c'est une DÉCISION, pas un oubli. Ce cache ne
+    // lit que deux colonnes (A et G) pour une raison MESURÉE : lire les autres chargeait 3,5×
+    // trop de cellules à chaque tick sur un Index qui croît, et c'est l'un des postes du socle
+    // non budgété qui pousse vers le mur des ~90 min/j. Ajouter la colonne I pour couvrir les
+    // pièces jointes Gmail est possible et ne coûterait qu'un aller-retour — mais ce cache n'est
+    // qu'un RACCOURCI de performance (`empreinteConnueParId_` ; `Reset.gs` recalcule le hash en
+    // repli), donc l'écart ne perd aucune donnée. Noté au BACKLOG plutôt que fait ici.
     var fid = fileIdDeCleIndex_(cles[i][0]);
     if (fid) _empreintesParIdCache[fid] = String(empreintes[i][0]);
   }
@@ -1069,12 +1136,22 @@ function indexAjouter_(cle, resultat, empreinte) {
     resultat.statut, empreinte || '',
     // #17 (App v3 « Documents ») : confiance du classement — vide pour tout ce qui n'est pas
     // une classification LLM (mails, doublons, quarantaine…).
-    resultat.confiance != null && resultat.confiance !== '' ? resultat.confiance : ''
+    resultat.confiance != null && resultat.confiance !== '' ? resultat.confiance : '',
+    // ⚠️ C49-16 — LE `fileId` NE SE DÉDUIT PLUS DE LA CLÉ. La clé d'une pièce jointe Gmail est
+    // `<messageId>|<rang>|<nom>|<taille>` : elle n'en porte aucun, alors que le fichier EST dans
+    // le Drive. Mesuré le 17/09 : 734 lignes CLASSÉES invisibles au périmètre des pièces, à la
+    // lecture et au canal Mémoire — c'est-à-dire l'intake PRINCIPAL du moteur, hors de tout.
+    // Le fileId est en main trois lignes avant cet appel (`src.placer` le rend) : on l'écrit.
+    resultat.fileId || ''
   ]);
   if (_indexCache !== null) _indexCache[cle] = true;
   if (_empreintesCache !== null && empreinte) _empreintesCache[empreinte] = true;
   if (_empreintesParIdCache !== null && empreinte) {
-    var fid = fileIdDeCleIndex_(cle);
+    // ⚠️ C49-16 — MIGRÉ : le fileId est en main trois lignes plus haut (`resultat.fileId`), donc
+    // la déduction par la clé n'a plus lieu d'être. Effet de bord VOULU : le cache couvre
+    // désormais les pièces jointes Gmail, qui en étaient exclues — autant de hachages qu'on ne
+    // repaiera pas.
+    var fid = fileIdDeLigneIndex_({ cle: cle, fileId: resultat.fileId });
     if (fid) _empreintesParIdCache[fid] = empreinte;
   }
 }

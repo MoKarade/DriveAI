@@ -58,7 +58,7 @@ function chargerAvecSanteMock(indexCache, props) {
   // qu'une campagne qui DÉPENSE avance — et, quand elle n'avance pas, laquelle des six causes
   // (non armée, jeton, suspension, frein, audit en cours, budget du jour) la retient.
   const ctx = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'GoogleApi.gs', 'TriGmail.gs', 'Doublons.gs',
-    'Gmail.gs', 'Migration.gs', 'Memoire.gs', 'AuditPiece.gs', 'PerimetrePiece.gs', 'RattrapagePiece.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
+    'Gmail.gs', 'Migration.gs', 'Memoire.gs', 'AuditPiece.gs', 'PerimetrePiece.gs', 'RattrapagePiece.gs', 'ResolutionFileId.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
     { PropertiesService: mockProps(props) });
   const captured = [];
   // feuille_ mocké : capture l'unique setValues de « Santé » ; `getLastRow: 1` = rapport des
@@ -71,7 +71,7 @@ function chargerAvecSanteMock(indexCache, props) {
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 17 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 18 lignes de métadonnées (une seule écriture Sheet)', () => {
   // 10 depuis ADR-0056 : la re-datation de `06` rallume de la dépense LLM et son budget du jour
   // n'était lisible NULLE PART. Le compte est figé pour que l'ajout d'une ligne soit une DÉCISION —
   // l'écriture est unique par tick, et chaque ligne coûte de la place à l'écran de Marc.
@@ -104,9 +104,15 @@ test('majSante_ écrit exactement 17 lignes de métadonnées (une seule écritur
   // fin de la passe, c'est-à-dire fabriquer le faux état figé que ce lot existe pour tuer.
   // Marc, le 21/09 : « je sais pas ça traite quoi en ce moment, quel dossier, quel fichier,
   // quelle direction » — quatre questions dont aucune n'avait de réponse dans le moteur.
+  // 18 depuis C49-16 : la RÉSOLUTION des identifiants ne partage la ligne d'aucune voisine. Le
+  // périmètre COMPTE, le rattrapage ENVOIE, l'audit VÉRIFIE — celle-ci dit si un papier classé
+  // est seulement DÉSIGNABLE. Sans elle, « ✅ tranche terminée » reste parfaitement vrai pendant
+  // que 734 pièces jointes Gmail, classées depuis des mois, n'ont jamais pu partir : le
+  // périmètre les écarte de son total (il l'annonce comme un PLANCHER) et le rattrapage ne sait
+  // pas les nommer. Un écart que rien d'autre n'affiche.
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 17);
+  assert.strictEqual(captured.length, 18);
   assert.ok(captured.every((l) => typeof l === 'string'));
 });
 

@@ -5,6 +5,65 @@
 
 ---
 
+## C49-16 — 734 documents CLASSÉS que le canal ne sait pas DÉSIGNER ✅
+
+> Mesuré le 21/09, corrigé le 21/09. Lot A du plan « tout le Drive » (arbitrages de Marc :
+> périmètre = tout le Drive, angle mort Gmail = « réparer, dans ce lot »).
+
+- [x] **Le défaut.** `fileIdDeCleIndex_` déduit l'identifiant Drive de la CLÉ d'Index et
+  n'accepte que quatre préfixes (`drive`, `tri33p`, `migre`, `reanalyse`). Or la clé d'une pièce
+  jointe Gmail est `<messageId>|<rang>|<nom>|<taille>` : elle n'en porte **aucun**. Résultat,
+  **734 lignes classées** invisibles au comptage du périmètre (C49-4), au rattrapage (C49-5) et
+  au canal Mémoire — c'est-à-dire l'intake PRINCIPAL du moteur, hors de tout. Et 734 est un
+  **PLANCHER** : c'est le compte des lignes `classé` sans fileId, pas de ce que Gmail fait entrer.
+- [x] **Deux moitiés, et il faut les deux.** (a) L'AVENIR : `Pipeline.gs` pose `decision.fileId`
+  (le placement vient de le rendre) et `indexAjouter_` l'écrit en **9ᵉ colonne**, ajoutée EN
+  QUEUE — l'app se déploie séparément et lit `A2:H`, plages recensées et non supposées.
+  (b) L'EXISTANT : `src/ResolutionFileId.gs`, qui RETROUVE l'identifiant par recherche Drive.
+  Corriger ce qui écrit ne répare jamais ce qui est déjà écrit (leçon du « [object Object] »).
+- [x] **Le prédicat REFUSE dans le doute.** L'empreinte avant le chemin ; une empreinte attendue
+  que personne ne porte fait refuser au lieu de se rabattre sur le dossier. Un mauvais fileId
+  enverrait un papier de Marc à la Mémoire **sous l'identité d'un autre** — verdict positif, donc
+  définitif de fait. Les refus sont mémorisés (`!<motif>|<tag>`) mais RÉVISABLES par bump.
+- [x] **Aucun budget quotidien prélevé** : passe ONE-SHOT gatée par tag (~734 recherches Drive,
+  quelques minutes UNE fois), comme `PERIMETRE_PIECE_TAG`. L'enveloppe reste à 63 min/j.
+- [x] **Observabilité** : ligne de Santé dédiée (18ᵉ), motifs de refus NOMMÉS un par un —
+  « introuvable », « ambigu » et « empreinte-differente » appellent trois gestes différents.
+- [x] 22 cas neufs, **9 mutations jouées, 9 rouges**. Gate complet vert (1 526 moteur · 384 app).
+
+**Revue adversariale (21/09) — TROIS bloquants, aucun visible du gate.** Les 1 526 tests étaient
+verts sur les trois, et c'est le diagnostic : aucun ne portait sur une FONCTION, tous sur un
+CHAÎNON.
+
+- [x] **Le lot était INERTE sur son seul consommateur vivant, et il facturait.**
+  `RattrapagePiece` ne transmettait pas `doc.fileId` à `pousserPieceApresClassement_` :
+  `pieceMemoire_` retombait sur la clé, rendait `null`, le document était marqué « fait »
+  DÉFINITIVEMENT — **après** l'appel Haiku payé. `04` servi en premier, donc les papiers
+  d'immigration en tête. Prouvé par sonde sur le vrai module.
+- [x] **Le curseur sautait une page entière** sur une coupure au PREMIER item (budget basculé
+  pendant la lecture de l'Index, throttle Drive sur la 1ʳᵉ recherche) : `res.curseur` était
+  initialisé avec la valeur de FIN de page. Mesuré : 60 lignes sur 100, 40 vides, Santé
+  « ✅ terminée ». `selectionnerAResoudre_` expose désormais son `debut`.
+- [x] **Un verdict irréversible se prenait sur un NOM de dossier.** `2025` existe sous chacun des
+  neuf domaines : un homonyme sous `03 · Logement/2025` devenait l'unique candidat d'une ligne
+  `02 · Finances/2025`. On compare maintenant la chaîne ENTIÈRE, multi-parents compris.
+- [x] Et neuf autres : page pleine ⇒ refus (la troncature FABRIQUE des uniques) · raccourcis
+  écartés du `q` (ce dépôt en pose, même nom, sans empreinte) · exemplaire de `_Doublons` refusé ·
+  chaîne de dossiers illisible = PANNE, jamais un refus figé · `String(null)` n'est plus un id ·
+  « aucun candidat n'a d'empreinte » ≠ « ce n'est pas ce document » · écritures COMPTÉES et
+  suspension si zéro · panne Drive SUSPENDUE (sinon ~20-30 min/j de runtime, indéfiniment,
+  invisibles au test d'enveloppe) · sous-budget par run (elle était la seule étape de fond sans) ·
+  lecture d'Index gardée · cumul de campagne (la phrase terminale disait « 0 retrouvés »).
+- [x] 15 mutations neuves jouées, **15 rouges**. Gate : 1 540 moteur · 384 app · build · syntaxe.
+
+- [ ] **[C49-17] `chargerIndexCache_` pourrait couvrir les pièces jointes Gmail** — il ne lit que
+  les colonnes A et G, pour une raison MESURÉE (3,5× de cellules en moins à chaque tick).
+  Ajouter la colonne I ferait profiter `_empreintesParIdCache` des ~734 lignes Gmail, donc
+  autant de hachages non repayés. Aucune donnée n'est perdue sans ça (`Reset.gs` recalcule en
+  repli) : c'est une optimisation, pas un correctif.
+
+---
+
 ## C49-15 — la ligne de Santé du rattrapage nomme TROIS compteurs pour QUATRE chiffres ✅
 
 > Signalé le 21/09, corrigé le 21/09 sur feu vert de Marc (« fais les 3 points »).

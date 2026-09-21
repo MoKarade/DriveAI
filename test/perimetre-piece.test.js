@@ -69,7 +69,7 @@ test('compterPerimetrePiece_ ne compte que le CLASSÉ et l\'IDENTIFIABLE', () =>
     ligne(CLE(ID + '3'), 'film.mp4', '09 · Voyages', 'classé'),       // écarté
     ligne(CLE(ID + '4'), 'd.jpg', '01 · Administratif', 'classé'),
   ];
-  const res = c.compterPerimetrePiece_(lignes, c.fileIdDeCleIndex_);
+  const res = c.compterPerimetrePiece_(lignes, c.fileIdDeLigneIndex_);
   assert.strictEqual(res.lues, 5);
   assert.strictEqual(res.classees, 3, 'trois lignes classées ET porteuses d\'un fileId');
   assert.strictEqual(res.candidats, 2);
@@ -87,7 +87,7 @@ test('compterPerimetrePiece_ ne compte que le CLASSÉ et l\'IDENTIFIABLE', () =>
 
 test('un Index vide rend des zéros, jamais une exception', () => {
   const c = ctx();
-  const res = c.compterPerimetrePiece_([], c.fileIdDeCleIndex_);
+  const res = c.compterPerimetrePiece_([], c.fileIdDeLigneIndex_);
   assert.strictEqual(res.candidats, 0);
   assert.strictEqual(res.lues, 0);
 });
@@ -247,7 +247,7 @@ test('une ligne classée dont la CLÉ ne porte pas de fileId se COMPTE, jamais n
     ligne(CLE(ID + '1'), 'a.pdf', '04 · Immigration', 'classé'),
     ligne('18f3c2a1b9d0e4f5|0|Facture.pdf|48213', 'Facture.pdf', '02 · Finances', 'classé'),
   ];
-  const res = c.compterPerimetrePiece_(lignes, c.fileIdDeCleIndex_);
+  const res = c.compterPerimetrePiece_(lignes, c.fileIdDeLigneIndex_);
   assert.strictEqual(res.classees, 1);
   assert.strictEqual(res.classeesSansFileId, 1,
     'la PJ Gmail doit être COMPTÉE : sans ce nombre, le total se lit comme un périmètre alors que c\'est un plancher');

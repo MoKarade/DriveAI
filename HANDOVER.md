@@ -6,6 +6,38 @@
 >
 > **🟦 EN COURS — 2026-09-21 : la lecture des papiers se REGARDE. REPRENDRE ICI.**
 >
+> **DERNIER LOT — C49-16 : 734 documents CLASSÉS que le canal ne savait pas DÉSIGNER.**
+> C'est le **lot A** du plan « tout le Drive », fait avant de demander l'OK sur le reste.
+> `fileIdDeCleIndex_` déduit l'identifiant Drive de la CLÉ d'Index et n'accepte que quatre
+> préfixes ; la clé d'une pièce jointe Gmail — l'intake PRINCIPAL — n'en porte aucun. Ces
+> lignes étaient donc invisibles au comptage du périmètre, au rattrapage et au canal Mémoire,
+> alors que les documents sont rangés depuis des mois. ⚠️ **734 est un PLANCHER**, pas un total.
+>
+> Deux moitiés livrées ensemble, parce qu'une seule ne répare rien : le pipeline pose désormais
+> le `fileId` en **9ᵉ colonne** de l'Index (ajoutée EN QUEUE — les plages de lecture de l'app
+> ont été RECENSÉES, elles s'arrêtent à `H`), et `src/ResolutionFileId.gs` RETROUVE celui des
+> lignes déjà écrites, par recherche Drive. Le prédicat **refuse dans le doute** : un mauvais
+> identifiant enverrait un papier de Marc à la Mémoire sous l'identité d'un autre.
+>
+> **Ce qui se passera tout seul au prochain déploiement** : la passe tourne dans le tick, AVANT
+> le rattrapage et le périmètre (elle leur fournit leurs entrées), 40 lignes par run, sans
+> prélever une minute de budget quotidien à personne. La ligne de Santé « Résolution des
+> identifiants (C49-16) » dit où elle en est et POURQUOI elle refuse — « introuvable »,
+> « ambigu » et « empreinte-differente » appellent trois gestes différents.
+>
+> ⚠️ **La revue adversariale a trouvé TROIS bloquants que le gate ne pouvait pas voir** (1 526
+> cas verts sur les trois). Tous corrigés dans la même PR, tous prouvés par mutation. Le plus
+> grave : le `fileId` ne voyageait PAS jusqu'à la Mémoire depuis le rattrapage — le lot aurait
+> donc été **inerte sur son seul consommateur vivant, en payant un appel Haiku par document et
+> en les marquant « faits » définitivement**, `04` en premier. Les deux autres : un curseur qui
+> sautait 40 lignes sur une coupure au premier item (« ✅ terminée » sur 60 documents lus sur
+> 100), et un verdict irréversible pris sur un simple NOM de dossier (`2025` existe sous les
+> neuf domaines). Détail complet dans `BACKLOG.md`.
+>
+> ⚠️ **À VÉRIFIER après le run `deploy.yml`** : que la ligne de Santé quitte « jamais passée »,
+> et que le périmètre re-compté fasse tomber son PLANCHER. Tant que ce n'est pas mesuré, le
+> correctif n'est pas fini (§9 : une réparation se mesure, elle ne se déduit pas d'un merge).
+>
 > **En une phrase** : la campagne tourne (le 500 de la Mémoire est réparé, mesuré — le canal a
 > accepté 5 pièces à 14:47 UTC et la télémétrie `rattrapage-piece` est passée de 1 à 6 appels),
 > et l'onglet **Lecture** de l'app répond désormais aux cinq questions que Marc a posées trois

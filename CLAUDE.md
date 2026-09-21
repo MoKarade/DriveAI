@@ -1460,6 +1460,53 @@ l'épinglait, et c'est exactement pourquoi il avait pu dériver. La garde qui re
 la phrase affiche, et exige l'égalité. Épingler le texte se re-baserait mécaniquement au prochain
 compteur ajouté — c'est-à-dire le jour où il faut que quelque chose rougisse.
 
+**Une DÉDUCTION à la place d'une MESURE marche pour la majorité, et la minorité disparaît en
+silence.** Le 21/09/2026, le fileId d'un document n'était nulle part stocké : il se DÉDUISAIT
+de la clé d'Index, qui le porte en dernier segment — pour quatre préfixes sur cinq. La clé
+d'une pièce jointe Gmail est `<messageId>|<rang>|<nom>|<taille>` et n'en contient aucun. Donc
+**734 documents CLASSÉS** étaient invisibles au comptage du périmètre, au rattrapage des pièces
+et au canal Mémoire, alors qu'ils sont rangés dans le Drive depuis des mois. Rien ne pouvait le
+dire : la déduction ne LÈVE pas, elle rend `''`, et chaque lecteur a sauté la ligne comme s'il
+n'y avait rien à lire. Réflexe : devant un identifiant qu'on DÉRIVE au lieu de le STOCKER,
+demander **sur quelle part de la population la dérivation marche** — et si la réponse n'est pas
+« toute », la faute est dans la dérivation, pas dans les exceptions.
+⚠️ **Le correctif est une PAIRE, et une moitié seule ne répare rien** : le producteur écrit
+désormais la valeur (9ᵉ colonne, EN QUEUE — les plages de lecture de l'app ont été RECENSÉES,
+pas supposées), et une passe one-shot RETROUVE celle des lignes déjà écrites. Corriger ce qui
+écrit ne répare jamais ce qui est déjà écrit — troisième fois ce mois-ci.
+⚠️ **Et retrouver, c'est trancher : le prédicat REFUSE dans le doute.** Un fileId faussement
+attribué enverrait un papier de Marc à la Mémoire **sous l'identité d'un autre** — verdict
+POSITIF, donc définitif de fait. L'empreinte avant le chemin, et une empreinte attendue que
+personne ne porte fait REFUSER au lieu de se rabattre sur le dossier : un fichier qui n'a pas
+le bon contenu n'est pas celui-là, quel que soit son nom. Le refus est mémorisé (sinon la
+campagne ne finit jamais) mais keyé sous le TAG, donc révisable par bump.
+
+**Un gate vert ne voit pas un CHAÎNON, et les trois bloquants d'un même lot peuvent tous en
+être un.** Le 21/09/2026, C49-16 partait avec 1 526 tests verts, neuf mutations rouges et une
+CI verte. La revue adversariale a trouvé trois bloquants, et aucun ne portait sur une FONCTION :
+(a) le `fileId` que le lot existe pour produire n'était pas TRANSMIS par `RattrapagePiece` à
+`pousserPieceApresClassement_` — donc `pieceMemoire_` retombait sur la clé, rendait `null`, et le
+document était marqué « fait » DÉFINITIVEMENT **après** l'appel Haiku payé : une boucle inerte
+qui facture, sur `04` en premier ; (b) `res.curseur` était initialisé AVANT la boucle avec la
+valeur de FIN de page, donc une coupure au PREMIER item sautait quarante lignes — 60 documents
+sur 100, et la Santé annonçait « ✅ terminée » ; (c) le verdict irréversible se prenait sur le
+NOM du dossier parent, or `2025` existe sous chacun des neuf domaines. Les trois vivaient entre
+deux fonctions correctes et testées — « un trou entre deux moitiés testées n'appartient à
+personne », re-payé trois fois dans le même lot. ⚠️ Ce qui les a trouvés n'est pas une relecture
+mais des SONDES sur le vrai module (« clé Gmail sans fileId ⇒ `pieceMemoire_` rend `null` »,
+« 60/100 résolues, 40 vides »). Toute garde neuve doit donc en contenir au moins une qui
+TRAVERSE, depuis l'entrée la plus amont jusqu'à l'effet réel.
+⚠️ **Et une troncature RETIRE des candidats, donc elle FABRIQUE des uniques.** Mon commentaire
+affirmait l'inverse — « au-delà du plafond, le choix refusera de toute façon » — alors que le
+refus vient justement d'avoir DEUX candidats. Une page pleine ne dit pas « il y en a N », elle
+dit « je n'ai pas tout vu » : on en demande un de plus, et une page pleine REFUSE.
+⚠️ **Une panne sans suspension coûte tous les jours** : `fin='panne'` ne fermait aucune gate, donc
+un refus Drive persistant faisait re-lire l'Index ENTIER à chaque tick pour re-échouer — ~20 à
+30 min de runtime quotidien, indéfiniment, et **invisibles au test d'enveloppe**, qui ne somme
+que des constantes `*_BUDGET_JOUR_MS` nommées. Troisième occurrence de cet angle mort (C28-42,
+C28-135). Et une étape de fond sans sous-budget par run peut affamer exactement celles qu'elle
+est placée là pour alimenter.
+
 ## 10. Style et compte-rendu
 
 > 📣 Forme des comptes-rendus, des commits, des PR et des docs générées :

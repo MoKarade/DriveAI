@@ -224,6 +224,25 @@ const CONTRAT = [
   // c'est le seul moyen de vérifier une réparation avant minuit. `diagnosticRattrapagePiece`
   // est en plus ce qui permet de lire le COÛT d'une tranche AVANT de la dépenser.
   'rattraperPiecesMaintenant', 'diagnosticRattrapagePiece',
+  // La RÉSOLUTION des identifiants (C49-16). Cinq contrats INTER-MODULES, donc cinq noms que
+  // seul ce test retient : `etatResolutionFileId_`, `resolutionFileIdDoitTourner_` et
+  // `etapeResolutionFileId_` sont appelées par `Main.gs` ; `texteSanteResolutionFileId_` par
+  // `Journal.gs` ; et `resoudreIdentifiantsMaintenant` est le chemin que MARC emprunte depuis
+  // l'éditeur — un chemin que seul un humain emprunte n'a personne d'autre pour le retenir
+  // (C28-137), et c'est le seul moyen de finir la passe sans attendre les ticks.
+  'etatResolutionFileId_', 'resolutionFileIdDoitTourner_', 'etapeResolutionFileId_',
+  'texteSanteResolutionFileId_', 'resoudreIdentifiantsMaintenant',
+  // `panneResolutionFileId_` est lue par `Main.gs` (la gate) ET par la Santé ; `tronquer_`
+  // (`Ocr.gs`) borne la cause persistée. Contrats inter-modules, donc seul ce test les retient.
+  'panneResolutionFileId_', 'suspendreResolutionFileId_', 'leverSuspensionResolutionFileId_',
+  'tronquer_', 'segmentsChemin_', 'estExemplaireEcarte_', 'cheminsDossier_', 'fichesDossierMemo_',
+  'accepterCandidat_', 'decoderCumulResolution_', 'detailMotifsResolution_',
+  'encoderMotifsResolution_', 'decoderMotifsResolution_', 'noterFinResolutionFileId_',
+  // Le module consomme `urlListeDrive_` + `pageListeDrive_` (`Doublons.gs`) pour chercher par
+  // nom — la MÊME pagination que la détection de doublons, jamais une seconde écrite à part —
+  // et `estFileIdPlausible_` (`Journal.gs`), qui décide si une cellule porte un id ou du bruit.
+  'phraseResolutionFileId_', 'selectionnerAResoudre_', 'choisirResolutionFileId_',
+  'candidatsPourNom_', 'dejaTrancheFileId_', 'refusFileId_',
   'inventorierDoublons_', 'balayerExemplairesDoublons_',
   'ecrireVerdictsDoublons_', 'feuilleRapportDoublons_', 'texteSanteDoublons_', 'pageListeDrive_',
   'texteSanteHistoGmail_', // Main.gs, appelée par Journal.gs (ligne de Santé C28-99)
@@ -340,6 +359,12 @@ const CONTRAT = [
   // `empreinteConnueParId_` (Journal.gs) et consomme `empreintesPlanDeuxSens_` (Consolidation.gs) —
   // trois modules différents, donc INVISIBLES des tests unitaires mockés : d'où leur place ici.
   'empreinteReutiliseeReset_', 'empreinteConnueParId_', 'fileIdDeCleIndex_',
+  // C49-16 — `fileIdDeLigneIndex_` est LA règle de lecture du fileId, appelée par quatre modules
+  // (`PerimetrePiece`, `RattrapagePiece`, `AuditPiece`, `Memoire`) ; `estFileIdPlausible_` est son
+  // prédicat, partagé avec `ResolutionFileId.gs`. Deux contrats qu'aucun test unitaire mocké ne
+  // voit disparaître — et si l'un s'évapore, les lecteurs retombent en silence sur la CLÉ,
+  // c'est-à-dire sur l'angle mort Gmail que ce lot existe pour fermer.
+  'fileIdDeLigneIndex_', 'estFileIdPlausible_',
   'empreintesPlanDeuxSens_', 'dossierDomaineMemo_', 'gardePartReset_',
   // fusion des dossiers en double (#47, ADR-0036) : dry-run un-clic, ZÉRO mutation (PR1)
   'genererPlanFusion', 'clusteriserDossiers_', 'dossiersLies_', 'cibleFusion_', 'lignesPlanFusion_',

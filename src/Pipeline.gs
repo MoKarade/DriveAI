@@ -150,6 +150,11 @@ function traiterDocument_(src) {
       creerRaccourcisEntites_(fileId, decision.nom, decision.autresEntites);
     }
 
+    // ⚠️ C49-16 — LE `fileId` SE POSE ICI, ET NULLE PART AILLEURS. C'est le seul endroit du
+    // moteur où le document vient d'être PLACÉ et où son identifiant est en main ; trois lignes
+    // plus haut, `src.placer` l'a rendu. Le déduire plus tard de la clé ne marche que pour
+    // quatre préfixes — une pièce jointe Gmail n'en porte aucun, et c'est l'intake principal.
+    decision.fileId = fileId;
     indexAjouter_(src.cle, decision, empreinte);
     journalInfo_('Pipeline', decision.statut + ' → ' + decision.chemin + ' : ' + decision.nom);
 
