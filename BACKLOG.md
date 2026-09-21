@@ -52,7 +52,19 @@
   pour une raison sans rapport. Rejouées avec la commande du gate (`test/*.test.js`), référence
   verte assertée de part et d'autre : **17 mutations, 17 rouges** (13 sur l'arrêt et ses surfaces,
   4 sur la comptabilité des minutes). Leçon portée en `CLAUDE.md` §9.
-- [x] **Gate : 1 554 moteur · 384 app · build · syntaxe .gs.**
+- [x] **MESURE D'APRÈS, sur un tick POSTÉRIEUR au déploiement** (19:32 UTC, le déploiement
+  finissant ~19:30) : l'audit annonce **58 min/j** (et non 17), l'historique Gmail dit
+  **« donneur À SEC »**, la re-datation dit **« arrêtée (CONFIG, C49-20) — 108 / 466 au moment
+  de l'arrêt »**, et la Progression donne `désactivée` SANS date de fin ni « reprise demain ».
+  ⚠️ La mesure faite 9 minutes plus tôt décrivait l'ANCIEN code et ne valait rien — c'est le
+  piège §9, et le tick de 19:23 UTC en était la preuve.
+- [x] **RÉGRESSION DE CE LOT, trouvée par cette mesure et corrigée** : éteindre les doublons a
+  effacé leur BILAN de la Santé (« 1 076 écartés : 1 054 confirmés, 19 ORPHELINS ») au profit
+  d'un « désactivée (CONFIG) » muet — le prédicat `!DOUBLONS_ACTIF` vivait EN TÊTE de
+  `ligneSanteDoublons_`, donc C49-20 l'a rendu ATTEIGNABLE. C'était l'arbitrage INVERSE de celui
+  pris pour la re-datation dans le MÊME lot. Le garde passe après le cas « terminée », l'onglet
+  n'est jamais relu pour une campagne éteinte, et « je n'ai pas relu » ne devient pas un zéro.
+- [x] **Gate : 1 557 moteur · 384 app · build · syntaxe .gs.** 20 mutations, 20 rouges.
 
 - [ ] **[C49-22] La ligne de Santé « Résolution des identifiants » change de SÉMANTIQUE en cours de
   route, sans le dire.** Tant que la campagne tourne, `phraseResolutionFileId_` affiche les

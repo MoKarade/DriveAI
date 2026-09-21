@@ -26,8 +26,19 @@
 > C'est corrigé et tenu par des tests ; le mot est **`désactivée`**, la seule chaîne que
 > `familleStatut` (`app/src/etat.ts`) apparie — par ÉGALITÉ.
 >
-> ⚠️ **RESTE À VÉRIFIER AU PROCHAIN DÉPLOIEMENT** : que la ligne « Rattrapage des pièces » annonce
-> bien **58 min/j** et non 17. Ça, aucun test ne peut le dire — c'est la prod qui répond.
+> ✅ **MESURÉ le 21/09 sur le tick de 19:32 UTC** (le déploiement a fini ~19:30) : « Audit des
+> pièces » annonce **18.3 des 58 min/j**, l'historique Gmail **« donneur À SEC : ses 20 min/j sont
+> DÉJÀ prêtées »**, la re-datation **« arrêtée (CONFIG, C49-20) — 108 / 466 documents au moment de
+> l'arrêt »**, et la Progression rend `désactivée` **sans** date de fin ni « reprise demain ».
+> ⚠️ La mesure prise 9 minutes plus tôt décrivait l'ANCIEN code (tick de 19:23 UTC) et ne valait
+> rien : c'est exactement le piège §9 « une mesure lancée juste après un déploiement peut mesurer
+> l'ANCIEN ». Toujours lire « Dernier passage OK » AVANT de conclure quoi que ce soit.
+>
+> ⚠️ **Et cette mesure a trouvé une régression du lot, corrigée dans la foulée** : éteindre les
+> doublons effaçait leur BILAN (1 076 écartés, dont **19 ORPHELINS** — les fichiers dont il
+> n'existe qu'un exemplaire). Le prédicat `!DOUBLONS_ACTIF` vivait en TÊTE de
+> `ligneSanteDoublons_` : C49-20 l'a rendu atteignable. Corrigé avec le même arbitrage que la
+> re-datation — un arrêt délibéré garde son livrable à l'écran.
 >
 > **LOT PRÉCÉDENT — C49-18 : l'OCR rejoue ses appels IDEMPOTENTS, et seulement ceux-là.**
 > `fetchDriveAvecRetry_` existe depuis la phase 2 ; `Ocr.gs` ne l'employait nulle part. Les deux
