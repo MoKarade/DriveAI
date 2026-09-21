@@ -301,6 +301,13 @@ function majSante_() {
     // ⚠️ Deux lignes et pas une : la FILE est stable et se relit à froid, l'EN COURS est
     // volatile et PÉRIME. Les fondre ferait afficher un document « en cours » des heures
     // après la fin de la passe — un état figé qui se lit comme une mesure.
+    // C49-23 — LA FILE D'IMPORT, encodée, à côté de celle de la lecture. Marc, le 21/09 :
+    // « fil d'attente pour import et fil d'attente pour lecture ». Les deux nombres existaient
+    // déjà — dans la PHRASE de « Mémoire (inventaire) » et dans celle du « Périmètre » — donc
+    // dans une forme que l'app n'a pas le droit de lire : une phrase se reformule, un encodage
+    // non. Cette ligne est la seule que l'app parse, et elle ne coûte aucune lecture de plus
+    // (deux Properties déjà ouvertes par les lignes voisines).
+    ['Import — file : ' + texteSanteFileImport_()],
     ['Lecture — file : ' + texteSanteFilePiece_()],
     ['Lecture — en cours : ' + texteSanteEnCoursPiece_()],
     ['Mis à jour : ' + new Date()]

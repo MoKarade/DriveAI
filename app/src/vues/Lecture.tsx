@@ -32,7 +32,7 @@ import { useEtatGlobal } from '../etatGlobal';
 import {
   interpreterSante, interpreterPiecesFaites, bilanLecture, derniersLus,
   verdictLecture, ligneSanteLecture, fileLecture, enCoursLecture, manquesLecture,
-  cadenceLecture, DocumentLu, DossierLecture,
+  cadenceLecture, importFile, certitudeClassement, DocumentLu, DossierLecture,
 } from '../etat';
 import { AvancementLecture } from '../composants/AvancementLecture';
 import { IndicateurChargement, BanniereErreur } from '../composants/UI';
@@ -47,6 +47,46 @@ const ONGLET = 'PiecesFaites';
 const PLAGE = 'A2:F';
 const COMBIEN_RECENTS = 25;
 const COMBIEN_MANQUES = 10;
+
+/**
+ * UNE file, en gros. C49-23.
+ *
+ * ⚠️ `faits === null` ne se dessine pas comme `0` : une jauge vide se lit « rien n'a été
+ * fait », une absence de jauge se lit « je ne sais pas ». Ce sont deux gestes différents —
+ * attendre, ou aller voir pourquoi le moteur ne publie rien.
+ *
+ * ⚠️ `quoi` n'est pas décoratif : les deux files de cet écran ne portent PAS sur le même
+ * ensemble (l'import couvre tout le Drive, la lecture seulement la tranche en cours). Sans
+ * cette ligne, on compare deux pourcentages qui ne parlent pas de la même chose.
+ */
+function FileGeante(
+  { nom, quoi, faits, total, absent, langue }:
+  { nom: string; quoi: string; faits: number | null; total: number | null; absent: string; langue: Langue },
+) {
+  if (faits === null || total === null || total <= 0) {
+    return (
+      <div className="file-geante file-geante-absente">
+        <span className="file-geante-nom">{nom}</span>
+        <p className="discret">{absent}</p>
+      </div>
+    );
+  }
+  const pct = Math.round((faits / total) * 100);
+  return (
+    <div className="file-geante">
+      <span className="file-geante-nom">{nom}</span>
+      <span className="file-geante-compte">
+        <strong>{faits}</strong> / {total}
+      </span>
+      <span className="file-geante-jauge" aria-hidden="true">
+        <span className="file-geante-part" style={{ width: `${pct}%` }} />
+      </span>
+      <span className="file-geante-quoi">
+        {pct} % · {quoi} · {total - faits} {t('fileReste', langue)}
+      </span>
+    </div>
+  );
+}
 
 /** Une barre par dossier. Le composant ne décide rien : `DossierLecture` vient du moteur. */
 function BarreDossier({ d, rang, langue }: { d: DossierLecture; rang: number; langue: Langue }) {
@@ -97,8 +137,73 @@ export function Lecture({ langue }: { langue: Langue }) {
   const cadence = lus ? cadenceLecture(lus, restants) : null;
   const dernier = recents.length ? recents[0]! : null;
 
+  // C49-23 — les deux files, et la certitude. Rien n'est calculé ici : `importFile` et
+  // `certitudeClassement` sont PURES et testées par mutation.
+  const imp = donnees ? importFile(sante) : null;
+  // ⚠️ L'agrégat porte sur LA TRANCHE, pas sur tout le Drive : l'arbitrage de Marc du 21/09
+  // (« la tranche et le reste ne se fondent pas en un seul pourcentage ») reste entier — c'est
+  // pour ça que la jauge dit « la tranche en cours » et que les barres par dossier survivent
+  // dans le détail.
+  const lecTotal = file ? file.reduce((t, d) => t + d.total, 0) : null;
+  const lecLus = file ? file.reduce((t, d) => t + d.lus, 0) : null;
+  const cert = donnees ? certitudeClassement(donnees.index) : null;
+
   return (
     <div className="colonnes">
+      {/* ── C49-23 : LES DEUX FILES, ET RIEN D'AUTRE AU-DESSUS DU PLI ───────────────────────
+          Marc, le 21/09 : « juste une file d'attente que je vois progresser, aussi le
+          pourcentage de certitude, fil d'attente pour import et fil d'attente pour lecture …
+          moins de texte, très épuré, très simple, gros boutons mais droit au but ».
+          Les six sections précédentes n'ont pas été supprimées — elles sont REPLIÉES (son
+          arbitrage du même jour), donc rien de ce que C49-13/14 a mesuré n'est perdu. */}
+      <section className="carte">
+        <h2>{t('filesTitre', langue)}</h2>
+        {!donnees ? (
+          <IndicateurChargement langue={langue} />
+        ) : (
+          <>
+            <div className="files-geantes">
+              <FileGeante
+                nom={t('fileImportNom', langue)}
+                quoi={t('fileImportQuoi', langue)}
+                faits={imp ? imp.pousses : null}
+                total={imp ? imp.cible : null}
+                absent={t('fileImportAbsente', langue)}
+                langue={langue}
+              />
+              <FileGeante
+                nom={t('fileLectureNom', langue)}
+                quoi={t('fileLectureQuoi', langue)}
+                faits={lecLus}
+                total={lecTotal}
+                absent={t('lectureFileAbsente', langue)}
+                langue={langue}
+              />
+            </div>
+            {/* ⚠️ La certitude porte sur le CLASSEMENT (« ce document est-il au bon
+                endroit ? »), jamais sur la lecture : aucune confiance n'est attachée à
+                l'extraction d'un papier, et en fabriquer une serait un chiffre inventé. */}
+            {cert === null || cert.pourcent === null ? (
+              <p className="discret">{t('certitudeAucune', langue)}</p>
+            ) : (
+              <p className="certitude">
+                <strong className="certitude-nombre">{cert.pourcent} %</strong>{' '}
+                {t('certitudeTexte', langue)}
+                <span className="discret certitude-detail">
+                  {cert.auMieux} + {cert.sansMesure} {t('certitudeDetail', langue)}
+                </span>
+              </p>
+            )}
+          </>
+        )}
+      </section>
+
+      {/* ⚠️ Un `<details>` masque à l'œil mais EXPÉDIE son contenu : ce qui suit est déjà
+          chargé par cet écran, donc le repli ne cache aucune lecture supplémentaire — il ne
+          fait que rendre la page lisible. */}
+      <details className="repli-detail">
+        <summary className="btn-detail">{t('detailBouton', langue)}</summary>
+
       {/* 1. EN CE MOMENT — la question posée en premier, donc la réponse en premier. */}
       <section className="carte">
         <h2>{t('lectureEnCoursTitre', langue)}</h2>
@@ -268,6 +373,7 @@ export function Lecture({ langue }: { langue: Langue }) {
       </section>
 
       <AvancementLecture langue={langue} />
+      </details>
     </div>
   );
 }

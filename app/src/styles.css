@@ -1006,3 +1006,107 @@ button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):ho
 .lecture-dossier-encours .lecture-dossier-etat { color: var(--accent-fort); }
 .lecture-dossier-fini .lecture-dossier-part { background: var(--ok); }
 .lecture-dossier-fini .lecture-dossier-etat { color: var(--ok); }
+
+/* ────────────────────────────────────────────────────────────────────────────────────────
+   C49-23 — LES DEUX FILES, en gros, au-dessus du pli.
+
+   Marc, le 21/09 : « juste une file d'attente que je vois progresser … moins de texte, très
+   épuré, très simple, gros boutons mais droit au but ».
+
+   ⚠️ Aucune `var()` qui n'existe pas dans ce fichier : une variable absente ne « retombe »
+   pas sur la règle précédente, la propriété prend sa valeur INITIALE — la règle censée
+   agrandir rapetisse, et ça ne se voit que sur un téléphone (leçon du 17/09).
+   ──────────────────────────────────────────────────────────────────────────────────────── */
+
+.files-geantes {
+  display: grid;
+  gap: 1.1rem;
+  margin-bottom: 0.9rem;
+}
+
+.file-geante {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.file-geante-nom {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--texte);
+}
+
+.file-geante-compte {
+  font-family: var(--mono);
+  font-size: 1.15rem;
+  color: var(--texte-doux);
+}
+
+/* Le nombre FAIT est ce qu'on lit d'un coup d'œil : c'est lui qui progresse. */
+.file-geante-compte strong {
+  font-size: clamp(2rem, 1.2rem + 3.5vw, 2.9rem);
+  line-height: 1.05;
+  color: var(--accent-fort);
+}
+
+.file-geante-jauge {
+  display: block;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--rang);
+  overflow: hidden;
+}
+
+.file-geante-part {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.file-geante-quoi {
+  font-size: 0.9rem;
+  color: var(--texte-doux);
+}
+
+/* Une file ABSENTE n'est pas une file à zéro : pas de jauge du tout, et la raison est dite. */
+.file-geante-absente .file-geante-nom { color: var(--texte-doux); }
+
+.certitude {
+  margin: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.certitude-nombre {
+  font-size: clamp(1.6rem, 1.1rem + 2vw, 2.2rem);
+  color: var(--texte);
+}
+
+.certitude-detail { font-size: 0.85rem; }
+
+/* Le repli qui porte les six sections de C49-13/14. Le `summary` EST le gros bouton : une
+   cible tactile de 44 px, valeur ÉCRITE et pas un jeton (même raison qu'à la ligne 871). */
+.repli-detail { margin-top: 0.4rem; }
+
+.btn-detail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 1rem;
+  border: 1px solid var(--bord-fort);
+  border-radius: var(--r-m);
+  background: var(--carte-2);
+  color: var(--texte);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
+}
+
+.btn-detail::-webkit-details-marker { display: none; }
+.btn-detail:hover { border-color: var(--accent); }
+.btn-detail:focus-visible { outline: 2px solid var(--accent-fort); outline-offset: 2px; }
+
+/* Ouvert, le repli retrouve la colonne : les sections gardent leur mise en page d'origine. */
+.repli-detail[open] > .btn-detail { margin-bottom: 0.9rem; }
+.repli-detail > *:not(.btn-detail) { margin-bottom: 0.9rem; }

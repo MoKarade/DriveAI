@@ -1603,6 +1603,48 @@ a laissé, et la Progression purge ses lignes finies après 48 h.
   un total à zéro. Un zéro qu'aucune mesure n'a produit est un chiffre inventé, même dans une
   ligne de Santé.
 
+- **Deux nombres qui existent en PROSE n'existent pas pour l'app** (21/09, C49-23). Marc :
+  « fil d'attente pour import et fil d'attente pour lecture ». La seconde existait en chiffres
+  (`Lecture — file : 04 ✅ (48) · …`) ; la première existait **aussi**, mais dans deux phrases
+  françaises — « 2731 faits acceptés au total » et « 3972 papiers candidats sur 4240 documents
+  classés ». Tout était mesuré, rien n'était lisible : le dépôt interdit de parser une phrase
+  (« le format lu est celui que le moteur ÉCRIT »), et il a raison — une phrase se reformule au
+  premier lot qui la rend plus claire, et la jauge disparaîtrait sans qu'un test rougisse.
+  Réflexe : devant « je ne vois pas X », ne pas demander si X est MESURÉ mais s'il est **publié
+  dans une forme que le lecteur a le droit de lire**. La réponse a été non pour l'un des deux,
+  et le lot s'est réduit à une ligne de Santé encodée.
+  ⚠️ **Le coût de l'écrire en prose se paie DEUX fois** : les deux nombres vivaient dans deux
+  lignes DIFFÉRENTES, écrites par deux modules, et personne ne les avait jamais rapprochés.
+  ⚠️ Et une jauge n'est honnête qu'avec son PÉRIMÈTRE écrit dessous : l'import couvre tout le
+  Drive (2731/4240), la lecture seulement la tranche en cours (188/1210). Deux pourcentages
+  côte à côte sans cette ligne se comparent, et ils ne parlent pas du même ensemble.
+
+- ⚠️⚠️ **Un témoin qui échoue AVANT d'atteindre ce qu'il teste passe pour une preuve** (21/09,
+  C49-23, trouvé par une mutation MUETTE). Mon cas « `importFile` ne lit PAS la phrase
+  française » donnait une ligne préfixée `Mémoire (inventaire) : …` — que `ligneSanteNommee`
+  ne trouve même pas, puisqu'elle cherche `Import — file`. Le test rendait donc `null` au
+  premier `if`, sans jamais atteindre le motif qu'il prétendait défendre : **élargir le motif
+  de `/^\s*(\d+)\/(\d+)\s*$/` à `/(\d+)\/(\d+)/` laissait les 29 cas VERTS**. Le témoin qui
+  discrimine porte le BON préfixe et une valeur en PROSE (`Import — file : 2731 faits acceptés,
+  à la ligne 12/4240`) : un motif non ancré y lit « 12 » et publie douze documents poussés au
+  lieu de 2 731 — un chiffre FAUX, pas une absence. Règle : pour tout test « ce lecteur refuse
+  X », vérifier **à quelle ligne le refus a lieu** — si ce n'est pas celle qu'on défend, le
+  test mesure autre chose. Et les deux protections (le préfixe, le format) se testent
+  SÉPARÉMENT, sinon la plus précoce couvre l'autre à vie.
+
+- ⚠️ **Un rect non nul ne prouve pas qu'un élément est VISIBLE** (21/09, C49-23). Mon harnais
+  de mesure a annoncé « le dernier contenu passe sous la barre d'onglets » sur un écran
+  parfaitement sain : les sections d'un `<details>` FERMÉ gardent dans Chromium un
+  `display: block` et une géométrie complète (`#s5` mesuré à `top: 874` sur un viewport de
+  844), parce que le masquage se fait par `content-visibility`, qui retire la PEINTURE et pas
+  le calcul. Le signal qui tranche était juste à côté et je ne l'avais pas lu :
+  `scrollHeight === clientHeight`, donc la page ne défile même pas. J'ai failli « corriger »
+  une mise en page qui marche. Une mesure de mise en page filtre sur la visibilité réelle
+  (`checkVisibility()`), et un verdict surprenant se re-mesure sur une seconde grandeur avant
+  d'être cru. ⚠️ Corollaire du même harnais : recopier `padding: 1rem` en dur sur le conteneur
+  au lieu de rendre la VRAIE structure (`.contenu`, qui porte
+  `calc(var(--barre-basse-h) + 1.7rem + …)`) fabrique exactement le défaut qu'on cherche.
+
 ## 10. Style et compte-rendu
 
 > 📣 Forme des comptes-rendus, des commits, des PR et des docs générées :

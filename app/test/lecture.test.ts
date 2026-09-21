@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 import {
   interpreterPiecesFaites, verdictLecture, bilanLecture, derniersLus, ligneSanteLecture,
   fileLecture, enCoursLecture, manquesLecture, cadenceLecture,
+  importFile, certitudeClassement,
 } from '../src/etat';
 import { SECTIONS_NAV } from '../src/App';
 
@@ -248,5 +249,90 @@ describe('le DOSSIER voyage avec le document', () => {
     // existe pour supprimer, recommis un cran plus bas.
     const src = lire('../src/vues/Lecture.tsx');
     expect(src).toMatch(/const PLAGE = 'A2:F'/);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   C49-23 — LES DEUX FILES EN TÊTE, ET LE POURCENTAGE DE CERTITUDE
+
+   Marc, le 21/09 : « juste une file d'attente que je vois progresser, aussi le pourcentage
+   de certitude, fil d'attente pour import et fil d'attente pour lecture ».
+
+   Trois propriétés, aucune déductible du code :
+    7. `importFile` lit l'ENCODÉ, et rend `null` sur tout ce qui n'en est pas un — la phrase
+       française de « Mémoire (inventaire) » porte les mêmes nombres et ne doit PAS être lue ;
+    8. une cible absente n'est pas une cible à zéro : pas de jauge, jamais une jauge pleine ;
+    9. la certitude se calcule sur les lignes MESURÉES, et les lignes sans mesure se comptent
+       à part — les verser d'un côté ou de l'autre ferait dériver le pourcentage tout seul.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+describe('C49-23 — la file d’import', () => {
+  it('lit la ligne ENCODÉE et rend les deux nombres', () => {
+    const sante = ['Import — file : 2731/4240', 'Lecture — file : 04 ✅ (48)'];
+    expect(importFile(sante)).toEqual({ pousses: 2731, cible: 4240 });
+  });
+
+  it('rend null quand le moteur ne publie pas encore cette ligne', () => {
+    expect(importFile(['Lecture — file : 04 ✅ (48)'])).toBeNull();
+  });
+
+  // ⚠️ LE cas qui compte : la ligne EXISTE et dit qu'elle ne sait pas. Rendre `{pousses, 0}`
+  // afficherait une jauge pleine sur un comptage qui n'a jamais eu lieu.
+  it('rend null quand la cible n’a jamais été mesurée', () => {
+    expect(importFile(['Import — file : cible non mesurée — bumper CONFIG.PERIMETRE_PIECE_TAG'])).toBeNull();
+    expect(importFile(['Import — file : 2731/0'])).toBeNull();
+  });
+
+  // ⚠️ La règle du dépôt : « le format lu est celui que le moteur ÉCRIT, jamais la phrase
+  // française ». Ce cas la VERROUILLE : il rougit si quelqu'un élargit le motif pour
+  // « aussi accepter » une prose qui contient un couple.
+  //
+  // ⚠️⚠️ Le TÉMOIN a dû être refait. Mon premier jet donnait une ligne préfixée
+  // « Mémoire (inventaire) : … » — mais `ligneSanteNommee` ne la trouve même pas, donc le
+  // cas rendait `null` AVANT d'atteindre le motif : il testait le préfixe, pas le format, et
+  // élargir le motif le laissait VERT (mesuré). Le témoin qui discrimine porte le BON préfixe
+  // et une valeur en PROSE : un motif non ancré y trouverait « 12/4240 » et publierait 12
+  // documents poussés au lieu de 2731 — un chiffre faux, pas une absence.
+  it('ne lit PAS une valeur en prose, même quand elle contient un couple', () => {
+    const prose = ['Import — file : 2731 faits acceptés, à la ligne 12/4240'];
+    expect(importFile(prose)).toBeNull();
+  });
+
+  // Le préfixe est une SECONDE protection, et elle se teste à part de la première.
+  it('ne confond pas la ligne de l’inventaire avec la sienne', () => {
+    const autre = ['Mémoire (inventaire) : 2731 faits acceptés au total · à la ligne 0/0'];
+    expect(importFile(autre)).toBeNull();
+  });
+});
+
+describe('C49-23 — la certitude du classement', () => {
+  const ligne = (confiance: string) => ({
+    cle: 'drive|x', nom: 'n', domaine: '01', statut: 'classé', chemin: '/', date: '', annee: '',
+    confiance,
+  } as unknown as Parameters<typeof certitudeClassement>[0][number]);
+
+  it('compte les mesurées, et met les lignes SANS mesure à part', () => {
+    const c = certitudeClassement([ligne('0.9'), ligne('0.8'), ligne('0.2'), ligne(''), ligne('')]);
+    expect(c.mesurees).toBe(3);
+    expect(c.sures).toBe(2);
+    expect(c.auMieux).toBe(1);
+    expect(c.sansMesure).toBe(2);
+    // 2 sûres sur 3 MESURÉES — et pas 2 sur 5, ce que donnerait un dénominateur « total ».
+    expect(c.pourcent).toBe(67);
+  });
+
+  it('rend null plutôt que 0 % quand rien n’est mesuré', () => {
+    const c = certitudeClassement([ligne(''), ligne('pas-un-nombre')]);
+    expect(c.mesurees).toBe(0);
+    expect(c.sansMesure).toBe(2);
+    expect(c.pourcent).toBeNull();
+  });
+
+  it('accepte la virgule décimale, comme le reste du dépôt', () => {
+    expect(certitudeClassement([ligne('0,3')]).auMieux).toBe(1);
+  });
+
+  it('une liste vide ne lève pas et ne prétend rien', () => {
+    expect(certitudeClassement([]).pourcent).toBeNull();
   });
 });

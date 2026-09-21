@@ -339,6 +339,57 @@ export function estConfianceBasse(l: LigneIndex): boolean {
   return !Number.isNaN(n) && n < SEUIL_CONFIANCE_BASSE;
 }
 
+/** Ce que le classement du Drive sait de lui-même. */
+export interface Certitude {
+  /** Les lignes qui portent une confiance NUMÉRIQUE — les seules sur lesquelles on peut dire quoi que ce soit. */
+  mesurees: number;
+  /** Parmi elles, celles au-dessus du seuil. */
+  sures: number;
+  /** Parmi elles, celles en dessous — « classé au mieux », pas « mal classé ». */
+  auMieux: number;
+  /** Les lignes SANS confiance : anciennes, ou classées sans passer par le modèle. */
+  sansMesure: number;
+  /** `sures / mesurees` en pourcentage entier, ou `null` quand rien n'est mesuré. */
+  pourcent: number | null;
+}
+
+/**
+ * PURE. Le « pourcentage de certitude » demandé par Marc le 21/09.
+ *
+ * ⚠️ Il porte sur le CLASSEMENT (« ce document est-il au bon endroit ? »), la seule certitude
+ * que le moteur publie — colonne H de l'Index, écrite par le modèle au moment du rangement.
+ * Il ne dit RIEN de la LECTURE d'un papier : aucune confiance n'y est attachée, et en
+ * fabriquer une serait exactement le chiffre inventé que le dépôt s'interdit.
+ *
+ * ⚠️ Le dénominateur est le nombre de lignes MESURÉES, pas le total. Une ligne sans confiance
+ * n'est ni sûre ni douteuse — la compter comme douteuse ferait chuter le pourcentage au fil
+ * des vieilles lignes, la compter comme sûre le ferait monter ; les deux mentiraient. Elles
+ * sont donc comptées À PART, et le nombre s'affiche.
+ *
+ * ⚠️ Le seuil est {@link SEUIL_CONFIANCE_BASSE}, consommé via {@link estConfianceBasse} :
+ * un second seuil écrit ici divergerait au premier réglage, en silence.
+ */
+export function certitudeClassement(lignes: LigneIndex[]): Certitude {
+  let mesurees = 0;
+  let auMieux = 0;
+  let sansMesure = 0;
+  for (const l of lignes ?? []) {
+    const brut = String(l?.confiance ?? '').trim();
+    const n = Number(brut.replace(',', '.'));
+    if (brut === '' || Number.isNaN(n)) { sansMesure += 1; continue; }
+    mesurees += 1;
+    if (estConfianceBasse(l)) auMieux += 1;
+  }
+  const sures = mesurees - auMieux;
+  return {
+    mesurees,
+    sures,
+    auMieux,
+    sansMesure,
+    pourcent: mesurees === 0 ? null : Math.round((sures / mesurees) * 100),
+  };
+}
+
 /* ---------- Santé v3 (C19-08) : signaux dérivés du Journal ---------- */
 
 /** Vrai si le Journal du JOUR (local) contient une erreur de quota Gmail quotidien. */
@@ -936,6 +987,36 @@ export function fileLecture(sante: string[]): DossierLecture[] | null {
   // ⚠️ Une ligne présente mais illisible rend un tableau VIDE, pas `null` : « le moteur n'a pas
   // écrit » et « j'ai lu et je n'ai rien compris » ne se réparent pas au même endroit.
   return out;
+}
+
+/** La file d'IMPORT : combien de documents du Drive sont connus de la Mémoire. */
+export interface FileImport {
+  /** Les documents déjà poussés (faits `document.existe` acceptés). */
+  pousses: number;
+  /** Le total que ce canal sait atteindre — les documents CLASSÉS porteurs d'un fileId. */
+  cible: number;
+}
+
+/**
+ * PURE. Lit la ligne `Import — file`, ENCODÉE `<poussés>/<cible>` (C49-23).
+ *
+ * ⚠️ Le format lu est celui que le moteur ÉCRIT, jamais la phrase française de
+ * « Mémoire (inventaire) » qui porte pourtant les mêmes nombres : une phrase se reformule au
+ * premier lot qui la rend plus claire, et la jauge disparaîtrait sans qu'un test rougisse.
+ *
+ * ⚠️ Trois retours DISTINCTS, et c'est le sujet : `null` = le moteur n'écrit pas cette ligne
+ * (déploiement en retard) ; `null` aussi quand la ligne dit « cible non mesurée » — le
+ * périmètre n'a jamais été compté, donc il n'y a pas de dénominateur, et en inventer un
+ * afficherait une jauge pleine sur un comptage qui n'a pas eu lieu.
+ */
+export function importFile(sante: string[]): FileImport | null {
+  const ligne = ligneSanteNommee(sante, 'Import — file');
+  if (ligne === null) return null;
+  const m = /^\s*(\d+)\/(\d+)\s*$/.exec(ligne);
+  if (!m) return null;
+  const cible = Number(m[2]);
+  if (cible <= 0) return null;
+  return { pousses: Number(m[1]), cible };
 }
 
 /**
