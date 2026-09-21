@@ -5,12 +5,11 @@
 
 ---
 
-## C49-15 — la ligne de Santé du rattrapage nomme TROIS compteurs pour QUATRE chiffres ⬜
+## C49-15 — la ligne de Santé du rattrapage nomme TROIS compteurs pour QUATRE chiffres ✅
 
-⚠️ **Bug PRÉEXISTANT, découvert le 21/09/2026 en vérifiant C49-14 sur la production. Signalé,
-pas corrigé — c'est du scope non demandé.**
+> Signalé le 21/09, corrigé le 21/09 sur feu vert de Marc (« fais les 3 points »).
 
-- [ ] **`src/RattrapagePiece.gs` écrit `faits/echecs/sansTexte/illisibles` (quatre valeurs,
+- [x] **`src/RattrapagePiece.gs` écrit `faits/echecs/sansTexte/illisibles` (quatre valeurs,
   ligne ~273) et l'affiche sous le libellé `(faits/échecs/sans texte)` (ligne ~436).** Mesuré
   en production le 21/09 à 15:06 UTC : « dernière passe : **3/0/1/1** (faits/échecs/sans
   texte) ». Le quatrième chiffre — les documents ILLISIBLES, ceux dont la photo est à refaire —
@@ -22,6 +21,12 @@ pas corrigé — c'est du scope non demandé.**
   ⚠️ Le même fichier montre la forme JUSTE deux cents lignes plus bas (le rapport manuel, ligne
   ~890, nomme ses quatre compteurs un par un) : le correctif est d'aligner le libellé, jamais de
   retirer un chiffre.
+  ⚠️ **La garde est COMPORTEMENTALE et DÉRIVÉE** (`test/rattrapage-piece.test.js`) : elle compte
+  les chiffres que la passe sérialise et les noms que la phrase affiche, et exige l'égalité.
+  Épingler le texte se re-baserait mécaniquement au prochain compteur ajouté — c'est-à-dire
+  exactement le jour où il faut que quelque chose rougisse. Un second cas tient l'ORDRE.
+  ⚠️ **La suite entière est restée verte** en corrigeant le libellé (1502/1502) : aucun test ne
+  l'épinglait, ce qui est précisément pourquoi il avait pu dériver.
 
 ## C49-12 / C49-13 / C49-14 — la campagne se REGARDE ✅
 
@@ -50,12 +55,12 @@ pas corrigé — c'est du scope non demandé.**
   - Deux lignes de Santé neuves (`Lecture — file`, `Lecture — en cours`), le ratchet de
     `majSante_` passant de 15 à 17 avec sa raison.
 
-## C49-11 — l'OCR est TRONQUÉ avant le contenu sur les fichiers HTML ⬜
+## C49-11 — l'OCR est TRONQUÉ avant le contenu sur les fichiers HTML ✅
 
-⚠️ **Bug PRÉEXISTANT, découvert le 21/09/2026 en diagnostiquant le passeport. Signalé, pas
-corrigé — c'est du scope non demandé.**
+> Signalé le 21/09 en diagnostiquant le passeport, corrigé le 21/09 sur feu vert de Marc
+> (« fais les 3 points »).
 
-- [ ] **Le texte envoyé au modèle est coupé à `ANALYSE_V2_OCR_MAX_CARS` (12 000 caractères), et
+- [x] **Le texte envoyé au modèle est coupé à `ANALYSE_V2_OCR_MAX_CARS` (12 000 caractères), et
   un export HTML de Facebook dépense ce budget en CSS avant d'atteindre la moindre donnée.**
   Mesuré sur `2026-08-13_2026-07-01-Profil-Export de données-Facebook.html` : l'extrait lu est
   du `<style>` de bout en bout, et le modèle a écrit `contenu_probable: nom, date de naissance,
@@ -66,6 +71,24 @@ corrigé — c'est du scope non demandé.**
   ⚠️ Le correctif n'est PAS de relever la borne (le coût par document suit) mais de retirer le
   CSS et le balisage AVANT de tronquer — un décodeur qui donne 12 000 caractères de feuille de
   style dépense exactement le même argent qu'un décodeur qui donne 12 000 caractères de texte.
+- [x] **Correctif : trois fonctions PURES dans `src/Ocr.gs`** (`estHtml_`, `decoderEntites_`,
+  `texteDepuisHtml_`), et `extraireTexte_` nettoie AVANT de tronquer. Sept gardes
+  (`test/ocr-troncature.test.js`), sept mutations prouvées rouges.
+  ⚠️ Le correctif vit dans `Ocr.gs` et pas dans le rattrapage : `extraireTexte_` sert AUSSI la
+  classification et l'analyse v2, donc tout chemin qui lit un HTML en profite. Le protocole §11
+  (ADR avant toute modif du classement) a été jugé NON applicable — aucune règle de décision ne
+  change, c'est une ENTRÉE corrompue qu'on répare — mais son esprit (prouver sur du réel) tient :
+  le « avant » a été mesuré sur le vrai fichier du Drive par l'outil du moteur DÉPLOYÉ.
+  ⚠️ Trois choix de conception, chacun gardé par un test : `<head>` n'est PAS retiré en bloc (le
+  `<title>` y vit, et c'est souvent la ligne la plus utile du fichier) ; les balises de BLOC
+  deviennent des sauts de ligne (sinon deux cellules voisines se collent en un mot qui n'existe
+  nulle part) ; un nettoyage qui ne rend RIEN rend le BRUT — « je n'ai pas su lire » n'est pas
+  « ce document est vide », et c'est le second qui se fige en verdict pour toujours.
+  ⚠️ `text/plain` et `text/csv` n'y entrent JAMAIS : un bloc-notes qui écrit « 3 < 5 » serait
+  mutilé. Et un `.html` que Drive type `text/plain` EST reconnu — le MIME vient de Drive, il
+  n'est pas fiable ; l'extension vient du fichier.
+  ⚠️ `&amp;` se décode EN DERNIER (sinon `&amp;lt;` devient `<`, un décodage de trop qui fabrique
+  une balise), et la table porte `&apos;` — l'entité qui manquait chez JobAI le 19/08.
 
 ## PWA — installable sur le téléphone (Marc, 18/09/2026, Android) ✅
 

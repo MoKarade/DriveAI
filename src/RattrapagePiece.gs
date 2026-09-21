@@ -433,7 +433,12 @@ function phraseFinRattrapage_(brut, tagCourant, dernierRefus) {
     // le jour même. Un lot qui change ce qu'un écran MONTRE périme ce qu'il AFFIRME, et une
     // phrase fausse ne fait rougir aucun test — elle envoie juste chercher au mauvais endroit.
     + ' dans la tranche ' + prefixesRattrapage_().join(' + ')
-    + ' · dernière passe : ' + (p[2] || '?') + ' (faits/échecs/sans texte) — '
+    // ⚠️ C49-15 — QUATRE noms pour QUATRE chiffres. Le compteur écrit `faits/echecs/sansTexte/
+    // illisibles` (voir plus haut) et ce libellé n'en nommait que trois : le quatrième — les
+    // documents dont la PHOTO est à refaire — se lisait comme un chiffre de trop. Mesuré en
+    // production le 21/09 : « dernière passe : 3/0/1/1 (faits/échecs/sans texte) ». Le compteur
+    // était juste ; c'est le libellé qui était resté derrière quand `illisibles` est entré.
+    + ' · dernière passe : ' + (p[2] || '?') + ' (faits/échecs/sans texte/illisibles) — '
     // ⚠️ Le motif se TRADUIT, et une panne de canal NOMME son refus. Jusqu'au 21/09, le seul
     // endroit qui affichait `DriveAI_PIECE_DERNIER_REFUS` était la ligne « Mémoire (pièces) »,
     // court-circuitée par `if (!CONFIG.PIECE_PUSH) return 'désactivée (CONFIG)'` — or ce flag ne

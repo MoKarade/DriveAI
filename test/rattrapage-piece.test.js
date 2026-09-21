@@ -1027,3 +1027,45 @@ test('la file s\'écrit AUSSI quand il ne reste rien — « terminée » n\'est 
   assert.strictEqual(res.fin, 'tranche-terminee');
   assert.match(props.get('DriveAI_PIECE_FILE'), /04:0\/1/);
 });
+
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   C49-15 — AUTANT DE NOMS QUE DE CHIFFRES.
+
+   ⚠️ Trouvé le 21/09/2026 en vérifiant C49-14 en PRODUCTION, pas dans un diff : la Santé
+   affichait « dernière passe : 3/0/1/1 (faits/échecs/sans texte) » — quatre chiffres, trois
+   noms. Le quatrième, les documents dont la photo est à refaire, n'avait pas de nom : il se
+   lisait comme un chiffre de trop. Le compteur était juste ; le libellé était resté derrière
+   quand `illisibles` est entré (C49-7/8, le même jour).
+
+   ⚠️ La garde est COMPORTEMENTALE et DÉRIVÉE : elle compte les chiffres que la passe écrit et
+   les noms que la phrase affiche, et exige l'égalité. Épingler le texte se re-baserait
+   mécaniquement au prochain compteur ajouté — c'est-à-dire exactement le jour où il faut que
+   quelque chose rougisse.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+test('C49-15 : la phrase de Santé nomme AUTANT de compteurs que la passe en écrit', () => {
+  const ctx = load(['Config.gs', 'PerimetrePiece.gs', 'RattrapagePiece.gs']);
+  const compteurs = '3/0/1/1'; // ce que `etapeRattrapagePiece_` sérialise (p[2])
+  const brut = ['2026-09-21 15:06', 'termine', compteurs, '1051'].join('|');
+
+  const phrase = ctx.phraseFinRattrapage_(brut, 'c49-5-b', '');
+
+  const chiffres = compteurs.split('/').length;
+  const libelle = /\(([^)]*\/[^)]*)\)/.exec(phrase);
+  assert.ok(libelle, 'la phrase doit porter un libellé entre parenthèses — sinon rien ne nomme les chiffres');
+  const noms = libelle[1].split('/').length;
+
+  assert.strictEqual(noms, chiffres,
+    'chaque chiffre de la dernière passe doit avoir son nom : ' + phrase);
+});
+
+test('C49-15 : le libellé nomme bien les QUATRE compteurs, dans l\'ordre où ils sont écrits', () => {
+  const ctx = load(['Config.gs', 'PerimetrePiece.gs', 'RattrapagePiece.gs']);
+  const phrase = ctx.phraseFinRattrapage_('2026-09-21 15:06|termine|4/1/0/2|1051', 'c49-5-b', '');
+  // ⚠️ L'ORDRE compte autant que le compte : `res.faits + '/' + res.echecs + '/' + res.sansTexte
+  // + '/' + res.illisibles`. Un libellé dans le désordre est pire qu'un libellé absent — on lit
+  // un chiffre pour un autre sans qu'aucun signe ne l'indique.
+  assert.ok(/faits.*échecs.*sans texte.*illisibles/.test(phrase),
+    'les quatre noms, dans l\'ordre de la sérialisation : ' + phrase);
+});

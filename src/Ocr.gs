@@ -30,7 +30,13 @@ function extraireTexte_(blob, maxCarsOverride) {
   var maxCars = maxCarsOverride || (CONFIG.ANALYSE_V2 ? CONFIG.ANALYSE_V2_OCR_MAX_CARS : CONFIG.LLM_OCR_MAX_CARS);
   try {
     if (type.indexOf('text/') === 0) {
-      return tronquer_(blob.getDataAsString(), maxCars);
+      var brut = blob.getDataAsString();
+      // ⚠️ C49-11 — LE BALISAGE SE RETIRE AVANT LA TRONCATURE, JAMAIS APRÈS. Mesuré le 21/09/2026
+      // sur un vrai export Facebook du Drive de Marc (18 685 octets) : les 12 000 caractères du
+      // budget étaient du `<style>` DE BOUT EN BOUT, coupés en plein milieu d'une règle CSS. Le
+      // modèle n'a jamais vu une ligne du document — et il a quand même répondu, en devinant.
+      // Nettoyer APRÈS aurait été inutile : le contenu n'est plus là.
+      return tronquer_(estHtml_(type, blob.getName()) ? texteDepuisHtml_(brut) : brut, maxCars);
     }
     var conv = cibleConversion_(type, blob.getName());
     if (conv) {
@@ -183,6 +189,82 @@ function convertirEtExtraire_(blob, cibleMime, exportMime, ocr) {
  * @param {number} n
  * @return {string}
  */
+/**
+ * Vrai si ce `text/*` est du BALISAGE, donc à nettoyer avant d'être lu. PURE.
+ *
+ * ⚠️ `text/plain` et `text/csv` n'y entrent JAMAIS : un bloc-notes qui contient « 3 < 5 » ou une
+ * colonne CSV avec des chevrons serait mutilé par le retrait de balises. On reconnaît le balisage
+ * par le MIME **et** par l'extension — Drive type parfois un `.html` en `text/plain`, et c'est
+ * précisément ce fichier-là qu'on veut nettoyer.
+ */
+function estHtml_(type, nom) {
+  var t = String(type || '').toLowerCase();
+  if (t.indexOf('text/html') === 0 || t.indexOf('text/xml') === 0 || t.indexOf('application/xhtml') === 0) return true;
+  return /\.(x?html?|xml)$/i.test(String(nom || ''));
+}
+
+/**
+ * Les entités HTML usuelles, décodées. PURE.
+ *
+ * ⚠️ `&amp;` se décode EN DERNIER, sinon `&amp;lt;` devient `<` — un décodage de trop, qui
+ * fabrique une balise là où le document écrivait le texte « &lt; ». (Leçon JobAI, 19/08.)
+ * ⚠️ Et la table doit être COMPLÈTE : `&apos;` manquait chez JobAI, et une entité non décodée ne
+ * lève rien — elle survit dans le texte et fait rater toute comparaison qui suit.
+ */
+function decoderEntites_(texte) {
+  var s = String(texte == null ? '' : texte);
+  s = s.replace(/&(nbsp|#160);/gi, ' ')
+    .replace(/&(lt|#60);/gi, '<')
+    .replace(/&(gt|#62);/gi, '>')
+    .replace(/&(quot|#34);/gi, '"')
+    .replace(/&(apos|#39);/gi, "'")
+    .replace(/&(eacute);/gi, '\u00e9')
+    .replace(/&(egrave);/gi, '\u00e8')
+    .replace(/&(agrave);/gi, '\u00e0')
+    .replace(/&(ccedil);/gi, '\u00e7');
+  // Numériques (décimales et hexadécimales). Un point de code invalide reste TEL QUEL : un flux
+  // mal formé n'est pas une raison de perdre le reste du document.
+  s = s.replace(/&#(\d{1,7});/g, function (m, d) {
+    var n = parseInt(d, 10);
+    return (n > 0 && n <= 0x10ffff) ? String.fromCharCode(n) : m;
+  });
+  s = s.replace(/&#x([0-9a-f]{1,6});/gi, function (m, h) {
+    var n = parseInt(h, 16);
+    return (n > 0 && n <= 0x10ffff) ? String.fromCharCode(n) : m;
+  });
+  return s.replace(/&(amp|#38);/gi, '&'); // EN DERNIER, toujours.
+}
+
+/**
+ * Le TEXTE d'un document HTML : ce qu'un humain lirait à l'écran. PURE.
+ *
+ * ⚠️ `<head>` n'est PAS retiré en bloc, et c'est délibéré : le `<title>` y vit, et c'est souvent
+ * l'information la plus utile de tout le fichier (« Pages et profils que vous suivez » pour
+ * l'export mesuré). On retire ce qui n'est JAMAIS du texte — style, script, commentaires — et on
+ * garde le reste.
+ * ⚠️ Les balises de BLOC deviennent des sauts de ligne : sans ça, deux cellules voisines se
+ * collent en un seul mot et le modèle lit « Marc RichardLe Mercredi 18 mars ».
+ * ⚠️ Un nettoyage qui ne rend RIEN alors que le brut portait quelque chose rend le BRUT : « je
+ * n'ai pas su lire » n'est pas « ce document est vide », et c'est le second qui se fige en verdict.
+ */
+function texteDepuisHtml_(html) {
+  var brut = String(html == null ? '' : html);
+  if (!brut) return '';
+  var s = brut
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/<script\b[\s\S]*?<\/script\s*>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style\s*>/gi, ' ')
+    .replace(/<(noscript|template|svg)\b[\s\S]*?<\/\1\s*>/gi, ' ')
+    .replace(/<\/?(p|div|br|li|tr|h[1-6]|section|article|header|footer|main|table|blockquote|hr|title)\b[^>]*>/gi, '\n')
+    .replace(/<[^>]*>/g, ' ');
+  s = decoderEntites_(s)
+    .replace(/[ \t\u00a0]+/g, ' ')
+    .replace(/[ \t]*\n[ \t]*/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return s || brut;
+}
+
 function tronquer_(texte, n) {
   if (!texte) return '';
   return texte.length > n ? texte.substring(0, n) : texte;
