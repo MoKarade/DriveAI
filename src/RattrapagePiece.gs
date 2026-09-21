@@ -95,7 +95,11 @@ function selectionnerRattrapage_(lignes, fileIdDe, faits, prefixes, max) {
   var parPrefixe = {};
   var i;
   for (i = 0; i < prefixes.length; i++) parPrefixe[prefixes[i]] = [];
-  var res = { choisies: [], restants: 0, tranche: 0 };
+  // ⚠️ `parDomaine` n'est pas un compteur de plus : c'est la réponse à « quel dossier » et
+  // à « quelle direction ». L'ordre des préfixes EST la direction, et il est déjà celui de
+  // la boucle de choix — donc la file affichée et le travail réel ne peuvent pas diverger.
+  var res = { choisies: [], restants: 0, tranche: 0, parDomaine: {} };
+  for (i = 0; i < prefixes.length; i++) res.parDomaine[prefixes[i]] = { tranche: 0, restants: 0 };
   if (!lignes || !lignes.length) return res;
 
   for (i = 0; i < lignes.length; i++) {
@@ -117,8 +121,10 @@ function selectionnerRattrapage_(lignes, fileIdDe, faits, prefixes, max) {
     if (!Object.prototype.hasOwnProperty.call(parPrefixe, pref)) continue;
 
     res.tranche++;
+    res.parDomaine[pref].tranche++;
     if (faits && faits[fileId] === 1) continue;
     res.restants++;
+    res.parDomaine[pref].restants++;
     parPrefixe[pref].push({
       cle: cle,
       nom: nom,
@@ -199,7 +205,7 @@ function ajouterFaitsRattrapage_(tag, entrees, quand) {
   for (var i = 0; i < entrees.length; i++) {
     var e = entrees[i] || {};
     lignes.push([String(e.id || ''), String(tag || ''), quand,
-      String(e.nom || ''), String(e.motif || '')]);
+      String(e.nom || ''), String(e.motif || ''), String(e.domaine || '')]);
   }
   var f = feuille_('PiecesFaites');
   // ⚠️ RÉPARATION D'EN-TÊTE, posée ICI et pas dans `initialiserSheet_` : celle-là ne tourne
@@ -470,6 +476,116 @@ function phraseCumulRattrapage_(cumul) {
     + echecs + ' en échec';
 }
 
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * C49-14 — CE QUE LA CAMPAGNE EST EN TRAIN DE FAIRE.
+ *
+ * ⚠️ POURQUOI CE BLOC EXISTE. Marc, le 21/09 : « je sais pas ça traite quoi en ce moment,
+ * quel dossier, quel fichier, quelle direction, quelles infos il lui manque ». Aucune de ces
+ * quatre questions n'avait de réponse quelque part — pas « mal affichée » : ABSENTE. Le
+ * moteur n'écrivait un document qu'APRÈS l'avoir lu, et jamais son dossier.
+ * ─────────────────────────────────────────────────────────────────────────────
+ */
+
+/**
+ * La file, encodée pour être relue : `04:12/23·01:40/87·02:900/976`. PURE.
+ *
+ * ⚠️ Un domaine à ZÉRO RESTANT reste dans la chaîne, et c'est le point : « 04:0/23 » dit que
+ * l'immigration est FINIE, ce qu'une absence ne dirait pas — elle se lirait « pas encore
+ * commencé », l'exact contraire.
+ */
+function encoderFilePiece_(parDomaine, prefixes) {
+  var out = [];
+  for (var i = 0; i < (prefixes || []).length; i++) {
+    var p = prefixes[i];
+    var d = (parDomaine || {})[p];
+    if (!d) continue;
+    out.push(p + ':' + Number(d.restants || 0) + '/' + Number(d.tranche || 0));
+  }
+  return out.join('·');
+}
+
+/**
+ * La file en une phrase, pour la Santé. PURE.
+ *
+ * ⚠️ Elle nomme le domaine EN COURS — le premier qui a encore du reste — parce que c'est
+ * littéralement « quelle direction ». Les suivants sont annoncés dans l'ordre, ce qui dit ce
+ * qui vient après sans qu'on ait à le deviner.
+ */
+function phraseFilePiece_(encode) {
+  var brut = String(encode == null ? '' : encode).trim();
+  if (!brut) return 'pas encore mesurée';
+  var parts = brut.split('·');
+  var faites = [], reste = [];
+  for (var i = 0; i < parts.length; i++) {
+    var m = /^(\S+?):(\d+)\/(\d+)$/.exec(parts[i]);
+    if (!m) continue;
+    var r = Number(m[2]), t = Number(m[3]);
+    if (r === 0) faites.push(m[1] + ' ✅ (' + t + ')');
+    else reste.push({ pref: m[1], reste: r, tranche: t });
+  }
+  if (!faites.length && !reste.length) return 'illisible';
+  if (!reste.length) return faites.join(' · ') + ' — tranche terminée';
+  var tete = reste[0];
+  var phrase = 'EN COURS ' + tete.pref + ' : ' + (tete.tranche - tete.reste) + '/' + tete.tranche
+    + ' lus, ' + tete.reste + ' à lire';
+  if (faites.length) phrase = faites.join(' · ') + ' · ' + phrase;
+  if (reste.length > 1) {
+    var suite = [];
+    for (var k = 1; k < reste.length; k++) suite.push(reste[k].pref + ' (' + reste[k].reste + ')');
+    phrase += ' · ensuite ' + suite.join(', ');
+  }
+  return phrase;
+}
+
+/** L'encodage du document en cours. PURE. */
+function encoderEnCoursPiece_(doc, quandMs) {
+  var d = doc || {};
+  var propre = function (v) { return String(v == null ? '' : v).replace(/[|\r\n]+/g, ' ').trim(); };
+  return String(quandMs || 0) + '|' + propre(d.fileId) + '|' + propre(d.nom) + '|' + propre(d.domaine);
+}
+
+/**
+ * Le document en cours, en une phrase — ou RIEN. PURE.
+ *
+ * ⚠️⚠️ LA PÉREMPTION N'EST PAS UN DÉTAIL. Le tick d'Apps Script peut mourir sur son mur de
+ * six minutes ; la Property reste alors écrite, et sans borne l'écran afficherait « en train
+ * de lire X » pendant des heures. Ce dépôt a déjà payé exactement ça — un état qui ne se
+ * réécrit jamais devient une vérité permanente (`HistoriqueVrac`, 0 affiché à vie). Au-delà
+ * de la borne, on ne dit RIEN plutôt qu'une chose fausse : l'appelant affichera le dernier
+ * document lu, qui est vrai.
+ */
+function phraseEnCoursPiece_(brut, maintenantMs, perimeMs) {
+  var s = String(brut == null ? '' : brut);
+  if (!s) return '';
+  var p = s.split('|');
+  var t = parseInt(p[0], 10);
+  if (!isFinite(t) || !t) return '';
+  if ((Number(maintenantMs || 0) - t) > Number(perimeMs || 0)) return '';
+  var nom = String(p[2] || '').trim();
+  var dom = String(p[3] || '').trim();
+  if (!nom) return '';
+  return nom + (dom ? ' (' + dom + ')' : '');
+}
+
+function texteSanteFilePiece_() {
+  try {
+    return phraseFilePiece_(PropertiesService.getScriptProperties().getProperty('DriveAI_PIECE_FILE'));
+  } catch (e) { return 'état illisible'; }
+}
+
+function texteSanteEnCoursPiece_() {
+  var brut;
+  try {
+    brut = PropertiesService.getScriptProperties().getProperty('DriveAI_PIECE_EN_COURS');
+  } catch (e) { return 'état illisible'; }
+  var phrase = phraseEnCoursPiece_(brut, Date.now(), CONFIG.PIECE_EN_COURS_PERIME_MS);
+  // ⚠️ « rien en ce moment » n'est PAS une panne, et le dire évite la lecture inverse : la
+  // campagne travaille par rafales de quelques secondes toutes les cinq minutes, donc elle est
+  // au repos l'essentiel du temps. Un vide non expliqué se lirait « c'est arrêté ».
+  return phrase || 'rien en ce moment (la campagne lit par rafales, à chaque tick)';
+}
+
 function texteSanteRattrapagePiece_() {
   var brut, cumul;
   try {
@@ -551,6 +667,13 @@ function etapeRattrapagePiece_(garde, opts) {
   var choix = selectionnerRattrapage_(
     lignes, fileIdDeCleIndex_, faits, prefixesRattrapage_(), maxParRun);
   res.restants = choix.restants;
+  // ⚠️ La file s'écrit AVANT la sortie « tranche terminée » : c'est justement quand il ne
+  // reste rien qu'on veut lire « 04 ✅ · 01 ✅ · 02 ✅ », et non une file vide qui se lirait
+  // « pas encore mesurée ». Une garde qui n'écrit que dans le cas actif ne dit rien du cas fini.
+  try {
+    props.setProperty('DriveAI_PIECE_FILE',
+      encoderFilePiece_(choix.parDomaine, prefixesRattrapage_()));
+  } catch (e) { /* la file est un confort d'affichage : elle ne bloque jamais la lecture */ }
 
   if (!choix.choisies.length) {
     res.fin = 'tranche-terminee';
@@ -581,6 +704,10 @@ function etapeRattrapagePiece_(garde, opts) {
   for (var i = 0; i < choix.choisies.length; i++) {
     if (gardeRun()) { res.fin = 'budget'; break; }
     var doc = choix.choisies[i];
+    // ⚠️ AVANT l'appel, jamais après : un état écrit après coup répond à « qu'est-ce qui a
+    // été lu », pas à « qu'est-ce qui est en train d'être lu ». C'est toute la question.
+    try { props.setProperty('DriveAI_PIECE_EN_COURS', encoderEnCoursPiece_(doc, Date.now())); }
+    catch (e) { /* jamais bloquant */ }
     var motif = rattraperUnDocument_(doc, !!opts.manuel);
     res.dernierMotif = motif;
     var issue = issueRattrapage_(motif);
@@ -627,9 +754,16 @@ function etapeRattrapagePiece_(garde, opts) {
     faits[doc.fileId] = 1;
     // ⚠️ Le NOM et le MOTIF partent avec l'identifiant : un `fileId` est opaque, donc une
     // liste qui n'en porte que lui ne répond à aucune question qu'un humain se pose.
-    aEcrire.push({ id: doc.fileId, nom: doc.nom, motif: motif });
+    // ⚠️ Le DOMAINE part avec le reste : un nom de fichier seul ne dit pas d'où il vient,
+    // et « quel dossier » est la question que Marc a posée deux fois.
+    aEcrire.push({ id: doc.fileId, nom: doc.nom, motif: motif, domaine: doc.domaine });
     res.restants--;
   }
+
+  // ⚠️ L'en-cours s'efface DÈS la sortie de boucle, quelle qu'en soit la raison (budget,
+  // panne de canal, coupe-circuit Drive) : le laisser ferait afficher un document en cours
+  // sur une campagne arrêtée. La péremption côté lecture est le filet, pas la règle.
+  try { props.deleteProperty('DriveAI_PIECE_EN_COURS'); } catch (e) { /* jamais bloquant */ }
 
   try {
     ajouterFaitsRattrapage_(tagFaits, aEcrire,

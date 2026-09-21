@@ -551,6 +551,14 @@ var CONFIG = {
   // `rattrapage-piece` de la télémétrie le donnera sans qu'on ait à le déduire.
   RATTRAPAGE_PIECE_TAG: 'c49-5-b',
 
+  // C49-14 — au-delà de ce délai, « en train de lire X » cesse d'être affiché.
+  // ⚠️ La valeur est DÉRIVÉE, pas choisie : le mur d'une exécution Apps Script est de six
+  // minutes, donc un run mort ne peut pas avoir commencé un document il y a plus que ça.
+  // Deux minutes de marge pour l'horloge et l'écriture. Sans cette borne, une exécution
+  // tuée par le mur laisserait la Property en place et l'écran afficherait un document
+  // « en cours » indéfiniment — le défaut que ce lot existe pour supprimer.
+  PIECE_EN_COURS_PERIME_MS: 8 * 60 * 1000,
+
   // C49-4 — la LECTURE DE TOUT LE DRIVE, étape A : compter le périmètre avant de le promettre.
   // ⚠️ Bumper ce tag RELANCE le comptage (une lecture de l'Index, aucun appel LLM, rien qui
   // sorte du compte Google). Sans bump, l'étape ne coûte qu'une lecture de Property par tick :

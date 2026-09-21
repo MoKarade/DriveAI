@@ -4,7 +4,32 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🟦 EN COURS — 2026-09-18 : C49-5, le rattrapage des pièces `04` + `01`. REPRENDRE ICI.**
+> **🟦 EN COURS — 2026-09-21 : la lecture des papiers se REGARDE. REPRENDRE ICI.**
+>
+> **En une phrase** : la campagne tourne (le 500 de la Mémoire est réparé, mesuré — le canal a
+> accepté 5 pièces à 14:47 UTC et la télémétrie `rattrapage-piece` est passée de 1 à 6 appels),
+> et l'onglet **Lecture** de l'app répond désormais aux cinq questions que Marc a posées trois
+> fois : ce qui est lu **à la seconde**, quel dossier, dans quel ordre, à quelle vitesse, et ce
+> que le moteur n'a pas pu lire.
+>
+> ⚠️ **Quatre de ces cinq questions n'avaient AUCUNE réponse dans le moteur** — pas mal
+> affichée : absente. Mesuré avant d'écrire une ligne : l'en-cours n'existait pas (l'état ne
+> s'écrivait qu'APRÈS lecture), l'ordre `04 → 01 → 02` n'était publié nulle part, et
+> `PiecesFaites` n'avait pas de colonne `Domaine`. C'est le lot C49-14 qui les pose.
+>
+> **Ce que Marc a tranché le 21/09** (deux questions cliquées) :
+> - **« On garde un point par jour »** — contre ma recommandation d'un point par heure pendant
+>   une campagne active. Conséquence ASSUMÉE et DITE à l'écran : la courbe et l'estimé
+>   n'apparaissent pas avant demain, et la phrase de l'app explique que c'est la cadence de la
+>   mesure, pas une panne.
+> - **« La tranche, puis tout le Drive en dessous »** — deux chiffres distincts, jamais fondus
+>   en un pourcentage unique.
+>
+> **Ce qui reste à surveiller** : la courbe n'aura son deuxième point qu'au prochain jour où la
+> campagne tourne (`HistoriqueImport` écrit un point par JOUR, et le tag a été bumpé
+> aujourd'hui). Un écran qui reste sans courbe demain soir est un signal, pas une patience.
+
+> **🟦 HISTORIQUE — 2026-09-18 : C49-5, le rattrapage des pièces `04` + `01`.**
 >
 > **En une phrase** : la tranche est **TERMINÉE** — le tick a fini les 55 restants dans la nuit
 > (Santé du 18/09 15:57 UTC : « 0 restants · tranche terminée »), et **78 pièces** sont arrivées

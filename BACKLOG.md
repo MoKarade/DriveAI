@@ -5,6 +5,33 @@
 
 ---
 
+## C49-12 / C49-13 / C49-14 — la campagne se REGARDE ✅
+
+> Trois lots du 21/09/2026, nés du même message de Marc, répété trois fois en escalade :
+> « ça ne m'explique toujours pas l'avancement », puis « pour l'instant ça sert à rien je
+> comprends rien alors refais full », puis « je vois pas de courbe pas d'estimé je sais pas ça
+> traite quoi en ce moment quel dossier quel fichier quelle direction quelles infos il lui
+> manque ».
+
+- [x] **C49-12 — la campagne dit POURQUOI elle s'est arrêtée, et nomme le refus** (#387).
+- [x] **C49-13 — un onglet « Lecture »** : ce qui est lu, ce qui reste, pourquoi ça s'arrête (#388).
+- [x] **C49-14 — les cinq questions restantes.** ⚠️ Mesuré avant de coder : **quatre sur cinq
+  n'avaient aucune réponse dans le moteur**, pas une réponse mal affichée.
+  - `DriveAI_PIECE_EN_COURS` — écrit **AVANT** l'appel, effacé à **CHAQUE** sortie de boucle,
+    et **périmé** au bout de `PIECE_EN_COURS_PERIME_MS` (8 min = le mur Apps Script de 6 min
+    + 2 de marge) : sans péremption, un plantage laisse un nom de document affiché « en cours »
+    pour toujours.
+  - `DriveAI_PIECE_FILE` — la file PAR DOSSIER (`04:0/23·01:40/87·02:976/976`), écrite **avant**
+    la sortie « tranche terminée » : une file qui ne s'écrit que quand il reste du travail ne
+    dit rien du cas fini, c'est-à-dire du moment où « quelle direction ? » se pose vraiment.
+  - `PiecesFaites` gagne une colonne **`Domaine`**, **EN QUEUE** — l'app se déploie séparément
+    du moteur, donc une insertion ferait lire chaque colonne suivante avec l'ancienne
+    sémantique pendant la fenêtre entre les deux déploiements, sans erreur.
+  - La cadence se mesure sur les **jours ACTIFS**, jamais sur les jours écoulés, et l'horizon
+    est annoncé en « jours OÙ LA CAMPAGNE TOURNE ».
+  - Deux lignes de Santé neuves (`Lecture — file`, `Lecture — en cours`), le ratchet de
+    `majSante_` passant de 15 à 17 avec sa raison.
+
 ## C49-11 — l'OCR est TRONQUÉ avant le contenu sur les fichiers HTML ⬜
 
 ⚠️ **Bug PRÉEXISTANT, découvert le 21/09/2026 en diagnostiquant le passeport. Signalé, pas

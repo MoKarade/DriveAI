@@ -271,6 +271,14 @@ function majSante_() {
     // pas celui des papiers.
     ['Périmètre des pièces (C49-4) : ' + texteSantePerimetrePiece_()],
     ['Rattrapage des pièces (C49-5) : ' + texteSanteRattrapagePiece_()],
+    // C49-14 — Marc, le 21/09 : « je sais pas ça traite quoi en ce moment, quel dossier,
+    // quel fichier, quelle direction ». Trois questions, et AUCUNE n'avait de réponse :
+    // la ligne ci-dessus donne un total et un motif, jamais un DOSSIER ni un FICHIER.
+    // ⚠️ Deux lignes et pas une : la FILE est stable et se relit à froid, l'EN COURS est
+    // volatile et PÉRIME. Les fondre ferait afficher un document « en cours » des heures
+    // après la fin de la passe — un état figé qui se lit comme une mesure.
+    ['Lecture — file : ' + texteSanteFilePiece_()],
+    ['Lecture — en cours : ' + texteSanteEnCoursPiece_()],
     ['Mis à jour : ' + new Date()]
   ];
   f.getRange(2, 1, lignes.length, 1).setValues(lignes); // une seule écriture Sheet (I/O borné/tick)
@@ -770,7 +778,11 @@ var COLONNES_HISTORIQUE_IMPORT = ['Date', 'Restants', 'Extraits', 'Acceptés', '
 // ⚠️ `Nom` et `Motif` sont arrivés EN QUEUE le 21/09, jamais en insertion : l'app lit cet
 // onglet et se déploie séparément du moteur. Pendant la fenêtre entre les deux déploiements,
 // chaque position décalée serait lue avec l'ANCIENNE sémantique, sans erreur ni warning.
-var COLONNES_PIECES_FAITES = ['FileId', 'Tag', 'Le', 'Nom', 'Motif'];
+// ⚠️ `Domaine` ajouté EN QUEUE le 21/09 (C49-14) : l'app lit cet onglet et se déploie
+// séparément du moteur, donc une INSERTION ferait lire chaque colonne suivante avec
+// l'ancienne sémantique pendant la fenêtre entre les deux déploiements — sans erreur.
+// C'est la règle du 14/09 sur `Horodaté`, re-appliquée.
+var COLONNES_PIECES_FAITES = ['FileId', 'Tag', 'Le', 'Nom', 'Motif', 'Domaine'];
 
 /**
  * Construit les lignes de l'onglet Télémétrie. PURE (testée) : tout l'état arrive en paramètres,

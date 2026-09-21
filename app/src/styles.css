@@ -960,3 +960,49 @@ button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):ho
 .verdict-ok { color: var(--ok); }
 .verdict-vide { color: var(--texte-doux); }
 .verdict-echec { color: var(--erreur); }
+
+/* ── Onglet Lecture, suite (C49-14) ───────────────────────────────────────────────────────
+   Marc, le 21/09 : « je sais pas ça traite quoi en ce moment quel dossier quel fichier
+   quelle direction ». Ces règles habillent les réponses ; elles ne décident de rien.
+   ⚠️ Mêmes jetons que ci-dessus, tous déclarés en tête de ce fichier — un `var()` fantôme
+   ne retombe pas sur la règle précédente, il prend la valeur INITIALE et casse en silence. */
+.lecture-encours {
+  margin: 0 0 0.5rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 10px;
+  background: var(--tonal);
+  color: var(--cat-texte);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.lecture-cadence { margin: 0 0 0.4rem; line-height: 1.5; }
+.lecture-reste { margin: 0.9rem 0 0; line-height: 1.5; }
+
+.lecture-file { list-style: none; margin: 0 0 0.75rem; padding: 0; }
+.lecture-dossier {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  align-items: center;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--bord);
+}
+.lecture-dossier:last-child { border-bottom: 0; }
+.lecture-dossier-nom { font-family: var(--mono); min-width: 2.5rem; }
+/* La jauge prend la place restante ; elle est décorative — le compte chiffré est à côté,
+   et c'est LUI que lit une synthèse vocale (la jauge porte `aria-hidden`). */
+.lecture-dossier-jauge {
+  flex: 1 1 8rem;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--rang);
+  overflow: hidden;
+}
+.lecture-dossier-part { display: block; height: 100%; background: var(--bord-fort); }
+.lecture-dossier-compte { font-family: var(--mono); font-size: 0.9rem; }
+.lecture-dossier-etat { font-size: 0.85rem; color: var(--texte-doux); }
+/* Le dossier EN COURS se distingue des autres : c'est la réponse à « quelle direction ». */
+.lecture-dossier-encours .lecture-dossier-part { background: var(--accent); }
+.lecture-dossier-encours .lecture-dossier-etat { color: var(--accent-fort); }
+.lecture-dossier-fini .lecture-dossier-part { background: var(--ok); }
+.lecture-dossier-fini .lecture-dossier-etat { color: var(--ok); }
