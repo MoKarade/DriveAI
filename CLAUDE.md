@@ -1324,6 +1324,37 @@ fermer, rouverte deux étapes plus bas, sur une version non figée. Pire : c'est
 (binaire local, version du lockfile, échec franc s'il manque), et il exige que l'installation
 vive dans le MÊME job — à vérifier avant de le poser. Histoire dans `docs/LESSONS.md`.
 
+**Une structure de réponse qui n'offre AUCUNE façon de dire non fabrique une réponse.** Le
+21/09/2026, le passeport de Marc a été « extrait » d'un OCR qui ne portait que du bruit —
+« HARD FLEX T 014 », « ITD OSS », des références de fabricant — et le modèle a rendu un
+passeport plausible : résumé en espagnol sur un document marqué `fr`, numéros tirés des
+inscriptions, aucune date de naissance. Ni le prompt ni le modèle n'étaient en cause : le
+gabarit JSON demandait un résumé, un type, un émetteur, et ne proposait `null` que champ par
+champ — jamais pour le DOCUMENT ENTIER. Devant des fragments, la réponse la plus serviable
+est l'invention, et c'est celle qu'on obtient. Avant de blâmer un prompt, demander **quelle
+réponse la structure REND POSSIBLE** : si « je n'ai pas pu lire » n'en est pas une, on ne
+l'obtiendra jamais. ⚠️ Et le refus doit valoir même quand l'extraction est RICHE : une pièce
+inventée passe tous les tests de « porte quelque chose », et elle est pire qu'une pièce vide
+— elle a l'air d'une lecture, donc personne ne la reprend. ⚠️ Le champ ABSENT vaut vrai : le
+côté sûr est ici l'acceptation, sinon une réponse qui omet le champ ferait jeter tout un lot.
+
+**Un coût MESURÉ sur une autre campagne n'est pas une mesure de celle-ci.** Le même jour,
+j'ai chiffré la tranche à « 1 086 documents × 0,0261 $ ≈ 28,3 $ » et annoncé à Marc un
+arbitrage sur le frein. Les 0,0261 $ viennent de l'ADR-0018 : c'est la RE-ANALYSE, en Sonnet
+DEUX passes. L'extraction de pièce est Haiku UNE passe, avec son prompt en cache — ~0,004 $,
+soit **6 fois moins**, et donc aucune tension avec le frein. Deux voies concordantes le
+disaient (la télémétrie du mois, et les prix de `LLM_PRIX`) et je n'en avais suivi aucune.
+Un chiffre porte son MODÈLE et son NOMBRE D'APPELS PAR DOCUMENT : recopié, il change de sens
+sans changer d'apparence. ⚠️ Le plus cher n'était pas l'erreur mais la DÉCISION qu'elle
+appelait — un arbitrage budgétaire demandé pour rien.
+
+**Un recenseur ancré sur la FORME perd son propre témoin quand on change la forme.** Le
+recenseur de motifs de `memoire.test.js` cherchait `res.motif = '<litteral>'` ; remplacer
+cette affectation par un TERNAIRE a fait disparaître le motif du recensement — et le témoin
+qui prouve que le scan voit quelque chose avec lui. C'est la seule raison pour laquelle on
+l'a vu : sans ce témoin, le contrôle d'exhaustivité serait devenu vide en silence. Un scan
+d'affectation se lit **jusqu'au `;`**, puis on extrait les littéraux de l'expression entière.
+
 ## 10. Style et compte-rendu
 
 > 📣 Forme des comptes-rendus, des commits, des PR et des docs générées :
