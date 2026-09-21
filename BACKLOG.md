@@ -41,6 +41,25 @@ sans fileId de clé (pièces jointes Gmail) restent hors du dénominateur — C4
 352, le reste attend. Le périmètre date du 17/09 et ne se re-mesure qu'au bump de
 `CONFIG.PERIMETRE_PIECE_TAG`.
 
+### C49-23 bis — le lot était mergé et n'a JAMAIS tourné ✅
+
+- [x] **Mesuré, pas déduit** : la ligne `Import — file` était absente de la Santé aux ticks de
+  20:38 et 20:44 UTC, tous deux postérieurs au `clasp push` de 20:39:36. 18 lignes, pas 19.
+- [x] **Cause LUE dans l'API des jobs** (run 35652410816, étape 9) : « Assurer le déclencheur »
+  porte `conclusion: "skipped"`. Sa condition n'avait pas `always()`, et GitHub Actions saute
+  une étape dès qu'une étape amont échoue — ici `clasp deploy`, bloqué par les 200 versions.
+  Or c'est cette étape qui recrée le déclencheur, donc la seule qui force Apps Script à
+  recharger le code (piège n° 3).
+- [x] **Le défaut n'est pas le plafond de versions** : tout échec du redéploiement de la web app
+  (quota, réseau, secret retiré) figeait le moteur sur l'ancien code, en silence.
+- [x] `if: always() && steps.push.outcome == 'success'` + `id: push`, gardés par
+  `test/pilote-ci.test.js` — 3 mutations rouges (sans `always()`, sans `id: push`, `always()`
+  seul qui réinstallerait le déclencheur même sur un push raté).
+
+⚠️ **Le correctif ne prend effet qu'au prochain merge, et son effet se MESURE** : `Import — file`
+doit apparaître dans la Santé. Le vert d'un run ne le prouve pas. ⚠️ Et il ne débloque QUE le
+tick : `/exec` reste figée tant que Marc n'a pas purgé l'historique des versions (HANDOVER §4.0).
+
 ---
 
 ## C49-20 — sept campagnes arrêtées, 41 min/j rendues à la lecture ✅

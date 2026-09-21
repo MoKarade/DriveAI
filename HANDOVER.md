@@ -2962,6 +2962,52 @@ Détail des tâches : `BACKLOG.md`.
 > Objectif **full auto**. Les secrets de déploiement sont posés — il ne reste qu'une ré-autorisation
 > à venir (Phase 3) et deux rappels de fond.
 
+0. 🔴 **APPS SCRIPT A ATTEINT SA LIMITE DE 200 VERSIONS — `deploy.yml` échoue depuis le
+   21/09 à 20:39 UTC.** Mesuré dans les logs du run 35652410816 :
+   `Cannot create more versions: Script has reached the limit of 200 versions. To create more,
+   delete a version from the project history page.`
+
+   ⚠️⚠️ **CETTE ENTRÉE A AFFIRMÉ LE CONTRAIRE PENDANT QUELQUES HEURES, ET C'ÉTAIT FAUX.**
+   Première rédaction : « le CODE du projet est à jour, donc **le tick exécute la nouvelle
+   version** ». Re-mesuré sur les ticks de **20:38 et 20:44 UTC** — le second est postérieur au
+   push de 20:39:36 — la ligne de Santé que C49-23 venait d'ajouter (`Import — file`) est
+   **ABSENTE** : la Santé en porte toujours 18, pas 19. Le moteur tournait bien sur l'ANCIEN
+   code. La règle du §9 s'applique telle quelle : un re-check qui contredit un « prouvé »
+   antérieur se corrige immédiatement, là où il a été écrit.
+
+   **Ce qui marche, ce qui ne marche pas, et POURQUOI** — les trois étapes se lisent séparément :
+   - ✅ **`clasp push` RÉUSSIT** (20:39:31 → 20:39:36, les 40 fichiers listés). Le CODE du projet
+     Apps Script est bien à jour.
+   - ❌ **`clasp deploy -i $WEBAPP_DEPLOYMENT_ID` ÉCHOUE** (20:39:36 → 20:39:44). La web app
+     `/exec` reste figée sur sa version épinglée. C'est le piège n° 4 du `CLAUDE.md` §9 : au
+     prochain lot qui touche `WebApp.gs`, l'app et le miroir appelleront une version qui ignore
+     la nouvelle action — réponse `{ok:true}` SANS le champ attendu, zéro erreur, panne muette.
+   - ⏭️ **« Assurer le déclencheur » a été SAUTÉE** — `conclusion: "skipped"` dans l'API des jobs
+     (run 35652410816, étape 9), LU et non déduit. Sa condition était
+     `if: steps.guard.outputs.ready == 'true'`, sans `always()` : GitHub Actions saute une étape
+     dès qu'une étape amont a échoué, quelle que soit sa condition. Or c'est CETTE étape qui
+     supprime/recrée le déclencheur, donc **la seule chose qui force Apps Script à recharger le
+     code** (piège n° 3). Le `clasp push` vert ne suffit pas, et c'est écrit dans le workflow
+     depuis toujours.
+
+   ⚠️ **Le défaut est donc plus large que les 200 versions** : N'IMPORTE QUEL échec du
+   redéploiement de la web app — quota, réseau, secret retiré — figeait le moteur sur l'ancien
+   code, en silence. **Corrigé** : la condition est désormais
+   `if: always() && steps.push.outcome == 'success'`, gardée par `test/pilote-ci.test.js`
+   (3 mutations rouges). ⚠️ Le correctif ne prendra effet qu'au **prochain merge**, et son effet
+   se MESURE (la ligne `Import — file` doit apparaître dans la Santé) — il ne se déduit pas du
+   vert d'un run.
+
+   **Le geste, et il n'appartient qu'à Marc** (frontière d'exécution — une session ne peut ni
+   déployer ni exécuter dans Apps Script) : ouvrir le projet Apps Script → **Historique du
+   projet** (« Project history ») → **supprimer d'anciennes versions**. En retirer une centaine
+   remet de la marge pour des mois. ⚠️ Les versions ANCIENNES ne servent plus à rien une fois
+   qu'aucun déploiement ne les épingle ; celle que porte le déploiement `/exec` courant, si.
+
+   ⚠️ **C'est le PREMIER échec** : les cinq runs précédents du même jour sont verts (`d6c7afc`,
+   `51d6b4f`, `12c4fd6`, `58fe166`). La 200ᵉ version vient d'être créée — chaque merge en crée
+   une, donc **tous les merges suivants échoueront à la même étape** tant que rien n'est purgé.
+
 1. **Phase 3 (à venir, une fois)** : l'ajout des scopes Google Tasks/Calendar va déclencher un **nouvel
    écran de consentement Google** au prochain déploiement. Une seule ré-autorisation (un clic) sera
    nécessaire — DriveAI ne peut pas le faire à sa place (frontière d'exécution). Sera annoncé clairement
