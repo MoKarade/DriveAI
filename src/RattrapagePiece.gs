@@ -40,6 +40,13 @@
  * limite en production. La tranche suivante (3 862 papiers) ne tiendra JAMAIS ici : elle
  * demandera un autre mécanisme d'idempotence, et c'est écrit plutôt que découvert.
  */
+/**
+ * ⚠️ CE PLAFOND EST MORT LE 21/09/2026, ET IL RESTE ÉCRIT — il ne borne plus l'idempotence, il
+ * borne encore le chemin MANUEL (`choixSansPlafondRattrapage_`). Sa valeur disait « ce qu'une
+ * Script Property peut porter » ; l'idempotence vit maintenant dans l'onglet `PiecesFaites`,
+ * qui n'a pas ce plafond. Le supprimer laisserait croire que la limite n'a jamais existé, et
+ * la prochaine session re-poserait une liste dans une Property « parce que c'est plus simple ».
+ */
 var RATTRAPAGE_PIECE_MAX_FAITS = 200;
 
 /**
@@ -130,27 +137,72 @@ function selectionnerRattrapage_(lignes, fileIdDe, faits, prefixes, max) {
 }
 
 /**
- * La liste des documents déjà faits, encodée `<tag>|<fileId>|<fileId>…`.
+ * PURE. La liste des documents déjà faits, à partir des lignes de l'onglet `PiecesFaites`.
  *
- * ⚠️ Le TAG est DANS la valeur, pas à côté : sans lui, bumper le tag pour tout refaire
- * laisserait l'ancienne liste en place et la campagne relancée ne traiterait rien — le
- * « remède gaté par un tag rendu inerte » payé le 17/09 sur l'audit, à l'identique.
+ * ⚠️ Le TAG filtre : sans lui, bumper le tag pour tout refaire laisserait l'ancienne liste en
+ * place et la campagne relancée ne traiterait rien — le « remède gaté par un tag rendu inerte »
+ * payé le 17/09 sur l'audit, à l'identique. Les lignes des tags précédents restent DANS
+ * l'onglet (il est append-only) : elles racontent ce qui a été fait, elles ne freinent rien.
+ *
+ * @param {Array<Array>} lignes  `[FileId, Tag, Le]`, sans l'en-tête
+ * @param {string} tag
+ * @return {!Object} `{fileId: 1}`
  */
-function encoderFaitsRattrapage_(tag, faits) {
-  var ids = [];
-  for (var id in faits) {
-    if (Object.prototype.hasOwnProperty.call(faits, id) && faits[id] === 1) ids.push(id);
+function filtrerFaitsParTag_(lignes, tag) {
+  var out = {};
+  var t = String(tag || '');
+  var src = lignes || [];
+  for (var i = 0; i < src.length; i++) {
+    var id = String(src[i] && src[i][0] != null ? src[i][0] : '').trim();
+    if (id && String(src[i][1] == null ? '' : src[i][1]).trim() === t) out[id] = 1;
   }
-  return String(tag || '') + '|' + ids.join('|');
+  return out;
 }
 
-/** Décode la liste, et rend VIDE si elle a été écrite sous un autre tag. PURE. */
-function decoderFaitsRattrapage_(brut, tag) {
-  var out = {};
-  var parts = String(brut == null ? '' : brut).split('|');
-  if (parts.length < 1 || parts[0] !== String(tag || '')) return out;
-  for (var i = 1; i < parts.length; i++) if (parts[i]) out[parts[i]] = 1;
-  return out;
+/**
+ * L'idempotence, LUE DEPUIS LA SHEET. I/O.
+ *
+ * ⚠️⚠️ POURQUOI ELLE A QUITTÉ LA SCRIPT PROPERTY, le 21/09/2026. Elle y tenait sous la forme
+ * `<tag>|<fileId>|<fileId>…`, et une Property plafonne autour de 9 Ko — soit ~200 documents.
+ * La garde qui refusait une tranche plus grande a fait exactement son travail le jour où Marc
+ * a demandé les 976 papiers de `02 · Finances` : elle a REFUSÉ de démarrer plutôt que de
+ * découvrir le plafond en production, où une Property qui déborde lève À L'ÉCRITURE — la
+ * campagne aurait alors re-traité les mêmes documents à chaque passe, en payant un appel LLM
+ * à chaque fois, sans jamais avancer.
+ *
+ * Un onglet n'a pas ce plafond (l'Index en porte 26 550 lignes), et il est déjà le mécanisme
+ * que ce dépôt emploie pour toute liste qui grandit.
+ *
+ * ⚠️ Rien n'est migré depuis l'ancienne Property, et c'est mesuré plutôt que négligé : elle
+ * portait le tag `c49-5-a`, que le bump du 21/09 a rendu caduc. Sa lecture aurait rendu vide
+ * de toute façon.
+ */
+function lireFaitsRattrapage_(tag) {
+  try {
+    var f = feuille_('PiecesFaites');
+    var n = f.getLastRow();
+    if (n < 2) return {};
+    return filtrerFaitsParTag_(f.getRange(2, 1, n - 1, 2).getValues(), tag);
+  } catch (e) {
+    // ⚠️ ÉCHEC FERMÉ : une liste illisible rendue VIDE ferait re-traiter toute la tranche, en
+    // payant un appel par document. On rend `null`, et l'appelant s'abstient.
+    journalErreur_('RattrapagePiece', 'Liste des faits illisible (' + e + ') : la passe '
+      + 's\'abstient plutôt que de re-payer une extraction par document.');
+    return null;
+  }
+}
+
+/** Ajoute les documents de ce run à l'onglet. I/O. */
+function ajouterFaitsRattrapage_(tag, ids, quand) {
+  if (!ids || !ids.length) return;
+  var lignes = [];
+  for (var i = 0; i < ids.length; i++) lignes.push([ids[i], String(tag || ''), quand]);
+  var f = feuille_('PiecesFaites');
+  // ⚠️ La largeur vient de la LIGNE, pas de la constante d'en-tête : celle-ci vit dans
+  // `Journal.gs`, et un appelant qui ne le charge pas ferait lever `.length` — dans un
+  // `try/catch` qui avale, donc la liste ne serait jamais écrite, EN SILENCE. Un test lie
+  // quand même les deux largeurs, pour qu'un en-tête élargi ne décale pas les colonnes.
+  f.getRange(f.getLastRow() + 1, 1, lignes.length, lignes[0].length).setValues(lignes);
 }
 
 /**
@@ -291,7 +343,10 @@ function phraseFinRattrapage_(brut, tagCourant) {
   // pas se lire « 0 restants », donc « terminée ». On ne fait confiance qu'à un vrai nombre.
   var restants = (p[3] === '' || p[3] === undefined || p[3] === 'null') ? NaN : Number(p[3]);
   var phrase = (isFinite(restants) ? restants + ' restants' : 'reste inconnu')
-    + ' dans la tranche 04 + 01'
+    // ⚠️ DÉRIVÉ, jamais écrit : la phrase a dit « 04 + 01 » jusqu'au 21/09, et `02` y est entré
+    // le jour même. Un lot qui change ce qu'un écran MONTRE périme ce qu'il AFFIRME, et une
+    // phrase fausse ne fait rougir aucun test — elle envoie juste chercher au mauvais endroit.
+    + ' dans la tranche ' + prefixesRattrapage_().join(' + ')
     + ' · dernière passe : ' + (p[2] || '?') + ' (faits/échecs/sans texte) — ' + (p[1] || '?')
     + ' · ' + (p[0] || '?')
     // ⚠️ Qui l'a lancée : une passe MANUELLE prouve que le code est bon, jamais que le
@@ -396,24 +451,12 @@ function etapeRattrapagePiece_(garde, opts) {
   if (!lignes) { res.fin = 'index-vide'; return noterFinRattrapage_(props, res, !!opts.manuel); }
 
   var tagFaits = tag || 'manuel';
-  var faits = decoderFaitsRattrapage_(
-    props.getProperty('DriveAI_RATTRAPAGE_PIECE_FAITS'), tagFaits);
+  var faits = lireFaitsRattrapage_(tagFaits);
+  if (faits === null) { res.fin = 'faits-illisibles'; return noterFinRattrapage_(props, res, !!opts.manuel); }
   var maxParRun = opts.manuel ? choixSansPlafondRattrapage_() : RATTRAPAGE_PIECE_MAX_PAR_RUN;
   var choix = selectionnerRattrapage_(
     lignes, fileIdDeCleIndex_, faits, prefixesRattrapage_(), maxParRun);
   res.restants = choix.restants;
-
-  // ⚠️ Le REFUS de démarrer une tranche trop grande, plutôt que la découverte du plafond en
-  // production. Une Property qui déborde lève à l'écriture : la campagne re-traiterait alors
-  // les mêmes documents à chaque passe, en payant un appel LLM à chaque fois, sans jamais
-  // avancer — et le compteur de restants ne bougerait pas d'un cran.
-  if (choix.tranche > RATTRAPAGE_PIECE_MAX_FAITS) {
-    res.fin = 'tranche-trop-grande';
-    journalErreur_('RattrapagePiece', 'Tranche de ' + choix.tranche + ' documents > plafond '
-      + RATTRAPAGE_PIECE_MAX_FAITS + ' : l\'idempotence tient dans une Script Property et ne '
-      + 'passera pas à cette échelle. Élargir la tranche exige un autre mécanisme.');
-    return noterFinRattrapage_(props, res, !!opts.manuel);
-  }
 
   if (!choix.choisies.length) {
     res.fin = 'tranche-terminee';
@@ -421,6 +464,7 @@ function etapeRattrapagePiece_(garde, opts) {
   }
 
   var debutRun = Date.now();
+  var aEcrire = [];
   var plafondRun = opts.manuel
     ? CONFIG.BUDGET_MS
     : Math.min(CONFIG.AUDIT_PIECE_BUDGET_MS, CONFIG.AUDIT_PIECE_BUDGET_JOUR_MS - consommeJour);
@@ -460,6 +504,11 @@ function etapeRattrapagePiece_(garde, opts) {
         res.fin = 'drive-illisible';
         for (var f = 0; f < marquesFragiles.length; f++) {
           if (faits[marquesFragiles[f]] === 1) { delete faits[marquesFragiles[f]]; res.restants++; res.echecs--; }
+          // ⚠️ ET de la liste à ÉCRIRE : depuis que l'idempotence vit dans un onglet, retirer la
+          // marque en mémoire ne suffit plus — sans cette ligne, le document serait quand même
+          // inscrit « fait » et jamais repris, ce que ce coupe-circuit existe pour empêcher.
+          var pos = aEcrire.indexOf(marquesFragiles[f]);
+          if (pos !== -1) aEcrire.splice(pos, 1);
         }
         break;
       }
@@ -479,11 +528,13 @@ function etapeRattrapagePiece_(garde, opts) {
     // sans ça, une photo illisible serait re-téléchargée et re-extraite à chaque passe, à vie,
     // et la tranche ne se terminerait jamais.
     faits[doc.fileId] = 1;
+    aEcrire.push(doc.fileId);
     res.restants--;
   }
 
   try {
-    props.setProperty('DriveAI_RATTRAPAGE_PIECE_FAITS', encoderFaitsRattrapage_(tagFaits, faits));
+    ajouterFaitsRattrapage_(tagFaits, aEcrire,
+      new Date().toISOString().slice(0, 16).replace('T', ' '));
   } catch (e) {
     journalErreur_('RattrapagePiece', 'Liste des faits non persistée (' + e + ') : les documents '
       + 'de ce run repartiront au prochain passage, et ils coûteront une seconde extraction.');
@@ -624,7 +675,7 @@ function diagnosticRattrapagePiece() {
   var lignes = lireLignesIndexPerimetre_();
   if (!lignes) { Logger.log('Index vide ou illisible.'); return 'index-vide'; }
   var tag = String(CONFIG.RATTRAPAGE_PIECE_TAG || '') || 'manuel';
-  var faits = decoderFaitsRattrapage_(props.getProperty('DriveAI_RATTRAPAGE_PIECE_FAITS'), tag);
+  var faits = lireFaitsRattrapage_(tag) || {};
   var choix = selectionnerRattrapage_(
     lignes, fileIdDeCleIndex_, faits, prefixesRattrapage_(), 10000);
 
@@ -642,7 +693,7 @@ function diagnosticRattrapagePiece() {
   var ligne = 'Tranche « ' + tag + ' » : ' + choix.tranche + ' documents au total, '
     + choix.restants + ' encore à faire (' + detail.join(', ') + ')'
     + ' · 1 appel Haiku par document'
-    + ' · plafond de la liste d\'idempotence : ' + RATTRAPAGE_PIECE_MAX_FAITS
+    + ' · idempotence : onglet PiecesFaites (sans plafond)'
     + ' · état : ' + phraseFinRattrapage_(
         props.getProperty('DriveAI_RATTRAPAGE_PIECE_FIN'), CONFIG.RATTRAPAGE_PIECE_TAG);
   Logger.log(ligne);

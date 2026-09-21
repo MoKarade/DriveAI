@@ -1355,6 +1355,28 @@ qui prouve que le scan voit quelque chose avec lui. C'est la seule raison pour l
 l'a vu : sans ce témoin, le contrôle d'exhaustivité serait devenu vide en silence. Un scan
 d'affectation se lit **jusqu'au `;`**, puis on extrait les littéraux de l'expression entière.
 
+**Une garde qui TIRE est une garde qui a fait son travail — et le prix de l'ignorer est celui
+qu'elle empêchait.** Le 21/09/2026, j'ai posé une tranche de 976 documents sur une campagne dont
+l'idempotence tenait dans une Script Property, plafonnée à ~200. Le plafond était ÉCRIT, je le
+connaissais, et je ne l'ai pas re-mesuré avant d'agir. La garde a refusé de démarrer et n'a rien
+coûté ; le découvrir en production aurait coûté un appel de modèle par document à CHAQUE passe,
+pour toujours — une Property qui déborde lève à l'écriture, donc la liste des faits ne s'écrit
+plus et la campagne re-traite éternellement les mêmes documents sans avancer d'un cran.
+⚠️ **Le correctif a reproduit la panne qu'il corrigeait**, et c'est le plus instructif : ma
+première écriture dans l'onglet référençait une variable HORS PORTÉE, à l'intérieur du
+`try/catch` qui protège la persistance. Donc zéro ligne écrite, zéro erreur visible, et chaque
+document re-payé à chaque passe — exactement le mode de panne dont on sortait. Trouvé par un
+test, jamais par la relecture. **Un `try/catch` qui protège une persistance avale aussi les
+fautes de frappe** : ce qu'il enveloppe se prouve par un test qui vérifie ce qui est ÉCRIT,
+jamais par la lecture du code.
+
+**Un tripwire de plafond qui refuse une 43ᵉ entrée n'est pas un obstacle à contourner.** Le même
+jour, ajouter une étape au registre de suivi a été refusé : ~199 octets par clé contre 123 de
+marge sur les ~8,5 Ko qu'une Property accepte. Relever le plafond aurait troqué un refus NET
+contre un `setProperty` qui lève en boucle. La bonne question n'était pas « comment faire entrer
+cette étape » mais « a-t-elle sa place ici » — le registre suit ce qui PROGRESSE, et poser un
+point par jour ne progresse pas.
+
 ## 10. Style et compte-rendu
 
 > 📣 Forme des comptes-rendus, des commits, des PR et des docs générées :

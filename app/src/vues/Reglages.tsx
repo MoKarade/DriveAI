@@ -37,6 +37,7 @@ import {
 import { formaterMontant } from '../explorateur';
 import { auditDepuisSante } from '../audit';
 import { Audit } from './Audit';
+import { AvancementLecture } from '../composants/AvancementLecture';
 import { CleTexte, Langue, t } from '../i18n';
 
 const BUDGET_CROISIERE = 10; // cible < 10 $/mois en croisière (CLAUDE.md §1.6)
@@ -152,6 +153,15 @@ export function Reglages({ langue, onLangue, onDeconnexion }: {
           aucune requête. Une carte permanente pour une porte qu'on franchit une fois serait du
           décor, et le décor finit par ne plus être lu. */}
       <CarteAudit langue={langue} santeBrut={donnees.santeBrut} onOuvrir={() => setAudit(true)} />
+
+      {/* ⚠️ L'AVANCEMENT vit À CÔTÉ de l'audit, et ce n'est pas un rangement : ce sont les deux
+          moitiés de la même question. L'audit dit si ce qui est lu est JUSTE, la courbe dit s'il
+          en reste et à quelle vitesse — et sans la seconde, une campagne à l'arrêt et une
+          campagne qui avance affichent exactement la même chose. */}
+      <section className="carte">
+        <h2>{t('avancementTitre', langue)}</h2>
+        <AvancementLecture langue={langue} />
+      </section>
 
       <details className="avance">
         <summary>
