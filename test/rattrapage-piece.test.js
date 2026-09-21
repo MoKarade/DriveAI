@@ -205,11 +205,23 @@ function montage(lignesIndex, props, options) {
   // rendrait l'Index pour les deux, et la liste des faits lirait des lignes d'Index — donc des
   // clés qui ne sont pas des fileId, donc une idempotence toujours vide, en silence.
   c.faitsEcrits = [];
+  // ⚠️ L'ONGLET PORTE UNE LARGEUR, et le faux doit la porter aussi : sans `getLastColumn`,
+  // la réparation d'en-tête lève, le `try/catch` qui protège la persistance l'AVALE, et rien
+  // n'est jamais écrit — la panne exacte déjà payée le 21/09 au matin sur `maintenant`.
+  // Un faux trop pauvre ne rate pas un cas : il en fabrique un faux.
+  c.largeurFaits = 3; // l'onglet déjà en prod, avant l'ajout de `Nom` et `Motif`
+  c.enTetesEcrits = [];
   const feuilleFaits = {
     getLastRow: () => c.faitsEcrits.length + 1,
+    getLastColumn: () => c.largeurFaits,
     getRange: (ligne, col, n) => ({
       getValues: () => c.faitsEcrits.slice(ligne - 2, ligne - 2 + n),
-      setValues: (v) => { for (const l of v) c.faitsEcrits.push(l); },
+      setValues: (v) => {
+        // La ligne 1 est l'EN-TÊTE : elle ne rejoint pas les faits, sinon le compte de
+        // documents traités grandirait d'un à chaque réparation.
+        if (ligne === 1) { c.enTetesEcrits.push(v[0]); c.largeurFaits = v[0].length; return; }
+        for (const l of v) c.faitsEcrits.push(l);
+      },
     }),
   };
   c.feuille_ = (nom) => (nom === 'PiecesFaites' ? feuilleFaits : feuille);
@@ -457,8 +469,17 @@ test('⚠️ L\'IDEMPOTENCE NE REVIENT PAS DANS UNE SCRIPT PROPERTY', () => {
     'elle vit dans l\'onglet — anti-vacuité : si ce jeton disparaît, le scan ne prouve plus rien');
   // Et la largeur ÉCRITE suit l'en-tête : une colonne ajoutée à l'un sans l'autre décalerait
   // tout ce qui suit, sans erreur, dans un onglet append-only qui ne se corrige pas.
-  const c = load(['Config.gs', 'Journal.gs'], {});
-  assert.strictEqual(c.COLONNES_PIECES_FAITES.length, 3);
+  // ⚠️ DÉRIVÉE, jamais épinglée : `length === 3` se re-baserait mécaniquement au premier
+  // ajout légitime (c'est arrivé le 21/09 avec `Nom` et `Motif`), donc la garde cesserait de
+  // protéger ce qu'elle défend : que la LIGNE écrite ait la largeur de l'EN-TÊTE.
+  const d = montage([ligne(CLE(ID(1)), 'a.pdf', '04 · Immigration')],
+    new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]));
+  d.etapeRattrapagePiece_(() => false, {});
+  assert.ok(d.faitsEcrits.length >= 1, 'rien n\'a été écrit : la garde ne mesurerait rien');
+  for (const l of d.faitsEcrits) {
+    assert.strictEqual(l.length, d.COLONNES_PIECES_FAITES.length,
+      'une colonne ajoutée à l\'en-tête sans l\'autre décalerait tout ce qui suit');
+  }
 });
 
 test('le budget quotidien est PARTAGÉ avec l\'audit : aucune addition à l\'enveloppe', () => {
@@ -844,4 +865,55 @@ test('la ligne de Santé du rattrapage LIT le dernier refus', () => {
   assert.match(src, /texteSanteRattrapagePiece_[\s\S]{0,600}DriveAI_PIECE_DERNIER_REFUS/);
   assert.match(src, /DriveAI_MEMOIRE_SUSPENDU_RAISON/);
   assert.match(src, /phraseFinRattrapage_\(brut, CONFIG\.RATTRAPAGE_PIECE_TAG, diagnosticCanal_\(raison, refus\)\)/);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────
+// 10. LA LISTE DES DOCUMENTS LUS DIT CE QU'ILS SONT ET CE QU'IL EN EST SORTI.
+//
+// Décision de Marc, 21/09 : « je veux un onglet précis pour l'avancement, avec ce qui est en
+// train d'être lu, ce qui a déjà été lu ». `PiecesFaites` ne portait qu'un `fileId` — opaque,
+// donc une liste qui n'en porte que lui ne répond à aucune question qu'un humain se pose.
+// ─────────────────────────────────────────────────────────────────────────────────────────
+
+test('chaque document lu est inscrit avec son NOM et son MOTIF', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const c = montage([
+    ligne(CLE(ID(1)), '2026-01-02_Passeport_IRCC.pdf', '04 · Immigration'),
+    ligne(CLE(ID(2)), '2026-03-04_Relevé_Desjardins.pdf', '01 · Administratif & identité'),
+  ], props);
+  // Le second est illisible : un verdict DÉFINITIF, donc marqué fait — et il faut pouvoir le
+  // distinguer d'une vraie lecture, sinon « 2 traités » ne dit rien de ce qu'on a obtenu.
+  let n = 0;
+  c.pousserPieceApresClassement_ = () => ({ motif: (++n === 1 ? 'ok' : 'illisible') });
+
+  c.etapeRattrapagePiece_(() => false, {});
+
+  assert.strictEqual(c.faitsEcrits.length, 2);
+  assert.deepStrictEqual(Array.from(c.faitsEcrits[0]).slice(3),
+    ['2026-01-02_Passeport_IRCC.pdf', 'ok']);
+  assert.deepStrictEqual(Array.from(c.faitsEcrits[1]).slice(3),
+    ['2026-03-04_Relevé_Desjardins.pdf', 'illisible']);
+  // ⚠️ Et l'identifiant reste en colonne 1 : c'est lui que lit l'idempotence, et il ne bouge
+  // pas parce qu'on a ajouté des colonnes EN QUEUE.
+  assert.strictEqual(c.faitsEcrits[0][0], ID(1));
+});
+
+test('l\'en-tête de PiecesFaites se RÉPARE là où on écrit, pas à la création', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const c = montage([ligne(CLE(ID(1)), 'a.pdf', '04 · Immigration')], props);
+  // L'onglet tel qu'il existe EN PROD : trois colonnes, créé avant l'ajout de `Nom`/`Motif`.
+  c.largeurFaits = 3;
+
+  c.etapeRattrapagePiece_(() => false, {});
+
+  assert.strictEqual(c.enTetesEcrits.length, 1, 'l\'en-tête étroit n\'a pas été réparé');
+  assert.deepStrictEqual(Array.from(c.enTetesEcrits[0]), Array.from(c.COLONNES_PIECES_FAITES));
+
+  // ⚠️ Contrôle inverse : un onglet DÉJÀ à la bonne largeur ne se fait pas réécrire à chaque
+  // passe. Sans ce cas, « la réparation tire » serait vrai d'un code qui écrit toujours.
+  const d = montage([ligne(CLE(ID(2)), 'b.pdf', '04 · Immigration')],
+    new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]));
+  d.largeurFaits = d.COLONNES_PIECES_FAITES.length;
+  d.etapeRattrapagePiece_(() => false, {});
+  assert.strictEqual(d.enTetesEcrits.length, 0);
 });

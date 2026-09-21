@@ -21,15 +21,21 @@ import { EtatMoteur, fraicheurMoteur, dernierPassageDepuisSante, interpreterSant
 import { AujourdHui } from './vues/AujourdHui';
 import { Documents } from './vues/Documents';
 import { Assistant } from './vues/Assistant';
+import { Lecture } from './vues/Lecture';
 import { Agenda } from './vues/Agenda';
 import { Reglages } from './vues/Reglages';
 
-export type Section = 'aujourdhui' | 'agenda' | 'documents' | 'assistant' | 'reglages';
+export type Section = 'aujourdhui' | 'agenda' | 'documents' | 'lecture' | 'assistant' | 'reglages';
 
 /** Les quatre entrées de la navigation ; Réglages est à part (engrenage / bas du rail). */
-export const SECTIONS_NAV: Section[] = ['aujourdhui', 'agenda', 'documents', 'assistant'];
+// ⚠️ CINQ entrées depuis le 21/09/2026 — c'est une RÉVISION de l'ADR-0051, qui en avait figé
+// quatre (« le téléphone d'abord »). Arbitrage de Marc le jour même, après deux messages où il
+// ne trouvait nulle part où en était la lecture de ses papiers : l'information vivait dans une
+// ligne de Santé noyée au milieu de quinze autres, dans Réglages, qu'on ouvre le moins.
+export const SECTIONS_NAV: Section[] = ['aujourdhui', 'agenda', 'documents', 'lecture', 'assistant'];
 export const ICONES: Record<Section, NomIcone> = {
-  aujourdhui: 'aujourdhui', agenda: 'agenda', documents: 'documents', assistant: 'assistant', reglages: 'reglages',
+  aujourdhui: 'aujourdhui', agenda: 'agenda', documents: 'documents', lecture: 'lecture',
+  assistant: 'assistant', reglages: 'reglages',
 };
 
 /**
@@ -198,6 +204,7 @@ function Coquille({ langue, onLangue, onDeconnexion }: {
             )}
             {section === 'aujourdhui' && <AujourdHui langue={langue} onAller={allerA} />}
             {section === 'documents' && <Documents langue={langue} />}
+            {section === 'lecture' && <Lecture langue={langue} />}
             {section === 'assistant' && <Assistant langue={langue} />}
             {section === 'agenda' && <Agenda langue={langue} />}
             {section === 'reglages' && <Reglages langue={langue} onLangue={onLangue} onDeconnexion={onDeconnexion} />}

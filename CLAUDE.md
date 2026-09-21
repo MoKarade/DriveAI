@@ -1370,6 +1370,26 @@ test, jamais par la relecture. **Un `try/catch` qui protège une persistance ava
 fautes de frappe** : ce qu'il enveloppe se prouve par un test qui vérifie ce qui est ÉCRIT,
 jamais par la lecture du code.
 
+**Une information qui EXISTE mais qu'on ne trouve pas coûte la confiance dans tout le reste.**
+Le 21/09/2026, Marc a écrit deux fois qu'il ne voyait pas où en était la lecture de ses
+papiers. Elle était écrite : une ligne de Santé, au milieu de quinze autres, dans Réglages —
+l'écran qu'on ouvre le moins. Et son motif de fin était un identifiant de code (« suspendu »),
+vrai pour quatre causes qui appellent quatre gestes différents. **Un état brut rangé au bon
+endroit pour celui qui l'a écrit n'est pas une observabilité** : il l'est pour celui qui le
+lit, ou il ne l'est pas. ⚠️ Corollaire mesuré deux fois le même jour : le SEUL endroit qui
+affichait le refus de la Mémoire commençait par `if (!CONFIG.PIECE_PUSH) return 'désactivée'`,
+un flag qui ne gouverne pas le canal responsable ; et `DriveAI_MEMOIRE_SUSPENDU_RAISON` était
+écrite depuis l'origine et lue par PERSONNE. Devant « je ne comprends pas où ça en est »,
+chercher d'abord ce qui est DÉJÀ persisté et que rien n'affiche — c'est la réponse une fois
+sur deux, et elle coûte une ligne.
+
+**Une valeur figée dans le CSS ne peut pas suivre une liste du code, et rien ne le dit.**
+`nav.barre-basse` portait `repeat(4, 1fr)` ; le passage à cinq onglets l'a laissée telle
+quelle, gate vert, build vert, et la cinquième case ne déborde que sur un téléphone. Une
+feuille de style ne peut rien importer : la garde DOIT donc vivre dans un test qui LIT le CSS
+et le compare à la liste (`SECTIONS_NAV.length`), jamais épingler un nombre — qui se
+re-baserait mécaniquement au prochain onglet.
+
 **Un tripwire de plafond qui refuse une 43ᵉ entrée n'est pas un obstacle à contourner.** Le même
 jour, ajouter une étape au registre de suivi a été refusé : ~199 octets par clé contre 123 de
 marge sur les ~8,5 Ko qu'une Property accepte. Relever le plafond aurait troqué un refus NET

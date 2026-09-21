@@ -765,3 +765,134 @@ export function rythmeImport(points: PointImport[]): RythmeImport {
     parJourActif, joursActifs, joursObserves: memeTag.length, traites, joursRestants, restants,
   };
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   CE QUI A DÉJÀ ÉTÉ LU, ET CE QU'IL EN EST SORTI.
+
+   Demande de Marc, 21/09/2026 : « je veux vraiment un onglet précis pour l'avancement, avec
+   ce qui est en train d'être lu, ce qui a déjà été lu ». L'onglet `PiecesFaites` portait un
+   `fileId`, un tag et une date — trois colonnes dont aucune ne dit ce qu'est le document. Le
+   moteur y écrit désormais le NOM et le MOTIF, en queue (C49-13).
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+/** Une ligne de `PiecesFaites` : un document que la campagne a traité, et son verdict. */
+export interface DocumentLu {
+  fileId: string;
+  tag: string;
+  /** `AAAA-MM-JJ HH:MM`, tel que le moteur l'écrit. */
+  le: string;
+  /** Vide pour les lignes écrites avant C49-13 : l'onglet est append-only, il ne se corrige pas. */
+  nom: string;
+  motif: string;
+}
+
+/**
+ * PURE. Lit `PiecesFaites!A2:E`.
+ *
+ * ⚠️ Une ligne sans `fileId` est IGNORÉE, jamais rendue avec un identifiant vide : elle ne
+ * désigne aucun document, et l'afficher ferait compter un traitement qui n'a pas eu lieu.
+ * ⚠️ `nom` et `motif` absents restent VIDES — l'onglet porte des lignes d'avant leur ajout, et
+ * inventer « inconnu » les rendrait indistinguables d'une lecture qui n'a rien donné.
+ */
+export function interpreterPiecesFaites(brut: string[][]): DocumentLu[] {
+  const out: DocumentLu[] = [];
+  for (const l of brut ?? []) {
+    const fileId = String(l?.[0] ?? '').trim();
+    if (!fileId) continue;
+    out.push({
+      fileId,
+      tag: String(l?.[1] ?? '').trim(),
+      le: String(l?.[2] ?? '').trim(),
+      nom: String(l?.[3] ?? '').trim(),
+      motif: String(l?.[4] ?? '').trim(),
+    });
+  }
+  return out;
+}
+
+/** Ce qu'une lecture a donné, en clair. La CLASSE sert à colorer, le libellé à comprendre. */
+export interface VerdictLecture {
+  classe: 'ok' | 'vide' | 'echec' | 'inconnu';
+  libelle: string;
+}
+
+/**
+ * PURE. Traduit le motif du moteur.
+ *
+ * ⚠️ Un motif INCONNU se CITE et prend la classe `inconnu` : le ranger dans « lu » ou dans
+ * « échec » serait une affirmation inventée, et c'est précisément celle que Marc vérifie.
+ * ⚠️ Un motif VIDE est une ligne d'AVANT C49-13, pas un verdict — les confondre ferait croire
+ * que d'anciennes lectures ont échoué.
+ */
+export function verdictLecture(motif: string): VerdictLecture {
+  const m = String(motif ?? '').trim();
+  if (!m) return { classe: 'inconnu', libelle: 'verdict non enregistré (lecture antérieure)' };
+  switch (m) {
+    case 'ok': return { classe: 'ok', libelle: 'lu et accepté' };
+    case 'refusee': return { classe: 'echec', libelle: 'lu, mais la Mémoire a refusé' };
+    case 'sans-texte': return { classe: 'vide', libelle: 'aucun texte à lire (image sans OCR)' };
+    case 'illisible': return { classe: 'vide', libelle: 'le modèle n’a pas pu lire — photo à refaire' };
+    case 'extraction-vide': return { classe: 'vide', libelle: 'rien d’exploitable dans ce document' };
+    case 'ocr-echec': return { classe: 'echec', libelle: 'la lecture du fichier a échoué' };
+    case 'lecture-impossible': return { classe: 'echec', libelle: 'fichier illisible (droits ? disparu ?)' };
+    case 'piece-vide': return { classe: 'echec', libelle: 'extraction faite, pièce non composable' };
+    case 'non-classe': return { classe: 'echec', libelle: 'document non classé — rien à extraire' };
+    default: return { classe: 'inconnu', libelle: `verdict « ${m} »` };
+  }
+}
+
+/** Ce que la campagne a produit, tous verdicts confondus. */
+export interface BilanLecture {
+  total: number;
+  ok: number;
+  vide: number;
+  echec: number;
+  inconnu: number;
+}
+
+/**
+ * PURE. Le bilan du tag COURANT — celui de la dernière ligne.
+ *
+ * ⚠️ Un bump de campagne remet les compteurs du moteur à zéro : mélanger les tags ferait
+ * afficher un total que plus aucun compteur ne confirme.
+ */
+export function bilanLecture(lus: DocumentLu[]): BilanLecture {
+  const tag = lus.length ? lus[lus.length - 1]!.tag : '';
+  const b: BilanLecture = { total: 0, ok: 0, vide: 0, echec: 0, inconnu: 0 };
+  for (const d of lus) {
+    if (d.tag !== tag) continue;
+    b.total++;
+    b[verdictLecture(d.motif).classe]++;
+  }
+  return b;
+}
+
+/**
+ * PURE. Les N derniers documents lus, du plus récent au plus ancien.
+ *
+ * ⚠️ L'ordre vient de la POSITION dans l'onglet, jamais d'un tri sur la date : le moteur écrit
+ * `AAAA-MM-JJ HH:MM` à la MINUTE, donc tout un lot partage le même horodatage et un tri
+ * rendrait un ordre arbitraire à chaque affichage.
+ */
+export function derniersLus(lus: DocumentLu[], n: number): DocumentLu[] {
+  if (n <= 0) return [];
+  return lus.slice(Math.max(0, lus.length - n)).reverse();
+}
+
+/**
+ * PURE. La ligne de Santé qui parle de la campagne de lecture.
+ *
+ * ⚠️ Rend `null` quand elle manque, jamais une phrase de repli : « la campagne n'a pas encore
+ * écrit son état » et « voici son état » sont deux choses, et seule la première est une panne
+ * possible du canal de lecture.
+ */
+export function ligneSanteLecture(sante: string[]): string | null {
+  for (const l of sante ?? []) {
+    const s = String(l ?? '');
+    if (s.indexOf('Rattrapage des pièces') === 0) {
+      const i = s.indexOf(':');
+      return i === -1 ? s : s.slice(i + 1).trim();
+    }
+  }
+  return null;
+}
