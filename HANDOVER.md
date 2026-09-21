@@ -2962,10 +2962,16 @@ Détail des tâches : `BACKLOG.md`.
 > Objectif **full auto**. Les secrets de déploiement sont posés — il ne reste qu'une ré-autorisation
 > à venir (Phase 3) et deux rappels de fond.
 
-0. 🔴 **APPS SCRIPT A ATTEINT SA LIMITE DE 200 VERSIONS — `deploy.yml` échoue depuis le
-   21/09 à 20:39 UTC.** Mesuré dans les logs du run 35652410816 :
+0. 🔴🔴 **BLOQUANT — PLUS AUCUN CHANGEMENT DU MOTEUR N'ATTEINT LA PRODUCTION.** Apps Script a
+   atteint sa limite de 200 versions ; `deploy.yml` échoue depuis le 21/09 à 20:39 UTC :
    `Cannot create more versions: Script has reached the limit of 200 versions. To create more,
    delete a version from the project history page.`
+
+   ⚠️⚠️ **C'est une PANNE, pas un pense-bête.** Première rédaction : « sans conséquence pour
+   C49-23 ». Deuxième : « corrigé, ça repartira au prochain merge ». **Les deux sont fausses**,
+   et c'est la mesure qui les a réfutées, pas un raisonnement. Le moteur tourne sur le code
+   d'AVANT C49-23 : tout ce qui est mergé depuis est vert, en ligne sur `main`, et invisible en
+   production.
 
    ⚠️⚠️ **CETTE ENTRÉE A AFFIRMÉ LE CONTRAIRE PENDANT QUELQUES HEURES, ET C'ÉTAIT FAUX.**
    Première rédaction : « le CODE du projet est à jour, donc **le tick exécute la nouvelle
@@ -2990,19 +2996,45 @@ Détail des tâches : `BACKLOG.md`.
      code** (piège n° 3). Le `clasp push` vert ne suffit pas, et c'est écrit dans le workflow
      depuis toujours.
 
-   ⚠️ **Le défaut est donc plus large que les 200 versions** : N'IMPORTE QUEL échec du
-   redéploiement de la web app — quota, réseau, secret retiré — figeait le moteur sur l'ancien
-   code, en silence. **Corrigé** : la condition est désormais
+   ⚠️ **Ce défaut-là est plus large que les 200 versions** : N'IMPORTE QUEL échec du
+   redéploiement de la web app — quota, réseau, secret retiré — faisait sauter l'étape en
+   silence. **Corrigé** : la condition est désormais
    `if: always() && steps.push.outcome == 'success'`, gardée par `test/pilote-ci.test.js`
-   (3 mutations rouges). ⚠️ Le correctif ne prendra effet qu'au **prochain merge**, et son effet
-   se MESURE (la ligne `Import — file` doit apparaître dans la Santé) — il ne se déduit pas du
-   vert d'un run.
+   (3 mutations rouges).
 
-   **Le geste, et il n'appartient qu'à Marc** (frontière d'exécution — une session ne peut ni
+   ⚠️⚠️ **ET LE CORRECTIF, MESURÉ, NE SUFFIT PAS — c'est le troisième étage de la même panne.**
+   Le merge de ce correctif (run 35653862869) s'est déroulé exactement comme prévu : push ✅,
+   deploy ❌ (200 versions), **déclencheur ✅ — l'étape a TOURNÉ** et a rendu
+   « Déclencheur réinstallé — version servie : 5min|t7 ». Et le moteur exécute toujours l'ancien
+   code : `Import — file` reste ABSENTE de la Santé aux ticks de **21:00 et 21:04 UTC**, tous
+   deux postérieurs à la réinstallation de 20:54:12. Deux ticks, 18 lignes, pas 19.
+
+   **Pourquoi, et jusqu'où on peut l'affirmer.** La réinstallation passe par `/exec`
+   (`action=assurer-trigger`) — or c'est précisément `/exec` qui est figée. Le déclencheur est
+   donc recréé PAR l'ancienne version. Deux mécanismes expliqueraient la suite, et **rien ici ne
+   permet de les départager** : soit un déclencheur créé depuis un déploiement épinglé reste sur
+   cette version, soit ce qui a TOUJOURS forcé le rechargement est le `clasp deploy` lui-même
+   (création d'une version), et non la réinstallation du déclencheur — auquel cas le commentaire
+   du workflow décrivait depuis le début un mécanisme qu'il n'avait jamais isolé. Ce qui est
+   MESURÉ, et qui suffit pour agir : **tant que `clasp deploy` échoue, le moteur ne recharge
+   pas.**
+
+   ⚠️ **Le « signal indépendant » de la CI ne pouvait pas voir ça.** `versionPilote_()` rend
+   `CONFIG.TICK_MINUTES + '|' + CONFIG.RESET_TABLE_VERSION` — deux constantes inchangées depuis
+   des semaines. Il prouve que `/exec` CONNAÎT l'action (piège n° 4), jamais qu'elle sert le
+   code du jour. Proposition, non faite : y mettre une empreinte qui change à chaque
+   déploiement. Au BACKLOG sous `[C49-24]`, en attente d'un feu vert.
+
+   **LE GESTE, ET IL N'APPARTIENT QU'À MARC** (frontière d'exécution — une session ne peut ni
    déployer ni exécuter dans Apps Script) : ouvrir le projet Apps Script → **Historique du
    projet** (« Project history ») → **supprimer d'anciennes versions**. En retirer une centaine
    remet de la marge pour des mois. ⚠️ Les versions ANCIENNES ne servent plus à rien une fois
    qu'aucun déploiement ne les épingle ; celle que porte le déploiement `/exec` courant, si.
+
+   **Raccourci qui débloque le moteur tout de suite, sans purge** : ouvrir le projet Apps Script
+   dans l'éditeur et exécuter `installerTrigger` (fichier `Main.gs`) — c'est le geste d'origine
+   du piège n° 3, et il tourne sur le HEAD, pas sur `/exec`. Ça rattrape le moteur ; ça ne
+   débloque PAS `/exec`, donc la purge reste à faire.
 
    ⚠️ **C'est le PREMIER échec** : les cinq runs précédents du même jour sont verts (`d6c7afc`,
    `51d6b4f`, `12c4fd6`, `58fe166`). La 200ᵉ version vient d'être créée — chaque merge en crée

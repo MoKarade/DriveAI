@@ -1666,11 +1666,33 @@ a laissé, et la Progression purge ses lignes finies après 48 h.
   — ce qui décide du code exécuté par le TICK, c'est le PUSH — et gardé par
   `test/pilote-ci.test.js` (3 mutations rouges : sans `always()`, sans `id: push`, et `always()`
   seul, qui réinstallerait le déclencheur même sur un push raté).
+  ⚠️⚠️ **ET LE CORRECTIF NE SUFFIT PAS — mesuré, troisième étage de la même panne.** Le merge
+  du correctif s'est déroulé exactement comme prévu (push ✅, deploy ❌, **déclencheur ✅**, avec
+  « Déclencheur réinstallé — version servie : 5min|t7 »), et le moteur exécute TOUJOURS l'ancien
+  code : la ligne attendue reste absente aux ticks de 21:00 et 21:04 UTC, postérieurs de 6 et
+  10 minutes à la réinstallation. La raison est que la réinstallation passe par `/exec`, qui est
+  justement ce que le `clasp deploy` raté laisse figé : le déclencheur est recréé PAR l'ancienne
+  version. **Deux mécanismes expliquent la suite et rien ne permet de les départager d'ici** —
+  un déclencheur créé depuis un déploiement épinglé qui reste sur cette version, ou bien le fait
+  que ce qui a TOUJOURS forcé le rechargement soit le `clasp deploy` (création d'une version) et
+  jamais la réinstallation du déclencheur. Dans le second cas, le commentaire du workflow décrit
+  depuis le premier jour un mécanisme qu'il n'a jamais isolé — il marchait parce qu'un
+  `clasp deploy` vert le précédait toujours.
+  **La règle à retenir n'exige pas de trancher** : « supprimer/recréer le déclencheur force le
+  rechargement » n'est vrai QUE si le canal qui le fait sert déjà le nouveau code. Un remède
+  administré par le composant en panne n'est pas un remède.
+  ⚠️ **Le « signal indépendant » de la CI ne pouvait pas voir ça** : `versionPilote_()` rend
+  deux CONSTANTES (`TICK_MINUTES`, `RESET_TABLE_VERSION`) inchangées depuis des semaines. Il
+  prouve que `/exec` CONNAÎT l'action — le piège n° 4, ce pour quoi il a été écrit — et jamais
+  qu'elle sert le code du jour. **Un signal se juge sur ce qu'il fait VARIER** : celui-là ne
+  varie pas quand la chose qu'on surveille change.
   ⚠️ **La leçon de conduite est celle qui coûte** : un raisonnement JUSTE sur les étapes qu'on a
   lues (« le push a réussi, donc le code est à jour ») reste une DÉDUCTION, et une déduction ne
-  s'écrit pas au présent dans un document vivant. Le signal était à une mesure de distance — la
-  ligne de Santé que le lot venait d'ajouter. **Une réparation n'est finie qu'avec la mesure de
-  son effet**, et un déploiement partiellement rouge est exactement le moment de la prendre.
+  s'écrit pas au présent dans un document vivant. Trois rédactions, trois réfutations par la
+  mesure, dans la même soirée — et à chaque fois le signal était à UN appel de distance. C'est
+  mot pour mot « la cause suivante attend derrière celle qu'on vient de corriger » (§9 de
+  Hubperso) : **une réparation n'est finie qu'avec la mesure de son effet**, jamais avec le
+  correctif, et un déploiement partiellement rouge est exactement le moment de la prendre.
   ⚠️ **Un plafond de plateforme se remplit sans jamais prévenir** : les cinq runs précédents du
   même jour étaient verts, et chaque merge crée une version. Une fois les 200 atteintes, TOUS
   les merges suivants échouent au même endroit. Le geste (purger l'historique des versions du
