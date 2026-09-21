@@ -918,3 +918,15 @@ button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):ho
   margin: 1rem 0 0; padding: 0.8rem 0.9rem; border-radius: var(--r-m);
   background: var(--carte-2); line-height: 1.5; overflow-wrap: anywhere;
 }
+
+/* ── Avancement de la lecture (C49) ─────────────────────────────────────────
+   ⚠️ Aucune couleur EN DUR : la feuille a deux thèmes, et une valeur figée est parfaitement
+   lisible dans celui pour lequel on l'a écrite — donc invisible à la relecture. */
+.avancement { display: grid; gap: .5rem; }
+.avancement-chiffres { margin: 0; font-size: 1.05rem; }
+.avancement-chiffres strong { font-size: 1.6rem; font-variant-numeric: tabular-nums; }
+.avancement-courbe { display: block; width: 100%; height: auto; max-width: 100%; }
+.avancement-axe { stroke: currentColor; opacity: .25; stroke-width: 1; }
+.avancement-trace { stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.avancement-fin { fill: var(--accent); }
+.avancement-etiq { font-size: 9px; fill: currentColor; opacity: .6; }

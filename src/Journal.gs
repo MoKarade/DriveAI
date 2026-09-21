@@ -70,6 +70,7 @@ function initialiserSheet_(ss) {
   // (jamais réécrit, contrairement à Progression/Santé) — construit une série temporelle jour après
   // jour, jusqu'à la fin du drainage.
   creerOnglet_(ss, 'HistoriqueVrac', COLONNES_HISTORIQUE_VRAC);
+  creerOnglet_(ss, 'HistoriqueImport', COLONNES_HISTORIQUE_IMPORT);
   var defaut = ss.getSheetByName('Feuille 1') || ss.getSheetByName('Sheet1');
   if (defaut && ss.getSheets().length > 1) ss.deleteSheet(defaut);
 }
@@ -750,6 +751,12 @@ var COLONNES_PLAN_FUSION = ['Horodaté', 'Domaine', 'Groupe', 'Rôle', 'Dossier'
 // domaine était illisible ce jour-là : `Vrac` reste alors VIDE (jamais un faux 0 permanent —
 // confirmé en prod 2026-08-12, `06 · Études` avait affiché 0 avec ≥400 fichiers réels).
 var COLONNES_HISTORIQUE_VRAC = ['Date', 'Domaine', 'Vrac', 'Tronqué', 'Erreur'];
+
+/** ⚠️ APPEND en QUEUE, jamais une insertion : l'app lit ces colonnes par INDEX, et elle est
+ *  déployée séparément — pendant la fenêtre entre les deux déploiements, une position décalée
+ *  serait lue avec l'ANCIENNE sémantique, sans erreur ni avertissement. */
+var COLONNES_HISTORIQUE_IMPORT = ['Date', 'Restants', 'Extraits', 'Acceptés', 'Illisibles',
+  'Sans texte', 'Échecs', 'Tag'];
 
 /**
  * Construit les lignes de l'onglet Télémétrie. PURE (testée) : tout l'état arrive en paramètres,

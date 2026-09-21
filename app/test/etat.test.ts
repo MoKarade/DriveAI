@@ -10,6 +10,8 @@ import {
   filtrerIndex,
   statutsDepuisIndex,
   anneesDepuisIndex,
+  interpreterHistoriqueImport,
+  rythmeImport,
   fileIdDepuisCle,
   lienDrivePourLigne,
   lignesImportants,
@@ -632,5 +634,69 @@ describe('erreursDesDerniersJours (Réglages · Avancé)', () => {
     const lj = (date: string, niveau: string): LJ => ({ date, niveau, source: 's', message: 'm' } as LJ);
     const journal = [lj('2026-09-08 10:00', 'ERREUR'), lj('2026-08-01 10:00', 'ERREUR'), lj('2026-09-09 10:00', 'INFO'), lj('n/a', 'ERREUR')];
     expect(erreursDesDerniersJours(journal, 7, maintenant)).toHaveLength(1);
+  });
+});
+
+/* ---------- HistoriqueImport : la VITESSE, mesurée sur la série ---------- */
+
+describe('avancement de la lecture des papiers', () => {
+  const L = (jour: string, restants: string, extraits: number, tag = 'c49-5-b') =>
+    [jour, restants, String(extraits), String(extraits), '0', '0', '0', tag];
+
+  it('une cellule VIDE se lit « je ne sais pas », jamais zéro', () => {
+    const p = interpreterHistoriqueImport([L('2026/09/21', '', 0)]);
+    expect(p[0]!.restants).toBeNull();
+    const q = interpreterHistoriqueImport([L('2026/09/21', '0', 0)]);
+    expect(q[0]!.restants).toBe(0);
+  });
+
+  it('le rythme se mesure en jours ACTIFS, pas en jours écoulés', () => {
+    // Quatre jours observés, deux seulement où le cumul a bougé : 100 documents en 2 jours
+    // actifs font 50/jour, pas 25. Un import à l'arrêt et un import qui avance ont le même
+    // nombre de jours écoulés — c'est exactement ce qu'il faut distinguer.
+    const r = rythmeImport(interpreterHistoriqueImport([
+      L('2026/09/18', '200', 0), L('2026/09/19', '200', 0),
+      L('2026/09/20', '150', 50), L('2026/09/21', '100', 100),
+    ]));
+    expect(r.joursObserves).toBe(4);
+    expect(r.joursActifs).toBe(2);
+    expect(r.parJourActif).toBe(50);
+    expect(r.joursRestants).toBe(2);
+  });
+
+  it('⚠️ un BUMP DE TAG ne fabrique pas un rythme négatif', () => {
+    // Bumper la campagne remet les cumuls à zéro. Une série qui traverse le bump verrait le
+    // total REDESCENDRE — donc un rythme négatif, et une projection dans le passé.
+    const r = rythmeImport(interpreterHistoriqueImport([
+      L('2026/09/19', '10', 100, 'c49-5-a'), L('2026/09/20', '10', 110, 'c49-5-a'),
+      L('2026/09/21', '1086', 0, 'c49-5-b'), L('2026/09/22', '1036', 50, 'c49-5-b'),
+    ]));
+    expect(r.joursObserves).toBe(2);
+    expect(r.traites).toBe(50);
+    expect(r.parJourActif).toBe(50);
+  });
+
+  it('⚠️ un rythme NUL ne donne AUCUNE estimation — jamais Infinity', () => {
+    const r = rythmeImport(interpreterHistoriqueImport([
+      L('2026/09/20', '500', 0), L('2026/09/21', '500', 0),
+    ]));
+    expect(r.parJourActif).toBeNull();
+    expect(r.joursRestants).toBeNull();
+    expect(r.restants).toBe(500);
+  });
+
+  it('un reste INCONNU n\'est pas un reste nul : pas d\'estimation non plus', () => {
+    const r = rythmeImport(interpreterHistoriqueImport([
+      L('2026/09/20', '', 0), L('2026/09/21', '', 50),
+    ]));
+    expect(r.parJourActif).toBe(50);
+    expect(r.joursRestants).toBeNull();
+  });
+
+  it('une série vide ne rend ni zéro ni exception', () => {
+    const r = rythmeImport([]);
+    expect(r.parJourActif).toBeNull();
+    expect(r.joursRestants).toBeNull();
+    expect(r.restants).toBeNull();
   });
 });

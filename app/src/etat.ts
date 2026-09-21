@@ -669,3 +669,99 @@ export function interpreterTelemetrie(brut: string[][]): Telemetrie {
     appelsMois: appels ? Number(appels[1]) || 0 : null,
   };
 }
+
+/* ---------- HistoriqueImport : l'avancement de la LECTURE des papiers ---------- */
+
+/**
+ * Un point de la série (une ligne de l'onglet `HistoriqueImport`, une par jour).
+ *
+ * ⚠️ `restants` vaut `null` quand le moteur ne le savait pas — la cellule est VIDE, jamais 0.
+ * Le confondre avec zéro ferait afficher « terminé » sur un jour où l'on ne savait rien.
+ */
+export interface PointImport {
+  jour: string;
+  restants: number | null;
+  extraits: number;
+  acceptes: number;
+  illisibles: number;
+  sansTexte: number;
+  echecs: number;
+  tag: string;
+}
+
+function nombreImport(v: string | undefined): number {
+  const n = Number(String(v ?? '').replace(/\s/g, '').replace(',', '.'));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** PURE. Les colonnes sont lues par INDEX : elles sont APPEND-ONLY côté moteur (jamais insérées). */
+export function interpreterHistoriqueImport(brut: string[][]): PointImport[] {
+  return brut
+    .filter((l) => (l[0] ?? '').trim())
+    .map((l) => {
+      const r = String(l[1] ?? '').trim();
+      return {
+        jour: (l[0] ?? '').trim(),
+        restants: r === '' ? null : nombreImport(r),
+        extraits: nombreImport(l[2]),
+        acceptes: nombreImport(l[3]),
+        illisibles: nombreImport(l[4]),
+        sansTexte: nombreImport(l[5]),
+        echecs: nombreImport(l[6]),
+        tag: (l[7] ?? '').trim(),
+      };
+    });
+}
+
+export interface RythmeImport {
+  /** Documents traités par jour ACTIF — jamais par jour écoulé. */
+  parJourActif: number | null;
+  joursActifs: number;
+  joursObserves: number;
+  traites: number;
+  /** Jours restants au rythme observé, ou `null` quand rien ne permet de le dire. */
+  joursRestants: number | null;
+  restants: number | null;
+}
+
+/**
+ * PURE. Le rythme, mesuré sur la série — jamais déduit d'un instantané.
+ *
+ * ⚠️ ON NE MESURE QUE DANS LE TAG COURANT. Bumper la campagne remet les cumuls à zéro : une
+ * série qui traverse un bump verrait le total REDESCENDRE et en conclurait un rythme négatif.
+ *
+ * ⚠️ JOURS ACTIFS, pas jours écoulés. Les deux sont vrais et ne répondent pas à la même
+ * question : « depuis combien de temps » n'est pas « à quelle vitesse quand ça tourne ». Un
+ * import à l'arrêt depuis trois semaines et un import qui avance ont le même nombre de jours
+ * écoulés, et c'est justement ce qu'il faut distinguer.
+ *
+ * ⚠️ UN RYTHME NUL NE DONNE AUCUNE ESTIMATION — pas `Infinity`, pas un très grand nombre. « On
+ * ne peut pas le dire » est une réponse ; un horizon absurde n'en est pas une.
+ */
+export function rythmeImport(points: PointImport[]): RythmeImport {
+  const dernier = points[points.length - 1];
+  const vide: RythmeImport = {
+    parJourActif: null, joursActifs: 0, joursObserves: 0, traites: 0,
+    joursRestants: null, restants: dernier ? dernier.restants : null,
+  };
+  if (!dernier) return vide;
+
+  const memeTag = points.filter((p) => p.tag === dernier.tag);
+  const premier = memeTag[0]!;
+  const traites = dernier.extraits - premier.extraits;
+  // Un jour est ACTIF quand le cumul a bougé entre lui et le précédent.
+  let joursActifs = 0;
+  for (let i = 1; i < memeTag.length; i++) {
+    if (memeTag[i]!.extraits > memeTag[i - 1]!.extraits) joursActifs++;
+  }
+
+  const parJourActif = joursActifs > 0 && traites > 0 ? traites / joursActifs : null;
+  const restants = dernier.restants;
+  const joursRestants = parJourActif !== null && restants !== null && restants > 0
+    ? Math.ceil(restants / parJourActif)
+    : null;
+
+  return {
+    parJourActif, joursActifs, joursObserves: memeTag.length, traites, joursRestants, restants,
+  };
+}

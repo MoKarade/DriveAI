@@ -843,6 +843,21 @@ function tickDriveAI() {
       // tourne même pendant un reset. Enveloppée : un échec ne bloque jamais le reste.
       etapeSuivie_('historique-vrac', [], function () { majHistoriqueVrac_(estBudgetDepasseStandard); },
         function (e) { journalErreur_('HistoriqueVrac', 'MàJ historique vrac impossible : ' + e); });
+
+      // ⚠️ AUCUN budget quotidien, et c'est justifié plutôt que constaté : cette étape ne lit ni
+      // Drive ni le LLM — tout est déjà en Properties. L'invariant d'enveloppe est aveugle à une
+      // étape sans constante (leçon C28-42), donc son absence se DIT ici.
+      //
+      // ⚠️ ET ELLE N'EST PAS AU REGISTRE DE SUIVI, parce qu'il est PLEIN. Son tripwire de plafond
+      // a refusé la 43ᵉ entrée : ~199 octets par clé contre 123 de marge sur les ~8,5 Ko qu'une
+      // Property accepte (leçon §9, « un registre borné finit par se fermer »). Le contourner en
+      // relevant le plafond troquerait un refus net contre un `setProperty` qui lève en boucle.
+      // Elle n'y perd rien : le registre suit ce qui PROGRESSE (traités/base), et poser un point
+      // par jour ne progresse pas — ce qu'elle produit se lit dans son onglet, et ses pannes
+      // passent par `journalErreur_` comme les autres.
+      try { majHistoriqueImport_(); } catch (e) {
+        journalErreur_('HistoriqueImport', 'MàJ historique import impossible : ' + e);
+      }
       // Validation de `_Doublons` par empreinte (C28-49 PR4, ADR-0047) : I/O pur (Drive REST +
       // Sheet), jamais de LLM, AUCUNE mutation ⇒ budget TAIL, tourne même pendant un reset. PAS
       // d'`etapeSuivie_` : le registre C28-44 est saturé (8 377/8 500 octets, ~199 par entrée) et
