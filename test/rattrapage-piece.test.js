@@ -805,18 +805,35 @@ test('un motif INCONNU se cite, il ne tombe pas dans une catégorie existante', 
 test('une panne de canal NOMME le refus de la Mémoire', () => {
   const c = ctx();
   const brut = '2026-09-21 13:58|suspendu|0/0/0/0|42|tick';
-  const avec = c.phraseFinRattrapage_(brut, 'c49-5-b', 'champ_inconnu: lisible');
-  assert.match(avec, /refus : champ_inconnu: lisible/);
+  const avec = c.phraseFinRattrapage_(brut, 'c49-5-b',
+    c.diagnosticCanal_('jeton refusé (401)', 'champ_inconnu: lisible'));
+  // ⚠️ LES DEUX traces, distinctement : la RAISON dit ce qui a coupé le canal, le REFUS ce
+  // que la Mémoire a répondu sur la dernière pièce. N'en afficher qu'une envoie chercher au
+  // mauvais endroit une fois sur deux.
+  assert.match(avec, /canal coupé : jeton refusé \(401\)/);
+  assert.match(avec, /dernier refus de pièce : champ_inconnu: lisible/);
   assert.match(avec, /Mémoire a refusé/);
 
   // ⚠️ Contrôle inverse : sans refus persisté, la phrase ne fabrique rien. Sans ce cas, « le
   // refus s'affiche » serait vrai d'une phrase qui l'invente.
-  assert.doesNotMatch(c.phraseFinRattrapage_(brut, 'c49-5-b', ''), /refus :/);
+  assert.doesNotMatch(c.phraseFinRattrapage_(brut, 'c49-5-b', ''),
+    /canal coupé :|dernier refus de pièce :/,
+    'sans trace persistée, la phrase ne fabrique aucun diagnostic');
 
   // ⚠️ Et un refus ne se colle PAS à une fin qui n'est pas une panne de canal : « budget du
   // jour épuisé · refus : … » ferait chercher une panne là où la campagne va bien.
   const sain = '2026-09-21 13:58|budget-jour|3/0/0/0|42|tick';
-  assert.doesNotMatch(c.phraseFinRattrapage_(sain, 'c49-5-b', 'champ_inconnu: lisible'), /refus :/);
+  assert.doesNotMatch(c.phraseFinRattrapage_(sain, 'c49-5-b', 'canal coupé : x'), /canal coupé/);
+});
+
+test('diagnosticCanal_ : deux traces, jamais inventées, jamais répétées', () => {
+  const c = ctx();
+  assert.strictEqual(c.diagnosticCanal_('', ''), '', 'rien à dire ne se dit pas');
+  assert.strictEqual(c.diagnosticCanal_('réseau', ''), 'canal coupé : réseau');
+  assert.strictEqual(c.diagnosticCanal_('', 'champ_inconnu'), 'dernier refus de pièce : champ_inconnu');
+  // ⚠️ Quand les deux portent le MÊME texte, on ne l'écrit pas deux fois : une phrase qui se
+  // répète fait croire à deux causes là où il n'y en a qu'une.
+  assert.strictEqual(c.diagnosticCanal_('401', '401'), 'canal coupé : 401');
 });
 
 test('la ligne de Santé du rattrapage LIT le dernier refus', () => {
@@ -825,5 +842,6 @@ test('la ligne de Santé du rattrapage LIT le dernier refus', () => {
   // donc elle ne se teste pas sans sandbox. Ce qu'elle défend est le FIL — la Property lue et
   // passée à la phrase —, pas la mise en forme, qui est couverte par le cas précédent.
   assert.match(src, /texteSanteRattrapagePiece_[\s\S]{0,600}DriveAI_PIECE_DERNIER_REFUS/);
-  assert.match(src, /phraseFinRattrapage_\(brut, CONFIG\.RATTRAPAGE_PIECE_TAG, refus\)/);
+  assert.match(src, /DriveAI_MEMOIRE_SUSPENDU_RAISON/);
+  assert.match(src, /phraseFinRattrapage_\(brut, CONFIG\.RATTRAPAGE_PIECE_TAG, diagnosticCanal_\(raison, refus\)\)/);
 });

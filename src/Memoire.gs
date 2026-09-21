@@ -456,7 +456,8 @@ function texteSanteMemoire_() {
       props.getProperty('DriveAI_MEMOIRE_FIN') || '',
       Number(props.getProperty('DriveAI_MEMOIRE_EMIS')) || 0,
       budgetJourMemoire_(props, dateGmail_(new Date())),
-      CONFIG.MEMOIRE_BUDGET_JOUR_MS
+      CONFIG.MEMOIRE_BUDGET_JOUR_MS,
+      memoireSuspendue_(props) ? (props.getProperty('DriveAI_MEMOIRE_SUSPENDU_RAISON') || '') : ''
     );
   } catch (e) {
     return '⚠️ état illisible (' + e + ')';
@@ -479,7 +480,7 @@ var PHRASES_FIN_MEMOIRE_ = {
   'jeton-refuse': '⚠️ jeton REFUSÉ par la Mémoire — geste de Marc requis'
 };
 
-function phraseFinMemoire_(brut, emis, consommeJour, budgetJour) {
+function phraseFinMemoire_(brut, emis, consommeJour, budgetJour, raisonSuspension) {
   if (!brut) return '⚠️ aucune passe enregistrée — l\'étape n\'a jamais tourné depuis le déploiement';
   var p = String(brut).split('|');
   var fin = p[1] || '?';
@@ -491,9 +492,15 @@ function phraseFinMemoire_(brut, emis, consommeJour, budgetJour) {
   var mode = (p[4] === 'manuel')
     ? ' ⚠️ passe MANUELLE (lancée depuis l\'éditeur) — ne prouve PAS que le tick tourne'
     : '';
+  // ⚠️ LA RAISON DE LA SUSPENSION. `DriveAI_MEMOIRE_SUSPENDU_RAISON` est écrite depuis
+  // toujours par `suspendreMemoire_` et n'était LUE par personne : un champ sans lecteur.
+  // Le 21/09, le canal s'est suspendu après un refus et la ligne disait seulement « après un
+  // refus de la Mémoire » — vrai pour un jeton refusé, un périmètre retiré, un champ hors
+  // contrat et une coupure réseau, qui appellent quatre gestes différents.
+  var pourquoi = String(raisonSuspension || '') ? ' · raison : ' + String(raisonSuspension) : '';
   return emis + ' faits acceptés au total · dernière passe : ' + (p[2] || '?') +
     ' (envoyés/acceptés/déjà là) à la ligne ' + (p[3] || '?') + ' — ' + motif +
-    ' · ' + minutes + ' des ' + Math.round(budgetJour / 60000) + ' min/j consommées' + mode;
+    ' · ' + minutes + ' des ' + Math.round(budgetJour / 60000) + ' min/j consommées' + pourquoi + mode;
 }
 
 /* ========================================================================================

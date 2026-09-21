@@ -364,6 +364,23 @@ var PHRASES_FIN_RATTRAPAGE_ = {
  * PURE. Traduit un motif de fin, y compris les pannes de canal (`canal-<motif>`), dont le
  * détail vit dans le vocabulaire de la Mémoire (`PHRASES_FIN_PIECE_`).
  */
+/**
+ * PURE. Ce qu'on sait de la rupture, composé à partir des DEUX traces que le moteur garde.
+ *
+ * ⚠️ Elles ne disent pas la même chose et aucune ne remplace l'autre : la RAISON de la
+ * suspension dit ce qui a coupé le canal (jeton refusé, périmètre retiré, réseau), le dernier
+ * REFUS dit ce que la Mémoire a répondu sur la dernière pièce (champ hors contrat, valeur
+ * refusée). N'en afficher qu'une envoie chercher au mauvais endroit une fois sur deux.
+ */
+function diagnosticCanal_(raisonSuspension, refusPiece) {
+  var bouts = [];
+  var r = String(raisonSuspension || '').trim();
+  var f = String(refusPiece || '').trim();
+  if (r) bouts.push('canal coupé : ' + r);
+  if (f && f !== r) bouts.push('dernier refus de pièce : ' + f);
+  return bouts.join(' · ');
+}
+
 /** PURE. Cette sortie est-elle une rupture du canal vers la Mémoire ? */
 function estFinDeCanal_(motif) {
   var m = String(motif || '');
@@ -407,7 +424,7 @@ function phraseFinRattrapage_(brut, tagCourant, dernierRefus) {
     // un refus que personne ne pouvait lire.
     + phraseMotifRattrapage_(p[1])
     + (String(dernierRefus || '') && estFinDeCanal_(p[1])
-        ? ' · refus : ' + String(dernierRefus) : '')
+        ? ' · ' + String(dernierRefus) : '')
     + ' · ' + (p[0] || '?')
     // ⚠️ Qui l'a lancée : une passe MANUELLE prouve que le code est bon, jamais que le
     // déclencheur l'exécute. Sans ce mot, on lit « ça marche » sur la preuve d'un geste humain.
@@ -449,10 +466,13 @@ function texteSanteRattrapagePiece_() {
     brut = props.getProperty('DriveAI_RATTRAPAGE_PIECE_FIN');
     cumul = lireCumulRattrapage_(props, CONFIG.RATTRAPAGE_PIECE_TAG);
   } catch (e) { return 'état illisible'; }
-  var refus = '';
-  try { refus = PropertiesService.getScriptProperties().getProperty('DriveAI_PIECE_DERNIER_REFUS') || ''; }
-  catch (e) { refus = ''; }
-  var phrase = phraseFinRattrapage_(brut, CONFIG.RATTRAPAGE_PIECE_TAG, refus);
+  var refus = '', raison = '';
+  try {
+    var pr = PropertiesService.getScriptProperties();
+    refus = pr.getProperty('DriveAI_PIECE_DERNIER_REFUS') || '';
+    raison = pr.getProperty('DriveAI_MEMOIRE_SUSPENDU_RAISON') || '';
+  } catch (e) { refus = ''; raison = ''; }
+  var phrase = phraseFinRattrapage_(brut, CONFIG.RATTRAPAGE_PIECE_TAG, diagnosticCanal_(raison, refus));
   var cum = phraseCumulRattrapage_(cumul);
   return cum ? (phrase + ' · ' + cum) : phrase;
 }
