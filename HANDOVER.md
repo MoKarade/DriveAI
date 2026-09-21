@@ -39,6 +39,11 @@
 >   HTML. Le balisage se retire désormais AVANT la troncature (`src/Ocr.gs`, trois fonctions
 >   PURES). ⚠️ **Le correctif n'est pas de relever la borne** : 12 000 caractères de CSS coûtent
 >   exactement le même argent que 12 000 caractères de texte.
+>   ⚠️ **Mesuré APRÈS le redéploiement** (run `deploy.yml` 377), même `fileId` : titre, auteur,
+>   date de génération et le contenu, **zéro caractère de CSS**. Et la mesure a RÉFUTÉ deux
+>   phrases que j'avais écrites dans le ticket — le nom du fichier (un `fileId` fait foi, pas un
+>   nom recopié) et « il porte probablement la date de naissance », qui n'était que l'hallucination
+>   du modèle recitée comme un indice. Les deux sont corrigées dans `BACKLOG.md`.
 > - **C49-15 — la Santé nommait TROIS compteurs pour QUATRE chiffres** (« 3/0/1/1
 >   (faits/échecs/sans texte) »). Le quatrième — les documents dont la PHOTO est à refaire —
 >   n'avait pas de nom, donc il se lisait comme un chiffre de trop.
