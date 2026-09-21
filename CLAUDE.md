@@ -1441,6 +1441,16 @@ en un mot qui n'existe dans aucun document.
 serait mutilé. Le MIME vient de Drive et n'est pas fiable, l'EXTENSION vient du fichier — il faut
 les deux.
 
+⚠️⚠️ **Et la mesure d'APRÈS a réfuté deux phrases de mon propre ticket** — ce qui est l'argument
+le plus fort pour la faire. (a) J'y désignais le fichier par son NOM, recopié d'une recherche :
+ce n'était pas le sien. Un nom se recopie, un `fileId` s'observe. (b) J'y écrivais « ce fichier
+porte probablement la date de naissance que Marc cherchait » — c'est la liste des pages qu'il
+suit. **Cette phrase venait de ce que le MODÈLE avait deviné**, et je la citais comme un indice
+dans le ticket même qui dénonçait cette devinette. Le titre réel vivait dans le `<head>`, c'est-
+à-dire exactement ce que la solution facile (retirer `<head>` en bloc) aurait jeté. Devant une
+sortie de modèle, demander **ce qui est mesuré et ce qui est deviné** avant de la recopier dans
+un document que la prochaine session lira comme un fait.
+
 **Un compteur ajouté LAISSE son libellé derrière, et rien ne le dit.** Le même jour, la Santé
 affichait « dernière passe : 3/0/1/1 (faits/échecs/sans texte) » : quatre chiffres, trois noms.
 Le compteur était juste ; c'est la phrase qui n'avait pas suivi quand `illisibles` est entré,

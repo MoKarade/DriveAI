@@ -62,10 +62,19 @@
 
 - [x] **Le texte envoyé au modèle est coupé à `ANALYSE_V2_OCR_MAX_CARS` (12 000 caractères), et
   un export HTML de Facebook dépense ce budget en CSS avant d'atteindre la moindre donnée.**
-  Mesuré sur `2026-08-13_2026-07-01-Profil-Export de données-Facebook.html` : l'extrait lu est
+  Mesuré sur `1gPzYJzhI3gKWppeoSsjV-JDGT0r4kLck` : l'extrait lu est
   du `<style>` de bout en bout, et le modèle a écrit `contenu_probable: nom, date de naissance,
   informations email ou téléphone` — il a DIT qu'il devinait, faute d'avoir vu le contenu.
-  ⚠️ L'ironie est que ce fichier porte probablement la date de naissance que Marc cherchait.
+  ⚠️ **Deux phrases de ce ticket ont été RÉFUTÉES par la mesure d'après** (21/09, même `fileId`,
+  moteur redéployé). (a) Je l'avais désigné par un NOM (`2026-08-13_…Profil-Export…`) qui n'est
+  pas le sien — c'est `2026-08-15_2026-07-01-Données de réseau social-Facebook.html`. Un nom se
+  recopie, un `fileId` s'observe : c'est lui qui fait foi, et il est écrit ci-dessus.
+  (b) J'avais écrit « ce fichier porte probablement la date de naissance que Marc cherchait ».
+  **Faux** : c'est la liste des pages qu'il suit. La phrase venait de ce que le MODÈLE avait
+  deviné (« nom, date de naissance, email ou téléphone ») — donc je citais l'hallucination que le
+  ticket existait pour dénoncer, comme si c'était un indice. Le titre réel est « Pages et profils
+  que vous suivez », et il vit dans le `<head>` : c'est exactement ce que retirer `<head>` en bloc
+  aurait jeté.
   ⚠️ Périmètre : **151 papiers Facebook** au moins, plus tout autre HTML (mesuré le 21/09 par
   `memoryai_papiers_facettes`).
   ⚠️ Le correctif n'est PAS de relever la borne (le coût par document suit) mais de retirer le
@@ -89,6 +98,10 @@
   n'est pas fiable ; l'extension vient du fichier.
   ⚠️ `&amp;` se décode EN DERNIER (sinon `&amp;lt;` devient `<`, un décodage de trop qui fabrique
   une balise), et la table porte `&apos;` — l'entité qui manquait chez JobAI le 19/08.
+- [x] **Mesure APRÈS, sur le même `fileId`, moteur redéployé (run `deploy.yml` 377, 21/09)** :
+  titre, auteur, date de génération et les ~30 lignes de contenu, **zéro caractère de CSS**. Le
+  « avant » donnait 12 000 caractères de `<style>` coupés en plein milieu d'une règle. Une
+  réparation n'est finie qu'avec la mesure de son effet.
 
 ## PWA — installable sur le téléphone (Marc, 18/09/2026, Android) ✅
 
