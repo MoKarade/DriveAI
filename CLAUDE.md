@@ -1645,6 +1645,22 @@ a laissé, et la Progression purge ses lignes finies après 48 h.
   au lieu de rendre la VRAIE structure (`.contenu`, qui porte
   `calc(var(--barre-basse-h) + 1.7rem + …)`) fabrique exactement le défaut qu'on cherche.
 
+- ⚠️⚠️ **`clasp push` et `clasp deploy` sont DEUX étapes, et un run rouge ne dit pas laquelle
+  est tombée** (21/09, C49-23). `deploy.yml` a échoué sur
+  `Cannot create more versions: Script has reached the limit of 200 versions` — mais le log
+  montre que le **push a réussi** (les 40 fichiers sont listés) : c'est le `clasp deploy` de la
+  web app qui a buté. Conséquence exacte, et il ne faut ni l'exagérer ni la minimiser : **le
+  TICK exécute bien le nouveau code** (c'est le push qui le décide), pendant que **`/exec`
+  reste figée sur son ancienne version** (c'est le deploy qui la fait avancer). Lire « rouge »
+  comme « rien n'est déployé » aurait fait rejouer un lot déjà en ligne ; le lire comme « tout
+  va bien » laisserait le piège n° 4 ouvert au prochain lot qui touche `WebApp.gs` — réponse
+  `{ok:true}` sans le champ attendu, zéro erreur, panne muette.
+  ⚠️ **Un plafond de plateforme se remplit sans jamais prévenir** : les cinq runs précédents du
+  même jour étaient verts, et chaque merge crée une version. Une fois les 200 atteintes, TOUS
+  les merges suivants échouent au même endroit. Le geste (purger l'historique des versions du
+  projet) appartient à Marc seul — frontière d'exécution — et il est routé dans `HANDOVER.md`
+  §4, pas répété en chat.
+
 ## 10. Style et compte-rendu
 
 > 📣 Forme des comptes-rendus, des commits, des PR et des docs générées :

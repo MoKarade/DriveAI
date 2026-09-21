@@ -2962,6 +2962,32 @@ Détail des tâches : `BACKLOG.md`.
 > Objectif **full auto**. Les secrets de déploiement sont posés — il ne reste qu'une ré-autorisation
 > à venir (Phase 3) et deux rappels de fond.
 
+0. 🔴 **APPS SCRIPT A ATTEINT SA LIMITE DE 200 VERSIONS — `deploy.yml` échoue depuis le
+   21/09 à 20:39 UTC.** Mesuré dans les logs du run 35652410816 :
+   `Cannot create more versions: Script has reached the limit of 200 versions. To create more,
+   delete a version from the project history page.`
+
+   **Ce qui marche encore, et ce qui ne marche plus** — la distinction est tout le sujet :
+   - ✅ **`clasp push` RÉUSSIT** (les 40 fichiers sont listés dans le log). Le CODE du projet est
+     à jour, donc **le tick exécute la nouvelle version** — c'est l'étape qui a échoué juste
+     après, pas celle-là.
+   - ❌ **`clasp deploy -i $WEBAPP_DEPLOYMENT_ID` ÉCHOUE.** La web app `/exec` reste donc figée
+     sur sa version épinglée. Sans conséquence pour C49-23 (qui ne touche ni `WebApp.gs` ni
+     `doGet`/`doPost`) — mais **au prochain lot qui y touche, l'app et le miroir appelleront une
+     version qui ne connaît pas la nouvelle action**, et le piège n° 4 du `CLAUDE.md` §9 dit
+     exactement ce que ça donne : une réponse `{ok:true}` SANS le champ attendu, zéro erreur,
+     panne silencieuse.
+
+   **Le geste, et il n'appartient qu'à Marc** (frontière d'exécution — une session ne peut ni
+   déployer ni exécuter dans Apps Script) : ouvrir le projet Apps Script → **Historique du
+   projet** (« Project history ») → **supprimer d'anciennes versions**. En retirer une centaine
+   remet de la marge pour des mois. ⚠️ Les versions ANCIENNES ne servent plus à rien une fois
+   qu'aucun déploiement ne les épingle ; celle que porte le déploiement `/exec` courant, si.
+
+   ⚠️ **C'est le PREMIER échec** : les cinq runs précédents du même jour sont verts (`d6c7afc`,
+   `51d6b4f`, `12c4fd6`, `58fe166`). La 200ᵉ version vient d'être créée — chaque merge en crée
+   une, donc **tous les merges suivants échoueront à la même étape** tant que rien n'est purgé.
+
 1. **Phase 3 (à venir, une fois)** : l'ajout des scopes Google Tasks/Calendar va déclencher un **nouvel
    écran de consentement Google** au prochain déploiement. Une seule ré-autorisation (un clic) sera
    nécessaire — DriveAI ne peut pas le faire à sa place (frontière d'exécution). Sera annoncé clairement
