@@ -5,6 +5,23 @@
 
 ---
 
+## C49-11 — l'OCR est TRONQUÉ avant le contenu sur les fichiers HTML ⬜
+
+⚠️ **Bug PRÉEXISTANT, découvert le 21/09/2026 en diagnostiquant le passeport. Signalé, pas
+corrigé — c'est du scope non demandé.**
+
+- [ ] **Le texte envoyé au modèle est coupé à `ANALYSE_V2_OCR_MAX_CARS` (12 000 caractères), et
+  un export HTML de Facebook dépense ce budget en CSS avant d'atteindre la moindre donnée.**
+  Mesuré sur `2026-08-13_2026-07-01-Profil-Export de données-Facebook.html` : l'extrait lu est
+  du `<style>` de bout en bout, et le modèle a écrit `contenu_probable: nom, date de naissance,
+  informations email ou téléphone` — il a DIT qu'il devinait, faute d'avoir vu le contenu.
+  ⚠️ L'ironie est que ce fichier porte probablement la date de naissance que Marc cherchait.
+  ⚠️ Périmètre : **151 papiers Facebook** au moins, plus tout autre HTML (mesuré le 21/09 par
+  `memoryai_papiers_facettes`).
+  ⚠️ Le correctif n'est PAS de relever la borne (le coût par document suit) mais de retirer le
+  CSS et le balisage AVANT de tronquer — un décodeur qui donne 12 000 caractères de feuille de
+  style dépense exactement le même argent qu'un décodeur qui donne 12 000 caractères de texte.
+
 ## PWA — installable sur le téléphone (Marc, 18/09/2026, Android) ✅
 
 ⚠️ Section SANS numéro de chantier, volontairement : la branche du lot L2 de l'audit en a déjà
