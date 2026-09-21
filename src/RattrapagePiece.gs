@@ -85,7 +85,7 @@ function prefixeDomainePiece_(domaine) {
  * est justement ce que Marc a demandé.
  *
  * @param {Array<Array>} lignes    lignes d'Index (Clé, Traité le, Fichier, Domaine, Chemin, Statut)
- * @param {Function} fileIdDe      lit le fileId d'une clé (injecté pour le test)
+ * @param {Function} fileIdDe      lit le fileId d'une LIGNE d'Index (injecté pour le test)
  * @param {Object} faits           { fileId: 1 } déjà traités sous le tag courant
  * @param {Array<string>} prefixes domaines de la tranche, dans l'ordre
  * @param {number} max             plafond de la sélection rendue
@@ -107,11 +107,12 @@ function selectionnerRattrapage_(lignes, fileIdDe, faits, prefixes, max) {
     if (statut.indexOf('class') !== 0) continue;
 
     var cle = String(lignes[i][0] || '');
-    var fileId = fileIdDe(cle);
-    // Une clé sans fileId est une pièce jointe Gmail : rangée pour de vrai, mais le canal ne
-    // sait pas la désigner. Elle est HORS de ce rattrapage, et le périmètre le dit déjà comme
-    // un PLANCHER (C49-4) — on ne la compte donc pas non plus dans les restants, sinon le
-    // compteur ne tomberait jamais à zéro et la tranche ne se terminerait jamais.
+    var fileId = fileIdDe(lignes[i]);
+    // Sans fileId — ni en clé, ni en colonne — le canal ne sait pas désigner ce document. Depuis
+    // C49-16 c'est devenu RARE (la colonne est écrite à la pose, et la résolution rattrape
+    // l'existant) : il reste les lignes que la résolution a REFUSÉES faute de preuve. Elles sont
+    // HORS de ce rattrapage et ne comptent pas non plus dans les restants, sinon le compteur ne
+    // tomberait jamais à zéro et la tranche ne se terminerait jamais.
     if (!fileId) continue;
 
     var nom = String(lignes[i][2] || '');
@@ -670,7 +671,7 @@ function etapeRattrapagePiece_(garde, opts) {
   if (faits === null) { res.fin = 'faits-illisibles'; return noterFinRattrapage_(props, res, !!opts.manuel); }
   var maxParRun = opts.manuel ? choixSansPlafondRattrapage_() : RATTRAPAGE_PIECE_MAX_PAR_RUN;
   var choix = selectionnerRattrapage_(
-    lignes, fileIdDeCleIndex_, faits, prefixesRattrapage_(), maxParRun);
+    lignes, fileIdDeLigneIndex_, faits, prefixesRattrapage_(), maxParRun);
   res.restants = choix.restants;
   // ⚠️ La file s'écrit AVANT la sortie « tranche terminée » : c'est justement quand il ne
   // reste rien qu'on veut lire « 04 ✅ · 01 ✅ · 02 ✅ », et non une file vide qui se lirait
@@ -915,7 +916,7 @@ function diagnosticRattrapagePiece() {
   var tag = String(CONFIG.RATTRAPAGE_PIECE_TAG || '') || 'manuel';
   var faits = lireFaitsRattrapage_(tag) || {};
   var choix = selectionnerRattrapage_(
-    lignes, fileIdDeCleIndex_, faits, prefixesRattrapage_(), 10000);
+    lignes, fileIdDeLigneIndex_, faits, prefixesRattrapage_(), 10000);
 
   var parPref = {};
   for (var i = 0; i < choix.choisies.length; i++) {

@@ -5,6 +5,34 @@
 
 ---
 
+## C49-16 — 734 documents CLASSÉS que le canal ne sait pas DÉSIGNER ✅
+
+> Mesuré le 21/09, corrigé le 21/09. Lot A du plan « tout le Drive » (arbitrages de Marc :
+> périmètre = tout le Drive, angle mort Gmail = « réparer, dans ce lot »).
+
+- [x] **Le défaut.** `fileIdDeCleIndex_` déduit l'identifiant Drive de la CLÉ d'Index et
+  n'accepte que quatre préfixes (`drive`, `tri33p`, `migre`, `reanalyse`). Or la clé d'une pièce
+  jointe Gmail est `<messageId>|<rang>|<nom>|<taille>` : elle n'en porte **aucun**. Résultat,
+  **734 lignes classées** invisibles au comptage du périmètre (C49-4), au rattrapage (C49-5) et
+  au canal Mémoire — c'est-à-dire l'intake PRINCIPAL du moteur, hors de tout. Et 734 est un
+  **PLANCHER** : c'est le compte des lignes `classé` sans fileId, pas de ce que Gmail fait entrer.
+- [x] **Deux moitiés, et il faut les deux.** (a) L'AVENIR : `Pipeline.gs` pose `decision.fileId`
+  (le placement vient de le rendre) et `indexAjouter_` l'écrit en **9ᵉ colonne**, ajoutée EN
+  QUEUE — l'app se déploie séparément et lit `A2:H`, plages recensées et non supposées.
+  (b) L'EXISTANT : `src/ResolutionFileId.gs`, qui RETROUVE l'identifiant par recherche Drive.
+  Corriger ce qui écrit ne répare jamais ce qui est déjà écrit (leçon du « [object Object] »).
+- [x] **Le prédicat REFUSE dans le doute.** L'empreinte avant le chemin ; une empreinte attendue
+  que personne ne porte fait refuser au lieu de se rabattre sur le dossier. Un mauvais fileId
+  enverrait un papier de Marc à la Mémoire **sous l'identité d'un autre** — verdict positif, donc
+  définitif de fait. Les refus sont mémorisés (`!<motif>|<tag>`) mais RÉVISABLES par bump.
+- [x] **Aucun budget quotidien prélevé** : passe ONE-SHOT gatée par tag (~734 recherches Drive,
+  quelques minutes UNE fois), comme `PERIMETRE_PIECE_TAG`. L'enveloppe reste à 63 min/j.
+- [x] **Observabilité** : ligne de Santé dédiée (18ᵉ), motifs de refus NOMMÉS un par un —
+  « introuvable », « ambigu » et « empreinte-differente » appellent trois gestes différents.
+- [x] 22 cas neufs, **9 mutations jouées, 9 rouges**. Gate complet vert (1 526 moteur · 384 app).
+
+---
+
 ## C49-15 — la ligne de Santé du rattrapage nomme TROIS compteurs pour QUATRE chiffres ✅
 
 > Signalé le 21/09, corrigé le 21/09 sur feu vert de Marc (« fais les 3 points »).

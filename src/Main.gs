@@ -623,6 +623,38 @@ function tickDriveAI() {
       }
     } catch (e) { journalErreur_('AuditPiece', 'Audit des pièces différé : ' + e); }
 
+    // RÉSOLUTION DES IDENTIFIANTS (C49-16) : retrouver le `fileId` des lignes d'Index qui n'en
+    // portent pas — les pièces jointes Gmail, dont la clé `<messageId>|<rang>|<nom>|<taille>`
+    // n'en contient aucun. 734 documents CLASSÉS que tout ce qui désigne un papier par son
+    // fileId ne voyait pas : le périmètre, le rattrapage, l'audit, le canal Mémoire.
+    //
+    // ⚠️ SA PLACE EST LE SUJET, pas un détail de style. Elle ALIMENTE les deux étapes qui la
+    // suivent immédiatement — le rattrapage (qui ENVOIE) et le périmètre (qui COMPTE) : placée
+    // après elles, sa première tranche ne servirait qu'au tick suivant, et placée en fin de
+    // `finally` elle recevrait le reliquat d'un tick déjà dépensé (incident du 16/09, l'ORDRE
+    // prime sur les budgets). Elle reste APRÈS l'audit parce que celui-ci est la PORTE de
+    // l'ADR-0061 et qu'il est mutuellement exclusif avec le rattrapage.
+    //
+    // ⚠️ Pas de garde de frein LLM, et ce n'est pas un oubli : cette étape ne peut pas dépenser
+    // un dollar (des recherches Drive, aucun appel de modèle). L'y soumettre ferait attendre les
+    // ENTRÉES d'une campagne à cause d'un budget que la campagne seule consomme.
+    // ⚠️ Pas de gate sur `resetEnCours_()` non plus : gater une passe ONE-SHOT sur une campagne
+    // dont la convergence a déjà été inatteignable une fois (ADR-0035) l'endormirait à vie, et
+    // elle ne dispute rien au reset — quelques centaines de recherches Drive, UNE fois.
+    //
+    // Enveloppée, comme tout ce qui suit l'intake : un échec ne doit jamais le bloquer.
+    try {
+      var propsRes = PropertiesService.getScriptProperties();
+      var etatRes = etatResolutionFileId_(propsRes); // avale déjà ses propres erreurs
+      var tagRes = null;
+      try { tagRes = propsRes.getProperty('DriveAI_RESOLUTION_FILEID_TAG'); }
+      catch (eResTag) { tagRes = null; } // « je ne sais pas » ⇒ on laisse la passe trancher
+      if (resolutionFileIdDoitTourner_(etatRes, tagRes, CONFIG.RESOLUTION_FILEID_TAG)
+          && !estBudgetDepasse()) {
+        etapeResolutionFileId_(estBudgetDepasse, {});
+      }
+    } catch (e) { journalErreur_('ResolutionFileId', 'Résolution des identifiants différée : ' + e); }
+
     // RATTRAPAGE DES PIÈCES (C49-5 étape B) : faire partir vers la Mémoire le CONTENU des
     // papiers DÉJÀ classés, `04` puis `01`. Placée JUSTE APRÈS l'audit, et ce n'est pas un
     // détail de style : les deux partagent le budget quotidien des pièces et sont mutuellement

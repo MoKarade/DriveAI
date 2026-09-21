@@ -49,7 +49,7 @@ test('selectionnerRattrapage_ : 04 passe AVANT 01, et ce n\'est pas un tri', () 
     ligne(CLE(ID(1)), 'a.pdf', '01 · Administratif & identité'),
     ligne(CLE(ID(2)), 'b.pdf', '04 · Immigration'),
     ligne(CLE(ID(3)), 'c.pdf', '01 · Administratif & identité'),
-  ], c.fileIdDeCleIndex_, {}, PREFIXES, 10);
+  ], c.fileIdDeLigneIndex_, {}, PREFIXES, 10);
 
   assert.deepStrictEqual(Array.from(res.choisies.map((d) => d.domaine)), [
     '04 · Immigration',
@@ -71,7 +71,7 @@ test('selectionnerRattrapage_ : hors tranche, non classé, sans fileId et sans t
     // la tranche ne se terminerait jamais.
     ['msg123|0|scan.pdf|8421', '', 'scan.pdf', '04 · Immigration', '', 'classé'],
     ligne(CLE(ID(5)), 'clip.mp4', '04 · Immigration'),
-  ], c.fileIdDeCleIndex_, {}, PREFIXES, 10);
+  ], c.fileIdDeLigneIndex_, {}, PREFIXES, 10);
 
   assert.strictEqual(res.choisies.length, 1);
   assert.strictEqual(res.choisies[0].nom, 'garde.pdf');
@@ -84,7 +84,7 @@ test('selectionnerRattrapage_ : les faits sortent de la sélection mais restent 
   const res = c.selectionnerRattrapage_([
     ligne(CLE(ID(1)), 'a.pdf', '04 · Immigration'),
     ligne(CLE(ID(2)), 'b.pdf', '04 · Immigration'),
-  ], c.fileIdDeCleIndex_, faits, PREFIXES, 10);
+  ], c.fileIdDeLigneIndex_, faits, PREFIXES, 10);
 
   assert.strictEqual(res.choisies.length, 1, 'un document fait ne repart pas');
   assert.strictEqual(res.restants, 1);
@@ -97,7 +97,7 @@ test('selectionnerRattrapage_ : le plafond borne la SÉLECTION, jamais le compte
   const c = ctx();
   const lignes = [];
   for (let i = 0; i < 9; i++) lignes.push(ligne(CLE(ID(i)), i + '.pdf', '04 · Immigration'));
-  const res = c.selectionnerRattrapage_(lignes, c.fileIdDeCleIndex_, {}, PREFIXES, 3);
+  const res = c.selectionnerRattrapage_(lignes, c.fileIdDeLigneIndex_, {}, PREFIXES, 3);
   assert.strictEqual(res.choisies.length, 3);
   assert.strictEqual(res.restants, 9);
 });

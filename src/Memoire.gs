@@ -117,7 +117,7 @@ var EXTRACTEUR_MEMOIRE = 'moteur-inventaire-v1';
  */
 function faitInventaireMemoire_(ligne) {
   if (!ligne) return null;
-  var fileId = fileIdDeCleIndex_(String(ligne.cle || ''));
+  var fileId = fileIdDeLigneIndex_(ligne);
   if (!fileId) return null;
   // Un document ÉCARTÉ (doublon, quarantaine) ou en attente n'est pas un document rangé :
   // dire qu'il « existe et est là » serait faux tant qu'il n'a pas de place.
@@ -323,9 +323,12 @@ function passeMemoire_(props, garde, opts) {
   while (ligne <= dern) {
     if (gardeRun()) { res.fin = 'budget'; break; }
     var n = Math.min(MEMOIRE_LIGNES_PAR_LECTURE, dern - ligne + 1);
-    var v = f.getRange(ligne, 1, n, 6).getValues();
+    // ⚠️ NEUF colonnes (C49-16) : la 9ᵉ porte le fileId, et sans elle le canal reste aveugle aux
+    // pièces jointes Gmail — 734 documents CLASSÉS qui ne sont jamais partis.
+    var v = f.getRange(ligne, 1, n, 9).getValues();
     for (var i = 0; i < v.length; i++) {
-      var fait = faitInventaireMemoire_({ cle: v[i][0], nom: v[i][2], domaine: v[i][3], statut: v[i][5] });
+      var fait = faitInventaireMemoire_({ cle: v[i][0], nom: v[i][2], domaine: v[i][3],
+        statut: v[i][5], fileId: v[i][8] });
       if (fait) tampon.push(fait);
     }
     ligne += n;
@@ -613,7 +616,7 @@ function titulaireMemoire_(brut, confiance) {
  */
 function pieceMemoire_(ligne, extrait) {
   if (!ligne) return null;
-  var fileId = fileIdDeCleIndex_(String(ligne.cle || ''));
+  var fileId = fileIdDeLigneIndex_(ligne);
   if (!fileId) return null;
   var statut = String(ligne.statut || '').toLowerCase();
   if (statut.indexOf('class') !== 0) return null;
@@ -973,7 +976,11 @@ function pousserPieceApresClassement_(src, decision, texteOcr, opts) {
     nom: decision.nom,
     domaine: decision.domaine,
     statut: decision.statut,
-    chemin: decision.chemin
+    chemin: decision.chemin,
+    // ⚠️ C49-16 — le flux vivant n'a JAMAIS vu l'Index : il tient sa décision en main, et c'est
+    // le pipeline qui vient d'y poser le fileId rendu par le placement. Sans ce champ, une pièce
+    // jointe Gmail arrivée aujourd'hui retomberait sur sa clé, qui n'en porte aucun.
+    fileId: decision.fileId
   }, extraction);
   if (!piece) { res.motif = 'piece-vide'; return noterFinPiece_(props, res); }
 

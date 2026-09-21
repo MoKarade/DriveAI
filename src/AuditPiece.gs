@@ -597,7 +597,9 @@ function composerEchantillonAudit_(f) {
   if (!idx || idx.getLastRow() < 2) return 0;
 
   var n = idx.getLastRow() - 1;
-  var v = idx.getRange(2, 1, n, 6).getValues();
+  // ⚠️ NEUF colonnes (C49-16) : sans la 9ᵉ, l'échantillon ne peut pas tirer une pièce jointe
+  // Gmail — or c'est l'intake principal, et un échantillon qui l'exclut ne mesure pas le corpus.
+  var v = idx.getRange(2, 1, n, 9).getValues();
 
   // 1) Compter par domaine, en ne gardant que ce qui est CLASSÉ et porte un fileId.
   var parDomaine = {};
@@ -605,7 +607,7 @@ function composerEchantillonAudit_(f) {
   for (var i = 0; i < v.length; i++) {
     var statut = String(v[i][5] || '').toLowerCase();
     if (statut.indexOf('class') !== 0) continue;
-    var fileId = fileIdDeCleIndex_(String(v[i][0] || ''));
+    var fileId = fileIdDeLigneIndex_(v[i]);
     if (!fileId) continue;
     var dom = String(v[i][3] || '(sans domaine)');
     if (!parDomaine[dom]) { parDomaine[dom] = []; comptes[dom] = 0; }

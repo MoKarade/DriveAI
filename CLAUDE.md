@@ -1460,6 +1460,27 @@ l'épinglait, et c'est exactement pourquoi il avait pu dériver. La garde qui re
 la phrase affiche, et exige l'égalité. Épingler le texte se re-baserait mécaniquement au prochain
 compteur ajouté — c'est-à-dire le jour où il faut que quelque chose rougisse.
 
+**Une DÉDUCTION à la place d'une MESURE marche pour la majorité, et la minorité disparaît en
+silence.** Le 21/09/2026, le fileId d'un document n'était nulle part stocké : il se DÉDUISAIT
+de la clé d'Index, qui le porte en dernier segment — pour quatre préfixes sur cinq. La clé
+d'une pièce jointe Gmail est `<messageId>|<rang>|<nom>|<taille>` et n'en contient aucun. Donc
+**734 documents CLASSÉS** étaient invisibles au comptage du périmètre, au rattrapage des pièces
+et au canal Mémoire, alors qu'ils sont rangés dans le Drive depuis des mois. Rien ne pouvait le
+dire : la déduction ne LÈVE pas, elle rend `''`, et chaque lecteur a sauté la ligne comme s'il
+n'y avait rien à lire. Réflexe : devant un identifiant qu'on DÉRIVE au lieu de le STOCKER,
+demander **sur quelle part de la population la dérivation marche** — et si la réponse n'est pas
+« toute », la faute est dans la dérivation, pas dans les exceptions.
+⚠️ **Le correctif est une PAIRE, et une moitié seule ne répare rien** : le producteur écrit
+désormais la valeur (9ᵉ colonne, EN QUEUE — les plages de lecture de l'app ont été RECENSÉES,
+pas supposées), et une passe one-shot RETROUVE celle des lignes déjà écrites. Corriger ce qui
+écrit ne répare jamais ce qui est déjà écrit — troisième fois ce mois-ci.
+⚠️ **Et retrouver, c'est trancher : le prédicat REFUSE dans le doute.** Un fileId faussement
+attribué enverrait un papier de Marc à la Mémoire **sous l'identité d'un autre** — verdict
+POSITIF, donc définitif de fait. L'empreinte avant le chemin, et une empreinte attendue que
+personne ne porte fait REFUSER au lieu de se rabattre sur le dossier : un fichier qui n'a pas
+le bon contenu n'est pas celui-là, quel que soit son nom. Le refus est mémorisé (sinon la
+campagne ne finit jamais) mais keyé sous le TAG, donc révisable par bump.
+
 ## 10. Style et compte-rendu
 
 > 📣 Forme des comptes-rendus, des commits, des PR et des docs générées :

@@ -574,6 +574,23 @@ var CONFIG = {
   // muette sur ce qui manque. Un correctif de MESURE n'existe que quand la mesure est refaite.
   PERIMETRE_PIECE_TAG: 'c49-4-b',
 
+  // C49-16 — RETROUVER le `fileId` des lignes d'Index qui n'en portent pas.
+  // ⚠️ POURQUOI ce tag existe : la clé d'une pièce jointe Gmail est
+  // `<messageId>|<rang>|<nom>|<taille>` — elle ne contient AUCUN identifiant Drive, alors que
+  // les quatre autres préfixes (`drive|`, `tri33p|`, `migre|`, `reanalyse|`) finissent par le
+  // leur. Tout ce qui DÉSIGNE un document par son fileId — le périmètre, le rattrapage, l'audit,
+  // le canal Mémoire — était donc aveugle à ces lignes : 734 documents CLASSÉS, jamais partis,
+  // et le périmètre le disait comme un PLANCHER sans pouvoir dire de combien il manquait.
+  // ⚠️ Bumper ce tag REFAIT la résolution, y compris pour les lignes déjà REFUSÉES (elles
+  // portent `!<motif>|<tag>` dans la colonne) : c'est un verdict NÉGATIF, donc révisable par
+  // version, exactement comme le refus de routage de C28-33. Un fileId déjà TROUVÉ, lui, n'est
+  // jamais retouché — c'est un fait, pas une règle.
+  // ⚠️ AUCUN `*_BUDGET_JOUR_MS`, même raison que `PERIMETRE_PIECE_TAG` : passe ONE-SHOT (~734
+  // recherches Drive, quelques minutes UNE fois), pas une campagne. Lui prélever une minute par
+  // jour à une voisine coûterait plus cher que ce qu'elle consomme, et l'enveloppe est verrouillée
+  // à la minute près par `test/orchestration.test.js`.
+  RESOLUTION_FILEID_TAG: 'c49-16-a',
+
   // C49-3 — l'audit AVANT d'allumer `PIECE_PUSH` (ADR-0061). Cent documents, servis
   // ÉGALITAIREMENT entre les domaines et non au prorata : au prorata, `04 · Immigration` —
   // celui dont une erreur d'extraction coûte le plus cher — aurait deux lignes sur cent.
