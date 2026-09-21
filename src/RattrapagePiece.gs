@@ -331,9 +331,61 @@ function noterFinRattrapage_(props, res, manuel) {
 }
 
 /**
+ * Ce que chaque sortie de la passe VEUT DIRE, en français.
+ *
+ * ⚠️ POURQUOI CETTE TABLE EXISTE. Le 21/09/2026, la campagne a extrait UN document, s'est
+ * fait refuser par la Mémoire, et la ligne de Santé a affiché « suspendu ». Marc : « ça ne
+ * m'explique toujours pas l'avancement ». Un motif brut est un identifiant de code : il dit
+ * QUE ça s'est arrêté, jamais ce qu'il faut faire — et quinze motifs partagent la même case.
+ *
+ * ⚠️ Un motif INCONNU se CITE (« sortie « x » »), jamais ne tombe dans le cas le plus
+ * fréquent : un écran qui range une nouveauté dans une catégorie existante fait croire qu'on
+ * a diagnostiqué ce qu'on n'a pas lu. `test/rattrapage-piece.test.js` dérive la liste des
+ * motifs DU CODE et exige une phrase pour chacun.
+ */
+var PHRASES_FIN_RATTRAPAGE_ = {
+  'termine': 'passe terminée',
+  'tranche-terminee': '✅ plus rien à lire dans cette tranche',
+  'budget': 'plafond de CETTE exécution atteint — reprend au tick suivant (~5 min)',
+  'budget-jour': 'budget du JOUR épuisé — reprise demain',
+  'frein-budget': 'en pause — frein budget campagnes atteint',
+  'non-armee': 'tranche non armée (CONFIG.RATTRAPAGE_PIECE_TAG vide)',
+  'jeton-absent': '⚠️ aucun jeton pour la Mémoire (`DriveAI_MEMORYAI_TOKEN`) — geste de Marc requis',
+  'suspendu': '⚠️ ARRÊTÉE : la Mémoire a refusé la dernière pièce. Re-sonde automatique',
+  'panne-plateforme': '⚠️ panne de plateforme LLM — aucun appel tenté',
+  'audit-en-cours': 'en attente : l\'audit des 100 documents tourne encore',
+  'index-vide': '⚠️ l\'Index n\'a rien rendu — lecture de la feuille impossible',
+  'faits-illisibles': '⚠️ la liste des documents déjà lus est illisible — la passe s\'abstient plutôt que de tout re-payer',
+  'tranche-trop-grande': '⚠️ tranche plus grande que ce que l\'idempotence supporte — refus AVANT de dépenser',
+  'drive-illisible': '⚠️ trois lectures Drive ratées d\'affilée — coupe-circuit, rien n\'est marqué fait'
+};
+
+/**
+ * PURE. Traduit un motif de fin, y compris les pannes de canal (`canal-<motif>`), dont le
+ * détail vit dans le vocabulaire de la Mémoire (`PHRASES_FIN_PIECE_`).
+ */
+/** PURE. Cette sortie est-elle une rupture du canal vers la Mémoire ? */
+function estFinDeCanal_(motif) {
+  var m = String(motif || '');
+  return m === 'suspendu' || m === 'jeton-absent' || m.indexOf('canal-') === 0;
+}
+
+function phraseMotifRattrapage_(motif) {
+  var m = String(motif || '');
+  if (!m) return 'sortie inconnue';
+  if (PHRASES_FIN_RATTRAPAGE_[m]) return PHRASES_FIN_RATTRAPAGE_[m];
+  if (m.indexOf('canal-') === 0) {
+    var sous = m.slice('canal-'.length);
+    return '⚠️ le canal vers la Mémoire a rompu : '
+      + (PHRASES_FIN_PIECE_[sous] || ('« ' + sous + ' »'));
+  }
+  return 'sortie « ' + m + ' »';
+}
+
+/**
  * La phrase lue par `majSante_` — sans rien exécuter, ce que le piège 3 (§9) exige. PURE.
  */
-function phraseFinRattrapage_(brut, tagCourant) {
+function phraseFinRattrapage_(brut, tagCourant, dernierRefus) {
   if (!String(tagCourant || '')) {
     return 'tranche non armée — poser CONFIG.RATTRAPAGE_PIECE_TAG pour lancer 04 + 01';
   }
@@ -347,7 +399,15 @@ function phraseFinRattrapage_(brut, tagCourant) {
     // le jour même. Un lot qui change ce qu'un écran MONTRE périme ce qu'il AFFIRME, et une
     // phrase fausse ne fait rougir aucun test — elle envoie juste chercher au mauvais endroit.
     + ' dans la tranche ' + prefixesRattrapage_().join(' + ')
-    + ' · dernière passe : ' + (p[2] || '?') + ' (faits/échecs/sans texte) — ' + (p[1] || '?')
+    + ' · dernière passe : ' + (p[2] || '?') + ' (faits/échecs/sans texte) — '
+    // ⚠️ Le motif se TRADUIT, et une panne de canal NOMME son refus. Jusqu'au 21/09, le seul
+    // endroit qui affichait `DriveAI_PIECE_DERNIER_REFUS` était la ligne « Mémoire (pièces) »,
+    // court-circuitée par `if (!CONFIG.PIECE_PUSH) return 'désactivée (CONFIG)'` — or ce flag ne
+    // gouverne PAS le rattrapage, qui a son propre chemin. La campagne s'est donc arrêtée sur
+    // un refus que personne ne pouvait lire.
+    + phraseMotifRattrapage_(p[1])
+    + (String(dernierRefus || '') && estFinDeCanal_(p[1])
+        ? ' · refus : ' + String(dernierRefus) : '')
     + ' · ' + (p[0] || '?')
     // ⚠️ Qui l'a lancée : une passe MANUELLE prouve que le code est bon, jamais que le
     // déclencheur l'exécute. Sans ce mot, on lit « ça marche » sur la preuve d'un geste humain.
@@ -389,7 +449,10 @@ function texteSanteRattrapagePiece_() {
     brut = props.getProperty('DriveAI_RATTRAPAGE_PIECE_FIN');
     cumul = lireCumulRattrapage_(props, CONFIG.RATTRAPAGE_PIECE_TAG);
   } catch (e) { return 'état illisible'; }
-  var phrase = phraseFinRattrapage_(brut, CONFIG.RATTRAPAGE_PIECE_TAG);
+  var refus = '';
+  try { refus = PropertiesService.getScriptProperties().getProperty('DriveAI_PIECE_DERNIER_REFUS') || ''; }
+  catch (e) { refus = ''; }
+  var phrase = phraseFinRattrapage_(brut, CONFIG.RATTRAPAGE_PIECE_TAG, refus);
   var cum = phraseCumulRattrapage_(cumul);
   return cum ? (phrase + ' · ' + cum) : phrase;
 }

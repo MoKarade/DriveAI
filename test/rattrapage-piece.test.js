@@ -26,8 +26,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { load } = require('./harness');
 
+// ⚠️ `Memoire.gs` est chargé pour son VOCABULAIRE (`PHRASES_FIN_PIECE_`) : une panne de
+// canal (`canal-<motif>`) se traduit avec les mots de la Mémoire, jamais avec une seconde
+// table qui divergerait de la première.
 const MODULES = ['Config.gs', 'Consolidation.gs', 'Journal.gs', 'PerimetrePiece.gs',
-  'RattrapagePiece.gs'];
+  'Memoire.gs', 'RattrapagePiece.gs'];
 
 function ctx() { return load(MODULES); }
 
@@ -169,7 +172,7 @@ test('phraseFinRattrapage_ : « non armée », « jamais passée » et « termin
     'un tag retiré éteint la campagne : la phrase doit le dire avant tout le reste');
   assert.match(c.phraseFinRattrapage_(null, 'c49-5-a'), /jamais passée/);
   assert.match(c.phraseFinRattrapage_('2026-09-18 12:00|termine|3/0/0|5|tick', 'c49-5-a'),
-    /5 restants.*3\/0\/0.*termine.*par le tick/s);
+    /5 restants.*3\/0\/0.*passe terminée.*par le tick/s);
   const finie = c.phraseFinRattrapage_('2026-09-18 12:00|tranche-terminee|0/0/0|0|tick', 'c49-5-a');
   assert.match(finie, /tranche terminée/);
   // ⚠️ Qui l'a lancée : une passe MANUELLE prouve que le code est bon, jamais que le
@@ -746,4 +749,81 @@ test('la Santé se TAIT tant que rien n\'a été produit, et parle dès le premi
     'le compteur doit DIRE le geste : une photo illisible se reprend, elle ne se re-extrait pas');
   // ⚠️ Un zéro MESURÉ s'affiche : c'est lui qui distingue « aucun échec » de « on ne sait pas ».
   assert.ok(/0 en échec/.test(c.phraseCumulRattrapage_({ faits: 5, echecs: 0, sansTexte: 0, acceptees: 5 })));
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────
+// 9. CE QUI S'AFFICHE QUAND ÇA S'ARRÊTE.
+//
+// Écrit le 21/09/2026. La campagne a extrait UN document, s'est fait refuser par la Mémoire,
+// et la ligne de Santé a affiché « suspendu ». Marc : « ça ne m'explique toujours pas
+// l'avancement ». Le motif du refus ÉTAIT persisté — `DriveAI_PIECE_DERNIER_REFUS` — et le
+// seul endroit qui l'affichait, la ligne « Mémoire (pièces) », commence par
+// `if (!CONFIG.PIECE_PUSH) return 'désactivée (CONFIG)'`. Or ce flag ne gouverne PAS le
+// rattrapage, qui a son propre chemin (décision de Marc du 17/09). Le diagnostic existait et
+// était inatteignable.
+// ─────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Les motifs de fin, DÉRIVÉS du code plutôt que recopiés.
+ *
+ * ⚠️ La lecture va jusqu'au `;`, pas jusqu'à la fin de ligne : un motif posé par un ternaire
+ * disparaîtrait d'un scan ancré sur `res.fin = '<littéral>'`, et le témoin qui prouve que le
+ * scan voit quelque chose partirait avec lui (leçon du 21/09 sur `memoire.test.js`).
+ */
+function motifsDuCode() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'RattrapagePiece.gs'), 'utf8');
+  const motifs = new Set();
+  const re = /res\.fin\s*=\s*([^;]+);/g;
+  let m;
+  while ((m = re.exec(src)) !== null) {
+    for (const lit of m[1].matchAll(/'([^']+)'/g)) motifs.add(lit[1]);
+  }
+  return [...motifs];
+}
+
+test('chaque sortie de la passe a une phrase en français', () => {
+  const c = ctx();
+  const motifs = motifsDuCode();
+  // Anti-vacuité : un motif cassé rendrait l'ensemble vide et « toutes traduites » serait vrai
+  // d'un scan mort.
+  assert.ok(motifs.length >= 12, 'le recenseur ne voit presque rien : ' + motifs.length);
+  assert.ok(motifs.includes('suspendu'), 'témoin absent : le scan ne lit pas les sorties');
+
+  for (const motif of motifs) {
+    // `canal-` est un PRÉFIXE : sa partie variable vit dans le vocabulaire de la Mémoire.
+    const phrase = c.phraseMotifRattrapage_(motif === 'canal-' ? 'canal-refusee' : motif);
+    assert.ok(phrase && !/^sortie /.test(phrase),
+      'motif sans phrase : ' + motif + ' → ' + phrase);
+  }
+});
+
+test('un motif INCONNU se cite, il ne tombe pas dans une catégorie existante', () => {
+  const c = ctx();
+  assert.match(c.phraseMotifRattrapage_('motif-de-demain'), /motif-de-demain/);
+});
+
+test('une panne de canal NOMME le refus de la Mémoire', () => {
+  const c = ctx();
+  const brut = '2026-09-21 13:58|suspendu|0/0/0/0|42|tick';
+  const avec = c.phraseFinRattrapage_(brut, 'c49-5-b', 'champ_inconnu: lisible');
+  assert.match(avec, /refus : champ_inconnu: lisible/);
+  assert.match(avec, /Mémoire a refusé/);
+
+  // ⚠️ Contrôle inverse : sans refus persisté, la phrase ne fabrique rien. Sans ce cas, « le
+  // refus s'affiche » serait vrai d'une phrase qui l'invente.
+  assert.doesNotMatch(c.phraseFinRattrapage_(brut, 'c49-5-b', ''), /refus :/);
+
+  // ⚠️ Et un refus ne se colle PAS à une fin qui n'est pas une panne de canal : « budget du
+  // jour épuisé · refus : … » ferait chercher une panne là où la campagne va bien.
+  const sain = '2026-09-21 13:58|budget-jour|3/0/0/0|42|tick';
+  assert.doesNotMatch(c.phraseFinRattrapage_(sain, 'c49-5-b', 'champ_inconnu: lisible'), /refus :/);
+});
+
+test('la ligne de Santé du rattrapage LIT le dernier refus', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'RattrapagePiece.gs'), 'utf8');
+  // ⚠️ Une garde de FORME, faute de mieux : `texteSanteRattrapagePiece_` lit les Properties,
+  // donc elle ne se teste pas sans sandbox. Ce qu'elle défend est le FIL — la Property lue et
+  // passée à la phrase —, pas la mise en forme, qui est couverte par le cas précédent.
+  assert.match(src, /texteSanteRattrapagePiece_[\s\S]{0,600}DriveAI_PIECE_DERNIER_REFUS/);
+  assert.match(src, /phraseFinRattrapage_\(brut, CONFIG\.RATTRAPAGE_PIECE_TAG, refus\)/);
 });
