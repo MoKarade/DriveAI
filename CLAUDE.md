@@ -195,6 +195,12 @@ les captures E2E en mode mock. Chaque job est borné par `timeout-minutes` : san
 GitHub est de **six heures** — vécu 2× le 19/08, `playwright install` figé > 20 min retenant le
 merge sans rien afficher.
 
+**SonarCloud** tourne en analyse AUTOMATIQUE (aucun workflow) : sa config est
+`.sonarcloud.properties` à la racine. `app/src/i18n.ts` y est exclu de la seule détection de
+duplication (arbitrage de Marc, 23/09) — ses tables FR/EN se répètent par construction et
+faisaient rougir chaque PR qui ajoute du texte. ⚠️ Ne jamais y exclure du CODE : une
+duplication réelle se factorise.
+
 ## 6. Après un merge : vérifier le DÉPLOIEMENT, pas seulement la CI
 
 **CI verte ne veut pas dire « en ligne ».** Ce sont deux systèmes indépendants : la CI juge le
