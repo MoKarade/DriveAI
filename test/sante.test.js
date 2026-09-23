@@ -58,7 +58,7 @@ function chargerAvecSanteMock(indexCache, props) {
   // qu'une campagne qui DÉPENSE avance — et, quand elle n'avance pas, laquelle des six causes
   // (non armée, jeton, suspension, frein, audit en cours, budget du jour) la retient.
   const ctx = load(['Config.gs', 'Cout.gs', 'Llm.gs', 'GoogleApi.gs', 'TriGmail.gs', 'Doublons.gs',
-    'Gmail.gs', 'Migration.gs', 'Memoire.gs', 'AuditPiece.gs', 'PerimetrePiece.gs', 'RattrapagePiece.gs', 'ResolutionFileId.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
+    'Gmail.gs', 'Migration.gs', 'Memoire.gs', 'AuditPiece.gs', 'PerimetrePiece.gs', 'RattrapagePiece.gs', 'ResolutionFileId.gs', 'AvancementMemoire.gs', 'Reset.gs', 'Main.gs', 'Journal.gs'],
     { PropertiesService: mockProps(props) });
   const captured = [];
   // feuille_ mocké : capture l'unique setValues de « Santé » ; `getLastRow: 1` = rapport des
@@ -71,7 +71,7 @@ function chargerAvecSanteMock(indexCache, props) {
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 20 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 21 lignes de métadonnées (une seule écriture Sheet)', () => {
   // 10 depuis ADR-0056 : la re-datation de `06` rallume de la dépense LLM et son budget du jour
   // n'était lisible NULLE PART. Le compte est figé pour que l'ajout d'une ligne soit une DÉCISION —
   // l'écriture est unique par tick, et chaque ligne coûte de la place à l'écran de Marc.
@@ -126,9 +126,14 @@ test('majSante_ écrit exactement 20 lignes de métadonnées (une seule écritur
   // compte de DriveAI, et l'écart entre les deux — la seule chose qui s'explique — disparaît.
   // Elle ne coûte pas un appel réseau par tick : la lecture est espacée de 30 min
   // (`CONFIG.MEMOIRE_COMPTES_MIN_MS`) et la valeur publiée porte sa date.
+  // 21 depuis C49-27 : « Mémoire — avancement » est le sens INVERSE de la ligne précédente —
+  // ce que DriveAI POUSSE à la Mémoire pour son onglet Avancement (ADR 0009 de MemoryAI). Les
+  // fondre ferait lire une écriture refusée par le contrat d'en face comme une lecture en panne,
+  // alors que les deux se corrigent dans deux dépôts différents.
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 20);
+  assert.strictEqual(captured.length, 21);
+  assert.ok(captured.some((l) => /^Mémoire — avancement : /.test(l)), captured.join(' | '));
   // ⚠️ Le COMPTE seul ne dirait pas QUELLE ligne a été ajoutée : une ligne retirée et une autre
   // posée laisseraient 19. La présence se vérifie donc à part, sur la forme ENCODÉE.
   assert.ok(captured.some((l) => /^Import — file : /.test(l)), captured.join(' | '));

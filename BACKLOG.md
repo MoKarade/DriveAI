@@ -5,6 +5,21 @@
 
 ---
 
+## C49-27 — DriveAI pousse ses comptes à la Mémoire, pour son onglet Avancement 🟦
+
+Marc, le 23/09 : une interface « Avancement » dans la Mémoire, comme celle de DriveAI — avec
+« DriveAI pousse ses comptes ». Le contrat est l'ADR 0009 de MemoryAI.
+
+- ✅ `src/AvancementMemoire.gs` : `POST /api/avancement` au plus toutes les 30 min, avec le jeton
+  déjà posé. Des NOMBRES seulement (classés, envoyés, file par dossier, 60 jours de
+  `HistoriqueImport`) ; « pas mesuré » part en `null`. Aucun `*_BUDGET_JOUR_MS`, même arbitrage
+  que la lecture de `/api/etat` : un appel de ~1 s, 48 fois par jour au plus.
+- ✅ 21ᵉ ligne de Santé, « Mémoire — avancement » : elle dit si l'envoi est passé, et pour un 422
+  QUELS champs le contrat d'en face a refusés.
+- ✅ Le contrat accepté par la Mémoire est RECOPIÉ dans `test/avancement-memoire.test.js`, avec sa
+  source : un contrat entre deux dépôts n'est testé par aucun des deux.
+- ⬜ À fusionner APRÈS le déploiement de MemoryAI #64 : avant, la route rend 404.
+
 ## C49-26 — la tranche « tout le reste », l'envoi à la Mémoire doublé, et les documents DISTINCTS 🟦
 
 Marc, le 23/09 : « tout le reste » après `04 + 01 + 02`, puis « augmente la vitesse d'envoi des

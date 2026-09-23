@@ -163,6 +163,9 @@ const CONTRAT = [
   'pousserInventaireMemoire_', 'faitInventaireMemoire_', 'niveauMemoire_',
   'passeMemoire_', 'noterFinMemoire_', 'ligneFinMemoire_', 'budgetJourMemoire_',
   'texteSanteMemoire_', 'phraseFinMemoire_',
+  // C49-27 — l'avancement poussé à la Mémoire (AvancementMemoire.gs), appelé par `majSante_`
+  // (Journal.gs). Sans cette ligne, sa disparition laisserait la suite verte et la Santé lèverait.
+  'texteSanteAvancementMemoire_', 'pousserAvancementMemoire_', 'corpsAvancement_',
   // C28-137 — le chemin MANUEL. Ce n'est PAS un contrat inter-module : personne ne l'appelle
   // depuis le code, c'est Marc qui la lance depuis l'éditeur. Elle est déclarée ici pour la
   // raison INVERSE des autres — rien d'autre ne la retient, et sa disparition dans un refactor

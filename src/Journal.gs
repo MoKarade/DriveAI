@@ -312,6 +312,11 @@ function majSante_() {
     // ne sont pas la même grandeur, et l'écran qui n'en montrait qu'une laissait croire que
     // l'autre n'existait pas (Marc : « ce qui est validé SÉPARÉMENT par driveai et memory ai »).
     ['Mémoire — comptes : ' + texteSanteComptesMemoire_()],
+    // C49-27 — le sens INVERSE de la ligne ci-dessus : ce que DriveAI a POUSSÉ à la Mémoire pour
+    // son onglet Avancement (ADR 0009 de MemoryAI). Une ligne à part, parce que les deux échouent
+    // pour des raisons différentes : l'une est une lecture (jeton de lecture suffit), l'autre une
+    // écriture qu'un contrat `.strict()` peut refuser champ par champ.
+    ['Mémoire — avancement : ' + texteSanteAvancementMemoire_()],
     ['Import — file : ' + texteSanteFileImport_()],
     ['Lecture — file : ' + texteSanteFilePiece_()],
     ['Lecture — en cours : ' + texteSanteEnCoursPiece_()],
