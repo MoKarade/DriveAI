@@ -483,6 +483,12 @@ function texteSanteMemoire_() {
 function cibleImportMemoire_(brutPerimetre) {
   if (!brutPerimetre) return null;
   var p = String(brutPerimetre).split('|');
+  // ⚠️ Les DOCUMENTS distincts d'abord (23/09/2026) : la Mémoire reçoit un fait par document,
+  // pas par ligne d'Index. Mesurée contre les lignes, la cible sur-comptait chaque document
+  // porté plusieurs fois, et l'écart se lisait comme une lenteur d'envoi. Absent (mesure
+  // écrite avant cette version) ⇒ repli sur l'ancien compte, qui reste une borne HAUTE.
+  var distinctes = Number(p[8]);
+  if (p[8] && !isNaN(distinctes) && distinctes > 0) return distinctes;
   var comptes = String(p[2] || '').split('/');
   var n = Number(comptes[1]);
   return (isNaN(n) || n <= 0) ? null : n;

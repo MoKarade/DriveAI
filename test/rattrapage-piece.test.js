@@ -1069,3 +1069,52 @@ test('C49-15 : le libellé nomme bien les QUATRE compteurs, dans l\'ordre où il
   assert.ok(/faits.*échecs.*sans texte.*illisibles/.test(phrase),
     'les quatre noms, dans l\'ordre de la sérialisation : ' + phrase);
 });
+
+/* ---------- C49-26 : élargir la tranche SANS relire ce qui est lu ---------- */
+
+test('C49-26 — élargir la liste rouvre la lecture sur les NOUVEAUX dossiers, sans relire les anciens', () => {
+  const c = ctx();
+  const lignes = [
+    ligne(CLE(ID(1)), 'a.pdf', '04 · Immigration'),
+    ligne(CLE(ID(2)), 'b.pdf', '02 · Finances'),
+    ligne(CLE(ID(3)), 'c.pdf', '05 · Carrière'),
+    ligne(CLE(ID(4)), 'd.pdf', '03 · Logement & véhicule'),
+  ];
+  // Ce que la tranche `04 + 01 + 02` a déjà lu, sous le MÊME tag.
+  const faits = {};
+  faits[ID(1)] = 1;
+  faits[ID(2)] = 1;
+  const avant = c.selectionnerRattrapage_(lignes, c.fileIdDeLigneIndex_, faits, ['04', '01', '02'], 10);
+  assert.strictEqual(avant.choisies.length, 0, 'l\'ancienne tranche est bien finie');
+  assert.strictEqual(avant.restants, 0);
+
+  const apres = c.selectionnerRattrapage_(
+    lignes, c.fileIdDeLigneIndex_, faits, c.prefixesRattrapage_(), 10);
+  // ⚠️ `05` AVANT `03` : c'est l'ordre choisi par Marc, pas l'ordre de l'Index.
+  assert.deepStrictEqual(Array.from(apres.choisies.map((d) => d.domaine)),
+    ['05 · Carrière', '03 · Logement & véhicule']);
+  assert.strictEqual(apres.restants, 2, 'le compteur que relit la gate repasse au-dessus de zéro');
+  // Les deux déjà lus ne reviennent PAS : les relire coûterait un appel de modèle chacun pour
+  // une pièce que la Mémoire garderait telle quelle (même extracteur).
+  assert.ok(apres.choisies.every((d) => d.fileId !== ID(1) && d.fileId !== ID(2)));
+});
+
+test('C49-26 — TRIPWIRE : rien n\'écrit le tag persisté de la tranche, et l\'élargissement en DÉPEND', () => {
+  // ⚠️ La gate du tick compare `DriveAI_RATTRAPAGE_PIECE_TAG` au tag de CONFIG. Aucun code ne
+  // l'écrit (mesuré le 23/09) : elle rend donc toujours `true`, l'étape tourne à chaque tick, et
+  // c'est ce qui permet d'élargir la liste sans bumper le tag. Le jour où quelqu'un « répare » la
+  // persistance, une tranche finie se refermera POUR TOUJOURS sur `restants === 0`, et un
+  // élargissement ne rouvrira plus rien — l'interblocage du 17/09. Ce test rougit à ce moment-là :
+  // la persistance doit alors porter la LISTE en plus du tag (signature `tag|04+01+…`).
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const dir = path.join(__dirname, '..', 'src');
+  const ecrit = fs.readdirSync(dir).filter((f) => f.endsWith('.gs')).some((f) =>
+    /setProperty\(\s*'DriveAI_RATTRAPAGE_PIECE_TAG'/.test(fs.readFileSync(path.join(dir, f), 'utf8')));
+  assert.strictEqual(ecrit, false,
+    'le tag de tranche est désormais persisté : faire porter la LISTE des dossiers à la signature ' +
+    'persistée, sinon élargir la tranche ne la rouvrira jamais');
+  // Anti-vacuité : la gate le LIT bien, sinon ce test ne protégerait rien.
+  assert.match(fs.readFileSync(path.join(dir, 'Main.gs'), 'utf8'),
+    /getProperty\('DriveAI_RATTRAPAGE_PIECE_TAG'\)/);
+});

@@ -73,3 +73,17 @@ test('C49-23 : la ligne est bien celle que la Santé publie', () => {
     'la ligne « Import — file » doit être écrite par majSante_');
   assert.strictEqual(typeof c.texteSanteFileImport_, 'function');
 });
+
+test('C49-26 — la cible compte des DOCUMENTS dès que le périmètre les a mesurés', () => {
+  const c = ctx();
+  // ⚠️ Un document porte souvent plusieurs lignes d'Index : la Mémoire reçoit UN fait par
+  // document, donc une cible en lignes fait lire un doublon de comptage comme une lenteur.
+  const avecDistinctes = PERIMETRE + '|2811';
+  assert.strictEqual(c.cibleImportMemoire_(avecDistinctes), 2811);
+  assert.strictEqual(c.ligneFileImport_(2731, avecDistinctes), '2731/2811');
+  // Une mesure écrite AVANT cette version n'a pas le champ : on garde l'ancien compte, qui
+  // reste une borne haute — jamais un zéro qui fermerait la jauge.
+  assert.strictEqual(c.cibleImportMemoire_(PERIMETRE), 4240);
+  assert.strictEqual(c.cibleImportMemoire_(PERIMETRE + '|0'), 4240);
+  assert.strictEqual(c.cibleImportMemoire_(PERIMETRE + '|abc'), 4240);
+});

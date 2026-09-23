@@ -23,8 +23,9 @@
  * Élargir la tranche est un geste DÉLIBÉRÉ (`RATTRAPAGE_PIECE_PREFIXES`), jamais un défaut.
  *
  * ⚠️ LE BUDGET N'EST PAS UNE ADDITION. Ce module ne reçoit aucune constante à lui : il
- * consomme le budget quotidien des PIÈCES (`AUDIT_PIECE_BUDGET_JOUR_MS`, 58 min prélevées :
- * 11 à la réconciliation en C49-3, puis 47 aux sept campagnes arrêtées en C49-20 — le détail
+ * consomme le budget quotidien des PIÈCES (`AUDIT_PIECE_BUDGET_JOUR_MS`, 54 min : 11 prélevées
+ * à la réconciliation en C49-3, 47 aux sept campagnes arrêtées en C49-20, moins 4 rendues à
+ * l'envoi Mémoire le 23/09 — le détail
  * par donneur vit dans `AUDIT_PIECE_DONNEURS_MIN`) et il ne démarre que quand l'audit n'a plus
  * rien à extraire.
  * Les deux sont donc mutuellement exclusifs, l'enveloppe de 63 min/j ne bouge pas d'une

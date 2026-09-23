@@ -263,12 +263,39 @@ test('les domaines DÉCISIFS sont toujours rendus, même à zéro, et par PRÉFI
   // comptage promettrait une tranche et la campagne en traiterait une autre.
   assert.deepStrictEqual(
     Array.from(c.decisifsPerimetre_({ '06 · Études & diplômes': 1169, '01 · Administratif & identité': 87 })),
-    ['04=0', '01=87', '02=0']);
+    ['04=0', '01=87', '02=0', '05=0', '03=0', '08=0', '06=1169', '07=0', '09=0']);
   // ⚠️ Par PRÉFIXE : le libellé se renomme, le numéro non. Un appariement sur le libellé
   // entier rendrait 0 au premier « 04 · Immigration & statut ».
   assert.deepStrictEqual(
     Array.from(c.decisifsPerimetre_({ '04 · Immigration & statut': 12, '04 · Immigration': 5 })),
-    ['04=17', '01=0', '02=0']);
+    ['04=17', '01=0', '02=0', '05=0', '03=0', '08=0', '06=0', '07=0', '09=0']);
+});
+
+test('C49-26 — la tranche « tout le reste » : ordre voulu par Marc, et 04/01/02 restent en tête', () => {
+  const c = ctx();
+  // ⚠️ L'ORDRE est la priorité de lecture : on ne passe à `03` que quand `05` est épuisé. Le
+  // 23/09, Marc a choisi « du plus court au plus long » pour que des dossiers ENTIERS finissent.
+  assert.deepStrictEqual(Array.from(c.PREFIXES_DOMAINE_DECISIF_PIECE),
+    ['04', '01', '02', '05', '03', '08', '06', '07', '09']);
+});
+
+test('C49-26 — les documents DISTINCTS : un document porté par plusieurs lignes ne compte qu\'une fois', () => {
+  const c = ctx();
+  const ID = 'a'.repeat(33);
+  const ID2 = 'b'.repeat(33);
+  // Trois lignes d'Index pour UN document (classé, puis migré, puis ré-analysé), une pour un autre.
+  const lignes = [
+    ['drive|' + ID, '', '2026-01-01_Bail_X.pdf', '03 · Logement', '', 'classé'],
+    ['migre|t|' + ID, '', '2026-01-01_Bail_X.pdf', '03 · Logement', '', 'classé'],
+    ['reanalyse|t|' + ID, '', '2026-01-01_Bail_X.pdf', '03 · Logement', '', 'classé'],
+    ['drive|' + ID2, '', '2026-02-01_Facture_Y.pdf', '02 · Finances', '', 'classé'],
+  ];
+  const res = c.compterPerimetrePiece_(lignes, c.fileIdDeLigneIndex_);
+  assert.strictEqual(res.classees, 4, 'les LIGNES restent comptées telles quelles');
+  assert.strictEqual(res.distinctes, 2, 'mais deux DOCUMENTS seulement');
+  const chaine = c.encoderPerimetrePiece_(res, 'c49-4-c', '2026-09-23T21:00:00.000Z');
+  assert.strictEqual(chaine.split('|')[8], '2', 'le compte part EN QUEUE de la Property');
+  assert.match(c.phrasePerimetrePiece_(chaine), /2 documents DISTINCTS/);
 });
 
 test('la phrase ANNONCE le plancher, et ne l\'invente pas quand il n\'y en a pas', () => {

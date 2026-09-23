@@ -509,7 +509,16 @@ var CONFIG = {
   // Dimensionnement : ~19 900 documents ÷ 50 par lot = ~400 POST, à ~1 s l'un ⇒ ~7 min de
   // runtime au TOTAL pour le rattrapage complet, puis quasi rien en régime (le curseur ne
   // relit que ce qui s'est ajouté). 4 min/j finit donc le stock en deux jours.
-  MEMOIRE_BUDGET_JOUR_MS: 4 * 60 * 1000,
+  // ⚠️ 4 → 8 (23/09/2026, demande de Marc : « augmente la vitesse d'envoi jusqu'à la mémoire »).
+  // Les 4 minutes viennent du budget des PIÈCES (58 → 54), SEUL poste qui en avait encore à
+  // céder — tous les autres donneurs sont déjà à zéro. Elles sont retirées de la part de la
+  // consolidation dans `AUDIT_PIECE_DONNEURS_MIN` (16 → 12) : ce que la table compte reste ce
+  // que chaque poste cède AUJOURD'HUI, et la somme de l'enveloppe ne bouge pas (63).
+  // ⚠️ Et c'est un pari MESURÉ, pas une certitude : d'après le dimensionnement ci-dessus, 4 min
+  // parcourent déjà l'Index. Le lot qui double ce budget ajoute donc aussi le compte des
+  // documents DISTINCTS au périmètre (`PERIMETRE_PIECE_TAG` c49-4-c) : si l'écart vient de
+  // lignes d'Index en double et non de la vitesse, c'est cette mesure qui le dira.
+  MEMOIRE_BUDGET_JOUR_MS: 8 * 60 * 1000,
   MEMOIRE_BUDGET_MS: 60 * 1000,           // sous-budget par RUN : l'étape est en fin de `finally`,
                                           // et le mur dur d'Apps Script est à 6 min.
 
@@ -581,7 +590,11 @@ var CONFIG = {
   // domaines décisifs (`04`, `01`), et la gate étant un tag, rien ne la recalcule tout seul :
   // la Santé aurait réaffiché l'ancienne mesure indéfiniment, correcte dans ses chiffres et
   // muette sur ce qui manque. Un correctif de MESURE n'existe que quand la mesure est refaite.
-  PERIMETRE_PIECE_TAG: 'c49-4-b',
+  // ⚠️ `c49-4-c` (23/09) : le recompte ajoute les documents DISTINCTS (C49-26). « 4 240 documents
+  // classés » comptait des LIGNES d'Index ; la cible d'import s'y comparait, et l'écart de ~1 266
+  // avec ce que la Mémoire a reçu pouvait n'être qu'un doublon de comptage. Un correctif de
+  // MESURE n'existe que quand la mesure est refaite — d'où le bump.
+  PERIMETRE_PIECE_TAG: 'c49-4-c',
 
   // C49-16 — RETROUVER le `fileId` des lignes d'Index qui n'en portent pas.
   // ⚠️ POURQUOI ce tag existe : la clé d'une pièce jointe Gmail est
@@ -666,14 +679,14 @@ var CONFIG = {
   AUDIT_PIECE_DONNEURS_MIN: {
     SYNC: 11,                 // réconciliation Index↔Drive (12 → 1), prêt du 17/09
     GMAIL_HISTO: 8,           // 6 prêtées le 17/09, + ses 2 dernières à l'arrêt du 21/09 (C49-20)
-    CONSOLIDATION: 16,        // C49-20 — arrêtée
+    CONSOLIDATION: 12,        // C49-20 — arrêtée (16, dont 4 rendues à l'envoi Mémoire le 23/09)
     CONSOLIDATION_EXEC: 8,    // C49-20 — arrêtée
     REANALYSE: 8,             // C49-20 — arrêtée EN COURS (108/466), décision de Marc
     HISTORIQUE_VRAC: 4,       // C49-20 — arrêtée
     DOUBLONS: 1,              // C49-20 — arrêtée (terminée le 22/08)
     MISSIONS: 2               // C49-20 — arrêtée (dernière production il y a 32 j)
   },
-  AUDIT_PIECE_BUDGET_JOUR_MS: 58 * 60 * 1000,
+  AUDIT_PIECE_BUDGET_JOUR_MS: 54 * 60 * 1000,
   // Sous-budget PAR TICK (même famille que `REANALYSE_BUDGET_MS`) : l'étape ne prend que le
   // reliquat du tick, après le flux vivant, et jamais plus que ça d'un coup.
   AUDIT_PIECE_BUDGET_MS: 2 * 60 * 1000,
@@ -1044,8 +1057,9 @@ var CONFIG = {
   // PERPÉTUELLE et en LECTURE SEULE : lui prendre du budget rallonge son cycle, ça ne laisse
   // rien en plan. Les deux autres candidats ont été essayés et refusés par des tests (historique
   // Gmail : muette à 0 ; re-datation : sa marge de démarrage double en proportion).
-  // ⚠️ À RENDRE quand l'audit est fini : celui-ci 1 → 12 et `AUDIT_PIECE_BUDGET_JOUR_MS` 58 → 0.
-  // (58 et non 11 : C49-20 lui a ajouté 47 min prises aux sept campagnes arrêtées. Le détail
+  // ⚠️ À RENDRE quand l'audit est fini : celui-ci 1 → 12 et `AUDIT_PIECE_BUDGET_JOUR_MS` 54 → 0.
+  // (54 et non 11 : C49-20 lui a ajouté 47 min prises aux sept campagnes arrêtées, puis il en a
+  //  cédé 4 à l'envoi Mémoire le 23/09. Le détail
   //  donneur par donneur vit dans `AUDIT_PIECE_DONNEURS_MIN`, qui est la seule source du compte.)
   // ⚠️ 1 min et pas 0 : à zéro, cette campagne PERPÉTUELLE tournerait à vide en silence — c'est
   // l'interdit que la §9 pose pour toute réallocation en paire. Mesuré le 17/09, il n'était codé

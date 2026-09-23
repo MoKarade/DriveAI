@@ -5,6 +5,27 @@
 
 ---
 
+## C49-26 — la tranche « tout le reste », l'envoi à la Mémoire doublé, et les documents DISTINCTS 🟦
+
+Marc, le 23/09 : « tout le reste » après `04 + 01 + 02`, puis « augmente la vitesse d'envoi des
+dossiers jusqu'à la mémoire » — avec, sur arbitrage, « mesurer + passer à 8 min ».
+
+- ✅ **Tranche élargie** : `05` (531) → `03` (284) → `08` (857) → `06` (1 169), puis `07` et `09`.
+  Sans bumper `RATTRAPAGE_PIECE_TAG` : bumper ferait relire les 1 210 papiers déjà lus (~6 $ pour
+  rien). Coût attendu ~14 $ [Probable], ~8 jours de campagne au rythme mesuré.
+- ✅ **Envoi à la Mémoire 4 → 8 min/j**, pris sur le budget des pièces (58 → 54) — seul poste qui
+  avait encore des minutes. L'enveloppe reste à 63.
+- ✅ **Documents DISTINCTS au périmètre** (`PERIMETRE_PIECE_TAG` `c49-4-c`) : « 4 240 documents
+  classés » comptait des LIGNES d'Index, et un document en porte souvent plusieurs. La cible de
+  `Import — file` passe aux documents dès que le recompte a tourné. ⚠️ Si l'écart de ~1 266 tombe
+  alors près de zéro, ce n'était PAS la vitesse — et les 4 min rendues à la lecture se discutent.
+- ⬜ **Bug préexistant, NON corrigé (hors périmètre)** : `DriveAI_RATTRAPAGE_PIECE_TAG` est LU par
+  la gate du tick et ÉCRIT par personne. La gate rend donc toujours `true`, et une tranche FINIE
+  relit l'Index entier (~26 550 lignes) à chaque tick, 288 fois par jour, pour conclure
+  « tranche terminée ». C'est aussi ce qui permet d'élargir la liste sans bump : un tripwire
+  (`test/rattrapage-piece.test.js`) rougira le jour où quelqu'un persistera le tag sans y mettre la
+  LISTE des dossiers. À trancher avec Marc : persister une signature `tag|04+01+…`.
+
 ## C49-23 — les DEUX files en tête d'écran, et le pourcentage de certitude ✅
 
 > Marc, 21/09 : « retravaille le style, l'affichage de l'app pour que je comprenne quelque chose
