@@ -889,6 +889,7 @@ export function verdictLecture(motif: string): VerdictLecture {
     case 'extraction-vide': return { classe: 'vide', libelle: 'rien d’exploitable dans ce document' };
     case 'ocr-echec': return { classe: 'echec', libelle: 'la lecture du fichier a échoué' };
     case 'lecture-impossible': return { classe: 'echec', libelle: 'fichier illisible (droits ? disparu ?)' };
+    case 'introuvable': return { classe: 'echec', libelle: 'fichier supprimé du Drive depuis son classement' };
     case 'piece-vide': return { classe: 'echec', libelle: 'extraction faite, pièce non composable' };
     case 'non-classe': return { classe: 'echec', libelle: 'document non classé — rien à extraire' };
     default: return { classe: 'inconnu', libelle: `verdict « ${m} »` };

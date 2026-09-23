@@ -976,3 +976,73 @@ test('texteSanteMemoire_ LIT la raison, et seulement quand la suspension tient',
   // re-sonde ferait croire à une panne en cours sur un canal réparé.
   assert.match(src, /memoireSuspendue_\(props\) \?[\s\S]{0,120}SUSPENDU_RAISON/);
 });
+
+// ── C49-26 : l'envoi ne SAUTE plus ce qu'il a lu sans l'envoyer ─────────────────────────────
+//
+// ⚠️ Deux défauts, tous deux trouvés en revue le 23/09 en doublant le budget d'envoi, et qui
+// ralentissaient l'inventaire sans qu'aucun compteur ne le montre :
+//   1. une lecture de 200 lignes pouvait porter jusqu'à 200 faits, mais UN SEUL lot de 50
+//      partait par lecture — le tampon grossissait plus vite qu'il ne se vidait, et le dernier
+//      envoi de la passe dépassait le lot maximal que la Mémoire accepte ;
+//   2. à la coupure (budget, refus), le curseur se posait après la dernière ligne LUE : tout
+//      le tampon non envoyé était sauté jusqu'au tour complet suivant de l'Index.
+
+function indexDeN(n) {
+  const lignes = [];
+  for (let i = 0; i < n; i++) {
+    lignes.push(['drive|1AbCdEfGhIjKlMnOpQrStUv' + String(1000 + i), '', 'doc' + i + '.pdf',
+      '02 · Finances', '', 'classé']);
+  }
+  return lignes;
+}
+
+function ctxEnvoi(props, index, envois) {
+  const c = ctxPasse(props, index);
+  c.Logger = { log: () => {} };
+  c.UrlFetchApp = {
+    fetch: (_url, opts) => {
+      const lot = JSON.parse(opts.payload).faits;
+      envois.push(lot.length);
+      return {
+        getResponseCode: () => 200,
+        getContentText: () => JSON.stringify({ recus: lot.length, acceptes: lot.length, dejaPresents: 0, refuses: [] })
+      };
+    }
+  };
+  return c;
+}
+
+test('curseurDeReprise_ : on reprend au premier fait NON ENVOYÉ, jamais après la dernière ligne lue', () => {
+  const c = ctx();
+  assert.strictEqual(c.curseurDeReprise_(122, []), 122, 'tampon vide ⇒ la ligne qui suit');
+  assert.strictEqual(c.curseurDeReprise_(122, [{ fait: {}, ligne: 52 }, { fait: {}, ligne: 60 }]), 52);
+});
+
+test('une passe complète envoie TOUT, par lots de 50 au plus', () => {
+  const envois = [];
+  const props = faussesProps({ DriveAI_MEMORYAI_TOKEN: 'jeton' });
+  const c = ctxEnvoi(props, indexDeN(120), envois);
+  const res = c.pousserInventaireMemoire_(() => false);
+  assert.strictEqual(res.fin, 'termine');
+  assert.strictEqual(envois.reduce((a, b) => a + b, 0), 120, 'aucun fait perdu');
+  assert.ok(envois.every((n) => n <= 50), 'aucun lot au-delà du maximum : ' + envois.join(','));
+});
+
+test('une coupure BUDGET ramène le curseur au premier fait non envoyé', () => {
+  const envois = [];
+  const props = faussesProps({ DriveAI_MEMORYAI_TOKEN: 'jeton' });
+  const c = ctxEnvoi(props, indexDeN(120), envois);
+  // La garde laisse passer la lecture et le PREMIER envoi, puis coupe.
+  const res = c.pousserInventaireMemoire_(() => envois.length >= 1);
+  assert.strictEqual(res.fin, 'budget');
+  assert.deepStrictEqual(envois, [50]);
+  // 50 faits envoyés depuis la ligne 2 ⇒ le 51ᵉ est en ligne 52. L'ancien code posait 122 et
+  // sautait les 70 autres jusqu'au tour complet suivant.
+  assert.strictEqual(props.ecrit.DriveAI_MEMOIRE_CURSEUR, '52');
+
+  // Et la passe suivante reprend là, sans rien perdre.
+  const suite = [];
+  const c2 = ctxEnvoi(props, indexDeN(120), suite);
+  c2.pousserInventaireMemoire_(() => false);
+  assert.strictEqual(suite.reduce((a, b) => a + b, 0), 70);
+});

@@ -71,14 +71,17 @@ var PERIMETRE_PIECE_TOP = 6;
  *
  * ⚠️ C'est AUSSI la tranche de lecture (`prefixesRattrapage_`), DANS L'ORDRE : une seule liste,
  * deux consommateurs. Le 23/09, Marc a choisi « tout le reste » après `04 + 01 + 02` :
- * `05` (531) → `03` (284) → `08` (857) → `06` (1 169), du plus court au plus long pour que des
- * dossiers ENTIERS finissent vite, puis `07` et `09`, domaines auto qui peuvent être vides.
+ * `05` (531) → `03` (284) → `08` (857) → `06` (1 169) — l'ordre du plan qu'il a validé (le
+ * plus gros, 06, en dernier) —, puis `07` et `09`, domaines auto qui peuvent être vides.
+ * (Comptes en LIGNES d'Index au 17/09 : la tranche compte des documents depuis C49-26.)
  * Les trois premiers RESTENT en tête : lus sous le tag courant, ils sont marqués faits dans
  * `PiecesFaites` et ne coûtent rien — les retirer ferait disparaître leur ✅ de la file.
  * ⚠️ Élargir la liste SANS bumper `RATTRAPAGE_PIECE_TAG` est voulu : bumper ferait RELIRE les
  * 1 210 papiers déjà lus (~6 $ pour rien — même extracteur, donc la Mémoire les garderait tels
- * quels). La gate du tick rouvre d'elle-même, parce que `restants` est recalculé sur la
- * nouvelle liste à la première passe (`test/rattrapage-piece.test.js` le prouve).
+ * quels). ⚠️ La gate du tick ne rouvre PAS d'elle-même : elle s'ouvre parce que
+ * `DriveAI_RATTRAPAGE_PIECE_TAG` n'est écrit par personne (bug préexistant, BACKLOG C49-26), et
+ * un tripwire de `test/rattrapage-piece.test.js` rougira le jour où quelqu'un le persistera sans
+ * mettre cette liste dans la signature. Le test voisin, lui, ne prouve que la SÉLECTION.
  */
 var PREFIXES_DOMAINE_DECISIF_PIECE = ['04', '01', '02', '05', '03', '08', '06', '07', '09'];
 
@@ -233,9 +236,18 @@ function encoderPerimetrePiece_(res, tag, iso) {
  * non. Bumper `CONFIG.PERIMETRE_PIECE_TAG` la relance ; rien d'autre ne le fait, et c'est
  * voulu : un recomptage par tick lirait 20 000 lignes toutes les 5 minutes pour un nombre qui
  * bouge de quelques unités par jour.
+ *
+ * ⚠️ C49-26 — ET UNE FOIS PAR JOUR, quand on lui passe les jours. Depuis que le compte des
+ * documents DISTINCTS sert de dénominateur à « Import — file », un compte figé par tag ne suit
+ * plus : le numérateur (`DriveAI_MEMOIRE_EMIS`) est un cumul qui monte avec chaque document
+ * classé ensuite, et la jauge finirait par dépasser 100 % — un chiffre qui dit le contraire de
+ * ce qu'il mesure. Une lecture d'Index par jour (un `getValues`, quelques secondes) règle ça ;
+ * une par tick coûterait 288 fois plus pour rien.
  */
-function perimetreDoitTourner_(tagPersiste, tagCourant) {
-  return String(tagPersiste || '') !== String(tagCourant || '');
+function perimetreDoitTourner_(tagPersiste, tagCourant, jourPersiste, jourCourant) {
+  if (String(tagPersiste || '') !== String(tagCourant || '')) return true;
+  if (jourCourant === undefined) return false;
+  return String(jourPersiste || '') !== String(jourCourant || '');
 }
 
 /**
@@ -323,6 +335,8 @@ function etapePerimetrePiece_() {
   var res = compterPerimetrePiece_(lignes, fileIdDeLigneIndex_);
   props.setProperty('DriveAI_PERIMETRE_PIECE', encoderPerimetrePiece_(res, CONFIG.PERIMETRE_PIECE_TAG, iso));
   props.setProperty('DriveAI_PERIMETRE_PIECE_TAG', CONFIG.PERIMETRE_PIECE_TAG);
+  // Le jour se pose APRÈS le compte, comme le tag : une mesure ratée laisse la gate ouverte.
+  props.setProperty('DriveAI_PERIMETRE_PIECE_JOUR', dateGmail_(new Date()));
   journalInfo_('PerimetrePiece',
     'Périmètre mesuré : ' + res.candidats + ' candidats sur ' + res.classees +
     ' classés (' + res.exclus + ' écartés)');

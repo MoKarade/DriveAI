@@ -4,7 +4,16 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🟦 EN COURS — 2026-09-21 : la lecture des papiers se REGARDE. REPRENDRE ICI.**
+> **🟦 EN COURS — 2026-09-23 : C49-26, la tranche « tout le reste » (PR #403). REPRENDRE ICI.**
+> Lecture élargie à `05 → 03 → 08 → 06`, puis `07` et `09`, sans relire `04 + 01 + 02`. Envoi à la
+> Mémoire **4 → 8 min/j**, pris aux pièces (**58 → 54**) ; l'enveloppe reste à 63. Le périmètre
+> compte les documents DISTINCTS, et se recompte chaque jour. La revue a trouvé quatre défauts qui
+> mordaient ce lot (double lecture payée, campagne bloquée par trois fichiers supprimés, envoi qui
+> jetait ce qu'il avait lu, dossiers vides affichés « terminés ») : corrigés, détail dans BACKLOG.
+> À mesurer après déploiement : « Lecture — file » annonce **EN COURS 05**, et le recompte publie
+> les documents distincts. Ce qui suit (lot du 21/09) reste vrai, hors les nombres de budget.
+>
+> **🟦 2026-09-21 : la lecture des papiers se REGARDE.**
 >
 > **DERNIER LOT — C49-20 : sept campagnes arrêtées, 41 min/j rendues à la lecture des papiers.**
 > Décision de Marc du 21/09, sur la mesure du jour. Consolidation (16 + 8), re-datation de 06 (8),

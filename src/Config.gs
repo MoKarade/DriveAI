@@ -506,9 +506,11 @@ var CONFIG = {
   // structurellement AVEUGLE à une étape sans constante — il restait vert pendant que
   // l'enveloppe croissait. Ces 4 min/j sont PRÉLEVÉES sur `GMAIL_HISTO_BUDGET_JOUR_MS`
   // (12 → 8), donc la somme des campagnes reste EXACTEMENT 63 min/j.
-  // Dimensionnement : ~19 900 documents ÷ 50 par lot = ~400 POST, à ~1 s l'un ⇒ ~7 min de
-  // runtime au TOTAL pour le rattrapage complet, puis quasi rien en régime (le curseur ne
-  // relit que ce qui s'est ajouté). 4 min/j finit donc le stock en deux jours.
+  // Dimensionnement : ~26 550 lignes d'Index (au 23/09 — des LIGNES, pas des documents) ÷ 50 par
+  // lot ⇒ quelques centaines de POST, à ~1 s l'un. ⚠️ Ce calcul promettait « 4 min/j finit le
+  // stock en deux jours » ; mesuré le 23/09, la ligne de Santé disait « 4 des 4 min/j consommées
+  // — budget du jour épuisé ». Le budget MORDAIT, et deux défauts de la boucle (tampon vidé d'un
+  // seul lot par lecture, curseur posé après la dernière ligne LUE) jetaient ce qui restait.
   // ⚠️ 4 → 8 (23/09/2026, demande de Marc : « augmente la vitesse d'envoi jusqu'à la mémoire »).
   // Les 4 minutes viennent du budget des PIÈCES (58 → 54), SEUL poste qui en avait encore à
   // céder — tous les autres donneurs sont déjà à zéro. Elles sont retirées de la part de la

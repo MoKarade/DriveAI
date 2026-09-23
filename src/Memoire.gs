@@ -329,23 +329,37 @@ function passeMemoire_(props, garde, opts) {
     for (var i = 0; i < v.length; i++) {
       var fait = faitInventaireMemoire_({ cle: v[i][0], nom: v[i][2], domaine: v[i][3],
         statut: v[i][5], fileId: v[i][8] });
-      if (fait) tampon.push(fait);
+      // ⚠️ C49-26 — le fait voyage avec SA ligne : c'est ce qui permet de reprendre au premier
+      // fait NON ENVOYÉ, et non après la dernière ligne LUE (voir la sortie de boucle).
+      if (fait) tampon.push({ fait: fait, ligne: ligne + i });
     }
     ligne += n;
-    if (tampon.length >= MEMOIRE_LOT_MAX) {
-      var envoi = envoyerLotMemoire_(tampon.slice(0, MEMOIRE_LOT_MAX), jeton, props);
+    // ⚠️ C49-26 — TANT QUE le tampon est plein, pas UNE fois par lecture. Une lecture de 200
+    // lignes peut porter jusqu'à 200 faits ; n'en envoyer que 50 laissait le tampon grossir plus
+    // vite qu'il ne se vidait — et tout ce surplus était jeté à la coupure. Le garde-temps est
+    // re-vérifié entre deux envois : un run ne déborde jamais de plus d'un lot.
+    while (tampon.length >= MEMOIRE_LOT_MAX && res.fin === 'termine') {
+      if (gardeRun()) { res.fin = 'budget'; break; }
+      var envoi = envoyerLotMemoire_(faitsDuTampon_(tampon.slice(0, MEMOIRE_LOT_MAX)), jeton, props);
       if (!envoi.ok) { res.fin = envoi.raison; break; }
       cumulerEnvoiMemoire_(res, envoi);
       tampon = tampon.slice(MEMOIRE_LOT_MAX);
     }
+    if (res.fin !== 'termine') break;
   }
   if (res.fin === 'termine' && tampon.length > 0) {
-    var dernier = envoyerLotMemoire_(tampon, jeton, props);
-    if (dernier.ok) cumulerEnvoiMemoire_(res, dernier);
+    var dernier = envoyerLotMemoire_(faitsDuTampon_(tampon), jeton, props);
+    if (dernier.ok) { cumulerEnvoiMemoire_(res, dernier); tampon = []; }
     else res.fin = dernier.raison;
   }
-  props.setProperty('DriveAI_MEMOIRE_CURSEUR', String(ligne));
-  res.ligne = ligne;
+  // ⚠️ C49-26 — LE CURSEUR REPREND AU PREMIER FAIT NON ENVOYÉ. Il se posait après la dernière
+  // ligne LUE : sur une sortie `budget` (ou un envoi refusé), jusqu'à ~50 faits déjà lus mais
+  // jamais envoyés étaient sautés, et ne repartaient qu'au tour COMPLET suivant de l'Index —
+  // une cause de lenteur que ni le budget ni le compte des documents distincts ne montrait.
+  // Les renvoyer ne coûte rien de plus qu'un « déjà là » : la Mémoire dédoublonne.
+  var reprise = curseurDeReprise_(ligne, tampon);
+  props.setProperty('DriveAI_MEMOIRE_CURSEUR', String(reprise));
+  res.ligne = reprise;
   // Le budget consommé se pose ICI, jamais avant : une passe qui n'a rien pu faire ne doit pas
   // manger la journée. Patron `majHistoriqueVrac_`/`majValidationDoublons_`.
   if (!opts.manuel) {
@@ -480,6 +494,21 @@ function texteSanteMemoire_() {
  * ⚠️ `null` quand le périmètre n'a jamais été mesuré, JAMAIS zéro : un dénominateur inventé
  * ferait afficher « 2731 / 0 », soit une jauge pleine sur un comptage qui n'a pas eu lieu.
  */
+/** PURE. Les faits d'un tampon `{ fait, ligne }`. */
+function faitsDuTampon_(tampon) {
+  var out = [];
+  for (var i = 0; i < tampon.length; i++) out.push(tampon[i].fait);
+  return out;
+}
+
+/**
+ * PURE. Où reprendre la prochaine passe : la ligne du plus ancien fait resté dans le tampon
+ * (donc jamais envoyé), sinon la ligne qui suit la dernière lue.
+ */
+function curseurDeReprise_(ligneSuivante, tampon) {
+  return tampon && tampon.length ? tampon[0].ligne : ligneSuivante;
+}
+
 function cibleImportMemoire_(brutPerimetre) {
   if (!brutPerimetre) return null;
   var p = String(brutPerimetre).split('|');

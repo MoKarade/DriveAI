@@ -19,6 +19,26 @@ dossiers jusqu'à la mémoire » — avec, sur arbitrage, « mesurer + passer à
   classés » comptait des LIGNES d'Index, et un document en porte souvent plusieurs. La cible de
   `Import — file` passe aux documents dès que le recompte a tourné. ⚠️ Si l'écart de ~1 266 tombe
   alors près de zéro, ce n'était PAS la vitesse — et les 4 min rendues à la lecture se discutent.
+  **Et le recompte est QUOTIDIEN** (revue du 23/09) : le numérateur `DriveAI_MEMOIRE_EMIS` est un
+  cumul qui monte ; contre un dénominateur figé par tag, la jauge aurait dépassé 100 %.
+- ✅ **Revue flotte du 23/09 (deux agents), avant merge — quatre défauts corrigés dans ce lot**,
+  parce qu'ils mordaient la tranche lancée ou l'envoi doublé :
+  - la tranche comptait et choisissait des LIGNES d'Index : un papier à deux lignes (`drive|` +
+    `reanalyse|`, le cas de 06) était lu ET PAYÉ deux fois dans un même run. Elle choisit
+    désormais des DOCUMENTS, sous la ligne la plus récente (le domaine d'aujourd'hui) ;
+  - trois fichiers SUPPRIMÉS d'affilée refermaient le coupe-circuit, et le tick suivant
+    retombait sur les trois mêmes : la campagne s'arrêtait là pour toujours. Motif `introuvable`
+    distinct, et une sonde (le dossier racine se lit-il ?) avant de conclure à une panne ;
+  - l'envoi à la Mémoire ne vidait qu'UN lot de 50 par lecture de 200 lignes, et à la coupure
+    le curseur se posait après la dernière ligne LUE : le surplus lu était sauté jusqu'au tour
+    complet suivant. Il vide tant que c'est plein, et reprend au premier fait non envoyé ;
+  - un dossier auto vide (`07`, `09`) s'affichait « ✅ (0) » avant le dossier en cours.
+  Six mutations, six rouges.
+- ⬜ **Signalé par la revue, NON corrigé (préexistant)** : le rattrapage lit l'Index AVANT de
+  poser `debutRun`, donc cette lecture n'est jamais débitée du budget du jour (~3-7 min/j hors
+  enveloppe, davantage une fois la tranche finie — voir le point suivant). Et `PiecesFaites`
+  n'est écrit qu'en FIN de boucle : un run tué au mur des 6 min referait jusqu'à cinq extractions
+  déjà payées.
 - ⬜ **Bug préexistant, NON corrigé (hors périmètre)** : `DriveAI_RATTRAPAGE_PIECE_TAG` est LU par
   la gate du tick et ÉCRIT par personne. La gate rend donc toujours `true`, et une tranche FINIE
   relit l'Index entier (~26 550 lignes) à chaque tick, 288 fois par jour, pour conclure

@@ -109,6 +109,15 @@ test('perimetreDoitTourner_ : le TAG décide, et lui seul', () => {
   assert.strictEqual(c.perimetreDoitTourner_('c49-4-a', 'c49-4-b'), true, 'un bump relance');
 });
 
+test('C49-26 — perimetreDoitTourner_ : une fois par JOUR aussi, quand on lui passe les jours', () => {
+  const c = ctx();
+  assert.strictEqual(c.perimetreDoitTourner_('t', 't', '2026/09/23', '2026/09/23'), false, 'déjà compté aujourd\'hui');
+  assert.strictEqual(c.perimetreDoitTourner_('t', 't', '2026/09/22', '2026/09/23'), true,
+    'un nouveau jour recompte : le dénominateur de « Import » doit suivre les documents classés depuis');
+  assert.strictEqual(c.perimetreDoitTourner_('t', 't', null, '2026/09/23'), true, 'jour jamais posé ⇒ on compte');
+  assert.strictEqual(c.perimetreDoitTourner_('t', 'u', '2026/09/23', '2026/09/23'), true, 'le tag décide toujours');
+});
+
 test('« jamais mesuré » et « mesuré, zéro candidat » ne se ressemblent pas', () => {
   const c = ctx();
   const jamais = c.phrasePerimetrePiece_('');
@@ -155,7 +164,7 @@ function montage(lignesIndex, props) {
     getLastRow: () => lignesIndex.length + 1,
     getRange: () => ({ getValues: () => lignesIndex }),
   };
-  const c = load(['Config.gs', 'Consolidation.gs', 'Journal.gs', 'PerimetrePiece.gs'], {
+  const c = load(['Config.gs', 'Consolidation.gs', 'Gmail.gs', 'Journal.gs', 'PerimetrePiece.gs'], {
     PropertiesService: {
       getScriptProperties: () => ({
         getProperty: (k) => (props.has(k) ? props.get(k) : null),
