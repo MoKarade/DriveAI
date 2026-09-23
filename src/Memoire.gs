@@ -1067,3 +1067,125 @@ function noterFinPiece_(props, res) {
   catch (e) { /* observabilité best-effort : jamais bloquante */ }
   return res;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   CE QUE LA MÉMOIRE EN A FAIT — les comptes de l'AUTRE CÔTÉ du canal (23/09/2026).
+
+   Marc, devant l'onglet « Lecture » : « manque aussi des infos sur ce qui est validé
+   SÉPARÉMENT par driveai et memory ai — je comprends pas la page ».
+
+   Le moteur savait dire ce qu'il avait ENVOYÉ ; rien de ce que c'était DEVENU. « 590 acceptées »
+   et « 343 faits validés » ne sont pas la même grandeur, et l'écran qui n'en montrait qu'une
+   laissait croire que l'autre n'existait pas.
+
+   ⚠️ AUCUN NOUVEAU SECRET. On présente le jeton DÉJÀ posé (`DriveAI_MEMORYAI_TOKEN`) : la
+   route d'en face accepte un jeton de lecture OU d'écriture, et celui-ci donne déjà plus de
+   droits. En créer un second coûterait un geste de Marc pour zéro sécurité gagnée.
+
+   ⚠️ UN APPEL RÉSEAU PAR TICK SERAIT 288 PAR JOUR POUR UN CHIFFRE QUI BOUGE AUX HEURES. D'où
+   l'espacement (`CONFIG.MEMOIRE_COMPTES_MIN_MS`) : au plus une lecture toutes les 30 min, et
+   la valeur gardée porte SA date pour que l'écran puisse dire de quand elle date.
+
+   ⚠️ UNE PANNE NE SE MET JAMAIS EN CACHE, et elle n'écrase pas la dernière valeur connue :
+   c'est le motif qui est publié à côté. « Je ne sais pas » et « il n'y en a aucun » n'appellent
+   pas le même geste — et des zéros ici se liraient « la mémoire est vide », le plus alarmant
+   des faits, sur une simple coupure réseau.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * PURE. Encode la réponse de `GET /api/etat` pour la Property.
+ *
+ * Forme : `<faits valides>/<a valider>/<migres>|<papiers total>/<papiers lus>|<gel>|<ISO min>`.
+ * Un ENCODAGE et non une phrase : une phrase se reformule au premier lot qui la rend plus
+ * claire, et la jauge d'en face disparaîtrait sans qu'un test rougisse.
+ *
+ * ⚠️ Un champ absent de la réponse rend `null` — l'appelant publiera le motif « illisible »
+ * plutôt qu'une ligne de zéros. Le contrat d'en face peut changer ; un `Number(undefined) || 0`
+ * transformerait ce changement en « la mémoire s'est vidée ».
+ */
+function encoderComptesMemoire_(corps, quandMs) {
+  var c = corps || {};
+  var f = c.faits || {}, p = c.papiers || {};
+  var champs = [f.valides, f.aValider, f.migresEnPiece, p.total, p.lus];
+  for (var i = 0; i < champs.length; i++) {
+    if (typeof champs[i] !== 'number' || !isFinite(champs[i]) || champs[i] < 0) return null;
+  }
+  return [
+    f.valides + '/' + f.aValider + '/' + f.migresEnPiece,
+    p.total + '/' + p.lus,
+    c.gele ? '1' : '0',
+    new Date(quandMs || Date.now()).toISOString().slice(0, 16)
+  ].join('|');
+}
+
+/**
+ * PURE. La ligne de Santé, depuis la Property.
+ *
+ * ⚠️ Trois états DISTINCTS, et c'est tout l'intérêt : jamais lue (le canal n'a pas encore
+ * tourné), lue et illisible (le contrat d'en face a bougé), lue et connue. Les confondre
+ * ferait chercher une panne de réseau devant un déploiement en retard.
+ */
+function ligneComptesMemoire_(brut) {
+  var s = String(brut == null ? '' : brut).trim();
+  if (!s) return 'jamais lue — la Mémoire n\'a pas encore été interrogée';
+  if (s.indexOf('!') === 0) return 'indisponible — ' + s.slice(1);
+  return s;
+}
+
+/** L'espacement est-il écoulé ? PURE. */
+function comptesMemoireARelire_(dernierMs, maintenantMs, espacementMs) {
+  var d = Number(dernierMs) || 0;
+  if (!d) return true;
+  return (Number(maintenantMs) || 0) - d >= (Number(espacementMs) || 0);
+}
+
+/**
+ * Lit `GET /api/etat` si l'espacement est écoulé. Impure, JAMAIS bloquante.
+ *
+ * ⚠️ L'horodatage de tentative est posé AVANT l'appel : sans lui, une Mémoire injoignable
+ * serait re-sondée à CHAQUE tick, c'est-à-dire exactement quand il ne faut pas insister.
+ * ⚠️ Le canal éteint (`MEMOIRE_PUSH` faux) ou sans jeton ne sonde pas : il n'y aurait rien à
+ * lire, et une ligne « indisponible » s'y lirait comme une panne.
+ */
+function rafraichirComptesMemoire_(props, maintenantMs) {
+  if (!CONFIG.MEMOIRE_PUSH) return;
+  var jeton = props.getProperty('DriveAI_MEMORYAI_TOKEN');
+  if (!jeton) return;
+  if (!comptesMemoireARelire_(props.getProperty('DriveAI_MEMOIRE_COMPTES_LE'),
+                              maintenantMs, CONFIG.MEMOIRE_COMPTES_MIN_MS)) return;
+  props.setProperty('DriveAI_MEMOIRE_COMPTES_LE', String(maintenantMs));
+  var url = (CONFIG.MEMOIRE_URL || '').replace(/\/+$/, '') + '/api/etat';
+  var rep;
+  try {
+    rep = UrlFetchApp.fetch(url, {
+      method: 'get',
+      headers: { Authorization: 'Bearer ' + jeton },
+      muteHttpExceptions: true
+    });
+  } catch (e) {
+    props.setProperty('DriveAI_MEMOIRE_COMPTES', '!réseau');
+    return;
+  }
+  var code = rep.getResponseCode();
+  if (code !== 200) {
+    // ⚠️ Le CODE est publié, jamais « erreur » : 401 est un geste de Marc (jeton), 503 une
+    // panne qui passera toute seule. Les confondre envoie corriger le mauvais endroit.
+    props.setProperty('DriveAI_MEMOIRE_COMPTES', '!HTTP ' + code);
+    return;
+  }
+  var corps = null;
+  try { corps = JSON.parse(rep.getContentText()); } catch (e) { corps = null; }
+  var encode = encoderComptesMemoire_(corps, maintenantMs);
+  props.setProperty('DriveAI_MEMOIRE_COMPTES', encode === null ? '!réponse illisible' : encode);
+}
+
+/** La ligne de Santé. Impure ; la mise en forme est {@link ligneComptesMemoire_}. */
+function texteSanteComptesMemoire_() {
+  try {
+    var props = PropertiesService.getScriptProperties();
+    rafraichirComptesMemoire_(props, Date.now());
+    return ligneComptesMemoire_(props.getProperty('DriveAI_MEMOIRE_COMPTES'));
+  } catch (e) {
+    return 'état illisible (' + e + ')';
+  }
+}

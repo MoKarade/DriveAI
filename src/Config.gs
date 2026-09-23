@@ -494,6 +494,10 @@ var CONFIG = {
   // `memoryai.hubperso.com` (identité publiée au hub : `id: "memoryai"`). C'est la seconde
   // qui fait foi — l'ADR a été écrit avant le fork.
   MEMOIRE_URL: 'https://memoryai.hubperso.com',
+  // ⚠️ Espacement des lectures de `GET /api/etat` (23/09/2026). Un appel par tick ferait 288
+  // par jour pour un chiffre qui bouge aux heures ; 30 min ne perdent aucune fraîcheur utile
+  // et la valeur publiée porte SA date, donc l'écran peut dire de quand elle date.
+  MEMOIRE_COMPTES_MIN_MS: 30 * 60 * 1000,
   // Une panne de la Mémoire ne se re-tente pas à chaque tick ; une suspension sans chemin de
   // retour transformerait un incident d'une heure en perte permanente (§9).
   MEMOIRE_RESONDE_MS: 60 * 60 * 1000,

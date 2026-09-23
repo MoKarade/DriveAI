@@ -2962,7 +2962,17 @@ Détail des tâches : `BACKLOG.md`.
 > Objectif **full auto**. Les secrets de déploiement sont posés — il ne reste qu'une ré-autorisation
 > à venir (Phase 3) et deux rappels de fond.
 
-0. 🔴🔴 **BLOQUANT — PLUS AUCUN CHANGEMENT DU MOTEUR N'ATTEINT LA PRODUCTION.** Apps Script a
+0. 🔴🔴 **BLOQUANT — PLUS AUCUN CHANGEMENT DU MOTEUR N'ATTEINT LA PRODUCTION.**
+
+   ⚠️ **Mesuré à nouveau le 23/09 à 15:27** : la Santé de production ne porte toujours pas
+   `Import — file`, et `Lecture — file` y arrive au format d'avant C49-23. Rien n'a bougé. Ce
+   blocage retient désormais AUSSI la ligne `Mémoire — comptes` livrée le 23/09 : l'onglet
+   Avancement affiche alors un bandeau qui NOMME les lignes manquantes et le geste, au lieu du
+   « pas encore publié » qui se lisait comme une panne de la campagne. **La moitié DriveAI de
+   l'écran, elle, est juste sans ce geste** — c'est pour ça que le parseur a été rendu tolérant
+   au format que la production écrit réellement.
+
+   Apps Script a
    atteint sa limite de 200 versions ; `deploy.yml` échoue depuis le 21/09 à 20:39 UTC :
    `Cannot create more versions: Script has reached the limit of 200 versions. To create more,
    delete a version from the project history page.`

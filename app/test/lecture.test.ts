@@ -23,7 +23,8 @@ import { fileURLToPath } from 'node:url';
 import {
   interpreterPiecesFaites, verdictLecture, bilanLecture, derniersLus, ligneSanteLecture,
   fileLecture, enCoursLecture, manquesLecture, cadenceLecture,
-  importFile, certitudeClassement,
+  importFile, certitudeClassement, memoireComptes, entonnoir, restantsTranche,
+  serieParJour, lignesSanteManquantes,
 } from '../src/etat';
 import { SECTIONS_NAV } from '../src/App';
 
@@ -140,13 +141,46 @@ describe('la barre du bas suit le nombre d\'onglets', () => {
 describe('la file par dossier — « quel dossier, quelle direction »', () => {
   const sante = (l: string[]) => l;
 
-  it('lit l\'ENCODAGE du moteur, pas sa phrase française', () => {
+  /* ⚠️⚠️ CE BLOC A CERTIFIÉ UN CONTRAT QUE LE MOTEUR N'A JAMAIS REMPLI.
+     Son titre disait « lit l'ENCODAGE du moteur, pas sa phrase française » — et
+     `Journal.gs` écrit `texteSanteFilePiece_()`, c'est-à-dire précisément LA PHRASE. Le
+     parseur et la ligne sont nés le même jour (C49-14) sans que personne ne les mette en
+     présence : chaque moitié testée chez elle, le chaînon chez personne. Résultat, mesuré le
+     23/09 sur la production : la file rendait `[]`, l'écran affichait « pas encore publiée »
+     en haut et « publiée mais illisible » en bas — deux phrases contraires pour le même état.
+     On lit donc LES DEUX FORMES, et les cas ci-dessous sont copiés de la VRAIE Santé. */
+
+  it('lit l\'ENCODAGE, s\'il vient un jour', () => {
     const f = fileLecture(sante(['Lecture — file : 04:0/23·01:40/87·02:976/976']));
-    expect(f).not.toBeNull();
     expect(f).toEqual([
       { prefixe: '04', restants: 0, total: 23, lus: 23 },
       { prefixe: '01', restants: 40, total: 87, lus: 47 },
       { prefixe: '02', restants: 976, total: 976, lus: 0 },
+    ]);
+  });
+
+  it('LIT LA PHRASE QUE LA PRODUCTION ÉCRIT — tranche terminée', () => {
+    // Copiée mot pour mot de la Santé du 2026-09-23 15:27.
+    const f = fileLecture(sante(['Lecture — file : 04 ✅ (48) · 01 ✅ (110) · 02 ✅ (1052) — tranche terminée']));
+    expect(f).toEqual([
+      { prefixe: '04', restants: 0, total: 48, lus: 48 },
+      { prefixe: '01', restants: 0, total: 110, lus: 110 },
+      { prefixe: '02', restants: 0, total: 1052, lus: 1052 },
+    ]);
+  });
+
+  it('LIT LA PHRASE — un dossier en cours, et ceux qui attendent', () => {
+    const f = fileLecture(sante([
+      'Lecture — file : 04 ✅ (48) · EN COURS 02 : 40/1052 lus, 1012 à lire · ensuite 06 (1169), 05 (531)',
+    ]));
+    expect(f).toEqual([
+      { prefixe: '04', restants: 0, total: 48, lus: 48 },
+      { prefixe: '02', restants: 1012, total: 1052, lus: 40 },
+      // ⚠️ Le total d'un dossier EN ATTENTE n'est PAS dans la phrase. On ne l'invente pas :
+      // poser `total = restants` serait faux dès qu'il a déjà des lus, et l'erreur
+      // s'afficherait comme une jauge à 0 % que personne ne pourrait contredire.
+      { prefixe: '06', restants: 1169, total: null, lus: null },
+      { prefixe: '05', restants: 531, total: null, lus: null },
     ]);
   });
 
@@ -155,6 +189,16 @@ describe('la file par dossier — « quel dossier, quelle direction »', () => {
     // l'autre un format qui a changé. Les fondre enverrait chercher au mauvais endroit.
     expect(fileLecture(sante(['autre chose']))).toBeNull();
     expect(fileLecture(sante(['Lecture — file : n’importe quoi']))).toEqual([]);
+    expect(fileLecture(sante(['Lecture — file : pas encore mesurée']))).toEqual([]);
+  });
+
+  it('LE RESTE DE LA TRANCHE : `0` et « je ne sais pas » ne se confondent pas', () => {
+    // ⚠️ C'est cette distinction qui produisait « il reste environ 0 jours » — vrai de la
+    // tranche, lu comme une affirmation sur tout le Drive.
+    expect(restantsTranche(null)).toBeNull();
+    expect(restantsTranche([])).toBeNull();
+    expect(restantsTranche(fileLecture(sante(['Lecture — file : 04 ✅ (48)'])))).toBe(0);
+    expect(restantsTranche(fileLecture(sante(['Lecture — file : ensuite 06 (1169)'])))).toBe(1169);
   });
 });
 
@@ -334,5 +378,132 @@ describe('C49-23 — la certitude du classement', () => {
 
   it('une liste vide ne lève pas et ne prétend rien', () => {
     expect(certitudeClassement([]).pourcent).toBeNull();
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   CE QUE LA MÉMOIRE EN A FAIT, ET L'ENTONNOIR — 23/09/2026.
+
+   Marc : « manque des infos sur ce qui est validé SÉPARÉMENT par driveai et memory ai — je
+   comprends pas la page », puis en texte libre « lu vs importé vs traité, faits vs papiers ».
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+describe('les comptes de la Mémoire', () => {
+  const CONNUS = 'Mémoire — comptes : 343/0/2646|2748/590|0|2026-09-23T20:00';
+
+  it('lit l’encodage du moteur', () => {
+    expect(memoireComptes([CONNUS])).toEqual({
+      etat: 'connus', valides: 343, aValider: 0, migres: 2646,
+      papiers: 2748, papiersLus: 590, gele: false, le: '2026-09-23T20:00',
+    });
+  });
+
+  it('QUATRE états distincts, et c’est tout l’intérêt', () => {
+    // ⚠️ « le moteur ne publie pas la ligne », « il ne l'a jamais interrogée », « elle n'a pas
+    // répondu » et « voici ses comptes » appellent quatre gestes différents. Les fondre dans
+    // un `null` rendrait la page muette au moment où elle sert.
+    expect(memoireComptes(['autre chose'])).toBeNull();
+    expect(memoireComptes(['Mémoire — comptes : jamais lue — la Mémoire n’a pas encore été interrogée']))
+      .toEqual({ etat: 'jamais-lue' });
+    expect(memoireComptes(['Mémoire — comptes : indisponible — HTTP 401']))
+      .toEqual({ etat: 'indisponible', motif: 'HTTP 401' });
+    expect(memoireComptes([CONNUS])!.etat).toBe('connus');
+  });
+
+  it('une ligne NON CONFORME est « indisponible », jamais des zéros', () => {
+    // Le contrat d'en face peut bouger ; publier 0 se lirait « la mémoire est vide », le plus
+    // alarmant des faits, sur un simple changement de format.
+    const r = memoireComptes(['Mémoire — comptes : 343|2748']);
+    expect(r).toEqual({ etat: 'indisponible', motif: 'format inattendu' });
+  });
+
+  it('le gel est lu, pas perdu', () => {
+    const r = memoireComptes(['Mémoire — comptes : 343/0/2646|2748/590|1|2026-09-23T20:00']);
+    expect(r).toMatchObject({ etat: 'connus', gele: true });
+  });
+});
+
+describe('l’entonnoir — chaque marche porte SA source', () => {
+  const MEM = memoireComptes(['Mémoire — comptes : 343/0/2646|2748/590|0|2026-09-23T20:00']);
+  const IMP = { pousses: 2974, cible: 4240 };
+  const BILAN = { total: 935, ok: 590, vide: 306, echec: 38, inconnu: 1 };
+
+  it('six marches, dans l’ordre du parcours d’un document', () => {
+    const m = entonnoir(IMP, BILAN, MEM);
+    expect(m.map((x) => x.cle)).toEqual(['classes', 'envoyes', 'connus', 'ouverts', 'lus', 'valides']);
+    expect(m.map((x) => x.valeur)).toEqual([4240, 2974, 2748, 935, 590, 343]);
+  });
+
+  it('LA SOURCE EST NOMMÉE : c’est la séparation que Marc a demandée', () => {
+    // ⚠️ « envoyés » est compté par DriveAI, « papiers connus » par la Mémoire. Les deux
+    // mesurent la même chose par deux chemins : leur ÉCART est une information, pas un
+    // chiffre à choisir. Fondre les sources la ferait disparaître.
+    const m = entonnoir(IMP, BILAN, MEM);
+    expect(m.find((x) => x.cle === 'envoyes')!.source).toBe('driveai');
+    expect(m.find((x) => x.cle === 'connus')!.source).toBe('memoryai');
+    expect(m.find((x) => x.cle === 'ouverts')!.source).toBe('driveai');
+    expect(m.find((x) => x.cle === 'lus')!.source).toBe('memoryai');
+  });
+
+  it('UNE MARCHE NON MESURÉE RESTE `null` — jamais zéro, jamais absente', () => {
+    // Une marche vide au milieu est précisément ce qui désigne le maillon en panne. La
+    // dessiner à zéro ferait lire « plus rien ne passe ici », un fait, sur une absence.
+    const m = entonnoir(null, null, null);
+    expect(m.length).toBe(6);
+    expect(m.every((x) => x.valeur === null)).toBe(true);
+  });
+
+  it('la Mémoire indisponible n’invente aucune valeur', () => {
+    const m = entonnoir(IMP, BILAN, { etat: 'indisponible', motif: 'HTTP 401' });
+    expect(m.find((x) => x.cle === 'valides')!.valeur).toBeNull();
+    expect(m.find((x) => x.cle === 'classes')!.valeur).toBe(4240);
+  });
+});
+
+describe('la vitesse, jour par jour', () => {
+  const doc = (le: string, tag = 'c49-5-a') => ({ fileId: 'f' + le, tag, le, nom: '', motif: 'ok', domaine: '' });
+
+  it('un jour VIDE n’est pas inventé : la série ne porte que les jours mesurés', () => {
+    // ⚠️ Remplir les trous ferait perdre la distinction entre « rien lu ce jour-là » et « la
+    // campagne n'existait pas encore », et le rythme se diviserait par des jours où il n'y
+    // avait rien à faire — c'est ce qui fait annoncer « 4 par jour » à une campagne qui en
+    // lit 131 quand elle tourne.
+    const s = serieParJour([doc('2026-09-20 10:00'), doc('2026-09-23 06:12'), doc('2026-09-23 06:14')]);
+    expect(s).toEqual([{ jour: '2026-09-20', nombre: 1 }, { jour: '2026-09-23', nombre: 2 }]);
+  });
+
+  it('seul le tag COURANT compte — un bump remet les compteurs du moteur à zéro', () => {
+    const s = serieParJour([doc('2026-09-01 10:00', 'vieux'), doc('2026-09-23 06:12')]);
+    expect(s).toEqual([{ jour: '2026-09-23', nombre: 1 }]);
+  });
+
+  it('une date illisible est écartée, jamais rangée sous un jour inventé', () => {
+    expect(serieParJour([doc('pas une date')])).toEqual([]);
+  });
+});
+
+describe('ce que le moteur ne publie PAS', () => {
+  it('nomme les lignes attendues et absentes — « pas encore mesuré » est le mauvais diagnostic', () => {
+    // ⚠️ Le 23/09, l'écran disait « le moteur n'a pas encore publié cette file » : littéralement
+    // vrai, et parfaitement inutile — ça se lit comme une panne de la campagne alors que c'est
+    // le déploiement Apps Script qui est en retard. Deux gestes opposés, un seul symptôme.
+    const sante = ['Lecture — file : 04 ✅ (48)', 'Lecture — en cours : rien en ce moment'];
+    expect(lignesSanteManquantes(sante)).toEqual(['Import — file', 'Mémoire — comptes']);
+  });
+
+  it('une Santé VIDE ne diagnostique RIEN', () => {
+    // Tant que rien n'est chargé, on ne sait pas ce qui manque — l'annoncer serait un
+    // diagnostic posé sur une absence de mesure.
+    expect(lignesSanteManquantes([])).toEqual([]);
+  });
+
+  it('tout publié → rien à signaler', () => {
+    const sante = [
+      'Import — file : 2974/4240',
+      'Lecture — file : 04 ✅ (48)',
+      'Lecture — en cours : rien en ce moment',
+      'Mémoire — comptes : 343/0/2646|2748/590|0|2026-09-23T20:00',
+    ];
+    expect(lignesSanteManquantes(sante)).toEqual([]);
   });
 });
