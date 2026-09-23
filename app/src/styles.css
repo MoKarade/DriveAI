@@ -1110,3 +1110,62 @@ button.ligne.texte:not(:disabled):hover, .ligne button.t.texte:not(:disabled):ho
 /* Ouvert, le repli retrouve la colonne : les sections gardent leur mise en page d'origine. */
 .repli-detail[open] > .btn-detail { margin-bottom: 0.9rem; }
 .repli-detail > *:not(.btn-detail) { margin-bottom: 0.9rem; }
+
+/* ── L'ENTONNOIR, LES GRAPHES, LE BANDEAU — onglet Avancement, 23/09/2026 ─────────────────
+   Marc : « manque des graphs clairs […] ce qui est validé SÉPARÉMENT par driveai et memory
+   ai ». Aucune couleur n'est écrite ici : tout passe par les jetons de la palette, sinon
+   elles deviennent fausses en silence au premier changement de thème. */
+
+.carte-alerte { border-color: var(--attention); }
+.carte-alerte h2 { color: var(--attention); }
+.carte-alerte code { font-family: var(--mono); font-size: 0.85rem; overflow-wrap: anywhere; }
+
+.entonnoir { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; }
+.entonnoir-marche {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'nom valeur' 'barre barre' 'source perte';
+  gap: 0.15rem 0.6rem;
+  align-items: center;
+}
+.entonnoir-nom { grid-area: nom; min-width: 0; overflow-wrap: anywhere; }
+.entonnoir-valeur {
+  grid-area: valeur; font-family: var(--mono); font-variant-numeric: tabular-nums;
+  font-size: 1.05rem; font-weight: 700;
+}
+.entonnoir-barre {
+  grid-area: barre; display: block; height: 8px; border-radius: 999px;
+  background: var(--rang); overflow: hidden;
+}
+.entonnoir-part { display: block; height: 100%; border-radius: 999px; background: var(--bord-fort); }
+/* La SOURCE colore la barre : c'est la séparation demandée, pas une décoration. */
+.entonnoir-driveai .entonnoir-part { background: var(--accent); }
+.entonnoir-memoryai .entonnoir-part { background: var(--ok); }
+.entonnoir-source { grid-area: source; font-size: 0.8rem; color: var(--texte-doux); }
+.entonnoir-perte {
+  grid-area: perte; justify-self: end; font-family: var(--mono); font-size: 0.8rem;
+  color: var(--texte-doux);
+}
+
+.vitesse-baton { fill: var(--accent); }
+
+.ventilation { display: grid; gap: 0.6rem; }
+.ventilation-barre {
+  display: flex; height: 14px; border-radius: 999px; overflow: hidden; background: var(--rang);
+}
+.ventilation-part { display: block; height: 100%; }
+.ventilation-part.verdict-ok { background: var(--ok); }
+.ventilation-part.verdict-vide { background: var(--bord-fort); }
+.ventilation-part.verdict-echec { background: var(--erreur); }
+.ventilation-part.verdict-inconnu { background: var(--carte-2); }
+.ventilation-legende { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; }
+.ventilation-legende strong { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+@media (min-width: 560px) {
+  .entonnoir-marche {
+    grid-template-columns: minmax(0, 1fr) 6rem auto;
+    grid-template-areas: 'nom barre valeur' 'source barre perte';
+    gap: 0.1rem 0.75rem;
+  }
+  .entonnoir-barre { height: 10px; align-self: center; }
+}

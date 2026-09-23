@@ -1,29 +1,35 @@
 /**
- * Lecture.tsx — L'AVANCEMENT DE LA LECTURE DES PAPIERS, en un onglet.
+ * Lecture.tsx — L'AVANCEMENT, de bout en bout : du Drive jusqu'à la mémoire.
  *
- * ⚠️ POURQUOI CET ÉCRAN EXISTE, ET POURQUOI IL A ÉTÉ REFAIT LE 21/09. Première demande :
- * « je veux vraiment un onglet précis pour l'avancement, avec ce qui est en train d'être lu ».
- * Livré (C49-13) — et insuffisant, Marc le jour même : « je vois pas de courbe pas d'estimé je
- * sais pas ça traite quoi en ce moment quel dossier quel fichier quelle direction quelles
- * infos il lui manque ».
+ * ⚠️ POURQUOI CET ÉCRAN A ÉTÉ REFAIT UNE TROISIÈME FOIS, le 23/09/2026. Marc :
+ * « manque trop d'info sur cette page, qui marchent pas. manque aussi des graphs clairs, des
+ * infos sur la vitesse, sur ce qu'il reste, sur ce qui est validé SÉPARÉMENT par driveai et
+ * memory ai — je comprends pas la page ». Puis, en texte libre, la phrase qui a tout
+ * cadré : « lu vs importé vs traité, faits vs papiers ».
  *
- * Il avait raison sur chaque point, et la cause n'était pas l'affichage : QUATRE de ces cinq
- * questions n'avaient aucune réponse dans le moteur. Il n'écrivait un document qu'APRÈS
- * l'avoir lu, jamais son dossier, jamais sa file, jamais ce qu'il était en train de faire.
- * C49-14 les publie ; cet écran ne fait que les mettre en forme.
+ * Ce n'était pas une demande d'affichage. Quatre défauts mesurés derrière :
  *
- * ⚠️ L'ORDRE DES SECTIONS EST L'ORDRE DES QUESTIONS, et il a changé : « en ce moment » passe
- * devant, parce que c'est la première chose qu'on veut savoir en ouvrant l'onglet.
- *   1. en ce moment — quel FICHIER, quel DOSSIER (ou le dernier lu, quand c'est au repos) ;
- *   2. la file — quel dossier maintenant, quel ordre, ce qui vient ENSUITE (la direction) ;
- *   3. la cadence et l'estimé ;
- *   4. ce qu'il n'a PAS pu lire, nommément (les infos qui lui manquent) ;
- *   5. le bilan et les derniers lus ;
- *   6. la courbe.
+ *   1. `fileLecture` n'avait JAMAIS rien lu. Né en C49-14 avec la ligne qu'il parse, il
+ *      attendait l'encodage `04:0/48` quand le moteur écrit la phrase `04 ✅ (48)`. Chaque
+ *      moitié était testée chez elle, le chaînon chez personne — et le même état produisait
+ *      « pas encore publiée » en haut et « publiée mais illisible » en bas.
+ *   2. « il reste environ 0 jours » : vrai de la TRANCHE (0 restants), lu comme une
+ *      affirmation sur tout le Drive, où il reste plus de trois mille papiers.
+ *   3. « 97 % · 31 + 15071 » : un pourcentage juste sur une population que rien ne nommait,
+ *      et deux nombres collés à deux libellés séparés par un point médian.
+ *   4. DEUX ventilations du même travail (324/21 à l'écran, 306/38 dans la phrase du moteur),
+ *      et rien ne disait laquelle croire.
+ *
+ * ⚠️ L'ORDRE DES SECTIONS EST L'ORDRE DES QUESTIONS.
+ *   0. ce qui EMPÊCHE, s'il y a lieu — sinon tout le reste se lit comme une panne ;
+ *   1. l'ENTONNOIR : où passent les documents, et où ils se perdent, source par source ;
+ *   2. la Mémoire, nommée à part — c'est la demande « séparément » ;
+ *   3. la tranche en cours, par dossier ;
+ *   4. les graphes : ce qui reste dans le temps, la vitesse, ce qu'on tire des papiers ;
+ *   5. le détail (replié) : en cours, manques, derniers lus.
  *
  * ⚠️ CET ÉCRAN NE CALCULE RIEN. Tout vient de fonctions PURES d'`etat.ts`, testées par
- * mutation. Une seconde arithmétique dans le JSX serait « une règle et demie », et l'écart ne
- * se verrait jamais parce que les deux auraient l'air de marcher.
+ * mutation. Une seconde arithmétique dans le JSX serait « une règle et demie ».
  */
 
 import { useEffect, useState } from 'react';
@@ -32,9 +38,11 @@ import { useEtatGlobal } from '../etatGlobal';
 import {
   interpreterSante, interpreterPiecesFaites, bilanLecture, derniersLus,
   verdictLecture, ligneSanteLecture, fileLecture, enCoursLecture, manquesLecture,
-  cadenceLecture, importFile, certitudeClassement, DocumentLu, DossierLecture,
+  cadenceLecture, importFile, certitudeClassement, memoireComptes, entonnoir,
+  restantsTranche, serieParJour, lignesSanteManquantes, DocumentLu, DossierLecture,
 } from '../etat';
 import { AvancementLecture } from '../composants/AvancementLecture';
+import { Entonnoir, BatonsParJour, Ventilation } from '../composants/GraphesLecture';
 import { IndicateurChargement, BanniereErreur } from '../composants/UI';
 import { Langue, t } from '../i18n';
 
@@ -48,52 +56,17 @@ const PLAGE = 'A2:F';
 const COMBIEN_RECENTS = 25;
 const COMBIEN_MANQUES = 10;
 
-/**
- * UNE file, en gros. C49-23.
- *
- * ⚠️ `faits === null` ne se dessine pas comme `0` : une jauge vide se lit « rien n'a été
- * fait », une absence de jauge se lit « je ne sais pas ». Ce sont deux gestes différents —
- * attendre, ou aller voir pourquoi le moteur ne publie rien.
- *
- * ⚠️ `quoi` n'est pas décoratif : les deux files de cet écran ne portent PAS sur le même
- * ensemble (l'import couvre tout le Drive, la lecture seulement la tranche en cours). Sans
- * cette ligne, on compare deux pourcentages qui ne parlent pas de la même chose.
- */
-function FileGeante(
-  { nom, quoi, faits, total, absent, langue }:
-  { nom: string; quoi: string; faits: number | null; total: number | null; absent: string; langue: Langue },
-) {
-  if (faits === null || total === null || total <= 0) {
-    return (
-      <div className="file-geante file-geante-absente">
-        <span className="file-geante-nom">{nom}</span>
-        <p className="discret">{absent}</p>
-      </div>
-    );
-  }
-  const pct = Math.round((faits / total) * 100);
-  return (
-    <div className="file-geante">
-      <span className="file-geante-nom">{nom}</span>
-      <span className="file-geante-compte">
-        <strong>{faits}</strong> / {total}
-      </span>
-      <span className="file-geante-jauge" aria-hidden="true">
-        <span className="file-geante-part" style={{ width: `${pct}%` }} />
-      </span>
-      <span className="file-geante-quoi">
-        {pct} % · {quoi} · {total - faits} {t('fileReste', langue)}
-      </span>
-    </div>
-  );
-}
-
-/** Une barre par dossier. Le composant ne décide rien : `DossierLecture` vient du moteur. */
+/** Une barre par dossier de la tranche. Le composant ne décide rien : tout vient du moteur. */
 function BarreDossier({ d, rang, langue }: { d: DossierLecture; rang: number; langue: Langue }) {
   const fini = d.restants === 0;
   // Le premier dossier qui a encore du reste EST celui en cours — c'est l'ordre du moteur.
   const etat = fini ? 'fini' : (rang === 0 ? 'encours' : 'attente');
-  const pct = d.total > 0 ? Math.round((d.lus / d.total) * 100) : 0;
+  // ⚠️ Pas de jauge quand le total est INCONNU (les dossiers « en attente » : la phrase du
+  // moteur ne donne que leur reste). Une jauge à 0 % affirmerait « rien n'y est lu », ce que
+  // personne n'a mesuré.
+  const pct = d.lus !== null && d.total !== null && d.total > 0
+    ? Math.round((d.lus / d.total) * 100)
+    : null;
   const libelle = fini
     ? t('lectureFileFini', langue)
     : etat === 'encours' ? t('lectureFileEnCours', langue) : t('lectureFileAttend', langue);
@@ -101,9 +74,11 @@ function BarreDossier({ d, rang, langue }: { d: DossierLecture; rang: number; la
     <li className={`lecture-dossier lecture-dossier-${etat}`}>
       <span className="lecture-dossier-nom">{d.prefixe}</span>
       <span className="lecture-dossier-jauge" aria-hidden="true">
-        <span className="lecture-dossier-part" style={{ width: `${pct}%` }} />
+        {pct !== null ? <span className="lecture-dossier-part" style={{ width: `${pct}%` }} /> : null}
       </span>
-      <span className="lecture-dossier-compte">{d.lus}/{d.total}</span>
+      <span className="lecture-dossier-compte">
+        {pct !== null ? `${d.lus}/${d.total}` : `${d.restants} ${t('fileReste', langue)}`}
+      </span>
       <span className="lecture-dossier-etat">{libelle}</span>
     </li>
   );
@@ -133,116 +108,87 @@ export function Lecture({ langue }: { langue: Langue }) {
   const bilan = lus ? bilanLecture(lus) : null;
   const recents = lus ? derniersLus(lus, COMBIEN_RECENTS) : [];
   const manques = lus ? manquesLecture(lus, COMBIEN_MANQUES) : [];
-  const restants = file ? file.reduce((s, d) => s + d.restants, 0) : null;
+  const restants = restantsTranche(file);
   const cadence = lus ? cadenceLecture(lus, restants) : null;
   const dernier = recents.length ? recents[0]! : null;
 
-  // C49-23 — les deux files, et la certitude. Rien n'est calculé ici : `importFile` et
-  // `certitudeClassement` sont PURES et testées par mutation.
   const imp = donnees ? importFile(sante) : null;
-  // ⚠️ L'agrégat porte sur LA TRANCHE, pas sur tout le Drive : l'arbitrage de Marc du 21/09
-  // (« la tranche et le reste ne se fondent pas en un seul pourcentage ») reste entier — c'est
-  // pour ça que la jauge dit « la tranche en cours » et que les barres par dossier survivent
-  // dans le détail.
-  const lecTotal = file ? file.reduce((t, d) => t + d.total, 0) : null;
-  const lecLus = file ? file.reduce((t, d) => t + d.lus, 0) : null;
+  const mem = donnees ? memoireComptes(sante) : null;
   const cert = donnees ? certitudeClassement(donnees.index) : null;
+  const marches = entonnoir(imp, bilan, mem);
+  const serie = lus ? serieParJour(lus) : [];
+  const manquantes = donnees ? lignesSanteManquantes(sante) : [];
 
   return (
     <div className="colonnes">
-      {/* ── C49-23 : LES DEUX FILES, ET RIEN D'AUTRE AU-DESSUS DU PLI ───────────────────────
-          Marc, le 21/09 : « juste une file d'attente que je vois progresser, aussi le
-          pourcentage de certitude, fil d'attente pour import et fil d'attente pour lecture …
-          moins de texte, très épuré, très simple, gros boutons mais droit au but ».
-          Les six sections précédentes n'ont pas été supprimées — elles sont REPLIÉES (son
-          arbitrage du même jour), donc rien de ce que C49-13/14 a mesuré n'est perdu. */}
+      {/* ── 0. CE QUI EMPÊCHE ────────────────────────────────────────────────────────────────
+          ⚠️ EN TÊTE, et pas dans un repli. Le 23/09, la page disait « le moteur n'a pas encore
+          publié cette file » — une phrase littéralement vraie et parfaitement inutile : elle
+          ne dit ni pourquoi, ni quoi faire, et elle se lit comme une panne de la campagne
+          alors que la campagne va bien. C'est le déploiement qui est en retard. */}
+      {manquantes.length > 0 ? (
+        <section className="carte carte-alerte">
+          <h2>{t('figeTitre', langue)}</h2>
+          <p>{t('figeTexte', langue)}</p>
+          <p className="discret">
+            {t('figeLignes', langue)} <code>{manquantes.join(' · ')}</code>
+          </p>
+          <p><strong>{t('figeGeste', langue)}</strong></p>
+        </section>
+      ) : null}
+
+      {/* ── 1. L'ENTONNOIR ─────────────────────────────────────────────────────────────────── */}
       <section className="carte">
-        <h2>{t('filesTitre', langue)}</h2>
-        {!donnees ? (
-          <IndicateurChargement langue={langue} />
-        ) : (
-          <>
-            <div className="files-geantes">
-              <FileGeante
-                nom={t('fileImportNom', langue)}
-                quoi={t('fileImportQuoi', langue)}
-                faits={imp ? imp.pousses : null}
-                total={imp ? imp.cible : null}
-                absent={t('fileImportAbsente', langue)}
-                langue={langue}
-              />
-              <FileGeante
-                nom={t('fileLectureNom', langue)}
-                quoi={t('fileLectureQuoi', langue)}
-                faits={lecLus}
-                total={lecTotal}
-                absent={t('lectureFileAbsente', langue)}
-                langue={langue}
-              />
-            </div>
-            {/* ⚠️ La certitude porte sur le CLASSEMENT (« ce document est-il au bon
-                endroit ? »), jamais sur la lecture : aucune confiance n'est attachée à
-                l'extraction d'un papier, et en fabriquer une serait un chiffre inventé. */}
-            {cert === null || cert.pourcent === null ? (
-              <p className="discret">{t('certitudeAucune', langue)}</p>
-            ) : (
-              <p className="certitude">
-                <strong className="certitude-nombre">{cert.pourcent} %</strong>{' '}
-                {t('certitudeTexte', langue)}
-                <span className="discret certitude-detail">
-                  {cert.auMieux} + {cert.sansMesure} {t('certitudeDetail', langue)}
-                </span>
-              </p>
-            )}
-          </>
-        )}
+        <h2>{t('entonnoirTitre', langue)}</h2>
+        <p className="discret">{t('entonnoirIntro', langue)}</p>
+        {!donnees ? <IndicateurChargement langue={langue} /> : <Entonnoir marches={marches} langue={langue} />}
       </section>
 
-      {/* ⚠️ Un `<details>` masque à l'œil mais EXPÉDIE son contenu : ce qui suit est déjà
-          chargé par cet écran, donc le repli ne cache aucune lecture supplémentaire — il ne
-          fait que rendre la page lisible. */}
-      <details className="repli-detail">
-        <summary className="btn-detail">{t('detailBouton', langue)}</summary>
-
-      {/* 1. EN CE MOMENT — la question posée en premier, donc la réponse en premier. */}
+      {/* ── 2. LA MÉMOIRE, NOMMÉE À PART ───────────────────────────────────────────────────
+          Marc : « ce qui est validé SÉPARÉMENT par driveai et memory ai ». Ces chiffres-là
+          sont comptés par l'AUTRE app : les fondre avec ceux de DriveAI ferait disparaître
+          l'écart, qui est justement ce qui s'explique. */}
       <section className="carte">
-        <h2>{t('lectureEnCoursTitre', langue)}</h2>
-        <p className="discret">{t('lectureIntro', langue)}</p>
-
+        <h2>{t('memoireTitre', langue)}</h2>
         {!donnees ? (
           <IndicateurChargement langue={langue} />
-        ) : enCours ? (
-          <p className="lecture-encours">
-            <strong>{t('lectureEnCoursLit', langue)} :</strong> {enCours}
+        ) : mem === null ? (
+          <p className="discret">{t('memoireAbsente', langue)}</p>
+        ) : mem.etat === 'jamais-lue' ? (
+          <p className="discret">{t('memoireJamaisLue', langue)}</p>
+        ) : mem.etat === 'indisponible' ? (
+          // ⚠️ Le MOTIF est affiché, jamais « erreur » : un 401 est un geste de Marc (le
+          // jeton), un 503 passera tout seul. Les confondre envoie corriger le mauvais endroit.
+          <p className="lecture-etat">
+            {t('memoireIndisponible', langue)} — <code>{mem.motif}</code>
           </p>
         ) : (
           <>
-            {/* ⚠️ Un vide NON EXPLIQUÉ se lirait « c'est arrêté ». La campagne est au repos
-                l'essentiel du temps par construction : on le DIT, et on montre le dernier
-                document lu, qui est vrai et répond à la même question. */}
-            <p className="discret">{t('lectureEnCoursRepos', langue)}</p>
-            {dernier ? (
-              <p className="lecture-encours">
-                <strong>{t('lectureDernierLu', langue)} :</strong>{' '}
-                {dernier.nom || t('lectureNomAbsent', langue)}
-                {dernier.domaine ? ` (${dernier.domaine})` : ''} — {dernier.le}
-              </p>
-            ) : null}
+            {mem.gele ? <p className="lecture-etat">{t('memoireGelee', langue)}</p> : null}
+            <ul className="lecture-bilan">
+              <li className="verdict-ok"><strong>{mem.valides.toLocaleString('fr-CA')}</strong> {t('memoireValides', langue)}</li>
+              <li><strong>{mem.papiers.toLocaleString('fr-CA')}</strong> {t('memoirePapiers', langue)}</li>
+              <li><strong>{mem.papiersLus.toLocaleString('fr-CA')}</strong> {t('memoireLus', langue)}</li>
+              {mem.aValider > 0 ? (
+                <li><strong>{mem.aValider.toLocaleString('fr-CA')}</strong> {t('memoireAValider', langue)}</li>
+              ) : null}
+              {/* ⚠️ Publié, jamais tu : sans lui, des milliers de faits manquent à « validés »
+                  sans qu'aucun champ ne dise où ils sont partis — et ça ressemble à une perte. */}
+              {mem.migres > 0 ? (
+                <li className="discret"><strong>{mem.migres.toLocaleString('fr-CA')}</strong> {t('memoireMigres', langue)}</li>
+              ) : null}
+            </ul>
+            <p className="discret">{t('memoireLe', langue)} {mem.le.replace('T', ' ')}</p>
           </>
-        )}
-
-        {/* L'état brut de la campagne reste affiché : c'est lui qui dit POURQUOI, quand ça
-            s'arrête pour une raison qui n'est pas le repos normal. */}
-        {ligne === null ? (
-          <p className="discret">{t('lectureAucunEtat', langue)}</p>
-        ) : (
-          <p className="lecture-etat">{ligne}</p>
         )}
       </section>
 
-      {/* 2. QUEL DOSSIER, DANS QUEL ORDRE — la direction. */}
+      {/* ── 3. LA TRANCHE EN COURS ─────────────────────────────────────────────────────────
+          ⚠️ La tranche et LE RESTE DU DRIVE ne se fondent pas en un seul pourcentage
+          (arbitrage de Marc, 21/09) : une barre unique sur tout le Drive semblerait bloquée
+          alors que la tranche avance, et l'inverse cacherait ce qui attend derrière. */}
       <section className="carte">
-        <h2>{t('lectureFileTitre', langue)}</h2>
+        <h2>{t('trancheTitre', langue)}</h2>
         {!donnees ? (
           <IndicateurChargement langue={langue} />
         ) : file === null ? (
@@ -252,127 +198,178 @@ export function Lecture({ langue }: { langue: Langue }) {
         ) : (
           <>
             <ul className="lecture-file">
-              {file.map((d, k) => (
-                <BarreDossier key={d.prefixe} d={d} rang={k} langue={langue} />
-              ))}
+              {file.map((d, k) => <BarreDossier key={d.prefixe} d={d} rang={k} langue={langue} />)}
             </ul>
+            {/* ⚠️ « 0 restant » est une FIN, pas une vitesse. C'est ce qui produisait « il
+                reste environ 0 jours » — vrai de la tranche, et lu comme une affirmation sur
+                tout le Drive. */}
+            {restants === 0 ? <p className="discret">{t('trancheFinie', langue)}</p> : null}
             <p className="discret">{t('lectureFileLegende', langue)}</p>
           </>
         )}
-        {/* ⚠️ La tranche et LE RESTE DU DRIVE ne se fondent pas en un seul pourcentage
-            (arbitrage de Marc, 21/09) : une barre unique sur tout le Drive semblerait bloquée
-            alors que la tranche avance, et l'inverse cacherait ce qui attend derrière. */}
         <p className="discret lecture-reste">
           <strong>{t('lectureResteTitre', langue)} —</strong> {t('lectureResteTexte', langue)}
         </p>
       </section>
 
-      {/* 3. LA CADENCE ET L'ESTIMÉ. */}
+      {/* ── 4. LES GRAPHES ─────────────────────────────────────────────────────────────────── */}
       <section className="carte">
-        <h2>{t('lectureCadenceTitre', langue)}</h2>
+        <h2>{t('vitesseTitre', langue)}</h2>
         {lus === null ? (
           <IndicateurChargement langue={langue} />
-        ) : !cadence || cadence.parJourActif === 0 ? (
-          <p className="discret">{t('lectureCadenceInconnue', langue)}</p>
         ) : (
           <>
-            <p className="lecture-cadence">
-              <strong>{cadence.parJourActif}</strong> {t('lectureCadenceParJour', langue)}{' '}
-              {cadence.jour}
-            </p>
-            {/* ⚠️ Aucun horizon quand on ne peut pas le mesurer : un nombre inventé se lit
-                comme une mesure, et c'est pire que le silence. */}
-            {cadence.joursRestants !== null ? (
+            <BatonsParJour serie={serie} langue={langue} />
+            <p className="discret">{t('vitesseLegende', langue)}</p>
+            {/* L'estimé ne s'affiche QUE s'il porte sur un reste connu et non nul. */}
+            {cadence && cadence.parJourActif > 0 ? (
               <p className="lecture-cadence">
-                {t('lectureCadenceReste', langue)} <strong>{cadence.joursRestants}</strong>{' '}
-                {t('lectureCadenceJours', langue)}
+                <strong>{cadence.parJourActif}</strong> {t('lectureCadenceParJour', langue)} {cadence.jour}
+                {cadence.joursRestants !== null && restants !== null && restants > 0 ? (
+                  <>
+                    {' · '}{t('lectureCadenceReste', langue)}{' '}
+                    <strong>{cadence.joursRestants}</strong> {t('lectureCadenceJours', langue)}
+                  </>
+                ) : null}
+              </p>
+            ) : (
+              <p className="discret">{t('lectureCadenceInconnue', langue)}</p>
+            )}
+          </>
+        )}
+      </section>
+
+      <section className="carte">
+        <h2>{t('ventilTitre', langue)}</h2>
+        {lus === null ? (
+          <IndicateurChargement langue={langue} />
+        ) : !bilan || bilan.total === 0 ? (
+          <p className="discret">{t('lectureRienLu', langue)}</p>
+        ) : (
+          <Ventilation bilan={bilan} langue={langue} />
+        )}
+      </section>
+
+      <section className="carte">
+        <h2>{t('avancementTitre', langue)}</h2>
+        <AvancementLecture langue={langue} />
+      </section>
+
+      {/* La certitude du CLASSEMENT — jamais de la lecture : aucune confiance n'est attachée
+          à l'extraction d'un papier, et en fabriquer une serait un chiffre inventé. */}
+      <section className="carte">
+        <h2>{t('certitudeTitre', langue)}</h2>
+        {!donnees ? (
+          <IndicateurChargement langue={langue} />
+        ) : cert === null || cert.pourcent === null ? (
+          <p className="discret">{t('certitudeAucune', langue)}</p>
+        ) : (
+          <>
+            <p className="certitude">
+              <strong className="certitude-nombre">{cert.pourcent} %</strong>{' '}
+              {/* ⚠️ LE DÉNOMINATEUR EST DIT. « 97 % » sur 5 800 mesurés parmi 20 947 documents
+                  est vrai et trompeur tant que la population n'est pas nommée. */}
+              {t('certitudeSur', langue).replace('{n}', cert.mesurees.toLocaleString('fr-CA'))}
+            </p>
+            {cert.sansMesure > 0 ? (
+              <p className="discret">
+                {t('certitudeHors', langue).replace('{n}', cert.sansMesure.toLocaleString('fr-CA'))}
               </p>
             ) : null}
           </>
         )}
       </section>
 
-      {/* 4. CE QU'IL N'A PAS PU LIRE — « quelles infos il lui manque ». */}
-      <section className="carte">
-        <h2>{t('lectureManquesTitre', langue)}</h2>
-        {lus === null ? (
-          <IndicateurChargement langue={langue} />
-        ) : manques.length === 0 ? (
-          <p className="discret">{t('lectureManquesAucun', langue)}</p>
-        ) : (
-          <ul className="lecture-liste">
-            {manques.map((m) => (
-              <li key={m.fileId}>
-                <a
-                  href={`https://drive.google.com/file/d/${m.fileId}/view`}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                >
-                  {m.nom || t('lectureNomAbsent', langue)}
-                </a>
-                {m.domaine ? <span className="discret">{m.domaine}</span> : null}
-                <span className="lecture-verdict verdict-vide">{m.raison}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      {/* ── 5. LE DÉTAIL ───────────────────────────────────────────────────────────────────
+          ⚠️ Un `<details>` masque à l'œil mais EXPÉDIE son contenu : ce qui suit est déjà
+          chargé par cet écran, donc le repli ne cache aucune lecture supplémentaire. */}
+      <details className="repli-detail">
+        <summary className="btn-detail">{t('detailBouton', langue)}</summary>
 
-      {/* 5. LE BILAN ET LES DERNIERS LUS. */}
-      <section className="carte">
-        <h2>{t('lectureBilanTitre', langue)}</h2>
-        {erreur ? <BanniereErreur langue={langue} erreur={erreur} /> : null}
-        {lus === null ? (
-          <IndicateurChargement langue={langue} />
-        ) : !bilan || bilan.total === 0 ? (
-          <p className="discret">{t('lectureRienLu', langue)}</p>
-        ) : (
-          <ul className="lecture-bilan">
-            <li><strong>{bilan.total}</strong> {t('lectureBilanTotal', langue)}</li>
-            <li className="verdict-ok"><strong>{bilan.ok}</strong> {t('lectureBilanOk', langue)}</li>
-            <li className="verdict-vide"><strong>{bilan.vide}</strong> {t('lectureBilanVide', langue)}</li>
-            <li className="verdict-echec"><strong>{bilan.echec}</strong> {t('lectureBilanEchec', langue)}</li>
-            {/* ⚠️ Les verdicts non enregistrés ne se fondent pas dans une autre colonne : ce
-                sont des lignes d'avant C49-13, pas des lectures ratées. */}
-            {bilan.inconnu > 0 ? (
-              <li className="discret"><strong>{bilan.inconnu}</strong> {t('lectureBilanInconnu', langue)}</li>
-            ) : null}
-          </ul>
-        )}
-      </section>
+        <section className="carte">
+          <h2>{t('lectureEnCoursTitre', langue)}</h2>
+          <p className="discret">{t('lectureIntro', langue)}</p>
+          {!donnees ? (
+            <IndicateurChargement langue={langue} />
+          ) : enCours ? (
+            <p className="lecture-encours">
+              <strong>{t('lectureEnCoursLit', langue)} :</strong> {enCours}
+            </p>
+          ) : (
+            <>
+              <p className="discret">{t('lectureEnCoursRepos', langue)}</p>
+              {dernier ? (
+                <p className="lecture-encours">
+                  <strong>{t('lectureDernierLu', langue)} :</strong>{' '}
+                  {dernier.nom || t('lectureNomAbsent', langue)}
+                  {dernier.domaine ? ` (${dernier.domaine})` : ''} — {dernier.le}
+                </p>
+              ) : null}
+            </>
+          )}
+          {ligne === null ? (
+            <p className="discret">{t('lectureAucunEtat', langue)}</p>
+          ) : (
+            <p className="lecture-etat">{ligne}</p>
+          )}
+        </section>
 
-      <section className="carte">
-        <h2>{t('lectureRecentsTitre', langue)}</h2>
-        {lus === null ? (
-          <IndicateurChargement langue={langue} />
-        ) : recents.length === 0 ? (
-          <p className="discret">{t('lectureRienLu', langue)}</p>
-        ) : (
-          <ul className="lecture-liste">
-            {recents.map((d) => {
-              const v = verdictLecture(d.motif);
-              return (
-                <li key={d.fileId + d.le}>
+        <section className="carte">
+          <h2>{t('lectureManquesTitre', langue)}</h2>
+          {lus === null ? (
+            <IndicateurChargement langue={langue} />
+          ) : manques.length === 0 ? (
+            <p className="discret">{t('lectureManquesAucun', langue)}</p>
+          ) : (
+            <ul className="lecture-liste">
+              {manques.map((m) => (
+                <li key={m.fileId}>
                   <a
-                    href={`https://drive.google.com/file/d/${d.fileId}/view`}
+                    href={`https://drive.google.com/file/d/${m.fileId}/view`}
                     target="_blank"
                     rel="noreferrer noopener"
                   >
-                    {/* ⚠️ Un nom absent se DIT : c'est une ligne écrite avant que le moteur ne
-                        l'inscrive, pas un document sans nom. */}
-                    {d.nom || t('lectureNomAbsent', langue)}
+                    {m.nom || t('lectureNomAbsent', langue)}
                   </a>
-                  {d.domaine ? <span className="discret">{d.domaine}</span> : null}
-                  <span className={`lecture-verdict verdict-${v.classe}`}>{v.libelle}</span>
-                  <span className="discret">{d.le}</span>
+                  {m.domaine ? <span className="discret">{m.domaine}</span> : null}
+                  <span className="lecture-verdict verdict-vide">{m.raison}</span>
                 </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+              ))}
+            </ul>
+          )}
+        </section>
 
-      <AvancementLecture langue={langue} />
+        <section className="carte">
+          <h2>{t('lectureRecentsTitre', langue)}</h2>
+          {erreur ? <BanniereErreur langue={langue} erreur={erreur} /> : null}
+          {lus === null ? (
+            <IndicateurChargement langue={langue} />
+          ) : recents.length === 0 ? (
+            <p className="discret">{t('lectureRienLu', langue)}</p>
+          ) : (
+            <ul className="lecture-liste">
+              {recents.map((d) => {
+                const v = verdictLecture(d.motif);
+                return (
+                  <li key={d.fileId + d.le}>
+                    <a
+                      href={`https://drive.google.com/file/d/${d.fileId}/view`}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                    >
+                      {/* ⚠️ Un nom absent se DIT : c'est une ligne écrite avant que le moteur
+                          ne l'inscrive, pas un document sans nom. */}
+                      {d.nom || t('lectureNomAbsent', langue)}
+                    </a>
+                    {d.domaine ? <span className="discret">{d.domaine}</span> : null}
+                    <span className={`lecture-verdict verdict-${v.classe}`}>{v.libelle}</span>
+                    <span className="discret">{d.le}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
       </details>
     </div>
   );

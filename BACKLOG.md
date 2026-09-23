@@ -41,6 +41,34 @@ sans fileId de clé (pièces jointes Gmail) restent hors du dénominateur — C4
 352, le reste attend. Le périmètre date du 17/09 et ne se re-mesure qu'au bump de
 `CONFIG.PERIMETRE_PIECE_TAG`.
 
+### C49-25 — l'onglet Avancement : l'entonnoir, les graphes, et les DEUX apps nommées ✅
+
+Marc, le 23/09 : « manque trop d'info sur cette page, qui marchent pas. manque aussi des
+graphs clairs, des infos sur la vitesse sur ce qu'il reste sur ce qui est validé séparément par
+driveai et memory ai je comprends pas la page ». Puis, en texte libre : « lu vs importé vs
+traité, faits vs papiers » — la réponse qu'aucune de mes options n'anticipait, et celle qui a
+cadré le lot : ce n'est pas un graphe de plus, c'est un ENTONNOIR.
+
+- [x] **`fileLecture` n'avait JAMAIS rien lu** — né avec sa ligne en C49-14, il attendait
+      l'encodage quand le moteur écrit la phrase. Rendu tolérant aux DEUX formes, avec trois
+      cas copiés de la vraie Santé. C'est ce qui répare « pas encore publiée » en haut et
+      « publiée mais illisible » en bas, pour le même état.
+- [x] **Un bandeau qui NOMME** les lignes de Santé attendues et absentes, plus le geste qui les
+      débloque — au lieu d'un « pas encore publié » qui se lit comme une panne de la campagne.
+- [x] **L'entonnoir**, six marches, chacune portant SA source : classés → envoyés (DriveAI) →
+      connus (Mémoire) → ouverts (DriveAI) → lus (Mémoire) → faits validés (Mémoire). L'écart
+      entre deux marches de sources différentes est une information, pas un chiffre à choisir.
+- [x] **Trois graphes** : ce qui reste dans le temps, la vitesse jour par jour (les jours vides
+      ne sont pas inventés), la ventilation des verdicts en une seule table de classification.
+- [x] **Les libellés qui mentaient par omission** : le « 97 % » dit désormais sur combien il
+      porte, et « il reste 0 jours » ne s'affiche plus quand il ne parle que de la tranche.
+- [x] **Côté moteur** : `GET /api/etat` chez MemoryAI (PR jumelle #54) + la ligne de Santé
+      `Mémoire — comptes`, lue au plus toutes les 30 min, sans nouveau secret.
+
+⚠️ La moitié Mémoire de l'écran **attend le déblocage Apps Script** (§4 du `HANDOVER.md`) : la
+ligne existe dans le code, le moteur tourne sur une version antérieure. La moitié DriveAI, elle,
+est juste sans ce geste — c'est exactement pourquoi le parseur a été rendu tolérant.
+
 ### C49-23 bis — le lot était mergé et n'a JAMAIS tourné ✅
 
 - [x] **Mesuré, pas déduit** : la ligne `Import — file` était absente de la Santé aux ticks de

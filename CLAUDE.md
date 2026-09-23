@@ -1699,6 +1699,43 @@ a laissé, et la Progression purge ses lignes finies après 48 h.
   projet) appartient à Marc seul — frontière d'exécution — et il est routé dans `HANDOVER.md`
   §4, pas répété en chat.
 
+- ⚠️⚠️ **UN PARSEUR NÉ DANS LE MÊME COMMIT QUE LA LIGNE QU'IL LIT PEUT N'AVOIR JAMAIS RIEN
+  LU** (23/09/2026). `fileLecture` (app) et la ligne `Lecture — file` (moteur) sont nées
+  ensemble en C49-14 (#389). Le parseur attend l'encodage `04:0/48` ; `Journal.gs` écrit
+  `texteSanteFilePiece_()`, c'est-à-dire la PHRASE `04 ✅ (48) · … — tranche terminée`. Le
+  motif ne matchait donc **rien**, la file rendait `[]`, et l'écran affichait « le moteur n'a
+  pas encore publié sa file » en haut **et** « la file est publiée mais illisible » en bas —
+  deux phrases contraires pour le même état, pendant neuf jours. Marc : « manque trop d'info
+  sur cette page, qui marchent pas ».
+  ⚠️ **Le commentaire du parseur affirmait le contraire de la réalité** (« le format lu est
+  celui que le moteur ÉCRIT, jamais la phrase française »), et son test portait le titre
+  « lit l'ENCODAGE du moteur, pas sa phrase française ». Il ne mentait pas par négligence :
+  il **certifiait un contrat que le moteur n'a jamais rempli**. Un test écrit en même temps
+  que le code qu'il teste ne prouve que la cohérence de l'auteur avec lui-même — il faut au
+  moins **un cas copié de la sortie RÉELLE du producteur**, tel quel, sans le retaper.
+  ⚠️ Réflexe : quand les deux moitiés d'un chaînon naissent dans le MÊME commit, aucune revue
+  ne les met en présence — c'est `UN-TROU-ENTRE-DEUX-MOITIES-TESTEES-N-APPARTIENT-A-PERSONNE`
+  dans sa forme la plus discrète, parce que les deux moitiés sont écrites par la même main le
+  même jour et ont donc l'air d'avoir été confrontées.
+  ⚠️ Et ce que le défaut a produit à l'écran mérite d'être nommé à part : **« le moteur n'a
+  pas encore publié » est une phrase littéralement VRAIE et parfaitement inutile.** Elle ne
+  dit ni pourquoi, ni quoi faire, et elle se lit comme une panne de la campagne alors que la
+  campagne va très bien. Le remède est un bandeau qui NOMME les lignes attendues et absentes
+  (`lignesSanteManquantes`, dérivée de ce que l'écran LIT) et le geste qui les débloque.
+
+- ⚠️ **UN POURCENTAGE JUSTE SUR UNE POPULATION QU'ON NE NOMME PAS EST TROMPEUR** (même jour).
+  L'écran affichait « **97 %** des documents mesurés sont rangés avec certitude · 31 + 15071
+  classés au mieux · sans mesure ». Chaque nombre était exact : 97 % porte sur les ~5 800
+  documents dont le classement a été **mesuré**, parmi 20 947 au catalogue. Mais le
+  dénominateur n'était nulle part, et les deux nombres restants étaient collés à deux
+  libellés séparés par un point médian — donc illisibles. Un chiffre qu'on ne peut pas
+  rapporter à une population n'informe pas : il rassure ou il inquiète, au hasard.
+  ⚠️ Même famille, même écran : « il reste environ **0 jours** » était vrai de la TRANCHE
+  (0 restants) et se lisait comme une affirmation sur tout le Drive, où il reste plus de trois
+  mille papiers. **`0` et « je ne sais pas » ne se confondent jamais** — d'où `restantsTranche`,
+  qui rend `null` sur une file illisible, et un estimé qui ne s'affiche que si le reste est
+  connu ET non nul.
+
 ## 10. Style et compte-rendu
 
 > 📣 Forme des comptes-rendus, des commits, des PR et des docs générées :

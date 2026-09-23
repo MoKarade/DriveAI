@@ -307,6 +307,11 @@ function majSante_() {
     // dans une forme que l'app n'a pas le droit de lire : une phrase se reformule, un encodage
     // non. Cette ligne est la seule que l'app parse, et elle ne coûte aucune lecture de plus
     // (deux Properties déjà ouvertes par les lignes voisines).
+    // 23/09 — CE QUE LA MÉMOIRE EN A FAIT. Les deux lignes ci-dessus disent ce que le moteur
+    // a ENVOYÉ ; aucune ne dit ce que c'est DEVENU. « 590 acceptées » et « 343 faits validés »
+    // ne sont pas la même grandeur, et l'écran qui n'en montrait qu'une laissait croire que
+    // l'autre n'existait pas (Marc : « ce qui est validé SÉPARÉMENT par driveai et memory ai »).
+    ['Mémoire — comptes : ' + texteSanteComptesMemoire_()],
     ['Import — file : ' + texteSanteFileImport_()],
     ['Lecture — file : ' + texteSanteFilePiece_()],
     ['Lecture — en cours : ' + texteSanteEnCoursPiece_()],

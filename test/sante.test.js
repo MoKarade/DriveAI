@@ -71,7 +71,7 @@ function chargerAvecSanteMock(indexCache, props) {
   return { ctx, captured };
 }
 
-test('majSante_ écrit exactement 19 lignes de métadonnées (une seule écriture Sheet)', () => {
+test('majSante_ écrit exactement 20 lignes de métadonnées (une seule écriture Sheet)', () => {
   // 10 depuis ADR-0056 : la re-datation de `06` rallume de la dépense LLM et son budget du jour
   // n'était lisible NULLE PART. Le compte est figé pour que l'ajout d'une ligne soit une DÉCISION —
   // l'écriture est unique par tick, et chaque ligne coûte de la place à l'écran de Marc.
@@ -116,12 +116,23 @@ test('majSante_ écrit exactement 19 lignes de métadonnées (une seule écritur
   // premier lot qui la rend plus claire. Le dépôt a déjà tranché pour la lecture (« le format
   // lu est celui que le moteur ÉCRIT ») ; cette ligne applique la même règle à l'import.
   // Elle ne coûte aucune lecture de plus : les deux Properties sont déjà ouvertes à côté.
+  // 20 depuis le 23/09/2026 : « Mémoire — comptes » dit ce que l'AUTRE app a fait de ce qu'on
+  // lui a envoyé. Les dix-neuf lignes ci-dessus racontent toutes ce que le moteur ENVOIE ;
+  // aucune ne dit ce que c'est DEVENU — d'où un écran où « 590 acceptées » et « 343 faits
+  // validés » ne pouvaient pas coexister, et où la seconde grandeur semblait ne pas exister.
+  // Marc, ce jour-là : « manque des infos sur ce qui est validé SÉPARÉMENT par driveai et
+  // memory ai ». Elle ne partage la ligne d'aucune voisine parce qu'elle vient d'une AUTRE
+  // source : la fondre avec « Import — file » ferait lire un compte de la Mémoire comme un
+  // compte de DriveAI, et l'écart entre les deux — la seule chose qui s'explique — disparaît.
+  // Elle ne coûte pas un appel réseau par tick : la lecture est espacée de 30 min
+  // (`CONFIG.MEMOIRE_COMPTES_MIN_MS`) et la valeur publiée porte sa date.
   const { ctx, captured } = chargerAvecSanteMock({ 'a|1': true, 'b|2': true });
   ctx.majSante_();
-  assert.strictEqual(captured.length, 19);
+  assert.strictEqual(captured.length, 20);
   // ⚠️ Le COMPTE seul ne dirait pas QUELLE ligne a été ajoutée : une ligne retirée et une autre
   // posée laisseraient 19. La présence se vérifie donc à part, sur la forme ENCODÉE.
   assert.ok(captured.some((l) => /^Import — file : /.test(l)), captured.join(' | '));
+  assert.ok(captured.some((l) => /^Mémoire — comptes : /.test(l)), captured.join(' | '));
   assert.ok(captured.every((l) => typeof l === 'string'));
 });
 

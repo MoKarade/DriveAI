@@ -958,34 +958,77 @@ export function ligneSanteLecture(sante: string[]): string | null {
    de neuf : la file et l'en-cours sont décidés côté moteur, ici on ne fait que lire.
    ══════════════════════════════════════════════════════════════════════════════════════════ */
 
-/** Un dossier de la tranche : combien y sont lus, combien restent. */
+/**
+ * Un dossier de la tranche : combien y sont lus, combien restent.
+ *
+ * ⚠️ `lus` et `total` sont NULLABLES depuis le 23/09, et ce n'est pas un confort de typage.
+ * La phrase que le moteur écrit ne porte le total que pour les dossiers FINIS et pour celui
+ * EN COURS ; pour ceux qui attendent, elle ne donne que le reste (« ensuite 06 (1169) »).
+ * Poser `total = restants` serait faux dès qu'un dossier en attente a déjà des lus — et
+ * l'erreur ne se verrait nulle part, puisque la jauge afficherait 0 %.
+ */
 export interface DossierLecture {
   prefixe: string;
-  lus: number;
-  total: number;
+  lus: number | null;
+  total: number | null;
   restants: number;
 }
 
 /**
  * PURE. La file par dossier, depuis la ligne de Santé « Lecture — file ».
  *
- * ⚠️ Le format lu est celui que le moteur ÉCRIT (`04:0/23·01:40/87`), jamais la phrase
- * française qu'il compose à côté : une phrase se reformule, un encodage non. Deux lectures de
- * la même chose seraient « une règle et demie », et l'écart ne se verrait jamais.
+ * ⚠️⚠️ CE PARSEUR N'A JAMAIS RIEN LU, ET PERSONNE NE POUVAIT LE VOIR (mesuré le 23/09/2026).
+ * Il est né en C49-14 avec la ligne qu'il lit, et son commentaire affirmait lire l'ENCODAGE
+ * (`04:0/23·01:40/87`) « jamais la phrase française ». Or `Journal.gs` écrit
+ * `texteSanteFilePiece_()`, c'est-à-dire précisément la PHRASE — donc le motif ne matchait
+ * rien, la file rendait un tableau vide, et l'écran affichait « publiée mais illisible » en
+ * bas pendant qu'il affichait « pas encore publiée » en haut. Deux phrases contraires pour le
+ * même état, et aucun test ne pouvait rougir : chaque moitié était testée chez elle, le
+ * chaînon chez personne.
+ *
+ * On lit donc LES DEUX FORMES, et c'est délibéré :
+ *   - l'encodage `<pref>:<restants>/<total>`, au cas où le moteur le publie un jour ;
+ *   - la phrase que la production écrit AUJOURD'HUI, dans ses trois morceaux —
+ *     `04 ✅ (48)` (fini), `EN COURS 02 : 40/1052 lus, 1012 à lire`, `ensuite 06 (1169)`.
+ *
+ * ⚠️ `null` (ligne absente) et `[]` (ligne présente et illisible) restent DISTINCTS : « le
+ * moteur n'a pas écrit » et « j'ai lu et je n'ai rien compris » ne se réparent pas au même
+ * endroit.
  */
 export function fileLecture(sante: string[]): DossierLecture[] | null {
   const ligne = ligneSanteNommee(sante, 'Lecture — file');
   if (ligne === null) return null;
   const out: DossierLecture[] = [];
+  const vus = new Set<string>();
+  const pousser = (prefixe: string, lus: number | null, total: number | null, restants: number) => {
+    if (vus.has(prefixe)) return;
+    vus.add(prefixe);
+    out.push({ prefixe, lus, total, restants });
+  };
   for (const part of ligne.split('·')) {
-    const m = /^\s*(\S+?):(\d+)\/(\d+)\s*$/.exec(part);
-    if (!m) continue;
-    const restants = Number(m[2]);
-    const total = Number(m[3]);
-    out.push({ prefixe: m[1]!, restants, total, lus: total - restants });
+    const brut = part.trim();
+    if (!brut) continue;
+
+    // a) l'encodage, s'il vient un jour : `04:12/48`.
+    const enc = /^(\S+?):(\d+)\/(\d+)$/.exec(brut);
+    if (enc) { const r = Number(enc[2]), t = Number(enc[3]); pousser(enc[1]!, t - r, t, r); continue; }
+
+    // b) un dossier TERMINÉ : `04 ✅ (48)`. Le total est là, le reste est nul par définition.
+    const fini = /^(\S+)\s*✅\s*\((\d+)\)/.exec(brut);
+    if (fini) { const t = Number(fini[2]); pousser(fini[1]!, t, t, 0); continue; }
+
+    // c) celui EN COURS : `EN COURS 02 : 40/1052 lus, 1012 à lire`.
+    const encours = /^EN COURS\s+(\S+)\s*:\s*(\d+)\/(\d+)\s+lus,\s*(\d+)/.exec(brut);
+    if (encours) { pousser(encours[1]!, Number(encours[2]), Number(encours[3]), Number(encours[4])); continue; }
+
+    // d) ceux qui ATTENDENT : `ensuite 06 (1169), 02 (976)`. ⚠️ Le total n'y est PAS — on ne
+    //    l'invente pas, on publie le reste et on laisse `lus`/`total` inconnus.
+    const suite = /^ensuite\s+(.+)$/.exec(brut);
+    if (suite) {
+      for (const m of suite[1]!.matchAll(/(\S+?)\s*\((\d+)\)/g)) pousser(m[1]!, null, null, Number(m[2]));
+      continue;
+    }
   }
-  // ⚠️ Une ligne présente mais illisible rend un tableau VIDE, pas `null` : « le moteur n'a pas
-  // écrit » et « j'ai lu et je n'ai rien compris » ne se réparent pas au même endroit.
   return out;
 }
 
@@ -1116,4 +1159,169 @@ export function cadenceLecture(lus: DocumentLu[], restants: number | null): Cade
     ? Math.ceil(restants / parJourActif)
     : null;
   return { parJourActif, jour: dernier, joursActifs: jours.length, joursRestants };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   CE QUE LA MÉMOIRE EN A FAIT, ET L'ENTONNOIR QUI RELIE LES DEUX APPS — 23/09/2026.
+
+   Marc : « manque aussi des infos sur la vitesse, sur ce qu'il reste, sur ce qui est validé
+   SÉPARÉMENT par driveai et memory ai — je comprends pas la page ». Puis, en texte libre :
+   « lu vs importé vs traité, faits vs papiers ».
+
+   Ce n'est pas un graphe de plus : c'est un ENTONNOIR. Chaque marche perd des documents, et
+   c'est la perte qui explique pourquoi « 20 947 au catalogue » et « 343 faits validés »
+   coexistent sans que rien ne soit cassé.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+/** Ce que la Mémoire répond, ou pourquoi elle n'a pas répondu. */
+export type ComptesMemoire =
+  | { etat: 'connus'; valides: number; aValider: number; migres: number; papiers: number; papiersLus: number; gele: boolean; le: string }
+  | { etat: 'indisponible'; motif: string }
+  | { etat: 'jamais-lue' };
+
+/**
+ * PURE. Lit la ligne `Mémoire — comptes`, ENCODÉE par le moteur :
+ * `<valides>/<aValider>/<migres>|<papiers>/<lus>|<gel>|<ISO>`.
+ *
+ * ⚠️ TROIS ÉTATS, et c'est tout l'intérêt. « Le moteur n'a jamais interrogé la Mémoire »,
+ * « il l'a interrogée et elle n'a pas répondu » et « voici ses comptes » appellent trois
+ * gestes différents — attendre un déploiement, aller voir le jeton, ou rien. Les fondre dans
+ * un `null` rendrait la page muette au moment où elle sert.
+ *
+ * ⚠️ Rend `null` quand la LIGNE n'existe pas : le moteur ne la publie pas encore. C'est
+ * distinct de `jamais-lue`, qui veut dire « la ligne est là et dit qu'aucune lecture n'a eu
+ * lieu ».
+ */
+export function memoireComptes(sante: string[]): ComptesMemoire | null {
+  const ligne = ligneSanteNommee(sante, 'Mémoire — comptes');
+  if (ligne === null) return null;
+  const s = ligne.trim();
+  if (!s) return { etat: 'jamais-lue' };
+  if (/^jamais lue/i.test(s)) return { etat: 'jamais-lue' };
+  const indispo = /^indisponible\s*[—-]\s*(.+)$/.exec(s);
+  if (indispo) return { etat: 'indisponible', motif: indispo[1]!.trim() };
+  const m = /^(\d+)\/(\d+)\/(\d+)\|(\d+)\/(\d+)\|([01])\|(\S+)$/.exec(s);
+  // ⚠️ Une ligne présente mais non conforme est « indisponible », jamais des zéros : le
+  // contrat d'en face a pu bouger, et publier 0 se lirait « la mémoire est vide ».
+  if (!m) return { etat: 'indisponible', motif: 'format inattendu' };
+  return {
+    etat: 'connus',
+    valides: Number(m[1]), aValider: Number(m[2]), migres: Number(m[3]),
+    papiers: Number(m[4]), papiersLus: Number(m[5]),
+    gele: m[6] === '1', le: m[7]!,
+  };
+}
+
+/**
+ * Les marches, DANS L'ORDRE du parcours d'un document. Une union fermée : ajouter une marche
+ * sans lui donner un libellé ne compile pas — c'est le compilateur qui tient la règle, pas la
+ * vigilance (le défaut « un compteur ajouté LAISSE son libellé derrière », payé le 21/09).
+ */
+export const MARCHES_ENTONNOIR = ['classes', 'envoyes', 'connus', 'ouverts', 'lus', 'valides'] as const;
+export type CleMarche = (typeof MARCHES_ENTONNOIR)[number];
+
+/** Une marche de l'entonnoir. `valeur === null` = non mesurée, jamais « zéro ». */
+export interface MarcheEntonnoir {
+  cle: CleMarche;
+  /** Qui a compté. Deux apps, deux registres — les confondre est le défaut qu'on répare. */
+  source: 'driveai' | 'memoryai';
+  valeur: number | null;
+}
+
+/**
+ * PURE. L'entonnoir, de la marche la plus large à la plus étroite.
+ *
+ * ⚠️ CHAQUE MARCHE PORTE SA SOURCE, et c'est la demande de Marc. « Envoyés » est ce que
+ * DriveAI a compté chez lui ; « papiers connus » est ce que la Mémoire a réellement gardé.
+ * Les deux mesurent la même chose par deux chemins, donc leur ÉCART est une information —
+ * pas un chiffre à choisir.
+ *
+ * ⚠️ On n'invente aucune marche : une valeur non mesurée reste `null` et s'affiche « — ».
+ * L'ordre est celui du parcours d'un document, jamais celui des valeurs : une marche vide au
+ * milieu doit rester visible, c'est elle qui désigne le maillon en panne.
+ */
+export function entonnoir(
+  imp: FileImport | null,
+  bilan: BilanLecture | null,
+  mem: ComptesMemoire | null,
+): MarcheEntonnoir[] {
+  const co = mem && mem.etat === 'connus' ? mem : null;
+  return [
+    { cle: 'classes', source: 'driveai', valeur: imp ? imp.cible : null },
+    { cle: 'envoyes', source: 'driveai', valeur: imp ? imp.pousses : null },
+    { cle: 'connus', source: 'memoryai', valeur: co ? co.papiers : null },
+    { cle: 'ouverts', source: 'driveai', valeur: bilan ? bilan.total : null },
+    { cle: 'lus', source: 'memoryai', valeur: co ? co.papiersLus : null },
+    { cle: 'valides', source: 'memoryai', valeur: co ? co.valides : null },
+  ];
+}
+
+/**
+ * PURE. Le reste de la tranche, ou `null` quand la file n'est pas lisible.
+ *
+ * ⚠️ `0` et `null` ne se confondent pas : « la tranche est finie » et « je ne sais pas ce
+ * qu'il reste » n'appellent pas la même phrase — et c'est `0` qui produisait « il reste
+ * environ 0 jours » sur un Drive où il reste plus de trois mille papiers.
+ */
+export function restantsTranche(file: DossierLecture[] | null): number | null {
+  if (file === null || file.length === 0) return null;
+  return file.reduce((s, d) => s + d.restants, 0);
+}
+
+/** Un jour où la campagne a lu quelque chose. Les jours VIDES ne sont pas inventés. */
+export interface JourLecture {
+  jour: string;
+  nombre: number;
+}
+
+/**
+ * PURE. Combien de papiers lus par jour, du plus ancien au plus récent, tag COURANT.
+ *
+ * ⚠️ Seuls les jours NON VIDES sortent. Remplir les trous avec des zéros ferait perdre la
+ * distinction entre « rien lu ce jour-là » et « la campagne n'existait pas encore », et le
+ * rythme se diviserait par des jours où il n'y avait rien à faire — c'est exactement ce qui
+ * fait annoncer « 4 par jour » à une campagne qui en lit 131 quand elle tourne.
+ *
+ * ⚠️ Le jour vient de la chaîne écrite par le moteur (`AAAA-MM-JJ HH:MM`, heure du Québec),
+ * jamais d'un `Date` reconstruit : Vercel tourne en UTC, et regrouper dessus mettrait tout ce
+ * qui est lu après 20 h au lendemain.
+ */
+export function serieParJour(lus: DocumentLu[]): JourLecture[] {
+  const tag = lus.length ? lus[lus.length - 1]!.tag : '';
+  const parJour = new Map<string, number>();
+  for (const d of lus) {
+    if (d.tag !== tag) continue;
+    const jour = d.le.slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(jour)) continue;
+    parJour.set(jour, (parJour.get(jour) ?? 0) + 1);
+  }
+  return Array.from(parJour.entries())
+    .map(([jour, nombre]) => ({ jour, nombre }))
+    .sort((a, b) => (a.jour < b.jour ? -1 : a.jour > b.jour ? 1 : 0));
+}
+
+/**
+ * Les lignes de Santé que CET ÉCRAN lit, avec leur préfixe exact.
+ *
+ * ⚠️ La liste est ici et nulle part ailleurs : c'est elle qui permet de dire « le moteur ne
+ * publie pas encore X » au lieu de « pas encore mesuré », qui se lit comme une panne de la
+ * campagne alors que c'est un déploiement en retard. Deux diagnostics opposés, un seul
+ * symptôme — et c'est exactement ce que Marc a lu le 23/09 sur les deux files.
+ */
+export const LIGNES_SANTE_LUES = [
+  'Import — file',
+  'Lecture — file',
+  'Lecture — en cours',
+  'Mémoire — comptes',
+] as const;
+
+/**
+ * PURE. Celles que le moteur ne publie PAS, dans l'ordre.
+ *
+ * ⚠️ Une Santé VIDE rend la liste vide, pas la liste complète : tant que rien n'est chargé,
+ * on ne sait pas ce qui manque, et l'annoncer serait un diagnostic sur une absence de mesure.
+ */
+export function lignesSanteManquantes(sante: string[]): string[] {
+  if (!sante || sante.length === 0) return [];
+  return LIGNES_SANTE_LUES.filter((p) => ligneSanteNommee(sante, p) === null);
 }
