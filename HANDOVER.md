@@ -4,7 +4,16 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🟦 EN COURS — 2026-09-21 : la lecture des papiers se REGARDE. REPRENDRE ICI.**
+> **🟦 EN COURS — 2026-09-23 : C49-26, la tranche « tout le reste » (PR #403). REPRENDRE ICI.**
+> Lecture élargie à `05 → 03 → 08 → 06`, puis `07` et `09`, sans relire `04 + 01 + 02`. Envoi à la
+> Mémoire **4 → 8 min/j**, pris aux pièces (**58 → 54**) ; l'enveloppe reste à 63. Le périmètre
+> compte les documents DISTINCTS, et se recompte chaque jour. La revue a trouvé quatre défauts qui
+> mordaient ce lot (double lecture payée, campagne bloquée par trois fichiers supprimés, envoi qui
+> jetait ce qu'il avait lu, dossiers vides affichés « terminés ») : corrigés, détail dans BACKLOG.
+> À mesurer après déploiement : « Lecture — file » annonce **EN COURS 05**, et le recompte publie
+> les documents distincts. Ce qui suit (lot du 21/09) reste vrai, hors les nombres de budget.
+>
+> **🟦 2026-09-21 : la lecture des papiers se REGARDE.**
 >
 > **DERNIER LOT — C49-20 : sept campagnes arrêtées, 41 min/j rendues à la lecture des papiers.**
 > Décision de Marc du 21/09, sur la mesure du jour. Consolidation (16 + 8), re-datation de 06 (8),
@@ -2962,7 +2971,14 @@ Détail des tâches : `BACKLOG.md`.
 > Objectif **full auto**. Les secrets de déploiement sont posés — il ne reste qu'une ré-autorisation
 > à venir (Phase 3) et deux rappels de fond.
 
-0. 🔴🔴 **BLOQUANT — PLUS AUCUN CHANGEMENT DU MOTEUR N'ATTEINT LA PRODUCTION.**
+0. ✅ **LEVÉ le 23/09 au soir — Marc a purgé les versions Apps Script.** Le `deploy.yml`
+   relancé à 21:11 UTC est vert de bout en bout, et le moteur tourne sur le nouveau code :
+   **mesuré** au tick de 21:14 UTC, la Santé publie `Mémoire — comptes : 343/0/2734|2782/613|0|…`
+   et `Import — file : 2974/4240` — deux lignes que seule la nouvelle version écrit. Le récit
+   ci-dessous reste, parce que le plafond de 200 versions se REMPLIRA de nouveau (une version
+   par merge) et qu'il le fera sans prévenir.
+
+   *(Récit d'origine :)* 🔴🔴 **BLOQUANT — PLUS AUCUN CHANGEMENT DU MOTEUR N'ATTEINT LA PRODUCTION.**
 
    ⚠️ **Mesuré à nouveau le 23/09 à 15:27** : la Santé de production ne porte toujours pas
    `Import — file`, et `Lecture — file` y arrive au format d'avant C49-23. Rien n'a bougé. Ce

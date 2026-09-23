@@ -18,13 +18,14 @@
  *
  * ⚠️ IL S'ARRÊTE TOUT SEUL À LA FIN DE LA TRANCHE, et c'est le cœur de la décision de Marc :
  * « 04 et 01 en PREMIER, pour voir tout de suite ce que la Mémoire sait de mes papiers
- * d'identité — et si c'est mauvais, on arrête avant d'avoir dépensé ». Une campagne qui
- * enchaînerait sur les 3 862 autres papiers lui retirerait ce point d'arrêt sans rien dire.
- * Élargir la tranche est un geste DÉLIBÉRÉ (`RATTRAPAGE_PIECE_PREFIXES`), jamais un défaut.
+ * d'identité — et si c'est mauvais, on arrête avant d'avoir dépensé ». Élargir la tranche est
+ * un geste DÉLIBÉRÉ (`PREFIXES_DOMAINE_DECISIF_PIECE`), jamais un défaut — 04 + 01, puis 02,
+ * puis « tout le reste » le 23/09 (C49-26) : les neuf domaines.
  *
  * ⚠️ LE BUDGET N'EST PAS UNE ADDITION. Ce module ne reçoit aucune constante à lui : il
- * consomme le budget quotidien des PIÈCES (`AUDIT_PIECE_BUDGET_JOUR_MS`, 58 min prélevées :
- * 11 à la réconciliation en C49-3, puis 47 aux sept campagnes arrêtées en C49-20 — le détail
+ * consomme le budget quotidien des PIÈCES (`AUDIT_PIECE_BUDGET_JOUR_MS`, 54 min : 11 prélevées
+ * à la réconciliation en C49-3, 47 aux sept campagnes arrêtées en C49-20, moins 4 rendues à
+ * l'envoi Mémoire le 23/09 — le détail
  * par donneur vit dans `AUDIT_PIECE_DONNEURS_MIN`) et il ne démarre que quand l'audit n'a plus
  * rien à extraire.
  * Les deux sont donc mutuellement exclusifs, l'enveloppe de 63 min/j ne bouge pas d'une
@@ -104,11 +105,18 @@ function selectionnerRattrapage_(lignes, fileIdDe, faits, prefixes, max) {
   for (i = 0; i < prefixes.length; i++) res.parDomaine[prefixes[i]] = { tranche: 0, restants: 0 };
   if (!lignes || !lignes.length) return res;
 
+  // ⚠️ C49-26 — UN DOCUMENT, PAS UNE LIGNE. L'Index est append-only : un même fichier y porte
+  // souvent plusieurs lignes (`drive|…`, `migre|…`, `reanalyse|…`), et c'est justement le cas
+  // des dossiers que la tranche « tout le reste » ouvre (06 a été re-analysé, m1 a migré les
+  // autres). Compter et choisir des LIGNES faisait lire — et PAYER — le même papier deux fois
+  // dans un même run, et gonflait les restants affichés. On garde la ligne la PLUS RÉCENTE : son
+  // domaine est celui où le document vit aujourd'hui, et c'est lui qui décide du niveau.
+  var qualifiees = [];
+  var derniere = {};
   for (i = 0; i < lignes.length; i++) {
     var statut = String(lignes[i][5] || '').toLowerCase();
     if (statut.indexOf('class') !== 0) continue;
 
-    var cle = String(lignes[i][0] || '');
     var fileId = fileIdDe(lignes[i]);
     // Sans fileId — ni en clé, ni en colonne — le canal ne sait pas désigner ce document. Depuis
     // C49-16 c'est devenu RARE (la colonne est écrite à la pose, et la résolution rattrape
@@ -117,11 +125,23 @@ function selectionnerRattrapage_(lignes, fileIdDe, faits, prefixes, max) {
     // tomberait jamais à zéro et la tranche ne se terminerait jamais.
     if (!fileId) continue;
 
-    var nom = String(lignes[i][2] || '');
-    if (!estCandidatPiece_(nom)) continue;
+    if (!estCandidatPiece_(String(lignes[i][2] || ''))) continue;
 
-    var pref = prefixeDomainePiece_(lignes[i][3]);
-    if (!Object.prototype.hasOwnProperty.call(parPrefixe, pref)) continue;
+    var prefLigne = prefixeDomainePiece_(lignes[i][3]);
+    if (!Object.prototype.hasOwnProperty.call(parPrefixe, prefLigne)) continue;
+
+    qualifiees.push({ i: i, fileId: fileId, pref: prefLigne });
+    derniere[fileId] = i;
+  }
+
+  for (var k = 0; k < qualifiees.length; k++) {
+    var q = qualifiees[k];
+    if (derniere[q.fileId] !== q.i) continue; // une ligne plus récente du même document existe
+    var cle = String(lignes[q.i][0] || '');
+    var nom = String(lignes[q.i][2] || '');
+    var pref = q.pref;
+    fileId = q.fileId;
+    i = q.i;
 
     res.tranche++;
     res.parDomaine[pref].tranche++;
@@ -424,7 +444,7 @@ function phraseMotifRattrapage_(motif) {
  */
 function phraseFinRattrapage_(brut, tagCourant, dernierRefus) {
   if (!String(tagCourant || '')) {
-    return 'tranche non armée — poser CONFIG.RATTRAPAGE_PIECE_TAG pour lancer 04 + 01';
+    return 'tranche non armée — poser CONFIG.RATTRAPAGE_PIECE_TAG pour lancer la lecture';
   }
   if (!brut) return 'armée (« ' + tagCourant + ' »), jamais passée';
   var p = String(brut).split('|');
@@ -508,6 +528,10 @@ function encoderFilePiece_(parDomaine, prefixes) {
     var p = prefixes[i];
     var d = (parDomaine || {})[p];
     if (!d) continue;
+    // ⚠️ C49-26 — un dossier SANS rien à lire ne s'écrit pas : `07` et `09` sont des domaines
+    // auto, parfois vides, et « 07 ✅ (0) » s'affichait AVANT le dossier en cours — la direction
+    // lue devenait « 04 · 01 · 02 · 07 · 09 · 05 ». Rien à lire n'est pas « terminé ».
+    if (Number(d.tranche || 0) === 0) continue;
     out.push(p + ':' + Number(d.restants || 0) + '/' + Number(d.tranche || 0));
   }
   return out.join('·');
@@ -707,11 +731,15 @@ function etapeRattrapagePiece_(garde, opts) {
   // premiers documents d'une panne Drive globale seraient perdus pour toujours — le coupe-
   // circuit protégerait le troisième et pas eux.
   var lecturesRatees = 0;
+  var introuvables = 0;
   var marquesFragiles = [];
   res.fin = 'termine';
   for (var i = 0; i < choix.choisies.length; i++) {
     if (gardeRun()) { res.fin = 'budget'; break; }
     var doc = choix.choisies[i];
+    // ⚠️ Filet de la sélection dédoublonnée : un document déjà lu CE run (ou sous ce tag) ne se
+    // relit pas, quelle que soit la ligne d'Index qui l'a amené ici.
+    if (faits[doc.fileId] === 1) continue;
     // ⚠️ AVANT l'appel, jamais après : un état écrit après coup répond à « qu'est-ce qui a
     // été lu », pas à « qu'est-ce qui est en train d'être lu ». C'est toute la question.
     try { props.setProperty('DriveAI_PIECE_EN_COURS', encoderEnCoursPiece_(doc, Date.now())); }
@@ -726,10 +754,22 @@ function etapeRattrapagePiece_(garde, opts) {
     // la boucle brûlerait une extraction par document pour le même refus.
     if (issue === 'panne') { res.fin = 'canal-' + motif; break; }
 
-    if (motif === 'lecture-impossible') {
+    if (motif === 'lecture-impossible' || motif === 'introuvable') {
       lecturesRatees++;
+      if (motif === 'introuvable') introuvables++;
       marquesFragiles.push(doc.fileId);
-      if (lecturesRatees >= 3) {
+      // ⚠️ C49-26 — TROIS FICHIERS DISPARUS NE SONT PAS UNE PANNE. Sans cette sonde, trois
+      // documents supprimés qui se suivent dans l'Index refermaient le coupe-circuit, les
+      // marques étaient retirées, et le tick suivant les reprenait dans le MÊME ordre : la
+      // campagne s'arrêtait là pour toujours. Quand la série n'est faite QUE de fichiers
+      // introuvables et que Drive répond (le dossier racine se lit), ce sont trois verdicts :
+      // leurs marques restent, la série repart de zéro. Un throttle ou un refus, eux, gardent
+      // le comportement d'avant — c'est la cause d'échelle « tout le lot ».
+      if (lecturesRatees >= 3 && introuvables === lecturesRatees && driveRepondRattrapage_()) {
+        lecturesRatees = 0;
+        introuvables = 0;
+        marquesFragiles = [];
+      } else if (lecturesRatees >= 3) {
         res.fin = 'drive-illisible';
         for (var f = 0; f < marquesFragiles.length; f++) {
           if (faits[marquesFragiles[f]] === 1) { delete faits[marquesFragiles[f]]; res.restants++; res.echecs--; }
@@ -748,6 +788,7 @@ function etapeRattrapagePiece_(garde, opts) {
       // Le canal répond : un refus définitif est une réponse, donc la série est rompue et ce
       // qu'elle avait mis en doute est confirmé.
       lecturesRatees = 0;
+      introuvables = 0;
       marquesFragiles = [];
     }
 
@@ -822,7 +863,9 @@ var VERDICTS_DOCUMENT_RATTRAPAGE_ = {
                                // marque se pose), comptée à part : la noyer dans `echecs`
                                // ferait chercher une panne de canal là où il n'y en a pas.
   'piece-vide': 'echec',
-  'lecture-impossible': 'echec', // droits manquants, fichier disparu — voir le coupe-circuit
+  'lecture-impossible': 'echec', // droits manquants, throttle — voir le coupe-circuit
+  'introuvable': 'echec',        // fichier supprimé depuis son classement — idem, et il a une
+                                 // sonde à lui dans le coupe-circuit (C49-26).
                                  // de la boucle : en SÉRIE, la cause n'est plus le document.
   'ocr-echec': 'echec'
 };
@@ -830,6 +873,15 @@ function issueRattrapage_(motif) {
   var m = String(motif || '');
   if (!m) return 'panne';
   return VERDICTS_DOCUMENT_RATTRAPAGE_[m] || 'panne';
+}
+
+/**
+ * La sonde du coupe-circuit (C49-26) : Drive répond-il ? Une lecture de MÉTADONNÉE du dossier
+ * racine — aucun contenu, aucun document de Marc. Une exception veut dire que c'est le CANAL
+ * qui tombe, pas les trois fichiers.
+ */
+function driveRepondRattrapage_() {
+  try { return !!DriveApp.getRootFolder().getId(); } catch (e) { return false; }
 }
 
 /**
@@ -848,7 +900,12 @@ function rattraperUnDocument_(doc, manuel) {
     blob = fichier.getBlob();
   } catch (e) {
     journalErreur_('RattrapagePiece', 'Lecture impossible : ' + e);
-    return 'lecture-impossible';
+    // ⚠️ C49-26 — « ce fichier n'existe plus » se dit À PART : c'est la forme que prend un
+    // document supprimé après son classement (l'Index ne se réécrit jamais), et elle ne doit
+    // pas se confondre avec un throttle ou un refus, qui touchent tout le lot. Le coupe-circuit
+    // de la boucle s'en sert pour ne pas se refermer, à chaque tick, sur les trois mêmes
+    // fichiers disparus en tête de tranche.
+    return /No item with the given ID/i.test(String(e)) ? 'introuvable' : 'lecture-impossible';
   }
 
   var texte = extraireTexte_(blob);

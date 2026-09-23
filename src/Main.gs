@@ -710,10 +710,16 @@ function tickDriveAI() {
     //
     // Enveloppée, comme tout ce qui suit l'intake : un échec ne doit jamais le bloquer.
     try {
-      var tagPerimetre = null;
-      try { tagPerimetre = PropertiesService.getScriptProperties().getProperty('DriveAI_PERIMETRE_PIECE_TAG'); }
-      catch (ePerTag) { tagPerimetre = null; } // « je ne sais pas » ⇒ on recompte, c'est gratuit
-      if (perimetreDoitTourner_(tagPerimetre, CONFIG.PERIMETRE_PIECE_TAG) && !estBudgetDepasse()) {
+      var tagPerimetre = null, jourPerimetre = null;
+      try {
+        var propsPer = PropertiesService.getScriptProperties();
+        tagPerimetre = propsPer.getProperty('DriveAI_PERIMETRE_PIECE_TAG');
+        jourPerimetre = propsPer.getProperty('DriveAI_PERIMETRE_PIECE_JOUR');
+      } catch (ePerTag) { tagPerimetre = null; } // « je ne sais pas » ⇒ on recompte, c'est gratuit
+      // ⚠️ C49-26 — une fois par JOUR aussi : le compte des documents distincts est le
+      // dénominateur de « Import — file », et il doit suivre les documents classés depuis.
+      if (perimetreDoitTourner_(tagPerimetre, CONFIG.PERIMETRE_PIECE_TAG,
+          jourPerimetre, dateGmail_(new Date())) && !estBudgetDepasse()) {
         etapePerimetrePiece_();
       }
     } catch (e) { journalErreur_('PerimetrePiece', 'Comptage du périmètre différé : ' + e); }
@@ -860,7 +866,7 @@ function tickDriveAI() {
       etapeSuivie_('hub-resume', [], function () { majResumeHub_(); },
         function (e) { journalErreur_('Hub', 'MàJ résumé hub impossible : ' + e); });
       // La Mémoire (ADR-0059 phase 0) : DriveAI lui dit ce qui EXISTE et où. I/O pur, ZÉRO
-      // LLM ⇒ budget TAIL, plus son propre budget QUOTIDIEN (4 min/j, C28-135).
+      // LLM ⇒ budget TAIL, plus son propre budget QUOTIDIEN (8 min/j depuis C49-26, 4 en C28-135).
       // ÉTEINTE par défaut (`CONFIG.MEMOIRE_PUSH`) et doublement gardée par l'absence de jeton.
       //
       // ⚠️ REMONTÉE ICI le 16/09 (C28-135), AVANT l'historique du vrac et la validation des
