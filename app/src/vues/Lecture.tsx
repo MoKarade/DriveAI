@@ -84,6 +84,31 @@ function BarreDossier({ d, rang, langue }: { d: DossierLecture; rang: number; la
   );
 }
 
+/**
+ * Une ligne de document : le lien vers Drive, son dossier, un verdict, et une date facultative.
+ *
+ * ⚠️ UN composant pour les deux listes (« ce qu'il n'a pas pu lire », « les derniers ») : elles
+ * étaient deux copies du même balisage, et la première correction faite à l'une (le nom absent,
+ * le `rel` du lien) aurait manqué à l'autre sans que rien ne le signale.
+ */
+function LigneDocument(
+  { fileId, nom, domaine, verdict, classe, le, langue }:
+  { fileId: string; nom: string; domaine: string; verdict: string; classe: string; le?: string; langue: Langue },
+) {
+  return (
+    <li>
+      <a href={`https://drive.google.com/file/d/${fileId}/view`} target="_blank" rel="noreferrer noopener">
+        {/* ⚠️ Un nom absent se DIT : c'est une ligne écrite avant que le moteur ne l'inscrive,
+            pas un document sans nom. */}
+        {nom || t('lectureNomAbsent', langue)}
+      </a>
+      {domaine ? <span className="discret">{domaine}</span> : null}
+      <span className={`lecture-verdict verdict-${classe}`}>{verdict}</span>
+      {le ? <span className="discret">{le}</span> : null}
+    </li>
+  );
+}
+
 export function Lecture({ langue }: { langue: Langue }) {
   const { donnees } = useEtatGlobal();
   const [lus, setLus] = useState<DocumentLu[] | null>(null);
@@ -323,17 +348,10 @@ export function Lecture({ langue }: { langue: Langue }) {
           ) : (
             <ul className="lecture-liste">
               {manques.map((m) => (
-                <li key={m.fileId}>
-                  <a
-                    href={`https://drive.google.com/file/d/${m.fileId}/view`}
-                    target="_blank"
-                    rel="noreferrer noopener"
-                  >
-                    {m.nom || t('lectureNomAbsent', langue)}
-                  </a>
-                  {m.domaine ? <span className="discret">{m.domaine}</span> : null}
-                  <span className="lecture-verdict verdict-vide">{m.raison}</span>
-                </li>
+                <LigneDocument
+                  key={m.fileId} fileId={m.fileId} nom={m.nom} domaine={m.domaine}
+                  verdict={m.raison} classe="vide" langue={langue}
+                />
               ))}
             </ul>
           )}
@@ -351,20 +369,10 @@ export function Lecture({ langue }: { langue: Langue }) {
               {recents.map((d) => {
                 const v = verdictLecture(d.motif);
                 return (
-                  <li key={d.fileId + d.le}>
-                    <a
-                      href={`https://drive.google.com/file/d/${d.fileId}/view`}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                    >
-                      {/* ⚠️ Un nom absent se DIT : c'est une ligne écrite avant que le moteur
-                          ne l'inscrive, pas un document sans nom. */}
-                      {d.nom || t('lectureNomAbsent', langue)}
-                    </a>
-                    {d.domaine ? <span className="discret">{d.domaine}</span> : null}
-                    <span className={`lecture-verdict verdict-${v.classe}`}>{v.libelle}</span>
-                    <span className="discret">{d.le}</span>
-                  </li>
+                  <LigneDocument
+                    key={d.fileId + d.le} fileId={d.fileId} nom={d.nom} domaine={d.domaine}
+                    verdict={v.libelle} classe={v.classe} le={d.le} langue={langue}
+                  />
                 );
               })}
             </ul>

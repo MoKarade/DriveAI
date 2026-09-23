@@ -31,16 +31,19 @@ const REPONSE = {
 const QUAND = Date.parse('2026-09-23T20:00:00.000Z');
 
 /** Un contexte avec des Properties en mémoire et un `UrlFetchApp` scriptable. */
-function ctx(reponse, props) {
-  const store = new Map(Object.entries(props || {}));
+function ctx(reponse, initiales) {
+  const store = new Map(Object.entries(initiales || {}));
   const appels = [];
+  // ⚠️ UN SEUL objet de Properties : il sert au moteur (via `getScriptProperties`) ET aux cas
+  // qui appellent `rafraichirComptesMemoire_` directement. Deux copies du même littéral
+  // divergeraient au premier ajout d'une méthode, et le test lirait un autre registre que
+  // celui dans lequel le moteur a écrit.
+  const props = {
+    getProperty: (k) => (store.has(k) ? store.get(k) : null),
+    setProperty: (k, v) => { store.set(k, String(v)); },
+  };
   const c = load(['Config.gs', 'Consolidation.gs', 'Gmail.gs', 'Journal.gs', 'Memoire.gs'], {
-    PropertiesService: {
-      getScriptProperties: () => ({
-        getProperty: (k) => (store.has(k) ? store.get(k) : null),
-        setProperty: (k, v) => { store.set(k, String(v)); },
-      }),
-    },
+    PropertiesService: { getScriptProperties: () => props },
     UrlFetchApp: {
       fetch: (url, opts) => {
         appels.push({ url, opts });
@@ -52,7 +55,7 @@ function ctx(reponse, props) {
       },
     },
   });
-  return { c, store, appels };
+  return { c, store, appels, props };
 }
 
 const OK = { code: 200, texte: JSON.stringify(REPONSE) };
@@ -101,9 +104,9 @@ test('espacement : jamais lue → on lit ; dans la fenêtre → non ; au-delà �
 });
 
 test('succès : la Property porte l’encodage, et UN SEUL appel réseau', () => {
-  const { c, store, appels } = ctx(OK, { DriveAI_MEMORYAI_TOKEN: 'jeton' });
+  const { c, store, appels, props } = ctx(OK, { DriveAI_MEMORYAI_TOKEN: 'jeton' });
   c.rafraichirComptesMemoire_(
-    { getProperty: (k) => (store.has(k) ? store.get(k) : null), setProperty: (k, v) => store.set(k, String(v)) },
+    props,
     QUAND,
   );
   assert.strictEqual(appels.length, 1);
@@ -113,11 +116,7 @@ test('succès : la Property porte l’encodage, et UN SEUL appel réseau', () =>
 });
 
 test('L’HORODATAGE EST POSÉ AVANT L’APPEL — une Mémoire injoignable n’est pas re-sondée à chaque tick', () => {
-  const { c, store, appels } = ctx(new Error('réseau coupé'), { DriveAI_MEMORYAI_TOKEN: 'jeton' });
-  const props = {
-    getProperty: (k) => (store.has(k) ? store.get(k) : null),
-    setProperty: (k, v) => store.set(k, String(v)),
-  };
+  const { c, store, appels, props } = ctx(new Error('réseau coupé'), { DriveAI_MEMORYAI_TOKEN: 'jeton' });
   c.rafraichirComptesMemoire_(props, QUAND);
   assert.strictEqual(store.get('DriveAI_MEMOIRE_COMPTES'), '!réseau');
   assert.strictEqual(store.get('DriveAI_MEMOIRE_COMPTES_LE'), String(QUAND));
@@ -128,9 +127,9 @@ test('L’HORODATAGE EST POSÉ AVANT L’APPEL — une Mémoire injoignable n’
 
 test('le CODE HTTP est publié — 401 est un geste de Marc, 503 passera tout seul', () => {
   for (const code of [401, 503]) {
-    const { c, store } = ctx({ code, texte: '' }, { DriveAI_MEMORYAI_TOKEN: 'jeton' });
+    const { c, store, props } = ctx({ code, texte: '' }, { DriveAI_MEMORYAI_TOKEN: 'jeton' });
     c.rafraichirComptesMemoire_(
-      { getProperty: (k) => (store.has(k) ? store.get(k) : null), setProperty: (k, v) => store.set(k, String(v)) },
+      props,
       QUAND,
     );
     assert.strictEqual(store.get('DriveAI_MEMOIRE_COMPTES'), '!HTTP ' + code);
@@ -138,18 +137,18 @@ test('le CODE HTTP est publié — 401 est un geste de Marc, 503 passera tout se
 });
 
 test('un 200 ILLISIBLE n’écrit pas de zéros : il se nomme', () => {
-  const { c, store } = ctx({ code: 200, texte: 'pas du json' }, { DriveAI_MEMORYAI_TOKEN: 'jeton' });
+  const { c, store, props } = ctx({ code: 200, texte: 'pas du json' }, { DriveAI_MEMORYAI_TOKEN: 'jeton' });
   c.rafraichirComptesMemoire_(
-    { getProperty: (k) => (store.has(k) ? store.get(k) : null), setProperty: (k, v) => store.set(k, String(v)) },
+    props,
     QUAND,
   );
   assert.strictEqual(store.get('DriveAI_MEMOIRE_COMPTES'), '!réponse illisible');
 });
 
 test('SANS JETON : aucun appel, et aucune ligne « indisponible » qui se lirait comme une panne', () => {
-  const { c, store, appels } = ctx(OK, {});
+  const { c, store, appels, props } = ctx(OK, {});
   c.rafraichirComptesMemoire_(
-    { getProperty: (k) => (store.has(k) ? store.get(k) : null), setProperty: (k, v) => store.set(k, String(v)) },
+    props,
     QUAND,
   );
   assert.strictEqual(appels.length, 0);
