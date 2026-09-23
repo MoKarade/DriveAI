@@ -55,6 +55,7 @@ function initialiserSheet_(ss) {
   // cf. ecrireRapportPaies_). Onglet OUBLIÉ ici à la livraison → `feuille_('RapportPaies')` rendait
   // null et la mission plantait à CHAQUE tick (`getRange of null`, révélé par le MCP le 19/08).
   creerOnglet_(ss, 'RapportPaies', COLONNES_RAPPORT_PAIES); // constante partagée (Missions.gs)
+  creerOnglet_(ss, ONGLET_AUDIT_PIECE, COLONNES_AUDIT_PIECE); // C49-3, TEMPORAIRE (cf. viderAuditPieces)
   creerOnglet_(ss, 'RapportDoublons', COLONNES_RAPPORT_DOUBLONS); // constante partagée (Doublons.gs)
   // C28-26 (ADR-0023) : plan de CONSOLIDATION de l'arborescence — dry-run pur, validé par Marc
   // avant toute exécution. La colonne Empreinte est la mémoire de dédup de la campagne
@@ -246,6 +247,29 @@ function majSante_() {
     // aucun point d'observation, c'est le mode de panne du §1.6 mot pour mot (deux revues l'ont
     // relevé indépendamment). Une ligne, une écriture par tick, zéro octet de Property.
     ['Re-datation de 06 : ' + texteSanteReanalyse_()],
+    // La Mémoire (C28-135). Même raison que les trois lignes ci-dessus — le registre de suivi
+    // C28-44 est SATURÉ — et une raison PROPRE, payée le 16/09 : l'étape n'écrivait RIEN quand
+    // elle sortait sur son garde-temps, donc « rien à envoyer » et « jamais atteinte » étaient
+    // indiscernables, et le canal a eu l'air mort pendant une heure alors qu'il venait
+    // d'accepter 2 348 faits. Cette ligne DIT le POURQUOI de la dernière passe.
+    ['Mémoire (inventaire) : ' + texteSanteMemoire_()],
+    // Les PIÈCES (C49-2 bis). Ligne SÉPARÉE de l'inventaire, parce que les deux canaux
+    // tombent en panne pour des raisons différentes : l'inventaire ne coûte aucun appel LLM,
+    // l'extraction en coûte un par document. Une seule ligne pour les deux ferait lire le
+    // silence de l'un comme celui de l'autre.
+    ['Mémoire (pièces) : ' + texteSantePiece_()],
+    // L'AUDIT (C49-3). Ligne à part, et pas un détail : c'est la PORTE de l'ADR-0061, donc la
+    // seule chose qui bloque l'allumage de `PIECE_PUSH`. Sans elle, « l'audit avance » et
+    // « l'audit n'a jamais tourné » se lisent tous les deux comme un onglet qui ne bouge pas.
+    ['Audit des pièces (C49-3) : ' + texteSanteAuditPiece_()],
+    // Le PÉRIMÈTRE (C49-4 étape A). Ligne à part de l'audit, parce qu'elle répond à une AUTRE
+    // question : l'audit dit « l'extraction est-elle bonne ? », celle-ci dit « sur combien de
+    // documents ». C'est ce nombre qui dimensionne la campagne — sa durée, son coût, le budget
+    // à lui prélever — et il n'était mesuré NULLE PART : « 20 346 » est le compte de l'Index,
+    // pas celui des papiers.
+    ['Périmètre des pièces (C49-4) : ' + texteSantePerimetrePiece_()],
+    ['Rattrapage des pièces (C49-5) : ' + texteSanteRattrapagePiece_()],
+    ['Lecture par la file (L36) : ' + texteSanteLectureFile_()],
     ['Mis à jour : ' + new Date()]
   ];
   f.getRange(2, 1, lignes.length, 1).setValues(lignes); // une seule écriture Sheet (I/O borné/tick)

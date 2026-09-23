@@ -3,6 +3,11 @@
   "short_name": "DriveAI",
   "description": "Ton Drive, rangé tout seul",
   "start_url": "/",
+  "scope": "/",
+  "id": "/",
+  "launch_handler": {
+    "client_mode": "navigate-existing"
+  },
   "display": "standalone",
   "background_color": "#0F1216",
   "theme_color": "#0F1216",

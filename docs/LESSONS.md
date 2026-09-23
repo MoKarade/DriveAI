@@ -14,6 +14,48 @@
 
 ---
 
+## 2026-09-16 (après-midi) — Une étape en fin de `finally` n'est pas servie en dernier : elle n'est PAS servie
+**Contexte.** Le canal DriveAI → Mémoire venait d'être réparé (trois causes empilées le matin) et
+une exécution MANUELLE avait fait accepter **2 348 faits** d'un coup. Question posée à un
+check-in : le TICK, lui, pousse-t-il ? Mesuré une heure plus tard, ~12 ticks après : **zéro fait de
+plus**. Le moteur était parfaitement vivant (heartbeat à 11:10, toutes les missions actives), le
+Journal ne portait **aucune erreur Mémoire** depuis les 401 du matin, et rien — ni compteur, ni
+Santé, ni onglet — ne pouvait dire si l'étape avait été ATTEINTE, SUSPENDUE ou coupée par son
+garde-temps.
+
+**Leçon (deux moitiés, et il faut les deux).** (a) L'étape était le DERNIER appel du `finally`,
+donc elle recevait le reliquat du budget TAIL d'un tick qui l'avait déjà dépensé. C'est mot pour
+mot l'incident de la consolidation du 23/07, et la règle est la même : **l'ORDRE prime sur les
+budgets**. Ses deux voisines étaient objectivement moins pressées qu'elle — une sweep
+une-fois-par-jour, une campagne dont la ligne de Santé dit « terminée ✅ ». (b) Et surtout : sa
+sortie sur garde-temps **n'écrivait rien**. Le seul `journalErreur_` de la fonction visait un refus
+TOTAL (`envoyes > 0 && acceptes === 0`) ; une passe qui sort AVANT d'envoyer quoi que ce soit ne
+tombe dans aucune branche. Donc trois situations très différentes — « rien à envoyer », « jamais
+atteinte », « suspendue » — avaient un seul symptôme : le silence. C'est la règle « 0/0 et 0/6 ne
+disent pas la même chose » appliquée non plus à un compteur, mais à une ÉTAPE entière.
+
+Ce qui en sort, réutilisable : pour toute étape de tick, **lister ses sorties et vérifier que
+chacune écrit son motif**. Ici l'écriture est faite par UNE seule fonction (`noterFinMemoire_`),
+appelée au point de retour unique — pas dans chaque branche, sinon la prochaine sortie ajoutée
+l'oubliera. Et le motif se met en mots à l'écran : `jeton-absent`, `suspendu` et `jeton-refuse`
+portent un ⚠️ parce qu'ils demandent un GESTE, là où `budget` et `budget-jour` sont des pauses
+normales. Un motif inconnu se CITE au lieu de se taire.
+
+**Troisième défaut, trouvé en chemin, et il n'était pas cherché.** L'étape tournait depuis son
+déploiement **sans aucune constante `*_BUDGET_JOUR_MS`** — donc l'invariant d'enveloppe
+(`test/orchestration.test.js`) restait vert pendant qu'elle s'ajoutait au quota runtime. C'est
+exactement l'angle mort nommé en C28-42, re-payé. Ce qui l'a attrapé n'est pas une relecture : c'est
+l'INVENTAIRE des budgets, écrit précisément pour ça, qui a rougi sur la constante neuve. Et un
+second garde a rougi avec lui — celui qui vérifie que les minutes prêtées sont celles reçues :
+il comparait le prêt à UN receveur nommé, et il avait raison de tomber au second. Il somme
+désormais les receveurs : **une garde qui nomme un receveur se périme au premier suivant.**
+
+**Règle durable ?** oui — `CLAUDE.md` §9, entrée « Une étape en FIN de `finally` n'est pas
+"servie en dernier" : elle n'est PAS servie — et si elle ne DIT rien en sortant, la panne est
+invisible ».
+
+---
+
 ## 2026-09-15 (soir) — Une preuve se lit dans SON unité : « +4 appels » ne voulait pas dire ce que j'en ai tiré
 **Contexte.** Marc : « erreur 404 quand je fais une demande à l'assistant ». Cette fois j'ai commencé
 par demander le texte exact affiché — « Web app 404 » — au lieu de bâtir une hypothèse, et ça a bien
@@ -2969,3 +3011,122 @@ supprimé » ne collait pas — et c'était dans la première phrase de Marc, qu
 
 **Règle durable ?** oui — §9, en corollaire de « un garde-fou qui met des items HORS CIRCUIT exige un
 chemin de RETOUR auto » (même famille : l'observabilité d'un verdict d'exclusion).
+
+---
+
+## 2026-09-16 — Trois causes empilées sur un canal neuf, et la troisième était mon propre remède
+**Contexte.** Le canal DriveAI → MemoryAI (ADR-0059, chantier A) a été allumé le matin. Rien n'est
+arrivé de la journée, et il a fallu trois diagnostics successifs — chaque cause n'apparaissant
+qu'une fois la précédente réparée.
+
+1. **Un nom de champ.** Nous poussions `niveau`, le schéma `.strict()` de la Mémoire n'accepte que
+   `niveau_propose`. 4 000 faits refusés en `champ_inconnu`. ⚠️ Le refus arrive dans un **HTTP 200**
+   et notre code lisait `refuses.length` puis JETAIT les motifs : « 4 000 refusés » ne dit pas s'il
+   faut corriger un champ, un prédicat ou une valeur. La Mémoire, elle, envoyait le code.
+2. **Une rotation de jeton à moitié faite.** Nouvelle valeur posée côté Vercel + redéploiement à
+   13:48:55, ancienne valeur restée dans la Script Property ⇒ `Jeton refusé (401)` à 13:50, 13:53,
+   13:58. Ce qui l'a démasqué n'est pas le Journal mais l'HORODATAGE du redéploiement Vercel, 88
+   secondes avant le premier 401.
+3. **Un onglet d'éditeur Apps Script ouvert avant le `clasp push`.** Le run 345 était vert, son
+   journal listait `src/Memoire.gs`, et le projet exécutait quand même l'ANCIENNE version. L'IDE
+   sauvegarde sa copie en mémoire avant d'exécuter : un onglet chargé avant le push réécrit le
+   projet, en silence. Indice qui l'a trahi : des fichiers de diagnostic créés à la main, absents du
+   dépôt, avaient survécu au push.
+
+**Leçon.** Trois choses distinctes, chacune réutilisable ailleurs.
+
+- **Un contrat entre deux dépôts n'appartient à aucun des deux.** Les deux côtés étaient testés — une
+  liste FERMÉE ici (vie privée), un schéma STRICT là-bas (injection) — et aucun ne pouvait voir que
+  les deux listes ne se recouvrent pas. Parade : recopier la liste des champs ACCEPTÉS chez
+  l'émetteur, avec sa source, plus un test qui exige que tout champ produit y figure. Il ne prouve
+  pas que la recopie est fraîche ; il oblige à rouvrir le contrat au prochain champ ajouté.
+- **L'éditeur peut annuler un push, et c'est l'INVERSE du piège (3).** Le piège (3) dit qu'un tick
+  peut continuer l'ancien code, et son remède est d'ouvrir l'éditeur. Celui-ci dit que le PROJET peut
+  redevenir l'ancien code, et sa cause est l'éditeur ouvert. Le remède de l'un est le poison de
+  l'autre — d'où un diagnostic pénible tant qu'on ne les sépare pas. Ordre qui règle le cas : fermer
+  tous les onglets, POUSSER, rouvrir une page neuve, et vérifier la présence d'une constante que
+  seule la nouvelle version porte.
+- **Une exécution MANUELLE prouve le CODE, jamais le DÉCLENCHEUR.** `diagnosticMemoire` a fait
+  accepter 2 348 faits d'un coup depuis l'éditeur ; cinq minutes plus tard, `aValider` valait
+  toujours exactement 2 725, donc aucun tick n'avait rien ajouté. Le signal indépendant se prend sur
+  ce que la production AUTOMATIQUE écrit ENTRE deux ticks.
+
+**Corollaire de conduite.** Deux hypothèses fausses ont été publiées puis corrigées en chemin
+(« le moteur s'est arrêté » — c'était le MCP en retard ; « la variable Vercel n'est pas prise en
+compte » — le Journal disait le contraire). Les deux venaient d'avoir conclu depuis UNE source. La
+règle du dépôt tient : « indépendant » qualifie la NATURE de la source, pas le nombre d'appels.
+
+**Règle durable ?** oui — `CLAUDE.md` §9, deux entrées (le contrat entre deux dépôts ; l'onglet
+d'éditeur qui annule un push, avec son corollaire de mesure).
+
+## 2026-09-17 — C49-5 : le compteur écrasé par une sortie qui n'avait rien compté
+
+**Symptôme.** Quarante minutes après avoir armé le rattrapage des pièces, la Santé annonçait
+« Rattrapage des pièces (C49-5) : **0 restants** · ✅ tranche terminée ». Marc venait de lancer
+une passe manuelle qui rendait « **85 restants** », et la Mémoire n'avait reçu que 24 papiers
+sur 110. Aucune erreur nulle part.
+
+**Cause.** Les deux sorties précoces de `etapeRattrapagePiece_` — « l'audit tourne encore » et
+« budget du jour épuisé » — faisaient `res.restants = restantsRattrapage_(props) || 0`. Au
+premier passage du tick, la Property n'existait pas, `restantsRattrapage_` rendait `null`
+(« je ne sais pas », par conception et par test), et `|| 0` le convertissait en zéro. Ce zéro
+partait dans `DriveAI_RATTRAPAGE_PIECE_RESTANTS`, que la gate du tick relit.
+
+**Ce qui le rend traître.** La gate, elle, était juste : elle lit le TAG avant le compteur,
+exactement comme la leçon du matin même l'exigeait. Ce sont les branches de sortie qui
+alimentaient la gate avec une ignorance. Corriger la gate n'aurait rien réparé.
+
+**Et la règle était écrite, à trois lignes de là.** `restantsRattrapage_` rend `null` avec un
+commentaire qui dit pourquoi ; `rattrapageDoitTourner_` traite `null` comme « on continue », et
+un test le prouve. Le `|| 0` des sorties annulait les deux.
+
+**Correctif.** Le motif de fin s'écrit toujours ; le compteur seulement quand il a été mesuré
+(`typeof === 'number' && isFinite`). Un reste non mesuré se sérialise **vide** — pas `'0'`, pas
+`'null'` : `Number('')` vaut zéro, donc un lecteur naïf relirait « terminée » de toute façon. La
+phrase de Santé distingue « 0 restants » de « reste inconnu ». Trois mutations, dont le code
+exact de production, font tomber les nouveaux cas.
+
+**Réparation de l'état.** La Property valait `0` en production, donc la gate restait fermée. Le
+chemin manuel ne passe pas par elle : la première passe de Marc après le déploiement recompte et
+réécrit le vrai reste, ce qui rouvre la gate. Aucun bump de tag — il aurait refait les 25
+documents déjà partis, à leur coût.
+
+---
+
+## Un recensement ancré sur `npm ci` ne voit pas `npx` (2026-09-18, lot L2 de l'audit)
+
+Le lot L2 devait fermer deux surfaces de la chaîne de build : le `GITHUB_TOKEN` laissé lisible
+par `actions/checkout`, et les scripts d'installation de paquets exécutés sur le runner. J'ai
+recensé la seconde en cherchant `npm ci` et `npm install -g`, posé `--ignore-scripts` sur les
+trois sites trouvés, et déclaré le lot fini avec son compte rejoué.
+
+**Il restait `npx playwright install --with-deps chromium`.** `npx` télécharge le paquet depuis
+le registre quand il ne le trouve pas localement, **et exécute ses scripts de cycle de vie** —
+donc exactement la surface que `--ignore-scripts` venait de fermer, rouverte deux étapes plus
+bas, et sur une version non figée en plus (le registre sert la dernière). Le détail qui rend
+l'oubli traître : c'est mon propre `--ignore-scripts` qui a rendu cette étape NÉCESSAIRE
+(Playwright ne télécharge plus son navigateur à l'installation), donc le correctif a créé le
+besoin de l'étape qu'il laissait ouverte.
+
+C'est SonarCloud qui l'a dit, et pas dans les termes où je cherchais : « "npx" can install
+packages on-demand and run their lifecycle scripts » et « Define exact package version », deux
+constats vieux de deux mois sur `ci.yml`, que ma requête n'atteignait pas.
+
+**La règle** : un recensement de commandes d'installation s'énumère par ce qu'elles FONT
+(installer un paquet, exécuter un binaire qui peut s'installer), jamais par le nom d'une seule
+d'entre elles. La forme du jour couvre `npm ci`, `npm install`, `npm install -g` **et** `npx`.
+Mesuré le même jour sur les huit dépôts : **8 sites de plus** hors de ma requête initiale, chez
+FinanceAI (3) et JobAI (5), tous corrigés dans leur PR respective.
+
+**Le correctif est `npx --no-install`**, pas le retrait de l'étape : le binaire vient alors de
+`node_modules/.bin`, donc de la version qu'épingle le lockfile, et npx échoue franchement s'il
+manque au lieu d'aller le chercher. ⚠️ Il exige que l'étape d'installation vive dans le MÊME
+job — vérifié job par job avant de le poser, sinon le drapeau transforme un téléchargement
+silencieux en échec de CI.
+
+**Et une deuxième omission au même endroit** : `npm install -g @google/clasp@3.4.1` avait reçu
+sa version exacte mais pas `--ignore-scripts`, alors qu'une installation globale exécute les
+scripts du paquet avec les droits du runner — celui-là même qui porte `CLASPRC_JSON` et
+`SCRIPT_ID` deux étapes plus bas. Mesuré avant de poser le drapeau : clasp 3.4.1 ne déclare
+qu'un `prepare` (jamais exécuté à l'installation d'un paquet publié), et `clasp --version` rend
+bien « 3.4.1 » après une installation avec le drapeau.

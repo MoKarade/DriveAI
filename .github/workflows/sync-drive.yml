@@ -52,6 +52,12 @@ jobs:
       - name: Checkout
         if: steps.guard.outputs.ready == 'true'
         uses: actions/checkout@v5
+        with:
+          # [CI-PERSIST-CREDS] `actions/checkout` v2+ écrit le GITHUB_TOKEN dans la config git du
+          # runner POUR TOUT LE RESTE DU RUN : n'importe quelle étape suivante, y compris une
+          # action tierce, peut le lire. Vérifié un par un : aucun workflow de ce dépôt ne fait
+          # de `git push` ni d'appel `gh`, donc aucun n'a besoin du jeton persisté.
+          persist-credentials: false
 
       - name: Envoyer les fichiers par lots
         if: steps.guard.outputs.ready == 'true'

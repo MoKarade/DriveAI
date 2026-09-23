@@ -152,6 +152,21 @@ function traiterDocument_(src) {
 
     indexAjouter_(src.cle, decision, empreinte);
     journalInfo_('Pipeline', decision.statut + ' → ' + decision.chemin + ' : ' + decision.nom);
+
+    // LA PIÈCE (ADR-0061, C49-2 bis). Placée ICI, et pas ailleurs, pour trois raisons.
+    // (1) Le document est DÉJÀ placé et indexé : quoi qu'il arrive à l'extraction, il reste
+    //     rangé — l'ordre le garantit, le try/catch n'est que le filet.
+    // (2) `extrait` est encore en main. Le reprendre plus tard exigerait de le PERSISTER,
+    //     ce que §9 interdit (« ne JAMAIS persister le corps d'un document ») — l'ADR-0061 a
+    //     levé la sortie VERS la Mémoire, jamais le stockage local.
+    // (3) On ne l'appelle PAS sur les deux chemins `_Médias` ci-dessus : une photo sans texte
+    //     documentaire n'a aucune pièce à rendre, et payer un appel pour l'apprendre serait
+    //     un coût sans information.
+    // ⚠️ Livrée ÉTEINTE (`CONFIG.PIECE_PUSH`) : `traiterDocument_` est appelé par HUIT sites,
+    // dont `Reset.gs` et `Migration.gs`, donc l'allumer re-tarife AUSSI les campagnes en cours
+    // (leçon §9, vécue avec `ANALYSE_V2`).
+    try { pousserPieceApresClassement_(src, decision, extrait); }
+    catch (e) { journalErreur_('Pièce', 'Extraction/envoi échoué (le document reste classé) : ' + e); }
   } catch (e) {
     // Erreur inattendue (OCR, blob, Sheet...) : comptée comme un échec → re-tentée, ou
     // quarantaine après N échecs (évite un re-OCR/re-LLM en boucle sur un cas définitivement cassé).

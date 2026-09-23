@@ -289,6 +289,7 @@ function tickDriveAI() {
     reinitialiserPanneEcriture_();   // panne d'ÉCRITURE Gmail : nouvelle chance à chaque run
     reinitialiserUsage_();     // compteur de coût LLM du run (mesure réelle, P1-09)
     reinitialiserFreinBudget_(); // frein budget des campagnes (R3, §2.6), relu 1×/run
+    reinitialiserPiecesRun_();   // plafond d'extractions de pièces PAR EXÉCUTION (C49-2 bis)
 
     // Applique un éventuel changement d'intervalle (CONFIG.TICK_MINUTES) sans action manuelle,
     // et installe le déclencheur du résumé hebdo s'il manque. Secondaire : un échec ne doit
@@ -579,6 +580,105 @@ function tickDriveAI() {
     // quotidien (20 min/j) est RÉALLOUÉ au reset — l'enveloppe totale du quota runtime ne bouge pas,
     // donc aucun risque de gel des déclencheurs. C'est un RATTRAPAGE : quelques jours de retard sont
     // sans conséquence, et elle reprend SEULE à la convergence du reset (`resetEnCours_` repasse à false).
+    // AUDIT des pièces (C49-3, ADR-0061) : TERMINE l'échantillon de 100 documents que Marc a
+    // lancé — il ne l'amorce JAMAIS lui-même (tirer 100 documents, c'est lancer une campagne LLM
+    // que personne n'a demandée ; la garde est dans `etapeAuditPiece_`). Placée AVANT les
+    // campagnes de fond parce que c'est une PORTE : l'ADR-0061 interdit d'allumer `PIECE_PUSH`
+    // tant qu'elle n'est pas franchie, alors que rien n'attend derrière la re-datation de `06`.
+    // L'ORDRE prime sur les budgets (leçon §9, incident consolidation du 23/07).
+    //
+    // ⚠️ Elle S'ÉTEINT SEULE : la gate lit le compteur de restants que la passe écrit elle-même,
+    // donc à zéro elle ne coûte plus qu'une lecture de Property par tick. Aucun tag à poser,
+    // aucun geste pour l'arrêter — c'est tout l'intérêt, Marc n'a rien à lancer NI à éteindre.
+    //
+    // ⚠️ PAS d'`etapeSuivie_`, même raison que la Mémoire et la validation des doublons : le
+    // registre C28-44 est saturé (8 377/8 500 octets, ~199 par entrée) et une clé de plus fait
+    // échouer son tripwire de plafond. Les gates sont donc écrites ici, dans le MÊME ORDRE que
+    // leurs équivalents `gBudgetTick, gFreinCampagnes, gResetEnCours` — et la visibilité passe
+    // par `DriveAI_AUDIT_PIECE_FIN`, publié par `majSante_` : un run vert ne prouve pas qu'une
+    // étape a tourné (piège 3 §9), un motif de fin daté, si.
+    //
+    // Enveloppée : un échec de l'audit ne doit JAMAIS bloquer l'intake.
+    try {
+      // La gate d'extinction lit une Property (I/O) : son propre try, pour qu'un blip devienne
+      // un simple report au tick suivant et non une exception qui emporte l'étape.
+      var resteAudit = null;
+      try { resteAudit = resteAuditPiece_(PropertiesService.getScriptProperties()); }
+      catch (eAudit) { resteAudit = null; } // « je ne sais pas » ⇒ on laisse la passe compter
+      var tagAudit = null;
+      try { tagAudit = PropertiesService.getScriptProperties().getProperty('DriveAI_AUDIT_PIECE_TAG'); }
+      catch (eTag) { tagAudit = null; }
+      if (auditDoitTourner_(resteAudit, tagAudit, CONFIG.AUDIT_PIECE_TAG)
+          && !estBudgetDepasse() && !budgetCampagnesAtteint_() && !resetEnCours_()) {
+        etapeAuditPiece_(estBudgetDepasse, {});
+      }
+    } catch (e) { journalErreur_('AuditPiece', 'Audit des pièces différé : ' + e); }
+
+    // RATTRAPAGE DES PIÈCES (C49-5 étape B) : faire partir vers la Mémoire le CONTENU des
+    // papiers DÉJÀ classés, `04` puis `01`. Placée JUSTE APRÈS l'audit, et ce n'est pas un
+    // détail de style : les deux partagent le budget quotidien des pièces et sont mutuellement
+    // exclusifs (celle-ci refuse de démarrer tant que l'audit a quelque chose à extraire).
+    // L'ORDRE prime sur les budgets — une étape reléguée en fin de `finally` reçoit le reliquat
+    // d'un tick qui l'a déjà dépensé, et c'est l'incident du 16/09.
+    //
+    // ⚠️ Le frein en DOLLARS est vérifié DEUX fois : ici, et dans l'étape elle-même. Cette
+    // campagne dépense, contrairement au comptage du périmètre juste en dessous.
+    //
+    // Enveloppée : un échec du rattrapage ne doit JAMAIS bloquer l'intake.
+    try {
+      var resteRatt = null;
+      try { resteRatt = restantsRattrapage_(PropertiesService.getScriptProperties()); }
+      catch (eRatt) { resteRatt = null; } // « je ne sais pas » ≠ « zéro » : on laisse compter
+      var tagRatt = null;
+      try { tagRatt = PropertiesService.getScriptProperties().getProperty('DriveAI_RATTRAPAGE_PIECE_TAG'); }
+      catch (eRattTag) { tagRatt = null; }
+      if (rattrapageDoitTourner_(resteRatt, tagRatt, CONFIG.RATTRAPAGE_PIECE_TAG)
+          && !estBudgetDepasse() && !budgetCampagnesAtteint_() && !resetEnCours_()) {
+        etapeRattrapagePiece_(estBudgetDepasse, {});
+      }
+    } catch (e) { journalErreur_('RattrapagePiece', 'Rattrapage des pièces différé : ' + e); }
+
+    // LECTURE PAR LA FILE (L36) : le stock COMPLET, dans l'ordre que la Mémoire sert. Placée
+    // JUSTE APRÈS le rattrapage : les trois campagnes des pièces partagent le même budget
+    // quotidien et sont mutuellement exclusives — celle-ci refuse de démarrer tant que
+    // l'audit ou la tranche C49-5 ont quelque chose à faire.
+    //
+    // ⚠️ La gate lit UNE Property et ne touche pas au réseau : file vide ⇒ une re-sonde toutes
+    // les six heures, pas 288 appels par jour pour apprendre qu'il n'y a rien.
+    //
+    // Enveloppée : un échec de la lecture ne doit JAMAIS bloquer l'intake.
+    try {
+      var etatFile = null;
+      try {
+        etatFile = decoderEtatLectureFile_(
+          PropertiesService.getScriptProperties().getProperty('DriveAI_LECTURE_FILE_ETAT'),
+          CONFIG.LECTURE_FILE_TAG);
+      } catch (eFile) { etatFile = null; } // « je ne sais pas » ⇒ on laisse la passe sonder
+      if (lectureFileDoitTourner_(CONFIG.LECTURE_FILE_TAG, etatFile, Date.now())
+          && !estBudgetDepasse() && !budgetCampagnesAtteint_() && !resetEnCours_()) {
+        etapeLectureFile_(estBudgetDepasse, {});
+      }
+    } catch (e) { journalErreur_('LectureFile', 'Lecture par la file différée : ' + e); }
+
+    // PÉRIMÈTRE DES PIÈCES (C49-4 étape A) : combien de documents la Mémoire aurait à lire.
+    // Placée APRÈS l'audit et gatée sur son TAG seul : c'est une passe ONE-SHOT — une lecture
+    // de l'Index en un `getValues`, puis plus jamais. Aucun appel LLM, aucun octet qui sort du
+    // compte Google : elle n'a donc rien à attendre de la porte C49-3, qui garde l'ENVOI.
+    //
+    // ⚠️ Pas de garde de frein LLM ici, et ce n'est pas un oubli : cette étape ne peut pas
+    // dépenser un dollar. L'y soumettre ferait attendre une MESURE — celle qui dimensionne la
+    // campagne — à cause d'un budget qu'elle ne consomme pas.
+    //
+    // Enveloppée, comme tout ce qui suit l'intake : un échec ne doit jamais le bloquer.
+    try {
+      var tagPerimetre = null;
+      try { tagPerimetre = PropertiesService.getScriptProperties().getProperty('DriveAI_PERIMETRE_PIECE_TAG'); }
+      catch (ePerTag) { tagPerimetre = null; } // « je ne sais pas » ⇒ on recompte, c'est gratuit
+      if (perimetreDoitTourner_(tagPerimetre, CONFIG.PERIMETRE_PIECE_TAG) && !estBudgetDepasse()) {
+        etapePerimetrePiece_();
+      }
+    } catch (e) { journalErreur_('PerimetrePiece', 'Comptage du périmètre différé : ' + e); }
+
     etapeSuivie_('histo-gmail', [gBudgetTick, gFreinCampagnes, gResetEnCours],
       function () { traiterGmailHistorique_(estBudgetDepasse); },
       function (e) {
@@ -720,6 +820,27 @@ function tickDriveAI() {
       // délai du broker Vercel — 500 en boucle). SECONDAIRE et enveloppée : un échec ne bloque rien.
       etapeSuivie_('hub-resume', [], function () { majResumeHub_(); },
         function (e) { journalErreur_('Hub', 'MàJ résumé hub impossible : ' + e); });
+      // La Mémoire (ADR-0059 phase 0) : DriveAI lui dit ce qui EXISTE et où. I/O pur, ZÉRO
+      // LLM ⇒ budget TAIL, plus son propre budget QUOTIDIEN (4 min/j, C28-135).
+      // ÉTEINTE par défaut (`CONFIG.MEMOIRE_PUSH`) et doublement gardée par l'absence de jeton.
+      //
+      // ⚠️ REMONTÉE ICI le 16/09 (C28-135), AVANT l'historique du vrac et la validation des
+      // doublons. Elle était en toute fin de `finally`, donc dernière servie sur le reliquat de
+      // budget TAIL : le 16/09 elle n'a rien poussé pendant une heure alors que le tick tournait
+      // toutes les 5 min et que le canal venait d'accepter 2 348 faits à la main. C'est
+      // exactement l'incident du 23/07 (consolidation affamée en fin de `finally`) : **l'ORDRE
+      // prime sur les budgets**, et ses deux voisines sont moins pressées qu'elle — l'historique
+      // du vrac est une sweep une-fois-par-jour, la validation des doublons est TERMINÉE.
+      //
+      // ⚠️ PAS d'`etapeSuivie_` : le registre C28-44 est saturé (8 377/8 500 octets, ~199 par
+      // entrée) et une clé de plus ferait échouer son tripwire. La visibilité passe par
+      // `DriveAI_MEMOIRE_FIN` (POURQUOI la passe s'est arrêtée) et `DriveAI_MEMOIRE_EMIS` (le
+      // cumul), tous deux publiés par `majSante_` — un run vert ne prouve pas qu'un code déployé
+      // a pris effet (piège 3 §9), un compteur qui monte, si.
+      //
+      // Enveloppée : une panne de la Mémoire ne doit JAMAIS bloquer l'intake.
+      try { pousserInventaireMemoire_(estBudgetDepasseStandard); }
+      catch (e) { journalErreur_('Mémoire', 'Envoi de l\'inventaire impossible : ' + e); }
       // Historique QUOTIDIEN du vrac par domaine (demande Marc 2026-08-12) : I/O pur (comptage
       // Drive), jamais de LLM ⇒ budget TAIL (4,5 min), jamais le budget de tick 3 min. Une seule
       // sweep complète par jour, curseur reprenable sur plusieurs ticks si besoin ; ne mute rien,
@@ -1146,8 +1267,14 @@ function texteSanteHistoGmail_() {
       // prête une SECONDE fois des minutes déjà cédées — l'enveloppe se creuse sans que personne
       // ne voie le double emploi. Le donneur annonce donc son solde, pas seulement son budget.
       var pretees = CONFIG.GMAIL_HISTO_PRETEES_MIN || 0;
+      // ⚠️ Un budget à ZÉRO ne se dit pas « réallouable » : à zéro la campagne est MUETTE, et
+      // la phrase inviterait à prendre ce qui n'existe plus. Le donneur annonce alors son état.
+      if (!budget) {
+        return 'terminée ✅ — donneur À SEC : ses ' + pretees + ' min/j sont DÉJÀ prêtées. '
+          + 'Prélever ailleurs.';
+      }
       return 'terminée ✅ — ses ' + budget + ' min/j sont RÉALLOUABLES' +
-        (pretees ? ' (' + pretees + ' min déjà prêtées à la re-analyse)' : '');
+        (pretees ? ' (' + pretees + ' min déjà prêtées à la re-analyse, à la Mémoire et à l\'audit)' : '');
     }
     // ⚠️ Le COMPTE de fils n'est PAS répété ici : l'onglet Progression le porte déjà, et de façon
     // MONOTONE (l'offset brut repart à 0 aux passes de vérification — c'est une position de scan,

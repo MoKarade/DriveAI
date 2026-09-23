@@ -338,8 +338,14 @@ ce qui reste vrai d'une session à l'autre.
   log doit respecter cet invariant (à verrouiller par un test, roadmap #1).
   **Ce qui SORT du compte Google de Marc se juge à part, et se tranche par un ADR** : le texte des
   documents vers claude.ai (ADR-0042 §3), le nom du dernier document classé vers hubperso.com
-  (ADR-0057 §3). Chaque sortie nomme la frontière franchie ET le garde-fou obtenu en échange —
-  jamais une permission nue.
+  (ADR-0057 §3), et **l'inventaire vers la Mémoire** (ADR-0059 §3 point 2 — un fait
+  `document.existe` par document classé, sa VALEUR est un `fileId`, `Memoire.gs`). Chaque sortie
+  nomme la frontière franchie ET le garde-fou obtenu en échange — jamais une permission nue.
+  Pour la troisième : liste de champs FERMÉE et testée (`test/memoire.test.js`), niveau dérivé
+  par le CODE depuis le domaine (04, 01 ⇒ N3), aucun émetteur sur un document N3, `MEMOIRE_PUSH`
+  (livré éteint, **allumé par Marc le 2026-09-16** — un test verrouille sa valeur dans les deux
+  sens), jeton en second verrou, et ZÉRO appel LLM — tout se lit dans l'Index et dans
+  le nom du fichier.
 - **Garde-fou étroit, calibré sur du réel.** Un flag de protection (ex. `sensible`) doit viser
   des catégories précises (immigration + fiscal), pas « true par défaut » — sinon tout part en
   revue et l'auto-rangement est neutralisé. Le défaut prudent ne sert que pour les réponses LLM
@@ -669,6 +675,41 @@ ce qui reste vrai d'une session à l'autre.
   ré-exécute. Et toute rejouabilité se déclare PAR APPELANT, sans défaut (un oubli ne compile pas) —
   le dépôt avait déjà tranché « `chat-assistant` PAS rejouable » ailleurs, et deux composants
   n'ont pas le droit de rendre des verdicts contraires sans se citer.
+- **Un onglet d'éditeur Apps Script ouvert AVANT un `clasp push` peut l'annuler — et le
+  déploiement reste vert.** Le 2026-09-16, le run 345 a poussé `src/Memoire.gs` (fichier listé
+  dans son journal, étapes toutes vertes), et le projet a continué d'exécuter l'ANCIENNE
+  version : le fichier collé par Marc depuis son éditeur portait encore `niveau`, sans une
+  ligne du correctif. L'IDE garde en mémoire ce qu'il a chargé et le SAUVEGARDE avant
+  d'exécuter — un onglet ouvert avant le push réécrit donc le projet avec sa copie périmée,
+  en silence. L'indice qui l'a trahi : des fichiers de diagnostic créés à la main, absents du
+  dépôt, avaient survécu au push. Ordre qui règle le cas : **fermer tous les onglets de
+  l'éditeur, POUSSER, rouvrir une page neuve** — et vérifier la présence d'une constante que
+  seule la nouvelle version porte avant de conclure quoi que ce soit.
+  ⚠️ **Distinct du piège (3), et il faut les deux** : celui-là dit qu'un tick peut continuer
+  l'ancien code ; celui-ci dit que le PROJET peut redevenir l'ancien code. Le premier se
+  répare en ouvrant l'éditeur, le second est CAUSÉ par l'éditeur ouvert — le remède de l'un
+  est le poison de l'autre, ce qui rend le diagnostic pénible tant qu'on ne les sépare pas.
+  ⚠️ **Corollaire de MESURE, payé le même jour** : une exécution MANUELLE réussie prouve que
+  le CODE est bon, jamais que le DÉCLENCHEUR l'exécute. `diagnosticMemoire` a poussé
+  2 348 faits d'un coup depuis l'éditeur pendant que le tick, lui, n'en poussait aucun — et
+  le compteur de la Mémoire restait figé sur ce que la main avait envoyé. Un signal
+  indépendant se prend sur ce que la PRODUCTION AUTOMATIQUE écrit entre deux ticks, jamais
+  sur le résultat d'un lancement à la main.
+- **Un contrat entre deux dépôts n'appartient à aucun des deux — et chacun le teste chez lui,
+  donc personne ne teste le chaînon.** Le 2026-09-16, l'envoi vers la Mémoire a été allumé,
+  les deux jetons posés, le code déployé, le tick vert : **4 000 faits refusés, zéro accepté**,
+  et rien nulle part. Nous poussions un champ `niveau`, son schéma `.strict()` n'accepte que
+  `niveau_propose`. Les deux côtés étaient testés — une liste FERMÉE ici (vie privée), un
+  schéma STRICT là-bas (injection) — et aucun des deux ne pouvait voir que les deux listes ne
+  se recouvrent pas. Parade : recopier la liste des champs ACCEPTÉS dans le dépôt émetteur,
+  avec sa source, et un test qui exige que tout champ produit y figure. Il ne prouve pas que la
+  recopie est fraîche (rien ici ne peut le savoir) ; il oblige à rouvrir le contrat au prochain
+  champ ajouté, ce qu'un `grep` ne fait jamais tout seul.
+  ⚠️ **Et ce qui a rendu la panne MUETTE est à part** : un refus de contrat arrive dans un
+  **HTTP 200**, et le compteur `refuses` était lu puis jeté — « 4 000 » sans le mot
+  `champ_inconnu` ne dit pas s'il faut corriger un champ, un prédicat ou une valeur. Un refus
+  se NOMME (la Mémoire envoyait le code ; nous ne le lisions pas), et une passe qui envoie sans
+  rien faire accepter le DIT au Journal : c'est une panne de contrat, pas un jour sans document.
 - **Un verdict se prend sur une LECTURE, jamais sur l'échec d'une MUTATION — et les mutations de
   test se jouent DANS LES DEUX SENS.** Apprendre « je n'ai pas le droit » en essayant puis en lisant
   la 403 fait naître la décision dans un `catch`, hors de la fonction de garde, donc sans qu'AUCUNE
@@ -1139,11 +1180,149 @@ ce qui reste vrai d'une session à l'autre.
   la suite reste verte, elle n'est pas testée — quoi qu'en dise son jsdoc. Et le corpus de preuve
   doit contenir la population que la garde PROTÈGE : un corpus dont chaque ligne est sauvée par une
   AUTRE règle ne peut rien détecter.
+- **Une étape en FIN de `finally` n'est pas « servie en dernier » : elle n'est PAS servie — et
+  si elle ne DIT rien en sortant, la panne est invisible.** Deux défauts distincts, payés
+  ensemble le 16/09 (C28-135). (a) L'envoi à la Mémoire était le dernier de la file du
+  `finally`, donc il recevait le reliquat de budget TAIL d'un tick qui l'avait déjà dépensé :
+  zéro fait poussé pendant une heure, pendant que le tick tournait toutes les 5 min et que le
+  canal venait d'accepter 2 348 faits À LA MAIN. C'est mot pour mot l'incident de la
+  consolidation du 23/07 — **l'ORDRE prime sur les budgets**, et les deux voisines qui la
+  précédaient étaient moins pressées qu'elle (une sweep quotidienne, une campagne TERMINÉE).
+  (b) La sortie sur garde-temps n'écrivait RIEN : pas de Journal (le seul `journalErreur_`
+  visait un refus total), pas de compteur, pas de ligne de Santé — donc « rien à envoyer »,
+  « jamais atteinte » et « suspendue » avaient le MÊME symptôme, le silence. Réflexe, pour
+  toute étape de tick : **lister ses sorties, et vérifier que chacune écrit son motif** (ici
+  `DriveAI_MEMOIRE_FIN` = `<ISO>|<fin>|<envoyés/acceptés/déjà>|<ligne>/<dernière>`, une seule
+  fonction l'écrit pour qu'aucun `return` ne l'oublie, et `majSante_` la rend lisible sans rien
+  exécuter). C'est la règle « 0/0 et 0/6 ne disent pas la même chose » appliquée à une étape
+  entière. ⚠️ Corollaire : cette étape tournait aussi **sans aucune constante `*_BUDGET_JOUR_MS`**
+  — donc l'invariant d'enveloppe restait vert pendant qu'elle s'ajoutait au quota runtime. C'est
+  l'angle mort déjà nommé en C28-42, re-payé : ses 4 min/j sont désormais PRÉLEVÉES sur
+  l'historique Gmail (12 → 8), et `test/orchestration.test.js` en fait sa 10ᵉ jambe.
+- **Une surface qui ne distingue pas la MAIN du DÉCLENCHEUR fait conclure « ça marche » sur
+  la preuve d'un geste humain.** Le 16/09, `diagnosticMemoire` a poussé 2 348 faits depuis
+  l'éditeur ; le compteur montait, la ligne de Santé disait « passe terminée », et le tick
+  n'envoyait rien depuis une heure. La leçon « une exécution MANUELLE prouve que le CODE est
+  bon, jamais que le DÉCLENCHEUR l'exécute » était déjà écrite — ce qui manquait, c'est que
+  **la surface le rappelle à celui qui la lit** : un 5ᵉ champ `manuel`/`tick` dans
+  `DriveAI_MEMOIRE_FIN`, et la phrase qui le dit. Réflexe : pour toute observabilité qui
+  résume « la dernière passe », demander **qui l'a lancée**, et si la réponse ne s'y lit pas,
+  la surface ment par omission au pire moment — celui où l'on vient de réparer quelque chose
+  et où l'on cherche une confirmation. ⚠️ Un champ ajouté à un état déjà PERSISTÉ se met **en
+  queue**, et son absence doit se lire comme la valeur d'AVANT (ici : pas de 5ᵉ champ ⇒ tick).
+- **Un `opts.X` lu par le moteur et passé par personne est une intention jamais livrée** —
+  et le jour où on en a besoin, il est trop tard. `opts.manuel` était lu en TROIS endroits de
+  `passeMemoire_` (gate, budget par run, comptage), testé, commenté… et le seul appelant était
+  le tick, qui ne le passe jamais. Coût réel : le jeton de la Mémoire réparé à 17 h, le budget
+  du jour épuisé, et rien pour forcer une passe avant minuit — alors que le code pour le faire
+  était là depuis le matin. C'est `UN-CHAMP-TYPE-SANS-PRODUCTEUR` appliqué à une OPTION, et
+  c'est plus discret : un champ absent d'un formulaire se voit, un paramètre optionnel que
+  personne ne passe ressemble à du code qui marche. Réflexe : `grep` les APPELANTS d'une
+  option, jamais ses lecteurs. Et un chemin que seul un humain emprunte a besoin d'être
+  déclaré dans `test/surface-moteur.test.js` — rien d'autre ne le retient.
+- **Un bouton RECOUVERT s'affiche parfaitement — une correction de mise en page se MESURE dans
+  un navigateur.** Les trois verdicts de l'audit (C49-3) tombaient sous la barre d'onglets du
+  téléphone : « Juste » à y=788 pour une barre qui commence à y=783, même après défilement. Le
+  geste principal de l'écran était inatteignable, le CSS était correct, le build vert et la suite
+  verte — rien ne pouvait le dire. Ce qui l'a trouvé : ouvrir la page dans Chromium au format
+  d'un téléphone et COMPARER les rectangles (`boundingBox`), pas regarder la capture. ⚠️ Une
+  capture `fullPage` ne tranche RIEN pour ça : un élément `position: fixed` y apparaît superposé
+  au milieu du contenu déroulé, donc elle montre un chevauchement même quand il n'y en a pas — et
+  l'inverse est vrai aussi. ⚠️ Et le remède se verrouille au MÊME seuil que ce qu'il évite : deux
+  media queries différentes rouvrent une fenêtre de largeurs où les boutons se collent au mauvais
+  endroit (`test/seuil-telephone.test.ts` le tient déjà pour la coquille).
+- **Une fixture qui ne ressemble pas à la donnée RÉELLE valide une hypothèse, pas un format.**
+  L'audit des pièces a écrit « [object Object] » dans sa colonne Champs au PREMIER usage réel :
+  `champs` n'est pas une carte de scalaires, c'est `{"montants": [{"libelle","valeur"}], …}` —
+  la forme que le prompt DEMANDE, trois lignes plus haut dans le même dépôt. Un `String()`
+  dessus ne lève pas, ne casse aucun test, et rend la ligne injugeable. Mes fixtures portaient
+  des scalaires, donc les onze cas étaient verts sur un format qui n'existe pas. Réflexe : pour
+  tout champ produit par un modèle, **construire la fixture depuis le PROMPT** (ou depuis une
+  réponse réelle), jamais depuis l'idée qu'on se fait du champ. ⚠️ Corollaire de réparation :
+  une extraction déjà ÉCRITE ne se répare pas en corrigeant le code qui l'écrit — il faut un tag
+  de version qui la refait (patron `MIGRATION_TAG`), sinon le correctif ne vaut que pour les
+  lignes futures et l'utilisateur continue de lire les anciennes.
+- **Le DONNEUR d'une réallocation de budget se fait choisir par les tests, pas par le raisonnement.**
+  Pour financer l'audit (C49-3), les deux donneurs « évidents » ont été refusés : l'historique
+  Gmail, pourtant TERMINÉ et déclaré réallouable par le moteur lui-même, rend 20 de ses tests
+  rouges dès qu'on le met à zéro (un budget quotidien nul rend une campagne MUETTE, et ces tests
+  encodent la conception inverse — ils ne se re-basent pas) ; la re-datation de `06` perd 25 % de
+  son budget en marge de démarrage dès qu'on la coupe en deux, et son propre commentaire annonçait
+  « ≤ 1 min sur 8 », donc il serait devenu faux en silence. Le poste retenu est celui que PERSONNE
+  n'attend : une campagne perpétuelle en lecture seule. Réflexe : proposer le transfert, lancer le
+  gate, et lire ce qui rougit AVANT d'écrire la justification — c'est le parc qui sait quel budget
+  garantit quoi ailleurs.
+- **Une GATE d'extinction qui ne lit pas le TAG rend INERTE le remède gaté par ce tag.** Le
+  17/09, le correctif de l'audit des pièces a été livré, la CI verte, le moteur déployé — et
+  **zéro ligne ré-extraite après deux ticks**. La ré-extraction vit DANS la passe, gatée par
+  `AUDIT_PIECE_TAG` ; la gate du tick, elle, éteignait l'étape sur `restants === 0`. Donc :
+  l'étape ne tourne plus ⇒ le tag n'est jamais lu ⇒ rien ne remet de lignes « à faire » ⇒ le
+  compteur ne repasse jamais au-dessus de zéro ⇒ l'étape ne tournera **jamais**. Interblocage
+  parfait, et la Santé annonçait « 0 restants — à toi de juger », c'est-à-dire l'état NORMAL.
+  Réflexe : pour tout remède gaté par une version, demander **qui appelle le code qui lit la
+  version**, et si cet appelant peut s'éteindre ; la décision devient alors une fonction PURE qui
+  consulte les DEUX (`auditDoitTourner_(reste, tagPersiste, tagCourant)`), testable et mutable.
+  ⚠️ **Et le second défaut était pire que le premier** : même la gate corrigée, la branche de
+  sortie « budget du jour épuisé » relisait le compteur PERSISTÉ — c'est-à-dire la valeur
+  d'AVANT la ré-extraction. Elle aurait réécrit « 0 restants » sur 100 lignes qu'on venait de
+  vider, le tag étant déjà posé : la gate se refermait pour de bon sur des cartes VIDES, l'audit
+  détruit au lieu d'être réparé. Un compteur qui sert de gate se relit **depuis la SOURCE** (ici
+  la feuille) dès que quelque chose vient de la modifier, jamais depuis son propre cache.
+  ⚠️ Corollaire de preuve : la mutation « la branche budget-jour relit l'ancien compteur » est
+  restée VERTE au premier jet — le défaut le plus grave des trois était celui qu'aucun test ne
+  voyait. Une mutation muette sur le chemin le plus coûteux se traite avant d'écrire le rapport.
+
+- **Une `var(--x)` qui n'existe pas ne « retombe » pas sur la règle précédente : la propriété
+  prend sa valeur INITIALE.** Le 17/09, une règle ajoutée pour AGRANDIR les cases d'un panneau
+  disait `min-height: var(--cible)` — un jeton de **Hubperso**, absent de ce dépôt. Mesuré au
+  navigateur : `min-height` calculé à `auto`, cases à **26 px au lieu de 44**. La règle censée
+  agrandir avait rapetissé, en écrasant le `min-height: 44px` de la règle de base. Ni le build,
+  ni les tests, ni l'œil sur un écran large ne pouvaient le dire.
+  ⚠️ Deux enseignements distincts. (a) **Les jetons ne traversent pas les dépôts** : le parc
+  partage des conventions, pas des feuilles de style — recopier une règle d'un dépôt voisin
+  importe ses variables, qui n'existent pas ici. (b) La garde qui l'attrape est générale et
+  tient en dix lignes (« toute `var()` sans repli est définie dans la feuille ») — et elle a
+  trouvé un SECOND fantôme dans le même lot, `--texte-2`, que je n'avais pas vu. Un `var()` AVEC
+  repli reste légitime : il ne peut pas tomber en `auto`.
+  ⚠️ Corollaire de MESURE, du même lot : un harnais qui mesure une page **non défilée** rend un
+  faux « bouton recouvert » — un `position: sticky` ne prend qu'AU SCROLL. Le geste réel se
+  reproduit (défiler, puis viser), sinon on « corrige » une mise en page qui marchait.
+
+- **Une sortie PRÉCOCE ne doit jamais écrire le compteur que sa propre GATE relit.** Le 17/09
+  à 18:35, la branche « l'audit tourne encore » de `etapeRattrapagePiece_` faisait
+  `restantsRattrapage_(props) || 0` : la Property n'existait pas, elle a donc écrit **0** — un
+  chiffre qu'aucune mesure n'avait produit. En chaîne : la gate lit 0, `rattrapageDoitTourner_`
+  rend `false`, l'étape ne tourne **plus jamais**, et la Santé annonce « ✅ tranche terminée »
+  alors qu'il restait **85 papiers sur 110**. Un message rassurant et faux, sur une campagne
+  qui venait d'être allumée.
+  ⚠️ C'est l'interblocage du 17/09 au MATIN (`UNE-GATE-D-EXTINCTION-QUI-NE-LIT-PAS-LE-TAG…`)
+  repris par l'autre bout, et c'est ce qui le rend traître : la gate était correcte — elle
+  lisait bien le tag —, c'est le COMPTEUR qu'elle consulte qui avait été écrasé par une
+  ignorance. Corriger la gate n'aurait rien réparé.
+  ⚠️ `null` veut dire « je ne sais pas », et `|| 0` le convertit en « c'est fini ». La règle
+  « `restants === null` ≠ zéro » était **écrite et testée** dans la gate elle-même, et violée
+  trois lignes plus bas dans les branches de sortie. Réflexe : pour tout champ qu'une étape
+  PERSISTE et qu'une gate RELIT, se demander **quels chemins l'écrivent sans l'avoir mesuré** —
+  et faire que le motif de fin s'écrive toujours, le compteur seulement quand il est mesuré.
+  ⚠️ Corollaire d'écriture : un compteur non mesuré se sérialise **VIDE**, jamais `'0'` ni
+  `'null'` — `Number('')` vaut zéro, donc un lecteur naïf relit « terminée » de toute façon.
+
 - **Un déclencheur que le tick RÉINSTALLE ne se coupe pas à la main.** « Ne plus créer » ne
   suffit pas : la coupure livre AUSSI la suppression de l'existant (`deleteTrigger` sous le même
   flag), sinon l'ancien continue de partir et l'utilisateur, qui l'a supprimé une fois, le voit
   revenir sans comprendre (C28-75). Réflexe pour tout `assurerX_` idempotent : « que se passe-t-il
   quand X est DÉSACTIVÉ après avoir été installé ? ».
+
+
+**Un recensement de commandes d'installation s'énumère par ce qu'elles FONT, jamais par le nom
+de l'une d'elles.** Le lot L2 du 18/09 a posé `--ignore-scripts` sur les trois `npm ci` /
+`npm install -g` trouvés par un grep, et laissé ouvert `npx playwright install` — qui télécharge
+depuis le registre ET exécute les scripts de cycle de vie, donc la surface qu'on venait de
+fermer, rouverte deux étapes plus bas, sur une version non figée. Pire : c'est le
+`--ignore-scripts` posé juste avant qui rendait cette étape NÉCESSAIRE. La forme couvre
+`npm ci`, `npm install`, `npm install -g` **et** `npx` ; le correctif est `npx --no-install`
+(binaire local, version du lockfile, échec franc s'il manque), et il exige que l'installation
+vive dans le MÊME job — à vérifier avant de le poser. Histoire dans `docs/LESSONS.md`.
 
 ## 10. Style et compte-rendu
 

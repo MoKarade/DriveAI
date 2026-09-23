@@ -238,15 +238,28 @@ var CONFIG = {
   // times » le 06/07) et le TRI vivant était affamé toute la journée (4-17 fils triés/j). Le quota
   // d'appels est PARTAGÉ : la seule protection du tri est de borner la consommation TOTALE de la
   // campagne, pas seulement son runtime. La campagne finit plus lentement — c'est le prix accepté.
-  GMAIL_HISTO_PRETEES_MIN: 8,             // minutes DÉJÀ prêtées par ce donneur (ADR-0056). La ligne de
+  GMAIL_HISTO_PRETEES_MIN: 18,            // minutes DÉJÀ prêtées par ce donneur (ADR-0056, puis C28-135 :
+                                          // 8 → 12, les 4 nouvelles vont à la Mémoire ; puis C49-3 :
+                                          // 8 → 12, les 4 nouvelles vont à la Mémoire). La ligne de
                                           // santé les DIT, sinon la prochaine session lit « ses 12 min/j
                                           // sont RÉALLOUABLES » exactement comme celle-ci a lu « 20 » et
                                           // prête une seconde fois les mêmes minutes (🟡 revue sécurité).
-  GMAIL_HISTO_BUDGET_JOUR_MS: 12 * 60 * 1000, // 20 → 12 (ADR-0056) : 8 min prêtées à la re-analyse
-                                          // ciblée de `06`. Donneur choisi parce que le moteur ÉCRIT
-                                          // « Historique Gmail : terminée ✅ — ses 20 min/j sont
-                                          // RÉALLOUABLES » : une campagne finie rend ses minutes, et
-                                          // c'est SA ligne de santé qui le dit, pas une supposition.
+                                          // ⚠️ C49-3 a ESSAYÉ de prendre ici et a reculé : à 0, 20 de ses
+                                          // tests rougissent — un budget quotidien nul rend la campagne
+                                          // MUETTE (`consommeJour 0 >= 0` court-circuite), et ces tests
+                                          // encodent la conception inverse. Ce qui reste est un plancher
+                                          // de fonctionnement, pas un solde à finir : la vider exige de
+                                          // la DÉSACTIVER d'abord, ce qui est une décision, pas un geste.
+  // ⚠️ 8 → 2 (C49-3, 17/09, demande de Marc « prends aussi sur l'historique Gmail ») : 6 min de
+  // plus pour l'audit des pièces. MESURÉ avant d'écrire, comme la fois précédente : à 2 min la
+  // campagne n'est PAS muette (aucun de ses vingt tests ne rougit) — c'est à ZÉRO qu'elle le
+  // devient. 2 min est donc son plancher de fonctionnement, pas un reliquat arbitraire.
+  GMAIL_HISTO_BUDGET_JOUR_MS: 2 * 60 * 1000, // 20 → 12 (ADR-0056) → 8 (C28-135) → 2 : min prêtées à la
+                                          // re-analyse ciblée de `06`, puis 4 à la Mémoire. Donneur
+                                          // choisi parce que le moteur ÉCRIT « Historique Gmail :
+                                          // terminée ✅ — ses N min/j sont RÉALLOUABLES » : une campagne
+                                          // finie rend ses minutes, et c'est SA ligne de santé qui le
+                                          // dit, pas une supposition (re-LU le 16/09 avant de prélever).
   // Frein d'appels API par RUN (C28-15) : au plus N fils PARCOURUS par run (lus depuis Gmail,
   // indexés ou non) — les passes de VÉRIFICATION re-lisent des fils entiers « pour rien » côté
   // quota d'appels (les PJ indexées sont gratuites côté LLM, PAS côté Gmail). NB : une page fait
@@ -460,6 +473,134 @@ var CONFIG = {
   // Domaine par défaut (catch-all) quand le LLM ne rend pas un domaine valide. Décision Marc
   // 2026-07-01 : plus de file de revue — un document non classable est rangé AU MIEUX ici (avec
   // son nom final propre), jamais laissé en limbo. « Administratif » = bucket générique le plus sûr.
+  // ── La Mémoire (ADR-0059 phase 0) ─────────────────────────────────────────────────────
+  // DriveAI dit à `memoryai.hubperso.com` ce qui EXISTE et où : un fait `document.existe` par
+  // document classé, ZÉRO appel LLM (tout se lit dans l'Index et dans le nom du fichier).
+  //
+  // ⚠️ ALLUMÉ LE 2026-09-16, sur demande explicite de Marc. Ce n'est pas un défaut qu'on
+  // relève en passant : allumer ce flag fait SORTIR des métadonnées du compte Google de
+  // Marc (ADR-0059 §3 point 2). Le jeton (Script Property `DriveAI_MEMORYAI_TOKEN`) reste
+  // le SECOND verrou — sans lui rien ne part malgré ce `true`, et l'étape le DIT plutôt
+  // que de se taire. Le repasser à `false` est une décision du même ordre, jamais un repli
+  // de confort : `test/memoire.test.js` verrouille la valeur, et il l'a verrouillée dans
+  // l'autre sens jusqu'à aujourd'hui.
+  MEMOIRE_PUSH: true,
+  // ⚠️ L'ADR-0059 écrivait `memoire.hubperso.com` ; l'app s'appelle MemoryAI et vit sur
+  // `memoryai.hubperso.com` (identité publiée au hub : `id: "memoryai"`). C'est la seconde
+  // qui fait foi — l'ADR a été écrit avant le fork.
+  MEMOIRE_URL: 'https://memoryai.hubperso.com',
+  // Une panne de la Mémoire ne se re-tente pas à chaque tick ; une suspension sans chemin de
+  // retour transformerait un incident d'une heure en perte permanente (§9).
+  MEMOIRE_RESONDE_MS: 60 * 60 * 1000,
+  // ⚠️ C28-135 — l'étape N'AVAIT AUCUN budget quotidien : c'était une ADDITION nette à
+  // l'enveloppe (leçon §9, « RÉALLOUER, jamais AUGMENTER »), et le test d'invariant est
+  // structurellement AVEUGLE à une étape sans constante — il restait vert pendant que
+  // l'enveloppe croissait. Ces 4 min/j sont PRÉLEVÉES sur `GMAIL_HISTO_BUDGET_JOUR_MS`
+  // (12 → 8), donc la somme des campagnes reste EXACTEMENT 63 min/j.
+  // Dimensionnement : ~19 900 documents ÷ 50 par lot = ~400 POST, à ~1 s l'un ⇒ ~7 min de
+  // runtime au TOTAL pour le rattrapage complet, puis quasi rien en régime (le curseur ne
+  // relit que ce qui s'est ajouté). 4 min/j finit donc le stock en deux jours.
+  MEMOIRE_BUDGET_JOUR_MS: 4 * 60 * 1000,
+  MEMOIRE_BUDGET_MS: 60 * 1000,           // sous-budget par RUN : l'étape est en fin de `finally`,
+                                          // et le mur dur d'Apps Script est à 6 min.
+
+  // ⚠️ LES PIÈCES (ADR-0061, C49-2 bis) — LIVRÉES ÉTEINTES, et pour une raison qui n'est pas
+  // de la prudence rituelle : allumer ce flag ajoute UN APPEL LLM par document classé, et
+  // `traiterDocument_` est appelé par HUIT sites, dont `Reset.gs` et `Migration.gs` — les
+  // campagnes de masse. C'est mot pour mot la leçon §9 « allumer un flag qui change le
+  // modèle/coût du pipeline re-tarife AUSSI les campagnes déjà en cours » : `ANALYSE_V2` a
+  // doublé un mois en une nuit par ce chemin. Marc l'allume APRÈS l'audit C49-3, jamais avant.
+  PIECE_PUSH: false,
+  // Plafond ANTI-EMBALLEMENT par exécution. Il ne borne PAS la journée (×288 ticks) et ne
+  // prétend pas le faire — c'est `budgetCampagnesAtteint_` (en DOLLARS, l'unité du quota
+  // protégé) qui tient le mois, et l'extraction s'y soumet comme une campagne. Ce plafond-ci
+  // ne protège qu'une chose : qu'un run de rattrapage ne parte pas en rafale de 200 appels.
+  PIECE_MAX_PAR_RUN: 5,
+
+  // C49-5 — le RATTRAPAGE du stock déjà classé (étape B), `04` puis `01`, dans cet ordre.
+  // ⚠️ LIVRÉ ÉTEINT, et l'interrupteur EST le tag : vide ⇒ l'étape ne tourne pas. Marc a
+  // tranché le 17/09 « après le jugement de l'audit » — la porte de l'ADR-0061 ne se lève pas
+  // toute seule, et la déduire d'un compteur de verdicts serait deviner à sa place (il peut
+  // juger quarante lignes et s'arrêter). Poser une valeur ici, c'est dire « j'ai jugé, vas-y ».
+  // ⚠️ Bumper ce tag REFAIT toute la tranche : la liste des documents déjà envoyés est écrite
+  // SOUS le tag, donc elle redevient vide — et chaque document re-coûte son appel Haiku.
+  // ⚠️ Ce tag n'allume PAS le flux vivant (`PIECE_PUSH` reste `false`) : ce qui part est une
+  // liste fermée de documents, pas tout ce qui sera classé demain.
+  // ⚠️ ARMÉ LE 17/09 : « ok jugé, pose le tag, extrait tous les docs aujd ». La porte de la §7
+  // de l'ADR-0061 est levée PAR MARC, pas déduite d'un compteur de verdicts.
+  RATTRAPAGE_PIECE_TAG: 'c49-5-a',
+
+  // L36 — la lecture du STOCK COMPLET par la file de la Mémoire (`src/LectureFile.gs`).
+  // ⚠️ L'interrupteur EST le tag : vide ⇒ l'étape ne tourne pas, et RIEN d'autre ne change.
+  // ⚠️ ARMÉ LE 18/09 sur la demande de Marc (« je veux que ce soit lia qui lise tous mes
+  // fichiers », puis « go … jusqu'à avoir une boucle de lecture fiable »). Ce que ça dépense
+  // est borné par ce qui existait déjà : le budget quotidien des PIÈCES (partagé, jamais
+  // ajouté — l'étape ne démarre que quand l'audit et la tranche C49-5 sont à zéro), le
+  // plafond par run, et le frein en DOLLARS des campagnes. Un appel Haiku par document.
+  // ⚠️ Bumper ce tag ne REFAIT RIEN, contrairement aux autres : l'idempotence vit dans la
+  // Mémoire (un papier lu sort de sa file), pas sous ce tag. Il ne sert qu'à armer, et à
+  // faire re-sonder la file tout de suite.
+  // ⚠️ N'allume PAS le flux vivant (`PIECE_PUSH` reste `false`).
+  LECTURE_FILE_TAG: 'l36-a',
+
+  // C49-4 — la LECTURE DE TOUT LE DRIVE, étape A : compter le périmètre avant de le promettre.
+  // ⚠️ Bumper ce tag RELANCE le comptage (une lecture de l'Index, aucun appel LLM, rien qui
+  // sorte du compte Google). Sans bump, l'étape ne coûte qu'une lecture de Property par tick :
+  // c'est une passe ONE-SHOT, pas une campagne — d'où l'ABSENCE de `*_BUDGET_JOUR_MS`, qui
+  // prélèverait une minute par jour à une autre campagne pour une mesure qui se fait une fois.
+  // ⚠️ Ce qu'elle mesure est une BORNE HAUTE : « ce fichier peut porter du texte », jamais
+  // « il en porte ». Le taux réel se lit dans les « sans texte » de l'audit C49-3.
+  // ⚠️ `c49-4-b` (17/09, demande de Marc : « bump le tag ») : la mesure de `c49-4-a` a été
+  // écrite par une version qui SAUTAIT en silence les lignes classées dont la clé ne porte pas
+  // de fileId — les pièces jointes Gmail. Sa chaîne persistée n'a donc ni le PLANCHER ni les
+  // domaines décisifs (`04`, `01`), et la gate étant un tag, rien ne la recalcule tout seul :
+  // la Santé aurait réaffiché l'ancienne mesure indéfiniment, correcte dans ses chiffres et
+  // muette sur ce qui manque. Un correctif de MESURE n'existe que quand la mesure est refaite.
+  PERIMETRE_PIECE_TAG: 'c49-4-b',
+
+  // C49-3 — l'audit AVANT d'allumer `PIECE_PUSH` (ADR-0061). Cent documents, servis
+  // ÉGALITAIREMENT entre les domaines et non au prorata : au prorata, `04 · Immigration` —
+  // celui dont une erreur d'extraction coûte le plus cher — aurait deux lignes sur cent.
+  // C'est tout le sens du mot « stratifié » dans l'ADR (`repartirAudit_`).
+  AUDIT_PIECE_TAILLE: 100,
+  // ⚠️ Bumper ce tag REFAIT l'extraction des 100 documents de l'échantillon en cours et EFFACE
+  // les verdicts déjà posés (les notes restent). C'est le patron `MIGRATION_TAG` : une clé de
+  // SUCCÈS fige un résultat à vie, et la version de la règle fait partie de l'état.
+  // `c49-3-b` (17/09) : la colonne Champs portait « [object Object] » — les valeurs extraites
+  // sont des listes `{libelle, valeur}`, mises en texte par un `String()` naïf — et le RÉSUMÉ
+  // n'était pas écrit du tout. Les lignes du premier passage sont donc INJUGEABLES : les
+  // garder reviendrait à faire juger la porte de l'ADR-0061 sur une information fausse.
+  AUDIT_PIECE_TAG: 'c49-3-b',
+  // ⚠️ Budget QUOTIDIEN de l'audit, en ms RÉELLES persistées — PRÉLEVÉ, jamais ajouté (§9
+  // « RÉALLOUER, jamais AUGMENTER ») : 11 min reprises à `SYNC_BUDGET_JOUR_MS`, la réconciliation
+  // Index↔Drive — perpétuelle et en lecture seule, donc le seul poste qui ne tient aucun délai.
+  // La somme de l'enveloppe ne bouge pas d'une minute, et `test/orchestration.test.js` le
+  // verrouille dans les deux sens.
+  // ⚠️ Ce que 8 min/j ACHÈTENT, mesuré et pas estimé : la passe manuelle de Marc a fait 27
+  // documents en 4,5 min (~10 s/document), donc ~48 documents par jour — les 66 restants sont
+  // épuisés en un jour et demi. Deux autres donneurs ont été essayés et REFUSÉS PAR DES TESTS
+  // (l'historique Gmail devient muet à 0 ; la re-datation perd 25 % de son budget en marge de
+  // démarrage) : c'est le parc qui a choisi le donneur, pas moi.
+  // ⚠️ 8 → 11 (demande de Marc, 17/09 : « accélère, prends plus de budget à la réconciliation »).
+  // Le donneur est allé au bout de ce qu'il peut donner : il passe de 4 à 1 min, et l'invariant de
+  // paire ci-dessous lui interdit le zéro. Ce que ça achète, mesuré sur la ré-extraction en cours
+  // (25 documents en 8,2 min, soit ~20 s/document) : ~33 documents/jour au lieu de ~24. Pour aller
+  // ⚠️ 11 → 17 (même jour, « prends aussi sur l'historique Gmail ») : le SECOND donneur est la
+  // campagne historique Gmail, TERMINÉE et déclarée réallouable par la ligne de santé du moteur
+  // lui-même. Elle descend à son plancher mesuré (2 min, en dessous elle devient muette).
+  // ~51 documents/jour au lieu de ~33. C'est le maximum atteignable sans DÉSACTIVER une campagne,
+  // ce qui serait une décision et non un réglage.
+  // ⚠️ La PROVENANCE de chaque minute est écrite, parce que ce budget a désormais DEUX donneurs.
+  // Sans ça, le garde des minutes prêtées par l'historique Gmail devrait recopier « 17 − 11 » :
+  // un chiffre en dur, exactement ce que ce dépôt reproche à une somme qui se périme en silence.
+  // Les deux parts s'additionnent au budget, et un test le verrouille.
+  AUDIT_PIECE_PART_SYNC_MIN: 11,   // prêtées par `SYNC_BUDGET_JOUR_MS` (12 → 1)
+  AUDIT_PIECE_PART_GMAIL_MIN: 6,   // prêtées par `GMAIL_HISTO_BUDGET_JOUR_MS` (8 → 2)
+  AUDIT_PIECE_BUDGET_JOUR_MS: 17 * 60 * 1000,
+  // Sous-budget PAR TICK (même famille que `REANALYSE_BUDGET_MS`) : l'étape ne prend que le
+  // reliquat du tick, après le flux vivant, et jamais plus que ça d'un coup.
+  AUDIT_PIECE_BUDGET_MS: 2 * 60 * 1000,
+
   DOMAINE_DEFAUT: '01 · Administratif & identité',
   // ADR-0058 — domicile UNIQUE des revenus d'employeur (paies, RL-1). Constante et non littéral :
   // le libellé sert de CLÉ dans `CONFIG.DOMAINES` et `STRUCTURE_CIBLE_RESET`, donc une graphie qui
@@ -815,7 +956,20 @@ var CONFIG = {
   RANGEMENT_RACINES_SUP: [],
   // Réconciliation Index↔Drive (C28-07, plan P3) : campagne de fond perpétuelle, lecture seule.
   SYNC_LIGNES_PAR_RUN: 50,            // lignes d'Index re-visitées par tick (sur le reliquat de budget)
-  SYNC_BUDGET_JOUR_MS: 12 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES (leçon §7 : ~90 min/j de runtime partagé — jamais un compteur d'items)
+  // ⚠️ 12 → 4 → 1 (C49-3, 17/09) : 11 min prêtées à l'audit des pièces. Donneur choisi parce que c'est
+  // le SEUL poste de l'enveloppe qui ne tient aucun délai — la réconciliation Index↔Drive est
+  // PERPÉTUELLE et en LECTURE SEULE : lui prendre du budget rallonge son cycle, ça ne laisse
+  // rien en plan. Les deux autres candidats ont été essayés et refusés par des tests (historique
+  // Gmail : muette à 0 ; re-datation : sa marge de démarrage double en proportion).
+  // ⚠️ À RENDRE quand l'audit est fini : celui-ci 1 → 12 et `AUDIT_PIECE_BUDGET_JOUR_MS` 11 → 0.
+  // ⚠️ 1 min et pas 0 : à zéro, cette campagne PERPÉTUELLE tournerait à vide en silence — c'est
+  // l'interdit que la §9 pose pour toute réallocation en paire. Mesuré le 17/09, il n'était codé
+  // NULLE PART pour ce couple (mettre ce budget à 0 laissait les 20 tests d'orchestration verts) ;
+  // `test/orchestration.test.js` le verrouille désormais, avec la somme du couple.
+  // L'étape d'audit s'éteint d'elle-même à zéro restant, donc elle ne CONSOMME plus rien après
+  // coup — mais sa CONSTANTE continue de peser sur l'invariant d'enveloppe, et une enveloppe
+  // faussement chargée fait renoncer à la réallocation suivante (leçon §9).
+  SYNC_BUDGET_JOUR_MS: 1 * 60 * 1000, // budget QUOTIDIEN en ms RÉELLES (leçon §7 : ~90 min/j de runtime partagé — jamais un compteur d'items)
   SYNC_AGE_MIN_H: 48,                 // une ligne plus fraîche que ça n'a pas eu le temps de dériver — pas de vérif Drive
 
   // --- Chantier #8 : MIGRATION de l'existant vers la nouvelle taxonomie (ADR-0002) ---
@@ -876,6 +1030,11 @@ var CONFIG = {
   // `GMAIL_HISTO_BUDGET_JOUR_MS` (20 → 12), dont le moteur DIT lui-même « terminée ✅ — ses 20 min/j
   // sont RÉALLOUABLES ». C'est la réallocation que C28-70 attendait faute de preuve : la preuve est
   // désormais écrite par le moteur, pas supposée. La somme de l'enveloppe reste EXACTEMENT 63 min/j.
+  // ⚠️ C49-3 a ESSAYÉ de prendre 4 min ici et a reculé, sur la foi d'un test : à 4 min de plafond,
+  // la marge de démarrage (`PILOTE_MARGE_DOC_MS`, 1 min) devient 25 % du budget au lieu de 12,5 %,
+  // et le reliquat perdu chaque jour double. Le commentaire du code le disait — « ≤ 1 min sur 8 » —
+  // et il serait devenu faux en silence. Un budget ne se coupe pas en deux sans relire ce que sa
+  // taille garantissait ailleurs.
   REANALYSE_BUDGET_JOUR_MS: 8 * 60 * 1000,
 
   // --- C26-07 (ADR-0015) : PREUVE dry-run avant/après du pipeline v2, sur un échantillon RÉEL ---
