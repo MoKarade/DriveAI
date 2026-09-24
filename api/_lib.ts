@@ -147,7 +147,9 @@ export function dechiffrer(b64: string, secret: string): string | null {
     const iv = brut.subarray(0, 12);
     const tag = brut.subarray(12, 28);
     const chiffre = brut.subarray(28);
-    const d = createDecipheriv('aes-256-gcm', cle(secret), iv);
+    // `authTagLength: 16` : sans lui, Node vérifie une étiquette RACCOURCIE comme une complète
+    // (4 octets = 2^32 essais pour forger un cookie). Trouvé par Semgrep (porte S6, 24/09/2026).
+    const d = createDecipheriv('aes-256-gcm', cle(secret), iv, { authTagLength: 16 });
     d.setAuthTag(tag);
     return Buffer.concat([d.update(chiffre), d.final()]).toString('utf8');
   } catch {

@@ -27,3 +27,7 @@ Thumbs.db
 # E2E Playwright (captures d'écran CI) — artefacts locaux, remontés en artifact GitHub
 app/e2e-screenshots/
 app/e2e-results/
+
+# Portes qualité (S6) — mesures locales ; le rapport CI est remonté en artifact
+app/coverage/
+app/qualite/rapport.json
