@@ -1096,7 +1096,7 @@ function pousserPieceApresClassement_(src, decision, texteOcr, opts) {
   // 21/09/2026, et il n'appelle pas le même geste — il faut refaire la photo, pas le prompt.
   var horsExtraction = {};
   var extraction = opts.vision
-    ? extrairePieceVision_(opts.vision.fichier, horsExtraction)
+    ? extrairePieceVision_(opts.vision.fichier, horsExtraction, !!opts.vision.imageSeulement)
     : extrairePiece_({ nomFichier: decision.nom, extrait: texteOcr }, horsExtraction);
   // ⚠️ Ce que l'audit publie (voie, jetons, durée) voyage par `res.vision` : le coût d'une
   // lecture se MESURE sur la réponse, jamais ne s'estime après coup.

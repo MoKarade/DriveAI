@@ -63,6 +63,16 @@ var PIECE_VISION_PDF_TEXTE_MIN = 400;
  */
 var PIECE_VISION_TEXTE_MAX_CARS = 60000;
 
+/**
+ * Revue #419 — au-delà de ce temps passé sur UN papier, aucun second appel ne part (repli en
+ * image, relance d'une réponse coupée). Le garde-temps de l'étape n'est évalué qu'ENTRE deux
+ * papiers : sans cette borne, texte + image + envoi pouvaient franchir le mur des 6 min.
+ */
+var PIECE_VISION_SECOND_APPEL_MS = 60 * 1000;
+
+/** Revue #419 — le plafond de sortie d'une RELANCE après une réponse coupée à 8 000 jetons. */
+var PIECE_VISION_MAX_TOKENS_RELANCE = 16000;
+
 /** La taille demandée à l'aperçu de Drive : celle que Sonnet 5 lit sans la réduire. */
 var PIECE_VISION_APERCU_PX = 2400;
 
@@ -297,7 +307,7 @@ function typeImageDesOctets_(octets) {
  * Le contenu du message : le fichier sous la forme que l'API lit, plus son nom.
  * Rend `{blocs, voie}` ou `{blocs:null, voie, motif}` — jamais une exception.
  */
-function blocsVision_(fichier, forcerImage) {
+function blocsVision_(fichier, forcerImage, imageSeulement) {
   var nom = fichier.getName();
   var mime = fichier.getMimeType();
   var voie = voieVision_(mime, nom, fichier.getSize());
@@ -306,12 +316,17 @@ function blocsVision_(fichier, forcerImage) {
     // ⚠️ C49-30 — un PDF qui a du TEXTE part en texte (Marc, 24/09). L'image ne sert qu'aux
     // scans : c'est eux qu'on ne sait pas lire autrement. `forcerImage` est le second essai
     // d'`extrairePieceVision_` quand la lecture du texte n'a rien donné.
-    if (voie === 'pdf' && !forcerImage) {
+    // ⚠️ Revue #419 : `extraireTexte_` ne lit PAS la couche texte d'un PDF — il passe par l'OCR
+    // de Drive. Un papier d'identité scanné en PDF, bien reconnu, partirait en texte et perdrait
+    // sa photo et sa zone lisible par machine, c'est-à-dire ce qui a motivé la vision. Les
+    // domaines d'identité (`imageSeulement`) restent donc TOUJOURS en image.
+    if (voie === 'pdf' && !forcerImage && !imageSeulement) {
       var couche = extraireTexte_(fichier.getBlob(), PIECE_VISION_TEXTE_MAX_CARS);
       if (couche !== null && texteSuffisantVision_(couche)) {
         return { voie: 'pdf-texte', blocs: [{ type: 'text',
-          text: 'Nom du fichier : ' + nom + '\nCe PDF t\'arrive sous forme de TEXTE (sa couche '
-            + 'texte) : lis-le comme le document lui-même. Il n\'y a pas de photo à décrire.\n'
+          text: 'Nom du fichier : ' + nom + '\nCe PDF t\'arrive sous forme de TEXTE extrait '
+            + '(reconnaissance de caractères) : lis-le comme le document lui-même. Tu ne vois pas '
+            + 'sa mise en page ; ne décris aucune photo.\n'
             + 'Texte du document :\n' + couche }] };
       }
     }
@@ -333,7 +348,9 @@ function blocsVision_(fichier, forcerImage) {
       var octets = img.getBytes();
       var type = typeImageDesOctets_(octets);
       // Des octets qu'on ne reconnaît pas donneraient un 400 à coup sûr : on le dit sans payer.
-      if (!type) return { voie: voie, blocs: null, motif: 'http-400' };
+      // ⚠️ Revue #419 : un motif À LUI, pas « http-400 » — ce verdict est LOCAL (aucun appel),
+      // il ne doit pas nourrir le coupe-circuit des refus de l'API.
+      if (!type) return { voie: voie, blocs: null, motif: 'image-inconnue' };
       return { voie: voie, blocs: [entete, { type: 'image', source: {
         type: 'base64', media_type: type, data: Utilities.base64Encode(octets) } }] };
     }
@@ -358,26 +375,34 @@ function blocsVision_(fichier, forcerImage) {
  * @param {Object=} hors  objet de sortie : `{motif, voie, usage, dureeMs}`
  * @return {?Object}
  */
-function extrairePieceVision_(fichier, hors) {
+function extrairePieceVision_(fichier, hors, imageSeulement) {
   hors = hors || {};
   hors.motif = 'vide';
   hors.usage = null;
   if (estPannePlateforme_()) { hors.motif = 'panne-llm'; return null; }
   var debut = Date.now();
-  var prep = blocsVision_(fichier);
+  var prep = blocsVision_(fichier, false, !!imageSeulement);
   hors.voie = prep.voie;
   if (!prep.blocs) { hors.motif = prep.motif || 'vide'; return null; }
-  var ext = appelVision_(prep, hors);
+  var ext = appelVision_(prep, hors, PIECE_VISION_MAX_TOKENS);
+  var tempsRestant = function () { return Date.now() - debut < PIECE_VISION_SECOND_APPEL_MS; };
+  // ⚠️ Revue #419 — une réponse COUPÉE est un papier qui a donné PLUS que le plafond : la
+  // relance a un plafond double, une seule fois, et seulement s'il reste du temps.
+  if (!ext && hors.motif === 'coupee' && tempsRestant()) {
+    hors.voie = prep.voie + '+relance';
+    ext = appelVision_(prep, hors, PIECE_VISION_MAX_TOKENS_RELANCE);
+  }
   // ⚠️ C49-30 — LE TEXTE D'UN PDF PEUT MENTIR SUR SA LISIBILITÉ. Un scan dont l'OCR rend assez
   // de caractères passe le seuil et part en texte ; si le modèle n'en tire rien (« illisible »,
   // « vide »), le papier n'est pas condamné pour autant : on le lui MONTRE. Un seul second
   // essai, et seulement sur ces deux verdicts — une panne (réseau, crédit) ne se rejoue pas ici,
   // elle remonte à l'étape, qui sait s'arrêter.
-  if (!ext && prep.voie === 'pdf-texte' && (hors.motif === 'illisible' || hors.motif === 'vide')) {
+  if (!ext && prep.voie === 'pdf-texte' && (hors.motif === 'illisible' || hors.motif === 'vide')
+      && tempsRestant()) {
     var image = blocsVision_(fichier, true);
     if (image.blocs) {
       hors.voie = 'pdf-texte+pdf';
-      ext = appelVision_(image, hors);
+      ext = appelVision_(image, hors, PIECE_VISION_MAX_TOKENS);
     }
   }
   hors.dureeMs = Date.now() - debut;
@@ -389,14 +414,14 @@ function extrairePieceVision_(fichier, hors) {
  * le motif, et son `usage` CUMULE les appels du même papier — le coût d'un papier lu deux fois
  * est la somme, jamais le dernier.
  */
-function appelVision_(prep, hors) {
+function appelVision_(prep, hors, maxTokens) {
   var options = {
     method: 'post',
     contentType: 'application/json',
     headers: { 'x-api-key': getCleAnthropic_(), 'anthropic-version': '2023-06-01' },
     payload: JSON.stringify({
       model: PIECE_VISION_MODELE,
-      max_tokens: PIECE_VISION_MAX_TOKENS,
+      max_tokens: maxTokens || PIECE_VISION_MAX_TOKENS,
       // Lire n'est pas raisonner : sans ce réglage Sonnet 5 pense par défaut (adaptatif), et
       // chaque papier paierait des jetons de réflexion qui ne changent pas ce qui est écrit.
       thinking: { type: 'disabled' },
@@ -436,7 +461,7 @@ function appelVision_(prep, hors) {
   var coupee = data.stop_reason === 'max_tokens';
   if (coupee) {
     hors.motif = 'coupee';
-    journalErreur_('PieceVision', 'Réponse coupée à ' + PIECE_VISION_MAX_TOKENS + ' jetons (' + prep.voie + ').');
+    journalErreur_('PieceVision', 'Réponse coupée à ' + (maxTokens || PIECE_VISION_MAX_TOKENS) + ' jetons (' + prep.voie + ').');
   }
   var brut = parserExtractionPiece_(texteReponse_(data));
   if (!brut) {

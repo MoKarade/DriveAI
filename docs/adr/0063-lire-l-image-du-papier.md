@@ -149,3 +149,24 @@ d'être.
 **Écarté** : relever le frein mensuel à 110 $ (Marc a choisi de garder 40 $) ; limiter les PDF à
 5 pages en image (perdrait la fin des longs documents).
 
+**Revue adversariale de #419, avant fusion — sept défauts, corrigés dans la même PR** :
+
+1. Trois refus identiques revenaient à chaque tick dans le même ordre : la campagne ne passait
+   jamais le 4ᵉ papier. La même série revue une SECONDE fois est désormais faite de verdicts ;
+   un octet d'image inconnu est un verdict LOCAL (`image-inconnue`), hors série.
+2. Une panne GÉNÉRALE finissait imputée au papier de tête (« 3 fois le même papier »). Une panne
+   n'est comptée au papier que si l'API a répondu à un AUTRE depuis sa panne précédente ; la
+   première panne d'un run fait essayer le papier suivant, la seconde arrête. Filet : 24 h sur le
+   même papier. Une panne de crédit ne compte jamais.
+3. La dépense est RELUE avant d'être écrite, et le chemin manuel prend le verrou du tick.
+4. Un papier ne lance plus de second appel après une minute ; le chemin manuel garde une marge
+   par document ; deux runs tués sur le même papier le mettent de côté.
+5. `extraireTexte_` lit l'OCR de Drive, pas une « couche texte » : les PDF d'identité (`04`, `01`)
+   restent donc TOUJOURS en image, et le prompt dit « texte extrait (reconnaissance de
+   caractères) ».
+6. Une réponse coupée est relancée une fois avec un plafond de 16 000 jetons.
+7. La Santé compte les papiers traités à la MÊME source que l'arrêt (les faits sous le tag).
+
+Reste connu, non corrigé : les faits d'un run ne s'écrivent qu'en fin de run — un run tué fait
+repayer les papiers déjà lus pendant ce run (au plus quelques-uns, sous la marge de temps).
+

@@ -15,6 +15,11 @@ d'abord ». ADR-0063 §8.
   si le texte ne donne rien.
 - ✅ Arrêts `VISION_TRANCHE_MAX` (200) et `VISION_PLAFOND_DOLLARS` (100 $), chemin manuel compris.
 - ✅ Pannes de la vision jamais imputées au papier (motif riche), 3 essais passagers, série de 3.
+- ✅ Revue adversariale (#419) : 7 défauts corrigés avant fusion (série qui bloquait la file à vie,
+  panne générale imputée au papier de tête, dépense écrasée par une exécution concurrente, mur des
+  6 min, PDF d'identité lus par l'OCR, réponse coupée, compte de Santé divergent) — ADR-0063 §8.
+- ⬜ Connu, non corrigé : les faits d'un run ne s'écrivent qu'en fin de run ; un run tué fait
+  repayer les quelques papiers qu'il avait déjà lus.
 - ⬜ Mesurer après déploiement : la Santé « Rattrapage des pièces » annonce la dépense et le coût
   moyen par papier ; à 200, la lecture s'arrête (`tranche-plafond`) et attend l'OK de Marc.
 - ⬜ Défaut d'affichage de C49-29, non corrigé (hors périmètre) : une sortie précoce de l'audit

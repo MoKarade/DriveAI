@@ -555,7 +555,7 @@ test('C49-30 — un PDF qui a du TEXTE part en texte (pas une image par page), b
   const blocs = c.appels[0].messages[0].content;
   assert.strictEqual(blocs.length, 1);
   assert.strictEqual(blocs[0].type, 'text');
-  assert.match(blocs[0].text, /couche texte/);
+  assert.match(blocs[0].text, /reconnaissance de caractères/);
   assert.ok(!blocs.some((b) => b.type === 'document'), 'aucune page facturée comme une image');
   assert.strictEqual(c.ocrMax[0], 60000, 'pas la troncature de 12 000 de l\'analyse');
 });
@@ -611,4 +611,53 @@ test('C49-30 — LA CHAÎNE : un papier de la tranche traverse le rattrapage, la
     { nom: 'p.jpg', domaine: '04 · Immigration', statut: 'classé', fileId: FID('P1') }, '',
     { vision: { fichier: fichier('p.jpg', 'image/jpeg', 10) }, rattrapage: true });
   assert.strictEqual(env.motif, 'desactive');
+});
+
+
+test('REVUE #419 — un PDF d\'IDENTITÉ reste en image même quand son OCR est riche', () => {
+  const c = ctxVision(reponseOk(), { texte: TEXTE_PDF });
+  const hors = {};
+  c.extrairePieceVision_(fichier('passeport.pdf', 'application/pdf', 1000), hors, true);
+  assert.strictEqual(hors.voie, 'pdf');
+  assert.strictEqual(c.appels[0].messages[0].content[1].type, 'document');
+  assert.strictEqual(c.ocrMax.length, 0, 'pas même une conversion Drive payée pour rien');
+});
+
+test('REVUE #419 — une réponse COUPÉE est relancée UNE fois avec un plafond double', () => {
+  const coupee = { corps: { content: [{ type: 'text', text: '{"lisible": true, "resume": "tro' }],
+    usage: { input_tokens: 100, output_tokens: 8000 }, stop_reason: 'max_tokens' } };
+  const c = ctxVision([coupee, reponseOk()]);
+  const hors = {};
+  const e = c.extrairePieceVision_(fichier('releve.jpg', 'image/jpeg', 1000), hors);
+  assert.ok(e);
+  assert.strictEqual(c.appels.length, 2);
+  assert.strictEqual(c.appels[1].max_tokens, 16000);
+  assert.strictEqual(hors.voie, 'image+relance');
+  const c2 = ctxVision([coupee, coupee, coupee]);
+  const h2 = {};
+  assert.strictEqual(c2.extrairePieceVision_(fichier('r.jpg', 'image/jpeg', 1000), h2), null);
+  assert.strictEqual(c2.appels.length, 2, 'une seule relance');
+  assert.strictEqual(h2.motif, 'coupee');
+});
+
+test('REVUE #419 — aucun second appel au-delà d\'une minute passée sur le papier', () => {
+  const illisible = { corps: { content: [{ type: 'text', text: '{"lisible": false}' }],
+    usage: { input_tokens: 1000, output_tokens: 20 }, stop_reason: 'end_turn' } };
+  const c = ctxVision([illisible, reponseOk()], { texte: TEXTE_PDF });
+  let t = 0;
+  c.Date = class extends Date { static now() { return (t += 70 * 1000); } };
+  const hors = {};
+  assert.strictEqual(c.extrairePieceVision_(fichier('r.pdf', 'application/pdf', 1000), hors), null);
+  assert.strictEqual(c.appels.length, 1, 'le repli en image aurait franchi le budget du papier');
+});
+
+test('REVUE #419 — des octets inconnus sont un verdict LOCAL, pas un refus de l\'API', () => {
+  const c = ctxVision(reponseOk());
+  const f = fichier('x.jpg', 'image/jpeg', 1000);
+  f.getBlob = () => ({ getBytes: () => [1, 2, 3, 4], getContentType: () => 'image/jpeg' });
+  const hors = {};
+  assert.strictEqual(c.extrairePieceVision_(f, hors), null);
+  assert.strictEqual(hors.motif, 'image-inconnue');
+  assert.strictEqual(c.appels.length, 0);
+  assert.strictEqual(c.issueAuditVision_({ motif: 'extraction-vide', vision: { motif: 'image-inconnue' } }), 'echec');
 });
