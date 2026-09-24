@@ -5,6 +5,20 @@
 
 ---
 
+## C49-28 — Les refus OCR 400 se nomment, et une image refusée se rejoue ré-encodée 🟦
+
+Mesuré le 24/09 en rejouant la lecture de 5 papiers : les 400 ne sont PAS des pannes passagères.
+Trois fichiers sont refusés à coup sûr — un PDF chiffré (`/Encrypt`), un TIFF, un PNG en palette
+16 couleurs — pendant qu'un PNG couleur et un PDF ordinaire passent. Le rattrapage les range en
+`ocr-echec`, c'est-à-dire « faits » pour toujours.
+
+- ✅ Le journal nomme le fichier, son type d'ORIGINE, sa taille, et dit si le PDF est chiffré.
+- ✅ Un 400 sur une image PNG/GIF/BMP se rejoue UNE fois, ré-encodée en JPEG. Jamais sur un 5xx
+  (l'upload a pu créer un temporaire), jamais sur le même contenu.
+- ⬜ PDF chiffrés et TIFF : `getAs` ne sait pas les convertir. Ils passeront par la lecture du
+  modèle lui-même (vision), prévue dans le chantier de lecture enrichie.
+- ⬜ Mesurer après déploiement : relire le PNG en palette et constater le texte.
+
 ## C49-27 — DriveAI pousse ses comptes à la Mémoire, pour son onglet Avancement 🟦
 
 Marc, le 23/09 : une interface « Avancement » dans la Mémoire, comme celle de DriveAI — avec
