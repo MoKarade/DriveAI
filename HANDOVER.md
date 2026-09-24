@@ -2965,7 +2965,8 @@ Détail des tâches : `BACKLOG.md`.
 - **Portes qualité et sécurité de l'Atelier (S6, 24/09/2026)** — jobs **Qualité** et **Sécurité** du workflow CI,
   donc attendus par l'auto-merge. Cliquet `app/qualite/seuils.json` (état du jour, rien ne recule ;
   `npm run portes` dans `app/`, `npm run portes:maj` resserre) : typage 0, tests 0 échec, couverture
-  logique `app/src/*.ts` + `api/` ≥ 83,6 % des lignes, globale ≥ 50,3 % lignes / 84,6 % branches, code mort
+  logique `app/src/*.ts` + `api/` ≥ 80,3 % des lignes, globale ≥ 51,6 % lignes / 45,0 % branches (recalées au
+  passage à vitest 5, même jour : autre instrument, voir `historique`), code mort
   (knip) ≤ 12, architecture (dependency-cruiser : `api/` sans paquet npm, l'app sans code serveur, la logique
   sans écran, pas de cycle) ≤ 1 (le cycle `App.tsx` ↔ `vues/AujourdHui.tsx`). Sécurité : gitleaks sur
   l'historique fusionné (HEAD) + Semgrep (TypeScript, React, secrets, OWASP), bloquants. Le moteur `src/*.gs`

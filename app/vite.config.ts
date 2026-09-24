@@ -24,8 +24,10 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       allowExternal: true,
-      include: ['**/app/src/**/*.{ts,tsx}', '**/api/**/*.ts'],
-      exclude: [...coverageConfigDefaults.exclude, '**/src/mockData.ts'],
+      // vitest 4+ : `src/**` se lit relativement à app/ ; `**/api/**` attrape ../api (allowExternal).
+      // (Sous vitest 2, il fallait `**/app/src/**` : le motif relatif ne trouvait rien — 0 fichier.)
+      include: ['src/**/*.{ts,tsx}', '**/api/**/*.ts'],
+      exclude: [...coverageConfigDefaults.exclude, 'src/mockData.ts'],
       reporter: ['text-summary', 'json-summary'],
       reportsDirectory: 'coverage',
     },
