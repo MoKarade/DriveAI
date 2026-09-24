@@ -146,9 +146,10 @@ function exporterTexteNatif_(fileId, mime) {
  * @param {string} cibleMime    type Google cible (google-apps.document/presentation/spreadsheet)
  * @param {string} exportMime   type d'export (text/plain, text/csv)
  * @param {boolean} ocr         active l'OCR (images/PDF uniquement)
+ * @param {boolean} [dejaReencode]  vrai au second essai d'une image ré-encodée (borne le rejeu à un)
  * @return {string}
  */
-function convertirEtExtraire_(blob, cibleMime, exportMime, ocr) {
+function convertirEtExtraire_(blob, cibleMime, exportMime, ocr, dejaReencode) {
   var token = ScriptApp.getOAuthToken();
   var boundary = 'driveai' + Utilities.getUuid();
   var metadata = JSON.stringify({ name: 'DriveAI_extract_temp', mimeType: cibleMime });
@@ -179,8 +180,24 @@ function convertirEtExtraire_(blob, cibleMime, exportMime, ocr) {
     muteHttpExceptions: true
   });
   if (insert.getResponseCode() !== 200) {
-    journalErreur_('OCR', 'Conversion HTTP ' + insert.getResponseCode() + ' (' + cibleMime + ') : ' +
-      tronquer_(insert.getContentText(), 300));
+    var code = insert.getResponseCode();
+    var typeSource = blob.getContentType() || '';
+    // ⚠️ C49-28 — UN 400 SUR UNE IMAGE SE REJOUE UNE FOIS, RÉ-ENCODÉE. Mesuré le 24/09 : un PNG
+    // valide en palette 16 couleurs est refusé à chaque essai (« Bad Request », rien de plus),
+    // alors qu'un PNG couleur standard passe. Un 400 dit que la requête a été REFUSÉE avant
+    // toute création : le rejeu ne peut pas fabriquer d'orphelin, contrairement à un 5xx (voir
+    // l'en-tête — ce cas-là ne rejoue toujours pas). Une seule fois, et seulement avec un
+    // CONTENU différent : rejouer le même octet pour octet ne changerait rien.
+    if (code === 400 && !dejaReencode && peutReencoderImage_(typeSource)) {
+      var reencode = reencoderImage_(blob);
+      if (reencode) return convertirEtExtraire_(reencode, cibleMime, exportMime, ocr, true);
+    }
+    // ⚠️ C49-28 — LE JOURNAL NOMME LE FICHIER. Jusqu'ici il ne disait que le type CIBLE, le même
+    // pour tous les PDF et toutes les images : 15 refus d'affilée le 23/09 au soir, et aucun
+    // moyen de savoir lesquels sans recouper à la main. Le nom, le type d'ORIGINE, la taille,
+    // et pour un PDF s'il est CHIFFRÉ — la seule cause de refus prouvée sur un PDF à ce jour.
+    journalErreur_('OCR', 'Conversion HTTP ' + code + ' — ' + descriptionSource_(blob, typeSource) +
+      (dejaReencode ? ' · déjà ré-encodé' : '') + ' : ' + tronquer_(insert.getContentText(), 200));
     return null; // échec technique (cf. contrat extraireTexte_)
   }
 
@@ -204,6 +221,54 @@ function convertirEtExtraire_(blob, cibleMime, exportMime, ocr) {
       muteHttpExceptions: true
     });
   }
+}
+
+/**
+ * Les types d'image que Apps Script sait RÉ-ENCODER (`Blob.getAs`). PURE.
+ *
+ * ⚠️ TIFF n'en fait PAS partie : `getAs` ne convertit que BMP, GIF, JPEG et PNG. Un TIFF refusé
+ * reste refusé ici, et le journal le dit — le lire demande un autre chemin (aperçu Drive ou
+ * lecture par le modèle), hors de ce lot.
+ * ⚠️ Un JPEG n'est pas ré-encodé en JPEG : ce serait rejouer le même contenu.
+ */
+function peutReencoderImage_(type) {
+  var t = String(type || '').toLowerCase();
+  return t === 'image/png' || t === 'image/gif' || t === 'image/bmp' || t === 'image/x-ms-bmp';
+}
+
+/** Ré-encode une image en JPEG. I/O. `null` si Apps Script refuse — jamais une exception. */
+function reencoderImage_(blob) {
+  try {
+    var r = blob.getAs('image/jpeg');
+    return r && r.getBytes && r.getBytes().length ? r : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Vrai si ce PDF est CHIFFRÉ. PURE (prend le texte latin-1 du fichier).
+ *
+ * Un PDF protégé porte `/Encrypt` dans son dictionnaire de fin : c'était le cas du seul PDF
+ * refusé à coup sûr lors de la mesure du 24/09, et d'aucun des PDF lus avec succès.
+ */
+function estPdfChiffre_(texteLatin1) {
+  return /\/Encrypt\b/.test(String(texteLatin1 || ''));
+}
+
+/** « nom » (type, taille[, PDF chiffré]) — ce que le journal doit dire d'un refus. I/O légère. */
+function descriptionSource_(blob, type) {
+  var nom = '', taille = 0, chiffre = false;
+  try { nom = blob.getName() || ''; } catch (e) { /* le nom est un confort, jamais un blocage */ }
+  try {
+    var octets = blob.getBytes();
+    taille = octets.length;
+    if (String(type).toLowerCase() === 'application/pdf') {
+      chiffre = estPdfChiffre_(Utilities.newBlob(octets).getDataAsString('ISO-8859-1'));
+    }
+  } catch (e) { /* idem */ }
+  return '« ' + nom + ' » (' + (type || 'type inconnu') + ', ' + Math.round(taille / 1024) + ' Ko' +
+    (chiffre ? ', PDF CHIFFRÉ' : '') + ')';
 }
 
 /**

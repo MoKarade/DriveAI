@@ -102,3 +102,79 @@ test('la suppression du temporaire rejoue sur 5xx (idempotente) — sinon l\'orp
   assert.strictEqual(ctx.convertirEtExtraire_(blobPdf, 'application/vnd.google-apps.document', 'text/plain', true), 'texte');
   assert.strictEqual(faux.compte(/files\/TMP2$/), 2, 'la suppression a rejoué');
 });
+
+// ─── C49-28 — un refus 400 se DIT, et sur une image il se rejoue UNE fois, ré-encodée ─────────
+
+function blobImage(type, nom, reencode) {
+  return {
+    getContentType: () => type,
+    getName: () => nom,
+    getBytes: () => [1, 2, 3],
+    getAs: (t) => {
+      assert.strictEqual(t, 'image/jpeg');
+      if (!reencode) throw new Error('conversion impossible');
+      return { getContentType: () => 'image/jpeg', getName: () => nom, getBytes: () => [9, 9] };
+    },
+  };
+}
+
+test('C49-28 : un PNG refusé en 400 est ré-encodé en JPEG et rejoué UNE fois — le texte revient', () => {
+  const faux = faussesReponses({
+    '/upload/': [{ code: 400, corps: 'Bad Request' }, { code: 200, corps: '{"id":"TMP3"}' }],
+    '/export?': [{ code: 200, corps: 'texte du graphique' }],
+    'files/TMP3': [{ code: 204 }],
+  });
+  const ctx = ctxOcr(faux);
+  const r = ctx.convertirEtExtraire_(blobImage('image/png', 'graphique.png', true),
+    'application/vnd.google-apps.document', 'text/plain', true);
+  assert.strictEqual(r, 'texte du graphique');
+  assert.strictEqual(faux.compte('/upload/'), 2, 'un seul rejeu, avec un contenu DIFFÉRENT');
+});
+
+test('C49-28 : le rejeu est BORNÉ — deux 400 rendent null après deux téléversements, jamais trois', () => {
+  const faux = faussesReponses({ '/upload/': [{ code: 400, corps: 'Bad Request' }] });
+  const ctx = ctxOcr(faux);
+  const journal = [];
+  ctx.journalErreur_ = (src, msg) => journal.push(msg);
+  assert.strictEqual(ctx.convertirEtExtraire_(blobImage('image/png', 'graphique.png', true),
+    'application/vnd.google-apps.document', 'text/plain', true), null);
+  assert.strictEqual(faux.compte('/upload/'), 2);
+  assert.match(journal.join('\n'), /déjà ré-encodé/);
+});
+
+test('C49-28 : un 5xx sur une image ne déclenche PAS le rejeu ré-encodé (l\'upload a pu créer)', () => {
+  const faux = faussesReponses({ '/upload/': [{ code: 503, corps: 'backend' }] });
+  const ctx = ctxOcr(faux);
+  assert.strictEqual(ctx.convertirEtExtraire_(blobImage('image/png', 'x.png', true),
+    'application/vnd.google-apps.document', 'text/plain', true), null);
+  assert.strictEqual(faux.compte('/upload/'), 1);
+});
+
+test('C49-28 : un PDF refusé ne se ré-encode pas, et un TIFF non plus (getAs ne sait pas)', () => {
+  assert.strictEqual(require('./harness').load(['Ocr.gs']).peutReencoderImage_('application/pdf'), false);
+  const ctx = load(['Ocr.gs']);
+  assert.strictEqual(ctx.peutReencoderImage_('image/tiff'), false);
+  assert.strictEqual(ctx.peutReencoderImage_('image/jpeg'), false, 'rejouer un JPEG en JPEG ne change rien');
+  assert.strictEqual(ctx.peutReencoderImage_('image/png'), true);
+});
+
+test('C49-28 : le journal NOMME le fichier, son type d\'origine, et dit si le PDF est chiffré', () => {
+  const faux = faussesReponses({ '/upload/': [{ code: 400, corps: 'Bad Request' }] });
+  const ctx = ctxOcr(faux);
+  const journal = [];
+  ctx.journalErreur_ = (src, msg) => journal.push(msg);
+  ctx.Utilities.newBlob = () => ({ getBytes: () => [], getDataAsString: () => '%PDF-1.3 … trailer << /Encrypt 1 0 R >>' });
+  const pdf = { getContentType: () => 'application/pdf', getName: () => 'attestation.pdf', getBytes: () => new Array(2048).fill(0) };
+  assert.strictEqual(ctx.convertirEtExtraire_(pdf, 'application/vnd.google-apps.document', 'text/plain', true), null);
+  assert.strictEqual(faux.compte('/upload/'), 1, 'un PDF n\'est pas rejoué');
+  assert.match(journal[0], /« attestation\.pdf »/);
+  assert.match(journal[0], /application\/pdf, 2 Ko, PDF CHIFFRÉ/);
+});
+
+test('C49-28 : estPdfChiffre_ — le marqueur exact, pas une sous-chaîne voisine', () => {
+  const ctx = load(['Ocr.gs']);
+  assert.strictEqual(ctx.estPdfChiffre_('trailer << /Encrypt 1 0 R >>'), true);
+  assert.strictEqual(ctx.estPdfChiffre_('trailer << /Root 1 0 R >>'), false);
+  assert.strictEqual(ctx.estPdfChiffre_('/EncryptMetadata false'), false);
+  assert.strictEqual(ctx.estPdfChiffre_(null), false);
+});
