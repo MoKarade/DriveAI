@@ -45,7 +45,8 @@ test('coutDollarsDelta_ : différence de 2 relevés (dry-run C26-07, coût PAR d
 test('usageRunSnapshot_ : copie (jamais la référence), zéro si aucun run en cours', () => {
   const c = load(['Config.gs', 'Cout.gs']);
   assert.deepStrictEqual(plat(c.usageRunSnapshot_()),
-    { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0, appels: 0 });
+    { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0,
+      s5in: 0, s5out: 0, s5cw: 0, s5cr: 0, appels: 0 });
   c.reinitialiserUsage_();
   c.enregistrerUsage_('claude-sonnet-4-6', { input_tokens: 100, output_tokens: 20 });
   const s1 = c.usageRunSnapshot_();
@@ -53,6 +54,35 @@ test('usageRunSnapshot_ : copie (jamais la référence), zéro si aucun run en c
   c.enregistrerUsage_('claude-sonnet-4-6', { input_tokens: 900, output_tokens: 80 });
   assert.strictEqual(s1.sin, 100, 'le relevé pris AVANT le 2e appel ne doit pas bouger (copie)');
   assert.strictEqual(c.usageRunSnapshot_().sin, 1000);
+});
+
+test('ADR-0063 — Sonnet 5 est compté à SON prix (2 $/10 $), jamais à celui de Sonnet 4.6', () => {
+  const c = load(['Config.gs', 'Cout.gs']);
+  c.reinitialiserUsage_();
+  c.enregistrerUsage_('claude-sonnet-5', {
+    input_tokens: M, output_tokens: M, cache_creation_input_tokens: M, cache_read_input_tokens: M,
+  });
+  const s = c.usageRunSnapshot_();
+  assert.strictEqual(s.s5in, M);
+  assert.strictEqual(s.sin, 0, 'rangé avec Sonnet 4.6, il serait compté 1,5× — et le frein lit ce total');
+  // 2 + 10 + 2,5 + 0,2 = 14,7 $ ; au tarif de Sonnet 4.6 ce serait 22,05 $.
+  assert.ok(Math.abs(c.coutDollarsDelta_({}, s) - 14.7) < 1e-9);
+  // Les noms voisins ne basculent PAS : `sonnet-4-5` et `sonnet-4-6` restent au tarif de Sonnet.
+  c.reinitialiserUsage_();
+  c.enregistrerUsage_('claude-sonnet-4-5', { input_tokens: M, output_tokens: 0 });
+  c.enregistrerUsage_('claude-sonnet-4-6', { input_tokens: M, output_tokens: 0 });
+  assert.strictEqual(c.usageRunSnapshot_().sin, 2 * M);
+  assert.strictEqual(c.usageRunSnapshot_().s5in, 0);
+});
+
+test('ADR-0063 — un mois écrit AVANT Sonnet 5 se relit sans NaN', () => {
+  const store = { 'DriveAI_COUT_2026-08': JSON.stringify({ hin: 1, hout: 0, sin: 0, sout: 0, appels: 1 }) };
+  const c = load(['Config.gs', 'Cout.gs'], {
+    PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => (k in store ? store[k] : null) }) },
+  });
+  const t = c.lireCoutMois_({ getProperty: (k) => store[k] }, 'DriveAI_COUT_2026-08');
+  assert.strictEqual(t.s5out, 0);
+  assert.ok(Number.isFinite(c.coutDollars_(t)));
 });
 
 // ---------------------------------------------------------------------------

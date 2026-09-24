@@ -288,6 +288,9 @@ function majSante_() {
     // pas celui des papiers.
     ['Périmètre des pièces (C49-4) : ' + texteSantePerimetrePiece_()],
     ['Rattrapage des pièces (C49-5) : ' + texteSanteRattrapagePiece_()],
+    // ADR-0063 (L1) — l'audit de la lecture VISION : combien de papiers restent sur vingt, et
+    // ce qu'ils ont COÛTÉ, mesuré sur la réponse. C'est le chiffre qui décide de la campagne.
+    ['Audit vision (L1) : ' + texteSanteAuditVision_()],
     // La RÉSOLUTION des identifiants (C49-16). Ligne à part des deux ci-dessus, parce qu'elle
     // répond à une question qu'aucune ne pose : « combien de papiers classés sont-ils seulement
     // DÉSIGNABLES ? ». Tant qu'une ligne d'Index ne porte pas de fileId, le périmètre la compte

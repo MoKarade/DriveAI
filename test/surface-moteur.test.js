@@ -227,6 +227,12 @@ const CONTRAT = [
   // c'est le seul moyen de vérifier une réparation avant minuit. `diagnosticRattrapagePiece`
   // est en plus ce qui permet de lire le COÛT d'une tranche AVANT de la dépenser.
   'rattraperPiecesMaintenant', 'diagnosticRattrapagePiece',
+  // La LECTURE VISION et son audit (ADR-0063, L1). `auditVisionDoitTourner_` et
+  // `etapeAuditVision_` sont appelées par `Main.gs`, `texteSanteAuditVision_` par `Journal.gs`,
+  // `extrairePieceVision_` par `Memoire.gs`, `titulaireEstMarc_` et `coutVisionDollars_` en
+  // travers — et `auditerVisionMaintenant` est le chemin de Marc depuis l'éditeur (C28-137).
+  'auditVisionDoitTourner_', 'etapeAuditVision_', 'texteSanteAuditVision_',
+  'extrairePieceVision_', 'titulaireEstMarc_', 'coutVisionDollars_', 'auditerVisionMaintenant',
   // La RÉSOLUTION des identifiants (C49-16). Cinq contrats INTER-MODULES, donc cinq noms que
   // seul ce test retient : `etatResolutionFileId_`, `resolutionFileIdDoitTourner_` et
   // `etapeResolutionFileId_` sont appelées par `Main.gs` ; `texteSanteResolutionFileId_` par

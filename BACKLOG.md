@@ -5,6 +5,31 @@
 
 ---
 
+## C49-29 (L1) — Lire l'IMAGE du papier avec Sonnet 5, et l'auditer sur vingt 🟦
+
+Marc, le 24/09 : « il ne récupère pas assez d'info par document — littéralement TOUT », puis
+« Vision Sonnet partout », « Tout relire », « 100 $ au total », « OK lance L1 ». ADR-0063 (et son
+jumeau, l'ADR 0010 de MemoryAI).
+
+- ✅ `src/PieceVision.gs` : le modèle reçoit le fichier (PDF, photo, aperçu Drive pour TIFF/HEIC),
+  prompt v3 exhaustif, apparence de MARC seulement (garde dans le code), extracteur
+  `sonnet-5-vision-piece-v3`, bornes 1 500 / 80.
+- ✅ `src/Cout.gs` : Sonnet 5 compté à son prix (2 $ / 10 $), dans ses propres compteurs.
+- ✅ `src/AuditVision.gs` : vingt papiers choisis par issue Haiku (d'abord ses échecs), lus,
+  envoyés, mesurés dans l'onglet `AuditVision` — des comptes, jamais une valeur.
+- ✅ Le rattrapage Haiku est EN PAUSE tant que `AUDIT_VISION_TAG` est posé (`vision-en-cours`).
+- ⬜ Mesurer après déploiement (MemoryAI #70 d'abord) : la ligne « Audit vision (L1) », le coût
+  réel par papier, et ce que la Mémoire porte pour le passeport canadien.
+- ⬜ Décision de Marc sur l'audit : lancer la campagne (100 $, relever le frein à 40 $/mois ?).
+- ✅ Revue adversariale (#418) : 7 défauts corrigés avant fusion — issue par liste de VERDICTS
+  (un 404 ou une panne Drive refermaient l'audit sans rien mesurer), coupe-circuit de série,
+  panne de compte non imputée au papier, chemin transmis, plafond d'essais, garde de l'apparence
+  élargie (liste de clés, titulaire unique, confiance ≥ 0,8), aperçu redemandé plus petit et type
+  lu dans les octets, échantillon vide terminal, `<`/`>` neutralisés, marge avant chaque appel.
+- ⬜ Défaut PRÉEXISTANT signalé par la revue, non corrigé (hors périmètre) : les chemins manuels
+  (`auditerVisionMaintenant`, `rattraperPiecesMaintenant`) ne prennent pas de `LockService` —
+  lancés pendant un tick, ils peuvent traiter la même ligne en parallèle.
+
 ## C49-28 — Les refus OCR 400 se nomment, et une image refusée se rejoue ré-encodée 🟦
 
 Mesuré le 24/09 en rejouant la lecture de 5 papiers : les 400 ne sont PAS des pannes passagères.
@@ -15,8 +40,8 @@ Trois fichiers sont refusés à coup sûr — un PDF chiffré (`/Encrypt`), un T
 - ✅ Le journal nomme le fichier, son type d'ORIGINE, sa taille, et dit si le PDF est chiffré.
 - ✅ Un 400 sur une image PNG/GIF/BMP se rejoue UNE fois, ré-encodée en JPEG. Jamais sur un 5xx
   (l'upload a pu créer un temporaire), jamais sur le même contenu.
-- ⬜ PDF chiffrés et TIFF : `getAs` ne sait pas les convertir. Ils passeront par la lecture du
-  modèle lui-même (vision), prévue dans le chantier de lecture enrichie.
+- 🟦 PDF chiffrés et TIFF : `getAs` ne sait pas les convertir. Ils passent désormais par la
+  lecture vision (C49-29) : le PDF en bloc `document`, le TIFF par l'aperçu de Drive.
 - ⬜ Mesurer après déploiement : relire le PNG en palette et constater le texte.
 
 ## C49-27 — DriveAI pousse ses comptes à la Mémoire, pour son onglet Avancement 🟦

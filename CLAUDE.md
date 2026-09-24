@@ -344,7 +344,8 @@ ce qui reste vrai d'une session à l'autre.
   log doit respecter cet invariant (à verrouiller par un test, roadmap #1).
   **Ce qui SORT du compte Google de Marc se juge à part, et se tranche par un ADR** : le texte des
   documents vers claude.ai (ADR-0042 §3), le nom du dernier document classé vers hubperso.com
-  (ADR-0057 §3), et **l'inventaire vers la Mémoire** (ADR-0059 §3 point 2 — un fait
+  (ADR-0057 §3), l'**image** des papiers vers Anthropic pour la lecture vision (ADR-0063),
+  et **l'inventaire vers la Mémoire** (ADR-0059 §3 point 2 — un fait
   `document.existe` par document classé, sa VALEUR est un `fileId`, `Memoire.gs`). Chaque sortie
   nomme la frontière franchie ET le garde-fou obtenu en échange — jamais une permission nue.
   Pour la troisième : liste de champs FERMÉE et testée (`test/memoire.test.js`), niveau dérivé

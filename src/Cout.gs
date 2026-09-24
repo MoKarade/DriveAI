@@ -15,7 +15,7 @@ var _usageRun = null;
 
 /** À appeler en tête de run. `cw`/`cr` = tokens d'ÉCRITURE / LECTURE de cache (prompt caching, Vague 3). */
 function reinitialiserUsage_() {
-  _usageRun = { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0, appels: 0, ops: {} };
+  _usageRun = { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0, s5in: 0, s5out: 0, s5cw: 0, s5cr: 0, appels: 0, ops: {} };
 }
 
 /**
@@ -40,7 +40,15 @@ function enregistrerUsage_(modele, usage) {
   var inTok = usage.input_tokens || 0, outTok = usage.output_tokens || 0;
   var cwTok = usage.cache_creation_input_tokens || 0, crTok = usage.cache_read_input_tokens || 0;
   var sonnet = String(modele).indexOf('sonnet') !== -1;
-  if (sonnet) {
+  // ⚠️ SONNET 5 A SES PROPRES COMPTEURS (ADR-0063, 24/09/2026) : 2 $/10 $ par million de jetons,
+  // contre 3 $/15 $ pour Sonnet 4.6. Rangé avec lui, chaque appel de la lecture vision serait
+  // compté 1,5× son prix — et c'est ce total que lit le frein budget des campagnes : il
+  // s'enclencherait aux deux tiers de ce que Marc a décidé de dépenser, sans rien dire.
+  // `sonnet-5` ne matche ni `sonnet-4-5` ni `sonnet-4-6` : le test le verrouille.
+  var sonnet5 = String(modele).indexOf('sonnet-5') !== -1;
+  if (sonnet5) {
+    _usageRun.s5in += inTok; _usageRun.s5out += outTok; _usageRun.s5cw += cwTok; _usageRun.s5cr += crTok;
+  } else if (sonnet) {
     _usageRun.sin += inTok; _usageRun.sout += outTok; _usageRun.scw += cwTok; _usageRun.scr += crTok;
   } else {
     _usageRun.hin += inTok; _usageRun.hout += outTok; _usageRun.hcw += cwTok; _usageRun.hcr += crTok;
@@ -57,7 +65,9 @@ function enregistrerUsage_(modele, usage) {
     if (!_usageRun.ops) _usageRun.ops = {};
     var op = _operationCouranteSure_();
     var ligne = _usageRun.ops[op] || (_usageRun.ops[op] = { d: 0, n: 0 });
-    ligne.d += coutDollars_(sonnet
+    ligne.d += coutDollars_(sonnet5
+      ? { s5in: inTok, s5out: outTok, s5cw: cwTok, s5cr: crTok }
+      : sonnet
       ? { sin: inTok, sout: outTok, scw: cwTok, scr: crTok }
       : { hin: inTok, hout: outTok, hcw: cwTok, hcr: crTok });
     ligne.n += 1;
@@ -88,6 +98,7 @@ function flushUsage_() {
   var t = lireCoutMois_(props, cle);
   t.hin += _usageRun.hin; t.hout += _usageRun.hout; t.hcw += _usageRun.hcw; t.hcr += _usageRun.hcr;
   t.sin += _usageRun.sin; t.sout += _usageRun.sout; t.scw += _usageRun.scw; t.scr += _usageRun.scr;
+  t.s5in += _usageRun.s5in; t.s5out += _usageRun.s5out; t.s5cw += _usageRun.s5cw; t.s5cr += _usageRun.s5cr;
   t.appels += _usageRun.appels;
   t.ops = fusionnerOps_(t.ops, _usageRun.ops);
   // FILET (revue flotte C28-58) : cette Property porte AUSSI les totaux que lit le frein budget
@@ -159,6 +170,9 @@ function lireCoutMois_(props, cle) {
       var t = JSON.parse(brut);
       t.hin = t.hin || 0; t.hout = t.hout || 0; t.hcw = t.hcw || 0; t.hcr = t.hcr || 0;
       t.sin = t.sin || 0; t.sout = t.sout || 0; t.scw = t.scw || 0; t.scr = t.scr || 0;
+      // Absents des mois d'AVANT l'ADR-0063 : `undefined + n` rendrait NaN et le frein lirait
+      // un budget qui ne se compare plus à rien.
+      t.s5in = t.s5in || 0; t.s5out = t.s5out || 0; t.s5cw = t.s5cw || 0; t.s5cr = t.s5cr || 0;
       t.appels = t.appels || 0;
       // `ops` absent = mois entamé AVANT C28-58 : la ventilation démarre à zéro et ne prétend
       // rien sur le passé (elle sera INCOMPLÈTE ce mois-ci — dit explicitement dans l'onglet).
@@ -166,7 +180,7 @@ function lireCoutMois_(props, cle) {
       return t;
     } catch (e) { /* corrompu → on repart à zéro */ }
   }
-  return { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0, appels: 0, ops: {} };
+  return { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0, s5in: 0, s5out: 0, s5cw: 0, s5cr: 0, appels: 0, ops: {} };
 }
 
 /**
@@ -245,7 +259,9 @@ function coutDollars_(t) {
   return ((t.hin || 0) * p.haiku_in + (t.hout || 0) * p.haiku_out +
           (t.hcw || 0) * p.haiku_cw + (t.hcr || 0) * p.haiku_cr +
           (t.sin || 0) * p.sonnet_in + (t.sout || 0) * p.sonnet_out +
-          (t.scw || 0) * p.sonnet_cw + (t.scr || 0) * p.sonnet_cr) / 1e6;
+          (t.scw || 0) * p.sonnet_cw + (t.scr || 0) * p.sonnet_cr +
+          (t.s5in || 0) * p.sonnet5_in + (t.s5out || 0) * p.sonnet5_out +
+          (t.s5cw || 0) * p.sonnet5_cw + (t.s5cr || 0) * p.sonnet5_cr) / 1e6;
 }
 
 /**
@@ -261,7 +277,9 @@ function coutDollarsDelta_(avant, apres) {
     hin: apres.hin - avant.hin, hout: apres.hout - avant.hout,
     hcw: (apres.hcw || 0) - (avant.hcw || 0), hcr: (apres.hcr || 0) - (avant.hcr || 0),
     sin: apres.sin - avant.sin, sout: apres.sout - avant.sout,
-    scw: (apres.scw || 0) - (avant.scw || 0), scr: (apres.scr || 0) - (avant.scr || 0)
+    scw: (apres.scw || 0) - (avant.scw || 0), scr: (apres.scr || 0) - (avant.scr || 0),
+    s5in: (apres.s5in || 0) - (avant.s5in || 0), s5out: (apres.s5out || 0) - (avant.s5out || 0),
+    s5cw: (apres.s5cw || 0) - (avant.s5cw || 0), s5cr: (apres.s5cr || 0) - (avant.s5cr || 0)
   });
 }
 
@@ -275,8 +293,10 @@ function coutDollarsDelta_(avant, apres) {
 function usageRunSnapshot_() {
   return _usageRun
     ? { hin: _usageRun.hin, hout: _usageRun.hout, hcw: _usageRun.hcw, hcr: _usageRun.hcr,
-        sin: _usageRun.sin, sout: _usageRun.sout, scw: _usageRun.scw, scr: _usageRun.scr, appels: _usageRun.appels }
-    : { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0, appels: 0 };
+        sin: _usageRun.sin, sout: _usageRun.sout, scw: _usageRun.scw, scr: _usageRun.scr,
+        s5in: _usageRun.s5in, s5out: _usageRun.s5out, s5cw: _usageRun.s5cw, s5cr: _usageRun.s5cr,
+        appels: _usageRun.appels }
+    : { hin: 0, hout: 0, hcw: 0, hcr: 0, sin: 0, sout: 0, scw: 0, scr: 0, s5in: 0, s5out: 0, s5cw: 0, s5cr: 0, appels: 0 };
 }
 
 /**
@@ -303,7 +323,8 @@ function syntheseCoutMois_() {
   return {
     appels: t.appels,
     dollars: coutDollars_(t),
-    tokens: t.hin + t.hout + t.hcw + t.hcr + t.sin + t.sout + t.scw + t.scr
+    tokens: t.hin + t.hout + t.hcw + t.hcr + t.sin + t.sout + t.scw + t.scr +
+      t.s5in + t.s5out + t.s5cw + t.s5cr
   };
 }
 
@@ -347,7 +368,8 @@ function syntheseCoutTotal_() {
       // champs de cache, et `undefined` propagerait un NaN dans TOUT le cumul.
       dollars += coutDollars_({
         hin: t.hin || 0, hout: t.hout || 0, hcw: t.hcw || 0, hcr: t.hcr || 0,
-        sin: t.sin || 0, sout: t.sout || 0, scw: t.scw || 0, scr: t.scr || 0
+        sin: t.sin || 0, sout: t.sout || 0, scw: t.scw || 0, scr: t.scr || 0,
+        s5in: t.s5in || 0, s5out: t.s5out || 0, s5cw: t.s5cw || 0, s5cr: t.s5cr || 0
       });
       mois += 1;
     } catch (e) {

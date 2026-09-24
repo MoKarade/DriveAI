@@ -4,6 +4,12 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
+> **🟦 EN COURS — 2026-09-24 : C49-29 (L1), la lecture VISION. REPRENDRE ICI.** Sonnet 5 lit
+> l'IMAGE des papiers (ADR-0063). Un audit sur 20 papiers tourne seul après déploiement (onglet
+> `AuditVision`, ligne de Santé « Audit vision (L1) ») ; le rattrapage Haiku est en PAUSE tant
+> qu'il est armé. Ordre de déploiement : **MemoryAI #70 d'abord** (rang 3 de la lignée), puis
+> celui-ci. Rien ne part en campagne avant le verdict de Marc sur l'audit.
+>
 > **🟦 EN COURS — 2026-09-23 : C49-26, la tranche « tout le reste » (PR #403). REPRENDRE ICI.**
 > Lecture élargie à `05 → 03 → 08 → 06`, puis `07` et `09`, sans relire `04 + 01 + 02`. Envoi à la
 > Mémoire **4 → 8 min/j**, pris aux pièces (**58 → 54**) ; l'enveloppe reste à 63. Le périmètre
