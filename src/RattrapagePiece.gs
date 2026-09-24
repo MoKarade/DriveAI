@@ -394,7 +394,7 @@ var PHRASES_FIN_RATTRAPAGE_ = {
   'suspendu': '⚠️ ARRÊTÉE : la Mémoire a refusé la dernière pièce. Re-sonde automatique',
   'panne-plateforme': '⚠️ panne de plateforme LLM — aucun appel tenté',
   'audit-en-cours': 'en attente : l\'audit des 100 documents tourne encore',
-  'vision-en-cours': 'en pause : la lecture VISION (Sonnet 5) est armée — elle relira ces papiers, les relire en Haiku ne servirait à rien',
+  'vision-en-cours': 'en pause : la lecture VISION (Sonnet 5) est armée (audit, puis campagne) — elle relira ces papiers, les relire en Haiku ne servirait à rien. Vider AUDIT_VISION_TAG pour relancer Haiku',
   'index-vide': '⚠️ l\'Index n\'a rien rendu — lecture de la feuille impossible',
   'faits-illisibles': '⚠️ la liste des documents déjà lus est illisible — la passe s\'abstient plutôt que de tout re-payer',
   'tranche-trop-grande': '⚠️ tranche plus grande que ce que l\'idempotence supporte — refus AVANT de dépenser',
@@ -682,6 +682,9 @@ function etapeRattrapagePiece_(garde, opts) {
   // ⚠️ ADR-0063 — EN PAUSE tant que la lecture VISION est armée. Continuer relirait en Haiku
   // (v2) des papiers que la vision relira (v3) : un appel payé pour une lecture que la suivante
   // remplace. Le chemin MANUEL passe outre, c'est le geste de Marc.
+  // ⚠️ La pause lit le TAG, pas la fin de l'audit — c'est voulu : l'audit n'est que la porte de la
+  // campagne vision, qui relira ces mêmes papiers. Rendre la main à Haiku entre les deux ferait
+  // payer des lectures v2 condamnées. Pour relancer Haiku : vider `AUDIT_VISION_TAG`.
   if (!opts.manuel && String(CONFIG.AUDIT_VISION_TAG || '')) {
     res.fin = 'vision-en-cours';
     res.restants = restantsRattrapage_(props);

@@ -643,7 +643,10 @@ function tickDriveAI() {
         var opAvantV = operationCourante_();
         try {
           poserOperationCourante_('audit-vision');
-          etapeAuditVision_(estBudgetDepasse, {});
+          // ⚠️ `estBudgetDepasseDoc`, pas `estBudgetDepasse` : une lecture Sonnet dure jusqu'à une
+          // ou deux minutes, et le garde n'est évalué qu'AVANT le papier. Lancée à 2 min 59 elle
+          // franchirait le mur des 6 min — run tué, coût hors frein, papier re-payé (revue #418).
+          etapeAuditVision_(estBudgetDepasseDoc, {});
         } finally { poserOperationCourante_(opAvantV); }
       }
     } catch (e) { journalErreur_('AuditVision', 'Audit vision différé : ' + e); }

@@ -786,7 +786,12 @@ function pieceMemoire_(ligne, extrait) {
 
 /** Un texte court, nettoyé, ou null. Les sentinelles d'un LLM comptent comme absentes. */
 function texteCourtMemoire_(brut) {
-  var s = String(brut == null ? '' : brut).replace(/\s+/g, ' ').trim();
+  // ⚠️ `<` et `>` deviennent des guillemets simples : « Julie <julie@x.ca> » est une BALISE pour
+  // le contrat de la Mémoire (`BALISE` de `validerPiece.ts`), qui refuse alors la pièce ENTIÈRE
+  // — lecture payée, perdue, et marquée « faite ». Le prompt v3 demande les courriels tels
+  // qu'écrits : la forme `Nom <adresse>` va arriver (revue #418).
+  var s = String(brut == null ? '' : brut).replace(/</g, '‹').replace(/>/g, '›')
+    .replace(/\s+/g, ' ').trim();
   if (!s) return null;
   return /^(inconnu|unknown|n\/?a|-|—|null|nil)$/i.test(s) ? null : s;
 }

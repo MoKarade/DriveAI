@@ -21,6 +21,14 @@ jumeau, l'ADR 0010 de MemoryAI).
 - ⬜ Mesurer après déploiement (MemoryAI #70 d'abord) : la ligne « Audit vision (L1) », le coût
   réel par papier, et ce que la Mémoire porte pour le passeport canadien.
 - ⬜ Décision de Marc sur l'audit : lancer la campagne (100 $, relever le frein à 40 $/mois ?).
+- ✅ Revue adversariale (#418) : 7 défauts corrigés avant fusion — issue par liste de VERDICTS
+  (un 404 ou une panne Drive refermaient l'audit sans rien mesurer), coupe-circuit de série,
+  panne de compte non imputée au papier, chemin transmis, plafond d'essais, garde de l'apparence
+  élargie (liste de clés, titulaire unique, confiance ≥ 0,8), aperçu redemandé plus petit et type
+  lu dans les octets, échantillon vide terminal, `<`/`>` neutralisés, marge avant chaque appel.
+- ⬜ Défaut PRÉEXISTANT signalé par la revue, non corrigé (hors périmètre) : les chemins manuels
+  (`auditerVisionMaintenant`, `rattraperPiecesMaintenant`) ne prennent pas de `LockService` —
+  lancés pendant un tick, ils peuvent traiter la même ligne en parallèle.
 
 ## C49-28 — Les refus OCR 400 se nomment, et une image refusée se rejoue ré-encodée 🟦
 

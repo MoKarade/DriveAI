@@ -40,10 +40,15 @@ function ctxVision(reponse, opts) {
   return c;
 }
 
+const JPEG = [0xFF, 0xD8, 0xFF, 0xE0, 0, 16, 0x4A, 0x46, 0x49, 0x46, 0, 1];
+const PNG = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13];
+
 function fichier(nom, mime, octets) {
   return {
     getName: () => nom, getMimeType: () => mime, getSize: () => octets, getId: () => 'ID_' + nom,
-    getBlob: () => ({ getBytes: () => [1, 2, 3], getContentType: () => mime }),
+    // Les octets d'une image portent sa SIGNATURE : le type se lit là, pas dans le type déclaré.
+    getBlob: () => ({ getBytes: () => (String(mime).indexOf('image/') === 0 ? JPEG : [1, 2, 3]),
+      getContentType: () => mime }),
     getAs: () => ({ getBytes: () => [4, 5], getContentType: () => 'application/pdf' }),
   };
 }
@@ -260,7 +265,10 @@ test('L\'ONGLET NE PORTE AUCUNE VALEUR — des comptes et des oui/non, jamais un
   ['AB123456', '1990-05-01', 'cheveux', 'Marc Richard', 'Passeport de Marc'].forEach((v) => {
     assert.ok(texte.indexOf(v) === -1, 'valeur en clair dans l\'onglet : ' + v);
   });
-  assert.strictEqual(cellules.length, c.COLONNES_AUDIT_VISION.length - c.COL_STATUT_AUDIT_VISION);
+  // Les cellules vont de « Statut » à « Le » : `Chemin` et `Essais`, en queue, ne sont PAS
+  // réécrites par un résultat — sinon un résultat effacerait le compte d'essais qu'il vient de coûter.
+  assert.strictEqual(cellules.length,
+    c.COLONNES_AUDIT_VISION.indexOf('Le') - c.COL_STATUT_AUDIT_VISION + 1);
   const col = (nom) => cellules[c.COLONNES_AUDIT_VISION.indexOf(nom) - c.COL_STATUT_AUDIT_VISION];
   assert.strictEqual(col('Statut'), 'fait');
   assert.strictEqual(col('Titulaire'), 'Marc');
@@ -345,16 +353,25 @@ function chaine(reponseMemoire, opts) {
       getContentText: () => JSON.stringify(reponseMemoire.corps || {}) };
   } };
   c.DriveApp = { getFileById: (id) => fichier('passeport_' + id + '.jpg', 'image/jpeg', 1000) };
-  const lignes = [
-    [1, FID('P1'), 'p1.jpg', '04 · Immigration', 'illisible', 'à faire'],
-    [2, FID('P2'), 'p2.jpg', '04 · Immigration', 'ok', 'à faire'],
-  ].map((l) => { while (l.length < c.COLONNES_AUDIT_VISION.length) l.push(''); return l; });
+  const n = o.n || 2;
+  const lignes = [];
+  for (let i = 1; i <= n; i++) {
+    const l = [i, FID('P' + i), 'p' + i + '.jpg', '04 · Immigration', i === 1 ? 'illisible' : 'ok', 'à faire'];
+    while (l.length < c.COLONNES_AUDIT_VISION.length) l.push('');
+    l[c.COL_CHEMIN_AUDIT_VISION] = '04 · Immigration/Passeports';
+    l[c.COL_ESSAIS_AUDIT_VISION] = (o.essais && o.essais[i]) || 0;
+    lignes.push(l);
+  }
+  c.lignes = lignes;
+  if (o.fetch) c.fetchAvecRetry_ = o.fetch;
+  if (o.drive) c.DriveApp = { getFileById: o.drive };
   c.ecrits = {};
   c.ongletAuditVision_ = () => ({
     getLastRow: () => lignes.length + 1,
     getRange: (ligne, col, n, largeur) => ({
       getValues: () => lignes,
       setValues: (v) => { c.ecrits[ligne] = { col: col, valeurs: v[0] }; },
+      setValue: (v) => { (c.essais = c.essais || {})[ligne] = v; },
     }),
   });
   if (o.tagVide) c.CONFIG.AUDIT_VISION_TAG = '';
@@ -384,6 +401,7 @@ test('LA CHAÎNE : une Mémoire qui refuse le jeton laisse les lignes « à fair
   const res = c.etapeAuditVision_(() => false, { manuel: true });
   assert.strictEqual(res.fin, 'canal');
   assert.deepStrictEqual(Object.keys(c.ecrits), [], 'une panne de canal ne s\'écrit pas comme une mesure');
+  assert.strictEqual(c.essais[2], 1, 'le refus est arrivé APRÈS l\'appel payé : l\'essai compte');
   assert.notStrictEqual(c.props.get('DriveAI_AUDIT_VISION_FINI'), c.CONFIG.AUDIT_VISION_TAG);
 });
 
@@ -394,4 +412,126 @@ test('LA CHAÎNE : tag vide et hors chemin manuel, la vision n\'envoie RIEN', ()
     { vision: { fichier: fichier('p.jpg', 'image/jpeg', 10) } });
   assert.strictEqual(env.motif, 'desactive');
   assert.strictEqual(c.envoyes.length, 0);
+});
+
+/* ---------- 9. les défauts trouvés par la revue #418, fermés ---------- */
+
+test('REVUE #418 — Drive qui refuse TOUT : coupe-circuit, rien n\'est marqué, l\'audit ne se referme pas', () => {
+  const c = chaine({ corps: {} }, { n: 5, drive: () => { throw new Error('Service error: Drive'); } });
+  const res = c.etapeAuditVision_(() => false, { manuel: true });
+  assert.strictEqual(res.fin, 'serie');
+  assert.strictEqual(res.echecs, 0);
+  assert.strictEqual(res.restants, 5);
+  // Les trois lignes de la série ont été REMISES à faire.
+  Object.values(c.ecrits).slice(-3).forEach((e) => assert.strictEqual(e.valeurs[0], 'à faire'));
+  assert.notStrictEqual(c.props.get('DriveAI_AUDIT_VISION_FINI'), c.CONFIG.AUDIT_VISION_TAG);
+});
+
+test('REVUE #418 — un 404 sur le modèle est une PANNE : rien n\'est marqué', () => {
+  const c = chaine({ corps: {} }, { fetch: () => ({ getResponseCode: () => 404, getContentText: () => '{}' }) });
+  const res = c.etapeAuditVision_(() => false, { manuel: true });
+  assert.strictEqual(res.fin, 'canal');
+  assert.deepStrictEqual(Object.keys(c.ecrits), []);
+});
+
+test('REVUE #418 — une panne de COMPTE (401) ne s\'impute pas au papier', () => {
+  const c = ctxVision({ code: 401, corps: { error: { type: 'authentication_error' } } });
+  c.signalerPannePlateforme_ = () => true;
+  const hors = {};
+  assert.strictEqual(c.extrairePieceVision_(fichier('p.jpg', 'image/jpeg', 10), hors), null);
+  assert.strictEqual(hors.motif, 'panne-llm');
+  assert.strictEqual(c.issueAuditVision_({ motif: 'extraction-vide', vision: hors }), 'panne');
+});
+
+test('REVUE #418 — le CHEMIN part avec la pièce', () => {
+  const c = chaine({ corps: { acceptees: 1, remplacees: 1 } });
+  c.etapeAuditVision_(() => false, { manuel: true });
+  assert.strictEqual(c.envoyes[0].corps.pieces[0].exemplaires[0].chemin, '04 · Immigration/Passeports');
+});
+
+test('REVUE #418 — une ligne au plafond d\'ESSAIS se marque sans appel ; un hoquet réseau compte un essai', () => {
+  const c = chaine({ corps: { acceptees: 1 } }, { essais: { 1: 3 } });
+  let appels = 0;
+  const fetch = c.fetchAvecRetry_;
+  c.fetchAvecRetry_ = (u, o) => { appels++; return fetch(u, o); };
+  c.etapeAuditVision_(() => false, { manuel: true });
+  assert.strictEqual(c.ecrits[2].valeurs[0], 'échec');
+  assert.strictEqual(c.ecrits[2].valeurs[2], 'essais-epuises');
+  assert.strictEqual(appels, 1, 'seul le second papier a coûté un appel');
+
+  const c2 = chaine({ corps: {} }, { fetch: () => null });
+  const r2 = c2.etapeAuditVision_(() => false, { manuel: true });
+  assert.strictEqual(r2.fin, 'canal');
+  assert.strictEqual(c2.essais[2], 1, 'l\'essai est compté AVANT l\'appel');
+});
+
+test('REVUE #418 — l\'apparence d\'un PROCHE ne passe sous AUCUNE clé ; l\'imprimé reste', () => {
+  const c = ctxVision();
+  const proche = { titulaire: 'Julie Tremblay', titulaire_confiance: 0.99, libres: {
+    'description de la photo': 'cheveux longs', 'visage': 'ovale', 'taille': '165 cm',
+    'couleur des yeux': 'bleus' } };
+  const f = c.filtrerApparence_(proche);
+  assert.strictEqual(f.libres['description de la photo'], undefined);
+  assert.strictEqual(f.libres.visage, undefined);
+  assert.strictEqual(f.libres.taille, '165 cm', 'imprimé sur le document : c\'est un champ du papier');
+  assert.strictEqual(f.libres['couleur des yeux'], 'bleus');
+  assert.strictEqual(c.titulaireEstMarc_('Marc Richard et Julie Tremblay'), false);
+  assert.strictEqual(c.titulaireEstMarc_('Marc Richard / Julie Tremblay'), false);
+  // Marc, mais à confiance basse : pas de visage.
+  const incertain = { titulaire: 'Marc Richard', titulaire_confiance: 0.5, libres: { 'apparence (photo)': 'x' } };
+  assert.strictEqual(c.filtrerApparence_(incertain).libres['apparence (photo)'], undefined);
+});
+
+test('REVUE #418 — le type d\'image se lit dans les OCTETS ; un aperçu en 503 est une panne', () => {
+  const c = ctxVision();
+  assert.strictEqual(c.typeImageDesOctets_(JPEG), 'image/jpeg');
+  assert.strictEqual(c.typeImageDesOctets_(PNG), 'image/png');
+  assert.strictEqual(c.typeImageDesOctets_([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]), null);
+  c.jetonDrive_ = () => 'J';
+  c.fetchDriveAvecRetry_ = () => ({ getResponseCode: () => 503, getContentText: () => '' });
+  const hors = {};
+  assert.strictEqual(c.extrairePieceVision_(fichier('c.tiff', 'image/tiff', 10), hors), null);
+  assert.strictEqual(hors.motif, 'apercu-panne');
+  assert.strictEqual(c.issueAuditVision_({ motif: 'extraction-vide', vision: hors }), 'panne');
+});
+
+test('REVUE #418 — un aperçu trop lourd est redemandé PLUS PETIT', () => {
+  const c = ctxVision(reponseOk());
+  c.jetonDrive_ = () => 'J';
+  const gros = JPEG.concat(new Array(4 * 1024 * 1024).fill(0));
+  const urls = [];
+  c.fetchDriveAvecRetry_ = (url) => {
+    urls.push(url);
+    if (url.indexOf('fields=thumbnailLink') !== -1) {
+      return { getResponseCode: () => 200, getContentText: () => JSON.stringify({ thumbnailLink: 'https://x/y=s220' }) };
+    }
+    return { getResponseCode: () => 200, getBlob: () => ({ getBytes: () => (/=s2400$/.test(url) ? gros : JPEG) }) };
+  };
+  const hors = {};
+  assert.ok(c.extrairePieceVision_(fichier('c.tiff', 'image/tiff', 10), hors));
+  assert.ok(urls.some((u) => /=s1600$/.test(u)), urls.join(' '));
+});
+
+test('REVUE #418 — un échantillon VIDE est terminal : la gate se referme', () => {
+  const c = chaine({ corps: {} }, { n: 0 });
+  c.ongletAuditVision_ = () => ({ getLastRow: () => 1 });
+  const res = c.etapeAuditVision_(() => false, { manuel: true });
+  assert.strictEqual(res.fin, 'echantillon-vide');
+  assert.strictEqual(c.props.get('DriveAI_AUDIT_VISION_FINI'), c.CONFIG.AUDIT_VISION_TAG);
+});
+
+test('REVUE #418 — « Nom <adresse> » ne devient pas une BALISE que la Mémoire refuserait', () => {
+  const c = ctxVision();
+  const t = c.texteCourtMemoire_('Julie <julie@exemple.ca>');
+  assert.ok(t.indexOf('<') === -1 && t.indexOf('>') === -1, t);
+  assert.ok(/julie@exemple\.ca/.test(t));
+});
+
+test('REVUE #418 — un 200 illisible est un hoquet rejoué, pas une mesure', () => {
+  const c = ctxVision();
+  c.fetchAvecRetry_ = () => ({ getResponseCode: () => 200, getContentText: () => '<html>oups' });
+  const hors = {};
+  assert.strictEqual(c.extrairePieceVision_(fichier('p.pdf', 'application/pdf', 10), hors), null);
+  assert.strictEqual(hors.motif, 'reponse-illisible');
+  assert.strictEqual(c.issueAuditVision_({ motif: 'extraction-vide', vision: hors }), 'panne');
 });

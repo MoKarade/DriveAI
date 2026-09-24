@@ -30,8 +30,29 @@ var COLONNES_AUDIT_VISION = [
   'Rang', 'FileId', 'Fichier', 'Domaine', 'Avant (Haiku)', 'Statut', 'Voie', 'Issue',
   'Titulaire', 'Naissance', 'Échéance', 'Apparence', 'Numéros', 'Montants', 'Personnes',
   'Lieux', 'Libres', 'Résumé (car.)', 'Jetons entrée', 'Jetons sortie', 'Coût $', 'Durée s',
-  'Mémoire', 'Le'
+  'Mémoire', 'Le',
+  // ⚠️ EN QUEUE : `cellulesAuditVision_` écrit de « Statut » à « Le », et ces deux-là doivent
+  // survivre à cette écriture. `Chemin` accompagne la pièce (une relecture v3 REMPLACE la v2, qui
+  // le portait) ; `Essais` borne ce qu'une ligne peut coûter (revue #418).
+  'Chemin', 'Essais'
 ];
+
+var COL_CHEMIN_AUDIT_VISION = COLONNES_AUDIT_VISION.indexOf('Chemin');
+var COL_ESSAIS_AUDIT_VISION = COLONNES_AUDIT_VISION.indexOf('Essais');
+
+/**
+ * Au-delà, une ligne cesse d'être rejouée et se marque « essais épuisés ». Sans ce plafond, un
+ * papier qui fait tomber l'appel (réseau, 5xx, délai dépassé — FACTURÉ quand même) serait repris
+ * EN TÊTE à chaque tick : il re-paierait sans fin, et les dix-neuf autres n'avanceraient jamais.
+ */
+var AUDIT_VISION_ESSAIS_MAX = 3;
+
+/**
+ * Trois échecs IDENTIQUES d'affilée sur une cause qui peut toucher tout le lot (Drive qui refuse,
+ * même code HTTP 4xx, aperçu absent) ne sont pas trois mesures : c'est le CANAL. Coupe-circuit
+ * jumeau de celui du rattrapage (C49-26) — les marques de la série se retirent.
+ */
+var AUDIT_VISION_SERIE_MAX = 3;
 
 /** La colonne « Statut » (0-indexée) : c'est elle qui dit « à faire ». Dérivée, jamais écrite. */
 var COL_STATUT_AUDIT_VISION = COLONNES_AUDIT_VISION.indexOf('Statut');
@@ -168,21 +189,36 @@ var MOTIFS_CANAL_AUDIT_VISION = ['desactive', 'jeton-absent', 'suspendu', 'frein
   'panne-llm', 'jeton-refuse', 'perimetre-retire', 'reseau', 'panne'];
 
 /**
+ * Les motifs de la LECTURE qui sont des VERDICTS du papier — une mesure. Tout le reste est une
+ * panne (la ligne reste à faire).
+ *
+ * ⚠️ LA LISTE ÉNUMÈRE LES VERDICTS, PAS LES PANNES — c'est le sens d'`issueRattrapage_`, et la
+ * première version de ce fichier faisait l'inverse (revue #418, prouvé par sonde) : un motif
+ * inconnu devenait une mesure, donc un 404 sur le modèle ou une panne Drive marquaient les vingt
+ * papiers en une passe et refermaient l'audit sans un seul appel utile. Dans ce sens-ci, un motif
+ * nouveau coûte un re-essai (borné par `Essais`) ; dans l'autre, il coûtait l'audit entier.
+ * ⚠️ `http-401/403/404` n'y sont PAS : un refus d'accès ou un modèle inconnu frappent tous les
+ * papiers. `http-400/413` y sont : un format refusé est propre au fichier — le coupe-circuit de
+ * série attrape le cas où il ne l'est pas.
+ */
+var VERDICTS_LECTURE_VISION = ['ok', 'illisible', 'coupee', 'sans-texte', 'ocr-echec', 'vide',
+  'http-400', 'http-413', 'apercu-absent', 'lecture-impossible', 'essais-epuises'];
+
+/** Les verdicts qu'une cause COMMUNE peut produire en série — soumis au coupe-circuit. */
+var VERDICTS_SERIE_VISION = ['lecture-impossible', 'http-400', 'http-413', 'apercu-absent'];
+
+/**
  * PURE. Que faire de cette ligne ? `fait`/`echec` la marquent (c'est une MESURE du papier) ;
  * `panne` et `plafond` la laissent « à faire » et arrêtent la boucle.
- *
- * ⚠️ Une erreur TRANSITOIRE de l'appel (réseau, 429, 5xx) n'est pas un verdict : sous la voie
- * vision elle arrive déguisée en « extraction vide », et la marquer ferait publier comme mesure
- * ce qui n'était qu'un hoquet. Un 400, lui, est déterministe — c'est une mesure (le format que
- * l'API refuse), et l'audit est venu la chercher.
  */
 function issueAuditVision_(envoi) {
   var e = envoi || {};
-  var mv = String((e.vision && e.vision.motif) || '');
   if (e.motif === 'plafond-run') return 'plafond';
+  // Une pièce existe : la Mémoire a RÉPONDU (acceptée, déjà là, ou refusée pour ce contenu).
+  if (e.piece) return 'fait';
   if (MOTIFS_CANAL_AUDIT_VISION.indexOf(String(e.motif || '')) !== -1) return 'panne';
-  if (mv === 'reseau' || mv === 'panne-llm' || /^http-(429|5\d\d)$/.test(mv)) return 'panne';
-  return e.piece ? 'fait' : 'echec';
+  var mv = String((e.vision && e.vision.motif) || '');
+  return VERDICTS_LECTURE_VISION.indexOf(mv) !== -1 ? 'echec' : 'panne';
 }
 
 /**
@@ -262,7 +298,8 @@ var PHRASES_FIN_AUDIT_VISION_ = {
   'panne-plateforme': '⚠️ panne de plateforme LLM — aucun appel tenté',
   'onglet-absent': '⚠️ l\'onglet AuditVision n\'a pas pu être créé',
   'echantillon-vide': '⚠️ aucun papier à auditer (PiecesFaites ou Index vide)',
-  'canal': '⚠️ le canal vers la Mémoire a rompu — voir la ligne des pièces'
+  'canal': '⚠️ panne du canal ou de l\'appel (jeton, frein, réseau, 5xx, modèle refusé) — rien n\'est marqué, reprise au tick suivant',
+  'serie': '⚠️ trois échecs identiques d\'affilée — cause commune probable, rien n\'est marqué'
 };
 
 /* ---------- I/O ---------- */
@@ -308,6 +345,8 @@ function ongletAuditVision_(props) {
       for (var i = 0; i < docs.length; i++) {
         var ligne = [i + 1, docs[i].fileId, docs[i].nom, docs[i].domaine, docs[i].avant, 'à faire'];
         while (ligne.length < COLONNES_AUDIT_VISION.length) ligne.push('');
+        ligne[COL_CHEMIN_AUDIT_VISION] = docs[i].chemin || '';
+        ligne[COL_ESSAIS_AUDIT_VISION] = 0;
         lignes.push(ligne);
       }
       f.getRange(2, 1, lignes.length, COLONNES_AUDIT_VISION.length).setValues(lignes);
@@ -346,7 +385,10 @@ function etapeAuditVision_(garde, opts) {
     return noterFinAuditVision_(props, res);
   }
   var n = f.getLastRow() - 1;
-  if (n <= 0) { res.fin = 'echantillon-vide'; return noterFinAuditVision_(props, res); }
+  // ⚠️ Un échantillon VIDE est un état TERMINAL sous ce tag : sans `restants: 0`, la gate
+  // resterait ouverte et l'onglet se recomposerait à chaque tick — deux relectures de ~20 000
+  // lignes toutes les 5 minutes, comptées dans aucun budget (revue #418).
+  if (n <= 0) { res.fin = 'echantillon-vide'; res.restants = 0; return noterFinAuditVision_(props, res); }
   var valeurs = f.getRange(2, 1, n, COLONNES_AUDIT_VISION.length).getValues();
   // Le coût cumulé se RELIT de la colonne : une reprise le lendemain doit afficher le total de
   // l'audit, pas celui de la dernière passe.
@@ -359,36 +401,78 @@ function etapeAuditVision_(garde, opts) {
   var restants = 0;
   for (var i = 0; i < valeurs.length; i++) if (valeurs[i][COL_STATUT_AUDIT_VISION] === 'à faire') restants++;
 
+  // Le coupe-circuit : les lignes d'une série d'échecs IDENTIQUES, pour pouvoir les rendre.
+  var serie = { motif: '', lignes: [] };
+  var noterJour = function () {
+    // ⚠️ APRÈS CHAQUE papier, jamais seulement en fin de boucle : un run tué au mur des 6 min
+    // ne passe pas par la fin, et ses minutes échapperaient au budget du jour (revue #418).
+    if (opts.manuel) return;
+    try { props.setProperty('DriveAI_AUDIT_PIECE_JOUR_MS', aujourdhui + '|' + (consommeJour + (Date.now() - debut))); }
+    catch (e) { /* le budget est relu au tick suivant ; jamais bloquant */ }
+  };
+
   for (i = 0; i < valeurs.length; i++) {
     if (valeurs[i][COL_STATUT_AUDIT_VISION] !== 'à faire') continue;
     if ((garde && garde()) || Date.now() - debut > plafond) { res.fin = 'budget'; break; }
-    var doc = { fileId: String(valeurs[i][1]), nom: String(valeurs[i][2]), domaine: String(valeurs[i][3]) };
+    var doc = { fileId: String(valeurs[i][1]), nom: String(valeurs[i][2]), domaine: String(valeurs[i][3]),
+                chemin: String(valeurs[i][COL_CHEMIN_AUDIT_VISION] || '') };
+    var essais = Number(valeurs[i][COL_ESSAIS_AUDIT_VISION]) || 0;
     var envoi;
-    try {
-      var fichier = DriveApp.getFileById(doc.fileId);
-      // La décision de classement vient de l'Index, comme pour le rattrapage : le papier est
-      // DÉJÀ classé, et c'est son chemin actuel qui accompagne la pièce.
-      envoi = pousserPieceApresClassement_(
-        { cle: '' },
-        { nom: doc.nom, domaine: doc.domaine, statut: 'classé', chemin: '', fileId: doc.fileId },
-        '', { vision: { fichier: fichier }, manuel: !!opts.manuel });
-    } catch (e) {
-      journalErreur_('AuditVision', 'Lecture impossible : ' + e);
-      envoi = { motif: 'lecture-impossible', vision: { motif: 'lecture-impossible' } };
+    if (essais >= AUDIT_VISION_ESSAIS_MAX) {
+      envoi = { motif: 'essais-epuises', vision: { motif: 'essais-epuises' } };
+    } else {
+      // ⚠️ L'essai se compte AVANT l'appel : un run tué pendant l'appel ne passe pas par la
+      // suite, et c'est justement le cas qui re-paie.
+      f.getRange(i + 2, COL_ESSAIS_AUDIT_VISION + 1).setValue(essais + 1);
+      try {
+        var fichier = DriveApp.getFileById(doc.fileId);
+        envoi = pousserPieceApresClassement_(
+          { cle: '' },
+          { nom: doc.nom, domaine: doc.domaine, statut: 'classé', chemin: doc.chemin, fileId: doc.fileId },
+          '', { vision: { fichier: fichier }, manuel: !!opts.manuel });
+      } catch (e) {
+        journalErreur_('AuditVision', 'Lecture impossible : ' + e);
+        envoi = { motif: 'lecture-impossible', vision: { motif: 'lecture-impossible' } };
+      }
+      // Une panne de CANAL posée AVANT tout appel (jeton, frein, suspension) n'a rien coûté :
+      // elle rend son essai, sinon trois ticks de jeton refusé épuiseraient les vingt lignes.
+      if (!envoi.vision) f.getRange(i + 2, COL_ESSAIS_AUDIT_VISION + 1).setValue(essais);
     }
     var issue = issueAuditVision_(envoi);
-    if (issue === 'plafond') { res.fin = 'budget'; break; }
-    if (issue === 'panne') { res.fin = 'canal'; break; }
+    if (issue === 'plafond') { res.fin = 'budget'; noterJour(); break; }
+    if (issue === 'panne') { res.fin = 'canal'; noterJour(); break; }
     var cellules = cellulesAuditVision_(envoi, new Date().toISOString().slice(0, 16).replace('T', ' '));
     f.getRange(i + 2, COL_STATUT_AUDIT_VISION + 1, 1, cellules.length).setValues([cellules]);
     if (cellules[0] === 'fait') res.faits++; else res.echecs++;
     if (envoi.vision && envoi.vision.usage) res.dollars += coutVisionDollars_(envoi.vision.usage);
     restants--;
+    noterJour();
+
+    var mv = String((envoi.vision && envoi.vision.motif) || '');
+    if (issue === 'echec' && VERDICTS_SERIE_VISION.indexOf(mv) !== -1) {
+      if (serie.motif !== mv) serie = { motif: mv, lignes: [] };
+      serie.lignes.push(i);
+      if (serie.lignes.length >= AUDIT_VISION_SERIE_MAX) {
+        // Les marques de la série se RETIRENT : si la cause est commune, aucune n'est une mesure.
+        // Les essais restent comptés — c'est ce qui empêche la série de se rejouer sans fin.
+        var vide = ['à faire'];
+        while (vide.length < cellules.length) vide.push('');
+        for (var k = 0; k < serie.lignes.length; k++) {
+          f.getRange(serie.lignes[k] + 2, COL_STATUT_AUDIT_VISION + 1, 1, vide.length).setValues([vide]);
+        }
+        res.echecs -= serie.lignes.length;
+        restants += serie.lignes.length;
+        res.fin = 'serie';
+        journalErreur_('AuditVision', AUDIT_VISION_SERIE_MAX + ' échecs « ' + mv + ' » d\'affilée : '
+          + 'cause commune probable — rien n\'est marqué, reprise au tick suivant.');
+        break;
+      }
+    } else {
+      serie = { motif: '', lignes: [] };
+    }
   }
   res.restants = restants;
-  if (!opts.manuel) {
-    props.setProperty('DriveAI_AUDIT_PIECE_JOUR_MS', aujourdhui + '|' + (consommeJour + (Date.now() - debut)));
-  }
+  noterJour();
   return noterFinAuditVision_(props, res);
 }
 
