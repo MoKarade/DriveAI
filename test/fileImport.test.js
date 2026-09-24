@@ -18,7 +18,7 @@ const assert = require('node:assert');
 const { load } = require('./harness');
 
 function ctx() {
-  return load(['Config.gs', 'Consolidation.gs', 'Gmail.gs', 'Journal.gs', 'Memoire.gs']);
+  return load(['Config.gs', 'Consolidation.gs', 'Gmail.gs', 'Journal.gs', 'Memoire.gs', 'AvancementMemoire.gs']);
 }
 
 /** Une Property de périmètre RÉELLE, telle que `encoderPerimetrePiece_` l'écrit. */
