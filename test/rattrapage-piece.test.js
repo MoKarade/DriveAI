@@ -203,6 +203,9 @@ function montage(lignesIndex, props, options) {
   // position du tag en production est une décision de Marc, jamais un invariant de test). La
   // pause elle-même a son test, qui la rallume.
   if (!o.visionArmee) c.CONFIG.AUDIT_VISION_TAG = '';
+  // ⚠️ C49-30 — même règle pour la tranche lue EN VISION : ces tests exercent le lecteur Haiku.
+  // Les tests de la campagne vision la rallument (`visionCampagne`).
+  if (!o.visionCampagne) c.CONFIG.RATTRAPAGE_PIECE_VISION = false;
   // ⚠️ APRÈS le chargement : `Config.gs` définit `feuille_`, donc un override passé au sandbox
   // serait ÉCRASÉ au load et la mutation resterait muette.
   //
@@ -246,10 +249,18 @@ function montage(lignesIndex, props, options) {
   // deux documents du même run doivent pouvoir rendre deux réponses différentes (C28-33).
   c.DriveApp = { getFileById: (id) => ({ getSize: () => 10, getBlob: () => ({ id: id }) }) };
   c.extraireTexte_ = (blob) => (o.texte ? o.texte(blob.id) : 'du texte de ' + blob.id);
+  c.ocrAppels = 0;
+  const extraire = c.extraireTexte_;
+  c.extraireTexte_ = (blob) => { c.ocrAppels++; return extraire(blob); };
   c.pousserPieceApresClassement_ = (src, decision, texte, opts) => {
     c.appels.push({ cle: src.cle, nom: decision.nom, opts: opts });
+    // C49-30 — la voie vision rend un `envoi` COMPLET (motif aplati + motif riche + usage).
+    if (o.envoi) return o.envoi(src.cle, opts);
     return { motif: o.motif ? o.motif(src.cle) : 'ok' };
   };
+  // `coutVisionDollars_` vit dans `PieceVision.gs`, non chargé ici : l'usage factice PORTE son
+  // prix, pour que le test mesure l'ADDITION et le plafond, pas le barème.
+  c.coutVisionDollars_ = (u) => (u && u.dollars) || 0;
   return c;
 }
 
@@ -578,7 +589,7 @@ test('le canal REFUSE tout quand le rattrapage n\'est pas armé — donc rien ne
 test('l\'étape est branchée au TICK, gatée sur le tag, et sa ligne est dans la Santé', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'Main.gs'), 'utf8');
   assert.match(main, /rattrapageDoitTourner_\(/);
-  assert.match(main, /etapeRattrapagePiece_\(estBudgetDepasse/);
+  assert.match(main, /etapeRattrapagePiece_\((CONFIG\.RATTRAPAGE_PIECE_VISION \? estBudgetDepasseDoc : )?estBudgetDepasse/);
   // ⚠️ Cette campagne DÉPENSE : le frein en dollars doit la garder, contrairement au comptage
   // du périmètre qui ne peut rien coûter.
   const bloc = main.slice(main.indexOf('rattrapageDoitTourner_'));
@@ -663,7 +674,10 @@ test('la tranche est ARMÉE, et changer cette valeur est une DÉCISION', () => {
   // re-coûte son appel Haiku). Le re-baser en même temps qu'un bump volontaire est normal.
   // Re-basé le 21/09 sur `c49-5-b` : la tranche accueille `02 · Finances` ET relit les 110
   // papiers de `04` + `01` sous le prompt v2 (ADR 0008 de la Mémoire). Un bump volontaire.
-  assert.strictEqual(c.CONFIG.RATTRAPAGE_PIECE_TAG, 'c49-5-b');
+  // Re-basé le 24/09 sur `v3-a` (C49-30) : la tranche entière est RE-LUE en vision Sonnet 5
+  // (« Tout relire », Marc). Un bump volontaire, avec son lecteur (`RATTRAPAGE_PIECE_VISION`).
+  assert.strictEqual(c.CONFIG.RATTRAPAGE_PIECE_TAG, 'v3-a');
+  assert.strictEqual(c.CONFIG.RATTRAPAGE_PIECE_VISION, true);
   assert.strictEqual(c.rattrapageDoitTourner_(null, null, c.CONFIG.RATTRAPAGE_PIECE_TAG), true);
   // Et le flux vivant reste ÉTEINT : armer le rattrapage n'allume pas les huit sites d'appel.
   assert.strictEqual(c.CONFIG.PIECE_PUSH, false);
@@ -1137,7 +1151,7 @@ test('C49-26 — TRIPWIRE : rien n\'écrit le tag persisté de la tranche, et l\
     const src = fs.readFileSync(path.join(dir, f), 'utf8')
       .replace(/getProperty\('DriveAI_RATTRAPAGE_PIECE_TAG'\)/g, '')
       .replace(/^\s*\/\/.*$/gm, '').replace(/^\s*\*.*$/gm, '');
-    return ECRITURE.test(src.split('\n').filter((l) => !/CONFIG\.RATTRAPAGE_PIECE_TAG|RATTRAPAGE_PIECE_TAG:\s*'c/.test(l)).join('\n'));
+    return ECRITURE.test(src.split('\n').filter((l) => !/CONFIG\.RATTRAPAGE_PIECE_TAG|RATTRAPAGE_PIECE_TAG:\s*'[a-z0-9-]+',/.test(l)).join('\n'));
   });
   // Témoins du motif, pour qu'un motif cassé ne rende pas ce test vert à vide.
   assert.ok(ECRITURE.test("props.setProperty('DriveAI_RATTRAPAGE_PIECE_TAG', t);"));
@@ -1238,4 +1252,262 @@ test('C49-26 — une série MIXTE (disparu + refus) garde le coupe-circuit d\'av
   const res = c.etapeRattrapagePiece_(() => false, {});
   assert.strictEqual(res.fin, 'drive-illisible');
   assert.deepStrictEqual(Object.keys(c.filtrerFaitsParTag_(c.faitsEcrits, 'c49-5-a')), []);
+});
+
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   C49-30 — LA TRANCHE LUE EN VISION (Sonnet 5), avec les deux arrêts de Marc (24/09) :
+   « tranche de 200 d'abord » et « 100 $ au total ». Le frein mensuel (40 $) est inchangé.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+const VUE = (motif, dollars) => ({ motif: motif === 'ok' ? 'ok' : (motif === 'illisible' ? 'illisible' : 'extraction-vide'),
+  vision: { motif: motif, usage: { dollars: dollars || 0 } }, piece: motif === 'ok' ? {} : undefined });
+
+test('C49-30 — en vision, le FICHIER part : aucun OCR payé d\'abord, et la dépense se cumule', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const c = montage([
+    ligne(CLE(ID(1)), 'a.jpg', '04 · Immigration'),
+    ligne(CLE(ID(2)), 'b.pdf', '04 · Immigration'),
+  ], props, { visionCampagne: true, tag: 'v3-a', envoi: () => VUE('ok', 0.02) });
+
+  const res = c.etapeRattrapagePiece_(() => false, {});
+
+  assert.strictEqual(res.fin, 'termine');
+  assert.strictEqual(res.faits, 2);
+  assert.strictEqual(c.ocrAppels, 0, 'la vision n\'a pas besoin de l\'OCR : c\'est tout son intérêt');
+  assert.ok(c.appels.every((a) => a.opts.vision && a.opts.vision.fichier && a.opts.rattrapage),
+    'le canal reçoit le FICHIER et le drapeau du rattrapage');
+  assert.strictEqual(props.get('DriveAI_VISION_DEPENSE'), 'v3-a|0.04');
+});
+
+test('C49-30 — la PAUSE « vision armée » se lève quand la tranche lit elle-même en vision', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const c = montage([ligne(CLE(ID(1)), 'a.jpg', '04 · Immigration')], props,
+    { visionCampagne: true, visionArmee: true, tag: 'v3-a', envoi: () => VUE('ok', 0.01) });
+  assert.ok(String(c.CONFIG.AUDIT_VISION_TAG), 'le tag de l\'audit est POSÉ dans ce contexte');
+  const res = c.etapeRattrapagePiece_(() => false, {});
+  assert.notStrictEqual(res.fin, 'vision-en-cours');
+  assert.strictEqual(res.faits, 1);
+});
+
+test('C49-30 — TRANCHE DE 200 : atteinte, plus aucun appel ; presque atteinte, la passe est bornée', () => {
+  const lignes = [1, 2, 3, 4, 5].map((n) => ligne(CLE(ID(n)), n + '.jpg', '04 · Immigration'));
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const c = montage(lignes, props, { visionCampagne: true, tag: 'v3-a', envoi: () => VUE('ok', 0.01) });
+  c.CONFIG.VISION_TRANCHE_MAX = 3;
+  c.faitsEcrits.push([ID(9), 'v3-a', '2026-09-24 10:00', 'x.pdf', 'ok', '04 · Immigration']);
+
+  const res = c.etapeRattrapagePiece_(() => false, { manuel: true });
+  assert.strictEqual(c.appels.length, 2, 'le plafond vaut aussi pour le chemin MANUEL : 1 déjà lu + 2 = 3');
+
+  const res2 = c.etapeRattrapagePiece_(() => false, { manuel: true });
+  assert.strictEqual(res2.fin, 'tranche-plafond');
+  assert.strictEqual(c.appels.length, 2, 'aucun appel de plus une fois la tranche atteinte');
+  assert.ok(res.faits === 2);
+});
+
+test('C49-30 — 100 $ AU TOTAL : un arrêt dur, avant la passe ET entre deux papiers', () => {
+  const lignes = [1, 2, 3].map((n) => ligne(CLE(ID(n)), n + '.pdf', '04 · Immigration'));
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton'], ['DriveAI_VISION_DEPENSE', 'v3-a|99.95']]);
+  const c = montage(lignes, props, { visionCampagne: true, tag: 'v3-a', envoi: () => VUE('ok', 0.1) });
+
+  const res = c.etapeRattrapagePiece_(() => false, {});
+  assert.strictEqual(res.fin, 'plafond-dollars');
+  assert.strictEqual(c.appels.length, 1, 'le papier qui franchit le plafond est le DERNIER lu');
+
+  const res2 = c.etapeRattrapagePiece_(() => false, {});
+  assert.strictEqual(res2.fin, 'plafond-dollars');
+  assert.strictEqual(c.appels.length, 1, 'au-dessus du plafond, la passe ne démarre même pas');
+  // Une dépense écrite sous un AUTRE tag est une autre campagne : elle ne freine rien.
+  assert.strictEqual(c.lireDepenseVision_({ getProperty: () => 'c49-5-b|500' }, 'v3-a'), 0);
+});
+
+test('REVUE #419 — une panne PASSAGÈRE : on essaie le papier suivant ; une seconde, c\'est l\'API', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const lignes = [1, 2, 3].map((n) => ligne(CLE(ID(n)), n + '.pdf', '04 · Immigration'));
+  const c = montage(lignes, props, { visionCampagne: true, tag: 'v3-a',
+    envoi: (cle) => (cle === CLE(ID(1)) ? VUE('reseau') : VUE('ok', 0.01)) });
+  const r = c.etapeRattrapagePiece_(() => false, {});
+  assert.strictEqual(r.fin, 'termine', 'une panne SEULE n\'arrête pas la passe');
+  assert.deepStrictEqual(Object.keys(c.filtrerFaitsParTag_(c.faitsEcrits, 'v3-a')).sort(), [ID(2), ID(3)].sort(),
+    'le papier en panne n\'est PAS marqué ; les suivants sont lus');
+
+  const toutEnPanne = montage(lignes, new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]),
+    { visionCampagne: true, tag: 'v3-a', envoi: () => VUE('reseau') });
+  const r2 = toutEnPanne.etapeRattrapagePiece_(() => false, {});
+  assert.strictEqual(r2.fin, 'vision-reseau');
+  assert.strictEqual(toutEnPanne.appels.length, 2, 'deux pannes d\'affilée : c\'est l\'API, on s\'arrête');
+});
+
+test('REVUE #419 — une panne GÉNÉRALE ne condamne AUCUN papier, même après neuf ticks (S2)', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const lignes = [1, 2, 3, 4].map((n) => ligne(CLE(ID(n)), n + '.pdf', '04 · Immigration'));
+  const c = montage(lignes, props, { visionCampagne: true, tag: 'v3-a', envoi: () => VUE('reseau') });
+  for (let k = 0; k < 9; k++) c.etapeRattrapagePiece_(() => false, {});
+  assert.deepStrictEqual(Object.keys(c.filtrerFaitsParTag_(c.faitsEcrits, 'v3-a')), [],
+    'personne n\'a répondu : aucune panne n\'est imputable à un papier');
+});
+
+test('REVUE #419 — une panne PROPRE au papier le met de côté, quand l\'API répond aux autres', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  // Beaucoup de papiers sains derrière : chaque passe en lit quelques-uns, donc l'API répond.
+  const lignes = [];
+  for (let n = 1; n <= 12; n++) lignes.push(ligne(CLE(ID(n)), n + '.pdf', '04 · Immigration'));
+  const c = montage(lignes, props, { visionCampagne: true, tag: 'v3-a',
+    envoi: (cle) => (cle === CLE(ID(1)) ? VUE('http-500') : VUE('ok', 0.01)) });
+  let t = 1000;
+  c.Date = class extends Date { static now() { return (t += 1000); } };
+  for (let k = 0; k < 4; k++) c.etapeRattrapagePiece_(() => false, {});
+  assert.ok(Object.keys(c.filtrerFaitsParTag_(c.faitsEcrits, 'v3-a')).includes(ID(1)),
+    'au 3ᵉ échec prouvé propre au papier, il cède sa place');
+});
+
+test('REVUE #419 — PUR : le compteur ne monte que si l\'API a répondu depuis, ou après 24 h', () => {
+  const c = ctx();
+  const b1 = c.blocageSuivantVision_('', 'A', 1000, 0);
+  assert.strictEqual(b1.n, 1);
+  const brut = ['A', 1, 1000, 1000].join('|');
+  assert.strictEqual(c.blocageSuivantVision_(brut, 'A', 2000, 500).n, 1, 'aucune réponse depuis : ça reste');
+  assert.strictEqual(c.blocageSuivantVision_(brut, 'A', 2000, 1500).n, 2, 'l\'API a répondu depuis : ça monte');
+  assert.strictEqual(c.blocageSuivantVision_(brut, 'A', 1000 + 24 * 3600 * 1000, 0).n, 2, 'filet de 24 h');
+  assert.strictEqual(c.blocageSuivantVision_(brut, 'B', 2000, 1500).n, 1, 'un autre papier repart de 1');
+});
+
+test('C49-30 — une panne de CRÉDIT ne compte jamais comme un essai du papier', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const c = montage([ligne(CLE(ID(1)), 'a.pdf', '04 · Immigration')], props,
+    { visionCampagne: true, tag: 'v3-a', envoi: () => VUE('panne-llm') });
+  for (let k = 0; k < 5; k++) {
+    const r = c.etapeRattrapagePiece_(() => false, {});
+    assert.strictEqual(r.fin, 'vision-panne-llm');
+  }
+  assert.deepStrictEqual(Object.keys(c.filtrerFaitsParTag_(c.faitsEcrits, 'v3-a')), [],
+    'cinq pannes de compte n\'ont pas le droit de condamner le papier');
+});
+
+test('C49-30 — un refus PROPRE au papier se marque ; trois refus IDENTIQUES d\'affilée n\'en sont plus', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  // Un PDF protégé par mot de passe : un 400, un verdict du papier.
+  const c1 = montage([ligne(CLE(ID(1)), 'secret.pdf', '04 · Immigration'), ligne(CLE(ID(2)), 'b.jpg', '04 · Immigration')],
+    props, { visionCampagne: true, tag: 'v3-a', envoi: (cle) => (cle === CLE(ID(1)) ? VUE('http-400') : VUE('ok', 0.01)) });
+  const r1 = c1.etapeRattrapagePiece_(() => false, {});
+  assert.strictEqual(r1.fin, 'termine');
+  assert.strictEqual(r1.echecs, 1);
+  assert.strictEqual(Object.keys(c1.filtrerFaitsParTag_(c1.faitsEcrits, 'v3-a')).length, 2);
+
+  const props2 = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const lignes = [1, 2, 3, 4].map((n) => ligne(CLE(ID(n)), n + '.jpg', '04 · Immigration'));
+  const c2 = montage(lignes, props2, { visionCampagne: true, tag: 'v3-a', envoi: () => VUE('http-400') });
+  c2.CONFIG.PIECE_MAX_PAR_RUN = 10;
+  const r2 = c2.etapeRattrapagePiece_(() => false, { manuel: true });
+  assert.strictEqual(r2.fin, 'vision-serie');
+  assert.deepStrictEqual(Object.keys(c2.filtrerFaitsParTag_(c2.faitsEcrits, 'v3-a')), [],
+    'les trois marques de la série sont RETIRÉES');
+  assert.strictEqual(c2.appels.length, 3, 'et la passe s\'arrête au troisième');
+  // ⚠️ Les COMPTEURS suivent les marques : sans ça, la Santé annoncerait 3 échecs et 1 restant
+  // sur une série qu'elle vient de déclarer non imputable aux papiers.
+  assert.strictEqual(r2.echecs, 0);
+  assert.strictEqual(r2.restants, 4);
+});
+
+test('C49-30 — PUR : les arrêts, et la phrase qui dit le coût MOYEN', () => {
+  const c = ctx();
+  assert.strictEqual(c.arretVision_(0, 0, 200, 100).fin, '');
+  assert.strictEqual(c.arretVision_(0, 0, 200, 100).reste, 200);
+  assert.strictEqual(c.arretVision_(200, 0, 200, 100).fin, 'tranche-plafond');
+  assert.strictEqual(c.arretVision_(10, 100, 200, 100).fin, 'plafond-dollars');
+  assert.strictEqual(c.arretVision_(500, 0, 0, 100).fin, '', '0 = sans limite, écrit comme un choix');
+  const ph = c.phraseVisionRattrapage_(10, 0.5, 200, 100);
+  assert.match(ph, /0\.5 \$ dépensés sur 100 \$/);
+  assert.match(ph, /10 \/ 200 papiers traités/);
+  assert.match(ph, /coût moyen 5 ¢\/papier/, 'divisé par TOUS les papiers traités, échecs compris');
+  assert.doesNotMatch(c.phraseVisionRattrapage_(0, 0, 200, 100), /coût moyen/, 'pas de moyenne sur zéro');
+  assert.match(c.phraseVisionRattrapage_(null, 0, 200, 100), /pas encore mesuré/,
+    'un compte non mesuré ne se lit pas « 0 »');
+});
+
+
+test('REVUE #419 — la MÊME série de refus revue deux fois est faite de verdicts : la file avance (S1)', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const lignes = [1, 2, 3, 4].map((n) => ligne(CLE(ID(n)), n + '.pdf', '02 · Finances'));
+  const c = montage(lignes, props, { visionCampagne: true, tag: 'v3-a',
+    envoi: (cle) => (cle === CLE(ID(4)) ? VUE('ok', 0.01) : VUE('http-400')) });
+  const r1 = c.etapeRattrapagePiece_(() => false, {});
+  assert.strictEqual(r1.fin, 'vision-serie');
+  const r2 = c.etapeRattrapagePiece_(() => false, {});
+  assert.notStrictEqual(r2.fin, 'vision-serie', 'la seconde rencontre ne s\'arrête plus');
+  assert.deepStrictEqual(Object.keys(c.filtrerFaitsParTag_(c.faitsEcrits, 'v3-a')).sort(),
+    [ID(1), ID(2), ID(3), ID(4)].sort(), 'le quatrième papier est enfin atteint');
+});
+
+test('REVUE #419 — la dépense se RELIT avant d\'être écrite : une autre exécution n\'est pas effacée (S3)', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const lignes = [1, 2].map((n) => ligne(CLE(ID(n)), n + '.pdf', '04 · Immigration'));
+  const c = montage(lignes, props, { visionCampagne: true, tag: 'v3-a', envoi: (cle) => {
+    // Une AUTRE exécution dépense 60 $ pendant la nôtre.
+    if (cle === CLE(ID(1))) props.set('DriveAI_VISION_DEPENSE', 'v3-a|60');
+    return VUE('ok', 0.25);
+  } });
+  c.etapeRattrapagePiece_(() => false, {});
+  assert.strictEqual(props.get('DriveAI_VISION_DEPENSE'), 'v3-a|60.5');
+});
+
+test('REVUE #419 — un papier sur lequel deux runs sont TUÉS est mis de côté', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const lignes = [1, 2].map((n) => ligne(CLE(ID(n)), n + '.pdf', '04 · Immigration'));
+  const c = montage(lignes, props, { visionCampagne: true, tag: 'v3-a', envoi: () => VUE('ok', 0.01) });
+  const tue = c.encoderEnCoursPiece_({ fileId: ID(1), nom: '1.pdf', domaine: '04 · Immigration' }, 1);
+  props.set('DriveAI_PIECE_EN_COURS', tue);
+  c.CONFIG.VISION_TRANCHE_MAX = 0;
+  // 1er meurtre constaté : rien n'est marqué, le papier est retenté.
+  const garde = () => true; // aucun papier ne démarre : on n'observe que le constat
+  c.etapeRattrapagePiece_(garde, {});
+  assert.deepStrictEqual(Object.keys(c.filtrerFaitsParTag_(c.faitsEcrits, 'v3-a')), []);
+  props.set('DriveAI_PIECE_EN_COURS', tue);
+  c.etapeRattrapagePiece_(garde, {});
+  assert.deepStrictEqual(Object.keys(c.filtrerFaitsParTag_(c.faitsEcrits, 'v3-a')), [ID(1)],
+    'au second run tué sur lui, il cède sa place au lieu de repartir en tête à vie');
+});
+
+test('REVUE #419 — le chemin MANUEL prend le verrou du tick', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const c = montage([ligne(CLE(ID(1)), '1.pdf', '04 · Immigration')], props,
+    { visionCampagne: true, tag: 'v3-a', envoi: () => VUE('ok', 0.01) });
+  c.operationCourante_ = () => '';
+  c.poserOperationCourante_ = () => {};
+  c.Logger = { log: () => {} };
+  c.LockService = { getScriptLock: () => ({ tryLock: () => false, releaseLock: () => {} }) };
+  const ligneRes = c.rattraperPiecesMaintenant();
+  assert.match(ligneRes, /un tick tourne/);
+  assert.strictEqual(c.appels.length, 0, 'aucun papier ne part pendant un tick');
+  let libere = 0;
+  c.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => { libere++; } }) };
+  c.rattraperPiecesMaintenant();
+  assert.strictEqual(c.appels.length, 1);
+  assert.strictEqual(libere, 1, 'le verrou est rendu');
+});
+
+test('REVUE #419 — les PDF d\'IDENTITÉ (04, 01) partent en image, jamais en texte d\'OCR', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const c = montage([ligne(CLE(ID(1)), 'p.pdf', '04 · Immigration'), ligne(CLE(ID(2)), 'r.pdf', '02 · Finances')],
+    props, { visionCampagne: true, tag: 'v3-a', envoi: () => VUE('ok', 0.01) });
+  c.etapeRattrapagePiece_(() => false, {});
+  const parNom = {};
+  for (const a of c.appels) parNom[a.nom] = a.opts.vision.imageSeulement;
+  assert.strictEqual(parNom['p.pdf'], true);
+  assert.strictEqual(parNom['r.pdf'], false);
+});
+
+test('REVUE #419 — une panne de CRÉDIT de plus de 24 h ne condamne toujours aucun papier', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const c = montage([ligne(CLE(ID(1)), 'a.pdf', '04 · Immigration')], props,
+    { visionCampagne: true, tag: 'v3-a', envoi: () => VUE('panne-llm') });
+  let t = 1000;
+  c.Date = class extends Date { static now() { return (t += 1); } };
+  // Six heures ENTRE deux ticks, une milliseconde par lecture d'horloge DANS un tick : sinon le
+  // garde-temps du run couperait avant le premier papier et le test ne mesurerait rien.
+  for (let k = 0; k < 8; k++) { t += 6 * 3600 * 1000; c.etapeRattrapagePiece_(() => false, {}); }
+  assert.strictEqual(c.appels.length, 8, 'chaque tick a bien tenté le papier');
+  assert.deepStrictEqual(Object.keys(c.filtrerFaitsParTag_(c.faitsEcrits, 'v3-a')), [],
+    'le filet de 24 h vaut pour une panne du PAPIER, jamais pour un compte sans crédit');
 });

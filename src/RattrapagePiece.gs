@@ -398,6 +398,9 @@ var PHRASES_FIN_RATTRAPAGE_ = {
   'index-vide': '⚠️ l\'Index n\'a rien rendu — lecture de la feuille impossible',
   'faits-illisibles': '⚠️ la liste des documents déjà lus est illisible — la passe s\'abstient plutôt que de tout re-payer',
   'tranche-trop-grande': '⚠️ tranche plus grande que ce que l\'idempotence supporte — refus AVANT de dépenser',
+  'tranche-plafond': '⏸️ tranche de lecture VISION atteinte (CONFIG.VISION_TRANCHE_MAX) — en attente de ton OK pour la suite',
+  'plafond-dollars': '⏸️ plafond TOTAL de la lecture vision atteint (CONFIG.VISION_PLAFOND_DOLLARS) — arrêt dur',
+  'vision-serie': '⚠️ trois refus identiques de l\'API d\'affilée — cause commune présumée, rien n\'est marqué',
   'drive-illisible': '⚠️ trois lectures Drive ratées d\'affilée — coupe-circuit, rien n\'est marqué fait'
 };
 
@@ -432,6 +435,10 @@ function phraseMotifRattrapage_(motif) {
   var m = String(motif || '');
   if (!m) return 'sortie inconnue';
   if (PHRASES_FIN_RATTRAPAGE_[m]) return PHRASES_FIN_RATTRAPAGE_[m];
+  if (m.indexOf('vision-') === 0) {
+    return '⚠️ panne passagère de la lecture vision (« ' + m.slice('vision-'.length)
+      + ' ») — rien n\'est marqué, reprise au tick suivant';
+  }
   if (m.indexOf('canal-') === 0) {
     var sous = m.slice('canal-'.length);
     return '⚠️ le canal vers la Mémoire a rompu : '
@@ -634,7 +641,42 @@ function texteSanteRattrapagePiece_() {
   } catch (e) { refus = ''; raison = ''; }
   var phrase = phraseFinRattrapage_(brut, CONFIG.RATTRAPAGE_PIECE_TAG, diagnosticCanal_(raison, refus));
   var cum = phraseCumulRattrapage_(cumul);
-  return cum ? (phrase + ' · ' + cum) : phrase;
+  var vis = '';
+  if (CONFIG.RATTRAPAGE_PIECE_VISION) {
+    var dep = 0;
+    try { dep = lireDepenseVision_(PropertiesService.getScriptProperties(), CONFIG.RATTRAPAGE_PIECE_TAG); }
+    catch (e) { dep = 0; }
+    var lus = null;
+    try {
+      var pl = String(PropertiesService.getScriptProperties().getProperty('DriveAI_VISION_LUS') || '').split('|');
+      if (pl[0] === String(CONFIG.RATTRAPAGE_PIECE_TAG) && isFinite(Number(pl[1]))) lus = Number(pl[1]);
+    } catch (e) { lus = null; }
+    vis = phraseVisionRattrapage_(lus, dep, CONFIG.VISION_TRANCHE_MAX, CONFIG.VISION_PLAFOND_DOLLARS);
+  }
+  return [phrase, cum, vis].filter(function (x) { return !!x; }).join(' · ');
+}
+
+/**
+ * PURE. Ce que la lecture VISION a coûté et où elle en est de ses deux arrêts (C49-30). Le
+ * COÛT MOYEN est la grandeur que Marc attend après la tranche de 200 : c'est lui qui dit ce que
+ * coûterait le reste. ⚠️ Il se divise par les papiers TRAITÉS (échecs compris — ils ont pu
+ * coûter un appel), jamais par les seuls réussis, qui le gonfleraient.
+ */
+function phraseVisionRattrapage_(lus, depense, trancheMax, plafondDollars) {
+  // ⚠️ Revue #419 — le compte est CELUI qui arrête la tranche (les papiers marqués sous le tag),
+  // jamais le cumul : un run tué ou une écriture ratée les faisait diverger. `null` = pas encore
+  // mesuré, et se dit ainsi.
+  var traites = typeof lus === 'number' && isFinite(lus) ? lus : null;
+  if (traites === null) {
+    return 'lecture VISION (Sonnet 5) : ' + (Math.round((Number(depense) || 0) * 100) / 100)
+      + ' $ dépensés' + (plafondDollars > 0 ? ' sur ' + plafondDollars + ' $' : '') + ' · papiers traités : pas encore mesuré';
+  }
+  var d = Math.round((Number(depense) || 0) * 100) / 100;
+  var bouts = ['lecture VISION (Sonnet 5) : ' + d + ' $ dépensés'
+    + (plafondDollars > 0 ? ' sur ' + plafondDollars + ' $' : '')];
+  bouts.push(traites + (trancheMax > 0 ? ' / ' + trancheMax : '') + ' papiers traités');
+  if (traites > 0) bouts.push('coût moyen ' + (Math.round((Number(depense) || 0) / traites * 1000) / 10) + ' ¢/papier');
+  return bouts.join(' · ');
 }
 
 /**
@@ -685,7 +727,9 @@ function etapeRattrapagePiece_(garde, opts) {
   // ⚠️ La pause lit le TAG, pas la fin de l'audit — c'est voulu : l'audit n'est que la porte de la
   // campagne vision, qui relira ces mêmes papiers. Rendre la main à Haiku entre les deux ferait
   // payer des lectures v2 condamnées. Pour relancer Haiku : vider `AUDIT_VISION_TAG`.
-  if (!opts.manuel && String(CONFIG.AUDIT_VISION_TAG || '')) {
+  // ⚠️ C49-30 — la pause ne vaut que tant que la TRANCHE lit en Haiku : quand elle lit elle-même
+  // en vision (`RATTRAPAGE_PIECE_VISION`), c'est ELLE la campagne que l'audit précédait.
+  if (!opts.manuel && String(CONFIG.AUDIT_VISION_TAG || '') && !CONFIG.RATTRAPAGE_PIECE_VISION) {
     res.fin = 'vision-en-cours';
     res.restants = restantsRattrapage_(props);
     return noterFinRattrapage_(props, res, false);
@@ -709,6 +753,21 @@ function etapeRattrapagePiece_(garde, opts) {
   var faits = lireFaitsRattrapage_(tagFaits);
   if (faits === null) { res.fin = 'faits-illisibles'; return noterFinRattrapage_(props, res, !!opts.manuel); }
   var maxParRun = opts.manuel ? choixSansPlafondRattrapage_() : RATTRAPAGE_PIECE_MAX_PAR_RUN;
+  // ⚠️ C49-30 — LES DEUX ARRÊTS DE MARC (24/09), re-vérifiés ICI, avant toute sélection, et pour
+  // le chemin MANUEL aussi : « tranche de 200 d'abord » et « 100 $ au total » sont ses décisions,
+  // pas des budgets de tick qu'un clic dans l'éditeur aurait le droit de lever.
+  var vision = !!CONFIG.RATTRAPAGE_PIECE_VISION;
+  var depense = vision ? lireDepenseVision_(props, tagFaits) : 0;
+  if (vision) {
+    var arret = arretVision_(Object.keys(faits).length, depense,
+      CONFIG.VISION_TRANCHE_MAX, CONFIG.VISION_PLAFOND_DOLLARS);
+    if (arret.fin) {
+      res.fin = arret.fin;
+      res.restants = restantsRattrapage_(props);
+      return noterFinRattrapage_(props, res, !!opts.manuel);
+    }
+    maxParRun = Math.min(maxParRun, arret.reste);
+  }
   var choix = selectionnerRattrapage_(
     lignes, fileIdDeLigneIndex_, faits, prefixesRattrapage_(), maxParRun);
   res.restants = choix.restants;
@@ -728,7 +787,10 @@ function etapeRattrapagePiece_(garde, opts) {
   var debutRun = Date.now();
   var aEcrire = [];
   var plafondRun = opts.manuel
-    ? CONFIG.BUDGET_MS
+    // ⚠️ Revue #419 — en vision, le chemin MANUEL garde lui aussi une marge par document : un
+    // papier lancé à 4 min 29 franchirait le mur des 6 min, et TOUTE la passe (écrite en fin de
+    // run) serait repayée au lancement suivant.
+    ? (vision ? CONFIG.BUDGET_MS - CONFIG.PILOTE_MARGE_DOC_MS : CONFIG.BUDGET_MS)
     : Math.min(CONFIG.AUDIT_PIECE_BUDGET_MS, CONFIG.AUDIT_PIECE_BUDGET_JOUR_MS - consommeJour);
   var gardeRun = function () {
     return (garde && garde()) || (Date.now() - debutRun) > plafondRun;
@@ -746,9 +808,31 @@ function etapeRattrapagePiece_(garde, opts) {
   var lecturesRatees = 0;
   var introuvables = 0;
   var marquesFragiles = [];
+  // ⚠️ C49-30 — la série de refus IDENTIQUES de l'API (même règle que l'audit, revue #418) : un
+  // 400 sur trois papiers d'affilée n'est plus trois verdicts, c'est une cause commune.
+  var serieVision = { motif: '', ids: [] };
+  // Revue #419 — la première panne PASSAGÈRE d'un run ne l'arrête pas : on essaie le papier
+  // suivant. S'il tombe AUSSI, la panne est générale et on s'arrête sans rien compter.
+  var pannesPassageres = 0;
+  // Revue #419 — un run TUÉ au mur des 6 min laisse `DriveAI_PIECE_EN_COURS` derrière lui (la
+  // sortie de boucle, qui l'efface, n'a jamais tourné). Au 2ᵉ run tué sur le MÊME papier, il est
+  // mis de côté : sinon il repart en tête à chaque tick, payé à chaque fois, sans fin.
+  if (vision) {
+    var mort = papierDuRunTue_(props, faits);
+    if (mort) {
+      faits[mort.fileId] = 1;
+      aEcrire.push({ id: mort.fileId, nom: mort.nom, motif: 'extraction-vide', domaine: mort.domaine });
+      res.echecs++;
+      if (typeof res.restants === 'number') res.restants--;
+    }
+  }
   res.fin = 'termine';
   for (var i = 0; i < choix.choisies.length; i++) {
     if (gardeRun()) { res.fin = 'budget'; break; }
+    if (vision && CONFIG.VISION_PLAFOND_DOLLARS > 0 && depense >= CONFIG.VISION_PLAFOND_DOLLARS) {
+      res.fin = 'plafond-dollars';
+      break;
+    }
     var doc = choix.choisies[i];
     // ⚠️ Filet de la sélection dédoublonnée : un document déjà lu CE run (ou sous ce tag) ne se
     // relit pas, quelle que soit la ligne d'Index qui l'a amené ici.
@@ -757,15 +841,41 @@ function etapeRattrapagePiece_(garde, opts) {
     // été lu », pas à « qu'est-ce qui est en train d'être lu ». C'est toute la question.
     try { props.setProperty('DriveAI_PIECE_EN_COURS', encoderEnCoursPiece_(doc, Date.now())); }
     catch (e) { /* jamais bloquant */ }
-    var motif = rattraperUnDocument_(doc, !!opts.manuel);
+    var sortie = {};
+    var motif = rattraperUnDocument_(doc, !!opts.manuel, sortie);
     res.dernierMotif = motif;
     var issue = issueRattrapage_(motif);
+    if (sortie.dollars) {
+      // Écrite APRÈS CHAQUE papier : un run tué au mur des 6 min ne passe pas par la fin, et
+      // ses dollars échapperaient au plafond de Marc.
+      // ⚠️ Revue #419 — RELUE puis augmentée, jamais le cumul LOCAL du run : une passe manuelle
+      // et un tick qui se recouvrent écraseraient chacun les dollars de l'autre.
+      depense = lireDepenseVision_(props, tagFaits) + sortie.dollars;
+      ecrireDepenseVision_(props, tagFaits, depense);
+    }
+    if (vision) {
+      var mv = String(sortie.visionMotif || '');
+      if (mv && VERDICTS_SERIE_VISION_RATTRAPAGE_.indexOf(mv) !== -1 && (!serieVision.motif || serieVision.motif === mv)) {
+        serieVision.motif = mv;
+        serieVision.ids.push(doc.fileId);
+      } else if (issue !== 'panne') {
+        serieVision = { motif: '', ids: [] };
+      }
+    }
+    // ⚠️ Revue #419 — UNE panne passagère de la vision ne dit pas encore si c'est le papier ou
+    // l'API : on passe au suivant. La seconde, dans le même run, désigne l'API — on s'arrête.
+    if (vision && issue === 'panne' && estPannePassagereVision_(motif) && pannesPassageres === 0) {
+      pannesPassageres++;
+      continue;
+    }
 
     // ⚠️ UNE PANNE DE CANAL NE SE MARQUE PAS, et elle arrête la boucle. Marquer « fait » sur
     // un jeton refusé ou un frein budget perdrait le document À VIE : il ne reviendrait ni par
     // le rattrapage, ni par le flux (qui ne le verra jamais, il est déjà classé). Et continuer
     // la boucle brûlerait une extraction par document pour le même refus.
-    if (issue === 'panne') { res.fin = 'canal-' + motif; break; }
+    // ⚠️ Une panne de la LECTURE vision (réseau, 5xx, crédit) n'est pas une rupture du canal
+    // vers la Mémoire : elle garde son nom, sinon la Santé enverrait chercher du côté du jeton.
+    if (issue === 'panne') { res.fin = String(motif).indexOf('vision-') === 0 ? motif : 'canal-' + motif; break; }
 
     if (motif === 'lecture-impossible' || motif === 'introuvable') {
       lecturesRatees++;
@@ -820,6 +930,24 @@ function etapeRattrapagePiece_(garde, opts) {
     // et « quel dossier » est la question que Marc a posée deux fois.
     aEcrire.push({ id: doc.fileId, nom: doc.nom, motif: motif, domaine: doc.domaine });
     res.restants--;
+    if (serieVision.ids.length >= 3 && serieDejaVueVision_(props, serieVision.ids[0])) {
+      // ⚠️ Revue #419 — LA MÊME SÉRIE, REVUE UNE SECONDE FOIS, EST FAITE DE VERDICTS : trois
+      // relevés protégés par mot de passe rangés côte à côte se refusent à chaque tick. Sans ce
+      // compteur, la sélection les reprenait dans le même ordre, et la campagne ne passait
+      // jamais le quatrième papier.
+      serieVision = { motif: '', ids: [] };
+    } else if (serieVision.ids.length >= 3) {
+      // Les trois marques se RETIRENT : ce n'étaient pas des verdicts du papier.
+      for (var sv = 0; sv < serieVision.ids.length; sv++) {
+        var idSerie = serieVision.ids[sv];
+        if (faits[idSerie] === 1) { delete faits[idSerie]; res.restants++; res.echecs--; }
+        for (var q2 = aEcrire.length - 1; q2 >= 0; q2--) if (aEcrire[q2].id === idSerie) aEcrire.splice(q2, 1);
+      }
+      journalErreur_('RattrapagePiece', 'Trois refus « ' + serieVision.motif + ' » d\'affilée : '
+        + 'cause commune présumée, rien n\'est marqué, la lecture s\'arrête.');
+      res.fin = 'vision-serie';
+      break;
+    }
   }
 
   // ⚠️ L'en-cours s'efface DÈS la sortie de boucle, quelle qu'en soit la raison (budget,
@@ -830,6 +958,9 @@ function etapeRattrapagePiece_(garde, opts) {
   try {
     ajouterFaitsRattrapage_(tagFaits, aEcrire,
       new Date().toISOString().slice(0, 16).replace('T', ' '));
+    // Revue #419 — le compte que la Santé affiche est CELUI qui arrête la tranche (les faits
+    // sous le tag), écrit seulement quand ils l'ont été : jamais le cumul, qui diverge.
+    if (vision) props.setProperty('DriveAI_VISION_LUS', tagFaits + '|' + Object.keys(faits).length);
   } catch (e) {
     journalErreur_('RattrapagePiece', 'Liste des faits non persistée (' + e + ') : les documents '
       + 'de ce run repartiront au prochain passage, et ils coûteront une seconde extraction.');
@@ -905,12 +1036,16 @@ function driveRepondRattrapage_() {
  * implémentation ici serait « une règle et demie » : un papier rattrapé arriverait à la
  * Mémoire autrement qu'un papier classé aujourd'hui, et rien ne le dirait.
  */
-function rattraperUnDocument_(doc, manuel) {
+function rattraperUnDocument_(doc, manuel, sortie) {
+  sortie = sortie || {};
   var blob;
+  var fichier;
   try {
-    var fichier = DriveApp.getFileById(doc.fileId);
+    fichier = DriveApp.getFileById(doc.fileId);
     if (fichier.getSize() > CONFIG.OCR_TAILLE_MAX) return 'sans-texte';
-    blob = fichier.getBlob();
+    // ⚠️ C49-30 — en vision, le FICHIER part tel quel : pas d'OCR à payer d'abord, c'est tout
+    // l'intérêt. Le blob n'est lu que pour la voie Haiku.
+    if (!CONFIG.RATTRAPAGE_PIECE_VISION) blob = fichier.getBlob();
   } catch (e) {
     journalErreur_('RattrapagePiece', 'Lecture impossible : ' + e);
     // ⚠️ C49-26 — « ce fichier n'existe plus » se dit À PART : c'est la forme que prend un
@@ -920,6 +1055,8 @@ function rattraperUnDocument_(doc, manuel) {
     // fichiers disparus en tête de tranche.
     return /No item with the given ID/i.test(String(e)) ? 'introuvable' : 'lecture-impossible';
   }
+
+  if (CONFIG.RATTRAPAGE_PIECE_VISION) return rattraperEnVision_(doc, fichier, manuel, sortie);
 
   var texte = extraireTexte_(blob);
   if (texte === null) return 'ocr-echec';
@@ -943,6 +1080,185 @@ function rattraperUnDocument_(doc, manuel) {
 }
 
 /**
+ * C49-30 — la lecture VISION d'un papier de la tranche, et la traduction de son issue dans le
+ * vocabulaire du rattrapage (`VERDICTS_DOCUMENT_RATTRAPAGE_`).
+ *
+ * ⚠️ `pousserPieceApresClassement_` range TOUT échec de la vision sous « extraction-vide » —
+ * une panne de crédit comprise. Sans cette traduction, un réseau qui tombe marquerait le papier
+ * « fait » POUR TOUJOURS : c'est `res.vision.motif`, le motif RICHE, qui décide, jamais le motif
+ * aplati (§9 : « un verdict pris sur la donnée riche ne se re-dérive pas de sa forme appauvrie »).
+ */
+var VERDICTS_VISION_RATTRAPAGE_ = {
+  'vide': 'extraction-vide',
+  'coupee': 'extraction-vide',        // le papier a donné PLUS que le plafond : le rejouer rendrait pareil
+  'http-400': 'extraction-vide',      // PDF protégé par mot de passe, image que l'API refuse
+  'http-413': 'extraction-vide',
+  'apercu-absent': 'extraction-vide', // Drive n'en fabrique aucun aperçu
+  // ⚠️ Revue #419 : un échec de PRÉPARATION (`getAs`, `getBlob` dans `blocsVision_`) n'est pas
+  // une lecture Drive ratée — le fichier a déjà été trouvé. Il n'entre pas dans le coupe-circuit.
+  'lecture-impossible': 'extraction-vide',
+  'image-inconnue': 'extraction-vide',  // octets qu'aucun format connu ne décrit : verdict LOCAL
+  'ocr-echec': 'ocr-echec',
+  'sans-texte': 'sans-texte'
+};
+/** Les domaines dont les PDF ne partent JAMAIS en texte : ceux qui portent photo et MRZ. */
+var DOMAINES_IMAGE_SEULEMENT_ = ['04', '01'];
+/** Les verdicts qu'une cause COMMUNE peut produire en série (même liste que l'audit). */
+var VERDICTS_SERIE_VISION_RATTRAPAGE_ = ['http-400', 'http-413', 'apercu-absent'];
+/**
+ * Combien de fois une panne PASSAGÈRE (réseau, 5xx, 429, réponse illisible) peut revenir sur le
+ * même papier avant qu'il soit mis de côté. Sans borne, un seul papier qui fait tomber l'API à
+ * chaque fois bloquerait la file ENTIÈRE derrière lui, pour toujours — la sélection le reprend
+ * en tête à chaque tick.
+ */
+var VISION_ESSAIS_PASSAGERS_MAX = 3;
+
+function rattraperEnVision_(doc, fichier, manuel, sortie) {
+  var envoi = pousserPieceApresClassement_(
+    { cle: doc.cle },
+    { nom: doc.nom, domaine: doc.domaine, statut: doc.statut, chemin: doc.chemin,
+      fileId: doc.fileId },
+    '',
+    // Les papiers d'IDENTITÉ restent en image, jamais en texte d'OCR (revue #419).
+    { vision: { fichier: fichier, imageSeulement: DOMAINES_IMAGE_SEULEMENT_.indexOf(prefixeDomainePiece_(doc.domaine)) !== -1 },
+      rattrapage: true, manuel: !!manuel }
+  );
+  var v = (envoi && envoi.vision) || null;
+  if (v && v.usage) sortie.dollars = coutVisionDollars_(v.usage);
+  sortie.visionMotif = v ? String(v.motif || '') : '';
+  // L'API a RÉPONDU (un verdict ou une lecture) : c'est ce qui permet ensuite d'imputer une
+  // panne passagère au papier plutôt qu'à l'API.
+  if (v && (v.motif === 'ok' || VERDICTS_VISION_RATTRAPAGE_[v.motif] || v.motif === 'illisible')) {
+    try { PropertiesService.getScriptProperties().setProperty('DriveAI_VISION_DERNIER_SUCCES', String(Date.now())); }
+    catch (e) { /* best-effort */ }
+  }
+  return traduireIssueVision_(envoi, doc.fileId, PropertiesService.getScriptProperties());
+}
+
+/**
+ * La traduction, avec le compteur des pannes passagères. Séparée pour être testée sans Drive.
+ * @return {string} un motif du vocabulaire du rattrapage
+ */
+function traduireIssueVision_(envoi, fileId, props) {
+  var motif = envoi && envoi.motif ? envoi.motif : 'echec';
+  if (motif !== 'extraction-vide' || !envoi.vision) {
+    effacerBlocageVision_(props, fileId);
+    return motif;
+  }
+  var mv = String(envoi.vision.motif || '');
+  if (VERDICTS_VISION_RATTRAPAGE_[mv]) {
+    effacerBlocageVision_(props, fileId);
+    return VERDICTS_VISION_RATTRAPAGE_[mv];
+  }
+  // Une panne de COMPTE n'est jamais le papier : elle remonte telle quelle, sans compter.
+  if (mv === 'panne-llm') return 'vision-panne-llm';
+  // ⚠️ Revue #419 — une panne n'est imputée au papier que si l'API a RÉPONDU à quelqu'un
+  // d'autre depuis sa panne précédente : sinon c'est l'API qui tombe, et compter « 3 fois le
+  // même papier » condamnait le papier de tête toutes les trois pannes générales.
+  var dernierSucces = Number(props.getProperty('DriveAI_VISION_DERNIER_SUCCES')) || 0;
+  var n = compterBlocageVision_(props, fileId, Date.now(), dernierSucces);
+  if (n >= VISION_ESSAIS_PASSAGERS_MAX) {
+    effacerBlocageVision_(props, fileId);
+    journalErreur_('RattrapagePiece', 'Panne « ' + mv + ' » sur ce papier seul, ' + n + ' fois : '
+      + 'mis de côté pour ne pas bloquer la file.');
+    return 'extraction-vide';
+  }
+  return 'vision-' + (mv || 'inconnu');
+}
+
+/** PURE. Ce motif est-il une panne PASSAGÈRE de la lecture vision (ni crédit, ni canal) ? */
+function estPannePassagereVision_(motif) {
+  var m = String(motif || '');
+  return m.indexOf('vision-') === 0 && m !== 'vision-panne-llm';
+}
+
+/**
+ * PURE sur ses entrées. Le compteur d'un papier, à partir de l'état `fileId|n|dernierEchec|premierEchec`.
+ * Il MONTE seulement si l'API a répondu depuis le dernier échec de CE papier ; sinon il reste.
+ * Filet : 24 h de pannes sur le même papier le comptent quand même — sans lui, le DERNIER papier
+ * d'une tranche, seul dans sa passe, n'aurait jamais personne pour prouver que l'API répond.
+ */
+function blocageSuivantVision_(brut, fileId, maintenant, dernierSucces) {
+  var p = String(brut || '').split('|');
+  if (p[0] !== String(fileId)) return { n: 1, dernier: maintenant, premier: maintenant };
+  var n = parseInt(p[1], 10) || 0;
+  var dernier = Number(p[2]) || 0;
+  var premier = Number(p[3]) || dernier;
+  var monte = dernierSucces > dernier || (maintenant - premier) >= 24 * 60 * 60 * 1000;
+  return { n: monte ? n + 1 : Math.max(n, 1), dernier: maintenant, premier: premier };
+}
+
+function compterBlocageVision_(props, fileId, maintenant, dernierSucces) {
+  var b = blocageSuivantVision_(props.getProperty('DriveAI_VISION_BLOQUE'), fileId, maintenant, dernierSucces);
+  try { props.setProperty('DriveAI_VISION_BLOQUE', [fileId, b.n, b.dernier, b.premier].join('|')); }
+  catch (e) { /* best-effort */ }
+  return b.n;
+}
+
+/**
+ * Revue #419 — la même série de refus revue deux fois est faite de verdicts. État :
+ * `DriveAI_VISION_SERIE` = premier fileId de la série. Rend vrai à la SECONDE rencontre.
+ */
+function serieDejaVueVision_(props, premierId) {
+  var vue = String(props.getProperty('DriveAI_VISION_SERIE') || '');
+  if (vue === String(premierId)) {
+    try { props.deleteProperty('DriveAI_VISION_SERIE'); } catch (e) { /* best-effort */ }
+    return true;
+  }
+  try { props.setProperty('DriveAI_VISION_SERIE', String(premierId)); } catch (e) { /* best-effort */ }
+  return false;
+}
+
+/**
+ * Revue #419 — le papier d'un run TUÉ, au second meurtre. L'en-cours encodé porte
+ * `quand|fileId|nom|domaine` ; `DriveAI_VISION_TUE` = `fileId|n`. L'en-cours est effacé après
+ * lecture : c'est le run présent qui écrit le sien.
+ */
+function papierDuRunTue_(props, faits) {
+  var brut = String(props.getProperty('DriveAI_PIECE_EN_COURS') || '');
+  if (!brut) return null;
+  var p = brut.split('|');
+  var fileId = p[1] || '';
+  try { props.deleteProperty('DriveAI_PIECE_EN_COURS'); } catch (e) { /* best-effort */ }
+  if (!fileId || faits[fileId] === 1) return null;
+  var t = String(props.getProperty('DriveAI_VISION_TUE') || '').split('|');
+  var n = t[0] === fileId ? (parseInt(t[1], 10) || 0) + 1 : 1;
+  if (n >= 2) {
+    try { props.deleteProperty('DriveAI_VISION_TUE'); } catch (e) { /* best-effort */ }
+    journalErreur_('RattrapagePiece', 'Deux runs tués sur « ' + (p[2] || fileId) + ' » : mis de côté.');
+    return { fileId: fileId, nom: p[2] || '', domaine: p[3] || '' };
+  }
+  try { props.setProperty('DriveAI_VISION_TUE', fileId + '|' + n); } catch (e) { /* best-effort */ }
+  return null;
+}
+function effacerBlocageVision_(props, fileId) {
+  var p = String(props.getProperty('DriveAI_VISION_BLOQUE') || '').split('|');
+  if (p[0] === String(fileId)) { try { props.deleteProperty('DriveAI_VISION_BLOQUE'); } catch (e) { /* idem */ } }
+}
+
+/**
+ * PURE. Les deux arrêts de Marc (24/09). `reste` borne ce qu'une passe peut encore prendre sous
+ * le plafond de la tranche. Un plafond à 0 veut dire « sans limite » — c'est un choix écrit.
+ */
+function arretVision_(lus, depense, trancheMax, plafondDollars) {
+  if (plafondDollars > 0 && depense >= plafondDollars) return { fin: 'plafond-dollars', reste: 0 };
+  if (trancheMax > 0 && lus >= trancheMax) return { fin: 'tranche-plafond', reste: 0 };
+  return { fin: '', reste: trancheMax > 0 ? trancheMax - lus : Infinity };
+}
+
+/** La dépense vision cumulée sous le tag COURANT (un autre tag = une autre campagne = 0). */
+function lireDepenseVision_(props, tag) {
+  var p = String(props.getProperty('DriveAI_VISION_DEPENSE') || '').split('|');
+  if (p.length < 2 || p[0] !== String(tag || '')) return 0;
+  var n = Number(p[1]);
+  return isFinite(n) && n >= 0 ? n : 0;
+}
+function ecrireDepenseVision_(props, tag, dollars) {
+  try { props.setProperty('DriveAI_VISION_DEPENSE', tag + '|' + (Math.round(dollars * 10000) / 10000)); }
+  catch (e) { journalErreur_('RattrapagePiece', 'Dépense vision non écrite : ' + e); }
+}
+
+/**
  * ⚠️ LE CHEMIN MANUEL. Il existe pour la raison exacte de C28-137 : un `opts` lu par le moteur
  * et passé par personne est une intention jamais livrée, et on s'en aperçoit le jour où le
  * budget du tick est épuisé et qu'il n'y a plus rien pour vérifier une réparation avant minuit.
@@ -962,12 +1278,23 @@ function rattraperPiecesMaintenant() {
   var opAvant = '';
   try { opAvant = operationCourante_(); poserOperationCourante_('rattrapage-piece-manuel'); } catch (eOp) { }
   var res;
+  // ⚠️ Revue #419 — LE VERROU DU TICK, pris ici aussi. Sans lui, une passe manuelle de 4 min
+  // recouvre presque sûrement un tick : les deux choisissent les MÊMES papiers (payés deux fois),
+  // et le tick prendrait l'en-cours de la passe manuelle pour la trace d'un run tué.
+  var verrou = LockService.getScriptLock();
+  if (!verrou.tryLock(10 * 1000)) {
+    try { poserOperationCourante_(opAvant); } catch (eOp0) { }
+    var occupe = 'Rattrapage des pièces (manuel) : un tick tourne — relance dans 5 minutes.';
+    Logger.log(occupe);
+    return occupe;
+  }
   try {
     res = etapeRattrapagePiece_(
       function () { return (Date.now() - debut) > CONFIG.BUDGET_MS; },
       { manuel: true }
     );
   } finally {
+    try { verrou.releaseLock(); } catch (eL) { }
     try { poserOperationCourante_(opAvant); } catch (eOp2) { }
   }
   // ⚠️ LES ACCEPTÉES SONT DITES. Sans elles, « 24 faits » couvre aussi bien 24 pièces arrivées

@@ -1050,8 +1050,12 @@ function pousserPieceApresClassement_(src, decision, texteOcr, opts) {
   // explicitement plutôt que d'être déduit.
   // ⚠️ TROISIÈME interrupteur, même raison (ADR-0063) : la lecture VISION de l'audit L1 part
   // sur 20 papiers choisis sans allumer ni le flux vivant ni le rattrapage Haiku.
+  // ⚠️ C49-30 — et la CAMPAGNE vision (le rattrapage lu par Sonnet 5) passe par le même
+  // interrupteur que le rattrapage, AJOUTÉ à `RATTRAPAGE_PIECE_VISION` : sans lui, un appel
+  // `{vision, rattrapage}` serait refusé dès que l'audit est éteint.
   var actif = opts.vision
-    ? (!!String(CONFIG.AUDIT_VISION_TAG || '') || !!opts.manuel)
+    ? (!!String(CONFIG.AUDIT_VISION_TAG || '') || !!opts.manuel ||
+       (!!opts.rattrapage && !!CONFIG.RATTRAPAGE_PIECE_VISION && !!String(CONFIG.RATTRAPAGE_PIECE_TAG || '')))
     : opts.rattrapage
     ? (!!String(CONFIG.RATTRAPAGE_PIECE_TAG || '') || !!opts.manuel)
     : !!CONFIG.PIECE_PUSH;
@@ -1092,7 +1096,7 @@ function pousserPieceApresClassement_(src, decision, texteOcr, opts) {
   // 21/09/2026, et il n'appelle pas le même geste — il faut refaire la photo, pas le prompt.
   var horsExtraction = {};
   var extraction = opts.vision
-    ? extrairePieceVision_(opts.vision.fichier, horsExtraction)
+    ? extrairePieceVision_(opts.vision.fichier, horsExtraction, !!opts.vision.imageSeulement)
     : extrairePiece_({ nomFichier: decision.nom, extrait: texteOcr }, horsExtraction);
   // ⚠️ Ce que l'audit publie (voie, jetons, durée) voyage par `res.vision` : le coût d'une
   // lecture se MESURE sur la réponse, jamais ne s'estime après coup.

@@ -571,7 +571,24 @@ var CONFIG = {
   // dépensés, on reste très loin du frein à 40 $ — il n'y a pas de tension à arbitrer.
   // ⚠️ Ce chiffre se RE-MESURERA tout seul une fois C49-6 déployé : le poste
   // `rattrapage-piece` de la télémétrie le donnera sans qu'on ait à le déduire.
-  RATTRAPAGE_PIECE_TAG: 'c49-5-b',
+  // ⚠️ C49-30 (ADR-0063 §6, arbitrage de Marc du 24/09) — la tranche est RE-LUE EN VISION :
+  // le tag change, donc la liste des papiers déjà lus repart de zéro (« Tout relire »), et
+  // `RATTRAPAGE_PIECE_VISION` fait lire chaque papier par Sonnet 5 au lieu d'Haiku. `c49-5-b`
+  // reste dans l'onglet `PiecesFaites` : c'est l'histoire de la lecture Haiku, pas une dette.
+  RATTRAPAGE_PIECE_TAG: 'v3-a',
+  // Vrai = la tranche passe par `extrairePieceVision_` (le FICHIER, prompt v3). Faux = Haiku v2
+  // sur l'OCR, comme avant. Un seul canal, un seul ordre, une seule idempotence : seul le
+  // LECTEUR change.
+  RATTRAPAGE_PIECE_VISION: true,
+  // Marc, 24/09 : « tranche de 200 d'abord ». La lecture vision s'ARRÊTE après ce nombre de
+  // papiers traités sous le tag courant, et attend son OK. Le coût moyen réel se lit alors
+  // dans la Santé. Relever ce nombre (ou le mettre à 0 = sans limite) est SA décision.
+  VISION_TRANCHE_MAX: 200,
+  // Marc, 24/09 : « 100 $ au total ». Arrêt DUR de la lecture vision quand sa dépense cumulée
+  // sous le tag courant atteint ce montant — mesurée sur les réponses, jamais estimée. Il
+  // s'AJOUTE au frein mensuel (`LLM_BUDGET_CAMPAGNES`, 40 $, inchangé : « Garder 40 $/mois »),
+  // qui étale la campagne sur plusieurs mois ; aucun des deux ne remplace l'autre.
+  VISION_PLAFOND_DOLLARS: 100,
 
   // C49-14 — au-delà de ce délai, « en train de lire X » cesse d'être affiché.
   // ⚠️ La valeur est DÉRIVÉE, pas choisie : le mur d'une exécution Apps Script est de six

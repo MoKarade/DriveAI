@@ -717,7 +717,10 @@ function tickDriveAI() {
         var opAvantR = operationCourante_();
         try {
           poserOperationCourante_('rattrapage-piece');
-          etapeRattrapagePiece_(estBudgetDepasse, {});
+          // ⚠️ C49-30 — en VISION, une lecture Sonnet dure jusqu'à une minute : même garde que
+          // l'audit vision (marge avant le mur des 6 min), sinon un papier lancé tard franchit le
+          // mur — run tué, coût hors plafond, papier re-payé.
+          etapeRattrapagePiece_(CONFIG.RATTRAPAGE_PIECE_VISION ? estBudgetDepasseDoc : estBudgetDepasse, {});
         } finally { poserOperationCourante_(opAvantR); }
       }
     } catch (e) { journalErreur_('RattrapagePiece', 'Rattrapage des pièces différé : ' + e); }

@@ -201,7 +201,7 @@ var MOTIFS_CANAL_AUDIT_VISION = ['desactive', 'jeton-absent', 'suspendu', 'frein
  * papiers. `http-400/413` y sont : un format refusé est propre au fichier — le coupe-circuit de
  * série attrape le cas où il ne l'est pas.
  */
-var VERDICTS_LECTURE_VISION = ['ok', 'illisible', 'coupee', 'sans-texte', 'ocr-echec', 'vide',
+var VERDICTS_LECTURE_VISION = ['ok', 'illisible', 'coupee', 'sans-texte', 'ocr-echec', 'vide', 'image-inconnue',
   'http-400', 'http-413', 'apercu-absent', 'lecture-impossible', 'essais-epuises'];
 
 /** Les verdicts qu'une cause COMMUNE peut produire en série — soumis au coupe-circuit. */
