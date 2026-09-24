@@ -5,6 +5,17 @@
 
 ---
 
+## C49-31 — Le rattrapage lancé à la main comptait ses appels hors du coût du mois ✅
+
+Mesuré le 24/09 : Marc a lu 15 papiers en vision depuis l'éditeur (`rattraperPiecesMaintenant`),
+et le coût du mois est resté à 10,62 $. Ce chemin n'appelait jamais `reinitialiserUsage_()` ni
+`flushUsage_()` : `enregistrerUsage_` sortait dès sa première ligne, donc **le frein mensuel
+(40 $) ne voyait pas ces appels**. Le plafond de la tranche (100 $, `DriveAI_VISION_DEPENSE`)
+les comptait bien — c'est lui qui a tenu. Corrigé sur le patron d'`auditerVisionMaintenant`,
+test à deux mutations (retirer l'une ou l'autre ligne le fait rougir).
+⚠️ Non rattrapé : les lancements manuels passés (vision ET Haiku d'avant C49-30) ne sont pas
+dans le coût du mois — l'écart se lit contre la console Anthropic, il ne se reconstitue pas.
+
 ## C49-30 — La tranche relue en VISION, 200 papiers d'abord, 100 $ au total 🟦
 
 Marc, le 24/09, après l'audit : « texte si le PDF en a », « garder 40 $/mois », « tranche de 200

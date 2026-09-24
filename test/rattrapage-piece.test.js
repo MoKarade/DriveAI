@@ -189,7 +189,7 @@ function montage(lignesIndex, props, options) {
     getLastRow: () => lignesIndex.length + 1,
     getRange: () => ({ getValues: () => lignesIndex }),
   };
-  const c = load(MODULES.concat(['AuditPiece.gs', 'Memoire.gs']), {
+  const c = load(MODULES.concat(['AuditPiece.gs', 'Memoire.gs', 'Cout.gs']), {
     PropertiesService: {
       getScriptProperties: () => ({
         getProperty: (k) => (props.has(k) ? props.get(k) : null),
@@ -1510,4 +1510,26 @@ test('REVUE #419 — une panne de CRÉDIT de plus de 24 h ne condamne toujours a
   assert.strictEqual(c.appels.length, 8, 'chaque tick a bien tenté le papier');
   assert.deepStrictEqual(Object.keys(c.filtrerFaitsParTag_(c.faitsEcrits, 'v3-a')), [],
     'le filet de 24 h vaut pour une panne du PAPIER, jamais pour un compte sans crédit');
+});
+
+
+test('C49-31 — le chemin MANUEL compte ses appels dans le coût du MOIS (le frein mensuel les voit)', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const c = montage([ligne(CLE(ID(1)), '1.pdf', '04 · Immigration')], props,
+    { visionCampagne: true, tag: 'v3-a', envoi: () => {
+      // L'appel réel passe par `enregistrerUsage_` : c'est lui que ce test observe.
+      c.enregistrerUsage_('claude-sonnet-5', { input_tokens: 3000, output_tokens: 900 });
+      return VUE('ok', 0.015);
+    } });
+  c.operationCourante_ = () => '';
+  c.poserOperationCourante_ = () => {};
+  c.Logger = { log: () => {} };
+  c.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) };
+  const vus = [];
+  const flush = c.flushUsage_;
+  // ⚠️ On RELÈVE puis on asserte dehors : une assertion levée DANS le flush serait avalée par le
+  // `try/catch` qui l'enveloppe, et le test passerait sur un appel jamais enregistré.
+  c.flushUsage_ = () => { vus.push(c.usageRunSnapshot_() ? c.usageRunSnapshot_().s5in : null); return flush(); };
+  c.rattraperPiecesMaintenant();
+  assert.deepStrictEqual(vus, [3000], 'l\'appel a été ENREGISTRÉ, puis versé au mois une fois');
 });

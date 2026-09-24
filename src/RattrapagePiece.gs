@@ -1288,12 +1288,18 @@ function rattraperPiecesMaintenant() {
     Logger.log(occupe);
     return occupe;
   }
+  // ⚠️ C49-31 — LA COMPTABILITÉ DU MOIS. Sans `reinitialiserUsage_`, `enregistrerUsage_` sort
+  // dès sa première ligne (`!_usageRun`) : les appels de ce chemin n'entraient JAMAIS dans le
+  // coût du mois, donc le frein mensuel (40 $) ne les voyait pas. Vécu le 24/09 : 15 papiers lus
+  // en vision à la main, coût du mois inchangé à 10,62 $. Même patron que `auditerVisionMaintenant`.
+  reinitialiserUsage_();
   try {
     res = etapeRattrapagePiece_(
       function () { return (Date.now() - debut) > CONFIG.BUDGET_MS; },
       { manuel: true }
     );
   } finally {
+    try { flushUsage_(); } catch (eF) { journalErreur_('RattrapagePiece', 'Coût du mois non écrit : ' + eF); }
     try { verrou.releaseLock(); } catch (eL) { }
     try { poserOperationCourante_(opAvant); } catch (eOp2) { }
   }
