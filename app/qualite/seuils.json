@@ -22,13 +22,13 @@
       "max": 0
     },
     "couverture.lignes_coeur": {
-      "min": 83.6
+      "min": 80.3
     },
     "couverture.lignes_global": {
-      "min": 50.3
+      "min": 51.6
     },
     "couverture.branches_global": {
-      "min": 84.6
+      "min": 45.0
     },
     "code_mort.problemes": {
       "max": 12
@@ -36,5 +36,21 @@
     "architecture.violations": {
       "max": 1
     }
-  }
+  },
+  "historique": [
+    {
+      "date": "2026-09-24",
+      "motif": "vitest 2 -> 5 : couverture V8 remappée « AST-aware » (Vitest 4+), motifs d'inclusion relus relativement à app/ — même code, autre instrument ; décision de Marc du 24/09/2026",
+      "couverture_avant": {
+        "couverture.lignes_coeur": 83.6,
+        "couverture.lignes_global": 50.3,
+        "couverture.branches_global": 84.6
+      },
+      "couverture_apres": {
+        "couverture.lignes_coeur": 80.3,
+        "couverture.lignes_global": 51.6,
+        "couverture.branches_global": 45.0
+      }
+    }
+  ]
 }
