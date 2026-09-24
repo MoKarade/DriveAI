@@ -645,6 +645,24 @@ var FAMILLES_STRUCTUREES_MEMOIRE = ['montants', 'numeros', 'personnes', 'lieux']
 var EXTRACTEUR_PIECE_MEMOIRE = 'haiku-4.5-piece-v2';
 
 /**
+ * Les BORNES de ce qu'on envoie, par extracteur. PURE.
+ *
+ * ⚠️ Elles suivent le CONTRAT de la Mémoire, pas un goût : un résumé plus long que ce qu'elle
+ * accepte fait refuser la pièce ENTIÈRE (`trop-long`) après que l'appel a été payé. La lecture
+ * vision (ADR-0063, et l'ADR 0010 de MemoryAI qui relève les bornes à 1 500 / 80) a les siennes ;
+ * tout autre extracteur garde celles d'avant, parce que la Mémoire déployée ne sait peut-être
+ * pas encore mieux — et un lot refusé en silence est la panne du 16/09.
+ */
+function bornesPieceMemoire_(extracteur) {
+  if (extracteur === EXTRACTEUR_PIECE_VISION_MEMOIRE) return { resume: 1500, libres: 80 };
+  return { resume: 600, libres: MAX_CHAMPS_LIBRES_MEMOIRE };
+}
+
+/** Recopié de `EXTRACTEUR_PIECE_VISION` (PieceVision.gs), qu'un test tient égal : ce fichier se
+ * charge sans l'autre dans la moitié des tests, et une référence croisée lèverait en silence. */
+var EXTRACTEUR_PIECE_VISION_MEMOIRE = 'sonnet-5-vision-piece-v3';
+
+/**
  * Le TITULAIRE d'un papier — à qui il appartient — et sa confiance.
  *
  * ⚠️ « INCONNU » EST LA BONNE RÉPONSE, ET ELLE VAUT `null`. Jamais « Marc » par défaut : un
@@ -713,11 +731,16 @@ function pieceMemoire_(ligne, extrait) {
   var domaine = String(ligne.domaine || '') || null;
   var tit = titulaireMemoire_(e.titulaire, e.titulaire_confiance);
 
+  // ⚠️ L'extracteur vient de l'EXTRACTION quand elle le dit (la lecture vision le pose), du
+  // défaut sinon — jamais d'un paramètre de l'appelant, qui pourrait l'annoncer sans l'avoir lu.
+  var extracteur = e.extracteur === EXTRACTEUR_PIECE_VISION_MEMOIRE
+    ? EXTRACTEUR_PIECE_VISION_MEMOIRE : EXTRACTEUR_PIECE_MEMOIRE;
+  var bornes = bornesPieceMemoire_(extracteur);
   var piece = {
     sujet: 'marc',
     domaine: domaine,
     niveau_propose: niveauMemoire_(ligne.domaine),
-    extracteur: EXTRACTEUR_PIECE_MEMOIRE,
+    extracteur: extracteur,
     exemplaires: [{ file_id: fileId, chemin: String(ligne.chemin || '') || null }]
   };
 
@@ -748,11 +771,11 @@ function pieceMemoire_(ligne, extrait) {
   if (dateEch && (!dateDoc || dateEch >= dateDoc)) piece.date_echeance = dateEch;
 
   var resume = texteCourtMemoire_(e.resume);
-  if (resume) piece.resume = resume.slice(0, 600);
+  if (resume) piece.resume = resume.slice(0, bornes.resume);
 
   var structures = champsStructuresMemoire_(e.champs);
   if (structures) piece.champs_structures = structures;
-  var libres = champsLibresMemoire_(e.libres);
+  var libres = champsLibresMemoire_(e.libres, bornes.libres);
   if (libres) piece.champs_libres = libres;
 
   var conf = Number(e.confiance);
@@ -805,13 +828,14 @@ function champsStructuresMemoire_(brut) {
  */
 var MAX_CHAMPS_LIBRES_MEMOIRE = 40;
 
-function champsLibresMemoire_(brut) {
+function champsLibresMemoire_(brut, max) {
   if (!brut || typeof brut !== 'object') return null;
+  var plafond = Number(max) > 0 ? Number(max) : MAX_CHAMPS_LIBRES_MEMOIRE;
   var out = {};
   var n = 0;
   for (var cle in brut) {
     if (!Object.prototype.hasOwnProperty.call(brut, cle)) continue;
-    if (n >= MAX_CHAMPS_LIBRES_MEMOIRE) break;
+    if (n >= plafond) break;
     var c = texteCourtMemoire_(cle);
     var v = texteCourtMemoire_(brut[cle]);
     if (!c || !v) continue;
@@ -974,6 +998,10 @@ function envoyerLotPiecesMemoire_(lot, jeton, props) {
       ok: true,
       recus: Number(corps.recus) || 0,
       acceptees: Number(corps.acceptees) || 0,
+      // ⚠️ SOUS-ENSEMBLE d'`acceptees` côté Mémoire (son ADR 0008) : une relecture qui REMPLACE
+      // une lecture plus ancienne. Sans lui, « un papier neuf » et « un papier relu » se lisent
+      // pareil — et une campagne de relecture ne peut pas prouver qu'elle change quelque chose.
+      remplacees: Number(corps.remplacees) || 0,
       dejaPresentes: Number(corps.dejaPresentes) || 0,
       oubliees: Number(corps.oubliees) || 0,
       refusees: Array.isArray(corps.refusees) ? corps.refusees.length : 0,
@@ -1015,7 +1043,11 @@ function pousserPieceApresClassement_(src, decision, texteOcr, opts) {
   // une garde n'existe qu'aux endroits qui la consultent. `opts.manuel` est l'exception NOMMÉE
   // — le geste de Marc depuis l'éditeur, avant même qu'un tag soit posé — et il voyage
   // explicitement plutôt que d'être déduit.
-  var actif = opts.rattrapage
+  // ⚠️ TROISIÈME interrupteur, même raison (ADR-0063) : la lecture VISION de l'audit L1 part
+  // sur 20 papiers choisis sans allumer ni le flux vivant ni le rattrapage Haiku.
+  var actif = opts.vision
+    ? (!!String(CONFIG.AUDIT_VISION_TAG || '') || !!opts.manuel)
+    : opts.rattrapage
     ? (!!String(CONFIG.RATTRAPAGE_PIECE_TAG || '') || !!opts.manuel)
     : !!CONFIG.PIECE_PUSH;
   var jeton = actif ? props.getProperty('DriveAI_MEMORYAI_TOKEN') : '';
@@ -1033,7 +1065,9 @@ function pousserPieceApresClassement_(src, decision, texteOcr, opts) {
     // et le frein en DOLLARS — tous re-évalués à chaque document, juste au-dessus.
     maxParRun: opts.manuel ? Infinity : CONFIG.PIECE_MAX_PAR_RUN,
     statutClasse: statut.indexOf('class') === 0,
-    aDuTexte: !!String(texteOcr || '').trim()
+    // ⚠️ La lecture vision n'a pas besoin de l'OCR : c'est tout son intérêt. Exiger du texte
+    // ici rendrait « sans-texte » exactement les papiers qu'elle existe pour lire.
+    aDuTexte: opts.vision ? !!opts.vision.fichier : !!String(texteOcr || '').trim()
   });
   if (motif) {
     res.motif = motif;
@@ -1052,7 +1086,12 @@ function pousserPieceApresClassement_(src, decision, texteOcr, opts) {
   // et « le modèle dit qu'il n'a pas pu LIRE ». Le second est le défaut du passeport du
   // 21/09/2026, et il n'appelle pas le même geste — il faut refaire la photo, pas le prompt.
   var horsExtraction = {};
-  var extraction = extrairePiece_({ nomFichier: decision.nom, extrait: texteOcr }, horsExtraction);
+  var extraction = opts.vision
+    ? extrairePieceVision_(opts.vision.fichier, horsExtraction)
+    : extrairePiece_({ nomFichier: decision.nom, extrait: texteOcr }, horsExtraction);
+  // ⚠️ Ce que l'audit publie (voie, jetons, durée) voyage par `res.vision` : le coût d'une
+  // lecture se MESURE sur la réponse, jamais ne s'estime après coup.
+  if (opts.vision) res.vision = horsExtraction;
   if (!extraction) {
     res.motif = horsExtraction.motif === 'illisible' ? 'illisible' : 'extraction-vide';
     return noterFinPiece_(props, res);
@@ -1076,7 +1115,11 @@ function pousserPieceApresClassement_(src, decision, texteOcr, opts) {
   if (!envoi.ok) { res.motif = envoi.raison; res.envoyees = 0; return noterFinPiece_(props, res); }
 
   res.acceptees = envoi.acceptees;
+  res.remplacees = envoi.remplacees || 0;
   res.dejaPresentes = envoi.dejaPresentes + envoi.oubliees;
+  // La pièce ENVOYÉE, pour que l'audit compte ce qui est PARTI (après les bornes) et non ce que
+  // le modèle a rendu. En mémoire seulement : jamais écrite, jamais journalisée (§9).
+  if (opts.vision) res.piece = piece;
   res.motif = envoi.refusees ? 'refusee' : 'ok';
   if (envoi.premierRefus) {
     // ⚠️ Écrit dans une Property DÉDIÉE, jamais écrasée par un succès : un refus de contrat

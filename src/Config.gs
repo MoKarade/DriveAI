@@ -64,6 +64,8 @@ var CONFIG = {
   LLM_PRIX: {
     haiku_in: 1, haiku_out: 5, haiku_cw: 1.25, haiku_cr: 0.1,
     sonnet_in: 3, sonnet_out: 15, sonnet_cw: 3.75, sonnet_cr: 0.3,
+    // Sonnet 5 (ADR-0063, lecture vision) : ses propres prix — 2/3 de Sonnet 4.6 sur chaque poste.
+    sonnet5_in: 2, sonnet5_out: 10, sonnet5_cw: 2.5, sonnet5_cr: 0.2,
   },
   // FREIN BUDGET des CAMPAGNES (R3, garde-fou §2.6 rendu EFFECTIF — vécu : 15,62 $ le 7 juillet,
   // le grand rangement churnait l'ancien Drive toute la nuit) : au-delà de ce coût MENSUEL mesuré,
@@ -692,6 +694,16 @@ var CONFIG = {
   // Sous-budget PAR TICK (même famille que `REANALYSE_BUDGET_MS`) : l'étape ne prend que le
   // reliquat du tick, après le flux vivant, et jamais plus que ça d'un coup.
   AUDIT_PIECE_BUDGET_MS: 2 * 60 * 1000,
+  // ADR-0063, lot L1 — l'AUDIT de la lecture VISION (Sonnet 5 lit l'image du papier). Vingt
+  // papiers choisis dans ce que le rattrapage Haiku a déjà traité — surtout ceux qu'il n'a PAS
+  // su lire —, lus une fois, envoyés à la Mémoire, et mesurés : voie, jetons, coût, durée.
+  // Tag POSÉ = l'audit tourne ; il s'éteint seul quand ses vingt lignes sont faites. Changer le
+  // tag recompose l'échantillon. Vide = rien ne tourne.
+  // ⚠️ Tant que ce tag est posé, le rattrapage Haiku est EN PAUSE (`etapeRattrapagePiece_`) :
+  // il relit en v2 des papiers qui seront relus en v3 — une dépense qui ne servirait à rien.
+  // ⚠️ Budget : celui des PIÈCES (`AUDIT_PIECE_BUDGET_*`), partagé — aucune minute ajoutée à
+  // l'enveloppe. Les deux étapes sont mutuellement exclusives par la pause ci-dessus.
+  AUDIT_VISION_TAG: 'l1-a',
 
   DOMAINE_DEFAUT: '01 · Administratif & identité',
   // ADR-0058 — domicile UNIQUE des revenus d'employeur (paies, RL-1). Constante et non littéral :

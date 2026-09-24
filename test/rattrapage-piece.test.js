@@ -198,6 +198,11 @@ function montage(lignesIndex, props, options) {
       }),
     },
   });
+  // ⚠️ ADR-0063 — la lecture VISION met ce rattrapage EN PAUSE tant que son tag est posé. Ces
+  // tests exercent le CHEMIN du rattrapage : ils éteignent la vision dans LEUR contexte (la
+  // position du tag en production est une décision de Marc, jamais un invariant de test). La
+  // pause elle-même a son test, qui la rallume.
+  if (!o.visionArmee) c.CONFIG.AUDIT_VISION_TAG = '';
   // ⚠️ APRÈS le chargement : `Config.gs` définit `feuille_`, donc un override passé au sandbox
   // serait ÉCRASÉ au load et la mutation resterait muette.
   //
@@ -374,6 +379,20 @@ test('LA PORTE DE L\'ADR-0061 : rien ne part tant que l\'audit a des documents �
   const res = c.etapeRattrapagePiece_(() => false, {});
   assert.strictEqual(res.fin, 'audit-en-cours');
   assert.strictEqual(c.appels.length, 0);
+});
+
+test('ADR-0063 — EN PAUSE tant que la lecture VISION est armée : aucune relecture Haiku payée pour rien', () => {
+  const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
+  const c = montage([ligne(CLE(ID(1)), 'a.pdf', '04 · Immigration')], props, { visionArmee: true });
+  assert.ok(String(c.CONFIG.AUDIT_VISION_TAG), 'le tag est posé dans ce contexte');
+  const res = c.etapeRattrapagePiece_(() => false, {});
+  assert.strictEqual(res.fin, 'vision-en-cours');
+  assert.strictEqual(c.appels.length, 0);
+  assert.ok(/VISION/.test(c.phraseMotifRattrapage_('vision-en-cours')));
+  // Le chemin MANUEL passe outre : c'est le geste de Marc, et la pause ne le lui retire pas.
+  const c2 = montage([ligne(CLE(ID(1)), 'a.pdf', '04 · Immigration')],
+    new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]), { visionArmee: true });
+  assert.notStrictEqual(c2.etapeRattrapagePiece_(() => false, { manuel: true }).fin, 'vision-en-cours');
 });
 
 test('les cinq silences du canal se distinguent, et aucun ne ressemble à « rien à faire »', () => {

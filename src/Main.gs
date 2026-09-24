@@ -628,6 +628,26 @@ function tickDriveAI() {
       }
     } catch (e) { journalErreur_('AuditPiece', 'Audit des pièces différé : ' + e); }
 
+    // AUDIT DE LA LECTURE VISION (ADR-0063, lot L1) : vingt papiers lus par leur IMAGE (Sonnet 5),
+    // envoyés à la Mémoire, mesurés. Placé ICI, juste après l'audit C49-3 et AVANT le rattrapage :
+    // même budget des pièces, et c'est une PORTE — la campagne ne part pas avant son verdict.
+    // Il s'éteint seul (la gate lit `DriveAI_AUDIT_VISION_FINI`) : une lecture de Property par
+    // tick une fois fini. Pas d'`etapeSuivie_` : registre saturé, même raison que l'audit C49-3.
+    // Enveloppée : un échec ne doit JAMAIS bloquer l'intake.
+    try {
+      var tagVisionFini = null;
+      try { tagVisionFini = PropertiesService.getScriptProperties().getProperty('DriveAI_AUDIT_VISION_FINI'); }
+      catch (eVision) { tagVisionFini = null; }
+      if (auditVisionDoitTourner_(CONFIG.AUDIT_VISION_TAG, tagVisionFini)
+          && !estBudgetDepasse() && !budgetCampagnesAtteint_() && !resetEnCours_()) {
+        var opAvantV = operationCourante_();
+        try {
+          poserOperationCourante_('audit-vision');
+          etapeAuditVision_(estBudgetDepasse, {});
+        } finally { poserOperationCourante_(opAvantV); }
+      }
+    } catch (e) { journalErreur_('AuditVision', 'Audit vision différé : ' + e); }
+
     // RÉSOLUTION DES IDENTIFIANTS (C49-16) : retrouver le `fileId` des lignes d'Index qui n'en
     // portent pas — les pièces jointes Gmail, dont la clé `<messageId>|<rang>|<nom>|<taille>`
     // n'en contient aucun. 734 documents CLASSÉS que tout ce qui désigne un papier par son
