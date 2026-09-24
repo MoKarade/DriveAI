@@ -2960,7 +2960,16 @@ Détail des tâches : `BACKLOG.md`.
   demande explicite de Marc (« classe tout mon ancien drive »), elle est désormais INCLUSE dans le grand
   rangement auto (`CONFIG.RANGEMENT_RACINES_SUP`), avec le garde-fou OCR-vide renforcé (cf. P2.7 ci-dessus).
 - **Gmail lecture seule** → idempotence portée par l'`Index` (clé `messageId|i|nom|taille`), **pas** de label Gmail.
-- **Merge** : auto-merge des PR `claude/**` dès que la CI est verte (pas de revue humaine bloquante).
+- **Merge** : auto-merge des PR `claude/**` **et `dependabot/**`** (ajout du 24/09/2026, décision de Marc :
+  fusion automatique pour tout, majeures comprises) dès que la CI est verte (pas de revue humaine bloquante).
+- **Portes qualité et sécurité de l'Atelier (S6, 24/09/2026)** — jobs **Qualité** et **Sécurité** du workflow CI,
+  donc attendus par l'auto-merge. Cliquet `app/qualite/seuils.json` (état du jour, rien ne recule ;
+  `npm run portes` dans `app/`, `npm run portes:maj` resserre) : typage 0, tests 0 échec, couverture
+  logique `app/src/*.ts` + `api/` ≥ 83,6 % des lignes, globale ≥ 50,3 % lignes / 84,6 % branches, code mort
+  (knip) ≤ 12, architecture (dependency-cruiser : `api/` sans paquet npm, l'app sans code serveur, la logique
+  sans écran, pas de cycle) ≤ 1 (le cycle `App.tsx` ↔ `vues/AujourdHui.tsx`). Sécurité : gitleaks sur
+  l'historique fusionné (HEAD) + Semgrep (TypeScript, React, secrets, OWASP), bloquants. Le moteur `src/*.gs`
+  garde son filet `node --test`. Dependabot hebdomadaire (npm `app/` + actions).
 - **Modèles LLM** : Haiku par défaut (`claude-haiku-4-5`), Sonnet en fallback (`claude-sonnet-4-6`).
 - **Scopes** : `gmail.readonly`, `drive`, `script.external_request`, `spreadsheets`,
   `script.send_mail` (notif), `script.scriptapp` (trigger), + Phase 3 : `tasks`, `calendar.events`

@@ -1,7 +1,10 @@
 name: Auto-merge
 
-# Quand la CI réussit sur une PR d'une branche claude/**, on la merge en squash — SAUF si
-# elle est en brouillon, d'un fork, ou porte `do-not-merge` (voir les gardes ci-dessous).
+# Quand la CI réussit sur une PR d'une branche claude/** ou dependabot/**, on la merge en squash —
+# SAUF si elle est en brouillon, d'un fork, ou porte `do-not-merge` (voir les gardes ci-dessous).
+# « La CI réussit » inclut les portes Qualité et Sécurité de l'Atelier (jobs du workflow CI, S6).
+# dependabot/** ajouté le 24/09/2026 (décision de Marc : fusion automatique pour tout, Dependabot
+# compris, majeures comprises) — mêmes gardes, même déploiement après fusion.
 #
 # ⚠️ OBSERVÉ le 2026-09-09, contre la lecture qu'on avait de `workflow_run` : le job a exécuté
 # la version de CE fichier portée par la PR (#329), PAS celle de `main` — `main` portait encore
@@ -34,7 +37,8 @@ jobs:
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.event == 'pull_request' &&
       github.event.workflow_run.head_repository.full_name == github.repository &&
-      startsWith(github.event.workflow_run.head_branch, 'claude/')
+      (startsWith(github.event.workflow_run.head_branch, 'claude/') ||
+       startsWith(github.event.workflow_run.head_branch, 'dependabot/'))
     runs-on: ubuntu-latest
     steps:
       - name: Trouver et merger la PR

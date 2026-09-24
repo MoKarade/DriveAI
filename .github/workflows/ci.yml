@@ -208,3 +208,74 @@ jobs:
           path: app/e2e-screenshots/
           if-no-files-found: warn
           retention-days: 14
+
+  # ---------------------------------------------------------------------------------------
+  # Portes qualité de l'Atelier (S6, 24/09/2026) — même dispositif que les autres apps.
+  # Une PR verte se fusionne SANS relecture humaine (auto-merge.yml) et part en production
+  # (deploy.yml, clasp push) : ces deux jobs garantissent qu'elle ne fait RECULER ni la qualité
+  # ni la sécurité. Comme ils font partie du workflow CI, auto-merge.yml les attend (il ne part
+  # que sur une CI entièrement verte). Cliquet : app/qualite/seuils.json fige l'état du jour.
+  qualite:
+    timeout-minutes: 20
+    name: Qualité (lint · couverture · code mort · architecture)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false # [CI-PERSIST-CREDS] (voir job `app`)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Dépendances (npm ci, lockfile committé)
+        working-directory: app
+        run: npm ci --ignore-scripts # [CI-IGNORE-SCRIPTS] (voir job `app`)
+      # Périmètre : app/ ET les fonctions Vercel de api/ (couvertes par les tests de app/test).
+      # Le moteur Apps Script (src/*.gs) garde son filet à lui : job « Tests unitaires ».
+      - name: Portes qualité (cliquet)
+        working-directory: app
+        run: node qualite/portes.mjs
+      - name: Rapport
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-qualite
+          path: app/qualite/rapport.json
+          if-no-files-found: ignore
+
+  securite:
+    # Secrets dans tout l'historique qui serait fusionné — main + la PR, via HEAD (gitleaks) — + analyse
+    # statique du code (Semgrep). Les autres branches relèvent de l'audit, pas de la porte : sans
+    # --log-opts, gitleaks lirait `--all` et une vieille branche ferait rougir une PR qui n'y touche pas.
+    # Complète « Scan de secrets » (job validate, motifs maison sur l'arbre courant) sans le remplacer.
+    # Mesuré le 24/09/2026 : gitleaks 1 résultat sur l'historique (581 commits), un FAUX positif — un nom
+    # de fichier Drive d'une fixture de test (« 2026-07-01_Exercice… »), listé dans .gitleaksignore ;
+    # Semgrep 1 résultat (api/_lib.ts, étiquette GCM sans longueur) CORRIGÉ dans la même PR, donc 0.
+    # Bloquant d'emblée (--error).
+    timeout-minutes: 10
+    name: Sécurité (secrets · analyse statique)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # gitleaks lit l'historique complet, pas seulement le dernier commit
+          persist-credentials: false
+      # Binaire officiel, version et empreinte figées : un outil de sécurité téléchargé sans
+      # vérification serait lui-même une surface d'attaque.
+      - name: Secrets (gitleaks, historique complet)
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSfL -o gitleaks.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.28.0/gitleaks_8.28.0_linux_x64.tar.gz
+          echo "a65b5253807a68ac0cafa4414031fd740aeb55f54fb7e55f386acb52e6a840eb  gitleaks.tgz" | sha256sum -c -
+          tar xzf gitleaks.tgz gitleaks
+          ./gitleaks git . --no-banner --redact --log-opts="--full-history HEAD" --gitleaks-ignore-path .gitleaksignore
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Analyse statique (Semgrep)
+        run: |
+          # --only-binary : aucune compilation ni script d'installation, seulement des roues publiées.
+          python -m pip install --quiet --only-binary :all: semgrep==1.177.0
+          semgrep scan --metrics off --error --exclude .github \
+            --config p/typescript --config p/react \
+            --config p/secrets --config p/owasp-top-ten .
