@@ -5,6 +5,22 @@
 
 ---
 
+## C49-30 — La tranche relue en VISION, 200 papiers d'abord, 100 $ au total 🟦
+
+Marc, le 24/09, après l'audit : « texte si le PDF en a », « garder 40 $/mois », « tranche de 200
+d'abord ». ADR-0063 §8.
+
+- ✅ `RATTRAPAGE_PIECE_VISION` + tag `v3-a` : la tranche relit tout en Sonnet 5, même ordre.
+- ✅ PDF avec texte → texte (60 000 car.), image seulement pour les scans ; second essai en image
+  si le texte ne donne rien.
+- ✅ Arrêts `VISION_TRANCHE_MAX` (200) et `VISION_PLAFOND_DOLLARS` (100 $), chemin manuel compris.
+- ✅ Pannes de la vision jamais imputées au papier (motif riche), 3 essais passagers, série de 3.
+- ⬜ Mesurer après déploiement : la Santé « Rattrapage des pièces » annonce la dépense et le coût
+  moyen par papier ; à 200, la lecture s'arrête (`tranche-plafond`) et attend l'OK de Marc.
+- ⬜ Défaut d'affichage de C49-29, non corrigé (hors périmètre) : une sortie précoce de l'audit
+  vision (`budget-jour`) réécrit sa ligne de Santé avec 0/0 et 0 $, par-dessus les comptes d'une
+  passe manuelle. Les chiffres restent justes dans l'onglet `AuditVision`.
+
 ## C49-29 (L1) — Lire l'IMAGE du papier avec Sonnet 5, et l'auditer sur vingt 🟦
 
 Marc, le 24/09 : « il ne récupère pas assez d'info par document — littéralement TOUT », puis
@@ -18,9 +34,9 @@ jumeau, l'ADR 0010 de MemoryAI).
 - ✅ `src/AuditVision.gs` : vingt papiers choisis par issue Haiku (d'abord ses échecs), lus,
   envoyés, mesurés dans l'onglet `AuditVision` — des comptes, jamais une valeur.
 - ✅ Le rattrapage Haiku est EN PAUSE tant que `AUDIT_VISION_TAG` est posé (`vision-en-cours`).
-- ⬜ Mesurer après déploiement (MemoryAI #70 d'abord) : la ligne « Audit vision (L1) », le coût
-  réel par papier, et ce que la Mémoire porte pour le passeport canadien.
-- ⬜ Décision de Marc sur l'audit : lancer la campagne (100 $, relever le frein à 40 $/mois ?).
+- ✅ Mesuré le 24/09 (passe manuelle) : 20/20 faits, 15 lus, 0,57 $ pour 16 papiers — ADR-0063 §8.
+- ✅ Décision de Marc sur l'audit : campagne par tranche de 200, 100 $ au total, frein à 40 $/mois
+  (→ C49-30).
 - ✅ Revue adversariale (#418) : 7 défauts corrigés avant fusion — issue par liste de VERDICTS
   (un 404 ou une panne Drive refermaient l'audit sans rien mesurer), coupe-circuit de série,
   panne de compte non imputée au papier, chemin transmis, plafond d'essais, garde de l'apparence

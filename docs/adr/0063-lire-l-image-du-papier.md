@@ -106,3 +106,46 @@ d'être.
    texte. Ce seuil est un filet, pas une politique — l'audit dira s'il mord.
 3. **L'apparence** est une lecture de modèle sur un sujet sensible : elle est bornée à Marc par
    le code, et elle vit au niveau du papier qui la porte (N3 pour un passeport).
+
+## 8. Amendement du 24/09 (C49-30) — l'audit mesuré, et la campagne par tranches
+
+**L'audit sur vingt papiers (mesuré le 24/09, lancé à la main)** :
+
+- 15 lus, 5 échecs. 10 des 12 échecs d'Haiku (illisible, OCR raté, sans texte) sont lus. Les
+  témoins (deux passeports français, deux permis de travail) sortent plus riches qu'en v2 (zone
+  lisible par machine décodée, photo décrite), et une étiquette fausse de la v2 est corrigée.
+- Le « passeport canadien » est la COUVERTURE d'un passeport français sur des cartes
+  d'embarquement : aucune page de données. La lecture le dit au lieu d'inventer.
+- Échecs : 2 fichiers disparus du Drive, 1 PDF protégé par mot de passe, 1 PNG refusé par
+  l'API (« Could not process image »), 1 image illisible.
+- La garde de l'apparence a tenu : décrite sur les passeports de Marc, sur aucun papier de
+  tiers.
+- **Coût mesuré : 0,57 $ pour 16 papiers.** Une photo coûte 1 à 2 ¢ ; un PDF de ~20 pages en
+  image coûte ~15 ¢ (les trois affidavits font 0,46 $ à eux seuls).
+
+**Ce que Marc a décidé (24/09)** : « texte si le PDF en a », « garder 40 $/mois », « tranche de
+200 d'abord ».
+
+1. **Un PDF qui a du texte part en TEXTE** (`pdf-texte`), borné à 60 000 caractères — plus les
+   12 000 de l'analyse, qui coupaient un relevé en son milieu. « A du texte » = au moins 400
+   caractères dont la moitié sont des lettres ou des chiffres : la longueur seule prendrait le
+   bruit de l'OCR d'un scan pour une lecture. Si le texte ne donne rien (`illisible`, `vide`), le
+   PDF est **montré une fois** en image ; une panne ne déclenche pas ce second essai. Le coût du
+   papier est la SOMME des deux appels.
+2. **La campagne est le rattrapage lu en vision** (`RATTRAPAGE_PIECE_VISION`, tag `v3-a`) :
+   même ordre (`04 → 01 → 02 → 05 → 03 → 08 → 06 → 07 → 09`), même idempotence, même canal —
+   seul le lecteur change. Le nouveau tag fait tout RELIRE (« Tout relire »).
+3. **Deux arrêts, vérifiés avant la passe ET pour le chemin manuel** : 200 papiers traités sous
+   le tag (`VISION_TRANCHE_MAX`), et 100 $ dépensés (`VISION_PLAFOND_DOLLARS`), mesurés sur les
+   réponses et écrits après CHAQUE papier. Le frein mensuel (40 $) reste en place : il étale la
+   campagne sur plusieurs mois.
+4. **Une panne de la vision n'est jamais un verdict du papier** : `pousserPieceApresClassement_`
+   aplatit tout échec en `extraction-vide` ; c'est le motif RICHE qui décide. Une panne passagère
+   (réseau, 5xx, réponse illisible) arrête la passe sans marquer, et au 3ᵉ retour sur le même
+   papier il est mis de côté pour ne pas bloquer la file. Une panne de crédit ne compte jamais.
+   Trois refus identiques de l'API d'affilée (400, 413, aperçu absent) sont une cause commune :
+   rien n'est marqué.
+
+**Écarté** : relever le frein mensuel à 110 $ (Marc a choisi de garder 40 $) ; limiter les PDF à
+5 pages en image (perdrait la fin des longs documents).
+

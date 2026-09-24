@@ -4,7 +4,13 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🟦 EN COURS — 2026-09-24 : C49-29 (L1), la lecture VISION. REPRENDRE ICI.** Sonnet 5 lit
+> **🟦 EN COURS — 2026-09-24 : C49-30, la tranche relue en VISION. REPRENDRE ICI.** L'audit de
+> C49-29 est fait (20/20, 0,57 $ pour 16 papiers, ADR-0063 §8). La tranche relit tout en Sonnet 5
+> (tag `v3-a`), les PDF qui ont du texte partent en texte. Elle **s'arrête seule à 200 papiers**
+> (`tranche-plafond`) et attend l'OK de Marc ; arrêt dur à 100 $ ; frein mensuel inchangé (40 $).
+> À lire après déploiement : la ligne « Rattrapage des pièces » (dépense, coût moyen par papier).
+>
+> **✅ 2026-09-24 : C49-29 (L1), la lecture VISION — audit terminé.** Sonnet 5 lit
 > l'IMAGE des papiers (ADR-0063). Un audit sur 20 papiers tourne seul après déploiement (onglet
 > `AuditVision`, ligne de Santé « Audit vision (L1) ») ; le rattrapage Haiku est en PAUSE tant
 > qu'il est armé. Ordre de déploiement : **MemoryAI #70 d'abord** (rang 3 de la lignée), puis

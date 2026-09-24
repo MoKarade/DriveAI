@@ -21,6 +21,7 @@ function ctxVision(reponse, opts) {
   const o = opts || {};
   const c = load(['Config.gs', 'Cout.gs', 'Journal.gs', 'Consolidation.gs', 'Piece.gs', 'PieceVision.gs', 'Memoire.gs', 'AuditVision.gs']);
   c.appels = [];
+  c.ocrMax = [];
   c.journal = [];
   c.estPannePlateforme_ = () => false;
   c.getCleAnthropic_ = () => 'CLE';
@@ -30,11 +31,13 @@ function ctxVision(reponse, opts) {
   c.tronquer_ = (t) => String(t);
   c.texteReponse_ = (d) => (d.content || []).map((b) => b.text || '').join('');
   c.Utilities.base64Encode = () => 'QkFTRTY0';
-  c.extraireTexte_ = () => (o.texte === undefined ? 'texte exact du docx' : o.texte);
+  c.extraireTexte_ = (blob, max) => { c.ocrMax.push(max); return o.texte === undefined ? 'texte exact du docx' : o.texte; };
   c.fetchAvecRetry_ = (url, options) => {
     c.appels.push(JSON.parse(options.payload));
-    if (!reponse) return null;
-    return { getResponseCode: () => reponse.code || 200, getContentText: () => JSON.stringify(reponse.corps) };
+    // Une LISTE de réponses sert les appels dans l'ordre (le second essai d'un PDF).
+    const r = Array.isArray(reponse) ? reponse[Math.min(c.appels.length - 1, reponse.length - 1)] : reponse;
+    if (!r) return null;
+    return { getResponseCode: () => r.code || 200, getContentText: () => JSON.stringify(r.corps) };
   };
   c.reinitialiserUsage_();
   return c;
@@ -327,7 +330,7 @@ function chaine(reponseMemoire, opts) {
   const o = opts || {};
   const props = new Map([['DriveAI_MEMORYAI_TOKEN', 'jeton']]);
   const c = load(['Config.gs', 'Cout.gs', 'Journal.gs', 'Consolidation.gs', 'Gmail.gs', 'Piece.gs',
-    'PieceVision.gs', 'Memoire.gs', 'AuditPiece.gs', 'AuditVision.gs'], {
+    'PieceVision.gs', 'Memoire.gs', 'AuditPiece.gs', 'AuditVision.gs'].concat(o.modules || []), {
     PropertiesService: { getScriptProperties: () => ({
       getProperty: (k) => (props.has(k) ? props.get(k) : null),
       setProperty: (k, v) => { props.set(k, String(v)); },
@@ -534,4 +537,78 @@ test('REVUE #418 — un 200 illisible est un hoquet rejoué, pas une mesure', ()
   assert.strictEqual(c.extrairePieceVision_(fichier('p.pdf', 'application/pdf', 10), hors), null);
   assert.strictEqual(hors.motif, 'reponse-illisible');
   assert.strictEqual(c.issueAuditVision_({ motif: 'extraction-vide', vision: hors }), 'panne');
+});
+
+
+/* ══════════════════════════════════════════════════════════════════════════════════════════
+   C49-30 — « texte si le PDF en a » (Marc, 24/09), et la campagne passe par le même canal.
+   ══════════════════════════════════════════════════════════════════════════════════════════ */
+
+const TEXTE_PDF = 'Relevé de compte Desjardins, période du 1er au 31 août 2026. Solde 1 234,56 $. '.repeat(10);
+
+test('C49-30 — un PDF qui a du TEXTE part en texte (pas une image par page), borné à 60 000 car.', () => {
+  const c = ctxVision(reponseOk(), { texte: TEXTE_PDF });
+  const hors = {};
+  const e = c.extrairePieceVision_(fichier('releve.pdf', 'application/pdf', 1000), hors);
+  assert.ok(e);
+  assert.strictEqual(hors.voie, 'pdf-texte');
+  const blocs = c.appels[0].messages[0].content;
+  assert.strictEqual(blocs.length, 1);
+  assert.strictEqual(blocs[0].type, 'text');
+  assert.match(blocs[0].text, /couche texte/);
+  assert.ok(!blocs.some((b) => b.type === 'document'), 'aucune page facturée comme une image');
+  assert.strictEqual(c.ocrMax[0], 60000, 'pas la troncature de 12 000 de l\'analyse');
+});
+
+test('C49-30 — un scan dont l\'OCR ne rend presque rien, ou du BRUIT, part en image', () => {
+  const peu = ctxVision(reponseOk(), { texte: 'Page 1' });
+  peu.extrairePieceVision_(fichier('scan.pdf', 'application/pdf', 1000), {});
+  assert.strictEqual(peu.appels[0].messages[0].content[1].type, 'document');
+  const bruit = ctxVision(reponseOk(), { texte: '‹‹ ;: ~ . , |/ '.repeat(80) });
+  bruit.extrairePieceVision_(fichier('scan.pdf', 'application/pdf', 1000), {});
+  assert.strictEqual(bruit.appels[0].messages[0].content[1].type, 'document',
+    'la LONGUEUR seule ne prouve pas une lecture');
+  assert.strictEqual(bruit.texteSuffisantVision_(TEXTE_PDF), true);
+  assert.strictEqual(bruit.texteSuffisantVision_(null), false);
+});
+
+test('C49-30 — le texte n\'a rien donné : le PDF est MONTRÉ une fois, et le coût est la SOMME', () => {
+  const illisible = { corps: { content: [{ type: 'text', text: '{"lisible": false}' }],
+    usage: { input_tokens: 1000, output_tokens: 20 }, stop_reason: 'end_turn' } };
+  const c = ctxVision([illisible, reponseOk()], { texte: TEXTE_PDF });
+  const hors = {};
+  const e = c.extrairePieceVision_(fichier('scan-avec-ocr.pdf', 'application/pdf', 1000), hors);
+  assert.ok(e, 'le second essai, en image, a lu le papier');
+  assert.strictEqual(c.appels.length, 2);
+  assert.strictEqual(c.appels[1].messages[0].content[1].type, 'document');
+  assert.strictEqual(hors.voie, 'pdf-texte+pdf');
+  assert.strictEqual(hors.usage.input_tokens, 4000, 'le papier a coûté LES DEUX appels');
+});
+
+test('C49-30 — une PANNE sur la voie texte ne déclenche PAS le second essai', () => {
+  const c = ctxVision({ code: 500, corps: {} }, { texte: TEXTE_PDF });
+  const hors = {};
+  assert.strictEqual(c.extrairePieceVision_(fichier('r.pdf', 'application/pdf', 1000), hors), null);
+  assert.strictEqual(c.appels.length, 1);
+  assert.strictEqual(hors.motif, 'http-500');
+});
+
+test('C49-30 — LA CHAÎNE : un papier de la tranche traverse le rattrapage, la vision et la Mémoire', () => {
+  const c = chaine({ corps: { recus: 1, acceptees: 1, remplacees: 1, dejaPresentes: 0, refusees: [] } },
+    { tagVide: true, modules: ['PerimetrePiece.gs', 'RattrapagePiece.gs'] });
+  assert.strictEqual(c.CONFIG.RATTRAPAGE_PIECE_VISION, true);
+  const sortie = {};
+  const motif = c.rattraperUnDocument_({ fileId: FID('P7'), cle: 'drive|' + FID('P7'), nom: 'p7.jpg',
+    domaine: '04 · Immigration', statut: 'classé', chemin: '04 · Immigration' }, false, sortie);
+  assert.strictEqual(motif, 'ok', 'l\'audit éteint, la campagne passe par SON interrupteur');
+  assert.strictEqual(c.envoyes.length, 1);
+  assert.strictEqual(c.envoyes[0].corps.pieces[0].extracteur, 'sonnet-5-vision-piece-v3');
+  assert.ok(sortie.dollars > 0, 'le coût remonte à l\'étape, qui tient le plafond');
+
+  // Contrôle négatif : sans le lecteur vision, le même appel est refusé au point d'envoi.
+  c.CONFIG.RATTRAPAGE_PIECE_VISION = false;
+  const env = c.pousserPieceApresClassement_({ cle: '' },
+    { nom: 'p.jpg', domaine: '04 · Immigration', statut: 'classé', fileId: FID('P1') }, '',
+    { vision: { fichier: fichier('p.jpg', 'image/jpeg', 10) }, rattrapage: true });
+  assert.strictEqual(env.motif, 'desactive');
 });

@@ -387,7 +387,7 @@ test('un BUMP du tag repart du début, même si l\'état disait « terminée »'
 test('l\'étape est branchée au tick AVANT ses deux consommateurs', () => {
   const main = fs.readFileSync(path.join(__dirname, '..', 'src', 'Main.gs'), 'utf8');
   const res = main.indexOf('etapeResolutionFileId_(');
-  const ratt = main.indexOf('etapeRattrapagePiece_(estBudgetDepasse');
+  const ratt = main.indexOf('etapeRattrapagePiece_(CONFIG.RATTRAPAGE_PIECE_VISION ? estBudgetDepasseDoc');
   const peri = main.indexOf('etapePerimetrePiece_(');
   assert.ok(res > 0, 'une passe que le tick n\'appelle pas ne tourne jamais');
   // ⚠️ L'ORDRE EST LE SUJET : elle ALIMENTE le rattrapage (qui envoie) et le périmètre (qui
