@@ -1,0 +1,56 @@
+{
+  "_doc": "Seuils du cliquet (portes qualité de l'Atelier, S6). Valeurs mesurées le jour de la mise en place (Linux, Node 24.21) : rien ne peut reculer. `npm run portes:maj` resserre un seuil quand le chiffre s'améliore ; le desserrer demande `--forcer` et une décision de Marc. Périmètre : l'app web (app/) et les fonctions Vercel (../api), que les tests de app/test couvrent. Le moteur Apps Script (src/*.gs) garde son propre filet (job « Tests unitaires », node --test). Pas de lint : ce dépôt n'a pas d'ESLint (config.lint vide, la porte est absente).",
+  "mis_a_jour": "2026-09-24",
+  "config": {
+    "app": "DriveAI",
+    "lint": "",
+    "coeur": {
+      "libelle": "logique app/src/*.ts + api/ (hors écrans .tsx)",
+      "motif": "\\.ts$"
+    },
+    "archi": [
+      "src",
+      "../api"
+    ],
+    "vitest_args": ""
+  },
+  "portes": {
+    "typecheck.erreurs": {
+      "max": 0
+    },
+    "tests.echecs": {
+      "max": 0
+    },
+    "couverture.lignes_coeur": {
+      "min": 80.3
+    },
+    "couverture.lignes_global": {
+      "min": 51.6
+    },
+    "couverture.branches_global": {
+      "min": 45.0
+    },
+    "code_mort.problemes": {
+      "max": 12
+    },
+    "architecture.violations": {
+      "max": 1
+    }
+  },
+  "historique": [
+    {
+      "date": "2026-09-24",
+      "motif": "vitest 2 -> 5 : couverture V8 remappée « AST-aware » (Vitest 4+), motifs d'inclusion relus relativement à app/ — même code, autre instrument ; décision de Marc du 24/09/2026",
+      "couverture_avant": {
+        "couverture.lignes_coeur": 83.6,
+        "couverture.lignes_global": 50.3,
+        "couverture.branches_global": 84.6
+      },
+      "couverture_apres": {
+        "couverture.lignes_coeur": 80.3,
+        "couverture.lignes_global": 51.6,
+        "couverture.branches_global": 45.0
+      }
+    }
+  ]
+}

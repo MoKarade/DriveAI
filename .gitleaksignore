@@ -1,0 +1,4 @@
+# Faux positifs gitleaks : valeurs qui RESSEMBLENT à un secret sans en être.
+# Vérifiées une par une le 24/09/2026. Une vraie fuite ne s'ajoute JAMAIS ici : elle se révoque.
+# Nom de fichier Drive « 2026-07-01_Exercice… » dans une fixture de test (règle generic-api-key).
+0d53c8ae4cdac2b1e911171e9eeb7a8a818eac33:test/fixtures/vrac-racines-2026-09-13.json:generic-api-key:340

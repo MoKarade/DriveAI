@@ -55,6 +55,18 @@ describe('chiffrement du refresh token (AES-256-GCM)', () => {
     expect(dechiffrer('', secret)).toBeNull();
   });
 
+  it('étiquette GCM raccourcie → null (sans authTagLength, Node accepte une étiquette de 4 octets)', () => {
+    // Trouvé par la porte Sécurité (Semgrep gcm-no-tag-length, 24/09/2026). Une boîte chiffrée
+    // de la chaîne vide fait 28 octets : IV (12) + étiquette (16). Tronquée à 16 octets, il ne
+    // reste que 4 octets d'étiquette — et Node les VÉRIFIAIT comme une étiquette complète :
+    // 2^32 essais au lieu de 2^128 pour forger un cookie accepté. L'étiquette fait 16 octets,
+    // point : `authTagLength: 16` refuse tout le reste.
+    const secret = 'bon-secret';
+    const brut = Buffer.from(chiffrer('', secret), 'base64url');
+    expect(brut.length).toBe(28);
+    expect(dechiffrer(brut.subarray(0, 16).toString('base64url'), secret)).toBeNull();
+  });
+
   it('deux chiffrements du même clair diffèrent (IV aléatoire — pas d\'empreinte stable)', () => {
     expect(chiffrer('x', 's')).not.toBe(chiffrer('x', 's'));
   });

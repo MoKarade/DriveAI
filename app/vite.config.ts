@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { coverageConfigDefaults, defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 // App DriveAI (Phase 4) — SPA statique, AUCUN backend : l'app parle directement aux API Google
@@ -17,5 +17,19 @@ export default defineConfig({
     // fuseau des runners CI : le test aurait passé des deux côtés du correctif (revue flotte).
     // Toronto est le fuseau de Marc, et il est à l'ouest de Greenwich : c'est là que ça se voit.
     env: { TZ: 'America/Toronto' },
+    // Couverture — portes qualité de l'Atelier (S6, 24/09/2026). Les tests couvrent aussi les
+    // fonctions Vercel de ../api (OAuth du MCP, BFF, résumé du hub) : `allowExternal` les compte,
+    // sinon la couverture ignorerait tout ce qui vit hors de app/. `npm test` n'est pas touché :
+    // la couverture ne tourne que sous `--coverage` (npm run portes).
+    coverage: {
+      provider: 'v8',
+      allowExternal: true,
+      // vitest 4+ : `src/**` se lit relativement à app/ ; `**/api/**` attrape ../api (allowExternal).
+      // (Sous vitest 2, il fallait `**/app/src/**` : le motif relatif ne trouvait rien — 0 fichier.)
+      include: ['src/**/*.{ts,tsx}', '**/api/**/*.ts'],
+      exclude: [...coverageConfigDefaults.exclude, 'src/mockData.ts'],
+      reporter: ['text-summary', 'json-summary'],
+      reportsDirectory: 'coverage',
+    },
   },
 });

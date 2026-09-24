@@ -1,0 +1,49 @@
+# Mises à jour de dépendances proposées automatiquement (porte sécurité de l'Atelier, S6, 24/09/2026).
+# Groupées pour limiter le bruit : une PR par semaine pour les versions mineures/correctives.
+# Chaque PR passe par la CI complète (tests, qualité, sécurité) et fusionne seule si tout est vert
+# (auto-merge.yml accepte les branches dependabot/ en plus de claude/, mêmes gardes).
+# Seule app/ a des dépendances npm : la racine (node --test) et api/ (déployée sans installation,
+# voir vercel.json) n'en ont aucune, par construction.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /app
+    schedule: { interval: weekly, day: monday }
+    open-pull-requests-limit: 5
+    groups:
+      # vitest et @vitest/* exigent la MÊME version (peer exacte) : séparés, chaque PR échoue à
+      # l'installation (ERESOLVE, vécu le 23/09 sur les autres apps). Leurs majeures voyagent ensemble.
+      vitest-majeures:
+        patterns: ["vitest", "@vitest/*"]
+        update-types: [major]
+      # react et react-dom exigent la MÊME majeure (peer exacte), leurs types aussi : séparés, chaque PR
+      # restait rouge à vie (#410 et #411, 24/09/2026 — ni l'une ni l'autre ne pouvait passer seule).
+      react-majeures:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+        update-types: [major]
+      # @vitejs/plugin-react suit la majeure de vite (plugin-react 6 exige vite 8) : séparée, la PR du plugin
+      # restait rouge à vie (#412, 24/09/2026).
+      vite-majeures:
+        patterns: ["vite", "@vitejs/*"]
+        update-types: [major]
+      mineures-et-correctifs:
+        update-types: [minor, patch]
+    ignore:
+      # @types/node suit la MAJEURE de Node : une majeure plus récente se change AVEC Node, pas seule.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # TypeScript 7 : aucune API programmatique avant la 7.1 (annonce TS 7.0, 08/07/2026) ; les portes
+      # (dependency-cruiser, knip) s'en servent pour lire le code. Mesuré le 23/09/2026 ailleurs (JobAI
+      # #29) : typecheck rouge. À retirer avec TypeScript 7.1.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # Contrat INTERNE, épinglé à la main sur un tag (outils/repin_hub_contract.py de l'Atelier) : pas à
+      # Dependabot. Il lisait mal le tag annoté v1.3.1 et proposait une RÉTROGRADATION v1.3.1 -> v1.3.0
+      # (sans dist/ : installation cassée) — vécu le 23/09/2026, BatchChef #114 et JobAI #34.
+      - dependency-name: "@mokarade/hub-contract"
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    groups:
+      actions:
+        patterns: ["*"]

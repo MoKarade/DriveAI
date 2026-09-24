@@ -51,7 +51,7 @@ jobs:
 
       - name: Checkout
         if: steps.guard.outputs.ready == 'true'
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           # [CI-PERSIST-CREDS] `actions/checkout` v2+ écrit le GITHUB_TOKEN dans la config git du
           # runner POUR TOUT LE RESTE DU RUN : n'importe quelle étape suivante, y compris une
