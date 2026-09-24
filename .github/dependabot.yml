@@ -16,6 +16,11 @@ updates:
       vitest-majeures:
         patterns: ["vitest", "@vitest/*"]
         update-types: [major]
+      # react et react-dom exigent la MÊME majeure (peer exacte), leurs types aussi : séparés, chaque PR
+      # restait rouge à vie (#410 et #411, 24/09/2026 — ni l'une ni l'autre ne pouvait passer seule).
+      react-majeures:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+        update-types: [major]
       mineures-et-correctifs:
         update-types: [minor, patch]
     ignore:
