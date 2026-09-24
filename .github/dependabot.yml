@@ -21,6 +21,11 @@ updates:
       react-majeures:
         patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
         update-types: [major]
+      # @vitejs/plugin-react suit la majeure de vite (plugin-react 6 exige vite 8) : séparée, la PR du plugin
+      # restait rouge à vie (#412, 24/09/2026).
+      vite-majeures:
+        patterns: ["vite", "@vitejs/*"]
+        update-types: [major]
       mineures-et-correctifs:
         update-types: [minor, patch]
     ignore:
