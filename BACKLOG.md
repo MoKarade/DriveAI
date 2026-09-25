@@ -5,6 +5,17 @@
 
 ---
 
+## C49-32 — « Lis tout tout tout » : la limite de 200 papiers est levée ✅
+
+La tranche de 200 s'est arrêtée seule le 25/09 (`tranche-plafond`) : 4,09 $ dépensés, ~2 ¢ par
+papier — 173 lus et acceptés par la Mémoire, 17 illisibles (photo à refaire), 3 sans texte,
+7 en échec (PDF protégés par mot de passe, image refusée, fichiers introuvables). Marc : « lis
+tout tout tout ». `VISION_TRANCHE_MAX` passe à `0` (sans limite de NOMBRE, sémantique déjà
+testée). Les deux bornes d'ARGENT restent : arrêt dur à 100 $ (projection ~55 $ pour les ~2 500
+restants [Probable]) et frein mensuel à 40 $, qui reporte la fin sur octobre.
+⚠️ Hors de portée de la lecture, et rien ne change là : les 383 pièces jointes Gmail sans fileId
+et les 283 documents écartés « sans texte possible » du périmètre C49-4.
+
 ## C49-31 — Le rattrapage lancé à la main comptait ses appels hors du coût du mois ✅
 
 Mesuré le 24/09 : Marc a lu 15 papiers en vision depuis l'éditeur (`rattraperPiecesMaintenant`),
@@ -16,7 +27,7 @@ test à deux mutations (retirer l'une ou l'autre ligne le fait rougir).
 ⚠️ Non rattrapé : les lancements manuels passés (vision ET Haiku d'avant C49-30) ne sont pas
 dans le coût du mois — l'écart se lit contre la console Anthropic, il ne se reconstitue pas.
 
-## C49-30 — La tranche relue en VISION, 200 papiers d'abord, 100 $ au total 🟦
+## C49-30 — La tranche relue en VISION, 200 papiers d'abord, 100 $ au total ✅
 
 Marc, le 24/09, après l'audit : « texte si le PDF en a », « garder 40 $/mois », « tranche de 200
 d'abord ». ADR-0063 §8.

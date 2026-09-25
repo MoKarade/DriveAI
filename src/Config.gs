@@ -583,7 +583,10 @@ var CONFIG = {
   // Marc, 24/09 : « tranche de 200 d'abord ». La lecture vision s'ARRÊTE après ce nombre de
   // papiers traités sous le tag courant, et attend son OK. Le coût moyen réel se lit alors
   // dans la Santé. Relever ce nombre (ou le mettre à 0 = sans limite) est SA décision.
-  VISION_TRANCHE_MAX: 200,
+  // ⚠️ Marc, 25/09, après la tranche de 200 (4,09 $, ~2 ¢/papier, 173 lus) : « lis tout tout
+  // tout » ⇒ 0 = sans limite de nombre. Ce qui borne encore la campagne : le plafond dur de
+  // 100 $ ci-dessous (projection ~55 $ pour les ~2 500 restants) et le frein mensuel de 40 $.
+  VISION_TRANCHE_MAX: 0,
   // Marc, 24/09 : « 100 $ au total ». Arrêt DUR de la lecture vision quand sa dépense cumulée
   // sous le tag courant atteint ce montant — mesurée sur les réponses, jamais estimée. Il
   // s'AJOUTE au frein mensuel (`LLM_BUDGET_CAMPAGNES`, 40 $, inchangé : « Garder 40 $/mois »),

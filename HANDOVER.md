@@ -4,7 +4,14 @@
 > le travail sans contexte. Le « pourquoi » détaillé est dans `PLAN.md` ; le découpage dans
 > `BACKLOG.md` ; le déploiement dans `docs/DEPLOIEMENT.md`.
 >
-> **🟦 EN COURS — 2026-09-24 : C49-30, la tranche relue en VISION. REPRENDRE ICI.** L'audit de
+> **🟦 EN COURS — 2026-09-25 : C49-32, « lis tout tout tout ». REPRENDRE ICI.** La tranche de
+> 200 est faite (4,09 $, ~2 ¢/papier : 173 lus, 17 illisibles, 3 sans texte, 7 en échec). Marc a
+> levé la limite de nombre (`VISION_TRANCHE_MAX: 0`). Restent les deux bornes d'argent : arrêt dur
+> à 100 $ (projection ~55 $ pour les ~2 500 restants) et frein mensuel à 40 $, qui étale la fin
+> sur octobre. À lire après déploiement : la ligne « Rattrapage des pièces » ne dit plus
+> « tranche atteinte » et le compteur de papiers repart.
+>
+> **✅ — 2026-09-24 : C49-30, la tranche relue en VISION. REPRENDRE ICI.** L'audit de
 > C49-29 est fait (20/20, 0,57 $ pour 16 papiers, ADR-0063 §8). La tranche relit tout en Sonnet 5
 > (tag `v3-a`), les PDF qui ont du texte partent en texte. Elle **s'arrête seule à 200 papiers**
 > (`tranche-plafond`) et attend l'OK de Marc ; arrêt dur à 100 $ ; frein mensuel inchangé (40 $).
