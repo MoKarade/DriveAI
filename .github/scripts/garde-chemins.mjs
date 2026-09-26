@@ -16,6 +16,10 @@ import { createHash } from "node:crypto";
 export const CHEMINS_INTERDITS = Object.freeze([
   // Tout ce qui décide, exécute ou déploie : workflows (CI, auto-merge, deploy, sync-drive, pousser-reset…), scripts de la CI, modèles d'issue, dependabot.
   ".github/**",
+  // Le CODE DU MOTEUR : ce que clasp pousse dans le projet Apps Script de Marc, avec ses identifiants, à chaque merge. Aucune PR de code du moteur ne s'auto-fusionne (voulu).
+  // `test/` reste auto-fusionnable ; package.json aussi (clasp est épinglé, installation avec --ignore-scripts).
+  "src/**",
+  "**/*.gs",
   // Déploiement Apps Script (clasp) : configuration du projet et manifeste.
   ".clasp*",
   "**/.clasp*",
