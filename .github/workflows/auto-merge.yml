@@ -113,6 +113,29 @@ jobs:
             exit 0
           fi
 
+          # ── GARDE TECHNIQUE : les chemins sensibles ne s'auto-fusionnent JAMAIS ─────────────
+          # Ajoutée le 26/09/2026 (avis de pole-securite : dépôt PUBLIC sans protection de branche, et
+          # chaque merge déploie le moteur dans le projet Apps Script de Marc). Une PR qui touche
+          # `.github/**` (dont CE workflow, deploy.yml, sync-drive.yml et leurs scripts), la
+          # configuration clasp, CLAUDE.md/AGENTS.md ou `.claude/**` attend Marc, même CI verte.
+          # La LISTE et la logique sont dans `.github/scripts/garde-chemins.mjs`, LU SUR `main` par
+          # l'API (jamais depuis le code de la PR). ÉCHEC FERMÉ : script ou liste des fichiers
+          # illisible ou tronquée (3000 fichiers = plafond de l'API), chemin douteux : pas de merge.
+          garde_js="$(mktemp)"
+          if ! avec_retry gh api "repos/$REPO/contents/.github/scripts/garde-chemins.mjs?ref=main" \
+              -H "Accept: application/vnd.github.raw" > "$garde_js"; then
+            echo "PR #$number — garde de chemins illisible sur main → auto-merge REFUSÉ."
+            exit 0
+          fi
+          if ! fichiers="$(avec_retry gh api "repos/$REPO/pulls/$number/files" --paginate --slurp)"; then
+            echo "PR #$number — liste des fichiers illisible → auto-merge REFUSÉ."
+            exit 0
+          fi
+          if ! raison_garde="$(printf '%s' "$fichiers" | node "$garde_js")"; then
+            echo "PR #$number — auto-merge REFUSÉ : $raison_garde"
+            exit 0
+          fi
+
           # Merge en squash + suppression de la branche. Un essai raté peut avoir RÉUSSI côté
           # serveur (réponse perdue) : on juge par l'ÉTAT RÉEL de la PR, jamais par le seul code
           # de sortie (la politique « vérifier l'artefact » du projet).
