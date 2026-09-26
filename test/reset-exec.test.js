@@ -544,7 +544,7 @@ test('Reset.gs (section I/O) : aucune mutation hors addFile/removeFile — renom
 test('tripwire constitution : CLAUDE.md documente la réorg INTERNE de 04 SEULEMENT si le code l\'implémente (et réciproquement)', () => {
   const fs = require('fs');
   const path = require('path');
-  const claudeMd = fs.readFileSync(path.join(__dirname, '..', 'CLAUDE.md'), 'utf-8');
+  const claudeMd = [path.join(__dirname, '..', 'CLAUDE.md'), ...fs.readdirSync(path.join(__dirname, '..', 'docs', 'claude')).sort().map((f) => path.join(__dirname, '..', 'docs', 'claude', f))].map((f) => fs.readFileSync(f, 'utf-8')).join(' ') /* constitution = CLAUDE.md court + son texte intégral déplacé dans docs/claude/ (étape 2 de la structure commune) */;
   const reset = fs.readFileSync(path.join(__dirname, '..', 'src', 'Reset.gs'), 'utf-8');
   const codeImplemente04Interne = reset.includes('function reorganiserInterne04_(') && reset.includes('function dossierInterne04Reset_(');
   const constitutionAutorise = claudeMd.includes('réorganisation INTERNE permise');

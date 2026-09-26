@@ -104,7 +104,7 @@ test('tripwire constitution : le scope Gmail effectif et CLAUDE.md ne divergent 
   // le manifeste doit rester en lecture seule — et réciproquement, passer le scope sans mettre
   // à jour la constitution casse la CI. (Leçon : les documents vivants ne dérivent jamais.)
   const manifest = JSON.parse(fs.readFileSync(path.join(SRC, 'appsscript.json'), 'utf-8'));
-  const claudeMd = fs.readFileSync(path.join(__dirname, '..', 'CLAUDE.md'), 'utf-8');
+  const claudeMd = [path.join(__dirname, '..', 'CLAUDE.md'), ...fs.readdirSync(path.join(__dirname, '..', 'docs', 'claude')).sort().map((f) => path.join(__dirname, '..', 'docs', 'claude', f))].map((f) => fs.readFileSync(f, 'utf-8')).join(' ') /* constitution = CLAUDE.md court + son texte intégral déplacé dans docs/claude/ (étape 2 de la structure commune) */;
   const scopeModify = manifest.oauthScopes.some((s) => s.endsWith('gmail.modify'));
   if (scopeModify) {
     assert.ok(!claudeMd.includes('PAS ENCORE EFFECTIVE'),

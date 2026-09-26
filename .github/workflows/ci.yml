@@ -37,6 +37,13 @@ jobs:
       - name: La convention de compte-rendu n'a pas dérivé
         run: echo "97e36acba8770c9614b6295773267b9690d07bc5bcd130b3bc0d03da996ab62b  docs/COMPTE-RENDU.md" | sha256sum -c -
 
+      # DOCUMENTATION LÉGÈRE (modeles/docs de l'Atelier) : CLAUDE.md <= 60 lignes / 10 Ko (le texte complet vit dans docs/claude/), docs/INDEX.md à jour, correspondances valides.
+      # Les copies des contrôles vivent sous .github/ci (chemin sensible : l'auto-merge ne les fusionne jamais).
+      - name: Documentation légère (CLAUDE.md court, INDEX à jour)
+        run: |
+          node .github/ci/verifier-longueur.mjs CLAUDE.md
+          node .github/ci/generer-index.mjs --verifier
+
       - name: JSON parseable
         run: |
           fail=0
